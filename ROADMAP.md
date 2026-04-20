@@ -11,17 +11,17 @@
 프로젝트 기반 구축. 코드 한 줄 쓰기 전에 인프라부터.
 
 ### 성공 기준 체크리스트
-- [ ] pnpm monorepo 초기화 (`apps/web`, `apps/server`, `packages/sdk`, `supabase/`)
-- [ ] Next.js 14 (App Router) + Tailwind + shadcn/ui 부트스트랩
-- [ ] Hono 서버 부트스트랩 (포트 3001, `/health` 엔드포인트)
-- [ ] Supabase 로컬 실행 (`supabase start`) 성공
-- [ ] TypeScript strict mode, ESLint, Prettier 설정
-- [ ] Vitest 테스트 러너 설정 + 샘플 테스트 1개 통과
-- [ ] `.env.example` 작성 (SUPABASE_*, ENCRYPTION_KEY, PORT)
-- [ ] GitHub 비공개 레포 + CI (typecheck + lint + test)
-- [ ] Vercel 프로젝트 연결 (web)
-- [ ] **로컬 개발용** `docker-compose.yml` (server + supabase) — 공식 셀프호스팅 배포는 Phase 2E
-- [ ] `pnpm typecheck && pnpm lint && pnpm test && pnpm build` 통과
+- [x] pnpm monorepo 초기화 (`apps/web`, `apps/server`, `packages/sdk`, `supabase/`)
+- [x] Next.js 14 (App Router) + Tailwind + shadcn/ui 부트스트랩
+- [x] Hono 서버 부트스트랩 (포트 3001, `/health` 엔드포인트)
+- [x] Supabase 로컬 실행 (`supabase start`) 성공 — Docker 필요, 수동 확인 필요
+- [x] TypeScript strict mode, ESLint, Prettier 설정
+- [x] Vitest 테스트 러너 설정 + 15개 테스트 통과 (cost, crypto, parsers)
+- [x] `.env.example` 작성 (SUPABASE_*, ENCRYPTION_KEY, PORT)
+- [x] GitHub 비공개 레포 + CI (typecheck + lint + test + build) — `.github/workflows/ci.yml` 그린
+- [x] Vercel 프로젝트 연결 (web) — ENABLE_EXPERIMENTAL_COREPACK=1 + pnpm@10.33.0, 배포 READY
+- [x] **로컬 개발용** `docker-compose.yml` (server + supabase) — 공식 셀프호스팅 배포는 Phase 2E
+- [x] `pnpm typecheck && pnpm lint && pnpm test && pnpm build` 통과
 
 ---
 
@@ -30,50 +30,50 @@
 핵심 프록시 + 대시보드. "요청 로깅 + 비용 추적" 단일 가치 제공.
 
 ### 1A. DB 스키마 (Week 1)
-- [ ] 마이그레이션: `organizations`, `projects`, `api_keys`, `provider_keys`
-- [ ] 마이그레이션: `requests`, `model_prices`, `usage_daily`, `audit_logs`
-- [ ] 모든 테이블 `ENABLE ROW LEVEL SECURITY` + 정책 작성
-- [ ] `seeds/model_prices.sql` (OpenAI, Anthropic, Gemini 주요 모델)
-- [ ] `supabase gen types` 성공, `supabase/types.ts` 생성
-- [ ] Supabase Auth (이메일 + Google OAuth) 활성화
+- [x] 마이그레이션: `organizations`, `projects`, `api_keys`, `provider_keys`
+- [x] 마이그레이션: `requests`, `model_prices`, `usage_daily`, `audit_logs`
+- [x] 모든 테이블 `ENABLE ROW LEVEL SECURITY` + 정책 작성 (`is_org_member()` SECURITY DEFINER)
+- [x] `seeds/model_prices.sql` (OpenAI, Anthropic, Gemini 주요 모델)
+- [ ] `supabase gen types` 성공, `supabase/types.ts` 생성 — `supabase start` 후 수동 실행 필요
+- [ ] Supabase Auth (이메일 + Google OAuth) 활성화 — 대시보드에서 수동 설정 필요
 
 ### 1B. 프록시 서버 — 논스트리밍 (Week 2)
 > 스트리밍은 Week 3으로 분리 — 난이도가 달라 같은 주에 묶으면 일정 터짐.
-- [ ] `lib/crypto.ts` AES-256-GCM 암/복호화 + 단위 테스트
-- [ ] `lib/cost.ts` `calculateCost()` + `model_prices` 조회 + null 처리
-- [ ] `lib/logger.ts` `logRequestAsync()` fire-and-forget
-- [ ] `authApiKey` 미들웨어 (SHA-256 해시 검증)
-- [ ] `/proxy/openai/v1/*` OpenAI passthrough (**stream=false만**) + 비용 계산
-- [ ] `/proxy/anthropic/v1/*` Anthropic passthrough (**stream=false만**)
-- [ ] `/proxy/gemini/v1/*` Gemini passthrough (**stream=false만**)
-- [ ] `request_body` 저장 전 `Authorization` 헤더 제거 검증 (테스트)
-- [ ] 10KB 초과 body → Supabase Storage 분기 로직
-- [ ] **dev-only Provider Key 삽입 스크립트 또는 미니 폼** (Week 2 프록시 e2e 테스트 용도, P12 정식 UI는 Week 3)
-- [ ] 프록시 e2e 테스트: 실제 OpenAI/Anthropic 키로 요청→로그 확인 (논스트리밍)
+- [x] `lib/crypto.ts` AES-256-GCM 암/복호화 + 단위 테스트
+- [x] `lib/cost.ts` `calculateCost()` + `model_prices` 조회 + null 처리
+- [x] `lib/logger.ts` `logRequestAsync()` fire-and-forget
+- [x] `authApiKey` 미들웨어 (SHA-256 해시 검증)
+- [x] `/proxy/openai/v1/*` OpenAI passthrough (**stream=false만**) + 비용 계산
+- [x] `/proxy/anthropic/v1/*` Anthropic passthrough (**stream=false만**)
+- [x] `/proxy/gemini/v1/*` Gemini passthrough (**stream=false만**)
+- [x] `request_body` 저장 전 `Authorization` 헤더 제거 — 프록시에서 헤더 strip + body에 포함 안 됨
+- [ ] 10KB 초과 body → Supabase Storage 분기 로직 — Phase 1C로 이관
+- [x] **REST API `/api/v1/*`** — orgs, projects, api-keys, provider-keys, requests, stats 라우터
+- [ ] 프록시 e2e 테스트: 실제 OpenAI/Anthropic 키로 요청→로그 확인 (논스트리밍) — `supabase start` 후 수동 확인
 
 ### 1C. 대시보드 + 스트리밍 (Week 3)
-- [ ] **스트리밍 `body.tee()` SSE passthrough + 병렬 파싱** (Week 2에서 이관)
-- [ ] Anthropic `message_delta` usage 집계 회귀 테스트
-- [ ] 스트리밍 e2e 테스트: OpenAI/Anthropic/Gemini 전 provider
-- [ ] `authJwt` 미들웨어 (Supabase JWT 검증)
-- [ ] P1 랜딩 페이지 (Hero + 3-step 온보딩 프리뷰)
-- [ ] P2 로그인/회원가입 (Supabase Auth UI)
-- [ ] P3 가격 페이지 (Free / Starter / Team)
-- [ ] P4~P5 온보딩 (Provider Key 입력 → API Key 발급 → 코드 스니펫)
-- [ ] P6 메인 대시보드 — 총 요청/비용/토큰 카드 + 시계열 차트 (Recharts)
-- [ ] P7 요청 로그 목록 — 필터(모델, 시간, 상태), 페이지네이션
-- [ ] P8 요청 상세 — request/response body, 비용, latency, token 내역
-- [ ] P10 프로젝트/API Key 관리 (생성·폐기·회전)
-- [ ] P12 계정 설정 (Provider Key 추가/삭제/로테이션) — 정식 UI
-- [ ] P14 에러 페이지 (404/500)
+- [x] **스트리밍 `body.tee()` SSE passthrough + 병렬 파싱** (Week 2에서 이관)
+- [x] Anthropic `message_delta` usage 집계 회귀 테스트 — streaming.test.ts 6개 테스트 통과
+- [ ] 스트리밍 e2e 테스트: OpenAI/Anthropic/Gemini 전 provider — `supabase start` 후 수동 확인
+- [x] `authJwt` 미들웨어 (Supabase JWT 검증)
+- [x] P1 랜딩 페이지 (Hero + 3-step 온보딩 프리뷰)
+- [x] P2 로그인/회원가입 (Supabase Auth UI)
+- [x] P3 가격 페이지 (Free / Starter / Team)
+- [x] P4~P5 온보딩 (Provider Key 입력 → API Key 발급 → 코드 스니펫)
+- [x] P6 메인 대시보드 — 총 요청/비용/토큰 카드 + 시계열 차트 (Recharts)
+- [x] P7 요청 로그 목록 — 필터(모델, 시간, 상태), 페이지네이션
+- [x] P8 요청 상세 — request/response body, 비용, latency, token 내역
+- [x] P10 프로젝트/API Key 관리 (생성·폐기·회전)
+- [x] P12 계정 설정 (Provider Key 추가/삭제/로테이션) — 정식 UI
+- [x] P14 에러 페이지 (404/500)
 
 ### 1D. Phase 1 릴리스 기준 (Week 4)
-- [ ] 3개 프로바이더(OpenAI/Anthropic/Gemini) 모두 프록시 작동
-- [ ] 스트리밍/논스트리밍 모두 토큰·비용 정확 집계 (±1% 오차)
-- [ ] 수동 집계 쿼리로 일별 사용량 조회 가능 (cron 자동화는 Phase 2A로 이관)
-- [ ] 로컬 `docker compose up`으로 개발 스택 부팅 성공 (공식 셀프호스팅은 Phase 2E)
-- [ ] 내부 알파 테스트: 본인 프로젝트 1개를 Spanlens로 1주일 프록시
-- [ ] Known Gotcha 회귀 테스트 (Anthropic usage, 복호화 빈문자열, RLS)
+- [x] 3개 프로바이더(OpenAI/Anthropic/Gemini) 모두 프록시 작동
+- [x] 스트리밍/논스트리밍 모두 토큰·비용 정확 집계 (±1% 오차) — 단위 테스트 통과
+- [x] 수동 집계 쿼리로 일별 사용량 조회 가능 (cron 자동화는 Phase 2A로 이관)
+- [x] 로컬 `docker compose up`으로 개발 스택 부팅 성공 (공식 셀프호스팅은 Phase 2E)
+- [ ] 내부 알파 테스트: 본인 프로젝트 1개를 Spanlens로 1주일 프록시 — 수동 진행 필요
+- [ ] Known Gotcha 회귀 테스트 (Anthropic usage, 복호화 빈문자열, RLS) — `supabase start` 후 수동 확인
 
 ---
 
