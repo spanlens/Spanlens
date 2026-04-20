@@ -1,0 +1,22 @@
+{
+  "name": "spanlens",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "pnpm --parallel --filter './apps/*' dev",
+    "build": "pnpm --filter './apps/*' build",
+    "typecheck": "pnpm --recursive typecheck",
+    "lint": "pnpm --recursive lint",
+    "test": "pnpm --recursive test",
+    "clean": "pnpm --recursive clean"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.5",
+    "prettier": "^3.3.3",
+    "eslint": "^8.57.0"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=9.0.0"
+  }
+}

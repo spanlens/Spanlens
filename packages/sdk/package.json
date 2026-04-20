@@ -1,0 +1,29 @@
+{
+  "name": "@spanlens/sdk",
+  "version": "0.1.0",
+  "description": "Spanlens SDK for LLM observability",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "clean": "rm -rf dist"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.5",
+    "vitest": "^2.1.3"
+  },
+  "keywords": ["llm", "observability", "tracing", "spanlens"],
+  "license": "MIT"
+}

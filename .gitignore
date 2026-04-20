@@ -1,0 +1,32 @@
+node_modules/
+.next/
+dist/
+build/
+.turbo/
+*.tsbuildinfo
+
+# env
+.env
+.env.local
+.env.production
+.env.*.local
+
+# supabase
+supabase/.branches/
+supabase/.temp/
+
+# pnpm
+.pnpm-store/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# logs
+*.log
+npm-debug.log*
+
+# IDE
+.vscode/
+.idea/
+*.swp

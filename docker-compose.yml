@@ -1,0 +1,49 @@
+# 로컬 개발용 Docker Compose
+# 공식 셀프호스팅 배포는 Phase 2E에서 별도 구성
+#
+# 사용법:
+#   docker compose up -d
+#   docker compose down
+#
+# 참고: Supabase는 `supabase start`(CLI)를 권장.
+# 이 파일은 CI 환경 또는 Docker만 사용하는 경우를 위한 대안.
+
+version: '3.9'
+
+services:
+  server:
+    build:
+      context: ./apps/server
+      dockerfile: Dockerfile.dev
+    ports:
+      - '3001:3001'
+    environment:
+      PORT: 3001
+      SUPABASE_URL: ${SUPABASE_URL:-http://supabase-kong:8000}
+      SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+    volumes:
+      - ./apps/server/src:/app/src
+    restart: unless-stopped
+    depends_on:
+      - db
+
+  db:
+    image: postgres:15-alpine
+    ports:
+      - '54322:5432'
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
