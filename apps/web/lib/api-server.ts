@@ -12,7 +12,7 @@ export class ApiError extends Error {
 }
 
 async function getServerAuthHeader(): Promise<Record<string, string>> {
-  const supabase = createClient()
+  const supabase = await createClient()
   const {
     data: { session },
   } = await supabase.auth.getSession()
