@@ -1,5 +1,5 @@
 {
-  "installCommand": "cd ../.. && pnpm install --frozen-lockfile",
+  "installCommand": "npm install",
   "buildCommand": "echo 'API routes compiled by Vercel'",
   "rewrites": [{ "source": "/(.*)", "destination": "/api/index" }],
   "functions": {
