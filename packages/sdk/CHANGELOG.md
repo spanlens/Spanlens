@@ -1,5 +1,9 @@
 # @spanlens/sdk changelog
 
+## 0.1.1
+
+Patch release — verifies the CI publish pipeline end-to-end with the granular npm token now that `@spanlens/sdk` exists on the registry. No functional changes.
+
 ## 0.1.0
 
 Initial release.
