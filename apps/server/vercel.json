@@ -1,5 +1,7 @@
 {
-  "installCommand": "npm install",
+  "version": 2,
   "framework": null,
+  "outputDirectory": null,
+  "installCommand": "npm install",
   "rewrites": [{ "source": "/(.*)", "destination": "/api/index" }]
 }
