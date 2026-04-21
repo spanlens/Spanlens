@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { authJwt, type JwtContext } from '../middleware/authJwt.js'
 import { supabaseAdmin } from '../lib/db.js'
+import { checkProjectQuota } from '../lib/quota.js'
 
 export const projectsRouter = new Hono<JwtContext>()
 
@@ -54,6 +55,20 @@ projectsRouter.post('/', async (c) => {
 
   if (typeof body.name !== 'string' || body.name.trim().length === 0) {
     return c.json({ error: 'name is required' }, 400)
+  }
+
+  // Enforce per-plan project limit (Free 1 / Starter 5 / Team 20 / Enterprise ∞)
+  const quota = await checkProjectQuota(orgId)
+  if (!quota.allowed) {
+    return c.json(
+      {
+        error: `Project limit reached for ${quota.plan} plan (${quota.used}/${quota.limit}). Upgrade to add more projects.`,
+        plan: quota.plan,
+        used: quota.used,
+        limit: quota.limit,
+      },
+      403,
+    )
   }
 
   const description =

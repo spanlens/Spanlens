@@ -13,6 +13,7 @@ const PLANS = [
     requests: '10,000 req/mo',
     features: [
       '10K requests / month',
+      '1 project',
       '3 providers (OpenAI, Anthropic, Gemini)',
       '7-day log retention',
       'Community support',
@@ -25,9 +26,10 @@ const PLANS = [
     name: 'Starter',
     price: '$19',
     description: 'For solo developers shipping to production',
-    requests: '500,000 req/mo',
+    requests: '100,000 req/mo',
     features: [
-      '500K requests / month',
+      '100K requests / month',
+      'Up to 5 projects',
       'All providers',
       '30-day log retention',
       'Cost alerts & budgets',
@@ -41,9 +43,10 @@ const PLANS = [
     name: 'Team',
     price: '$49',
     description: 'For teams that need more visibility',
-    requests: '5M req/mo',
+    requests: '500,000 req/mo',
     features: [
-      '5M requests / month',
+      '500K requests / month',
+      'Up to 20 projects',
       'All providers',
       '90-day log retention',
       'Agent tracing (Gantt view)',

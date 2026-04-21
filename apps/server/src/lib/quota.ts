@@ -17,11 +17,53 @@ export const MONTHLY_REQUEST_LIMITS: Record<Plan, number | null> = {
   enterprise: null, // unlimited
 }
 
+export const PROJECT_LIMITS: Record<Plan, number | null> = {
+  free: 1,
+  starter: 5,
+  team: 20,
+  enterprise: null, // unlimited
+}
+
 export const LOG_RETENTION_DAYS: Record<Plan, number> = {
   free: 7,
   starter: 30,
   team: 90,
   enterprise: 365,
+}
+
+export interface ProjectQuotaCheckResult {
+  allowed: boolean
+  used: number
+  limit: number | null
+  plan: Plan
+}
+
+/**
+ * Checks whether the organization can create another project.
+ * Uses PROJECT_LIMITS keyed on organizations.plan.
+ */
+export async function checkProjectQuota(
+  organizationId: string,
+): Promise<ProjectQuotaCheckResult> {
+  const { data: org } = await supabaseAdmin
+    .from('organizations')
+    .select('plan')
+    .eq('id', organizationId)
+    .single()
+
+  const plan = ((org?.plan as Plan) ?? 'free') as Plan
+  const limit = PROJECT_LIMITS[plan]
+
+  const { count } = await supabaseAdmin
+    .from('projects')
+    .select('id', { count: 'exact', head: true })
+    .eq('organization_id', organizationId)
+
+  const used = count ?? 0
+  if (limit === null) {
+    return { allowed: true, used, limit: null, plan }
+  }
+  return { allowed: used < limit, used, limit, plan }
 }
 
 export interface QuotaCheckResult {
