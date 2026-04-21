@@ -15,7 +15,19 @@ import { statsRouter }         from './api/stats.js'
 
 export const app = new Hono()
 
-app.use('*', cors())
+app.use('*', cors({
+  origin: (origin) => {
+    const allowed = [
+      'https://spanlens-web.vercel.app',
+      'http://localhost:3000',
+    ]
+    return allowed.includes(origin) ? origin : allowed[0]!
+  },
+  allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowHeaders: ['Content-Type', 'Authorization'],
+  credentials: true,
+  maxAge: 86400,
+}))
 app.use('*', logger())
 
 // Health check
