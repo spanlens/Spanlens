@@ -12,6 +12,8 @@ import { apiKeysRouter }       from './api/apiKeys.js'
 import { providerKeysRouter }  from './api/providerKeys.js'
 import { requestsRouter }      from './api/requests.js'
 import { statsRouter }         from './api/stats.js'
+import { tracesRouter }        from './api/traces.js'
+import { ingestRouter }        from './api/ingest.js'
 
 export const app = new Hono()
 
@@ -38,6 +40,9 @@ app.route('/proxy/openai',    openaiProxy)
 app.route('/proxy/anthropic', anthropicProxy)
 app.route('/proxy/gemini',    geminiProxy)
 
+// ── SDK ingestion routes (authApiKey middleware) ──────────────
+app.route('/ingest',          ingestRouter)
+
 // ── REST API routes (authJwt middleware) ──────────────────────
 app.route('/api/v1/organizations',  organizationsRouter)
 app.route('/api/v1/projects',       projectsRouter)
@@ -45,5 +50,6 @@ app.route('/api/v1/api-keys',       apiKeysRouter)
 app.route('/api/v1/provider-keys',  providerKeysRouter)
 app.route('/api/v1/requests',       requestsRouter)
 app.route('/api/v1/stats',          statsRouter)
+app.route('/api/v1/traces',         tracesRouter)
 
 export default app

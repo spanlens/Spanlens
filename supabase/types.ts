@@ -7,8 +7,6 @@ export type Json =
   | Json[]
 
 export type Database = {
-  // Allows to automatically instantiate createClient with right options
-  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
     PostgrestVersion: "14.5"
   }
@@ -313,6 +311,176 @@ export type Database = {
           },
           {
             foreignKeyName: "requests_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      spans: {
+        Row: {
+          completion_tokens: number
+          cost_usd: number | null
+          created_at: string
+          duration_ms: number | null
+          ended_at: string | null
+          error_message: string | null
+          id: string
+          input: Json | null
+          metadata: Json | null
+          name: string
+          organization_id: string
+          output: Json | null
+          parent_span_id: string | null
+          prompt_tokens: number
+          request_id: string | null
+          span_type: string
+          started_at: string
+          status: string
+          total_tokens: number
+          trace_id: string
+        }
+        Insert: {
+          completion_tokens?: number
+          cost_usd?: number | null
+          created_at?: string
+          duration_ms?: number | null
+          ended_at?: string | null
+          error_message?: string | null
+          id?: string
+          input?: Json | null
+          metadata?: Json | null
+          name: string
+          organization_id: string
+          output?: Json | null
+          parent_span_id?: string | null
+          prompt_tokens?: number
+          request_id?: string | null
+          span_type?: string
+          started_at?: string
+          status?: string
+          total_tokens?: number
+          trace_id: string
+        }
+        Update: {
+          completion_tokens?: number
+          cost_usd?: number | null
+          created_at?: string
+          duration_ms?: number | null
+          ended_at?: string | null
+          error_message?: string | null
+          id?: string
+          input?: Json | null
+          metadata?: Json | null
+          name?: string
+          organization_id?: string
+          output?: Json | null
+          parent_span_id?: string | null
+          prompt_tokens?: number
+          request_id?: string | null
+          span_type?: string
+          started_at?: string
+          status?: string
+          total_tokens?: number
+          trace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "spans_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "spans_request_id_fkey"
+            columns: ["request_id"]
+            isOneToOne: false
+            referencedRelation: "requests"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "spans_trace_id_fkey"
+            columns: ["trace_id"]
+            isOneToOne: false
+            referencedRelation: "traces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      traces: {
+        Row: {
+          api_key_id: string | null
+          created_at: string
+          duration_ms: number | null
+          ended_at: string | null
+          error_message: string | null
+          id: string
+          metadata: Json | null
+          name: string
+          organization_id: string
+          project_id: string
+          span_count: number
+          started_at: string
+          status: string
+          total_cost_usd: number
+          total_tokens: number
+          updated_at: string
+        }
+        Insert: {
+          api_key_id?: string | null
+          created_at?: string
+          duration_ms?: number | null
+          ended_at?: string | null
+          error_message?: string | null
+          id?: string
+          metadata?: Json | null
+          name: string
+          organization_id: string
+          project_id: string
+          span_count?: number
+          started_at?: string
+          status?: string
+          total_cost_usd?: number
+          total_tokens?: number
+          updated_at?: string
+        }
+        Update: {
+          api_key_id?: string | null
+          created_at?: string
+          duration_ms?: number | null
+          ended_at?: string | null
+          error_message?: string | null
+          id?: string
+          metadata?: Json | null
+          name?: string
+          organization_id?: string
+          project_id?: string
+          span_count?: number
+          started_at?: string
+          status?: string
+          total_cost_usd?: number
+          total_tokens?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "traces_api_key_id_fkey"
+            columns: ["api_key_id"]
+            isOneToOne: false
+            referencedRelation: "api_keys"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "traces_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "traces_project_id_fkey"
             columns: ["project_id"]
             isOneToOne: false
             referencedRelation: "projects"
