@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { authJwt, type JwtContext } from '../middleware/authJwt.js'
-import { supabaseAdmin, supabaseClient } from '../lib/db.js'
+import { supabaseAdmin } from '../lib/db.js'
 import {
   createPaddleCustomer,
   createPaddleCheckoutTransaction,
@@ -76,7 +76,7 @@ billingRouter.post('/checkout', async (c) => {
   }
 
   // Look up the user's email + org's paddle_customer_id
-  const { data: authUser } = await supabaseClient.auth.admin.getUserById(userId)
+  const { data: authUser } = await supabaseAdmin.auth.admin.getUserById(userId)
   const email = authUser.user?.email
   if (!email) return c.json({ error: 'User email not found' }, 400)
 
