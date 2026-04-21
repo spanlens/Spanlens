@@ -84,12 +84,12 @@
 ### 2A. 에이전트 트레이싱 백엔드 + UI (Week 5~6)
 > SDK npm publish는 Week 7로 분리 — 포장 작업(README, 버전, 배포 파이프라인) 따로.
 - [ ] 마이그레이션: `traces`, `spans` (parent_span_id FK 없음, 의도적)
-- [ ] `usage_daily` 1시간 cron 배치 집계 (Phase 1에서 이관)
+- [x] `usage_daily` 1시간 cron 배치 집계 — `aggregate_usage_daily(target_date)` PLPGSQL RPC + `/cron/aggregate-usage` 엔드포인트 (CRON_SECRET bearer 인증) + GitHub Actions `cron-aggregate-usage.yml` 매시간 실행. Vercel Hobby plan이 hourly cron 지원 안 해서 GHA로 대체.
 - [x] `/api/v1/traces/*` 엔드포인트 (dashboard 조회: list/get) + `/ingest/*` (SDK 쓰기: POST/PATCH traces/spans). 관심사 분리 — 전자는 authJwt, 후자는 authApiKey.
 - [x] P9 에이전트 트레이스 화면 — Gantt/waterfall 뷰, pre-order DFS span 트리 + depth 기반 인덴트, spanType별 색상, 선택 시 상세 패널 (tokens/cost/input/output/metadata + `/requests/:id` 딥링크)
 - [x] 병렬 span 시각화 — 같은 부모 하에 overlap되는 span들은 같은 depth에서 시간축으로 자연스럽게 병렬 표현됨. LangGraph fan-out 패턴 그대로 처리. (실제 병렬 데이터 재현 테스트는 SDK auto-instrumentation 완료 후 dogfood로 진행 예정)
 - [x] SDK `packages/sdk` 내부 구현 — `SpanlensClient.startTrace()`, `TraceHandle.span()`, `SpanHandle.child()`, `.end()`, `observe()` 헬퍼 + README + 13개 테스트 그린. 클라이언트 생성 UUID(idempotent 재시도), fire-and-forget 네트워크, unhandled rejection 방지 포함
-- [ ] SDK OpenAI/Anthropic auto-instrumentation (로컬 링크로 테스트)
+- [x] SDK OpenAI/Anthropic/Gemini auto-instrumentation — `observeOpenAI / observeAnthropic / observeGemini` 헬퍼가 span 생성 + `x-trace-id`/`x-span-id` 헤더 주입 + 응답 usage 자동 파싱 + 에러 시 status='error'. 7개 테스트 포함.
 - [ ] **Paddle(Merchant of Record) 통합 기본 골격 (Week 6)** — Starter/Team 결제 Sandbox 모드 완료. Paddle을 선택한 이유: 한국 개인사업자는 Stripe 가입 불가, Paddle은 MoR로 한국 사업자 지원 + 글로벌 VAT/세금 자동 처리 + 한국 은행 계좌 페이아웃 가능
 - [ ] Paddle 프로덕션 verification 신청 (KYC 문서 + 회사 정보 제출, 승인까지 보통 3~7 영업일)
 
