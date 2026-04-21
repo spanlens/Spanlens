@@ -47,7 +47,7 @@ providerKeysRouter.post('/', async (c) => {
     return c.json({ error: 'name is required' }, 400)
   }
 
-  const encryptedKey = aes256Encrypt(body.key.trim())
+  const encryptedKey = await aes256Encrypt(body.key.trim())
 
   const { data, error } = await supabaseAdmin
     .from('provider_keys')
@@ -97,7 +97,7 @@ providerKeysRouter.patch('/:id', async (c) => {
 
   const updates: Record<string, unknown> = {}
   if (typeof body.key === 'string' && body.key.trim().length > 0) {
-    updates['encrypted_key'] = aes256Encrypt(body.key.trim())
+    updates['encrypted_key'] = await aes256Encrypt(body.key.trim())
   }
   if (typeof body.name === 'string' && body.name.trim().length > 0) {
     updates['name'] = body.name.trim()

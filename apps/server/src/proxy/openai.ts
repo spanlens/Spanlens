@@ -75,7 +75,7 @@ openaiProxy.all('/*', async (c) => {
     spanId: c.req.header('x-span-id') ?? null,
   }
 
-  // ── Streaming path (Hono stream helper — required for Vercel Node.js runtime) ─
+  // ── Streaming path (Hono stream helper) ──────────────────────────────────
   if (isStreaming && upstreamRes.body) {
     const downstreamHeaders = buildDownstreamHeaders(upstreamRes.headers)
     downstreamHeaders.forEach((value, key) => c.header(key, value))
@@ -106,7 +106,6 @@ openaiProxy.all('/*', async (c) => {
         console.error('[openai-stream] reader error:', err)
       }
 
-      // 스트림 종료 후 로깅 — await해서 Vercel 함수가 INSERT 완료 전에 종료되지 않도록
       await logOpenAIStream(lines, { ...logBase, model }).catch((err) => {
         console.error('[openai-stream] log error:', err)
       })

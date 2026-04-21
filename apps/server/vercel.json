@@ -1,10 +1,5 @@
 {
   "installCommand": "npm install",
-  "buildCommand": "mkdir -p _server && npx esbuild src/handler.ts --bundle --platform=node --target=node20 --outfile=_server/index.js --format=cjs",
-  "rewrites": [{ "source": "/(.*)", "destination": "/_server/index" }],
-  "functions": {
-    "_server/index.js": {
-      "maxDuration": 30
-    }
-  }
+  "buildCommand": "mkdir -p _server && npx esbuild src/handler.ts --bundle --platform=browser --target=es2022 --outfile=_server/index.js --format=esm --conditions=workerd,edge-light,browser",
+  "rewrites": [{ "source": "/(.*)", "destination": "/_server/index" }]
 }

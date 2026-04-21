@@ -65,7 +65,7 @@ describe('getDecryptedProviderKey — Gotcha #5 (decryption empty string → nul
 
   it('returns the decrypted key when ENCRYPTION_KEY matches', async () => {
     const plaintext = 'sk-openai-real-key-abc123'
-    const ciphertext = aes256Encrypt(plaintext)
+    const ciphertext = await aes256Encrypt(plaintext)
 
     vi.mocked(supabaseAdmin.from).mockReturnValueOnce({
       select: vi.fn().mockReturnThis(),
@@ -81,7 +81,7 @@ describe('getDecryptedProviderKey — Gotcha #5 (decryption empty string → nul
   it('returns null (not empty string) when ENCRYPTION_KEY is wrong [Known Gotcha #5]', async () => {
     // 올바른 키로 암호화
     process.env.ENCRYPTION_KEY = CORRECT_KEY_ENV
-    const ciphertext = aes256Encrypt('sk-openai-real-key-abc123')
+    const ciphertext = await aes256Encrypt('sk-openai-real-key-abc123')
 
     // 잘못된 키로 복호화 시도하도록 환경변수 변경
     process.env.ENCRYPTION_KEY = WRONG_KEY_ENV

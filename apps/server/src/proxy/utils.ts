@@ -15,7 +15,7 @@ export async function getDecryptedProviderKey(
     .single()
 
   if (!data) return null
-  const decrypted = aes256Decrypt(data.encrypted_key as string)
+  const decrypted = await aes256Decrypt(data.encrypted_key as string)
   return decrypted.length > 0 ? decrypted : null
 }
 
