@@ -1,0 +1,19 @@
+name: Aggregate usage daily (hourly)
+
+# Vercel Hobby plan은 daily cron만 허용하므로, GitHub Actions로 매시간 트리거.
+# Vercel Pro로 업그레이드 시 vercel.json#crons로 이관해도 됨.
+
+on:
+  schedule:
+    - cron: '0 * * * *' # 매시간 정각 (UTC)
+  workflow_dispatch: # 수동 트리거도 허용
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call /cron/aggregate-usage
+        run: |
+          curl --fail --silent --show-error \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            https://spanlens-server.vercel.app/cron/aggregate-usage
