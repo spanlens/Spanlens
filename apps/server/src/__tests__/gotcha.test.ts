@@ -43,10 +43,6 @@ vi.mock('../lib/db.js', () => {
 import { getDecryptedProviderKey } from '../proxy/utils.js'
 import { supabaseAdmin } from '../lib/db.js'
 
-// mock 내부의 chain 객체에 접근하기 위한 헬퍼
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const getMockChain = () => (vi.mocked(supabaseAdmin.from).mock.results[0]?.value) as any
-
 const CORRECT_KEY_ENV = Buffer.from('a'.repeat(32)).toString('base64')
 const WRONG_KEY_ENV = Buffer.from('z'.repeat(32)).toString('base64')
 

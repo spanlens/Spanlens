@@ -39,6 +39,9 @@ jobs:
         env:
           ENCRYPTION_KEY: ${{ secrets.CI_ENCRYPTION_KEY || 'YWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWE=' }}
 
+      - name: Test (sdk)
+        run: pnpm --filter sdk test
+
       - name: Build (web)
         run: pnpm --filter web build
 
