@@ -151,3 +151,30 @@ export interface TracesPage {
   data: TraceRow[]
   meta: { total: number; page: number; limit: number }
 }
+
+// ── Billing ────────────────────────────────────────────────────
+
+export type BillingPlan = 'free' | 'starter' | 'team' | 'enterprise'
+export type SubscriptionStatus =
+  | 'active'
+  | 'trialing'
+  | 'past_due'
+  | 'paused'
+  | 'canceled'
+
+export interface Subscription {
+  id: string
+  paddle_subscription_id: string
+  paddle_price_id: string
+  plan: Exclude<BillingPlan, 'free'>
+  status: SubscriptionStatus
+  current_period_start: string | null
+  current_period_end: string | null
+  cancel_at_period_end: boolean
+  updated_at: string
+}
+
+export interface CheckoutResponse {
+  url: string
+  transactionId: string
+}
