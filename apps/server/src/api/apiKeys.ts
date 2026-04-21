@@ -7,15 +7,6 @@ export const apiKeysRouter = new Hono<JwtContext>()
 
 apiKeysRouter.use('*', authJwt)
 
-async function getOrgId(userId: string): Promise<string | null> {
-  const { data } = await supabaseAdmin
-    .from('organizations')
-    .select('id')
-    .eq('owner_id', userId)
-    .single()
-  return data?.id ?? null
-}
-
 async function projectBelongsToOrg(projectId: string, orgId: string): Promise<boolean> {
   const { data } = await supabaseAdmin
     .from('projects')
@@ -28,9 +19,8 @@ async function projectBelongsToOrg(projectId: string, orgId: string): Promise<bo
 
 // GET /api/v1/api-keys?projectId=xxx — list keys (no plain key returned)
 apiKeysRouter.get('/', async (c) => {
-  const userId = c.get('userId')
   const projectId = c.req.query('projectId')
-  const orgId = await getOrgId(userId)
+  const orgId = c.get('orgId')
   if (!orgId) return c.json({ error: 'Organization not found' }, 404)
 
   let query = supabaseAdmin
@@ -61,8 +51,7 @@ apiKeysRouter.get('/', async (c) => {
 
 // POST /api/v1/api-keys — create key; returns plain key ONCE
 apiKeysRouter.post('/', async (c) => {
-  const userId = c.get('userId')
-  const orgId = await getOrgId(userId)
+  const orgId = c.get('orgId')
   if (!orgId) return c.json({ error: 'Organization not found' }, 404)
 
   let body: { name?: unknown; projectId?: unknown }
@@ -105,9 +94,8 @@ apiKeysRouter.post('/', async (c) => {
 
 // DELETE /api/v1/api-keys/:id — deactivate (soft delete)
 apiKeysRouter.delete('/:id', async (c) => {
-  const userId = c.get('userId')
   const keyId = c.req.param('id')
-  const orgId = await getOrgId(userId)
+  const orgId = c.get('orgId')
   if (!orgId) return c.json({ error: 'Organization not found' }, 404)
 
   // Verify ownership via project → org chain

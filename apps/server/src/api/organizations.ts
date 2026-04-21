@@ -59,6 +59,20 @@ organizationsRouter.post('/', async (c) => {
     return c.json({ error: 'Failed to create organization' }, 500)
   }
 
+  // Inject org_id into user JWT app_metadata so the web client can
+  // determine org membership without round-tripping to this API on
+  // every dashboard page load. The client MUST call refreshSession()
+  // after this POST to pick up the updated claims.
+  const { error: metaError } = await supabaseAdmin.auth.admin.updateUserById(userId, {
+    app_metadata: { org_id: data.id },
+  })
+  if (metaError) {
+    // Log but do not fail: org row already exists; metadata will be
+    // refreshed the next time it's needed, and the worst case is one
+    // extra redirect through /onboarding that self-corrects.
+    console.error('Failed to update user app_metadata with org_id', metaError)
+  }
+
   return c.json({ success: true, data }, 201)
 })
 

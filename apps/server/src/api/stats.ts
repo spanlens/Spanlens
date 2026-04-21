@@ -6,20 +6,10 @@ export const statsRouter = new Hono<JwtContext>()
 
 statsRouter.use('*', authJwt)
 
-async function getOrgId(userId: string): Promise<string | null> {
-  const { data } = await supabaseAdmin
-    .from('organizations')
-    .select('id')
-    .eq('owner_id', userId)
-    .single()
-  return data?.id ?? null
-}
-
 // GET /api/v1/stats/overview — total requests, cost, tokens for dashboard cards
 // Query params: projectId, from, to (ISO date strings)
 statsRouter.get('/overview', async (c) => {
-  const userId = c.get('userId')
-  const orgId = await getOrgId(userId)
+  const orgId = c.get('orgId')
   if (!orgId) return c.json({ error: 'Organization not found' }, 404)
 
   const projectId = c.req.query('projectId')
@@ -69,8 +59,7 @@ statsRouter.get('/overview', async (c) => {
 // GET /api/v1/stats/timeseries — daily aggregates for charts
 // Query params: projectId, from, to, granularity (day|hour)
 statsRouter.get('/timeseries', async (c) => {
-  const userId = c.get('userId')
-  const orgId = await getOrgId(userId)
+  const orgId = c.get('orgId')
   if (!orgId) return c.json({ error: 'Organization not found' }, 404)
 
   const projectId   = c.req.query('projectId')

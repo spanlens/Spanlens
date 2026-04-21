@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { apiPost } from '@/lib/api'
+import { createClient } from '@/lib/supabase/client'
 
 type Step = 'org' | 'provider' | 'apikey' | 'done'
 
@@ -33,9 +34,17 @@ export default function OnboardingPage() {
     setError('')
     setLoading(true)
     try {
-      // Create org
+      // Create org. The server also injects org_id into the user's JWT
+      // app_metadata so the dashboard layout can skip the API round-trip.
       await apiPost('/api/v1/organizations', { name: orgName })
-      // Create default project
+
+      // Refresh the session so the browser cookie carries the new claims.
+      // Without this, the dashboard layout would still see the old JWT
+      // (no org_id) and bounce the user back to /onboarding — infinite loop.
+      const supabase = createClient()
+      await supabase.auth.refreshSession()
+
+      // Create default project (uses the freshly refreshed JWT).
       const proj = await apiPost<{ data: { id: string } }>('/api/v1/projects', {
         name: 'Default Project',
         description: 'Auto-created during onboarding',

@@ -1,35 +1,23 @@
 'use client'
-import { useEffect, useState, useCallback } from 'react'
+import { useState } from 'react'
 import { Plus, Trash2, Copy } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
-import { apiGet, apiPost, apiDelete } from '@/lib/api'
-
-interface Project {
-  id: string
-  name: string
-  description: string | null
-  created_at: string
-}
-
-interface ApiKey {
-  id: string
-  project_id: string
-  name: string
-  key_prefix: string
-  is_active: boolean
-  last_used_at: string | null
-  created_at: string
-}
+import { Skeleton } from '@/components/ui/skeleton'
+import { useCreateProject, useProjects } from '@/lib/queries/use-projects'
+import { useApiKeys, useCreateApiKey, useRevokeApiKey } from '@/lib/queries/use-api-keys'
 
 export default function ProjectsPage() {
-  const [projects, setProjects] = useState<Project[]>([])
-  const [apiKeys, setApiKeys] = useState<ApiKey[]>([])
+  const projectsQuery = useProjects()
+  const apiKeysQuery = useApiKeys()
+  const createProject = useCreateProject()
+  const createApiKey = useCreateApiKey()
+  const revokeApiKey = useRevokeApiKey()
+
   const [newKey, setNewKey] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
 
   // New project dialog
   const [projDialogOpen, setProjDialogOpen] = useState(false)
@@ -40,45 +28,43 @@ export default function ProjectsPage() {
   const [keyName, setKeyName] = useState('')
   const [keyProjectId, setKeyProjectId] = useState('')
 
-  const fetchAll = useCallback(async () => {
-    setLoading(true)
-    const [projRes, keyRes] = await Promise.allSettled([
-      apiGet<{ success: boolean; data: Project[] }>('/api/v1/projects'),
-      apiGet<{ success: boolean; data: ApiKey[] }>('/api/v1/api-keys'),
-    ])
-    if (projRes.status === 'fulfilled' && projRes.value.success)
-      setProjects(projRes.value.data)
-    if (keyRes.status === 'fulfilled' && keyRes.value.success)
-      setApiKeys(keyRes.value.data)
-    setLoading(false)
-  }, [])
-
-  useEffect(() => { void fetchAll() }, [fetchAll])
-
-  async function createProject() {
-    await apiPost('/api/v1/projects', { name: projName })
+  async function handleCreateProject() {
+    await createProject.mutateAsync({ name: projName })
     setProjName('')
     setProjDialogOpen(false)
-    void fetchAll()
   }
 
-  async function createApiKey() {
-    const res = await apiPost<{ success: boolean; data: { key: string } }>('/api/v1/api-keys', {
-      name: keyName,
-      projectId: keyProjectId,
-    })
-    setNewKey(res.data.key)
+  async function handleCreateApiKey() {
+    const key = await createApiKey.mutateAsync({ name: keyName, projectId: keyProjectId })
+    setNewKey(key.key)
     setKeyName('')
     setKeyDialogOpen(false)
-    void fetchAll()
   }
 
-  async function revokeKey(id: string) {
-    await apiDelete(`/api/v1/api-keys/${id}`)
-    void fetchAll()
+  const loading = projectsQuery.isLoading || apiKeysQuery.isLoading
+
+  if (loading) {
+    return (
+      <div>
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <Skeleton className="h-7 w-56 mb-2" />
+            <Skeleton className="h-4 w-64" />
+          </div>
+          <Skeleton className="h-9 w-32" />
+        </div>
+        {Array.from({ length: 2 }).map((_, i) => (
+          <div key={i} className="rounded-lg border bg-white mb-4 p-6">
+            <Skeleton className="h-5 w-40 mb-2" />
+            <Skeleton className="h-3 w-64" />
+          </div>
+        ))}
+      </div>
+    )
   }
 
-  if (loading) return <div className="text-muted-foreground">Loading…</div>
+  const projects = projectsQuery.data ?? []
+  const apiKeys = apiKeysQuery.data ?? []
 
   return (
     <div>
@@ -102,8 +88,11 @@ export default function ProjectsPage() {
                 <Label>Project name</Label>
                 <Input value={projName} onChange={(e) => setProjName(e.target.value)} />
               </div>
-              <Button onClick={() => void createProject()} disabled={!projName.trim()}>
-                Create
+              <Button
+                onClick={() => void handleCreateProject()}
+                disabled={!projName.trim() || createProject.isPending}
+              >
+                {createProject.isPending ? 'Creating…' : 'Create'}
               </Button>
             </div>
           </DialogContent>
@@ -138,7 +127,13 @@ export default function ProjectsPage() {
                 <h2 className="font-semibold">{proj.name}</h2>
                 <p className="text-xs font-mono text-muted-foreground mt-0.5">{proj.id}</p>
               </div>
-              <Dialog open={keyDialogOpen} onOpenChange={setKeyDialogOpen}>
+              <Dialog
+                open={keyDialogOpen && keyProjectId === proj.id}
+                onOpenChange={(open) => {
+                  setKeyDialogOpen(open)
+                  if (!open) setKeyProjectId('')
+                }}
+              >
                 <DialogTrigger asChild>
                   <Button
                     size="sm"
@@ -158,8 +153,11 @@ export default function ProjectsPage() {
                       <Label>Key name</Label>
                       <Input value={keyName} onChange={(e) => setKeyName(e.target.value)} placeholder="Production key" />
                     </div>
-                    <Button onClick={() => void createApiKey()} disabled={!keyName.trim()}>
-                      Create
+                    <Button
+                      onClick={() => void handleCreateApiKey()}
+                      disabled={!keyName.trim() || createApiKey.isPending}
+                    >
+                      {createApiKey.isPending ? 'Creating…' : 'Create'}
                     </Button>
                   </div>
                 </DialogContent>
@@ -190,7 +188,8 @@ export default function ProjectsPage() {
                           size="icon"
                           variant="ghost"
                           className="h-7 w-7 text-destructive hover:text-destructive"
-                          onClick={() => void revokeKey(key.id)}
+                          onClick={() => void revokeApiKey.mutateAsync(key.id)}
+                          disabled={revokeApiKey.isPending}
                         >
                           <Trash2 className="h-3.5 w-3.5" />
                         </Button>

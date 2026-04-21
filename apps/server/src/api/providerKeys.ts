@@ -9,19 +9,9 @@ providerKeysRouter.use('*', authJwt)
 
 const VALID_PROVIDERS = new Set(['openai', 'anthropic', 'gemini'])
 
-async function getOrgId(userId: string): Promise<string | null> {
-  const { data } = await supabaseAdmin
-    .from('organizations')
-    .select('id')
-    .eq('owner_id', userId)
-    .single()
-  return data?.id ?? null
-}
-
 // GET /api/v1/provider-keys — list keys (never returns plain or encrypted key)
 providerKeysRouter.get('/', async (c) => {
-  const userId = c.get('userId')
-  const orgId = await getOrgId(userId)
+  const orgId = c.get('orgId')
   if (!orgId) return c.json({ error: 'Organization not found' }, 404)
 
   const { data, error } = await supabaseAdmin
@@ -37,8 +27,7 @@ providerKeysRouter.get('/', async (c) => {
 
 // POST /api/v1/provider-keys — add provider key (encrypt before storing)
 providerKeysRouter.post('/', async (c) => {
-  const userId = c.get('userId')
-  const orgId = await getOrgId(userId)
+  const orgId = c.get('orgId')
   if (!orgId) return c.json({ error: 'Organization not found' }, 404)
 
   let body: { provider?: unknown; key?: unknown; name?: unknown }
@@ -78,9 +67,8 @@ providerKeysRouter.post('/', async (c) => {
 
 // DELETE /api/v1/provider-keys/:id — deactivate provider key
 providerKeysRouter.delete('/:id', async (c) => {
-  const userId = c.get('userId')
   const keyId = c.req.param('id')
-  const orgId = await getOrgId(userId)
+  const orgId = c.get('orgId')
   if (!orgId) return c.json({ error: 'Organization not found' }, 404)
 
   const { error } = await supabaseAdmin
@@ -96,9 +84,8 @@ providerKeysRouter.delete('/:id', async (c) => {
 
 // PATCH /api/v1/provider-keys/:id — rotate key (replace encrypted_key)
 providerKeysRouter.patch('/:id', async (c) => {
-  const userId = c.get('userId')
   const keyId = c.req.param('id')
-  const orgId = await getOrgId(userId)
+  const orgId = c.get('orgId')
   if (!orgId) return c.json({ error: 'Organization not found' }, 404)
 
   let body: { key?: unknown; name?: unknown }

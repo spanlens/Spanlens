@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useState, useCallback } from 'react'
+import { useState } from 'react'
 import { Plus, Trash2, RotateCcw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -8,27 +8,21 @@ import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Separator } from '@/components/ui/separator'
-import { apiGet, apiPost, apiDelete, apiPatch } from '@/lib/api'
-
-interface ProviderKey {
-  id: string
-  provider: string
-  name: string
-  is_active: boolean
-  created_at: string
-  updated_at: string
-}
-
-interface Org {
-  id: string
-  name: string
-  plan: string
-}
+import { Skeleton } from '@/components/ui/skeleton'
+import { useOrganization } from '@/lib/queries/use-organization'
+import {
+  useCreateProviderKey,
+  useProviderKeys,
+  useRevokeProviderKey,
+  useRotateProviderKey,
+} from '@/lib/queries/use-provider-keys'
 
 export default function SettingsPage() {
-  const [org, setOrg] = useState<Org | null>(null)
-  const [keys, setKeys] = useState<ProviderKey[]>([])
-  const [loading, setLoading] = useState(true)
+  const orgQuery = useOrganization()
+  const keysQuery = useProviderKeys()
+  const createProviderKey = useCreateProviderKey()
+  const revokeProviderKey = useRevokeProviderKey()
+  const rotateProviderKey = useRotateProviderKey()
 
   // Add key dialog
   const [addDialogOpen, setAddDialogOpen] = useState(false)
@@ -40,21 +34,8 @@ export default function SettingsPage() {
   const [rotateId, setRotateId] = useState<string | null>(null)
   const [rotateKeyValue, setRotateKeyValue] = useState('')
 
-  const fetchAll = useCallback(async () => {
-    setLoading(true)
-    const [orgRes, keyRes] = await Promise.allSettled([
-      apiGet<{ success: boolean; data: Org }>('/api/v1/organizations/me'),
-      apiGet<{ success: boolean; data: ProviderKey[] }>('/api/v1/provider-keys'),
-    ])
-    if (orgRes.status === 'fulfilled' && orgRes.value.success) setOrg(orgRes.value.data)
-    if (keyRes.status === 'fulfilled' && keyRes.value.success) setKeys(keyRes.value.data)
-    setLoading(false)
-  }, [])
-
-  useEffect(() => { void fetchAll() }, [fetchAll])
-
-  async function addKey() {
-    await apiPost('/api/v1/provider-keys', {
+  async function handleAdd() {
+    await createProviderKey.mutateAsync({
       provider: newProvider,
       key: newKey,
       name: newKeyName || `${newProvider} key`,
@@ -62,23 +43,32 @@ export default function SettingsPage() {
     setNewKey('')
     setNewKeyName('')
     setAddDialogOpen(false)
-    void fetchAll()
   }
 
-  async function revokeKey(id: string) {
-    await apiDelete(`/api/v1/provider-keys/${id}`)
-    void fetchAll()
-  }
-
-  async function handleRotateKey() {
+  async function handleRotate() {
     if (!rotateId || !rotateKeyValue.trim()) return
-    await apiPatch(`/api/v1/provider-keys/${rotateId}`, { key: rotateKeyValue })
+    await rotateProviderKey.mutateAsync({ id: rotateId, key: rotateKeyValue })
     setRotateId(null)
     setRotateKeyValue('')
-    void fetchAll()
   }
 
-  if (loading) return <div className="text-muted-foreground">Loading…</div>
+  const loading = orgQuery.isLoading || keysQuery.isLoading
+
+  if (loading) {
+    return (
+      <div className="max-w-2xl">
+        <div className="mb-8">
+          <Skeleton className="h-7 w-32 mb-2" />
+          <Skeleton className="h-4 w-56" />
+        </div>
+        <Skeleton className="h-32 w-full mb-8" />
+        <Skeleton className="h-40 w-full" />
+      </div>
+    )
+  }
+
+  const org = orgQuery.data
+  const keys = keysQuery.data ?? []
 
   return (
     <div className="max-w-2xl">
@@ -150,8 +140,11 @@ export default function SettingsPage() {
                     placeholder={`${newProvider} production key`}
                   />
                 </div>
-                <Button onClick={() => void addKey()} disabled={!newKey.trim()}>
-                  Save key
+                <Button
+                  onClick={() => void handleAdd()}
+                  disabled={!newKey.trim() || createProviderKey.isPending}
+                >
+                  {createProviderKey.isPending ? 'Saving…' : 'Save key'}
                 </Button>
               </div>
             </DialogContent>
@@ -192,7 +185,8 @@ export default function SettingsPage() {
                       size="icon"
                       variant="ghost"
                       className="h-8 w-8 text-destructive hover:text-destructive"
-                      onClick={() => void revokeKey(key.id)}
+                      onClick={() => void revokeProviderKey.mutateAsync(key.id)}
+                      disabled={revokeProviderKey.isPending}
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                     </Button>
@@ -217,8 +211,11 @@ export default function SettingsPage() {
                 onChange={(e) => setRotateKeyValue(e.target.value)}
                 placeholder="New API key"
               />
-              <Button onClick={() => void handleRotateKey()} disabled={!rotateKeyValue.trim()}>
-                Rotate key
+              <Button
+                onClick={() => void handleRotate()}
+                disabled={!rotateKeyValue.trim() || rotateProviderKey.isPending}
+              >
+                {rotateProviderKey.isPending ? 'Rotating…' : 'Rotate key'}
               </Button>
             </div>
           </DialogContent>

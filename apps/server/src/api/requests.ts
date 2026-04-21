@@ -6,20 +6,10 @@ export const requestsRouter = new Hono<JwtContext>()
 
 requestsRouter.use('*', authJwt)
 
-async function getOrgId(userId: string): Promise<string | null> {
-  const { data } = await supabaseAdmin
-    .from('organizations')
-    .select('id')
-    .eq('owner_id', userId)
-    .single()
-  return data?.id ?? null
-}
-
 // GET /api/v1/requests — list requests with optional filters + pagination
 // Query params: projectId, provider, model, status, from, to, page, limit
 requestsRouter.get('/', async (c) => {
-  const userId = c.get('userId')
-  const orgId = await getOrgId(userId)
+  const orgId = c.get('orgId')
   if (!orgId) return c.json({ error: 'Organization not found' }, 404)
 
   const projectId = c.req.query('projectId')
@@ -59,9 +49,8 @@ requestsRouter.get('/', async (c) => {
 
 // GET /api/v1/requests/:id — get full request detail including bodies
 requestsRouter.get('/:id', async (c) => {
-  const userId = c.get('userId')
   const requestId = c.req.param('id')
-  const orgId = await getOrgId(userId)
+  const orgId = c.get('orgId')
   if (!orgId) return c.json({ error: 'Organization not found' }, 404)
 
   const { data, error } = await supabaseAdmin

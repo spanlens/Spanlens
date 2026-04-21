@@ -1,0 +1,43 @@
+'use client'
+
+import { useQuery } from '@tanstack/react-query'
+import { apiGet } from '@/lib/api'
+import type { ApiEnvelope, StatsOverview, TimeseriesPoint } from './types'
+
+export const statsOverviewQueryKey = ['stats', 'overview'] as const
+
+export function useStatsOverview(params?: { projectId?: string; from?: string; to?: string }) {
+  return useQuery({
+    queryKey: params ? ([...statsOverviewQueryKey, params] as const) : statsOverviewQueryKey,
+    queryFn: async () => {
+      const qs = new URLSearchParams()
+      if (params?.projectId) qs.set('projectId', params.projectId)
+      if (params?.from) qs.set('from', params.from)
+      if (params?.to) qs.set('to', params.to)
+      const suffix = qs.size > 0 ? `?${qs}` : ''
+      const res = await apiGet<ApiEnvelope<StatsOverview>>(`/api/v1/stats/overview${suffix}`)
+      return res.data
+    },
+  })
+}
+
+export function statsTimeseriesQueryKey(params?: { projectId?: string; from?: string; to?: string }) {
+  return params ? (['stats', 'timeseries', params] as const) : (['stats', 'timeseries'] as const)
+}
+
+export function useStatsTimeseries(params?: { projectId?: string; from?: string; to?: string }) {
+  return useQuery({
+    queryKey: statsTimeseriesQueryKey(params),
+    queryFn: async () => {
+      const qs = new URLSearchParams()
+      if (params?.projectId) qs.set('projectId', params.projectId)
+      if (params?.from) qs.set('from', params.from)
+      if (params?.to) qs.set('to', params.to)
+      const suffix = qs.size > 0 ? `?${qs}` : ''
+      const res = await apiGet<ApiEnvelope<TimeseriesPoint[]>>(
+        `/api/v1/stats/timeseries${suffix}`,
+      )
+      return res.data
+    },
+  })
+}

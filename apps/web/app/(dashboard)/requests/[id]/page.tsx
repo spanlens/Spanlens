@@ -1,39 +1,68 @@
-import { notFound } from 'next/navigation'
+'use client'
 import Link from 'next/link'
 import { ArrowLeft } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { apiGetServer } from '@/lib/api-server'
+import { Skeleton } from '@/components/ui/skeleton'
+import { useRequest } from '@/lib/queries/use-requests'
 
-interface RequestDetail {
-  id: string
-  provider: string
-  model: string
-  prompt_tokens: number
-  completion_tokens: number
-  total_tokens: number
-  cost_usd: number | null
-  latency_ms: number
-  status_code: number
-  request_body: unknown
-  response_body: unknown
-  error_message: string | null
-  trace_id: string | null
-  span_id: string | null
-  created_at: string
-}
+export default function RequestDetailPage({ params }: { params: { id: string } }) {
+  const { data: req, isLoading, isError, refetch } = useRequest(params.id)
 
-export default async function RequestDetailPage({ params }: { params: { id: string } }) {
-  let req: RequestDetail
-  try {
-    const res = await apiGetServer<{ success: boolean; data: RequestDetail }>(
-      `/api/v1/requests/${params.id}`,
+  if (isLoading) {
+    return (
+      <div>
+        <Link
+          href="/requests"
+          className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground mb-6"
+        >
+          <ArrowLeft className="h-4 w-4" /> Back to requests
+        </Link>
+        <div className="flex items-start justify-between mb-6">
+          <Skeleton className="h-8 w-48" />
+          <Skeleton className="h-6 w-16" />
+        </div>
+        <div className="grid grid-cols-4 gap-4 mb-6">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <Card key={i}>
+              <CardHeader className="pb-1 pt-4">
+                <Skeleton className="h-3 w-20" />
+              </CardHeader>
+              <CardContent className="pb-4">
+                <Skeleton className="h-4 w-full" />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+        <Skeleton className="h-64 w-full" />
+      </div>
     )
-    if (!res.success) notFound()
-    req = res.data
-  } catch {
-    notFound()
+  }
+
+  if (isError || !req) {
+    return (
+      <div>
+        <Link
+          href="/requests"
+          className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground mb-6"
+        >
+          <ArrowLeft className="h-4 w-4" /> Back to requests
+        </Link>
+        <div className="rounded-lg border bg-white p-8 text-center">
+          <h2 className="text-lg font-semibold mb-2">Request not found</h2>
+          <p className="text-sm text-muted-foreground mb-4">
+            This request may have been deleted, or you may not have access to it.
+          </p>
+          <button
+            onClick={() => void refetch()}
+            className="text-sm text-blue-600 hover:text-blue-700"
+          >
+            Try again
+          </button>
+        </div>
+      </div>
+    )
   }
 
   const isSuccess = req.status_code < 400

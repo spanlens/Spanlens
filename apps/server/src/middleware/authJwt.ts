@@ -4,6 +4,13 @@ import { supabaseClient } from '../lib/db.js'
 export type JwtContext = {
   Variables: {
     userId: string
+    /**
+     * Organization id from the user's JWT app_metadata claim.
+     * `null` means the user has not completed onboarding yet.
+     * Routes that require an org should guard with:
+     *   if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+     */
+    orgId: string | null
   }
 }
 
@@ -21,5 +28,13 @@ export const authJwt = createMiddleware<JwtContext>(async (c, next) => {
   }
 
   c.set('userId', data.user.id)
+
+  // Extract org_id from app_metadata claim (set by POST /api/v1/organizations).
+  // Falls back to null — callers must handle the missing-org case.
+  const appMetadata = data.user.app_metadata as { org_id?: unknown } | undefined
+  const claimOrgId =
+    typeof appMetadata?.org_id === 'string' ? appMetadata.org_id : null
+  c.set('orgId', claimOrgId)
+
   return next()
 })

@@ -6,19 +6,9 @@ export const projectsRouter = new Hono<JwtContext>()
 
 projectsRouter.use('*', authJwt)
 
-async function getOrgId(userId: string): Promise<string | null> {
-  const { data } = await supabaseAdmin
-    .from('organizations')
-    .select('id')
-    .eq('owner_id', userId)
-    .single()
-  return data?.id ?? null
-}
-
 // GET /api/v1/projects — list all projects for the user's org
 projectsRouter.get('/', async (c) => {
-  const userId = c.get('userId')
-  const orgId = await getOrgId(userId)
+  const orgId = c.get('orgId')
   if (!orgId) return c.json({ error: 'Organization not found' }, 404)
 
   const { data, error } = await supabaseAdmin
@@ -34,9 +24,8 @@ projectsRouter.get('/', async (c) => {
 
 // GET /api/v1/projects/:id
 projectsRouter.get('/:id', async (c) => {
-  const userId = c.get('userId')
   const projectId = c.req.param('id')
-  const orgId = await getOrgId(userId)
+  const orgId = c.get('orgId')
   if (!orgId) return c.json({ error: 'Organization not found' }, 404)
 
   const { data, error } = await supabaseAdmin
@@ -53,8 +42,7 @@ projectsRouter.get('/:id', async (c) => {
 
 // POST /api/v1/projects
 projectsRouter.post('/', async (c) => {
-  const userId = c.get('userId')
-  const orgId = await getOrgId(userId)
+  const orgId = c.get('orgId')
   if (!orgId) return c.json({ error: 'Organization not found' }, 404)
 
   let body: { name?: unknown; description?: unknown }
@@ -84,9 +72,8 @@ projectsRouter.post('/', async (c) => {
 
 // PATCH /api/v1/projects/:id
 projectsRouter.patch('/:id', async (c) => {
-  const userId = c.get('userId')
   const projectId = c.req.param('id')
-  const orgId = await getOrgId(userId)
+  const orgId = c.get('orgId')
   if (!orgId) return c.json({ error: 'Organization not found' }, 404)
 
   let body: { name?: unknown; description?: unknown }
@@ -122,9 +109,8 @@ projectsRouter.patch('/:id', async (c) => {
 
 // DELETE /api/v1/projects/:id
 projectsRouter.delete('/:id', async (c) => {
-  const userId = c.get('userId')
   const projectId = c.req.param('id')
-  const orgId = await getOrgId(userId)
+  const orgId = c.get('orgId')
   if (!orgId) return c.json({ error: 'Organization not found' }, 404)
 
   const { error } = await supabaseAdmin
