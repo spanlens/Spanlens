@@ -90,7 +90,7 @@
 - [x] 병렬 span 시각화 — 같은 부모 하에 overlap되는 span들은 같은 depth에서 시간축으로 자연스럽게 병렬 표현됨. LangGraph fan-out 패턴 그대로 처리. (실제 병렬 데이터 재현 테스트는 SDK auto-instrumentation 완료 후 dogfood로 진행 예정)
 - [x] SDK `packages/sdk` 내부 구현 — `SpanlensClient.startTrace()`, `TraceHandle.span()`, `SpanHandle.child()`, `.end()`, `observe()` 헬퍼 + README + 13개 테스트 그린. 클라이언트 생성 UUID(idempotent 재시도), fire-and-forget 네트워크, unhandled rejection 방지 포함
 - [x] SDK OpenAI/Anthropic/Gemini auto-instrumentation — `observeOpenAI / observeAnthropic / observeGemini` 헬퍼가 span 생성 + `x-trace-id`/`x-span-id` 헤더 주입 + 응답 usage 자동 파싱 + 에러 시 status='error'. 7개 테스트 포함.
-- [ ] **Paddle(Merchant of Record) 통합 기본 골격 (Week 6)** — Starter/Team 결제 Sandbox 모드 완료. Paddle을 선택한 이유: 한국 개인사업자는 Stripe 가입 불가, Paddle은 MoR로 한국 사업자 지원 + 글로벌 VAT/세금 자동 처리 + 한국 은행 계좌 페이아웃 가능
+- [x] **Paddle(MoR) 통합 기본 골격 (Week 6)** — Sandbox API 클라이언트 + HMAC 서명 검증 webhook + checkout 엔드포인트 + subscriptions 테이블 + 8개 유닛 테스트. 실제 결제 플로우 end-to-end는 Paddle 대시보드에서 Product/Price 생성 + `PADDLE_PRICE_*` 환경변수 설정 후 가능.
 - [ ] Paddle 프로덕션 verification 신청 (KYC 문서 + 회사 정보 제출, 승인까지 보통 3~7 영업일)
 
 ### 2B. 운영 기능 + SDK 배포 (Week 7 전반)
