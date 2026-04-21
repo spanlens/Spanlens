@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pnpm --filter server typecheck)",
+      "Bash(pnpm --filter server test)",
+      "Bash(pnpm --filter web add @tanstack/react-query)",
+      "Bash(pnpm --filter web add -D @tanstack/react-query-devtools)",
+      "Bash(pnpm --filter web typecheck)",
+      "Bash(pnpm typecheck *)",
+      "Bash(pnpm lint *)",
+      "Bash(pnpm test *)",
+      "Bash(pnpm --filter web build)"
+    ]
+  }
+}

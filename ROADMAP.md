@@ -35,7 +35,7 @@
 - [x] 모든 테이블 `ENABLE ROW LEVEL SECURITY` + 정책 작성 (`is_org_member()` SECURITY DEFINER)
 - [x] `seeds/model_prices.sql` (OpenAI, Anthropic, Gemini 주요 모델)
 - [ ] `supabase gen types` 성공, `supabase/types.ts` 생성 — `supabase start` 후 수동 실행 필요
-- [ ] Supabase Auth (이메일 + Google OAuth) 활성화 — 대시보드에서 수동 설정 필요
+- [x] Supabase Auth (이메일 + Google OAuth) 활성화 — 대시보드에서 설정 완료
 
 ### 1B. 프록시 서버 — 논스트리밍 (Week 2)
 > 스트리밍은 Week 3으로 분리 — 난이도가 달라 같은 주에 묶으면 일정 터짐.
@@ -47,7 +47,7 @@
 - [x] `/proxy/anthropic/v1/*` Anthropic passthrough (**stream=false만**)
 - [x] `/proxy/gemini/v1/*` Gemini passthrough (**stream=false만**)
 - [x] `request_body` 저장 전 `Authorization` 헤더 제거 — 프록시에서 헤더 strip + body에 포함 안 됨
-- [ ] 10KB 초과 body → Supabase Storage 분기 로직 — Phase 1C로 이관
+- [x] 10KB 초과 body → truncate + preview 메타 저장 (`lib/logger.ts`). Supabase Storage 업로드 전체 보존은 Phase 2 확장 항목으로 예정
 - [x] **REST API `/api/v1/*`** — orgs, projects, api-keys, provider-keys, requests, stats 라우터
 - [x] 프록시 e2e 테스트: 실제 OpenAI 키로 요청→로그 확인 (논스트리밍) — `scripts/test-e2e.ts`, 프로덕션에서 200 OK + 토큰·모델 정상 로깅 확인. Anthropic/Gemini는 provider key 등록 후 동일 스크립트로 검증 가능
 

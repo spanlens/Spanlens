@@ -174,6 +174,51 @@ describe('Gotcha #3 — logRequestAsync uses supabaseAdmin for requests INSERT',
     expect(insertArg.provider).toBe('openai')
   })
 
+  it('truncates request_body > 10KB before INSERT (prevents JSONB bloat)', async () => {
+    const mockInsert = vi.fn().mockResolvedValue({ error: null })
+    vi.mocked(supabaseAdmin.from).mockReturnValueOnce({ insert: mockInsert } as never)
+
+    const { logRequestAsync } = await import('../lib/logger.js')
+
+    // 20KB 페이로드 — 10KB 임계치 초과
+    const bigContent = 'x'.repeat(20 * 1024)
+    await logRequestAsync({
+      organizationId: 'org-1', projectId: 'p-1', apiKeyId: 'k-1',
+      provider: 'openai', model: 'gpt-4o',
+      promptTokens: 0, completionTokens: 0, totalTokens: 0,
+      costUsd: null, latencyMs: 100, statusCode: 200,
+      requestBody: { messages: [{ role: 'user', content: bigContent }] },
+      responseBody: null,
+      errorMessage: null, traceId: null, spanId: null,
+    })
+
+    const arg = mockInsert.mock.calls[0]?.[0] as Record<string, unknown>
+    const body = arg.request_body as Record<string, unknown>
+    expect(body._truncated).toBe(true)
+    expect(body._original_size_bytes).toBeGreaterThan(20 * 1024)
+    expect((body._preview as string).length).toBeLessThanOrEqual(2 * 1024)
+  })
+
+  it('passes small body through unchanged (< 10KB)', async () => {
+    const mockInsert = vi.fn().mockResolvedValue({ error: null })
+    vi.mocked(supabaseAdmin.from).mockReturnValueOnce({ insert: mockInsert } as never)
+
+    const { logRequestAsync } = await import('../lib/logger.js')
+
+    const smallBody = { model: 'gpt-4o', messages: [{ role: 'user', content: 'hi' }] }
+    await logRequestAsync({
+      organizationId: 'org-1', projectId: 'p-1', apiKeyId: 'k-1',
+      provider: 'openai', model: 'gpt-4o',
+      promptTokens: 0, completionTokens: 0, totalTokens: 0,
+      costUsd: null, latencyMs: 100, statusCode: 200,
+      requestBody: smallBody, responseBody: null,
+      errorMessage: null, traceId: null, spanId: null,
+    })
+
+    const arg = mockInsert.mock.calls[0]?.[0] as Record<string, unknown>
+    expect(arg.request_body).toEqual(smallBody)
+  })
+
   it('logRequestAsync does not throw when DB returns an error', async () => {
     // DB 에러 시 throw하지 않고 console.error만 해야 함 (fire-and-forget 패턴)
     vi.mocked(supabaseAdmin.from).mockReturnValueOnce({
