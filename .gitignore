@@ -18,6 +18,9 @@ supabase/.temp/
 # pnpm
 .pnpm-store/
 
+# npm auth tokens (never commit)
+.npmrc
+
 # OS
 .DS_Store
 Thumbs.db
