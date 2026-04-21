@@ -34,7 +34,7 @@
 - [x] 마이그레이션: `requests`, `model_prices`, `usage_daily`, `audit_logs`
 - [x] 모든 테이블 `ENABLE ROW LEVEL SECURITY` + 정책 작성 (`is_org_member()` SECURITY DEFINER)
 - [x] `seeds/model_prices.sql` (OpenAI, Anthropic, Gemini 주요 모델)
-- [ ] `supabase gen types` 성공, `supabase/types.ts` 생성 — `supabase start` 후 수동 실행 필요
+- [x] `supabase gen types` 성공, `supabase/types.ts` 생성 — Supabase MCP(`generate_typescript_types`)로 프로덕션 스키마에서 직접 생성 완료 (8 테이블)
 - [x] Supabase Auth (이메일 + Google OAuth) 활성화 — 대시보드에서 설정 완료
 
 ### 1B. 프록시 서버 — 논스트리밍 (Week 2)
