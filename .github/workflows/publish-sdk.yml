@@ -45,8 +45,22 @@ jobs:
       - name: Publish to npm
         working-directory: packages/sdk
         run: |
-          echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > .npmrc
-          npm publish --provenance --access public --userconfig ./.npmrc
-          rm .npmrc
+          # Debug: confirm token is injected (length only, never the value)
+          if [ -z "$NPM_TOKEN" ]; then
+            echo "::error::NPM_TOKEN secret is empty or not forwarded"
+            exit 1
+          fi
+          echo "NPM_TOKEN length: ${#NPM_TOKEN}"
+
+          # Write .npmrc with literal token (no variable reference) so nothing
+          # can strip/re-expand it at publish time.
+          printf '//registry.npmjs.org/:_authToken=%s\n' "$NPM_TOKEN" > .npmrc
+          echo "--- .npmrc preview (token masked) ---"
+          sed 's/_authToken=.*/_authToken=***REDACTED***/' .npmrc
+
+          # Explicit userconfig pointer + unset setup-node's shadow config
+          unset NPM_CONFIG_USERCONFIG
+          npm publish --provenance --access public --userconfig "$PWD/.npmrc"
+          rm -f .npmrc
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
