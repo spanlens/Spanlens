@@ -8,102 +8,108 @@ type StreamLogBase = Omit<
   'promptTokens' | 'completionTokens' | 'totalTokens' | 'costUsd' | 'model'
 > & { model: string }
 
-async function readStreamLines(stream: ReadableStream<Uint8Array>): Promise<string[]> {
-  const reader = stream.getReader()
-  const decoder = new TextDecoder()
-  const lines: string[] = []
-  let buffer = ''
+/**
+ * tee()는 back-pressure 문제로 Vercel 서버리스에서 5분 타임아웃 유발.
+ * 대신 TransformStream을 사용해 단일 파이프라인으로 처리:
+ *   upstreamRes.body → makeStreamLogger() → Vercel → Client
+ * transform(): 청크를 클라이언트에 즉시 전달하면서 동시에 수집
+ * flush(): 스트림 종료 후 DB 로깅 (Response가 클라이언트에 전달된 이후)
+ */
 
-  try {
-    for (;;) {
-      const { done, value } = await reader.read()
-      if (done) break
-      buffer += decoder.decode(value, { stream: true })
-      const parts = buffer.split('\n')
-      buffer = parts.pop() ?? ''
-
-      let sawTerminator = false
-      for (const line of parts) {
-        lines.push(line)
-        // OpenAI: "data: [DONE]" / Anthropic: "message_stop" event
-        // 이후에는 done:true를 기다리지 않고 즉시 중단 — Vercel 함수 타임아웃 방지
-        if (line === 'data: [DONE]' || line.includes('"message_stop"')) {
-          sawTerminator = true
-          break
-        }
-      }
-      if (sawTerminator) break
-    }
-    if (buffer.length > 0) lines.push(buffer)
-  } finally {
-    // releaseLock 대신 cancel — 업스트림 스트림에 명시적으로 종료 신호를 보냄
-    await reader.cancel().catch(() => undefined)
-  }
-  return lines
-}
-
-export async function logOpenAIStream(
-  stream: ReadableStream<Uint8Array>,
+export function makeOpenAIStreamLogger(
   base: StreamLogBase,
-): Promise<void> {
-  const lines = await readStreamLines(stream)
+): TransformStream<Uint8Array, Uint8Array> {
+  const decoder = new TextDecoder()
+  let buf = ''
+  const lines: string[] = []
 
-  let model = base.model
-  let promptTokens = 0
-  let completionTokens = 0
-  let totalTokens = 0
+  return new TransformStream<Uint8Array, Uint8Array>({
+    transform(chunk, controller) {
+      controller.enqueue(chunk) // 클라이언트에 즉시 전달
 
-  for (const line of lines) {
-    const parsed = parseOpenAIStreamChunk(line)
-    if (!parsed) continue
-    if (parsed.model) model = parsed.model
-    if (parsed.promptTokens) promptTokens = parsed.promptTokens
-    if (parsed.completionTokens) completionTokens = parsed.completionTokens
-    if (parsed.totalTokens) totalTokens = parsed.totalTokens
-  }
+      buf += decoder.decode(chunk, { stream: true })
+      const parts = buf.split('\n')
+      buf = parts.pop() ?? ''
+      lines.push(...parts)
+    },
 
-  const cost = calculateCost('openai' as Provider, model, { promptTokens, completionTokens })
+    async flush() {
+      if (buf) lines.push(buf)
 
-  await logRequestAsync({
-    ...base,
-    model,
-    promptTokens,
-    completionTokens,
-    totalTokens,
-    costUsd: cost?.totalCost ?? null,
+      let model = base.model
+      let promptTokens = 0
+      let completionTokens = 0
+      let totalTokens = 0
+
+      for (const line of lines) {
+        const parsed = parseOpenAIStreamChunk(line)
+        if (!parsed) continue
+        if (parsed.model) model = parsed.model
+        if (parsed.promptTokens) promptTokens = parsed.promptTokens
+        if (parsed.completionTokens) completionTokens = parsed.completionTokens
+        if (parsed.totalTokens) totalTokens = parsed.totalTokens
+      }
+
+      const cost = calculateCost('openai' as Provider, model, { promptTokens, completionTokens })
+
+      await logRequestAsync({
+        ...base,
+        model,
+        promptTokens,
+        completionTokens,
+        totalTokens,
+        costUsd: cost?.totalCost ?? null,
+      }).catch(console.error)
+    },
   })
 }
 
-export async function logAnthropicStream(
-  stream: ReadableStream<Uint8Array>,
+export function makeAnthropicStreamLogger(
   base: StreamLogBase,
-): Promise<void> {
-  const lines = await readStreamLines(stream)
+): TransformStream<Uint8Array, Uint8Array> {
+  const decoder = new TextDecoder()
+  let buf = ''
+  const lines: string[] = []
 
-  let model = base.model
-  let promptTokens = 0
-  let completionTokens = 0
+  return new TransformStream<Uint8Array, Uint8Array>({
+    transform(chunk, controller) {
+      controller.enqueue(chunk) // 클라이언트에 즉시 전달
 
-  for (const line of lines) {
-    const start = parseAnthropicStreamStart(line)
-    if (start) {
-      if (start.promptTokens) promptTokens = start.promptTokens
-      if (start.model) model = start.model
-      continue
-    }
-    const delta = parseAnthropicStreamChunk(line)
-    if (delta?.completionTokens) completionTokens += delta.completionTokens
-  }
+      buf += decoder.decode(chunk, { stream: true })
+      const parts = buf.split('\n')
+      buf = parts.pop() ?? ''
+      lines.push(...parts)
+    },
 
-  const totalTokens = promptTokens + completionTokens
-  const cost = calculateCost('anthropic' as Provider, model, { promptTokens, completionTokens })
+    async flush() {
+      if (buf) lines.push(buf)
 
-  await logRequestAsync({
-    ...base,
-    model,
-    promptTokens,
-    completionTokens,
-    totalTokens,
-    costUsd: cost?.totalCost ?? null,
+      let model = base.model
+      let promptTokens = 0
+      let completionTokens = 0
+
+      for (const line of lines) {
+        const start = parseAnthropicStreamStart(line)
+        if (start) {
+          if (start.promptTokens) promptTokens = start.promptTokens
+          if (start.model) model = start.model
+          continue
+        }
+        const delta = parseAnthropicStreamChunk(line)
+        if (delta?.completionTokens) completionTokens += delta.completionTokens
+      }
+
+      const totalTokens = promptTokens + completionTokens
+      const cost = calculateCost('anthropic' as Provider, model, { promptTokens, completionTokens })
+
+      await logRequestAsync({
+        ...base,
+        model,
+        promptTokens,
+        completionTokens,
+        totalTokens,
+        costUsd: cost?.totalCost ?? null,
+      }).catch(console.error)
+    },
   })
 }

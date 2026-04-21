@@ -4,7 +4,7 @@ import { calculateCost } from '../lib/cost.js'
 import { logRequestAsync } from '../lib/logger.js'
 import { parseOpenAIResponse } from '../parsers/openai.js'
 import { getDecryptedProviderKey, buildUpstreamHeaders, buildDownstreamHeaders } from './utils.js'
-import { logOpenAIStream } from './stream-logger.js'
+import { makeOpenAIStreamLogger } from './stream-logger.js'
 
 const OPENAI_BASE = 'https://api.openai.com'
 
@@ -77,9 +77,11 @@ openaiProxy.all('/*', async (c) => {
 
   // ── Streaming path ────────────────────────────────────────────────────────
   if (isStreaming && upstreamRes.body) {
-    const [clientStream, loggingStream] = upstreamRes.body.tee()
-    logOpenAIStream(loggingStream, { ...logBase, model }).catch(console.error)
-    return new Response(clientStream, { status: upstreamRes.status, headers: downstreamHeaders })
+    const logger = makeOpenAIStreamLogger({ ...logBase, model })
+    return new Response(
+      upstreamRes.body.pipeThrough(logger),
+      { status: upstreamRes.status, headers: downstreamHeaders },
+    )
   }
 
   // ── Non-streaming path ────────────────────────────────────────────────────

@@ -4,7 +4,7 @@ import { calculateCost } from '../lib/cost.js'
 import { logRequestAsync } from '../lib/logger.js'
 import { parseAnthropicResponse } from '../parsers/anthropic.js'
 import { getDecryptedProviderKey, buildUpstreamHeaders, buildDownstreamHeaders } from './utils.js'
-import { logAnthropicStream } from './stream-logger.js'
+import { makeAnthropicStreamLogger } from './stream-logger.js'
 
 const ANTHROPIC_BASE = 'https://api.anthropic.com'
 
@@ -69,9 +69,11 @@ anthropicProxy.all('/*', async (c) => {
 
   // ── Streaming path ────────────────────────────────────────────────────────
   if (isStreaming && upstreamRes.body) {
-    const [clientStream, loggingStream] = upstreamRes.body.tee()
-    logAnthropicStream(loggingStream, { ...logBase, model }).catch(console.error)
-    return new Response(clientStream, { status: upstreamRes.status, headers: downstreamHeaders })
+    const logger = makeAnthropicStreamLogger({ ...logBase, model })
+    return new Response(
+      upstreamRes.body.pipeThrough(logger),
+      { status: upstreamRes.status, headers: downstreamHeaders },
+    )
   }
 
   // ── Non-streaming path ────────────────────────────────────────────────────
