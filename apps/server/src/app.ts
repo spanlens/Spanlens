@@ -17,6 +17,7 @@ import { ingestRouter }        from './api/ingest.js'
 import { cronRouter }          from './api/cron.js'
 import { billingRouter }       from './api/billing.js'
 import { paddleWebhookRouter } from './api/paddleWebhook.js'
+import { alertsRouter }        from './api/alerts.js'
 
 export const app = new Hono()
 
@@ -61,5 +62,6 @@ app.route('/api/v1/requests',       requestsRouter)
 app.route('/api/v1/stats',          statsRouter)
 app.route('/api/v1/traces',         tracesRouter)
 app.route('/api/v1/billing',        billingRouter)
+app.route('/api/v1/alerts',         alertsRouter)
 
 export default app

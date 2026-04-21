@@ -12,6 +12,122 @@ export type Database = {
   }
   public: {
     Tables: {
+      alert_deliveries: {
+        Row: {
+          alert_id: string
+          channel_id: string
+          created_at: string
+          error_message: string | null
+          id: string
+          organization_id: string
+          payload: Json | null
+          status: string
+        }
+        Insert: {
+          alert_id: string
+          channel_id: string
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          organization_id: string
+          payload?: Json | null
+          status: string
+        }
+        Update: {
+          alert_id?: string
+          channel_id?: string
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          organization_id?: string
+          payload?: Json | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "alert_deliveries_alert_id_fkey"
+            columns: ["alert_id"]
+            isOneToOne: false
+            referencedRelation: "alerts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      alerts: {
+        Row: {
+          cooldown_minutes: number
+          created_at: string
+          id: string
+          is_active: boolean
+          last_triggered_at: string | null
+          name: string
+          organization_id: string
+          project_id: string | null
+          threshold: number
+          type: string
+          updated_at: string
+          window_minutes: number
+        }
+        Insert: {
+          cooldown_minutes?: number
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          last_triggered_at?: string | null
+          name: string
+          organization_id: string
+          project_id?: string | null
+          threshold: number
+          type: string
+          updated_at?: string
+          window_minutes?: number
+        }
+        Update: {
+          cooldown_minutes?: number
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          last_triggered_at?: string | null
+          name?: string
+          organization_id?: string
+          project_id?: string | null
+          threshold?: number
+          type?: string
+          updated_at?: string
+          window_minutes?: number
+        }
+        Relationships: []
+      }
+      notification_channels: {
+        Row: {
+          created_at: string
+          id: string
+          is_active: boolean
+          kind: string
+          organization_id: string
+          target: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          kind: string
+          organization_id: string
+          target: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          kind?: string
+          organization_id?: string
+          target?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       api_keys: {
         Row: {
           created_at: string
