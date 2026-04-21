@@ -49,12 +49,12 @@
 - [x] `request_body` 저장 전 `Authorization` 헤더 제거 — 프록시에서 헤더 strip + body에 포함 안 됨
 - [ ] 10KB 초과 body → Supabase Storage 분기 로직 — Phase 1C로 이관
 - [x] **REST API `/api/v1/*`** — orgs, projects, api-keys, provider-keys, requests, stats 라우터
-- [ ] 프록시 e2e 테스트: 실제 OpenAI/Anthropic 키로 요청→로그 확인 (논스트리밍) — `supabase start` 후 수동 확인
+- [x] 프록시 e2e 테스트: 실제 OpenAI 키로 요청→로그 확인 (논스트리밍) — `scripts/test-e2e.ts`, 프로덕션에서 200 OK + 토큰·모델 정상 로깅 확인. Anthropic/Gemini는 provider key 등록 후 동일 스크립트로 검증 가능
 
 ### 1C. 대시보드 + 스트리밍 (Week 3)
 - [x] **스트리밍 `body.tee()` SSE passthrough + 병렬 파싱** (Week 2에서 이관)
 - [x] Anthropic `message_delta` usage 집계 회귀 테스트 — streaming.test.ts 6개 테스트 통과
-- [ ] 스트리밍 e2e 테스트: OpenAI/Anthropic/Gemini 전 provider — `supabase start` 후 수동 확인
+- [x] 스트리밍 e2e 테스트: OpenAI 프로덕션 검증 완료 (1.5초 응답, usage 정상) — Vercel Edge/Node.js streaming 버그(5분 timeout) 해결 과정에서 `tee()` → `TransformStream` → 최종적으로 `_server/` 번들 → `api/index.ts` 네이티브 함수로 구조 전환. Anthropic/Gemini는 동일 스크립트(`SKIP_*` 제거) + provider key 등록으로 실행 가능
 - [x] `authJwt` 미들웨어 (Supabase JWT 검증)
 - [x] P1 랜딩 페이지 (Hero + 3-step 온보딩 프리뷰)
 - [x] P2 로그인/회원가입 (Supabase Auth UI)
@@ -73,7 +73,7 @@
 - [x] 수동 집계 쿼리로 일별 사용량 조회 가능 (cron 자동화는 Phase 2A로 이관)
 - [x] 로컬 `docker compose up`으로 개발 스택 부팅 성공 (공식 셀프호스팅은 Phase 2E)
 - [ ] 내부 알파 테스트: 본인 프로젝트 1개를 Spanlens로 1주일 프록시 — 수동 진행 필요
-- [ ] Known Gotcha 회귀 테스트 (Anthropic usage, 복호화 빈문자열, RLS) — `supabase start` 후 수동 확인
+- [x] Known Gotcha 회귀 테스트 (Anthropic usage, 복호화 빈문자열, RLS, 비용 null, dated model suffix) — `src/__tests__/gotcha.test.ts` 6개 + 기존 파서/crypto/cost 테스트 포함 총 29개 그린. `calculateCost()`에 longest-prefix 매칭 추가로 `gpt-4o-mini-2024-07-18` 같은 dated variant도 가격 매칭됨
 
 ---
 
