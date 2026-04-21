@@ -9,6 +9,11 @@ import { verifyPaddleSignature, planForPriceId, type PlanTier } from '../lib/pad
  * Endpoint: POST /webhooks/paddle
  * Register in Paddle Dashboard → Developer Tools → Notifications:
  *   URL: https://spanlens-server.vercel.app/webhooks/paddle
+ *
+ * Event handling:
+ *   subscription.*         — full subscription lifecycle upsert
+ *   transaction.completed  — first-payment fallback for when subscription
+ *                            events precede custom_data propagation
  */
 
 export const paddleWebhookRouter = new Hono()
@@ -27,26 +32,61 @@ interface PaddleSubscriptionPayload {
   custom_data?: { organization_id?: string } | null
 }
 
+// Paddle transaction event shape — used for transaction.completed fallback.
+interface PaddleTransactionPayload {
+  id: string  // txn_...
+  customer_id: string  // ctm_...
+  subscription_id: string | null
+  status: string
+  items?: Array<{ price?: { id?: string }; price_id?: string }>
+  custom_data?: { organization_id?: string } | null
+}
+
 interface PaddleEvent {
   event_id: string
   event_type: string
   occurred_at: string
-  data: PaddleSubscriptionPayload
+  data: PaddleSubscriptionPayload | PaddleTransactionPayload
 }
 
-function extractPriceId(payload: PaddleSubscriptionPayload): string | null {
+function extractPriceId(
+  payload: PaddleSubscriptionPayload | PaddleTransactionPayload,
+): string | null {
   const first = payload.items?.[0]
   if (!first) return null
   return first.price?.id ?? first.price_id ?? null
 }
 
+/**
+ * Resolve the organization ID for a Paddle event.
+ *
+ * Paddle subscriptions do NOT inherit custom_data from the originating
+ * transaction, so subscription events often arrive with an empty
+ * custom_data. We fall back to looking up the org by paddle_customer_id
+ * (stored during checkout creation).
+ */
+async function resolveOrgId(
+  customData: { organization_id?: string } | null | undefined,
+  paddleCustomerId: string,
+): Promise<string | null> {
+  if (customData?.organization_id) return customData.organization_id
+
+  const { data } = await supabaseAdmin
+    .from('organizations')
+    .select('id')
+    .eq('paddle_customer_id', paddleCustomerId)
+    .maybeSingle()
+
+  return data?.id ?? null
+}
+
 async function upsertSubscription(
   event: PaddleEvent,
+  sub: PaddleSubscriptionPayload,
   organizationId: string,
   plan: PlanTier,
   priceId: string,
 ): Promise<void> {
-  const sub = event.data
   const updates = {
     organization_id: organizationId,
     paddle_subscription_id: sub.id,
@@ -103,9 +143,7 @@ paddleWebhookRouter.post('/paddle', async (c) => {
     return c.json({ error: 'invalid json body' }, 400)
   }
 
-  // We only process subscription.* events for now. transaction.* etc. are
-  // acknowledged so Paddle stops retrying but not acted on.
-  const handled = new Set([
+  const subscriptionEvents = new Set([
     'subscription.created',
     'subscription.activated',
     'subscription.updated',
@@ -115,34 +153,86 @@ paddleWebhookRouter.post('/paddle', async (c) => {
     'subscription.past_due',
   ])
 
-  if (!handled.has(event.event_type)) {
-    return c.json({ success: true, skipped: event.event_type })
+  // ── subscription.* events ──────────────────────────────────────
+  if (subscriptionEvents.has(event.event_type)) {
+    const sub = event.data as PaddleSubscriptionPayload
+
+    const organizationId = await resolveOrgId(sub.custom_data, sub.customer_id)
+    if (!organizationId) {
+      console.error('[paddle-webhook] could not resolve org for sub event', event.event_id, sub.customer_id)
+      return c.json({ error: 'organization not found' }, 400)
+    }
+
+    const priceId = extractPriceId(sub)
+    if (!priceId) {
+      console.error('[paddle-webhook] missing price id', event.event_id)
+      return c.json({ error: 'missing price id' }, 400)
+    }
+
+    const plan = planForPriceId(priceId)
+    if (!plan) {
+      console.error('[paddle-webhook] unknown price id', priceId)
+      return c.json({ error: `unknown price id ${priceId}` }, 400)
+    }
+
+    try {
+      await upsertSubscription(event, sub, organizationId, plan, priceId)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'unknown error'
+      return c.json({ error: msg }, 500)
+    }
+
+    return c.json({ success: true, event_type: event.event_type })
   }
 
-  const organizationId = event.data.custom_data?.organization_id
-  if (!organizationId) {
-    console.error('[paddle-webhook] missing custom_data.organization_id', event.event_id)
-    return c.json({ error: 'missing organization_id in custom_data' }, 400)
+  // ── transaction.completed fallback ────────────────────────────
+  // Paddle fires this reliably on first payment with the transaction's
+  // custom_data (which we populate). Use it to update organizations.plan
+  // immediately while subscription events may lag or lack custom_data.
+  if (event.event_type === 'transaction.completed') {
+    const tx = event.data as PaddleTransactionPayload
+
+    // Only act on subscription transactions (not one-time payments)
+    if (!tx.subscription_id) {
+      return c.json({ success: true, skipped: 'non-subscription transaction' })
+    }
+
+    const organizationId = await resolveOrgId(tx.custom_data, tx.customer_id)
+    if (!organizationId) {
+      console.error('[paddle-webhook] could not resolve org for transaction', event.event_id, tx.customer_id)
+      return c.json({ error: 'organization not found' }, 400)
+    }
+
+    const priceId = extractPriceId(tx)
+    if (!priceId) {
+      console.error('[paddle-webhook] missing price id in transaction', event.event_id)
+      return c.json({ error: 'missing price id' }, 400)
+    }
+
+    const plan = planForPriceId(priceId)
+    if (!plan) {
+      console.error('[paddle-webhook] unknown price id in transaction', priceId)
+      return c.json({ error: `unknown price id ${priceId}` }, 400)
+    }
+
+    // Upsert subscription row using the transaction's subscription_id
+    const syntheticSub: PaddleSubscriptionPayload = {
+      id: tx.subscription_id,
+      customer_id: tx.customer_id,
+      status: 'active',
+      items: tx.items ?? [],
+      custom_data: tx.custom_data ?? null,
+    }
+    try {
+      await upsertSubscription(event, syntheticSub, organizationId, plan, priceId)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'unknown error'
+      return c.json({ error: msg }, 500)
+    }
+
+    return c.json({ success: true, event_type: event.event_type })
   }
 
-  const priceId = extractPriceId(event.data)
-  if (!priceId) {
-    console.error('[paddle-webhook] missing price id', event.event_id)
-    return c.json({ error: 'missing price id' }, 400)
-  }
-
-  const plan = planForPriceId(priceId)
-  if (!plan) {
-    console.error('[paddle-webhook] unknown price id', priceId)
-    return c.json({ error: `unknown price id ${priceId}` }, 400)
-  }
-
-  try {
-    await upsertSubscription(event, organizationId, plan, priceId)
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : 'unknown error'
-    return c.json({ error: msg }, 500)
-  }
-
-  return c.json({ success: true, event_type: event.event_type })
+  // All other event types — acknowledge without processing
+  return c.json({ success: true, skipped: event.event_type })
 })
