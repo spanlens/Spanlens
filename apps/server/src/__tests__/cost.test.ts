@@ -28,4 +28,23 @@ describe('calculateCost', () => {
     })
     expect(result?.totalCost).toBe(18)
   })
+
+  it('falls back to prefix match for dated model suffix (e.g. gpt-4o-mini-2024-07-18)', () => {
+    const result = calculateCost('openai', 'gpt-4o-mini-2024-07-18', {
+      promptTokens: 1_000_000,
+      completionTokens: 1_000_000,
+    })
+    expect(result).not.toBeNull()
+    expect(result?.promptCost).toBe(0.15)
+    expect(result?.completionCost).toBe(0.6)
+  })
+
+  it('prefers longest prefix match (gpt-4o-mini > gpt-4)', () => {
+    const result = calculateCost('openai', 'gpt-4o-mini-2024-07-18', {
+      promptTokens: 1_000_000,
+      completionTokens: 0,
+    })
+    // gpt-4o-mini prompt price is 0.15, gpt-4 is 30 — must match the former
+    expect(result?.promptCost).toBe(0.15)
+  })
 })

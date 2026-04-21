@@ -32,12 +32,29 @@ const MODEL_PRICES: Record<string, { prompt: number; completion: number }> = {
   'gemini-2.0-flash': { prompt: 0.1, completion: 0.4 },
 }
 
+/**
+ * OpenAI는 종종 dated suffix를 포함해 모델명을 반환합니다 (예: gpt-4o-mini-2024-07-18).
+ * 정확 매칭이 실패하면 등록된 키들 중 가장 긴 prefix를 찾아 fallback 매칭합니다.
+ */
+function lookupPrice(model: string): { prompt: number; completion: number } | null {
+  const exact = MODEL_PRICES[model]
+  if (exact) return exact
+
+  let bestKey = ''
+  for (const key of Object.keys(MODEL_PRICES)) {
+    if (model.startsWith(key) && key.length > bestKey.length) {
+      bestKey = key
+    }
+  }
+  return bestKey ? MODEL_PRICES[bestKey] ?? null : null
+}
+
 export function calculateCost(
   _provider: Provider,
   model: string,
   usage: Usage,
 ): CostResult | null {
-  const prices = MODEL_PRICES[model]
+  const prices = lookupPrice(model)
   if (!prices) return null
 
   const promptCost = (usage.promptTokens / 1_000_000) * prices.prompt
