@@ -40,17 +40,14 @@ jobs:
       - name: Build SDK
         run: pnpm --filter @spanlens/sdk build
 
-      # setup-node's registry-url writes .npmrc but pnpm workspace/publish
-      # in a subdir doesn't always pick it up. Write ~/.npmrc explicitly.
-      - name: Configure npm auth
-        run: |
-          echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > ~/.npmrc
-          echo "always-auth=true" >> ~/.npmrc
-        env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-
+      # Write .npmrc directly into the package dir so npm publish finds it.
+      # setup-node's approach (env-var expansion in ~/.npmrc) doesn't always
+      # work alongside pnpm workspaces.
       - name: Publish to npm
         working-directory: packages/sdk
-        run: npm publish --provenance --access public
+        run: |
+          echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > .npmrc
+          npm publish --provenance --access public
+          rm .npmrc
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
