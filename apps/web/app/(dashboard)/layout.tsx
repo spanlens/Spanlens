@@ -2,6 +2,8 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { Sidebar } from '@/components/layout/sidebar'
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001'
+
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient()
   const {
@@ -9,6 +11,16 @@ export default async function DashboardLayout({ children }: { children: React.Re
   } = await supabase.auth.getUser()
 
   if (!user) redirect('/login')
+
+  // Check if the user has an organization; redirect to onboarding if not
+  const { data: { session } } = await supabase.auth.getSession()
+  if (session) {
+    const res = await fetch(`${API_URL}/api/v1/organizations/me`, {
+      headers: { Authorization: `Bearer ${session.access_token}` },
+      cache: 'no-store',
+    })
+    if (res.status === 404) redirect('/onboarding')
+  }
 
   return (
     <div className="flex h-screen overflow-hidden">
