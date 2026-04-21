@@ -1,9 +1,9 @@
 {
   "installCommand": "npm install",
-  "buildCommand": "npx esbuild src/handler.ts --bundle --platform=node --target=node20 --outfile=api/index.js --format=cjs",
-  "rewrites": [{ "source": "/(.*)", "destination": "/api/index" }],
+  "buildCommand": "mkdir -p _server && npx esbuild src/handler.ts --bundle --platform=node --target=node20 --outfile=_server/index.js --format=cjs",
+  "rewrites": [{ "source": "/(.*)", "destination": "/_server/index" }],
   "functions": {
-    "api/index.js": {
+    "_server/index.js": {
       "maxDuration": 30
     }
   }
