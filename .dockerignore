@@ -45,8 +45,9 @@ Thumbs.db
 **/.env.local
 **/.env.*.local
 
-# Apps unused in server image
+# Apps unused in server image — but keep package.json so pnpm workspace resolves
 apps/web
+!apps/web/package.json
 
 # Local dev-only Dockerfile (to avoid rebuild thrash)
 apps/server/Dockerfile.dev
