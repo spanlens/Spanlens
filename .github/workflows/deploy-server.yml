@@ -1,0 +1,19 @@
+name: Deploy spanlens-server
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/server/**'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy to Vercel
+        run: npx vercel --cwd apps/server --prod --yes --token ${{ secrets.VERCEL_TOKEN }}
+        env:
+          VERCEL_ORG_ID: team_kQ5H3egALXHjt7J0NSUg6AL6
+          VERCEL_PROJECT_ID: prj_0jC72P2dIZYjjD79SyX8eaNP0GPx
