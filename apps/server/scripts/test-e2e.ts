@@ -81,6 +81,7 @@ function skip(name: string, reason: string): void {
 }
 
 // ── SSE reader helper ──────────────────────────────────────────────────────────
+// [DONE] 수신 즉시 reader를 cancel해서 무한 대기를 방지합니다.
 
 async function collectSSELines(body: ReadableStream<Uint8Array>): Promise<string[]> {
   const decoder = new TextDecoder()
@@ -88,16 +89,32 @@ async function collectSSELines(body: ReadableStream<Uint8Array>): Promise<string
   const lines: string[] = []
   let buffer = ''
 
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
-    buffer += decoder.decode(value, { stream: true })
-    const parts = buffer.split('\n')
-    buffer = parts.pop() ?? ''
-    for (const line of parts) {
-      if (line.trim()) lines.push(line)
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+
+      buffer += decoder.decode(value, { stream: true })
+      const parts = buffer.split('\n')
+      buffer = parts.pop() ?? ''
+
+      let sawDone = false
+      for (const line of parts) {
+        if (line.trim()) {
+          lines.push(line)
+          // OpenAI SSE는 [DONE]으로 끝남 — 이후 스트림은 닫히지 않을 수 있어서 명시적으로 중단
+          if (line.includes('[DONE]') || line.includes('message_stop')) {
+            sawDone = true
+            break
+          }
+        }
+      }
+      if (sawDone) break
     }
+  } finally {
+    await reader.cancel().catch(() => undefined)
   }
+
   if (buffer.trim()) lines.push(buffer)
   return lines
 }

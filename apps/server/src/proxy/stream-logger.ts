@@ -21,11 +21,23 @@ async function readStreamLines(stream: ReadableStream<Uint8Array>): Promise<stri
       buffer += decoder.decode(value, { stream: true })
       const parts = buffer.split('\n')
       buffer = parts.pop() ?? ''
-      lines.push(...parts)
+
+      let sawTerminator = false
+      for (const line of parts) {
+        lines.push(line)
+        // OpenAI: "data: [DONE]" / Anthropic: "message_stop" event
+        // 이후에는 done:true를 기다리지 않고 즉시 중단 — Vercel 함수 타임아웃 방지
+        if (line === 'data: [DONE]' || line.includes('"message_stop"')) {
+          sawTerminator = true
+          break
+        }
+      }
+      if (sawTerminator) break
     }
     if (buffer.length > 0) lines.push(buffer)
   } finally {
-    reader.releaseLock()
+    // releaseLock 대신 cancel — 업스트림 스트림에 명시적으로 종료 신호를 보냄
+    await reader.cancel().catch(() => undefined)
   }
   return lines
 }
