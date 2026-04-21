@@ -1,9 +1,9 @@
 {
   "installCommand": "npm install",
-  "buildCommand": "echo 'API routes compiled by Vercel'",
+  "buildCommand": "npx esbuild api/index.ts --bundle --platform=node --target=node20 --outfile=api/index.js --format=cjs",
   "rewrites": [{ "source": "/(.*)", "destination": "/api/index" }],
   "functions": {
-    "api/index.ts": {
+    "api/index.js": {
       "maxDuration": 30
     }
   }
