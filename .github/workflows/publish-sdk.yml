@@ -40,6 +40,15 @@ jobs:
       - name: Build SDK
         run: pnpm --filter @spanlens/sdk build
 
+      # setup-node's registry-url writes .npmrc but pnpm workspace/publish
+      # in a subdir doesn't always pick it up. Write ~/.npmrc explicitly.
+      - name: Configure npm auth
+        run: |
+          echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > ~/.npmrc
+          echo "always-auth=true" >> ~/.npmrc
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+
       - name: Publish to npm
         working-directory: packages/sdk
         run: npm publish --provenance --access public
