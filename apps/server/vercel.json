@@ -1,6 +1,6 @@
 {
   "installCommand": "npm install",
-  "buildCommand": "npx esbuild api/index.ts --bundle --platform=node --target=node20 --outfile=api/index.js --format=cjs",
+  "buildCommand": "npx esbuild src/handler.ts --bundle --platform=node --target=node20 --outfile=api/index.js --format=cjs",
   "rewrites": [{ "source": "/(.*)", "destination": "/api/index" }],
   "functions": {
     "api/index.js": {
