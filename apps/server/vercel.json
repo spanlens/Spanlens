@@ -1,5 +1,5 @@
 {
   "installCommand": "npm install",
-  "buildCommand": "mkdir -p _server && npx esbuild src/handler.ts --bundle --platform=browser --target=es2022 --outfile=_server/index.js --format=esm --conditions=workerd,edge-light,browser",
-  "rewrites": [{ "source": "/(.*)", "destination": "/_server/index" }]
+  "buildCommand": "mkdir -p api && npx esbuild src/handler.ts --bundle --platform=browser --target=es2022 --outfile=api/index.js --format=esm --conditions=workerd,edge-light,browser",
+  "rewrites": [{ "source": "/(.*)", "destination": "/api/index" }]
 }

@@ -1,1 +1,4 @@
 .vercel
+api/
+_server/
+.test-handler.js
