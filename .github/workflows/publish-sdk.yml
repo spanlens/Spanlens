@@ -25,11 +25,13 @@ jobs:
         with:
           version: 10.33.0
 
+      # NOTE: intentionally NOT using setup-node's registry-url — it sets
+      # NPM_CONFIG_USERCONFIG to point at its own .npmrc, which shadowed the
+      # package-level .npmrc we tried to write. Manage auth ourselves.
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: 'pnpm'
-          registry-url: 'https://registry.npmjs.org'
 
       - name: Install
         run: pnpm install --frozen-lockfile
@@ -40,14 +42,11 @@ jobs:
       - name: Build SDK
         run: pnpm --filter @spanlens/sdk build
 
-      # Write .npmrc directly into the package dir so npm publish finds it.
-      # setup-node's approach (env-var expansion in ~/.npmrc) doesn't always
-      # work alongside pnpm workspaces.
       - name: Publish to npm
         working-directory: packages/sdk
         run: |
           echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > .npmrc
-          npm publish --provenance --access public
+          npm publish --provenance --access public --userconfig ./.npmrc
           rm .npmrc
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
