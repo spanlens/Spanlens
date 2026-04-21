@@ -3,5 +3,8 @@
   "framework": null,
   "outputDirectory": null,
   "installCommand": "npm install",
-  "rewrites": [{ "source": "/(.*)", "destination": "/api/index" }]
+  "rewrites": [{ "source": "/(.*)", "destination": "/api/index" }],
+  "crons": [
+    { "path": "/cron/aggregate-usage", "schedule": "0 * * * *" }
+  ]
 }

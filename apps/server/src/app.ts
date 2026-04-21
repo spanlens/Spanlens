@@ -14,6 +14,7 @@ import { requestsRouter }      from './api/requests.js'
 import { statsRouter }         from './api/stats.js'
 import { tracesRouter }        from './api/traces.js'
 import { ingestRouter }        from './api/ingest.js'
+import { cronRouter }          from './api/cron.js'
 
 export const app = new Hono()
 
@@ -42,6 +43,9 @@ app.route('/proxy/gemini',    geminiProxy)
 
 // ── SDK ingestion routes (authApiKey middleware) ──────────────
 app.route('/ingest',          ingestRouter)
+
+// ── Vercel cron routes (CRON_SECRET bearer auth) ─────────────
+app.route('/cron',            cronRouter)
 
 // ── REST API routes (authJwt middleware) ──────────────────────
 app.route('/api/v1/organizations',  organizationsRouter)
