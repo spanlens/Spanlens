@@ -6,6 +6,7 @@ import {
   createPaddleCheckoutTransaction,
   findPaddleCustomerByEmail,
 } from '../lib/paddle.js'
+import { checkMonthlyQuota } from '../lib/quota.js'
 
 /**
  * Dashboard billing endpoints — JWT authenticated.
@@ -37,6 +38,15 @@ billingRouter.get('/subscription', async (c) => {
   if (error) return c.json({ error: 'Failed to fetch subscription' }, 500)
 
   return c.json({ success: true, data: data ?? null })
+})
+
+// ── GET /api/v1/billing/quota ───────────────────────────────────
+billingRouter.get('/quota', async (c) => {
+  const orgId = c.get('orgId')
+  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+
+  const quota = await checkMonthlyQuota(orgId)
+  return c.json({ success: true, data: quota })
 })
 
 // ── POST /api/v1/billing/checkout ───────────────────────────────

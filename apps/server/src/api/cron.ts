@@ -182,3 +182,14 @@ cronRouter.get('/evaluate-alerts', async (c) => {
 
   return c.json({ success: true, evaluated: report.length, report })
 })
+
+// ── Log retention (daily) ───────────────────────────────────────
+cronRouter.get('/prune-logs', async (c) => {
+  const authFail = assertCronAuth(c.req.header('Authorization'))
+  if (authFail) return c.json({ error: authFail }, 401)
+
+  const { data, error } = await supabaseAdmin.rpc('prune_logs_by_retention')
+  if (error) return c.json({ error: error.message }, 500)
+
+  return c.json({ success: true, result: data })
+})

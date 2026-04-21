@@ -178,3 +178,39 @@ export interface CheckoutResponse {
   url: string
   transactionId: string
 }
+
+// ── Alerts ─────────────────────────────────────────────────────
+
+export type AlertType = 'budget' | 'error_rate' | 'latency_p95'
+export type ChannelKind = 'email' | 'slack' | 'discord'
+
+export interface AlertRow {
+  id: string
+  name: string
+  type: AlertType
+  threshold: number
+  window_minutes: number
+  cooldown_minutes: number
+  is_active: boolean
+  last_triggered_at: string | null
+  project_id: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface NotificationChannelRow {
+  id: string
+  kind: ChannelKind
+  target: string
+  is_active: boolean
+  created_at: string
+}
+
+export interface AlertDeliveryRow {
+  id: string
+  alert_id: string
+  channel_id: string
+  status: 'sent' | 'failed'
+  error_message: string | null
+  created_at: string
+}

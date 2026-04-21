@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import { authApiKey, type ApiKeyContext } from '../middleware/authApiKey.js'
+import { enforceQuota } from '../middleware/quota.js'
 import { calculateCost } from '../lib/cost.js'
 import { logRequestAsync } from '../lib/logger.js'
 import { parseGeminiResponse } from '../parsers/gemini.js'
@@ -10,6 +11,7 @@ const GEMINI_BASE = 'https://generativelanguage.googleapis.com'
 export const geminiProxy = new Hono<ApiKeyContext>()
 
 geminiProxy.use('*', authApiKey)
+geminiProxy.use('*', enforceQuota)
 
 geminiProxy.all('/*', async (c) => {
   const organizationId = c.get('organizationId')

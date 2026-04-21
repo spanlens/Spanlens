@@ -2,6 +2,7 @@
 import { Activity, DollarSign, Zap, TrendingUp } from 'lucide-react'
 import { StatsCard } from '@/components/dashboard/stats-card'
 import { RequestChart } from '@/components/dashboard/request-chart'
+import { QuotaBanner } from '@/components/dashboard/quota-banner'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Button } from '@/components/ui/button'
 import { useStatsOverview, useStatsTimeseries } from '@/lib/queries/use-stats'
@@ -25,6 +26,8 @@ export default function DashboardPage() {
         <h1 className="text-2xl font-bold">Dashboard</h1>
         <p className="text-muted-foreground text-sm mt-1">Last 30 days overview</p>
       </div>
+
+      <QuotaBanner />
 
       {isError && (
         <div className="rounded-lg border border-destructive bg-red-50 p-4 mb-4 flex items-center justify-between">

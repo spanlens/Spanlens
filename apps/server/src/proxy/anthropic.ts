@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { stream } from 'hono/streaming'
 import { authApiKey, type ApiKeyContext } from '../middleware/authApiKey.js'
+import { enforceQuota } from '../middleware/quota.js'
 import { calculateCost } from '../lib/cost.js'
 import { logRequestAsync } from '../lib/logger.js'
 import { parseAnthropicResponse } from '../parsers/anthropic.js'
@@ -12,6 +13,7 @@ const ANTHROPIC_BASE = 'https://api.anthropic.com'
 export const anthropicProxy = new Hono<ApiKeyContext>()
 
 anthropicProxy.use('*', authApiKey)
+anthropicProxy.use('*', enforceQuota)
 
 anthropicProxy.all('/*', async (c) => {
   const organizationId = c.get('organizationId')

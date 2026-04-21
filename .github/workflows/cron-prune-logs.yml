@@ -1,0 +1,16 @@
+name: Prune old logs by retention (daily)
+
+on:
+  schedule:
+    - cron: '0 3 * * *' # UTC 03:00 (KST 12:00 noon)
+  workflow_dispatch:
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call /cron/prune-logs
+        run: |
+          curl --fail --silent --show-error \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            https://spanlens-server.vercel.app/cron/prune-logs

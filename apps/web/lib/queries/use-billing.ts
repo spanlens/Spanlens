@@ -9,6 +9,26 @@ import type {
   Subscription,
 } from './types'
 
+export interface QuotaStatus {
+  allowed: boolean
+  usedThisMonth: number
+  limit: number | null
+  plan: BillingPlan
+}
+
+export const quotaQueryKey = ['billing', 'quota'] as const
+
+export function useQuota() {
+  return useQuery({
+    queryKey: quotaQueryKey,
+    queryFn: async () => {
+      const res = await apiGet<ApiEnvelope<QuotaStatus>>('/api/v1/billing/quota')
+      return res.data
+    },
+    staleTime: 30_000,
+  })
+}
+
 export const subscriptionQueryKey = ['billing', 'subscription'] as const
 
 /**
