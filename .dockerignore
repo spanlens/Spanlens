@@ -1,0 +1,60 @@
+# Keep the Docker build context small + avoid leaking local state.
+# Build context is the monorepo root.
+
+# Version control
+.git
+.gitignore
+.gitattributes
+
+# Node / pnpm
+**/node_modules
+**/.pnpm-store
+npm-debug.log*
+pnpm-debug.log*
+
+# Build outputs
+**/dist
+**/.next
+**/.turbo
+**/.vercel
+**/.wrangler
+**/coverage
+**/.cache
+
+# IDE / editors
+.vscode
+.idea
+**/*.swp
+
+# OS noise
+.DS_Store
+Thumbs.db
+
+# Tests / CI / docs not needed in runtime image
+**/*.test.ts
+**/*.test.tsx
+**/*.spec.ts
+**/__tests__
+**/e2e
+**/.github
+**/playwright-report
+**/test-results
+
+# Local env (never bake secrets into image)
+**/.env
+**/.env.local
+**/.env.*.local
+
+# Apps unused in server image
+apps/web
+
+# Local dev-only Dockerfile (to avoid rebuild thrash)
+apps/server/Dockerfile.dev
+docker-compose.yml
+
+# Misc
+**/*.md
+!apps/server/README.md
+**/*.log
+tmp
+.claude

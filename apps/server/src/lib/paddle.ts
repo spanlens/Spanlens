@@ -93,6 +93,38 @@ export interface PaddleTransaction {
   checkout: { url: string } | null
 }
 
+export interface PaddleSubscriptionDetail {
+  id: string
+  customer_id: string
+  status: string
+  items?: Array<{ price?: { id?: string }; price_id?: string }>
+  current_billing_period?: {
+    starts_at: string
+    ends_at: string
+  }
+  scheduled_change?: { action: 'cancel' | 'pause' | 'resume' } | null
+  custom_data?: { organization_id?: string } | null
+}
+
+/**
+ * Fetch subscription details from Paddle.
+ * Used by the webhook handler when a transaction.completed event arrives
+ * without billing period info — we call this to enrich the synthetic sub
+ * we build from the transaction.
+ */
+export async function fetchPaddleSubscription(
+  subscriptionId: string,
+): Promise<PaddleSubscriptionDetail | null> {
+  try {
+    const res = await paddleFetch<PaddleEnvelope<PaddleSubscriptionDetail>>(
+      `/subscriptions/${subscriptionId}`,
+    )
+    return res.data
+  } catch {
+    return null
+  }
+}
+
 /**
  * Creates a Paddle transaction (subscription checkout) for a customer + price.
  * Returns the transaction with a hosted checkout URL that the user is redirected to.

@@ -1,6 +1,11 @@
 import { Hono } from 'hono'
 import { supabaseAdmin } from '../lib/db.js'
-import { verifyPaddleSignature, planForPriceId, type PlanTier } from '../lib/paddle.js'
+import {
+  verifyPaddleSignature,
+  planForPriceId,
+  fetchPaddleSubscription,
+  type PlanTier,
+} from '../lib/paddle.js'
 
 /**
  * Paddle webhook receiver. Paddle POSTs subscription lifecycle events here.
@@ -215,13 +220,22 @@ paddleWebhookRouter.post('/paddle', async (c) => {
       return c.json({ error: `unknown price id ${priceId}` }, 400)
     }
 
-    // Upsert subscription row using the transaction's subscription_id
+    // Enrich with billing period + exact status from Paddle API. The
+    // transaction payload doesn't carry those fields.
+    const subDetail = await fetchPaddleSubscription(tx.subscription_id)
+
     const syntheticSub: PaddleSubscriptionPayload = {
       id: tx.subscription_id,
       customer_id: tx.customer_id,
-      status: 'active',
-      items: tx.items ?? [],
+      status: (subDetail?.status as PaddleSubscriptionPayload['status']) ?? 'active',
+      items: subDetail?.items ?? tx.items ?? [],
       custom_data: tx.custom_data ?? null,
+      ...(subDetail?.current_billing_period
+        ? { current_billing_period: subDetail.current_billing_period }
+        : {}),
+      ...(subDetail?.scheduled_change !== undefined
+        ? { scheduled_change: subDetail.scheduled_change }
+        : {}),
     }
     try {
       await upsertSubscription(event, syntheticSub, organizationId, plan, priceId)
