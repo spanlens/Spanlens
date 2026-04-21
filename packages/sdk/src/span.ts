@@ -37,6 +37,21 @@ export class SpanHandle {
   }
 
   /**
+   * Return HTTP headers that the Spanlens proxy reads to link a proxied LLM
+   * call to this span. Pass them to the OpenAI/Anthropic/Gemini SDK via its
+   * per-request `headers` option.
+   *
+   * The proxy populates `requests.trace_id` and `requests.span_id` from these
+   * headers, so the dashboard can join spans ↔ raw request logs.
+   */
+  traceHeaders(): { 'x-trace-id': string; 'x-span-id': string } {
+    return {
+      'x-trace-id': this.traceId,
+      'x-span-id': this.spanId,
+    }
+  }
+
+  /**
    * Create a nested child span. The child.parent_span_id points at this span's id.
    * Note: `parent_span_id` has no FK in the DB by design, so out-of-order arrival is fine.
    */

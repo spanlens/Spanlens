@@ -103,6 +103,16 @@ describe('SpanlensClient', () => {
     expect(patchCalls.length).toBe(1)
   })
 
+  it('span.traceHeaders() returns x-trace-id and x-span-id', async () => {
+    const client = new SpanlensClient({ apiKey: 'k', baseUrl: 'http://x' })
+    const trace = client.startTrace({ name: 't' })
+    const span = trace.span({ name: 'call' })
+
+    const headers = span.traceHeaders()
+    expect(headers['x-trace-id']).toBe(trace.traceId)
+    expect(headers['x-span-id']).toBe(span.spanId)
+  })
+
   it('span.child nests with parent_span_id', async () => {
     const client = new SpanlensClient({ apiKey: 'k', baseUrl: 'http://x' })
     const trace = client.startTrace({ name: 't' })

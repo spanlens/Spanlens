@@ -98,3 +98,56 @@ export interface TimeseriesPoint {
   tokens: number
   errors: number
 }
+
+// ── Agent Tracing ──────────────────────────────────────────────
+
+export type TraceStatus = 'running' | 'completed' | 'error'
+export type SpanType = 'llm' | 'tool' | 'retrieval' | 'embedding' | 'custom'
+
+export interface TraceRow {
+  id: string
+  project_id: string
+  name: string
+  status: TraceStatus
+  started_at: string
+  ended_at: string | null
+  duration_ms: number | null
+  span_count: number
+  total_tokens: number
+  total_cost_usd: number
+  error_message: string | null
+  created_at: string
+}
+
+export interface SpanRow {
+  id: string
+  parent_span_id: string | null
+  name: string
+  span_type: SpanType
+  status: TraceStatus
+  started_at: string
+  ended_at: string | null
+  duration_ms: number | null
+  input: unknown
+  output: unknown
+  metadata: Record<string, unknown> | null
+  error_message: string | null
+  request_id: string | null
+  prompt_tokens: number
+  completion_tokens: number
+  total_tokens: number
+  cost_usd: number | null
+}
+
+export interface TraceDetail extends TraceRow {
+  metadata: Record<string, unknown> | null
+  api_key_id: string | null
+  organization_id: string
+  updated_at: string
+  spans: SpanRow[]
+}
+
+export interface TracesPage {
+  data: TraceRow[]
+  meta: { total: number; page: number; limit: number }
+}
