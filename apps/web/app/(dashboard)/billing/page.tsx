@@ -1,7 +1,8 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { Check } from 'lucide-react'
+import { initializePaddle, type Paddle } from '@paddle/paddle-js'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -86,35 +87,97 @@ function formatDate(iso: string | null): string {
   return new Date(iso).toLocaleDateString()
 }
 
+/**
+ * Paddle Billing does NOT provide a full-page hosted checkout like Stripe.
+ * Instead we embed Paddle.js on this page and open an overlay checkout.
+ *
+ * Flow:
+ *   1. POST /api/v1/billing/checkout  →  server creates transaction + returns txn_id
+ *   2. paddle.Checkout.open({ transactionId })  →  overlay opens on top of this page
+ *   3. paddle.on('checkout.completed', ...)  →  show success banner, refetch subscription
+ *
+ * If Paddle redirects back to `/billing?_ptxn=txn_xxx` (happens when the user lands
+ * here via the Paddle-generated URL instead of from the button), auto-open the
+ * overlay for that transaction so the flow resumes seamlessly.
+ */
 export default function BillingPage() {
   const params = useSearchParams()
   const justReturnedFromCheckout = params.get('checkout') === 'success'
+  const autoOpenPtxn = params.get('_ptxn')
 
   const { data: subscription, isLoading } = useSubscription()
   const createCheckout = useCreateCheckout()
   const refreshSubscription = useRefreshSubscription()
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [paddle, setPaddle] = useState<Paddle | null>(null)
+  const [checkoutCompleted, setCheckoutCompleted] = useState(false)
 
-  // When the user returns from Paddle checkout (?checkout=success), refresh
-  // the subscription query so the new plan shows up without a manual reload.
+  const clientToken = process.env['NEXT_PUBLIC_PADDLE_CLIENT_TOKEN']
+  const paddleEnv = (process.env['NEXT_PUBLIC_PADDLE_ENVIRONMENT'] ?? 'sandbox') as
+    | 'sandbox'
+    | 'production'
+
+  // Initialize Paddle.js once on mount
+  useEffect(() => {
+    if (!clientToken) {
+      setErrorMessage(
+        'Paddle client token not configured. Set NEXT_PUBLIC_PADDLE_CLIENT_TOKEN.',
+      )
+      return
+    }
+
+    let cancelled = false
+    void initializePaddle({
+      environment: paddleEnv,
+      token: clientToken,
+      eventCallback: (event) => {
+        if (event.name === 'checkout.completed') {
+          setCheckoutCompleted(true)
+          // Give Paddle a moment to send the webhook before refetching
+          setTimeout(() => refreshSubscription(), 1500)
+        }
+      },
+    }).then((instance) => {
+      if (!cancelled && instance) setPaddle(instance)
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [clientToken, paddleEnv, refreshSubscription])
+
+  // Refresh subscription on return from checkout (legacy ?checkout=success path)
   useEffect(() => {
     if (justReturnedFromCheckout) refreshSubscription()
   }, [justReturnedFromCheckout, refreshSubscription])
 
-  async function handleUpgrade(plan: 'starter' | 'team') {
-    setErrorMessage(null)
-    try {
-      const res = await createCheckout.mutateAsync({ plan })
-      // Redirect to Paddle-hosted checkout. After payment, Paddle redirects the
-      // customer back to the "Default payment link" set in Paddle Dashboard →
-      // Checkout Settings (should be /billing?checkout=success).
-      window.location.href = res.url
-    } catch (err) {
-      setErrorMessage(
-        err instanceof Error ? err.message : 'Failed to start checkout',
-      )
+  // If user landed here with ?_ptxn=... (Paddle redirected here from our API),
+  // auto-open the overlay for that transaction.
+  useEffect(() => {
+    if (paddle && autoOpenPtxn) {
+      paddle.Checkout.open({ transactionId: autoOpenPtxn })
     }
-  }
+  }, [paddle, autoOpenPtxn])
+
+  const handleUpgrade = useCallback(
+    async (plan: 'starter' | 'team') => {
+      setErrorMessage(null)
+      setCheckoutCompleted(false)
+      if (!paddle) {
+        setErrorMessage('Paddle.js is not ready yet. Please try again in a moment.')
+        return
+      }
+      try {
+        const res = await createCheckout.mutateAsync({ plan })
+        paddle.Checkout.open({ transactionId: res.transactionId })
+      } catch (err) {
+        setErrorMessage(
+          err instanceof Error ? err.message : 'Failed to start checkout',
+        )
+      }
+    },
+    [paddle, createCheckout],
+  )
 
   const currentPlan: BillingPlan = subscription?.plan ?? 'free'
 
@@ -166,7 +229,6 @@ export default function BillingPage() {
                     : 'Active'}
                 </p>
               </div>
-              {/* Manage via Paddle customer portal — opens Paddle's hosted portal */}
               <div className="text-sm text-muted-foreground">
                 To cancel or update payment method, use the link Paddle emailed
                 on subscription creation.
@@ -186,7 +248,7 @@ export default function BillingPage() {
         </div>
       </section>
 
-      {justReturnedFromCheckout && (
+      {(justReturnedFromCheckout || checkoutCompleted) && (
         <div className="rounded-lg border border-green-200 bg-green-50 p-4 mb-6 text-sm text-green-900">
           Checkout complete. Your plan will update shortly once Paddle confirms
           the payment — this page will refresh automatically.
@@ -207,7 +269,7 @@ export default function BillingPage() {
             const isCurrent = currentPlan === plan.id
             const isUpgradeInFlight =
               createCheckout.isPending &&
-              (createCheckout.variables?.plan === plan.id)
+              createCheckout.variables?.plan === plan.id
 
             return (
               <div
@@ -281,14 +343,20 @@ export default function BillingPage() {
                       <Button
                         size="sm"
                         className="w-full"
-                        disabled={isCurrent || createCheckout.isPending}
+                        disabled={
+                          isCurrent ||
+                          createCheckout.isPending ||
+                          !paddle
+                        }
                         onClick={() => void handleUpgrade(upgradeTarget)}
                       >
                         {isCurrent
                           ? 'Current plan'
                           : isUpgradeInFlight
-                            ? 'Redirecting…'
-                            : `Upgrade to ${plan.name}`}
+                            ? 'Opening checkout…'
+                            : !paddle
+                              ? 'Loading…'
+                              : `Upgrade to ${plan.name}`}
                       </Button>
                     )
                   })()
