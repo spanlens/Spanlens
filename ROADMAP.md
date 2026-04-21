@@ -90,8 +90,8 @@
 - [ ] 병렬 span 시각화 테스트 (LangGraph 스타일 fan-out)
 - [ ] SDK `packages/sdk` 내부 구현 — `startTrace()`, `span()`, `end()` API
 - [ ] SDK OpenAI/Anthropic auto-instrumentation (로컬 링크로 테스트)
-- [ ] **Stripe 통합 기본 골격 (Week 6)** — Starter/Team 결제 테스트 모드 완료
-- [ ] Stripe 프로덕션 승인 신청 (최소 1주 소요 감안)
+- [ ] **Paddle(Merchant of Record) 통합 기본 골격 (Week 6)** — Starter/Team 결제 Sandbox 모드 완료. Paddle을 선택한 이유: 한국 개인사업자는 Stripe 가입 불가, Paddle은 MoR로 한국 사업자 지원 + 글로벌 VAT/세금 자동 처리 + 한국 은행 계좌 페이아웃 가능
+- [ ] Paddle 프로덕션 verification 신청 (KYC 문서 + 회사 정보 제출, 승인까지 보통 3~7 영업일)
 
 ### 2B. 운영 기능 + SDK 배포 (Week 7 전반)
 - [ ] SDK npm publish v0.1.0 + README + 사용 예제 + CHANGELOG
@@ -99,7 +99,7 @@
 - [ ] 마이그레이션: `alerts`, `webhooks`
 - [ ] P11 알림 설정 — 예산 초과, 에러율, latency 임계치
 - [ ] Resend 이메일 알림 + Slack/Discord 웹훅
-- [ ] Stripe 프로덕션 전환 + 사용량 기반 overage
+- [ ] Paddle 프로덕션 전환 + 사용량 기반 overage (Paddle Billing `priceId` + usage reporting API)
 - [ ] 무료 플랜 리밋 (10K requests/mo) + upgrade CTA
 - [ ] 로그 보존 정책 (Free 7일 / Starter 30일 / Team 90일)
 
@@ -119,7 +119,7 @@
 ### 2E. Phase 2 성공 기준
 - [ ] Product Hunt 주간 Top 5 진입
 - [ ] 가입자 누적 200명+
-- [ ] 유료 전환 50명+ ($950+ MRR) — Stripe 프로덕션 작동 전제
+- [ ] 유료 전환 50명+ ($950+ MRR) — Paddle 프로덕션 작동 전제
 - [ ] **셀프호스팅 공식 Docker 이미지** `docker pull ghcr.io/.../spanlens` 배포
 - [ ] 에이전트 트레이싱 실제 사용 프로젝트 10개+
 
@@ -177,7 +177,8 @@
 | Provider API 스펙 변경 (특히 Anthropic 스트리밍) | 파서 계약 테스트 + weekly canary |
 | Supabase Postgres 쓰기 병목 (100K req/day↑) | `logRequestAsync` 큐잉 + ClickHouse 이관 플랜 |
 | Helicone/Langfuse 재진입 | 독립성·셀프호스팅·단순함 메시지 강화 |
-| 결제/Stripe 장애 | Grace period 3일 + 알림 이중화 |
+| 결제/Paddle 장애 | Grace period 3일 + 알림 이중화, Paddle webhook 재시도 큐 모니터링 |
+| Paddle KYC 반려 또는 지연 | 사업자등록증·대표 신분증 미리 준비, 1차 반려 시 Week 6 안에 2차 제출 — 런치(Week 7) 전 승인 목표. 최악의 경우 수동 인보이스(Toss/Stripe Atlas 대체안)로 첫 결제 1~2주 흡수 |
 | ENCRYPTION_KEY 분실 | 운영 runbook + KMS 이관 검토 (Phase 3) |
 
 ---
