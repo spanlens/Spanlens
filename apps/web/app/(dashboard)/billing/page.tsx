@@ -61,7 +61,7 @@ const PLANS: PlanCardConfig[] = [
     features: [
       '500,000 requests / month',
       '90-day log retention',
-      'Up to 20 projects',
+      'Unlimited projects',
       'Slack / Discord alerts',
       'Team roles & audit log',
       'Priority support',

@@ -20,7 +20,7 @@ export const MONTHLY_REQUEST_LIMITS: Record<Plan, number | null> = {
 export const PROJECT_LIMITS: Record<Plan, number | null> = {
   free: 1,
   starter: 5,
-  team: 20,
+  team: null, // unlimited — Team is the "agency/multi-app" tier
   enterprise: null, // unlimited
 }
 

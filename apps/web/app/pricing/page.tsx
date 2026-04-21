@@ -46,7 +46,7 @@ const PLANS = [
     requests: '500,000 req/mo',
     features: [
       '500K requests / month',
-      'Up to 20 projects',
+      'Unlimited projects',
       'All providers',
       '90-day log retention',
       'Agent tracing (Gantt view)',
