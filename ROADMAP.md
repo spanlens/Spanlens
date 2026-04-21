@@ -1,8 +1,9 @@
 # Spanlens (AgentOps) ROADMAP
 
-> LLM 관찰성 SaaS · 90일 MVP · 런치 목표 2026.07.20
+> LLM 관찰성 SaaS · 100일 MVP · 런치 목표 2026.08.03 (Phase 4)
 > 수익 모델: Free / Starter $19 / Team $49 / Enterprise $99
-> 90일 현실 목표: 가입 500명, 유료 200명, MRR $3,800
+> 100일 현실 목표: 가입 500명, 유료 200명, MRR $3,800
+> 전략: Growth 기능(Phase 3)을 쌓은 **뒤** Product Hunt 런치. 런치 시점에 차별화 스토리 최대화.
 
 ---
 
@@ -20,7 +21,7 @@
 - [x] `.env.example` 작성 (SUPABASE_*, ENCRYPTION_KEY, PORT)
 - [x] GitHub 비공개 레포 + CI (typecheck + lint + test + build) — `.github/workflows/ci.yml` 그린
 - [x] Vercel 프로젝트 연결 (web) — ENABLE_EXPERIMENTAL_COREPACK=1 + pnpm@10.33.0, 배포 READY
-- [x] **로컬 개발용** `docker-compose.yml` (server + supabase) — 공식 셀프호스팅 배포는 Phase 2E
+- [x] **로컬 개발용** `docker-compose.yml` (server + supabase) — 공식 셀프호스팅 이미지는 Phase 2C
 - [x] `pnpm typecheck && pnpm lint && pnpm test && pnpm build` 통과
 
 ---
@@ -71,15 +72,15 @@
 - [x] 3개 프로바이더(OpenAI/Anthropic/Gemini) 모두 프록시 작동
 - [x] 스트리밍/논스트리밍 모두 토큰·비용 정확 집계 (±1% 오차) — 단위 테스트 통과
 - [x] 수동 집계 쿼리로 일별 사용량 조회 가능 (cron 자동화는 Phase 2A로 이관)
-- [x] 로컬 `docker compose up`으로 개발 스택 부팅 성공 (공식 셀프호스팅은 Phase 2E)
+- [x] 로컬 `docker compose up`으로 개발 스택 부팅 성공 (공식 셀프호스팅 이미지는 Phase 2C)
 - [ ] 내부 알파 테스트: 본인 프로젝트 1개를 Spanlens로 1주일 프록시 — 수동 진행 필요
 - [x] Known Gotcha 회귀 테스트 (Anthropic usage, 복호화 빈문자열, RLS, 비용 null, dated model suffix) — `src/__tests__/gotcha.test.ts` 6개 + 기존 파서/crypto/cost 테스트 포함 총 29개 그린. `calculateCost()`에 longest-prefix 매칭 추가로 `gpt-4o-mini-2024-07-18` 같은 dated variant도 가격 매칭됨
 
 ---
 
-## Phase 2 — Launch (Week 5~8, ~2026.06.22)
+## Phase 2 — Launch Readiness (Week 5~8, ~2026.06.22)
 
-에이전트 트레이싱 + Product Hunt 런치. 차별화 기능 완성.
+에이전트 트레이싱 + 운영 기능 + 결제 완성. 런치 자체는 Phase 4로 이관 — Growth 기능을 쌓은 뒤 런치해야 Product Hunt 스토리가 강해짐.
 
 ### 2A. 에이전트 트레이싱 백엔드 + UI (Week 5~6)
 > SDK npm publish는 Week 7로 분리 — 포장 작업(README, 버전, 배포 파이프라인) 따로.
@@ -105,25 +106,15 @@
 - [x] 무료 플랜 리밋 (10K req/mo) + Starter 100K + Team 500K — `/proxy/*`에 `enforceQuota` 미들웨어 + 429 응답 + `X-RateLimit-*` 헤더 + 대시보드 `QuotaBanner` (80% 경고, 100% 차단).
 - [x] 로그 보존 정책 (Free 7일 / Starter 30일 / Team 90일 / Enterprise 365일) — `prune_logs_by_retention()` PLPGSQL RPC + `/cron/prune-logs` (매일 03:00 UTC) — requests/traces/alert_deliveries 삭제.
 
-### 2C. Product Hunt 런치 (Week 7 후반)
-- [ ] 랜딩 페이지 공식 도메인 연결 + SEO 메타
-- [ ] 1분 데모 영상 녹화 (base_url 교체 → 대시보드 즉시 반영)
-- [ ] PH 런치 자산: 로고, 스크린샷 5장, GIF, 태그라인
-- [ ] Hacker News "Show HN" 글 준비
-- [ ] Helicone/Langfuse 마이그레이션 가이드 문서
-- [ ] PH 런치일(D-day) 커뮤니티 동시 배포 (Reddit r/LocalLLaMA, Twitter)
-
-### 2D. 런치 후 (Week 8)
-- [ ] 가입자 피드백 이슈 트래킹 (Linear 또는 GitHub Issues)
-- [ ] 크리티컬 버그 24h 이내 핫픽스 체제
-- [ ] 온보딩 전환율 측정 (가입 → 첫 요청 프록시)
-
-### 2E. Phase 2 성공 기준
-- [ ] Product Hunt 주간 Top 5 진입
-- [ ] 가입자 누적 200명+
-- [ ] 유료 전환 50명+ ($950+ MRR) — Paddle 프로덕션 작동 전제
+### 2C. Phase 2 완성도 기준 (Week 8, 런치 전 내부 검증)
+> 런치 전에 반드시 걸려야 하는 품질 게이트. 런치 자체는 Phase 4.
+- [ ] Paddle Sandbox end-to-end 검증 (signup → upgrade → webhook → plan 변경 → overage 레포트) — 실제 테스트 카드로 전체 플로우 1회 성공
+- [ ] Paddle 프로덕션 KYC 통과 + Production price ID 환경변수 전환
+- [ ] 에이전트 트레이싱 **내부 dogfood** 프로젝트 3개+ (본인 프로젝트들을 Spanlens로 관측)
 - [ ] **셀프호스팅 공식 Docker 이미지** `docker pull ghcr.io/.../spanlens` 배포
-- [ ] 에이전트 트레이싱 실제 사용 프로젝트 10개+
+- [ ] 스트리밍/논스트리밍 토큰·비용 ±1% 오차 유지 (통합 회귀 테스트)
+- [ ] SDK npm publish 완료 (`sdk-v0.1.0` 태그) + LangChain/LlamaIndex 실기기 검증
+- [ ] 보안: Provider Key 로그 노출 정적 스캔 0건, RLS 누락 0건
 
 ---
 
@@ -150,14 +141,76 @@
 - [ ] 데이터 export (CSV/JSON) + BigQuery 커넥터 베타
 - [ ] Enterprise plan ($99+) 랜딩 페이지 + 문의 폼
 
-### 3D. Phase 3 성공 기준 (90일 최종 목표)
-- [ ] 가입자 누적 **500명+**
-- [ ] 유료 유저 **200명+**
-- [ ] **MRR $3,800+**
-- [ ] 월간 처리 요청 **10M+**
-- [ ] Day-30 리텐션 40%+
-- [ ] 지원 티켓 응답 SLA 24h 이내
-- [ ] NPS ≥ 30
+### 3D. Phase 3 완성도 기준 (런치 자산 준비 전제)
+> Phase 3 기능이 런치 스토리의 차별점. 여기까지 쌓고 Phase 4에서 런치.
+- [ ] Growth 기능 3종 작동: 이상 탐지 / 프롬프트 A/B / 모델 추천
+- [ ] 팀 초대 & 역할 구조 동작 — 2인 이상 조직 내부 dogfood 완료
+- [ ] Public API + OpenAPI 문서 공개
+- [ ] 알파 유저 10~20명 waitlist 운영 중 (런치 전 사전 접근 권한)
+- [ ] 크리티컬 버그 0건, p95 proxy latency < +50ms (provider 대비)
+
+---
+
+## Phase 4 — Public Launch (Week 13~14, ~2026.08.03)
+
+Product Hunt + HN + 커뮤니티 동시 런치. Phase 1~3에서 쌓은 차별화 기능 총동원.
+
+> 기존 Phase 2C/2D에서 이관. Growth 기능(Phase 3) 완성 **후** 런치해야 스토리가 강함 — "Just another LLM proxy"가 아니라 "proxy + tracing + anomaly detection + prompt A/B + team" 풀 스택으로 포지셔닝.
+
+### 4A. 런치 준비 (Week 13)
+- [ ] 랜딩 페이지 공식 도메인 연결 (`spanlens.io` / `spanlens.com`) + SEO 메타
+- [ ] 1분 데모 영상 녹화 (base_url 교체 → 대시보드 즉시 반영 흐름)
+- [ ] PH 런치 자산: 로고, 스크린샷 5장, GIF, 태그라인
+- [ ] Hacker News "Show HN" 글 초안 작성 + 내부 리뷰
+- [ ] Helicone / Langfuse → Spanlens 마이그레이션 가이드 문서
+- [ ] 알파 유저 waitlist 에게 **런치 D-1 사전 초대** (투표/댓글 우군 확보)
+- [ ] PH 런치일 태스크 분 단위 타임라인 (00:01 UTC 포스팅 기준)
+
+### 4B. D-day & 런치 후 1주 (Week 14)
+- [ ] PH 런치일 커뮤니티 동시 배포: Reddit r/LocalLLaMA, r/LangChain, r/MachineLearning, Twitter, LinkedIn
+- [ ] HN "Show HN" 포스팅 + 댓글 적극 대응
+- [ ] 런치 48h 동안 실시간 피드백 triage (본인 + 1명 백업 체제)
+- [ ] 크리티컬 버그 24h 이내 핫픽스 체제
+- [ ] 가입자 피드백 이슈 트래킹 (Linear 또는 GitHub Issues)
+- [ ] 온보딩 전환율 측정 (가입 → 첫 요청 프록시) 실시간 모니터링
+
+### 4C. Phase 4 성공 기준 (런치 직후 지표)
+- [ ] Product Hunt 주간 Top 5 진입
+- [ ] HN 프론트페이지 진입 (최소 6시간 유지)
+- [ ] 런치 주 가입자 **200명+**
+- [ ] 런치 후 2주 내 유료 전환 **50명+** ($950+ MRR) — Paddle 프로덕션 작동 전제
+- [ ] 에이전트 트레이싱 실사용 프로젝트 **10개+**
+- [ ] 첫 24h 크리티컬 버그 0건 또는 1h 이내 핫픽스
+
+> **100일 최종 목표**(Phase 3D + 런치 후 스노우볼 반영): 가입 500명+, 유료 200명+, MRR $3,800+
+
+---
+
+## Phase 5 — Enterprise Readiness (트리거 기반, Post-launch)
+
+Enterprise `$99+` 플랜은 이미 Pricing 페이지에 판매 중. **첫 Enterprise 리드 발생 시점에 실행** — 그 전까지는 speculative 구현 금지. 각 섹션은 독립 트리거.
+
+> 왜 지금 문서화하나: 리드가 왔을 때 "뭘 해줘야 하지?" 1~2주 허비 방지 + 한국 세금계산서 같은 **구조적 블로커**를 미리 인지.
+
+### 5A. 한국 B2B 결제 (트리거: 국내 기업 첫 문의)
+> Paddle은 한국 세금계산서 발행 안 함 — 경리팀 요구 충족 못 하면 딜 무산.
+- [ ] 세금계산서 발행 경로 결정: Toss Payments / 나이스페이 병행 vs Paddle USD 인보이스 + 별도 발행 대행
+- [ ] 법인 간 Purchase Order / 연간 선납 프로세스
+
+### 5B. SSO / SAML (트리거: 기업 IT 구매팀 요구)
+- [ ] Supabase Auth SAML 활성화 (Supabase Pro 전환 필요)
+- [ ] IdP 4종 연동 runbook (Okta / Azure AD / Google Workspace / OneLogin)
+- [ ] `organizations.sso_domain` + 도메인 기반 자동 라우팅
+
+### 5C. 컴플라이언스 (트리거: 연 $20K+ 딜 또는 금융권 리드)
+- [ ] SOC2 Type I (Vanta / Drata, 연 $2K~5K)
+- [ ] GDPR DPA 공식 발행 + DPIA 템플릿
+- [ ] 99.9% SLA 문서 + status page (`status.spanlens.io`)
+
+### 5D. 운영 지원 (트리거: 첫 Enterprise 계약)
+- [ ] 전용 Slack Connect 채널
+- [ ] 4h 응답 SLA (일반 24h → Enterprise 4h)
+- [ ] 온콜 로테이션 최소 2인
 
 ---
 
@@ -180,7 +233,7 @@
 | Supabase Postgres 쓰기 병목 (100K req/day↑) | `logRequestAsync` 큐잉 + ClickHouse 이관 플랜 |
 | Helicone/Langfuse 재진입 | 독립성·셀프호스팅·단순함 메시지 강화 |
 | 결제/Paddle 장애 | Grace period 3일 + 알림 이중화, Paddle webhook 재시도 큐 모니터링 |
-| Paddle KYC 반려 또는 지연 | 사업자등록증·대표 신분증 미리 준비, 1차 반려 시 Week 6 안에 2차 제출 — 런치(Week 7) 전 승인 목표. 최악의 경우 수동 인보이스(Toss/Stripe Atlas 대체안)로 첫 결제 1~2주 흡수 |
+| Paddle KYC 반려 또는 지연 | 사업자등록증·대표 신분증 미리 준비, 1차 반려 시 Week 8 안에 2차 제출 — 런치(Week 13~14) 전 승인 목표. Phase 2C에 KYC 통과 체크 있음. 최악의 경우 수동 인보이스(Toss/Stripe Atlas 대체안)로 첫 결제 1~2주 흡수 |
 | ENCRYPTION_KEY 분실 | 운영 runbook + KMS 이관 검토 (Phase 3) |
 
 ---
@@ -191,11 +244,13 @@ Phase별 목표 수치에 못 미칠 경우 미리 정해둔 행동을 트리거
 
 | 시점 | 미달 조건 | 트리거 행동 |
 |---|---|---|
-| Week 4 (Phase 1 끝) | 내부 알파 테스트 회귀 버그 > 5건 또는 스트리밍 토큰 오차 > 3% | PH 런치 1주 연기 · 안정화 최우선 |
-| Week 7 (런치 직전) | Waitlist 가입 < 100명 | 런치 포지셔닝 재검토 (메시지/타깃 채널 교체) |
-| Week 8 (런치 후 1주) | 가입자 < 150명 | GTM 채널 전환 (HN → dev Twitter/Reddit 집중) |
-| Week 10 | MRR < $500 | 가격 재검토 (Starter $19 → $9 실험 또는 무료 리밋 축소) |
-| Week 12 | 유료 전환율 < 5% (가입 대비) | 온보딩 마찰 진단 + 피벗 후보 점검 (트레이싱 특화 vs 비용 특화) |
+| Week 4 (Phase 1 끝) | 내부 알파 테스트 회귀 버그 > 5건 또는 스트리밍 토큰 오차 > 3% | Phase 2 착수 1주 연기 · 안정화 최우선 |
+| Week 8 (Phase 2 끝) | Paddle KYC 미통과 또는 dogfood 트레이싱 < 3 프로젝트 | Phase 3 착수 연기 · 결제 + 트레이싱 안정화 우선 |
+| Week 12 (Phase 3 끝) | Growth 기능 3종 중 2개 이상 미완 또는 waitlist < 100명 | 런치 2주 연기 · 스토리 강화 (기능 보강 + waitlist 마케팅) |
+| Week 13 (런치 직전) | Waitlist < 100명 또는 내부 dogfood 크리티컬 이슈 | 런치 포지셔닝 재검토 or D-day 1주 연기 |
+| Week 14 (런치 후 1주) | 가입자 < 150명 | GTM 채널 전환 (HN → dev Twitter/Reddit 집중) |
+| Week 16 | MRR < $500 | 가격 재검토 (Starter $19 → $9 실험 또는 무료 리밋 축소) |
+| Week 18 (100일 마감) | 유료 전환율 < 5% (가입 대비) | 온보딩 마찰 진단 + 피벗 후보 점검 (트레이싱 특화 vs 비용 특화) |
 
 ### 모니터링 지표 (주간 리뷰)
 - [ ] 가입 전환율 (랜딩 방문 → 가입)
