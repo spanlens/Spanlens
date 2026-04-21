@@ -90,6 +90,117 @@ const result = await observe(traceOrSpan, { name: 'work' }, async (span) => {
 })
 ```
 
+## Framework examples
+
+### OpenAI (auto-instrumentation)
+
+```ts
+import OpenAI from 'openai'
+import { SpanlensClient, observeOpenAI } from '@spanlens/sdk'
+
+const spanlens = new SpanlensClient({ apiKey: process.env.SPANLENS_API_KEY! })
+
+// Route OpenAI calls through the Spanlens proxy. The SDK injects
+// x-trace-id/x-span-id headers so the proxy's request log is linked
+// back to your spans.
+const openai = new OpenAI({
+  apiKey: process.env.SPANLENS_API_KEY!,
+  baseURL: 'https://spanlens-server.vercel.app/proxy/openai/v1',
+})
+
+const trace = spanlens.startTrace({ name: 'support_chat' })
+
+const res = await observeOpenAI(trace, 'answer', (headers) =>
+  openai.chat.completions.create(
+    { model: 'gpt-4o-mini', messages: [{ role: 'user', content: 'Hi' }] },
+    { headers },
+  ),
+)
+
+await trace.end({ status: 'completed' })
+```
+
+### Anthropic
+
+```ts
+import Anthropic from '@anthropic-ai/sdk'
+import { SpanlensClient, observeAnthropic } from '@spanlens/sdk'
+
+const spanlens = new SpanlensClient({ apiKey: process.env.SPANLENS_API_KEY! })
+const anthropic = new Anthropic({
+  apiKey: process.env.SPANLENS_API_KEY!,
+  baseURL: 'https://spanlens-server.vercel.app/proxy/anthropic',
+})
+
+const trace = spanlens.startTrace({ name: 'agent_run' })
+const res = await observeAnthropic(trace, 'reason', (headers) =>
+  anthropic.messages.create(
+    { model: 'claude-haiku-4-5', max_tokens: 1024, messages: [...] },
+    { headers },
+  ),
+)
+await trace.end()
+```
+
+### LangChain (JS)
+
+LangChain calls go through the underlying OpenAI/Anthropic client — point that
+client at the Spanlens proxy and wrap the chain invocation in `observe()`:
+
+```ts
+import { ChatOpenAI } from '@langchain/openai'
+import { SpanlensClient, observe } from '@spanlens/sdk'
+
+const spanlens = new SpanlensClient({ apiKey: process.env.SPANLENS_API_KEY! })
+
+const llm = new ChatOpenAI({
+  apiKey: process.env.SPANLENS_API_KEY!,
+  configuration: {
+    baseURL: 'https://spanlens-server.vercel.app/proxy/openai/v1',
+  },
+})
+
+const trace = spanlens.startTrace({ name: 'langchain_qa' })
+
+// LangChain's internal fetch won't carry our trace headers, so we group
+// the whole chain under one span for dashboard visibility.
+const answer = await observe(trace, { name: 'chain.invoke', spanType: 'llm' }, async () => {
+  return llm.invoke('What is Spanlens?')
+})
+
+await trace.end()
+```
+
+### LlamaIndex (TS)
+
+```ts
+import { OpenAI, VectorStoreIndex, SimpleDirectoryReader } from 'llamaindex'
+import { SpanlensClient, observe } from '@spanlens/sdk'
+
+const spanlens = new SpanlensClient({ apiKey: process.env.SPANLENS_API_KEY! })
+
+const llm = new OpenAI({
+  apiKey: process.env.SPANLENS_API_KEY!,
+  additionalSessionOptions: {
+    baseURL: 'https://spanlens-server.vercel.app/proxy/openai/v1',
+  },
+})
+
+const trace = spanlens.startTrace({ name: 'rag_query' })
+
+const retrieval = await observe(trace, { name: 'retrieve', spanType: 'retrieval' }, async () => {
+  const docs = await new SimpleDirectoryReader().loadData({ directoryPath: './docs' })
+  return VectorStoreIndex.fromDocuments(docs)
+})
+
+const answer = await observe(trace, { name: 'generate', spanType: 'llm' }, async () => {
+  const engine = retrieval.asQueryEngine({ llm })
+  return engine.query({ query: 'What is Spanlens?' })
+})
+
+await trace.end()
+```
+
 ## Design notes
 
 - **Fire-and-forget ingest**: `startTrace()` and `trace.span()` return synchronously. Network writes run in the background so your hot path never waits on observability.

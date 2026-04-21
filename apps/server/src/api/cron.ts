@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { supabaseAdmin } from '../lib/db.js'
 import { deliverToChannel, type AlertNotification } from '../lib/notifiers.js'
+import { computeAndReportOverages } from '../lib/paddle-usage.js'
 
 /**
  * Vercel cron endpoints. Invoked hourly via `crons` entry in `vercel.json`.
@@ -181,6 +182,20 @@ cronRouter.get('/evaluate-alerts', async (c) => {
   }
 
   return c.json({ success: true, evaluated: report.length, report })
+})
+
+// ── Paddle usage overage reporting (daily) ──────────────────────
+cronRouter.get('/report-usage-overage', async (c) => {
+  const authFail = assertCronAuth(c.req.header('Authorization'))
+  if (authFail) return c.json({ error: authFail }, 401)
+
+  try {
+    const reports = await computeAndReportOverages()
+    return c.json({ success: true, count: reports.length, reports })
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'unknown'
+    return c.json({ error: msg }, 500)
+  }
 })
 
 // ── Log retention (daily) ───────────────────────────────────────

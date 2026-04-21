@@ -1,0 +1,47 @@
+name: Publish @spanlens/sdk
+
+# Triggers:
+#   • manual via workflow_dispatch (version bump + publish)
+#   • push a git tag like `sdk-v0.1.0` → automated publish
+#
+# Requires repository secret NPM_TOKEN with 'Automation' token scope.
+
+on:
+  push:
+    tags:
+      - 'sdk-v*'
+  workflow_dispatch:
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write  # npm provenance
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Test SDK
+        run: pnpm --filter @spanlens/sdk test
+
+      - name: Build SDK
+        run: pnpm --filter @spanlens/sdk build
+
+      - name: Publish to npm
+        working-directory: packages/sdk
+        run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

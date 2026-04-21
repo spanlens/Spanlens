@@ -1,7 +1,7 @@
 {
   "name": "@spanlens/sdk",
   "version": "0.1.0",
-  "description": "Spanlens SDK for LLM observability",
+  "description": "Spanlens SDK — agent tracing, LLM usage capture, and cost observability for TypeScript.",
   "type": "module",
   "main": "./dist/index.js",
   "module": "./dist/index.js",
@@ -12,18 +12,41 @@
       "types": "./dist/index.d.ts"
     }
   },
-  "files": ["dist"],
+  "files": ["dist", "README.md", "CHANGELOG.md", "LICENSE"],
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
+    "prepublishOnly": "pnpm run clean && pnpm run build && pnpm run test",
     "clean": "rm -rf dist"
   },
   "devDependencies": {
     "typescript": "^5.4.5",
     "vitest": "^2.1.3"
   },
-  "keywords": ["llm", "observability", "tracing", "spanlens"],
-  "license": "MIT"
+  "keywords": [
+    "llm",
+    "openai",
+    "anthropic",
+    "gemini",
+    "observability",
+    "tracing",
+    "langchain",
+    "llamaindex",
+    "spanlens"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sunes26/Spanlens.git",
+    "directory": "packages/sdk"
+  },
+  "bugs": {
+    "url": "https://github.com/sunes26/Spanlens/issues"
+  },
+  "homepage": "https://spanlens.io",
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  }
 }
