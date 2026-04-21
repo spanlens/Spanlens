@@ -1,10 +1,11 @@
 import { Hono } from 'hono'
+import { stream } from 'hono/streaming'
 import { authApiKey, type ApiKeyContext } from '../middleware/authApiKey.js'
 import { calculateCost } from '../lib/cost.js'
 import { logRequestAsync } from '../lib/logger.js'
 import { parseAnthropicResponse } from '../parsers/anthropic.js'
 import { getDecryptedProviderKey, buildUpstreamHeaders, buildDownstreamHeaders } from './utils.js'
-import { makeAnthropicStreamLogger } from './stream-logger.js'
+import { logAnthropicStream } from './stream-logger.js'
 
 const ANTHROPIC_BASE = 'https://api.anthropic.com'
 
@@ -54,7 +55,6 @@ anthropicProxy.all('/*', async (c) => {
   }
   const latencyMs = Date.now() - startMs
 
-  const downstreamHeaders = buildDownstreamHeaders(upstreamRes.headers)
   const model = (reqBodyJson?.model as string | undefined) ?? ''
   const logBase = {
     organizationId, projectId, apiKeyId,
@@ -67,16 +67,45 @@ anthropicProxy.all('/*', async (c) => {
     spanId: c.req.header('x-span-id') ?? null,
   }
 
-  // ── Streaming path ────────────────────────────────────────────────────────
+  // ── Streaming path (Hono stream helper — required for Vercel Node.js runtime) ─
   if (isStreaming && upstreamRes.body) {
-    const logger = makeAnthropicStreamLogger({ ...logBase, model })
-    return new Response(
-      upstreamRes.body.pipeThrough(logger),
-      { status: upstreamRes.status, headers: downstreamHeaders },
-    )
+    const downstreamHeaders = buildDownstreamHeaders(upstreamRes.headers)
+    downstreamHeaders.forEach((value, key) => c.header(key, value))
+    c.status(upstreamRes.status as 200)
+
+    const upstreamBody = upstreamRes.body
+
+    return stream(c, async (honoStream) => {
+      const reader = upstreamBody.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+      const lines: string[] = []
+
+      try {
+        for (;;) {
+          const { done, value } = await reader.read()
+          if (done) break
+
+          await honoStream.write(value)
+
+          buffer += decoder.decode(value, { stream: true })
+          const parts = buffer.split('\n')
+          buffer = parts.pop() ?? ''
+          lines.push(...parts)
+        }
+        if (buffer.length > 0) lines.push(buffer)
+      } catch (err) {
+        console.error('[anthropic-stream] reader error:', err)
+      }
+
+      await logAnthropicStream(lines, { ...logBase, model }).catch((err) => {
+        console.error('[anthropic-stream] log error:', err)
+      })
+    })
   }
 
   // ── Non-streaming path ────────────────────────────────────────────────────
+  const downstreamHeaders = buildDownstreamHeaders(upstreamRes.headers)
   const resBodyText = await upstreamRes.text()
   let promptTokens = 0
   let completionTokens = 0
