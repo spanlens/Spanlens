@@ -1,66 +1,35 @@
-import type { SpanlensConfig, TraceOptions, SpanOptions, Trace, Span } from './types.js'
+import { createTransport, type Transport } from './transport.js'
+import { createTrace, TraceHandle } from './trace.js'
+import type { SpanlensConfig, TraceOptions } from './types.js'
 
+/**
+ * Spanlens SDK client — single entry point.
+ *
+ * @example
+ * const client = new SpanlensClient({ apiKey: 'sl_live_...' })
+ * const trace = client.startTrace({ name: 'chat_session', metadata: { userId: 'u_42' } })
+ * const span = trace.span({ name: 'call_openai', spanType: 'llm' })
+ * // ... do work ...
+ * await span.end({ totalTokens: 150, costUsd: 0.0023 })
+ * await trace.end({ status: 'completed' })
+ */
 export class SpanlensClient {
-  private readonly apiKey: string
-  private readonly baseUrl: string
+  private readonly transport: Transport
 
   constructor(config: SpanlensConfig) {
-    this.apiKey = config.apiKey
-    this.baseUrl = config.baseUrl ?? 'https://api.spanlens.io'
+    if (!config.apiKey || config.apiKey.trim().length === 0) {
+      throw new Error('[spanlens] apiKey is required')
+    }
+    this.transport = createTransport(config)
   }
 
-  async startTrace(options: TraceOptions): Promise<Trace> {
-    const traceId = crypto.randomUUID()
-    const startedAt = new Date()
-
-    await this.post('/api/v1/traces', {
-      trace_id: traceId,
-      name: options.name,
-      metadata: options.metadata,
-      started_at: startedAt.toISOString(),
-    })
-
-    return { traceId, name: options.name, startedAt }
+  /** Start a new trace. Returns immediately; ingest runs in the background. */
+  startTrace(options: TraceOptions): TraceHandle {
+    return createTrace(this.transport, options.name, options.metadata)
   }
 
-  async span(trace: Trace, options: SpanOptions): Promise<Span> {
-    const spanId = crypto.randomUUID()
-    const startedAt = new Date()
-
-    const end = async (output?: unknown): Promise<void> => {
-      await this.post('/api/v1/spans', {
-        span_id: spanId,
-        trace_id: trace.traceId,
-        name: options.name,
-        parent_span_id: options.parentSpanId,
-        metadata: options.metadata,
-        output,
-        started_at: startedAt.toISOString(),
-        ended_at: new Date().toISOString(),
-      })
-    }
-
-    return {
-      spanId,
-      traceId: trace.traceId,
-      name: options.name,
-      parentSpanId: options.parentSpanId,
-      startedAt,
-      end,
-    }
-  }
-
-  private async post(path: string, body: unknown): Promise<void> {
-    const response = await fetch(`${this.baseUrl}${path}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${this.apiKey}`,
-      },
-      body: JSON.stringify(body),
-    })
-    if (!response.ok) {
-      console.error(`[spanlens] ${path} failed: ${response.status}`)
-    }
+  /** Exposed for wrappers (openai/anthropic auto-instrumentation). */
+  get _transport(): Transport {
+    return this.transport
   }
 }
