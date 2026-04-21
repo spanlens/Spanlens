@@ -88,7 +88,7 @@
 - [ ] `/api/v1/traces/*` 엔드포인트 (list, get, ingest)
 - [ ] P9 에이전트 트레이스 화면 — Gantt/waterfall 뷰, span 트리
 - [ ] 병렬 span 시각화 테스트 (LangGraph 스타일 fan-out)
-- [ ] SDK `packages/sdk` 내부 구현 — `startTrace()`, `span()`, `end()` API
+- [x] SDK `packages/sdk` 내부 구현 — `SpanlensClient.startTrace()`, `TraceHandle.span()`, `SpanHandle.child()`, `.end()`, `observe()` 헬퍼 + README + 13개 테스트 그린. 클라이언트 생성 UUID(idempotent 재시도), fire-and-forget 네트워크, unhandled rejection 방지 포함
 - [ ] SDK OpenAI/Anthropic auto-instrumentation (로컬 링크로 테스트)
 - [ ] **Paddle(Merchant of Record) 통합 기본 골격 (Week 6)** — Starter/Team 결제 Sandbox 모드 완료. Paddle을 선택한 이유: 한국 개인사업자는 Stripe 가입 불가, Paddle은 MoR로 한국 사업자 지원 + 글로벌 VAT/세금 자동 처리 + 한국 은행 계좌 페이아웃 가능
 - [ ] Paddle 프로덕션 verification 신청 (KYC 문서 + 회사 정보 제출, 승인까지 보통 3~7 영업일)
