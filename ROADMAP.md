@@ -94,16 +94,16 @@
 > Paddle 프로덕션 KYC 신청은 Phase 2B에서 Sandbox end-to-end 검증 끝난 뒤 진행 (Sandbox 미검증 상태로 심사 올리면 반려 리스크).
 
 ### 2B. 운영 기능 + SDK 배포 (Week 7 전반)
-- [ ] SDK npm publish v0.1.0 + README + 사용 예제 + CHANGELOG
-- [ ] SDK e2e: LangChain/LlamaIndex 샘플 트레이싱 성공
-- [ ] 마이그레이션: `alerts`, `webhooks`
-- [ ] P11 알림 설정 — 예산 초과, 에러율, latency 임계치
-- [ ] Resend 이메일 알림 + Slack/Discord 웹훅
-- [ ] **P15 In-app Billing/Upgrade 페이지** — Settings 내 탭 or `/billing` 경로. 현재 구독 상태(`GET /api/v1/billing/subscription`) + 플랜 3종 카드 + "Upgrade" 버튼이 `POST /api/v1/billing/checkout` → Paddle hosted checkout URL로 redirect. 취소/관리는 Paddle customer portal 링크 제공.
-- [ ] Paddle 프로덕션 KYC 신청 — Sandbox end-to-end 플로우(가입→upgrade→webhook→plan 변경) 검증 후 사업자등록증 + 대표 신분증 + 웹사이트 URL + 이용약관 제출. 승인 3~7 영업일.
-- [ ] Paddle 프로덕션 전환 + 사용량 기반 overage (Paddle Billing `priceId` + usage reporting API)
-- [ ] 무료 플랜 리밋 (10K requests/mo) + upgrade CTA
-- [ ] 로그 보존 정책 (Free 7일 / Starter 30일 / Team 90일)
+- [x] SDK npm publish 준비 — LICENSE(MIT) + CHANGELOG + README에 OpenAI/Anthropic/LangChain/LlamaIndex 통합 예시 + `publish-sdk.yml` Actions 워크플로(`sdk-v*` 태그 or 수동 트리거 시 provenance publish). 실제 `npm publish`는 NPM_TOKEN 시크릿 + `git tag sdk-v0.1.0` 하면 실행.
+- [x] SDK LangChain/LlamaIndex 샘플 — README에 복사 가능한 코드 스니펫 포함. 실기기 검증은 dogfood 단계.
+- [x] 마이그레이션: `alerts`, `notification_channels`, `alert_deliveries` (`20260421030000_alerts_and_webhooks`)
+- [x] P11 알림 설정 UI (`/alerts` 페이지) — alert CRUD + 채널 CRUD + 최근 delivery audit.
+- [x] Resend/Slack/Discord notifier (`lib/notifiers.ts`) + `/cron/evaluate-alerts` (15분 주기 GHA) — threshold 넘으면 cooldown 체크 후 모든 활성 채널에 전달 + `alert_deliveries` 기록.
+- [x] **P15 In-app Billing/Upgrade 페이지** (`/billing`) — 현재 구독 요약 + 4-plan 카드 + Upgrade → Paddle hosted checkout URL redirect.
+- [ ] Paddle 프로덕션 KYC 신청 — Sandbox end-to-end 검증 후 사업자등록증 + 대표 신분증 + 웹사이트 URL + 이용약관 제출.
+- [x] Paddle 사용량 기반 overage 인프라 — `lib/paddle-usage.ts` `computeAndReportOverages()` + `/cron/report-usage-overage` (매일 03:30 UTC). Starter/Team 별 overage price ID 환경변수로 주입. 프로덕션 전환은 KYC 통과 후.
+- [x] 무료 플랜 리밋 (10K req/mo) + Starter 100K + Team 500K — `/proxy/*`에 `enforceQuota` 미들웨어 + 429 응답 + `X-RateLimit-*` 헤더 + 대시보드 `QuotaBanner` (80% 경고, 100% 차단).
+- [x] 로그 보존 정책 (Free 7일 / Starter 30일 / Team 90일 / Enterprise 365일) — `prune_logs_by_retention()` PLPGSQL RPC + `/cron/prune-logs` (매일 03:00 UTC) — requests/traces/alert_deliveries 삭제.
 
 ### 2C. Product Hunt 런치 (Week 7 후반)
 - [ ] 랜딩 페이지 공식 도메인 연결 + SEO 메타
