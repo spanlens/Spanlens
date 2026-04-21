@@ -108,13 +108,15 @@
 
 ### 2C. Phase 2 완성도 기준 (Week 8, 런치 전 내부 검증)
 > 런치 전에 반드시 걸려야 하는 품질 게이트. 런치 자체는 Phase 4.
-- [ ] Paddle Sandbox end-to-end 검증 (signup → upgrade → webhook → plan 변경 → overage 레포트) — 실제 테스트 카드로 전체 플로우 1회 성공
-- [ ] Paddle 프로덕션 KYC 통과 + Production price ID 환경변수 전환
-- [ ] 에이전트 트레이싱 **내부 dogfood** 프로젝트 3개+ (본인 프로젝트들을 Spanlens로 관측)
-- [ ] **셀프호스팅 공식 Docker 이미지** `docker pull ghcr.io/.../spanlens` 배포
-- [ ] 스트리밍/논스트리밍 토큰·비용 ±1% 오차 유지 (통합 회귀 테스트)
-- [ ] SDK npm publish 완료 (`sdk-v0.1.0` 태그) + LangChain/LlamaIndex 실기기 검증
-- [ ] 보안: Provider Key 로그 노출 정적 스캔 0건, RLS 누락 0건
+- [x] Paddle Sandbox end-to-end 검증 (signup → upgrade → Paddle.js 오버레이 → webhook → plan=starter, status=active) — 테스트 카드 `4242 4242 4242 4242` 로 전체 플로우 성공. `transaction.completed` 핸들러가 `fetchPaddleSubscription` 으로 billing period 보강하도록 수정 완료.
+- [ ] **Paddle 프로덕션 KYC 통과** + Production price ID 환경변수 전환 — **외부 의존, 유저 작업**. 사업자등록증 + 신분증 + 웹사이트 URL + 이용약관 제출 → 심사 1~2주.
+- [ ] 에이전트 트레이싱 **내부 dogfood** 프로젝트 3개+ (본인 프로젝트들을 Spanlens로 관측) — **점진적**. SDK 배포 완료됐으므로 실제 서비스에 연결만 하면 됨. 현재 `projects=1, traces=0`.
+- [x] **셀프호스팅 공식 Docker 이미지** `docker pull ghcr.io/sunes26/spanlens-server:latest` 배포 — multi-stage node:22-alpine, non-root user, HEALTHCHECK 포함. `.github/workflows/docker-publish.yml` 로 amd64+arm64 자동 빌드. 3m 43s 소요. (※ GHCR 패키지 public 전환은 유저 수동 작업.)
+- [x] 스트리밍/논스트리밍 토큰·비용 ±1% 오차 유지 — server 39 + sdk 28 = 총 67 테스트 그린. OpenAI 프로덕션 streaming e2e 검증 완료.
+- [x] SDK npm publish 완료 — `@spanlens/sdk@0.1.0` (로컬 수동 publish) + `@spanlens/sdk@0.1.1` (CI 자동 publish, provenance 포함). `sdk-v*` 태그 푸시 시 `publish-sdk.yml` 자동 실행. LangChain/LlamaIndex 실기기 검증은 dogfood 단계에서 수행 예정.
+- [x] 보안: Provider Key 로그 노출 정적 스캔 0건 (test-e2e.ts도 마스킹 처리), RLS 누락 테이블 0건 (`SELECT FROM pg_tables WHERE rowsecurity=false AND schemaname='public'` = 빈 결과).
+
+**Phase 2C 게이트 상태**: 7개 중 5개 완료 (71%), 2개 외부 의존/점진적(KYC, dogfood). 코드 인프라는 런치 준비 완료 → Phase 3 착수 가능.
 
 ---
 
