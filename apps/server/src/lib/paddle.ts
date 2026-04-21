@@ -96,20 +96,22 @@ export interface PaddleTransaction {
 /**
  * Creates a Paddle transaction (subscription checkout) for a customer + price.
  * Returns the transaction with a hosted checkout URL that the user is redirected to.
+ *
+ * NOTE: Do NOT pass `checkout.url` here. That field is for Paddle.js overlay/inline
+ * checkout only. For hosted checkout (redirect-based), omit it so Paddle generates
+ * and returns its own hosted checkout URL in `data.checkout.url`. After payment,
+ * Paddle redirects the customer to the "Default payment link" configured in the
+ * Paddle Dashboard → Checkout Settings.
  */
 export async function createPaddleCheckoutTransaction(params: {
   customerId: string
   priceId: string
-  successUrl?: string
   organizationId: string  // passed through for webhook → DB correlation
 }): Promise<PaddleTransaction> {
   const body: Record<string, unknown> = {
     customer_id: params.customerId,
     items: [{ price_id: params.priceId, quantity: 1 }],
     custom_data: { organization_id: params.organizationId },
-  }
-  if (params.successUrl) {
-    body['checkout'] = { url: params.successUrl }
   }
 
   const res = await paddleFetch<PaddleEnvelope<PaddleTransaction>>('/transactions', {

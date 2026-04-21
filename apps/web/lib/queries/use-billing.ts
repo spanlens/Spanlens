@@ -57,7 +57,6 @@ export function useCreateCheckout() {
   return useMutation({
     mutationFn: async (input: {
       plan: Exclude<BillingPlan, 'free' | 'enterprise'>
-      successUrl?: string
     }) => {
       const res = await apiPost<ApiEnvelope<CheckoutResponse>>(
         '/api/v1/billing/checkout',

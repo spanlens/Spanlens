@@ -104,10 +104,10 @@ export default function BillingPage() {
   async function handleUpgrade(plan: 'starter' | 'team') {
     setErrorMessage(null)
     try {
-      const res = await createCheckout.mutateAsync({
-        plan,
-        successUrl: `${window.location.origin}/billing?checkout=success`,
-      })
+      const res = await createCheckout.mutateAsync({ plan })
+      // Redirect to Paddle-hosted checkout. After payment, Paddle redirects the
+      // customer back to the "Default payment link" set in Paddle Dashboard →
+      // Checkout Settings (should be /billing?checkout=success).
       window.location.href = res.url
     } catch (err) {
       setErrorMessage(

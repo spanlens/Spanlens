@@ -57,7 +57,7 @@ billingRouter.post('/checkout', async (c) => {
   const userId = c.get('userId')
   if (!orgId) return c.json({ error: 'Organization not found' }, 404)
 
-  let body: { plan?: unknown; successUrl?: unknown }
+  let body: { plan?: unknown }
   try {
     body = (await c.req.json()) as typeof body
   } catch {
@@ -111,14 +111,11 @@ billingRouter.post('/checkout', async (c) => {
       .eq('id', orgId)
   }
 
-  const successUrl = typeof body.successUrl === 'string' ? body.successUrl : undefined
-
   try {
     const tx = await createPaddleCheckoutTransaction({
       customerId: paddleCustomerId,
       priceId,
       organizationId: orgId,
-      ...(successUrl ? { successUrl } : {}),
     })
     if (!tx.checkout?.url) {
       return c.json({ error: 'Paddle did not return a checkout URL' }, 502)
