@@ -83,7 +83,7 @@
 
 ### 2A. 에이전트 트레이싱 백엔드 + UI (Week 5~6)
 > SDK npm publish는 Week 7로 분리 — 포장 작업(README, 버전, 배포 파이프라인) 따로.
-- [ ] 마이그레이션: `traces`, `spans` (parent_span_id FK 없음, 의도적)
+- [x] 마이그레이션: `traces`, `spans` (parent_span_id FK 없음, 의도적) — `20260421000000_agent_tracing.sql` 프로덕션 적용 완료, `refresh_trace_aggregates` 트리거 포함
 - [x] `usage_daily` 1시간 cron 배치 집계 — `aggregate_usage_daily(target_date)` PLPGSQL RPC + `/cron/aggregate-usage` 엔드포인트 (CRON_SECRET bearer 인증) + GitHub Actions `cron-aggregate-usage.yml` 매시간 실행. Vercel Hobby plan이 hourly cron 지원 안 해서 GHA로 대체.
 - [x] `/api/v1/traces/*` 엔드포인트 (dashboard 조회: list/get) + `/ingest/*` (SDK 쓰기: POST/PATCH traces/spans). 관심사 분리 — 전자는 authJwt, 후자는 authApiKey.
 - [x] P9 에이전트 트레이스 화면 — Gantt/waterfall 뷰, pre-order DFS span 트리 + depth 기반 인덴트, spanType별 색상, 선택 시 상세 패널 (tokens/cost/input/output/metadata + `/requests/:id` 딥링크)
@@ -91,7 +91,7 @@
 - [x] SDK `packages/sdk` 내부 구현 — `SpanlensClient.startTrace()`, `TraceHandle.span()`, `SpanHandle.child()`, `.end()`, `observe()` 헬퍼 + README + 13개 테스트 그린. 클라이언트 생성 UUID(idempotent 재시도), fire-and-forget 네트워크, unhandled rejection 방지 포함
 - [x] SDK OpenAI/Anthropic/Gemini auto-instrumentation — `observeOpenAI / observeAnthropic / observeGemini` 헬퍼가 span 생성 + `x-trace-id`/`x-span-id` 헤더 주입 + 응답 usage 자동 파싱 + 에러 시 status='error'. 7개 테스트 포함.
 - [x] **Paddle(MoR) 통합 기본 골격 (Week 6)** — Sandbox API 클라이언트 + HMAC 서명 검증 webhook + checkout 엔드포인트 + subscriptions 테이블 + 8개 유닛 테스트. 실제 결제 플로우 end-to-end는 Paddle 대시보드에서 Product/Price 생성 + `PADDLE_PRICE_*` 환경변수 설정 후 가능.
-- [ ] Paddle 프로덕션 verification 신청 (KYC 문서 + 회사 정보 제출, 승인까지 보통 3~7 영업일)
+> Paddle 프로덕션 KYC 신청은 Phase 2B에서 Sandbox end-to-end 검증 끝난 뒤 진행 (Sandbox 미검증 상태로 심사 올리면 반려 리스크).
 
 ### 2B. 운영 기능 + SDK 배포 (Week 7 전반)
 - [ ] SDK npm publish v0.1.0 + README + 사용 예제 + CHANGELOG
@@ -99,6 +99,8 @@
 - [ ] 마이그레이션: `alerts`, `webhooks`
 - [ ] P11 알림 설정 — 예산 초과, 에러율, latency 임계치
 - [ ] Resend 이메일 알림 + Slack/Discord 웹훅
+- [ ] **P15 In-app Billing/Upgrade 페이지** — Settings 내 탭 or `/billing` 경로. 현재 구독 상태(`GET /api/v1/billing/subscription`) + 플랜 3종 카드 + "Upgrade" 버튼이 `POST /api/v1/billing/checkout` → Paddle hosted checkout URL로 redirect. 취소/관리는 Paddle customer portal 링크 제공.
+- [ ] Paddle 프로덕션 KYC 신청 — Sandbox end-to-end 플로우(가입→upgrade→webhook→plan 변경) 검증 후 사업자등록증 + 대표 신분증 + 웹사이트 URL + 이용약관 제출. 승인 3~7 영업일.
 - [ ] Paddle 프로덕션 전환 + 사용량 기반 overage (Paddle Billing `priceId` + usage reporting API)
 - [ ] 무료 플랜 리밋 (10K requests/mo) + upgrade CTA
 - [ ] 로그 보존 정책 (Free 7일 / Starter 30일 / Team 90일)
