@@ -1,6 +1,6 @@
 import { createMiddleware } from 'hono/factory'
-import { createHash } from 'crypto'
 import { supabaseAdmin } from '../lib/db.js'
+import { sha256Hex } from '../lib/crypto.js'
 
 export type ApiKeyContext = {
   Variables: {
@@ -17,7 +17,7 @@ export const authApiKey = createMiddleware<ApiKeyContext>(async (c, next) => {
   }
 
   const rawKey = authHeader.slice(7)
-  const keyHash = createHash('sha256').update(rawKey).digest('hex')
+  const keyHash = await sha256Hex(rawKey)
 
   const { data, error } = await supabaseAdmin
     .from('api_keys')

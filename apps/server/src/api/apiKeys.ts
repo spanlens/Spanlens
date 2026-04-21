@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
-import { randomBytes, createHash } from 'crypto'
 import { authJwt, type JwtContext } from '../middleware/authJwt.js'
 import { supabaseAdmin } from '../lib/db.js'
+import { randomHex, sha256Hex } from '../lib/crypto.js'
 
 export const apiKeysRouter = new Hono<JwtContext>()
 
@@ -71,8 +71,8 @@ apiKeysRouter.post('/', async (c) => {
   const belongs = await projectBelongsToOrg(body.projectId, orgId)
   if (!belongs) return c.json({ error: 'Project not found' }, 404)
 
-  const rawKey = `sl_live_${randomBytes(24).toString('hex')}`
-  const keyHash = createHash('sha256').update(rawKey).digest('hex')
+  const rawKey = `sl_live_${randomHex(24)}`
+  const keyHash = await sha256Hex(rawKey)
   const keyPrefix = rawKey.slice(0, 15) // "sl_live_" + 7 hex chars
 
   const { data, error } = await supabaseAdmin

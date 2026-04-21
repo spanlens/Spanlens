@@ -64,6 +64,20 @@ export async function aes256Encrypt(plaintext: string): Promise<string> {
   return bytesToBase64(result)
 }
 
+/** 16진수 문자열로 랜덤 바이트 생성 (Node.js randomBytes(n).toString('hex') 대체) */
+export function randomHex(bytes: number): string {
+  const buf = crypto.getRandomValues(new Uint8Array(bytes))
+  return Array.from(buf, (b) => b.toString(16).padStart(2, '0')).join('')
+}
+
+/** SHA-256 해시를 16진수 문자열로 반환 (Node.js createHash('sha256').update(x).digest('hex') 대체) */
+export async function sha256Hex(text: string): Promise<string> {
+  const data = new TextEncoder().encode(text)
+  const hashBuf = await crypto.subtle.digest('SHA-256', data)
+  const hash = new Uint8Array(hashBuf)
+  return Array.from(hash, (b) => b.toString(16).padStart(2, '0')).join('')
+}
+
 export async function aes256Decrypt(ciphertext: string): Promise<string> {
   try {
     const buf = base64ToBytes(ciphertext)
