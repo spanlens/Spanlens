@@ -15,6 +15,8 @@ import { statsRouter }         from './api/stats.js'
 import { tracesRouter }        from './api/traces.js'
 import { ingestRouter }        from './api/ingest.js'
 import { cronRouter }          from './api/cron.js'
+import { billingRouter }       from './api/billing.js'
+import { paddleWebhookRouter } from './api/paddleWebhook.js'
 
 export const app = new Hono()
 
@@ -47,6 +49,9 @@ app.route('/ingest',          ingestRouter)
 // ── Vercel cron routes (CRON_SECRET bearer auth) ─────────────
 app.route('/cron',            cronRouter)
 
+// ── Paddle webhook (HMAC-signed, public endpoint) ────────────
+app.route('/webhooks',        paddleWebhookRouter)
+
 // ── REST API routes (authJwt middleware) ──────────────────────
 app.route('/api/v1/organizations',  organizationsRouter)
 app.route('/api/v1/projects',       projectsRouter)
@@ -55,5 +60,6 @@ app.route('/api/v1/provider-keys',  providerKeysRouter)
 app.route('/api/v1/requests',       requestsRouter)
 app.route('/api/v1/stats',          statsRouter)
 app.route('/api/v1/traces',         tracesRouter)
+app.route('/api/v1/billing',        billingRouter)
 
 export default app

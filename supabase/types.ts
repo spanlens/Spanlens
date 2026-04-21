@@ -136,6 +136,7 @@ export type Database = {
           id: string
           name: string
           owner_id: string
+          paddle_customer_id: string | null
           plan: string
           updated_at: string
         }
@@ -144,6 +145,7 @@ export type Database = {
           id?: string
           name: string
           owner_id: string
+          paddle_customer_id?: string | null
           plan?: string
           updated_at?: string
         }
@@ -152,6 +154,7 @@ export type Database = {
           id?: string
           name?: string
           owner_id?: string
+          paddle_customer_id?: string | null
           plan?: string
           updated_at?: string
         }
@@ -409,6 +412,62 @@ export type Database = {
           },
         ]
       }
+      subscriptions: {
+        Row: {
+          cancel_at_period_end: boolean
+          created_at: string
+          current_period_end: string | null
+          current_period_start: string | null
+          id: string
+          metadata: Json | null
+          organization_id: string
+          paddle_customer_id: string
+          paddle_price_id: string
+          paddle_subscription_id: string
+          plan: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          cancel_at_period_end?: boolean
+          created_at?: string
+          current_period_end?: string | null
+          current_period_start?: string | null
+          id?: string
+          metadata?: Json | null
+          organization_id: string
+          paddle_customer_id: string
+          paddle_price_id: string
+          paddle_subscription_id: string
+          plan: string
+          status: string
+          updated_at?: string
+        }
+        Update: {
+          cancel_at_period_end?: boolean
+          created_at?: string
+          current_period_end?: string | null
+          current_period_start?: string | null
+          id?: string
+          metadata?: Json | null
+          organization_id?: string
+          paddle_customer_id?: string
+          paddle_price_id?: string
+          paddle_subscription_id?: string
+          plan?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "subscriptions_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       traces: {
         Row: {
           api_key_id: string | null
@@ -556,6 +615,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      aggregate_usage_daily: { Args: { target_date: string }; Returns: number }
       is_org_member: { Args: { org_id: string }; Returns: boolean }
     }
     Enums: {
