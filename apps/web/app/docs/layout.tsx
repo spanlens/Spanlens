@@ -51,7 +51,17 @@ export default function DocsLayout({ children }: { children: React.ReactNode }) 
         </aside>
 
         <main className="flex-1 min-w-0 max-w-3xl">
-          <article className="prose prose-gray max-w-none">{children}</article>
+          <article
+            className="prose prose-gray max-w-none
+              prose-headings:scroll-mt-20
+              prose-pre:bg-gray-950 prose-pre:text-gray-100 prose-pre:shadow-sm prose-pre:border prose-pre:border-gray-800
+              prose-code:before:content-none prose-code:after:content-none
+              prose-code:bg-gray-100 prose-code:text-gray-900 prose-code:font-normal prose-code:text-[0.9em] prose-code:rounded prose-code:px-1 prose-code:py-0.5
+              prose-a:text-blue-600 prose-a:no-underline hover:prose-a:underline
+              prose-table:text-sm"
+          >
+            {children}
+          </article>
         </main>
       </div>
     </div>
