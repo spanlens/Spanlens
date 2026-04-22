@@ -85,6 +85,17 @@ parsers/gemini.ts — Gemini 파서
 SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY
 ENCRYPTION_KEY=<32바이트 base64> ← 잘못 설정 시 Provider Key 복호화 조용히 실패
 PORT=3001 (server), 3000 (web)
+
+## 도메인 & CORS 정책 — IMPORTANT
+프로덕션에서 web이 사용하는 **모든 origin은 `apps/server/src/app.ts`의 CORS allowlist에 반드시 등록**해야 브라우저 fetch가 통과함. 누락 시 "blocked by CORS policy" 에러.
+현재 등록된 origins:
+- `https://spanlens.io` (apex, canonical로 리다이렉트됨)
+- `https://www.spanlens.io` (primary canonical)
+- `https://spanlens-web.vercel.app` (Vercel default)
+- `http://localhost:3000` (local dev)
+- `https://spanlens-*-sunes26s-projects.vercel.app` (preview — 정규식 매치)
+
+새 도메인(예: 별칭 `api.spanlens.io`, 파트너 제공 서브도메인) 추가 시 **CORS allowlist도 동시 수정** → 서버 재배포 필요.
 ## Known Gotchas — AgentOps 특유의 함정
 1. 스트리밍 토큰 0: Anthropic usage는 message_delta에 있음 (OpenAI는 마지막 chunk). parsers/anthropic.ts 확인.
 2. 비용 null: model_prices에 모델 없으면 calculateCost()가 null 반환. 새 모델 추가 시 seeds/model_prices.sql 업데이트.
