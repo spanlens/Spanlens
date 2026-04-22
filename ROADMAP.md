@@ -152,6 +152,51 @@
 - [ ] 알파 유저 10~20명 waitlist 운영 중 (런치 전 사전 접근 권한)
 - [ ] 크리티컬 버그 0건, p95 proxy latency < +50ms (provider 대비)
 
+### 3E. Developer Experience 개선 — 런치 전 필수 (Week 12~13)
+> **트리거**: mind-scanner 첫 통합 경험에서 "5단계 온보딩이 복잡하다"는 피드백. Sentry/PostHog/Datadog 수준의 "1분 온보딩"을 Phase 4 런치 마케팅 핵심 카피로 활용 ("`npx @spanlens/sdk init` 한 번으로 설치").
+
+#### 3E.1. SDK 래퍼 함수 — **Option A** (1일 이내)
+기존 `baseURL` 수동 설정을 단 한 줄로 축약. 가장 빠른 win.
+- [ ] `@spanlens/sdk/openai` 서브경로 export — `createOpenAI()` 헬퍼
+  ```ts
+  // Before (5줄 + 외우기 힘든 URL)
+  const openai = new OpenAI({
+    apiKey: process.env.SPANLENS_API_KEY,
+    baseURL: 'https://spanlens-server.vercel.app/proxy/openai/v1',
+  })
+  // After (1줄)
+  import { createOpenAI } from '@spanlens/sdk/openai'
+  const openai = createOpenAI()
+  ```
+- [ ] `@spanlens/sdk/anthropic` — `createAnthropic()` 동일 패턴
+- [ ] `@spanlens/sdk/gemini` — `createGemini()` 동일 패턴
+- [ ] `openai`, `@anthropic-ai/sdk`, `@google/generative-ai`를 **peerDependencies** 로 등록 (SDK 자체 크기 유지)
+- [ ] 환경변수 누락 시 친절한 에러 메시지 ("Set SPANLENS_API_KEY or pass apiKey option")
+- [ ] `observeOpenAI` 등 기존 tracing API와 호환 (래핑된 클라이언트 + trace 헤더)
+- [ ] SDK v0.2.0 bump → npm publish (CI 자동 실행, `sdk-v0.2.0` 태그 push)
+- [ ] README에 Before/After 예시 + 마이그레이션 노트
+
+#### 3E.2. `npx` Wizard CLI — **Option B** (1일)
+"1 명령어 설치" 달성. PH 런치 시 차별화 포인트. Sentry `sentry-wizard` 패턴.
+- [ ] 새 패키지 `packages/cli/` (`create-spanlens` + `@spanlens/sdk init` 양쪽 배포)
+- [ ] Interactive 흐름:
+  1. 프로바이더 선택 (체크박스)
+  2. `https://spanlens.io/auth/device` 브라우저 OAuth-style 로그인 (device-code flow)
+  3. 프로젝트 이름 입력 → Spanlens API로 자동 프로젝트 + API key 생성
+  4. Provider key 입력 → 암호화해서 Spanlens에 저장 (`POST /api/v1/provider-keys`)
+  5. `.env.local` / `.env.example` 에 `SPANLENS_API_KEY=...` 자동 추가
+  6. AST 파싱(`ts-morph`)으로 `new OpenAI({...})` 찾아서 `createOpenAI()`로 자동 교체 (사용자 확인 후)
+  7. 성공 화면 + Vercel/Railway 환경변수 추가 안내 + 대시보드 링크
+- [ ] 새 서버 엔드포인트 `POST /api/v1/onboarding/provision` — 원샷 프로젝트+API key 발급 (device token 인증)
+- [ ] Next.js / Vite / Express / Fastify 프레임워크 자동 감지 (`package.json` 체크)
+- [ ] `--dry-run` 플래그 (실제 파일 수정 없이 미리보기)
+- [ ] E2E 테스트 — 빈 Next.js 앱에 wizard 돌렸을 때 정상 작동하는지
+
+#### 3E.3. 완료 기준
+- [ ] 새 유저가 **1분 내** (명령어 입력 ~ 첫 요청 Spanlens에 기록까지) 온보딩 완료
+- [ ] 기존 수동 baseURL 통합 대비 오류 제보 **0건**
+- [ ] Helicone / Langfuse 대비 경쟁 우위 명문화 — "npx 원샷 vs 수동 설정 2배 빠름"
+
 ---
 
 ## Phase 4 — Public Launch (Week 13~14, ~2026.08.03)
