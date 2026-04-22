@@ -286,7 +286,7 @@ Product Hunt + HN + 커뮤니티 동시 런치. Phase 1~3에서 쌓은 차별화
 - [x] `db.ts` 에러 메시지 개선 — 어느 env var 빠졌는지 구체적으로 출력
 - [x] `docker-compose.yml` → `docker-compose.dev.yml` 이름 변경 (dev 전용 명시)
 - [x] `/docs/self-host` 재작성 — "plain Postgres 지원" 허위 주장 제거, "early access" 배너, Supabase 필수 + CLI 마이그레이션 스텝 + 각 gap을 inline 경고로 명시
-- [ ] **GHCR 패키지를 public으로 전환** — 현재 private이라 `docker pull` 시 unauthorized. GitHub Settings에서 수동 조치 필요 (이 checklist에선 유일한 수동 항목)
+- [x] **GHCR 패키지를 public으로 전환** — 완료 (2026-04-22). 공식 이미지 `docker pull ghcr.io/sunes26/spanlens-server:latest` → 부팅 + `/health` 200 검증됨
 - [ ] 마이그레이션 번들 — `spanlens-migrate` Docker 이미지 또는 entrypoint 스크립트로 자동 적용 (현재는 유저가 repo clone + supabase CLI 설치 + `db push` 수동)
 - [ ] `spanlens-web` Docker 이미지 publish — 현재 workflow 없음. web 대시보드도 self-host 가능하게 별도 이미지 빌드 필요 (docs 주장과 일치시키기)
 - [ ] Plain Postgres 지원 — `@supabase/supabase-js` 직접 의존 제거, 얇은 abstraction layer 도입 (리팩토링 큼, 런칭 후 이관)

@@ -20,10 +20,11 @@ export default function SelfHostDocs() {
       <div className="rounded-lg border-2 border-amber-400 bg-amber-50 p-4 my-6 not-prose">
         <p className="text-sm font-semibold text-amber-900 mb-1">⚠️ Early access</p>
         <p className="text-sm text-amber-900">
-          Self-hosting works end-to-end but the on-ramp is still rough. Specifically: Supabase is
-          required (plain Postgres isn&apos;t supported yet), migrations aren&apos;t bundled in
-          the image, and the separate dashboard image isn&apos;t published. Walk through the
-          steps below; if you hit friction, file a GitHub issue and we&apos;ll smooth it.
+          The proxy server image is public and boots end-to-end (verified 2026-04-22). Rough
+          edges: Supabase is required (plain Postgres isn&apos;t supported yet), migrations
+          aren&apos;t bundled in the image, and a separate dashboard image isn&apos;t published
+          yet. Walk through the steps below; if you hit friction, file a GitHub issue and
+          we&apos;ll smooth it.
         </p>
       </div>
 
@@ -117,10 +118,10 @@ supabase db push`}</CodeBlock>
         Health check: <code>curl http://localhost:3001/health</code> should return <code>{`{"status":"ok"}`}</code>.
       </p>
       <p className="text-sm text-muted-foreground">
-        ⚠️ <em>Known gap:</em> the GHCR package may currently be private — if the pull fails with
-        an &ldquo;unauthorized&rdquo; error, build locally instead:{' '}
+        Verified 2026-04-22: the image pulls without auth and boots against fake env vars past
+        the DB init check. If you prefer building from source,{' '}
         <code>docker build -f apps/server/Dockerfile -t spanlens-server .</code> from the repo
-        root. We&apos;re in the process of flipping the package public.
+        root works too.
       </p>
 
       <h3>4. Point your application at the self-hosted proxy</h3>
@@ -227,10 +228,6 @@ cd Spanlens && git pull && supabase db push`}</CodeBlock>
         <li>
           <strong>No <code>spanlens-web</code> Docker image yet.</strong> Use the hosted
           dashboard or run from source.
-        </li>
-        <li>
-          <strong>GHCR package may currently be private.</strong> Use local Docker build as a
-          workaround until we flip visibility.
         </li>
         <li>
           <strong>Operational tooling is minimal.</strong> No built-in monitoring, no migration
