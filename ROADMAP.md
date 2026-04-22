@@ -276,10 +276,21 @@ Product Hunt + HN + 커뮤니티 동시 런치. Phase 1~3에서 쌓은 차별화
 - [ ] 각 대시보드 페이지에서 "Learn more →" 링크를 해당 docs로 연결
 
 **기능 완성도 (audit로 발견된 gap)**
-- [ ] Self-host Docker **실전 검증** — 로컬에서 `docker run` 실행, DB 마이그레이션 흐름 테스트, `/docs/self-host` 가이드 실제 재현 가능성 검증
+- [x] Prompts 기능의 "요청 ↔ 버전 연결" 경로 SDK에서 노출 — **완료 (sdk v0.2.2, 2026-04-22)**: `withPromptVersion()` 헬퍼 + `observeOpenAI({ promptVersion })` 옵션 + 서버측 `X-Spanlens-Prompt-Version` 헤더 파싱
+- [~] Self-host Docker **실전 검증** — **1차 완료 (2026-04-22)**: 로컬 빌드 + 가짜 env 부팅 확인, 7개 gap 발견. 세부 fixup 아래 Self-Host Remediation Checklist 참고
 - [ ] Overage 경고 이메일 실제 구현 (현재는 Paddle 메터링만, 유저 경고 없음 — 80%/100% 임계치 도달 시 Resend 이메일 + 대시보드 배너)
 - [ ] Paddle `adjust` API 호출의 `credit` vs `debit` 액션 검증 (과금 방향 확인)
-- [ ] Prompts 기능의 "요청 ↔ 버전 연결" 경로 SDK에서 노출 (현재 DB에는 `prompt_version_id` 필드 있으나 유저가 어떻게 태깅하는지 문서/SDK 없음)
+
+**Self-Host Remediation (1차 검증에서 발견)**
+> 2026-04-22 로컬 `docker build` + `docker run`으로 검증. Gap 7개 중 일부 즉시 수정, 일부 백로그.
+- [x] `db.ts` 에러 메시지 개선 — 어느 env var 빠졌는지 구체적으로 출력
+- [x] `docker-compose.yml` → `docker-compose.dev.yml` 이름 변경 (dev 전용 명시)
+- [x] `/docs/self-host` 재작성 — "plain Postgres 지원" 허위 주장 제거, "early access" 배너, Supabase 필수 + CLI 마이그레이션 스텝 + 각 gap을 inline 경고로 명시
+- [ ] **GHCR 패키지를 public으로 전환** — 현재 private이라 `docker pull` 시 unauthorized. GitHub Settings에서 수동 조치 필요 (이 checklist에선 유일한 수동 항목)
+- [ ] 마이그레이션 번들 — `spanlens-migrate` Docker 이미지 또는 entrypoint 스크립트로 자동 적용 (현재는 유저가 repo clone + supabase CLI 설치 + `db push` 수동)
+- [ ] `spanlens-web` Docker 이미지 publish — 현재 workflow 없음. web 대시보드도 self-host 가능하게 별도 이미지 빌드 필요 (docs 주장과 일치시키기)
+- [ ] Plain Postgres 지원 — `@supabase/supabase-js` 직접 의존 제거, 얇은 abstraction layer 도입 (리팩토링 큼, 런칭 후 이관)
+- [ ] Self-host 전용 E2E 테스트 — CI에서 `docker run` + Supabase free tier → 실제 `/health` + 간단한 auth 플로우 매주 자동 검증
 
 **데모 & 마케팅 자산**
 - [ ] Demo 앱 — `create-spanlens-demo` npx 또는 `demo.spanlens.io` 라이브

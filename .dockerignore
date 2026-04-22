@@ -51,7 +51,7 @@ apps/web
 
 # Local dev-only Dockerfile (to avoid rebuild thrash)
 apps/server/Dockerfile.dev
-docker-compose.yml
+docker-compose.dev.yml
 
 # Misc
 **/*.md
