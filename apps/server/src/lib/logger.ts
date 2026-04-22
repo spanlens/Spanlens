@@ -18,6 +18,7 @@ export interface RequestLogData {
   errorMessage: string | null
   traceId: string | null
   spanId: string | null
+  promptVersionId?: string | null
 }
 
 /**
@@ -77,6 +78,7 @@ export async function logRequestAsync(data: RequestLogData): Promise<void> {
     error_message: data.errorMessage,
     trace_id: data.traceId,
     span_id: data.spanId,
+    prompt_version_id: data.promptVersionId ?? null,
     flags,
   })
   if (error) {

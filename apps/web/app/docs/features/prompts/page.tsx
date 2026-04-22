@@ -164,15 +164,71 @@ export default function PromptsDocs() {
         </tbody>
       </table>
 
+      <h2>Tagging requests with a prompt version</h2>
+      <p>
+        For the A/B table to fill up, each LLM request needs to declare which version it
+        used. The SDK ships two ways to do that — pick whichever fits your call site.
+      </p>
+
+      <h3>Option 1 — <code>withPromptVersion()</code> per call</h3>
+      <CodeBlock language="ts">{`import { createOpenAI, withPromptVersion } from '@spanlens/sdk/openai'
+
+const openai = createOpenAI()
+
+const res = await openai.chat.completions.create(
+  {
+    model: 'gpt-4o-mini',
+    messages: [
+      { role: 'system', content: promptV3Content },
+      { role: 'user', content: userMessage },
+    ],
+  },
+  withPromptVersion('chatbot-system@3'),
+)`}</CodeBlock>
+      <p>Same helper exists on <code>@spanlens/sdk/anthropic</code> for Claude calls.</p>
+
+      <h3>Option 2 — <code>observeOpenAI()</code> with promptVersion option</h3>
+      <p>If you&apos;re already using agent tracing, just add one option:</p>
+      <CodeBlock language="ts">{`import { observeOpenAI } from '@spanlens/sdk'
+
+const res = await observeOpenAI(
+  trace,
+  { name: 'answer', promptVersion: 'chatbot-system@3' },
+  (headers) => openai.chat.completions.create({ /* ... */ }, { headers }),
+)`}</CodeBlock>
+
+      <h3>Accepted id formats</h3>
+      <table>
+        <thead>
+          <tr><th>Format</th><th>Example</th><th>Notes</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>name@version</code></td>
+            <td><code>chatbot-system@3</code></td>
+            <td>Most common; explicit version pin</td>
+          </tr>
+          <tr>
+            <td><code>name@latest</code></td>
+            <td><code>chatbot-system@latest</code></td>
+            <td>Auto-resolves to the highest version server-side on every call</td>
+          </tr>
+          <tr>
+            <td>Raw UUID</td>
+            <td><code>ae1c3c1e-99eb-...</code></td>
+            <td>Use the <code>id</code> returned from POST <code>/api/v1/prompts</code></td>
+          </tr>
+        </tbody>
+      </table>
+      <p>
+        Server-side the header value is looked up in <code>prompt_versions</code> scoped to your
+        organization. Invalid / unknown values silently resolve to null (the request still succeeds,
+        it just isn&apos;t linked to a version).
+      </p>
+
       <h2>Limitations</h2>
       <p>Honest view of what the feature does <em>not</em> do yet:</p>
       <ul>
-        <li>
-          <strong>Request ↔ version linkage is not yet exposed in the SDK.</strong> The database has
-          a <code>prompt_version_id</code> column on <code>requests</code>, but the{' '}
-          <code>@spanlens/sdk</code> helpers don&apos;t currently provide a one-line way to tag a
-          request with a prompt version. Tracking this as a launch blocker.
-        </li>
         <li>
           <strong>No editor affordances.</strong> The create/edit form is a plain textarea —
           no diff view, no syntax highlighting, no variable autocomplete. Good enough for now;

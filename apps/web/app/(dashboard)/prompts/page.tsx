@@ -152,9 +152,17 @@ export default function PromptsPage() {
           ) : compareQuery.isLoading ? (
             <Skeleton className="h-40 w-full" />
           ) : (compareQuery.data ?? []).length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              No request data for this prompt in the last 30 days.
-            </p>
+            <div className="rounded-lg border border-dashed p-6 text-sm text-muted-foreground space-y-2">
+              <p>No request data for this prompt in the last 30 days.</p>
+              <p className="text-xs">
+                Tag your LLM calls with{' '}
+                <code className="bg-gray-100 px-1 rounded">withPromptVersion(&apos;{selected}@latest&apos;)</code>{' '}
+                so they show up here.{' '}
+                <a href="/docs/features/prompts" className="text-blue-600 underline">
+                  How →
+                </a>
+              </p>
+            </div>
           ) : (
             <div className="rounded-lg border bg-white overflow-hidden">
               <table className="w-full text-sm">

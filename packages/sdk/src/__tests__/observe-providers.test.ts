@@ -34,6 +34,85 @@ describe('observeOpenAI / observeAnthropic / observeGemini', () => {
     expect(receivedHeaders!['x-span-id']).toMatch(/^[0-9a-f-]{36}$/)
   })
 
+  it('observeOpenAI forwards promptVersion option as x-spanlens-prompt-version header', async () => {
+    const client = new SpanlensClient({ apiKey: 'k', baseUrl: 'http://x' })
+    const trace = client.startTrace({ name: 't' })
+
+    let receivedHeaders: Record<string, string> | null = null
+    await observeOpenAI(
+      trace,
+      { name: 'call-v3', promptVersion: 'chatbot-system@3' },
+      async (headers) => {
+        receivedHeaders = headers
+        return {
+          model: 'gpt-4o-mini',
+          usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
+        }
+      },
+    )
+
+    expect(receivedHeaders!['x-spanlens-prompt-version']).toBe('chatbot-system@3')
+    // traceparent-style headers should still be present
+    expect(receivedHeaders!['x-trace-id']).toBe(trace.traceId)
+  })
+
+  it('observeAnthropic forwards promptVersion option', async () => {
+    const client = new SpanlensClient({ apiKey: 'k', baseUrl: 'http://x' })
+    const trace = client.startTrace({ name: 't' })
+
+    let receivedHeaders: Record<string, string> | null = null
+    await observeAnthropic(
+      trace,
+      { name: 'call', promptVersion: 'greeter@latest' },
+      async (headers) => {
+        receivedHeaders = headers
+        return {
+          model: 'claude-3-5-sonnet-20241022',
+          usage: { input_tokens: 5, output_tokens: 7 },
+        }
+      },
+    )
+
+    expect(receivedHeaders!['x-spanlens-prompt-version']).toBe('greeter@latest')
+  })
+
+  it('observeGemini forwards promptVersion option', async () => {
+    const client = new SpanlensClient({ apiKey: 'k', baseUrl: 'http://x' })
+    const trace = client.startTrace({ name: 't' })
+
+    let receivedHeaders: Record<string, string> | null = null
+    await observeGemini(
+      trace,
+      { name: 'call', promptVersion: 'uuid-like-id-12345' },
+      async (headers) => {
+        receivedHeaders = headers
+        return {
+          response: {
+            usageMetadata: { promptTokenCount: 3, candidatesTokenCount: 4, totalTokenCount: 7 },
+          },
+        }
+      },
+    )
+
+    expect(receivedHeaders!['x-spanlens-prompt-version']).toBe('uuid-like-id-12345')
+  })
+
+  it('omits prompt version header when option is not provided', async () => {
+    const client = new SpanlensClient({ apiKey: 'k', baseUrl: 'http://x' })
+    const trace = client.startTrace({ name: 't' })
+
+    let receivedHeaders: Record<string, string> | null = null
+    await observeOpenAI(trace, 'call', async (headers) => {
+      receivedHeaders = headers
+      return {
+        model: 'gpt-4o',
+        usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+      }
+    })
+
+    expect(receivedHeaders!['x-spanlens-prompt-version']).toBeUndefined()
+  })
+
   it('observeOpenAI auto-parses usage into span.end', async () => {
     const client = new SpanlensClient({ apiKey: 'k', baseUrl: 'http://x' })
     const trace = client.startTrace({ name: 't' })

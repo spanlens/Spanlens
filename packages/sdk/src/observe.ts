@@ -54,27 +54,45 @@ export async function observe<T>(
 
 type Usage = 'openai' | 'anthropic' | 'gemini'
 
-function spanOptionsFromArg(
-  nameOrOptions: string | Omit<SpanOptions, 'spanType'>,
-): SpanOptions {
+const PROMPT_VERSION_HEADER = 'x-spanlens-prompt-version'
+
+/** Provider-observe options — narrower than SpanOptions; adds optional promptVersion. */
+export type ProviderObserveOptions = Omit<SpanOptions, 'spanType'> & {
+  /** Tag the logged request with a Spanlens prompt version (name@version, name@latest, or UUID). */
+  promptVersion?: string
+}
+
+function splitArgs(
+  nameOrOptions: string | ProviderObserveOptions,
+): { spanOptions: SpanOptions; promptVersion: string | undefined } {
   if (typeof nameOrOptions === 'string') {
-    return { name: nameOrOptions, spanType: 'llm' }
+    return {
+      spanOptions: { name: nameOrOptions, spanType: 'llm' },
+      promptVersion: undefined,
+    }
   }
-  return { ...nameOrOptions, spanType: 'llm' }
+  const { promptVersion, ...rest } = nameOrOptions
+  return {
+    spanOptions: { ...rest, spanType: 'llm' },
+    promptVersion,
+  }
 }
 
 async function observeProvider<T>(
   provider: Usage,
   parent: TraceHandle | SpanHandle,
-  nameOrOptions: string | Omit<SpanOptions, 'spanType'>,
+  nameOrOptions: string | ProviderObserveOptions,
   fn: (headers: Record<string, string>) => Promise<T>,
 ): Promise<T> {
+  const { spanOptions, promptVersion } = splitArgs(nameOrOptions)
+
   const span =
     'span' in parent && typeof parent.span === 'function'
-      ? parent.span(spanOptionsFromArg(nameOrOptions))
-      : (parent as SpanHandle).child(spanOptionsFromArg(nameOrOptions))
+      ? parent.span(spanOptions)
+      : (parent as SpanHandle).child(spanOptions)
 
-  const headers = span.traceHeaders()
+  const headers: Record<string, string> = { ...span.traceHeaders() }
+  if (promptVersion) headers[PROMPT_VERSION_HEADER] = promptVersion
 
   try {
     const result = await fn(headers)
@@ -108,7 +126,7 @@ async function observeProvider<T>(
  */
 export function observeOpenAI<T>(
   parent: TraceHandle | SpanHandle,
-  nameOrOptions: string | Omit<SpanOptions, 'spanType'>,
+  nameOrOptions: string | ProviderObserveOptions,
   fn: (headers: Record<string, string>) => Promise<T>,
 ): Promise<T> {
   return observeProvider('openai', parent, nameOrOptions, fn)
@@ -117,7 +135,7 @@ export function observeOpenAI<T>(
 /** Anthropic variant — parses `input_tokens` / `output_tokens` into the span. */
 export function observeAnthropic<T>(
   parent: TraceHandle | SpanHandle,
-  nameOrOptions: string | Omit<SpanOptions, 'spanType'>,
+  nameOrOptions: string | ProviderObserveOptions,
   fn: (headers: Record<string, string>) => Promise<T>,
 ): Promise<T> {
   return observeProvider('anthropic', parent, nameOrOptions, fn)
@@ -126,7 +144,7 @@ export function observeAnthropic<T>(
 /** Gemini variant — parses `usageMetadata` into the span. */
 export function observeGemini<T>(
   parent: TraceHandle | SpanHandle,
-  nameOrOptions: string | Omit<SpanOptions, 'spanType'>,
+  nameOrOptions: string | ProviderObserveOptions,
   fn: (headers: Record<string, string>) => Promise<T>,
 ): Promise<T> {
   return observeProvider('gemini', parent, nameOrOptions, fn)

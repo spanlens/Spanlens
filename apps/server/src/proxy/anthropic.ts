@@ -4,6 +4,7 @@ import { authApiKey, type ApiKeyContext } from '../middleware/authApiKey.js'
 import { enforceQuota } from '../middleware/quota.js'
 import { calculateCost } from '../lib/cost.js'
 import { logRequestAsync } from '../lib/logger.js'
+import { resolvePromptVersion } from '../lib/resolve-prompt-version.js'
 import { fireAndForget } from '../lib/wait-until.js'
 import { parseAnthropicResponse } from '../parsers/anthropic.js'
 import { getDecryptedProviderKey, buildUpstreamHeaders, buildDownstreamHeaders } from './utils.js'
@@ -59,6 +60,10 @@ anthropicProxy.all('/*', async (c) => {
   const latencyMs = Date.now() - startMs
 
   const model = (reqBodyJson?.model as string | undefined) ?? ''
+  const promptVersionId = await resolvePromptVersion(
+    organizationId,
+    c.req.header('x-spanlens-prompt-version') ?? null,
+  )
   const logBase = {
     organizationId, projectId, apiKeyId,
     provider: 'anthropic',
@@ -68,6 +73,7 @@ anthropicProxy.all('/*', async (c) => {
     errorMessage: null,
     traceId: c.req.header('x-trace-id') ?? null,
     spanId: c.req.header('x-span-id') ?? null,
+    promptVersionId,
   }
 
   // ── Streaming path (Hono stream helper — required for Vercel Node.js runtime) ─

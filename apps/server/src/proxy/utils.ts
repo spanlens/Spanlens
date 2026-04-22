@@ -32,15 +32,20 @@ const STRIP_HEADERS = new Set([
   'proxy-connection',
 ])
 
+// Any header starting with one of these prefixes is stripped — these are
+// Spanlens-internal metadata and must never reach the upstream provider.
+const STRIP_PREFIXES = ['x-spanlens-']
+
 export function buildUpstreamHeaders(
   incoming: Headers,
   overrides: Record<string, string>,
 ): Headers {
   const out = new Headers()
   incoming.forEach((value, key) => {
-    if (!STRIP_HEADERS.has(key.toLowerCase())) {
-      out.set(key, value)
-    }
+    const lower = key.toLowerCase()
+    if (STRIP_HEADERS.has(lower)) return
+    if (STRIP_PREFIXES.some((p) => lower.startsWith(p))) return
+    out.set(key, value)
   })
   for (const [k, v] of Object.entries(overrides)) {
     out.set(k, v)

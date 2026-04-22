@@ -1,5 +1,18 @@
 # @spanlens/sdk changelog
 
+## 0.2.2
+
+Prompt-version request tagging — completes the round-trip for the Prompts feature.
+
+### Added
+- `withPromptVersion(id)` on `@spanlens/sdk/openai` and `@spanlens/sdk/anthropic`. Returns a `{ headers }` object that the OpenAI/Anthropic SDKs accept as the second argument to any call. Tags the logged request with the specified prompt version so it links into the A/B comparison on `/prompts`.
+- `promptVersion` option on `observeOpenAI`, `observeAnthropic`, `observeGemini`. Same effect; convenient when you're already using `observe*` for agent tracing.
+- Accepted id formats: `"<name>@<version>"` (e.g. `"chatbot-system@3"`), `"<name>@latest"` (auto-resolves server-side), or a raw `prompt_versions.id` UUID.
+- `PROMPT_VERSION_HEADER` constant exported from both integration modules for callers who want to set the header directly.
+
+### Backend requirement
+Needs `spanlens-server` ≥ commit landing this feature. Older servers ignore the header silently (request still works, just isn't linked to a version).
+
 ## 0.2.1
 
 Metadata-only release — expanded npm keywords for discoverability. No functional changes.

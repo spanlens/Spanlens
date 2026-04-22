@@ -26,6 +26,8 @@ import type { ClientOptions } from 'openai'
 export const DEFAULT_SPANLENS_OPENAI_PROXY =
   'https://spanlens-server.vercel.app/proxy/openai/v1'
 
+export const PROMPT_VERSION_HEADER = 'x-spanlens-prompt-version'
+
 /**
  * Build an OpenAI client whose requests flow through the Spanlens proxy.
  *
@@ -58,4 +60,26 @@ function readEnv(name: string): string | undefined {
     return process.env[name]
   }
   return undefined
+}
+
+/**
+ * Tag a single OpenAI request with a Spanlens prompt version — links the
+ * request row to a `prompt_versions` entry so it shows up in the A/B
+ * comparison on /prompts.
+ *
+ * @param id Either a raw `prompt_versions.id` UUID, `"<name>@<version>"`
+ *           (e.g. `"chatbot-system@3"`), or `"<name>@latest"` to always
+ *           resolve to the latest version server-side.
+ *
+ * @example
+ *   import { createOpenAI, withPromptVersion } from '@spanlens/sdk/openai'
+ *   const openai = createOpenAI()
+ *
+ *   const res = await openai.chat.completions.create(
+ *     { model: 'gpt-4o-mini', messages: [...] },
+ *     withPromptVersion('chatbot-system@3'),
+ *   )
+ */
+export function withPromptVersion(id: string): { headers: Record<string, string> } {
+  return { headers: { [PROMPT_VERSION_HEADER]: id } }
 }
