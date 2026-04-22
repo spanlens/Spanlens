@@ -1,3 +1,5 @@
+import { CodeBlock } from '../_components/code-block'
+
 export const metadata = {
   title: '@spanlens/sdk · Spanlens Docs',
   description: 'TypeScript SDK reference — createOpenAI, createAnthropic, createGemini, observe, span helpers, and trace API.',
@@ -14,9 +16,9 @@ export default function SdkReference() {
       </p>
 
       <h2>Install</h2>
-      <pre><code>{`npm install @spanlens/sdk
+      <CodeBlock language="bash">{`npm install @spanlens/sdk
 # or
-pnpm add @spanlens/sdk`}</code></pre>
+pnpm add @spanlens/sdk`}</CodeBlock>
 
       <p>
         Peer dependencies are installed on demand. <code>createOpenAI()</code> requires <code>openai</code>,{' '}
@@ -25,7 +27,7 @@ pnpm add @spanlens/sdk`}</code></pre>
       </p>
 
       <h2 id="create-openai">createOpenAI()</h2>
-      <pre><code>{`import { createOpenAI } from '@spanlens/sdk/openai'
+      <CodeBlock language="ts">{`import { createOpenAI } from '@spanlens/sdk/openai'
 
 const openai = createOpenAI({
   apiKey: process.env.SPANLENS_API_KEY,   // optional — defaults to env
@@ -35,7 +37,7 @@ const openai = createOpenAI({
 const res = await openai.chat.completions.create({
   model: 'gpt-4o-mini',
   messages: [{ role: 'user', content: 'Hi' }],
-})`}</code></pre>
+})`}</CodeBlock>
 
       <p>
         Returns an <code>OpenAI</code> instance (the real one from the <code>openai</code> package) with{' '}
@@ -77,7 +79,7 @@ const res = await openai.chat.completions.create({
       </table>
 
       <h2 id="create-anthropic">createAnthropic()</h2>
-      <pre><code>{`import { createAnthropic } from '@spanlens/sdk/anthropic'
+      <CodeBlock language="ts">{`import { createAnthropic } from '@spanlens/sdk/anthropic'
 
 const anthropic = createAnthropic()
 
@@ -85,22 +87,22 @@ const msg = await anthropic.messages.create({
   model: 'claude-3-5-sonnet-20241022',
   max_tokens: 1024,
   messages: [{ role: 'user', content: 'Hi' }],
-})`}</code></pre>
+})`}</CodeBlock>
 
       <h2 id="create-gemini">createGemini()</h2>
-      <pre><code>{`import { createGemini } from '@spanlens/sdk/gemini'
+      <CodeBlock language="ts">{`import { createGemini } from '@spanlens/sdk/gemini'
 
 const genAI = createGemini()
 const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' })
 
-const result = await model.generateContent('Hi')`}</code></pre>
+const result = await model.generateContent('Hi')`}</CodeBlock>
 
       <h2 id="observe">observe() — agent tracing</h2>
       <p>
         Wrap any async function to turn it into a span in an agent trace. Nested <code>observe()</code>{' '}
         calls automatically become child spans.
       </p>
-      <pre><code>{`import { observe } from '@spanlens/sdk'
+      <CodeBlock language="ts">{`import { observe } from '@spanlens/sdk'
 
 const answer = await observe('answer-question', async () => {
   const docs = await observe('retrieve', async () => {
@@ -112,7 +114,7 @@ const answer = await observe('answer-question', async () => {
   })
 
   return response.choices[0].message.content
-}, { trace: 'user-session-abc123' })`}</code></pre>
+}, { trace: 'user-session-abc123' })`}</CodeBlock>
 
       <p>
         Each <code>observe()</code> call creates a row in the <code>spans</code> table with timing,
@@ -121,28 +123,28 @@ const answer = await observe('answer-question', async () => {
       </p>
 
       <h3>Options</h3>
-      <pre><code>{`observe(name, fn, {
+      <CodeBlock language="ts">{`observe(name, fn, {
   trace?: string          // trace id — reuse across calls to group them
   input?: unknown         // serialized into span.input
   metadata?: object       // free-form tags
-})`}</code></pre>
+})`}</CodeBlock>
 
       <h2 id="observe-openai">observeOpenAI()</h2>
       <p>
         Shorthand to wrap a single OpenAI call as a span without manually calling <code>observe()</code>.
       </p>
-      <pre><code>{`import { observeOpenAI } from '@spanlens/sdk/openai'
+      <CodeBlock language="ts">{`import { observeOpenAI } from '@spanlens/sdk/openai'
 
 const res = await observeOpenAI(openai, {
   model: 'gpt-4o-mini',
   messages: [{ role: 'user', content: 'Hi' }],
-}, { name: 'greeting', trace: 'session-1' })`}</code></pre>
+}, { name: 'greeting', trace: 'session-1' })`}</CodeBlock>
 
       <h2 id="span-handle">Low-level: SpanHandle / TraceHandle</h2>
       <p>
         For complex flows (parallel spans, manual timing), use the handle-based API.
       </p>
-      <pre><code>{`import { SpanlensClient } from '@spanlens/sdk'
+      <CodeBlock language="ts">{`import { SpanlensClient } from '@spanlens/sdk'
 
 const client = new SpanlensClient()
 const trace = client.startTrace('multi-agent-workflow')
@@ -155,7 +157,7 @@ const [resA, resB] = await Promise.all([
   runAgentB().then((r) => { spanB.end({ output: r }); return r }),
 ])
 
-await trace.end()`}</code></pre>
+await trace.end()`}</CodeBlock>
 
       <h2>TypeScript support</h2>
       <p>

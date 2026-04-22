@@ -1,3 +1,5 @@
+import { CodeBlock } from '../_components/code-block'
+
 export const metadata = {
   title: 'Quick start · Spanlens Docs',
   description: 'Get up and running with Spanlens in 30 seconds using the CLI wizard, or 2 lines of code manually.',
@@ -24,7 +26,7 @@ export default function QuickStart() {
       <p>
         In your Next.js project root:
       </p>
-      <pre><code>{`npx @spanlens/cli init`}</code></pre>
+      <CodeBlock language="bash">{`npx @spanlens/cli init`}</CodeBlock>
 
       <p>The wizard will:</p>
       <ol>
@@ -48,31 +50,31 @@ export default function QuickStart() {
       <h2 id="manual">Path B — Manual (any TypeScript / JavaScript project)</h2>
 
       <h3>Step 1 — Install the SDK</h3>
-      <pre><code>{`npm install @spanlens/sdk
+      <CodeBlock language="bash">{`npm install @spanlens/sdk
 # or
-pnpm add @spanlens/sdk`}</code></pre>
+pnpm add @spanlens/sdk`}</CodeBlock>
 
       <h3>Step 2 — Add environment variable</h3>
       <p>
         Copy your Spanlens API key from <a href="/projects">the dashboard</a> and add it to your env file:
       </p>
-      <pre><code>{`# .env.local
-SPANLENS_API_KEY=sl_live_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx`}</code></pre>
+      <CodeBlock language="env">{`# .env.local
+SPANLENS_API_KEY=sl_live_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx`}</CodeBlock>
 
       <h3>Step 3 — Use the pre-configured client helpers</h3>
 
       <h4>OpenAI</h4>
-      <pre><code>{`import { createOpenAI } from '@spanlens/sdk/openai'
+      <CodeBlock language="ts">{`import { createOpenAI } from '@spanlens/sdk/openai'
 
 const openai = createOpenAI()
 
 const res = await openai.chat.completions.create({
   model: 'gpt-4o-mini',
   messages: [{ role: 'user', content: 'Hi' }],
-})`}</code></pre>
+})`}</CodeBlock>
 
       <h4>Anthropic</h4>
-      <pre><code>{`import { createAnthropic } from '@spanlens/sdk/anthropic'
+      <CodeBlock language="ts">{`import { createAnthropic } from '@spanlens/sdk/anthropic'
 
 const anthropic = createAnthropic()
 
@@ -80,14 +82,14 @@ const msg = await anthropic.messages.create({
   model: 'claude-3-5-sonnet-20241022',
   max_tokens: 1024,
   messages: [{ role: 'user', content: 'Hi' }],
-})`}</code></pre>
+})`}</CodeBlock>
 
       <h4>Gemini</h4>
-      <pre><code>{`import { createGemini } from '@spanlens/sdk/gemini'
+      <CodeBlock language="ts">{`import { createGemini } from '@spanlens/sdk/gemini'
 
 const genAI = createGemini()
 const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' })
-const result = await model.generateContent('Hi')`}</code></pre>
+const result = await model.generateContent('Hi')`}</CodeBlock>
 
       <h2 id="verify">Verify it works</h2>
       <p>

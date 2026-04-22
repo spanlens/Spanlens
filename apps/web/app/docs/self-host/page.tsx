@@ -1,3 +1,5 @@
+import { CodeBlock } from '../_components/code-block'
+
 export const metadata = {
   title: 'Self-hosting · Spanlens Docs',
   description: 'Run Spanlens on your own infra with Docker. Your data stays yours.',
@@ -21,12 +23,12 @@ export default function SelfHostDocs() {
       </ul>
 
       <h2 id="quickstart">Quick start</h2>
-      <pre><code>{`docker run -d --name spanlens \\
+      <CodeBlock language="bash">{`docker run -d --name spanlens \\
   -p 3001:3001 \\
   -e SUPABASE_URL=https://xxxx.supabase.co \\
   -e SUPABASE_SERVICE_ROLE_KEY=eyJ... \\
   -e ENCRYPTION_KEY=$(openssl rand -base64 32) \\
-  ghcr.io/sunes26/spanlens-server:latest`}</code></pre>
+  ghcr.io/sunes26/spanlens-server:latest`}</CodeBlock>
 
       <p>
         That&apos;s it — the proxy is now live at <code>http://localhost:3001/proxy/*</code>.
@@ -91,7 +93,7 @@ export default function SelfHostDocs() {
       </table>
 
       <h2 id="docker-compose">Docker Compose</h2>
-      <pre><code>{`# docker-compose.yml
+      <CodeBlock language="yaml">{`# docker-compose.yml
 services:
   spanlens:
     image: ghcr.io/sunes26/spanlens-server:latest
@@ -107,16 +109,16 @@ services:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:3001/health"]
       interval: 30s
       timeout: 5s
-      retries: 3`}</code></pre>
+      retries: 3`}</CodeBlock>
 
       <h2 id="pointing-sdk">Pointing clients at your self-hosted instance</h2>
 
       <h3>With <code>@spanlens/sdk</code></h3>
-      <pre><code>{`import { createOpenAI } from '@spanlens/sdk/openai'
+      <CodeBlock language="ts">{`import { createOpenAI } from '@spanlens/sdk/openai'
 
 const openai = createOpenAI({
   baseURL: 'https://spanlens.yourcompany.com/proxy/openai/v1',
-})`}</code></pre>
+})`}</CodeBlock>
 
       <h3>With any other client</h3>
       <p>
@@ -125,11 +127,11 @@ const openai = createOpenAI({
       </p>
 
       <h2 id="upgrading">Upgrading</h2>
-      <pre><code>{`docker pull ghcr.io/sunes26/spanlens-server:latest
+      <CodeBlock language="bash">{`docker pull ghcr.io/sunes26/spanlens-server:latest
 docker restart spanlens
 
 # Apply new DB migrations (if any):
-supabase db push --db-url "$DATABASE_URL"`}</code></pre>
+supabase db push --db-url "$DATABASE_URL"`}</CodeBlock>
 
       <p>
         We ship semver-tagged images (<code>ghcr.io/sunes26/spanlens-server:0.3.0</code>). Pin to a

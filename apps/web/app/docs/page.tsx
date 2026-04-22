@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { ArrowRight, Zap, Code, Globe, Server } from 'lucide-react'
+import { CodeBlock } from './_components/code-block'
 
 export const metadata = {
   title: 'Spanlens Docs',
@@ -31,9 +32,9 @@ export default function DocsIndex() {
         ))}
       </div>
 
-      <div className="rounded-lg border bg-gray-950 p-6">
-        <p className="text-xs text-gray-400 mb-3 font-mono">Get started in 30 seconds</p>
-        <pre className="text-sm font-mono text-green-400 m-0">npx @spanlens/cli init</pre>
+      <div>
+        <p className="text-xs text-muted-foreground mb-2 font-mono">Get started in 30 seconds</p>
+        <CodeBlock language="bash">{`npx @spanlens/cli init`}</CodeBlock>
       </div>
 
       <h2 className="text-2xl font-bold mt-12 mb-4">Common questions</h2>

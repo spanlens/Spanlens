@@ -1,3 +1,5 @@
+import { CodeBlock } from '../_components/code-block'
+
 export const metadata = {
   title: 'Direct proxy · Spanlens Docs',
   description: 'Use Spanlens from any language — Python, Ruby, Go, curl. Just swap the base URL.',
@@ -16,9 +18,9 @@ export default function ProxyDocs() {
       <p>
         Spanlens exposes a 1:1 compatible proxy at:
       </p>
-      <pre><code>{`https://spanlens-server.vercel.app/proxy/openai/v1
+      <CodeBlock>{`https://spanlens-server.vercel.app/proxy/openai/v1
 https://spanlens-server.vercel.app/proxy/anthropic
-https://spanlens-server.vercel.app/proxy/gemini/v1beta`}</code></pre>
+https://spanlens-server.vercel.app/proxy/gemini/v1beta`}</CodeBlock>
       <p>
         Send requests exactly as you would to the real provider, with two changes:
       </p>
@@ -33,7 +35,7 @@ https://spanlens-server.vercel.app/proxy/gemini/v1beta`}</code></pre>
       </ol>
 
       <h2 id="python-openai">Python — OpenAI</h2>
-      <pre><code>{`from openai import OpenAI
+      <CodeBlock language="python">{`from openai import OpenAI
 
 client = OpenAI(
     api_key=os.environ["SPANLENS_API_KEY"],
@@ -43,10 +45,10 @@ client = OpenAI(
 res = client.chat.completions.create(
     model="gpt-4o-mini",
     messages=[{"role": "user", "content": "Hi"}],
-)`}</code></pre>
+)`}</CodeBlock>
 
       <h2 id="python-anthropic">Python — Anthropic</h2>
-      <pre><code>{`from anthropic import Anthropic
+      <CodeBlock language="python">{`from anthropic import Anthropic
 
 client = Anthropic(
     api_key=os.environ["SPANLENS_API_KEY"],
@@ -57,19 +59,19 @@ msg = client.messages.create(
     model="claude-3-5-sonnet-20241022",
     max_tokens=1024,
     messages=[{"role": "user", "content": "Hi"}],
-)`}</code></pre>
+)`}</CodeBlock>
 
       <h2 id="curl">curl — raw HTTP</h2>
-      <pre><code>{`curl https://spanlens-server.vercel.app/proxy/openai/v1/chat/completions \\
+      <CodeBlock language="bash">{`curl https://spanlens-server.vercel.app/proxy/openai/v1/chat/completions \\
   -H "Authorization: Bearer $SPANLENS_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
     "model": "gpt-4o-mini",
     "messages": [{"role": "user", "content": "Hi"}]
-  }'`}</code></pre>
+  }'`}</CodeBlock>
 
       <h2 id="ruby">Ruby</h2>
-      <pre><code>{`require "openai"
+      <CodeBlock language="ruby">{`require "openai"
 
 client = OpenAI::Client.new(
   access_token: ENV["SPANLENS_API_KEY"],
@@ -79,10 +81,10 @@ client = OpenAI::Client.new(
 res = client.chat(parameters: {
   model: "gpt-4o-mini",
   messages: [{ role: "user", content: "Hi" }],
-})`}</code></pre>
+})`}</CodeBlock>
 
       <h2 id="go">Go</h2>
-      <pre><code>{`import "github.com/sashabaranov/go-openai"
+      <CodeBlock language="go">{`import "github.com/sashabaranov/go-openai"
 
 config := openai.DefaultConfig(os.Getenv("SPANLENS_API_KEY"))
 config.BaseURL = "https://spanlens-server.vercel.app/proxy/openai/v1"
@@ -94,7 +96,7 @@ res, _ := client.CreateChatCompletion(ctx, openai.ChatCompletionRequest{
     Messages: []openai.ChatCompletionMessage{
         {Role: "user", Content: "Hi"},
     },
-})`}</code></pre>
+})`}</CodeBlock>
 
       <h2>Streaming</h2>
       <p>
@@ -107,13 +109,13 @@ res, _ := client.CreateChatCompletion(ctx, openai.ChatCompletionRequest{
       <p>
         Add an <code>X-Spanlens-Project</code> header to tag requests with a project scope:
       </p>
-      <pre><code>{`-H "X-Spanlens-Project: my-backend-service"`}</code></pre>
+      <CodeBlock>{`-H "X-Spanlens-Project: my-backend-service"`}</CodeBlock>
 
       <h2>Self-hosting</h2>
       <p>
         If you&apos;re running Spanlens on your own infra, replace the base URL:
       </p>
-      <pre><code>{`https://your-spanlens-domain.com/proxy/openai/v1`}</code></pre>
+      <CodeBlock>{`https://your-spanlens-domain.com/proxy/openai/v1`}</CodeBlock>
       <p>
         See <a href="/docs/self-host">self-hosting</a> for Docker deployment.
       </p>
