@@ -15,6 +15,7 @@ import {
   ShieldAlert,
   FileText,
   Sparkles,
+  BookOpen,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
@@ -32,6 +33,10 @@ const NAV_ITEMS = [
   { href: '/projects', icon: FolderKanban, label: 'Projects & Keys' },
   { href: '/billing', icon: CreditCard, label: 'Billing' },
   { href: '/settings', icon: Settings, label: 'Settings' },
+]
+
+const RESOURCE_ITEMS = [
+  { href: '/docs', icon: BookOpen, label: 'Docs' },
 ]
 
 export function Sidebar() {
@@ -56,7 +61,7 @@ export function Sidebar() {
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 px-2 py-4 space-y-0.5">
+      <nav className="flex-1 px-2 py-4 space-y-0.5 overflow-y-auto">
         {NAV_ITEMS.map(({ href, icon: Icon, label }) => {
           const active = pathname === href || pathname.startsWith(href + '/')
           return (
@@ -75,6 +80,28 @@ export function Sidebar() {
             </Link>
           )
         })}
+
+        {/* Resources */}
+        <div className="pt-3 mt-3 border-t border-sidebar-border/50">
+          {RESOURCE_ITEMS.map(({ href, icon: Icon, label }) => {
+            const active = pathname === href || pathname.startsWith(href + '/')
+            return (
+              <Link
+                key={href}
+                href={href}
+                className={cn(
+                  'flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors',
+                  active
+                    ? 'bg-white/10 text-sidebar-foreground font-medium'
+                    : 'text-sidebar-muted hover:bg-white/5 hover:text-sidebar-foreground',
+                )}
+              >
+                <Icon className="h-4 w-4 shrink-0" />
+                {label}
+              </Link>
+            )
+          })}
+        </div>
       </nav>
 
       {/* Sign out */}
