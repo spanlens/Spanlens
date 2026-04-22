@@ -5,6 +5,7 @@ import { ShieldAlert } from 'lucide-react'
 import { useSecurityFlagged, useSecuritySummary } from '@/lib/queries/use-security'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Badge } from '@/components/ui/badge'
+import { DocsLink } from '@/components/layout/docs-link'
 
 function formatRelative(iso: string): string {
   const diff = (Date.now() - new Date(iso).getTime()) / 1000
@@ -20,14 +21,17 @@ export default function SecurityPage() {
 
   return (
     <div className="max-w-5xl">
-      <div className="mb-6 flex items-center gap-3">
-        <ShieldAlert className="h-6 w-6 text-red-500" />
-        <div>
-          <h1 className="text-2xl font-bold">Security</h1>
-          <p className="text-muted-foreground text-sm mt-1">
-            PII and prompt-injection patterns detected in request bodies.
-          </p>
+      <div className="mb-6 flex items-start justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <ShieldAlert className="h-6 w-6 text-red-500 shrink-0" />
+          <div>
+            <h1 className="text-2xl font-bold">Security</h1>
+            <p className="text-muted-foreground text-sm mt-1">
+              PII and prompt-injection patterns detected in request bodies.
+            </p>
+          </div>
         </div>
+        <DocsLink href="/docs/features/security" />
       </div>
 
       {/* Summary */}

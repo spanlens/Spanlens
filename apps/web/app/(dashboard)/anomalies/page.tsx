@@ -4,6 +4,7 @@ import { Activity, AlertTriangle } from 'lucide-react'
 import { useAnomalies, type Anomaly } from '@/lib/queries/use-anomalies'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Badge } from '@/components/ui/badge'
+import { DocsLink } from '@/components/layout/docs-link'
 
 function formatDelta(kind: Anomaly['kind'], current: number, baseline: number): string {
   const pct = baseline > 0 ? ((current - baseline) / baseline) * 100 : 0
@@ -25,15 +26,18 @@ export default function AnomaliesPage() {
 
   return (
     <div className="max-w-5xl">
-      <div className="mb-6 flex items-center gap-3">
-        <Activity className="h-6 w-6 text-orange-500" />
-        <div>
-          <h1 className="text-2xl font-bold">Anomalies</h1>
-          <p className="text-muted-foreground text-sm mt-1">
-            Recent buckets whose latency or cost deviates ≥ 3σ from the{' '}
-            {meta ? `${Math.round(meta.referenceHours / 24)}-day` : '7-day'} baseline.
-          </p>
+      <div className="mb-6 flex items-start justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <Activity className="h-6 w-6 text-orange-500 shrink-0" />
+          <div>
+            <h1 className="text-2xl font-bold">Anomalies</h1>
+            <p className="text-muted-foreground text-sm mt-1">
+              Recent buckets whose latency or cost deviates ≥ 3σ from the{' '}
+              {meta ? `${Math.round(meta.referenceHours / 24)}-day` : '7-day'} baseline.
+            </p>
+          </div>
         </div>
+        <DocsLink href="/docs/features/anomalies" />
       </div>
 
       {isLoading && (

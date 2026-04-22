@@ -10,6 +10,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Badge } from '@/components/ui/badge'
+import { DocsLink } from '@/components/layout/docs-link'
 
 function formatUsd(v: number): string {
   return v >= 1 ? `$${v.toFixed(2)}` : `$${v.toFixed(5)}`
@@ -57,10 +58,13 @@ export default function PromptsPage() {
             </p>
           </div>
         </div>
-        <Button size="sm" onClick={() => setFormOpen((v) => !v)}>
-          <Plus className="h-4 w-4 mr-1" />
-          New prompt / version
-        </Button>
+        <div className="flex items-center gap-4 shrink-0">
+          <DocsLink href="/docs/features/prompts" />
+          <Button size="sm" onClick={() => setFormOpen((v) => !v)}>
+            <Plus className="h-4 w-4 mr-1" />
+            New prompt / version
+          </Button>
+        </div>
       </div>
 
       {formOpen && (

@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Skeleton } from '@/components/ui/skeleton'
 import { useTraces } from '@/lib/queries/use-traces'
 import type { TraceStatus } from '@/lib/queries/types'
+import { DocsLink } from '@/components/layout/docs-link'
 
 function formatDuration(ms: number | null): string {
   if (ms == null) return '—'
@@ -36,11 +37,14 @@ export default function TracesPage() {
 
   return (
     <div>
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold">Traces</h1>
-        <p className="text-muted-foreground text-sm mt-1">
-          {meta.total.toLocaleString()} total traces
-        </p>
+      <div className="mb-6 flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold">Traces</h1>
+          <p className="text-muted-foreground text-sm mt-1">
+            {meta.total.toLocaleString()} total traces
+          </p>
+        </div>
+        <DocsLink href="/docs/features/traces" />
       </div>
 
       {/* Filters */}

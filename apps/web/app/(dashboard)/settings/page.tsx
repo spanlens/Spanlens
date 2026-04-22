@@ -16,6 +16,7 @@ import {
   useRevokeProviderKey,
   useRotateProviderKey,
 } from '@/lib/queries/use-provider-keys'
+import { DocsLink } from '@/components/layout/docs-link'
 
 export default function SettingsPage() {
   const orgQuery = useOrganization()
@@ -72,9 +73,12 @@ export default function SettingsPage() {
 
   return (
     <div className="max-w-2xl">
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold">Settings</h1>
-        <p className="text-muted-foreground text-sm mt-1">Manage your account and provider keys</p>
+      <div className="mb-8 flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold">Settings</h1>
+          <p className="text-muted-foreground text-sm mt-1">Manage your account and provider keys</p>
+        </div>
+        <DocsLink href="/docs/features/settings" />
       </div>
 
       {/* Org info */}

@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useRequests } from '@/lib/queries/use-requests'
+import { DocsLink } from '@/components/layout/docs-link'
 
 export default function RequestsPage() {
   const [filterProvider, setFilterProvider] = useState('all')
@@ -39,11 +40,14 @@ export default function RequestsPage() {
 
   return (
     <div>
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold">Requests</h1>
-        <p className="text-muted-foreground text-sm mt-1">
-          {meta.total.toLocaleString()} total requests
-        </p>
+      <div className="mb-6 flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold">Requests</h1>
+          <p className="text-muted-foreground text-sm mt-1">
+            {meta.total.toLocaleString()} total requests
+          </p>
+        </div>
+        <DocsLink href="/docs/features/requests" />
       </div>
 
       {/* Filters */}

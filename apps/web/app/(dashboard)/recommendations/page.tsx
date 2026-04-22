@@ -4,6 +4,7 @@ import { Sparkles, TrendingDown } from 'lucide-react'
 import { useRecommendations } from '@/lib/queries/use-recommendations'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Badge } from '@/components/ui/badge'
+import { DocsLink } from '@/components/layout/docs-link'
 
 function formatUsd(v: number): string {
   if (v >= 100) return `$${Math.round(v)}`
@@ -22,14 +23,17 @@ export default function RecommendationsPage() {
 
   return (
     <div className="max-w-5xl">
-      <div className="mb-6 flex items-center gap-3">
-        <Sparkles className="h-6 w-6 text-purple-500" />
-        <div>
-          <h1 className="text-2xl font-bold">Cost Savings</h1>
-          <p className="text-muted-foreground text-sm mt-1">
-            Model substitutions based on 7 days of usage patterns.
-          </p>
+      <div className="mb-6 flex items-start justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <Sparkles className="h-6 w-6 text-purple-500 shrink-0" />
+          <div>
+            <h1 className="text-2xl font-bold">Cost Savings</h1>
+            <p className="text-muted-foreground text-sm mt-1">
+              Model substitutions based on 7 days of usage patterns.
+            </p>
+          </div>
         </div>
+        <DocsLink href="/docs/features/savings" />
       </div>
 
       {isLoading && <Skeleton className="h-40 w-full" />}

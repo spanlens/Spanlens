@@ -21,6 +21,7 @@ import {
   useAlertDeliveries,
 } from '@/lib/queries/use-alerts'
 import type { AlertType, ChannelKind } from '@/lib/queries/types'
+import { DocsLink } from '@/components/layout/docs-link'
 
 function formatThreshold(type: AlertType, threshold: number): string {
   if (type === 'budget') return `$${threshold}`
@@ -87,11 +88,14 @@ export default function AlertsPage() {
 
   return (
     <div className="max-w-5xl">
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold">Alerts</h1>
-        <p className="text-muted-foreground text-sm mt-1">
-          Get notified when spend, error rate, or latency crosses your thresholds
-        </p>
+      <div className="mb-8 flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold">Alerts</h1>
+          <p className="text-muted-foreground text-sm mt-1">
+            Get notified when spend, error rate, or latency crosses your thresholds
+          </p>
+        </div>
+        <DocsLink href="/docs/features/alerts" />
       </div>
 
       {/* Alerts section */}

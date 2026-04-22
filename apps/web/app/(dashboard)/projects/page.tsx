@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Skeleton } from '@/components/ui/skeleton'
 import { useCreateProject, useProjects } from '@/lib/queries/use-projects'
 import { useApiKeys, useCreateApiKey, useRevokeApiKey } from '@/lib/queries/use-api-keys'
+import { DocsLink } from '@/components/layout/docs-link'
 
 export default function ProjectsPage() {
   const projectsQuery = useProjects()
@@ -76,17 +77,19 @@ export default function ProjectsPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-start justify-between mb-6 gap-4">
         <div>
           <h1 className="text-2xl font-bold">Projects & API Keys</h1>
           <p className="text-muted-foreground text-sm mt-1">Manage your projects and access keys</p>
         </div>
-        <Dialog open={projDialogOpen} onOpenChange={setProjDialogOpen}>
-          <DialogTrigger asChild>
-            <Button size="sm" className="gap-2">
-              <Plus className="h-4 w-4" /> New project
-            </Button>
-          </DialogTrigger>
+        <div className="flex items-center gap-4 shrink-0">
+          <DocsLink href="/docs/features/projects" />
+          <Dialog open={projDialogOpen} onOpenChange={setProjDialogOpen}>
+            <DialogTrigger asChild>
+              <Button size="sm" className="gap-2">
+                <Plus className="h-4 w-4" /> New project
+              </Button>
+            </DialogTrigger>
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Create project</DialogTitle>
@@ -104,7 +107,8 @@ export default function ProjectsPage() {
               </Button>
             </div>
           </DialogContent>
-        </Dialog>
+          </Dialog>
+        </div>
       </div>
 
       {/* New key banner — key + integration guide */}
