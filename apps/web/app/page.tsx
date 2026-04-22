@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { Zap, BarChart3, GitBranch, DollarSign, ArrowRight, Check } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { AuthNavButtons } from '@/components/layout/auth-nav-buttons'
 
 export default function LandingPage() {
   return (
@@ -15,12 +16,7 @@ export default function LandingPage() {
           <Link href="/pricing" className="text-sm text-muted-foreground hover:text-foreground">
             Pricing
           </Link>
-          <Link href="/login">
-            <Button variant="outline" size="sm">Sign in</Button>
-          </Link>
-          <Link href="/signup">
-            <Button size="sm">Get started free</Button>
-          </Link>
+          <AuthNavButtons signupLabel="Get started free" />
         </div>
       </nav>
 

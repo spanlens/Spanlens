@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { Check, Zap } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import { AuthNavButtons } from '@/components/layout/auth-nav-buttons'
 
 export const metadata = { title: 'Pricing' }
 
@@ -69,12 +70,7 @@ export default function PricingPage() {
           <span className="font-bold text-lg">Spanlens</span>
         </Link>
         <div className="flex items-center gap-4">
-          <Link href="/login">
-            <Button variant="outline" size="sm">Sign in</Button>
-          </Link>
-          <Link href="/signup">
-            <Button size="sm">Get started free</Button>
-          </Link>
+          <AuthNavButtons signupLabel="Get started free" />
         </div>
       </nav>
 

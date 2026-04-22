@@ -299,6 +299,25 @@ Enterprise `$99+` 플랜은 이미 Pricing 페이지에 판매 중. **첫 Enterp
 
 ---
 
+## Post-Launch UX Polish (non-phase, 백로그)
+
+런칭 직후에는 필수 아님. 유저 피드백 누적되거나 가입자 임계치(예: 500명) 도달 시 순차 진행.
+
+### UX-1. 네비게이션 유저 메뉴 (트리거: 유저 피드백 또는 가입자 500명)
+- [ ] 랜딩/`/docs`/`/pricing` 상단 nav에 **유저 아바타 + 이메일 드롭다운** 추가 (현재는 로그인 상태에서 "Go to dashboard" 단일 버튼만 표시)
+- [ ] 드롭다운 메뉴 항목: Dashboard / Settings / Billing / **Sign out**
+- [ ] Supabase Auth `user_metadata.avatar_url` 표시 (Google OAuth 가입자), 없으면 이메일 이니셜 원형 fallback
+- [ ] 클라이언트 컴포넌트로 구현 (드롭다운 상태 관리 필요) — 현재 `AuthNavButtons`는 서버 컴포넌트이므로 분리 필요
+- [ ] 모바일: 햄버거 메뉴에 통합
+- 왜 지금 안 하는가: 드롭다운 UX 다듬기(외부 클릭 닫기, 키보드 접근성, 포커스 트랩)에 반나절 소요. 현재 단일 "Go to dashboard" 버튼으로 핵심 기능(로그인 상태 인지 + 대시보드 접근) 이미 충족.
+
+### UX-2. 다크 모드 (트리거: 요청 누적 5건+)
+- [ ] `next-themes` 도입, 전역 토글
+- [ ] 기존 `globals.css`의 CSS variable 다크 팔레트 정의 (구조는 이미 준비됨)
+- [ ] 사이드바 + 대시보드 차트 색상 대비 재검토
+
+---
+
 ## 상시 운영 체크리스트 (매주)
 
 - [ ] `pnpm typecheck && pnpm lint && pnpm test && pnpm build` 메인 브랜치 녹색

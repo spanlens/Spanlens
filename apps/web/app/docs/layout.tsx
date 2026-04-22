@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { Zap } from 'lucide-react'
-import { Button } from '@/components/ui/button'
 import { DocsSidebar } from './_components/sidebar'
+import { AuthNavButtons } from '@/components/layout/auth-nav-buttons'
 
 export const metadata = {
   title: 'Docs · Spanlens',
@@ -31,14 +31,7 @@ export default function DocsLayout({ children }: { children: React.ReactNode }) 
             <Link href="/pricing" className="text-sm text-muted-foreground hover:text-foreground">
               Pricing
             </Link>
-            <Link href="/login">
-              <Button variant="outline" size="sm">
-                Sign in
-              </Button>
-            </Link>
-            <Link href="/signup">
-              <Button size="sm">Start free</Button>
-            </Link>
+            <AuthNavButtons signupLabel="Start free" />
           </div>
         </div>
       </nav>
