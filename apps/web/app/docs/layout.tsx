@@ -55,10 +55,11 @@ export default function DocsLayout({ children }: { children: React.ReactNode }) 
             className="prose prose-gray max-w-none
               prose-headings:scroll-mt-20
               prose-pre:bg-gray-950 prose-pre:text-gray-100 prose-pre:shadow-sm prose-pre:border prose-pre:border-gray-800
-              prose-code:before:content-none prose-code:after:content-none
-              prose-code:bg-gray-100 prose-code:text-gray-900 prose-code:font-normal prose-code:text-[0.9em] prose-code:rounded prose-code:px-1 prose-code:py-0.5
               prose-a:text-blue-600 prose-a:no-underline hover:prose-a:underline
-              prose-table:text-sm"
+              prose-table:text-sm
+              [&_:not(pre)>code]:bg-gray-100 [&_:not(pre)>code]:text-gray-900 [&_:not(pre)>code]:font-normal [&_:not(pre)>code]:text-[0.9em] [&_:not(pre)>code]:rounded [&_:not(pre)>code]:px-1 [&_:not(pre)>code]:py-0.5
+              [&_:not(pre)>code]:before:content-none [&_:not(pre)>code]:after:content-none
+              [&_pre_code]:bg-transparent [&_pre_code]:text-inherit [&_pre_code]:p-0 [&_pre_code]:rounded-none [&_pre_code]:text-sm [&_pre_code]:font-normal [&_pre_code]:before:content-none [&_pre_code]:after:content-none"
           >
             {children}
           </article>
