@@ -125,11 +125,12 @@
 이상 탐지 + 팀 기능. Retention 확보 & $3,800 MRR 달성.
 
 ### 3A. 이상 탐지 & 최적화 (Week 9~10)
-- [ ] 모델별 평균 latency/비용 이상치 탐지 (3-sigma)
-- [ ] 프롬프트 주입·PII 감지 (경량 휴리스틱)
-- [ ] 마이그레이션: `prompt_versions` (프롬프트 버저닝)
-- [ ] 프롬프트 A/B 비교 뷰 (비용·성공률·latency)
-- [ ] 모델 추천 엔진 (GPT-4o → Haiku 대체 제안)
+- [x] 모델별 평균 latency/비용 이상치 탐지 (3-sigma) — `lib/anomaly.ts` + `GET /api/v1/anomalies` + `/anomalies` 페이지. 1h 관측 vs 7일 baseline 샘플 stddev.
+- [x] 프롬프트 주입·PII 감지 (경량 휴리스틱) — `lib/security-scan.ts` (정규식 6개 PII 규칙 + Luhn + 5개 injection 패턴) 로그 훅 + `requests.flags` JSONB + `GET /api/v1/security/{flagged,summary}` + `/security` 페이지.
+- [x] 마이그레이션: `prompt_versions` (프롬프트 버저닝) — `prompt_versions` 테이블 (version immutable, UNIQUE org+name+version) + `requests.prompt_version_id` FK + RLS.
+- [x] 프롬프트 A/B 비교 뷰 (비용·성공률·latency) — `lib/prompt-compare.ts` + `GET /api/v1/prompts/:name/compare` + `/prompts` 페이지 (버전별 sample count / avg latency / error rate / avg+total cost / avg tokens).
+- [x] 모델 추천 엔진 (GPT-4o → Haiku 대체 제안) — `lib/model-recommend.ts` (curated SUBSTITUTES + 토큰 envelope fit check + 월간 절감액 extrapolation) + `GET /api/v1/recommendations` + `/recommendations` 페이지.
+- [x] 테스트: anomaly, security-scan, prompt-compare 모듈 단위 테스트 (server 65 green).
 
 ### 3B. 팀 & 협업 (Week 11)
 - [ ] P13 팀 관리 — 초대, 역할(Owner/Admin/Member/Viewer)
