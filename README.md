@@ -1,8 +1,12 @@
 # Spanlens
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
+[![npm version](https://img.shields.io/npm/v/@spanlens/sdk.svg)](https://www.npmjs.com/package/@spanlens/sdk)
+[![npm downloads](https://img.shields.io/npm/dm/@spanlens/sdk.svg)](https://www.npmjs.com/package/@spanlens/sdk)
+
 LLM observability that gets out of your way. Record every OpenAI / Anthropic / Gemini call — cost, latency, tokens, full request/response — then surface anomalies, PII, and model-swap suggestions automatically.
 
-> **Hosted**: [spanlens.io](https://www.spanlens.io) · **npm**: [`@spanlens/sdk`](https://www.npmjs.com/package/@spanlens/sdk) · [`@spanlens/cli`](https://www.npmjs.com/package/@spanlens/cli)
+> **Hosted**: [spanlens.io](https://www.spanlens.io) · **npm**: [`@spanlens/sdk`](https://www.npmjs.com/package/@spanlens/sdk) · [`@spanlens/cli`](https://www.npmjs.com/package/@spanlens/cli) · **Open source (MIT)** · **Self-hostable** (Docker)
 
 ---
 
@@ -136,4 +140,4 @@ See [ROADMAP.md](./ROADMAP.md). Currently in **Phase 3 (Growth)** — anomaly de
 
 ## License
 
-MIT
+[MIT](./LICENSE) — use, fork, self-host, or build on top freely. The hosted service at [spanlens.io](https://www.spanlens.io) is the recommended way to run Spanlens, but you can always pull the Docker image and run it yourself (see [docs/self-host](https://www.spanlens.io/docs/self-host)).
