@@ -1,5 +1,9 @@
 # @spanlens/sdk changelog
 
+## 0.2.1
+
+Metadata-only release — expanded npm keywords for discoverability. No functional changes.
+
 ## 0.2.0
 
 Zero-config provider clients — 1-line setup for the common case.
