@@ -22,6 +22,15 @@ const NAV: NavGroup[] = [
     ],
   },
   {
+    title: 'Features',
+    items: [
+      { title: 'Prompts', href: '/docs/features/prompts' },
+      { title: 'Traces', href: '/docs/features/traces' },
+      { title: 'Security', href: '/docs/features/security' },
+      { title: 'Savings', href: '/docs/features/savings' },
+    ],
+  },
+  {
     title: 'SDK',
     items: [
       { title: '@spanlens/sdk', href: '/docs/sdk' },

@@ -242,6 +242,55 @@ Product Hunt + HN + 커뮤니티 동시 런치. Phase 1~3에서 쌓은 차별화
 
 > 기존 Phase 2C/2D에서 이관. Growth 기능(Phase 3) 완성 **후** 런치해야 스토리가 강함 — "Just another LLM proxy"가 아니라 "proxy + tracing + anomaly detection + prompt A/B + team" 풀 스택으로 포지셔닝.
 
+### 4A.0 폴리시-퍼스트 런칭 준거 (Polish-First Launch Criteria)
+
+> **전략 결정 (2026-04-22)**: Lean/Ship-fast 대신 **폴리시-퍼스트**로 감.
+> 근거: Spanlens는 개발자 신뢰 기반 인프라 제품 → 첫인상이 전부. Langfuse/Helicone 대비 최소 동등 이상의 마감 수준 필수. 1인 founder + VC burn rate 없음 → 폴리시 시간이 경쟁 우위.
+>
+> **이 체크리스트는 변경 금지 규약.** 전 항목 완료 시 즉시 런치, 미완료 시 D-Day 연기. 중간에 "하나만 더" 추가 금지.
+
+#### 가드레일 4개 (폴리시-퍼스트가 실패하지 않기 위한 장치)
+
+1. **체크리스트 변경 금지** — 아래 리스트만 함. 새 기능 떠오르면 `Phase 5+` 이관. "범위 확대 ≠ 폴리시" 구분.
+2. **주 1회 외부 감시자 셀프체크** — 매주 일요일 저녁 15분: "이번 주 작업이 이 체크리스트의 항목인가?" / "유저 0명에게 이게 얼마나 의미 있나?" 벗어나면 다음 주 스케줄 교정.
+3. **D-30 Soft Launch (2026-07-03)** — 친한 개발자 5~10명에게 개별 공유. 공개 아님, 피드백 수집용. 현실 검증 없이 런칭 금지.
+4. **Dark matter 방지** — 폴리시 대상은 **유저가 볼 surface**. 내부 리팩토링은 Phase 5+.
+
+#### 런칭 준거 체크리스트
+
+**문서 (/docs)**
+- [ ] Tier 1 — 차별화 기능 페이지 (이번 주)
+  - [ ] `/docs/features/prompts` — 버전 관리 + A/B 비교
+  - [ ] `/docs/features/traces` — 에이전트 트레이싱
+  - [ ] `/docs/features/security` — PII + 프롬프트 인젝션 탐지
+  - [ ] `/docs/features/savings` — 모델 추천 기반 비용 절감
+- [ ] Tier 2 — 런칭 전까지 (다음 2주)
+  - [ ] `/docs/features/anomalies` — 3-sigma 이상 탐지
+  - [ ] `/docs/features/alerts` — 임계치 알림 + Slack/Email/Discord
+  - [ ] `/docs/features/requests` — 요청 로그 뷰어
+  - [ ] `/docs/features/cost-tracking` — 정확한 비용 산정 원리
+- [ ] Tier 3 — 런칭 전까지 (선택적, 간단)
+  - [ ] `/docs/features/projects` — 프로젝트 + API 키 관리
+  - [ ] `/docs/features/settings` — Provider Key 등록 (AES-256-GCM)
+- [ ] Docs 사이드바 재구성 — Features 그룹 추가
+- [ ] 각 대시보드 페이지에서 "Learn more →" 링크를 해당 docs로 연결
+
+**기능 완성도 (audit로 발견된 gap)**
+- [ ] Self-host Docker **실전 검증** — 로컬에서 `docker run` 실행, DB 마이그레이션 흐름 테스트, `/docs/self-host` 가이드 실제 재현 가능성 검증
+- [ ] Overage 경고 이메일 실제 구현 (현재는 Paddle 메터링만, 유저 경고 없음 — 80%/100% 임계치 도달 시 Resend 이메일 + 대시보드 배너)
+- [ ] Paddle `adjust` API 호출의 `credit` vs `debit` 액션 검증 (과금 방향 확인)
+- [ ] Prompts 기능의 "요청 ↔ 버전 연결" 경로 SDK에서 노출 (현재 DB에는 `prompt_version_id` 필드 있으나 유저가 어떻게 태깅하는지 문서/SDK 없음)
+
+**데모 & 마케팅 자산**
+- [ ] Demo 앱 — `create-spanlens-demo` npx 또는 `demo.spanlens.io` 라이브
+- [ ] 3분 제품 Loom — 가입부터 첫 요청까지
+- [ ] 기술 블로그 3개 — (1) OpenAI SSE `tee()` 구현기 (2) baseURL 전략이 SDK wrapping보다 나은 이유 (3) 200줄 정규식 기반 프롬프트 인젝션 탐지
+- [ ] 경쟁사 비교 페이지 — `/compare/langfuse`, `/compare/helicone`, `/compare/langsmith`
+- [ ] 랜딩 Hero/Feature 카피 최종본
+- [ ] 온보딩 튜토리얼 개선 — 프로젝트 첫 생성 → 첫 요청까지 단계별 가이드
+
+**기존 4A/4B/4C 항목** (아래 유지)
+
 ### 4A. 런치 준비 (Week 13)
 - [ ] 랜딩 페이지 공식 도메인 연결 (`spanlens.io` / `spanlens.com`) + SEO 메타
 - [ ] 1분 데모 영상 녹화 (base_url 교체 → 대시보드 즉시 반영 흐름)
