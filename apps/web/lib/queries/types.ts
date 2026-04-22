@@ -18,6 +18,10 @@ export interface Organization {
   id: string
   name: string
   plan: string
+  /** Pattern C: whether to allow overage billing past soft limit. Free plan ignores this. */
+  allow_overage: boolean
+  /** Hard cap = monthly_limit * overage_cap_multiplier. 1–100. */
+  overage_cap_multiplier: number
   created_at: string
   updated_at: string
 }

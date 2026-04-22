@@ -82,6 +82,8 @@ describe('quota warning email templates', () => {
     limit: 10_000,
     plan: 'starter',
     billingUrl: 'https://www.spanlens.io/billing',
+    overageActive: false,
+    hardCap: 50_000,
   }
 
   it('80 subject conveys "used 80%"', () => {
@@ -90,9 +92,22 @@ describe('quota warning email templates', () => {
     expect(subj).toContain('Acme Inc')
   })
 
-  it('100 subject conveys "quota reached"', () => {
-    const subj = __testing.buildQuotaSubject({ ...baseNotification, threshold: 100 })
+  it('100 subject conveys "quota reached" when overage disabled', () => {
+    const subj = __testing.buildQuotaSubject({
+      ...baseNotification,
+      threshold: 100,
+      overageActive: false,
+    })
     expect(subj).toContain('reached')
+  })
+
+  it('100 subject conveys "overage billing active" when overage enabled', () => {
+    const subj = __testing.buildQuotaSubject({
+      ...baseNotification,
+      threshold: 100,
+      overageActive: true,
+    })
+    expect(subj.toLowerCase()).toContain('overage billing active')
   })
 
   it('80 body mentions usage, limit, and billing URL', () => {
@@ -102,13 +117,45 @@ describe('quota warning email templates', () => {
     expect(body).toContain('spanlens.io/billing')
   })
 
-  it('100 body warns about 429s', () => {
+  it('80 body tells user overage will absorb the overflow when enabled', () => {
+    const body = __testing.buildQuotaBody({
+      ...baseNotification,
+      threshold: 80,
+      overageActive: true,
+    })
+    expect(body.toLowerCase()).toContain('overage billing is enabled')
+  })
+
+  it('80 body warns about 429s when overage disabled', () => {
+    const body = __testing.buildQuotaBody({
+      ...baseNotification,
+      threshold: 80,
+      overageActive: false,
+    })
+    expect(body).toContain('429')
+  })
+
+  it('100 body warns about 429s when overage disabled', () => {
     const body = __testing.buildQuotaBody({
       ...baseNotification,
       threshold: 100,
+      overageActive: false,
       used: 10_042,
     })
     expect(body).toContain('429')
     expect(body).toContain('10,042')
+  })
+
+  it('100 body mentions overage billing + hard cap when overage enabled', () => {
+    const body = __testing.buildQuotaBody({
+      ...baseNotification,
+      threshold: 100,
+      overageActive: true,
+      used: 10_042,
+      hardCap: 50_000,
+    })
+    expect(body.toLowerCase()).toContain('overage billing')
+    expect(body).toContain('50,000')
+    expect(body).not.toMatch(/will receive 429/i)
   })
 })

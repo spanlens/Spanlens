@@ -28,3 +28,29 @@ export function useUpdateOrganization() {
     },
   })
 }
+
+export interface OverageSettingsUpdate {
+  allow_overage?: boolean
+  overage_cap_multiplier?: number
+}
+
+/**
+ * PATCH /api/v1/organizations/me/overage — Pattern C overage policy controls.
+ * Invalidates the org cache + the quota cache (since allowed may flip).
+ */
+export function useUpdateOverageSettings() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (update: OverageSettingsUpdate) => {
+      const res = await apiPatch<ApiEnvelope<Organization>>(
+        '/api/v1/organizations/me/overage',
+        update,
+      )
+      return res.data
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: organizationQueryKey })
+      void qc.invalidateQueries({ queryKey: ['billing', 'quota'] })
+    },
+  })
+}

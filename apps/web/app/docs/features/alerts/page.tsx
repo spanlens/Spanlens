@@ -176,9 +176,9 @@ Content-Type: application/json
         <li>
           <strong>Quota-overage warning emails run on a separate cron</strong> (hourly). Org
           owners get automatic emails at 80% and 100% of the monthly request quota — no setup
-          required. These use the same Resend integration but bypass the user-defined alert
-          rules system. See <a href="/docs/features/cost-tracking">Cost tracking</a> for the
-          counting rules.
+          required. Content is context-aware: at 100% with overage billing enabled, the email
+          tells the user that overage charges are now active (not that their requests are being
+          rejected). Toggle in <a href="/settings">/settings</a>.
         </li>
       </ul>
 

@@ -12,12 +12,59 @@ organizationsRouter.get('/me', async (c) => {
 
   const { data, error } = await supabaseAdmin
     .from('organizations')
-    .select('id, name, plan, created_at, updated_at')
+    .select('id, name, plan, allow_overage, overage_cap_multiplier, created_at, updated_at')
     .eq('owner_id', userId)
     .single()
 
   if (error || !data) {
     return c.json({ error: 'Organization not found' }, 404)
+  }
+
+  return c.json({ success: true, data })
+})
+
+// PATCH /api/v1/organizations/me/overage — update overage policy
+// Body: { allow_overage?: boolean, overage_cap_multiplier?: number (1-100) }
+organizationsRouter.patch('/me/overage', async (c) => {
+  const userId = c.get('userId')
+
+  let body: { allow_overage?: unknown; overage_cap_multiplier?: unknown }
+  try {
+    body = (await c.req.json()) as typeof body
+  } catch {
+    return c.json({ error: 'Invalid JSON body' }, 400)
+  }
+
+  const patch: { allow_overage?: boolean; overage_cap_multiplier?: number } = {}
+
+  if (body.allow_overage !== undefined) {
+    if (typeof body.allow_overage !== 'boolean') {
+      return c.json({ error: 'allow_overage must be a boolean' }, 400)
+    }
+    patch.allow_overage = body.allow_overage
+  }
+
+  if (body.overage_cap_multiplier !== undefined) {
+    const n = Number(body.overage_cap_multiplier)
+    if (!Number.isInteger(n) || n < 1 || n > 100) {
+      return c.json({ error: 'overage_cap_multiplier must be an integer between 1 and 100' }, 400)
+    }
+    patch.overage_cap_multiplier = n
+  }
+
+  if (Object.keys(patch).length === 0) {
+    return c.json({ error: 'no fields to update' }, 400)
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from('organizations')
+    .update(patch)
+    .eq('owner_id', userId)
+    .select('id, name, plan, allow_overage, overage_cap_multiplier')
+    .single()
+
+  if (error || !data) {
+    return c.json({ error: 'Organization not found or update failed' }, 404)
   }
 
   return c.json({ success: true, data })

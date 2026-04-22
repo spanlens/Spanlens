@@ -14,6 +14,12 @@ export interface QuotaStatus {
   usedThisMonth: number
   limit: number | null
   plan: BillingPlan
+  /** True when the org is currently past the soft limit with overage authorized. */
+  overageActive: boolean
+  /** Org-level overage toggle. Reflects settings.allow_overage. */
+  allowOverage: boolean
+  /** Hard-cap multiplier. Hard cap = limit * capMultiplier. */
+  capMultiplier: number
 }
 
 export const quotaQueryKey = ['billing', 'quota'] as const

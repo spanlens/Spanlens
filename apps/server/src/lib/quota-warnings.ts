@@ -30,6 +30,8 @@ interface OrgRow {
   name: string
   plan: Plan
   owner_id: string
+  allow_overage: boolean
+  overage_cap_multiplier: number
   quota_warning_80_sent_at: string | null
   quota_warning_100_sent_at: string | null
 }
@@ -57,7 +59,9 @@ export async function runQuotaWarningsJob(): Promise<QuotaWarningRunResult> {
 
   const { data: orgs, error } = await supabaseAdmin
     .from('organizations')
-    .select('id, name, plan, owner_id, quota_warning_80_sent_at, quota_warning_100_sent_at')
+    .select(
+      'id, name, plan, owner_id, allow_overage, overage_cap_multiplier, quota_warning_80_sent_at, quota_warning_100_sent_at',
+    )
     .in('plan', plansWithLimit)
     .returns<OrgRow[]>()
 
@@ -110,6 +114,13 @@ export async function runQuotaWarningsJob(): Promise<QuotaWarningRunResult> {
       continue
     }
 
+    // Pattern C: the message at 100% depends on whether overage is authorized.
+    // `overageActive` = paid plan + allow_overage + within hard-cap band.
+    const overageActive =
+      org.plan !== 'free' &&
+      org.allow_overage &&
+      used < limit * org.overage_cap_multiplier
+
     const delivery = await sendQuotaWarningEmail(userData.user.email, {
       organizationName: org.name,
       threshold: decision.threshold!,
@@ -117,6 +128,8 @@ export async function runQuotaWarningsJob(): Promise<QuotaWarningRunResult> {
       limit,
       plan: org.plan,
       billingUrl: 'https://www.spanlens.io/billing',
+      overageActive,
+      hardCap: limit * org.overage_cap_multiplier,
     })
 
     if (!delivery.ok) {

@@ -177,18 +177,42 @@ export interface QuotaWarningNotification {
   plan: string
   /** Absolute URL to /billing for the upgrade CTA. */
   billingUrl: string
+  /**
+   * Pattern C: at 100%, is overage billing authorized on this org?
+   * - true  → requests keep flowing, they'll be billed for overage
+   * - false → requests are being rejected with 429 (free or user-disabled)
+   */
+  overageActive: boolean
+  /** Hard cap = limit × overage_cap_multiplier. */
+  hardCap: number
 }
 
 function buildQuotaSubject(n: QuotaWarningNotification): string {
   if (n.threshold === 100) {
-    return `[Spanlens] Monthly request quota reached for ${n.organizationName}`
+    return n.overageActive
+      ? `[Spanlens] Overage billing active for ${n.organizationName}`
+      : `[Spanlens] Monthly request quota reached for ${n.organizationName}`
   }
   return `[Spanlens] ${n.organizationName} has used 80% of this month's quota`
 }
 
 function buildQuotaBody(n: QuotaWarningNotification): string {
   const pct = Math.floor((n.used / n.limit) * 100)
+
   if (n.threshold === 100) {
+    if (n.overageActive) {
+      return [
+        `${n.organizationName} has passed its monthly request quota — overage billing is now active.`,
+        ``,
+        `Usage:     ${n.used.toLocaleString()} / ${n.limit.toLocaleString()} requests (${pct}%)`,
+        `Plan:      ${n.plan}`,
+        `Hard cap:  ${n.hardCap.toLocaleString()} requests (requests above this return 429)`,
+        ``,
+        `Additional requests beyond your included quota will be billed on your next invoice`,
+        `at the overage rate for your plan. You can disable overage or adjust the cap in`,
+        `${n.billingUrl}.`,
+      ].join('\n')
+    }
     return [
       `Heads up — ${n.organizationName} has hit its monthly request quota.`,
       ``,
@@ -196,19 +220,24 @@ function buildQuotaBody(n: QuotaWarningNotification): string {
       `Plan:   ${n.plan}`,
       ``,
       `Additional requests through the Spanlens proxy will receive 429 (Too Many Requests)`,
-      `until your billing period renews, or until you upgrade.`,
+      `until your billing period renews, or until you upgrade / enable overage billing.`,
       ``,
-      `Upgrade: ${n.billingUrl}`,
+      `Settings: ${n.billingUrl}`,
     ].join('\n')
   }
+
+  // 80% — include a note about whether overage will kick in at 100
+  const tail = n.overageActive
+    ? `Overage billing is enabled — once you hit 100%, extra requests will be billed on\nyour next invoice instead of being rejected. You can adjust this in ${n.billingUrl}.`
+    : `Overage billing is disabled — requests past 100% will be rejected with 429.\nUpgrade or enable overage: ${n.billingUrl}`
+
   return [
     `${n.organizationName} has used 80% of this month's request quota.`,
     ``,
     `Usage:  ${n.used.toLocaleString()} / ${n.limit.toLocaleString()} requests (${pct}%)`,
     `Plan:   ${n.plan}`,
     ``,
-    `Upgrade anytime to avoid 429s when you hit the cap:`,
-    `${n.billingUrl}`,
+    tail,
   ].join('\n')
 }
 

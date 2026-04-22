@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Separator } from '@/components/ui/separator'
 import { Skeleton } from '@/components/ui/skeleton'
-import { useOrganization } from '@/lib/queries/use-organization'
+import { useOrganization, useUpdateOverageSettings } from '@/lib/queries/use-organization'
 import {
   useCreateProviderKey,
   useProviderKeys,
@@ -98,6 +98,8 @@ export default function SettingsPage() {
           </div>
         </section>
       )}
+
+      {org && <OverageSettingsSection org={org} />}
 
       {/* Provider keys */}
       <section>
@@ -226,5 +228,117 @@ export default function SettingsPage() {
         </Dialog>
       </section>
     </div>
+  )
+}
+
+// ── Overage policy (Pattern C) ──────────────────────────────────────────
+
+interface OverageOrg {
+  id: string
+  plan: string
+  allow_overage: boolean
+  overage_cap_multiplier: number
+}
+
+function OverageSettingsSection({ org }: { org: OverageOrg }) {
+  const update = useUpdateOverageSettings()
+  const [multiplierDraft, setMultiplierDraft] = useState(String(org.overage_cap_multiplier))
+  const isFree = org.plan === 'free'
+  const isEnterprise = org.plan === 'enterprise'
+
+  if (isEnterprise) return null // unlimited — no overage concept
+
+  return (
+    <section className="mb-8">
+      <h2 className="text-base font-semibold mb-4">Overage billing</h2>
+      <div className="rounded-lg border bg-white p-5 space-y-5">
+        {isFree ? (
+          <p className="text-sm text-muted-foreground">
+            Overage billing is not available on the Free plan. Upgrade to Starter or Team to allow
+            usage past your monthly quota to be billed instead of rejected.
+          </p>
+        ) : (
+          <>
+            {/* Toggle */}
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex-1">
+                <label className="text-sm font-medium" htmlFor="allow-overage">
+                  Allow overage charges
+                </label>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  When your monthly quota is reached, continue serving requests and bill the
+                  overage on your next invoice. Off = requests past the limit return{' '}
+                  <code className="text-[11px]">429</code>.
+                </p>
+              </div>
+              <button
+                id="allow-overage"
+                type="button"
+                role="switch"
+                aria-checked={org.allow_overage}
+                disabled={update.isPending}
+                onClick={() =>
+                  void update.mutateAsync({ allow_overage: !org.allow_overage })
+                }
+                className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${
+                  org.allow_overage ? 'bg-blue-600' : 'bg-gray-300'
+                } ${update.isPending ? 'opacity-60' : ''}`}
+              >
+                <span
+                  className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${
+                    org.allow_overage ? 'translate-x-5' : 'translate-x-0.5'
+                  }`}
+                />
+              </button>
+            </div>
+
+            {/* Multiplier */}
+            <Separator />
+            <div>
+              <Label htmlFor="cap-multiplier" className="text-sm">
+                Max overage multiplier
+              </Label>
+              <p className="text-xs text-muted-foreground mt-0.5 mb-2">
+                Hard cap = your monthly limit × this multiplier. Requests past the cap return
+                <code className="text-[11px] ml-1">429</code> even with overage enabled — protects
+                against runaway usage. Allowed: 1–100.
+              </p>
+              <div className="flex items-center gap-2">
+                <Input
+                  id="cap-multiplier"
+                  type="number"
+                  min={1}
+                  max={100}
+                  disabled={!org.allow_overage || update.isPending}
+                  value={multiplierDraft}
+                  onChange={(e) => setMultiplierDraft(e.target.value)}
+                  className="w-24"
+                />
+                <span className="text-sm text-muted-foreground">x</span>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={
+                    !org.allow_overage ||
+                    update.isPending ||
+                    Number(multiplierDraft) === org.overage_cap_multiplier ||
+                    !Number.isInteger(Number(multiplierDraft)) ||
+                    Number(multiplierDraft) < 1 ||
+                    Number(multiplierDraft) > 100
+                  }
+                  onClick={() =>
+                    void update.mutateAsync({
+                      overage_cap_multiplier: Number(multiplierDraft),
+                    })
+                  }
+                >
+                  {update.isPending ? 'Saving…' : 'Save'}
+                </Button>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+    </section>
   )
 }

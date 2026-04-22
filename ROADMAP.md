@@ -280,6 +280,7 @@ Product Hunt + HN + 커뮤니티 동시 런치. Phase 1~3에서 쌓은 차별화
 - [~] Self-host Docker **실전 검증** — **1차 완료 (2026-04-22)**: 로컬 빌드 + 가짜 env 부팅 확인, 7개 gap 발견. 세부 fixup 아래 Self-Host Remediation Checklist 참고
 - [x] Overage 경고 이메일 실제 구현 — **완료 (2026-04-22)**: `/cron/check-quota-warnings` (hourly) + `lib/quota-warnings.ts` + 80/100% 임계치 per-month idempotency + Resend 이메일 + `<QuotaBanner />` /dashboard + /billing 양쪽 표시 + 15개 단위 테스트
 - [x] Paddle overage 청구 **전면 재구현** — **완료 (2026-04-22)**. 기존 코드는 존재하지 않는 `/subscriptions/{id}/adjust` 엔드포인트 + 방향 반대의 `action: 'credit'` (고객에게 환불) 로 이중 버그 상태였음. 공식 `POST /subscriptions/{id}/charge` 엔드포인트 + `effective_from: next_billing_period` (다음 invoice에 bundle) + 새 `subscription_overage_charges` 테이블로 멱등성 확보 + `pending→charged/error` 3-state flow로 race-safe + 14 단위 테스트. 프로덕션 DB에 migration 반영됨.
+- [x] **Pattern C 쿼터 정책 + 대시보드 토글** — **완료 (2026-04-22)**. `lib/quota-policy.ts` 순수 결정 함수 + Free→무조건 block, Paid+overage→hard-cap 까지 통과, Paid+disabled→Pattern A. `middleware/quota.ts` 재작성(block reason + `X-Overage-Active` 헤더). `PATCH /api/v1/organizations/me/overage` API. `/settings`에 Overage billing 토글 + multiplier(1-100) UI. `<QuotaBanner />` 3-tone 상태(amber/blue/red) 반영. 이메일 템플릿 context-aware 재작성. 14 신규 테스트(118→전체 green). organizations 테이블 `allow_overage`/`overage_cap_multiplier` 프로덕션 반영됨.
 
 **Self-Host Remediation (1차 검증에서 발견)**
 > 2026-04-22 로컬 `docker build` + `docker run`으로 검증. Gap 7개 중 일부 즉시 수정, 일부 백로그.

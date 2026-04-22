@@ -158,6 +158,35 @@ DELETE /api/v1/provider-keys/:id`}</CodeBlock>
         </li>
       </ul>
 
+      <h2 id="overage">Overage billing controls (Pattern C)</h2>
+      <p>
+        Paid plans (Starter / Team) show an <strong>Overage billing</strong> card below{' '}
+        <strong>Organization</strong> with two controls:
+      </p>
+      <ul>
+        <li>
+          <strong>Allow overage charges</strong> — when on (default), requests past your monthly
+          quota keep flowing and are billed on your next invoice at the plan&apos;s overage rate.
+          When off, requests past the quota return HTTP 429 immediately (Pattern A / legacy
+          behavior).
+        </li>
+        <li>
+          <strong>Max overage multiplier</strong> (1–100, default 5) — defines a hard cap. Even
+          with overage enabled, requests past <em>limit × multiplier</em> are rejected. Protects
+          against runaway usage spikes. Example: Starter 100K × 5 = 500K hard cap; past that,
+          requests return 429 regardless of overage setting.
+        </li>
+      </ul>
+      <p>
+        Free plan hides these controls (quota is always a hard block). Enterprise is unlimited so
+        the whole section is hidden.
+      </p>
+      <p>
+        Each change takes effect on the next proxy request — no restart or cache-bust needed. The
+        hourly quota-warning email picks up the current setting too: at 100% with overage enabled,
+        the email tells you overage billing is active instead of reporting a block.
+      </p>
+
       <h2>Limitations</h2>
       <ul>
         <li>

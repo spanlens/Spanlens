@@ -71,26 +71,48 @@ export interface QuotaCheckResult {
   usedThisMonth: number
   limit: number | null
   plan: Plan
+  /** True when the org is currently past the soft limit but overage is authorized. */
+  overageActive: boolean
+  /** Org's overage policy, for reporting to the dashboard + email templates. */
+  allowOverage: boolean
+  capMultiplier: number
 }
 
 /**
- * Counts this org's requests in the current UTC calendar month and compares
- * against the plan limit. Falls back to 'free' on any lookup failure (safe
- * default — we'd rather throttle than over-serve).
+ * Counts this org's requests in the current UTC calendar month and applies
+ * the Pattern C quota policy (see lib/quota-policy.ts).
+ *
+ * Callers:
+ *   - middleware/quota.ts      — uses `allowed` to decide 429 vs pass-through
+ *   - api/billing.ts            — exposes current quota state to the dashboard
+ *   - lib/quota-warnings.ts     — iterates active orgs to send 80/100% emails
+ *
+ * Falls back to 'free' + conservative defaults on any lookup failure.
  */
 export async function checkMonthlyQuota(
   organizationId: string,
 ): Promise<QuotaCheckResult> {
   const { data: org } = await supabaseAdmin
     .from('organizations')
-    .select('plan')
+    .select('plan, allow_overage, overage_cap_multiplier')
     .eq('id', organizationId)
     .single()
 
   const plan = ((org?.plan as Plan) ?? 'free') as Plan
+  const allowOverage = (org?.allow_overage as boolean | undefined) ?? true
+  const capMultiplier = (org?.overage_cap_multiplier as number | undefined) ?? 5
+
   const limit = MONTHLY_REQUEST_LIMITS[plan]
   if (limit === null) {
-    return { allowed: true, usedThisMonth: 0, limit: null, plan }
+    return {
+      allowed: true,
+      usedThisMonth: 0,
+      limit: null,
+      plan,
+      overageActive: false,
+      allowOverage,
+      capMultiplier,
+    }
   }
 
   const now = new Date()
@@ -103,5 +125,24 @@ export async function checkMonthlyQuota(
     .gte('created_at', monthStart.toISOString())
 
   const used = count ?? 0
-  return { allowed: used < limit, usedThisMonth: used, limit, plan }
+
+  // Apply Pattern C policy
+  const { evaluateQuotaPolicy } = await import('./quota-policy.js')
+  const decision = evaluateQuotaPolicy({
+    used,
+    limit,
+    plan,
+    allowOverage,
+    capMultiplier,
+  })
+
+  return {
+    allowed: decision.action === 'pass',
+    usedThisMonth: used,
+    limit,
+    plan,
+    overageActive: decision.action === 'pass' && decision.overageActive,
+    allowOverage,
+    capMultiplier,
+  }
 }
