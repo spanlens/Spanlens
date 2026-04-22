@@ -13,6 +13,8 @@ import {
   useRefreshSubscription,
 } from '@/lib/queries/use-billing'
 import type { BillingPlan } from '@/lib/queries/types'
+import { QuotaBanner } from '@/components/dashboard/quota-banner'
+import { DocsLink } from '@/components/layout/docs-link'
 
 interface PlanCardConfig {
   id: BillingPlan
@@ -184,12 +186,17 @@ export default function BillingPage() {
 
   return (
     <div className="max-w-5xl">
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold">Billing</h1>
-        <p className="text-muted-foreground text-sm mt-1">
-          Manage your subscription and plan
-        </p>
+      <div className="mb-8 flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold">Billing</h1>
+          <p className="text-muted-foreground text-sm mt-1">
+            Manage your subscription and plan
+          </p>
+        </div>
+        <DocsLink href="/docs/features/cost-tracking" />
       </div>
+
+      <QuotaBanner />
 
       {/* Current subscription summary */}
       <section className="mb-8">

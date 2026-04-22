@@ -174,9 +174,11 @@ Content-Type: application/json
           SQL or anomaly-based rules are roadmap items.
         </li>
         <li>
-          <strong>Quota-overage emails are separate and not yet implemented.</strong> Those would
-          be user-facing warnings at 80% / 100% plan quota — currently only Paddle-side metered
-          billing triggers. Tracked as a launch blocker.
+          <strong>Quota-overage warning emails run on a separate cron</strong> (hourly). Org
+          owners get automatic emails at 80% and 100% of the monthly request quota — no setup
+          required. These use the same Resend integration but bypass the user-defined alert
+          rules system. See <a href="/docs/features/cost-tracking">Cost tracking</a> for the
+          counting rules.
         </li>
       </ul>
 

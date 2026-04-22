@@ -166,6 +166,88 @@ export async function sendDiscordAlert(
   }
 }
 
+// ── Quota warning emails (80% / 100%) ──────────────────────────
+
+export interface QuotaWarningNotification {
+  organizationName: string
+  /** Which bucket we crossed — 80 or 100. */
+  threshold: 80 | 100
+  used: number
+  limit: number
+  plan: string
+  /** Absolute URL to /billing for the upgrade CTA. */
+  billingUrl: string
+}
+
+function buildQuotaSubject(n: QuotaWarningNotification): string {
+  if (n.threshold === 100) {
+    return `[Spanlens] Monthly request quota reached for ${n.organizationName}`
+  }
+  return `[Spanlens] ${n.organizationName} has used 80% of this month's quota`
+}
+
+function buildQuotaBody(n: QuotaWarningNotification): string {
+  const pct = Math.floor((n.used / n.limit) * 100)
+  if (n.threshold === 100) {
+    return [
+      `Heads up — ${n.organizationName} has hit its monthly request quota.`,
+      ``,
+      `Usage:  ${n.used.toLocaleString()} / ${n.limit.toLocaleString()} requests (${pct}%)`,
+      `Plan:   ${n.plan}`,
+      ``,
+      `Additional requests through the Spanlens proxy will receive 429 (Too Many Requests)`,
+      `until your billing period renews, or until you upgrade.`,
+      ``,
+      `Upgrade: ${n.billingUrl}`,
+    ].join('\n')
+  }
+  return [
+    `${n.organizationName} has used 80% of this month's request quota.`,
+    ``,
+    `Usage:  ${n.used.toLocaleString()} / ${n.limit.toLocaleString()} requests (${pct}%)`,
+    `Plan:   ${n.plan}`,
+    ``,
+    `Upgrade anytime to avoid 429s when you hit the cap:`,
+    `${n.billingUrl}`,
+  ].join('\n')
+}
+
+export async function sendQuotaWarningEmail(
+  toAddress: string,
+  notification: QuotaWarningNotification,
+): Promise<DeliveryResult> {
+  const apiKey = process.env['RESEND_API_KEY']
+  if (!apiKey) return { ok: false, error: 'RESEND_API_KEY not configured' }
+
+  const fromAddress = process.env['RESEND_FROM_EMAIL'] ?? 'alerts@spanlens.io'
+
+  try {
+    const res = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        from: fromAddress,
+        to: [toAddress],
+        subject: buildQuotaSubject(notification),
+        text: buildQuotaBody(notification),
+      }),
+    })
+    if (!res.ok) {
+      const text = await res.text().catch(() => '')
+      return { ok: false, error: `Resend ${res.status}: ${text.slice(0, 200)}` }
+    }
+    return { ok: true }
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : 'unknown' }
+  }
+}
+
+// Exported for testing (no network side effects)
+export const __testing = { buildQuotaSubject, buildQuotaBody }
+
 export async function deliverToChannel(
   kind: 'email' | 'slack' | 'discord',
   target: string,

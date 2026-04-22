@@ -1,0 +1,23 @@
+name: Check quota warnings (hourly)
+
+# Sends 80% / 100% quota warning emails to org owners. Idempotent per
+# calendar month per threshold — safe to run frequently.
+#
+# Hourly cadence is a compromise: frequent enough to catch organizations
+# that jump from 70% → 100% inside an hour on a busy day, infrequent
+# enough that it costs ~720 cron invocations/month (well inside free tiers).
+
+on:
+  schedule:
+    - cron: '15 * * * *' # every hour at :15 past
+  workflow_dispatch:
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call /cron/check-quota-warnings
+        run: |
+          curl --fail --silent --show-error \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            https://spanlens-server.vercel.app/cron/check-quota-warnings

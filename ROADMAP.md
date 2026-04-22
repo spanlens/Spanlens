@@ -278,7 +278,7 @@ Product Hunt + HN + 커뮤니티 동시 런치. Phase 1~3에서 쌓은 차별화
 **기능 완성도 (audit로 발견된 gap)**
 - [x] Prompts 기능의 "요청 ↔ 버전 연결" 경로 SDK에서 노출 — **완료 (sdk v0.2.2, 2026-04-22)**: `withPromptVersion()` 헬퍼 + `observeOpenAI({ promptVersion })` 옵션 + 서버측 `X-Spanlens-Prompt-Version` 헤더 파싱
 - [~] Self-host Docker **실전 검증** — **1차 완료 (2026-04-22)**: 로컬 빌드 + 가짜 env 부팅 확인, 7개 gap 발견. 세부 fixup 아래 Self-Host Remediation Checklist 참고
-- [ ] Overage 경고 이메일 실제 구현 (현재는 Paddle 메터링만, 유저 경고 없음 — 80%/100% 임계치 도달 시 Resend 이메일 + 대시보드 배너)
+- [x] Overage 경고 이메일 실제 구현 — **완료 (2026-04-22)**: `/cron/check-quota-warnings` (hourly) + `lib/quota-warnings.ts` + 80/100% 임계치 per-month idempotency + Resend 이메일 + `<QuotaBanner />` /dashboard + /billing 양쪽 표시 + 15개 단위 테스트
 - [ ] Paddle `adjust` API 호출의 `credit` vs `debit` 액션 검증 (과금 방향 확인)
 
 **Self-Host Remediation (1차 검증에서 발견)**

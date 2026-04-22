@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { supabaseAdmin } from '../lib/db.js'
 import { deliverToChannel, type AlertNotification } from '../lib/notifiers.js'
 import { computeAndReportOverages } from '../lib/paddle-usage.js'
+import { runQuotaWarningsJob } from '../lib/quota-warnings.js'
 
 /**
  * Vercel cron endpoints. Invoked hourly via `crons` entry in `vercel.json`.
@@ -192,6 +193,23 @@ cronRouter.get('/report-usage-overage', async (c) => {
   try {
     const reports = await computeAndReportOverages()
     return c.json({ success: true, count: reports.length, reports })
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'unknown'
+    return c.json({ error: msg }, 500)
+  }
+})
+
+// ── Quota warnings (hourly) ─────────────────────────────────────
+// For every org on a paid plan that crosses 80% / 100% of its monthly
+// request quota, send a warning email via Resend. Idempotent per calendar
+// month per threshold (tracked on organizations.quota_warning_*_sent_at).
+cronRouter.get('/check-quota-warnings', async (c) => {
+  const authFail = assertCronAuth(c.req.header('Authorization'))
+  if (authFail) return c.json({ error: authFail }, 401)
+
+  try {
+    const result = await runQuotaWarningsJob()
+    return c.json({ success: true, ...result })
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'unknown'
     return c.json({ error: msg }, 500)
