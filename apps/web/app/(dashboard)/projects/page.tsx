@@ -1,6 +1,7 @@
 'use client'
+import Link from 'next/link'
 import { useState } from 'react'
-import { Plus, Trash2, Copy } from 'lucide-react'
+import { Plus, Trash2, Copy, Terminal, Check, ExternalLink } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -18,6 +19,13 @@ export default function ProjectsPage() {
   const revokeApiKey = useRevokeApiKey()
 
   const [newKey, setNewKey] = useState<string | null>(null)
+  const [cmdCopied, setCmdCopied] = useState(false)
+
+  function copyWizardCmd() {
+    navigator.clipboard.writeText('npx @spanlens/cli init')
+    setCmdCopied(true)
+    setTimeout(() => setCmdCopied(false), 1500)
+  }
 
   // New project dialog
   const [projDialogOpen, setProjDialogOpen] = useState(false)
@@ -99,21 +107,91 @@ export default function ProjectsPage() {
         </Dialog>
       </div>
 
-      {/* New key banner */}
+      {/* New key banner — key + integration guide */}
       {newKey && (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 mb-6">
-          <p className="text-sm font-semibold text-amber-900 mb-2">New API key created — copy it now</p>
-          <div className="flex items-center gap-2">
-            <code className="flex-1 rounded bg-white border px-3 py-1.5 text-sm font-mono break-all">
+        <div className="rounded-lg border border-emerald-300 bg-emerald-50 p-5 mb-6">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-sm font-semibold text-emerald-900">
+              🎉 API key created — copy now (won&apos;t be shown again)
+            </p>
+            <button
+              onClick={() => setNewKey(null)}
+              className="text-emerald-700 hover:text-emerald-900 text-sm"
+              aria-label="Dismiss"
+            >
+              ✕
+            </button>
+          </div>
+
+          {/* The key itself */}
+          <div className="flex items-center gap-2 mb-5">
+            <code className="flex-1 rounded bg-white border border-emerald-200 px-3 py-2 text-sm font-mono break-all">
               {newKey}
             </code>
             <Button size="icon" variant="ghost" onClick={() => navigator.clipboard.writeText(newKey)}>
               <Copy className="h-4 w-4" />
             </Button>
-            <Button size="icon" variant="ghost" onClick={() => setNewKey(null)}>
-              ✕
-            </Button>
           </div>
+
+          {/* Integration guide */}
+          <div className="rounded-md bg-white border border-emerald-200 p-4">
+            <div className="flex items-center gap-2 mb-2.5">
+              <Terminal className="h-4 w-4 text-emerald-700" />
+              <p className="text-sm font-semibold text-gray-900">
+                Integrate in 30 seconds
+              </p>
+              <Badge variant="outline" className="text-[10px] border-emerald-300 text-emerald-700">
+                recommended
+              </Badge>
+            </div>
+            <p className="text-xs text-gray-600 mb-3">
+              In your Next.js project root, run the wizard. Paste the key above when prompted.
+            </p>
+            <div className="flex items-center gap-2">
+              <code className="flex-1 rounded bg-gray-950 px-3 py-2 text-sm font-mono text-green-400">
+                npx @spanlens/cli init
+              </code>
+              <Button size="sm" variant="outline" onClick={copyWizardCmd}>
+                {cmdCopied ? (
+                  <>
+                    <Check className="h-3.5 w-3.5 mr-1" />
+                    Copied
+                  </>
+                ) : (
+                  <>
+                    <Copy className="h-3.5 w-3.5 mr-1" />
+                    Copy
+                  </>
+                )}
+              </Button>
+            </div>
+            <p className="text-xs text-gray-500 mt-3">
+              Using a different framework (Python, Ruby, raw HTTP)?{' '}
+              <Link href="/docs/quick-start" className="text-blue-600 underline inline-flex items-center gap-0.5">
+                Manual setup guide
+                <ExternalLink className="h-3 w-3" />
+              </Link>
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Standing integration hint (no key in flight) */}
+      {!newKey && projects.length > 0 && (
+        <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 px-4 py-3 mb-6 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3 text-sm text-gray-600">
+            <Terminal className="h-4 w-4 shrink-0 text-gray-500" />
+            <span>
+              Quick integrate in a Next.js project:{' '}
+              <code className="font-mono bg-white border px-1.5 py-0.5 rounded text-xs">
+                npx @spanlens/cli init
+              </code>
+            </span>
+          </div>
+          <Link href="/docs/quick-start" className="text-xs text-blue-600 hover:underline shrink-0 inline-flex items-center gap-0.5">
+            Full guide
+            <ExternalLink className="h-3 w-3" />
+          </Link>
         </div>
       )}
 
