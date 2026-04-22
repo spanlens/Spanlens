@@ -28,9 +28,15 @@ export const app = new Hono()
 app.use('*', cors({
   origin: (origin) => {
     const allowed = [
+      'https://spanlens.io',
+      'https://www.spanlens.io',
       'https://spanlens-web.vercel.app',
       'http://localhost:3000',
     ]
+    // Also allow any Vercel preview deployment under the spanlens-web project
+    if (origin && /^https:\/\/spanlens-[a-z0-9-]+-sunes26s-projects\.vercel\.app$/.test(origin)) {
+      return origin
+    }
     return allowed.includes(origin) ? origin : allowed[0]!
   },
   allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
