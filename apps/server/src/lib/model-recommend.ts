@@ -1,4 +1,5 @@
 import { supabaseAdmin } from './db.js'
+import { matchSubstitute } from './model-recommend-rules.js'
 
 /**
  * Heuristic model-recommendation engine.
@@ -8,8 +9,8 @@ import { supabaseAdmin } from './db.js'
  * (small inputs, small outputs, high volume), we suggest a cheaper
  * substitute with documented capability overlap.
  *
- * Substitutes are curated manually — we don't benchmark models at runtime.
- * Cost savings are computed from actual last-N-days spend per model.
+ * Substitutes (curated) + matching logic live in ./model-recommend-rules.ts
+ * so unit tests can exercise them without pulling in the Supabase client.
  */
 
 export interface ModelRecommendation {
@@ -31,58 +32,6 @@ interface RequestRow {
   cost_usd: number | null
   prompt_tokens: number | null
   completion_tokens: number | null
-}
-
-interface Substitute {
-  suggestedProvider: string
-  suggestedModel: string
-  /** Empirical multiplier applied to current cost to estimate cost of substitute */
-  costRatio: number
-  /** Max avg-prompt-tokens to suggest this substitute (above → substitute may not fit) */
-  maxAvgPromptTokens: number
-  /** Max avg-completion-tokens */
-  maxAvgCompletionTokens: number
-  reason: string
-}
-
-/** Curated mapping: (provider, model) → preferred cheaper substitute */
-const SUBSTITUTES: Record<string, Substitute> = {
-  // OpenAI's gpt-4o family → gpt-4o-mini for simple classification/extraction
-  'openai:gpt-4o': {
-    suggestedProvider: 'openai',
-    suggestedModel: 'gpt-4o-mini',
-    costRatio: 0.06, // ~94% cheaper per Tokens
-    maxAvgPromptTokens: 500,
-    maxAvgCompletionTokens: 150,
-    reason: 'Short inputs/outputs suggest classification/extraction workload — gpt-4o-mini covers it at ~15x lower cost.',
-  },
-  // Anthropic Opus → Haiku for simple tasks
-  'anthropic:claude-3-opus-20240229': {
-    suggestedProvider: 'anthropic',
-    suggestedModel: 'claude-haiku-4.5',
-    costRatio: 0.04,
-    maxAvgPromptTokens: 500,
-    maxAvgCompletionTokens: 200,
-    reason: 'Low token volume per call fits Haiku 4.5 envelope; >20x cheaper with sub-second latency.',
-  },
-  // Claude Sonnet (any rev) → Haiku for simple
-  'anthropic:claude-3-5-sonnet-20241022': {
-    suggestedProvider: 'anthropic',
-    suggestedModel: 'claude-haiku-4.5',
-    costRatio: 0.25,
-    maxAvgPromptTokens: 800,
-    maxAvgCompletionTokens: 250,
-    reason: 'Sonnet is overkill for short-context classification; Haiku 4.5 is ~4x cheaper with comparable accuracy.',
-  },
-  // Gemini Pro → Flash
-  'gemini:gemini-1.5-pro': {
-    suggestedProvider: 'gemini',
-    suggestedModel: 'gemini-1.5-flash',
-    costRatio: 0.067,
-    maxAvgPromptTokens: 1000,
-    maxAvgCompletionTokens: 300,
-    reason: 'Flash is ~15x cheaper on short requests and often within 5% accuracy on structured tasks.',
-  },
 }
 
 export interface RecommendOptions {
@@ -125,7 +74,7 @@ export async function recommendModelSwaps(
 
   for (const [key, rows] of buckets) {
     if (rows.length < minSamples) continue
-    const sub = SUBSTITUTES[key]
+    const sub = matchSubstitute(key) // handles dated variants via longest-prefix
     if (!sub) continue
 
     const [provider = '', model = ''] = key.split(':')
