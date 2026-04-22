@@ -1,0 +1,54 @@
+name: Publish @spanlens/cli
+
+# Triggers:
+#   • push a git tag like `cli-v0.1.0` → automated publish
+#   • manual via workflow_dispatch
+#
+# Reuses the NPM_TOKEN secret from @spanlens/sdk publish workflow.
+
+on:
+  push:
+    tags:
+      - 'cli-v*'
+  workflow_dispatch:
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write  # npm provenance
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Test CLI
+        run: pnpm --filter @spanlens/cli test
+
+      - name: Build CLI
+        run: pnpm --filter @spanlens/cli build
+
+      - name: Publish to npm
+        working-directory: packages/cli
+        run: |
+          if [ -z "$NPM_TOKEN" ]; then
+            echo "::error::NPM_TOKEN secret is empty or not forwarded"
+            exit 1
+          fi
+          printf '//registry.npmjs.org/:_authToken=%s\n' "$NPM_TOKEN" > .npmrc
+          unset NPM_CONFIG_USERCONFIG
+          npm publish --provenance --access public --userconfig "$PWD/.npmrc"
+          rm -f .npmrc
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
