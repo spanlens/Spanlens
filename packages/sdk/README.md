@@ -12,6 +12,40 @@ npm install @spanlens/sdk
 pnpm add @spanlens/sdk
 ```
 
+## 1-line setup (v0.2.0+) ⚡
+
+For the common case — **just route your LLM calls through Spanlens** for logging + cost tracking — use the pre-configured client helpers. No `baseURL` to remember:
+
+```ts
+// Before
+import OpenAI from 'openai'
+const openai = new OpenAI({
+  apiKey: process.env.SPANLENS_API_KEY,
+  baseURL: 'https://spanlens-server.vercel.app/proxy/openai/v1',
+})
+
+// After ⚡
+import { createOpenAI } from '@spanlens/sdk/openai'
+const openai = createOpenAI()  // reads SPANLENS_API_KEY + baseURL automatically
+```
+
+All three providers supported:
+
+```ts
+import { createOpenAI } from '@spanlens/sdk/openai'
+import { createAnthropic } from '@spanlens/sdk/anthropic'
+import { createGemini } from '@spanlens/sdk/gemini'
+
+const openai    = createOpenAI()
+const anthropic = createAnthropic()
+const gemini    = createGemini()
+// gemini.getGenerativeModel() auto-routes through Spanlens proxy
+```
+
+The returned clients are **identical** to `new OpenAI(...)` etc — all options (timeout, headers, organization, etc.) forward through. Peer dependencies (`openai`, `@anthropic-ai/sdk`, `@google/generative-ai`) are optional — install only the ones you use.
+
+For **multi-step agent tracing** (Gantt view, parent/child spans, RAG pipelines), continue to the Quick start below.
+
 ## Quick start
 
 ```ts

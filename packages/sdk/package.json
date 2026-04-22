@@ -1,6 +1,6 @@
 {
   "name": "@spanlens/sdk",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Spanlens SDK — agent tracing, LLM usage capture, and cost observability for TypeScript.",
   "type": "module",
   "main": "./dist/index.js",
@@ -10,6 +10,18 @@
     ".": {
       "import": "./dist/index.js",
       "types": "./dist/index.d.ts"
+    },
+    "./openai": {
+      "import": "./dist/integrations/openai.js",
+      "types": "./dist/integrations/openai.d.ts"
+    },
+    "./anthropic": {
+      "import": "./dist/integrations/anthropic.js",
+      "types": "./dist/integrations/anthropic.d.ts"
+    },
+    "./gemini": {
+      "import": "./dist/integrations/gemini.js",
+      "types": "./dist/integrations/gemini.d.ts"
     }
   },
   "files": ["dist", "README.md", "CHANGELOG.md", "LICENSE"],
@@ -21,7 +33,21 @@
     "prepublishOnly": "pnpm run clean && pnpm run build && pnpm run test",
     "clean": "rm -rf dist"
   },
+  "peerDependencies": {
+    "openai": ">=4.0.0",
+    "@anthropic-ai/sdk": ">=0.24.0",
+    "@google/generative-ai": ">=0.20.0"
+  },
+  "peerDependenciesMeta": {
+    "openai": { "optional": true },
+    "@anthropic-ai/sdk": { "optional": true },
+    "@google/generative-ai": { "optional": true }
+  },
   "devDependencies": {
+    "@anthropic-ai/sdk": "^0.32.0",
+    "@google/generative-ai": "^0.21.0",
+    "@types/node": "^20.16.11",
+    "openai": "^4.77.0",
     "typescript": "^5.4.5",
     "vitest": "^2.1.3"
   },
