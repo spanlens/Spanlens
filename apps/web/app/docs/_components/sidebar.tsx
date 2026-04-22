@@ -24,10 +24,16 @@ const NAV: NavGroup[] = [
   {
     title: 'Features',
     items: [
-      { title: 'Prompts', href: '/docs/features/prompts' },
+      { title: 'Requests', href: '/docs/features/requests' },
       { title: 'Traces', href: '/docs/features/traces' },
+      { title: 'Prompts', href: '/docs/features/prompts' },
       { title: 'Security', href: '/docs/features/security' },
+      { title: 'Anomalies', href: '/docs/features/anomalies' },
+      { title: 'Alerts', href: '/docs/features/alerts' },
       { title: 'Savings', href: '/docs/features/savings' },
+      { title: 'Cost tracking', href: '/docs/features/cost-tracking' },
+      { title: 'Projects & API keys', href: '/docs/features/projects' },
+      { title: 'Provider keys', href: '/docs/features/settings' },
     ],
   },
   {
