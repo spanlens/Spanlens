@@ -161,6 +161,44 @@ export default function PricingPage() {
             Contact us for Enterprise pricing
           </a>
         </p>
+
+        {/* Overage + billing policy summary */}
+        <div className="mt-16 rounded-xl border bg-gray-50 p-6 max-w-3xl mx-auto">
+          <h3 className="font-semibold text-base mb-3">What happens if I go over my quota?</h3>
+          <p className="text-sm text-muted-foreground mb-4">
+            Paid plans default to <strong>soft limit + overage billing + hard cap</strong> so
+            you&apos;re never surprise-blocked or surprise-billed:
+          </p>
+          <ul className="text-sm text-muted-foreground space-y-2 mb-4">
+            <li>
+              <strong>Soft limit</strong> — your plan&apos;s included quota (100K on Starter,
+              500K on Team). Extra requests pass through and accumulate.
+            </li>
+            <li>
+              <strong>Overage billing</strong> — Starter $0.10 / Team $0.08 per 1,000 extra
+              requests, bundled into your next invoice (one email per month, not per charge).
+            </li>
+            <li>
+              <strong>Hard cap</strong> — default 5× the soft limit. Past this, requests return
+              429 even with overage enabled — your absolute ceiling. Adjustable 1–100× in
+              settings.
+            </li>
+            <li>
+              <strong>Cost certainty mode</strong> — flip overage off in settings to behave like
+              Free plan (hard block at quota).
+            </li>
+            <li>
+              <strong>Free plan</strong> — always a hard block at 10K. Upgrade to Starter for
+              overage.
+            </li>
+          </ul>
+          <a
+            href="/docs/features/billing"
+            className="text-sm text-blue-600 hover:underline inline-flex items-center gap-1"
+          >
+            Full billing &amp; quota docs →
+          </a>
+        </div>
       </section>
     </div>
   )

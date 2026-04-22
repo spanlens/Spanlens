@@ -32,6 +32,7 @@ const NAV: NavGroup[] = [
       { title: 'Alerts', href: '/docs/features/alerts' },
       { title: 'Savings', href: '/docs/features/savings' },
       { title: 'Cost tracking', href: '/docs/features/cost-tracking' },
+      { title: 'Billing & quotas', href: '/docs/features/billing' },
       { title: 'Projects & API keys', href: '/docs/features/projects' },
       { title: 'Provider keys', href: '/docs/features/settings' },
     ],

@@ -186,6 +186,10 @@ DELETE /api/v1/provider-keys/:id`}</CodeBlock>
         hourly quota-warning email picks up the current setting too: at 100% with overage enabled,
         the email tells you overage billing is active instead of reporting a block.
       </p>
+      <p>
+        See <a href="/docs/features/billing">Billing &amp; quotas</a> for the complete pricing
+        picture (overage rates per plan, invoice format, FAQ).
+      </p>
 
       <h2>Limitations</h2>
       <ul>

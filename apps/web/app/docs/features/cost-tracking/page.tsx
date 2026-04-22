@@ -144,6 +144,11 @@ GET /api/v1/stats?sinceHours=720&groupBy=model
 
       <hr />
       <p className="text-sm text-muted-foreground">
+        Note: this page is about <em>per-request USD cost</em> (how much each LLM call cost you
+        at the provider). For <em>Spanlens subscription billing</em> — plan quotas, overage
+        rates, invoicing — see <a href="/docs/features/billing">Billing &amp; quotas</a>.
+      </p>
+      <p className="text-sm text-muted-foreground">
         Related: <a href="/docs/features/requests">Requests</a>, <a href="/docs/features/savings">Savings</a>,{' '}
         <a href="/dashboard">/dashboard</a>. Source:{' '}
         <code>apps/server/src/lib/cost.ts</code>.
