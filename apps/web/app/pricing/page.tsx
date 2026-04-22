@@ -79,11 +79,43 @@ export default function PricingPage() {
       </nav>
 
       <section className="max-w-5xl mx-auto px-6 py-24">
-        <div className="text-center mb-16">
+        <div className="text-center mb-10">
           <h1 className="text-4xl font-bold mb-4">Simple, honest pricing</h1>
           <p className="text-lg text-muted-foreground">
             Start free. Scale as you grow. Cancel anytime.
           </p>
+        </div>
+
+        {/* Common features — all plans */}
+        <div className="max-w-3xl mx-auto mb-14 rounded-xl border bg-gray-50 px-6 py-5 text-sm">
+          <p className="font-semibold text-gray-700 mb-2.5">Every plan includes</p>
+          <ul className="grid grid-cols-1 md:grid-cols-2 gap-y-1.5 gap-x-6 text-gray-600">
+            <li className="flex items-center gap-2">
+              <Check className="h-4 w-4 text-emerald-600 shrink-0" />
+              <code className="font-mono text-xs bg-white px-1.5 py-0.5 rounded border">npx @spanlens/cli init</code>
+              <span>1-command setup</span>
+            </li>
+            <li className="flex items-center gap-2">
+              <Check className="h-4 w-4 text-emerald-600 shrink-0" />
+              Self-hostable (Docker)
+            </li>
+            <li className="flex items-center gap-2">
+              <Check className="h-4 w-4 text-emerald-600 shrink-0" />
+              OpenAI / Anthropic / Gemini
+            </li>
+            <li className="flex items-center gap-2">
+              <Check className="h-4 w-4 text-emerald-600 shrink-0" />
+              Agent tracing (Gantt view)
+            </li>
+            <li className="flex items-center gap-2">
+              <Check className="h-4 w-4 text-emerald-600 shrink-0" />
+              PII + prompt-injection detection
+            </li>
+            <li className="flex items-center gap-2">
+              <Check className="h-4 w-4 text-emerald-600 shrink-0" />
+              Anomaly detection (3σ)
+            </li>
+          </ul>
         </div>
 
         <div className="grid grid-cols-3 gap-6">

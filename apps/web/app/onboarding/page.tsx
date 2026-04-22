@@ -1,7 +1,7 @@
 'use client'
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Zap, Key } from 'lucide-react'
+import { Zap, Key, Terminal, Code } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -10,6 +10,7 @@ import { apiPost } from '@/lib/api'
 import { createClient } from '@/lib/supabase/client'
 
 type Step = 'org' | 'provider' | 'apikey' | 'done'
+type IntegrationMode = 'cli' | 'manual'
 
 export default function OnboardingPage() {
   const router = useRouter()
@@ -28,6 +29,7 @@ export default function OnboardingPage() {
 
   // API key step
   const [createdApiKey, setCreatedApiKey] = useState('')
+  const [integrationMode, setIntegrationMode] = useState<IntegrationMode>('cli')
 
   async function handleOrg(e: React.FormEvent) {
     e.preventDefault()
@@ -209,15 +211,77 @@ export default function OnboardingPage() {
               <code className="text-sm font-mono text-green-400 break-all">{createdApiKey}</code>
             </div>
 
-            <div className="rounded-lg border bg-gray-950 p-4 mb-6">
-              <p className="text-xs text-gray-400 font-mono mb-3">Integration snippet</p>
-              <pre className="text-sm font-mono text-gray-200 whitespace-pre-wrap">{`from openai import OpenAI
-
-client = OpenAI(
-    api_key="${createdApiKey}",
-    base_url="${proxyUrls[provider]}",
-)`}</pre>
+            {/* Integration mode tabs */}
+            <div className="mb-3 flex gap-2">
+              <button
+                type="button"
+                onClick={() => setIntegrationMode('cli')}
+                className={`flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                  integrationMode === 'cli'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                <Terminal className="h-3.5 w-3.5" />
+                1-command setup
+                <span className="rounded bg-emerald-500/20 px-1.5 text-[10px] font-semibold text-emerald-700">
+                  recommended
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setIntegrationMode('manual')}
+                className={`flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                  integrationMode === 'manual'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                <Code className="h-3.5 w-3.5" />
+                Manual
+              </button>
             </div>
+
+            {integrationMode === 'cli' ? (
+              <div className="rounded-lg border bg-gray-950 p-4 mb-6">
+                <p className="text-xs text-gray-400 font-mono mb-3">
+                  Run in your Next.js project — auto-installs SDK + rewrites OpenAI client
+                </p>
+                <pre className="text-sm font-mono text-green-400 whitespace-pre-wrap">{`npx @spanlens/cli init`}</pre>
+                <p className="text-xs text-gray-500 mt-4">
+                  Paste your API key when asked. ~30 seconds.
+                </p>
+              </div>
+            ) : (
+              <div className="rounded-lg border bg-gray-950 p-4 mb-6 space-y-4">
+                <div>
+                  <p className="text-xs text-gray-400 font-mono mb-2">1. Install the SDK</p>
+                  <pre className="text-sm font-mono text-gray-200 whitespace-pre-wrap">{`npm install @spanlens/sdk`}</pre>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-400 font-mono mb-2">2. Add to your env</p>
+                  <pre className="text-sm font-mono text-gray-200 whitespace-pre-wrap">{`SPANLENS_API_KEY=${createdApiKey}`}</pre>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-400 font-mono mb-2">
+                    3. Replace your {provider === 'openai' ? 'OpenAI' : provider === 'anthropic' ? 'Anthropic' : 'Gemini'} client
+                  </p>
+                  <pre className="text-sm font-mono text-gray-200 whitespace-pre-wrap">{
+                    provider === 'openai'
+                      ? `import { createOpenAI } from '@spanlens/sdk/openai'\nconst openai = createOpenAI()`
+                      : provider === 'anthropic'
+                        ? `import { createAnthropic } from '@spanlens/sdk/anthropic'\nconst anthropic = createAnthropic()`
+                        : `import { createGemini } from '@spanlens/sdk/gemini'\nconst genAI = createGemini()`
+                  }</pre>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-400 font-mono mb-2">
+                    Or (any language) — route LLM calls through proxy directly:
+                  </p>
+                  <pre className="text-sm font-mono text-gray-200 whitespace-pre-wrap">{`Base URL: ${proxyUrls[provider]}\nAuth:     Authorization: Bearer ${createdApiKey}`}</pre>
+                </div>
+              </div>
+            )}
 
             <div className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 mb-6">
               <Key className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />

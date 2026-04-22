@@ -31,12 +31,12 @@ export default function LandingPage() {
           Open source · Self-hostable · No vendor lock-in
         </div>
         <h1 className="text-5xl font-bold tracking-tight text-balance mb-6">
-          LLM observability that{' '}
-          <span className="text-blue-600">stays out of your way</span>
+          LLM observability in{' '}
+          <span className="text-blue-600">30 seconds</span>
         </h1>
         <p className="text-xl text-muted-foreground max-w-2xl mx-auto mb-10 text-balance">
-          Replace one line in your code. Get request logging, cost tracking, and agent tracing
-          across OpenAI, Anthropic, and Gemini — instantly.
+          One command installs the SDK, rewrites your OpenAI client, and routes every request
+          through Spanlens — with full cost, latency, and agent tracing.
         </p>
         <div className="flex items-center justify-center gap-4">
           <Link href="/signup">
@@ -49,14 +49,18 @@ export default function LandingPage() {
           </Link>
         </div>
 
-        {/* Code snippet */}
+        {/* Code snippet — npx-first */}
         <div className="mt-16 rounded-xl border bg-gray-950 p-6 text-left max-w-xl mx-auto">
-          <p className="text-xs text-gray-500 mb-3 font-mono">Before</p>
-          <pre className="text-sm font-mono text-red-400">{`base_url = "https://api.openai.com"`}</pre>
-          <p className="text-xs text-gray-500 mt-4 mb-3 font-mono">After</p>
-          <pre className="text-sm font-mono text-green-400">{`base_url = "https://proxy.spanlens.io/openai"`}</pre>
+          <p className="text-xs text-gray-500 mb-3 font-mono">Run in your Next.js project</p>
+          <pre className="text-sm font-mono text-green-400">{`npx @spanlens/cli init`}</pre>
           <p className="text-xs text-gray-600 mt-4 font-mono">
-            That&apos;s it. Every request is now tracked.
+            Auto-installs <span className="text-gray-400">@spanlens/sdk</span>, updates{' '}
+            <span className="text-gray-400">.env.local</span>, and rewrites your{' '}
+            <span className="text-gray-400">new OpenAI(&hellip;)</span> calls to route through Spanlens.
+          </p>
+          <p className="text-xs text-gray-600 mt-2 font-mono">
+            Prefer manual? <span className="text-gray-400">npm i @spanlens/sdk</span> + 2 lines of code.{' '}
+            <Link href="/signup" className="underline hover:text-gray-400">See snippet</Link>
           </p>
         </div>
       </section>
@@ -64,9 +68,9 @@ export default function LandingPage() {
       {/* 3-step onboarding preview */}
       <section className="border-t bg-gray-50 py-20">
         <div className="max-w-5xl mx-auto px-6">
-          <h2 className="text-3xl font-bold text-center mb-4">Up in 3 minutes</h2>
+          <h2 className="text-3xl font-bold text-center mb-4">Up in 30 seconds</h2>
           <p className="text-center text-muted-foreground mb-12">
-            No SDK installation, no code changes beyond the base URL.
+            Sign up, paste your API key once, run <span className="font-mono text-sm bg-gray-100 px-1.5 py-0.5 rounded">npx @spanlens/cli init</span> — done.
           </p>
           <div className="grid grid-cols-3 gap-8">
             {STEPS.map((step, i) => (
@@ -124,18 +128,18 @@ export default function LandingPage() {
 const STEPS = [
   {
     icon: DollarSign,
-    title: 'Add your provider key',
-    description: 'Paste your OpenAI, Anthropic, or Gemini API key. We encrypt it at rest.',
+    title: 'Sign up + register provider keys',
+    description: 'Paste your OpenAI / Anthropic / Gemini key. We encrypt at rest with AES-256-GCM.',
   },
   {
     icon: GitBranch,
-    title: 'Get your Spanlens key',
-    description: 'Copy your API key and the proxy base URL for your provider.',
+    title: 'Run the wizard',
+    description: 'npx @spanlens/cli init — installs the SDK, sets up env, rewrites your OpenAI client.',
   },
   {
     icon: BarChart3,
     title: 'Watch requests flow in',
-    description: 'See every request, cost, latency, and token count in your dashboard.',
+    description: 'Every call tracked — cost, latency, tokens, model, full trace.',
   },
 ]
 

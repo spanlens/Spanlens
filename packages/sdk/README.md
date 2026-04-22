@@ -4,6 +4,8 @@ LLM observability SDK for [Spanlens](https://spanlens.io). Record agent traces, 
 
 **Zero-instrumentation mode** — just swap your `baseURL` to Spanlens proxy and you get request logging + cost tracking automatically. Use this SDK when you also want **agent tracing** (multi-step workflows, parallel fan-out, nested spans).
 
+> 💡 **Next.js user?** Run **[`npx @spanlens/cli init`](https://www.npmjs.com/package/@spanlens/cli)** — the wizard installs this SDK, writes your env var, and auto-rewrites `new OpenAI({...})` into `createOpenAI()` for you (30 seconds).
+
 ## Install
 
 ```bash
