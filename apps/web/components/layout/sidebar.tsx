@@ -55,7 +55,7 @@ export function Sidebar() {
       {/* Logo — clickable, returns to landing page */}
       <Link
         href="/"
-        className="flex h-14 items-center gap-2 px-4 border-b border-sidebar-border transition-colors hover:bg-white/5"
+        className="flex h-14 items-center gap-2 px-4 border-b border-sidebar-border"
         aria-label="Spanlens home"
       >
         <Zap className="h-5 w-5 text-blue-400" />
