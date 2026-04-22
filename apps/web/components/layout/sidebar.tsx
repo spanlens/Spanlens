@@ -11,6 +11,10 @@ import {
   Workflow,
   CreditCard,
   Bell,
+  Activity,
+  ShieldAlert,
+  FileText,
+  Sparkles,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
@@ -20,6 +24,10 @@ const NAV_ITEMS = [
   { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
   { href: '/requests', icon: List, label: 'Requests' },
   { href: '/traces', icon: Workflow, label: 'Traces' },
+  { href: '/anomalies', icon: Activity, label: 'Anomalies' },
+  { href: '/security', icon: ShieldAlert, label: 'Security' },
+  { href: '/prompts', icon: FileText, label: 'Prompts' },
+  { href: '/recommendations', icon: Sparkles, label: 'Savings' },
   { href: '/alerts', icon: Bell, label: 'Alerts' },
   { href: '/projects', icon: FolderKanban, label: 'Projects & Keys' },
   { href: '/billing', icon: CreditCard, label: 'Billing' },
