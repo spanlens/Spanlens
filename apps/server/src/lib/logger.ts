@@ -1,4 +1,5 @@
 import { supabaseAdmin } from './db.js'
+import { scanAll } from './security-scan.js'
 
 export interface RequestLogData {
   organizationId: string
@@ -51,6 +52,14 @@ function serializeBody(body: unknown): unknown {
 }
 
 export async function logRequestAsync(data: RequestLogData): Promise<void> {
+  // Security scan — best-effort, never throws. Flags stored alongside the row.
+  let flags: ReturnType<typeof scanAll> = []
+  try {
+    flags = scanAll(data.requestBody)
+  } catch {
+    flags = []
+  }
+
   const { error } = await supabaseAdmin.from('requests').insert({
     organization_id: data.organizationId,
     project_id: data.projectId,
@@ -68,6 +77,7 @@ export async function logRequestAsync(data: RequestLogData): Promise<void> {
     error_message: data.errorMessage,
     trace_id: data.traceId,
     span_id: data.spanId,
+    flags,
   })
   if (error) {
     console.error('[logger] Failed to log request:', error.message)
