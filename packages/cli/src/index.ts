@@ -17,6 +17,11 @@ import pc from 'picocolors'
 import { detectFramework } from './framework-detect.js'
 import { upsertEnvVar } from './env-writer.js'
 import { planPatches, applyPatches, type PatchPlan } from './code-patcher.js'
+import {
+  detectPackageManager,
+  isAlreadyInstalled,
+  installPackage,
+} from './installer.js'
 
 const DASHBOARD_URL = 'https://www.spanlens.io'
 
@@ -125,6 +130,48 @@ async function main(): Promise<void> {
     process.exit(1)
   }
 
+  // Step 4b: auto-install @spanlens/sdk in the user's project
+  //
+  // CLI is delivered via npx → its node_modules is separate from the
+  // user's. So we actually run their package manager to add the SDK as
+  // a real dependency that Next.js will bundle at build time.
+  const pm = detectPackageManager(process.cwd())
+  const sdkAlreadyInstalled = isAlreadyInstalled(process.cwd(), '@spanlens/sdk')
+
+  if (sdkAlreadyInstalled) {
+    p.log.success(`@spanlens/sdk already in dependencies`)
+  } else {
+    const shouldInstall = await p.confirm({
+      message: `Install @spanlens/sdk now via ${pc.cyan(pm)}?`,
+      initialValue: true,
+    })
+    if (p.isCancel(shouldInstall)) {
+      p.cancel('Aborted.')
+      process.exit(0)
+    }
+    if (shouldInstall) {
+      const sInstall = p.spinner()
+      sInstall.start(`Installing @spanlens/sdk with ${pm}`)
+      const result = await installPackage(process.cwd(), pm, '@spanlens/sdk', {
+        dryRun: flags.dryRun,
+        silent: true, // keep UI clean — we have our own spinner
+      })
+      if (result.ok) {
+        sInstall.stop(
+          flags.dryRun
+            ? `[dry-run] would run: ${pc.cyan(result.command)}`
+            : `Installed @spanlens/sdk (${result.command})`,
+        )
+      } else {
+        sInstall.stop(pc.yellow(`Auto-install failed — install manually:`))
+        p.log.message(`  ${pc.cyan(result.command)}`)
+        if (result.error) p.log.message(pc.dim(`  (${result.error})`))
+      }
+    } else {
+      p.log.warn('Skipped SDK install — you\'ll need to run it manually before deploying.')
+    }
+  }
+
   // Step 5: scan for OpenAI client usage
   const s2 = p.spinner()
   s2.start('Scanning codebase for `new OpenAI(...)`')
@@ -180,18 +227,15 @@ async function main(): Promise<void> {
     }
   }
 
-  // Step 6: next steps
+  // Step 6: next steps (SDK install already handled above)
   p.note(
     [
-      `${pc.bold('1.')} Install the SDK (if not already):`,
-      `     ${pc.cyan('npm install @spanlens/sdk')}`,
-      '',
-      `${pc.bold('2.')} Add ${pc.cyan('SPANLENS_API_KEY')} to your deployment environment`,
+      `${pc.bold('1.')} Add ${pc.cyan('SPANLENS_API_KEY')} to your deployment environment`,
       `     ${pc.dim('(Vercel/Railway/Fly → Settings → Environment Variables)')}`,
       '',
-      `${pc.bold('3.')} Redeploy your app`,
+      `${pc.bold('2.')} Redeploy your app`,
       '',
-      `${pc.bold('4.')} Your requests will show up at:`,
+      `${pc.bold('3.')} Your requests will show up at:`,
       `     ${pc.underline(DASHBOARD_URL + '/requests')}`,
     ].join('\n'),
     'Next steps',

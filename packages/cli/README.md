@@ -90,7 +90,8 @@ const openai = createOpenAI({
 
 - ✅ Next.js (TypeScript + JavaScript)
 - ✅ OpenAI SDK — `new OpenAI({...})` default-import pattern
-- ✅ `--dry-run` flag (preview without writing)
+- ✅ **Auto-installs `@spanlens/sdk`** using your package manager (npm / pnpm / yarn / bun)
+- ✅ `--dry-run` flag (preview without writing or installing)
 - ✅ Multiple `new OpenAI(...)` calls per project
 - ✅ Non-destructive env-file writes (preserves comments, other keys)
 
