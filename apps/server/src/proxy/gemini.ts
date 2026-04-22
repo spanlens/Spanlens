@@ -3,6 +3,7 @@ import { authApiKey, type ApiKeyContext } from '../middleware/authApiKey.js'
 import { enforceQuota } from '../middleware/quota.js'
 import { calculateCost } from '../lib/cost.js'
 import { logRequestAsync } from '../lib/logger.js'
+import { fireAndForget } from '../lib/wait-until.js'
 import { parseGeminiResponse } from '../parsers/gemini.js'
 import { getDecryptedProviderKey, buildUpstreamHeaders, buildDownstreamHeaders } from './utils.js'
 
@@ -83,7 +84,7 @@ geminiProxy.all('/*', async (c) => {
 
   const cost = calculateCost('gemini', model, { promptTokens, completionTokens })
 
-  logRequestAsync({
+  fireAndForget(c, logRequestAsync({
     organizationId,
     projectId,
     apiKeyId,
@@ -100,7 +101,7 @@ geminiProxy.all('/*', async (c) => {
     errorMessage: upstreamRes.ok ? null : resBodyText.slice(0, 1000),
     traceId: c.req.header('x-trace-id') ?? null,
     spanId: c.req.header('x-span-id') ?? null,
-  }).catch(console.error)
+  }))
 
   return new Response(resBodyText, {
     status: upstreamRes.status,

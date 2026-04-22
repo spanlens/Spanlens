@@ -4,6 +4,7 @@ import { authApiKey, type ApiKeyContext } from '../middleware/authApiKey.js'
 import { enforceQuota } from '../middleware/quota.js'
 import { calculateCost } from '../lib/cost.js'
 import { logRequestAsync } from '../lib/logger.js'
+import { fireAndForget } from '../lib/wait-until.js'
 import { parseAnthropicResponse } from '../parsers/anthropic.js'
 import { getDecryptedProviderKey, buildUpstreamHeaders, buildDownstreamHeaders } from './utils.js'
 import { logAnthropicStream } from './stream-logger.js'
@@ -128,13 +129,13 @@ anthropicProxy.all('/*', async (c) => {
 
   const cost = calculateCost('anthropic', resolvedModel, { promptTokens, completionTokens })
 
-  logRequestAsync({
+  fireAndForget(c, logRequestAsync({
     ...logBase,
     model: resolvedModel,
     promptTokens, completionTokens, totalTokens,
     costUsd: cost?.totalCost ?? null,
     errorMessage: upstreamRes.ok ? null : resBodyText.slice(0, 1000),
-  }).catch(console.error)
+  }))
 
   return new Response(resBodyText, { status: upstreamRes.status, headers: downstreamHeaders })
 })
