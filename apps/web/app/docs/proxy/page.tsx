@@ -111,6 +111,21 @@ res, _ := client.CreateChatCompletion(ctx, openai.ChatCompletionRequest{
       </p>
       <CodeBlock>{`-H "X-Spanlens-Project: my-backend-service"`}</CodeBlock>
 
+      <p>
+        Add an <code>X-Spanlens-Prompt-Version</code> header to link the request to a specific{' '}
+        <a href="/docs/features/prompts">prompt version</a> so it appears in the A/B comparison
+        table. Accepts <code>name@version</code>, <code>name@latest</code>, or a raw UUID:
+      </p>
+      <CodeBlock>{`-H "X-Spanlens-Prompt-Version: chatbot-system@3"
+# or
+-H "X-Spanlens-Prompt-Version: chatbot-system@latest"
+# or
+-H "X-Spanlens-Prompt-Version: ae1c3c1e-99eb-2b98-5f05-012345678901"`}</CodeBlock>
+      <p className="text-sm text-muted-foreground">
+        Invalid or unknown values silently resolve to null — the proxy never fails because a
+        prompt tag is stale. The request just isn&apos;t linked to a version.
+      </p>
+
       <h2>Self-hosting</h2>
       <p>
         If you&apos;re running Spanlens on your own infra, replace the base URL:

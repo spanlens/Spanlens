@@ -66,9 +66,18 @@ lib/crypto.ts — AES-256-GCM 암/복호화 (Provider Key 전용)
 lib/cost.ts — 비용 계산 calculateCost(provider, model, usage)
 lib/logger.ts — 비동기 로깅 logRequestAsync(data)
 lib/db.ts — supabaseAdmin / supabaseClient 인스턴스
+lib/resolve-prompt-version.ts — X-Spanlens-Prompt-Version 헤더 파싱 (name@version / name@latest / UUID)
 parsers/openai.ts — OpenAI 스트림 파서 (마지막 chunk에 usage)
 parsers/anthropic.ts — Anthropic 파서 (message_delta에 usage, OpenAI와 다름!)
 parsers/gemini.ts — Gemini 파서
+
+## X-Spanlens-* 헤더 규약
+프록시에서 유저→서버로 오는 내부 metadata는 모두 `x-spanlens-` 접두사. **upstream(OpenAI/Anthropic/Gemini)에 절대 forward 금지** — `proxy/utils.ts`의 `STRIP_PREFIXES`에서 일괄 제거. 현재 쓰이는 헤더:
+- `x-trace-id`, `x-span-id` — 에이전트 트레이싱 (접두사 안 붙지만 같은 정책)
+- `x-spanlens-project` — 프로젝트 scoping
+- `x-spanlens-prompt-version` — Prompts A/B 링크 (SDK `withPromptVersion()` 헬퍼 또는 `observeOpenAI({ promptVersion })`로 자동 세팅)
+
+새 X-Spanlens-* 헤더 추가 시: (1) 서버에서 header→DB 매핑 (2) SDK에서 헬퍼 제공 (3) `/docs/proxy`에 문서화 (4) `/docs/sdk`에 SDK 사용법 문서화 — 네 곳 다 빠뜨리지 말 것.
 ## 코드 스타일
 - Hono 에러 반환: return c.json({ error: 'message' }, 401)
 - 비동기 로깅 fire-and-forget: logRequestAsync(data).catch(console.error)

@@ -97,6 +97,34 @@ const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' })
 
 const result = await model.generateContent('Hi')`}</CodeBlock>
 
+      <h2 id="with-prompt-version">withPromptVersion() — tag requests with a prompt version</h2>
+      <p>
+        Link a logged request to a specific <a href="/docs/features/prompts">Prompts</a> version
+        so it appears in the A/B comparison table. Pass the helper as the second argument to any
+        OpenAI or Anthropic call:
+      </p>
+      <CodeBlock language="ts">{`import { createOpenAI, withPromptVersion } from '@spanlens/sdk/openai'
+
+const openai = createOpenAI()
+
+const res = await openai.chat.completions.create(
+  {
+    model: 'gpt-4o-mini',
+    messages: [{ role: 'system', content: systemPromptV3 }, { role: 'user', content: userMsg }],
+  },
+  withPromptVersion('chatbot-system@3'),
+)`}</CodeBlock>
+      <p>Accepted formats:</p>
+      <ul>
+        <li><code>{'<name>@<version>'}</code> — e.g. <code>chatbot-system@3</code></li>
+        <li><code>{'<name>@latest'}</code> — auto-resolves server-side on every call</li>
+        <li>Raw <code>prompt_versions.id</code> UUID</li>
+      </ul>
+      <p>
+        Same helper exists on <code>@spanlens/sdk/anthropic</code>. For Gemini and non-Node
+        languages, set the header directly: <code>x-spanlens-prompt-version: &lt;id&gt;</code>.
+      </p>
+
       <h2 id="observe">observe() — agent tracing</h2>
       <p>
         Wrap any async function to turn it into a span in an agent trace. Nested <code>observe()</code>{' '}
@@ -132,13 +160,23 @@ const answer = await observe('answer-question', async () => {
       <h2 id="observe-openai">observeOpenAI()</h2>
       <p>
         Shorthand to wrap a single OpenAI call as a span without manually calling <code>observe()</code>.
+        Pass <code>promptVersion</code> in options to tag the request with a prompt version in one
+        shot (equivalent to <code>withPromptVersion()</code>).
       </p>
       <CodeBlock language="ts">{`import { observeOpenAI } from '@spanlens/sdk/openai'
 
 const res = await observeOpenAI(openai, {
   model: 'gpt-4o-mini',
   messages: [{ role: 'user', content: 'Hi' }],
-}, { name: 'greeting', trace: 'session-1' })`}</CodeBlock>
+}, {
+  name: 'greeting',
+  trace: 'session-1',
+  promptVersion: 'greeter@latest',   // optional
+})`}</CodeBlock>
+      <p>
+        Same <code>promptVersion</code> option is available on <code>observeAnthropic()</code>{' '}
+        and <code>observeGemini()</code>.
+      </p>
 
       <h2 id="span-handle">Low-level: SpanHandle / TraceHandle</h2>
       <p>

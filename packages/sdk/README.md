@@ -46,6 +46,22 @@ const gemini    = createGemini()
 
 The returned clients are **identical** to `new OpenAI(...)` etc — all options (timeout, headers, organization, etc.) forward through. Peer dependencies (`openai`, `@anthropic-ai/sdk`, `@google/generative-ai`) are optional — install only the ones you use.
 
+### Prompt A/B tagging (v0.2.2+)
+
+Link a call to a specific [Spanlens Prompts](https://www.spanlens.io/docs/features/prompts) version so it shows up in the A/B metrics table:
+
+```ts
+import { createOpenAI, withPromptVersion } from '@spanlens/sdk/openai'
+const openai = createOpenAI()
+
+const res = await openai.chat.completions.create(
+  { model: 'gpt-4o-mini', messages: [...] },
+  withPromptVersion('chatbot-system@3'),   // or '@latest' / raw UUID
+)
+```
+
+Same helper on `@spanlens/sdk/anthropic`. For `observeOpenAI/Anthropic/Gemini`, pass `promptVersion` in options.
+
 For **multi-step agent tracing** (Gantt view, parent/child spans, RAG pipelines), continue to the Quick start below.
 
 ## Quick start
