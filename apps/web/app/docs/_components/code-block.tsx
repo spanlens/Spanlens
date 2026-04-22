@@ -34,12 +34,12 @@ export function CodeBlock({ children, language }: CodeBlockProps) {
 
   return (
     <div className="relative group my-6 not-prose">
-      <pre className="overflow-x-auto rounded-lg border border-gray-800 bg-gray-950 px-4 py-3 text-sm leading-6 text-gray-100 shadow-sm">
+      <pre className={`overflow-x-auto rounded-lg border border-gray-800 bg-gray-950 px-4 text-sm leading-6 text-gray-100 shadow-sm ${language ? 'pt-9 pb-4' : 'py-4'}`}>
         <code className="font-mono">{children}</code>
       </pre>
 
       {language && (
-        <span className="absolute top-2 left-3 text-[10px] uppercase tracking-wider font-semibold text-gray-500 select-none">
+        <span className="absolute top-2.5 left-4 text-[10px] uppercase tracking-wider font-semibold text-gray-500 select-none">
           {language}
         </span>
       )}

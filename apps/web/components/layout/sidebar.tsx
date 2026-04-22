@@ -52,13 +52,17 @@ export function Sidebar() {
 
   return (
     <aside className="flex h-screen w-56 flex-col bg-sidebar border-r border-sidebar-border">
-      {/* Logo */}
-      <div className="flex h-14 items-center gap-2 px-4 border-b border-sidebar-border">
+      {/* Logo — clickable, returns to landing page */}
+      <Link
+        href="/"
+        className="flex h-14 items-center gap-2 px-4 border-b border-sidebar-border transition-colors hover:bg-white/5"
+        aria-label="Spanlens home"
+      >
         <Zap className="h-5 w-5 text-blue-400" />
         <span className="font-semibold text-sidebar-foreground text-base tracking-tight">
           Spanlens
         </span>
-      </div>
+      </Link>
 
       {/* Navigation */}
       <nav className="flex-1 px-2 py-4 space-y-0.5 overflow-y-auto">
