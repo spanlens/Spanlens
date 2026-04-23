@@ -12,24 +12,24 @@ export const metadata = {
 
 export default function DocsLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-screen bg-white">
+    <div className="min-h-screen bg-bg">
       {/* Nav */}
-      <nav className="sticky top-0 z-10 border-b bg-white/80 backdrop-blur-sm">
-        <div className="max-w-7xl mx-auto flex items-center justify-between px-6 py-3">
+      <nav className="sticky top-0 z-10 border-b border-border bg-bg/90 backdrop-blur-sm">
+        <div className="max-w-7xl mx-auto flex items-center justify-between px-6 h-[56px]">
           <Link href="/" className="flex items-center gap-2">
-            <Zap className="h-5 w-5 text-blue-600" />
-            <span className="font-bold text-lg">Spanlens</span>
-            <span className="text-sm text-muted-foreground hidden sm:inline">/ Docs</span>
+            <Zap className="h-5 w-5 text-accent" strokeWidth={2.5} />
+            <span className="font-semibold text-[16px] text-text tracking-[-0.3px]">Spanlens</span>
+            <span className="text-[13px] text-text-faint hidden sm:inline">/ Docs</span>
           </Link>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-6">
             <Link
               href="https://github.com/sunes26/Spanlens"
               target="_blank"
-              className="text-sm text-muted-foreground hover:text-foreground"
+              className="text-[13px] text-text-muted hover:text-text transition-colors"
             >
               GitHub
             </Link>
-            <Link href="/pricing" className="text-sm text-muted-foreground hover:text-foreground">
+            <Link href="/pricing" className="text-[13px] text-text-muted hover:text-text transition-colors">
               Pricing
             </Link>
             <AuthNavButtons signupLabel="Start free" />
@@ -46,12 +46,12 @@ export default function DocsLayout({ children }: { children: React.ReactNode }) 
 
         <main className="flex-1 min-w-0 max-w-3xl">
           <article
-            className="prose prose-gray max-w-none
+            className="prose prose-stone max-w-none
               prose-headings:scroll-mt-20
-              prose-pre:bg-gray-950 prose-pre:text-gray-100 prose-pre:shadow-sm prose-pre:border prose-pre:border-gray-800
-              prose-a:text-blue-600 prose-a:no-underline hover:prose-a:underline
+              prose-pre:bg-[#1a1816] prose-pre:text-[#d4cfc8] prose-pre:shadow-sm prose-pre:border prose-pre:border-border/40
+              prose-a:text-accent prose-a:no-underline hover:prose-a:opacity-80
               prose-table:text-sm
-              [&_:not(pre)>code]:bg-gray-100 [&_:not(pre)>code]:text-gray-900 [&_:not(pre)>code]:font-normal [&_:not(pre)>code]:text-[0.9em] [&_:not(pre)>code]:rounded [&_:not(pre)>code]:px-1 [&_:not(pre)>code]:py-0.5
+              [&_:not(pre)>code]:bg-bg-elev [&_:not(pre)>code]:text-text [&_:not(pre)>code]:font-normal [&_:not(pre)>code]:text-[0.9em] [&_:not(pre)>code]:rounded [&_:not(pre)>code]:px-1 [&_:not(pre)>code]:py-0.5 [&_:not(pre)>code]:border [&_:not(pre)>code]:border-border
               [&_:not(pre)>code]:before:content-none [&_:not(pre)>code]:after:content-none
               [&_pre_code]:bg-transparent [&_pre_code]:text-inherit [&_pre_code]:p-0 [&_pre_code]:rounded-none [&_pre_code]:text-sm [&_pre_code]:font-normal [&_pre_code]:before:content-none [&_pre_code]:after:content-none"
           >

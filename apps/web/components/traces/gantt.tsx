@@ -25,19 +25,19 @@ import type { SpanRow, SpanType, TraceStatus } from '@/lib/queries/types'
  */
 
 const TYPE_COLORS: Record<SpanType, string> = {
-  llm: 'bg-blue-500',
-  tool: 'bg-purple-500',
-  retrieval: 'bg-green-500',
-  embedding: 'bg-teal-500',
-  custom: 'bg-gray-500',
+  llm: 'bg-accent',
+  tool: 'bg-text-faint',
+  retrieval: 'bg-good',
+  embedding: 'bg-text-muted',
+  custom: 'bg-border-strong',
 }
 
 const TYPE_BG: Record<SpanType, string> = {
-  llm: 'bg-blue-50/60 hover:bg-blue-100',
-  tool: 'bg-purple-50/60 hover:bg-purple-100',
-  retrieval: 'bg-green-50/60 hover:bg-green-100',
-  embedding: 'bg-teal-50/60 hover:bg-teal-100',
-  custom: 'bg-gray-50/60 hover:bg-gray-100',
+  llm: 'bg-accent-bg hover:bg-accent-bg/80',
+  tool: 'bg-bg-muted/60 hover:bg-bg-muted',
+  retrieval: 'bg-good-bg/60 hover:bg-good-bg',
+  embedding: 'bg-bg-muted/60 hover:bg-bg-muted',
+  custom: 'hover:bg-bg-muted',
 }
 
 interface GanttProps {
@@ -131,7 +131,7 @@ function TypeBadge({ spanType }: { spanType: SpanType }) {
 }
 
 function statusOverrideClass(status: TraceStatus): string {
-  if (status === 'error') return 'bg-red-500'
+  if (status === 'error') return 'bg-bad'
   return ''
 }
 
@@ -167,16 +167,16 @@ export function Gantt({
 
   if (positioned.length === 0) {
     return (
-      <div className="rounded-lg border bg-white p-8 text-center text-sm text-muted-foreground">
+      <div className="rounded-lg border border-border bg-bg p-8 text-center font-mono text-[12.5px] text-text-faint">
         No spans recorded for this trace yet.
       </div>
     )
   }
 
   return (
-    <div className="rounded-lg border bg-white overflow-hidden">
+    <div className="rounded-lg border bg-bg overflow-hidden">
       {/* Time ruler */}
-      <div className="flex items-center border-b bg-gray-50 px-4 py-2 text-xs text-muted-foreground">
+      <div className="flex items-center border-b border-border bg-bg-muted px-4 py-2 text-xs text-text-faint">
         <div className="w-80 shrink-0 font-medium">Span</div>
         <div className="flex-1 relative">
           <div className="absolute inset-0 flex justify-between text-[10px]">
@@ -205,7 +205,7 @@ export function Gantt({
               key={pct}
               className={cn(
                 'absolute inset-y-0 w-px',
-                pct === 0 || pct === 100 ? 'bg-gray-200' : 'bg-gray-100',
+                pct === 0 || pct === 100 ? 'bg-border-strong' : 'bg-border',
               )}
               style={{ left: `${pct}%` }}
             />
@@ -226,12 +226,12 @@ export function Gantt({
               title={tooltip}
               className={cn(
                 'relative flex items-center w-full px-4 py-2 text-left transition-colors',
-                isSelected ? 'bg-blue-50 ring-1 ring-blue-400 ring-inset' : TYPE_BG[s.span_type],
+                isSelected ? 'bg-bg-muted ring-1 ring-accent ring-inset' : TYPE_BG[s.span_type],
               )}
             >
               {/* Selected left-edge indicator */}
               {isSelected && (
-                <span className="absolute left-0 inset-y-0 w-1 bg-blue-500" aria-hidden />
+                <span className="absolute left-0 inset-y-0 w-1 bg-accent" aria-hidden />
               )}
 
               {/* Name + depth */}
@@ -298,7 +298,7 @@ export function Gantt({
       </div>
 
       {/* Legend */}
-      <div className="flex items-center gap-3 border-t bg-gray-50 px-4 py-2 text-[11px] text-muted-foreground">
+      <div className="flex items-center gap-3 border-t border-border bg-bg-muted px-4 py-2 text-[11px] text-text-faint">
         <span className="font-medium text-foreground">Span types:</span>
         {(['llm', 'tool', 'retrieval', 'embedding', 'custom'] as const).map((t) => (
           <span key={t} className="inline-flex items-center gap-1">
@@ -306,7 +306,7 @@ export function Gantt({
             {t}
           </span>
         ))}
-        <span className="ml-auto text-[10px]">
+        <span className="ml-auto font-mono text-[10px]">
           Click a bar for details · hover for precise timing
         </span>
       </div>

@@ -20,12 +20,12 @@ export default function DocsIndex() {
           <Link
             key={s.href}
             href={s.href}
-            className="group rounded-xl border bg-white p-5 hover:border-blue-400 hover:shadow-sm transition-all"
+            className="group rounded-xl border border-border bg-bg-elev p-5 hover:border-border-strong hover:shadow-sm transition-all"
           >
             <div className="flex items-center gap-2 mb-2">
-              <s.icon className="h-5 w-5 text-blue-600" />
-              <h3 className="font-semibold group-hover:text-blue-700">{s.title}</h3>
-              <ArrowRight className="h-4 w-4 text-gray-300 group-hover:text-blue-500 group-hover:translate-x-0.5 transition-all ml-auto" />
+              <s.icon className="h-5 w-5 text-accent" />
+              <h3 className="font-semibold group-hover:text-accent">{s.title}</h3>
+              <ArrowRight className="h-4 w-4 text-border group-hover:text-accent group-hover:translate-x-0.5 transition-all ml-auto" />
             </div>
             <p className="text-sm text-muted-foreground">{s.description}</p>
           </Link>
@@ -45,7 +45,7 @@ export default function DocsIndex() {
           </summary>
           <p className="mt-2 text-muted-foreground">
             Typical overhead is 10–50ms per call — a thin pass-through proxy. Your requests flow to OpenAI / Anthropic / Gemini; responses stream back. Logging is fire-and-forget via Vercel&apos;s{' '}
-            <code className="text-xs bg-gray-100 rounded px-1">waitUntil</code>, so it never blocks the response.
+            <code className="text-xs bg-bg-elev rounded px-1">waitUntil</code>, so it never blocks the response.
           </p>
         </details>
 

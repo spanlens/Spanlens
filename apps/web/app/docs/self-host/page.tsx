@@ -17,9 +17,9 @@ export default function SelfHostDocs() {
         backend.
       </p>
 
-      <div className="rounded-lg border-2 border-amber-400 bg-amber-50 p-4 my-6 not-prose">
-        <p className="text-sm font-semibold text-amber-900 mb-1">⚠️ Early access</p>
-        <p className="text-sm text-amber-900">
+      <div className="rounded-lg border-2 border-accent bg-accent-bg p-4 my-6 not-prose">
+        <p className="text-sm font-semibold text-accent mb-1">⚠️ Early access</p>
+        <p className="text-sm text-accent">
           The proxy server image is public and boots end-to-end (verified 2026-04-22). Rough
           edges: Supabase is required (plain Postgres isn&apos;t supported yet), migrations
           aren&apos;t bundled in the image, and a separate dashboard image isn&apos;t published

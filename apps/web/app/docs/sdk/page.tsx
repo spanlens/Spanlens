@@ -15,9 +15,9 @@ export default function SdkReference() {
         match the upstream SDKs 1:1.
       </p>
 
-      <div className="my-6 rounded-lg border-l-4 border-amber-400 bg-amber-50 p-4 text-sm">
-        <p className="m-0 font-semibold text-amber-900">⚡ Use streaming for long requests</p>
-        <p className="mt-1 mb-0 text-amber-900">
+      <div className="my-6 rounded-lg border-l-4 border-accent bg-accent-bg p-4 text-sm">
+        <p className="m-0 font-semibold text-accent">⚡ Use streaming for long requests</p>
+        <p className="mt-1 mb-0 text-accent">
           The Spanlens proxy enforces a <strong>25-second first-byte timeout</strong>. For requests likely
           to exceed that (large <code>max_tokens</code>, slower models, big JSON outputs), set{' '}
           <code>stream: true</code> — first byte arrives in ~200ms and total duration is unbounded. If you

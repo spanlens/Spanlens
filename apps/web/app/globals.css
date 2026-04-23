@@ -4,38 +4,91 @@
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 222.2 84% 4.9%;
-    --primary: 222.2 47.4% 11.2%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-    --radius: 0.5rem;
+    /* ── Design tokens (warm monochrome) ── */
+    --bg: #fafaf9;
+    --bg-elev: #ffffff;
+    --bg-muted: #f4f3f0;
+    --border: #e7e5e0;
+    --border-strong: #d4d1ca;
+    --text: #18181b;
+    --text-muted: #5c5b57;
+    --text-faint: #94928c;
+    --accent: #b45309;
+    --accent-bg: #fdf1df;
+    --accent-border: #eccc99;
+    --good: #2f7d4f;
+    --good-bg: #e8f4ec;
+    --bad: #b84545;
+    --bad-bg: #fbebea;
+    --grid: rgba(0, 0, 0, 0.04);
 
-    /* Sidebar (always dark) */
-    --sidebar: 222 47% 8%;
-    --sidebar-foreground: 210 40% 95%;
-    --sidebar-muted: 215 25% 35%;
-    --sidebar-border: 222 30% 14%;
+    /* ── shadcn/ui compatibility (mapped to design tokens) ── */
+    --background: #fafaf9;
+    --foreground: #18181b;
+    --card: #ffffff;
+    --card-foreground: #18181b;
+    --popover: #ffffff;
+    --popover-foreground: #18181b;
+    --primary: #18181b;
+    --primary-foreground: #fafaf9;
+    --secondary: #f4f3f0;
+    --secondary-foreground: #18181b;
+    --muted: #f4f3f0;
+    --muted-foreground: #5c5b57;
+    --destructive: #b84545;
+    --destructive-foreground: #fafaf9;
+    --input: #e7e5e0;
+    --ring: #b45309;
+    --radius: 7px;
+  }
+
+  .dark {
+    /* ── Design tokens (dark) ── */
+    --bg: #0c0c0d;
+    --bg-elev: #141416;
+    --bg-muted: #18181b;
+    --border: #27272a;
+    --border-strong: #3a3a3f;
+    --text: #fafaf9;
+    --text-muted: #a1a1aa;
+    --text-faint: #61615f;
+    --accent: #f2a855;
+    --accent-bg: #2a1c0a;
+    --accent-border: #4a3010;
+    --good: #6cd99a;
+    --good-bg: #10281a;
+    --bad: #f08784;
+    --bad-bg: #2a1211;
+    --grid: rgba(255, 255, 255, 0.04);
+
+    /* ── shadcn/ui compatibility (dark) ── */
+    --background: #0c0c0d;
+    --foreground: #fafaf9;
+    --card: #141416;
+    --card-foreground: #fafaf9;
+    --popover: #141416;
+    --popover-foreground: #fafaf9;
+    --primary: #fafaf9;
+    --primary-foreground: #0c0c0d;
+    --secondary: #18181b;
+    --secondary-foreground: #fafaf9;
+    --muted: #18181b;
+    --muted-foreground: #a1a1aa;
+    --destructive: #f08784;
+    --destructive-foreground: #0c0c0d;
+    --input: #27272a;
+    --ring: #f2a855;
   }
 
   * {
     @apply border-border;
   }
 
+  html,
   body {
-    @apply bg-background text-foreground;
+    background-color: var(--bg);
+    color: var(--text);
+    font-family: var(--font-geist-sans), system-ui, sans-serif;
     font-feature-settings: "rlig" 1, "calt" 1;
   }
 }
@@ -43,5 +96,14 @@
 @layer utilities {
   .text-balance {
     text-wrap: balance;
+  }
+
+  /* Mono micro-label: ALL CAPS, 10px Geist Mono, faint, tracked */
+  .micro-label {
+    font-family: var(--font-geist-mono), ui-monospace, monospace;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-faint);
   }
 }

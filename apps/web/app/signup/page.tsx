@@ -3,9 +3,6 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Zap } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import { createClient } from '@/lib/supabase/client'
 
 export default function SignupPage() {
@@ -38,89 +35,118 @@ export default function SignupPage() {
     }
     setSent(true)
     setLoading(false)
-    // If email confirmation is disabled in Supabase, go straight to onboarding
     setTimeout(() => router.push('/onboarding'), 1000)
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <div className="w-full max-w-sm">
-        <div className="flex justify-center mb-8">
-          <Link href="/" className="flex items-center gap-2">
-            <Zap className="h-6 w-6 text-blue-600" />
-            <span className="font-bold text-xl">Spanlens</span>
-          </Link>
-        </div>
-        <div className="rounded-xl border bg-white p-8 shadow-sm">
+    <div className="min-h-screen bg-bg flex items-center justify-center px-4">
+      <div className="w-full max-w-[360px]">
+        {/* Logo */}
+        <Link href="/" className="flex items-center gap-2 mb-8 justify-center">
+          <Zap className="h-5 w-5 text-accent" strokeWidth={2.5} />
+          <span className="font-semibold text-[17px] text-text tracking-[-0.3px]">Spanlens</span>
+        </Link>
+
+        {/* Card */}
+        <div className="rounded-xl border border-border bg-bg-elev px-8 py-8">
           {sent ? (
-            <div className="text-center">
-              <div className="text-4xl mb-4">📬</div>
-              <h2 className="font-semibold mb-2">Check your email</h2>
-              <p className="text-sm text-muted-foreground">
-                We sent a confirmation link to <strong>{email}</strong>. Click it to continue.
+            <div className="text-center py-4">
+              <div className="w-12 h-12 rounded-full bg-good-bg border border-good/20 flex items-center justify-center mx-auto mb-4">
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                  <path
+                    d="M4 10l4 4 8-8"
+                    stroke="var(--good)"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </div>
+              <h2 className="text-[16px] font-semibold text-text mb-2">Check your email</h2>
+              <p className="text-[12.5px] text-text-muted">
+                Confirmation sent to{' '}
+                <strong className="text-text font-medium">{email}</strong>
               </p>
             </div>
           ) : (
             <>
-              <h1 className="text-xl font-semibold mb-1">Create your account</h1>
-              <p className="text-sm text-muted-foreground mb-6">Free to start, no credit card</p>
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="email">Email</Label>
-                  <Input
+              <h1 className="text-[20px] font-semibold text-text mb-1 tracking-[-0.3px]">
+                Create your account
+              </h1>
+              <p className="text-[13px] text-text-muted mb-6">
+                Free to start — no credit card required
+              </p>
+
+              <form onSubmit={(e) => void handleSubmit(e)} className="space-y-4">
+                <div className="space-y-1.5">
+                  <label className="text-[12.5px] text-text-muted font-medium" htmlFor="email">
+                    Email
+                  </label>
+                  <input
                     id="email"
                     type="email"
-                    placeholder="you@example.com"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
+                    placeholder="you@example.com"
                     required
+                    className="w-full h-9 px-3 rounded-[6px] border border-border bg-bg text-[13px] text-text placeholder:text-text-faint focus:outline-none focus:border-border-strong transition-colors"
                   />
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="password">Password</Label>
-                  <Input
+                <div className="space-y-1.5">
+                  <label className="text-[12.5px] text-text-muted font-medium" htmlFor="password">
+                    Password
+                  </label>
+                  <input
                     id="password"
                     type="password"
-                    placeholder="At least 8 characters"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
+                    placeholder="At least 8 characters"
                     minLength={8}
                     required
+                    className="w-full h-9 px-3 rounded-[6px] border border-border bg-bg text-[13px] text-text placeholder:text-text-faint focus:outline-none focus:border-border-strong transition-colors"
                   />
                 </div>
-                <label className="flex items-start gap-2 text-xs text-muted-foreground cursor-pointer">
+                <label className="flex items-start gap-2 cursor-pointer">
                   <input
                     type="checkbox"
-                    className="mt-0.5 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                     checked={consent}
                     onChange={(e) => setConsent(e.target.checked)}
+                    className="mt-0.5 h-3.5 w-3.5 rounded border-border accent-accent shrink-0"
                   />
-                  <span>
+                  <span className="text-[12px] text-text-muted">
                     I agree to the{' '}
-                    <Link href="/terms" target="_blank" className="text-blue-600 hover:underline">
+                    <Link
+                      href="/terms"
+                      target="_blank"
+                      className="text-accent hover:opacity-80 transition-opacity"
+                    >
                       Terms of Service
                     </Link>{' '}
                     and{' '}
                     <Link
                       href="/privacy"
                       target="_blank"
-                      className="text-blue-600 hover:underline"
+                      className="text-accent hover:opacity-80 transition-opacity"
                     >
                       Privacy Policy
                     </Link>
-                    .
                   </span>
                 </label>
-                {error && <p className="text-sm text-destructive">{error}</p>}
-                <Button type="submit" className="w-full" disabled={loading || !consent}>
+                {error && <p className="text-[12.5px] text-bad">{error}</p>}
+                <button
+                  type="submit"
+                  disabled={loading || !consent}
+                  className="w-full h-9 rounded-[6px] bg-text text-bg text-[13px] font-medium hover:opacity-90 transition-opacity disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed"
+                >
                   {loading ? 'Creating account…' : 'Create account'}
-                </Button>
+                </button>
               </form>
             </>
           )}
-          <p className="text-center text-sm text-muted-foreground mt-6">
+          <p className="text-center text-[12.5px] text-text-muted mt-6">
             Already have an account?{' '}
-            <Link href="/login" className="text-blue-600 hover:underline">
+            <Link href="/login" className="text-accent hover:opacity-80 transition-opacity">
               Sign in
             </Link>
           </p>

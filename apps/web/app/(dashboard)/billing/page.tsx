@@ -3,10 +3,10 @@ import { useCallback, useEffect, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { Check } from 'lucide-react'
 import { initializePaddle, type Paddle } from '@paddle/paddle-js'
-import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
+import { Topbar } from '@/components/layout/topbar'
+import { GhostBtn } from '@/components/ui/primitives'
 import {
   useSubscription,
   useCreateCheckout,
@@ -14,12 +14,11 @@ import {
 } from '@/lib/queries/use-billing'
 import type { BillingPlan } from '@/lib/queries/types'
 import { QuotaBanner } from '@/components/dashboard/quota-banner'
-import { DocsLink } from '@/components/layout/docs-link'
 
 interface PlanCardConfig {
   id: BillingPlan
   name: string
-  priceUsd: number | null // null = custom pricing
+  priceUsd: number | null
   pricePeriod: string
   description: string
   features: string[]
@@ -90,19 +89,6 @@ function formatDate(iso: string | null): string {
   return new Date(iso).toLocaleDateString()
 }
 
-/**
- * Paddle Billing does NOT provide a full-page hosted checkout like Stripe.
- * Instead we embed Paddle.js on this page and open an overlay checkout.
- *
- * Flow:
- *   1. POST /api/v1/billing/checkout  →  server creates transaction + returns txn_id
- *   2. paddle.Checkout.open({ transactionId })  →  overlay opens on top of this page
- *   3. paddle.on('checkout.completed', ...)  →  show success banner, refetch subscription
- *
- * If Paddle redirects back to `/billing?_ptxn=txn_xxx` (happens when the user lands
- * here via the Paddle-generated URL instead of from the button), auto-open the
- * overlay for that transaction so the flow resumes seamlessly.
- */
 export default function BillingPage() {
   const params = useSearchParams()
   const justReturnedFromCheckout = params.get('checkout') === 'success'
@@ -120,7 +106,6 @@ export default function BillingPage() {
     | 'sandbox'
     | 'production'
 
-  // Initialize Paddle.js once on mount
   useEffect(() => {
     if (!clientToken) {
       setErrorMessage(
@@ -136,7 +121,6 @@ export default function BillingPage() {
       eventCallback: (event) => {
         if (event.name === 'checkout.completed') {
           setCheckoutCompleted(true)
-          // Give Paddle a moment to send the webhook before refetching
           setTimeout(() => refreshSubscription(), 1500)
         }
       },
@@ -149,13 +133,10 @@ export default function BillingPage() {
     }
   }, [clientToken, paddleEnv, refreshSubscription])
 
-  // Refresh subscription on return from checkout (legacy ?checkout=success path)
   useEffect(() => {
     if (justReturnedFromCheckout) refreshSubscription()
   }, [justReturnedFromCheckout, refreshSubscription])
 
-  // If user landed here with ?_ptxn=... (Paddle redirected here from our API),
-  // auto-open the overlay for that transaction.
   useEffect(() => {
     if (paddle && autoOpenPtxn) {
       paddle.Checkout.open({ transactionId: autoOpenPtxn })
@@ -185,178 +166,168 @@ export default function BillingPage() {
   const currentPlan: BillingPlan = subscription?.plan ?? 'free'
 
   return (
-    <div className="max-w-5xl">
-      <div className="mb-8 flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold">Billing</h1>
-          <p className="text-muted-foreground text-sm mt-1">
-            Manage your subscription and plan
-          </p>
-        </div>
-        <DocsLink href="/docs/features/cost-tracking" />
-      </div>
+    <div className="-m-7 flex flex-col h-screen overflow-hidden">
+      <Topbar
+        crumbs={[{ label: 'Workspace', href: '/dashboard' }, { label: 'Billing' }]}
+      />
 
-      <QuotaBanner />
+      <div className="flex-1 overflow-y-auto">
+        <div className="px-7 py-6 max-w-4xl">
+          <div className="mb-6">
+            <h1 className="text-[22px] font-semibold text-text tracking-[-0.4px] mb-1">Billing</h1>
+            <p className="text-[13px] text-text-muted">Manage your subscription and plan</p>
+          </div>
 
-      {/* Current subscription summary */}
-      <section className="mb-8">
-        <div className="rounded-lg border bg-white p-5">
-          {isLoading ? (
-            <>
-              <Skeleton className="h-5 w-40 mb-2" />
-              <Skeleton className="h-4 w-64" />
-            </>
-          ) : subscription ? (
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="flex items-center gap-2">
-                  <h2 className="font-semibold text-base capitalize">
-                    {subscription.plan} plan
-                  </h2>
-                  <Badge
-                    variant={
-                      subscription.status === 'active'
-                        ? 'success'
-                        : subscription.status === 'past_due'
-                          ? 'destructive'
-                          : 'secondary'
-                    }
-                    className="capitalize"
-                  >
-                    {subscription.status}
-                  </Badge>
-                  {subscription.cancel_at_period_end && (
-                    <Badge variant="secondary">Cancels at period end</Badge>
-                  )}
+          <QuotaBanner />
+
+          {/* Current subscription */}
+          <div className="rounded-xl border border-border bg-bg-elev p-5 mb-6">
+            {isLoading ? (
+              <>
+                <Skeleton className="h-5 w-40 mb-2" />
+                <Skeleton className="h-4 w-64" />
+              </>
+            ) : subscription ? (
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <h2 className="text-[15px] font-semibold text-text capitalize">
+                      {subscription.plan} plan
+                    </h2>
+                    <span
+                      className={cn(
+                        'font-mono text-[10px] uppercase tracking-[0.04em] px-2 py-0.5 rounded-full border',
+                        subscription.status === 'active'
+                          ? 'bg-good-bg border-good/20 text-good'
+                          : subscription.status === 'past_due'
+                            ? 'bg-accent-bg border-accent-border text-accent'
+                            : 'bg-bg border-border text-text-muted',
+                      )}
+                    >
+                      {subscription.status}
+                    </span>
+                    {subscription.cancel_at_period_end && (
+                      <span className="font-mono text-[10px] uppercase tracking-[0.04em] px-2 py-0.5 rounded-full border border-border bg-bg text-text-muted">
+                        Cancels at period end
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[13px] text-text-muted">
+                    {subscription.current_period_end
+                      ? subscription.cancel_at_period_end
+                        ? `Access until ${formatDate(subscription.current_period_end)}`
+                        : `Renews on ${formatDate(subscription.current_period_end)}`
+                      : 'Active'}
+                  </p>
                 </div>
-                <p className="text-sm text-muted-foreground mt-1">
-                  {subscription.current_period_end
-                    ? subscription.cancel_at_period_end
-                      ? `Access until ${formatDate(subscription.current_period_end)}`
-                      : `Renews on ${formatDate(subscription.current_period_end)}`
-                    : 'Active'}
+                <p className="text-[12.5px] text-text-faint max-w-xs text-right">
+                  To cancel or update payment, use the link Paddle emailed on subscription creation.
                 </p>
               </div>
-              <div className="text-sm text-muted-foreground">
-                To cancel or update payment method, use the link Paddle emailed
-                on subscription creation.
+            ) : (
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-[15px] font-semibold text-text mb-1">Free plan</h2>
+                  <p className="text-[13px] text-text-muted">
+                    10,000 requests / month · 7-day log retention
+                  </p>
+                </div>
+                <span className="font-mono text-[10px] uppercase tracking-[0.04em] px-2 py-0.5 rounded-full border border-border bg-bg-elev text-text-muted">
+                  Free
+                </span>
               </div>
-            </div>
-          ) : (
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="font-semibold text-base">Free plan</h2>
-                <p className="text-sm text-muted-foreground mt-1">
-                  10,000 requests / month · 7-day log retention
-                </p>
-              </div>
-              <Badge variant="secondary">Free</Badge>
+            )}
+          </div>
+
+          {/* Success banner */}
+          {(justReturnedFromCheckout || checkoutCompleted) && (
+            <div className="rounded-lg border border-good/30 bg-good-bg px-4 py-3 mb-5 text-[13px] text-good">
+              Checkout complete. Your plan will update shortly once Paddle confirms the payment.
             </div>
           )}
-        </div>
-      </section>
 
-      {(justReturnedFromCheckout || checkoutCompleted) && (
-        <div className="rounded-lg border border-green-200 bg-green-50 p-4 mb-6 text-sm text-green-900">
-          Checkout complete. Your plan will update shortly once Paddle confirms
-          the payment — this page will refresh automatically.
-        </div>
-      )}
+          {/* Error banner */}
+          {errorMessage && (
+            <div className="rounded-lg border border-accent-border bg-accent-bg px-4 py-3 mb-5 text-[13px] text-accent">
+              {errorMessage}
+            </div>
+          )}
 
-      {errorMessage && (
-        <div className="rounded-lg border border-destructive bg-red-50 p-4 mb-6 text-sm text-red-800">
-          {errorMessage}
-        </div>
-      )}
+          {/* Plan cards */}
+          <h2 className="text-[14px] font-semibold text-text mb-4">Available plans</h2>
+          <div className="grid grid-cols-4 gap-3 mb-4">
+            {PLANS.map((plan) => {
+              const isCurrent = currentPlan === plan.id
+              const isUpgradeInFlight =
+                createCheckout.isPending && createCheckout.variables?.plan === plan.id
 
-      {/* Plan cards */}
-      <section>
-        <h2 className="text-base font-semibold mb-4">Available plans</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {PLANS.map((plan) => {
-            const isCurrent = currentPlan === plan.id
-            const isUpgradeInFlight =
-              createCheckout.isPending &&
-              createCheckout.variables?.plan === plan.id
-
-            return (
-              <div
-                key={plan.id}
-                className={cn(
-                  'rounded-lg border bg-white p-5 flex flex-col',
-                  isCurrent && 'border-blue-500 ring-2 ring-blue-200',
-                )}
-              >
-                <div className="flex items-center justify-between mb-1">
-                  <h3 className="font-semibold">{plan.name}</h3>
-                  {isCurrent && (
-                    <Badge variant="default" className="bg-blue-600">
-                      Current
-                    </Badge>
+              return (
+                <div
+                  key={plan.id}
+                  className={cn(
+                    'rounded-xl border p-5 flex flex-col min-h-[280px]',
+                    isCurrent ? 'border-accent bg-accent-bg' : 'border-border bg-bg-elev',
                   )}
-                </div>
-
-                <div className="mb-3">
-                  {plan.priceUsd !== null ? (
-                    <div className="flex items-baseline gap-1">
-                      <span className="text-3xl font-bold">
-                        ${plan.priceUsd}
+                >
+                  <div className="flex items-start justify-between mb-3">
+                    <span className="text-[15px] font-medium text-text">{plan.name}</span>
+                    {isCurrent && (
+                      <span className="font-mono text-[10px] uppercase tracking-[0.04em] px-1.5 py-0.5 rounded-full border border-accent-border bg-accent-bg text-accent">
+                        Current
                       </span>
-                      <span className="text-sm text-muted-foreground">
-                        / {plan.pricePeriod}
-                      </span>
-                    </div>
-                  ) : (
-                    <div className="text-2xl font-bold">Custom</div>
-                  )}
-                </div>
+                    )}
+                  </div>
 
-                <p className="text-sm text-muted-foreground mb-4">
-                  {plan.description}
-                </p>
+                  <div className="mb-3">
+                    {plan.priceUsd !== null ? (
+                      <div className="flex items-baseline gap-1">
+                        <span className="font-mono text-[24px] font-medium tracking-[-0.4px] text-text">
+                          ${plan.priceUsd}
+                        </span>
+                        <span className="font-mono text-[11px] text-text-muted">
+                          / {plan.pricePeriod}
+                        </span>
+                      </div>
+                    ) : (
+                      <div className="font-mono text-[22px] font-medium text-text">Custom</div>
+                    )}
+                  </div>
 
-                <ul className="space-y-2 mb-5 flex-1">
-                  {plan.features.map((f) => (
-                    <li key={f} className="flex items-start gap-2 text-sm">
-                      <Check className="h-4 w-4 mt-0.5 text-green-600 shrink-0" />
-                      <span>{f}</span>
-                    </li>
-                  ))}
-                </ul>
+                  <p className="text-[12px] text-text-muted mb-4 leading-relaxed">
+                    {plan.description}
+                  </p>
 
-                {plan.id === 'free' ? (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled
-                    className="w-full"
-                  >
-                    Default
-                  </Button>
-                ) : plan.id === 'enterprise' ? (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="w-full"
-                    onClick={() =>
-                      window.open('mailto:sales@spanlens.io', '_blank')
-                    }
-                  >
-                    Contact sales
-                  </Button>
-                ) : plan.id === 'starter' || plan.id === 'team' ? (
-                  (() => {
-                    const upgradeTarget: 'starter' | 'team' = plan.id
-                    return (
-                      <Button
-                        size="sm"
-                        className="w-full"
-                        disabled={
-                          isCurrent ||
-                          createCheckout.isPending ||
-                          !paddle
-                        }
-                        onClick={() => void handleUpgrade(upgradeTarget)}
+                  <ul className="space-y-1.5 mb-5 flex-1">
+                    {plan.features.map((f) => (
+                      <li key={f} className="flex items-start gap-2 font-mono text-[10.5px] text-text-muted">
+                        <Check className="h-3 w-3 mt-0.5 text-good shrink-0" />
+                        <span>{f}</span>
+                      </li>
+                    ))}
+                  </ul>
+
+                  <div>
+                    {plan.id === 'free' ? (
+                      <button
+                        type="button"
+                        disabled
+                        className="w-full h-8 rounded-[6px] border border-border bg-bg text-[12.5px] font-medium text-text-faint cursor-not-allowed"
+                      >
+                        Default
+                      </button>
+                    ) : plan.id === 'enterprise' ? (
+                      <GhostBtn
+                        className="w-full justify-center text-[12.5px]"
+                        onClick={() => window.open('mailto:sales@spanlens.io', '_blank')}
+                      >
+                        Contact sales
+                      </GhostBtn>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled={isCurrent || createCheckout.isPending || !paddle}
+                        onClick={() => void handleUpgrade(plan.id as 'starter' | 'team')}
+                        className="w-full h-8 rounded-[6px] bg-text text-bg text-[12.5px] font-medium hover:opacity-90 transition-opacity disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed"
                       >
                         {isCurrent
                           ? 'Current plan'
@@ -365,20 +336,19 @@ export default function BillingPage() {
                             : !paddle
                               ? 'Loading…'
                               : `Upgrade to ${plan.name}`}
-                      </Button>
-                    )
-                  })()
-                ) : null}
-              </div>
-            )
-          })}
-        </div>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
 
-        <p className="text-xs text-muted-foreground mt-4">
-          Payments processed securely by Paddle. VAT / sales tax included where
-          applicable.
-        </p>
-      </section>
+          <p className="font-mono text-[11px] text-text-faint">
+            Payments processed securely by Paddle. VAT / sales tax included where applicable.
+          </p>
+        </div>
+      </div>
     </div>
   )
 }

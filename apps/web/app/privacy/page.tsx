@@ -13,23 +13,25 @@ const EFFECTIVE_DATE = '2026-04-22'
 
 export default function PrivacyPage() {
   return (
-    <div className="min-h-screen bg-white flex flex-col">
-      <nav className="border-b px-6 py-4 flex items-center justify-between max-w-7xl mx-auto w-full">
-        <Link href="/" className="flex items-center gap-2">
-          <Zap className="h-5 w-5 text-blue-600" />
-          <span className="font-bold text-lg">Spanlens</span>
-        </Link>
-        <div className="flex items-center gap-4">
-          <Link href="/pricing" className="text-sm text-muted-foreground hover:text-foreground">
-            Pricing
+    <div className="min-h-screen bg-bg flex flex-col">
+      <nav className="sticky top-0 z-10 border-b border-border bg-bg/90 backdrop-blur-sm">
+        <div className="max-w-7xl mx-auto flex items-center justify-between px-6 h-[56px]">
+          <Link href="/" className="flex items-center gap-2">
+            <Zap className="h-5 w-5 text-accent" strokeWidth={2.5} />
+            <span className="font-semibold text-[16px] text-text tracking-[-0.3px]">Spanlens</span>
           </Link>
-          <AuthNavButtons signupLabel="Get started free" />
+          <div className="flex items-center gap-6">
+            <Link href="/pricing" className="text-[13px] text-text-muted hover:text-text transition-colors">
+              Pricing
+            </Link>
+            <AuthNavButtons signupLabel="Get started free" />
+          </div>
         </div>
       </nav>
 
-      <main className="flex-1 max-w-3xl mx-auto px-6 py-12 prose prose-gray
+      <main className="flex-1 max-w-3xl mx-auto px-6 py-12 prose prose-stone
         prose-headings:scroll-mt-20
-        prose-a:text-blue-600 prose-a:no-underline hover:prose-a:underline">
+        prose-a:text-accent prose-a:no-underline hover:prose-a:opacity-80">
         <h1>Privacy Policy</h1>
         <p className="text-sm text-muted-foreground">
           <strong>Effective date:</strong> {EFFECTIVE_DATE}

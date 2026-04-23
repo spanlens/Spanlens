@@ -34,12 +34,12 @@ export function CodeBlock({ children, language }: CodeBlockProps) {
 
   return (
     <div className="relative group my-6 not-prose">
-      <pre className={`overflow-x-auto rounded-lg border border-gray-800 bg-gray-950 px-4 text-sm leading-6 text-gray-100 shadow-sm ${language ? 'pt-9 pb-4' : 'py-4'}`}>
+      <pre className={`overflow-x-auto rounded-lg border border-border/40 bg-[#1a1816] px-4 text-sm leading-6 text-[#d4cfc8] shadow-sm ${language ? 'pt-9 pb-4' : 'py-4'}`}>
         <code className="font-mono">{children}</code>
       </pre>
 
       {language && (
-        <span className="absolute top-2.5 left-4 text-[10px] uppercase tracking-wider font-semibold text-gray-500 select-none">
+        <span className="absolute top-2.5 left-4 text-[10px] uppercase tracking-wider font-semibold text-[#7c7770] select-none">
           {language}
         </span>
       )}
@@ -47,7 +47,7 @@ export function CodeBlock({ children, language }: CodeBlockProps) {
       <button
         type="button"
         onClick={() => void handleCopy()}
-        className="absolute top-2 right-2 inline-flex items-center gap-1 rounded-md border border-gray-700/60 bg-gray-800/70 px-2 py-1 text-[11px] text-gray-300 opacity-0 transition-opacity hover:bg-gray-700 hover:text-white group-hover:opacity-100 focus:opacity-100"
+        className="absolute top-2 right-2 inline-flex items-center gap-1 rounded-md border border-border/60 bg-[#2a2826]/70 px-2 py-1 text-[11px] text-[#7c7770] opacity-0 transition-opacity hover:bg-[#2a2826] hover:text-[#d4cfc8] group-hover:opacity-100 focus:opacity-100"
         aria-label={copied ? 'Copied to clipboard' : 'Copy code to clipboard'}
       >
         {copied ? (

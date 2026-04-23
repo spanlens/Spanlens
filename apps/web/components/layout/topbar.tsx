@@ -1,0 +1,90 @@
+'use client'
+import Link from 'next/link'
+import { cn } from '@/lib/utils'
+
+interface Crumb {
+  label: string
+  href?: string
+}
+
+interface TopbarProps {
+  crumbs: Crumb[]
+  right?: React.ReactNode
+  className?: string
+}
+
+/**
+ * MonoTopbar — "Workspace / Page / Sub-page" breadcrumb with optional right slot.
+ * Sits at the top of every dashboard main area, 52px tall, border-bottom.
+ */
+export function Topbar({ crumbs, right, className }: TopbarProps) {
+  return (
+    <div
+      className={cn(
+        'flex items-center gap-2 h-[52px] px-[22px] border-b border-border shrink-0',
+        className,
+      )}
+    >
+      <nav className="flex items-center gap-2 text-[13px]">
+        {crumbs.map((c, i) => (
+          <span key={i} className="flex items-center gap-2">
+            {i > 0 && <span className="text-text-faint">/</span>}
+            {c.href ? (
+              <Link href={c.href} className="text-text-faint hover:text-text-muted transition-colors">
+                {c.label}
+              </Link>
+            ) : (
+              <span className={i === crumbs.length - 1 ? 'text-text font-medium' : 'text-text-faint'}>
+                {c.label}
+              </span>
+            )}
+          </span>
+        ))}
+      </nav>
+
+      <div className="flex-1" />
+      {right}
+    </div>
+  )
+}
+
+/** Time range segmented control */
+export function TimeRangeSelector({
+  value,
+  onChange,
+  options = ['1h', '24h', '7d', '30d'],
+}: {
+  value: string
+  onChange: (v: string) => void
+  options?: string[]
+}) {
+  return (
+    <div className="flex border border-border rounded-md overflow-hidden">
+      {options.map((opt, i) => (
+        <button
+          key={opt}
+          onClick={() => onChange(opt)}
+          className={cn(
+            'font-mono text-[11px] px-[10px] py-[5px] transition-colors',
+            i < options.length - 1 && 'border-r border-border',
+            opt === value
+              ? 'bg-bg-elev text-text font-medium'
+              : 'bg-transparent text-text-muted hover:text-text',
+          )}
+        >
+          {opt}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+/** Live indicator dot */
+export function LiveDot() {
+  return (
+    <span className="flex items-center gap-1.5 text-[12.5px] text-text-muted">
+      <span className="inline-block w-[7px] h-[7px] rounded-full bg-good" />
+      Live
+    </span>
+  )
+}

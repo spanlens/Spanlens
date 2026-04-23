@@ -12,17 +12,17 @@ import { Zap } from 'lucide-react'
  */
 export function Footer() {
   return (
-    <footer className="border-t bg-gray-50 mt-24">
+    <footer className="border-t border-border bg-bg-elev mt-24">
       <div className="max-w-7xl mx-auto px-6 py-12">
         {/* Top row — links grid */}
         <div className="grid grid-cols-2 md:grid-cols-5 gap-8 mb-10">
           {/* Brand */}
           <div className="col-span-2 md:col-span-2">
             <Link href="/" className="flex items-center gap-2 mb-3">
-              <Zap className="h-5 w-5 text-blue-600" />
-              <span className="font-bold text-lg">Spanlens</span>
+              <Zap className="h-5 w-5 text-accent" strokeWidth={2.5} />
+              <span className="font-semibold text-[16px] text-text tracking-[-0.3px]">Spanlens</span>
             </Link>
-            <p className="text-sm text-muted-foreground max-w-xs">
+            <p className="text-[13px] text-text-muted max-w-xs leading-relaxed">
               LLM observability in 30 seconds. Proxy, trace, bill-aware — for OpenAI,
               Anthropic, and Gemini.
             </p>
@@ -30,31 +30,31 @@ export function Footer() {
 
           {/* Product */}
           <div>
-            <h4 className="font-semibold text-sm mb-3">Product</h4>
-            <ul className="space-y-2 text-sm text-muted-foreground">
-              <li><Link href="/pricing" className="hover:text-foreground">Pricing</Link></li>
-              <li><Link href="/docs" className="hover:text-foreground">Docs</Link></li>
-              <li><Link href="/docs/quick-start" className="hover:text-foreground">Quick start</Link></li>
-              <li><Link href="/docs/self-host" className="hover:text-foreground">Self-host</Link></li>
+            <h4 className="font-semibold text-[13px] text-text mb-3">Product</h4>
+            <ul className="space-y-2 text-[13px] text-text-muted">
+              <li><Link href="/pricing" className="hover:text-text transition-colors">Pricing</Link></li>
+              <li><Link href="/docs" className="hover:text-text transition-colors">Docs</Link></li>
+              <li><Link href="/docs/quick-start" className="hover:text-text transition-colors">Quick start</Link></li>
+              <li><Link href="/docs/self-host" className="hover:text-text transition-colors">Self-host</Link></li>
             </ul>
           </div>
 
           {/* Company */}
           <div>
-            <h4 className="font-semibold text-sm mb-3">Company</h4>
-            <ul className="space-y-2 text-sm text-muted-foreground">
+            <h4 className="font-semibold text-[13px] text-text mb-3">Company</h4>
+            <ul className="space-y-2 text-[13px] text-text-muted">
               <li>
                 <a
                   href="https://github.com/sunes26/Spanlens"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="hover:text-foreground"
+                  className="hover:text-text transition-colors"
                 >
                   GitHub
                 </a>
               </li>
               <li>
-                <a href="mailto:support@spanlens.io" className="hover:text-foreground">
+                <a href="mailto:support@spanlens.io" className="hover:text-text transition-colors">
                   Contact
                 </a>
               </li>
@@ -63,18 +63,18 @@ export function Footer() {
 
           {/* Legal */}
           <div>
-            <h4 className="font-semibold text-sm mb-3">Legal</h4>
-            <ul className="space-y-2 text-sm text-muted-foreground">
-              <li><Link href="/terms" className="hover:text-foreground">Terms of Service</Link></li>
-              <li><Link href="/privacy" className="hover:text-foreground">Privacy Policy</Link></li>
+            <h4 className="font-semibold text-[13px] text-text mb-3">Legal</h4>
+            <ul className="space-y-2 text-[13px] text-text-muted">
+              <li><Link href="/terms" className="hover:text-text transition-colors">Terms of Service</Link></li>
+              <li><Link href="/privacy" className="hover:text-text transition-colors">Privacy Policy</Link></li>
             </ul>
           </div>
         </div>
 
         {/* Bottom row — commercial info (전자상거래법 mandatory disclosure) */}
-        <div className="border-t pt-6 text-xs text-muted-foreground space-y-1">
+        <div className="border-t border-border pt-6 text-[11.5px] text-text-faint space-y-1">
           <p>
-            <span className="font-medium text-foreground">Oceancode</span> (오션코드) ·
+            <span className="font-medium text-text-muted">Oceancode</span> (오션코드) ·
             Sole proprietorship registered in the Republic of Korea
           </p>
           <p>

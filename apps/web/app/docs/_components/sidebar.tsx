@@ -63,7 +63,7 @@ export function DocsSidebar() {
     <nav className="space-y-6 text-sm">
       {NAV.map((group) => (
         <div key={group.title}>
-          <h4 className="font-semibold text-xs uppercase tracking-wide text-muted-foreground mb-2">
+          <h4 className="font-semibold text-xs uppercase tracking-wide text-text-faint mb-2">
             {group.title}
           </h4>
           <ul className="space-y-1">
@@ -76,8 +76,8 @@ export function DocsSidebar() {
                     className={cn(
                       'block rounded px-2.5 py-1.5 transition-colors',
                       active
-                        ? 'bg-blue-50 text-blue-700 font-medium'
-                        : 'text-muted-foreground hover:bg-gray-50 hover:text-foreground',
+                        ? 'bg-accent-bg text-accent font-medium'
+                        : 'text-text-muted hover:bg-bg-elev hover:text-text',
                     )}
                   >
                     {item.title}

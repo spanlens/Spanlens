@@ -1,18 +1,16 @@
 import Link from 'next/link'
 import { Check, Zap } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { AuthNavButtons } from '@/components/layout/auth-nav-buttons'
 import { Footer } from '@/components/layout/footer'
+import { cn } from '@/lib/utils'
 
-export const metadata = { title: 'Pricing' }
+export const metadata = { title: 'Pricing · Spanlens' }
 
 const PLANS = [
   {
     name: 'Free',
     price: '$0',
     description: 'For personal projects and exploration',
-    requests: '10,000 req/mo',
     features: [
       '10K requests / month',
       '1 project',
@@ -28,7 +26,6 @@ const PLANS = [
     name: 'Starter',
     price: '$19',
     description: 'For solo developers shipping to production',
-    requests: '100,000 req/mo',
     features: [
       '100K requests / month',
       'Up to 5 projects',
@@ -45,7 +42,6 @@ const PLANS = [
     name: 'Team',
     price: '$49',
     description: 'For teams that need more visibility',
-    requests: '500,000 req/mo',
     features: [
       '500K requests / month',
       'Unlimited projects',
@@ -63,142 +59,151 @@ const PLANS = [
 
 export default function PricingPage() {
   return (
-    <div className="min-h-screen bg-white">
+    <div className="min-h-screen bg-bg">
       {/* Nav */}
-      <nav className="border-b px-6 py-4 flex items-center justify-between max-w-7xl mx-auto">
-        <Link href="/" className="flex items-center gap-2">
-          <Zap className="h-5 w-5 text-blue-600" />
-          <span className="font-bold text-lg">Spanlens</span>
-        </Link>
-        <div className="flex items-center gap-4">
-          <AuthNavButtons signupLabel="Get started free" />
+      <nav className="sticky top-0 z-10 border-b border-border bg-bg/90 backdrop-blur-sm">
+        <div className="max-w-7xl mx-auto flex items-center justify-between px-6 h-[56px]">
+          <Link href="/" className="flex items-center gap-2">
+            <Zap className="h-5 w-5 text-accent" strokeWidth={2.5} />
+            <span className="font-semibold text-[16px] text-text tracking-[-0.3px]">Spanlens</span>
+          </Link>
+          <div className="flex items-center gap-6">
+            <Link href="/docs" className="text-[13px] text-text-muted hover:text-text transition-colors">
+              Docs
+            </Link>
+            <AuthNavButtons signupLabel="Get started free" />
+          </div>
         </div>
       </nav>
 
       <section className="max-w-5xl mx-auto px-6 py-24">
         <div className="text-center mb-10">
-          <h1 className="text-4xl font-bold mb-4">Simple, honest pricing</h1>
-          <p className="text-lg text-muted-foreground">
+          <h1 className="text-[36px] font-semibold tracking-[-0.6px] text-text mb-3">Simple, honest pricing</h1>
+          <p className="text-[16px] text-text-muted">
             Start free. Scale as you grow. Cancel anytime.
           </p>
         </div>
 
-        {/* Common features — all plans */}
-        <div className="max-w-3xl mx-auto mb-14 rounded-xl border bg-gray-50 px-6 py-5 text-sm">
-          <p className="font-semibold text-gray-700 mb-2.5">Every plan includes</p>
-          <ul className="grid grid-cols-1 md:grid-cols-2 gap-y-1.5 gap-x-6 text-gray-600">
+        {/* Common features */}
+        <div className="max-w-3xl mx-auto mb-14 rounded-xl border border-border bg-bg-elev px-6 py-5 text-sm">
+          <p className="font-semibold text-text mb-2.5">Every plan includes</p>
+          <ul className="grid grid-cols-1 md:grid-cols-2 gap-y-1.5 gap-x-6 text-text-muted">
             <li className="flex items-center gap-2">
-              <Check className="h-4 w-4 text-emerald-600 shrink-0" />
-              <code className="font-mono text-xs bg-white px-1.5 py-0.5 rounded border">npx @spanlens/cli init</code>
+              <Check className="h-4 w-4 text-good shrink-0" />
+              <code className="font-mono text-xs bg-bg px-1.5 py-0.5 rounded border border-border">npx @spanlens/cli init</code>
               <span>1-command setup</span>
             </li>
             <li className="flex items-center gap-2">
-              <Check className="h-4 w-4 text-emerald-600 shrink-0" />
+              <Check className="h-4 w-4 text-good shrink-0" />
               Self-hostable (Docker)
             </li>
             <li className="flex items-center gap-2">
-              <Check className="h-4 w-4 text-emerald-600 shrink-0" />
+              <Check className="h-4 w-4 text-good shrink-0" />
               OpenAI / Anthropic / Gemini
             </li>
             <li className="flex items-center gap-2">
-              <Check className="h-4 w-4 text-emerald-600 shrink-0" />
+              <Check className="h-4 w-4 text-good shrink-0" />
               Agent tracing (Gantt view)
             </li>
             <li className="flex items-center gap-2">
-              <Check className="h-4 w-4 text-emerald-600 shrink-0" />
+              <Check className="h-4 w-4 text-good shrink-0" />
               PII + prompt-injection detection
             </li>
             <li className="flex items-center gap-2">
-              <Check className="h-4 w-4 text-emerald-600 shrink-0" />
+              <Check className="h-4 w-4 text-good shrink-0" />
               Anomaly detection (3σ)
             </li>
           </ul>
         </div>
 
+        {/* Plan cards */}
         <div className="grid grid-cols-3 gap-6">
           {PLANS.map((plan) => (
-            <Card
+            <div
               key={plan.name}
-              className={plan.highlight ? 'border-blue-600 ring-2 ring-blue-600' : ''}
+              className={cn(
+                'rounded-xl border flex flex-col overflow-hidden',
+                plan.highlight ? 'border-accent' : 'border-border',
+              )}
             >
               {plan.highlight && (
-                <div className="text-center py-1.5 bg-blue-600 text-white text-xs font-semibold rounded-t-lg -mt-px">
+                <div className="text-center py-1.5 bg-accent text-bg text-[11px] font-semibold tracking-wide uppercase">
                   Most popular
                 </div>
               )}
-              <CardHeader>
-                <CardTitle>{plan.name}</CardTitle>
-                <CardDescription>{plan.description}</CardDescription>
-                <div className="pt-2">
-                  <span className="text-3xl font-bold">{plan.price}</span>
-                  <span className="text-muted-foreground">/mo</span>
+              <div className={cn('flex-1 p-6', plan.highlight ? 'bg-accent-bg' : 'bg-bg-elev')}>
+                <h2 className="text-[18px] font-semibold text-text mb-1">{plan.name}</h2>
+                <p className="text-[13px] text-text-muted mb-4">{plan.description}</p>
+                <div className="mb-6">
+                  <span className="font-mono text-[32px] font-medium tracking-[-0.5px] text-text">{plan.price}</span>
+                  <span className="font-mono text-[12px] text-text-muted">/mo</span>
                 </div>
-              </CardHeader>
-              <CardContent>
                 <ul className="space-y-2 mb-6">
                   {plan.features.map((f) => (
-                    <li key={f} className="flex items-center gap-2 text-sm">
-                      <Check className="h-4 w-4 text-emerald-600 shrink-0" />
+                    <li key={f} className="flex items-center gap-2 text-[13px] text-text-muted">
+                      <Check className="h-3.5 w-3.5 text-good shrink-0" />
                       {f}
                     </li>
                   ))}
                 </ul>
-                <Link href={plan.href}>
-                  <Button
-                    className="w-full"
-                    variant={plan.highlight ? 'default' : 'outline'}
-                  >
-                    {plan.cta}
-                  </Button>
+                <Link
+                  href={plan.href}
+                  className={cn(
+                    'block w-full h-9 rounded-[6px] text-[13px] font-medium text-center leading-9 transition-opacity hover:opacity-90',
+                    plan.highlight
+                      ? 'bg-accent text-bg'
+                      : 'border border-border bg-bg text-text',
+                  )}
+                >
+                  {plan.cta}
                 </Link>
-              </CardContent>
-            </Card>
+              </div>
+            </div>
           ))}
         </div>
 
-        <p className="text-center text-sm text-muted-foreground mt-10">
+        <p className="text-center text-[13px] text-text-muted mt-10">
           Need more?{' '}
-          <a href="mailto:hi@spanlens.io" className="underline">
+          <a href="mailto:hi@spanlens.io" className="text-accent hover:opacity-80 transition-opacity">
             Contact us for Enterprise pricing
           </a>
         </p>
 
-        {/* Overage + billing policy summary */}
-        <div className="mt-16 rounded-xl border bg-gray-50 p-6 max-w-3xl mx-auto">
-          <h3 className="font-semibold text-base mb-3">What happens if I go over my quota?</h3>
-          <p className="text-sm text-muted-foreground mb-4">
-            Paid plans default to <strong>soft limit + overage billing + hard cap</strong> so
+        {/* Overage policy */}
+        <div className="mt-16 rounded-xl border border-border bg-bg-elev p-6 max-w-3xl mx-auto">
+          <h3 className="font-semibold text-[15px] text-text mb-3">What happens if I go over my quota?</h3>
+          <p className="text-[13px] text-text-muted mb-4">
+            Paid plans default to <strong className="text-text">soft limit + overage billing + hard cap</strong> so
             you&apos;re never surprise-blocked or surprise-billed:
           </p>
-          <ul className="text-sm text-muted-foreground space-y-2 mb-4">
+          <ul className="text-[13px] text-text-muted space-y-2 mb-4">
             <li>
-              <strong>Soft limit</strong> — your plan&apos;s included quota (100K on Starter,
+              <strong className="text-text">Soft limit</strong> — your plan&apos;s included quota (100K on Starter,
               500K on Team). Extra requests pass through and accumulate.
             </li>
             <li>
-              <strong>Overage billing</strong> — Starter $0.10 / Team $0.08 per 1,000 extra
+              <strong className="text-text">Overage billing</strong> — Starter $0.10 / Team $0.08 per 1,000 extra
               requests, bundled into your next invoice (one email per month, not per charge).
             </li>
             <li>
-              <strong>Hard cap</strong> — default 5× the soft limit. Past this, requests return
-              429 even with overage enabled — your absolute ceiling. Adjustable 1–100× in
-              settings.
+              <strong className="text-text">Hard cap</strong> — default 5× the soft limit. Past this, requests return
+              429 even with overage enabled — your absolute ceiling. Adjustable 1–100× in settings.
             </li>
             <li>
-              <strong>Cost certainty mode</strong> — flip overage off in settings to behave like
+              <strong className="text-text">Cost certainty mode</strong> — flip overage off in settings to behave like
               Free plan (hard block at quota).
             </li>
             <li>
-              <strong>Free plan</strong> — always a hard block at 10K. Upgrade to Starter for
+              <strong className="text-text">Free plan</strong> — always a hard block at 10K. Upgrade to Starter for
               overage.
             </li>
           </ul>
-          <a
+          <Link
             href="/docs/features/billing"
-            className="text-sm text-blue-600 hover:underline inline-flex items-center gap-1"
+            className="text-[13px] text-accent hover:opacity-80 transition-opacity inline-flex items-center gap-1"
           >
             Full billing &amp; quota docs →
-          </a>
+          </Link>
         </div>
       </section>
 

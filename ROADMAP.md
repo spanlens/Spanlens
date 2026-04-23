@@ -234,6 +234,73 @@
 - [ ] **Streaming 강제** — 프록시에서 비스트리밍 요청도 내부적으로 stream 받아 passthrough
 - [ ] **고객에게 streaming 권장 문서화** — SDK README에 "장시간 요청은 `stream: true` 권장"
 
+### 3H. Design Renewal — 기능 확장 (UI 리뉴얼에서 도출된 신규 기능)
+
+> **트리거**: 2026-04-23 design handoff 수령 → UI 리뉴얼 Phase 1 (토큰/셸) 착수. 아래는 리뉴얼 목업에서 새로 등장한 기능들로, 디자인 변경 후 구현할 목록.
+
+#### 3H.1. 글로벌 인터랙션
+- [ ] **⌘K Command Palette** — 전 페이지에서 `Cmd+K` 로 요청/트레이스/프롬프트/설정 검색. shadcn `Command` (cmdk) 기반, 모노 glyph 컬럼.
+- [ ] **Topbar breadcrumb + 시간 범위 선택기** — 모든 대시보드 페이지에 공통 `<MonoTopbar>` — `Workspace / {Page}` 브레드크럼 + 1h / 24h / 7d / 30d 세그먼트 필터 + `⊙ Live` 인디케이터.
+- [ ] **Theme toggle** (Light / Dark / System 3-state) — `localStorage` 저장, `<html class="dark">` 토글. 우측 상단 고정.
+
+#### 3H.2. Dashboard
+- [ ] **Morning briefing 레이아웃** — 시간대별 인사(Morning/Afternoon/Evening) + 조직명/환경 + 날짜/시각 모노라벨.
+- [ ] **"Needs attention" 카드 3개** — 현재 firing 중인 이상/알림 중 top 3를 액션 카드로 요약. 각 카드: 타입 + 메시지 + CTA 링크.
+- [ ] **Spend sparkline** — 24h 시계열 트래픽 sparkline (SVG, 그라디언트 fill). `requests` 테이블 1h 버킷 집계.
+- [ ] **Top prompts by cost** — 비용 순위 상위 5개 프롬프트 인라인 테이블.
+- [ ] **Recent alerts** — 최근 발송된 alert_deliveries 3건 인라인 리스트.
+
+#### 3H.3. Requests
+- [ ] **우측 drawer 상세 패널** — 테이블 행 클릭 시 페이지 이동 대신 우측 240px+ drawer 슬라이드인. request/response body, cost breakdown, 연결된 spans, request ID 표시.
+- [ ] **TrafficChart 개선** — 디자인 토큰 기반 컬러 + 빠른 기간 토글 연동.
+
+#### 3H.4. Traces
+- [ ] **Critical-path highlight** — Waterfall에서 가장 긴 경로(end-to-end 가장 느린 선형 체인)를 amber로 하이라이트.
+- [ ] **Span search** — Waterfall 상단에 span name 필터 입력, 매칭 span 강조.
+- [ ] **Cost per span 열** — Waterfall 오른쪽에 span 별 cost_usd 컬럼.
+
+#### 3H.5. Settings (12탭 전체)
+> 현재 `/settings`는 단일 페이지. 리뉴얼은 `Workspace/Usage/Connect/Account` 4그룹 · 12탭 two-level 사이드바 구조로 전환.
+- [ ] **Workspace: General** — 조직 이름, 슬러그, timezone, 삭제 (danger section).
+- [ ] **Workspace: Members** — 초대 + 역할(Owner/Admin/Member/Viewer) CRUD + 대기 초대 목록.
+- [ ] **Workspace: API keys** — 현재 `/projects`에 있는 key 관리를 Settings로 통합. 마지막 사용 시각, `Just-rotated` 배너.
+- [ ] **Workspace: Audit log** — `audit_logs` 기반 이벤트 피드 (actor, action, target, timestamp).
+- [ ] **Usage: Billing** — 현재 플랜 카드 + 청구 주기 + 다음 결제일. Paddle customer portal 링크.
+- [ ] **Usage: Plan & limits** — 요청/보존 한도 인라인 진행 바 + 업그레이드 CTA.
+- [ ] **Usage: Invoices** — Paddle 인보이스 목록 (날짜, 금액, PDF 다운).
+- [ ] **Connect: Integrations** — Slack / Discord / PagerDuty / Datadog 카드 (연결 상태 pill + Connect 버튼).
+- [ ] **Connect: Destinations** — BigQuery / S3 데이터 export 커넥터 (Phase 3C와 연동).
+- [ ] **Connect: Webhooks** — webhook endpoint CRUD + 최근 delivery 이력.
+- [ ] **Connect: OpenTelemetry** — OTLP endpoint 설정 + 인증 헤더 + 커넥션 테스트.
+- [ ] **Account: Profile** — 이름, 아바타, 이메일 변경.
+- [ ] **Account: Notifications** — 알림 채널별 on/off 토글.
+- [ ] **Account: Preferences** — 테마, 밀도, 언어.
+
+#### 3H.6. Auth 플로우 완성
+> 현재는 Supabase Auth UI 기본 화면. 리뉴얼 디자인에 맞는 커스텀 화면 구현.
+- [ ] **Magic link sent** — "Check your inbox" 화면 + 10분 TTL 안내 + 42초 resend 타이머.
+- [ ] **2FA / TOTP** — 6자리 슬롯 입력 UI + "Remember 30 days" 체크박스 + 복구 코드 링크.
+- [ ] **Invitation accept** — 워크스페이스 카드 + 역할 프리뷰 + 퍼미션 요약.
+- [ ] **CLI device auth** — device code (예: `WXYZ-QJ47`) 매칭 + 툴/기기/IP 표시.
+- [ ] **Account locked** — 15분 잠금 + magic-link 탈출 안내.
+
+#### 3H.7. Empty / Loading / Error 상태 시스템
+> 현재: 라우트별 즉흥 처리. 리뉴얼: 모든 라우트에 통일된 빈/로딩/에러 상태.
+- [ ] `<EmptyState>` 공통 컴포넌트 — 일러스트 없음, plain copy + 단일 CTA. (예: "No requests yet. Start by proxying a request.")
+- [ ] 각 라우트 `loading.tsx` 에 shadcn `Skeleton` 레이아웃 — 실제 콘텐츠 형태 모방.
+- [ ] 각 라우트 `error.tsx` — "Something went wrong" + Retry 버튼 + 에러 ID.
+- [ ] First-install empty state: "Connect your first project" 가이드 카드.
+- [ ] Filter-empty state: "No results. Try adjusting your filters."
+
+#### 3H.8. Landing Page 리뉴얼
+> Phase 4 런치 이전에 완성.
+- [ ] 1440px 기준 신규 Hero — product proof stats (요청 수, 절감액, 응답 시간 개선) + code snippet CTA.
+- [ ] Feature grid — proxy / tracing / anomaly / prompts 4-block.
+- [ ] Pricing section 인라인 (현재 `/pricing` 별도 페이지 → landing 통합 or 유지).
+- [ ] 디자인 토큰 적용 + monochrome 스타일.
+
+---
+
 ### 3G. Proxy Timeout Mitigation — Internal Streaming 캠페인 (Post-launch)
 
 > **배경 (2026-04-23)**: mind-scanner dogfood 도중 `gpt-4o-mini` JSON mode + `max_tokens=2500` 응답이 25초 넘어가서 Edge first-byte timeout 504. 단기 처방으로 mind-scanner 두 라우트를 "internal streaming" 패턴(서버는 `stream:true`로 받아 chunk 누적, 클라이언트엔 단일 JSON 반환)으로 마이그레이션 + `/docs/proxy`, `/docs/sdk` 상단에 streaming 권장 안내 배너 추가 (= **Phase 1 완료**). 아래는 런치 후 데이터 누적 보고 결정할 후속 작업.
