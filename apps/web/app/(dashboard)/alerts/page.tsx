@@ -1,6 +1,6 @@
 'use client'
 import { useState } from 'react'
-import { X, Trash2, Mail, MessageSquare } from 'lucide-react'
+import { Trash2, Mail, MessageSquare } from 'lucide-react'
 import {
   useAlerts,
   useCreateAlert,

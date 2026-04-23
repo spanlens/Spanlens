@@ -19,7 +19,7 @@ function fmtMs(v: number): string {
   return `${Math.round(v)}ms`
 }
 
-function QualitySpark({ quality, warn }: { quality: number; warn: boolean }) {
+function QualitySpark({ warn }: { warn: boolean }) {
   const bars = 8
   return (
     <div className="flex items-end gap-[1.5px] h-[14px]">
@@ -276,7 +276,7 @@ export default function PromptsPage() {
               <span className="text-text-faint">—</span>
               <span className="flex items-center gap-2">
                 <span className="text-text">—</span>
-                <QualitySpark quality={90} warn={false} />
+                <QualitySpark warn={false} />
               </span>
               <span className="text-text-muted font-sans">—</span>
               <span className="text-text-faint text-right text-[11px]">

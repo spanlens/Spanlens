@@ -54,7 +54,6 @@ function TraceMini({ idx, hasError }: { idx: number; hasError: boolean }) {
 
 type StatusFilter = 'all' | 'ok' | 'error'
 
-const FILTER_COLS = 'px-[22px] py-[11px] font-mono text-[12.5px] items-center border-b border-border'
 const GRID = '20px 1.4fr 1.2fr 0.6fr 0.8fr 0.8fr 0.9fr 1.2fr 1.2fr 0.5fr'
 
 export default function TracesPage() {
@@ -66,7 +65,7 @@ export default function TracesPage() {
     statusFilter === 'ok' ? 'completed' : statusFilter === 'error' ? 'error' : 'all'
 
   const { data, isLoading, isFetching } = useTraces({ page, limit: 50, status: apiStatus })
-  const traces = data?.data ?? []
+  const traces = useMemo(() => data?.data ?? [], [data])
   const meta = data?.meta ?? { total: 0, page: 1, limit: 50 }
 
   const filtered = useMemo(
