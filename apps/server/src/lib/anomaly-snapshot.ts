@@ -18,10 +18,6 @@ export interface SnapshotResult {
   errors: string[]
 }
 
-interface OrgRow {
-  id: string
-}
-
 export async function snapshotAnomaliesForAllOrgs(
   now: Date = new Date(),
 ): Promise<SnapshotResult[]> {
