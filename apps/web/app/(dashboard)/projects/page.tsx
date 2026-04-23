@@ -4,18 +4,36 @@ import { useState } from 'react'
 import { Plus, Trash2, Copy, Terminal, Check, ExternalLink } from 'lucide-react'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Topbar } from '@/components/layout/topbar'
 import { GhostBtn, PrimaryBtn } from '@/components/ui/primitives'
 import { useCreateProject, useProjects } from '@/lib/queries/use-projects'
 import { useApiKeys, useCreateApiKey, useRevokeApiKey } from '@/lib/queries/use-api-keys'
+import {
+  useProviderKeys,
+  useCreateProviderKey,
+  useRevokeProviderKey,
+} from '@/lib/queries/use-provider-keys'
 import { cn } from '@/lib/utils'
+
+const PROVIDERS = ['openai', 'anthropic', 'gemini'] as const
+type ProviderName = typeof PROVIDERS[number]
 
 export default function ProjectsPage() {
   const projectsQuery = useProjects()
   const apiKeysQuery = useApiKeys()
+  const providerKeysQuery = useProviderKeys()
   const createProject = useCreateProject()
   const createApiKey = useCreateApiKey()
   const revokeApiKey = useRevokeApiKey()
+  const createProviderKey = useCreateProviderKey()
+  const revokeProviderKey = useRevokeProviderKey()
 
   const [newKey, setNewKey] = useState<string | null>(null)
   const [cmdCopied, setCmdCopied] = useState(false)
@@ -27,6 +45,14 @@ export default function ProjectsPage() {
   const [keyDialogOpen, setKeyDialogOpen] = useState(false)
   const [keyName, setKeyName] = useState('')
   const [keyProjectId, setKeyProjectId] = useState('')
+
+  // Provider key override dialog state
+  const [pkDialogOpen, setPkDialogOpen] = useState(false)
+  const [pkProjectId, setPkProjectId] = useState('')
+  const [pkProvider, setPkProvider] = useState<ProviderName>('openai')
+  const [pkName, setPkName] = useState('')
+  const [pkKey, setPkKey] = useState('')
+  const [pkError, setPkError] = useState<string | null>(null)
 
   function copyWizardCmd() {
     void navigator.clipboard.writeText('npx @spanlens/cli init')
@@ -54,9 +80,35 @@ export default function ProjectsPage() {
     setKeyDialogOpen(false)
   }
 
+  function openProviderKeyDialog(projectId: string) {
+    setPkProjectId(projectId)
+    setPkProvider('openai')
+    setPkName('')
+    setPkKey('')
+    setPkError(null)
+    setPkDialogOpen(true)
+  }
+
+  async function handleCreateProviderKey() {
+    setPkError(null)
+    try {
+      await createProviderKey.mutateAsync({
+        provider: pkProvider,
+        key: pkKey.trim(),
+        name: pkName.trim() || `${pkProvider} override`,
+        project_id: pkProjectId,
+      })
+      setPkDialogOpen(false)
+    } catch (err) {
+      setPkError(err instanceof Error ? err.message : 'Failed to save provider key')
+    }
+  }
+
   const loading = projectsQuery.isLoading || apiKeysQuery.isLoading
   const projects = projectsQuery.data ?? []
   const apiKeys = apiKeysQuery.data ?? []
+  const providerKeys = providerKeysQuery.data ?? []
+  const orgDefaults = providerKeys.filter((k) => k.project_id === null && k.is_active)
 
   return (
     <div className="-m-7 flex flex-col h-screen overflow-hidden">
@@ -262,6 +314,82 @@ export default function ProjectsPage() {
                         </div>
                       )}
                     </div>
+
+                    {/* Provider keys section */}
+                    <div className="border-t border-border">
+                      <div className="flex items-center justify-between px-6 py-3 bg-bg">
+                        <div>
+                          <h3 className="text-[12.5px] font-semibold text-text-muted uppercase tracking-[0.04em]">
+                            Provider keys
+                          </h3>
+                          <p className="text-[11.5px] text-text-faint mt-0.5">
+                            Overrides the workspace default for this project only
+                          </p>
+                        </div>
+                        <GhostBtn
+                          className="flex items-center gap-1.5 text-[12px] px-3 py-[5px]"
+                          onClick={() => openProviderKeyDialog(proj.id)}
+                        >
+                          <Plus className="h-3.5 w-3.5" /> Override
+                        </GhostBtn>
+                      </div>
+                      <div className="divide-y divide-border">
+                        {PROVIDERS.map((provider) => {
+                          const override = providerKeys.find(
+                            (k) => k.project_id === proj.id && k.provider === provider && k.is_active,
+                          )
+                          const hasDefault = orgDefaults.some((k) => k.provider === provider)
+                          return (
+                            <div key={provider} className="flex items-center justify-between px-6 py-3">
+                              <div className="flex items-center gap-3 min-w-0">
+                                <span className="font-mono text-[11.5px] uppercase tracking-[0.05em] text-text-muted w-20 shrink-0">
+                                  {provider}
+                                </span>
+                                {override ? (
+                                  <>
+                                    <span className="text-[13px] font-medium text-text truncate">
+                                      {override.name}
+                                    </span>
+                                    <span className="font-mono text-[10px] uppercase tracking-[0.04em] px-1.5 py-0.5 rounded-full border border-accent-border bg-accent-bg text-accent shrink-0">
+                                      project override
+                                    </span>
+                                  </>
+                                ) : hasDefault ? (
+                                  <>
+                                    <span className="text-[12.5px] text-text-muted">Using workspace default</span>
+                                    <span className="font-mono text-[10px] uppercase tracking-[0.04em] px-1.5 py-0.5 rounded-full border border-border text-text-faint shrink-0">
+                                      inherit
+                                    </span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <span className="text-[12.5px] text-text-faint">Not configured</span>
+                                    <Link
+                                      href="/settings"
+                                      className="font-mono text-[10.5px] text-accent hover:opacity-80 transition-opacity"
+                                    >
+                                      Add default →
+                                    </Link>
+                                  </>
+                                )}
+                              </div>
+                              {override && (
+                                <button
+                                  type="button"
+                                  onClick={() => void revokeProviderKey.mutateAsync(override.id)}
+                                  disabled={revokeProviderKey.isPending}
+                                  className="p-1.5 rounded hover:bg-accent-bg text-text-faint hover:text-accent transition-colors disabled:opacity-40 shrink-0"
+                                  aria-label="Remove override"
+                                  title="Remove override (falls back to workspace default)"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </button>
+                              )}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
                   </div>
                 )
               })}
@@ -335,6 +463,72 @@ export default function ProjectsPage() {
               disabled={!keyName.trim() || createApiKey.isPending}
             >
               {createApiKey.isPending ? 'Creating…' : 'Create'}
+            </PrimaryBtn>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Provider key override dialog */}
+      <Dialog open={pkDialogOpen} onOpenChange={setPkDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Override provider key</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 mt-2">
+            <p className="text-[12.5px] text-text-muted">
+              This key will be used only for requests from this project. Other projects keep using the workspace default.
+            </p>
+
+            <div className="space-y-1.5">
+              <label className="text-[12.5px] text-text-muted font-medium">Provider</label>
+              <Select value={pkProvider} onValueChange={(v) => setPkProvider(v as ProviderName)}>
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {PROVIDERS.map((p) => (
+                    <SelectItem key={p} value={p}>{p}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-[12.5px] text-text-muted font-medium">Name (optional)</label>
+              <input
+                value={pkName}
+                onChange={(e) => setPkName(e.target.value)}
+                placeholder="e.g. Production OpenAI"
+                className="w-full h-9 px-3 rounded-[6px] border border-border bg-bg text-[13px] text-text placeholder:text-text-faint focus:outline-none focus:border-border-strong transition-colors"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-[12.5px] text-text-muted font-medium">API key</label>
+              <input
+                value={pkKey}
+                onChange={(e) => setPkKey(e.target.value)}
+                placeholder="sk-..."
+                type="password"
+                autoComplete="off"
+                className="w-full h-9 px-3 rounded-[6px] border border-border bg-bg text-[13px] font-mono text-text placeholder:text-text-faint focus:outline-none focus:border-border-strong transition-colors"
+              />
+              <p className="font-mono text-[10.5px] text-text-faint">
+                Encrypted with AES-256-GCM. Never logged.
+              </p>
+            </div>
+
+            {pkError && (
+              <div className="rounded-md border border-accent-border bg-accent-bg px-3 py-2 text-[12px] text-accent">
+                {pkError}
+              </div>
+            )}
+
+            <PrimaryBtn
+              onClick={() => void handleCreateProviderKey()}
+              disabled={!pkKey.trim() || createProviderKey.isPending}
+            >
+              {createProviderKey.isPending ? 'Saving…' : 'Save override'}
             </PrimaryBtn>
           </div>
         </DialogContent>

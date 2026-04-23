@@ -22,7 +22,7 @@ anthropicProxy.all('/*', async (c) => {
   const projectId = c.get('projectId')
   const apiKeyId = c.get('apiKeyId')
 
-  const providerKey = await getDecryptedProviderKey(organizationId, 'anthropic')
+  const providerKey = await getDecryptedProviderKey(organizationId, projectId, 'anthropic')
   if (!providerKey) {
     return c.json({ error: 'No active Anthropic provider key configured for this organization' }, 400)
   }

@@ -52,7 +52,7 @@ const NAV: { group: string; items: NavItem[] }[] = [
     items: [
       { id: 'general',    label: 'General',    crumbs: [{ label: 'Workspace' }, { label: 'Settings' }, { label: 'General' }] },
       { id: 'members',    label: 'Members',    crumbs: [{ label: 'Workspace' }, { label: 'Settings' }, { label: 'Members' }] },
-      { id: 'api-keys',   label: 'API keys',   crumbs: [{ label: 'Workspace' }, { label: 'Settings' }, { label: 'API keys' }] },
+      { id: 'api-keys',   label: 'Provider keys', crumbs: [{ label: 'Workspace' }, { label: 'Settings' }, { label: 'Provider keys' }] },
       { id: 'audit-log',  label: 'Audit log',  crumbs: [{ label: 'Workspace' }, { label: 'Settings' }, { label: 'Audit log' }] },
     ],
   },
@@ -324,13 +324,14 @@ function ApiKeysTab() {
     setRotateId(null); setRotateVal('')
   }
 
-  const keys = keysQuery.data ?? []
+  // Org-level default keys only. Per-project overrides live on the Projects page.
+  const keys = (keysQuery.data ?? []).filter((k) => k.project_id === null)
 
   return (
     <div className="max-w-[980px]">
       <TabHeader
-        title="API keys"
-        description="Provider keys authenticate calls to OpenAI, Anthropic, and Gemini through the Spanlens proxy."
+        title="Provider keys"
+        description="Default OpenAI / Anthropic / Gemini keys for this workspace. Projects can override individually from the Projects page."
         action={
           <GhostBtn onClick={() => setAddOpen(true)}><Plus className="h-3.5 w-3.5 mr-1.5" /> Add provider key</GhostBtn>
         }
@@ -339,12 +340,12 @@ function ApiKeysTab() {
       <div className="mb-4 border border-accent-border bg-accent-bg rounded-lg px-4 py-3 flex items-center gap-3">
         <span className="w-5 h-5 rounded-full border border-accent text-accent flex items-center justify-center font-mono text-[10px] shrink-0">!</span>
         <div className="flex-1 text-[12.5px] text-text-muted">
-          Provider keys are encrypted at rest (AES-256-GCM). Only the last 4 characters are ever shown.
+          Keys are encrypted at rest (AES-256-GCM). Used as fallback when a project has no override.
         </div>
       </div>
 
       <Section
-        title="Provider keys"
+        title="Default provider keys"
         action={<Hint>{keys.filter((k) => k.is_active).length} active</Hint>}
         className="mb-5"
       >

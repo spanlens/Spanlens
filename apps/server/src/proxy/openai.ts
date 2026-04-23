@@ -22,7 +22,7 @@ openaiProxy.all('/*', async (c) => {
   const projectId = c.get('projectId')
   const apiKeyId = c.get('apiKeyId')
 
-  const providerKey = await getDecryptedProviderKey(organizationId, 'openai')
+  const providerKey = await getDecryptedProviderKey(organizationId, projectId, 'openai')
   if (!providerKey) {
     return c.json({ error: 'No active OpenAI provider key configured for this organization' }, 400)
   }

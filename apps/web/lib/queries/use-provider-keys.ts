@@ -16,10 +16,18 @@ export function useProviderKeys() {
   })
 }
 
+export interface CreateProviderKeyInput {
+  provider: string
+  key: string
+  name: string
+  /** Optional — omit/null for org-level default, set to scope to a project */
+  project_id?: string | null
+}
+
 export function useCreateProviderKey() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: async (input: { provider: string; key: string; name: string }) => {
+    mutationFn: async (input: CreateProviderKeyInput) => {
       const res = await apiPost<ApiEnvelope<ProviderKey>>('/api/v1/provider-keys', input)
       return res.data
     },

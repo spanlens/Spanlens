@@ -9,27 +9,51 @@ export interface ResolvedProviderKey {
 }
 
 /**
- * Look up + decrypt the active provider key for an org/provider. Returns
- * BOTH plaintext (for the upstream Authorization header) and the row id
- * (for the request log so the dashboard can show "openai (prod-key-2)").
+ * Look up + decrypt the active provider key for a request.
+ *
+ * Lookup priority:
+ *   1. Project-specific key (provider_keys.project_id = projectId, active)
+ *   2. Org-level default (provider_keys.project_id IS NULL, active)
+ *
+ * Returns both plaintext (for upstream Authorization) and the row id (for
+ * requests.provider_key_id so the dashboard can show which key was used).
  */
 export async function getDecryptedProviderKey(
   organizationId: string,
+  projectId: string,
   provider: string,
 ): Promise<ResolvedProviderKey | null> {
-  const { data } = await supabaseAdmin
+  // 1. Project-specific key
+  const { data: projectKey } = await supabaseAdmin
     .from('provider_keys')
     .select('id, encrypted_key')
     .eq('organization_id', organizationId)
+    .eq('project_id', projectId)
     .eq('provider', provider)
     .eq('is_active', true)
-    .limit(1)
-    .single()
+    .maybeSingle()
 
-  if (!data) return null
-  const decrypted = await aes256Decrypt(data.encrypted_key as string)
+  if (projectKey) {
+    const decrypted = await aes256Decrypt(projectKey.encrypted_key as string)
+    if (decrypted.length > 0) {
+      return { plaintext: decrypted, id: projectKey.id as string }
+    }
+  }
+
+  // 2. Org-level default fallback
+  const { data: orgKey } = await supabaseAdmin
+    .from('provider_keys')
+    .select('id, encrypted_key')
+    .eq('organization_id', organizationId)
+    .is('project_id', null)
+    .eq('provider', provider)
+    .eq('is_active', true)
+    .maybeSingle()
+
+  if (!orgKey) return null
+  const decrypted = await aes256Decrypt(orgKey.encrypted_key as string)
   if (decrypted.length === 0) return null
-  return { plaintext: decrypted, id: data.id as string }
+  return { plaintext: decrypted, id: orgKey.id as string }
 }
 
 // Strip hop-by-hop and sensitive headers before forwarding upstream

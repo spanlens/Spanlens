@@ -54,6 +54,8 @@ export interface ProviderKey {
   provider: string
   name: string
   is_active: boolean
+  /** null = org-level default; non-null = project-specific override */
+  project_id: string | null
   created_at: string
   updated_at: string
 }

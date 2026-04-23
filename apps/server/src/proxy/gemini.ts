@@ -20,7 +20,7 @@ geminiProxy.all('/*', async (c) => {
   const projectId = c.get('projectId')
   const apiKeyId = c.get('apiKeyId')
 
-  const providerKey = await getDecryptedProviderKey(organizationId, 'gemini')
+  const providerKey = await getDecryptedProviderKey(organizationId, projectId, 'gemini')
   if (!providerKey) {
     return c.json({ error: 'No active Gemini provider key configured for this organization' }, 400)
   }

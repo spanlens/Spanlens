@@ -9,16 +9,41 @@ providerKeysRouter.use('*', authJwt)
 
 const VALID_PROVIDERS = new Set(['openai', 'anthropic', 'gemini'])
 
+const SELECT_COLUMNS = 'id, provider, name, is_active, project_id, created_at, updated_at'
+
+async function assertProjectInOrg(
+  projectId: string,
+  orgId: string,
+): Promise<boolean> {
+  const { data } = await supabaseAdmin
+    .from('projects')
+    .select('id')
+    .eq('id', projectId)
+    .eq('organization_id', orgId)
+    .maybeSingle()
+  return Boolean(data)
+}
+
 // GET /api/v1/provider-keys — list keys (never returns plain or encrypted key)
+//   Optional ?projectId=xxx to filter to one project's overrides (org-default
+//   rows still included — callers can distinguish by project_id === null).
 providerKeysRouter.get('/', async (c) => {
   const orgId = c.get('orgId')
   if (!orgId) return c.json({ error: 'Organization not found' }, 404)
 
-  const { data, error } = await supabaseAdmin
+  const projectIdFilter = c.req.query('projectId')
+
+  let query = supabaseAdmin
     .from('provider_keys')
-    .select('id, provider, name, is_active, created_at, updated_at')
+    .select(SELECT_COLUMNS)
     .eq('organization_id', orgId)
     .order('created_at', { ascending: false })
+
+  if (projectIdFilter) {
+    query = query.eq('project_id', projectIdFilter)
+  }
+
+  const { data, error } = await query
 
   if (error) return c.json({ error: 'Failed to fetch provider keys' }, 500)
 
@@ -26,13 +51,21 @@ providerKeysRouter.get('/', async (c) => {
 })
 
 // POST /api/v1/provider-keys — add provider key (encrypt before storing)
+//   body.project_id — optional. When provided, the key scopes to that project
+//   only. When omitted, the key becomes the org-level default (fallback for
+//   all projects without their own override).
 providerKeysRouter.post('/', async (c) => {
   const orgId = c.get('orgId')
   if (!orgId) return c.json({ error: 'Organization not found' }, 404)
 
-  let body: { provider?: unknown; key?: unknown; name?: unknown }
+  let body: {
+    provider?: unknown
+    key?: unknown
+    name?: unknown
+    project_id?: unknown
+  }
   try {
-    body = await c.req.json() as { provider?: unknown; key?: unknown; name?: unknown }
+    body = await c.req.json() as typeof body
   } catch {
     return c.json({ error: 'Invalid JSON body' }, 400)
   }
@@ -47,20 +80,42 @@ providerKeysRouter.post('/', async (c) => {
     return c.json({ error: 'name is required' }, 400)
   }
 
+  let projectId: string | null = null
+  if (body.project_id !== undefined && body.project_id !== null) {
+    if (typeof body.project_id !== 'string' || body.project_id.trim().length === 0) {
+      return c.json({ error: 'project_id must be a non-empty string or null' }, 400)
+    }
+    if (!(await assertProjectInOrg(body.project_id, orgId))) {
+      return c.json({ error: 'project_id does not belong to this organization' }, 403)
+    }
+    projectId = body.project_id
+  }
+
   const encryptedKey = await aes256Encrypt(body.key.trim())
 
   const { data, error } = await supabaseAdmin
     .from('provider_keys')
     .insert({
       organization_id: orgId,
+      project_id: projectId,
       provider: body.provider,
       name: body.name.trim(),
       encrypted_key: encryptedKey,
     })
-    .select('id, provider, name, is_active, created_at, updated_at')
+    .select(SELECT_COLUMNS)
     .single()
 
-  if (error || !data) return c.json({ error: 'Failed to store provider key' }, 500)
+  if (error || !data) {
+    // Unique index violation → another active key already exists at this scope
+    if (error?.code === '23505') {
+      return c.json({
+        error: projectId
+          ? 'A key for this provider already exists on this project. Revoke it first.'
+          : 'A default key for this provider already exists. Revoke it first.',
+      }, 409)
+    }
+    return c.json({ error: 'Failed to store provider key' }, 500)
+  }
 
   return c.json({ success: true, data }, 201)
 })
@@ -111,7 +166,7 @@ providerKeysRouter.patch('/:id', async (c) => {
     .update(updates)
     .eq('id', keyId)
     .eq('organization_id', orgId)
-    .select('id, provider, name, is_active, created_at, updated_at')
+    .select(SELECT_COLUMNS)
     .single()
 
   if (error || !data) return c.json({ error: 'Provider key not found or access denied' }, 404)
