@@ -1,20 +1,27 @@
+import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
-import { createClient } from '@/lib/supabase/server'
 import { Sidebar } from '@/components/layout/sidebar'
 
+/**
+ * Dashboard layout. Reads auth state from the `x-spanlens-*` headers the
+ * root middleware set after validating the session — no second `getUser()`
+ * call here, which used to double the Supabase round-trip on every
+ * dashboard navigation.
+ *
+ * If middleware ran and the user is authenticated, `x-spanlens-user-id` is
+ * guaranteed present. Missing header + hitting /dashboard means middleware
+ * didn't run for some reason (misconfig) OR we're in a dev-time edge case —
+ * we fall back to a login redirect to fail safe.
+ *
+ * `x-spanlens-org-id` missing = authenticated user hasn't completed onboarding
+ * (the onboarding page creates the org + sets app_metadata.org_id).
+ */
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const h = await headers()
+  const userId = h.get('x-spanlens-user-id')
+  const orgId = h.get('x-spanlens-org-id')
 
-  if (!user) redirect('/login')
-
-  // Check org membership via JWT claim — zero network calls.
-  // POST /api/v1/organizations sets app_metadata.org_id; the onboarding page
-  // calls supabase.auth.refreshSession() afterwards so the cookie carries
-  // the latest claims by the time the user lands on a dashboard route.
-  const orgId = (user.app_metadata as { org_id?: string } | undefined)?.org_id
+  if (!userId) redirect('/login')
   if (!orgId) redirect('/onboarding')
 
   return (

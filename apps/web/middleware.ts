@@ -1,10 +1,24 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
-const PUBLIC_PATHS = ['/', '/pricing', '/login', '/signup', '/auth/']
+/**
+ * Session validation + auth redirects.
+ *
+ * Called on every navigation request (except static assets and `/api/*`
+ * which is the same-origin proxy — see matcher). Validates the Supabase
+ * session via `getUser()`, then forwards `x-spanlens-user-id` /
+ * `x-spanlens-org-id` request headers downstream so the dashboard layout
+ * does NOT need to re-call `getUser()` — one round-trip per navigation
+ * instead of two.
+ */
+
+const PUBLIC_PATHS = ['/', '/pricing', '/login', '/signup', '/auth/', '/terms', '/privacy']
 
 export async function middleware(request: NextRequest) {
-  let supabaseResponse = NextResponse.next({ request })
+  const requestHeaders = new Headers(request.headers)
+  let supabaseResponse = NextResponse.next({
+    request: { headers: requestHeaders },
+  })
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -16,7 +30,9 @@ export async function middleware(request: NextRequest) {
         },
         setAll(cookiesToSet) {
           cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
-          supabaseResponse = NextResponse.next({ request })
+          supabaseResponse = NextResponse.next({
+            request: { headers: requestHeaders },
+          })
           cookiesToSet.forEach(({ name, value, options }) =>
             supabaseResponse.cookies.set(name, value, options),
           )
@@ -25,7 +41,6 @@ export async function middleware(request: NextRequest) {
     },
   )
 
-  // Refresh session — must not use getSession() per Supabase docs
   const {
     data: { user },
   } = await supabase.auth.getUser()
@@ -33,23 +48,39 @@ export async function middleware(request: NextRequest) {
   const path = request.nextUrl.pathname
   const isPublic = PUBLIC_PATHS.some((p) => path === p || path.startsWith(p))
 
-  // Redirect unauthenticated users to login
   if (!user && !isPublic) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
     return NextResponse.redirect(url)
   }
 
-  // Redirect logged-in users away from auth pages
   if (user && (path === '/login' || path === '/signup')) {
     const url = request.nextUrl.clone()
     url.pathname = '/dashboard'
     return NextResponse.redirect(url)
   }
 
+  // Forward auth metadata downstream so the dashboard layout can skip its
+  // own getUser() call. One Supabase round-trip per navigation total.
+  if (user) {
+    requestHeaders.set('x-spanlens-user-id', user.id)
+    const orgId = (user.app_metadata as { org_id?: string } | undefined)?.org_id
+    if (orgId) requestHeaders.set('x-spanlens-org-id', orgId)
+
+    // Re-materialize the response with the updated headers so downstream RSC
+    // (notably (dashboard)/layout.tsx) sees them via next/headers.
+    supabaseResponse = NextResponse.next({
+      request: { headers: requestHeaders },
+    })
+  }
+
   return supabaseResponse
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)'],
+  // Skip static assets + the `/api/*` proxy (handled by next.config rewrites
+  // to the upstream server, which enforces its own JWT).
+  matcher: [
+    '/((?!_next/static|_next/image|favicon.ico|api/|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+  ],
 }

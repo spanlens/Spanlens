@@ -45,40 +45,36 @@ securityRouter.get('/flagged', async (c) => {
   })
 })
 
-interface FlagRow {
-  flags: Array<{ type: string; pattern: string }>
+interface SummaryRow {
+  flag_type: string
+  pattern: string
+  count: number
 }
 
 // GET /api/v1/security/summary?hours=24
+// Uses the `security_summary` Postgres function — LATERAL jsonb_array_elements
+// + GROUP BY on the server side. Replaces the earlier "fetch all flagged
+// rows, fold in JS" pattern which scaled linearly with flagged-row count.
 securityRouter.get('/summary', async (c) => {
   const orgId = c.get('orgId')
   if (!orgId) return c.json({ error: 'Organization not found' }, 404)
 
   const hours = parseIntSafe(c.req.query('hours'), 24)
-  const windowStart = new Date(Date.now() - hours * 3_600_000).toISOString()
 
-  const { data, error } = await supabaseAdmin
-    .from('requests')
-    .select('flags')
-    .eq('organization_id', orgId)
-    .not('flags', 'eq', '[]')
-    .gte('created_at', windowStart)
+  const { data, error } = await supabaseAdmin.rpc('security_summary', {
+    p_org_id: orgId,
+    p_hours: hours,
+  })
 
   if (error) return c.json({ error: 'Failed to compute summary' }, 500)
 
-  // Fold into a per-pattern counter
-  const byPattern = new Map<string, { type: string; pattern: string; count: number }>()
-  for (const row of (data ?? []) as FlagRow[]) {
-    for (const f of row.flags) {
-      const key = `${f.type}:${f.pattern}`
-      const existing = byPattern.get(key) ?? { type: f.type, pattern: f.pattern, count: 0 }
-      existing.count += 1
-      byPattern.set(key, existing)
-    }
-  }
-
-  const summary = [...byPattern.values()].sort((a, b) => b.count - a.count)
-  const totalFlaggedRequests = (data ?? []).length
+  const rows = (data as SummaryRow[] | null) ?? []
+  const summary = rows.map((r) => ({
+    type: r.flag_type,
+    pattern: r.pattern,
+    count: Number(r.count),
+  }))
+  const totalFlaggedRequests = summary.reduce((s, r) => s + r.count, 0)
 
   return c.json({
     success: true,
