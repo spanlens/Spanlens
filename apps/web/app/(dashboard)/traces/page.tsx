@@ -4,7 +4,6 @@ import Link from 'next/link'
 import { useTraces } from '@/lib/queries/use-traces'
 import type { TraceStatus } from '@/lib/queries/types'
 import { Topbar } from '@/components/layout/topbar'
-import { MicroLabel, GhostBtn } from '@/components/ui/primitives'
 import { cn } from '@/lib/utils'
 
 function fmtDuration(ms: number | null): string {
@@ -18,122 +17,167 @@ function fmtCost(n: number): string {
   return n < 0.001 ? `$${n.toFixed(5)}` : `$${n.toFixed(4)}`
 }
 
-function StatusDot({ status }: { status: TraceStatus }) {
-  return (
-    <span
-      className={cn(
-        'w-1.5 h-1.5 rounded-full shrink-0',
-        status === 'completed'
-          ? 'bg-good'
-          : status === 'running'
-            ? 'bg-accent animate-pulse'
-            : 'bg-bad',
-      )}
-    />
-  )
+function fmtAge(dateStr: string): string {
+  const s = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000)
+  if (s < 60) return `${s}s`
+  if (s < 3600) return `${Math.floor(s / 60)}m`
+  if (s < 86400) return `${Math.floor(s / 3600)}h`
+  return `${Math.floor(s / 86400)}d`
 }
 
-function KpiTile({
-  label,
-  value,
-  sub,
-  bad,
-  accent,
-}: {
-  label: string
-  value: string
-  sub?: string
-  bad?: boolean
-  accent?: boolean
-}) {
+function TraceMini({ idx, hasError }: { idx: number; hasError: boolean }) {
+  const segs = [
+    { type: 'tool', pct: 8 + (idx % 5) },
+    { type: 'llm',  pct: 28 + (idx % 3) * 4 },
+    { type: 'tool', pct: 10 },
+    { type: 'llm',  pct: 24 },
+    { type: 'tool', pct: 10 + (idx % 4) },
+    { type: hasError ? 'err' : 'llm', pct: 14 },
+  ]
+  const total = segs.reduce((a, s) => a + s.pct, 0)
   return (
-    <div className="flex flex-col gap-1 px-6 py-4 border-r border-border last:border-r-0">
-      <MicroLabel>{label}</MicroLabel>
-      <span
-        className={cn(
-          'text-[22px] font-semibold leading-none',
-          bad ? 'text-bad' : accent ? 'text-accent' : 'text-text',
-        )}
-      >
-        {value}
-      </span>
-      {sub && <span className="text-[11px] text-text-muted font-mono">{sub}</span>}
+    <div className="flex h-[10px] rounded-[2px] overflow-hidden border border-border bg-bg-muted w-full">
+      {segs.map((s, i) => (
+        <div
+          key={i}
+          style={{ width: `${(s.pct / total) * 100}%` }}
+          className={cn(
+            'h-full',
+            s.type === 'llm' ? 'bg-accent opacity-80' : s.type === 'err' ? 'bg-bad' : 'bg-border-strong',
+            i < segs.length - 1 ? 'border-r border-bg' : '',
+          )}
+        />
+      ))}
     </div>
   )
 }
 
+type StatusFilter = 'all' | 'ok' | 'error'
+
+const FILTER_COLS = 'px-[22px] py-[11px] font-mono text-[12.5px] items-center border-b border-border'
+const GRID = '20px 1.4fr 1.2fr 0.6fr 0.8fr 0.8fr 0.9fr 1.2fr 1.2fr 0.5fr'
+
 export default function TracesPage() {
-  const [filterStatus, setFilterStatus] = useState<TraceStatus | 'all'>('all')
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
+  const [search, setSearch] = useState('')
   const [page, setPage] = useState(1)
 
-  const filters = useMemo(
-    () => ({ page, limit: 50, status: filterStatus }),
-    [page, filterStatus],
-  )
+  const apiStatus: TraceStatus | 'all' =
+    statusFilter === 'ok' ? 'completed' : statusFilter === 'error' ? 'error' : 'all'
 
-  const { data, isLoading, isFetching, refetch } = useTraces(filters)
+  const { data, isLoading, isFetching } = useTraces({ page, limit: 50, status: apiStatus })
   const traces = data?.data ?? []
   const meta = data?.meta ?? { total: 0, page: 1, limit: 50 }
 
-  const running = traces.filter((t) => t.status === 'running').length
+  const filtered = useMemo(
+    () => (search ? traces.filter((t) => t.name.toLowerCase().includes(search.toLowerCase())) : traces),
+    [traces, search],
+  )
+
+  const withDuration = traces.filter((t) => t.duration_ms != null).map((t) => t.duration_ms!)
+  const sorted = [...withDuration].sort((a, b) => a - b)
+  const p50 = sorted.length ? sorted[Math.floor(sorted.length * 0.5)] ?? null : null
+  const p95 = sorted.length ? sorted[Math.floor(sorted.length * 0.95)] ?? null : null
+  const avgSpans = traces.length ? traces.reduce((s, t) => s + t.span_count, 0) / traces.length : null
   const errors = traces.filter((t) => t.status === 'error').length
-  const completedWithDuration = traces.filter((t) => t.duration_ms != null)
-  const avgDuration =
-    completedWithDuration.length > 0
-      ? completedWithDuration.reduce((s, t) => s + (t.duration_ms ?? 0), 0) /
-        completedWithDuration.length
-      : null
 
   return (
     <div className="-m-7 flex flex-col h-screen overflow-hidden bg-bg">
       <Topbar
         crumbs={[{ label: 'Workspace', href: '/dashboard' }, { label: 'Traces' }]}
         right={
-          <GhostBtn
-            onClick={() => void refetch()}
-            disabled={isFetching}
-            className="flex items-center gap-1.5 text-[12.5px] px-3 py-[5px]"
-          >
-            {isFetching ? 'Refreshing…' : 'Refresh'}
-          </GhostBtn>
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 px-[10px] py-[5px] border border-border rounded-[6px] bg-bg-elev w-[320px]">
+              <span className="text-text-faint text-[14px] leading-none">⌕</span>
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search by trace id, agent, user…"
+                className="flex-1 bg-transparent font-mono text-[12px] text-text-muted placeholder:text-text-faint focus:outline-none"
+              />
+              <span className="font-mono text-[10px] text-text-faint border border-border rounded-[3px] px-[5px] py-[1px]">
+                ⌘K
+              </span>
+            </div>
+            <span className="text-[12.5px] text-text-muted flex items-center gap-1.5">
+              <span className="w-[7px] h-[7px] rounded-full bg-good shrink-0" /> Live
+            </span>
+          </div>
         }
       />
 
       {/* Stat strip */}
-      <div className="grid grid-cols-4 border-b border-border shrink-0">
-        <KpiTile label="Total traces" value={meta.total.toLocaleString()} />
-        <KpiTile label="Running" value={String(running)} accent={running > 0} />
-        <KpiTile label="Errors" value={String(errors)} bad={errors > 0} />
-        <KpiTile
-          label="Avg duration"
-          value={fmtDuration(avgDuration !== null ? Math.round(avgDuration) : null)}
-          sub="current page"
-        />
-      </div>
-
-      {/* Filter toolbar */}
-      <div className="flex items-center gap-2 px-6 py-2.5 border-b border-border shrink-0">
-        {(['all', 'running', 'completed', 'error'] as (TraceStatus | 'all')[]).map((f) => (
-          <button
-            type="button"
-            key={f}
-            onClick={() => {
-              setFilterStatus(f)
-              setPage(1)
-            }}
-            className={cn(
-              'px-3 py-1 rounded text-[12.5px] capitalize transition-colors',
-              filterStatus === f
-                ? 'bg-bg-elev text-text font-medium border border-border-strong'
-                : 'text-text-muted hover:text-text',
-            )}
-          >
-            {f === 'all' ? 'All' : f.charAt(0).toUpperCase() + f.slice(1)}
-          </button>
+      <div className="grid grid-cols-5 border-b border-border shrink-0">
+        {[
+          { label: 'Traces · 24h',       value: meta.total.toLocaleString(), warn: false },
+          { label: 'p50 duration',        value: fmtDuration(p50),            warn: false },
+          { label: 'p95 duration',        value: fmtDuration(p95),            warn: p95 != null && p95 > 8000 },
+          { label: 'Avg spans / trace',   value: avgSpans != null ? avgSpans.toFixed(1) : '—', warn: false },
+          { label: 'Errors',              value: String(errors),              warn: errors > 0 },
+        ].map((s, i) => (
+          <div key={i} className={cn('px-[18px] py-[14px]', i < 4 && 'border-r border-border')}>
+            <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-2">{s.label}</div>
+            <span className={cn('text-[24px] font-medium leading-none tracking-[-0.6px]', s.warn ? 'text-accent' : 'text-text')}>
+              {s.value}
+            </span>
+          </div>
         ))}
       </div>
 
-      {/* Table */}
+      {/* Filter toolbar */}
+      <div className="flex items-center gap-[6px] px-[22px] py-[10px] border-b border-border shrink-0 flex-wrap">
+        <div className="flex p-0.5 border border-border rounded-[5px] bg-bg-elev font-mono text-[10.5px] tracking-[0.03em]">
+          {([['all', 'All'], ['ok', 'OK'], ['error', 'Error']] as [StatusFilter, string][]).map(([v, l]) => (
+            <button
+              key={v}
+              type="button"
+              onClick={() => { setStatusFilter(v); setPage(1) }}
+              className={cn(
+                'px-[10px] py-[3px] rounded-[3px] transition-colors',
+                statusFilter === v ? 'bg-text text-bg' : 'text-text-muted hover:text-text',
+              )}
+            >{l}</button>
+          ))}
+        </div>
+        <button
+          type="button"
+          className="flex items-center gap-1.5 px-[10px] py-[4px] rounded-[5px] border border-border-strong bg-bg-elev font-mono text-[11px] text-text tracking-[0.03em]"
+        >
+          <span className="text-text-faint">☰</span> views · <span className="text-text-muted">all traces</span> ⌄
+        </button>
+        {['agent · all ⌄', 'duration ≥ — ⌄', 'cost ≥ — ⌄', 'last 24h ⌄'].map((label) => (
+          <span key={label} className="font-mono text-[11px] text-text-muted px-[9px] py-[4px] border border-border rounded-[5px]">
+            {label}
+          </span>
+        ))}
+        <span className="font-mono text-[11px] text-text-faint px-[9px] py-[4px]">+ filter</span>
+        <span className="flex-1" />
+        <span className="font-mono text-[11px] text-text-faint">
+          Showing {filtered.length.toLocaleString()} of {meta.total.toLocaleString()}
+        </span>
+        <span className="font-mono text-[11px] text-text px-[10px] py-[4px] border border-border rounded-[5px] bg-bg-elev cursor-pointer">
+          Export ⌄
+        </span>
+      </div>
+
+      {/* Column header */}
+      <div
+        className="grid border-b border-border bg-bg-muted shrink-0 font-mono text-[10px] text-text-faint uppercase tracking-[0.05em] px-[22px] py-[9px]"
+        style={{ gridTemplateColumns: GRID }}
+      >
+        <span />
+        <span>Agent</span>
+        <span>Trace id</span>
+        <span>Spans</span>
+        <span>Duration</span>
+        <span>Cost</span>
+        <span>Tokens</span>
+        <span>Span timeline</span>
+        <span>Tag</span>
+        <span className="text-right">Age</span>
+      </div>
+
+      {/* Rows */}
       <div className="flex-1 overflow-auto">
         {isLoading ? (
           <div className="p-6 space-y-2">
@@ -141,106 +185,74 @@ export default function TracesPage() {
               <div key={i} className="h-10 bg-bg-elev rounded animate-pulse" />
             ))}
           </div>
-        ) : traces.length === 0 ? (
+        ) : filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full gap-3 text-text-muted">
             <p className="text-[13px]">No traces yet.</p>
-            <p className="text-[12px]">Use the Spanlens SDK to start recording agent traces.</p>
+            <p className="font-mono text-[12px]">Use the Spanlens SDK to start recording agent traces.</p>
           </div>
         ) : (
-          <table className="w-full text-[13px]">
-            <thead>
-              <tr className="border-b border-border bg-bg-elev sticky top-0 z-10">
-                <th className="px-6 py-2.5 text-left w-[190px]">
-                  <MicroLabel>Started</MicroLabel>
-                </th>
-                <th className="px-4 py-2.5 text-left">
-                  <MicroLabel>Name</MicroLabel>
-                </th>
-                <th className="px-4 py-2.5 text-right">
-                  <MicroLabel>Spans</MicroLabel>
-                </th>
-                <th className="px-4 py-2.5 text-right">
-                  <MicroLabel>Tokens</MicroLabel>
-                </th>
-                <th className="px-4 py-2.5 text-right">
-                  <MicroLabel>Cost</MicroLabel>
-                </th>
-                <th className="px-4 py-2.5 text-right">
-                  <MicroLabel>Duration</MicroLabel>
-                </th>
-                <th className="px-4 py-2.5 text-left w-[110px]">
-                  <MicroLabel>Status</MicroLabel>
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {traces.map((t) => (
-                <tr
-                  key={t.id}
-                  className="border-b border-border hover:bg-bg-elev transition-colors group"
-                >
-                  <td className="px-6 py-3">
-                    <Link
-                      href={`/traces/${t.id}`}
-                      className="font-mono text-[11px] text-text-faint group-hover:text-text-muted transition-colors"
-                    >
-                      {new Date(t.started_at).toLocaleString()}
-                    </Link>
-                  </td>
-                  <td className="px-4 py-3">
-                    <Link
-                      href={`/traces/${t.id}`}
-                      className="font-medium text-text hover:text-accent transition-colors"
-                    >
-                      {t.name}
-                    </Link>
-                  </td>
-                  <td className="px-4 py-3 text-right font-mono text-text-muted text-[12px]">
-                    {t.span_count}
-                  </td>
-                  <td className="px-4 py-3 text-right font-mono text-text-muted text-[12px]">
-                    {t.total_tokens.toLocaleString()}
-                  </td>
-                  <td className="px-4 py-3 text-right font-mono text-text-muted text-[12px]">
-                    {fmtCost(t.total_cost_usd)}
-                  </td>
-                  <td className="px-4 py-3 text-right font-mono text-text-muted text-[12px]">
-                    {fmtDuration(t.duration_ms)}
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-2">
-                      <StatusDot status={t.status} />
-                      <span className="text-[12px] text-text-muted capitalize">{t.status}</span>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          filtered.map((t, idx) => {
+            const isErr = t.status === 'error'
+            const isRunning = t.status === 'running'
+            return (
+              <Link
+                key={t.id}
+                href={`/traces/${t.id}`}
+                className={cn(
+                  'grid items-center px-[22px] py-[11px] border-b border-border font-mono text-[12.5px] hover:bg-bg-elev transition-colors',
+                  isErr && 'bg-accent-bg',
+                )}
+                style={{ gridTemplateColumns: GRID }}
+              >
+                <span>
+                  {isErr ? (
+                    <span className="w-1.5 h-1.5 rounded-full bg-bad block" />
+                  ) : isRunning ? (
+                    <span className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse block" />
+                  ) : null}
+                </span>
+                <span className="text-text font-sans text-[13px] font-medium truncate pr-4">{t.name}</span>
+                <span className="text-text-muted truncate pr-4">{t.id}</span>
+                <span className="text-text-muted">{t.span_count}</span>
+                <span className={isErr ? 'text-bad' : 'text-text'}>{fmtDuration(t.duration_ms)}</span>
+                <span className="text-text">{fmtCost(t.total_cost_usd)}</span>
+                <span className="text-text-muted">{t.total_tokens.toLocaleString()}</span>
+                <span className="pr-4 flex items-center">
+                  <TraceMini idx={idx} hasError={isErr} />
+                </span>
+                <span className={cn('text-[11px] font-sans', isErr ? 'text-bad' : isRunning ? 'text-accent' : 'text-text-faint')}>
+                  {isErr ? 'error' : isRunning ? 'running' : '—'}
+                </span>
+                <span className="text-text-faint text-right">{fmtAge(t.started_at)}</span>
+              </Link>
+            )
+          })
         )}
       </div>
 
       {/* Pagination */}
       {!isLoading && traces.length > 0 && (
-        <div className="flex items-center justify-between px-6 py-3 border-t border-border shrink-0">
-          <span className="text-[12.5px] text-text-muted font-mono">
-            {traces.length.toLocaleString()} of {meta.total.toLocaleString()} traces
+        <div className="flex items-center justify-between px-[22px] py-3 border-t border-border shrink-0">
+          <span className="font-mono text-[11.5px] text-text-muted">
+            {filtered.length.toLocaleString()} of {meta.total.toLocaleString()} traces
           </span>
           <div className="flex items-center gap-2">
-            <GhostBtn
+            <button
+              type="button"
               onClick={() => setPage((p) => Math.max(1, p - 1))}
               disabled={page <= 1 || isFetching}
-              className="text-[12.5px] px-3 py-[5px]"
+              className="font-mono text-[11.5px] px-3 py-[5px] border border-border rounded-[5px] text-text-muted hover:text-text disabled:opacity-40 transition-colors"
             >
               Previous
-            </GhostBtn>
-            <GhostBtn
+            </button>
+            <button
+              type="button"
               onClick={() => setPage((p) => p + 1)}
-              disabled={traces.length < meta.limit || isFetching}
-              className="text-[12.5px] px-3 py-[5px]"
+              disabled={traces.length < (data?.meta.limit ?? 50) || isFetching}
+              className="font-mono text-[11.5px] px-3 py-[5px] border border-border rounded-[5px] text-text-muted hover:text-text disabled:opacity-40 transition-colors"
             >
               Next
-            </GhostBtn>
+            </button>
           </div>
         </div>
       )}

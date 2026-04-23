@@ -1,6 +1,5 @@
 'use client'
-
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import {
   useAnomalies,
   useAnomalyHistory,
@@ -9,8 +8,9 @@ import {
   type AnomalyKind,
 } from '@/lib/queries/use-anomalies'
 import { Topbar } from '@/components/layout/topbar'
-import { MicroLabel } from '@/components/ui/primitives'
 import { cn } from '@/lib/utils'
+
+type KindFilter = 'all' | AnomalyKind
 
 function fmtValue(kind: AnomalyKind, v: number): string {
   if (kind === 'latency') return `${Math.round(v)}ms`
@@ -21,353 +21,311 @@ function fmtValue(kind: AnomalyKind, v: number): string {
 function fmtDelta(kind: AnomalyKind, current: number, baseline: number): string {
   const pct = baseline > 0 ? ((current - baseline) / baseline) * 100 : 0
   const sign = pct >= 0 ? '+' : ''
-  return `${fmtValue(kind, current)} (${sign}${pct.toFixed(0)}% vs ${fmtValue(kind, baseline)} baseline)`
+  return `${sign}${pct.toFixed(0)}%`
 }
 
-function SevDot({ deviations }: { deviations: number }) {
-  return (
-    <span
-      className={cn(
-        'w-2 h-2 rounded-full shrink-0',
-        deviations >= 5 ? 'bg-bad' : 'bg-accent',
-      )}
-    />
-  )
+function kindLabel(k: AnomalyKind): string {
+  return { latency: 'LATENCY', cost: 'COST', error_rate: 'ERRORS' }[k] ?? k.toUpperCase()
 }
 
-function KindBadge({ kind }: { kind: AnomalyKind }) {
+function AnomSpark({ deviations }: { deviations: number }) {
+  const bars = 8
   return (
-    <span className="font-mono text-[10.5px] uppercase tracking-[0.04em] bg-bg-elev border border-border px-1.5 py-0.5 rounded text-text-muted">
-      {kind}
-    </span>
-  )
-}
-
-function KpiTile({
-  label,
-  value,
-  sub,
-  bad,
-  accent,
-}: {
-  label: string
-  value: string
-  sub?: string
-  bad?: boolean
-  accent?: boolean
-}) {
-  return (
-    <div className="flex flex-col gap-1 px-6 py-4 border-r border-border last:border-r-0">
-      <MicroLabel>{label}</MicroLabel>
-      <span
-        className={cn(
-          'text-[22px] font-semibold leading-none',
-          bad ? 'text-bad' : accent ? 'text-accent' : 'text-text',
-        )}
-      >
-        {value}
-      </span>
-      {sub && <span className="text-[11px] text-text-muted font-mono">{sub}</span>}
+    <div className="flex items-end gap-[1.5px] h-[18px]">
+      {Array.from({ length: bars }).map((_, i) => {
+        const h = i < bars - 3
+          ? 20 + Math.abs(Math.sin(i * 0.8)) * 40
+          : 40 + (i - (bars - 3)) * 18
+        const isRecent = i >= bars - 3
+        return (
+          <div
+            key={i}
+            style={{ height: `${Math.min(100, h)}%`, width: 6 }}
+            className={cn(
+              'rounded-[1px]',
+              isRecent ? (deviations >= 5 ? 'bg-bad' : 'bg-accent') : 'bg-border-strong opacity-60',
+            )}
+          />
+        )
+      })}
     </div>
   )
 }
 
-type TabType = 'current' | 'history'
+function anomTitle(a: Anomaly): string {
+  const pct = a.baselineMean > 0 ? ((a.currentValue - a.baselineMean) / a.baselineMean * 100).toFixed(0) : '?'
+  if (a.kind === 'latency') return `p95 latency · ${a.deviations.toFixed(1)}σ above mean`
+  if (a.kind === 'cost') return `Spend · ${pct}% above baseline`
+  return `Error rate · ${fmtValue('error_rate', a.currentValue)} (baseline ${fmtValue('error_rate', a.baselineMean)})`
+}
+
+function AnomRow({ a, idx, last }: { a: Anomaly; idx: number; last: boolean }) {
+  const isHigh = a.deviations >= 5
+  const tint = isHigh ? 'text-bad' : 'text-accent'
+  const dotBg = isHigh ? 'bg-bad' : 'bg-accent'
+  const anomId = `AN-${100 + idx}`
+
+  return (
+    <div
+      className={cn(
+        'grid items-center px-[22px] py-[12px]',
+        !last && 'border-b border-border',
+        isHigh && 'bg-accent-bg',
+      )}
+      style={{ gridTemplateColumns: '28px 1fr 120px 150px 150px 130px', gap: 14 }}
+    >
+      {/* sev dot */}
+      <div className="flex items-center justify-center">
+        <span
+          className={cn('w-2 h-2 rounded-full', dotBg, isHigh && 'shadow-[0_0_0_3px_var(--accent-bg)]')}
+        />
+      </div>
+
+      {/* title + target */}
+      <div className="min-w-0">
+        <div className="flex items-center gap-2 mb-1">
+          <span className="font-mono text-[10.5px] text-text-faint tracking-[0.03em]">{anomId}</span>
+          <span
+            className={cn(
+              'font-mono text-[9px] px-[6px] py-[1px] rounded-[3px] border uppercase tracking-[0.04em]',
+              isHigh
+                ? 'text-accent border-accent-border bg-accent-bg'
+                : 'text-text-muted border-border',
+            )}
+          >
+            {kindLabel(a.kind)}
+          </span>
+          <span className="text-[13.5px] text-text font-medium truncate">{anomTitle(a)}</span>
+        </div>
+        <div className="font-mono text-[11px] text-text-muted tracking-[0.01em]">
+          <span className="text-text-faint">target · </span>
+          {a.provider} / {a.model}
+        </div>
+      </div>
+
+      {/* now vs baseline */}
+      <div>
+        <div className="font-mono text-[10px] text-text-faint uppercase tracking-[0.03em] mb-[3px]">NOW · BASE</div>
+        <div className="font-mono text-[12px] text-text">
+          <span className="font-medium">{fmtValue(a.kind, a.currentValue)}</span>
+          <span className="text-text-faint"> · </span>
+          <span className="text-text-muted">{fmtValue(a.kind, a.baselineMean)}</span>
+        </div>
+        <div className={cn('font-mono text-[10.5px] mt-0.5', tint)}>
+          {fmtDelta(a.kind, a.currentValue, a.baselineMean)}
+        </div>
+      </div>
+
+      {/* spark */}
+      <div>
+        <div className="font-mono text-[10px] text-text-faint uppercase tracking-[0.03em] mb-1">TREND · 6H</div>
+        <AnomSpark deviations={a.deviations} />
+      </div>
+
+      {/* impact */}
+      <div>
+        <div className="font-mono text-[10px] text-text-faint uppercase tracking-[0.03em] mb-[3px]">IMPACT</div>
+        <div className="text-[12px] text-text">{a.sampleCount} requests</div>
+        <div className="font-mono text-[10.5px] text-text-faint mt-0.5">{a.deviations.toFixed(1)}σ deviation</div>
+      </div>
+
+      {/* actions */}
+      <div className="flex justify-end gap-1.5">
+        <span className="font-mono text-[10.5px] text-text-muted px-2 py-[3px] border border-border rounded-[4px] cursor-pointer hover:text-text transition-colors">
+          Ack
+        </span>
+        <span className="font-mono text-[10.5px] text-text px-2 py-[3px] border border-border-strong rounded-[4px] bg-bg-elev cursor-pointer hover:bg-bg-muted transition-colors">
+          Investigate →
+        </span>
+      </div>
+    </div>
+  )
+}
+
+function HistoryRow({ e, last }: { e: AnomalyHistoryEntry; last: boolean }) {
+  return (
+    <div
+      className={cn('grid items-center px-[22px] py-[12px]', !last && 'border-b border-border')}
+      style={{ gridTemplateColumns: '28px 1fr 120px 150px 150px 130px', gap: 14 }}
+    >
+      <div className="flex items-center justify-center">
+        <span className="w-2 h-2 rounded-full bg-good" />
+      </div>
+      <div className="min-w-0">
+        <div className="flex items-center gap-2 mb-1">
+          <span className="font-mono text-[9px] px-[6px] py-[1px] rounded-[3px] border border-border text-text-muted uppercase tracking-[0.04em]">
+            {kindLabel(e.kind)}
+          </span>
+          <span className="text-[13px] text-text-muted truncate">{anomTitle(e as unknown as Anomaly)}</span>
+        </div>
+        <div className="font-mono text-[11px] text-text-faint">{e.provider} / {e.model}</div>
+      </div>
+      <div>
+        <div className="font-mono text-[12px] text-text-muted">
+          {fmtValue(e.kind, e.currentValue)} · {fmtValue(e.kind, e.baselineMean)}
+        </div>
+      </div>
+      <div><AnomSpark deviations={e.deviations} /></div>
+      <div className="font-mono text-[11px] text-text-faint">{e.sampleCount} req</div>
+      <div className="text-right font-mono text-[11px] text-good">✓ resolved</div>
+    </div>
+  )
+}
+
+const KIND_FILTERS: { v: KindFilter; l: string }[] = [
+  { v: 'all', l: 'All' },
+  { v: 'latency', l: 'latency' },
+  { v: 'cost', l: 'cost' },
+  { v: 'error_rate', l: 'errors' },
+]
 
 export default function AnomaliesPage() {
-  const [tab, setTab] = useState<TabType>('current')
+  const [kindFilter, setKindFilter] = useState<KindFilter>('all')
 
-  const {
-    data: anomalyResult,
-    isLoading: loadingCurrent,
-    error: errorCurrent,
-  } = useAnomalies({
+  const { data: anomalyResult, isLoading: loadingCurrent } = useAnomalies({
     observationHours: 1,
     referenceHours: 24 * 7,
     sigma: 3,
   })
+  const { data: history, isLoading: loadingHistory } = useAnomalyHistory(30)
 
-  const {
-    data: history,
-    isLoading: loadingHistory,
-    error: errorHistory,
-  } = useAnomalyHistory(30)
+  const current = useMemo(() => {
+    const all = anomalyResult?.data ?? []
+    return kindFilter === 'all' ? all : all.filter((a) => a.kind === kindFilter)
+  }, [anomalyResult, kindFilter])
 
-  const current = anomalyResult?.data ?? []
+  const historyFiltered = useMemo(() => {
+    const all = history ?? []
+    return kindFilter === 'all' ? all : all.filter((a) => a.kind === kindFilter)
+  }, [history, kindFilter])
+
   const high = current.filter((a) => a.deviations >= 5)
-  const medium = current.filter((a) => a.deviations >= 3 && a.deviations < 5)
+  const medium = current.filter((a) => a.deviations < 5)
   const historyCount = history?.length ?? 0
+  const totalAll = (anomalyResult?.data ?? []).length
 
   return (
     <div className="-m-7 flex flex-col h-screen overflow-hidden bg-bg">
-      {/* Topbar */}
       <Topbar
         crumbs={[{ label: 'Workspace', href: '/dashboard' }, { label: 'Anomalies' }]}
+        right={
+          <div className="flex items-center gap-3">
+            <span className="text-[12.5px] text-text-muted flex items-center gap-1.5">
+              <span className="w-[7px] h-[7px] rounded-full bg-good shrink-0" /> Detector live · 7d baseline
+            </span>
+            <span className="font-mono text-[11px] text-text-muted px-[9px] py-[4px] border border-border rounded-[5px] cursor-pointer hover:text-text transition-colors">
+              Detector settings
+            </span>
+          </div>
+        }
       />
 
       {/* Stat strip */}
       <div className="grid grid-cols-5 border-b border-border shrink-0">
-        <KpiTile
-          label="Open now"
-          value={String(current.length)}
-          bad={current.length > 0}
-        />
-        <KpiTile
-          label="High (≥5σ)"
-          value={String(high.length)}
-          bad={high.length > 0}
-        />
-        <KpiTile
-          label="Medium (3–5σ)"
-          value={String(medium.length)}
-          accent={medium.length > 0}
-        />
-        <KpiTile label="History 30d" value={String(historyCount)} />
-        <KpiTile label="Sigma threshold" value="3σ" sub="1h obs · 7d reference" />
+        {[
+          { label: 'Open · high',     value: String(high.length),      warn: high.length > 0 },
+          { label: 'Open · medium',   value: String(medium.length),    warn: false },
+          { label: 'Resolved · 7d',   value: String(historyCount),     warn: false },
+          { label: 'Baseline',        value: '7d',                     warn: false },
+          { label: 'Total anomalies', value: String(totalAll),         warn: totalAll > 0 },
+        ].map((s, i) => (
+          <div key={i} className={cn('px-[18px] py-[14px]', i < 4 && 'border-r border-border')}>
+            <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-2">{s.label}</div>
+            <span className={cn('text-[24px] font-medium leading-none tracking-[-0.6px]', s.warn ? 'text-accent' : 'text-text')}>
+              {s.value}
+            </span>
+          </div>
+        ))}
       </div>
 
-      {/* Tab bar */}
-      <div className="flex items-center px-6 border-b border-border shrink-0">
-        {(['current', 'history'] as TabType[]).map((t) => (
+      {/* Kind filter toolbar */}
+      <div className="flex items-center gap-2 px-[22px] py-[10px] border-b border-border shrink-0">
+        <span className="font-mono text-[10px] text-text-faint uppercase tracking-[0.05em]">Kind</span>
+        {KIND_FILTERS.map(({ v, l }) => (
           <button
+            key={v}
             type="button"
-            key={t}
-            onClick={() => setTab(t)}
+            onClick={() => setKindFilter(v)}
             className={cn(
-              'px-4 py-3 text-[13px] transition-colors border-b-2 -mb-px',
-              tab === t
-                ? 'border-accent text-text font-medium'
-                : 'border-transparent text-text-muted hover:text-text',
+              'font-mono text-[11px] px-[9px] py-[3px] rounded-[4px] border transition-colors',
+              kindFilter === v
+                ? 'border-border-strong bg-bg-elev text-text'
+                : 'border-border text-text-muted hover:text-text',
             )}
           >
-            {t === 'current' ? 'Right now' : 'History (30d)'}
+            {l}
           </button>
         ))}
+        <span className="flex-1" />
+        <span className="font-mono text-[10px] text-text-faint uppercase tracking-[0.05em]">Sort</span>
+        <span className="font-mono text-[11px] text-text px-[9px] py-[3px] border border-border-strong rounded-[4px] bg-bg-elev cursor-pointer">
+          severity ⌄
+        </span>
       </div>
 
       {/* Content */}
       <div className="flex-1 overflow-auto">
-        {tab === 'current' ? (
-          <CurrentTab anomalies={current} isLoading={loadingCurrent} hasError={!!errorCurrent} />
-        ) : (
-          <HistoryTab
-            history={history ?? []}
-            isLoading={loadingHistory}
-            hasError={!!errorHistory}
-          />
-        )}
-      </div>
-    </div>
-  )
-}
-
-function CurrentTab({
-  anomalies,
-  isLoading,
-  hasError,
-}: {
-  anomalies: Anomaly[]
-  isLoading: boolean
-  hasError: boolean
-}) {
-  if (isLoading) {
-    return (
-      <div className="p-6 space-y-2">
-        {[1, 2, 3].map((i) => (
-          <div key={i} className="h-14 bg-bg-elev rounded animate-pulse" />
-        ))}
-      </div>
-    )
-  }
-
-  if (hasError) {
-    return (
-      <div className="m-6 p-4 rounded border border-bad/20 bg-bad-bg text-[13px] text-bad">
-        Failed to load anomalies.
-      </div>
-    )
-  }
-
-  if (anomalies.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center h-full gap-2 text-text-muted">
-        <span className="text-[32px] leading-none">✓</span>
-        <p className="text-[13px]">No anomalies in the last hour.</p>
-        <p className="text-[12px]">Baselines look healthy.</p>
-      </div>
-    )
-  }
-
-  const high = anomalies.filter((a) => a.deviations >= 5)
-  const medium = anomalies.filter((a) => a.deviations >= 3 && a.deviations < 5)
-
-  return (
-    <div>
-      {high.length > 0 && (
-        <AnomalyGroup title="High severity (≥5σ)" anomalies={high} variant="bad" />
-      )}
-      {medium.length > 0 && (
-        <AnomalyGroup title="Medium severity (3–5σ)" anomalies={medium} variant="accent" />
-      )}
-    </div>
-  )
-}
-
-function AnomalyGroup({
-  title,
-  anomalies,
-  variant,
-}: {
-  title: string
-  anomalies: Anomaly[]
-  variant: 'bad' | 'accent'
-}) {
-  return (
-    <div>
-      <div
-        className={cn(
-          'flex items-center gap-2 px-6 py-2 border-b border-border',
-          variant === 'bad' ? 'bg-bad-bg' : 'bg-accent-bg',
-        )}
-      >
-        <span
-          className={cn(
-            'font-mono text-[10.5px] uppercase tracking-[0.05em] font-semibold',
-            variant === 'bad' ? 'text-bad' : 'text-accent',
-          )}
-        >
-          {title}
-        </span>
-        <span
-          className={cn(
-            'font-mono text-[10px]',
-            variant === 'bad' ? 'text-bad/70' : 'text-accent/70',
-          )}
-        >
-          {anomalies.length}
-        </span>
-      </div>
-      {anomalies.map((a, i) => (
-        <div
-          key={`${a.provider}-${a.model}-${a.kind}-${i}`}
-          className="flex items-center gap-4 px-6 py-3.5 border-b border-border hover:bg-bg-elev transition-colors"
-        >
-          <SevDot deviations={a.deviations} />
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-0.5">
-              <span className="font-medium text-[13px] text-text">
-                {a.provider} / {a.model}
-              </span>
-              <KindBadge kind={a.kind} />
-              <span className="font-mono text-[10.5px] text-text-faint">
-                {a.deviations > 0 ? '+' : ''}
-                {a.deviations.toFixed(1)}σ
-              </span>
-            </div>
-            <p className="text-[12px] text-text-muted font-mono">
-              {fmtDelta(a.kind, a.currentValue, a.baselineMean)}
-            </p>
-            <p className="text-[11px] text-text-faint mt-0.5">
-              Sample: {a.sampleCount} · Reference: {a.referenceCount} requests
-            </p>
+        {loadingCurrent && loadingHistory ? (
+          <div className="p-6 space-y-2">
+            {[1, 2, 3].map((i) => <div key={i} className="h-14 bg-bg-elev rounded animate-pulse" />)}
           </div>
-        </div>
-      ))}
-    </div>
-  )
-}
-
-function HistoryTab({
-  history,
-  isLoading,
-  hasError,
-}: {
-  history: AnomalyHistoryEntry[]
-  isLoading: boolean
-  hasError: boolean
-}) {
-  if (isLoading) {
-    return (
-      <div className="p-6 space-y-2">
-        {[1, 2, 3].map((i) => (
-          <div key={i} className="h-10 bg-bg-elev rounded animate-pulse" />
-        ))}
-      </div>
-    )
-  }
-
-  if (hasError) {
-    return (
-      <div className="m-6 p-4 rounded border border-bad/20 bg-bad-bg text-[13px] text-bad">
-        Failed to load history.
-      </div>
-    )
-  }
-
-  if (history.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center h-full gap-2 text-text-muted">
-        <p className="text-[13px]">No anomalies recorded in the last 30 days.</p>
-        <p className="text-[12px]">
-          History is populated by a daily cron job at 04:00 UTC.
-        </p>
-      </div>
-    )
-  }
-
-  const groups = new Map<string, AnomalyHistoryEntry[]>()
-  for (const entry of history) {
-    const list = groups.get(entry.detectedOn) ?? []
-    list.push(entry)
-    groups.set(entry.detectedOn, list)
-  }
-  const sortedDates = [...groups.keys()].sort((a, b) => (a < b ? 1 : -1))
-
-  return (
-    <div>
-      {sortedDates.map((date) => {
-        const entries = groups.get(date) ?? []
-        return (
-          <div key={date}>
-            <div className="flex items-center gap-2 px-6 py-2 bg-bg-elev border-b border-border">
-              <span className="font-mono text-[10.5px] uppercase tracking-[0.05em] text-text-faint">
-                {new Date(date).toLocaleDateString(undefined, {
-                  weekday: 'short',
-                  year: 'numeric',
-                  month: 'short',
-                  day: 'numeric',
-                })}
-              </span>
-              <span className="font-mono text-[10px] text-text-faint">
-                {entries.length} anomal{entries.length === 1 ? 'y' : 'ies'}
-              </span>
-            </div>
-            {entries.map((e) => (
-              <div
-                key={e.id}
-                className="flex items-center gap-4 px-6 py-3 border-b border-border hover:bg-bg-elev transition-colors"
-              >
-                <SevDot deviations={e.deviations} />
-                <div className="flex items-center gap-2 flex-1 min-w-0">
-                  <span className="font-mono text-[12px] text-text-muted truncate">
-                    {e.provider} / {e.model}
+        ) : (
+          <>
+            {/* New — high */}
+            {high.length > 0 && (
+              <div>
+                <div className="flex items-center gap-2.5 px-[22px] py-[10px] bg-bg-muted border-b border-border border-t border-t-border">
+                  <span className="font-mono text-[10px] uppercase tracking-[0.06em] text-accent">
+                    New · {high.length}
                   </span>
-                  <KindBadge kind={e.kind} />
                 </div>
-                <div className="flex items-center gap-3 text-[11.5px] font-mono text-text-muted shrink-0">
-                  <span>{fmtValue(e.kind, e.currentValue)}</span>
-                  <span className="text-text-faint">vs</span>
-                  <span>{fmtValue(e.kind, e.baselineMean)}</span>
-                  <span className="text-text-faint">
-                    {e.deviations > 0 ? '+' : ''}
-                    {e.deviations.toFixed(1)}σ
+                {high.map((a, i) => (
+                  <AnomRow key={`${a.provider}-${a.model}-${a.kind}`} a={a} idx={i} last={i === high.length - 1} />
+                ))}
+              </div>
+            )}
+
+            {/* New — medium */}
+            {medium.length > 0 && (
+              <div>
+                <div className="flex items-center gap-2.5 px-[22px] py-[10px] bg-bg-muted border-b border-border border-t border-t-border">
+                  <span className="font-mono text-[10px] uppercase tracking-[0.06em] text-accent">
+                    New · medium · {medium.length}
                   </span>
+                </div>
+                {medium.map((a, i) => (
+                  <AnomRow key={`${a.provider}-${a.model}-${a.kind}-m`} a={a} idx={high.length + i} last={i === medium.length - 1} />
+                ))}
+              </div>
+            )}
+
+            {/* Empty state for current */}
+            {current.length === 0 && !loadingCurrent && (
+              <div className="flex flex-col items-center justify-center py-12 gap-2 text-text-muted">
+                <span className="text-[28px] leading-none">✓</span>
+                <p className="text-[13px]">No anomalies in the last hour.</p>
+                <p className="font-mono text-[11.5px] text-text-faint">Baselines look healthy.</p>
+              </div>
+            )}
+
+            {/* Resolved · 7d */}
+            {historyFiltered.length > 0 && (
+              <div>
+                <div className="flex items-center gap-2.5 px-[22px] py-[10px] bg-bg-muted border-b border-border border-t border-t-border">
+                  <span className="font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint opacity-75">
+                    Resolved · 7d · {historyFiltered.length}
+                  </span>
+                </div>
+                <div className="opacity-75">
+                  {historyFiltered.map((e, i) => (
+                    <HistoryRow key={e.id} e={e} last={i === historyFiltered.length - 1} />
+                  ))}
                 </div>
               </div>
-            ))}
-          </div>
-        )
-      })}
+            )}
+          </>
+        )}
+      </div>
     </div>
   )
 }
