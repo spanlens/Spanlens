@@ -192,15 +192,18 @@ if deviations >= sigmaThreshold:
         <li>
           <strong>No in-app alert routing yet.</strong> You see anomalies in the dashboard, but
           they don&apos;t auto-trigger Slack/email. If you want push notifications, combine with{' '}
-          <a href="/docs/features/alerts">Alerts</a> using latency/error threshold rules.
+          <a href="/docs/features/alerts">Alerts</a> using threshold rules.
         </li>
         <li>
-          <strong>Error-rate anomalies are not separate yet.</strong> Current version focuses on
-          latency + cost; error-rate spike detection is on the roadmap.
+          <strong>Latency / cost detection uses success-only rows.</strong> Failed requests
+          usually return fast and would distort the latency baseline; we filter them out for
+          those signals. Error-rate detection includes ALL rows since that&apos;s the point.
         </li>
         <li>
-          <strong>No anomaly history.</strong> We don&apos;t persist past flags — each query
-          computes fresh. Trend-of-anomalies over time is not available today.
+          <strong>History is daily-snapshot, not real-time.</strong> The 30-day history view is
+          populated by a cron job that runs once a day at 04:00 UTC. New anomalies appear in
+          the &ldquo;Right now&rdquo; tab immediately but take up to 24 hours to land in
+          history.
         </li>
       </ul>
 

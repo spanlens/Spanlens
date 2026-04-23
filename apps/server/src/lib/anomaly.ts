@@ -6,14 +6,18 @@ import { computeStats, groupByBucket } from './anomaly-stats.js'
  *
  * Strategy: for each (provider, model) bucket in the observation window,
  * compute baseline mean + stddev from the preceding "reference window",
- * then flag current-window requests whose latency or cost sits beyond
- * `sigmaThreshold` standard deviations.
+ * then flag current-window requests whose latency, cost, OR error rate
+ * sits beyond `sigmaThreshold` standard deviations from baseline.
  *
  * Using sample stddev (n-1). We skip buckets with fewer than `minSamples`
  * reference rows — statistically meaningless.
+ *
+ * Latency / cost are computed only over successful requests so a 500-storm
+ * doesn't poison the latency baseline (errors typically return fast).
+ * Error rate uses ALL rows (success + failure) and tracks the fraction.
  */
 
-export type AnomalyKind = 'latency' | 'cost'
+export type AnomalyKind = 'latency' | 'cost' | 'error_rate'
 
 export interface AnomalyBucket {
   provider: string
@@ -45,6 +49,7 @@ interface RequestRow {
   model: string
   latency_ms: number | null
   cost_usd: number | null
+  status_code: number
   created_at: string
 }
 
@@ -65,12 +70,14 @@ export async function detectAnomalies(
   const observationStart = new Date(now - observationHours * 3_600_000).toISOString()
   const referenceStart = new Date(now - referenceHours * 3_600_000).toISOString()
 
+  // Pull ALL status codes — error_rate detection needs both success and
+  // failure rows. Per-kind filters below decide which subset each metric
+  // uses (success-only for latency/cost, all for error_rate).
   let query = supabaseAdmin
     .from('requests')
-    .select('provider, model, latency_ms, cost_usd, created_at')
+    .select('provider, model, latency_ms, cost_usd, status_code, created_at')
     .eq('organization_id', organizationId)
     .gte('created_at', referenceStart)
-    .in('status_code', [200, 201, 202, 204])
     .not('model', 'is', null)
 
   if (opts.projectId) query = query.eq('project_id', opts.projectId)
@@ -100,11 +107,16 @@ export async function detectAnomalies(
 
     const [provider = '', model = ''] = key.split('|')
 
-    // Latency
-    const obsLatencies = obsRows
+    // Success-only subsets — used for latency + cost so a 500-storm doesn't
+    // skew the latency baseline (errors usually return fast = artificially low).
+    const obsSuccess = obsRows.filter((r) => r.status_code < 400)
+    const refSuccess = refRows.filter((r) => r.status_code < 400)
+
+    // ── Latency (success-only) ─────────────────────────────────────────
+    const obsLatencies = obsSuccess
       .map((r) => r.latency_ms)
       .filter((v): v is number => v !== null)
-    const refLatencies = refRows
+    const refLatencies = refSuccess
       .map((r) => r.latency_ms)
       .filter((v): v is number => v !== null)
 
@@ -129,11 +141,11 @@ export async function detectAnomalies(
       }
     }
 
-    // Cost
-    const obsCosts = obsRows
+    // ── Cost (success-only) ─────────────────────────────────────────────
+    const obsCosts = obsSuccess
       .map((r) => r.cost_usd)
       .filter((v): v is number => v !== null)
-    const refCosts = refRows
+    const refCosts = refSuccess
       .map((r) => r.cost_usd)
       .filter((v): v is number => v !== null)
 
@@ -147,6 +159,34 @@ export async function detectAnomalies(
             provider,
             model,
             kind: 'cost',
+            currentValue: obsStats.mean,
+            baselineMean: refStats.mean,
+            baselineStdDev: refStats.stdDev,
+            deviations,
+            sampleCount: obsStats.count,
+            referenceCount: refStats.count,
+          })
+        }
+      }
+    }
+
+    // ── Error rate (all rows: success + failure) ────────────────────────
+    // Each request encoded as 1 (error) or 0 (success). Mean = error rate;
+    // stddev approximates √(p(1-p)) — Bernoulli proportion variance.
+    if (obsRows.length > 0 && refRows.length >= minSamples) {
+      const obsErrors = obsRows.map((r) => (r.status_code >= 400 ? 1 : 0))
+      const refErrors = refRows.map((r) => (r.status_code >= 400 ? 1 : 0))
+      const obsStats = computeStats(obsErrors)
+      const refStats = computeStats(refErrors)
+      if (refStats.stdDev > 0) {
+        const deviations = (obsStats.mean - refStats.mean) / refStats.stdDev
+        // One-sided: only flag SPIKES (more errors than baseline). A drop
+        // in error rate is good news, not an incident.
+        if (deviations >= sigmaThreshold) {
+          anomalies.push({
+            provider,
+            model,
+            kind: 'error_rate',
             currentValue: obsStats.mean,
             baselineMean: refStats.mean,
             baselineStdDev: refStats.stdDev,

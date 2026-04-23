@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { authJwt, type JwtContext } from '../middleware/authJwt.js'
 import { detectAnomalies } from '../lib/anomaly.js'
+import { getAnomalyHistory } from '../lib/anomaly-snapshot.js'
 
 /**
  * GET /api/v1/anomalies
@@ -48,5 +49,22 @@ anomaliesRouter.get('/', async (c) => {
       sigmaThreshold,
       count: anomalies.length,
     },
+  })
+})
+
+// GET /api/v1/anomalies/history?days=30
+// Returns persisted anomaly_events for the last N days. Populated by the
+// daily cron-snapshot-anomalies job.
+anomaliesRouter.get('/history', async (c) => {
+  const orgId = c.get('orgId')
+  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+
+  const days = Math.min(parsePositiveNumber(c.req.query('days'), 30), 365)
+  const history = await getAnomalyHistory(orgId, days)
+
+  return c.json({
+    success: true,
+    data: history,
+    meta: { days, count: history.length },
   })
 })

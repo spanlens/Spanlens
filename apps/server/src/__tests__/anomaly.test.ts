@@ -60,3 +60,45 @@ describe('3-sigma math sanity', () => {
     expect(Math.abs(deviations)).toBeLessThan(3)
   })
 })
+
+describe('error rate detection (Bernoulli proportion)', () => {
+  it('encodes status_code as 0/1 — mean equals error rate', () => {
+    const rows = [200, 200, 200, 200, 500, 200, 200, 500].map((c) => (c >= 400 ? 1 : 0))
+    const s = computeStats(rows)
+    // 2 errors / 8 rows = 25%
+    expect(s.mean).toBe(0.25)
+  })
+
+  it('flags a clear spike: 1% baseline → 50% current', () => {
+    // 1% baseline error rate → stddev ~0.10 with n=100. Spike to 50%
+    // produces ~4.9σ deviation, well above the 3σ threshold.
+    const baselineRows = [
+      ...Array.from({ length: 99 }, () => 0),
+      ...Array.from({ length: 1 }, () => 1),
+    ]
+    const baseline = computeStats(baselineRows)
+    expect(baseline.mean).toBeCloseTo(0.01, 5)
+    expect(baseline.stdDev).toBeGreaterThan(0)
+
+    const obs = computeStats([
+      ...Array.from({ length: 10 }, () => 0),
+      ...Array.from({ length: 10 }, () => 1),
+    ])
+    const deviations = (obs.mean - baseline.mean) / baseline.stdDev
+    expect(deviations).toBeGreaterThan(3)
+  })
+
+  it('does NOT flag drops in error rate — those are good news', () => {
+    // baseline 10% errors → observation 0% errors. Should NOT fire.
+    const baselineRows = [
+      ...Array.from({ length: 90 }, () => 0),
+      ...Array.from({ length: 10 }, () => 1),
+    ]
+    const baseline = computeStats(baselineRows)
+    const obs = computeStats(Array.from({ length: 50 }, () => 0))
+    const deviations = (obs.mean - baseline.mean) / baseline.stdDev
+    // production code uses one-sided: `deviations >= sigmaThreshold` ;
+    // a drop (negative deviations) never fires.
+    expect(deviations).toBeLessThan(0)
+  })
+})

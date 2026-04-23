@@ -3,6 +3,7 @@ import { supabaseAdmin } from '../lib/db.js'
 import { deliverToChannel, type AlertNotification } from '../lib/notifiers.js'
 import { computeAndReportOverages } from '../lib/paddle-usage.js'
 import { runQuotaWarningsJob } from '../lib/quota-warnings.js'
+import { snapshotAnomaliesForAllOrgs } from '../lib/anomaly-snapshot.js'
 
 /**
  * Vercel cron endpoints. Invoked hourly via `crons` entry in `vercel.json`.
@@ -210,6 +211,24 @@ cronRouter.get('/check-quota-warnings', async (c) => {
   try {
     const result = await runQuotaWarningsJob()
     return c.json({ success: true, ...result })
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'unknown'
+    return c.json({ error: msg }, 500)
+  }
+})
+
+// ── Anomaly snapshot (daily) ────────────────────────────────────
+// Records detected anomalies into anomaly_events for the dashboard's
+// "history" view. Idempotent per (org, day, provider, model, kind).
+cronRouter.get('/snapshot-anomalies', async (c) => {
+  const authFail = assertCronAuth(c.req.header('Authorization'))
+  if (authFail) return c.json({ error: authFail }, 401)
+
+  try {
+    const results = await snapshotAnomaliesForAllOrgs()
+    const total = results.reduce((s, r) => s + r.detected, 0)
+    const errored = results.filter((r) => r.errors.length > 0).length
+    return c.json({ success: true, orgs: results.length, anomalies: total, errors: errored, results })
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'unknown'
     return c.json({ error: msg }, 500)

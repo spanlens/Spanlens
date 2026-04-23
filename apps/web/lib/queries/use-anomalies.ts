@@ -4,10 +4,26 @@ import { useQuery } from '@tanstack/react-query'
 import { apiGet } from '@/lib/api'
 import type { ApiEnvelope } from './types'
 
+export type AnomalyKind = 'latency' | 'cost' | 'error_rate'
+
 export interface Anomaly {
   provider: string
   model: string
-  kind: 'latency' | 'cost'
+  kind: AnomalyKind
+  currentValue: number
+  baselineMean: number
+  baselineStdDev: number
+  deviations: number
+  sampleCount: number
+  referenceCount: number
+}
+
+export interface AnomalyHistoryEntry {
+  id: string
+  detectedOn: string
+  provider: string
+  model: string
+  kind: AnomalyKind
   currentValue: number
   baselineMean: number
   baselineStdDev: number
@@ -47,5 +63,18 @@ export function useAnomalies(params: UseAnomaliesParams = {}) {
     },
     staleTime: 60_000,
     refetchOnWindowFocus: true,
+  })
+}
+
+export function useAnomalyHistory(days = 30) {
+  return useQuery({
+    queryKey: ['anomalies', 'history', days] as const,
+    queryFn: async () => {
+      const res = await apiGet<ApiEnvelope<AnomalyHistoryEntry[]>>(
+        `/api/v1/anomalies/history?days=${days}`,
+      )
+      return res.data ?? []
+    },
+    staleTime: 5 * 60_000,
   })
 }
