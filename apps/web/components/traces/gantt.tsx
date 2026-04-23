@@ -4,16 +4,24 @@ import { cn } from '@/lib/utils'
 import type { SpanRow, SpanType, TraceStatus } from '@/lib/queries/types'
 
 /**
- * Gantt/waterfall view for a trace's spans.
+ * Flame-graph-style waterfall view for a trace's spans.
  *
- * Design:
- * - X axis: time from trace start (ms). Scale = trace duration.
- * - Y axis: one row per span, indented by nesting depth.
- * - Parallel spans (same parent, overlapping times) share the same indentation
- *   and their bars naturally overlap horizontally — this makes LangGraph-style
- *   fan-out visually obvious.
- * - Bar color: spanType category.
- * - Running spans (no ended_at) extend to "now" with a striped pattern.
+ * Improvements over the original Gantt:
+ *   - Time ruler with 5 tick marks (0/25/50/75/100%) and vertical gridlines
+ *     that extend down through the bars — Chrome DevTools / Honeycomb style.
+ *   - Inline duration + percent-of-total inside the bar when there's room
+ *     (≥ 8% width). Reading "1.4s (77%)" right on the bar makes the
+ *     bottleneck instantly obvious.
+ *   - Stronger selection treatment with a left-edge indicator + ring.
+ *   - Tooltip on hover with precise start offset, duration, and % share.
+ *   - Color and saturation differentiate span_type at a glance.
+ *
+ * Tree shape:
+ *   - X axis: time from trace start (ms). Scale = trace duration.
+ *   - Y axis: one row per span, indented by nesting depth.
+ *   - Parallel spans (same parent, overlapping times) sit at the same
+ *     indentation; their bars overlap horizontally — fan-out is obvious.
+ *   - Running spans (no ended_at) extend to "now" with a pulse animation.
  */
 
 const TYPE_COLORS: Record<SpanType, string> = {
@@ -25,11 +33,11 @@ const TYPE_COLORS: Record<SpanType, string> = {
 }
 
 const TYPE_BG: Record<SpanType, string> = {
-  llm: 'bg-blue-50 hover:bg-blue-100',
-  tool: 'bg-purple-50 hover:bg-purple-100',
-  retrieval: 'bg-green-50 hover:bg-green-100',
-  embedding: 'bg-teal-50 hover:bg-teal-100',
-  custom: 'bg-gray-50 hover:bg-gray-100',
+  llm: 'bg-blue-50/60 hover:bg-blue-100',
+  tool: 'bg-purple-50/60 hover:bg-purple-100',
+  retrieval: 'bg-green-50/60 hover:bg-green-100',
+  embedding: 'bg-teal-50/60 hover:bg-teal-100',
+  custom: 'bg-gray-50/60 hover:bg-gray-100',
 }
 
 interface GanttProps {
@@ -44,6 +52,7 @@ interface PositionedSpan extends SpanRow {
   depth: number
   offsetPercent: number
   widthPercent: number
+  durationPercent: number
   isRunning: boolean
 }
 
@@ -73,7 +82,6 @@ function buildSpanTree(spans: SpanRow[]): SpanRow[] {
   }
   walk(null, 0)
 
-  // Attach depth as extra field on span (mutated in place for simplicity)
   for (const s of ordered) {
     ;(s as SpanRow & { _depth: number })._depth = depths.get(s.id) ?? 0
   }
@@ -91,11 +99,14 @@ function computePositions(
     const end = s.ended_at ? new Date(s.ended_at).getTime() : traceEndMs
     const offsetMs = Math.max(0, start - traceStartMs)
     const durationMs = Math.max(1, end - start)
+    const offsetPercent = (offsetMs / totalMs) * 100
+    const durationPercent = (durationMs / totalMs) * 100
     return {
       ...s,
       depth: (s as SpanRow & { _depth: number })._depth ?? 0,
-      offsetPercent: (offsetMs / totalMs) * 100,
-      widthPercent: Math.min(100 - (offsetMs / totalMs) * 100, (durationMs / totalMs) * 100),
+      offsetPercent,
+      widthPercent: Math.min(100 - offsetPercent, durationPercent),
+      durationPercent,
       isRunning: !s.ended_at,
     }
   })
@@ -119,13 +130,21 @@ function TypeBadge({ spanType }: { spanType: SpanType }) {
   )
 }
 
-function statusColor(status: TraceStatus): string {
+function statusOverrideClass(status: TraceStatus): string {
   if (status === 'error') return 'bg-red-500'
-  if (status === 'running') return ''  // striped animation below
   return ''
 }
 
-export function Gantt({ traceStartedAt, traceEndedAt, spans, onSelectSpan, selectedSpanId }: GanttProps) {
+// Vertical gridlines aligned with the time-ruler ticks.
+const TICKS = [0, 25, 50, 75, 100] as const
+
+export function Gantt({
+  traceStartedAt,
+  traceEndedAt,
+  spans,
+  onSelectSpan,
+  selectedSpanId,
+}: GanttProps) {
   const positioned = useMemo(() => {
     const traceStartMs = new Date(traceStartedAt).getTime()
     const traceEndMs = traceEndedAt
@@ -143,7 +162,7 @@ export function Gantt({ traceStartedAt, traceEndedAt, spans, onSelectSpan, selec
   const totalDurationMs = useMemo(() => {
     const start = new Date(traceStartedAt).getTime()
     const end = traceEndedAt ? new Date(traceEndedAt).getTime() : Date.now()
-    return end - start
+    return Math.max(1, end - start)
   }, [traceStartedAt, traceEndedAt])
 
   if (positioned.length === 0) {
@@ -160,29 +179,61 @@ export function Gantt({ traceStartedAt, traceEndedAt, spans, onSelectSpan, selec
       <div className="flex items-center border-b bg-gray-50 px-4 py-2 text-xs text-muted-foreground">
         <div className="w-80 shrink-0 font-medium">Span</div>
         <div className="flex-1 relative">
-          <div className="flex justify-between">
-            <span>0ms</span>
-            <span>{formatMs(totalDurationMs / 2)}</span>
-            <span>{formatMs(totalDurationMs)}</span>
+          <div className="absolute inset-0 flex justify-between text-[10px]">
+            {TICKS.map((pct) => (
+              <span key={pct} className={pct === 0 ? 'text-left' : pct === 100 ? 'text-right' : ''}>
+                {formatMs((totalDurationMs * pct) / 100)}
+              </span>
+            ))}
           </div>
         </div>
         <div className="w-24 text-right shrink-0">Duration</div>
       </div>
 
-      {/* Bars */}
-      <div className="divide-y">
+      {/* Gridlines + bars */}
+      <div className="relative divide-y">
+        {/* Vertical gridlines spanning the whole bar area. Positioned by
+            sliding from the left edge of the bar column (after the 320px
+            "Span" column + 16px padding) so they align perfectly with the
+            tick labels above. */}
+        <div
+          className="pointer-events-none absolute inset-y-0 hidden md:block"
+          style={{ left: 'calc(20rem + 1rem)', right: 'calc(6rem + 1rem)' }}
+        >
+          {TICKS.map((pct) => (
+            <div
+              key={pct}
+              className={cn(
+                'absolute inset-y-0 w-px',
+                pct === 0 || pct === 100 ? 'bg-gray-200' : 'bg-gray-100',
+              )}
+              style={{ left: `${pct}%` }}
+            />
+          ))}
+        </div>
+
         {positioned.map((s) => {
           const isSelected = selectedSpanId === s.id
+          const showInlineLabel = s.widthPercent >= 8
+          const tooltip = `${s.name}\nstart +${formatMs(
+            (s.offsetPercent / 100) * totalDurationMs,
+          )}\nduration ${formatMs(s.duration_ms)} (${s.durationPercent.toFixed(1)}%)`
           return (
             <button
               key={s.id}
               type="button"
               onClick={() => onSelectSpan?.(s)}
+              title={tooltip}
               className={cn(
-                'flex items-center w-full px-4 py-2 text-left transition-colors',
-                isSelected ? 'bg-blue-50' : TYPE_BG[s.span_type],
+                'relative flex items-center w-full px-4 py-2 text-left transition-colors',
+                isSelected ? 'bg-blue-50 ring-1 ring-blue-400 ring-inset' : TYPE_BG[s.span_type],
               )}
             >
+              {/* Selected left-edge indicator */}
+              {isSelected && (
+                <span className="absolute left-0 inset-y-0 w-1 bg-blue-500" aria-hidden />
+              )}
+
               {/* Name + depth */}
               <div className="w-80 shrink-0 min-w-0">
                 <div
@@ -192,10 +243,13 @@ export function Gantt({ traceStartedAt, traceEndedAt, spans, onSelectSpan, selec
                   <TypeBadge spanType={s.span_type} />
                   <span className="truncate text-sm font-medium">{s.name}</span>
                   {s.status === 'error' && (
-                    <span className="text-xs text-red-600 font-medium">ERROR</span>
+                    <span className="text-[10px] font-semibold text-red-600 uppercase">error</span>
                   )}
                 </div>
-                <div className="flex items-center gap-2 mt-0.5" style={{ paddingLeft: `${s.depth * 16 + 14}px` }}>
+                <div
+                  className="flex items-center gap-2 mt-0.5"
+                  style={{ paddingLeft: `${s.depth * 16 + 14}px` }}
+                >
                   <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
                     {s.span_type}
                   </span>
@@ -213,21 +267,25 @@ export function Gantt({ traceStartedAt, traceEndedAt, spans, onSelectSpan, selec
               </div>
 
               {/* Bar */}
-              <div className="flex-1 relative h-6">
+              <div className="flex-1 relative h-7">
                 <div
                   className={cn(
-                    'absolute h-4 top-1 rounded',
-                    s.status === 'error' ? 'bg-red-500' : TYPE_COLORS[s.span_type],
+                    'absolute h-5 top-1 rounded shadow-sm flex items-center px-1.5 text-[10px] font-mono text-white whitespace-nowrap overflow-hidden',
+                    s.status === 'error' ? statusOverrideClass(s.status) : TYPE_COLORS[s.span_type],
                     s.isRunning && 'animate-pulse',
-                    statusColor(s.status),
                   )}
                   style={{
                     left: `${s.offsetPercent}%`,
-                    width: `max(2px, ${s.widthPercent}%)`,
-                    minWidth: '2px',
+                    width: `max(3px, ${s.widthPercent}%)`,
+                    minWidth: '3px',
                   }}
-                  title={`${s.name} — ${formatMs(s.duration_ms)}`}
-                />
+                >
+                  {showInlineLabel && (
+                    <span className="opacity-90 leading-none">
+                      {formatMs(s.duration_ms)} · {s.durationPercent.toFixed(0)}%
+                    </span>
+                  )}
+                </div>
               </div>
 
               {/* Duration */}
@@ -237,6 +295,20 @@ export function Gantt({ traceStartedAt, traceEndedAt, spans, onSelectSpan, selec
             </button>
           )
         })}
+      </div>
+
+      {/* Legend */}
+      <div className="flex items-center gap-3 border-t bg-gray-50 px-4 py-2 text-[11px] text-muted-foreground">
+        <span className="font-medium text-foreground">Span types:</span>
+        {(['llm', 'tool', 'retrieval', 'embedding', 'custom'] as const).map((t) => (
+          <span key={t} className="inline-flex items-center gap-1">
+            <TypeBadge spanType={t} />
+            {t}
+          </span>
+        ))}
+        <span className="ml-auto text-[10px]">
+          Click a bar for details · hover for precise timing
+        </span>
       </div>
     </div>
   )

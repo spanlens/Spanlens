@@ -143,8 +143,16 @@ await trace.end()`}</CodeBlock>
       <h2>Limitations</h2>
       <ul>
         <li>
-          <strong>Flame-graph view is minimal.</strong> Current dashboard shows a table + waterfall.
-          Zoom/filter per span type is roadmap.
+          <strong>No zoom or pan yet.</strong> The waterfall fits the trace
+          duration to the viewport width. For traces with thousands of spans
+          you&apos;ll want to drill into a sub-tree — that lives on the
+          roadmap.
+        </li>
+        <li>
+          <strong>Inline label hides on narrow bars.</strong> Spans that take
+          less than ~8% of total duration show only as a colored sliver;
+          hover for the precise timing tooltip, or click to open the side
+          panel.
         </li>
         <li>
           <strong>No OpenTelemetry export yet.</strong> If your team standardizes on OTel, you

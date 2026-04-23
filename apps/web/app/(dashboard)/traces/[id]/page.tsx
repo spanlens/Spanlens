@@ -193,6 +193,36 @@ export default function TraceDetailPage({ params }: { params: { id: string } }) 
         </div>
       )}
 
+      {/* Hottest-span summary — biggest contributor to total trace time */}
+      {(() => {
+        const totalMs = trace.duration_ms ?? 0
+        if (totalMs === 0 || trace.spans.length === 0) return null
+        const longest = [...trace.spans]
+          .filter((s) => s.duration_ms != null)
+          .sort((a, b) => (b.duration_ms ?? 0) - (a.duration_ms ?? 0))[0]
+        if (!longest || (longest.duration_ms ?? 0) === 0) return null
+        const pct = ((longest.duration_ms ?? 0) / totalMs) * 100
+        return (
+          <button
+            type="button"
+            onClick={() => setSelectedSpan(longest)}
+            className="w-full text-left rounded-lg border bg-blue-50 border-blue-200 p-4 mb-6 hover:bg-blue-100 transition-colors"
+          >
+            <p className="text-xs uppercase tracking-wide text-blue-700 font-medium mb-1">
+              Hottest span — click to inspect
+            </p>
+            <p className="text-sm">
+              <span className="font-semibold">{longest.name}</span>{' '}
+              <span className="text-muted-foreground">({longest.span_type})</span> took{' '}
+              <span className="font-mono font-semibold">
+                {formatDuration(longest.duration_ms)}
+              </span>{' '}
+              — <strong>{pct.toFixed(0)}%</strong> of the trace.
+            </p>
+          </button>
+        )
+      })()}
+
       {/* Gantt */}
       <div className="mb-6">
         <h2 className="text-base font-semibold mb-3">Timeline</h2>
