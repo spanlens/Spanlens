@@ -159,7 +159,7 @@ export function Sidebar() {
           <div className="h-full w-0 rounded-full bg-text" />
         </div>
         <button
-          onClick={() => router.push('/billing')}
+          onClick={() => router.push('/settings')}
           className="mt-2.5 text-[12px] font-medium text-accent hover:opacity-80 transition-opacity"
         >
           Upgrade →

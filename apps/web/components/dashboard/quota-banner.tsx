@@ -43,7 +43,7 @@ export function QuotaBanner() {
   let title: string
   let detail: string
   let cta: string
-  let ctaHref = '/billing'
+  let ctaHref = '/settings'
 
   if (hardBlocked) {
     // Three sub-cases: free_limit, overage_disabled, hard_cap
