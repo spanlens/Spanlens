@@ -56,7 +56,6 @@ const NAV_GROUPS = [
     label: 'Admin',
     items: [
       { href: '/projects',  label: 'Projects & Keys' },
-      { href: '/billing',   label: 'Billing' },
       { href: '/settings',  label: 'Settings' },
       { href: '/docs',      label: 'Docs' },
     ],

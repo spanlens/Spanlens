@@ -1,6 +1,7 @@
 'use client'
-import { useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Plus, RotateCcw, Trash2, Copy, Check } from 'lucide-react'
+import { initializePaddle, type Paddle } from '@paddle/paddle-js'
 import { cn } from '@/lib/utils'
 import { Topbar } from '@/components/layout/topbar'
 import { Section, FormRow, PrimaryBtn, GhostBtn } from '@/components/ui/primitives'
@@ -23,6 +24,14 @@ import {
   useRevokeProviderKey,
   useRotateProviderKey,
 } from '@/lib/queries/use-provider-keys'
+import {
+  useSubscription,
+  useCreateCheckout,
+  useRefreshSubscription,
+  useQuota,
+} from '@/lib/queries/use-billing'
+import { QuotaBanner } from '@/components/dashboard/quota-banner'
+import type { BillingPlan } from '@/lib/queries/types'
 
 // ─── types ───────────────────────────────────────────────────────────────────
 
@@ -508,143 +517,283 @@ function AuditLogTab() {
 
 // ─── BILLING tab ──────────────────────────────────────────────────────────────
 
+function formatDate(iso: string | null): string {
+  if (!iso) return '—'
+  return new Date(iso).toLocaleDateString()
+}
+
 function BillingTab() {
-  const { data: org } = useOrganization()
-  const planLabel = org?.plan ? org.plan.charAt(0).toUpperCase() + org.plan.slice(1) : '—'
+  const { data: subscription, isLoading } = useSubscription()
+  const { data: quota } = useQuota()
+
+  const planName = subscription?.plan ?? 'free'
+  const planLabel = planName.charAt(0).toUpperCase() + planName.slice(1)
+
+  const usedThisMonth = quota?.usedThisMonth ?? 0
+  const limit = quota?.limit ?? 10_000
+  const pct = limit > 0 ? Math.min(1, usedThisMonth / limit) : 0
 
   return (
     <div className="max-w-[920px]">
       <TabHeader title="Billing" description="Per-request pricing. What ingests this month is what you pay." />
 
+      <QuotaBanner />
+
       {/* Hero card */}
       <div className="border border-border rounded-xl bg-bg-elev p-6 grid grid-cols-2 gap-8 mb-5">
         <div>
           <div className="font-mono text-[10px] text-text-faint uppercase tracking-[0.05em] mb-3">Current plan</div>
-          <div className="flex items-baseline gap-3 mb-1">
-            <span className="text-[30px] font-medium tracking-[-0.6px]">{planLabel}</span>
-            <span className="font-mono text-[12px] text-text-muted">$0.20 / 1k req</span>
-          </div>
-          <div className="text-[12.5px] text-text-muted mb-4">Renews end of cycle · Visa •• 4242</div>
-          <div className="flex gap-2">
-            <GhostBtn>Change plan</GhostBtn>
-          </div>
+          {isLoading ? (
+            <div className="h-8 w-32 bg-bg-muted rounded animate-pulse mb-4" />
+          ) : (
+            <>
+              <div className="flex items-center gap-3 mb-1">
+                <span className="text-[30px] font-medium tracking-[-0.6px]">{planLabel}</span>
+                <span className={cn(
+                  'font-mono text-[10px] uppercase tracking-[0.04em] px-2 py-0.5 rounded-full border',
+                  subscription?.status === 'active'
+                    ? 'bg-good-bg border-good/20 text-good'
+                    : subscription?.status === 'past_due'
+                      ? 'bg-accent-bg border-accent-border text-accent'
+                      : 'bg-bg border-border text-text-muted',
+                )}>
+                  {subscription?.status ?? 'free'}
+                </span>
+              </div>
+              <div className="text-[12.5px] text-text-muted mb-4">
+                {subscription?.current_period_end
+                  ? subscription.cancel_at_period_end
+                    ? `Access until ${formatDate(subscription.current_period_end)}`
+                    : `Renews on ${formatDate(subscription.current_period_end)}`
+                  : 'No active subscription'}
+              </div>
+            </>
+          )}
         </div>
         <div>
           <div className="font-mono text-[10px] text-text-faint uppercase tracking-[0.05em] mb-3">This cycle</div>
           <div className="h-2.5 bg-bg-muted rounded-full overflow-hidden mb-2">
-            <div className="h-full w-[68%] bg-text rounded-full" />
+            <div className="h-full bg-text rounded-full" style={{ width: `${(pct * 100).toFixed(1)}%` }} />
           </div>
           <div className="flex justify-between font-mono text-[11px] text-text-muted">
-            <span><span className="text-text">6.8M</span> / 10M included</span>
-            <span>day 23 / 30</span>
-          </div>
-          <div className="mt-3 flex gap-4 text-[12px] text-text-muted">
-            <span><span className="font-mono text-text">$1,040</span> so far</span>
-            <span><span className="font-mono text-text">$1,380</span> projected</span>
+            <span><span className="text-text">{usedThisMonth.toLocaleString()}</span> / {limit.toLocaleString()} req</span>
+            <span>{(pct * 100).toFixed(0)}% used</span>
           </div>
         </div>
       </div>
 
-      <Section title="Payment method" className="mb-5">
-        <div className="flex items-center gap-4 px-6 py-4">
-          <div className="w-12 h-8 border border-border rounded bg-bg-muted flex items-center justify-center font-mono text-[10px] font-semibold text-text">VISA</div>
-          <div className="flex-1">
-            <div className="text-[13px] font-medium text-text">Visa ending 4242</div>
-            <div className="font-mono text-[11px] text-text-faint">expires 09 / 2028</div>
-          </div>
-          <GhostBtn>Update card</GhostBtn>
+      <Section title="Payment" className="mb-5">
+        <div className="px-6 py-4 text-[13px] text-text-muted leading-relaxed">
+          Payments are processed by Paddle. To update your payment method or cancel your subscription, use the link Paddle sent when you subscribed.
         </div>
       </Section>
 
-      <Section title="Budget alerts" action={<Hint>Slack, email, webhook</Hint>} className="mb-5">
-        <div className="divide-y divide-border">
-          {[
-            { pct: 50, to: 'finance@workspace.com', via: 'email', on: true },
-            { pct: 80, to: '#llm-ops',              via: 'slack', on: true },
-          ].map((a, i) => (
-            <div key={i} className="grid grid-cols-[80px_1fr_140px_80px] gap-3 px-6 py-3 items-center">
-              <span className="font-mono text-[13px] font-medium text-text">at {a.pct}%</span>
-              <span className="font-mono text-[12px] text-text-muted">{a.to}</span>
-              <span className="font-mono text-[10.5px] text-text-faint uppercase tracking-[0.04em]">via {a.via}</span>
-              <Toggle on={a.on} />
-            </div>
-          ))}
-          <div className="px-6 py-3">
-            <GhostBtn>+ Add alert</GhostBtn>
-          </div>
+      <Section title="Budget alerts" action={<Hint>coming soon</Hint>} className="mb-5">
+        <div className="px-6 py-4 text-[13px] text-text-muted">
+          Configure budget alerts in the <span className="text-text font-medium">Alerts</span> tab to get notified when spend approaches your quota.
         </div>
       </Section>
     </div>
   )
 }
 
-// ─── PLAN & LIMITS tab (has real overage settings) ────────────────────────────
+// ─── PLAN & LIMITS tab ────────────────────────────────────────────────────────
 
-const PLAN_CARDS = [
-  { name: 'Free',       price: '$0',           blurb: '1 project · 50k req/mo · 7d retention',    feat: ['1 project', '50,000 requests / month', '7-day retention', 'Community support'] },
-  { name: 'Pro',        price: '$99 + usage',  blurb: '10M req included · 30d retention',         feat: ['Unlimited projects', '10M included requests', '30-day retention', 'All integrations', 'Slack support'] },
-  { name: 'Team',       price: '$499 + usage', blurb: '50M included · 90d retention · SSO',       feat: ['Everything in Pro', '50M requests', '90-day retention', 'SSO + SAML', 'Audit log export'] },
-  { name: 'Enterprise', price: 'custom',       blurb: 'self-host · custom DPA · SLA',             feat: ['Self-host or dedicated', 'Custom retention', 'DPA / BAA', 'Uptime SLA 99.9%', '24/7 priority'] },
+interface PlanCardConfig {
+  id: BillingPlan
+  name: string
+  priceUsd: number | null
+  pricePeriod: string
+  description: string
+  features: string[]
+}
+
+const PLANS: PlanCardConfig[] = [
+  {
+    id: 'free',
+    name: 'Free',
+    priceUsd: 0,
+    pricePeriod: 'forever',
+    description: 'For evaluation and small personal projects.',
+    features: ['10,000 requests / month', '7-day log retention', '1 project', 'Community support'],
+  },
+  {
+    id: 'starter',
+    name: 'Starter',
+    priceUsd: 19,
+    pricePeriod: 'per month',
+    description: 'For production apps and small teams.',
+    features: ['100,000 requests / month', '30-day log retention', 'Up to 5 projects', 'Agent tracing', 'Email alerts', 'Email support'],
+  },
+  {
+    id: 'team',
+    name: 'Team',
+    priceUsd: 49,
+    pricePeriod: 'per month',
+    description: 'For growing teams with heavier workloads.',
+    features: ['500,000 requests / month', '90-day log retention', 'Unlimited projects', 'Slack / Discord alerts', 'Team roles & audit log', 'Priority support'],
+  },
+  {
+    id: 'enterprise',
+    name: 'Enterprise',
+    priceUsd: null,
+    pricePeriod: 'custom',
+    description: 'SSO, on-prem, custom SLAs.',
+    features: ['Custom request volume', '1-year log retention', 'SSO / SAML', 'Dedicated Slack channel', 'Custom SLA'],
+  },
 ]
+
+const PLAN_REQUEST_LIMITS: Record<string, number> = {
+  free: 10_000,
+  starter: 100_000,
+  team: 500_000,
+}
 
 function PlanLimitsTab() {
   const { data: org } = useOrganization()
+  const { data: subscription, isLoading: subLoading } = useSubscription()
+  const { data: quota } = useQuota()
+  const createCheckout = useCreateCheckout()
+  const refreshSubscription = useRefreshSubscription()
   const update = useUpdateOverageSettings()
   const [multiplierDraft, setMultiplierDraft] = useState(String(org?.overage_cap_multiplier ?? 2))
+  const [paddle, setPaddle] = useState<Paddle | null>(null)
+  const [checkoutError, setCheckoutError] = useState<string | null>(null)
 
-  const isFree       = org?.plan === 'free'
-  const isEnterprise = org?.plan === 'enterprise'
+  const clientToken = process.env['NEXT_PUBLIC_PADDLE_CLIENT_TOKEN']
+  const paddleEnv = (process.env['NEXT_PUBLIC_PADDLE_ENVIRONMENT'] ?? 'sandbox') as 'sandbox' | 'production'
+
+  useEffect(() => {
+    if (!clientToken) return
+    let cancelled = false
+    void initializePaddle({
+      environment: paddleEnv,
+      token: clientToken,
+      eventCallback: (event) => {
+        if (event.name === 'checkout.completed') {
+          setTimeout(() => refreshSubscription(), 1500)
+        }
+      },
+    }).then((instance) => {
+      if (!cancelled && instance) setPaddle(instance)
+    })
+    return () => { cancelled = true }
+  }, [clientToken, paddleEnv, refreshSubscription])
+
+  const handleUpgrade = useCallback(async (plan: 'starter' | 'team') => {
+    setCheckoutError(null)
+    if (!paddle) {
+      setCheckoutError('Paddle.js is not ready yet. Please try again in a moment.')
+      return
+    }
+    try {
+      const res = await createCheckout.mutateAsync({ plan })
+      paddle.Checkout.open({ transactionId: res.transactionId })
+    } catch (err) {
+      setCheckoutError(err instanceof Error ? err.message : 'Failed to start checkout')
+    }
+  }, [paddle, createCheckout])
+
+  const currentPlan: BillingPlan = subscription?.plan ?? 'free'
+  const isFree = currentPlan === 'free'
+  const isEnterprise = currentPlan === 'enterprise'
+
+  const usedThisMonth = quota?.usedThisMonth ?? 0
+  const planLimit = PLAN_REQUEST_LIMITS[currentPlan]
+  const limitLabel = planLimit != null ? planLimit.toLocaleString() : 'unlimited'
+  const headroom = planLimit != null
+    ? `${Math.max(0, Math.round((1 - usedThisMonth / planLimit) * 100))}%`
+    : '∞'
 
   return (
     <div className="max-w-[1040px]">
       <TabHeader title="Plan & limits" description="Compare plans. Hard limits apply per-workspace; can be lifted on Enterprise." />
 
-      {/* Plan picker */}
+      {checkoutError && (
+        <div className="rounded-lg border border-accent-border bg-accent-bg px-4 py-3 mb-5 text-[13px] text-accent">
+          {checkoutError}
+        </div>
+      )}
+
+      {/* Plan cards */}
       <div className="grid grid-cols-4 gap-3 mb-6">
-        {PLAN_CARDS.map((p) => {
-          const isCurrent = org?.plan === p.name.toLowerCase()
+        {PLANS.map((plan) => {
+          const isCurrent = currentPlan === plan.id
+          const isUpgradeInFlight = createCheckout.isPending && createCheckout.variables?.plan === plan.id
           return (
             <div
-              key={p.name}
+              key={plan.id}
               className={cn(
-                'border rounded-xl p-4 flex flex-col gap-3 min-h-[260px]',
+                'border rounded-xl p-4 flex flex-col gap-3 min-h-[280px]',
                 isCurrent ? 'border-accent bg-accent-bg' : 'border-border bg-bg-elev',
               )}
             >
               <div className="flex items-start justify-between">
-                <span className="text-[15px] font-medium text-text">{p.name}</span>
+                <span className="text-[15px] font-medium text-text">{plan.name}</span>
                 {isCurrent && <MonoPill variant="accent" dot>current</MonoPill>}
               </div>
               <div>
-                <div className="font-mono text-[18px] font-medium tracking-[-0.2px] text-text">{p.price}</div>
-                <div className="font-mono text-[10.5px] text-text-muted mt-1">{p.blurb}</div>
+                {plan.priceUsd !== null ? (
+                  <div className="flex items-baseline gap-1">
+                    <span className="font-mono text-[20px] font-medium tracking-[-0.2px] text-text">${plan.priceUsd}</span>
+                    <span className="font-mono text-[10.5px] text-text-muted">/ {plan.pricePeriod}</span>
+                  </div>
+                ) : (
+                  <div className="font-mono text-[20px] font-medium text-text">Custom</div>
+                )}
+                <div className="font-mono text-[10.5px] text-text-muted mt-1">{plan.description}</div>
               </div>
               <ul className="flex-1 space-y-1.5">
-                {p.feat.map((f) => <li key={f} className="font-mono text-[10.5px] text-text-muted">▸ {f}</li>)}
+                {plan.features.map((f) => (
+                  <li key={f} className="flex items-start gap-2 font-mono text-[10.5px] text-text-muted">
+                    <Check className="h-3 w-3 mt-0.5 text-good shrink-0" />
+                    <span>{f}</span>
+                  </li>
+                ))}
               </ul>
               <div>
-                {isCurrent ? <GhostBtn>Manage</GhostBtn> : <PrimaryBtn>{p.name === 'Enterprise' ? 'Contact sales' : `Upgrade to ${p.name}`}</PrimaryBtn>}
+                {plan.id === 'free' ? (
+                  <button type="button" disabled className="w-full h-8 rounded-[6px] border border-border bg-bg text-[12.5px] font-medium text-text-faint cursor-not-allowed">
+                    Default
+                  </button>
+                ) : plan.id === 'enterprise' ? (
+                  <GhostBtn className="w-full justify-center" onClick={() => window.open('mailto:sales@spanlens.io', '_blank')}>
+                    Contact sales
+                  </GhostBtn>
+                ) : isCurrent ? (
+                  <button type="button" disabled className="w-full h-8 rounded-[6px] border border-border bg-bg text-[12.5px] font-medium text-text-faint cursor-not-allowed">
+                    Current plan
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={createCheckout.isPending || !paddle || subLoading}
+                    onClick={() => void handleUpgrade(plan.id as 'starter' | 'team')}
+                    className="w-full h-8 rounded-[6px] bg-text text-bg text-[12.5px] font-medium hover:opacity-90 transition-opacity disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed"
+                  >
+                    {isUpgradeInFlight ? 'Opening checkout…' : !paddle ? 'Loading…' : `Upgrade to ${plan.name}`}
+                  </button>
+                )}
               </div>
             </div>
           )
         })}
       </div>
 
-      <Section title="Hard limits" action={<Hint>{org?.plan ?? 'free'} plan</Hint>} className="mb-5">
+      <Section title="Hard limits" action={<Hint>{currentPlan} plan</Hint>} className="mb-5">
         <div className="divide-y divide-border">
           <div className="grid grid-cols-[1.4fr_1fr_1fr_1fr] gap-4 px-6 py-3 font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint">
             {['Resource', 'Limit', 'Used now', 'Headroom'].map((h) => <span key={h}>{h}</span>)}
           </div>
           {[
-            ['Requests / month', '10,000,000', '6,821,302', '32%'],
-            ['Team seats',       '10',          '4',         '60%'],
-            ['Retention',        '30 days',     '30 days',   'max'],
-            ['API keys',         '25',           '5',         '80%'],
-            ['Alert rules',      '100',          '18',        'ok'],
-          ].map(([res, limit, used, head]) => (
-            <div key={res} className="grid grid-cols-[1.4fr_1fr_1fr_1fr] gap-4 px-6 py-3 text-[12.5px]">
+            ['Requests / month', limitLabel, usedThisMonth.toLocaleString(), headroom],
+            ['Team seats',       '10',       '—',                            '—'],
+            ['API keys',         '25',       '—',                            '—'],
+            ['Alert rules',      '100',      '—',                            '—'],
+          ].map(([res, lim, used, head]) => (
+            <div key={res} className="grid grid-cols-[1.4fr_1fr_1fr_1fr] gap-4 px-6 py-3">
               <span className="font-mono text-[12px] text-text-muted">{res}</span>
-              <span className="font-mono text-[12px] text-text">{limit}</span>
+              <span className="font-mono text-[12px] text-text">{lim}</span>
               <span className="font-mono text-[12px] text-text">{used}</span>
               <span className="font-mono text-[12px] text-text">{head}</span>
             </div>
@@ -656,7 +805,7 @@ function PlanLimitsTab() {
         <Section title="Overage billing" description="Applies when your monthly quota is reached" className="mb-5">
           {isFree ? (
             <div className="px-6 py-4 text-[13px] text-text-muted">
-              Overage is not available on the Free plan. Upgrade to Starter or Pro to continue serving requests past your quota.
+              Overage is not available on the Free plan. Upgrade to Starter or Team to continue serving requests past your quota.
             </div>
           ) : (
             <>
