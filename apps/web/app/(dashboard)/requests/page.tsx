@@ -17,15 +17,22 @@ import {
   type RequestsFilters,
   type SavedFilter,
 } from '@/lib/queries/use-requests'
+import { useProviderKeys } from '@/lib/queries/use-provider-keys'
 import { DocsLink } from '@/components/layout/docs-link'
 
 interface UiFilters {
-  provider: string  // 'all' | 'openai' | ...
-  status: string    // 'all' | 'success' | 'error'
+  provider: string      // 'all' | 'openai' | ...
+  status: string        // 'all' | 'success' | 'error'
   model: string
+  providerKeyId: string // 'all' | <uuid>
 }
 
-const DEFAULT_FILTERS: UiFilters = { provider: 'all', status: 'all', model: '' }
+const DEFAULT_FILTERS: UiFilters = {
+  provider: 'all',
+  status: 'all',
+  model: '',
+  providerKeyId: 'all',
+}
 
 export default function RequestsPage() {
   const [filters, setFilters] = useState<UiFilters>(DEFAULT_FILTERS)
@@ -39,14 +46,25 @@ export default function RequestsPage() {
       limit: 50,
       ...(filters.provider !== 'all' && { provider: filters.provider }),
       ...(filters.model.trim() && { model: filters.model.trim() }),
+      ...(filters.providerKeyId !== 'all' && { providerKeyId: filters.providerKeyId }),
     }),
-    [page, filters.provider, filters.model],
+    [page, filters.provider, filters.model, filters.providerKeyId],
   )
 
   const { data, isLoading, isFetching, refetch } = useRequests(serverFilters)
   const savedFiltersQuery = useSavedFilters()
   const createSaved = useCreateSavedFilter()
   const deleteSaved = useDeleteSavedFilter()
+  const providerKeysQuery = useProviderKeys()
+
+  // Filter the key dropdown to only keys for the currently-selected provider
+  // — keeps the list small and prevents invalid combos like "openai +
+  // anthropic-staging-key".
+  const visibleKeys = useMemo(() => {
+    const keys = providerKeysQuery.data ?? []
+    if (filters.provider === 'all') return keys
+    return keys.filter((k) => k.provider === filters.provider)
+  }, [providerKeysQuery.data, filters.provider])
 
   const requests = useMemo(() => {
     const rows = data?.data ?? []
@@ -58,7 +76,10 @@ export default function RequestsPage() {
   const meta = data?.meta ?? { total: 0, page: 1, limit: 50 }
 
   const isFilterActive =
-    filters.provider !== 'all' || filters.status !== 'all' || filters.model.trim().length > 0
+    filters.provider !== 'all' ||
+    filters.status !== 'all' ||
+    filters.model.trim().length > 0 ||
+    filters.providerKeyId !== 'all'
 
   function applySavedFilter(sf: SavedFilter): void {
     const f = sf.filters as Partial<UiFilters & RequestsFilters>
@@ -66,6 +87,7 @@ export default function RequestsPage() {
       provider: typeof f.provider === 'string' ? f.provider : 'all',
       status: typeof f.status === 'string' ? f.status : 'all',
       model: typeof f.model === 'string' ? f.model : '',
+      providerKeyId: typeof f.providerKeyId === 'string' ? f.providerKeyId : 'all',
     })
     setPage(1)
   }
@@ -122,7 +144,19 @@ export default function RequestsPage() {
         <Select
           value={filters.provider}
           onValueChange={(v) => {
-            setFilters((f) => ({ ...f, provider: v }))
+            // Reset providerKeyId when provider changes — the key may not
+            // belong to the new provider. ('all' provider keeps key as-is.)
+            setFilters((f) => ({
+              ...f,
+              provider: v,
+              providerKeyId:
+                v === 'all' ||
+                (providerKeysQuery.data ?? []).some(
+                  (k) => k.id === f.providerKeyId && k.provider === v,
+                )
+                  ? f.providerKeyId
+                  : 'all',
+            }))
             setPage(1)
           }}
         >
@@ -161,6 +195,30 @@ export default function RequestsPage() {
           }}
         />
 
+        {/* Provider key dropdown — gated on at least one key existing */}
+        {visibleKeys.length > 0 && (
+          <Select
+            value={filters.providerKeyId}
+            onValueChange={(v) => {
+              setFilters((f) => ({ ...f, providerKeyId: v }))
+              setPage(1)
+            }}
+          >
+            <SelectTrigger className="w-48">
+              <SelectValue placeholder="Provider key" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All keys</SelectItem>
+              {visibleKeys.map((k) => (
+                <SelectItem key={k.id} value={k.id}>
+                  {k.name}
+                  {filters.provider === 'all' ? ` (${k.provider})` : ''}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+
         <Button variant="outline" size="sm" onClick={() => void refetch()} disabled={isFetching}>
           Refresh
         </Button>
@@ -169,6 +227,9 @@ export default function RequestsPage() {
           <>
             <SaveFilterDialog
               filters={filters}
+              providerKeysById={Object.fromEntries(
+                (providerKeysQuery.data ?? []).map((k) => [k.id, k.name]),
+              )}
               onSave={(name) => createSaved.mutateAsync({ name, filters })}
             />
             <Button variant="ghost" size="sm" onClick={clearFilters}>
@@ -281,10 +342,12 @@ export default function RequestsPage() {
 
 interface SaveFilterDialogProps {
   filters: UiFilters
+  /** Map of provider_key.id → name for resolving the chip label in the preview. */
+  providerKeysById: Record<string, string>
   onSave: (name: string) => Promise<unknown>
 }
 
-function SaveFilterDialog({ filters, onSave }: SaveFilterDialogProps) {
+function SaveFilterDialog({ filters, providerKeysById, onSave }: SaveFilterDialogProps) {
   const [open, setOpen] = useState(false)
   const [name, setName] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -337,6 +400,12 @@ function SaveFilterDialog({ filters, onSave }: SaveFilterDialogProps) {
               {filters.provider !== 'all' && <li>provider = {filters.provider}</li>}
               {filters.status !== 'all' && <li>status = {filters.status}</li>}
               {filters.model.trim() && <li>model contains &quot;{filters.model}&quot;</li>}
+              {filters.providerKeyId !== 'all' && (
+                <li>
+                  provider key ={' '}
+                  {providerKeysById[filters.providerKeyId] ?? filters.providerKeyId}
+                </li>
+              )}
             </ul>
           </div>
           {error && <p className="text-sm text-destructive">{error}</p>}
