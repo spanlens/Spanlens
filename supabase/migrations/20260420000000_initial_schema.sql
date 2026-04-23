@@ -3,22 +3,6 @@
 --         model_prices, requests, usage_daily, audit_logs
 
 -- ────────────────────────────────────────────────────────────
--- Helper: org membership check (used by RLS policies)
--- SECURITY DEFINER so it can bypass RLS on organizations itself
--- ────────────────────────────────────────────────────────────
-CREATE OR REPLACE FUNCTION is_org_member(org_id UUID)
-RETURNS BOOLEAN
-LANGUAGE sql
-SECURITY DEFINER
-STABLE
-AS $$
-  SELECT EXISTS (
-    SELECT 1 FROM organizations
-    WHERE id = org_id AND owner_id = auth.uid()
-  )
-$$;
-
--- ────────────────────────────────────────────────────────────
 -- Trigger helper: keep updated_at current
 -- ────────────────────────────────────────────────────────────
 CREATE OR REPLACE FUNCTION update_updated_at()
@@ -54,6 +38,24 @@ CREATE POLICY "org_update"  ON organizations FOR UPDATE
 CREATE TRIGGER organizations_updated_at
   BEFORE UPDATE ON organizations
   FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+-- ────────────────────────────────────────────────────────────
+-- Helper: org membership check (used by RLS policies below)
+-- Must be created after `organizations` exists because PG 15
+-- validates function bodies at creation (check_function_bodies=on).
+-- SECURITY DEFINER so it can bypass RLS on organizations itself.
+-- ────────────────────────────────────────────────────────────
+CREATE OR REPLACE FUNCTION is_org_member(org_id UUID)
+RETURNS BOOLEAN
+LANGUAGE sql
+SECURITY DEFINER
+STABLE
+AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM organizations
+    WHERE id = org_id AND owner_id = auth.uid()
+  )
+$$;
 
 -- ────────────────────────────────────────────────────────────
 -- 2. projects

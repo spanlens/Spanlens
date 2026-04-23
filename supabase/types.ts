@@ -1,4 +1,4 @@
-export type Json =
+﻿export type Json =
   | string
   | number
   | boolean
@@ -7,8 +7,30 @@ export type Json =
   | Json[]
 
 export type Database = {
-  __InternalSupabase: {
-    PostgrestVersion: "14.5"
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          extensions?: Json
+          operationName?: string
+          query?: string
+          variables?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
   }
   public: {
     Tables: {
@@ -49,6 +71,20 @@ export type Database = {
             columns: ["alert_id"]
             isOneToOne: false
             referencedRelation: "alerts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "alert_deliveries_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "notification_channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "alert_deliveries_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
         ]
@@ -96,37 +132,78 @@ export type Database = {
           updated_at?: string
           window_minutes?: number
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "alerts_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "alerts_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
       }
-      notification_channels: {
+      anomaly_events: {
         Row: {
-          created_at: string
+          baseline_mean: number
+          baseline_stddev: number
+          current_value: number
+          detected_at: string
+          detected_on: string
+          deviations: number
           id: string
-          is_active: boolean
           kind: string
+          model: string
           organization_id: string
-          target: string
-          updated_at: string
+          provider: string
+          reference_count: number
+          sample_count: number
         }
         Insert: {
-          created_at?: string
+          baseline_mean: number
+          baseline_stddev: number
+          current_value: number
+          detected_at?: string
+          detected_on: string
+          deviations: number
           id?: string
-          is_active?: boolean
           kind: string
+          model: string
           organization_id: string
-          target: string
-          updated_at?: string
+          provider: string
+          reference_count: number
+          sample_count: number
         }
         Update: {
-          created_at?: string
+          baseline_mean?: number
+          baseline_stddev?: number
+          current_value?: number
+          detected_at?: string
+          detected_on?: string
+          deviations?: number
           id?: string
-          is_active?: boolean
           kind?: string
+          model?: string
           organization_id?: string
-          target?: string
-          updated_at?: string
+          provider?: string
+          reference_count?: number
+          sample_count?: number
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "anomaly_events_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       api_keys: {
         Row: {
@@ -246,32 +323,82 @@ export type Database = {
         }
         Relationships: []
       }
-      organizations: {
+      notification_channels: {
         Row: {
           created_at: string
           id: string
-          name: string
-          owner_id: string
-          paddle_customer_id: string | null
-          plan: string
+          is_active: boolean
+          kind: string
+          organization_id: string
+          target: string
           updated_at: string
         }
         Insert: {
           created_at?: string
           id?: string
-          name: string
-          owner_id: string
-          paddle_customer_id?: string | null
-          plan?: string
+          is_active?: boolean
+          kind: string
+          organization_id: string
+          target: string
           updated_at?: string
         }
         Update: {
           created_at?: string
           id?: string
+          is_active?: boolean
+          kind?: string
+          organization_id?: string
+          target?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notification_channels_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      organizations: {
+        Row: {
+          allow_overage: boolean
+          created_at: string
+          id: string
+          name: string
+          overage_cap_multiplier: number
+          owner_id: string
+          paddle_customer_id: string | null
+          plan: string
+          quota_warning_100_sent_at: string | null
+          quota_warning_80_sent_at: string | null
+          updated_at: string
+        }
+        Insert: {
+          allow_overage?: boolean
+          created_at?: string
+          id?: string
+          name: string
+          overage_cap_multiplier?: number
+          owner_id: string
+          paddle_customer_id?: string | null
+          plan?: string
+          quota_warning_100_sent_at?: string | null
+          quota_warning_80_sent_at?: string | null
+          updated_at?: string
+        }
+        Update: {
+          allow_overage?: boolean
+          created_at?: string
+          id?: string
           name?: string
+          overage_cap_multiplier?: number
           owner_id?: string
           paddle_customer_id?: string | null
           plan?: string
+          quota_warning_100_sent_at?: string | null
+          quota_warning_80_sent_at?: string | null
           updated_at?: string
         }
         Relationships: []
@@ -311,6 +438,60 @@ export type Database = {
           },
         ]
       }
+      prompt_versions: {
+        Row: {
+          content: string
+          created_at: string
+          created_by: string | null
+          id: string
+          metadata: Json
+          name: string
+          organization_id: string
+          project_id: string | null
+          variables: Json
+          version: number
+        }
+        Insert: {
+          content: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          metadata?: Json
+          name: string
+          organization_id: string
+          project_id?: string | null
+          variables?: Json
+          version: number
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          metadata?: Json
+          name?: string
+          organization_id?: string
+          project_id?: string | null
+          variables?: Json
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "prompt_versions_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "prompt_versions_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       provider_keys: {
         Row: {
           created_at: string
@@ -319,6 +500,7 @@ export type Database = {
           is_active: boolean
           name: string
           organization_id: string
+          project_id: string | null
           provider: string
           updated_at: string
         }
@@ -329,6 +511,7 @@ export type Database = {
           is_active?: boolean
           name: string
           organization_id: string
+          project_id?: string | null
           provider: string
           updated_at?: string
         }
@@ -339,6 +522,7 @@ export type Database = {
           is_active?: boolean
           name?: string
           organization_id?: string
+          project_id?: string | null
           provider?: string
           updated_at?: string
         }
@@ -350,6 +534,13 @@ export type Database = {
             referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "provider_keys_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
         ]
       }
       requests: {
@@ -359,13 +550,16 @@ export type Database = {
           cost_usd: number | null
           created_at: string
           error_message: string | null
+          flags: Json
           id: string
           latency_ms: number
           model: string
           organization_id: string
           project_id: string
           prompt_tokens: number
+          prompt_version_id: string | null
           provider: string
+          provider_key_id: string | null
           request_body: Json | null
           response_body: Json | null
           span_id: string | null
@@ -379,13 +573,16 @@ export type Database = {
           cost_usd?: number | null
           created_at?: string
           error_message?: string | null
+          flags?: Json
           id?: string
           latency_ms: number
           model: string
           organization_id: string
           project_id: string
           prompt_tokens?: number
+          prompt_version_id?: string | null
           provider: string
+          provider_key_id?: string | null
           request_body?: Json | null
           response_body?: Json | null
           span_id?: string | null
@@ -399,13 +596,16 @@ export type Database = {
           cost_usd?: number | null
           created_at?: string
           error_message?: string | null
+          flags?: Json
           id?: string
           latency_ms?: number
           model?: string
           organization_id?: string
           project_id?: string
           prompt_tokens?: number
+          prompt_version_id?: string | null
           provider?: string
+          provider_key_id?: string | null
           request_body?: Json | null
           response_body?: Json | null
           span_id?: string | null
@@ -433,6 +633,55 @@ export type Database = {
             columns: ["project_id"]
             isOneToOne: false
             referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "requests_prompt_version_id_fkey"
+            columns: ["prompt_version_id"]
+            isOneToOne: false
+            referencedRelation: "prompt_versions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "requests_provider_key_id_fkey"
+            columns: ["provider_key_id"]
+            isOneToOne: false
+            referencedRelation: "provider_keys"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      saved_filters: {
+        Row: {
+          created_at: string
+          filters: Json
+          id: string
+          name: string
+          organization_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          filters?: Json
+          id?: string
+          name: string
+          organization_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          filters?: Json
+          id?: string
+          name?: string
+          organization_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "saved_filters_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
         ]
@@ -524,6 +773,59 @@ export type Database = {
             columns: ["trace_id"]
             isOneToOne: false
             referencedRelation: "traces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      subscription_overage_charges: {
+        Row: {
+          charged_at: string
+          completed_at: string | null
+          error_message: string | null
+          id: string
+          overage_quantity: number
+          overage_requests: number
+          paddle_response: Json | null
+          period_end: string
+          period_start: string
+          price_id: string
+          status: string
+          subscription_id: string
+        }
+        Insert: {
+          charged_at?: string
+          completed_at?: string | null
+          error_message?: string | null
+          id?: string
+          overage_quantity: number
+          overage_requests: number
+          paddle_response?: Json | null
+          period_end: string
+          period_start: string
+          price_id: string
+          status?: string
+          subscription_id: string
+        }
+        Update: {
+          charged_at?: string
+          completed_at?: string | null
+          error_message?: string | null
+          id?: string
+          overage_quantity?: number
+          overage_requests?: number
+          paddle_response?: Json | null
+          period_end?: string
+          period_start?: string
+          price_id?: string
+          status?: string
+          subscription_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "subscription_overage_charges_subscription_id_fkey"
+            columns: ["subscription_id"]
+            isOneToOne: false
+            referencedRelation: "subscriptions"
             referencedColumns: ["id"]
           },
         ]
@@ -733,6 +1035,22 @@ export type Database = {
     Functions: {
       aggregate_usage_daily: { Args: { target_date: string }; Returns: number }
       is_org_member: { Args: { org_id: string }; Returns: boolean }
+      prune_logs_by_retention: { Args: never; Returns: Json }
+      stats_timeseries: {
+        Args: {
+          p_from?: string
+          p_org_id: string
+          p_project_id?: string
+          p_to?: string
+        }
+        Returns: {
+          cost: number
+          day: string
+          errors: number
+          requests: number
+          tokens: number
+        }[]
+      }
     }
     Enums: {
       [_ in never]: never
@@ -861,7 +1179,11 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
   public: {
     Enums: {},
   },
 } as const
+
