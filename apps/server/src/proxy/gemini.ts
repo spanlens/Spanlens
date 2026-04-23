@@ -20,10 +20,11 @@ geminiProxy.all('/*', async (c) => {
   const projectId = c.get('projectId')
   const apiKeyId = c.get('apiKeyId')
 
-  const decryptedKey = await getDecryptedProviderKey(organizationId, 'gemini')
-  if (!decryptedKey) {
+  const providerKey = await getDecryptedProviderKey(organizationId, 'gemini')
+  if (!providerKey) {
     return c.json({ error: 'No active Gemini provider key configured for this organization' }, 400)
   }
+  const decryptedKey = providerKey.plaintext
 
   const reqBodyText = await c.req.text()
   let reqBodyJson: Record<string, unknown> | null = null
@@ -108,6 +109,7 @@ geminiProxy.all('/*', async (c) => {
     traceId: c.req.header('x-trace-id') ?? null,
     spanId: c.req.header('x-span-id') ?? null,
     promptVersionId,
+    providerKeyId: providerKey.id,
   }))
 
   return new Response(resBodyText, {

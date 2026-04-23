@@ -22,10 +22,11 @@ openaiProxy.all('/*', async (c) => {
   const projectId = c.get('projectId')
   const apiKeyId = c.get('apiKeyId')
 
-  const decryptedKey = await getDecryptedProviderKey(organizationId, 'openai')
-  if (!decryptedKey) {
+  const providerKey = await getDecryptedProviderKey(organizationId, 'openai')
+  if (!providerKey) {
     return c.json({ error: 'No active OpenAI provider key configured for this organization' }, 400)
   }
+  const decryptedKey = providerKey.plaintext
 
   const reqBodyText = await c.req.text()
   let reqBodyJson: Record<string, unknown> | null = null
@@ -82,6 +83,7 @@ openaiProxy.all('/*', async (c) => {
     traceId: c.req.header('x-trace-id') ?? null,
     spanId: c.req.header('x-span-id') ?? null,
     promptVersionId,
+    providerKeyId: providerKey.id,
   }
 
   // ── Streaming path (Hono stream helper) ──────────────────────────────────

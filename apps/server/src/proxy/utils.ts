@@ -1,13 +1,25 @@
 import { supabaseAdmin } from '../lib/db.js'
 import { aes256Decrypt } from '../lib/crypto.js'
 
+export interface ResolvedProviderKey {
+  /** Decrypted plaintext key — never log or persist. */
+  plaintext: string
+  /** UUID of the provider_keys row used. Stored on requests.provider_key_id. */
+  id: string
+}
+
+/**
+ * Look up + decrypt the active provider key for an org/provider. Returns
+ * BOTH plaintext (for the upstream Authorization header) and the row id
+ * (for the request log so the dashboard can show "openai (prod-key-2)").
+ */
 export async function getDecryptedProviderKey(
   organizationId: string,
   provider: string,
-): Promise<string | null> {
+): Promise<ResolvedProviderKey | null> {
   const { data } = await supabaseAdmin
     .from('provider_keys')
-    .select('encrypted_key')
+    .select('id, encrypted_key')
     .eq('organization_id', organizationId)
     .eq('provider', provider)
     .eq('is_active', true)
@@ -16,7 +28,8 @@ export async function getDecryptedProviderKey(
 
   if (!data) return null
   const decrypted = await aes256Decrypt(data.encrypted_key as string)
-  return decrypted.length > 0 ? decrypted : null
+  if (decrypted.length === 0) return null
+  return { plaintext: decrypted, id: data.id as string }
 }
 
 // Strip hop-by-hop and sensitive headers before forwarding upstream

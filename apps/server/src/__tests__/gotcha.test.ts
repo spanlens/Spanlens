@@ -59,7 +59,7 @@ describe('getDecryptedProviderKey — Gotcha #5 (decryption empty string → nul
     process.env.ENCRYPTION_KEY = CORRECT_KEY_ENV
   })
 
-  it('returns the decrypted key when ENCRYPTION_KEY matches', async () => {
+  it('returns { plaintext, id } when ENCRYPTION_KEY matches', async () => {
     const plaintext = 'sk-openai-real-key-abc123'
     const ciphertext = await aes256Encrypt(plaintext)
 
@@ -67,33 +67,35 @@ describe('getDecryptedProviderKey — Gotcha #5 (decryption empty string → nul
       select: vi.fn().mockReturnThis(),
       eq: vi.fn().mockReturnThis(),
       limit: vi.fn().mockReturnThis(),
-      single: vi.fn().mockResolvedValue({ data: { encrypted_key: ciphertext }, error: null }),
+      single: vi.fn().mockResolvedValue({
+        data: { id: 'pk-uuid-123', encrypted_key: ciphertext },
+        error: null,
+      }),
     } as never)
 
     const result = await getDecryptedProviderKey('org-123', 'openai')
-    expect(result).toBe(plaintext)
+    expect(result).toEqual({ plaintext, id: 'pk-uuid-123' })
   })
 
-  it('returns null (not empty string) when ENCRYPTION_KEY is wrong [Known Gotcha #5]', async () => {
-    // 올바른 키로 암호화
+  it('returns null (not empty plaintext) when ENCRYPTION_KEY is wrong [Known Gotcha #5]', async () => {
     process.env.ENCRYPTION_KEY = CORRECT_KEY_ENV
     const ciphertext = await aes256Encrypt('sk-openai-real-key-abc123')
-
-    // 잘못된 키로 복호화 시도하도록 환경변수 변경
     process.env.ENCRYPTION_KEY = WRONG_KEY_ENV
 
     vi.mocked(supabaseAdmin.from).mockReturnValueOnce({
       select: vi.fn().mockReturnThis(),
       eq: vi.fn().mockReturnThis(),
       limit: vi.fn().mockReturnThis(),
-      single: vi.fn().mockResolvedValue({ data: { encrypted_key: ciphertext }, error: null }),
+      single: vi.fn().mockResolvedValue({
+        data: { id: 'pk-uuid-123', encrypted_key: ciphertext },
+        error: null,
+      }),
     } as never)
 
     const result = await getDecryptedProviderKey('org-123', 'openai')
 
-    // 반드시 null이어야 함 — 빈 문자열('')이면 프록시가 빈 Bearer 토큰을 OpenAI에 전달하게 됨
+    // null guarantees the proxy never sends an empty Bearer token to OpenAI
     expect(result).toBeNull()
-    expect(result).not.toBe('')
   })
 
   it('returns null when no provider key row exists in DB', async () => {
@@ -113,8 +115,10 @@ describe('getDecryptedProviderKey — Gotcha #5 (decryption empty string → nul
       select: vi.fn().mockReturnThis(),
       eq: vi.fn().mockReturnThis(),
       limit: vi.fn().mockReturnThis(),
-      // 너무 짧은 값 → IV_LENGTH + TAG_LENGTH(28바이트) 미만이면 즉시 ''
-      single: vi.fn().mockResolvedValue({ data: { encrypted_key: 'dG9vc2hvcnQ=' }, error: null }),
+      single: vi.fn().mockResolvedValue({
+        data: { id: 'pk-uuid-123', encrypted_key: 'dG9vc2hvcnQ=' },
+        error: null,
+      }),
     } as never)
 
     const result = await getDecryptedProviderKey('org-123', 'openai')

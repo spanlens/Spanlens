@@ -1,7 +1,7 @@
 'use client'
 
-import { keepPreviousData, useQuery } from '@tanstack/react-query'
-import { apiGet } from '@/lib/api'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { apiDelete, apiGet, apiPost } from '@/lib/api'
 import type { ApiEnvelope, RequestDetail, RequestRow, RequestsPage } from './types'
 
 export interface RequestsFilters {
@@ -10,6 +10,7 @@ export interface RequestsFilters {
   provider?: string
   model?: string
   projectId?: string
+  providerKeyId?: string
   from?: string
   to?: string
 }
@@ -28,13 +29,13 @@ export function useRequests(filters: RequestsFilters) {
       if (filters.provider) params.set('provider', filters.provider)
       if (filters.model) params.set('model', filters.model)
       if (filters.projectId) params.set('projectId', filters.projectId)
+      if (filters.providerKeyId) params.set('providerKeyId', filters.providerKeyId)
       if (filters.from) params.set('from', filters.from)
       if (filters.to) params.set('to', filters.to)
 
       const res = await apiGet<ApiEnvelope<RequestRow[]>>(`/api/v1/requests?${params}`)
       return {
         data: res.data,
-        // apiGet flattens `meta` off the envelope — re-read it below.
         meta: res.meta ?? { total: res.data.length, page: filters.page, limit: filters.limit ?? 50 },
       }
     },
@@ -56,5 +57,79 @@ export function useRequest(id: string) {
     enabled: Boolean(id),
     // Request bodies are immutable once logged — cache generously.
     staleTime: 5 * 60_000,
+  })
+}
+
+// ── Replay ──────────────────────────────────────────────────────────────
+
+export interface ReplayResponse {
+  provider: string
+  proxyPath: string
+  replayBody: Record<string, unknown>
+}
+
+/**
+ * Server prepares a replay payload (optionally swapping the model). Caller
+ * then POSTs the result to `proxyPath` with the org's API key — same flow as
+ * a normal SDK call, so it counts toward quotas + logs as a fresh requests
+ * row. We do NOT execute the upstream call server-side because that would
+ * skip our own observability path.
+ */
+export function useReplayRequest() {
+  return useMutation({
+    mutationFn: async (input: { id: string; model?: string }) => {
+      const res = await apiPost<ApiEnvelope<ReplayResponse>>(
+        `/api/v1/requests/${input.id}/replay`,
+        input.model ? { model: input.model } : {},
+      )
+      return res.data
+    },
+  })
+}
+
+// ── Saved filters ───────────────────────────────────────────────────────
+
+export interface SavedFilter {
+  id: string
+  name: string
+  filters: Partial<RequestsFilters>
+  created_at: string
+}
+
+export const savedFiltersQueryKey = ['saved-filters'] as const
+
+export function useSavedFilters() {
+  return useQuery({
+    queryKey: savedFiltersQueryKey,
+    queryFn: async () => {
+      const res = await apiGet<ApiEnvelope<SavedFilter[]>>('/api/v1/saved-filters')
+      return res.data
+    },
+    staleTime: 60_000,
+  })
+}
+
+export function useCreateSavedFilter() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (input: { name: string; filters: Partial<RequestsFilters> }) => {
+      const res = await apiPost<ApiEnvelope<SavedFilter>>('/api/v1/saved-filters', input)
+      return res.data
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: savedFiltersQueryKey })
+    },
+  })
+}
+
+export function useDeleteSavedFilter() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (id: string) => {
+      await apiDelete<ApiEnvelope<unknown>>(`/api/v1/saved-filters/${id}`)
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: savedFiltersQueryKey })
+    },
   })
 }

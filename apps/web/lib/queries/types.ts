@@ -71,12 +71,16 @@ export interface RequestRow {
   error_message: string | null
   trace_id?: string | null
   span_id?: string | null
+  provider_key_id?: string | null
+  /** Joined from provider_keys.name — null if the key was revoked or never set. */
+  provider_key_name?: string | null
   created_at: string
 }
 
 export interface RequestDetail extends RequestRow {
   request_body: unknown
   response_body: unknown
+  provider_key_prefix?: string | null
 }
 
 export interface RequestsPage {

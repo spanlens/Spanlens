@@ -19,6 +19,7 @@ export interface RequestLogData {
   traceId: string | null
   spanId: string | null
   promptVersionId?: string | null
+  providerKeyId?: string | null
 }
 
 /**
@@ -79,6 +80,7 @@ export async function logRequestAsync(data: RequestLogData): Promise<void> {
     trace_id: data.traceId,
     span_id: data.spanId,
     prompt_version_id: data.promptVersionId ?? null,
+    provider_key_id: data.providerKeyId ?? null,
     flags,
   })
   if (error) {

@@ -1,42 +1,79 @@
 'use client'
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
+import { Star, X } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
-import { useRequests } from '@/lib/queries/use-requests'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
+import {
+  useCreateSavedFilter,
+  useDeleteSavedFilter,
+  useRequests,
+  useSavedFilters,
+  type RequestsFilters,
+  type SavedFilter,
+} from '@/lib/queries/use-requests'
 import { DocsLink } from '@/components/layout/docs-link'
 
+interface UiFilters {
+  provider: string  // 'all' | 'openai' | ...
+  status: string    // 'all' | 'success' | 'error'
+  model: string
+}
+
+const DEFAULT_FILTERS: UiFilters = { provider: 'all', status: 'all', model: '' }
+
 export default function RequestsPage() {
-  const [filterProvider, setFilterProvider] = useState('all')
-  const [filterStatus, setFilterStatus] = useState('all')
-  const [filterModel, setFilterModel] = useState('')
+  const [filters, setFilters] = useState<UiFilters>(DEFAULT_FILTERS)
   const [page, setPage] = useState(1)
 
-  // Build server filters. Status is filtered client-side because the API
-  // doesn't yet expose a status filter; all other filters are pushed down.
+  // Server-side pushdown filters (status filtered client-side; the API has
+  // no status param yet)
   const serverFilters = useMemo(
     () => ({
       page,
       limit: 50,
-      ...(filterProvider !== 'all' && { provider: filterProvider }),
-      ...(filterModel.trim() && { model: filterModel.trim() }),
+      ...(filters.provider !== 'all' && { provider: filters.provider }),
+      ...(filters.model.trim() && { model: filters.model.trim() }),
     }),
-    [page, filterProvider, filterModel],
+    [page, filters.provider, filters.model],
   )
 
   const { data, isLoading, isFetching, refetch } = useRequests(serverFilters)
+  const savedFiltersQuery = useSavedFilters()
+  const createSaved = useCreateSavedFilter()
+  const deleteSaved = useDeleteSavedFilter()
 
   const requests = useMemo(() => {
     const rows = data?.data ?? []
-    if (filterStatus === 'error') return rows.filter((r) => r.status_code >= 400)
-    if (filterStatus === 'success') return rows.filter((r) => r.status_code < 400)
+    if (filters.status === 'error') return rows.filter((r) => r.status_code >= 400)
+    if (filters.status === 'success') return rows.filter((r) => r.status_code < 400)
     return rows
-  }, [data, filterStatus])
+  }, [data, filters.status])
 
   const meta = data?.meta ?? { total: 0, page: 1, limit: 50 }
+
+  const isFilterActive =
+    filters.provider !== 'all' || filters.status !== 'all' || filters.model.trim().length > 0
+
+  function applySavedFilter(sf: SavedFilter): void {
+    const f = sf.filters as Partial<UiFilters & RequestsFilters>
+    setFilters({
+      provider: typeof f.provider === 'string' ? f.provider : 'all',
+      status: typeof f.status === 'string' ? f.status : 'all',
+      model: typeof f.model === 'string' ? f.model : '',
+    })
+    setPage(1)
+  }
+
+  function clearFilters(): void {
+    setFilters(DEFAULT_FILTERS)
+    setPage(1)
+  }
 
   return (
     <div>
@@ -50,9 +87,45 @@ export default function RequestsPage() {
         <DocsLink href="/docs/features/requests" />
       </div>
 
+      {/* Saved filter chips */}
+      {(savedFiltersQuery.data ?? []).length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 mb-3">
+          <span className="text-xs text-muted-foreground mr-1">Saved:</span>
+          {(savedFiltersQuery.data ?? []).map((sf) => (
+            <span
+              key={sf.id}
+              className="inline-flex items-center gap-1 rounded-full border bg-white px-2.5 py-1 text-xs hover:border-blue-400"
+            >
+              <Star className="h-3 w-3 text-amber-500" />
+              <button
+                type="button"
+                onClick={() => applySavedFilter(sf)}
+                className="hover:text-blue-600"
+              >
+                {sf.name}
+              </button>
+              <button
+                type="button"
+                onClick={() => void deleteSaved.mutateAsync(sf.id)}
+                className="text-gray-400 hover:text-red-500 ml-0.5"
+                aria-label={`Delete saved filter ${sf.name}`}
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+
       {/* Filters */}
-      <div className="flex items-center gap-3 mb-4">
-        <Select value={filterProvider} onValueChange={(v) => { setFilterProvider(v); setPage(1) }}>
+      <div className="flex flex-wrap items-center gap-3 mb-4">
+        <Select
+          value={filters.provider}
+          onValueChange={(v) => {
+            setFilters((f) => ({ ...f, provider: v }))
+            setPage(1)
+          }}
+        >
           <SelectTrigger className="w-36">
             <SelectValue placeholder="Provider" />
           </SelectTrigger>
@@ -64,7 +137,10 @@ export default function RequestsPage() {
           </SelectContent>
         </Select>
 
-        <Select value={filterStatus} onValueChange={setFilterStatus}>
+        <Select
+          value={filters.status}
+          onValueChange={(v) => setFilters((f) => ({ ...f, status: v }))}
+        >
           <SelectTrigger className="w-32">
             <SelectValue placeholder="Status" />
           </SelectTrigger>
@@ -78,13 +154,28 @@ export default function RequestsPage() {
         <Input
           className="w-48"
           placeholder="Filter by model…"
-          value={filterModel}
-          onChange={(e) => { setFilterModel(e.target.value); setPage(1) }}
+          value={filters.model}
+          onChange={(e) => {
+            setFilters((f) => ({ ...f, model: e.target.value }))
+            setPage(1)
+          }}
         />
 
         <Button variant="outline" size="sm" onClick={() => void refetch()} disabled={isFetching}>
           Refresh
         </Button>
+
+        {isFilterActive && (
+          <>
+            <SaveFilterDialog
+              filters={filters}
+              onSave={(name) => createSaved.mutateAsync({ name, filters })}
+            />
+            <Button variant="ghost" size="sm" onClick={clearFilters}>
+              Clear
+            </Button>
+          </>
+        )}
       </div>
 
       {/* Table */}
@@ -93,7 +184,7 @@ export default function RequestsPage() {
           <thead>
             <tr className="border-b bg-gray-50">
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">Time</th>
-              <th className="text-left px-4 py-3 font-medium text-muted-foreground">Provider</th>
+              <th className="text-left px-4 py-3 font-medium text-muted-foreground">Provider · Key</th>
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">Model</th>
               <th className="text-right px-4 py-3 font-medium text-muted-foreground">Tokens</th>
               <th className="text-right px-4 py-3 font-medium text-muted-foreground">Cost</th>
@@ -106,7 +197,7 @@ export default function RequestsPage() {
               Array.from({ length: 8 }).map((_, i) => (
                 <tr key={i} className="border-b last:border-0">
                   <td className="px-4 py-3"><Skeleton className="h-4 w-32" /></td>
-                  <td className="px-4 py-3"><Skeleton className="h-5 w-16" /></td>
+                  <td className="px-4 py-3"><Skeleton className="h-5 w-28" /></td>
                   <td className="px-4 py-3"><Skeleton className="h-4 w-24" /></td>
                   <td className="px-4 py-3 text-right"><Skeleton className="h-4 w-12 ml-auto" /></td>
                   <td className="px-4 py-3 text-right"><Skeleton className="h-4 w-16 ml-auto" /></td>
@@ -129,9 +220,16 @@ export default function RequestsPage() {
                     </Link>
                   </td>
                   <td className="px-4 py-3">
-                    <Badge variant="secondary" className="font-mono text-xs">
-                      {req.provider}
-                    </Badge>
+                    <div className="flex items-center gap-1.5">
+                      <Badge variant="secondary" className="font-mono text-xs">
+                        {req.provider}
+                      </Badge>
+                      {req.provider_key_name ? (
+                        <span className="text-xs text-muted-foreground">
+                          · {req.provider_key_name}
+                        </span>
+                      ) : null}
+                    </div>
                   </td>
                   <td className="px-4 py-3 font-mono text-xs">{req.model}</td>
                   <td className="px-4 py-3 text-right font-mono text-xs">
@@ -176,5 +274,77 @@ export default function RequestsPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+// ── Save filter dialog ─────────────────────────────────────────────────
+
+interface SaveFilterDialogProps {
+  filters: UiFilters
+  onSave: (name: string) => Promise<unknown>
+}
+
+function SaveFilterDialog({ filters, onSave }: SaveFilterDialogProps) {
+  const [open, setOpen] = useState(false)
+  const [name, setName] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+
+  async function handleSave(): Promise<void> {
+    if (!name.trim()) {
+      setError('Name required')
+      return
+    }
+    setSaving(true)
+    setError(null)
+    try {
+      await onSave(name.trim())
+      setName('')
+      setOpen(false)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to save')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="outline" size="sm" className="gap-1.5">
+          <Star className="h-3.5 w-3.5" />
+          Save filter
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Save current filter</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="filter-name">Name</Label>
+            <Input
+              id="filter-name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="e.g. prod errors yesterday"
+              maxLength={80}
+            />
+          </div>
+          <div className="rounded border bg-gray-50 p-3 text-xs text-muted-foreground">
+            <div className="font-medium text-foreground mb-1">Filters being saved:</div>
+            <ul className="space-y-0.5">
+              {filters.provider !== 'all' && <li>provider = {filters.provider}</li>}
+              {filters.status !== 'all' && <li>status = {filters.status}</li>}
+              {filters.model.trim() && <li>model contains &quot;{filters.model}&quot;</li>}
+            </ul>
+          </div>
+          {error && <p className="text-sm text-destructive">{error}</p>}
+          <Button onClick={() => void handleSave()} disabled={saving} className="w-full">
+            {saving ? 'Saving…' : 'Save'}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
   )
 }

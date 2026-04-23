@@ -11,6 +11,7 @@ import { projectsRouter }      from './api/projects.js'
 import { apiKeysRouter }       from './api/apiKeys.js'
 import { providerKeysRouter }  from './api/providerKeys.js'
 import { requestsRouter }      from './api/requests.js'
+import { savedFiltersRouter }  from './api/savedFilters.js'
 import { statsRouter }         from './api/stats.js'
 import { tracesRouter }        from './api/traces.js'
 import { ingestRouter }        from './api/ingest.js'
@@ -69,6 +70,7 @@ app.route('/api/v1/projects',       projectsRouter)
 app.route('/api/v1/api-keys',       apiKeysRouter)
 app.route('/api/v1/provider-keys',  providerKeysRouter)
 app.route('/api/v1/requests',       requestsRouter)
+app.route('/api/v1/saved-filters',  savedFiltersRouter)
 app.route('/api/v1/stats',          statsRouter)
 app.route('/api/v1/traces',         tracesRouter)
 app.route('/api/v1/billing',        billingRouter)
