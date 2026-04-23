@@ -1,5 +1,16 @@
 # @spanlens/sdk changelog
 
+## 0.2.3
+
+Critical fix — long-running traces lost their spans on serverless runtimes.
+
+### Fixed
+- **Race condition** between trace POST and span POST. Previously both fired in parallel; on the server, span ingestion verifies trace ownership by SELECT, which would 404 if the trace INSERT hadn't committed yet. The span end PATCH then matched zero rows (silent failure), so the dashboard showed `0 spans, 0 tokens` for the entire trace. Short routes (<3s) usually got lucky; long-running routes (LLM streaming, agent workflows) systematically lost spans.
+- `createTrace` and `createSpan` now expose an internal `_creationPromise`. Child spans chain their POST after the parent's, and `end()` (both span and trace) waits for its own creation POST before sending PATCH. User code is unaffected — chaining happens during the LLM call wait.
+
+### Why you should upgrade
+If you saw traces in the Spanlens dashboard with `Spans: 0` despite calling `observe()` or `trace.span()`, this fix resolves it. No API changes.
+
 ## 0.2.2
 
 Prompt-version request tagging — completes the round-trip for the Prompts feature.

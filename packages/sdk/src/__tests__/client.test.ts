@@ -233,4 +233,39 @@ describe('observe()', () => {
       await observe(outer, { name: 'inner' }, async () => 'ok')
     })
   })
+
+  it('serializes ingest requests so trace POST lands before child span POST', async () => {
+    // Regression: previously trace POST and span POST raced, and on the
+    // server the span ownership-check would 404 if the trace INSERT hadn't
+    // committed yet. Span end PATCH would then silently fail (UPDATE on 0
+    // rows). For long-running routes the dropped span was permanent.
+    const callOrder: string[] = []
+    const orderMock = vi.fn((url: string, init: RequestInit) => {
+      const tag = `${init.method} ${new URL(url).pathname}`
+      callOrder.push(`start:${tag}`)
+      const delay = url.endsWith('/ingest/traces') ? 50 : 5
+      return new Promise<Response>((resolve) =>
+        setTimeout(() => {
+          callOrder.push(`end:${tag}`)
+          resolve(new Response(JSON.stringify({ success: true }), { status: 201 }))
+        }, delay),
+      )
+    })
+    vi.stubGlobal('fetch', orderMock)
+
+    const client = new SpanlensClient({ apiKey: 'k', baseUrl: 'http://x' })
+    const trace = client.startTrace({ name: 't' })
+    const span = trace.span({ name: 'llm', spanType: 'llm' })
+    await span.end({ totalTokens: 42 })
+    await trace.end({ status: 'completed' })
+
+    const traceEndIdx = callOrder.indexOf('end:POST /ingest/traces')
+    const spanStartIdx = callOrder.indexOf('start:POST /ingest/traces/' + trace.traceId + '/spans')
+    expect(traceEndIdx).toBeGreaterThanOrEqual(0)
+    expect(spanStartIdx).toBeGreaterThan(traceEndIdx)
+
+    const spanEndIdx = callOrder.indexOf('end:POST /ingest/traces/' + trace.traceId + '/spans')
+    const spanPatchStart = callOrder.indexOf('start:PATCH /ingest/spans/' + span.spanId)
+    expect(spanPatchStart).toBeGreaterThan(spanEndIdx)
+  })
 })

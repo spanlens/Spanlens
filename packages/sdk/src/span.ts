@@ -15,6 +15,9 @@ export class SpanHandle {
   readonly parentSpanId: string | undefined
   readonly startedAt: Date
 
+  /** @internal — in-flight POST /ingest/.../spans. end() and child spans chain after this. */
+  _creationPromise: Promise<unknown> = Promise.resolve()
+
   private ended = false
 
   constructor(
@@ -56,19 +59,29 @@ export class SpanHandle {
    * Note: `parent_span_id` has no FK in the DB by design, so out-of-order arrival is fine.
    */
   child(options: SpanOptions): SpanHandle {
-    return createSpan(this.transport, this.traceId, {
-      ...options,
-      parentSpanId: options.parentSpanId ?? this.spanId,
-    })
+    return createSpan(
+      this.transport,
+      this.traceId,
+      {
+        ...options,
+        parentSpanId: options.parentSpanId ?? this.spanId,
+      },
+      this._creationPromise,
+    )
   }
 
   /**
    * End the span. Subsequent calls are ignored.
    * Ingest failures are swallowed by the transport (unless `silent: false`).
+   *
+   * Awaits the span's own creation POST first — otherwise PATCH could race
+   * ahead of INSERT and silently 404 (UPDATE matches zero rows).
    */
   async end(options: EndSpanOptions = {}): Promise<void> {
     if (this.ended) return
     this.ended = true
+
+    await this._creationPromise.catch(() => undefined)
 
     const body: Record<string, unknown> = {
       status: options.status ?? (options.errorMessage ? 'error' : 'completed'),
@@ -88,13 +101,21 @@ export class SpanHandle {
 }
 
 /**
- * Internal helper — creates a span and fires the POST in the background.
+ * Internal helper — creates a span and fires the POST in the background,
+ * chained after the parent's creation POST so the server sees them in order.
  * The returned SpanHandle is usable immediately (id generated client-side).
+ *
+ * Why chain: the server's POST /ingest/traces/:id/spans verifies trace
+ * ownership by SELECTing the trace row. If the trace POST hasn't committed
+ * yet, this 404s and the span is lost. Chaining after the parent's
+ * creationPromise (trace POST or parent span POST) guarantees ordering
+ * without slowing down user code (which is awaiting the LLM call anyway).
  */
 export function createSpan(
   transport: Transport,
   traceId: string,
   options: SpanOptions,
+  parentCreationPromise: Promise<unknown> = Promise.resolve(),
 ): SpanHandle {
   const spanId = crypto.randomUUID()
   const startedAt = new Date()
@@ -111,12 +132,7 @@ export function createSpan(
   if (options.metadata !== undefined) body['metadata'] = options.metadata
   if (options.requestId !== undefined) body['request_id'] = options.requestId
 
-  // Fire-and-forget — don't block caller on network.
-  // Background rejection is silenced to avoid unhandledRejection; the
-  // transport's onError hook still fires for visibility.
-  void transport.post(`/ingest/traces/${traceId}/spans`, body).catch(() => undefined)
-
-  return new SpanHandle(transport, {
+  const handle = new SpanHandle(transport, {
     spanId,
     traceId,
     name: options.name,
@@ -124,4 +140,11 @@ export function createSpan(
     ...(options.parentSpanId !== undefined ? { parentSpanId: options.parentSpanId } : {}),
     startedAt,
   })
+
+  handle._creationPromise = parentCreationPromise
+    .catch(() => undefined)
+    .then(() => transport.post(`/ingest/traces/${traceId}/spans`, body))
+    .catch(() => undefined)
+
+  return handle
 }
