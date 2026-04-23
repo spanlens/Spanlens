@@ -3,6 +3,7 @@ import { Check, Zap } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { AuthNavButtons } from '@/components/layout/auth-nav-buttons'
+import { Footer } from '@/components/layout/footer'
 
 export const metadata = { title: 'Pricing' }
 
@@ -200,6 +201,8 @@ export default function PricingPage() {
           </a>
         </div>
       </section>
+
+      <Footer />
     </div>
   )
 }

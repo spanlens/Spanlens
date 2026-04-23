@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { Zap, BarChart3, GitBranch, DollarSign, ArrowRight, Check } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { AuthNavButtons } from '@/components/layout/auth-nav-buttons'
+import { Footer } from '@/components/layout/footer'
 
 export default function LandingPage() {
   return (
@@ -114,9 +115,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      <footer className="border-t py-8 text-center text-sm text-muted-foreground">
-        © 2026 Spanlens · Built for LLM developers
-      </footer>
+      <Footer />
     </div>
   )
 }

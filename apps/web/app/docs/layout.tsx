@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { Zap } from 'lucide-react'
 import { DocsSidebar } from './_components/sidebar'
 import { AuthNavButtons } from '@/components/layout/auth-nav-buttons'
+import { Footer } from '@/components/layout/footer'
 
 export const metadata = {
   title: 'Docs · Spanlens',
@@ -58,6 +59,8 @@ export default function DocsLayout({ children }: { children: React.ReactNode }) 
           </article>
         </main>
       </div>
+
+      <Footer />
     </div>
   )
 }

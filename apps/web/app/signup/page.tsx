@@ -12,6 +12,7 @@ export default function SignupPage() {
   const router = useRouter()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [consent, setConsent] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [sent, setSent] = useState(false)
@@ -19,6 +20,10 @@ export default function SignupPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError('')
+    if (!consent) {
+      setError('You must agree to the Terms of Service and Privacy Policy to continue.')
+      return
+    }
     setLoading(true)
     const supabase = createClient()
     const { error: authError } = await supabase.auth.signUp({
@@ -83,8 +88,31 @@ export default function SignupPage() {
                     required
                   />
                 </div>
+                <label className="flex items-start gap-2 text-xs text-muted-foreground cursor-pointer">
+                  <input
+                    type="checkbox"
+                    className="mt-0.5 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    checked={consent}
+                    onChange={(e) => setConsent(e.target.checked)}
+                  />
+                  <span>
+                    I agree to the{' '}
+                    <Link href="/terms" target="_blank" className="text-blue-600 hover:underline">
+                      Terms of Service
+                    </Link>{' '}
+                    and{' '}
+                    <Link
+                      href="/privacy"
+                      target="_blank"
+                      className="text-blue-600 hover:underline"
+                    >
+                      Privacy Policy
+                    </Link>
+                    .
+                  </span>
+                </label>
                 {error && <p className="text-sm text-destructive">{error}</p>}
-                <Button type="submit" className="w-full" disabled={loading}>
+                <Button type="submit" className="w-full" disabled={loading || !consent}>
                   {loading ? 'Creating account…' : 'Create account'}
                 </Button>
               </form>
