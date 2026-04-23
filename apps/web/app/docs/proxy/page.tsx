@@ -14,6 +14,18 @@ export default function ProxyDocs() {
         Anthropic / Gemini client at our proxy URL. Works with Python, Ruby, Go, Rust, Java, PHP, or raw HTTP.
       </p>
 
+      <div className="my-6 rounded-lg border-l-4 border-amber-400 bg-amber-50 p-4 text-sm">
+        <p className="m-0 font-semibold text-amber-900">⚡ Use streaming for long requests</p>
+        <p className="mt-1 mb-0 text-amber-900">
+          The proxy enforces a <strong>25-second first-byte timeout</strong>. Any request expected to take
+          longer (large <code>max_tokens</code>, slow models, JSON mode with big outputs) must use{' '}
+          <code>stream: true</code>. Streaming sidesteps the timeout entirely — first byte arrives in
+          ~200ms regardless of total duration. If you need a single JSON object back, accumulate chunks
+          server-side and return the merged string to your client (the &ldquo;internal streaming&rdquo;
+          pattern).
+        </p>
+      </div>
+
       <h2>How it works</h2>
       <p>
         Spanlens exposes a 1:1 compatible proxy at:

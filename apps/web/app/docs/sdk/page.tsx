@@ -15,6 +15,19 @@ export default function SdkReference() {
         match the upstream SDKs 1:1.
       </p>
 
+      <div className="my-6 rounded-lg border-l-4 border-amber-400 bg-amber-50 p-4 text-sm">
+        <p className="m-0 font-semibold text-amber-900">⚡ Use streaming for long requests</p>
+        <p className="mt-1 mb-0 text-amber-900">
+          The Spanlens proxy enforces a <strong>25-second first-byte timeout</strong>. For requests likely
+          to exceed that (large <code>max_tokens</code>, slower models, big JSON outputs), set{' '}
+          <code>stream: true</code> — first byte arrives in ~200ms and total duration is unbounded. If you
+          still want a single JSON object, accumulate chunks server-side with the &ldquo;internal
+          streaming&rdquo; pattern: stream from OpenAI inside <code>observe()</code>, concatenate{' '}
+          <code>delta.content</code>, then return the merged string from your route handler. See the{' '}
+          <a href="#observe">observe()</a> example below.
+        </p>
+      </div>
+
       <h2>Install</h2>
       <CodeBlock language="bash">{`npm install @spanlens/sdk
 # or

@@ -234,6 +234,40 @@
 - [ ] **Streaming 강제** — 프록시에서 비스트리밍 요청도 내부적으로 stream 받아 passthrough
 - [ ] **고객에게 streaming 권장 문서화** — SDK README에 "장시간 요청은 `stream: true` 권장"
 
+### 3G. Proxy Timeout Mitigation — Internal Streaming 캠페인 (Post-launch)
+
+> **배경 (2026-04-23)**: mind-scanner dogfood 도중 `gpt-4o-mini` JSON mode + `max_tokens=2500` 응답이 25초 넘어가서 Edge first-byte timeout 504. 단기 처방으로 mind-scanner 두 라우트를 "internal streaming" 패턴(서버는 `stream:true`로 받아 chunk 누적, 클라이언트엔 단일 JSON 반환)으로 마이그레이션 + `/docs/proxy`, `/docs/sdk` 상단에 streaming 권장 안내 배너 추가 (= **Phase 1 완료**). 아래는 런치 후 데이터 누적 보고 결정할 후속 작업.
+>
+> **왜 런치 전이 아니라 후인가**: 유저 0명 상태에서 더 깊은 인프라 투자(Phase 2~4)는 over-engineering. 실제 timeout 불만이 누적되어야 비용 대비 효과 판단 가능.
+
+#### 3G.1. Phase 2 — 모니터링 (런치 후 ~3개월, 트리거: 첫 유료 유저 진입)
+- [ ] `requests` 테이블에 `timeout_504` 카운터 view 추가 — provider/model별 504 빈도 집계
+- [ ] `/admin` 또는 내부 메트릭 대시보드에 "최근 7일 504 by (provider, model, customer)" 패널
+- [ ] 유저 피드백 채널(이메일/Slack/GitHub Issues) 에서 "timeout" 키워드 트래킹 — 3건+ 누적 시 Phase 3 착수 검토
+- [ ] 평균 응답 시간 P95/P99 모델별 dashboard 패널 — 25초 근접 모델 사전 식별
+
+#### 3G.2. Phase 3 — Node Runtime 재시도 (트리거: 504 1%+ 또는 timeout 불만 5건+)
+> 3F.2와 통합. mind-scanner 케이스 데이터를 트리거 카운트에 포함.
+- [ ] 3F.1 트리거 충족 시 3F.2 구현 절차 그대로 진행
+- [ ] **이전 실패(commits efc3fde→2b57b01) 회피 체크리스트**:
+  - [ ] `hono/vercel`의 `handle()` 어댑터 사용 (직접 `app.fetch` export 금지 — 이게 지난번 깨진 원인)
+  - [ ] 로컬 `vercel dev` 에서 streaming 회귀 테스트 (`scripts/test-e2e.ts`) 100% 그린 확인 후 배포
+  - [ ] Preview URL 에서 `/proxy/*` + `/api/*` + `/cron/*` 모두 smoke test
+  - [ ] Edge 롤백 PR 사전 준비 (revert 1줄)
+
+#### 3G.3. Phase 4 — Fallback Model Auto-retry (트리거: Phase 3 후에도 timeout 잔존 또는 multi-provider 고객 등장)
+> Portkey/OpenRouter가 차별점으로 미는 패턴. 우리 USP는 아니지만 "신뢰할 수 있는 인프라" 보강.
+- [ ] `provider_keys` 또는 새 `routing_rules` 테이블에 fallback chain 정의 (예: `gpt-4o → gpt-4o-mini → claude-haiku`)
+- [ ] 프록시에서 504/429/5xx 발생 시 chain 다음 모델로 자동 retry (한 번만, 재귀 방지)
+- [ ] 응답 헤더에 `X-Spanlens-Fallback-Used: gpt-4o-mini` 노출 — 고객 디버깅용
+- [ ] 대시보드 요청 상세에 "fallback path" 시각화
+- [ ] **opt-in only** (default off) — 묵시적 모델 변경은 청구·품질 양쪽 surprise 큼
+
+#### 3G.4. 완료 기준 / 비-목표
+- [x] Phase 1 (mind-scanner internal streaming + docs 안내) — 2026-04-23 완료
+- [ ] Phase 2~4는 데이터/트리거 기반 — 추측 구현 금지
+- ❌ **모든 라우트를 자동 internal-streaming으로 변환하는 magic middleware** — 명시적 선택이 더 단순. SDK README + docs 배너로 충분.
+
 ---
 
 ## Phase 4 — Public Launch (Week 13~14, ~2026.08.03)
