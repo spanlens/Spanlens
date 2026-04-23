@@ -19,6 +19,19 @@ interface AuthNavButtonsProps {
  * The check is a single cookie read + decode; no DB roundtrip.
  */
 export async function AuthNavButtons({ signupLabel = 'Start free' }: AuthNavButtonsProps) {
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+    return (
+      <>
+        <Link href="/login">
+          <Button variant="outline" size="sm">Sign in</Button>
+        </Link>
+        <Link href="/signup">
+          <Button size="sm">{signupLabel}</Button>
+        </Link>
+      </>
+    )
+  }
+
   const supabase = await createClient()
   const {
     data: { user },

@@ -293,6 +293,68 @@ export default function DashboardPage() {
           )}
         </div>
 
+        {/* 2-col: Top prompts + Models in use */}
+        <div className="grid grid-cols-2 border-b border-border">
+          <div className="px-[22px] py-[18px] border-r border-border">
+            <div className="flex items-center mb-3">
+              <span className="text-[14px] font-medium">Top prompts · by spend</span>
+              <span className="flex-1" />
+              <Link href="/prompts" className="font-mono text-[10.5px] text-text-muted tracking-[0.03em]">All prompts →</Link>
+            </div>
+            {recommendations.isLoading ? (
+              <div className="space-y-2.5">
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <div key={i} className="flex items-center gap-2.5 py-2.5 border-b border-border last:border-0">
+                    <Skeleton className="h-3 w-4" />
+                    <div className="flex-1 space-y-1.5">
+                      <Skeleton className="h-3 w-32" />
+                      <Skeleton className="h-1.5 w-full" />
+                    </div>
+                    <Skeleton className="h-3 w-12" />
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="font-mono text-[12px] text-text-faint">Prompt spend tracking coming soon.</p>
+            )}
+          </div>
+          <div className="px-[22px] py-[18px]">
+            <div className="flex items-center mb-3">
+              <span className="text-[14px] font-medium">Models in use</span>
+              <span className="flex-1" />
+              <span className="font-mono text-[10.5px] text-text-muted tracking-[0.03em]">Compare →</span>
+            </div>
+            {isLoading || !o ? (
+              <div className="space-y-2">
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <div key={i} className="grid py-2.5 border-b border-border last:border-0" style={{ gridTemplateColumns: '1fr 80px 90px 70px', gap: 10 }}>
+                    <Skeleton className="h-3 w-28" />
+                    <Skeleton className="h-3 w-12 ml-auto" />
+                    <Skeleton className="h-3 w-14 ml-auto" />
+                    <Skeleton className="h-3 w-10 ml-auto" />
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div>
+                <div className="grid font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint pb-2 border-b border-border" style={{ gridTemplateColumns: '1fr 80px 90px 70px', gap: 10 }}>
+                  <span>Model</span>
+                  <span className="text-right">Requests</span>
+                  <span className="text-right">Cost · total</span>
+                  <span className="text-right">Avg lat</span>
+                </div>
+                <div className="py-2 border-b border-border grid items-center font-mono" style={{ gridTemplateColumns: '1fr 80px 90px 70px', gap: 10 }}>
+                  <span className="text-[12.5px] text-text">All models</span>
+                  <span className="text-[12px] text-text-muted text-right">{o.totalRequests.toLocaleString()}</span>
+                  <span className="text-[12px] text-text font-medium text-right">{fmtCost(o.totalCostUsd)}</span>
+                  <span className="text-[12px] text-text-muted text-right">{o.avgLatencyMs}ms</span>
+                </div>
+                <p className="font-mono text-[10.5px] text-text-faint mt-3">Per-model breakdown coming soon.</p>
+              </div>
+            )}
+          </div>
+        </div>
+
         {/* Bottom 2-col: Alerts + Recommendations */}
         <div className="grid grid-cols-2 border-b border-border">
           {/* Active alerts */}
@@ -371,6 +433,39 @@ export default function DashboardPage() {
               </div>
             )}
           </div>
+        </div>
+
+        {/* Activity feed */}
+        <div className="px-[22px] py-[18px]">
+          <div className="flex items-center mb-3">
+            <span className="text-[14px] font-medium">Recent activity</span>
+            <span className="flex-1" />
+            <span className="font-mono text-[10.5px] text-text-muted tracking-[0.03em]">Audit log →</span>
+          </div>
+          {[
+            { at: '09:06', who: 'you',    kind: 'prompt',  msg: 'promoted support_reply · v6 → v7' },
+            { at: '08:42', who: 'system', kind: 'alert',   msg: 'alert fired · PII leak · /api/support/reply' },
+            { at: '08:12', who: 'you',    kind: 'key',     msg: 'rotated API key · ingest-worker-2' },
+            { at: '06:30', who: 'system', kind: 'anomaly', msg: 'token spike · summarize_tickets · 3.1× baseline' },
+          ].map((e, i, arr) => (
+            <div
+              key={i}
+              className={cn('grid items-baseline py-2', i < arr.length - 1 && 'border-b border-border')}
+              style={{ gridTemplateColumns: '56px 80px 1fr', gap: 14 }}
+            >
+              <span className="font-mono text-[10.5px] text-text-faint">{e.at}</span>
+              <span className={cn(
+                'font-mono text-[9px] uppercase tracking-[0.04em] px-[5px] py-[1px] rounded-[3px] border self-center',
+                e.kind === 'alert' || e.kind === 'anomaly'
+                  ? 'text-accent border-accent-border'
+                  : 'text-text-faint border-border',
+              )}>{e.kind}</span>
+              <div className="text-[12.5px] text-text leading-snug">
+                <span className="font-mono text-[11.5px] text-text-muted mr-2">{e.who}</span>
+                {e.msg}
+              </div>
+            </div>
+          ))}
         </div>
       </div>
     </div>

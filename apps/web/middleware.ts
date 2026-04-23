@@ -15,6 +15,11 @@ import { NextResponse, type NextRequest } from 'next/server'
 const PUBLIC_PATHS = ['/', '/pricing', '/login', '/signup', '/auth/', '/terms', '/privacy']
 
 export async function middleware(request: NextRequest) {
+  // Skip auth middleware when Supabase env vars are absent (local preview without .env.local)
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+    return NextResponse.next()
+  }
+
   const requestHeaders = new Headers(request.headers)
   let supabaseResponse = NextResponse.next({
     request: { headers: requestHeaders },

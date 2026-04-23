@@ -3,6 +3,10 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
+import { useStatsOverview } from '@/lib/queries/use-stats'
+import { useAnomalies } from '@/lib/queries/use-anomalies'
+import { useAlerts } from '@/lib/queries/use-alerts'
+import { useRecommendations } from '@/lib/queries/use-recommendations'
 
 /* ── Logo mark (SVG lens ring + wordmark) ── */
 function LogoMark() {
@@ -62,6 +66,23 @@ const NAV_GROUPS = [
 export function Sidebar() {
   const pathname = usePathname()
   const router = useRouter()
+  const overview = useStatsOverview()
+  const anomalies = useAnomalies()
+  const alerts = useAlerts()
+  const recommendations = useRecommendations()
+
+  const reqCount = overview.data?.totalRequests
+  const anomalyCount = (anomalies.data?.data ?? []).length
+  const alertCount = (alerts.data ?? []).filter((a) => a.is_active).length
+  const savingsTotal = (recommendations.data ?? []).reduce((s, r) => s + r.estimatedMonthlySavingsUsd, 0)
+
+  const BADGES: Record<string, { label?: string; warn?: boolean }> = {
+    '/requests':   reqCount != null ? { label: reqCount > 999 ? (reqCount / 1000).toFixed(0) + 'k' : String(reqCount) } : {},
+    '/anomalies':  anomalyCount > 0 ? { label: String(anomalyCount), warn: true } : {},
+    '/security':   {},
+    '/recommendations': savingsTotal > 0 ? { label: '$' + (savingsTotal >= 1000 ? (savingsTotal / 1000).toFixed(0) + 'k' : savingsTotal.toFixed(0)) } : {},
+    '/alerts':     alertCount > 0 ? { label: String(alertCount), warn: true } : {},
+  }
 
   async function handleSignOut() {
     const supabase = createClient()
@@ -98,6 +119,7 @@ export function Sidebar() {
             )}
             {group.items.map(({ href, label }) => {
               const active = pathname === href || pathname.startsWith(href + '/')
+              const badge = BADGES[href]
               return (
                 <Link
                   key={href}
@@ -110,7 +132,17 @@ export function Sidebar() {
                       : 'text-text-muted hover:bg-bg-muted hover:text-text border-transparent',
                   )}
                 >
-                  {label}
+                  <span>{label}</span>
+                  {badge?.label && (
+                    <span className={cn(
+                      'font-mono text-[10px] px-[6px] py-[1px] rounded-[3px] border',
+                      badge.warn
+                        ? 'bg-accent-bg text-accent border-accent-border'
+                        : 'bg-bg text-text-faint border-border',
+                    )}>
+                      {badge.label}
+                    </span>
+                  )}
                 </Link>
               )
             })}

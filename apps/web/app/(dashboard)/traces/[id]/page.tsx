@@ -437,7 +437,8 @@ export default function TraceDetailPage({ params }: { params: { id: string } }) 
           </div>
 
           {/* Gantt */}
-          <div className="overflow-auto flex-1 min-h-0 p-[22px]">
+          <div className="overflow-auto flex-1 min-h-0">
+            <div className="p-[22px]">
             <Gantt
               traceStartedAt={trace.started_at}
               traceEndedAt={trace.ended_at}
@@ -445,6 +446,30 @@ export default function TraceDetailPage({ params }: { params: { id: string } }) 
               onSelectSpan={setSelectedSpan}
               selectedSpanId={selectedSpan?.id ?? null}
             />
+
+            {/* Critical path summary footer */}
+            {bottleneck && trace.duration_ms && (
+              <div className="mt-4 px-4 py-3.5 rounded-md border border-accent-border bg-accent-bg flex items-center gap-3.5">
+                <div className="w-8 h-8 rounded-full border-[1.5px] border-accent flex items-center justify-center font-mono text-[11px] text-accent font-medium shrink-0">
+                  CP
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-accent mb-1">Critical path</div>
+                  <div className="text-[13px] text-text leading-relaxed">
+                    <strong>{bottleneckPct}%</strong> of this trace&apos;s {fmtMs(trace.duration_ms)} is spent in{' '}
+                    <strong>{bottleneck.name}</strong> ({fmtMs(bottleneck.duration_ms)}) —{' '}
+                    {bottleneck.span_type === 'llm' ? 'an LLM call' : 'a ' + bottleneck.span_type + ' span'} running above p95 for this span.
+                  </div>
+                </div>
+                <button
+                  onClick={() => setSelectedSpan(bottleneck)}
+                  className="font-mono text-[10.5px] px-3 py-[5px] rounded-[4px] bg-text text-bg uppercase tracking-[0.04em] shrink-0 hover:opacity-90 transition-opacity"
+                >
+                  Open span →
+                </button>
+              </div>
+            )}
+            </div>
           </div>
         </div>
 
