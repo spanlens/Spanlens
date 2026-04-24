@@ -139,24 +139,9 @@ export default function TracesPage() {
             >{l}</button>
           ))}
         </div>
-        <button
-          type="button"
-          className="flex items-center gap-1.5 px-[10px] py-[4px] rounded-[5px] border border-border-strong bg-bg-elev font-mono text-[11px] text-text tracking-[0.03em]"
-        >
-          <span className="text-text-faint">☰</span> views · <span className="text-text-muted">all traces</span> ⌄
-        </button>
-        {['agent · all ⌄', 'duration ≥ — ⌄', 'cost ≥ — ⌄', 'last 24h ⌄'].map((label) => (
-          <span key={label} className="font-mono text-[11px] text-text-muted px-[9px] py-[4px] border border-border rounded-[5px]">
-            {label}
-          </span>
-        ))}
-        <span className="font-mono text-[11px] text-text-faint px-[9px] py-[4px]">+ filter</span>
         <span className="flex-1" />
         <span className="font-mono text-[11px] text-text-faint">
           Showing {filtered.length.toLocaleString()} of {meta.total.toLocaleString()}
-        </span>
-        <span className="font-mono text-[11px] text-text px-[10px] py-[4px] border border-border rounded-[5px] bg-bg-elev cursor-pointer">
-          Export ⌄
         </span>
       </div>
 

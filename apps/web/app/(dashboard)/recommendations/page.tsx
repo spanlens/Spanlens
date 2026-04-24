@@ -57,18 +57,9 @@ export default function RecommendationsPage() {
       <Topbar
         crumbs={[{ label: 'Workspace', href: '/dashboard' }, { label: 'Savings' }]}
         right={
-          <div className="flex items-center gap-2">
-            <span className="font-mono text-[11px] text-text-muted">Scope: <span className="text-text">prod</span></span>
-            <span className="font-mono text-[11px] text-text-muted px-[9px] py-[4px] border border-border rounded-[5px] cursor-pointer hover:text-text transition-colors">
-              Last 30d
-            </span>
-            <span className="font-mono text-[11px] text-text-muted px-[9px] py-[4px] border border-border rounded-[5px] cursor-pointer hover:text-text transition-colors">
-              Export
-            </span>
-            <span className="font-mono text-[11px] text-bg px-[12px] py-[4px] rounded-[5px] bg-text font-medium cursor-pointer hover:opacity-90 transition-opacity">
-              Re-scan →
-            </span>
-          </div>
+          <span className="font-mono text-[11px] text-text-muted">
+            Analysis window · <span className="text-text">7d</span>
+          </span>
         }
       />
 
@@ -90,13 +81,8 @@ export default function RecommendationsPage() {
             <span className="text-good">{highConf.length}</span> high-confidence
           </div>
           {highConf.length > 0 && (
-            <div className="flex gap-2">
-              <span className="font-mono text-[11px] text-bg px-[12px] py-[5px] rounded-[5px] bg-text font-medium cursor-pointer hover:opacity-90 transition-opacity">
-                Apply all high-confidence · {fmtUsd(highConf.reduce((s, r) => s + r.estimatedMonthlySavingsUsd, 0))}
-              </span>
-              <span className="font-mono text-[11px] text-text-muted px-[12px] py-[5px] rounded-[5px] border border-border cursor-pointer hover:text-text transition-colors">
-                Review each
-              </span>
+            <div className="font-mono text-[11px] text-good">
+              {fmtUsd(highConf.reduce((s, r) => s + r.estimatedMonthlySavingsUsd, 0))} / mo from high-confidence recommendations alone
             </div>
           )}
         </div>
@@ -116,26 +102,15 @@ export default function RecommendationsPage() {
         ))}
       </div>
 
-      {/* Kind filters */}
+      {/* Scope row — only model-swap recs exist today */}
       <div className="flex items-center gap-2 px-[22px] py-[10px] border-b border-border shrink-0">
-        <span className="font-mono text-[10px] text-text-faint uppercase tracking-[0.05em]">Kind</span>
-        {[`All · ${visible.length}`, 'swap', 'prompt', 'cache', 'batch', 'tokens'].map((f, i) => (
-          <span
-            key={f}
-            className={cn(
-              'font-mono text-[11px] px-[9px] py-[3px] rounded-[4px] border transition-colors cursor-pointer',
-              i === 0
-                ? 'border-border-strong bg-bg-elev text-text'
-                : 'border-border text-text-muted hover:text-text',
-            )}
-          >
-            {f}
-          </span>
-        ))}
+        <span className="font-mono text-[10px] text-text-faint uppercase tracking-[0.05em]">Type</span>
+        <span className="font-mono text-[11px] text-text px-[9px] py-[3px] border border-border-strong bg-bg-elev rounded-[4px]">
+          model swap · {visible.length}
+        </span>
         <span className="flex-1" />
-        <span className="font-mono text-[10px] text-text-faint uppercase tracking-[0.05em]">Sort</span>
-        <span className="font-mono text-[11px] text-text px-[9px] py-[3px] border border-border-strong rounded-[4px] bg-bg-elev cursor-pointer">
-          savings ⌄
+        <span className="font-mono text-[10px] text-text-faint">
+          Sorted by estimated monthly savings · desc
         </span>
       </div>
 

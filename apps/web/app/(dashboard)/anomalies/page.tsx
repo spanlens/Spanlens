@@ -277,10 +277,7 @@ export default function AnomaliesPage() {
           </button>
         ))}
         <span className="flex-1" />
-        <span className="font-mono text-[10px] text-text-faint uppercase tracking-[0.05em]">Sort</span>
-        <span className="font-mono text-[11px] text-text px-[9px] py-[3px] border border-border-strong rounded-[4px] bg-bg-elev cursor-pointer">
-          severity ⌄
-        </span>
+        <span className="font-mono text-[10px] text-text-faint">Sorted by severity · σ desc</span>
       </div>
 
       {/* Content */}

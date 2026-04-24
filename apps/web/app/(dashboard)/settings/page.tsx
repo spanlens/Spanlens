@@ -1,6 +1,6 @@
 'use client'
 import { useCallback, useEffect, useState } from 'react'
-import { Plus, RotateCcw, Trash2, Copy, Check } from 'lucide-react'
+import { Plus, RotateCcw, Trash2, Check } from 'lucide-react'
 import { initializePaddle, type Paddle } from '@paddle/paddle-js'
 import { cn, formatDate } from '@/lib/utils'
 import { Topbar } from '@/components/layout/topbar'
@@ -41,7 +41,7 @@ import type { BillingPlan } from '@/lib/queries/types'
 type TabId =
   | 'general' | 'members' | 'api-keys' | 'audit-log'
   | 'billing' | 'plan' | 'invoices'
-  | 'integrations' | 'destinations' | 'webhooks' | 'opentelemetry'
+  | 'integrations'
   | 'profile' | 'notifications' | 'preferences'
 
 interface NavItem { id: TabId; label: string; crumbs: { label: string }[] }
@@ -70,9 +70,6 @@ const NAV: { group: string; items: NavItem[] }[] = [
     group: 'Connect',
     items: [
       { id: 'integrations',  label: 'Integrations',  crumbs: [{ label: 'Workspace' }, { label: 'Settings' }, { label: 'Integrations' }] },
-      { id: 'destinations',  label: 'Destinations',  crumbs: [{ label: 'Workspace' }, { label: 'Settings' }, { label: 'Destinations' }] },
-      { id: 'webhooks',      label: 'Webhooks',       crumbs: [{ label: 'Workspace' }, { label: 'Settings' }, { label: 'Webhooks' }] },
-      { id: 'opentelemetry', label: 'OpenTelemetry',  crumbs: [{ label: 'Workspace' }, { label: 'Settings' }, { label: 'OpenTelemetry' }] },
     ],
   },
   {
@@ -205,33 +202,28 @@ function GeneralTab() {
         </FormRow>
       </Section>
 
-      <Section title="Locale & data" description="Applies to UI and stored spans" className="mb-5">
-        <FormRow label="Time zone" hint="All timestamps in the UI are rendered in this zone.">
-          <div className="font-mono text-[12.5px] text-text-muted">Asia/Seoul · UTC+9</div>
+      <Section title="Data retention" description="Log retention is determined by your plan" className="mb-5">
+        <FormRow label="Current retention">
+          <div className="font-mono text-[12.5px] text-text-muted">
+            {org?.plan === 'team' ? '90 days'
+              : org?.plan === 'starter' ? '30 days'
+              : org?.plan === 'enterprise' ? '1 year'
+              : '7 days'}
+            <span className="ml-2 text-text-faint">· {org?.plan ?? 'free'} plan</span>
+          </div>
         </FormRow>
-        <FormRow label="Retention window" hint="Spans older than this are evicted to cold archive.">
-          <div className="flex items-center gap-2">
-            <NativeInput defaultValue="30" className="w-20 font-mono text-[12.5px]" />
-            <span className="font-mono text-[11.5px] text-text-faint">days</span>
+        <FormRow label="Timestamps" hint="All timestamps in the UI use your browser's local timezone.">
+          <div className="font-mono text-[12.5px] text-text-muted">
+            {Intl.DateTimeFormat().resolvedOptions().timeZone}
           </div>
         </FormRow>
       </Section>
 
-      <Section title="Danger zone" description="These actions cannot be undone" danger className="mb-5">
-        <div className="divide-y divide-accent-border/50">
-          {[
-            { label: 'Transfer ownership', sub: 'Hand this workspace to another owner. You remain an admin.', action: 'Transfer →' },
-            { label: 'Purge ingested data', sub: 'Drop every span, trace, and prompt version. Cannot be recovered.', action: 'Purge data' },
-            { label: 'Delete workspace', sub: 'Permanently delete this workspace. Billing stops at end of cycle.', action: 'Delete workspace' },
-          ].map((d) => (
-            <div key={d.label} className="flex items-center justify-between px-6 py-4">
-              <div>
-                <div className="text-[13px] font-medium text-text">{d.label}</div>
-                <div className="text-[12px] text-text-muted mt-0.5">{d.sub}</div>
-              </div>
-              <GhostBtn danger className="shrink-0 ml-6">{d.action}</GhostBtn>
-            </div>
-          ))}
+      <Section title="Delete workspace" description="Contact support to delete your workspace" className="mb-5">
+        <div className="px-6 py-4 text-[13px] text-text-muted leading-relaxed">
+          Workspace deletion requires verification and isn&apos;t available in the self-service UI yet.
+          Email <span className="font-mono text-text">support@spanlens.io</span> from the owner address
+          and we&apos;ll purge data and cancel billing within one business day.
         </div>
       </Section>
     </div>
@@ -866,235 +858,55 @@ function InvoicesTab() {
 
 // ─── INTEGRATIONS tab ─────────────────────────────────────────────────────────
 
-const INTEGRATIONS = [
-  { name: 'Slack',       glyph: 'SL', tag: 'notify', note: '#llm-ops · #oncall',           connected: true  },
-  { name: 'PagerDuty',   glyph: 'PD', tag: 'notify', note: 'service · llm-platform · P3',  connected: true  },
-  { name: 'Email',       glyph: '@',  tag: 'notify', note: '3 recipients',                 connected: true  },
-  { name: 'Teams',       glyph: 'MS', tag: 'notify', note: '—',                            connected: false },
-  { name: 'Amazon S3',   glyph: 'S3', tag: 'export', note: 's3://acme-lens-archive',       connected: true  },
-  { name: 'BigQuery',    glyph: 'BQ', tag: 'export', note: 'acme-warehouse.llm.spans',     connected: true  },
-  { name: 'Snowflake',   glyph: 'SF', tag: 'export', note: '—',                            connected: false },
-  { name: 'Datadog',     glyph: 'DD', tag: 'export', note: 'span-forward · errors only',   connected: true  },
-  { name: 'GitHub',      glyph: 'GH', tag: 'link',   note: 'acme/app · auto-open anomaly', connected: true  },
+const SUPPORTED_CHANNELS = [
+  { name: 'Email',   glyph: '@',  desc: 'SMTP delivery to any address' },
+  { name: 'Slack',   glyph: 'SL', desc: 'Incoming webhook URL' },
+  { name: 'Discord', glyph: 'DC', desc: 'Incoming webhook URL' },
+]
+
+const PLANNED = [
+  'PagerDuty · on-call escalation',
+  'Microsoft Teams webhook',
+  'Amazon S3 span archive',
+  'BigQuery / Snowflake / Datadog forwarding',
+  'GitHub issue auto-link for anomalies',
 ]
 
 function IntegrationsTab() {
-  const connectedCount = INTEGRATIONS.filter((i) => i.connected).length
   return (
     <div className="max-w-[980px]">
       <TabHeader
         title="Integrations"
-        description="Send alerts out. Stream spans to your warehouse. Link anomalies to issues."
-        action={<Hint>{connectedCount} connected · {INTEGRATIONS.length - connectedCount} available</Hint>}
+        description="Notification channels wire into alert rules on the Alerts page."
       />
-      <div className="font-mono text-[10px] text-text-faint uppercase tracking-[0.05em] mb-3">Notifications</div>
-      <div className="grid grid-cols-3 gap-3 mb-6">
-        {INTEGRATIONS.filter((i) => i.tag === 'notify').map((it) => (
-          <IntCard key={it.name} it={it} />
-        ))}
-      </div>
-      <div className="font-mono text-[10px] text-text-faint uppercase tracking-[0.05em] mb-3">Data sinks · warehouses · links</div>
-      <div className="grid grid-cols-3 gap-3 mb-5">
-        {INTEGRATIONS.filter((i) => i.tag !== 'notify').map((it) => (
-          <IntCard key={it.name} it={it} />
-        ))}
-      </div>
-    </div>
-  )
-}
 
-function IntCard({ it }: { it: (typeof INTEGRATIONS)[number] }) {
-  return (
-    <div className={cn('border rounded-xl p-4 flex flex-col gap-3 min-h-[120px]', it.connected ? 'border-border-strong bg-bg-elev' : 'border-border bg-bg')}>
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2.5">
-          <div className={cn('w-8 h-8 rounded-lg border border-border flex items-center justify-center font-mono text-[11px] font-bold', it.connected ? 'bg-text text-bg' : 'bg-bg-muted text-text-muted')}>
-            {it.glyph}
-          </div>
-          <span className="text-[13.5px] font-medium text-text">{it.name}</span>
-        </div>
-        <MonoPill variant={it.connected ? 'good' : 'faint'} dot>{it.connected ? 'connected' : 'available'}</MonoPill>
-      </div>
-      <div className="font-mono text-[11px] text-text-muted flex-1">{it.note !== '—' ? it.note : <span className="text-text-faint">no setup yet</span>}</div>
-      <div className="flex items-center justify-between">
-        <span className="font-mono text-[10px] text-text-faint uppercase tracking-[0.04em]">{it.tag}</span>
-        <span className={cn('font-mono text-[11px]', it.connected ? 'text-text' : 'text-accent')}>{it.connected ? 'Manage →' : 'Connect →'}</span>
-      </div>
-    </div>
-  )
-}
-
-// ─── DESTINATIONS tab ─────────────────────────────────────────────────────────
-
-function DestinationsTab() {
-  return (
-    <div className="max-w-[980px]">
-      <TabHeader
-        title="Destinations"
-        description="Where your data goes when it leaves Spanlens. Destinations stream continuously."
-        action={<PrimaryBtn>+ New destination</PrimaryBtn>}
-      />
-      <Section title="Destinations" className="mb-5">
-        <div className="divide-y divide-border">
-          {[
-            { name: 'Cold archive · S3',   uri: 's3://acme-lens-archive/spans/', filter: 'all spans · after 30d', rate: '3.2 GB / day', active: true  },
-            { name: 'Warehouse · BigQuery',uri: 'acme-warehouse.llm.spans',      filter: 'sampled · 10%',         rate: '620 MB / day', active: true  },
-            { name: 'SIEM · Datadog',      uri: 'intake.logs.datadoghq.com',     filter: 'errors + audit only',   rate: '84 MB / day',  active: true  },
-            { name: 'Research · S3',       uri: 's3://acme-ds-lens-raw/',        filter: 'full spans · debug',    rate: '—',            active: false },
-          ].map((d) => (
-            <div key={d.name} className="grid grid-cols-[1.6fr_1fr_1fr_120px_40px] gap-4 px-6 py-4 items-center">
-              <div>
-                <div className={cn('text-[13px] font-medium', !d.active && 'text-text-faint')}>{d.name}</div>
-                <div className="font-mono text-[11px] text-text-muted mt-0.5 truncate">{d.uri}</div>
+      <Section title="Supported today" className="mb-5">
+        <div className="grid grid-cols-3 gap-3 p-6">
+          {SUPPORTED_CHANNELS.map((c) => (
+            <div key={c.name} className="border border-border-strong bg-bg-elev rounded-xl p-4 min-h-[110px] flex flex-col gap-2">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg border border-border bg-text text-bg flex items-center justify-center font-mono text-[11px] font-bold">
+                  {c.glyph}
+                </div>
+                <span className="text-[13.5px] font-medium text-text">{c.name}</span>
               </div>
-              <div>
-                <div className="font-mono text-[10px] text-text-faint uppercase tracking-[0.04em]">filter</div>
-                <div className="font-mono text-[11px] text-text-muted mt-1">{d.filter}</div>
-              </div>
-              <div>
-                <div className="font-mono text-[10px] text-text-faint uppercase tracking-[0.04em]">rate</div>
-                <div className={cn('font-mono text-[11px] mt-1', d.active ? 'font-medium text-text' : 'text-text-faint')}>{d.rate}</div>
-              </div>
-              <MonoPill variant={d.active ? 'good' : 'faint'} dot>{d.active ? 'active' : 'paused'}</MonoPill>
-              <button type="button" className="font-mono text-[14px] text-text-faint hover:text-text text-right">⋯</button>
+              <div className="font-mono text-[11px] text-text-muted flex-1">{c.desc}</div>
             </div>
           ))}
         </div>
-      </Section>
-      <Section title="Redaction policy" description="Applied to every destination" className="mb-5">
-        <FormRow label="Default PII redaction" hint="Email, phone, credit cards replaced with ⟨redacted⟩.">
-          <div className="flex items-center gap-2"><Toggle on /><span className="font-mono text-[11.5px] text-text-muted">on egress only</span></div>
-        </FormRow>
-      </Section>
-    </div>
-  )
-}
-
-// ─── WEBHOOKS tab ─────────────────────────────────────────────────────────────
-
-function WebhooksTab() {
-  const hooks = [
-    { url: 'https://hooks.acme.internal/lens/alerts',   ev: 'alert.*',    on: true,  code: 200, ms: 41   },
-    { url: 'https://ops.acme.com/webhooks/span-audit',  ev: 'span.leaked', on: true,  code: 200, ms: 88   },
-    { url: 'https://svc-a.acme.com/lens',               ev: '*',           on: false, code: 502, ms: 2100 },
-  ]
-  return (
-    <div className="max-w-[980px]">
-      <TabHeader
-        title="Webhooks"
-        description="POST JSON to your endpoints on subscribed events. Retries up to 6 times with exponential backoff."
-        action={<PrimaryBtn>+ New webhook</PrimaryBtn>}
-      />
-      <Section title="Endpoints" className="mb-5">
-        <div className="divide-y divide-border">
-          {hooks.map((w, i) => {
-            const ok = w.code >= 200 && w.code < 300
-            return (
-              <div key={i} className={cn('grid grid-cols-[1.8fr_160px_110px_80px_60px] gap-4 px-6 py-4 items-center', !ok && 'bg-accent-bg/30')}>
-                <div className="min-w-0">
-                  <div className="font-mono text-[12px] text-text truncate">{w.url}</div>
-                </div>
-                <MonoPill variant="accent" dot>{w.ev}</MonoPill>
-                <span className={cn('font-mono text-[11.5px] font-medium', ok ? 'text-good' : 'text-accent')}>● HTTP {w.code}</span>
-                <span className="font-mono text-[11px] text-text-muted">{w.ms}ms</span>
-                <Toggle on={w.on} />
-              </div>
-            )
-          })}
+        <div className="px-6 pb-4">
+          <a href="/alerts" className="font-mono text-[12px] text-accent hover:opacity-80 transition-opacity">
+            Configure channels on the Alerts page →
+          </a>
         </div>
       </Section>
-      <Section title="Security" description="Applies to every endpoint" className="mb-5">
-        <FormRow label="Signing secret" hint="Included in X-Spanlens-Signature (HMAC-SHA256) on every POST.">
-          <div className="flex items-center gap-2">
-            <div className="font-mono text-[12px] text-text px-3 py-2 border border-border-strong rounded-md bg-bg-elev">whsec_live_••••••••e8</div>
-            <GhostBtn>Reveal</GhostBtn>
-            <GhostBtn>Rotate</GhostBtn>
-          </div>
-        </FormRow>
-        <FormRow label="Retry policy" hint="Exponential backoff 5s → 1h. Max 6 attempts.">
-          <div className="flex items-center gap-2"><Toggle on /><span className="font-mono text-[11.5px] text-text-muted">enabled · max 6 attempts</span></div>
-        </FormRow>
-      </Section>
-    </div>
-  )
-}
 
-// ─── OPENTELEMETRY tab ────────────────────────────────────────────────────────
-
-function OTelTab() {
-  const [copied, setCopied] = useState<string | null>(null)
-  function copy(key: string, val: string) {
-    void navigator.clipboard.writeText(val)
-    setCopied(key)
-    setTimeout(() => setCopied(null), 1500)
-  }
-  return (
-    <div className="max-w-[980px]">
-      <TabHeader
-        title="OpenTelemetry"
-        description="Send spans from any OTel-compatible SDK. Spanlens accepts OTLP/HTTP and OTLP/gRPC."
-      />
-      <Section title="Endpoint" className="mb-5">
-        {[
-          { label: 'OTLP/HTTP', val: 'https://ingest.spanlens.io/otlp/v1/traces', key: 'http' },
-          { label: 'OTLP/gRPC', val: 'grpcs://ingest.spanlens.io:4317',           key: 'grpc' },
-        ].map((row) => (
-          <FormRow key={row.key} label={row.label}>
-            <div className="flex items-center gap-2 flex-1 max-w-[520px]">
-              <div className="flex-1 font-mono text-[12px] text-text px-3 py-2 border border-border-strong rounded-md bg-bg-elev truncate">{row.val}</div>
-              <button
-                type="button"
-                onClick={() => copy(row.key, row.val)}
-                className="p-2 rounded hover:bg-bg-muted text-text-faint hover:text-text transition-colors"
-              >
-                {copied === row.key ? <Check className="h-3.5 w-3.5 text-good" /> : <Copy className="h-3.5 w-3.5" />}
-              </button>
-            </div>
-          </FormRow>
-        ))}
-      </Section>
-      <div className="grid grid-cols-2 gap-4 mb-5">
-        {[
-          {
-            title: 'OTEL env vars · shell',
-            lines: [
-              'export OTEL_EXPORTER_OTLP_ENDPOINT="https://ingest.spanlens.io"',
-              'export OTEL_EXPORTER_OTLP_HEADERS="Authorization=Bearer sl_live_..7f42"',
-              'export OTEL_SERVICE_NAME="my-api"',
-            ],
-          },
-          {
-            title: 'collector · YAML',
-            lines: [
-              'exporters:',
-              '  otlphttp/spanlens:',
-              '    endpoint: https://ingest.spanlens.io',
-              '    headers:',
-              '      Authorization: Bearer ${SPANLENS_KEY}',
-            ],
-          },
-        ].map((block) => (
-          <div key={block.title} className="border border-border rounded-lg overflow-hidden">
-            <div className="px-4 py-2.5 border-b border-border bg-bg-muted flex items-center justify-between">
-              <span className="font-mono text-[10.5px] text-text-faint uppercase tracking-[0.05em]">{block.title}</span>
-              <span className="font-mono text-[10px] text-text cursor-pointer">copy</span>
-            </div>
-            <pre className="m-0 px-4 py-3 font-mono text-[11.5px] text-text leading-[1.7] whitespace-pre-wrap overflow-x-auto">
-              {block.lines.join('\n')}
-            </pre>
-          </div>
-        ))}
-      </div>
-      <Section title="Sampling" description="Tail-based · applied server-side" className="mb-5">
-        <FormRow label="Default sample rate" hint="Traces without a parent span follow this rate.">
-          <div className="flex items-center gap-2">
-            <NativeInput defaultValue="100" className="w-20 font-mono text-[12.5px]" />
-            <span className="font-mono text-[11.5px] text-text-faint">%</span>
-          </div>
-        </FormRow>
-        <FormRow label="Error trace retention" hint="Always keep traces that contain a span with status=ERROR.">
-          <div className="flex items-center gap-2"><Toggle on /><span className="font-mono text-[11.5px] text-text-muted">keep 100% errors</span></div>
-        </FormRow>
+      <Section title="On the roadmap" description="Vote on what we should build next" className="mb-5">
+        <ul className="px-6 py-4 space-y-1.5">
+          {PLANNED.map((p) => (
+            <li key={p} className="font-mono text-[11.5px] text-text-muted">▸ {p}</li>
+          ))}
+        </ul>
       </Section>
     </div>
   )
@@ -1103,29 +915,42 @@ function OTelTab() {
 // ─── PROFILE tab ──────────────────────────────────────────────────────────────
 
 function ProfileTab() {
+  const { data: user, isLoading } = useCurrentUser()
   return (
     <div className="max-w-[920px]">
-      <TabHeader title="Profile" description="Your personal identity across every workspace." />
-      <Section title="Identity" className="mb-5">
-        <FormRow label="Display name"><NativeInput defaultValue="Chanwoo Kim" className="max-w-[360px] font-mono text-[12.5px]" /></FormRow>
-        <FormRow label="Primary email" hint="Sign-in and invoice email.">
-          <div className="flex items-center gap-2">
-            <NativeInput defaultValue="you@workspace.com" className="max-w-[320px] font-mono text-[12.5px]" />
-            <MonoPill variant="good" dot>verified</MonoPill>
-          </div>
-        </FormRow>
-        <div className="flex justify-end gap-2 px-6 py-4">
-          <GhostBtn>Discard</GhostBtn>
-          <PrimaryBtn>Save changes</PrimaryBtn>
-        </div>
+      <TabHeader
+        title="Profile"
+        description="Your sign-in identity. Managed by Supabase Auth."
+      />
+
+      <Section title="Account" className="mb-5">
+        {isLoading ? (
+          <div className="px-6 py-4 font-mono text-[12.5px] text-text-faint">Loading…</div>
+        ) : user ? (
+          <>
+            <FormRow label="Email">
+              <div className="font-mono text-[12.5px] text-text">{user.email ?? '—'}</div>
+            </FormRow>
+            <FormRow label="User ID">
+              <div className="font-mono text-[11px] text-text-muted truncate">{user.id}</div>
+            </FormRow>
+            <FormRow label="Account created">
+              <div className="font-mono text-[12px] text-text-muted">
+                {new Date(user.created_at).toLocaleDateString()}
+              </div>
+            </FormRow>
+          </>
+        ) : (
+          <div className="px-6 py-4 font-mono text-[12.5px] text-text-faint">Not signed in.</div>
+        )}
       </Section>
-      <Section title="Sign-in & security" className="mb-5">
-        <FormRow label="Sign-in method">
-          <div className="font-mono text-[12px] text-text px-3 py-2 border border-border rounded-md bg-bg-elev">Google · SSO</div>
-        </FormRow>
-        <FormRow label="Two-factor" hint="TOTP via authenticator app.">
-          <div className="flex items-center gap-2"><Toggle on /><span className="font-mono text-[11.5px] text-text-muted">on · 2 recovery codes remaining</span></div>
-        </FormRow>
+
+      <Section title="Change sign-in details" className="mb-5">
+        <div className="px-6 py-4 text-[13px] text-text-muted leading-relaxed">
+          Email changes, password resets, and two-factor setup go through Supabase&apos;s auth flows.
+          Use the <span className="font-mono text-text">&quot;Forgot password?&quot;</span> link on the login
+          page to trigger a reset email.
+        </div>
       </Section>
     </div>
   )
@@ -1133,44 +958,25 @@ function ProfileTab() {
 
 // ─── NOTIFICATIONS tab ────────────────────────────────────────────────────────
 
-const NOTIF_ROWS = [
-  { k: 'Anomaly detected',   d: 'Request rate, p95 latency, or cost drifts >2σ.', delivery: 'instant', email: true,  slack: true,  mobile: true  },
-  { k: 'Cost spike',         d: 'Projected spend exceeds a budget alert.',         delivery: 'instant', email: true,  slack: true,  mobile: false },
-  { k: 'Prompt deployed',    d: 'Someone promoted a prompt version.',              delivery: 'digest',  email: false, slack: true,  mobile: false },
-  { k: 'Prompt rolled back', d: 'A production prompt version was reverted.',       delivery: 'instant', email: true,  slack: true,  mobile: true  },
-  { k: 'Weekly summary',     d: 'Monday 9am · spend, usage, top anomalies.',       delivery: 'weekly',  email: true,  slack: false, mobile: false },
-]
-
 function NotificationsTab() {
   return (
     <div className="max-w-[980px]">
-      <TabHeader title="Notifications" description="Your personal routing. Critical events default to instant." />
-      <Section title="Routing matrix" action={<Hint>Per-channel, per-event</Hint>} className="mb-5">
-        <div className="divide-y divide-border">
-          <div className="grid grid-cols-[1.8fr_1fr_90px_90px_90px] gap-4 px-6 py-3 font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint">
-            {['Event', 'Delivery', 'Email', 'Slack', 'Mobile'].map((h) => <span key={h}>{h}</span>)}
-          </div>
-          {NOTIF_ROWS.map((r) => (
-            <div key={r.k} className="grid grid-cols-[1.8fr_1fr_90px_90px_90px] gap-4 px-6 py-3 items-center">
-              <div>
-                <div className="text-[13px] font-medium text-text">{r.k}</div>
-                <div className="font-mono text-[10.5px] text-text-muted mt-0.5">{r.d}</div>
-              </div>
-              <MonoPill variant={r.delivery === 'instant' ? 'accent' : 'neutral'} dot>{r.delivery}</MonoPill>
-              <div className="flex justify-start"><Toggle on={r.email} /></div>
-              <div className="flex justify-start"><Toggle on={r.slack} /></div>
-              <div className="flex justify-start"><Toggle on={r.mobile} /></div>
-            </div>
-          ))}
+      <TabHeader
+        title="Notifications"
+        description="Alert routing lives on the Alerts page, where each rule is bound to a channel."
+      />
+
+      <Section title="How notifications work today" className="mb-5">
+        <div className="px-6 py-5 space-y-3 text-[13px] text-text-muted leading-relaxed">
+          <p>
+            Each alert rule targets one channel (email, Slack, or Discord webhook). Channels are configured
+            on the <a href="/alerts" className="text-accent hover:opacity-80 transition-opacity">Alerts page</a>.
+          </p>
+          <p>
+            Personal notification preferences (per-event mute, quiet hours, mobile push) aren&apos;t built yet —
+            every rule fires according to the thresholds you set on it.
+          </p>
         </div>
-      </Section>
-      <Section title="Quiet hours" description="Drops non-critical pings in this window" className="mb-5">
-        <FormRow label="Enabled">
-          <div className="flex items-center gap-2"><Toggle on /><span className="font-mono text-[11.5px] text-text-muted">Mon → Fri · 22:00 → 08:00</span></div>
-        </FormRow>
-        <FormRow label="Always push critical" hint="Anomaly, rollback, and cost-spike still come through.">
-          <Toggle on />
-        </FormRow>
       </Section>
     </div>
   )
@@ -1179,55 +985,18 @@ function NotificationsTab() {
 // ─── PREFERENCES tab ──────────────────────────────────────────────────────────
 
 function PreferencesTab() {
-  const [theme, setTheme] = useState<'System' | 'Light' | 'Dark'>('Light')
   return (
     <div className="max-w-[920px]">
-      <TabHeader title="Preferences" description="Visual and ergonomic choices, applied only to your account." />
-      <Section title="Appearance" className="mb-5">
-        <FormRow label="Theme" hint="Follow system or pin to one.">
-          <div className="flex gap-2">
-            {(['System', 'Light', 'Dark'] as const).map((t) => (
-              <button
-                key={t}
-                type="button"
-                onClick={() => setTheme(t)}
-                className={cn(
-                  'px-5 py-2 rounded-md font-mono text-[12px] border transition-colors',
-                  theme === t ? 'border-border-strong bg-text text-bg' : 'border-border bg-bg-elev text-text-muted hover:text-text',
-                )}
-              >
-                {t}
-              </button>
-            ))}
-          </div>
-        </FormRow>
-        <FormRow label="Density" hint="Comfy has more whitespace; compact squeezes more rows.">
-          <div className="flex gap-2">
-            {['Comfy', 'Compact'].map((d, i) => (
-              <button
-                key={d}
-                type="button"
-                className={cn(
-                  'px-5 py-2 rounded-md font-mono text-[12px] border transition-colors',
-                  i === 0 ? 'border-border-strong bg-text text-bg' : 'border-border bg-bg-elev text-text-muted hover:text-text',
-                )}
-              >
-                {d}
-              </button>
-            ))}
-          </div>
-        </FormRow>
-      </Section>
-      <Section title="Productivity" className="mb-5">
-        <FormRow label="Keyboard shortcuts" hint="Command palette is ⌘K.">
-          <div className="flex items-center gap-2"><Toggle on /><span className="font-mono text-[11.5px] text-text-muted">enabled</span></div>
-        </FormRow>
-        <FormRow label="Reduce motion" hint="Disables sparkline animations and panel transitions.">
-          <Toggle on={false} />
-        </FormRow>
-        <FormRow label="Show tips & new feature nudges" hint="One-time product hints above charts and tables.">
-          <div className="flex items-center gap-2"><Toggle on /><span className="font-mono text-[11.5px] text-text-muted">on · 2 unread</span></div>
-        </FormRow>
+      <TabHeader
+        title="Preferences"
+        description="Personal UI preferences are not yet persisted — coming with the next revision."
+      />
+
+      <Section title="Theme" className="mb-5">
+        <div className="px-6 py-4 text-[13px] text-text-muted">
+          The dashboard follows your system theme via CSS <code className="font-mono text-[12px] text-text">prefers-color-scheme</code>.
+          A manual override toggle is on the roadmap.
+        </div>
       </Section>
     </div>
   )
@@ -1245,9 +1014,6 @@ function TabContent({ tab }: { tab: TabId }) {
     case 'plan':          return <PlanLimitsTab />
     case 'invoices':      return <InvoicesTab />
     case 'integrations':  return <IntegrationsTab />
-    case 'destinations':  return <DestinationsTab />
-    case 'webhooks':      return <WebhooksTab />
-    case 'opentelemetry': return <OTelTab />
     case 'profile':       return <ProfileTab />
     case 'notifications': return <NotificationsTab />
     case 'preferences':   return <PreferencesTab />
