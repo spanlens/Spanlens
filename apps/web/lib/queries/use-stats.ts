@@ -21,6 +21,28 @@ export function useStatsOverview(params?: { projectId?: string; from?: string; t
   })
 }
 
+export interface ModelStat {
+  provider: string
+  model: string
+  requests: number
+  totalCostUsd: number
+  avgLatencyMs: number
+  errorRate: number
+}
+
+export function useStatsModels(hours = 24, projectId?: string) {
+  return useQuery({
+    queryKey: ['stats', 'models', hours, projectId] as const,
+    queryFn: async () => {
+      const qs = new URLSearchParams({ hours: String(hours) })
+      if (projectId) qs.set('projectId', projectId)
+      const res = await apiGet<ApiEnvelope<ModelStat[]>>(`/api/v1/stats/models?${qs}`)
+      return res.data ?? []
+    },
+    staleTime: 60_000,
+  })
+}
+
 export function statsTimeseriesQueryKey(params?: { projectId?: string; from?: string; to?: string }) {
   return params ? (['stats', 'timeseries', params] as const) : (['stats', 'timeseries'] as const)
 }

@@ -5,11 +5,12 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { KpiCard } from '@/components/dashboard/kpi-card'
 import { QuotaBanner } from '@/components/dashboard/quota-banner'
 import { Topbar, TimeRangeSelector, LiveDot } from '@/components/layout/topbar'
-import { useStatsOverview, useStatsTimeseries } from '@/lib/queries/use-stats'
+import { useStatsOverview, useStatsTimeseries, useStatsModels } from '@/lib/queries/use-stats'
 import { useAnomalies } from '@/lib/queries/use-anomalies'
 import { useAlerts } from '@/lib/queries/use-alerts'
 import { useRecommendations, type ModelRecommendation } from '@/lib/queries/use-recommendations'
 import { useAuditLogs } from '@/lib/queries/use-audit-logs'
+import { usePrompts } from '@/lib/queries/use-prompts'
 import { cn } from '@/lib/utils'
 import { RequestChart } from '@/components/dashboard/request-chart'
 
@@ -89,6 +90,8 @@ export default function DashboardPage() {
   const alerts = useAlerts()
   const recommendations = useRecommendations()
   const auditLogs = useAuditLogs({ limit: 6 })
+  const promptsQuery = usePrompts()
+  const modelsQuery = useStatsModels(24)
 
   const o = overview.data
   const isLoading = overview.isLoading || timeseries.isLoading
@@ -299,34 +302,78 @@ export default function DashboardPage() {
         <div className="grid grid-cols-2 border-b border-border">
           <div className="px-[22px] py-[18px] border-r border-border">
             <div className="flex items-center mb-3">
-              <span className="text-[14px] font-medium">Top prompts · by spend</span>
+              <span className="text-[14px] font-medium">Top prompts · 24h spend</span>
               <span className="flex-1" />
-              <Link href="/prompts" className="font-mono text-[10.5px] text-text-muted tracking-[0.03em]">All prompts →</Link>
+              <Link href="/prompts" className="font-mono text-[10.5px] text-text-muted tracking-[0.03em] hover:text-text transition-colors">
+                All prompts →
+              </Link>
             </div>
-            {recommendations.isLoading ? (
-              <div className="space-y-2.5">
-                {Array.from({ length: 3 }).map((_, i) => (
-                  <div key={i} className="flex items-center gap-2.5 py-2.5 border-b border-border last:border-0">
-                    <Skeleton className="h-3 w-4" />
-                    <div className="flex-1 space-y-1.5">
-                      <Skeleton className="h-3 w-32" />
-                      <Skeleton className="h-1.5 w-full" />
-                    </div>
-                    <Skeleton className="h-3 w-12" />
+            {(() => {
+              const active = (promptsQuery.data ?? [])
+                .filter((p) => (p.stats?.calls ?? 0) > 0)
+                .sort((a, b) => (b.stats?.totalCostUsd ?? 0) - (a.stats?.totalCostUsd ?? 0))
+                .slice(0, 5)
+              const topMax = active[0]?.stats?.totalCostUsd ?? 0
+
+              if (promptsQuery.isLoading) {
+                return (
+                  <div className="space-y-2.5">
+                    {Array.from({ length: 3 }).map((_, i) => (
+                      <div key={i} className="flex items-center gap-2.5 py-2.5 border-b border-border last:border-0">
+                        <Skeleton className="h-3 w-4" />
+                        <div className="flex-1 space-y-1.5">
+                          <Skeleton className="h-3 w-32" />
+                          <Skeleton className="h-1.5 w-full" />
+                        </div>
+                        <Skeleton className="h-3 w-12" />
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-            ) : (
-              <p className="font-mono text-[12px] text-text-faint">Prompt spend tracking coming soon.</p>
-            )}
+                )
+              }
+
+              if (active.length === 0) {
+                return (
+                  <p className="font-mono text-[12px] text-text-faint">
+                    No prompt calls in the last 24h. Use the <code className="text-text">X-Spanlens-Prompt-Version</code> header to tag requests.
+                  </p>
+                )
+              }
+
+              return (
+                <div className="space-y-0">
+                  {active.map((p, i) => {
+                    const cost = p.stats?.totalCostUsd ?? 0
+                    const pct = topMax > 0 ? (cost / topMax) * 100 : 0
+                    return (
+                      <div key={p.id} className="flex items-center gap-3 py-2.5 border-b border-border last:border-0">
+                        <span className="font-mono text-[10.5px] text-text-faint w-4">#{i + 1}</span>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-[12.5px] text-text truncate">{p.name}</div>
+                          <div className="h-1 bg-bg-muted rounded-full overflow-hidden mt-1">
+                            <div className="h-full bg-text rounded-full" style={{ width: `${pct}%` }} />
+                          </div>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <div className="font-mono text-[12px] text-text font-medium">{fmtCost(cost)}</div>
+                          <div className="font-mono text-[10px] text-text-faint">{(p.stats?.calls ?? 0).toLocaleString()} calls</div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )
+            })()}
           </div>
           <div className="px-[22px] py-[18px]">
             <div className="flex items-center mb-3">
-              <span className="text-[14px] font-medium">Models in use</span>
+              <span className="text-[14px] font-medium">Models in use · 24h</span>
               <span className="flex-1" />
-              <span className="font-mono text-[10.5px] text-text-muted tracking-[0.03em]">Compare →</span>
+              <Link href="/requests" className="font-mono text-[10.5px] text-text-muted tracking-[0.03em] hover:text-text transition-colors">
+                All requests →
+              </Link>
             </div>
-            {isLoading || !o ? (
+            {modelsQuery.isLoading ? (
               <div className="space-y-2">
                 {Array.from({ length: 4 }).map((_, i) => (
                   <div key={i} className="grid py-2.5 border-b border-border last:border-0" style={{ gridTemplateColumns: '1fr 80px 90px 70px', gap: 10 }}>
@@ -337,6 +384,8 @@ export default function DashboardPage() {
                   </div>
                 ))}
               </div>
+            ) : (modelsQuery.data ?? []).length === 0 ? (
+              <p className="font-mono text-[12px] text-text-faint">No requests in the last 24 hours.</p>
             ) : (
               <div>
                 <div className="grid font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint pb-2 border-b border-border" style={{ gridTemplateColumns: '1fr 80px 90px 70px', gap: 10 }}>
@@ -345,13 +394,23 @@ export default function DashboardPage() {
                   <span className="text-right">Cost · total</span>
                   <span className="text-right">Avg lat</span>
                 </div>
-                <div className="py-2 border-b border-border grid items-center font-mono" style={{ gridTemplateColumns: '1fr 80px 90px 70px', gap: 10 }}>
-                  <span className="text-[12.5px] text-text">All models</span>
-                  <span className="text-[12px] text-text-muted text-right">{o.totalRequests.toLocaleString()}</span>
-                  <span className="text-[12px] text-text font-medium text-right">{fmtCost(o.totalCostUsd)}</span>
-                  <span className="text-[12px] text-text-muted text-right">{o.avgLatencyMs}ms</span>
-                </div>
-                <p className="font-mono text-[10.5px] text-text-faint mt-3">Per-model breakdown coming soon.</p>
+                {(modelsQuery.data ?? []).slice(0, 6).map((m) => (
+                  <div
+                    key={`${m.provider}/${m.model}`}
+                    className="py-2 border-b border-border last:border-0 grid items-center font-mono"
+                    style={{ gridTemplateColumns: '1fr 80px 90px 70px', gap: 10 }}
+                  >
+                    <span className="text-[12.5px] text-text truncate">
+                      <span className="text-text-faint text-[10.5px] uppercase tracking-[0.04em] mr-1.5">{m.provider}</span>
+                      {m.model}
+                    </span>
+                    <span className="text-[12px] text-text-muted text-right">{m.requests.toLocaleString()}</span>
+                    <span className="text-[12px] text-text font-medium text-right">{fmtCost(m.totalCostUsd)}</span>
+                    <span className={cn('text-[12px] text-right', m.errorRate > 0.05 ? 'text-bad' : 'text-text-muted')}>
+                      {m.avgLatencyMs}ms
+                    </span>
+                  </div>
+                ))}
               </div>
             )}
           </div>

@@ -1,6 +1,7 @@
 'use client'
 import { useMemo, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
+import Link from 'next/link'
 import { Star, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -15,9 +16,10 @@ import {
   type SavedFilter,
 } from '@/lib/queries/use-requests'
 import { useProviderKeys } from '@/lib/queries/use-provider-keys'
+import { useTrace } from '@/lib/queries/use-traces'
 import { useStatsOverview, useStatsTimeseries } from '@/lib/queries/use-stats'
 import { useAnomalies } from '@/lib/queries/use-anomalies'
-import type { RequestRow } from '@/lib/queries/types'
+import type { RequestRow, RequestDetail } from '@/lib/queries/types'
 
 type StatusFilter = 'all' | 'ok' | '4xx' | '5xx'
 
@@ -205,7 +207,7 @@ function FilterPill({ children, active, warn, onClick }: { children: React.React
 }
 
 // ── Request drawer ────────────────────────────────────────────────────────────
-type DrawerTab = 'request' | 'response' | 'trace' | 'logs' | 'raw'
+type DrawerTab = 'request' | 'response' | 'trace' | 'raw'
 
 interface DrawerProps {
   requestId: string
@@ -323,7 +325,7 @@ function RequestDrawer({ requestId, visible, onClose, onPrev, onNext, hasPrev, h
 
       {/* Tabs */}
       <div className="flex px-5 border-b border-border gap-5 shrink-0">
-        {(['request', 'response', 'trace', 'logs', 'raw'] as DrawerTab[]).map((t) => (
+        {(['request', 'response', 'trace', 'raw'] as DrawerTab[]).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -338,7 +340,7 @@ function RequestDrawer({ requestId, visible, onClose, onPrev, onNext, hasPrev, h
       </div>
 
       {/* Tab content */}
-      <div className="px-5 py-4 flex-1">
+      <div className="px-5 py-4 flex-1 overflow-auto">
         {isLoading ? (
           <div className="space-y-3">
             <Skeleton className="h-3 w-12 mb-1" />
@@ -352,11 +354,104 @@ function RequestDrawer({ requestId, visible, onClose, onPrev, onNext, hasPrev, h
           <pre className="font-mono text-[11.5px] text-text-muted leading-relaxed whitespace-pre-wrap break-all">
             {JSON.stringify(req.response_body, null, 2)}
           </pre>
+        ) : tab === 'trace' ? (
+          <TraceTab traceId={req.trace_id ?? null} />
         ) : (
-          <p className="font-mono text-[11.5px] text-text-faint">Coming soon.</p>
+          <RawTab req={req} />
         )}
       </div>
     </aside>
+  )
+}
+
+// ── Trace tab: link to full trace + inline span preview if available ──────────
+function TraceTab({ traceId }: { traceId: string | null }) {
+  const { data: trace, isLoading } = useTrace(traceId ?? '')
+
+  if (!traceId) {
+    return (
+      <p className="font-mono text-[11.5px] text-text-faint">
+        This request is not attached to a trace. Add <code className="text-text">X-Trace-Id</code> header
+        (or use the Spanlens SDK&apos;s <code className="text-text">withTrace()</code>) to group requests into agent traces.
+      </p>
+    )
+  }
+
+  if (isLoading) return <Skeleton className="h-20 w-full" />
+  if (!trace) {
+    return <p className="font-mono text-[11.5px] text-text-faint">Trace not found (deleted or not yet ingested).</p>
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <div className="font-mono text-[10.5px] text-text-faint uppercase tracking-[0.05em]">
+          Trace · {trace.span_count} span{trace.span_count === 1 ? '' : 's'}
+        </div>
+        <Link
+          href={`/traces/${traceId}`}
+          className="font-mono text-[11px] text-accent hover:opacity-80 transition-opacity"
+        >
+          Open full trace →
+        </Link>
+      </div>
+      <div className="rounded border border-border divide-y divide-border bg-bg-elev">
+        {trace.spans.slice(0, 8).map((s) => (
+          <div key={s.id} className="px-3 py-2 flex items-center gap-3">
+            <span className={cn(
+              'font-mono text-[9px] px-1.5 py-0.5 rounded border uppercase tracking-[0.04em] shrink-0',
+              s.span_type === 'llm' ? 'text-accent border-accent-border bg-accent-bg'
+                : s.span_type === 'tool' ? 'text-text border-border'
+                : 'text-text-muted border-border',
+            )}>
+              {s.span_type}
+            </span>
+            <span className="text-[12px] text-text truncate flex-1">{s.name}</span>
+            {s.duration_ms != null && (
+              <span className="font-mono text-[10.5px] text-text-muted shrink-0">
+                {s.duration_ms >= 1000 ? `${(s.duration_ms / 1000).toFixed(2)}s` : `${s.duration_ms}ms`}
+              </span>
+            )}
+            {s.status === 'error' && (
+              <span className="font-mono text-[10px] text-bad shrink-0">● error</span>
+            )}
+          </div>
+        ))}
+        {trace.spans.length > 8 && (
+          <div className="px-3 py-2 font-mono text-[10.5px] text-text-faint">
+            + {trace.spans.length - 8} more — open the full trace to see them all
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ── Raw tab: full request + response bodies as JSON ───────────────────────────
+function RawTab({ req }: { req: RequestDetail }) {
+  return (
+    <div className="space-y-5">
+      <section>
+        <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-2">Request body</div>
+        {req.request_body == null ? (
+          <p className="font-mono text-[11.5px] text-text-faint">Not captured.</p>
+        ) : (
+          <pre className="font-mono text-[11.5px] text-text leading-relaxed whitespace-pre-wrap break-all bg-bg-elev border border-border rounded p-3">
+            {JSON.stringify(req.request_body, null, 2)}
+          </pre>
+        )}
+      </section>
+      <section>
+        <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-2">Response body</div>
+        {req.response_body == null ? (
+          <p className="font-mono text-[11.5px] text-text-faint">Not captured.</p>
+        ) : (
+          <pre className="font-mono text-[11.5px] text-text leading-relaxed whitespace-pre-wrap break-all bg-bg-elev border border-border rounded p-3">
+            {JSON.stringify(req.response_body, null, 2)}
+          </pre>
+        )}
+      </section>
+    </div>
   )
 }
 
