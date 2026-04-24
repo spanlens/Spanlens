@@ -4,6 +4,8 @@ import Link from 'next/link'
 import {
   useAnomalies,
   useAnomalyHistory,
+  useAckAnomaly,
+  useUnackAnomaly,
   type Anomaly,
   type AnomalyHistoryEntry,
   type AnomalyKind,
@@ -70,8 +72,18 @@ function anomTitle(a: Anomaly): string {
   return `Error rate · ${fmtValue('error_rate', a.currentValue)} (baseline ${fmtValue('error_rate', a.baselineMean)})`
 }
 
-function AnomRow({ a, idx, last }: { a: Anomaly; idx: number; last: boolean }) {
+interface AnomRowProps {
+  a: Anomaly
+  idx: number
+  last: boolean
+  onAck: () => void
+  onUnack: () => void
+  ackPending: boolean
+}
+
+function AnomRow({ a, idx, last, onAck, onUnack, ackPending }: AnomRowProps) {
   const isHigh = a.deviations >= 5
+  const isAcked = Boolean(a.acknowledgedAt)
   const tint = isHigh ? 'text-bad' : 'text-accent'
   const dotBg = isHigh ? 'bg-bad' : 'bg-accent'
   const anomId = `AN-${100 + idx}`
@@ -81,7 +93,8 @@ function AnomRow({ a, idx, last }: { a: Anomaly; idx: number; last: boolean }) {
       className={cn(
         'grid items-center px-[22px] py-[12px]',
         !last && 'border-b border-border',
-        isHigh && 'bg-accent-bg',
+        isHigh && !isAcked && 'bg-accent-bg',
+        isAcked && 'opacity-60',
       )}
       style={{ gridTemplateColumns: '28px 1fr 120px 150px 150px 130px', gap: 14 }}
     >
@@ -146,9 +159,20 @@ function AnomRow({ a, idx, last }: { a: Anomaly; idx: number; last: boolean }) {
 
       {/* actions */}
       <div className="flex justify-end gap-1.5">
-        <span className="font-mono text-[10.5px] text-text-faint px-2 py-[3px] border border-border rounded-[4px] select-none" title="Ack API coming soon">
-          Ack
-        </span>
+        <button
+          type="button"
+          disabled={ackPending}
+          onClick={isAcked ? onUnack : onAck}
+          className={cn(
+            'font-mono text-[10.5px] px-2 py-[3px] border rounded-[4px] transition-colors disabled:opacity-50',
+            isAcked
+              ? 'text-text-muted border-border hover:text-text'
+              : 'text-text-muted border-border hover:text-text hover:border-border-strong',
+          )}
+          title={isAcked ? 'Un-acknowledge' : 'Acknowledge this anomaly'}
+        >
+          {isAcked ? 'Unack' : 'Ack'}
+        </button>
         <Link
           href={`/requests?provider=${encodeURIComponent(a.provider)}&model=${encodeURIComponent(a.model)}`}
           className="font-mono text-[10.5px] text-text px-2 py-[3px] border border-border-strong rounded-[4px] bg-bg-elev hover:bg-bg-muted transition-colors"
@@ -212,6 +236,14 @@ export default function AnomaliesPage() {
     sigma: 3,
   })
   const { data: history, isLoading: loadingHistory } = useAnomalyHistory(30)
+  const ackMutation = useAckAnomaly()
+  const unackMutation = useUnackAnomaly()
+
+  const ackAnomaly = (a: Anomaly) =>
+    ackMutation.mutate({ provider: a.provider, model: a.model, kind: a.kind })
+  const unackAnomaly = (a: Anomaly) =>
+    unackMutation.mutate({ provider: a.provider, model: a.model, kind: a.kind })
+  const ackPending = ackMutation.isPending || unackMutation.isPending
 
   const current = useMemo(() => {
     const all = anomalyResult?.data ?? []
@@ -301,7 +333,15 @@ export default function AnomaliesPage() {
                   </span>
                 </div>
                 {high.map((a, i) => (
-                  <AnomRow key={`${a.provider}-${a.model}-${a.kind}`} a={a} idx={i} last={i === high.length - 1} />
+                  <AnomRow
+                    key={`${a.provider}-${a.model}-${a.kind}`}
+                    a={a}
+                    idx={i}
+                    last={i === high.length - 1}
+                    onAck={() => ackAnomaly(a)}
+                    onUnack={() => unackAnomaly(a)}
+                    ackPending={ackPending}
+                  />
                 ))}
               </div>
             )}
@@ -315,7 +355,15 @@ export default function AnomaliesPage() {
                   </span>
                 </div>
                 {medium.map((a, i) => (
-                  <AnomRow key={`${a.provider}-${a.model}-${a.kind}-m`} a={a} idx={high.length + i} last={i === medium.length - 1} />
+                  <AnomRow
+                    key={`${a.provider}-${a.model}-${a.kind}-m`}
+                    a={a}
+                    idx={high.length + i}
+                    last={i === medium.length - 1}
+                    onAck={() => ackAnomaly(a)}
+                    onUnack={() => unackAnomaly(a)}
+                    ackPending={ackPending}
+                  />
                 ))}
               </div>
             )}

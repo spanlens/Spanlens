@@ -1,7 +1,7 @@
 'use client'
 
-import { useQuery } from '@tanstack/react-query'
-import { apiGet } from '@/lib/api'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { apiDelete, apiGet, apiPost } from '@/lib/api'
 import type { ApiEnvelope } from './types'
 
 export type AnomalyKind = 'latency' | 'cost' | 'error_rate'
@@ -16,6 +16,8 @@ export interface Anomaly {
   deviations: number
   sampleCount: number
   referenceCount: number
+  /** ISO timestamp when this anomaly was acknowledged, or null. */
+  acknowledgedAt?: string | null
 }
 
 export interface AnomalyHistoryEntry {
@@ -76,5 +78,40 @@ export function useAnomalyHistory(days = 30) {
       return res.data ?? []
     },
     staleTime: 5 * 60_000,
+  })
+}
+
+export interface AckAnomalyInput {
+  provider: string
+  model: string
+  kind: AnomalyKind
+}
+
+export function useAckAnomaly() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (input: AckAnomalyInput) => {
+      await apiPost<ApiEnvelope<unknown>>('/api/v1/anomalies/ack', input)
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['anomalies'] })
+    },
+  })
+}
+
+export function useUnackAnomaly() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (input: AckAnomalyInput) => {
+      const qs = new URLSearchParams({
+        provider: input.provider,
+        model: input.model,
+        kind: input.kind,
+      })
+      await apiDelete<ApiEnvelope<unknown>>(`/api/v1/anomalies/ack?${qs}`)
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['anomalies'] })
+    },
   })
 }
