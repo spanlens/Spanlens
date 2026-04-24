@@ -44,6 +44,7 @@ function AlertRuleRow({
   a,
   fires,
   onToggle,
+  onEdit,
   onDelete,
   isPending,
   last,
@@ -51,6 +52,7 @@ function AlertRuleRow({
   a: AlertRow
   fires: number
   onToggle: () => void
+  onEdit: () => void
   onDelete: () => void
   isPending: boolean
   last: boolean
@@ -64,7 +66,7 @@ function AlertRuleRow({
         !last && 'border-b border-border',
         isFiring && 'bg-accent-bg',
       )}
-      style={{ gridTemplateColumns: '28px 1fr 160px 60px 160px', gap: 14 }}
+      style={{ gridTemplateColumns: '28px 1fr 160px 60px 200px', gap: 14 }}
     >
       {/* state dot */}
       <div className="flex items-center justify-center">
@@ -118,6 +120,14 @@ function AlertRuleRow({
       <div className="flex items-center justify-end gap-1.5">
         <button
           type="button"
+          onClick={onEdit}
+          disabled={isPending}
+          className="font-mono text-[10.5px] text-text-muted px-2 py-[3px] border border-border rounded-[4px] hover:text-text transition-colors disabled:opacity-40"
+        >
+          Edit
+        </button>
+        <button
+          type="button"
           onClick={onToggle}
           disabled={isPending}
           className="font-mono text-[10.5px] text-text-muted px-2 py-[3px] border border-border rounded-[4px] hover:text-text transition-colors disabled:opacity-40"
@@ -149,6 +159,8 @@ export default function AlertsPage() {
 
   const [alertDialogOpen, setAlertDialogOpen] = useState(false)
   const [channelDialogOpen, setChannelDialogOpen] = useState(false)
+  /** When non-null, the alert-form dialog is in edit mode for this id. */
+  const [editingId, setEditingId] = useState<string | null>(null)
   const [newName, setNewName] = useState('')
   const [newType, setNewType] = useState<AlertType>('budget')
   const [newThreshold, setNewThreshold] = useState('')
@@ -156,6 +168,26 @@ export default function AlertsPage() {
   const [newCooldown, setNewCooldown] = useState('60')
   const [newChannelKind, setNewChannelKind] = useState<ChannelKind>('email')
   const [newChannelTarget, setNewChannelTarget] = useState('')
+
+  function openCreateAlert() {
+    setEditingId(null)
+    setNewName('')
+    setNewType('budget')
+    setNewThreshold('')
+    setNewWindow('60')
+    setNewCooldown('60')
+    setAlertDialogOpen(true)
+  }
+
+  function openEditAlert(a: AlertRow) {
+    setEditingId(a.id)
+    setNewName(a.name)
+    setNewType(a.type)
+    setNewThreshold(String(a.threshold))
+    setNewWindow(String(a.window_minutes))
+    setNewCooldown(String(a.cooldown_minutes))
+    setAlertDialogOpen(true)
+  }
 
   const alerts = alertsQuery.data ?? []
   const channels = channelsQuery.data ?? []
@@ -173,19 +205,32 @@ export default function AlertsPage() {
     return deliveries.filter((d) => d.alert_id === id).length
   }
 
-  async function handleCreateAlert() {
+  async function handleSubmitAlert() {
     const threshold = Number(newThreshold)
     if (!newName.trim() || !Number.isFinite(threshold) || threshold <= 0) return
-    await createAlert.mutateAsync({
-      name: newName.trim(),
-      type: newType,
-      threshold,
-      window_minutes: Math.max(1, Number(newWindow) || 60),
-      cooldown_minutes: Math.max(0, Number(newCooldown) || 60),
-    })
-    setNewName('')
-    setNewThreshold('')
+    const window_minutes = Math.max(1, Number(newWindow) || 60)
+    const cooldown_minutes = Math.max(0, Number(newCooldown) || 60)
+
+    if (editingId) {
+      // Edit: type is immutable (threshold semantics depend on it)
+      await updateAlert.mutateAsync({
+        id: editingId,
+        name: newName.trim(),
+        threshold,
+        window_minutes,
+        cooldown_minutes,
+      })
+    } else {
+      await createAlert.mutateAsync({
+        name: newName.trim(),
+        type: newType,
+        threshold,
+        window_minutes,
+        cooldown_minutes,
+      })
+    }
     setAlertDialogOpen(false)
+    setEditingId(null)
   }
 
   async function handleCreateChannel() {
@@ -210,7 +255,7 @@ export default function AlertsPage() {
             </button>
             <button
               type="button"
-              onClick={() => setAlertDialogOpen(true)}
+              onClick={openCreateAlert}
               className="font-mono text-[11px] text-bg px-[10px] py-[5px] rounded-[5px] bg-text font-medium hover:opacity-90 transition-opacity"
             >
               + New alert
@@ -249,7 +294,7 @@ export default function AlertsPage() {
             <p className="font-mono text-[12px]">Create an alert to get notified about budget, error rate, or latency issues.</p>
             <button
               type="button"
-              onClick={() => setAlertDialogOpen(true)}
+              onClick={openCreateAlert}
               className="font-mono text-[11.5px] px-3 py-[5px] mt-1 rounded-[4px] bg-text text-bg font-medium hover:opacity-90 transition-opacity"
             >
               + New alert
@@ -268,6 +313,7 @@ export default function AlertsPage() {
                 {firing.map((a, i) => (
                   <AlertRuleRow key={a.id} a={a} fires={alertFires(a.id)} last={i === firing.length - 1}
                     onToggle={() => void updateAlert.mutateAsync({ id: a.id, is_active: !a.is_active })}
+                    onEdit={() => openEditAlert(a)}
                     onDelete={() => void deleteAlert.mutateAsync(a.id)}
                     isPending={isPending}
                   />
@@ -286,6 +332,7 @@ export default function AlertsPage() {
                 {active.map((a, i) => (
                   <AlertRuleRow key={a.id} a={a} fires={alertFires(a.id)} last={i === active.length - 1}
                     onToggle={() => void updateAlert.mutateAsync({ id: a.id, is_active: !a.is_active })}
+                    onEdit={() => openEditAlert(a)}
                     onDelete={() => void deleteAlert.mutateAsync(a.id)}
                     isPending={isPending}
                   />
@@ -305,6 +352,7 @@ export default function AlertsPage() {
                   {paused.map((a, i) => (
                     <AlertRuleRow key={a.id} a={a} fires={alertFires(a.id)} last={i === paused.length - 1}
                       onToggle={() => void updateAlert.mutateAsync({ id: a.id, is_active: !a.is_active })}
+                      onEdit={() => openEditAlert(a)}
                       onDelete={() => void deleteAlert.mutateAsync(a.id)}
                       isPending={isPending}
                     />
@@ -376,11 +424,17 @@ export default function AlertsPage() {
         )}
       </div>
 
-      {/* Create alert dialog */}
-      <Dialog open={alertDialogOpen} onOpenChange={setAlertDialogOpen}>
+      {/* Create / Edit alert dialog */}
+      <Dialog
+        open={alertDialogOpen}
+        onOpenChange={(open) => {
+          setAlertDialogOpen(open)
+          if (!open) setEditingId(null)
+        }}
+      >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Create alert rule</DialogTitle>
+            <DialogTitle>{editingId ? 'Edit alert rule' : 'Create alert rule'}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 mt-2">
             <div className="space-y-2">
@@ -393,8 +447,14 @@ export default function AlertsPage() {
               />
             </div>
             <div className="space-y-2">
-              <label className="font-mono text-[11px] text-text-muted uppercase tracking-[0.04em]">Type</label>
-              <Select value={newType} onValueChange={(v) => setNewType(v as AlertType)}>
+              <label className="font-mono text-[11px] text-text-muted uppercase tracking-[0.04em]">
+                Type {editingId && <span className="text-text-faint normal-case tracking-normal">· locked (threshold semantics depend on type)</span>}
+              </label>
+              <Select
+                value={newType}
+                onValueChange={(v) => setNewType(v as AlertType)}
+                disabled={Boolean(editingId)}
+              >
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="budget">Budget (USD)</SelectItem>
@@ -424,11 +484,18 @@ export default function AlertsPage() {
             </div>
             <button
               type="button"
-              onClick={() => void handleCreateAlert()}
-              disabled={!newName.trim() || !newThreshold || createAlert.isPending}
+              onClick={() => void handleSubmitAlert()}
+              disabled={
+                !newName.trim() ||
+                !newThreshold ||
+                createAlert.isPending ||
+                updateAlert.isPending
+              }
               className="w-full py-2 rounded bg-text text-bg font-mono text-[13px] font-medium hover:opacity-90 transition-opacity disabled:opacity-40"
             >
-              {createAlert.isPending ? 'Creating…' : 'Create alert'}
+              {editingId
+                ? (updateAlert.isPending ? 'Saving…' : 'Save changes')
+                : (createAlert.isPending ? 'Creating…' : 'Create alert')}
             </button>
           </div>
         </DialogContent>
