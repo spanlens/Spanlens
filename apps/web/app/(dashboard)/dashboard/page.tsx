@@ -133,13 +133,19 @@ export default function DashboardPage() {
       })
     }
 
-    // Top alert
-    const firingAlerts = (alerts.data ?? []).filter((a) => a.is_active)
+    // Top alert — only cards for rules that actually fired in the last hour,
+    // not every active rule. Matches the Firing group on the Alerts page.
+    const firingAlerts = (alerts.data ?? []).filter(
+      (a) =>
+        a.is_active &&
+        a.last_triggered_at &&
+        Date.now() - new Date(a.last_triggered_at).getTime() < 60 * 60 * 1000,
+    )
     if (firingAlerts[0]) {
       cards.push({
         kind: 'warning',
         title: firingAlerts[0].name,
-        meta: `${firingAlerts.length} alert${firingAlerts.length !== 1 ? 's' : ''} active`,
+        meta: `${firingAlerts.length} alert${firingAlerts.length !== 1 ? 's' : ''} firing`,
         hint: `${String(firingAlerts[0].type).replace('_', ' ')} threshold`,
         cta: 'Open alerts →',
         href: '/alerts',
