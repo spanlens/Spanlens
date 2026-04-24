@@ -28,26 +28,36 @@ function kindLabel(k: AnomalyKind): string {
   return { latency: 'LATENCY', cost: 'COST', error_rate: 'ERRORS' }[k] ?? k.toUpperCase()
 }
 
-function AnomSpark({ deviations }: { deviations: number }) {
-  const bars = 8
+/**
+ * "Baseline vs now" visual. Two bars side-by-side whose heights reflect
+ * the real baseline mean and the current observed value. Honest: no
+ * fabricated time-series — only the two values we actually have.
+ */
+function AnomDeltaBars({
+  currentValue,
+  baselineMean,
+  deviations,
+}: {
+  currentValue: number
+  baselineMean: number
+  deviations: number
+}) {
+  const max = Math.max(currentValue, baselineMean, 1e-9)
+  const basePct = Math.max(4, (baselineMean / max) * 100)
+  const nowPct = Math.max(4, (currentValue / max) * 100)
+  const isHigh = deviations >= 5
   return (
-    <div className="flex items-end gap-[1.5px] h-[18px]">
-      {Array.from({ length: bars }).map((_, i) => {
-        const h = i < bars - 3
-          ? 20 + Math.abs(Math.sin(i * 0.8)) * 40
-          : 40 + (i - (bars - 3)) * 18
-        const isRecent = i >= bars - 3
-        return (
-          <div
-            key={i}
-            style={{ height: `${Math.min(100, h)}%`, width: 6 }}
-            className={cn(
-              'rounded-[1px]',
-              isRecent ? (deviations >= 5 ? 'bg-bad' : 'bg-accent') : 'bg-border-strong opacity-60',
-            )}
-          />
-        )
-      })}
+    <div className="flex items-end gap-[4px] h-[18px]">
+      <div
+        title={`baseline ${baselineMean.toFixed(3)}`}
+        style={{ height: `${basePct}%`, width: 8 }}
+        className="rounded-[1px] bg-border-strong opacity-70"
+      />
+      <div
+        title={`now ${currentValue.toFixed(3)}`}
+        style={{ height: `${nowPct}%`, width: 8 }}
+        className={cn('rounded-[1px]', isHigh ? 'bg-bad' : 'bg-accent')}
+      />
     </div>
   )
 }
@@ -116,10 +126,14 @@ function AnomRow({ a, idx, last }: { a: Anomaly; idx: number; last: boolean }) {
         </div>
       </div>
 
-      {/* spark */}
+      {/* baseline vs now */}
       <div>
-        <div className="font-mono text-[10px] text-text-faint uppercase tracking-[0.03em] mb-1">TREND · 6H</div>
-        <AnomSpark deviations={a.deviations} />
+        <div className="font-mono text-[10px] text-text-faint uppercase tracking-[0.03em] mb-1">BASE · NOW</div>
+        <AnomDeltaBars
+          currentValue={a.currentValue}
+          baselineMean={a.baselineMean}
+          deviations={a.deviations}
+        />
       </div>
 
       {/* impact */}
@@ -165,7 +179,13 @@ function HistoryRow({ e, last }: { e: AnomalyHistoryEntry; last: boolean }) {
           {fmtValue(e.kind, e.currentValue)} · {fmtValue(e.kind, e.baselineMean)}
         </div>
       </div>
-      <div><AnomSpark deviations={e.deviations} /></div>
+      <div>
+        <AnomDeltaBars
+          currentValue={e.currentValue}
+          baselineMean={e.baselineMean}
+          deviations={e.deviations}
+        />
+      </div>
       <div className="font-mono text-[11px] text-text-faint">{e.sampleCount} req</div>
       <div className="text-right font-mono text-[11px] text-good">✓ resolved</div>
     </div>

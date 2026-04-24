@@ -25,29 +25,29 @@ function fmtAge(dateStr: string): string {
   return `${Math.floor(s / 86400)}d`
 }
 
-function TraceMini({ idx, hasError }: { idx: number; hasError: boolean }) {
-  const segs = [
-    { type: 'tool', pct: 8 + (idx % 5) },
-    { type: 'llm',  pct: 28 + (idx % 3) * 4 },
-    { type: 'tool', pct: 10 },
-    { type: 'llm',  pct: 24 },
-    { type: 'tool', pct: 10 + (idx % 4) },
-    { type: hasError ? 'err' : 'llm', pct: 14 },
-  ]
-  const total = segs.reduce((a, s) => a + s.pct, 0)
+/**
+ * Relative duration bar. Width scales with this trace's duration against the
+ * page's maximum, so rows are visually comparable. Colored by status.
+ */
+function TraceDurationBar({
+  durationMs,
+  maxDurationMs,
+  hasError,
+  isRunning,
+}: {
+  durationMs: number | null
+  maxDurationMs: number
+  hasError: boolean
+  isRunning: boolean
+}) {
+  if (durationMs == null || maxDurationMs <= 0) {
+    return <div className="h-[10px] rounded-[2px] border border-border bg-bg-muted w-full" />
+  }
+  const pct = Math.max(4, Math.min(100, (durationMs / maxDurationMs) * 100))
+  const color = hasError ? 'bg-bad' : isRunning ? 'bg-accent' : 'bg-text opacity-70'
   return (
-    <div className="flex h-[10px] rounded-[2px] overflow-hidden border border-border bg-bg-muted w-full">
-      {segs.map((s, i) => (
-        <div
-          key={i}
-          style={{ width: `${(s.pct / total) * 100}%` }}
-          className={cn(
-            'h-full',
-            s.type === 'llm' ? 'bg-accent opacity-80' : s.type === 'err' ? 'bg-bad' : 'bg-border-strong',
-            i < segs.length - 1 ? 'border-r border-bg' : '',
-          )}
-        />
-      ))}
+    <div className="h-[10px] rounded-[2px] border border-border bg-bg-muted w-full overflow-hidden">
+      <div style={{ width: `${pct}%` }} className={cn('h-full rounded-[1px]', color)} />
     </div>
   )
 }
@@ -77,6 +77,7 @@ export default function TracesPage() {
   const sorted = [...withDuration].sort((a, b) => a - b)
   const p50 = sorted.length ? sorted[Math.floor(sorted.length * 0.5)] ?? null : null
   const p95 = sorted.length ? sorted[Math.floor(sorted.length * 0.95)] ?? null : null
+  const maxDurationMs = withDuration.length ? Math.max(...withDuration) : 0
   const avgSpans = traces.length ? traces.reduce((s, t) => s + t.span_count, 0) / traces.length : null
   const errors = traces.filter((t) => t.status === 'error').length
 
@@ -190,7 +191,7 @@ export default function TracesPage() {
             <p className="font-mono text-[12px]">Use the Spanlens SDK to start recording agent traces.</p>
           </div>
         ) : (
-          filtered.map((t, idx) => {
+          filtered.map((t) => {
             const isErr = t.status === 'error'
             const isRunning = t.status === 'running'
             return (
@@ -217,7 +218,12 @@ export default function TracesPage() {
                 <span className="text-text">{fmtCost(t.total_cost_usd)}</span>
                 <span className="text-text-muted">{t.total_tokens.toLocaleString()}</span>
                 <span className="pr-4 flex items-center">
-                  <TraceMini idx={idx} hasError={isErr} />
+                  <TraceDurationBar
+                    durationMs={t.duration_ms}
+                    maxDurationMs={maxDurationMs}
+                    hasError={isErr}
+                    isRunning={isRunning}
+                  />
                 </span>
                 <span className={cn('text-[11px] font-sans', isErr ? 'text-bad' : isRunning ? 'text-accent' : 'text-text-faint')}>
                   {isErr ? 'error' : isRunning ? 'running' : '—'}

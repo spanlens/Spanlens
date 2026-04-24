@@ -19,28 +19,6 @@ function fmtMs(v: number): string {
   return `${Math.round(v)}ms`
 }
 
-function QualitySpark({ warn }: { warn: boolean }) {
-  const bars = 8
-  return (
-    <div className="flex items-end gap-[1.5px] h-[14px]">
-      {Array.from({ length: bars }).map((_, i) => {
-        const h = 40 + Math.abs(Math.sin(i * 1.1)) * 50 - (warn ? i * 4 : 0)
-        return (
-          <div
-            key={i}
-            style={{ height: `${Math.max(10, Math.min(100, h))}%`, width: 5 }}
-            className={cn(
-              'rounded-[1px]',
-              warn ? 'bg-accent opacity-80' : 'bg-border-strong',
-              i === bars - 1 && (warn ? 'bg-accent' : 'bg-text'),
-            )}
-          />
-        )
-      })}
-    </div>
-  )
-}
-
 type FilterType = 'all' | 'ab'
 
 const GRID = '20px 1.4fr 0.6fr 0.6fr 0.9fr 0.9fr 0.9fr 1.2fr 0.8fr 0.5fr'
@@ -274,10 +252,7 @@ export default function PromptsPage() {
               <span className="text-text-faint">—</span>
               <span className="text-text-faint">—</span>
               <span className="text-text-faint">—</span>
-              <span className="flex items-center gap-2">
-                <span className="text-text">—</span>
-                <QualitySpark warn={false} />
-              </span>
+              <span className="text-text-faint">—</span>
               <span className="text-text-muted font-sans">—</span>
               <span className="text-text-faint text-right text-[11px]">
                 {new Date(p.created_at).toLocaleDateString()}
