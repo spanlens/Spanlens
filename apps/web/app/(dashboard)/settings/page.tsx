@@ -41,7 +41,6 @@ import type { BillingPlan } from '@/lib/queries/types'
 type TabId =
   | 'general' | 'members' | 'api-keys' | 'audit-log'
   | 'billing' | 'plan' | 'invoices'
-  | 'integrations'
   | 'profile' | 'notifications' | 'preferences'
 
 interface NavItem { id: TabId; label: string; crumbs: { label: string }[] }
@@ -64,12 +63,6 @@ const NAV: { group: string; items: NavItem[] }[] = [
       { id: 'billing',  label: 'Billing',      crumbs: [{ label: 'Workspace' }, { label: 'Settings' }, { label: 'Billing' }] },
       { id: 'plan',     label: 'Plan & limits', crumbs: [{ label: 'Workspace' }, { label: 'Settings' }, { label: 'Plan & limits' }] },
       { id: 'invoices', label: 'Invoices',      crumbs: [{ label: 'Workspace' }, { label: 'Settings' }, { label: 'Invoices' }] },
-    ],
-  },
-  {
-    group: 'Connect',
-    items: [
-      { id: 'integrations',  label: 'Integrations',  crumbs: [{ label: 'Workspace' }, { label: 'Settings' }, { label: 'Integrations' }] },
     ],
   },
   {
@@ -856,62 +849,6 @@ function InvoicesTab() {
   )
 }
 
-// ─── INTEGRATIONS tab ─────────────────────────────────────────────────────────
-
-const SUPPORTED_CHANNELS = [
-  { name: 'Email',   glyph: '@',  desc: 'SMTP delivery to any address' },
-  { name: 'Slack',   glyph: 'SL', desc: 'Incoming webhook URL' },
-  { name: 'Discord', glyph: 'DC', desc: 'Incoming webhook URL' },
-]
-
-const PLANNED = [
-  'PagerDuty · on-call escalation',
-  'Microsoft Teams webhook',
-  'Amazon S3 span archive',
-  'BigQuery / Snowflake / Datadog forwarding',
-  'GitHub issue auto-link for anomalies',
-]
-
-function IntegrationsTab() {
-  return (
-    <div className="max-w-[980px]">
-      <TabHeader
-        title="Integrations"
-        description="Notification channels wire into alert rules on the Alerts page."
-      />
-
-      <Section title="Supported today" className="mb-5">
-        <div className="grid grid-cols-3 gap-3 p-6">
-          {SUPPORTED_CHANNELS.map((c) => (
-            <div key={c.name} className="border border-border-strong bg-bg-elev rounded-xl p-4 min-h-[110px] flex flex-col gap-2">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-lg border border-border bg-text text-bg flex items-center justify-center font-mono text-[11px] font-bold">
-                  {c.glyph}
-                </div>
-                <span className="text-[13.5px] font-medium text-text">{c.name}</span>
-              </div>
-              <div className="font-mono text-[11px] text-text-muted flex-1">{c.desc}</div>
-            </div>
-          ))}
-        </div>
-        <div className="px-6 pb-4">
-          <a href="/alerts" className="font-mono text-[12px] text-accent hover:opacity-80 transition-opacity">
-            Configure channels on the Alerts page →
-          </a>
-        </div>
-      </Section>
-
-      <Section title="On the roadmap" description="Vote on what we should build next" className="mb-5">
-        <ul className="px-6 py-4 space-y-1.5">
-          {PLANNED.map((p) => (
-            <li key={p} className="font-mono text-[11.5px] text-text-muted">▸ {p}</li>
-          ))}
-        </ul>
-      </Section>
-    </div>
-  )
-}
-
 // ─── PROFILE tab ──────────────────────────────────────────────────────────────
 
 function ProfileTab() {
@@ -1013,7 +950,6 @@ function TabContent({ tab }: { tab: TabId }) {
     case 'billing':       return <BillingTab />
     case 'plan':          return <PlanLimitsTab />
     case 'invoices':      return <InvoicesTab />
-    case 'integrations':  return <IntegrationsTab />
     case 'profile':       return <ProfileTab />
     case 'notifications': return <NotificationsTab />
     case 'preferences':   return <PreferencesTab />
