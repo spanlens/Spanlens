@@ -1,5 +1,6 @@
 'use client'
 import { useState } from 'react'
+import Link from 'next/link'
 import { Trash2, Mail, MessageSquare } from 'lucide-react'
 import {
   useAlerts,
@@ -81,7 +82,12 @@ function AlertRuleRow({
       {/* name + rule */}
       <div className="min-w-0">
         <div className="flex items-center gap-2 mb-1">
-          <span className="text-[13.5px] text-text font-medium truncate">{a.name}</span>
+          <Link
+            href={`/alerts/${a.id}`}
+            className="text-[13.5px] text-text font-medium truncate hover:text-accent transition-colors"
+          >
+            {a.name}
+          </Link>
           <span
             className={cn(
               'font-mono text-[9px] px-[6px] py-[1px] rounded-[3px] border uppercase tracking-[0.04em] shrink-0',

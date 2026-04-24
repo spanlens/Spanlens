@@ -11,6 +11,7 @@ import { useAlerts } from '@/lib/queries/use-alerts'
 import { useRecommendations, type ModelRecommendation } from '@/lib/queries/use-recommendations'
 import { useAuditLogs } from '@/lib/queries/use-audit-logs'
 import { usePrompts } from '@/lib/queries/use-prompts'
+import { useSecuritySummary } from '@/lib/queries/use-security'
 import { cn } from '@/lib/utils'
 import { RequestChart } from '@/components/dashboard/request-chart'
 
@@ -92,6 +93,7 @@ export default function DashboardPage() {
   const auditLogs = useAuditLogs({ limit: 6 })
   const promptsQuery = usePrompts()
   const modelsQuery = useStatsModels(24)
+  const securitySummary = useSecuritySummary(24)
 
   const o = overview.data
   const isLoading = overview.isLoading || timeseries.isLoading
@@ -116,20 +118,43 @@ export default function DashboardPage() {
     [timeseries.data],
   )
 
-  // Build attention cards from live data
+  // Build attention cards from live data. Priority: security > anomaly >
+  // alert > savings — most severe first so the user scans left-to-right.
   const attnCards = useMemo(() => {
     const cards: AttnCardProps[] = []
 
-    // Top anomaly
+    // PII leak — any request in the last 24h where security-scan flagged PII.
+    // This aggregates across all PII sub-patterns (email, phone, card, ssn,
+    // passport) because any PII leaving the workspace is equally serious.
+    const piiHits = (securitySummary.data ?? [])
+      .filter((r) => r.type === 'pii')
+      .reduce((sum, r) => sum + r.count, 0)
+    if (piiHits > 0) {
+      cards.push({
+        kind: 'critical',
+        title: `PII leak · ${piiHits} match${piiHits === 1 ? '' : 'es'} in last 24h`,
+        meta: 'email · phone · card · ssn · passport',
+        hint: 'Review flagged requests to identify the source prompt.',
+        cta: 'Open security →',
+        href: '/security',
+      })
+    }
+
+    // Top anomaly — deep-link straight to the filtered requests view so the
+    // user can see the actual traffic that deviated, not the summary list.
     const topAnomaly = (anomalies.data?.data ?? [])[0]
     if (topAnomaly) {
+      const qs = new URLSearchParams({
+        provider: topAnomaly.provider,
+        model: topAnomaly.model,
+      }).toString()
       cards.push({
         kind: 'critical',
         title: `${topAnomaly.kind.replace('_', ' ')} anomaly on ${topAnomaly.model}`,
         meta: `${topAnomaly.deviations.toFixed(1)}σ · ${topAnomaly.provider}`,
         hint: `Current ${topAnomaly.currentValue.toFixed(0)} vs baseline ${topAnomaly.baselineMean.toFixed(0)}`,
-        cta: 'Open anomalies →',
-        href: '/anomalies',
+        cta: 'Investigate requests →',
+        href: `/requests?${qs}`,
       })
     }
 
@@ -142,13 +167,27 @@ export default function DashboardPage() {
         Date.now() - new Date(a.last_triggered_at).getTime() < 60 * 60 * 1000,
     )
     if (firingAlerts[0]) {
+      const top = firingAlerts[0]
+      const firedMinsAgo = top.last_triggered_at
+        ? Math.max(1, Math.round((Date.now() - new Date(top.last_triggered_at).getTime()) / 60_000))
+        : null
+      const thresholdLabel =
+        top.type === 'budget'
+          ? `> $${top.threshold}`
+          : top.type === 'error_rate'
+            ? `> ${(top.threshold * 100).toFixed(1)}%`
+            : `> ${top.threshold}ms`
+      const kindLabel =
+        top.type === 'budget' ? 'budget' : top.type === 'error_rate' ? 'error rate' : 'p95 latency'
       cards.push({
         kind: 'warning',
-        title: firingAlerts[0].name,
-        meta: `${firingAlerts.length} alert${firingAlerts.length !== 1 ? 's' : ''} firing`,
-        hint: `${String(firingAlerts[0].type).replace('_', ' ')} threshold`,
-        cta: 'Open alerts →',
-        href: '/alerts',
+        title: top.name,
+        meta: `${kindLabel} ${thresholdLabel} · ${top.window_minutes}m window`,
+        hint: firedMinsAgo != null
+          ? `fired ${firedMinsAgo}m ago${firingAlerts.length > 1 ? ` · +${firingAlerts.length - 1} more firing` : ''}`
+          : `${firingAlerts.length} alert${firingAlerts.length !== 1 ? 's' : ''} firing`,
+        cta: 'Open alert →',
+        href: `/alerts/${top.id}`,
       })
     }
 
@@ -166,7 +205,7 @@ export default function DashboardPage() {
     }
 
     return cards
-  }, [anomalies.data, alerts.data, recommendations.data])
+  }, [anomalies.data, alerts.data, recommendations.data, securitySummary.data])
 
   return (
     <div className="-m-7 flex flex-col h-screen overflow-hidden">
