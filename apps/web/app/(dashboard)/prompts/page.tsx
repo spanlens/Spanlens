@@ -37,6 +37,8 @@ export default function PromptsPage() {
 
   const all = prompts ?? []
   const totalVersions = all.reduce((s, p) => s + p.version, 0)
+  const totalCalls24h = all.reduce((s, p) => s + (p.stats?.calls ?? 0), 0)
+  const totalSpend24h = all.reduce((s, p) => s + (p.stats?.totalCostUsd ?? 0), 0)
   const filtered = all.filter(
     (p) => !search || p.name.toLowerCase().includes(search.toLowerCase()),
   )
@@ -102,11 +104,11 @@ export default function PromptsPage() {
       {/* Stat strip */}
       <div className="grid grid-cols-5 border-b border-border shrink-0">
         {[
-          { label: 'Prompts',     value: String(all.length),    warn: false },
-          { label: 'Versions',    value: String(totalVersions), warn: false },
-          { label: 'A/B running', value: '—',                   warn: false },
-          { label: 'Avg quality', value: '—',                   warn: false },
-          { label: 'Spend · 24h', value: '—',                   warn: false },
+          { label: 'Prompts',     value: String(all.length),                                   warn: false },
+          { label: 'Versions',    value: String(totalVersions),                                warn: false },
+          { label: 'Calls · 24h', value: totalCalls24h > 0 ? totalCalls24h.toLocaleString() : '—', warn: false },
+          { label: 'Avg quality', value: '—',                                                  warn: false },
+          { label: 'Spend · 24h', value: totalSpend24h > 0 ? fmtUsd(totalSpend24h) : '—',      warn: false },
         ].map((s, i) => (
           <div key={i} className={cn('px-[18px] py-[14px]', i < 4 && 'border-r border-border')}>
             <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-2">{s.label}</div>
@@ -249,9 +251,15 @@ export default function PromptsPage() {
               </span>
               <span className="text-text">v{p.version}</span>
               <span className="text-text-muted">{p.version}</span>
-              <span className="text-text-faint">—</span>
-              <span className="text-text-faint">—</span>
-              <span className="text-text-faint">—</span>
+              <span className={cn(p.stats && p.stats.calls > 0 ? 'text-text' : 'text-text-faint')}>
+                {p.stats?.calls ? p.stats.calls.toLocaleString() : '—'}
+              </span>
+              <span className={cn(p.stats?.avgCostUsd != null ? 'text-text' : 'text-text-faint')}>
+                {p.stats?.avgCostUsd != null ? fmtUsd(p.stats.avgCostUsd) : '—'}
+              </span>
+              <span className={cn(p.stats?.avgLatencyMs != null ? 'text-text' : 'text-text-faint')}>
+                {p.stats?.avgLatencyMs != null ? fmtMs(p.stats.avgLatencyMs) : '—'}
+              </span>
               <span className="text-text-faint">—</span>
               <span className="text-text-muted font-sans">—</span>
               <span className="text-text-faint text-right text-[11px]">

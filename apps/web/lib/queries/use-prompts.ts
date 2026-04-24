@@ -4,6 +4,14 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiDelete, apiGet, apiPost } from '@/lib/api'
 import type { ApiEnvelope } from './types'
 
+export interface PromptStats {
+  calls: number
+  totalCostUsd: number
+  avgCostUsd: number | null
+  avgLatencyMs: number | null
+  errorRate: number | null
+}
+
 export interface PromptVersion {
   id: string
   name: string
@@ -14,6 +22,9 @@ export interface PromptVersion {
   project_id: string | null
   created_at: string
   created_by: string | null
+  /** 24h aggregate from requests referencing any version of this prompt.
+   *  Only present on the list endpoint (/api/v1/prompts). */
+  stats?: PromptStats
 }
 
 export interface PromptVersionMetrics {

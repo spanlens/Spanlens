@@ -25,7 +25,23 @@ interface PromptVariable {
   required?: boolean
 }
 
-// GET /  — latest version of every named prompt in this org
+interface PromptStats {
+  calls: number
+  totalCostUsd: number
+  avgCostUsd: number | null
+  avgLatencyMs: number | null
+  errorRate: number | null
+}
+
+const EMPTY_STATS: PromptStats = {
+  calls: 0,
+  totalCostUsd: 0,
+  avgCostUsd: null,
+  avgLatencyMs: null,
+  errorRate: null,
+}
+
+// GET /  — latest version of every named prompt, with 24h usage stats inline
 promptsRouter.get('/', async (c) => {
   const orgId = c.get('orgId')
   if (!orgId) return c.json({ error: 'Organization not found' }, 404)
@@ -44,15 +60,75 @@ promptsRouter.get('/', async (c) => {
   const { data, error } = await query
   if (error) return c.json({ error: 'Failed to fetch prompts' }, 500)
 
-  // Keep only the latest version per name
+  const allRows = data ?? []
+
+  // Group all version ids by prompt name so we can aggregate across versions
+  const idsByName = new Map<string, string[]>()
+  for (const row of allRows) {
+    const bucket = idsByName.get(row.name) ?? []
+    bucket.push(row.id as string)
+    idsByName.set(row.name, bucket)
+  }
+
+  // Latest version per name (first occurrence because we ordered version desc)
   const seen = new Set<string>()
-  const latest = (data ?? []).filter((row) => {
+  const latest = allRows.filter((row) => {
     if (seen.has(row.name)) return false
     seen.add(row.name)
     return true
   })
 
-  return c.json({ success: true, data: latest })
+  // Aggregate 24h request metrics per prompt_version_id, then roll up per name
+  const sinceIso = new Date(Date.now() - 24 * 3_600_000).toISOString()
+  const allVersionIds = allRows.map((r) => r.id as string)
+  const statsByName = new Map<string, PromptStats>()
+
+  if (allVersionIds.length > 0) {
+    const { data: reqs } = await supabaseAdmin
+      .from('requests')
+      .select('prompt_version_id, latency_ms, cost_usd, status_code')
+      .eq('organization_id', orgId)
+      .in('prompt_version_id', allVersionIds)
+      .gte('created_at', sinceIso)
+
+    const versionIdToName = new Map<string, string>()
+    for (const [name, ids] of idsByName) for (const id of ids) versionIdToName.set(id, name)
+
+    const perName = new Map<string, { calls: number; cost: number; latency: number; errors: number }>()
+    for (const r of (reqs ?? []) as Array<{
+      prompt_version_id: string | null
+      latency_ms: number | null
+      cost_usd: number | null
+      status_code: number | null
+    }>) {
+      if (!r.prompt_version_id) continue
+      const name = versionIdToName.get(r.prompt_version_id)
+      if (!name) continue
+      const agg = perName.get(name) ?? { calls: 0, cost: 0, latency: 0, errors: 0 }
+      agg.calls += 1
+      agg.cost += r.cost_usd ?? 0
+      agg.latency += r.latency_ms ?? 0
+      if (r.status_code !== null && r.status_code >= 400) agg.errors += 1
+      perName.set(name, agg)
+    }
+
+    for (const [name, agg] of perName) {
+      statsByName.set(name, {
+        calls: agg.calls,
+        totalCostUsd: agg.cost,
+        avgCostUsd: agg.calls > 0 ? agg.cost / agg.calls : null,
+        avgLatencyMs: agg.calls > 0 ? agg.latency / agg.calls : null,
+        errorRate: agg.calls > 0 ? agg.errors / agg.calls : null,
+      })
+    }
+  }
+
+  const enriched = latest.map((row) => ({
+    ...row,
+    stats: statsByName.get(row.name) ?? EMPTY_STATS,
+  }))
+
+  return c.json({ success: true, data: enriched })
 })
 
 // GET /:name — all versions of a named prompt
