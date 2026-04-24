@@ -72,7 +72,14 @@ export function Sidebar() {
 
   const reqCount = overview.data?.totalRequests
   const anomalyCount = (anomalies.data?.data ?? []).length
-  const alertCount = (alerts.data ?? []).filter((a) => a.is_active).length
+  // Firing = active rule whose last_triggered_at is within the past hour.
+  // Matches the Firing group on the Alerts page.
+  const firingCount = (alerts.data ?? []).filter(
+    (a) =>
+      a.is_active &&
+      a.last_triggered_at &&
+      Date.now() - new Date(a.last_triggered_at).getTime() < 60 * 60 * 1000,
+  ).length
   const savingsTotal = (recommendations.data ?? []).reduce((s, r) => s + r.estimatedMonthlySavingsUsd, 0)
 
   const BADGES: Record<string, { label?: string; warn?: boolean }> = {
@@ -80,7 +87,7 @@ export function Sidebar() {
     '/anomalies':  anomalyCount > 0 ? { label: String(anomalyCount), warn: true } : {},
     '/security':   {},
     '/recommendations': savingsTotal > 0 ? { label: '$' + (savingsTotal >= 1000 ? (savingsTotal / 1000).toFixed(0) + 'k' : savingsTotal.toFixed(0)) } : {},
-    '/alerts':     alertCount > 0 ? { label: String(alertCount), warn: true } : {},
+    '/alerts':     firingCount > 0 ? { label: String(firingCount), warn: true } : {},
   }
 
   async function handleSignOut() {
