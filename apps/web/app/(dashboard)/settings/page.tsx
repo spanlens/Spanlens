@@ -32,6 +32,7 @@ import {
 } from '@/lib/queries/use-billing'
 import { QuotaBanner } from '@/components/dashboard/quota-banner'
 import { useAuditLogs } from '@/lib/queries/use-audit-logs'
+import { useCurrentUser } from '@/lib/queries/use-current-user'
 import { PLANS, PLAN_REQUEST_LIMITS } from '@/lib/billing-plans'
 import type { BillingPlan } from '@/lib/queries/types'
 
@@ -239,42 +240,40 @@ function GeneralTab() {
 
 // ─── MEMBERS tab ─────────────────────────────────────────────────────────────
 
-const MOCK_MEMBERS = [
-  { name: 'You (owner)', email: 'you@workspace.com', role: 'owner',   last: 'just now', you: true },
-  { name: 'Jisoo Park',  email: 'jisoo@workspace.com', role: 'admin', last: '11m ago' },
-  { name: 'Min Lee',     email: 'min@workspace.com', role: 'member',   last: '2h ago' },
-  { name: 'Eunji Choi',  email: 'eunji@workspace.com', role: 'member', last: 'yesterday' },
-]
-
 function MembersTab() {
+  const { data: user, isLoading } = useCurrentUser()
+
   return (
     <div className="max-w-[980px]">
       <TabHeader
         title="Members"
-        description="Human teammates and service accounts."
-        action={<PrimaryBtn>+ Invite members</PrimaryBtn>}
+        description="Workspace members. Multi-user collaboration is a planned feature."
       />
-      <Section title="Active members" description="Last activity from span ingestion or UI use" className="mb-5">
-        <div className="divide-y divide-border">
-          <div className="grid grid-cols-[1.6fr_1.6fr_120px_130px_40px] gap-4 px-6 py-3 font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint">
-            {['Member', 'Email', 'Role', 'Last active', ''].map((h, i) => <span key={i}>{h}</span>)}
-          </div>
-          {MOCK_MEMBERS.map((m) => (
-            <div key={m.email} className="grid grid-cols-[1.6fr_1.6fr_120px_130px_40px] gap-4 px-6 py-3 items-center">
-              <span className="text-[13px] font-medium text-text truncate">
-                {m.name}
-                {m.you && <span className="ml-2 font-mono text-[10px] text-accent">(you)</span>}
-              </span>
-              <span className="font-mono text-[11.5px] text-text-muted truncate">{m.email}</span>
-              <MonoPill variant={m.role === 'owner' ? 'accent' : 'neutral'} dot>{m.role}</MonoPill>
-              <span className="font-mono text-[11px] text-text-muted">{m.last}</span>
-              <button type="button" className="font-mono text-[14px] text-text-faint hover:text-text">⋯</button>
-            </div>
-          ))}
+
+      <div className="mb-4 border border-accent-border bg-accent-bg rounded-lg px-4 py-3 flex items-center gap-3">
+        <span className="w-5 h-5 rounded-full border border-accent text-accent flex items-center justify-center font-mono text-[10px] shrink-0">i</span>
+        <div className="flex-1 text-[12.5px] text-text-muted">
+          Team features (invites · roles · seat billing) are on the roadmap. Today every workspace has a single owner.
         </div>
+      </div>
+
+      <Section title="Owner" className="mb-5">
+        {isLoading ? (
+          <div className="px-6 py-4 text-[12.5px] text-text-faint">Loading…</div>
+        ) : user ? (
+          <div className="grid grid-cols-[1.6fr_1.6fr_120px] gap-4 px-6 py-4 items-center">
+            <span className="text-[13px] font-medium text-text truncate">{user.email ?? '—'}</span>
+            <span className="font-mono text-[11px] text-text-muted truncate">
+              joined {new Date(user.created_at).toLocaleDateString()}
+            </span>
+            <MonoPill variant="accent" dot>owner</MonoPill>
+          </div>
+        ) : (
+          <div className="px-6 py-4 text-[12.5px] text-text-faint">Not signed in.</div>
+        )}
       </Section>
 
-      <Section title="Roles & permissions" description="Preset bundles · custom roles on Enterprise" className="mb-5">
+      <Section title="Roles & permissions" description="Reference · takes effect once team features ship" className="mb-5">
         <div className="grid grid-cols-4 gap-3 p-6">
           {[
             { r: 'Owner',  p: ['Billing & plan', 'Rotate API keys', 'Delete workspace', 'All admin powers'] },
@@ -829,52 +828,36 @@ function PlanLimitsTab() {
 
 // ─── INVOICES tab ─────────────────────────────────────────────────────────────
 
-const MOCK_INVOICES = [
-  { id: 'inv_2026_04', date: 'Apr 01', period: 'Apr 01 – Apr 30 · 2026', amt: '$1,248.00', reqs: '6.24M', st: 'paid'     },
-  { id: 'inv_2026_03', date: 'Mar 01', period: 'Mar 01 – Mar 31 · 2026', amt: '$1,102.40', reqs: '5.51M', st: 'paid'     },
-  { id: 'inv_2026_02', date: 'Feb 01', period: 'Feb 01 – Feb 28 · 2026', amt: '$984.80',   reqs: '4.92M', st: 'paid'     },
-  { id: 'inv_2025_12', date: 'Dec 01', period: 'Dec 01 – Dec 31 · 2025', amt: '$742.20',   reqs: '3.71M', st: 'refunded' },
-]
-
 function InvoicesTab() {
+  const { data: subscription } = useSubscription()
+
   return (
     <div className="max-w-[980px]">
       <TabHeader
         title="Invoices"
-        description="Every invoice, in one place. PDFs are downloadable."
-        action={<GhostBtn>Download all CSV</GhostBtn>}
+        description="Invoices are issued and delivered by Paddle, our payment processor."
       />
-      <div className="grid grid-cols-4 gap-3 mb-5">
-        {[
-          { k: 'Lifetime',     v: '$4,077.40', s: 'across 4 invoices' },
-          { k: 'Avg / month',  v: '$1,019',    s: '4-month average' },
-          { k: 'Next invoice', v: 'May 01',    s: 'projected $1,380' },
-          { k: 'Last payment', v: 'Apr 01',    s: 'visa 4242 · $1,248' },
-        ].map((x) => (
-          <div key={x.k} className="border border-border rounded-lg p-3 bg-bg-elev">
-            <div className="font-mono text-[10px] text-text-faint uppercase tracking-[0.05em]">{x.k}</div>
-            <div className="font-mono text-[18px] font-medium text-text mt-1">{x.v}</div>
-            <div className="font-mono text-[10.5px] text-text-muted mt-1">{x.s}</div>
-          </div>
-        ))}
-      </div>
-      <Section title="History" className="mb-5">
-        <div className="divide-y divide-border">
-          <div className="grid grid-cols-[80px_140px_1.4fr_110px_110px_80px] gap-4 px-6 py-3 font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint">
-            {['Date', 'Invoice', 'Period', 'Requests', 'Amount', 'Status'].map((h) => <span key={h}>{h}</span>)}
-          </div>
-          {MOCK_INVOICES.map((inv) => (
-            <div key={inv.id} className="grid grid-cols-[80px_140px_1.4fr_110px_110px_80px] gap-4 px-6 py-3 items-center">
-              <span className="font-mono text-[11.5px] text-text-muted">{inv.date}</span>
-              <span className="font-mono text-[11.5px] text-text">{inv.id}</span>
-              <span className="font-mono text-[11px] text-text-muted">{inv.period}</span>
-              <span className="font-mono text-[12px] text-text">{inv.reqs}</span>
-              <span className="font-mono text-[12px] font-medium text-text">{inv.amt}</span>
-              <span className={cn('font-mono text-[10px] uppercase tracking-[0.04em]', inv.st === 'paid' ? 'text-good' : 'text-text-faint')}>
-                ● {inv.st}
-              </span>
-            </div>
-          ))}
+
+      <Section title="Where to find your invoices" className="mb-5">
+        <div className="px-6 py-5 space-y-4 text-[13px] text-text-muted leading-relaxed">
+          <p>
+            Every invoice lands in your inbox from <span className="font-mono text-text">noreply@paddle.com</span> as
+            a PDF attachment, usually within minutes of each renewal or top-up charge.
+          </p>
+          <p>
+            To browse past invoices, update your payment method, or cancel, use the self-service link that
+            Paddle emailed when you first subscribed. Paddle&apos;s customer portal is the source of truth for
+            billing history.
+          </p>
+          {subscription ? (
+            <p className="font-mono text-[11.5px] text-text-faint">
+              Current subscription · {subscription.plan} · renews {subscription.current_period_end ? new Date(subscription.current_period_end).toLocaleDateString() : '—'}
+            </p>
+          ) : (
+            <p className="font-mono text-[11.5px] text-text-faint">
+              You&apos;re on the free plan — no invoices generated.
+            </p>
+          )}
         </div>
       </Section>
     </div>
