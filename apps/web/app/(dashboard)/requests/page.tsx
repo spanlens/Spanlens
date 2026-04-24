@@ -1,5 +1,6 @@
 'use client'
 import { useMemo, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { Star, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -546,7 +547,17 @@ function SaveFilterDialog({ filters, onSave }: SaveFilterDialogProps) {
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 export default function RequestsPage() {
-  const [filters, setFilters] = useState<UiFilters>(DEFAULT_FILTERS)
+  const searchParams = useSearchParams()
+  const [filters, setFilters] = useState<UiFilters>(() => {
+    // Support deep-linking from Anomalies / etc. — ?provider=openai&model=gpt-4o
+    const providerParam = searchParams.get('provider') ?? undefined
+    const modelParam = searchParams.get('model') ?? undefined
+    return {
+      ...DEFAULT_FILTERS,
+      ...(providerParam && { provider: providerParam }),
+      ...(modelParam && { model: modelParam }),
+    }
+  })
   const [page, setPage] = useState(1)
   const [selectedId, setSelectedId] = useState<string | null>(null)
 

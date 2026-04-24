@@ -1,5 +1,6 @@
 'use client'
 import { useMemo, useState } from 'react'
+import Link from 'next/link'
 import {
   useAnomalies,
   useAnomalyHistory,
@@ -145,12 +146,15 @@ function AnomRow({ a, idx, last }: { a: Anomaly; idx: number; last: boolean }) {
 
       {/* actions */}
       <div className="flex justify-end gap-1.5">
-        <span className="font-mono text-[10.5px] text-text-muted px-2 py-[3px] border border-border rounded-[4px] cursor-pointer hover:text-text transition-colors">
+        <span className="font-mono text-[10.5px] text-text-faint px-2 py-[3px] border border-border rounded-[4px] select-none" title="Ack API coming soon">
           Ack
         </span>
-        <span className="font-mono text-[10.5px] text-text px-2 py-[3px] border border-border-strong rounded-[4px] bg-bg-elev cursor-pointer hover:bg-bg-muted transition-colors">
+        <Link
+          href={`/requests?provider=${encodeURIComponent(a.provider)}&model=${encodeURIComponent(a.model)}`}
+          className="font-mono text-[10.5px] text-text px-2 py-[3px] border border-border-strong rounded-[4px] bg-bg-elev hover:bg-bg-muted transition-colors"
+        >
           Investigate →
-        </span>
+        </Link>
       </div>
     </div>
   )

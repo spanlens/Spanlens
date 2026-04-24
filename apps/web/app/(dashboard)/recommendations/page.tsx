@@ -1,7 +1,9 @@
 'use client'
 import { useState } from 'react'
+import { Copy, Check } from 'lucide-react'
 import { useRecommendations, type ModelRecommendation } from '@/lib/queries/use-recommendations'
 import { Topbar } from '@/components/layout/topbar'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
 
 function fmtUsd(v: number): string {
@@ -40,6 +42,9 @@ function dismissKey(r: ModelRecommendation): string {
 export default function RecommendationsPage() {
   const { data, isLoading, error } = useRecommendations({ hours: 24 * 7, minSavings: 5 })
   const [dismissed, setDismissed] = useState<Set<string>>(new Set())
+  const [applyRec, setApplyRec] = useState<ModelRecommendation | null>(null)
+  const [simRec, setSimRec] = useState<ModelRecommendation | null>(null)
+  const [copiedModel, setCopiedModel] = useState(false)
 
   const all = data ?? []
   const visible = all.filter((r) => !dismissed.has(dismissKey(r)))
@@ -197,6 +202,7 @@ export default function RecommendationsPage() {
                   <div className="flex justify-end gap-1.5 flex-wrap">
                     <button
                       type="button"
+                      onClick={() => setSimRec(r)}
                       className="font-mono text-[10.5px] text-text-muted px-[10px] py-[4px] border border-border rounded-[5px] hover:text-text transition-colors"
                     >
                       Simulate
@@ -210,6 +216,7 @@ export default function RecommendationsPage() {
                     </button>
                     <button
                       type="button"
+                      onClick={() => { setApplyRec(r); setCopiedModel(false) }}
                       className="font-mono text-[10.5px] text-bg px-[10px] py-[4px] rounded-[5px] bg-text font-medium hover:opacity-90 transition-opacity"
                     >
                       Apply →
@@ -242,6 +249,99 @@ export default function RecommendationsPage() {
           </>
         )}
       </div>
+
+      {/* Simulate dialog — shows how the savings estimate is computed */}
+      <Dialog open={simRec !== null} onOpenChange={(open) => !open && setSimRec(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Simulate savings</DialogTitle>
+          </DialogHeader>
+          {simRec && (
+            <div className="space-y-4 mt-2 text-[13px] text-text-muted">
+              <div className="font-mono text-[12px]">
+                <span className="text-text-faint line-through">{simRec.currentProvider} / {simRec.currentModel}</span>
+                <span className="mx-2 text-text-faint">→</span>
+                <span className="text-text">{simRec.suggestedProvider} / {simRec.suggestedModel}</span>
+              </div>
+              <div className="rounded-lg border border-border bg-bg-elev p-4 space-y-3">
+                <div className="grid grid-cols-2 gap-3 font-mono text-[11.5px]">
+                  <div>
+                    <div className="text-text-faint uppercase text-[10px] tracking-[0.05em] mb-1">Last 7 days</div>
+                    <div className="text-text font-medium">{fmtUsd(simRec.totalCostUsdLastNDays)}</div>
+                    <div className="text-text-muted text-[10.5px]">{simRec.sampleCount.toLocaleString()} requests</div>
+                  </div>
+                  <div>
+                    <div className="text-text-faint uppercase text-[10px] tracking-[0.05em] mb-1">Projected monthly save</div>
+                    <div className="text-accent font-medium text-[14px]">{fmtUsd(simRec.estimatedMonthlySavingsUsd)}</div>
+                    <div className="text-text-muted text-[10.5px]">/mo at current volume</div>
+                  </div>
+                </div>
+                <div className="border-t border-border pt-3 font-mono text-[10.5px] text-text-faint leading-relaxed">
+                  Projection = current cost × 30/7 × (1 − new_model_price_per_token / old_model_price_per_token).
+                  Assumes identical token counts; real savings shift with traffic.
+                </div>
+              </div>
+              <p className="text-[12px]">
+                <span className="text-text font-medium">Caveat:</span> {simRec.reason}. Always run a
+                shadow comparison before switching a production model.
+              </p>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Apply dialog — manual instructions, no auto-rewrite */}
+      <Dialog open={applyRec !== null} onOpenChange={(open) => !open && setApplyRec(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Apply this recommendation</DialogTitle>
+          </DialogHeader>
+          {applyRec && (
+            <div className="space-y-4 mt-2 text-[13px] text-text-muted">
+              <p>
+                Spanlens doesn&apos;t rewrite your application code. To apply this swap, update the
+                <span className="font-mono text-text"> model </span>
+                parameter in your LLM call from
+                <span className="font-mono text-text"> {applyRec.currentModel} </span>
+                to
+                <span className="font-mono text-text"> {applyRec.suggestedModel}</span>.
+              </p>
+              <div className="rounded-lg border border-border bg-bg-elev overflow-hidden">
+                <div className="px-4 py-2.5 border-b border-border bg-bg-muted flex items-center justify-between">
+                  <span className="font-mono text-[10px] text-text-faint uppercase tracking-[0.05em]">
+                    New model name
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void navigator.clipboard.writeText(applyRec.suggestedModel)
+                      setCopiedModel(true)
+                      setTimeout(() => setCopiedModel(false), 1500)
+                    }}
+                    className="font-mono text-[11px] text-accent hover:opacity-80 transition-opacity flex items-center gap-1"
+                  >
+                    {copiedModel
+                      ? <><Check className="h-3 w-3" /> Copied</>
+                      : <><Copy className="h-3 w-3" /> Copy</>}
+                  </button>
+                </div>
+                <code className="block px-4 py-3 font-mono text-[13px] text-text">
+                  {applyRec.suggestedModel}
+                </code>
+              </div>
+              <ol className="list-decimal pl-5 space-y-1 text-[12.5px]">
+                <li>Find the call to <span className="font-mono text-text">{applyRec.currentProvider}</span> using <span className="font-mono text-text">{applyRec.currentModel}</span></li>
+                <li>Swap the model name to <span className="font-mono text-text">{applyRec.suggestedModel}</span></li>
+                <li>Deploy to a canary or staging first — verify output quality matches</li>
+                <li>Watch the Requests page for 24h to confirm no regressions</li>
+              </ol>
+              <p className="text-[11.5px] text-text-faint">
+                Once rolled out, dismiss this recommendation to clear it from the list.
+              </p>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
