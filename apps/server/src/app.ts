@@ -23,6 +23,7 @@ import { anomaliesRouter }     from './api/anomalies.js'
 import { securityRouter }      from './api/security.js'
 import { promptsRouter }       from './api/prompts.js'
 import { recommendationsRouter } from './api/recommendations.js'
+import { auditLogsRouter }     from './api/auditLogs.js'
 
 export const app = new Hono()
 
@@ -79,5 +80,6 @@ app.route('/api/v1/anomalies',      anomaliesRouter)
 app.route('/api/v1/security',       securityRouter)
 app.route('/api/v1/prompts',        promptsRouter)
 app.route('/api/v1/recommendations', recommendationsRouter)
+app.route('/api/v1/audit-logs',     auditLogsRouter)
 
 export default app

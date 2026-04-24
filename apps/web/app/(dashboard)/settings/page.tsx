@@ -31,6 +31,7 @@ import {
   useQuota,
 } from '@/lib/queries/use-billing'
 import { QuotaBanner } from '@/components/dashboard/quota-banner'
+import { useAuditLogs } from '@/lib/queries/use-audit-logs'
 import { PLANS, PLAN_REQUEST_LIMITS } from '@/lib/billing-plans'
 import type { BillingPlan } from '@/lib/queries/types'
 
@@ -460,33 +461,47 @@ function ApiKeysTab() {
 
 // ─── AUDIT LOG tab ────────────────────────────────────────────────────────────
 
-const AUDIT_EVENTS = [
-  { time: '14:42:18', who: 'You',        action: 'prompt.deploy',       target: 'support-triage@v14 → production', sev: 'high' as const },
-  { time: '14:40:02', who: 'oncall bot', action: 'alert.fire',          target: 'cost.spike · > 2σ',               sev: 'high' as const },
-  { time: '14:32:04', who: 'Jisoo Park', action: 'key.create',          target: 'sl_live_…7f42 · prod',            sev: 'med'  as const },
-  { time: '14:18:33', who: 'Min Lee',    action: 'member.invite',       target: 'daniel@acme.com · member',        sev: 'low'  as const },
-  { time: '13:55:10', who: 'You',        action: 'billing.plan.change', target: 'Team → Pro',                      sev: 'high' as const },
-  { time: '13:42:51', who: 'Jisoo Park', action: 'integration.connect', target: 'Slack · #llm-ops',                sev: 'med'  as const },
-]
+function formatTime(iso: string): string {
+  const d = new Date(iso)
+  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })
+}
+
+/**
+ * Severity inferred from the action string. High = destructive / billing /
+ * auth-critical. Medium = creation / modification. Low = the rest.
+ */
+function inferSeverity(action: string): 'high' | 'med' | 'low' {
+  if (/\.(delete|revoke|rotate)$|billing\.|workspace\.|member\.remove/.test(action)) return 'high'
+  if (/\.(create|add|update|change|invite)$/.test(action)) return 'med'
+  return 'low'
+}
 
 function AuditLogTab() {
+  const { data, isLoading } = useAuditLogs({ limit: 100 })
+  const events = data ?? []
+
+  const bySev = {
+    high: events.filter((e) => inferSeverity(e.action) === 'high').length,
+    med:  events.filter((e) => inferSeverity(e.action) === 'med').length,
+    low:  events.filter((e) => inferSeverity(e.action) === 'low').length,
+  }
+
   return (
     <div className="max-w-[980px]">
       <TabHeader
         title="Audit log"
-        description="Every state change in the workspace. Streamed to SIEM, never mutated."
-        action={<GhostBtn>Export JSON</GhostBtn>}
+        description="Every state change in the workspace. Immutable · service-role writes only."
       />
 
       <div className="grid grid-cols-3 gap-3 mb-5">
         {[
-          { k: 'HIGH', n: 3,  sub: 'billing · deploy · fires', accent: true },
-          { k: 'MED',  n: 12, sub: 'keys · members · integrations', accent: false },
-          { k: 'LOW',  n: 48, sub: 'reads · runs · webhooks', accent: false },
+          { k: 'HIGH', n: bySev.high, sub: 'billing · auth · destructive', accent: true },
+          { k: 'MED',  n: bySev.med,  sub: 'create · update · invite',     accent: false },
+          { k: 'LOW',  n: bySev.low,  sub: 'other events',                 accent: false },
         ].map((s) => (
           <div key={s.k} className={cn('border rounded-lg p-3', s.accent ? 'border-accent-border bg-accent-bg' : 'border-border bg-bg-elev')}>
             <div className="flex items-baseline justify-between">
-              <span className={cn('font-mono text-[10px] tracking-[0.05em]', s.accent ? 'text-accent' : 'text-text-faint')}>{s.k} · 24h</span>
+              <span className={cn('font-mono text-[10px] tracking-[0.05em]', s.accent ? 'text-accent' : 'text-text-faint')}>{s.k}</span>
               <span className="font-mono text-[22px] font-medium text-text">{s.n}</span>
             </div>
             <div className="font-mono text-[10.5px] text-text-muted mt-1">{s.sub}</div>
@@ -494,24 +509,38 @@ function AuditLogTab() {
         ))}
       </div>
 
-      <Section title="Events" action={<Hint>Newest first · UTC+9</Hint>} className="mb-5">
-        <div className="divide-y divide-border">
-          <div className="grid grid-cols-[80px_40px_160px_200px_1fr_60px] gap-4 px-6 py-3 font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint">
-            {['Time', '', 'Actor', 'Action', 'Target', ''].map((h, i) => <span key={i}>{h}</span>)}
+      <Section title="Events" action={<Hint>Newest first · last 100</Hint>} className="mb-5">
+        {isLoading ? (
+          <div className="px-6 py-8 text-center font-mono text-[12.5px] text-text-faint">Loading…</div>
+        ) : events.length === 0 ? (
+          <div className="px-6 py-8 text-center font-mono text-[12.5px] text-text-faint">
+            No audit events yet.
           </div>
-          {AUDIT_EVENTS.map((e, i) => (
-            <div key={i} className="grid grid-cols-[80px_40px_160px_200px_1fr_60px] gap-4 px-6 py-3 items-center">
-              <span className="font-mono text-[11.5px] text-text-muted">{e.time}</span>
-              <span className={cn('font-mono text-[9px] uppercase tracking-[0.04em]', e.sev === 'high' ? 'text-accent' : e.sev === 'med' ? 'text-text' : 'text-text-faint')}>
-                ● {e.sev}
-              </span>
-              <span className="text-[12.5px] text-text">{e.who}</span>
-              <span className={cn('font-mono text-[11.5px] font-medium', e.sev === 'high' ? 'text-accent' : 'text-text')}>{e.action}</span>
-              <span className="font-mono text-[11.5px] text-text-muted truncate">{e.target}</span>
-              <span className="font-mono text-[11px] text-text">view →</span>
+        ) : (
+          <div className="divide-y divide-border">
+            <div className="grid grid-cols-[100px_60px_180px_1fr] gap-4 px-6 py-3 font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint">
+              <span>Time</span>
+              <span>Sev</span>
+              <span>Action</span>
+              <span>Resource</span>
             </div>
-          ))}
-        </div>
+            {events.map((e) => {
+              const sev = inferSeverity(e.action)
+              return (
+                <div key={e.id} className="grid grid-cols-[100px_60px_180px_1fr] gap-4 px-6 py-3 items-center">
+                  <span className="font-mono text-[11.5px] text-text-muted">{formatTime(e.created_at)}</span>
+                  <span className={cn('font-mono text-[9px] uppercase tracking-[0.04em]', sev === 'high' ? 'text-accent' : sev === 'med' ? 'text-text' : 'text-text-faint')}>
+                    ● {sev}
+                  </span>
+                  <span className={cn('font-mono text-[11.5px] font-medium', sev === 'high' ? 'text-accent' : 'text-text')}>{e.action}</span>
+                  <span className="font-mono text-[11.5px] text-text-muted truncate">
+                    {e.resource_type}{e.resource_id ? ` · ${e.resource_id.slice(0, 12)}` : ''}
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+        )}
       </Section>
     </div>
   )

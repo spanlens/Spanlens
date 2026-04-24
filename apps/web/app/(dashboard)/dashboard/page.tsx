@@ -9,6 +9,7 @@ import { useStatsOverview, useStatsTimeseries } from '@/lib/queries/use-stats'
 import { useAnomalies } from '@/lib/queries/use-anomalies'
 import { useAlerts } from '@/lib/queries/use-alerts'
 import { useRecommendations, type ModelRecommendation } from '@/lib/queries/use-recommendations'
+import { useAuditLogs } from '@/lib/queries/use-audit-logs'
 import { cn } from '@/lib/utils'
 import { RequestChart } from '@/components/dashboard/request-chart'
 
@@ -87,6 +88,7 @@ export default function DashboardPage() {
   const anomalies = useAnomalies()
   const alerts = useAlerts()
   const recommendations = useRecommendations()
+  const auditLogs = useAuditLogs({ limit: 6 })
 
   const o = overview.data
   const isLoading = overview.isLoading || timeseries.isLoading
@@ -440,32 +442,44 @@ export default function DashboardPage() {
           <div className="flex items-center mb-3">
             <span className="text-[14px] font-medium">Recent activity</span>
             <span className="flex-1" />
-            <span className="font-mono text-[10.5px] text-text-muted tracking-[0.03em]">Audit log →</span>
+            <Link href="/settings" className="font-mono text-[10.5px] text-text-muted tracking-[0.03em] hover:text-text transition-colors">
+              Audit log →
+            </Link>
           </div>
-          {[
-            { at: '09:06', who: 'you',    kind: 'prompt',  msg: 'promoted support_reply · v6 → v7' },
-            { at: '08:42', who: 'system', kind: 'alert',   msg: 'alert fired · PII leak · /api/support/reply' },
-            { at: '08:12', who: 'you',    kind: 'key',     msg: 'rotated API key · ingest-worker-2' },
-            { at: '06:30', who: 'system', kind: 'anomaly', msg: 'token spike · summarize_tickets · 3.1× baseline' },
-          ].map((e, i, arr) => (
-            <div
-              key={i}
-              className={cn('grid items-baseline py-2', i < arr.length - 1 && 'border-b border-border')}
-              style={{ gridTemplateColumns: '56px 80px 1fr', gap: 14 }}
-            >
-              <span className="font-mono text-[10.5px] text-text-faint">{e.at}</span>
-              <span className={cn(
-                'font-mono text-[9px] uppercase tracking-[0.04em] px-[5px] py-[1px] rounded-[3px] border self-center',
-                e.kind === 'alert' || e.kind === 'anomaly'
-                  ? 'text-accent border-accent-border'
-                  : 'text-text-faint border-border',
-              )}>{e.kind}</span>
-              <div className="text-[12.5px] text-text leading-snug">
-                <span className="font-mono text-[11.5px] text-text-muted mr-2">{e.who}</span>
-                {e.msg}
-              </div>
+          {auditLogs.isLoading ? (
+            <div className="space-y-2 py-2">
+              {[1, 2, 3].map((i) => <Skeleton key={i} className="h-8 w-full" />)}
             </div>
-          ))}
+          ) : (auditLogs.data ?? []).length === 0 ? (
+            <div className="py-4 text-[12.5px] text-text-faint">
+              No recent activity. Audit events appear when you create keys, deploy prompts, change billing, etc.
+            </div>
+          ) : (
+            (auditLogs.data ?? []).map((e, i, arr) => {
+              const kind = e.action.split('.')[0] ?? 'event'
+              const isAccent = kind === 'alert' || kind === 'anomaly' || kind === 'billing'
+              return (
+                <div
+                  key={e.id}
+                  className={cn('grid items-baseline py-2', i < arr.length - 1 && 'border-b border-border')}
+                  style={{ gridTemplateColumns: '56px 80px 1fr', gap: 14 }}
+                >
+                  <span className="font-mono text-[10.5px] text-text-faint">
+                    {new Date(e.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })}
+                  </span>
+                  <span className={cn(
+                    'font-mono text-[9px] uppercase tracking-[0.04em] px-[5px] py-[1px] rounded-[3px] border self-center',
+                    isAccent ? 'text-accent border-accent-border' : 'text-text-faint border-border',
+                  )}>{kind}</span>
+                  <div className="text-[12.5px] text-text leading-snug font-mono">
+                    {e.action}
+                    {e.resource_type && <span className="text-text-muted"> · {e.resource_type}</span>}
+                    {e.resource_id && <span className="text-text-faint"> · {e.resource_id.slice(0, 12)}</span>}
+                  </div>
+                </div>
+              )
+            })
+          )}
         </div>
       </div>
     </div>
