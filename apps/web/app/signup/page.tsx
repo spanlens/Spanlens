@@ -1,7 +1,7 @@
 'use client'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 
 function LogoMark() {
@@ -27,12 +27,22 @@ function ProofRow({ k, v }: { k: string; v: string }) {
 
 export default function SignupPage() {
   const router = useRouter()
+  const params = useSearchParams()
+  const inviteToken = params.get('invite')
+  const prefillEmail = params.get('email') ?? ''
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [consent, setConsent] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [sent, setSent] = useState(false)
+
+  // Prefill email from invitation link — the server issues invitations bound
+  // to a specific email, so typing a different one would just fail on accept.
+  useEffect(() => {
+    if (prefillEmail && !email) setEmail(prefillEmail)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prefillEmail])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -43,7 +53,7 @@ export default function SignupPage() {
     }
     setLoading(true)
     const supabase = createClient()
-    const { error: authError } = await supabase.auth.signUp({
+    const { data: signupData, error: authError } = await supabase.auth.signUp({
       email,
       password,
       options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
@@ -53,9 +63,57 @@ export default function SignupPage() {
       setLoading(false)
       return
     }
+
+    // Invitation flow: skip onboarding, auto-accept the invite, go to dashboard.
+    // signUp returns a session on local Supabase (no email confirmation); in
+    // prod the session may be null until the confirmation link is clicked —
+    // in that case we defer acceptance to /invite after the user clicks through.
+    if (inviteToken && signupData.session?.access_token) {
+      const accept = await fetch('/api/v1/invitations/accept', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${signupData.session.access_token}`,
+        },
+        body: JSON.stringify({ token: inviteToken }),
+      })
+      if (accept.ok) {
+        router.push('/dashboard')
+        return
+      }
+      // Fall through: account was created but accept failed. Send them to
+      // /invite which will show the error clearly with options.
+      router.push(`/invite?token=${encodeURIComponent(inviteToken)}`)
+      return
+    }
+
+    // Standard signup flow: bootstrap workspace + project + API key in one
+    // shot, then drop the user into the dashboard. The raw API key is stashed
+    // in sessionStorage so the dashboard's welcome state can show it once.
+    if (signupData.session?.access_token) {
+      const boot = await fetch('/api/v1/organizations/bootstrap', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${signupData.session.access_token}`,
+        },
+      })
+      if (boot.ok) {
+        const { data } = (await boot.json()) as { data: { apiKey: string } }
+        try {
+          sessionStorage.setItem('spanlens:welcome_api_key', data.apiKey)
+        } catch { /* ignore — welcome banner just won't show */ }
+      }
+      // Either success or 409 (already onboarded): dashboard handles both.
+      router.push('/dashboard')
+      return
+    }
+
+    // No session in response — email confirmation is likely required. Keep
+    // the old "check your inbox" state so the user knows to click the link;
+    // bootstrap will run the next time they sign in.
     setSent(true)
     setLoading(false)
-    setTimeout(() => router.push('/onboarding'), 1000)
   }
 
   return (

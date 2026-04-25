@@ -1,11 +1,15 @@
 import { Hono } from 'hono'
 import { authJwt, type JwtContext } from '../middleware/authJwt.js'
+import { requireRole } from '../middleware/requireRole.js'
 import { supabaseAdmin } from '../lib/db.js'
 import { checkProjectQuota } from '../lib/quota.js'
 
 export const projectsRouter = new Hono<JwtContext>()
 
 projectsRouter.use('*', authJwt)
+
+const requireEdit = requireRole('admin', 'editor')
+const requireAdmin = requireRole('admin')
 
 // GET /api/v1/projects — list all projects for the user's org
 projectsRouter.get('/', async (c) => {
@@ -42,7 +46,7 @@ projectsRouter.get('/:id', async (c) => {
 })
 
 // POST /api/v1/projects
-projectsRouter.post('/', async (c) => {
+projectsRouter.post('/', requireEdit, async (c) => {
   const orgId = c.get('orgId')
   if (!orgId) return c.json({ error: 'Organization not found' }, 404)
 
@@ -86,7 +90,7 @@ projectsRouter.post('/', async (c) => {
 })
 
 // PATCH /api/v1/projects/:id
-projectsRouter.patch('/:id', async (c) => {
+projectsRouter.patch('/:id', requireEdit, async (c) => {
   const projectId = c.req.param('id')
   const orgId = c.get('orgId')
   if (!orgId) return c.json({ error: 'Organization not found' }, 404)
@@ -123,7 +127,7 @@ projectsRouter.patch('/:id', async (c) => {
 })
 
 // DELETE /api/v1/projects/:id
-projectsRouter.delete('/:id', async (c) => {
+projectsRouter.delete('/:id', requireAdmin, async (c) => {
   const projectId = c.req.param('id')
   const orgId = c.get('orgId')
   if (!orgId) return c.json({ error: 'Organization not found' }, 404)

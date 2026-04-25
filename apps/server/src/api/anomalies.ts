@@ -1,8 +1,11 @@
 import { Hono, type Context } from 'hono'
 import { authJwt, type JwtContext } from '../middleware/authJwt.js'
+import { requireRole } from '../middleware/requireRole.js'
 import { detectAnomalies } from '../lib/anomaly.js'
 import { getAnomalyHistory } from '../lib/anomaly-snapshot.js'
 import { supabaseAdmin } from '../lib/db.js'
+
+const requireEdit = requireRole('admin', 'editor')
 
 /**
  * Anomaly endpoints.
@@ -116,7 +119,7 @@ async function parseAckBody(
 }
 
 // POST /api/v1/anomalies/ack — acknowledge (upsert)
-anomaliesRouter.post('/ack', async (c) => {
+anomaliesRouter.post('/ack', requireEdit, async (c) => {
   const orgId = c.get('orgId')
   const userId = c.get('userId')
   if (!orgId) return c.json({ error: 'Organization not found' }, 404)
@@ -141,7 +144,7 @@ anomaliesRouter.post('/ack', async (c) => {
 })
 
 // DELETE /api/v1/anomalies/ack?provider=X&model=Y&kind=Z — un-acknowledge
-anomaliesRouter.delete('/ack', async (c) => {
+anomaliesRouter.delete('/ack', requireEdit, async (c) => {
   const orgId = c.get('orgId')
   if (!orgId) return c.json({ error: 'Organization not found' }, 404)
 

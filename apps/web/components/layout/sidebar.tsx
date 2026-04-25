@@ -1,4 +1,5 @@
 'use client'
+import { useState, useRef, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { cn } from '@/lib/utils'
@@ -7,6 +8,13 @@ import { useStatsOverview } from '@/lib/queries/use-stats'
 import { useAnomalies } from '@/lib/queries/use-anomalies'
 import { useAlerts } from '@/lib/queries/use-alerts'
 import { useRecommendations } from '@/lib/queries/use-recommendations'
+import { useIsAdmin } from '@/lib/queries/use-current-role'
+import { useOrganization } from '@/lib/queries/use-organization'
+import { useProjects } from '@/lib/queries/use-projects'
+import { useWorkspaces, useCreateWorkspace } from '@/lib/queries/use-workspaces'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { useCurrentProjectId, useSetCurrentProjectId } from '@/lib/project-context'
+import { writeWorkspaceCookie } from '@/lib/workspace-cookie'
 
 /* ── Logo mark (SVG lens ring + wordmark) ── */
 function LogoMark() {
@@ -24,6 +32,223 @@ function LogoMark() {
         spanlens
       </span>
     </Link>
+  )
+}
+
+/* ── Workspace + project switcher ──
+ *
+ * One dropdown that exposes two scopes:
+ *   - Top section: workspaces the user belongs to (switches `sb-ws` cookie +
+ *     reloads so middleware/authJwt pick up the new scope).
+ *   - Bottom section: projects within the current workspace (client-side
+ *     state — no reload needed).
+ *
+ * Workspace switch requires a full reload because the server resolves the
+ * active org from the cookie for every request, and TanStack caches are
+ * keyed by queries that silently assumed org A's data. Reload wipes everything.
+ */
+function WorkspaceSwitcher() {
+  const org = useOrganization()
+  const workspaces = useWorkspaces()
+  const projects = useProjects()
+  const currentProjectId = useCurrentProjectId()
+  const setProjectId = useSetCurrentProjectId()
+  const createWorkspace = useCreateWorkspace()
+  const [open, setOpen] = useState(false)
+  const [newOpen, setNewOpen] = useState(false)
+  const [newName, setNewName] = useState('')
+  const [newError, setNewError] = useState('')
+  const containerRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const handler = (e: PointerEvent) => {
+      if (!containerRef.current?.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('pointerdown', handler)
+    return () => document.removeEventListener('pointerdown', handler)
+  }, [open])
+
+  function switchWorkspace(id: string) {
+    if (id === org.data?.id) { setOpen(false); return }
+    writeWorkspaceCookie(id)
+    // Full reload so SSR middleware re-resolves the workspace and every
+    // TanStack query starts fresh. Avoids stale org A data flashing while
+    // org B queries refetch.
+    window.location.href = '/dashboard'
+  }
+
+  async function handleCreateWorkspace(e: React.FormEvent) {
+    e.preventDefault()
+    setNewError('')
+    const trimmed = newName.trim()
+    if (!trimmed) return
+    try {
+      const created = await createWorkspace.mutateAsync(trimmed)
+      // Switch to the new workspace — cookie + hard reload mirrors the
+      // existing switch path so there's exactly one code path for "active
+      // workspace changed".
+      writeWorkspaceCookie(created.id)
+      window.location.href = '/dashboard'
+    } catch (err) {
+      setNewError(err instanceof Error ? err.message : 'Failed to create workspace')
+    }
+  }
+
+  const orgName = org.data?.name ?? 'workspace'
+  const allProjects = projects.data ?? []
+  const allWorkspaces = workspaces.data ?? []
+  const showWorkspaceSwitch = allWorkspaces.length > 1
+
+  const current = currentProjectId
+    ? allProjects.find((p) => p.id === currentProjectId)
+    : null
+  const label = current?.name ?? 'All projects'
+
+  return (
+    <div ref={containerRef} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center justify-between px-[10px] py-[7px] rounded-[5px] border border-border bg-bg-muted text-[12px] font-mono text-text-muted hover:bg-bg-muted/80 transition-colors"
+      >
+        <span className="truncate">
+          <span className="text-text-faint">{orgName} /</span>{' '}
+          <span className="text-text">{label}</span>
+        </span>
+        <span className="text-text-faint text-[10px] shrink-0 ml-2">⌄</span>
+      </button>
+      {open && (
+        <div
+          className="absolute left-0 right-0 mt-1 z-20 rounded-[6px] border border-border-strong bg-bg-elev shadow-lg overflow-hidden"
+          role="menu"
+        >
+          {/* Workspaces section: always renders so "+ New workspace" is
+              reachable even when the user has only one. The list of existing
+              workspaces only appears when switching is meaningful (2+). */}
+          <div className="font-mono text-[9.5px] uppercase tracking-[0.06em] text-text-faint px-[10px] pt-[7px] pb-[3px]">
+            Workspaces
+          </div>
+          {showWorkspaceSwitch && allWorkspaces.map((w) => {
+            const selected = w.id === org.data?.id
+            return (
+              <button
+                key={w.id}
+                type="button"
+                onClick={() => switchWorkspace(w.id)}
+                className={cn(
+                  'w-full text-left px-[10px] py-[6px] text-[12px] font-mono transition-colors flex items-center justify-between',
+                  selected ? 'bg-bg-muted text-text' : 'text-text-muted hover:bg-bg-muted hover:text-text',
+                )}
+                role="menuitem"
+              >
+                <span className="truncate">
+                  {w.name}{' '}
+                  <span className="text-text-faint">· {w.role}</span>
+                </span>
+                {selected && <span className="text-accent ml-2">✓</span>}
+              </button>
+            )
+          })}
+          <button
+            type="button"
+            onClick={() => { setOpen(false); setNewName(''); setNewError(''); setNewOpen(true) }}
+            className="w-full text-left px-[10px] py-[6px] text-[12px] font-mono text-text-faint hover:bg-bg-muted hover:text-text transition-colors"
+            role="menuitem"
+          >
+            + New workspace
+          </button>
+          <div className="h-px bg-border mx-[6px] my-[3px]" />
+
+          <div className="font-mono text-[9.5px] uppercase tracking-[0.06em] text-text-faint px-[10px] pt-[7px] pb-[3px]">
+            Projects
+          </div>
+          {allProjects.length > 1 && (
+            <button
+              type="button"
+              onClick={() => { setProjectId(null); setOpen(false) }}
+              className={cn(
+                'w-full text-left px-[10px] py-[6px] text-[12px] font-mono transition-colors flex items-center justify-between',
+                currentProjectId === null ? 'bg-bg-muted text-text' : 'text-text-muted hover:bg-bg-muted hover:text-text',
+              )}
+              role="menuitem"
+            >
+              <span>All projects</span>
+              {currentProjectId === null && <span className="text-accent">✓</span>}
+            </button>
+          )}
+          {allProjects.map((p) => {
+            const selected = p.id === currentProjectId
+            return (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => { setProjectId(p.id); setOpen(false) }}
+                className={cn(
+                  'w-full text-left px-[10px] py-[6px] text-[12px] font-mono transition-colors flex items-center justify-between',
+                  selected ? 'bg-bg-muted text-text' : 'text-text-muted hover:bg-bg-muted hover:text-text',
+                )}
+                role="menuitem"
+              >
+                <span className="truncate">{p.name}</span>
+                {selected && <span className="text-accent">✓</span>}
+              </button>
+            )
+          })}
+          <div className="h-px bg-border mx-[6px]" />
+          <Link
+            href="/projects"
+            onClick={() => setOpen(false)}
+            className="w-full text-left px-[10px] py-[7px] text-[12px] font-mono text-text-faint hover:bg-bg-muted hover:text-text transition-colors flex items-center"
+            role="menuitem"
+          >
+            + New project
+          </Link>
+        </div>
+      )}
+
+      <Dialog open={newOpen} onOpenChange={setNewOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Create workspace</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={(e) => void handleCreateWorkspace(e)} className="mt-3 space-y-3">
+            <div>
+              <label className="block text-[12px] text-text-muted mb-1.5">Name</label>
+              <input
+                type="text"
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                placeholder="Acme Inc."
+                autoFocus
+                required
+                className="w-full px-3 py-2 border border-border-strong rounded-[6px] bg-bg text-[13px] outline-none focus:border-accent"
+              />
+              <p className="text-[11.5px] text-text-faint mt-1.5">
+                Creates a new isolated workspace with its own projects, keys, and billing.
+              </p>
+            </div>
+            {newError && <p className="text-[12.5px] text-bad">{newError}</p>}
+            <div className="flex justify-end gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setNewOpen(false)}
+                className="font-mono text-[11.5px] px-3 py-[5px] border border-border rounded-[5px] text-text-muted hover:text-text transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={createWorkspace.isPending || !newName.trim()}
+                className="font-mono text-[11.5px] px-3 py-[5px] rounded-[5px] bg-text text-bg font-medium hover:opacity-90 transition-opacity disabled:opacity-40"
+              >
+                {createWorkspace.isPending ? 'Creating…' : 'Create'}
+              </button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+    </div>
   )
 }
 
@@ -66,6 +291,7 @@ export function Sidebar() {
   const pathname = usePathname()
   const router = useRouter()
   const overview = useStatsOverview()
+  const isAdmin = useIsAdmin()
   const anomalies = useAnomalies()
   const alerts = useAlerts()
   const recommendations = useRecommendations()
@@ -104,14 +330,9 @@ export function Sidebar() {
         <LogoMark />
       </div>
 
-      {/* Workspace switcher */}
+      {/* Workspace / project switcher */}
       <div className="mx-[14px] mb-3">
-        <button className="w-full flex items-center justify-between px-[10px] py-[7px] rounded-[5px] border border-border bg-bg-muted text-[12px] font-mono text-text-muted hover:bg-bg-muted/80 transition-colors">
-          <span>
-            <span className="text-text-faint">workspace /</span> prod
-          </span>
-          <span className="text-text-faint text-[10px]">⌄</span>
-        </button>
+        <WorkspaceSwitcher />
       </div>
 
       {/* Navigation */}
@@ -165,12 +386,14 @@ export function Sidebar() {
         <div className="h-1 rounded-full bg-bg overflow-hidden">
           <div className="h-full w-0 rounded-full bg-text" />
         </div>
-        <button
-          onClick={() => router.push('/settings')}
-          className="mt-2.5 text-[12px] font-medium text-accent hover:opacity-80 transition-opacity"
-        >
-          Upgrade →
-        </button>
+        {isAdmin && (
+          <button
+            onClick={() => router.push('/settings')}
+            className="mt-2.5 text-[12px] font-medium text-accent hover:opacity-80 transition-opacity"
+          >
+            Upgrade →
+          </button>
+        )}
       </div>
 
       {/* Sign out */}

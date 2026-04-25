@@ -11,6 +11,7 @@ import {
   type AnomalyKind,
 } from '@/lib/queries/use-anomalies'
 import { Topbar } from '@/components/layout/topbar'
+import { PermissionGate } from '@/components/permission-gate'
 import { cn } from '@/lib/utils'
 
 type KindFilter = 'all' | AnomalyKind
@@ -159,20 +160,22 @@ function AnomRow({ a, idx, last, onAck, onUnack, ackPending }: AnomRowProps) {
 
       {/* actions */}
       <div className="flex justify-end gap-1.5">
-        <button
-          type="button"
-          disabled={ackPending}
-          onClick={isAcked ? onUnack : onAck}
-          className={cn(
-            'font-mono text-[10.5px] px-2 py-[3px] border rounded-[4px] transition-colors disabled:opacity-50',
-            isAcked
-              ? 'text-text-muted border-border hover:text-text'
-              : 'text-text-muted border-border hover:text-text hover:border-border-strong',
-          )}
-          title={isAcked ? 'Un-acknowledge' : 'Acknowledge this anomaly'}
-        >
-          {isAcked ? 'Unack' : 'Ack'}
-        </button>
+        <PermissionGate need="edit">
+          <button
+            type="button"
+            disabled={ackPending}
+            onClick={isAcked ? onUnack : onAck}
+            className={cn(
+              'font-mono text-[10.5px] px-2 py-[3px] border rounded-[4px] transition-colors disabled:opacity-50',
+              isAcked
+                ? 'text-text-muted border-border hover:text-text'
+                : 'text-text-muted border-border hover:text-text hover:border-border-strong',
+            )}
+            title={isAcked ? 'Un-acknowledge' : 'Acknowledge this anomaly'}
+          >
+            {isAcked ? 'Unack' : 'Ack'}
+          </button>
+        </PermissionGate>
         <Link
           href={`/requests?provider=${encodeURIComponent(a.provider)}&model=${encodeURIComponent(a.model)}`}
           className="font-mono text-[10.5px] text-text px-2 py-[3px] border border-border-strong rounded-[4px] bg-bg-elev hover:bg-bg-muted transition-colors"

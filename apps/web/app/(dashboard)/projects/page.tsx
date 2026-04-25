@@ -12,6 +12,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Topbar } from '@/components/layout/topbar'
+import { PermissionGate } from '@/components/permission-gate'
 import { GhostBtn, PrimaryBtn } from '@/components/ui/primitives'
 import { useCreateProject, useProjects } from '@/lib/queries/use-projects'
 import { useApiKeys, useCreateApiKey, useRevokeApiKey } from '@/lib/queries/use-api-keys'
@@ -115,12 +116,14 @@ export default function ProjectsPage() {
       <Topbar
         crumbs={[{ label: 'Workspace', href: '/dashboard' }, { label: 'Projects' }]}
         right={
-          <GhostBtn
-            onClick={() => setProjDialogOpen(true)}
-            className="flex items-center gap-1.5 text-[12.5px] px-3 py-[5px]"
-          >
-            <Plus className="h-3.5 w-3.5" /> New project
-          </GhostBtn>
+          <PermissionGate need="edit">
+            <GhostBtn
+              onClick={() => setProjDialogOpen(true)}
+              className="flex items-center gap-1.5 text-[12.5px] px-3 py-[5px]"
+            >
+              <Plus className="h-3.5 w-3.5" /> New project
+            </GhostBtn>
+          </PermissionGate>
         }
       />
 
@@ -252,15 +255,17 @@ export default function ProjectsPage() {
                         <h2 className="text-[14px] font-semibold text-text">{proj.name}</h2>
                         <p className="font-mono text-[10.5px] text-text-faint mt-0.5">{proj.id}</p>
                       </div>
-                      <GhostBtn
-                        className="flex items-center gap-1.5 text-[12px] px-3 py-[5px]"
-                        onClick={() => {
-                          setKeyProjectId(proj.id)
-                          setKeyDialogOpen(true)
-                        }}
-                      >
-                        <Plus className="h-3.5 w-3.5" /> New API key
-                      </GhostBtn>
+                      <PermissionGate need="edit">
+                        <GhostBtn
+                          className="flex items-center gap-1.5 text-[12px] px-3 py-[5px]"
+                          onClick={() => {
+                            setKeyProjectId(proj.id)
+                            setKeyDialogOpen(true)
+                          }}
+                        >
+                          <Plus className="h-3.5 w-3.5" /> New API key
+                        </GhostBtn>
+                      </PermissionGate>
                     </div>
 
                     <div>
@@ -298,15 +303,17 @@ export default function ProjectsPage() {
                                     : 'Never used'}
                                 </span>
                                 {key.is_active && (
-                                  <button
-                                    type="button"
-                                    onClick={() => void revokeApiKey.mutateAsync(key.id)}
-                                    disabled={revokeApiKey.isPending}
-                                    className="p-1.5 rounded hover:bg-accent-bg text-text-faint hover:text-accent transition-colors disabled:opacity-40"
-                                    aria-label="Revoke key"
-                                  >
-                                    <Trash2 className="h-3.5 w-3.5" />
-                                  </button>
+                                  <PermissionGate need="edit">
+                                    <button
+                                      type="button"
+                                      onClick={() => void revokeApiKey.mutateAsync(key.id)}
+                                      disabled={revokeApiKey.isPending}
+                                      className="p-1.5 rounded hover:bg-accent-bg text-text-faint hover:text-accent transition-colors disabled:opacity-40"
+                                      aria-label="Revoke key"
+                                    >
+                                      <Trash2 className="h-3.5 w-3.5" />
+                                    </button>
+                                  </PermissionGate>
                                 )}
                               </div>
                             </div>
@@ -326,12 +333,14 @@ export default function ProjectsPage() {
                             Overrides the workspace default for this project only
                           </p>
                         </div>
-                        <GhostBtn
-                          className="flex items-center gap-1.5 text-[12px] px-3 py-[5px]"
-                          onClick={() => openProviderKeyDialog(proj.id)}
-                        >
-                          <Plus className="h-3.5 w-3.5" /> Override
-                        </GhostBtn>
+                        <PermissionGate need="edit">
+                          <GhostBtn
+                            className="flex items-center gap-1.5 text-[12px] px-3 py-[5px]"
+                            onClick={() => openProviderKeyDialog(proj.id)}
+                          >
+                            <Plus className="h-3.5 w-3.5" /> Override
+                          </GhostBtn>
+                        </PermissionGate>
                       </div>
                       <div className="divide-y divide-border">
                         {PROVIDERS.map((provider) => {
@@ -364,26 +373,30 @@ export default function ProjectsPage() {
                                 ) : (
                                   <>
                                     <span className="text-[12.5px] text-text-faint">Not configured</span>
-                                    <Link
-                                      href="/settings"
-                                      className="font-mono text-[10.5px] text-accent hover:opacity-80 transition-opacity"
-                                    >
-                                      Add default →
-                                    </Link>
+                                    <PermissionGate need="edit">
+                                      <Link
+                                        href="/settings"
+                                        className="font-mono text-[10.5px] text-accent hover:opacity-80 transition-opacity"
+                                      >
+                                        Add default →
+                                      </Link>
+                                    </PermissionGate>
                                   </>
                                 )}
                               </div>
                               {override && (
-                                <button
-                                  type="button"
-                                  onClick={() => void revokeProviderKey.mutateAsync(override.id)}
-                                  disabled={revokeProviderKey.isPending}
-                                  className="p-1.5 rounded hover:bg-accent-bg text-text-faint hover:text-accent transition-colors disabled:opacity-40 shrink-0"
-                                  aria-label="Remove override"
-                                  title="Remove override (falls back to workspace default)"
-                                >
-                                  <Trash2 className="h-3.5 w-3.5" />
-                                </button>
+                                <PermissionGate need="edit">
+                                  <button
+                                    type="button"
+                                    onClick={() => void revokeProviderKey.mutateAsync(override.id)}
+                                    disabled={revokeProviderKey.isPending}
+                                    className="p-1.5 rounded hover:bg-accent-bg text-text-faint hover:text-accent transition-colors disabled:opacity-40 shrink-0"
+                                    aria-label="Remove override"
+                                    title="Remove override (falls back to workspace default)"
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </button>
+                                </PermissionGate>
                               )}
                             </div>
                           )
@@ -397,12 +410,14 @@ export default function ProjectsPage() {
               {projects.length === 0 && (
                 <div className="rounded-xl border border-border bg-bg-elev px-6 py-12 text-center">
                   <p className="text-[13px] text-text-faint mb-4">No projects yet.</p>
-                  <GhostBtn
-                    onClick={() => setProjDialogOpen(true)}
-                    className="inline-flex items-center gap-2"
-                  >
-                    <Plus className="h-4 w-4" /> Create your first project
-                  </GhostBtn>
+                  <PermissionGate need="edit">
+                    <GhostBtn
+                      onClick={() => setProjDialogOpen(true)}
+                      className="inline-flex items-center gap-2"
+                    >
+                      <Plus className="h-4 w-4" /> Create your first project
+                    </GhostBtn>
+                  </PermissionGate>
                 </div>
               )}
             </div>

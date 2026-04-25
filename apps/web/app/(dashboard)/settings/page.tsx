@@ -33,6 +33,16 @@ import {
 import { QuotaBanner } from '@/components/dashboard/quota-banner'
 import { useAuditLogs } from '@/lib/queries/use-audit-logs'
 import { useCurrentUser } from '@/lib/queries/use-current-user'
+import {
+  useMembers,
+  useInvitations,
+  useInviteMember,
+  useUpdateMemberRole,
+  useRemoveMember,
+  useCancelInvitation,
+  useCurrentMember,
+  type OrgRole,
+} from '@/lib/queries/use-members'
 import { PLANS, PLAN_REQUEST_LIMITS } from '@/lib/billing-plans'
 import type { BillingPlan } from '@/lib/queries/types'
 
@@ -164,6 +174,8 @@ function GeneralTab() {
   const { data: org } = useOrganization()
   const updateOrg = useUpdateOrganization()
   const [name, setName] = useState(org?.name ?? '')
+  const currentMember = useCurrentMember()
+  const isAdmin = currentMember?.role === 'admin'
 
   return (
     <div className="max-w-[920px]">
@@ -179,13 +191,16 @@ function GeneralTab() {
               value={name || (org?.name ?? '')}
               onChange={(e) => setName(e.target.value)}
               className="flex-1 font-mono text-[12.5px]"
+              disabled={!isAdmin}
             />
-            <GhostBtn
-              disabled={updateOrg.isPending || !name.trim() || name === org?.name}
-              onClick={() => org && void updateOrg.mutateAsync({ id: org.id, name })}
-            >
-              {updateOrg.isPending ? 'Saving…' : 'Save'}
-            </GhostBtn>
+            {isAdmin && (
+              <GhostBtn
+                disabled={updateOrg.isPending || !name.trim() || name === org?.name}
+                onClick={() => org && void updateOrg.mutateAsync({ id: org.id, name })}
+              >
+                {updateOrg.isPending ? 'Saving…' : 'Save'}
+              </GhostBtn>
+            )}
           </div>
         </FormRow>
         <FormRow label="Plan">
@@ -226,59 +241,223 @@ function GeneralTab() {
 // ─── MEMBERS tab ─────────────────────────────────────────────────────────────
 
 function MembersTab() {
-  const { data: user, isLoading } = useCurrentUser()
+  const members = useMembers()
+  const invitations = useInvitations()
+  const currentMember = useCurrentMember()
+  const inviteMutation = useInviteMember()
+  const updateRoleMutation = useUpdateMemberRole()
+  const removeMutation = useRemoveMember()
+  const cancelInvitation = useCancelInvitation()
+
+  const [inviteOpen, setInviteOpen] = useState(false)
+  const [inviteEmail, setInviteEmail] = useState('')
+  const [inviteRole, setInviteRole] = useState<OrgRole>('editor')
+  const [inviteError, setInviteError] = useState('')
+  const [inviteSuccess, setInviteSuccess] = useState<string | null>(null)
+  const [rowError, setRowError] = useState<string | null>(null)
+
+  const isAdmin = currentMember?.role === 'admin'
+  const adminCount = (members.data ?? []).filter((m) => m.role === 'admin').length
+  const isLastAdmin = (role: OrgRole) => role === 'admin' && adminCount <= 1
+
+  async function submitInvite(e: React.FormEvent) {
+    e.preventDefault()
+    setInviteError('')
+    setInviteSuccess(null)
+    try {
+      const result = await inviteMutation.mutateAsync({ email: inviteEmail.trim(), role: inviteRole })
+      if (result.devAcceptUrl) {
+        setInviteSuccess(`Dev: ${result.devAcceptUrl}`)
+      } else {
+        setInviteSuccess(`Invitation sent to ${inviteEmail.trim()}`)
+      }
+      setInviteEmail('')
+    } catch (err) {
+      setInviteError(err instanceof Error ? err.message : 'Failed to invite')
+    }
+  }
+
+  async function handleRoleChange(userId: string, newRole: OrgRole) {
+    setRowError(null)
+    try {
+      await updateRoleMutation.mutateAsync({ userId, role: newRole })
+    } catch (err) {
+      setRowError(err instanceof Error ? err.message : 'Failed to update role')
+    }
+  }
+
+  async function handleRemove(userId: string) {
+    if (!confirm('Remove this member from the workspace?')) return
+    setRowError(null)
+    try {
+      await removeMutation.mutateAsync(userId)
+    } catch (err) {
+      setRowError(err instanceof Error ? err.message : 'Failed to remove')
+    }
+  }
+
+  async function handleCancel(id: string) {
+    if (!confirm('Cancel this pending invitation?')) return
+    await cancelInvitation.mutateAsync(id)
+  }
 
   return (
     <div className="max-w-[980px]">
       <TabHeader
         title="Members"
-        description="Workspace members. Multi-user collaboration is a planned feature."
+        description="Team members with access to this workspace."
+        action={
+          isAdmin ? (
+            <PrimaryBtn onClick={() => { setInviteOpen(true); setInviteError(''); setInviteSuccess(null) }}>
+              <Plus className="w-3.5 h-3.5" /> Invite member
+            </PrimaryBtn>
+          ) : null
+        }
       />
 
-      <div className="mb-4 border border-accent-border bg-accent-bg rounded-lg px-4 py-3 flex items-center gap-3">
-        <span className="w-5 h-5 rounded-full border border-accent text-accent flex items-center justify-center font-mono text-[10px] shrink-0">i</span>
-        <div className="flex-1 text-[12.5px] text-text-muted">
-          Team features (invites · roles · seat billing) are on the roadmap. Today every workspace has a single owner.
+      {rowError && (
+        <div className="mb-3 border border-bad/30 bg-bad-bg rounded-lg px-4 py-2.5 text-[12.5px] text-bad">
+          {rowError}
         </div>
-      </div>
+      )}
 
-      <Section title="Owner" className="mb-5">
-        {isLoading ? (
+      <Section title="Members" className="mb-5">
+        {members.isLoading ? (
           <div className="px-6 py-4 text-[12.5px] text-text-faint">Loading…</div>
-        ) : user ? (
-          <div className="grid grid-cols-[1.6fr_1.6fr_120px] gap-4 px-6 py-4 items-center">
-            <span className="text-[13px] font-medium text-text truncate">{user.email ?? '—'}</span>
-            <span className="font-mono text-[11px] text-text-muted truncate">
-              joined {new Date(user.created_at).toLocaleDateString()}
-            </span>
-            <MonoPill variant="accent" dot>owner</MonoPill>
-          </div>
+        ) : (members.data ?? []).length === 0 ? (
+          <div className="px-6 py-4 text-[12.5px] text-text-faint">No members yet.</div>
         ) : (
-          <div className="px-6 py-4 text-[12.5px] text-text-faint">Not signed in.</div>
+          <div className="divide-y divide-border">
+            {(members.data ?? []).map((m) => {
+              const isMe = currentMember?.userId === m.userId
+              const lockedLastAdmin = isLastAdmin(m.role)
+              return (
+                <div
+                  key={m.userId}
+                  className="grid grid-cols-[1.6fr_1fr_130px_100px] gap-4 px-6 py-3 items-center"
+                >
+                  <span className="text-[13px] font-medium text-text truncate">
+                    {m.email} {isMe && <span className="text-text-faint font-normal">(you)</span>}
+                  </span>
+                  <span className="font-mono text-[11px] text-text-muted truncate">
+                    joined {new Date(m.createdAt).toLocaleDateString()}
+                  </span>
+                  {isAdmin && !lockedLastAdmin ? (
+                    <Select
+                      value={m.role}
+                      onValueChange={(v) => void handleRoleChange(m.userId, v as OrgRole)}
+                    >
+                      <SelectTrigger className="h-8 text-[12px]">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="admin">Admin</SelectItem>
+                        <SelectItem value="editor">Editor</SelectItem>
+                        <SelectItem value="viewer">Viewer</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <MonoPill variant={m.role === 'admin' ? 'accent' : 'neutral'} dot>
+                      {m.role}
+                    </MonoPill>
+                  )}
+                  {isAdmin && !lockedLastAdmin ? (
+                    <button
+                      type="button"
+                      onClick={() => void handleRemove(m.userId)}
+                      className="text-[12px] text-text-muted hover:text-bad transition-colors justify-self-end"
+                    >
+                      Remove
+                    </button>
+                  ) : lockedLastAdmin ? (
+                    <span className="font-mono text-[10px] text-text-faint justify-self-end" title="Cannot remove the last admin">
+                      🔒 last admin
+                    </span>
+                  ) : (
+                    <span />
+                  )}
+                </div>
+              )
+            })}
+          </div>
         )}
       </Section>
 
-      <Section title="Roles & permissions" description="Reference · takes effect once team features ship" className="mb-5">
-        <div className="grid grid-cols-4 gap-3 p-6">
-          {[
-            { r: 'Owner',  p: ['Billing & plan', 'Rotate API keys', 'Delete workspace', 'All admin powers'] },
-            { r: 'Admin',  p: ['Manage members', 'Manage integrations', 'Manage projects', 'All member powers'] },
-            { r: 'Member', p: ['Read all spans', 'Write prompts & evals', 'Deploy prompt versions', 'Create alerts'] },
-            { r: 'Viewer', p: ['Read spans', 'Read prompts', 'Read dashboards', '— no writes'] },
-          ].map((x) => (
-            <div key={x.r} className="border border-border rounded-lg p-4 bg-bg-elev">
-              <div className="text-[13px] font-medium text-text mb-3">{x.r}</div>
-              <ul className="space-y-1.5">
-                {x.p.map((li) => (
-                  <li key={li} className={cn('font-mono text-[10.5px]', li.startsWith('—') ? 'text-text-faint' : 'text-text-muted')}>
-                    {li.startsWith('—') ? li : `▸ ${li}`}
-                  </li>
-                ))}
-              </ul>
+      {(invitations.data ?? []).length > 0 && (
+        <Section title="Pending invitations" className="mb-5">
+          <div className="divide-y divide-border">
+            {(invitations.data ?? []).map((inv) => {
+              const expires = new Date(inv.expires_at)
+              const daysLeft = Math.max(0, Math.ceil((expires.getTime() - Date.now()) / 86_400_000))
+              return (
+                <div
+                  key={inv.id}
+                  className="grid grid-cols-[1.6fr_1fr_130px_100px] gap-4 px-6 py-3 items-center"
+                >
+                  <span className="text-[13px] text-text truncate">{inv.email}</span>
+                  <span className="font-mono text-[11px] text-text-muted">
+                    expires in {daysLeft}d
+                  </span>
+                  <MonoPill variant="neutral" dot>{inv.role}</MonoPill>
+                  {isAdmin ? (
+                    <button
+                      type="button"
+                      onClick={() => void handleCancel(inv.id)}
+                      className="text-[12px] text-text-muted hover:text-bad transition-colors justify-self-end"
+                    >
+                      Cancel
+                    </button>
+                  ) : (
+                    <span />
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </Section>
+      )}
+
+      <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Invite member</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={(e) => void submitInvite(e)} className="space-y-3 mt-2">
+            <FormRow label="Email">
+              <input
+                type="email"
+                required
+                value={inviteEmail}
+                onChange={(e) => setInviteEmail(e.target.value)}
+                placeholder="teammate@company.com"
+                className="w-full px-3 py-2 border border-border-strong rounded-[6px] bg-bg text-[13px] outline-none focus:border-accent"
+              />
+            </FormRow>
+            <FormRow label="Role">
+              <Select value={inviteRole} onValueChange={(v) => setInviteRole(v as OrgRole)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="admin">Admin — manage everything</SelectItem>
+                  <SelectItem value="editor">Editor — create/modify data</SelectItem>
+                  <SelectItem value="viewer">Viewer — read-only</SelectItem>
+                </SelectContent>
+              </Select>
+            </FormRow>
+            {inviteError && <div className="text-[12.5px] text-bad">{inviteError}</div>}
+            {inviteSuccess && (
+              <div className="text-[12px] text-good break-all">{inviteSuccess}</div>
+            )}
+            <div className="flex gap-2 justify-end pt-2">
+              <GhostBtn type="button" onClick={() => setInviteOpen(false)}>Close</GhostBtn>
+              <PrimaryBtn type="submit" disabled={inviteMutation.isPending}>
+                {inviteMutation.isPending ? 'Sending…' : 'Send invitation'}
+              </PrimaryBtn>
             </div>
-          ))}
-        </div>
-      </Section>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
@@ -290,6 +469,8 @@ function ApiKeysTab() {
   const createKey   = useCreateProviderKey()
   const revokeKey   = useRevokeProviderKey()
   const rotateKey   = useRotateProviderKey()
+  const currentMember = useCurrentMember()
+  const canEdit = currentMember?.role === 'admin' || currentMember?.role === 'editor'
 
   const [addOpen, setAddOpen]       = useState(false)
   const [provider, setProvider]     = useState('openai')
@@ -318,7 +499,9 @@ function ApiKeysTab() {
         title="Provider keys"
         description="Default OpenAI / Anthropic / Gemini keys for this workspace. Projects can override individually from the Projects page."
         action={
-          <GhostBtn onClick={() => setAddOpen(true)}><Plus className="h-3.5 w-3.5 mr-1.5" /> Add provider key</GhostBtn>
+          canEdit ? (
+            <GhostBtn onClick={() => setAddOpen(true)}><Plus className="h-3.5 w-3.5 mr-1.5" /> Add provider key</GhostBtn>
+          ) : null
         }
       />
 
@@ -355,7 +538,7 @@ function ApiKeysTab() {
                 <MonoPill variant={key.is_active ? 'good' : 'faint'} dot>
                   {key.is_active ? 'active' : 'revoked'}
                 </MonoPill>
-                {key.is_active && (
+                {key.is_active && canEdit && (
                   <div className="flex items-center gap-1">
                     <button
                       type="button"
@@ -616,6 +799,8 @@ function PlanLimitsTab() {
   const createCheckout = useCreateCheckout()
   const refreshSubscription = useRefreshSubscription()
   const update = useUpdateOverageSettings()
+  const currentMember = useCurrentMember()
+  const isAdmin = currentMember?.role === 'admin'
   const [multiplierDraft, setMultiplierDraft] = useState(String(org?.overage_cap_multiplier ?? 2))
   const [paddle, setPaddle] = useState<Paddle | null>(null)
   const [checkoutError, setCheckoutError] = useState<string | null>(null)
@@ -724,6 +909,10 @@ function PlanLimitsTab() {
                   <button type="button" disabled className="w-full h-8 rounded-[6px] border border-border bg-bg text-[12.5px] font-medium text-text-faint cursor-not-allowed">
                     Current plan
                   </button>
+                ) : !isAdmin ? (
+                  <button type="button" disabled className="w-full h-8 rounded-[6px] border border-border bg-bg text-[12.5px] font-medium text-text-faint cursor-not-allowed" title="Only admins can change the plan">
+                    Admin only
+                  </button>
                 ) : (
                   <button
                     type="button"
@@ -772,7 +961,7 @@ function PlanLimitsTab() {
               <FormRow label="Allow overage charges" hint="When quota is reached, continue serving and bill overage. Off = 429 past the limit.">
                 <Toggle
                   on={org?.allow_overage ?? false}
-                  disabled={update.isPending}
+                  disabled={update.isPending || !isAdmin}
                   onToggle={() => void update.mutateAsync({ allow_overage: !(org?.allow_overage ?? false) })}
                 />
               </FormRow>
@@ -782,27 +971,32 @@ function PlanLimitsTab() {
                     type="number"
                     min={1}
                     max={100}
-                    disabled={!(org?.allow_overage ?? false) || update.isPending}
+                    disabled={!(org?.allow_overage ?? false) || update.isPending || !isAdmin}
                     value={multiplierDraft}
                     onChange={(e) => setMultiplierDraft(e.target.value)}
                     className="w-20 font-mono text-[12.5px]"
                   />
                   <span className="font-mono text-[11.5px] text-text-faint">×</span>
-                  <GhostBtn
-                    disabled={
-                      !(org?.allow_overage ?? false) ||
-                      update.isPending ||
-                      Number(multiplierDraft) === (org?.overage_cap_multiplier ?? 2) ||
-                      !Number.isInteger(Number(multiplierDraft)) ||
-                      Number(multiplierDraft) < 1 ||
-                      Number(multiplierDraft) > 100
-                    }
-                    onClick={() => void update.mutateAsync({ overage_cap_multiplier: Number(multiplierDraft) })}
-                  >
-                    {update.isPending ? 'Saving…' : 'Save'}
-                  </GhostBtn>
+                  {isAdmin && (
+                    <GhostBtn
+                      disabled={
+                        !(org?.allow_overage ?? false) ||
+                        update.isPending ||
+                        Number(multiplierDraft) === (org?.overage_cap_multiplier ?? 2) ||
+                        !Number.isInteger(Number(multiplierDraft)) ||
+                        Number(multiplierDraft) < 1 ||
+                        Number(multiplierDraft) > 100
+                      }
+                      onClick={() => void update.mutateAsync({ overage_cap_multiplier: Number(multiplierDraft) })}
+                    >
+                      {update.isPending ? 'Saving…' : 'Save'}
+                    </GhostBtn>
+                  )}
                 </div>
               </FormRow>
+              {!isAdmin && (
+                <div className="px-6 pb-4 text-[11.5px] text-text-faint">Only admins can change overage settings.</div>
+              )}
             </>
           )}
         </Section>
