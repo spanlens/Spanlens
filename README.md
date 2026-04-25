@@ -2,17 +2,18 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 [![npm version](https://img.shields.io/npm/v/@spanlens/sdk.svg)](https://www.npmjs.com/package/@spanlens/sdk)
+[![PyPI version](https://img.shields.io/pypi/v/spanlens.svg)](https://pypi.org/project/spanlens/)
 [![npm downloads](https://img.shields.io/npm/dm/@spanlens/sdk.svg)](https://www.npmjs.com/package/@spanlens/sdk)
 
-LLM observability that gets out of your way. Record every OpenAI / Anthropic / Gemini call — cost, latency, tokens, full request/response — then surface anomalies, PII, and model-swap suggestions automatically.
+LLM observability that gets out of your way. Record every OpenAI / Anthropic / Gemini call — cost, latency, tokens, full request/response — then surface anomalies, PII, and model-swap suggestions automatically. Available for **TypeScript** and **Python**.
 
-> **Hosted**: [spanlens.io](https://www.spanlens.io) · **npm**: [`@spanlens/sdk`](https://www.npmjs.com/package/@spanlens/sdk) · [`@spanlens/cli`](https://www.npmjs.com/package/@spanlens/cli) · **Open source (MIT)** · **Self-hostable** (Docker)
+> **Hosted**: [spanlens.io](https://www.spanlens.io) · **npm**: [`@spanlens/sdk`](https://www.npmjs.com/package/@spanlens/sdk) · **PyPI**: [`spanlens`](https://pypi.org/project/spanlens/) · **CLI**: [`@spanlens/cli`](https://www.npmjs.com/package/@spanlens/cli) · **Open source (MIT)** · **Self-hostable** (Docker)
 
 ---
 
 ## ⚡ Quick start — 30 seconds
 
-In any Next.js project (TypeScript or JavaScript):
+### TypeScript / JavaScript (Next.js)
 
 ```bash
 npx @spanlens/cli init
@@ -26,14 +27,30 @@ The wizard:
 
 Paste your Spanlens API key once, confirm two prompts, done. Your LLM calls are now flowing through the Spanlens proxy — visible in [www.spanlens.io/requests](https://www.spanlens.io/requests).
 
-### Manual setup (non-Next.js, or if you prefer)
+#### Manual TypeScript setup
 
 ```ts
 import { createOpenAI } from '@spanlens/sdk/openai'
 const openai = createOpenAI()  // reads SPANLENS_API_KEY, uses Spanlens proxy baseURL
 ```
 
-Pair with `SPANLENS_API_KEY` in your environment and the SDK handles the rest.
+### Python
+
+```bash
+pip install "spanlens[openai]"
+```
+
+```python
+from spanlens.integrations.openai import create_openai
+
+client = create_openai()  # reads SPANLENS_API_KEY from env
+res = client.chat.completions.create(
+    model="gpt-4o-mini",
+    messages=[{"role": "user", "content": "Hello"}],
+)
+```
+
+Same proxy, same dashboard. For agent tracing in Python (multi-step, async, tool calls) see the [Python SDK README](./packages/sdk-python/README.md) and [`/docs/sdk`](https://www.spanlens.io/docs/sdk).
 
 ---
 
@@ -56,19 +73,21 @@ Pair with `SPANLENS_API_KEY` in your environment and the SDK handles the rest.
 ```
 Spanlens/
 ├── apps/
-│   ├── web/          — Next.js 14 dashboard (www.spanlens.io)
-│   └── server/       — Hono LLM proxy + REST API (spanlens-server.vercel.app)
+│   ├── web/             — Next.js 14 dashboard (www.spanlens.io)
+│   └── server/          — Hono LLM proxy + REST API (spanlens-server.vercel.app)
 ├── packages/
-│   ├── sdk/          — @spanlens/sdk: library you import in your app
-│   └── cli/          — @spanlens/cli: npx wizard for 1-command setup
+│   ├── sdk/             — @spanlens/sdk:  TypeScript / JavaScript SDK
+│   ├── sdk-python/      — spanlens (PyPI): Python SDK
+│   └── cli/             — @spanlens/cli:  npx wizard for 1-command setup
 └── supabase/
-    ├── migrations/   — Postgres schema (14 tables, RLS-gated)
-    └── seeds/        — model_prices.sql etc.
+    ├── migrations/      — Postgres schema (14 tables, RLS-gated)
+    └── seeds/           — model_prices.sql etc.
 ```
 
 - **[apps/web](./apps/web)** — React dashboard. Deployed to Vercel.
 - **[apps/server](./apps/server)** — Edge runtime proxy on Vercel. Routes `/proxy/openai/*`, `/proxy/anthropic/*`, `/proxy/gemini/*`. REST API on `/api/v1/*`.
 - **[packages/sdk](./packages/sdk)** — TypeScript SDK (`@spanlens/sdk`). Helpers + tracing primitives. See its [README](./packages/sdk/README.md).
+- **[packages/sdk-python](./packages/sdk-python)** — Python SDK (`spanlens`). Same primitives, Pythonic API (context managers, sync + async). See its [README](./packages/sdk-python/README.md).
 - **[packages/cli](./packages/cli)** — Wizard (`@spanlens/cli`). See its [README](./packages/cli/README.md).
 
 ---
