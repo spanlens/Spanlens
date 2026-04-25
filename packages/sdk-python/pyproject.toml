@@ -1,0 +1,113 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "spanlens"
+version = "0.1.0"
+description = "Spanlens SDK — agent tracing, LLM usage capture, and cost observability for Python."
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.9"
+authors = [{ name = "Spanlens", email = "support@spanlens.io" }]
+keywords = [
+    "llm",
+    "llm-observability",
+    "llm-monitoring",
+    "llm-tracing",
+    "openai",
+    "anthropic",
+    "claude",
+    "gemini",
+    "observability",
+    "tracing",
+    "agent-tracing",
+    "ai-agents",
+    "cost-tracking",
+    "token-tracking",
+    "langchain",
+    "llamaindex",
+    "helicone-alternative",
+    "langfuse-alternative",
+    "langsmith-alternative",
+    "proxy",
+    "spanlens",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: System :: Monitoring",
+    "Typing :: Typed",
+]
+dependencies = [
+    "httpx>=0.24.0",
+]
+
+[project.optional-dependencies]
+openai = ["openai>=1.0.0"]
+anthropic = ["anthropic>=0.18.0"]
+gemini = ["google-generativeai>=0.5.0"]
+all = [
+    "openai>=1.0.0",
+    "anthropic>=0.18.0",
+    "google-generativeai>=0.5.0",
+]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-mock>=3.12.0",
+    "respx>=0.20.0",
+    "ruff>=0.4.0",
+    "mypy>=1.8.0",
+]
+
+[project.urls]
+Homepage = "https://spanlens.io"
+Documentation = "https://spanlens.io/docs/sdk"
+Repository = "https://github.com/sunes26/Spanlens"
+Issues = "https://github.com/sunes26/Spanlens/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["spanlens"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "spanlens",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+filterwarnings = ["error::DeprecationWarning"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "N"]
+# UP006/UP007/UP035/UP045 push PEP 604 / PEP 585 syntax that we deliberately
+# avoid: while ``from __future__ import annotations`` makes ``list[int]`` and
+# ``X | None`` legal at parse time on Python 3.9, runtime introspection
+# (``typing.get_type_hints``) still breaks. Stick with ``Optional[X]`` /
+# ``List[X]`` until the minimum supported version is 3.10.
+ignore = ["E501", "UP006", "UP007", "UP035", "UP045"]
+
+[tool.mypy]
+python_version = "3.9"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
