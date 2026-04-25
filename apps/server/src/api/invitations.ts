@@ -1,8 +1,8 @@
 import { Hono, type Context } from 'hono'
-import { randomBytes, createHash } from 'node:crypto'
 import { authJwt, type JwtContext, type OrgRole } from '../middleware/authJwt.js'
 import { requireRole } from '../middleware/requireRole.js'
 import { supabaseAdmin } from '../lib/db.js'
+import { randomHex, sha256Hex } from '../lib/crypto.js'
 import { sendEmail, renderInvitationEmail } from '../lib/resend.js'
 
 /**
@@ -15,11 +15,19 @@ import { sendEmail, renderInvitationEmail } from '../lib/resend.js'
  *   POST   /api/v1/invitations/accept                       (auth)  accept
  *
  * Token model:
- *   - Raw token: crypto.randomBytes(32).toString('base64url') (43 chars)
+ *   - Raw token: 32 random bytes encoded as 64 hex chars (256 bits entropy).
+ *     Hex (vs base64url) keeps the URL ASCII-clean and avoids any encoding
+ *     ambiguity through email clients.
  *   - DB stores sha256(token) hex. Raw lives only in the email URL.
  *   - On accept: hash the submitted token → look up → validate expiry +
  *     not already accepted + email match → atomic member INSERT + mark
  *     accepted.
+ *
+ * Edge runtime note:
+ *   We use the Web Crypto-based helpers from `lib/crypto.ts`
+ *   (`randomHex`, `sha256Hex`) instead of `node:crypto` so this module is
+ *   safe to import inside the Vercel Edge bundle (`apps/server/api/index.ts`).
+ *   Node's `crypto` is unsupported there and triggers a build-time error.
  */
 
 const VALID_ROLES: OrgRole[] = ['admin', 'editor', 'viewer']
@@ -34,9 +42,9 @@ function orgMismatch(c: Context<JwtContext>): boolean {
   return c.req.param('orgId') !== c.get('orgId')
 }
 
-function hashToken(token: string): string {
-  return createHash('sha256').update(token).digest('hex')
-}
+// Web Crypto-based SHA-256 is async (`crypto.subtle.digest`). We re-export
+// it under the hashToken name to keep call sites readable.
+const hashToken = sha256Hex
 
 // ── POST /api/v1/organizations/:orgId/invitations ─────────────
 orgInvitationsRouter.post('/', requireRole('admin'), async (c) => {
@@ -91,8 +99,8 @@ orgInvitationsRouter.post('/', requireRole('admin'), async (c) => {
     return c.json({ error: 'A pending invitation for this email already exists' }, 409)
   }
 
-  const token = randomBytes(32).toString('base64url')
-  const tokenHash = hashToken(token)
+  const token = randomHex(32)
+  const tokenHash = await hashToken(token)
   const expiresAt = new Date(Date.now() + INVITE_TTL_DAYS * 86_400_000).toISOString()
 
   const { data: inserted, error } = await supabaseAdmin
@@ -173,7 +181,7 @@ invitationsRouter.get('/accept', async (c) => {
   const { data: inv } = await supabaseAdmin
     .from('org_invitations')
     .select('id, email, role, organization_id, expires_at, accepted_at')
-    .eq('token_hash', hashToken(token))
+    .eq('token_hash', await hashToken(token))
     .maybeSingle()
 
   if (!inv) return c.json({ error: 'Invalid invitation' }, 404)
@@ -215,7 +223,7 @@ invitationsRouter.post('/accept', authJwt, async (c) => {
   const { data: inv } = await supabaseAdmin
     .from('org_invitations')
     .select('id, email, role, organization_id, expires_at, accepted_at')
-    .eq('token_hash', hashToken(body.token))
+    .eq('token_hash', await hashToken(body.token))
     .maybeSingle()
 
   if (!inv) return c.json({ error: 'Invalid invitation' }, 404)
