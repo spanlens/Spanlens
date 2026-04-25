@@ -422,20 +422,26 @@ function MembersTab() {
           <DialogHeader>
             <DialogTitle>Invite member</DialogTitle>
           </DialogHeader>
-          <form onSubmit={(e) => void submitInvite(e)} className="space-y-3 mt-2">
-            <FormRow label="Email">
+          {/* Stacked layout (label above input). The settings page's
+              <FormRow> uses a 260px label column + px-6 — that overflows the
+              ~512px dialog width and pushes the inputs past the right edge. */}
+          <form onSubmit={(e) => void submitInvite(e)} className="mt-3 space-y-4">
+            <div>
+              <label className="block text-[12px] text-text-muted mb-1.5">Email</label>
               <input
                 type="email"
                 required
                 value={inviteEmail}
                 onChange={(e) => setInviteEmail(e.target.value)}
                 placeholder="teammate@company.com"
+                autoFocus
                 className="w-full px-3 py-2 border border-border-strong rounded-[6px] bg-bg text-[13px] outline-none focus:border-accent"
               />
-            </FormRow>
-            <FormRow label="Role">
+            </div>
+            <div>
+              <label className="block text-[12px] text-text-muted mb-1.5">Role</label>
               <Select value={inviteRole} onValueChange={(v) => setInviteRole(v as OrgRole)}>
-                <SelectTrigger>
+                <SelectTrigger className="w-full">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -444,12 +450,12 @@ function MembersTab() {
                   <SelectItem value="viewer">Viewer — read-only</SelectItem>
                 </SelectContent>
               </Select>
-            </FormRow>
+            </div>
             {inviteError && <div className="text-[12.5px] text-bad">{inviteError}</div>}
             {inviteSuccess && (
               <div className="text-[12px] text-good break-all">{inviteSuccess}</div>
             )}
-            <div className="flex gap-2 justify-end pt-2">
+            <div className="flex gap-2 justify-end pt-1">
               <GhostBtn type="button" onClick={() => setInviteOpen(false)}>Close</GhostBtn>
               <PrimaryBtn type="submit" disabled={inviteMutation.isPending}>
                 {inviteMutation.isPending ? 'Sending…' : 'Send invitation'}
