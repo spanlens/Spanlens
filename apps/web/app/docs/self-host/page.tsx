@@ -166,6 +166,37 @@ const openai = createOpenAI({
             <td>32-byte base64 key for AES-256-GCM provider-key encryption at rest</td>
           </tr>
           <tr>
+            <td><code>WEB_URL</code></td>
+            <td>Yes (multi-user)</td>
+            <td>
+              Base URL of your dashboard (e.g. <code>https://spanlens.example.com</code>).
+              Used to build the accept link in invitation emails. Falls back to
+              <code>http://localhost:3000</code> if unset — fine for local dev,
+              broken in production.
+            </td>
+          </tr>
+          <tr>
+            <td><code>RESEND_API_KEY</code></td>
+            <td>No</td>
+            <td>
+              Resend (<a href="https://resend.com">resend.com</a>) API token for outbound
+              email (currently invitations). When unset, emails are skipped silently
+              and the invite endpoint returns the accept link as <code>devAcceptUrl</code>
+              in its JSON response so an admin can hand-deliver it.
+            </td>
+          </tr>
+          <tr>
+            <td><code>RESEND_FROM</code></td>
+            <td>No</td>
+            <td>
+              Sender header for outbound email. Default
+              <code>Spanlens &lt;notifications@spanlens.io&gt;</code>. Override with a
+              verified sender on your own domain (e.g.
+              <code>Spanlens &lt;notifications@mail.example.com&gt;</code>) — unverified
+              senders land in spam folders.
+            </td>
+          </tr>
+          <tr>
             <td><code>PORT</code></td>
             <td>No</td>
             <td>HTTP port (default 3001)</td>
