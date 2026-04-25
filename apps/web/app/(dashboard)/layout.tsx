@@ -14,16 +14,20 @@ import { ProjectProvider } from '@/lib/project-context'
  * didn't run for some reason (misconfig) OR we're in a dev-time edge case —
  * we fall back to a login redirect to fail safe.
  *
- * `x-spanlens-org-id` missing = authenticated user hasn't completed onboarding
- * (the onboarding page creates the org + sets app_metadata.org_id).
+ * Two onboarding gates:
+ *   • `x-spanlens-org-id` missing = bootstrap (workspace creation) hasn't run.
+ *   • `x-spanlens-onboarded` missing = survey hasn't been completed/skipped.
+ * Either case routes to /onboarding; the page handles both states (resumes
+ * at the survey step if the workspace already exists).
  */
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const h = await headers()
   const userId = h.get('x-spanlens-user-id')
   const orgId = h.get('x-spanlens-org-id')
+  const onboarded = h.get('x-spanlens-onboarded') === '1'
 
   if (!userId) redirect('/login')
-  if (!orgId) redirect('/onboarding')
+  if (!orgId || !onboarded) redirect('/onboarding')
 
   return (
     <ProjectProvider>

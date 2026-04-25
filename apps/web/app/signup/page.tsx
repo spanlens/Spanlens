@@ -106,31 +106,19 @@ function SignupPageInner() {
       return
     }
 
-    // Standard signup flow: bootstrap workspace + project + API key in one
-    // shot, then drop the user into the dashboard. The raw API key is stashed
-    // in sessionStorage so the dashboard's welcome state can show it once.
+    // Standard signup: defer workspace creation to /onboarding, where the
+    // user names their workspace and answers the survey. The dashboard
+    // layout's `if (!orgId || !onboardedAt) redirect('/onboarding')` guard
+    // means we don't even need to push them — but we do anyway so the
+    // address bar updates immediately rather than after a server round-trip.
     if (signupData.session?.access_token) {
-      const boot = await fetch('/api/v1/organizations/bootstrap', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${signupData.session.access_token}`,
-        },
-      })
-      if (boot.ok) {
-        const { data } = (await boot.json()) as { data: { apiKey: string } }
-        try {
-          sessionStorage.setItem('spanlens:welcome_api_key', data.apiKey)
-        } catch { /* ignore — welcome banner just won't show */ }
-      }
-      // Either success or 409 (already onboarded): dashboard handles both.
-      router.push('/dashboard')
+      router.push('/onboarding')
       return
     }
 
-    // No session in response — email confirmation is likely required. Keep
-    // the old "check your inbox" state so the user knows to click the link;
-    // bootstrap will run the next time they sign in.
+    // No session in response — email confirmation is likely required. Show
+    // the "check your inbox" state; on first sign-in /login will land on
+    // /dashboard, the layout will see no orgId, and route to /onboarding.
     setSent(true)
     setLoading(false)
   }
@@ -287,7 +275,7 @@ function SignupPageInner() {
               </form>
 
               <div className="mt-[18px] font-mono text-[10.5px] text-text-faint leading-[1.6]">
-                Included · 50k requests / mo · 7d retention · 1 project
+                Included · 50k requests / mo · 7d retention · unlimited projects
               </div>
             </>
           )}
