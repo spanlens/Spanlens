@@ -68,6 +68,31 @@ Same proxy, same dashboard. For agent tracing in Python (multi-step, async, tool
 
 ---
 
+## Team & workspaces
+
+Spanlens is multi-user out of the box — invite teammates, hand out roles,
+spin up a separate workspace per client.
+
+- **Roles** — `admin` (members + billing), `editor` (data + settings), `viewer`
+  (read-only). Last admin is protected against demotion / removal.
+- **Email invitations** — 7-day expiry, sha256-hashed tokens. Sent via
+  [Resend](https://resend.com) when `RESEND_API_KEY` is set; falls back to
+  console-logging the accept URL for local dev.
+- **Pending-invitation banner** — surfaces unaccepted invites at the top of
+  the dashboard, even if the recipient never opened the email. Accept joins
+  + auto-switches active workspace; Decline removes the row.
+- **Multi-workspace** — switch between workspaces from the sidebar
+  (`sb-ws` cookie + hard reload so middleware re-resolves scope). Useful
+  for consultants juggling multiple clients or one team running prod /
+  staging as separate workspaces.
+- **Two-step onboarding** — new signups land on `/onboarding`: name your
+  workspace, answer two optional survey questions, done. Invitees get a
+  short-circuited variant where Accept skips workspace creation entirely.
+- **Audit log** — Settings → Audit log records every membership / role /
+  invitation event with actor + timestamp.
+
+---
+
 ## Monorepo structure
 
 ```
