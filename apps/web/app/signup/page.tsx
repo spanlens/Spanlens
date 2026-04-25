@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { Suspense, useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
@@ -25,7 +25,26 @@ function ProofRow({ k, v }: { k: string; v: string }) {
   )
 }
 
+// Default export wraps the inner form in Suspense — Next.js requires
+// `useSearchParams()` to live under a Suspense boundary, otherwise the
+// static export step bails out (`missing-suspense-with-csr-bailout`).
 export default function SignupPage() {
+  return (
+    <Suspense fallback={<SignupFallback />}>
+      <SignupPageInner />
+    </Suspense>
+  )
+}
+
+function SignupFallback() {
+  return (
+    <main className="min-h-screen bg-bg flex items-center justify-center px-6 py-10">
+      <div className="text-[13px] text-text-muted">Loading…</div>
+    </main>
+  )
+}
+
+function SignupPageInner() {
   const router = useRouter()
   const params = useSearchParams()
   const inviteToken = params.get('invite')
