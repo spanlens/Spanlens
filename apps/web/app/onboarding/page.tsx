@@ -1,402 +1,324 @@
 'use client'
 import { useState } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Zap, Key, Terminal, Code } from 'lucide-react'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+
 import { apiPost } from '@/lib/api'
-import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
 
-type Step = 'org' | 'provider' | 'apikey'
-type IntegrationMode = 'cli' | 'manual'
+/**
+ * Two-step post-signup onboarding:
+ *
+ *   1) Workspace — user names their workspace; we call POST /organizations/bootstrap
+ *      with that name. This creates the org + admin membership + default
+ *      project + first API key (server-side, atomic). The raw API key is
+ *      stashed in sessionStorage so the WelcomeBanner on /dashboard can
+ *      reveal it once.
+ *
+ *   2) Survey — two radio questions ("What are you building?" + "Your role?").
+ *      Both optional. Whether the user fills them in or hits Skip, we POST
+ *      /me/profile/complete which sets `onboarded_at` so the dashboard
+ *      layout stops redirecting them back here.
+ *
+ * Provider keys + API keys deliberately do NOT live in onboarding anymore:
+ * most new users don't have an OpenAI key handy at signup, and the API
+ * key is auto-generated. Both surface naturally on /projects + the
+ * WelcomeBanner once the user is in the dashboard.
+ */
 
-const STEP_ORDER: Step[] = ['org', 'provider', 'apikey']
-const STEP_LABELS: Record<Step, string> = {
-  org: 'Workspace',
-  provider: 'Provider key',
-  apikey: 'API key',
+type Step = 'workspace' | 'survey'
+const STEP_ORDER: Step[] = ['workspace', 'survey']
+
+interface BootstrapResponse {
+  data?: {
+    apiKey?: string
+  }
 }
+
+const USE_CASES = [
+  { id: 'chatbot',         label: 'Chatbot',          hint: 'Customer support, internal Q&A, AI assistants' },
+  { id: 'rag',             label: 'RAG / Search',     hint: 'Knowledge base, semantic search, retrieval' },
+  { id: 'agent',           label: 'AI Agent',         hint: 'Multi-step workflows, tool use, autonomous' },
+  { id: 'code_assistant',  label: 'Code assistant',   hint: 'Code generation, review, completion' },
+  { id: 'internal_tool',   label: 'Internal tool',    hint: 'Summarisation, classification, automation' },
+  { id: 'other',           label: 'Something else',   hint: '' },
+] as const
+
+const ROLES = [
+  { id: 'engineer',  label: 'Engineer' },
+  { id: 'product',   label: 'Product / Design' },
+  { id: 'founder',   label: 'Founder / Exec' },
+  { id: 'researcher', label: 'Researcher' },
+  { id: 'other',     label: 'Other' },
+] as const
+
+type UseCase = (typeof USE_CASES)[number]['id']
+type Role = (typeof ROLES)[number]['id']
 
 export default function OnboardingPage() {
   const router = useRouter()
-  const [step, setStep] = useState<Step>('org')
+  const [step, setStep] = useState<Step>('workspace')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
-  const [orgName, setOrgName] = useState('')
-  const [provider, setProvider] = useState('openai')
-  const [providerKey, setProviderKey] = useState('')
-  const [providerKeyName, setProviderKeyName] = useState('Default key')
-  const [projectId, setProjectId] = useState('')
-  const [createdApiKey, setCreatedApiKey] = useState('')
-  const [integrationMode, setIntegrationMode] = useState<IntegrationMode>('cli')
-  const [copied, setCopied] = useState(false)
+  // Step 1
+  const [workspaceName, setWorkspaceName] = useState('')
+
+  // Step 2
+  const [useCase, setUseCase] = useState<UseCase | null>(null)
+  const [role, setRole] = useState<Role | null>(null)
 
   const currentStepIdx = STEP_ORDER.indexOf(step)
 
-  async function handleOrg(e: React.FormEvent) {
+  async function handleWorkspaceSubmit(e: React.FormEvent) {
     e.preventDefault()
+    const trimmed = workspaceName.trim()
+    if (!trimmed) {
+      setError('Workspace name is required.')
+      return
+    }
+    if (trimmed.length > 80) {
+      setError('Workspace name must be 80 characters or fewer.')
+      return
+    }
     setError('')
     setLoading(true)
     try {
-      await apiPost('/api/v1/organizations', { name: orgName })
-      const supabase = createClient()
-      await supabase.auth.refreshSession()
-      const proj = await apiPost<{ data: { id: string } }>('/api/v1/projects', {
-        name: 'Default Project',
-        description: 'Auto-created during onboarding',
+      // Server returns 409 if the user already has a workspace (e.g. from a
+      // partial earlier signup). Treat that as success and move on — the
+      // dashboard handles the existing-org case fine.
+      const res = await apiPost<BootstrapResponse>(
+        '/api/v1/organizations/bootstrap',
+        { name: trimmed },
+      ).catch((err: unknown) => {
+        const msg = err instanceof Error ? err.message : ''
+        if (/already onboarded/i.test(msg)) return null
+        throw err
       })
-      setProjectId(proj.data.id)
-      setStep('provider')
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed')
+
+      if (res?.data?.apiKey) {
+        try {
+          sessionStorage.setItem('spanlens:welcome_api_key', res.data.apiKey)
+        } catch {
+          // sessionStorage blocked — the welcome banner just won't show.
+        }
+      }
+      setStep('survey')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create workspace.')
     } finally {
       setLoading(false)
     }
   }
 
-  async function handleProvider(e: React.FormEvent) {
-    e.preventDefault()
+  async function completeSurvey(includeAnswers: boolean): Promise<void> {
     setError('')
     setLoading(true)
     try {
-      await apiPost('/api/v1/provider-keys', {
-        provider,
-        key: providerKey,
-        name: providerKeyName,
-      })
-      const res = await apiPost<{ data: { key: string } }>('/api/v1/api-keys', {
-        name: 'Default API Key',
-        projectId,
-      })
-      setCreatedApiKey(res.data.key)
-      setStep('apikey')
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed')
-    } finally {
+      // Always POST — the endpoint stamps onboarded_at regardless of whether
+      // the survey is filled in. Skipping just sends nulls.
+      await apiPost('/api/v1/me/profile/complete', includeAnswers
+        ? { use_case: useCase, role }
+        : {},
+      )
+      router.push('/dashboard')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save profile.')
       setLoading(false)
     }
-  }
-
-  function copyKey() {
-    void navigator.clipboard.writeText(createdApiKey)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
-  }
-
-  const proxyUrls: Record<string, string> = {
-    openai: 'https://spanlens-server.vercel.app/proxy/openai',
-    anthropic: 'https://spanlens-server.vercel.app/proxy/anthropic',
-    gemini: 'https://spanlens-server.vercel.app/proxy/gemini',
   }
 
   return (
-    <div className="min-h-screen bg-bg flex items-center justify-center px-4 py-12">
-      <div className="w-full max-w-[480px]">
-        {/* Logo */}
-        <div className="flex items-center gap-2 mb-8 justify-center">
-          <Zap className="h-5 w-5 text-accent" strokeWidth={2.5} />
-          <span className="font-semibold text-[17px] text-text tracking-[-0.3px]">Spanlens</span>
-        </div>
+    <div className="min-h-screen bg-bg-elev flex flex-col items-center px-6 py-10">
+      {/* Header */}
+      <Link href="/" className="flex items-center gap-2 mb-7 hover:opacity-80 transition-opacity">
+        <svg width="20" height="20" viewBox="0 0 20 20" className="shrink-0">
+          <circle cx="10" cy="10" r="8" fill="none" stroke="var(--text)" strokeWidth="1.5" />
+          <circle cx="10" cy="10" r="3.5" fill="var(--accent)" />
+        </svg>
+        <span className="font-semibold text-[16px] tracking-[-0.3px] text-text">spanlens</span>
+      </Link>
 
-        {/* Progress steps */}
-        <div className="flex items-center justify-center gap-0 mb-8">
-          {STEP_ORDER.map((s, i) => {
-            const isDone = i < currentStepIdx
-            const isActive = i === currentStepIdx
-            return (
-              <div key={s} className="flex items-center">
-                <div className="flex flex-col items-center">
-                  <div
-                    className={cn(
-                      'flex h-7 w-7 items-center justify-center rounded-full text-[11px] font-semibold border transition-colors',
-                      isDone
-                        ? 'bg-good border-good/30 text-bg'
-                        : isActive
-                          ? 'bg-accent border-accent text-bg'
-                          : 'bg-bg-elev border-border text-text-faint',
-                    )}
-                  >
-                    {isDone ? (
-                      <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
-                        <path
-                          d="M2 6l3 3 5-5"
-                          stroke="currentColor"
-                          strokeWidth="1.5"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        />
-                      </svg>
-                    ) : (
-                      i + 1
-                    )}
-                  </div>
-                  <span
-                    className={cn(
-                      'text-[10.5px] font-mono mt-1',
-                      isActive ? 'text-text' : 'text-text-faint',
-                    )}
-                  >
-                    {STEP_LABELS[s]}
-                  </span>
+      {/* Stepper */}
+      <Stepper currentIdx={currentStepIdx} />
+
+      {/* Card */}
+      <div className="w-[480px] max-w-full bg-bg border border-border rounded-[10px] p-7 shadow-sm">
+        {step === 'workspace' && (
+          <form onSubmit={(e) => void handleWorkspaceSubmit(e)}>
+            <h1 className="text-[22px] font-medium tracking-[-0.4px] mb-1.5">Name your workspace</h1>
+            <p className="text-[13px] text-text-muted mb-5 leading-relaxed">
+              Usually your company or team name. You can change it later in Settings.
+            </p>
+
+            <label className="block text-[12px] text-text-muted mb-1.5">Workspace name</label>
+            <input
+              type="text"
+              autoFocus
+              value={workspaceName}
+              onChange={(e) => setWorkspaceName(e.target.value)}
+              placeholder="Acme Inc."
+              maxLength={80}
+              className="w-full px-3 py-2 border border-border-strong rounded-[6px] bg-bg-elev text-[13px] outline-none focus:border-accent"
+            />
+
+            {error && <p className="text-[12.5px] text-bad mt-3">{error}</p>}
+
+            <button
+              type="submit"
+              disabled={loading || !workspaceName.trim()}
+              className="w-full mt-5 bg-text text-bg py-[11px] px-[14px] rounded-[7px] text-[13px] font-medium hover:opacity-90 transition-opacity disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed"
+            >
+              {loading ? 'Creating workspace…' : 'Continue →'}
+            </button>
+          </form>
+        )}
+
+        {step === 'survey' && (
+          <div>
+            <h1 className="text-[22px] font-medium tracking-[-0.4px] mb-1.5">Tell us about your project</h1>
+            <p className="text-[13px] text-text-muted mb-5 leading-relaxed">
+              Helps us prioritize what to build. Both questions are optional — feel free to skip.
+            </p>
+
+            <div className="space-y-5">
+              <div>
+                <div className="text-[12.5px] text-text font-medium mb-2">What are you building?</div>
+                <div className="grid grid-cols-2 gap-1.5">
+                  {USE_CASES.map((opt) => (
+                    <RadioCard
+                      key={opt.id}
+                      checked={useCase === opt.id}
+                      onClick={() => setUseCase(useCase === opt.id ? null : opt.id)}
+                      label={opt.label}
+                      hint={opt.hint}
+                    />
+                  ))}
                 </div>
-                {i < STEP_ORDER.length - 1 && (
-                  <div
-                    className={cn(
-                      'h-px w-12 mx-2 mb-4',
-                      isDone ? 'bg-good/40' : 'bg-border',
-                    )}
-                  />
-                )}
               </div>
-            )
-          })}
-        </div>
 
-        {/* Card */}
-        <div className="rounded-xl border border-border bg-bg-elev px-8 py-8">
-          {/* Step: Org */}
-          {step === 'org' && (
-            <div>
-              <h1 className="text-[20px] font-semibold text-text mb-1 tracking-[-0.3px]">
-                Name your workspace
-              </h1>
-              <p className="text-[13px] text-text-muted mb-6">
-                Usually your company or project name.
-              </p>
-              <form onSubmit={(e) => void handleOrg(e)} className="space-y-4">
-                <div className="space-y-1.5">
-                  <label className="text-[12.5px] text-text-muted font-medium" htmlFor="orgName">
-                    Workspace name
-                  </label>
-                  <input
-                    id="orgName"
-                    value={orgName}
-                    onChange={(e) => setOrgName(e.target.value)}
-                    placeholder="Acme Inc."
-                    required
-                    className="w-full h-9 px-3 rounded-[6px] border border-border bg-bg text-[13px] text-text placeholder:text-text-faint focus:outline-none focus:border-border-strong transition-colors"
-                  />
+              <div>
+                <div className="text-[12.5px] text-text font-medium mb-2">What&apos;s your role?</div>
+                <div className="flex flex-wrap gap-1.5">
+                  {ROLES.map((opt) => (
+                    <Chip
+                      key={opt.id}
+                      checked={role === opt.id}
+                      onClick={() => setRole(role === opt.id ? null : opt.id)}
+                      label={opt.label}
+                    />
+                  ))}
                 </div>
-                {error && <p className="text-[12.5px] text-bad">{error}</p>}
-                <button
-                  type="submit"
-                  disabled={loading || !orgName.trim()}
-                  className="w-full h-9 rounded-[6px] bg-text text-bg text-[13px] font-medium hover:opacity-90 transition-opacity disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed"
-                >
-                  {loading ? 'Creating…' : 'Continue'}
-                </button>
-              </form>
+              </div>
             </div>
-          )}
 
-          {/* Step: Provider key */}
-          {step === 'provider' && (
-            <div>
-              <h1 className="text-[20px] font-semibold text-text mb-1 tracking-[-0.3px]">
-                Add your provider key
-              </h1>
-              <p className="text-[13px] text-text-muted mb-6">
-                Encrypted at rest with AES-256-GCM. Never logged.
-              </p>
-              <form onSubmit={(e) => void handleProvider(e)} className="space-y-4">
-                <div className="space-y-1.5">
-                  <label className="text-[12.5px] text-text-muted font-medium">Provider</label>
-                  <Select value={provider} onValueChange={setProvider}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="openai">OpenAI</SelectItem>
-                      <SelectItem value="anthropic">Anthropic</SelectItem>
-                      <SelectItem value="gemini">Gemini</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-[12.5px] text-text-muted font-medium" htmlFor="pkey">
-                    API key
-                  </label>
-                  <input
-                    id="pkey"
-                    type="password"
-                    value={providerKey}
-                    onChange={(e) => setProviderKey(e.target.value)}
-                    placeholder={
-                      provider === 'openai'
-                        ? 'sk-proj-…'
-                        : provider === 'anthropic'
-                          ? 'sk-ant-…'
-                          : 'AIza…'
-                    }
-                    required
-                    className="w-full h-9 px-3 rounded-[6px] border border-border bg-bg text-[13px] text-text placeholder:text-text-faint focus:outline-none focus:border-border-strong transition-colors"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-[12.5px] text-text-muted font-medium" htmlFor="pkeyName">
-                    Key name
-                  </label>
-                  <input
-                    id="pkeyName"
-                    value={providerKeyName}
-                    onChange={(e) => setProviderKeyName(e.target.value)}
-                    className="w-full h-9 px-3 rounded-[6px] border border-border bg-bg text-[13px] text-text placeholder:text-text-faint focus:outline-none focus:border-border-strong transition-colors"
-                  />
-                </div>
-                {error && <p className="text-[12.5px] text-bad">{error}</p>}
-                <button
-                  type="submit"
-                  disabled={loading || !providerKey.trim()}
-                  className="w-full h-9 rounded-[6px] bg-text text-bg text-[13px] font-medium hover:opacity-90 transition-opacity disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed"
-                >
-                  {loading ? 'Saving…' : 'Continue'}
-                </button>
-              </form>
-            </div>
-          )}
+            {error && <p className="text-[12.5px] text-bad mt-4">{error}</p>}
 
-          {/* Step: API key + snippet */}
-          {step === 'apikey' && (
-            <div>
-              <h1 className="text-[20px] font-semibold text-text mb-1 tracking-[-0.3px]">
-                Your Spanlens API key
-              </h1>
-              <p className="text-[13px] text-text-muted mb-5">
-                Copy this now — it won&apos;t be shown again.
-              </p>
-
-              {/* Key display */}
-              <div className="rounded-lg border border-border bg-[#1a1816] px-4 py-3 mb-5">
-                <div className="flex items-center justify-between mb-1.5">
-                  <span className="font-mono text-[10.5px] uppercase tracking-[0.05em] text-[#7c7770]">
-                    SPANLENS_API_KEY
-                  </span>
-                  <button
-                    type="button"
-                    onClick={copyKey}
-                    className="font-mono text-[11px] text-accent hover:opacity-80 transition-opacity"
-                  >
-                    {copied ? 'Copied!' : 'Copy'}
-                  </button>
-                </div>
-                <code className="font-mono text-[12.5px] text-good break-all leading-relaxed">
-                  {createdApiKey}
-                </code>
-              </div>
-
-              {/* Integration mode tabs */}
-              <div className="flex gap-2 mb-3">
-                <button
-                  type="button"
-                  onClick={() => setIntegrationMode('cli')}
-                  className={cn(
-                    'flex items-center gap-1.5 rounded-[6px] px-3 py-1.5 text-[12px] font-medium transition-colors',
-                    integrationMode === 'cli'
-                      ? 'bg-accent text-bg'
-                      : 'bg-bg border border-border text-text-muted hover:text-text',
-                  )}
-                >
-                  <Terminal className="h-3.5 w-3.5" />
-                  1-command setup
-                  <span className="rounded bg-good/20 px-1 text-[10px] font-semibold text-good">
-                    recommended
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setIntegrationMode('manual')}
-                  className={cn(
-                    'flex items-center gap-1.5 rounded-[6px] px-3 py-1.5 text-[12px] font-medium transition-colors',
-                    integrationMode === 'manual'
-                      ? 'bg-accent text-bg'
-                      : 'bg-bg border border-border text-text-muted hover:text-text',
-                  )}
-                >
-                  <Code className="h-3.5 w-3.5" />
-                  Manual
-                </button>
-              </div>
-
-              {/* Code block */}
-              <div className="rounded-lg border border-border bg-[#1a1816] px-4 py-4 mb-5 space-y-3">
-                {integrationMode === 'cli' ? (
-                  <>
-                    <p className="font-mono text-[10.5px] text-[#7c7770]">
-                      Run in your Next.js project — auto-installs SDK + rewrites OpenAI client
-                    </p>
-                    <pre className="font-mono text-[13px] text-good">npx @spanlens/cli init</pre>
-                    <p className="font-mono text-[10.5px] text-[#5c5752]">
-                      Paste your API key when asked. ~30 seconds.
-                    </p>
-                  </>
-                ) : (
-                  <>
-                    <div>
-                      <p className="font-mono text-[10.5px] text-[#7c7770] mb-1.5">
-                        1. Install the SDK
-                      </p>
-                      <pre className="font-mono text-[12.5px] text-[#d4cfc8]">
-                        npm install @spanlens/sdk
-                      </pre>
-                    </div>
-                    <div>
-                      <p className="font-mono text-[10.5px] text-[#7c7770] mb-1.5">
-                        2. Add to your env
-                      </p>
-                      <pre className="font-mono text-[12.5px] text-[#d4cfc8]">
-                        {`SPANLENS_API_KEY=${createdApiKey}`}
-                      </pre>
-                    </div>
-                    <div>
-                      <p className="font-mono text-[10.5px] text-[#7c7770] mb-1.5">
-                        3. Replace your{' '}
-                        {provider === 'openai'
-                          ? 'OpenAI'
-                          : provider === 'anthropic'
-                            ? 'Anthropic'
-                            : 'Gemini'}{' '}
-                        client
-                      </p>
-                      <pre className="font-mono text-[12.5px] text-[#d4cfc8] whitespace-pre-wrap">
-                        {provider === 'openai'
-                          ? `import { createOpenAI } from '@spanlens/sdk/openai'\nconst openai = createOpenAI()`
-                          : provider === 'anthropic'
-                            ? `import { createAnthropic } from '@spanlens/sdk/anthropic'\nconst anthropic = createAnthropic()`
-                            : `import { createGemini } from '@spanlens/sdk/gemini'\nconst genAI = createGemini()`}
-                      </pre>
-                    </div>
-                    <div>
-                      <p className="font-mono text-[10.5px] text-[#7c7770] mb-1.5">
-                        Or route directly (any language):
-                      </p>
-                      <pre className="font-mono text-[12.5px] text-[#d4cfc8] whitespace-pre-wrap">
-                        {`Base URL: ${proxyUrls[provider] ?? ''}\nAuth:     Authorization: Bearer ${createdApiKey}`}
-                      </pre>
-                    </div>
-                  </>
-                )}
-              </div>
-
-              {/* Warning */}
-              <div className="flex items-start gap-3 rounded-lg border border-accent-border bg-accent-bg px-4 py-3 mb-5">
-                <Key className="h-4 w-4 text-accent mt-0.5 shrink-0" />
-                <p className="text-[12.5px] text-accent">
-                  Store your API key securely. It cannot be retrieved after this page.
-                </p>
-              </div>
-
+            <div className="flex gap-2 mt-6 justify-end">
               <button
                 type="button"
-                onClick={() => router.push('/dashboard')}
-                className="w-full h-9 rounded-[6px] bg-text text-bg text-[13px] font-medium hover:opacity-90 transition-opacity cursor-pointer"
+                onClick={() => void completeSurvey(false)}
+                disabled={loading}
+                className="font-mono text-[12px] px-4 py-[9px] border border-border rounded-[6px] text-text-muted hover:text-text transition-colors disabled:opacity-40"
               >
-                Go to dashboard →
+                Skip
+              </button>
+              <button
+                type="button"
+                onClick={() => void completeSurvey(true)}
+                disabled={loading || (!useCase && !role)}
+                className="bg-text text-bg py-[9px] px-4 rounded-[6px] text-[12.5px] font-medium hover:opacity-90 transition-opacity disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed"
+              >
+                {loading ? 'Saving…' : 'Continue to dashboard →'}
               </button>
             </div>
-          )}
-        </div>
+          </div>
+        )}
       </div>
     </div>
+  )
+}
+
+function Stepper({ currentIdx }: { currentIdx: number }) {
+  const labels = ['Workspace', 'About you']
+  return (
+    <div className="flex items-center gap-3 mb-7">
+      {labels.map((label, i) => {
+        const isCurrent = i === currentIdx
+        const isDone = i < currentIdx
+        return (
+          <div key={label} className="flex items-center gap-3">
+            <div className="flex flex-col items-center gap-1.5">
+              <div
+                className={cn(
+                  'w-7 h-7 rounded-full flex items-center justify-center font-mono text-[11px] font-medium',
+                  isDone && 'bg-accent text-bg',
+                  isCurrent && 'bg-accent text-bg',
+                  !isDone && !isCurrent && 'bg-bg-muted text-text-faint border border-border',
+                )}
+              >
+                {isDone ? '✓' : i + 1}
+              </div>
+              <div className={cn('font-mono text-[10.5px] tracking-[0.04em] uppercase', isCurrent ? 'text-text' : 'text-text-faint')}>
+                {label}
+              </div>
+            </div>
+            {i < labels.length - 1 && <div className="w-12 h-px bg-border -mt-4" />}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function RadioCard({
+  checked, onClick, label, hint,
+}: {
+  checked: boolean
+  onClick: () => void
+  label: string
+  hint?: string
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        'text-left p-2.5 rounded-[6px] border transition-colors',
+        checked
+          ? 'border-accent bg-accent-bg'
+          : 'border-border hover:border-border-strong bg-bg-elev',
+      )}
+    >
+      <div className={cn('text-[12.5px] font-medium', checked ? 'text-accent' : 'text-text')}>{label}</div>
+      {hint && (
+        <div className={cn('text-[11px] mt-0.5 leading-snug', checked ? 'text-accent' : 'text-text-faint')}>
+          {hint}
+        </div>
+      )}
+    </button>
+  )
+}
+
+function Chip({
+  checked, onClick, label,
+}: {
+  checked: boolean
+  onClick: () => void
+  label: string
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        'text-[12px] px-3 py-1.5 rounded-full border transition-colors',
+        checked
+          ? 'border-accent bg-accent-bg text-accent font-medium'
+          : 'border-border text-text-muted hover:border-border-strong hover:text-text',
+      )}
+    >
+      {label}
+    </button>
   )
 }
