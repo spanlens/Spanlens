@@ -24,6 +24,9 @@ import { securityRouter }      from './api/security.js'
 import { promptsRouter }       from './api/prompts.js'
 import { recommendationsRouter } from './api/recommendations.js'
 import { auditLogsRouter }     from './api/auditLogs.js'
+import { membersRouter }       from './api/members.js'
+import { orgInvitationsRouter, invitationsRouter } from './api/invitations.js'
+import { dismissalsRouter }    from './api/dismissals.js'
 
 export const app = new Hono()
 
@@ -81,5 +84,9 @@ app.route('/api/v1/security',       securityRouter)
 app.route('/api/v1/prompts',        promptsRouter)
 app.route('/api/v1/recommendations', recommendationsRouter)
 app.route('/api/v1/audit-logs',     auditLogsRouter)
+app.route('/api/v1/organizations/:orgId/members', membersRouter)
+app.route('/api/v1/organizations/:orgId/invitations', orgInvitationsRouter)
+app.route('/api/v1/invitations', invitationsRouter)
+app.route('/api/v1/dismissals',     dismissalsRouter)
 
 export default app

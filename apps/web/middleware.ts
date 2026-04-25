@@ -1,3 +1,4 @@
+import { createClient } from '@supabase/supabase-js'
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
@@ -12,7 +13,7 @@ import { NextResponse, type NextRequest } from 'next/server'
  * instead of two.
  */
 
-const PUBLIC_PATHS = ['/', '/pricing', '/login', '/signup', '/auth/', '/terms', '/privacy']
+const PUBLIC_PATHS = ['/', '/pricing', '/login', '/signup', '/auth/', '/terms', '/privacy', '/invite']
 
 export async function middleware(request: NextRequest) {
   // Skip auth middleware when Supabase env vars are absent (local preview without .env.local)
@@ -69,7 +70,52 @@ export async function middleware(request: NextRequest) {
   // own getUser() call. One Supabase round-trip per navigation total.
   if (user) {
     requestHeaders.set('x-spanlens-user-id', user.id)
-    const orgId = (user.app_metadata as { org_id?: string } | undefined)?.org_id
+
+    // Workspace resolution mirrors the server's authJwt:
+    //   1. `sb-ws` cookie — explicit choice from the sidebar switcher.
+    //   2. app_metadata.org_id — legacy (created by the old onboarding flow).
+    //   3. Oldest org_members row — default for invited-only users.
+    let orgId: string | undefined
+    const preferredWs = request.cookies.get('sb-ws')?.value
+    const appMetaOrg = (user.app_metadata as { org_id?: string } | undefined)?.org_id
+
+    if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      try {
+        const admin = createClient(
+          process.env.NEXT_PUBLIC_SUPABASE_URL!,
+          process.env.SUPABASE_SERVICE_ROLE_KEY,
+          { auth: { persistSession: false } },
+        )
+
+        if (preferredWs) {
+          const { data: preferred } = await admin
+            .from('org_members')
+            .select('organization_id')
+            .eq('user_id', user.id)
+            .eq('organization_id', preferredWs)
+            .maybeSingle()
+          if (preferred?.organization_id) orgId = preferred.organization_id
+        }
+
+        if (!orgId && appMetaOrg) orgId = appMetaOrg
+
+        if (!orgId) {
+          const { data: m } = await admin
+            .from('org_members')
+            .select('organization_id')
+            .eq('user_id', user.id)
+            .order('created_at', { ascending: true })
+            .limit(1)
+            .maybeSingle()
+          if (m?.organization_id) orgId = m.organization_id
+        }
+      } catch {
+        // Non-fatal — worst case the user sees /onboarding and can retry.
+      }
+    } else if (appMetaOrg) {
+      orgId = appMetaOrg
+    }
+
     if (orgId) requestHeaders.set('x-spanlens-org-id', orgId)
 
     // Re-materialize the response with the updated headers so downstream RSC

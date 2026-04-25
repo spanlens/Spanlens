@@ -1,6 +1,7 @@
 import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { Sidebar } from '@/components/layout/sidebar'
+import { ProjectProvider } from '@/lib/project-context'
 
 /**
  * Dashboard layout. Reads auth state from the `x-spanlens-*` headers the
@@ -25,11 +26,13 @@ export default async function DashboardLayout({ children }: { children: React.Re
   if (!orgId) redirect('/onboarding')
 
   return (
-    <div className="flex h-screen overflow-hidden bg-bg">
-      <Sidebar />
-      <main className="flex-1 overflow-y-auto">
-        <div className="px-8 py-7">{children}</div>
-      </main>
-    </div>
+    <ProjectProvider>
+      <div className="flex h-screen overflow-hidden bg-bg">
+        <Sidebar />
+        <main className="flex-1 overflow-y-auto">
+          <div className="px-8 py-7">{children}</div>
+        </main>
+      </div>
+    </ProjectProvider>
   )
 }

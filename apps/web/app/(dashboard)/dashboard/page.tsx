@@ -12,8 +12,11 @@ import { useRecommendations, type ModelRecommendation } from '@/lib/queries/use-
 import { useAuditLogs } from '@/lib/queries/use-audit-logs'
 import { usePrompts } from '@/lib/queries/use-prompts'
 import { useSecuritySummary } from '@/lib/queries/use-security'
+import { useDismissals, useDismissCard } from '@/lib/queries/use-dismissals'
+import { useCurrentProjectId } from '@/lib/project-context'
 import { cn } from '@/lib/utils'
 import { RequestChart } from '@/components/dashboard/request-chart'
+import { WelcomeBanner } from '@/components/dashboard/welcome-banner'
 
 function greeting() {
   const h = new Date().getHours()
@@ -28,14 +31,23 @@ function fmtCost(n: number) {
 
 interface AttnCardProps {
   kind: 'critical' | 'warning' | 'savings'
+  /**
+   * Deterministic id for this signal (e.g. `anomaly:openai:gpt-4o:latency`).
+   * Used as the dismiss key so the same underlying issue stays hidden across
+   * renders and devices. Don't put mutable text here — it would make the same
+   * card redismissible whenever the title/meta changes.
+   */
+  cardKey: string
   title: string
   meta: string
   hint: string
   cta: string
   href: string
+  onDismiss?: () => void
 }
 
-function AttnCard({ kind, title, meta, hint, cta, href }: AttnCardProps) {
+function AttnCard({ kind, title, meta, hint, cta, href, onDismiss }: AttnCardProps) {
+  // `cardKey` is used by the parent to key the map; not referenced here.
   const isCritical = kind === 'critical'
   const isSavings = kind === 'savings'
   return (
@@ -64,6 +76,14 @@ function AttnCard({ kind, title, meta, hint, cta, href }: AttnCardProps) {
         >
           {kind}
         </span>
+        <button
+          type="button"
+          onClick={onDismiss}
+          className="ml-auto text-text-faint hover:text-text-muted transition-colors leading-none"
+          aria-label="Dismiss"
+        >
+          ✕
+        </button>
       </div>
       <div className="text-[14.5px] font-medium text-text leading-snug">{title}</div>
       <div className="font-mono text-[11px] text-text-muted tracking-[0.02em]">{meta}</div>
@@ -85,14 +105,27 @@ function AttnCard({ kind, title, meta, hint, cta, href }: AttnCardProps) {
 
 export default function DashboardPage() {
   const [timeRange, setTimeRange] = useState('24h')
-  const overview = useStatsOverview()
-  const timeseries = useStatsTimeseries()
-  const anomalies = useAnomalies()
+  const projectId = useCurrentProjectId()
+  const dismissalsQuery = useDismissals()
+  const dismissMutation = useDismissCard()
+  const dismissedCards = useMemo(
+    () => new Set(dismissalsQuery.data ?? []),
+    [dismissalsQuery.data],
+  )
+  // projectId is wired into every per-project query so switching scope in
+  // the sidebar refetches the whole dashboard under the new filter. With
+  // `exactOptionalPropertyTypes` we need conditional spread rather than
+  // passing `undefined` — the query types expect the key to be absent when
+  // "no filter" is wanted.
+  const scopeArg = projectId ? { projectId } : {}
+  const overview = useStatsOverview(scopeArg)
+  const timeseries = useStatsTimeseries(scopeArg)
+  const anomalies = useAnomalies(scopeArg)
   const alerts = useAlerts()
   const recommendations = useRecommendations()
   const auditLogs = useAuditLogs({ limit: 6 })
-  const promptsQuery = usePrompts()
-  const modelsQuery = useStatsModels(24)
+  const promptsQuery = usePrompts(projectId ?? undefined)
+  const modelsQuery = useStatsModels(24, projectId ?? undefined)
   const securitySummary = useSecuritySummary(24)
 
   const o = overview.data
@@ -132,6 +165,7 @@ export default function DashboardPage() {
     if (piiHits > 0) {
       cards.push({
         kind: 'critical',
+        cardKey: 'pii_leak',
         title: `PII leak · ${piiHits} match${piiHits === 1 ? '' : 'es'} in last 24h`,
         meta: 'email · phone · card · ssn · passport',
         hint: 'Review flagged requests to identify the source prompt.',
@@ -150,6 +184,7 @@ export default function DashboardPage() {
       }).toString()
       cards.push({
         kind: 'critical',
+        cardKey: `anomaly:${topAnomaly.provider}:${topAnomaly.model}:${topAnomaly.kind}`,
         title: `${topAnomaly.kind.replace('_', ' ')} anomaly on ${topAnomaly.model}`,
         meta: `${topAnomaly.deviations.toFixed(1)}σ · ${topAnomaly.provider}`,
         hint: `Current ${topAnomaly.currentValue.toFixed(0)} vs baseline ${topAnomaly.baselineMean.toFixed(0)}`,
@@ -181,6 +216,7 @@ export default function DashboardPage() {
         top.type === 'budget' ? 'budget' : top.type === 'error_rate' ? 'error rate' : 'p95 latency'
       cards.push({
         kind: 'warning',
+        cardKey: `alert:${top.id}`,
         title: top.name,
         meta: `${kindLabel} ${thresholdLabel} · ${top.window_minutes}m window`,
         hint: firedMinsAgo != null
@@ -192,10 +228,13 @@ export default function DashboardPage() {
     }
 
     // Top recommendation / saving
-    const topRec = (recommendations.data ?? [])[0] as ModelRecommendation | undefined
+    const topRec = (recommendations.data ?? [])[0] as (ModelRecommendation & { id?: string }) | undefined
     if (topRec) {
       cards.push({
         kind: 'savings',
+        // `id` comes from the server when available; otherwise fall back to
+        // current→suggested so the same swap stays dismissed until it changes.
+        cardKey: `savings:${topRec.id ?? `${topRec.currentModel}->${topRec.suggestedModel}`}`,
         title: `Switch to ${topRec.suggestedModel}`,
         meta: `${topRec.currentModel} · same quality`,
         hint: `~${fmtCost(topRec.estimatedMonthlySavingsUsd)}/mo estimated savings`,
@@ -254,6 +293,8 @@ export default function DashboardPage() {
           )}
         </div>
 
+        <WelcomeBanner />
+
         <QuotaBanner />
 
         {isError && (
@@ -270,15 +311,21 @@ export default function DashboardPage() {
         )}
 
         {/* Needs attention */}
-        {attnCards.length > 0 && (
+        {attnCards.filter((c) => !dismissedCards.has(c.cardKey)).length > 0 && (
           <div className="px-[22px] pt-[18px] pb-1">
             <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-2.5">
               Needs attention
             </div>
             <div className="grid grid-cols-3 gap-3">
-              {attnCards.map((c, i) => (
-                <AttnCard key={i} {...c} />
-              ))}
+              {attnCards.map((c) =>
+                dismissedCards.has(c.cardKey) ? null : (
+                  <AttnCard
+                    key={c.cardKey}
+                    {...c}
+                    onDismiss={() => dismissMutation.mutate(c.cardKey)}
+                  />
+                )
+              )}
             </div>
           </div>
         )}

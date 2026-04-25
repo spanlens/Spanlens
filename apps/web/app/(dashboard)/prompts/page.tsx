@@ -7,6 +7,7 @@ import {
   useCreatePromptVersion,
 } from '@/lib/queries/use-prompts'
 import { Topbar } from '@/components/layout/topbar'
+import { PermissionGate } from '@/components/permission-gate'
 import { cn } from '@/lib/utils'
 
 function fmtUsd(v: number): string {
@@ -74,13 +75,15 @@ export default function PromptsPage() {
               />
               <span className="font-mono text-[10px] text-text-faint border border-border rounded-[3px] px-[5px] py-[1px]">⌘K</span>
             </div>
-            <button
-              type="button"
-              onClick={() => setFormOpen((v) => !v)}
-              className="font-mono text-[11px] text-text px-[10px] py-[5px] border border-border-strong rounded-[5px] bg-bg-elev hover:bg-bg-muted transition-colors"
-            >
-              + register prompt
-            </button>
+            <PermissionGate need="edit">
+              <button
+                type="button"
+                onClick={() => setFormOpen((v) => !v)}
+                className="font-mono text-[11px] text-text px-[10px] py-[5px] border border-border-strong rounded-[5px] bg-bg-elev hover:bg-bg-muted transition-colors"
+              >
+                + register prompt
+              </button>
+            </PermissionGate>
           </div>
         }
       />
@@ -226,9 +229,11 @@ export default function PromptsPage() {
           <div className="flex flex-col items-center justify-center h-full gap-3 text-text-muted">
             <p className="text-[13px]">{search ? 'No prompts match your search.' : 'No prompts registered yet.'}</p>
             {!search && (
-              <button type="button" onClick={() => setFormOpen(true)} className="font-mono text-[11.5px] px-3 py-[5px] rounded-[4px] bg-text text-bg font-medium hover:opacity-90 transition-opacity">
-                + Register first prompt
-              </button>
+              <PermissionGate need="edit">
+                <button type="button" onClick={() => setFormOpen(true)} className="font-mono text-[11.5px] px-3 py-[5px] rounded-[4px] bg-text text-bg font-medium hover:opacity-90 transition-opacity">
+                  + Register first prompt
+                </button>
+              </PermissionGate>
             )}
           </div>
         ) : (

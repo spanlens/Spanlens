@@ -1,11 +1,14 @@
 import { Hono } from 'hono'
 import { authJwt, type JwtContext } from '../middleware/authJwt.js'
+import { requireRole } from '../middleware/requireRole.js'
 import { supabaseAdmin } from '../lib/db.js'
 import { randomHex, sha256Hex } from '../lib/crypto.js'
 
 export const apiKeysRouter = new Hono<JwtContext>()
 
 apiKeysRouter.use('*', authJwt)
+
+const requireEdit = requireRole('admin', 'editor')
 
 async function projectBelongsToOrg(projectId: string, orgId: string): Promise<boolean> {
   const { data } = await supabaseAdmin
@@ -50,7 +53,7 @@ apiKeysRouter.get('/', async (c) => {
 })
 
 // POST /api/v1/api-keys — create key; returns plain key ONCE
-apiKeysRouter.post('/', async (c) => {
+apiKeysRouter.post('/', requireEdit, async (c) => {
   const orgId = c.get('orgId')
   if (!orgId) return c.json({ error: 'Organization not found' }, 404)
 
@@ -93,7 +96,7 @@ apiKeysRouter.post('/', async (c) => {
 })
 
 // DELETE /api/v1/api-keys/:id — deactivate (soft delete)
-apiKeysRouter.delete('/:id', async (c) => {
+apiKeysRouter.delete('/:id', requireEdit, async (c) => {
   const keyId = c.req.param('id')
   const orgId = c.get('orgId')
   if (!orgId) return c.json({ error: 'Organization not found' }, 404)

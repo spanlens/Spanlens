@@ -1,11 +1,14 @@
 import { Hono } from 'hono'
 import { authJwt, type JwtContext } from '../middleware/authJwt.js'
+import { requireRole } from '../middleware/requireRole.js'
 import { supabaseAdmin } from '../lib/db.js'
 import { aes256Encrypt } from '../lib/crypto.js'
 
 export const providerKeysRouter = new Hono<JwtContext>()
 
 providerKeysRouter.use('*', authJwt)
+
+const requireEdit = requireRole('admin', 'editor')
 
 const VALID_PROVIDERS = new Set(['openai', 'anthropic', 'gemini'])
 
@@ -54,7 +57,7 @@ providerKeysRouter.get('/', async (c) => {
 //   body.project_id — optional. When provided, the key scopes to that project
 //   only. When omitted, the key becomes the org-level default (fallback for
 //   all projects without their own override).
-providerKeysRouter.post('/', async (c) => {
+providerKeysRouter.post('/', requireEdit, async (c) => {
   const orgId = c.get('orgId')
   if (!orgId) return c.json({ error: 'Organization not found' }, 404)
 
@@ -121,7 +124,7 @@ providerKeysRouter.post('/', async (c) => {
 })
 
 // DELETE /api/v1/provider-keys/:id — deactivate provider key
-providerKeysRouter.delete('/:id', async (c) => {
+providerKeysRouter.delete('/:id', requireEdit, async (c) => {
   const keyId = c.req.param('id')
   const orgId = c.get('orgId')
   if (!orgId) return c.json({ error: 'Organization not found' }, 404)
@@ -138,7 +141,7 @@ providerKeysRouter.delete('/:id', async (c) => {
 })
 
 // PATCH /api/v1/provider-keys/:id — rotate key (replace encrypted_key)
-providerKeysRouter.patch('/:id', async (c) => {
+providerKeysRouter.patch('/:id', requireEdit, async (c) => {
   const keyId = c.req.param('id')
   const orgId = c.get('orgId')
   if (!orgId) return c.json({ error: 'Organization not found' }, 404)

@@ -1,7 +1,10 @@
 import { Hono } from 'hono'
 import { authJwt, type JwtContext } from '../middleware/authJwt.js'
+import { requireRole } from '../middleware/requireRole.js'
 import { supabaseAdmin } from '../lib/db.js'
 import { comparePromptVersions } from '../lib/prompt-compare.js'
+
+const requireEdit = requireRole('admin', 'editor')
 
 /**
  * /api/v1/prompts — prompt version registry.
@@ -184,7 +187,7 @@ promptsRouter.get('/:name/:version', async (c) => {
 })
 
 // POST /  — create new version (auto-increment)
-promptsRouter.post('/', async (c) => {
+promptsRouter.post('/', requireEdit, async (c) => {
   const orgId = c.get('orgId')
   const userId = c.get('userId')
   if (!orgId) return c.json({ error: 'Organization not found' }, 404)
@@ -250,7 +253,7 @@ promptsRouter.post('/', async (c) => {
 })
 
 // DELETE /:name/:version — remove one version
-promptsRouter.delete('/:name/:version', async (c) => {
+promptsRouter.delete('/:name/:version', requireEdit, async (c) => {
   const orgId = c.get('orgId')
   if (!orgId) return c.json({ error: 'Organization not found' }, 404)
   const name = c.req.param('name')
