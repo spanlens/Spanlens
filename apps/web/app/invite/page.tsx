@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
@@ -32,7 +32,28 @@ type Status =
   | { kind: 'accepting'; meta: InviteMeta }
   | { kind: 'done' }
 
+// Default export wraps the inner component in Suspense — Next.js requires
+// `useSearchParams()` to live under a Suspense boundary, otherwise the
+// static export step bails out (`missing-suspense-with-csr-bailout`).
 export default function InvitePage() {
+  return (
+    <Suspense fallback={<InviteFallback />}>
+      <InvitePageInner />
+    </Suspense>
+  )
+}
+
+function InviteFallback() {
+  return (
+    <div className="min-h-screen bg-bg-elev flex items-center justify-center p-10">
+      <div className="w-[440px] max-w-full bg-bg border border-border rounded-lg p-8">
+        <div className="text-[13px] text-text-muted">Verifying invitation…</div>
+      </div>
+    </div>
+  )
+}
+
+function InvitePageInner() {
   const router = useRouter()
   const params = useSearchParams()
   const token = params.get('token') ?? ''
