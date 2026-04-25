@@ -40,10 +40,10 @@ const COMPAT = [
   ['Anthropic', 'sdk · bedrock'],
   ['Google', 'gemini · vertex'],
   ['Mistral', 'sdk · api'],
-  ['Vercel AI SDK', 'v3 · v4'],
+  ['TypeScript SDK', '@spanlens/sdk'],
+  ['Python SDK', 'pip · 3.9+'],
   ['LangChain', 'js · py'],
   ['LlamaIndex', 'py'],
-  ['OpenTelemetry', 'otlp · http'],
 ]
 
 const PLANS = [
@@ -116,8 +116,8 @@ export default function LandingPage() {
       <section className="max-w-[1200px] mx-auto px-10 pt-[88px] pb-[72px] relative">
         {/* Version badge */}
         <div className="inline-flex items-center gap-2 px-2 py-[5px] rounded-full border border-accent-border bg-accent-bg text-accent font-mono text-[12px] tracking-[0.03em] mb-7">
-          <span className="bg-accent text-bg px-[7px] py-[2px] rounded-full text-[10px] font-semibold tracking-[0.05em]">v0.3</span>
-          Prompt A/B + model recommender, now live
+          <span className="bg-accent text-bg px-[7px] py-[2px] rounded-full text-[10px] font-semibold tracking-[0.05em]">NEW</span>
+          Python SDK is here · <code className="font-mono">pip install spanlens</code>
         </div>
 
         <h1 className="text-[88px] leading-[0.96] tracking-[-2.8px] font-medium max-w-[980px] mb-7 [text-wrap:balance]">
@@ -131,16 +131,22 @@ export default function LandingPage() {
           suggestions automatically.
         </p>
 
-        {/* Install block */}
-        <div className="inline-flex items-center bg-bg-elev border border-border rounded-lg p-1 mb-[18px] shadow-[0_1px_0_var(--border)]">
+        {/* Install block — TS first (legacy), Python below as a sibling line */}
+        <div className="inline-flex items-center bg-bg-elev border border-border rounded-lg p-1 mb-2 shadow-[0_1px_0_var(--border)]">
           <div className="px-[14px] py-2 font-mono text-[14px]">
             <span className="text-text-faint">$ </span>
             npx <span className="text-accent">@spanlens/cli</span> init
           </div>
           <CopyInstallButton />
         </div>
+        <div className="inline-flex items-center bg-bg-elev border border-border rounded-lg p-1 mb-[18px] ml-2 shadow-[0_1px_0_var(--border)]">
+          <div className="px-[14px] py-2 font-mono text-[14px]">
+            <span className="text-text-faint">$ </span>
+            pip install <span className="text-accent">spanlens</span>
+          </div>
+        </div>
         <div className="font-mono text-[13px] text-text-faint block">
-          30-second setup · Next.js, Node, Edge · MIT · self-hostable
+          TypeScript · Python · Next.js, Node, Edge · MIT · self-hostable
         </div>
 
         {/* Floating signal pill */}
@@ -537,18 +543,33 @@ export default function LandingPage() {
       <section className="max-w-[1200px] mx-auto px-10 py-10 pb-20">
         <div className="font-mono text-[12px] text-accent tracking-[0.06em] uppercase mb-3">Install</div>
         <h2 className="text-[44px] font-medium tracking-[-1.2px] mb-8">It&apos;s genuinely one line.</h2>
-        <div className="bg-bg-elev border border-border rounded-xl overflow-hidden font-mono text-[14px] leading-[1.7]">
-          <div className="flex border-b border-border bg-bg-muted px-4 py-2 font-mono text-[12px] tracking-[0.04em] text-text-faint uppercase">
-            app/api/chat/route.ts
-          </div>
-          <pre className="m-0 px-6 py-5 text-text whitespace-pre overflow-x-auto">
+        <div className="grid grid-cols-2 gap-3">
+          <div className="bg-bg-elev border border-border rounded-xl overflow-hidden font-mono text-[14px] leading-[1.7]">
+            <div className="flex border-b border-border bg-bg-muted px-4 py-2 font-mono text-[12px] tracking-[0.04em] text-text-faint uppercase">
+              app/api/chat/route.ts
+            </div>
+            <pre className="m-0 px-6 py-5 text-text whitespace-pre overflow-x-auto">
 {`- import OpenAI from 'openai'
 - const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
 + `}<span className="text-accent">{`import { createOpenAI } from '@spanlens/sdk/openai'`}</span>{`
 + `}<span className="text-accent">{`const openai = createOpenAI()`}</span>{`
 
   const res = await openai.chat.completions.create({ ... })`}
-          </pre>
+            </pre>
+          </div>
+          <div className="bg-bg-elev border border-border rounded-xl overflow-hidden font-mono text-[14px] leading-[1.7]">
+            <div className="flex border-b border-border bg-bg-muted px-4 py-2 font-mono text-[12px] tracking-[0.04em] text-text-faint uppercase">
+              app/main.py
+            </div>
+            <pre className="m-0 px-6 py-5 text-text whitespace-pre overflow-x-auto">
+{`- from openai import OpenAI
+- client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
++ `}<span className="text-accent">{`from spanlens.integrations.openai import create_openai`}</span>{`
++ `}<span className="text-accent">{`client = create_openai()`}</span>{`
+
+  res = client.chat.completions.create(...)`}
+            </pre>
+          </div>
         </div>
       </section>
 
