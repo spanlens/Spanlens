@@ -25,7 +25,7 @@ import { promptsRouter }       from './api/prompts.js'
 import { recommendationsRouter } from './api/recommendations.js'
 import { auditLogsRouter }     from './api/auditLogs.js'
 import { membersRouter }       from './api/members.js'
-import { orgInvitationsRouter, invitationsRouter } from './api/invitations.js'
+import { orgInvitationsRouter, invitationsRouter, meInvitationsRouter } from './api/invitations.js'
 import { dismissalsRouter }    from './api/dismissals.js'
 import { userProfilesRouter }  from './api/userProfiles.js'
 
@@ -88,6 +88,7 @@ app.route('/api/v1/audit-logs',     auditLogsRouter)
 app.route('/api/v1/organizations/:orgId/members', membersRouter)
 app.route('/api/v1/organizations/:orgId/invitations', orgInvitationsRouter)
 app.route('/api/v1/invitations', invitationsRouter)
+app.route('/api/v1/me/pending-invitations', meInvitationsRouter)
 app.route('/api/v1/dismissals',     dismissalsRouter)
 app.route('/api/v1/me/profile',     userProfilesRouter)
 
