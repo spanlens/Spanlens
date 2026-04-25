@@ -1,32 +1,34 @@
 'use client'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 
 import { apiPost } from '@/lib/api'
+import {
+  useAcceptPendingInvitation,
+  usePendingInvitations,
+  type PendingInvitation,
+} from '@/lib/queries/use-pending-invitations'
+import { writeWorkspaceCookie } from '@/lib/workspace-cookie'
 import { cn } from '@/lib/utils'
 
 /**
- * Two-step post-signup onboarding:
+ * Three-phase post-signup onboarding:
  *
- *   1) Workspace — user names their workspace; we call POST /organizations/bootstrap
- *      with that name. This creates the org + admin membership + default
- *      project + first API key (server-side, atomic). The raw API key is
- *      stashed in sessionStorage so the WelcomeBanner on /dashboard can
- *      reveal it once.
+ *   0) Pending invitations (auto-detected) — appears ONLY when the
+ *      signed-in user's email has at least one open invitation. They
+ *      can Accept (joins that workspace + skips the rest of onboarding)
+ *      or Skip & create their own workspace (drops into step 1).
  *
- *   2) Survey — two radio questions ("What are you building?" + "Your role?").
- *      Both optional. Whether the user fills them in or hits Skip, we POST
- *      /me/profile/complete which sets `onboarded_at` so the dashboard
- *      layout stops redirecting them back here.
+ *   1) Workspace — user names their own workspace; bootstrap creates
+ *      org + admin membership + default project + first API key.
  *
- * Provider keys + API keys deliberately do NOT live in onboarding anymore:
- * most new users don't have an OpenAI key handy at signup, and the API
- * key is auto-generated. Both surface naturally on /projects + the
- * WelcomeBanner once the user is in the dashboard.
+ *   2) Survey — "What are you building?" + "Your role?". Both optional.
+ *      The completion endpoint stamps onboarded_at either way.
+ *
+ * Provider keys + API keys deliberately do NOT live in onboarding.
  */
 
-type Step = 'workspace' | 'survey'
-const STEP_ORDER: Step[] = ['workspace', 'survey']
+type Step = 'pending' | 'workspace' | 'survey'
 
 interface BootstrapResponse {
   data?: {
@@ -55,9 +57,22 @@ type UseCase = (typeof USE_CASES)[number]['id']
 type Role = (typeof ROLES)[number]['id']
 
 export default function OnboardingPage() {
-  const [step, setStep] = useState<Step>('workspace')
+  // We don't know yet whether to start at 'pending' or 'workspace' —
+  // depends on the API response. Start in a transient loading state.
+  const [step, setStep] = useState<Step | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+
+  const pending = usePendingInvitations()
+  const acceptInvite = useAcceptPendingInvitation()
+
+  // Decide initial step once the pending fetch resolves. After this point,
+  // the user drives the step transitions manually.
+  useEffect(() => {
+    if (step !== null) return
+    if (!pending.isFetched) return
+    setStep((pending.data?.length ?? 0) > 0 ? 'pending' : 'workspace')
+  }, [pending.isFetched, pending.data, step])
 
   // Step 1
   const [workspaceName, setWorkspaceName] = useState('')
@@ -66,7 +81,26 @@ export default function OnboardingPage() {
   const [useCase, setUseCase] = useState<UseCase | null>(null)
   const [role, setRole] = useState<Role | null>(null)
 
-  const currentStepIdx = STEP_ORDER.indexOf(step)
+  // Stepper visible only on the workspace + survey legs (the pending
+  // step is its own world — different content, different action set).
+  const showStepper = step === 'workspace' || step === 'survey'
+  const stepperIdx = step === 'survey' ? 1 : 0
+
+  async function handleAcceptInvite(inv: PendingInvitation): Promise<void> {
+    setError('')
+    setLoading(true)
+    try {
+      await acceptInvite.mutateAsync(inv.id)
+      // Make the joined workspace the active one + force a hard reload so
+      // middleware re-resolves cookies and the dashboard renders with the
+      // new org as the active workspace.
+      writeWorkspaceCookie(inv.orgId)
+      window.location.href = '/dashboard'
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to accept invitation.')
+      setLoading(false)
+    }
+  }
 
   async function handleWorkspaceSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -83,8 +117,7 @@ export default function OnboardingPage() {
     setLoading(true)
     try {
       // Server returns 409 if the user already has a workspace (e.g. from a
-      // partial earlier signup). Treat that as success and move on — the
-      // dashboard handles the existing-org case fine.
+      // partial earlier signup). Treat that as success and move on.
       const res = await apiPost<BootstrapResponse>(
         '/api/v1/organizations/bootstrap',
         { name: trimmed },
@@ -113,18 +146,13 @@ export default function OnboardingPage() {
     setError('')
     setLoading(true)
     try {
-      // Always POST — the endpoint stamps onboarded_at regardless of whether
-      // the survey is filled in. Skipping just sends nulls.
       await apiPost('/api/v1/me/profile/complete', includeAnswers
         ? { use_case: useCase, role }
         : {},
       )
-      // Hard navigation — `router.push` keeps the RSC tree cached, so the
-      // dashboard layout re-evaluates with the *previous* request's headers
-      // and the missing `x-spanlens-onboarded` flag bounces us right back
-      // to /onboarding. window.location.href forces a fresh request through
-      // the middleware so the new onboarded_at is observed. Same pattern
-      // the sidebar uses for the workspace switch reload.
+      // Hard navigation — `router.push` keeps the RSC tree cached, the
+      // dashboard layout would re-evaluate with stale headers, and
+      // `x-spanlens-onboarded` would still be missing → bounce back here.
       window.location.href = '/dashboard'
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save profile.')
@@ -144,10 +172,24 @@ export default function OnboardingPage() {
       </Link>
 
       {/* Stepper */}
-      <Stepper currentIdx={currentStepIdx} />
+      {showStepper && <Stepper currentIdx={stepperIdx} />}
 
       {/* Card */}
       <div className="w-[480px] max-w-full bg-bg border border-border rounded-[10px] p-7 shadow-sm">
+        {step === null && (
+          <div className="text-[13px] text-text-muted">Loading…</div>
+        )}
+
+        {step === 'pending' && pending.data && pending.data.length > 0 && (
+          <PendingInvitationsStep
+            invitations={pending.data}
+            onAccept={(inv) => void handleAcceptInvite(inv)}
+            onSkip={() => setStep('workspace')}
+            loading={loading}
+            error={error}
+          />
+        )}
+
         {step === 'workspace' && (
           <form onSubmit={(e) => void handleWorkspaceSubmit(e)}>
             <h1 className="text-[22px] font-medium tracking-[-0.4px] mb-1.5">Name your workspace</h1>
@@ -238,6 +280,68 @@ export default function OnboardingPage() {
             </div>
           </div>
         )}
+      </div>
+    </div>
+  )
+}
+
+function PendingInvitationsStep({
+  invitations,
+  onAccept,
+  onSkip,
+  loading,
+  error,
+}: {
+  invitations: PendingInvitation[]
+  onAccept: (inv: PendingInvitation) => void
+  onSkip: () => void
+  loading: boolean
+  error: string
+}) {
+  return (
+    <div>
+      <h1 className="text-[22px] font-medium tracking-[-0.4px] mb-1.5">You&apos;ve been invited</h1>
+      <p className="text-[13px] text-text-muted mb-5 leading-relaxed">
+        Someone added you to {invitations.length === 1 ? 'a' : 'these'} Spanlens
+        {invitations.length === 1 ? ' workspace' : ' workspaces'}. Join now, or
+        skip and create your own.
+      </p>
+
+      <div className="space-y-2 mb-5">
+        {invitations.map((inv) => (
+          <div
+            key={inv.id}
+            className="flex items-center justify-between gap-3 p-3 rounded-[6px] border border-border bg-bg-elev"
+          >
+            <div className="min-w-0">
+              <div className="text-[14px] font-medium text-text truncate">{inv.orgName}</div>
+              <div className="font-mono text-[11px] text-text-muted mt-0.5">
+                Role: <span className="text-accent">{inv.role}</span>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => onAccept(inv)}
+              disabled={loading}
+              className="bg-text text-bg py-[8px] px-[14px] rounded-[6px] text-[12.5px] font-medium hover:opacity-90 transition-opacity disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed shrink-0"
+            >
+              Accept →
+            </button>
+          </div>
+        ))}
+      </div>
+
+      {error && <p className="text-[12.5px] text-bad mb-3">{error}</p>}
+
+      <div className="border-t border-border pt-4">
+        <button
+          type="button"
+          onClick={onSkip}
+          disabled={loading}
+          className="w-full font-mono text-[12px] py-[9px] px-3 border border-border rounded-[6px] text-text-muted hover:text-text hover:border-border-strong transition-colors disabled:opacity-40"
+        >
+          Skip &amp; create my own workspace →
+        </button>
       </div>
     </div>
   )

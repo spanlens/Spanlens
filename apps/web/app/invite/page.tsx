@@ -4,6 +4,7 @@ import { Suspense, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { writeWorkspaceCookie } from '@/lib/workspace-cookie'
 
 /**
  * /invite?token=xxx — invitation acceptance landing page.
@@ -121,9 +122,51 @@ function InvitePageInner() {
       return
     }
 
+    // Switch the active workspace to the joined one so the dashboard
+    // opens straight into it. The accept endpoint returns
+    // `data.organizationId` exactly so the client can do this.
+    const body = (await res.json().catch(() => ({}))) as {
+      data?: { organizationId?: string }
+    }
+    if (body.data?.organizationId) writeWorkspaceCookie(body.data.organizationId)
+
     setStatus({ kind: 'done' })
-    // Soft delay so the success state is visible before navigating away.
-    setTimeout(() => router.push('/dashboard'), 800)
+    // Hard navigation — middleware needs to re-resolve sb-ws + onboarded
+    // headers, otherwise the dashboard layout might bounce based on the
+    // pre-accept request's cached state.
+    setTimeout(() => { window.location.href = '/dashboard' }, 800)
+  }
+
+  async function handleDecline() {
+    if (status.kind !== 'email_match') return
+    setAcceptError('')
+    setStatus({ kind: 'accepting', meta: status.meta })
+
+    const supabase = createClient()
+    const { data: { session } } = await supabase.auth.getSession()
+    const accessToken = session?.access_token
+    if (!accessToken) {
+      setAcceptError('Session expired. Please sign in again.')
+      setStatus({ kind: 'needs_auth', meta: status.meta })
+      return
+    }
+
+    const res = await fetch('/api/v1/invitations/decline', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+      body: JSON.stringify({ token }),
+    })
+    if (!res.ok) {
+      const body = (await res.json().catch(() => ({}))) as { error?: string }
+      setAcceptError(body.error ?? 'Failed to decline invitation.')
+      setStatus({ kind: 'email_match', meta: status.meta })
+      return
+    }
+
+    // Decline lands the user back in their own dashboard (they may not
+    // have one yet — if they don't, the dashboard layout's onboarding
+    // gate will sweep them to /onboarding which is the right outcome).
+    router.push('/dashboard')
   }
 
   async function handleSignOut() {
@@ -199,14 +242,24 @@ function InvitePageInner() {
               <span className="font-mono text-text">{status.meta.role}</span>.
             </p>
             {acceptError && <p className="text-[12.5px] text-bad mb-3">{acceptError}</p>}
-            <button
-              type="button"
-              onClick={() => void handleAccept()}
-              disabled={status.kind === 'accepting'}
-              className="w-full bg-text text-bg py-[11px] px-[14px] rounded-[7px] text-[13px] font-medium hover:opacity-90 transition-opacity disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed"
-            >
-              {status.kind === 'accepting' ? 'Accepting…' : 'Accept invitation'}
-            </button>
+            <div className="flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={() => void handleAccept()}
+                disabled={status.kind === 'accepting'}
+                className="w-full bg-text text-bg py-[11px] px-[14px] rounded-[7px] text-[13px] font-medium hover:opacity-90 transition-opacity disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed"
+              >
+                {status.kind === 'accepting' ? 'Working…' : 'Accept invitation'}
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleDecline()}
+                disabled={status.kind === 'accepting'}
+                className="w-full border border-border-strong py-[11px] px-[14px] rounded-[7px] text-[13px] font-medium text-text-muted hover:text-text transition-colors disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed"
+              >
+                Decline
+              </button>
+            </div>
           </>
         )}
 

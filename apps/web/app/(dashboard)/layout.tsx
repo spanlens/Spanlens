@@ -1,6 +1,7 @@
 import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { Sidebar } from '@/components/layout/sidebar'
+import { PendingInvitationsBanner } from '@/components/layout/pending-invitations-banner'
 import { ProjectProvider } from '@/lib/project-context'
 
 /**
@@ -34,6 +35,11 @@ export default async function DashboardLayout({ children }: { children: React.Re
       <div className="flex h-screen overflow-hidden bg-bg">
         <Sidebar />
         <main className="flex-1 overflow-y-auto">
+          {/* Pending workspace invitations surface here: any dashboard
+              page renders this banner at the top, so a user who never
+              clicked the email link still sees the invite waiting for
+              them. Self-hides when there are none / after dismissal. */}
+          <PendingInvitationsBanner />
           <div className="px-8 py-7">{children}</div>
         </main>
       </div>
