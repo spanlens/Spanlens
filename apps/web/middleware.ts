@@ -79,6 +79,8 @@ export async function middleware(request: NextRequest) {
     const preferredWs = request.cookies.get('sb-ws')?.value
     const appMetaOrg = (user.app_metadata as { org_id?: string } | undefined)?.org_id
 
+    let onboarded = false
+
     if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
       try {
         const admin = createClient(
@@ -109,6 +111,16 @@ export async function middleware(request: NextRequest) {
             .maybeSingle()
           if (m?.organization_id) orgId = m.organization_id
         }
+
+        // Onboarding completion. Cheap (PK lookup on user_profiles) and
+        // unlocks the dashboard layout's `redirect('/onboarding')` guard
+        // without round-tripping to the API on every page load.
+        const { data: profile } = await admin
+          .from('user_profiles')
+          .select('onboarded_at')
+          .eq('user_id', user.id)
+          .maybeSingle()
+        if (profile?.onboarded_at) onboarded = true
       } catch {
         // Non-fatal — worst case the user sees /onboarding and can retry.
       }
@@ -117,6 +129,7 @@ export async function middleware(request: NextRequest) {
     }
 
     if (orgId) requestHeaders.set('x-spanlens-org-id', orgId)
+    if (onboarded) requestHeaders.set('x-spanlens-onboarded', '1')
 
     // Re-materialize the response with the updated headers so downstream RSC
     // (notably (dashboard)/layout.tsx) sees them via next/headers.
