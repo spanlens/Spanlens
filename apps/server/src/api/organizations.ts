@@ -122,15 +122,24 @@ organizationsRouter.patch('/me/overage', requireAdmin, async (c) => {
 })
 
 // POST /api/v1/organizations/bootstrap — one-shot workspace setup for new users.
-// Creates org + default project + first API key in a single round-trip so the
-// signup page can drop users straight into the dashboard with a working key.
-// If the user already has an org, returns 409 — the client should treat that
-// as "already onboarded" and just navigate to the dashboard.
+//
+// Creates org + admin membership + default project + first API key in a
+// single round-trip. The /onboarding flow calls this once the user has
+// chosen a workspace name; the API key is returned ONCE (raw, plaintext)
+// and only the hash is persisted.
+//
+// Body (all optional):
+//   { name?: string }   — workspace name (1..80 chars, trimmed)
+//                          When omitted we fall back to a derived
+//                          "<local-part>'s workspace" so legacy callers
+//                          (and the welcome experience) still work.
+//
+// Returns 409 if the user already has a membership — second invocation
+// from a refresh/retry should no-op at HTTP level.
 organizationsRouter.post('/bootstrap', async (c) => {
   const userId = c.get('userId')
 
-  // Reject if already onboarded. Covers the retry/refresh case where signup
-  // ran once and hit this endpoint — second call should no-op at HTTP level.
+  // Reject if already onboarded.
   const { data: existingMember } = await supabaseAdmin
     .from('org_members')
     .select('organization_id')
@@ -140,9 +149,23 @@ organizationsRouter.post('/bootstrap', async (c) => {
     return c.json({ error: 'Already onboarded', organizationId: existingMember.organization_id }, 409)
   }
 
-  // Pull the user's email for the auto-generated workspace name.
+  // Body parse — body is OPTIONAL on this endpoint (legacy clients send
+  // none). Don't 400 on empty/invalid JSON; just fall through to the
+  // derived default name.
+  let bodyName: string | undefined
+  try {
+    const raw = (await c.req.json().catch(() => ({}))) as { name?: unknown }
+    if (typeof raw.name === 'string') {
+      const trimmed = raw.name.trim()
+      if (trimmed.length > 0 && trimmed.length <= 80) bodyName = trimmed
+    }
+  } catch {
+    // ignore — empty body is valid here.
+  }
+
+  // Resolve workspace name: explicit body wins; otherwise derive from email.
   const { data: userData } = await supabaseAdmin.auth.admin.getUserById(userId)
-  const workspaceName = deriveWorkspaceName(userData?.user?.email)
+  const workspaceName = bodyName ?? deriveWorkspaceName(userData?.user?.email)
 
   // 1. organization
   const { data: org, error: orgErr } = await supabaseAdmin
@@ -166,20 +189,38 @@ organizationsRouter.post('/bootstrap', async (c) => {
     return c.json({ error: 'Failed to create org membership' }, 500)
   }
 
-  // 3. default project
-  const { data: project, error: projErr } = await supabaseAdmin
+  // 3. default project — idempotent: reuse one if it already exists with
+  // the same name. Belt-and-braces against the historical "two Default
+  // Projects" bug where the legacy onboarding page used to POST /projects
+  // *in addition* to the bootstrap call. The old onboarding code is gone
+  // now, but this guard means even a stray retry/race won't dup.
+  const { data: existingProject } = await supabaseAdmin
     .from('projects')
-    .insert({ organization_id: org.id, name: 'Default Project' })
     .select('id, name, created_at')
-    .single()
-  if (projErr || !project) {
-    await rollback()
-    return c.json({ error: 'Failed to create default project' }, 500)
+    .eq('organization_id', org.id)
+    .eq('name', 'Default Project')
+    .maybeSingle()
+
+  let project = existingProject
+  if (!project) {
+    const { data: created, error: projErr } = await supabaseAdmin
+      .from('projects')
+      .insert({ organization_id: org.id, name: 'Default Project' })
+      .select('id, name, created_at')
+      .single()
+    if (projErr || !created) {
+      await rollback()
+      return c.json({ error: 'Failed to create default project' }, 500)
+    }
+    project = created
   }
 
   // 4. first API key — raw value returned once; we only store the hash.
+  // sha256Hex is Web Crypto-based (Edge runtime safe) and ASYNC — must await.
+  // (Previously assigned the unawaited Promise to keyHash, which serialised
+  // as "[object Promise]" and broke later authentication.)
   const rawKey = `sl_live_${randomHex(32)}`
-  const keyHash = sha256Hex(rawKey)
+  const keyHash = await sha256Hex(rawKey)
   const { error: keyErr } = await supabaseAdmin.from('api_keys').insert({
     project_id: project.id,
     name: 'Default key',
