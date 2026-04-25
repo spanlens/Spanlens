@@ -98,7 +98,6 @@ function WorkspaceSwitcher() {
   const orgName = org.data?.name ?? 'workspace'
   const allProjects = projects.data ?? []
   const allWorkspaces = workspaces.data ?? []
-  const showWorkspaceSwitch = allWorkspaces.length > 1
 
   const current = currentProjectId
     ? allProjects.find((p) => p.id === currentProjectId)
@@ -123,13 +122,15 @@ function WorkspaceSwitcher() {
           className="absolute left-0 right-0 mt-1 z-20 rounded-[6px] border border-border-strong bg-bg-elev shadow-lg overflow-hidden"
           role="menu"
         >
-          {/* Workspaces section: always renders so "+ New workspace" is
-              reachable even when the user has only one. The list of existing
-              workspaces only appears when switching is meaningful (2+). */}
+          {/* Workspaces section: always renders the list — even with a
+              single workspace — so the user sees "I am here" instead of an
+              empty list with just a "+ New workspace" button (which used to
+              read as "my workspace disappeared"). The current workspace
+              shows a check mark; switching is a no-op when only one exists. */}
           <div className="font-mono text-[9.5px] uppercase tracking-[0.06em] text-text-faint px-[10px] pt-[7px] pb-[3px]">
             Workspaces
           </div>
-          {showWorkspaceSwitch && allWorkspaces.map((w) => {
+          {allWorkspaces.map((w) => {
             const selected = w.id === org.data?.id
             return (
               <button

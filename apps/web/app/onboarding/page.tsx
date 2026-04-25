@@ -1,7 +1,6 @@
 'use client'
 import { useState } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
 
 import { apiPost } from '@/lib/api'
 import { cn } from '@/lib/utils'
@@ -56,7 +55,6 @@ type UseCase = (typeof USE_CASES)[number]['id']
 type Role = (typeof ROLES)[number]['id']
 
 export default function OnboardingPage() {
-  const router = useRouter()
   const [step, setStep] = useState<Step>('workspace')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -121,7 +119,13 @@ export default function OnboardingPage() {
         ? { use_case: useCase, role }
         : {},
       )
-      router.push('/dashboard')
+      // Hard navigation — `router.push` keeps the RSC tree cached, so the
+      // dashboard layout re-evaluates with the *previous* request's headers
+      // and the missing `x-spanlens-onboarded` flag bounces us right back
+      // to /onboarding. window.location.href forces a fresh request through
+      // the middleware so the new onboarded_at is observed. Same pattern
+      // the sidebar uses for the workspace switch reload.
+      window.location.href = '/dashboard'
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save profile.')
       setLoading(false)
