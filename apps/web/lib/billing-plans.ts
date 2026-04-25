@@ -19,7 +19,7 @@ export const PLANS: PlanCardConfig[] = [
     features: [
       '10,000 requests / month',
       '7-day log retention',
-      '1 project',
+      'Unlimited projects',
       'Community support',
     ],
   },
@@ -32,7 +32,7 @@ export const PLANS: PlanCardConfig[] = [
     features: [
       '100,000 requests / month',
       '30-day log retention',
-      'Up to 5 projects',
+      'Unlimited projects',
       'Agent tracing',
       'Email alerts',
       'Email support',
