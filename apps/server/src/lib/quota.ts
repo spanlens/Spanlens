@@ -17,11 +17,17 @@ export const MONTHLY_REQUEST_LIMITS: Record<Plan, number | null> = {
   enterprise: null, // unlimited
 }
 
+// Projects are an organizational unit (separating different LLM apps inside
+// the same team), not a billing lever. Every competitor that has the project
+// concept (Langfuse, Braintrust) gives unlimited projects on every tier; the
+// billable dimensions are usage, retention, and seats. We follow the same
+// pattern. The constant is kept so future tiers can reintroduce a limit
+// without touching every call site.
 export const PROJECT_LIMITS: Record<Plan, number | null> = {
-  free: 1,
-  starter: 5,
-  team: null, // unlimited — Team is the "agency/multi-app" tier
-  enterprise: null, // unlimited
+  free: null,
+  starter: null,
+  team: null,
+  enterprise: null,
 }
 
 export const LOG_RETENTION_DAYS: Record<Plan, number> = {

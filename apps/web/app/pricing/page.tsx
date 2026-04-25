@@ -13,7 +13,7 @@ const PLANS = [
     description: 'For personal projects and exploration',
     features: [
       '10K requests / month',
-      '1 project',
+      'Unlimited projects',
       '3 providers (OpenAI, Anthropic, Gemini)',
       '7-day log retention',
       'Community support',
@@ -28,7 +28,7 @@ const PLANS = [
     description: 'For solo developers shipping to production',
     features: [
       '100K requests / month',
-      'Up to 5 projects',
+      'Unlimited projects',
       'All providers',
       '30-day log retention',
       'Cost alerts & budgets',

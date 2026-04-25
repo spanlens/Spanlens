@@ -49,7 +49,7 @@ const COMPAT = [
 const PLANS = [
   {
     name: 'Free', price: '$0', unit: 'forever',
-    bullets: ['50k req / mo', '7 day retention', '1 project', 'Community support'],
+    bullets: ['50k req / mo', '7 day retention', 'Unlimited projects', 'Community support'],
     cta: 'Start free', href: '/signup', primary: false,
   },
   {
