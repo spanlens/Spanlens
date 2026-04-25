@@ -16,6 +16,7 @@ import type { AlertType, ChannelKind, AlertRow } from '@/lib/queries/types'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Topbar } from '@/components/layout/topbar'
+import { PermissionGate } from '@/components/permission-gate'
 import { cn } from '@/lib/utils'
 
 function fmtThreshold(type: AlertType, threshold: number): string {
@@ -123,32 +124,34 @@ function AlertRuleRow({
       </div>
 
       {/* actions */}
-      <div className="flex items-center justify-end gap-1.5">
-        <button
-          type="button"
-          onClick={onEdit}
-          disabled={isPending}
-          className="font-mono text-[10.5px] text-text-muted px-2 py-[3px] border border-border rounded-[4px] hover:text-text transition-colors disabled:opacity-40"
-        >
-          Edit
-        </button>
-        <button
-          type="button"
-          onClick={onToggle}
-          disabled={isPending}
-          className="font-mono text-[10.5px] text-text-muted px-2 py-[3px] border border-border rounded-[4px] hover:text-text transition-colors disabled:opacity-40"
-        >
-          {a.is_active ? 'Pause' : 'Resume'}
-        </button>
-        <button
-          type="button"
-          onClick={onDelete}
-          disabled={isPending}
-          className="p-1.5 text-text-faint hover:text-bad transition-colors disabled:opacity-40"
-        >
-          <Trash2 className="h-3.5 w-3.5" />
-        </button>
-      </div>
+      <PermissionGate need="edit">
+        <div className="flex items-center justify-end gap-1.5">
+          <button
+            type="button"
+            onClick={onEdit}
+            disabled={isPending}
+            className="font-mono text-[10.5px] text-text-muted px-2 py-[3px] border border-border rounded-[4px] hover:text-text transition-colors disabled:opacity-40"
+          >
+            Edit
+          </button>
+          <button
+            type="button"
+            onClick={onToggle}
+            disabled={isPending}
+            className="font-mono text-[10.5px] text-text-muted px-2 py-[3px] border border-border rounded-[4px] hover:text-text transition-colors disabled:opacity-40"
+          >
+            {a.is_active ? 'Pause' : 'Resume'}
+          </button>
+          <button
+            type="button"
+            onClick={onDelete}
+            disabled={isPending}
+            className="p-1.5 text-text-faint hover:text-bad transition-colors disabled:opacity-40"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      </PermissionGate>
     </div>
   )
 }
@@ -251,22 +254,24 @@ export default function AlertsPage() {
       <Topbar
         crumbs={[{ label: 'Workspace', href: '/dashboard' }, { label: 'Alerts' }]}
         right={
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setChannelDialogOpen(true)}
-              className="font-mono text-[11px] text-text-muted px-[10px] py-[5px] border border-border rounded-[5px] bg-bg-elev hover:text-text transition-colors"
-            >
-              + Add channel
-            </button>
-            <button
-              type="button"
-              onClick={openCreateAlert}
-              className="font-mono text-[11px] text-bg px-[10px] py-[5px] rounded-[5px] bg-text font-medium hover:opacity-90 transition-opacity"
-            >
-              + New alert
-            </button>
-          </div>
+          <PermissionGate need="edit">
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setChannelDialogOpen(true)}
+                className="font-mono text-[11px] text-text-muted px-[10px] py-[5px] border border-border rounded-[5px] bg-bg-elev hover:text-text transition-colors"
+              >
+                + Add channel
+              </button>
+              <button
+                type="button"
+                onClick={openCreateAlert}
+                className="font-mono text-[11px] text-bg px-[10px] py-[5px] rounded-[5px] bg-text font-medium hover:opacity-90 transition-opacity"
+              >
+                + New alert
+              </button>
+            </div>
+          </PermissionGate>
         }
       />
 
@@ -298,13 +303,15 @@ export default function AlertsPage() {
           <div className="flex flex-col items-center justify-center h-full gap-3 text-text-muted">
             <p className="text-[13px]">No alert rules yet.</p>
             <p className="font-mono text-[12px]">Create an alert to get notified about budget, error rate, or latency issues.</p>
-            <button
-              type="button"
-              onClick={openCreateAlert}
-              className="font-mono text-[11.5px] px-3 py-[5px] mt-1 rounded-[4px] bg-text text-bg font-medium hover:opacity-90 transition-opacity"
-            >
-              + New alert
-            </button>
+            <PermissionGate need="edit">
+              <button
+                type="button"
+                onClick={openCreateAlert}
+                className="font-mono text-[11.5px] px-3 py-[5px] mt-1 rounded-[4px] bg-text text-bg font-medium hover:opacity-90 transition-opacity"
+              >
+                + New alert
+              </button>
+            </PermissionGate>
           </div>
         ) : (
           <>
@@ -392,14 +399,16 @@ export default function AlertsPage() {
                         <span className="font-mono text-[11px] uppercase tracking-[0.04em] text-text-muted">{ch.kind}</span>
                         <span className="font-mono text-[12px] text-text-faint truncate max-w-xs">{ch.target}</span>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => void deleteChannel.mutateAsync(ch.id)}
-                        disabled={deleteChannel.isPending}
-                        className="text-text-faint hover:text-bad transition-colors p-1 disabled:opacity-40"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
+                      <PermissionGate need="edit">
+                        <button
+                          type="button"
+                          onClick={() => void deleteChannel.mutateAsync(ch.id)}
+                          disabled={deleteChannel.isPending}
+                          className="text-text-faint hover:text-bad transition-colors p-1 disabled:opacity-40"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </PermissionGate>
                     </div>
                   ))}
                 </div>

@@ -12,6 +12,7 @@ import {
 } from '@/lib/queries/use-alerts'
 import type { AlertRow, AlertType } from '@/lib/queries/types'
 import { Topbar } from '@/components/layout/topbar'
+import { PermissionGate } from '@/components/permission-gate'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -154,32 +155,34 @@ export default function AlertDetailPage() {
           { label: alert.name },
         ]}
         right={
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={openEdit}
-              className="font-mono text-[11px] text-text-muted px-[10px] py-[5px] border border-border rounded-[5px] bg-bg-elev hover:text-text transition-colors"
-            >
-              Edit
-            </button>
-            <button
-              type="button"
-              onClick={() => void handleToggle()}
-              disabled={updateAlert.isPending}
-              className="font-mono text-[11px] text-text-muted px-[10px] py-[5px] border border-border rounded-[5px] bg-bg-elev hover:text-text transition-colors disabled:opacity-40"
-            >
-              {alert.is_active ? 'Pause' : 'Resume'}
-            </button>
-            <button
-              type="button"
-              onClick={() => void handleDelete()}
-              disabled={deleteAlert.isPending}
-              className="p-2 text-text-faint hover:text-bad transition-colors disabled:opacity-40"
-              title="Delete rule"
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-            </button>
-          </div>
+          <PermissionGate need="edit">
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={openEdit}
+                className="font-mono text-[11px] text-text-muted px-[10px] py-[5px] border border-border rounded-[5px] bg-bg-elev hover:text-text transition-colors"
+              >
+                Edit
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleToggle()}
+                disabled={updateAlert.isPending}
+                className="font-mono text-[11px] text-text-muted px-[10px] py-[5px] border border-border rounded-[5px] bg-bg-elev hover:text-text transition-colors disabled:opacity-40"
+              >
+                {alert.is_active ? 'Pause' : 'Resume'}
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleDelete()}
+                disabled={deleteAlert.isPending}
+                className="p-2 text-text-faint hover:text-bad transition-colors disabled:opacity-40"
+                title="Delete rule"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          </PermissionGate>
         }
       />
 

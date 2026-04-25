@@ -1,9 +1,12 @@
 import { Hono } from 'hono'
 import { authJwt, type JwtContext } from '../middleware/authJwt.js'
+import { requireRole } from '../middleware/requireRole.js'
 import { supabaseAdmin } from '../lib/db.js'
 
 export const alertsRouter = new Hono<JwtContext>()
 alertsRouter.use('*', authJwt)
+
+const requireEdit = requireRole('admin', 'editor')
 
 const VALID_ALERT_TYPES = new Set(['budget', 'error_rate', 'latency_p95'])
 const VALID_CHANNEL_KINDS = new Set(['email', 'slack', 'discord'])
@@ -24,7 +27,7 @@ alertsRouter.get('/', async (c) => {
 })
 
 // ── POST /api/v1/alerts ─────────────────────────────────────────
-alertsRouter.post('/', async (c) => {
+alertsRouter.post('/', requireEdit, async (c) => {
   const orgId = c.get('orgId')
   if (!orgId) return c.json({ error: 'Organization not found' }, 404)
 
@@ -78,7 +81,7 @@ alertsRouter.post('/', async (c) => {
 })
 
 // ── PATCH /api/v1/alerts/:id ────────────────────────────────────
-alertsRouter.patch('/:id', async (c) => {
+alertsRouter.patch('/:id', requireEdit, async (c) => {
   const orgId = c.get('orgId')
   const id = c.req.param('id')
   if (!orgId) return c.json({ error: 'Organization not found' }, 404)
@@ -119,7 +122,7 @@ alertsRouter.patch('/:id', async (c) => {
 })
 
 // ── DELETE /api/v1/alerts/:id ───────────────────────────────────
-alertsRouter.delete('/:id', async (c) => {
+alertsRouter.delete('/:id', requireEdit, async (c) => {
   const orgId = c.get('orgId')
   const id = c.req.param('id')
   if (!orgId) return c.json({ error: 'Organization not found' }, 404)
@@ -148,7 +151,7 @@ alertsRouter.get('/channels', async (c) => {
   return c.json({ success: true, data: data ?? [] })
 })
 
-alertsRouter.post('/channels', async (c) => {
+alertsRouter.post('/channels', requireEdit, async (c) => {
   const orgId = c.get('orgId')
   if (!orgId) return c.json({ error: 'Organization not found' }, 404)
 
@@ -183,7 +186,7 @@ alertsRouter.post('/channels', async (c) => {
   return c.json({ success: true, data }, 201)
 })
 
-alertsRouter.delete('/channels/:id', async (c) => {
+alertsRouter.delete('/channels/:id', requireEdit, async (c) => {
   const orgId = c.get('orgId')
   const id = c.req.param('id')
   if (!orgId) return c.json({ error: 'Organization not found' }, 404)
