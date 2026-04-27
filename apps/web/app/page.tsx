@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { AuthNavButtons } from '@/components/layout/auth-nav-buttons'
 import { Footer } from '@/components/layout/footer'
 import { CopyInstallButton } from '@/components/landing/copy-install-button'
+import { WaitlistForm } from '@/components/landing/waitlist-form'
 
 export const metadata = { title: 'Spanlens · LLM Observability' }
 
@@ -173,6 +174,22 @@ export default function LandingPage() {
               points="2,30 22,28 42,30 62,27 82,24 102,26 122,22 142,18 162,4 182,3 202,6 222,2 262,1"
             />
           </svg>
+        </div>
+      </section>
+
+      {/* ── Early access waitlist ────────────────────────────────────── */}
+      <section className="border-y border-border bg-bg-elev">
+        <div className="max-w-[1200px] mx-auto px-10 py-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-5">
+          <div>
+            <p className="font-mono text-[11px] text-text-faint tracking-[0.08em] uppercase mb-1">Early access</p>
+            <p className="text-[15px] font-medium text-text">
+              Get priority access before the public launch.
+            </p>
+            <p className="text-[13px] text-text-muted mt-0.5">
+              We&apos;re onboarding alpha users now — no credit card required.
+            </p>
+          </div>
+          <WaitlistForm />
         </div>
       </section>
 
