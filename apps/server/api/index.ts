@@ -1,8 +1,9 @@
+import { handle } from 'hono/vercel'
 import { app } from '../src/app.js'
 
-export const config = { runtime: 'edge' }
-export const runtime = 'edge'
+// Node.js runtime: 60s timeout (vs Edge 25s), full Node.js API support.
+// IMPORTANT: Do NOT use `app.fetch` directly — it breaks on Vercel Node runtime.
+// Use hono/vercel `handle()` adapter instead (confirmed working pattern).
+export const runtime = 'nodejs'
 
-// Hono's app.fetch is a standard Web API handler: (req: Request) => Promise<Response>
-// This matches Vercel Edge function signature exactly — no adapter needed.
-export default app.fetch
+export default handle(app)
