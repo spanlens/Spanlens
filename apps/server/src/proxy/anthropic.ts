@@ -58,6 +58,7 @@ anthropicProxy.all('/*', async (c) => {
     upstreamRes = await fetch(upstreamUrl, { method: c.req.method, headers, body: fetchBody })
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Unknown error'
+    console.error('[anthropic-proxy] upstream fetch error:', msg)
     return c.json({ error: `Upstream request failed: ${msg}` }, 502)
   }
   const latencyMs = Date.now() - startMs
