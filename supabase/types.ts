@@ -1,3 +1,4 @@
+Connecting to db 5432
 export type Json =
   | string
   | number
@@ -1168,6 +1169,33 @@ export type Database = {
           },
         ]
       }
+      user_profiles: {
+        Row: {
+          created_at: string
+          onboarded_at: string | null
+          role: string | null
+          updated_at: string
+          use_case: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          onboarded_at?: string | null
+          role?: string | null
+          updated_at?: string
+          use_case?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          onboarded_at?: string | null
+          role?: string | null
+          updated_at?: string
+          use_case?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -1175,6 +1203,13 @@ export type Database = {
     Functions: {
       aggregate_usage_daily: { Args: { target_date: string }; Returns: number }
       is_org_member: { Args: { org_id: string }; Returns: boolean }
+      postgres_fdw_disconnect: { Args: { "": string }; Returns: boolean }
+      postgres_fdw_disconnect_all: { Args: never; Returns: boolean }
+      postgres_fdw_get_connections: {
+        Args: never
+        Returns: Record<string, unknown>[]
+      }
+      postgres_fdw_handler: { Args: never; Returns: unknown }
       prune_logs_by_retention: { Args: never; Returns: Json }
       security_summary: {
         Args: { p_hours?: number; p_org_id: string }

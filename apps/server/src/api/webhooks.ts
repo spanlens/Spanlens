@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { authJwt, type JwtContext } from '../middleware/authJwt.js'
 import { requireRole } from '../middleware/requireRole.js'
 import { supabaseAdmin } from '../lib/db.js'
+import { randomHex } from '../lib/crypto.js'
 
 export const webhooksRouter = new Hono<JwtContext>()
 webhooksRouter.use('*', authJwt)
@@ -67,6 +68,7 @@ webhooksRouter.post('/', requireEdit, async (c) => {
     organization_id: orgId,
     name: body.name.trim(),
     url: body.url.trim(),
+    secret: randomHex(32),
     events,
     is_active: typeof body.is_active === 'boolean' ? body.is_active : true,
   }
