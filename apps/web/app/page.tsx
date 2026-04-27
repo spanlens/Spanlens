@@ -145,6 +145,7 @@ export default function LandingPage() {
             <span className="text-text-faint">$ </span>
             pip install <span className="text-accent">spanlens</span>
           </div>
+          <CopyInstallButton text="pip install spanlens" />
         </div>
         <div className="font-mono text-[13px] text-text-faint block">
           TypeScript · Python · Next.js, Node, Edge · MIT · self-hostable
