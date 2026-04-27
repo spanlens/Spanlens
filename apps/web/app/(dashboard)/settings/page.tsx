@@ -1,5 +1,6 @@
 'use client'
 import { useCallback, useEffect, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { Plus, RotateCcw, Trash2, Check, Sun, Moon, Monitor, type LucideIcon } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import { initializePaddle, type Paddle } from '@paddle/paddle-js'
@@ -1793,7 +1794,11 @@ function TabContent({ tab }: { tab: TabId }) {
 // ─── page ─────────────────────────────────────────────────────────────────────
 
 export default function SettingsPage() {
-  const [tab, setTab] = useState<TabId>('general')
+  const searchParams = useSearchParams()
+  const initialTab = (searchParams.get('tab') as TabId | null) ?? 'general'
+  const [tab, setTab] = useState<TabId>(
+    ALL_ITEMS.some((i) => i.id === initialTab) ? initialTab : 'general',
+  )
   const active = ALL_ITEMS.find((i) => i.id === tab) ?? ALL_ITEMS[0]!
 
   return (

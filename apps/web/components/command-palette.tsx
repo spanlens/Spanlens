@@ -2,6 +2,7 @@
 
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { Search } from 'lucide-react'
 import {
   Command,
   CommandEmpty,
@@ -35,18 +36,45 @@ interface NavEntry {
   href: string
 }
 
-const NAV_ITEMS: NavEntry[] = [
-  { label: 'Dashboard',       href: '/dashboard' },
-  { label: 'Requests',        href: '/requests' },
-  { label: 'Traces',          href: '/traces' },
-  { label: 'Anomalies',       href: '/anomalies' },
-  { label: 'Security',        href: '/security' },
-  { label: 'Savings',         href: '/recommendations' },
-  { label: 'Prompts',         href: '/prompts' },
-  { label: 'Alerts',          href: '/alerts' },
-  { label: 'Projects & Keys', href: '/projects' },
-  { label: 'Settings',        href: '/settings' },
-  { label: 'Billing',         href: '/billing' },
+interface NavGroup {
+  heading: string
+  items: NavEntry[]
+}
+
+const NAV_GROUPS: NavGroup[] = [
+  {
+    heading: 'Navigation',
+    items: [
+      { label: 'Dashboard',       href: '/dashboard' },
+      { label: 'Requests',        href: '/requests' },
+      { label: 'Traces',          href: '/traces' },
+      { label: 'Anomalies',       href: '/anomalies' },
+      { label: 'Security',        href: '/security' },
+      { label: 'Savings',         href: '/recommendations' },
+      { label: 'Prompts',         href: '/prompts' },
+      { label: 'Alerts',          href: '/alerts' },
+      { label: 'Projects & Keys', href: '/projects' },
+    ],
+  },
+  {
+    heading: 'Settings',
+    items: [
+      { label: 'Settings – General',       href: '/settings?tab=general' },
+      { label: 'Settings – Members',       href: '/settings?tab=members' },
+      { label: 'Settings – Provider keys', href: '/settings?tab=api-keys' },
+      { label: 'Settings – Audit log',     href: '/settings?tab=audit-log' },
+      { label: 'Settings – Billing',       href: '/settings?tab=billing' },
+      { label: 'Settings – Plan & limits', href: '/settings?tab=plan' },
+      { label: 'Settings – Invoices',      href: '/settings?tab=invoices' },
+      { label: 'Settings – Profile',       href: '/settings?tab=profile' },
+      { label: 'Settings – Notifications', href: '/settings?tab=notifications' },
+      { label: 'Settings – Preferences',   href: '/settings?tab=preferences' },
+      { label: 'Settings – Integrations',  href: '/settings?tab=integrations' },
+      { label: 'Settings – Destinations',  href: '/settings?tab=destinations' },
+      { label: 'Settings – Webhooks',      href: '/settings?tab=webhooks' },
+      { label: 'Settings – OpenTelemetry', href: '/settings?tab=opentelemetry' },
+    ],
+  },
 ]
 
 // ── Palette UI ────────────────────────────────────────────────────────────────
@@ -76,18 +104,22 @@ function CommandPaletteDialog({ open, onClose }: { open: boolean; onClose: () =>
           <CommandInput placeholder="Go to…" autoFocus />
           <CommandList>
             <CommandEmpty>No results found.</CommandEmpty>
-            <CommandGroup heading="Navigation">
-              {NAV_ITEMS.map((item) => (
-                <CommandItem
-                  key={item.href}
-                  value={item.label}
-                  onSelect={() => handleSelect(item.href)}
-                >
-                  {item.label}
-                </CommandItem>
-              ))}
-            </CommandGroup>
-            <CommandSeparator />
+            {NAV_GROUPS.map((group, gi) => (
+              <React.Fragment key={group.heading}>
+                {gi > 0 && <CommandSeparator />}
+                <CommandGroup heading={group.heading}>
+                  {group.items.map((item) => (
+                    <CommandItem
+                      key={item.href}
+                      value={item.label}
+                      onSelect={() => handleSelect(item.href)}
+                    >
+                      {item.label}
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+              </React.Fragment>
+            ))}
           </CommandList>
         </Command>
       </div>
