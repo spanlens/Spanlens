@@ -1,11 +1,15 @@
 'use client'
 import { useState } from 'react'
 
-export function CopyInstallButton() {
+interface CopyInstallButtonProps {
+  text?: string
+}
+
+export function CopyInstallButton({ text = 'npx @spanlens/cli init' }: CopyInstallButtonProps) {
   const [copied, setCopied] = useState(false)
 
   function handleCopy() {
-    void navigator.clipboard.writeText('npx @spanlens/cli init').then(() => {
+    void navigator.clipboard.writeText(text).then(() => {
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     })
