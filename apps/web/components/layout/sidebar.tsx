@@ -2,6 +2,8 @@
 import { useState, useRef, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
+import { useTheme } from 'next-themes'
+import { Sun, Moon, Monitor } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
 import { useStatsOverview } from '@/lib/queries/use-stats'
@@ -288,6 +290,35 @@ const NAV_GROUPS = [
   },
 ]
 
+/* ── Theme toggle ── */
+type ThemeOption = 'system' | 'light' | 'dark'
+
+const THEME_CYCLE: ThemeOption[] = ['system', 'light', 'dark']
+
+function ThemeToggleButton() {
+  const { theme, setTheme } = useTheme()
+
+  function cycleTheme() {
+    const current = (theme ?? 'system') as ThemeOption
+    const idx = THEME_CYCLE.indexOf(current)
+    const next = THEME_CYCLE[(idx + 1) % THEME_CYCLE.length] ?? 'system'
+    setTheme(next)
+  }
+
+  const current = (theme ?? 'system') as ThemeOption
+  const Icon = current === 'light' ? Sun : current === 'dark' ? Moon : Monitor
+
+  return (
+    <button
+      onClick={cycleTheme}
+      className="flex w-full items-center gap-2 px-[10px] py-[6px] rounded-[5px] text-[13px] text-text-muted hover:bg-bg-muted hover:text-text transition-colors"
+    >
+      <Icon className="h-3.5 w-3.5 shrink-0" />
+      <span>Theme · {current}</span>
+    </button>
+  )
+}
+
 export function Sidebar() {
   const pathname = usePathname()
   const router = useRouter()
@@ -397,8 +428,9 @@ export function Sidebar() {
         )}
       </div>
 
-      {/* Sign out */}
-      <div className="px-[14px] pb-[14px]">
+      {/* Theme toggle + Sign out */}
+      <div className="px-[14px] pb-[14px] space-y-0.5">
+        <ThemeToggleButton />
         <button
           onClick={handleSignOut}
           className="flex w-full items-center px-[10px] py-[6px] rounded-[5px] text-[13px] text-text-muted hover:bg-bg-muted hover:text-text transition-colors"

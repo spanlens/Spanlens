@@ -224,3 +224,29 @@ export interface AlertDeliveryRow {
   error_message: string | null
   created_at: string
 }
+
+// ── Webhooks ───────────────────────────────────────────────────
+
+export type WebhookEvent = 'request.created' | 'trace.completed' | 'alert.triggered'
+
+export interface WebhookRow {
+  id: string
+  organization_id: string
+  name: string
+  url: string
+  secret: string
+  events: WebhookEvent[]
+  is_active: boolean
+  created_at: string
+}
+
+export interface WebhookDeliveryRow {
+  id: string
+  webhook_id: string
+  event_type: string
+  status: 'success' | 'failed'
+  http_status: number | null
+  error_message: string | null
+  duration_ms: number | null
+  delivered_at: string
+}

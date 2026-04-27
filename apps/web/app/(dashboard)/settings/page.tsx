@@ -1,6 +1,7 @@
 'use client'
 import { useCallback, useEffect, useState } from 'react'
-import { Plus, RotateCcw, Trash2, Check } from 'lucide-react'
+import { Plus, RotateCcw, Trash2, Check, Sun, Moon, Monitor, type LucideIcon } from 'lucide-react'
+import { useTheme } from 'next-themes'
 import { initializePaddle, type Paddle } from '@paddle/paddle-js'
 import { cn, formatDate } from '@/lib/utils'
 import { Topbar } from '@/components/layout/topbar'
@@ -45,6 +46,16 @@ import {
 } from '@/lib/queries/use-members'
 import { PLANS, PLAN_REQUEST_LIMITS } from '@/lib/billing-plans'
 import type { BillingPlan } from '@/lib/queries/types'
+import {
+  useWebhooks,
+  useCreateWebhook,
+  useUpdateWebhook,
+  useDeleteWebhook,
+  useTestWebhook,
+  useWebhookDeliveries,
+} from '@/lib/queries/use-webhooks'
+import type { WebhookEvent, WebhookRow } from '@/lib/queries/types'
+import { useNotificationChannels } from '@/lib/queries/use-alerts'
 
 // ─── types ───────────────────────────────────────────────────────────────────
 
@@ -52,6 +63,7 @@ type TabId =
   | 'general' | 'members' | 'api-keys' | 'audit-log'
   | 'billing' | 'plan' | 'invoices'
   | 'profile' | 'notifications' | 'preferences'
+  | 'integrations' | 'destinations' | 'webhooks' | 'opentelemetry'
 
 interface NavItem { id: TabId; label: string; crumbs: { label: string }[] }
 
@@ -81,6 +93,15 @@ const NAV: { group: string; items: NavItem[] }[] = [
       { id: 'profile',       label: 'Profile',       crumbs: [{ label: 'Account' }, { label: 'Profile' }] },
       { id: 'notifications', label: 'Notifications', crumbs: [{ label: 'Account' }, { label: 'Notifications' }] },
       { id: 'preferences',   label: 'Preferences',   crumbs: [{ label: 'Account' }, { label: 'Preferences' }] },
+    ],
+  },
+  {
+    group: 'Connect',
+    items: [
+      { id: 'integrations',  label: 'Integrations',  crumbs: [{ label: 'Connect' }, { label: 'Integrations' }] },
+      { id: 'destinations',  label: 'Destinations',  crumbs: [{ label: 'Connect' }, { label: 'Destinations' }] },
+      { id: 'webhooks',      label: 'Webhooks',       crumbs: [{ label: 'Connect' }, { label: 'Webhooks' }] },
+      { id: 'opentelemetry', label: 'OpenTelemetry',  crumbs: [{ label: 'Connect' }, { label: 'OpenTelemetry' }] },
     ],
   },
 ]
@@ -1121,18 +1142,627 @@ function NotificationsTab() {
 
 // ─── PREFERENCES tab ──────────────────────────────────────────────────────────
 
+type ThemeOption = 'system' | 'light' | 'dark'
+
+interface ThemeOptionDef {
+  value: ThemeOption
+  label: string
+  Icon: LucideIcon
+}
+
+const THEME_OPTIONS: ThemeOptionDef[] = [
+  { value: 'system', label: 'System', Icon: Monitor },
+  { value: 'light',  label: 'Light',  Icon: Sun },
+  { value: 'dark',   label: 'Dark',   Icon: Moon },
+]
+
+function ThemeToggle() {
+  const { theme, setTheme } = useTheme()
+  const current = (theme ?? 'system') as ThemeOption
+
+  return (
+    <div className="flex items-center gap-1 rounded-[6px] border border-border bg-bg-muted p-1">
+      {THEME_OPTIONS.map(({ value, label, Icon }) => (
+        <button
+          key={value}
+          type="button"
+          onClick={() => setTheme(value)}
+          className={cn(
+            'flex items-center gap-1.5 px-3 py-[5px] rounded-[4px] text-[12.5px] transition-colors',
+            current === value
+              ? 'bg-bg text-text font-medium shadow-sm'
+              : 'text-text-muted hover:text-text',
+          )}
+        >
+          <Icon className="h-3.5 w-3.5 shrink-0" />
+          {label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
 function PreferencesTab() {
   return (
     <div className="max-w-[920px]">
       <TabHeader
         title="Preferences"
-        description="Personal UI preferences are not yet persisted — coming with the next revision."
+        description="Personal UI preferences stored in your browser."
       />
 
       <Section title="Theme" className="mb-5">
-        <div className="px-6 py-4 text-[13px] text-text-muted">
-          The dashboard follows your system theme via CSS <code className="font-mono text-[12px] text-text">prefers-color-scheme</code>.
-          A manual override toggle is on the roadmap.
+        <FormRow label="Color theme" hint="Override your system preference. Stored locally in your browser.">
+          <ThemeToggle />
+        </FormRow>
+      </Section>
+    </div>
+  )
+}
+
+// ─── WEBHOOKS tab ─────────────────────────────────────────────────────────────
+
+const ALL_WEBHOOK_EVENTS: { value: WebhookEvent; label: string }[] = [
+  { value: 'request.created',  label: 'request.created'  },
+  { value: 'trace.completed',  label: 'trace.completed'  },
+  { value: 'alert.triggered',  label: 'alert.triggered'  },
+]
+
+function SecretField({ secret }: { secret: string }) {
+  const [revealed, setRevealed] = useState(false)
+  const [copied, setCopied] = useState(false)
+
+  function handleCopy() {
+    void navigator.clipboard.writeText(secret).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    })
+  }
+
+  return (
+    <div className="flex items-center gap-2">
+      <span className="font-mono text-[11px] text-text-muted bg-bg-muted px-2 py-1 rounded border border-border">
+        {revealed ? secret : '•'.repeat(Math.min(secret.length, 32))}
+      </span>
+      <button
+        type="button"
+        onClick={() => setRevealed((v) => !v)}
+        className="text-[11px] text-text-faint hover:text-text transition-colors"
+      >
+        {revealed ? 'Hide' : 'Show'}
+      </button>
+      <button
+        type="button"
+        onClick={handleCopy}
+        className="text-[11px] text-text-faint hover:text-text transition-colors"
+      >
+        {copied ? 'Copied!' : 'Copy'}
+      </button>
+    </div>
+  )
+}
+
+function DeliveryHistory({ webhookId }: { webhookId: string }) {
+  const { data: deliveries, isLoading } = useWebhookDeliveries(webhookId)
+
+  if (isLoading) {
+    return <div className="px-6 py-3 font-mono text-[11.5px] text-text-faint">Loading…</div>
+  }
+  if (!deliveries || deliveries.length === 0) {
+    return <div className="px-6 py-3 font-mono text-[11.5px] text-text-faint">No deliveries yet.</div>
+  }
+
+  return (
+    <div className="divide-y divide-border">
+      <div className="grid grid-cols-[140px_80px_80px_1fr] gap-4 px-6 py-2 font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint">
+        <span>Time</span>
+        <span>Status</span>
+        <span>HTTP</span>
+        <span>Error</span>
+      </div>
+      {deliveries.map((d) => (
+        <div key={d.id} className="grid grid-cols-[140px_80px_80px_1fr] gap-4 px-6 py-2 items-center">
+          <span className="font-mono text-[11px] text-text-muted">
+            {new Date(d.delivered_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}
+          </span>
+          <MonoPill variant={d.status === 'success' ? 'good' : 'faint'} dot>
+            {d.status}
+          </MonoPill>
+          <span className="font-mono text-[11px] text-text-muted">{d.http_status ?? '—'}</span>
+          <span className="font-mono text-[11px] text-text-faint truncate">{d.error_message ?? '—'}</span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function WebhooksTab() {
+  const { data: webhooks, isLoading } = useWebhooks()
+  const createWebhook = useCreateWebhook()
+  const updateWebhook = useUpdateWebhook()
+  const deleteWebhook = useDeleteWebhook()
+  const testWebhook = useTestWebhook()
+
+  const [createOpen, setCreateOpen] = useState(false)
+  const [newName, setNewName] = useState('')
+  const [newUrl, setNewUrl] = useState('')
+  const [newEvents, setNewEvents] = useState<WebhookEvent[]>(['request.created'])
+  const [newActive, setNewActive] = useState(true)
+  const [createError, setCreateError] = useState('')
+
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [testResult, setTestResult] = useState<Record<string, string>>({})
+
+  const currentMember = useCurrentMember()
+  const canEdit = currentMember?.role === 'admin' || currentMember?.role === 'editor'
+
+  function toggleEvent(ev: WebhookEvent) {
+    setNewEvents((prev) =>
+      prev.includes(ev) ? prev.filter((e) => e !== ev) : [...prev, ev],
+    )
+  }
+
+  async function handleCreate(e: React.FormEvent) {
+    e.preventDefault()
+    setCreateError('')
+    try {
+      await createWebhook.mutateAsync({ name: newName, url: newUrl, events: newEvents, is_active: newActive })
+      setCreateOpen(false)
+      setNewName('')
+      setNewUrl('')
+      setNewEvents(['request.created'])
+      setNewActive(true)
+    } catch (err) {
+      setCreateError(err instanceof Error ? err.message : 'Failed to create webhook')
+    }
+  }
+
+  async function handleTest(webhook: WebhookRow) {
+    try {
+      const result = await testWebhook.mutateAsync(webhook.id)
+      setTestResult((prev) => ({
+        ...prev,
+        [webhook.id]: result
+          ? `${result.status} · HTTP ${result.http_status ?? '—'} · ${result.duration_ms}ms`
+          : 'Sent',
+      }))
+      setSelectedId(webhook.id)
+    } catch (err) {
+      setTestResult((prev) => ({
+        ...prev,
+        [webhook.id]: err instanceof Error ? err.message : 'Test failed',
+      }))
+    }
+  }
+
+  async function handleDelete(id: string) {
+    if (!confirm('Delete this webhook?')) return
+    await deleteWebhook.mutateAsync(id)
+    if (selectedId === id) setSelectedId(null)
+  }
+
+  return (
+    <div className="max-w-[980px]">
+      <TabHeader
+        title="Webhooks"
+        description="Receive real-time HTTP callbacks when events occur in your workspace."
+        action={
+          canEdit ? (
+            <PrimaryBtn onClick={() => { setCreateOpen(true); setCreateError('') }}>
+              <Plus className="w-3.5 h-3.5" /> New webhook
+            </PrimaryBtn>
+          ) : null
+        }
+      />
+
+      <Section title="Webhook endpoints" className="mb-5">
+        {isLoading ? (
+          <div className="px-6 py-8 text-center font-mono text-[12.5px] text-text-faint">Loading…</div>
+        ) : (webhooks ?? []).length === 0 ? (
+          <div className="px-6 py-8 text-center font-mono text-[12.5px] text-text-faint">
+            No webhooks yet. Add one to start receiving events.
+          </div>
+        ) : (
+          <div className="divide-y divide-border">
+            <div className="grid grid-cols-[1.8fr_1.2fr_1fr_110px_90px] gap-4 px-6 py-3 font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint">
+              {['Name', 'URL', 'Events', 'Status', ''].map((h, i) => <span key={i}>{h}</span>)}
+            </div>
+            {(webhooks ?? []).map((wh) => (
+              <div key={wh.id} className="grid grid-cols-[1.8fr_1.2fr_1fr_110px_90px] gap-4 px-6 py-3 items-center">
+                <button
+                  type="button"
+                  onClick={() => setSelectedId(wh.id === selectedId ? null : wh.id)}
+                  className="text-[13px] font-medium text-left hover:text-accent transition-colors truncate"
+                >
+                  {wh.name}
+                </button>
+                <span className="font-mono text-[11px] text-text-muted truncate" title={wh.url}>
+                  {wh.url}
+                </span>
+                <div className="flex flex-wrap gap-1">
+                  {wh.events.map((ev) => (
+                    <MonoPill key={ev} variant="neutral">{ev}</MonoPill>
+                  ))}
+                </div>
+                <div className="flex items-center gap-2">
+                  <Toggle
+                    on={wh.is_active}
+                    disabled={!canEdit || updateWebhook.isPending}
+                    onToggle={() => void updateWebhook.mutateAsync({ id: wh.id, is_active: !wh.is_active })}
+                  />
+                  <MonoPill variant={wh.is_active ? 'good' : 'faint'} dot>
+                    {wh.is_active ? 'active' : 'off'}
+                  </MonoPill>
+                </div>
+                {canEdit && (
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      title="Send test event"
+                      disabled={testWebhook.isPending}
+                      onClick={() => void handleTest(wh)}
+                      className="px-2 py-1 rounded text-[11px] border border-border text-text-muted hover:text-text hover:border-border-strong transition-colors disabled:opacity-40"
+                    >
+                      Test
+                    </button>
+                    <button
+                      type="button"
+                      title="Delete"
+                      disabled={deleteWebhook.isPending}
+                      onClick={() => void handleDelete(wh.id)}
+                      className="p-1.5 rounded hover:bg-accent-bg text-text-faint hover:text-accent transition-colors"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </Section>
+
+      {selectedId && (
+        <Section title="Webhook details" className="mb-5">
+          {(() => {
+            const wh = (webhooks ?? []).find((w) => w.id === selectedId)
+            if (!wh) return null
+            return (
+              <>
+                <FormRow label="Signing secret" hint="Used to verify X-Spanlens-Signature on incoming events.">
+                  <SecretField secret={wh.secret} />
+                </FormRow>
+                {testResult[selectedId] && (
+                  <FormRow label="Last test result">
+                    <span className="font-mono text-[11.5px] text-text-muted">{testResult[selectedId]}</span>
+                  </FormRow>
+                )}
+              </>
+            )
+          })()}
+        </Section>
+      )}
+
+      {selectedId && (
+        <Section title="Delivery history" action={<Hint>Last 10</Hint>} className="mb-5">
+          <DeliveryHistory webhookId={selectedId} />
+        </Section>
+      )}
+
+      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>New webhook</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={(e) => void handleCreate(e)} className="mt-3 space-y-4">
+            <div>
+              <label className="block text-[12px] text-text-muted mb-1.5">Name</label>
+              <input
+                required
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                placeholder="My webhook"
+                className="w-full px-3 py-2 border border-border-strong rounded-[6px] bg-bg text-[13px] outline-none focus:border-accent"
+              />
+            </div>
+            <div>
+              <label className="block text-[12px] text-text-muted mb-1.5">URL</label>
+              <input
+                required
+                type="url"
+                value={newUrl}
+                onChange={(e) => setNewUrl(e.target.value)}
+                placeholder="https://example.com/webhook"
+                className="w-full px-3 py-2 border border-border-strong rounded-[6px] bg-bg text-[13px] outline-none focus:border-accent"
+              />
+            </div>
+            <div>
+              <label className="block text-[12px] text-text-muted mb-2">Events</label>
+              <div className="space-y-2">
+                {ALL_WEBHOOK_EVENTS.map(({ value, label }) => (
+                  <label key={value} className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={newEvents.includes(value)}
+                      onChange={() => toggleEvent(value)}
+                      className="rounded border-border"
+                    />
+                    <span className="font-mono text-[12px] text-text-muted">{label}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <label className="text-[12px] text-text-muted">Active</label>
+              <Toggle on={newActive} onToggle={() => setNewActive((v) => !v)} />
+            </div>
+            {createError && <div className="text-[12.5px] text-bad">{createError}</div>}
+            <div className="flex gap-2 justify-end pt-1">
+              <GhostBtn type="button" onClick={() => setCreateOpen(false)}>Cancel</GhostBtn>
+              <PrimaryBtn type="submit" disabled={createWebhook.isPending || newEvents.length === 0}>
+                {createWebhook.isPending ? 'Creating…' : 'Create webhook'}
+              </PrimaryBtn>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}
+
+// ─── INTEGRATIONS tab ─────────────────────────────────────────────────────────
+
+function StatusPill({ connected }: { connected: boolean }) {
+  return (
+    <MonoPill variant={connected ? 'good' : 'neutral'} dot>
+      {connected ? 'Connected' : 'Not connected'}
+    </MonoPill>
+  )
+}
+
+function IntegrationsTab() {
+  const { data: channels } = useNotificationChannels()
+  const hasSlack   = (channels ?? []).some((ch) => ch.kind === 'slack')
+  const hasDiscord = (channels ?? []).some((ch) => ch.kind === 'discord')
+
+  const integrations = [
+    {
+      id: 'slack',
+      name: 'Slack',
+      description: 'Send alert notifications to a Slack channel via incoming webhook.',
+      connected: hasSlack,
+    },
+    {
+      id: 'discord',
+      name: 'Discord',
+      description: 'Send alert notifications to a Discord channel via incoming webhook.',
+      connected: hasDiscord,
+    },
+    {
+      id: 'pagerduty',
+      name: 'PagerDuty',
+      description: 'Route critical alerts to on-call engineers.',
+      coming: true,
+    },
+    {
+      id: 'datadog',
+      name: 'Datadog',
+      description: 'Forward metrics and traces to your Datadog account.',
+      coming: true,
+    },
+  ] as const
+
+  return (
+    <div className="max-w-[980px]">
+      <TabHeader
+        title="Integrations"
+        description="Connect Spanlens with the tools your team already uses."
+      />
+
+      <div className="grid grid-cols-2 gap-4">
+        {integrations.map((integration) => (
+          <div
+            key={integration.id}
+            className="rounded-[8px] border border-border bg-bg-elev p-5 flex flex-col gap-3"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="text-[15px] font-medium text-text mb-1">{integration.name}</div>
+                <div className="text-[12.5px] text-text-muted leading-relaxed">{integration.description}</div>
+              </div>
+              {'coming' in integration && integration.coming ? (
+                <MonoPill variant="faint">coming soon</MonoPill>
+              ) : (
+                <StatusPill connected={('connected' in integration) ? integration.connected : false} />
+              )}
+            </div>
+            {'coming' in integration && integration.coming ? null : (
+              <div className="mt-auto">
+                {('connected' in integration) && integration.connected ? (
+                  <GhostBtn
+                    className="text-[12px]"
+                    onClick={() => { window.location.href = '/alerts' }}
+                  >
+                    Manage in Alerts
+                  </GhostBtn>
+                ) : (
+                  <GhostBtn
+                    className="text-[12px]"
+                    onClick={() => { window.location.href = '/alerts' }}
+                  >
+                    Connect
+                  </GhostBtn>
+                )}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// ─── DESTINATIONS tab ─────────────────────────────────────────────────────────
+
+function DestinationsTab() {
+  const destinations = [
+    {
+      id: 'bigquery',
+      name: 'BigQuery',
+      description: 'Export requests and traces to a Google BigQuery dataset for custom analytics.',
+      placeholder: 'project-id.dataset_id',
+      label: 'Dataset ID',
+    },
+    {
+      id: 's3',
+      name: 'Amazon S3',
+      description: 'Archive raw request logs to an S3 bucket for long-term retention.',
+      placeholder: 's3://my-bucket/spanlens-exports/',
+      label: 'Bucket URL',
+    },
+    {
+      id: 'snowflake',
+      name: 'Snowflake',
+      description: 'Sync data to a Snowflake table for your data warehouse pipelines.',
+      placeholder: 'account.region.snowflakecomputing.com',
+      label: 'Account URL',
+    },
+  ]
+
+  return (
+    <div className="max-w-[980px]">
+      <TabHeader
+        title="Destinations"
+        description="Export data to external data warehouses and storage systems."
+      />
+
+      <div className="mb-5 border border-accent-border bg-accent-bg rounded-lg px-4 py-3 flex items-start gap-3">
+        <span className="w-5 h-5 rounded-full border border-accent text-accent flex items-center justify-center font-mono text-[10px] shrink-0 mt-0.5">!</span>
+        <div className="text-[12.5px] text-text-muted leading-relaxed">
+          Data export destinations are in beta. Configuration is saved but actual sync runs once the backend is wired up.
+        </div>
+      </div>
+
+      <div className="space-y-4">
+        {destinations.map((dest) => (
+          <Section key={dest.id} title={dest.name} description={dest.description} className="mb-0">
+            <div className="px-6 pb-5 space-y-4">
+              <div className="flex items-center gap-3 mt-2">
+                <MonoPill variant="faint">Beta</MonoPill>
+              </div>
+              <FormRow label={dest.label}>
+                <div className="flex items-center gap-3 w-full max-w-[460px]">
+                  <NativeInput
+                    placeholder={dest.placeholder}
+                    className="flex-1 font-mono text-[12px]"
+                  />
+                  <GhostBtn>Save configuration</GhostBtn>
+                </div>
+              </FormRow>
+            </div>
+          </Section>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// ─── OPENTELEMETRY tab ────────────────────────────────────────────────────────
+
+const OTEL_ENDPOINT = 'https://spanlens-server.vercel.app/ingest/traces'
+
+const OTEL_CODE_EXAMPLE = `import { NodeSDK } from '@opentelemetry/sdk-node'
+import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http'
+
+const sdk = new NodeSDK({
+  traceExporter: new OTLPTraceExporter({
+    url: '${OTEL_ENDPOINT}',
+    headers: {
+      Authorization: 'Bearer <your-api-key>',
+    },
+  }),
+})
+
+sdk.start()`
+
+function CopyButton({ value }: { value: string }) {
+  const [copied, setCopied] = useState(false)
+  function handleCopy() {
+    void navigator.clipboard.writeText(value).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    })
+  }
+  return (
+    <button
+      type="button"
+      onClick={handleCopy}
+      className="text-[11px] text-text-faint hover:text-text transition-colors shrink-0"
+    >
+      {copied ? 'Copied!' : 'Copy'}
+    </button>
+  )
+}
+
+function OpenTelemetryTab() {
+  const [healthStatus, setHealthStatus] = useState<'idle' | 'ok' | 'error'>('idle')
+
+  async function handleTestConnection() {
+    setHealthStatus('idle')
+    try {
+      const res = await fetch('/health')
+      setHealthStatus(res.ok ? 'ok' : 'error')
+    } catch {
+      setHealthStatus('error')
+    }
+  }
+
+  return (
+    <div className="max-w-[920px]">
+      <TabHeader
+        title="OpenTelemetry"
+        description="Ingest OTLP traces directly from any OpenTelemetry-compatible SDK."
+      />
+
+      <Section title="OTLP endpoint" className="mb-5">
+        <FormRow label="Endpoint URL" hint="Use this as the OTLP HTTP exporter endpoint.">
+          <div className="flex items-center gap-3 w-full max-w-[560px]">
+            <div className="flex-1 font-mono text-[12px] text-text bg-bg-muted px-3 py-2 rounded border border-border truncate">
+              {OTEL_ENDPOINT}
+            </div>
+            <CopyButton value={OTEL_ENDPOINT} />
+          </div>
+        </FormRow>
+        <FormRow label="Authentication" hint="Pass your Spanlens API key as a Bearer token.">
+          <div className="font-mono text-[12px] text-text-muted">
+            <span className="text-text">Authorization:</span> Bearer &lt;your-api-key&gt;
+          </div>
+        </FormRow>
+      </Section>
+
+      <Section title="SDK setup example" className="mb-5">
+        <div className="px-6 pb-5">
+          <div className="relative">
+            <pre className="rounded-[6px] bg-bg-muted border border-border px-4 py-4 font-mono text-[11.5px] text-text-muted overflow-x-auto leading-relaxed whitespace-pre">
+              {OTEL_CODE_EXAMPLE}
+            </pre>
+            <div className="absolute top-3 right-3">
+              <CopyButton value={OTEL_CODE_EXAMPLE} />
+            </div>
+          </div>
+        </div>
+      </Section>
+
+      <Section title="Connection" className="mb-5">
+        <div className="px-6 py-4 flex items-center gap-4">
+          <GhostBtn onClick={() => void handleTestConnection()}>
+            Test connection
+          </GhostBtn>
+          {healthStatus === 'ok' && (
+            <MonoPill variant="good" dot>Server reachable</MonoPill>
+          )}
+          {healthStatus === 'error' && (
+            <MonoPill variant="faint" dot>Unreachable</MonoPill>
+          )}
         </div>
       </Section>
     </div>
@@ -1153,6 +1783,10 @@ function TabContent({ tab }: { tab: TabId }) {
     case 'profile':       return <ProfileTab />
     case 'notifications': return <NotificationsTab />
     case 'preferences':   return <PreferencesTab />
+    case 'integrations':  return <IntegrationsTab />
+    case 'destinations':  return <DestinationsTab />
+    case 'webhooks':      return <WebhooksTab />
+    case 'opentelemetry': return <OpenTelemetryTab />
   }
 }
 

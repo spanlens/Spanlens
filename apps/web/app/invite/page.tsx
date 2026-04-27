@@ -234,13 +234,47 @@ function InvitePageInner() {
 
         {(status.kind === 'email_match' || status.kind === 'accepting') && (
           <>
-            <h1 className="text-[20px] font-medium tracking-[-0.3px] mb-1">
-              Join <span className="text-accent">{status.meta.orgName}</span>
-            </h1>
-            <p className="text-[13px] text-text-muted leading-relaxed mb-5">
-              You&apos;ll be added as{' '}
-              <span className="font-mono text-text">{status.meta.role}</span>.
-            </p>
+            {/* Org name card */}
+            <div className="bg-bg-elev border border-border rounded-[8px] px-5 py-4 mb-5">
+              <p className="font-mono text-[11px] text-text-faint tracking-[0.04em] uppercase mb-1">
+                You&apos;ve been invited to
+              </p>
+              <p className="text-[22px] font-medium tracking-[-0.4px] text-text mb-3">
+                {status.meta.orgName}
+              </p>
+              <div className="flex items-start gap-4 flex-wrap">
+                <div>
+                  <span className="font-mono text-[11px] text-text-faint tracking-[0.03em] uppercase block mb-1">
+                    Role
+                  </span>
+                  <span
+                    className={[
+                      'inline-block font-mono text-[11px] px-2 py-0.5 rounded-[4px]',
+                      status.meta.role === 'admin'
+                        ? 'bg-accent/10 text-accent'
+                        : status.meta.role === 'editor'
+                          ? 'bg-good/10 text-good'
+                          : 'bg-bg-muted text-text-muted',
+                    ].join(' ')}
+                  >
+                    {status.meta.role}
+                  </span>
+                </div>
+                <div>
+                  <span className="font-mono text-[11px] text-text-faint tracking-[0.03em] uppercase block mb-1">
+                    Permissions
+                  </span>
+                  <span className="font-mono text-[11px] text-text-muted">
+                    {status.meta.role === 'admin'
+                      ? 'Manage keys, billing, members'
+                      : status.meta.role === 'editor'
+                        ? 'Create projects, manage keys'
+                        : 'Read-only access'}
+                  </span>
+                </div>
+              </div>
+            </div>
+
             {acceptError && <p className="text-[12.5px] text-bad mb-3">{acceptError}</p>}
             <div className="flex flex-col gap-2">
               <button
