@@ -1,5 +1,6 @@
 'use client'
 import Link from 'next/link'
+import { Search } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useCommandPalette } from '@/components/command-palette'
 
@@ -57,9 +58,9 @@ function CmdKPill() {
       type="button"
       onClick={toggle}
       aria-label="Open command palette"
-      className="flex items-center gap-1 font-mono text-[11px] text-text-faint border border-border rounded-[5px] px-[8px] py-[3px] hover:text-text-muted hover:border-border-strong transition-colors"
+      className="flex items-center justify-center w-[30px] h-[30px] text-text-faint border border-border rounded-[6px] hover:text-text-muted hover:border-border-strong transition-colors"
     >
-      ⌘K
+      <Search size={14} />
     </button>
   )
 }
