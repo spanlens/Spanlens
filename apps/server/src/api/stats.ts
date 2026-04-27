@@ -162,3 +162,79 @@ statsRouter.get('/timeseries', async (c) => {
 
   return c.json({ success: true, data: series })
 })
+
+/**
+ * GET /api/v1/stats/latency?hours=24
+ *
+ * Returns proxy overhead percentiles computed in-memory from the last N hours.
+ * proxy_overhead_ms = pre-fetch processing time (auth + decryption + parsing).
+ * Target: p95 < 50ms. latency_ms = provider upstream fetch time.
+ *
+ * Rows without proxy_overhead_ms (logged before this column was added)
+ * are excluded from the overhead percentiles but counted in the total.
+ */
+statsRouter.get('/latency', async (c) => {
+  const orgId = c.get('orgId')
+  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+
+  const hoursRaw = Number(c.req.query('hours'))
+  const hours = Number.isFinite(hoursRaw) && hoursRaw > 0 ? Math.min(hoursRaw, 24 * 30) : 24
+  const sinceIso = new Date(Date.now() - hours * 3_600_000).toISOString()
+
+  const { data, error } = await supabaseAdmin
+    .from('requests')
+    .select('latency_ms, proxy_overhead_ms')
+    .eq('organization_id', orgId)
+    .gte('created_at', sinceIso)
+    .not('latency_ms', 'is', null)
+    .order('created_at', { ascending: false })
+    .limit(5000)
+
+  if (error) return c.json({ error: 'Failed to fetch latency data' }, 500)
+
+  const rows = (data ?? []) as Array<{ latency_ms: number | null; proxy_overhead_ms: number | null }>
+
+  const providerMs = rows.map((r) => r.latency_ms ?? 0).filter((v) => v > 0)
+  const overheadMs = rows
+    .filter((r) => r.proxy_overhead_ms != null)
+    .map((r) => r.proxy_overhead_ms as number)
+
+  function percentile(sorted: number[], p: number): number {
+    if (sorted.length === 0) return 0
+    const idx = Math.ceil((p / 100) * sorted.length) - 1
+    return sorted[Math.min(idx, sorted.length - 1)] ?? 0
+  }
+
+  const sortedProvider = [...providerMs].sort((a, b) => a - b)
+  const sortedOverhead = [...overheadMs].sort((a, b) => a - b)
+
+  const p50Provider = percentile(sortedProvider, 50)
+  const p95Provider = percentile(sortedProvider, 95)
+  const p99Provider = percentile(sortedProvider, 99)
+  const p50Overhead = percentile(sortedOverhead, 50)
+  const p95Overhead = percentile(sortedOverhead, 95)
+  const p99Overhead = percentile(sortedOverhead, 99)
+
+  return c.json({
+    success: true,
+    data: {
+      sampleCount: rows.length,
+      overheadSampleCount: overheadMs.length,
+      hours,
+      provider: {
+        p50Ms: Math.round(p50Provider),
+        p95Ms: Math.round(p95Provider),
+        p99Ms: Math.round(p99Provider),
+        avgMs: providerMs.length > 0 ? Math.round(providerMs.reduce((s, v) => s + v, 0) / providerMs.length) : 0,
+      },
+      overhead: {
+        p50Ms: Math.round(p50Overhead),
+        p95Ms: Math.round(p95Overhead),
+        p99Ms: Math.round(p99Overhead),
+        avgMs: overheadMs.length > 0 ? Math.round(overheadMs.reduce((s, v) => s + v, 0) / overheadMs.length) : 0,
+        targetP95Ms: 50,
+        withinSla: p95Overhead <= 50 || overheadMs.length === 0,
+      },
+    },
+  })
+})

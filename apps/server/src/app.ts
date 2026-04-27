@@ -28,6 +28,8 @@ import { membersRouter }       from './api/members.js'
 import { orgInvitationsRouter, invitationsRouter, meInvitationsRouter } from './api/invitations.js'
 import { dismissalsRouter }    from './api/dismissals.js'
 import { userProfilesRouter }  from './api/userProfiles.js'
+import { waitlistRouter }      from './api/waitlist.js'
+import { openapiRouter }       from './api/openapi.js'
 
 export const app = new Hono()
 
@@ -68,6 +70,10 @@ app.route('/cron',            cronRouter)
 
 // ── Paddle webhook (HMAC-signed, public endpoint) ────────────
 app.route('/webhooks',        paddleWebhookRouter)
+
+// ── Public endpoints (no auth) ────────────────────────────────
+app.route('/api/v1/waitlist', waitlistRouter)
+app.route('/api/v1',          openapiRouter)   // GET /api/v1/openapi.json, GET /api/v1/docs
 
 // ── REST API routes (authJwt middleware) ──────────────────────
 app.route('/api/v1/organizations',  organizationsRouter)

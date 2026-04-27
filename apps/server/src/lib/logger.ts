@@ -12,6 +12,8 @@ export interface RequestLogData {
   totalTokens: number
   costUsd: number | null
   latencyMs: number
+  /** Pre-fetch proxy overhead: auth + key decryption + body parsing (ms). Target p95 < 50ms. */
+  proxyOverheadMs?: number | null
   statusCode: number
   requestBody: unknown
   responseBody: unknown
@@ -73,6 +75,7 @@ export async function logRequestAsync(data: RequestLogData): Promise<void> {
     total_tokens: data.totalTokens,
     cost_usd: data.costUsd,
     latency_ms: data.latencyMs,
+    proxy_overhead_ms: data.proxyOverheadMs ?? null,
     status_code: data.statusCode,
     request_body: serializeBody(data.requestBody),
     response_body: serializeBody(data.responseBody),

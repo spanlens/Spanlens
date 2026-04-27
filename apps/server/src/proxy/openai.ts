@@ -18,6 +18,8 @@ openaiProxy.use('*', authApiKey)
 openaiProxy.use('*', enforceQuota)
 
 openaiProxy.all('/*', async (c) => {
+  const handlerStartMs = Date.now()
+
   const organizationId = c.get('organizationId')
   const projectId = c.get('projectId')
   const apiKeyId = c.get('apiKeyId')
@@ -67,6 +69,8 @@ openaiProxy.all('/*', async (c) => {
     return c.json({ error: `Upstream request failed: ${msg}` }, 502)
   }
   const latencyMs = Date.now() - startMs
+  // Pre-fetch overhead: auth + key decryption + body parsing (our cost, not provider's)
+  const proxyOverheadMs = startMs - handlerStartMs
 
   const model = (reqBodyJson?.model as string | undefined) ?? ''
   const promptVersionId = await resolvePromptVersion(
@@ -76,7 +80,7 @@ openaiProxy.all('/*', async (c) => {
   const logBase = {
     organizationId, projectId, apiKeyId,
     provider: 'openai',
-    latencyMs, statusCode: upstreamRes.status,
+    latencyMs, proxyOverheadMs, statusCode: upstreamRes.status,
     requestBody: reqBodyJson,
     responseBody: null,
     errorMessage: null,

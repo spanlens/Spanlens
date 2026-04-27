@@ -63,3 +63,25 @@ export function useStatsTimeseries(params?: { projectId?: string; from?: string;
     },
   })
 }
+
+export interface LatencyStats {
+  sampleCount: number
+  overheadSampleCount: number
+  hours: number
+  provider: { p50Ms: number; p95Ms: number; p99Ms: number; avgMs: number }
+  overhead: {
+    p50Ms: number; p95Ms: number; p99Ms: number; avgMs: number
+    targetP95Ms: number; withinSla: boolean
+  }
+}
+
+export function useStatsLatency(hours = 24) {
+  return useQuery({
+    queryKey: ['stats', 'latency', hours] as const,
+    queryFn: async () => {
+      const res = await apiGet<ApiEnvelope<LatencyStats>>(`/api/v1/stats/latency?hours=${hours}`)
+      return res.data
+    },
+    staleTime: 5 * 60_000,
+  })
+}
