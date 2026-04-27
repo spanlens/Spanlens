@@ -2,7 +2,6 @@
 
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Search } from 'lucide-react'
 import {
   Command,
   CommandEmpty,
