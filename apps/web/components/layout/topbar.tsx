@@ -1,6 +1,7 @@
 'use client'
 import Link from 'next/link'
 import { cn } from '@/lib/utils'
+import { useCommandPalette } from '@/components/command-palette'
 
 interface Crumb {
   label: string
@@ -43,8 +44,23 @@ export function Topbar({ crumbs, right, className }: TopbarProps) {
       </nav>
 
       <div className="flex-1" />
+      <CmdKPill />
       {right}
     </div>
+  )
+}
+
+function CmdKPill() {
+  const { toggle } = useCommandPalette()
+  return (
+    <button
+      type="button"
+      onClick={toggle}
+      aria-label="Open command palette"
+      className="flex items-center gap-1 font-mono text-[11px] text-text-faint border border-border rounded-[5px] px-[8px] py-[3px] hover:text-text-muted hover:border-border-strong transition-colors"
+    >
+      ⌘K
+    </button>
   )
 }
 
