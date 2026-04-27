@@ -16,6 +16,8 @@ geminiProxy.use('*', authApiKey)
 geminiProxy.use('*', enforceQuota)
 
 geminiProxy.all('/*', async (c) => {
+  const handlerStartMs = Date.now()
+
   const organizationId = c.get('organizationId')
   const projectId = c.get('projectId')
   const apiKeyId = c.get('apiKeyId')
@@ -62,6 +64,7 @@ geminiProxy.all('/*', async (c) => {
     return c.json({ error: `Upstream request failed: ${msg}` }, 502)
   }
   const latencyMs = Date.now() - startMs
+  const proxyOverheadMs = startMs - handlerStartMs
 
   const resBodyText = await upstreamRes.text()
 
@@ -102,6 +105,7 @@ geminiProxy.all('/*', async (c) => {
     totalTokens,
     costUsd: cost?.totalCost ?? null,
     latencyMs,
+    proxyOverheadMs,
     statusCode: upstreamRes.status,
     requestBody: reqBodyJson,
     responseBody: null,

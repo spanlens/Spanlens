@@ -18,6 +18,8 @@ anthropicProxy.use('*', authApiKey)
 anthropicProxy.use('*', enforceQuota)
 
 anthropicProxy.all('/*', async (c) => {
+  const handlerStartMs = Date.now()
+
   const organizationId = c.get('organizationId')
   const projectId = c.get('projectId')
   const apiKeyId = c.get('apiKeyId')
@@ -59,6 +61,7 @@ anthropicProxy.all('/*', async (c) => {
     return c.json({ error: `Upstream request failed: ${msg}` }, 502)
   }
   const latencyMs = Date.now() - startMs
+  const proxyOverheadMs = startMs - handlerStartMs
 
   const model = (reqBodyJson?.model as string | undefined) ?? ''
   const promptVersionId = await resolvePromptVersion(
@@ -68,7 +71,7 @@ anthropicProxy.all('/*', async (c) => {
   const logBase = {
     organizationId, projectId, apiKeyId,
     provider: 'anthropic',
-    latencyMs, statusCode: upstreamRes.status,
+    latencyMs, proxyOverheadMs, statusCode: upstreamRes.status,
     requestBody: reqBodyJson,
     responseBody: null,
     errorMessage: null,

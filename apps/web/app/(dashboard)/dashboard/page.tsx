@@ -5,7 +5,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { KpiCard } from '@/components/dashboard/kpi-card'
 import { QuotaBanner } from '@/components/dashboard/quota-banner'
 import { Topbar, TimeRangeSelector, LiveDot } from '@/components/layout/topbar'
-import { useStatsOverview, useStatsTimeseries, useStatsModels } from '@/lib/queries/use-stats'
+import { useStatsOverview, useStatsTimeseries, useStatsModels, useStatsLatency } from '@/lib/queries/use-stats'
 import { useAnomalies } from '@/lib/queries/use-anomalies'
 import { useAlerts } from '@/lib/queries/use-alerts'
 import { useRecommendations, type ModelRecommendation } from '@/lib/queries/use-recommendations'
@@ -127,6 +127,7 @@ export default function DashboardPage() {
   const promptsQuery = usePrompts(projectId ?? undefined)
   const modelsQuery = useStatsModels(24, projectId ?? undefined)
   const securitySummary = useSecuritySummary(24)
+  const latencyStats = useStatsLatency(24)
 
   const o = overview.data
   const isLoading = overview.isLoading || timeseries.isLoading
@@ -358,8 +359,14 @@ export default function DashboardPage() {
                 linkHref="/recommendations"
               />
               <KpiCard
-                label="Avg latency"
+                label="Avg provider latency"
                 value={`${o.avgLatencyMs}ms`}
+                {...((latencyStats.data?.overheadSampleCount ?? 0) > 0
+                  ? {
+                      delta: `+${latencyStats.data!.overhead.p95Ms}ms p95 ovhd`,
+                      deltaVariant: latencyStats.data!.overhead.withinSla ? ('neutral' as const) : ('warn' as const),
+                    }
+                  : {})}
                 sparkValues={[]}
                 linkLabel="Traces →"
                 linkHref="/traces"
