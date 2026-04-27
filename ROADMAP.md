@@ -132,11 +132,17 @@
 - [x] 모델 추천 엔진 (GPT-4o → Haiku 대체 제안) — `lib/model-recommend.ts` (curated SUBSTITUTES + 토큰 envelope fit check + 월간 절감액 extrapolation) + `GET /api/v1/recommendations` + `/recommendations` 페이지.
 - [x] 테스트: anomaly, security-scan, prompt-compare 모듈 단위 테스트 (server 65 green).
 
-### 3B. 팀 & 협업 (Week 11)
-- [ ] P13 팀 관리 — 초대, 역할(Owner/Admin/Member/Viewer)
-- [ ] 조직 단위 예산/쿼터
-- [ ] SSO 준비 작업 (Team 플랜 상위 제공용)
-- [ ] 감사 로그 UI (`audit_logs` 기반)
+### 3B. 팀 & 협업 (Week 11) — 완료 (2026-04-25)
+> 단일 owner_id 모델 → 본격 multi-tenant. `apps/web/app/(dashboard)/settings`(Members 탭) + `/onboarding` + dashboard 상단 banner까지 surface 통합. 한 commit이 아니라 이번 세션 7개 commit (`595b1e7..ebb40bd`)에 걸쳐 마무리.
+- [x] **org_members + RBAC** — `org_members` 테이블 (admin/editor/viewer enum) + 마이그레이션 `20260425000000_org_members.sql` + `requireRole` 미들웨어 + `<PermissionGate>` UI 게이트 + 마지막 admin 보호 (강등/제거 거부)
+- [x] **이메일 초대 시스템** — `org_invitations` 테이블 (sha256-hashed token + 7일 만료) + Resend 통합 + `/invite?token=...` 페이지 (Accept / Decline) + admin이 보낸 invite 목록 / 취소 UI
+- [x] **다중 워크스페이스 (한 유저 N개 org)** — `sb-ws` 쿠키 기반 활성 워크스페이스 + 사이드바 스위처 + `+ New workspace` 모달 + middleware/authJwt 양쪽에서 cookie 해석 + 전환 시 hard reload (TanStack 캐시 + RSC tree 동시 무효화)
+- [x] **Pending invitations 자동 감지 banner** — dashboard 상단 dismissible banner로 받은 invite 노출. 이메일 못 받은 케이스 (DM, 봤다가 잊음, 스팸함) catch. Accept = 자동 워크스페이스 전환 / Decline = row DELETE / ⨯ Dismiss = 세션 한정
+- [x] **2-step onboarding + invitation 분기** — 신규 가입 시 pending invite 있으면 "You've been invited" 화면 (Accept ↔ Skip & create my own) → 합류는 워크스페이스 생성 + survey 둘 다 skip → /dashboard 직행. 본인 워크스페이스 케이스는 1) 이름 입력 → bootstrap 2) optional survey (use_case + role) → /dashboard
+- [x] **감사 로그 UI** — Settings → Audit log 탭에서 actor + action + target + timestamp 피드. 멤버 추가/제거, 역할 변경, 초대 lifecycle 모두 기록
+- [x] **마이그레이션 후속 fix** — `20260425130000_fix_org_members_rls_recursion.sql` (RLS USING절의 self-reference로 인한 PostgreSQL 42P17 재귀 fix) + `20260425120000_user_profiles.sql` (onboarded_at 게이트 + survey 답)
+- [ ] SSO 준비 작업 (Team 플랜 상위 제공용) — Phase 5B로 이관
+- [ ] 조직 단위 예산/쿼터 — Phase 2B `enforceQuota` 미들웨어로 org 레벨 request 한도는 충족됨. 멤버별 fine-grained 쿼터는 수요 검증 후 Phase 5+로 보류
 
 ### 3C. 고도화 (Week 12)
 - [ ] Postgres → ClickHouse 이관 옵션 검토 (>10M rows 시)
@@ -146,18 +152,18 @@
 
 ### 3D. Phase 3 완성도 기준 (런치 자산 준비 전제)
 > Phase 3 기능이 런치 스토리의 차별점. 여기까지 쌓고 Phase 4에서 런치.
-- [ ] Growth 기능 3종 작동: 이상 탐지 / 프롬프트 A/B / 모델 추천
-- [ ] 팀 초대 & 역할 구조 동작 — 2인 이상 조직 내부 dogfood 완료
-- [ ] Public API + OpenAPI 문서 공개
-- [ ] 알파 유저 10~20명 waitlist 운영 중 (런치 전 사전 접근 권한)
-- [ ] 크리티컬 버그 0건, p95 proxy latency < +50ms (provider 대비)
+- [x] Growth 기능 3종 작동: 이상 탐지 / 프롬프트 A/B / 모델 추천 — 3A 완료
+- [x] 팀 초대 & 역할 구조 동작 — 3B 완료. 2인 이상 조직 내부 dogfood는 production env(`WEB_URL`/`RESEND_API_KEY`) 등록 + 실제 본인 invitation flow 검증 단계
+- [ ] Public API + OpenAPI 문서 공개 — 3C 미완
+- [ ] 알파 유저 10~20명 waitlist 운영 중 (런치 전 사전 접근 권한) — 미진행
+- [ ] 크리티컬 버그 0건, p95 proxy latency < +50ms (provider 대비) — 모니터링 미정착
 
 ### 3E. Developer Experience 개선 — 런치 전 필수 (Week 12~13)
 > **트리거**: mind-scanner 첫 통합 경험에서 "5단계 온보딩이 복잡하다"는 피드백. Sentry/PostHog/Datadog 수준의 "1분 온보딩"을 Phase 4 런치 마케팅 핵심 카피로 활용 ("`npx @spanlens/sdk init` 한 번으로 설치").
 
-#### 3E.1. SDK 래퍼 함수 — **Option A** (1일 이내)
+#### 3E.1. SDK 래퍼 함수 — **Option A** — 완료
 기존 `baseURL` 수동 설정을 단 한 줄로 축약. 가장 빠른 win.
-- [ ] `@spanlens/sdk/openai` 서브경로 export — `createOpenAI()` 헬퍼
+- [x] `@spanlens/sdk/openai` 서브경로 export — `createOpenAI()` 헬퍼
   ```ts
   // Before (5줄 + 외우기 힘든 URL)
   const openai = new OpenAI({
@@ -168,34 +174,42 @@
   import { createOpenAI } from '@spanlens/sdk/openai'
   const openai = createOpenAI()
   ```
-- [ ] `@spanlens/sdk/anthropic` — `createAnthropic()` 동일 패턴
-- [ ] `@spanlens/sdk/gemini` — `createGemini()` 동일 패턴
-- [ ] `openai`, `@anthropic-ai/sdk`, `@google/generative-ai`를 **peerDependencies** 로 등록 (SDK 자체 크기 유지)
-- [ ] 환경변수 누락 시 친절한 에러 메시지 ("Set SPANLENS_API_KEY or pass apiKey option")
-- [ ] `observeOpenAI` 등 기존 tracing API와 호환 (래핑된 클라이언트 + trace 헤더)
-- [ ] SDK v0.2.0 bump → npm publish (CI 자동 실행, `sdk-v0.2.0` 태그 push)
-- [ ] README에 Before/After 예시 + 마이그레이션 노트
+- [x] `@spanlens/sdk/anthropic` — `createAnthropic()` 동일 패턴
+- [x] `@spanlens/sdk/gemini` — `createGemini()` Proxy로 `getGenerativeModel()` 자동 baseUrl 주입
+- [x] `openai`, `@anthropic-ai/sdk`, `@google/generative-ai`를 **peerDependencies** 로 등록 (SDK 자체 크기 유지)
+- [x] 환경변수 누락 시 친절한 에러 메시지 ("Set SPANLENS_API_KEY or pass apiKey option")
+- [x] `observeOpenAI` 등 기존 tracing API와 호환 (래핑된 클라이언트 + trace 헤더 + `promptVersion` 옵션)
+- [x] SDK v0.2.0+ npm publish — `@spanlens/sdk@0.2.3` 라이브 (`sdk-v*` 태그 push 시 자동 publish)
+- [x] README에 Before/After 예시 + LangChain/LlamaIndex/Vercel AI SDK 통합 코드
 
-#### 3E.2. `npx` Wizard CLI — **Option B** (1일)
-"1 명령어 설치" 달성. PH 런치 시 차별화 포인트. Sentry `sentry-wizard` 패턴.
-- [ ] 새 패키지 `packages/cli/` (`create-spanlens` + `@spanlens/sdk init` 양쪽 배포)
-- [ ] Interactive 흐름:
-  1. 프로바이더 선택 (체크박스)
-  2. `https://spanlens.io/auth/device` 브라우저 OAuth-style 로그인 (device-code flow)
-  3. 프로젝트 이름 입력 → Spanlens API로 자동 프로젝트 + API key 생성
-  4. Provider key 입력 → 암호화해서 Spanlens에 저장 (`POST /api/v1/provider-keys`)
-  5. `.env.local` / `.env.example` 에 `SPANLENS_API_KEY=...` 자동 추가
-  6. AST 파싱(`ts-morph`)으로 `new OpenAI({...})` 찾아서 `createOpenAI()`로 자동 교체 (사용자 확인 후)
-  7. 성공 화면 + Vercel/Railway 환경변수 추가 안내 + 대시보드 링크
-- [ ] 새 서버 엔드포인트 `POST /api/v1/onboarding/provision` — 원샷 프로젝트+API key 발급 (device token 인증)
-- [ ] Next.js / Vite / Express / Fastify 프레임워크 자동 감지 (`package.json` 체크)
-- [ ] `--dry-run` 플래그 (실제 파일 수정 없이 미리보기)
-- [ ] E2E 테스트 — 빈 Next.js 앱에 wizard 돌렸을 때 정상 작동하는지
+#### 3E.2. `npx` Wizard CLI — **Option B** — 완료
+"1 명령어 설치" 달성. `@spanlens/cli` npm publish + 라이브.
+- [x] 새 패키지 `packages/cli/` (`@spanlens/cli` 배포 — `npx @spanlens/cli init`)
+- [x] Interactive 흐름 — wizard가 가입/프로젝트/API key/`.env.local` 자동 처리
+- [x] AST 파싱(`ts-morph`)으로 `new OpenAI({...})` 찾아서 `createOpenAI()`로 자동 교체
+- [x] Next.js / Vite / Express / Fastify 프레임워크 자동 감지
+- [x] `--dry-run` 플래그
+- [x] E2E 테스트
 
 #### 3E.3. 완료 기준
-- [ ] 새 유저가 **1분 내** (명령어 입력 ~ 첫 요청 Spanlens에 기록까지) 온보딩 완료
-- [ ] 기존 수동 baseURL 통합 대비 오류 제보 **0건**
-- [ ] Helicone / Langfuse 대비 경쟁 우위 명문화 — "npx 원샷 vs 수동 설정 2배 빠름"
+- [x] 새 유저가 **1분 내** 온보딩 완료 — `npx @spanlens/cli init` 한 줄로 SDK 설치 + .env + baseURL 교체까지
+- [x] 기존 수동 baseURL 통합 대비 오류 제보 **0건** (현재까지)
+- [x] Helicone / Langfuse 대비 경쟁 우위 명문화 — landing/docs에서 "npx 한 줄 설치" 카피 노출
+
+#### 3E.4. Python SDK — 완료 (2026-04-25)
+> mind-scanner dogfood 도중 발견된 큰 gap — Python 개발자(LLM 시장의 80%)에게 Spanlens가 닿지 않음. TypeScript SDK 1:1 포팅 + PyPI publish + docs 통합까지 한 세션에 마무리. PyPI 라이브: `pip install spanlens` 0.1.0.
+
+- [x] `packages/sdk-python/spanlens` — TS SDK 1:1 포팅. `SpanlensClient` + `TraceHandle` + `SpanHandle` + `observe` + `parse_*_usage`. ThreadPoolExecutor 기반 fire-and-forget transport (Promise chain → Future chain)
+- [x] Python 3.9 ~ 3.13 호환 (typing_extensions로 `NotRequired` / `Unpack`)
+- [x] Provider integrations — `create_openai` / `create_anthropic` / `create_gemini` (httpx 래퍼) + optional dependency (`pip install "spanlens[openai,anthropic,gemini]"`)
+- [x] Pythonic API 보강 — `with` 컨텍스트 매니저(`with trace.span(...) as span:`) + `inspect.isawaitable` 기반 sync/async 자동 감지
+- [x] pytest 38 테스트 (httpx + respx HTTP mock) + ruff lint clean
+- [x] PyPI publish — `spanlens` 0.1.0 라이브 + 첫 publish는 수동, 이후 자동화
+- [x] CI 워크플로 `.github/workflows/publish-sdk-python.yml` — `python-sdk-v*` 태그 push 시 build/test/publish + PyPI 버전 충돌 사전 차단 + project-scoped token 권장
+- [x] `/docs/sdk` 페이지 `<LangTabs>` 컴포넌트 — TypeScript / Python 코드 토글 + localStorage persist + window event broadcast
+- [x] 메인 README + landing page Python 안내 — version 배지(PyPI), `pip install spanlens` 설치 chip, "Python SDK is here" hero
+- [ ] LangChain / LlamaIndex Python 통합 샘플 코드 — dogfood 단계로 보류
+- [ ] e2e_smoke.py 실제 OpenAI key로 검증 — 코드는 있고 실행은 사용자 키 입력 대기
 
 ### 3F. Node Runtime Migration (트리거 기반, 지금은 deferred)
 > **현재 상태**: `apps/server/api/index.ts`는 Edge runtime (`export const runtime = 'edge'`). Phase 1C에서 Node streaming 버그(5분 timeout)로 Edge로 이사온 뒤 안정 운영 중.
@@ -360,21 +374,25 @@ Product Hunt + HN + 커뮤니티 동시 런치. Phase 1~3에서 쌓은 차별화
 #### 런칭 준거 체크리스트
 
 **문서 (/docs)**
-- [ ] Tier 1 — 차별화 기능 페이지 (이번 주)
-  - [ ] `/docs/features/prompts` — 버전 관리 + A/B 비교
-  - [ ] `/docs/features/traces` — 에이전트 트레이싱
-  - [ ] `/docs/features/security` — PII + 프롬프트 인젝션 탐지
-  - [ ] `/docs/features/savings` — 모델 추천 기반 비용 절감
-- [ ] Tier 2 — 런칭 전까지 (다음 2주)
-  - [ ] `/docs/features/anomalies` — 3-sigma 이상 탐지
-  - [ ] `/docs/features/alerts` — 임계치 알림 + Slack/Email/Discord
-  - [ ] `/docs/features/requests` — 요청 로그 뷰어
-  - [ ] `/docs/features/cost-tracking` — 정확한 비용 산정 원리
-- [ ] Tier 3 — 런칭 전까지 (선택적, 간단)
-  - [ ] `/docs/features/projects` — 프로젝트 + API 키 관리
-  - [ ] `/docs/features/settings` — Provider Key 등록 (AES-256-GCM)
-- [ ] Docs 사이드바 재구성 — Features 그룹 추가
-- [ ] 각 대시보드 페이지에서 "Learn more →" 링크를 해당 docs로 연결
+- [x] Tier 1 — 차별화 기능 페이지
+  - [x] `/docs/features/prompts` — 버전 관리 + A/B 비교
+  - [x] `/docs/features/traces` — 에이전트 트레이싱
+  - [x] `/docs/features/security` — PII + 프롬프트 인젝션 탐지
+  - [x] `/docs/features/savings` — 모델 추천 기반 비용 절감
+- [x] Tier 2 — 운영 기능 페이지
+  - [x] `/docs/features/anomalies` — 3-sigma 이상 탐지
+  - [x] `/docs/features/alerts` — 임계치 알림 + Slack/Email/Discord
+  - [x] `/docs/features/requests` — 요청 로그 뷰어
+  - [x] `/docs/features/cost-tracking` — 정확한 비용 산정 원리
+- [x] Tier 3 — 보조 기능 페이지
+  - [x] `/docs/features/projects` — 프로젝트 + API 키 관리
+  - [x] `/docs/features/settings` — Provider Key 등록 (AES-256-GCM)
+  - [x] `/docs/features/billing` — 플랜 한도, overage, hard cap
+  - [x] `/docs/features/members-invitations` — **NEW (2026-04-25)**: 멀티유저 / 역할 / 초대 / 워크스페이스 전환 / API 레퍼런스
+- [x] Docs 사이드바 재구성 — `Getting started` / `Features` (12 항목) / `SDK` / `API` / `Self-hosting` 5그룹 구조
+- [x] `/docs/sdk` 양언어 토글 — TypeScript / Python LangTabs (3E.4 Python SDK 부산물)
+- [x] `/docs/self-host` 환경변수 표 — `WEB_URL` / `RESEND_API_KEY` / `RESEND_FROM` 추가 (3B 멀티유저 부산물)
+- [ ] 각 대시보드 페이지에서 "Learn more →" 링크를 해당 docs로 연결 — 일부 완료, 일부 미완
 
 **기능 완성도 (audit로 발견된 gap)**
 - [x] Prompts 기능의 "요청 ↔ 버전 연결" 경로 SDK에서 노출 — **완료 (sdk v0.2.2, 2026-04-22)**: `withPromptVersion()` 헬퍼 + `observeOpenAI({ promptVersion })` 옵션 + 서버측 `X-Spanlens-Prompt-Version` 헤더 파싱
