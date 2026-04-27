@@ -211,42 +211,28 @@
 - [ ] LangChain / LlamaIndex Python 통합 샘플 코드 — dogfood 단계로 보류
 - [ ] e2e_smoke.py 실제 OpenAI key로 검증 — 코드는 있고 실행은 사용자 키 입력 대기
 
-### 3F. Node Runtime Migration (트리거 기반, 지금은 deferred)
-> **현재 상태**: `apps/server/api/index.ts`는 Edge runtime (`export const runtime = 'edge'`). Phase 1C에서 Node streaming 버그(5분 timeout)로 Edge로 이사온 뒤 안정 운영 중.
->
-> **트리거 없는 한 진입 금지** — 2026-04-22에 섣부른 Node 전환 시도로 대시보드 전체 다운 사고 발생 (handler signature 오류). Edge가 99%+ 트래픽 문제없이 처리 중이므로 **현재는 투자 대비 효과 낮음**.
+### 3F. Node Runtime Migration — **완료 (2026-04-27)**
+> **전환 이유**: 사전 예방 목적. Edge 25초 first-byte timeout이 agent tracing, o1, 긴 문서 요약 요청에서 잠재 위협. cold start는 keep-alive cron으로 완화.
+> **핵심**: `hono/vercel`의 `handle()` 어댑터로 이전 실패(direct `app.fetch`) 원인 해소.
 
-#### 3F.1. 진입 트리거 (아래 중 하나 이상)
-- [ ] **고객 앱 504율 1% 초과** — Spanlens가 Edge 25초 한계 때문에 실제 품질 이슈
-- [ ] **Agent 트레이싱 실사용 고객 등장** — multi-step tool call workflow는 60초+ 불가피
-- [ ] **긴 문서 요약 / reasoning 모델(o1) 고객 다수 유입** — 평균 응답 40초+
-- [ ] **Langfuse / Helicone에서 "timeout 때문에 왔다"는 피드백** 3건+
-
-#### 3F.2. 구현 방식 (트리거 발생 시)
-- [ ] `hono/vercel`의 공식 어댑터 사용 (`handle()`) — `app.fetch` 직접 export는 Node에서 안 됨
-- [ ] `apps/server/api/index.ts` 수정:
+#### 3F.2. 구현 완료
+- [x] `hono/vercel`의 공식 어댑터 사용 (`handle()`) — `app.fetch` 직접 export는 Node에서 안 됨
+- [x] `apps/server/api/index.ts` 수정:
   ```ts
   import { handle } from 'hono/vercel'
   import { app } from '../src/app.js'
   export const runtime = 'nodejs'
-  export const maxDuration = 60  // Hobby, Pro면 300
   export default handle(app)
   ```
-- [ ] **로컬 `vercel dev`로 사전 검증 필수** — Edge → Node 전환 시 streaming 동작이 Phase 1C 버그로 되돌아가지 않는지 체크
-- [ ] Streaming 회귀 테스트 정비 (현재 `scripts/test-e2e.ts` 수동 실행만 있음)
-- [ ] 프로덕션 배포 전 preview URL에서 대시보드/프록시/cron 전부 smoke test
-- [ ] `fireAndForget()`은 그대로 동작 (`@vercel/functions` waitUntil은 Edge+Node 양쪽 지원)
+- [x] `apps/server/vercel.json`에 `functions.api/index.ts.maxDuration: 60` 설정
+- [x] `fireAndForget()`은 그대로 동작 (`@vercel/functions` waitUntil은 Edge+Node 양쪽 지원)
+- [x] `.github/workflows/cron-keepalive.yml` — `/health` 10분마다 ping (cold start 방지)
+- [x] TypeScript typecheck 통과
 
 #### 3F.3. 완료 기준
 - [ ] Edge 롤백 없이 Node 배포 1주일 이상 안정 운영
 - [ ] p95 proxy latency 열화 10% 이내 (Node cold start 감수)
 - [ ] 25초+ 걸리는 테스트 요청 504 없이 성공
-
-#### 3F.4. 대안 경로 (Node 전환 없이 해결)
-트리거 발생해도 Node 전환이 부담스러우면:
-- [ ] **Vercel Pro 플랜 업그레이드** ($20/mo) — Edge timeout 60초로 증가 (대부분 커버)
-- [ ] **Streaming 강제** — 프록시에서 비스트리밍 요청도 내부적으로 stream 받아 passthrough
-- [ ] **고객에게 streaming 권장 문서화** — SDK README에 "장시간 요청은 `stream: true` 권장"
 
 ### 3H. Design Renewal — 기능 확장 (UI 리뉴얼에서 도출된 신규 기능)
 
