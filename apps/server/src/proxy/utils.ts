@@ -56,13 +56,18 @@ export async function getDecryptedProviderKey(
   return { plaintext: decrypted, id: orgKey.id as string }
 }
 
-// Strip hop-by-hop and sensitive headers before forwarding upstream
+// Strip hop-by-hop and sensitive headers before forwarding upstream.
+// content-length is stripped because the proxy may modify the body
+// (e.g. inject stream_options) so the original length is wrong.
+// Node.js undici (unlike Cloudflare Workers fetch) throws on mismatch.
+// Let fetch recalculate content-length from the actual body.
 const STRIP_HEADERS = new Set([
   'authorization',
   'host',
   'connection',
   'keep-alive',
   'transfer-encoding',
+  'content-length',
   'te',
   'upgrade',
   'proxy-authorization',

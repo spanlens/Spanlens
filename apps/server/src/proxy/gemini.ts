@@ -61,6 +61,7 @@ geminiProxy.all('/*', async (c) => {
     })
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Unknown error'
+    console.error('[gemini-proxy] upstream fetch error:', msg)
     return c.json({ error: `Upstream request failed: ${msg}` }, 502)
   }
   const latencyMs = Date.now() - startMs
