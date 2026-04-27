@@ -239,42 +239,41 @@
 > **트리거**: 2026-04-23 design handoff 수령 → UI 리뉴얼 Phase 1 (토큰/셸) 착수. 아래는 리뉴얼 목업에서 새로 등장한 기능들로, 디자인 변경 후 구현할 목록.
 
 #### 3H.1. 글로벌 인터랙션
-- [ ] **⌘K Command Palette** — 전 페이지에서 `Cmd+K` 로 요청/트레이스/프롬프트/설정 검색. shadcn `Command` (cmdk) 기반, 모노 glyph 컬럼.
-- [ ] **Topbar breadcrumb + 시간 범위 선택기** — 모든 대시보드 페이지에 공통 `<MonoTopbar>` — `Workspace / {Page}` 브레드크럼 + 1h / 24h / 7d / 30d 세그먼트 필터 + `⊙ Live` 인디케이터.
-- [ ] **Theme toggle** (Light / Dark / System 3-state) — `localStorage` 저장, `<html class="dark">` 토글. 우측 상단 고정.
+- [ ] **⌘K Command Palette** — 전 페이지에서 `Cmd+K` 로 요청/트레이스/프롬프트/설정 검색. shadcn `Command` (cmdk) 기반, 모노 glyph 컬럼. _(아이콘만 있고 기능 미구현)_
+- [x] **Topbar breadcrumb + 시간 범위 선택기** — `components/layout/topbar.tsx`: `Workspace / {Page}` 브레드크럼 + 1h / 24h / 7d / 30d 세그먼트 필터 + `⊙ Live` 인디케이터.
+- [ ] **Theme toggle** (Light / Dark / System 3-state) — `localStorage` 저장, `<html class="dark">` 토글. _(CSS 변수/다크 토큰은 `globals.css`에 완성됨, 토글 UI만 미구현)_
 
 #### 3H.2. Dashboard
-- [ ] **Morning briefing 레이아웃** — 시간대별 인사(Morning/Afternoon/Evening) + 조직명/환경 + 날짜/시각 모노라벨.
-- [ ] **"Needs attention" 카드 3개** — 현재 firing 중인 이상/알림 중 top 3를 액션 카드로 요약. 각 카드: 타입 + 메시지 + CTA 링크.
-- [ ] **Spend sparkline** — 24h 시계열 트래픽 sparkline (SVG, 그라디언트 fill). `requests` 테이블 1h 버킷 집계.
-- [ ] **Top prompts by cost** — 비용 순위 상위 5개 프롬프트 인라인 테이블.
-- [ ] **Recent alerts** — 최근 발송된 alert_deliveries 3건 인라인 리스트.
+- [x] **Morning briefing 레이아웃** — `greeting()` 함수로 시간대별 인사 + 날짜/시각 표시. (`dashboard/page.tsx`)
+- [x] **"Needs attention" 카드 3개** — `AttnCard` 컴포넌트: PII leak / 이상 탐지 / 활성 경고 / 비용 절감 권장사항. (`dashboard/page.tsx`)
+- [x] **Spend sparkline** — "Traffic · last 30d" Area chart (Recharts). (`dashboard/page.tsx`)
+- [x] **Top prompts by cost** — 비용 순위 상위 5개 프롬프트 인라인 테이블 + 비용 바그래프. (`dashboard/page.tsx`)
+- [x] **Recent alerts** — "Active alerts" + "Savings queued" 인라인 섹션 (최대 3건). (`dashboard/page.tsx`)
 
 #### 3H.3. Requests
-- [ ] **우측 drawer 상세 패널** — 테이블 행 클릭 시 페이지 이동 대신 우측 240px+ drawer 슬라이드인. request/response body, cost breakdown, 연결된 spans, request ID 표시.
-- [ ] **TrafficChart 개선** — 디자인 토큰 기반 컬러 + 빠른 기간 토글 연동.
+- [x] **우측 drawer 상세 패널** — `RequestDrawer` 컴포넌트: request/response/trace/raw 4탭 + 이전/다음 네비게이션. (`requests/page.tsx`)
+- [x] **TrafficChart 개선** — 디자인 토큰 기반 Area chart. (`components/dashboard/request-chart.tsx`)
 
 #### 3H.4. Traces
-- [ ] **Critical-path highlight** — Waterfall에서 가장 긴 경로(end-to-end 가장 느린 선형 체인)를 amber로 하이라이트.
-- [ ] **Span search** — Waterfall 상단에 span name 필터 입력, 매칭 span 강조.
-- [ ] **Cost per span 열** — Waterfall 오른쪽에 span 별 cost_usd 컬럼.
+- [x] **Critical-path highlight** — Gantt waterfall에서 critical path amber 강조. (`components/traces/gantt.tsx`, `traces/[id]/page.tsx`)
+- [x] **Span search** — Waterfall 상단 span name 필터 입력 + 실시간 필터링. (`traces/page.tsx`)
+- [x] **Cost per span 열** — `CostAttribution` 컴포넌트: span별 비용 집계 + 시각화. (`traces/[id]/page.tsx`)
 
-#### 3H.5. Settings (12탭 전체)
-> 현재 `/settings`는 단일 페이지. 리뉴얼은 `Workspace/Usage/Connect/Account` 4그룹 · 12탭 two-level 사이드바 구조로 전환.
-- [ ] **Workspace: General** — 조직 이름, 슬러그, timezone, 삭제 (danger section).
-- [ ] **Workspace: Members** — 초대 + 역할(Owner/Admin/Member/Viewer) CRUD + 대기 초대 목록.
-- [ ] **Workspace: API keys** — 현재 `/projects`에 있는 key 관리를 Settings로 통합. 마지막 사용 시각, `Just-rotated` 배너.
-- [ ] **Workspace: Audit log** — `audit_logs` 기반 이벤트 피드 (actor, action, target, timestamp).
-- [ ] **Usage: Billing** — 현재 플랜 카드 + 청구 주기 + 다음 결제일. Paddle customer portal 링크.
-- [ ] **Usage: Plan & limits** — 요청/보존 한도 인라인 진행 바 + 업그레이드 CTA.
-- [ ] **Usage: Invoices** — Paddle 인보이스 목록 (날짜, 금액, PDF 다운).
-- [ ] **Connect: Integrations** — Slack / Discord / PagerDuty / Datadog 카드 (연결 상태 pill + Connect 버튼).
-- [ ] **Connect: Destinations** — BigQuery / S3 데이터 export 커넥터 (Phase 3C와 연동).
-- [ ] **Connect: Webhooks** — webhook endpoint CRUD + 최근 delivery 이력.
-- [ ] **Connect: OpenTelemetry** — OTLP endpoint 설정 + 인증 헤더 + 커넥션 테스트.
-- [ ] **Account: Profile** — 이름, 아바타, 이메일 변경.
-- [ ] **Account: Notifications** — 알림 채널별 on/off 토글.
-- [ ] **Account: Preferences** — 테마, 밀도, 언어.
+#### 3H.5. Settings (9탭 구현, Connect 그룹 미구현)
+> `Workspace / Usage / Account` 3그룹 · 9탭 two-level 사이드바 구현 완료. Connect 그룹(4탭)은 미착수.
+- [x] **Workspace: General** — 조직 이름, 슬러그, timezone, 삭제 (danger section).
+- [x] **Workspace: Members** — 초대 + 역할 CRUD + 대기 초대 목록.
+- [x] **Workspace: Provider keys** — key 관리, 마지막 사용 시각.
+- [x] **Workspace: Audit log** — `audit_logs` 기반 이벤트 피드.
+- [x] **Usage: Billing** — 현재 플랜 카드 + Paddle customer portal 링크.
+- [x] **Usage: Plan & limits** — 요청/보존 한도 진행 바 + 업그레이드 CTA.
+- [x] **Usage: Invoices** — Paddle 인보이스 목록.
+- [x] **Account: Profile** — 이름, 아바타, 이메일 변경.
+- [x] **Account: Notifications** — 알림 채널별 on/off 토글.
+- [ ] **Connect: Integrations** — Slack / Discord / PagerDuty / Datadog 카드.
+- [ ] **Connect: Destinations** — BigQuery / S3 데이터 export 커넥터.
+- [ ] **Connect: Webhooks** — webhook endpoint CRUD + delivery 이력.
+- [ ] **Connect: OpenTelemetry** — OTLP endpoint 설정 + 커넥션 테스트.
 
 #### 3H.6. Auth 플로우 완성
 > 현재는 Supabase Auth UI 기본 화면. 리뉴얼 디자인에 맞는 커스텀 화면 구현.
@@ -285,19 +284,19 @@
 - [ ] **Account locked** — 15분 잠금 + magic-link 탈출 안내.
 
 #### 3H.7. Empty / Loading / Error 상태 시스템
-> 현재: 라우트별 즉흥 처리. 리뉴얼: 모든 라우트에 통일된 빈/로딩/에러 상태.
-- [ ] `<EmptyState>` 공통 컴포넌트 — 일러스트 없음, plain copy + 단일 CTA. (예: "No requests yet. Start by proxying a request.")
-- [ ] 각 라우트 `loading.tsx` 에 shadcn `Skeleton` 레이아웃 — 실제 콘텐츠 형태 모방.
-- [ ] 각 라우트 `error.tsx` — "Something went wrong" + Retry 버튼 + 에러 ID.
+> 현재: 라우트별 인라인 처리. 리뉴얼: 공통 컴포넌트로 통일.
+- [ ] `<EmptyState>` 공통 컴포넌트 — 일러스트 없음, plain copy + 단일 CTA. _(각 페이지에서 인라인 처리 중, 공통화 미완)_
+- [x] 각 라우트 Skeleton 로딩 — Dashboard/Requests/Traces 페이지에서 shadcn `<Skeleton>` 사용 중.
+- [x] 글로벌 `error.tsx` — `app/error.tsx` 구현됨.
 - [ ] First-install empty state: "Connect your first project" 가이드 카드.
 - [ ] Filter-empty state: "No results. Try adjusting your filters."
 
 #### 3H.8. Landing Page 리뉴얼
 > Phase 4 런치 이전에 완성.
-- [ ] 1440px 기준 신규 Hero — product proof stats (요청 수, 절감액, 응답 시간 개선) + code snippet CTA.
-- [ ] Feature grid — proxy / tracing / anomaly / prompts 4-block.
+- [x] 신규 Hero — "One line. Every LLM call, observed." + TS/Python CLI 설치 스니펫 + copy 버튼. (`app/page.tsx`)
+- [x] Feature grid — 6개 피처 블록 + SURFACES 배열. (`app/page.tsx`)
+- [x] 디자인 토큰 적용 + warm monochrome 스타일. (`app/globals.css`)
 - [ ] Pricing section 인라인 (현재 `/pricing` 별도 페이지 → landing 통합 or 유지).
-- [ ] 디자인 토큰 적용 + monochrome 스타일.
 
 ---
 
