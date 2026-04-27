@@ -13,7 +13,7 @@ CREATE TABLE webhooks (
   organization_id UUID        NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
   name            TEXT        NOT NULL,
   url             TEXT        NOT NULL,
-  secret          TEXT        NOT NULL DEFAULT encode(gen_random_bytes(32), 'hex'),
+  secret          TEXT        NOT NULL,
   events          TEXT[]      NOT NULL DEFAULT ARRAY['request.created'],
   is_active       BOOLEAN     NOT NULL DEFAULT TRUE,
   created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
