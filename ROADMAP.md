@@ -239,9 +239,9 @@
 > **트리거**: 2026-04-23 design handoff 수령 → UI 리뉴얼 Phase 1 (토큰/셸) 착수. 아래는 리뉴얼 목업에서 새로 등장한 기능들로, 디자인 변경 후 구현할 목록.
 
 #### 3H.1. 글로벌 인터랙션
-- [ ] **⌘K Command Palette** — 전 페이지에서 `Cmd+K` 로 요청/트레이스/프롬프트/설정 검색. shadcn `Command` (cmdk) 기반, 모노 glyph 컬럼. _(아이콘만 있고 기능 미구현)_
+- [x] **⌘K Command Palette** — 전 페이지에서 `Cmd+K` 로 네비게이션 + Settings 14개 탭 검색. shadcn `Command` (cmdk) 기반. 상단 검색 아이콘 버튼 + `?tab=` deep-link. `components/command-palette.tsx`
 - [x] **Topbar breadcrumb + 시간 범위 선택기** — `components/layout/topbar.tsx`: `Workspace / {Page}` 브레드크럼 + 1h / 24h / 7d / 30d 세그먼트 필터 + `⊙ Live` 인디케이터.
-- [ ] **Theme toggle** (Light / Dark / System 3-state) — `localStorage` 저장, `<html class="dark">` 토글. _(CSS 변수/다크 토큰은 `globals.css`에 완성됨, 토글 UI만 미구현)_
+- [x] **Theme toggle** (Light / Dark / System 3-state) — `next-themes` Provider + 사이드바 하단 토글 버튼. `components/providers/theme-provider.tsx`
 
 #### 3H.2. Dashboard
 - [x] **Morning briefing 레이아웃** — `greeting()` 함수로 시간대별 인사 + 날짜/시각 표시. (`dashboard/page.tsx`)
@@ -259,8 +259,8 @@
 - [x] **Span search** — Waterfall 상단 span name 필터 입력 + 실시간 필터링. (`traces/page.tsx`)
 - [x] **Cost per span 열** — `CostAttribution` 컴포넌트: span별 비용 집계 + 시각화. (`traces/[id]/page.tsx`)
 
-#### 3H.5. Settings (9탭 구현, Connect 그룹 미구현)
-> `Workspace / Usage / Account` 3그룹 · 9탭 two-level 사이드바 구현 완료. Connect 그룹(4탭)은 미착수.
+#### 3H.5. Settings (13탭 구현, 전체 완료)
+> `Workspace / Usage / Account / Connect` 4그룹 · 13탭 two-level 사이드바 구현 완료.
 - [x] **Workspace: General** — 조직 이름, 슬러그, timezone, 삭제 (danger section).
 - [x] **Workspace: Members** — 초대 + 역할 CRUD + 대기 초대 목록.
 - [x] **Workspace: Provider keys** — key 관리, 마지막 사용 시각.
@@ -270,26 +270,26 @@
 - [x] **Usage: Invoices** — Paddle 인보이스 목록.
 - [x] **Account: Profile** — 이름, 아바타, 이메일 변경.
 - [x] **Account: Notifications** — 알림 채널별 on/off 토글.
-- [ ] **Connect: Integrations** — Slack / Discord / PagerDuty / Datadog 카드.
-- [ ] **Connect: Destinations** — BigQuery / S3 데이터 export 커넥터.
-- [ ] **Connect: Webhooks** — webhook endpoint CRUD + delivery 이력.
-- [ ] **Connect: OpenTelemetry** — OTLP endpoint 설정 + 커넥션 테스트.
+- [x] **Connect: Integrations** — Slack / Discord / PagerDuty / Datadog 카드.
+- [x] **Connect: Destinations** — BigQuery / S3 / Snowflake 데이터 export 커넥터 (Beta).
+- [x] **Connect: Webhooks** — webhook endpoint CRUD + secret reveal/copy + active 토글 + test 발송 + delivery 이력. DB: `webhooks` + `webhook_deliveries` 테이블, HMAC-SHA256 서명. `apps/server/src/api/webhooks.ts` + `apps/web/lib/queries/use-webhooks.ts`
+- [x] **Connect: OpenTelemetry** — OTLP endpoint 표시/복사 + SDK 코드 예제 + 커넥션 테스트.
 
 #### 3H.6. Auth 플로우 완성
-> 현재는 Supabase Auth UI 기본 화면. 리뉴얼 디자인에 맞는 커스텀 화면 구현.
-- [ ] **Magic link sent** — "Check your inbox" 화면 + 10분 TTL 안내 + 42초 resend 타이머.
-- [ ] **2FA / TOTP** — 6자리 슬롯 입력 UI + "Remember 30 days" 체크박스 + 복구 코드 링크.
-- [ ] **Invitation accept** — 워크스페이스 카드 + 역할 프리뷰 + 퍼미션 요약.
-- [ ] **CLI device auth** — device code (예: `WXYZ-QJ47`) 매칭 + 툴/기기/IP 표시.
-- [ ] **Account locked** — 15분 잠금 + magic-link 탈출 안내.
+> 리뉴얼 디자인에 맞는 커스텀 화면 구현 완료. 2FA/Account locked은 UI placeholder — 실제 잠금 로직은 Enterprise tier 때 구현 예정.
+- [x] **Magic link sent** — `/verify-email?email=` "Check your inbox" + 42초 resend 카운트다운.
+- [x] **2FA / TOTP** — `/auth/mfa?factor_id=&challenge_id=` 6자리 슬롯 입력 + 자동이동/붙여넣기/자동제출 + "Remember 30 days". _(UI 완성, Supabase MFA 활성화 시 연결 가능)_
+- [x] **Invitation accept** — `/invite` 워크스페이스 카드 + 역할 pill + 퍼미션 요약으로 재디자인.
+- [x] **CLI device auth** — `/auth/device?code=&tool=&ip=` device code 표시 + Authorize/Deny.
+- [x] **Account locked** — `/auth/locked?until=` MM:SS 카운트다운. _(UI 완성, 잠금 트리거 로직 미구현 — 비밀번호 없는 magic link 구조상 현재 불필요)_
 
 #### 3H.7. Empty / Loading / Error 상태 시스템
-> 현재: 라우트별 인라인 처리. 리뉴얼: 공통 컴포넌트로 통일.
-- [ ] `<EmptyState>` 공통 컴포넌트 — 일러스트 없음, plain copy + 단일 CTA. _(각 페이지에서 인라인 처리 중, 공통화 미완)_
+> 공통 컴포넌트로 통일 완료. `components/ui/empty-state.tsx`
+- [x] `<EmptyState>` 공통 컴포넌트 — title + description + action CTA.
 - [x] 각 라우트 Skeleton 로딩 — Dashboard/Requests/Traces 페이지에서 shadcn `<Skeleton>` 사용 중.
 - [x] 글로벌 `error.tsx` — `app/error.tsx` 구현됨.
-- [ ] First-install empty state: "Connect your first project" 가이드 카드.
-- [ ] Filter-empty state: "No results. Try adjusting your filters."
+- [x] First-install empty state: `<FirstInstallEmptyState>` — "Connect your first project" + /projects 링크.
+- [x] Filter-empty state: `<FilterEmptyState>` — "No results. Try adjusting your filters." + 필터 초기화 콜백.
 
 #### 3H.8. Landing Page 리뉴얼
 > Phase 4 런치 이전에 완성.
@@ -477,10 +477,10 @@ Enterprise `$99+` 플랜은 이미 Pricing 페이지에 판매 중. **첫 Enterp
 - [ ] 모바일: 햄버거 메뉴에 통합
 - 왜 지금 안 하는가: 드롭다운 UX 다듬기(외부 클릭 닫기, 키보드 접근성, 포커스 트랩)에 반나절 소요. 현재 단일 "Go to dashboard" 버튼으로 핵심 기능(로그인 상태 인지 + 대시보드 접근) 이미 충족.
 
-### UX-2. 다크 모드 (트리거: 요청 누적 5건+)
-- [ ] `next-themes` 도입, 전역 토글
-- [ ] 기존 `globals.css`의 CSS variable 다크 팔레트 정의 (구조는 이미 준비됨)
-- [ ] 사이드바 + 대시보드 차트 색상 대비 재검토
+### UX-2. 다크 모드 — **완료 (2026-04-27, 3H.1과 통합)**
+- [x] `next-themes` 도입, Light / Dark / System 3-state 전역 토글
+- [x] `globals.css` CSS variable 다크 팔레트 (`class="dark"` 토글)
+- [x] 사이드바 하단 ThemeToggleButton (Sun / Moon / Monitor 아이콘)
 
 ---
 
