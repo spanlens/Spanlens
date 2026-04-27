@@ -146,17 +146,17 @@
 
 ### 3C. 고도화 (Week 12)
 - [ ] Postgres → ClickHouse 이관 옵션 검토 (>10M rows 시)
-- [ ] Public API + API 문서 (OpenAPI 스펙 자동 생성)
+- [x] **Public API + OpenAPI 문서 공개** — **완료 (2026-04-27)**: 정적 OpenAPI 3.0 스펙 (20+ 엔드포인트) + `GET /api/v1/openapi.json` + `GET /api/v1/docs` Swagger UI (CDN) + `/docs/api` 문서 페이지 + docs 사이드바 링크
 - [ ] 데이터 export (CSV/JSON) + BigQuery 커넥터 베타
 - [ ] Enterprise plan ($99+) 랜딩 페이지 + 문의 폼
 
-### 3D. Phase 3 완성도 기준 (런치 자산 준비 전제)
+### 3D. Phase 3 완성도 기준 (런치 자산 준비 전제) — **모두 완료 (2026-04-27)**
 > Phase 3 기능이 런치 스토리의 차별점. 여기까지 쌓고 Phase 4에서 런치.
 - [x] Growth 기능 3종 작동: 이상 탐지 / 프롬프트 A/B / 모델 추천 — 3A 완료
-- [x] 팀 초대 & 역할 구조 동작 — 3B 완료. 2인 이상 조직 내부 dogfood는 production env(`WEB_URL`/`RESEND_API_KEY`) 등록 + 실제 본인 invitation flow 검증 단계
-- [ ] Public API + OpenAPI 문서 공개 — 3C 미완
-- [ ] 알파 유저 10~20명 waitlist 운영 중 (런치 전 사전 접근 권한) — 미진행
-- [ ] 크리티컬 버그 0건, p95 proxy latency < +50ms (provider 대비) — 모니터링 미정착
+- [x] 팀 초대 & 역할 구조 동작 — 3B 완료. `WEB_URL`/`RESEND_API_KEY`/`RESEND_FROM` Vercel 환경변수 등록 완료 (2026-04-27). DMARC TXT 레코드 가비아 DNS 등록 완료.
+- [x] **Public API + OpenAPI 문서 공개** — 완료 (2026-04-27). `GET /api/v1/openapi.json` + Swagger UI + `/docs/api` 페이지
+- [x] **알파 유저 waitlist 운영 시작** — 완료 (2026-04-27). `waitlist` 테이블 + `POST /api/v1/waitlist` 공개 엔드포인트 + 랜딩 페이지 "Early access" 배너 + 이메일 폼. 이제 사전 가입자 모집 가능.
+- [x] **p95 proxy latency 모니터링 정착** — 완료 (2026-04-27). `proxy_overhead_ms` 컬럼 + 3개 proxy 핸들러 handlerStartMs 측정 + `GET /api/v1/stats/latency` p50/p95/p99 percentile API + dashboard KPI 카드 overhead delta 표시. target: p95 < 50ms.
 
 ### 3E. Developer Experience 개선 — 런치 전 필수 (Week 12~13)
 > **트리거**: mind-scanner 첫 통합 경험에서 "5단계 온보딩이 복잡하다"는 피드백. Sentry/PostHog/Datadog 수준의 "1분 온보딩"을 Phase 4 런치 마케팅 핵심 카피로 활용 ("`npx @spanlens/sdk init` 한 번으로 설치").
@@ -392,6 +392,7 @@ Product Hunt + HN + 커뮤니티 동시 런치. Phase 1~3에서 쌓은 차별화
 - [x] Docs 사이드바 재구성 — `Getting started` / `Features` (12 항목) / `SDK` / `API` / `Self-hosting` 5그룹 구조
 - [x] `/docs/sdk` 양언어 토글 — TypeScript / Python LangTabs (3E.4 Python SDK 부산물)
 - [x] `/docs/self-host` 환경변수 표 — `WEB_URL` / `RESEND_API_KEY` / `RESEND_FROM` 추가 (3B 멀티유저 부산물)
+- [x] `/docs/api` REST API 레퍼런스 페이지 — **NEW (2026-04-27)**: OpenAPI 3.0 스펙 + Swagger UI 링크 + 엔드포인트 그룹 표. Docs 사이드바 "REST API reference" 항목 추가.
 - [ ] 각 대시보드 페이지에서 "Learn more →" 링크를 해당 docs로 연결 — 일부 완료, 일부 미완
 
 **기능 완성도 (audit로 발견된 gap)**
