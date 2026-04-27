@@ -36,16 +36,17 @@ interface NavEntry {
 }
 
 const NAV_ITEMS: NavEntry[] = [
-  { label: 'Dashboard',      href: '/dashboard' },
-  { label: 'Requests',       href: '/requests' },
-  { label: 'Traces',         href: '/traces' },
-  { label: 'Anomalies',      href: '/anomalies' },
-  { label: 'Security',       href: '/security' },
-  { label: 'Savings',        href: '/recommendations' },
-  { label: 'Prompts',        href: '/prompts' },
-  { label: 'Alerts',         href: '/alerts' },
+  { label: 'Dashboard',       href: '/dashboard' },
+  { label: 'Requests',        href: '/requests' },
+  { label: 'Traces',          href: '/traces' },
+  { label: 'Anomalies',       href: '/anomalies' },
+  { label: 'Security',        href: '/security' },
+  { label: 'Savings',         href: '/recommendations' },
+  { label: 'Prompts',         href: '/prompts' },
+  { label: 'Alerts',          href: '/alerts' },
   { label: 'Projects & Keys', href: '/projects' },
-  { label: 'Settings',       href: '/settings' },
+  { label: 'Settings',        href: '/settings' },
+  { label: 'Billing',         href: '/billing' },
 ]
 
 // ── Palette UI ────────────────────────────────────────────────────────────────
