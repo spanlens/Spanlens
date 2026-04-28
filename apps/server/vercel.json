@@ -5,7 +5,7 @@
   "installCommand": "npm install",
   "functions": {
     "api/index.ts": {
-      "maxDuration": 40
+      "maxDuration": 300
     }
   },
   "rewrites": [{ "source": "/(.*)", "destination": "/api/index" }],
