@@ -97,11 +97,16 @@ export function TimeRangeSelector({
   )
 }
 
-/** Live indicator dot */
-export function LiveDot() {
+/** Live indicator dot — pulses while data is being refetched. */
+export function LiveDot({ refetching = false }: { refetching?: boolean }) {
   return (
     <span className="flex items-center gap-1.5 text-[12.5px] text-text-muted">
-      <span className="inline-block w-[7px] h-[7px] rounded-full bg-good" />
+      <span
+        className={cn(
+          'inline-block w-[7px] h-[7px] rounded-full bg-good',
+          refetching && 'animate-pulse',
+        )}
+      />
       Live
     </span>
   )
