@@ -128,8 +128,16 @@ interface TimeseriesRow {
   errors: number
 }
 
+interface ModelsRow {
+  provider: string
+  model: string
+  requests: number
+  total_cost_usd: number
+  avg_latency_ms: number
+  error_rate: number
+}
+
 // GET /api/v1/stats/models?hours=24 — per-model breakdown, sorted by cost desc
-// Aggregates in-memory over the window. Bounded by the 24h default.
 statsRouter.get('/models', async (c) => {
   const orgId = c.get('orgId')
   if (!orgId) return c.json({ error: 'Organization not found' }, 404)
@@ -137,50 +145,25 @@ statsRouter.get('/models', async (c) => {
   const hoursRaw = Number(c.req.query('hours'))
   const hours = Number.isFinite(hoursRaw) && hoursRaw > 0 ? Math.min(hoursRaw, 24 * 30) : 24
   const projectId = c.req.query('projectId')
-  const sinceIso = new Date(Date.now() - hours * 3_600_000).toISOString()
+  const fromIso = new Date(Date.now() - hours * 3_600_000).toISOString()
 
-  let query = supabaseAdmin
-    .from('requests')
-    .select('provider, model, cost_usd, latency_ms, status_code')
-    .eq('organization_id', orgId)
-    .gte('created_at', sinceIso)
-    .limit(50_000)
-
-  if (projectId) query = query.eq('project_id', projectId)
-
-  const { data, error } = await query
+  const { data, error } = await supabaseAdmin.rpc('stats_models', {
+    p_org_id: orgId,
+    p_project_id: projectId ?? null,
+    p_from: fromIso,
+    p_to: null,
+  })
 
   if (error) return c.json({ error: 'Failed to fetch model stats' }, 500)
 
-  interface Agg { requests: number; cost: number; latency: number; errors: number }
-  const byKey = new Map<string, Agg & { provider: string; model: string }>()
-
-  for (const r of (data ?? []) as Array<{
-    provider: string
-    model: string
-    cost_usd: number | null
-    latency_ms: number | null
-    status_code: number | null
-  }>) {
-    const key = `${r.provider}|${r.model}`
-    const agg = byKey.get(key) ?? { provider: r.provider, model: r.model, requests: 0, cost: 0, latency: 0, errors: 0 }
-    agg.requests += 1
-    agg.cost += r.cost_usd ?? 0
-    agg.latency += r.latency_ms ?? 0
-    if (r.status_code !== null && r.status_code >= 400) agg.errors += 1
-    byKey.set(key, agg)
-  }
-
-  const models = Array.from(byKey.values())
-    .map((a) => ({
-      provider: a.provider,
-      model: a.model,
-      requests: a.requests,
-      totalCostUsd: parseFloat(a.cost.toFixed(6)),
-      avgLatencyMs: a.requests > 0 ? Math.round(a.latency / a.requests) : 0,
-      errorRate: a.requests > 0 ? a.errors / a.requests : 0,
-    }))
-    .sort((x, y) => y.totalCostUsd - x.totalCostUsd)
+  const models = ((data as ModelsRow[] | null) ?? []).map((r) => ({
+    provider: r.provider,
+    model: r.model,
+    requests: Number(r.requests),
+    totalCostUsd: parseFloat(Number(r.total_cost_usd).toFixed(6)),
+    avgLatencyMs: Math.round(Number(r.avg_latency_ms)),
+    errorRate: Number(r.error_rate),
+  }))
 
   return c.json({ success: true, data: models, meta: { hours, count: models.length } })
 })
