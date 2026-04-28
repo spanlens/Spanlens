@@ -1,5 +1,5 @@
 'use client'
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { Skeleton } from '@/components/ui/skeleton'
 import { KpiCard } from '@/components/dashboard/kpi-card'
@@ -222,44 +222,79 @@ export default function DashboardPage() {
     [timeseries.data],
   )
 
-  function exportCsv() {
-    const lines: string[] = []
+  const [exportOpen, setExportOpen] = useState(false)
+  const exportRef = useRef<HTMLDivElement>(null)
 
-    // ── Summary ──────────────────────────────────────────────────
-    lines.push(`## Summary · ${timeRange}`)
-    lines.push('Total Requests,Total Spend (USD),Avg Latency (ms),Error Rate (%)')
-    if (o) {
-      lines.push(
-        `${o.totalRequests},${o.totalCostUsd.toFixed(4)},${o.avgLatencyMs},${(o.errorRate * 100).toFixed(2)}`,
-      )
+  function buildExportData() {
+    return {
+      summary: o
+        ? {
+            timeRange,
+            totalRequests: o.totalRequests,
+            totalSpendUsd: o.totalCostUsd,
+            avgLatencyMs: o.avgLatencyMs,
+            errorRatePct: parseFloat((o.errorRate * 100).toFixed(2)),
+          }
+        : null,
+      timeseries: (timeseries.data ?? []).map((d) => ({
+        date: d.date,
+        requests: d.requests,
+        spendUsd: d.cost,
+        tokens: d.tokens,
+        errors: d.errors,
+      })),
+      models: (modelsQuery.data ?? []).map((m) => ({
+        provider: m.provider,
+        model: m.model,
+        requests: m.requests,
+        totalSpendUsd: m.totalCostUsd,
+        avgLatencyMs: m.avgLatencyMs,
+        errorRatePct: parseFloat((m.errorRate * 100).toFixed(2)),
+      })),
     }
-    lines.push('')
+  }
 
-    // ── Timeseries ────────────────────────────────────────────────
-    lines.push('## Timeseries')
-    lines.push('Date,Requests,Spend (USD),Tokens,Errors')
-    for (const d of timeseries.data ?? []) {
-      lines.push(`${d.date},${d.requests},${d.cost.toFixed(4)},${d.tokens},${d.errors}`)
-    }
-    lines.push('')
-
-    // ── Models ────────────────────────────────────────────────────
-    lines.push('## Models')
-    lines.push('Provider,Model,Requests,Total Spend (USD),Avg Latency (ms),Error Rate (%)')
-    for (const m of modelsQuery.data ?? []) {
-      lines.push(
-        `${m.provider},${m.model},${m.requests},${m.totalCostUsd.toFixed(4)},${m.avgLatencyMs},${(m.errorRate * 100).toFixed(2)}`,
-      )
-    }
-
-    const csv = lines.join('\n')
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+  function triggerDownload(content: string, mime: string, ext: string) {
+    const blob = new Blob([content], { type: `${mime};charset=utf-8;` })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `spanlens-${timeRange}-${new Date().toISOString().slice(0, 10)}.csv`
+    a.download = `spanlens-${timeRange}-${new Date().toISOString().slice(0, 10)}.${ext}`
     a.click()
     URL.revokeObjectURL(url)
+    setExportOpen(false)
+  }
+
+  function exportCsv() {
+    const d = buildExportData()
+    const lines: string[] = []
+    lines.push(`## Summary · ${timeRange}`)
+    lines.push('Total Requests,Total Spend (USD),Avg Latency (ms),Error Rate (%)')
+    if (d.summary) {
+      lines.push(
+        `${d.summary.totalRequests},${d.summary.totalSpendUsd.toFixed(4)},${d.summary.avgLatencyMs},${d.summary.errorRatePct}`,
+      )
+    }
+    lines.push('')
+    lines.push('## Timeseries')
+    lines.push('Date,Requests,Spend (USD),Tokens,Errors')
+    for (const r of d.timeseries) {
+      lines.push(`${r.date},${r.requests},${r.spendUsd.toFixed(4)},${r.tokens},${r.errors}`)
+    }
+    lines.push('')
+    lines.push('## Models')
+    lines.push('Provider,Model,Requests,Total Spend (USD),Avg Latency (ms),Error Rate (%)')
+    for (const m of d.models) {
+      lines.push(
+        `${m.provider},${m.model},${m.requests},${m.totalSpendUsd.toFixed(4)},${m.avgLatencyMs},${m.errorRatePct}`,
+      )
+    }
+    triggerDownload(lines.join('\n'), 'text/csv', 'csv')
+  }
+
+  function exportJson() {
+    const d = buildExportData()
+    triggerDownload(JSON.stringify(d, null, 2), 'application/json', 'json')
   }
 
   // ISO timestamps of alerts that fired within the current time range — for chart markers
@@ -411,13 +446,36 @@ export default function DashboardPage() {
                   </span>
                 </>
               )}
-              <button
-                type="button"
-                onClick={exportCsv}
-                className="ml-auto shrink-0 font-mono text-[11px] text-text-muted hover:text-text border border-border rounded px-2.5 py-1 transition-colors"
-              >
-                Export CSV ↓
-              </button>
+              <div ref={exportRef} className="ml-auto relative shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setExportOpen((v) => !v)}
+                  className="font-mono text-[11px] text-text-muted hover:text-text border border-border rounded px-2.5 py-1 transition-colors"
+                >
+                  Export ↓
+                </button>
+                {exportOpen && (
+                  <>
+                    <div className="fixed inset-0 z-10" onClick={() => setExportOpen(false)} />
+                    <div className="absolute right-0 top-full mt-1 z-20 bg-bg-elev border border-border rounded shadow-sm min-w-[100px]">
+                      <button
+                        type="button"
+                        onClick={exportCsv}
+                        className="w-full text-left px-3 py-2 font-mono text-[11px] text-text-muted hover:text-text hover:bg-bg transition-colors"
+                      >
+                        CSV
+                      </button>
+                      <button
+                        type="button"
+                        onClick={exportJson}
+                        className="w-full text-left px-3 py-2 font-mono text-[11px] text-text-muted hover:text-text hover:bg-bg transition-colors"
+                      >
+                        JSON
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
           )}
         </div>
