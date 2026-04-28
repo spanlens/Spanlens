@@ -2,6 +2,7 @@
 import Link from 'next/link'
 import { useSecurityFlagged, useSecuritySummary } from '@/lib/queries/use-security'
 import { Topbar } from '@/components/layout/topbar'
+import { ExportDropdown } from '@/components/ui/export-dropdown'
 import { cn } from '@/lib/utils'
 
 function formatRelative(iso: string): string {
@@ -63,6 +64,12 @@ export default function SecurityPage() {
     <div className="-m-7 flex flex-col h-screen overflow-hidden bg-bg">
       <Topbar
         crumbs={[{ label: 'Workspace', href: '/dashboard' }, { label: 'Security' }]}
+        right={
+          <ExportDropdown
+            filename="spanlens-security"
+            buildUrl={(fmt) => `/api/v1/exports/security?format=${fmt}`}
+          />
+        }
       />
 
       {/* Stat strip */}
