@@ -37,6 +37,7 @@ export function SpendForecastCard({ data }: SpendForecastCardProps) {
     dailyAvgUsd,
     projectedMonthEndUsd,
     weeklyDeltaPct,
+    dailyTrendUsd,
     timeseries,
   } = data
 
@@ -103,7 +104,11 @@ export function SpendForecastCard({ data }: SpendForecastCardProps) {
             )}
           </div>
           <div className="font-mono text-[11px] text-text-muted">
-            Based on last 7d run-rate
+            Linear regression ·{' '}
+            <span className={dailyTrendUsd > 0.0001 ? 'text-accent' : dailyTrendUsd < -0.0001 ? 'text-good' : ''}>
+              {dailyTrendUsd > 0.0001 ? '↑' : dailyTrendUsd < -0.0001 ? '↓' : '→'}{' '}
+              ${Math.abs(dailyTrendUsd).toFixed(4)}/day
+            </span>
           </div>
         </div>
       </div>

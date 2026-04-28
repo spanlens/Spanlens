@@ -134,6 +134,8 @@ export interface SpendForecast {
   dailyAvgUsd: number
   projectedMonthEndUsd: number
   weeklyDeltaPct: number | null
+  /** Linear regression slope — positive = trending up $/day, negative = trending down */
+  dailyTrendUsd: number
   timeseries: { date: string; actual: number | null; projected: number | null }[]
 }
 
