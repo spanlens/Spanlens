@@ -1,8 +1,7 @@
 'use client'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
-import { X } from 'lucide-react'
 import { ExportDropdown } from '@/components/ui/export-dropdown'
 import { cn } from '@/lib/utils'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -37,7 +36,8 @@ function relAge(dateStr: string): string {
   const s = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000)
   if (s < 60) return `${s}s`
   if (s < 3600) return `${Math.floor(s / 60)}m`
-  return `${Math.floor(s / 3600)}h`
+  if (s < 86400) return `${Math.floor(s / 3600)}h`
+  return `${Math.floor(s / 86400)}d`
 }
 
 function fmtCost(n: number | null): string {
@@ -189,24 +189,6 @@ function TrafficBars() {
   )
 }
 
-// ── Filter pill ───────────────────────────────────────────────────────────────
-function FilterPill({ children, active, warn, onClick }: { children: React.ReactNode; active?: boolean; warn?: boolean; onClick?: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        'inline-flex items-center gap-1.5 px-[9px] py-1 rounded-[5px] font-mono text-[11px] tracking-[0.03em] whitespace-nowrap',
-        warn ? 'border border-accent-border bg-accent-bg text-accent'
-          : active ? 'border border-border-strong bg-bg-elev text-text'
-          : 'border border-border text-text-muted hover:border-border-strong hover:text-text transition-colors',
-      )}
-    >
-      {children}
-    </button>
-  )
-}
-
 // ── Request drawer ────────────────────────────────────────────────────────────
 type DrawerTab = 'request' | 'response' | 'trace' | 'raw'
 
@@ -224,6 +206,7 @@ interface DrawerProps {
 
 function RequestDrawer({ requestId, visible, onClose, onPrev, onNext, hasPrev, hasNext, position, total }: DrawerProps) {
   const [tab, setTab] = useState<DrawerTab>('request')
+  useEffect(() => { setTab('request') }, [requestId])
   const { data: req, isLoading, isError } = useRequest(requestId)
   const messages = useMemo(() => {
     if (!req?.request_body || typeof req.request_body !== 'object') return null
@@ -620,6 +603,7 @@ export default function RequestsPage() {
       ...(modelParam && { model: modelParam }),
     }
   })
+  const [modelInput, setModelInput] = useState(() => searchParams.get('model') ?? '')
   const [page, setPage] = useState(1)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [sortField, setSortField] = useState<SortField>('created_at')
@@ -706,7 +690,7 @@ export default function RequestsPage() {
           {(['all', 'today', '7d', '30d'] as TimeRange[]).map((r) => (
             <button
               key={r}
-              onClick={() => { setTimeRange(r); setPage(1) }}
+              onClick={() => { setTimeRange(r); setPage(1); setSelectedId(null) }}
               className={cn(
                 'px-[10px] py-[5px]',
                 timeRange === r ? 'bg-text text-bg' : 'text-text-muted hover:text-text transition-colors',
@@ -722,7 +706,7 @@ export default function RequestsPage() {
           {(['all', 'ok', '4xx', '5xx'] as StatusFilter[]).map((v) => (
             <button
               key={v}
-              onClick={() => { setFilters((f) => ({ ...f, status: v })); setPage(1) }}
+              onClick={() => { setFilters((f) => ({ ...f, status: v })); setPage(1); setSelectedId(null) }}
               className={cn(
                 'px-[10px] py-[5px] inline-flex items-center gap-1.5',
                 filters.status === v ? 'bg-text text-bg' : 'text-text-muted hover:text-text transition-colors',
@@ -736,25 +720,44 @@ export default function RequestsPage() {
           ))}
         </div>
 
-        {/* Provider filter */}
-        {filters.provider !== 'all' && (
-          <FilterPill active onClick={() => setFilters((f) => ({ ...f, provider: 'all' }))}>
-            provider · {filters.provider} <X className="h-2.5 w-2.5" />
-          </FilterPill>
-        )}
+        {/* Provider select */}
+        <select
+          value={filters.provider}
+          onChange={(e) => { setFilters((f) => ({ ...f, provider: e.target.value, providerKeyId: 'all' })); setPage(1); setSelectedId(null) }}
+          className="font-mono text-[11px] border border-border rounded-[5px] px-2 py-[5px] bg-bg text-text-muted hover:border-border-strong transition-colors focus:outline-none appearance-none cursor-pointer"
+        >
+          <option value="all">All providers</option>
+          <option value="openai">openai</option>
+          <option value="anthropic">anthropic</option>
+          <option value="gemini">gemini</option>
+        </select>
 
-        {/* Model filter */}
-        {filters.model.trim() && (
-          <FilterPill active onClick={() => setFilters((f) => ({ ...f, model: '' }))}>
-            model ∋ {filters.model} <X className="h-2.5 w-2.5" />
-          </FilterPill>
-        )}
+        {/* Model input — draft updates on change, applied on blur/Enter */}
+        <input
+          type="text"
+          placeholder="Model…"
+          value={modelInput}
+          onChange={(e) => setModelInput(e.target.value)}
+          onBlur={() => { setFilters((f) => ({ ...f, model: modelInput.trim() })); setPage(1); setSelectedId(null) }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') { e.currentTarget.blur() }
+            if (e.key === 'Escape') { setModelInput(''); setFilters((f) => ({ ...f, model: '' })); setPage(1); setSelectedId(null) }
+          }}
+          className="font-mono text-[11px] border border-border rounded-[5px] px-2 py-[5px] bg-bg text-text-muted hover:border-border-strong focus:border-border-strong transition-colors outline-none w-28 placeholder:text-text-faint"
+        />
 
-        {/* Key filter */}
-        {filters.providerKeyId !== 'all' && (
-          <FilterPill active onClick={() => setFilters((f) => ({ ...f, providerKeyId: 'all' }))}>
-            key · {visibleKeys.find((k) => k.id === filters.providerKeyId)?.name ?? filters.providerKeyId.slice(0, 8)} <X className="h-2.5 w-2.5" />
-          </FilterPill>
+        {/* Key select */}
+        {visibleKeys.length > 0 && (
+          <select
+            value={filters.providerKeyId}
+            onChange={(e) => { setFilters((f) => ({ ...f, providerKeyId: e.target.value })); setPage(1); setSelectedId(null) }}
+            className="font-mono text-[11px] border border-border rounded-[5px] px-2 py-[5px] bg-bg text-text-muted hover:border-border-strong transition-colors focus:outline-none appearance-none cursor-pointer max-w-[140px] truncate"
+          >
+            <option value="all">All keys</option>
+            {visibleKeys.map((k) => (
+              <option key={k.id} value={k.id}>{k.name}</option>
+            ))}
+          </select>
         )}
 
         <span className="flex-1" />
@@ -769,6 +772,7 @@ export default function RequestsPage() {
             if (filters.model.trim())       params.set('model', filters.model.trim())
             if (filters.providerKeyId !== 'all') params.set('providerKeyId', filters.providerKeyId)
             if (filters.status !== 'all')   params.set('status', filters.status)
+            if (fromIso)                    params.set('from', fromIso)
             return `/api/v1/exports/requests?${params.toString()}`
           }}
         />
@@ -797,14 +801,14 @@ export default function RequestsPage() {
             <div className="flex gap-1.5">
               <button
                 disabled={page <= 1 || isFetching}
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                onClick={() => { setPage((p) => Math.max(1, p - 1)); setSelectedId(null) }}
                 className="font-mono text-[11px] px-2.5 py-1 border border-border rounded text-text-muted disabled:opacity-30 hover:border-border-strong transition-colors"
               >
                 ← Prev
               </button>
               <button
                 disabled={page * meta.limit >= meta.total || isFetching}
-                onClick={() => setPage((p) => p + 1)}
+                onClick={() => { setPage((p) => p + 1); setSelectedId(null) }}
                 className="font-mono text-[11px] px-2.5 py-1 border border-border rounded text-text-muted disabled:opacity-30 hover:border-border-strong transition-colors"
               >
                 Next →
