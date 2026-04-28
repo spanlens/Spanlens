@@ -190,7 +190,7 @@ function TrafficBars() {
 }
 
 // ── Request drawer ────────────────────────────────────────────────────────────
-type DrawerTab = 'request' | 'response' | 'trace' | 'raw'
+type DrawerTab = 'request' | 'response' | 'trace' | 'raw' | 'error'
 
 interface DrawerProps {
   requestId: string
@@ -202,6 +202,22 @@ interface DrawerProps {
   hasNext: boolean
   position: number
   total: number
+}
+
+function CopyButton({ getText }: { getText: () => string }) {
+  const [copied, setCopied] = useState(false)
+  return (
+    <button
+      onClick={() => {
+        void navigator.clipboard.writeText(getText())
+        setCopied(true)
+        setTimeout(() => setCopied(false), 1500)
+      }}
+      className="font-mono text-[10px] px-1.5 py-0.5 border border-border rounded text-text-faint hover:text-text hover:border-border-strong transition-colors shrink-0"
+    >
+      {copied ? 'Copied' : 'Copy'}
+    </button>
+  )
 }
 
 function RequestDrawer({ requestId, visible, onClose, onPrev, onNext, hasPrev, hasNext, position, total }: DrawerProps) {
@@ -228,7 +244,9 @@ function RequestDrawer({ requestId, visible, onClose, onPrev, onNext, hasPrev, h
       <div className="px-5 py-4 border-b border-border">
         <div className="flex items-center gap-2 mb-2.5">
           <span className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint">Request</span>
-          <span className="font-mono text-[10px] text-text-faint">{position} / {total}</span>
+          {position > 0 && (
+            <span className="font-mono text-[10px] text-text-faint">{position} / {total}</span>
+          )}
           <span className="flex-1" />
           {requestId && (
             <Link
@@ -324,20 +342,26 @@ function RequestDrawer({ requestId, visible, onClose, onPrev, onNext, hasPrev, h
       )}
 
       {/* Tabs */}
-      <div className="flex px-5 border-b border-border gap-5 shrink-0">
-        {(['request', 'response', 'trace', 'raw'] as DrawerTab[]).map((t) => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={cn(
-              'py-2.5 font-mono text-[11px] uppercase tracking-[0.04em] border-b-[1.5px] -mb-px transition-colors',
-              tab === t ? 'text-text border-accent' : 'text-text-muted border-transparent hover:text-text',
-            )}
-          >
-            {t}
-          </button>
-        ))}
-      </div>
+      {req && (() => {
+        const tabs: DrawerTab[] = ['request', 'response', 'trace', 'raw', ...(req.error_message ? ['error' as DrawerTab] : [])]
+        return (
+          <div className="flex px-5 border-b border-border gap-5 shrink-0">
+            {tabs.map((t) => (
+              <button
+                key={t}
+                onClick={() => setTab(t)}
+                className={cn(
+                  'py-2.5 font-mono text-[11px] uppercase tracking-[0.04em] border-b-[1.5px] -mb-px transition-colors',
+                  tab === t ? 'text-text border-accent' : 'text-text-muted border-transparent hover:text-text',
+                  t === 'error' && tab !== 'error' && 'text-bad',
+                )}
+              >
+                {t}
+              </button>
+            ))}
+          </div>
+        )
+      })()}
 
       {/* Tab content */}
       <div className="px-5 py-4 flex-1 overflow-auto">
@@ -351,7 +375,12 @@ function RequestDrawer({ requestId, visible, onClose, onPrev, onNext, hasPrev, h
         ) : isError ? (
           <p className="font-mono text-[12px] text-bad">Failed to load request details.</p>
         ) : !req ? null : tab === 'request' ? (
-          <MessageDisplay messages={messages} body={req.request_body} />
+          <div className="space-y-2">
+            <div className="flex justify-end">
+              <CopyButton getText={() => JSON.stringify(req.request_body, null, 2)} />
+            </div>
+            <MessageDisplay messages={messages} body={req.request_body} />
+          </div>
         ) : tab === 'response' ? (
           req.response_body == null ? (
             <p className="font-mono text-[11.5px] text-text-faint leading-relaxed">
@@ -359,12 +388,21 @@ function RequestDrawer({ requestId, visible, onClose, onPrev, onNext, hasPrev, h
               Full response capture is planned for a future release.
             </p>
           ) : (
-            <pre className="font-mono text-[11.5px] text-text-muted leading-relaxed whitespace-pre-wrap break-all">
-              {JSON.stringify(req.response_body, null, 2)}
-            </pre>
+            <div className="space-y-2">
+              <div className="flex justify-end">
+                <CopyButton getText={() => JSON.stringify(req.response_body, null, 2)} />
+              </div>
+              <pre className="font-mono text-[11.5px] text-text-muted leading-relaxed whitespace-pre-wrap break-all">
+                {JSON.stringify(req.response_body, null, 2)}
+              </pre>
+            </div>
           )
         ) : tab === 'trace' ? (
           <TraceTab traceId={req.trace_id ?? null} />
+        ) : tab === 'error' ? (
+          <pre className="font-mono text-[12px] text-bad leading-relaxed whitespace-pre-wrap break-all">
+            {req.error_message}
+          </pre>
         ) : (
           <RawTab req={req} />
         )}
@@ -441,7 +479,12 @@ function RawTab({ req }: { req: RequestDetail }) {
   return (
     <div className="space-y-5">
       <section>
-        <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-2">Request body</div>
+        <div className="flex items-center justify-between mb-2">
+          <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint">Request body</div>
+          {req.request_body != null && (
+            <CopyButton getText={() => JSON.stringify(req.request_body, null, 2)} />
+          )}
+        </div>
         {req.request_body == null ? (
           <p className="font-mono text-[11.5px] text-text-faint">Not captured.</p>
         ) : (
@@ -451,7 +494,12 @@ function RawTab({ req }: { req: RequestDetail }) {
         )}
       </section>
       <section>
-        <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-2">Response body</div>
+        <div className="flex items-center justify-between mb-2">
+          <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint">Response body</div>
+          {req.response_body != null && (
+            <CopyButton getText={() => JSON.stringify(req.response_body, null, 2)} />
+          )}
+        </div>
         {req.response_body == null ? (
           <p className="font-mono text-[11.5px] text-text-faint">Not captured.</p>
         ) : (
