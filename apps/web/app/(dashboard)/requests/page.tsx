@@ -220,7 +220,7 @@ function RequestDrawer({ requestId, visible, onClose, onPrev, onNext, hasPrev, h
   if (!visible) return null
 
   return (
-    <aside className="w-[440px] shrink-0 border-l border-border bg-bg-elev overflow-auto flex flex-col">
+    <aside className="flex-1 min-w-0 border-l border-border bg-bg-elev overflow-auto flex flex-col">
       {/* Header */}
       <div className="px-5 py-4 border-b border-border">
         <div className="flex items-center gap-2 mb-2.5">
@@ -282,7 +282,7 @@ function RequestDrawer({ requestId, visible, onClose, onPrev, onNext, hasPrev, h
 
       {/* KV grid */}
       {req && (
-        <div className="px-5 py-3.5 border-b border-border grid grid-cols-2 gap-x-3.5 gap-y-3">
+        <div className="px-5 py-3.5 border-b border-border grid grid-cols-4 gap-x-3.5 gap-y-3">
           {[
             ['Model', req.model],
             ['Provider', req.provider],
@@ -832,9 +832,9 @@ export default function RequestsPage() {
         />
       </div>
 
-      {/* Table + optional drawer */}
+      {/* Table + optional detail panel */}
       <div className="flex flex-1 overflow-hidden">
-        <div className="flex flex-col flex-1 overflow-hidden">
+        <div className={cn('flex flex-col overflow-hidden transition-[width] duration-150', drawerOpen ? 'w-[370px] shrink-0' : 'flex-1')}>
           <RequestsTable
             rows={requests}
             isLoading={isLoading}
