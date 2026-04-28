@@ -25,8 +25,12 @@ interface StaleKey {
 
 export interface StaleKeyDigestResult {
   orgs_checked: number
+  /** Orgs where at least one stale key was detected (regardless of email outcome). */
+  orgs_with_stale_keys: number
+  /** Stale keys found across all orgs. Detection counter — NOT delivery. */
+  stale_keys_detected: number
+  /** Orgs where Resend reported a successful send. Stays 0 when RESEND_API_KEY is unset (dev fallback). */
   digests_sent: number
-  total_stale_keys: number
   errors: string[]
 }
 
@@ -114,8 +118,9 @@ async function getAdminEmails(orgId: string): Promise<string[]> {
 export async function runStaleKeyDigestJob(): Promise<StaleKeyDigestResult> {
   const result: StaleKeyDigestResult = {
     orgs_checked: 0,
+    orgs_with_stale_keys: 0,
+    stale_keys_detected: 0,
     digests_sent: 0,
-    total_stale_keys: 0,
     errors: [],
   }
 
@@ -138,6 +143,11 @@ export async function runStaleKeyDigestJob(): Promise<StaleKeyDigestResult> {
       const stale = await findStaleKeysForOrg(org.id, org.stale_key_threshold_days)
       if (stale.length === 0) continue
 
+      // Count detection up-front so dev fallback (no RESEND_API_KEY) and
+      // post-cron observability still reflect what was found.
+      result.orgs_with_stale_keys++
+      result.stale_keys_detected += stale.length
+
       const recipients = await getAdminEmails(org.id)
       if (recipients.length === 0) {
         result.errors.push(`no admin recipients for org ${org.id}`)
@@ -159,7 +169,6 @@ export async function runStaleKeyDigestJob(): Promise<StaleKeyDigestResult> {
 
       if (sentToAtLeastOne) {
         result.digests_sent++
-        result.total_stale_keys += stale.length
 
         await supabaseAdmin.from('audit_logs').insert({
           organization_id: org.id,
