@@ -68,6 +68,8 @@ geminiProxy.all('/*', async (c) => {
   const proxyOverheadMs = startMs - handlerStartMs
 
   const resBodyText = await upstreamRes.text()
+  let resBodyJson: unknown = null
+  try { resBodyJson = JSON.parse(resBodyText) } catch { /* non-JSON response */ }
 
   // Extract model name from the path (e.g. /v1/models/gemini-1.5-pro:generateContent)
   const modelMatch = /\/models\/([^/:]+)/.exec(originalPath)
@@ -76,9 +78,9 @@ geminiProxy.all('/*', async (c) => {
   let completionTokens = 0
   let totalTokens = 0
 
-  if (upstreamRes.ok) {
+  if (upstreamRes.ok && resBodyJson) {
     try {
-      const parsed = parseGeminiResponse(JSON.parse(resBodyText) as Record<string, unknown>)
+      const parsed = parseGeminiResponse(resBodyJson as Record<string, unknown>)
       if (parsed) {
         model = parsed.model || model
         promptTokens = parsed.promptTokens
@@ -109,7 +111,7 @@ geminiProxy.all('/*', async (c) => {
     proxyOverheadMs,
     statusCode: upstreamRes.status,
     requestBody: reqBodyJson,
-    responseBody: null,
+    responseBody: resBodyJson,
     errorMessage: upstreamRes.ok ? null : resBodyText.slice(0, 1000),
     traceId: c.req.header('x-trace-id') ?? null,
     spanId: c.req.header('x-span-id') ?? null,
