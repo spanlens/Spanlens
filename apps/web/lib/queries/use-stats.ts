@@ -6,7 +6,10 @@ import type { ApiEnvelope, StatsOverview, TimeseriesPoint } from './types'
 
 export const statsOverviewQueryKey = ['stats', 'overview'] as const
 
-export function useStatsOverview(params?: { projectId?: string; from?: string; to?: string }) {
+export function useStatsOverview(
+  params?: { projectId?: string; from?: string; to?: string },
+  options?: { refetchInterval?: number },
+) {
   return useQuery({
     queryKey: params ? ([...statsOverviewQueryKey, params] as const) : statsOverviewQueryKey,
     queryFn: async () => {
@@ -18,6 +21,7 @@ export function useStatsOverview(params?: { projectId?: string; from?: string; t
       const res = await apiGet<ApiEnvelope<StatsOverview>>(`/api/v1/stats/overview${suffix}`)
       return res.data
     },
+    ...(options?.refetchInterval != null ? { refetchInterval: options.refetchInterval } : {}),
   })
 }
 
@@ -47,7 +51,10 @@ export function statsTimeseriesQueryKey(params?: { projectId?: string; from?: st
   return params ? (['stats', 'timeseries', params] as const) : (['stats', 'timeseries'] as const)
 }
 
-export function useStatsTimeseries(params?: { projectId?: string; from?: string; to?: string }) {
+export function useStatsTimeseries(
+  params?: { projectId?: string; from?: string; to?: string },
+  options?: { refetchInterval?: number },
+) {
   return useQuery({
     queryKey: statsTimeseriesQueryKey(params),
     queryFn: async () => {
@@ -61,6 +68,7 @@ export function useStatsTimeseries(params?: { projectId?: string; from?: string;
       )
       return res.data
     },
+    ...(options?.refetchInterval != null ? { refetchInterval: options.refetchInterval } : {}),
   })
 }
 
