@@ -2,7 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query'
 import { apiGet } from '@/lib/api'
-import type { ApiEnvelope, StatsOverview, TimeseriesPoint } from './types'
+import type { ApiEnvelope, StatsOverview, TimeseriesPoint, SpendForecast } from './types'
 
 export const statsOverviewQueryKey = ['stats', 'overview'] as const
 
@@ -35,7 +35,11 @@ export interface ModelStat {
   errorRate: number
 }
 
-export function useStatsModels(hours = 24, projectId?: string) {
+export function useStatsModels(
+  hours = 24,
+  projectId?: string,
+  options?: { refetchInterval?: number },
+) {
   return useQuery({
     queryKey: ['stats', 'models', hours, projectId] as const,
     queryFn: async () => {
@@ -45,6 +49,21 @@ export function useStatsModels(hours = 24, projectId?: string) {
       return res.data ?? []
     },
     staleTime: 60_000,
+    ...(options?.refetchInterval != null ? { refetchInterval: options.refetchInterval } : {}),
+  })
+}
+
+export function useSpendForecast(projectId?: string) {
+  return useQuery({
+    queryKey: ['stats', 'spend-forecast', projectId] as const,
+    queryFn: async () => {
+      const qs = new URLSearchParams()
+      if (projectId) qs.set('projectId', projectId)
+      const suffix = qs.size > 0 ? `?${qs}` : ''
+      const res = await apiGet<ApiEnvelope<SpendForecast>>(`/api/v1/stats/spend-forecast${suffix}`)
+      return res.data ?? null
+    },
+    staleTime: 5 * 60_000,
   })
 }
 

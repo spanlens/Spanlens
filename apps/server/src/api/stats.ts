@@ -197,6 +197,83 @@ statsRouter.get('/timeseries', async (c) => {
   return c.json({ success: true, data: series })
 })
 
+// GET /api/v1/stats/spend-forecast — monthly spend forecast based on this month's actuals
+statsRouter.get('/spend-forecast', async (c) => {
+  const orgId = c.get('orgId')
+  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+
+  const projectId = c.req.query('projectId')
+
+  const now = new Date()
+  const year = now.getUTCFullYear()
+  const month = now.getUTCMonth()
+  const dayOfMonth = now.getUTCDate()
+  const daysInMonth = new Date(Date.UTC(year, month + 1, 0)).getUTCDate()
+  const monthStart = new Date(Date.UTC(year, month, 1)).toISOString()
+
+  const { data, error } = await supabaseAdmin.rpc('stats_timeseries', {
+    p_org_id: orgId,
+    p_project_id: projectId ?? null,
+    p_from: monthStart,
+    p_to: null,
+  })
+
+  if (error) return c.json({ error: 'Failed to fetch spend forecast' }, 500)
+
+  const costByDate = new Map<string, number>()
+  for (const r of ((data as TimeseriesRow[] | null) ?? [])) {
+    costByDate.set(r.day.slice(0, 10), parseFloat(Number(r.cost).toFixed(6)))
+  }
+
+  // Actual daily costs day-1..today
+  const actualCosts: number[] = []
+  for (let d = 1; d <= dayOfMonth; d++) {
+    const key = new Date(Date.UTC(year, month, d)).toISOString().slice(0, 10)
+    actualCosts.push(costByDate.get(key) ?? 0)
+  }
+
+  const monthToDate = actualCosts.reduce((s, v) => s + v, 0)
+  const last7 = actualCosts.slice(-7)
+  const last7Avg = last7.length > 0 ? last7.reduce((s, v) => s + v, 0) / last7.length : 0
+
+  const thisWeekCost = actualCosts.slice(-7).reduce((s, v) => s + v, 0)
+  const prevWeekCost = actualCosts.slice(-14, -7).reduce((s, v) => s + v, 0)
+  const weeklyDeltaPct =
+    prevWeekCost > 0
+      ? parseFloat(((thisWeekCost - prevWeekCost) / prevWeekCost * 100).toFixed(1))
+      : null
+
+  const remainingDays = daysInMonth - dayOfMonth
+  const projectedMonthEnd = monthToDate + last7Avg * remainingDays
+
+  // Full month timeseries: actual for past days, projected for future, both on today
+  const timeseries: { date: string; actual: number | null; projected: number | null }[] = []
+  for (let d = 1; d <= daysInMonth; d++) {
+    const date = new Date(Date.UTC(year, month, d)).toISOString().slice(0, 10)
+    const isPast = d < dayOfMonth
+    const isToday = d === dayOfMonth
+    const isFuture = d > dayOfMonth
+    timeseries.push({
+      date,
+      actual: isPast || isToday ? (costByDate.get(date) ?? 0) : null,
+      projected: isToday || isFuture ? parseFloat(last7Avg.toFixed(6)) : null,
+    })
+  }
+
+  return c.json({
+    success: true,
+    data: {
+      monthToDate: parseFloat(monthToDate.toFixed(4)),
+      dayOfMonth,
+      daysInMonth,
+      dailyAvgUsd: parseFloat(last7Avg.toFixed(4)),
+      projectedMonthEndUsd: parseFloat(projectedMonthEnd.toFixed(4)),
+      weeklyDeltaPct,
+      timeseries,
+    },
+  })
+})
+
 /**
  * GET /api/v1/stats/latency?hours=24
  *
