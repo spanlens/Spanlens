@@ -1,7 +1,7 @@
 import { calculateCost, type Provider } from '../lib/cost.js'
 import { logRequestAsync, type RequestLogData } from '../lib/logger.js'
-import { parseOpenAIStreamChunk } from '../parsers/openai.js'
-import { parseAnthropicStreamStart, parseAnthropicStreamChunk } from '../parsers/anthropic.js'
+import { parseOpenAIStreamChunk, extractOpenAIStreamText } from '../parsers/openai.js'
+import { parseAnthropicStreamStart, parseAnthropicStreamChunk, extractAnthropicStreamText } from '../parsers/anthropic.js'
 
 type StreamLogBase = Omit<
   RequestLogData,
@@ -34,6 +34,14 @@ export async function logOpenAIStream(
 
   const cost = calculateCost('openai' as Provider, model, { promptTokens, completionTokens })
 
+  const text = extractOpenAIStreamText(lines)
+  const responseBody = text ? {
+    object: 'chat.completion',
+    model,
+    choices: [{ message: { role: 'assistant', content: text }, finish_reason: 'stop' }],
+    usage: { prompt_tokens: promptTokens, completion_tokens: completionTokens, total_tokens: totalTokens },
+  } : null
+
   await logRequestAsync({
     ...base,
     model,
@@ -41,6 +49,7 @@ export async function logOpenAIStream(
     completionTokens,
     totalTokens,
     costUsd: cost?.totalCost ?? null,
+    responseBody,
   })
 }
 
@@ -66,6 +75,15 @@ export async function logAnthropicStream(
   const totalTokens = promptTokens + completionTokens
   const cost = calculateCost('anthropic' as Provider, model, { promptTokens, completionTokens })
 
+  const text = extractAnthropicStreamText(lines)
+  const responseBody = text ? {
+    type: 'message',
+    role: 'assistant',
+    model,
+    content: [{ type: 'text', text }],
+    usage: { input_tokens: promptTokens, output_tokens: completionTokens },
+  } : null
+
   await logRequestAsync({
     ...base,
     model,
@@ -73,5 +91,6 @@ export async function logAnthropicStream(
     completionTokens,
     totalTokens,
     costUsd: cost?.totalCost ?? null,
+    responseBody,
   })
 }
