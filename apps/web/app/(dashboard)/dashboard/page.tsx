@@ -5,7 +5,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { KpiCard } from '@/components/dashboard/kpi-card'
 import { QuotaBanner } from '@/components/dashboard/quota-banner'
 import { Topbar, TimeRangeSelector, LiveDot } from '@/components/layout/topbar'
-import { useStatsOverview, useStatsTimeseries, useStatsModels } from '@/lib/queries/use-stats'
+import { useStatsOverview, useStatsTimeseries, useStatsModels, useSpendForecast } from '@/lib/queries/use-stats'
 import { useAnomalies } from '@/lib/queries/use-anomalies'
 import { useAlerts } from '@/lib/queries/use-alerts'
 import { useRecommendations, type ModelRecommendation } from '@/lib/queries/use-recommendations'
@@ -16,6 +16,7 @@ import { useDismissals, useDismissCard } from '@/lib/queries/use-dismissals'
 import { useCurrentProjectId } from '@/lib/project-context'
 import { cn } from '@/lib/utils'
 import { RequestChart } from '@/components/dashboard/request-chart'
+import { SpendForecastCard } from '@/components/dashboard/spend-forecast'
 import { WelcomeBanner } from '@/components/dashboard/welcome-banner'
 
 // ── Helpers ────────────────────────────────────────────────────
@@ -194,20 +195,18 @@ export default function DashboardPage() {
   const timeseries = useStatsTimeseries(timeArg, { refetchInterval: LIVE_REFETCH_MS })
   const anomalies = useAnomalies({ ...scopeArg, observationHours: hours })
   const alerts = useAlerts()
-  const recommendations = useRecommendations()
+  const recommendations = useRecommendations({ hours })
   const auditLogs = useAuditLogs({ limit: 6 })
   const promptsQuery = usePrompts(projectId ?? undefined)
-  const modelsQuery = useStatsModels(hours, projectId ?? undefined)
+  const modelsQuery = useStatsModels(hours, projectId ?? undefined, { refetchInterval: LIVE_REFETCH_MS })
+  const spendForecast = useSpendForecast(projectId ?? undefined)
   const securitySummary = useSecuritySummary(hours)
 
   const o = overview.data
   const isLoading = overview.isLoading || timeseries.isLoading
   const isError = overview.isError || timeseries.isError
 
-  const errorRate =
-    o && o.totalRequests > 0
-      ? ((o.errorRequests / o.totalRequests) * 100).toFixed(1) + '%'
-      : '0.0%'
+  const errorRate = o ? (o.errorRate * 100).toFixed(1) + '%' : '0.0%'
 
   const sparkRequests = useMemo(
     () => (timeseries.data ?? []).slice(-10).map((d) => d.requests),
@@ -580,6 +579,9 @@ export default function DashboardPage() {
             <RequestChart data={timeseries.data} firedAt={alertFiredAt} />
           )}
         </div>
+
+        {/* Spend forecast — always monthly, independent of time range selector */}
+        {spendForecast.data && <SpendForecastCard data={spendForecast.data} />}
 
         {/* 2-col: Top prompts + Models in use */}
         <div className="grid grid-cols-2 border-b border-border">
