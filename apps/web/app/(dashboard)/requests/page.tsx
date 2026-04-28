@@ -2,19 +2,14 @@
 import { useMemo, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
-import { Star, X } from 'lucide-react'
+import { X } from 'lucide-react'
 import { ExportDropdown } from '@/components/ui/export-dropdown'
 import { cn } from '@/lib/utils'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Topbar, LiveDot } from '@/components/layout/topbar'
 import {
   useRequests,
   useRequest,
-  useSavedFilters,
-  useCreateSavedFilter,
-  useDeleteSavedFilter,
-  type SavedFilter,
 } from '@/lib/queries/use-requests'
 import { useProviderKeys } from '@/lib/queries/use-provider-keys'
 import { useTrace } from '@/lib/queries/use-traces'
@@ -612,74 +607,6 @@ function RequestsTable({
   )
 }
 
-// ── Save filter dialog ────────────────────────────────────────────────────────
-interface SaveFilterDialogProps {
-  filters: UiFilters
-  onSave: (name: string) => Promise<unknown>
-}
-
-function SaveFilterDialog({ filters, onSave }: SaveFilterDialogProps) {
-  const [open, setOpen] = useState(false)
-  const [name, setName] = useState('')
-  const [error, setError] = useState<string | null>(null)
-  const [saving, setSaving] = useState(false)
-
-  async function handleSave(): Promise<void> {
-    if (!name.trim()) { setError('Name required'); return }
-    setSaving(true)
-    setError(null)
-    try {
-      await onSave(name.trim())
-      setName('')
-      setOpen(false)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to save')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <button className="inline-flex items-center gap-1.5 px-2 py-1 rounded font-mono text-[11px] text-text-muted hover:text-text border border-border hover:border-border-strong transition-colors">
-          <Star className="h-3 w-3" /> Save view
-        </button>
-      </DialogTrigger>
-      <DialogContent>
-        <DialogHeader><DialogTitle>Save current filter</DialogTitle></DialogHeader>
-        <div className="space-y-4">
-          <div className="space-y-1.5">
-            <label htmlFor="filter-name" className="text-[12.5px] text-text-muted font-medium">Name</label>
-            <input
-              id="filter-name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="e.g. prod errors"
-              maxLength={80}
-              className="w-full h-9 px-3 rounded-[6px] border border-border bg-bg text-[13px] text-text placeholder:text-text-faint focus:outline-none focus:border-border-strong transition-colors"
-            />
-          </div>
-          <div className="rounded border bg-bg-muted p-3 font-mono text-[11.5px] text-text-muted space-y-1">
-            {filters.provider !== 'all' && <div>provider = {filters.provider}</div>}
-            {filters.status !== 'all' && <div>status = {filters.status}</div>}
-            {filters.model.trim() && <div>model ∋ &quot;{filters.model}&quot;</div>}
-            {filters.providerKeyId !== 'all' && <div>key = {filters.providerKeyId}</div>}
-          </div>
-          {error && <p className="text-[13px] text-bad">{error}</p>}
-          <button
-            onClick={() => void handleSave()}
-            disabled={saving}
-            className="w-full px-4 py-2 rounded bg-text text-bg font-medium text-[13px] hover:opacity-90 disabled:opacity-40 transition-opacity"
-          >
-            {saving ? 'Saving…' : 'Save'}
-          </button>
-        </div>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
 // ── Page ──────────────────────────────────────────────────────────────────────
 export default function RequestsPage() {
   const searchParams = useSearchParams()
@@ -727,9 +654,6 @@ export default function RequestsPage() {
   )
 
   const { data, isLoading, isFetching } = useRequests(serverFilters)
-  const savedFiltersQuery = useSavedFilters()
-  const createSaved = useCreateSavedFilter()
-  const deleteSaved = useDeleteSavedFilter()
   const providerKeysQuery = useProviderKeys()
 
   const visibleKeys = useMemo(() => {
@@ -755,17 +679,6 @@ export default function RequestsPage() {
       setSortField(field)
       setSortDir('desc')
     }
-    setPage(1)
-  }
-
-  function applySavedFilter(sf: SavedFilter): void {
-    const f = sf.filters as Partial<UiFilters>
-    setFilters({
-      provider: typeof f.provider === 'string' ? f.provider : 'all',
-      status: (['ok', '4xx', '5xx'].includes(f.status ?? '') ? f.status : 'all') as StatusFilter,
-      model: typeof f.model === 'string' ? f.model : '',
-      providerKeyId: typeof f.providerKeyId === 'string' ? f.providerKeyId : 'all',
-    })
     setPage(1)
   }
 
@@ -823,22 +736,6 @@ export default function RequestsPage() {
           ))}
         </div>
 
-        {/* Saved views */}
-        {(savedFiltersQuery.data ?? []).map((sf) => (
-          <span key={sf.id} className="inline-flex items-center gap-1">
-            <FilterPill active onClick={() => applySavedFilter(sf)}>
-              <Star className="h-2.5 w-2.5 text-accent" /> {sf.name}
-            </FilterPill>
-            <button
-              onClick={() => void deleteSaved.mutateAsync(sf.id)}
-              className="text-text-faint hover:text-bad transition-colors"
-              aria-label={`Remove ${sf.name}`}
-            >
-              <X className="h-3 w-3" />
-            </button>
-          </span>
-        ))}
-
         {/* Provider filter */}
         {filters.provider !== 'all' && (
           <FilterPill active onClick={() => setFilters((f) => ({ ...f, provider: 'all' }))}>
@@ -874,10 +771,6 @@ export default function RequestsPage() {
             if (filters.status !== 'all')   params.set('status', filters.status)
             return `/api/v1/exports/requests?${params.toString()}`
           }}
-        />
-        <SaveFilterDialog
-          filters={filters}
-          onSave={(name) => createSaved.mutateAsync({ name, filters })}
         />
       </div>
 
