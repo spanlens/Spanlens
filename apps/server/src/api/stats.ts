@@ -197,7 +197,23 @@ statsRouter.get('/timeseries', async (c) => {
   return c.json({ success: true, data: series })
 })
 
-// GET /api/v1/stats/spend-forecast — monthly spend forecast based on this month's actuals
+// Ordinary least squares linear regression — returns slope ($/day) and intercept.
+function olsRegression(ys: number[]): { slope: number; intercept: number } {
+  const n = ys.length
+  if (n < 2) return { slope: 0, intercept: ys[0] ?? 0 }
+  // x = day index 1..n
+  const sumX = (n * (n + 1)) / 2
+  const sumX2 = (n * (n + 1) * (2 * n + 1)) / 6
+  const sumY = ys.reduce((s, v) => s + v, 0)
+  const sumXY = ys.reduce((s, v, i) => s + v * (i + 1), 0)
+  const denom = n * sumX2 - sumX * sumX
+  if (denom === 0) return { slope: 0, intercept: sumY / n }
+  const slope = (n * sumXY - sumX * sumY) / denom
+  const intercept = (sumY - slope * sumX) / n
+  return { slope, intercept }
+}
+
+// GET /api/v1/stats/spend-forecast — monthly spend forecast via linear regression
 statsRouter.get('/spend-forecast', async (c) => {
   const orgId = c.get('orgId')
   if (!orgId) return c.json({ error: 'Organization not found' }, 404)
@@ -225,7 +241,7 @@ statsRouter.get('/spend-forecast', async (c) => {
     costByDate.set(r.day.slice(0, 10), parseFloat(Number(r.cost).toFixed(6)))
   }
 
-  // Actual daily costs day-1..today
+  // Build actual daily cost array (day 1 → today), filling missing days with 0
   const actualCosts: number[] = []
   for (let d = 1; d <= dayOfMonth; d++) {
     const key = new Date(Date.UTC(year, month, d)).toISOString().slice(0, 10)
@@ -233,9 +249,9 @@ statsRouter.get('/spend-forecast', async (c) => {
   }
 
   const monthToDate = actualCosts.reduce((s, v) => s + v, 0)
-  const last7 = actualCosts.slice(-7)
-  const last7Avg = last7.length > 0 ? last7.reduce((s, v) => s + v, 0) / last7.length : 0
+  const dailyAvgUsd = dayOfMonth > 0 ? monthToDate / dayOfMonth : 0
 
+  // Weekly delta (this week vs previous week total spend)
   const thisWeekCost = actualCosts.slice(-7).reduce((s, v) => s + v, 0)
   const prevWeekCost = actualCosts.slice(-14, -7).reduce((s, v) => s + v, 0)
   const weeklyDeltaPct =
@@ -243,20 +259,25 @@ statsRouter.get('/spend-forecast', async (c) => {
       ? parseFloat(((thisWeekCost - prevWeekCost) / prevWeekCost * 100).toFixed(1))
       : null
 
-  const remainingDays = daysInMonth - dayOfMonth
-  const projectedMonthEnd = monthToDate + last7Avg * remainingDays
+  // Linear regression over all actual days — captures trend, not just flat average
+  const { slope, intercept } = olsRegression(actualCosts)
 
-  // Full month timeseries: actual for past days, projected for future, both on today
+  // Project remaining days using the regression line (clamped to >= 0)
+  let projectedSum = 0
+  for (let d = dayOfMonth + 1; d <= daysInMonth; d++) {
+    projectedSum += Math.max(0, slope * d + intercept)
+  }
+  const projectedMonthEnd = monthToDate + projectedSum
+
+  // Full month timeseries: actual for past/today, regression line for today+future
   const timeseries: { date: string; actual: number | null; projected: number | null }[] = []
   for (let d = 1; d <= daysInMonth; d++) {
     const date = new Date(Date.UTC(year, month, d)).toISOString().slice(0, 10)
-    const isPast = d < dayOfMonth
-    const isToday = d === dayOfMonth
-    const isFuture = d > dayOfMonth
+    const regressionValue = parseFloat(Math.max(0, slope * d + intercept).toFixed(6))
     timeseries.push({
       date,
-      actual: isPast || isToday ? (costByDate.get(date) ?? 0) : null,
-      projected: isToday || isFuture ? parseFloat(last7Avg.toFixed(6)) : null,
+      actual: d <= dayOfMonth ? (costByDate.get(date) ?? 0) : null,
+      projected: d >= dayOfMonth ? regressionValue : null,
     })
   }
 
@@ -266,9 +287,11 @@ statsRouter.get('/spend-forecast', async (c) => {
       monthToDate: parseFloat(monthToDate.toFixed(4)),
       dayOfMonth,
       daysInMonth,
-      dailyAvgUsd: parseFloat(last7Avg.toFixed(4)),
+      dailyAvgUsd: parseFloat(dailyAvgUsd.toFixed(4)),
       projectedMonthEndUsd: parseFloat(projectedMonthEnd.toFixed(4)),
       weeklyDeltaPct,
+      // Positive = spend trending up $/day, negative = trending down
+      dailyTrendUsd: parseFloat(slope.toFixed(4)),
       timeseries,
     },
   })
