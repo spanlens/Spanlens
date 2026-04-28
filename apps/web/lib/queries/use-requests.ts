@@ -60,8 +60,13 @@ export function useRequest(id: string) {
       return res.data
     },
     enabled: Boolean(id),
+    // Request bodies are immutable once logged — cache generously.
     staleTime: 5 * 60_000,
-    // 404 means the resource doesn't exist — retrying would just spam the console.
+    // Window focus / mount should not re-trigger a detail fetch — the data
+    // doesn't change and we don't want spurious network calls.
+    refetchOnWindowFocus: false,
+    refetchOnMount: false,
+    // 404 = resource doesn't exist; retrying only spams the console.
     retry: (failureCount, error) => {
       if (error instanceof ApiError && error.status === 404) return false
       return failureCount < 3
