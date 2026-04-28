@@ -94,7 +94,6 @@ export interface RequestRow {
 export interface RequestDetail extends RequestRow {
   request_body: unknown
   response_body: unknown
-  provider_key_prefix?: string | null
 }
 
 export interface RequestsPage {
