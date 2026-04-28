@@ -87,7 +87,7 @@ requestsRouter.get('/:id', async (c) => {
 
   const { data, error } = await supabaseAdmin
     .from('requests')
-    .select('*, provider_keys ( name, key_prefix )')
+    .select('*, provider_keys ( name )')
     .eq('id', requestId)
     .eq('organization_id', orgId)
     .single()
@@ -95,8 +95,8 @@ requestsRouter.get('/:id', async (c) => {
   if (error || !data) return c.json({ error: 'Request not found' }, 404)
 
   type EmbeddedKeyDetail =
-    | { name: string | null; key_prefix: string | null }
-    | Array<{ name: string | null; key_prefix: string | null }>
+    | { name: string | null }
+    | Array<{ name: string | null }>
     | null
     | undefined
   const nested = (data as unknown as { provider_keys?: EmbeddedKeyDetail }).provider_keys
@@ -104,7 +104,6 @@ requestsRouter.get('/:id', async (c) => {
   const flat = {
     ...data,
     provider_key_name: keyObj?.name ?? null,
-    provider_key_prefix: keyObj?.key_prefix ?? null,
     provider_keys: undefined,
   }
 
