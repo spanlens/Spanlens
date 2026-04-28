@@ -342,10 +342,11 @@ export default function DashboardPage() {
         {/* Greeting */}
         <div className="px-[22px] py-[22px] border-b border-border">
           <div className="flex items-baseline gap-3 mb-1">
-            <span className="text-[26px] font-medium tracking-[-0.6px]">
+            {/* suppressHydrationWarning: greeting() uses new Date() — server UTC ≠ client local time */}
+            <span suppressHydrationWarning className="text-[26px] font-medium tracking-[-0.6px]">
               {greeting()}.
             </span>
-            <span className="font-mono text-[11px] text-text-faint tracking-[0.03em]">
+            <span suppressHydrationWarning className="font-mono text-[11px] text-text-faint tracking-[0.03em]">
               {new Date().toLocaleDateString('en-US', {
                 weekday: 'short',
                 month: 'short',
