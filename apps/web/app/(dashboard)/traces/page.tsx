@@ -59,7 +59,6 @@ const GRID = '20px 1.4fr 1.2fr 0.6fr 0.8fr 0.8fr 0.9fr 1.2fr 1.2fr 0.5fr'
 
 export default function TracesPage() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
-  const [search, setSearch] = useState('')
   const [page, setPage] = useState(1)
 
   const apiStatus: TraceStatus | 'all' =
@@ -68,11 +67,6 @@ export default function TracesPage() {
   const { data, isLoading, isFetching } = useTraces({ page, limit: 50, status: apiStatus })
   const traces = useMemo(() => data?.data ?? [], [data])
   const meta = data?.meta ?? { total: 0, page: 1, limit: 50 }
-
-  const filtered = useMemo(
-    () => (search ? traces.filter((t) => t.name.toLowerCase().includes(search.toLowerCase())) : traces),
-    [traces, search],
-  )
 
   const withDuration = traces.filter((t) => t.duration_ms != null).map((t) => t.duration_ms!)
   const sorted = [...withDuration].sort((a, b) => a - b)
@@ -87,23 +81,9 @@ export default function TracesPage() {
       <Topbar
         crumbs={[{ label: 'Workspace', href: '/dashboard' }, { label: 'Traces' }]}
         right={
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2 px-[10px] py-[5px] border border-border rounded-[6px] bg-bg-elev w-[320px]">
-              <span className="text-text-faint text-[14px] leading-none">⌕</span>
-              <input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search by trace id, agent, user…"
-                className="flex-1 bg-transparent font-mono text-[12px] text-text-muted placeholder:text-text-faint focus:outline-none"
-              />
-              <span className="font-mono text-[10px] text-text-faint border border-border rounded-[3px] px-[5px] py-[1px]">
-                ⌘K
-              </span>
-            </div>
-            <span className="text-[12.5px] text-text-muted flex items-center gap-1.5">
-              <span className="w-[7px] h-[7px] rounded-full bg-good shrink-0" /> Live
-            </span>
-          </div>
+          <span className="text-[12.5px] text-text-muted flex items-center gap-1.5">
+            <span className="w-[7px] h-[7px] rounded-full bg-good shrink-0" /> Live
+          </span>
         }
       />
 
@@ -150,7 +130,7 @@ export default function TracesPage() {
           }}
         />
         <span className="font-mono text-[11px] text-text-faint">
-          Showing {filtered.length.toLocaleString()} of {meta.total.toLocaleString()}
+          Showing {traces.length.toLocaleString()} of {meta.total.toLocaleString()}
         </span>
       </div>
 
@@ -179,13 +159,13 @@ export default function TracesPage() {
               <div key={i} className="h-10 bg-bg-elev rounded animate-pulse" />
             ))}
           </div>
-        ) : filtered.length === 0 ? (
+        ) : traces.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full gap-3 text-text-muted">
             <p className="text-[13px]">No traces yet.</p>
             <p className="font-mono text-[12px]">Use the Spanlens SDK to start recording agent traces.</p>
           </div>
         ) : (
-          filtered.map((t) => {
+          traces.map((t) => {
             const isErr = t.status === 'error'
             const isRunning = t.status === 'running'
             return (
@@ -233,7 +213,7 @@ export default function TracesPage() {
       {!isLoading && traces.length > 0 && (
         <div className="flex items-center justify-between px-[22px] py-3 border-t border-border shrink-0">
           <span className="font-mono text-[11.5px] text-text-muted">
-            {filtered.length.toLocaleString()} of {meta.total.toLocaleString()} traces
+            {traces.length.toLocaleString()} of {meta.total.toLocaleString()} traces
           </span>
           <div className="flex items-center gap-2">
             <button

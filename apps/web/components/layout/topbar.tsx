@@ -58,9 +58,10 @@ function CmdKPill() {
       type="button"
       onClick={toggle}
       aria-label="Open command palette"
-      className="flex items-center justify-center w-[30px] h-[30px] text-text-faint border border-border rounded-[6px] hover:text-text-muted hover:border-border-strong transition-colors"
+      className="inline-flex items-center gap-1.5 h-[30px] px-2.5 text-text-faint border border-border rounded-[6px] hover:text-text-muted hover:border-border-strong transition-colors font-mono text-[12px]"
     >
-      <Search size={14} />
+      <Search size={13} />
+      Search
     </button>
   )
 }
