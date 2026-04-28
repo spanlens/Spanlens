@@ -220,9 +220,9 @@ function RequestDrawer({ requestId, visible, onClose, onPrev, onNext, hasPrev, h
 
   return (
     <aside className={cn(
-      'absolute right-0 top-0 bottom-0 z-20 w-[480px]',
+      'fixed right-0 top-0 bottom-0 z-50 w-[480px]',
       'border-l border-border bg-bg-elev flex flex-col',
-      'shadow-[-8px_0_24px_rgba(0,0,0,0.08)]',
+      'shadow-[-8px_0_32px_rgba(0,0,0,0.12)]',
       'transition-transform duration-200 ease-out',
       visible ? 'translate-x-0' : 'translate-x-full',
     )}>
@@ -838,7 +838,7 @@ export default function RequestsPage() {
       </div>
 
       {/* Table + slide-over detail panel */}
-      <div className="flex flex-1 overflow-hidden relative">
+      <div className="flex flex-1 overflow-hidden">
         <div className="flex flex-col flex-1 overflow-hidden">
           <RequestsTable
             rows={requests}
