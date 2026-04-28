@@ -40,9 +40,9 @@ export function KpiCard({
   className,
 }: KpiCardProps) {
   const strokeColor =
-    deltaVariant === 'warn' ? 'hsl(var(--accent))'
-    : deltaVariant === 'good' ? 'hsl(var(--good))'
-    : 'hsl(var(--text-faint))'
+    deltaVariant === 'warn' ? 'var(--accent)'
+    : deltaVariant === 'good' ? 'var(--good)'
+    : 'var(--text-faint)'
 
   const path = sparkValues && sparkValues.length > 1 ? sparklinePath(sparkValues) : null
 
@@ -80,11 +80,6 @@ export function KpiCard({
             preserveAspectRatio="none"
             className="block"
           >
-            <path
-              d={`${path} L${VW - 2},${VH} L2,${VH} Z`}
-              fill={strokeColor}
-              opacity="0.1"
-            />
             <path
               d={path}
               stroke={strokeColor}
