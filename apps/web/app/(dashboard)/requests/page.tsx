@@ -721,16 +721,7 @@ export default function RequestsPage() {
     <div className="-m-7 flex flex-col h-screen overflow-hidden">
       <Topbar
         crumbs={[{ label: 'Workspace' }, { label: 'Requests' }]}
-        right={
-          <div className="flex items-center gap-3">
-            <div className="inline-flex items-center gap-2 px-[10px] py-[5px] border border-border rounded-md bg-bg-elev font-mono text-[12px] text-text-muted w-72">
-              <span className="text-text-faint">⌕</span>
-              <span className="flex-1">Search by id, model, user…</span>
-              <span className="font-mono text-[10px] text-text-faint px-1.5 py-0.5 border border-border rounded-sm">⌘K</span>
-            </div>
-            <LiveDot />
-          </div>
-        }
+        right={<LiveDot />}
       />
 
       <StatStrip />
