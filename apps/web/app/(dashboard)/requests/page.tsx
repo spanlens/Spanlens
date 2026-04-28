@@ -73,8 +73,12 @@ function InlineSpark({ values, w = 120, h = 18, stroke = 'var(--border-strong)' 
 
 // ── Stat strip ────────────────────────────────────────────────────────────────
 function StatStrip() {
-  const overview = useStatsOverview()
-  const timeseries = useStatsTimeseries()
+  const from24h = useMemo(() => {
+    const ms = Math.floor((Date.now() - 24 * 3600_000) / 60_000) * 60_000
+    return new Date(ms).toISOString()
+  }, [])
+  const overview = useStatsOverview({ from: from24h })
+  const timeseries = useStatsTimeseries({ from: from24h })
   const anomalies = useAnomalies()
 
   const o = overview.data
@@ -227,11 +231,32 @@ function RequestDrawer({ requestId, visible, onClose, onPrev, onNext, hasPrev, h
   const messages = useMemo(() => {
     if (!req?.request_body || typeof req.request_body !== 'object') return null
     const body = req.request_body as Record<string, unknown>
-    if (!Array.isArray(body.messages)) return null
-    return (body.messages as unknown[]).filter(
-      (m): m is { role: string; content: unknown } =>
-        typeof m === 'object' && m !== null && typeof (m as { role?: unknown }).role === 'string',
-    )
+
+    // OpenAI / Anthropic: messages[]
+    if (Array.isArray(body.messages)) {
+      return (body.messages as unknown[]).filter(
+        (m): m is { role: string; content: unknown } =>
+          typeof m === 'object' && m !== null && typeof (m as { role?: unknown }).role === 'string',
+      )
+    }
+
+    // Gemini: contents[].parts[].text
+    if (Array.isArray(body.contents)) {
+      return (body.contents as unknown[])
+        .filter(
+          (m): m is { role: string; parts: Array<{ text?: string }> } =>
+            typeof m === 'object' &&
+            m !== null &&
+            typeof (m as Record<string, unknown>).role === 'string' &&
+            Array.isArray((m as Record<string, unknown>).parts),
+        )
+        .map((m) => ({
+          role: m.role === 'model' ? 'assistant' : m.role,
+          content: m.parts.filter((p) => typeof p.text === 'string').map((p) => p.text as string).join(''),
+        }))
+    }
+
+    return null
   }, [req?.request_body])
 
   return (
@@ -304,21 +329,50 @@ function RequestDrawer({ requestId, visible, onClose, onPrev, onNext, hasPrev, h
       {/* KV grid */}
       {req && (
         <div className="px-5 py-3.5 border-b border-border grid grid-cols-2 gap-x-3.5 gap-y-3">
-          {[
+          {([
             ['Model', req.model],
             ['Provider', req.provider],
             ['Status', String(req.status_code)],
             ['Key', req.provider_key_name ?? '—'],
             ['Prompt tokens', req.prompt_tokens.toLocaleString()],
             ['Completion', req.completion_tokens.toLocaleString()],
-            ['Trace', req.trace_id ? req.trace_id.slice(0, 12) + '…' : '—'],
-            ['Span', req.span_id ? req.span_id.slice(0, 12) + '…' : '—'],
-          ].map(([k, v]) => (
+          ] as [string, string][]).map(([k, v]) => (
             <div key={k}>
               <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-0.5">{k}</div>
               <div className="font-mono text-[12.5px] text-text truncate">{v}</div>
             </div>
           ))}
+
+          {/* Trace — link to trace page + copy full ID */}
+          <div>
+            <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-0.5">Trace</div>
+            {req.trace_id ? (
+              <div className="flex items-center gap-1 min-w-0">
+                <Link
+                  href={`/traces/${req.trace_id}`}
+                  className="font-mono text-[12.5px] text-accent hover:opacity-70 transition-opacity truncate min-w-0"
+                >
+                  {req.trace_id.slice(0, 12)}…
+                </Link>
+                <CopyButton getText={() => req.trace_id!} />
+              </div>
+            ) : (
+              <div className="font-mono text-[12.5px] text-text">—</div>
+            )}
+          </div>
+
+          {/* Span — copy full ID */}
+          <div>
+            <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-0.5">Span</div>
+            {req.span_id ? (
+              <div className="flex items-center gap-1 min-w-0">
+                <span className="font-mono text-[12.5px] text-text truncate min-w-0">{req.span_id.slice(0, 12)}…</span>
+                <CopyButton getText={() => req.span_id!} />
+              </div>
+            ) : (
+              <div className="font-mono text-[12.5px] text-text">—</div>
+            )}
+          </div>
         </div>
       )}
 
@@ -536,10 +590,36 @@ function extractMessageText(content: unknown): string {
 }
 
 function MessageDisplay({ messages, body }: { messages: { role: string; content: unknown }[] | null; body: unknown }) {
+  const systemText = useMemo(() => {
+    if (!body || typeof body !== 'object') return null
+    const b = body as Record<string, unknown>
+    if (typeof b.system === 'string' && b.system.trim()) return b.system
+    if (Array.isArray(b.system)) {
+      const text = (b.system as unknown[])
+        .map((s) => {
+          if (typeof s === 'object' && s !== null && typeof (s as Record<string, unknown>).text === 'string')
+            return (s as Record<string, unknown>).text as string
+          return ''
+        })
+        .filter(Boolean)
+        .join('\n')
+      return text || null
+    }
+    return null
+  }, [body])
+
   if (messages) {
     return (
       <div className="space-y-3">
         <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-2">Messages</div>
+        {systemText && (
+          <div>
+            <div className="font-mono text-[10px] text-text-faint tracking-[0.04em] mb-1">system</div>
+            <div className="px-3 py-2.5 rounded-[5px] border font-mono text-[11.5px] leading-relaxed whitespace-pre-wrap bg-bg-muted border-border text-text-faint">
+              {systemText}
+            </div>
+          </div>
+        )}
         {messages.map((m, i) => (
           <div key={i}>
             <div className="font-mono text-[10px] text-text-faint tracking-[0.04em] mb-1">{m.role}</div>
@@ -672,7 +752,10 @@ function RequestsTable({
                   <span className="text-text-muted">{req.total_tokens.toLocaleString()}</span>
                   <span className="text-text">{fmtCost(req.cost_usd)}</span>
                   <span className={isErr ? 'text-bad' : 'text-good'}>{req.status_code}</span>
-                  <span className="text-text-faint text-right">{relAge(req.created_at)}</span>
+                  <span
+                    className="text-text-faint text-right"
+                    title={new Date(req.created_at).toLocaleString()}
+                  >{relAge(req.created_at)}</span>
                 </div>
               )
             })}
@@ -704,6 +787,7 @@ export default function RequestsPage() {
   }, [modelInput])
   const [page, setPage] = useState(1)
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [pendingNavigation, setPendingNavigation] = useState<'first' | 'last' | null>(null)
   const [sortField, setSortField] = useState<SortField>('created_at')
   const [sortDir, setSortDir] = useState<SortDir>('desc')
   const [timeRange, setTimeRange] = useState<TimeRange>('all')
@@ -746,6 +830,14 @@ export default function RequestsPage() {
 
   const requests = data?.data ?? []
   const meta = data?.meta ?? { total: 0, page: 1, limit: 50 }
+
+  // After a cross-page navigation, select the first or last item once the new page loads
+  useEffect(() => {
+    if (!pendingNavigation || isLoading || requests.length === 0) return
+    const target = pendingNavigation === 'first' ? requests[0] : requests[requests.length - 1]
+    if (target) setSelectedId(target.id)
+    setPendingNavigation(null)
+  }, [pendingNavigation, isLoading, requests])
 
   const hasActiveFilters =
     filters.provider !== 'all' ||
@@ -934,10 +1026,26 @@ export default function RequestsPage() {
         requestId={selectedId ?? ''}
         visible={drawerOpen && !!selectedId}
         onClose={() => setSelectedId(null)}
-        onPrev={() => { if (selectedIdx > 0) setSelectedId(requests[selectedIdx - 1]?.id ?? null) }}
-        onNext={() => { if (selectedIdx < requests.length - 1) setSelectedId(requests[selectedIdx + 1]?.id ?? null) }}
-        hasPrev={selectedIdx > 0}
-        hasNext={selectedIdx < requests.length - 1}
+        onPrev={() => {
+          if (selectedIdx > 0) {
+            setSelectedId(requests[selectedIdx - 1]?.id ?? null)
+          } else if (page > 1) {
+            setPendingNavigation('last')
+            setPage((p) => p - 1)
+            setSelectedId(null)
+          }
+        }}
+        onNext={() => {
+          if (selectedIdx < requests.length - 1) {
+            setSelectedId(requests[selectedIdx + 1]?.id ?? null)
+          } else if (page * meta.limit < meta.total) {
+            setPendingNavigation('first')
+            setPage((p) => p + 1)
+            setSelectedId(null)
+          }
+        }}
+        hasPrev={selectedIdx > 0 || page > 1}
+        hasNext={selectedIdx < requests.length - 1 || page * meta.limit < meta.total}
         position={selectedIdx + 1}
         total={requests.length}
       />
