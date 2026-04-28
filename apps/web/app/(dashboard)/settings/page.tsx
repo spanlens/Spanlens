@@ -20,6 +20,7 @@ import {
   useOrganization,
   useUpdateOrganization,
   useUpdateOverageSettings,
+  useUpdateSecuritySettings,
 } from '@/lib/queries/use-organization'
 import {
   useCreateProviderKey,
@@ -508,9 +509,29 @@ function ApiKeysTab() {
   const [keyName, setKeyName]       = useState('')
   const [rotateId, setRotateId]     = useState<string | null>(null)
   const [rotateVal, setRotateVal]   = useState('')
-  const [autoExpireEnabled, setAutoExpireEnabled] = useState(true)
-  const [autoExpireDays, setAutoExpireDays]       = useState('90')
-  const [leakDetectionEnabled, setLeakDetectionEnabled] = useState(true)
+
+  // Security settings — load from org, persist on change. The org row carries
+  // the source of truth; the input + toggle below mirror it locally so the UI
+  // stays responsive while the PATCH is in flight.
+  const { data: org } = useOrganization()
+  const updateSecurity = useUpdateSecuritySettings()
+  const [thresholdDays, setThresholdDays] = useState<string>('90')
+  useEffect(() => {
+    if (org) setThresholdDays(String(org.stale_key_threshold_days))
+  }, [org])
+  const staleAlertsEnabled = org?.stale_key_alerts_enabled ?? true
+  const leakDetectionEnabled = org?.leak_detection_enabled ?? false
+
+  function commitThreshold() {
+    const n = Number(thresholdDays)
+    if (!Number.isInteger(n) || n < 30 || n > 365) {
+      // Revert to last-known good value rather than 400 the user.
+      if (org) setThresholdDays(String(org.stale_key_threshold_days))
+      return
+    }
+    if (org && n === org.stale_key_threshold_days) return
+    void updateSecurity.mutateAsync({ stale_key_threshold_days: n })
+  }
 
   async function handleAdd() {
     await createKey.mutateAsync({ provider, key: newKey, name: keyName || `${provider} key` })
@@ -556,21 +577,45 @@ function ApiKeysTab() {
           </div>
         ) : (
           <div className="divide-y divide-border">
-            <div className="grid grid-cols-[1.8fr_140px_140px_130px_80px] gap-4 px-6 py-3 font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint">
-              {['Name', 'Provider', 'Added', 'Status', ''].map((h, i) => <span key={i}>{h}</span>)}
+            <div className="grid grid-cols-[1.6fr_120px_120px_120px_120px_70px] gap-4 px-6 py-3 font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint">
+              {['Name', 'Provider', 'Last used', 'Status', 'Last scan', ''].map((h, i) => <span key={i}>{h}</span>)}
             </div>
-            {keys.map((key) => (
-              <div key={key.id} className="grid grid-cols-[1.8fr_140px_140px_130px_80px] gap-4 px-6 py-3 items-center">
-                <span className={cn('text-[13px] font-medium', !key.is_active && 'line-through text-text-faint')}>
-                  {key.name}
+            {keys.map((key) => {
+              const isStale =
+                key.is_active &&
+                org != null &&
+                Date.now() - Date.parse(key.last_used_at ?? key.created_at) >
+                  org.stale_key_threshold_days * 86_400_000
+              return (
+              <div key={key.id} className="grid grid-cols-[1.6fr_120px_120px_120px_120px_70px] gap-4 px-6 py-3 items-center">
+                <span className="flex items-center gap-2 min-w-0">
+                  <span className={cn('text-[13px] font-medium truncate', !key.is_active && 'line-through text-text-faint')}>
+                    {key.name}
+                  </span>
+                  {isStale && (
+                    <MonoPill variant="faint">stale</MonoPill>
+                  )}
                 </span>
                 <MonoPill variant="neutral" dot>{key.provider}</MonoPill>
                 <span className="font-mono text-[11px] text-text-muted">
-                  {new Date(key.created_at).toLocaleDateString()}
+                  {key.last_used_at
+                    ? `${Math.floor((Date.now() - Date.parse(key.last_used_at)) / 86_400_000)}d ago`
+                    : '—'}
                 </span>
                 <MonoPill variant={key.is_active ? 'good' : 'faint'} dot>
                   {key.is_active ? 'active' : 'revoked'}
                 </MonoPill>
+                <span>
+                  {key.last_scan_result === 'leaked' ? (
+                    <MonoPill variant="accent" dot>🚨 leaked</MonoPill>
+                  ) : key.last_scan_result === 'clean' ? (
+                    <MonoPill variant="good">clean</MonoPill>
+                  ) : key.last_scan_result === 'error' ? (
+                    <MonoPill variant="faint">error</MonoPill>
+                  ) : (
+                    <span className="font-mono text-[11px] text-text-faint">—</span>
+                  )}
+                </span>
                 {key.is_active && canEdit && (
                   <div className="flex items-center gap-1">
                     <button
@@ -593,26 +638,39 @@ function ApiKeysTab() {
                   </div>
                 )}
               </div>
-            ))}
+              )
+            })}
           </div>
         )}
       </Section>
 
-      <Section title="Security" description="Applies to all keys" className="mb-5">
-        <FormRow label="Auto-expire stale keys" hint="A key idle this long is revoked automatically.">
+      <Section title="Security" description="Notification-only — neither setting auto-revokes keys" className="mb-5">
+        <FormRow label="Stale key reminders" hint="Email admins a weekly digest of provider keys idle this long.">
           <div className="flex items-center gap-3">
             <NativeInput
-              value={autoExpireDays}
-              onChange={(e) => setAutoExpireDays(e.target.value)}
-              disabled={!autoExpireEnabled}
+              type="number"
+              min={30}
+              max={365}
+              value={thresholdDays}
+              onChange={(e) => setThresholdDays(e.target.value)}
+              onBlur={commitThreshold}
+              disabled={!staleAlertsEnabled || updateSecurity.isPending}
               className="w-20 font-mono text-[12.5px]"
             />
-            <span className="font-mono text-[11px] text-text-faint">days</span>
-            <Toggle on={autoExpireEnabled} onToggle={() => setAutoExpireEnabled((v) => !v)} />
+            <span className="font-mono text-[11px] text-text-faint">days (30–365)</span>
+            <Toggle
+              on={staleAlertsEnabled}
+              disabled={updateSecurity.isPending}
+              onToggle={() => void updateSecurity.mutateAsync({ stale_key_alerts_enabled: !staleAlertsEnabled })}
+            />
           </div>
         </FormRow>
-        <FormRow label="Leaked-key detection" hint="Scan public sources for key prefixes and auto-revoke on match.">
-          <Toggle on={leakDetectionEnabled} onToggle={() => setLeakDetectionEnabled((v) => !v)} />
+        <FormRow label="Leaked-key detection" hint="Daily GitGuardian scan against public sources. Email-only — admins decide whether to revoke.">
+          <Toggle
+            on={leakDetectionEnabled}
+            disabled={updateSecurity.isPending}
+            onToggle={() => void updateSecurity.mutateAsync({ leak_detection_enabled: !leakDetectionEnabled })}
+          />
         </FormRow>
       </Section>
 

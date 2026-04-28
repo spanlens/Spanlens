@@ -1,4 +1,3 @@
-Connecting to db 5432
 export type Json =
   | string
   | number
@@ -507,6 +506,7 @@ export type Database = {
           allow_overage: boolean
           created_at: string
           id: string
+          leak_detection_enabled: boolean
           name: string
           overage_cap_multiplier: number
           owner_id: string
@@ -514,12 +514,15 @@ export type Database = {
           plan: string
           quota_warning_100_sent_at: string | null
           quota_warning_80_sent_at: string | null
+          stale_key_alerts_enabled: boolean
+          stale_key_threshold_days: number
           updated_at: string
         }
         Insert: {
           allow_overage?: boolean
           created_at?: string
           id?: string
+          leak_detection_enabled?: boolean
           name: string
           overage_cap_multiplier?: number
           owner_id: string
@@ -527,12 +530,15 @@ export type Database = {
           plan?: string
           quota_warning_100_sent_at?: string | null
           quota_warning_80_sent_at?: string | null
+          stale_key_alerts_enabled?: boolean
+          stale_key_threshold_days?: number
           updated_at?: string
         }
         Update: {
           allow_overage?: boolean
           created_at?: string
           id?: string
+          leak_detection_enabled?: boolean
           name?: string
           overage_cap_multiplier?: number
           owner_id?: string
@@ -540,6 +546,8 @@ export type Database = {
           plan?: string
           quota_warning_100_sent_at?: string | null
           quota_warning_80_sent_at?: string | null
+          stale_key_alerts_enabled?: boolean
+          stale_key_threshold_days?: number
           updated_at?: string
         }
         Relationships: []
@@ -633,6 +641,51 @@ export type Database = {
           },
         ]
       }
+      provider_key_leak_scans: {
+        Row: {
+          details: Json | null
+          id: string
+          notified_at: string | null
+          organization_id: string
+          provider_key_id: string
+          result: string
+          scanned_at: string
+        }
+        Insert: {
+          details?: Json | null
+          id?: string
+          notified_at?: string | null
+          organization_id: string
+          provider_key_id: string
+          result: string
+          scanned_at?: string
+        }
+        Update: {
+          details?: Json | null
+          id?: string
+          notified_at?: string | null
+          organization_id?: string
+          provider_key_id?: string
+          result?: string
+          scanned_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "provider_key_leak_scans_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "provider_key_leak_scans_provider_key_id_fkey"
+            columns: ["provider_key_id"]
+            isOneToOne: false
+            referencedRelation: "provider_keys"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       provider_keys: {
         Row: {
           created_at: string
@@ -701,6 +754,7 @@ export type Database = {
           prompt_version_id: string | null
           provider: string
           provider_key_id: string | null
+          proxy_overhead_ms: number | null
           request_body: Json | null
           response_body: Json | null
           span_id: string | null
@@ -724,6 +778,7 @@ export type Database = {
           prompt_version_id?: string | null
           provider: string
           provider_key_id?: string | null
+          proxy_overhead_ms?: number | null
           request_body?: Json | null
           response_body?: Json | null
           span_id?: string | null
@@ -747,6 +802,7 @@ export type Database = {
           prompt_version_id?: string | null
           provider?: string
           provider_key_id?: string | null
+          proxy_overhead_ms?: number | null
           request_body?: Json | null
           response_body?: Json | null
           span_id?: string | null
@@ -1195,6 +1251,118 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      waitlist: {
+        Row: {
+          company: string | null
+          created_at: string | null
+          email: string
+          id: string
+          name: string | null
+          status: string
+          use_case: string | null
+        }
+        Insert: {
+          company?: string | null
+          created_at?: string | null
+          email: string
+          id?: string
+          name?: string | null
+          status?: string
+          use_case?: string | null
+        }
+        Update: {
+          company?: string | null
+          created_at?: string | null
+          email?: string
+          id?: string
+          name?: string | null
+          status?: string
+          use_case?: string | null
+        }
+        Relationships: []
+      }
+      webhook_deliveries: {
+        Row: {
+          delivered_at: string
+          duration_ms: number | null
+          error_message: string | null
+          event_type: string
+          http_status: number | null
+          id: string
+          status: string
+          webhook_id: string
+        }
+        Insert: {
+          delivered_at?: string
+          duration_ms?: number | null
+          error_message?: string | null
+          event_type: string
+          http_status?: number | null
+          id?: string
+          status: string
+          webhook_id: string
+        }
+        Update: {
+          delivered_at?: string
+          duration_ms?: number | null
+          error_message?: string | null
+          event_type?: string
+          http_status?: number | null
+          id?: string
+          status?: string
+          webhook_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "webhook_deliveries_webhook_id_fkey"
+            columns: ["webhook_id"]
+            isOneToOne: false
+            referencedRelation: "webhooks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      webhooks: {
+        Row: {
+          created_at: string
+          events: string[]
+          id: string
+          is_active: boolean
+          name: string
+          organization_id: string
+          secret: string
+          url: string
+        }
+        Insert: {
+          created_at?: string
+          events?: string[]
+          id?: string
+          is_active?: boolean
+          name: string
+          organization_id: string
+          secret: string
+          url: string
+        }
+        Update: {
+          created_at?: string
+          events?: string[]
+          id?: string
+          is_active?: boolean
+          name?: string
+          organization_id?: string
+          secret?: string
+          url?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "webhooks_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {

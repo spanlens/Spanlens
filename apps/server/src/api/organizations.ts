@@ -63,13 +63,93 @@ organizationsRouter.get('/me', async (c) => {
 
   const { data, error } = await supabaseAdmin
     .from('organizations')
-    .select('id, name, plan, allow_overage, overage_cap_multiplier, created_at, updated_at')
+    .select('id, name, plan, allow_overage, overage_cap_multiplier, stale_key_alerts_enabled, stale_key_threshold_days, leak_detection_enabled, created_at, updated_at')
     .eq('id', orgId)
     .single()
 
   if (error || !data) {
     return c.json({ error: 'Organization not found' }, 404)
   }
+
+  return c.json({ success: true, data })
+})
+
+// PATCH /api/v1/organizations/me/security — update notification-only key
+// security policies. Both flags are notification-only — no auto-revoke
+// happens server-side regardless of these settings (the cron handlers
+// short-circuit when disabled).
+//
+// Body (all optional):
+//   stale_key_alerts_enabled : boolean
+//   stale_key_threshold_days : 30..365
+//   leak_detection_enabled   : boolean
+organizationsRouter.patch('/me/security', requireAdmin, async (c) => {
+  const userId = c.get('userId')
+  const orgId = c.get('orgId')
+  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+
+  let body: {
+    stale_key_alerts_enabled?: unknown
+    stale_key_threshold_days?: unknown
+    leak_detection_enabled?: unknown
+  }
+  try {
+    body = (await c.req.json()) as typeof body
+  } catch {
+    return c.json({ error: 'Invalid JSON body' }, 400)
+  }
+
+  const patch: {
+    stale_key_alerts_enabled?: boolean
+    stale_key_threshold_days?: number
+    leak_detection_enabled?: boolean
+  } = {}
+
+  if (body.stale_key_alerts_enabled !== undefined) {
+    if (typeof body.stale_key_alerts_enabled !== 'boolean') {
+      return c.json({ error: 'stale_key_alerts_enabled must be a boolean' }, 400)
+    }
+    patch.stale_key_alerts_enabled = body.stale_key_alerts_enabled
+  }
+
+  if (body.stale_key_threshold_days !== undefined) {
+    const n = Number(body.stale_key_threshold_days)
+    if (!Number.isInteger(n) || n < 30 || n > 365) {
+      return c.json({ error: 'stale_key_threshold_days must be an integer between 30 and 365' }, 400)
+    }
+    patch.stale_key_threshold_days = n
+  }
+
+  if (body.leak_detection_enabled !== undefined) {
+    if (typeof body.leak_detection_enabled !== 'boolean') {
+      return c.json({ error: 'leak_detection_enabled must be a boolean' }, 400)
+    }
+    patch.leak_detection_enabled = body.leak_detection_enabled
+  }
+
+  if (Object.keys(patch).length === 0) {
+    return c.json({ error: 'no fields to update' }, 400)
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from('organizations')
+    .update(patch)
+    .eq('id', orgId)
+    .select('id, name, plan, allow_overage, overage_cap_multiplier, stale_key_alerts_enabled, stale_key_threshold_days, leak_detection_enabled, created_at, updated_at')
+    .single()
+
+  if (error || !data) {
+    return c.json({ error: 'Update failed' }, 500)
+  }
+
+  await supabaseAdmin.from('audit_logs').insert({
+    organization_id: orgId,
+    user_id: userId,
+    action: 'org.security.update',
+    resource_type: 'organization',
+    resource_id: orgId,
+    metadata: patch,
+  })
 
   return c.json({ success: true, data })
 })
