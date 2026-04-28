@@ -144,6 +144,7 @@ statsRouter.get('/models', async (c) => {
     .select('provider, model, cost_usd, latency_ms, status_code')
     .eq('organization_id', orgId)
     .gte('created_at', sinceIso)
+    .limit(50_000)
 
   if (projectId) query = query.eq('project_id', projectId)
 
