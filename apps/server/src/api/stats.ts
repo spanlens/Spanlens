@@ -262,11 +262,14 @@ statsRouter.get('/spend-forecast', async (c) => {
   // Linear regression over all actual days — captures trend, not just flat average
   const { slope, intercept } = olsRegression(actualCosts)
 
-  // Project remaining days using the regression line (clamped to >= 0)
+  // Project remaining days using the regression line.
+  // Allow negative contributions so declining trends reduce the forecast;
+  // clamp only to avoid a negative total month-end figure.
   let projectedSum = 0
   for (let d = dayOfMonth + 1; d <= daysInMonth; d++) {
-    projectedSum += Math.max(0, slope * d + intercept)
+    projectedSum += slope * d + intercept
   }
+  projectedSum = Math.max(0, projectedSum)
   const projectedMonthEnd = monthToDate + projectedSum
 
   // Full month timeseries: actual for past/today, regression line for today+future
