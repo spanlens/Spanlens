@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { X } from 'lucide-react'
 import {
   usePrompts,
@@ -21,16 +21,37 @@ function fmtMs(v: number): string {
 }
 
 type FilterType = 'all' | 'ab'
+type MinCalls = 0 | 1 | 10 | 100
+type DateRange = '24h' | '7d' | '30d'
+type ViewMode = 'all' | 'active'
 
 const GRID = '20px 1.4fr 0.6fr 0.6fr 0.9fr 0.9fr 0.9fr 1.2fr 0.8fr 0.5fr'
 
 export default function PromptsPage() {
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState<FilterType>('all')
+  const [minCalls, setMinCalls] = useState<MinCalls>(0)
+  const [callsMenuOpen, setCallsMenuOpen] = useState(false)
+  const [dateRange, setDateRange] = useState<DateRange>('24h')
+  const [dateMenuOpen, setDateMenuOpen] = useState(false)
+  const [viewMode, setViewMode] = useState<ViewMode>('all')
   const [selected, setSelected] = useState<string | null>(null)
   const [formOpen, setFormOpen] = useState(false)
   const [form, setForm] = useState({ name: '', content: '' })
   const [formError, setFormError] = useState<string | null>(null)
+
+  const callsMenuRef = useRef<HTMLDivElement>(null)
+  const dateMenuRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!callsMenuOpen && !dateMenuOpen) return
+    const handler = (e: PointerEvent) => {
+      if (callsMenuOpen && !callsMenuRef.current?.contains(e.target as Node)) setCallsMenuOpen(false)
+      if (dateMenuOpen && !dateMenuRef.current?.contains(e.target as Node)) setDateMenuOpen(false)
+    }
+    document.addEventListener('pointerdown', handler)
+    return () => document.removeEventListener('pointerdown', handler)
+  }, [callsMenuOpen, dateMenuOpen])
 
   const { data: prompts, isLoading } = usePrompts()
   const compareQuery = usePromptCompare(selected, 24 * 30)
@@ -40,8 +61,13 @@ export default function PromptsPage() {
   const totalVersions = all.reduce((s, p) => s + p.version, 0)
   const totalCalls24h = all.reduce((s, p) => s + (p.stats?.calls ?? 0), 0)
   const totalSpend24h = all.reduce((s, p) => s + (p.stats?.totalCostUsd ?? 0), 0)
+  const abCount = all.filter((p) => p.version > 1).length
   const filtered = all.filter(
-    (p) => !search || p.name.toLowerCase().includes(search.toLowerCase()),
+    (p) =>
+      (!search || p.name.toLowerCase().includes(search.toLowerCase())) &&
+      (filter === 'all' || p.version > 1) &&
+      (minCalls === 0 || (p.stats?.calls ?? 0) >= minCalls) &&
+      (viewMode === 'all' || (p.stats?.calls ?? 0) > 0),
   )
 
   async function handleCreate() {
@@ -123,7 +149,7 @@ export default function PromptsPage() {
       {/* Filter toolbar */}
       <div className="flex items-center gap-[6px] px-[22px] py-[10px] border-b border-border shrink-0 flex-wrap">
         <div className="flex p-0.5 border border-border rounded-[5px] bg-bg-elev font-mono text-[10.5px] tracking-[0.03em]">
-          {([['all', 'All', String(all.length)], ['ab', 'A/B', '0']] as [FilterType, string, string][]).map(([v, l, c]) => (
+          {([['all', 'All', String(all.length)], ['ab', 'A/B', String(abCount)]] as [FilterType, string, string][]).map(([v, l, c]) => (
             <button
               key={v}
               type="button"
@@ -140,17 +166,88 @@ export default function PromptsPage() {
         </div>
         <button
           type="button"
-          className="flex items-center gap-1.5 px-[10px] py-[4px] rounded-[5px] border border-border-strong bg-bg-elev font-mono text-[11px] text-text tracking-[0.03em]"
+          onClick={() => setViewMode((v) => (v === 'all' ? 'active' : 'all'))}
+          className={cn(
+            'flex items-center gap-1.5 px-[10px] py-[4px] rounded-[5px] border font-mono text-[11px] tracking-[0.03em] transition-colors',
+            viewMode === 'active'
+              ? 'border-border-strong bg-text text-bg'
+              : 'border-border-strong bg-bg-elev text-text',
+          )}
         >
-          <span className="text-text-faint">☰</span> views · <span className="text-text-muted">all prompts</span> ⌄
-        </button>
-        {['owner · all ⌄', 'calls ≥ — ⌄', 'last 24h ⌄'].map((label) => (
-          <span key={label} className="font-mono text-[11px] text-text-muted px-[9px] py-[4px] border border-border rounded-[5px]">
-            {label}
+          <span className={viewMode === 'active' ? 'opacity-60' : 'text-text-faint'}>☰</span>
+          {' '}views ·{' '}
+          <span className={viewMode === 'active' ? 'opacity-80' : 'text-text-muted'}>
+            {viewMode === 'active' ? 'active only' : 'all prompts'}
           </span>
-        ))}
+        </button>
+
+        <div className="relative" ref={callsMenuRef}>
+          <button
+            type="button"
+            onClick={() => setCallsMenuOpen((v) => !v)}
+            className={cn(
+              'font-mono text-[11px] px-[9px] py-[4px] border rounded-[5px] transition-colors',
+              minCalls > 0
+                ? 'border-border-strong bg-text text-bg'
+                : 'border-border text-text-muted hover:text-text',
+            )}
+          >
+            calls ≥ {minCalls === 0 ? 'all' : minCalls} ⌄
+          </button>
+          {callsMenuOpen && (
+            <div className="absolute left-0 top-full mt-1 z-20 bg-bg-elev border border-border rounded-[6px] shadow-lg overflow-hidden py-1 w-28">
+              {([0, 1, 10, 100] as const).map((n) => (
+                <button
+                  key={n}
+                  type="button"
+                  onClick={() => { setMinCalls(n); setCallsMenuOpen(false) }}
+                  className={cn(
+                    'w-full text-left px-[10px] py-[5px] font-mono text-[11px] transition-colors',
+                    minCalls === n ? 'text-text bg-bg-muted' : 'text-text-muted hover:text-text hover:bg-bg-muted',
+                  )}
+                >
+                  {n === 0 ? 'All' : `≥ ${n}`}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="relative" ref={dateMenuRef}>
+          <button
+            type="button"
+            onClick={() => setDateMenuOpen((v) => !v)}
+            className={cn(
+              'font-mono text-[11px] px-[9px] py-[4px] border rounded-[5px] transition-colors',
+              dateRange !== '24h'
+                ? 'border-border-strong bg-text text-bg'
+                : 'border-border text-text-muted hover:text-text',
+            )}
+          >
+            {dateRange} ⌄
+          </button>
+          {dateMenuOpen && (
+            <div className="absolute left-0 top-full mt-1 z-20 bg-bg-elev border border-border rounded-[6px] shadow-lg overflow-hidden py-1 w-20">
+              {(['24h', '7d', '30d'] as const).map((r) => (
+                <button
+                  key={r}
+                  type="button"
+                  onClick={() => { setDateRange(r); setDateMenuOpen(false) }}
+                  className={cn(
+                    'w-full text-left px-[10px] py-[5px] font-mono text-[11px] transition-colors',
+                    dateRange === r ? 'text-text bg-bg-muted' : 'text-text-muted hover:text-text hover:bg-bg-muted',
+                  )}
+                >
+                  {r}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
         <span className="flex-1" />
-        <span className="font-mono text-[11px] text-text-faint">{all.length} prompts</span>
+        <span className="font-mono text-[11px] text-text-faint">
+          {filtered.length === all.length ? `${all.length} prompts` : `${filtered.length} of ${all.length} prompts`}
+        </span>
       </div>
 
       {/* Column header */}

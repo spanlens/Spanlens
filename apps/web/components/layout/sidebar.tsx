@@ -7,6 +7,7 @@ import { Sun, Moon, Monitor } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
 import { useStatsOverview } from '@/lib/queries/use-stats'
+import { useQuota } from '@/lib/queries/use-billing'
 import { useAnomalies } from '@/lib/queries/use-anomalies'
 import { useAlerts } from '@/lib/queries/use-alerts'
 import { useRecommendations } from '@/lib/queries/use-recommendations'
@@ -328,6 +329,8 @@ export function Sidebar() {
   const alerts = useAlerts()
   const recommendations = useRecommendations()
 
+  const quota = useQuota()
+
   const reqCount = overview.data?.totalRequests
   const anomalyCount = (anomalies.data?.data ?? []).length
   // Firing = active rule whose last_triggered_at is within the past hour.
@@ -412,11 +415,28 @@ export function Sidebar() {
       {/* Usage + upgrade widget */}
       <div className="mx-[18px] mb-[14px] mt-2 p-3 rounded-md border border-border bg-bg-muted">
         <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-1.5">
-          Plan · free
+          Plan · {quota.data?.plan ?? 'free'}
         </div>
-        <div className="text-[13px] text-text mb-1.5">— / 50k requests</div>
+        <div className="text-[13px] text-text mb-1.5">
+          {quota.data
+            ? `${quota.data.usedThisMonth.toLocaleString()} / ${
+                quota.data.limit != null
+                  ? quota.data.limit >= 1000
+                    ? `${(quota.data.limit / 1000).toFixed(0)}k`
+                    : String(quota.data.limit)
+                  : '∞'
+              } requests`
+            : '— / — requests'}
+        </div>
         <div className="h-1 rounded-full bg-bg overflow-hidden">
-          <div className="h-full w-0 rounded-full bg-text" />
+          <div
+            className="h-full rounded-full bg-text transition-all"
+            style={{
+              width: quota.data?.limit != null && quota.data.limit > 0
+                ? `${Math.min(100, (quota.data.usedThisMonth / quota.data.limit) * 100).toFixed(1)}%`
+                : '0%',
+            }}
+          />
         </div>
         {isAdmin && (
           <button

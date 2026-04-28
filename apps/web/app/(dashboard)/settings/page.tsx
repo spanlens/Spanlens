@@ -1,5 +1,6 @@
 'use client'
 import { useCallback, useEffect, useState } from 'react'
+import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { Plus, RotateCcw, Trash2, Check, Sun, Moon, Monitor, type LucideIcon } from 'lucide-react'
 import { useTheme } from 'next-themes'
@@ -507,6 +508,9 @@ function ApiKeysTab() {
   const [keyName, setKeyName]       = useState('')
   const [rotateId, setRotateId]     = useState<string | null>(null)
   const [rotateVal, setRotateVal]   = useState('')
+  const [autoExpireEnabled, setAutoExpireEnabled] = useState(true)
+  const [autoExpireDays, setAutoExpireDays]       = useState('90')
+  const [leakDetectionEnabled, setLeakDetectionEnabled] = useState(true)
 
   async function handleAdd() {
     await createKey.mutateAsync({ provider, key: newKey, name: keyName || `${provider} key` })
@@ -597,13 +601,18 @@ function ApiKeysTab() {
       <Section title="Security" description="Applies to all keys" className="mb-5">
         <FormRow label="Auto-expire stale keys" hint="A key idle this long is revoked automatically.">
           <div className="flex items-center gap-3">
-            <NativeInput defaultValue="90" className="w-20 font-mono text-[12.5px]" />
+            <NativeInput
+              value={autoExpireDays}
+              onChange={(e) => setAutoExpireDays(e.target.value)}
+              disabled={!autoExpireEnabled}
+              className="w-20 font-mono text-[12.5px]"
+            />
             <span className="font-mono text-[11px] text-text-faint">days</span>
-            <Toggle on />
+            <Toggle on={autoExpireEnabled} onToggle={() => setAutoExpireEnabled((v) => !v)} />
           </div>
         </FormRow>
         <FormRow label="Leaked-key detection" hint="Scan public sources for key prefixes and auto-revoke on match.">
-          <Toggle on />
+          <Toggle on={leakDetectionEnabled} onToggle={() => setLeakDetectionEnabled((v) => !v)} />
         </FormRow>
       </Section>
 
@@ -810,9 +819,13 @@ function BillingTab() {
         </div>
       </Section>
 
-      <Section title="Budget alerts" action={<Hint>coming soon</Hint>} className="mb-5">
+      <Section title="Budget alerts" className="mb-5">
         <div className="px-6 py-4 text-[13px] text-text-muted">
-          Configure budget alerts in the <span className="text-text font-medium">Alerts</span> tab to get notified when spend approaches your quota.
+          Set cost and request thresholds in the{' '}
+          <Link href="/alerts" className="text-accent font-medium hover:opacity-80 transition-opacity">
+            Alerts →
+          </Link>{' '}
+          tab to get notified before spend exceeds your quota.
         </div>
       </Section>
     </div>
