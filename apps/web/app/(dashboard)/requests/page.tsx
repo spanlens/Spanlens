@@ -220,11 +220,9 @@ function RequestDrawer({ requestId, visible, onClose, onPrev, onNext, hasPrev, h
 
   return (
     <aside className={cn(
-      'fixed right-0 top-0 bottom-0 z-50 w-[480px]',
-      'border-l border-border bg-bg-elev flex flex-col',
-      'shadow-[-8px_0_32px_rgba(0,0,0,0.12)]',
-      'transition-transform duration-200 ease-out',
-      visible ? 'translate-x-0' : 'translate-x-full',
+      'shrink-0 bg-bg-elev flex flex-col overflow-hidden',
+      'transition-[width] duration-200 ease-out',
+      visible ? 'w-[480px] border-l border-border' : 'w-0',
     )}>
       {/* Header */}
       <div className="px-5 py-4 border-b border-border">
