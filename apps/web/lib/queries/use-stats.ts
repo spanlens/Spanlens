@@ -7,7 +7,7 @@ import type { ApiEnvelope, StatsOverview, TimeseriesPoint } from './types'
 export const statsOverviewQueryKey = ['stats', 'overview'] as const
 
 export function useStatsOverview(
-  params?: { projectId?: string; from?: string; to?: string },
+  params?: { projectId?: string; from?: string; to?: string; compare?: boolean },
   options?: { refetchInterval?: number },
 ) {
   return useQuery({
@@ -17,6 +17,7 @@ export function useStatsOverview(
       if (params?.projectId) qs.set('projectId', params.projectId)
       if (params?.from) qs.set('from', params.from)
       if (params?.to) qs.set('to', params.to)
+      if (params?.compare) qs.set('compare', 'true')
       const suffix = qs.size > 0 ? `?${qs}` : ''
       const res = await apiGet<ApiEnvelope<StatsOverview>>(`/api/v1/stats/overview${suffix}`)
       return res.data

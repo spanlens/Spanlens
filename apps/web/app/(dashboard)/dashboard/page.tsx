@@ -31,6 +31,21 @@ function fmtCost(n: number) {
   return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
+function fmtDelta(delta: number | null | undefined): string | undefined {
+  if (delta == null) return undefined
+  const sign = delta > 0 ? '+' : ''
+  return `${sign}${delta.toFixed(1)}%`
+}
+
+function deltaVariantFor(
+  delta: number | null | undefined,
+  higherIsBetter: boolean,
+): 'warn' | 'good' | 'neutral' {
+  if (delta == null || delta === 0) return 'neutral'
+  const positive = delta > 0
+  return positive === higherIsBetter ? 'good' : 'warn'
+}
+
 function timeRangeToHours(range: string): number {
   switch (range) {
     case '1h': return 1
@@ -174,7 +189,7 @@ export default function DashboardPage() {
   const scopeArg = projectId ? { projectId } : {}
   const timeArg = { ...scopeArg, ...queryDateRange }
 
-  const overview = useStatsOverview(timeArg, { refetchInterval: LIVE_REFETCH_MS })
+  const overview = useStatsOverview({ ...timeArg, compare: true }, { refetchInterval: LIVE_REFETCH_MS })
   const timeseries = useStatsTimeseries(timeArg, { refetchInterval: LIVE_REFETCH_MS })
   const anomalies = useAnomalies({ ...scopeArg, observationHours: hours })
   const alerts = useAlerts()
@@ -411,6 +426,8 @@ export default function DashboardPage() {
               <KpiCard
                 label={`Requests · ${timeRange}`}
                 value={o.totalRequests.toLocaleString()}
+                delta={fmtDelta(o.requestsDelta)}
+                deltaVariant={deltaVariantFor(o.requestsDelta, true)}
                 sparkValues={sparkRequests}
                 linkLabel="Requests →"
                 linkHref="/requests"
@@ -418,20 +435,17 @@ export default function DashboardPage() {
               <KpiCard
                 label={`Spend · ${timeRange}`}
                 value={fmtCost(o.totalCostUsd)}
+                delta={fmtDelta(o.costDelta)}
+                deltaVariant={deltaVariantFor(o.costDelta, false)}
                 sparkValues={sparkCost}
-                deltaVariant="good"
                 linkLabel="Savings →"
                 linkHref="/recommendations"
               />
               <KpiCard
-                label="Avg provider latency"
+                label={`Avg latency · ${timeRange}`}
                 value={`${o.avgLatencyMs}ms`}
-                {...((latencyStats.data?.overheadSampleCount ?? 0) > 0
-                  ? {
-                      delta: `+${latencyStats.data!.overhead.p95Ms}ms p95 ovhd`,
-                      deltaVariant: latencyStats.data!.overhead.withinSla ? ('neutral' as const) : ('warn' as const),
-                    }
-                  : {})}
+                delta={fmtDelta(o.latencyDelta)}
+                deltaVariant={deltaVariantFor(o.latencyDelta, false)}
                 sparkValues={[]}
                 linkLabel="Traces →"
                 linkHref="/traces"
@@ -439,10 +453,9 @@ export default function DashboardPage() {
               <KpiCard
                 label="Error rate"
                 value={errorRate}
+                delta={fmtDelta(o.errorRateDelta)}
+                deltaVariant={deltaVariantFor(o.errorRateDelta, false)}
                 sparkValues={sparkErrors}
-                deltaVariant={
-                  parseFloat(errorRate) > 1 ? 'warn' : 'neutral'
-                }
                 linkLabel="Anomalies →"
                 linkHref="/anomalies"
               />

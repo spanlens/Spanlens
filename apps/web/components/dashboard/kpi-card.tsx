@@ -21,8 +21,8 @@ function sparklinePath(values: number[]): string {
 interface KpiCardProps {
   label: string
   value: string
-  delta?: string
-  deltaVariant?: 'warn' | 'good' | 'neutral'
+  delta?: string | undefined
+  deltaVariant?: 'warn' | 'good' | 'neutral' | undefined
   sparkValues?: number[]
   linkLabel?: string
   linkHref?: string

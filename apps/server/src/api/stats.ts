@@ -31,7 +31,30 @@ interface OverviewRow {
   avg_latency_ms: number
 }
 
-// GET /api/v1/stats/overview
+function pctDelta(current: number, previous: number): number | null {
+  if (previous === 0) return null
+  return parseFloat(((current - previous) / previous * 100).toFixed(1))
+}
+
+function rowToOverview(row: OverviewRow | undefined) {
+  const totalCostUsd = Number(row?.total_cost_usd ?? 0)
+  const avgLatencyMs = Number(row?.avg_latency_ms ?? 0)
+  const totalRequests = Number(row?.total_requests ?? 0)
+  const errorRequests = Number(row?.error_requests ?? 0)
+  return {
+    totalRequests,
+    successRequests: Number(row?.success_requests ?? 0),
+    errorRequests,
+    totalCostUsd: parseFloat(totalCostUsd.toFixed(6)),
+    totalTokens: Number(row?.total_tokens ?? 0),
+    promptTokens: Number(row?.prompt_tokens ?? 0),
+    completionTokens: Number(row?.completion_tokens ?? 0),
+    avgLatencyMs: Math.round(avgLatencyMs),
+    errorRate: totalRequests > 0 ? errorRequests / totalRequests : 0,
+  }
+}
+
+// GET /api/v1/stats/overview?compare=true
 statsRouter.get('/overview', async (c) => {
   const orgId = c.get('orgId')
   if (!orgId) return c.json({ error: 'Organization not found' }, 404)
@@ -39,6 +62,48 @@ statsRouter.get('/overview', async (c) => {
   const projectId = c.req.query('projectId')
   const from = c.req.query('from')
   const to = c.req.query('to')
+  const compare = c.req.query('compare') === 'true'
+
+  if (compare) {
+    // Compute previous period of equal duration, run both in parallel.
+    const nowMs = Date.now()
+    const toMs = to ? new Date(to).getTime() : nowMs
+    const fromMs = from ? new Date(from).getTime() : toMs - 30 * 24 * 3_600_000
+    const duration = toMs - fromMs
+    const prevTo = new Date(fromMs).toISOString()
+    const prevFrom = new Date(fromMs - duration).toISOString()
+
+    const [curr, prev] = await Promise.all([
+      supabaseAdmin.rpc('stats_overview', {
+        p_org_id: orgId,
+        p_project_id: projectId ?? null,
+        p_from: from ?? null,
+        p_to: to ?? null,
+      }),
+      supabaseAdmin.rpc('stats_overview', {
+        p_org_id: orgId,
+        p_project_id: projectId ?? null,
+        p_from: prevFrom,
+        p_to: prevTo,
+      }),
+    ])
+
+    if (curr.error || prev.error) return c.json({ error: 'Failed to fetch stats' }, 500)
+
+    const currRow = rowToOverview((curr.data as OverviewRow[] | null)?.[0])
+    const prevRow = rowToOverview((prev.data as OverviewRow[] | null)?.[0])
+
+    return c.json({
+      success: true,
+      data: {
+        ...currRow,
+        requestsDelta: pctDelta(currRow.totalRequests, prevRow.totalRequests),
+        costDelta: pctDelta(currRow.totalCostUsd, prevRow.totalCostUsd),
+        latencyDelta: pctDelta(currRow.avgLatencyMs, prevRow.avgLatencyMs),
+        errorRateDelta: pctDelta(currRow.errorRate, prevRow.errorRate),
+      },
+    })
+  }
 
   const { data, error } = await supabaseAdmin.rpc('stats_overview', {
     p_org_id: orgId,
@@ -52,22 +117,7 @@ statsRouter.get('/overview', async (c) => {
   // RPC returns TABLE — supabase-js exposes it as an array. We only asked for
   // aggregates so it's always length 1 (even when zero matching rows).
   const row = (data as OverviewRow[] | null)?.[0]
-  const totalCostUsd = Number(row?.total_cost_usd ?? 0)
-  const avgLatencyMs = Number(row?.avg_latency_ms ?? 0)
-
-  return c.json({
-    success: true,
-    data: {
-      totalRequests: Number(row?.total_requests ?? 0),
-      successRequests: Number(row?.success_requests ?? 0),
-      errorRequests: Number(row?.error_requests ?? 0),
-      totalCostUsd: parseFloat(totalCostUsd.toFixed(6)),
-      totalTokens: Number(row?.total_tokens ?? 0),
-      promptTokens: Number(row?.prompt_tokens ?? 0),
-      completionTokens: Number(row?.completion_tokens ?? 0),
-      avgLatencyMs: Math.round(avgLatencyMs),
-    },
-  })
+  return c.json({ success: true, data: rowToOverview(row) })
 })
 
 interface TimeseriesRow {

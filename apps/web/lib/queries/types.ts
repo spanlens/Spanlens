@@ -111,6 +111,12 @@ export interface StatsOverview {
   promptTokens: number
   completionTokens: number
   avgLatencyMs: number
+  errorRate: number
+  /** Present when compare=true — % change vs previous equal-duration period. null = no prior data. */
+  requestsDelta?: number | null
+  costDelta?: number | null
+  latencyDelta?: number | null
+  errorRateDelta?: number | null
 }
 
 export interface TimeseriesPoint {
