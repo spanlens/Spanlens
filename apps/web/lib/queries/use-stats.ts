@@ -67,7 +67,7 @@ export function useStatsTimeseries(
       const res = await apiGet<ApiEnvelope<TimeseriesPoint[]>>(
         `/api/v1/stats/timeseries${suffix}`,
       )
-      return res.data
+      return res.data ?? []
     },
     ...(options?.refetchInterval != null ? { refetchInterval: options.refetchInterval } : {}),
   })

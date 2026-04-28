@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { cn } from '@/lib/utils'
 
 const VW = 100
@@ -96,12 +97,12 @@ export function KpiCard({
       </div>
 
       {linkLabel && linkHref && (
-        <a
+        <Link
           href={linkHref}
           className="font-mono text-[10.5px] text-text-muted mt-2.5 tracking-[0.03em] hover:text-text transition-colors"
         >
           {linkLabel}
-        </a>
+        </Link>
       )}
     </div>
   )
