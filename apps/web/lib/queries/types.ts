@@ -127,6 +127,16 @@ export interface TimeseriesPoint {
   errors: number
 }
 
+export interface SpendForecast {
+  monthToDate: number
+  dayOfMonth: number
+  daysInMonth: number
+  dailyAvgUsd: number
+  projectedMonthEndUsd: number
+  weeklyDeltaPct: number | null
+  timeseries: { date: string; actual: number | null; projected: number | null }[]
+}
+
 // ── Agent Tracing ──────────────────────────────────────────────
 
 export type TraceStatus = 'running' | 'completed' | 'error'
