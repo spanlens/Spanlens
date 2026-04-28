@@ -64,12 +64,6 @@ export default function SecurityPage() {
     <div className="-m-7 flex flex-col h-screen overflow-hidden bg-bg">
       <Topbar
         crumbs={[{ label: 'Workspace', href: '/dashboard' }, { label: 'Security' }]}
-        right={
-          <ExportDropdown
-            filename="spanlens-security"
-            buildUrl={(fmt) => `/api/v1/exports/security?format=${fmt}`}
-          />
-        }
       />
 
       {/* Stat strip */}
@@ -93,8 +87,14 @@ export default function SecurityPage() {
       <div className="flex-1 overflow-auto">
         {/* Detector table */}
         <div className="px-[22px] pt-[18px] pb-0">
-          <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-3">
-            Detectors — {detectors.length} active · flag-only (no blocking)
+          <div className="flex items-center justify-between mb-3">
+            <span className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint">
+              Detectors — {detectors.length} active · flag-only (no blocking)
+            </span>
+            <ExportDropdown
+              filename="spanlens-security"
+              buildUrl={(fmt) => `/api/v1/exports/security?format=${fmt}`}
+            />
           </div>
 
           {/* Column headers */}
