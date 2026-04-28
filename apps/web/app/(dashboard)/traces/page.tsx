@@ -103,14 +103,6 @@ export default function TracesPage() {
             <span className="text-[12.5px] text-text-muted flex items-center gap-1.5">
               <span className="w-[7px] h-[7px] rounded-full bg-good shrink-0" /> Live
             </span>
-            <ExportDropdown
-              filename="spanlens-traces"
-              buildUrl={(fmt) => {
-                const params = new URLSearchParams({ format: fmt })
-                if (apiStatus !== 'all') params.set('status', apiStatus)
-                return `/api/v1/exports/traces?${params.toString()}`
-              }}
-            />
           </div>
         }
       />
@@ -149,6 +141,14 @@ export default function TracesPage() {
           ))}
         </div>
         <span className="flex-1" />
+        <ExportDropdown
+          filename="spanlens-traces"
+          buildUrl={(fmt) => {
+            const params = new URLSearchParams({ format: fmt })
+            if (apiStatus !== 'all') params.set('status', apiStatus)
+            return `/api/v1/exports/traces?${params.toString()}`
+          }}
+        />
         <span className="font-mono text-[11px] text-text-faint">
           Showing {filtered.length.toLocaleString()} of {meta.total.toLocaleString()}
         </span>
