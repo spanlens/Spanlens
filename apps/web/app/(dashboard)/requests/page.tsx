@@ -217,10 +217,15 @@ function RequestDrawer({ requestId, visible, onClose, onPrev, onNext, hasPrev, h
         typeof m === 'object' && m !== null && typeof (m as { role?: unknown }).role === 'string',
     )
   }, [req?.request_body])
-  if (!visible) return null
 
   return (
-    <aside className="flex-1 min-w-0 border-l border-border bg-bg-elev overflow-auto flex flex-col">
+    <aside className={cn(
+      'absolute right-0 top-0 bottom-0 z-20 w-[480px]',
+      'border-l border-border bg-bg-elev flex flex-col',
+      'shadow-[-8px_0_24px_rgba(0,0,0,0.08)]',
+      'transition-transform duration-200 ease-out',
+      visible ? 'translate-x-0' : 'translate-x-full',
+    )}>
       {/* Header */}
       <div className="px-5 py-4 border-b border-border">
         <div className="flex items-center gap-2 mb-2.5">
@@ -282,7 +287,7 @@ function RequestDrawer({ requestId, visible, onClose, onPrev, onNext, hasPrev, h
 
       {/* KV grid */}
       {req && (
-        <div className="px-5 py-3.5 border-b border-border grid grid-cols-4 gap-x-3.5 gap-y-3">
+        <div className="px-5 py-3.5 border-b border-border grid grid-cols-2 gap-x-3.5 gap-y-3">
           {[
             ['Model', req.model],
             ['Provider', req.provider],
@@ -832,9 +837,9 @@ export default function RequestsPage() {
         />
       </div>
 
-      {/* Table + optional detail panel */}
-      <div className="flex flex-1 overflow-hidden">
-        <div className={cn('flex flex-col overflow-hidden transition-[width] duration-150', drawerOpen ? 'w-[370px] shrink-0' : 'flex-1')}>
+      {/* Table + slide-over detail panel */}
+      <div className="flex flex-1 overflow-hidden relative">
+        <div className="flex flex-col flex-1 overflow-hidden">
           <RequestsTable
             rows={requests}
             isLoading={isLoading}
