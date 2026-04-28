@@ -16,6 +16,22 @@ export function parseOpenAIResponse(body: Record<string, unknown>): ParsedUsage 
   }
 }
 
+export function extractOpenAIStreamText(lines: string[]): string {
+  const parts: string[] = []
+  for (const line of lines) {
+    if (!line.startsWith('data: ')) continue
+    const data = line.slice(6).trim()
+    if (data === '[DONE]') break
+    try {
+      const json = JSON.parse(data) as Record<string, unknown>
+      const choices = json.choices as Array<{ delta?: { content?: string } }> | undefined
+      const content = choices?.[0]?.delta?.content
+      if (content) parts.push(content)
+    } catch { /* ignore */ }
+  }
+  return parts.join('')
+}
+
 export function parseOpenAIStreamChunk(line: string): Partial<ParsedUsage> | null {
   if (!line.startsWith('data: ')) return null
   const data = line.slice(6).trim()
