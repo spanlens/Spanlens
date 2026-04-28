@@ -271,21 +271,21 @@ export default function DashboardPage() {
     lines.push('Total Requests,Total Spend (USD),Avg Latency (ms),Error Rate (%)')
     if (d.summary) {
       lines.push(
-        `${d.summary.totalRequests},${d.summary.totalSpendUsd.toFixed(4)},${d.summary.avgLatencyMs},${d.summary.errorRatePct}`,
+        `${d.summary.totalRequests},${d.summary.totalSpendUsd.toFixed(2)},${d.summary.avgLatencyMs},${d.summary.errorRatePct}`,
       )
     }
     lines.push('')
     lines.push('## Timeseries')
     lines.push('Date,Requests,Spend (USD),Tokens,Errors')
     for (const r of d.timeseries) {
-      lines.push(`${r.date},${r.requests},${r.spendUsd.toFixed(4)},${r.tokens},${r.errors}`)
+      lines.push(`${r.date},${r.requests},${r.spendUsd.toFixed(2)},${r.tokens},${r.errors}`)
     }
     lines.push('')
-    lines.push('## Models')
+    lines.push(`## Models · last ${timeRange}`)
     lines.push('Provider,Model,Requests,Total Spend (USD),Avg Latency (ms),Error Rate (%)')
     for (const m of d.models) {
       lines.push(
-        `${m.provider},${m.model},${m.requests},${m.totalSpendUsd.toFixed(4)},${m.avgLatencyMs},${m.errorRatePct}`,
+        `${m.provider},${m.model},${m.requests},${m.totalSpendUsd.toFixed(2)},${m.avgLatencyMs},${m.errorRatePct}`,
       )
     }
     triggerDownload(lines.join('\n'), 'text/csv', 'csv')
@@ -502,7 +502,7 @@ export default function DashboardPage() {
             <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-2.5">
               Needs attention
             </div>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
               {attnCards.map((c) =>
                 dismissedCards.has(c.cardKey) ? null : (
                   <AttnCard
@@ -517,12 +517,12 @@ export default function DashboardPage() {
         )}
 
         {/* KPI row */}
-        <div className="grid grid-cols-4 border-y border-border mt-[18px]">
+        <div className="grid grid-cols-2 lg:grid-cols-4 border-y border-border mt-[18px]">
           {isLoading || !o ? (
             Array.from({ length: 4 }).map((_, i) => (
               <div key={i} className="p-[18px] border-r border-border last:border-r-0">
-                <Skeleton className="h-3 w-28 mb-3" />
-                <Skeleton className="h-8 w-36 mb-3" />
+                <Skeleton className="h-3 w-3/4 mb-3" />
+                <Skeleton className="h-8 w-full mb-3" />
                 <Skeleton className="h-5 w-full" />
               </div>
             ))
@@ -581,7 +581,13 @@ export default function DashboardPage() {
         </div>
 
         {/* Spend forecast — always monthly, independent of time range selector */}
-        {spendForecast.data && <SpendForecastCard data={spendForecast.data} />}
+        {spendForecast.isLoading ? (
+          <div className="px-[22px] py-5 border-b border-border">
+            <Skeleton className="h-[320px] w-full" />
+          </div>
+        ) : spendForecast.data ? (
+          <SpendForecastCard data={spendForecast.data} />
+        ) : null}
 
         {/* 2-col: Top prompts + Models in use */}
         <div className="grid grid-cols-2 border-b border-border">
