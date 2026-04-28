@@ -355,9 +355,16 @@ function RequestDrawer({ requestId, visible, onClose, onPrev, onNext, hasPrev, h
         ) : !req ? null : tab === 'request' ? (
           <MessageDisplay messages={messages} body={req.request_body} />
         ) : tab === 'response' ? (
-          <pre className="font-mono text-[11.5px] text-text-muted leading-relaxed whitespace-pre-wrap break-all">
-            {JSON.stringify(req.response_body, null, 2)}
-          </pre>
+          req.response_body == null ? (
+            <p className="font-mono text-[11.5px] text-text-faint leading-relaxed">
+              Response body is not stored — the proxy streams the response directly to your application without buffering it.<br /><br />
+              Full response capture is planned for a future release.
+            </p>
+          ) : (
+            <pre className="font-mono text-[11.5px] text-text-muted leading-relaxed whitespace-pre-wrap break-all">
+              {JSON.stringify(req.response_body, null, 2)}
+            </pre>
+          )
         ) : tab === 'trace' ? (
           <TraceTab traceId={req.trace_id ?? null} />
         ) : (
