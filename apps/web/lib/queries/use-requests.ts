@@ -9,10 +9,13 @@ export interface RequestsFilters {
   limit?: number
   provider?: string
   model?: string
+  status?: string
   projectId?: string
   providerKeyId?: string
   from?: string
   to?: string
+  sortBy?: string
+  sortDir?: 'asc' | 'desc'
 }
 
 export function requestsQueryKey(filters: RequestsFilters) {
@@ -28,10 +31,13 @@ export function useRequests(filters: RequestsFilters) {
       params.set('limit', String(filters.limit ?? 50))
       if (filters.provider) params.set('provider', filters.provider)
       if (filters.model) params.set('model', filters.model)
+      if (filters.status) params.set('status', filters.status)
       if (filters.projectId) params.set('projectId', filters.projectId)
       if (filters.providerKeyId) params.set('providerKeyId', filters.providerKeyId)
       if (filters.from) params.set('from', filters.from)
       if (filters.to) params.set('to', filters.to)
+      if (filters.sortBy) params.set('sortBy', filters.sortBy)
+      if (filters.sortDir) params.set('sortDir', filters.sortDir)
 
       const res = await apiGet<ApiEnvelope<RequestRow[]>>(`/api/v1/requests?${params}`)
       return {
