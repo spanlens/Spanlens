@@ -23,6 +23,11 @@ import { useAnomalies } from '@/lib/queries/use-anomalies'
 import type { RequestRow, RequestDetail } from '@/lib/queries/types'
 
 type StatusFilter = 'all' | 'ok' | '4xx' | '5xx'
+type SortField = 'created_at' | 'latency_ms' | 'cost_usd' | 'total_tokens'
+type SortDir = 'asc' | 'desc'
+type TimeRange = 'all' | 'today' | '7d' | '30d'
+
+const STATUS_LABELS: Record<StatusFilter, string> = { all: 'All', ok: 'OK', '4xx': '4xx', '5xx': '5xx' }
 
 interface UiFilters {
   provider: string
@@ -218,11 +223,13 @@ interface DrawerProps {
   onNext: () => void
   hasPrev: boolean
   hasNext: boolean
+  position: number
+  total: number
 }
 
-function RequestDrawer({ requestId, visible, onClose, onPrev, onNext, hasPrev, hasNext }: DrawerProps) {
+function RequestDrawer({ requestId, visible, onClose, onPrev, onNext, hasPrev, hasNext, position, total }: DrawerProps) {
   const [tab, setTab] = useState<DrawerTab>('request')
-  const { data: req, isLoading } = useRequest(requestId)
+  const { data: req, isLoading, isError } = useRequest(requestId)
   const messages = useMemo(() => {
     if (!req?.request_body || typeof req.request_body !== 'object') return null
     const body = req.request_body as Record<string, unknown>
@@ -240,6 +247,7 @@ function RequestDrawer({ requestId, visible, onClose, onPrev, onNext, hasPrev, h
       <div className="px-5 py-4 border-b border-border">
         <div className="flex items-center gap-2 mb-2.5">
           <span className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint">Request</span>
+          <span className="font-mono text-[10px] text-text-faint">{position} / {total}</span>
           <span className="flex-1" />
           {[
             { label: 'Prev', onClick: onPrev, disabled: !hasPrev },
@@ -266,6 +274,8 @@ function RequestDrawer({ requestId, visible, onClose, onPrev, onNext, hasPrev, h
             <Skeleton className="h-4 w-48 mb-2" />
             <Skeleton className="h-3.5 w-56" />
           </>
+        ) : isError ? (
+          <p className="font-mono text-[12px] text-bad">Failed to load request.</p>
         ) : req ? (
           <>
             <div className="font-mono text-[13px] text-text mb-1 truncate">{req.id}</div>
@@ -349,6 +359,8 @@ function RequestDrawer({ requestId, visible, onClose, onPrev, onNext, hasPrev, h
             <Skeleton className="h-3 w-8 mb-1 mt-3" />
             <Skeleton className="h-16 w-full" />
           </div>
+        ) : isError ? (
+          <p className="font-mono text-[12px] text-bad">Failed to load request details.</p>
         ) : !req ? null : tab === 'request' ? (
           <MessageDisplay messages={messages} body={req.request_body} />
         ) : tab === 'response' ? (
@@ -489,18 +501,43 @@ function MessageDisplay({ messages, body }: { messages: { role: string; content:
 const COL_FULL = '20px 1.6fr 0.9fr 0.75fr 0.7fr 0.8fr 0.6fr 0.5fr'
 const COL_NARROW = '20px 1.6fr 0.75fr 0.7fr 0.8fr 0.6fr 0.5fr'
 
+function SortBtn({ field, label, sortField, sortDir, onSort }: {
+  field: SortField; label: string
+  sortField: SortField; sortDir: SortDir; onSort: (f: SortField) => void
+}) {
+  const active = sortField === field
+  return (
+    <button
+      type="button"
+      onClick={() => onSort(field)}
+      className={cn('inline-flex items-center gap-0.5 hover:text-text transition-colors', active ? 'text-text' : '')}
+    >
+      {label}
+      <span className="ml-0.5 opacity-60">{active ? (sortDir === 'desc' ? '↓' : '↑') : '↕'}</span>
+    </button>
+  )
+}
+
 function RequestsTable({
   rows,
   isLoading,
   selectedId,
   onSelect,
   drawerOpen,
+  sortField,
+  sortDir,
+  onSort,
+  hasActiveFilters,
 }: {
   rows: RequestRow[]
   isLoading: boolean
   selectedId: string | null
   onSelect: (id: string) => void
   drawerOpen: boolean
+  sortField: SortField
+  sortDir: SortDir
+  onSort: (f: SortField) => void
+  hasActiveFilters: boolean
 }) {
   const cols = drawerOpen ? COL_NARROW : COL_FULL
   return (
@@ -513,9 +550,9 @@ function RequestsTable({
         <span />
         <span>Model</span>
         {!drawerOpen && <span>Provider</span>}
-        <span>Latency</span>
-        <span>Tokens</span>
-        <span>Cost</span>
+        <SortBtn field="latency_ms" label="Latency" sortField={sortField} sortDir={sortDir} onSort={onSort} />
+        <SortBtn field="total_tokens" label="Tokens" sortField={sortField} sortDir={sortDir} onSort={onSort} />
+        <SortBtn field="cost_usd" label="Cost" sortField={sortField} sortDir={sortDir} onSort={onSort} />
         <span>Status</span>
         <span className="text-right">Age</span>
       </div>
@@ -536,7 +573,9 @@ function RequestsTable({
         : rows.length === 0
           ? (
             <div className="text-center py-12 font-mono text-[12.5px] text-text-faint">
-              No requests yet. Make your first API call through the proxy.
+              {hasActiveFilters
+                ? 'No requests match the current filters.'
+                : 'No requests yet. Make your first API call through the proxy.'}
             </div>
           )
           : rows.map((req) => {
@@ -656,6 +695,21 @@ export default function RequestsPage() {
   })
   const [page, setPage] = useState(1)
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [sortField, setSortField] = useState<SortField>('created_at')
+  const [sortDir, setSortDir] = useState<SortDir>('desc')
+  const [timeRange, setTimeRange] = useState<TimeRange>('all')
+
+  const fromIso = useMemo(() => {
+    const now = Date.now()
+    if (timeRange === 'today') {
+      const d = new Date()
+      d.setUTCHours(0, 0, 0, 0)
+      return d.toISOString()
+    }
+    if (timeRange === '7d') return new Date(now - 7 * 24 * 3_600_000).toISOString()
+    if (timeRange === '30d') return new Date(now - 30 * 24 * 3_600_000).toISOString()
+    return undefined
+  }, [timeRange])
 
   const serverFilters = useMemo(
     () => ({
@@ -664,8 +718,12 @@ export default function RequestsPage() {
       ...(filters.provider !== 'all' && { provider: filters.provider }),
       ...(filters.model.trim() && { model: filters.model.trim() }),
       ...(filters.providerKeyId !== 'all' && { providerKeyId: filters.providerKeyId }),
+      ...(filters.status !== 'all' && { status: filters.status }),
+      ...(fromIso && { from: fromIso }),
+      ...(sortField !== 'created_at' && { sortBy: sortField }),
+      ...(sortDir !== 'desc' && { sortDir }),
     }),
-    [page, filters.provider, filters.model, filters.providerKeyId],
+    [page, filters.provider, filters.model, filters.providerKeyId, filters.status, fromIso, sortField, sortDir],
   )
 
   const { data, isLoading, isFetching } = useRequests(serverFilters)
@@ -680,24 +738,25 @@ export default function RequestsPage() {
     return keys.filter((k) => k.provider === filters.provider)
   }, [providerKeysQuery.data, filters.provider])
 
-  const requests = useMemo(() => {
-    const rows = data?.data ?? []
-    if (filters.status === 'ok') return rows.filter((r) => r.status_code < 400)
-    if (filters.status === '4xx') return rows.filter((r) => r.status_code >= 400 && r.status_code < 500)
-    if (filters.status === '5xx') return rows.filter((r) => r.status_code >= 500)
-    return rows
-  }, [data, filters.status])
-
+  const requests = data?.data ?? []
   const meta = data?.meta ?? { total: 0, page: 1, limit: 50 }
 
-  const statusCounts = useMemo(() => {
-    const all = data?.data ?? []
-    return {
-      ok: all.filter((r) => r.status_code < 400).length,
-      '4xx': all.filter((r) => r.status_code >= 400 && r.status_code < 500).length,
-      '5xx': all.filter((r) => r.status_code >= 500).length,
+  const hasActiveFilters =
+    filters.provider !== 'all' ||
+    filters.status !== 'all' ||
+    filters.model.trim() !== '' ||
+    filters.providerKeyId !== 'all' ||
+    timeRange !== 'all'
+
+  function handleSort(field: SortField) {
+    if (sortField === field) {
+      setSortDir((d) => (d === 'desc' ? 'asc' : 'desc'))
+    } else {
+      setSortField(field)
+      setSortDir('desc')
     }
-  }, [data])
+    setPage(1)
+  }
 
   function applySavedFilter(sf: SavedFilter): void {
     const f = sf.filters as Partial<UiFilters>
@@ -729,9 +788,25 @@ export default function RequestsPage() {
 
       {/* Filter row */}
       <div className="flex items-center gap-1.5 px-[22px] py-[10px] border-b border-border shrink-0 flex-wrap">
+        {/* Time range */}
+        <div className="flex border border-border rounded-[5px] overflow-hidden bg-bg-elev font-mono text-[10.5px] tracking-[0.03em] shrink-0">
+          {(['all', 'today', '7d', '30d'] as TimeRange[]).map((r) => (
+            <button
+              key={r}
+              onClick={() => { setTimeRange(r); setPage(1) }}
+              className={cn(
+                'px-[10px] py-[5px]',
+                timeRange === r ? 'bg-text text-bg' : 'text-text-muted hover:text-text transition-colors',
+              )}
+            >
+              {r === 'all' ? 'All time' : r === 'today' ? 'Today' : r}
+            </button>
+          ))}
+        </div>
+
         {/* Segmented status */}
         <div className="flex border border-border rounded-[5px] overflow-hidden bg-bg-elev font-mono text-[10.5px] tracking-[0.03em] shrink-0">
-          {([['all', 'All', meta.total], ['ok', 'OK', statusCounts.ok], ['4xx', '4xx', statusCounts['4xx']], ['5xx', '5xx', statusCounts['5xx']]] as [StatusFilter, string, number][]).map(([v, label, count]) => (
+          {(['all', 'ok', '4xx', '5xx'] as StatusFilter[]).map((v) => (
             <button
               key={v}
               onClick={() => { setFilters((f) => ({ ...f, status: v })); setPage(1) }}
@@ -740,10 +815,10 @@ export default function RequestsPage() {
                 filters.status === v ? 'bg-text text-bg' : 'text-text-muted hover:text-text transition-colors',
               )}
             >
-              {label}
-              <span className={filters.status === v ? 'opacity-60 text-bg' : 'text-text-faint'}>
-                {count.toLocaleString()}
-              </span>
+              {STATUS_LABELS[v]}
+              {filters.status === v && (
+                <span className="opacity-60 text-bg">{meta.total.toLocaleString()}</span>
+              )}
             </button>
           ))}
         </div>
@@ -815,6 +890,10 @@ export default function RequestsPage() {
             selectedId={selectedId}
             onSelect={handleSelect}
             drawerOpen={drawerOpen}
+            sortField={sortField}
+            sortDir={sortDir}
+            onSort={handleSort}
+            hasActiveFilters={hasActiveFilters}
           />
 
           {/* Pagination */}
@@ -831,7 +910,7 @@ export default function RequestsPage() {
                 ← Prev
               </button>
               <button
-                disabled={requests.length < meta.limit || isFetching}
+                disabled={page * meta.limit >= meta.total || isFetching}
                 onClick={() => setPage((p) => p + 1)}
                 className="font-mono text-[11px] px-2.5 py-1 border border-border rounded text-text-muted disabled:opacity-30 hover:border-border-strong transition-colors"
               >
@@ -849,6 +928,8 @@ export default function RequestsPage() {
           onNext={() => { if (selectedIdx < requests.length - 1) setSelectedId(requests[selectedIdx + 1]?.id ?? null) }}
           hasPrev={selectedIdx > 0}
           hasNext={selectedIdx < requests.length - 1}
+          position={selectedIdx + 1}
+          total={requests.length}
         />
       </div>
     </div>
