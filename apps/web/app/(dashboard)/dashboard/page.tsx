@@ -222,6 +222,46 @@ export default function DashboardPage() {
     [timeseries.data],
   )
 
+  function exportCsv() {
+    const lines: string[] = []
+
+    // ── Summary ──────────────────────────────────────────────────
+    lines.push(`## Summary · ${timeRange}`)
+    lines.push('Total Requests,Total Spend (USD),Avg Latency (ms),Error Rate (%)')
+    if (o) {
+      lines.push(
+        `${o.totalRequests},${o.totalCostUsd.toFixed(4)},${o.avgLatencyMs},${(o.errorRate * 100).toFixed(2)}`,
+      )
+    }
+    lines.push('')
+
+    // ── Timeseries ────────────────────────────────────────────────
+    lines.push('## Timeseries')
+    lines.push('Date,Requests,Spend (USD),Tokens,Errors')
+    for (const d of timeseries.data ?? []) {
+      lines.push(`${d.date},${d.requests},${d.cost.toFixed(4)},${d.tokens},${d.errors}`)
+    }
+    lines.push('')
+
+    // ── Models ────────────────────────────────────────────────────
+    lines.push('## Models')
+    lines.push('Provider,Model,Requests,Total Spend (USD),Avg Latency (ms),Error Rate (%)')
+    for (const m of modelsQuery.data ?? []) {
+      lines.push(
+        `${m.provider},${m.model},${m.requests},${m.totalCostUsd.toFixed(4)},${m.avgLatencyMs},${(m.errorRate * 100).toFixed(2)}`,
+      )
+    }
+
+    const csv = lines.join('\n')
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `spanlens-${timeRange}-${new Date().toISOString().slice(0, 10)}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   // ISO timestamps of alerts that fired within the current time range — for chart markers
   const alertFiredAt = useMemo(
     () =>
@@ -358,7 +398,7 @@ export default function DashboardPage() {
             </span>
           </div>
           {o && (
-            <div className="flex items-center gap-2 text-[14px] text-text-muted flex-wrap">
+            <div className="flex items-center gap-2 text-[14px] text-text-muted">
               <span>{sinceLabel(timeRange)}</span>
               <b className="text-text font-medium">{o.totalRequests.toLocaleString()} requests</b>
               <span className="text-text-faint">·</span>
@@ -371,6 +411,13 @@ export default function DashboardPage() {
                   </span>
                 </>
               )}
+              <button
+                type="button"
+                onClick={exportCsv}
+                className="ml-auto shrink-0 font-mono text-[11px] text-text-muted hover:text-text border border-border rounded px-2.5 py-1 transition-colors"
+              >
+                Export CSV ↓
+              </button>
             </div>
           )}
         </div>
