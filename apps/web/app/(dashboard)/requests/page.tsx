@@ -725,7 +725,8 @@ export default function RequestsPage() {
   }
 
   return (
-    <div className="-m-7 flex flex-col h-screen overflow-hidden">
+    <div className="-m-7 flex h-screen overflow-hidden">
+      <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
       <Topbar
         crumbs={[{ label: 'Workspace' }, { label: 'Requests' }]}
         right={<LiveDot />}
@@ -842,9 +843,8 @@ export default function RequestsPage() {
         />
       </div>
 
-      {/* Table + slide-over detail panel */}
-      <div className="flex flex-1 overflow-hidden">
-        <div className="flex flex-col flex-1 overflow-hidden">
+      {/* Table + pagination */}
+      <div className="flex flex-col flex-1 overflow-hidden">
           <RequestsTable
             rows={requests}
             isLoading={isLoading}
@@ -880,19 +880,19 @@ export default function RequestsPage() {
             </div>
           </div>
         </div>
+      </div>{/* end left column */}
 
-        <RequestDrawer
-          requestId={selectedId ?? ''}
-          visible={drawerOpen && !!selectedId}
-          onClose={() => setSelectedId(null)}
-          onPrev={() => { if (selectedIdx > 0) setSelectedId(requests[selectedIdx - 1]?.id ?? null) }}
-          onNext={() => { if (selectedIdx < requests.length - 1) setSelectedId(requests[selectedIdx + 1]?.id ?? null) }}
-          hasPrev={selectedIdx > 0}
-          hasNext={selectedIdx < requests.length - 1}
-          position={selectedIdx + 1}
-          total={requests.length}
-        />
-      </div>
+      <RequestDrawer
+        requestId={selectedId ?? ''}
+        visible={drawerOpen && !!selectedId}
+        onClose={() => setSelectedId(null)}
+        onPrev={() => { if (selectedIdx > 0) setSelectedId(requests[selectedIdx - 1]?.id ?? null) }}
+        onNext={() => { if (selectedIdx < requests.length - 1) setSelectedId(requests[selectedIdx + 1]?.id ?? null) }}
+        hasPrev={selectedIdx > 0}
+        hasNext={selectedIdx < requests.length - 1}
+        position={selectedIdx + 1}
+        total={requests.length}
+      />
     </div>
   )
 }
