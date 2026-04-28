@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useTraces } from '@/lib/queries/use-traces'
 import type { TraceStatus } from '@/lib/queries/types'
 import { Topbar } from '@/components/layout/topbar'
+import { ExportDropdown } from '@/components/ui/export-dropdown'
 import { cn } from '@/lib/utils'
 
 function fmtDuration(ms: number | null): string {
@@ -102,6 +103,14 @@ export default function TracesPage() {
             <span className="text-[12.5px] text-text-muted flex items-center gap-1.5">
               <span className="w-[7px] h-[7px] rounded-full bg-good shrink-0" /> Live
             </span>
+            <ExportDropdown
+              filename="spanlens-traces"
+              buildUrl={(fmt) => {
+                const params = new URLSearchParams({ format: fmt })
+                if (apiStatus !== 'all') params.set('status', apiStatus)
+                return `/api/v1/exports/traces?${params.toString()}`
+              }}
+            />
           </div>
         }
       />

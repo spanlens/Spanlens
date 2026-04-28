@@ -12,6 +12,7 @@ import {
 } from '@/lib/queries/use-anomalies'
 import { Topbar } from '@/components/layout/topbar'
 import { PermissionGate } from '@/components/permission-gate'
+import { ExportDropdown } from '@/components/ui/export-dropdown'
 import { cn } from '@/lib/utils'
 
 type KindFilter = 'all' | AnomalyKind
@@ -275,6 +276,10 @@ export default function AnomaliesPage() {
             <span className="font-mono text-[11px] text-text-muted px-[9px] py-[4px] border border-border rounded-[5px] cursor-pointer hover:text-text transition-colors">
               Detector settings
             </span>
+            <ExportDropdown
+              filename="spanlens-anomalies"
+              buildUrl={(fmt) => `/api/v1/exports/anomalies?format=${fmt}`}
+            />
           </div>
         }
       />
