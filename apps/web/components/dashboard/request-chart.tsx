@@ -25,6 +25,16 @@ interface RequestChartProps {
   firedAt?: string[]
 }
 
+// CSS vars are plain hex — do NOT wrap in hsl()
+const C = {
+  text:      'var(--text)',
+  accent:    'var(--accent)',
+  border:    'var(--border)',
+  faint:     'var(--text-faint)',
+  bg:        'var(--bg)',
+  bgElev:    'var(--bg-elev)',
+} as const
+
 export function RequestChart({ data, firedAt = [] }: RequestChartProps) {
   if (data.length === 0) {
     return (
@@ -39,7 +49,6 @@ export function RequestChart({ data, firedAt = [] }: RequestChartProps) {
     label: d.date.length >= 10 ? d.date.slice(5) : d.date,
   }))
 
-  // Match fired ISO timestamps to chart points by date prefix
   const firedDateSet = new Set(firedAt.map((iso) => iso.slice(0, 10)))
   const alertPoints = formatted.filter((d) => firedDateSet.has(d.date.slice(0, 10)))
   const hasAlerts = alertPoints.length > 0
@@ -48,17 +57,17 @@ export function RequestChart({ data, firedAt = [] }: RequestChartProps) {
 
   return (
     <div>
-      {/* Legend — right-aligned above chart */}
+      {/* Legend */}
       <div className="flex justify-end items-center gap-5 mb-3">
         <span className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint">
           <svg width="18" height="8" aria-hidden>
-            <line x1="0" y1="4" x2="18" y2="4" stroke="hsl(var(--text))" strokeWidth="1.5" />
+            <line x1="0" y1="4" x2="18" y2="4" stroke={C.text} strokeWidth="1.5" />
           </svg>
           Requests
         </span>
         <span className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint">
           <svg width="18" height="8" aria-hidden>
-            <line x1="0" y1="4" x2="18" y2="4" stroke="hsl(var(--accent))" strokeWidth="1.5" strokeDasharray="4 3" />
+            <line x1="0" y1="4" x2="18" y2="4" stroke={C.accent} strokeWidth="1.5" strokeDasharray="4 3" />
           </svg>
           Spend
         </span>
@@ -72,29 +81,18 @@ export function RequestChart({ data, firedAt = [] }: RequestChartProps) {
 
       <ResponsiveContainer width="100%" height={220}>
         <ComposedChart data={formatted} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
-          <defs>
-            <linearGradient id="grad-req" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor="hsl(var(--text))" stopOpacity={0.07} />
-              <stop offset="95%" stopColor="hsl(var(--text))" stopOpacity={0} />
-            </linearGradient>
-            <linearGradient id="grad-cost" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor="hsl(var(--accent))" stopOpacity={0.07} />
-              <stop offset="95%" stopColor="hsl(var(--accent))" stopOpacity={0} />
-            </linearGradient>
-          </defs>
-
-          <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+          <CartesianGrid strokeDasharray="3 3" stroke={C.border} vertical={false} />
 
           <XAxis
             dataKey="label"
-            tick={{ fontSize: 10, fontFamily: 'monospace', fill: 'hsl(var(--text-faint))' }}
+            tick={{ fontSize: 10, fontFamily: 'monospace', fill: C.faint }}
             tickLine={false}
             axisLine={false}
             interval={tickInterval}
           />
           <YAxis
             yAxisId="req"
-            tick={{ fontSize: 10, fontFamily: 'monospace', fill: 'hsl(var(--text-faint))' }}
+            tick={{ fontSize: 10, fontFamily: 'monospace', fill: C.faint }}
             tickLine={false}
             axisLine={false}
             width={38}
@@ -103,7 +101,7 @@ export function RequestChart({ data, firedAt = [] }: RequestChartProps) {
           <YAxis
             yAxisId="cost"
             orientation="right"
-            tick={{ fontSize: 10, fontFamily: 'monospace', fill: 'hsl(var(--text-faint))' }}
+            tick={{ fontSize: 10, fontFamily: 'monospace', fill: C.faint }}
             tickLine={false}
             axisLine={false}
             width={38}
@@ -112,8 +110,8 @@ export function RequestChart({ data, firedAt = [] }: RequestChartProps) {
 
           <Tooltip
             contentStyle={{
-              background: 'hsl(var(--bg-elev))',
-              border: '1px solid hsl(var(--border))',
+              background: C.bgElev,
+              border: `1px solid ${C.border}`,
               borderRadius: '6px',
               fontSize: 11,
               fontFamily: 'monospace',
@@ -129,21 +127,21 @@ export function RequestChart({ data, firedAt = [] }: RequestChartProps) {
             yAxisId="req"
             type="monotone"
             dataKey="requests"
-            stroke="hsl(var(--text))"
+            stroke={C.text}
             strokeWidth={1.5}
             dot={false}
-            activeDot={{ r: 3, fill: 'hsl(var(--text))', strokeWidth: 0 }}
+            activeDot={{ r: 3, fill: C.text, strokeWidth: 0 }}
             name="requests"
           />
           <Line
             yAxisId="cost"
             type="monotone"
             dataKey="cost"
-            stroke="hsl(var(--accent))"
+            stroke={C.accent}
             strokeWidth={1.5}
             strokeDasharray="5 3"
             dot={false}
-            activeDot={{ r: 3, fill: 'hsl(var(--accent))', strokeWidth: 0 }}
+            activeDot={{ r: 3, fill: C.accent, strokeWidth: 0 }}
             name="cost"
           />
 
@@ -154,8 +152,8 @@ export function RequestChart({ data, firedAt = [] }: RequestChartProps) {
               x={pt.label}
               y={pt.requests}
               r={5}
-              fill="hsl(var(--accent))"
-              stroke="hsl(var(--bg))"
+              fill={C.accent}
+              stroke={C.bg}
               strokeWidth={2}
             />
           ))}
