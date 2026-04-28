@@ -2,8 +2,8 @@
 import { useMemo, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
-import { Star, X, Download } from 'lucide-react'
-import { apiDownload } from '@/lib/api'
+import { Star, X } from 'lucide-react'
+import { ExportDropdown } from '@/components/ui/export-dropdown'
 import { cn } from '@/lib/utils'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
@@ -573,46 +573,6 @@ function RequestsTable({
   )
 }
 
-// ── Export menu ───────────────────────────────────────────────────────────────
-function ExportMenu({ filters }: { filters: UiFilters }) {
-  const [busy, setBusy] = useState(false)
-
-  async function download(format: 'csv' | 'json'): Promise<void> {
-    if (busy) return
-    setBusy(true)
-    try {
-      const params = new URLSearchParams({ format })
-      if (filters.provider !== 'all') params.set('provider', filters.provider)
-      if (filters.model.trim())       params.set('model', filters.model.trim())
-      if (filters.providerKeyId !== 'all') params.set('providerKeyId', filters.providerKeyId)
-      if (filters.status !== 'all')   params.set('status', filters.status)
-      const dateStr = new Date().toISOString().slice(0, 10)
-      await apiDownload(
-        `/api/v1/exports/requests?${params.toString()}`,
-        `spanlens-requests-${dateStr}.${format}`,
-      )
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  return (
-    <div className="flex items-center gap-1">
-      {(['csv', 'json'] as const).map((fmt) => (
-        <button
-          key={fmt}
-          onClick={() => void download(fmt)}
-          disabled={busy}
-          className="inline-flex items-center gap-1 px-2 py-1 rounded font-mono text-[11px] text-text-muted hover:text-text border border-border hover:border-border-strong transition-colors disabled:opacity-40 uppercase tracking-[0.04em]"
-        >
-          <Download className="h-2.5 w-2.5" />
-          {fmt}
-        </button>
-      ))}
-    </div>
-  )
-}
-
 // ── Save filter dialog ────────────────────────────────────────────────────────
 interface SaveFilterDialogProps {
   filters: UiFilters
@@ -838,7 +798,17 @@ export default function RequestsPage() {
         <span className="font-mono text-[11px] text-text-faint">
           {isFetching ? 'Loading…' : `Showing ${requests.length} of ${meta.total.toLocaleString()}`}
         </span>
-        <ExportMenu filters={filters} />
+        <ExportDropdown
+          filename="spanlens-requests"
+          buildUrl={(fmt) => {
+            const params = new URLSearchParams({ format: fmt })
+            if (filters.provider !== 'all') params.set('provider', filters.provider)
+            if (filters.model.trim())       params.set('model', filters.model.trim())
+            if (filters.providerKeyId !== 'all') params.set('providerKeyId', filters.providerKeyId)
+            if (filters.status !== 'all')   params.set('status', filters.status)
+            return `/api/v1/exports/requests?${params.toString()}`
+          }}
+        />
         <SaveFilterDialog
           filters={filters}
           onSave={(name) => createSaved.mutateAsync({ name, filters })}
