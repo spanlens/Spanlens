@@ -121,11 +121,17 @@ statsRouter.get('/overview', async (c) => {
 })
 
 interface TimeseriesRow {
-  day: string
+  day: string  // TIMESTAMPTZ ISO string from DB
   requests: number
   cost: number
   tokens: number
   errors: number
+}
+
+function selectGranularity(fromIso: string | null): 'hour' | 'day' {
+  if (!fromIso) return 'day'
+  const rangeHours = (Date.now() - new Date(fromIso).getTime()) / 3_600_000
+  return rangeHours <= 48 ? 'hour' : 'day'
 }
 
 interface ModelsRow {
@@ -176,12 +182,14 @@ statsRouter.get('/timeseries', async (c) => {
   const projectId = c.req.query('projectId')
   const from = c.req.query('from')
   const to = c.req.query('to')
+  const granularity = selectGranularity(from ?? null)
 
   const { data, error } = await supabaseAdmin.rpc('stats_timeseries', {
     p_org_id: orgId,
     p_project_id: projectId ?? null,
     p_from: from ?? null,
     p_to: to ?? null,
+    p_granularity: granularity,
   })
 
   if (error) return c.json({ error: 'Failed to fetch timeseries' }, 500)
@@ -194,7 +202,7 @@ statsRouter.get('/timeseries', async (c) => {
     errors: Number(r.errors),
   }))
 
-  return c.json({ success: true, data: series })
+  return c.json({ success: true, data: series, meta: { granularity } })
 })
 
 // Ordinary least squares linear regression — returns slope ($/day) and intercept.
