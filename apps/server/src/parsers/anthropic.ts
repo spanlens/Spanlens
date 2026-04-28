@@ -12,6 +12,22 @@ export function parseAnthropicResponse(body: Record<string, unknown>): ParsedUsa
   }
 }
 
+export function extractAnthropicStreamText(lines: string[]): string {
+  const parts: string[] = []
+  for (const line of lines) {
+    if (!line.startsWith('data: ')) continue
+    const data = line.slice(6).trim()
+    try {
+      const json = JSON.parse(data) as Record<string, unknown>
+      if (json.type === 'content_block_delta') {
+        const delta = json.delta as { type?: string; text?: string } | undefined
+        if (delta?.type === 'text_delta' && delta.text) parts.push(delta.text)
+      }
+    } catch { /* ignore */ }
+  }
+  return parts.join('')
+}
+
 export function parseAnthropicStreamChunk(line: string): Partial<ParsedUsage> | null {
   if (!line.startsWith('data: ')) return null
   const data = line.slice(6).trim()
