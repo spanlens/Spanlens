@@ -131,14 +131,17 @@ openaiProxy.all('/*', async (c) => {
   // ── Non-streaming path ────────────────────────────────────────────────────
   const downstreamHeaders = buildDownstreamHeaders(upstreamRes.headers)
   const resBodyText = await upstreamRes.text()
+  let resBodyJson: unknown = null
+  try { resBodyJson = JSON.parse(resBodyText) } catch { /* non-JSON response */ }
+
   let promptTokens = 0
   let completionTokens = 0
   let totalTokens = 0
   let resolvedModel = model
 
-  if (upstreamRes.ok) {
+  if (upstreamRes.ok && resBodyJson) {
     try {
-      const parsed = parseOpenAIResponse(JSON.parse(resBodyText) as Record<string, unknown>)
+      const parsed = parseOpenAIResponse(resBodyJson as Record<string, unknown>)
       if (parsed) {
         resolvedModel = parsed.model || model
         promptTokens = parsed.promptTokens
@@ -155,6 +158,7 @@ openaiProxy.all('/*', async (c) => {
     model: resolvedModel,
     promptTokens, completionTokens, totalTokens,
     costUsd: cost?.totalCost ?? null,
+    responseBody: resBodyJson,
     errorMessage: upstreamRes.ok ? null : resBodyText.slice(0, 1000),
   }))
 
