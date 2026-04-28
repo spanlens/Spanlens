@@ -5,7 +5,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { KpiCard } from '@/components/dashboard/kpi-card'
 import { QuotaBanner } from '@/components/dashboard/quota-banner'
 import { Topbar, TimeRangeSelector, LiveDot } from '@/components/layout/topbar'
-import { useStatsOverview, useStatsTimeseries, useStatsModels, useStatsLatency } from '@/lib/queries/use-stats'
+import { useStatsOverview, useStatsTimeseries, useStatsModels } from '@/lib/queries/use-stats'
 import { useAnomalies } from '@/lib/queries/use-anomalies'
 import { useAlerts } from '@/lib/queries/use-alerts'
 import { useRecommendations, type ModelRecommendation } from '@/lib/queries/use-recommendations'
@@ -198,7 +198,6 @@ export default function DashboardPage() {
   const promptsQuery = usePrompts(projectId ?? undefined)
   const modelsQuery = useStatsModels(hours, projectId ?? undefined)
   const securitySummary = useSecuritySummary(hours)
-  const latencyStats = useStatsLatency(hours)
 
   const o = overview.data
   const isLoading = overview.isLoading || timeseries.isLoading
