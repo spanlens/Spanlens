@@ -4,6 +4,8 @@ import { deliverToChannel, type AlertNotification } from '../lib/notifiers.js'
 import { computeAndReportOverages } from '../lib/paddle-usage.js'
 import { runQuotaWarningsJob } from '../lib/quota-warnings.js'
 import { snapshotAnomaliesForAllOrgs } from '../lib/anomaly-snapshot.js'
+import { runStaleKeyDigestJob } from '../lib/stale-key-digest.js'
+import { runLeakDetectionJob } from '../lib/leak-detection.js'
 
 /**
  * Vercel cron endpoints. Invoked hourly via `crons` entry in `vercel.json`.
@@ -244,4 +246,41 @@ cronRouter.get('/prune-logs', async (c) => {
   if (error) return c.json({ error: error.message }, 500)
 
   return c.json({ success: true, result: data })
+})
+
+// ── Stale provider key reminders (weekly) ───────────────────────
+// For every org with stale_key_alerts_enabled = true, find provider_keys
+// idle past their threshold (default 90d) and email a digest to admins.
+// Notification-only — keys are NOT auto-revoked. Schedule weekly via
+// Vercel cron (Mondays 9am UTC) — see apps/server/vercel.json.
+cronRouter.get('/stale-key-reminders', async (c) => {
+  const authFail = assertCronAuth(c.req.header('Authorization'))
+  if (authFail) return c.json({ error: authFail }, 401)
+
+  try {
+    const result = await runStaleKeyDigestJob()
+    return c.json({ success: true, ...result })
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'unknown'
+    return c.json({ error: msg }, 500)
+  }
+})
+
+// ── Provider key leak detection (daily) ─────────────────────────
+// For every org with leak_detection_enabled = true, scan each active
+// provider_key against GitGuardian's HasMySecretLeaked corpus and email
+// admins on a fresh hit. Notification-only — keys are NOT auto-revoked.
+// Per-key scan results stored in provider_key_leak_scans for dedup +
+// dashboard display. Requires GITGUARDIAN_API_KEY env var.
+cronRouter.get('/leak-detect-keys', async (c) => {
+  const authFail = assertCronAuth(c.req.header('Authorization'))
+  if (authFail) return c.json({ error: authFail }, 401)
+
+  try {
+    const result = await runLeakDetectionJob()
+    return c.json({ success: true, ...result })
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'unknown'
+    return c.json({ error: msg }, 500)
+  }
 })

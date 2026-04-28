@@ -54,3 +54,30 @@ export function useUpdateOverageSettings() {
     },
   })
 }
+
+export interface SecuritySettingsUpdate {
+  stale_key_alerts_enabled?: boolean
+  stale_key_threshold_days?: number
+  leak_detection_enabled?: boolean
+}
+
+/**
+ * PATCH /api/v1/organizations/me/security — notification-only key security
+ * settings (stale-key digest, GitGuardian leak detection). Neither auto-revokes
+ * keys; both are pure email notifications.
+ */
+export function useUpdateSecuritySettings() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (update: SecuritySettingsUpdate) => {
+      const res = await apiPatch<ApiEnvelope<Organization>>(
+        '/api/v1/organizations/me/security',
+        update,
+      )
+      return res.data
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: organizationQueryKey })
+    },
+  })
+}

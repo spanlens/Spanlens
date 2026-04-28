@@ -30,6 +30,12 @@ async function assertProjectInOrg(
 // GET /api/v1/provider-keys — list keys (never returns plain or encrypted key)
 //   Optional ?projectId=xxx to filter to one project's overrides (org-default
 //   rows still included — callers can distinguish by project_id === null).
+//
+// Each row is enriched with derived fields for the settings UI:
+//   - last_used_at:    MAX(requests.created_at) for this key (null if unused)
+//   - last_scan_at:    most-recent provider_key_leak_scans row timestamp
+//   - last_scan_result: 'clean' | 'leaked' | 'error' | null
+// Settings page uses these to render "stale" / "🚨 leaked" badges.
 providerKeysRouter.get('/', async (c) => {
   const orgId = c.get('orgId')
   if (!orgId) return c.json({ error: 'Organization not found' }, 404)
@@ -50,7 +56,41 @@ providerKeysRouter.get('/', async (c) => {
 
   if (error) return c.json({ error: 'Failed to fetch provider keys' }, 500)
 
-  return c.json({ success: true, data: data ?? [] })
+  const rows = data ?? []
+  if (rows.length === 0) {
+    return c.json({ success: true, data: [] })
+  }
+
+  // Derive activity / scan status. Each lookup is a single-row indexed read,
+  // so even ~50 keys per org is < 100ms in aggregate.
+  const enriched = await Promise.all(
+    rows.map(async (k) => {
+      const [{ data: lastReq }, { data: lastScan }] = await Promise.all([
+        supabaseAdmin
+          .from('requests')
+          .select('created_at')
+          .eq('provider_key_id', k.id)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle(),
+        supabaseAdmin
+          .from('provider_key_leak_scans')
+          .select('scanned_at, result')
+          .eq('provider_key_id', k.id)
+          .order('scanned_at', { ascending: false })
+          .limit(1)
+          .maybeSingle(),
+      ])
+      return {
+        ...k,
+        last_used_at: lastReq?.created_at ?? null,
+        last_scan_at: lastScan?.scanned_at ?? null,
+        last_scan_result: (lastScan?.result as 'clean' | 'leaked' | 'error' | undefined) ?? null,
+      }
+    }),
+  )
+
+  return c.json({ success: true, data: enriched })
 })
 
 // POST /api/v1/provider-keys — add provider key (encrypt before storing)
