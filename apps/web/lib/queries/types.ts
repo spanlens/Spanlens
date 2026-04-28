@@ -22,6 +22,12 @@ export interface Organization {
   allow_overage: boolean
   /** Hard cap = monthly_limit * overage_cap_multiplier. 1–100. */
   overage_cap_multiplier: number
+  /** Notification-only: weekly digest of provider keys unused for `stale_key_threshold_days`. */
+  stale_key_alerts_enabled: boolean
+  /** 30..365. Default 90. */
+  stale_key_threshold_days: number
+  /** Notification-only: GitGuardian HasMySecretLeaked daily scan. Off by default. */
+  leak_detection_enabled: boolean
   created_at: string
   updated_at: string
 }
@@ -58,6 +64,12 @@ export interface ProviderKey {
   project_id: string | null
   created_at: string
   updated_at: string
+  /** MAX(requests.created_at) — null if never used. */
+  last_used_at?: string | null
+  /** Latest provider_key_leak_scans timestamp; null if never scanned. */
+  last_scan_at?: string | null
+  /** Latest scan outcome. null = never scanned. */
+  last_scan_result?: 'clean' | 'leaked' | 'error' | null
 }
 
 export interface RequestRow {

@@ -77,3 +77,96 @@ function escapeHtml(s: string): string {
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;')
 }
+
+function ageString(isoOrNull: string | null, fallbackIso: string): string {
+  const ref = isoOrNull ?? fallbackIso
+  const days = Math.floor((Date.now() - Date.parse(ref)) / 86_400_000)
+  if (isoOrNull == null) return `never used (created ${days}d ago)`
+  return `last used ${days}d ago`
+}
+
+export function renderStaleKeyDigestEmail(params: {
+  orgName: string
+  thresholdDays: number
+  keys: Array<{ name: string; provider: string; last_used_at: string | null; created_at: string }>
+  dashboardUrl: string
+}): { subject: string; html: string } {
+  const { orgName, thresholdDays, keys, dashboardUrl } = params
+  const subject = `[Spanlens] ${keys.length} unused provider key${keys.length === 1 ? '' : 's'} in '${orgName}'`
+
+  const rows = keys
+    .map((k) => `
+      <tr>
+        <td style="padding: 8px 12px; border-bottom: 1px solid #eee; font-family: ui-monospace, monospace; font-size: 13px;">${escapeHtml(k.name)}</td>
+        <td style="padding: 8px 12px; border-bottom: 1px solid #eee; font-family: ui-monospace, monospace; font-size: 12px; color: #666;">${escapeHtml(k.provider)}</td>
+        <td style="padding: 8px 12px; border-bottom: 1px solid #eee; font-size: 12px; color: #666;">${escapeHtml(ageString(k.last_used_at, k.created_at))}</td>
+      </tr>`)
+    .join('')
+
+  const html = `
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 620px; margin: 0 auto; padding: 24px; color: #111;">
+      <h2 style="margin: 0 0 8px; font-size: 19px;">Unused provider keys in <strong>${escapeHtml(orgName)}</strong></h2>
+      <p style="margin: 0 0 18px; color: #555; font-size: 14px;">
+        The following ${keys.length} key${keys.length === 1 ? ' has' : 's have'} not been used in <strong>${thresholdDays}+ days</strong>.
+        For security, consider deleting any keys you no longer need.
+      </p>
+      <table style="width: 100%; border-collapse: collapse; border: 1px solid #eee; border-radius: 6px; overflow: hidden;">
+        <thead>
+          <tr style="background: #fafafa;">
+            <th style="padding: 8px 12px; text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: #888; border-bottom: 1px solid #eee;">Name</th>
+            <th style="padding: 8px 12px; text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: #888; border-bottom: 1px solid #eee;">Provider</th>
+            <th style="padding: 8px 12px; text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: #888; border-bottom: 1px solid #eee;">Last activity</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+      <p style="margin: 22px 0;">
+        <a href="${dashboardUrl}" style="display: inline-block; padding: 10px 18px; background: #111; color: #fff; text-decoration: none; border-radius: 6px; font-weight: 500; font-size: 13px;">Review keys in dashboard</a>
+      </p>
+      <p style="margin: 18px 0 0; color: #aaa; font-size: 11.5px;">
+        Notification-only — Spanlens never auto-revokes keys.
+        To stop these reminders: Settings → Provider keys → Stale key reminders.
+      </p>
+    </div>
+  `.trim()
+
+  return { subject, html }
+}
+
+export function renderLeakAlertEmail(params: {
+  orgName: string
+  keyName: string
+  provider: string
+  detectedAt: string
+  dashboardUrl: string
+}): { subject: string; html: string } {
+  const { orgName, keyName, provider, detectedAt, dashboardUrl } = params
+  const subject = `[Spanlens] 🚨 Provider key '${keyName}' may be leaked`
+
+  const html = `
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 580px; margin: 0 auto; padding: 24px; color: #111;">
+      <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 14px 16px; margin-bottom: 18px;">
+        <div style="font-weight: 600; font-size: 14px; color: #991b1b; margin-bottom: 4px;">⚠ Possible secret exposure detected</div>
+        <div style="font-size: 13px; color: #7f1d1d;">A provider key in <strong>${escapeHtml(orgName)}</strong> matched a known-leaked-secrets database.</div>
+      </div>
+      <table style="width: 100%; font-size: 13px; margin-bottom: 16px;">
+        <tr><td style="padding: 4px 0; color: #888; width: 110px;">Key</td><td style="font-family: ui-monospace, monospace;"><strong>${escapeHtml(keyName)}</strong></td></tr>
+        <tr><td style="padding: 4px 0; color: #888;">Provider</td><td style="font-family: ui-monospace, monospace;">${escapeHtml(provider)}</td></tr>
+        <tr><td style="padding: 4px 0; color: #888;">Detected at</td><td style="font-family: ui-monospace, monospace;">${escapeHtml(detectedAt)}</td></tr>
+        <tr><td style="padding: 4px 0; color: #888;">Source</td><td>GitGuardian (HasMySecretLeaked)</td></tr>
+      </table>
+      <p style="margin: 0 0 14px; color: #444; font-size: 13.5px;">
+        <strong>Recommended action:</strong> rotate or revoke this key in the dashboard immediately.
+        Spanlens will not auto-revoke — admins decide.
+      </p>
+      <p style="margin: 18px 0;">
+        <a href="${dashboardUrl}" style="display: inline-block; padding: 10px 18px; background: #b91c1c; color: #fff; text-decoration: none; border-radius: 6px; font-weight: 500; font-size: 13px;">Review in dashboard</a>
+      </p>
+      <p style="margin: 18px 0 0; color: #aaa; font-size: 11.5px;">
+        False positives are possible — verify before revoking. The k-anonymity check transmits only a 5-char hash prefix to GitGuardian, never the key itself.
+      </p>
+    </div>
+  `.trim()
+
+  return { subject, html }
+}
