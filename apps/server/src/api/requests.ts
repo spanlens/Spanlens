@@ -23,6 +23,14 @@ requestsRouter.get('/', async (c) => {
 
   // Optional new filter: provider_key_id ("show only requests that used this key")
   const providerKeyId = c.req.query('providerKeyId')
+  const status     = c.req.query('status')   // 'ok' | '4xx' | '5xx'
+  const sortByRaw  = c.req.query('sortBy')   // 'latency_ms' | 'cost_usd' | 'total_tokens' | 'created_at'
+  const sortDirRaw = c.req.query('sortDir')  // 'asc' | 'desc'
+
+  const validSortCols = ['created_at', 'latency_ms', 'cost_usd', 'total_tokens'] as const
+  type SortCol = (typeof validSortCols)[number]
+  const sortCol: SortCol = validSortCols.includes(sortByRaw as SortCol) ? (sortByRaw as SortCol) : 'created_at'
+  const ascending = sortDirRaw === 'asc'
 
   // Embed the provider_key row's `name` so the dashboard can render
   // "openai · prod-key-2" without a second round-trip.
@@ -33,15 +41,18 @@ requestsRouter.get('/', async (c) => {
       { count: 'exact' },
     )
     .eq('organization_id', orgId)
-    .order('created_at', { ascending: false })
+    .order(sortCol, { ascending, nullsFirst: false })
     .range(offset, offset + limit - 1)
 
-  if (projectId)      query = query.eq('project_id', projectId)
-  if (provider)       query = query.eq('provider', provider)
-  if (model)          query = query.eq('model', model)
-  if (providerKeyId)  query = query.eq('provider_key_id', providerKeyId)
-  if (from)           query = query.gte('created_at', from)
-  if (to)             query = query.lte('created_at', to)
+  if (projectId)     query = query.eq('project_id', projectId)
+  if (provider)      query = query.eq('provider', provider)
+  if (model)         query = query.eq('model', model)
+  if (providerKeyId) query = query.eq('provider_key_id', providerKeyId)
+  if (from)          query = query.gte('created_at', from)
+  if (to)            query = query.lte('created_at', to)
+  if (status === 'ok')   query = query.lt('status_code', 400)
+  else if (status === '4xx') query = query.gte('status_code', 400).lt('status_code', 500)
+  else if (status === '5xx') query = query.gte('status_code', 500)
 
   const { data, error, count } = await query
   if (error) return c.json({ error: 'Failed to fetch requests' }, 500)
