@@ -213,7 +213,7 @@ function RequestDrawer({ requestId, visible, onClose, onPrev, onNext, hasPrev, h
     const body = req.request_body as Record<string, unknown>
     if (!Array.isArray(body.messages)) return null
     return (body.messages as unknown[]).filter(
-      (m): m is { role: string; content: string } =>
+      (m): m is { role: string; content: unknown } =>
         typeof m === 'object' && m !== null && typeof (m as { role?: unknown }).role === 'string',
     )
   }, [req?.request_body])
@@ -227,6 +227,14 @@ function RequestDrawer({ requestId, visible, onClose, onPrev, onNext, hasPrev, h
           <span className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint">Request</span>
           <span className="font-mono text-[10px] text-text-faint">{position} / {total}</span>
           <span className="flex-1" />
+          {requestId && (
+            <Link
+              href={`/requests/${requestId}`}
+              className="font-mono text-[10px] px-1.5 py-0.5 border border-border rounded text-text-muted tracking-[0.04em] uppercase hover:border-border-strong transition-colors"
+            >
+              Open →
+            </Link>
+          )}
           {[
             { label: 'Prev', onClick: onPrev, disabled: !hasPrev },
             { label: 'Next', onClick: onNext, disabled: !hasNext },
@@ -447,7 +455,29 @@ function RawTab({ req }: { req: RequestDetail }) {
 }
 
 // ── Message display ───────────────────────────────────────────────────────────
-function MessageDisplay({ messages, body }: { messages: { role: string; content: string }[] | null; body: unknown }) {
+
+// Anthropic sends content as [{type:'text',text:'...'}], OpenAI as a plain string.
+function extractMessageText(content: unknown): string {
+  if (typeof content === 'string') return content
+  if (Array.isArray(content)) {
+    return content
+      .map((block) => {
+        if (typeof block === 'object' && block !== null) {
+          const b = block as Record<string, unknown>
+          if (typeof b.text === 'string') return b.text
+          if (b.type === 'image') return '[image]'
+          if (b.type === 'tool_use') return `[tool_use: ${String(b.name ?? '')}]`
+          if (b.type === 'tool_result') return `[tool_result]`
+        }
+        return ''
+      })
+      .filter(Boolean)
+      .join('\n')
+  }
+  return JSON.stringify(content)
+}
+
+function MessageDisplay({ messages, body }: { messages: { role: string; content: unknown }[] | null; body: unknown }) {
   if (messages) {
     return (
       <div className="space-y-3">
@@ -456,12 +486,12 @@ function MessageDisplay({ messages, body }: { messages: { role: string; content:
           <div key={i}>
             <div className="font-mono text-[10px] text-text-faint tracking-[0.04em] mb-1">{m.role}</div>
             <div className={cn(
-              'px-3 py-2.5 rounded-[5px] border font-mono text-[11.5px] leading-relaxed',
+              'px-3 py-2.5 rounded-[5px] border font-mono text-[11.5px] leading-relaxed whitespace-pre-wrap',
               m.role === 'assistant'
                 ? 'bg-bg-elev border-border-strong text-text'
                 : 'bg-bg-muted border-border text-text-muted',
             )}>
-              {m.content}
+              {extractMessageText(m.content)}
             </div>
           </div>
         ))}
@@ -532,7 +562,9 @@ function RequestsTable({
         <SortBtn field="total_tokens" label="Tokens" sortField={sortField} sortDir={sortDir} onSort={onSort} />
         <SortBtn field="cost_usd" label="Cost" sortField={sortField} sortDir={sortDir} onSort={onSort} />
         <span>Status</span>
-        <span className="text-right">Age</span>
+        <span className="flex justify-end">
+          <SortBtn field="created_at" label="Age" sortField={sortField} sortDir={sortDir} onSort={onSort} />
+        </span>
       </div>
 
       {isLoading
@@ -604,6 +636,14 @@ export default function RequestsPage() {
     }
   })
   const [modelInput, setModelInput] = useState(() => searchParams.get('model') ?? '')
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setFilters((f) => ({ ...f, model: modelInput.trim() }))
+      setPage(1)
+      setSelectedId(null)
+    }, 300)
+    return () => clearTimeout(t)
+  }, [modelInput])
   const [page, setPage] = useState(1)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [sortField, setSortField] = useState<SortField>('created_at')
@@ -664,6 +704,7 @@ export default function RequestsPage() {
       setSortDir('desc')
     }
     setPage(1)
+    setSelectedId(null)
   }
 
   const drawerOpen = selectedId !== null
@@ -732,16 +773,14 @@ export default function RequestsPage() {
           <option value="gemini">gemini</option>
         </select>
 
-        {/* Model input — draft updates on change, applied on blur/Enter */}
+        {/* Model input — debounced, applies 300ms after last keystroke */}
         <input
           type="text"
           placeholder="Model…"
           value={modelInput}
           onChange={(e) => setModelInput(e.target.value)}
-          onBlur={() => { setFilters((f) => ({ ...f, model: modelInput.trim() })); setPage(1); setSelectedId(null) }}
           onKeyDown={(e) => {
-            if (e.key === 'Enter') { e.currentTarget.blur() }
-            if (e.key === 'Escape') { setModelInput(''); setFilters((f) => ({ ...f, model: '' })); setPage(1); setSelectedId(null) }
+            if (e.key === 'Escape') { setModelInput('') }
           }}
           className="font-mono text-[11px] border border-border rounded-[5px] px-2 py-[5px] bg-bg text-text-muted hover:border-border-strong focus:border-border-strong transition-colors outline-none w-28 placeholder:text-text-faint"
         />
@@ -758,6 +797,21 @@ export default function RequestsPage() {
               <option key={k.id} value={k.id}>{k.name}</option>
             ))}
           </select>
+        )}
+
+        {hasActiveFilters && (
+          <button
+            onClick={() => {
+              setFilters(DEFAULT_FILTERS)
+              setModelInput('')
+              setTimeRange('all')
+              setPage(1)
+              setSelectedId(null)
+            }}
+            className="font-mono text-[10.5px] px-[9px] py-[5px] border border-border rounded-[5px] text-text-faint hover:text-text hover:border-border-strong transition-colors shrink-0"
+          >
+            Clear filters
+          </button>
         )}
 
         <span className="flex-1" />

@@ -1,7 +1,7 @@
 'use client'
 
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { apiDelete, apiGet, apiPost } from '@/lib/api'
+import { ApiError, apiDelete, apiGet, apiPost } from '@/lib/api'
 import type { ApiEnvelope, RequestDetail, RequestRow, RequestsPage } from './types'
 
 export interface RequestsFilters {
@@ -45,9 +45,8 @@ export function useRequests(filters: RequestsFilters) {
         meta: res.meta ?? { total: res.data.length, page: filters.page, limit: filters.limit ?? 50 },
       }
     },
-    // Keep old page visible while the new page loads — avoids the table
-    // flashing empty during pagination/filter changes.
     placeholderData: keepPreviousData,
+    refetchInterval: 30_000,
   })
 }
 
@@ -61,8 +60,12 @@ export function useRequest(id: string) {
       return res.data
     },
     enabled: Boolean(id),
-    // Request bodies are immutable once logged — cache generously.
     staleTime: 5 * 60_000,
+    // 404 means the resource doesn't exist — retrying would just spam the console.
+    retry: (failureCount, error) => {
+      if (error instanceof ApiError && error.status === 404) return false
+      return failureCount < 3
+    },
   })
 }
 
