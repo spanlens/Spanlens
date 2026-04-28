@@ -44,16 +44,20 @@ export function RequestChart({ data, firedAt = [] }: RequestChartProps) {
     )
   }
 
+  const isHourly = data.length > 0 && data[0]!.date.length > 10
+
   const formatted = data.map((d) => ({
     ...d,
-    label: d.date.length >= 10 ? d.date.slice(5) : d.date,
+    label: isHourly ? d.date.slice(11, 16) : d.date.slice(5, 10),
   }))
 
   const firedDateSet = new Set(firedAt.map((iso) => iso.slice(0, 10)))
   const alertPoints = formatted.filter((d) => firedDateSet.has(d.date.slice(0, 10)))
   const hasAlerts = alertPoints.length > 0
 
-  const tickInterval = formatted.length > 14 ? Math.floor(formatted.length / 7) : 0
+  const tickInterval = isHourly
+    ? Math.max(1, Math.floor(formatted.length / 6))
+    : formatted.length > 14 ? Math.floor(formatted.length / 7) : 0
 
   return (
     <div>
@@ -115,6 +119,15 @@ export function RequestChart({ data, firedAt = [] }: RequestChartProps) {
               borderRadius: '6px',
               fontSize: 11,
               fontFamily: 'monospace',
+            }}
+            labelFormatter={(label: string) => {
+              if (!isHourly) return label
+              const pt = formatted.find((d) => d.label === label)
+              if (!pt) return label
+              return new Date(pt.date).toLocaleString([], {
+                month: 'short', day: 'numeric',
+                hour: '2-digit', minute: '2-digit', hour12: false,
+              })
             }}
             formatter={(value: unknown, name: string) => {
               const num = typeof value === 'number' ? value : 0
