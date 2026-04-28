@@ -30,6 +30,7 @@ import { dismissalsRouter }    from './api/dismissals.js'
 import { userProfilesRouter }  from './api/userProfiles.js'
 import { waitlistRouter }      from './api/waitlist.js'
 import { webhooksRouter }      from './api/webhooks.js'
+import { exportsRouter }       from './api/exports.js'
 import { openapiRouter }       from './api/openapi.js'
 
 export const app = new Hono()
@@ -99,5 +100,6 @@ app.route('/api/v1/me/pending-invitations', meInvitationsRouter)
 app.route('/api/v1/dismissals',     dismissalsRouter)
 app.route('/api/v1/me/profile',     userProfilesRouter)
 app.route('/api/v1/webhooks',       webhooksRouter)
+app.route('/api/v1/exports',        exportsRouter)
 
 export default app

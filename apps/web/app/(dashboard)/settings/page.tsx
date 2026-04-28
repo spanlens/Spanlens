@@ -100,7 +100,8 @@ const NAV: { group: string; items: NavItem[] }[] = [
     group: 'Connect',
     items: [
       { id: 'integrations',  label: 'Integrations',  crumbs: [{ label: 'Connect' }, { label: 'Integrations' }] },
-      { id: 'destinations',  label: 'Destinations',  crumbs: [{ label: 'Connect' }, { label: 'Destinations' }] },
+      // DESTINATIONS_HIDDEN: uncomment when BigQuery/S3/Snowflake connectors are implemented
+      // { id: 'destinations',  label: 'Destinations',  crumbs: [{ label: 'Connect' }, { label: 'Destinations' }] },
       { id: 'webhooks',      label: 'Webhooks',       crumbs: [{ label: 'Connect' }, { label: 'Webhooks' }] },
       { id: 'opentelemetry', label: 'OpenTelemetry',  crumbs: [{ label: 'Connect' }, { label: 'OpenTelemetry' }] },
     ],

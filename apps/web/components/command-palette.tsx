@@ -69,7 +69,8 @@ const NAV_GROUPS: NavGroup[] = [
       { label: 'Settings – Notifications', href: '/settings?tab=notifications' },
       { label: 'Settings – Preferences',   href: '/settings?tab=preferences' },
       { label: 'Settings – Integrations',  href: '/settings?tab=integrations' },
-      { label: 'Settings – Destinations',  href: '/settings?tab=destinations' },
+      // DESTINATIONS_HIDDEN: uncomment when BigQuery/S3/Snowflake connectors are implemented
+      // { label: 'Settings – Destinations',  href: '/settings?tab=destinations' },
       { label: 'Settings – Webhooks',      href: '/settings?tab=webhooks' },
       { label: 'Settings – OpenTelemetry', href: '/settings?tab=opentelemetry' },
     ],
