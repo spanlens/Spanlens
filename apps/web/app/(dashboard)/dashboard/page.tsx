@@ -31,8 +31,8 @@ function fmtCost(n: number) {
   return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
-function fmtDelta(delta: number | null | undefined): string | undefined {
-  if (delta == null) return undefined
+function fmtDelta(delta: number | null | undefined, currentValue?: number): string | undefined {
+  if (delta == null) return currentValue != null && currentValue > 0 ? 'New' : undefined
   const sign = delta > 0 ? '+' : ''
   return `${sign}${delta.toFixed(1)}%`
 }
@@ -426,7 +426,7 @@ export default function DashboardPage() {
               <KpiCard
                 label={`Requests · ${timeRange}`}
                 value={o.totalRequests.toLocaleString()}
-                delta={fmtDelta(o.requestsDelta)}
+                delta={fmtDelta(o.requestsDelta, o.totalRequests)}
                 deltaVariant={deltaVariantFor(o.requestsDelta, true)}
                 sparkValues={sparkRequests}
                 linkLabel="Requests →"
@@ -435,7 +435,7 @@ export default function DashboardPage() {
               <KpiCard
                 label={`Spend · ${timeRange}`}
                 value={fmtCost(o.totalCostUsd)}
-                delta={fmtDelta(o.costDelta)}
+                delta={fmtDelta(o.costDelta, o.totalCostUsd)}
                 deltaVariant={deltaVariantFor(o.costDelta, false)}
                 sparkValues={sparkCost}
                 linkLabel="Savings →"
@@ -444,7 +444,7 @@ export default function DashboardPage() {
               <KpiCard
                 label={`Avg latency · ${timeRange}`}
                 value={`${o.avgLatencyMs}ms`}
-                delta={fmtDelta(o.latencyDelta)}
+                delta={fmtDelta(o.latencyDelta, o.avgLatencyMs)}
                 deltaVariant={deltaVariantFor(o.latencyDelta, false)}
                 sparkValues={[]}
                 linkLabel="Traces →"
@@ -453,7 +453,7 @@ export default function DashboardPage() {
               <KpiCard
                 label="Error rate"
                 value={errorRate}
-                delta={fmtDelta(o.errorRateDelta)}
+                delta={fmtDelta(o.errorRateDelta, o.errorRate)}
                 deltaVariant={deltaVariantFor(o.errorRateDelta, false)}
                 sparkValues={sparkErrors}
                 linkLabel="Anomalies →"
