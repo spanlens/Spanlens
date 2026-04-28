@@ -18,6 +18,8 @@ import { cn } from '@/lib/utils'
 import { RequestChart } from '@/components/dashboard/request-chart'
 import { WelcomeBanner } from '@/components/dashboard/welcome-banner'
 
+// ── Helpers ────────────────────────────────────────────────────
+
 function greeting() {
   const h = new Date().getHours()
   if (h < 12) return 'Morning'
@@ -29,14 +31,59 @@ function fmtCost(n: number) {
   return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
+function timeRangeToHours(range: string): number {
+  switch (range) {
+    case '1h': return 1
+    case '7d': return 24 * 7
+    case '30d': return 24 * 30
+    default: return 24
+  }
+}
+
+function sinceLabel(range: string): string {
+  switch (range) {
+    case '1h': return 'Last hour:'
+    case '7d': return 'Last 7 days:'
+    case '30d': return 'Last 30 days:'
+    default: return 'Since yesterday:'
+  }
+}
+
+const AUDIT_LABELS: Record<string, string> = {
+  'key.created': 'API key created',
+  'key.deleted': 'API key deleted',
+  'key.updated': 'API key updated',
+  'provider_key.created': 'Provider key added',
+  'provider_key.deleted': 'Provider key deleted',
+  'provider_key.updated': 'Provider key updated',
+  'security.stale_key_digest_sent': 'Stale key digest sent',
+  'security.leak_scan.completed': 'Leak scan completed',
+  'security.leak_detected': 'Key leak detected',
+  'billing.subscription.updated': 'Subscription updated',
+  'billing.subscription.canceled': 'Subscription canceled',
+  'billing.payment.succeeded': 'Payment succeeded',
+  'org.updated': 'Organization settings updated',
+  'org.member.invited': 'Member invited',
+  'org.member.removed': 'Member removed',
+  'alert.triggered': 'Alert triggered',
+  'anomaly.detected': 'Anomaly detected',
+  'anomaly.acknowledged': 'Anomaly acknowledged',
+  'prompt.created': 'Prompt created',
+  'prompt.deleted': 'Prompt deleted',
+}
+
+function formatAuditAction(action: string): string {
+  if (AUDIT_LABELS[action]) return AUDIT_LABELS[action]
+  return action
+    .split('.')
+    .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
+    .join(' ')
+}
+
+// ── Attention card ─────────────────────────────────────────────
+
 interface AttnCardProps {
   kind: 'critical' | 'warning' | 'savings'
-  /**
-   * Deterministic id for this signal (e.g. `anomaly:openai:gpt-4o:latency`).
-   * Used as the dismiss key so the same underlying issue stays hidden across
-   * renders and devices. Don't put mutable text here — it would make the same
-   * card redismissible whenever the title/meta changes.
-   */
   cardKey: string
   title: string
   meta: string
@@ -47,7 +94,6 @@ interface AttnCardProps {
 }
 
 function AttnCard({ kind, title, meta, hint, cta, href, onDismiss }: AttnCardProps) {
-  // `cardKey` is used by the parent to key the map; not referenced here.
   const isCritical = kind === 'critical'
   const isSavings = kind === 'savings'
   return (
@@ -103,8 +149,13 @@ function AttnCard({ kind, title, meta, hint, cta, href, onDismiss }: AttnCardPro
   )
 }
 
+// ── Page ───────────────────────────────────────────────────────
+
+const LIVE_REFETCH_MS = 30_000
+
 export default function DashboardPage() {
   const [timeRange, setTimeRange] = useState('24h')
+  const hours = timeRangeToHours(timeRange)
   const projectId = useCurrentProjectId()
   const dismissalsQuery = useDismissals()
   const dismissMutation = useDismissCard()
@@ -112,22 +163,27 @@ export default function DashboardPage() {
     () => new Set(dismissalsQuery.data ?? []),
     [dismissalsQuery.data],
   )
-  // projectId is wired into every per-project query so switching scope in
-  // the sidebar refetches the whole dashboard under the new filter. With
-  // `exactOptionalPropertyTypes` we need conditional spread rather than
-  // passing `undefined` — the query types expect the key to be absent when
-  // "no filter" is wanted.
+
+  // Round `from` to the nearest minute so the query key stays stable between
+  // renders and only changes when the user switches the time range.
+  const queryDateRange = useMemo(() => {
+    const fromMs = Math.floor((Date.now() - hours * 60 * 60 * 1000) / 60_000) * 60_000
+    return { from: new Date(fromMs).toISOString() }
+  }, [hours])
+
   const scopeArg = projectId ? { projectId } : {}
-  const overview = useStatsOverview(scopeArg)
-  const timeseries = useStatsTimeseries(scopeArg)
-  const anomalies = useAnomalies(scopeArg)
+  const timeArg = { ...scopeArg, ...queryDateRange }
+
+  const overview = useStatsOverview(timeArg, { refetchInterval: LIVE_REFETCH_MS })
+  const timeseries = useStatsTimeseries(timeArg, { refetchInterval: LIVE_REFETCH_MS })
+  const anomalies = useAnomalies({ ...scopeArg, observationHours: hours })
   const alerts = useAlerts()
   const recommendations = useRecommendations()
   const auditLogs = useAuditLogs({ limit: 6 })
   const promptsQuery = usePrompts(projectId ?? undefined)
-  const modelsQuery = useStatsModels(24, projectId ?? undefined)
-  const securitySummary = useSecuritySummary(24)
-  const latencyStats = useStatsLatency(24)
+  const modelsQuery = useStatsModels(hours, projectId ?? undefined)
+  const securitySummary = useSecuritySummary(hours)
+  const latencyStats = useStatsLatency(hours)
 
   const o = overview.data
   const isLoading = overview.isLoading || timeseries.isLoading
@@ -138,7 +194,6 @@ export default function DashboardPage() {
       ? ((o.errorRequests / o.totalRequests) * 100).toFixed(1) + '%'
       : '0.0%'
 
-  // Derive sparklines from timeseries (last N points)
   const sparkRequests = useMemo(
     () => (timeseries.data ?? []).slice(-10).map((d) => d.requests),
     [timeseries.data],
@@ -152,14 +207,37 @@ export default function DashboardPage() {
     [timeseries.data],
   )
 
-  // Build attention cards from live data. Priority: security > anomaly >
-  // alert > savings — most severe first so the user scans left-to-right.
+  // ISO timestamps of alerts that fired within the current time range — for chart markers
+  const alertFiredAt = useMemo(
+    () =>
+      (alerts.data ?? [])
+        .filter((a) => {
+          if (!a.last_triggered_at) return false
+          return Date.now() - new Date(a.last_triggered_at).getTime() < hours * 60 * 60 * 1000
+        })
+        .map((a) => a.last_triggered_at as string),
+    [alerts.data, hours],
+  )
+
+  // Active alert rules vs recently fired (within the selected time window)
+  const activeAlertRules = useMemo(
+    () => (alerts.data ?? []).filter((a) => a.is_active),
+    [alerts.data],
+  )
+  const firingAlerts = useMemo(
+    () =>
+      activeAlertRules.filter(
+        (a) =>
+          a.last_triggered_at &&
+          Date.now() - new Date(a.last_triggered_at).getTime() < hours * 60 * 60 * 1000,
+      ),
+    [activeAlertRules, hours],
+  )
+
+  // Build attention cards — security > anomaly > alert > savings
   const attnCards = useMemo(() => {
     const cards: AttnCardProps[] = []
 
-    // PII leak — any request in the last 24h where security-scan flagged PII.
-    // This aggregates across all PII sub-patterns (email, phone, card, ssn,
-    // passport) because any PII leaving the workspace is equally serious.
     const piiHits = (securitySummary.data ?? [])
       .filter((r) => r.type === 'pii')
       .reduce((sum, r) => sum + r.count, 0)
@@ -167,7 +245,7 @@ export default function DashboardPage() {
       cards.push({
         kind: 'critical',
         cardKey: 'pii_leak',
-        title: `PII leak · ${piiHits} match${piiHits === 1 ? '' : 'es'} in last 24h`,
+        title: `PII leak · ${piiHits} match${piiHits === 1 ? '' : 'es'} in last ${timeRange}`,
         meta: 'email · phone · card · ssn · passport',
         hint: 'Review flagged requests to identify the source prompt.',
         cta: 'Open security →',
@@ -175,8 +253,6 @@ export default function DashboardPage() {
       })
     }
 
-    // Top anomaly — deep-link straight to the filtered requests view so the
-    // user can see the actual traffic that deviated, not the summary list.
     const topAnomaly = (anomalies.data?.data ?? [])[0]
     if (topAnomaly) {
       const qs = new URLSearchParams({
@@ -194,14 +270,6 @@ export default function DashboardPage() {
       })
     }
 
-    // Top alert — only cards for rules that actually fired in the last hour,
-    // not every active rule. Matches the Firing group on the Alerts page.
-    const firingAlerts = (alerts.data ?? []).filter(
-      (a) =>
-        a.is_active &&
-        a.last_triggered_at &&
-        Date.now() - new Date(a.last_triggered_at).getTime() < 60 * 60 * 1000,
-    )
     if (firingAlerts[0]) {
       const top = firingAlerts[0]
       const firedMinsAgo = top.last_triggered_at
@@ -228,13 +296,10 @@ export default function DashboardPage() {
       })
     }
 
-    // Top recommendation / saving
     const topRec = (recommendations.data ?? [])[0] as (ModelRecommendation & { id?: string }) | undefined
     if (topRec) {
       cards.push({
         kind: 'savings',
-        // `id` comes from the server when available; otherwise fall back to
-        // current→suggested so the same swap stays dismissed until it changes.
         cardKey: `savings:${topRec.id ?? `${topRec.currentModel}->${topRec.suggestedModel}`}`,
         title: `Switch to ${topRec.suggestedModel}`,
         meta: `${topRec.currentModel} · same quality`,
@@ -245,7 +310,7 @@ export default function DashboardPage() {
     }
 
     return cards
-  }, [anomalies.data, alerts.data, recommendations.data, securitySummary.data])
+  }, [anomalies.data, firingAlerts, recommendations.data, securitySummary.data, timeRange])
 
   return (
     <div className="-m-7 flex flex-col h-screen overflow-hidden">
@@ -254,7 +319,7 @@ export default function DashboardPage() {
         right={
           <div className="flex items-center gap-3">
             <TimeRangeSelector value={timeRange} onChange={setTimeRange} />
-            <LiveDot />
+            <LiveDot refetching={overview.isFetching || timeseries.isFetching} />
           </div>
         }
       />
@@ -278,7 +343,7 @@ export default function DashboardPage() {
           </div>
           {o && (
             <div className="flex items-center gap-2 text-[14px] text-text-muted flex-wrap">
-              <span>Since yesterday:</span>
+              <span>{sinceLabel(timeRange)}</span>
               <b className="text-text font-medium">{o.totalRequests.toLocaleString()} requests</b>
               <span className="text-text-faint">·</span>
               <b className="text-text font-medium">{fmtCost(o.totalCostUsd)} spent</b>
@@ -344,14 +409,14 @@ export default function DashboardPage() {
           ) : (
             <>
               <KpiCard
-                label="Requests · 30d"
+                label={`Requests · ${timeRange}`}
                 value={o.totalRequests.toLocaleString()}
                 sparkValues={sparkRequests}
                 linkLabel="Requests →"
                 linkHref="/requests"
               />
               <KpiCard
-                label="Spend · 30d"
+                label={`Spend · ${timeRange}`}
                 value={fmtCost(o.totalCostUsd)}
                 sparkValues={sparkCost}
                 deltaVariant="good"
@@ -388,12 +453,12 @@ export default function DashboardPage() {
         {/* Traffic chart */}
         <div className="px-[22px] py-5 border-b border-border">
           <div className="flex items-center mb-3">
-            <span className="text-[15px] font-medium">Traffic · last 30d</span>
+            <span className="text-[15px] font-medium">Traffic &amp; spend · last {timeRange}</span>
           </div>
           {isLoading || !timeseries.data ? (
             <Skeleton className="h-[220px] w-full" />
           ) : (
-            <RequestChart data={timeseries.data} />
+            <RequestChart data={timeseries.data} firedAt={alertFiredAt} />
           )}
         </div>
 
@@ -466,7 +531,7 @@ export default function DashboardPage() {
           </div>
           <div className="px-[22px] py-[18px]">
             <div className="flex items-center mb-3">
-              <span className="text-[14px] font-medium">Models in use · 24h</span>
+              <span className="text-[14px] font-medium">Models in use · {timeRange}</span>
               <span className="flex-1" />
               <Link href="/requests" className="font-mono text-[10.5px] text-text-muted tracking-[0.03em] hover:text-text transition-colors">
                 All requests →
@@ -484,7 +549,7 @@ export default function DashboardPage() {
                 ))}
               </div>
             ) : (modelsQuery.data ?? []).length === 0 ? (
-              <p className="font-mono text-[12px] text-text-faint">No requests in the last 24 hours.</p>
+              <p className="font-mono text-[12px] text-text-faint">No requests in the last {timeRange}.</p>
             ) : (
               <div>
                 <div className="grid font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint pb-2 border-b border-border" style={{ gridTemplateColumns: '1fr 80px 90px 70px', gap: 10 }}>
@@ -517,7 +582,7 @@ export default function DashboardPage() {
 
         {/* Bottom 2-col: Alerts + Recommendations */}
         <div className="grid grid-cols-2 border-b border-border">
-          {/* Active alerts */}
+          {/* Active alert rules */}
           <div className="px-[22px] py-[18px] border-r border-border">
             <div className="flex items-center mb-3">
               <span className="text-[14px] font-medium">Active alerts</span>
@@ -526,35 +591,45 @@ export default function DashboardPage() {
                 href="/alerts"
                 className={cn(
                   'font-mono text-[10.5px] tracking-[0.03em]',
-                  (alerts.data ?? []).filter((a) => a.is_active).length > 0
-                    ? 'text-accent'
-                    : 'text-text-muted',
+                  firingAlerts.length > 0 ? 'text-accent' : 'text-text-muted',
                 )}
               >
-                {(alerts.data ?? []).filter((a) => a.is_active).length} firing →
+                {firingAlerts.length > 0
+                  ? `${firingAlerts.length} firing →`
+                  : `${activeAlertRules.length} rule${activeAlertRules.length !== 1 ? 's' : ''} →`}
               </Link>
             </div>
-            {(alerts.data ?? []).filter((a) => a.is_active).length === 0 ? (
-              <p className="text-[13px] text-text-faint">No active alerts.</p>
+            {activeAlertRules.length === 0 ? (
+              <p className="text-[13px] text-text-faint">No active alert rules.</p>
             ) : (
               <div className="flex flex-col gap-2">
-                {(alerts.data ?? [])
-                  .filter((a) => a.is_active)
-                  .slice(0, 3)
-                  .map((a) => (
+                {activeAlertRules.slice(0, 3).map((a) => {
+                  const fired = a.last_triggered_at
+                    ? Date.now() - new Date(a.last_triggered_at).getTime() < hours * 60 * 60 * 1000
+                    : false
+                  const minsAgo = a.last_triggered_at
+                    ? Math.max(1, Math.round((Date.now() - new Date(a.last_triggered_at).getTime()) / 60_000))
+                    : null
+                  return (
                     <div
                       key={a.id}
-                      className="flex items-center gap-2.5 px-3 py-2.5 rounded-[5px] bg-accent-bg border border-accent-border"
+                      className={cn(
+                        'flex items-center gap-2.5 px-3 py-2.5 rounded-[5px] border',
+                        fired
+                          ? 'bg-accent-bg border-accent-border'
+                          : 'bg-bg-elev border-border',
+                      )}
                     >
-                      <span className="w-2 h-2 rounded-full bg-accent shrink-0" />
+                      <span className={cn('w-2 h-2 rounded-full shrink-0', fired ? 'bg-accent' : 'bg-text-faint')} />
                       <div className="flex-1 min-w-0">
                         <div className="text-[12.5px] text-text truncate">{a.name}</div>
                         <div className="font-mono text-[10px] text-text-faint mt-0.5 uppercase tracking-[0.04em]">
-                          {a.type}
+                          {fired && minsAgo != null ? `fired ${minsAgo}m ago` : a.type}
                         </div>
                       </div>
                     </div>
-                  ))}
+                  )
+                })}
               </div>
             )}
           </div>
@@ -600,7 +675,10 @@ export default function DashboardPage() {
           <div className="flex items-center mb-3">
             <span className="text-[14px] font-medium">Recent activity</span>
             <span className="flex-1" />
-            <Link href="/settings" className="font-mono text-[10.5px] text-text-muted tracking-[0.03em] hover:text-text transition-colors">
+            <Link
+              href="/settings?tab=audit-log"
+              className="font-mono text-[10.5px] text-text-muted tracking-[0.03em] hover:text-text transition-colors"
+            >
               Audit log →
             </Link>
           </div>
@@ -629,10 +707,13 @@ export default function DashboardPage() {
                     'font-mono text-[9px] uppercase tracking-[0.04em] px-[5px] py-[1px] rounded-[3px] border self-center',
                     isAccent ? 'text-accent border-accent-border' : 'text-text-faint border-border',
                   )}>{kind}</span>
-                  <div className="text-[12.5px] text-text leading-snug font-mono">
-                    {e.action}
-                    {e.resource_type && <span className="text-text-muted"> · {e.resource_type}</span>}
-                    {e.resource_id && <span className="text-text-faint"> · {e.resource_id.slice(0, 12)}</span>}
+                  <div className="text-[12.5px] text-text leading-snug">
+                    {formatAuditAction(e.action)}
+                    {e.resource_id && (
+                      <span className="font-mono text-[10.5px] text-text-faint ml-1.5">
+                        · {e.resource_id.slice(0, 8)}
+                      </span>
+                    )}
                   </div>
                 </div>
               )
