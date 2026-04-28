@@ -119,7 +119,8 @@ export function RequestChart({ data, firedAt = [] }: RequestChartProps) {
             formatter={(value: unknown, name: string) => {
               const num = typeof value === 'number' ? value : 0
               if (name === 'cost') return [`$${num.toFixed(2)}`, 'Spend']
-              return [num.toLocaleString(), 'Requests']
+              if (name === 'requests') return [num.toLocaleString(), 'Requests']
+              return [String(num), name]
             }}
           />
 

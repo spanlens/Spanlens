@@ -58,9 +58,10 @@ function timeRangeToHours(range: string): number {
 function sinceLabel(range: string): string {
   switch (range) {
     case '1h': return 'Last hour:'
+    case '24h': return 'Last 24h:'
     case '7d': return 'Last 7 days:'
     case '30d': return 'Last 30 days:'
-    default: return 'Since yesterday:'
+    default: return 'Last 24h:'
   }
 }
 
@@ -276,7 +277,7 @@ export default function DashboardPage() {
       cards.push({
         kind: 'critical',
         cardKey: `anomaly:${topAnomaly.provider}:${topAnomaly.model}:${topAnomaly.kind}`,
-        title: `${topAnomaly.kind.replace('_', ' ')} anomaly on ${topAnomaly.model}`,
+        title: `${topAnomaly.kind.replaceAll('_', ' ')} anomaly on ${topAnomaly.model}`,
         meta: `${topAnomaly.deviations.toFixed(1)}σ · ${topAnomaly.provider}`,
         hint: `Current ${topAnomaly.currentValue.toFixed(0)} vs baseline ${topAnomaly.baselineMean.toFixed(0)}`,
         cta: 'Investigate requests →',
@@ -660,9 +661,9 @@ export default function DashboardPage() {
               <p className="text-[13px] text-text-faint">No recommendations yet.</p>
             ) : (
               <div className="flex flex-col gap-2">
-                {(recommendations.data ?? []).slice(0, 3).map((r, i) => (
+                {(recommendations.data ?? []).slice(0, 3).map((r) => (
                   <div
-                    key={i}
+                    key={`${r.currentModel}->${r.suggestedModel}`}
                     className="flex items-center gap-3 px-3 py-2.5 rounded-[5px] bg-bg-elev border border-border"
                   >
                     <div className="flex-1 min-w-0">
