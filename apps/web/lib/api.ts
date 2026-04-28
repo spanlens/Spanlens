@@ -121,6 +121,29 @@ export async function apiPatch<T>(path: string, body?: unknown): Promise<T> {
   return res.json() as Promise<T>
 }
 
+export async function apiDownload(path: string, filename: string): Promise<void> {
+  const token = await getAuthToken()
+  const res = await fetch(path, {
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    cache: 'no-store',
+  })
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string }
+    throw new ApiError(err.error ?? `HTTP ${res.status}`, res.status)
+  }
+  const blob = await res.blob()
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
 export async function apiDelete<T>(path: string): Promise<T> {
   const res = await fetch(path, {
     method: 'DELETE',
