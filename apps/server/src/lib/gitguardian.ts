@@ -1,21 +1,27 @@
 /**
  * GitGuardian HasMySecretLeaked client.
  *
- * The HMSL service uses k-anonymity: we send only a 5-char SHA-256 prefix,
- * and the server returns all known-leaked hashes that share that prefix.
- * The full hash is then compared client-side. The actual secret never
- * leaves our server, and even the full hash is never sent.
+ * Endpoint:  GET https://api.hasmysecretleaked.com/v1/prefix/{prefix}
+ * Auth:      `GGShield-Token: gg_pat_...` (NOT `Authorization: Bearer/Token`)
+ * Rate:      5/day anon, 100+/day authed (workspace quota: 10k/month free)
  *
- * NOTE on API shape: the request/response field names below match the
- * public HasMySecretLeaked spec at https://api.hasmysecretleaked.com.
- * If the live API rejects requests, this is the function to update —
- * the rest of the leak-detection pipeline is API-shape-agnostic.
+ * Privacy protocol (k-anonymity, hash-of-hash):
+ *   1. fullHash    = SHA-256(secret)              — never transmitted
+ *   2. prefix      = fullHash.slice(0, 5)         — sent in URL path
+ *   3. server returns ALL leaked-secret hints whose hash starts with prefix
+ *   4. hintToMatch = SHA-256(fullHash)            — computed locally
+ *   5. compare hintToMatch against each `match.hint`
  *
- * Privacy footnote: the GitGuardian docs offer an HMAC-keyed mode for
- * extra opacity ("payload mode"). We deliberately stick to the simpler
- * prefix mode here — for our use case (rare, post-hoc scans of
- * already-encrypted-at-rest secrets), the marginal privacy gain doesn't
- * justify the extra round-trip.
+ * Step 4 is what makes this trustless: GitGuardian never sees the full
+ * hash either, only its prefix. Their `hint` field is the hash-of-hash
+ * stored server-side at indexing time, so a match means an exact key
+ * collision in their corpus.
+ *
+ * The `payload` field on a match is AES-256-GCM ciphertext keyed on the
+ * full hash — decrypting it would reveal where the leak was found
+ * (repo, file, line). We don't decrypt today; the leak email simply
+ * tells the admin to rotate. Future enhancement: decrypt for richer
+ * "leaked at <github.com/...>" context in the alert.
  */
 
 import { sha256Hex } from './crypto.js'
@@ -29,8 +35,22 @@ export interface LeakCheckOutcome {
 }
 
 interface HmslMatch {
-  hash: string
-  count?: number
+  /** SHA-256(fullHash) — compare against locally-computed hash-of-hash. */
+  hint: string
+  /** AES-256-GCM ciphertext, decryption key = fullHash. Unused today. */
+  payload?: string
+}
+
+interface HmslResponse {
+  matches?: HmslMatch[]
+}
+
+/**
+ * SHA-256 of a hex string interpreted as raw text. Used for the
+ * "hint" computation: SHA-256(SHA-256(secret) as hex).
+ */
+async function sha256OfHex(hex: string): Promise<string> {
+  return sha256Hex(hex)
 }
 
 /**
@@ -48,11 +68,12 @@ export async function checkSecretLeaked(plaintext: string): Promise<LeakCheckOut
 
   const fullHash = await sha256Hex(plaintext)
   const prefix = fullHash.slice(0, 5)
+  const hintToMatch = await sha256OfHex(fullHash)
 
-  const res = await fetch(`${HMSL_BASE}/v1/hashes/${prefix}`, {
+  const res = await fetch(`${HMSL_BASE}/v1/prefix/${prefix}`, {
     method: 'GET',
     headers: {
-      Authorization: `Token ${apiKey}`,
+      'GGShield-Token': apiKey,
       Accept: 'application/json',
     },
   })
@@ -65,18 +86,20 @@ export async function checkSecretLeaked(plaintext: string): Promise<LeakCheckOut
     throw new Error(`HMSL ${res.status}: ${text.slice(0, 200)}`)
   }
 
-  const body = (await res.json().catch(() => ({}))) as { matches?: HmslMatch[] }
+  const body = (await res.json().catch(() => ({}))) as HmslResponse
   const matches = body.matches ?? []
+  const leaked = matches.some((m) => m.hint === hintToMatch)
 
-  const hit = matches.find((m) => m.hash === fullHash)
   return {
-    leaked: hit !== undefined,
+    leaked,
     details: {
       prefix,
-      // Full hash is intentionally NOT stored — knowing it lets a malicious
-      // DB reader replay HMSL queries to confirm a key is leaked.
+      // Don't store hintToMatch or fullHash — those would let a malicious
+      // DB reader replay the lookup to confirm what specific key leaked.
       candidates_for_prefix: matches.length,
-      match_count: hit?.count ?? null,
+      // payload presence indicates a verifiable leak record exists upstream;
+      // we record whether one was returned (yes/no) rather than the value.
+      has_payload: matches.find((m) => m.hint === hintToMatch)?.payload !== undefined,
     },
   }
 }
