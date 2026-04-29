@@ -19,10 +19,10 @@ export default function RequestsDocs() {
 
       <h2>Why it matters</h2>
       <p>
-        Dashboards lie. Aggregates smooth over outliers. When something weird happens — a user
-        reports a wrong answer, a cost spike is unaccounted for, a prompt injection got through —
-        you want to see the <em>actual bytes that went out</em> and <em>came back</em>. Requests is
-        that time machine.
+        Aggregate views summarize — they smooth over individual outliers. When something goes wrong
+        — a user reports a wrong answer, a cost spike is unaccounted for, a prompt injection slips
+        through — you need to see the <em>actual bytes that went out</em> and{' '}
+        <em>came back</em>. Requests gives you that exact record.
       </p>
 
       <h2>What gets logged</h2>
