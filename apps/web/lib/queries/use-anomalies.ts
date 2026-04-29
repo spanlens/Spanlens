@@ -53,10 +53,10 @@ export function useAnomalies(params: UseAnomaliesParams = {}) {
     queryKey: ['anomalies', params] as const,
     queryFn: async () => {
       const qs = new URLSearchParams()
-      if (params.observationHours) qs.set('observationHours', String(params.observationHours))
-      if (params.referenceHours) qs.set('referenceHours', String(params.referenceHours))
-      if (params.sigma) qs.set('sigma', String(params.sigma))
-      if (params.projectId) qs.set('projectId', params.projectId)
+      if (params.observationHours !== undefined) qs.set('observationHours', String(params.observationHours))
+      if (params.referenceHours !== undefined) qs.set('referenceHours', String(params.referenceHours))
+      if (params.sigma !== undefined) qs.set('sigma', String(params.sigma))
+      if (params.projectId !== undefined) qs.set('projectId', params.projectId)
       const suffix = qs.size > 0 ? `?${qs}` : ''
       const res = await apiGet<ApiEnvelope<Anomaly[]> & { meta?: AnomalyResponseMeta }>(
         `/api/v1/anomalies${suffix}`,

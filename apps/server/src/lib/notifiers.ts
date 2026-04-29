@@ -82,6 +82,7 @@ export async function sendEmailAlert(
         subject: buildSubject(notification),
         text: buildPlainBody(notification),
       }),
+      signal: AbortSignal.timeout(5000),
     })
     if (!res.ok) {
       const text = await res.text().catch(() => '')
@@ -128,6 +129,7 @@ export async function sendSlackAlert(
           },
         ],
       }),
+      signal: AbortSignal.timeout(5000),
     })
     if (!res.ok) {
       const text = await res.text().catch(() => '')
@@ -160,6 +162,7 @@ export async function sendDiscordAlert(
           },
         ],
       }),
+      signal: AbortSignal.timeout(5000),
     })
     if (!res.ok) {
       const text = await res.text().catch(() => '')
@@ -268,6 +271,7 @@ export async function sendQuotaWarningEmail(
         subject: buildQuotaSubject(notification),
         text: buildQuotaBody(notification),
       }),
+      signal: AbortSignal.timeout(5000),
     })
     if (!res.ok) {
       const text = await res.text().catch(() => '')
