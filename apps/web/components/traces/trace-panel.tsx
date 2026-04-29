@@ -197,12 +197,22 @@ interface SpanDrawerProps {
   hasNext: boolean
   position: number
   total: number
+  traceDurationMs: number | null
+  traceTotalCost: number
+  isCritical: boolean
 }
 
-function SpanDrawer({ span, onClose, onPrev, onNext, hasPrev, hasNext, position, total }: SpanDrawerProps) {
+function SpanDrawer({ span, onClose, onPrev, onNext, hasPrev, hasNext, position, total, traceDurationMs, traceTotalCost, isCritical }: SpanDrawerProps) {
   const [tab, setTab] = useState<SpanTab>('input')
   useEffect(() => { setTab('input') }, [span.id])
   const isLlm = span.span_type === 'llm'
+
+  const durationPct = traceDurationMs && span.duration_ms
+    ? Math.round((span.duration_ms / traceDurationMs) * 100)
+    : 0
+  const costPct = traceTotalCost > 0 && (span.cost_usd ?? 0) > 0
+    ? Math.round(((span.cost_usd ?? 0) / traceTotalCost) * 100)
+    : 0
 
   const rawObj = {
     id: span.id, name: span.name, type: span.span_type, status: span.status,
@@ -311,6 +321,39 @@ function SpanDrawer({ span, onClose, onPrev, onNext, hasPrev, hasNext, position,
           </button>
         ))}
       </div>
+
+      {/* BOTTLENECK section — sticky at bottom when this span is the critical path */}
+      {isCritical && (
+        <div className="px-5 py-4 border-t border-accent-border bg-accent-bg shrink-0">
+          <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-accent mb-2">
+            Bottleneck · Recommendation
+          </div>
+          <p className="text-[12px] text-text-muted leading-relaxed">
+            This span drives{' '}
+            <strong className="text-text">{durationPct}%</strong> of the trace&apos;s latency
+            {costPct > 5 && (
+              <> and <strong className="text-text">{costPct}%</strong> of cost</>
+            )}.{' '}
+            {isLlm
+              ? 'For recall-heavy LLM calls, a lighter model often matches output quality at significantly lower latency and cost.'
+              : 'Optimizing this span will have the highest impact on overall trace duration.'}
+          </p>
+          <div className="flex gap-2 mt-3">
+            <button
+              type="button"
+              className="font-mono text-[10.5px] px-3 py-[5px] rounded-[4px] bg-text text-bg uppercase tracking-[0.04em] hover:opacity-90 transition-opacity"
+            >
+              Open in Evals
+            </button>
+            <button
+              type="button"
+              className="font-mono text-[10.5px] px-3 py-[5px] rounded-[4px] border border-accent-border text-accent uppercase tracking-[0.04em] hover:opacity-80 transition-opacity"
+            >
+              Compare Models
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Tab content */}
       <div className="px-5 py-4 flex-1 overflow-auto">
@@ -620,6 +663,7 @@ export function TracePanel({ traceId, onClose, onPrev, onNext, hasPrev, hasNext 
               spans={effectiveSpans}
               onSelectSpan={setSelectedSpan}
               selectedSpanId={selectedSpan?.id ?? null}
+              criticalSpanId={bottleneck?.id ?? null}
             />
             {bottleneck && trace.duration_ms && (
               <div className="mt-4 px-4 py-3.5 rounded-md border border-accent-border bg-accent-bg flex items-center gap-3.5">
@@ -656,6 +700,9 @@ export function TracePanel({ traceId, onClose, onPrev, onNext, hasPrev, hasNext 
           hasNext={effectiveIdx < effectiveSpans.length - 1}
           position={effectiveIdx + 1}
           total={effectiveSpans.length}
+          traceDurationMs={trace.duration_ms}
+          traceTotalCost={trace.total_cost_usd}
+          isCritical={selectedSpan.id === bottleneck?.id}
         />
       )}
     </div>
