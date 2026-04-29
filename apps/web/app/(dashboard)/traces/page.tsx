@@ -136,8 +136,6 @@ export default function TracesPage() {
   const rawTraces = useMemo(() => data?.data ?? [], [data])
   const meta = data?.meta ?? { total: 0, page: 1, limit: 50 }
 
-  const hasRunning = rawTraces.some((t) => t.status === 'running')
-
   const traces = useMemo(() => {
     let list = rawTraces
     if (nameSearch.trim()) {
