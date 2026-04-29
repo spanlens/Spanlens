@@ -67,6 +67,16 @@ function buildSpanTree(spans: SpanRow[]): SpanRow[] {
   }
   walk(null, 0)
 
+  // Collect orphan spans (parent_span_id references a span not in the list)
+  const visitedIds = new Set(ordered.map((s) => s.id))
+  const orphans = spans
+    .filter((s) => !visitedIds.has(s.id))
+    .sort((a, b) => new Date(a.started_at).getTime() - new Date(b.started_at).getTime())
+  for (const s of orphans) {
+    depths.set(s.id, 0)
+    ordered.push(s)
+  }
+
   for (const s of ordered) {
     ;(s as SpanRow & { _depth: number })._depth = depths.get(s.id) ?? 0
   }

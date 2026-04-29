@@ -1,15 +1,16 @@
 'use client'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { useTraces } from '@/lib/queries/use-traces'
 import type { TraceRow, TraceStatus } from '@/lib/queries/types'
 import { Topbar } from '@/components/layout/topbar'
 import { ExportDropdown } from '@/components/ui/export-dropdown'
-import { TracePanel } from '@/components/traces/trace-panel'
 import { cn } from '@/lib/utils'
 
 function fmtDuration(ms: number | null): string {
   if (ms == null) return '—'
-  if (ms < 1000) return `${ms}ms`
+  if (ms < 1) return '<1ms'
+  if (ms < 1000) return `${Math.round(ms)}ms`
   return `${(ms / 1000).toFixed(2)}s`
 }
 
@@ -43,7 +44,7 @@ function TraceDurationBar({
   )
 }
 
-type StatusFilter = 'all' | 'ok' | 'error'
+type StatusFilter = 'all' | 'ok' | 'error' | 'running'
 type TimeRange = '1h' | '24h' | '7d' | '30d' | 'all'
 type SortField = 'started_at' | 'duration_ms' | 'total_cost_usd' | 'span_count'
 type SortDir = 'asc' | 'desc'
@@ -79,28 +80,68 @@ function SortHeader({
 }
 
 export default function TracesPage() {
+  const router = useRouter()
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [timeRange, setTimeRange] = useState<TimeRange>('all')
   const [nameSearch, setNameSearch] = useState('')
   const [sortBy, setSortBy] = useState<SortField>('started_at')
   const [sortDir, setSortDir] = useState<SortDir>('desc')
   const [page, setPage] = useState(1)
-  const [selectedTraceId, setSelectedTraceId] = useState<string | null>(null)
+
+  // Read URL params on mount
+  const didInitUrl = useRef(false)
+  useEffect(() => {
+    if (didInitUrl.current) return
+    didInitUrl.current = true
+    const p = new URLSearchParams(window.location.search)
+    const s = p.get('status')
+    if (s === 'ok' || s === 'error' || s === 'running') setStatusFilter(s)
+    const r = p.get('range')
+    if (r === '1h' || r === '24h' || r === '7d' || r === '30d') setTimeRange(r as TimeRange)
+    const q = p.get('q')
+    if (q) setNameSearch(q)
+    const sort = p.get('sort')
+    if (sort === 'duration_ms' || sort === 'total_cost_usd' || sort === 'span_count') setSortBy(sort as SortField)
+    if (p.get('dir') === 'asc') setSortDir('asc')
+    const pg = parseInt(p.get('page') ?? '', 10)
+    if (!isNaN(pg) && pg > 1) setPage(pg)
+  }, [])
+
+  // Sync filter state → URL
+  useEffect(() => {
+    const p = new URLSearchParams()
+    if (statusFilter !== 'all') p.set('status', statusFilter)
+    if (timeRange !== 'all') p.set('range', timeRange)
+    if (nameSearch.trim()) p.set('q', nameSearch.trim())
+    if (sortBy !== 'started_at') p.set('sort', sortBy)
+    if (sortDir !== 'desc') p.set('dir', sortDir)
+    if (page > 1) p.set('page', String(page))
+    const qs = p.toString()
+    window.history.replaceState(null, '', qs ? `?${qs}` : window.location.pathname)
+  }, [statusFilter, timeRange, nameSearch, sortBy, sortDir, page])
 
   const apiStatus: TraceStatus | 'all' =
-    statusFilter === 'ok' ? 'completed' : statusFilter === 'error' ? 'error' : 'all'
+    statusFilter === 'ok' ? 'completed'
+    : statusFilter === 'error' ? 'error'
+    : statusFilter === 'running' ? 'running'
+    : 'all'
 
   const fromIso = timeRangeToFrom(timeRange)
 
-  const { data, isLoading, isFetching } = useTraces({
-    page,
-    limit: 50,
-    status: apiStatus,
-    ...(fromIso ? { from: fromIso } : {}),
-  })
+  const { data, isLoading, isFetching, refetch } = useTraces(
+    { page, limit: 50, status: apiStatus, ...(fromIso ? { from: fromIso } : {}) },
+  )
 
   const rawTraces = useMemo(() => data?.data ?? [], [data])
   const meta = data?.meta ?? { total: 0, page: 1, limit: 50 }
+
+  // Auto-refresh every 5s when any trace is still running
+  const hasRunning = rawTraces.some((t) => t.status === 'running')
+  useEffect(() => {
+    if (!hasRunning) return
+    const timer = setInterval(() => { void refetch() }, 5_000)
+    return () => clearInterval(timer)
+  }, [hasRunning, refetch])
 
   const traces = useMemo(() => {
     let list = rawTraces
@@ -152,21 +193,13 @@ export default function TracesPage() {
   }
 
   function handleRowClick(t: TraceRow) {
-    setSelectedTraceId(t.id)
+    const ids = traces.map((tr) => tr.id)
+    try { sessionStorage.setItem('traceNavList', JSON.stringify({ ids })) } catch { /* ignore */ }
+    router.push(`/traces/${t.id}`)
   }
 
-  // Panel prev/next within the current traces list
-  const selectedIdx = selectedTraceId ? traces.findIndex((t) => t.id === selectedTraceId) : -1
-  const hasPrev = selectedIdx > 0
-  const hasNext = selectedIdx >= 0 && selectedIdx < traces.length - 1
-
   return (
-    <div className="-m-7 flex h-screen overflow-hidden bg-bg">
-      {/* ── Left: trace list ─────────────────────────────────────────────── */}
-      <div className={cn(
-        'flex flex-col overflow-hidden transition-all',
-        selectedTraceId ? 'w-[420px] shrink-0' : 'flex-1',
-      )}>
+    <div className="-m-7 flex flex-col h-screen overflow-hidden bg-bg">
         <Topbar crumbs={[{ label: 'Workspace', href: '/dashboard' }, { label: 'Traces' }]} />
 
         {/* Stat strip */}
@@ -194,7 +227,7 @@ export default function TracesPage() {
         {/* Filter toolbar */}
         <div className="flex items-center gap-[6px] px-[22px] py-[10px] border-b border-border shrink-0 flex-wrap">
           <div className="flex p-0.5 border border-border rounded-[5px] bg-bg-elev font-mono text-[10.5px] tracking-[0.03em]">
-            {([['all', 'All'], ['ok', 'OK'], ['error', 'Error']] as [StatusFilter, string][]).map(([v, l]) => (
+            {([['all', 'All'], ['ok', 'OK'], ['error', 'Error'], ['running', 'Live']] as [StatusFilter, string][]).map(([v, l]) => (
               <button
                 key={v}
                 type="button"
@@ -249,40 +282,44 @@ export default function TracesPage() {
           )}
 
           <span className="flex-1" />
-          {!selectedTraceId && (
-            <ExportDropdown
-              filename="spanlens-traces"
-              buildUrl={(fmt) => {
-                const params = new URLSearchParams({ format: fmt })
-                if (apiStatus !== 'all') params.set('status', apiStatus)
-                if (fromIso) params.set('from', fromIso)
-                return `/api/v1/exports/traces?${params.toString()}`
-              }}
-            />
-          )}
+          <button
+            type="button"
+            onClick={() => { void refetch() }}
+            disabled={isFetching}
+            className="font-mono text-[10.5px] px-[9px] py-[4px] border border-border rounded-[5px] text-text-muted hover:text-text hover:border-border-strong disabled:opacity-40 transition-colors"
+          >
+            {isFetching ? '↻ …' : '↻'}
+          </button>
+          <ExportDropdown
+            filename="spanlens-traces"
+            buildUrl={(fmt) => {
+              const params = new URLSearchParams({ format: fmt })
+              if (apiStatus !== 'all') params.set('status', apiStatus)
+              if (fromIso) params.set('from', fromIso)
+              return `/api/v1/exports/traces?${params.toString()}`
+            }}
+          />
           <span className="font-mono text-[11px] text-text-faint">
             {traces.length.toLocaleString()} of {meta.total.toLocaleString()}
           </span>
         </div>
 
-        {/* Column header — hidden when panel is open to save space */}
-        {!selectedTraceId && (
-          <div
-            className="grid border-b border-border bg-bg-muted shrink-0 px-[22px] py-[9px]"
-            style={{ gridTemplateColumns: GRID }}
-          >
-            <span />
-            <span className="font-mono text-[10px] text-text-faint uppercase tracking-[0.05em]">Agent</span>
-            <span className="font-mono text-[10px] text-text-faint uppercase tracking-[0.05em]">Trace id</span>
-            <SortHeader label="Spans"    field="span_count"     sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
-            <SortHeader label="Duration" field="duration_ms"    sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
-            <SortHeader label="Cost"     field="total_cost_usd" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
-            <span className="font-mono text-[10px] text-text-faint uppercase tracking-[0.05em]">Tokens</span>
-            <span className="font-mono text-[10px] text-text-faint uppercase tracking-[0.05em]">Timeline</span>
-            <span className="font-mono text-[10px] text-text-faint uppercase tracking-[0.05em]">Tag</span>
-            <SortHeader label="Age"      field="started_at"     sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
-          </div>
-        )}
+        {/* Column header */}
+        <div
+          className="grid border-b border-border bg-bg-muted shrink-0 px-[22px] py-[9px]"
+          style={{ gridTemplateColumns: GRID }}
+        >
+          <span />
+          <span className="font-mono text-[10px] text-text-faint uppercase tracking-[0.05em]">Agent</span>
+          <span className="font-mono text-[10px] text-text-faint uppercase tracking-[0.05em]">Trace id</span>
+          <SortHeader label="Spans"    field="span_count"     sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
+          <SortHeader label="Duration" field="duration_ms"    sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
+          <SortHeader label="Cost"     field="total_cost_usd" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
+          <span className="font-mono text-[10px] text-text-faint uppercase tracking-[0.05em]">Tokens</span>
+          <span className="font-mono text-[10px] text-text-faint uppercase tracking-[0.05em]">Timeline</span>
+          <span className="font-mono text-[10px] text-text-faint uppercase tracking-[0.05em]">Status</span>
+          <SortHeader label="Age"      field="started_at"     sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
+        </div>
 
         {/* Rows */}
         <div className="flex-1 overflow-auto">
@@ -299,42 +336,7 @@ export default function TracesPage() {
                 Try adjusting your filters or use the Spanlens SDK to start recording agent traces.
               </p>
             </div>
-          ) : selectedTraceId ? (
-            // Compact list when panel is open
-            traces.map((t) => {
-              const isErr = t.status === 'error'
-              const isRunning = t.status === 'running'
-              const isSelected = t.id === selectedTraceId
-              return (
-                <button
-                  key={t.id}
-                  type="button"
-                  onClick={() => handleRowClick(t)}
-                  className={cn(
-                    'flex items-center w-full text-left px-[16px] py-[10px] border-b border-border gap-2 hover:bg-bg-elev transition-colors',
-                    isSelected && 'bg-bg-elev border-l-2 border-l-accent',
-                  )}
-                >
-                  <span className="shrink-0">
-                    {isErr ? <span className="w-1.5 h-1.5 rounded-full bg-bad block" /> :
-                     isRunning ? <span className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse block" /> :
-                     <span className="w-1.5 h-1.5 block" />}
-                  </span>
-                  <span className="flex-1 min-w-0">
-                    <div className={cn('font-sans text-[12.5px] font-medium truncate', isErr ? 'text-bad' : 'text-text')}>
-                      {t.name}
-                    </div>
-                    <div className="font-mono text-[10.5px] text-text-faint flex gap-2">
-                      <span>{t.span_count} spans</span>
-                      {t.duration_ms != null && <span>{fmtDuration(t.duration_ms)}</span>}
-                      <span className="ml-auto">{fmtAge(t.started_at)}</span>
-                    </div>
-                  </span>
-                </button>
-              )
-            })
           ) : (
-            // Full grid list
             traces.map((t) => {
               const isErr = t.status === 'error'
               const isRunning = t.status === 'running'
@@ -371,10 +373,17 @@ export default function TracesPage() {
                       isRunning={isRunning}
                     />
                   </span>
-                  <span className={cn('text-[11px] font-sans truncate', isErr ? 'text-bad' : isRunning ? 'text-accent' : 'text-text-faint')}>
-                    {isErr
-                      ? (t.error_message ? t.error_message.slice(0, 24) + (t.error_message.length > 24 ? '…' : '') : 'error')
-                      : isRunning ? 'running' : '—'}
+                  <span>
+                    {isErr ? (
+                      <span
+                        title={t.error_message ?? undefined}
+                        className="font-mono text-[9.5px] px-[5px] py-[2px] rounded-[3px] bg-bad-bg text-bad border border-bad/20 uppercase tracking-[0.04em]"
+                      >error</span>
+                    ) : isRunning ? (
+                      <span className="font-mono text-[9.5px] px-[5px] py-[2px] rounded-[3px] bg-accent-bg text-accent border border-accent-border uppercase tracking-[0.04em] animate-pulse">live</span>
+                    ) : (
+                      <span className="font-mono text-[9.5px] px-[5px] py-[2px] rounded-[3px] bg-bg-muted text-text-faint border border-border uppercase tracking-[0.04em]">ok</span>
+                    )}
                   </span>
                   <span className="text-text-faint text-right" title={new Date(t.started_at).toLocaleString()}>
                     {fmtAge(t.started_at)}
@@ -411,25 +420,6 @@ export default function TracesPage() {
             </div>
           </div>
         )}
-      </div>
-
-      {/* ── Right: trace detail panel ────────────────────────────────────── */}
-      {selectedTraceId && (
-        <div className="flex-1 overflow-hidden">
-          <TracePanel
-            traceId={selectedTraceId}
-            onClose={() => setSelectedTraceId(null)}
-            onPrev={() => {
-              if (hasPrev) setSelectedTraceId(traces[selectedIdx - 1]?.id ?? null)
-            }}
-            onNext={() => {
-              if (hasNext) setSelectedTraceId(traces[selectedIdx + 1]?.id ?? null)
-            }}
-            hasPrev={hasPrev}
-            hasNext={hasNext}
-          />
-        </div>
-      )}
     </div>
   )
 }
