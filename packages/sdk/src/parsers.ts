@@ -89,8 +89,16 @@ interface GeminiResponse {
 
 export function parseGeminiUsage(res: unknown): EndSpanOptions {
   if (!res || typeof res !== 'object') return {}
-  const typed = res as GeminiResponse
-  const u = typed.usageMetadata
+  const typed = res as Record<string, unknown>
+
+  // generateContent() returns GenerateContentResult = { response: GenerateContentResponse }
+  // Unwrap .response if present, otherwise treat as the response object directly.
+  const inner: GeminiResponse =
+    typed['response'] && typeof typed['response'] === 'object'
+      ? (typed['response'] as GeminiResponse)
+      : (typed as GeminiResponse)
+
+  const u = inner.usageMetadata
   if (!u) return {}
 
   const promptTokens = u.promptTokenCount ?? 0
@@ -98,8 +106,8 @@ export function parseGeminiUsage(res: unknown): EndSpanOptions {
   const totalTokens = u.totalTokenCount ?? promptTokens + completionTokens
 
   const out: EndSpanOptions = { promptTokens, completionTokens, totalTokens }
-  if (typed.modelVersion) {
-    out.metadata = { model: typed.modelVersion }
+  if (inner.modelVersion) {
+    out.metadata = { model: inner.modelVersion }
   }
   return out
 }

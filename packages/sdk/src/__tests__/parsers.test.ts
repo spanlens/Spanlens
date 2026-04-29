@@ -56,7 +56,7 @@ describe('parseAnthropicUsage', () => {
 })
 
 describe('parseGeminiUsage', () => {
-  it('parses generateContent usageMetadata', () => {
+  it('parses generateContent usageMetadata (unwrapped response object)', () => {
     const res = {
       modelVersion: 'gemini-1.5-pro-002',
       usageMetadata: {
@@ -71,5 +71,30 @@ describe('parseGeminiUsage', () => {
       totalTokens: 33,
       metadata: { model: 'gemini-1.5-pro-002' },
     })
+  })
+
+  it('parses GenerateContentResult ({ response: ... }) — real SDK return shape', () => {
+    const res = {
+      response: {
+        modelVersion: 'gemini-2.0-flash',
+        candidates: [{ content: { parts: [{ text: 'hi' }], role: 'model' } }],
+        usageMetadata: {
+          promptTokenCount: 5,
+          candidatesTokenCount: 10,
+          totalTokenCount: 15,
+        },
+      },
+    }
+    expect(parseGeminiUsage(res)).toEqual({
+      promptTokens: 5,
+      completionTokens: 10,
+      totalTokens: 15,
+      metadata: { model: 'gemini-2.0-flash' },
+    })
+  })
+
+  it('returns empty when usageMetadata missing', () => {
+    expect(parseGeminiUsage({ response: {} })).toEqual({})
+    expect(parseGeminiUsage({})).toEqual({})
   })
 })
