@@ -32,7 +32,9 @@ export interface AnomalyBucket {
   baselineMean: number
   baselineStdDev: number
   deviations: number
+  /** Number of requests in the observation (current) window. */
   sampleCount: number
+  /** Number of requests in the reference (historical) window. */
   referenceCount: number
 }
 

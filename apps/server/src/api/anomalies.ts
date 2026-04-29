@@ -64,6 +64,19 @@ anomaliesRouter.get('/', async (c) => {
     if (!proj) return c.json({ error: 'Project not found' }, 404)
   }
 
+  // Fetch acks scoped to the same project context (NULL = org-wide).
+  let acksQuery = supabaseAdmin
+    .from('anomaly_acks')
+    .select('provider, model, kind, acknowledged_at')
+    .eq('organization_id', orgId)
+    .limit(500)
+
+  if (projectId) {
+    acksQuery = acksQuery.eq('project_id', projectId)
+  } else {
+    acksQuery = acksQuery.is('project_id', null)
+  }
+
   const [anomalies, acksRes] = await Promise.all([
     detectAnomalies(orgId, {
       observationHours,
@@ -71,10 +84,7 @@ anomaliesRouter.get('/', async (c) => {
       sigmaThreshold,
       ...(projectId ? { projectId } : {}),
     }),
-    supabaseAdmin
-      .from('anomaly_acks')
-      .select('provider, model, kind, acknowledged_at')
-      .eq('organization_id', orgId),
+    acksQuery,
   ])
 
   const ackMap = new Map<string, string>()
@@ -116,8 +126,8 @@ anomaliesRouter.get('/history', async (c) => {
 
 async function parseAckBody(
   c: Context<JwtContext>,
-): Promise<{ error: string } | { provider: string; model: string; kind: string }> {
-  let body: { provider?: unknown; model?: unknown; kind?: unknown }
+): Promise<{ error: string } | { provider: string; model: string; kind: string; projectId?: string }> {
+  let body: { provider?: unknown; model?: unknown; kind?: unknown; projectId?: unknown }
   try {
     body = (await c.req.json()) as typeof body
   } catch {
@@ -132,7 +142,15 @@ async function parseAckBody(
   if (typeof body.kind !== 'string' || !VALID_KINDS.has(body.kind)) {
     return { error: 'kind must be one of: latency, cost, error_rate' }
   }
-  return { provider: body.provider, model: body.model, kind: body.kind }
+  const projectId = typeof body.projectId === 'string' && body.projectId.length > 0
+    ? body.projectId
+    : undefined
+  return {
+    provider: body.provider,
+    model: body.model,
+    kind: body.kind,
+    ...(projectId !== undefined ? { projectId } : {}),
+  }
 }
 
 // POST /api/v1/anomalies/ack — acknowledge (upsert)
@@ -148,19 +166,20 @@ anomaliesRouter.post('/ack', requireEdit, async (c) => {
     .from('anomaly_acks')
     .upsert({
       organization_id: orgId,
+      project_id: parsed.projectId ?? null,
       provider: parsed.provider,
       model: parsed.model,
       kind: parsed.kind,
       acknowledged_by: userId ?? null,
       acknowledged_at: new Date().toISOString(),
-    }, { onConflict: 'organization_id,provider,model,kind' })
+    }, { onConflict: 'organization_id,project_id,provider,model,kind' })
 
   if (error) return c.json({ error: 'Failed to acknowledge anomaly' }, 500)
 
   return c.json({ success: true })
 })
 
-// DELETE /api/v1/anomalies/ack?provider=X&model=Y&kind=Z — un-acknowledge
+// DELETE /api/v1/anomalies/ack?provider=X&model=Y&kind=Z[&projectId=P] — un-acknowledge
 anomaliesRouter.delete('/ack', requireEdit, async (c) => {
   const orgId = c.get('orgId')
   if (!orgId) return c.json({ error: 'Organization not found' }, 404)
@@ -168,6 +187,7 @@ anomaliesRouter.delete('/ack', requireEdit, async (c) => {
   const provider = c.req.query('provider')
   const model = c.req.query('model')
   const kind = c.req.query('kind')
+  const projectId = c.req.query('projectId')
 
   if (!provider) return c.json({ error: 'provider is required' }, 400)
   if (!model) return c.json({ error: 'model is required' }, 400)
@@ -175,13 +195,21 @@ anomaliesRouter.delete('/ack', requireEdit, async (c) => {
     return c.json({ error: 'kind must be one of: latency, cost, error_rate' }, 400)
   }
 
-  const { error } = await supabaseAdmin
+  let deleteQuery = supabaseAdmin
     .from('anomaly_acks')
     .delete()
     .eq('organization_id', orgId)
     .eq('provider', provider)
     .eq('model', model)
     .eq('kind', kind)
+
+  if (projectId) {
+    deleteQuery = deleteQuery.eq('project_id', projectId)
+  } else {
+    deleteQuery = deleteQuery.is('project_id', null)
+  }
+
+  const { error } = await deleteQuery
 
   if (error) return c.json({ error: 'Failed to un-acknowledge' }, 500)
 

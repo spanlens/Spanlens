@@ -297,7 +297,7 @@ export default function AnomaliesPage() {
           { label: 'History · 30d', value: String(historyCount),          warn: false },
           { label: 'Baseline',      value: '7d',                         warn: false },
         ].map((s, i) => (
-          <div key={i} className={cn('px-[18px] py-[14px]', i < 4 && 'border-r border-border')}>
+          <div key={s.label} className={cn('px-[18px] py-[14px]', i < 4 && 'border-r border-border')}>
             <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-2">{s.label}</div>
             <span className={cn('text-[24px] font-medium leading-none tracking-[-0.6px]', s.warn ? 'text-accent' : 'text-text')}>
               {s.value}

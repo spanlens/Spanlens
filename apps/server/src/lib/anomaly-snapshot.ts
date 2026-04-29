@@ -19,6 +19,8 @@ export interface SnapshotResult {
   errors: string[]
 }
 
+const CHUNK_SIZE = 10
+
 export async function snapshotAnomaliesForAllOrgs(
   now: Date = new Date(),
 ): Promise<SnapshotResult[]> {
@@ -39,32 +41,39 @@ export async function snapshotAnomaliesForAllOrgs(
   const uniqueOrgIds = Array.from(new Set((orgs ?? []).map((r) => r.organization_id)))
   const results: SnapshotResult[] = []
 
-  for (const orgId of uniqueOrgIds) {
-    const result: SnapshotResult = { orgId, detected: 0, errors: [] }
-    try {
-      const anomalies = await detectAnomalies(orgId, {
-        observationHours: ANOMALY_DEFAULTS.OBSERVATION_HOURS,
-        referenceHours: ANOMALY_DEFAULTS.REFERENCE_HOURS,
-        sigmaThreshold: ANOMALY_DEFAULTS.SIGMA_THRESHOLD,
-      })
-      if (anomalies.length === 0) {
-        results.push(result)
-        continue
-      }
-      await persistSnapshot(orgId, today, anomalies)
-      result.detected = anomalies.length
+  // Process in parallel chunks to avoid opening 1 DB connection per org while
+  // still keeping throughput high. CHUNK_SIZE = 10 is conservative enough to
+  // avoid Supabase connection pool exhaustion.
+  for (let i = 0; i < uniqueOrgIds.length; i += CHUNK_SIZE) {
+    const chunk = uniqueOrgIds.slice(i, i + CHUNK_SIZE)
+    const chunkResults = await Promise.all(
+      chunk.map(async (orgId) => {
+        const result: SnapshotResult = { orgId, detected: 0, errors: [] }
+        try {
+          const anomalies = await detectAnomalies(orgId, {
+            observationHours: ANOMALY_DEFAULTS.OBSERVATION_HOURS,
+            referenceHours: ANOMALY_DEFAULTS.REFERENCE_HOURS,
+            sigmaThreshold: ANOMALY_DEFAULTS.SIGMA_THRESHOLD,
+          })
+          if (anomalies.length === 0) return result
 
-      // Send notifications for high-severity (≥5σ) anomalies via configured channels.
-      const highSeverity = anomalies.filter((a) => a.deviations >= ANOMALY_DEFAULTS.HIGH_SEVERITY_SIGMA)
-      if (highSeverity.length > 0) {
-        await notifyHighSeverityAnomalies(orgId, highSeverity).catch((err) => {
-          result.errors.push(`notify: ${err instanceof Error ? err.message : 'unknown'}`)
-        })
-      }
-    } catch (err) {
-      result.errors.push(err instanceof Error ? err.message : 'unknown')
-    }
-    results.push(result)
+          await persistSnapshot(orgId, today, anomalies)
+          result.detected = anomalies.length
+
+          // Send notifications for high-severity (≥5σ) anomalies via configured channels.
+          const highSeverity = anomalies.filter((a) => a.deviations >= ANOMALY_DEFAULTS.HIGH_SEVERITY_SIGMA)
+          if (highSeverity.length > 0) {
+            await notifyHighSeverityAnomalies(orgId, highSeverity).catch((err) => {
+              result.errors.push(`notify: ${err instanceof Error ? err.message : 'unknown'}`)
+            })
+          }
+        } catch (err) {
+          result.errors.push(err instanceof Error ? err.message : 'unknown')
+        }
+        return result
+      }),
+    )
+    results.push(...chunkResults)
   }
 
   return results
@@ -152,28 +161,39 @@ async function notifyHighSeverityAnomalies(
   const orgName = orgRes.data?.name ?? orgId
   const webUrl = process.env['WEB_URL'] ?? 'https://www.spanlens.io'
 
-  for (const anomaly of anomalies) {
-    const kindLabel =
-      anomaly.kind === 'latency' ? 'latency_p95'
-      : anomaly.kind === 'error_rate' ? 'error_rate'
-      : 'budget'
+  // Fan out all (anomaly × channel) pairs in parallel.
+  const settled = await Promise.allSettled(
+    anomalies.flatMap((anomaly) => {
+      // 'cost' maps to 'budget' — AlertNotification.alertType uses Alerts enum vocabulary.
+      const kindLabel =
+        anomaly.kind === 'latency' ? 'latency_p95'
+        : anomaly.kind === 'error_rate' ? 'error_rate'
+        : 'budget'
 
-    const notification: AlertNotification = {
-      alertName: `${anomaly.provider}/${anomaly.model} · ${anomaly.kind} (${anomaly.deviations.toFixed(1)}σ)`,
-      alertType: kindLabel as AlertNotification['alertType'],
-      threshold: anomaly.baselineMean,
-      currentValue: anomaly.currentValue,
-      windowMinutes: 60,
-      organizationName: orgName,
-      dashboardUrl: `${webUrl}/anomalies`,
-    }
-
-    for (const channel of channels) {
-      const result = await deliverToChannel(channel.kind, channel.target, notification)
-      if (!result.ok) {
-        console.error('[anomaly-notify]', orgId, channel.kind, result.error)
+      const notification: AlertNotification = {
+        alertName: `${anomaly.provider}/${anomaly.model} · ${anomaly.kind} (${anomaly.deviations.toFixed(1)}σ)`,
+        alertType: kindLabel as AlertNotification['alertType'],
+        threshold: anomaly.baselineMean,
+        currentValue: anomaly.currentValue,
+        windowMinutes: 60,
+        organizationName: orgName,
+        dashboardUrl: `${webUrl}/anomalies`,
       }
-    }
+
+      return channels.map(async (channel) => {
+        const result = await deliverToChannel(channel.kind, channel.target, notification)
+        if (!result.ok) {
+          console.error('[anomaly-notify]', orgId, channel.kind, result.error)
+        }
+      })
+    }),
+  )
+
+  // Re-throw aggregated delivery failures so the caller's .catch() can record them.
+  const failures = settled.filter((r): r is PromiseRejectedResult => r.status === 'rejected')
+  if (failures.length > 0) {
+    const msg = failures.map((f) => f.reason instanceof Error ? f.reason.message : 'unknown').join('; ')
+    throw new Error(msg)
   }
 }
 
@@ -194,6 +214,7 @@ export async function getAnomalyHistory(
     .gte('detected_on', since)
     .lt('detected_on', today)
     .order('detected_on', { ascending: false })
+    .limit(5000)
     .returns<AnomalyEventRow[]>()
 
   if (error || !data) return []
@@ -204,10 +225,10 @@ export async function getAnomalyHistory(
     provider: r.provider,
     model: r.model,
     kind: r.kind,
-    currentValue: Number(r.current_value),
-    baselineMean: Number(r.baseline_mean),
-    baselineStdDev: Number(r.baseline_stddev),
-    deviations: Number(r.deviations),
+    currentValue: Number(r.current_value) || 0,
+    baselineMean: Number(r.baseline_mean) || 0,
+    baselineStdDev: Number(r.baseline_stddev) || 0,
+    deviations: Number(r.deviations) || 0,
     sampleCount: r.sample_count,
     referenceCount: r.reference_count,
   }))
