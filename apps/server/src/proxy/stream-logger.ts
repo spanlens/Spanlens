@@ -75,9 +75,9 @@ export async function logOpenAIStream(
 
   if (base.spanId) {
     const reqBody = base.requestBody as Record<string, unknown> | null
-    const input = reqBody?.messages
-    if (input) {
-      await injectSpanInput(base.spanId, base.organizationId, input).catch((err) => {
+    const messages = reqBody?.messages
+    if (messages) {
+      await injectSpanInput(base.spanId, base.organizationId, { messages }).catch((err) => {
         console.error('[span-input-inject:openai]', err)
       })
     }
