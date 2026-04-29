@@ -133,10 +133,10 @@ function extractText(content: unknown): string {
 }
 
 function LlmMessageView({ input }: { input: unknown }) {
-  if (!input || typeof input !== 'object') return null
-  const body = input as Record<string, unknown>
+  const body = (input && typeof input === 'object') ? input as Record<string, unknown> : null
 
   const systemText = useMemo(() => {
+    if (!body) return null
     if (typeof body.system === 'string' && body.system.trim()) return body.system
     if (Array.isArray(body.system)) {
       return (body.system as unknown[])
@@ -149,7 +149,9 @@ function LlmMessageView({ input }: { input: unknown }) {
         .join('\n')
     }
     return null
-  }, [body.system])
+  }, [body])
+
+  if (!body) return null
 
   let messages: Array<{ role: string; content: unknown }> | null = null
 
