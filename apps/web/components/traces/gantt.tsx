@@ -3,27 +3,6 @@ import { useMemo } from 'react'
 import { cn } from '@/lib/utils'
 import type { SpanRow, SpanType, TraceStatus } from '@/lib/queries/types'
 
-/**
- * Flame-graph-style waterfall view for a trace's spans.
- *
- * Improvements over the original Gantt:
- *   - Time ruler with 5 tick marks (0/25/50/75/100%) and vertical gridlines
- *     that extend down through the bars — Chrome DevTools / Honeycomb style.
- *   - Inline duration + percent-of-total inside the bar when there's room
- *     (≥ 8% width). Reading "1.4s (77%)" right on the bar makes the
- *     bottleneck instantly obvious.
- *   - Stronger selection treatment with a left-edge indicator + ring.
- *   - Tooltip on hover with precise start offset, duration, and % share.
- *   - Color and saturation differentiate span_type at a glance.
- *
- * Tree shape:
- *   - X axis: time from trace start (ms). Scale = trace duration.
- *   - Y axis: one row per span, indented by nesting depth.
- *   - Parallel spans (same parent, overlapping times) sit at the same
- *     indentation; their bars overlap horizontally — fan-out is obvious.
- *   - Running spans (no ended_at) extend to "now" with a pulse animation.
- */
-
 const TYPE_COLORS: Record<SpanType, string> = {
   llm: 'bg-accent',
   tool: 'bg-text-faint',
@@ -40,12 +19,20 @@ const TYPE_BG: Record<SpanType, string> = {
   custom: 'hover:bg-bg-muted',
 }
 
+// Column widths in px — must match between header and rows.
+const SPAN_W = 200
+const LAT_W  = 76
+const COST_W = 68
+const PAD_X  = 16   // px-4
+const BAR_ML = 12   // ml-3
+
 interface GanttProps {
   traceStartedAt: string
   traceEndedAt: string | null
   spans: SpanRow[]
   onSelectSpan?: (span: SpanRow) => void
   selectedSpanId?: string | null
+  criticalSpanId?: string | null
 }
 
 interface PositionedSpan extends SpanRow {
@@ -57,7 +44,6 @@ interface PositionedSpan extends SpanRow {
 }
 
 function buildSpanTree(spans: SpanRow[]): SpanRow[] {
-  // Pre-order DFS: root spans first, then children in start order.
   const byParent = new Map<string | null, SpanRow[]>()
   for (const s of spans) {
     const k = s.parent_span_id
@@ -73,8 +59,7 @@ function buildSpanTree(spans: SpanRow[]): SpanRow[] {
   const depths = new Map<string, number>()
 
   function walk(parent: string | null, depth: number) {
-    const children = byParent.get(parent) ?? []
-    for (const child of children) {
+    for (const child of byParent.get(parent) ?? []) {
       depths.set(child.id, depth)
       ordered.push(child)
       walk(child.id, depth + 1)
@@ -119,24 +104,27 @@ function formatMs(ms: number | null): string {
   return `${(ms / 1000).toFixed(2)}s`
 }
 
+function formatCost(n: number | null): string {
+  if (n == null || n <= 0) return '—'
+  if (n < 0.001) return `$${n.toFixed(5)}`
+  if (n < 0.01) return `$${n.toFixed(4)}`
+  return `$${n.toFixed(3)}`
+}
+
 function TypeBadge({ spanType }: { spanType: SpanType }) {
   return (
-    <span
-      className={cn(
-        'inline-block h-1.5 w-1.5 rounded-full',
-        TYPE_COLORS[spanType],
-      )}
-    />
+    <span className={cn('inline-block h-1.5 w-1.5 shrink-0 rounded-full', TYPE_COLORS[spanType])} />
   )
 }
 
-function statusOverrideClass(status: TraceStatus): string {
-  if (status === 'error') return 'bg-bad'
-  return ''
+function statusBarClass(status: TraceStatus): string {
+  return status === 'error' ? 'bg-bad' : ''
 }
 
-// Vertical gridlines aligned with the time-ruler ticks.
 const TICKS = [0, 25, 50, 75, 100] as const
+
+// Gridline left offset: padding + span col + latency col + cost col + bar margin
+const GRID_LEFT = PAD_X + SPAN_W + LAT_W + COST_W + BAR_ML
 
 export function Gantt({
   traceStartedAt,
@@ -144,14 +132,11 @@ export function Gantt({
   spans,
   onSelectSpan,
   selectedSpanId,
+  criticalSpanId,
 }: GanttProps) {
   const positioned = useMemo(() => {
     const traceStartMs = new Date(traceStartedAt).getTime()
-    // For running traces use Date.now() so bars extend to the present moment,
-    // giving an accurate real-time picture instead of clipping at the last span's end.
-    const traceEndMs = traceEndedAt
-      ? new Date(traceEndedAt).getTime()
-      : Date.now()
+    const traceEndMs = traceEndedAt ? new Date(traceEndedAt).getTime() : Date.now()
     const ordered = buildSpanTree(spans)
     return computePositions(ordered, traceStartMs, traceEndMs)
   }, [traceStartedAt, traceEndedAt, spans])
@@ -161,6 +146,27 @@ export function Gantt({
     const end = traceEndedAt ? new Date(traceEndedAt).getTime() : Date.now()
     return Math.max(1, end - start)
   }, [traceStartedAt, traceEndedAt])
+
+  // σ annotation: compute mean + std per span_type across this trace.
+  // Requires ≥ 3 same-type spans to be meaningful.
+  const typeStats = useMemo(() => {
+    const groups: Record<string, number[]> = {}
+    for (const s of spans) {
+      if (s.duration_ms != null) {
+        groups[s.span_type] ??= []
+        groups[s.span_type]!.push(s.duration_ms)
+      }
+    }
+    const stats: Record<string, { mean: number; std: number }> = {}
+    for (const [type, vals] of Object.entries(groups)) {
+      if (vals.length < 3) continue
+      const mean = vals.reduce((a, b) => a + b, 0) / vals.length
+      const variance = vals.reduce((a, b) => a + (b - mean) ** 2, 0) / vals.length
+      const std = Math.sqrt(variance)
+      if (std > 0) stats[type] = { mean, std }
+    }
+    return stats
+  }, [spans])
 
   if (positioned.length === 0) {
     return (
@@ -173,37 +179,40 @@ export function Gantt({
   return (
     <div className="rounded-lg border bg-bg overflow-hidden">
       {/* Time ruler */}
-      <div className="flex items-center border-b border-border bg-bg-muted px-4 py-2 text-xs text-text-faint">
-        <div className="w-80 shrink-0 font-medium">Span</div>
-        <div className="flex-1 relative">
+      <div className="flex items-center border-b border-border bg-bg-muted px-4 py-2 text-text-faint">
+        <div className="shrink-0 font-mono text-[10px] uppercase tracking-[0.05em]" style={{ width: SPAN_W }}>
+          Span
+        </div>
+        <div className="shrink-0 text-right font-mono text-[10px] uppercase tracking-[0.05em]" style={{ width: LAT_W }}>
+          Latency
+        </div>
+        <div className="shrink-0 text-right font-mono text-[10px] uppercase tracking-[0.05em]" style={{ width: COST_W }}>
+          Cost
+        </div>
+        <div className="flex-1 relative ml-3">
+          {/* Invisible spacer so the row height is set by the absolute tick labels */}
+          <div className="invisible text-[10px]">0</div>
           <div className="absolute inset-0 flex justify-between text-[10px]">
             {TICKS.map((pct) => (
-              <span key={pct} className={pct === 0 ? 'text-left' : pct === 100 ? 'text-right' : ''}>
+              <span key={pct} className={pct === 100 ? 'text-right' : ''}>
                 {formatMs((totalDurationMs * pct) / 100)}
               </span>
             ))}
           </div>
         </div>
-        <div className="w-24 text-right shrink-0">Duration</div>
       </div>
 
-      {/* Gridlines + bars */}
-      <div className="relative divide-y">
-        {/* Vertical gridlines spanning the whole bar area. Positioned by
-            sliding from the left edge of the bar column (after the 320px
-            "Span" column + 16px padding) so they align perfectly with the
-            tick labels above. */}
+      {/* Gridlines + rows */}
+      <div className="relative divide-y divide-border">
+        {/* Vertical gridlines aligned with tick labels */}
         <div
           className="pointer-events-none absolute inset-y-0 hidden md:block"
-          style={{ left: 'calc(20rem + 1rem)', right: 'calc(6rem + 1rem)' }}
+          style={{ left: `${GRID_LEFT}px`, right: `${PAD_X}px` }}
         >
           {TICKS.map((pct) => (
             <div
               key={pct}
-              className={cn(
-                'absolute inset-y-0 w-px',
-                pct === 0 || pct === 100 ? 'bg-border-strong' : 'bg-border',
-              )}
+              className={cn('absolute inset-y-0 w-px', pct === 0 || pct === 100 ? 'bg-border-strong' : 'bg-border')}
               style={{ left: `${pct}%` }}
             />
           ))}
@@ -211,10 +220,25 @@ export function Gantt({
 
         {positioned.map((s) => {
           const isSelected = selectedSpanId === s.id
-          const showInlineLabel = s.widthPercent >= 8
-          const tooltip = `${s.name}\nstart +${formatMs(
-            (s.offsetPercent / 100) * totalDurationMs,
-          )}\nduration ${formatMs(s.duration_ms)} (${s.durationPercent.toFixed(1)}%)`
+          const isCritical = criticalSpanId === s.id
+
+          // σ annotation
+          const stat = typeStats[s.span_type]
+          const sigma = stat && s.duration_ms != null
+            ? (s.duration_ms - stat.mean) / stat.std
+            : 0
+          const sigmaLabel = sigma >= 2.0 ? `${sigma.toFixed(1)}σ latency` : null
+
+          // Error hint (first meaningful fragment of error_message)
+          const errorHint = s.status === 'error' && s.error_message
+            ? s.error_message.slice(0, 28)
+            : null
+
+          const hasAnnotation = isCritical || sigmaLabel != null || errorHint != null
+
+          const showInlineLabel = s.widthPercent >= 10
+          const tooltip = `${s.name}\nstart +${formatMs((s.offsetPercent / 100) * totalDurationMs)}\nduration ${formatMs(s.duration_ms)} (${s.durationPercent.toFixed(1)}%)`
+
           return (
             <button
               key={s.id}
@@ -222,53 +246,60 @@ export function Gantt({
               onClick={() => onSelectSpan?.(s)}
               title={tooltip}
               className={cn(
-                'relative flex items-center w-full px-4 py-2 text-left transition-colors',
+                'relative flex items-center w-full px-4 py-[7px] text-left transition-colors',
                 isSelected ? 'bg-bg-muted ring-1 ring-accent ring-inset' : TYPE_BG[s.span_type],
               )}
             >
-              {/* Selected left-edge indicator */}
-              {isSelected && (
-                <span className="absolute left-0 inset-y-0 w-1 bg-accent" aria-hidden />
-              )}
+              {isSelected && <span className="absolute left-0 inset-y-0 w-1 bg-accent" aria-hidden />}
 
-              {/* Name + depth */}
-              <div className="w-80 shrink-0 min-w-0">
-                <div
-                  className="flex items-center gap-2"
-                  style={{ paddingLeft: `${s.depth * 16}px` }}
-                >
+              {/* ── Span name col ─────────────────────────── */}
+              <div className="shrink-0 min-w-0" style={{ width: SPAN_W }}>
+                <div className="flex items-center gap-1.5" style={{ paddingLeft: `${s.depth * 12}px` }}>
                   <TypeBadge spanType={s.span_type} />
-                  <span className="truncate text-sm font-medium">{s.name}</span>
-                  {s.status === 'error' && (
-                    <span className="text-[10px] font-semibold text-bad uppercase">error</span>
-                  )}
+                  <span className="truncate text-[12.5px] font-medium text-text leading-tight">{s.name}</span>
                 </div>
-                <div
-                  className="flex items-center gap-2 mt-0.5"
-                  style={{ paddingLeft: `${s.depth * 16 + 14}px` }}
-                >
-                  <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                    {s.span_type}
-                  </span>
-                  {s.total_tokens > 0 && (
-                    <span className="text-[10px] font-mono text-muted-foreground">
-                      {s.total_tokens} tok
-                    </span>
-                  )}
-                  {s.cost_usd != null && s.cost_usd > 0 && (
-                    <span className="text-[10px] font-mono text-muted-foreground">
-                      ${s.cost_usd.toFixed(6)}
-                    </span>
-                  )}
-                </div>
+                {hasAnnotation && (
+                  <div
+                    className="flex items-center gap-1.5 mt-[3px] flex-wrap"
+                    style={{ paddingLeft: `${s.depth * 12 + 14}px` }}
+                  >
+                    {isCritical && (
+                      <span className="font-mono text-[8.5px] px-[4px] py-[1px] rounded-[2px] bg-accent-bg text-accent border border-accent-border uppercase tracking-[0.04em]">
+                        critical
+                      </span>
+                    )}
+                    {sigmaLabel && !isCritical && (
+                      <span className="font-mono text-[9px] text-text-faint">{sigmaLabel}</span>
+                    )}
+                    {errorHint && (
+                      <span className="font-mono text-[9px] text-bad truncate">{errorHint}</span>
+                    )}
+                  </div>
+                )}
               </div>
 
-              {/* Bar */}
-              <div className="flex-1 relative h-7">
+              {/* ── Latency col ───────────────────────────── */}
+              <div className="shrink-0 text-right font-mono text-[11.5px]" style={{ width: LAT_W }}>
+                <span className={cn(
+                  s.status === 'error' ? 'text-bad'
+                    : isCritical ? 'text-accent font-medium'
+                    : 'text-text',
+                )}>
+                  {formatMs(s.duration_ms)}
+                </span>
+              </div>
+
+              {/* ── Cost col ──────────────────────────────── */}
+              <div className="shrink-0 text-right font-mono text-[11px] text-text-muted" style={{ width: COST_W }}>
+                {formatCost(s.cost_usd)}
+              </div>
+
+              {/* ── Bar ───────────────────────────────────── */}
+              <div className="flex-1 relative ml-3" style={{ height: hasAnnotation ? 36 : 28 }}>
                 <div
                   className={cn(
                     'absolute h-5 top-1 rounded shadow-sm flex items-center px-1.5 text-[10px] font-mono text-white whitespace-nowrap overflow-hidden',
-                    s.status === 'error' ? statusOverrideClass(s.status) : TYPE_COLORS[s.span_type],
+                    s.status === 'error' ? statusBarClass(s.status) : TYPE_COLORS[s.span_type],
                     s.isRunning && 'animate-pulse',
                   )}
                   style={{
@@ -278,16 +309,9 @@ export function Gantt({
                   }}
                 >
                   {showInlineLabel && (
-                    <span className="opacity-90 leading-none">
-                      {formatMs(s.duration_ms)} · {s.durationPercent.toFixed(0)}%
-                    </span>
+                    <span className="opacity-90 leading-none">{s.durationPercent.toFixed(0)}%</span>
                   )}
                 </div>
-              </div>
-
-              {/* Duration */}
-              <div className="w-24 text-right shrink-0 font-mono text-xs text-muted-foreground">
-                {formatMs(s.duration_ms)}
               </div>
             </button>
           )
@@ -296,16 +320,14 @@ export function Gantt({
 
       {/* Legend */}
       <div className="flex items-center gap-3 border-t border-border bg-bg-muted px-4 py-2 text-[11px] text-text-faint">
-        <span className="font-medium text-foreground">Span types:</span>
+        <span className="font-medium text-foreground">Types:</span>
         {(['llm', 'tool', 'retrieval', 'embedding', 'custom'] as const).map((t) => (
           <span key={t} className="inline-flex items-center gap-1">
             <TypeBadge spanType={t} />
             {t}
           </span>
         ))}
-        <span className="ml-auto font-mono text-[10px]">
-          Click a bar for details · hover for precise timing
-        </span>
+        <span className="ml-auto font-mono text-[10px]">Click a bar to inspect · hover for timing</span>
       </div>
     </div>
   )
