@@ -139,6 +139,9 @@ async function computeMetric(alert: AlertRow): Promise<number | null> {
   if (proj) q = q.eq('project_id', proj)
   const { data, error } = await q
   if (error || !data) return null
+  if (data.length === 10000) {
+    console.warn('[computeMetric] latency_p95: 10k row limit reached — p95 may be underestimated', { alert_id: alert.id })
+  }
   const latencies = (data as { latency_ms: number | string }[]).map((r) => Number(r.latency_ms))
   if (latencies.length === 0) return 0
   const idx = Math.ceil(latencies.length * 0.95) - 1

@@ -223,7 +223,11 @@ export async function getAnomalyHistory(
     .limit(5000)
     .returns<AnomalyEventRow[]>()
 
-  if (error || !data) return []
+  if (error) {
+    console.error('[getAnomalyHistory] query failed:', error.message)
+    return []
+  }
+  if (!data) return []
 
   return data.map((r) => ({
     id: r.id,
