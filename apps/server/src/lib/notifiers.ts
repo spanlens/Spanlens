@@ -67,7 +67,7 @@ export async function sendEmailAlert(
   const apiKey = process.env['RESEND_API_KEY']
   if (!apiKey) return { ok: false, error: 'RESEND_API_KEY not configured' }
 
-  const fromAddress = process.env['RESEND_FROM_EMAIL'] ?? 'alerts@spanlens.io'
+  const fromAddress = process.env['RESEND_FROM'] ?? 'alerts@spanlens.io'
 
   try {
     const res = await fetch('https://api.resend.com/emails', {
@@ -256,7 +256,7 @@ export async function sendQuotaWarningEmail(
   const apiKey = process.env['RESEND_API_KEY']
   if (!apiKey) return { ok: false, error: 'RESEND_API_KEY not configured' }
 
-  const fromAddress = process.env['RESEND_FROM_EMAIL'] ?? 'alerts@spanlens.io'
+  const fromAddress = process.env['RESEND_FROM'] ?? 'alerts@spanlens.io'
 
   try {
     const res = await fetch('https://api.resend.com/emails', {
