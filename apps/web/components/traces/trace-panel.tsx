@@ -193,6 +193,16 @@ function LlmMessageView({ input }: { input: unknown }) {
 }
 
 function LlmOutputView({ output }: { output: unknown }) {
+  // Plain string — proxy auto-injection stores accumulated stream text as a string
+  if (typeof output === 'string') {
+    return (
+      <div className="rounded-[5px] p-3 border bg-accent-bg border-accent-border">
+        <div className="font-mono text-[9.5px] uppercase tracking-[0.06em] mb-1.5 text-accent">assistant</div>
+        <p className="font-mono text-[11.5px] text-text-muted leading-relaxed whitespace-pre-wrap break-words">{output}</p>
+      </div>
+    )
+  }
+
   const body = (output && typeof output === 'object') ? output as Record<string, unknown> : null
 
   // OpenAI Chat Completions: choices[].message
@@ -473,7 +483,7 @@ function SpanDrawer({ span, onClose, onPrev, onNext, hasPrev, hasNext, position,
               </div>
               {isLlm ? <LlmOutputView output={span.output} /> : (
                 <pre className="font-mono text-[11.5px] text-text-muted leading-relaxed whitespace-pre-wrap break-all">
-                  {JSON.stringify(span.output, null, 2)}
+                  {typeof span.output === 'string' ? span.output : JSON.stringify(span.output, null, 2)}
                 </pre>
               )}
             </div>
