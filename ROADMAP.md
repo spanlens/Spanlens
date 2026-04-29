@@ -477,6 +477,14 @@ Enterprise `$99+` 플랜은 이미 Pricing 페이지에 판매 중. **첫 Enterp
 - [ ] 모바일: 햄버거 메뉴에 통합
 - 왜 지금 안 하는가: 드롭다운 UX 다듬기(외부 클릭 닫기, 키보드 접근성, 포커스 트랩)에 반나절 소요. 현재 단일 "Go to dashboard" 버튼으로 핵심 기능(로그인 상태 인지 + 대시보드 접근) 이미 충족.
 
+### Infra-1. Supabase Realtime Subscription (트리거: 동시 사용자 50명+)
+> 현재 traces 목록은 running trace가 있을 때 5초마다 HTTP 폴링. Supabase Realtime WebSocket으로 교체하면 변경 발생 시에만 push받아 트래픽·latency 양쪽 개선.
+- [ ] `supabase.channel('traces').on('postgres_changes', ...)` — traces/spans 테이블 INSERT/UPDATE 구독
+- [ ] TanStack Query `invalidateQueries` 연동 — Realtime 이벤트 → 캐시 무효화 패턴
+- [ ] RLS 정책과 Realtime 권한 일치 확인 (Supabase Realtime은 RLS 별도 적용 필요)
+- [ ] 폴링(`setInterval`) 코드 제거 — 목록 페이지 + 상세 페이지 `refetchInterval` 동시 제거
+- 왜 지금 안 하는가: Supabase Realtime 연결 수는 플랜별 한도 있음. 유저 수 적을 때는 5초 폴링이 단순하고 충분. 동시 사용자 50명+ 또는 유저 "느리다" 피드백 3건+ 시 착수.
+
 ### UX-2. 다크 모드 — **완료 (2026-04-27, 3H.1과 통합)**
 - [x] `next-themes` 도입, Light / Dark / System 3-state 전역 토글
 - [x] `globals.css` CSS variable 다크 팔레트 (`class="dark"` 토글)

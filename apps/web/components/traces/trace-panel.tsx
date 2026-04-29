@@ -589,6 +589,14 @@ export function TracePanel({ traceId }: TracePanelProps) {
     <div className="flex h-full overflow-hidden border-l border-border bg-bg">
       <div className="flex flex-col flex-1 overflow-hidden">
 
+        {/* Live indicator — only when trace is still running */}
+        {trace.status === 'running' && (
+          <div className="flex items-center gap-2 px-[22px] py-[5px] border-b border-accent-border/50 bg-accent-bg shrink-0">
+            <span className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse inline-block shrink-0" />
+            <span className="font-mono text-[10px] text-accent tracking-[0.03em]">Live · refreshing every 3s</span>
+          </div>
+        )}
+
         {/* Trace header */}
         <div className="px-[22px] pt-4 pb-[14px] border-b border-border shrink-0">
           <div className="flex items-baseline gap-3 mb-3.5">

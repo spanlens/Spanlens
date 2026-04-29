@@ -57,10 +57,10 @@ export function useTrace(id: string) {
       return res.data
     },
     enabled: Boolean(id),
-    // Traces may still be in-flight — refetch every 10s if status is 'running'.
+    // Refetch every 3s while running so the UI shows new spans as they arrive.
     refetchInterval: (query) => {
       const data = query.state.data as TraceDetail | undefined
-      return data?.status === 'running' ? 10_000 : false
+      return data?.status === 'running' ? 3_000 : false
     },
   })
 }
