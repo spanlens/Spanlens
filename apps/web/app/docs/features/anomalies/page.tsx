@@ -95,12 +95,11 @@ if deviations >= sigmaThreshold:
         Both are computed against their own baselines — no coupling.
       </p>
 
-      <h3>On-demand, not scheduled</h3>
+      <h3>On-demand detection + daily history</h3>
       <p>
-        Detection runs when you open the dashboard or hit the API, using the current time as{' '}
-        &ldquo;now.&rdquo; No background cron, no pre-computed snapshots — the query is cheap
-        enough (single roll-up over recent rows) that on-demand is the simpler design. This also
-        means the view is always fresh.
+        The &ldquo;right now&rdquo; view runs on-demand when you open the dashboard or hit the API,
+        always using the current time — so the view is always fresh. A background cron job
+        also runs once a day at 04:00 UTC to persist a snapshot into the 30-day history log.
       </p>
 
       <h2>Using it</h2>
@@ -190,9 +189,10 @@ if deviations >= sigmaThreshold:
       <h2>Limitations</h2>
       <ul>
         <li>
-          <strong>No in-app alert routing yet.</strong> You see anomalies in the dashboard, but
-          they don&apos;t auto-trigger Slack/email. If you want push notifications, combine with{' '}
-          <a href="/docs/features/alerts">Alerts</a> using threshold rules.
+          <strong>High-severity anomalies (≥5σ) auto-notify</strong> via your configured
+          notification channels (Slack, email, Discord). Configure channels in{' '}
+          <a href="/docs/features/alerts">Alerts</a>. Medium-severity anomalies (3–5σ) are
+          dashboard-only — use threshold-based alert rules for finer-grained routing.
         </li>
         <li>
           <strong>Latency / cost detection uses success-only rows.</strong> Failed requests
@@ -200,10 +200,8 @@ if deviations >= sigmaThreshold:
           those signals. Error-rate detection includes ALL rows since that&apos;s the point.
         </li>
         <li>
-          <strong>History is daily-snapshot, not real-time.</strong> The 30-day history view is
-          populated by a cron job that runs once a day at 04:00 UTC. New anomalies appear in
-          the &ldquo;Right now&rdquo; tab immediately but take up to 24 hours to land in
-          history.
+          <strong>History is daily-snapshot, not real-time.</strong> New anomalies appear in the
+          live view immediately but take up to 24 hours to land in the 30-day history log.
         </li>
       </ul>
 
