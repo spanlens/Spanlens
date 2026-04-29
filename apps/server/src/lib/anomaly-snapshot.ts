@@ -27,10 +27,13 @@ export async function snapshotAnomaliesForAllOrgs(
   // Pick orgs with at least one request in the past 24h — anomaly detection
   // needs traffic anyway, no point invoking it for inactive orgs.
   const since = new Date(now.getTime() - 86_400_000).toISOString()
+  // Limit prevents OOM on high-traffic instances; JS dedup handles the rest.
+  // A proper DISTINCT RPC would be cleaner at very large scale.
   const { data: orgs } = await supabaseAdmin
     .from('requests')
     .select('organization_id')
     .gte('created_at', since)
+    .limit(50000)
     .returns<{ organization_id: string }[]>()
 
   const uniqueOrgIds = Array.from(new Set((orgs ?? []).map((r) => r.organization_id)))
@@ -178,7 +181,10 @@ export async function getAnomalyHistory(
   organizationId: string,
   days = 30,
 ): Promise<AnomalyHistoryEntry[]> {
-  const since = new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10)
+  const now = Date.now()
+  const since = new Date(now - days * 86_400_000).toISOString().slice(0, 10)
+  // Exclude today: today's state is shown in real-time detection, not history.
+  const today = new Date(now).toISOString().slice(0, 10)
   const { data, error } = await supabaseAdmin
     .from('anomaly_events')
     .select(
@@ -186,6 +192,7 @@ export async function getAnomalyHistory(
     )
     .eq('organization_id', organizationId)
     .gte('detected_on', since)
+    .lt('detected_on', today)
     .order('detected_on', { ascending: false })
     .returns<AnomalyEventRow[]>()
 

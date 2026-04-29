@@ -64,6 +64,7 @@ export function useAnomalies(params: UseAnomaliesParams = {}) {
       return { data: res.data ?? [], meta: res.meta }
     },
     staleTime: 60_000,
+    refetchInterval: 60_000,
     refetchOnWindowFocus: true,
   })
 }

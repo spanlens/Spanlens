@@ -28,7 +28,7 @@ import type { AnomalyBucket } from '../lib/anomaly.js'
 // Chainable query builder — terminal methods resolve immediately.
 function makeChain(result: unknown) {
   const self: Record<string, (...args: unknown[]) => unknown> = {}
-  for (const m of ['select', 'gte', 'eq', 'order', 'lte', 'is_active']) {
+  for (const m of ['select', 'gte', 'lt', 'eq', 'order', 'lte', 'limit', 'is_active']) {
     self[m] = () => self
   }
   self['single'] = () => Promise.resolve(result)

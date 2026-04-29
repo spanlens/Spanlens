@@ -110,7 +110,8 @@ export async function detectAnomalies(
       row.ref_latency_count   >= minSamples
     ) {
       const deviations = (row.obs_latency_mean - row.ref_latency_mean) / row.ref_latency_stddev
-      if (Math.abs(deviations) >= sigmaThreshold) {
+      // One-sided: only flag SPIKES (improvements are not anomalies).
+      if (deviations >= sigmaThreshold) {
         anomalies.push({
           provider:       row.provider,
           model:          row.model,
@@ -135,7 +136,8 @@ export async function detectAnomalies(
       row.ref_cost_count   >= minSamples
     ) {
       const deviations = (row.obs_cost_mean - row.ref_cost_mean) / row.ref_cost_stddev
-      if (Math.abs(deviations) >= sigmaThreshold) {
+      // One-sided: only flag SPIKES (cost drops are not anomalies).
+      if (deviations >= sigmaThreshold) {
         anomalies.push({
           provider:       row.provider,
           model:          row.model,
