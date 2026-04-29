@@ -18,14 +18,12 @@ export default function SdkReference() {
       </p>
 
       <div className="my-6 rounded-lg border-l-4 border-accent bg-accent-bg p-4 text-sm">
-        <p className="m-0 font-semibold text-accent">⚡ Use streaming for long requests</p>
+        <p className="m-0 font-semibold text-accent">⚡ Tip: use streaming for long responses</p>
         <p className="mt-1 mb-0 text-accent">
-          The Spanlens proxy enforces a <strong>25-second first-byte timeout</strong>. For requests likely
-          to exceed that (large <code>max_tokens</code>, slower models, big JSON outputs), enable streaming
-          — first byte arrives in ~200ms and total duration is unbounded. If you still want a single JSON
-          object, accumulate chunks server-side with the &ldquo;internal streaming&rdquo; pattern: stream
-          inside <code>observe()</code>, concatenate <code>delta.content</code>, then return the merged
-          string from your route handler. See the <a href="#observe">observe()</a> example below.
+          For requests with large <code>max_tokens</code>, slower models, or big JSON outputs, enable
+          streaming — first byte arrives in ~200ms and total duration is unbounded. If you still want a
+          single object back, accumulate chunks server-side and return the merged result from your route
+          handler. See the <a href="#observe-streaming">streaming example</a> below.
         </p>
       </div>
 
@@ -242,9 +240,9 @@ with client.start_trace("answer-question") as trace:
 
       <h3 id="observe-streaming">Streaming inside observe()</h3>
       <p>
-        When you use <code>{'stream: true'}</code> you handle chunks yourself, so the SDK can&rsquo;t
-        auto-parse token counts — pass them to <code>span.end()</code> manually. The accumulated
-        text you <code>return</code> is still auto-captured as output.
+        With <code>{'stream: true'}</code> you control the chunk loop, so pass the final token counts
+        to <code>span.end()</code> once the stream is exhausted. The accumulated text you{' '}
+        <code>return</code> is auto-captured as output.
       </p>
       <LangTabs
         ts={`const text = await observe(
