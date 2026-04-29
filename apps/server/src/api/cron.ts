@@ -123,11 +123,12 @@ cronRouter.get('/evaluate-alerts', async (c) => {
 
   const report: Array<{ alert_id: string; fired: boolean; reason?: string }> = []
 
+  // Phase 1: evaluate metrics, skip cooldowns and under-threshold alerts.
+  const firingAlerts: { alert: AlertRow; current: number }[] = []
+
   for (const alert of (alerts ?? []) as AlertRow[]) {
-    // Cooldown
     if (alert.last_triggered_at) {
-      const lastMs = new Date(alert.last_triggered_at).getTime()
-      const elapsedMin = (Date.now() - lastMs) / (60 * 1000)
+      const elapsedMin = (Date.now() - new Date(alert.last_triggered_at).getTime()) / 60_000
       if (elapsedMin < alert.cooldown_minutes) {
         report.push({ alert_id: alert.id, fired: false, reason: 'cooldown' })
         continue
@@ -140,18 +141,44 @@ cronRouter.get('/evaluate-alerts', async (c) => {
       continue
     }
 
-    // Fetch channels for this org
-    const { data: channels } = await supabaseAdmin
-      .from('notification_channels')
-      .select('id, kind, target')
-      .eq('organization_id', alert.organization_id)
-      .eq('is_active', true)
+    firingAlerts.push({ alert, current })
+  }
 
-    const { data: org } = await supabaseAdmin
+  if (firingAlerts.length === 0) {
+    return c.json({ success: true, evaluated: report.length, report })
+  }
+
+  // Phase 2: batch-fetch channels + org names for all firing orgs (eliminates N+1).
+  const firingOrgIds = [...new Set(firingAlerts.map((fa) => fa.alert.organization_id))]
+
+  const [channelsRes, orgsRes] = await Promise.all([
+    supabaseAdmin
+      .from('notification_channels')
+      .select('id, organization_id, kind, target')
+      .in('organization_id', firingOrgIds)
+      .eq('is_active', true),
+    supabaseAdmin
       .from('organizations')
-      .select('name')
-      .eq('id', alert.organization_id)
-      .single()
+      .select('id, name')
+      .in('id', firingOrgIds),
+  ])
+
+  const channelsByOrg = new Map<string, (ChannelRow & { organization_id: string })[]>()
+  for (const ch of (channelsRes.data ?? []) as (ChannelRow & { organization_id: string })[]) {
+    const list = channelsByOrg.get(ch.organization_id) ?? []
+    list.push(ch)
+    channelsByOrg.set(ch.organization_id, list)
+  }
+
+  const orgNameById = new Map<string, string>()
+  for (const org of (orgsRes.data ?? []) as { id: string; name: string }[]) {
+    orgNameById.set(org.id, org.name)
+  }
+
+  // Phase 3: deliver notifications and stamp last_triggered_at.
+  for (const { alert, current } of firingAlerts) {
+    const channels = channelsByOrg.get(alert.organization_id) ?? []
+    const orgName = orgNameById.get(alert.organization_id) ?? 'Your organization'
 
     const notification: AlertNotification = {
       alertName: alert.name,
@@ -159,12 +186,12 @@ cronRouter.get('/evaluate-alerts', async (c) => {
       threshold: alert.threshold,
       currentValue: current,
       windowMinutes: alert.window_minutes,
-      organizationName: (org?.name as string) ?? 'Your organization',
+      organizationName: orgName,
       dashboardUrl: `${dashboardBase}/dashboard`,
     }
 
     // Fan out to every active channel; log each delivery
-    for (const ch of (channels ?? []) as ChannelRow[]) {
+    for (const ch of channels) {
       const result = await deliverToChannel(ch.kind, ch.target, notification)
       await supabaseAdmin.from('alert_deliveries').insert({
         organization_id: alert.organization_id,

@@ -158,11 +158,12 @@ exportsRouter.get('/traces', async (c) => {
 })
 
 // ── GET /api/v1/exports/anomalies ──────────────────────────────────────────────
-// Query: format — exports current live anomaly detection result
+// Query: format, projectId — exports current live anomaly detection result
 
 const ANOMALY_COLS = [
   'provider', 'model', 'kind',
-  'current_value', 'baseline_mean', 'baseline_std_dev', 'deviations',
+  'current_value', 'baseline_mean', 'baseline_stddev', 'deviations',
+  'sample_count', 'reference_count',
 ]
 
 exportsRouter.get('/anomalies', async (c) => {
@@ -170,21 +171,25 @@ exportsRouter.get('/anomalies', async (c) => {
   if (!orgId) return c.json({ error: 'Organization not found' }, 404)
 
   const format = c.req.query('format') === 'json' ? 'json' : 'csv'
+  const projectId = c.req.query('projectId')
 
   const anomalies = await detectAnomalies(orgId, {
     observationHours: 1,
     referenceHours: 24 * 7,
     sigmaThreshold: 3,
+    ...(projectId ? { projectId } : {}),
   })
 
   const rows: Record<string, unknown>[] = anomalies.map((a) => ({
-    provider:          a.provider,
-    model:             a.model,
-    kind:              a.kind,
-    current_value:     a.currentValue,
-    baseline_mean:     a.baselineMean,
-    baseline_std_dev:  a.baselineStdDev,
-    deviations:        a.deviations,
+    provider:         a.provider,
+    model:            a.model,
+    kind:             a.kind,
+    current_value:    a.currentValue,
+    baseline_mean:    a.baselineMean,
+    baseline_stddev:  a.baselineStdDev,
+    deviations:       a.deviations,
+    sample_count:     a.sampleCount,
+    reference_count:  a.referenceCount,
   }))
 
   const dateStr = new Date().toISOString().slice(0, 10)
