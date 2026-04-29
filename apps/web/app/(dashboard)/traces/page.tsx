@@ -1,6 +1,5 @@
 'use client'
 import { useMemo, useState } from 'react'
-import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useTraces } from '@/lib/queries/use-traces'
 import type { TraceRow, TraceStatus } from '@/lib/queries/types'
