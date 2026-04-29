@@ -130,18 +130,13 @@ export default function TracesPage() {
 
   const { data, isLoading, isFetching, refetch } = useTraces(
     { page, limit: 50, status: apiStatus, ...(fromIso ? { from: fromIso } : {}) },
+    { refetchInterval: 10_000 },
   )
 
   const rawTraces = useMemo(() => data?.data ?? [], [data])
   const meta = data?.meta ?? { total: 0, page: 1, limit: 50 }
 
-  // Auto-refresh every 5s when any trace is still running
   const hasRunning = rawTraces.some((t) => t.status === 'running')
-  useEffect(() => {
-    if (!hasRunning) return
-    const timer = setInterval(() => { void refetch() }, 5_000)
-    return () => clearInterval(timer)
-  }, [hasRunning, refetch])
 
   const traces = useMemo(() => {
     let list = rawTraces
