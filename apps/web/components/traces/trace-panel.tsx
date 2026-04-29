@@ -250,9 +250,13 @@ function LlmOutputView({ output }: { output: unknown }) {
     }
   }
 
-  // Gemini: candidates[].content.parts
-  if (body && Array.isArray(body.candidates) && body.candidates.length > 0) {
-    const messages = (body.candidates as unknown[]).flatMap((c) => {
+  // Gemini: generateContent() returns { response: { candidates, usageMetadata } }
+  // Unwrap .response if present, then check candidates[].content.parts
+  const geminiBody = (body?.response && typeof body.response === 'object')
+    ? body.response as Record<string, unknown>
+    : body
+  if (geminiBody && Array.isArray(geminiBody.candidates) && geminiBody.candidates.length > 0) {
+    const messages = (geminiBody.candidates as unknown[]).flatMap((c) => {
       if (typeof c !== 'object' || c === null) return []
       const candidate = c as Record<string, unknown>
       const content = candidate.content as Record<string, unknown> | undefined
