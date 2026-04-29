@@ -285,13 +285,7 @@ export default function AnomaliesPage() {
     <div className="-m-7 flex flex-col h-screen overflow-hidden bg-bg">
       <Topbar
         crumbs={[{ label: 'Workspace', href: '/dashboard' }, { label: 'Anomalies' }]}
-        right={
-          <div className="flex items-center gap-3">
-            <span className="text-[12.5px] text-text-muted flex items-center gap-1.5">
-              <span className="w-[7px] h-[7px] rounded-full bg-good shrink-0" /> Detector live · 7d baseline
-            </span>
-          </div>
-        }
+        right={null}
       />
 
       {/* Stat strip */}
