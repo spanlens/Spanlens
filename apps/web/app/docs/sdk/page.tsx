@@ -198,8 +198,9 @@ res = client.chat.completions.create(
 
       <h2 id="observe">observe() — agent tracing</h2>
       <p>
-        Wrap any function to turn it into a span in an agent trace. Sync and async are both detected
-        automatically.
+        Wrap any function to turn it into a span in an agent trace. The callback&rsquo;s return value
+        is automatically captured as the span&rsquo;s <strong>output</strong> — no extra code needed.
+        Pass <code>input</code> in the span options to record the inputs too.
       </p>
       <LangTabs
         ts={`import { SpanlensClient, observe } from '@spanlens/sdk'
@@ -207,13 +208,17 @@ res = client.chat.completions.create(
 const client = new SpanlensClient()
 const trace = client.startTrace('answer-question')
 
-const docs = await observe(trace, { name: 'retrieve', spanType: 'retrieval' }, async () => {
-  return await vectorDb.search(query)
-})
+const docs = await observe(
+  trace,
+  { name: 'retrieve', spanType: 'retrieval', input: { query } },
+  async () => vectorDb.search(query),   // return value → auto-saved as output
+)
 
-const response = await observe(trace, { name: 'generate', spanType: 'llm' }, async () => {
-  return await openai.chat.completions.create({ /* ... */ })
-})
+const response = await observe(
+  trace,
+  { name: 'generate', spanType: 'llm' },
+  async () => openai.chat.completions.create({ /* ... */ }),
+)
 
 await trace.end()`}
         py={`from spanlens import SpanlensClient, observe
@@ -231,9 +236,73 @@ with client.start_trace("answer-question") as trace:
 
       <p>
         Each <code>observe()</code> call creates a row in the <code>spans</code> table with timing,
-        inputs/outputs (if provided), and a link to the parent trace. Inspect traces in{' '}
+        input/output, and a link to the parent trace. Inspect traces in{' '}
         <a href="/traces">/traces</a>.
       </p>
+
+      <h3 id="observe-streaming">Streaming inside observe()</h3>
+      <p>
+        When you use <code>{'stream: true'}</code> you handle chunks yourself, so the SDK can&rsquo;t
+        auto-parse token counts — pass them to <code>span.end()</code> manually. The accumulated
+        text you <code>return</code> is still auto-captured as output.
+      </p>
+      <LangTabs
+        ts={`const text = await observe(
+  trace,
+  {
+    name: 'gpt-4o-mini · analysis',
+    spanType: 'llm',
+    input: messages,           // captured at span creation
+  },
+  async (span) => {
+    const stream = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages,
+      stream: true,
+      stream_options: { include_usage: true },
+    }, { headers: span.traceHeaders() })
+
+    let accumulated = ''
+    let usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number } | null = null
+
+    for await (const chunk of stream) {
+      accumulated += chunk.choices[0]?.delta?.content ?? ''
+      if (chunk.usage) usage = chunk.usage
+    }
+
+    // Pass token counts manually — the SDK can't read streaming chunks
+    if (usage) {
+      await span.end({
+        status: 'completed',
+        promptTokens: usage.prompt_tokens,
+        completionTokens: usage.completion_tokens,
+        totalTokens: usage.total_tokens,
+      })
+    }
+
+    return accumulated   // ← auto-saved as output; no need to pass output: here
+  },
+)`}
+        py={`# Python streaming — accumulate manually, return for auto-capture
+async def streaming_span(trace):
+    async with observe(trace, {"name": "gpt-4o-mini", "span_type": "llm"}) as span:
+        stream = openai_client.chat.completions.create(
+            model="gpt-4o-mini", messages=messages, stream=True
+        )
+        accumulated = ""
+        usage = None
+        for chunk in stream:
+            accumulated += chunk.choices[0].delta.content or ""
+            if chunk.usage:
+                usage = chunk.usage
+        if usage:
+            span.end(
+                prompt_tokens=usage.prompt_tokens,
+                completion_tokens=usage.completion_tokens,
+                total_tokens=usage.total_tokens,
+            )
+        return accumulated  # auto-saved as output`}
+      />
 
       <h2 id="observe-openai">observeOpenAI() — span + auto-parsed usage</h2>
       <p>
