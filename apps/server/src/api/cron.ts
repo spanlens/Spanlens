@@ -83,28 +83,60 @@ interface ChannelRow {
 
 async function computeMetric(alert: AlertRow): Promise<number | null> {
   const windowStart = new Date(Date.now() - alert.window_minutes * 60 * 1000).toISOString()
-
-  let query = supabaseAdmin
-    .from('requests')
-    .select('cost_usd, status_code, latency_ms', { count: 'exact' })
-    .eq('organization_id', alert.organization_id)
-    .gte('created_at', windowStart)
-
-  if (alert.project_id) query = query.eq('project_id', alert.project_id)
-
-  const { data, count, error } = await query
-  if (error || !data) return null
+  const org = alert.organization_id
+  const proj = alert.project_id
 
   if (alert.type === 'budget') {
-    return data.reduce((sum, r) => sum + Number(r.cost_usd ?? 0), 0)
+    // Fetch cost_usd only. 10k row limit covers all practical alert windows.
+    let q = supabaseAdmin
+      .from('requests')
+      .select('cost_usd')
+      .eq('organization_id', org)
+      .gte('created_at', windowStart)
+      .limit(10000)
+    if (proj) q = q.eq('project_id', proj)
+    const { data, error } = await q
+    if (error || !data) return null
+    return (data as { cost_usd: number | string | null }[])
+      .reduce((sum, r) => sum + Number(r.cost_usd ?? 0), 0)
   }
+
   if (alert.type === 'error_rate') {
-    if (!count || count === 0) return 0
-    const errors = data.filter((r) => Number(r.status_code) >= 400).length
-    return errors / count
+    // Use HEAD requests (count only, no row data) to avoid the 1000-row default cap.
+    let totalQ = supabaseAdmin
+      .from('requests')
+      .select('*', { count: 'exact', head: true })
+      .eq('organization_id', org)
+      .gte('created_at', windowStart)
+    let errorQ = supabaseAdmin
+      .from('requests')
+      .select('*', { count: 'exact', head: true })
+      .eq('organization_id', org)
+      .gte('created_at', windowStart)
+      .gte('status_code', 400)
+    if (proj) {
+      totalQ = totalQ.eq('project_id', proj)
+      errorQ = errorQ.eq('project_id', proj)
+    }
+    const [totalRes, errorRes] = await Promise.all([totalQ, errorQ])
+    if (totalRes.error || errorRes.error) return null
+    const total = totalRes.count ?? 0
+    if (total === 0) return 0
+    return (errorRes.count ?? 0) / total
   }
-  // latency_p95
-  const latencies = data.map((r) => Number(r.latency_ms)).sort((a, b) => a - b)
+
+  // latency_p95 — fetch sorted latency_ms, compute percentile in JS.
+  let q = supabaseAdmin
+    .from('requests')
+    .select('latency_ms')
+    .eq('organization_id', org)
+    .gte('created_at', windowStart)
+    .order('latency_ms', { ascending: true })
+    .limit(10000)
+  if (proj) q = q.eq('project_id', proj)
+  const { data, error } = await q
+  if (error || !data) return null
+  const latencies = (data as { latency_ms: number | string }[]).map((r) => Number(r.latency_ms))
   if (latencies.length === 0) return 0
   const idx = Math.ceil(latencies.length * 0.95) - 1
   return latencies[Math.max(0, idx)] ?? 0
@@ -190,6 +222,13 @@ cronRouter.get('/evaluate-alerts', async (c) => {
       dashboardUrl: `${dashboardBase}/dashboard`,
     }
 
+    if (channels.length === 0) {
+      // Metric exceeded threshold but no channels configured — skip cooldown stamp
+      // so the alert fires immediately once channels are added.
+      report.push({ alert_id: alert.id, fired: false, reason: 'no_channels' })
+      continue
+    }
+
     // Fan out to every active channel; log each delivery
     for (const ch of channels) {
       const result = await deliverToChannel(ch.kind, ch.target, notification)
@@ -203,7 +242,7 @@ cronRouter.get('/evaluate-alerts', async (c) => {
       })
     }
 
-    // Stamp last_triggered_at
+    // Stamp last_triggered_at only after delivery was attempted.
     await supabaseAdmin
       .from('alerts')
       .update({ last_triggered_at: new Date().toISOString() })
