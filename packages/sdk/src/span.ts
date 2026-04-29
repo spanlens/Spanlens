@@ -19,6 +19,7 @@ export class SpanHandle {
   _creationPromise: Promise<unknown> = Promise.resolve()
 
   private ended = false
+  private outputCaptured = false
 
   constructor(
     private readonly transport: Transport,
@@ -78,8 +79,19 @@ export class SpanHandle {
    * ahead of INSERT and silently 404 (UPDATE matches zero rows).
    */
   async end(options: EndSpanOptions = {}): Promise<void> {
-    if (this.ended) return
+    if (this.ended) {
+      // Supplementary output patch: if output wasn't captured in the first end() call,
+      // accept it now (e.g. observe() auto-captures the callback return value after a
+      // manual span.end({ tokens }) inside a streaming callback).
+      if (!this.outputCaptured && options.output !== undefined) {
+        this.outputCaptured = true
+        await this._creationPromise.catch(() => undefined)
+        await this.transport.patch(`/ingest/spans/${this.spanId}`, { output: options.output })
+      }
+      return
+    }
     this.ended = true
+    if (options.output !== undefined) this.outputCaptured = true
 
     await this._creationPromise.catch(() => undefined)
 

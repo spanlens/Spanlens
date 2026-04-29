@@ -32,8 +32,14 @@ export async function observe<T>(
 
   try {
     const result = await fn(span)
-    // span.end is idempotent — user may have called it manually inside fn
-    await span.end({ status: 'completed' })
+    // Auto-capture return value as output unless it's a stream (not serialisable).
+    // If the user already called span.end() manually inside fn (e.g. streaming),
+    // SpanHandle.end() will send a supplementary output-only PATCH.
+    const isStream =
+      result != null &&
+      typeof result === 'object' &&
+      (Symbol.asyncIterator in (result as object) || Symbol.iterator in (result as object))
+    await span.end({ status: 'completed', output: isStream ? undefined : result })
     return result
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : String(err)
