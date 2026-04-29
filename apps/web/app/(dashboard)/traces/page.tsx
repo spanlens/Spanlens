@@ -1,10 +1,10 @@
 'use client'
 import { useMemo, useState } from 'react'
-import { useRouter } from 'next/navigation'
 import { useTraces } from '@/lib/queries/use-traces'
 import type { TraceRow, TraceStatus } from '@/lib/queries/types'
 import { Topbar } from '@/components/layout/topbar'
 import { ExportDropdown } from '@/components/ui/export-dropdown'
+import { TracePanel } from '@/components/traces/trace-panel'
 import { cn } from '@/lib/utils'
 
 function fmtDuration(ms: number | null): string {
@@ -27,21 +27,15 @@ function fmtAge(dateStr: string): string {
 }
 
 function TraceDurationBar({
-  durationMs,
-  maxDurationMs,
-  hasError,
-  isRunning,
+  durationMs, maxDurationMs, hasError, isRunning,
 }: {
-  durationMs: number | null
-  maxDurationMs: number
-  hasError: boolean
-  isRunning: boolean
+  durationMs: number | null; maxDurationMs: number; hasError: boolean; isRunning: boolean
 }) {
   if (durationMs == null || maxDurationMs <= 0) {
     return <div className="h-[10px] rounded-[2px] border border-border bg-bg-muted w-full" />
   }
   const pct = Math.max(4, Math.min(100, (durationMs / maxDurationMs) * 100))
-  const color = hasError ? 'bg-bad' : isRunning ? 'bg-accent' : 'bg-text opacity-70'
+  const color = hasError ? 'bg-bad' : isRunning ? 'bg-accent animate-pulse' : 'bg-text opacity-70'
   return (
     <div className="h-[10px] rounded-[2px] border border-border bg-bg-muted w-full overflow-hidden">
       <div style={{ width: `${pct}%` }} className={cn('h-full rounded-[1px]', color)} />
@@ -85,13 +79,13 @@ function SortHeader({
 }
 
 export default function TracesPage() {
-  const router = useRouter()
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [timeRange, setTimeRange] = useState<TimeRange>('all')
   const [nameSearch, setNameSearch] = useState('')
   const [sortBy, setSortBy] = useState<SortField>('started_at')
   const [sortDir, setSortDir] = useState<SortDir>('desc')
   const [page, setPage] = useState(1)
+  const [selectedTraceId, setSelectedTraceId] = useState<string | null>(null)
 
   const apiStatus: TraceStatus | 'all' =
     statusFilter === 'ok' ? 'completed' : statusFilter === 'error' ? 'error' : 'all'
@@ -108,7 +102,6 @@ export default function TracesPage() {
   const rawTraces = useMemo(() => data?.data ?? [], [data])
   const meta = data?.meta ?? { total: 0, page: 1, limit: 50 }
 
-  // Client-side name search + sort
   const traces = useMemo(() => {
     let list = rawTraces
     if (nameSearch.trim()) {
@@ -120,17 +113,13 @@ export default function TracesPage() {
     return [...list].sort((a, b) => {
       let av: number, bv: number
       if (sortBy === 'started_at') {
-        av = new Date(a.started_at).getTime()
-        bv = new Date(b.started_at).getTime()
+        av = new Date(a.started_at).getTime(); bv = new Date(b.started_at).getTime()
       } else if (sortBy === 'duration_ms') {
-        av = a.duration_ms ?? -1
-        bv = b.duration_ms ?? -1
+        av = a.duration_ms ?? -1; bv = b.duration_ms ?? -1
       } else if (sortBy === 'total_cost_usd') {
-        av = a.total_cost_usd
-        bv = b.total_cost_usd
+        av = a.total_cost_usd; bv = b.total_cost_usd
       } else {
-        av = a.span_count
-        bv = b.span_count
+        av = a.span_count; bv = b.span_count
       }
       return sortDir === 'desc' ? bv - av : av - bv
     })
@@ -144,6 +133,8 @@ export default function TracesPage() {
   const avgSpans = traces.length ? traces.reduce((s, t) => s + t.span_count, 0) / traces.length : null
   const errors = traces.filter((t) => t.status === 'error').length
 
+  const hasActiveFilters = statusFilter !== 'all' || timeRange !== 'all' || nameSearch.trim() !== ''
+
   function handleSort(field: SortField) {
     if (sortBy === field) {
       setSortDir((d) => (d === 'desc' ? 'asc' : 'desc'))
@@ -153,211 +144,290 @@ export default function TracesPage() {
     }
   }
 
-  // Store nav list in sessionStorage before navigating so detail page can Prev/Next
-  function handleRowClick(t: TraceRow) {
-    try {
-      sessionStorage.setItem(
-        'traceNavList',
-        JSON.stringify({ ids: traces.map((tr) => tr.id) }),
-      )
-    } catch { /* ignore */ }
-    router.push(`/traces/${t.id}`)
+  function handleClearFilters() {
+    setStatusFilter('all')
+    setTimeRange('all')
+    setNameSearch('')
+    setPage(1)
   }
 
+  function handleRowClick(t: TraceRow) {
+    setSelectedTraceId(t.id)
+  }
+
+  // Panel prev/next within the current traces list
+  const selectedIdx = selectedTraceId ? traces.findIndex((t) => t.id === selectedTraceId) : -1
+  const hasPrev = selectedIdx > 0
+  const hasNext = selectedIdx >= 0 && selectedIdx < traces.length - 1
+
   return (
-    <div className="-m-7 flex flex-col h-screen overflow-hidden bg-bg">
-      <Topbar
-        crumbs={[{ label: 'Workspace', href: '/dashboard' }, { label: 'Traces' }]}
-      />
+    <div className="-m-7 flex h-screen overflow-hidden bg-bg">
+      {/* ── Left: trace list ─────────────────────────────────────────────── */}
+      <div className={cn(
+        'flex flex-col overflow-hidden transition-all',
+        selectedTraceId ? 'w-[420px] shrink-0' : 'flex-1',
+      )}>
+        <Topbar crumbs={[{ label: 'Workspace', href: '/dashboard' }, { label: 'Traces' }]} />
 
-      {/* Stat strip */}
-      <div className="grid grid-cols-5 border-b border-border shrink-0">
-        {[
-          { label: 'Traces',           value: meta.total.toLocaleString(), warn: false },
-          { label: 'p50 duration',     value: fmtDuration(p50),            warn: false },
-          { label: 'p95 duration',     value: fmtDuration(p95),            warn: p95 != null && p95 > 8000 },
-          { label: 'Avg spans / trace',value: avgSpans != null ? avgSpans.toFixed(1) : '—', warn: false },
-          { label: 'Errors',           value: String(errors),              warn: errors > 0 },
-        ].map((s, i) => (
-          <div key={i} className={cn('px-[18px] py-[14px]', i < 4 && 'border-r border-border')}>
-            <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-2">{s.label}</div>
-            <span className={cn('text-[24px] font-medium leading-none tracking-[-0.6px]', s.warn ? 'text-accent' : 'text-text')}>
-              {s.value}
-            </span>
+        {/* Stat strip */}
+        <div className="grid grid-cols-5 border-b border-border shrink-0">
+          {[
+            { label: 'Traces',            value: meta.total.toLocaleString(),                         warn: false },
+            { label: 'p50 duration',      value: fmtDuration(p50),  tip: 'Current page only',        warn: false },
+            { label: 'p95 duration',      value: fmtDuration(p95),  tip: 'Current page only',        warn: p95 != null && p95 > 8000 },
+            { label: 'Avg spans / trace', value: avgSpans != null ? avgSpans.toFixed(1) : '—',        warn: false },
+            { label: 'Errors',            value: String(errors),                                       warn: errors > 0 },
+          ].map((s, i) => (
+            <div
+              key={i}
+              title={'tip' in s ? s.tip : undefined}
+              className={cn('px-[18px] py-[14px]', i < 4 && 'border-r border-border')}
+            >
+              <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-2">{s.label}</div>
+              <span className={cn('text-[24px] font-medium leading-none tracking-[-0.6px]', s.warn ? 'text-accent' : 'text-text')}>
+                {s.value}
+              </span>
+            </div>
+          ))}
+        </div>
+
+        {/* Filter toolbar */}
+        <div className="flex items-center gap-[6px] px-[22px] py-[10px] border-b border-border shrink-0 flex-wrap">
+          <div className="flex p-0.5 border border-border rounded-[5px] bg-bg-elev font-mono text-[10.5px] tracking-[0.03em]">
+            {([['all', 'All'], ['ok', 'OK'], ['error', 'Error']] as [StatusFilter, string][]).map(([v, l]) => (
+              <button
+                key={v}
+                type="button"
+                onClick={() => { setStatusFilter(v); setPage(1) }}
+                className={cn(
+                  'px-[10px] py-[3px] rounded-[3px] transition-colors',
+                  statusFilter === v ? 'bg-text text-bg' : 'text-text-muted hover:text-text',
+                )}
+              >{l}</button>
+            ))}
           </div>
-        ))}
-      </div>
 
-      {/* Filter toolbar */}
-      <div className="flex items-center gap-[6px] px-[22px] py-[10px] border-b border-border shrink-0 flex-wrap">
-        {/* Status */}
-        <div className="flex p-0.5 border border-border rounded-[5px] bg-bg-elev font-mono text-[10.5px] tracking-[0.03em]">
-          {([['all', 'All'], ['ok', 'OK'], ['error', 'Error']] as [StatusFilter, string][]).map(([v, l]) => (
+          <div className="flex p-0.5 border border-border rounded-[5px] bg-bg-elev font-mono text-[10.5px] tracking-[0.03em]">
+            {(['1h', '24h', '7d', '30d', 'all'] as TimeRange[]).map((v) => (
+              <button
+                key={v}
+                type="button"
+                onClick={() => { setTimeRange(v); setPage(1) }}
+                className={cn(
+                  'px-[10px] py-[3px] rounded-[3px] transition-colors',
+                  timeRange === v ? 'bg-text text-bg' : 'text-text-muted hover:text-text',
+                )}
+              >{v === 'all' ? 'All time' : v}</button>
+            ))}
+          </div>
+
+          <div className="inline-flex items-center gap-2 px-[10px] py-[5px] border border-border rounded-[5px] bg-bg-elev font-mono text-[11px] text-text-muted">
+            <span className="text-text-faint text-[12px]">⌕</span>
+            <input
+              value={nameSearch}
+              onChange={(e) => setNameSearch(e.target.value)}
+              placeholder="Search agent or trace ID…"
+              className="w-44 bg-transparent outline-none placeholder:text-text-faint text-[11px]"
+            />
+            {nameSearch && (
+              <button
+                type="button"
+                onClick={() => setNameSearch('')}
+                className="text-text-faint hover:text-text transition-colors text-[12px] leading-none"
+              >×</button>
+            )}
+          </div>
+
+          {hasActiveFilters && (
             <button
-              key={v}
               type="button"
-              onClick={() => { setStatusFilter(v); setPage(1) }}
-              className={cn(
-                'px-[10px] py-[3px] rounded-[3px] transition-colors',
-                statusFilter === v ? 'bg-text text-bg' : 'text-text-muted hover:text-text',
-              )}
-            >{l}</button>
-          ))}
+              onClick={handleClearFilters}
+              className="font-mono text-[10.5px] px-[9px] py-[4px] border border-border rounded-[5px] text-text-muted hover:text-text hover:border-border-strong transition-colors"
+            >
+              Clear
+            </button>
+          )}
+
+          <span className="flex-1" />
+          {!selectedTraceId && (
+            <ExportDropdown
+              filename="spanlens-traces"
+              buildUrl={(fmt) => {
+                const params = new URLSearchParams({ format: fmt })
+                if (apiStatus !== 'all') params.set('status', apiStatus)
+                if (fromIso) params.set('from', fromIso)
+                return `/api/v1/exports/traces?${params.toString()}`
+              }}
+            />
+          )}
+          <span className="font-mono text-[11px] text-text-faint">
+            {traces.length.toLocaleString()} of {meta.total.toLocaleString()}
+          </span>
         </div>
 
-        {/* Time range */}
-        <div className="flex p-0.5 border border-border rounded-[5px] bg-bg-elev font-mono text-[10.5px] tracking-[0.03em]">
-          {(['1h', '24h', '7d', '30d', 'all'] as TimeRange[]).map((v) => (
-            <button
-              key={v}
-              type="button"
-              onClick={() => { setTimeRange(v); setPage(1) }}
-              className={cn(
-                'px-[10px] py-[3px] rounded-[3px] transition-colors',
-                timeRange === v ? 'bg-text text-bg' : 'text-text-muted hover:text-text',
-              )}
-            >{v === 'all' ? 'All time' : v}</button>
-          ))}
-        </div>
+        {/* Column header — hidden when panel is open to save space */}
+        {!selectedTraceId && (
+          <div
+            className="grid border-b border-border bg-bg-muted shrink-0 px-[22px] py-[9px]"
+            style={{ gridTemplateColumns: GRID }}
+          >
+            <span />
+            <span className="font-mono text-[10px] text-text-faint uppercase tracking-[0.05em]">Agent</span>
+            <span className="font-mono text-[10px] text-text-faint uppercase tracking-[0.05em]">Trace id</span>
+            <SortHeader label="Spans"    field="span_count"     sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
+            <SortHeader label="Duration" field="duration_ms"    sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
+            <SortHeader label="Cost"     field="total_cost_usd" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
+            <span className="font-mono text-[10px] text-text-faint uppercase tracking-[0.05em]">Tokens</span>
+            <span className="font-mono text-[10px] text-text-faint uppercase tracking-[0.05em]">Timeline</span>
+            <span className="font-mono text-[10px] text-text-faint uppercase tracking-[0.05em]">Tag</span>
+            <SortHeader label="Age"      field="started_at"     sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
+          </div>
+        )}
 
-        {/* Name / ID search */}
-        <div className="inline-flex items-center gap-2 px-[10px] py-[5px] border border-border rounded-[5px] bg-bg-elev font-mono text-[11px] text-text-muted">
-          <span className="text-text-faint text-[12px]">⌕</span>
-          <input
-            value={nameSearch}
-            onChange={(e) => setNameSearch(e.target.value)}
-            placeholder="Search agent or trace ID…"
-            className="w-44 bg-transparent outline-none placeholder:text-text-faint text-[11px]"
-          />
-          {nameSearch && (
-            <button
-              type="button"
-              onClick={() => setNameSearch('')}
-              className="text-text-faint hover:text-text transition-colors text-[12px] leading-none"
-            >×</button>
+        {/* Rows */}
+        <div className="flex-1 overflow-auto">
+          {isLoading ? (
+            <div className="p-6 space-y-2">
+              {[1, 2, 3, 4, 5].map((i) => (
+                <div key={i} className="h-10 bg-bg-elev rounded animate-pulse" />
+              ))}
+            </div>
+          ) : traces.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full gap-3 text-text-muted">
+              <p className="text-[13px]">No traces found.</p>
+              <p className="font-mono text-[12px] text-center px-6">
+                Try adjusting your filters or use the Spanlens SDK to start recording agent traces.
+              </p>
+            </div>
+          ) : selectedTraceId ? (
+            // Compact list when panel is open
+            traces.map((t) => {
+              const isErr = t.status === 'error'
+              const isRunning = t.status === 'running'
+              const isSelected = t.id === selectedTraceId
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => handleRowClick(t)}
+                  className={cn(
+                    'flex items-center w-full text-left px-[16px] py-[10px] border-b border-border gap-2 hover:bg-bg-elev transition-colors',
+                    isSelected && 'bg-bg-elev border-l-2 border-l-accent',
+                  )}
+                >
+                  <span className="shrink-0">
+                    {isErr ? <span className="w-1.5 h-1.5 rounded-full bg-bad block" /> :
+                     isRunning ? <span className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse block" /> :
+                     <span className="w-1.5 h-1.5 block" />}
+                  </span>
+                  <span className="flex-1 min-w-0">
+                    <div className={cn('font-sans text-[12.5px] font-medium truncate', isErr ? 'text-bad' : 'text-text')}>
+                      {t.name}
+                    </div>
+                    <div className="font-mono text-[10.5px] text-text-faint flex gap-2">
+                      <span>{t.span_count} spans</span>
+                      {t.duration_ms != null && <span>{fmtDuration(t.duration_ms)}</span>}
+                      <span className="ml-auto">{fmtAge(t.started_at)}</span>
+                    </div>
+                  </span>
+                </button>
+              )
+            })
+          ) : (
+            // Full grid list
+            traces.map((t) => {
+              const isErr = t.status === 'error'
+              const isRunning = t.status === 'running'
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => handleRowClick(t)}
+                  title={isErr && t.error_message ? t.error_message : undefined}
+                  className={cn(
+                    'grid items-center w-full text-left px-[22px] py-[11px] border-b border-border font-mono text-[12.5px] hover:bg-bg-elev transition-colors',
+                    isErr && 'bg-bad-bg',
+                  )}
+                  style={{ gridTemplateColumns: GRID }}
+                >
+                  <span>
+                    {isErr ? (
+                      <span className="w-1.5 h-1.5 rounded-full bg-bad block" />
+                    ) : isRunning ? (
+                      <span className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse block" />
+                    ) : null}
+                  </span>
+                  <span className="text-text font-sans text-[13px] font-medium truncate pr-4">{t.name}</span>
+                  <span className="text-text-muted truncate pr-4">{t.id.slice(0, 14)}…</span>
+                  <span className="text-text-muted">{t.span_count}</span>
+                  <span className={isErr ? 'text-bad' : 'text-text'}>{fmtDuration(t.duration_ms)}</span>
+                  <span className="text-text">{fmtCost(t.total_cost_usd)}</span>
+                  <span className="text-text-muted">{t.total_tokens.toLocaleString()}</span>
+                  <span className="pr-4 flex items-center">
+                    <TraceDurationBar
+                      durationMs={t.duration_ms}
+                      maxDurationMs={maxDurationMs}
+                      hasError={isErr}
+                      isRunning={isRunning}
+                    />
+                  </span>
+                  <span className={cn('text-[11px] font-sans truncate', isErr ? 'text-bad' : isRunning ? 'text-accent' : 'text-text-faint')}>
+                    {isErr
+                      ? (t.error_message ? t.error_message.slice(0, 24) + (t.error_message.length > 24 ? '…' : '') : 'error')
+                      : isRunning ? 'running' : '—'}
+                  </span>
+                  <span className="text-text-faint text-right" title={new Date(t.started_at).toLocaleString()}>
+                    {fmtAge(t.started_at)}
+                  </span>
+                </button>
+              )
+            })
           )}
         </div>
 
-        <span className="flex-1" />
-        <ExportDropdown
-          filename="spanlens-traces"
-          buildUrl={(fmt) => {
-            const params = new URLSearchParams({ format: fmt })
-            if (apiStatus !== 'all') params.set('status', apiStatus)
-            if (fromIso) params.set('from', fromIso)
-            return `/api/v1/exports/traces?${params.toString()}`
-          }}
-        />
-        <span className="font-mono text-[11px] text-text-faint">
-          {traces.length.toLocaleString()} of {meta.total.toLocaleString()}
-        </span>
-      </div>
-
-      {/* Column header */}
-      <div
-        className="grid border-b border-border bg-bg-muted shrink-0 px-[22px] py-[9px]"
-        style={{ gridTemplateColumns: GRID }}
-      >
-        <span />
-        <span className="font-mono text-[10px] text-text-faint uppercase tracking-[0.05em]">Agent</span>
-        <span className="font-mono text-[10px] text-text-faint uppercase tracking-[0.05em]">Trace id</span>
-        <SortHeader label="Spans"    field="span_count"      sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
-        <SortHeader label="Duration" field="duration_ms"     sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
-        <SortHeader label="Cost"     field="total_cost_usd"  sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
-        <span className="font-mono text-[10px] text-text-faint uppercase tracking-[0.05em]">Tokens</span>
-        <span className="font-mono text-[10px] text-text-faint uppercase tracking-[0.05em]">Span timeline</span>
-        <span className="font-mono text-[10px] text-text-faint uppercase tracking-[0.05em]">Tag</span>
-        <SortHeader label="Age"      field="started_at"      sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
-      </div>
-
-      {/* Rows */}
-      <div className="flex-1 overflow-auto">
-        {isLoading ? (
-          <div className="p-6 space-y-2">
-            {[1, 2, 3, 4, 5].map((i) => (
-              <div key={i} className="h-10 bg-bg-elev rounded animate-pulse" />
-            ))}
-          </div>
-        ) : traces.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full gap-3 text-text-muted">
-            <p className="text-[13px]">No traces found.</p>
-            <p className="font-mono text-[12px]">Try adjusting your filters or use the Spanlens SDK to start recording agent traces.</p>
-          </div>
-        ) : (
-          traces.map((t) => {
-            const isErr = t.status === 'error'
-            const isRunning = t.status === 'running'
-            return (
+        {/* Pagination */}
+        {!isLoading && rawTraces.length > 0 && (
+          <div className="flex items-center justify-between px-[22px] py-3 border-t border-border shrink-0">
+            <span className="font-mono text-[11.5px] text-text-muted">
+              {rawTraces.length.toLocaleString()} of {meta.total.toLocaleString()}
+            </span>
+            <div className="flex items-center gap-2">
               <button
-                key={t.id}
                 type="button"
-                onClick={() => handleRowClick(t)}
-                title={isErr && t.error_message ? t.error_message : undefined}
-                className={cn(
-                  'grid items-center w-full text-left px-[22px] py-[11px] border-b border-border font-mono text-[12.5px] hover:bg-bg-elev transition-colors',
-                  isErr && 'bg-accent-bg',
-                )}
-                style={{ gridTemplateColumns: GRID }}
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page <= 1 || isFetching}
+                className="font-mono text-[11.5px] px-3 py-[5px] border border-border rounded-[5px] text-text-muted hover:text-text disabled:opacity-40 transition-colors"
               >
-                <span>
-                  {isErr ? (
-                    <span className="w-1.5 h-1.5 rounded-full bg-bad block" title={t.error_message ?? undefined} />
-                  ) : isRunning ? (
-                    <span className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse block" />
-                  ) : null}
-                </span>
-                <span className="text-text font-sans text-[13px] font-medium truncate pr-4">{t.name}</span>
-                <span className="text-text-muted truncate pr-4">{t.id.slice(0, 14)}…</span>
-                <span className="text-text-muted">{t.span_count}</span>
-                <span className={isErr ? 'text-bad' : 'text-text'}>{fmtDuration(t.duration_ms)}</span>
-                <span className="text-text">{fmtCost(t.total_cost_usd)}</span>
-                <span className="text-text-muted">{t.total_tokens.toLocaleString()}</span>
-                <span className="pr-4 flex items-center">
-                  <TraceDurationBar
-                    durationMs={t.duration_ms}
-                    maxDurationMs={maxDurationMs}
-                    hasError={isErr}
-                    isRunning={isRunning}
-                  />
-                </span>
-                <span className={cn('text-[11px] font-sans truncate', isErr ? 'text-bad' : isRunning ? 'text-accent' : 'text-text-faint')}>
-                  {isErr
-                    ? (t.error_message ? t.error_message.slice(0, 24) + (t.error_message.length > 24 ? '…' : '') : 'error')
-                    : isRunning ? 'running' : '—'}
-                </span>
-                <span className="text-text-faint text-right" title={new Date(t.started_at).toLocaleString()}>
-                  {fmtAge(t.started_at)}
-                </span>
+                Previous
               </button>
-            )
-          })
+              <button
+                type="button"
+                onClick={() => setPage((p) => p + 1)}
+                disabled={rawTraces.length < (data?.meta.limit ?? 50) || isFetching}
+                className="font-mono text-[11.5px] px-3 py-[5px] border border-border rounded-[5px] text-text-muted hover:text-text disabled:opacity-40 transition-colors"
+              >
+                Next
+              </button>
+            </div>
+          </div>
         )}
       </div>
 
-      {/* Pagination */}
-      {!isLoading && rawTraces.length > 0 && (
-        <div className="flex items-center justify-between px-[22px] py-3 border-t border-border shrink-0">
-          <span className="font-mono text-[11.5px] text-text-muted">
-            {rawTraces.length.toLocaleString()} of {meta.total.toLocaleString()} traces
-          </span>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              disabled={page <= 1 || isFetching}
-              className="font-mono text-[11.5px] px-3 py-[5px] border border-border rounded-[5px] text-text-muted hover:text-text disabled:opacity-40 transition-colors"
-            >
-              Previous
-            </button>
-            <button
-              type="button"
-              onClick={() => setPage((p) => p + 1)}
-              disabled={rawTraces.length < (data?.meta.limit ?? 50) || isFetching}
-              className="font-mono text-[11.5px] px-3 py-[5px] border border-border rounded-[5px] text-text-muted hover:text-text disabled:opacity-40 transition-colors"
-            >
-              Next
-            </button>
-          </div>
+      {/* ── Right: trace detail panel ────────────────────────────────────── */}
+      {selectedTraceId && (
+        <div className="flex-1 overflow-hidden">
+          <TracePanel
+            traceId={selectedTraceId}
+            onClose={() => setSelectedTraceId(null)}
+            onPrev={() => {
+              if (hasPrev) setSelectedTraceId(traces[selectedIdx - 1]?.id ?? null)
+            }}
+            onNext={() => {
+              if (hasNext) setSelectedTraceId(traces[selectedIdx + 1]?.id ?? null)
+            }}
+            hasPrev={hasPrev}
+            hasNext={hasNext}
+          />
         </div>
       )}
     </div>
