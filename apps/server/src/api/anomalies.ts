@@ -47,6 +47,16 @@ anomaliesRouter.get('/', async (c) => {
   const sigmaThreshold = parsePositiveNumber(c.req.query('sigma'), 3)
   const projectId = c.req.query('projectId')
 
+  if (projectId) {
+    const { data: proj } = await supabaseAdmin
+      .from('projects')
+      .select('id')
+      .eq('id', projectId)
+      .eq('organization_id', orgId)
+      .single()
+    if (!proj) return c.json({ error: 'Project not found' }, 404)
+  }
+
   const [anomalies, acksRes] = await Promise.all([
     detectAnomalies(orgId, {
       observationHours,
