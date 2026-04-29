@@ -1,6 +1,6 @@
 {
   "name": "@spanlens/sdk",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "Spanlens SDK — agent tracing, LLM usage capture, and cost observability for TypeScript.",
   "type": "module",
   "main": "./dist/index.js",

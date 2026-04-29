@@ -191,6 +191,42 @@ describe('observeOpenAI / observeAnthropic / observeGemini', () => {
     expect(body.total_tokens).toBe(20)
   })
 
+  it('observeOpenAI captures full response as output in span.end', async () => {
+    const client = new SpanlensClient({ apiKey: 'k', baseUrl: 'http://x' })
+    const trace = client.startTrace({ name: 't' })
+
+    const mockResponse = {
+      id: 'chatcmpl-abc',
+      model: 'gpt-4o-mini',
+      choices: [{ message: { role: 'assistant', content: 'Hello!' }, finish_reason: 'stop' }],
+      usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
+    }
+
+    await observeOpenAI(trace, 'call', async () => mockResponse)
+
+    const patchCall = fetchMock.mock.calls.find(
+      ([, init]) => (init as RequestInit).method === 'PATCH',
+    )
+    expect(patchCall).toBeDefined()
+    const body = JSON.parse((patchCall![1] as RequestInit).body as string) as Record<string, unknown>
+    expect(body.output).toEqual(mockResponse)
+  })
+
+  it('observeOpenAI omits output for stream-like responses', async () => {
+    const client = new SpanlensClient({ apiKey: 'k', baseUrl: 'http://x' })
+    const trace = client.startTrace({ name: 't' })
+
+    const streamLike = { usage: { total_tokens: 5 }, [Symbol.asyncIterator]: () => ({}) }
+
+    await observeOpenAI(trace, 'stream-call', async () => streamLike as unknown as typeof streamLike)
+
+    const patchCall = fetchMock.mock.calls.find(
+      ([, init]) => (init as RequestInit).method === 'PATCH',
+    )
+    const body = JSON.parse((patchCall![1] as RequestInit).body as string) as Record<string, unknown>
+    expect(body.output).toBeUndefined()
+  })
+
   it('marks span as error and rethrows when callback fails', async () => {
     const client = new SpanlensClient({ apiKey: 'k', baseUrl: 'http://x' })
     const trace = client.startTrace({ name: 't' })
