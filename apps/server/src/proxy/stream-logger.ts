@@ -1,5 +1,6 @@
 import { calculateCost, type Provider } from '../lib/cost.js'
 import { logRequestAsync, type RequestLogData } from '../lib/logger.js'
+import { supabaseAdmin } from '../lib/db.js'
 import { parseOpenAIStreamChunk, extractOpenAIStreamText } from '../parsers/openai.js'
 import { parseAnthropicStreamStart, parseAnthropicStreamChunk, extractAnthropicStreamText } from '../parsers/anthropic.js'
 
@@ -7,6 +8,18 @@ type StreamLogBase = Omit<
   RequestLogData,
   'promptTokens' | 'completionTokens' | 'totalTokens' | 'costUsd' | 'model'
 > & { model: string }
+
+// 스트리밍 완료 후 span에 output을 주입합니다.
+// output이 이미 설정된 span(사용자가 span.end({ output })로 직접 설정)은 건드리지 않습니다.
+async function injectSpanOutput(spanId: string, organizationId: string, output: string): Promise<void> {
+  const { error } = await supabaseAdmin
+    .from('spans')
+    .update({ output })
+    .eq('id', spanId)
+    .eq('organization_id', organizationId)
+    .is('output', null)
+  if (error) throw new Error(error.message)
+}
 
 /**
  * 이미 수집된 SSE 라인 배열에서 usage를 파싱하고 DB에 기록합니다.
@@ -51,6 +64,12 @@ export async function logOpenAIStream(
     costUsd: cost?.totalCost ?? null,
     responseBody,
   })
+
+  if (base.spanId && text) {
+    await injectSpanOutput(base.spanId, base.organizationId, text).catch((err) => {
+      console.error('[span-output-inject:openai]', err)
+    })
+  }
 }
 
 export async function logAnthropicStream(
@@ -93,4 +112,10 @@ export async function logAnthropicStream(
     costUsd: cost?.totalCost ?? null,
     responseBody,
   })
+
+  if (base.spanId && text) {
+    await injectSpanOutput(base.spanId, base.organizationId, text).catch((err) => {
+      console.error('[span-output-inject:anthropic]', err)
+    })
+  }
 }
