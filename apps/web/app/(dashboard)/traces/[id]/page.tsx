@@ -8,10 +8,8 @@ import { useTrace } from '@/lib/queries/use-traces'
 
 export default function TraceDetailPage({ params }: { params: { id: string } }) {
   const router = useRouter()
-  const [shareCopied, setShareCopied] = useState(false)
   const [navIds, setNavIds] = useState<string[]>([])
 
-  // Read navigation list written by the traces list page (after mount to avoid SSR mismatch)
   useEffect(() => {
     try {
       const raw = sessionStorage.getItem('traceNavList')
@@ -25,12 +23,6 @@ export default function TraceDetailPage({ params }: { params: { id: string } }) 
   const nextId = navIdx < navIds.length - 1 ? navIds[navIdx + 1] : null
 
   const { data: trace, isLoading, isError } = useTrace(params.id)
-
-  function handleShare() {
-    void navigator.clipboard.writeText(window.location.href)
-    setShareCopied(true)
-    setTimeout(() => setShareCopied(false), 2000)
-  }
 
   const traceName = trace?.name ?? '…'
   const crumbLabel = traceName.length > 28 ? traceName.slice(0, 28) + '…' : traceName
@@ -77,33 +69,28 @@ export default function TraceDetailPage({ params }: { params: { id: string } }) 
           { label: crumbLabel },
         ]}
         right={
-          <div className="flex items-center gap-2">
-            {prevId && (
-              <button
-                type="button"
-                onClick={() => router.push(`/traces/${prevId}`)}
-                className="font-mono text-[11px] px-[9px] py-1 border border-border rounded-[5px] text-text-muted hover:border-border-strong transition-colors"
-              >
-                ← prev
-              </button>
-            )}
-            {nextId && (
-              <button
-                type="button"
-                onClick={() => router.push(`/traces/${nextId}`)}
-                className="font-mono text-[11px] px-[9px] py-1 border border-border rounded-[5px] text-text-muted hover:border-border-strong transition-colors"
-              >
-                next →
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={handleShare}
-              className="font-mono text-[11px] px-[10px] py-1 border border-border rounded-[5px] bg-bg-elev text-text hover:border-border-strong transition-colors"
-            >
-              {shareCopied ? 'Copied!' : 'Share'}
-            </button>
-          </div>
+          prevId || nextId ? (
+            <div className="flex items-center gap-2">
+              {prevId && (
+                <button
+                  type="button"
+                  onClick={() => router.push(`/traces/${prevId}`)}
+                  className="font-mono text-[11px] px-[9px] py-1 border border-border rounded-[5px] text-text-muted hover:border-border-strong transition-colors"
+                >
+                  ← prev
+                </button>
+              )}
+              {nextId && (
+                <button
+                  type="button"
+                  onClick={() => router.push(`/traces/${nextId}`)}
+                  className="font-mono text-[11px] px-[9px] py-1 border border-border rounded-[5px] text-text-muted hover:border-border-strong transition-colors"
+                >
+                  next →
+                </button>
+              )}
+            </div>
+          ) : undefined
         }
       />
       <div className="flex-1 overflow-hidden">
