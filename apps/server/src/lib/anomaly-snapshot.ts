@@ -1,5 +1,6 @@
 import { supabaseAdmin } from './db.js'
 import { detectAnomalies, type AnomalyBucket } from './anomaly.js'
+import { deliverToChannel, type AlertNotification } from './notifiers.js'
 
 /**
  * Daily snapshot job. Runs anomaly detection for every active organization
@@ -49,6 +50,14 @@ export async function snapshotAnomaliesForAllOrgs(
       }
       await persistSnapshot(orgId, today, anomalies)
       result.detected = anomalies.length
+
+      // Send notifications for high-severity (≥5σ) anomalies via configured channels.
+      const highSeverity = anomalies.filter((a) => a.deviations >= 5)
+      if (highSeverity.length > 0) {
+        await notifyHighSeverityAnomalies(orgId, highSeverity).catch((err) => {
+          result.errors.push(`notify: ${err instanceof Error ? err.message : 'unknown'}`)
+        })
+      }
     } catch (err) {
       result.errors.push(err instanceof Error ? err.message : 'unknown')
     }
@@ -114,6 +123,60 @@ export interface AnomalyHistoryEntry {
   deviations: number
   sampleCount: number
   referenceCount: number
+}
+
+interface NotificationChannelRow {
+  kind: 'email' | 'slack' | 'discord'
+  target: string
+}
+
+async function notifyHighSeverityAnomalies(
+  orgId: string,
+  anomalies: AnomalyBucket[],
+): Promise<void> {
+  const [channelsRes, orgRes] = await Promise.all([
+    supabaseAdmin
+      .from('notification_channels')
+      .select('kind, target')
+      .eq('organization_id', orgId)
+      .eq('is_active', true)
+      .returns<NotificationChannelRow[]>(),
+    supabaseAdmin
+      .from('organizations')
+      .select('name')
+      .eq('id', orgId)
+      .single<{ name: string }>(),
+  ])
+
+  const channels = channelsRes.data ?? []
+  if (channels.length === 0) return
+
+  const orgName = orgRes.data?.name ?? orgId
+  const webUrl = process.env['WEB_URL'] ?? 'https://www.spanlens.io'
+
+  for (const anomaly of anomalies) {
+    const kindLabel =
+      anomaly.kind === 'latency' ? 'latency_p95'
+      : anomaly.kind === 'error_rate' ? 'error_rate'
+      : 'budget'
+
+    const notification: AlertNotification = {
+      alertName: `${anomaly.provider}/${anomaly.model} · ${anomaly.kind} (${anomaly.deviations.toFixed(1)}σ)`,
+      alertType: kindLabel as AlertNotification['alertType'],
+      threshold: anomaly.baselineMean,
+      currentValue: anomaly.currentValue,
+      windowMinutes: 60,
+      organizationName: orgName,
+      dashboardUrl: `${webUrl}/anomalies`,
+    }
+
+    for (const channel of channels) {
+      const result = await deliverToChannel(channel.kind, channel.target, notification)
+      if (!result.ok) {
+        console.error('[anomaly-notify]', orgId, channel.kind, result.error)
+      }
+    }
+  }
 }
 
 export async function getAnomalyHistory(

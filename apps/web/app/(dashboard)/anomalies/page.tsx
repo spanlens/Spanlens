@@ -33,6 +33,22 @@ function kindLabel(k: AnomalyKind): string {
   return { latency: 'LATENCY', cost: 'COST', error_rate: 'ERRORS' }[k] ?? k.toUpperCase()
 }
 
+// Shared title builder — accepts both Anomaly and AnomalyHistoryEntry
+// since they share the same numeric fields used here.
+interface AnomalyTitleFields {
+  kind: AnomalyKind
+  currentValue: number
+  baselineMean: number
+  deviations: number
+}
+
+function anomTitle(a: AnomalyTitleFields): string {
+  const pct = a.baselineMean > 0 ? ((a.currentValue - a.baselineMean) / a.baselineMean * 100).toFixed(0) : '?'
+  if (a.kind === 'latency') return `p95 latency · ${a.deviations.toFixed(1)}σ above mean`
+  if (a.kind === 'cost') return `Spend · ${pct}% above baseline`
+  return `Error rate · ${fmtValue('error_rate', a.currentValue)} (baseline ${fmtValue('error_rate', a.baselineMean)})`
+}
+
 /**
  * "Baseline vs now" visual. Two bars side-by-side whose heights reflect
  * the real baseline mean and the current observed value. Honest: no
@@ -67,13 +83,6 @@ function AnomDeltaBars({
   )
 }
 
-function anomTitle(a: Anomaly): string {
-  const pct = a.baselineMean > 0 ? ((a.currentValue - a.baselineMean) / a.baselineMean * 100).toFixed(0) : '?'
-  if (a.kind === 'latency') return `p95 latency · ${a.deviations.toFixed(1)}σ above mean`
-  if (a.kind === 'cost') return `Spend · ${pct}% above baseline`
-  return `Error rate · ${fmtValue('error_rate', a.currentValue)} (baseline ${fmtValue('error_rate', a.baselineMean)})`
-}
-
 interface AnomRowProps {
   a: Anomaly
   idx: number
@@ -81,9 +90,10 @@ interface AnomRowProps {
   onAck: () => void
   onUnack: () => void
   ackPending: boolean
+  dimmed?: boolean
 }
 
-function AnomRow({ a, idx, last, onAck, onUnack, ackPending }: AnomRowProps) {
+function AnomRow({ a, idx, last, onAck, onUnack, ackPending, dimmed }: AnomRowProps) {
   const isHigh = a.deviations >= 5
   const isAcked = Boolean(a.acknowledgedAt)
   const tint = isHigh ? 'text-bad' : 'text-accent'
@@ -96,14 +106,14 @@ function AnomRow({ a, idx, last, onAck, onUnack, ackPending }: AnomRowProps) {
         'grid items-center px-[22px] py-[12px]',
         !last && 'border-b border-border',
         isHigh && !isAcked && 'bg-accent-bg',
-        isAcked && 'opacity-60',
+        dimmed && 'opacity-60',
       )}
       style={{ gridTemplateColumns: '28px 1fr 120px 150px 150px 130px', gap: 14 }}
     >
       {/* sev dot */}
       <div className="flex items-center justify-center">
         <span
-          className={cn('w-2 h-2 rounded-full', dotBg, isHigh && 'shadow-[0_0_0_3px_var(--accent-bg)]')}
+          className={cn('w-2 h-2 rounded-full', dotBg, isHigh && !isAcked && 'shadow-[0_0_0_3px_var(--accent-bg)]')}
         />
       </div>
 
@@ -114,7 +124,7 @@ function AnomRow({ a, idx, last, onAck, onUnack, ackPending }: AnomRowProps) {
           <span
             className={cn(
               'font-mono text-[9px] px-[6px] py-[1px] rounded-[3px] border uppercase tracking-[0.04em]',
-              isHigh
+              isHigh && !isAcked
                 ? 'text-accent border-accent-border bg-accent-bg'
                 : 'text-text-muted border-border',
             )}
@@ -202,7 +212,7 @@ function HistoryRow({ e, last }: { e: AnomalyHistoryEntry; last: boolean }) {
           <span className="font-mono text-[9px] px-[6px] py-[1px] rounded-[3px] border border-border text-text-muted uppercase tracking-[0.04em]">
             {kindLabel(e.kind)}
           </span>
-          <span className="text-[13px] text-text-muted truncate">{anomTitle(e as unknown as Anomaly)}</span>
+          <span className="text-[13px] text-text-muted truncate">{anomTitle(e)}</span>
         </div>
         <div className="font-mono text-[11px] text-text-faint">{e.provider} / {e.model}</div>
       </div>
@@ -259,10 +269,13 @@ export default function AnomaliesPage() {
     return kindFilter === 'all' ? all : all.filter((a) => a.kind === kindFilter)
   }, [history, kindFilter])
 
-  const high = current.filter((a) => a.deviations >= 5)
-  const medium = current.filter((a) => a.deviations < 5)
+  // Split active anomalies into unacked and acked sections
+  const unackedHigh   = current.filter((a) => a.deviations >= 5 && !a.acknowledgedAt)
+  const unackedMedium = current.filter((a) => a.deviations < 5  && !a.acknowledgedAt)
+  const acked         = current.filter((a) => Boolean(a.acknowledgedAt))
+
   const historyCount = history?.length ?? 0
-  const totalAll = (anomalyResult?.data ?? []).length
+  const isLoading = loadingCurrent || loadingHistory
 
   return (
     <div className="-m-7 flex flex-col h-screen overflow-hidden bg-bg">
@@ -283,11 +296,11 @@ export default function AnomaliesPage() {
       {/* Stat strip */}
       <div className="grid grid-cols-5 border-b border-border shrink-0">
         {[
-          { label: 'Open · high',     value: String(high.length),      warn: high.length > 0 },
-          { label: 'Open · medium',   value: String(medium.length),    warn: false },
-          { label: 'Resolved · 7d',   value: String(historyCount),     warn: false },
-          { label: 'Baseline',        value: '7d',                     warn: false },
-          { label: 'Total anomalies', value: String(totalAll),         warn: totalAll > 0 },
+          { label: 'Open · high',   value: String(unackedHigh.length),   warn: unackedHigh.length > 0 },
+          { label: 'Open · medium', value: String(unackedMedium.length), warn: false },
+          { label: 'Acknowledged',  value: String(acked.length),         warn: false },
+          { label: 'Resolved · 7d', value: String(historyCount),         warn: false },
+          { label: 'Baseline',      value: '7d',                         warn: false },
         ].map((s, i) => (
           <div key={i} className={cn('px-[18px] py-[14px]', i < 4 && 'border-r border-border')}>
             <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-2">{s.label}</div>
@@ -326,26 +339,26 @@ export default function AnomaliesPage() {
 
       {/* Content */}
       <div className="flex-1 overflow-auto">
-        {loadingCurrent && loadingHistory ? (
+        {isLoading ? (
           <div className="p-6 space-y-2">
             {[1, 2, 3].map((i) => <div key={i} className="h-14 bg-bg-elev rounded animate-pulse" />)}
           </div>
         ) : (
           <>
-            {/* New — high */}
-            {high.length > 0 && (
+            {/* Open — high severity */}
+            {unackedHigh.length > 0 && (
               <div>
                 <div className="flex items-center gap-2.5 px-[22px] py-[10px] bg-bg-muted border-b border-border border-t border-t-border">
                   <span className="font-mono text-[10px] uppercase tracking-[0.06em] text-accent">
-                    New · {high.length}
+                    New · high · {unackedHigh.length}
                   </span>
                 </div>
-                {high.map((a, i) => (
+                {unackedHigh.map((a, i) => (
                   <AnomRow
                     key={`${a.provider}-${a.model}-${a.kind}`}
                     a={a}
                     idx={i}
-                    last={i === high.length - 1}
+                    last={i === unackedHigh.length - 1}
                     onAck={() => ackAnomaly(a)}
                     onUnack={() => unackAnomaly(a)}
                     ackPending={ackPending}
@@ -354,20 +367,20 @@ export default function AnomaliesPage() {
               </div>
             )}
 
-            {/* New — medium */}
-            {medium.length > 0 && (
+            {/* Open — medium severity */}
+            {unackedMedium.length > 0 && (
               <div>
                 <div className="flex items-center gap-2.5 px-[22px] py-[10px] bg-bg-muted border-b border-border border-t border-t-border">
                   <span className="font-mono text-[10px] uppercase tracking-[0.06em] text-accent">
-                    New · medium · {medium.length}
+                    New · medium · {unackedMedium.length}
                   </span>
                 </div>
-                {medium.map((a, i) => (
+                {unackedMedium.map((a, i) => (
                   <AnomRow
                     key={`${a.provider}-${a.model}-${a.kind}-m`}
                     a={a}
-                    idx={high.length + i}
-                    last={i === medium.length - 1}
+                    idx={unackedHigh.length + i}
+                    last={i === unackedMedium.length - 1}
                     onAck={() => ackAnomaly(a)}
                     onUnack={() => unackAnomaly(a)}
                     ackPending={ackPending}
@@ -376,12 +389,41 @@ export default function AnomaliesPage() {
               </div>
             )}
 
-            {/* Empty state for current */}
-            {current.length === 0 && !loadingCurrent && (
+            {/* Acknowledged */}
+            {acked.length > 0 && (
+              <div>
+                <div className="flex items-center gap-2.5 px-[22px] py-[10px] bg-bg-muted border-b border-border border-t border-t-border">
+                  <span className="font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint">
+                    Acknowledged · {acked.length}
+                  </span>
+                </div>
+                <div className="opacity-60">
+                  {acked.map((a, i) => (
+                    <AnomRow
+                      key={`${a.provider}-${a.model}-${a.kind}-ack`}
+                      a={a}
+                      idx={unackedHigh.length + unackedMedium.length + i}
+                      last={i === acked.length - 1}
+                      onAck={() => ackAnomaly(a)}
+                      onUnack={() => unackAnomaly(a)}
+                      ackPending={ackPending}
+                      dimmed
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Empty state — no active anomalies */}
+            {unackedHigh.length === 0 && unackedMedium.length === 0 && !loadingCurrent && (
               <div className="flex flex-col items-center justify-center py-12 gap-2 text-text-muted">
                 <span className="text-[28px] leading-none">✓</span>
                 <p className="text-[13px]">No anomalies in the last hour.</p>
-                <p className="font-mono text-[11.5px] text-text-faint">Baselines look healthy.</p>
+                <p className="font-mono text-[11.5px] text-text-faint">
+                  {acked.length > 0
+                    ? `${acked.length} acknowledged — Unack to re-open.`
+                    : 'Baselines look healthy.'}
+                </p>
               </div>
             )}
 
