@@ -15,6 +15,12 @@ export function fmtMs(ms: number | null): string {
   return `${(ms / 1000).toFixed(2)}s`
 }
 
+export function fmtTimestamp(iso: string): string {
+  const d = new Date(iso)
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`
+}
+
 export function fmtCost(n: number | null): string {
   if (n == null || n === 0) return '—'
   return n < 0.001 ? '$' + n.toFixed(5) : '$' + n.toFixed(4)
@@ -437,20 +443,6 @@ function SpanDrawer({ span, onClose, onPrev, onNext, hasPrev, hasNext, position,
               ? 'For recall-heavy LLM calls, a lighter model often matches output quality at significantly lower latency and cost.'
               : 'Optimizing this span will have the highest impact on overall trace duration.'}
           </p>
-          <div className="flex gap-2 mt-3">
-            <button
-              type="button"
-              className="font-mono text-[10.5px] px-3 py-[5px] rounded-[4px] bg-text text-bg uppercase tracking-[0.04em] hover:opacity-90 transition-opacity"
-            >
-              Open in Evals
-            </button>
-            <button
-              type="button"
-              className="font-mono text-[10.5px] px-3 py-[5px] rounded-[4px] border border-accent-border text-accent uppercase tracking-[0.04em] hover:opacity-80 transition-opacity"
-            >
-              Compare Models
-            </button>
-          </div>
         </div>
       )}
 
@@ -506,14 +498,9 @@ function SpanDrawer({ span, onClose, onPrev, onNext, hasPrev, hasNext, position,
 // ── TracePanel ──────────────────────────────────────────────────────────────────
 export interface TracePanelProps {
   traceId: string
-  onClose?: () => void
-  onPrev?: () => void
-  onNext?: () => void
-  hasPrev?: boolean
-  hasNext?: boolean
 }
 
-export function TracePanel({ traceId, onClose, onPrev, onNext, hasPrev, hasNext }: TracePanelProps) {
+export function TracePanel({ traceId }: TracePanelProps) {
   const [selectedSpan, setSelectedSpan] = useState<SpanRow | null>(null)
   const [spanSearch, setSpanSearch] = useState('')
   const [typeFilter, setTypeFilter] = useState<SpanType | 'all'>('all')
@@ -544,8 +531,7 @@ export function TracePanel({ traceId, onClose, onPrev, onNext, hasPrev, hasNext 
   }, [trace, spanSearch, typeFilter, errorsOnly])
 
   const hasFilter = spanSearch.trim() !== '' || typeFilter !== 'all' || errorsOnly
-  const effectiveSpans = hasFilter ? filteredSpans : (trace?.spans ?? [])
-  const effectiveIdx = selectedSpan ? effectiveSpans.findIndex((s) => s.id === selectedSpan.id) : -1
+  const allIdx = (trace && selectedSpan) ? trace.spans.findIndex((s) => s.id === selectedSpan.id) : -1
 
   const typeCounts = useMemo(() => {
     if (!trace) return {} as Record<string, number>
@@ -585,11 +571,6 @@ export function TracePanel({ traceId, onClose, onPrev, onNext, hasPrev, hasNext 
     return (
       <div className="flex flex-col h-full border-l border-border bg-bg items-center justify-center gap-3">
         <p className="text-[13px] text-text-muted">Trace not found.</p>
-        {onClose && (
-          <button type="button" onClick={onClose} className="font-mono text-[11px] text-accent hover:opacity-80">
-            Close
-          </button>
-        )}
       </div>
     )
   }
@@ -608,42 +589,13 @@ export function TracePanel({ traceId, onClose, onPrev, onNext, hasPrev, hasNext 
     <div className="flex h-full overflow-hidden border-l border-border bg-bg">
       <div className="flex flex-col flex-1 overflow-hidden">
 
-        {/* Panel header (close/prev/next controls) */}
-        {onClose && (
-          <div className="flex items-center gap-2 px-[18px] py-[10px] border-b border-border shrink-0 bg-bg-muted">
-            <Link
-              href={`/traces/${traceId}`}
-              className="font-mono text-[10.5px] text-accent hover:opacity-80 transition-opacity"
-            >
-              Open full page →
-            </Link>
-            <span className="flex-1" />
-            {onPrev && (
-              <button type="button" onClick={onPrev} disabled={!hasPrev}
-                className="font-mono text-[10px] px-2 py-[3px] border border-border rounded-[4px] text-text-muted disabled:opacity-30 hover:border-border-strong transition-colors">
-                ← prev
-              </button>
-            )}
-            {onNext && (
-              <button type="button" onClick={onNext} disabled={!hasNext}
-                className="font-mono text-[10px] px-2 py-[3px] border border-border rounded-[4px] text-text-muted disabled:opacity-30 hover:border-border-strong transition-colors">
-                next →
-              </button>
-            )}
-            <button type="button" onClick={onClose}
-              className="font-mono text-[10px] px-2 py-[3px] border border-border rounded-[4px] text-text-muted hover:border-border-strong transition-colors">
-              ✕
-            </button>
-          </div>
-        )}
-
         {/* Trace header */}
         <div className="px-[22px] pt-4 pb-[14px] border-b border-border shrink-0">
           <div className="flex items-baseline gap-3 mb-3.5">
             <span className="text-[20px] font-medium tracking-[-0.5px] text-text truncate">{trace.name}</span>
             {statusBadge}
             <span className="font-mono text-[11px] text-text-faint tracking-[0.03em] shrink-0">
-              {new Date(trace.started_at).toLocaleString()}
+              {fmtTimestamp(trace.started_at)}
             </span>
             <span className="flex-1" />
             {errorSpans.length > 0 && (
@@ -749,7 +701,10 @@ export function TracePanel({ traceId, onClose, onPrev, onNext, hasPrev, hasNext 
 
           <span className="flex-1" />
           <span className="font-mono text-[10.5px] text-text-faint">
-            {effectiveSpans.length} / {trace.span_count}
+            {hasFilter
+              ? <>{filteredSpans.length} matching / {trace.span_count} total</>
+              : <>{trace.span_count} total</>
+            }
           </span>
         </div>
 
@@ -793,12 +748,12 @@ export function TracePanel({ traceId, onClose, onPrev, onNext, hasPrev, hasNext 
         <SpanDrawer
           span={selectedSpan}
           onClose={() => setSelectedSpan(null)}
-          onPrev={() => { if (effectiveIdx > 0) setSelectedSpan(effectiveSpans[effectiveIdx - 1] ?? null) }}
-          onNext={() => { if (effectiveIdx < effectiveSpans.length - 1) setSelectedSpan(effectiveSpans[effectiveIdx + 1] ?? null) }}
-          hasPrev={effectiveIdx > 0}
-          hasNext={effectiveIdx < effectiveSpans.length - 1}
-          position={effectiveIdx + 1}
-          total={effectiveSpans.length}
+          onPrev={() => { if (allIdx > 0) setSelectedSpan(trace.spans[allIdx - 1] ?? null) }}
+          onNext={() => { if (allIdx < trace.spans.length - 1) setSelectedSpan(trace.spans[allIdx + 1] ?? null) }}
+          hasPrev={allIdx > 0}
+          hasNext={allIdx < trace.spans.length - 1}
+          position={allIdx + 1}
+          total={trace.spans.length}
           traceDurationMs={trace.duration_ms}
           traceTotalCost={trace.total_cost_usd}
           isCritical={selectedSpan.id === bottleneck?.id}
