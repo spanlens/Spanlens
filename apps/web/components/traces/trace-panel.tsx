@@ -425,10 +425,10 @@ function SpanDrawer({ span, onClose, onPrev, onNext, hasPrev, hasNext, position,
       {isCritical && (
         <div className="px-5 py-4 border-t border-accent-border bg-accent-bg shrink-0">
           <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-accent mb-2">
-            Bottleneck · Recommendation
+            Longest Span · Recommendation
           </div>
           <p className="text-[12px] text-text-muted leading-relaxed">
-            This span drives{' '}
+            This span accounts for{' '}
             <strong className="text-text">{durationPct}%</strong> of the trace&apos;s latency
             {costPct > 5 && (
               <> and <strong className="text-text">{costPct}%</strong> of cost</>
@@ -665,7 +665,7 @@ export function TracePanel({ traceId, onClose, onPrev, onNext, hasPrev, hasNext 
               { label: 'Tokens', value: trace.total_tokens.toLocaleString() },
               { label: 'Cost', value: fmtCost(trace.total_cost_usd) },
               {
-                label: 'Bottleneck',
+                label: 'Longest Span',
                 value: bottleneck ? `${bottleneckPct}% · ${bottleneck.name}` : '—',
                 accent: !!bottleneck,
               },
@@ -767,10 +767,10 @@ export function TracePanel({ traceId, onClose, onPrev, onNext, hasPrev, hasNext 
             {bottleneck && trace.duration_ms && (
               <div className="mt-4 px-4 py-3.5 rounded-md border border-accent-border bg-accent-bg flex items-center gap-3.5">
                 <div className="w-8 h-8 rounded-full border-[1.5px] border-accent flex items-center justify-center font-mono text-[11px] text-accent font-medium shrink-0">
-                  CP
+                  LS
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-accent mb-1">Critical path</div>
+                  <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-accent mb-1">Longest span</div>
                   <div className="text-[12.5px] text-text leading-relaxed">
                     <strong>{bottleneckPct}%</strong> of {fmtMs(trace.duration_ms)} in{' '}
                     <strong>{bottleneck.name}</strong> ({fmtMs(bottleneck.duration_ms)})
