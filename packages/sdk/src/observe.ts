@@ -105,7 +105,13 @@ async function observeProvider<T>(
           ? parseAnthropicUsage(result)
           : parseGeminiUsage(result)
 
-    await span.end({ status: 'completed', ...parsed })
+    // Capture the full response as output unless it's a stream (not serializable)
+    const isStream = result != null &&
+      typeof result === 'object' &&
+      (Symbol.asyncIterator in (result as object) || Symbol.iterator in (result as object))
+    const output = isStream ? undefined : result
+
+    await span.end({ status: 'completed', output, ...parsed })
     return result
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : String(err)
