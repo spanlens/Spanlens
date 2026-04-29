@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { Skeleton } from '@/components/ui/skeleton'
 import { KpiCard } from '@/components/dashboard/kpi-card'
 import { QuotaBanner } from '@/components/dashboard/quota-banner'
-import { Topbar, TimeRangeSelector, LiveDot } from '@/components/layout/topbar'
+import { Topbar, TimeRangeSelector } from '@/components/layout/topbar'
 import { useStatsOverview, useStatsTimeseries, useStatsModels, useSpendForecast } from '@/lib/queries/use-stats'
 import { useAnomalies } from '@/lib/queries/use-anomalies'
 import { useAlerts } from '@/lib/queries/use-alerts'
@@ -406,10 +406,7 @@ export default function DashboardPage() {
       <Topbar
         crumbs={[{ label: 'Workspace' }, { label: 'Dashboard' }]}
         right={
-          <div className="flex items-center gap-3">
-            <TimeRangeSelector value={timeRange} onChange={setTimeRange} />
-            <LiveDot refetching={overview.isFetching || timeseries.isFetching} />
-          </div>
+          <TimeRangeSelector value={timeRange} onChange={setTimeRange} />
         }
       />
 

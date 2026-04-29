@@ -147,14 +147,11 @@ export function Gantt({
 }: GanttProps) {
   const positioned = useMemo(() => {
     const traceStartMs = new Date(traceStartedAt).getTime()
+    // For running traces use Date.now() so bars extend to the present moment,
+    // giving an accurate real-time picture instead of clipping at the last span's end.
     const traceEndMs = traceEndedAt
       ? new Date(traceEndedAt).getTime()
-      : Math.max(
-          ...spans
-            .map((s) => (s.ended_at ? new Date(s.ended_at).getTime() : 0))
-            .filter((t) => t > 0),
-          traceStartMs + 1,
-        )
+      : Date.now()
     const ordered = buildSpanTree(spans)
     return computePositions(ordered, traceStartMs, traceEndMs)
   }, [traceStartedAt, traceEndedAt, spans])
@@ -243,7 +240,7 @@ export function Gantt({
                   <TypeBadge spanType={s.span_type} />
                   <span className="truncate text-sm font-medium">{s.name}</span>
                   {s.status === 'error' && (
-                    <span className="text-[10px] font-semibold text-red-600 uppercase">error</span>
+                    <span className="text-[10px] font-semibold text-bad uppercase">error</span>
                   )}
                 </div>
                 <div

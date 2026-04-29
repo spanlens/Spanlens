@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { ExportDropdown } from '@/components/ui/export-dropdown'
 import { cn } from '@/lib/utils'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Topbar, LiveDot } from '@/components/layout/topbar'
+import { Topbar } from '@/components/layout/topbar'
 import {
   useRequests,
   useRequest,
@@ -869,7 +869,7 @@ export default function RequestsPage() {
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
       <Topbar
         crumbs={[{ label: 'Workspace' }, { label: 'Requests' }]}
-        right={<LiveDot />}
+        right={null}
       />
 
       <StatStrip />
