@@ -171,16 +171,20 @@ describe('observeOpenAI / observeAnthropic / observeGemini', () => {
     expect(body.total_tokens).toBe(60)
   })
 
-  it('observeGemini parses usageMetadata', async () => {
+  it('observeGemini parses usageMetadata from real GenerateContentResult shape', async () => {
     const client = new SpanlensClient({ apiKey: 'k', baseUrl: 'http://x' })
     const trace = client.startTrace({ name: 't' })
 
+    // Real Gemini SDK: generateContent() returns { response: GenerateContentResponse }
     await observeGemini(trace, 'gen', async () => ({
-      modelVersion: 'gemini-1.5-flash',
-      usageMetadata: {
-        promptTokenCount: 5,
-        candidatesTokenCount: 15,
-        totalTokenCount: 20,
+      response: {
+        modelVersion: 'gemini-2.0-flash',
+        candidates: [{ content: { parts: [{ text: 'hello' }], role: 'model' } }],
+        usageMetadata: {
+          promptTokenCount: 5,
+          candidatesTokenCount: 15,
+          totalTokenCount: 20,
+        },
       },
     }))
 
@@ -189,6 +193,9 @@ describe('observeOpenAI / observeAnthropic / observeGemini', () => {
     )
     const body = JSON.parse((patchCall![1] as RequestInit).body as string) as Record<string, unknown>
     expect(body.total_tokens).toBe(20)
+    expect(body.prompt_tokens).toBe(5)
+    expect(body.completion_tokens).toBe(15)
+    expect((body.metadata as Record<string, unknown>)?.model).toBe('gemini-2.0-flash')
   })
 
   it('observeOpenAI captures full response as output in span.end', async () => {
