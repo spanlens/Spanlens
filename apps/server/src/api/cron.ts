@@ -97,6 +97,9 @@ async function computeMetric(alert: AlertRow): Promise<number | null> {
     if (proj) q = q.eq('project_id', proj)
     const { data, error } = await q
     if (error || !data) return null
+    if (data.length === 10000) {
+      console.warn('[computeMetric] budget: 10k row limit reached — cost may be underreported', { alert_id: alert.id })
+    }
     return (data as { cost_usd: number | string | null }[])
       .reduce((sum, r) => sum + Number(r.cost_usd ?? 0), 0)
   }
