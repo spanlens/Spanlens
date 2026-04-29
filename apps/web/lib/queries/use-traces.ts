@@ -21,7 +21,10 @@ export interface TracesFilters {
 
 export const tracesQueryKey = (filters: TracesFilters) => ['traces', filters] as const
 
-export function useTraces(filters: TracesFilters) {
+export function useTraces(
+  filters: TracesFilters,
+  options?: { refetchInterval?: number | false },
+) {
   return useQuery({
     queryKey: tracesQueryKey(filters),
     queryFn: async (): Promise<TracesPage> => {
@@ -40,6 +43,7 @@ export function useTraces(filters: TracesFilters) {
       }
     },
     placeholderData: keepPreviousData,
+    ...(options?.refetchInterval !== undefined ? { refetchInterval: options.refetchInterval } : {}),
   })
 }
 
