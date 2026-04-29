@@ -205,7 +205,7 @@ function HistoryRow({ e, last }: { e: AnomalyHistoryEntry; last: boolean }) {
       style={{ gridTemplateColumns: '28px 1fr 120px 150px 150px 130px', gap: 14 }}
     >
       <div className="flex items-center justify-center">
-        <span className="w-2 h-2 rounded-full bg-good" />
+        <span className="w-2 h-2 rounded-full bg-border-strong opacity-70" />
       </div>
       <div className="min-w-0">
         <div className="flex items-center gap-2 mb-1">
@@ -229,7 +229,10 @@ function HistoryRow({ e, last }: { e: AnomalyHistoryEntry; last: boolean }) {
         />
       </div>
       <div className="font-mono text-[11px] text-text-faint">{e.sampleCount} req</div>
-      <div className="text-right font-mono text-[11px] text-good">✓ resolved</div>
+      <div className="text-right">
+        <div className="font-mono text-[11px] text-text-muted">{e.detectedOn}</div>
+        <div className="font-mono text-[10.5px] text-text-faint mt-0.5">{e.deviations.toFixed(1)}σ</div>
+      </div>
     </div>
   )
 }
@@ -287,9 +290,6 @@ export default function AnomaliesPage() {
             <span className="text-[12.5px] text-text-muted flex items-center gap-1.5">
               <span className="w-[7px] h-[7px] rounded-full bg-good shrink-0" /> Detector live · 7d baseline
             </span>
-            <span className="font-mono text-[11px] text-text-muted px-[9px] py-[4px] border border-border rounded-[5px] cursor-pointer hover:text-text transition-colors">
-              Detector settings
-            </span>
           </div>
         }
       />
@@ -300,7 +300,7 @@ export default function AnomaliesPage() {
           { label: 'Open · high',   value: String(unackedHigh.length),   warn: unackedHigh.length > 0 },
           { label: 'Open · medium', value: String(unackedMedium.length), warn: false },
           { label: 'Acknowledged',  value: String(acked.length),         warn: false },
-          { label: 'Resolved · 7d', value: String(historyCount),         warn: false },
+          { label: 'History · 30d', value: String(historyCount),          warn: false },
           { label: 'Baseline',      value: '7d',                         warn: false },
         ].map((s, i) => (
           <div key={i} className={cn('px-[18px] py-[14px]', i < 4 && 'border-r border-border')}>
@@ -427,7 +427,11 @@ export default function AnomaliesPage() {
             {unackedHigh.length === 0 && unackedMedium.length === 0 && !loadingCurrent && (
               <div className="flex flex-col items-center justify-center py-12 gap-2 text-text-muted">
                 <span className="text-[28px] leading-none">✓</span>
-                <p className="text-[13px]">No anomalies in the last hour.</p>
+                <p className="text-[13px]">
+                  {kindFilter === 'all'
+                    ? 'No anomalies in the last hour.'
+                    : `No ${kindFilter.replace('_', ' ')} anomalies in the last hour.`}
+                </p>
                 <p className="font-mono text-[11.5px] text-text-faint">
                   {acked.length > 0
                     ? `${acked.length} acknowledged — Unack to re-open.`
@@ -441,7 +445,7 @@ export default function AnomaliesPage() {
               <div>
                 <div className="flex items-center gap-2.5 px-[22px] py-[10px] bg-bg-muted border-b border-border border-t border-t-border">
                   <span className="font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint opacity-75">
-                    Resolved · 7d · {historyFiltered.length}
+                    Past detections · 30d · {historyFiltered.length}
                   </span>
                 </div>
                 <div className="opacity-75">
