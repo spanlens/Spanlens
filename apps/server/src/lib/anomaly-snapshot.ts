@@ -1,6 +1,6 @@
 import { supabaseAdmin } from './db.js'
-import { detectAnomalies, type AnomalyBucket } from './anomaly.js'
-import { deliverToChannel, type AlertNotification } from './notifiers.js'
+import { detectAnomalies, ANOMALY_DEFAULTS, type AnomalyBucket } from './anomaly.js'
+import { deliverToChannel, type AlertNotification, type NotificationChannelRow } from './notifiers.js'
 
 /**
  * Daily snapshot job. Runs anomaly detection for every active organization
@@ -40,9 +40,9 @@ export async function snapshotAnomaliesForAllOrgs(
     const result: SnapshotResult = { orgId, detected: 0, errors: [] }
     try {
       const anomalies = await detectAnomalies(orgId, {
-        observationHours: 1,
-        referenceHours: 24 * 7,
-        sigmaThreshold: 3,
+        observationHours: ANOMALY_DEFAULTS.OBSERVATION_HOURS,
+        referenceHours: ANOMALY_DEFAULTS.REFERENCE_HOURS,
+        sigmaThreshold: ANOMALY_DEFAULTS.SIGMA_THRESHOLD,
       })
       if (anomalies.length === 0) {
         results.push(result)
@@ -52,7 +52,7 @@ export async function snapshotAnomaliesForAllOrgs(
       result.detected = anomalies.length
 
       // Send notifications for high-severity (≥5σ) anomalies via configured channels.
-      const highSeverity = anomalies.filter((a) => a.deviations >= 5)
+      const highSeverity = anomalies.filter((a) => a.deviations >= ANOMALY_DEFAULTS.HIGH_SEVERITY_SIGMA)
       if (highSeverity.length > 0) {
         await notifyHighSeverityAnomalies(orgId, highSeverity).catch((err) => {
           result.errors.push(`notify: ${err instanceof Error ? err.message : 'unknown'}`)
@@ -123,11 +123,6 @@ export interface AnomalyHistoryEntry {
   deviations: number
   sampleCount: number
   referenceCount: number
-}
-
-interface NotificationChannelRow {
-  kind: 'email' | 'slack' | 'discord'
-  target: string
 }
 
 async function notifyHighSeverityAnomalies(

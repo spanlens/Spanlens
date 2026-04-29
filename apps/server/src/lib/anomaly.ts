@@ -16,6 +16,14 @@ import { supabaseAdmin } from './db.js'
 
 export type AnomalyKind = 'latency' | 'cost' | 'error_rate'
 
+export const ANOMALY_DEFAULTS = {
+  OBSERVATION_HOURS: 1,
+  REFERENCE_HOURS: 168,
+  SIGMA_THRESHOLD: 3,
+  MIN_SAMPLES: 30,
+  HIGH_SEVERITY_SIGMA: 5,
+} as const
+
 export interface AnomalyBucket {
   provider: string
   model: string
@@ -65,10 +73,10 @@ export async function detectAnomalies(
   organizationId: string,
   opts: DetectAnomaliesOptions = {},
 ): Promise<AnomalyBucket[]> {
-  const observationHours = opts.observationHours ?? 1
-  const referenceHours   = opts.referenceHours  ?? 24 * 7
-  const sigmaThreshold   = opts.sigmaThreshold  ?? 3
-  const minSamples       = opts.minSamples       ?? 30
+  const observationHours = opts.observationHours ?? ANOMALY_DEFAULTS.OBSERVATION_HOURS
+  const referenceHours   = opts.referenceHours  ?? ANOMALY_DEFAULTS.REFERENCE_HOURS
+  const sigmaThreshold   = opts.sigmaThreshold  ?? ANOMALY_DEFAULTS.SIGMA_THRESHOLD
+  const minSamples       = opts.minSamples       ?? ANOMALY_DEFAULTS.MIN_SAMPLES
 
   const now     = Date.now()
   const obsStart = new Date(now - observationHours * 3_600_000).toISOString()
