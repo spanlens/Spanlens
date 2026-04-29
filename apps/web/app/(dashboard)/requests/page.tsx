@@ -828,7 +828,7 @@ export default function RequestsPage() {
     return keys.filter((k) => k.provider === filters.provider)
   }, [providerKeysQuery.data, filters.provider])
 
-  const requests = data?.data ?? []
+  const requests = useMemo(() => data?.data ?? [], [data])
   const meta = data?.meta ?? { total: 0, page: 1, limit: 50 }
 
   // After a cross-page navigation, select the first or last item once the new page loads
