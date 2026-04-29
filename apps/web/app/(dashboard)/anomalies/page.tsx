@@ -244,12 +244,13 @@ const KIND_FILTERS: { v: KindFilter; l: string }[] = [
 export default function AnomaliesPage() {
   const [kindFilter, setKindFilter] = useState<KindFilter>('all')
 
-  const { data: anomalyResult, isLoading: loadingCurrent } = useAnomalies({
+  const { data: anomalyResult, isLoading: loadingCurrent, error: errorCurrent } = useAnomalies({
     observationHours: 1,
     referenceHours: 24 * 7,
     sigma: 3,
   })
-  const { data: history, isLoading: loadingHistory } = useAnomalyHistory(30)
+  const { data: history, isLoading: loadingHistory, error: errorHistory } = useAnomalyHistory(30)
+  const fetchError = errorCurrent ?? errorHistory
   const ackMutation = useAckAnomaly()
   const unackMutation = useUnackAnomaly()
 
@@ -339,7 +340,15 @@ export default function AnomaliesPage() {
 
       {/* Content */}
       <div className="flex-1 overflow-auto">
-        {isLoading ? (
+        {fetchError ? (
+          <div className="flex flex-col items-center justify-center py-12 gap-2 text-text-muted">
+            <span className="text-[28px] leading-none">⚠</span>
+            <p className="text-[13px] text-bad">Failed to load anomaly data.</p>
+            <p className="font-mono text-[11.5px] text-text-faint">
+              {fetchError instanceof Error ? fetchError.message : 'Unknown error'}
+            </p>
+          </div>
+        ) : isLoading ? (
           <div className="p-6 space-y-2">
             {[1, 2, 3].map((i) => <div key={i} className="h-14 bg-bg-elev rounded animate-pulse" />)}
           </div>

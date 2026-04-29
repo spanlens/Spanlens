@@ -10,6 +10,11 @@ interface DeliveryResult {
   error?: string
 }
 
+export interface NotificationChannelRow {
+  kind: 'email' | 'slack' | 'discord'
+  target: string
+}
+
 export interface AlertNotification {
   alertName: string
   alertType: 'budget' | 'error_rate' | 'latency_p95'
