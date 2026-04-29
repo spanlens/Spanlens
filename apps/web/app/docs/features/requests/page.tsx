@@ -12,9 +12,9 @@ export default function RequestsDocs() {
       <h1>Requests</h1>
       <p className="lead">
         Every LLM call that flows through the Spanlens proxy produces one row in the{' '}
-        <code>requests</code> table. <a href="/requests">/requests</a> is the viewer: filter, drill
-        down, read the actual request and response bodies. This is the raw substrate every other
-        feature (Traces, Anomalies, Savings, etc.) aggregates from.
+        <code>requests</code> table. <a href="/requests">/requests</a> is the viewer: filter, sort,
+        drill down, and read the actual request and response bodies. This is the raw substrate every
+        other feature (Traces, Anomalies, Savings, etc.) aggregates from.
       </p>
 
       <h2>Why it matters</h2>
@@ -71,54 +71,161 @@ export default function RequestsDocs() {
             <td>Scoped to the API key used (or <code>X-Spanlens-Project</code> header)</td>
           </tr>
           <tr>
+            <td><code>provider_key_id</code></td>
+            <td>Which provider key was used to make the call (name shown in the drawer)</td>
+          </tr>
+          <tr>
+            <td><code>trace_id</code> / <code>span_id</code></td>
+            <td>
+              Set when the call was made inside an SDK <code>observe()</code> wrapper. Links to the
+              parent <a href="/docs/features/traces">Trace</a>.
+            </td>
+          </tr>
+          <tr>
             <td><code>flags</code></td>
             <td><a href="/docs/features/security">PII / injection flags</a> (JSONB array)</td>
           </tr>
           <tr>
             <td><code>created_at</code></td>
-            <td>When the request arrived at our proxy</td>
+            <td>When the request arrived at the proxy</td>
           </tr>
         </tbody>
       </table>
 
       <h2>Dashboard</h2>
 
-      <h3>List view</h3>
-      <p>At <a href="/requests">/requests</a> you get a paginated table with filters:</p>
-      <ul>
-        <li>Provider / model</li>
-        <li>Project</li>
-        <li>Status code (200 / 4xx / 5xx)</li>
-        <li>Date range</li>
-        <li>Free-text search (matches request/response body)</li>
-      </ul>
-
-      <h3>Detail view</h3>
+      <h3>Stat strip</h3>
       <p>
-        Click any row to open <code>/requests/[id]</code>. Shows:
+        Above the list, a five-cell strip shows real-time 24-hour metrics: total requests, average
+        latency, spend, error rate, and active anomaly count. Each cell includes a mini spark chart.
+        Cells turn accent-colored when a metric exceeds a threshold (latency &gt; 1 s, error rate
+        &gt; 1%, any anomaly present).
+      </p>
+
+      <h3>Traffic bars</h3>
+      <p>
+        A 30-day bar chart sits below the stat strip. Bar height corresponds to request volume;
+        bars with at least one error flip to the error color. Hover a bar to see the date label.
+      </p>
+
+      <h3>List view &amp; filters</h3>
+      <p>The main table is paginated (up to 100 rows/page) with these filters:</p>
+      <ul>
+        <li><strong>Provider</strong> — exact match (openai / anthropic / gemini)</li>
+        <li>
+          <strong>Model</strong> — partial, case-insensitive match (e.g. searching &ldquo;mini&rdquo;
+          matches <code>gpt-4o-mini-2024-07-18</code>)
+        </li>
+        <li><strong>Provider key</strong> — dropdown of your registered keys, to isolate traffic by key</li>
+        <li><strong>Status</strong> — All / OK (2xx) / 4xx / 5xx</li>
+        <li><strong>Date range</strong> — from / to</li>
+      </ul>
+      <p>
+        Column headers for <strong>Latency</strong>, <strong>Cost</strong>,{' '}
+        <strong>Tokens</strong>, and <strong>Age</strong> are clickable to sort ascending or
+        descending. The default sort is newest-first by created_at.
+      </p>
+      <p>
+        Hovering the <strong>Age</strong> cell shows a tooltip with the full timestamp.
+      </p>
+
+      <h3>Detail drawer</h3>
+      <p>
+        Clicking any row opens a 480 px right-side drawer — no page navigation. The drawer shows:
       </p>
       <ul>
-        <li>Complete request body (JSON-formatted, syntax highlighted)</li>
-        <li>Complete response body (same)</li>
-        <li>All metadata (tokens, cost, latency, flags)</li>
+        <li>Request ID, timestamp, and error badge (if applicable)</li>
+        <li>Metadata grid: Model, Provider, Status code, Provider key name, Prompt tokens, Completion tokens</li>
         <li>
-          Link back to the parent span in <a href="/docs/features/traces">Traces</a> if the request
-          was made inside an <code>observe()</code> wrapper
+          Trace / Span IDs with inline links and copy buttons. Trace ID links directly to the{' '}
+          <a href="/docs/features/traces">Traces</a> waterfall view.
+        </li>
+        <li>Metrics row: Latency, Cost, Total tokens (with prompt / completion breakdown)</li>
+        <li>
+          <strong>Prev / Next</strong> navigation buttons — step through the current result set one
+          row at a time. When you reach the end of a page the drawer automatically loads the next
+          page and jumps to the first (or last) row. An <em>Open →</em> link opens the standalone
+          detail page <code>/requests/[id]</code> if you need a shareable URL.
         </li>
       </ul>
 
+      <h4>Drawer tabs</h4>
+      <table>
+        <thead>
+          <tr><th>Tab</th><th>Content</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Request</strong></td>
+            <td>
+              Formatted message view. OpenAI and Anthropic <code>messages[]</code> are rendered as
+              a conversation. Anthropic <code>system</code> strings/arrays are shown in a separate
+              block above the messages. Gemini <code>contents[].parts[]</code> are normalized into
+              the same layout. A copy button exports the raw JSON.
+            </td>
+          </tr>
+          <tr>
+            <td><strong>Response</strong></td>
+            <td>
+              Response body JSON when captured. Streaming responses are not buffered server-side
+              (they pass through directly to your app), so this tab shows a note in that case.
+            </td>
+          </tr>
+          <tr>
+            <td><strong>Trace</strong></td>
+            <td>
+              Mini span list from the parent trace (up to 8 spans with type badges and durations) +
+              a link to open the full waterfall. Shows a help note when the request has no
+              associated trace.
+            </td>
+          </tr>
+          <tr>
+            <td><strong>Raw</strong></td>
+            <td>
+              Full <code>request_body</code> and <code>response_body</code> as pretty-printed JSON,
+              each with a copy button.
+            </td>
+          </tr>
+          <tr>
+            <td><strong>Error</strong></td>
+            <td>
+              Conditionally shown when <code>error_message</code> is set. Displays the raw error
+              string from the provider.
+            </td>
+          </tr>
+        </tbody>
+      </table>
+
       <h2>API</h2>
 
-      <CodeBlock language="bash">{`# List (paginated, filterable)
-GET /api/v1/requests?projectId=<uuid>&provider=openai&statusCode=200&limit=50&offset=0
+      <CodeBlock language="bash">{`# List requests — paginated, sortable, filterable
+GET /api/v1/requests
+  ?projectId=<uuid>      # filter by project
+  &provider=openai       # exact match
+  &model=mini            # partial match (case-insensitive)
+  &providerKeyId=<uuid>  # filter by provider key
+  &status=ok             # ok | 4xx | 5xx
+  &from=2024-01-01T00:00:00Z
+  &to=2024-01-31T23:59:59Z
+  &sortBy=latency_ms     # created_at | latency_ms | cost_usd | total_tokens
+  &sortDir=desc          # asc | desc
+  &page=1
+  &limit=50              # max 100
 
-# One request by id
+# One request by id (includes full request_body + response_body)
 GET /api/v1/requests/:id
 
-# Stats (count / tokens / cost per provider/model, custom window)
-GET /api/v1/stats?sinceHours=168&groupBy=model`}</CodeBlock>
+# Replay a request (returns a proxy-ready payload — no UI button yet)
+POST /api/v1/requests/:id/replay
+  Body: { "model": "gpt-4o-mini" }  # optional model override`}</CodeBlock>
 
-      <h2>Privacy & retention</h2>
+      <p>
+        The list endpoint returns <code>{'{ success, data, meta: { total, page, limit } }'}</code>.
+        Each row includes a flattened <code>provider_key_name</code> field (the human-readable key
+        label) so the dashboard can render it without a second round-trip.
+      </p>
+
+      <h2>Privacy &amp; retention</h2>
       <ul>
         <li>
           <strong>Authorization headers are stripped</strong> from <code>request_body</code> before
@@ -134,25 +241,31 @@ GET /api/v1/stats?sinceHours=168&groupBy=model`}</CodeBlock>
         </li>
         <li>
           <strong>RLS-enforced.</strong> You can only see requests belonging to your own
-          organization. The <code>requests</code> table has Row Level Security enabled; even our
-          own SQL queries from the web app use the anon key and must pass RLS.
+          organization. The <code>requests</code> table has Row Level Security enabled.
         </li>
       </ul>
 
       <h2>Limitations</h2>
       <ul>
         <li>
-          <strong>10KB body cap is fixed.</strong> We&apos;re considering a &ldquo;full-body
-          archive to S3&rdquo; opt-in for Enterprise customers. Not in launch scope.
+          <strong>10KB body cap is fixed.</strong> A &ldquo;full-body archive to S3&rdquo; opt-in
+          for Enterprise customers is on the roadmap.
         </li>
         <li>
-          <strong>No full-text index.</strong> Search is <code>ilike</code> over body — fine up to
-          a few million rows. Heavier scale needs a separate OLAP layer (ClickHouse is the likely
-          path).
+          <strong>No full-text body search in the UI.</strong> The model filter uses{' '}
+          <code>ilike</code>; there is no free-text search over request/response body content.
+          Heavier search needs a separate OLAP layer (ClickHouse is the likely path).
         </li>
         <li>
-          <strong>No replay / re-run button.</strong> You can&apos;t click &ldquo;send this request
-          again with a different model&rdquo; from the UI yet. Manual curl + tweak for now.
+          <strong>No UI replay button.</strong> The backend exposes{' '}
+          <code>POST /api/v1/requests/:id/replay</code> which returns a proxy-ready payload, but
+          there is no one-click &ldquo;send this request again&rdquo; button in the dashboard yet.
+        </li>
+        <li>
+          <strong>Streaming response bodies not captured.</strong> The proxy streams responses
+          directly to your application without buffering, so <code>response_body</code> is{' '}
+          <code>null</code> for streaming calls. Token counts and cost are still accurate (parsed
+          from SSE deltas).
         </li>
       </ul>
 
