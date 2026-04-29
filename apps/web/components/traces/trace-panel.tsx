@@ -10,7 +10,8 @@ import type { SpanRow, SpanType } from '@/lib/queries/types'
 // ── Helpers ───────────────────────────────────────────────────────────────────
 export function fmtMs(ms: number | null): string {
   if (ms == null) return '—'
-  if (ms < 1000) return `${ms}ms`
+  if (ms < 1) return '<1ms'
+  if (ms < 1000) return `${Math.round(ms)}ms`
   return `${(ms / 1000).toFixed(2)}s`
 }
 
@@ -185,6 +186,103 @@ function LlmMessageView({ input }: { input: unknown }) {
   )
 }
 
+function LlmOutputView({ output }: { output: unknown }) {
+  const body = (output && typeof output === 'object') ? output as Record<string, unknown> : null
+
+  // OpenAI Chat Completions: choices[].message
+  if (body && Array.isArray(body.choices) && body.choices.length > 0) {
+    const messages = (body.choices as unknown[]).flatMap((c) => {
+      if (typeof c !== 'object' || c === null) return []
+      const choice = c as Record<string, unknown>
+      const msg = choice.message
+      if (typeof msg !== 'object' || msg === null) return []
+      const m = msg as Record<string, unknown>
+      const role = typeof m.role === 'string' ? m.role : 'assistant'
+      if (Array.isArray(m.tool_calls) && m.tool_calls.length > 0) {
+        const toolText = (m.tool_calls as unknown[]).map((tc) => {
+          if (typeof tc !== 'object' || tc === null) return ''
+          const fn = (tc as Record<string, unknown>).function as Record<string, unknown> | undefined
+          return `[tool_call: ${String(fn?.name ?? '')}(${String(fn?.arguments ?? '')})]`
+        }).join('\n')
+        return [{ role, content: toolText, isAssistant: true }]
+      }
+      return [{ role, content: m.content, isAssistant: role !== 'user' }]
+    })
+    if (messages.length > 0) {
+      return (
+        <div className="space-y-2">
+          {messages.map((m, i) => (
+            <div key={i} className={cn('rounded-[5px] p-3 border', m.isAssistant ? 'bg-accent-bg border-accent-border' : 'bg-bg-elev border-border')}>
+              <div className={cn('font-mono text-[9.5px] uppercase tracking-[0.06em] mb-1.5', m.isAssistant ? 'text-accent' : 'text-text-faint')}>{m.role}</div>
+              <p className="font-mono text-[11.5px] text-text-muted leading-relaxed whitespace-pre-wrap break-words">
+                {extractText(m.content) || <span className="italic text-text-faint">empty</span>}
+              </p>
+            </div>
+          ))}
+        </div>
+      )
+    }
+  }
+
+  // Anthropic Messages: content[] + role at top level
+  if (body && Array.isArray(body.content) && body.content.length > 0) {
+    const role = typeof body.role === 'string' ? body.role : 'assistant'
+    const text = (body.content as unknown[]).map((block) => {
+      if (typeof block !== 'object' || block === null) return ''
+      const b = block as Record<string, unknown>
+      if (b.type === 'text' && typeof b.text === 'string') return b.text
+      if (b.type === 'tool_use') return `[tool_use: ${String(b.name ?? '')}]`
+      return ''
+    }).filter(Boolean).join('\n')
+    if (text) {
+      return (
+        <div className="rounded-[5px] p-3 border bg-accent-bg border-accent-border">
+          <div className="font-mono text-[9.5px] uppercase tracking-[0.06em] mb-1.5 text-accent">{role}</div>
+          <p className="font-mono text-[11.5px] text-text-muted leading-relaxed whitespace-pre-wrap break-words">{text}</p>
+        </div>
+      )
+    }
+  }
+
+  // Gemini: candidates[].content.parts
+  if (body && Array.isArray(body.candidates) && body.candidates.length > 0) {
+    const messages = (body.candidates as unknown[]).flatMap((c) => {
+      if (typeof c !== 'object' || c === null) return []
+      const candidate = c as Record<string, unknown>
+      const content = candidate.content as Record<string, unknown> | undefined
+      if (!content) return []
+      const role = typeof content.role === 'string' ? content.role : 'model'
+      const parts = Array.isArray(content.parts) ? content.parts as unknown[] : []
+      const text = parts.map((p) => {
+        if (typeof p !== 'object' || p === null) return ''
+        return typeof (p as Record<string, unknown>).text === 'string'
+          ? (p as Record<string, unknown>).text as string
+          : ''
+      }).filter(Boolean).join('')
+      return text ? [{ role, text }] : []
+    })
+    if (messages.length > 0) {
+      return (
+        <div className="space-y-2">
+          {messages.map((m, i) => (
+            <div key={i} className="rounded-[5px] p-3 border bg-accent-bg border-accent-border">
+              <div className="font-mono text-[9.5px] uppercase tracking-[0.06em] mb-1.5 text-accent">{m.role}</div>
+              <p className="font-mono text-[11.5px] text-text-muted leading-relaxed whitespace-pre-wrap break-words">{m.text}</p>
+            </div>
+          ))}
+        </div>
+      )
+    }
+  }
+
+  // Fallback: raw JSON
+  return (
+    <pre className="font-mono text-[11.5px] text-text-muted leading-relaxed whitespace-pre-wrap break-all">
+      {JSON.stringify(output, null, 2)}
+    </pre>
+  )
+}
+
 // ── Span drawer ────────────────────────────────────────────────────────────────
 type SpanTab = 'input' | 'output' | 'attrs' | 'raw'
 
@@ -218,6 +316,7 @@ function SpanDrawer({ span, onClose, onPrev, onNext, hasPrev, hasNext, position,
     id: span.id, name: span.name, type: span.span_type, status: span.status,
     started_at: span.started_at, ended_at: span.ended_at, duration_ms: span.duration_ms,
     tokens: span.total_tokens, cost_usd: span.cost_usd, request_id: span.request_id,
+    metadata: span.metadata,
   }
 
   return (
@@ -376,7 +475,7 @@ function SpanDrawer({ span, onClose, onPrev, onNext, hasPrev, hasNext, position,
               <div className="flex justify-end">
                 <CopyButton getText={() => JSON.stringify(span.output, null, 2)} />
               </div>
-              {isLlm ? <LlmMessageView input={span.output} /> : (
+              {isLlm ? <LlmOutputView output={span.output} /> : (
                 <pre className="font-mono text-[11.5px] text-text-muted leading-relaxed whitespace-pre-wrap break-all">
                   {JSON.stringify(span.output, null, 2)}
                 </pre>
@@ -660,7 +759,7 @@ export function TracePanel({ traceId, onClose, onPrev, onNext, hasPrev, hasNext 
             <Gantt
               traceStartedAt={trace.started_at}
               traceEndedAt={trace.ended_at}
-              spans={effectiveSpans}
+              spans={trace.spans}
               onSelectSpan={setSelectedSpan}
               selectedSpanId={selectedSpan?.id ?? null}
               criticalSpanId={bottleneck?.id ?? null}
