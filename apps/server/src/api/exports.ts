@@ -173,6 +173,16 @@ exportsRouter.get('/anomalies', async (c) => {
   const format = c.req.query('format') === 'json' ? 'json' : 'csv'
   const projectId = c.req.query('projectId')
 
+  if (projectId) {
+    const { data: proj } = await supabaseAdmin
+      .from('projects')
+      .select('id')
+      .eq('id', projectId)
+      .eq('organization_id', orgId)
+      .single()
+    if (!proj) return c.json({ error: 'Project not found' }, 404)
+  }
+
   const anomalies = await detectAnomalies(orgId, {
     observationHours: 1,
     referenceHours: 24 * 7,
