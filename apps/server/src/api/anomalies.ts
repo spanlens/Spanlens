@@ -162,6 +162,16 @@ anomaliesRouter.post('/ack', requireEdit, async (c) => {
   const parsed = await parseAckBody(c)
   if ('error' in parsed) return c.json({ error: parsed.error }, 400)
 
+  if (parsed.projectId) {
+    const { data: proj } = await supabaseAdmin
+      .from('projects')
+      .select('id')
+      .eq('id', parsed.projectId)
+      .eq('organization_id', orgId)
+      .single()
+    if (!proj) return c.json({ error: 'Project not found' }, 404)
+  }
+
   const { error } = await supabaseAdmin
     .from('anomaly_acks')
     .upsert({
@@ -193,6 +203,16 @@ anomaliesRouter.delete('/ack', requireEdit, async (c) => {
   if (!model) return c.json({ error: 'model is required' }, 400)
   if (!kind || !VALID_KINDS.has(kind)) {
     return c.json({ error: 'kind must be one of: latency, cost, error_rate' }, 400)
+  }
+
+  if (projectId) {
+    const { data: proj } = await supabaseAdmin
+      .from('projects')
+      .select('id')
+      .eq('id', projectId)
+      .eq('organization_id', orgId)
+      .single()
+    if (!proj) return c.json({ error: 'Project not found' }, 404)
   }
 
   let deleteQuery = supabaseAdmin

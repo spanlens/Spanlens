@@ -31,12 +31,16 @@ export async function snapshotAnomaliesForAllOrgs(
   const since = new Date(now.getTime() - 86_400_000).toISOString()
   // Limit prevents OOM on high-traffic instances; JS dedup handles the rest.
   // A proper DISTINCT RPC would be cleaner at very large scale.
-  const { data: orgs } = await supabaseAdmin
+  const { data: orgs, error: orgsError } = await supabaseAdmin
     .from('requests')
     .select('organization_id')
     .gte('created_at', since)
     .limit(50000)
     .returns<{ organization_id: string }[]>()
+
+  if (orgsError) {
+    throw new Error(`Failed to fetch active orgs: ${orgsError.message}`)
+  }
 
   const uniqueOrgIds = Array.from(new Set((orgs ?? []).map((r) => r.organization_id)))
   const results: SnapshotResult[] = []
@@ -162,7 +166,10 @@ async function notifyHighSeverityAnomalies(
   const webUrl = process.env['WEB_URL'] ?? 'https://www.spanlens.io'
 
   // Fan out all (anomaly × channel) pairs in parallel.
-  const settled = await Promise.allSettled(
+  // Collect !ok results — deliverToChannel never throws, it returns {ok:false,error}.
+  const deliveryErrors: string[] = []
+
+  await Promise.all(
     anomalies.flatMap((anomaly) => {
       // 'cost' maps to 'budget' — AlertNotification.alertType uses Alerts enum vocabulary.
       const kindLabel =
@@ -183,17 +190,16 @@ async function notifyHighSeverityAnomalies(
       return channels.map(async (channel) => {
         const result = await deliverToChannel(channel.kind, channel.target, notification)
         if (!result.ok) {
-          console.error('[anomaly-notify]', orgId, channel.kind, result.error)
+          const errMsg = `${channel.kind}: ${result.error ?? 'unknown'}`
+          deliveryErrors.push(errMsg)
+          console.error('[anomaly-notify]', orgId, errMsg)
         }
       })
     }),
   )
 
-  // Re-throw aggregated delivery failures so the caller's .catch() can record them.
-  const failures = settled.filter((r): r is PromiseRejectedResult => r.status === 'rejected')
-  if (failures.length > 0) {
-    const msg = failures.map((f) => f.reason instanceof Error ? f.reason.message : 'unknown').join('; ')
-    throw new Error(msg)
+  if (deliveryErrors.length > 0) {
+    throw new Error(deliveryErrors.join('; '))
   }
 }
 
