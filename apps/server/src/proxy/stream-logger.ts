@@ -9,8 +9,16 @@ type StreamLogBase = Omit<
   'promptTokens' | 'completionTokens' | 'totalTokens' | 'costUsd' | 'model'
 > & { model: string }
 
-// 스트리밍 완료 후 span에 output을 주입합니다.
-// output이 이미 설정된 span(사용자가 span.end({ output })로 직접 설정)은 건드리지 않습니다.
+async function injectSpanInput(spanId: string, organizationId: string, input: unknown): Promise<void> {
+  const { error } = await supabaseAdmin
+    .from('spans')
+    .update({ input })
+    .eq('id', spanId)
+    .eq('organization_id', organizationId)
+    .is('input', null)
+  if (error) throw new Error(error.message)
+}
+
 async function injectSpanOutput(spanId: string, organizationId: string, output: string): Promise<void> {
   const { error } = await supabaseAdmin
     .from('spans')
@@ -65,10 +73,19 @@ export async function logOpenAIStream(
     responseBody,
   })
 
-  if (base.spanId && text) {
-    await injectSpanOutput(base.spanId, base.organizationId, text).catch((err) => {
-      console.error('[span-output-inject:openai]', err)
-    })
+  if (base.spanId) {
+    const reqBody = base.requestBody as Record<string, unknown> | null
+    const input = reqBody?.messages
+    if (input) {
+      await injectSpanInput(base.spanId, base.organizationId, input).catch((err) => {
+        console.error('[span-input-inject:openai]', err)
+      })
+    }
+    if (text) {
+      await injectSpanOutput(base.spanId, base.organizationId, text).catch((err) => {
+        console.error('[span-output-inject:openai]', err)
+      })
+    }
   }
 }
 
@@ -113,9 +130,20 @@ export async function logAnthropicStream(
     responseBody,
   })
 
-  if (base.spanId && text) {
-    await injectSpanOutput(base.spanId, base.organizationId, text).catch((err) => {
-      console.error('[span-output-inject:anthropic]', err)
-    })
+  if (base.spanId) {
+    const reqBody = base.requestBody as Record<string, unknown> | null
+    const messages = reqBody?.messages
+    const system = reqBody?.system
+    const input = messages ? (system ? { system, messages } : messages) : null
+    if (input) {
+      await injectSpanInput(base.spanId, base.organizationId, input).catch((err) => {
+        console.error('[span-input-inject:anthropic]', err)
+      })
+    }
+    if (text) {
+      await injectSpanOutput(base.spanId, base.organizationId, text).catch((err) => {
+        console.error('[span-output-inject:anthropic]', err)
+      })
+    }
   }
 }
