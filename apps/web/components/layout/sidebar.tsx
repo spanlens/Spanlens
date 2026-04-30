@@ -271,7 +271,7 @@ const NAV_GROUPS = [
     items: [
       { href: '/anomalies',       label: 'Anomalies' },
       { href: '/security',        label: 'Security' },
-      { href: '/recommendations', label: 'Savings' },
+      { href: '/savings', label: 'Savings' },
     ],
   },
   {
@@ -347,7 +347,7 @@ export function Sidebar() {
     '/requests':   reqCount != null ? { label: reqCount > 999 ? (reqCount / 1000).toFixed(0) + 'k' : String(reqCount) } : {},
     '/anomalies':  anomalyCount > 0 ? { label: String(anomalyCount), warn: true } : {},
     '/security':   {},
-    '/recommendations': savingsTotal > 0 ? { label: '$' + (savingsTotal >= 1000 ? (savingsTotal / 1000).toFixed(0) + 'k' : savingsTotal.toFixed(0)) } : {},
+    '/savings': savingsTotal > 0 ? { label: '$' + (savingsTotal >= 1000 ? (savingsTotal / 1000).toFixed(0) + 'k' : savingsTotal.toFixed(0)) } : {},
     '/alerts':     firingCount > 0 ? { label: String(firingCount), warn: true } : {},
   }
 

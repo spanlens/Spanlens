@@ -117,8 +117,7 @@ estimatedSavingsUsd  = monthlyCostCurrent - monthlyCostSuggested`}</CodeBlock>
 
       <h3>Dashboard</h3>
       <p>
-        Visit <a href="/recommendations">/recommendations</a> (labeled &ldquo;Savings&rdquo; in the
-        sidebar). Each row shows:
+        Visit <a href="/savings">/savings</a> in the sidebar. Each row shows:
       </p>
       <ul>
         <li>Current model + sample count + monthly cost</li>
@@ -187,7 +186,7 @@ estimatedSavingsUsd  = monthlyCostCurrent - monthlyCostSuggested`}</CodeBlock>
 
       <hr />
       <p className="text-sm text-muted-foreground">
-        Related: <a href="/docs/features/prompts">Prompts</a> (A/B by cost), <a href="/recommendations">/recommendations</a>{' '}
+        Related: <a href="/docs/features/prompts">Prompts</a> (A/B by cost), <a href="/savings">/savings</a>{' '}
         dashboard. Source: <code>apps/server/src/lib/model-recommend-rules.ts</code>.
       </p>
     </div>

@@ -394,7 +394,7 @@ export default function DashboardPage() {
         meta: `${topRec.currentModel} · same quality`,
         hint: `~${fmtCost(topRec.estimatedMonthlySavingsUsd)}/mo estimated savings`,
         cta: 'Review & approve →',
-        href: '/recommendations',
+        href: '/savings',
       })
     }
 
@@ -541,7 +541,7 @@ export default function DashboardPage() {
                 deltaVariant={deltaVariantFor(o.costDelta, false)}
                 sparkValues={sparkCost}
                 linkLabel="Savings →"
-                linkHref="/recommendations"
+                linkHref="/savings"
               />
               <KpiCard
                 label={`Avg latency · ${timeRange}`}
@@ -763,7 +763,7 @@ export default function DashboardPage() {
             <div className="flex items-center mb-3">
               <span className="text-[14px] font-medium">Savings queued</span>
               <span className="flex-1" />
-              <Link href="/recommendations" className="font-mono text-[10.5px] text-good tracking-[0.03em]">
+              <Link href="/savings" className="font-mono text-[10.5px] text-good tracking-[0.03em]">
                 View all →
               </Link>
             </div>

@@ -7,6 +7,11 @@ const nextConfig = {
   //
   // Read at build time (not `NEXT_PUBLIC_`) so the server URL never ships
   // in the client bundle.
+  async redirects() {
+    return [
+      { source: '/recommendations', destination: '/savings', permanent: true },
+    ]
+  },
   async rewrites() {
     const apiUrl =
       process.env.API_URL ??
