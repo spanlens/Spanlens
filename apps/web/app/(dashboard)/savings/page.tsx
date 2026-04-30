@@ -178,7 +178,7 @@ export default function RecommendationsPage() {
                       {fmtUsd(r.estimatedMonthlySavingsUsd)}
                     </div>
                     <div className="font-mono text-[10.5px] text-text-faint mt-0.5">
-                      was {fmtUsd(r.totalCostUsdLastNDays)} /7d
+                      was {fmtUsd(r.totalCostUsdLastNDays)} /wk
                     </div>
                   </div>
 
