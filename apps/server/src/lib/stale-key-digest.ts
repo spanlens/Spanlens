@@ -12,6 +12,7 @@
 
 import { supabaseAdmin } from './db.js'
 import { sendEmail, renderStaleKeyDigestEmail } from './resend.js'
+import { getAdminEmails } from './admin-emails.js'
 
 interface StaleKey {
   id: string
@@ -90,29 +91,6 @@ async function findStaleKeysForOrg(
   })
 
   return stale
-}
-
-/**
- * Resolve email addresses of all admin members for an org. Falls back
- * to the org owner if there are no admin rows (e.g. legacy single-user
- * workspaces created pre-multi-user migration).
- */
-async function getAdminEmails(orgId: string): Promise<string[]> {
-  const { data: members } = await supabaseAdmin
-    .from('org_members')
-    .select('user_id')
-    .eq('organization_id', orgId)
-    .eq('role', 'admin')
-
-  const userIds = (members ?? []).map((m) => m.user_id)
-  if (userIds.length === 0) return []
-
-  const emails: string[] = []
-  for (const userId of userIds) {
-    const { data } = await supabaseAdmin.auth.admin.getUserById(userId)
-    if (data?.user?.email) emails.push(data.user.email)
-  }
-  return emails
 }
 
 export async function runStaleKeyDigestJob(): Promise<StaleKeyDigestResult> {

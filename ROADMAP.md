@@ -127,6 +127,7 @@
 ### 3A. 이상 탐지 & 최적화 (Week 9~10)
 - [x] 모델별 평균 latency/비용 이상치 탐지 (3-sigma) — `lib/anomaly.ts` + `GET /api/v1/anomalies` + `/anomalies` 페이지. 1h 관측 vs 7일 baseline 샘플 stddev.
 - [x] 프롬프트 주입·PII 감지 (경량 휴리스틱) — `lib/security-scan.ts` (정규식 6개 PII 규칙 + Luhn + 5개 injection 패턴) 로그 훅 + `requests.flags` JSONB + `GET /api/v1/security/{flagged,summary}` + `/security` 페이지.
+- [x] **Security 3종 확장 (2026-04-30)**: (1) 알림 이메일 — PII/injection 탐지 시 워크스페이스 오너에게 즉시 발송 (5분 쿨다운, atomic rate-limit); (2) 차단 모드 — 프로젝트별 토글, injection 탐지 시 422로 LLM 전달 차단; (3) 응답 스캔 — LLM 응답(output)도 스캔, `requests.response_flags` JSONB 저장 + `has_security_flags` 생성 컬럼. 신규 API: `GET /settings`, `PATCH /alert`, `PATCH /projects/:id/block`.
 - [x] 마이그레이션: `prompt_versions` (프롬프트 버저닝) — `prompt_versions` 테이블 (version immutable, UNIQUE org+name+version) + `requests.prompt_version_id` FK + RLS.
 - [x] 프롬프트 A/B 비교 뷰 (비용·성공률·latency) — `lib/prompt-compare.ts` + `GET /api/v1/prompts/:name/compare` + `/prompts` 페이지 (버전별 sample count / avg latency / error rate / avg+total cost / avg tokens).
 - [x] 모델 추천 엔진 (GPT-4o → Haiku 대체 제안) — `lib/model-recommend.ts` (curated SUBSTITUTES + 토큰 envelope fit check + 월간 절감액 extrapolation) + `GET /api/v1/recommendations` + `/recommendations` 페이지.
@@ -462,6 +463,21 @@ Enterprise `$99+` 플랜은 이미 Pricing 페이지에 판매 중. **첫 Enterp
 - [ ] 전용 Slack Connect 채널
 - [ ] 4h 응답 SLA (일반 24h → Enterprise 4h)
 - [ ] 온콜 로테이션 최소 2인
+
+### 5E. ML 기반 Injection 탐지 고도화 (트리거: 일 요청 10만+ 또는 다국어 고객 유입)
+
+> **배경**: 현재 Injection 탐지는 영어 regex 5개 + 한국어 regex로만 구성됨. 중국어·일본어·스페인어 등 다른 언어로 작성된 injection은 탐지 불가. 앱이 글로벌 규모로 커지면 ML 기반 분류기로 언어 불문 탐지 필요.
+>
+> **왜 지금 안 하나**: LLM proxy에 ML inference를 추가하면 요청당 50~300ms latency 증가. 유저 수 적을 때는 regex로 충분 (90%+ 로우엔드 공격 커버). 실제 다국어 bypass 사례 누적 후 착수.
+
+- [ ] **옵션 평가 및 선택**
+  - Groq API + Llama Guard 3 — 요청당 ~$0.0001, latency 50ms 이하, 관리 불필요. 현실적 1순위.
+  - Meta Prompt Guard (86M) 자체 호스팅 — CPU 동작, 추가 비용 없음. Vercel Edge 불가, 별도 서버 필요.
+  - Lakera Guard API — 상업 서비스, 가격 협상 필요. Enterprise 전용 옵션.
+- [ ] **2단계 스캔 파이프라인 구현**: regex 1차 (기존) → ML 2차 (regex 통과 시에만 호출, latency 최소화)
+- [ ] **비동기 ML 스캔 옵션**: blocking mode OFF 프로젝트는 ML 스캔을 fire-and-forget으로 처리 (latency 0 추가)
+- [ ] **언어별 커버리지 대시보드**: 탐지된 injection의 언어 분포 시각화 (regex vs ML 탐지 출처 구분)
+- [ ] **프로젝트별 ML 스캔 ON/OFF 토글**: 민감도 높은 프로젝트만 ML 활성화 (비용·latency 트레이드오프)
 
 ---
 

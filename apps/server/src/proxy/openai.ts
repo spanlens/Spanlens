@@ -7,7 +7,8 @@ import { logRequestAsync } from '../lib/logger.js'
 import { resolvePromptVersion } from '../lib/resolve-prompt-version.js'
 import { fireAndForget } from '../lib/wait-until.js'
 import { parseOpenAIResponse } from '../parsers/openai.js'
-import { getDecryptedProviderKey, buildUpstreamHeaders, buildDownstreamHeaders } from './utils.js'
+import { scanAll } from '../lib/security-scan.js'
+import { getDecryptedProviderKey, buildUpstreamHeaders, buildDownstreamHeaders, isBlockingEnabled } from './utils.js'
 import { logOpenAIStream } from './stream-logger.js'
 
 const OPENAI_BASE = 'https://api.openai.com'
@@ -46,6 +47,19 @@ openaiProxy.all('/*', async (c) => {
       }
     }
   } catch { /* non-JSON body — pass through */ }
+
+  // ── Security scan + blocking ───────────────────────────────────────────────
+  // Scan request body BEFORE forwarding upstream. If injection is detected and
+  // blocking is enabled for this project, reject immediately (422).
+  // PII-only flags are never blocked — they may be legitimate user data.
+  const requestFlags = scanAll(reqBodyJson)
+  const hasInjection = requestFlags.some((f) => f.type === 'injection')
+  if (hasInjection && await isBlockingEnabled(projectId)) {
+    return c.json({
+      error: 'Request blocked by Spanlens security policy: prompt injection detected.',
+      code: 'INJECTION_BLOCKED',
+    }, 422)
+  }
 
   const path = c.req.path.replace(/^\/proxy\/openai/, '')
   const upstreamUrl = `${OPENAI_BASE}${path}`
@@ -89,6 +103,7 @@ openaiProxy.all('/*', async (c) => {
     spanId: c.req.header('x-span-id') ?? null,
     promptVersionId,
     providerKeyId: providerKey.id,
+    preComputedRequestFlags: requestFlags,
   }
 
   // ── Streaming path (Hono stream helper) ──────────────────────────────────
