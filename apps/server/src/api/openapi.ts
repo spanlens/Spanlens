@@ -96,6 +96,30 @@ const SPEC = {
           created_at: { type: 'string', format: 'date-time' },
         },
       },
+      SecurityFlag: {
+        type: 'object',
+        properties: {
+          type: { type: 'string', enum: ['pii', 'injection'], example: 'pii' },
+          pattern: { type: 'string', example: 'ssn-us' },
+          sample: { type: 'string', example: '12*****89', description: 'Masked 6-char excerpt — raw PII is never stored' },
+        },
+        required: ['type', 'pattern', 'sample'],
+      },
+      FlaggedRequest: {
+        type: 'object',
+        description: 'A request (or response) that matched one or more PII or injection rules.',
+        properties: {
+          id: { type: 'string', format: 'uuid' },
+          provider: { type: 'string', enum: ['openai', 'anthropic', 'gemini'] },
+          model: { type: 'string', example: 'gpt-4o-mini' },
+          status_code: { type: 'integer' },
+          latency_ms: { type: 'integer' },
+          cost_usd: { type: 'number', format: 'float', nullable: true },
+          flags: { type: 'array', items: { $ref: '#/components/schemas/SecurityFlag' }, description: 'Flags from the request body (user input)' },
+          response_flags: { type: 'array', items: { $ref: '#/components/schemas/SecurityFlag' }, description: 'Flags from the LLM response body (model output)' },
+          created_at: { type: 'string', format: 'date-time' },
+        },
+      },
       Request: {
         type: 'object',
         properties: {
@@ -109,16 +133,8 @@ const SPEC = {
           latency_ms: { type: 'integer' },
           proxy_overhead_ms: { type: 'integer', nullable: true },
           status_code: { type: 'integer' },
-          flags: {
-            type: 'array',
-            items: {
-              type: 'object',
-              properties: {
-                type: { type: 'string', example: 'pii_email' },
-                severity: { type: 'string', enum: ['low', 'medium', 'high'] },
-              },
-            },
-          },
+          flags: { type: 'array', items: { $ref: '#/components/schemas/SecurityFlag' }, description: 'Request-body security flags' },
+          response_flags: { type: 'array', items: { $ref: '#/components/schemas/SecurityFlag' }, description: 'Response-body security flags' },
           created_at: { type: 'string', format: 'date-time' },
         },
       },
@@ -568,6 +584,143 @@ const SPEC = {
             description: 'Recommendations',
             content: { 'application/json': { schema: { type: 'object', properties: { data: { type: 'array', items: { $ref: '#/components/schemas/ModelRecommendation' } } } } } },
           },
+        },
+      },
+    },
+    '/api/v1/security/flagged': {
+      get: {
+        tags: ['Security'],
+        summary: 'List flagged requests',
+        description: 'Paginated list of requests (or responses) that matched PII or injection rules. Both `flags` (request) and `response_flags` (LLM output) are included per row.',
+        operationId: 'listSecurityFlagged',
+        security: [{ BearerJWT: [] }],
+        parameters: [
+          { name: 'limit', in: 'query', schema: { type: 'integer', default: 50, maximum: 200 } },
+          { name: 'offset', in: 'query', schema: { type: 'integer', default: 0 } },
+        ],
+        responses: {
+          200: {
+            description: 'Flagged requests',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    data: { type: 'array', items: { $ref: '#/components/schemas/FlaggedRequest' } },
+                    meta: { type: 'object', properties: { total: { type: 'integer' }, limit: { type: 'integer' }, offset: { type: 'integer' } } },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    '/api/v1/security/summary': {
+      get: {
+        tags: ['Security'],
+        summary: 'Security flag summary',
+        description: 'Counts by flag type and pattern over a rolling time window.',
+        operationId: 'securitySummary',
+        security: [{ BearerJWT: [] }],
+        parameters: [
+          { name: 'hours', in: 'query', schema: { type: 'integer', default: 24, maximum: 720 }, description: 'Look-back window in hours (max 720 = 30 days)' },
+        ],
+        responses: {
+          200: {
+            description: 'Flag counts',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    data: { type: 'array', items: { type: 'object', properties: { type: { type: 'string' }, pattern: { type: 'string' }, count: { type: 'integer' } } } },
+                    meta: { type: 'object', properties: { hours: { type: 'integer' }, totalFlags: { type: 'integer' } } },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    '/api/v1/security/settings': {
+      get: {
+        tags: ['Security'],
+        summary: 'Security settings',
+        description: 'Returns the org-level alert email toggle and per-project blocking settings.',
+        operationId: 'getSecuritySettings',
+        security: [{ BearerJWT: [] }],
+        responses: {
+          200: {
+            description: 'Security settings',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    data: {
+                      type: 'object',
+                      properties: {
+                        alertEnabled: { type: 'boolean', description: 'Whether alert emails are sent to the workspace owner on flag detection' },
+                        projects: {
+                          type: 'array',
+                          items: {
+                            type: 'object',
+                            properties: {
+                              id: { type: 'string', format: 'uuid' },
+                              name: { type: 'string' },
+                              blockEnabled: { type: 'boolean', description: 'When true, injection-flagged requests are blocked (422) before reaching the LLM' },
+                            },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    '/api/v1/security/alert': {
+      patch: {
+        tags: ['Security'],
+        summary: 'Toggle alert emails',
+        description: 'Enable or disable security alert emails for the organization. Emails are sent to the workspace owner, rate-limited to once per 5 minutes.',
+        operationId: 'toggleSecurityAlert',
+        security: [{ BearerJWT: [] }],
+        requestBody: {
+          required: true,
+          content: { 'application/json': { schema: { type: 'object', required: ['enabled'], properties: { enabled: { type: 'boolean' } } } } },
+        },
+        responses: {
+          200: {
+            description: 'Updated',
+            content: { 'application/json': { schema: { type: 'object', properties: { data: { type: 'object', properties: { alertEnabled: { type: 'boolean' } } } } } } },
+          },
+        },
+      },
+    },
+    '/api/v1/security/projects/{projectId}/block': {
+      patch: {
+        tags: ['Security'],
+        summary: 'Toggle per-project injection blocking',
+        description: 'When enabled, any request to this project that contains an injection flag is rejected with 422 before reaching the LLM. PII flags are never blocked.',
+        operationId: 'toggleProjectBlock',
+        security: [{ BearerJWT: [] }],
+        parameters: [{ name: 'projectId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+        requestBody: {
+          required: true,
+          content: { 'application/json': { schema: { type: 'object', required: ['enabled'], properties: { enabled: { type: 'boolean' } } } } },
+        },
+        responses: {
+          200: {
+            description: 'Updated',
+            content: { 'application/json': { schema: { type: 'object', properties: { data: { type: 'object', properties: { projectId: { type: 'string' }, blockEnabled: { type: 'boolean' } } } } } } },
+          },
+          404: { description: 'Project not found or does not belong to this org' },
         },
       },
     },

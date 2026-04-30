@@ -6,7 +6,8 @@ import { logRequestAsync } from '../lib/logger.js'
 import { resolvePromptVersion } from '../lib/resolve-prompt-version.js'
 import { fireAndForget } from '../lib/wait-until.js'
 import { parseGeminiResponse } from '../parsers/gemini.js'
-import { getDecryptedProviderKey, buildUpstreamHeaders, buildDownstreamHeaders } from './utils.js'
+import { scanAll } from '../lib/security-scan.js'
+import { getDecryptedProviderKey, buildUpstreamHeaders, buildDownstreamHeaders, isBlockingEnabled } from './utils.js'
 
 const GEMINI_BASE = 'https://generativelanguage.googleapis.com'
 
@@ -49,6 +50,16 @@ geminiProxy.all('/*', async (c) => {
     'Content-Type': 'application/json',
   })
   headers.delete('authorization')
+
+  // ── Security scan + blocking ───────────────────────────────────────────────
+  const requestFlags = scanAll(reqBodyJson)
+  const hasInjection = requestFlags.some((f) => f.type === 'injection')
+  if (hasInjection && await isBlockingEnabled(projectId)) {
+    return c.json({
+      error: 'Request blocked by Spanlens security policy: prompt injection detected.',
+      code: 'INJECTION_BLOCKED',
+    }, 422)
+  }
 
   const startMs = Date.now()
   const fetchBody = c.req.method !== 'GET' && c.req.method !== 'HEAD' ? reqBodyText : null
@@ -117,6 +128,7 @@ geminiProxy.all('/*', async (c) => {
     spanId: c.req.header('x-span-id') ?? null,
     promptVersionId,
     providerKeyId: providerKey.id,
+    preComputedRequestFlags: requestFlags,
   }))
 
   return new Response(resBodyText, {

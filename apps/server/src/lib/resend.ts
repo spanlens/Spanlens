@@ -133,6 +133,68 @@ export function renderStaleKeyDigestEmail(params: {
   return { subject, html }
 }
 
+export function renderSecurityAlertEmail(params: {
+  orgName: string
+  projectName: string
+  requestFlags: Array<{ type: string; pattern: string; sample: string }>
+  responseFlags: Array<{ type: string; pattern: string; sample: string }>
+  dashboardUrl: string
+}): { subject: string; html: string } {
+  const { orgName, projectName, requestFlags, responseFlags, dashboardUrl } = params
+
+  const allFlags = [
+    ...requestFlags.map((f) => ({ ...f, direction: 'Request' as const })),
+    ...responseFlags.map((f) => ({ ...f, direction: 'Response' as const })),
+  ]
+
+  const hasInjection = allFlags.some((f) => f.type === 'injection')
+  const subject = hasInjection
+    ? `[Spanlens] ⚠️ Prompt injection detected in '${projectName}'`
+    : `[Spanlens] 🔍 PII detected in '${projectName}'`
+
+  const flagRows = allFlags
+    .map((f) => `
+      <tr>
+        <td style="padding: 7px 12px; border-bottom: 1px solid #eee; font-size: 12px; color: #666;">${escapeHtml(f.direction)}</td>
+        <td style="padding: 7px 12px; border-bottom: 1px solid #eee; font-family: ui-monospace, monospace; font-size: 11px;">
+          <span style="display: inline-block; padding: 2px 6px; border-radius: 3px; border: 1px solid ${f.type === 'injection' ? '#fca5a5' : '#e5e7eb'}; background: ${f.type === 'injection' ? '#fef2f2' : '#f9fafb'}; color: ${f.type === 'injection' ? '#991b1b' : '#6b7280'}; text-transform: uppercase; font-size: 10px; letter-spacing: 0.04em;">${escapeHtml(f.type)}</span>
+          &nbsp;${escapeHtml(f.pattern)}
+        </td>
+        <td style="padding: 7px 12px; border-bottom: 1px solid #eee; font-family: ui-monospace, monospace; font-size: 11px; color: #9ca3af;">${escapeHtml(f.sample)}</td>
+      </tr>`)
+    .join('')
+
+  const html = `
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; color: #111;">
+      <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 14px 16px; margin-bottom: 18px;">
+        <div style="font-weight: 600; font-size: 14px; color: #991b1b; margin-bottom: 4px;">Security event detected</div>
+        <div style="font-size: 13px; color: #7f1d1d;">
+          ${escapeHtml(String(allFlags.length))} flag${allFlags.length === 1 ? '' : 's'} found in project <strong>${escapeHtml(projectName)}</strong> (${escapeHtml(orgName)}).
+        </div>
+      </div>
+      <table style="width: 100%; border-collapse: collapse; border: 1px solid #eee; border-radius: 6px; overflow: hidden; margin-bottom: 18px;">
+        <thead>
+          <tr style="background: #fafafa;">
+            <th style="padding: 8px 12px; text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: #888; border-bottom: 1px solid #eee;">Direction</th>
+            <th style="padding: 8px 12px; text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: #888; border-bottom: 1px solid #eee;">Type · Pattern</th>
+            <th style="padding: 8px 12px; text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: #888; border-bottom: 1px solid #eee;">Sample (masked)</th>
+          </tr>
+        </thead>
+        <tbody>${flagRows}</tbody>
+      </table>
+      <p style="margin: 18px 0;">
+        <a href="${dashboardUrl}" style="display: inline-block; padding: 10px 18px; background: #111; color: #fff; text-decoration: none; border-radius: 6px; font-weight: 500; font-size: 13px;">View in Security dashboard</a>
+      </p>
+      <p style="margin: 18px 0 0; color: #aaa; font-size: 11.5px;">
+        Spanlens flags only — no requests are blocked unless you enable Block mode.
+        To stop these emails: Security → Alert emails → off.
+      </p>
+    </div>
+  `.trim()
+
+  return { subject, html }
+}
+
 export function renderLeakAlertEmail(params: {
   orgName: string
   keyName: string

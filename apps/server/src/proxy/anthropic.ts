@@ -7,7 +7,8 @@ import { logRequestAsync } from '../lib/logger.js'
 import { resolvePromptVersion } from '../lib/resolve-prompt-version.js'
 import { fireAndForget } from '../lib/wait-until.js'
 import { parseAnthropicResponse } from '../parsers/anthropic.js'
-import { getDecryptedProviderKey, buildUpstreamHeaders, buildDownstreamHeaders } from './utils.js'
+import { scanAll } from '../lib/security-scan.js'
+import { getDecryptedProviderKey, buildUpstreamHeaders, buildDownstreamHeaders, isBlockingEnabled } from './utils.js'
 import { logAnthropicStream } from './stream-logger.js'
 
 const ANTHROPIC_BASE = 'https://api.anthropic.com'
@@ -38,6 +39,16 @@ anthropicProxy.all('/*', async (c) => {
     reqBodyJson = JSON.parse(reqBodyText) as Record<string, unknown>
     isStreaming = reqBodyJson.stream === true
   } catch { /* non-JSON — pass through */ }
+
+  // ── Security scan + blocking ───────────────────────────────────────────────
+  const requestFlags = scanAll(reqBodyJson)
+  const hasInjection = requestFlags.some((f) => f.type === 'injection')
+  if (hasInjection && await isBlockingEnabled(projectId)) {
+    return c.json({
+      error: 'Request blocked by Spanlens security policy: prompt injection detected.',
+      code: 'INJECTION_BLOCKED',
+    }, 422)
+  }
 
   const path = c.req.path.replace(/^\/proxy\/anthropic/, '')
   const upstreamUrl = `${ANTHROPIC_BASE}${path}`
@@ -80,6 +91,7 @@ anthropicProxy.all('/*', async (c) => {
     spanId: c.req.header('x-span-id') ?? null,
     promptVersionId,
     providerKeyId: providerKey.id,
+    preComputedRequestFlags: requestFlags,
   }
 
   // ── Streaming path (Hono stream helper — required for Vercel Node.js runtime) ─

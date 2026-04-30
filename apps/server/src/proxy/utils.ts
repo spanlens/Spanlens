@@ -56,6 +56,19 @@ export async function getDecryptedProviderKey(
   return { plaintext: decrypted, id: orgKey.id as string }
 }
 
+/**
+ * Returns whether injection blocking is enabled for a project.
+ * Called only when injection flags are detected — zero overhead for clean requests.
+ */
+export async function isBlockingEnabled(projectId: string): Promise<boolean> {
+  const { data } = await supabaseAdmin
+    .from('projects')
+    .select('security_block_enabled')
+    .eq('id', projectId)
+    .single()
+  return data?.security_block_enabled === true
+}
+
 // Strip hop-by-hop and sensitive headers before forwarding upstream.
 // content-length is stripped because the proxy may modify the body
 // (e.g. inject stream_options) so the original length is wrong.

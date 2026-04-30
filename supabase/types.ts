@@ -1371,6 +1371,33 @@ export type Database = {
     }
     Functions: {
       aggregate_usage_daily: { Args: { target_date: string }; Returns: number }
+      detect_anomaly_stats: {
+        Args: {
+          p_obs_start: string
+          p_org_id: string
+          p_project_id?: string
+          p_ref_start: string
+        }
+        Returns: {
+          model: string
+          obs_all_count: number
+          obs_cost_count: number
+          obs_cost_mean: number
+          obs_error_rate: number
+          obs_latency_count: number
+          obs_latency_mean: number
+          provider: string
+          ref_all_count: number
+          ref_cost_count: number
+          ref_cost_mean: number
+          ref_cost_stddev: number
+          ref_error_rate: number
+          ref_error_stddev: number
+          ref_latency_count: number
+          ref_latency_mean: number
+          ref_latency_stddev: number
+        }[]
+      }
       is_org_member: { Args: { org_id: string }; Returns: boolean }
       postgres_fdw_disconnect: { Args: { "": string }; Returns: boolean }
       postgres_fdw_disconnect_all: { Args: never; Returns: boolean }
@@ -1386,6 +1413,22 @@ export type Database = {
           count: number
           flag_type: string
           pattern: string
+        }[]
+      }
+      stats_models: {
+        Args: {
+          p_from?: string
+          p_org_id: string
+          p_project_id?: string
+          p_to?: string
+        }
+        Returns: {
+          avg_latency_ms: number
+          error_rate: number
+          model: string
+          provider: string
+          requests: number
+          total_cost_usd: number
         }[]
       }
       stats_overview: {
@@ -1409,6 +1452,7 @@ export type Database = {
       stats_timeseries: {
         Args: {
           p_from?: string
+          p_granularity?: string
           p_org_id: string
           p_project_id?: string
           p_to?: string

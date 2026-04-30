@@ -1,5 +1,6 @@
 import { supabaseAdmin } from './db.js'
-import { scanAll } from './security-scan.js'
+import { scanAll, type SecurityFlag } from './security-scan.js'
+import { sendEmail, renderSecurityAlertEmail } from './resend.js'
 
 export interface RequestLogData {
   organizationId: string
@@ -22,6 +23,11 @@ export interface RequestLogData {
   spanId: string | null
   promptVersionId?: string | null
   providerKeyId?: string | null
+  /**
+   * Pre-computed request flags from the proxy (used for blocking).
+   * If provided, logger skips re-scanning the request body.
+   */
+  preComputedRequestFlags?: SecurityFlag[]
 }
 
 /**
@@ -55,13 +61,96 @@ function serializeBody(body: unknown): unknown {
   }
 }
 
+/** Rate-limit: 5 minutes between security alert emails per org. */
+const ALERT_COOLDOWN_MS = 5 * 60 * 1000
+
+/**
+ * Sends a security alert email to the org owner if:
+ *   1. The org has security_alert_enabled = true
+ *   2. No alert was sent in the last 5 minutes (rate limit via last_security_alert_at)
+ *
+ * Race-condition-safe: uses a single atomic UPDATE...WHERE to claim the alert
+ * slot. If another concurrent request already claimed it, the UPDATE affects 0
+ * rows and we bail early — no duplicate emails are sent.
+ *
+ * Never throws — failure is logged and silently ignored.
+ */
+async function maybeSendSecurityAlert(params: {
+  organizationId: string
+  projectId: string
+  requestFlags: SecurityFlag[]
+  responseFlags: SecurityFlag[]
+}): Promise<void> {
+  const { organizationId, projectId, requestFlags, responseFlags } = params
+
+  const cooldownTimestamp = new Date(Date.now() - ALERT_COOLDOWN_MS).toISOString()
+
+  // Atomic claim: update only if alert is enabled AND cooldown has elapsed.
+  // Using a single UPDATE+WHERE eliminates the TOCTOU race between a separate
+  // read-check and a subsequent write.
+  const { data: claimedOrg } = await supabaseAdmin
+    .from('organizations')
+    .update({ last_security_alert_at: new Date().toISOString() })
+    .eq('id', organizationId)
+    .eq('security_alert_enabled', true)
+    .or(`last_security_alert_at.is.null,last_security_alert_at.lt.${cooldownTimestamp}`)
+    .select('name')
+    .single()
+
+  // If no row was returned, alert is disabled or still in cooldown — skip.
+  if (!claimedOrg) return
+
+  // Fetch project name and owner in parallel to reduce sequential DB round-trips
+  const [projectResult, ownerResult] = await Promise.all([
+    supabaseAdmin.from('projects').select('name').eq('id', projectId).single(),
+    supabaseAdmin
+      .from('org_members')
+      .select('user_id')
+      .eq('organization_id', organizationId)
+      .eq('role', 'owner')
+      .limit(1),
+  ])
+
+  const ownerId = ownerResult.data?.[0]?.user_id
+  if (!ownerId) return
+
+  const { data: { user } } = await supabaseAdmin.auth.admin.getUserById(ownerId)
+  const ownerEmail = user?.email
+  if (!ownerEmail) return
+
+  // Send email
+  const webUrl = process.env.WEB_URL ?? 'http://localhost:3000'
+  const { subject, html } = renderSecurityAlertEmail({
+    orgName: claimedOrg.name,
+    projectName: projectResult.data?.name ?? projectId,
+    requestFlags,
+    responseFlags,
+    dashboardUrl: `${webUrl}/security`,
+  })
+
+  const result = await sendEmail({ to: ownerEmail, subject, html })
+  if (!result.sent && result.error) {
+    // Log only error message, not ownerEmail, to avoid PII in logs
+    console.error('[security-alert] sendEmail failed:', result.error)
+  }
+}
+
 export async function logRequestAsync(data: RequestLogData): Promise<void> {
-  // Security scan — best-effort, never throws. Flags stored alongside the row.
-  let flags: ReturnType<typeof scanAll> = []
+  // ── Security scan ──────────────────────────────────────────────────────────
+  // Request flags: use pre-computed from proxy (blocking path) or scan fresh.
+  let requestFlags: SecurityFlag[] = []
   try {
-    flags = scanAll(data.requestBody)
+    requestFlags = data.preComputedRequestFlags ?? scanAll(data.requestBody)
   } catch {
-    flags = []
+    requestFlags = []
+  }
+
+  // Response flags: always scan the response body.
+  let responseFlags: SecurityFlag[] = []
+  try {
+    responseFlags = scanAll(data.responseBody)
+  } catch {
+    responseFlags = []
   }
 
   const { error } = await supabaseAdmin.from('requests').insert({
@@ -84,9 +173,26 @@ export async function logRequestAsync(data: RequestLogData): Promise<void> {
     span_id: data.spanId,
     prompt_version_id: data.promptVersionId ?? null,
     provider_key_id: data.providerKeyId ?? null,
-    flags,
+    flags: requestFlags,
+    response_flags: responseFlags,
   })
   if (error) {
     console.error('[logger] Failed to log request:', error.message)
+  }
+
+  // ── Security alert ────────────────────────────────────────────────────────
+  // Awaited here so the entire alert chain is drained within the outer
+  // fireAndForget(c, logRequestAsync(...)) waitUntil budget. A detached
+  // .catch()-only promise would escape waitUntil on Vercel Edge and be silently
+  // dropped mid-execution (CLAUDE.md gotcha #8).
+  if (requestFlags.length > 0 || responseFlags.length > 0) {
+    await maybeSendSecurityAlert({
+      organizationId: data.organizationId,
+      projectId: data.projectId,
+      requestFlags,
+      responseFlags,
+    }).catch((err) => {
+      console.error('[security-alert] failed:', err instanceof Error ? err.message : String(err))
+    })
   }
 }

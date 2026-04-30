@@ -232,10 +232,12 @@ exportsRouter.get('/security', async (c) => {
 
   if (error) return c.json({ error: 'Failed to export security events' }, 500)
 
-  const rows: Record<string, unknown>[] = (data ?? []).map((r) => ({
-    ...(r as Record<string, unknown>),
-    flags: JSON.stringify((r as Record<string, unknown>).flags),
-  }))
+  const rows: Record<string, unknown>[] = (data ?? []).map((r) => {
+    const row = r as Record<string, unknown>
+    return format === 'csv'
+      ? { ...row, flags: JSON.stringify(row.flags) }
+      : row
+  })
 
   const dateStr = new Date().toISOString().slice(0, 10)
 
