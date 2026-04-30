@@ -90,15 +90,14 @@ describe('self-recommendation guard', () => {
 describe('SUBSTITUTES rule table sanity checks', () => {
   it('no rule suggests switching to the same model as the source', () => {
     for (const [key, sub] of Object.entries(SUBSTITUTES)) {
-      const [srcProvider, ...srcModelParts] = key.split(':')
-      const srcModel = srcModelParts.join(':')
+      const srcModel = key.split(':').slice(1).join(':')
       expect(sub.suggestedModel).not.toBe(srcModel)
       expect(sub.suggestedProvider + ':' + sub.suggestedModel).not.toBe(key)
     }
   })
 
   it('all costRatios are between 0 and 1 (substitutes must be cheaper)', () => {
-    for (const [key, sub] of Object.entries(SUBSTITUTES)) {
+    for (const [, sub] of Object.entries(SUBSTITUTES)) {
       expect(sub.costRatio).toBeGreaterThan(0)
       expect(sub.costRatio).toBeLessThan(1)
       // Also sanity-check envelopes are positive
