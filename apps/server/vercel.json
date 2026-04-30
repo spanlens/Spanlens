@@ -13,6 +13,7 @@
     { "path": "/cron/evaluate-alerts",      "schedule": "*/15 * * * *" },
     { "path": "/cron/snapshot-anomalies",   "schedule": "0 1 * * *" },
     { "path": "/cron/stale-key-reminders",  "schedule": "0 9 * * 1" },
-    { "path": "/cron/leak-detect-keys",     "schedule": "0 4 * * *" }
+    { "path": "/cron/leak-detect-keys",          "schedule": "0 4 * * *" },
+    { "path": "/cron/recommend-savings-alerts",  "schedule": "0 9 * * *" }
   ]
 }
