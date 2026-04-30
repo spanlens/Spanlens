@@ -64,7 +64,14 @@ export default function RecommendationsPage() {
 
   const totalOpen = visible.reduce((s, r) => s + r.estimatedMonthlySavingsUsd, 0)
   const totalSpend = visible.reduce((s, r) => s + r.totalCostUsdLastNDays, 0)
-  const highConf = visible.filter((r) => getConfidence(r) === 'high')
+  const highConf   = visible.filter((r) => getConfidence(r) === 'high')
+  const medConf    = visible.filter((r) => getConfidence(r) === 'medium')
+  const lowConf    = visible.filter((r) => getConfidence(r) === 'low')
+
+  // 히어로 타일: 가장 높은 신뢰도 레벨부터 표시
+  const bestConfLevel = highConf.length > 0 ? 'high' : medConf.length > 0 ? 'medium' : lowConf.length > 0 ? 'low' : null
+  const bestConfCount = highConf.length > 0 ? highConf.length : medConf.length > 0 ? medConf.length : lowConf.length
+  const bestConfLabel: Record<string, string> = { high: '≥$40/mo + ≥100 samples', medium: '≥$10/mo + ≥30 samples', low: 'below medium threshold' }
 
   useEffect(() => {
     try {
@@ -104,7 +111,10 @@ export default function RecommendationsPage() {
           </div>
           <div className="font-mono text-[11px] text-text-muted mb-3">
             across <span className="text-text">{visible.length}</span> recommendations ·{' '}
-            <span className="text-good">{highConf.length}</span> high-confidence
+            <span className={cn(bestConfLevel === 'high' ? 'text-good' : bestConfLevel === 'medium' ? 'text-text' : 'text-text-faint')}>
+              {bestConfCount}
+            </span>{' '}
+            <span className="text-text-faint">{bestConfLevel ?? 'no'}-confidence</span>
           </div>
           {highConf.length > 0 && (
             <div className="font-mono text-[11px] text-good">
@@ -116,7 +126,7 @@ export default function RecommendationsPage() {
         {[
           { label: 'Spend · 7d',         value: totalSpend > 0 ? fmtUsd(totalSpend) : '—', delta: 'across analyzed models', good: false },
           { label: 'Opportunities',       value: String(visible.length),                     delta: 'model substitutions',    good: false },
-          { label: 'High confidence',     value: String(highConf.length),                    delta: '≥$50/mo + ≥100 samples', good: highConf.length > 0 },
+          { label: `${bestConfLevel ?? 'No'} confidence`, value: String(bestConfCount), delta: bestConfLevel ? bestConfLabel[bestConfLevel] : 'no recommendations yet', good: bestConfLevel === 'high' },
         ].map((s, i) => (
           <div key={i} className={cn('px-[22px] py-[20px]', i < 2 && 'border-r border-border')}>
             <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-2">{s.label}</div>
@@ -233,7 +243,7 @@ export default function RecommendationsPage() {
                       onClick={() => dismiss(r)}
                       className="font-mono text-[10.5px] text-text-muted px-[10px] py-[4px] border border-border rounded-[5px] hover:text-text transition-colors"
                     >
-                      Dismiss
+                      숨기기
                     </button>
                     <button
                       type="button"
@@ -247,26 +257,6 @@ export default function RecommendationsPage() {
               )
             })}
 
-            {dismissed.size > 0 && (
-              <>
-                <div className="flex items-center gap-2.5 px-[22px] py-[10px] bg-bg-muted border-b border-border border-t border-t-border">
-                  <span className="font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint opacity-75">
-                    Dismissed · {dismissed.size}
-                  </span>
-                </div>
-                {all.filter((r) => dismissed.has(dismissKey(r))).map((r, i, arr) => (
-                  <div
-                    key={`${r.currentProvider}-${r.currentModel}-d`}
-                    className={cn('flex items-center gap-5 px-[22px] py-[12px] opacity-60', i < arr.length - 1 && 'border-b border-border')}
-                  >
-                    <div className="flex-1 min-w-0 font-mono text-[12px] text-text-faint">
-                      {r.currentProvider} / {r.currentModel} → {r.suggestedProvider} / {r.suggestedModel}
-                    </div>
-                    <div className="font-mono text-[11px] text-text-faint">dismissed</div>
-                  </div>
-                ))}
-              </>
-            )}
           </>
         )}
       </div>
