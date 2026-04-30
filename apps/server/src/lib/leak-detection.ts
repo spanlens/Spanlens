@@ -17,6 +17,7 @@ import { supabaseAdmin } from './db.js'
 import { aes256Decrypt } from './crypto.js'
 import { checkSecretLeaked } from './gitguardian.js'
 import { sendEmail, renderLeakAlertEmail } from './resend.js'
+import { getAdminEmails } from './admin-emails.js'
 
 export interface LeakDetectionResult {
   orgs_checked: number
@@ -36,6 +37,7 @@ interface ProviderKeyRow {
 interface LastScan {
   result: 'clean' | 'leaked' | 'error'
   notified_at: string | null
+  scanned_at: string
 }
 
 const RATE_LIMIT_DELAY_MS = 1500 // ~40 req/min, comfortably under HMSL's 50/min cap
@@ -52,30 +54,12 @@ async function sleep(ms: number): Promise<void> {
 async function loadLastScan(providerKeyId: string): Promise<LastScan | null> {
   const { data } = await supabaseAdmin
     .from('provider_key_leak_scans')
-    .select('result, notified_at')
+    .select('result, notified_at, scanned_at')
     .eq('provider_key_id', providerKeyId)
     .order('scanned_at', { ascending: false })
     .limit(1)
     .maybeSingle()
   return (data as LastScan | null) ?? null
-}
-
-async function getAdminEmails(orgId: string): Promise<string[]> {
-  const { data: members } = await supabaseAdmin
-    .from('org_members')
-    .select('user_id')
-    .eq('organization_id', orgId)
-    .eq('role', 'admin')
-
-  const userIds = (members ?? []).map((m) => m.user_id)
-  if (userIds.length === 0) return []
-
-  const emails: string[] = []
-  for (const userId of userIds) {
-    const { data } = await supabaseAdmin.auth.admin.getUserById(userId)
-    if (data?.user?.email) emails.push(data.user.email)
-  }
-  return emails
 }
 
 export async function runLeakDetectionJob(): Promise<LeakDetectionResult> {
@@ -121,16 +105,7 @@ export async function runLeakDetectionJob(): Promise<LeakDetectionResult> {
       // Dedup: skip keys already scanned in the last 24h regardless of outcome.
       const last = await loadLastScan(key.id)
       const cutoffMs = Date.now() - 24 * 60 * 60 * 1000
-      if (last) {
-        const { data: lastScan } = await supabaseAdmin
-          .from('provider_key_leak_scans')
-          .select('scanned_at')
-          .eq('provider_key_id', key.id)
-          .order('scanned_at', { ascending: false })
-          .limit(1)
-          .maybeSingle()
-        if (lastScan && Date.parse(lastScan.scanned_at) >= cutoffMs) continue
-      }
+      if (last && Date.parse(last.scanned_at) >= cutoffMs) continue
 
       result.keys_scanned++
 
