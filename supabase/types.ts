@@ -1426,6 +1426,21 @@ export type Database = {
           ref_latency_stddev: number
         }[]
       }
+      get_model_aggregates: {
+        Args: {
+          p_organization_id: string
+          p_status_codes: number[]
+          p_window_start: string
+        }
+        Returns: {
+          avg_completion_tokens: number
+          avg_prompt_tokens: number
+          model: string
+          provider: string
+          sample_count: number
+          total_cost_usd: number
+        }[]
+      }
       is_org_member: { Args: { org_id: string }; Returns: boolean }
       postgres_fdw_disconnect: { Args: { "": string }; Returns: boolean }
       postgres_fdw_disconnect_all: { Args: never; Returns: boolean }
