@@ -54,7 +54,9 @@ function loadDismissed(): Set<string> {
 
 export default function RecommendationsPage() {
   const { data, isLoading, error } = useRecommendations({ hours: 24 * 7, minSavings: 5 })
-  const [dismissed, setDismissed] = useState<Set<string>>(() => loadDismissed())
+  // SSR/hydration 안전: 초기값은 빈 Set, mount 후 localStorage에서 복원
+  const [dismissed, setDismissed] = useState<Set<string>>(new Set())
+  const [isLoaded, setIsLoaded] = useState(false)
   const [showHidden, setShowHidden] = useState(false)
   const [applyRec, setApplyRec] = useState<ModelRecommendation | null>(null)
   const [simRec, setSimRec] = useState<ModelRecommendation | null>(null)
@@ -74,13 +76,21 @@ export default function RecommendationsPage() {
   const bestConfCount = highConf.length > 0 ? highConf.length : medConf.length > 0 ? medConf.length : lowConf.length
   const bestConfLabel: Record<string, string> = { high: '≥$40/mo + ≥100 samples', medium: '≥$10/mo + ≥30 samples', low: 'below medium threshold' }
 
+  // mount 후 localStorage 복원 (SSR과 일치시키기 위해 lazy initializer 대신 useEffect 사용)
   useEffect(() => {
+    setDismissed(loadDismissed())
+    setIsLoaded(true)
+  }, [])
+
+  // isLoaded 전엔 저장하지 않음 — 빈 Set으로 localStorage를 덮어쓰는 것 방지
+  useEffect(() => {
+    if (!isLoaded) return
     try {
       localStorage.setItem(DISMISS_STORAGE_KEY, JSON.stringify([...dismissed]))
     } catch {
       // localStorage 사용 불가 환경(시크릿 모드 quota 초과 등)에서 조용히 무시
     }
-  }, [dismissed])
+  }, [dismissed, isLoaded])
 
   function dismiss(r: ModelRecommendation) {
     setDismissed((prev) => new Set([...prev, dismissKey(r)]))
