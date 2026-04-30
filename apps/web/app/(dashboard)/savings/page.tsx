@@ -303,7 +303,7 @@ export default function RecommendationsPage() {
                     Hidden · {dismissed.size}
                   </span>
                 </div>
-                {all.filter((r) => dismissed.has(dismissKey(r))).map((r, i) => {
+                {all.filter((r) => dismissed.has(dismissKey(r))).map((r) => {
                   const conf = getConfidence(r)
                   return (
                     <div
