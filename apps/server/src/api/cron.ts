@@ -6,6 +6,7 @@ import { runQuotaWarningsJob } from '../lib/quota-warnings.js'
 import { snapshotAnomaliesForAllOrgs } from '../lib/anomaly-snapshot.js'
 import { runStaleKeyDigestJob } from '../lib/stale-key-digest.js'
 import { runLeakDetectionJob } from '../lib/leak-detection.js'
+import { sendHighConfidenceRecommendationAlerts } from '../lib/recommendation-notify.js'
 
 /**
  * Vercel cron endpoints. Invoked hourly via `crons` entry in `vercel.json`.
@@ -332,6 +333,26 @@ cronRouter.get('/stale-key-reminders', async (c) => {
   try {
     const result = await runStaleKeyDigestJob()
     return c.json({ success: true, ...result })
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'unknown'
+    return c.json({ error: msg }, 500)
+  }
+})
+
+// ── High-confidence savings recommendation alerts (daily) ────────
+// For each org, run the recommendation engine. If any swap reaches
+// high-confidence (≥$40/mo + ≥100 samples) and hasn't been notified yet,
+// send an email to the org owner and record the notification for idempotency.
+cronRouter.get('/recommend-savings-alerts', async (c) => {
+  const authFail = assertCronAuth(c.req.header('Authorization'))
+  if (authFail) return c.json({ error: authFail }, 401)
+
+  try {
+    const results = await sendHighConfidenceRecommendationAlerts()
+    const totalSent    = results.reduce((s, r) => s + r.sent, 0)
+    const totalSkipped = results.reduce((s, r) => s + r.skipped, 0)
+    const totalErrors  = results.reduce((s, r) => s + r.errors.length, 0)
+    return c.json({ success: true, orgs: results.length, sent: totalSent, skipped: totalSkipped, errors: totalErrors, results })
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'unknown'
     return c.json({ error: msg }, 500)

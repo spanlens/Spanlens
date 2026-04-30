@@ -1,16 +1,33 @@
 'use client'
 import { useState, useEffect } from 'react'
-import { Copy, Check } from 'lucide-react'
+import { Copy, Check, CheckCircle2 } from 'lucide-react'
 import { useRecommendations, type ModelRecommendation } from '@/lib/queries/use-recommendations'
+import {
+  useRecommendationApplications,
+  useMarkApplied,
+  useUnmarkApplied,
+  type RecommendationApplication,
+} from '@/lib/queries/use-recommendation-applications'
 import { Topbar } from '@/components/layout/topbar'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
+
+// ── Formatters ────────────────────────────────────────────────────────────────
 
 function fmtUsd(v: number): string {
   if (v >= 100) return `$${Math.round(v)}`
   if (v >= 1) return `$${v.toFixed(2)}`
   return `$${v.toFixed(5)}`
 }
+
+function relativeDate(isoStr: string): string {
+  const days = Math.floor((Date.now() - Date.parse(isoStr)) / (1000 * 60 * 60 * 24))
+  if (days === 0) return 'today'
+  if (days === 1) return '1 day ago'
+  return `${days} days ago`
+}
+
+// ── Confidence helpers ────────────────────────────────────────────────────────
 
 function getConfidence(r: ModelRecommendation): 'high' | 'medium' | 'low' {
   if (r.estimatedMonthlySavingsUsd >= 40 && r.sampleCount >= 100) return 'high'
@@ -35,6 +52,8 @@ function ConfidenceBar({ level }: { level: 'high' | 'medium' | 'low' }) {
   )
 }
 
+// ── Dismiss helpers ───────────────────────────────────────────────────────────
+
 function dismissKey(r: ModelRecommendation): string {
   return `${r.currentProvider}/${r.currentModel}`
 }
@@ -52,9 +71,42 @@ function loadDismissed(): Set<string> {
   }
 }
 
+// ── Application key helper ────────────────────────────────────────────────────
+
+function appliedKey(r: ModelRecommendation): string {
+  return `${r.currentProvider}/${r.currentModel}/${r.suggestedProvider}/${r.suggestedModel}`
+}
+
+function buildAppliedMap(applications: RecommendationApplication[]): Map<string, RecommendationApplication> {
+  const map = new Map<string, RecommendationApplication>()
+  for (const app of applications) {
+    const key = `${app.provider}/${app.model}/${app.suggestedProvider}/${app.suggestedModel}`
+    // Keep the most recent one if duplicates exist
+    if (!map.has(key) || Date.parse(app.appliedAt) > Date.parse(map.get(key)!.appliedAt)) {
+      map.set(key, app)
+    }
+  }
+  return map
+}
+
+// ── Window options ────────────────────────────────────────────────────────────
+
+const WINDOW_OPTIONS = [
+  { hours: 24 * 7,  label: '7d' },
+  { hours: 24 * 14, label: '14d' },
+  { hours: 24 * 30, label: '30d' },
+] as const
+
+// ── Page ──────────────────────────────────────────────────────────────────────
+
 export default function RecommendationsPage() {
-  const { data, isLoading, error } = useRecommendations({ hours: 24 * 7, minSavings: 5 })
-  // SSR/hydration 안전: 초기값은 빈 Set, mount 후 localStorage에서 복원
+  const [hours, setHours] = useState<number>(24 * 7)
+  const { data, isLoading, error } = useRecommendations({ hours, minSavings: 5 })
+  const { data: applications } = useRecommendationApplications()
+  const markApplied = useMarkApplied()
+  const unmarkApplied = useUnmarkApplied()
+
+  // SSR/hydration safe: initialize with empty Set, restore from localStorage after mount
   const [dismissed, setDismissed] = useState<Set<string>>(new Set())
   const [isLoaded, setIsLoaded] = useState(false)
   const [showHidden, setShowHidden] = useState(false)
@@ -64,31 +116,36 @@ export default function RecommendationsPage() {
 
   const all = data ?? []
   const visible = all.filter((r) => !dismissed.has(dismissKey(r)))
+  const appliedMap = buildAppliedMap(applications ?? [])
 
   const totalOpen = visible.reduce((s, r) => s + r.estimatedMonthlySavingsUsd, 0)
   const totalSpend = visible.reduce((s, r) => s + r.totalCostUsdLastNDays, 0)
-  const highConf   = visible.filter((r) => getConfidence(r) === 'high')
-  const medConf    = visible.filter((r) => getConfidence(r) === 'medium')
-  const lowConf    = visible.filter((r) => getConfidence(r) === 'low')
+  const highConf = visible.filter((r) => getConfidence(r) === 'high')
+  const medConf  = visible.filter((r) => getConfidence(r) === 'medium')
+  const lowConf  = visible.filter((r) => getConfidence(r) === 'low')
 
-  // 히어로 타일: 가장 높은 신뢰도 레벨부터 표시
+  // Hero tile: show highest available confidence level
   const bestConfLevel = highConf.length > 0 ? 'high' : medConf.length > 0 ? 'medium' : lowConf.length > 0 ? 'low' : null
   const bestConfCount = highConf.length > 0 ? highConf.length : medConf.length > 0 ? medConf.length : lowConf.length
-  const bestConfLabel: Record<string, string> = { high: '≥$40/mo + ≥100 samples', medium: '≥$10/mo + ≥30 samples', low: 'below medium threshold' }
+  const bestConfLabel: Record<string, string> = {
+    high:   '≥$40/mo + ≥100 samples',
+    medium: '≥$10/mo + ≥30 samples',
+    low:    'below medium threshold',
+  }
 
-  // mount 후 localStorage 복원 (SSR과 일치시키기 위해 lazy initializer 대신 useEffect 사용)
+  // Mount: restore dismissed set from localStorage
   useEffect(() => {
     setDismissed(loadDismissed())
     setIsLoaded(true)
   }, [])
 
-  // isLoaded 전엔 저장하지 않음 — 빈 Set으로 localStorage를 덮어쓰는 것 방지
+  // Persist dismissed to localStorage (only after initial restore to avoid wiping it)
   useEffect(() => {
     if (!isLoaded) return
     try {
       localStorage.setItem(DISMISS_STORAGE_KEY, JSON.stringify([...dismissed]))
     } catch {
-      // localStorage 사용 불가 환경(시크릿 모드 quota 초과 등)에서 조용히 무시
+      // Quota-exceeded or private mode — silently ignore
     }
   }, [dismissed, isLoaded])
 
@@ -104,14 +161,155 @@ export default function RecommendationsPage() {
     })
   }
 
+  const windowLabel = WINDOW_OPTIONS.find((o) => o.hours === hours)?.label ?? '7d'
+
+  // ── Row renderer — shared between visible and hidden sections ─────────────
+
+  function RecRow({ r, isHidden = false }: { r: ModelRecommendation; isHidden?: boolean }) {
+    const conf    = getConfidence(r)
+    const applied = appliedMap.get(appliedKey(r))
+
+    return (
+      <div
+        className="border-b border-border hover:bg-bg-elev transition-colors"
+        style={{
+          display: 'grid',
+          gridTemplateColumns: '1.7fr 170px 130px 150px 180px',
+          gap: 16,
+          alignItems: 'center',
+          padding: '14px 22px',
+        }}
+      >
+        {/* Title + from/to */}
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 mb-1 flex-wrap">
+            <span className={cn(
+              'font-mono text-[9px] px-[6px] py-[1px] rounded-[3px] border uppercase tracking-[0.04em]',
+              isHidden
+                ? 'border-border bg-bg text-text-faint'
+                : 'border-accent-border bg-accent-bg text-accent',
+            )}>
+              SWAP
+            </span>
+            <span className={cn('text-[13.5px] font-medium truncate', isHidden ? 'text-text-muted' : 'text-text')}>
+              {r.currentProvider} / {r.currentModel} → {r.suggestedProvider} / {r.suggestedModel}
+            </span>
+            {applied && (
+              <span className="flex items-center gap-1 font-mono text-[10px] text-good">
+                <CheckCircle2 className="h-3 w-3" />
+                Applied {relativeDate(applied.appliedAt)}
+              </span>
+            )}
+          </div>
+          <div className="font-mono text-[11.5px] text-text-muted flex items-center gap-2 flex-wrap">
+            <span className="text-text-faint line-through">{r.currentProvider} / {r.currentModel}</span>
+            <span className="text-text-faint">→</span>
+            <span className={cn(isHidden ? 'text-text-faint' : 'text-text')}>{r.suggestedProvider} / {r.suggestedModel}</span>
+          </div>
+          <p className="text-[12px] text-text-faint mt-1 leading-relaxed">{r.reason}</p>
+        </div>
+
+        {/* Savings */}
+        <div>
+          <div className="font-mono text-[10px] text-text-faint uppercase tracking-[0.03em] mb-[3px]">SAVE / MO</div>
+          <div className={cn('font-mono text-[18px] font-medium tracking-[-0.3px]', isHidden ? 'text-text-muted' : 'text-accent')}>
+            {fmtUsd(r.estimatedMonthlySavingsUsd)}
+          </div>
+          <div className="font-mono text-[10.5px] text-text-faint mt-0.5">
+            was {fmtUsd(r.totalCostUsdLastNDays)} /{windowLabel}
+          </div>
+        </div>
+
+        {/* Samples */}
+        <div>
+          <div className="font-mono text-[10px] text-text-faint uppercase tracking-[0.03em] mb-[3px]">SAMPLES</div>
+          <div className={cn('text-[12.5px]', isHidden ? 'text-text-muted' : 'text-text')}>{r.sampleCount.toLocaleString()}</div>
+          <div className="font-mono text-[10.5px] text-good mt-0.5">−cost latency</div>
+        </div>
+
+        {/* Confidence */}
+        <div>
+          <div className="font-mono text-[10px] text-text-faint uppercase tracking-[0.03em] mb-[5px]">CONFIDENCE</div>
+          <ConfidenceBar level={conf} />
+          <div className="font-mono text-[10.5px] text-text-faint mt-1">
+            ~{Math.round(r.avgPromptTokens)} prompt tk
+          </div>
+        </div>
+
+        {/* Actions */}
+        <div className="flex justify-end gap-1.5 flex-wrap">
+          <button
+            type="button"
+            onClick={() => setSimRec(r)}
+            className="font-mono text-[10.5px] text-text-muted px-[10px] py-[4px] border border-border rounded-[5px] hover:text-text transition-colors"
+          >
+            Simulate
+          </button>
+          {isHidden ? (
+            <button
+              type="button"
+              onClick={() => unhide(r)}
+              className="font-mono text-[10.5px] text-text-muted px-[10px] py-[4px] border border-border rounded-[5px] hover:text-text transition-colors"
+            >
+              Unhide
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => dismiss(r)}
+              className="font-mono text-[10.5px] text-text-muted px-[10px] py-[4px] border border-border rounded-[5px] hover:text-text transition-colors"
+            >
+              Hide
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => { setApplyRec(r); setCopiedModel(false) }}
+            className="font-mono text-[10.5px] text-bg px-[10px] py-[4px] rounded-[5px] bg-text font-medium hover:opacity-90 transition-opacity"
+          >
+            Apply →
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  // Apply dialog helpers
+  const applyRec_applied = applyRec ? appliedMap.get(appliedKey(applyRec)) : undefined
+
+  function handleMarkApplied() {
+    if (!applyRec) return
+    markApplied.mutate({
+      provider: applyRec.currentProvider,
+      model: applyRec.currentModel,
+      suggestedProvider: applyRec.suggestedProvider,
+      suggestedModel: applyRec.suggestedModel,
+    })
+  }
+
   return (
     <div className="-m-7 flex flex-col h-screen overflow-hidden bg-bg">
       <Topbar
         crumbs={[{ label: 'Workspace', href: '/dashboard' }, { label: 'Savings' }]}
         right={
-          <span className="font-mono text-[11px] text-text-muted">
-            Analysis window · <span className="text-text">7d</span>
-          </span>
+          <div className="flex items-center gap-1">
+            {WINDOW_OPTIONS.map((opt) => (
+              <button
+                key={opt.hours}
+                type="button"
+                onClick={() => setHours(opt.hours)}
+                className={cn(
+                  'font-mono text-[11px] px-[8px] py-[3px] rounded-[4px] transition-colors',
+                  hours === opt.hours
+                    ? 'bg-bg-elev text-text border border-border-strong'
+                    : 'text-text-faint hover:text-text',
+                )}
+              >
+                {opt.label}
+              </button>
+            ))}
+            <span className="font-mono text-[11px] text-text-muted ml-1.5">Analysis window</span>
+          </div>
         }
       />
 
@@ -129,11 +327,16 @@ export default function RecommendationsPage() {
             <span className="font-mono text-[11px] text-text-muted">/ mo</span>
           </div>
           <div className="font-mono text-[11px] text-text-muted mb-3">
-            across <span className="text-text">{visible.length}</span> recommendations ·{' '}
-            <span className={cn(bestConfLevel === 'high' ? 'text-good' : bestConfLevel === 'medium' ? 'text-text' : 'text-text-faint')}>
-              {bestConfCount}
-            </span>{' '}
-            <span className="text-text-faint">{bestConfLevel ?? 'no'}-confidence</span>
+            across <span className="text-text">{visible.length}</span> recommendations
+            {bestConfLevel !== null && (
+              <>
+                {' '}·{' '}
+                <span className={cn(bestConfLevel === 'high' ? 'text-good' : bestConfLevel === 'medium' ? 'text-text' : 'text-text-faint')}>
+                  {bestConfCount}
+                </span>{' '}
+                <span className="text-text-faint">{bestConfLevel}-confidence</span>
+              </>
+            )}
           </div>
           {highConf.length > 0 && (
             <div className="font-mono text-[11px] text-good">
@@ -143,9 +346,24 @@ export default function RecommendationsPage() {
         </div>
 
         {[
-          { label: 'Spend · 7d',         value: totalSpend > 0 ? fmtUsd(totalSpend) : '—', delta: 'across analyzed models', good: false },
-          { label: 'Opportunities',       value: String(visible.length),                     delta: 'model substitutions',    good: false },
-          { label: `${bestConfLevel ?? 'No'} confidence`, value: String(bestConfCount), delta: bestConfLevel ? bestConfLabel[bestConfLevel] : 'no recommendations yet', good: bestConfLevel === 'high' },
+          {
+            label: `Spend · ${windowLabel}`,
+            value: totalSpend > 0 ? fmtUsd(totalSpend) : '—',
+            delta: 'across analyzed models',
+            good: false,
+          },
+          {
+            label: 'Opportunities',
+            value: String(visible.length),
+            delta: 'model substitutions',
+            good: false,
+          },
+          {
+            label: bestConfLevel ? `${bestConfLevel.charAt(0).toUpperCase() + bestConfLevel.slice(1)} confidence` : 'Confidence',
+            value: bestConfLevel !== null ? String(bestConfCount) : '—',
+            delta: bestConfLevel ? bestConfLabel[bestConfLevel] : 'no recommendations yet',
+            good: bestConfLevel === 'high',
+          },
         ].map((s, i) => (
           <div key={i} className={cn('px-[22px] py-[20px]', i < 2 && 'border-r border-border')}>
             <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-2">{s.label}</div>
@@ -157,7 +375,7 @@ export default function RecommendationsPage() {
         ))}
       </div>
 
-      {/* Scope row — only model-swap recs exist today */}
+      {/* Scope / filter row */}
       <div className="flex items-center gap-2 px-[22px] py-[10px] border-b border-border shrink-0">
         <span className="font-mono text-[10px] text-text-faint uppercase tracking-[0.05em]">Type</span>
         <span className="font-mono text-[11px] text-text px-[9px] py-[3px] border border-border-strong bg-bg-elev rounded-[4px]">
@@ -171,7 +389,7 @@ export default function RecommendationsPage() {
               'font-mono text-[11px] px-[9px] py-[3px] border rounded-[4px] transition-colors',
               showHidden
                 ? 'border-border-strong bg-bg-elev text-text'
-                : 'border-border text-text-faint hover:text-text hover:border-border-strong'
+                : 'border-border text-text-faint hover:text-text hover:border-border-strong',
             )}
           >
             {showHidden ? 'Hide hidden' : `Show hidden · ${dismissed.size}`}
@@ -187,7 +405,9 @@ export default function RecommendationsPage() {
       <div className="flex-1 overflow-auto">
         {isLoading ? (
           <div className="p-6 space-y-3">
-            {[1, 2, 3].map((i) => <div key={i} className="h-20 bg-bg-elev rounded animate-pulse" />)}
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="h-20 bg-bg-elev rounded animate-pulse" />
+            ))}
           </div>
         ) : error ? (
           <div className="m-6 p-4 rounded border border-border bg-bg-elev text-[13px] text-bad">
@@ -195,15 +415,34 @@ export default function RecommendationsPage() {
           </div>
         ) : (
           <>
-            {/* Empty state — only visible items are 0 */}
+            {/* Empty state — context-aware */}
             {visible.length === 0 && (
-              <div className="flex flex-col items-center justify-center py-20 gap-3 text-text-muted">
-                <p className="text-[13px]">No cost-saving opportunities right now.</p>
-                <p className="font-mono text-[12px]">Need more traffic (min 30 requests per model) or already optimal.</p>
-              </div>
+              dismissed.size > 0 ? (
+                <div className="flex flex-col items-center justify-center py-20 gap-3 text-text-muted">
+                  <p className="text-[13px]">All recommendations are hidden.</p>
+                  <p className="font-mono text-[12px]">
+                    Use{' '}
+                    <button
+                      type="button"
+                      className="text-text underline underline-offset-2 hover:no-underline"
+                      onClick={() => setShowHidden(true)}
+                    >
+                      Show hidden
+                    </button>{' '}
+                    to review them.
+                  </p>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center py-20 gap-3 text-text-muted">
+                  <p className="text-[13px]">No cost-saving opportunities right now.</p>
+                  <p className="font-mono text-[12px]">
+                    Need more traffic (min 30 requests per model) or already optimal.
+                  </p>
+                </div>
+              )
             )}
 
-            {/* Group header */}
+            {/* Open recommendations */}
             {visible.length > 0 && (
               <div className="flex items-center gap-2.5 px-[22px] py-[10px] bg-bg-muted border-b border-border border-t border-t-border">
                 <span className="font-mono text-[10px] uppercase tracking-[0.06em] text-accent">
@@ -211,91 +450,11 @@ export default function RecommendationsPage() {
                 </span>
               </div>
             )}
+            {visible.map((r, i) => (
+              <RecRow key={`${r.currentProvider}-${r.currentModel}-${i}`} r={r} />
+            ))}
 
-            {visible.map((r, i) => {
-              const conf = getConfidence(r)
-              return (
-                <div
-                  key={`${r.currentProvider}-${r.currentModel}-${i}`}
-                  className="border-b border-border hover:bg-bg-elev transition-colors"
-                  style={{ display: 'grid', gridTemplateColumns: '1.7fr 170px 130px 150px 180px', gap: 16, alignItems: 'center', padding: '14px 22px' }}
-                >
-                  {/* Title + from/to */}
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span
-                        className="font-mono text-[9px] px-[6px] py-[1px] rounded-[3px] border border-accent-border bg-accent-bg text-accent uppercase tracking-[0.04em]"
-                      >
-                        SWAP
-                      </span>
-                      <span className="text-[13.5px] text-text font-medium truncate">
-                        {r.currentProvider} / {r.currentModel} → {r.suggestedProvider} / {r.suggestedModel}
-                      </span>
-                    </div>
-                    <div className="font-mono text-[11.5px] text-text-muted flex items-center gap-2 flex-wrap">
-                      <span className="text-text-faint line-through">{r.currentProvider} / {r.currentModel}</span>
-                      <span className="text-text-faint">→</span>
-                      <span className="text-text">{r.suggestedProvider} / {r.suggestedModel}</span>
-                    </div>
-                    <p className="text-[12px] text-text-faint mt-1 leading-relaxed">{r.reason}</p>
-                  </div>
-
-                  {/* Savings */}
-                  <div>
-                    <div className="font-mono text-[10px] text-text-faint uppercase tracking-[0.03em] mb-[3px]">SAVE / MO</div>
-                    <div className="font-mono text-[18px] font-medium tracking-[-0.3px] text-accent">
-                      {fmtUsd(r.estimatedMonthlySavingsUsd)}
-                    </div>
-                    <div className="font-mono text-[10.5px] text-text-faint mt-0.5">
-                      was {fmtUsd(r.totalCostUsdLastNDays)} /wk
-                    </div>
-                  </div>
-
-                  {/* Quality + latency */}
-                  <div>
-                    <div className="font-mono text-[10px] text-text-faint uppercase tracking-[0.03em] mb-[3px]">SAMPLES</div>
-                    <div className="text-[12.5px] text-text">{r.sampleCount.toLocaleString()}</div>
-                    <div className="font-mono text-[10.5px] text-good mt-0.5">−cost latency</div>
-                  </div>
-
-                  {/* Confidence */}
-                  <div>
-                    <div className="font-mono text-[10px] text-text-faint uppercase tracking-[0.03em] mb-[5px]">CONFIDENCE</div>
-                    <ConfidenceBar level={conf} />
-                    <div className="font-mono text-[10.5px] text-text-faint mt-1">
-                      ~{Math.round(r.avgPromptTokens)} prompt tk
-                    </div>
-                  </div>
-
-                  {/* Actions */}
-                  <div className="flex justify-end gap-1.5 flex-wrap">
-                    <button
-                      type="button"
-                      onClick={() => setSimRec(r)}
-                      className="font-mono text-[10.5px] text-text-muted px-[10px] py-[4px] border border-border rounded-[5px] hover:text-text transition-colors"
-                    >
-                      Simulate
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => dismiss(r)}
-                      className="font-mono text-[10.5px] text-text-muted px-[10px] py-[4px] border border-border rounded-[5px] hover:text-text transition-colors"
-                    >
-                      Hide
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => { setApplyRec(r); setCopiedModel(false) }}
-                      className="font-mono text-[10.5px] text-bg px-[10px] py-[4px] rounded-[5px] bg-text font-medium hover:opacity-90 transition-opacity"
-                    >
-                      Apply →
-                    </button>
-                  </div>
-                </div>
-              )
-            })}
-
-            {/* Hidden items — shown when showHidden toggle is on */}
+            {/* Hidden recommendations */}
             {showHidden && dismissed.size > 0 && (
               <>
                 <div className="flex items-center gap-2.5 px-[22px] py-[10px] bg-bg-muted border-b border-border border-t border-t-border">
@@ -303,78 +462,22 @@ export default function RecommendationsPage() {
                     Hidden · {dismissed.size}
                   </span>
                 </div>
-                {all.filter((r) => dismissed.has(dismissKey(r))).map((r) => {
-                  const conf = getConfidence(r)
-                  return (
-                    <div
+                {all
+                  .filter((r) => dismissed.has(dismissKey(r)))
+                  .map((r) => (
+                    <RecRow
                       key={`${r.currentProvider}-${r.currentModel}-hidden`}
-                      className="border-b border-border hover:bg-bg-elev transition-colors"
-                      style={{ display: 'grid', gridTemplateColumns: '1.7fr 170px 130px 150px 180px', gap: 16, alignItems: 'center', padding: '14px 22px' }}
-                    >
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="font-mono text-[9px] px-[6px] py-[1px] rounded-[3px] border border-border bg-bg text-text-faint uppercase tracking-[0.04em]">
-                            SWAP
-                          </span>
-                          <span className="text-[13.5px] text-text-muted font-medium truncate">
-                            {r.currentProvider} / {r.currentModel} → {r.suggestedProvider} / {r.suggestedModel}
-                          </span>
-                        </div>
-                        <div className="font-mono text-[11.5px] text-text-muted flex items-center gap-2 flex-wrap">
-                          <span className="text-text-faint line-through">{r.currentProvider} / {r.currentModel}</span>
-                          <span className="text-text-faint">→</span>
-                          <span className="text-text-faint">{r.suggestedProvider} / {r.suggestedModel}</span>
-                        </div>
-                        <p className="text-[12px] text-text-faint mt-1 leading-relaxed">{r.reason}</p>
-                      </div>
-                      <div>
-                        <div className="font-mono text-[10px] text-text-faint uppercase tracking-[0.03em] mb-[3px]">SAVE / MO</div>
-                        <div className="font-mono text-[18px] font-medium tracking-[-0.3px] text-text-muted">{fmtUsd(r.estimatedMonthlySavingsUsd)}</div>
-                        <div className="font-mono text-[10.5px] text-text-faint mt-0.5">was {fmtUsd(r.totalCostUsdLastNDays)} /wk</div>
-                      </div>
-                      <div>
-                        <div className="font-mono text-[10px] text-text-faint uppercase tracking-[0.03em] mb-[3px]">SAMPLES</div>
-                        <div className="text-[12.5px] text-text-muted">{r.sampleCount.toLocaleString()}</div>
-                        <div className="font-mono text-[10.5px] text-text-faint mt-0.5">−cost latency</div>
-                      </div>
-                      <div>
-                        <div className="font-mono text-[10px] text-text-faint uppercase tracking-[0.03em] mb-[5px]">CONFIDENCE</div>
-                        <ConfidenceBar level={conf} />
-                        <div className="font-mono text-[10.5px] text-text-faint mt-1">~{Math.round(r.avgPromptTokens)} prompt tk</div>
-                      </div>
-                      <div className="flex justify-end gap-1.5 flex-wrap">
-                        <button
-                          type="button"
-                          onClick={() => setSimRec(r)}
-                          className="font-mono text-[10.5px] text-text-muted px-[10px] py-[4px] border border-border rounded-[5px] hover:text-text transition-colors"
-                        >
-                          Simulate
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => unhide(r)}
-                          className="font-mono text-[10.5px] text-text-muted px-[10px] py-[4px] border border-border rounded-[5px] hover:text-text transition-colors"
-                        >
-                          Unhide
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => { setApplyRec(r); setCopiedModel(false) }}
-                          className="font-mono text-[10.5px] text-bg px-[10px] py-[4px] rounded-[5px] bg-text font-medium hover:opacity-90 transition-opacity"
-                        >
-                          Apply →
-                        </button>
-                      </div>
-                    </div>
-                  )
-                })}
+                      r={r}
+                      isHidden
+                    />
+                  ))}
               </>
             )}
           </>
         )}
       </div>
 
-      {/* Simulate dialog — shows how the savings estimate is computed */}
+      {/* Simulate dialog */}
       <Dialog open={simRec !== null} onOpenChange={(open) => !open && setSimRec(null)}>
         <DialogContent>
           <DialogHeader>
@@ -390,7 +493,9 @@ export default function RecommendationsPage() {
               <div className="rounded-lg border border-border bg-bg-elev p-4 space-y-3">
                 <div className="grid grid-cols-2 gap-3 font-mono text-[11.5px]">
                   <div>
-                    <div className="text-text-faint uppercase text-[10px] tracking-[0.05em] mb-1">Last 7 days</div>
+                    <div className="text-text-faint uppercase text-[10px] tracking-[0.05em] mb-1">
+                      Last {windowLabel}
+                    </div>
                     <div className="text-text font-medium">{fmtUsd(simRec.totalCostUsdLastNDays)}</div>
                     <div className="text-text-muted text-[10.5px]">{simRec.sampleCount.toLocaleString()} requests</div>
                   </div>
@@ -401,7 +506,7 @@ export default function RecommendationsPage() {
                   </div>
                 </div>
                 <div className="border-t border-border pt-3 font-mono text-[10.5px] text-text-faint leading-relaxed">
-                  Projection = current cost × 30/7 × (1 − new_model_price_per_token / old_model_price_per_token).
+                  Projection = current cost × 30/{windowLabel.replace('d', '')} × (1 − new_model_price / old_model_price).
                   Assumes identical token counts; real savings shift with traffic.
                 </div>
               </div>
@@ -414,7 +519,7 @@ export default function RecommendationsPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Apply dialog — manual instructions, no auto-rewrite */}
+      {/* Apply dialog */}
       <Dialog open={applyRec !== null} onOpenChange={(open) => !open && setApplyRec(null)}>
         <DialogContent>
           <DialogHeader>
@@ -459,9 +564,38 @@ export default function RecommendationsPage() {
                 <li>Deploy to a canary or staging first — verify output quality matches</li>
                 <li>Watch the Requests page for 24h to confirm no regressions</li>
               </ol>
-              <p className="text-[11.5px] text-text-faint">
-                Once rolled out, hide this recommendation to clear it from the list.
-              </p>
+
+              {/* Mark as applied */}
+              <div className="border-t border-border pt-4">
+                {applyRec_applied ? (
+                  <div className="flex items-center justify-between p-3 rounded-lg border border-good/30 bg-good/5">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 className="h-4 w-4 text-good" />
+                      <span className="text-[12px] text-good font-medium">
+                        Applied {relativeDate(applyRec_applied.appliedAt)}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => unmarkApplied.mutate(applyRec_applied.id)}
+                      disabled={unmarkApplied.isPending}
+                      className="font-mono text-[11px] text-text-muted hover:text-text transition-colors disabled:opacity-50"
+                    >
+                      Undo
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleMarkApplied}
+                    disabled={markApplied.isPending}
+                    className="w-full font-mono text-[12px] text-text-muted px-4 py-2.5 border border-border rounded-lg hover:bg-bg-elev hover:text-text transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                  >
+                    <CheckCircle2 className="h-3.5 w-3.5" />
+                    {markApplied.isPending ? 'Saving…' : 'Mark as applied'}
+                  </button>
+                )}
+              </div>
             </div>
           )}
         </DialogContent>

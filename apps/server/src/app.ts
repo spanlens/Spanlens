@@ -23,6 +23,7 @@ import { anomaliesRouter }     from './api/anomalies.js'
 import { securityRouter }      from './api/security.js'
 import { promptsRouter }       from './api/prompts.js'
 import { recommendationsRouter } from './api/recommendations.js'
+import { recommendationApplicationsRouter } from './api/recommendation-applications.js'
 import { auditLogsRouter }     from './api/auditLogs.js'
 import { membersRouter }       from './api/members.js'
 import { orgInvitationsRouter, invitationsRouter, meInvitationsRouter } from './api/invitations.js'
@@ -92,6 +93,7 @@ app.route('/api/v1/anomalies',      anomaliesRouter)
 app.route('/api/v1/security',       securityRouter)
 app.route('/api/v1/prompts',        promptsRouter)
 app.route('/api/v1/recommendations', recommendationsRouter)
+app.route('/api/v1/recommendation-applications', recommendationApplicationsRouter)
 app.route('/api/v1/audit-logs',     auditLogsRouter)
 app.route('/api/v1/organizations/:orgId/members', membersRouter)
 app.route('/api/v1/organizations/:orgId/invitations', orgInvitationsRouter)
