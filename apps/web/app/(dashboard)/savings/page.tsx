@@ -96,6 +96,14 @@ export default function RecommendationsPage() {
     setDismissed((prev) => new Set([...prev, dismissKey(r)]))
   }
 
+  function unhide(r: ModelRecommendation) {
+    setDismissed((prev) => {
+      const next = new Set(prev)
+      next.delete(dismissKey(r))
+      return next
+    })
+  }
+
   return (
     <div className="-m-7 flex flex-col h-screen overflow-hidden bg-bg">
       <Topbar
@@ -295,20 +303,71 @@ export default function RecommendationsPage() {
                     Hidden · {dismissed.size}
                   </span>
                 </div>
-                {all.filter((r) => dismissed.has(dismissKey(r))).map((r, i, arr) => (
-                  <div
-                    key={`${r.currentProvider}-${r.currentModel}-hidden`}
-                    className={cn('flex items-center gap-5 px-[22px] py-[12px] opacity-50', i < arr.length - 1 && 'border-b border-border')}
-                  >
-                    <div className="flex-1 min-w-0 font-mono text-[12px] text-text-faint">
-                      {r.currentProvider} / {r.currentModel}
-                      <span className="mx-2 text-text-faint">→</span>
-                      {r.suggestedProvider} / {r.suggestedModel}
+                {all.filter((r) => dismissed.has(dismissKey(r))).map((r, i) => {
+                  const conf = getConfidence(r)
+                  return (
+                    <div
+                      key={`${r.currentProvider}-${r.currentModel}-hidden`}
+                      className="border-b border-border hover:bg-bg-elev transition-colors"
+                      style={{ display: 'grid', gridTemplateColumns: '1.7fr 170px 130px 150px 180px', gap: 16, alignItems: 'center', padding: '14px 22px' }}
+                    >
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="font-mono text-[9px] px-[6px] py-[1px] rounded-[3px] border border-border bg-bg text-text-faint uppercase tracking-[0.04em]">
+                            SWAP
+                          </span>
+                          <span className="text-[13.5px] text-text-muted font-medium truncate">
+                            {r.currentProvider} / {r.currentModel} → {r.suggestedProvider} / {r.suggestedModel}
+                          </span>
+                        </div>
+                        <div className="font-mono text-[11.5px] text-text-muted flex items-center gap-2 flex-wrap">
+                          <span className="text-text-faint line-through">{r.currentProvider} / {r.currentModel}</span>
+                          <span className="text-text-faint">→</span>
+                          <span className="text-text-faint">{r.suggestedProvider} / {r.suggestedModel}</span>
+                        </div>
+                        <p className="text-[12px] text-text-faint mt-1 leading-relaxed">{r.reason}</p>
+                      </div>
+                      <div>
+                        <div className="font-mono text-[10px] text-text-faint uppercase tracking-[0.03em] mb-[3px]">SAVE / MO</div>
+                        <div className="font-mono text-[18px] font-medium tracking-[-0.3px] text-text-muted">{fmtUsd(r.estimatedMonthlySavingsUsd)}</div>
+                        <div className="font-mono text-[10.5px] text-text-faint mt-0.5">was {fmtUsd(r.totalCostUsdLastNDays)} /wk</div>
+                      </div>
+                      <div>
+                        <div className="font-mono text-[10px] text-text-faint uppercase tracking-[0.03em] mb-[3px]">SAMPLES</div>
+                        <div className="text-[12.5px] text-text-muted">{r.sampleCount.toLocaleString()}</div>
+                        <div className="font-mono text-[10.5px] text-text-faint mt-0.5">−cost latency</div>
+                      </div>
+                      <div>
+                        <div className="font-mono text-[10px] text-text-faint uppercase tracking-[0.03em] mb-[5px]">CONFIDENCE</div>
+                        <ConfidenceBar level={conf} />
+                        <div className="font-mono text-[10.5px] text-text-faint mt-1">~{Math.round(r.avgPromptTokens)} prompt tk</div>
+                      </div>
+                      <div className="flex justify-end gap-1.5 flex-wrap">
+                        <button
+                          type="button"
+                          onClick={() => setSimRec(r)}
+                          className="font-mono text-[10.5px] text-text-muted px-[10px] py-[4px] border border-border rounded-[5px] hover:text-text transition-colors"
+                        >
+                          Simulate
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => unhide(r)}
+                          className="font-mono text-[10.5px] text-text-muted px-[10px] py-[4px] border border-border rounded-[5px] hover:text-text transition-colors"
+                        >
+                          Unhide
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { setApplyRec(r); setCopiedModel(false) }}
+                          className="font-mono text-[10.5px] text-bg px-[10px] py-[4px] rounded-[5px] bg-text font-medium hover:opacity-90 transition-opacity"
+                        >
+                          Apply →
+                        </button>
+                      </div>
                     </div>
-                    <div className="font-mono text-[11px] text-accent">{fmtUsd(r.estimatedMonthlySavingsUsd)} / mo</div>
-                    <span className="font-mono text-[10px] text-text-faint px-[7px] py-[2px] border border-border rounded-[3px]">hidden</span>
-                  </div>
-                ))}
+                  )
+                })}
               </>
             )}
           </>
