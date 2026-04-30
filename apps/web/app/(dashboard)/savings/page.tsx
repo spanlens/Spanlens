@@ -175,19 +175,24 @@ export default function RecommendationsPage() {
           <div className="m-6 p-4 rounded border border-border bg-bg-elev text-[13px] text-bad">
             Failed to load recommendations.
           </div>
-        ) : visible.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full gap-3 text-text-muted">
-            <p className="text-[13px]">No cost-saving opportunities right now.</p>
-            <p className="font-mono text-[12px]">Need more traffic (min 30 requests per model) or already optimal.</p>
-          </div>
         ) : (
           <>
+            {/* Empty state — only visible items are 0 */}
+            {visible.length === 0 && (
+              <div className="flex flex-col items-center justify-center py-20 gap-3 text-text-muted">
+                <p className="text-[13px]">No cost-saving opportunities right now.</p>
+                <p className="font-mono text-[12px]">Need more traffic (min 30 requests per model) or already optimal.</p>
+              </div>
+            )}
+
             {/* Group header */}
-            <div className="flex items-center gap-2.5 px-[22px] py-[10px] bg-bg-muted border-b border-border border-t border-t-border">
-              <span className="font-mono text-[10px] uppercase tracking-[0.06em] text-accent">
-                Open · {visible.length} · {fmtUsd(totalOpen)} / mo
-              </span>
-            </div>
+            {visible.length > 0 && (
+              <div className="flex items-center gap-2.5 px-[22px] py-[10px] bg-bg-muted border-b border-border border-t border-t-border">
+                <span className="font-mono text-[10px] uppercase tracking-[0.06em] text-accent">
+                  Open · {visible.length} · {fmtUsd(totalOpen)} / mo
+                </span>
+              </div>
+            )}
 
             {visible.map((r, i) => {
               const conf = getConfidence(r)
