@@ -49,7 +49,7 @@ const NAV_GROUPS: NavGroup[] = [
       { label: 'Traces',          href: '/traces' },
       { label: 'Anomalies',       href: '/anomalies' },
       { label: 'Security',        href: '/security' },
-      { label: 'Savings',         href: '/recommendations' },
+      { label: 'Savings',         href: '/savings' },
       { label: 'Prompts',         href: '/prompts' },
       { label: 'Alerts',          href: '/alerts' },
       { label: 'Projects & Keys', href: '/projects' },
