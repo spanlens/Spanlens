@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Copy, Check } from 'lucide-react'
 import { useRecommendations, type ModelRecommendation } from '@/lib/queries/use-recommendations'
 import { Topbar } from '@/components/layout/topbar'
@@ -13,7 +13,7 @@ function fmtUsd(v: number): string {
 }
 
 function getConfidence(r: ModelRecommendation): 'high' | 'medium' | 'low' {
-  if (r.estimatedMonthlySavingsUsd >= 50 && r.sampleCount >= 100) return 'high'
+  if (r.estimatedMonthlySavingsUsd >= 40 && r.sampleCount >= 100) return 'high'
   if (r.estimatedMonthlySavingsUsd >= 10 && r.sampleCount >= 30) return 'medium'
   return 'low'
 }
@@ -39,9 +39,22 @@ function dismissKey(r: ModelRecommendation): string {
   return `${r.currentProvider}/${r.currentModel}`
 }
 
+const DISMISS_STORAGE_KEY = 'spanlens:savings:dismissed'
+
+function loadDismissed(): Set<string> {
+  try {
+    const raw = localStorage.getItem(DISMISS_STORAGE_KEY)
+    if (!raw) return new Set()
+    const arr: unknown = JSON.parse(raw)
+    return new Set(Array.isArray(arr) ? (arr as string[]) : [])
+  } catch {
+    return new Set()
+  }
+}
+
 export default function RecommendationsPage() {
   const { data, isLoading, error } = useRecommendations({ hours: 24 * 7, minSavings: 5 })
-  const [dismissed, setDismissed] = useState<Set<string>>(new Set())
+  const [dismissed, setDismissed] = useState<Set<string>>(() => loadDismissed())
   const [applyRec, setApplyRec] = useState<ModelRecommendation | null>(null)
   const [simRec, setSimRec] = useState<ModelRecommendation | null>(null)
   const [copiedModel, setCopiedModel] = useState(false)
@@ -52,6 +65,14 @@ export default function RecommendationsPage() {
   const totalOpen = visible.reduce((s, r) => s + r.estimatedMonthlySavingsUsd, 0)
   const totalSpend = visible.reduce((s, r) => s + r.totalCostUsdLastNDays, 0)
   const highConf = visible.filter((r) => getConfidence(r) === 'high')
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(DISMISS_STORAGE_KEY, JSON.stringify([...dismissed]))
+    } catch {
+      // localStorage 사용 불가 환경(시크릿 모드 quota 초과 등)에서 조용히 무시
+    }
+  }, [dismissed])
 
   function dismiss(r: ModelRecommendation) {
     setDismissed((prev) => new Set([...prev, dismissKey(r)]))
