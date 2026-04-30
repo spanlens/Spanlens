@@ -11,6 +11,10 @@ import { matchSubstitute } from './model-recommend-rules.js'
  *
  * Substitutes (curated) + matching logic live in ./model-recommend-rules.ts
  * so unit tests can exercise them without pulling in the Supabase client.
+ *
+ * Aggregation is done in SQL via `get_model_aggregates()` RPC to avoid
+ * Supabase's 1000-row default select limit — which would silently truncate
+ * data for high-traffic orgs and produce wrong recommendations.
  */
 
 export interface ModelRecommendation {
@@ -26,18 +30,24 @@ export interface ModelRecommendation {
   reason: string
 }
 
-interface RequestRow {
+/** Shape returned by the get_model_aggregates() Postgres function */
+interface AggregateRow {
   provider: string
   model: string
-  cost_usd: number | null
-  prompt_tokens: number | null
-  completion_tokens: number | null
+  sample_count: number
+  avg_prompt_tokens: number
+  avg_completion_tokens: number
+  total_cost_usd: number
 }
 
 export interface RecommendOptions {
   /** Analysis window in hours. Default 7 days. */
   hours?: number
-  /** Minimum samples per (provider,model) to consider. Default 50. */
+  /**
+   * Minimum samples per (provider,model) to consider. Default 30.
+   * Aligns with the "medium" confidence threshold shown in the UI
+   * (≥$10/mo + ≥30 samples → medium; ≥$50/mo + ≥100 samples → high).
+   */
   minSamples?: number
   /** Only recommend if projected monthly savings ≥ this USD. Default $5. */
   minSavingsUsd?: number
@@ -48,47 +58,45 @@ export async function recommendModelSwaps(
   opts: RecommendOptions = {},
 ): Promise<ModelRecommendation[]> {
   const hours = opts.hours ?? 24 * 7
-  const minSamples = opts.minSamples ?? 50
+  const minSamples = opts.minSamples ?? 30   // was 50 — aligned to medium-confidence threshold
   const minSavingsUsd = opts.minSavingsUsd ?? 5
   const windowStart = new Date(Date.now() - hours * 3_600_000).toISOString()
 
-  const { data, error } = await supabaseAdmin
-    .from('requests')
-    .select('provider, model, cost_usd, prompt_tokens, completion_tokens')
-    .eq('organization_id', organizationId)
-    .gte('created_at', windowStart)
-    .in('status_code', [200, 201, 202, 204])
-    .not('model', 'is', null)
+  // SQL GROUP BY via RPC — avoids the Supabase 1000-row select limit and
+  // is orders of magnitude faster than fetching raw rows into JS memory.
+  const { data, error } = await supabaseAdmin.rpc('get_model_aggregates', {
+    p_organization_id: organizationId,
+    p_window_start: windowStart,
+    p_status_codes: [200, 201, 202, 204],
+  })
 
   if (error || !data) return []
 
-  const buckets = new Map<string, RequestRow[]>()
-  for (const r of data as RequestRow[]) {
-    const key = `${r.provider}:${r.model}`
-    const list = buckets.get(key) ?? []
-    list.push(r)
-    buckets.set(key, list)
-  }
-
   const recommendations: ModelRecommendation[] = []
 
-  for (const [key, rows] of buckets) {
-    if (rows.length < minSamples) continue
-    const sub = matchSubstitute(key) // handles dated variants via longest-prefix
+  for (const row of data as AggregateRow[]) {
+    const { provider, model, sample_count, avg_prompt_tokens, avg_completion_tokens, total_cost_usd } = row
+
+    if (sample_count < minSamples) continue
+
+    const key = `${provider}:${model}`
+    const sub = matchSubstitute(key)
     if (!sub) continue
 
-    const [provider = '', model = ''] = key.split(':')
-    const avgPrompt = avg(rows.map((r) => r.prompt_tokens))
-    const avgCompletion = avg(rows.map((r) => r.completion_tokens))
-    const totalCost = rows.reduce((s, r) => s + (r.cost_usd ?? 0), 0)
+    // Bug fix: skip self-recommendation.
+    // e.g. `openai:gpt-4o-mini-2024-07-18` matches the `openai:gpt-4o` rule
+    // via longest-prefix and would suggest switching TO gpt-4o-mini — but the
+    // org is ALREADY on gpt-4o-mini. The dated variant is the same family.
+    const suggestedKey = `${sub.suggestedProvider}:${sub.suggestedModel}`
+    if (key === suggestedKey || key.startsWith(suggestedKey + '-')) continue
 
-    // Fit check
-    if (avgPrompt > sub.maxAvgPromptTokens) continue
-    if (avgCompletion > sub.maxAvgCompletionTokens) continue
+    // Token envelope fit check
+    if (avg_prompt_tokens > sub.maxAvgPromptTokens) continue
+    if (avg_completion_tokens > sub.maxAvgCompletionTokens) continue
 
-    // Extrapolate current window cost to a month, compute projected savings
+    // Extrapolate window cost → monthly, then compute projected savings
     const monthFactor = (24 * 30) / hours
-    const monthlyCurrentCost = totalCost * monthFactor
+    const monthlyCurrentCost = total_cost_usd * monthFactor
     const monthlyProjectedCost = monthlyCurrentCost * sub.costRatio
     const monthlySavings = monthlyCurrentCost - monthlyProjectedCost
 
@@ -97,10 +105,10 @@ export async function recommendModelSwaps(
     recommendations.push({
       currentProvider: provider,
       currentModel: model,
-      sampleCount: rows.length,
-      avgPromptTokens: avgPrompt,
-      avgCompletionTokens: avgCompletion,
-      totalCostUsdLastNDays: totalCost,
+      sampleCount: sample_count,
+      avgPromptTokens: avg_prompt_tokens,
+      avgCompletionTokens: avg_completion_tokens,
+      totalCostUsdLastNDays: total_cost_usd,
       suggestedProvider: sub.suggestedProvider,
       suggestedModel: sub.suggestedModel,
       estimatedMonthlySavingsUsd: monthlySavings,
@@ -112,10 +120,4 @@ export async function recommendModelSwaps(
     (a, b) => b.estimatedMonthlySavingsUsd - a.estimatedMonthlySavingsUsd,
   )
   return recommendations
-}
-
-function avg(values: readonly (number | null)[]): number {
-  const finite = values.filter((v): v is number => typeof v === 'number')
-  if (finite.length === 0) return 0
-  return finite.reduce((s, v) => s + v, 0) / finite.length
 }

@@ -154,25 +154,31 @@ export type Database = {
         Row: {
           acknowledged_at: string
           acknowledged_by: string | null
+          id: string
           kind: string
           model: string
           organization_id: string
+          project_id: string | null
           provider: string
         }
         Insert: {
           acknowledged_at?: string
           acknowledged_by?: string | null
+          id?: string
           kind: string
           model: string
           organization_id: string
+          project_id?: string | null
           provider: string
         }
         Update: {
           acknowledged_at?: string
           acknowledged_by?: string | null
+          id?: string
           kind?: string
           model?: string
           organization_id?: string
+          project_id?: string | null
           provider?: string
         }
         Relationships: [
@@ -181,6 +187,13 @@ export type Database = {
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "anomaly_acks_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
             referencedColumns: ["id"]
           },
         ]
@@ -507,6 +520,7 @@ export type Database = {
           allow_overage: boolean
           created_at: string
           id: string
+          last_security_alert_at: string | null
           leak_detection_enabled: boolean
           name: string
           overage_cap_multiplier: number
@@ -515,6 +529,7 @@ export type Database = {
           plan: string
           quota_warning_100_sent_at: string | null
           quota_warning_80_sent_at: string | null
+          security_alert_enabled: boolean
           stale_key_alerts_enabled: boolean
           stale_key_threshold_days: number
           updated_at: string
@@ -523,6 +538,7 @@ export type Database = {
           allow_overage?: boolean
           created_at?: string
           id?: string
+          last_security_alert_at?: string | null
           leak_detection_enabled?: boolean
           name: string
           overage_cap_multiplier?: number
@@ -531,6 +547,7 @@ export type Database = {
           plan?: string
           quota_warning_100_sent_at?: string | null
           quota_warning_80_sent_at?: string | null
+          security_alert_enabled?: boolean
           stale_key_alerts_enabled?: boolean
           stale_key_threshold_days?: number
           updated_at?: string
@@ -539,6 +556,7 @@ export type Database = {
           allow_overage?: boolean
           created_at?: string
           id?: string
+          last_security_alert_at?: string | null
           leak_detection_enabled?: boolean
           name?: string
           overage_cap_multiplier?: number
@@ -547,6 +565,7 @@ export type Database = {
           plan?: string
           quota_warning_100_sent_at?: string | null
           quota_warning_80_sent_at?: string | null
+          security_alert_enabled?: boolean
           stale_key_alerts_enabled?: boolean
           stale_key_threshold_days?: number
           updated_at?: string
@@ -560,6 +579,7 @@ export type Database = {
           id: string
           name: string
           organization_id: string
+          security_block_enabled: boolean
           updated_at: string
         }
         Insert: {
@@ -568,6 +588,7 @@ export type Database = {
           id?: string
           name: string
           organization_id: string
+          security_block_enabled?: boolean
           updated_at?: string
         }
         Update: {
@@ -576,6 +597,7 @@ export type Database = {
           id?: string
           name?: string
           organization_id?: string
+          security_block_enabled?: boolean
           updated_at?: string
         }
         Relationships: [
@@ -746,6 +768,7 @@ export type Database = {
           created_at: string
           error_message: string | null
           flags: Json
+          has_security_flags: boolean | null
           id: string
           latency_ms: number
           model: string
@@ -758,6 +781,7 @@ export type Database = {
           proxy_overhead_ms: number | null
           request_body: Json | null
           response_body: Json | null
+          response_flags: Json
           span_id: string | null
           status_code: number
           total_tokens: number
@@ -770,6 +794,7 @@ export type Database = {
           created_at?: string
           error_message?: string | null
           flags?: Json
+          has_security_flags?: boolean | null
           id?: string
           latency_ms: number
           model: string
@@ -782,6 +807,7 @@ export type Database = {
           proxy_overhead_ms?: number | null
           request_body?: Json | null
           response_body?: Json | null
+          response_flags?: Json
           span_id?: string | null
           status_code: number
           total_tokens?: number
@@ -794,6 +820,7 @@ export type Database = {
           created_at?: string
           error_message?: string | null
           flags?: Json
+          has_security_flags?: boolean | null
           id?: string
           latency_ms?: number
           model?: string
@@ -806,6 +833,7 @@ export type Database = {
           proxy_overhead_ms?: number | null
           request_body?: Json | null
           response_body?: Json | null
+          response_flags?: Json
           span_id?: string | null
           status_code?: number
           total_tokens?: number
