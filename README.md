@@ -62,7 +62,7 @@ Same proxy, same dashboard. For agent tracing in Python (multi-step, async, tool
 | **Agent tracing** | Multi-step workflows as Gantt/waterfall span trees |
 | **Cost tracking** | Per-request cost breakdown, daily rollups, budget alerts |
 | **Anomaly detection** | 3σ deviations in latency or cost vs. your 7-day baseline |
-| **PII + prompt-injection scan** | Regex-based detection on request bodies at log time |
+| **PII + prompt-injection scan** | Regex-based detection on request **and response** bodies; optional per-project blocking (422) for injections; instant alert emails to workspace owner |
 | **Model recommendations** | "Your gpt-4o calls look like classification — try gpt-4o-mini" |
 | **Prompt versioning + A/B** | Register prompt templates, compare versions side by side |
 
