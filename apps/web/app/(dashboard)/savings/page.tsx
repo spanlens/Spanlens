@@ -55,6 +55,7 @@ function loadDismissed(): Set<string> {
 export default function RecommendationsPage() {
   const { data, isLoading, error } = useRecommendations({ hours: 24 * 7, minSavings: 5 })
   const [dismissed, setDismissed] = useState<Set<string>>(() => loadDismissed())
+  const [showHidden, setShowHidden] = useState(false)
   const [applyRec, setApplyRec] = useState<ModelRecommendation | null>(null)
   const [simRec, setSimRec] = useState<ModelRecommendation | null>(null)
   const [copiedModel, setCopiedModel] = useState(false)
@@ -144,6 +145,20 @@ export default function RecommendationsPage() {
         <span className="font-mono text-[11px] text-text px-[9px] py-[3px] border border-border-strong bg-bg-elev rounded-[4px]">
           model swap · {visible.length}
         </span>
+        {dismissed.size > 0 && (
+          <button
+            type="button"
+            onClick={() => setShowHidden((v) => !v)}
+            className={cn(
+              'font-mono text-[11px] px-[9px] py-[3px] border rounded-[4px] transition-colors',
+              showHidden
+                ? 'border-border-strong bg-bg-elev text-text'
+                : 'border-border text-text-faint hover:text-text hover:border-border-strong'
+            )}
+          >
+            {showHidden ? 'Hide hidden' : `Show hidden · ${dismissed.size}`}
+          </button>
+        )}
         <span className="flex-1" />
         <span className="font-mono text-[10px] text-text-faint">
           Sorted by estimated monthly savings · desc
@@ -243,7 +258,7 @@ export default function RecommendationsPage() {
                       onClick={() => dismiss(r)}
                       className="font-mono text-[10.5px] text-text-muted px-[10px] py-[4px] border border-border rounded-[5px] hover:text-text transition-colors"
                     >
-                      숨기기
+                      Hide
                     </button>
                     <button
                       type="button"
@@ -257,6 +272,30 @@ export default function RecommendationsPage() {
               )
             })}
 
+            {/* Hidden items — shown when showHidden toggle is on */}
+            {showHidden && dismissed.size > 0 && (
+              <>
+                <div className="flex items-center gap-2.5 px-[22px] py-[10px] bg-bg-muted border-b border-border border-t border-t-border">
+                  <span className="font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint">
+                    Hidden · {dismissed.size}
+                  </span>
+                </div>
+                {all.filter((r) => dismissed.has(dismissKey(r))).map((r, i, arr) => (
+                  <div
+                    key={`${r.currentProvider}-${r.currentModel}-hidden`}
+                    className={cn('flex items-center gap-5 px-[22px] py-[12px] opacity-50', i < arr.length - 1 && 'border-b border-border')}
+                  >
+                    <div className="flex-1 min-w-0 font-mono text-[12px] text-text-faint">
+                      {r.currentProvider} / {r.currentModel}
+                      <span className="mx-2 text-text-faint">→</span>
+                      {r.suggestedProvider} / {r.suggestedModel}
+                    </div>
+                    <div className="font-mono text-[11px] text-accent">{fmtUsd(r.estimatedMonthlySavingsUsd)} / mo</div>
+                    <span className="font-mono text-[10px] text-text-faint px-[7px] py-[2px] border border-border rounded-[3px]">hidden</span>
+                  </div>
+                ))}
+              </>
+            )}
           </>
         )}
       </div>
@@ -347,7 +386,7 @@ export default function RecommendationsPage() {
                 <li>Watch the Requests page for 24h to confirm no regressions</li>
               </ol>
               <p className="text-[11.5px] text-text-faint">
-                Once rolled out, dismiss this recommendation to clear it from the list.
+                Once rolled out, hide this recommendation to clear it from the list.
               </p>
             </div>
           )}
