@@ -69,9 +69,11 @@ export default function ProjectsDocs() {
       <p>Go to <a href="/projects">/projects</a>. From there you can:</p>
       <ol>
         <li>Create a new project</li>
-        <li>Create an API key inside a project</li>
-        <li>Copy the new key (shown once — won&apos;t be displayed again)</li>
-        <li>Revoke any existing key</li>
+        <li>Click <strong>&ldquo;+ New Spanlens key&rdquo;</strong> — select provider, enter your real AI key, give it a name</li>
+        <li>Copy the <code>sl_live_...</code> key (shown once — won&apos;t be displayed again)</li>
+        <li>Toggle a key active / inactive with the switch — inactive keys return 401 immediately</li>
+        <li>Update the underlying AI key (pencil icon) without changing <code>sl_live_...</code></li>
+        <li>Delete a key entirely (trash icon) — removes both the Spanlens key and the stored AI key</li>
       </ol>
       <p>
         The page also shows a wizard hint: <code>npx @spanlens/cli init</code> will prompt for
@@ -84,11 +86,15 @@ GET    /api/v1/projects
 POST   /api/v1/projects              { "name": "backend-prod" }
 DELETE /api/v1/projects/:id
 
-# API keys
-GET    /api/v1/api-keys
-POST   /api/v1/api-keys              { "name": "ci-key", "projectId": "<uuid>" }
-# → { "key": "sl_live_...",  ...other metadata  } — shown ONCE
-DELETE /api/v1/api-keys/:id          # revoke (sets is_active=false, preserves audit history)`}</CodeBlock>
+# API keys — issue (creates Spanlens key + stores encrypted AI key in one step)
+POST   /api/v1/api-keys/issue        { "provider": "openai", "key": "sk-...", "name": "prod", "projectId": "<uuid>" }
+# → { "key": "sl_live_...", "provider": "openai", ... } — shown ONCE
+
+GET    /api/v1/api-keys?projectId=<uuid>   # list (never returns plaintext AI keys)
+
+PATCH  /api/v1/api-keys/:id          { "is_active": false }          # toggle active/inactive
+PATCH  /api/v1/api-keys/:id/rotate-ai-key  { "key": "sk-new-..." }   # replace AI key only
+DELETE /api/v1/api-keys/:id          # hard delete — removes Spanlens key + linked AI key`}</CodeBlock>
 
       <h3>Tagging requests with a project from client code</h3>
       <p>
@@ -124,23 +130,23 @@ DELETE /api/v1/api-keys/:id          # revoke (sets is_active=false, preserves a
           <strong>No per-key rate limits yet.</strong> Enterprise ask — on roadmap.
         </li>
         <li>
-          <strong>No automatic rotation.</strong> You create + revoke manually. Automated rotation
-          API and a &ldquo;rotate now&rdquo; button are deferred to Phase 5.
+          <strong>No automatic rotation.</strong> AI key rotation is manual (pencil icon or{' '}
+          <code>PATCH /rotate-ai-key</code>). Scheduled / automated rotation is deferred to Phase 5.
         </li>
         <li>
           <strong>No IP allowlisting.</strong> Keys work from anywhere that presents them.
           Network-level allowlisting is an Enterprise request we&apos;re tracking.
         </li>
         <li>
-          <strong>One active plaintext shown once.</strong> No &ldquo;reveal existing key&rdquo;
-          escape hatch — by design. If you need CI to have access, regenerate and update the
-          secret in your CI settings.
+          <strong>Spanlens key plaintext shown once.</strong> No &ldquo;reveal existing key&rdquo;
+          escape hatch — by design. If you need CI to have access, delete the key, create a new
+          one, and update the secret in your CI settings.
         </li>
       </ul>
 
       <hr />
       <p className="text-sm text-muted-foreground">
-        Related: <a href="/docs/features/settings">Provider keys (AES-256-GCM)</a>,{' '}
+        Related: <a href="/docs/features/settings">Keys &amp; encryption (AES-256-GCM)</a>,{' '}
         <a href="/docs/quick-start">Quick start</a>,{' '}
         <a href="/projects">/projects</a> dashboard.
       </p>

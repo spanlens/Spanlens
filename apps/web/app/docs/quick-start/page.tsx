@@ -18,8 +18,11 @@ export default function QuickStart() {
       <h2>Prerequisites</h2>
       <ol>
         <li>A <a href="/signup">Spanlens account</a></li>
-        <li>A Project + API key (created in <a href="/projects">/projects</a>)</li>
-        <li>Your provider key(s) registered in <a href="/settings">/settings</a> — OpenAI, Anthropic, Gemini</li>
+        <li>
+          A Spanlens key — create one in <a href="/projects">/projects</a> by clicking
+          &ldquo;+ New Spanlens key&rdquo; and entering your OpenAI / Anthropic / Gemini key.
+          You&apos;ll get back an <code>sl_live_...</code> key to use in your app.
+        </li>
       </ol>
 
       <h2 id="wizard">Path A — CLI wizard (Next.js, recommended)</h2>
