@@ -7,7 +7,7 @@ import { resolvePromptVersion } from '../lib/resolve-prompt-version.js'
 import { fireAndForget } from '../lib/wait-until.js'
 import { parseGeminiResponse } from '../parsers/gemini.js'
 import { scanAll } from '../lib/security-scan.js'
-import { getDecryptedProviderKey, buildUpstreamHeaders, buildDownstreamHeaders, isBlockingEnabled } from './utils.js'
+import { getDecryptedProviderKey, getDecryptedProviderKeyById, buildUpstreamHeaders, buildDownstreamHeaders, isBlockingEnabled } from './utils.js'
 
 const GEMINI_BASE = 'https://generativelanguage.googleapis.com'
 
@@ -23,7 +23,10 @@ geminiProxy.all('/*', async (c) => {
   const projectId = c.get('projectId')
   const apiKeyId = c.get('apiKeyId')
 
-  const providerKey = await getDecryptedProviderKey(organizationId, projectId, 'gemini')
+  const linkedKeyId = c.get('providerKeyId')
+  const providerKey = linkedKeyId
+    ? await getDecryptedProviderKeyById(linkedKeyId, organizationId)
+    : await getDecryptedProviderKey(organizationId, projectId, 'gemini')
   if (!providerKey) {
     return c.json({ error: 'No active Gemini provider key configured for this organization' }, 400)
   }
@@ -103,10 +106,13 @@ geminiProxy.all('/*', async (c) => {
 
   const cost = calculateCost('gemini', model, { promptTokens, completionTokens })
 
-  const promptVersionId = await resolvePromptVersion(
+  const traceId = c.req.header('x-trace-id') ?? null
+  const resolved = await resolvePromptVersion(
     organizationId,
     c.req.header('x-spanlens-prompt-version') ?? null,
+    traceId,
   )
+  const promptVersionId = resolved?.versionId ?? null
 
   fireAndForget(c, logRequestAsync({
     organizationId,
@@ -124,7 +130,7 @@ geminiProxy.all('/*', async (c) => {
     requestBody: reqBodyJson,
     responseBody: resBodyJson,
     errorMessage: upstreamRes.ok ? null : resBodyText.slice(0, 1000),
-    traceId: c.req.header('x-trace-id') ?? null,
+    traceId,
     spanId: c.req.header('x-span-id') ?? null,
     promptVersionId,
     providerKeyId: providerKey.id,

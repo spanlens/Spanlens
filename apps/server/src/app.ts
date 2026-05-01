@@ -9,7 +9,6 @@ import { geminiProxy }     from './proxy/gemini.js'
 import { organizationsRouter } from './api/organizations.js'
 import { projectsRouter }      from './api/projects.js'
 import { apiKeysRouter }       from './api/apiKeys.js'
-import { providerKeysRouter }  from './api/providerKeys.js'
 import { requestsRouter }      from './api/requests.js'
 import { savedFiltersRouter }  from './api/savedFilters.js'
 import { statsRouter }         from './api/stats.js'
@@ -22,6 +21,8 @@ import { alertsRouter }        from './api/alerts.js'
 import { anomaliesRouter }     from './api/anomalies.js'
 import { securityRouter }      from './api/security.js'
 import { promptsRouter }       from './api/prompts.js'
+import { promptsPlaygroundRouter } from './api/prompts-playground.js'
+import { promptExperimentsRouter } from './api/prompt-experiments.js'
 import { recommendationsRouter } from './api/recommendations.js'
 import { recommendationApplicationsRouter } from './api/recommendation-applications.js'
 import { auditLogsRouter }     from './api/auditLogs.js'
@@ -82,7 +83,6 @@ app.route('/api/v1',          openapiRouter)   // GET /api/v1/openapi.json, GET 
 app.route('/api/v1/organizations',  organizationsRouter)
 app.route('/api/v1/projects',       projectsRouter)
 app.route('/api/v1/api-keys',       apiKeysRouter)
-app.route('/api/v1/provider-keys',  providerKeysRouter)
 app.route('/api/v1/requests',       requestsRouter)
 app.route('/api/v1/saved-filters',  savedFiltersRouter)
 app.route('/api/v1/stats',          statsRouter)
@@ -91,7 +91,9 @@ app.route('/api/v1/billing',        billingRouter)
 app.route('/api/v1/alerts',         alertsRouter)
 app.route('/api/v1/anomalies',      anomaliesRouter)
 app.route('/api/v1/security',       securityRouter)
+app.route('/api/v1/prompts/playground', promptsPlaygroundRouter)
 app.route('/api/v1/prompts',        promptsRouter)
+app.route('/api/v1/prompt-experiments', promptExperimentsRouter)
 app.route('/api/v1/recommendations', recommendationsRouter)
 app.route('/api/v1/recommendation-applications', recommendationApplicationsRouter)
 app.route('/api/v1/audit-logs',     auditLogsRouter)

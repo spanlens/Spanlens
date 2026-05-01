@@ -17,8 +17,8 @@ export default function ProxyDocs() {
       <div className="my-6 rounded-lg border-l-4 border-accent bg-accent-bg p-4 text-sm">
         <p className="m-0 font-semibold text-accent">⚡ Use streaming for long requests</p>
         <p className="mt-1 mb-0 text-accent">
-          The proxy enforces a <strong>25-second first-byte timeout</strong>. Any request expected to take
-          longer (large <code>max_tokens</code>, slow models, JSON mode with big outputs) must use{' '}
+          The proxy runs on Node.js with a <strong>40-second max duration</strong>. Any request expected to take
+          longer (large <code>max_tokens</code>, slow models, JSON mode with big outputs) should use{' '}
           <code>stream: true</code>. Streaming sidesteps the timeout entirely — first byte arrives in
           ~200ms regardless of total duration. If you need a single JSON object back, accumulate chunks
           server-side and return the merged string to your client (the &ldquo;internal streaming&rdquo;
@@ -42,7 +42,8 @@ https://spanlens-server.vercel.app/proxy/gemini/v1beta`}</CodeBlock>
         </li>
         <li>
           <strong>API key</strong> — use your Spanlens API key (starts with <code>sl_live_</code>) instead
-          of the provider&apos;s. The real provider key is pulled from your registered keys server-side.
+          of the provider&apos;s. The real AI key linked to your Spanlens key is decrypted server-side and
+          forwarded — your client never sees it.
         </li>
       </ol>
 

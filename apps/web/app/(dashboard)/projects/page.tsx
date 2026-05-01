@@ -1,7 +1,7 @@
 'use client'
 import Link from 'next/link'
 import { useState } from 'react'
-import { Plus, Trash2, Copy, Terminal, Check, ExternalLink } from 'lucide-react'
+import { Plus, Copy, Terminal, Check, ExternalLink, Pencil, Trash2 } from 'lucide-react'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import {
@@ -15,45 +15,60 @@ import { Topbar } from '@/components/layout/topbar'
 import { PermissionGate } from '@/components/permission-gate'
 import { GhostBtn, PrimaryBtn } from '@/components/ui/primitives'
 import { useCreateProject, useProjects } from '@/lib/queries/use-projects'
-import { useApiKeys, useCreateApiKey, useRevokeApiKey } from '@/lib/queries/use-api-keys'
 import {
-  useProviderKeys,
-  useCreateProviderKey,
-  useRevokeProviderKey,
-} from '@/lib/queries/use-provider-keys'
+  useApiKeys,
+  useIssueApiKey,
+  useToggleApiKey,
+  useRotateApiKeyAiKey,
+  useDeleteApiKey,
+} from '@/lib/queries/use-api-keys'
 import { cn } from '@/lib/utils'
 
 const PROVIDERS = ['openai', 'anthropic', 'gemini'] as const
 type ProviderName = typeof PROVIDERS[number]
 
+const PROVIDER_LABELS: Record<string, string> = {
+  openai: 'OpenAI',
+  anthropic: 'Anthropic',
+  gemini: 'Gemini',
+}
+
 export default function ProjectsPage() {
   const projectsQuery = useProjects()
   const apiKeysQuery = useApiKeys()
-  const providerKeysQuery = useProviderKeys()
   const createProject = useCreateProject()
-  const createApiKey = useCreateApiKey()
-  const revokeApiKey = useRevokeApiKey()
-  const createProviderKey = useCreateProviderKey()
-  const revokeProviderKey = useRevokeProviderKey()
+  const issueApiKey = useIssueApiKey()
+  const toggleApiKey = useToggleApiKey()
+  const rotateApiKeyAiKey = useRotateApiKeyAiKey()
+  const deleteApiKey = useDeleteApiKey()
 
-  const [newKey, setNewKey] = useState<string | null>(null)
+  // New key banner
+  const [newKey, setNewKey] = useState<{ key: string; provider: string | null } | null>(null)
   const [cmdCopied, setCmdCopied] = useState(false)
   const [keyCopied, setKeyCopied] = useState(false)
 
+  // Create project dialog
   const [projDialogOpen, setProjDialogOpen] = useState(false)
   const [projName, setProjName] = useState('')
 
-  const [keyDialogOpen, setKeyDialogOpen] = useState(false)
-  const [keyName, setKeyName] = useState('')
-  const [keyProjectId, setKeyProjectId] = useState('')
+  // New Spanlens key dialog
+  const [issueDialogOpen, setIssueDialogOpen] = useState(false)
+  const [issueProjectId, setIssueProjectId] = useState('')
+  const [issueProvider, setIssueProvider] = useState<ProviderName>('openai')
+  const [issueName, setIssueName] = useState('')
+  const [issueAiKey, setIssueAiKey] = useState('')
+  const [issueError, setIssueError] = useState<string | null>(null)
 
-  // Provider key override dialog state
-  const [pkDialogOpen, setPkDialogOpen] = useState(false)
-  const [pkProjectId, setPkProjectId] = useState('')
-  const [pkProvider, setPkProvider] = useState<ProviderName>('openai')
-  const [pkName, setPkName] = useState('')
-  const [pkKey, setPkKey] = useState('')
-  const [pkError, setPkError] = useState<string | null>(null)
+  // Rotate AI key dialog
+  const [rotateDialogKeyId, setRotateDialogKeyId] = useState<string | null>(null)
+  const [rotateAiKey, setRotateAiKey] = useState('')
+  const [rotateError, setRotateError] = useState<string | null>(null)
+
+  // Delete confirm
+  const [deleteKeyId, setDeleteKeyId] = useState<string | null>(null)
+
+  // Track which specific toggle is pending to avoid disabling all toggles
+  const [pendingToggleId, setPendingToggleId] = useState<string | null>(null)
 
   function copyWizardCmd() {
     void navigator.clipboard.writeText('npx @spanlens/cli init')
@@ -63,7 +78,7 @@ export default function ProjectsPage() {
 
   function copyNewKey() {
     if (!newKey) return
-    void navigator.clipboard.writeText(newKey)
+    void navigator.clipboard.writeText(newKey.key)
     setKeyCopied(true)
     setTimeout(() => setKeyCopied(false), 1500)
   }
@@ -74,42 +89,61 @@ export default function ProjectsPage() {
     setProjDialogOpen(false)
   }
 
-  async function handleCreateApiKey() {
-    const key = await createApiKey.mutateAsync({ name: keyName, projectId: keyProjectId })
-    setNewKey(key.key)
-    setKeyName('')
-    setKeyDialogOpen(false)
+  function openIssueDialog(projectId: string) {
+    setIssueProjectId(projectId)
+    setIssueProvider('openai')
+    setIssueName('')
+    setIssueAiKey('')
+    setIssueError(null)
+    setIssueDialogOpen(true)
   }
 
-  function openProviderKeyDialog(projectId: string) {
-    setPkProjectId(projectId)
-    setPkProvider('openai')
-    setPkName('')
-    setPkKey('')
-    setPkError(null)
-    setPkDialogOpen(true)
-  }
-
-  async function handleCreateProviderKey() {
-    setPkError(null)
+  async function handleIssueApiKey() {
+    setIssueError(null)
     try {
-      await createProviderKey.mutateAsync({
-        provider: pkProvider,
-        key: pkKey.trim(),
-        name: pkName.trim() || `${pkProvider} override`,
-        project_id: pkProjectId,
+      const result = await issueApiKey.mutateAsync({
+        provider: issueProvider,
+        key: issueAiKey.trim(),
+        name: issueName.trim(),
+        projectId: issueProjectId,
       })
-      setPkDialogOpen(false)
+      setNewKey({ key: result?.key ?? '', provider: result?.provider ?? null })
+      setIssueDialogOpen(false)
     } catch (err) {
-      setPkError(err instanceof Error ? err.message : 'Failed to save provider key')
+      setIssueError(err instanceof Error ? err.message : 'Failed to issue key')
     }
+  }
+
+  function openRotateDialog(keyId: string) {
+    setRotateDialogKeyId(keyId)
+    setRotateAiKey('')
+    setRotateError(null)
+  }
+
+  async function handleRotateAiKey() {
+    if (!rotateDialogKeyId) return
+    setRotateError(null)
+    try {
+      await rotateApiKeyAiKey.mutateAsync({ id: rotateDialogKeyId, key: rotateAiKey.trim() })
+      setRotateDialogKeyId(null)
+    } catch (err) {
+      setRotateError(err instanceof Error ? err.message : 'Failed to rotate key')
+    }
+  }
+
+  async function handleDeleteKey() {
+    if (!deleteKeyId) return
+    await deleteApiKey.mutateAsync(deleteKeyId)
+    setDeleteKeyId(null)
   }
 
   const loading = projectsQuery.isLoading || apiKeysQuery.isLoading
   const projects = projectsQuery.data ?? []
   const apiKeys = apiKeysQuery.data ?? []
-  const providerKeys = providerKeysQuery.data ?? []
-  const orgDefaults = providerKeys.filter((k) => k.project_id === null && k.is_active)
+
+  const providerEnvVar = newKey?.provider
+    ? { openai: 'OPENAI_API_KEY', anthropic: 'ANTHROPIC_API_KEY', gemini: 'GEMINI_API_KEY' }[newKey.provider]
+    : 'SPANLENS_API_KEY'
 
   return (
     <div className="-m-7 flex flex-col h-screen overflow-hidden">
@@ -131,9 +165,9 @@ export default function ProjectsPage() {
         <div className="px-7 py-6 max-w-4xl">
           <div className="mb-6">
             <h1 className="text-[22px] font-semibold text-text tracking-[-0.4px] mb-1">
-              Projects & API Keys
+              Projects & Keys
             </h1>
-            <p className="text-[13px] text-text-muted">Manage your projects and access keys</p>
+            <p className="text-[13px] text-text-muted">Manage your projects and Spanlens API keys</p>
           </div>
 
           {/* New key banner */}
@@ -141,7 +175,7 @@ export default function ProjectsPage() {
             <div className="rounded-xl border border-good/30 bg-good-bg px-5 py-4 mb-6">
               <div className="flex items-center justify-between mb-3">
                 <p className="text-[13px] font-medium text-good">
-                  API key created — copy now (won&apos;t be shown again)
+                  Key created — copy now (won&apos;t be shown again)
                 </p>
                 <button
                   type="button"
@@ -155,7 +189,7 @@ export default function ProjectsPage() {
               <div className="rounded-lg border border-good/20 bg-[#1a1816] px-4 py-3 mb-3">
                 <div className="flex items-center justify-between mb-1.5">
                   <span className="font-mono text-[10.5px] uppercase tracking-[0.05em] text-[#7c7770]">
-                    SPANLENS_API_KEY
+                    {providerEnvVar}
                   </span>
                   <button
                     type="button"
@@ -170,7 +204,7 @@ export default function ProjectsPage() {
                   </button>
                 </div>
                 <code className="font-mono text-[12.5px] text-good break-all leading-relaxed">
-                  {newKey}
+                  {newKey.key}
                 </code>
               </div>
 
@@ -198,7 +232,7 @@ export default function ProjectsPage() {
                   </button>
                 </div>
                 <p className="font-mono text-[10.5px] text-[#5c5752]">
-                  Paste your API key when asked. ~30 seconds.{' '}
+                  Paste your key when asked. ~30 seconds.{' '}
                   <Link
                     href="/docs/quick-start"
                     className="text-accent hover:opacity-80 transition-opacity underline inline-flex items-center gap-0.5"
@@ -250,159 +284,129 @@ export default function ProjectsPage() {
                     key={proj.id}
                     className="rounded-xl border border-border bg-bg-elev overflow-hidden"
                   >
+                    {/* Project header */}
                     <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-bg">
                       <div>
                         <h2 className="text-[14px] font-semibold text-text">{proj.name}</h2>
                         <p className="font-mono text-[10.5px] text-text-faint mt-0.5">{proj.id}</p>
                       </div>
                       <PermissionGate need="edit">
-                        <GhostBtn
-                          className="flex items-center gap-1.5 text-[12px] px-3 py-[5px]"
-                          onClick={() => {
-                            setKeyProjectId(proj.id)
-                            setKeyDialogOpen(true)
-                          }}
+                        <PrimaryBtn
+                          className="flex items-center gap-1.5 text-[12px] px-3 py-[5px] h-[30px]"
+                          onClick={() => openIssueDialog(proj.id)}
                         >
-                          <Plus className="h-3.5 w-3.5" /> New API key
-                        </GhostBtn>
+                          <Plus className="h-3.5 w-3.5" /> New Spanlens key
+                        </PrimaryBtn>
                       </PermissionGate>
                     </div>
 
-                    <div>
-                      {keys.length === 0 ? (
-                        <p className="px-6 py-4 text-[13px] text-text-faint">No API keys yet.</p>
-                      ) : (
-                        <div className="divide-y divide-border">
-                          {keys.map((key) => (
-                            <div
-                              key={key.id}
-                              className="flex items-center justify-between px-6 py-3"
+                    {/* Key list */}
+                    {keys.length === 0 ? (
+                      <p className="px-6 py-5 text-[13px] text-text-faint">
+                        No keys yet. Create your first Spanlens key to start.
+                      </p>
+                    ) : (
+                      <div className="divide-y divide-border">
+                        {/* Column headers */}
+                        <div className="grid grid-cols-[1fr_100px_120px_80px] gap-4 px-6 py-2 font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint">
+                          <span>Name</span>
+                          <span>Provider</span>
+                          <span>Last used</span>
+                          <span />
+                        </div>
+                        {keys.map((key) => (
+                          <div
+                            key={key.id}
+                            className="grid grid-cols-[1fr_100px_120px_80px] gap-4 px-6 py-3 items-center"
+                          >
+                            {/* Name */}
+                            <span
+                              className={cn(
+                                'text-[13px] font-medium truncate',
+                                !key.is_active && 'line-through text-text-faint',
+                              )}
                             >
-                              <div className="flex items-center gap-3 min-w-0">
-                                <code className="font-mono text-[12px] text-text-faint shrink-0">
-                                  {key.key_prefix}••••••••
-                                </code>
-                                <span
+                              {key.name}
+                            </span>
+
+                            {/* Provider badge */}
+                            {key.provider ? (
+                              <span className="font-mono text-[10px] uppercase tracking-[0.04em] px-1.5 py-0.5 rounded-full border border-border text-text-muted w-fit">
+                                {key.provider}
+                              </span>
+                            ) : (
+                              <span className="font-mono text-[11px] text-text-faint">—</span>
+                            )}
+
+                            {/* Last used */}
+                            <span className="font-mono text-[11px] text-text-muted">
+                              {key.last_used_at
+                                ? `${Math.floor((Date.now() - Date.parse(key.last_used_at)) / 86_400_000)}d ago`
+                                : 'Never'}
+                            </span>
+
+                            {/* Actions */}
+                            <div className="flex items-center gap-1 justify-end">
+                              {/* Active toggle */}
+                              <PermissionGate need="edit">
+                                <button
+                                  type="button"
+                                  role="switch"
+                                  aria-checked={key.is_active}
+                                  disabled={pendingToggleId === key.id}
+                                  onClick={async () => {
+                                    setPendingToggleId(key.id)
+                                    try {
+                                      await toggleApiKey.mutateAsync({ id: key.id, is_active: !key.is_active })
+                                    } finally {
+                                      setPendingToggleId(null)
+                                    }
+                                  }}
+                                  title={key.is_active ? 'Deactivate' : 'Activate'}
                                   className={cn(
-                                    'text-[13px] font-medium truncate',
-                                    !key.is_active && 'line-through text-text-faint',
+                                    'relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors disabled:opacity-40',
+                                    key.is_active ? 'bg-good' : 'bg-border-strong',
                                   )}
                                 >
-                                  {key.name}
-                                </span>
-                                {!key.is_active && (
-                                  <span className="font-mono text-[10px] uppercase tracking-[0.04em] text-text-faint border border-border px-1.5 py-0.5 rounded-full shrink-0">
-                                    Revoked
-                                  </span>
-                                )}
-                              </div>
-                              <div className="flex items-center gap-3 shrink-0 ml-4">
-                                <span className="text-[12px] text-text-faint">
-                                  {key.last_used_at
-                                    ? `Last used ${new Date(key.last_used_at).toLocaleDateString()}`
-                                    : 'Never used'}
-                                </span>
-                                {key.is_active && (
-                                  <PermissionGate need="edit">
-                                    <button
-                                      type="button"
-                                      onClick={() => void revokeApiKey.mutateAsync(key.id)}
-                                      disabled={revokeApiKey.isPending}
-                                      className="p-1.5 rounded hover:bg-accent-bg text-text-faint hover:text-accent transition-colors disabled:opacity-40"
-                                      aria-label="Revoke key"
-                                    >
-                                      <Trash2 className="h-3.5 w-3.5" />
-                                    </button>
-                                  </PermissionGate>
-                                )}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
+                                  <span
+                                    className={cn(
+                                      'inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform',
+                                      key.is_active ? 'translate-x-[18px]' : 'translate-x-[3px]',
+                                    )}
+                                  />
+                                </button>
+                              </PermissionGate>
 
-                    {/* Provider keys section */}
-                    <div className="border-t border-border">
-                      <div className="flex items-center justify-between px-6 py-3 bg-bg">
-                        <div>
-                          <h3 className="text-[12.5px] font-semibold text-text-muted uppercase tracking-[0.04em]">
-                            Provider keys
-                          </h3>
-                          <p className="text-[11.5px] text-text-faint mt-0.5">
-                            Overrides the workspace default for this project only
-                          </p>
-                        </div>
-                        <PermissionGate need="edit">
-                          <GhostBtn
-                            className="flex items-center gap-1.5 text-[12px] px-3 py-[5px]"
-                            onClick={() => openProviderKeyDialog(proj.id)}
-                          >
-                            <Plus className="h-3.5 w-3.5" /> Override
-                          </GhostBtn>
-                        </PermissionGate>
-                      </div>
-                      <div className="divide-y divide-border">
-                        {PROVIDERS.map((provider) => {
-                          const override = providerKeys.find(
-                            (k) => k.project_id === proj.id && k.provider === provider && k.is_active,
-                          )
-                          const hasDefault = orgDefaults.some((k) => k.provider === provider)
-                          return (
-                            <div key={provider} className="flex items-center justify-between px-6 py-3">
-                              <div className="flex items-center gap-3 min-w-0">
-                                <span className="font-mono text-[11.5px] uppercase tracking-[0.05em] text-text-muted w-20 shrink-0">
-                                  {provider}
-                                </span>
-                                {override ? (
-                                  <>
-                                    <span className="text-[13px] font-medium text-text truncate">
-                                      {override.name}
-                                    </span>
-                                    <span className="font-mono text-[10px] uppercase tracking-[0.04em] px-1.5 py-0.5 rounded-full border border-accent-border bg-accent-bg text-accent shrink-0">
-                                      project override
-                                    </span>
-                                  </>
-                                ) : hasDefault ? (
-                                  <>
-                                    <span className="text-[12.5px] text-text-muted">Using workspace default</span>
-                                    <span className="font-mono text-[10px] uppercase tracking-[0.04em] px-1.5 py-0.5 rounded-full border border-border text-text-faint shrink-0">
-                                      inherit
-                                    </span>
-                                  </>
-                                ) : (
-                                  <>
-                                    <span className="text-[12.5px] text-text-faint">Not configured</span>
-                                    <PermissionGate need="edit">
-                                      <Link
-                                        href="/settings"
-                                        className="font-mono text-[10.5px] text-accent hover:opacity-80 transition-opacity"
-                                      >
-                                        Add default →
-                                      </Link>
-                                    </PermissionGate>
-                                  </>
-                                )}
-                              </div>
-                              {override && (
+                              {/* Edit AI key — only for linked keys */}
+                              {key.provider_key_id && (
                                 <PermissionGate need="edit">
                                   <button
                                     type="button"
-                                    onClick={() => void revokeProviderKey.mutateAsync(override.id)}
-                                    disabled={revokeProviderKey.isPending}
-                                    className="p-1.5 rounded hover:bg-accent-bg text-text-faint hover:text-accent transition-colors disabled:opacity-40 shrink-0"
-                                    aria-label="Remove override"
-                                    title="Remove override (falls back to workspace default)"
+                                    onClick={() => openRotateDialog(key.id)}
+                                    title="Update AI provider key"
+                                    className="p-1.5 rounded hover:bg-bg text-text-faint hover:text-text transition-colors"
                                   >
-                                    <Trash2 className="h-3.5 w-3.5" />
+                                    <Pencil className="h-3.5 w-3.5" />
                                   </button>
                                 </PermissionGate>
                               )}
+
+                              {/* Delete */}
+                              <PermissionGate need="edit">
+                                <button
+                                  type="button"
+                                  onClick={() => setDeleteKeyId(key.id)}
+                                  title="Delete key"
+                                  className="p-1.5 rounded hover:bg-bad/10 text-text-faint hover:text-bad transition-colors"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </button>
+                              </PermissionGate>
                             </div>
-                          )
-                        })}
+                          </div>
+                        ))}
                       </div>
-                    </div>
+                    )}
                   </div>
                 )
               })}
@@ -437,6 +441,7 @@ export default function ProjectsPage() {
               <input
                 value={projName}
                 onChange={(e) => setProjName(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter' && projName.trim()) void handleCreateProject() }}
                 placeholder="e.g. Production"
                 className="w-full h-9 px-3 rounded-[6px] border border-border bg-bg text-[13px] text-text placeholder:text-text-faint focus:outline-none focus:border-border-strong transition-colors"
               />
@@ -451,100 +456,150 @@ export default function ProjectsPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Create API key dialog */}
+      {/* New Spanlens key dialog */}
       <Dialog
-        open={keyDialogOpen}
+        open={issueDialogOpen}
         onOpenChange={(open) => {
-          setKeyDialogOpen(open)
-          if (!open) setKeyProjectId('')
+          setIssueDialogOpen(open)
+          if (!open) { setIssueProjectId(''); setIssueError(null) }
         }}
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Create API key</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 mt-2">
-            <div className="space-y-1.5">
-              <label className="text-[12.5px] text-text-muted font-medium">Key name</label>
-              <input
-                value={keyName}
-                onChange={(e) => setKeyName(e.target.value)}
-                placeholder="Production key"
-                className="w-full h-9 px-3 rounded-[6px] border border-border bg-bg text-[13px] text-text placeholder:text-text-faint focus:outline-none focus:border-border-strong transition-colors"
-              />
-            </div>
-            <PrimaryBtn
-              onClick={() => void handleCreateApiKey()}
-              disabled={!keyName.trim() || createApiKey.isPending}
-            >
-              {createApiKey.isPending ? 'Creating…' : 'Create'}
-            </PrimaryBtn>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Provider key override dialog */}
-      <Dialog open={pkDialogOpen} onOpenChange={setPkDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Override provider key</DialogTitle>
+            <DialogTitle>New Spanlens key</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 mt-2">
             <p className="text-[12.5px] text-text-muted">
-              This key will be used only for requests from this project. Other projects keep using the workspace default.
+              Enter your AI provider key. We store it encrypted and issue a{' '}
+              <code className="font-mono bg-bg-elev border border-border px-1 rounded text-[11px]">sl_live_…</code>{' '}
+              key as a drop-in replacement.
             </p>
 
             <div className="space-y-1.5">
               <label className="text-[12.5px] text-text-muted font-medium">Provider</label>
-              <Select value={pkProvider} onValueChange={(v) => setPkProvider(v as ProviderName)}>
+              <Select value={issueProvider} onValueChange={(v) => setIssueProvider(v as ProviderName)}>
                 <SelectTrigger className="w-full">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   {PROVIDERS.map((p) => (
-                    <SelectItem key={p} value={p}>{p}</SelectItem>
+                    <SelectItem key={p} value={p}>{PROVIDER_LABELS[p]}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-[12.5px] text-text-muted font-medium">Name (optional)</label>
+              <label className="text-[12.5px] text-text-muted font-medium">
+                {PROVIDER_LABELS[issueProvider]} API key
+              </label>
               <input
-                value={pkName}
-                onChange={(e) => setPkName(e.target.value)}
-                placeholder="e.g. Production OpenAI"
-                className="w-full h-9 px-3 rounded-[6px] border border-border bg-bg text-[13px] text-text placeholder:text-text-faint focus:outline-none focus:border-border-strong transition-colors"
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-[12.5px] text-text-muted font-medium">API key</label>
-              <input
-                value={pkKey}
-                onChange={(e) => setPkKey(e.target.value)}
-                placeholder="sk-..."
+                value={issueAiKey}
+                onChange={(e) => setIssueAiKey(e.target.value)}
+                placeholder="sk-… / sk-ant-… / AIza…"
                 type="password"
                 autoComplete="off"
                 className="w-full h-9 px-3 rounded-[6px] border border-border bg-bg text-[13px] font-mono text-text placeholder:text-text-faint focus:outline-none focus:border-border-strong transition-colors"
               />
               <p className="font-mono text-[10.5px] text-text-faint">
-                Encrypted with AES-256-GCM. Never logged.
+                Encrypted with AES-256-GCM. Never logged or exposed after this point.
               </p>
             </div>
 
-            {pkError && (
-              <div className="rounded-md border border-accent-border bg-accent-bg px-3 py-2 text-[12px] text-accent">
-                {pkError}
+            <div className="space-y-1.5">
+              <label className="text-[12.5px] text-text-muted font-medium">Key name</label>
+              <input
+                value={issueName}
+                onChange={(e) => setIssueName(e.target.value)}
+                placeholder="e.g. Production OpenAI"
+                className="w-full h-9 px-3 rounded-[6px] border border-border bg-bg text-[13px] text-text placeholder:text-text-faint focus:outline-none focus:border-border-strong transition-colors"
+              />
+            </div>
+
+            {issueError && (
+              <div className="rounded-md border border-bad/30 bg-bad/10 px-3 py-2 text-[12px] text-bad">
+                {issueError}
               </div>
             )}
 
             <PrimaryBtn
-              onClick={() => void handleCreateProviderKey()}
-              disabled={!pkKey.trim() || createProviderKey.isPending}
+              onClick={() => void handleIssueApiKey()}
+              disabled={!issueAiKey.trim() || !issueName.trim() || issueApiKey.isPending}
             >
-              {createProviderKey.isPending ? 'Saving…' : 'Save override'}
+              {issueApiKey.isPending ? 'Creating…' : 'Create key'}
             </PrimaryBtn>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Rotate AI key dialog */}
+      <Dialog
+        open={rotateDialogKeyId !== null}
+        onOpenChange={(open) => { if (!open) setRotateDialogKeyId(null) }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Update AI provider key</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 mt-2">
+            <p className="text-[12.5px] text-text-muted">
+              Enter the new AI provider key. Your Spanlens key (<code className="font-mono text-[11px]">sl_live_…</code>) stays the same.
+            </p>
+            <div className="space-y-1.5">
+              <label className="text-[12.5px] text-text-muted font-medium">New AI provider key</label>
+              <input
+                value={rotateAiKey}
+                onChange={(e) => setRotateAiKey(e.target.value)}
+                placeholder="sk-… / sk-ant-… / AIza…"
+                type="password"
+                autoComplete="off"
+                className="w-full h-9 px-3 rounded-[6px] border border-border bg-bg text-[13px] font-mono text-text placeholder:text-text-faint focus:outline-none focus:border-border-strong transition-colors"
+              />
+            </div>
+            {rotateError && (
+              <div className="rounded-md border border-bad/30 bg-bad/10 px-3 py-2 text-[12px] text-bad">
+                {rotateError}
+              </div>
+            )}
+            <PrimaryBtn
+              onClick={() => void handleRotateAiKey()}
+              disabled={!rotateAiKey.trim() || rotateApiKeyAiKey.isPending}
+            >
+              {rotateApiKeyAiKey.isPending ? 'Updating…' : 'Update key'}
+            </PrimaryBtn>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete confirm dialog */}
+      <Dialog
+        open={deleteKeyId !== null}
+        onOpenChange={(open) => { if (!open) setDeleteKeyId(null) }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete key</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 mt-2">
+            <p className="text-[12.5px] text-text-muted">
+              This will permanently delete the Spanlens key and its linked AI provider key. Any apps using this key will stop working immediately.
+            </p>
+            <div className="flex gap-3">
+              <GhostBtn
+                className="flex-1"
+                onClick={() => setDeleteKeyId(null)}
+              >
+                Cancel
+              </GhostBtn>
+              <button
+                type="button"
+                onClick={() => void handleDeleteKey()}
+                disabled={deleteApiKey.isPending}
+                className="flex-1 h-9 rounded-[6px] bg-bad text-white font-medium text-[13px] hover:opacity-90 transition-opacity disabled:opacity-40"
+              >
+                {deleteApiKey.isPending ? 'Deleting…' : 'Delete'}
+              </button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>

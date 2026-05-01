@@ -7,6 +7,7 @@ export type ApiKeyContext = {
     organizationId: string
     projectId: string
     apiKeyId: string
+    providerKeyId: string | null
   }
 }
 
@@ -21,7 +22,7 @@ export const authApiKey = createMiddleware<ApiKeyContext>(async (c, next) => {
 
   const { data, error } = await supabaseAdmin
     .from('api_keys')
-    .select('id, project_id, projects(organization_id)')
+    .select('id, project_id, provider_key_id, projects(organization_id)')
     .eq('key_hash', keyHash)
     .eq('is_active', true)
     .single()
@@ -38,6 +39,7 @@ export const authApiKey = createMiddleware<ApiKeyContext>(async (c, next) => {
   c.set('apiKeyId', data.id as string)
   c.set('projectId', data.project_id as string)
   c.set('organizationId', project.organization_id)
+  c.set('providerKeyId', (data.provider_key_id as string | null) ?? null)
 
   return next()
 })

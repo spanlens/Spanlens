@@ -8,7 +8,7 @@ import { resolvePromptVersion } from '../lib/resolve-prompt-version.js'
 import { fireAndForget } from '../lib/wait-until.js'
 import { parseOpenAIResponse } from '../parsers/openai.js'
 import { scanAll } from '../lib/security-scan.js'
-import { getDecryptedProviderKey, buildUpstreamHeaders, buildDownstreamHeaders, isBlockingEnabled } from './utils.js'
+import { getDecryptedProviderKey, getDecryptedProviderKeyById, buildUpstreamHeaders, buildDownstreamHeaders, isBlockingEnabled } from './utils.js'
 import { logOpenAIStream } from './stream-logger.js'
 
 const OPENAI_BASE = 'https://api.openai.com'
@@ -25,7 +25,10 @@ openaiProxy.all('/*', async (c) => {
   const projectId = c.get('projectId')
   const apiKeyId = c.get('apiKeyId')
 
-  const providerKey = await getDecryptedProviderKey(organizationId, projectId, 'openai')
+  const linkedKeyId = c.get('providerKeyId')
+  const providerKey = linkedKeyId
+    ? await getDecryptedProviderKeyById(linkedKeyId, organizationId)
+    : await getDecryptedProviderKey(organizationId, projectId, 'openai')
   if (!providerKey) {
     return c.json({ error: 'No active OpenAI provider key configured for this organization' }, 400)
   }
@@ -88,10 +91,13 @@ openaiProxy.all('/*', async (c) => {
   const proxyOverheadMs = startMs - handlerStartMs
 
   const model = (reqBodyJson?.model as string | undefined) ?? ''
-  const promptVersionId = await resolvePromptVersion(
+  const traceId = c.req.header('x-trace-id') ?? null
+  const resolved = await resolvePromptVersion(
     organizationId,
     c.req.header('x-spanlens-prompt-version') ?? null,
+    traceId,
   )
+  const promptVersionId = resolved?.versionId ?? null
   const logBase = {
     organizationId, projectId, apiKeyId,
     provider: 'openai',
@@ -99,7 +105,7 @@ openaiProxy.all('/*', async (c) => {
     requestBody: reqBodyJson,
     responseBody: null,
     errorMessage: null,
-    traceId: c.req.header('x-trace-id') ?? null,
+    traceId,
     spanId: c.req.header('x-span-id') ?? null,
     promptVersionId,
     providerKeyId: providerKey.id,

@@ -48,11 +48,20 @@ export interface ApiKey {
   is_active: boolean
   last_used_at: string | null
   created_at: string
+  provider_key_id: string | null
+  provider: string | null
 }
 
 /** Returned from POST /api/v1/api-keys — `key` is plaintext, shown ONCE. */
 export interface CreatedApiKey extends ApiKey {
   key: string
+}
+
+/** Returned from POST /api/v1/api-keys/issue — unified key with linked provider key. */
+export interface IssuedApiKey extends ApiKey {
+  key: string
+  provider: string
+  providerKeyId: string
 }
 
 export interface ProviderKey {

@@ -264,6 +264,7 @@ export type Database = {
           last_used_at: string | null
           name: string
           project_id: string
+          provider_key_id: string | null
           updated_at: string
         }
         Insert: {
@@ -275,6 +276,7 @@ export type Database = {
           last_used_at?: string | null
           name: string
           project_id: string
+          provider_key_id?: string | null
           updated_at?: string
         }
         Update: {
@@ -286,6 +288,7 @@ export type Database = {
           last_used_at?: string | null
           name?: string
           project_id?: string
+          provider_key_id?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -294,6 +297,13 @@ export type Database = {
             columns: ["project_id"]
             isOneToOne: false
             referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "api_keys_provider_key_id_fkey"
+            columns: ["provider_key_id"]
+            isOneToOne: false
+            referencedRelation: "provider_keys"
             referencedColumns: ["id"]
           },
         ]
@@ -610,12 +620,97 @@ export type Database = {
           },
         ]
       }
+      prompt_ab_experiments: {
+        Row: {
+          concluded_at: string | null
+          created_by: string | null
+          ends_at: string | null
+          id: string
+          organization_id: string
+          project_id: string | null
+          prompt_name: string
+          started_at: string
+          status: string
+          traffic_split: number
+          version_a_id: string
+          version_b_id: string
+          winner_version_id: string | null
+        }
+        Insert: {
+          concluded_at?: string | null
+          created_by?: string | null
+          ends_at?: string | null
+          id?: string
+          organization_id: string
+          project_id?: string | null
+          prompt_name: string
+          started_at?: string
+          status?: string
+          traffic_split?: number
+          version_a_id: string
+          version_b_id: string
+          winner_version_id?: string | null
+        }
+        Update: {
+          concluded_at?: string | null
+          created_by?: string | null
+          ends_at?: string | null
+          id?: string
+          organization_id?: string
+          project_id?: string | null
+          prompt_name?: string
+          started_at?: string
+          status?: string
+          traffic_split?: number
+          version_a_id?: string
+          version_b_id?: string
+          winner_version_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "prompt_ab_experiments_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "prompt_ab_experiments_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "prompt_ab_experiments_version_a_id_fkey"
+            columns: ["version_a_id"]
+            isOneToOne: false
+            referencedRelation: "prompt_versions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "prompt_ab_experiments_version_b_id_fkey"
+            columns: ["version_b_id"]
+            isOneToOne: false
+            referencedRelation: "prompt_versions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "prompt_ab_experiments_winner_version_id_fkey"
+            columns: ["winner_version_id"]
+            isOneToOne: false
+            referencedRelation: "prompt_versions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       prompt_versions: {
         Row: {
           content: string
           created_at: string
           created_by: string | null
           id: string
+          is_archived: boolean
           metadata: Json
           name: string
           organization_id: string
@@ -628,6 +723,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           id?: string
+          is_archived?: boolean
           metadata?: Json
           name: string
           organization_id: string
@@ -640,6 +736,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           id?: string
+          is_archived?: boolean
           metadata?: Json
           name?: string
           organization_id?: string
@@ -756,6 +853,85 @@ export type Database = {
             columns: ["project_id"]
             isOneToOne: false
             referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      recommendation_applications: {
+        Row: {
+          applied_at: string
+          id: string
+          model: string
+          note: string | null
+          organization_id: string
+          provider: string
+          suggested_model: string
+          suggested_provider: string
+          user_id: string
+        }
+        Insert: {
+          applied_at?: string
+          id?: string
+          model: string
+          note?: string | null
+          organization_id: string
+          provider: string
+          suggested_model: string
+          suggested_provider: string
+          user_id: string
+        }
+        Update: {
+          applied_at?: string
+          id?: string
+          model?: string
+          note?: string | null
+          organization_id?: string
+          provider?: string
+          suggested_model?: string
+          suggested_provider?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "recommendation_applications_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      recommendation_notifications: {
+        Row: {
+          confidence_level: string
+          id: string
+          organization_id: string
+          recommendation_key: string
+          savings_usd: number
+          sent_at: string
+        }
+        Insert: {
+          confidence_level: string
+          id?: string
+          organization_id: string
+          recommendation_key: string
+          savings_usd: number
+          sent_at?: string
+        }
+        Update: {
+          confidence_level?: string
+          id?: string
+          organization_id?: string
+          recommendation_key?: string
+          savings_usd?: number
+          sent_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "recommendation_notifications_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
         ]
@@ -1439,6 +1615,20 @@ export type Database = {
           provider: string
           sample_count: number
           total_cost_usd: number
+        }[]
+      }
+      get_prompts_quality_sparklines: {
+        Args: {
+          p_buckets?: number
+          p_hours?: number
+          p_names: string[]
+          p_org_id: string
+        }
+        Returns: {
+          bucket_index: number
+          bucket_start: string
+          prompt_name: string
+          quality_score: number
         }[]
       }
       is_org_member: { Args: { org_id: string }; Returns: boolean }

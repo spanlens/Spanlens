@@ -8,7 +8,7 @@ import { resolvePromptVersion } from '../lib/resolve-prompt-version.js'
 import { fireAndForget } from '../lib/wait-until.js'
 import { parseAnthropicResponse } from '../parsers/anthropic.js'
 import { scanAll } from '../lib/security-scan.js'
-import { getDecryptedProviderKey, buildUpstreamHeaders, buildDownstreamHeaders, isBlockingEnabled } from './utils.js'
+import { getDecryptedProviderKey, getDecryptedProviderKeyById, buildUpstreamHeaders, buildDownstreamHeaders, isBlockingEnabled } from './utils.js'
 import { logAnthropicStream } from './stream-logger.js'
 
 const ANTHROPIC_BASE = 'https://api.anthropic.com'
@@ -25,7 +25,10 @@ anthropicProxy.all('/*', async (c) => {
   const projectId = c.get('projectId')
   const apiKeyId = c.get('apiKeyId')
 
-  const providerKey = await getDecryptedProviderKey(organizationId, projectId, 'anthropic')
+  const linkedKeyId = c.get('providerKeyId')
+  const providerKey = linkedKeyId
+    ? await getDecryptedProviderKeyById(linkedKeyId, organizationId)
+    : await getDecryptedProviderKey(organizationId, projectId, 'anthropic')
   if (!providerKey) {
     return c.json({ error: 'No active Anthropic provider key configured for this organization' }, 400)
   }
@@ -76,10 +79,13 @@ anthropicProxy.all('/*', async (c) => {
   const proxyOverheadMs = startMs - handlerStartMs
 
   const model = (reqBodyJson?.model as string | undefined) ?? ''
-  const promptVersionId = await resolvePromptVersion(
+  const traceId = c.req.header('x-trace-id') ?? null
+  const resolved = await resolvePromptVersion(
     organizationId,
     c.req.header('x-spanlens-prompt-version') ?? null,
+    traceId,
   )
+  const promptVersionId = resolved?.versionId ?? null
   const logBase = {
     organizationId, projectId, apiKeyId,
     provider: 'anthropic',
@@ -87,7 +93,7 @@ anthropicProxy.all('/*', async (c) => {
     requestBody: reqBodyJson,
     responseBody: null,
     errorMessage: null,
-    traceId: c.req.header('x-trace-id') ?? null,
+    traceId,
     spanId: c.req.header('x-span-id') ?? null,
     promptVersionId,
     providerKeyId: providerKey.id,
