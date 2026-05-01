@@ -1,20 +1,21 @@
 import { CodeBlock } from '../../_components/code-block'
 
 export const metadata = {
-  title: 'Provider keys · Spanlens Docs',
+  title: 'Keys & encryption · Spanlens Docs',
   description:
-    'Register your OpenAI / Anthropic / Gemini keys. Encrypted at rest with AES-256-GCM and only decrypted in memory when forwarding a request.',
+    'How Spanlens stores and protects your AI provider keys. AES-256-GCM encryption at rest, decrypted only in memory during proxy forwarding.',
 }
 
 export default function SettingsDocs() {
   return (
     <div>
-      <h1>Provider keys</h1>
+      <h1>Keys &amp; encryption</h1>
       <p className="lead">
-        Your actual OpenAI / Anthropic / Gemini keys live in <a href="/settings">/settings</a>.
-        We store them encrypted with <strong>AES-256-GCM</strong> and only decrypt them in memory,
-        for a fraction of a second, when forwarding your request to the upstream provider. They
-        are never logged, never exposed through an API, never displayed back to you after creation.
+        When you create a Spanlens key in <a href="/projects">/projects</a>, you enter your real
+        OpenAI / Anthropic / Gemini key. Spanlens stores it encrypted with{' '}
+        <strong>AES-256-GCM</strong> and only decrypts it in memory, for a fraction of a second,
+        when forwarding your request to the upstream provider. The real key is never logged, never
+        exposed through an API, never displayed again after creation.
       </p>
 
       <h2>Why this layer exists</h2>
@@ -31,16 +32,17 @@ export default function SettingsDocs() {
           key.
         </li>
         <li>
-          <strong>Centralized rotation.</strong> Replace a provider key in one place, all your
-          services pick it up next request.
+          <strong>Centralized rotation.</strong> Replace the underlying AI key in one place (the
+          edit button in <a href="/projects">/projects</a>), all your services pick it up next
+          request. Your <code>sl_live_...</code> key stays the same — no redeploys.
         </li>
       </ol>
 
       <h2>How the encryption works</h2>
 
-      <h3>Registration flow</h3>
+      <h3>Storage flow</h3>
       <ol>
-        <li>You paste your provider key into <a href="/settings">/settings</a></li>
+        <li>You enter your AI provider key when creating a Spanlens key in <a href="/projects">/projects</a></li>
         <li>
           Server reads <code>ENCRYPTION_KEY</code> from env (32 bytes, base64-encoded)
         </li>
@@ -60,8 +62,8 @@ export default function SettingsDocs() {
       <h3>Decryption flow (on every proxy request)</h3>
       <ol>
         <li>Your request arrives at <code>/proxy/openai/v1/...</code> with Spanlens API key</li>
-        <li>Server authenticates the Spanlens API key → resolves org</li>
-        <li>Loads the org&apos;s encrypted provider key for this provider</li>
+        <li>Server authenticates the Spanlens API key → resolves the linked provider key ID</li>
+        <li>Loads the encrypted provider key from the vault</li>
         <li>
           Decrypts with <code>aes256Decrypt(ENCRYPTION_KEY, iv, ciphertext, authTag)</code>
         </li>
@@ -107,41 +109,52 @@ export default function SettingsDocs() {
 
       <h3>Dashboard</h3>
       <p>
-        Go to <a href="/settings">/settings</a>. For each provider you want to use:
+        Go to <a href="/projects">/projects</a>. Under any project, click{' '}
+        <strong>&ldquo;+ New Spanlens key&rdquo;</strong>:
       </p>
       <ol>
-        <li>Click &ldquo;Add key&rdquo; under the provider</li>
-        <li>Paste your actual <code>sk-...</code> / <code>sk-ant-...</code> / AIza... key</li>
-        <li>Save</li>
+        <li>Select a provider (OpenAI / Anthropic / Gemini)</li>
+        <li>Paste your actual <code>sk-...</code> / <code>sk-ant-...</code> / <code>AIza...</code> key</li>
+        <li>Give the key a name and click &ldquo;Create key&rdquo;</li>
       </ol>
       <p>
-        The UI confirms the key is registered (you&apos;ll see masked prefix like <code>sk-...a1b2</code>)
-        but never shows it in full again.
+        The UI shows your new <code>sl_live_...</code> key once — copy it immediately. The underlying
+        AI key is never shown again. The key row in the list shows the provider badge, active
+        toggle, and an edit button to update the AI key without changing your <code>sl_live_...</code>.
       </p>
 
-      <h3>Rotation</h3>
+      <h3>Rotating the AI key</h3>
       <p>
-        To rotate: add the new key first (it becomes active immediately), then delete the old one.
-        No downtime, no code change.
+        Click the pencil icon next to any key, enter the new AI provider key, and save. Your{' '}
+        <code>sl_live_...</code> key and all deployed code stay unchanged — Spanlens silently swaps
+        the underlying key on the next request.
       </p>
 
       <h3>API</h3>
-      <CodeBlock language="bash">{`# Register
-POST /api/v1/provider-keys
-{ "provider": "openai", "key": "sk-..." }
+      <CodeBlock language="bash">{`# Create Spanlens key + store encrypted AI key in one step
+POST /api/v1/api-keys/issue
+{ "provider": "openai", "key": "sk-...", "name": "prod-backend", "projectId": "<uuid>" }
+# → { "key": "sl_live_...", "provider": "openai", ... } — shown ONCE
 
-# List (returns masked prefixes only, never plaintext)
-GET /api/v1/provider-keys
+# List (never returns plaintext AI keys)
+GET /api/v1/api-keys?projectId=<uuid>
 
-# Delete
-DELETE /api/v1/provider-keys/:id`}</CodeBlock>
+# Toggle active / inactive
+PATCH /api/v1/api-keys/:id
+{ "is_active": false }
+
+# Replace the underlying AI key (sl_live_... stays the same)
+PATCH /api/v1/api-keys/:id/rotate-ai-key
+{ "key": "sk-new-..." }
+
+# Hard delete (removes both Spanlens key and stored AI key)
+DELETE /api/v1/api-keys/:id`}</CodeBlock>
 
       <h2>Security guarantees</h2>
       <ul>
         <li>
           <strong>Not in logs.</strong> Provider keys are never <code>console.log()</code>&apos;d,
-          never stored in the <code>requests</code> table, never exposed via an API. Static scan in
-          CI enforces no string matching <code>sk-</code> in log output.
+          never stored in the <code>requests</code> table, never exposed via an API.
         </li>
         <li>
           <strong>Not in the web bundle.</strong> The dashboard talks to the API server; it never
@@ -158,46 +171,8 @@ DELETE /api/v1/provider-keys/:id`}</CodeBlock>
         </li>
       </ul>
 
-      <h2 id="overage">Overage billing controls (Pattern C)</h2>
-      <p>
-        Paid plans (Starter / Team) show an <strong>Overage billing</strong> card below{' '}
-        <strong>Organization</strong> with two controls:
-      </p>
-      <ul>
-        <li>
-          <strong>Allow overage charges</strong> — when on (default), requests past your monthly
-          quota keep flowing and are billed on your next invoice at the plan&apos;s overage rate.
-          When off, requests past the quota return HTTP 429 immediately (Pattern A / legacy
-          behavior).
-        </li>
-        <li>
-          <strong>Max overage multiplier</strong> (1–100, default 5) — defines a hard cap. Even
-          with overage enabled, requests past <em>limit × multiplier</em> are rejected. Protects
-          against runaway usage spikes. Example: Starter 100K × 5 = 500K hard cap; past that,
-          requests return 429 regardless of overage setting.
-        </li>
-      </ul>
-      <p>
-        Free plan hides these controls (quota is always a hard block). Enterprise is unlimited so
-        the whole section is hidden.
-      </p>
-      <p>
-        Each change takes effect on the next proxy request — no restart or cache-bust needed. The
-        hourly quota-warning email picks up the current setting too: at 100% with overage enabled,
-        the email tells you overage billing is active instead of reporting a block.
-      </p>
-      <p>
-        See <a href="/docs/features/billing">Billing &amp; quotas</a> for the complete pricing
-        picture (overage rates per plan, invoice format, FAQ).
-      </p>
-
       <h2>Limitations</h2>
       <ul>
-        <li>
-          <strong>One active key per (org, provider).</strong> If your OpenAI account has multiple
-          keys for separate billing, Spanlens uses whichever is registered last. Multi-key routing
-          is a future feature.
-        </li>
         <li>
           <strong>No envelope encryption with per-org DEK yet.</strong> All orgs share the same
           master <code>ENCRYPTION_KEY</code>. Per-org data encryption keys (envelope encryption) +
@@ -213,7 +188,7 @@ DELETE /api/v1/provider-keys/:id`}</CodeBlock>
       <p className="text-sm text-muted-foreground">
         Related: <a href="/docs/features/projects">Projects &amp; API keys</a>,{' '}
         <a href="/docs/self-host">Self-hosting</a> (ENCRYPTION_KEY setup),{' '}
-        <a href="/settings">/settings</a> dashboard. Source:{' '}
+        <a href="/projects">/projects</a> dashboard. Source:{' '}
         <code>apps/server/src/lib/crypto.ts</code>.
       </p>
     </div>

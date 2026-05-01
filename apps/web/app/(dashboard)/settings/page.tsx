@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
-import { Plus, RotateCcw, Trash2, Check, Sun, Moon, Monitor, type LucideIcon } from 'lucide-react'
+import { Plus, Trash2, Check, Sun, Moon, Monitor, type LucideIcon } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import { initializePaddle, type Paddle } from '@paddle/paddle-js'
 import { cn, formatDate } from '@/lib/utils'
@@ -22,12 +22,6 @@ import {
   useUpdateOverageSettings,
   useUpdateSecuritySettings,
 } from '@/lib/queries/use-organization'
-import {
-  useCreateProviderKey,
-  useProviderKeys,
-  useRevokeProviderKey,
-  useRotateProviderKey,
-} from '@/lib/queries/use-provider-keys'
 import {
   useSubscription,
   useCreateCheckout,
@@ -63,7 +57,7 @@ import { useNotificationChannels } from '@/lib/queries/use-alerts'
 // ─── types ───────────────────────────────────────────────────────────────────
 
 type TabId =
-  | 'general' | 'members' | 'api-keys' | 'audit-log'
+  | 'general' | 'members' | 'security' | 'audit-log'
   | 'billing' | 'plan' | 'invoices'
   | 'profile' | 'notifications' | 'preferences'
   | 'integrations' | 'destinations' | 'webhooks' | 'opentelemetry'
@@ -78,7 +72,7 @@ const NAV: { group: string; items: NavItem[] }[] = [
     items: [
       { id: 'general',    label: 'General',    crumbs: [{ label: 'Workspace' }, { label: 'Settings' }, { label: 'General' }] },
       { id: 'members',    label: 'Members',    crumbs: [{ label: 'Workspace' }, { label: 'Settings' }, { label: 'Members' }] },
-      { id: 'api-keys',   label: 'Provider keys', crumbs: [{ label: 'Workspace' }, { label: 'Settings' }, { label: 'Provider keys' }] },
+      { id: 'security',   label: 'Security',      crumbs: [{ label: 'Workspace' }, { label: 'Settings' }, { label: 'Security' }] },
       { id: 'audit-log',  label: 'Audit log',  crumbs: [{ label: 'Workspace' }, { label: 'Settings' }, { label: 'Audit log' }] },
     ],
   },
@@ -493,26 +487,9 @@ function MembersTab() {
   )
 }
 
-// ─── API KEYS tab (provider keys + Spanlens keys) ─────────────────────────────
+// ─── SECURITY tab ─────────────────────────────────────────────────────────────
 
-function ApiKeysTab() {
-  const keysQuery   = useProviderKeys()
-  const createKey   = useCreateProviderKey()
-  const revokeKey   = useRevokeProviderKey()
-  const rotateKey   = useRotateProviderKey()
-  const currentMember = useCurrentMember()
-  const canEdit = currentMember?.role === 'admin' || currentMember?.role === 'editor'
-
-  const [addOpen, setAddOpen]       = useState(false)
-  const [provider, setProvider]     = useState('openai')
-  const [newKey, setNewKey]         = useState('')
-  const [keyName, setKeyName]       = useState('')
-  const [rotateId, setRotateId]     = useState<string | null>(null)
-  const [rotateVal, setRotateVal]   = useState('')
-
-  // Security settings — load from org, persist on change. The org row carries
-  // the source of truth; the input + toggle below mirror it locally so the UI
-  // stays responsive while the PATCH is in flight.
+function SecurityTab() {
   const { data: org } = useOrganization()
   const updateSecurity = useUpdateSecuritySettings()
   const [thresholdDays, setThresholdDays] = useState<string>('90')
@@ -525,7 +502,6 @@ function ApiKeysTab() {
   function commitThreshold() {
     const n = Number(thresholdDays)
     if (!Number.isInteger(n) || n < 30 || n > 365) {
-      // Revert to last-known good value rather than 400 the user.
       if (org) setThresholdDays(String(org.stale_key_threshold_days))
       return
     }
@@ -533,119 +509,14 @@ function ApiKeysTab() {
     void updateSecurity.mutateAsync({ stale_key_threshold_days: n })
   }
 
-  async function handleAdd() {
-    await createKey.mutateAsync({ provider, key: newKey, name: keyName || `${provider} key` })
-    setNewKey(''); setKeyName(''); setAddOpen(false)
-  }
-
-  async function handleRotate() {
-    if (!rotateId || !rotateVal.trim()) return
-    await rotateKey.mutateAsync({ id: rotateId, key: rotateVal })
-    setRotateId(null); setRotateVal('')
-  }
-
-  // Org-level default keys only. Per-project overrides live on the Projects page.
-  const keys = (keysQuery.data ?? []).filter((k) => k.project_id === null)
-
   return (
     <div className="max-w-[980px]">
       <TabHeader
-        title="Provider keys"
-        description="Default OpenAI / Anthropic / Gemini keys for this workspace. Projects can override individually from the Projects page."
-        action={
-          canEdit ? (
-            <GhostBtn onClick={() => setAddOpen(true)}><Plus className="h-3.5 w-3.5 mr-1.5" /> Add provider key</GhostBtn>
-          ) : null
-        }
+        title="Security"
+        description="Notification settings for key health monitoring. Neither setting auto-revokes keys."
       />
-
-      <div className="mb-4 border border-accent-border bg-accent-bg rounded-lg px-4 py-3 flex items-center gap-3">
-        <span className="w-5 h-5 rounded-full border border-accent text-accent flex items-center justify-center font-mono text-[10px] shrink-0">!</span>
-        <div className="flex-1 text-[12.5px] text-text-muted">
-          Keys are encrypted at rest (AES-256-GCM). Used as fallback when a project has no override.
-        </div>
-      </div>
-
-      <Section
-        title="Default provider keys"
-        action={<Hint>{keys.filter((k) => k.is_active).length} active</Hint>}
-        className="mb-5"
-      >
-        {keys.length === 0 ? (
-          <div className="px-6 py-8 text-center font-mono text-[12.5px] text-text-faint">
-            No provider keys yet. Add one to start proxying.
-          </div>
-        ) : (
-          <div className="divide-y divide-border">
-            <div className="grid grid-cols-[1.6fr_120px_120px_120px_120px_70px] gap-4 px-6 py-3 font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint">
-              {['Name', 'Provider', 'Last used', 'Status', 'Last scan', ''].map((h, i) => <span key={i}>{h}</span>)}
-            </div>
-            {keys.map((key) => {
-              const isStale =
-                key.is_active &&
-                org != null &&
-                Date.now() - Date.parse(key.last_used_at ?? key.created_at) >
-                  org.stale_key_threshold_days * 86_400_000
-              return (
-              <div key={key.id} className="grid grid-cols-[1.6fr_120px_120px_120px_120px_70px] gap-4 px-6 py-3 items-center">
-                <span className="flex items-center gap-2 min-w-0">
-                  <span className={cn('text-[13px] font-medium truncate', !key.is_active && 'line-through text-text-faint')}>
-                    {key.name}
-                  </span>
-                  {isStale && (
-                    <MonoPill variant="faint">stale</MonoPill>
-                  )}
-                </span>
-                <MonoPill variant="neutral" dot>{key.provider}</MonoPill>
-                <span className="font-mono text-[11px] text-text-muted">
-                  {key.last_used_at
-                    ? `${Math.floor((Date.now() - Date.parse(key.last_used_at)) / 86_400_000)}d ago`
-                    : '—'}
-                </span>
-                <MonoPill variant={key.is_active ? 'good' : 'faint'} dot>
-                  {key.is_active ? 'active' : 'revoked'}
-                </MonoPill>
-                <span>
-                  {key.last_scan_result === 'leaked' ? (
-                    <MonoPill variant="accent" dot>🚨 leaked</MonoPill>
-                  ) : key.last_scan_result === 'clean' ? (
-                    <MonoPill variant="good">clean</MonoPill>
-                  ) : key.last_scan_result === 'error' ? (
-                    <MonoPill variant="faint">error</MonoPill>
-                  ) : (
-                    <span className="font-mono text-[11px] text-text-faint">—</span>
-                  )}
-                </span>
-                {key.is_active && canEdit && (
-                  <div className="flex items-center gap-1">
-                    <button
-                      type="button"
-                      title="Rotate"
-                      onClick={() => setRotateId(key.id)}
-                      className="p-1.5 rounded hover:bg-bg-muted text-text-faint hover:text-text transition-colors"
-                    >
-                      <RotateCcw className="h-3.5 w-3.5" />
-                    </button>
-                    <button
-                      type="button"
-                      title="Revoke"
-                      disabled={revokeKey.isPending}
-                      onClick={() => void revokeKey.mutateAsync(key.id)}
-                      className="p-1.5 rounded hover:bg-accent-bg text-text-faint hover:text-accent transition-colors"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                )}
-              </div>
-              )
-            })}
-          </div>
-        )}
-      </Section>
-
-      <Section title="Security" description="Notification-only — neither setting auto-revokes keys" className="mb-5">
-        <FormRow label="Stale key reminders" hint="Email admins a weekly digest of provider keys idle this long.">
+      <Section title="Key monitoring" className="mb-5">
+        <FormRow label="Stale key reminders" hint="Email admins a weekly digest of keys idle this long.">
           <div className="flex items-center gap-3">
             <NativeInput
               type="number"
@@ -673,51 +544,6 @@ function ApiKeysTab() {
           />
         </FormRow>
       </Section>
-
-      {/* Add key dialog */}
-      <Dialog open={addOpen} onOpenChange={setAddOpen}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>Add provider key</DialogTitle></DialogHeader>
-          <div className="space-y-4 mt-2">
-            <div className="space-y-1.5">
-              <label className="text-[12.5px] text-text-muted font-medium">Provider</label>
-              <Select value={provider} onValueChange={setProvider}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="openai">OpenAI</SelectItem>
-                  <SelectItem value="anthropic">Anthropic</SelectItem>
-                  <SelectItem value="gemini">Gemini</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-[12.5px] text-text-muted font-medium">API key</label>
-              <NativeInput type="password" value={newKey} onChange={(e) => setNewKey(e.target.value)} placeholder="sk-..." />
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-[12.5px] text-text-muted font-medium">Name (optional)</label>
-              <NativeInput value={keyName} onChange={(e) => setKeyName(e.target.value)} placeholder={`${provider} production key`} />
-            </div>
-            <PrimaryBtn onClick={() => void handleAdd()} disabled={!newKey.trim() || createKey.isPending}>
-              {createKey.isPending ? 'Saving…' : 'Save key'}
-            </PrimaryBtn>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Rotate dialog */}
-      <Dialog open={rotateId !== null} onOpenChange={(o) => !o && setRotateId(null)}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>Rotate provider key</DialogTitle></DialogHeader>
-          <div className="space-y-4 mt-2">
-            <p className="text-[13px] text-text-muted">Enter the new API key to replace the current one.</p>
-            <NativeInput type="password" value={rotateVal} onChange={(e) => setRotateVal(e.target.value)} placeholder="New API key" />
-            <PrimaryBtn onClick={() => void handleRotate()} disabled={!rotateVal.trim() || rotateKey.isPending}>
-              {rotateKey.isPending ? 'Rotating…' : 'Rotate key'}
-            </PrimaryBtn>
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   )
 }
@@ -1848,7 +1674,7 @@ function TabContent({ tab }: { tab: TabId }) {
   switch (tab) {
     case 'general':       return <GeneralTab />
     case 'members':       return <MembersTab />
-    case 'api-keys':      return <ApiKeysTab />
+    case 'security':      return <SecurityTab />
     case 'audit-log':     return <AuditLogTab />
     case 'billing':       return <BillingTab />
     case 'plan':          return <PlanLimitsTab />

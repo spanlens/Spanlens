@@ -1,8 +1,8 @@
 'use client'
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { apiDelete, apiGet, apiPost } from '@/lib/api'
-import type { ApiEnvelope, ApiKey, CreatedApiKey } from './types'
+import { apiDelete, apiGet, apiPatch, apiPost } from '@/lib/api'
+import type { ApiEnvelope, ApiKey, IssuedApiKey } from './types'
 
 export const apiKeysQueryKey = ['api-keys'] as const
 
@@ -19,11 +19,11 @@ export function useApiKeys(projectId?: string) {
   })
 }
 
-export function useCreateApiKey() {
+export function useIssueApiKey() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: async (input: { name: string; projectId: string }) => {
-      const res = await apiPost<ApiEnvelope<CreatedApiKey>>('/api/v1/api-keys', input)
+    mutationFn: async (input: { provider: string; key: string; name: string; projectId: string }) => {
+      const res = await apiPost<ApiEnvelope<IssuedApiKey>>('/api/v1/api-keys/issue', input)
       return res.data
     },
     onSuccess: () => {
@@ -32,7 +32,42 @@ export function useCreateApiKey() {
   })
 }
 
-export function useRevokeApiKey() {
+export function useToggleApiKey() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ id, is_active }: { id: string; is_active: boolean }) => {
+      await apiPatch(`/api/v1/api-keys/${id}`, { is_active })
+    },
+    onMutate: async ({ id, is_active }) => {
+      await qc.cancelQueries({ queryKey: apiKeysQueryKey })
+      const previous = qc.getQueriesData<ApiKey[]>({ queryKey: apiKeysQueryKey })
+      qc.setQueriesData<ApiKey[]>({ queryKey: apiKeysQueryKey }, (old) =>
+        (old ?? []).map((k) => (k.id === id ? { ...k, is_active } : k)),
+      )
+      return { previous }
+    },
+    onError: (_err, _vars, ctx) => {
+      ctx?.previous.forEach(([key, data]) => qc.setQueryData(key, data))
+    },
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: apiKeysQueryKey })
+    },
+  })
+}
+
+export function useRotateApiKeyAiKey() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ id, key }: { id: string; key: string }) => {
+      await apiPatch(`/api/v1/api-keys/${id}/rotate-ai-key`, { key })
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: apiKeysQueryKey })
+    },
+  })
+}
+
+export function useDeleteApiKey() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (id: string) => {

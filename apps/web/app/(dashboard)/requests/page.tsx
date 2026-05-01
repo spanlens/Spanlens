@@ -10,7 +10,7 @@ import {
   useRequests,
   useRequest,
 } from '@/lib/queries/use-requests'
-import { useProviderKeys } from '@/lib/queries/use-provider-keys'
+import { useApiKeys } from '@/lib/queries/use-api-keys'
 import { useTrace } from '@/lib/queries/use-traces'
 import { useStatsOverview, useStatsTimeseries } from '@/lib/queries/use-stats'
 import { useAnomalies } from '@/lib/queries/use-anomalies'
@@ -820,13 +820,14 @@ export default function RequestsPage() {
   )
 
   const { data, isLoading, isFetching } = useRequests(serverFilters)
-  const providerKeysQuery = useProviderKeys()
+  const apiKeysQuery = useApiKeys()
 
+  // Only show keys that have a linked provider key (new unified model)
   const visibleKeys = useMemo(() => {
-    const keys = providerKeysQuery.data ?? []
+    const keys = (apiKeysQuery.data ?? []).filter((k) => k.provider_key_id !== null)
     if (filters.provider === 'all') return keys
     return keys.filter((k) => k.provider === filters.provider)
-  }, [providerKeysQuery.data, filters.provider])
+  }, [apiKeysQuery.data, filters.provider])
 
   const requests = useMemo(() => data?.data ?? [], [data])
   const meta = data?.meta ?? { total: 0, page: 1, limit: 50 }
@@ -945,7 +946,7 @@ export default function RequestsPage() {
           >
             <option value="all">All keys</option>
             {visibleKeys.map((k) => (
-              <option key={k.id} value={k.id}>{k.name}</option>
+              <option key={k.id} value={k.provider_key_id!}>{k.name}</option>
             ))}
           </select>
         )}

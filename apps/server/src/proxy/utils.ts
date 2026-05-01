@@ -57,6 +57,28 @@ export async function getDecryptedProviderKey(
 }
 
 /**
+ * Look up + decrypt a specific provider key by ID (direct lookup — no fallback chain).
+ * Used when api_keys.provider_key_id is set (unified key flow).
+ */
+export async function getDecryptedProviderKeyById(
+  keyId: string,
+  organizationId: string,
+): Promise<ResolvedProviderKey | null> {
+  const { data } = await supabaseAdmin
+    .from('provider_keys')
+    .select('id, encrypted_key')
+    .eq('id', keyId)
+    .eq('organization_id', organizationId)
+    .eq('is_active', true)
+    .maybeSingle()
+
+  if (!data) return null
+  const decrypted = await aes256Decrypt(data.encrypted_key as string)
+  if (decrypted.length === 0) return null
+  return { plaintext: decrypted, id: data.id as string }
+}
+
+/**
  * Returns whether injection blocking is enabled for a project.
  * Called only when injection flags are detected — zero overhead for clean requests.
  */
