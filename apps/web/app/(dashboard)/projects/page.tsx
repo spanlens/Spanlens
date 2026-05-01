@@ -3,7 +3,7 @@ import Link from 'next/link'
 import { useState } from 'react'
 import { Plus, Copy, Terminal, Check, ExternalLink, Pencil, Trash2 } from 'lucide-react'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import {
   Select,
   SelectContent,
@@ -431,7 +431,7 @@ export default function ProjectsPage() {
 
       {/* Create project dialog */}
       <Dialog open={projDialogOpen} onOpenChange={setProjDialogOpen}>
-        <DialogContent>
+        <DialogContent aria-describedby={undefined}>
           <DialogHeader>
             <DialogTitle>Create project</DialogTitle>
           </DialogHeader>
@@ -468,13 +468,16 @@ export default function ProjectsPage() {
           <DialogHeader>
             <DialogTitle>New Spanlens key</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 mt-2">
-            <p className="text-[12.5px] text-text-muted">
-              Enter your AI provider key. We store it encrypted and issue a{' '}
-              <code className="font-mono bg-bg-elev border border-border px-1 rounded text-[11px]">sl_live_…</code>{' '}
-              key as a drop-in replacement.
-            </p>
+          <DialogDescription className="text-[12.5px] text-text-muted mt-1">
+            Enter your AI provider key. We store it encrypted and issue a{' '}
+            <code className="font-mono bg-bg-elev border border-border px-1 rounded text-[11px]">sl_live_…</code>{' '}
+            key as a drop-in replacement.
+          </DialogDescription>
 
+          <form
+            onSubmit={(e) => { e.preventDefault(); void handleIssueApiKey() }}
+            className="space-y-4 mt-2"
+          >
             <div className="space-y-1.5">
               <label className="text-[12.5px] text-text-muted font-medium">Provider</label>
               <Select value={issueProvider} onValueChange={(v) => setIssueProvider(v as ProviderName)}>
@@ -523,12 +526,12 @@ export default function ProjectsPage() {
             )}
 
             <PrimaryBtn
-              onClick={() => void handleIssueApiKey()}
+              type="submit"
               disabled={!issueAiKey.trim() || !issueName.trim() || issueApiKey.isPending}
             >
               {issueApiKey.isPending ? 'Creating…' : 'Create key'}
             </PrimaryBtn>
-          </div>
+          </form>
         </DialogContent>
       </Dialog>
 
@@ -541,10 +544,14 @@ export default function ProjectsPage() {
           <DialogHeader>
             <DialogTitle>Update AI provider key</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 mt-2">
-            <p className="text-[12.5px] text-text-muted">
-              Enter the new AI provider key. Your Spanlens key (<code className="font-mono text-[11px]">sl_live_…</code>) stays the same.
-            </p>
+          <DialogDescription className="text-[12.5px] text-text-muted mt-1">
+            Enter the new AI provider key. Your Spanlens key (<code className="font-mono text-[11px]">sl_live_…</code>) stays the same.
+          </DialogDescription>
+
+          <form
+            onSubmit={(e) => { e.preventDefault(); void handleRotateAiKey() }}
+            className="space-y-4 mt-2"
+          >
             <div className="space-y-1.5">
               <label className="text-[12.5px] text-text-muted font-medium">New AI provider key</label>
               <input
@@ -562,12 +569,12 @@ export default function ProjectsPage() {
               </div>
             )}
             <PrimaryBtn
-              onClick={() => void handleRotateAiKey()}
+              type="submit"
               disabled={!rotateAiKey.trim() || rotateApiKeyAiKey.isPending}
             >
               {rotateApiKeyAiKey.isPending ? 'Updating…' : 'Update key'}
             </PrimaryBtn>
-          </div>
+          </form>
         </DialogContent>
       </Dialog>
 
@@ -580,10 +587,11 @@ export default function ProjectsPage() {
           <DialogHeader>
             <DialogTitle>Delete key</DialogTitle>
           </DialogHeader>
+          <DialogDescription className="text-[12.5px] text-text-muted mt-1">
+            This will permanently delete the Spanlens key and its linked AI provider key. Any apps using this key will stop working immediately.
+          </DialogDescription>
+
           <div className="space-y-4 mt-2">
-            <p className="text-[12.5px] text-text-muted">
-              This will permanently delete the Spanlens key and its linked AI provider key. Any apps using this key will stop working immediately.
-            </p>
             <div className="flex gap-3">
               <GhostBtn
                 className="flex-1"
