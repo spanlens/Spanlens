@@ -1,9 +1,9 @@
 'use client'
 import { useState, useRef, useEffect } from 'react'
-import { X } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { X, FlaskConical } from 'lucide-react'
 import {
   usePrompts,
-  usePromptCompare,
   useCreatePromptVersion,
 } from '@/lib/queries/use-prompts'
 import { Topbar } from '@/components/layout/topbar'
@@ -20,14 +20,23 @@ function fmtMs(v: number): string {
   return `${Math.round(v)}ms`
 }
 
+function QualityBadge({ score }: { score: number | null | undefined }) {
+  if (score == null) return <span className="text-text-faint">—</span>
+  const color = score >= 90 ? 'text-good' : score >= 70 ? 'text-warn' : 'text-bad'
+  return <span className={cn('font-mono tabular-nums', color)}>{score}</span>
+}
+
 type FilterType = 'all' | 'ab'
 type MinCalls = 0 | 1 | 10 | 100
 type DateRange = '24h' | '7d' | '30d'
 type ViewMode = 'all' | 'active'
 
-const GRID = '20px 1.4fr 0.6fr 0.6fr 0.9fr 0.9fr 0.9fr 1.2fr 0.8fr 0.5fr'
+const DATE_RANGE_HOURS: Record<DateRange, number> = { '24h': 24, '7d': 24 * 7, '30d': 24 * 30 }
+
+const GRID = '20px 1.5fr 0.55fr 0.55fr 0.8fr 0.8fr 0.8fr 0.7fr 0.5fr 0.5fr'
 
 export default function PromptsPage() {
+  const router = useRouter()
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState<FilterType>('all')
   const [minCalls, setMinCalls] = useState<MinCalls>(0)
@@ -35,7 +44,6 @@ export default function PromptsPage() {
   const [dateRange, setDateRange] = useState<DateRange>('24h')
   const [dateMenuOpen, setDateMenuOpen] = useState(false)
   const [viewMode, setViewMode] = useState<ViewMode>('all')
-  const [selected, setSelected] = useState<string | null>(null)
   const [formOpen, setFormOpen] = useState(false)
   const [form, setForm] = useState({ name: '', content: '' })
   const [formError, setFormError] = useState<string | null>(null)
@@ -53,19 +61,24 @@ export default function PromptsPage() {
     return () => document.removeEventListener('pointerdown', handler)
   }, [callsMenuOpen, dateMenuOpen])
 
-  const { data: prompts, isLoading } = usePrompts()
-  const compareQuery = usePromptCompare(selected, 24 * 30)
+  const hours = DATE_RANGE_HOURS[dateRange]
+  const { data: prompts, isLoading } = usePrompts(undefined, hours)
   const createMutation = useCreatePromptVersion()
 
   const all = prompts ?? []
-  const totalVersions = all.reduce((s, p) => s + p.version, 0)
-  const totalCalls24h = all.reduce((s, p) => s + (p.stats?.calls ?? 0), 0)
-  const totalSpend24h = all.reduce((s, p) => s + (p.stats?.totalCostUsd ?? 0), 0)
-  const abCount = all.filter((p) => p.version > 1).length
+  const totalVersions = all.reduce((s, p) => s + (p.versionCount ?? p.version), 0)
+  const totalCalls = all.reduce((s, p) => s + (p.stats?.calls ?? 0), 0)
+  const totalSpend = all.reduce((s, p) => s + (p.stats?.totalCostUsd ?? 0), 0)
+  const abCount = all.filter((p) => p.activeExperiment != null).length
+  const avgQuality = (() => {
+    const scores = all.map((p) => p.qualityScore).filter((s): s is number => s != null)
+    return scores.length > 0 ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : null
+  })()
+
   const filtered = all.filter(
     (p) =>
       (!search || p.name.toLowerCase().includes(search.toLowerCase())) &&
-      (filter === 'all' || p.version > 1) &&
+      (filter === 'all' || (p.versionCount ?? p.version) > 1 || p.activeExperiment != null) &&
       (minCalls === 0 || (p.stats?.calls ?? 0) >= minCalls) &&
       (viewMode === 'all' || (p.stats?.calls ?? 0) > 0),
   )
@@ -121,7 +134,7 @@ export default function PromptsPage() {
         </span>
         Prompts are defined in code. Spanlens observes versions via the{' '}
         <code className="font-mono text-[11.5px] px-1 rounded border border-border bg-bg text-text">
-          X-Prompt-Version
+          X-Spanlens-Prompt-Version
         </code>{' '}
         header on each SDK call.
         <span className="flex-1" />
@@ -133,11 +146,11 @@ export default function PromptsPage() {
       {/* Stat strip */}
       <div className="grid grid-cols-5 border-b border-border shrink-0">
         {[
-          { label: 'Prompts',     value: String(all.length),                                   warn: false },
-          { label: 'Versions',    value: String(totalVersions),                                warn: false },
-          { label: 'Calls · 24h', value: totalCalls24h > 0 ? totalCalls24h.toLocaleString() : '—', warn: false },
-          { label: 'Avg quality', value: '—',                                                  warn: false },
-          { label: 'Spend · 24h', value: totalSpend24h > 0 ? fmtUsd(totalSpend24h) : '—',      warn: false },
+          { label: 'Prompts',              value: String(all.length)                                         },
+          { label: 'Versions',             value: String(totalVersions)                                      },
+          { label: `Calls · ${dateRange}`, value: totalCalls > 0 ? totalCalls.toLocaleString() : '—'        },
+          { label: `Avg quality`,          value: avgQuality != null ? String(avgQuality) : '—'              },
+          { label: `Spend · ${dateRange}`, value: totalSpend > 0 ? fmtUsd(totalSpend) : '—'                 },
         ].map((s, i) => (
           <div key={i} className={cn('px-[18px] py-[14px]', i < 4 && 'border-r border-border')}>
             <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-2">{s.label}</div>
@@ -250,7 +263,7 @@ export default function PromptsPage() {
         </span>
       </div>
 
-      {/* Column header */}
+      {/* Column headers */}
       <div
         className="grid border-b border-border bg-bg-muted shrink-0 font-mono text-[10px] text-text-faint uppercase tracking-[0.05em] px-[22px] py-[9px]"
         style={{ gridTemplateColumns: GRID }}
@@ -259,11 +272,11 @@ export default function PromptsPage() {
         <span>Prompt</span>
         <span>Active</span>
         <span>Versions</span>
-        <span>Calls · 24h</span>
+        <span>Calls · {dateRange}</span>
         <span>Avg cost</span>
         <span>Avg lat</span>
-        <span>Quality · 7d</span>
-        <span>Owner</span>
+        <span>Quality · {dateRange}</span>
+        <span>A/B</span>
         <span className="text-right">Updated</span>
       </div>
 
@@ -338,32 +351,64 @@ export default function PromptsPage() {
             <button
               key={p.id}
               type="button"
-              onClick={() => setSelected(selected === p.name ? null : p.name)}
+              onClick={() => router.push(`/prompts/${encodeURIComponent(p.name)}`)}
               className={cn(
-                'w-full grid items-center px-[22px] py-[11px] border-b border-border font-mono text-[12.5px] text-left hover:bg-bg-elev transition-colors',
-                selected === p.name && 'bg-bg-elev border-l-2 border-l-accent',
+                'w-full grid items-center px-[22px] py-[11px] border-b border-border font-mono text-[12.5px] text-left hover:bg-bg-elev transition-colors group',
               )}
               style={{ gridTemplateColumns: GRID }}
             >
+              {/* Status dot */}
               <span>
-                <span className="w-1.5 h-1.5 rounded-full bg-good block" />
+                <span className={cn(
+                  'w-1.5 h-1.5 rounded-full block',
+                  (p.stats?.calls ?? 0) > 0 ? 'bg-good' : 'bg-border',
+                )} />
               </span>
-              <span className="flex items-center gap-2">
-                <span className="text-text font-sans text-[13px] font-medium">{p.name}</span>
+
+              {/* Name */}
+              <span className="flex items-center gap-2 min-w-0">
+                <span className="text-text font-sans text-[13px] font-medium truncate group-hover:text-accent transition-colors">
+                  {p.name}
+                </span>
               </span>
-              <span className="text-text">v{p.version}</span>
-              <span className="text-text-muted">{p.version}</span>
+
+              {/* Active version */}
+              <span className="text-text-muted">v{p.version}</span>
+
+              {/* Version count */}
+              <span className="text-text-muted">{p.versionCount ?? p.version}</span>
+
+              {/* Calls */}
               <span className={cn(p.stats && p.stats.calls > 0 ? 'text-text' : 'text-text-faint')}>
                 {p.stats?.calls ? p.stats.calls.toLocaleString() : '—'}
               </span>
+
+              {/* Avg cost */}
               <span className={cn(p.stats?.avgCostUsd != null ? 'text-text' : 'text-text-faint')}>
                 {p.stats?.avgCostUsd != null ? fmtUsd(p.stats.avgCostUsd) : '—'}
               </span>
+
+              {/* Avg latency */}
               <span className={cn(p.stats?.avgLatencyMs != null ? 'text-text' : 'text-text-faint')}>
                 {p.stats?.avgLatencyMs != null ? fmtMs(p.stats.avgLatencyMs) : '—'}
               </span>
-              <span className="text-text-faint">—</span>
-              <span className="text-text-muted font-sans">—</span>
+
+              {/* Quality score */}
+              <QualityBadge score={p.qualityScore} />
+
+              {/* A/B badge */}
+              <span>
+                {p.activeExperiment ? (
+                  <span className="inline-flex items-center gap-1 font-mono text-[9px] uppercase tracking-[0.05em] px-[5px] py-[2px] rounded-[3px] bg-accent-bg border border-accent-border text-accent">
+                    <FlaskConical className="h-2.5 w-2.5" />
+                    A/B
+                  </span>
+                ) : (
+                  <span className="text-text-faint">—</span>
+                )}
+              </span>
+
+              {/* Updated date */}
               <span className="text-text-faint text-right text-[11px]">
                 {new Date(p.created_at).toLocaleDateString()}
               </span>
@@ -371,59 +416,6 @@ export default function PromptsPage() {
           ))
         )}
       </div>
-
-      {/* Compare drawer */}
-      {selected !== null && (
-        <div className="border-t border-border-strong bg-bg-elev shrink-0 max-h-[280px] overflow-auto">
-          <div className="flex items-center justify-between px-[22px] py-3 border-b border-border sticky top-0 bg-bg-elev z-10">
-            <span className="text-[13px] font-medium text-text">
-              Version comparison — <span className="font-mono text-text-muted">{selected}</span>
-            </span>
-            <button type="button" onClick={() => setSelected(null)} className="text-text-faint hover:text-text transition-colors">
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-          {compareQuery.isLoading ? (
-            <div className="p-4 space-y-2">
-              {[1, 2].map((i) => <div key={i} className="h-8 bg-bg rounded animate-pulse" />)}
-            </div>
-          ) : (compareQuery.data ?? []).length === 0 ? (
-            <div className="px-[22px] py-8 text-center font-mono text-[12.5px] text-text-muted">
-              No request data for this prompt in the last 30 days.{' '}
-              Tag calls with{' '}
-              <code className="font-mono bg-bg px-1 rounded text-[11px]">withPromptVersion(&apos;{selected}@latest&apos;)</code>
-            </div>
-          ) : (
-            <div>
-              <div
-                className="grid font-mono text-[10px] text-text-faint uppercase tracking-[0.05em] px-[22px] py-[8px] bg-bg border-b border-border"
-                style={{ gridTemplateColumns: '100px 80px 100px 80px 100px 100px' }}
-              >
-                <span>Version</span>
-                <span className="text-right">Samples</span>
-                <span className="text-right">Avg lat</span>
-                <span className="text-right">Error %</span>
-                <span className="text-right">Avg cost</span>
-                <span className="text-right">Total cost</span>
-              </div>
-              {(compareQuery.data ?? []).map((m) => (
-                <div
-                  key={m.promptVersionId}
-                  className="grid items-center px-[22px] py-[9px] border-b border-border last:border-0 font-mono text-[12px]"
-                  style={{ gridTemplateColumns: '100px 80px 100px 80px 100px 100px' }}
-                >
-                  <span className="text-text-muted">v{m.version}</span>
-                  <span className="text-right text-text-muted">{m.sampleCount}</span>
-                  <span className="text-right text-text-muted">{fmtMs(m.avgLatencyMs)}</span>
-                  <span className="text-right text-text-muted">{(m.errorRate * 100).toFixed(1)}%</span>
-                  <span className="text-right text-text-muted">{fmtUsd(m.avgCostUsd)}</span>
-                  <span className="text-right text-text-muted">{fmtUsd(m.totalCostUsd)}</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
     </div>
   )
 }

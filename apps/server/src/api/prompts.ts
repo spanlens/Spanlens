@@ -81,8 +81,15 @@ promptsRouter.get('/', async (c) => {
     return true
   })
 
-  // Aggregate 24h request metrics per prompt_version_id, then roll up per name
-  const sinceIso = new Date(Date.now() - 24 * 3_600_000).toISOString()
+  // versionCount per prompt name (more accurate than using latest version number)
+  const versionCountByName = new Map<string, number>()
+  for (const [name, ids] of idsByName) versionCountByName.set(name, ids.length)
+
+  // Aggregate request metrics per prompt_version_id, then roll up per name.
+  // sinceHours defaults to 24h; the UI passes the selected date range.
+  const sinceHoursRaw = Number(c.req.query('sinceHours'))
+  const sinceHours = Number.isFinite(sinceHoursRaw) && sinceHoursRaw > 0 ? sinceHoursRaw : 24
+  const sinceIso = new Date(Date.now() - sinceHours * 3_600_000).toISOString()
   const allVersionIds = allRows.map((r) => r.id as string)
   const statsByName = new Map<string, PromptStats>()
 
@@ -126,9 +133,38 @@ promptsRouter.get('/', async (c) => {
     }
   }
 
+  // Quality score per prompt name: 100 * (1 - errorRate) for the window
+  const qualityByName = new Map<string, number | null>()
+  for (const [name, stats] of statsByName) {
+    qualityByName.set(
+      name,
+      stats.calls > 0 && stats.errorRate !== null
+        ? Math.round(100 * (1 - stats.errorRate))
+        : null,
+    )
+  }
+
+  // Running A/B experiments for this org (batch lookup)
+  const promptNames = latest.map((r) => r.name)
+  const activeExpByName = new Map<string, { id: string; trafficSplit: number }>()
+  if (promptNames.length > 0) {
+    const { data: runningExps } = await supabaseAdmin
+      .from('prompt_ab_experiments')
+      .select('id, prompt_name, traffic_split')
+      .eq('organization_id', orgId)
+      .eq('status', 'running')
+      .in('prompt_name', promptNames)
+    for (const exp of runningExps ?? []) {
+      activeExpByName.set(exp.prompt_name, { id: exp.id, trafficSplit: exp.traffic_split })
+    }
+  }
+
   const enriched = latest.map((row) => ({
     ...row,
+    versionCount: versionCountByName.get(row.name) ?? 1,
     stats: statsByName.get(row.name) ?? EMPTY_STATS,
+    qualityScore: qualityByName.get(row.name) ?? null,
+    activeExperiment: activeExpByName.get(row.name) ?? null,
   }))
 
   return c.json({ success: true, data: enriched })
