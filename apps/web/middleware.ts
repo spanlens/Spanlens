@@ -13,7 +13,12 @@ import { NextResponse, type NextRequest } from 'next/server'
  * instead of two.
  */
 
-const PUBLIC_PATHS = ['/', '/pricing', '/login', '/signup', '/auth/', '/terms', '/privacy', '/invite', '/demo']
+const PUBLIC_PATHS = ['/', '/pricing', '/login', '/signup', '/auth/', '/terms', '/privacy', '/invite', '/demo', '/waitlist']
+
+// Pre-launch: redirect /login and /signup to /waitlist until June 3, 2026.
+// Remove this block on launch day.
+const LAUNCH_DATE = new Date('2026-06-03T00:00:00+09:00')
+const PRE_LAUNCH = Date.now() < LAUNCH_DATE.getTime()
 
 export async function middleware(request: NextRequest) {
   // Skip auth middleware when Supabase env vars are absent (local preview without .env.local)
@@ -64,6 +69,18 @@ export async function middleware(request: NextRequest) {
     const url = request.nextUrl.clone()
     url.pathname = '/dashboard'
     return NextResponse.redirect(url)
+  }
+
+  // Pre-launch redirect: unauthenticated /login and /signup → /waitlist.
+  // ?direct=1 bypasses this for existing alpha users.
+  // Remove this block on June 3, 2026 launch day.
+  if (PRE_LAUNCH && !user && (path === '/login' || path === '/signup')) {
+    const bypass = request.nextUrl.searchParams.get('direct')
+    if (!bypass) {
+      const url = request.nextUrl.clone()
+      url.pathname = '/waitlist'
+      return NextResponse.redirect(url)
+    }
   }
 
   // Forward auth metadata downstream so the dashboard layout can skip its
