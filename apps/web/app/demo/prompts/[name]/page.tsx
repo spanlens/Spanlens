@@ -157,7 +157,7 @@ function CallsTab() {
           <span>Latency</span>
           <span className="text-right">Time</span>
         </div>
-        {requests.map((r, i) => (
+        {requests.map((r) => (
           <div
             key={r.id}
             className={cn(

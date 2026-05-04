@@ -1,7 +1,6 @@
 'use client'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { useState } from 'react'
 import { useTheme } from 'next-themes'
 import { Sun, Moon, Monitor, X } from 'lucide-react'
 import { cn } from '@/lib/utils'

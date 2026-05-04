@@ -59,12 +59,6 @@ export default function DemoPromptsPage() {
   const totalCalls = all.reduce((s, p) => s + (p.stats?.calls ?? 0), 0)
   const totalSpend = all.reduce((s, p) => s + (p.stats?.totalCostUsd ?? 0), 0)
   const abCount = all.filter((p) => p.activeExperiment != null).length
-  const avgQuality = (() => {
-    const scores = all.map((p) => p.qualityScore).filter((s): s is number => s != null)
-    return scores.length > 0
-      ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length)
-      : null
-  })()
 
   const filtered = all.filter(
     (p) =>
