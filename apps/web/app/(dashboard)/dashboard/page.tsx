@@ -401,8 +401,16 @@ export default function DashboardPage() {
     return cards
   }, [anomalies.data, firingAlerts, recommendations.data, securitySummary.data, timeRange])
 
+  // Border classes for KPI cells — responsive 2-col (mobile) / 4-col (lg)
+  const kpiCellClasses: [string, string, string, string] = [
+    'border-r border-b border-border lg:border-b-0',       // 1st: right + bottom-on-mobile
+    'border-b border-border lg:border-r lg:border-b-0',    // 2nd: no right on mobile, restore lg
+    'border-r border-border',                               // 3rd: right, no bottom
+    'border-border',                                        // 4th: no right, no bottom
+  ]
+
   return (
-    <div className="-m-7 flex flex-col h-screen overflow-hidden">
+    <div className="-m-4 md:-m-7 flex flex-col h-screen overflow-hidden">
       <Topbar
         crumbs={[{ label: 'Workspace' }, { label: 'Dashboard' }]}
         right={
@@ -413,9 +421,9 @@ export default function DashboardPage() {
       <div className="flex-1 overflow-y-auto">
         {/* Greeting */}
         <div className="px-[22px] py-[22px] border-b border-border">
-          <div className="flex items-baseline gap-3 mb-1">
+          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 mb-1">
             {/* suppressHydrationWarning: greeting() uses new Date() — server UTC ≠ client local time */}
-            <span suppressHydrationWarning className="text-[26px] font-medium tracking-[-0.6px]">
+            <span suppressHydrationWarning className="text-[22px] sm:text-[26px] font-medium tracking-[-0.6px]">
               {greeting()}.
             </span>
             <span suppressHydrationWarning className="font-mono text-[11px] text-text-faint tracking-[0.03em]">
@@ -429,7 +437,7 @@ export default function DashboardPage() {
             </span>
           </div>
           {o && (
-            <div className="flex items-center gap-2 text-[14px] text-text-muted">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] sm:text-[14px] text-text-muted">
               <span>{sinceLabel(timeRange)}</span>
               <b className="text-text font-medium">{o.totalRequests.toLocaleString()} requests</b>
               <span className="text-text-faint">·</span>
@@ -517,7 +525,7 @@ export default function DashboardPage() {
         <div className="grid grid-cols-2 lg:grid-cols-4 border-y border-border mt-[18px]">
           {isLoading || !o ? (
             Array.from({ length: 4 }).map((_, i) => (
-              <div key={i} className="p-[18px] border-r border-border last:border-r-0">
+              <div key={i} className={cn('p-[18px]', kpiCellClasses[i])}>
                 <Skeleton className="h-3 w-3/4 mb-3" />
                 <Skeleton className="h-8 w-full mb-3" />
                 <Skeleton className="h-5 w-full" />
@@ -526,6 +534,7 @@ export default function DashboardPage() {
           ) : (
             <>
               <KpiCard
+                className={kpiCellClasses[0]}
                 label={`Requests · ${timeRange}`}
                 value={o.totalRequests.toLocaleString()}
                 delta={fmtDelta(o.requestsDelta)}
@@ -535,6 +544,7 @@ export default function DashboardPage() {
                 linkHref="/requests"
               />
               <KpiCard
+                className={kpiCellClasses[1]}
                 label={`Spend · ${timeRange}`}
                 value={fmtCost(o.totalCostUsd)}
                 delta={fmtDelta(o.costDelta)}
@@ -544,6 +554,7 @@ export default function DashboardPage() {
                 linkHref="/savings"
               />
               <KpiCard
+                className={kpiCellClasses[2]}
                 label={`Avg latency · ${timeRange}`}
                 value={`${o.avgLatencyMs}ms`}
                 delta={fmtDelta(o.latencyDelta)}
@@ -553,6 +564,7 @@ export default function DashboardPage() {
                 linkHref="/traces"
               />
               <KpiCard
+                className={kpiCellClasses[3]}
                 label="Error rate"
                 value={errorRate}
                 delta={fmtDelta(o.errorRateDelta)}
@@ -587,8 +599,8 @@ export default function DashboardPage() {
         ) : null}
 
         {/* 2-col: Top prompts + Models in use */}
-        <div className="grid grid-cols-2 border-b border-border">
-          <div className="px-[22px] py-[18px] border-r border-border">
+        <div className="grid grid-cols-1 md:grid-cols-2 border-b border-border">
+          <div className="px-[22px] py-[18px] border-b border-border md:border-b-0 md:border-r">
             <div className="flex items-center mb-3">
               <span className="text-[14px] font-medium">Top prompts · 24h spend</span>
               <span className="flex-1" />
@@ -675,39 +687,41 @@ export default function DashboardPage() {
             ) : (modelsQuery.data ?? []).length === 0 ? (
               <p className="font-mono text-[12px] text-text-faint">No requests in the last {timeRange}.</p>
             ) : (
-              <div>
-                <div className="grid font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint pb-2 border-b border-border" style={{ gridTemplateColumns: '1fr 80px 90px 70px', gap: 10 }}>
-                  <span>Model</span>
-                  <span className="text-right">Requests</span>
-                  <span className="text-right">Cost · total</span>
-                  <span className="text-right">Avg lat</span>
-                </div>
-                {(modelsQuery.data ?? []).slice(0, 6).map((m) => (
-                  <div
-                    key={`${m.provider}/${m.model}`}
-                    className="py-2 border-b border-border last:border-0 grid items-center font-mono"
-                    style={{ gridTemplateColumns: '1fr 80px 90px 70px', gap: 10 }}
-                  >
-                    <span className="text-[12.5px] text-text truncate">
-                      <span className="text-text-faint text-[10.5px] uppercase tracking-[0.04em] mr-1.5">{m.provider}</span>
-                      {m.model}
-                    </span>
-                    <span className="text-[12px] text-text-muted text-right">{m.requests.toLocaleString()}</span>
-                    <span className="text-[12px] text-text font-medium text-right">{fmtCost(m.totalCostUsd)}</span>
-                    <span className={cn('text-[12px] text-right', m.errorRate > 0.05 ? 'text-bad' : 'text-text-muted')}>
-                      {m.avgLatencyMs}ms
-                    </span>
+              <div className="overflow-x-auto">
+                <div style={{ minWidth: 300 }}>
+                  <div className="grid font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint pb-2 border-b border-border" style={{ gridTemplateColumns: '1fr 70px 80px 60px', gap: 10 }}>
+                    <span>Model</span>
+                    <span className="text-right">Reqs</span>
+                    <span className="text-right">Cost</span>
+                    <span className="text-right">Lat</span>
                   </div>
-                ))}
+                  {(modelsQuery.data ?? []).slice(0, 6).map((m) => (
+                    <div
+                      key={`${m.provider}/${m.model}`}
+                      className="py-2 border-b border-border last:border-0 grid items-center font-mono"
+                      style={{ gridTemplateColumns: '1fr 70px 80px 60px', gap: 10 }}
+                    >
+                      <span className="text-[12.5px] text-text truncate">
+                        <span className="text-text-faint text-[10.5px] uppercase tracking-[0.04em] mr-1.5">{m.provider}</span>
+                        {m.model}
+                      </span>
+                      <span className="text-[12px] text-text-muted text-right">{m.requests.toLocaleString()}</span>
+                      <span className="text-[12px] text-text font-medium text-right">{fmtCost(m.totalCostUsd)}</span>
+                      <span className={cn('text-[12px] text-right', m.errorRate > 0.05 ? 'text-bad' : 'text-text-muted')}>
+                        {m.avgLatencyMs}ms
+                      </span>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
           </div>
         </div>
 
         {/* Bottom 2-col: Alerts + Recommendations */}
-        <div className="grid grid-cols-2 border-b border-border">
+        <div className="grid grid-cols-1 md:grid-cols-2 border-b border-border">
           {/* Active alert rules */}
-          <div className="px-[22px] py-[18px] border-r border-border">
+          <div className="px-[22px] py-[18px] border-b border-border md:border-b-0 md:border-r">
             <div className="flex items-center mb-3">
               <span className="text-[14px] font-medium">Active alerts</span>
               <span className="flex-1" />
@@ -821,23 +835,25 @@ export default function DashboardPage() {
               return (
                 <div
                   key={e.id}
-                  className={cn('grid items-baseline py-2', i < arr.length - 1 && 'border-b border-border')}
-                  style={{ gridTemplateColumns: '56px 80px 1fr', gap: 14 }}
+                  className={cn('py-2', i < arr.length - 1 && 'border-b border-border')}
                 >
-                  <span className="font-mono text-[10.5px] text-text-faint">
-                    {new Date(e.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })}
-                  </span>
-                  <span className={cn(
-                    'font-mono text-[9px] uppercase tracking-[0.04em] px-[5px] py-[1px] rounded-[3px] border self-center',
-                    isAccent ? 'text-accent border-accent-border' : 'text-text-faint border-border',
-                  )}>{kind}</span>
-                  <div className="text-[12.5px] text-text leading-snug">
-                    {formatAuditAction(e.action)}
-                    {e.resource_id && (
-                      <span className="font-mono text-[10.5px] text-text-faint ml-1.5">
-                        · {e.resource_id.slice(0, 8)}
-                      </span>
-                    )}
+                  {/* Mobile: stacked; Desktop: inline grid */}
+                  <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 sm:grid sm:items-baseline" style={{ gridTemplateColumns: '56px 80px 1fr', gap: 14 }}>
+                    <span className="font-mono text-[10.5px] text-text-faint shrink-0">
+                      {new Date(e.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })}
+                    </span>
+                    <span className={cn(
+                      'font-mono text-[9px] uppercase tracking-[0.04em] px-[5px] py-[1px] rounded-[3px] border self-center shrink-0',
+                      isAccent ? 'text-accent border-accent-border' : 'text-text-faint border-border',
+                    )}>{kind}</span>
+                    <div className="text-[12.5px] text-text leading-snug w-full sm:w-auto">
+                      {formatAuditAction(e.action)}
+                      {e.resource_id && (
+                        <span className="font-mono text-[10.5px] text-text-faint ml-1.5">
+                          · {e.resource_id.slice(0, 8)}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
               )

@@ -48,7 +48,7 @@ export function KpiCard({
   const path = sparkValues && sparkValues.length > 1 ? sparklinePath(sparkValues) : null
 
   return (
-    <div className={cn('flex flex-col p-[18px] border-r border-border last:border-r-0', className)}>
+    <div className={cn('flex flex-col p-[18px]', className)}>
       <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-2.5">
         {label}
       </div>

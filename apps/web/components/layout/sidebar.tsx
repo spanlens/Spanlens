@@ -3,11 +3,12 @@ import { useState, useRef, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useTheme } from 'next-themes'
-import { Sun, Moon, Monitor } from 'lucide-react'
+import { Sun, Moon, Monitor, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
 import { useStatsOverview } from '@/lib/queries/use-stats'
 import { useQuota } from '@/lib/queries/use-billing'
+import { useSidebar } from '@/lib/sidebar-context'
 import { useAnomalies } from '@/lib/queries/use-anomalies'
 import { useAlerts } from '@/lib/queries/use-alerts'
 import { useRecommendations } from '@/lib/queries/use-recommendations'
@@ -325,6 +326,13 @@ export function Sidebar() {
   const anomalies = useAnomalies()
   const alerts = useAlerts()
   const recommendations = useRecommendations()
+  const { isOpen, close } = useSidebar()
+
+  // Close sidebar when navigating on mobile
+  useEffect(() => {
+    close()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname])
 
   const quota = useQuota()
 
@@ -356,7 +364,38 @@ export function Sidebar() {
   }
 
   return (
-    <aside className="flex h-screen w-56 shrink-0 flex-col bg-bg-elev border-r border-border">
+    <>
+      {/* Mobile backdrop */}
+      {isOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/40 md:hidden"
+          onClick={close}
+          aria-hidden="true"
+        />
+      )}
+
+      <aside
+        className={cn(
+          // Base
+          'flex flex-col bg-bg-elev border-r border-border',
+          // Mobile: fixed overlay drawer
+          'fixed inset-y-0 left-0 z-50 w-[272px] h-screen',
+          'transition-transform duration-200 ease-in-out',
+          isOpen ? 'translate-x-0' : '-translate-x-full',
+          // Desktop: back in flow, always visible
+          'md:relative md:w-56 md:shrink-0 md:translate-x-0 md:transition-none',
+        )}
+      >
+      {/* Mobile close button */}
+      <button
+        type="button"
+        onClick={close}
+        className="absolute right-3 top-3.5 md:hidden p-1.5 rounded-[5px] text-text-faint hover:text-text hover:bg-bg-muted transition-colors"
+        aria-label="Close navigation"
+      >
+        <X size={16} />
+      </button>
+
       {/* Logo */}
       <div className="px-[18px] pt-[18px] pb-3">
         <LogoMark />
@@ -456,5 +495,6 @@ export function Sidebar() {
         </button>
       </div>
     </aside>
+    </>
   )
 }
