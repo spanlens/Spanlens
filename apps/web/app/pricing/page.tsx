@@ -13,6 +13,7 @@ const PLANS = [
     description: 'For personal projects and exploration',
     features: [
       '10K requests / month',
+      '60 req/min rate limit',
       '1 workspace',
       '1 member',
       '7-day log retention',
@@ -31,6 +32,7 @@ const PLANS = [
     description: 'For solo developers shipping to production',
     features: [
       '100K requests / month',
+      '300 req/min rate limit',
       '3 workspaces',
       'Up to 5 members',
       '30-day log retention',
@@ -50,6 +52,7 @@ const PLANS = [
     description: 'For teams that need full visibility',
     features: [
       '500K requests / month',
+      '1,500 req/min rate limit',
       'Unlimited workspaces',
       'Unlimited members',
       '90-day log retention',
