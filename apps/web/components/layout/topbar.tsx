@@ -1,8 +1,9 @@
 'use client'
 import Link from 'next/link'
-import { Search } from 'lucide-react'
+import { Search, Menu } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useCommandPalette } from '@/components/command-palette'
+import { useSidebar } from '@/lib/sidebar-context'
 
 interface Crumb {
   label: string
@@ -20,6 +21,7 @@ interface TopbarProps {
  * Sits at the top of every dashboard main area, 52px tall, border-bottom.
  */
 export function Topbar({ crumbs, right, className }: TopbarProps) {
+  const { toggle } = useSidebar()
   return (
     <div
       className={cn(
@@ -27,6 +29,16 @@ export function Topbar({ crumbs, right, className }: TopbarProps) {
         className,
       )}
     >
+      {/* Hamburger — mobile only */}
+      <button
+        type="button"
+        onClick={toggle}
+        className="md:hidden p-1.5 -ml-1.5 rounded-[5px] text-text-muted hover:text-text hover:bg-bg-muted transition-colors"
+        aria-label="Open navigation"
+      >
+        <Menu size={18} />
+      </button>
+
       <nav className="flex items-center gap-2 text-[13px]">
         {crumbs.map((c, i) => (
           <span key={i} className="flex items-center gap-2">
