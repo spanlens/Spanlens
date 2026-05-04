@@ -58,7 +58,7 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     const webReq = new Request(url, {
       method: req.method ?? 'GET',
       headers,
-      ...(body !== null ? { body } : {}),
+      ...(body !== null ? { body: body as Uint8Array } : {}),
     })
     const webRes = await app.fetch(webReq)
 
