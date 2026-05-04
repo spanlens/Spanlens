@@ -95,9 +95,9 @@ export default function LandingPage() {
 
       {/* ── Nav ─────────────────────────────────────────────────────── */}
       <nav className="sticky top-0 z-10 bg-bg/90 backdrop-blur-sm">
-        <div className="max-w-[1200px] mx-auto flex items-center justify-between px-10 py-6">
+        <div className="max-w-[1200px] mx-auto flex items-center justify-between px-4 sm:px-6 lg:px-10 py-4 sm:py-6">
           <LogoMark />
-          <div className="flex items-center gap-7 font-mono text-[13px] text-text-muted tracking-[0.015em]">
+          <div className="hidden sm:flex items-center gap-5 lg:gap-7 font-mono text-[13px] text-text-muted tracking-[0.015em]">
             <Link href="#product" className="hover:text-text transition-colors">Product</Link>
             <Link href="/docs" className="hover:text-text transition-colors">Docs</Link>
             <Link href="/pricing" className="hover:text-text transition-colors">Pricing</Link>
@@ -111,45 +111,47 @@ export default function LandingPage() {
       <div className="border-b border-border" />
 
       {/* ── Hero ────────────────────────────────────────────────────── */}
-      <section className="max-w-[1200px] mx-auto px-10 pt-[88px] pb-[72px] relative">
+      <section className="max-w-[1200px] mx-auto px-4 sm:px-6 lg:px-10 pt-12 sm:pt-[64px] lg:pt-[88px] pb-10 sm:pb-[56px] lg:pb-[72px] relative">
         {/* Version badge */}
         <div className="inline-flex items-center gap-2 px-2 py-[5px] rounded-full border border-accent-border bg-accent-bg text-accent font-mono text-[12px] tracking-[0.03em] mb-7">
           <span className="bg-accent text-bg px-[7px] py-[2px] rounded-full text-[10px] font-semibold tracking-[0.05em]">NEW</span>
           Python SDK is here · <code className="font-mono">pip install spanlens</code>
         </div>
 
-        <h1 className="text-[88px] leading-[0.96] tracking-[-2.8px] font-medium max-w-[980px] mb-7 [text-wrap:balance]">
+        <h1 className="text-[44px] sm:text-[64px] lg:text-[88px] leading-[0.96] tracking-[-2px] sm:tracking-[-2.8px] font-medium max-w-[980px] mb-7 [text-wrap:balance]">
           One line.<br />
           <span className="text-text-muted">Every LLM call,</span> observed.
         </h1>
 
-        <p className="text-[20px] leading-relaxed text-text-muted max-w-[640px] mb-10 [text-wrap:pretty]">
+        <p className="text-[16px] sm:text-[18px] lg:text-[20px] leading-relaxed text-text-muted max-w-[640px] mb-10 [text-wrap:pretty]">
           Record every OpenAI, Anthropic, and Gemini call — cost, latency, tokens, full
           request/response. Then surface anomalies, PII, and cheaper-model
           suggestions automatically.
         </p>
 
-        {/* Install block — TS first (legacy), Python below as a sibling line */}
-        <div className="inline-flex items-center bg-bg-elev border border-border rounded-lg p-1 mb-2 shadow-[0_1px_0_var(--border)]">
-          <div className="px-[14px] py-2 font-mono text-[14px]">
-            <span className="text-text-faint">$ </span>
-            npx <span className="text-accent">@spanlens/cli</span> init
+        {/* Install block — stacked on mobile, inline on sm+ */}
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-[18px]">
+          <div className="inline-flex items-center bg-bg-elev border border-border rounded-lg p-1 shadow-[0_1px_0_var(--border)]">
+            <div className="px-[14px] py-2 font-mono text-[14px]">
+              <span className="text-text-faint">$ </span>
+              npx <span className="text-accent">@spanlens/cli</span> init
+            </div>
+            <CopyInstallButton />
           </div>
-          <CopyInstallButton />
-        </div>
-        <div className="inline-flex items-center bg-bg-elev border border-border rounded-lg p-1 mb-[18px] ml-2 shadow-[0_1px_0_var(--border)]">
-          <div className="px-[14px] py-2 font-mono text-[14px]">
-            <span className="text-text-faint">$ </span>
-            pip install <span className="text-accent">spanlens</span>
+          <div className="inline-flex items-center bg-bg-elev border border-border rounded-lg p-1 shadow-[0_1px_0_var(--border)]">
+            <div className="px-[14px] py-2 font-mono text-[14px]">
+              <span className="text-text-faint">$ </span>
+              pip install <span className="text-accent">spanlens</span>
+            </div>
+            <CopyInstallButton text="pip install spanlens" />
           </div>
-          <CopyInstallButton text="pip install spanlens" />
         </div>
         <div className="font-mono text-[13px] text-text-faint block">
           TypeScript · Python · Next.js, Node, Edge · MIT · self-hostable
         </div>
 
-        {/* Floating signal pill */}
-        <div className="absolute top-[110px] right-10 w-[300px] bg-bg-elev border border-border rounded-[10px] p-[14px] shadow-[0_8px_24px_rgba(0,0,0,0.06)]">
+        {/* Floating signal pill — hidden on mobile/tablet, visible on lg+ */}
+        <div className="hidden lg:block absolute top-[110px] right-10 w-[300px] bg-bg-elev border border-border rounded-[10px] p-[14px] shadow-[0_8px_24px_rgba(0,0,0,0.06)]">
           <div className="flex items-center justify-between mb-2">
             <span className="font-mono text-[11px] text-text-faint tracking-[0.06em] uppercase">Anomaly · 2 min ago</span>
             <span className="w-2 h-2 rounded-full bg-accent inline-block" />
@@ -177,7 +179,7 @@ export default function LandingPage() {
 
       {/* ── Early access waitlist ────────────────────────────────────── */}
       <section className="border-y border-border bg-bg-elev">
-        <div className="max-w-[1200px] mx-auto px-10 py-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-5">
+        <div className="max-w-[1200px] mx-auto px-4 sm:px-6 lg:px-10 py-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-5">
           <div>
             <p className="font-mono text-[11px] text-text-faint tracking-[0.08em] uppercase mb-1">Early access</p>
             <p className="text-[15px] font-medium text-text">
@@ -192,7 +194,7 @@ export default function LandingPage() {
       </section>
 
       {/* ── Dashboard preview ───────────────────────────────────────── */}
-      <section className="px-10 pb-20">
+      <section className="px-4 sm:px-6 lg:px-10 pb-20">
         <div className="max-w-[1200px] mx-auto">
           <div className="border border-border rounded-[14px] bg-bg-elev overflow-hidden shadow-[0_20px_60px_rgba(0,0,0,0.08)]">
             {/* Window chrome */}
@@ -208,14 +210,14 @@ export default function LandingPage() {
               <div className="font-mono text-[11px] text-text-faint">LIVE</div>
             </div>
             {/* Filter chips */}
-            <div className="flex items-center gap-2 px-4 py-3 border-b border-border">
+            <div className="flex items-center gap-2 px-4 py-3 border-b border-border overflow-x-auto">
               {['All models', 'Last 24h', 'Status: all', '+ filter'].map((f, i) => (
-                <span key={f} className={`px-[10px] py-1 border rounded-[6px] font-mono text-[11px] tracking-[0.03em] text-text-muted ${i < 3 ? 'border-border bg-bg-muted' : 'border-border'}`}>
+                <span key={f} className={`px-[10px] py-1 border rounded-[6px] font-mono text-[11px] tracking-[0.03em] text-text-muted shrink-0 ${i < 3 ? 'border-border bg-bg-muted' : 'border-border'}`}>
                   {f}
                 </span>
               ))}
               <span className="flex-1" />
-              <span className="font-mono text-[11px] text-text-faint">12,481 events / 1h</span>
+              <span className="font-mono text-[11px] text-text-faint shrink-0">12,481 events / 1h</span>
             </div>
             {/* Chart strip */}
             <div className="px-4 pt-3 pb-2 border-b border-border bg-bg h-[72px] flex items-end gap-[2px]">
@@ -233,57 +235,62 @@ export default function LandingPage() {
                 )
               })}
             </div>
-            {/* Table header */}
-            <div className="grid px-5 py-[10px] border-b border-border font-mono text-[11px] text-text-faint tracking-[0.05em] uppercase" style={{ gridTemplateColumns: '1.8fr 1.2fr 0.8fr 0.8fr 0.9fr 0.7fr 0.7fr', gap: '16px' }}>
-              <span>Model</span><span>Endpoint</span><span>Latency</span><span>Tokens</span><span>Cost</span><span>Status</span><span>Age</span>
-            </div>
-            {PREVIEW_ROWS.map((r, i) => (
-              <div
-                key={i}
-                className="grid px-5 py-[14px] font-mono text-[13px] items-center"
-                style={{
-                  gridTemplateColumns: '1.8fr 1.2fr 0.8fr 0.8fr 0.9fr 0.7fr 0.7fr',
-                  gap: '16px',
-                  borderBottom: i < PREVIEW_ROWS.length - 1 ? '1px solid var(--border)' : 'none',
-                  background: r.anom ? 'var(--accent-bg)' : 'transparent',
-                }}
-              >
-                <span className="text-text flex items-center gap-2">
-                  {r.anom && <span className="w-1.5 h-1.5 rounded-full bg-accent shrink-0 inline-block" />}
-                  {r.m}
-                </span>
-                <span className="text-text-muted">{r.ep}</span>
-                <span style={{ color: r.anom ? 'var(--accent)' : 'var(--text)' }}>{r.lat}ms</span>
-                <span className="text-text-muted">{r.tok}</span>
-                <span className="text-text">{r.cost}</span>
-                <span style={{ color: r.st === 200 ? 'var(--good)' : 'var(--bad)' }}>{r.st}</span>
-                <span className="text-text-faint">{r.age}</span>
+            {/* Table — horizontally scrollable on mobile */}
+            <div className="overflow-x-auto">
+              <div className="min-w-[640px]">
+                {/* Table header */}
+                <div className="grid px-5 py-[10px] border-b border-border font-mono text-[11px] text-text-faint tracking-[0.05em] uppercase" style={{ gridTemplateColumns: '1.8fr 1.2fr 0.8fr 0.8fr 0.9fr 0.7fr 0.7fr', gap: '16px' }}>
+                  <span>Model</span><span>Endpoint</span><span>Latency</span><span>Tokens</span><span>Cost</span><span>Status</span><span>Age</span>
+                </div>
+                {PREVIEW_ROWS.map((r, i) => (
+                  <div
+                    key={i}
+                    className="grid px-5 py-[14px] font-mono text-[13px] items-center"
+                    style={{
+                      gridTemplateColumns: '1.8fr 1.2fr 0.8fr 0.8fr 0.9fr 0.7fr 0.7fr',
+                      gap: '16px',
+                      borderBottom: i < PREVIEW_ROWS.length - 1 ? '1px solid var(--border)' : 'none',
+                      background: r.anom ? 'var(--accent-bg)' : 'transparent',
+                    }}
+                  >
+                    <span className="text-text flex items-center gap-2">
+                      {r.anom && <span className="w-1.5 h-1.5 rounded-full bg-accent shrink-0 inline-block" />}
+                      {r.m}
+                    </span>
+                    <span className="text-text-muted">{r.ep}</span>
+                    <span style={{ color: r.anom ? 'var(--accent)' : 'var(--text)' }}>{r.lat}ms</span>
+                    <span className="text-text-muted">{r.tok}</span>
+                    <span className="text-text">{r.cost}</span>
+                    <span style={{ color: r.st === 200 ? 'var(--good)' : 'var(--bad)' }}>{r.st}</span>
+                    <span className="text-text-faint">{r.age}</span>
+                  </div>
+                ))}
               </div>
-            ))}
+            </div>
           </div>
         </div>
       </section>
 
       {/* ── Feature grid ─────────────────────────────────────────────── */}
-      <section id="product" className="max-w-[1200px] mx-auto px-10 py-16">
-        <div className="flex items-baseline justify-between mb-10">
+      <section id="product" className="max-w-[1200px] mx-auto px-4 sm:px-6 lg:px-10 py-16">
+        <div className="flex flex-col lg:flex-row lg:items-baseline lg:justify-between gap-4 mb-10">
           <div>
             <div className="font-mono text-[12px] text-accent tracking-[0.06em] uppercase mb-2.5">What you get</div>
-            <h2 className="text-[44px] font-medium tracking-[-1.2px]">The lens. Not the weight.</h2>
+            <h2 className="text-[28px] sm:text-[36px] lg:text-[44px] font-medium tracking-[-1.2px]">The lens. Not the weight.</h2>
           </div>
-          <div className="text-[14px] text-text-muted max-w-[340px] leading-relaxed">
+          <div className="text-[14px] text-text-muted lg:max-w-[340px] leading-relaxed">
             Spanlens sits in front of your provider. No agents to run. No SDK to rewrite.
             One <code className="font-mono text-text">baseURL</code> and you&apos;re done.
           </div>
         </div>
-        <div className="grid grid-cols-3 gap-px bg-border border border-border rounded-xl overflow-hidden">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-px bg-border border border-border rounded-xl overflow-hidden">
           {FEATURES.map((f) => (
-            <div key={f.kicker} className="bg-bg p-8 min-h-[220px]">
+            <div key={f.kicker} className="bg-bg p-6 sm:p-8 min-h-[180px] sm:min-h-[220px]">
               <div className="flex items-baseline justify-between mb-4">
                 <span className="font-mono text-[11px] text-text-faint tracking-[0.05em]">{f.kicker}</span>
                 <span className="font-mono text-[12px] text-accent">{f.accent}</span>
               </div>
-              <div className="text-[20px] font-medium tracking-[-0.3px] mb-2.5">{f.title}</div>
+              <div className="text-[18px] sm:text-[20px] font-medium tracking-[-0.3px] mb-2.5">{f.title}</div>
               <div className="text-[14px] leading-[1.55] text-text-muted">{f.body}</div>
             </div>
           ))}
@@ -291,11 +298,11 @@ export default function LandingPage() {
       </section>
 
       {/* ── Cost callout ─────────────────────────────────────────────── */}
-      <section className="max-w-[1200px] mx-auto px-10 py-10 pb-20">
-        <div className="border border-border rounded-xl bg-bg-elev p-10 grid grid-cols-2 gap-10">
+      <section className="max-w-[1200px] mx-auto px-4 sm:px-6 lg:px-10 py-10 pb-20">
+        <div className="border border-border rounded-xl bg-bg-elev p-6 lg:p-10 grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-10">
           <div>
             <div className="font-mono text-[12px] text-accent tracking-[0.06em] uppercase mb-3">Cost visibility</div>
-            <h3 className="text-[34px] font-medium tracking-[-0.8px] leading-[1.1] mb-4">
+            <h3 className="text-[24px] sm:text-[28px] lg:text-[34px] font-medium tracking-[-0.8px] leading-[1.1] mb-4">
               See the bill before it arrives.
             </h3>
             <p className="text-[15px] leading-[1.6] text-text-muted mb-6">
@@ -321,7 +328,7 @@ export default function LandingPage() {
             <div>
               <div className="font-mono text-[11px] text-text-faint tracking-[0.06em] uppercase mb-2">This month · projected</div>
               <div className="flex items-baseline gap-3 mb-1.5">
-                <span className="text-[56px] font-medium tracking-[-2px] leading-none">$2,481</span>
+                <span className="text-[40px] sm:text-[48px] lg:text-[56px] font-medium tracking-[-2px] leading-none">$2,481</span>
                 <span className="font-mono text-[14px] text-good">−$1,218</span>
               </div>
               <div className="text-[13px] text-text-muted">vs. last month. 3 model-swap suggestions pending.</div>
@@ -345,10 +352,10 @@ export default function LandingPage() {
 
       {/* ── Trace showcase ───────────────────────────────────────────── */}
       <section className="border-t border-b border-border bg-bg-elev">
-        <div className="max-w-[1200px] mx-auto px-10 py-20 grid gap-[60px] items-center" style={{ gridTemplateColumns: '380px 1fr' }}>
+        <div className="max-w-[1200px] mx-auto px-4 sm:px-6 lg:px-10 py-16 lg:py-20 flex flex-col lg:grid lg:gap-[60px] lg:items-center gap-10" style={{ gridTemplateColumns: '380px 1fr' }}>
           <div>
             <div className="font-mono text-[12px] text-accent tracking-[0.06em] uppercase mb-3">Agent tracing</div>
-            <h2 className="text-[40px] font-medium tracking-[-1.1px] leading-[1.05] mb-[18px]">
+            <h2 className="text-[26px] sm:text-[34px] lg:text-[40px] font-medium tracking-[-1.1px] leading-[1.05] mb-[18px]">
               Find the one span<br />that cost you 18 seconds.
             </h2>
             <p className="text-[15px] leading-[1.6] text-text-muted mb-5">
@@ -363,63 +370,65 @@ export default function LandingPage() {
           </div>
           {/* Trace preview */}
           <div className="border border-border rounded-xl bg-bg overflow-hidden">
-            <div className="flex items-center gap-2.5 px-4 py-[10px] border-b border-border bg-bg-muted font-mono text-[11px] text-text-faint tracking-[0.04em] uppercase">
+            <div className="flex items-center gap-2.5 px-4 py-[10px] border-b border-border bg-bg-muted font-mono text-[11px] text-text-faint tracking-[0.04em] uppercase flex-wrap gap-y-1">
               <span className="text-text">trace_8812</span>
               <span>· support agent · 8.24s ·</span>
               <span className="text-accent">critical: summarize_tickets v7</span>
             </div>
-            <div className="p-3">
-              {TRACE_SPANS.map((s, i) => (
-                <div key={i} className="grid items-center py-1.5 gap-2.5" style={{ gridTemplateColumns: '220px 1fr 80px' }}>
-                  <span
-                    className="font-mono text-[11.5px]"
-                    style={{
-                      color: s.critical ? 'var(--accent)' : 'var(--text)',
-                      paddingLeft: s.depth * 14,
-                    }}
-                  >
-                    {s.depth > 0 && <span className="text-text-faint">└ </span>}
-                    {s.name}
-                  </span>
-                  <div className="relative h-3.5 bg-bg-muted rounded-[2px]">
-                    <div
-                      className="absolute top-0 h-full rounded-[2px]"
+            <div className="p-3 overflow-x-auto">
+              <div className="min-w-[400px]">
+                {TRACE_SPANS.map((s, i) => (
+                  <div key={i} className="grid items-center py-1.5 gap-2.5" style={{ gridTemplateColumns: '220px 1fr 80px' }}>
+                    <span
+                      className="font-mono text-[11.5px]"
                       style={{
-                        left: `${s.start}%`,
-                        width: `${s.width}%`,
-                        background: s.critical ? 'var(--accent)' : 'var(--border-strong)',
-                        border: s.critical ? '1px solid var(--accent-border)' : 'none',
+                        color: s.critical ? 'var(--accent)' : 'var(--text)',
+                        paddingLeft: s.depth * 14,
                       }}
-                    />
+                    >
+                      {s.depth > 0 && <span className="text-text-faint">└ </span>}
+                      {s.name}
+                    </span>
+                    <div className="relative h-3.5 bg-bg-muted rounded-[2px]">
+                      <div
+                        className="absolute top-0 h-full rounded-[2px]"
+                        style={{
+                          left: `${s.start}%`,
+                          width: `${s.width}%`,
+                          background: s.critical ? 'var(--accent)' : 'var(--border-strong)',
+                          border: s.critical ? '1px solid var(--accent-border)' : 'none',
+                        }}
+                      />
+                    </div>
+                    <span
+                      className="font-mono text-[10.5px] text-right"
+                      style={{ color: s.critical ? 'var(--accent)' : 'var(--text-muted)' }}
+                    >
+                      {s.label}
+                    </span>
                   </div>
-                  <span
-                    className="font-mono text-[10.5px] text-right"
-                    style={{ color: s.critical ? 'var(--accent)' : 'var(--text-muted)' }}
-                  >
-                    {s.label}
-                  </span>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
           </div>
         </div>
       </section>
 
       {/* ── Product surfaces ─────────────────────────────────────────── */}
-      <section className="max-w-[1200px] mx-auto px-10 pt-24 pb-16">
-        <div className="flex items-baseline justify-between mb-10">
+      <section className="max-w-[1200px] mx-auto px-4 sm:px-6 lg:px-10 pt-16 sm:pt-24 pb-16">
+        <div className="flex flex-col lg:flex-row lg:items-baseline lg:justify-between gap-4 mb-10">
           <div>
             <div className="font-mono text-[12px] text-accent tracking-[0.06em] uppercase mb-2.5">The product</div>
-            <h2 className="text-[44px] font-medium tracking-[-1.2px]">Six surfaces. One source of truth.</h2>
+            <h2 className="text-[28px] sm:text-[36px] lg:text-[44px] font-medium tracking-[-1.2px]">Six surfaces. One source of truth.</h2>
           </div>
-          <div className="text-[14px] text-text-muted max-w-[360px] leading-relaxed">
+          <div className="text-[14px] text-text-muted lg:max-w-[360px] leading-relaxed">
             Every screen reads the same span store. Move from a cost chart to the
             exact failing request in two clicks.
           </div>
         </div>
-        <div className="grid grid-cols-3 gap-px bg-border border border-border rounded-xl overflow-hidden">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-px bg-border border border-border rounded-xl overflow-hidden">
           {SURFACES.map((s) => (
-            <div key={s.k} className="bg-bg p-7 min-h-[160px]">
+            <div key={s.k} className="bg-bg p-6 sm:p-7 min-h-[140px] sm:min-h-[160px]">
               <div className="flex items-center justify-between mb-3">
                 <span className="text-[18px] font-medium tracking-[-0.3px]">{s.k}</span>
                 <span className="font-mono text-[11px] text-accent tracking-[0.03em]">{s.hint}</span>
@@ -431,9 +440,9 @@ export default function LandingPage() {
       </section>
 
       {/* ── Compat strip ─────────────────────────────────────────────── */}
-      <section className="max-w-[1200px] mx-auto px-10 py-10 pb-16">
+      <section className="max-w-[1200px] mx-auto px-4 sm:px-6 lg:px-10 py-10 pb-16">
         <div className="font-mono text-[11px] text-text-faint tracking-[0.06em] uppercase mb-5">Works with</div>
-        <div className="grid grid-cols-4 gap-px bg-border border border-border rounded-[10px] overflow-hidden">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-px bg-border border border-border rounded-[10px] overflow-hidden">
           {COMPAT.map(([n, d]) => (
             <div key={n} className="bg-bg px-[18px] py-5 flex flex-col gap-1">
               <span className="text-[14px] font-medium tracking-[-0.2px]">{n}</span>
@@ -444,11 +453,11 @@ export default function LandingPage() {
       </section>
 
       {/* ── Self-host ────────────────────────────────────────────────── */}
-      <section className="max-w-[1200px] mx-auto px-10 py-10 pb-20">
-        <div className="border border-border rounded-xl bg-bg p-10 grid grid-cols-2 gap-10">
+      <section className="max-w-[1200px] mx-auto px-4 sm:px-6 lg:px-10 py-10 pb-20">
+        <div className="border border-border rounded-xl bg-bg p-6 lg:p-10 grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-10">
           <div>
             <div className="font-mono text-[12px] text-accent tracking-[0.06em] uppercase mb-3">Self-hostable</div>
-            <h3 className="text-[34px] font-medium tracking-[-0.8px] leading-[1.1] mb-4">Your data, your VPC.</h3>
+            <h3 className="text-[24px] sm:text-[28px] lg:text-[34px] font-medium tracking-[-0.8px] leading-[1.1] mb-4">Your data, your VPC.</h3>
             <p className="text-[15px] leading-[1.6] text-text-muted mb-6">
               Run Spanlens in your cluster with Docker Compose or a single binary.
               Prompts and completions never leave your network.
@@ -459,7 +468,7 @@ export default function LandingPage() {
               <span className="font-mono text-[11px] text-text-muted px-[10px] py-[5px] border border-border rounded-[5px]">Single binary</span>
             </div>
           </div>
-          <div className="bg-[#0f0f10] text-[#e8e8e8] rounded-lg p-5 font-mono text-[12.5px] leading-[1.7]">
+          <div className="bg-[#0f0f10] text-[#e8e8e8] rounded-lg p-5 font-mono text-[12.5px] leading-[1.7] overflow-x-auto">
             <div className="text-[#7a7a7a] mb-1"># one-liner · docker</div>
             <div>docker run -d --name spanlens \</div>
             <div>{'  '}-p 3001:3001 \</div>
@@ -472,13 +481,13 @@ export default function LandingPage() {
       </section>
 
       {/* ── Pricing preview ──────────────────────────────────────────── */}
-      <section className="max-w-[1200px] mx-auto px-10 py-10 pb-20">
+      <section className="max-w-[1200px] mx-auto px-4 sm:px-6 lg:px-10 py-10 pb-20">
         <div className="font-mono text-[12px] text-accent tracking-[0.06em] uppercase mb-3">Pricing</div>
-        <h2 className="text-[44px] font-medium tracking-[-1.2px] mb-2">Simple. Per request.</h2>
+        <h2 className="text-[28px] sm:text-[36px] lg:text-[44px] font-medium tracking-[-1.2px] mb-2">Simple. Per request.</h2>
         <p className="text-[15px] text-text-muted mb-8 max-w-[560px]">
           Free while you&apos;re small. Paid by ingested request, not by seat. Self-host is free forever.
         </p>
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {PLANS.map((p) => (
             <div
               key={p.name}
@@ -523,12 +532,12 @@ export default function LandingPage() {
       </section>
 
       {/* ── FAQ ──────────────────────────────────────────────────────── */}
-      <section className="max-w-[1200px] mx-auto px-10 py-10 pb-20">
+      <section className="max-w-[1200px] mx-auto px-4 sm:px-6 lg:px-10 py-10 pb-20">
         <div className="font-mono text-[12px] text-accent tracking-[0.06em] uppercase mb-3">FAQ</div>
-        <h2 className="text-[40px] font-medium tracking-[-1px] mb-8">Reasonable questions.</h2>
-        <div className="grid grid-cols-2 gap-px bg-border border border-border rounded-xl overflow-hidden">
+        <h2 className="text-[26px] sm:text-[34px] lg:text-[40px] font-medium tracking-[-1px] mb-8">Reasonable questions.</h2>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-px bg-border border border-border rounded-xl overflow-hidden">
           {FAQS.map(([q, a]) => (
-            <div key={q} className="bg-bg px-7 py-6">
+            <div key={q} className="bg-bg px-5 sm:px-7 py-6">
               <div className="text-[15px] font-medium mb-2 text-text">{q}</div>
               <div className="text-[13.5px] leading-[1.55] text-text-muted">{a}</div>
             </div>
@@ -537,14 +546,14 @@ export default function LandingPage() {
       </section>
 
       {/* ── Final CTA ────────────────────────────────────────────────── */}
-      <section className="max-w-[1200px] mx-auto px-10 py-20 pb-24 text-center">
-        <h2 className="text-[64px] font-medium tracking-[-2px] leading-[1.02] mb-5">
+      <section className="max-w-[1200px] mx-auto px-4 sm:px-6 lg:px-10 py-16 sm:py-20 pb-20 sm:pb-24 text-center">
+        <h2 className="text-[36px] sm:text-[48px] lg:text-[64px] font-medium tracking-[-2px] leading-[1.02] mb-5">
           See what your app is saying.
         </h2>
-        <p className="text-[17px] text-text-muted max-w-[540px] mx-auto leading-relaxed mb-8">
+        <p className="text-[16px] sm:text-[17px] text-text-muted max-w-[540px] mx-auto leading-relaxed mb-8">
           30-second setup. Your first 50,000 requests are on us. Cancel anytime — there&apos;s nothing to cancel.
         </p>
-        <div className="inline-flex gap-2.5">
+        <div className="inline-flex flex-wrap justify-center gap-2.5">
           <Link href="/signup" className="font-mono text-[13px] text-bg bg-text px-[18px] py-[10px] rounded-[7px] font-medium hover:opacity-90 transition-opacity">
             Start free →
           </Link>
@@ -555,15 +564,15 @@ export default function LandingPage() {
       </section>
 
       {/* ── Install diff ─────────────────────────────────────────────── */}
-      <section className="max-w-[1200px] mx-auto px-10 py-10 pb-20">
+      <section className="max-w-[1200px] mx-auto px-4 sm:px-6 lg:px-10 py-10 pb-20">
         <div className="font-mono text-[12px] text-accent tracking-[0.06em] uppercase mb-3">Install</div>
-        <h2 className="text-[44px] font-medium tracking-[-1.2px] mb-8">It&apos;s genuinely one line.</h2>
-        <div className="grid grid-cols-2 gap-3">
+        <h2 className="text-[28px] sm:text-[36px] lg:text-[44px] font-medium tracking-[-1.2px] mb-8">It&apos;s genuinely one line.</h2>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
           <div className="bg-bg-elev border border-border rounded-xl overflow-hidden font-mono text-[14px] leading-[1.7]">
             <div className="flex border-b border-border bg-bg-muted px-4 py-2 font-mono text-[12px] tracking-[0.04em] text-text-faint uppercase">
               app/api/chat/route.ts
             </div>
-            <pre className="m-0 px-6 py-5 text-text whitespace-pre overflow-x-auto">
+            <pre className="m-0 px-4 sm:px-6 py-5 text-text whitespace-pre overflow-x-auto text-[12px] sm:text-[14px]">
 {`- import OpenAI from 'openai'
 - const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
 + `}<span className="text-accent">{`import { createOpenAI } from '@spanlens/sdk/openai'`}</span>{`
@@ -576,7 +585,7 @@ export default function LandingPage() {
             <div className="flex border-b border-border bg-bg-muted px-4 py-2 font-mono text-[12px] tracking-[0.04em] text-text-faint uppercase">
               app/main.py
             </div>
-            <pre className="m-0 px-6 py-5 text-text whitespace-pre overflow-x-auto">
+            <pre className="m-0 px-4 sm:px-6 py-5 text-text whitespace-pre overflow-x-auto text-[12px] sm:text-[14px]">
 {`- from openai import OpenAI
 - client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
 + `}<span className="text-accent">{`from spanlens.integrations.openai import create_openai`}</span>{`
