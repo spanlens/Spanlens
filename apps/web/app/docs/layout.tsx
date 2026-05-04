@@ -1,6 +1,5 @@
-import Link from 'next/link'
 import { DocsSidebar } from './_components/sidebar'
-import { AuthNavButtons } from '@/components/layout/auth-nav-buttons'
+import { MarketingNav } from '@/components/layout/marketing-nav'
 import { Footer } from '@/components/layout/footer'
 
 export const metadata = {
@@ -13,28 +12,7 @@ export default function DocsLayout({ children }: { children: React.ReactNode }) 
   return (
     <div className="min-h-screen bg-bg">
       {/* Nav */}
-      <nav className="sticky top-0 z-10 border-b border-border bg-bg/90 backdrop-blur-sm">
-        <div className="max-w-7xl mx-auto flex items-center justify-between px-6 h-[56px]">
-          <Link href="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
-            <img src="/icon.png" alt="Spanlens" width={22} height={22} className="shrink-0 rounded-[5px]" />
-            <span className="font-semibold text-[16px] text-text tracking-[-0.3px]">Spanlens</span>
-            <span className="text-[13px] text-text-faint hidden sm:inline">/ Docs</span>
-          </Link>
-          <div className="flex items-center gap-6">
-            <Link
-              href="https://github.com/sunes26/Spanlens"
-              target="_blank"
-              className="text-[13px] text-text-muted hover:text-text transition-colors"
-            >
-              GitHub
-            </Link>
-            <Link href="/pricing" className="text-[13px] text-text-muted hover:text-text transition-colors">
-              Pricing
-            </Link>
-            <AuthNavButtons signupLabel="Start free" />
-          </div>
-        </div>
-      </nav>
+      <MarketingNav subtitle="Docs" />
 
       <div className="max-w-7xl mx-auto flex gap-8 px-6 py-10">
         <aside className="hidden md:block w-56 shrink-0">
