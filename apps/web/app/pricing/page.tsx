@@ -13,44 +13,53 @@ const PLANS = [
     description: 'For personal projects and exploration',
     features: [
       '10K requests / month',
-      'Unlimited projects',
-      '3 providers (OpenAI, Anthropic, Gemini)',
+      '1 workspace',
+      '1 member',
       '7-day log retention',
+      'All core features included',
+      'CSV + JSON export',
       'Community support',
     ],
+    overage: null,
     cta: 'Start free',
     href: '/signup',
     highlight: false,
   },
   {
-    name: 'Starter',
-    price: '$19',
+    name: 'Pro',
+    price: '$29',
     description: 'For solo developers shipping to production',
     features: [
       '100K requests / month',
-      'Unlimited projects',
-      'All providers',
+      '3 workspaces',
+      'Up to 5 members',
       '30-day log retention',
-      'Cost alerts & budgets',
+      '5 alerts',
+      'Email notifications',
+      'CSV + JSON export',
       'Email support',
     ],
-    cta: 'Start Starter',
+    overage: '$8 / 100K extra requests',
+    cta: 'Start Pro',
     href: '/signup?plan=starter',
     highlight: true,
   },
   {
     name: 'Team',
-    price: '$49',
-    description: 'For teams that need more visibility',
+    price: '$99',
+    description: 'For teams that need full visibility',
     features: [
       '500K requests / month',
-      'Unlimited projects',
-      'All providers',
+      'Unlimited workspaces',
+      'Unlimited members',
       '90-day log retention',
-      'Agent tracing (Gantt view)',
-      'Slack / Discord alerts',
+      'Unlimited alerts',
+      'Email + Slack notifications',
+      'Webhooks',
+      'CSV + JSON export',
       'Priority support',
     ],
+    overage: '$6 / 100K extra requests',
     cta: 'Start Team',
     href: '/signup?plan=team',
     highlight: false,
@@ -134,10 +143,15 @@ export default function PricingPage() {
               <div className={cn('flex-1 p-6', plan.highlight ? 'bg-accent-bg' : 'bg-bg-elev')}>
                 <h2 className="text-[18px] font-semibold text-text mb-1">{plan.name}</h2>
                 <p className="text-[13px] text-text-muted mb-4">{plan.description}</p>
-                <div className="mb-6">
+                <div className="mb-1">
                   <span className="font-mono text-[32px] font-medium tracking-[-0.5px] text-text">{plan.price}</span>
                   <span className="font-mono text-[12px] text-text-muted">/mo</span>
                 </div>
+                {plan.overage ? (
+                  <p className="font-mono text-[11px] text-text-faint mb-5">+ {plan.overage}</p>
+                ) : (
+                  <div className="mb-5" />
+                )}
                 <ul className="space-y-2 mb-6">
                   {plan.features.map((f) => (
                     <li key={f} className="flex items-center gap-2 text-[13px] text-text-muted">
@@ -173,29 +187,29 @@ export default function PricingPage() {
         <div className="mt-16 rounded-xl border border-border bg-bg-elev p-6 max-w-3xl mx-auto">
           <h3 className="font-semibold text-[15px] text-text mb-3">What happens if I go over my quota?</h3>
           <p className="text-[13px] text-text-muted mb-4">
-            Paid plans default to <strong className="text-text">soft limit + overage billing + hard cap</strong> so
-            you&apos;re never surprise-blocked or surprise-billed:
+            Paid plans default to <strong className="text-text">overage billing</strong> so you&apos;re never
+            surprise-blocked mid-month:
           </p>
           <ul className="text-[13px] text-text-muted space-y-2 mb-4">
             <li>
-              <strong className="text-text">Soft limit</strong> — your plan&apos;s included quota (100K on Starter,
+              <strong className="text-text">Soft limit</strong> — your plan&apos;s included quota (100K on Pro,
               500K on Team). Extra requests pass through and accumulate.
             </li>
             <li>
-              <strong className="text-text">Overage billing</strong> — Starter $0.10 / Team $0.08 per 1,000 extra
-              requests, bundled into your next invoice (one email per month, not per charge).
+              <strong className="text-text">Overage billing</strong> — Pro $8 / Team $6 per 100K extra
+              requests, charged immediately at the end of your billing period (not deferred to next month).
             </li>
             <li>
-              <strong className="text-text">Hard cap</strong> — default 5× the soft limit. Past this, requests return
-              429 even with overage enabled — your absolute ceiling. Adjustable 1–100× in settings.
+              <strong className="text-text">Hard cap</strong> — default 5× the soft limit. Past this,
+              requests return 429 even with overage enabled. Adjustable 1–100× in settings.
             </li>
             <li>
-              <strong className="text-text">Cost certainty mode</strong> — flip overage off in settings to behave like
-              Free plan (hard block at quota).
+              <strong className="text-text">Cost certainty mode</strong> — flip overage off in settings to
+              hard-block at your quota instead.
             </li>
             <li>
-              <strong className="text-text">Free plan</strong> — always a hard block at 10K. Upgrade to Starter for
-              overage.
+              <strong className="text-text">Free plan</strong> — always a hard block at 10K. Upgrade to Pro
+              for overage.
             </li>
           </ul>
           <Link

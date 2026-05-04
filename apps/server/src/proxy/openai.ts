@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { stream } from 'hono/streaming'
 import { authApiKey, type ApiKeyContext } from '../middleware/authApiKey.js'
 import { enforceQuota } from '../middleware/quota.js'
+import { proxyRateLimit } from '../middleware/rateLimit.js'
 import { calculateCost } from '../lib/cost.js'
 import { logRequestAsync } from '../lib/logger.js'
 import { resolvePromptVersion } from '../lib/resolve-prompt-version.js'
@@ -16,6 +17,7 @@ const OPENAI_BASE = 'https://api.openai.com'
 export const openaiProxy = new Hono<ApiKeyContext>()
 
 openaiProxy.use('*', authApiKey)
+openaiProxy.use('*', proxyRateLimit)
 openaiProxy.use('*', enforceQuota)
 
 openaiProxy.all('/*', async (c) => {

@@ -15,6 +15,7 @@ import { statsRouter }         from './api/stats.js'
 import { tracesRouter }        from './api/traces.js'
 import { ingestRouter }        from './api/ingest.js'
 import { cronRouter }          from './api/cron.js'
+import { apiRateLimit }        from './middleware/rateLimit.js'
 import { billingRouter }       from './api/billing.js'
 import { paddleWebhookRouter } from './api/paddleWebhook.js'
 import { alertsRouter }        from './api/alerts.js'
@@ -78,6 +79,11 @@ app.route('/webhooks',        paddleWebhookRouter)
 // ── Public endpoints (no auth) ────────────────────────────────
 app.route('/api/v1/waitlist', waitlistRouter)
 app.route('/api/v1',          openapiRouter)   // GET /api/v1/openapi.json, GET /api/v1/docs
+
+// ── Dashboard API rate limit (120 req/min, all plans) ────────
+// Runs before authJwt using a token hash as the key — no extra
+// DB lookup needed. Fails open so public endpoints are unaffected.
+app.use('/api/v1/*', apiRateLimit)
 
 // ── REST API routes (authJwt middleware) ──────────────────────
 app.route('/api/v1/organizations',  organizationsRouter)

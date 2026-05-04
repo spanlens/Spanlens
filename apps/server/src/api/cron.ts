@@ -310,15 +310,23 @@ cronRouter.get('/snapshot-anomalies', async (c) => {
   }
 })
 
-// ── Log retention (daily) ───────────────────────────────────────
+// ── Log retention + rate-limit bucket cleanup (daily) ──────────
 cronRouter.get('/prune-logs', async (c) => {
   const authFail = assertCronAuth(c.req.header('Authorization'))
   if (authFail) return c.json({ error: authFail }, 401)
 
-  const { data, error } = await supabaseAdmin.rpc('prune_logs_by_retention')
-  if (error) return c.json({ error: error.message }, 500)
+  const [logsResult, bucketsResult] = await Promise.all([
+    supabaseAdmin.rpc('prune_logs_by_retention'),
+    supabaseAdmin.rpc('prune_rate_limit_buckets'),
+  ])
 
-  return c.json({ success: true, result: data })
+  if (logsResult.error) return c.json({ error: logsResult.error.message }, 500)
+
+  return c.json({
+    success: true,
+    logs: logsResult.data,
+    rate_limit_buckets_pruned: bucketsResult.error ? null : bucketsResult.data,
+  })
 })
 
 // ── Stale provider key reminders (weekly) ───────────────────────
