@@ -39,12 +39,19 @@ export async function AuthNavButtons({ signupLabel = 'Start free' }: AuthNavButt
 
   if (user) {
     return (
-      <Link href="/dashboard">
-        <Button size="sm" className="gap-1.5">
-          Go to dashboard
-          <ArrowRight className="h-3.5 w-3.5" />
-        </Button>
-      </Link>
+      <>
+        <Link href="/demo/dashboard" className="hidden sm:inline-flex">
+          <Button variant="outline" size="sm">
+            Live demo
+          </Button>
+        </Link>
+        <Link href="/dashboard">
+          <Button size="sm" className="gap-1.5">
+            Go to dashboard
+            <ArrowRight className="h-3.5 w-3.5" />
+          </Button>
+        </Link>
+      </>
     )
   }
 

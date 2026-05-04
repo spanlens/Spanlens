@@ -129,8 +129,16 @@ export default function LandingPage() {
             <CopyInstallButton text="pip install spanlens" />
           </div>
         </div>
-        <div className="font-mono text-[13px] text-text-faint block">
-          TypeScript · Python · Next.js, Node, Edge · MIT · self-hostable
+        <div className="flex items-center gap-4 flex-wrap">
+          <div className="font-mono text-[13px] text-text-faint">
+            TypeScript · Python · Next.js, Node, Edge · MIT · self-hostable
+          </div>
+          <Link
+            href="/demo/dashboard"
+            className="font-mono text-[13px] text-accent hover:opacity-80 transition-opacity shrink-0"
+          >
+            Try live demo →
+          </Link>
         </div>
 
         {/* Floating signal pill — hidden on mobile/tablet, visible on lg+ */}
