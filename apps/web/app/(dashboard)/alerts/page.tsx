@@ -250,7 +250,7 @@ export default function AlertsPage() {
   }
 
   return (
-    <div className="-m-7 flex flex-col h-screen overflow-hidden bg-bg">
+    <div className="-mx-4 -my-4 md:-mx-8 md:-my-7 flex flex-col h-screen overflow-hidden bg-bg">
       <Topbar
         crumbs={[{ label: 'Workspace', href: '/dashboard' }, { label: 'Alerts' }]}
         right={
@@ -276,21 +276,23 @@ export default function AlertsPage() {
       />
 
       {/* Stat strip */}
-      <div className="grid grid-cols-5 border-b border-border shrink-0">
-        {[
-          { label: 'Firing now',    value: String(firing.length),                              warn: firing.length > 0 },
-          { label: 'Rules active',  value: String(alerts.filter((a) => a.is_active).length),  warn: false },
-          { label: 'Fires 24h',     value: String(fires24h),                                  warn: fires24h > 0 },
-          { label: 'Rules total',   value: String(alerts.length),                             warn: false },
-          { label: 'Channels',      value: String(channels.length),                           warn: false },
-        ].map((s, i) => (
-          <div key={i} className={cn('px-[18px] py-[14px]', i < 4 && 'border-r border-border')}>
-            <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-2">{s.label}</div>
-            <span className={cn('text-[24px] font-medium leading-none tracking-[-0.6px]', s.warn ? 'text-accent' : 'text-text')}>
-              {s.value}
-            </span>
-          </div>
-        ))}
+      <div className="overflow-x-auto shrink-0 border-b border-border">
+        <div className="grid grid-cols-5 min-w-[480px]">
+          {[
+            { label: 'Firing now',    value: String(firing.length),                              warn: firing.length > 0 },
+            { label: 'Rules active',  value: String(alerts.filter((a) => a.is_active).length),  warn: false },
+            { label: 'Fires 24h',     value: String(fires24h),                                  warn: fires24h > 0 },
+            { label: 'Rules total',   value: String(alerts.length),                             warn: false },
+            { label: 'Channels',      value: String(channels.length),                           warn: false },
+          ].map((s, i) => (
+            <div key={i} className={cn('px-[18px] py-[14px]', i < 4 && 'border-r border-border')}>
+              <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-2">{s.label}</div>
+              <span className={cn('text-[24px] font-medium leading-none tracking-[-0.6px]', s.warn ? 'text-accent' : 'text-text')}>
+                {s.value}
+              </span>
+            </div>
+          ))}
+        </div>
       </div>
 
       {/* Content */}

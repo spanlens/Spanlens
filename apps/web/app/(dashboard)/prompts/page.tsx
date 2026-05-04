@@ -99,12 +99,13 @@ export default function PromptsPage() {
   }
 
   return (
-    <div className="-m-7 flex flex-col h-screen overflow-hidden bg-bg">
+    <div className="-mx-4 -my-4 md:-mx-8 md:-my-7 flex flex-col h-screen overflow-hidden bg-bg">
       <Topbar
         crumbs={[{ label: 'Workspace', href: '/dashboard' }, { label: 'Prompts' }]}
         right={
           <div className="flex items-center gap-2">
-            <div className="flex items-center gap-2 px-[10px] py-[5px] border border-border rounded-[6px] bg-bg-elev w-[280px]">
+            {/* Search — desktop only; mobile search lives in the filter bar */}
+            <div className="hidden md:flex items-center gap-2 px-[10px] py-[5px] border border-border rounded-[6px] bg-bg-elev w-[280px]">
               <span className="text-text-faint text-[14px] leading-none">⌕</span>
               <input
                 value={search}
@@ -118,7 +119,7 @@ export default function PromptsPage() {
               <button
                 type="button"
                 onClick={() => setFormOpen((v) => !v)}
-                className="font-mono text-[11px] text-text px-[10px] py-[5px] border border-border-strong rounded-[5px] bg-bg-elev hover:bg-bg-muted transition-colors"
+                className="font-mono text-[11px] text-text px-[10px] py-[5px] border border-border-strong rounded-[5px] bg-bg-elev hover:bg-bg-muted transition-colors whitespace-nowrap shrink-0"
               >
                 + register prompt
               </button>
@@ -128,39 +129,58 @@ export default function PromptsPage() {
       />
 
       {/* Info banner */}
-      <div className="flex items-center gap-2.5 px-[22px] py-[10px] bg-bg-muted border-b border-border text-[12.5px] text-text-muted shrink-0">
-        <span className="font-mono text-[10px] text-accent uppercase tracking-[0.04em] px-[7px] py-[2px] rounded-[3px] bg-accent-bg border border-accent-border">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 px-[22px] py-[10px] bg-bg-muted border-b border-border text-[12px] text-text-muted shrink-0">
+        <span className="font-mono text-[10px] text-accent uppercase tracking-[0.04em] px-[7px] py-[2px] rounded-[3px] bg-accent-bg border border-accent-border shrink-0">
           code = source
         </span>
-        Prompts are defined in code. Spanlens observes versions via the{' '}
-        <code className="font-mono text-[11.5px] px-1 rounded border border-border bg-bg text-text">
-          X-Spanlens-Prompt-Version
-        </code>{' '}
-        header on each SDK call.
-        <span className="flex-1" />
-        <span className="font-mono text-[11px] text-text cursor-pointer hover:opacity-80 transition-opacity">
+        <span>
+          Prompts are defined in code. Versions tracked via{' '}
+          <code className="font-mono text-[11px] px-1 rounded border border-border bg-bg text-text">
+            X-Spanlens-Prompt-Version
+          </code>{' '}
+          header.
+        </span>
+        <span className="font-mono text-[11px] text-text cursor-pointer hover:opacity-80 transition-opacity ml-auto">
           View setup guide →
         </span>
       </div>
 
       {/* Stat strip */}
-      <div className="grid grid-cols-5 border-b border-border shrink-0">
-        {[
-          { label: 'Prompts',              value: String(all.length)                                         },
-          { label: 'Versions',             value: String(totalVersions)                                      },
-          { label: `Calls · ${dateRange}`, value: totalCalls > 0 ? totalCalls.toLocaleString() : '—'        },
-          { label: `Avg quality`,          value: avgQuality != null ? String(avgQuality) : '—'              },
-          { label: `Spend · ${dateRange}`, value: totalSpend > 0 ? fmtUsd(totalSpend) : '—'                 },
-        ].map((s, i) => (
-          <div key={i} className={cn('px-[18px] py-[14px]', i < 4 && 'border-r border-border')}>
-            <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-2">{s.label}</div>
-            <span className="text-[24px] font-medium leading-none tracking-[-0.6px] text-text">{s.value}</span>
-          </div>
-        ))}
+      <div className="overflow-x-auto shrink-0 border-b border-border">
+        <div className="grid grid-cols-5 min-w-[480px]">
+          {[
+            { label: 'Prompts',              value: String(all.length)                                         },
+            { label: 'Versions',             value: String(totalVersions)                                      },
+            { label: `Calls · ${dateRange}`, value: totalCalls > 0 ? totalCalls.toLocaleString() : '—'        },
+            { label: `Avg quality`,          value: avgQuality != null ? String(avgQuality) : '—'              },
+            { label: `Spend · ${dateRange}`, value: totalSpend > 0 ? fmtUsd(totalSpend) : '—'                 },
+          ].map((s, i) => (
+            <div key={i} className={cn('px-[18px] py-[14px]', i < 4 && 'border-r border-border')}>
+              <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-2">{s.label}</div>
+              <span className="text-[24px] font-medium leading-none tracking-[-0.6px] text-text">{s.value}</span>
+            </div>
+          ))}
+        </div>
       </div>
 
       {/* Filter toolbar */}
-      <div className="flex items-center gap-[6px] px-[22px] py-[10px] border-b border-border shrink-0 flex-wrap">
+      <div className="flex flex-col gap-[6px] px-[22px] py-[10px] border-b border-border shrink-0">
+      {/* Mobile search — shown only on small screens */}
+      <div className="md:hidden flex items-center gap-2 px-[10px] py-[5px] border border-border rounded-[6px] bg-bg-elev">
+        <span className="text-text-faint text-[14px] leading-none">⌕</span>
+        <input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search prompts…"
+          className="flex-1 bg-transparent font-mono text-[12px] text-text-muted placeholder:text-text-faint focus:outline-none"
+        />
+        {search && (
+          <button type="button" onClick={() => setSearch('')} className="text-text-faint hover:text-text transition-colors">
+            <X className="h-3.5 w-3.5" />
+          </button>
+        )}
+      </div>
+      <div className="flex items-center gap-[6px] flex-wrap">
         <div className="flex p-0.5 border border-border rounded-[5px] bg-bg-elev font-mono text-[10.5px] tracking-[0.03em]">
           {([['all', 'All', String(all.length)], ['ab', 'A/B', String(abCount)]] as [FilterType, string, string][]).map(([v, l, c]) => (
             <button
@@ -262,25 +282,9 @@ export default function PromptsPage() {
           {filtered.length === all.length ? `${all.length} prompts` : `${filtered.length} of ${all.length} prompts`}
         </span>
       </div>
-
-      {/* Column headers */}
-      <div
-        className="grid border-b border-border bg-bg-muted shrink-0 font-mono text-[10px] text-text-faint uppercase tracking-[0.05em] px-[22px] py-[9px]"
-        style={{ gridTemplateColumns: GRID }}
-      >
-        <span />
-        <span>Prompt</span>
-        <span>Active</span>
-        <span>Versions</span>
-        <span>Calls · {dateRange}</span>
-        <span>Avg cost</span>
-        <span>Avg lat</span>
-        <span>Quality · {dateRange}</span>
-        <span>A/B</span>
-        <span className="text-right">Updated</span>
       </div>
 
-      {/* Create form panel */}
+      {/* Create form panel — outside scroll container so it stays pinned */}
       {formOpen && (
         <div className="px-[22px] py-[14px] bg-bg-elev border-b border-border-strong shrink-0 space-y-3">
           <div className="flex items-center justify-between">
@@ -329,14 +333,14 @@ export default function PromptsPage() {
         </div>
       )}
 
-      {/* Table rows */}
+      {/* Table: header + rows share ONE scroll container so they move together */}
       <div className="flex-1 overflow-auto">
         {isLoading ? (
           <div className="p-6 space-y-2">
             {[1, 2, 3].map((i) => <div key={i} className="h-10 bg-bg-elev rounded animate-pulse" />)}
           </div>
         ) : filtered.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full gap-3 text-text-muted">
+          <div className="flex flex-col items-center justify-center py-20 gap-3 text-text-muted">
             <p className="text-[13px]">{search ? 'No prompts match your search.' : 'No prompts registered yet.'}</p>
             {!search && (
               <PermissionGate need="edit">
@@ -347,7 +351,24 @@ export default function PromptsPage() {
             )}
           </div>
         ) : (
-          filtered.map((p) => (
+          <div className="min-w-[700px]">
+            {/* Column headers — sticky so they stay visible on vertical scroll */}
+            <div
+              className="grid sticky top-0 z-10 font-mono text-[10px] text-text-faint uppercase tracking-[0.05em] px-[22px] py-[9px] bg-bg-muted border-b border-border"
+              style={{ gridTemplateColumns: GRID }}
+            >
+              <span />
+              <span>Prompt</span>
+              <span>Active</span>
+              <span>Versions</span>
+              <span>Calls · {dateRange}</span>
+              <span>Avg cost</span>
+              <span>Avg lat</span>
+              <span>Quality · {dateRange}</span>
+              <span>A/B</span>
+              <span className="text-right">Updated</span>
+            </div>
+            {filtered.map((p) => (
             <button
               key={p.id}
               type="button"
@@ -413,7 +434,8 @@ export default function PromptsPage() {
                 {new Date(p.created_at).toLocaleDateString()}
               </span>
             </button>
-          ))
+          ))}
+          </div>
         )}
       </div>
     </div>

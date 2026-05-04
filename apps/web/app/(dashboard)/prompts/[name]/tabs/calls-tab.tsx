@@ -66,7 +66,7 @@ export function CallsTab({ name }: Props) {
         ) : (
           <div className="space-y-4">
             {/* KPI row */}
-            <div className="grid grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               {[
                 { label: 'Total calls',  value: totalCalls.toLocaleString() },
                 { label: 'Total spend',  value: fmtUsd(totalCost) },
@@ -89,9 +89,9 @@ export function CallsTab({ name }: Props) {
             </div>
 
             {/* Per-version table */}
-            <div className="bg-bg-elev border border-border rounded-[6px] overflow-hidden">
+            <div className="bg-bg-elev border border-border rounded-[6px] overflow-x-auto">
               <div
-                className="grid font-mono text-[10px] text-text-faint uppercase tracking-[0.05em] px-[16px] py-[9px] bg-bg-muted border-b border-border"
+                className="grid font-mono text-[10px] text-text-faint uppercase tracking-[0.05em] px-[16px] py-[9px] bg-bg-muted border-b border-border min-w-[620px]"
                 style={{ gridTemplateColumns: '80px 70px 100px 100px 100px 110px 100px' }}
               >
                 <span>Version</span>
@@ -105,7 +105,7 @@ export function CallsTab({ name }: Props) {
               {metrics.map((m) => (
                 <div
                   key={m.promptVersionId}
-                  className="grid items-center px-[16px] py-[11px] border-b border-border last:border-0"
+                  className="grid items-center px-[16px] py-[11px] border-b border-border last:border-0 min-w-[620px]"
                   style={{ gridTemplateColumns: '80px 70px 100px 100px 100px 110px 100px' }}
                 >
                   <span className="font-mono text-[11px] text-text-muted">v{m.version}</span>

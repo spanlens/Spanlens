@@ -178,6 +178,7 @@ export default function RecommendationsPage() {
           gap: 16,
           alignItems: 'center',
           padding: '14px 22px',
+          minWidth: '700px',
         }}
       >
         {/* Title + from/to */}
@@ -288,7 +289,7 @@ export default function RecommendationsPage() {
   }
 
   return (
-    <div className="-m-7 flex flex-col h-screen overflow-hidden bg-bg">
+    <div className="-mx-4 -my-4 md:-mx-8 md:-my-7 flex flex-col h-screen overflow-hidden bg-bg">
       <Topbar
         crumbs={[{ label: 'Workspace', href: '/dashboard' }, { label: 'Savings' }]}
         right={
@@ -308,25 +309,26 @@ export default function RecommendationsPage() {
                 {opt.label}
               </button>
             ))}
-            <span className="font-mono text-[11px] text-text-muted ml-1.5">Analysis window</span>
+            <span className="hidden sm:inline font-mono text-[11px] text-text-muted ml-1.5">Analysis window</span>
           </div>
         }
       />
 
       {/* Hero strip */}
-      <div className="grid border-b border-border shrink-0" style={{ gridTemplateColumns: '1.25fr 1fr 1fr 1fr' }}>
+      <div className="overflow-x-auto shrink-0 border-b border-border">
+      <div className="grid min-w-[700px]" style={{ gridTemplateColumns: '1.25fr 1fr 1fr 1fr' }}>
         {/* Hero tile */}
-        <div className="px-[22px] py-[20px] bg-bg-elev border-r border-border">
+        <div className="px-[16px] py-[16px] bg-bg-elev border-r border-border">
           <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-2">
             Potential savings · next 30d
           </div>
-          <div className="flex items-baseline gap-2.5 mb-2">
-            <span className={cn('font-medium leading-none tracking-[-1.6px]', totalOpen > 0 ? 'text-[48px] text-accent' : 'text-[36px] text-text-faint')}>
+          <div className="flex items-baseline gap-2 mb-1.5">
+            <span className={cn('font-medium leading-none tracking-[-1.6px]', totalOpen > 0 ? 'text-[40px] text-accent' : 'text-[30px] text-text-faint')}>
               {totalOpen > 0 ? fmtUsd(totalOpen) : '—'}
             </span>
-            <span className="font-mono text-[11px] text-text-muted">/ mo</span>
+            <span className="font-mono text-[10px] text-text-muted">/ mo</span>
           </div>
-          <div className="font-mono text-[11px] text-text-muted mb-3">
+          <div className="font-mono text-[10px] text-text-muted mb-2">
             across <span className="text-text">{visible.length}</span> recommendations
             {bestConfLevel !== null && (
               <>
@@ -339,8 +341,8 @@ export default function RecommendationsPage() {
             )}
           </div>
           {highConf.length > 0 && (
-            <div className="font-mono text-[11px] text-good">
-              {fmtUsd(highConf.reduce((s, r) => s + r.estimatedMonthlySavingsUsd, 0))} / mo from high-confidence recommendations alone
+            <div className="font-mono text-[10px] text-good">
+              {fmtUsd(highConf.reduce((s, r) => s + r.estimatedMonthlySavingsUsd, 0))} / mo high-conf
             </div>
           )}
         </div>
@@ -349,30 +351,31 @@ export default function RecommendationsPage() {
           {
             label: `Spend · ${windowLabel}`,
             value: totalSpend > 0 ? fmtUsd(totalSpend) : '—',
-            delta: 'across analyzed models',
+            delta: 'analyzed models',
             good: false,
           },
           {
             label: 'Opportunities',
             value: String(visible.length),
-            delta: 'model substitutions',
+            delta: 'model swaps',
             good: false,
           },
           {
-            label: bestConfLevel ? `${bestConfLevel.charAt(0).toUpperCase() + bestConfLevel.slice(1)} confidence` : 'Confidence',
+            label: bestConfLevel ? `${bestConfLevel.charAt(0).toUpperCase() + bestConfLevel.slice(1)} conf.` : 'Confidence',
             value: bestConfLevel !== null ? String(bestConfCount) : '—',
             delta: bestConfLevel ? bestConfLabel[bestConfLevel] : 'no recommendations yet',
             good: bestConfLevel === 'high',
           },
         ].map((s, i) => (
-          <div key={i} className={cn('px-[22px] py-[20px]', i < 2 && 'border-r border-border')}>
+          <div key={i} className={cn('px-[16px] py-[16px]', i < 2 && 'border-r border-border')}>
             <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-2">{s.label}</div>
-            <div className={cn('text-[32px] font-medium leading-none tracking-[-0.8px]', s.good ? 'text-good' : 'text-text')}>
+            <div className={cn('text-[28px] font-medium leading-none tracking-[-0.8px]', s.good ? 'text-good' : 'text-text')}>
               {s.value}
             </div>
-            <div className="font-mono text-[11px] text-text-muted mt-2">{s.delta}</div>
+            <div className="font-mono text-[10px] text-text-muted mt-1.5 whitespace-nowrap">{s.delta}</div>
           </div>
         ))}
+      </div>
       </div>
 
       {/* Scope / filter row */}
@@ -396,7 +399,7 @@ export default function RecommendationsPage() {
           </button>
         )}
         <span className="flex-1" />
-        <span className="font-mono text-[10px] text-text-faint">
+        <span className="hidden sm:inline font-mono text-[10px] text-text-faint whitespace-nowrap shrink-0">
           Sorted by estimated monthly savings · desc
         </span>
       </div>

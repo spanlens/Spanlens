@@ -346,7 +346,8 @@ function MembersTab() {
         ) : (members.data ?? []).length === 0 ? (
           <div className="px-6 py-4 text-[12.5px] text-text-faint">No members yet.</div>
         ) : (
-          <div className="divide-y divide-border">
+          <div className="overflow-x-auto">
+          <div className="divide-y divide-border min-w-[520px]">
             {(members.data ?? []).map((m) => {
               const isMe = currentMember?.userId === m.userId
               const lockedLastAdmin = isLastAdmin(m.role)
@@ -399,12 +400,14 @@ function MembersTab() {
               )
             })}
           </div>
+          </div>
         )}
       </Section>
 
       {(invitations.data ?? []).length > 0 && (
         <Section title="Pending invitations" className="mb-5">
-          <div className="divide-y divide-border">
+          <div className="overflow-x-auto">
+          <div className="divide-y divide-border min-w-[520px]">
             {(invitations.data ?? []).map((inv) => {
               const expires = new Date(inv.expires_at)
               const daysLeft = Math.max(0, Math.ceil((expires.getTime() - Date.now()) / 86_400_000))
@@ -432,6 +435,7 @@ function MembersTab() {
                 </div>
               )
             })}
+          </div>
           </div>
         </Section>
       )}
@@ -606,7 +610,8 @@ function AuditLogTab() {
             No audit events yet.
           </div>
         ) : (
-          <div className="divide-y divide-border">
+          <div className="overflow-x-auto">
+          <div className="divide-y divide-border min-w-[480px]">
             <div className="grid grid-cols-[100px_60px_180px_1fr] gap-4 px-6 py-3 font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint">
               <span>Time</span>
               <span>Sev</span>
@@ -628,6 +633,7 @@ function AuditLogTab() {
                 </div>
               )
             })}
+          </div>
           </div>
         )}
       </Section>
@@ -655,7 +661,7 @@ function BillingTab() {
       <QuotaBanner />
 
       {/* Hero card */}
-      <div className="border border-border rounded-xl bg-bg-elev p-6 grid grid-cols-2 gap-8 mb-5">
+      <div className="border border-border rounded-xl bg-bg-elev p-6 grid grid-cols-1 sm:grid-cols-2 gap-6 mb-5">
         <div>
           <div className="font-mono text-[10px] text-text-faint uppercase tracking-[0.05em] mb-3">Current plan</div>
           {isLoading ? (
@@ -787,7 +793,7 @@ function PlanLimitsTab() {
       )}
 
       {/* Plan cards */}
-      <div className="grid grid-cols-4 gap-3 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 mb-6">
         {PLANS.map((plan) => {
           const isCurrent = currentPlan === plan.id
           const isUpgradeInFlight = createCheckout.isPending && createCheckout.variables?.plan === plan.id
@@ -856,7 +862,8 @@ function PlanLimitsTab() {
       </div>
 
       <Section title="Hard limits" action={<Hint>{currentPlan} plan</Hint>} className="mb-5">
-        <div className="divide-y divide-border">
+        <div className="overflow-x-auto">
+        <div className="divide-y divide-border min-w-[420px]">
           <div className="grid grid-cols-[1.4fr_1fr_1fr_1fr] gap-4 px-6 py-3 font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint">
             {['Resource', 'Limit', 'Used now', 'Headroom'].map((h) => <span key={h}>{h}</span>)}
           </div>
@@ -873,6 +880,7 @@ function PlanLimitsTab() {
               <span className="font-mono text-[12px] text-text">{head}</span>
             </div>
           ))}
+        </div>
         </div>
       </Section>
 
@@ -1151,7 +1159,8 @@ function DeliveryHistory({ webhookId }: { webhookId: string }) {
   }
 
   return (
-    <div className="divide-y divide-border">
+    <div className="overflow-x-auto">
+    <div className="divide-y divide-border min-w-[420px]">
       <div className="grid grid-cols-[140px_80px_80px_1fr] gap-4 px-6 py-2 font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint">
         <span>Time</span>
         <span>Status</span>
@@ -1170,6 +1179,7 @@ function DeliveryHistory({ webhookId }: { webhookId: string }) {
           <span className="font-mono text-[11px] text-text-faint truncate">{d.error_message ?? '—'}</span>
         </div>
       ))}
+    </div>
     </div>
   )
 }
@@ -1261,7 +1271,8 @@ function WebhooksTab() {
             No webhooks yet. Add one to start receiving events.
           </div>
         ) : (
-          <div className="divide-y divide-border">
+          <div className="overflow-x-auto">
+          <div className="divide-y divide-border min-w-[620px]">
             <div className="grid grid-cols-[1.8fr_1.2fr_1fr_110px_90px] gap-4 px-6 py-3 font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint">
               {['Name', 'URL', 'Events', 'Status', ''].map((h, i) => <span key={i}>{h}</span>)}
             </div>
@@ -1316,6 +1327,7 @@ function WebhooksTab() {
                 )}
               </div>
             ))}
+          </div>
           </div>
         )}
       </Section>
@@ -1457,7 +1469,7 @@ function IntegrationsTab() {
         description="Connect Spanlens with the tools your team already uses."
       />
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         {integrations.map((integration) => (
           <div
             key={integration.id}
@@ -1700,44 +1712,65 @@ export default function SettingsPage() {
   const active = ALL_ITEMS.find((i) => i.id === tab) ?? ALL_ITEMS[0]!
 
   return (
-    <div className="-m-7 flex h-screen overflow-hidden">
-      {/* Settings inner nav */}
-      <aside className="w-[260px] shrink-0 border-r border-border bg-bg-elev overflow-y-auto">
-        <div className="px-5 py-4 font-mono text-[10px] text-text-faint uppercase tracking-[0.05em]">Settings</div>
-        {NAV.map((group) => (
-          <div key={group.group} className="mb-4">
-            <div className="px-5 py-1.5 font-mono text-[9.5px] text-text-faint uppercase tracking-[0.05em]">
-              {group.group}
-            </div>
-            {group.items.map((item) => {
-              const isActive = item.id === tab
-              return (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => setTab(item.id)}
-                  className={cn(
-                    'w-full text-left px-5 py-2 text-[13px] transition-colors border-l-2 -ml-px',
-                    isActive
-                      ? 'border-accent bg-bg text-text font-medium'
-                      : 'border-transparent text-text-muted hover:text-text hover:bg-bg/50',
-                  )}
-                >
-                  {item.label}
-                </button>
-              )
-            })}
-          </div>
-        ))}
-      </aside>
+    <div className="-mx-4 -my-4 md:-mx-8 md:-my-7 flex flex-col h-screen overflow-hidden">
+      {/* Mobile nav dropdown — visible only on small screens */}
+      <div className="md:hidden flex items-center gap-3 px-4 py-3 border-b border-border bg-bg-elev shrink-0">
+        <span className="font-mono text-[10px] text-text-faint uppercase tracking-[0.05em] shrink-0">Settings</span>
+        <select
+          value={tab}
+          onChange={(e) => setTab(e.target.value as TabId)}
+          className="flex-1 h-8 px-2 rounded-[6px] border border-border bg-bg text-[13px] text-text focus:outline-none focus:border-border-strong"
+        >
+          {NAV.map((group) => (
+            <optgroup key={group.group} label={group.group}>
+              {group.items.map((item) => (
+                <option key={item.id} value={item.id}>{item.label}</option>
+              ))}
+            </optgroup>
+          ))}
+        </select>
+      </div>
 
-      {/* Content area */}
-      <main className="flex-1 flex flex-col overflow-hidden">
-        <Topbar crumbs={active.crumbs} />
-        <div className="flex-1 overflow-y-auto bg-bg px-8 py-6">
-          <TabContent tab={tab} />
-        </div>
-      </main>
+      {/* Body: sidebar + content */}
+      <div className="flex flex-1 overflow-hidden min-h-0">
+        {/* Settings inner nav */}
+        <aside className="hidden md:flex md:flex-col w-[260px] shrink-0 border-r border-border bg-bg-elev overflow-y-auto">
+          <div className="px-5 py-4 font-mono text-[10px] text-text-faint uppercase tracking-[0.05em]">Settings</div>
+          {NAV.map((group) => (
+            <div key={group.group} className="mb-4">
+              <div className="px-5 py-1.5 font-mono text-[9.5px] text-text-faint uppercase tracking-[0.05em]">
+                {group.group}
+              </div>
+              {group.items.map((item) => {
+                const isActive = item.id === tab
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => setTab(item.id)}
+                    className={cn(
+                      'w-full text-left px-5 py-2 text-[13px] transition-colors border-l-2 -ml-px',
+                      isActive
+                        ? 'border-accent bg-bg text-text font-medium'
+                        : 'border-transparent text-text-muted hover:text-text hover:bg-bg/50',
+                    )}
+                  >
+                    {item.label}
+                  </button>
+                )
+              })}
+            </div>
+          ))}
+        </aside>
+
+        {/* Content area */}
+        <main className="flex-1 flex flex-col overflow-hidden">
+          <Topbar crumbs={active.crumbs} />
+          <div className="flex-1 overflow-y-auto bg-bg px-4 py-4 md:px-8 md:py-6">
+            <TabContent tab={tab} />
+          </div>
+        </main>
+      </div>
     </div>
   )
 }

@@ -81,13 +81,13 @@ export function DiffTab({ versions }: Props) {
   return (
     <div className="flex flex-col h-full">
       {/* Controls */}
-      <div className="flex items-center gap-3 px-[22px] py-[12px] border-b border-border shrink-0 bg-bg-muted">
-        <div className="flex items-center gap-2">
-          <span className="font-mono text-[11px] text-text-faint">From</span>
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-2 px-[22px] py-[12px] border-b border-border shrink-0 bg-bg-muted">
+        <div className="flex items-center gap-2 flex-1 min-w-[150px]">
+          <span className="font-mono text-[11px] text-text-faint shrink-0">From</span>
           <select
             value={vA ?? ''}
             onChange={(e) => setVA(e.target.value || null)}
-            className="h-7 px-2 rounded-[4px] border border-border bg-bg font-mono text-[12px] text-text focus:outline-none focus:border-border-strong"
+            className="h-7 px-2 rounded-[4px] border border-border bg-bg font-mono text-[12px] text-text focus:outline-none focus:border-border-strong flex-1 min-w-0"
           >
             <option value="">Select version…</option>
             {sorted.map((v) => (
@@ -97,13 +97,13 @@ export function DiffTab({ versions }: Props) {
             ))}
           </select>
         </div>
-        <span className="font-mono text-[11px] text-text-faint">→</span>
-        <div className="flex items-center gap-2">
-          <span className="font-mono text-[11px] text-text-faint">To</span>
+        <span className="font-mono text-[11px] text-text-faint shrink-0">→</span>
+        <div className="flex items-center gap-2 flex-1 min-w-[150px]">
+          <span className="font-mono text-[11px] text-text-faint shrink-0">To</span>
           <select
             value={vB ?? ''}
             onChange={(e) => setVB(e.target.value || null)}
-            className="h-7 px-2 rounded-[4px] border border-border bg-bg font-mono text-[12px] text-text focus:outline-none focus:border-border-strong"
+            className="h-7 px-2 rounded-[4px] border border-border bg-bg font-mono text-[12px] text-text focus:outline-none focus:border-border-strong flex-1 min-w-0"
           >
             <option value="">Select version…</option>
             {sorted.map((v) => (
@@ -115,7 +115,7 @@ export function DiffTab({ versions }: Props) {
         </div>
 
         {diff && (
-          <div className="flex items-center gap-3 ml-4">
+          <div className="flex items-center gap-3">
             <span className="font-mono text-[11px] text-good">+{addedCount}</span>
             <span className="font-mono text-[11px] text-bad">−{removedCount}</span>
           </div>
