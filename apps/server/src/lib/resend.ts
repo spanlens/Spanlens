@@ -69,6 +69,48 @@ export function renderInvitationEmail(params: {
   return { subject, html }
 }
 
+export function renderWaitlistConfirmationEmail(): { subject: string; html: string } {
+  const subject = 'Spanlens 사전예약 해주셔서 감사합니다.'
+  const demoUrl = 'https://www.spanlens.io/demo/dashboard'
+
+  const html = `
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 560px; margin: 0 auto; padding: 32px 24px; color: #111;">
+      <div style="margin-bottom: 28px;">
+        <span style="display: inline-block; font-family: ui-monospace, monospace; font-size: 13px; font-weight: 600; letter-spacing: -0.3px;">spanlens</span>
+      </div>
+
+      <h2 style="margin: 0 0 12px; font-size: 22px; font-weight: 600; letter-spacing: -0.5px;">사전예약 감사합니다 🎉</h2>
+
+      <p style="margin: 0 0 16px; font-size: 14px; line-height: 1.65; color: #444;">
+        Spanlens에 사전예약해 주셔서 감사합니다.<br/>
+        저희는 <strong>2026년 6월 3일</strong> 공식 출시 예정이며,
+        런칭 당일 이 이메일로 얼리 액세스 링크를 보내드릴게요.
+      </p>
+
+      <div style="background: #f5f5f4; border-radius: 8px; padding: 16px 18px; margin: 24px 0; font-size: 13px; color: #555; line-height: 1.6;">
+        <div style="font-weight: 600; color: #111; margin-bottom: 6px; font-size: 13px;">출시 전에 먼저 체험해보세요</div>
+        Spanlens의 실제 대시보드를 데모 모드로 미리 둘러보실 수 있습니다.<br/>
+        샘플 데이터로 트레이싱, 비용 분석, 이상 감지 기능을 직접 확인해보세요.
+      </div>
+
+      <p style="margin: 0 0 24px;">
+        <a href="${demoUrl}" style="display: inline-block; padding: 11px 20px; background: #111; color: #fff; text-decoration: none; border-radius: 7px; font-weight: 500; font-size: 13px;">라이브 데모 체험하기 →</a>
+      </p>
+
+      <p style="margin: 0 0 8px; font-size: 13px; line-height: 1.65; color: #444;">
+        문의사항이 있으시면 <a href="mailto:hi@spanlens.io" style="color: #111;">hi@spanlens.io</a>로 편하게 연락주세요.
+      </p>
+      <p style="margin: 0; font-size: 13px; color: #444;">감사합니다,<br/>Spanlens 팀</p>
+
+      <div style="margin-top: 36px; padding-top: 20px; border-top: 1px solid #e5e5e5; font-size: 11.5px; color: #aaa;">
+        사전예약하셨기 때문에 이 메일을 받으셨습니다. 런칭 안내 외에 추가 마케팅 메일은 발송되지 않습니다.
+      </div>
+    </div>
+  `.trim()
+
+  return { subject, html }
+}
+
 function escapeHtml(s: string): string {
   return s
     .replace(/&/g, '&amp;')

@@ -184,7 +184,7 @@ export default function WaitlistPage() {
                 disabled={state === 'loading' || !email.trim()}
                 className="w-full bg-text text-bg py-[11px] px-[14px] rounded-[7px] text-[13px] font-medium flex items-center justify-center gap-2 hover:opacity-90 transition-opacity disabled:opacity-40"
               >
-                {state === 'loading' ? 'Joining…' : 'Request early access →'}
+                {state === 'loading' ? 'Joining…' : 'Join the waitlist →'}
               </button>
 
               <p className="font-mono text-[10.5px] text-text-faint text-center">

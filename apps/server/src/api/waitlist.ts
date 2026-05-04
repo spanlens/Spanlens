@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import { supabaseAdmin } from '../lib/db.js'
+import { sendEmail, renderWaitlistConfirmationEmail } from '../lib/resend.js'
 
 /**
  * Public waitlist — no auth required.
@@ -49,6 +50,12 @@ waitlistRouter.post('/', async (c) => {
     console.error('waitlist insert error:', error.message)
     return c.json({ error: 'Failed to join waitlist' }, 500)
   }
+
+  // Fire-and-forget confirmation email — don't block the response
+  const { subject, html } = renderWaitlistConfirmationEmail()
+  sendEmail({ to: email, subject, html }).catch((err) =>
+    console.error('waitlist email error:', err),
+  )
 
   return c.json({ success: true, alreadyRegistered: false }, 201)
 })
