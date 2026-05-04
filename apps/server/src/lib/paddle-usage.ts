@@ -182,10 +182,14 @@ export async function computeAndReportOverages(
     }
 
     // ── Paddle call ──────────────────────────────────────────────
+    // Use 'immediately' so the charge is settled in real-time during the
+    // 48-hour charging window — before the user can cancel the subscription.
+    // Charging on 'next_billing_period' would create a window where a
+    // cancellation between cron-run and next invoice loses the overage revenue.
     const charge = await chargeSubscription(
       s.paddle_subscription_id,
       [{ priceId, quantity: overageQuantity }],
-      'next_billing_period',
+      'immediately',
     )
 
     // ── Finalize the idempotency row ─────────────────────────────
