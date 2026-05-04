@@ -164,10 +164,7 @@ export default function OnboardingPage() {
     <div className="min-h-screen bg-bg-elev flex flex-col items-center px-6 py-10">
       {/* Header */}
       <Link href="/" className="flex items-center gap-2 mb-7 hover:opacity-80 transition-opacity">
-        <svg width="20" height="20" viewBox="0 0 20 20" className="shrink-0">
-          <circle cx="10" cy="10" r="8" fill="none" stroke="var(--text)" strokeWidth="1.5" />
-          <circle cx="10" cy="10" r="3.5" fill="var(--accent)" />
-        </svg>
+        <img src="/icon.png" alt="Spanlens" width={22} height={22} className="shrink-0 rounded-[5px]" />
         <span className="font-semibold text-[16px] tracking-[-0.3px] text-text">spanlens</span>
       </Link>
 
