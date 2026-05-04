@@ -192,11 +192,12 @@ export default function TracesPage() {
   }
 
   return (
-    <div className="-m-7 flex flex-col h-screen overflow-hidden bg-bg">
+    <div className="-mx-4 -my-4 md:-mx-8 md:-my-7 flex flex-col h-screen overflow-hidden bg-bg">
         <Topbar crumbs={[{ label: 'Workspace', href: '/dashboard' }, { label: 'Traces' }]} />
 
         {/* Stat strip */}
-        <div className="grid grid-cols-5 border-b border-border shrink-0">
+        <div className="overflow-x-auto shrink-0 border-b border-border">
+        <div className="grid grid-cols-5 min-w-[480px]">
           {[
             { label: 'Traces',            value: meta.total.toLocaleString(),                         warn: false },
             { label: 'p50 duration',      value: fmtDuration(p50),  tip: 'Current page only',        warn: false },
@@ -215,6 +216,7 @@ export default function TracesPage() {
               </span>
             </div>
           ))}
+        </div>
         </div>
 
         {/* Filter toolbar */}
@@ -297,24 +299,7 @@ export default function TracesPage() {
           </span>
         </div>
 
-        {/* Column header */}
-        <div
-          className="grid border-b border-border bg-bg-muted shrink-0 px-[22px] py-[9px]"
-          style={{ gridTemplateColumns: GRID }}
-        >
-          <span />
-          <span className="font-mono text-[10px] text-text-faint uppercase tracking-[0.05em]">Agent</span>
-          <span className="font-mono text-[10px] text-text-faint uppercase tracking-[0.05em]">Trace id</span>
-          <SortHeader label="Spans"    field="span_count"     sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
-          <SortHeader label="Duration" field="duration_ms"    sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
-          <SortHeader label="Cost"     field="total_cost_usd" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
-          <span className="font-mono text-[10px] text-text-faint uppercase tracking-[0.05em]">Tokens</span>
-          <span className="font-mono text-[10px] text-text-faint uppercase tracking-[0.05em]">Timeline</span>
-          <span className="font-mono text-[10px] text-text-faint uppercase tracking-[0.05em]">Status</span>
-          <SortHeader label="Age"      field="started_at"     sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
-        </div>
-
-        {/* Rows */}
+        {/* Rows — header lives inside same scroll container so horizontal scroll is in sync */}
         <div className="flex-1 overflow-auto">
           {isLoading ? (
             <div className="p-6 space-y-2">
@@ -323,14 +308,31 @@ export default function TracesPage() {
               ))}
             </div>
           ) : traces.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full gap-3 text-text-muted">
+            <div className="flex flex-col items-center justify-center h-full gap-3 text-text-muted py-20 px-6 text-center">
               <p className="text-[13px]">No traces found.</p>
-              <p className="font-mono text-[12px] text-center px-6">
+              <p className="font-mono text-[12px]">
                 Try adjusting your filters or use the Spanlens SDK to start recording agent traces.
               </p>
             </div>
           ) : (
-            traces.map((t) => {
+            <div className="min-w-[700px]">
+            {/* Column header */}
+            <div
+              className="grid px-[22px] py-[9px] border-b border-border bg-bg-muted sticky top-0 z-10"
+              style={{ gridTemplateColumns: GRID }}
+            >
+              <span />
+              <span className="font-mono text-[10px] text-text-faint uppercase tracking-[0.05em]">Agent</span>
+              <span className="font-mono text-[10px] text-text-faint uppercase tracking-[0.05em]">Trace id</span>
+              <SortHeader label="Spans"    field="span_count"     sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
+              <SortHeader label="Duration" field="duration_ms"    sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
+              <SortHeader label="Cost"     field="total_cost_usd" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
+              <span className="font-mono text-[10px] text-text-faint uppercase tracking-[0.05em]">Tokens</span>
+              <span className="font-mono text-[10px] text-text-faint uppercase tracking-[0.05em]">Timeline</span>
+              <span className="font-mono text-[10px] text-text-faint uppercase tracking-[0.05em]">Status</span>
+              <SortHeader label="Age"      field="started_at"     sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
+            </div>
+            {traces.map((t) => {
               const isErr = t.status === 'error'
               const isRunning = t.status === 'running'
               return (
@@ -383,7 +385,8 @@ export default function TracesPage() {
                   </span>
                 </button>
               )
-            })
+            })}
+            </div>
           )}
         </div>
 

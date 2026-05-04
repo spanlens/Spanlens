@@ -78,9 +78,9 @@ export function TrafficTab({ name }: Props) {
             </div>
 
             {/* Per-version bars */}
-            <div className="bg-bg-elev border border-border rounded-[6px] overflow-hidden">
+            <div className="bg-bg-elev border border-border rounded-[6px] overflow-x-auto">
               <div
-                className="grid font-mono text-[10px] text-text-faint uppercase tracking-[0.05em] px-[16px] py-[9px] bg-bg-muted border-b border-border"
+                className="grid font-mono text-[10px] text-text-faint uppercase tracking-[0.05em] px-[16px] py-[9px] bg-bg-muted border-b border-border min-w-[560px]"
                 style={{ gridTemplateColumns: '80px 1fr 90px 100px 100px 100px' }}
               >
                 <span>Version</span>
@@ -98,7 +98,7 @@ export function TrafficTab({ name }: Props) {
                 return (
                   <div
                     key={m.promptVersionId}
-                    className="grid items-center px-[16px] py-[12px] border-b border-border last:border-0"
+                    className="grid items-center px-[16px] py-[12px] border-b border-border last:border-0 min-w-[560px]"
                     style={{ gridTemplateColumns: '80px 1fr 90px 100px 100px 100px' }}
                   >
                     <span className="font-mono text-[11px] text-text-muted">v{m.version}</span>

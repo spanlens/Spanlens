@@ -39,16 +39,26 @@ export function Topbar({ crumbs, right, className }: TopbarProps) {
         <Menu size={18} />
       </button>
 
-      <nav className="flex items-center gap-2 text-[13px]">
+      <nav className="flex items-center gap-1.5 text-[13px] min-w-0 overflow-hidden">
         {crumbs.map((c, i) => (
-          <span key={i} className="flex items-center gap-2">
+          <span
+            key={i}
+            className={cn(
+              'flex items-center gap-1.5 shrink-0',
+              // On mobile, hide all crumbs except the last two to save space
+              i < crumbs.length - 2 && 'hidden sm:flex',
+            )}
+          >
             {i > 0 && <span className="text-text-faint">/</span>}
             {c.href ? (
-              <Link href={c.href} className="text-text-faint hover:text-text-muted transition-colors">
+              <Link href={c.href} className="text-text-faint hover:text-text-muted transition-colors truncate max-w-[120px] sm:max-w-none">
                 {c.label}
               </Link>
             ) : (
-              <span className={i === crumbs.length - 1 ? 'text-text font-medium' : 'text-text-faint'}>
+              <span className={cn(
+                i === crumbs.length - 1 ? 'text-text font-medium' : 'text-text-faint',
+                'truncate max-w-[140px] sm:max-w-none',
+              )}>
                 {c.label}
               </span>
             )}
@@ -57,20 +67,24 @@ export function Topbar({ crumbs, right, className }: TopbarProps) {
       </nav>
 
       <div className="flex-1" />
-      <CmdKPill />
+      {/* Search pill — hidden on mobile to make room for right-slot actions */}
+      <CmdKPill className="hidden md:inline-flex" />
       {right}
     </div>
   )
 }
 
-function CmdKPill() {
+function CmdKPill({ className }: { className?: string }) {
   const { toggle } = useCommandPalette()
   return (
     <button
       type="button"
       onClick={toggle}
       aria-label="Open command palette"
-      className="inline-flex items-center gap-1.5 h-[30px] px-2.5 text-text-faint border border-border rounded-[6px] hover:text-text-muted hover:border-border-strong transition-colors font-mono text-[12px]"
+      className={cn(
+        'inline-flex items-center gap-1.5 h-[30px] px-2.5 text-text-faint border border-border rounded-[6px] hover:text-text-muted hover:border-border-strong transition-colors font-mono text-[12px]',
+        className,
+      )}
     >
       <Search size={13} />
       Search

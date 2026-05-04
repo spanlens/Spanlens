@@ -42,7 +42,7 @@ export default function PromptDetailPage({ params }: Props) {
   const hasRunning = experiments?.some((e) => e.status === 'running') ?? false
 
   return (
-    <div className="-m-7 flex flex-col h-screen overflow-hidden bg-bg">
+    <div className="-mx-4 -my-4 md:-mx-8 md:-my-7 flex flex-col h-screen overflow-hidden bg-bg">
       <Topbar
         crumbs={[
           { label: 'Workspace', href: '/dashboard' },
@@ -92,7 +92,7 @@ export default function PromptDetailPage({ params }: Props) {
       </div>
 
       {/* Tab bar */}
-      <div className="flex items-center gap-0 px-[22px] border-b border-border shrink-0 bg-bg-muted">
+      <div className="flex items-center gap-0 px-[22px] border-b border-border shrink-0 bg-bg-muted overflow-x-auto">
         {TABS.map((t) => (
           <button
             key={t.id}
