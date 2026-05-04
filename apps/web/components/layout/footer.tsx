@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { LogoMark } from '@/components/ui/logo'
 
 /**
  * Shared marketing footer. Applied to landing, /pricing, /docs/*, /terms, /privacy.
@@ -14,10 +15,7 @@ export function Footer() {
         {/* Left — logo + tagline */}
         <div>
           <Link href="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
-            <svg width="17" height="17" viewBox="0 0 20 20" className="shrink-0">
-              <circle cx="10" cy="10" r="8" fill="none" stroke="var(--text)" strokeWidth="1.5" />
-              <circle cx="10" cy="10" r="3.5" fill="var(--accent)" />
-            </svg>
+            <LogoMark size={20} className="rounded-[5px]" />
             <span className="font-semibold text-[15px] tracking-[-0.3px] text-text">spanlens</span>
           </Link>
           <div className="mt-3 font-mono text-[12px] text-text-faint">
