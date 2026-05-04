@@ -13,7 +13,7 @@ import { NextResponse, type NextRequest } from 'next/server'
  * instead of two.
  */
 
-const PUBLIC_PATHS = ['/', '/pricing', '/login', '/signup', '/auth/', '/terms', '/privacy', '/invite']
+const PUBLIC_PATHS = ['/', '/pricing', '/login', '/signup', '/auth/', '/terms', '/privacy', '/invite', '/demo']
 
 export async function middleware(request: NextRequest) {
   // Skip auth middleware when Supabase env vars are absent (local preview without .env.local)

@@ -50,6 +50,11 @@ export async function AuthNavButtons({ signupLabel = 'Start free' }: AuthNavButt
 
   return (
     <>
+      <Link href="/demo/dashboard" className="hidden sm:inline-flex">
+        <Button variant="outline" size="sm">
+          Live demo
+        </Button>
+      </Link>
       <Link href="/login">
         <Button variant="outline" size="sm">
           Sign in
