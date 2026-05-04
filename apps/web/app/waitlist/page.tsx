@@ -24,8 +24,10 @@ function useCountdown(target: Date) {
       seconds: Math.floor((diff % 60000) / 1000),
     }
   }
-  const [t, setT] = useState(calc)
+  // null on server to avoid hydration mismatch — populated after mount
+  const [t, setT] = useState<ReturnType<typeof calc> | null>(null)
   useEffect(() => {
+    setT(calc())
     const id = setInterval(() => setT(calc()), 1000)
     return () => clearInterval(id)
   }, [])
@@ -37,7 +39,8 @@ function Pad({ n }: { n: number }) {
 }
 
 export default function WaitlistPage() {
-  const { days, hours, minutes, seconds } = useCountdown(LAUNCH_DATE)
+  const countdown = useCountdown(LAUNCH_DATE)
+  const { days, hours, minutes, seconds } = countdown ?? { days: null, hours: null, minutes: null, seconds: null }
   const [email, setEmail] = useState('')
   const [state, setState] = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
   const [message, setMessage] = useState('')
@@ -102,7 +105,7 @@ export default function WaitlistPage() {
             ].map(({ v, l }) => (
               <div key={l} className="flex flex-col items-center gap-0.5">
                 <span className="font-mono text-[32px] md:text-[36px] font-medium leading-none tracking-[-1px] text-text tabular-nums">
-                  <Pad n={v} />
+                  {v === null ? '--' : <Pad n={v} />}
                 </span>
                 <span className="font-mono text-[9px] uppercase tracking-[0.07em] text-text-faint">{l}</span>
               </div>
