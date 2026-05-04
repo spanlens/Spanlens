@@ -51,7 +51,7 @@ export function WaitlistForm() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex items-stretch gap-2">
+    <form onSubmit={handleSubmit} className="flex flex-col sm:flex-row items-stretch gap-2 w-full sm:w-auto">
       <input
         type="email"
         required
@@ -59,7 +59,7 @@ export function WaitlistForm() {
         value={email}
         onChange={(e) => setEmail(e.target.value)}
         disabled={state === 'loading'}
-        className="px-3.5 py-2 rounded-lg border border-border bg-bg-elev font-mono text-[13px] text-text placeholder:text-text-faint focus:outline-none focus:ring-1 focus:ring-accent min-w-[220px] disabled:opacity-50"
+        className="px-3.5 py-2 rounded-lg border border-border bg-bg-elev font-mono text-[13px] text-text placeholder:text-text-faint focus:outline-none focus:ring-1 focus:ring-accent flex-1 min-w-0 sm:min-w-[220px] disabled:opacity-50"
       />
       <button
         type="submit"

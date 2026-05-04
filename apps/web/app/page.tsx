@@ -113,9 +113,10 @@ export default function LandingPage() {
       {/* ── Hero ────────────────────────────────────────────────────── */}
       <section className="max-w-[1200px] mx-auto px-4 sm:px-6 lg:px-10 pt-12 sm:pt-[64px] lg:pt-[88px] pb-10 sm:pb-[56px] lg:pb-[72px] relative">
         {/* Version badge */}
-        <div className="inline-flex items-center gap-2 px-2 py-[5px] rounded-full border border-accent-border bg-accent-bg text-accent font-mono text-[12px] tracking-[0.03em] mb-7">
-          <span className="bg-accent text-bg px-[7px] py-[2px] rounded-full text-[10px] font-semibold tracking-[0.05em]">NEW</span>
-          Python SDK is here · <code className="font-mono">pip install spanlens</code>
+        <div className="inline-flex flex-wrap items-center gap-x-2 gap-y-1 px-2 py-[5px] rounded-full border border-accent-border bg-accent-bg text-accent font-mono text-[12px] tracking-[0.03em] mb-7 max-w-full">
+          <span className="bg-accent text-bg px-[7px] py-[2px] rounded-full text-[10px] font-semibold tracking-[0.05em] shrink-0">NEW</span>
+          <span>Python SDK is here</span>
+          <code className="font-mono hidden sm:inline">· pip install spanlens</code>
         </div>
 
         <h1 className="text-[44px] sm:text-[64px] lg:text-[88px] leading-[0.96] tracking-[-2px] sm:tracking-[-2.8px] font-medium max-w-[980px] mb-7 [text-wrap:balance]">
@@ -131,15 +132,15 @@ export default function LandingPage() {
 
         {/* Install block — stacked on mobile, inline on sm+ */}
         <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-[18px]">
-          <div className="inline-flex items-center bg-bg-elev border border-border rounded-lg p-1 shadow-[0_1px_0_var(--border)]">
-            <div className="px-[14px] py-2 font-mono text-[14px]">
+          <div className="flex items-center bg-bg-elev border border-border rounded-lg p-1 shadow-[0_1px_0_var(--border)] w-full sm:w-auto">
+            <div className="px-[14px] py-2 font-mono text-[14px] flex-1 sm:flex-none">
               <span className="text-text-faint">$ </span>
               npx <span className="text-accent">@spanlens/cli</span> init
             </div>
             <CopyInstallButton />
           </div>
-          <div className="inline-flex items-center bg-bg-elev border border-border rounded-lg p-1 shadow-[0_1px_0_var(--border)]">
-            <div className="px-[14px] py-2 font-mono text-[14px]">
+          <div className="flex items-center bg-bg-elev border border-border rounded-lg p-1 shadow-[0_1px_0_var(--border)] w-full sm:w-auto">
+            <div className="px-[14px] py-2 font-mono text-[14px] flex-1 sm:flex-none">
               <span className="text-text-faint">$ </span>
               pip install <span className="text-accent">spanlens</span>
             </div>
