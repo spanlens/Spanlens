@@ -10,8 +10,8 @@ import { LogoMark } from '@/components/ui/logo'
  */
 export function Footer() {
   return (
-    <footer className="border-t border-border px-10 pt-10 pb-[60px] text-text-muted text-[13px]">
-      <div className="max-w-[1200px] mx-auto flex justify-between items-end">
+    <footer className="border-t border-border px-4 sm:px-6 lg:px-10 pt-10 pb-[60px] text-text-muted text-[13px]">
+      <div className="max-w-[1200px] mx-auto flex flex-col sm:flex-row sm:justify-between sm:items-end gap-8 sm:gap-0">
         {/* Left — logo + tagline */}
         <div>
           <Link href="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
@@ -30,7 +30,7 @@ export function Footer() {
         </div>
 
         {/* Right — 3-col link groups */}
-        <div className="flex gap-12 font-mono text-[12px]">
+        <div className="flex gap-8 sm:gap-12 font-mono text-[12px]">
           <div>
             <div className="text-text-faint mb-2 tracking-[0.05em] uppercase text-[10px]">Product</div>
             <div className="flex flex-col gap-1.5">
