@@ -93,13 +93,13 @@ export default function BillingPage() {
   const currentPlan: BillingPlan = subscription?.plan ?? 'free'
 
   return (
-    <div className="-m-7 flex flex-col h-screen overflow-hidden">
+    <div className="-mx-4 -my-4 md:-mx-8 md:-my-7 flex flex-col h-screen overflow-hidden">
       <Topbar
         crumbs={[{ label: 'Workspace', href: '/dashboard' }, { label: 'Billing' }]}
       />
 
       <div className="flex-1 overflow-y-auto">
-        <div className="px-7 py-6 max-w-4xl">
+        <div className="px-4 py-4 md:px-7 md:py-6 max-w-4xl">
           <div className="mb-6">
             <h1 className="text-[22px] font-semibold text-text tracking-[-0.4px] mb-1">Billing</h1>
             <p className="text-[13px] text-text-muted">Manage your subscription and plan</p>
@@ -115,9 +115,9 @@ export default function BillingPage() {
                 <Skeleton className="h-4 w-64" />
               </>
             ) : subscription ? (
-              <div className="flex items-center justify-between">
+              <div className="flex items-start justify-between gap-3 flex-wrap">
                 <div>
-                  <div className="flex items-center gap-2 mb-1">
+                  <div className="flex items-center gap-2 mb-1 flex-wrap">
                     <h2 className="text-[15px] font-semibold text-text capitalize">
                       {subscription.plan} plan
                     </h2>
@@ -152,7 +152,7 @@ export default function BillingPage() {
                 </p>
               </div>
             ) : (
-              <div className="flex items-center justify-between">
+              <div className="flex items-start justify-between gap-3 flex-wrap">
                 <div>
                   <h2 className="text-[15px] font-semibold text-text mb-1">Free plan</h2>
                   <p className="text-[13px] text-text-muted">
@@ -182,7 +182,7 @@ export default function BillingPage() {
 
           {/* Plan cards */}
           <h2 className="text-[14px] font-semibold text-text mb-4">Available plans</h2>
-          <div className="grid grid-cols-4 gap-3 mb-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
             {PLANS.map((plan) => {
               const isCurrent = currentPlan === plan.id
               const isUpgradeInFlight =

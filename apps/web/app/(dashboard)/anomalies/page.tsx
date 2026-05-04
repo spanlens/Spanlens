@@ -282,14 +282,15 @@ export default function AnomaliesPage() {
   const isLoading = loadingCurrent || loadingHistory
 
   return (
-    <div className="-m-7 flex flex-col h-screen overflow-hidden bg-bg">
+    <div className="-mx-4 -my-4 md:-mx-8 md:-my-7 flex flex-col h-screen overflow-hidden bg-bg">
       <Topbar
         crumbs={[{ label: 'Workspace', href: '/dashboard' }, { label: 'Anomalies' }]}
         right={null}
       />
 
       {/* Stat strip */}
-      <div className="grid grid-cols-5 border-b border-border shrink-0">
+      <div className="overflow-x-auto shrink-0 border-b border-border">
+      <div className="grid grid-cols-5 min-w-[480px]">
         {[
           { label: 'Open · high',   value: String(unackedHigh.length),   warn: unackedHigh.length > 0 },
           { label: 'Open · medium', value: String(unackedMedium.length), warn: false },
@@ -304,6 +305,7 @@ export default function AnomaliesPage() {
             </span>
           </div>
         ))}
+      </div>
       </div>
 
       {/* Kind filter toolbar */}

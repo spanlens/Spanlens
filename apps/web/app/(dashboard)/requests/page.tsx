@@ -101,32 +101,36 @@ function StatStrip() {
 
   if (overview.isLoading) {
     return (
-      <div className="grid grid-cols-5 border-b border-border shrink-0">
-        {Array.from({ length: 5 }).map((_, i) => (
-          <div key={i} className={cn('px-[18px] py-[14px]', i < 4 && 'border-r border-border')}>
-            <Skeleton className="h-2.5 w-20 mb-2" />
-            <Skeleton className="h-7 w-24 mb-1.5" />
-            <Skeleton className="h-[18px] w-full" />
-          </div>
-        ))}
+      <div className="overflow-x-auto shrink-0 border-b border-border">
+        <div className="grid grid-cols-5 min-w-[480px]">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div key={i} className={cn('px-[18px] py-[14px]', i < 4 && 'border-r border-border')}>
+              <Skeleton className="h-2.5 w-20 mb-2" />
+              <Skeleton className="h-7 w-24 mb-1.5" />
+              <Skeleton className="h-[18px] w-full" />
+            </div>
+          ))}
+        </div>
       </div>
     )
   }
 
   return (
-    <div className="grid grid-cols-5 border-b border-border shrink-0">
-      {stats.map((s, i) => (
-        <div key={i} className={cn('px-[18px] py-[14px]', i < 4 && 'border-r border-border')}>
-          <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-2">{s.label}</div>
-          <div className={cn('text-[24px] font-medium tracking-[-0.6px] leading-none mb-1.5', s.warn ? 'text-accent' : 'text-text')}>
-            {s.value}
+    <div className="overflow-x-auto shrink-0 border-b border-border">
+      <div className="grid grid-cols-5 min-w-[480px]">
+        {stats.map((s, i) => (
+          <div key={i} className={cn('px-[18px] py-[14px]', i < 4 && 'border-r border-border')}>
+            <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-2">{s.label}</div>
+            <div className={cn('text-[24px] font-medium tracking-[-0.6px] leading-none mb-1.5', s.warn ? 'text-accent' : 'text-text')}>
+              {s.value}
+            </div>
+            <InlineSpark
+              values={s.spark}
+              stroke={s.warn ? 'var(--accent)' : s.good ? 'var(--good)' : 'var(--border-strong)'}
+            />
           </div>
-          <InlineSpark
-            values={s.spark}
-            stroke={s.warn ? 'var(--accent)' : s.good ? 'var(--good)' : 'var(--border-strong)'}
-          />
-        </div>
-      ))}
+        ))}
+      </div>
     </div>
   )
 }
@@ -688,6 +692,7 @@ function RequestsTable({
   const cols = drawerOpen ? COL_NARROW : COL_FULL
   return (
     <div className="overflow-auto flex-1 min-h-0">
+      <div className="min-w-[700px]">
       {/* Header */}
       <div
         className="grid px-[22px] py-2.5 font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint border-b border-border bg-bg-muted sticky top-0 z-10"
@@ -759,6 +764,7 @@ function RequestsTable({
                 </div>
               )
             })}
+      </div>{/* end min-w-[700px] */}
     </div>
   )
 }
@@ -866,7 +872,7 @@ export default function RequestsPage() {
   }
 
   return (
-    <div className="-m-7 flex h-screen overflow-hidden">
+    <div className="-mx-4 -my-4 md:-mx-8 md:-my-7 flex h-screen overflow-hidden">
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
       <Topbar
         crumbs={[{ label: 'Workspace' }, { label: 'Requests' }]}

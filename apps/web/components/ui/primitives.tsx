@@ -93,7 +93,7 @@ export function FormRow({
   return (
     <div
       className={cn(
-        'grid grid-cols-[260px_1fr] gap-7 px-6 py-4 border-b border-border last:border-b-0',
+        'grid grid-cols-1 sm:grid-cols-[260px_1fr] gap-2 sm:gap-7 px-4 sm:px-6 py-4 border-b border-border last:border-b-0',
         className,
       )}
     >

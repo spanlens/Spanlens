@@ -113,34 +113,36 @@ export default function SecurityPage() {
   const injHits = summaryData.filter((s) => s.type === 'injection').reduce((s, r) => s + r.count, 0)
 
   return (
-    <div className="-m-7 flex flex-col h-screen overflow-hidden bg-bg">
+    <div className="-mx-4 -my-4 md:-mx-8 md:-my-7 flex flex-col h-screen overflow-hidden bg-bg">
       <Topbar
         crumbs={[{ label: 'Workspace', href: '/dashboard' }, { label: 'Security' }]}
       />
 
       {/* Stat strip */}
-      <div className="grid grid-cols-5 border-b border-border shrink-0">
-        {[
-          { label: 'Events · 24h',      value: statsReady ? String(totalHits) : '—',  warn: statsReady && totalHits > 0 },
-          { label: 'PII hits',          value: statsReady ? String(piiHits)  : '—',  warn: statsReady && piiHits > 0 },
-          { label: 'Injection attempts',value: statsReady ? String(injHits)  : '—',  warn: statsReady && injHits > 0 },
-          { label: 'Recent flagged',    value: flaggedReady ? String(flaggedTotal) : '—', warn: flaggedReady && flaggedTotal > 0 },
-          { label: 'Detectors',         value: String(detectors.length),              warn: false },
-        ].map((s) => (
-          <div key={s.label} className={cn('px-[18px] py-[14px]', s.label !== 'Detectors' && 'border-r border-border')}>
-            <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-2">{s.label}</div>
-            <span className={cn('text-[24px] font-medium leading-none tracking-[-0.6px]', s.warn ? 'text-accent' : 'text-text')}>
-              {s.value}
-            </span>
-          </div>
-        ))}
+      <div className="overflow-x-auto shrink-0 border-b border-border">
+        <div className="grid grid-cols-5 min-w-[480px]">
+          {[
+            { label: 'Events · 24h',      value: statsReady ? String(totalHits) : '—',  warn: statsReady && totalHits > 0 },
+            { label: 'PII hits',          value: statsReady ? String(piiHits)  : '—',  warn: statsReady && piiHits > 0 },
+            { label: 'Injection attempts',value: statsReady ? String(injHits)  : '—',  warn: statsReady && injHits > 0 },
+            { label: 'Recent flagged',    value: flaggedReady ? String(flaggedTotal) : '—', warn: flaggedReady && flaggedTotal > 0 },
+            { label: 'Detectors',         value: String(detectors.length),              warn: false },
+          ].map((s) => (
+            <div key={s.label} className={cn('px-[18px] py-[14px]', s.label !== 'Detectors' && 'border-r border-border')}>
+              <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-2">{s.label}</div>
+              <span className={cn('text-[24px] font-medium leading-none tracking-[-0.6px]', s.warn ? 'text-accent' : 'text-text')}>
+                {s.value}
+              </span>
+            </div>
+          ))}
+        </div>
       </div>
 
       <div className="flex-1 overflow-auto">
 
         {/* ── Alert + Blocking settings ───────────────────────────────────── */}
         <div className="px-[22px] pt-[18px] pb-0">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
 
             {/* Alert emails */}
             <div className="border border-border rounded-[6px] px-[16px] py-[14px]">
@@ -217,9 +219,10 @@ export default function SecurityPage() {
             />
           </div>
 
+          <div className="overflow-x-auto">
           {/* Column headers */}
           <div
-            className="grid font-mono text-[10px] text-text-faint uppercase tracking-[0.05em] px-[14px] py-[8px] bg-bg-muted border border-border rounded-t-[6px] border-b-0"
+            className="grid font-mono text-[10px] text-text-faint uppercase tracking-[0.05em] px-[14px] py-[8px] bg-bg-muted border border-border rounded-t-[6px] border-b-0 min-w-[420px]"
             style={{ gridTemplateColumns: '1fr 1.6fr 100px 90px' }}
           >
             <span>Detector</span>
@@ -228,12 +231,12 @@ export default function SecurityPage() {
             <span className="text-right">Hits · 24h</span>
           </div>
 
-          <div className="border border-border rounded-b-[6px] overflow-hidden">
+          <div className="border border-border rounded-b-[6px] overflow-hidden min-w-[420px]">
             {detectors.map((d, i) => (
               <div
                 key={d.id}
                 className={cn(
-                  'grid items-center px-[14px] py-[11px] font-mono text-[12px]',
+                  'grid items-center px-[14px] py-[11px] font-mono text-[12px] min-w-[420px]',
                   i < detectors.length - 1 && 'border-b border-border',
                 )}
                 style={{ gridTemplateColumns: '1fr 1.6fr 100px 90px' }}
@@ -258,6 +261,7 @@ export default function SecurityPage() {
               </div>
             ))}
           </div>
+          </div>
         </div>
 
         {/* ── Recent flagged requests ─────────────────────────────────────── */}
@@ -281,10 +285,11 @@ export default function SecurityPage() {
               <p className="text-[12.5px] text-text-faint">No flagged requests found.</p>
             </div>
           ) : (
+            <div className="overflow-x-auto">
             <>
               {/* Header row */}
               <div
-                className="grid font-mono text-[10px] text-text-faint uppercase tracking-[0.05em] px-[14px] py-[8px] bg-bg-muted border border-border rounded-t-[6px] border-b-0"
+                className="grid font-mono text-[10px] text-text-faint uppercase tracking-[0.05em] px-[14px] py-[8px] bg-bg-muted border border-border rounded-t-[6px] border-b-0 min-w-[420px]"
                 style={{ gridTemplateColumns: '110px 1fr 1fr 80px' }}
               >
                 <span>When</span>
@@ -292,7 +297,7 @@ export default function SecurityPage() {
                 <span>Flags</span>
                 <span className="text-right">→</span>
               </div>
-              <div className="border border-border rounded-b-[6px] overflow-hidden">
+              <div className="border border-border rounded-b-[6px] overflow-hidden min-w-[420px]">
                 {flaggedData.map((r, i) => {
                   const reqFlags = r.flags ?? []
                   const resFlags = r.response_flags ?? []
@@ -300,7 +305,7 @@ export default function SecurityPage() {
                     <div
                       key={r.id}
                       className={cn(
-                        'grid items-center px-[14px] py-[10px]',
+                        'grid items-center px-[14px] py-[10px] min-w-[420px]',
                         i < flaggedData.length - 1 && 'border-b border-border',
                         'hover:bg-bg-elev transition-colors',
                       )}
@@ -348,6 +353,7 @@ export default function SecurityPage() {
                 })}
               </div>
             </>
+            </div>
           )}
         </div>
       </div>
