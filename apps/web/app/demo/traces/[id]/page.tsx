@@ -202,7 +202,6 @@ interface SpanNode {
 }
 
 function flattenSpanTree(spans: SpanRow[]): SpanNode[] {
-  const byId = new Map<string, SpanRow>(spans.map((s) => [s.id, s]))
   const childrenOf = new Map<string | null, SpanRow[]>()
 
   for (const s of spans) {
@@ -228,7 +227,7 @@ function flattenSpanTree(spans: SpanRow[]): SpanNode[] {
 
   // If nothing found via tree walk, just show flat list
   if (result.length === 0) {
-    spans.forEach((s, i) => result.push({ span: s, depth: 0 }))
+    spans.forEach((s) => result.push({ span: s, depth: 0 }))
   }
 
   return result

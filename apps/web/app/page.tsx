@@ -37,19 +37,24 @@ const COMPAT = [
 
 const PLANS = [
   {
-    name: 'Free', price: '$0', unit: 'forever',
-    bullets: ['50k req / mo', '7 day retention', 'Unlimited projects', 'Community support'],
+    name: 'Free', price: '$0', unit: '/mo',
+    bullets: ['10K req / mo', '7 day retention', '1 workspace · 1 member', 'All core features', 'Community support'],
     cta: 'Start free', href: '/signup', primary: false,
   },
   {
-    name: 'Pro', price: '$0.20', unit: 'per 1k req',
-    bullets: ['Unlimited projects', '30 day retention', 'PII masking · detectors', 'Slack · PagerDuty · webhooks', 'Savings recommender'],
-    cta: 'Start Pro trial', href: '/signup?plan=pro', primary: true, tag: 'Most teams',
+    name: 'Pro', price: '$29', unit: '/mo',
+    bullets: ['100K req / mo', '30 day retention', '3 workspaces · 5 members', '5 alerts · email notify', '+$8 / 100K extra'],
+    cta: 'Start Pro', href: '/signup?plan=starter', primary: true, tag: 'Most popular',
   },
   {
-    name: 'Enterprise', price: 'Custom', unit: 'annual contract',
-    bullets: ['Self-hosted or dedicated', 'SSO · SAML · SCIM', 'HIPAA · BAA · DPA', '1y retention · audit export', 'Dedicated Slack channel'],
-    cta: 'Contact sales', href: 'mailto:hi@spanlens.io', primary: false,
+    name: 'Team', price: '$99', unit: '/mo',
+    bullets: ['500K req / mo', '90 day retention', 'Unlimited workspaces & members', 'Slack · webhooks · unlimited alerts', '+$6 / 100K extra'],
+    cta: 'Start Team', href: '/signup?plan=team', primary: false,
+  },
+  {
+    name: 'Enterprise', price: 'Custom', unit: '',
+    bullets: ['Custom volume & rate limits', 'Custom retention', 'SSO (SAML / Okta)', 'Unlimited everything', 'Dedicated support + SLA'],
+    cta: 'Contact us', href: 'mailto:hi@spanlens.io', primary: false,
   },
 ]
 
@@ -461,11 +466,11 @@ export default function LandingPage() {
       {/* ── Pricing preview ──────────────────────────────────────────── */}
       <section className="max-w-[1200px] mx-auto px-4 sm:px-6 lg:px-10 py-10 pb-20">
         <div className="font-mono text-[12px] text-accent tracking-[0.06em] uppercase mb-3">Pricing</div>
-        <h2 className="text-[28px] sm:text-[36px] lg:text-[44px] font-medium tracking-[-1.2px] mb-2">Simple. Per request.</h2>
+        <h2 className="text-[28px] sm:text-[36px] lg:text-[44px] font-medium tracking-[-1.2px] mb-2">Simple. Flat monthly.</h2>
         <p className="text-[15px] text-text-muted mb-8 max-w-[560px]">
-          Free while you&apos;re small. Paid by ingested request, not by seat. Self-host is free forever.
+          Free while you&apos;re small. Flat monthly fee — not per seat. Self-host is free forever.
         </p>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           {PLANS.map((p) => (
             <div
               key={p.name}
