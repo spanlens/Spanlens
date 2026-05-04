@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { supabaseAdmin } from '../lib/db.js'
 import { sendEmail, renderWaitlistConfirmationEmail } from '../lib/resend.js'
+import { fireAndForget } from '../lib/wait-until.js'
 
 /**
  * Public waitlist — no auth required.
@@ -53,9 +54,7 @@ waitlistRouter.post('/', async (c) => {
 
   // Fire-and-forget confirmation email — don't block the response
   const { subject, html } = renderWaitlistConfirmationEmail()
-  sendEmail({ to: email, subject, html }).catch((err) =>
-    console.error('waitlist email error:', err),
-  )
+  fireAndForget(c, sendEmail({ to: email, subject, html }))
 
   return c.json({ success: true, alreadyRegistered: false }, 201)
 })
