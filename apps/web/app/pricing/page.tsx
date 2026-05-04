@@ -110,7 +110,7 @@ export default function PricingPage() {
         </div>
       </nav>
 
-      <section className="max-w-5xl mx-auto px-6 py-24">
+      <section className="max-w-7xl mx-auto px-6 py-24">
         <div className="text-center mb-10">
           <h1 className="text-[36px] font-semibold tracking-[-0.6px] text-text mb-3">Simple, honest pricing</h1>
           <p className="text-[16px] text-text-muted">
