@@ -16,17 +16,7 @@ interface SendEmailInput {
 
 const FROM = process.env.RESEND_FROM ?? 'Spanlens <notifications@spanlens.io>'
 
-export async function sendEmail(input: SendEmailInput): Promise<{ sent: boolean; id?: string; error?: string }> {
-  const apiKey = process.env.RESEND_API_KEY
-  if (!apiKey) {
-    // Dev fallback: print the essentials. This intentionally does NOT log the
-    // full HTML — too noisy. The accept URL is the one thing devs actually need.
-    // eslint-disable-next-line no-console
-    console.log(`[email-dev] to=${input.to} subject="${input.subject}"` +
-      (input.devPreviewUrl ? ` url=${input.devPreviewUrl}` : ''))
-    return { sent: false }
-  }
-
+async function attemptSend(input: SendEmailInput, apiKey: string): Promise<{ sent: boolean; id?: string; error?: string }> {
   const res = await fetch('https://api.resend.com/emails', {
     method: 'POST',
     headers: {
@@ -39,6 +29,7 @@ export async function sendEmail(input: SendEmailInput): Promise<{ sent: boolean;
       subject: input.subject,
       html: input.html,
     }),
+    signal: AbortSignal.timeout(8000),
   })
 
   if (!res.ok) {
@@ -47,6 +38,29 @@ export async function sendEmail(input: SendEmailInput): Promise<{ sent: boolean;
   }
   const body = (await res.json().catch(() => ({}))) as { id?: string }
   return body.id ? { sent: true, id: body.id } : { sent: true }
+}
+
+export async function sendEmail(input: SendEmailInput): Promise<{ sent: boolean; id?: string; error?: string }> {
+  const apiKey = process.env.RESEND_API_KEY
+  if (!apiKey) {
+    // Dev fallback: print the essentials. This intentionally does NOT log the
+    // full HTML — too noisy. The accept URL is the one thing devs actually need.
+    // eslint-disable-next-line no-console
+    console.log(`[email-dev] to=${input.to} subject="${input.subject}"` +
+      (input.devPreviewUrl ? ` url=${input.devPreviewUrl}` : ''))
+    return { sent: false }
+  }
+
+  // One retry on network errors (ECONNRESET, timeout, etc.)
+  try {
+    return await attemptSend(input, apiKey)
+  } catch (err) {
+    const isNetworkErr = err instanceof TypeError || (err as NodeJS.ErrnoException).code === 'ECONNRESET'
+    if (!isNetworkErr) return { sent: false, error: String(err) }
+    // Wait 1s then retry once
+    await new Promise((r) => setTimeout(r, 1000))
+    return attemptSend(input, apiKey)
+  }
 }
 
 export function renderInvitationEmail(params: {
