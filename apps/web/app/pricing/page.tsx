@@ -67,6 +67,28 @@ const PLANS = [
     href: '/signup?plan=team',
     highlight: false,
   },
+  {
+    name: 'Enterprise',
+    price: 'Custom',
+    description: 'For large teams with advanced needs',
+    features: [
+      'Custom requests / month',
+      'Custom rate limit',
+      'Unlimited workspaces',
+      'Unlimited members',
+      'Custom log retention',
+      'Unlimited alerts',
+      'Email + Slack + Discord',
+      'Webhooks',
+      'CSV + JSON export',
+      'SSO (SAML / Okta)',
+      'Dedicated support + SLA',
+    ],
+    overage: null,
+    cta: 'Contact us',
+    href: 'mailto:hi@spanlens.io',
+    highlight: false,
+  },
 ]
 
 export default function PricingPage() {
@@ -129,7 +151,7 @@ export default function PricingPage() {
         </div>
 
         {/* Plan cards */}
-        <div className="grid grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
           {PLANS.map((plan) => (
             <div
               key={plan.name}
@@ -178,13 +200,6 @@ export default function PricingPage() {
             </div>
           ))}
         </div>
-
-        <p className="text-center text-[13px] text-text-muted mt-10">
-          Need more?{' '}
-          <a href="mailto:hi@spanlens.io" className="text-accent hover:opacity-80 transition-opacity">
-            Contact us for Enterprise pricing
-          </a>
-        </p>
 
         {/* Overage policy */}
         <div className="mt-16 rounded-xl border border-border bg-bg-elev p-6 max-w-3xl mx-auto">
