@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { Check } from 'lucide-react'
-import { AuthNavButtons } from '@/components/layout/auth-nav-buttons'
 import { Footer } from '@/components/layout/footer'
+import { MarketingNav } from '@/components/layout/marketing-nav'
 import { cn } from '@/lib/utils'
 
 export const metadata = { title: 'Pricing · Spanlens' }
@@ -95,20 +95,7 @@ export default function PricingPage() {
   return (
     <div className="min-h-screen bg-bg">
       {/* Nav */}
-      <nav className="sticky top-0 z-10 border-b border-border bg-bg/90 backdrop-blur-sm">
-        <div className="max-w-7xl mx-auto flex items-center justify-between px-6 h-[56px]">
-          <Link href="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
-            <img src="/icon.png" alt="Spanlens" width={22} height={22} className="shrink-0 rounded-[5px]" />
-            <span className="font-semibold text-[16px] text-text tracking-[-0.3px]">Spanlens</span>
-          </Link>
-          <div className="flex items-center gap-6">
-            <Link href="/docs" className="text-[13px] text-text-muted hover:text-text transition-colors">
-              Docs
-            </Link>
-            <AuthNavButtons signupLabel="Get started free" />
-          </div>
-        </div>
-      </nav>
+      <MarketingNav />
 
       <section className="max-w-7xl mx-auto px-6 py-24">
         <div className="text-center mb-10">

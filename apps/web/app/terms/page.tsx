@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { Footer } from '@/components/layout/footer'
-import { AuthNavButtons } from '@/components/layout/auth-nav-buttons'
+import { MarketingNav } from '@/components/layout/marketing-nav'
 
 export const metadata = {
   title: 'Terms of Service · Spanlens',
@@ -13,20 +13,7 @@ const EFFECTIVE_DATE = '2026-04-22'
 export default function TermsPage() {
   return (
     <div className="min-h-screen bg-bg flex flex-col">
-      <nav className="sticky top-0 z-10 border-b border-border bg-bg/90 backdrop-blur-sm">
-        <div className="max-w-7xl mx-auto flex items-center justify-between px-6 h-[56px]">
-          <Link href="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
-            <img src="/icon.png" alt="Spanlens" width={22} height={22} className="shrink-0 rounded-[5px]" />
-            <span className="font-semibold text-[16px] text-text tracking-[-0.3px]">Spanlens</span>
-          </Link>
-          <div className="flex items-center gap-6">
-            <Link href="/pricing" className="text-[13px] text-text-muted hover:text-text transition-colors">
-              Pricing
-            </Link>
-            <AuthNavButtons signupLabel="Get started free" />
-          </div>
-        </div>
-      </nav>
+      <MarketingNav />
 
       <main className="flex-1 max-w-3xl mx-auto px-6 py-12 prose prose-stone
         prose-headings:scroll-mt-20

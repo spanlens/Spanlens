@@ -1,19 +1,10 @@
 import Link from 'next/link'
-import { AuthNavButtons } from '@/components/layout/auth-nav-buttons'
 import { Footer } from '@/components/layout/footer'
+import { MarketingNav } from '@/components/layout/marketing-nav'
 import { CopyInstallButton } from '@/components/landing/copy-install-button'
 import { WaitlistForm } from '@/components/landing/waitlist-form'
 
 export const metadata = { title: 'Spanlens · LLM Observability' }
-
-function LogoMark() {
-  return (
-    <Link href="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
-      <img src="/icon.png" alt="Spanlens" width={20} height={20} className="shrink-0 rounded-[5px]" />
-      <span className="font-semibold text-[15px] tracking-[-0.3px] text-text">spanlens</span>
-    </Link>
-  )
-}
 
 const FEATURES = [
   { kicker: '01', title: 'Request log', body: 'Every call — model, tokens, cost, latency, full body. Filter, group, export.', accent: '$0.0021' },
@@ -94,21 +85,7 @@ export default function LandingPage() {
     <div className="bg-bg text-text min-h-screen">
 
       {/* ── Nav ─────────────────────────────────────────────────────── */}
-      <nav className="sticky top-0 z-10 bg-bg/90 backdrop-blur-sm">
-        <div className="max-w-[1200px] mx-auto flex items-center justify-between px-4 sm:px-6 lg:px-10 py-4 sm:py-6">
-          <LogoMark />
-          <div className="hidden sm:flex items-center gap-5 lg:gap-7 font-mono text-[13px] text-text-muted tracking-[0.015em]">
-            <Link href="#product" className="hover:text-text transition-colors">Product</Link>
-            <Link href="/docs" className="hover:text-text transition-colors">Docs</Link>
-            <Link href="/pricing" className="hover:text-text transition-colors">Pricing</Link>
-            <a href="https://github.com/sunes26/Spanlens" target="_blank" rel="noopener noreferrer" className="hover:text-text transition-colors">GitHub</a>
-          </div>
-          <div className="flex items-center gap-2">
-            <AuthNavButtons signupLabel="Start free →" />
-          </div>
-        </div>
-      </nav>
-      <div className="border-b border-border" />
+      <MarketingNav signupLabel="Start free →" />
 
       {/* ── Hero ────────────────────────────────────────────────────── */}
       <section className="max-w-[1200px] mx-auto px-4 sm:px-6 lg:px-10 pt-12 sm:pt-[64px] lg:pt-[88px] pb-10 sm:pb-[56px] lg:pb-[72px] relative">
