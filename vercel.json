@@ -1,0 +1,20 @@
+{
+  "version": 2,
+  "framework": null,
+  "outputDirectory": null,
+  "buildCommand": "pnpm --filter server build",
+  "installCommand": "pnpm install --frozen-lockfile",
+  "functions": {
+    "apps/server/api/index.ts": {
+      "maxDuration": 300
+    }
+  },
+  "rewrites": [{ "source": "/(.*)", "destination": "/apps/server/api/index" }],
+  "crons": [
+    { "path": "/cron/evaluate-alerts",           "schedule": "*/15 * * * *" },
+    { "path": "/cron/snapshot-anomalies",         "schedule": "0 1 * * *"   },
+    { "path": "/cron/stale-key-reminders",        "schedule": "0 9 * * 1"   },
+    { "path": "/cron/leak-detect-keys",           "schedule": "0 4 * * *"   },
+    { "path": "/cron/recommend-savings-alerts",   "schedule": "0 9 * * *"   }
+  ]
+}

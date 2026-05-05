@@ -1,6 +1,10 @@
 import { Hono } from 'hono'
 import { authJwt, type JwtContext } from '../middleware/authJwt.js'
 import { supabaseAdmin } from '../lib/db.js'
+import { getDecryptedProviderKeyById, getDecryptedProviderKey } from '../proxy/utils.js'
+import { calculateCost } from '../lib/cost.js'
+import { logRequestAsync } from '../lib/logger.js'
+import { fireAndForget } from '../lib/wait-until.js'
 
 export const requestsRouter = new Hono<JwtContext>()
 
@@ -185,5 +189,147 @@ requestsRouter.post('/:id/replay', async (c) => {
       replayBody,
       proxyPath,
     },
+  })
+})
+
+// POST /api/v1/requests/:id/replay/run
+// Execute a replay directly from the dashboard (JWT auth).
+// Calls the upstream provider API (non-streaming), logs the result, and
+// returns latency / token counts / cost so the UI can show them inline.
+requestsRouter.post('/:id/replay/run', async (c) => {
+  const requestId = c.req.param('id')
+  const orgId = c.get('orgId')
+  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+
+  let body: { model?: unknown } = {}
+  try { body = (await c.req.json()) as { model?: unknown } } catch { body = {} }
+  const overrideModel = typeof body.model === 'string' ? body.model : undefined
+
+  // ── Fetch original request ────────────────────────────────────────────────
+  const { data, error } = await supabaseAdmin
+    .from('requests')
+    .select('id, organization_id, project_id, provider, model, request_body, provider_key_id')
+    .eq('id', requestId)
+    .eq('organization_id', orgId)
+    .single()
+
+  if (error || !data) return c.json({ error: 'Request not found' }, 404)
+
+  const original = (data.request_body ?? {}) as Record<string, unknown>
+  if ('_truncated' in original) {
+    return c.json(
+      { error: 'Original request body was truncated and cannot be replayed exactly.' },
+      422,
+    )
+  }
+
+  // ── Decrypt provider key ──────────────────────────────────────────────────
+  const providerKey = data.provider_key_id
+    ? await getDecryptedProviderKeyById(data.provider_key_id as string, orgId)
+    : await getDecryptedProviderKey(orgId, data.project_id as string, data.provider as string)
+
+  if (!providerKey) return c.json({ error: 'Provider key not found or inactive' }, 400)
+
+  // ── Build replay body (force non-streaming) ───────────────────────────────
+  const replayBody: Record<string, unknown> = { ...original }
+  delete replayBody.stream
+  if (overrideModel) replayBody.model = overrideModel
+  const model = (replayBody.model ?? data.model ?? '') as string
+
+  // ── Resolve upstream endpoint + headers ───────────────────────────────────
+  const provider = data.provider as string
+  let upstreamUrl: string
+  let upstreamHeaders: Record<string, string>
+
+  if (provider === 'openai') {
+    upstreamUrl = 'https://api.openai.com/v1/chat/completions'
+    upstreamHeaders = { Authorization: `Bearer ${providerKey.plaintext}`, 'Content-Type': 'application/json' }
+  } else if (provider === 'anthropic') {
+    upstreamUrl = 'https://api.anthropic.com/v1/messages'
+    upstreamHeaders = {
+      'x-api-key': providerKey.plaintext,
+      'anthropic-version': '2023-06-01',
+      'Content-Type': 'application/json',
+    }
+  } else if (provider === 'gemini') {
+    const geminiModel = model.startsWith('models/') ? model : `models/${model}`
+    upstreamUrl = `https://generativelanguage.googleapis.com/v1beta/${geminiModel}:generateContent?key=${providerKey.plaintext}`
+    upstreamHeaders = { 'Content-Type': 'application/json' }
+  } else {
+    return c.json({ error: `Unsupported provider for run: ${provider}` }, 400)
+  }
+
+  // ── Call upstream ─────────────────────────────────────────────────────────
+  const startMs = Date.now()
+  let upstreamRes: Response
+  try {
+    upstreamRes = await fetch(upstreamUrl, {
+      method: 'POST',
+      headers: upstreamHeaders,
+      body: JSON.stringify(replayBody),
+    })
+  } catch (fetchErr) {
+    return c.json({ error: `Failed to reach upstream: ${String(fetchErr)}` }, 502)
+  }
+
+  const latencyMs = Date.now() - startMs
+  const statusCode = upstreamRes.status
+  const resBody = (await upstreamRes.json().catch(() => ({}))) as Record<string, unknown>
+
+  if (!upstreamRes.ok) {
+    const errMsg = (resBody.error as Record<string, unknown> | undefined)?.message as string | undefined
+    return c.json({ error: errMsg ?? `Provider returned ${statusCode}`, statusCode }, statusCode as 400)
+  }
+
+  // ── Parse token usage ─────────────────────────────────────────────────────
+  let promptTokens = 0, completionTokens = 0, totalTokens = 0
+
+  if (provider === 'openai') {
+    const u = resBody.usage as Record<string, number> | undefined
+    promptTokens    = u?.prompt_tokens    ?? 0
+    completionTokens = u?.completion_tokens ?? 0
+    totalTokens     = u?.total_tokens     ?? 0
+  } else if (provider === 'anthropic') {
+    const u = resBody.usage as Record<string, number> | undefined
+    promptTokens    = u?.input_tokens  ?? 0
+    completionTokens = u?.output_tokens ?? 0
+    totalTokens     = promptTokens + completionTokens
+  } else if (provider === 'gemini') {
+    const u = resBody.usageMetadata as Record<string, number> | undefined
+    promptTokens    = u?.promptTokenCount     ?? 0
+    completionTokens = u?.candidatesTokenCount ?? 0
+    totalTokens     = u?.totalTokenCount      ?? promptTokens + completionTokens
+  }
+
+  const costResult = calculateCost(provider as 'openai', model, { promptTokens, completionTokens })
+  const costUsd = costResult?.totalCost ?? null
+
+  // ── Log async (fire-and-forget) ───────────────────────────────────────────
+  fireAndForget(
+    c,
+    logRequestAsync({
+      organizationId: orgId,
+      projectId: data.project_id as string,
+      apiKeyId: null,
+      provider,
+      model,
+      promptTokens,
+      completionTokens,
+      totalTokens,
+      costUsd,
+      latencyMs,
+      statusCode,
+      requestBody: replayBody,
+      responseBody: resBody,
+      errorMessage: null,
+      traceId: null,
+      spanId: null,
+      providerKeyId: providerKey.id,
+    }),
+  )
+
+  return c.json({
+    success: true,
+    data: { latencyMs, statusCode, promptTokens, completionTokens, totalTokens, costUsd },
   })
 })
