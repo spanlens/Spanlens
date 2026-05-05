@@ -217,7 +217,7 @@ requestsRouter.post('/:id/replay/run', requireRole('admin', 'editor'), async (c)
   // ── Fetch original request ────────────────────────────────────────────────
   const { data, error } = await supabaseAdmin
     .from('requests')
-    .select('id, organization_id, project_id, provider, model, request_body, provider_key_id')
+    .select('id, organization_id, project_id, provider, model, request_body, provider_key_id, api_key_id')
     .eq('id', requestId)
     .eq('organization_id', orgId)
     .single()
@@ -233,9 +233,19 @@ requestsRouter.post('/:id/replay/run', requireRole('admin', 'editor'), async (c)
   }
 
   // ── Decrypt provider key ──────────────────────────────────────────────────
-  const providerKey = data.provider_key_id
+  // Prefer the historical provider_key_id (the exact key the original call
+  // used). Fall back to "current active provider key for this Spanlens key
+  // + provider" when the original key has been rotated/deleted.
+  let providerKey = data.provider_key_id
     ? await getDecryptedProviderKeyById(data.provider_key_id as string, orgId)
-    : await getDecryptedProviderKey(orgId, data.project_id as string, data.provider as string)
+    : null
+
+  if (!providerKey && data.api_key_id) {
+    providerKey = await getDecryptedProviderKey(
+      data.api_key_id as string,
+      data.provider as string,
+    )
+  }
 
   if (!providerKey) return c.json({ error: 'Provider key not found or inactive' }, 400)
 

@@ -60,8 +60,8 @@ export interface ProviderKey {
   provider: string
   name: string
   is_active: boolean
-  /** null = org-level default; non-null = project-specific override */
-  project_id: string | null
+  /** Spanlens key (sl_live_*) UUID this provider key belongs to. */
+  api_key_id: string
   created_at: string
   updated_at: string
   /** MAX(requests.created_at) — null if never used. */

@@ -27,11 +27,11 @@ openaiProxy.all('/*', async (c) => {
   const projectId = c.get('projectId')
   const apiKeyId = c.get('apiKeyId')
 
-  // Unified-keys model: provider is implicit from the route, project is from
-  // the Spanlens API key. No more 1:1 sl_live_xxx → provider_key_id link.
-  const providerKey = await getDecryptedProviderKey(organizationId, projectId, 'openai')
+  // Nested-keys model: provider key pool is owned by this Spanlens key.
+  // Path = "/proxy/openai/..." → resolve OpenAI key under apiKeyId.
+  const providerKey = await getDecryptedProviderKey(apiKeyId, 'openai')
   if (!providerKey) {
-    return c.json({ error: 'No active OpenAI provider key registered for this project' }, 400)
+    return c.json({ error: 'No active OpenAI provider key registered for this Spanlens key' }, 400)
   }
   const decryptedKey = providerKey.plaintext
 

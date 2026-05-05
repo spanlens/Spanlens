@@ -1,7 +1,18 @@
 'use client'
 import Link from 'next/link'
 import { useState } from 'react'
-import { Plus, Copy, Terminal, Check, ExternalLink, Pencil, Trash2 } from 'lucide-react'
+import {
+  Plus,
+  Copy,
+  Terminal,
+  Check,
+  ExternalLink,
+  Pencil,
+  Trash2,
+  ChevronDown,
+  ChevronRight,
+  Key as KeyIcon,
+} from 'lucide-react'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import {
@@ -47,7 +58,7 @@ const PROVIDER_PLACEHOLDERS: Record<ProviderName, string> = {
 export default function ProjectsPage() {
   const projectsQuery = useProjects()
   const apiKeysQuery = useApiKeys()
-  const providerKeysQuery = useProviderKeys()
+  const providerKeysQuery = useProviderKeys() // org-wide list, grouped client-side by api_key_id
 
   const createProject = useCreateProject()
   const issueApiKey = useIssueApiKey()
@@ -62,19 +73,22 @@ export default function ProjectsPage() {
   const [cmdCopied, setCmdCopied] = useState(false)
   const [keyCopied, setKeyCopied] = useState(false)
 
+  // Which Spanlens key cards are expanded (showing their provider keys)
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({})
+
   // Create project dialog
   const [projDialogOpen, setProjDialogOpen] = useState(false)
   const [projName, setProjName] = useState('')
 
-  // Add provider key dialog
+  // Add provider key dialog (now scoped to a Spanlens key)
   const [addProvDialogOpen, setAddProvDialogOpen] = useState(false)
-  const [addProvProjectId, setAddProvProjectId] = useState('')
+  const [addProvApiKeyId, setAddProvApiKeyId] = useState('')
   const [addProvProvider, setAddProvProvider] = useState<ProviderName>('openai')
   const [addProvName, setAddProvName] = useState('')
   const [addProvKey, setAddProvKey] = useState('')
   const [addProvError, setAddProvError] = useState<string | null>(null)
 
-  // Issue Spanlens key dialog (provider-agnostic now)
+  // Issue Spanlens key dialog
   const [issueDialogOpen, setIssueDialogOpen] = useState(false)
   const [issueProjectId, setIssueProjectId] = useState('')
   const [issueName, setIssueName] = useState('')
@@ -89,7 +103,7 @@ export default function ProjectsPage() {
   const [deleteApiKeyId, setDeleteApiKeyId] = useState<string | null>(null)
   const [deleteProvKeyId, setDeleteProvKeyId] = useState<string | null>(null)
 
-  // Track which specific toggle is pending to avoid disabling all toggles
+  // Track which specific toggle is pending
   const [pendingToggleId, setPendingToggleId] = useState<string | null>(null)
 
   function copyWizardCmd() {
@@ -111,8 +125,8 @@ export default function ProjectsPage() {
     setProjDialogOpen(false)
   }
 
-  function openAddProvDialog(projectId: string) {
-    setAddProvProjectId(projectId)
+  function openAddProvDialog(apiKeyId: string) {
+    setAddProvApiKeyId(apiKeyId)
     setAddProvProvider('openai')
     setAddProvName('')
     setAddProvKey('')
@@ -127,7 +141,7 @@ export default function ProjectsPage() {
         provider: addProvProvider,
         key: addProvKey.trim(),
         name: addProvName.trim(),
-        project_id: addProvProjectId,
+        api_key_id: addProvApiKeyId,
       })
       setAddProvDialogOpen(false)
     } catch (err) {
@@ -150,6 +164,9 @@ export default function ProjectsPage() {
         projectId: issueProjectId,
       })
       setNewKey(result?.key ?? null)
+      // Auto-expand the freshly created Spanlens key so the user sees the
+      // empty Provider keys section + the "Add provider key" button.
+      if (result?.id) setExpanded((s) => ({ ...s, [result.id]: true }))
       setIssueDialogOpen(false)
     } catch (err) {
       setIssueError(err instanceof Error ? err.message : 'Failed to issue key')
@@ -185,6 +202,10 @@ export default function ProjectsPage() {
     setDeleteProvKeyId(null)
   }
 
+  function toggleExpanded(apiKeyId: string) {
+    setExpanded((s) => ({ ...s, [apiKeyId]: !s[apiKeyId] }))
+  }
+
   const loading =
     projectsQuery.isLoading ||
     apiKeysQuery.isLoading ||
@@ -216,8 +237,7 @@ export default function ProjectsPage() {
               Projects & Keys
             </h1>
             <p className="text-[13px] text-text-muted">
-              Each project holds AI provider keys (OpenAI / Anthropic / Gemini) and Spanlens
-              keys. One Spanlens key covers every provider registered on the same project.
+              Each Spanlens key holds its own AI provider keys. Expand a key to see and add OpenAI / Anthropic / Gemini keys it can call.
             </p>
           </div>
 
@@ -263,7 +283,7 @@ export default function ProjectsPage() {
                 <div className="flex items-center gap-2 mb-2">
                   <Terminal className="h-3.5 w-3.5 text-[#7c7770]" />
                   <span className="font-mono text-[10.5px] text-[#7c7770] uppercase tracking-[0.05em]">
-                    Integrate in your project
+                    Next: add provider keys to this Spanlens key, then run the CLI
                   </span>
                 </div>
                 <div className="flex items-center gap-2 mb-1.5">
@@ -283,8 +303,7 @@ export default function ProjectsPage() {
                   </button>
                 </div>
                 <p className="font-mono text-[10.5px] text-[#5c5752]">
-                  Paste your key when asked. The CLI auto-patches every provider you registered on
-                  this project.{' '}
+                  The CLI auto-patches every provider you registered under this key.{' '}
                   <Link
                     href="/docs/quick-start"
                     className="text-accent hover:opacity-80 transition-opacity underline inline-flex items-center gap-0.5"
@@ -329,7 +348,6 @@ export default function ProjectsPage() {
           ) : (
             <div className="space-y-6">
               {projects.map((proj) => {
-                const projProviderKeys = providerKeys.filter((k) => k.project_id === proj.id)
                 const projApiKeys = apiKeys.filter((k) => k.project_id === proj.id)
                 return (
                   <div
@@ -337,179 +355,189 @@ export default function ProjectsPage() {
                     className="rounded-xl border border-border bg-bg-elev overflow-hidden"
                   >
                     {/* Project header */}
-                    <div className="px-6 py-4 border-b border-border bg-bg">
-                      <h2 className="text-[14px] font-semibold text-text">{proj.name}</h2>
-                      <p className="font-mono text-[10.5px] text-text-faint mt-0.5">{proj.id}</p>
+                    <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-bg">
+                      <div>
+                        <h2 className="text-[14px] font-semibold text-text">{proj.name}</h2>
+                        <p className="font-mono text-[10.5px] text-text-faint mt-0.5">{proj.id}</p>
+                      </div>
+                      <PermissionGate need="edit">
+                        <PrimaryBtn
+                          className="flex items-center gap-1.5 text-[12px] px-3 py-[5px] h-[28px]"
+                          onClick={() => openIssueDialog(proj.id)}
+                        >
+                          <Plus className="h-3.5 w-3.5" /> New Spanlens key
+                        </PrimaryBtn>
+                      </PermissionGate>
                     </div>
 
-                    {/* Provider keys section */}
-                    <div className="border-b border-border">
-                      <div className="flex items-center justify-between px-6 py-3 bg-bg-elev">
-                        <div>
-                          <h3 className="text-[12.5px] font-semibold text-text uppercase tracking-[0.04em]">
-                            Provider keys
-                          </h3>
-                          <p className="text-[11.5px] text-text-faint mt-0.5">
-                            AI provider keys — encrypted, server-side only
-                          </p>
-                        </div>
-                        <PermissionGate need="edit">
-                          <GhostBtn
-                            className="flex items-center gap-1.5 text-[12px] px-3 py-[5px] h-[28px]"
-                            onClick={() => openAddProvDialog(proj.id)}
-                          >
-                            <Plus className="h-3.5 w-3.5" /> Add provider key
-                          </GhostBtn>
-                        </PermissionGate>
-                      </div>
-
-                      {projProviderKeys.length === 0 ? (
-                        <p className="px-6 py-4 text-[12.5px] text-text-faint">
-                          No provider keys yet. Add OpenAI / Anthropic / Gemini keys to start.
-                        </p>
-                      ) : (
-                        <div className="divide-y divide-border">
-                          {projProviderKeys.map((pk) => (
-                            <div
-                              key={pk.id}
-                              className="grid grid-cols-[1fr_100px_60px] gap-4 px-6 py-2.5 items-center"
-                            >
-                              <span
-                                className={cn(
-                                  'text-[13px] font-medium truncate',
-                                  !pk.is_active && 'line-through text-text-faint',
-                                )}
-                              >
-                                {pk.name}
-                              </span>
-                              <span className="font-mono text-[10px] uppercase tracking-[0.04em] px-1.5 py-0.5 rounded-full border border-border text-text-muted w-fit">
-                                {pk.provider}
-                              </span>
-                              <div className="flex items-center gap-1 justify-end">
-                                <PermissionGate need="edit">
+                    {/* Spanlens keys + nested provider keys */}
+                    {projApiKeys.length === 0 ? (
+                      <p className="px-6 py-5 text-[13px] text-text-faint">
+                        No Spanlens keys yet. Create one to start.
+                      </p>
+                    ) : (
+                      <div className="divide-y divide-border">
+                        {projApiKeys.map((key) => {
+                          const keyProvKeys = providerKeys.filter(
+                            (pk) => pk.api_key_id === key.id,
+                          )
+                          const isExpanded = expanded[key.id] ?? false
+                          return (
+                            <div key={key.id}>
+                              {/* Spanlens key row */}
+                              <div className="px-4 py-3 hover:bg-bg/30 transition-colors">
+                                <div className="flex items-center gap-3">
                                   <button
                                     type="button"
-                                    onClick={() => openRotateProvDialog(pk.id)}
-                                    title="Rotate provider key"
-                                    className="p-1.5 rounded hover:bg-bg text-text-faint hover:text-text transition-colors"
+                                    onClick={() => toggleExpanded(key.id)}
+                                    className="text-text-faint hover:text-text transition-colors"
+                                    aria-label={isExpanded ? 'Collapse' : 'Expand'}
                                   >
-                                    <Pencil className="h-3.5 w-3.5" />
-                                  </button>
-                                </PermissionGate>
-                                <PermissionGate need="edit">
-                                  <button
-                                    type="button"
-                                    onClick={() => setDeleteProvKeyId(pk.id)}
-                                    title="Deactivate provider key"
-                                    className="p-1.5 rounded hover:bg-bad/10 text-text-faint hover:text-bad transition-colors"
-                                  >
-                                    <Trash2 className="h-3.5 w-3.5" />
-                                  </button>
-                                </PermissionGate>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Spanlens keys section */}
-                    <div>
-                      <div className="flex items-center justify-between px-6 py-3 bg-bg-elev">
-                        <div>
-                          <h3 className="text-[12.5px] font-semibold text-text uppercase tracking-[0.04em]">
-                            Spanlens keys
-                          </h3>
-                          <p className="text-[11.5px] text-text-faint mt-0.5">
-                            One sl_live_ key — calls every provider above
-                          </p>
-                        </div>
-                        <PermissionGate need="edit">
-                          <PrimaryBtn
-                            className="flex items-center gap-1.5 text-[12px] px-3 py-[5px] h-[28px]"
-                            onClick={() => openIssueDialog(proj.id)}
-                          >
-                            <Plus className="h-3.5 w-3.5" /> New Spanlens key
-                          </PrimaryBtn>
-                        </PermissionGate>
-                      </div>
-
-                      {projApiKeys.length === 0 ? (
-                        <p className="px-6 py-4 text-[12.5px] text-text-faint">
-                          {projProviderKeys.length === 0
-                            ? 'Add a provider key first, then issue a Spanlens key.'
-                            : 'No Spanlens key yet. Issue one to start using your provider keys.'}
-                        </p>
-                      ) : (
-                        <div className="divide-y divide-border">
-                          {projApiKeys.map((key) => (
-                            <div
-                              key={key.id}
-                              className="grid grid-cols-[1fr_140px_60px] gap-4 px-6 py-2.5 items-center"
-                            >
-                              <div className="min-w-0">
-                                <div
-                                  className={cn(
-                                    'text-[13px] font-medium truncate',
-                                    !key.is_active && 'line-through text-text-faint',
-                                  )}
-                                >
-                                  {key.name}
-                                </div>
-                                <div className="font-mono text-[10.5px] text-text-faint mt-0.5">
-                                  {key.key_prefix}…
-                                </div>
-                              </div>
-                              <span className="font-mono text-[11px] text-text-muted">
-                                {key.last_used_at
-                                  ? `${Math.floor((Date.now() - Date.parse(key.last_used_at)) / 86_400_000)}d ago`
-                                  : 'Never'}
-                              </span>
-                              <div className="flex items-center gap-1 justify-end">
-                                <PermissionGate need="edit">
-                                  <button
-                                    type="button"
-                                    role="switch"
-                                    aria-checked={key.is_active}
-                                    disabled={pendingToggleId === key.id}
-                                    onClick={async () => {
-                                      setPendingToggleId(key.id)
-                                      try {
-                                        await toggleApiKey.mutateAsync({ id: key.id, is_active: !key.is_active })
-                                      } finally {
-                                        setPendingToggleId(null)
-                                      }
-                                    }}
-                                    title={key.is_active ? 'Deactivate' : 'Activate'}
-                                    className={cn(
-                                      'relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors disabled:opacity-40',
-                                      key.is_active ? 'bg-good' : 'bg-border-strong',
+                                    {isExpanded ? (
+                                      <ChevronDown className="h-4 w-4" />
+                                    ) : (
+                                      <ChevronRight className="h-4 w-4" />
                                     )}
-                                  >
-                                    <span
+                                  </button>
+                                  <KeyIcon className="h-3.5 w-3.5 text-text-faint shrink-0" />
+                                  <div className="flex-1 min-w-0">
+                                    <div
                                       className={cn(
-                                        'inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform',
-                                        key.is_active ? 'translate-x-[18px]' : 'translate-x-[3px]',
+                                        'text-[13px] font-medium truncate',
+                                        !key.is_active && 'line-through text-text-faint',
                                       )}
-                                    />
-                                  </button>
-                                </PermissionGate>
-                                <PermissionGate need="edit">
-                                  <button
-                                    type="button"
-                                    onClick={() => setDeleteApiKeyId(key.id)}
-                                    title="Delete Spanlens key"
-                                    className="p-1.5 rounded hover:bg-bad/10 text-text-faint hover:text-bad transition-colors"
-                                  >
-                                    <Trash2 className="h-3.5 w-3.5" />
-                                  </button>
-                                </PermissionGate>
+                                    >
+                                      {key.name}
+                                    </div>
+                                    <div className="font-mono text-[10.5px] text-text-faint mt-0.5">
+                                      {key.key_prefix}…
+                                      {keyProvKeys.length > 0 && (
+                                        <span className="ml-2 uppercase tracking-[0.04em]">
+                                          · {keyProvKeys.map((p) => p.provider).join(' · ')}
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                  <span className="font-mono text-[11px] text-text-muted shrink-0">
+                                    {key.last_used_at
+                                      ? `${Math.floor((Date.now() - Date.parse(key.last_used_at)) / 86_400_000)}d ago`
+                                      : 'Never'}
+                                  </span>
+                                  <div className="flex items-center gap-1 shrink-0">
+                                    <PermissionGate need="edit">
+                                      <button
+                                        type="button"
+                                        role="switch"
+                                        aria-checked={key.is_active}
+                                        disabled={pendingToggleId === key.id}
+                                        onClick={async () => {
+                                          setPendingToggleId(key.id)
+                                          try {
+                                            await toggleApiKey.mutateAsync({ id: key.id, is_active: !key.is_active })
+                                          } finally {
+                                            setPendingToggleId(null)
+                                          }
+                                        }}
+                                        title={key.is_active ? 'Deactivate' : 'Activate'}
+                                        className={cn(
+                                          'relative inline-flex h-5 w-9 items-center rounded-full transition-colors disabled:opacity-40',
+                                          key.is_active ? 'bg-good' : 'bg-border-strong',
+                                        )}
+                                      >
+                                        <span
+                                          className={cn(
+                                            'inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform',
+                                            key.is_active ? 'translate-x-[18px]' : 'translate-x-[3px]',
+                                          )}
+                                        />
+                                      </button>
+                                    </PermissionGate>
+                                    <PermissionGate need="edit">
+                                      <button
+                                        type="button"
+                                        onClick={() => setDeleteApiKeyId(key.id)}
+                                        title="Delete Spanlens key"
+                                        className="p-1.5 rounded hover:bg-bad/10 text-text-faint hover:text-bad transition-colors"
+                                      >
+                                        <Trash2 className="h-3.5 w-3.5" />
+                                      </button>
+                                    </PermissionGate>
+                                  </div>
+                                </div>
                               </div>
+
+                              {/* Nested provider keys (when expanded) */}
+                              {isExpanded && (
+                                <div className="bg-bg/40 border-t border-border">
+                                  <div className="flex items-center justify-between px-12 py-2.5">
+                                    <span className="font-mono text-[10.5px] uppercase tracking-[0.05em] text-text-faint">
+                                      Provider keys
+                                    </span>
+                                    <PermissionGate need="edit">
+                                      <GhostBtn
+                                        className="flex items-center gap-1.5 text-[11.5px] px-2.5 py-1 h-[24px]"
+                                        onClick={() => openAddProvDialog(key.id)}
+                                      >
+                                        <Plus className="h-3 w-3" /> Add provider key
+                                      </GhostBtn>
+                                    </PermissionGate>
+                                  </div>
+
+                                  {keyProvKeys.length === 0 ? (
+                                    <p className="px-12 pb-4 text-[12px] text-text-faint">
+                                      No provider keys yet. Add OpenAI / Anthropic / Gemini to enable calls through this Spanlens key.
+                                    </p>
+                                  ) : (
+                                    <div className="divide-y divide-border/60">
+                                      {keyProvKeys.map((pk) => (
+                                        <div
+                                          key={pk.id}
+                                          className="grid grid-cols-[1fr_100px_60px] gap-4 px-12 py-2.5 items-center"
+                                        >
+                                          <span
+                                            className={cn(
+                                              'text-[12.5px] font-medium truncate',
+                                              !pk.is_active && 'line-through text-text-faint',
+                                            )}
+                                          >
+                                            {pk.name}
+                                          </span>
+                                          <span className="font-mono text-[10px] uppercase tracking-[0.04em] px-1.5 py-0.5 rounded-full border border-border text-text-muted w-fit">
+                                            {pk.provider}
+                                          </span>
+                                          <div className="flex items-center gap-1 justify-end">
+                                            <PermissionGate need="edit">
+                                              <button
+                                                type="button"
+                                                onClick={() => openRotateProvDialog(pk.id)}
+                                                title="Rotate provider key"
+                                                className="p-1 rounded hover:bg-bg text-text-faint hover:text-text transition-colors"
+                                              >
+                                                <Pencil className="h-3 w-3" />
+                                              </button>
+                                            </PermissionGate>
+                                            <PermissionGate need="edit">
+                                              <button
+                                                type="button"
+                                                onClick={() => setDeleteProvKeyId(pk.id)}
+                                                title="Deactivate"
+                                                className="p-1 rounded hover:bg-bad/10 text-text-faint hover:text-bad transition-colors"
+                                              >
+                                                <Trash2 className="h-3 w-3" />
+                                              </button>
+                                            </PermissionGate>
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              )}
                             </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
+                          )
+                        })}
+                      </div>
+                    )}
                   </div>
                 )
               })}
@@ -559,12 +587,61 @@ export default function ProjectsPage() {
         </DialogContent>
       </Dialog>
 
+      {/* Issue Spanlens key dialog */}
+      <Dialog
+        open={issueDialogOpen}
+        onOpenChange={(open) => {
+          setIssueDialogOpen(open)
+          if (!open) { setIssueProjectId(''); setIssueError(null) }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>New Spanlens key</DialogTitle>
+          </DialogHeader>
+          <DialogDescription className="text-[12.5px] text-text-muted mt-1">
+            Issue a{' '}
+            <code className="font-mono bg-bg-elev border border-border px-1 rounded text-[11px]">sl_live_…</code>{' '}
+            key. After creating, expand it to add provider AI keys it can call.
+          </DialogDescription>
+
+          <form
+            onSubmit={(e) => { e.preventDefault(); void handleIssueApiKey() }}
+            className="space-y-4 mt-2"
+          >
+            <div className="space-y-1.5">
+              <label className="text-[12.5px] text-text-muted font-medium">Key name</label>
+              <input
+                value={issueName}
+                onChange={(e) => setIssueName(e.target.value)}
+                placeholder="e.g. Production"
+                autoFocus
+                className="w-full h-9 px-3 rounded-[6px] border border-border bg-bg text-[13px] text-text placeholder:text-text-faint focus:outline-none focus:border-border-strong transition-colors"
+              />
+            </div>
+
+            {issueError && (
+              <div className="rounded-md border border-bad/30 bg-bad/10 px-3 py-2 text-[12px] text-bad">
+                {issueError}
+              </div>
+            )}
+
+            <PrimaryBtn
+              type="submit"
+              disabled={!issueName.trim() || issueApiKey.isPending}
+            >
+              {issueApiKey.isPending ? 'Creating…' : 'Create key'}
+            </PrimaryBtn>
+          </form>
+        </DialogContent>
+      </Dialog>
+
       {/* Add provider key dialog */}
       <Dialog
         open={addProvDialogOpen}
         onOpenChange={(open) => {
           setAddProvDialogOpen(open)
-          if (!open) { setAddProvProjectId(''); setAddProvError(null) }
+          if (!open) { setAddProvApiKeyId(''); setAddProvError(null) }
         }}
       >
         <DialogContent>
@@ -572,8 +649,7 @@ export default function ProjectsPage() {
             <DialogTitle>Add provider key</DialogTitle>
           </DialogHeader>
           <DialogDescription className="text-[12.5px] text-text-muted mt-1">
-            Register an AI provider key for this project. We encrypt it with AES-256-GCM and
-            never expose it again — only the proxy decrypts it on each request.
+            Register an AI provider key under this Spanlens key. Encrypted with AES-256-GCM.
           </DialogDescription>
 
           <form
@@ -637,55 +713,6 @@ export default function ProjectsPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Issue Spanlens key dialog */}
-      <Dialog
-        open={issueDialogOpen}
-        onOpenChange={(open) => {
-          setIssueDialogOpen(open)
-          if (!open) { setIssueProjectId(''); setIssueError(null) }
-        }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>New Spanlens key</DialogTitle>
-          </DialogHeader>
-          <DialogDescription className="text-[12.5px] text-text-muted mt-1">
-            Issue a{' '}
-            <code className="font-mono bg-bg-elev border border-border px-1 rounded text-[11px]">sl_live_…</code>{' '}
-            key for this project. It works with every provider key registered above.
-          </DialogDescription>
-
-          <form
-            onSubmit={(e) => { e.preventDefault(); void handleIssueApiKey() }}
-            className="space-y-4 mt-2"
-          >
-            <div className="space-y-1.5">
-              <label className="text-[12.5px] text-text-muted font-medium">Key name</label>
-              <input
-                value={issueName}
-                onChange={(e) => setIssueName(e.target.value)}
-                placeholder="e.g. Production"
-                autoFocus
-                className="w-full h-9 px-3 rounded-[6px] border border-border bg-bg text-[13px] text-text placeholder:text-text-faint focus:outline-none focus:border-border-strong transition-colors"
-              />
-            </div>
-
-            {issueError && (
-              <div className="rounded-md border border-bad/30 bg-bad/10 px-3 py-2 text-[12px] text-bad">
-                {issueError}
-              </div>
-            )}
-
-            <PrimaryBtn
-              type="submit"
-              disabled={!issueName.trim() || issueApiKey.isPending}
-            >
-              {issueApiKey.isPending ? 'Creating…' : 'Create key'}
-            </PrimaryBtn>
-          </form>
-        </DialogContent>
-      </Dialog>
-
       {/* Rotate provider key dialog */}
       <Dialog
         open={rotateProvKeyId !== null}
@@ -740,8 +767,8 @@ export default function ProjectsPage() {
             <DialogTitle>Delete Spanlens key</DialogTitle>
           </DialogHeader>
           <DialogDescription className="text-[12.5px] text-text-muted mt-1">
-            Apps using this key will stop working immediately. Provider keys on this project
-            are not affected.
+            All provider keys under this Spanlens key will also be deleted (CASCADE). Apps using
+            this key will stop working immediately.
           </DialogDescription>
 
           <div className="space-y-4 mt-2">
@@ -772,8 +799,8 @@ export default function ProjectsPage() {
             <DialogTitle>Deactivate provider key</DialogTitle>
           </DialogHeader>
           <DialogDescription className="text-[12.5px] text-text-muted mt-1">
-            Spanlens keys on this project will fail when calling this provider until you add a
-            new active key. Existing logs are preserved.
+            The Spanlens key will fail when calling this provider until you add a new active key.
+            Existing logs are preserved.
           </DialogDescription>
 
           <div className="space-y-4 mt-2">

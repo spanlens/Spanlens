@@ -77,7 +77,7 @@ describe('getDecryptedProviderKey — Gotcha #5 (decryption empty string → nul
     // Project-specific key found → returns immediately, no org fallback needed
     mockKeyLookup({ data: { id: 'pk-uuid-123', encrypted_key: ciphertext }, error: null })
 
-    const result = await getDecryptedProviderKey('org-123', 'proj-456', 'openai')
+    const result = await getDecryptedProviderKey('api-key-789', 'openai')
     expect(result).toEqual({ plaintext, id: 'pk-uuid-123' })
   })
 
@@ -86,31 +86,27 @@ describe('getDecryptedProviderKey — Gotcha #5 (decryption empty string → nul
     const ciphertext = await aes256Encrypt('sk-openai-real-key-abc123')
     process.env.ENCRYPTION_KEY = WRONG_KEY_ENV
 
-    // Project key found but decryption fails → falls through to org lookup (also null)
+    // Single lookup under nested-keys model — decryption fails → null.
     mockKeyLookup({ data: { id: 'pk-uuid-123', encrypted_key: ciphertext }, error: null })
-    mockKeyLookup({ data: null, error: null })
 
-    const result = await getDecryptedProviderKey('org-123', 'proj-456', 'openai')
+    const result = await getDecryptedProviderKey('api-key-789', 'openai')
 
     // null guarantees the proxy never sends an empty Bearer token to OpenAI
     expect(result).toBeNull()
   })
 
   it('returns null when no provider key row exists in DB', async () => {
-    // Both project and org lookups return null
-    mockKeyLookup({ data: null, error: null })
     mockKeyLookup({ data: null, error: null })
 
-    const result = await getDecryptedProviderKey('org-123', 'proj-456', 'openai')
+    const result = await getDecryptedProviderKey('api-key-789', 'openai')
     expect(result).toBeNull()
   })
 
   it('returns null when encrypted_key is empty/garbage in DB', async () => {
-    // Project key is garbage → falls through to org lookup (also null)
+    // Garbage ciphertext → decryption returns empty string → null.
     mockKeyLookup({ data: { id: 'pk-uuid-123', encrypted_key: 'dG9vc2hvcnQ=' }, error: null })
-    mockKeyLookup({ data: null, error: null })
 
-    const result = await getDecryptedProviderKey('org-123', 'proj-456', 'openai')
+    const result = await getDecryptedProviderKey('api-key-789', 'openai')
     expect(result).toBeNull()
   })
 })
