@@ -35,10 +35,18 @@ const nextConfig = {
   // remaining stray reference.
   webpack(config, { nextRuntime, webpack: webpackInstance }) {
     if (nextRuntime === 'edge') {
+      // @supabase/realtime-js@2.104.0 depends on the 'ws' package which
+      // references __dirname at module init → ReferenceError in Edge Runtime.
+      // Middleware never uses Realtime subscriptions, so it's safe to stub
+      // the whole package out. Aliasing 'ws' alone is insufficient because
+      // @supabase/realtime-js evaluates __dirname before the ws import.
       config.resolve.alias = {
         ...config.resolve.alias,
+        '@supabase/realtime-js': false,
         ws: false,
       }
+      // Belt-and-suspenders: replace any residual __dirname / __filename
+      // identifier that slips through (e.g. from inlined polyfills).
       config.plugins.push(
         new webpackInstance.DefinePlugin({
           __dirname: JSON.stringify('/'),
