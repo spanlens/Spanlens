@@ -1,26 +1,22 @@
-// The CLI doesn't auto-patch Anthropic yet (OpenAI-only for now).
-// To route this through Spanlens, manually edit this file:
+// BEFORE `npx @spanlens/cli init`:
+// This route uses the Anthropic client directly with ANTHROPIC_API_KEY.
 //
-//   1. Install the SDK if you haven't:
-//        pnpm add @spanlens/sdk
-//
-//   2. Replace the import + client init below with:
-//        import { createAnthropic } from '@spanlens/sdk/anthropic'
-//        const anthropic = createAnthropic()
-//
-//   3. Make sure SPANLENS_API_KEY is in .env.local (the CLI adds it for you).
-//
-// You can keep ANTHROPIC_API_KEY out of the env entirely — Spanlens uses
-// the provider key you registered on the dashboard.
+// AFTER the CLI patch (CLI 0.2.0+ auto-detects Anthropic):
+//   - `new Anthropic(...)` becomes `createAnthropic()`
+//   - Imports from '@anthropic-ai/sdk' become
+//     `import { createAnthropic } from '@spanlens/sdk/anthropic'`
+//   - apiKey/baseURL options stripped (the SDK reads SPANLENS_API_KEY)
 import { NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
-})
-
 export async function POST() {
   try {
+    // Lazy-instantiate inside the handler so a missing API key surfaces
+    // as a normal JSON error response (caught below) instead of a
+    // module-load throw that Next.js renders as an HTML error page.
+    const anthropic = new Anthropic({
+      apiKey: process.env.ANTHROPIC_API_KEY,
+    })
     const t0 = Date.now()
     const res = await anthropic.messages.create({
       model: 'claude-haiku-4-5',

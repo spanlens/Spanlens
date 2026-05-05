@@ -12,12 +12,14 @@
 import { NextResponse } from 'next/server'
 import OpenAI from 'openai'
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-})
-
 export async function POST() {
   try {
+    // Lazy-instantiate inside the handler so a missing API key surfaces
+    // as a normal JSON error response (caught below) instead of a
+    // module-load throw that Next.js renders as an HTML error page.
+    const openai = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY,
+    })
     const t0 = Date.now()
     const res = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
