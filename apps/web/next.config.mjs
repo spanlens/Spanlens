@@ -24,6 +24,30 @@ const nextConfig = {
       },
     ]
   },
+
+  // @supabase/realtime-js@2.104.0 depends on 'ws' which references __dirname
+  // at module initialisation time. __dirname is undefined in Next.js Edge
+  // Runtime (middleware), causing MIDDLEWARE_INVOCATION_FAILED on every request.
+  //
+  // Fix: for Edge builds, alias 'ws' → false (empty module) so the bundler
+  // drops it; Edge Runtime provides WebSocket natively as a global.
+  // DefinePlugin provides __dirname / __filename as a safety net for any
+  // remaining stray reference.
+  webpack(config, { nextRuntime, webpack: webpackInstance }) {
+    if (nextRuntime === 'edge') {
+      config.resolve.alias = {
+        ...config.resolve.alias,
+        ws: false,
+      }
+      config.plugins.push(
+        new webpackInstance.DefinePlugin({
+          __dirname: JSON.stringify('/'),
+          __filename: JSON.stringify(''),
+        }),
+      )
+    }
+    return config
+  },
 }
 
 export default nextConfig
