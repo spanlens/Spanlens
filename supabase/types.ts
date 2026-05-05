@@ -1,4 +1,4 @@
-Connecting to db 5432
+Initialising login role...
 export type Json =
   | string
   | number
@@ -8,6 +8,11 @@ export type Json =
   | Json[]
 
 export type Database = {
+  // Allows to automatically instantiate createClient with right options
+  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
+  __InternalSupabase: {
+    PostgrestVersion: "14.5"
+  }
   graphql_public: {
     Tables: {
       [_ in never]: never
@@ -264,7 +269,6 @@ export type Database = {
           last_used_at: string | null
           name: string
           project_id: string
-          provider_key_id: string | null
           updated_at: string
         }
         Insert: {
@@ -276,7 +280,6 @@ export type Database = {
           last_used_at?: string | null
           name: string
           project_id: string
-          provider_key_id?: string | null
           updated_at?: string
         }
         Update: {
@@ -288,7 +291,6 @@ export type Database = {
           last_used_at?: string | null
           name?: string
           project_id?: string
-          provider_key_id?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -297,13 +299,6 @@ export type Database = {
             columns: ["project_id"]
             isOneToOne: false
             referencedRelation: "projects"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "api_keys_provider_key_id_fkey"
-            columns: ["provider_key_id"]
-            isOneToOne: false
-            referencedRelation: "provider_keys"
             referencedColumns: ["id"]
           },
         ]
@@ -814,7 +809,7 @@ export type Database = {
           is_active: boolean
           name: string
           organization_id: string
-          project_id: string | null
+          project_id: string
           provider: string
           updated_at: string
         }
@@ -825,7 +820,7 @@ export type Database = {
           is_active?: boolean
           name: string
           organization_id: string
-          project_id?: string | null
+          project_id: string
           provider: string
           updated_at?: string
         }
@@ -836,7 +831,7 @@ export type Database = {
           is_active?: boolean
           name?: string
           organization_id?: string
-          project_id?: string | null
+          project_id?: string
           provider?: string
           updated_at?: string
         }
@@ -856,6 +851,27 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      rate_limit_buckets: {
+        Row: {
+          count: number
+          created_at: string
+          key: string
+          window_key: string
+        }
+        Insert: {
+          count?: number
+          created_at?: string
+          key: string
+          window_key: string
+        }
+        Update: {
+          count?: number
+          created_at?: string
+          key?: string
+          window_key?: string
+        }
+        Relationships: []
       }
       recommendation_applications: {
         Row: {
@@ -938,7 +954,7 @@ export type Database = {
       }
       requests: {
         Row: {
-          api_key_id: string
+          api_key_id: string | null
           completion_tokens: number
           cost_usd: number | null
           created_at: string
@@ -964,7 +980,7 @@ export type Database = {
           trace_id: string | null
         }
         Insert: {
-          api_key_id: string
+          api_key_id?: string | null
           completion_tokens?: number
           cost_usd?: number | null
           created_at?: string
@@ -990,7 +1006,7 @@ export type Database = {
           trace_id?: string | null
         }
         Update: {
-          api_key_id?: string
+          api_key_id?: string | null
           completion_tokens?: number
           cost_usd?: number | null
           created_at?: string
@@ -1575,6 +1591,10 @@ export type Database = {
     }
     Functions: {
       aggregate_usage_daily: { Args: { target_date: string }; Returns: number }
+      check_rate_limit: {
+        Args: { p_key: string; p_limit: number; p_window_key: string }
+        Returns: boolean
+      }
       detect_anomaly_stats: {
         Args: {
           p_obs_start: string
@@ -1632,14 +1652,8 @@ export type Database = {
         }[]
       }
       is_org_member: { Args: { org_id: string }; Returns: boolean }
-      postgres_fdw_disconnect: { Args: { "": string }; Returns: boolean }
-      postgres_fdw_disconnect_all: { Args: never; Returns: boolean }
-      postgres_fdw_get_connections: {
-        Args: never
-        Returns: Record<string, unknown>[]
-      }
-      postgres_fdw_handler: { Args: never; Returns: unknown }
       prune_logs_by_retention: { Args: never; Returns: Json }
+      prune_rate_limit_buckets: { Args: never; Returns: number }
       security_summary: {
         Args: { p_hours?: number; p_org_id: string }
         Returns: {
@@ -1835,6 +1849,5 @@ export const Constants = {
     },
   },
 } as const
-
-A new version of Supabase CLI is available: v2.95.4 (currently installed v2.90.0)
+A new version of Supabase CLI is available: v2.98.1 (currently installed v2.90.0)
 We recommend updating regularly for new features and bug fixes: https://supabase.com/docs/guides/cli/getting-started#updating-the-supabase-cli
