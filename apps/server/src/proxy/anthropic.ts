@@ -27,9 +27,9 @@ anthropicProxy.all('/*', async (c) => {
   const projectId = c.get('projectId')
   const apiKeyId = c.get('apiKeyId')
 
-  const providerKey = await getDecryptedProviderKey(organizationId, projectId, 'anthropic')
+  const providerKey = await getDecryptedProviderKey(apiKeyId, 'anthropic')
   if (!providerKey) {
-    return c.json({ error: 'No active Anthropic provider key registered for this project' }, 400)
+    return c.json({ error: 'No active Anthropic provider key registered for this Spanlens key' }, 400)
   }
   const decryptedKey = providerKey.plaintext
 

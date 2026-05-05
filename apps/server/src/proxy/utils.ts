@@ -9,51 +9,32 @@ export interface ResolvedProviderKey {
 }
 
 /**
- * Look up + decrypt the active provider key for a request.
+ * Look up + decrypt the active provider key for a Spanlens key + provider.
  *
- * Lookup priority:
- *   1. Project-specific key (provider_keys.project_id = projectId, active)
- *   2. Org-level default (provider_keys.project_id IS NULL, active)
+ * Under the nested-keys model (migration 20260505080000), each Spanlens
+ * (sl_live_*) key owns its own set of provider AI keys. The proxy
+ * receives the Spanlens key's id from authApiKey + the provider from the
+ * URL path, then resolves them here.
  *
  * Returns both plaintext (for upstream Authorization) and the row id (for
  * requests.provider_key_id so the dashboard can show which key was used).
  */
 export async function getDecryptedProviderKey(
-  organizationId: string,
-  projectId: string,
+  apiKeyId: string,
   provider: string,
 ): Promise<ResolvedProviderKey | null> {
-  // 1. Project-specific key
-  const { data: projectKey } = await supabaseAdmin
+  const { data } = await supabaseAdmin
     .from('provider_keys')
     .select('id, encrypted_key')
-    .eq('organization_id', organizationId)
-    .eq('project_id', projectId)
+    .eq('api_key_id', apiKeyId)
     .eq('provider', provider)
     .eq('is_active', true)
     .maybeSingle()
 
-  if (projectKey) {
-    const decrypted = await aes256Decrypt(projectKey.encrypted_key as string)
-    if (decrypted.length > 0) {
-      return { plaintext: decrypted, id: projectKey.id as string }
-    }
-  }
-
-  // 2. Org-level default fallback
-  const { data: orgKey } = await supabaseAdmin
-    .from('provider_keys')
-    .select('id, encrypted_key')
-    .eq('organization_id', organizationId)
-    .is('project_id', null)
-    .eq('provider', provider)
-    .eq('is_active', true)
-    .maybeSingle()
-
-  if (!orgKey) return null
-  const decrypted = await aes256Decrypt(orgKey.encrypted_key as string)
+  if (!data) return null
+  const decrypted = await aes256Decrypt(data.encrypted_key as string)
   if (decrypted.length === 0) return null
-  return { plaintext: decrypted, id: orgKey.id as string }
+  return { plaintext: decrypted, id: data.id as string }
 }
 
 /**

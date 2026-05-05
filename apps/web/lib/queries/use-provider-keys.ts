@@ -7,18 +7,21 @@ import type { ApiEnvelope, ProviderKey } from './types'
 export const providerKeysQueryKey = ['provider-keys'] as const
 
 /**
- * List provider AI keys (OpenAI / Anthropic / Gemini) for a project.
- * Under the unified-keys model these are independent of Spanlens keys —
- * a single sl_live_* covers all providers registered on the same project.
+ * List provider AI keys (OpenAI / Anthropic / Gemini). Under the
+ * nested-keys model these belong to a specific Spanlens (sl_live_*) key
+ * — pass `apiKeyId` to scope the list to that key only.
+ *
+ * Without `apiKeyId`, returns every provider key in the org (used by the
+ * requests-page filter dropdown).
  */
-export function useProviderKeys(projectId?: string) {
+export function useProviderKeys(apiKeyId?: string) {
   return useQuery({
-    queryKey: projectId
-      ? ([...providerKeysQueryKey, { projectId }] as const)
+    queryKey: apiKeyId
+      ? ([...providerKeysQueryKey, { apiKeyId }] as const)
       : providerKeysQueryKey,
     queryFn: async () => {
-      const path = projectId
-        ? `/api/v1/provider-keys?projectId=${encodeURIComponent(projectId)}`
+      const path = apiKeyId
+        ? `/api/v1/provider-keys?apiKeyId=${encodeURIComponent(apiKeyId)}`
         : '/api/v1/provider-keys'
       const res = await apiGet<ApiEnvelope<ProviderKey[]>>(path)
       return res.data
@@ -33,7 +36,7 @@ export function useAddProviderKey() {
       provider: 'openai' | 'anthropic' | 'gemini'
       key: string
       name: string
-      project_id: string
+      api_key_id: string
     }) => {
       const res = await apiPost<ApiEnvelope<ProviderKey>>('/api/v1/provider-keys', input)
       return res.data

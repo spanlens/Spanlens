@@ -803,51 +803,51 @@ export type Database = {
       }
       provider_keys: {
         Row: {
+          api_key_id: string
           created_at: string
           encrypted_key: string
           id: string
           is_active: boolean
           name: string
           organization_id: string
-          project_id: string
           provider: string
           updated_at: string
         }
         Insert: {
+          api_key_id: string
           created_at?: string
           encrypted_key: string
           id?: string
           is_active?: boolean
           name: string
           organization_id: string
-          project_id: string
           provider: string
           updated_at?: string
         }
         Update: {
+          api_key_id?: string
           created_at?: string
           encrypted_key?: string
           id?: string
           is_active?: boolean
           name?: string
           organization_id?: string
-          project_id?: string
           provider?: string
           updated_at?: string
         }
         Relationships: [
           {
+            foreignKeyName: "provider_keys_api_key_id_fkey"
+            columns: ["api_key_id"]
+            isOneToOne: false
+            referencedRelation: "api_keys"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "provider_keys_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "provider_keys_project_id_fkey"
-            columns: ["project_id"]
-            isOneToOne: false
-            referencedRelation: "projects"
             referencedColumns: ["id"]
           },
         ]

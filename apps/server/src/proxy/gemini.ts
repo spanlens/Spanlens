@@ -25,9 +25,9 @@ geminiProxy.all('/*', async (c) => {
   const projectId = c.get('projectId')
   const apiKeyId = c.get('apiKeyId')
 
-  const providerKey = await getDecryptedProviderKey(organizationId, projectId, 'gemini')
+  const providerKey = await getDecryptedProviderKey(apiKeyId, 'gemini')
   if (!providerKey) {
-    return c.json({ error: 'No active Gemini provider key registered for this project' }, 400)
+    return c.json({ error: 'No active Gemini provider key registered for this Spanlens key' }, 400)
   }
   const decryptedKey = providerKey.plaintext
 
