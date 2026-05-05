@@ -31,11 +31,11 @@ export interface RequestLogData {
 }
 
 /**
- * 10KB 초과 body는 DB에 저장하지 않고 truncate — Postgres JSONB 팽창 방지.
+ * 64KB 초과 body는 DB에 저장하지 않고 truncate — Postgres JSONB 팽창 방지.
  * 전체 본문이 필요한 고객은 향후 Phase 2에서 Supabase Storage 버킷 업로드로 확장 예정.
  * 지금은 preview(앞 2KB) + 원본 크기 메타만 남기고 나머지는 드롭.
  */
-const MAX_BODY_INLINE_BYTES = 10 * 1024
+const MAX_BODY_INLINE_BYTES = 64 * 1024
 const PREVIEW_BYTES = 2 * 1024
 
 function serializeBody(body: unknown): unknown {
