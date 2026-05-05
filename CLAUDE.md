@@ -47,9 +47,20 @@ supabase db reset # 로컬 DB 초기화 (주의: 전체 삭제)
 ## 인증 계층 — YOU MUST FOLLOW
 /proxy/* 경로 → authApiKey 미들웨어 (API Key SHA-256 해시 검증)
 /api/* 경로 → authJwt 미들웨어 (Supabase JWT)
+/api/v1/me/key-info → authApiKey (CLI introspection — JWT 없이 sl_live_* 만 검증)
 DB 쓰기(로깅) → supabaseAdmin (service_role, RLS bypass)
 DB 읽기(조회) → supabaseClient (anon key, RLS 적용)
 두 미들웨어 절대 혼용 금지.
+
+### 통합 키(unified key) 모델 — 2026-05-05부터
+- `api_keys.provider_key_id` **컬럼 없음** (마이그레이션 20260505040000_unified_keys로 제거).
+- `sl_live_*` 키는 **프로젝트 단위**로 발급되고 provider-agnostic. provider는 request URL path
+  (`/proxy/openai/...` vs `/proxy/anthropic/...` vs `/proxy/gemini/...`)에서 추론.
+- `provider_keys.project_id`는 **NOT NULL** — 모든 provider AI key는 명시적으로 한 프로젝트에 속함.
+  org-level fallback row 사라짐.
+- 같은 `(project_id, provider)`에 active=true 키 1개만 허용 (UNIQUE INDEX).
+- 새 provider key 발급/조회: `apps/server/src/api/providerKeys.ts` (`/api/v1/provider-keys`).
+- 새 Spanlens key 발급/조회: `apps/server/src/api/apiKeys.ts` (`/api/v1/api-keys`) — provider 정보 더 이상 안 받음.
 ## 보안 규칙 — IMPORTANT (위반 시 보안 사고)
 1. Provider Key(실제 OpenAI/Anthropic key) 절대 로그 출력 금지
 2. Provider Key 복호화: apps/server/src/lib/crypto.ts의 aes256Decrypt()만 사용

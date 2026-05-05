@@ -2,12 +2,22 @@ import { createMiddleware } from 'hono/factory'
 import { supabaseAdmin } from '../lib/db.js'
 import { sha256Hex } from '../lib/crypto.js'
 
+/**
+ * Validates `Authorization: Bearer sl_live_...` against the `api_keys` table.
+ *
+ * Under the unified-keys model (see migration 20260505040000_unified_keys.sql)
+ * each Spanlens key is scoped to a project — provider is inferred at the
+ * proxy layer from the request URL path (`/proxy/openai/...`, etc.). The
+ * proxy then looks up the active provider_keys row for `(project_id, provider)`.
+ *
+ * No `providerKeyId` is exposed here anymore. Replay flows that need the
+ * historical key ID still read `requests.provider_key_id` directly.
+ */
 export type ApiKeyContext = {
   Variables: {
     organizationId: string
     projectId: string
     apiKeyId: string
-    providerKeyId: string | null
   }
 }
 
@@ -22,7 +32,7 @@ export const authApiKey = createMiddleware<ApiKeyContext>(async (c, next) => {
 
   const { data, error } = await supabaseAdmin
     .from('api_keys')
-    .select('id, project_id, provider_key_id, projects(organization_id)')
+    .select('id, project_id, projects(organization_id)')
     .eq('key_hash', keyHash)
     .eq('is_active', true)
     .single()
@@ -31,7 +41,7 @@ export const authApiKey = createMiddleware<ApiKeyContext>(async (c, next) => {
     return c.json({ error: 'Invalid API key' }, 401)
   }
 
-  const project = (data.projects as unknown as { organization_id: string } | null)
+  const project = data.projects as unknown as { organization_id: string } | null
   if (!project) {
     return c.json({ error: 'Project not found' }, 401)
   }
@@ -39,7 +49,6 @@ export const authApiKey = createMiddleware<ApiKeyContext>(async (c, next) => {
   c.set('apiKeyId', data.id as string)
   c.set('projectId', data.project_id as string)
   c.set('organizationId', project.organization_id)
-  c.set('providerKeyId', (data.provider_key_id as string | null) ?? null)
 
   return next()
 })

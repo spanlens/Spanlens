@@ -9,7 +9,7 @@ import { resolvePromptVersion } from '../lib/resolve-prompt-version.js'
 import { fireAndForget } from '../lib/wait-until.js'
 import { parseOpenAIResponse } from '../parsers/openai.js'
 import { scanAll } from '../lib/security-scan.js'
-import { getDecryptedProviderKey, getDecryptedProviderKeyById, buildUpstreamHeaders, buildDownstreamHeaders, isBlockingEnabled } from './utils.js'
+import { getDecryptedProviderKey, buildUpstreamHeaders, buildDownstreamHeaders, isBlockingEnabled } from './utils.js'
 import { logOpenAIStream } from './stream-logger.js'
 
 const OPENAI_BASE = 'https://api.openai.com'
@@ -27,12 +27,11 @@ openaiProxy.all('/*', async (c) => {
   const projectId = c.get('projectId')
   const apiKeyId = c.get('apiKeyId')
 
-  const linkedKeyId = c.get('providerKeyId')
-  const providerKey = linkedKeyId
-    ? await getDecryptedProviderKeyById(linkedKeyId, organizationId)
-    : await getDecryptedProviderKey(organizationId, projectId, 'openai')
+  // Unified-keys model: provider is implicit from the route, project is from
+  // the Spanlens API key. No more 1:1 sl_live_xxx → provider_key_id link.
+  const providerKey = await getDecryptedProviderKey(organizationId, projectId, 'openai')
   if (!providerKey) {
-    return c.json({ error: 'No active OpenAI provider key configured for this organization' }, 400)
+    return c.json({ error: 'No active OpenAI provider key registered for this project' }, 400)
   }
   const decryptedKey = providerKey.plaintext
 
