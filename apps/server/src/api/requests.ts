@@ -231,8 +231,14 @@ requestsRouter.post('/:id/replay/run', async (c) => {
   if (!providerKey) return c.json({ error: 'Provider key not found or inactive' }, 400)
 
   // ── Build replay body (force non-streaming) ───────────────────────────────
+  // We force non-streaming because the dashboard expects a single JSON
+  // response with token usage. Removing `stream` alone is insufficient —
+  // OpenAI rejects `stream_options` (e.g. `{ include_usage: true }`)
+  // unless `stream: true`, returning HTTP 400. Strip every stream-related
+  // field defensively so any provider's "non-streaming" call shape is valid.
   const replayBody: Record<string, unknown> = { ...original }
   delete replayBody.stream
+  delete replayBody.stream_options
   if (overrideModel) replayBody.model = overrideModel
   const model = (replayBody.model ?? data.model ?? '') as string
 
