@@ -53,6 +53,29 @@ const PROVIDER_PLACEHOLDERS: Record<ProviderName, string> = {
   gemini: 'AIza…',
 }
 
+/**
+ * Code snippet shown after a provider key is added — the customer pastes
+ * this into their app and the call routes through Spanlens automatically.
+ * No CLI re-run needed once SPANLENS_API_KEY is in their .env.local.
+ */
+const PROVIDER_SNIPPETS: Record<ProviderName, string> = {
+  openai: `import { createOpenAI } from '@spanlens/sdk/openai'
+
+const openai = createOpenAI()
+// Use the OpenAI SDK as usual:
+// await openai.chat.completions.create({ ... })`,
+  anthropic: `import { createAnthropic } from '@spanlens/sdk/anthropic'
+
+const anthropic = createAnthropic()
+// Use the Anthropic SDK as usual:
+// await anthropic.messages.create({ ... })`,
+  gemini: `import { createGemini } from '@spanlens/sdk/gemini'
+
+const genAI = createGemini()
+const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' })
+// await model.generateContent('...')`,
+}
+
 export default function ProjectsPage() {
   const projectsQuery = useProjects()
   const apiKeysQuery = useApiKeys()
@@ -82,6 +105,9 @@ export default function ProjectsPage() {
   const [addProvName, setAddProvName] = useState('')
   const [addProvKey, setAddProvKey] = useState('')
   const [addProvError, setAddProvError] = useState<string | null>(null)
+  // After a successful add, show the integration snippet instead of closing.
+  const [addProvAdded, setAddProvAdded] = useState<ProviderName | null>(null)
+  const [snippetCopied, setSnippetCopied] = useState(false)
 
   // Issue Spanlens key dialog
   const [issueDialogOpen, setIssueDialogOpen] = useState(false)
@@ -126,6 +152,7 @@ export default function ProjectsPage() {
     setAddProvName('')
     setAddProvKey('')
     setAddProvError(null)
+    setAddProvAdded(null)
     setAddProvDialogOpen(true)
   }
 
@@ -138,10 +165,20 @@ export default function ProjectsPage() {
         name: addProvName.trim(),
         api_key_id: addProvApiKeyId,
       })
-      setAddProvDialogOpen(false)
+      // Don't close yet — switch the dialog to the snippet view so the
+      // customer can copy the integration code immediately. They'll click
+      // "Done" to dismiss.
+      setAddProvAdded(addProvProvider)
     } catch (err) {
       setAddProvError(err instanceof Error ? err.message : 'Failed to add key')
     }
+  }
+
+  function copyProviderSnippet() {
+    if (!addProvAdded) return
+    void navigator.clipboard.writeText(PROVIDER_SNIPPETS[addProvAdded])
+    setSnippetCopied(true)
+    setTimeout(() => setSnippetCopied(false), 1500)
   }
 
   function openIssueDialog(projectId: string) {
@@ -601,75 +638,130 @@ export default function ProjectsPage() {
         open={addProvDialogOpen}
         onOpenChange={(open) => {
           setAddProvDialogOpen(open)
-          if (!open) { setAddProvApiKeyId(''); setAddProvError(null) }
+          if (!open) {
+            setAddProvApiKeyId('')
+            setAddProvError(null)
+            setAddProvAdded(null)
+          }
         }}
       >
         <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Add provider key</DialogTitle>
-          </DialogHeader>
-          <DialogDescription className="text-[12.5px] text-text-muted mt-1">
-            Register an AI provider key under this Spanlens key. Encrypted with AES-256-GCM.
-          </DialogDescription>
+          {addProvAdded ? (
+            // ── Success view: show the integration snippet ─────────────────
+            <>
+              <DialogHeader>
+                <DialogTitle>{PROVIDER_LABELS[addProvAdded]} key added</DialogTitle>
+              </DialogHeader>
+              <DialogDescription className="text-[12.5px] text-text-muted mt-1">
+                Drop this into your code to call {PROVIDER_LABELS[addProvAdded]} through
+                Spanlens. No CLI re-run needed — your existing{' '}
+                <code className="font-mono text-[11px]">SPANLENS_API_KEY</code> already
+                covers this provider.
+              </DialogDescription>
 
-          <form
-            onSubmit={(e) => { e.preventDefault(); void handleAddProviderKey() }}
-            className="space-y-4 mt-2"
-          >
-            <div className="space-y-1.5">
-              <label className="text-[12.5px] text-text-muted font-medium">Provider</label>
-              <Select value={addProvProvider} onValueChange={(v) => setAddProvProvider(v as ProviderName)}>
-                <SelectTrigger className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {PROVIDERS.map((p) => (
-                    <SelectItem key={p} value={p}>{PROVIDER_LABELS[p]}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+              <div className="space-y-4 mt-3">
+                <div className="rounded-lg border border-border bg-[#1a1816] px-4 py-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="font-mono text-[10.5px] uppercase tracking-[0.05em] text-[#7c7770]">
+                      Integration snippet
+                    </span>
+                    <button
+                      type="button"
+                      onClick={copyProviderSnippet}
+                      className="font-mono text-[11px] text-accent hover:opacity-80 transition-opacity flex items-center gap-1"
+                    >
+                      {snippetCopied ? (
+                        <><Check className="h-3 w-3" /> Copied!</>
+                      ) : (
+                        <><Copy className="h-3 w-3" /> Copy</>
+                      )}
+                    </button>
+                  </div>
+                  <pre className="font-mono text-[12px] text-good leading-relaxed whitespace-pre-wrap break-words">
+                    {PROVIDER_SNIPPETS[addProvAdded]}
+                  </pre>
+                </div>
 
-            <div className="space-y-1.5">
-              <label className="text-[12.5px] text-text-muted font-medium">
-                {PROVIDER_LABELS[addProvProvider]} API key
-              </label>
-              <input
-                value={addProvKey}
-                onChange={(e) => setAddProvKey(e.target.value)}
-                placeholder={PROVIDER_PLACEHOLDERS[addProvProvider]}
-                type="password"
-                autoComplete="off"
-                className="w-full h-9 px-3 rounded-[6px] border border-border bg-bg text-[13px] font-mono text-text placeholder:text-text-faint focus:outline-none focus:border-border-strong transition-colors"
-              />
-              <p className="font-mono text-[10.5px] text-text-faint">
-                Encrypted with AES-256-GCM. Never logged or exposed after this point.
-              </p>
-            </div>
+                <p className="font-mono text-[10.5px] text-text-faint">
+                  Already running this code? It picks up the new provider on the next
+                  request — no redeploy needed.
+                </p>
 
-            <div className="space-y-1.5">
-              <label className="text-[12.5px] text-text-muted font-medium">Key name</label>
-              <input
-                value={addProvName}
-                onChange={(e) => setAddProvName(e.target.value)}
-                placeholder="e.g. Production OpenAI"
-                className="w-full h-9 px-3 rounded-[6px] border border-border bg-bg text-[13px] text-text placeholder:text-text-faint focus:outline-none focus:border-border-strong transition-colors"
-              />
-            </div>
-
-            {addProvError && (
-              <div className="rounded-md border border-bad/30 bg-bad/10 px-3 py-2 text-[12px] text-bad">
-                {addProvError}
+                <PrimaryBtn onClick={() => setAddProvDialogOpen(false)}>
+                  Done
+                </PrimaryBtn>
               </div>
-            )}
+            </>
+          ) : (
+            // ── Form view: collect provider + key ──────────────────────────
+            <>
+              <DialogHeader>
+                <DialogTitle>Add provider key</DialogTitle>
+              </DialogHeader>
+              <DialogDescription className="text-[12.5px] text-text-muted mt-1">
+                Register an AI provider key under this Spanlens key. Encrypted with AES-256-GCM.
+              </DialogDescription>
 
-            <PrimaryBtn
-              type="submit"
-              disabled={!addProvKey.trim() || !addProvName.trim() || addProviderKey.isPending}
-            >
-              {addProviderKey.isPending ? 'Saving…' : 'Add provider key'}
-            </PrimaryBtn>
-          </form>
+              <form
+                onSubmit={(e) => { e.preventDefault(); void handleAddProviderKey() }}
+                className="space-y-4 mt-2"
+              >
+                <div className="space-y-1.5">
+                  <label className="text-[12.5px] text-text-muted font-medium">Provider</label>
+                  <Select value={addProvProvider} onValueChange={(v) => setAddProvProvider(v as ProviderName)}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {PROVIDERS.map((p) => (
+                        <SelectItem key={p} value={p}>{PROVIDER_LABELS[p]}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[12.5px] text-text-muted font-medium">
+                    {PROVIDER_LABELS[addProvProvider]} API key
+                  </label>
+                  <input
+                    value={addProvKey}
+                    onChange={(e) => setAddProvKey(e.target.value)}
+                    placeholder={PROVIDER_PLACEHOLDERS[addProvProvider]}
+                    type="password"
+                    autoComplete="off"
+                    className="w-full h-9 px-3 rounded-[6px] border border-border bg-bg text-[13px] font-mono text-text placeholder:text-text-faint focus:outline-none focus:border-border-strong transition-colors"
+                  />
+                  <p className="font-mono text-[10.5px] text-text-faint">
+                    Encrypted with AES-256-GCM. Never logged or exposed after this point.
+                  </p>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[12.5px] text-text-muted font-medium">Key name</label>
+                  <input
+                    value={addProvName}
+                    onChange={(e) => setAddProvName(e.target.value)}
+                    placeholder="e.g. Production OpenAI"
+                    className="w-full h-9 px-3 rounded-[6px] border border-border bg-bg text-[13px] text-text placeholder:text-text-faint focus:outline-none focus:border-border-strong transition-colors"
+                  />
+                </div>
+
+                {addProvError && (
+                  <div className="rounded-md border border-bad/30 bg-bad/10 px-3 py-2 text-[12px] text-bad">
+                    {addProvError}
+                  </div>
+                )}
+
+                <PrimaryBtn
+                  type="submit"
+                  disabled={!addProvKey.trim() || !addProvName.trim() || addProviderKey.isPending}
+                >
+                  {addProviderKey.isPending ? 'Saving…' : 'Add provider key'}
+                </PrimaryBtn>
+              </form>
+            </>
+          )}
         </DialogContent>
       </Dialog>
 
