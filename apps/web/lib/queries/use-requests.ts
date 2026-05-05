@@ -46,7 +46,7 @@ export function useRequests(filters: RequestsFilters) {
       }
     },
     placeholderData: keepPreviousData,
-    refetchInterval: 30_000,
+    refetchInterval: 10_000,
   })
 }
 

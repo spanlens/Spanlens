@@ -157,7 +157,7 @@ requestsRouter.post('/:id/replay', async (c) => {
     return c.json(
       {
         error:
-          'Original request body was truncated (>10 KB) and cannot be replayed exactly. Re-send manually from your application.',
+          'Original request body was truncated and cannot be replayed exactly. Re-send manually from your application.',
       },
       422,
     )

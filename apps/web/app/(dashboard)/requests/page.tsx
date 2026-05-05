@@ -825,7 +825,7 @@ export default function RequestsPage() {
     [page, filters.provider, filters.model, filters.providerKeyId, filters.status, fromIso, sortField, sortDir],
   )
 
-  const { data, isLoading, isFetching } = useRequests(serverFilters)
+  const { data, isLoading, isFetching, refetch } = useRequests(serverFilters)
   const apiKeysQuery = useApiKeys()
 
   // Only show keys that have a linked provider key (new unified model)
@@ -976,6 +976,14 @@ export default function RequestsPage() {
         <span className="font-mono text-[11px] text-text-faint">
           {isFetching ? 'Loading…' : `Showing ${requests.length} of ${meta.total.toLocaleString()}`}
         </span>
+        <button
+          type="button"
+          onClick={() => { void refetch() }}
+          disabled={isFetching}
+          className="font-mono text-[10.5px] px-[9px] py-[4px] border border-border rounded-[5px] text-text-muted hover:text-text hover:border-border-strong disabled:opacity-40 transition-colors"
+        >
+          {isFetching ? '↻ …' : '↻'}
+        </button>
         <ExportDropdown
           filename="spanlens-requests"
           buildUrl={(fmt) => {
