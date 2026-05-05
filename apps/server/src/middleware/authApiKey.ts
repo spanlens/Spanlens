@@ -12,7 +12,8 @@ import { sha256Hex } from '../lib/crypto.js'
  *
  *   • OpenAI SDK            → Authorization: Bearer sl_live_…
  *   • Anthropic SDK         → x-api-key: sl_live_…
- *   • Google Generative AI  → URL ?key=sl_live_…   (Google's standard)
+ *   • Google Generative AI  → x-goog-api-key: sl_live_…   (header form, current)
+ *                              or URL ?key=sl_live_…       (query form, legacy)
  *
  * The first one found wins. After validation we put apiKeyId / projectId
  * / organizationId on the context for the proxy + logging layers.
@@ -38,9 +39,16 @@ function extractApiKey(c: Context): string | null {
   const xApiKey = c.req.header('x-api-key')
   if (xApiKey?.trim()) return xApiKey.trim()
 
-  // 3. Google Generative AI SDK puts the key in ?key= (Google convention).
-  //    Note: query-string keys leak into server access logs, but Google's
-  //    SDK doesn't offer a header-based mode, so we follow their pattern.
+  // 3. Google Generative AI SDK (current versions) — header form.
+  //    Verified against @google/generative-ai dist source: requests carry
+  //    `x-goog-api-key: <apiKey>` (and `x-goog-api-client` for telemetry).
+  const xGoogKey = c.req.header('x-goog-api-key')
+  if (xGoogKey?.trim()) return xGoogKey.trim()
+
+  // 4. Legacy Google Generative AI / direct REST callers — query form.
+  //    Older docs and some hand-rolled clients put the key in `?key=`.
+  //    Note: query-string keys leak into server access logs; prefer the
+  //    header form when you control the client.
   const queryKey = c.req.query('key')
   if (queryKey?.trim()) return queryKey.trim()
 
