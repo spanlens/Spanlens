@@ -58,11 +58,11 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/sunes26/Spanlens.git",
+    "url": "git+https://github.com/spanlens/Spanlens.git",
     "directory": "packages/cli"
   },
   "bugs": {
-    "url": "https://github.com/sunes26/Spanlens/issues"
+    "url": "https://github.com/spanlens/Spanlens/issues"
   },
   "homepage": "https://spanlens.io",
   "license": "MIT",
