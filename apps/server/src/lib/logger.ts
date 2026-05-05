@@ -5,7 +5,7 @@ import { sendEmail, renderSecurityAlertEmail } from './resend.js'
 export interface RequestLogData {
   organizationId: string
   projectId: string
-  apiKeyId: string
+  apiKeyId?: string | null
   provider: string
   model: string
   promptTokens: number
