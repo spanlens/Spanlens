@@ -163,14 +163,14 @@ describe('Gotcha #3 — logRequestAsync uses supabaseAdmin for requests INSERT',
     expect(insertArg.provider).toBe('openai')
   })
 
-  it('truncates request_body > 10KB before INSERT (prevents JSONB bloat)', async () => {
+  it('truncates request_body > 64KB before INSERT (prevents JSONB bloat)', async () => {
     const mockInsert = vi.fn().mockResolvedValue({ error: null })
     vi.mocked(supabaseAdmin.from).mockReturnValueOnce({ insert: mockInsert } as never)
 
     const { logRequestAsync } = await import('../lib/logger.js')
 
-    // 20KB 페이로드 — 10KB 임계치 초과
-    const bigContent = 'x'.repeat(20 * 1024)
+    // 80KB 페이로드 — 64KB 임계치 초과
+    const bigContent = 'x'.repeat(80 * 1024)
     await logRequestAsync({
       organizationId: 'org-1', projectId: 'p-1', apiKeyId: 'k-1',
       provider: 'openai', model: 'gpt-4o',
@@ -184,11 +184,11 @@ describe('Gotcha #3 — logRequestAsync uses supabaseAdmin for requests INSERT',
     const arg = mockInsert.mock.calls[0]?.[0] as Record<string, unknown>
     const body = arg.request_body as Record<string, unknown>
     expect(body._truncated).toBe(true)
-    expect(body._original_size_bytes).toBeGreaterThan(20 * 1024)
+    expect(body._original_size_bytes).toBeGreaterThan(80 * 1024)
     expect((body._preview as string).length).toBeLessThanOrEqual(2 * 1024)
   })
 
-  it('passes small body through unchanged (< 10KB)', async () => {
+  it('passes small body through unchanged (< 64KB)', async () => {
     const mockInsert = vi.fn().mockResolvedValue({ error: null })
     vi.mocked(supabaseAdmin.from).mockReturnValueOnce({ insert: mockInsert } as never)
 
