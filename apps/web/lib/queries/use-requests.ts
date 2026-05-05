@@ -101,6 +101,28 @@ export function useReplayRequest() {
   })
 }
 
+export interface RunReplayResult {
+  latencyMs: number
+  statusCode: number
+  promptTokens: number
+  completionTokens: number
+  totalTokens: number
+  costUsd: number | null
+}
+
+/** Execute a replay server-side and return the result metrics. */
+export function useRunReplay() {
+  return useMutation({
+    mutationFn: async (input: { id: string; model?: string }) => {
+      const res = await apiPost<ApiEnvelope<RunReplayResult>>(
+        `/api/v1/requests/${input.id}/replay/run`,
+        input.model ? { model: input.model } : {},
+      )
+      return res.data
+    },
+  })
+}
+
 // ── Saved filters ───────────────────────────────────────────────────────
 
 export interface SavedFilter {

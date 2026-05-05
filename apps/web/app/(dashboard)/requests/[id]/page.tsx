@@ -1,10 +1,10 @@
 'use client'
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, Check, Copy, RotateCw } from 'lucide-react'
+import { ArrowLeft, Check, Copy, Play, RotateCw } from 'lucide-react'
 import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
-import { useRequest, useReplayRequest } from '@/lib/queries/use-requests'
+import { useRequest, useReplayRequest, useRunReplay } from '@/lib/queries/use-requests'
 
 function fmtCost(n: number | null): string {
   if (n == null) return '—'
@@ -82,7 +82,7 @@ export default function RequestDetailPage({ params }: { params: { id: string } }
           </p>
         </div>
         <div className="flex items-center gap-3 shrink-0">
-          <ReplayButton requestId={req.id} originalModel={req.model} />
+          <ReplayButton requestId={req.id} originalModel={req.model} provider={req.provider} />
           <span className={cn(
             'font-mono text-[11px] px-2 py-1 rounded border tracking-[0.04em]',
             isErr
@@ -154,27 +154,90 @@ export default function RequestDetailPage({ params }: { params: { id: string } }
 
 // ── Replay button + dialog ─────────────────────────────────────────────
 
+const MODELS_BY_PROVIDER: Record<string, string[]> = {
+  openai: [
+    'gpt-4o',
+    'gpt-4o-mini',
+    'o1',
+    'o1-mini',
+    'o3-mini',
+    'gpt-4-turbo',
+    'gpt-3.5-turbo',
+  ],
+  anthropic: [
+    'claude-opus-4-5',
+    'claude-sonnet-4-5',
+    'claude-haiku-3-5',
+    'claude-3-5-sonnet-20241022',
+    'claude-3-5-haiku-20241022',
+    'claude-3-opus-20240229',
+  ],
+  gemini: [
+    'gemini-2.0-flash',
+    'gemini-2.0-flash-exp',
+    'gemini-1.5-pro',
+    'gemini-1.5-flash',
+    'gemini-1.5-flash-8b',
+  ],
+}
+
+function buildCurlSnippet(proxyPath: string, body: Record<string, unknown>): string {
+  const prettyBody = JSON.stringify(body, null, 2)
+  return [
+    `curl -X POST 'https://www.spanlens.io${proxyPath}' \\`,
+    `  -H 'Authorization: Bearer <YOUR_SPANLENS_API_KEY>' \\`,
+    `  -H 'Content-Type: application/json' \\`,
+    `  -d '${prettyBody}'`,
+  ].join('\n')
+}
+
 interface ReplayButtonProps {
   requestId: string
   originalModel: string
+  provider: string
 }
 
-function ReplayButton({ requestId, originalModel }: ReplayButtonProps) {
+function ReplayButton({ requestId, originalModel, provider }: ReplayButtonProps) {
   const [open, setOpen] = useState(false)
   const [model, setModel] = useState(originalModel)
-  const [copied, setCopied] = useState(false)
-  const replay = useReplayRequest()
-  const result = replay.data
+  const [copiedCurl, setCopiedCurl] = useState(false)
 
-  async function handlePrepare(): Promise<void> {
-    const trimmed = model.trim()
-    await replay.mutateAsync(trimmed ? { id: requestId, model: trimmed } : { id: requestId })
-  }
+  const prepare = useReplayRequest()
+  const run = useRunReplay()
+
+  // Model options: provider list + original if not already included
+  const providerModels = MODELS_BY_PROVIDER[provider] ?? []
+  const modelOptions = providerModels.includes(originalModel)
+    ? providerModels
+    : [originalModel, ...providerModels]
 
   function reset(): void {
     setModel(originalModel)
-    setCopied(false)
-    replay.reset()
+    setCopiedCurl(false)
+    prepare.reset()
+    run.reset()
+  }
+
+  function handleClose(): void {
+    setOpen(false)
+    reset()
+  }
+
+  async function handleRun(): Promise<void> {
+    prepare.reset()
+    await run.mutateAsync({ id: requestId, ...(model !== originalModel ? { model } : {}) })
+  }
+
+  async function handleCopyCurl(): Promise<void> {
+    run.reset()
+    const result = await prepare.mutateAsync({
+      id: requestId,
+      ...(model !== originalModel ? { model } : {}),
+    })
+    const snippet = buildCurlSnippet(result.proxyPath, result.replayBody)
+    await navigator.clipboard.writeText(snippet)
+    setCopiedCurl(true)
+    setTimeout(() => setCopiedCurl(false), 1800)
   }
 
   if (!open) {
@@ -189,71 +252,113 @@ function ReplayButton({ requestId, originalModel }: ReplayButtonProps) {
     )
   }
 
+  const isLoading = run.isPending || prepare.isPending
+  const anyError = run.isError || prepare.isError
+  const errorMsg = run.isError
+    ? (run.error instanceof Error ? run.error.message : 'Run failed')
+    : prepare.isError
+      ? (prepare.error instanceof Error ? prepare.error.message : 'Failed to prepare curl')
+      : null
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={() => { setOpen(false); reset() }}>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+      onClick={handleClose}
+    >
       <div
-        className="w-[560px] bg-bg border border-border rounded-[8px] shadow-xl p-6 space-y-4"
+        className="w-[580px] bg-bg border border-border rounded-[8px] shadow-xl p-6 space-y-5"
         onClick={(e) => e.stopPropagation()}
       >
+        {/* Header */}
         <div className="flex items-center justify-between">
           <h2 className="font-mono text-[14px] font-medium text-text">Replay request</h2>
-          <button onClick={() => { setOpen(false); reset() }} className="font-mono text-[10px] text-text-faint hover:text-text transition-colors px-1.5 py-0.5 border border-border rounded uppercase tracking-[0.04em]">
+          <button
+            onClick={handleClose}
+            className="font-mono text-[10px] text-text-faint hover:text-text transition-colors px-1.5 py-0.5 border border-border rounded uppercase tracking-[0.04em]"
+          >
             Close
           </button>
         </div>
 
+        {/* Model selector */}
         <div className="space-y-1.5">
-          <label className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint">Model override</label>
-          <input
+          <label className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint">
+            Model
+          </label>
+          <select
             value={model}
-            onChange={(e) => setModel(e.target.value)}
-            placeholder={originalModel}
-            className="w-full font-mono text-[12.5px] border border-border rounded-[5px] px-3 py-2 bg-bg-elev text-text placeholder:text-text-faint focus:outline-none focus:border-border-strong transition-colors"
-          />
+            onChange={(e) => { setModel(e.target.value); prepare.reset(); run.reset() }}
+            className="w-full font-mono text-[12.5px] border border-border rounded-[5px] px-3 py-2 bg-bg-elev text-text focus:outline-none focus:border-border-strong transition-colors appearance-none cursor-pointer"
+          >
+            {modelOptions.map((m) => (
+              <option key={m} value={m}>
+                {m}{m === originalModel ? ' (original)' : ''}
+              </option>
+            ))}
+          </select>
           <p className="font-mono text-[10.5px] text-text-faint">
-            Leave as-is or swap to a different model to compare cost/latency.
+            Swap model to compare cost / latency, or keep original.
           </p>
         </div>
 
-        {!result ? (
+        {/* Action buttons */}
+        <div className="flex items-center gap-2.5">
           <button
-            onClick={() => void handlePrepare()}
-            disabled={replay.isPending}
-            className="w-full font-mono text-[12px] py-2 border border-border rounded-[5px] text-text-muted hover:border-border-strong hover:text-text transition-colors disabled:opacity-40"
+            onClick={() => void handleRun()}
+            disabled={isLoading}
+            className="inline-flex items-center gap-1.5 font-mono text-[11.5px] px-4 py-2 rounded-[5px] bg-accent text-white hover:opacity-90 transition-opacity disabled:opacity-40"
           >
-            {replay.isPending ? 'Preparing…' : 'Prepare replay snippet'}
+            <Play className="h-3 w-3 fill-current" />
+            {run.isPending ? 'Running…' : 'Run'}
           </button>
-        ) : (
-          <div className="space-y-3">
-            <div className="rounded-[5px] border border-border bg-bg-elev p-3 overflow-auto max-h-[200px]">
-              <pre className="font-mono text-[11.5px] text-text leading-relaxed whitespace-pre-wrap break-all">
-                {`curl -X POST 'https://www.spanlens.io${result.proxyPath}' \\\n  -H 'Authorization: Bearer <YOUR_SPANLENS_API_KEY>' \\\n  -H 'Content-Type: application/json' \\\n  -d '${JSON.stringify(result.replayBody)}'`}
-              </pre>
+          <button
+            onClick={() => void handleCopyCurl()}
+            disabled={isLoading}
+            className="inline-flex items-center gap-1.5 font-mono text-[11.5px] px-3 py-2 border border-border rounded-[5px] text-text-muted hover:border-border-strong hover:text-text transition-colors disabled:opacity-40"
+          >
+            {copiedCurl ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+            {prepare.isPending ? 'Preparing…' : copiedCurl ? 'Copied!' : 'Copy curl'}
+          </button>
+        </div>
+
+        {/* Run result card */}
+        {run.data && (
+          <div className="rounded-[6px] border border-border bg-bg-elev px-4 py-3 space-y-3">
+            <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint">
+              Result · HTTP {run.data.statusCode}
             </div>
-            <div className="flex items-center gap-2.5">
-              <button
-                onClick={() => {
-                  const cmd = `curl -X POST 'https://www.spanlens.io${result.proxyPath}' \\\n  -H 'Authorization: Bearer <YOUR_SPANLENS_API_KEY>' \\\n  -H 'Content-Type: application/json' \\\n  -d '${JSON.stringify(result.replayBody)}'`
-                  void navigator.clipboard.writeText(cmd)
-                  setCopied(true)
-                  setTimeout(() => setCopied(false), 1500)
-                }}
-                className="inline-flex items-center gap-1.5 font-mono text-[11.5px] px-3 py-1.5 border border-border rounded-[5px] text-text-muted hover:border-border-strong hover:text-text transition-colors"
-              >
-                {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
-                {copied ? 'Copied' : 'Copy curl'}
-              </button>
-              <p className="font-mono text-[10.5px] text-text-faint">
-                Runs through /proxy, counts toward quota and shows in /requests.
-              </p>
+            <div className="grid grid-cols-2 gap-x-6 gap-y-2">
+              {[
+                { label: 'Latency', value: `${run.data.latencyMs} ms` },
+                { label: 'Cost', value: run.data.costUsd != null ? `$${run.data.costUsd.toFixed(6)}` : '—' },
+                { label: 'Prompt tokens', value: run.data.promptTokens.toLocaleString() },
+                { label: 'Completion tokens', value: run.data.completionTokens.toLocaleString() },
+                { label: 'Total tokens', value: run.data.totalTokens.toLocaleString() },
+              ].map(({ label, value }) => (
+                <div key={label} className="flex items-center justify-between">
+                  <span className="font-mono text-[11px] text-text-faint">{label}</span>
+                  <span className="font-mono text-[12px] font-medium text-text">{value}</span>
+                </div>
+              ))}
             </div>
+            <p className="font-mono text-[10.5px] text-text-faint">
+              Logged as a new request · visible in /requests
+            </p>
           </div>
         )}
 
-        {replay.isError && (
-          <p className="font-mono text-[12px] text-bad">
-            {replay.error instanceof Error ? replay.error.message : 'Failed to prepare replay'}
-          </p>
+        {/* Curl snippet (shown after "Copy curl" flow) */}
+        {prepare.data && !copiedCurl && (
+          <div className="rounded-[5px] border border-border bg-bg-elev p-3 overflow-auto max-h-[180px]">
+            <pre className="font-mono text-[11px] text-text leading-relaxed whitespace-pre-wrap break-all">
+              {buildCurlSnippet(prepare.data.proxyPath, prepare.data.replayBody)}
+            </pre>
+          </div>
+        )}
+
+        {/* Error */}
+        {anyError && errorMsg && (
+          <p className="font-mono text-[12px] text-bad">{errorMsg}</p>
         )}
       </div>
     </div>
