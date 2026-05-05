@@ -4,6 +4,13 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiDelete, apiGet, apiPatch, apiPost } from '@/lib/api'
 import type { ApiEnvelope, ApiKey, IssuedApiKey } from './types'
 
+/**
+ * Spanlens (sl_live_*) keys. Under the unified-keys model these are
+ * project-scoped and provider-agnostic — one key covers OpenAI, Anthropic
+ * and Gemini calls so long as the corresponding provider key is registered
+ * on the same project (see use-provider-keys.ts).
+ */
+
 export const apiKeysQueryKey = ['api-keys'] as const
 
 export function useApiKeys(projectId?: string) {
@@ -22,7 +29,7 @@ export function useApiKeys(projectId?: string) {
 export function useIssueApiKey() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: async (input: { provider: string; key: string; name: string; projectId: string }) => {
+    mutationFn: async (input: { name: string; projectId: string }) => {
       const res = await apiPost<ApiEnvelope<IssuedApiKey>>('/api/v1/api-keys/issue', input)
       return res.data
     },
@@ -50,18 +57,6 @@ export function useToggleApiKey() {
       ctx?.previous.forEach(([key, data]) => qc.setQueryData(key, data))
     },
     onSettled: () => {
-      void qc.invalidateQueries({ queryKey: apiKeysQueryKey })
-    },
-  })
-}
-
-export function useRotateApiKeyAiKey() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: async ({ id, key }: { id: string; key: string }) => {
-      await apiPatch(`/api/v1/api-keys/${id}/rotate-ai-key`, { key })
-    },
-    onSuccess: () => {
       void qc.invalidateQueries({ queryKey: apiKeysQueryKey })
     },
   })

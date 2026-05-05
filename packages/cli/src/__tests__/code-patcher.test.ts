@@ -66,7 +66,7 @@ describe('planPatches / applyPatches end-to-end', () => {
       ].join('\n'),
     )
 
-    const plans = await planPatches(dir)
+    const plans = await planPatches(dir, ['openai'])
     expect(plans.length).toBe(1)
     expect(plans[0]?.filepath).toBe(path)
     expect(plans[0]?.changes.some((c) => c.includes('createOpenAI'))).toBe(true)
@@ -90,7 +90,7 @@ describe('planPatches / applyPatches end-to-end', () => {
       ].join('\n'),
     )
 
-    const plans = await planPatches(dir)
+    const plans = await planPatches(dir, ['openai'])
     expect(plans.length).toBe(1)
     await applyPatches(plans)
     const out = readFileSync(path, 'utf8')
@@ -107,7 +107,7 @@ describe('planPatches / applyPatches end-to-end', () => {
     )
     const original = readFileSync(path, 'utf8')
 
-    const plans = await planPatches(dir)
+    const plans = await planPatches(dir, ['openai'])
     await applyPatches(plans, { dryRun: true })
     expect(readFileSync(path, 'utf8')).toBe(original)
   })
@@ -115,7 +115,7 @@ describe('planPatches / applyPatches end-to-end', () => {
   it('skips files without OpenAI client', async () => {
     writeFile('lib/other.ts', `export const x = 1`)
     writeFile('lib/fake.ts', `// openai is mentioned in comment but no import`)
-    const plans = await planPatches(dir)
+    const plans = await planPatches(dir, ['openai'])
     expect(plans.length).toBe(0)
   })
 
@@ -128,7 +128,7 @@ describe('planPatches / applyPatches end-to-end', () => {
       '.next/server/chunks/0.js',
       `import OpenAI from 'openai'\nconst o = new OpenAI()`,
     )
-    const plans = await planPatches(dir)
+    const plans = await planPatches(dir, ['openai'])
     expect(plans.length).toBe(0)
   })
 })

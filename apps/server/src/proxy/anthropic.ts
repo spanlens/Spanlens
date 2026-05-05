@@ -9,7 +9,7 @@ import { resolvePromptVersion } from '../lib/resolve-prompt-version.js'
 import { fireAndForget } from '../lib/wait-until.js'
 import { parseAnthropicResponse } from '../parsers/anthropic.js'
 import { scanAll } from '../lib/security-scan.js'
-import { getDecryptedProviderKey, getDecryptedProviderKeyById, buildUpstreamHeaders, buildDownstreamHeaders, isBlockingEnabled } from './utils.js'
+import { getDecryptedProviderKey, buildUpstreamHeaders, buildDownstreamHeaders, isBlockingEnabled } from './utils.js'
 import { logAnthropicStream } from './stream-logger.js'
 
 const ANTHROPIC_BASE = 'https://api.anthropic.com'
@@ -27,12 +27,9 @@ anthropicProxy.all('/*', async (c) => {
   const projectId = c.get('projectId')
   const apiKeyId = c.get('apiKeyId')
 
-  const linkedKeyId = c.get('providerKeyId')
-  const providerKey = linkedKeyId
-    ? await getDecryptedProviderKeyById(linkedKeyId, organizationId)
-    : await getDecryptedProviderKey(organizationId, projectId, 'anthropic')
+  const providerKey = await getDecryptedProviderKey(organizationId, projectId, 'anthropic')
   if (!providerKey) {
-    return c.json({ error: 'No active Anthropic provider key configured for this organization' }, 400)
+    return c.json({ error: 'No active Anthropic provider key registered for this project' }, 400)
   }
   const decryptedKey = providerKey.plaintext
 

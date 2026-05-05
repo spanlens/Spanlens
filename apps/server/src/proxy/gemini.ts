@@ -8,7 +8,7 @@ import { resolvePromptVersion } from '../lib/resolve-prompt-version.js'
 import { fireAndForget } from '../lib/wait-until.js'
 import { parseGeminiResponse } from '../parsers/gemini.js'
 import { scanAll } from '../lib/security-scan.js'
-import { getDecryptedProviderKey, getDecryptedProviderKeyById, buildUpstreamHeaders, buildDownstreamHeaders, isBlockingEnabled } from './utils.js'
+import { getDecryptedProviderKey, buildUpstreamHeaders, buildDownstreamHeaders, isBlockingEnabled } from './utils.js'
 
 const GEMINI_BASE = 'https://generativelanguage.googleapis.com'
 
@@ -25,12 +25,9 @@ geminiProxy.all('/*', async (c) => {
   const projectId = c.get('projectId')
   const apiKeyId = c.get('apiKeyId')
 
-  const linkedKeyId = c.get('providerKeyId')
-  const providerKey = linkedKeyId
-    ? await getDecryptedProviderKeyById(linkedKeyId, organizationId)
-    : await getDecryptedProviderKey(organizationId, projectId, 'gemini')
+  const providerKey = await getDecryptedProviderKey(organizationId, projectId, 'gemini')
   if (!providerKey) {
-    return c.json({ error: 'No active Gemini provider key configured for this organization' }, 400)
+    return c.json({ error: 'No active Gemini provider key registered for this project' }, 400)
   }
   const decryptedKey = providerKey.plaintext
 

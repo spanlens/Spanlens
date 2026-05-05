@@ -35,6 +35,8 @@ import { waitlistRouter }      from './api/waitlist.js'
 import { webhooksRouter }      from './api/webhooks.js'
 import { exportsRouter }       from './api/exports.js'
 import { openapiRouter }       from './api/openapi.js'
+import { providerKeysRouter }  from './api/providerKeys.js'
+import { meRouter }            from './api/me.js'
 
 export const app = new Hono()
 
@@ -89,6 +91,7 @@ app.use('/api/v1/*', apiRateLimit)
 app.route('/api/v1/organizations',  organizationsRouter)
 app.route('/api/v1/projects',       projectsRouter)
 app.route('/api/v1/api-keys',       apiKeysRouter)
+app.route('/api/v1/provider-keys',  providerKeysRouter)
 app.route('/api/v1/requests',       requestsRouter)
 app.route('/api/v1/saved-filters',  savedFiltersRouter)
 app.route('/api/v1/stats',          statsRouter)
@@ -109,6 +112,7 @@ app.route('/api/v1/invitations', invitationsRouter)
 app.route('/api/v1/me/pending-invitations', meInvitationsRouter)
 app.route('/api/v1/dismissals',     dismissalsRouter)
 app.route('/api/v1/me/profile',     userProfilesRouter)
+app.route('/api/v1/me',             meRouter)        // sl_live_* introspection (CLI), registered AFTER other /me/* prefixes
 app.route('/api/v1/webhooks',       webhooksRouter)
 app.route('/api/v1/exports',        exportsRouter)
 

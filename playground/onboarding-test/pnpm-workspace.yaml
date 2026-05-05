@@ -1,0 +1,4 @@
+# Empty workspace = "this directory is its own root, ignore the parent monorepo".
+# Without this, `pnpm install` here delegates up to /Spanlens/pnpm-workspace.yaml
+# and our deps never install (Scope: all 5 workspace projects warning).
+packages: []
