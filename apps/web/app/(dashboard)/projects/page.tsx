@@ -9,8 +9,6 @@ import {
   ExternalLink,
   Pencil,
   Trash2,
-  ChevronDown,
-  ChevronRight,
   Key as KeyIcon,
 } from 'lucide-react'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -72,9 +70,6 @@ export default function ProjectsPage() {
   const [newKey, setNewKey] = useState<string | null>(null)
   const [cmdCopied, setCmdCopied] = useState(false)
   const [keyCopied, setKeyCopied] = useState(false)
-
-  // Which Spanlens key cards are expanded (showing their provider keys)
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({})
 
   // Create project dialog
   const [projDialogOpen, setProjDialogOpen] = useState(false)
@@ -164,9 +159,6 @@ export default function ProjectsPage() {
         projectId: issueProjectId,
       })
       setNewKey(result?.key ?? null)
-      // Auto-expand the freshly created Spanlens key so the user sees the
-      // empty Provider keys section + the "Add provider key" button.
-      if (result?.id) setExpanded((s) => ({ ...s, [result.id]: true }))
       setIssueDialogOpen(false)
     } catch (err) {
       setIssueError(err instanceof Error ? err.message : 'Failed to issue key')
@@ -200,10 +192,6 @@ export default function ProjectsPage() {
     if (!deleteProvKeyId) return
     await deleteProviderKey.mutateAsync(deleteProvKeyId)
     setDeleteProvKeyId(null)
-  }
-
-  function toggleExpanded(apiKeyId: string) {
-    setExpanded((s) => ({ ...s, [apiKeyId]: !s[apiKeyId] }))
   }
 
   const loading =
@@ -370,7 +358,9 @@ export default function ProjectsPage() {
                       </PermissionGate>
                     </div>
 
-                    {/* Spanlens keys + nested provider keys */}
+                    {/* Spanlens key sections — each is a self-contained group:
+                        the key name acts as the header and "+ Add provider key"
+                        sits next to it. Provider keys stay always-visible. */}
                     {projApiKeys.length === 0 ? (
                       <p className="px-6 py-5 text-[13px] text-text-faint">
                         No Spanlens keys yet. Create one to start.
@@ -381,156 +371,126 @@ export default function ProjectsPage() {
                           const keyProvKeys = providerKeys.filter(
                             (pk) => pk.api_key_id === key.id,
                           )
-                          const isExpanded = expanded[key.id] ?? false
                           return (
                             <div key={key.id}>
-                              {/* Spanlens key row */}
-                              <div className="px-4 py-3 hover:bg-bg/30 transition-colors">
-                                <div className="flex items-center gap-3">
-                                  <button
-                                    type="button"
-                                    onClick={() => toggleExpanded(key.id)}
-                                    className="text-text-faint hover:text-text transition-colors"
-                                    aria-label={isExpanded ? 'Collapse' : 'Expand'}
-                                  >
-                                    {isExpanded ? (
-                                      <ChevronDown className="h-4 w-4" />
-                                    ) : (
-                                      <ChevronRight className="h-4 w-4" />
+                              {/* Spanlens key header — name + meta + add button + actions */}
+                              <div className="flex items-center gap-3 px-6 py-3 bg-bg/30">
+                                <KeyIcon className="h-3.5 w-3.5 text-text-faint shrink-0" />
+                                <div className="flex-1 min-w-0">
+                                  <div
+                                    className={cn(
+                                      'text-[13.5px] font-semibold truncate',
+                                      !key.is_active && 'line-through text-text-faint',
                                     )}
-                                  </button>
-                                  <KeyIcon className="h-3.5 w-3.5 text-text-faint shrink-0" />
-                                  <div className="flex-1 min-w-0">
-                                    <div
+                                  >
+                                    {key.name}
+                                  </div>
+                                  <div className="font-mono text-[10.5px] text-text-faint mt-0.5">
+                                    {key.key_prefix}…
+                                    <span className="ml-2">
+                                      {key.last_used_at
+                                        ? `· last used ${Math.floor((Date.now() - Date.parse(key.last_used_at)) / 86_400_000)}d ago`
+                                        : '· never used'}
+                                    </span>
+                                  </div>
+                                </div>
+                                <PermissionGate need="edit">
+                                  <GhostBtn
+                                    className="flex items-center gap-1.5 text-[12px] px-3 py-[5px] h-[28px] shrink-0"
+                                    onClick={() => openAddProvDialog(key.id)}
+                                  >
+                                    <Plus className="h-3.5 w-3.5" /> Add provider key
+                                  </GhostBtn>
+                                </PermissionGate>
+                                <div className="flex items-center gap-1 shrink-0">
+                                  <PermissionGate need="edit">
+                                    <button
+                                      type="button"
+                                      role="switch"
+                                      aria-checked={key.is_active}
+                                      disabled={pendingToggleId === key.id}
+                                      onClick={async () => {
+                                        setPendingToggleId(key.id)
+                                        try {
+                                          await toggleApiKey.mutateAsync({ id: key.id, is_active: !key.is_active })
+                                        } finally {
+                                          setPendingToggleId(null)
+                                        }
+                                      }}
+                                      title={key.is_active ? 'Deactivate' : 'Activate'}
                                       className={cn(
-                                        'text-[13px] font-medium truncate',
-                                        !key.is_active && 'line-through text-text-faint',
+                                        'relative inline-flex h-5 w-9 items-center rounded-full transition-colors disabled:opacity-40',
+                                        key.is_active ? 'bg-good' : 'bg-border-strong',
                                       )}
                                     >
-                                      {key.name}
-                                    </div>
-                                    <div className="font-mono text-[10.5px] text-text-faint mt-0.5">
-                                      {key.key_prefix}…
-                                      {keyProvKeys.length > 0 && (
-                                        <span className="ml-2 uppercase tracking-[0.04em]">
-                                          · {keyProvKeys.map((p) => p.provider).join(' · ')}
-                                        </span>
-                                      )}
-                                    </div>
-                                  </div>
-                                  <span className="font-mono text-[11px] text-text-muted shrink-0">
-                                    {key.last_used_at
-                                      ? `${Math.floor((Date.now() - Date.parse(key.last_used_at)) / 86_400_000)}d ago`
-                                      : 'Never'}
-                                  </span>
-                                  <div className="flex items-center gap-1 shrink-0">
-                                    <PermissionGate need="edit">
-                                      <button
-                                        type="button"
-                                        role="switch"
-                                        aria-checked={key.is_active}
-                                        disabled={pendingToggleId === key.id}
-                                        onClick={async () => {
-                                          setPendingToggleId(key.id)
-                                          try {
-                                            await toggleApiKey.mutateAsync({ id: key.id, is_active: !key.is_active })
-                                          } finally {
-                                            setPendingToggleId(null)
-                                          }
-                                        }}
-                                        title={key.is_active ? 'Deactivate' : 'Activate'}
+                                      <span
                                         className={cn(
-                                          'relative inline-flex h-5 w-9 items-center rounded-full transition-colors disabled:opacity-40',
-                                          key.is_active ? 'bg-good' : 'bg-border-strong',
+                                          'inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform',
+                                          key.is_active ? 'translate-x-[18px]' : 'translate-x-[3px]',
                                         )}
-                                      >
-                                        <span
-                                          className={cn(
-                                            'inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform',
-                                            key.is_active ? 'translate-x-[18px]' : 'translate-x-[3px]',
-                                          )}
-                                        />
-                                      </button>
-                                    </PermissionGate>
-                                    <PermissionGate need="edit">
-                                      <button
-                                        type="button"
-                                        onClick={() => setDeleteApiKeyId(key.id)}
-                                        title="Delete Spanlens key"
-                                        className="p-1.5 rounded hover:bg-bad/10 text-text-faint hover:text-bad transition-colors"
-                                      >
-                                        <Trash2 className="h-3.5 w-3.5" />
-                                      </button>
-                                    </PermissionGate>
-                                  </div>
+                                      />
+                                    </button>
+                                  </PermissionGate>
+                                  <PermissionGate need="edit">
+                                    <button
+                                      type="button"
+                                      onClick={() => setDeleteApiKeyId(key.id)}
+                                      title="Delete Spanlens key"
+                                      className="p-1.5 rounded hover:bg-bad/10 text-text-faint hover:text-bad transition-colors"
+                                    >
+                                      <Trash2 className="h-3.5 w-3.5" />
+                                    </button>
+                                  </PermissionGate>
                                 </div>
                               </div>
 
-                              {/* Nested provider keys (when expanded) */}
-                              {isExpanded && (
-                                <div className="bg-bg/40 border-t border-border">
-                                  <div className="flex items-center justify-between px-12 py-2.5">
-                                    <span className="font-mono text-[10.5px] uppercase tracking-[0.05em] text-text-faint">
-                                      Provider keys
-                                    </span>
-                                    <PermissionGate need="edit">
-                                      <GhostBtn
-                                        className="flex items-center gap-1.5 text-[11.5px] px-2.5 py-1 h-[24px]"
-                                        onClick={() => openAddProvDialog(key.id)}
+                              {/* Provider keys under this Spanlens key — always visible */}
+                              {keyProvKeys.length === 0 ? (
+                                <p className="px-12 py-2.5 text-[12px] text-text-faint">
+                                  No provider keys yet. Add OpenAI / Anthropic / Gemini to enable calls through this Spanlens key.
+                                </p>
+                              ) : (
+                                <div>
+                                  {keyProvKeys.map((pk) => (
+                                    <div
+                                      key={pk.id}
+                                      className="grid grid-cols-[1fr_100px_60px] gap-4 px-12 py-2 items-center"
+                                    >
+                                      <span
+                                        className={cn(
+                                          'text-[12.5px] truncate',
+                                          !pk.is_active && 'line-through text-text-faint',
+                                        )}
                                       >
-                                        <Plus className="h-3 w-3" /> Add provider key
-                                      </GhostBtn>
-                                    </PermissionGate>
-                                  </div>
-
-                                  {keyProvKeys.length === 0 ? (
-                                    <p className="px-12 pb-4 text-[12px] text-text-faint">
-                                      No provider keys yet. Add OpenAI / Anthropic / Gemini to enable calls through this Spanlens key.
-                                    </p>
-                                  ) : (
-                                    <div className="divide-y divide-border/60">
-                                      {keyProvKeys.map((pk) => (
-                                        <div
-                                          key={pk.id}
-                                          className="grid grid-cols-[1fr_100px_60px] gap-4 px-12 py-2.5 items-center"
-                                        >
-                                          <span
-                                            className={cn(
-                                              'text-[12.5px] font-medium truncate',
-                                              !pk.is_active && 'line-through text-text-faint',
-                                            )}
+                                        {pk.name}
+                                      </span>
+                                      <span className="font-mono text-[10px] uppercase tracking-[0.04em] px-1.5 py-0.5 rounded-full border border-border text-text-muted w-fit">
+                                        {pk.provider}
+                                      </span>
+                                      <div className="flex items-center gap-1 justify-end">
+                                        <PermissionGate need="edit">
+                                          <button
+                                            type="button"
+                                            onClick={() => openRotateProvDialog(pk.id)}
+                                            title="Rotate provider key"
+                                            className="p-1 rounded hover:bg-bg text-text-faint hover:text-text transition-colors"
                                           >
-                                            {pk.name}
-                                          </span>
-                                          <span className="font-mono text-[10px] uppercase tracking-[0.04em] px-1.5 py-0.5 rounded-full border border-border text-text-muted w-fit">
-                                            {pk.provider}
-                                          </span>
-                                          <div className="flex items-center gap-1 justify-end">
-                                            <PermissionGate need="edit">
-                                              <button
-                                                type="button"
-                                                onClick={() => openRotateProvDialog(pk.id)}
-                                                title="Rotate provider key"
-                                                className="p-1 rounded hover:bg-bg text-text-faint hover:text-text transition-colors"
-                                              >
-                                                <Pencil className="h-3 w-3" />
-                                              </button>
-                                            </PermissionGate>
-                                            <PermissionGate need="edit">
-                                              <button
-                                                type="button"
-                                                onClick={() => setDeleteProvKeyId(pk.id)}
-                                                title="Deactivate"
-                                                className="p-1 rounded hover:bg-bad/10 text-text-faint hover:text-bad transition-colors"
-                                              >
-                                                <Trash2 className="h-3 w-3" />
-                                              </button>
-                                            </PermissionGate>
-                                          </div>
-                                        </div>
-                                      ))}
+                                            <Pencil className="h-3 w-3" />
+                                          </button>
+                                        </PermissionGate>
+                                        <PermissionGate need="edit">
+                                          <button
+                                            type="button"
+                                            onClick={() => setDeleteProvKeyId(pk.id)}
+                                            title="Deactivate"
+                                            className="p-1 rounded hover:bg-bad/10 text-text-faint hover:text-bad transition-colors"
+                                          >
+                                            <Trash2 className="h-3 w-3" />
+                                          </button>
+                                        </PermissionGate>
+                                      </div>
                                     </div>
-                                  )}
+                                  ))}
                                 </div>
                               )}
                             </div>
