@@ -53,7 +53,7 @@ exportsRouter.get('/requests', async (c) => {
 
   if (projectId)     query = query.eq('project_id', projectId)
   if (provider)      query = query.eq('provider', provider)
-  if (model)         query = query.eq('model', model)
+  if (model)         query = query.ilike('model', `%${model}%`)
   if (providerKeyId) query = query.eq('provider_key_id', providerKeyId)
   if (from)          query = query.gte('created_at', from)
   if (to)            query = query.lte('created_at', to)
