@@ -1,4 +1,6 @@
 node_modules
+.next
 .env
 .env.local
 *.log
+next-env.d.ts

@@ -1,147 +1,139 @@
-# Spanlens Onboarding Test
+# Spanlens onboarding test (dummy customer app)
 
-End-to-end smoke test for Spanlens — verifies that a brand-new account can:
+A minimal Next.js app simulating exactly what a new Spanlens customer
+goes through. Three buttons → three providers (OpenAI / Anthropic /
+Gemini) → real API calls.
 
-1. Sign up → create project → issue API key → register provider keys
-2. Install `@spanlens/sdk` and call OpenAI / Anthropic / Gemini through the proxy
-3. See the request appear in `/requests` within 5 seconds
+The point: walk through `npx @spanlens/cli init` exactly as a real
+customer would, then verify the requests show up in the dashboard.
 
-Run this **after** the manual signup steps below.
-
-> ⚠️ This directory is **NOT** a pnpm workspace member — `pnpm install` runs
-> in this folder uses the published `@spanlens/sdk` from npm, simulating
-> a real customer's environment.
+> Not a pnpm workspace member — `pnpm install` here uses the published
+> `@spanlens/sdk` from npm, just like real customers.
 
 ---
 
-## 1. Manual setup (one-time, in browser)
+## Phase 0 — Manual dashboard setup (browser, ~5 min)
 
-### a. Sign up
+You'll do these steps once.
 
-Visit https://www.spanlens.io/signup?direct=1
-(`?direct=1` bypasses the pre-launch waitlist redirect.)
+1. **Sign up** at https://www.spanlens.io/signup?direct=1
+   (`?direct=1` bypasses the pre-launch waitlist redirect.)
+2. **Project**: Dashboard → Projects → "New project".
+3. **API key**: in the project page → "Create API key".
+   Copy the `sl_live_...` value — it's shown only once.
+4. **Provider keys**: Settings → Provider keys → register one each:
+   - OpenAI (`sk-...`)
+   - Anthropic (`sk-ant-...`)
+   - Gemini (Google AI Studio key)
 
-### b. Create a project
-
-Dashboard → Projects → "New project". Note the project ID.
-
-### c. Issue a Spanlens API key
-
-In the project page → "Create API key". Copy the `sl_live_...` value — you
-**only see it once**.
-
-### d. Register provider keys
-
-Settings → Provider keys → add one each:
-- OpenAI key (starts with `sk-...`)
-- Anthropic key (starts with `sk-ant-...`)
-- Gemini key (Google AI Studio API key)
-
-These are encrypted and stored server-side. The client never sees them
-again — `SPANLENS_API_KEY` is the only secret your app needs.
-
-### e. Grab a JWT for the dashboard API
-
-Open https://www.spanlens.io/requests in your browser, log in, then:
-
-1. DevTools → Application → Cookies → `https://www.spanlens.io`
-2. Find the cookie whose name starts with `sb-` and ends with `-auth-token`
-3. Copy its value (long base64 / JSON-encoded string)
-
-This JWT is used by `benchmark.ts` to poll `/api/v1/requests` and measure
-ingest latency. Individual provider tests don't need it.
+You're done with the dashboard. The app below talks to it via the
+single `SPANLENS_API_KEY`.
 
 ---
 
-## 2. Local setup
+## Phase 1 — Install + run (before Spanlens integration)
 
 ```bash
 cd playground/onboarding-test
-cp .env.example .env
+cp .env.example .env.local        # we'll fill it in Phase 2
+pnpm install                      # public npm — no workspace shortcut
+pnpm dev                          # http://localhost:3000
 ```
 
-Fill in `.env`:
-- `SPANLENS_API_KEY` — from step 1c
-- `SPANLENS_JWT` — from step 1e (only for `benchmark`)
+Open the page. You'll see three cards. Right now:
+- **OpenAI/Anthropic/Gemini buttons all fail** (401 — no provider key).
+  That's expected. The routes are using `new OpenAI(...)` style direct
+  client init, no Spanlens involved yet.
 
-Then install:
-
-```bash
-pnpm install
-```
-
-> Note: this runs `pnpm install` in *this* folder, hitting the public npm
-> registry for `@spanlens/sdk`. It does not use the in-repo workspace copy.
+This is the "before" state of a typical customer who hasn't integrated
+Spanlens. Now we'll integrate.
 
 ---
 
-## 3. Run
+## Phase 2 — Run the CLI (the moment of truth)
 
-### Test individual providers
-
-```bash
-pnpm openai      # gpt-4o-mini → "ping"
-pnpm anthropic   # claude-haiku-4-5
-pnpm gemini      # gemini-2.0-flash
-```
-
-Each prints upstream latency + provider's reply. Then verify in
-https://www.spanlens.io/requests that the row showed up.
-
-### Full benchmark (ingest latency)
+In a separate terminal, **inside `playground/onboarding-test/`**:
 
 ```bash
-pnpm benchmark
+npx @spanlens/cli init
 ```
 
-Output:
-```
-═══ Spanlens onboarding benchmark ═══
-  proxy:     https://spanlens-server.vercel.app
-  dashboard: https://www.spanlens.io
-  target:    ingest latency < 5000ms
+The wizard:
+1. Detects the Next.js project ✓
+2. Asks for `SPANLENS_API_KEY` — paste the `sl_live_...` from Phase 0
+3. Writes it to `.env.local`
+4. Auto-installs `@spanlens/sdk` via pnpm
+5. **Scans for `new OpenAI(...)` and patches it** — open
+   `app/api/openai/route.ts` after to confirm:
+   ```diff
+   - import OpenAI from 'openai'
+   - const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+   + import { createOpenAI } from '@spanlens/sdk/openai'
+   + const openai = createOpenAI()
+   ```
 
-▶ openai
-  ✓ provider 200 OK in 712ms — reply: "ping"
-  ⏱  polling /api/v1/requests for new row...
-  ✓ ingested in 1843ms (8 polls) — request id: 8a4f...
+Restart the dev server so Next.js picks up the new env + code:
 
-▶ anthropic
-  ...
-
-▶ gemini
-  ...
-
-═══ Summary ═══
-provider     upstream    ingest     status
-────────────────────────────────────────────
-  openai       712ms     1843ms    ✓ <5s
-  anthropic    984ms     2104ms    ✓ <5s
-  gemini       521ms     1577ms    ✓ <5s
+```bash
+# Ctrl-C in the dev terminal, then:
+pnpm dev
 ```
 
-Exit code `0` if all three pass `< 5s`, otherwise `1`.
+Click **OpenAI** button → reply comes back → open
+https://www.spanlens.io/requests → **a new row should appear within
+a few seconds**. That's success.
 
 ---
 
-## 4. Troubleshooting
+## Phase 3 — Manual integration for Anthropic + Gemini
+
+The CLI's MVP only auto-patches OpenAI. The other two need a
+~3-line change each. Open the route files and follow the comment at
+the top — short version:
+
+**`app/api/anthropic/route.ts`**
+```diff
+- import Anthropic from '@anthropic-ai/sdk'
+- const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
++ import { createAnthropic } from '@spanlens/sdk/anthropic'
++ const anthropic = createAnthropic()
+```
+
+**`app/api/gemini/route.ts`**
+```diff
+- import { GoogleGenerativeAI } from '@google/generative-ai'
+- const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY ?? '')
++ import { createGemini } from '@spanlens/sdk/gemini'
++ const genAI = createGemini()
+```
+
+Save → Next.js HMR picks it up. Click both buttons. Both rows should
+appear in `/requests`.
+
+---
+
+## What you're checking
+
+| Check | How |
+|---|---|
+| **Signup → first row in /requests, total time** | Stopwatch from "click Sign up" to "row visible". Target: under 10 minutes total, including Phase 0–2. |
+| **Ingest latency (provider 200 → row visible)** | Click button, switch to /requests tab, count seconds. Target: < 5s. |
+| **CLI auto-patch correctness** | Open `app/api/openai/route.ts` after CLI run — diff matches expected. |
+| **Cost calculation** | Compare `total_tokens × model rate` to dashboard's cost field. |
+| **Trace tab parity** | If you set `x-trace-id` header on a call, it should appear in `/traces`. |
+
+---
+
+## When something breaks
 
 | Symptom | Likely cause |
 |---|---|
-| `401 Unauthorized` from proxy | `SPANLENS_API_KEY` missing or revoked |
-| `400 No active provider key` | Forgot step 1d for that provider |
-| `403 Insufficient permission` | Account role is `viewer` — need `admin`/`editor` |
-| Provider 200 but row never appears | Async logging dropped (Vercel Edge `waitUntil` issue) — check Vercel function logs |
-| Ingest latency > 10s | Cold start on `spanlens-server` lambda — re-run, second pass should be fast |
-| Anthropic returns 404 model | `claude-haiku-4-5` deprecated — try `claude-haiku-3-5` |
-| Gemini "models/X not found" | Edit `gemini.ts` model param |
+| `401 Unauthorized` after CLI patch | `.env.local` not picked up — restart `pnpm dev` |
+| `400 No active provider key` | Phase 0 step 4 missed for that provider |
+| Provider 200 OK but row never appears | Async logging dropped (Edge `waitUntil` regression) — check Vercel function logs on `spanlens-server` |
+| First click takes >10s | Cold start on serverless lambda — second click should be fast |
+| Anthropic 404 model | `claude-haiku-4-5` deprecated — try `claude-haiku-3-5` |
+| `403 Insufficient permission` on replay | Account is `viewer` role — only admin/editor can replay |
 
----
-
-## 5. What this catches
-
-- Onboarding UX regressions (signup → first request flow)
-- SDK install / API change drift between major SDK releases
-- Proxy ingest latency regressions (especially `fireAndForget` on Edge)
-- Cost calculation correctness (cross-check `total_tokens` × model rate)
-- Auth + role guards (try with viewer JWT — should 403 on `/replay/run`)
+If you hit something not in the table → **screenshot the error +
+network tab** and we'll fix it. That's the whole point of running this.
