@@ -64,9 +64,12 @@ export default function ApiReferencePage() {
       </table>
       <p>
         JWTs are obtained from Supabase Auth (<code>supabase.auth.getSession()</code>) and
-        expire after 1 hour. API keys are created in{' '}
-        <a href="/settings">Settings → Projects &amp; API keys</a> and never expire
-        (revoke explicitly when rotating).
+        expire after 1 hour. Spanlens API keys (<code>sl_live_…</code>) are created at{' '}
+        <a href="/projects">/projects</a> by clicking <em>+ New Spanlens key</em> on the
+        project card; they never expire (revoke explicitly via the toggle when rotating). For
+        the cryptographic details + the per-SDK auth-header mapping, see{' '}
+        <a href="/docs/features/settings">Keys &amp; encryption</a> and{' '}
+        <a href="/docs/proxy">Direct proxy</a>.
       </p>
 
       <h2 id="base-urls">Base URLs</h2>

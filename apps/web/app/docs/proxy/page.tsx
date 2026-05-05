@@ -41,11 +41,55 @@ https://spanlens-server.vercel.app/proxy/gemini/v1beta`}</CodeBlock>
           <strong>Base URL</strong> — point your SDK at the Spanlens proxy
         </li>
         <li>
-          <strong>API key</strong> — use your Spanlens API key (starts with <code>sl_live_</code>) instead
-          of the provider&apos;s. The real AI key linked to your Spanlens key is decrypted server-side and
-          forwarded — your client never sees it.
+          <strong>API key</strong> — use your Spanlens API key (starts with{' '}
+          <code>sl_live_</code>) instead of the provider&apos;s. The real provider key
+          registered under your Spanlens key is decrypted server-side and forwarded — your
+          client never sees it.
         </li>
       </ol>
+
+      <h3 id="auth-transports">Authentication transports per SDK</h3>
+      <p>
+        Each provider&apos;s SDK puts the API key on the wire differently. Spanlens accepts
+        whichever shape the SDK sends — you don&apos;t need to override anything when using
+        the upstream client. If you&apos;re writing a hand-rolled client (curl, raw fetch, a
+        language without an official SDK), pick whichever transport is convenient.
+      </p>
+      <table>
+        <thead>
+          <tr>
+            <th>SDK / client</th>
+            <th>How the key is sent</th>
+            <th>Spanlens accepts?</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>OpenAI (any language)</td>
+            <td><code>Authorization: Bearer sl_live_…</code></td>
+            <td>✓</td>
+          </tr>
+          <tr>
+            <td>Anthropic (any language)</td>
+            <td><code>x-api-key: sl_live_…</code></td>
+            <td>✓</td>
+          </tr>
+          <tr>
+            <td>@google/generative-ai (current)</td>
+            <td><code>x-goog-api-key: sl_live_…</code></td>
+            <td>✓</td>
+          </tr>
+          <tr>
+            <td>Google Generative AI (legacy / curl)</td>
+            <td>URL <code>?key=sl_live_…</code></td>
+            <td>✓ (fallback)</td>
+          </tr>
+        </tbody>
+      </table>
+      <p className="text-sm text-muted-foreground">
+        The <code>authApiKey</code> middleware tries them in order and the first non-empty
+        one wins. Implementation: <code>apps/server/src/middleware/authApiKey.ts</code>.
+      </p>
 
       <h2 id="python-openai">Python — OpenAI</h2>
       <CodeBlock language="python">{`from openai import OpenAI
