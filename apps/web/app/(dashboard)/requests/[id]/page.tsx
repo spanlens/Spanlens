@@ -342,7 +342,13 @@ function ReplayButton({ requestId, originalModel, provider }: ReplayButtonProps)
               ))}
             </div>
             <p className="font-mono text-[10.5px] text-text-faint">
-              Logged as a new request · visible in /requests
+              Logged as a new request ·{' '}
+              <Link
+                href="/requests"
+                className="text-text hover:underline underline-offset-2"
+              >
+                View in /requests →
+              </Link>
             </p>
           </div>
         )}
