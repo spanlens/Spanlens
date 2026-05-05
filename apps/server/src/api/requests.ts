@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import { authJwt, type JwtContext } from '../middleware/authJwt.js'
+import { requireRole } from '../middleware/requireRole.js'
 import { supabaseAdmin } from '../lib/db.js'
 import { getDecryptedProviderKeyById, getDecryptedProviderKey } from '../proxy/utils.js'
 import { calculateCost } from '../lib/cost.js'
@@ -123,7 +124,11 @@ requestsRouter.get('/:id', async (c) => {
 // usual quota / overage / observability path. Instead we return a curl-ready
 // snippet + a "replay token" the client uses to fire the call from the
 // browser, going back through /proxy/* like a normal SDK call.
-requestsRouter.post('/:id/replay', async (c) => {
+//
+// Auth: admin/editor only. viewer cannot trigger replay actions — even
+// the curl flow eventually consumes the org's provider key budget when
+// the user runs the snippet.
+requestsRouter.post('/:id/replay', requireRole('admin', 'editor'), async (c) => {
   const requestId = c.req.param('id')
   const orgId = c.get('orgId')
   if (!orgId) return c.json({ error: 'Organization not found' }, 404)
@@ -196,7 +201,11 @@ requestsRouter.post('/:id/replay', async (c) => {
 // Execute a replay directly from the dashboard (JWT auth).
 // Calls the upstream provider API (non-streaming), logs the result, and
 // returns latency / token counts / cost so the UI can show them inline.
-requestsRouter.post('/:id/replay/run', async (c) => {
+//
+// Auth: admin/editor only. This endpoint decrypts and uses the org's
+// provider key to make a real, billable upstream call — viewer must not
+// be able to spend the org's API budget.
+requestsRouter.post('/:id/replay/run', requireRole('admin', 'editor'), async (c) => {
   const requestId = c.req.param('id')
   const orgId = c.get('orgId')
   if (!orgId) return c.json({ error: 'Organization not found' }, 404)
