@@ -5,11 +5,11 @@
   "buildCommand": "pnpm --filter server build",
   "installCommand": "pnpm install --frozen-lockfile",
   "functions": {
-    "apps/server/api/index.ts": {
+    "api/index.ts": {
       "maxDuration": 300
     }
   },
-  "rewrites": [{ "source": "/(.*)", "destination": "/apps/server/api/index" }],
+  "rewrites": [{ "source": "/(.*)", "destination": "/api/index" }],
   "crons": [
     { "path": "/cron/evaluate-alerts",           "schedule": "*/15 * * * *" },
     { "path": "/cron/snapshot-anomalies",         "schedule": "0 1 * * *"   },
