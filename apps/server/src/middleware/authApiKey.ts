@@ -1,17 +1,21 @@
+import type { Context } from 'hono'
 import { createMiddleware } from 'hono/factory'
 import { supabaseAdmin } from '../lib/db.js'
 import { sha256Hex } from '../lib/crypto.js'
 
 /**
- * Validates `Authorization: Bearer sl_live_...` against the `api_keys` table.
+ * Validates a Spanlens API key (sl_live_…) against `api_keys`.
  *
- * Under the unified-keys model (see migration 20260505040000_unified_keys.sql)
- * each Spanlens key is scoped to a project — provider is inferred at the
- * proxy layer from the request URL path (`/proxy/openai/...`, etc.). The
- * proxy then looks up the active provider_keys row for `(project_id, provider)`.
+ * Each provider SDK uses a different transport for the key, so this
+ * middleware accepts whichever shape the SDK sends — the proxy is
+ * provider-agnostic at the auth layer:
  *
- * No `providerKeyId` is exposed here anymore. Replay flows that need the
- * historical key ID still read `requests.provider_key_id` directly.
+ *   • OpenAI SDK            → Authorization: Bearer sl_live_…
+ *   • Anthropic SDK         → x-api-key: sl_live_…
+ *   • Google Generative AI  → URL ?key=sl_live_…   (Google's standard)
+ *
+ * The first one found wins. After validation we put apiKeyId / projectId
+ * / organizationId on the context for the proxy + logging layers.
  */
 export type ApiKeyContext = {
   Variables: {
@@ -21,13 +25,40 @@ export type ApiKeyContext = {
   }
 }
 
-export const authApiKey = createMiddleware<ApiKeyContext>(async (c, next) => {
+/** Pull the Spanlens key out of the request, regardless of which SDK sent it. */
+function extractApiKey(c: Context): string | null {
+  // 1. OpenAI / generic Bearer auth
   const authHeader = c.req.header('Authorization')
-  if (!authHeader?.startsWith('Bearer ')) {
-    return c.json({ error: 'Missing or invalid Authorization header' }, 401)
+  if (authHeader?.startsWith('Bearer ')) {
+    const key = authHeader.slice(7).trim()
+    if (key) return key
   }
 
-  const rawKey = authHeader.slice(7)
+  // 2. Anthropic SDK
+  const xApiKey = c.req.header('x-api-key')
+  if (xApiKey?.trim()) return xApiKey.trim()
+
+  // 3. Google Generative AI SDK puts the key in ?key= (Google convention).
+  //    Note: query-string keys leak into server access logs, but Google's
+  //    SDK doesn't offer a header-based mode, so we follow their pattern.
+  const queryKey = c.req.query('key')
+  if (queryKey?.trim()) return queryKey.trim()
+
+  return null
+}
+
+export const authApiKey = createMiddleware<ApiKeyContext>(async (c, next) => {
+  const rawKey = extractApiKey(c)
+  if (!rawKey) {
+    return c.json(
+      {
+        error:
+          'Missing API key. Pass sl_live_… via Authorization: Bearer (OpenAI SDK), x-api-key (Anthropic SDK), or ?key= (Google Generative AI SDK).',
+      },
+      401,
+    )
+  }
+
   const keyHash = await sha256Hex(rawKey)
 
   const { data, error } = await supabaseAdmin
