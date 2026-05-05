@@ -1,7 +1,7 @@
 {
   "version": 2,
   "framework": null,
-  "outputDirectory": null,
+  "outputDirectory": "apps/server/public",
   "buildCommand": "pnpm --filter server build",
   "installCommand": "pnpm install --frozen-lockfile",
   "functions": {
