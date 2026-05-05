@@ -1,5 +1,5 @@
 'use client'
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import { Topbar } from '@/components/layout/topbar'
@@ -401,6 +401,12 @@ export default function DemoRequestsPage() {
   const [sortField, setSortField] = useState<SortField>('created_at')
   const [sortDir, setSortDir] = useState<SortDir>('desc')
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [refreshing, setRefreshing] = useState(false)
+
+  const handleRefresh = useCallback(() => {
+    setRefreshing(true)
+    setTimeout(() => setRefreshing(false), 400)
+  }, [])
 
   const now = Date.now()
 
@@ -578,6 +584,14 @@ export default function DemoRequestsPage() {
         <span className="font-mono text-[11px] text-text-faint">
           Showing {filtered.length} of {DEMO_REQUESTS.length}
         </span>
+        <button
+          type="button"
+          onClick={handleRefresh}
+          disabled={refreshing}
+          className="font-mono text-[10.5px] px-[9px] py-[4px] border border-border rounded-[5px] text-text-muted hover:text-text hover:border-border-strong disabled:opacity-40 transition-colors"
+        >
+          {refreshing ? '↻ …' : '↻'}
+        </button>
       </div>
 
       {/* Table */}
