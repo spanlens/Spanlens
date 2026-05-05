@@ -3,28 +3,85 @@ import { join } from 'node:path'
 import { Project, SyntaxKind, type SourceFile, type Node } from 'ts-morph'
 
 /**
- * AST-based patcher that rewrites:
+ * AST-based patcher that rewrites direct AI SDK usage into Spanlens-routed
+ * helpers. Supports OpenAI, Anthropic, and Gemini.
  *
  *   import OpenAI from 'openai'
- *   const openai = new OpenAI({ apiKey: ..., baseURL: ... })
- *
- * into:
- *
+ *   const openai = new OpenAI({ apiKey, baseURL })
+ *     →
  *   import { createOpenAI } from '@spanlens/sdk/openai'
- *   const openai = createOpenAI({ ...otherOptions })   // apiKey + baseURL removed
+ *   const openai = createOpenAI()                    // apiKey + baseURL stripped
  *
- * Scope: MVP handles the common Next.js pattern (default OpenAI import at
- * module top + `new OpenAI({...})` call). We don't rewrite arbitrary
- * aliases / destructured imports / re-exports in this version.
+ *   import Anthropic from '@anthropic-ai/sdk'
+ *   const anthropic = new Anthropic({ apiKey, baseURL })
+ *     →
+ *   import { createAnthropic } from '@spanlens/sdk/anthropic'
+ *   const anthropic = createAnthropic()
+ *
+ *   import { GoogleGenerativeAI } from '@google/generative-ai'
+ *   const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY)
+ *     →
+ *   import { createGemini } from '@spanlens/sdk/gemini'
+ *   const genAI = createGemini()                     // positional apiKey dropped
+ *
+ * Scope: MVP handles the common Next.js patterns (default/named import at
+ * module top + `new XxxClient(...)` call). Aliased imports / re-exports /
+ * dynamic imports aren't rewritten in this version.
  */
+
+export type Provider = 'openai' | 'anthropic' | 'gemini'
+
+interface ProviderConfig {
+  /** Module specifier the user is importing from. */
+  importedFrom: string
+  /** Original imported name (default or named). */
+  originalName: string
+  /** 'default' = default import, 'named' = named import. */
+  importStyle: 'default' | 'named'
+  /** Replacement: factory function name. */
+  factoryName: string
+  /** Replacement module specifier. */
+  spanlensSdk: string
+  /** Constructor arg shape: 'options' (object) or 'string' (positional apiKey). */
+  argShape: 'options' | 'string'
+}
+
+const PROVIDER_CONFIGS: Record<Provider, ProviderConfig> = {
+  openai: {
+    importedFrom: 'openai',
+    originalName: 'OpenAI',
+    importStyle: 'default',
+    factoryName: 'createOpenAI',
+    spanlensSdk: '@spanlens/sdk/openai',
+    argShape: 'options',
+  },
+  anthropic: {
+    importedFrom: '@anthropic-ai/sdk',
+    originalName: 'Anthropic',
+    importStyle: 'default',
+    factoryName: 'createAnthropic',
+    spanlensSdk: '@spanlens/sdk/anthropic',
+    argShape: 'options',
+  },
+  gemini: {
+    importedFrom: '@google/generative-ai',
+    originalName: 'GoogleGenerativeAI',
+    importStyle: 'named',
+    factoryName: 'createGemini',
+    spanlensSdk: '@spanlens/sdk/gemini',
+    argShape: 'string',
+  },
+}
 
 export interface PatchPlan {
   filepath: string
-  changes: string[]  // human-readable diff summary
+  provider: Provider
+  changes: string[] // human-readable diff summary
 }
 
 export interface PatchResult {
   filepath: string
+  provider: Provider
   patched: boolean
   reason?: string
 }
@@ -42,7 +99,6 @@ const EXCLUDE_DIRS = new Set([
   '.git',
 ])
 
-/** Walk a directory tree, collecting TS/JS file paths. Skips heavy dirs. */
 function listCandidateFiles(cwd: string): string[] {
   const out: string[] = []
   walk(cwd, out, 0)
@@ -50,7 +106,7 @@ function listCandidateFiles(cwd: string): string[] {
 }
 
 function walk(dir: string, out: string[], depth: number): void {
-  if (depth > 12) return // runaway safety
+  if (depth > 12) return
   let entries: string[]
   try {
     entries = readdirSync(dir)
@@ -59,7 +115,6 @@ function walk(dir: string, out: string[], depth: number): void {
   }
   for (const name of entries) {
     if (name.startsWith('.') && !['.env', '.env.local'].includes(name)) {
-      // skip dotfiles/dotdirs except noteworthy ones (wizard never needs them here anyway)
       if (EXCLUDE_DIRS.has(name)) continue
     }
     if (EXCLUDE_DIRS.has(name)) continue
@@ -84,15 +139,16 @@ function walk(dir: string, out: string[], depth: number): void {
 }
 
 /**
- * Quick text-level pre-filter so we only parse files that actually import
- * OpenAI — ts-morph is slow on large projects.
+ * Cheap text-level pre-filter so ts-morph only parses files that actually
+ * import the provider client.
  */
-function mightContainOpenAIClient(filepath: string): boolean {
+function mightContainProvider(filepath: string, cfg: ProviderConfig): boolean {
   try {
     const src = readFileSync(filepath, 'utf8')
     return (
-      src.includes("from 'openai'") || src.includes('from "openai"') ||
-      src.includes('new OpenAI(')
+      src.includes(`from '${cfg.importedFrom}'`) ||
+      src.includes(`from "${cfg.importedFrom}"`) ||
+      src.includes(`new ${cfg.originalName}(`)
     )
   } catch {
     return false
@@ -100,47 +156,53 @@ function mightContainOpenAIClient(filepath: string): boolean {
 }
 
 /**
- * Scan project for files matching the pattern we can patch. Returns a plan
- * without touching files.
+ * Scan `cwd` for files that import any of the requested provider clients.
+ * Returns one plan per file × provider pairing — a single file may produce
+ * multiple plans if it uses more than one provider.
  */
-export async function planPatches(cwd: string): Promise<PatchPlan[]> {
-  const candidates = listCandidateFiles(cwd)
-  const matching = candidates.filter(mightContainOpenAIClient)
-  if (matching.length === 0) return []
+export async function planPatches(cwd: string, providers: Provider[]): Promise<PatchPlan[]> {
+  if (providers.length === 0) return []
 
+  const candidates = listCandidateFiles(cwd)
   const project = new Project({ useInMemoryFileSystem: false, skipAddingFilesFromTsConfig: true })
   const plans: PatchPlan[] = []
 
-  for (const filepath of matching) {
-    const sf = project.addSourceFileAtPath(filepath)
-    const plan = planFileInternal(sf)
-    if (plan.changes.length > 0) {
-      plans.push({ filepath, changes: plan.changes })
+  for (const provider of providers) {
+    const cfg = PROVIDER_CONFIGS[provider]
+    const matching = candidates.filter((f) => mightContainProvider(f, cfg))
+    for (const filepath of matching) {
+      const sf = project.addSourceFileAtPath(filepath)
+      const changes = planFileInternal(sf, cfg)
+      if (changes.length > 0) plans.push({ filepath, provider, changes })
+      project.removeSourceFile(sf)
     }
-    project.removeSourceFile(sf)
   }
 
   return plans
 }
 
 /**
- * Apply patches listed in plan. Writes files in place unless `dryRun`.
+ * Apply patches in plan order. Multiple plans may target the same file
+ * (different providers) — we re-open the file each time so each run sees
+ * the prior provider's edits.
  */
 export async function applyPatches(
   plans: PatchPlan[],
   opts: { dryRun?: boolean } = {},
 ): Promise<PatchResult[]> {
-  const project = new Project({ useInMemoryFileSystem: false, skipAddingFilesFromTsConfig: true })
   const results: PatchResult[] = []
 
   for (const plan of plans) {
+    const cfg = PROVIDER_CONFIGS[plan.provider]
+    const project = new Project({ useInMemoryFileSystem: false, skipAddingFilesFromTsConfig: true })
     const sf = project.addSourceFileAtPath(plan.filepath)
-    const { changed, reason } = patchFileInternal(sf)
+    const { changed, reason } = patchFileInternal(sf, cfg)
     if (changed && !opts.dryRun) {
       writeFileSync(plan.filepath, sf.getFullText(), 'utf8')
     }
     results.push({
       filepath: plan.filepath,
+      provider: plan.provider,
       patched: changed,
       ...(reason ? { reason } : {}),
     })
@@ -150,75 +212,86 @@ export async function applyPatches(
   return results
 }
 
-/** Inspect a source file and describe what we'd change (no mutation). */
-function planFileInternal(sf: SourceFile): { changes: string[] } {
+function planFileInternal(sf: SourceFile, cfg: ProviderConfig): string[] {
   const changes: string[] = []
-  const openaiImport = findOpenAIDefaultImport(sf)
-  if (!openaiImport) return { changes }
+  const found = findProviderImport(sf, cfg)
+  if (!found) return changes
 
-  const calls = findNewOpenAICalls(sf, openaiImport.localName)
-  if (calls.length === 0) return { changes }
+  const calls = findNewCalls(sf, found.localName)
+  if (calls.length === 0) return changes
 
   changes.push(
-    `import: "${openaiImport.localName}" from 'openai' → { createOpenAI } from '@spanlens/sdk/openai'`,
+    `import: "${found.localName}" from '${cfg.importedFrom}' → { ${cfg.factoryName} } from '${cfg.spanlensSdk}'`,
   )
-  changes.push(`${calls.length} × new ${openaiImport.localName}({...}) → createOpenAI({...})`)
-
-  return { changes }
+  changes.push(`${calls.length} × new ${found.localName}(...) → ${cfg.factoryName}(...)`)
+  return changes
 }
 
-/** Perform the rewrite. Returns { changed, reason? }. */
-function patchFileInternal(sf: SourceFile): { changed: boolean; reason?: string } {
-  const openaiImport = findOpenAIDefaultImport(sf)
-  if (!openaiImport) return { changed: false, reason: 'no OpenAI default import' }
+function patchFileInternal(sf: SourceFile, cfg: ProviderConfig): { changed: boolean; reason?: string } {
+  const found = findProviderImport(sf, cfg)
+  if (!found) return { changed: false, reason: `no ${cfg.originalName} import` }
 
-  const calls = findNewOpenAICalls(sf, openaiImport.localName)
-  if (calls.length === 0) return { changed: false, reason: 'no new OpenAI(...) call' }
+  const calls = findNewCalls(sf, found.localName)
+  if (calls.length === 0) return { changed: false, reason: `no new ${cfg.originalName}(...) call` }
 
-  // Step 1: replace import. We keep original import's position — modify in place
-  // by removing the old import declaration and inserting the new one.
-  const oldImportDecl = openaiImport.decl
-  const importText = `import { createOpenAI } from '@spanlens/sdk/openai'`
-  oldImportDecl.replaceWithText(importText)
+  // Replace the import declaration in place.
+  const newImport = `import { ${cfg.factoryName} } from '${cfg.spanlensSdk}'`
+  found.decl.replaceWithText(newImport)
 
-  // Step 2: transform each `new OpenAI({...})` expression
   for (const newExpr of calls) {
     const args = newExpr.getArguments()
     if (args.length === 0) {
-      newExpr.replaceWithText(`createOpenAI()`)
+      newExpr.replaceWithText(`${cfg.factoryName}()`)
       continue
     }
+    if (cfg.argShape === 'string') {
+      // Positional apiKey constructor (Gemini). Drop the arg entirely —
+      // createGemini() reads SPANLENS_API_KEY from env.
+      newExpr.replaceWithText(`${cfg.factoryName}()`)
+      continue
+    }
+    // 'options' shape — keep all props except apiKey/baseURL.
     const firstArg = args[0]
     if (firstArg && firstArg.getKind() === SyntaxKind.ObjectLiteralExpression) {
       const objText = stripApiKeyAndBaseUrlProps(firstArg.getText())
-      newExpr.replaceWithText(`createOpenAI(${objText})`)
+      newExpr.replaceWithText(`${cfg.factoryName}(${objText})`)
     } else {
-      // Non-object arg (unlikely) — just swap the constructor
+      // Unusual non-object arg — just swap the constructor name.
       const argsText = args.map((a) => a.getText()).join(', ')
-      newExpr.replaceWithText(`createOpenAI(${argsText})`)
+      newExpr.replaceWithText(`${cfg.factoryName}(${argsText})`)
     }
   }
 
   return { changed: true }
 }
 
-interface OpenAIImport {
+interface FoundImport {
   decl: import('ts-morph').ImportDeclaration
   localName: string
 }
 
-function findOpenAIDefaultImport(sf: SourceFile): OpenAIImport | null {
+function findProviderImport(sf: SourceFile, cfg: ProviderConfig): FoundImport | null {
   for (const decl of sf.getImportDeclarations()) {
-    const moduleSpec = decl.getModuleSpecifierValue()
-    if (moduleSpec !== 'openai') continue
-    const defaultImport = decl.getDefaultImport()
-    if (!defaultImport) continue
-    return { decl, localName: defaultImport.getText() }
+    if (decl.getModuleSpecifierValue() !== cfg.importedFrom) continue
+
+    if (cfg.importStyle === 'default') {
+      const defaultImport = decl.getDefaultImport()
+      if (!defaultImport) continue
+      return { decl, localName: defaultImport.getText() }
+    }
+
+    // Named import: locate the binding for the original name (allow renaming).
+    for (const spec of decl.getNamedImports()) {
+      if (spec.getName() === cfg.originalName) {
+        const alias = spec.getAliasNode()
+        return { decl, localName: alias ? alias.getText() : spec.getName() }
+      }
+    }
   }
   return null
 }
 
-function findNewOpenAICalls(sf: SourceFile, localName: string): import('ts-morph').NewExpression[] {
+function findNewCalls(sf: SourceFile, localName: string): import('ts-morph').NewExpression[] {
   const matches: import('ts-morph').NewExpression[] = []
   sf.forEachDescendant((node: Node) => {
     if (node.getKind() === SyntaxKind.NewExpression) {
@@ -232,15 +305,10 @@ function findNewOpenAICalls(sf: SourceFile, localName: string): import('ts-morph
 }
 
 /**
- * Remove `apiKey` and `baseURL` properties from an object literal text.
- * Preserves other properties, comments, and trailing commas.
- *
- * Input: "{ apiKey: process.env.SPANLENS_API_KEY, baseURL: '...', timeout: 5000 }"
- * Output: "{ timeout: 5000 }"
- * Or if empty: "()" essentially
+ * Remove `apiKey` and `baseURL` from an object literal text. Other props,
+ * comments, and trailing commas are preserved.
  */
 function stripApiKeyAndBaseUrlProps(objText: string): string {
-  // Use a tiny sub-AST to avoid fragile regexes
   const project = new Project({ useInMemoryFileSystem: true })
   const sf = project.createSourceFile('tmp.ts', `const _ = ${objText}`)
   const varStmt = sf.getVariableStatements()[0]
@@ -259,17 +327,11 @@ function stripApiKeyAndBaseUrlProps(objText: string): string {
       }
     }
   }
-  // Remove in reverse to keep indices valid
-  for (const p of toRemove.reverse()) {
-    p.remove()
-  }
+  for (const p of toRemove.reverse()) p.remove()
 
   const result = obj.getText().trim()
-  // If object is empty now (possibly with whitespace), return empty string
-  // so caller can emit `createOpenAI()` rather than `createOpenAI({})`.
   if (/^\{\s*\}$/.test(result)) return ''
   return result
 }
 
-// Export internals for unit tests
 export const _test = { stripApiKeyAndBaseUrlProps }

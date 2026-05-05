@@ -1,6 +1,6 @@
 {
   "name": "@spanlens/cli",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "description": "Spanlens onboarding wizard — one-command setup for LLM observability.",
   "type": "module",
   "bin": {

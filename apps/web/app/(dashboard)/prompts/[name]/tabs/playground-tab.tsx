@@ -2,7 +2,7 @@
 import { useState, useMemo } from 'react'
 import { Play, Loader2, AlertTriangle, CheckCircle2, Key } from 'lucide-react'
 import { usePlaygroundRun, type PromptVersion, type PlaygroundResult } from '@/lib/queries/use-prompts'
-import { useApiKeys } from '@/lib/queries/use-api-keys'
+import { useProviderKeys } from '@/lib/queries/use-provider-keys'
 
 const VAR_RE = /\{\{\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g
 
@@ -50,12 +50,12 @@ export function PlaygroundTab({ versions }: Props) {
   const [variables, setVariables] = useState<Record<string, string>>({})
   const [result, setResult] = useState<PlaygroundResult | null>(null)
 
-  const { data: allKeys, isLoading: keysLoading } = useApiKeys()
+  const { data: allKeys, isLoading: keysLoading } = useProviderKeys()
   const runMutation = usePlaygroundRun()
 
-  // Only keys with a linked provider key can run playground
+  // Playground runs against a provider key directly — no Spanlens key here.
   const activeKeys = useMemo(
-    () => (allKeys ?? []).filter((k) => k.is_active && k.provider_key_id !== null),
+    () => (allKeys ?? []).filter((k) => k.is_active),
     [allKeys],
   )
 
@@ -95,7 +95,7 @@ export function PlaygroundTab({ versions }: Props) {
     try {
       const res = await runMutation.mutateAsync({
         promptVersionId: selectedVersion.id,
-        providerKeyId: selectedKey?.provider_key_id ?? '',
+        providerKeyId: selectedKey?.id ?? '',
         model,
         variables,
         temperature,

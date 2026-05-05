@@ -93,10 +93,9 @@ providerKeysRouter.get('/', async (c) => {
   return c.json({ success: true, data: enriched })
 })
 
-// POST /api/v1/provider-keys — add provider key (encrypt before storing)
-//   body.project_id — optional. When provided, the key scopes to that project
-//   only. When omitted, the key becomes the org-level default (fallback for
-//   all projects without their own override).
+// POST /api/v1/provider-keys — add provider key (encrypt before storing).
+// Under the unified-keys model, project_id is REQUIRED — every provider key
+// belongs to exactly one project (no more org-level fallback).
 providerKeysRouter.post('/', requireEdit, async (c) => {
   const orgId = c.get('orgId')
   if (!orgId) return c.json({ error: 'Organization not found' }, 404)
@@ -122,18 +121,14 @@ providerKeysRouter.post('/', requireEdit, async (c) => {
   if (typeof body.name !== 'string' || body.name.trim().length === 0) {
     return c.json({ error: 'name is required' }, 400)
   }
-
-  let projectId: string | null = null
-  if (body.project_id !== undefined && body.project_id !== null) {
-    if (typeof body.project_id !== 'string' || body.project_id.trim().length === 0) {
-      return c.json({ error: 'project_id must be a non-empty string or null' }, 400)
-    }
-    if (!(await assertProjectInOrg(body.project_id, orgId))) {
-      return c.json({ error: 'project_id does not belong to this organization' }, 403)
-    }
-    projectId = body.project_id
+  if (typeof body.project_id !== 'string' || body.project_id.trim().length === 0) {
+    return c.json({ error: 'project_id is required' }, 400)
+  }
+  if (!(await assertProjectInOrg(body.project_id, orgId))) {
+    return c.json({ error: 'project_id does not belong to this organization' }, 403)
   }
 
+  const projectId = body.project_id
   const encryptedKey = await aes256Encrypt(body.key.trim())
 
   const { data, error } = await supabaseAdmin
@@ -152,9 +147,7 @@ providerKeysRouter.post('/', requireEdit, async (c) => {
     // Unique index violation → another active key already exists at this scope
     if (error?.code === '23505') {
       return c.json({
-        error: projectId
-          ? 'A key for this provider already exists on this project. Revoke it first.'
-          : 'A default key for this provider already exists. Revoke it first.',
+        error: 'A key for this provider already exists on this project. Revoke it first.',
       }, 409)
     }
     return c.json({ error: 'Failed to store provider key' }, 500)
