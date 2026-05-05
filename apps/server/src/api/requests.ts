@@ -163,17 +163,27 @@ requestsRouter.post('/:id/replay', async (c) => {
     )
   }
 
+  // Build provider-specific proxy path for the curl snippet.
+  // Gemini encodes the model in the URL: /v1beta/models/{model}:generateContent
+  const model = (overrideModel ?? data.model ?? '') as string
+  let proxyPath: string
+  if (data.provider === 'openai') {
+    proxyPath = '/proxy/openai/v1/chat/completions'
+  } else if (data.provider === 'anthropic') {
+    proxyPath = '/proxy/anthropic/v1/messages'
+  } else if (data.provider === 'gemini') {
+    const geminiModel = model.startsWith('models/') ? model : `models/${model}`
+    proxyPath = `/proxy/gemini/v1beta/${geminiModel}:generateContent`
+  } else {
+    proxyPath = `/proxy/${data.provider as string}`
+  }
+
   return c.json({
     success: true,
     data: {
       provider: data.provider as string,
       replayBody,
-      proxyPath:
-        data.provider === 'openai'
-          ? '/proxy/openai/v1/chat/completions'
-          : data.provider === 'anthropic'
-            ? '/proxy/anthropic/v1/messages'
-            : `/proxy/${data.provider as string}`,
+      proxyPath,
     },
   })
 })
