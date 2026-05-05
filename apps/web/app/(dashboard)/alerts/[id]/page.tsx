@@ -114,7 +114,7 @@ export default function AlertDetailPage() {
 
   if (alertsQuery.isLoading) {
     return (
-      <div className="-m-7 flex flex-col h-screen overflow-hidden bg-bg">
+      <div className="-mx-4 -my-4 md:-mx-8 md:-my-7 flex flex-col h-screen overflow-hidden bg-bg">
         <Topbar crumbs={[{ label: 'Workspace', href: '/dashboard' }, { label: 'Alerts', href: '/alerts' }, { label: '…' }]} />
         <div className="p-6 space-y-3">
           <Skeleton className="h-8 w-64" />
@@ -127,7 +127,7 @@ export default function AlertDetailPage() {
 
   if (!alert) {
     return (
-      <div className="-m-7 flex flex-col h-screen overflow-hidden bg-bg">
+      <div className="-mx-4 -my-4 md:-mx-8 md:-my-7 flex flex-col h-screen overflow-hidden bg-bg">
         <Topbar crumbs={[{ label: 'Workspace', href: '/dashboard' }, { label: 'Alerts', href: '/alerts' }, { label: 'Not found' }]} />
         <div className="flex flex-col items-center justify-center flex-1 gap-3 text-text-muted">
           <p className="text-[13px]">Alert rule not found.</p>
@@ -147,7 +147,7 @@ export default function AlertDetailPage() {
   const failed = deliveries.filter((d) => d.status === 'failed').length
 
   return (
-    <div className="-m-7 flex flex-col h-screen overflow-hidden bg-bg">
+    <div className="-mx-4 -my-4 md:-mx-8 md:-my-7 flex flex-col h-screen overflow-hidden bg-bg">
       <Topbar
         crumbs={[
           { label: 'Workspace', href: '/dashboard' },

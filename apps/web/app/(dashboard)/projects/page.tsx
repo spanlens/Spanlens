@@ -146,7 +146,7 @@ export default function ProjectsPage() {
     : 'SPANLENS_API_KEY'
 
   return (
-    <div className="-m-7 flex flex-col h-screen overflow-hidden">
+    <div className="-mx-4 -my-4 md:-mx-8 md:-my-7 flex flex-col h-screen overflow-hidden">
       <Topbar
         crumbs={[{ label: 'Workspace', href: '/dashboard' }, { label: 'Projects' }]}
         right={

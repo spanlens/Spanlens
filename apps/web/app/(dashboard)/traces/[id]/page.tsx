@@ -29,7 +29,7 @@ export default function TraceDetailPage({ params }: { params: { id: string } }) 
 
   if (isLoading) {
     return (
-      <div className="-m-7 flex flex-col h-screen overflow-hidden">
+      <div className="-mx-4 -my-4 md:-mx-8 md:-my-7 flex flex-col h-screen overflow-hidden">
         <Topbar crumbs={[{ label: 'Workspace' }, { label: 'Traces', href: '/traces' }, { label: '…' }]} />
         <div className="p-[22px] space-y-4">
           <Skeleton className="h-6 w-64" />
@@ -44,7 +44,7 @@ export default function TraceDetailPage({ params }: { params: { id: string } }) 
 
   if (isError || (!isLoading && !trace)) {
     return (
-      <div className="-m-7 flex flex-col h-screen overflow-hidden">
+      <div className="-mx-4 -my-4 md:-mx-8 md:-my-7 flex flex-col h-screen overflow-hidden">
         <Topbar crumbs={[{ label: 'Workspace' }, { label: 'Traces', href: '/traces' }, { label: 'Not found' }]} />
         <div className="m-[22px] p-8 rounded-md border border-border text-center">
           <p className="text-[13px] text-text-muted mb-3">Trace not found or no longer available.</p>
@@ -61,7 +61,7 @@ export default function TraceDetailPage({ params }: { params: { id: string } }) 
   }
 
   return (
-    <div className="-m-7 flex flex-col h-screen overflow-hidden">
+    <div className="-mx-4 -my-4 md:-mx-8 md:-my-7 flex flex-col h-screen overflow-hidden">
       <Topbar
         crumbs={[
           { label: 'Workspace' },
