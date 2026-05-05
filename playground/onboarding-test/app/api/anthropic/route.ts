@@ -1,22 +1,18 @@
-// BEFORE `npx @spanlens/cli init`:
-// This route uses the Anthropic client directly with ANTHROPIC_API_KEY.
+// Spanlens-integrated. Calls flow through https://spanlens-server.vercel.app/proxy/anthropic
+// and appear in /requests automatically.
 //
-// AFTER the CLI patch (CLI 0.2.0+ auto-detects Anthropic):
-//   - `new Anthropic(...)` becomes `createAnthropic()`
-//   - Imports from '@anthropic-ai/sdk' become
-//     `import { createAnthropic } from '@spanlens/sdk/anthropic'`
-//   - apiKey/baseURL options stripped (the SDK reads SPANLENS_API_KEY)
+// Snippet copied directly from the dashboard's "Anthropic key added" dialog
+// (Add provider key → success view). No CLI re-run needed — the same
+// SPANLENS_API_KEY in .env.local already covers Anthropic.
 import { NextResponse } from 'next/server'
-import Anthropic from '@anthropic-ai/sdk'
+import { createAnthropic } from '@spanlens/sdk/anthropic'
 
 export async function POST() {
   try {
-    // Lazy-instantiate inside the handler so a missing API key surfaces
-    // as a normal JSON error response (caught below) instead of a
+    // Lazy-instantiate inside the handler so a missing SPANLENS_API_KEY
+    // surfaces as a normal JSON error response (caught below) instead of a
     // module-load throw that Next.js renders as an HTML error page.
-    const anthropic = new Anthropic({
-      apiKey: process.env.ANTHROPIC_API_KEY,
-    })
+    const anthropic = createAnthropic()
     const t0 = Date.now()
     const res = await anthropic.messages.create({
       model: 'claude-haiku-4-5',
