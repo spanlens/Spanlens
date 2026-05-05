@@ -1,3 +1,9 @@
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   // Proxy /api/* → spanlens-server via Next.js rewrites so all fetches from
@@ -37,12 +43,13 @@ const nextConfig = {
     if (nextRuntime === 'edge') {
       // @supabase/realtime-js@2.104.0 depends on the 'ws' package which
       // references __dirname at module init → ReferenceError in Edge Runtime.
-      // Middleware never uses Realtime subscriptions, so it's safe to stub
-      // the whole package out. Aliasing 'ws' alone is insufficient because
-      // @supabase/realtime-js evaluates __dirname before the ws import.
+      // Middleware never uses Realtime subscriptions, so we redirect the
+      // whole package to a local no-op stub. Aliasing to `false` (empty
+      // object) is wrong here because @supabase/supabase-js calls
+      // `new RealtimeClient()` unconditionally → "is not a constructor".
       config.resolve.alias = {
         ...config.resolve.alias,
-        '@supabase/realtime-js': false,
+        '@supabase/realtime-js': path.resolve(__dirname, 'lib/realtime-stub.js'),
         ws: false,
       }
       // Belt-and-suspenders: replace any residual __dirname / __filename
