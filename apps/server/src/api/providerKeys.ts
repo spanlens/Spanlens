@@ -4,6 +4,13 @@ import { requireRole } from '../middleware/requireRole.js'
 import { supabaseAdmin } from '../lib/db.js'
 import { aes256Encrypt } from '../lib/crypto.js'
 
+/**
+ * Provider AI keys (OpenAI / Anthropic / Gemini). Under the nested-keys
+ * model each provider key belongs to a specific Spanlens (sl_live_*) key,
+ * not to the project as a whole. So the API path here keys on `apiKeyId`
+ * (the Spanlens key UUID) for both list + create.
+ */
+
 export const providerKeysRouter = new Hono<JwtContext>()
 
 providerKeysRouter.use('*', authJwt)
@@ -12,35 +19,33 @@ const requireEdit = requireRole('admin', 'editor')
 
 const VALID_PROVIDERS = new Set(['openai', 'anthropic', 'gemini'])
 
-const SELECT_COLUMNS = 'id, provider, name, is_active, project_id, created_at, updated_at'
+const SELECT_COLUMNS = 'id, provider, name, is_active, api_key_id, created_at, updated_at'
 
-async function assertProjectInOrg(
-  projectId: string,
-  orgId: string,
-): Promise<boolean> {
+/** Verify the api_key belongs to a project owned by `orgId`. */
+async function assertApiKeyInOrg(apiKeyId: string, orgId: string): Promise<boolean> {
   const { data } = await supabaseAdmin
-    .from('projects')
-    .select('id')
-    .eq('id', projectId)
-    .eq('organization_id', orgId)
+    .from('api_keys')
+    .select('id, projects!inner(organization_id)')
+    .eq('id', apiKeyId)
     .maybeSingle()
-  return Boolean(data)
+  if (!data) return false
+  const project = data.projects as unknown as { organization_id: string } | null
+  return project?.organization_id === orgId
 }
 
-// GET /api/v1/provider-keys — list keys (never returns plain or encrypted key)
-//   Optional ?projectId=xxx to filter to one project's overrides (org-default
-//   rows still included — callers can distinguish by project_id === null).
+// GET /api/v1/provider-keys?apiKeyId=xxx — list provider keys under a given
+// Spanlens key. Without the filter, lists every provider key in the org
+// (used by the requests-page filter dropdown).
 //
-// Each row is enriched with derived fields for the settings UI:
-//   - last_used_at:    MAX(requests.created_at) for this key (null if unused)
-//   - last_scan_at:    most-recent provider_key_leak_scans row timestamp
+// Each row is enriched with derived fields for the dashboard:
+//   - last_used_at:     MAX(requests.created_at) for this key (null if unused)
+//   - last_scan_at:     most-recent provider_key_leak_scans row timestamp
 //   - last_scan_result: 'clean' | 'leaked' | 'error' | null
-// Settings page uses these to render "stale" / "🚨 leaked" badges.
 providerKeysRouter.get('/', async (c) => {
   const orgId = c.get('orgId')
   if (!orgId) return c.json({ error: 'Organization not found' }, 404)
 
-  const projectIdFilter = c.req.query('projectId')
+  const apiKeyIdFilter = c.req.query('apiKeyId')
 
   let query = supabaseAdmin
     .from('provider_keys')
@@ -48,8 +53,8 @@ providerKeysRouter.get('/', async (c) => {
     .eq('organization_id', orgId)
     .order('created_at', { ascending: false })
 
-  if (projectIdFilter) {
-    query = query.eq('project_id', projectIdFilter)
+  if (apiKeyIdFilter) {
+    query = query.eq('api_key_id', apiKeyIdFilter)
   }
 
   const { data, error } = await query
@@ -61,8 +66,6 @@ providerKeysRouter.get('/', async (c) => {
     return c.json({ success: true, data: [] })
   }
 
-  // Derive activity / scan status. Each lookup is a single-row indexed read,
-  // so even ~50 keys per org is < 100ms in aggregate.
   const enriched = await Promise.all(
     rows.map(async (k) => {
       const [{ data: lastReq }, { data: lastScan }] = await Promise.all([
@@ -93,9 +96,8 @@ providerKeysRouter.get('/', async (c) => {
   return c.json({ success: true, data: enriched })
 })
 
-// POST /api/v1/provider-keys — add provider key (encrypt before storing).
-// Under the unified-keys model, project_id is REQUIRED — every provider key
-// belongs to exactly one project (no more org-level fallback).
+// POST /api/v1/provider-keys — register a new provider AI key under a
+// Spanlens key. Body: { api_key_id, provider, key, name }.
 providerKeysRouter.post('/', requireEdit, async (c) => {
   const orgId = c.get('orgId')
   if (!orgId) return c.json({ error: 'Organization not found' }, 404)
@@ -104,10 +106,10 @@ providerKeysRouter.post('/', requireEdit, async (c) => {
     provider?: unknown
     key?: unknown
     name?: unknown
-    project_id?: unknown
+    api_key_id?: unknown
   }
   try {
-    body = await c.req.json() as typeof body
+    body = (await c.req.json()) as typeof body
   } catch {
     return c.json({ error: 'Invalid JSON body' }, 400)
   }
@@ -121,21 +123,21 @@ providerKeysRouter.post('/', requireEdit, async (c) => {
   if (typeof body.name !== 'string' || body.name.trim().length === 0) {
     return c.json({ error: 'name is required' }, 400)
   }
-  if (typeof body.project_id !== 'string' || body.project_id.trim().length === 0) {
-    return c.json({ error: 'project_id is required' }, 400)
+  if (typeof body.api_key_id !== 'string' || body.api_key_id.trim().length === 0) {
+    return c.json({ error: 'api_key_id is required' }, 400)
   }
-  if (!(await assertProjectInOrg(body.project_id, orgId))) {
-    return c.json({ error: 'project_id does not belong to this organization' }, 403)
+  if (!(await assertApiKeyInOrg(body.api_key_id, orgId))) {
+    return c.json({ error: 'api_key_id does not belong to this organization' }, 403)
   }
 
-  const projectId = body.project_id
+  const apiKeyId = body.api_key_id
   const encryptedKey = await aes256Encrypt(body.key.trim())
 
   const { data, error } = await supabaseAdmin
     .from('provider_keys')
     .insert({
       organization_id: orgId,
-      project_id: projectId,
+      api_key_id: apiKeyId,
       provider: body.provider,
       name: body.name.trim(),
       encrypted_key: encryptedKey,
@@ -144,11 +146,14 @@ providerKeysRouter.post('/', requireEdit, async (c) => {
     .single()
 
   if (error || !data) {
-    // Unique index violation → another active key already exists at this scope
     if (error?.code === '23505') {
-      return c.json({
-        error: 'A key for this provider already exists on this project. Revoke it first.',
-      }, 409)
+      return c.json(
+        {
+          error:
+            'An active key for this provider already exists on this Spanlens key. Revoke it first.',
+        },
+        409,
+      )
     }
     return c.json({ error: 'Failed to store provider key' }, 500)
   }
@@ -156,7 +161,7 @@ providerKeysRouter.post('/', requireEdit, async (c) => {
   return c.json({ success: true, data }, 201)
 })
 
-// DELETE /api/v1/provider-keys/:id — deactivate provider key
+// DELETE /api/v1/provider-keys/:id — deactivate provider key (soft delete).
 providerKeysRouter.delete('/:id', requireEdit, async (c) => {
   const keyId = c.req.param('id')
   const orgId = c.get('orgId')
@@ -173,7 +178,7 @@ providerKeysRouter.delete('/:id', requireEdit, async (c) => {
   return c.json({ success: true })
 })
 
-// PATCH /api/v1/provider-keys/:id — rotate key (replace encrypted_key)
+// PATCH /api/v1/provider-keys/:id — rotate (replace encrypted_key) and/or rename.
 providerKeysRouter.patch('/:id', requireEdit, async (c) => {
   const keyId = c.req.param('id')
   const orgId = c.get('orgId')
@@ -181,7 +186,7 @@ providerKeysRouter.patch('/:id', requireEdit, async (c) => {
 
   let body: { key?: unknown; name?: unknown }
   try {
-    body = await c.req.json() as { key?: unknown; name?: unknown }
+    body = (await c.req.json()) as { key?: unknown; name?: unknown }
   } catch {
     return c.json({ error: 'Invalid JSON body' }, 400)
   }

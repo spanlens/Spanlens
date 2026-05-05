@@ -17,15 +17,20 @@ meRouter.use('*', authApiKey)
 interface KeyInfoResponse {
   projectId: string
   projectName: string
-  /** Providers with an active provider_key registered on this project. */
+  /** Providers with an active provider_key under THIS Spanlens key. */
   providers: Array<'openai' | 'anthropic' | 'gemini'>
 }
 
 // GET /api/v1/me/key-info — introspect the presented Spanlens key.
 // Returns enough info for the CLI to decide which provider integrations
 // (OpenAI / Anthropic / Gemini) to auto-patch in the user's source.
+//
+// Under the nested-keys model, providers are scoped to this Spanlens key
+// (api_key_id), NOT the project — two keys in the same project can return
+// different provider lists.
 meRouter.get('/key-info', async (c) => {
   const projectId = c.get('projectId')
+  const apiKeyId = c.get('apiKeyId')
 
   const [{ data: project }, { data: providerKeys }] = await Promise.all([
     supabaseAdmin
@@ -36,7 +41,7 @@ meRouter.get('/key-info', async (c) => {
     supabaseAdmin
       .from('provider_keys')
       .select('provider')
-      .eq('project_id', projectId)
+      .eq('api_key_id', apiKeyId)
       .eq('is_active', true),
   ])
 
