@@ -1,4 +1,3 @@
-import { createClient } from '@supabase/supabase-js'
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
@@ -100,10 +99,13 @@ export async function middleware(request: NextRequest) {
 
     if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
       try {
-        const admin = createClient(
+        const admin = createServerClient(
           process.env.NEXT_PUBLIC_SUPABASE_URL!,
-          process.env.SUPABASE_SERVICE_ROLE_KEY,
-          { auth: { persistSession: false } },
+          process.env.SUPABASE_SERVICE_ROLE_KEY!,
+          {
+            auth: { persistSession: false },
+            cookies: { getAll: () => [], setAll: () => {} },
+          },
         )
 
         if (preferredWs) {
