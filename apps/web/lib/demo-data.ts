@@ -499,6 +499,11 @@ export const DEMO_RECOMMENDATIONS: ModelRecommendation[] = [
     suggestedModel: 'gpt-4o-mini',
     estimatedMonthlySavingsUsd: 412.10,
     reason: 'These calls average 480 prompt tokens with simple classification outputs (≤ 180 tokens). GPT-4o-mini handles this task class at ≥ 95% quality based on our benchmark suite.',
+    maxPromptTokens: 500,
+    maxCompletionTokens: 150,
+    priorWindowCostUsd: null,
+    achieved: false,
+    actualMonthlySavingsUsd: null,
   },
   {
     currentProvider: 'anthropic',
@@ -511,6 +516,11 @@ export const DEMO_RECOMMENDATIONS: ModelRecommendation[] = [
     suggestedModel: 'claude-haiku-4-5',
     estimatedMonthlySavingsUsd: 185.20,
     reason: 'Data extraction spans are structured (JSON output, fixed schema). Claude Haiku matches Sonnet on F1 score for this schema type while costing 5× less.',
+    maxPromptTokens: 800,
+    maxCompletionTokens: 250,
+    priorWindowCostUsd: null,
+    achieved: false,
+    actualMonthlySavingsUsd: null,
   },
   {
     currentProvider: 'openai',
@@ -523,6 +533,11 @@ export const DEMO_RECOMMENDATIONS: ModelRecommendation[] = [
     suggestedModel: 'gpt-4o-mini',
     estimatedMonthlySavingsUsd: 94.80,
     reason: 'Intent classification calls are short and formulaic. Identical output distributions observed between gpt-4o and gpt-4o-mini across 380 sampled requests.',
+    maxPromptTokens: 500,
+    maxCompletionTokens: 150,
+    priorWindowCostUsd: 28.50,
+    achieved: true,
+    actualMonthlySavingsUsd: 43.80,
   },
   {
     currentProvider: 'openai',
@@ -535,6 +550,11 @@ export const DEMO_RECOMMENDATIONS: ModelRecommendation[] = [
     suggestedModel: 'gpt-4o-mini',
     estimatedMonthlySavingsUsd: 67.30,
     reason: 'Sentiment scoring calls have consistent 1–5 integer outputs. A/B sampling on 210 requests shows identical distributions for both models on this task.',
+    maxPromptTokens: 500,
+    maxCompletionTokens: 150,
+    priorWindowCostUsd: null,
+    achieved: false,
+    actualMonthlySavingsUsd: null,
   },
 ]
 
