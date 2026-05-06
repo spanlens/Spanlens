@@ -5,13 +5,17 @@ import { recommendationsSpec } from '@/lib/server/queries/recommendations'
 import { securitySummarySpec } from '@/lib/server/queries/security'
 import { auditLogsSpec } from '@/lib/server/queries/audit-logs'
 import { dismissalsSpec } from '@/lib/server/queries/dismissals'
+import { statsOverviewSpec, statsTimeseriesSpec, statsModelsSpec, spendForecastSpec } from '@/lib/server/queries/stats'
+import { anomaliesSpec } from '@/lib/server/queries/anomalies'
 import { DashboardClient } from './dashboard-client'
 
 export default async function DashboardPage() {
-  // Prefetch project-agnostic queries server-side.
-  // Project-scoped queries (overview, timeseries, models, spend forecast, anomalies, prompts)
-  // depend on projectId stored in localStorage — they load client-side on first render.
   const state = await prefetchAll([
+    statsOverviewSpec(),
+    statsTimeseriesSpec(),
+    statsModelsSpec(),
+    spendForecastSpec(),
+    anomaliesSpec({ observationHours: 24 }),
     alertsSpec(),
     recommendationsSpec({ hours: 24 }),
     securitySummarySpec(24),
