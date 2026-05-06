@@ -311,7 +311,7 @@ export default function SecurityPage() {
                       )}
                       style={{ gridTemplateColumns: '110px 1fr 1fr 80px' }}
                     >
-                      <span className="font-mono text-[11.5px] text-text-muted">{formatRelative(r.created_at)}</span>
+                      <span suppressHydrationWarning className="font-mono text-[11.5px] text-text-muted">{formatRelative(r.created_at)}</span>
                       <span className="font-mono text-[12px] text-text">{r.provider} / {r.model}</span>
                       <div className="flex flex-wrap gap-1">
                         {reqFlags.map((f, fi) => (

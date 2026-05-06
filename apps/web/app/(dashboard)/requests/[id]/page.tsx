@@ -77,7 +77,7 @@ export default function RequestDetailPage({ params }: { params: { id: string } }
           <h1 className="font-mono text-[20px] font-medium text-text tracking-[-0.3px]">
             {req.id.slice(0, 8)}…
           </h1>
-          <p className="font-mono text-[12px] text-text-muted mt-1">
+          <p suppressHydrationWarning className="font-mono text-[12px] text-text-muted mt-1">
             {new Date(req.created_at).toLocaleString()}
           </p>
         </div>

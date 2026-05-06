@@ -417,7 +417,7 @@ function MembersTab() {
                   className="grid grid-cols-[1.6fr_1fr_130px_100px] gap-4 px-6 py-3 items-center"
                 >
                   <span className="text-[13px] text-text truncate">{inv.email}</span>
-                  <span className="font-mono text-[11px] text-text-muted">
+                  <span suppressHydrationWarning className="font-mono text-[11px] text-text-muted">
                     expires in {daysLeft}d
                   </span>
                   <MonoPill variant="neutral" dot>{inv.role}</MonoPill>

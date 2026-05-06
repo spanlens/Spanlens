@@ -196,7 +196,7 @@ export default function RecommendationsPage() {
               {r.currentProvider} / {r.currentModel} → {r.suggestedProvider} / {r.suggestedModel}
             </span>
             {applied && (
-              <span className="flex items-center gap-1 font-mono text-[10px] text-good">
+              <span suppressHydrationWarning className="flex items-center gap-1 font-mono text-[10px] text-good">
                 <CheckCircle2 className="h-3 w-3" />
                 Applied {relativeDate(applied.appliedAt)}
               </span>
@@ -574,7 +574,7 @@ export default function RecommendationsPage() {
                   <div className="flex items-center justify-between p-3 rounded-lg border border-good/30 bg-good/5">
                     <div className="flex items-center gap-2">
                       <CheckCircle2 className="h-4 w-4 text-good" />
-                      <span className="text-[12px] text-good font-medium">
+                      <span suppressHydrationWarning className="text-[12px] text-good font-medium">
                         Applied {relativeDate(applyRec_applied.appliedAt)}
                       </span>
                     </div>

@@ -222,7 +222,7 @@ export default function AlertDetailPage() {
             ].map((s) => (
               <div key={s.label}>
                 <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-1.5">{s.label}</div>
-                <div className={cn(
+                <div suppressHydrationWarning className={cn(
                   'font-mono text-[16px] font-medium tracking-[-0.2px]',
                   s.label === 'Last fired' && firing ? 'text-accent' : 'text-text',
                 )}>
@@ -288,7 +288,7 @@ export default function AlertDetailPage() {
                       key={d.id}
                       className="grid grid-cols-[150px_90px_1fr_1fr] gap-4 px-4 py-2.5 items-center text-[11.5px]"
                     >
-                      <span className="font-mono text-text-muted">
+                      <span className="font-mono text-text-muted" suppressHydrationWarning>
                         {new Date(d.created_at).toLocaleString()}
                       </span>
                       <span className={cn(
