@@ -45,6 +45,12 @@ const NAV: NavGroup[] = [
     ],
   },
   {
+    title: 'Integrations',
+    items: [
+      { title: 'OpenTelemetry (OTLP)', href: '/docs/otel' },
+    ],
+  },
+  {
     title: 'API',
     items: [
       { title: 'Direct proxy (any language)', href: '/docs/proxy' },

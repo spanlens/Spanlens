@@ -32,7 +32,8 @@ interface GanttProps {
   spans: SpanRow[]
   onSelectSpan?: (span: SpanRow) => void
   selectedSpanId?: string | null
-  criticalSpanId?: string | null
+  /** IDs of spans on the critical path (root→leaf). All are highlighted. */
+  criticalSpanIds?: ReadonlyArray<string> | null
 }
 
 interface PositionedSpan extends SpanRow {
@@ -142,8 +143,9 @@ export function Gantt({
   spans,
   onSelectSpan,
   selectedSpanId,
-  criticalSpanId,
+  criticalSpanIds,
 }: GanttProps) {
+  const criticalSet = new Set(criticalSpanIds ?? [])
   const positioned = useMemo(() => {
     const traceStartMs = new Date(traceStartedAt).getTime()
     const traceEndMs = traceEndedAt ? new Date(traceEndedAt).getTime() : Date.now()
@@ -230,7 +232,7 @@ export function Gantt({
 
         {positioned.map((s) => {
           const isSelected = selectedSpanId === s.id
-          const isCritical = criticalSpanId === s.id
+          const isCritical = criticalSet.has(s.id)
 
           // σ annotation
           const stat = typeStats[s.span_type]

@@ -14,6 +14,7 @@ import { savedFiltersRouter }  from './api/savedFilters.js'
 import { statsRouter }         from './api/stats.js'
 import { tracesRouter }        from './api/traces.js'
 import { ingestRouter }        from './api/ingest.js'
+import { otlpRouter }          from './api/otlp.js'
 import { cronRouter }          from './api/cron.js'
 import { apiRateLimit }        from './middleware/rateLimit.js'
 import { billingRouter }       from './api/billing.js'
@@ -71,6 +72,10 @@ app.route('/proxy/gemini',    geminiProxy)
 
 // ── SDK ingestion routes (authApiKey middleware) ──────────────
 app.route('/ingest',          ingestRouter)
+
+// ── OTLP/HTTP receiver (authApiKey middleware) ────────────────
+// Accepts POST /v1/traces — OTel SDK exports (gen_ai semconv)
+app.route('/',                otlpRouter)
 
 // ── Vercel cron routes (CRON_SECRET bearer auth) ─────────────
 app.route('/cron',            cronRouter)

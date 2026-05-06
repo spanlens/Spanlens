@@ -184,6 +184,8 @@ export interface TraceDetail extends TraceRow {
   organization_id: string
   updated_at: string
   spans: SpanRow[]
+  /** IDs of spans on the critical (longest-latency) path, root→leaf order. */
+  critical_span_ids: string[]
 }
 
 export interface TracesPage {

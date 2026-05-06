@@ -739,15 +739,45 @@ export function TracePanel({ traceId }: TracePanelProps) {
               spans={trace.spans}
               onSelectSpan={setSelectedSpan}
               selectedSpanId={selectedSpan?.id ?? null}
-              criticalSpanId={bottleneck?.id ?? null}
+              criticalSpanIds={trace.critical_span_ids ?? null}
             />
+            {/* Critical path info box */}
+            {(trace.critical_span_ids?.length ?? 0) > 0 && trace.duration_ms && (() => {
+              const criticalIds = new Set(trace.critical_span_ids)
+              const criticalSpans = trace.spans.filter((s) => criticalIds.has(s.id))
+              const criticalMs = criticalSpans.reduce((sum, s) => sum + (s.duration_ms ?? 0), 0)
+              const criticalPct = Math.round((criticalMs / trace.duration_ms) * 100)
+              const pathNames = trace.spans
+                .filter((s) => criticalIds.has(s.id))
+                .sort((a, b) => new Date(a.started_at).getTime() - new Date(b.started_at).getTime())
+                .map((s) => s.name)
+              return (
+                <div className="mt-4 px-4 py-3.5 rounded-md border border-accent-border bg-accent-bg flex items-start gap-3.5">
+                  <div className="w-8 h-8 rounded-full border-[1.5px] border-accent flex items-center justify-center font-mono text-[11px] text-accent font-medium shrink-0 mt-0.5">
+                    CP
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-accent mb-1">Critical path</div>
+                    <div className="text-[12.5px] text-text leading-relaxed">
+                      <strong>{criticalPct}%</strong> of wall-clock in{' '}
+                      <strong>{criticalSpans.length}</strong> span{criticalSpans.length !== 1 ? 's' : ''}
+                      {' '}({fmtMs(criticalMs)})
+                    </div>
+                    <div className="font-mono text-[10px] text-text-faint mt-1 truncate">
+                      {pathNames.join(' → ')}
+                    </div>
+                  </div>
+                </div>
+              )
+            })()}
+            {/* Longest single span (bottleneck) */}
             {bottleneck && trace.duration_ms && (
-              <div className="mt-4 px-4 py-3.5 rounded-md border border-accent-border bg-accent-bg flex items-center gap-3.5">
-                <div className="w-8 h-8 rounded-full border-[1.5px] border-accent flex items-center justify-center font-mono text-[11px] text-accent font-medium shrink-0">
+              <div className="mt-3 px-4 py-3.5 rounded-md border border-border bg-bg-muted flex items-center gap-3.5">
+                <div className="w-8 h-8 rounded-full border-[1.5px] border-border flex items-center justify-center font-mono text-[11px] text-text-faint font-medium shrink-0">
                   LS
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-accent mb-1">Longest span</div>
+                  <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-1">Longest span</div>
                   <div className="text-[12.5px] text-text leading-relaxed">
                     <strong>{bottleneckPct}%</strong> of {fmtMs(trace.duration_ms)} in{' '}
                     <strong>{bottleneck.name}</strong> ({fmtMs(bottleneck.duration_ms)})
@@ -778,7 +808,7 @@ export function TracePanel({ traceId }: TracePanelProps) {
           total={trace.spans.length}
           traceDurationMs={trace.duration_ms}
           traceTotalCost={trace.total_cost_usd}
-          isCritical={selectedSpan.id === bottleneck?.id}
+          isCritical={(trace.critical_span_ids ?? []).includes(selectedSpan.id)}
         />
       )}
     </div>

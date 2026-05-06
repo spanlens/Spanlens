@@ -269,6 +269,7 @@ export const DEMO_TRACE_002_DETAIL: TraceDetail = {
   organization_id: 'demo-org-001',
   updated_at: ts(T002, 8240),
   spans: DEMO_SPANS_002,
+  critical_span_ids: [],
 }
 
 function makeSimpleDetail(trace: TraceRow): TraceDetail {
@@ -280,6 +281,7 @@ function makeSimpleDetail(trace: TraceRow): TraceDetail {
     api_key_id: 'demo-key-001',
     organization_id: 'demo-org-001',
     updated_at: trace.ended_at ?? trace.started_at,
+    critical_span_ids: [],
     spans: [
       {
         id: trace.id + '-root',
