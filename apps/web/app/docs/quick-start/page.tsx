@@ -169,6 +169,23 @@ const result = await model.generateContent('Hi')`}</CodeBlock>
         <li>Full request + response bodies (up to 10 KB)</li>
       </ul>
 
+      <h2>What about /traces?</h2>
+      <p>
+        The proxy setup above populates <a href="/requests">/requests</a> only —{' '}
+        <a href="/traces">/traces</a> will be empty. That&apos;s expected.
+      </p>
+      <p>
+        Traces require explicit instrumentation: wrap your async functions with{' '}
+        <code>observe()</code> from the SDK so Spanlens can group related LLM calls into a
+        tree. Without that wrapper, each call is logged as an independent request with no
+        parent trace.
+      </p>
+      <p>
+        See the <a href="/docs/sdk">SDK reference</a> to add tracing in a few lines — or
+        jump straight to <a href="/docs/features/traces">how traces work</a> if you want to
+        understand the model first.
+      </p>
+
       <h2>Troubleshooting</h2>
 
       <h3>Request not showing up in /requests</h3>
