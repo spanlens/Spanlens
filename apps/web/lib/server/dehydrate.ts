@@ -16,7 +16,7 @@ export interface QuerySpec<T = unknown> {
  */
 export async function prefetchAll(specs: QuerySpec[]): Promise<ReturnType<typeof dehydrate>> {
   const qc = makeQueryClient()
-  await Promise.allSettled(
+  const results = await Promise.allSettled(
     specs.map((s) =>
       qc.prefetchQuery({
         queryKey: s.queryKey,
@@ -25,5 +25,12 @@ export async function prefetchAll(specs: QuerySpec[]): Promise<ReturnType<typeof
       }),
     ),
   )
-  return dehydrate(qc)
+  results.forEach((r, i) => {
+    if (r.status === 'rejected') {
+      console.error('[prefetchAll] failed:', JSON.stringify(specs[i]?.queryKey), r.reason)
+    }
+  })
+  const state = dehydrate(qc)
+  console.log('[prefetchAll] hydrated', (state as { queries?: unknown[] }).queries?.length ?? 0, 'queries')
+  return state
 }
