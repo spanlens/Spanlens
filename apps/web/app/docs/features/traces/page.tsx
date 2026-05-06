@@ -127,24 +127,69 @@ await trace.end()`}</CodeBlock>
       </p>
 
       <h3>Viewing traces in the dashboard</h3>
+
+      <h4>Trace list</h4>
       <p>
-        Open <a href="/traces">/traces</a>. Each row is a trace, with total duration and span count.
-        Click one to see the full tree: waterfall timeline, per-span latency, inputs/outputs, and
-        direct links to the underlying <a href="/requests">/requests</a> row for any LLM span.
-      </p>
-      <p>
-        The detail page also shows two automatic analyses below the waterfall:
+        Open <a href="/traces">/traces</a>. The header strip shows aggregate stats for the current
+        page: total trace count, p50/p95 duration (p95 turns orange when it exceeds 8 s), average
+        spans per trace, and error count.
       </p>
       <ul>
         <li>
-          <strong>Critical path.</strong> Spans on the longest chain from root to leaf are labelled{' '}
-          <code>critical</code>. The summary shows what percentage of wall-clock time the critical
-          path represents and which spans it passes through (e.g.{' '}
-          <code>answer-question → generate</code>). Useful for knowing which span to optimise first.
+          <strong>Filters.</strong> Status (All / OK / Error / Live) and time range
+          (1 h / 24 h / 7 d / 30 d / All time). The search box matches agent name or trace ID prefix.
+          All active filters are mirrored to the URL so you can share or bookmark a filtered view.
         </li>
         <li>
-          <strong>Longest span.</strong> Highlights the single span with the greatest absolute
-          duration so you can jump straight to it without scrolling through a deep tree.
+          <strong>Sorting.</strong> Click the <em>Spans</em>, <em>Duration</em>, <em>Cost</em>, or{' '}
+          <em>Age</em> column headers to sort. Click the same header again to reverse the direction.
+        </li>
+        <li>
+          <strong>Export.</strong> The export button (top-right of the toolbar) downloads the current
+          filtered result as CSV or JSON via <code>GET /api/v1/exports/traces</code>. Useful for
+          dropping into a spreadsheet or a BI tool.
+        </li>
+        <li>
+          <strong>Pagination.</strong> 50 traces per page. Previous / Next controls appear at the
+          bottom when there is more than one page.
+        </li>
+      </ul>
+
+      <h4>Trace detail</h4>
+      <p>
+        Click any row to open the detail view. The waterfall shows the full span tree with per-span
+        latency bars. Use the span-type tabs (LLM / Tool / Retrieval / Embedding / Custom) or the
+        <em>errors only</em> toggle to narrow the view, and the search box to filter by span name.
+      </p>
+      <ul>
+        <li>
+          <strong>Live indicator.</strong> While a trace is still running, the header shows{' '}
+          <em>Live · refreshing every 3s</em> and the active span pulses. The page automatically
+          re-fetches so you can watch an agent execute in real time.
+        </li>
+        <li>
+          <strong>Critical path.</strong> Spans on the longest root-to-leaf chain are labelled{' '}
+          <code>critical</code>. The summary card below the waterfall shows what percentage of
+          wall-clock time the critical path represents and which spans it passes through (e.g.{' '}
+          <code>answer-question → generate</code>). This is usually the first place to look when
+          optimising latency.
+        </li>
+        <li>
+          <strong>Longest span.</strong> A second card highlights the single slowest span so you
+          can jump straight to it without scrolling through a deep tree.
+        </li>
+        <li>
+          <strong>σ (sigma) annotation.</strong> When a trace contains three or more spans of the
+          same type, Spanlens computes the mean and standard deviation for that type. Any span whose
+          duration is ≥ 2σ above the mean receives a <code>2.3σ latency</code> label in the
+          waterfall. This surfaces statistical outliers — a retrieval call that took five times longer
+          than usual — without you having to compare numbers manually.
+        </li>
+        <li>
+          <strong>Span drawer.</strong> Click any span bar to open the detail drawer. It has four
+          tabs: <em>Input</em>, <em>Output</em>, <em>Metadata</em> (custom key-value attributes
+          attached to the span), and <em>Raw</em> (the full JSON row as stored). LLM spans also show
+          an <em>Open request →</em> link to the corresponding <a href="/requests">/requests</a> row.
         </li>
       </ul>
 
