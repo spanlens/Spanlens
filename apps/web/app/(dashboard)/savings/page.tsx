@@ -35,11 +35,17 @@ function getConfidence(r: ModelRecommendation): 'high' | 'medium' | 'low' {
   return 'low'
 }
 
+const CONFIDENCE_CRITERIA: Record<'high' | 'medium' | 'low', string> = {
+  high:   '≥$40/mo projected savings + ≥100 samples',
+  medium: '≥$10/mo projected savings + ≥30 samples',
+  low:    'below medium threshold (low traffic or small savings)',
+}
+
 function ConfidenceBar({ level }: { level: 'high' | 'medium' | 'low' }) {
   const filled = level === 'high' ? 3 : level === 'medium' ? 2 : 1
   const color = level === 'high' ? 'bg-good' : level === 'medium' ? 'bg-text' : 'bg-text-faint'
   return (
-    <div className="flex items-center gap-1.5">
+    <div className="flex items-center gap-1.5" title={CONFIDENCE_CRITERIA[level]}>
       <div className="flex gap-[3px]">
         {[0, 1, 2].map((i) => (
           <span key={i} className={cn('w-4 h-1 rounded-[1px]', i < filled ? color : 'bg-border')} />
@@ -225,15 +231,15 @@ export default function RecommendationsPage() {
         <div>
           <div className="font-mono text-[10px] text-text-faint uppercase tracking-[0.03em] mb-[3px]">SAMPLES</div>
           <div className={cn('text-[12.5px]', isHidden ? 'text-text-muted' : 'text-text')}>{r.sampleCount.toLocaleString()}</div>
-          <div className="font-mono text-[10.5px] text-good mt-0.5">−cost latency</div>
+          <div className="font-mono text-[10.5px] text-text-faint mt-0.5">~{Math.round(r.avgCompletionTokens)} output tk</div>
         </div>
 
         {/* Confidence */}
         <div>
           <div className="font-mono text-[10px] text-text-faint uppercase tracking-[0.03em] mb-[5px]">CONFIDENCE</div>
           <ConfidenceBar level={conf} />
-          <div className="font-mono text-[10.5px] text-text-faint mt-1">
-            ~{Math.round(r.avgPromptTokens)} prompt tk
+          <div className="font-mono text-[10.5px] text-text-faint mt-1" title={CONFIDENCE_CRITERIA[conf]}>
+            {conf === 'high' ? '≥$40/mo · ≥100 req' : conf === 'medium' ? '≥$10/mo · ≥30 req' : `${r.sampleCount} req · <30 or <$10/mo`}
           </div>
         </div>
 
@@ -441,6 +447,19 @@ export default function RecommendationsPage() {
                   <p className="font-mono text-[12px]">
                     Need more traffic (min 30 requests per model) or already optimal.
                   </p>
+                  {hours < 24 * 30 && (
+                    <p className="font-mono text-[11.5px] text-text-faint">
+                      Try a longer window{' '}
+                      <button
+                        type="button"
+                        className="text-text underline underline-offset-2 hover:no-underline"
+                        onClick={() => setHours(24 * 30)}
+                      >
+                        30d
+                      </button>
+                      {' '}to capture more data.
+                    </p>
+                  )}
                 </div>
               )
             )}
@@ -509,8 +528,9 @@ export default function RecommendationsPage() {
                   </div>
                 </div>
                 <div className="border-t border-border pt-3 font-mono text-[10.5px] text-text-faint leading-relaxed">
-                  Projection = current cost × 30/{windowLabel.replace('d', '')} × (1 − new_model_price / old_model_price).
-                  Assumes identical token counts; real savings shift with traffic.
+                  Projection = spend in window × (30 ÷ {windowLabel.replace('d', '')}) × (1 − cost_ratio).
+                  cost_ratio is the blended price ratio of the two models at typical token mix.
+                  Assumes similar token counts; real savings shift with traffic volume.
                 </div>
               </div>
               <p className="text-[12px]">

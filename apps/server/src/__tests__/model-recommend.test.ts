@@ -28,9 +28,43 @@ describe('matchSubstitute — dated variant handling', () => {
     expect(sub?.suggestedModel).toBe('claude-haiku-4.5')
   })
 
+  it('matches gpt-4.1 → gpt-4.1-mini', () => {
+    const sub = matchSubstitute('openai:gpt-4.1')
+    expect(sub).not.toBeNull()
+    expect(sub?.suggestedModel).toBe('gpt-4.1-mini')
+    expect(sub?.costRatio).toBe(0.2)
+  })
+
+  it('matches claude-sonnet-4-6 → claude-haiku-4.5', () => {
+    const sub = matchSubstitute('anthropic:claude-sonnet-4-6')
+    expect(sub).not.toBeNull()
+    expect(sub?.suggestedModel).toBe('claude-haiku-4.5')
+    expect(sub?.costRatio).toBe(0.333)
+  })
+
+  it('matches claude-opus-4-7 → claude-haiku-4.5', () => {
+    const sub = matchSubstitute('anthropic:claude-opus-4-7')
+    expect(sub).not.toBeNull()
+    expect(sub?.suggestedModel).toBe('claude-haiku-4.5')
+    expect(sub?.costRatio).toBe(0.2)
+  })
+
+  it('matches gemini-2.5-pro → gemini-2.5-flash', () => {
+    const sub = matchSubstitute('gemini:gemini-2.5-pro')
+    expect(sub).not.toBeNull()
+    expect(sub?.suggestedModel).toBe('gemini-2.5-flash')
+    expect(sub?.costRatio).toBe(0.25)
+  })
+
   it('returns null for unknown models', () => {
     expect(matchSubstitute('openai:future-model-9000')).toBeNull()
     expect(matchSubstitute('unknown:anything')).toBeNull()
+  })
+
+  it('returns null for claude-3-5-haiku (no cheaper substitute exists)', () => {
+    // claude-haiku-4.5 ($1/$5) is MORE expensive than claude-3-5-haiku ($0.80/$4)
+    // so no substitution rule should exist
+    expect(matchSubstitute('anthropic:claude-3-5-haiku-20241022')).toBeNull()
   })
 
   it('picks the LONGEST matching prefix — not the first', () => {
