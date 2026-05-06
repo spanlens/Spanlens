@@ -25,7 +25,8 @@ const MODEL_PRICES: Record<string, { prompt: number; completion: number }> = {
   // Anthropic
   'claude-opus-4-7': { prompt: 5, completion: 25 },
   'claude-sonnet-4-6': { prompt: 3, completion: 15 },
-  // claude-haiku-4-5 (undated alias kept first for longest-prefix fallback)
+  // claude-haiku-4-5 — all aliases: dot notation (API alias), dash (API response body), dated
+  'claude-haiku-4.5': { prompt: 1, completion: 5 },
   'claude-haiku-4-5': { prompt: 1, completion: 5 },
   'claude-haiku-4-5-20251001': { prompt: 1, completion: 5 },
   'claude-3-5-sonnet-20241022': { prompt: 3, completion: 15 },
