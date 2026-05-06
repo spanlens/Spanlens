@@ -3,7 +3,7 @@ import { CodeBlock } from '../../_components/code-block'
 export const metadata = {
   title: 'Savings · Spanlens Docs',
   description:
-    'Model recommendations based on your real token distribution. Suggests cheaper substitutes with estimated monthly savings, confidence tiers, and email alerts.',
+    'Model recommendations based on your real token distribution. Suggests cheaper substitutes with estimated monthly savings, confidence tiers, achieved tracking, and email alerts.',
 }
 
 export default function SavingsDocs() {
@@ -14,7 +14,8 @@ export default function SavingsDocs() {
         Spanlens analyzes your LLM traffic over a configurable window (7 / 14 / 30 days) and
         suggests specific <strong>(provider, model)</strong> pairs that can be swapped for cheaper
         alternatives at the same task quality. Recommendations come with an estimated monthly
-        savings figure in USD and a confidence tier — no hand-waving.
+        savings figure in USD, a confidence tier, and automatic detection when you&apos;ve already
+        made the switch.
       </p>
 
       <h2>Why it matters</h2>
@@ -189,6 +190,41 @@ estimatedMonthlySavingsUsd = monthlyCostCurrent - monthlyCostSuggested`}</CodeBl
         <a href="#email-alerts">email alerts</a> once per recommendation.
       </p>
 
+      <h3 id="achieved-tracking">Achieved tracking</h3>
+      <p>
+        Spanlens automatically detects when you&apos;ve acted on a recommendation by comparing
+        spend in two equal-length windows:
+      </p>
+      <CodeBlock language="text">{`currentWindow  = [now - N days  …  now]
+priorWindow    = [now - 2N days …  now - N days]
+
+dropPct = (priorWindowCost − currentWindowCost) / priorWindowCost`}</CodeBlock>
+      <p>
+        When <code>dropPct ≥ 70%</code>, the recommendation is marked <strong>achieved</strong>.
+        The dashboard shows:
+      </p>
+      <ul>
+        <li>A green <strong>ACHIEVED</strong> badge instead of SWAP</li>
+        <li><strong>ACTUAL / MO</strong> — the realized monthly savings based on the observed drop</li>
+        <li>The drop percentage vs. the prior window (&ldquo;usage dropped 72% vs prior 7d&rdquo;)</li>
+        <li>The originally projected savings for comparison</li>
+      </ul>
+      <p>
+        Achieved recommendations live in a separate collapsible section below the open list. They
+        bypass the <code>minSavings</code> filter (you&apos;ve already made the change — hiding the
+        row would be confusing) but still require the prior window spend to be meaningful (≥ the{' '}
+        <code>minSavings</code> threshold annualized).
+      </p>
+      <p>
+        The hero tile gains a <strong>achieved X/mo ✓</strong> line when any achieved swaps exist,
+        and the fourth stat tile switches from showing the best confidence tier to showing total
+        realized monthly savings and the count of adopted swaps.
+      </p>
+      <p>
+        The sort order places open recommendations first (by estimated savings desc), then achieved
+        (by actual savings desc).
+      </p>
+
       <h2 id="analysis-window">Analysis window</h2>
       <p>
         The topbar of the Savings page has a <strong>7d / 14d / 30d</strong> selector that
@@ -208,31 +244,77 @@ estimatedMonthlySavingsUsd = monthlyCostCurrent - monthlyCostSuggested`}</CodeBl
       </ul>
       <p>
         Changing the window re-fetches the API with a different <code>?hours=</code> value and
-        recomputes all savings estimates in-page — no page reload needed.
+        recomputes all savings estimates in-page — no page reload needed. The achieved tracking
+        prior window always equals the same duration as the selected analysis window.
       </p>
 
       <h2>Using it</h2>
 
       <h3>Dashboard</h3>
       <p>
-        Visit <a href="/savings">/savings</a> in the sidebar. The page has three zones:
+        Visit <a href="/savings">/savings</a> in the sidebar. The page has four zones:
       </p>
       <ul>
         <li>
-          <strong>Hero tile</strong> — summary card showing your best confidence tier, how many
-          recommendations are in it, and their combined monthly savings.
+          <strong>Hero tile</strong> — shows your total projected open savings, best confidence
+          tier, and (when present) achieved monthly savings. The three stat tiles to the right
+          show spend in the window, open count, and achieved savings / best confidence tier.
+          Hero tile totals are computed from the <em>unfiltered</em> open set — active filters
+          don&apos;t shrink the headline number.
         </li>
         <li>
-          <strong>Recommendation rows</strong> — each row shows the current model (sample count,
-          monthly cost) → suggested model (projected cost, savings), a confidence bar, a rationale
-          string, and two action buttons: <strong>Simulate</strong> and <strong>Hide</strong>.
+          <strong>Sort &amp; filter bar</strong> — sort by Savings (default), Confidence, or Name;
+          filter by Provider (OpenAI / Anthropic / Gemini) or Confidence tier (High / Medium / Low).
+          Sort and filter state is persisted in <code>localStorage</code> across page reloads.
+          A filter badge shows how many recommendations are visible vs. total when filters are
+          active. A &ldquo;Clear filters&rdquo; empty state appears if filters exclude all open rows.
+        </li>
+        <li>
+          <strong>Open recommendations</strong> — each row shows: current model → suggested model,
+          the confidence bar, rationale text, projected monthly savings, and two action buttons:{' '}
+          <strong>Simulate</strong> (opens the{' '}
+          <a href="#simulate-dialog">Simulate dialog</a>) and <strong>Hide</strong>.
+        </li>
+        <li>
+          <strong>Achieved section</strong> — a collapsible section (click to expand) listing
+          recommendations where Spanlens detected a ≥70% spend drop. Rows show a green ACHIEVED
+          badge, the realized monthly savings, and the drop percentage vs. the prior window. No
+          Simulate button — you already switched.
         </li>
         <li>
           <strong>Hidden section</strong> — recommendations you&apos;ve dismissed live here. A
-          &ldquo;Show hidden&rdquo; toggle expands the section; each row has a{' '}
-          <strong>Restore</strong> button to un-dismiss it.
+          &ldquo;Show hidden&rdquo; toggle expands the section; each row has an{' '}
+          <strong>Unhide</strong> button to restore it.
         </li>
       </ul>
+
+      <h3 id="simulate-dialog">Simulate dialog</h3>
+      <p>
+        Click <strong>Simulate</strong> on any open recommendation to open the Simulate dialog. It
+        contains:
+      </p>
+      <ul>
+        <li>
+          <strong>Cost summary</strong> — spend in the current window, projected monthly savings,
+          and the projection formula for transparency.
+        </li>
+        <li>
+          <strong>Token distribution</strong> — a P50 / P95 / P99 table for prompt and completion
+          tokens, computed from your actual requests (not just the average). Each row is compared
+          against the substitute rule&apos;s <em>envelope</em> — the maximum average token count
+          the cheaper model is rated for.
+        </li>
+      </ul>
+      <p>
+        If <strong>P95 exceeds the envelope</strong> for prompt or completion tokens, a yellow
+        warning box appears: &ldquo;P95 exceeds the substitute envelope for prompt tokens. Some
+        requests may degrade in quality — run a shadow comparison first.&rdquo; This is the key
+        signal that the average looks safe but the tail of your distribution might not be.
+      </p>
+      <p>
+        Token distribution data is fetched lazily — the API call only fires when you open the
+        dialog, not on page load.
+      </p>
 
       <h3>Hiding recommendations</h3>
       <p>
@@ -240,12 +322,12 @@ estimatedMonthlySavingsUsd = monthlyCostCurrent - monthlyCostSuggested`}</CodeBl
         evaluated and decided against. Dismissed rows move to the collapsible &ldquo;Hidden
         recommendations&rdquo; section at the bottom of the page and are stored in{' '}
         <code>localStorage</code> — they persist across page reloads in the same browser. Click{' '}
-        <strong>Restore</strong> inside the hidden section to bring a row back.
+        <strong>Unhide</strong> inside the hidden section to bring a row back.
       </p>
       <p>
         When all visible recommendations have been hidden, the empty state message changes from the
-        generic &ldquo;no opportunities&rdquo; copy to &ldquo;All recommendations hidden — use
-        Restore to bring them back.&rdquo;
+        generic &ldquo;no opportunities&rdquo; copy to &ldquo;All recommendations are hidden —
+        use Show hidden to review them.&rdquo;
       </p>
 
       <h2 id="email-alerts">High-confidence email alerts</h2>
@@ -288,7 +370,12 @@ GET /api/v1/recommendations?minSavings=20      # only show ≥ $20/mo
 #         "suggestedProvider": "openai",
 #         "suggestedModel": "gpt-4o-mini",
 #         "estimatedMonthlySavingsUsd": 387.75,
-#         "reason": "Short inputs/outputs suggest classification/extraction workload — gpt-4o-mini covers it at ~15x lower cost."
+#         "reason": "Short inputs/outputs suggest classification/extraction workload.",
+#         "maxPromptTokens": 500,
+#         "maxCompletionTokens": 150,
+#         "priorWindowCostUsd": 98.10,
+#         "achieved": false,
+#         "actualMonthlySavingsUsd": null
 #       }
 #     ],
 #     "meta": { "hours": 168, "minSavingsUsd": 5 }
@@ -312,10 +399,96 @@ GET /api/v1/recommendations?minSavings=20      # only show ≥ $20/mo
           <tr>
             <td><code>minSavings</code></td>
             <td><code>5</code></td>
-            <td>Minimum projected monthly savings in USD. Recommendations below this threshold are excluded.</td>
+            <td>Minimum projected monthly savings in USD. Recommendations below this threshold are excluded (achieved items bypass this filter).</td>
           </tr>
         </tbody>
       </table>
+
+      <p>Response fields of note:</p>
+      <table>
+        <thead>
+          <tr>
+            <th>Field</th>
+            <th>Type</th>
+            <th>Description</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>maxPromptTokens</code></td>
+            <td><code>number</code></td>
+            <td>The substitute rule&apos;s max avg prompt token envelope — used by the Simulate dialog.</td>
+          </tr>
+          <tr>
+            <td><code>maxCompletionTokens</code></td>
+            <td><code>number</code></td>
+            <td>The substitute rule&apos;s max avg completion token envelope.</td>
+          </tr>
+          <tr>
+            <td><code>priorWindowCostUsd</code></td>
+            <td><code>number | null</code></td>
+            <td>Spend in the prior equal-length window. <code>null</code> if no data exists for that period.</td>
+          </tr>
+          <tr>
+            <td><code>achieved</code></td>
+            <td><code>boolean</code></td>
+            <td><code>true</code> when spend dropped ≥ 70% vs the prior window.</td>
+          </tr>
+          <tr>
+            <td><code>actualMonthlySavingsUsd</code></td>
+            <td><code>number | null</code></td>
+            <td>Realized monthly savings when achieved; <code>null</code> otherwise.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h4>GET /api/v1/recommendations/percentiles</h4>
+      <CodeBlock language="bash">{`GET /api/v1/recommendations/percentiles?provider=openai&model=gpt-4o&hours=168
+
+# →
+#   {
+#     "data": {
+#       "p50PromptTokens": 180,
+#       "p95PromptTokens": 340,
+#       "p99PromptTokens": 520,
+#       "p50CompletionTokens": 85,
+#       "p95CompletionTokens": 148,
+#       "p99CompletionTokens": 210,
+#       "sampleCount": 42103
+#     }
+#   }`}</CodeBlock>
+      <p>Query parameters:</p>
+      <table>
+        <thead>
+          <tr>
+            <th>Parameter</th>
+            <th>Required</th>
+            <th>Description</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>provider</code></td>
+            <td>Yes</td>
+            <td>Provider slug, e.g. <code>openai</code>, <code>anthropic</code>, <code>gemini</code>.</td>
+          </tr>
+          <tr>
+            <td><code>model</code></td>
+            <td>Yes</td>
+            <td>Model string as stored in <code>requests.model</code>, e.g. <code>gpt-4o-2024-08-06</code>.</td>
+          </tr>
+          <tr>
+            <td><code>hours</code></td>
+            <td>No</td>
+            <td>Analysis window in hours. Default <code>168</code> (7 days). Should match the window used for the parent recommendation.</td>
+          </tr>
+        </tbody>
+      </table>
+      <p>
+        Returns <code>null</code> in <code>data</code> if fewer than 5 requests with non-null
+        token counts exist in the window. Computed in-database via{' '}
+        <code>percentile_cont</code> ordered-set aggregation — no row scanning in application code.
+      </p>
 
       <h2>Design choices</h2>
       <ul>
@@ -323,6 +496,12 @@ GET /api/v1/recommendations?minSavings=20      # only show ≥ $20/mo
           <strong>Rules are curated, not ML.</strong> Empirical cost ratios and token envelopes
           come from hand-tested substitutions. A learned recommender would drift as model prices
           change weekly; curated rules are easier to audit and correct.
+        </li>
+        <li>
+          <strong>Achieved tracking uses a spend signal, not a model-field signal.</strong> We
+          compare spend in two consecutive windows rather than inspecting the{' '}
+          <code>requests.model</code> field of future requests. This correctly handles partial
+          rollouts, gradual traffic shifts, and cases where both models are still active.
         </li>
         <li>
           <strong>No A/B auto-rollout.</strong> We show you the recommendation; you decide whether
@@ -338,6 +517,11 @@ GET /api/v1/recommendations?minSavings=20      # only show ≥ $20/mo
           <strong>Email alerts are once-per-recommendation.</strong> Nagging users with the same
           recommendation every day would train them to ignore the emails. One notification per
           high-confidence finding; future findings on new pairs trigger fresh alerts.
+        </li>
+        <li>
+          <strong>P95 vs. P99 for envelope warnings.</strong> P95 was chosen as the warning
+          threshold rather than P99 — P99 would suppress warnings for tails that are meaningfully
+          out-of-envelope. P99 is shown for reference in the Simulate dialog.
         </li>
       </ul>
 
@@ -355,8 +539,14 @@ GET /api/v1/recommendations?minSavings=20      # only show ≥ $20/mo
           comparisons across providers are too workload-dependent to ship blind.
         </li>
         <li>
-          <strong>Dismiss state is browser-local.</strong> Hiding a recommendation is stored in{' '}
-          <code>localStorage</code> and does not sync across devices or team members.
+          <strong>Dismiss and sort/filter state are browser-local.</strong> Both are stored in{' '}
+          <code>localStorage</code> and do not sync across devices or team members.
+        </li>
+        <li>
+          <strong>Achieved tracking requires two full windows of data.</strong> If your organization
+          has been on Spanlens for less than 2× the analysis window, the prior window will be empty
+          and <code>priorWindowCostUsd</code> will be <code>null</code> — achieved detection is
+          not possible for that period.
         </li>
       </ul>
 
@@ -365,6 +555,7 @@ GET /api/v1/recommendations?minSavings=20      # only show ≥ $20/mo
         Related: <a href="/docs/features/prompts">Prompts</a> (A/B by cost),{' '}
         <a href="/savings">/savings</a> dashboard. Source:{' '}
         <code>apps/server/src/lib/model-recommend-rules.ts</code>,{' '}
+        <code>apps/server/src/lib/model-recommend.ts</code>,{' '}
         <code>apps/server/src/lib/recommendation-notify.ts</code>.
       </p>
     </div>
