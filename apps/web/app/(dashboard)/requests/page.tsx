@@ -316,7 +316,7 @@ function RequestDrawer({ requestId, visible, onClose, onPrev, onNext, hasPrev, h
           <>
             <div className="font-mono text-[13px] text-text mb-1 truncate">{req.id}</div>
             <div className="flex items-center gap-2 text-[12px] text-text-muted">
-              <span>{new Date(req.created_at).toLocaleString()}</span>
+              <span suppressHydrationWarning>{new Date(req.created_at).toLocaleString()}</span>
               {req.status_code >= 400 && (
                 <>
                   <span className="text-text-faint">·</span>
@@ -760,6 +760,7 @@ function RequestsTable({
                   <span
                     className="text-text-faint text-right"
                     title={new Date(req.created_at).toLocaleString()}
+                    suppressHydrationWarning
                   >{relAge(req.created_at)}</span>
                 </div>
               )
