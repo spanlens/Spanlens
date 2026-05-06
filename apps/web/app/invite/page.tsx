@@ -1,5 +1,6 @@
 'use client'
 
+import Image from 'next/image'
 import { Suspense, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
@@ -181,7 +182,7 @@ function InvitePageInner() {
     <div className="min-h-screen bg-bg-elev flex items-center justify-center p-10">
       <div className="w-[440px] max-w-full bg-bg border border-border rounded-lg p-8">
         <div className="flex items-center gap-2 mb-6">
-          <img src="/icon.png" alt="Spanlens" width={20} height={20} className="shrink-0 rounded-[5px]" />
+          <Image src="/icon.png" alt="Spanlens" width={20} height={20} className="shrink-0 rounded-[5px]" priority />
           <span className="font-semibold text-[15px] tracking-[-0.3px] text-text">spanlens</span>
         </div>
 

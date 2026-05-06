@@ -1,4 +1,5 @@
 'use client'
+import Image from 'next/image'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useTheme } from 'next-themes'
@@ -9,7 +10,7 @@ import { useSidebar } from '@/lib/sidebar-context'
 function LogoMark() {
   return (
     <Link href="/" aria-label="Spanlens home" className="flex items-center gap-2 px-1 py-1 hover:opacity-80 transition-opacity">
-      <img src="/icon.png" alt="Spanlens" width={20} height={20} className="shrink-0 rounded-[5px]" />
+      <Image src="/icon.png" alt="Spanlens" width={20} height={20} className="shrink-0 rounded-[5px]" priority />
       <span className="font-semibold text-[15px] tracking-[-0.3px] text-text">spanlens</span>
     </Link>
   )

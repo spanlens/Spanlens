@@ -1,5 +1,6 @@
 'use client'
 import { useState, useEffect } from 'react'
+import Image from 'next/image'
 import Link from 'next/link'
 
 const LAUNCH_DATE = new Date('2026-06-03T00:00:00+09:00') // KST midnight
@@ -8,7 +9,7 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'https://spanlens-server.ver
 function LogoMark() {
   return (
     <Link href="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
-      <img src="/icon.png" alt="Spanlens" width={20} height={20} className="shrink-0 rounded-[5px]" />
+      <Image src="/icon.png" alt="Spanlens" width={20} height={20} className="shrink-0 rounded-[5px]" priority />
       <span className="font-semibold text-[15px] tracking-[-0.3px] text-text">spanlens</span>
     </Link>
   )
