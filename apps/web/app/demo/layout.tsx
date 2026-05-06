@@ -1,9 +1,11 @@
 import Link from 'next/link'
 import { DemoSidebar } from '@/components/layout/demo-sidebar'
 import { SidebarProvider } from '@/lib/sidebar-context'
+import { CommandPaletteProvider } from '@/components/command-palette'
 
 export default function DemoLayout({ children }: { children: React.ReactNode }) {
   return (
+    <CommandPaletteProvider>
     <SidebarProvider>
     <div className="flex h-screen overflow-hidden bg-bg">
       <DemoSidebar />
@@ -25,5 +27,6 @@ export default function DemoLayout({ children }: { children: React.ReactNode }) 
       </div>
     </div>
     </SidebarProvider>
+    </CommandPaletteProvider>
   )
 }
