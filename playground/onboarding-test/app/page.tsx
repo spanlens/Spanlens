@@ -6,6 +6,7 @@ type TraceScenario = 'multistep' | 'parallel' | 'error'
 
 interface CallResult {
   ok: boolean
+  traceId?: string
   reply?: string
   usage?: unknown
   latencyMs?: number
@@ -122,6 +123,19 @@ export default function Home() {
               <div className={`result ${result.ok ? '' : 'error'}`}>
                 {result.ok ? (
                   <>
+                    {result.traceId && (
+                      <div>
+                        trace:{' '}
+                        <a
+                          href={`https://www.spanlens.io/traces/${result.traceId}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{ color: '#6ee7b7', textDecoration: 'underline' }}
+                        >
+                          {result.traceId}
+                        </a>
+                      </div>
+                    )}
                     {result.reply}
                     <div className="meta">
                       {result.latencyMs}ms · usage: {JSON.stringify(result.usage)}
