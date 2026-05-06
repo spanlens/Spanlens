@@ -109,6 +109,10 @@ export default function RequestsDocs() {
       </p>
 
       <h3>List view &amp; filters</h3>
+      <p>
+        The list auto-refreshes every 10 seconds so new requests appear without a page reload. A
+        manual <em>↻</em> button in the toolbar forces an immediate refetch.
+      </p>
       <p>The main table is paginated (up to 100 rows/page) with these filters:</p>
       <ul>
         <li><strong>Provider</strong> — exact match (openai / anthropic / gemini)</li>
@@ -128,6 +132,32 @@ export default function RequestsDocs() {
       <p>
         Hovering the <strong>Age</strong> cell shows a tooltip with the full timestamp.
       </p>
+
+      <h3>Replay</h3>
+      <p>
+        Every request detail page has a <strong>Replay</strong> button. It opens a modal where you
+        can re-run the original call against a different model and compare the result inline —
+        without touching your application code.
+      </p>
+      <ul>
+        <li>
+          <strong>Model selector.</strong> A dropdown pre-populated with models for the same
+          provider. The original model is always available as the first option. Changing the model
+          resets any previous result.
+        </li>
+        <li>
+          <strong>Run.</strong> Executes the replay server-side via{' '}
+          <code>POST /api/v1/requests/:id/replay/run</code>. Spanlens decrypts your provider key,
+          strips any <code>stream: true</code> flag, forwards the original request body with the
+          new model, and returns a result card showing latency, token counts, and cost. The replayed
+          call is also logged as a new row in <a href="/requests">/requests</a>.
+        </li>
+        <li>
+          <strong>Copy curl.</strong> Fetches a ready-to-run <code>curl</code> snippet from{' '}
+          <code>POST /api/v1/requests/:id/replay</code> and copies it to the clipboard. The snippet
+          is also displayed in the modal so you can inspect or edit it before running.
+        </li>
+      </ul>
 
       <h3>Detail drawer</h3>
       <p>
@@ -215,8 +245,12 @@ GET /api/v1/requests
 # One request by id (includes full request_body + response_body)
 GET /api/v1/requests/:id
 
-# Replay a request (returns a proxy-ready payload — no UI button yet)
+# Replay — curl snippet (proxy-ready payload)
 POST /api/v1/requests/:id/replay
+  Body: { "model": "gpt-4o-mini" }  # optional model override
+
+# Replay — execute server-side and return result (latency / tokens / cost)
+POST /api/v1/requests/:id/replay/run
   Body: { "model": "gpt-4o-mini" }  # optional model override`}</CodeBlock>
 
       <p>
@@ -255,11 +289,6 @@ POST /api/v1/requests/:id/replay
           <strong>No full-text body search in the UI.</strong> The model filter uses{' '}
           <code>ilike</code>; there is no free-text search over request/response body content.
           Heavier search needs a separate OLAP layer (ClickHouse is the likely path).
-        </li>
-        <li>
-          <strong>No UI replay button.</strong> The backend exposes{' '}
-          <code>POST /api/v1/requests/:id/replay</code> which returns a proxy-ready payload, but
-          there is no one-click &ldquo;send this request again&rdquo; button in the dashboard yet.
         </li>
         <li>
           <strong>Streaming response bodies not captured.</strong> The proxy streams responses
