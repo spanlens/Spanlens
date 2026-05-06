@@ -104,7 +104,7 @@ function AlertRuleRow({
           &gt; {fmtThreshold(a.type, a.threshold)}
           <span className="text-text-faint"> for </span>{a.window_minutes}m
           {a.last_triggered_at && (
-            <span className="text-text-faint ml-2">· last fired {new Date(a.last_triggered_at).toLocaleString()}</span>
+            <span className="text-text-faint ml-2" suppressHydrationWarning>· last fired {new Date(a.last_triggered_at).toLocaleString()}</span>
           )}
         </div>
       </div>
@@ -426,7 +426,7 @@ export default function AlertsPage() {
                 <div className="rounded-[6px] border border-border overflow-hidden">
                   {deliveries.slice(0, 10).map((d) => (
                     <div key={d.id} className="flex items-center gap-4 px-[14px] py-2 border-b border-border last:border-0 text-[11.5px]">
-                      <span className="font-mono text-text-faint">{new Date(d.created_at).toLocaleString()}</span>
+                      <span className="font-mono text-text-faint" suppressHydrationWarning>{new Date(d.created_at).toLocaleString()}</span>
                       <span className={cn('font-mono px-1.5 py-0.5 rounded text-[10px] uppercase tracking-[0.04em]',
                         d.status === 'sent' ? 'bg-good/10 text-good' : 'bg-bad/10 text-bad')}>
                         {d.status}
