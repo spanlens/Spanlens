@@ -1,5 +1,6 @@
 'use client'
 import { useEffect, useState } from 'react'
+import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
 
 interface Heading {
@@ -21,7 +22,11 @@ export function TableOfContents() {
   const [headings, setHeadings] = useState<Heading[]>([])
   const [activeId, setActiveId] = useState<string>('')
 
+  const pathname = usePathname()
+
   useEffect(() => {
+    setActiveId('')
+
     const article = document.querySelector('article')
     if (!article) return
 
@@ -46,7 +51,7 @@ export function TableOfContents() {
     )
     els.forEach((el) => observer.observe(el))
     return () => observer.disconnect()
-  }, [])
+  }, [pathname])
 
   if (headings.length === 0) return null
 
