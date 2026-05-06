@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { authJwt, type JwtContext } from '../middleware/authJwt.js'
 import { supabaseAdmin } from '../lib/db.js'
+import { computeCriticalPath } from '../lib/critical-path.js'
 
 export const tracesRouter = new Hono<JwtContext>()
 
@@ -70,8 +71,10 @@ tracesRouter.get('/:id', async (c) => {
 
   if (spansErr) return c.json({ error: 'Failed to fetch spans' }, 500)
 
+  const criticalSpanIds = computeCriticalPath(spans ?? [])
+
   return c.json({
     success: true,
-    data: { ...trace, spans: spans ?? [] },
+    data: { ...trace, spans: spans ?? [], critical_span_ids: criticalSpanIds },
   })
 })
