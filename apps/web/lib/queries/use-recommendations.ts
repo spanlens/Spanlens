@@ -26,16 +26,26 @@ export interface ModelRecommendation {
   actualMonthlySavingsUsd: number | null
 }
 
-export function useRecommendations(params: { hours?: number; minSavings?: number } = {}) {
+export type RecommendationsParams = { hours?: number; minSavings?: number }
+
+export function recommendationsQueryKey(params: RecommendationsParams) {
+  return ['recommendations', params] as const
+}
+
+export function buildRecommendationsPath(params: RecommendationsParams): string {
+  const qs = new URLSearchParams()
+  if (params.hours) qs.set('hours', String(params.hours))
+  if (params.minSavings) qs.set('minSavings', String(params.minSavings))
+  const suffix = qs.size > 0 ? `?${qs}` : ''
+  return `/api/v1/recommendations${suffix}`
+}
+
+export function useRecommendations(params: RecommendationsParams = {}) {
   return useQuery({
-    queryKey: ['recommendations', params] as const,
+    queryKey: recommendationsQueryKey(params),
     queryFn: async () => {
-      const qs = new URLSearchParams()
-      if (params.hours) qs.set('hours', String(params.hours))
-      if (params.minSavings) qs.set('minSavings', String(params.minSavings))
-      const suffix = qs.size > 0 ? `?${qs}` : ''
       const res = await apiGet<ApiEnvelope<ModelRecommendation[]>>(
-        `/api/v1/recommendations${suffix}`,
+        buildRecommendationsPath(params),
       )
       return res.data ?? []
     },

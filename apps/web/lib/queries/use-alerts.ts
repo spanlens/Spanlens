@@ -11,9 +11,9 @@ import type {
   NotificationChannelRow,
 } from './types'
 
-const alertsKey = ['alerts'] as const
-const channelsKey = ['alerts', 'channels'] as const
-const deliveriesKey = ['alerts', 'deliveries'] as const
+export const alertsKey = ['alerts'] as const
+export const channelsKey = ['alerts', 'channels'] as const
+export const deliveriesKey = ['alerts', 'deliveries'] as const
 
 // ── Alerts CRUD ────────────────────────────────────────────────
 
