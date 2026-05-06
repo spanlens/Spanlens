@@ -13,7 +13,6 @@ import { useAuditLogs } from '@/lib/queries/use-audit-logs'
 import { usePrompts } from '@/lib/queries/use-prompts'
 import { useSecuritySummary } from '@/lib/queries/use-security'
 import { useDismissals, useDismissCard } from '@/lib/queries/use-dismissals'
-import { useCurrentProjectId } from '@/lib/project-context'
 import { cn } from '@/lib/utils'
 import dynamic from 'next/dynamic'
 import { WelcomeBanner } from '@/components/dashboard/welcome-banner'
@@ -183,7 +182,6 @@ const LIVE_REFETCH_MS = 30_000
 export function DashboardClient() {
   const [timeRange, setTimeRange] = useState('24h')
   const hours = timeRangeToHours(timeRange)
-  const projectId = useCurrentProjectId()
   const dismissalsQuery = useDismissals()
   const dismissMutation = useDismissCard()
   const dismissedCards = useMemo(
@@ -198,18 +196,15 @@ export function DashboardClient() {
     return { from: new Date(fromMs).toISOString() }
   }, [hours])
 
-  const scopeArg = projectId ? { projectId } : {}
-  const timeArg = { ...scopeArg, ...queryDateRange }
-
-  const overview = useStatsOverview({ ...timeArg, compare: true }, { refetchInterval: LIVE_REFETCH_MS })
-  const timeseries = useStatsTimeseries(timeArg, { refetchInterval: LIVE_REFETCH_MS })
-  const anomalies = useAnomalies({ ...scopeArg, observationHours: hours })
+  const overview = useStatsOverview({ ...queryDateRange, compare: true }, { refetchInterval: LIVE_REFETCH_MS })
+  const timeseries = useStatsTimeseries(queryDateRange, { refetchInterval: LIVE_REFETCH_MS })
+  const anomalies = useAnomalies({ observationHours: hours })
   const alerts = useAlerts()
   const recommendations = useRecommendations({ hours })
   const auditLogs = useAuditLogs({ limit: 6 })
-  const promptsQuery = usePrompts(projectId ?? undefined)
-  const modelsQuery = useStatsModels(hours, projectId ?? undefined, { refetchInterval: LIVE_REFETCH_MS })
-  const spendForecast = useSpendForecast(projectId ?? undefined)
+  const promptsQuery = usePrompts()
+  const modelsQuery = useStatsModels(hours, undefined, { refetchInterval: LIVE_REFETCH_MS })
+  const spendForecast = useSpendForecast()
   const securitySummary = useSecuritySummary(hours)
 
   const o = overview.data
