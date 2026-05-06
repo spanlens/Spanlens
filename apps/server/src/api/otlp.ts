@@ -32,11 +32,9 @@ import {
 
 export const otlpRouter = new Hono<ApiKeyContext>()
 
-otlpRouter.use('*', authApiKey)
-
 // ── POST /v1/traces ────────────────────────────────────────────────────────────
 
-otlpRouter.post('/v1/traces', async (c) => {
+otlpRouter.post('/v1/traces', authApiKey, async (c) => {
   const organizationId = c.get('organizationId')
   const projectId      = c.get('projectId')
   const apiKeyId       = c.get('apiKeyId')
