@@ -150,7 +150,7 @@ function AttnCard({ kind, title, meta, hint, cta, href, onDismiss }: AttnCardPro
       </div>
       <div className="text-[14.5px] font-medium text-text leading-snug">{title}</div>
       <div className="font-mono text-[11px] text-text-muted tracking-[0.02em]">{meta}</div>
-      <div className="text-[12.5px] text-text-muted leading-relaxed">{hint}</div>
+      <div suppressHydrationWarning className="text-[12.5px] text-text-muted leading-relaxed">{hint}</div>
       <div className="flex-1" />
       <Link
         href={href}
@@ -761,7 +761,7 @@ export default function DashboardPage() {
                       <span className={cn('w-2 h-2 rounded-full shrink-0', fired ? 'bg-accent' : 'bg-text-faint')} />
                       <div className="flex-1 min-w-0">
                         <div className="text-[12.5px] text-text truncate">{a.name}</div>
-                        <div className="font-mono text-[10px] text-text-faint mt-0.5 uppercase tracking-[0.04em]">
+                        <div suppressHydrationWarning className="font-mono text-[10px] text-text-faint mt-0.5 uppercase tracking-[0.04em]">
                           {fired && minsAgo != null ? `fired ${minsAgo}m ago` : a.type}
                         </div>
                       </div>

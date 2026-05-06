@@ -424,7 +424,7 @@ export default function ProjectsPage() {
                                   </div>
                                   <div className="font-mono text-[10.5px] text-text-faint mt-0.5">
                                     {key.key_prefix}…
-                                    <span className="ml-2">
+                                    <span suppressHydrationWarning className="ml-2">
                                       {key.last_used_at
                                         ? `· last used ${Math.floor((Date.now() - Date.parse(key.last_used_at)) / 86_400_000)}d ago`
                                         : '· never used'}
