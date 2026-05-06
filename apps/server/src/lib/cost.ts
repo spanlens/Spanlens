@@ -11,25 +11,33 @@ export interface CostResult {
   completionCost: number
 }
 
-// Prices in USD per 1M tokens (updated 2026-04)
+// Prices in USD per 1M tokens (verified against provider pricing pages 2026-05)
 const MODEL_PRICES: Record<string, { prompt: number; completion: number }> = {
   // OpenAI
   'gpt-4o': { prompt: 2.5, completion: 10 },
   'gpt-4o-mini': { prompt: 0.15, completion: 0.6 },
+  'gpt-4.1': { prompt: 2.0, completion: 8.0 },
+  'gpt-4.1-mini': { prompt: 0.4, completion: 1.6 },
+  'gpt-4.1-nano': { prompt: 0.1, completion: 0.4 },
   'gpt-4-turbo': { prompt: 10, completion: 30 },
   'gpt-4': { prompt: 30, completion: 60 },
   'gpt-3.5-turbo': { prompt: 0.5, completion: 1.5 },
   // Anthropic
-  'claude-opus-4-7': { prompt: 15, completion: 75 },
+  'claude-opus-4-7': { prompt: 5, completion: 25 },
   'claude-sonnet-4-6': { prompt: 3, completion: 15 },
-  'claude-haiku-4-5-20251001': { prompt: 0.8, completion: 4 },
+  // claude-haiku-4-5 (undated alias kept first for longest-prefix fallback)
+  'claude-haiku-4-5': { prompt: 1, completion: 5 },
+  'claude-haiku-4-5-20251001': { prompt: 1, completion: 5 },
   'claude-3-5-sonnet-20241022': { prompt: 3, completion: 15 },
   'claude-3-5-haiku-20241022': { prompt: 0.8, completion: 4 },
   'claude-3-opus-20240229': { prompt: 15, completion: 75 },
   // Gemini
+  'gemini-2.5-pro': { prompt: 1.25, completion: 10 },
+  'gemini-2.5-flash': { prompt: 0.3, completion: 2.5 },
+  'gemini-2.5-flash-lite': { prompt: 0.1, completion: 0.4 },
+  'gemini-2.0-flash': { prompt: 0.1, completion: 0.4 }, // deprecated 2026-06-01, kept for historical data
   'gemini-1.5-pro': { prompt: 1.25, completion: 5 },
   'gemini-1.5-flash': { prompt: 0.075, completion: 0.3 },
-  'gemini-2.0-flash': { prompt: 0.1, completion: 0.4 },
 }
 
 /**
