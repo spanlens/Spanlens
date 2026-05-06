@@ -14,10 +14,8 @@ import { useAlerts } from '@/lib/queries/use-alerts'
 import { useRecommendations } from '@/lib/queries/use-recommendations'
 import { useIsAdmin } from '@/lib/queries/use-current-role'
 import { useOrganization } from '@/lib/queries/use-organization'
-import { useProjects } from '@/lib/queries/use-projects'
 import { useWorkspaces, useCreateWorkspace } from '@/lib/queries/use-workspaces'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { useCurrentProjectId, useSetCurrentProjectId } from '@/lib/project-context'
 import { writeWorkspaceCookie } from '@/lib/workspace-cookie'
 
 /* ── Logo mark ── */
@@ -36,24 +34,16 @@ function LogoMark() {
   )
 }
 
-/* ── Workspace + project switcher ──
+/* ── Workspace switcher ──
  *
- * One dropdown that exposes two scopes:
- *   - Top section: workspaces the user belongs to (switches `sb-ws` cookie +
- *     reloads so middleware/authJwt pick up the new scope).
- *   - Bottom section: projects within the current workspace (client-side
- *     state — no reload needed).
- *
- * Workspace switch requires a full reload because the server resolves the
- * active org from the cookie for every request, and TanStack caches are
- * keyed by queries that silently assumed org A's data. Reload wipes everything.
+ * Switches between workspaces by writing the `sb-ws` cookie and doing a full
+ * page reload so middleware/authJwt pick up the new scope and TanStack caches
+ * start fresh. Project scope is always "All projects" (null) — project
+ * filtering is done per-page, not here.
  */
 function WorkspaceSwitcher() {
   const org = useOrganization()
   const workspaces = useWorkspaces()
-  const projects = useProjects()
-  const currentProjectId = useCurrentProjectId()
-  const setProjectId = useSetCurrentProjectId()
   const createWorkspace = useCreateWorkspace()
   const [open, setOpen] = useState(false)
   const [newOpen, setNewOpen] = useState(false)
@@ -97,13 +87,7 @@ function WorkspaceSwitcher() {
   }
 
   const orgName = org.data?.name ?? 'workspace'
-  const allProjects = projects.data ?? []
   const allWorkspaces = workspaces.data ?? []
-
-  const current = currentProjectId
-    ? allProjects.find((p) => p.id === currentProjectId)
-    : null
-  const label = current?.name ?? 'All projects'
 
   return (
     <div ref={containerRef} className="relative">
@@ -112,10 +96,7 @@ function WorkspaceSwitcher() {
         onClick={() => setOpen((v) => !v)}
         className="w-full flex items-center justify-between px-[10px] py-[7px] rounded-[5px] border border-border bg-bg-muted text-[12px] font-mono text-text-muted hover:bg-bg-muted/80 transition-colors"
       >
-        <span className="truncate">
-          <span className="text-text-faint">{orgName} /</span>{' '}
-          <span className="text-text">{label}</span>
-        </span>
+        <span className="truncate text-text">{orgName}</span>
         <span className="text-text-faint text-[10px] shrink-0 ml-2">⌄</span>
       </button>
       {open && (
@@ -160,52 +141,6 @@ function WorkspaceSwitcher() {
           >
             + New workspace
           </button>
-          <div className="h-px bg-border mx-[6px] my-[3px]" />
-
-          <div className="font-mono text-[9.5px] uppercase tracking-[0.06em] text-text-faint px-[10px] pt-[7px] pb-[3px]">
-            Projects
-          </div>
-          {allProjects.length > 1 && (
-            <button
-              type="button"
-              onClick={() => { setProjectId(null); setOpen(false) }}
-              className={cn(
-                'w-full text-left px-[10px] py-[6px] text-[12px] font-mono transition-colors flex items-center justify-between',
-                currentProjectId === null ? 'bg-bg-muted text-text' : 'text-text-muted hover:bg-bg-muted hover:text-text',
-              )}
-              role="menuitem"
-            >
-              <span>All projects</span>
-              {currentProjectId === null && <span className="text-accent">✓</span>}
-            </button>
-          )}
-          {allProjects.map((p) => {
-            const selected = p.id === currentProjectId
-            return (
-              <button
-                key={p.id}
-                type="button"
-                onClick={() => { setProjectId(p.id); setOpen(false) }}
-                className={cn(
-                  'w-full text-left px-[10px] py-[6px] text-[12px] font-mono transition-colors flex items-center justify-between',
-                  selected ? 'bg-bg-muted text-text' : 'text-text-muted hover:bg-bg-muted hover:text-text',
-                )}
-                role="menuitem"
-              >
-                <span className="truncate">{p.name}</span>
-                {selected && <span className="text-accent">✓</span>}
-              </button>
-            )
-          })}
-          <div className="h-px bg-border mx-[6px]" />
-          <Link
-            href="/projects"
-            onClick={() => setOpen(false)}
-            className="w-full text-left px-[10px] py-[7px] text-[12px] font-mono text-text-faint hover:bg-bg-muted hover:text-text transition-colors flex items-center"
-            role="menuitem"
-          >
-            + New project
-          </Link>
         </div>
       )}
 
