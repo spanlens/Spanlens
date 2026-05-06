@@ -1112,6 +1112,8 @@ export type Database = {
           duration_ms: number | null
           ended_at: string | null
           error_message: string | null
+          external_parent_span_id: string | null
+          external_span_id: string | null
           id: string
           input: Json | null
           metadata: Json | null
@@ -1134,6 +1136,8 @@ export type Database = {
           duration_ms?: number | null
           ended_at?: string | null
           error_message?: string | null
+          external_parent_span_id?: string | null
+          external_span_id?: string | null
           id?: string
           input?: Json | null
           metadata?: Json | null
@@ -1156,6 +1160,8 @@ export type Database = {
           duration_ms?: number | null
           ended_at?: string | null
           error_message?: string | null
+          external_parent_span_id?: string | null
+          external_span_id?: string | null
           id?: string
           input?: Json | null
           metadata?: Json | null
@@ -1311,6 +1317,7 @@ export type Database = {
           duration_ms: number | null
           ended_at: string | null
           error_message: string | null
+          external_trace_id: string | null
           id: string
           metadata: Json | null
           name: string
@@ -1329,6 +1336,7 @@ export type Database = {
           duration_ms?: number | null
           ended_at?: string | null
           error_message?: string | null
+          external_trace_id?: string | null
           id?: string
           metadata?: Json | null
           name: string
@@ -1347,6 +1355,7 @@ export type Database = {
           duration_ms?: number | null
           ended_at?: string | null
           error_message?: string | null
+          external_trace_id?: string | null
           id?: string
           metadata?: Json | null
           name?: string
@@ -1652,6 +1661,10 @@ export type Database = {
         }[]
       }
       is_org_member: { Args: { org_id: string }; Returns: boolean }
+      link_otlp_span_parents: {
+        Args: { p_trace_id: string }
+        Returns: undefined
+      }
       prune_logs_by_retention: { Args: never; Returns: Json }
       prune_rate_limit_buckets: { Args: never; Returns: number }
       security_summary: {
