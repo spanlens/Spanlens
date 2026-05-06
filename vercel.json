@@ -11,10 +11,15 @@
   },
   "rewrites": [{ "source": "/(.*)", "destination": "/api/index" }],
   "crons": [
-    { "path": "/cron/evaluate-alerts",           "schedule": "*/15 * * * *" },
-    { "path": "/cron/snapshot-anomalies",         "schedule": "0 1 * * *"   },
-    { "path": "/cron/stale-key-reminders",        "schedule": "0 9 * * 1"   },
-    { "path": "/cron/leak-detect-keys",           "schedule": "0 4 * * *"   },
-    { "path": "/cron/recommend-savings-alerts",   "schedule": "0 9 * * *"   }
+    { "path": "/cron/evaluate-alerts",            "schedule": "*/15 * * * *" },
+    { "path": "/cron/aggregate-usage",            "schedule": "0 * * * *"    },
+    { "path": "/cron/check-quota-warnings",       "schedule": "15 * * * *"   },
+    { "path": "/cron/prune-logs",                 "schedule": "0 3 * * *"    },
+    { "path": "/cron/report-usage-overage",       "schedule": "30 3 * * *"   },
+    { "path": "/cron/snapshot-anomalies",         "schedule": "0 4 * * *"    },
+    { "path": "/cron/leak-detect-keys",           "schedule": "0 4 * * *"    },
+    { "path": "/cron/stale-key-reminders",        "schedule": "0 9 * * 1"    },
+    { "path": "/cron/recommend-savings-alerts",   "schedule": "0 9 * * *"    },
+    { "path": "/health",                          "schedule": "*/10 * * * *" }
   ]
 }
