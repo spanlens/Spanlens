@@ -108,12 +108,45 @@ const [resA, resB] = await Promise.all([
 
 await trace.end()`}</CodeBlock>
 
+      <h3>Option 4 — OpenTelemetry SDK (OTLP)</h3>
+      <p>
+        Already using an OTel SDK in Python, Go, Java, or another language? Point its OTLP exporter
+        at Spanlens and spans flow in automatically — no code rewrite required. Spanlens reads the{' '}
+        <a
+          href="https://opentelemetry.io/docs/specs/semconv/gen-ai/gen-ai-spans/"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          gen_ai semantic conventions
+        </a>{' '}
+        and maps them to the same trace/span model as the JS SDK.
+      </p>
+      <p>
+        See <a href="/docs/otel">OpenTelemetry (OTLP)</a> for the endpoint URL, required
+        attributes, and quickstart examples.
+      </p>
+
       <h3>Viewing traces in the dashboard</h3>
       <p>
         Open <a href="/traces">/traces</a>. Each row is a trace, with total duration and span count.
         Click one to see the full tree: waterfall timeline, per-span latency, inputs/outputs, and
         direct links to the underlying <a href="/requests">/requests</a> row for any LLM span.
       </p>
+      <p>
+        The detail page also shows two automatic analyses below the waterfall:
+      </p>
+      <ul>
+        <li>
+          <strong>Critical path.</strong> Spans on the longest chain from root to leaf are labelled{' '}
+          <code>critical</code>. The summary shows what percentage of wall-clock time the critical
+          path represents and which spans it passes through (e.g.{' '}
+          <code>answer-question → generate</code>). Useful for knowing which span to optimise first.
+        </li>
+        <li>
+          <strong>Longest span.</strong> Highlights the single span with the greatest absolute
+          duration so you can jump straight to it without scrolling through a deep tree.
+        </li>
+      </ul>
 
       <h2>Design choices worth knowing</h2>
       <ul>
@@ -155,8 +188,10 @@ await trace.end()`}</CodeBlock>
           panel.
         </li>
         <li>
-          <strong>No OpenTelemetry export yet.</strong> If your team standardizes on OTel, you
-          can&apos;t pipe Spanlens spans into Datadog/Honeycomb today. Planned for Phase 5.
+          <strong>No OpenTelemetry export yet.</strong> Spanlens accepts OTLP{' '}
+          <em>ingest</em> (OTel SDK → Spanlens), but the reverse direction — exporting
+          Spanlens spans into Datadog, Honeycomb, or another APM — is not yet supported.
+          Planned for a future release.
         </li>
         <li>
           <strong>Trace IDs are opaque strings.</strong> We don&apos;t yet enforce W3C traceparent
@@ -167,8 +202,10 @@ await trace.end()`}</CodeBlock>
 
       <hr />
       <p className="text-sm text-muted-foreground">
-        Related: <a href="/docs/features/requests">Requests</a> (flat log), <a href="/docs/sdk">@spanlens/sdk</a>{' '}
-        (API reference), <a href="/traces">/traces</a> dashboard.
+        Related: <a href="/docs/features/requests">Requests</a> (flat log),{' '}
+        <a href="/docs/sdk">@spanlens/sdk</a> (API reference),{' '}
+        <a href="/docs/otel">OpenTelemetry (OTLP)</a> (Python / Go / Java),{' '}
+        <a href="/traces">/traces</a> dashboard.
       </p>
     </div>
   )
