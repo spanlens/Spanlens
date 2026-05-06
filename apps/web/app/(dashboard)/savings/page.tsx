@@ -1,13 +1,6 @@
 'use client'
 import { useState, useEffect } from 'react'
-import { Copy, Check, CheckCircle2 } from 'lucide-react'
 import { useRecommendations, type ModelRecommendation } from '@/lib/queries/use-recommendations'
-import {
-  useRecommendationApplications,
-  useMarkApplied,
-  useUnmarkApplied,
-  type RecommendationApplication,
-} from '@/lib/queries/use-recommendation-applications'
 import { Topbar } from '@/components/layout/topbar'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
@@ -18,13 +11,6 @@ function fmtUsd(v: number): string {
   if (v >= 100) return `$${Math.round(v)}`
   if (v >= 1) return `$${v.toFixed(2)}`
   return `$${v.toFixed(5)}`
-}
-
-function relativeDate(isoStr: string): string {
-  const days = Math.floor((Date.now() - Date.parse(isoStr)) / (1000 * 60 * 60 * 24))
-  if (days === 0) return 'today'
-  if (days === 1) return '1 day ago'
-  return `${days} days ago`
 }
 
 // ── Confidence helpers ────────────────────────────────────────────────────────
@@ -77,24 +63,6 @@ function loadDismissed(): Set<string> {
   }
 }
 
-// ── Application key helper ────────────────────────────────────────────────────
-
-function appliedKey(r: ModelRecommendation): string {
-  return `${r.currentProvider}/${r.currentModel}/${r.suggestedProvider}/${r.suggestedModel}`
-}
-
-function buildAppliedMap(applications: RecommendationApplication[]): Map<string, RecommendationApplication> {
-  const map = new Map<string, RecommendationApplication>()
-  for (const app of applications) {
-    const key = `${app.provider}/${app.model}/${app.suggestedProvider}/${app.suggestedModel}`
-    // Keep the most recent one if duplicates exist
-    if (!map.has(key) || Date.parse(app.appliedAt) > Date.parse(map.get(key)!.appliedAt)) {
-      map.set(key, app)
-    }
-  }
-  return map
-}
-
 // ── Window options ────────────────────────────────────────────────────────────
 
 const WINDOW_OPTIONS = [
@@ -108,21 +76,15 @@ const WINDOW_OPTIONS = [
 export default function RecommendationsPage() {
   const [hours, setHours] = useState<number>(24 * 7)
   const { data, isLoading, error } = useRecommendations({ hours, minSavings: 5 })
-  const { data: applications } = useRecommendationApplications()
-  const markApplied = useMarkApplied()
-  const unmarkApplied = useUnmarkApplied()
 
   // SSR/hydration safe: initialize with empty Set, restore from localStorage after mount
   const [dismissed, setDismissed] = useState<Set<string>>(new Set())
   const [isLoaded, setIsLoaded] = useState(false)
   const [showHidden, setShowHidden] = useState(false)
-  const [applyRec, setApplyRec] = useState<ModelRecommendation | null>(null)
   const [simRec, setSimRec] = useState<ModelRecommendation | null>(null)
-  const [copiedModel, setCopiedModel] = useState(false)
 
   const all = data ?? []
   const visible = all.filter((r) => !dismissed.has(dismissKey(r)))
-  const appliedMap = buildAppliedMap(applications ?? [])
 
   const totalOpen = visible.reduce((s, r) => s + r.estimatedMonthlySavingsUsd, 0)
   const totalSpend = visible.reduce((s, r) => s + r.totalCostUsdLastNDays, 0)
@@ -172,15 +134,14 @@ export default function RecommendationsPage() {
   // ── Row renderer — shared between visible and hidden sections ─────────────
 
   function RecRow({ r, isHidden = false }: { r: ModelRecommendation; isHidden?: boolean }) {
-    const conf    = getConfidence(r)
-    const applied = appliedMap.get(appliedKey(r))
+    const conf = getConfidence(r)
 
     return (
       <div
         className="border-b border-border hover:bg-bg-elev transition-colors"
         style={{
           display: 'grid',
-          gridTemplateColumns: '1.7fr 170px 130px 150px 180px',
+          gridTemplateColumns: '1.7fr 170px 130px 150px 120px',
           gap: 16,
           alignItems: 'center',
           padding: '14px 22px',
@@ -201,12 +162,6 @@ export default function RecommendationsPage() {
             <span className={cn('text-[13.5px] font-medium truncate', isHidden ? 'text-text-muted' : 'text-text')}>
               {r.currentProvider} / {r.currentModel} → {r.suggestedProvider} / {r.suggestedModel}
             </span>
-            {applied && (
-              <span suppressHydrationWarning className="flex items-center gap-1 font-mono text-[10px] text-good">
-                <CheckCircle2 className="h-3 w-3" />
-                Applied {relativeDate(applied.appliedAt)}
-              </span>
-            )}
           </div>
           <div className="font-mono text-[11.5px] text-text-muted flex items-center gap-2 flex-wrap">
             <span className="text-text-faint line-through">{r.currentProvider} / {r.currentModel}</span>
@@ -269,29 +224,9 @@ export default function RecommendationsPage() {
               Hide
             </button>
           )}
-          <button
-            type="button"
-            onClick={() => { setApplyRec(r); setCopiedModel(false) }}
-            className="font-mono text-[10.5px] text-bg px-[10px] py-[4px] rounded-[5px] bg-text font-medium hover:opacity-90 transition-opacity"
-          >
-            Apply →
-          </button>
         </div>
       </div>
     )
-  }
-
-  // Apply dialog helpers
-  const applyRec_applied = applyRec ? appliedMap.get(appliedKey(applyRec)) : undefined
-
-  function handleMarkApplied() {
-    if (!applyRec) return
-    markApplied.mutate({
-      provider: applyRec.currentProvider,
-      model: applyRec.currentModel,
-      suggestedProvider: applyRec.suggestedProvider,
-      suggestedModel: applyRec.suggestedModel,
-    })
   }
 
   return (
@@ -537,88 +472,6 @@ export default function RecommendationsPage() {
                 <span className="text-text font-medium">Caveat:</span> {simRec.reason}. Always run a
                 shadow comparison before switching a production model.
               </p>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
-
-      {/* Apply dialog */}
-      <Dialog open={applyRec !== null} onOpenChange={(open) => !open && setApplyRec(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Apply this recommendation</DialogTitle>
-          </DialogHeader>
-          {applyRec && (
-            <div className="space-y-4 mt-2 text-[13px] text-text-muted">
-              <p>
-                Spanlens doesn&apos;t rewrite your application code. To apply this swap, update the
-                <span className="font-mono text-text"> model </span>
-                parameter in your LLM call from
-                <span className="font-mono text-text"> {applyRec.currentModel} </span>
-                to
-                <span className="font-mono text-text"> {applyRec.suggestedModel}</span>.
-              </p>
-              <div className="rounded-lg border border-border bg-bg-elev overflow-hidden">
-                <div className="px-4 py-2.5 border-b border-border bg-bg-muted flex items-center justify-between">
-                  <span className="font-mono text-[10px] text-text-faint uppercase tracking-[0.05em]">
-                    New model name
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      void navigator.clipboard.writeText(applyRec.suggestedModel)
-                      setCopiedModel(true)
-                      setTimeout(() => setCopiedModel(false), 1500)
-                    }}
-                    className="font-mono text-[11px] text-accent hover:opacity-80 transition-opacity flex items-center gap-1"
-                  >
-                    {copiedModel
-                      ? <><Check className="h-3 w-3" /> Copied</>
-                      : <><Copy className="h-3 w-3" /> Copy</>}
-                  </button>
-                </div>
-                <code className="block px-4 py-3 font-mono text-[13px] text-text">
-                  {applyRec.suggestedModel}
-                </code>
-              </div>
-              <ol className="list-decimal pl-5 space-y-1 text-[12.5px]">
-                <li>Find the call to <span className="font-mono text-text">{applyRec.currentProvider}</span> using <span className="font-mono text-text">{applyRec.currentModel}</span></li>
-                <li>Swap the model name to <span className="font-mono text-text">{applyRec.suggestedModel}</span></li>
-                <li>Deploy to a canary or staging first — verify output quality matches</li>
-                <li>Watch the Requests page for 24h to confirm no regressions</li>
-              </ol>
-
-              {/* Mark as applied */}
-              <div className="border-t border-border pt-4">
-                {applyRec_applied ? (
-                  <div className="flex items-center justify-between p-3 rounded-lg border border-good/30 bg-good/5">
-                    <div className="flex items-center gap-2">
-                      <CheckCircle2 className="h-4 w-4 text-good" />
-                      <span suppressHydrationWarning className="text-[12px] text-good font-medium">
-                        Applied {relativeDate(applyRec_applied.appliedAt)}
-                      </span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => unmarkApplied.mutate(applyRec_applied.id)}
-                      disabled={unmarkApplied.isPending}
-                      className="font-mono text-[11px] text-text-muted hover:text-text transition-colors disabled:opacity-50"
-                    >
-                      Undo
-                    </button>
-                  </div>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={handleMarkApplied}
-                    disabled={markApplied.isPending}
-                    className="w-full font-mono text-[12px] text-text-muted px-4 py-2.5 border border-border rounded-lg hover:bg-bg-elev hover:text-text transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
-                  >
-                    <CheckCircle2 className="h-3.5 w-3.5" />
-                    {markApplied.isPending ? 'Saving…' : 'Mark as applied'}
-                  </button>
-                )}
-              </div>
             </div>
           )}
         </DialogContent>
