@@ -3,7 +3,7 @@ import { CodeBlock } from '../../_components/code-block'
 export const metadata = {
   title: 'Savings · Spanlens Docs',
   description:
-    'Model recommendations based on your real token distribution. Suggests cheaper substitutes with estimated monthly savings, confidence tiers, apply tracking, and email alerts.',
+    'Model recommendations based on your real token distribution. Suggests cheaper substitutes with estimated monthly savings, confidence tiers, and email alerts.',
 }
 
 export default function SavingsDocs() {
@@ -68,21 +68,57 @@ export default function SavingsDocs() {
             <td>prompt ≤ 500, completion ≤ 150</td>
           </tr>
           <tr>
-            <td><code>anthropic:claude-3-opus</code></td>
+            <td><code>openai:gpt-4.1</code></td>
+            <td><code>openai:gpt-4.1-mini</code></td>
+            <td>20%</td>
+            <td>prompt ≤ 500, completion ≤ 150</td>
+          </tr>
+          <tr>
+            <td><code>openai:gpt-4-turbo</code></td>
+            <td><code>openai:gpt-4o</code></td>
+            <td>25%</td>
+            <td>prompt ≤ 2000, completion ≤ 500</td>
+          </tr>
+          <tr>
+            <td><code>openai:gpt-4</code></td>
+            <td><code>openai:gpt-4o</code></td>
+            <td>8.3%</td>
+            <td>prompt ≤ 4000, completion ≤ 1000</td>
+          </tr>
+          <tr>
+            <td><code>anthropic:claude-opus-4-7</code></td>
             <td><code>anthropic:claude-haiku-4.5</code></td>
-            <td>4%</td>
+            <td>20%</td>
             <td>prompt ≤ 500, completion ≤ 200</td>
           </tr>
           <tr>
-            <td><code>anthropic:claude-3-5-sonnet</code></td>
+            <td><code>anthropic:claude-3-opus-20240229</code></td>
             <td><code>anthropic:claude-haiku-4.5</code></td>
-            <td>25%</td>
+            <td>6.7%</td>
+            <td>prompt ≤ 500, completion ≤ 200</td>
+          </tr>
+          <tr>
+            <td><code>anthropic:claude-sonnet-4-6</code></td>
+            <td><code>anthropic:claude-haiku-4.5</code></td>
+            <td>33.3%</td>
             <td>prompt ≤ 800, completion ≤ 250</td>
+          </tr>
+          <tr>
+            <td><code>anthropic:claude-3-5-sonnet-20241022</code></td>
+            <td><code>anthropic:claude-haiku-4.5</code></td>
+            <td>33.3%</td>
+            <td>prompt ≤ 800, completion ≤ 250</td>
+          </tr>
+          <tr>
+            <td><code>gemini:gemini-2.5-pro</code></td>
+            <td><code>gemini:gemini-2.5-flash</code></td>
+            <td>25%</td>
+            <td>prompt ≤ 1000, completion ≤ 300</td>
           </tr>
           <tr>
             <td><code>gemini:gemini-1.5-pro</code></td>
             <td><code>gemini:gemini-1.5-flash</code></td>
-            <td>6.7%</td>
+            <td>6%</td>
             <td>prompt ≤ 1000, completion ≤ 300</td>
           </tr>
         </tbody>
@@ -189,8 +225,7 @@ estimatedMonthlySavingsUsd = monthlyCostCurrent - monthlyCostSuggested`}</CodeBl
         <li>
           <strong>Recommendation rows</strong> — each row shows the current model (sample count,
           monthly cost) → suggested model (projected cost, savings), a confidence bar, a rationale
-          string, and three action buttons: <strong>Simulate</strong>, <strong>Hide</strong>, and{' '}
-          <strong>Mark as applied</strong>.
+          string, and two action buttons: <strong>Simulate</strong> and <strong>Hide</strong>.
         </li>
         <li>
           <strong>Hidden section</strong> — recommendations you&apos;ve dismissed live here. A
@@ -211,23 +246,6 @@ estimatedMonthlySavingsUsd = monthlyCostCurrent - monthlyCostSuggested`}</CodeBl
         When all visible recommendations have been hidden, the empty state message changes from the
         generic &ldquo;no opportunities&rdquo; copy to &ldquo;All recommendations hidden — use
         Restore to bring them back.&rdquo;
-      </p>
-
-      <h3>Apply tracking</h3>
-      <p>
-        Once you&apos;ve actually switched a model in your codebase, click{' '}
-        <strong>Mark as applied</strong> in the recommendation dialog. Spanlens records the
-        timestamp in the database (not just <code>localStorage</code>) so the state is visible
-        across browsers and team members.
-      </p>
-      <p>After marking, the row badge shows <strong>Applied N days ago</strong> and the button
-        changes to <strong>Applied ✓</strong> with an <strong>Undo</strong> link. Clicking Undo
-        removes the record and reverts the badge.
-      </p>
-      <p>
-        Applied state is scoped to the exact (provider, model, suggestedProvider, suggestedModel)
-        quad. If the same source model gets a different recommendation in the future (e.g., a new
-        substitute is added), it will show as unapplied.
       </p>
 
       <h2 id="email-alerts">High-confidence email alerts</h2>
@@ -299,45 +317,6 @@ GET /api/v1/recommendations?minSavings=20      # only show ≥ $20/mo
         </tbody>
       </table>
 
-      <h4>GET /api/v1/recommendation-applications</h4>
-      <p>
-        Returns all &ldquo;mark as applied&rdquo; records for your organization. Useful for syncing
-        applied state across tools or building dashboards.
-      </p>
-      <CodeBlock language="bash">{`GET /api/v1/recommendation-applications
-
-# →
-#   {
-#     "data": [
-#       {
-#         "id": "uuid",
-#         "provider": "openai",
-#         "model": "gpt-4o-2024-08-06",
-#         "suggestedProvider": "openai",
-#         "suggestedModel": "gpt-4o-mini",
-#         "appliedAt": "2026-04-30T10:23:00Z",
-#         "note": null
-#       }
-#     ]
-#   }`}</CodeBlock>
-
-      <h4>POST /api/v1/recommendation-applications</h4>
-      <p>Mark a recommendation as applied programmatically (e.g., from a deployment script).</p>
-      <CodeBlock language="bash">{`POST /api/v1/recommendation-applications
-Content-Type: application/json
-
-{
-  "provider": "openai",
-  "model": "gpt-4o-2024-08-06",
-  "suggestedProvider": "openai",
-  "suggestedModel": "gpt-4o-mini",
-  "note": "Rolled out in PR #142"         // optional
-}`}</CodeBlock>
-
-      <h4>DELETE /api/v1/recommendation-applications/:id</h4>
-      <p>Undo an applied record (equivalent to the &ldquo;Undo&rdquo; button in the UI).</p>
-      <CodeBlock language="bash">{`DELETE /api/v1/recommendation-applications/:id`}</CodeBlock>
-
       <h2>Design choices</h2>
       <ul>
         <li>
@@ -356,11 +335,6 @@ Content-Type: application/json
           break trust.
         </li>
         <li>
-          <strong>Apply tracking is server-side.</strong> Unlike dismiss (which uses{' '}
-          <code>localStorage</code> for zero-friction UX), &ldquo;mark as applied&rdquo; writes to
-          the database so it&apos;s visible to all team members and persists across browsers.
-        </li>
-        <li>
           <strong>Email alerts are once-per-recommendation.</strong> Nagging users with the same
           recommendation every day would train them to ignore the emails. One notification per
           high-confidence finding; future findings on new pairs trigger fresh alerts.
@@ -376,18 +350,13 @@ Content-Type: application/json
           false positives are possible — hence the manual-approval loop.
         </li>
         <li>
-          <strong>Rule table needs periodic refresh.</strong> New models (GPT-5, Claude 4.7) need
-          rule entries added. Tracked as a Phase 3 maintenance item.
-        </li>
-        <li>
           <strong>No cross-provider recommendations yet.</strong> We don&apos;t suggest
           &ldquo;switch from gpt-4o-mini to claude-haiku&rdquo; even when cheaper — accuracy
           comparisons across providers are too workload-dependent to ship blind.
         </li>
         <li>
           <strong>Dismiss state is browser-local.</strong> Hiding a recommendation is stored in{' '}
-          <code>localStorage</code> and does not sync across devices or team members. Applied state
-          does sync — use &ldquo;Mark as applied&rdquo; for team-visible tracking.
+          <code>localStorage</code> and does not sync across devices or team members.
         </li>
       </ul>
 

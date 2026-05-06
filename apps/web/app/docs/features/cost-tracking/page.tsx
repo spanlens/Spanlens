@@ -29,14 +29,26 @@ export default function CostTrackingDocs() {
       <h3>Price table</h3>
       <p>
         <code>apps/server/src/lib/cost.ts</code> ships a curated <code>MODEL_PRICES</code> map —
-        USD per 1M tokens, separately for prompt and completion. Snapshot as of 2026-04:
+        USD per 1M tokens, separately for prompt and completion. Snapshot as of 2026-05:
       </p>
-      <CodeBlock language="ts">{`'gpt-4o':                         { prompt: 2.5,   completion: 10   }
+      <CodeBlock language="ts">{`// OpenAI
+'gpt-4o':                         { prompt: 2.5,   completion: 10   }
 'gpt-4o-mini':                    { prompt: 0.15,  completion: 0.6  }
+'gpt-4.1':                        { prompt: 2.0,   completion: 8.0  }
+'gpt-4.1-mini':                   { prompt: 0.4,   completion: 1.6  }
+'gpt-4.1-nano':                   { prompt: 0.1,   completion: 0.4  }
 'gpt-4-turbo':                    { prompt: 10,    completion: 30   }
-'claude-opus-4-7':                { prompt: 15,    completion: 75   }
+'gpt-4':                          { prompt: 30,    completion: 60   }
+// Anthropic
+'claude-opus-4-7':                { prompt: 5,     completion: 25   }
 'claude-sonnet-4-6':              { prompt: 3,     completion: 15   }
-'claude-haiku-4-5-20251001':      { prompt: 0.8,   completion: 4    }
+'claude-haiku-4.5':               { prompt: 1,     completion: 5    }
+'claude-3-5-sonnet-20241022':     { prompt: 3,     completion: 15   }
+'claude-3-5-haiku-20241022':      { prompt: 0.8,   completion: 4    }
+// Gemini
+'gemini-2.5-pro':                 { prompt: 1.25,  completion: 10   }
+'gemini-2.5-flash':               { prompt: 0.3,   completion: 2.5  }
+'gemini-2.5-flash-lite':          { prompt: 0.1,   completion: 0.4  }
 'gemini-1.5-pro':                 { prompt: 1.25,  completion: 5    }
 'gemini-1.5-flash':               { prompt: 0.075, completion: 0.3  }
 // ...`}</CodeBlock>
