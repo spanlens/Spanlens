@@ -335,9 +335,8 @@ function RequestDrawer({ requestId, visible, onClose, onPrev, onNext, hasPrev, h
         <div className="px-5 py-3.5 border-b border-border grid grid-cols-2 gap-x-3.5 gap-y-3">
           {([
             ['Model', req.model],
-            ['Provider', req.provider],
+            ['Key', req.provider_key_name ?? req.provider],
             ['Status', String(req.status_code)],
-            ['Key', req.provider_key_name ?? '—'],
             ['Prompt tokens', req.prompt_tokens.toLocaleString()],
             ['Completion', req.completion_tokens.toLocaleString()],
           ] as [string, string][]).map(([k, v]) => (
@@ -700,7 +699,7 @@ function RequestsTable({
       >
         <span />
         <span>Model</span>
-        {!drawerOpen && <span>Provider</span>}
+        {!drawerOpen && <span>Key</span>}
         <SortBtn field="latency_ms" label="Latency" sortField={sortField} sortDir={sortDir} onSort={onSort} />
         <SortBtn field="total_tokens" label="Tokens" sortField={sortField} sortDir={sortDir} onSort={onSort} />
         <SortBtn field="cost_usd" label="Cost" sortField={sortField} sortDir={sortDir} onSort={onSort} />
@@ -752,7 +751,7 @@ function RequestsTable({
                     {isErr && <span className="inline-block w-1.5 h-1.5 rounded-full bg-accent" />}
                   </span>
                   <span className="text-text truncate pr-2">{req.model}</span>
-                  {!drawerOpen && <span className="text-text-muted">{req.provider}</span>}
+                  {!drawerOpen && <span className="text-text-muted">{req.provider_key_name ?? req.provider}</span>}
                   <span className={isErr ? 'text-accent' : 'text-text'}>{req.latency_ms}ms</span>
                   <span className="text-text-muted">{req.total_tokens.toLocaleString()}</span>
                   <span className="text-text">{fmtCost(req.cost_usd)}</span>
