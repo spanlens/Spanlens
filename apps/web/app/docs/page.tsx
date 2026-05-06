@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { ArrowRight, Zap, Code, Globe, Server } from 'lucide-react'
+import { ArrowRight, Zap, Code, Globe, Server, Activity } from 'lucide-react'
 import { CodeBlock } from './_components/code-block'
 
 export const metadata = {
@@ -96,6 +96,12 @@ const SECTIONS = [
     title: 'Direct proxy (any language)',
     href: '/docs/proxy',
     description: 'Use Python, Ruby, Go, or raw HTTP — just swap the base URL.',
+  },
+  {
+    icon: Activity,
+    title: 'OpenTelemetry (OTLP)',
+    href: '/docs/otel',
+    description: 'Already using an OTel SDK? Point it at Spanlens — Python, Go, Java, Node.js all work.',
   },
   {
     icon: Server,

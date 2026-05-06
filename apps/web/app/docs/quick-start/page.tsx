@@ -180,7 +180,7 @@ const result = await model.generateContent('Hi')`}</CodeBlock>
         <li>After adding env vars in Vercel, <strong>redeploy</strong> — new values don&apos;t apply retroactively</li>
         <li>
           Check the Network tab — your request should hit{' '}
-          <code>spanlens-server.vercel.app/proxy/*</code>, not{' '}
+          <code>server.spanlens.io/proxy/*</code>, not{' '}
           <code>api.openai.com</code> directly
         </li>
       </ol>
