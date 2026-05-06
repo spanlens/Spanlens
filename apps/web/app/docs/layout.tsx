@@ -1,4 +1,5 @@
 import { DocsSidebar } from './_components/sidebar'
+import { TableOfContents } from './_components/table-of-contents'
 import { MarketingNav } from '@/components/layout/marketing-nav'
 import { Footer } from '@/components/layout/footer'
 
@@ -21,7 +22,7 @@ export default function DocsLayout({ children }: { children: React.ReactNode }) 
           </div>
         </aside>
 
-        <main className="flex-1 min-w-0 max-w-3xl">
+        <main className="flex-1 min-w-0 max-w-2xl">
           <article
             className="prose prose-stone max-w-none
               prose-headings:scroll-mt-20
@@ -35,6 +36,12 @@ export default function DocsLayout({ children }: { children: React.ReactNode }) 
             {children}
           </article>
         </main>
+
+        <aside className="hidden xl:block w-52 shrink-0">
+          <div className="sticky top-20">
+            <TableOfContents />
+          </div>
+        </aside>
       </div>
 
       <Footer />
