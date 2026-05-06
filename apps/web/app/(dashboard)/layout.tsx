@@ -4,6 +4,7 @@ import { Sidebar } from '@/components/layout/sidebar'
 import { PendingInvitationsBanner } from '@/components/layout/pending-invitations-banner'
 import { ProjectProvider } from '@/lib/project-context'
 import { SidebarProvider } from '@/lib/sidebar-context'
+import { CommandPaletteProvider } from '@/components/command-palette'
 
 /**
  * Dashboard layout. Reads auth state from the `x-spanlens-*` headers the
@@ -32,20 +33,22 @@ export default async function DashboardLayout({ children }: { children: React.Re
   if (!orgId || !onboarded) redirect('/onboarding')
 
   return (
-    <ProjectProvider>
-      <SidebarProvider>
-        <div className="flex h-screen overflow-hidden bg-bg">
-          <Sidebar />
-          <main className="flex-1 overflow-y-auto min-w-0">
-            {/* Pending workspace invitations surface here: any dashboard
-                page renders this banner at the top, so a user who never
-                clicked the email link still sees the invite waiting for
-                them. Self-hides when there are none / after dismissal. */}
-            <PendingInvitationsBanner />
-            <div className="px-4 py-4 md:px-8 md:py-7">{children}</div>
-          </main>
-        </div>
-      </SidebarProvider>
-    </ProjectProvider>
+    <CommandPaletteProvider>
+      <ProjectProvider>
+        <SidebarProvider>
+          <div className="flex h-screen overflow-hidden bg-bg">
+            <Sidebar />
+            <main className="flex-1 overflow-y-auto min-w-0">
+              {/* Pending workspace invitations surface here: any dashboard
+                  page renders this banner at the top, so a user who never
+                  clicked the email link still sees the invite waiting for
+                  them. Self-hides when there are none / after dismissal. */}
+              <PendingInvitationsBanner />
+              <div className="px-4 py-4 md:px-8 md:py-7">{children}</div>
+            </main>
+          </div>
+        </SidebarProvider>
+      </ProjectProvider>
+    </CommandPaletteProvider>
   )
 }

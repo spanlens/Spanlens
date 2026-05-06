@@ -1,12 +1,13 @@
 'use client'
 
+import Image from 'next/image'
 import { Suspense, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 
 function LogoMark() {
   return (
     <div className="flex items-center gap-2 mb-6">
-      <img src="/icon.png" alt="Spanlens" width={20} height={20} className="shrink-0 rounded-[5px]" />
+      <Image src="/icon.png" alt="Spanlens" width={20} height={20} className="shrink-0 rounded-[5px]" priority />
       <span className="font-semibold text-[15px] tracking-[-0.3px] text-text">spanlens</span>
     </div>
   )

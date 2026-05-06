@@ -15,9 +15,19 @@ import { useSecuritySummary } from '@/lib/queries/use-security'
 import { useDismissals, useDismissCard } from '@/lib/queries/use-dismissals'
 import { useCurrentProjectId } from '@/lib/project-context'
 import { cn } from '@/lib/utils'
-import { RequestChart } from '@/components/dashboard/request-chart'
-import { SpendForecastCard } from '@/components/dashboard/spend-forecast'
+import dynamic from 'next/dynamic'
 import { WelcomeBanner } from '@/components/dashboard/welcome-banner'
+
+// Lazy-load recharts-heavy components. They render below the fold and are
+// not needed for the initial KPI row / greeting paint.
+const RequestChart = dynamic(
+  () => import('@/components/dashboard/request-chart').then((m) => m.RequestChart),
+  { ssr: false, loading: () => <Skeleton className="h-[220px] w-full" /> },
+)
+const SpendForecastCard = dynamic(
+  () => import('@/components/dashboard/spend-forecast').then((m) => m.SpendForecastCard),
+  { ssr: false, loading: () => <Skeleton className="h-[320px] w-full" /> },
+)
 
 // ── Helpers ────────────────────────────────────────────────────
 

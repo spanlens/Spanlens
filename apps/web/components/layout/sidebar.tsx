@@ -1,4 +1,5 @@
 'use client'
+import Image from 'next/image'
 import { useState, useRef, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
@@ -26,7 +27,7 @@ function LogoMark() {
       aria-label="Spanlens home"
       className="flex items-center gap-2 px-1 py-1 hover:opacity-80 transition-opacity"
     >
-      <img src="/icon.png" alt="Spanlens" width={20} height={20} className="shrink-0 rounded-[5px]" />
+      <Image src="/icon.png" alt="Spanlens" width={20} height={20} className="shrink-0 rounded-[5px]" priority />
       <span className="font-semibold text-[15px] tracking-[-0.3px] text-text">
         spanlens
       </span>

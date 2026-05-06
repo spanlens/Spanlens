@@ -6,6 +6,21 @@ const __dirname = path.dirname(__filename)
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  experimental: {
+    // Tree-shake barrel-export packages so only used symbols land in the bundle.
+    // Cuts recharts, lucide-react, and Radix from the initial JS chunk.
+    optimizePackageImports: [
+      'lucide-react',
+      'recharts',
+      '@radix-ui/react-dialog',
+      '@radix-ui/react-dropdown-menu',
+      '@radix-ui/react-select',
+      '@radix-ui/react-tabs',
+      '@radix-ui/react-tooltip',
+      '@radix-ui/react-toast',
+      'cmdk',
+    ],
+  },
   // Proxy /api/* → spanlens-server via Next.js rewrites so all fetches from
   // the browser stay same-origin. Eliminates the CORS preflight (OPTIONS)
   // that the old cross-origin setup required on every fetch — ~50–150ms
