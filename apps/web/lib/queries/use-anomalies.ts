@@ -48,9 +48,17 @@ export interface UseAnomaliesParams {
   projectId?: string
 }
 
+export function anomaliesQueryKey(params: UseAnomaliesParams) {
+  return ['anomalies', params] as const
+}
+
+export function anomalyHistoryQueryKey(days: number) {
+  return ['anomalies', 'history', days] as const
+}
+
 export function useAnomalies(params: UseAnomaliesParams = {}) {
   return useQuery({
-    queryKey: ['anomalies', params] as const,
+    queryKey: anomaliesQueryKey(params),
     queryFn: async () => {
       const qs = new URLSearchParams()
       if (params.observationHours !== undefined) qs.set('observationHours', String(params.observationHours))
@@ -71,7 +79,7 @@ export function useAnomalies(params: UseAnomaliesParams = {}) {
 
 export function useAnomalyHistory(days = 30) {
   return useQuery({
-    queryKey: ['anomalies', 'history', days] as const,
+    queryKey: anomalyHistoryQueryKey(days),
     queryFn: async () => {
       const res = await apiGet<ApiEnvelope<AnomalyHistoryEntry[]>>(
         `/api/v1/anomalies/history?days=${days}`,
