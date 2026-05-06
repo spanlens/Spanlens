@@ -528,16 +528,16 @@ export const DEMO_RECOMMENDATIONS: ModelRecommendation[] = [
     sampleCount: 380,
     avgPromptTokens: 320,
     avgCompletionTokens: 85,
-    totalCostUsdLastNDays: 18.24,
+    totalCostUsdLastNDays: 5.48,    // post-switch spend (70% drop from prior)
     suggestedProvider: 'openai',
     suggestedModel: 'gpt-4o-mini',
     estimatedMonthlySavingsUsd: 94.80,
     reason: 'Intent classification calls are short and formulaic. Identical output distributions observed between gpt-4o and gpt-4o-mini across 380 sampled requests.',
     maxPromptTokens: 500,
     maxCompletionTokens: 150,
-    priorWindowCostUsd: 28.50,
+    priorWindowCostUsd: 18.24,      // pre-switch spend; dropPct ≈ 70%
     achieved: true,
-    actualMonthlySavingsUsd: 43.80,
+    actualMonthlySavingsUsd: 54.70, // (18.24 - 5.48) × (30/7) ≈ 54.69
   },
   {
     currentProvider: 'openai',
