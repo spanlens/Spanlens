@@ -15,6 +15,15 @@ export interface ModelRecommendation {
   suggestedModel: string
   estimatedMonthlySavingsUsd: number
   reason: string
+  /** Token envelope from the substitute rule — used by the Simulate dialog. */
+  maxPromptTokens: number
+  maxCompletionTokens: number
+  /** Cost in the prior equal-length window. null = no prior data. */
+  priorWindowCostUsd: number | null
+  /** True if spend on this model dropped ≥70% vs the prior window. */
+  achieved: boolean
+  /** Realized monthly savings when achieved. null when not achieved. */
+  actualMonthlySavingsUsd: number | null
 }
 
 export function useRecommendations(params: { hours?: number; minSavings?: number } = {}) {
