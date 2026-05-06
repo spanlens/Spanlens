@@ -380,7 +380,7 @@ export default function TracesPage() {
                       <span className="font-mono text-[9.5px] px-[5px] py-[2px] rounded-[3px] bg-bg-muted text-text-faint border border-border uppercase tracking-[0.04em]">ok</span>
                     )}
                   </span>
-                  <span className="text-text-faint text-right" title={new Date(t.started_at).toLocaleString()}>
+                  <span className="text-text-faint text-right" title={new Date(t.started_at).toLocaleString()} suppressHydrationWarning>
                     {fmtAge(t.started_at)}
                   </span>
                 </button>
