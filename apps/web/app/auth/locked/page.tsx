@@ -1,5 +1,6 @@
 'use client'
 
+import Image from 'next/image'
 import { Suspense, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
@@ -8,7 +9,7 @@ import { LockIcon } from 'lucide-react'
 function LogoMark() {
   return (
     <div className="flex items-center gap-2 mb-6">
-      <img src="/icon.png" alt="Spanlens" width={20} height={20} className="shrink-0 rounded-[5px]" />
+      <Image src="/icon.png" alt="Spanlens" width={20} height={20} className="shrink-0 rounded-[5px]" priority />
       <span className="font-semibold text-[15px] tracking-[-0.3px] text-text">spanlens</span>
     </div>
   )

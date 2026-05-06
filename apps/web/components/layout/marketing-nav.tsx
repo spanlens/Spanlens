@@ -1,3 +1,4 @@
+import Image from 'next/image'
 import Link from 'next/link'
 import { AuthNavButtons } from '@/components/layout/auth-nav-buttons'
 
@@ -20,7 +21,7 @@ export function MarketingNav({ signupLabel = 'Start free →', subtitle }: Marke
       <div className="max-w-[1200px] mx-auto flex items-center justify-between px-4 sm:px-6 lg:px-10 h-[56px]">
         {/* Logo */}
         <Link href="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
-          <img src="/icon.png" alt="Spanlens" width={20} height={20} className="shrink-0 rounded-[5px]" />
+          <Image src="/icon.png" alt="Spanlens" width={20} height={20} className="shrink-0 rounded-[5px]" priority />
           <span className="font-semibold text-[15px] tracking-[-0.3px] text-text">spanlens</span>
           {subtitle && (
             <span className="text-[13px] text-text-faint hidden sm:inline">/ {subtitle}</span>

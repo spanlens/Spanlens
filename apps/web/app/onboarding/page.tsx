@@ -1,5 +1,6 @@
 'use client'
 import { useEffect, useState } from 'react'
+import Image from 'next/image'
 import Link from 'next/link'
 
 import { apiPost } from '@/lib/api'
@@ -164,7 +165,7 @@ export default function OnboardingPage() {
     <div className="min-h-screen bg-bg-elev flex flex-col items-center px-6 py-10">
       {/* Header */}
       <Link href="/" className="flex items-center gap-2 mb-7 hover:opacity-80 transition-opacity">
-        <img src="/icon.png" alt="Spanlens" width={22} height={22} className="shrink-0 rounded-[5px]" />
+        <Image src="/icon.png" alt="Spanlens" width={22} height={22} className="shrink-0 rounded-[5px]" priority />
         <span className="font-semibold text-[16px] tracking-[-0.3px] text-text">spanlens</span>
       </Link>
 
