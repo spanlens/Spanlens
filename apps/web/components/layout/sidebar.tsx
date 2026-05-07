@@ -259,7 +259,7 @@ export function Sidebar() {
   const router = useRouter()
   const overview = useStatsOverview()
   const isAdmin = useIsAdmin()
-  const anomalies = useAnomalies()
+  const anomalies = useAnomalies({ observationHours: 24 })
   const alerts = useAlerts()
   const recommendations = useRecommendations()
   const { isOpen, close } = useSidebar()
