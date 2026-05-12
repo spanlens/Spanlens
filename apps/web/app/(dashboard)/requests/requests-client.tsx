@@ -806,6 +806,8 @@ export function RequestsClient() {
     return undefined
   }, [timeRange])
 
+  const promptVersionId = searchParams.get('promptVersionId') ?? undefined
+
   const serverFilters = useMemo(
     () => ({
       page,
@@ -817,8 +819,9 @@ export function RequestsClient() {
       ...(fromIso && { from: fromIso }),
       ...(sortField !== 'created_at' && { sortBy: sortField }),
       ...(sortDir !== 'desc' && { sortDir }),
+      ...(promptVersionId && { promptVersionId }),
     }),
-    [page, filters.provider, filters.model, filters.providerKeyId, filters.status, fromIso, sortField, sortDir],
+    [page, filters.provider, filters.model, filters.providerKeyId, filters.status, fromIso, sortField, sortDir, promptVersionId],
   )
 
   const { data, isLoading, isFetching, refetch } = useRequests(serverFilters)

@@ -12,6 +12,7 @@ export interface RequestsFilters {
   status?: string
   projectId?: string
   providerKeyId?: string
+  promptVersionId?: string
   from?: string
   to?: string
   sortBy?: string
@@ -34,6 +35,7 @@ export function useRequests(filters: RequestsFilters) {
       if (filters.status) params.set('status', filters.status)
       if (filters.projectId) params.set('projectId', filters.projectId)
       if (filters.providerKeyId) params.set('providerKeyId', filters.providerKeyId)
+      if (filters.promptVersionId) params.set('promptVersionId', filters.promptVersionId)
       if (filters.from) params.set('from', filters.from)
       if (filters.to) params.set('to', filters.to)
       if (filters.sortBy) params.set('sortBy', filters.sortBy)

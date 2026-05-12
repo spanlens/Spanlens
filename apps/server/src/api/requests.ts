@@ -27,7 +27,8 @@ requestsRouter.get('/', async (c) => {
   const offset     = (page - 1) * limit
 
   // Optional new filter: provider_key_id ("show only requests that used this key")
-  const providerKeyId = c.req.query('providerKeyId')
+  const providerKeyId    = c.req.query('providerKeyId')
+  const promptVersionId  = c.req.query('promptVersionId')
   const status     = c.req.query('status')   // 'ok' | '4xx' | '5xx'
   const sortByRaw  = c.req.query('sortBy')   // 'latency_ms' | 'cost_usd' | 'total_tokens' | 'created_at'
   const sortDirRaw = c.req.query('sortDir')  // 'asc' | 'desc'
@@ -52,8 +53,9 @@ requestsRouter.get('/', async (c) => {
   if (projectId)     query = query.eq('project_id', projectId)
   if (provider)      query = query.eq('provider', provider)
   if (model)         query = query.ilike('model', `%${model}%`)
-  if (providerKeyId) query = query.eq('provider_key_id', providerKeyId)
-  if (from)          query = query.gte('created_at', from)
+  if (providerKeyId)   query = query.eq('provider_key_id', providerKeyId)
+  if (promptVersionId) query = query.eq('prompt_version_id', promptVersionId)
+  if (from)            query = query.gte('created_at', from)
   if (to)            query = query.lte('created_at', to)
   if (status === 'ok')   query = query.lt('status_code', 400)
   else if (status === '4xx') query = query.gte('status_code', 400).lt('status_code', 500)

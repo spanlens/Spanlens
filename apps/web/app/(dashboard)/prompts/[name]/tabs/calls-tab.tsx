@@ -1,5 +1,6 @@
 'use client'
 import { useState } from 'react'
+import Link from 'next/link'
 import { usePromptCompare } from '@/lib/queries/use-prompts'
 import { cn } from '@/lib/utils'
 
@@ -103,9 +104,10 @@ export function CallsTab({ name }: Props) {
                 <span className="text-right">Compl. tokens</span>
               </div>
               {metrics.map((m) => (
-                <div
+                <Link
                   key={m.promptVersionId}
-                  className="grid items-center px-[16px] py-[11px] border-b border-border last:border-0 min-w-[620px]"
+                  href={`/requests?promptVersionId=${m.promptVersionId}`}
+                  className="grid items-center px-[16px] py-[11px] border-b border-border last:border-0 min-w-[620px] hover:bg-bg-muted transition-colors cursor-pointer"
                   style={{ gridTemplateColumns: '80px 70px 100px 100px 100px 110px 100px' }}
                 >
                   <span className="font-mono text-[11px] text-text-muted">v{m.version}</span>
@@ -124,7 +126,7 @@ export function CallsTab({ name }: Props) {
                   <span className="text-right font-mono text-[12px] text-text-muted">
                     {m.avgCompletionTokens > 0 ? Math.round(m.avgCompletionTokens).toLocaleString() : '—'}
                   </span>
-                </div>
+                </Link>
               ))}
             </div>
           </div>
