@@ -1,4 +1,3 @@
-import { Suspense } from 'react'
 import { HydrationBoundary } from '@tanstack/react-query'
 import { prefetchAll } from '@/lib/server/dehydrate'
 import { alertsSpec } from '@/lib/server/queries/alerts'
@@ -10,11 +9,10 @@ import { statsOverviewSpec, statsTimeseriesSpec, statsModelsSpec, spendForecastS
 import { anomaliesSpec } from '@/lib/server/queries/anomalies'
 import { DashboardClient } from './dashboard-client'
 
-// Below-the-fold queries — prefetched in parallel but streamed in via Suspense
-// so they don't block the initial HTML. The dashboard renders with skeletons
-// in these slots and React Query swaps in real data when the stream arrives.
-async function DeferredHydration() {
+export default async function DashboardPage() {
   const state = await prefetchAll([
+    statsOverviewSpec(),
+    statsTimeseriesSpec(),
     statsModelsSpec(),
     spendForecastSpec(),
     anomaliesSpec({ observationHours: 24 }),
@@ -22,25 +20,12 @@ async function DeferredHydration() {
     recommendationsSpec({ hours: 24 }),
     securitySummarySpec(24),
     auditLogsSpec({ limit: 6 }),
-  ])
-  return <HydrationBoundary state={state} />
-}
-
-export default async function DashboardPage() {
-  // Above-the-fold critical path — blocks initial HTML (KPI row + traffic chart
-  // + attention-card dismissal state). Kept to 3 fast queries so TTFB stays low.
-  const state = await prefetchAll([
-    statsOverviewSpec(),
-    statsTimeseriesSpec(),
     dismissalsSpec(),
   ])
 
   return (
     <HydrationBoundary state={state}>
       <DashboardClient />
-      <Suspense fallback={null}>
-        <DeferredHydration />
-      </Suspense>
     </HydrationBoundary>
   )
 }
