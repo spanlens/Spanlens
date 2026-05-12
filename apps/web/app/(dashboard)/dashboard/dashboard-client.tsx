@@ -192,15 +192,8 @@ export function DashboardClient() {
     [dismissalsQuery.data],
   )
 
-  // Round `from` to the nearest minute so the query key stays stable between
-  // renders and only changes when the user switches the time range.
-  const queryDateRange = useMemo(() => {
-    const fromMs = Math.floor((Date.now() - hours * 60 * 60 * 1000) / 60_000) * 60_000
-    return { from: new Date(fromMs).toISOString() }
-  }, [hours])
-
-  const overview = useStatsOverview({ ...queryDateRange, compare: true }, { refetchInterval: LIVE_REFETCH_MS })
-  const timeseries = useStatsTimeseries(queryDateRange, { refetchInterval: LIVE_REFETCH_MS })
+  const overview = useStatsOverview({ hours, compare: true }, { refetchInterval: LIVE_REFETCH_MS })
+  const timeseries = useStatsTimeseries({ hours }, { refetchInterval: LIVE_REFETCH_MS })
   const anomalies = useAnomalies({ observationHours: hours })
   const alerts = useAlerts()
   const recommendations = useRecommendations({ hours })
