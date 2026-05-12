@@ -73,12 +73,8 @@ function InlineSpark({ values, w = 120, h = 18, stroke = 'var(--border-strong)' 
 
 // ── Stat strip ────────────────────────────────────────────────────────────────
 function StatStrip() {
-  const from24h = useMemo(() => {
-    const ms = Math.floor((Date.now() - 24 * 3600_000) / 60_000) * 60_000
-    return new Date(ms).toISOString()
-  }, [])
-  const overview = useStatsOverview({ from: from24h })
-  const timeseries = useStatsTimeseries({ from: from24h })
+  const overview = useStatsOverview({ hours: 24 })
+  const timeseries = useStatsTimeseries({ hours: 24 })
   const anomalies = useAnomalies()
 
   const o = overview.data
