@@ -16,6 +16,7 @@ import { useDismissals, useDismissCard } from '@/lib/queries/use-dismissals'
 import { cn } from '@/lib/utils'
 import dynamic from 'next/dynamic'
 import { WelcomeBanner } from '@/components/dashboard/welcome-banner'
+import { useRealtimeRequests } from '@/lib/hooks/use-realtime-requests'
 
 // Lazy-load recharts-heavy components. They render below the fold and are
 // not needed for the initial KPI row / greeting paint.
@@ -177,11 +178,13 @@ function AttnCard({ kind, title, meta, hint, cta, href, onDismiss }: AttnCardPro
 
 // ── Page ───────────────────────────────────────────────────────
 
-const LIVE_REFETCH_MS = 30_000
+// Realtime WebSocket handles instant updates; polling is a safety-net fallback only.
+const LIVE_REFETCH_MS = 2 * 60_000
 
 export function DashboardClient() {
   const [timeRange, setTimeRange] = useState('24h')
   const hours = timeRangeToHours(timeRange)
+  useRealtimeRequests()
   const dismissalsQuery = useDismissals()
   const dismissMutation = useDismissCard()
   const dismissedCards = useMemo(
