@@ -1,8 +1,12 @@
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import bundleAnalyzer from '@next/bundle-analyzer'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
+
+// Run `pnpm --filter web analyze` to emit a treemap report at .next/analyze/
+const withBundleAnalyzer = bundleAnalyzer({ enabled: process.env.ANALYZE === 'true' })
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
@@ -80,4 +84,4 @@ const nextConfig = {
   },
 }
 
-export default nextConfig
+export default withBundleAnalyzer(nextConfig)
