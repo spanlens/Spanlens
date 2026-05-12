@@ -12,12 +12,12 @@ function fromIso(hours: number): string {
   return new Date(fromMs).toISOString()
 }
 
-// Must exactly match statsOverviewQueryKey + params shape in use-stats.ts
+// Must exactly match useStatsOverview queryKey in use-stats.ts
 export function statsOverviewSpec(hours = 24): QuerySpec {
-  const from = fromIso(hours)
   return {
-    queryKey: ['stats', 'overview', { from, compare: true }] as const,
+    queryKey: ['stats', 'overview', { hours, compare: true }] as const,
     queryFn: async () => {
+      const from = fromIso(hours)
       const qs = new URLSearchParams({ from, compare: 'true' })
       const res = await apiGetServer<ApiEnvelope<StatsOverview>>(`/api/v1/stats/overview?${qs}`)
       return res.data
@@ -27,15 +27,16 @@ export function statsOverviewSpec(hours = 24): QuerySpec {
 
 // Must exactly match statsTimeseriesQueryKey() in use-stats.ts
 export function statsTimeseriesSpec(hours = 24): QuerySpec {
-  const from = fromIso(hours)
   return {
-    queryKey: ['stats', 'timeseries', { from }] as const,
+    queryKey: ['stats', 'timeseries', { hours }] as const,
     queryFn: async () => {
+      const from = fromIso(hours)
       const res = await apiGetServer<ApiEnvelope<TimeseriesPoint[]>>(
         `/api/v1/stats/timeseries?from=${from}`,
       )
       return res.data ?? []
     },
+    staleTime: 60_000,
   }
 }
 
