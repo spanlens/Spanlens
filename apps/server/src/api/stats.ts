@@ -20,6 +20,14 @@ export const statsRouter = new Hono<JwtContext>()
 
 statsRouter.use('*', authJwt)
 
+// Cache-Control presets for stats endpoints.
+// `private` — per-user data, never store on shared/CDN caches.
+// `max-age=N` — browser may serve cached response for N seconds without revalidation.
+// `stale-while-revalidate=M` — after max-age, serve stale for M seconds while refetching in background.
+// Dashboard auto-refetch is 2min + realtime WS; 10s freshness window cuts repeat-nav fetches to ~0ms.
+const CACHE_STATS_LIVE = 'private, max-age=10, stale-while-revalidate=30'
+const CACHE_STATS_FORECAST = 'private, max-age=60, stale-while-revalidate=300'
+
 interface OverviewRow {
   total_requests: number
   success_requests: number
@@ -93,6 +101,7 @@ statsRouter.get('/overview', async (c) => {
     const currRow = rowToOverview((curr.data as OverviewRow[] | null)?.[0])
     const prevRow = rowToOverview((prev.data as OverviewRow[] | null)?.[0])
 
+    c.header('Cache-Control', CACHE_STATS_LIVE)
     return c.json({
       success: true,
       data: {
@@ -117,6 +126,7 @@ statsRouter.get('/overview', async (c) => {
   // RPC returns TABLE — supabase-js exposes it as an array. We only asked for
   // aggregates so it's always length 1 (even when zero matching rows).
   const row = (data as OverviewRow[] | null)?.[0]
+  c.header('Cache-Control', CACHE_STATS_LIVE)
   return c.json({ success: true, data: rowToOverview(row) })
 })
 
@@ -171,6 +181,7 @@ statsRouter.get('/models', async (c) => {
     errorRate: Number(r.error_rate),
   }))
 
+  c.header('Cache-Control', CACHE_STATS_LIVE)
   return c.json({ success: true, data: models, meta: { hours, count: models.length } })
 })
 
@@ -202,6 +213,7 @@ statsRouter.get('/timeseries', async (c) => {
     errors: Number(r.errors),
   }))
 
+  c.header('Cache-Control', CACHE_STATS_LIVE)
   return c.json({ success: true, data: series, meta: { granularity } })
 })
 
@@ -292,6 +304,7 @@ statsRouter.get('/spend-forecast', async (c) => {
     })
   }
 
+  c.header('Cache-Control', CACHE_STATS_FORECAST)
   return c.json({
     success: true,
     data: {
@@ -360,6 +373,7 @@ statsRouter.get('/latency', async (c) => {
   const p95Overhead = percentile(sortedOverhead, 95)
   const p99Overhead = percentile(sortedOverhead, 99)
 
+  c.header('Cache-Control', CACHE_STATS_LIVE)
   return c.json({
     success: true,
     data: {
