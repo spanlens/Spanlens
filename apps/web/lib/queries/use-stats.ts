@@ -4,24 +4,31 @@ import { useQuery } from '@tanstack/react-query'
 import { apiGet } from '@/lib/api'
 import type { ApiEnvelope, StatsOverview, TimeseriesPoint, SpendForecast } from './types'
 
+// Truncated to the minute — must match server-side fromIso() in lib/server/queries/stats.ts
+// so the queryKey is stable across SSR render and client hydration.
+function fromIso(hours: number): string {
+  const fromMs = Math.floor((Date.now() - hours * 60 * 60 * 1000) / 60_000) * 60_000
+  return new Date(fromMs).toISOString()
+}
+
 export const statsOverviewQueryKey = ['stats', 'overview'] as const
 
 export function useStatsOverview(
-  params?: { projectId?: string; from?: string; to?: string; compare?: boolean },
+  params?: { hours?: number; compare?: boolean },
   options?: { refetchInterval?: number },
 ) {
+  const hours = params?.hours ?? 24
+  const compare = params?.compare ?? false
   return useQuery({
-    queryKey: params ? ([...statsOverviewQueryKey, params] as const) : statsOverviewQueryKey,
+    queryKey: ['stats', 'overview', { hours, compare }] as const,
     queryFn: async () => {
-      const qs = new URLSearchParams()
-      if (params?.projectId) qs.set('projectId', params.projectId)
-      if (params?.from) qs.set('from', params.from)
-      if (params?.to) qs.set('to', params.to)
-      if (params?.compare) qs.set('compare', 'true')
-      const suffix = qs.size > 0 ? `?${qs}` : ''
-      const res = await apiGet<ApiEnvelope<StatsOverview>>(`/api/v1/stats/overview${suffix}`)
+      const from = fromIso(hours)
+      const qs = new URLSearchParams({ from })
+      if (compare) qs.set('compare', 'true')
+      const res = await apiGet<ApiEnvelope<StatsOverview>>(`/api/v1/stats/overview?${qs}`)
       return res.data
     },
+    staleTime: 60_000,
     ...(options?.refetchInterval != null ? { refetchInterval: options.refetchInterval } : {}),
   })
 }
@@ -67,27 +74,25 @@ export function useSpendForecast(projectId?: string) {
   })
 }
 
-export function statsTimeseriesQueryKey(params?: { projectId?: string; from?: string; to?: string }) {
+export function statsTimeseriesQueryKey(params?: { hours?: number }) {
   return params ? (['stats', 'timeseries', params] as const) : (['stats', 'timeseries'] as const)
 }
 
 export function useStatsTimeseries(
-  params?: { projectId?: string; from?: string; to?: string },
+  params?: { hours?: number },
   options?: { refetchInterval?: number },
 ) {
+  const hours = params?.hours ?? 24
   return useQuery({
-    queryKey: statsTimeseriesQueryKey(params),
+    queryKey: statsTimeseriesQueryKey({ hours }),
     queryFn: async () => {
-      const qs = new URLSearchParams()
-      if (params?.projectId) qs.set('projectId', params.projectId)
-      if (params?.from) qs.set('from', params.from)
-      if (params?.to) qs.set('to', params.to)
-      const suffix = qs.size > 0 ? `?${qs}` : ''
+      const from = fromIso(hours)
       const res = await apiGet<ApiEnvelope<TimeseriesPoint[]>>(
-        `/api/v1/stats/timeseries${suffix}`,
+        `/api/v1/stats/timeseries?from=${from}`,
       )
       return res.data ?? []
     },
+    staleTime: 60_000,
     ...(options?.refetchInterval != null ? { refetchInterval: options.refetchInterval } : {}),
   })
 }
