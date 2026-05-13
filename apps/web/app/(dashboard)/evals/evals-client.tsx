@@ -1,7 +1,7 @@
 'use client'
 
-import { useMemo, useState } from 'react'
-import { Beaker, Play, Trash2, Plus, Loader2, AlertTriangle, CheckCircle2 } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { Beaker, Play, Trash2, Plus, Loader2, AlertTriangle } from 'lucide-react'
 import { Topbar } from '@/components/layout/topbar'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
@@ -15,7 +15,6 @@ import {
   useEvalResults,
   useEstimateEvalCost,
   type Evaluator,
-  type EvalRun,
   type EvalRunStatus,
 } from '@/lib/queries/use-evals'
 import { usePrompts, usePromptVersions } from '@/lib/queries/use-prompts'
@@ -231,21 +230,17 @@ function RunEvaluatorDialog({
   const [error, setError] = useState('')
 
   // Default to latest version
-  useMemo(() => {
+  useEffect(() => {
     if (!versionId && versions.data && versions.data.length > 0) {
       setVersionId(versions.data[0]!.id)
     }
   }, [versions.data, versionId])
 
-  async function loadEstimate() {
-    try {
-      await estimate.mutateAsync({ sampleSize, judgeModel: evaluator.config.judge_model })
-    } catch {
-      // ignore
-    }
-  }
-
-  useMemo(() => { void loadEstimate() /* eslint-disable-line */ }, [sampleSize, evaluator.config.judge_model])
+  const judgeModel = evaluator.config.judge_model
+  const estimateMutate = estimate.mutateAsync
+  useEffect(() => {
+    void estimateMutate({ sampleSize, judgeModel }).catch(() => null)
+  }, [sampleSize, judgeModel, estimateMutate])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -418,15 +413,8 @@ function RunDetailPanel({ runId, onClose }: { runId: string; onClose: () => void
     run.data?.status === 'completed' ? runId : null,
   )
 
-  if (!run.data) {
-    return (
-      <div className="border-l border-border w-[400px] shrink-0 flex items-center justify-center text-text-faint">
-        <Loader2 className="h-4 w-4 animate-spin" />
-      </div>
-    )
-  }
-
-  const r = run.data
+  // Hooks must be called unconditionally — compute histBuckets even when
+  // run.data is null, then early-return below.
   const histBuckets = useMemo(() => {
     const buckets = [0, 0, 0, 0, 0] // 0-0.2, 0.2-0.4, ...
     for (const result of results.data ?? []) {
@@ -436,6 +424,16 @@ function RunDetailPanel({ runId, onClose }: { runId: string; onClose: () => void
     return buckets
   }, [results.data])
   const maxBucket = Math.max(1, ...histBuckets)
+
+  if (!run.data) {
+    return (
+      <div className="border-l border-border w-[400px] shrink-0 flex items-center justify-center text-text-faint">
+        <Loader2 className="h-4 w-4 animate-spin" />
+      </div>
+    )
+  }
+
+  const r = run.data
 
   return (
     <div className="border-l border-border w-[420px] shrink-0 overflow-y-auto">

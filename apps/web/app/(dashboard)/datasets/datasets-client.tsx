@@ -5,7 +5,6 @@ import Link from 'next/link'
 import { Database, Plus, Trash2, FileText, Hash } from 'lucide-react'
 import { Topbar } from '@/components/layout/topbar'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { cn } from '@/lib/utils'
 import {
   useDatasets,
   useCreateDataset,
