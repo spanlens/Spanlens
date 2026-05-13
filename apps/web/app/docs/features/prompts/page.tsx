@@ -226,6 +226,74 @@ const res = await observeOpenAI(
         it just isn&apos;t linked to a version).
       </p>
 
+      <h2>Prompts 페이지의 서브탭들</h2>
+      <p>
+        대시보드에서 prompt 하나를 클릭하면 6개 서브탭이 보입니다:
+      </p>
+      <ul>
+        <li><strong>Versions</strong> — 모든 버전 목록 + 펼치기로 본문 확인</li>
+        <li><strong>Diff</strong> — 두 버전 선택 → LCS 기반 line-level diff (+/− 색상)</li>
+        <li>
+          <strong>Traffic</strong> — 버전별 트래픽 share + 품질 색상 (≥90 green / 70–89 yellow / &lt;70 red)
+        </li>
+        <li>
+          <strong>Calls</strong> — 버전별 호출수·레이턴시·에러율·<strong>QUALITY</strong>·비용·토큰 집계.
+          row 클릭 시 <code>/requests?promptVersionId=...</code>로 드릴다운.{' '}
+          <strong>Quality 컬럼</strong>은 <a href="/docs/features/evals">Evals</a>가 매긴
+          <code>eval_results</code> 평균을 표시.
+        </li>
+        <li>
+          <strong>A/B</strong> — 프로덕션 트래픽 A/B 라우팅. <a href="/docs/features/experiments">Experiments</a>의
+          오프라인 비교와는 다릅니다 (아래 표 참고).
+        </li>
+        <li>
+          <strong>Playground</strong> — 버전을 선택해 provider key·model·temperature·variables 설정 후 즉시
+          실행. SQL 쿼리 콘솔과 비슷한 도구로, 결과는 <code>requests</code> 테이블에 저장되지 않음.
+          Rate limit 20 req/min/user.
+        </li>
+      </ul>
+
+      <h2>A/B 라우팅 vs Experiments</h2>
+      <p>
+        같은 &quot;실험&quot; 단어가 두 곳에 등장하므로 헷갈리지 않게 정리:
+      </p>
+      <div className="overflow-x-auto">
+        <table>
+          <thead>
+            <tr>
+              <th></th>
+              <th>A/B (이 탭)</th>
+              <th><a href="/docs/features/experiments">Experiments</a></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>데이터</td>
+              <td>프로덕션 트래픽</td>
+              <td>오프라인 dataset</td>
+            </tr>
+            <tr>
+              <td>시점</td>
+              <td>실시간, 실제 사용자 노출</td>
+              <td>즉시 실행, 사용자 노출 없음</td>
+            </tr>
+            <tr>
+              <td>측정</td>
+              <td>통계 유의성 (Welch&apos;s t-test)</td>
+              <td>출력 텍스트 직접 비교 + 점수</td>
+            </tr>
+            <tr>
+              <td>위험</td>
+              <td>나쁜 버전이 사용자에게 감</td>
+              <td>없음</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        보완 관계: <strong>Experiments로 사전 검증 → A/B로 프로덕션 검증</strong>.
+      </p>
+
       <h2>Limitations</h2>
       <p>Honest view of what the feature does <em>not</em> do yet:</p>
       <ul>
@@ -246,9 +314,10 @@ const res = await observeOpenAI(
 
       <hr />
       <p className="text-sm text-muted-foreground">
-        Related: <a href="/docs/features/savings">Savings</a> (model substitution recommendations),{' '}
-        <a href="/docs/features/traces">Traces</a> (agent span tree), <a href="/prompts">/prompts</a>{' '}
-        dashboard.
+        관련: <a href="/docs/features/evals">Evals</a> (응답 품질 점수),{' '}
+        <a href="/docs/features/experiments">Experiments</a> (오프라인 비교),{' '}
+        <a href="/docs/features/savings">Savings</a> (model substitution),{' '}
+        <a href="/docs/features/traces">Traces</a>, <a href="/prompts">/prompts</a> 대시보드.
       </p>
     </div>
   )
