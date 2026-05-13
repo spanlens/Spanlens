@@ -641,6 +641,199 @@ export type Database = {
           },
         ]
       }
+      experiment_results: {
+        Row: {
+          cost_a_usd: number
+          cost_b_usd: number
+          created_at: string
+          dataset_item_id: string
+          error_a: string | null
+          error_b: string | null
+          experiment_id: string
+          id: string
+          latency_a_ms: number | null
+          latency_b_ms: number | null
+          organization_id: string
+          output_a: string | null
+          output_b: string | null
+          reasoning_a: string | null
+          reasoning_b: string | null
+          score_a: number | null
+          score_b: number | null
+          tokens_a: number
+          tokens_b: number
+        }
+        Insert: {
+          cost_a_usd?: number
+          cost_b_usd?: number
+          created_at?: string
+          dataset_item_id: string
+          error_a?: string | null
+          error_b?: string | null
+          experiment_id: string
+          id?: string
+          latency_a_ms?: number | null
+          latency_b_ms?: number | null
+          organization_id: string
+          output_a?: string | null
+          output_b?: string | null
+          reasoning_a?: string | null
+          reasoning_b?: string | null
+          score_a?: number | null
+          score_b?: number | null
+          tokens_a?: number
+          tokens_b?: number
+        }
+        Update: {
+          cost_a_usd?: number
+          cost_b_usd?: number
+          created_at?: string
+          dataset_item_id?: string
+          error_a?: string | null
+          error_b?: string | null
+          experiment_id?: string
+          id?: string
+          latency_a_ms?: number | null
+          latency_b_ms?: number | null
+          organization_id?: string
+          output_a?: string | null
+          output_b?: string | null
+          reasoning_a?: string | null
+          reasoning_b?: string | null
+          score_a?: number | null
+          score_b?: number | null
+          tokens_a?: number
+          tokens_b?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "experiment_results_dataset_item_id_fkey"
+            columns: ["dataset_item_id"]
+            isOneToOne: false
+            referencedRelation: "dataset_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "experiment_results_experiment_id_fkey"
+            columns: ["experiment_id"]
+            isOneToOne: false
+            referencedRelation: "experiments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "experiment_results_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      experiments: {
+        Row: {
+          avg_score_a: number | null
+          avg_score_b: number | null
+          completed_at: string | null
+          completed_items: number
+          created_by: string | null
+          dataset_id: string
+          error: string | null
+          evaluator_id: string | null
+          id: string
+          name: string
+          organization_id: string
+          prompt_name: string
+          run_model: string
+          run_provider: string
+          started_at: string
+          status: string
+          total_cost_usd: number
+          total_items: number
+          version_a_id: string
+          version_b_id: string
+        }
+        Insert: {
+          avg_score_a?: number | null
+          avg_score_b?: number | null
+          completed_at?: string | null
+          completed_items?: number
+          created_by?: string | null
+          dataset_id: string
+          error?: string | null
+          evaluator_id?: string | null
+          id?: string
+          name: string
+          organization_id: string
+          prompt_name: string
+          run_model: string
+          run_provider: string
+          started_at?: string
+          status?: string
+          total_cost_usd?: number
+          total_items?: number
+          version_a_id: string
+          version_b_id: string
+        }
+        Update: {
+          avg_score_a?: number | null
+          avg_score_b?: number | null
+          completed_at?: string | null
+          completed_items?: number
+          created_by?: string | null
+          dataset_id?: string
+          error?: string | null
+          evaluator_id?: string | null
+          id?: string
+          name?: string
+          organization_id?: string
+          prompt_name?: string
+          run_model?: string
+          run_provider?: string
+          started_at?: string
+          status?: string
+          total_cost_usd?: number
+          total_items?: number
+          version_a_id?: string
+          version_b_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "experiments_dataset_id_fkey"
+            columns: ["dataset_id"]
+            isOneToOne: false
+            referencedRelation: "datasets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "experiments_evaluator_id_fkey"
+            columns: ["evaluator_id"]
+            isOneToOne: false
+            referencedRelation: "evaluators"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "experiments_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "experiments_version_a_id_fkey"
+            columns: ["version_a_id"]
+            isOneToOne: false
+            referencedRelation: "prompt_versions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "experiments_version_b_id_fkey"
+            columns: ["version_b_id"]
+            isOneToOne: false
+            referencedRelation: "prompt_versions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       model_prices: {
         Row: {
           completion_price_per_1m: number
