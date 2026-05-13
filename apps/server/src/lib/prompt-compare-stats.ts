@@ -15,6 +15,10 @@ export interface VersionMetrics {
   totalCostUsd: number
   avgPromptTokens: number
   avgCompletionTokens: number
+  /** Average score from eval_results for this prompt version (0..1). Null if no evals run yet. */
+  avgQualityScore: number | null
+  /** Number of eval_results rows aggregated into avgQualityScore. */
+  qualitySampleCount: number
 }
 
 export interface PromptVersionRef {
@@ -32,11 +36,22 @@ export interface RequestMetricRow {
   completion_tokens: number | null
 }
 
+export interface QualityAggregate {
+  /** Sum of normalized scores (0..1) for this prompt version's eval_results. */
+  scoreSum: number
+  /** Number of eval_results rows. */
+  count: number
+}
+
 export function aggregate(
   version: PromptVersionRef,
   rows: readonly RequestMetricRow[],
+  quality?: QualityAggregate,
 ): VersionMetrics {
   const n = rows.length
+  const qualityCount = quality?.count ?? 0
+  const avgQuality = qualityCount > 0 && quality ? quality.scoreSum / qualityCount : null
+
   if (n === 0) {
     return {
       version: version.version,
@@ -49,6 +64,8 @@ export function aggregate(
       totalCostUsd: 0,
       avgPromptTokens: 0,
       avgCompletionTokens: 0,
+      avgQualityScore: avgQuality,
+      qualitySampleCount: qualityCount,
     }
   }
 
@@ -93,5 +110,7 @@ export function aggregate(
     totalCostUsd: costSum,
     avgPromptTokens: promptTokenCount > 0 ? promptTokenSum / promptTokenCount : 0,
     avgCompletionTokens: completionTokenCount > 0 ? completionTokenSum / completionTokenCount : 0,
+    avgQualityScore: avgQuality,
+    qualitySampleCount: qualityCount,
   }
 }

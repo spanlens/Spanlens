@@ -4,6 +4,7 @@ import {
   type VersionMetrics,
   type PromptVersionRef,
   type RequestMetricRow,
+  type QualityAggregate,
 } from './prompt-compare-stats.js'
 
 /**
@@ -51,5 +52,36 @@ export async function comparePromptVersions(
     byVersion.set(r.prompt_version_id, bucket)
   }
 
-  return typedVersions.map((v) => aggregate(v, byVersion.get(v.id) ?? []))
+  // Aggregate eval_results scores per prompt version (LLM-as-judge quality).
+  // Joined here so calls-tab QUALITY column can display real values.
+  const { data: evalRows } = await supabaseAdmin
+    .from('eval_runs')
+    .select('prompt_version_id, eval_results ( score )')
+    .eq('organization_id', organizationId)
+    .in('prompt_version_id', versionIds)
+    .eq('status', 'completed')
+
+  type EvalRunRow = {
+    prompt_version_id: string | null
+    eval_results: Array<{ score: number | null }> | { score: number | null } | null
+  }
+  const qualityByVersion = new Map<string, QualityAggregate>()
+  for (const row of (evalRows ?? []) as unknown as EvalRunRow[]) {
+    if (!row.prompt_version_id) continue
+    const results = Array.isArray(row.eval_results)
+      ? row.eval_results
+      : row.eval_results ? [row.eval_results] : []
+    const agg = qualityByVersion.get(row.prompt_version_id) ?? { scoreSum: 0, count: 0 }
+    for (const r of results) {
+      if (typeof r.score === 'number') {
+        agg.scoreSum += r.score
+        agg.count += 1
+      }
+    }
+    qualityByVersion.set(row.prompt_version_id, agg)
+  }
+
+  return typedVersions.map((v) =>
+    aggregate(v, byVersion.get(v.id) ?? [], qualityByVersion.get(v.id)),
+  )
 }

@@ -11,6 +11,8 @@ import Anthropic from '@anthropic-ai/sdk'
 import type { ClientOptions } from '@anthropic-ai/sdk'
 
 export const PROMPT_VERSION_HEADER = 'x-spanlens-prompt-version'
+export const USER_HEADER = 'x-spanlens-user'
+export const SESSION_HEADER = 'x-spanlens-session'
 
 export const DEFAULT_SPANLENS_ANTHROPIC_PROXY =
   'https://spanlens-server.vercel.app/proxy/anthropic'
@@ -56,4 +58,14 @@ function readEnv(name: string): string | undefined {
  */
 export function withPromptVersion(id: string): { headers: Record<string, string> } {
   return { headers: { [PROMPT_VERSION_HEADER]: id } }
+}
+
+/** Tag a request with an end-user ID. Same semantics as the OpenAI helper. */
+export function withUser(userId: string): { headers: Record<string, string> } {
+  return { headers: { [USER_HEADER]: userId } }
+}
+
+/** Tag a request with a session ID. Same semantics as the OpenAI helper. */
+export function withSession(sessionId: string): { headers: Record<string, string> } {
+  return { headers: { [SESSION_HEADER]: sessionId } }
 }

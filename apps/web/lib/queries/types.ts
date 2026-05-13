@@ -88,6 +88,10 @@ export interface RequestRow {
   provider_key_id?: string | null
   /** Joined from provider_keys.name — null if the key was revoked or never set. */
   provider_key_name?: string | null
+  /** Customer-supplied end-user ID (x-spanlens-user header). */
+  user_id?: string | null
+  /** Customer-supplied session ID (x-spanlens-session header). */
+  session_id?: string | null
   created_at: string
 }
 
