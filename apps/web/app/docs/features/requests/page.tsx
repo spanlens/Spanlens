@@ -82,6 +82,27 @@ export default function RequestsDocs() {
             </td>
           </tr>
           <tr>
+            <td><code>prompt_version_id</code></td>
+            <td>
+              Set when the call carried <code>x-spanlens-prompt-version</code> header. Links to a{' '}
+              <a href="/docs/features/prompts">Prompts</a> version row.
+            </td>
+          </tr>
+          <tr>
+            <td><code>user_id</code></td>
+            <td>
+              Set from <code>x-spanlens-user</code> header. Customer-supplied end-user ID for
+              attribution (Spanlens does not interpret the value).
+            </td>
+          </tr>
+          <tr>
+            <td><code>session_id</code></td>
+            <td>
+              Set from <code>x-spanlens-session</code> header. Groups requests from one conversation
+              or workflow.
+            </td>
+          </tr>
+          <tr>
             <td><code>flags</code></td>
             <td><a href="/docs/features/security">PII / injection flags</a> (JSONB array)</td>
           </tr>
@@ -124,6 +145,39 @@ export default function RequestsDocs() {
         <li><strong>Status</strong> — All / OK (2xx) / 4xx / 5xx</li>
         <li><strong>Date range</strong> — from / to</li>
       </ul>
+
+      <h4>URL 파라미터로만 적용되는 필터</h4>
+      <p>
+        다른 페이지에서 드릴다운으로 진입할 때 URL에 붙는 필터들. 페이지 상단에 활성 필터 배너가
+        표시되며 <strong>Clear ×</strong>로 해제 가능합니다.
+      </p>
+      <table>
+        <thead>
+          <tr><th>URL param</th><th>의미</th><th>주 진입 경로</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>?promptVersionId=&lt;uuid&gt;</code></td>
+            <td>특정 prompt 버전을 사용한 호출만</td>
+            <td>Prompts → Calls 탭의 row 클릭</td>
+          </tr>
+          <tr>
+            <td><code>?userId=&lt;str&gt;</code></td>
+            <td>해당 end-user의 호출만</td>
+            <td>request detail의 User 항목 클릭</td>
+          </tr>
+          <tr>
+            <td><code>?sessionId=&lt;str&gt;</code></td>
+            <td>해당 세션의 호출만</td>
+            <td>request detail의 Session 항목 클릭</td>
+          </tr>
+        </tbody>
+      </table>
+      <p>
+        사용자가 <code>x-spanlens-user</code> / <code>x-spanlens-session</code> 헤더를 보내야{' '}
+        <code>user_id</code> / <code>session_id</code> 컬럼에 값이 채워집니다.{' '}
+        <a href="/docs/sdk">SDK 헬퍼</a> <code>withUser()</code> / <code>withSession()</code> 참고.
+      </p>
       <p>
         Column headers for <strong>Latency</strong>, <strong>Cost</strong>,{' '}
         <strong>Tokens</strong>, and <strong>Age</strong> are clickable to sort ascending or
@@ -234,6 +288,9 @@ GET /api/v1/requests
   &provider=openai       # exact match
   &model=mini            # partial match (case-insensitive)
   &providerKeyId=<uuid>  # filter by provider key
+  &promptVersionId=<uuid> # filter by prompt version
+  &userId=<str>          # filter by x-spanlens-user header value
+  &sessionId=<str>       # filter by x-spanlens-session header value
   &status=ok             # ok | 4xx | 5xx
   &from=2024-01-01T00:00:00Z
   &to=2024-01-31T23:59:59Z
