@@ -194,6 +194,53 @@ res = client.chat.completions.create(
         set the header directly: <code>x-spanlens-prompt-version: &lt;id&gt;</code>.
       </p>
 
+      <h2 id="with-user">withUser() / withSession() — end-user 추적 (v0.2.7+)</h2>
+      <p>
+        호출에 end-user ID와 session ID를 태그합니다. <code>requests.user_id</code> /{' '}
+        <code>requests.session_id</code> 컬럼에 저장되어 <a href="/docs/features/requests">/requests</a>{' '}
+        페이지에서 <code>?userId=</code>·<code>?sessionId=</code>로 필터링 가능합니다.
+      </p>
+      <LangTabs
+        ts={`import {
+  createOpenAI,
+  withUser,
+  withSession,
+  withPromptVersion,
+} from '@spanlens/sdk/openai'
+
+const openai = createOpenAI()
+
+const res = await openai.chat.completions.create(
+  { model: 'gpt-4o-mini', messages: [...] },
+  {
+    headers: {
+      ...withUser(currentUser.id).headers,
+      ...withSession(sessionId).headers,
+      ...withPromptVersion('chatbot@3').headers,
+    },
+  },
+)`}
+        py={`# Python SDK는 추후 지원 — 그때까지는 헤더 직접 전달
+import openai
+
+client = openai.OpenAI(
+    api_key=os.environ["SPANLENS_API_KEY"],
+    base_url="https://spanlens-server.vercel.app/proxy/openai/v1",
+    default_headers={
+        "x-spanlens-user": current_user_id,
+        "x-spanlens-session": session_id,
+    },
+)`}
+      />
+      <p>
+        반환값은 <code>{`{ headers: { ... } }`}</code> 형태라 여러 헬퍼를 spread로 병합하면 됩니다.
+        Anthropic integration도 동일한 헬퍼를 export 합니다.
+      </p>
+      <p>
+        세 헤더 모두 <code>STRIP_PREFIXES</code> (<code>x-spanlens-*</code>) 정책으로 upstream
+        (OpenAI/Anthropic/Gemini)에는 forward 되지 않습니다 — Spanlens 내부 metadata로만 사용됩니다.
+      </p>
+
       <h2 id="observe">observe() — agent tracing</h2>
       <p>
         Wrap any function to turn it into a span in an agent trace. The callback&rsquo;s return value
