@@ -170,6 +170,8 @@ export function useEvalResults(runId: string | null) {
 export interface CreateEvalRunInput {
   evaluatorId: string
   promptVersionId: string
+  source?: 'production' | 'dataset'
+  datasetId?: string
   sampleSize: number
   sampleFrom?: string
   sampleTo?: string

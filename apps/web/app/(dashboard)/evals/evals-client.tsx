@@ -20,6 +20,7 @@ import {
 } from '@/lib/queries/use-evals'
 import { usePrompts, usePromptVersions } from '@/lib/queries/use-prompts'
 import type { PromptVersion } from '@/lib/queries/use-prompts'
+import { useDatasets } from '@/lib/queries/use-datasets'
 
 const JUDGE_MODELS = {
   openai: ['gpt-4o-mini', 'gpt-4o', 'gpt-4-turbo'],
@@ -218,10 +219,13 @@ function RunEvaluatorDialog({
   onRunCreated: (runId: string) => void
 }) {
   const versions = usePromptVersions(evaluator.prompt_name)
+  const datasets = useDatasets()
   const createRun = useCreateEvalRun()
   const estimate = useEstimateEvalCost()
 
   const [versionId, setVersionId] = useState('')
+  const [source, setSource] = useState<'production' | 'dataset'>('production')
+  const [datasetId, setDatasetId] = useState('')
   const [sampleSize, setSampleSize] = useState(50)
   const [days, setDays] = useState(7)
   const [error, setError] = useState('')
@@ -247,13 +251,17 @@ function RunEvaluatorDialog({
     e.preventDefault()
     setError('')
     if (!versionId) { setError('Select a version'); return }
+    if (source === 'dataset' && !datasetId) { setError('Select a dataset'); return }
     try {
-      const sampleFrom = new Date(Date.now() - days * 86400_000).toISOString()
       const run = await createRun.mutateAsync({
         evaluatorId: evaluator.id,
         promptVersionId: versionId,
+        source,
         sampleSize,
-        sampleFrom,
+        ...(source === 'dataset' && datasetId && { datasetId }),
+        ...(source === 'production' && {
+          sampleFrom: new Date(Date.now() - days * 86400_000).toISOString(),
+        }),
       })
       onRunCreated(run.id)
     } catch (err) {
@@ -285,23 +293,72 @@ function RunEvaluatorDialog({
             </select>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          {/* Source toggle */}
+          <div>
+            <label className="block font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint mb-1">
+              Sample source
+            </label>
+            <div className="flex gap-1 p-0.5 border border-border rounded-[5px] bg-bg-elev font-mono text-[11px]">
+              <button
+                type="button"
+                onClick={() => setSource('production')}
+                className={`flex-1 px-3 py-1 rounded-[3px] ${source === 'production' ? 'bg-text text-bg' : 'text-text-muted'}`}
+              >
+                Production
+              </button>
+              <button
+                type="button"
+                onClick={() => setSource('dataset')}
+                className={`flex-1 px-3 py-1 rounded-[3px] ${source === 'dataset' ? 'bg-text text-bg' : 'text-text-muted'}`}
+              >
+                Dataset
+              </button>
+            </div>
+          </div>
+
+          {source === 'dataset' && (
             <div>
               <label className="block font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint mb-1">
-                Last N days
+                Dataset
               </label>
               <select
-                value={days}
-                onChange={(e) => setDays(Number(e.target.value))}
+                value={datasetId}
+                onChange={(e) => setDatasetId(e.target.value)}
+                required
                 className="w-full h-9 px-2 rounded-[5px] border border-border bg-bg font-mono text-[12px] text-text"
               >
-                <option value={1}>1 day</option>
-                <option value={7}>7 days</option>
-                <option value={30}>30 days</option>
-                <option value={90}>90 days</option>
+                <option value="">Select dataset…</option>
+                {(datasets.data ?? []).map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.name} ({d.item_count ?? 0} items)
+                  </option>
+                ))}
               </select>
+              <p className="font-mono text-[10px] text-text-faint mt-1">
+                Only items with expected_output are scored.
+              </p>
             </div>
-            <div>
+          )}
+
+          <div className="grid grid-cols-2 gap-3">
+            {source === 'production' && (
+              <div>
+                <label className="block font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint mb-1">
+                  Last N days
+                </label>
+                <select
+                  value={days}
+                  onChange={(e) => setDays(Number(e.target.value))}
+                  className="w-full h-9 px-2 rounded-[5px] border border-border bg-bg font-mono text-[12px] text-text"
+                >
+                  <option value={1}>1 day</option>
+                  <option value={7}>7 days</option>
+                  <option value={30}>30 days</option>
+                  <option value={90}>90 days</option>
+                </select>
+              </div>
+            )}
+            <div className={source === 'dataset' ? 'col-span-2' : ''}>
               <label className="block font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint mb-1">
                 Sample size
               </label>

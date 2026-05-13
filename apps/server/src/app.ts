@@ -26,6 +26,7 @@ import { promptsRouter }       from './api/prompts.js'
 import { promptsPlaygroundRouter } from './api/prompts-playground.js'
 import { promptExperimentsRouter } from './api/prompt-experiments.js'
 import { evalsRouter } from './api/evals.js'
+import { datasetsRouter } from './api/datasets.js'
 import { recommendationsRouter } from './api/recommendations.js'
 import { auditLogsRouter }     from './api/auditLogs.js'
 import { membersRouter }       from './api/members.js'
@@ -109,6 +110,7 @@ app.route('/api/v1/prompts/playground', promptsPlaygroundRouter)
 app.route('/api/v1/prompts',        promptsRouter)
 app.route('/api/v1/prompt-experiments', promptExperimentsRouter)
 app.route('/api/v1',                evalsRouter)
+app.route('/api/v1/datasets',       datasetsRouter)
 app.route('/api/v1/recommendations', recommendationsRouter)
 app.route('/api/v1/audit-logs',     auditLogsRouter)
 app.route('/api/v1/organizations/:orgId/members', membersRouter)

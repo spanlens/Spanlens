@@ -218,9 +218,18 @@ interface RunInput {
   organizationId: string
   evaluatorId: string
   promptVersionId: string
+  source: 'production' | 'dataset'
+  /** Required when source = 'dataset' */
+  datasetId?: string | null
   sampleSize: number
   sampleFrom?: string | null
   sampleTo?: string | null
+}
+
+/** Result of one sample's scoring, shared between production and dataset paths. */
+interface SampleOutcome extends JudgeOutcome {
+  requestId: string | null
+  datasetItemId: string | null
 }
 
 /**
@@ -229,7 +238,7 @@ interface RunInput {
  * caller gets an immediate 202 while work continues in the background.
  */
 export async function runEvalRun(input: RunInput): Promise<void> {
-  const { evalRunId, organizationId, evaluatorId, promptVersionId, sampleSize, sampleFrom, sampleTo } = input
+  const { evalRunId, organizationId, evaluatorId, promptVersionId, source, datasetId, sampleSize, sampleFrom, sampleTo } = input
 
   // Mark running
   await supabaseAdmin
@@ -272,29 +281,71 @@ export async function runEvalRun(input: RunInput): Promise<void> {
     const judgeKey = await aes256Decrypt(pkRow.encrypted_key as string)
     if (!judgeKey) throw new Error('Failed to decrypt judge provider key')
 
-    // Sample requests for this prompt version
-    let query = supabaseAdmin
-      .from('requests')
-      .select('id, response_body')
-      .eq('organization_id', organizationId)
-      .eq('prompt_version_id', promptVersionId)
-      .not('response_body', 'is', null)
-      .order('created_at', { ascending: false })
-      .limit(sampleSize)
+    // ── Gather samples (production requests OR dataset items) ──────────────
+    type SampleRow = {
+      responseText: string
+      requestId: string | null
+      datasetItemId: string | null
+    }
+    let preparedSamples: SampleRow[] = []
 
-    if (sampleFrom) query = query.gte('created_at', sampleFrom)
-    if (sampleTo) query = query.lte('created_at', sampleTo)
+    if (source === 'production') {
+      let query = supabaseAdmin
+        .from('requests')
+        .select('id, response_body')
+        .eq('organization_id', organizationId)
+        .eq('prompt_version_id', promptVersionId)
+        .not('response_body', 'is', null)
+        .order('created_at', { ascending: false })
+        .limit(sampleSize)
 
-    const { data: samples, error: sampleErr } = await query
-    if (sampleErr) throw new Error(`Sample fetch failed: ${sampleErr.message}`)
+      if (sampleFrom) query = query.gte('created_at', sampleFrom)
+      if (sampleTo) query = query.lte('created_at', sampleTo)
 
-    if (!samples || samples.length === 0) {
+      const { data: samples, error: sampleErr } = await query
+      if (sampleErr) throw new Error(`Sample fetch failed: ${sampleErr.message}`)
+
+      preparedSamples = (samples ?? [])
+        .map((s) => ({
+          responseText: extractResponseText(s.response_body) ?? '',
+          requestId: s.id as string,
+          datasetItemId: null,
+        }))
+        .filter((s) => s.responseText.length > 0)
+    } else {
+      // source === 'dataset'
+      if (!datasetId) throw new Error('datasetId is required when source = dataset')
+
+      const { data: items, error: itemsErr } = await supabaseAdmin
+        .from('dataset_items')
+        .select('id, expected_output')
+        .eq('dataset_id', datasetId)
+        .eq('organization_id', organizationId)
+        .not('expected_output', 'is', null)
+        .order('created_at', { ascending: false })
+        .limit(sampleSize)
+
+      if (itemsErr) throw new Error(`Dataset items fetch failed: ${itemsErr.message}`)
+
+      preparedSamples = (items ?? [])
+        .filter((i) => typeof i.expected_output === 'string' && i.expected_output.length > 0)
+        .map((i) => ({
+          responseText: i.expected_output as string,
+          requestId: null,
+          datasetItemId: i.id as string,
+        }))
+    }
+
+    if (preparedSamples.length === 0) {
       await supabaseAdmin
         .from('eval_runs')
         .update({
           status: 'completed',
           scored_count: 0,
           avg_score: null,
+          error: source === 'dataset'
+            ? 'Dataset has no items with expected_output. Add items first.'
+            : null,
           completed_at: new Date().toISOString(),
         })
         .eq('id', evalRunId)
@@ -302,19 +353,21 @@ export async function runEvalRun(input: RunInput): Promise<void> {
     }
 
     // Score each sample with the judge LLM
-    const outcomes = await pool(samples, JUDGE_CONCURRENCY, async (sample) => {
-      const responseText = extractResponseText(sample.response_body)
-      if (!responseText) return null
+    const outcomes = await pool(preparedSamples, JUDGE_CONCURRENCY, async (sample): Promise<SampleOutcome | null> => {
       try {
-        const outcome = await callJudge(config, responseText, judgeKey)
+        const outcome = await callJudge(config, sample.responseText, judgeKey)
         if (!outcome) return null
-        return { requestId: sample.id as string, ...outcome }
+        return {
+          requestId: sample.requestId,
+          datasetItemId: sample.datasetItemId,
+          ...outcome,
+        }
       } catch {
         return null
       }
     })
 
-    const scored = outcomes.filter((o): o is NonNullable<typeof o> => o !== null)
+    const scored = outcomes.filter((o): o is SampleOutcome => o !== null)
 
     if (scored.length === 0) {
       await supabaseAdmin
@@ -333,6 +386,7 @@ export async function runEvalRun(input: RunInput): Promise<void> {
       organization_id: organizationId,
       eval_run_id: evalRunId,
       request_id: s.requestId,
+      dataset_item_id: s.datasetItemId,
       score: s.score,
       reasoning: s.reasoning,
       judge_cost_usd: s.cost,

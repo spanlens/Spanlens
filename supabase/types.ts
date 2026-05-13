@@ -350,6 +350,96 @@ export type Database = {
           },
         ]
       }
+      dataset_items: {
+        Row: {
+          created_at: string
+          dataset_id: string
+          expected_output: string | null
+          id: string
+          input: Json
+          organization_id: string
+          source_request_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          dataset_id: string
+          expected_output?: string | null
+          id?: string
+          input: Json
+          organization_id: string
+          source_request_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          dataset_id?: string
+          expected_output?: string | null
+          id?: string
+          input?: Json
+          organization_id?: string
+          source_request_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dataset_items_dataset_id_fkey"
+            columns: ["dataset_id"]
+            isOneToOne: false
+            referencedRelation: "datasets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dataset_items_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dataset_items_source_request_id_fkey"
+            columns: ["source_request_id"]
+            isOneToOne: false
+            referencedRelation: "requests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      datasets: {
+        Row: {
+          archived_at: string | null
+          created_at: string
+          created_by: string | null
+          description: string | null
+          id: string
+          name: string
+          organization_id: string
+        }
+        Insert: {
+          archived_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          name: string
+          organization_id: string
+        }
+        Update: {
+          archived_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          name?: string
+          organization_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "datasets_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       eval_results: {
         Row: {
           created_at: string
@@ -389,6 +479,13 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "eval_results_dataset_item_id_fkey"
+            columns: ["dataset_item_id"]
+            isOneToOne: false
+            referencedRelation: "dataset_items"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "eval_results_eval_run_id_fkey"
             columns: ["eval_run_id"]
             isOneToOne: false
@@ -416,6 +513,7 @@ export type Database = {
           avg_score: number | null
           completed_at: string | null
           created_by: string | null
+          dataset_id: string | null
           error: string | null
           evaluator_id: string
           id: string
@@ -434,6 +532,7 @@ export type Database = {
           avg_score?: number | null
           completed_at?: string | null
           created_by?: string | null
+          dataset_id?: string | null
           error?: string | null
           evaluator_id: string
           id?: string
@@ -452,6 +551,7 @@ export type Database = {
           avg_score?: number | null
           completed_at?: string | null
           created_by?: string | null
+          dataset_id?: string | null
           error?: string | null
           evaluator_id?: string
           id?: string
@@ -467,6 +567,13 @@ export type Database = {
           total_cost_usd?: number
         }
         Relationships: [
+          {
+            foreignKeyName: "eval_runs_dataset_id_fkey"
+            columns: ["dataset_id"]
+            isOneToOne: false
+            referencedRelation: "datasets"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "eval_runs_evaluator_id_fkey"
             columns: ["evaluator_id"]

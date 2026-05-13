@@ -131,6 +131,8 @@ evalsRouter.post('/eval-runs', async (c) => {
   let body: {
     evaluatorId?: unknown
     promptVersionId?: unknown
+    source?: unknown
+    datasetId?: unknown
     sampleSize?: unknown
     sampleFrom?: unknown
     sampleTo?: unknown
@@ -143,6 +145,8 @@ evalsRouter.post('/eval-runs', async (c) => {
 
   const evaluatorId = typeof body.evaluatorId === 'string' ? body.evaluatorId.trim() : ''
   const promptVersionId = typeof body.promptVersionId === 'string' ? body.promptVersionId.trim() : ''
+  const source = body.source === 'dataset' ? 'dataset' : 'production'
+  const datasetId = typeof body.datasetId === 'string' ? body.datasetId.trim() : null
   const sampleSize = typeof body.sampleSize === 'number' ? Math.round(body.sampleSize) : 50
   const sampleFrom = typeof body.sampleFrom === 'string' ? body.sampleFrom : null
   const sampleTo = typeof body.sampleTo === 'string' ? body.sampleTo : null
@@ -151,6 +155,9 @@ evalsRouter.post('/eval-runs', async (c) => {
   if (!promptVersionId) return c.json({ error: 'promptVersionId is required' }, 400)
   if (sampleSize < 1 || sampleSize > 1000) {
     return c.json({ error: 'sampleSize must be between 1 and 1000' }, 400)
+  }
+  if (source === 'dataset' && !datasetId) {
+    return c.json({ error: 'datasetId is required when source = dataset' }, 400)
   }
 
   // Verify both belong to org
@@ -171,16 +178,29 @@ evalsRouter.post('/eval-runs', async (c) => {
     .maybeSingle()
   if (!pv) return c.json({ error: 'Prompt version not found' }, 404)
 
+  // Verify dataset belongs to org if requested
+  if (source === 'dataset' && datasetId) {
+    const { data: ds } = await supabaseAdmin
+      .from('datasets')
+      .select('id')
+      .eq('id', datasetId)
+      .eq('organization_id', orgId)
+      .is('archived_at', null)
+      .maybeSingle()
+    if (!ds) return c.json({ error: 'Dataset not found' }, 404)
+  }
+
   const { data: run, error: runErr } = await supabaseAdmin
     .from('eval_runs')
     .insert({
       organization_id: orgId,
       evaluator_id: evaluatorId,
       prompt_version_id: promptVersionId,
-      source: 'production',
+      source,
+      dataset_id: source === 'dataset' ? datasetId : null,
       sample_size: sampleSize,
-      sample_from: sampleFrom,
-      sample_to: sampleTo,
+      sample_from: source === 'production' ? sampleFrom : null,
+      sample_to: source === 'production' ? sampleTo : null,
       status: 'pending',
       created_by: userId ?? null,
     })
@@ -197,6 +217,8 @@ evalsRouter.post('/eval-runs', async (c) => {
     organizationId: orgId,
     evaluatorId,
     promptVersionId,
+    source,
+    datasetId,
     sampleSize,
     sampleFrom,
     sampleTo,
