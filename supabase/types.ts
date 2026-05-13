@@ -834,6 +834,67 @@ export type Database = {
           },
         ]
       }
+      human_evals: {
+        Row: {
+          comment: string | null
+          created_at: string
+          id: string
+          organization_id: string
+          prompt_version_id: string | null
+          raw_score: number | null
+          request_id: string
+          reviewer_id: string
+          score: number
+          updated_at: string
+        }
+        Insert: {
+          comment?: string | null
+          created_at?: string
+          id?: string
+          organization_id: string
+          prompt_version_id?: string | null
+          raw_score?: number | null
+          request_id: string
+          reviewer_id: string
+          score: number
+          updated_at?: string
+        }
+        Update: {
+          comment?: string | null
+          created_at?: string
+          id?: string
+          organization_id?: string
+          prompt_version_id?: string | null
+          raw_score?: number | null
+          request_id?: string
+          reviewer_id?: string
+          score?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "human_evals_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "human_evals_prompt_version_id_fkey"
+            columns: ["prompt_version_id"]
+            isOneToOne: false
+            referencedRelation: "prompt_versions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "human_evals_request_id_fkey"
+            columns: ["request_id"]
+            isOneToOne: false
+            referencedRelation: "requests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       model_prices: {
         Row: {
           completion_price_per_1m: number

@@ -219,6 +219,12 @@ const NAV_GROUPS = [
     ],
   },
   {
+    label: 'Review',
+    items: [
+      { href: '/annotation', label: 'Annotation' },
+    ],
+  },
+  {
     label: 'Admin',
     items: [
       { href: '/projects',  label: 'Projects & Keys' },
