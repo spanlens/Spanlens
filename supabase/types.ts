@@ -1,4 +1,3 @@
-Initialising login role...
 export type Json =
   | string
   | number
@@ -12,31 +11,6 @@ export type Database = {
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
     PostgrestVersion: "14.5"
-  }
-  graphql_public: {
-    Tables: {
-      [_ in never]: never
-    }
-    Views: {
-      [_ in never]: never
-    }
-    Functions: {
-      graphql: {
-        Args: {
-          extensions?: Json
-          operationName?: string
-          query?: string
-          variables?: Json
-        }
-        Returns: Json
-      }
-    }
-    Enums: {
-      [_ in never]: never
-    }
-    CompositeTypes: {
-      [_ in never]: never
-    }
   }
   public: {
     Tables: {
@@ -369,6 +343,190 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "audit_logs_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      eval_results: {
+        Row: {
+          created_at: string
+          dataset_item_id: string | null
+          eval_run_id: string
+          id: string
+          judge_cost_usd: number
+          judge_tokens: number
+          organization_id: string
+          reasoning: string | null
+          request_id: string | null
+          score: number
+        }
+        Insert: {
+          created_at?: string
+          dataset_item_id?: string | null
+          eval_run_id: string
+          id?: string
+          judge_cost_usd?: number
+          judge_tokens?: number
+          organization_id: string
+          reasoning?: string | null
+          request_id?: string | null
+          score: number
+        }
+        Update: {
+          created_at?: string
+          dataset_item_id?: string | null
+          eval_run_id?: string
+          id?: string
+          judge_cost_usd?: number
+          judge_tokens?: number
+          organization_id?: string
+          reasoning?: string | null
+          request_id?: string | null
+          score?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "eval_results_eval_run_id_fkey"
+            columns: ["eval_run_id"]
+            isOneToOne: false
+            referencedRelation: "eval_runs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "eval_results_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "eval_results_request_id_fkey"
+            columns: ["request_id"]
+            isOneToOne: false
+            referencedRelation: "requests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      eval_runs: {
+        Row: {
+          avg_score: number | null
+          completed_at: string | null
+          created_by: string | null
+          error: string | null
+          evaluator_id: string
+          id: string
+          organization_id: string
+          prompt_version_id: string
+          sample_from: string | null
+          sample_size: number
+          sample_to: string | null
+          scored_count: number
+          source: string
+          started_at: string
+          status: string
+          total_cost_usd: number
+        }
+        Insert: {
+          avg_score?: number | null
+          completed_at?: string | null
+          created_by?: string | null
+          error?: string | null
+          evaluator_id: string
+          id?: string
+          organization_id: string
+          prompt_version_id: string
+          sample_from?: string | null
+          sample_size: number
+          sample_to?: string | null
+          scored_count?: number
+          source?: string
+          started_at?: string
+          status?: string
+          total_cost_usd?: number
+        }
+        Update: {
+          avg_score?: number | null
+          completed_at?: string | null
+          created_by?: string | null
+          error?: string | null
+          evaluator_id?: string
+          id?: string
+          organization_id?: string
+          prompt_version_id?: string
+          sample_from?: string | null
+          sample_size?: number
+          sample_to?: string | null
+          scored_count?: number
+          source?: string
+          started_at?: string
+          status?: string
+          total_cost_usd?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "eval_runs_evaluator_id_fkey"
+            columns: ["evaluator_id"]
+            isOneToOne: false
+            referencedRelation: "evaluators"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "eval_runs_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "eval_runs_prompt_version_id_fkey"
+            columns: ["prompt_version_id"]
+            isOneToOne: false
+            referencedRelation: "prompt_versions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      evaluators: {
+        Row: {
+          archived_at: string | null
+          config: Json
+          created_at: string
+          created_by: string | null
+          id: string
+          name: string
+          organization_id: string
+          prompt_name: string
+          type: string
+        }
+        Insert: {
+          archived_at?: string | null
+          config: Json
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          name: string
+          organization_id: string
+          prompt_name: string
+          type?: string
+        }
+        Update: {
+          archived_at?: string | null
+          config?: Json
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          name?: string
+          organization_id?: string
+          prompt_name?: string
+          type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "evaluators_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
@@ -1646,6 +1804,33 @@ export type Database = {
           total_cost_usd: number
         }[]
       }
+      get_model_percentiles: {
+        Args: {
+          p_model: string
+          p_organization_id: string
+          p_provider: string
+          p_window_start: string
+        }
+        Returns: {
+          p50_completion: number
+          p50_prompt: number
+          p95_completion: number
+          p95_prompt: number
+          p99_completion: number
+          p99_prompt: number
+          sample_count: number
+        }[]
+      }
+      get_model_prior_window_cost: {
+        Args: {
+          p_model: string
+          p_organization_id: string
+          p_provider: string
+          p_window_end: string
+          p_window_start: string
+        }
+        Returns: number
+      }
       get_prompts_quality_sparklines: {
         Args: {
           p_buckets?: number
@@ -1853,14 +2038,9 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
-  graphql_public: {
-    Enums: {},
-  },
   public: {
     Enums: {
       org_role: ["admin", "editor", "viewer"],
     },
   },
 } as const
-A new version of Supabase CLI is available: v2.98.1 (currently installed v2.90.0)
-We recommend updating regularly for new features and bug fixes: https://supabase.com/docs/guides/cli/getting-started#updating-the-supabase-cli
