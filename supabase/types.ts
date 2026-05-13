@@ -1493,10 +1493,12 @@ export type Database = {
           request_body: Json | null
           response_body: Json | null
           response_flags: Json
+          session_id: string | null
           span_id: string | null
           status_code: number
           total_tokens: number
           trace_id: string | null
+          user_id: string | null
         }
         Insert: {
           api_key_id?: string | null
@@ -1519,10 +1521,12 @@ export type Database = {
           request_body?: Json | null
           response_body?: Json | null
           response_flags?: Json
+          session_id?: string | null
           span_id?: string | null
           status_code: number
           total_tokens?: number
           trace_id?: string | null
+          user_id?: string | null
         }
         Update: {
           api_key_id?: string | null
@@ -1545,10 +1549,12 @@ export type Database = {
           request_body?: Json | null
           response_body?: Json | null
           response_flags?: Json
+          session_id?: string | null
           span_id?: string | null
           status_code?: number
           total_tokens?: number
           trace_id?: string | null
+          user_id?: string | null
         }
         Relationships: [
           {

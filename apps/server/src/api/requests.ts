@@ -29,6 +29,8 @@ requestsRouter.get('/', async (c) => {
   // Optional new filter: provider_key_id ("show only requests that used this key")
   const providerKeyId    = c.req.query('providerKeyId')
   const promptVersionId  = c.req.query('promptVersionId')
+  const userIdFilter     = c.req.query('userId')
+  const sessionIdFilter  = c.req.query('sessionId')
   const status     = c.req.query('status')   // 'ok' | '4xx' | '5xx'
   const sortByRaw  = c.req.query('sortBy')   // 'latency_ms' | 'cost_usd' | 'total_tokens' | 'created_at'
   const sortDirRaw = c.req.query('sortDir')  // 'asc' | 'desc'
@@ -43,7 +45,7 @@ requestsRouter.get('/', async (c) => {
   let query = supabaseAdmin
     .from('requests')
     .select(
-      'id, project_id, provider, model, prompt_tokens, completion_tokens, total_tokens, cost_usd, latency_ms, status_code, error_message, trace_id, span_id, provider_key_id, provider_keys ( name ), created_at',
+      'id, project_id, provider, model, prompt_tokens, completion_tokens, total_tokens, cost_usd, latency_ms, status_code, error_message, trace_id, span_id, provider_key_id, user_id, session_id, provider_keys ( name ), created_at',
       { count: 'exact' },
     )
     .eq('organization_id', orgId)
@@ -55,6 +57,8 @@ requestsRouter.get('/', async (c) => {
   if (model)         query = query.ilike('model', `%${model}%`)
   if (providerKeyId)   query = query.eq('provider_key_id', providerKeyId)
   if (promptVersionId) query = query.eq('prompt_version_id', promptVersionId)
+  if (userIdFilter)    query = query.eq('user_id', userIdFilter)
+  if (sessionIdFilter) query = query.eq('session_id', sessionIdFilter)
   if (from)            query = query.gte('created_at', from)
   if (to)            query = query.lte('created_at', to)
   if (status === 'ok')   query = query.lt('status_code', 400)
