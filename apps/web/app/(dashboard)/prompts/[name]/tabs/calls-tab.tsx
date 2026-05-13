@@ -92,13 +92,14 @@ export function CallsTab({ name }: Props) {
             {/* Per-version table */}
             <div className="bg-bg-elev border border-border rounded-[6px] overflow-x-auto">
               <div
-                className="grid font-mono text-[10px] text-text-faint uppercase tracking-[0.05em] px-[16px] py-[9px] bg-bg-muted border-b border-border min-w-[620px]"
-                style={{ gridTemplateColumns: '80px 70px 100px 100px 100px 110px 100px' }}
+                className="grid font-mono text-[10px] text-text-faint uppercase tracking-[0.05em] px-[16px] py-[9px] bg-bg-muted border-b border-border min-w-[720px]"
+                style={{ gridTemplateColumns: '80px 70px 100px 100px 80px 100px 110px 100px' }}
               >
                 <span>Version</span>
                 <span className="text-right">Calls</span>
                 <span className="text-right">Avg latency</span>
                 <span className="text-right">Error rate</span>
+                <span className="text-right">Quality</span>
                 <span className="text-right">Avg cost</span>
                 <span className="text-right">Prompt tokens</span>
                 <span className="text-right">Compl. tokens</span>
@@ -107,8 +108,8 @@ export function CallsTab({ name }: Props) {
                 <Link
                   key={m.promptVersionId}
                   href={`/requests?promptVersionId=${m.promptVersionId}`}
-                  className="grid items-center px-[16px] py-[11px] border-b border-border last:border-0 min-w-[620px] hover:bg-bg-muted transition-colors cursor-pointer"
-                  style={{ gridTemplateColumns: '80px 70px 100px 100px 100px 110px 100px' }}
+                  className="grid items-center px-[16px] py-[11px] border-b border-border last:border-0 min-w-[720px] hover:bg-bg-muted transition-colors cursor-pointer"
+                  style={{ gridTemplateColumns: '80px 70px 100px 100px 80px 100px 110px 100px' }}
                 >
                   <span className="font-mono text-[11px] text-text-muted">v{m.version}</span>
                   <span className="text-right font-mono text-[12px] text-text-muted">{m.sampleCount.toLocaleString()}</span>
@@ -118,6 +119,21 @@ export function CallsTab({ name }: Props) {
                     m.errorRate === 0 ? 'text-good' : m.errorRate < 0.05 ? 'text-warn' : 'text-bad',
                   )}>
                     {(m.errorRate * 100).toFixed(1)}%
+                  </span>
+                  <span
+                    className={cn(
+                      'text-right font-mono text-[12px]',
+                      m.avgQualityScore == null
+                        ? 'text-text-faint'
+                        : m.avgQualityScore >= 0.7
+                          ? 'text-good'
+                          : m.avgQualityScore >= 0.4
+                            ? 'text-warn'
+                            : 'text-bad',
+                    )}
+                    title={m.qualitySampleCount > 0 ? `${m.qualitySampleCount} eval samples` : 'No evals run'}
+                  >
+                    {m.avgQualityScore == null ? '—' : (m.avgQualityScore * 100).toFixed(0)}
                   </span>
                   <span className="text-right font-mono text-[12px] text-text-muted">{fmtUsd(m.avgCostUsd)}</span>
                   <span className="text-right font-mono text-[12px] text-text-muted">

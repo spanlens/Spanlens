@@ -342,6 +342,34 @@ function RequestDrawer({ requestId, visible, onClose, onPrev, onNext, hasPrev, h
             </div>
           ))}
 
+          {/* User — clickable filter link */}
+          {req.user_id && (
+            <div>
+              <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-0.5">User</div>
+              <Link
+                href={`/requests?userId=${encodeURIComponent(req.user_id)}`}
+                className="font-mono text-[12.5px] text-text hover:underline truncate block"
+                title={`Filter by user: ${req.user_id}`}
+              >
+                {req.user_id}
+              </Link>
+            </div>
+          )}
+
+          {/* Session — clickable filter link */}
+          {req.session_id && (
+            <div>
+              <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-0.5">Session</div>
+              <Link
+                href={`/requests?sessionId=${encodeURIComponent(req.session_id)}`}
+                className="font-mono text-[12.5px] text-text hover:underline truncate block"
+                title={`Filter by session: ${req.session_id}`}
+              >
+                {req.session_id}
+              </Link>
+            </div>
+          )}
+
           {/* Trace — link to trace page + copy full ID */}
           <div>
             <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-0.5">Trace</div>
@@ -886,6 +914,36 @@ export function RequestsClient() {
 
       <StatStrip />
       <TrafficBars />
+
+      {/* Active URL filter banner — shown when ?promptVersionId / ?userId / ?sessionId
+         is present in the URL. Click × to clear and return to unfiltered view. */}
+      {(promptVersionId || userIdFilter || sessionIdFilter) && (
+        <div className="flex items-center gap-2 px-[22px] py-[8px] bg-accent-bg border-b border-accent-border font-mono text-[11px] flex-wrap">
+          <span className="text-text-faint uppercase tracking-[0.05em] text-[10px]">Filter:</span>
+          {promptVersionId && (
+            <span className="px-2 py-[2px] bg-bg border border-border rounded-[3px] text-text">
+              prompt version {promptVersionId.slice(0, 8)}…
+            </span>
+          )}
+          {userIdFilter && (
+            <span className="px-2 py-[2px] bg-bg border border-border rounded-[3px] text-text">
+              user: {userIdFilter}
+            </span>
+          )}
+          {sessionIdFilter && (
+            <span className="px-2 py-[2px] bg-bg border border-border rounded-[3px] text-text">
+              session: {sessionIdFilter}
+            </span>
+          )}
+          <Link
+            href="/requests"
+            className="ml-auto text-text-faint hover:text-text text-[11px]"
+            aria-label="Clear URL filters"
+          >
+            Clear ×
+          </Link>
+        </div>
+      )}
 
       {/* Filter row */}
       <div className="flex items-center gap-1.5 px-[22px] py-[10px] border-b border-border shrink-0 flex-wrap">

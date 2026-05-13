@@ -20,6 +20,7 @@ import {
 import { usePrompts, usePromptVersions } from '@/lib/queries/use-prompts'
 import type { PromptVersion } from '@/lib/queries/use-prompts'
 import { useDatasets } from '@/lib/queries/use-datasets'
+import { useCorrelation, pearsonR } from '@/lib/queries/use-human-evals'
 
 const JUDGE_MODELS = {
   openai: ['gpt-4o-mini', 'gpt-4o', 'gpt-4-turbo'],
@@ -639,6 +640,110 @@ function EvaluatorRow({
 
 // ── Main page ────────────────────────────────────────────────────────────────
 
+// ── Correlation card (LLM judge vs Human) ───────────────────────────────────
+
+function CorrelationCard({ promptName }: { promptName: string }) {
+  const correlation = useCorrelation({ promptName })
+  const pairs = correlation.data ?? []
+  const r = pearsonR(pairs)
+
+  if (pairs.length === 0) return null
+
+  // Scatter plot bounds: 0..1 × 0..1, padded to 120×120
+  const W = 120, H = 120, PAD = 6
+  const dotX = (judge: number) => PAD + judge * (W - 2 * PAD)
+  const dotY = (human: number) => H - PAD - human * (H - 2 * PAD)
+
+  // Interpret r — same buckets as standard correlation rules of thumb.
+  const interpretation = r == null
+    ? '—'
+    : Math.abs(r) >= 0.7 ? 'Strong'
+    : Math.abs(r) >= 0.4 ? 'Moderate'
+    : Math.abs(r) >= 0.2 ? 'Weak'
+    : 'None'
+
+  const rColor = r == null
+    ? 'text-text-faint'
+    : r >= 0.7 ? 'text-good'
+    : r >= 0.4 ? 'text-warn'
+    : 'text-bad'
+
+  return (
+    <div className="bg-bg-elev border border-border rounded-[6px] p-4">
+      <div className="flex items-start gap-4">
+        {/* Scatter plot */}
+        <svg width={W} height={H} className="shrink-0 bg-bg rounded-[4px] border border-border">
+          {/* Diagonal reference line — perfect agreement */}
+          <line
+            x1={PAD} y1={H - PAD} x2={W - PAD} y2={PAD}
+            stroke="var(--border-strong, currentColor)"
+            strokeOpacity={0.3}
+            strokeDasharray="2 2"
+          />
+          {pairs.map((p) => (
+            <circle
+              key={p.requestId}
+              cx={dotX(p.judgeScore)}
+              cy={dotY(p.humanScore)}
+              r={2.5}
+              className="fill-text/70"
+            />
+          ))}
+        </svg>
+
+        {/* Metrics */}
+        <div className="flex-1 min-w-0 space-y-2">
+          <div>
+            <p className="font-mono text-[11px] text-text-faint mb-0.5 truncate">
+              {promptName}
+            </p>
+            <div className="flex items-baseline gap-2">
+              <span className={cn('font-mono text-[22px] font-medium', rColor)}>
+                {r == null ? '—' : r.toFixed(2)}
+              </span>
+              <span className="font-mono text-[10.5px] text-text-muted">
+                Pearson r · {interpretation}
+              </span>
+            </div>
+          </div>
+          <div className="font-mono text-[10.5px] text-text-faint">
+            {pairs.length} paired sample{pairs.length === 1 ? '' : 's'}
+            {pairs.length < 10 && ' (more data → more reliable)'}
+          </div>
+        </div>
+      </div>
+      <p className="font-mono text-[10.5px] text-text-faint mt-3 leading-relaxed">
+        Dot = one request judged by both. Dashed line = perfect agreement.
+        Low r means your LLM judge disagrees with humans → revise the criterion.
+      </p>
+    </div>
+  )
+}
+
+function CorrelationRow({ evaluators }: { evaluators: Evaluator[] }) {
+  // Unique prompt names that have at least one evaluator
+  const promptNames = useMemo(() => {
+    const set = new Set<string>()
+    for (const ev of evaluators) set.add(ev.prompt_name)
+    return [...set]
+  }, [evaluators])
+
+  if (promptNames.length === 0) return null
+
+  return (
+    <div className="px-[22px] py-[14px] border-b border-border">
+      <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint mb-3">
+        <span>LLM judge vs Human agreement</span>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        {promptNames.map((name) => (
+          <CorrelationCard key={name} promptName={name} />
+        ))}
+      </div>
+    </div>
+  )
+}
+
 export function EvalsClient() {
   const evaluators = useEvaluators()
   const [newOpen, setNewOpen] = useState(false)
@@ -673,6 +778,9 @@ export function EvalsClient() {
               Cost is billed to your provider key.
             </span>
           </div>
+
+          {/* Correlation card — appears only if Annotation has paired samples */}
+          {list.length > 0 && <CorrelationRow evaluators={list} />}
 
           {evaluators.isLoading ? (
             <div className="p-[22px] space-y-2">
