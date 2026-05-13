@@ -1,4 +1,3 @@
-Initialising login role...
 export type Json =
   | string
   | number
@@ -12,31 +11,6 @@ export type Database = {
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
     PostgrestVersion: "14.5"
-  }
-  graphql_public: {
-    Tables: {
-      [_ in never]: never
-    }
-    Views: {
-      [_ in never]: never
-    }
-    Functions: {
-      graphql: {
-        Args: {
-          extensions?: Json
-          operationName?: string
-          query?: string
-          variables?: Json
-        }
-        Returns: Json
-      }
-    }
-    Enums: {
-      [_ in never]: never
-    }
-    CompositeTypes: {
-      [_ in never]: never
-    }
   }
   public: {
     Tables: {
@@ -372,6 +346,551 @@ export type Database = {
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      dataset_items: {
+        Row: {
+          created_at: string
+          dataset_id: string
+          expected_output: string | null
+          id: string
+          input: Json
+          organization_id: string
+          source_request_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          dataset_id: string
+          expected_output?: string | null
+          id?: string
+          input: Json
+          organization_id: string
+          source_request_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          dataset_id?: string
+          expected_output?: string | null
+          id?: string
+          input?: Json
+          organization_id?: string
+          source_request_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dataset_items_dataset_id_fkey"
+            columns: ["dataset_id"]
+            isOneToOne: false
+            referencedRelation: "datasets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dataset_items_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dataset_items_source_request_id_fkey"
+            columns: ["source_request_id"]
+            isOneToOne: false
+            referencedRelation: "requests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      datasets: {
+        Row: {
+          archived_at: string | null
+          created_at: string
+          created_by: string | null
+          description: string | null
+          id: string
+          name: string
+          organization_id: string
+        }
+        Insert: {
+          archived_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          name: string
+          organization_id: string
+        }
+        Update: {
+          archived_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          name?: string
+          organization_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "datasets_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      eval_results: {
+        Row: {
+          created_at: string
+          dataset_item_id: string | null
+          eval_run_id: string
+          id: string
+          judge_cost_usd: number
+          judge_tokens: number
+          organization_id: string
+          reasoning: string | null
+          request_id: string | null
+          score: number
+        }
+        Insert: {
+          created_at?: string
+          dataset_item_id?: string | null
+          eval_run_id: string
+          id?: string
+          judge_cost_usd?: number
+          judge_tokens?: number
+          organization_id: string
+          reasoning?: string | null
+          request_id?: string | null
+          score: number
+        }
+        Update: {
+          created_at?: string
+          dataset_item_id?: string | null
+          eval_run_id?: string
+          id?: string
+          judge_cost_usd?: number
+          judge_tokens?: number
+          organization_id?: string
+          reasoning?: string | null
+          request_id?: string | null
+          score?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "eval_results_dataset_item_id_fkey"
+            columns: ["dataset_item_id"]
+            isOneToOne: false
+            referencedRelation: "dataset_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "eval_results_eval_run_id_fkey"
+            columns: ["eval_run_id"]
+            isOneToOne: false
+            referencedRelation: "eval_runs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "eval_results_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "eval_results_request_id_fkey"
+            columns: ["request_id"]
+            isOneToOne: false
+            referencedRelation: "requests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      eval_runs: {
+        Row: {
+          avg_score: number | null
+          completed_at: string | null
+          created_by: string | null
+          dataset_id: string | null
+          error: string | null
+          evaluator_id: string
+          id: string
+          organization_id: string
+          prompt_version_id: string
+          sample_from: string | null
+          sample_size: number
+          sample_to: string | null
+          scored_count: number
+          source: string
+          started_at: string
+          status: string
+          total_cost_usd: number
+        }
+        Insert: {
+          avg_score?: number | null
+          completed_at?: string | null
+          created_by?: string | null
+          dataset_id?: string | null
+          error?: string | null
+          evaluator_id: string
+          id?: string
+          organization_id: string
+          prompt_version_id: string
+          sample_from?: string | null
+          sample_size: number
+          sample_to?: string | null
+          scored_count?: number
+          source?: string
+          started_at?: string
+          status?: string
+          total_cost_usd?: number
+        }
+        Update: {
+          avg_score?: number | null
+          completed_at?: string | null
+          created_by?: string | null
+          dataset_id?: string | null
+          error?: string | null
+          evaluator_id?: string
+          id?: string
+          organization_id?: string
+          prompt_version_id?: string
+          sample_from?: string | null
+          sample_size?: number
+          sample_to?: string | null
+          scored_count?: number
+          source?: string
+          started_at?: string
+          status?: string
+          total_cost_usd?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "eval_runs_dataset_id_fkey"
+            columns: ["dataset_id"]
+            isOneToOne: false
+            referencedRelation: "datasets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "eval_runs_evaluator_id_fkey"
+            columns: ["evaluator_id"]
+            isOneToOne: false
+            referencedRelation: "evaluators"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "eval_runs_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "eval_runs_prompt_version_id_fkey"
+            columns: ["prompt_version_id"]
+            isOneToOne: false
+            referencedRelation: "prompt_versions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      evaluators: {
+        Row: {
+          archived_at: string | null
+          config: Json
+          created_at: string
+          created_by: string | null
+          id: string
+          name: string
+          organization_id: string
+          prompt_name: string
+          type: string
+        }
+        Insert: {
+          archived_at?: string | null
+          config: Json
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          name: string
+          organization_id: string
+          prompt_name: string
+          type?: string
+        }
+        Update: {
+          archived_at?: string | null
+          config?: Json
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          name?: string
+          organization_id?: string
+          prompt_name?: string
+          type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "evaluators_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      experiment_results: {
+        Row: {
+          cost_a_usd: number
+          cost_b_usd: number
+          created_at: string
+          dataset_item_id: string
+          error_a: string | null
+          error_b: string | null
+          experiment_id: string
+          id: string
+          latency_a_ms: number | null
+          latency_b_ms: number | null
+          organization_id: string
+          output_a: string | null
+          output_b: string | null
+          reasoning_a: string | null
+          reasoning_b: string | null
+          score_a: number | null
+          score_b: number | null
+          tokens_a: number
+          tokens_b: number
+        }
+        Insert: {
+          cost_a_usd?: number
+          cost_b_usd?: number
+          created_at?: string
+          dataset_item_id: string
+          error_a?: string | null
+          error_b?: string | null
+          experiment_id: string
+          id?: string
+          latency_a_ms?: number | null
+          latency_b_ms?: number | null
+          organization_id: string
+          output_a?: string | null
+          output_b?: string | null
+          reasoning_a?: string | null
+          reasoning_b?: string | null
+          score_a?: number | null
+          score_b?: number | null
+          tokens_a?: number
+          tokens_b?: number
+        }
+        Update: {
+          cost_a_usd?: number
+          cost_b_usd?: number
+          created_at?: string
+          dataset_item_id?: string
+          error_a?: string | null
+          error_b?: string | null
+          experiment_id?: string
+          id?: string
+          latency_a_ms?: number | null
+          latency_b_ms?: number | null
+          organization_id?: string
+          output_a?: string | null
+          output_b?: string | null
+          reasoning_a?: string | null
+          reasoning_b?: string | null
+          score_a?: number | null
+          score_b?: number | null
+          tokens_a?: number
+          tokens_b?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "experiment_results_dataset_item_id_fkey"
+            columns: ["dataset_item_id"]
+            isOneToOne: false
+            referencedRelation: "dataset_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "experiment_results_experiment_id_fkey"
+            columns: ["experiment_id"]
+            isOneToOne: false
+            referencedRelation: "experiments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "experiment_results_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      experiments: {
+        Row: {
+          avg_score_a: number | null
+          avg_score_b: number | null
+          completed_at: string | null
+          completed_items: number
+          created_by: string | null
+          dataset_id: string
+          error: string | null
+          evaluator_id: string | null
+          id: string
+          name: string
+          organization_id: string
+          prompt_name: string
+          run_model: string
+          run_provider: string
+          started_at: string
+          status: string
+          total_cost_usd: number
+          total_items: number
+          version_a_id: string
+          version_b_id: string
+        }
+        Insert: {
+          avg_score_a?: number | null
+          avg_score_b?: number | null
+          completed_at?: string | null
+          completed_items?: number
+          created_by?: string | null
+          dataset_id: string
+          error?: string | null
+          evaluator_id?: string | null
+          id?: string
+          name: string
+          organization_id: string
+          prompt_name: string
+          run_model: string
+          run_provider: string
+          started_at?: string
+          status?: string
+          total_cost_usd?: number
+          total_items?: number
+          version_a_id: string
+          version_b_id: string
+        }
+        Update: {
+          avg_score_a?: number | null
+          avg_score_b?: number | null
+          completed_at?: string | null
+          completed_items?: number
+          created_by?: string | null
+          dataset_id?: string
+          error?: string | null
+          evaluator_id?: string | null
+          id?: string
+          name?: string
+          organization_id?: string
+          prompt_name?: string
+          run_model?: string
+          run_provider?: string
+          started_at?: string
+          status?: string
+          total_cost_usd?: number
+          total_items?: number
+          version_a_id?: string
+          version_b_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "experiments_dataset_id_fkey"
+            columns: ["dataset_id"]
+            isOneToOne: false
+            referencedRelation: "datasets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "experiments_evaluator_id_fkey"
+            columns: ["evaluator_id"]
+            isOneToOne: false
+            referencedRelation: "evaluators"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "experiments_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "experiments_version_a_id_fkey"
+            columns: ["version_a_id"]
+            isOneToOne: false
+            referencedRelation: "prompt_versions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "experiments_version_b_id_fkey"
+            columns: ["version_b_id"]
+            isOneToOne: false
+            referencedRelation: "prompt_versions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      human_evals: {
+        Row: {
+          comment: string | null
+          created_at: string
+          id: string
+          organization_id: string
+          prompt_version_id: string | null
+          raw_score: number | null
+          request_id: string
+          reviewer_id: string
+          score: number
+          updated_at: string
+        }
+        Insert: {
+          comment?: string | null
+          created_at?: string
+          id?: string
+          organization_id: string
+          prompt_version_id?: string | null
+          raw_score?: number | null
+          request_id: string
+          reviewer_id: string
+          score: number
+          updated_at?: string
+        }
+        Update: {
+          comment?: string | null
+          created_at?: string
+          id?: string
+          organization_id?: string
+          prompt_version_id?: string | null
+          raw_score?: number | null
+          request_id?: string
+          reviewer_id?: string
+          score?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "human_evals_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "human_evals_prompt_version_id_fkey"
+            columns: ["prompt_version_id"]
+            isOneToOne: false
+            referencedRelation: "prompt_versions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "human_evals_request_id_fkey"
+            columns: ["request_id"]
+            isOneToOne: false
+            referencedRelation: "requests"
             referencedColumns: ["id"]
           },
         ]
@@ -974,10 +1493,12 @@ export type Database = {
           request_body: Json | null
           response_body: Json | null
           response_flags: Json
+          session_id: string | null
           span_id: string | null
           status_code: number
           total_tokens: number
           trace_id: string | null
+          user_id: string | null
         }
         Insert: {
           api_key_id?: string | null
@@ -1000,10 +1521,12 @@ export type Database = {
           request_body?: Json | null
           response_body?: Json | null
           response_flags?: Json
+          session_id?: string | null
           span_id?: string | null
           status_code: number
           total_tokens?: number
           trace_id?: string | null
+          user_id?: string | null
         }
         Update: {
           api_key_id?: string | null
@@ -1026,10 +1549,12 @@ export type Database = {
           request_body?: Json | null
           response_body?: Json | null
           response_flags?: Json
+          session_id?: string | null
           span_id?: string | null
           status_code?: number
           total_tokens?: number
           trace_id?: string | null
+          user_id?: string | null
         }
         Relationships: [
           {
@@ -1646,6 +2171,33 @@ export type Database = {
           total_cost_usd: number
         }[]
       }
+      get_model_percentiles: {
+        Args: {
+          p_model: string
+          p_organization_id: string
+          p_provider: string
+          p_window_start: string
+        }
+        Returns: {
+          p50_completion: number
+          p50_prompt: number
+          p95_completion: number
+          p95_prompt: number
+          p99_completion: number
+          p99_prompt: number
+          sample_count: number
+        }[]
+      }
+      get_model_prior_window_cost: {
+        Args: {
+          p_model: string
+          p_organization_id: string
+          p_provider: string
+          p_window_end: string
+          p_window_start: string
+        }
+        Returns: number
+      }
       get_prompts_quality_sparklines: {
         Args: {
           p_buckets?: number
@@ -1853,14 +2405,9 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
-  graphql_public: {
-    Enums: {},
-  },
   public: {
     Enums: {
       org_role: ["admin", "editor", "viewer"],
     },
   },
 } as const
-A new version of Supabase CLI is available: v2.98.1 (currently installed v2.90.0)
-We recommend updating regularly for new features and bug fixes: https://supabase.com/docs/guides/cli/getting-started#updating-the-supabase-cli

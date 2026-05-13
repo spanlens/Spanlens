@@ -23,6 +23,10 @@ export interface RequestLogData {
   spanId: string | null
   promptVersionId?: string | null
   providerKeyId?: string | null
+  /** Customer-supplied end-user ID (x-spanlens-user header). */
+  userId?: string | null
+  /** Customer-supplied session ID (x-spanlens-session header). */
+  sessionId?: string | null
   /**
    * Pre-computed request flags from the proxy (used for blocking).
    * If provided, logger skips re-scanning the request body.
@@ -173,6 +177,8 @@ export async function logRequestAsync(data: RequestLogData): Promise<void> {
     span_id: data.spanId,
     prompt_version_id: data.promptVersionId ?? null,
     provider_key_id: data.providerKeyId ?? null,
+    user_id: data.userId ?? null,
+    session_id: data.sessionId ?? null,
     flags: requestFlags,
     response_flags: responseFlags,
   })
