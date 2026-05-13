@@ -27,6 +27,8 @@ export const DEFAULT_SPANLENS_OPENAI_PROXY =
   'https://spanlens-server.vercel.app/proxy/openai/v1'
 
 export const PROMPT_VERSION_HEADER = 'x-spanlens-prompt-version'
+export const USER_HEADER = 'x-spanlens-user'
+export const SESSION_HEADER = 'x-spanlens-session'
 
 /**
  * Build an OpenAI client whose requests flow through the Spanlens proxy.
@@ -82,4 +84,41 @@ function readEnv(name: string): string | undefined {
  */
 export function withPromptVersion(id: string): { headers: Record<string, string> } {
   return { headers: { [PROMPT_VERSION_HEADER]: id } }
+}
+
+/**
+ * Tag a request with an end-user ID — populates `requests.user_id` so the
+ * dashboard can filter and aggregate by user.
+ *
+ * @example
+ *   import { createOpenAI, withUser } from '@spanlens/sdk/openai'
+ *   const openai = createOpenAI()
+ *
+ *   const res = await openai.chat.completions.create(
+ *     { model: 'gpt-4o-mini', messages: [...] },
+ *     withUser(currentUser.id),
+ *   )
+ */
+export function withUser(userId: string): { headers: Record<string, string> } {
+  return { headers: { [USER_HEADER]: userId } }
+}
+
+/**
+ * Tag a request with a session ID — groups requests that belong to the same
+ * conversation or workflow for end-user attribution.
+ *
+ * @example
+ *   import { createOpenAI, withSession } from '@spanlens/sdk/openai'
+ *   const openai = createOpenAI()
+ *
+ *   const res = await openai.chat.completions.create(
+ *     { model: 'gpt-4o-mini', messages: [...] },
+ *     withSession(currentSession.id),
+ *   )
+ *
+ * Combine with `withUser` and `withPromptVersion` by merging headers:
+ *   { headers: { ...withUser(u).headers, ...withSession(s).headers } }
+ */
+export function withSession(sessionId: string): { headers: Record<string, string> } {
+  return { headers: { [SESSION_HEADER]: sessionId } }
 }

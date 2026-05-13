@@ -211,8 +211,17 @@ const NAV_GROUPS = [
   {
     label: 'Build',
     items: [
-      { href: '/prompts', label: 'Prompts' },
-      { href: '/alerts',  label: 'Alerts' },
+      { href: '/prompts',     label: 'Prompts' },
+      { href: '/evals',       label: 'Evals' },
+      { href: '/datasets',    label: 'Datasets' },
+      { href: '/experiments', label: 'Experiments' },
+      { href: '/alerts',      label: 'Alerts' },
+    ],
+  },
+  {
+    label: 'Review',
+    items: [
+      { href: '/annotation', label: 'Annotation' },
     ],
   },
   {

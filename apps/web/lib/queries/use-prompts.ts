@@ -45,6 +45,9 @@ export interface PromptVersionMetrics {
   totalCostUsd: number
   avgPromptTokens: number
   avgCompletionTokens: number
+  /** Average LLM-as-judge score (0..1) for this version. Null = no evals run. */
+  avgQualityScore: number | null
+  qualitySampleCount: number
 }
 
 // ── Experiment types ──────────────────────────────────────────────────────────

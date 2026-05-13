@@ -133,6 +133,8 @@ geminiProxy.all('/*', async (c) => {
     spanId: c.req.header('x-span-id') ?? null,
     promptVersionId,
     providerKeyId: providerKey.id,
+    userId: c.req.header('x-spanlens-user') ?? null,
+    sessionId: c.req.header('x-spanlens-session') ?? null,
     preComputedRequestFlags: requestFlags,
   }))
 
