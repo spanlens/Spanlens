@@ -1,5 +1,5 @@
 'use client'
-import { useCallback, useMemo, useState } from 'react'
+import { Suspense, useCallback, useMemo, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import { Topbar } from '@/components/layout/topbar'
@@ -391,7 +391,7 @@ function RequestsTable({
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 
-export default function DemoRequestsPage() {
+function DemoRequestsContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const userIdFilter = searchParams.get('userId')
@@ -660,5 +660,13 @@ export default function DemoRequestsPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+export default function DemoRequestsPage() {
+  return (
+    <Suspense fallback={null}>
+      <DemoRequestsContent />
+    </Suspense>
   )
 }
