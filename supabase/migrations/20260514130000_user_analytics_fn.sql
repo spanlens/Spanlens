@@ -80,7 +80,7 @@ BEGIN
     )
     SELECT
       g.*,
-      COUNT(*) OVER ()::bigint AS total_count
+      (COUNT(*) OVER ())::bigint AS total_count
     FROM grouped g
     ORDER BY %I %s NULLS LAST
     LIMIT $6 OFFSET $7
