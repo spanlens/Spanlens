@@ -54,9 +54,27 @@ export default function CostTrackingDocs() {
 // ...`}</CodeBlock>
 
       <h3>The formula</h3>
-      <CodeBlock language="ts">{`promptCost     = (promptTokens     / 1_000_000) * price.prompt
-completionCost = (completionTokens / 1_000_000) * price.completion
-totalCost      = promptCost + completionCost`}</CodeBlock>
+      <CodeBlock language="ts">{`// nonCachedPromptTokens = promptTokens - cacheReadTokens - cacheWriteTokens
+promptCost      = (nonCachedPromptTokens / 1_000_000) * price.prompt
+cacheReadCost   = (cacheReadTokens       / 1_000_000) * price.cacheRead   // ≈ 0.1× input on Anthropic, 0.5× on OpenAI
+cacheWriteCost  = (cacheWriteTokens      / 1_000_000) * price.cacheWrite  // ≈ 1.25× input on Anthropic (5min); n/a on OpenAI
+completionCost  = (completionTokens      / 1_000_000) * price.completion
+totalCost       = promptCost + cacheReadCost + cacheWriteCost + completionCost`}</CodeBlock>
+
+      <h3>Prompt caching (2026-05-14+)</h3>
+      <p>
+        Anthropic <code>cache_read_input_tokens</code> / <code>cache_creation_input_tokens</code>{' '}
+        and OpenAI <code>prompt_tokens_details.cached_tokens</code> are now extracted and charged at
+        each provider&apos;s reduced cache rate. The original behaviour was to fold them into{' '}
+        <code>promptTokens</code> at the regular rate, which over-counted cost by 2–10× for
+        cache-heavy workloads. <code>requests.cache_read_tokens</code> /{' '}
+        <code>cache_write_tokens</code> store the breakdown alongside every new row.
+      </p>
+      <p>
+        Historical rows (pre-2026-05-14) keep their original <code>cost_usd</code> and have{' '}
+        <code>cache_*_tokens = 0</code> — backfill isn&apos;t possible because the raw breakdown
+        wasn&apos;t recorded.
+      </p>
 
       <h3>The dated-variant problem (critical gotcha)</h3>
       <p>
@@ -140,12 +158,6 @@ GET /api/v1/stats?sinceHours=720&groupBy=model
           <strong>Price table drifts.</strong> When a provider changes prices, our table needs a
           PR. Tracked as a monthly maintenance item. If you&apos;re self-hosting, pin a specific
           commit or expect to cherry-pick updates.
-        </li>
-        <li>
-          <strong>No cache-token pricing separate line yet.</strong> Anthropic&apos;s{' '}
-          <code>cache_read_input_tokens</code> and <code>cache_creation_input_tokens</code> are
-          currently folded into prompt tokens. We&apos;re adding separate accounting so cost
-          reflects the 10× discount. Roadmap.
         </li>
         <li>
           <strong>No batch API discount.</strong> OpenAI and Anthropic both offer ~50% off batch

@@ -25,6 +25,7 @@ const NAV: NavGroup[] = [
     title: 'Features',
     items: [
       { title: 'Requests', href: '/docs/features/requests' },
+      { title: 'Users', href: '/docs/features/users' },
       { title: 'Traces', href: '/docs/features/traces' },
       { title: 'Prompts', href: '/docs/features/prompts' },
       { title: 'Evals', href: '/docs/features/evals' },
