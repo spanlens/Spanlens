@@ -25,13 +25,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={`${GeistSans.variable} ${GeistMono.variable} antialiased`}>
-        <PostHogProvider>
-          <QueryProvider>
+        <QueryProvider>
+          <PostHogProvider>
             <ThemeProvider>
               {children}
             </ThemeProvider>
-          </QueryProvider>
-        </PostHogProvider>
+          </PostHogProvider>
+        </QueryProvider>
       </body>
     </html>
   )
