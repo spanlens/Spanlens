@@ -6,7 +6,13 @@ import { parseAnthropicStreamStart, parseAnthropicStreamChunk, extractAnthropicS
 
 type StreamLogBase = Omit<
   RequestLogData,
-  'promptTokens' | 'completionTokens' | 'totalTokens' | 'costUsd' | 'model'
+  | 'promptTokens'
+  | 'completionTokens'
+  | 'totalTokens'
+  | 'cacheReadTokens'
+  | 'cacheWriteTokens'
+  | 'costUsd'
+  | 'model'
 > & { model: string }
 
 async function injectSpanInput(spanId: string, organizationId: string, input: unknown): Promise<void> {
@@ -43,6 +49,8 @@ export async function logOpenAIStream(
   let promptTokens = 0
   let completionTokens = 0
   let totalTokens = 0
+  let cacheReadTokens = 0
+  let cacheWriteTokens = 0
 
   for (const line of lines) {
     const parsed = parseOpenAIStreamChunk(line)
@@ -51,16 +59,34 @@ export async function logOpenAIStream(
     if (parsed.promptTokens) promptTokens = parsed.promptTokens
     if (parsed.completionTokens) completionTokens = parsed.completionTokens
     if (parsed.totalTokens) totalTokens = parsed.totalTokens
+    if (parsed.cacheReadTokens) cacheReadTokens = parsed.cacheReadTokens
+    if (parsed.cacheWriteTokens) cacheWriteTokens = parsed.cacheWriteTokens
   }
 
-  const cost = calculateCost('openai' as Provider, model, { promptTokens, completionTokens })
+  const cost = calculateCost('openai' as Provider, model, {
+    promptTokens, completionTokens, cacheReadTokens, cacheWriteTokens,
+  })
 
   const text = extractOpenAIStreamText(lines)
+  // Capture-rate signal: stream completed but no assistant text recovered
+  // (lines were present). Usually means the upstream wire format changed or
+  // a chunk format slipped past the parser. Surface for log monitoring.
+  if (lines.length > 0 && text.length === 0) {
+    console.warn(
+      '[openai-stream] capture-empty: %d SSE lines, 0 chars extracted (parser drift?)',
+      lines.length,
+    )
+  }
   const responseBody = text ? {
     object: 'chat.completion',
     model,
     choices: [{ message: { role: 'assistant', content: text }, finish_reason: 'stop' }],
-    usage: { prompt_tokens: promptTokens, completion_tokens: completionTokens, total_tokens: totalTokens },
+    usage: {
+      prompt_tokens: promptTokens,
+      completion_tokens: completionTokens,
+      total_tokens: totalTokens,
+      ...(cacheReadTokens > 0 ? { prompt_tokens_details: { cached_tokens: cacheReadTokens } } : {}),
+    },
   } : null
 
   await logRequestAsync({
@@ -69,6 +95,8 @@ export async function logOpenAIStream(
     promptTokens,
     completionTokens,
     totalTokens,
+    cacheReadTokens,
+    cacheWriteTokens,
     costUsd: cost?.totalCost ?? null,
     responseBody,
   })
@@ -96,11 +124,15 @@ export async function logAnthropicStream(
   let model = base.model
   let promptTokens = 0
   let completionTokens = 0
+  let cacheReadTokens = 0
+  let cacheWriteTokens = 0
 
   for (const line of lines) {
     const start = parseAnthropicStreamStart(line)
     if (start) {
       if (start.promptTokens) promptTokens = start.promptTokens
+      if (start.cacheReadTokens) cacheReadTokens = start.cacheReadTokens
+      if (start.cacheWriteTokens) cacheWriteTokens = start.cacheWriteTokens
       if (start.model) model = start.model
       continue
     }
@@ -109,15 +141,32 @@ export async function logAnthropicStream(
   }
 
   const totalTokens = promptTokens + completionTokens
-  const cost = calculateCost('anthropic' as Provider, model, { promptTokens, completionTokens })
+  const cost = calculateCost('anthropic' as Provider, model, {
+    promptTokens, completionTokens, cacheReadTokens, cacheWriteTokens,
+  })
 
+  // Reconstruct upstream-shape usage so the dashboard preserves the raw
+  // breakdown. Note: promptTokens already includes cache portions, so the raw
+  // input_tokens is recovered by subtracting them back out.
+  const rawInputTokens = Math.max(0, promptTokens - cacheReadTokens - cacheWriteTokens)
   const text = extractAnthropicStreamText(lines)
+  if (lines.length > 0 && text.length === 0) {
+    console.warn(
+      '[anthropic-stream] capture-empty: %d SSE lines, 0 chars extracted (parser drift?)',
+      lines.length,
+    )
+  }
   const responseBody = text ? {
     type: 'message',
     role: 'assistant',
     model,
     content: [{ type: 'text', text }],
-    usage: { input_tokens: promptTokens, output_tokens: completionTokens },
+    usage: {
+      input_tokens: rawInputTokens,
+      output_tokens: completionTokens,
+      ...(cacheReadTokens > 0 ? { cache_read_input_tokens: cacheReadTokens } : {}),
+      ...(cacheWriteTokens > 0 ? { cache_creation_input_tokens: cacheWriteTokens } : {}),
+    },
   } : null
 
   await logRequestAsync({
@@ -126,6 +175,8 @@ export async function logAnthropicStream(
     promptTokens,
     completionTokens,
     totalTokens,
+    cacheReadTokens,
+    cacheWriteTokens,
     costUsd: cost?.totalCost ?? null,
     responseBody,
   })

@@ -11,6 +11,10 @@ export interface RequestLogData {
   promptTokens: number
   completionTokens: number
   totalTokens: number
+  /** Subset of promptTokens that hit a prompt cache (Anthropic cache_read_input_tokens / OpenAI cached_tokens). */
+  cacheReadTokens?: number
+  /** Subset of promptTokens that wrote a cache entry (Anthropic cache_creation_input_tokens). */
+  cacheWriteTokens?: number
   costUsd: number | null
   latencyMs: number
   /** Pre-fetch proxy overhead: auth + key decryption + body parsing (ms). Target p95 < 50ms. */
@@ -166,6 +170,8 @@ export async function logRequestAsync(data: RequestLogData): Promise<void> {
     prompt_tokens: data.promptTokens,
     completion_tokens: data.completionTokens,
     total_tokens: data.totalTokens,
+    cache_read_tokens: data.cacheReadTokens ?? 0,
+    cache_write_tokens: data.cacheWriteTokens ?? 0,
     cost_usd: data.costUsd,
     latency_ms: data.latencyMs,
     proxy_overhead_ms: data.proxyOverheadMs ?? null,
