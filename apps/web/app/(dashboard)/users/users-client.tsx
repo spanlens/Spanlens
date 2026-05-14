@@ -3,8 +3,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useSearchParams, useRouter } from 'next/navigation'
-import { usePostHog } from 'posthog-js/react'
 import { ArrowDown, ArrowUp, Search, Users as UsersIcon } from 'lucide-react'
+
+// TODO: re-add `usePostHog()` + `users_page_viewed` / `users_row_clicked`
+// capture once PostHog provider lands on main. Event payloads designed
+// in docs/launch/2026-05-14_cache-stream-users.md §3.
 import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
 import { useUsers } from '@/lib/queries/use-users'
@@ -39,7 +42,6 @@ function fmtRelativeTime(iso: string): string {
 export function UsersClient() {
   const router = useRouter()
   const sp = useSearchParams()
-  const ph = usePostHog()
 
   // URL-backed filter state. Mirrors /requests pattern so users can share a
   // pre-filtered view.
@@ -63,18 +65,6 @@ export function UsersClient() {
     return base
   }, [page, search, sortBy, sortDir])
   const { data, isLoading, isError } = useUsers(filters)
-
-  // PostHog: page-view + filter usage. Lets us validate the "영업 데모에서
-  // /users가 클릭되는가" question after launch.
-  useEffect(() => {
-    if (!ph) return
-    ph.capture('users_page_viewed', {
-      sort_by: sortBy,
-      sort_dir: sortDir,
-      has_search: Boolean(search),
-      page,
-    })
-  }, [ph, sortBy, sortDir, search, page])
 
   function updateQuery(updates: Record<string, string | null>) {
     const next = new URLSearchParams(sp.toString())
@@ -192,7 +182,6 @@ export function UsersClient() {
               <Link
                 key={u.user_id}
                 href={`/users/${encodeURIComponent(u.user_id)}`}
-                onClick={() => ph?.capture('users_row_clicked', { user_id: u.user_id })}
                 className="grid grid-cols-[2fr,1fr,1fr,1fr,1fr,1fr] gap-3 items-center px-4 py-3 font-mono text-[12px] text-text hover:bg-bg-elev transition-colors"
               >
                 <span className="truncate">{u.user_id}</span>

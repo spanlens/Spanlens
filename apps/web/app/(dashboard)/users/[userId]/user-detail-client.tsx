@@ -1,12 +1,13 @@
 'use client'
 
-import { useEffect } from 'react'
 import Link from 'next/link'
 import { ArrowLeft } from 'lucide-react'
-import { usePostHog } from 'posthog-js/react'
 import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
 import { useUserDetail } from '@/lib/queries/use-users'
+
+// TODO: re-add `usePostHog()` + `user_detail_viewed` capture once the
+// PostHog provider lands on main (separate PR).
 
 function fmtCost(n: number | null | undefined): string {
   if (n == null) return '—'
@@ -19,12 +20,6 @@ function fmtCount(n: number): string {
 
 export function UserDetailClient({ userId }: { userId: string }) {
   const { data, isLoading, isError } = useUserDetail(userId)
-  const ph = usePostHog()
-
-  useEffect(() => {
-    if (!ph) return
-    ph.capture('user_detail_viewed', { user_id: userId })
-  }, [ph, userId])
 
   if (isLoading) {
     return (
