@@ -126,16 +126,35 @@ const SPEC = {
           id: { type: 'string', format: 'uuid' },
           provider: { type: 'string', enum: ['openai', 'anthropic', 'gemini'] },
           model: { type: 'string', example: 'gpt-4o-mini' },
-          prompt_tokens: { type: 'integer' },
+          prompt_tokens: { type: 'integer', description: 'Gross input tokens (cache portions included).' },
           completion_tokens: { type: 'integer' },
           total_tokens: { type: 'integer' },
+          cache_read_tokens: { type: 'integer', description: 'Subset of prompt_tokens that hit a prompt cache (Anthropic cache_read_input_tokens / OpenAI cached_tokens). 0 if not applicable.' },
+          cache_write_tokens: { type: 'integer', description: 'Subset of prompt_tokens that wrote a cache entry (Anthropic cache_creation_input_tokens). 0 if not applicable.' },
           cost_usd: { type: 'number', format: 'float', nullable: true },
           latency_ms: { type: 'integer' },
           proxy_overhead_ms: { type: 'integer', nullable: true },
           status_code: { type: 'integer' },
+          user_id: { type: 'string', nullable: true, description: 'Customer-supplied end-user ID via x-spanlens-user header.' },
+          session_id: { type: 'string', nullable: true, description: 'Customer-supplied session ID via x-spanlens-session header.' },
           flags: { type: 'array', items: { $ref: '#/components/schemas/SecurityFlag' }, description: 'Request-body security flags' },
           response_flags: { type: 'array', items: { $ref: '#/components/schemas/SecurityFlag' }, description: 'Response-body security flags' },
           created_at: { type: 'string', format: 'date-time' },
+        },
+      },
+      UserAnalytics: {
+        type: 'object',
+        description: 'Per-end-user aggregate stats. Sourced from requests grouped by user_id (x-spanlens-user header).',
+        properties: {
+          user_id: { type: 'string' },
+          total_requests: { type: 'integer' },
+          total_tokens: { type: 'integer' },
+          total_cost_usd: { type: 'number', format: 'float' },
+          avg_latency_ms: { type: 'number', format: 'float', nullable: true },
+          first_seen: { type: 'string', format: 'date-time' },
+          last_seen: { type: 'string', format: 'date-time' },
+          error_requests: { type: 'integer', description: 'Count of requests with status_code >= 400' },
+          distinct_models: { type: 'integer', description: 'Number of distinct models used by this user' },
         },
       },
       Trace: {
@@ -473,6 +492,83 @@ const SPEC = {
         responses: {
           200: { description: 'Request detail', content: { 'application/json': { schema: { $ref: '#/components/schemas/Request' } } } },
           404: { description: 'Not found' },
+        },
+      },
+    },
+    '/api/v1/users': {
+      get: {
+        tags: ['Users'],
+        summary: 'List per-end-user analytics',
+        description: 'Returns one aggregate row per distinct `x-spanlens-user` value within the org — totals (requests / tokens / cost), behaviour (avg latency, error count, distinct models), lifetime markers (first_seen / last_seen).',
+        operationId: 'listUsers',
+        security: [{ BearerJWT: [] }],
+        parameters: [
+          { name: 'projectId', in: 'query', schema: { type: 'string', format: 'uuid' } },
+          { name: 'search', in: 'query', schema: { type: 'string' }, description: 'Substring match on user_id' },
+          { name: 'from', in: 'query', schema: { type: 'string', format: 'date-time' } },
+          { name: 'to', in: 'query', schema: { type: 'string', format: 'date-time' } },
+          { name: 'sortBy', in: 'query', schema: { type: 'string', enum: ['cost', 'requests', 'tokens', 'last_seen'], default: 'cost' } },
+          { name: 'sortDir', in: 'query', schema: { type: 'string', enum: ['asc', 'desc'], default: 'desc' } },
+          { name: 'page', in: 'query', schema: { type: 'integer', default: 1 } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', default: 50, maximum: 100 } },
+        ],
+        responses: {
+          200: {
+            description: 'User analytics list',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean' },
+                    data: { type: 'array', items: { $ref: '#/components/schemas/UserAnalytics' } },
+                    meta: { type: 'object', properties: { total: { type: 'integer' }, page: { type: 'integer' }, limit: { type: 'integer' } } },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    '/api/v1/users/{userId}': {
+      get: {
+        tags: ['Users'],
+        summary: 'Get end-user detail with recent requests',
+        description: 'Aggregate stats + most recent 50 requests for a single user_id. Mirrors the list endpoint filters.',
+        operationId: 'getUser',
+        security: [{ BearerJWT: [] }],
+        parameters: [
+          { name: 'userId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'projectId', in: 'query', schema: { type: 'string', format: 'uuid' } },
+          { name: 'from', in: 'query', schema: { type: 'string', format: 'date-time' } },
+          { name: 'to', in: 'query', schema: { type: 'string', format: 'date-time' } },
+        ],
+        responses: {
+          200: {
+            description: 'User detail',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean' },
+                    data: {
+                      allOf: [
+                        { $ref: '#/components/schemas/UserAnalytics' },
+                        {
+                          type: 'object',
+                          properties: {
+                            recent_requests: { type: 'array', items: { $ref: '#/components/schemas/Request' } },
+                          },
+                        },
+                      ],
+                    },
+                  },
+                },
+              },
+            },
+          },
         },
       },
     },

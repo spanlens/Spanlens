@@ -183,6 +183,31 @@ res, _ := client.CreateChatCompletion(ctx, openai.ChatCompletionRequest{
         prompt tag is stale. The request just isn&apos;t linked to a version.
       </p>
 
+      <p>
+        Add <code>X-Spanlens-User</code> and <code>X-Spanlens-Session</code> headers to tag the
+        request with an end-user or session ID. The values are opaque strings of your choosing
+        (Spanlens never interprets them):
+      </p>
+      <CodeBlock>{`-H "X-Spanlens-User: user_abc123"
+-H "X-Spanlens-Session: sess_xyz789"`}</CodeBlock>
+      <p>
+        Tagged requests roll up at <a href="/users">/users</a> (per-end-user cost / token / latency
+        analytics) and can be filtered at <a href="/requests">/requests</a> via{' '}
+        <code>?userId=…</code> / <code>?sessionId=…</code>. See{' '}
+        <a href="/docs/features/users">Users docs</a> for tagging strategy and SDK helpers.
+      </p>
+
+      <h3>About prompt-cache breakdown</h3>
+      <p>
+        When Anthropic returns <code>cache_read_input_tokens</code> /{' '}
+        <code>cache_creation_input_tokens</code> or OpenAI returns{' '}
+        <code>prompt_tokens_details.cached_tokens</code>, Spanlens parses them out of the response
+        automatically and stores the breakdown in <code>requests.cache_read_tokens</code> /{' '}
+        <code>cache_write_tokens</code>. <em>No header from you is required.</em> Cost is billed at
+        each provider&apos;s reduced cache rate (≈ 0.1× input on Anthropic, ≈ 0.5× input on OpenAI).
+        See <a href="/docs/features/cost-tracking">cost tracking</a> for the full formula.
+      </p>
+
       <h2>Self-hosting</h2>
       <p>
         If you&apos;re running Spanlens on your own infra, replace the base URL:
