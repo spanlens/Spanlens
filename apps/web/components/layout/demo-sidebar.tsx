@@ -23,6 +23,7 @@ const DEMO_NAV = [
       { href: '/demo/dashboard', label: 'Dashboard', badge: null },
       { href: '/demo/requests',  label: 'Requests',  badge: '2.4k' },
       { href: '/demo/traces',    label: 'Traces',    badge: null },
+      { href: '/demo/users',     label: 'Users',     badge: '4' },
     ],
   },
   {
