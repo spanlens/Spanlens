@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { ArrowLeft, Check, Copy, Play, RotateCw } from 'lucide-react'
+import { usePostHog } from 'posthog-js/react'
 import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
 import { useRequest, useReplayRequest, useRunReplay } from '@/lib/queries/use-requests'
@@ -16,8 +17,28 @@ type Tab = 'request' | 'response' | 'error'
 export function RequestDetailClient({ id }: { id: string }) {
   const { data: req, isLoading, isError, refetch } = useRequest(id)
   const [tab, setTab] = useState<Tab>('request')
+  const ph = usePostHog()
 
   useEffect(() => { setTab('request') }, [id])
+
+  // Track cache-cost capture rollout (Phase 1 of PR #4): when a viewed request
+  // has cache tokens, capture the savings vs. the pre-fix overcounted cost.
+  // Used to validate the launch and build marketing data ("avg N% overcounted").
+  useEffect(() => {
+    if (!req || !ph) return
+    const cacheRead = req.cache_read_tokens ?? 0
+    const cacheWrite = req.cache_write_tokens ?? 0
+    if (cacheRead === 0 && cacheWrite === 0) return
+    ph.capture('cache_breakdown_viewed', {
+      provider: req.provider,
+      model: req.model,
+      prompt_tokens: req.prompt_tokens,
+      cache_read_tokens: cacheRead,
+      cache_write_tokens: cacheWrite,
+      cache_hit_rate: req.prompt_tokens > 0 ? cacheRead / req.prompt_tokens : 0,
+      cost_usd: req.cost_usd,
+    })
+  }, [req, ph])
 
   if (isLoading) {
     return (
@@ -112,6 +133,45 @@ export function RequestDetailClient({ id }: { id: string }) {
           </div>
         ))}
       </div>
+
+      {/* Prompt cache breakdown — only rendered when this request used caching */}
+      {(req.cache_read_tokens ?? 0) > 0 || (req.cache_write_tokens ?? 0) > 0 ? (
+        <div className="border border-border rounded-[6px] bg-bg-elev px-4 py-3">
+          <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-2">
+            Prompt cache breakdown
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-2 font-mono text-[12px] text-text">
+            <div>
+              <span className="text-text-faint">Cache read</span>{' '}
+              <span className="font-medium">{(req.cache_read_tokens ?? 0).toLocaleString()}</span>
+              <span className="text-text-faint"> tokens</span>
+            </div>
+            <div>
+              <span className="text-text-faint">Cache write</span>{' '}
+              <span className="font-medium">{(req.cache_write_tokens ?? 0).toLocaleString()}</span>
+              <span className="text-text-faint"> tokens</span>
+            </div>
+            <div>
+              <span className="text-text-faint">Non-cached input</span>{' '}
+              <span className="font-medium">
+                {Math.max(
+                  0,
+                  req.prompt_tokens - (req.cache_read_tokens ?? 0) - (req.cache_write_tokens ?? 0),
+                ).toLocaleString()}
+              </span>
+              <span className="text-text-faint"> tokens</span>
+            </div>
+            <div>
+              <span className="text-text-faint">Cache hit rate</span>{' '}
+              <span className="font-medium">
+                {req.prompt_tokens > 0
+                  ? `${(((req.cache_read_tokens ?? 0) / req.prompt_tokens) * 100).toFixed(1)}%`
+                  : '—'}
+              </span>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {/* Body tabs */}
       <div>

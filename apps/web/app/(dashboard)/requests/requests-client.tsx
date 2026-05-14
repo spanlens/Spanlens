@@ -409,7 +409,13 @@ function RequestDrawer({ requestId, visible, onClose, onPrev, onNext, hasPrev, h
           {[
             { label: 'Latency', value: `${req.latency_ms}ms`, sub: '', warn: req.latency_ms > 2000 },
             { label: 'Cost', value: fmtCost(req.cost_usd), sub: '' },
-            { label: 'Tokens', value: req.total_tokens.toLocaleString(), sub: `${req.prompt_tokens} in / ${req.completion_tokens} out` },
+            {
+              label: 'Tokens',
+              value: req.total_tokens.toLocaleString(),
+              sub: (req.cache_read_tokens ?? 0) > 0
+                ? `${req.prompt_tokens} in (${(req.cache_read_tokens ?? 0).toLocaleString()} cached) / ${req.completion_tokens} out`
+                : `${req.prompt_tokens} in / ${req.completion_tokens} out`,
+            },
           ].map((s, i) => (
             <div key={s.label} className={cn('pr-3 pl-3', i === 0 && 'pl-0', i === 2 && 'pr-0', i < 2 && 'border-r border-border')}>
               <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-1.5">{s.label}</div>

@@ -79,6 +79,10 @@ export interface RequestRow {
   prompt_tokens: number
   completion_tokens: number
   total_tokens: number
+  /** Subset of prompt_tokens that hit a prompt cache (charged at reduced rate). */
+  cache_read_tokens?: number
+  /** Subset of prompt_tokens that wrote a cache entry (charged at premium rate). */
+  cache_write_tokens?: number
   cost_usd: number | null
   latency_ms: number
   status_code: number
