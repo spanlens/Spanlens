@@ -897,6 +897,8 @@ export type Database = {
       }
       model_prices: {
         Row: {
+          cache_read_price_per_1m: number | null
+          cache_write_price_per_1m: number | null
           completion_price_per_1m: number
           created_at: string
           id: string
@@ -906,6 +908,8 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          cache_read_price_per_1m?: number | null
+          cache_write_price_per_1m?: number | null
           completion_price_per_1m: number
           created_at?: string
           id?: string
@@ -915,6 +919,8 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          cache_read_price_per_1m?: number | null
+          cache_write_price_per_1m?: number | null
           completion_price_per_1m?: number
           created_at?: string
           id?: string
@@ -1474,6 +1480,8 @@ export type Database = {
       requests: {
         Row: {
           api_key_id: string | null
+          cache_read_tokens: number
+          cache_write_tokens: number
           completion_tokens: number
           cost_usd: number | null
           created_at: string
@@ -1502,6 +1510,8 @@ export type Database = {
         }
         Insert: {
           api_key_id?: string | null
+          cache_read_tokens?: number
+          cache_write_tokens?: number
           completion_tokens?: number
           cost_usd?: number | null
           created_at?: string
@@ -1530,6 +1540,8 @@ export type Database = {
         }
         Update: {
           api_key_id?: string | null
+          cache_read_tokens?: number
+          cache_write_tokens?: number
           completion_tokens?: number
           cost_usd?: number | null
           created_at?: string

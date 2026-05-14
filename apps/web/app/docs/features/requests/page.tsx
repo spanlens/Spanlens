@@ -45,7 +45,16 @@ export default function RequestsDocs() {
           </tr>
           <tr>
             <td><code>prompt_tokens</code> / <code>completion_tokens</code> / <code>total_tokens</code></td>
-            <td>Parsed from the provider&apos;s response (or streamed deltas)</td>
+            <td>Parsed from the provider&apos;s response (or streamed deltas). <code>prompt_tokens</code> is the GROSS input count including any cached portion.</td>
+          </tr>
+          <tr>
+            <td><code>cache_read_tokens</code> / <code>cache_write_tokens</code></td>
+            <td>
+              Subset of <code>prompt_tokens</code> that hit / wrote a prompt cache. Charged at the
+              provider&apos;s reduced cache rate by <a href="/docs/features/cost-tracking">cost tracking</a>.
+              Available for new requests since 2026-05-14 (Anthropic prompt caching · OpenAI prompt caching).
+              0 for historical rows.
+            </td>
           </tr>
           <tr>
             <td><code>cost_usd</code></td>

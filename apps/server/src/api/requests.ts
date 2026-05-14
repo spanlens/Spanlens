@@ -45,7 +45,7 @@ requestsRouter.get('/', async (c) => {
   let query = supabaseAdmin
     .from('requests')
     .select(
-      'id, project_id, provider, model, prompt_tokens, completion_tokens, total_tokens, cost_usd, latency_ms, status_code, error_message, trace_id, span_id, provider_key_id, user_id, session_id, provider_keys ( name ), created_at',
+      'id, project_id, provider, model, prompt_tokens, completion_tokens, total_tokens, cache_read_tokens, cache_write_tokens, cost_usd, latency_ms, status_code, error_message, trace_id, span_id, provider_key_id, user_id, session_id, provider_keys ( name ), created_at',
       { count: 'exact' },
     )
     .eq('organization_id', orgId)
