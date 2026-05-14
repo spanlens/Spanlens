@@ -357,10 +357,13 @@ POST /api/v1/requests/:id/replay/run
           Heavier search needs a separate OLAP layer (ClickHouse is the likely path).
         </li>
         <li>
-          <strong>Streaming response bodies not captured.</strong> The proxy streams responses
-          directly to your application without buffering, so <code>response_body</code> is{' '}
-          <code>null</code> for streaming calls. Token counts and cost are still accurate (parsed
-          from SSE deltas).
+          <strong>Streaming response bodies are reconstructed, not original.</strong> SSE chunks
+          are tee&apos;d while pass-through to the client. After the stream closes, the assistant
+          text is reassembled and written to <code>response_body</code> in the upstream&apos;s
+          standard non-streaming shape (so the dashboard renders it identically to a non-stream
+          response). Tool calls / images / non-text content blocks are not preserved — only the
+          assistant-visible text portion. Aborted streams keep whatever was received up to the
+          break.
         </li>
       </ul>
 
