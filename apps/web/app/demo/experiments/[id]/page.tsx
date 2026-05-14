@@ -1,6 +1,6 @@
 'use client'
 
-import { use, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import { ChevronDown, ChevronUp, Loader2 } from 'lucide-react'
 import { Topbar } from '@/components/layout/topbar'
@@ -114,8 +114,8 @@ function ResultRow({ result, idx }: { result: ExperimentResult; idx: number }) {
   )
 }
 
-export default function DemoExperimentDetail({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = use(params)
+export default function DemoExperimentDetail({ params }: { params: { id: string } }) {
+  const { id } = params
   const exp = DEMO_EXPERIMENTS.find((e) => e.id === id)
   const results = DEMO_EXPERIMENT_RESULTS[id] ?? []
 
