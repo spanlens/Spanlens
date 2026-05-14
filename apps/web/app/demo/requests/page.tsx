@@ -1,6 +1,6 @@
 'use client'
-import { useCallback, useMemo, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { Suspense, useCallback, useMemo, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import { Topbar } from '@/components/layout/topbar'
 import { DEMO_REQUESTS, DEMO_SECURITY_SUMMARY, DEMO_TIMESERIES } from '@/lib/demo-data'
@@ -391,8 +391,11 @@ function RequestsTable({
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 
-export default function DemoRequestsPage() {
+function DemoRequestsContent() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const userIdFilter = searchParams.get('userId')
+  const sessionIdFilter = searchParams.get('sessionId')
 
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [providerFilter, setProviderFilter] = useState('all')
@@ -435,6 +438,10 @@ export default function DemoRequestsPage() {
     // Provider
     if (providerFilter !== 'all') rows = rows.filter((r) => r.provider === providerFilter)
 
+    // User / Session (URL params)
+    if (userIdFilter) rows = rows.filter((r) => r.user_id === userIdFilter)
+    if (sessionIdFilter) rows = rows.filter((r) => r.session_id === sessionIdFilter)
+
     // Model search
     const modelTrim = modelInput.trim().toLowerCase()
     if (modelTrim) rows = rows.filter((r) => r.model.toLowerCase().includes(modelTrim))
@@ -457,13 +464,15 @@ export default function DemoRequestsPage() {
     })
 
     return rows
-  }, [statusFilter, providerFilter, modelInput, timeRange, sortField, sortDir, now])
+  }, [statusFilter, providerFilter, modelInput, timeRange, sortField, sortDir, now, userIdFilter, sessionIdFilter])
 
   const hasActiveFilters =
     statusFilter !== 'all' ||
     providerFilter !== 'all' ||
     modelInput.trim() !== '' ||
-    timeRange !== 'all'
+    timeRange !== 'all' ||
+    !!userIdFilter ||
+    !!sessionIdFilter
 
   function handleSort(field: SortField) {
     if (sortField === field) {
@@ -485,6 +494,7 @@ export default function DemoRequestsPage() {
     setModelInput('')
     setTimeRange('all')
     setSelectedId(null)
+    if (userIdFilter || sessionIdFilter) router.push('/demo/requests')
   }
 
   return (
@@ -493,6 +503,28 @@ export default function DemoRequestsPage() {
         crumbs={[{ label: 'Demo', href: '/demo/dashboard' }, { label: 'Requests' }]}
         right={null}
       />
+
+      {(userIdFilter || sessionIdFilter) && (
+        <div className="shrink-0 flex items-center gap-2 px-[22px] py-[8px] border-b border-border bg-accent/5 font-mono text-[11.5px]">
+          <span className="text-text-faint">Filtering by</span>
+          {userIdFilter && (
+            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-accent/10 border border-accent/20 text-accent">
+              user: {userIdFilter}
+            </span>
+          )}
+          {sessionIdFilter && (
+            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-accent/10 border border-accent/20 text-accent">
+              session: {sessionIdFilter}
+            </span>
+          )}
+          <button
+            onClick={clearFilters}
+            className="ml-1 text-text-faint hover:text-text transition-colors"
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
       <StatStrip />
       <TrafficBars />
@@ -628,5 +660,13 @@ export default function DemoRequestsPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+export default function DemoRequestsPage() {
+  return (
+    <Suspense fallback={null}>
+      <DemoRequestsContent />
+    </Suspense>
   )
 }

@@ -90,6 +90,8 @@ export default function DemoRequestDetailPage({ params }: { params: { id: string
       ? [{ label: 'Trace ID', value: req.trace_id.slice(0, 16) + '…', link: `/demo/traces/${req.trace_id}` }]
       : [{ label: 'Trace ID', value: '—' }]),
     { label: 'Status', value: String(req.status_code), warn: isErr },
+    ...(req.user_id ? [{ label: 'User', value: req.user_id, link: `/demo/requests?userId=${req.user_id}` }] : []),
+    ...(req.session_id ? [{ label: 'Session', value: req.session_id, link: `/demo/requests?sessionId=${req.session_id}` }] : []),
   ]
 
   return (
