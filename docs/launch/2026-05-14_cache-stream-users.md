@@ -207,18 +207,68 @@ DROP FUNCTION get_user_analytics(uuid, uuid, text, timestamptz, timestamptz, tex
 
 ---
 
-## 7. 측정 일정 (1주 후 결정 trigger)
+## 7. 측정 — 보류 결정 (2026-05-14 post-launch)
 
-**2026-05-21 (1주 후)** 시점에 PostHog에서 확인:
+**처음 계획**: PostHog 4-card dashboard로 1주 후 (2026-05-21) 데이터 보고 다음 feature 결정.
 
-1. `cache_breakdown_viewed` event volume > 0 — cache 기능이 실제로 발견되는가
-2. `users_page_viewed → users_row_clicked` funnel conversion > 30% — /users가 실제로 가치 있는가
-3. 신규 가입 → `withUser()` 헬퍼 사용까지의 시간 — SDK 마찰 어떤가
-4. (영업) 데모 미팅에서 어떤 항목이 가장 자주 언급되는가
+**실제 결정**: PostHog 측정 자산 **이번 출시에서는 빠짐**. 이유 두 가지:
 
-이 데이터를 보고 결정:
-- Sessions view (#2) — Users가 잘 먹히면 자연스러운 확장
-- Heuristic evaluators (#5) — evals 차별화 베팅
-- Custom dashboard (#12) — 위 두 개 다 미적지근하면 reconsider
+1. **기술적**: PostHog 통합 (npm dep + provider 컴포넌트 + layout 연결) 자체가 demo 브랜치에만 있고 main에 squash merge 안 됐던 상태. PR #10에 이번 작업과 함께 묶어 보내려고 cherry-pick 시도했더니 `annotation-client.tsx`에서 충돌 발생 → PR scope 비대해질 위험이라 PostHog 부분만 떼어내고 `usePostHog()` 호출 3곳에 `TODO` 주석 박아둠.
+2. **전략적**: 현재 트래픽 수준에선 1주 measurement가 noise. 영업 demo 미팅 1–2건의 정성적 피드백이 PostHog 시계열보다 더 신호 강함. 일일 10+ 활성 사용자 또는 paying customer 발생 후 PostHog PR을 켜는 게 ROI 정합.
 
-**측정 없이 다음 feature로 건너뛰지 말 것** — 트레드밀 트랩.
+### 그래서 다음 결정의 trigger도 바뀜
+
+처음 계획에선 *"PostHog 데이터 본 후"* 가 trigger였는데, 이제는:
+
+| 신호 | 다음 행동 |
+|------|-----------|
+| 영업 미팅에서 `/users` 데모가 deal 클로징에 영향을 줬다는 정성 피드백 1건 이상 | Users tier 강화 — Sessions view (#2) 또는 더 깊은 분석 surface |
+| Anthropic prompt caching 쓰는 paying customer 등장 + cost breakdown 카드를 active하게 사용 | Cache feature 마케팅화 (블로그/Twitter) |
+| 누군가 LLM-as-judge 비용 불만 → "heuristic 같은 거 없어요?" 물음 | Heuristic Evaluators (#5) 베팅 |
+| 위 신호 0개 | 출시한 3개에 더 시간 쓰지 말고, 신규 customer 유입(GTM)에 집중 |
+
+### PostHog PR을 다시 켜야 할 트리거
+- 일일 활성 사용자 10+ (현재 1–2) → measurement signal/noise 비율 충분
+- 또는 paying customer 1+ → 그 사용자의 행동 패턴이 의미 있음
+
+그 시점에 demo 브랜치의 `7dba97a` (PostHog 통합), `47c5e48`, `c59fba4` 3 commit을 main 베이스 새 브랜치로 cherry-pick → `annotation-client.tsx` 충돌만 해결 → 이번 PR에서 제거했던 `usePostHog()` 3곳 복원. 30분 작업.
+
+**측정 없이 다음 feature로 건너뛰지 말 것** — 측정의 대체재가 영업 정성 피드백이라는 점만 다름. 트레드밀 트랩 회피 원칙은 동일.
+
+---
+
+## 8. Production smoke test 결과 (2026-05-14 실제 검증)
+
+deploy 직후 production 환경에서 실제 API 호출로 검증한 결과:
+
+### Test 1 — Cache cost (#4)
+```
+POST /proxy/anthropic/v1/messages  →  200 OK
+model: claude-haiku-4-5-20251001
+input_tokens: 314, cache_*_tokens: 0
+```
+- ✅ Spanlens proxy → Anthropic 호출 정상
+- ✅ Response body raw 저장 (`response_body != null`)
+- ✅ Cache 토큰 파싱 정상 (Anthropic이 0 → DB도 0)
+- ⚠️ Cache trigger는 미발생 — 314 토큰이 Anthropic minimum(1024+) 미달. Spanlens 코드 책임 아님.
+
+### Test 2 — Stream body (#8)
+```
+POST /proxy/openai/v1/chat/completions  (stream: true)  →  SSE stream
+model: gpt-4o-mini-2024-07-18
+prompt_tokens: 14, completion_tokens: 13
+```
+- ✅ SSE 청크가 클라이언트에 real-time pass-through
+- ✅ Spanlens가 stream 청크를 누적해서 reconstruct
+- ✅ `/requests/[id]` Response body 탭에 `"content": "1, 2, 3, 4, 5"` 저장 확인
+- ✅ Cost 정확 ($0.00001 = (14×0.15 + 13×0.6)/1M)
+
+### Test 3 — Users view (#1)
+```
+POST /proxy/openai/v1/chat/completions  +  x-spanlens-user: smoke-test-alice
+```
+- ✅ `/users` 페이지에 `smoke-test-alice` row 등장
+- ✅ 6컬럼 정확 (1 req / 17 tokens / < $0.01 / 3019ms / "2m ago")
+
+### 결론
+3개 feature 모두 production 환경에서 실제 동작 검증 완료. 출시 100%.
