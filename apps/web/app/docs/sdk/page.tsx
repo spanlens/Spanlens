@@ -220,21 +220,31 @@ const res = await openai.chat.completions.create(
     },
   },
 )`}
-        py={`# Python SDK는 추후 지원 — 그때까지는 헤더 직접 전달
-import openai
+        py={`from spanlens.integrations.openai import create_openai, with_user, with_session
 
-client = openai.OpenAI(
-    api_key=os.environ["SPANLENS_API_KEY"],
-    base_url="https://spanlens-server.vercel.app/proxy/openai/v1",
-    default_headers={
-        "x-spanlens-user": current_user_id,
-        "x-spanlens-session": session_id,
+client = create_openai()
+
+# 단일 헬퍼 — kwargs로 언팩
+res = client.chat.completions.create(
+    model="gpt-4o-mini",
+    messages=[{"role": "user", "content": "Hi"}],
+    **with_user(current_user_id),
+)
+
+# 여러 헬퍼 병합
+res = client.chat.completions.create(
+    model="gpt-4o-mini",
+    messages=[{"role": "user", "content": "Hi"}],
+    extra_headers={
+        **with_user(current_user_id)["extra_headers"],
+        **with_session(session_id)["extra_headers"],
     },
 )`}
       />
       <p>
-        반환값은 <code>{`{ headers: { ... } }`}</code> 형태라 여러 헬퍼를 spread로 병합하면 됩니다.
-        Anthropic integration도 동일한 헬퍼를 export 합니다.
+        TypeScript 반환값은 <code>{`{ headers: { ... } }`}</code> 형태, Python 반환값은{' '}
+        <code>{`{ "extra_headers": { ... } }`}</code> 형태입니다. 여러 헬퍼를 병합할 때는 각
+        언어의 spread 문법을 사용하면 됩니다. Anthropic integration도 동일한 헬퍼를 export 합니다.
       </p>
       <p>
         세 헤더 모두 <code>STRIP_PREFIXES</code> (<code>x-spanlens-*</code>) 정책으로 upstream

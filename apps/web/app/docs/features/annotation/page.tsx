@@ -79,6 +79,50 @@ export default function AnnotationDocs() {
       </p>
       <p>여러 reviewer가 같은 request를 채점하는 건 허용됩니다 (각자 한 row씩).</p>
 
+      <h2 id="iaa">다중 Reviewer 합의도 (IAA)</h2>
+      <p>
+        같은 request를 여러 reviewer가 채점하면 <strong>Agreement 탭</strong>에서 점수 불일치를
+        한눈에 확인할 수 있습니다. 점수 간 <em>표준편차</em>를 disagreement 지표로 사용합니다.
+      </p>
+
+      <h3>Agreement 탭 사용법</h3>
+      <ol>
+        <li>
+          Annotation 페이지 상단 <strong>Queue / Agreement</strong> 탭 전환
+        </li>
+        <li>
+          <strong>최소 reviewer 수</strong> 필터 (기본 2명) 이상 채점된 request만 표시
+        </li>
+        <li>
+          3개 KPI 카드 — <em>채점 완료 수</em> / <em>평균 불일치도</em> / <em>높은 합의 비율</em>
+        </li>
+        <li>
+          요청 목록이 불일치도 내림차순 정렬 → 가장 의견이 갈린 항목이 맨 위
+        </li>
+        <li>
+          각 row의 불일치 바(Disagreement Bar)로 불일치 심각도를 시각적으로 확인
+        </li>
+      </ol>
+
+      <h3>합의도 지표 해석</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>disagreement (표준편차)</th>
+            <th>의미</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td><code>{'<'} 0.15</code></td><td>🟢 High agreement — reviewers가 대체로 동의</td></tr>
+          <tr><td><code>0.15 – 0.30</code></td><td>🟡 Moderate — 일부 의견 차이</td></tr>
+          <tr><td><code>{'>'} 0.30</code></td><td>🔴 High disagreement — 기준 재검토 필요</td></tr>
+        </tbody>
+      </table>
+      <p>
+        <strong>highAgreementPct</strong>는 전체 채점 완료 request 중 disagreement가 0.15 미만인
+        비율입니다. 팀의 채점 기준이 얼마나 정렬되어 있는지를 나타냅니다.
+      </p>
+
       <h2>Evals 페이지의 상관도 카드</h2>
       <p>
         같은 request에 LLM judge 점수와 사람 점수가 모두 있는 경우 <em>paired sample</em>이
@@ -137,6 +181,10 @@ export default function AnnotationDocs() {
             <td><code>GET /api/v1/human-evals/correlation?promptName=...</code></td>
             <td>(judgeScore, humanScore) 쌍 반환. 클라이언트가 Pearson r 계산</td>
           </tr>
+          <tr>
+            <td><code>GET /api/v1/human-evals/iaa?promptVersionId=...</code></td>
+            <td>Agreement 통계 반환 (totalItems, avgDisagreement, highAgreementPct, items 목록). 필터: minReviewers (기본 2)</td>
+          </tr>
         </tbody>
       </table>
 
@@ -159,8 +207,8 @@ curl https://spanlens-server.vercel.app/api/v1/human-evals \\
           마우스 클릭만.
         </li>
         <li>
-          <strong>다중 reviewer 평균/일치도 계산 없음.</strong> 한 사람의 점수만 상관도에
-          반영됩니다 (가장 최신).
+          <strong>Pearson r은 request당 최신 점수 1개만 반영.</strong> 상관도 카드는 각
+          reviewer의 최신 점수 중 한 건 기준. 다중 reviewer 평균을 사용하도록 개선 예정.
         </li>
         <li>
           <strong>Reviewer 권한 관리 없음.</strong> org member 누구나 채점 가능.
