@@ -4,6 +4,7 @@ import { GeistMono } from 'geist/font/mono'
 import './globals.css'
 import { QueryProvider } from '@/components/providers/query-provider'
 import { ThemeProvider } from '@/components/providers/theme-provider'
+import { PostHogProvider } from '@/components/providers/posthog-provider'
 
 export const metadata: Metadata = {
   title: { default: 'Spanlens', template: '%s | Spanlens' },
@@ -24,11 +25,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={`${GeistSans.variable} ${GeistMono.variable} antialiased`}>
-        <QueryProvider>
-          <ThemeProvider>
-            {children}
-          </ThemeProvider>
-        </QueryProvider>
+        <PostHogProvider>
+          <QueryProvider>
+            <ThemeProvider>
+              {children}
+            </ThemeProvider>
+          </QueryProvider>
+        </PostHogProvider>
       </body>
     </html>
   )

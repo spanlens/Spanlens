@@ -2,6 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiDelete, apiGet, apiPost } from '@/lib/api'
+import { capture } from '@/lib/posthog'
 import type { ApiEnvelope } from './types'
 
 export interface Dataset {
@@ -69,6 +70,7 @@ export function useCreateDataset() {
     },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: datasetsQueryKey() })
+      capture({ event: 'dataset_created', properties: { record: true } })
     },
   })
 }

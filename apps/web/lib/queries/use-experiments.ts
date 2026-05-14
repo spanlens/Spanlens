@@ -2,6 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiGet, apiPost } from '@/lib/api'
+import { capture } from '@/lib/posthog'
 import type { ApiEnvelope } from './types'
 
 export type ExperimentStatus = 'pending' | 'running' | 'completed' | 'failed'
@@ -118,8 +119,15 @@ export function useCreateExperiment() {
       const res = await apiPost<ApiEnvelope<Experiment>>('/api/v1/experiments', input)
       return res.data
     },
-    onSuccess: () => {
+    onSuccess: (_data, vars) => {
       void qc.invalidateQueries({ queryKey: ['experiments'] })
+      capture({
+        event: 'experiment_created',
+        properties: {
+          run_model: vars.runModel,
+          has_dataset: !!vars.datasetId,
+        },
+      })
     },
   })
 }

@@ -12,6 +12,7 @@ import {
   type IAAItem,
 } from '@/lib/queries/use-human-evals'
 import { usePrompts } from '@/lib/queries/use-prompts'
+import { capture } from '@/lib/posthog'
 
 // Extract assistant response text from various provider shapes.
 function extractResponseText(body: Record<string, unknown> | null): string {
@@ -123,6 +124,14 @@ function ScoringPanel({
         score: (stars - 1) / 4,   // 1..5 → 0..1
         rawScore: stars,
         ...(comment.trim() && { comment: comment.trim() }),
+      })
+      capture({
+        event: 'human_eval_saved',
+        properties: {
+          raw_score: stars,
+          has_comment: comment.trim().length > 0,
+          is_update: isUpdate,
+        },
       })
       onSaved()
     } catch (err) {
@@ -456,7 +465,7 @@ export function AnnotationClient() {
       <div className="flex items-center border-b border-border px-[22px] bg-bg">
         <button
           type="button"
-          onClick={() => setActiveTab('queue')}
+          onClick={() => { setActiveTab('queue'); capture({ event: 'annotation_tab_viewed', properties: { tab: 'queue' } }) }}
           className={cn(
             'flex items-center gap-1.5 px-0 py-[10px] mr-6 font-mono text-[12px] border-b-2 -mb-px transition-colors',
             activeTab === 'queue'
@@ -469,7 +478,7 @@ export function AnnotationClient() {
         </button>
         <button
           type="button"
-          onClick={() => setActiveTab('agreement')}
+          onClick={() => { setActiveTab('agreement'); capture({ event: 'annotation_tab_viewed', properties: { tab: 'agreement' } }) }}
           className={cn(
             'flex items-center gap-1.5 px-0 py-[10px] font-mono text-[12px] border-b-2 -mb-px transition-colors',
             activeTab === 'agreement'

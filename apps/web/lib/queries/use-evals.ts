@@ -2,6 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiDelete, apiGet, apiPost } from '@/lib/api'
+import { capture } from '@/lib/posthog'
 import type { ApiEnvelope } from './types'
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -100,6 +101,13 @@ export function useCreateEvaluator() {
     onSuccess: (_data, vars) => {
       void qc.invalidateQueries({ queryKey: evaluatorsQueryKey(vars.promptName) })
       void qc.invalidateQueries({ queryKey: evaluatorsQueryKey() })
+      capture({
+        event: 'evaluator_created',
+        properties: {
+          judge_provider: vars.config.judge_provider,
+          ...(vars.promptName && { prompt_name: vars.promptName }),
+        },
+      })
     },
   })
 }
@@ -184,8 +192,15 @@ export function useCreateEvalRun() {
       const res = await apiPost<ApiEnvelope<EvalRun>>('/api/v1/eval-runs', input)
       return res.data
     },
-    onSuccess: () => {
+    onSuccess: (_data, vars) => {
       void qc.invalidateQueries({ queryKey: ['eval-runs'] })
+      capture({
+        event: 'eval_run_triggered',
+        properties: {
+          evaluator_id: vars.evaluatorId,
+          source: vars.datasetId ? 'dataset' : 'production',
+        },
+      })
     },
   })
 }
