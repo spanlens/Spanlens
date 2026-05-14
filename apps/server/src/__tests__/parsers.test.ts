@@ -18,7 +18,24 @@ describe('OpenAI parser', () => {
       completionTokens: 20,
       totalTokens: 30,
       model: 'gpt-4o',
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
     })
+  })
+
+  it('extracts cached_tokens from prompt_tokens_details', () => {
+    const body = {
+      model: 'gpt-4o',
+      usage: {
+        prompt_tokens: 100,
+        completion_tokens: 20,
+        total_tokens: 120,
+        prompt_tokens_details: { cached_tokens: 60 },
+      },
+    }
+    const parsed = parseOpenAIResponse(body)
+    expect(parsed?.promptTokens).toBe(100)
+    expect(parsed?.cacheReadTokens).toBe(60)
   })
 
   it('returns null when usage missing', () => {
@@ -39,12 +56,46 @@ describe('Anthropic parser', () => {
       completionTokens: 20,
       totalTokens: 30,
       model: 'claude-sonnet-4-6',
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
     })
+  })
+
+  it('sums input + cache_read + cache_creation into promptTokens', () => {
+    const body = {
+      model: 'claude-sonnet-4-6',
+      usage: {
+        input_tokens: 100,
+        output_tokens: 50,
+        cache_read_input_tokens: 800,
+        cache_creation_input_tokens: 200,
+      },
+    }
+    const parsed = parseAnthropicResponse(body)
+    // promptTokens is the GROSS input (cache included), so existing aggregates
+    // continue to see "total input sent" rather than "non-cached input".
+    expect(parsed?.promptTokens).toBe(1100)
+    expect(parsed?.cacheReadTokens).toBe(800)
+    expect(parsed?.cacheWriteTokens).toBe(200)
   })
 
   it('extracts prompt tokens from message_start event', () => {
     const line = `data: ${JSON.stringify({ type: 'message_start', message: { model: 'claude-sonnet-4-6', usage: { input_tokens: 42 } } })}`
     expect(parseAnthropicStreamStart(line)?.promptTokens).toBe(42)
+  })
+
+  it('extracts cache breakdown from message_start event', () => {
+    const line = `data: ${JSON.stringify({
+      type: 'message_start',
+      message: {
+        model: 'claude-sonnet-4-6',
+        usage: { input_tokens: 50, cache_read_input_tokens: 400, cache_creation_input_tokens: 100 },
+      },
+    })}`
+    const parsed = parseAnthropicStreamStart(line)
+    expect(parsed?.promptTokens).toBe(550)
+    expect(parsed?.cacheReadTokens).toBe(400)
+    expect(parsed?.cacheWriteTokens).toBe(100)
   })
 
   it('extracts completion tokens from message_delta event', () => {

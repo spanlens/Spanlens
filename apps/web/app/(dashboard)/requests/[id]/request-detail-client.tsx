@@ -6,6 +6,10 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
 import { useRequest, useReplayRequest, useRunReplay } from '@/lib/queries/use-requests'
 
+// TODO: re-add `usePostHog()` + `cache_breakdown_viewed` capture once the
+// PostHog provider lands on main (separate PR). The event payload is fully
+// designed — see docs/launch/2026-05-14_cache-stream-users.md §3.
+
 function fmtCost(n: number | null): string {
   if (n == null) return '—'
   return '$' + n.toFixed(6)
@@ -112,6 +116,64 @@ export function RequestDetailClient({ id }: { id: string }) {
           </div>
         ))}
       </div>
+
+      {/* End-user attribution row — only rendered when x-spanlens-user was set */}
+      {req.user_id && (
+        <div className="flex items-center gap-3 px-4 py-2 border border-border rounded-[6px] bg-bg-elev font-mono text-[12px]">
+          <span className="text-[10px] uppercase tracking-[0.05em] text-text-faint">User</span>
+          <Link
+            href={`/users/${encodeURIComponent(req.user_id)}`}
+            className="text-text hover:underline truncate"
+          >
+            {req.user_id}
+          </Link>
+          <Link
+            href={`/requests?userId=${encodeURIComponent(req.user_id)}`}
+            className="text-[10px] text-text-faint hover:text-text ml-auto"
+          >
+            filter requests →
+          </Link>
+        </div>
+      )}
+
+      {/* Prompt cache breakdown — only rendered when this request used caching */}
+      {(req.cache_read_tokens ?? 0) > 0 || (req.cache_write_tokens ?? 0) > 0 ? (
+        <div className="border border-border rounded-[6px] bg-bg-elev px-4 py-3">
+          <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-2">
+            Prompt cache breakdown
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-2 font-mono text-[12px] text-text">
+            <div>
+              <span className="text-text-faint">Cache read</span>{' '}
+              <span className="font-medium">{(req.cache_read_tokens ?? 0).toLocaleString()}</span>
+              <span className="text-text-faint"> tokens</span>
+            </div>
+            <div>
+              <span className="text-text-faint">Cache write</span>{' '}
+              <span className="font-medium">{(req.cache_write_tokens ?? 0).toLocaleString()}</span>
+              <span className="text-text-faint"> tokens</span>
+            </div>
+            <div>
+              <span className="text-text-faint">Non-cached input</span>{' '}
+              <span className="font-medium">
+                {Math.max(
+                  0,
+                  req.prompt_tokens - (req.cache_read_tokens ?? 0) - (req.cache_write_tokens ?? 0),
+                ).toLocaleString()}
+              </span>
+              <span className="text-text-faint"> tokens</span>
+            </div>
+            <div>
+              <span className="text-text-faint">Cache hit rate</span>{' '}
+              <span className="font-medium">
+                {req.prompt_tokens > 0
+                  ? `${(((req.cache_read_tokens ?? 0) / req.prompt_tokens) * 100).toFixed(1)}%`
+                  : '—'}
+              </span>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {/* Body tabs */}
       <div>

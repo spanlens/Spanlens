@@ -161,6 +161,8 @@ openaiProxy.all('/*', async (c) => {
   let promptTokens = 0
   let completionTokens = 0
   let totalTokens = 0
+  let cacheReadTokens = 0
+  let cacheWriteTokens = 0
   let resolvedModel = model
 
   if (upstreamRes.ok && resBodyJson) {
@@ -171,16 +173,21 @@ openaiProxy.all('/*', async (c) => {
         promptTokens = parsed.promptTokens
         completionTokens = parsed.completionTokens
         totalTokens = parsed.totalTokens
+        cacheReadTokens = parsed.cacheReadTokens ?? 0
+        cacheWriteTokens = parsed.cacheWriteTokens ?? 0
       }
     } catch { /* ignore */ }
   }
 
-  const cost = calculateCost('openai', resolvedModel, { promptTokens, completionTokens })
+  const cost = calculateCost('openai', resolvedModel, {
+    promptTokens, completionTokens, cacheReadTokens, cacheWriteTokens,
+  })
 
   fireAndForget(c, logRequestAsync({
     ...logBase,
     model: resolvedModel,
     promptTokens, completionTokens, totalTokens,
+    cacheReadTokens, cacheWriteTokens,
     costUsd: cost?.totalCost ?? null,
     responseBody: resBodyJson,
     errorMessage: upstreamRes.ok ? null : resBodyText.slice(0, 1000),
