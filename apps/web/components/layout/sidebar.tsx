@@ -198,6 +198,7 @@ const NAV_GROUPS = [
       { href: '/dashboard',  label: 'Dashboard' },
       { href: '/requests',   label: 'Requests' },
       { href: '/traces',     label: 'Traces' },
+      { href: '/users',      label: 'Users' },
     ],
   },
   {

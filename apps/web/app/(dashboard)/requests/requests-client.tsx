@@ -342,17 +342,26 @@ function RequestDrawer({ requestId, visible, onClose, onPrev, onNext, hasPrev, h
             </div>
           ))}
 
-          {/* User — clickable filter link */}
+          {/* User — clickable analytics + filter link */}
           {req.user_id && (
             <div>
               <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-0.5">User</div>
-              <Link
-                href={`/requests?userId=${encodeURIComponent(req.user_id)}`}
-                className="font-mono text-[12.5px] text-text hover:underline truncate block"
-                title={`Filter by user: ${req.user_id}`}
-              >
-                {req.user_id}
-              </Link>
+              <div className="flex items-baseline gap-2">
+                <Link
+                  href={`/users/${encodeURIComponent(req.user_id)}`}
+                  className="font-mono text-[12.5px] text-text hover:underline truncate"
+                  title={`View user analytics: ${req.user_id}`}
+                >
+                  {req.user_id}
+                </Link>
+                <Link
+                  href={`/requests?userId=${encodeURIComponent(req.user_id)}`}
+                  className="font-mono text-[10px] text-text-faint hover:text-text shrink-0"
+                  title={`Filter requests by user: ${req.user_id}`}
+                >
+                  filter
+                </Link>
+              </div>
             </div>
           )}
 
