@@ -29,6 +29,8 @@ from typing import Any, Optional
 
 DEFAULT_SPANLENS_OPENAI_PROXY = "https://spanlens-server.vercel.app/proxy/openai/v1"
 PROMPT_VERSION_HEADER = "x-spanlens-prompt-version"
+USER_HEADER = "x-spanlens-user"
+SESSION_HEADER = "x-spanlens-session"
 
 
 def create_openai(
@@ -98,9 +100,55 @@ def with_prompt_version(prompt_version: str) -> dict[str, dict[str, str]]:
     return {"extra_headers": {PROMPT_VERSION_HEADER: prompt_version}}
 
 
+def with_user(user_id: str) -> dict[str, dict[str, str]]:
+    """Tag a single OpenAI request with an end-user ID.
+
+    Spread the result into the per-request ``extra_headers``::
+
+        from spanlens.integrations.openai import create_openai, with_user
+
+        client = create_openai()
+        res = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[...],
+            **with_user("user-123"),
+        )
+
+    Combine with :func:`with_session` or :func:`with_prompt_version`::
+
+        res = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[...],
+            **{
+                **with_user("user-123"),
+                **with_session("sess-456"),
+            },
+        )
+
+    Args:
+        user_id: An arbitrary identifier for the end user (e.g. ``auth.uid``).
+            Visible in the Spanlens dashboard Requests filter.
+    """
+    return {"extra_headers": {USER_HEADER: user_id}}
+
+
+def with_session(session_id: str) -> dict[str, dict[str, str]]:
+    """Tag a single OpenAI request with a session / conversation ID.
+
+    Args:
+        session_id: An arbitrary identifier for the conversation session.
+            Visible in the Spanlens dashboard Requests filter.
+    """
+    return {"extra_headers": {SESSION_HEADER: session_id}}
+
+
 __all__ = [
     "DEFAULT_SPANLENS_OPENAI_PROXY",
     "PROMPT_VERSION_HEADER",
+    "USER_HEADER",
+    "SESSION_HEADER",
     "create_openai",
     "with_prompt_version",
+    "with_user",
+    "with_session",
 ]

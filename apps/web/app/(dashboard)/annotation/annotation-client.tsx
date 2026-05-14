@@ -1,13 +1,15 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { Star, Filter, MessageSquare } from 'lucide-react'
+import { Star, Filter, MessageSquare, Users } from 'lucide-react'
 import { Topbar } from '@/components/layout/topbar'
 import { cn } from '@/lib/utils'
 import {
   useAnnotationQueue,
   useSaveHumanEval,
+  useIAA,
   type AnnotationQueueItem,
+  type IAAItem,
 } from '@/lib/queries/use-human-evals'
 import { usePrompts } from '@/lib/queries/use-prompts'
 
@@ -176,6 +178,134 @@ function ScoringPanel({
   )
 }
 
+// ── IAA components ──────────────────────────────────────────────────────────
+
+function DisagreementBar({ value }: { value: number }) {
+  // Map 0..0.5 std dev → 0..100% bar width (0.5 = full disagreement on 0..1 scale)
+  const pct = Math.min(100, (value / 0.5) * 100)
+  const color = value < 0.15 ? 'bg-good' : value > 0.3 ? 'bg-bad' : 'bg-warn'
+  return (
+    <div className="w-[36px] h-[4px] rounded-full bg-bg-elev overflow-hidden shrink-0">
+      <div className={cn('h-full rounded-full', color)} style={{ width: `${pct}%` }} />
+    </div>
+  )
+}
+
+function IAARow({ item }: { item: IAAItem }) {
+  const scoreLabels = item.rawScores
+    .map((r, i) => (r != null ? `${r}★` : `${((item.scores[i] ?? 0) * 100).toFixed(0)}%`))
+    .join(' / ')
+
+  return (
+    <div className="flex items-center px-[16px] py-[10px] border-b border-border last:border-0 hover:bg-bg-muted">
+      <div className="flex-1 min-w-0">
+        <p className="font-mono text-[12px] text-text truncate">
+          {item.promptName ?? 'Unknown prompt'}
+        </p>
+        <p className="font-mono text-[10px] text-text-faint opacity-60 truncate">
+          {item.requestId.slice(0, 8)}…
+        </p>
+      </div>
+      <div className="font-mono text-[11.5px] text-text-muted w-[70px] text-right shrink-0">
+        {item.reviewerCount} reviewers
+      </div>
+      <div className="font-mono text-[11px] text-text-muted w-[90px] text-right shrink-0">
+        {scoreLabels}
+      </div>
+      <div className="flex items-center justify-end gap-2 w-[80px] shrink-0">
+        <DisagreementBar value={item.disagreement} />
+        <span className={cn(
+          'font-mono text-[11.5px] w-[30px] text-right',
+          item.highAgreement ? 'text-good' : item.disagreement > 0.3 ? 'text-bad' : 'text-warn',
+        )}>
+          {(item.disagreement * 100).toFixed(0)}%
+        </span>
+      </div>
+    </div>
+  )
+}
+
+function IAAPanel({ promptName }: { promptName: string }) {
+  const iaa = useIAA({ ...(promptName && { promptName }) })
+
+  if (iaa.isLoading) {
+    return (
+      <div className="flex-1 overflow-y-auto px-[22px] py-[14px] space-y-2">
+        {[1, 2, 3].map((i) => <div key={i} className="h-12 bg-bg-elev rounded animate-pulse" />)}
+      </div>
+    )
+  }
+
+  if (!iaa.data || iaa.data.totalItems === 0) {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center h-64 gap-2 text-text-muted">
+        <Users className="h-8 w-8 text-text-faint opacity-40" />
+        <p className="font-mono text-[13px]">No multi-reviewed requests yet.</p>
+        <p className="font-mono text-[11px] text-text-faint text-center max-w-[340px]">
+          IAA requires at least 2 team members to rate the same request.
+          Share the annotation page with colleagues and score the same responses.
+        </p>
+      </div>
+    )
+  }
+
+  const { totalItems, avgDisagreement, highAgreementPct, items } = iaa.data
+
+  return (
+    <div className="flex-1 overflow-y-auto">
+      {/* Summary stats */}
+      <div className="grid grid-cols-3 gap-3 px-[22px] py-[14px] border-b border-border">
+        <div className="bg-bg-muted border border-border rounded-[5px] px-3 py-2.5">
+          <p className="font-mono text-[9.5px] uppercase tracking-[0.06em] text-text-faint mb-1">
+            Multi-reviewed
+          </p>
+          <p className="font-mono text-[18px] text-text font-medium">{totalItems}</p>
+        </div>
+        <div className="bg-bg-muted border border-border rounded-[5px] px-3 py-2.5">
+          <p className="font-mono text-[9.5px] uppercase tracking-[0.06em] text-text-faint mb-1">
+            Avg disagreement
+          </p>
+          <p className={cn(
+            'font-mono text-[18px] font-medium',
+            avgDisagreement < 0.15 ? 'text-good' : avgDisagreement > 0.3 ? 'text-bad' : 'text-warn',
+          )}>
+            {(avgDisagreement * 100).toFixed(1)}%
+          </p>
+        </div>
+        <div className="bg-bg-muted border border-border rounded-[5px] px-3 py-2.5">
+          <p className="font-mono text-[9.5px] uppercase tracking-[0.06em] text-text-faint mb-1">
+            High agreement
+          </p>
+          <p className={cn(
+            'font-mono text-[18px] font-medium',
+            highAgreementPct >= 70 ? 'text-good' : highAgreementPct >= 40 ? 'text-warn' : 'text-bad',
+          )}>
+            {highAgreementPct.toFixed(1)}%
+          </p>
+        </div>
+      </div>
+
+      {/* Explanation */}
+      <div className="px-[22px] py-[8px] border-b border-border flex items-center gap-2 font-mono text-[11px] text-text-muted bg-bg-muted">
+        <span>
+          Sorted by disagreement (std dev). High agreement = std dev &lt; 15% on 0–100 scale.
+          Persistent disagreements signal ambiguous rubric or edge-case responses — review those first.
+        </span>
+      </div>
+
+      {/* Table header */}
+      <div className="flex items-center px-[16px] py-[8px] bg-bg-muted border-b border-border font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint">
+        <span className="flex-1">Request</span>
+        <span className="w-[70px] text-right">Reviewers</span>
+        <span className="w-[90px] text-right">Scores</span>
+        <span className="w-[80px] text-right">Disagree</span>
+      </div>
+
+      {items.map((item) => <IAARow key={item.requestId} item={item} />)}
+    </div>
+  )
+}
+
 // ── Item card ───────────────────────────────────────────────────────────────
 
 function ItemCard({ item }: { item: AnnotationQueueItem }) {
@@ -257,11 +387,14 @@ function ItemCard({ item }: { item: AnnotationQueueItem }) {
 
 // ── Main page ────────────────────────────────────────────────────────────────
 
+type ActiveTab = 'queue' | 'agreement'
+
 export function AnnotationClient() {
   const prompts = usePrompts()
   const [promptName, setPromptName] = useState<string>('')
   const [unscoredOnly, setUnscoredOnly] = useState(false)
   const [lowJudgeScoreOnly, setLowJudgeScoreOnly] = useState(false)
+  const [activeTab, setActiveTab] = useState<ActiveTab>('queue')
 
   const queue = useAnnotationQueue({
     ...(promptName && { promptName }),
@@ -291,51 +424,82 @@ export function AnnotationClient() {
             <option key={p.id} value={p.name}>{p.name}</option>
           ))}
         </select>
-        <label className="flex items-center gap-1.5 font-mono text-[11.5px] text-text-muted cursor-pointer">
-          <input
-            type="checkbox"
-            checked={unscoredOnly}
-            onChange={(e) => setUnscoredOnly(e.target.checked)}
-          />
-          Unscored only
-        </label>
-        <label className="flex items-center gap-1.5 font-mono text-[11.5px] text-text-muted cursor-pointer">
-          <input
-            type="checkbox"
-            checked={lowJudgeScoreOnly}
-            onChange={(e) => setLowJudgeScoreOnly(e.target.checked)}
-          />
-          Low judge score (&lt;50)
-        </label>
+        {activeTab === 'queue' && (
+          <>
+            <label className="flex items-center gap-1.5 font-mono text-[11.5px] text-text-muted cursor-pointer">
+              <input
+                type="checkbox"
+                checked={unscoredOnly}
+                onChange={(e) => setUnscoredOnly(e.target.checked)}
+              />
+              Unscored only
+            </label>
+            <label className="flex items-center gap-1.5 font-mono text-[11.5px] text-text-muted cursor-pointer">
+              <input
+                type="checkbox"
+                checked={lowJudgeScoreOnly}
+                onChange={(e) => setLowJudgeScoreOnly(e.target.checked)}
+              />
+              Low judge score (&lt;50)
+            </label>
+          </>
+        )}
         <span className="flex-1" />
-        <span className="font-mono text-[11px] text-text-faint">
-          {items.length} requests · {scoredCount} rated by you
-        </span>
-      </div>
-
-      {/* Intro */}
-      <div className="px-[22px] py-[10px] border-b border-border flex items-center gap-2 font-mono text-[11px] text-text-muted">
-        <MessageSquare className="h-3.5 w-3.5" />
-        <span>
-          Manually score responses. Your ratings calibrate against LLM judge scores —
-          a low correlation signals the judge needs work.
-        </span>
-      </div>
-
-      <div className="flex-1 overflow-y-auto px-[22px] py-[14px] space-y-3">
-        {queue.isLoading ? (
-          [1, 2, 3].map((i) => <div key={i} className="h-40 bg-bg-elev rounded animate-pulse" />)
-        ) : items.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-64 gap-2 text-text-muted">
-            <p className="font-mono text-[13px]">No requests match these filters.</p>
-            <p className="font-mono text-[11px] text-text-faint">
-              Loosen filters or send some requests tagged with a prompt version first.
-            </p>
-          </div>
-        ) : (
-          items.map((item) => <ItemCard key={item.id} item={item} />)
+        {activeTab === 'queue' && (
+          <span className="font-mono text-[11px] text-text-faint">
+            {items.length} requests · {scoredCount} rated by you
+          </span>
         )}
       </div>
+
+      {/* Tab switcher */}
+      <div className="flex items-center border-b border-border px-[22px] bg-bg">
+        <button
+          type="button"
+          onClick={() => setActiveTab('queue')}
+          className={cn(
+            'flex items-center gap-1.5 px-0 py-[10px] mr-6 font-mono text-[12px] border-b-2 -mb-px transition-colors',
+            activeTab === 'queue'
+              ? 'border-text text-text font-medium'
+              : 'border-transparent text-text-faint hover:text-text-muted',
+          )}
+        >
+          <MessageSquare className="h-3.5 w-3.5" />
+          Queue
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('agreement')}
+          className={cn(
+            'flex items-center gap-1.5 px-0 py-[10px] font-mono text-[12px] border-b-2 -mb-px transition-colors',
+            activeTab === 'agreement'
+              ? 'border-text text-text font-medium'
+              : 'border-transparent text-text-faint hover:text-text-muted',
+          )}
+        >
+          <Users className="h-3.5 w-3.5" />
+          Agreement
+        </button>
+      </div>
+
+      {activeTab === 'queue' ? (
+        <div className="flex-1 overflow-y-auto px-[22px] py-[14px] space-y-3">
+          {queue.isLoading ? (
+            [1, 2, 3].map((i) => <div key={i} className="h-40 bg-bg-elev rounded animate-pulse" />)
+          ) : items.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-64 gap-2 text-text-muted">
+              <p className="font-mono text-[13px]">No requests match these filters.</p>
+              <p className="font-mono text-[11px] text-text-faint">
+                Loosen filters or send some requests tagged with a prompt version first.
+              </p>
+            </div>
+          ) : (
+            items.map((item) => <ItemCard key={item.id} item={item} />)
+          )}
+        </div>
+      ) : (
+        <IAAPanel promptName={promptName} />
+      )}
     </div>
   )
 }

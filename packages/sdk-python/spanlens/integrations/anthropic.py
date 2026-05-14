@@ -24,6 +24,8 @@ from typing import Any, Optional
 
 DEFAULT_SPANLENS_ANTHROPIC_PROXY = "https://spanlens-server.vercel.app/proxy/anthropic"
 PROMPT_VERSION_HEADER = "x-spanlens-prompt-version"
+USER_HEADER = "x-spanlens-user"
+SESSION_HEADER = "x-spanlens-session"
 
 
 def create_anthropic(
@@ -91,9 +93,45 @@ def with_prompt_version(prompt_version: str) -> dict[str, dict[str, str]]:
     return {"extra_headers": {PROMPT_VERSION_HEADER: prompt_version}}
 
 
+def with_user(user_id: str) -> dict[str, dict[str, str]]:
+    """Tag a single Anthropic request with an end-user ID.
+
+    Spread the result into the per-request ``extra_headers``::
+
+        from spanlens.integrations.anthropic import create_anthropic, with_user
+
+        client = create_anthropic()
+        msg = client.messages.create(
+            model="claude-3-5-sonnet-20241022",
+            max_tokens=1024,
+            messages=[...],
+            **with_user("user-123"),
+        )
+
+    Args:
+        user_id: An arbitrary identifier for the end user.
+            Visible in the Spanlens dashboard Requests filter.
+    """
+    return {"extra_headers": {USER_HEADER: user_id}}
+
+
+def with_session(session_id: str) -> dict[str, dict[str, str]]:
+    """Tag a single Anthropic request with a session / conversation ID.
+
+    Args:
+        session_id: An arbitrary identifier for the conversation session.
+            Visible in the Spanlens dashboard Requests filter.
+    """
+    return {"extra_headers": {SESSION_HEADER: session_id}}
+
+
 __all__ = [
     "DEFAULT_SPANLENS_ANTHROPIC_PROXY",
     "PROMPT_VERSION_HEADER",
+    "USER_HEADER",
+    "SESSION_HEADER",
     "create_anthropic",
     "with_prompt_version",
+    "with_user",
+    "with_session",
 ]

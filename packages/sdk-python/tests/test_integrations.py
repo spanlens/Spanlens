@@ -10,13 +10,49 @@ import pytest
 from spanlens.integrations.openai import (
     DEFAULT_SPANLENS_OPENAI_PROXY,
     PROMPT_VERSION_HEADER,
+    SESSION_HEADER,
+    USER_HEADER,
     with_prompt_version,
+    with_session,
+    with_user,
 )
 
 
 def test_openai_with_prompt_version_returns_extra_headers_dict():
     out = with_prompt_version("bot@3")
     assert out == {"extra_headers": {PROMPT_VERSION_HEADER: "bot@3"}}
+
+
+def test_openai_with_user_returns_extra_headers_dict():
+    out = with_user("user-123")
+    assert out == {"extra_headers": {USER_HEADER: "user-123"}}
+
+
+def test_openai_with_session_returns_extra_headers_dict():
+    out = with_session("sess-abc")
+    assert out == {"extra_headers": {SESSION_HEADER: "sess-abc"}}
+
+
+def test_openai_helpers_can_be_merged():
+    merged = {
+        **with_user("u1"),
+        **with_session("s1"),
+        **with_prompt_version("bot@2"),
+    }
+    assert merged == {
+        "extra_headers": {
+            USER_HEADER: "u1",
+            SESSION_HEADER: "s1",
+            PROMPT_VERSION_HEADER: "bot@2",
+        }
+    }
+
+
+def test_openai_user_header_matches_anthropic():
+    from spanlens.integrations.anthropic import USER_HEADER as ANTH_USER
+    from spanlens.integrations.anthropic import SESSION_HEADER as ANTH_SESSION
+    assert USER_HEADER == ANTH_USER
+    assert SESSION_HEADER == ANTH_SESSION
 
 
 # ── create_openai (skipped without optional dep) ────────────────
@@ -50,6 +86,25 @@ def test_create_openai_explicit_overrides_env(monkeypatch, openai_installed):
     monkeypatch.setenv("SPANLENS_API_KEY", "sl_test_envkey")
     client = create_openai(api_key="sl_test_explicit", base_url="https://custom.test")
     assert str(client.base_url).rstrip("/") == "https://custom.test"
+
+
+# ── anthropic helpers ──────────────────────────────────────────
+
+
+def test_anthropic_with_user_returns_extra_headers_dict():
+    from spanlens.integrations.anthropic import USER_HEADER as ANTH_USER
+    from spanlens.integrations.anthropic import with_user as anth_with_user
+
+    out = anth_with_user("user-xyz")
+    assert out == {"extra_headers": {ANTH_USER: "user-xyz"}}
+
+
+def test_anthropic_with_session_returns_extra_headers_dict():
+    from spanlens.integrations.anthropic import SESSION_HEADER as ANTH_SESSION
+    from spanlens.integrations.anthropic import with_session as anth_with_session
+
+    out = anth_with_session("sess-xyz")
+    assert out == {"extra_headers": {ANTH_SESSION: "sess-xyz"}}
 
 
 # ── create_anthropic ───────────────────────────────────────────

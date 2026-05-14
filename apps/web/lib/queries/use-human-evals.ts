@@ -128,6 +128,49 @@ export function useCorrelation(scope: { promptName?: string; promptVersionId?: s
   })
 }
 
+// ── Inter-Annotator Agreement ────────────────────────────────────────────────
+
+export interface IAAItem {
+  requestId: string
+  promptName: string | null
+  reviewerCount: number
+  scores: number[]             // normalized 0..1 per reviewer
+  rawScores: (number | null)[] // raw UI values (e.g. 1..5) per reviewer
+  meanScore: number
+  disagreement: number         // std dev of scores, 0..1
+  highAgreement: boolean       // disagreement < 0.15
+}
+
+export interface IAAMetrics {
+  totalItems: number           // requests with >= minReviewers
+  avgDisagreement: number      // mean std dev across all items
+  highAgreementPct: number     // % items where disagreement < 0.15
+  items: IAAItem[]             // sorted by disagreement desc (most contentious first)
+}
+
+export interface IAAFilters {
+  promptName?: string
+  promptVersionId?: string
+  minReviewers?: number        // default 2
+}
+
+export function useIAA(filters: IAAFilters, options: { enabled?: boolean } = {}) {
+  return useQuery({
+    queryKey: ['human-evals', 'iaa', filters] as const,
+    queryFn: async () => {
+      const qs = new URLSearchParams()
+      if (filters.promptName) qs.set('promptName', filters.promptName)
+      if (filters.promptVersionId) qs.set('promptVersionId', filters.promptVersionId)
+      if (filters.minReviewers) qs.set('minReviewers', String(filters.minReviewers))
+      const suffix = qs.size > 0 ? `?${qs}` : ''
+      const res = await apiGet<ApiEnvelope<IAAMetrics>>(`/api/v1/human-evals/iaa${suffix}`)
+      return res.data ?? { totalItems: 0, avgDisagreement: 0, highAgreementPct: 0, items: [] }
+    },
+    enabled: options.enabled !== false,
+    staleTime: 60_000,
+  })
+}
+
 // Pearson correlation coefficient — runs on the data returned by useCorrelation.
 export function pearsonR(pairs: CorrelationPair[]): number | null {
   if (pairs.length < 2) return null

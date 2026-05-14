@@ -286,3 +286,139 @@ humanEvalsRouter.get('/human-evals/correlation', async (c) => {
 
   return c.json({ success: true, data: pairs })
 })
+
+// GET /api/v1/human-evals/iaa
+//   ?promptName=...         scope to a prompt (all versions)
+//   &promptVersionId=...    scope to a specific version
+//   &minReviewers=2         only include requests with >= N reviewers (default 2)
+// Returns per-request disagreement metrics for Inter-Annotator Agreement analysis.
+// Requests are sorted by disagreement (most contentious first).
+humanEvalsRouter.get('/human-evals/iaa', async (c) => {
+  const orgId = c.get('orgId')
+  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+
+  const promptName = c.req.query('promptName')
+  const promptVersionId = c.req.query('promptVersionId')
+  const minReviewers = Math.max(2, parseInt(c.req.query('minReviewers') ?? '2', 10))
+
+  // Resolve scope to prompt_version_ids
+  let versionIds: string[] = []
+  if (promptVersionId) {
+    versionIds = [promptVersionId]
+  } else if (promptName) {
+    const { data: versions } = await supabaseAdmin
+      .from('prompt_versions')
+      .select('id')
+      .eq('organization_id', orgId)
+      .eq('name', promptName)
+    versionIds = (versions ?? []).map((v) => v.id)
+  }
+
+  // Query human_evals in scope (no scope = whole org)
+  let query = supabaseAdmin
+    .from('human_evals')
+    .select('request_id, reviewer_id, score, raw_score')
+    .eq('organization_id', orgId)
+    .order('created_at', { ascending: false })
+
+  if (versionIds.length > 0) {
+    query = query.in('prompt_version_id', versionIds)
+  }
+
+  const { data: evals, error } = await query
+  if (error) return c.json({ error: error.message }, 500)
+  if (!evals || evals.length === 0) {
+    return c.json({
+      success: true,
+      data: { totalItems: 0, avgDisagreement: 0, highAgreementPct: 0, items: [] },
+    })
+  }
+
+  // Group scores by request_id
+  const byRequest = new Map<string, { scores: number[]; rawScores: (number | null)[]; reviewerIds: string[] }>()
+  for (const e of evals) {
+    if (!e.request_id) continue
+    const existing = byRequest.get(e.request_id)
+    if (existing) {
+      existing.scores.push(e.score)
+      existing.rawScores.push(e.raw_score)
+      existing.reviewerIds.push(e.reviewer_id ?? '')
+    } else {
+      byRequest.set(e.request_id, {
+        scores: [e.score],
+        rawScores: [e.raw_score],
+        reviewerIds: [e.reviewer_id ?? ''],
+      })
+    }
+  }
+
+  // Filter to requests with >= minReviewers distinct reviewers
+  const multiReviewed = [...byRequest.entries()].filter(
+    ([, d]) => new Set(d.reviewerIds).size >= minReviewers,
+  )
+
+  if (multiReviewed.length === 0) {
+    return c.json({
+      success: true,
+      data: { totalItems: 0, avgDisagreement: 0, highAgreementPct: 0, items: [] },
+    })
+  }
+
+  // Enrich with prompt name via requests → prompt_versions
+  const requestIds = multiReviewed.map(([id]) => id)
+  const promptNameByRequest = new Map<string, string | null>()
+
+  const { data: reqs } = await supabaseAdmin
+    .from('requests')
+    .select('id, prompt_version_id')
+    .in('id', requestIds)
+
+  const pvIds = [...new Set((reqs ?? []).map((r) => r.prompt_version_id).filter((v): v is string => !!v))]
+  const pvNameMap = new Map<string, string>()
+  if (pvIds.length > 0) {
+    const { data: pvs } = await supabaseAdmin
+      .from('prompt_versions')
+      .select('id, name')
+      .in('id', pvIds)
+    for (const pv of pvs ?? []) pvNameMap.set(pv.id, pv.name)
+  }
+  for (const r of reqs ?? []) {
+    promptNameByRequest.set(r.id, r.prompt_version_id ? (pvNameMap.get(r.prompt_version_id) ?? null) : null)
+  }
+
+  // Compute per-request metrics
+  function stdDev(scores: number[]): number {
+    if (scores.length < 2) return 0
+    const mean = scores.reduce((a, b) => a + b, 0) / scores.length
+    const variance = scores.reduce((sum, s) => sum + (s - mean) ** 2, 0) / scores.length
+    return Math.sqrt(variance)
+  }
+
+  const items = multiReviewed
+    .map(([requestId, { scores, rawScores, reviewerIds }]) => {
+      const uniqueReviewers = new Set(reviewerIds).size
+      const meanScore = scores.reduce((a, b) => a + b, 0) / scores.length
+      const disagreement = stdDev(scores)
+      return {
+        requestId,
+        promptName: promptNameByRequest.get(requestId) ?? null,
+        reviewerCount: uniqueReviewers,
+        scores,
+        rawScores,
+        meanScore,
+        disagreement,
+        // High agreement = std dev < 0.15 (roughly within 1 star on a 5-star scale)
+        highAgreement: disagreement < 0.15,
+      }
+    })
+    .sort((a, b) => b.disagreement - a.disagreement)  // most contentious first
+
+  const totalItems = items.length
+  const avgDisagreement = items.reduce((s, i) => s + i.disagreement, 0) / totalItems
+  const highAgreementPct = (items.filter((i) => i.highAgreement).length / totalItems) * 100
+
+  return c.json({
+    success: true,
+    data: { totalItems, avgDisagreement, highAgreementPct, items },
+  })
+})
