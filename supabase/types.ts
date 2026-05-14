@@ -2212,27 +2212,27 @@ export type Database = {
       }
       get_user_analytics: {
         Args: {
-          p_org_id: string
-          p_project_id: string | null
-          p_search: string | null
-          p_from: string | null
-          p_to: string | null
-          p_sort_by: string
-          p_sort_dir: string
+          p_from: string
           p_limit: number
           p_offset: number
+          p_org_id: string
+          p_project_id: string
+          p_search: string
+          p_sort_by: string
+          p_sort_dir: string
+          p_to: string
         }
         Returns: {
-          user_id: string
-          total_requests: number
-          total_tokens: number
-          total_cost_usd: number | null
-          avg_latency_ms: number | null
+          avg_latency_ms: number
+          distinct_models: number
+          error_requests: number
           first_seen: string
           last_seen: string
-          error_requests: number
-          distinct_models: number
+          total_cost_usd: number
           total_count: number
+          total_requests: number
+          total_tokens: number
+          user_id: string
         }[]
       }
       get_prompts_quality_sparklines: {
