@@ -897,6 +897,8 @@ export type Database = {
       }
       model_prices: {
         Row: {
+          cache_read_price_per_1m: number | null
+          cache_write_price_per_1m: number | null
           completion_price_per_1m: number
           created_at: string
           id: string
@@ -906,6 +908,8 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          cache_read_price_per_1m?: number | null
+          cache_write_price_per_1m?: number | null
           completion_price_per_1m: number
           created_at?: string
           id?: string
@@ -915,6 +919,8 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          cache_read_price_per_1m?: number | null
+          cache_write_price_per_1m?: number | null
           completion_price_per_1m?: number
           created_at?: string
           id?: string
@@ -1474,6 +1480,8 @@ export type Database = {
       requests: {
         Row: {
           api_key_id: string | null
+          cache_read_tokens: number
+          cache_write_tokens: number
           completion_tokens: number
           cost_usd: number | null
           created_at: string
@@ -1502,6 +1510,8 @@ export type Database = {
         }
         Insert: {
           api_key_id?: string | null
+          cache_read_tokens?: number
+          cache_write_tokens?: number
           completion_tokens?: number
           cost_usd?: number | null
           created_at?: string
@@ -1530,6 +1540,8 @@ export type Database = {
         }
         Update: {
           api_key_id?: string | null
+          cache_read_tokens?: number
+          cache_write_tokens?: number
           completion_tokens?: number
           cost_usd?: number | null
           created_at?: string
@@ -2197,6 +2209,31 @@ export type Database = {
           p_window_start: string
         }
         Returns: number
+      }
+      get_user_analytics: {
+        Args: {
+          p_from: string
+          p_limit: number
+          p_offset: number
+          p_org_id: string
+          p_project_id: string
+          p_search: string
+          p_sort_by: string
+          p_sort_dir: string
+          p_to: string
+        }
+        Returns: {
+          avg_latency_ms: number
+          distinct_models: number
+          error_requests: number
+          first_seen: string
+          last_seen: string
+          total_cost_usd: number
+          total_count: number
+          total_requests: number
+          total_tokens: number
+          user_id: string
+        }[]
       }
       get_prompts_quality_sparklines: {
         Args: {

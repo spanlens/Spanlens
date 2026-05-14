@@ -79,6 +79,10 @@ export interface RequestRow {
   prompt_tokens: number
   completion_tokens: number
   total_tokens: number
+  /** Subset of prompt_tokens that hit a prompt cache (charged at reduced rate). */
+  cache_read_tokens?: number
+  /** Subset of prompt_tokens that wrote a cache entry (charged at premium rate). */
+  cache_write_tokens?: number
   cost_usd: number | null
   latency_ms: number
   status_code: number
@@ -140,6 +144,44 @@ export interface SpendForecast {
   /** Linear regression slope — positive = trending up $/day, negative = trending down */
   dailyTrendUsd: number
   timeseries: { date: string; actual: number | null; projected: number | null }[]
+}
+
+// ── User Analytics ─────────────────────────────────────────────
+
+export interface UserAnalyticsRow {
+  user_id: string
+  total_requests: number
+  total_tokens: number
+  total_cost_usd: number | null
+  avg_latency_ms: number | null
+  first_seen: string
+  last_seen: string
+  error_requests: number
+  distinct_models: number
+}
+
+export interface UserAnalyticsPage {
+  data: UserAnalyticsRow[]
+  meta: { total: number; page: number; limit: number }
+}
+
+export interface UserAnalyticsDetail extends UserAnalyticsRow {
+  recent_requests: Array<{
+    id: string
+    provider: string
+    model: string
+    prompt_tokens: number
+    completion_tokens: number
+    total_tokens: number
+    cache_read_tokens?: number | null
+    cache_write_tokens?: number | null
+    cost_usd: number | null
+    latency_ms: number
+    status_code: number
+    error_message: string | null
+    session_id: string | null
+    created_at: string
+  }>
 }
 
 // ── Agent Tracing ──────────────────────────────────────────────

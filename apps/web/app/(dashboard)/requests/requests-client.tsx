@@ -342,17 +342,26 @@ function RequestDrawer({ requestId, visible, onClose, onPrev, onNext, hasPrev, h
             </div>
           ))}
 
-          {/* User — clickable filter link */}
+          {/* User — clickable analytics + filter link */}
           {req.user_id && (
             <div>
               <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-0.5">User</div>
-              <Link
-                href={`/requests?userId=${encodeURIComponent(req.user_id)}`}
-                className="font-mono text-[12.5px] text-text hover:underline truncate block"
-                title={`Filter by user: ${req.user_id}`}
-              >
-                {req.user_id}
-              </Link>
+              <div className="flex items-baseline gap-2">
+                <Link
+                  href={`/users/${encodeURIComponent(req.user_id)}`}
+                  className="font-mono text-[12.5px] text-text hover:underline truncate"
+                  title={`View user analytics: ${req.user_id}`}
+                >
+                  {req.user_id}
+                </Link>
+                <Link
+                  href={`/requests?userId=${encodeURIComponent(req.user_id)}`}
+                  className="font-mono text-[10px] text-text-faint hover:text-text shrink-0"
+                  title={`Filter requests by user: ${req.user_id}`}
+                >
+                  filter
+                </Link>
+              </div>
             </div>
           )}
 
@@ -409,7 +418,13 @@ function RequestDrawer({ requestId, visible, onClose, onPrev, onNext, hasPrev, h
           {[
             { label: 'Latency', value: `${req.latency_ms}ms`, sub: '', warn: req.latency_ms > 2000 },
             { label: 'Cost', value: fmtCost(req.cost_usd), sub: '' },
-            { label: 'Tokens', value: req.total_tokens.toLocaleString(), sub: `${req.prompt_tokens} in / ${req.completion_tokens} out` },
+            {
+              label: 'Tokens',
+              value: req.total_tokens.toLocaleString(),
+              sub: (req.cache_read_tokens ?? 0) > 0
+                ? `${req.prompt_tokens} in (${(req.cache_read_tokens ?? 0).toLocaleString()} cached) / ${req.completion_tokens} out`
+                : `${req.prompt_tokens} in / ${req.completion_tokens} out`,
+            },
           ].map((s, i) => (
             <div key={s.label} className={cn('pr-3 pl-3', i === 0 && 'pl-0', i === 2 && 'pr-0', i < 2 && 'border-r border-border')}>
               <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-1.5">{s.label}</div>
