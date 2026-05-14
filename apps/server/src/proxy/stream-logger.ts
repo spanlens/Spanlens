@@ -68,6 +68,15 @@ export async function logOpenAIStream(
   })
 
   const text = extractOpenAIStreamText(lines)
+  // Capture-rate signal: stream completed but no assistant text recovered
+  // (lines were present). Usually means the upstream wire format changed or
+  // a chunk format slipped past the parser. Surface for log monitoring.
+  if (lines.length > 0 && text.length === 0) {
+    console.warn(
+      '[openai-stream] capture-empty: %d SSE lines, 0 chars extracted (parser drift?)',
+      lines.length,
+    )
+  }
   const responseBody = text ? {
     object: 'chat.completion',
     model,
@@ -141,6 +150,12 @@ export async function logAnthropicStream(
   // input_tokens is recovered by subtracting them back out.
   const rawInputTokens = Math.max(0, promptTokens - cacheReadTokens - cacheWriteTokens)
   const text = extractAnthropicStreamText(lines)
+  if (lines.length > 0 && text.length === 0) {
+    console.warn(
+      '[anthropic-stream] capture-empty: %d SSE lines, 0 chars extracted (parser drift?)',
+      lines.length,
+    )
+  }
   const responseBody = text ? {
     type: 'message',
     role: 'assistant',
