@@ -20,6 +20,10 @@ import type { ModelRecommendation } from '@/lib/queries/use-recommendations'
 import type { Anomaly, AnomalyHistoryEntry } from '@/lib/queries/use-anomalies'
 import type { PromptVersion } from '@/lib/queries/use-prompts'
 import type { SecuritySummaryItem, FlaggedRequest } from '@/lib/queries/use-security'
+import type { Evaluator, EvalRun, EvalResult } from '@/lib/queries/use-evals'
+import type { Dataset, DatasetItem, DatasetWithItems } from '@/lib/queries/use-datasets'
+import type { Experiment, ExperimentResult } from '@/lib/queries/use-experiments'
+import type { AnnotationQueueItem, CorrelationPair } from '@/lib/queries/use-human-evals'
 
 const N = Date.now()
 const min = (m: number) => new Date(N - m * 60_000).toISOString()
@@ -817,3 +821,556 @@ export const DEMO_FLAGGED_REQUESTS: FlaggedRequest[] = [
     created_at: hrs(3.1),
   },
 ]
+
+// ── Evals ────────────────────────────────────────────────────────────────────
+
+const DEMO_ORG_ID = 'demo-org-001'
+
+export const DEMO_EVALUATORS: Evaluator[] = [
+  {
+    id: 'ev-001',
+    organization_id: DEMO_ORG_ID,
+    prompt_name: 'customer-support-v2',
+    name: 'Helpfulness',
+    type: 'llm_judge',
+    config: {
+      criterion: 'Does the response clearly address the customer\'s issue and offer a concrete next step?',
+      judge_provider: 'openai',
+      judge_model: 'gpt-4o-mini',
+      scale_min: 0,
+      scale_max: 1,
+    },
+    created_by: 'demo-user',
+    created_at: day(8),
+    archived_at: null,
+  },
+  {
+    id: 'ev-002',
+    organization_id: DEMO_ORG_ID,
+    prompt_name: 'customer-support-v2',
+    name: 'Tone',
+    type: 'llm_judge',
+    config: {
+      criterion: 'Is the response friendly, empathetic, and professional?',
+      judge_provider: 'openai',
+      judge_model: 'gpt-4o-mini',
+      scale_min: 0,
+      scale_max: 1,
+    },
+    created_by: 'demo-user',
+    created_at: day(5),
+    archived_at: null,
+  },
+  {
+    id: 'ev-003',
+    organization_id: DEMO_ORG_ID,
+    prompt_name: 'data-extraction',
+    name: 'JSON validity',
+    type: 'llm_judge',
+    config: {
+      criterion: 'Is the output strictly valid JSON matching the requested schema?',
+      judge_provider: 'anthropic',
+      judge_model: 'claude-3-5-haiku-20241022',
+      scale_min: 0,
+      scale_max: 1,
+    },
+    created_by: 'demo-user',
+    created_at: day(2),
+    archived_at: null,
+  },
+]
+
+export const DEMO_EVAL_RUNS: EvalRun[] = [
+  {
+    id: 'er-001',
+    organization_id: DEMO_ORG_ID,
+    evaluator_id: 'ev-001',
+    prompt_version_id: 'pv-001',
+    source: 'production',
+    sample_size: 50,
+    sample_from: day(7),
+    sample_to: null,
+    status: 'completed',
+    scored_count: 48,
+    avg_score: 0.81,
+    total_cost_usd: 0.024,
+    error: null,
+    created_by: 'demo-user',
+    started_at: day(1),
+    completed_at: day(1),
+  },
+  {
+    id: 'er-002',
+    organization_id: DEMO_ORG_ID,
+    evaluator_id: 'ev-001',
+    prompt_version_id: 'pv-001',
+    source: 'production',
+    sample_size: 100,
+    sample_from: day(3),
+    sample_to: null,
+    status: 'completed',
+    scored_count: 96,
+    avg_score: 0.84,
+    total_cost_usd: 0.049,
+    error: null,
+    created_by: 'demo-user',
+    started_at: hrs(6),
+    completed_at: hrs(6),
+  },
+  {
+    id: 'er-003',
+    organization_id: DEMO_ORG_ID,
+    evaluator_id: 'ev-002',
+    prompt_version_id: 'pv-001',
+    source: 'production',
+    sample_size: 50,
+    sample_from: day(7),
+    sample_to: null,
+    status: 'completed',
+    scored_count: 50,
+    avg_score: 0.92,
+    total_cost_usd: 0.025,
+    error: null,
+    created_by: 'demo-user',
+    started_at: hrs(3),
+    completed_at: hrs(3),
+  },
+  {
+    id: 'er-004',
+    organization_id: DEMO_ORG_ID,
+    evaluator_id: 'ev-003',
+    prompt_version_id: 'pv-002',
+    source: 'production',
+    sample_size: 30,
+    sample_from: day(2),
+    sample_to: null,
+    status: 'completed',
+    scored_count: 28,
+    avg_score: 0.71,
+    total_cost_usd: 0.013,
+    error: null,
+    created_by: 'demo-user',
+    started_at: hrs(1),
+    completed_at: hrs(1),
+  },
+]
+
+// Helper: generate a distribution of scores around an average.
+function genScores(n: number, avg: number, spread = 0.15): number[] {
+  const out: number[] = []
+  for (let i = 0; i < n; i++) {
+    const jitter = (Math.sin(i * 1.7) + Math.cos(i * 2.3)) * spread * 0.5
+    out.push(Math.max(0, Math.min(1, avg + jitter)))
+  }
+  return out
+}
+
+const REASONS_GOOD = [
+  'Clear, actionable response with specific steps.',
+  'Friendly tone, addresses the user\'s emotion appropriately.',
+  'Accurate diagnosis followed by a concrete recommendation.',
+  'Concise and respects the user\'s time.',
+]
+const REASONS_BAD = [
+  'Response is vague — no concrete next step suggested.',
+  'Generic apology, doesn\'t actually answer the question.',
+  'Tone is too formal for the casual customer message.',
+  'Response is overly long with redundant context.',
+]
+
+export const DEMO_EVAL_RESULTS: Record<string, EvalResult[]> = {
+  'er-001': genScores(48, 0.81).map((score, i) => ({
+    id: `eres-001-${i}`,
+    eval_run_id: 'er-001',
+    request_id: `req-${1000 + i}`,
+    dataset_item_id: null,
+    score,
+    reasoning: score >= 0.65
+      ? REASONS_GOOD[i % REASONS_GOOD.length] ?? null
+      : REASONS_BAD[i % REASONS_BAD.length] ?? null,
+    judge_cost_usd: 0.0005,
+    judge_tokens: 380,
+    created_at: day(1),
+  })),
+  'er-002': genScores(96, 0.84).map((score, i) => ({
+    id: `eres-002-${i}`,
+    eval_run_id: 'er-002',
+    request_id: `req-${2000 + i}`,
+    dataset_item_id: null,
+    score,
+    reasoning: score >= 0.65
+      ? REASONS_GOOD[i % REASONS_GOOD.length] ?? null
+      : REASONS_BAD[i % REASONS_BAD.length] ?? null,
+    judge_cost_usd: 0.0005,
+    judge_tokens: 410,
+    created_at: hrs(6),
+  })),
+  'er-003': genScores(50, 0.92, 0.1).map((score, i) => ({
+    id: `eres-003-${i}`,
+    eval_run_id: 'er-003',
+    request_id: `req-${3000 + i}`,
+    dataset_item_id: null,
+    score,
+    reasoning: REASONS_GOOD[i % REASONS_GOOD.length] ?? null,
+    judge_cost_usd: 0.0005,
+    judge_tokens: 360,
+    created_at: hrs(3),
+  })),
+  'er-004': genScores(28, 0.71, 0.2).map((score, i) => ({
+    id: `eres-004-${i}`,
+    eval_run_id: 'er-004',
+    request_id: `req-${4000 + i}`,
+    dataset_item_id: null,
+    score,
+    reasoning: score >= 0.65
+      ? 'Output is valid JSON and matches the schema.'
+      : 'Output contains markdown fences or extra commentary outside JSON.',
+    judge_cost_usd: 0.0004,
+    judge_tokens: 340,
+    created_at: hrs(1),
+  })),
+}
+
+// ── Datasets ─────────────────────────────────────────────────────────────────
+
+export const DEMO_DATASETS: Dataset[] = [
+  {
+    id: 'ds-001',
+    organization_id: DEMO_ORG_ID,
+    name: 'Support golden set',
+    description: '30 previously-failed customer support cases + 20 typical interactions',
+    created_by: 'demo-user',
+    created_at: day(14),
+    archived_at: null,
+    item_count: 50,
+  },
+  {
+    id: 'ds-002',
+    organization_id: DEMO_ORG_ID,
+    name: 'Extraction edge cases',
+    description: 'Malformed inputs that previously broke JSON extraction',
+    created_by: 'demo-user',
+    created_at: day(6),
+    archived_at: null,
+    item_count: 24,
+  },
+  {
+    id: 'ds-003',
+    organization_id: DEMO_ORG_ID,
+    name: 'Email triage smoke test',
+    description: 'Quick sanity check before deploying classifier changes',
+    created_by: 'demo-user',
+    created_at: day(2),
+    archived_at: null,
+    item_count: 15,
+  },
+]
+
+const SUPPORT_ITEMS: DatasetItem[] = [
+  {
+    id: 'di-001',
+    organization_id: DEMO_ORG_ID,
+    dataset_id: 'ds-001',
+    input: { messages: [{ role: 'user', content: 'I was charged twice for the same order #ORD-4521.' }] },
+    expected_output: 'I see two charges for order #ORD-4521. I\'ve refunded the duplicate charge — it should appear in 3–5 business days. Sorry for the inconvenience!',
+    source_request_id: 'req-1042',
+    created_at: day(14),
+  },
+  {
+    id: 'di-002',
+    organization_id: DEMO_ORG_ID,
+    dataset_id: 'ds-001',
+    input: { messages: [{ role: 'user', content: 'Reset my password please' }] },
+    expected_output: 'I can send you a password reset link. What email address is associated with your account?',
+    source_request_id: null,
+    created_at: day(14),
+  },
+  {
+    id: 'di-003',
+    organization_id: DEMO_ORG_ID,
+    dataset_id: 'ds-001',
+    input: { messages: [{ role: 'user', content: 'Your product is terrible and your support is even worse' }] },
+    expected_output: 'I\'m really sorry to hear about your experience. Could you share what went wrong? I want to make sure we fix this for you.',
+    source_request_id: 'req-1019',
+    created_at: day(12),
+  },
+  {
+    id: 'di-004',
+    organization_id: DEMO_ORG_ID,
+    dataset_id: 'ds-001',
+    input: { variables: { customer_message: 'How do I cancel my subscription?', company_name: 'Acme Corp' } },
+    expected_output: 'You can cancel anytime from Settings → Billing → Cancel subscription. Need help finding it?',
+    source_request_id: null,
+    created_at: day(10),
+  },
+  {
+    id: 'di-005',
+    organization_id: DEMO_ORG_ID,
+    dataset_id: 'ds-001',
+    input: { messages: [{ role: 'user', content: 'Where is my order?' }] },
+    expected_output: 'Could you share your order number? I\'ll check the shipping status for you right away.',
+    source_request_id: null,
+    created_at: day(9),
+  },
+]
+
+export const DEMO_DATASET_DETAILS: Record<string, DatasetWithItems> = {
+  'ds-001': { ...DEMO_DATASETS[0]!, items: SUPPORT_ITEMS },
+  'ds-002': {
+    ...DEMO_DATASETS[1]!,
+    items: [
+      {
+        id: 'di-101',
+        organization_id: DEMO_ORG_ID,
+        dataset_id: 'ds-002',
+        input: { variables: { schema: '{"name": "string"}', input_text: 'Name: 田中 太郎\nEmail: not@an@email' } },
+        expected_output: '{"name": "田中 太郎"}',
+        source_request_id: null,
+        created_at: day(6),
+      },
+      {
+        id: 'di-102',
+        organization_id: DEMO_ORG_ID,
+        dataset_id: 'ds-002',
+        input: { variables: { schema: '{"price": "number"}', input_text: 'about $19.99 maybe more' } },
+        expected_output: '{"price": 19.99}',
+        source_request_id: null,
+        created_at: day(5),
+      },
+    ],
+  },
+  'ds-003': {
+    ...DEMO_DATASETS[2]!,
+    items: [
+      {
+        id: 'di-201',
+        organization_id: DEMO_ORG_ID,
+        dataset_id: 'ds-003',
+        input: { variables: { categories: 'spam,sales,support,billing', email_content: 'CONGRATS!! You won...' } },
+        expected_output: '{"category": "spam", "confidence": 0.98, "reasoning": "All caps + reward language"}',
+        source_request_id: null,
+        created_at: day(2),
+      },
+    ],
+  },
+}
+
+// ── Experiments ──────────────────────────────────────────────────────────────
+
+export const DEMO_EXPERIMENTS: Experiment[] = [
+  {
+    id: 'exp-001',
+    organization_id: DEMO_ORG_ID,
+    name: 'Support v6 vs v7',
+    prompt_name: 'customer-support-v2',
+    version_a_id: 'pv-001-v6',
+    version_b_id: 'pv-001',
+    dataset_id: 'ds-001',
+    evaluator_id: 'ev-001',
+    run_provider: 'openai',
+    run_model: 'gpt-4o-mini',
+    status: 'completed',
+    total_items: 50,
+    completed_items: 50,
+    avg_score_a: 0.76,
+    avg_score_b: 0.84,
+    total_cost_usd: 0.18,
+    error: null,
+    created_by: 'demo-user',
+    started_at: day(2),
+    completed_at: day(2),
+  },
+  {
+    id: 'exp-002',
+    organization_id: DEMO_ORG_ID,
+    name: 'Extraction haiku vs sonnet',
+    prompt_name: 'data-extraction',
+    version_a_id: 'pv-002',
+    version_b_id: 'pv-002-v4',
+    dataset_id: 'ds-002',
+    evaluator_id: 'ev-003',
+    run_provider: 'anthropic',
+    run_model: 'claude-3-5-haiku-20241022',
+    status: 'completed',
+    total_items: 24,
+    completed_items: 24,
+    avg_score_a: 0.68,
+    avg_score_b: 0.71,
+    total_cost_usd: 0.09,
+    error: null,
+    created_by: 'demo-user',
+    started_at: hrs(8),
+    completed_at: hrs(8),
+  },
+  {
+    id: 'exp-003',
+    organization_id: DEMO_ORG_ID,
+    name: 'Classifier prompt tweak',
+    prompt_name: 'email-classifier',
+    version_a_id: 'pv-003',
+    version_b_id: 'pv-003-v3',
+    dataset_id: 'ds-003',
+    evaluator_id: null,
+    run_provider: 'openai',
+    run_model: 'gpt-4o-mini',
+    status: 'running',
+    total_items: 15,
+    completed_items: 8,
+    avg_score_a: null,
+    avg_score_b: null,
+    total_cost_usd: 0.011,
+    error: null,
+    created_by: 'demo-user',
+    started_at: min(4),
+    completed_at: null,
+  },
+]
+
+export const DEMO_EXPERIMENT_RESULTS: Record<string, ExperimentResult[]> = {
+  'exp-001': SUPPORT_ITEMS.map((item, i) => {
+    const scoreA = Math.max(0, Math.min(1, 0.76 + Math.sin(i * 2.1) * 0.18))
+    const scoreB = Math.max(0, Math.min(1, 0.84 + Math.cos(i * 1.5) * 0.12))
+    return {
+      id: `eres-exp-${i}`,
+      experiment_id: 'exp-001',
+      dataset_item_id: item.id,
+      output_a: i === 0
+        ? 'I\'m sorry to hear that. Please contact billing@acme.com with your order number and we\'ll look into the duplicate charge.'
+        : `[v6 response to "${item.input.messages?.[0]?.content?.slice(0, 40)}…"]`,
+      output_b: i === 0
+        ? 'I see two charges for order #ORD-4521 on your account. I\'ve initiated a refund for the duplicate charge — it should appear in 3-5 business days. Anything else I can help with?'
+        : `[v7 response to "${item.input.messages?.[0]?.content?.slice(0, 40)}…"]`,
+      cost_a_usd: 0.0015,
+      cost_b_usd: 0.0019,
+      latency_a_ms: 1850,
+      latency_b_ms: 2240,
+      tokens_a: 180,
+      tokens_b: 240,
+      score_a: scoreA,
+      score_b: scoreB,
+      reasoning_a: 'Generic acknowledgment without taking action.',
+      reasoning_b: 'Acknowledges issue + concrete refund action.',
+      error_a: null,
+      error_b: null,
+      created_at: day(2),
+      dataset_items: { input: item.input, expected_output: item.expected_output },
+    }
+  }),
+}
+
+// ── Annotation (human evals) ─────────────────────────────────────────────────
+
+const QUEUE_BASE_REQUESTS = [
+  {
+    id: 'req-anno-001',
+    prompt_version_id: 'pv-001',
+    prompt_name: 'customer-support-v2',
+    prompt_version: 7,
+    model: 'claude-sonnet-4-5',
+    user_msg: 'Hi, I\'ve been charged twice for the same subscription this month. Can you help?',
+    response: 'I see two charges on your account from yesterday. I\'ve refunded the duplicate — it should reflect in your bank within 3-5 business days. Sorry for the trouble!',
+    llm_judge_score: 0.92,
+    human_score: 0.75,
+    human_raw: 4,
+    human_comment: 'Friendly and direct. Could mention if the customer needs to do anything.',
+    age_min: 12,
+  },
+  {
+    id: 'req-anno-002',
+    prompt_version_id: 'pv-001',
+    prompt_name: 'customer-support-v2',
+    prompt_version: 7,
+    model: 'claude-sonnet-4-5',
+    user_msg: 'Your support is useless, I want a refund NOW',
+    response: 'I\'m really sorry to hear about your experience. Could you tell me what went wrong so I can make it right? I\'ll personally make sure we resolve this.',
+    llm_judge_score: 0.88,
+    human_score: null,
+    human_raw: null,
+    human_comment: null,
+    age_min: 28,
+  },
+  {
+    id: 'req-anno-003',
+    prompt_version_id: 'pv-002',
+    prompt_name: 'data-extraction',
+    prompt_version: 3,
+    model: 'claude-haiku-4-5',
+    user_msg: 'Extract: "John Smith, $4,200.50, due 2025-01-15"',
+    response: '```json\n{"name": "John Smith", "amount": 4200.50, "due_date": "2025-01-15"}\n```',
+    llm_judge_score: 0.42,
+    human_score: 0.0,
+    human_raw: 1,
+    human_comment: 'Has markdown fences — instructions were "return only valid JSON, no explanation". Fence breaks downstream parsers.',
+    age_min: 45,
+  },
+  {
+    id: 'req-anno-004',
+    prompt_version_id: 'pv-003',
+    prompt_name: 'email-classifier',
+    prompt_version: 2,
+    model: 'gpt-4o-mini',
+    user_msg: 'Subject: 50% OFF EVERYTHING — Last chance!',
+    response: '{"category": "spam", "confidence": 0.94, "reasoning": "Promotional language + urgency"}',
+    llm_judge_score: 0.95,
+    human_score: 1.0,
+    human_raw: 5,
+    human_comment: 'Spot on.',
+    age_min: 90,
+  },
+  {
+    id: 'req-anno-005',
+    prompt_version_id: 'pv-001',
+    prompt_name: 'customer-support-v2',
+    prompt_version: 7,
+    model: 'claude-sonnet-4-5',
+    user_msg: 'How do I delete my account?',
+    response: 'You can delete your account from Settings → Account → Delete account. Note that this action is irreversible and all your data will be permanently removed.',
+    llm_judge_score: 0.78,
+    human_score: null,
+    human_raw: null,
+    human_comment: null,
+    age_min: 180,
+  },
+  {
+    id: 'req-anno-006',
+    prompt_version_id: 'pv-002',
+    prompt_name: 'data-extraction',
+    prompt_version: 3,
+    model: 'claude-haiku-4-5',
+    user_msg: 'Extract amount from: "approximately 19 bucks"',
+    response: '{"amount": null, "note": "amount is ambiguous"}',
+    llm_judge_score: 0.35,
+    human_score: 0.75,
+    human_raw: 4,
+    human_comment: 'Actually correct behavior — "approximately" is vague. Judge undervalued this.',
+    age_min: 240,
+  },
+]
+
+export const DEMO_ANNOTATION_QUEUE: AnnotationQueueItem[] = QUEUE_BASE_REQUESTS.map((q) => ({
+  id: q.id,
+  prompt_version_id: q.prompt_version_id,
+  prompt_name: q.prompt_name,
+  prompt_version: q.prompt_version,
+  model: q.model,
+  created_at: min(q.age_min),
+  request_body: { messages: [{ role: 'user', content: q.user_msg }] } as Record<string, unknown>,
+  response_body: { choices: [{ message: { content: q.response } }] } as Record<string, unknown>,
+  llm_judge_score: q.llm_judge_score,
+  human_eval: q.human_score != null
+    ? { score: q.human_score, raw_score: q.human_raw, comment: q.human_comment }
+    : null,
+}))
+
+// Correlation pairs derived from queue items that have BOTH scores.
+export const DEMO_CORRELATION_PAIRS: Record<string, CorrelationPair[]> = {
+  'customer-support-v2': QUEUE_BASE_REQUESTS
+    .filter((q) => q.prompt_name === 'customer-support-v2' && q.human_score != null)
+    .map((q) => ({ requestId: q.id, judgeScore: q.llm_judge_score ?? 0, humanScore: q.human_score ?? 0 })),
+  'data-extraction': QUEUE_BASE_REQUESTS
+    .filter((q) => q.prompt_name === 'data-extraction' && q.human_score != null)
+    .map((q) => ({ requestId: q.id, judgeScore: q.llm_judge_score ?? 0, humanScore: q.human_score ?? 0 })),
+  'email-classifier': QUEUE_BASE_REQUESTS
+    .filter((q) => q.prompt_name === 'email-classifier' && q.human_score != null)
+    .map((q) => ({ requestId: q.id, judgeScore: q.llm_judge_score ?? 0, humanScore: q.human_score ?? 0 })),
+}

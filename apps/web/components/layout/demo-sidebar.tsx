@@ -36,8 +36,17 @@ const DEMO_NAV = [
   {
     label: 'Build',
     items: [
-      { href: '/demo/prompts', label: 'Prompts', badge: null },
-      { href: '/demo/alerts',  label: 'Alerts',  badge: '1', badgeWarn: true },
+      { href: '/demo/prompts',     label: 'Prompts',     badge: null },
+      { href: '/demo/evals',       label: 'Evals',       badge: '4' },
+      { href: '/demo/datasets',    label: 'Datasets',    badge: '3' },
+      { href: '/demo/experiments', label: 'Experiments', badge: null },
+      { href: '/demo/alerts',      label: 'Alerts',      badge: '1', badgeWarn: true },
+    ],
+  },
+  {
+    label: 'Review',
+    items: [
+      { href: '/demo/annotation', label: 'Annotation', badge: '2', badgeWarn: true },
     ],
   },
 ]
