@@ -12,7 +12,7 @@ export default function DocsIndex() {
     <div className="not-prose">
       <h1 className="text-4xl font-bold tracking-tight mb-3">Spanlens Docs</h1>
       <p className="text-lg text-muted-foreground mb-10">
-        LLM observability — cost tracking, agent tracing, PII + prompt-injection detection, and model recommendations for OpenAI / Anthropic / Gemini calls.
+        LLM observability — cost tracking (with prompt-cache breakdown), per-end-user analytics, agent tracing, PII + prompt-injection detection, and model recommendations for OpenAI / Anthropic / Gemini calls.
       </p>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-12">
@@ -71,6 +71,29 @@ export default function DocsIndex() {
           </summary>
           <p className="mt-2 text-muted-foreground">
             OpenAI, Anthropic, and Google Gemini — including streaming responses. We match the upstream API 1:1, so any SDK that talks to those providers works.
+          </p>
+        </details>
+
+        <details className="rounded border p-4">
+          <summary className="cursor-pointer font-medium">
+            Can I see which of my end-users is spending the most on LLM calls?
+          </summary>
+          <p className="mt-2 text-muted-foreground">
+            Yes. Tag each call with the <code className="text-xs bg-bg-elev rounded px-1">x-spanlens-user</code> header (SDK helper{' '}
+            <code className="text-xs bg-bg-elev rounded px-1">withUser()</code>) and the{' '}
+            <Link href="/users" className="text-accent hover:underline">/users</Link> page shows a sortable per-end-user breakdown — cost, requests, tokens, error rate, models used. Drill into any user for their full request history. See{' '}
+            <Link href="/docs/features/users" className="text-accent hover:underline">users docs</Link>.
+          </p>
+        </details>
+
+        <details className="rounded border p-4">
+          <summary className="cursor-pointer font-medium">
+            Does Spanlens charge Anthropic prompt-cache hits correctly?
+          </summary>
+          <p className="mt-2 text-muted-foreground">
+            Yes. Both Anthropic <code className="text-xs bg-bg-elev rounded px-1">cache_read_input_tokens</code> /{' '}
+            <code className="text-xs bg-bg-elev rounded px-1">cache_creation_input_tokens</code> and OpenAI{' '}
+            <code className="text-xs bg-bg-elev rounded px-1">prompt_tokens_details.cached_tokens</code> are parsed automatically and billed at each provider&apos;s reduced cache rate (≈ 0.1× input on Anthropic, ≈ 0.5× on OpenAI). The breakdown shows on every request detail page. Other tools that lump everything into prompt tokens overcount cache-heavy workloads by 2–10×.
           </p>
         </details>
       </div>

@@ -58,9 +58,10 @@ Same proxy, same dashboard. For agent tracing in Python (multi-step, async, tool
 
 | Feature | Description |
 |---|---|
-| **Request log** | Every LLM call — model, tokens, cost, latency, request/response body |
+| **Request log** | Every LLM call — model, tokens, cost, latency, request/response body (streaming responses reconstructed too) |
 | **Agent tracing** | Multi-step workflows as Gantt/waterfall span trees |
-| **Cost tracking** | Per-request cost breakdown, daily rollups, budget alerts |
+| **Cost tracking** | Per-request cost breakdown with prompt-cache pricing (Anthropic / OpenAI cache hits billed at their reduced rate), daily rollups, budget alerts |
+| **Per-end-user analytics** | Tag calls with `x-spanlens-user` (SDK: `withUser()` / `with_user()`) → /users page shows per-user cost, tokens, errors, models, last seen |
 | **Anomaly detection** | 3σ deviations in latency or cost vs. your 7-day baseline |
 | **PII + prompt-injection scan** | Regex-based detection on request **and response** bodies; optional per-project blocking (422) for injections; instant alert emails to workspace owner |
 | **Model recommendations** | "Your gpt-4o calls look like classification — try gpt-4o-mini" |
