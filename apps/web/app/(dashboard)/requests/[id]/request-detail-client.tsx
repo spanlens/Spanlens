@@ -134,6 +134,25 @@ export function RequestDetailClient({ id }: { id: string }) {
         ))}
       </div>
 
+      {/* End-user attribution row — only rendered when x-spanlens-user was set */}
+      {req.user_id && (
+        <div className="flex items-center gap-3 px-4 py-2 border border-border rounded-[6px] bg-bg-elev font-mono text-[12px]">
+          <span className="text-[10px] uppercase tracking-[0.05em] text-text-faint">User</span>
+          <Link
+            href={`/users/${encodeURIComponent(req.user_id)}`}
+            className="text-text hover:underline truncate"
+          >
+            {req.user_id}
+          </Link>
+          <Link
+            href={`/requests?userId=${encodeURIComponent(req.user_id)}`}
+            className="text-[10px] text-text-faint hover:text-text ml-auto"
+          >
+            filter requests →
+          </Link>
+        </div>
+      )}
+
       {/* Prompt cache breakdown — only rendered when this request used caching */}
       {(req.cache_read_tokens ?? 0) > 0 || (req.cache_write_tokens ?? 0) > 0 ? (
         <div className="border border-border rounded-[6px] bg-bg-elev px-4 py-3">
