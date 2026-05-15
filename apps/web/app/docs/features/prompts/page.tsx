@@ -255,12 +255,14 @@ const res = await observeOpenAI(
         </li>
         <li>
           <strong>A/B</strong> — 프로덕션 트래픽 A/B 라우팅. <a href="/docs/features/experiments">Experiments</a>의
-          오프라인 비교와는 다릅니다 (아래 표 참고).
+          오프라인 비교와는 다릅니다 (아래 표 참고). →{' '}
+          <a href="/docs/features/prompt-ab">Prompt A/B 전체 문서</a>
         </li>
         <li>
           <strong>Playground</strong> — 버전을 선택해 provider key·model·temperature·variables 설정 후 즉시
           실행. SQL 쿼리 콘솔과 비슷한 도구로, 결과는 <code>requests</code> 테이블에 저장되지 않음.
-          Rate limit 20 req/min/user.
+          Rate limit 20 req/min/user. →{' '}
+          <a href="/docs/features/prompts-playground">Prompt Playground 전체 문서</a>
         </li>
       </ul>
 
