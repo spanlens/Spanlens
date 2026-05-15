@@ -7,6 +7,7 @@ import {
   useAckAnomaly,
   useUnackAnomaly,
   type Anomaly,
+  type AnomalyContributingFactors,
   type AnomalyHistoryEntry,
   type AnomalyKind,
 } from '@/lib/queries/use-anomalies'
@@ -45,6 +46,46 @@ function anomTitle(a: AnomalyTitleFields): string {
   if (a.kind === 'latency') return `p95 latency · ${a.deviations.toFixed(1)}σ above mean`
   if (a.kind === 'cost') return `Spend · ${pct}% above baseline`
   return `Error rate · ${fmtValue('error_rate', a.currentValue)} (baseline ${fmtValue('error_rate', a.baselineMean)})`
+}
+
+function FactorHint({ kind, factors }: { kind: AnomalyKind; factors: AnomalyContributingFactors }) {
+  if (kind === 'error_rate') {
+    const codes = factors.obsStatusDistribution.slice(0, 3)
+    if (codes.length === 0) return null
+    return (
+      <span className="font-mono text-[10px] text-text-faint">
+        {codes.map((d) => `${d.code}: ${d.count} req`).join(' · ')}
+      </span>
+    )
+  }
+
+  const obsT = factors.obsTotalTokensMean
+  const refT = factors.refTotalTokensMean
+  if (!obsT || !refT || refT === 0) return null
+
+  const totalPct = ((obsT - refT) / refT) * 100
+  if (Math.abs(totalPct) < 10) return null
+
+  const obsP = factors.obsPromptTokensMean ?? 0
+  const refP = factors.refPromptTokensMean ?? 0
+  const obsC = factors.obsCompletionTokensMean ?? 0
+  const refC = factors.refCompletionTokensMean ?? 0
+  const promptPct  = refP > 0 ? ((obsP - refP) / refP) * 100 : 0
+  const completionPct = refC > 0 ? ((obsC - refC) / refC) * 100 : 0
+
+  const main =
+    Math.abs(promptPct) >= Math.abs(completionPct)
+      ? { label: 'Prompt', obs: obsP, ref: refP, pct: promptPct }
+      : { label: 'Completion', obs: obsC, ref: refC, pct: completionPct }
+
+  const arrow = main.pct > 0 ? '↑' : '↓'
+  const sign  = main.pct > 0 ? '+' : ''
+  return (
+    <span className="font-mono text-[10px] text-text-faint">
+      {main.label} tokens {arrow} {Math.round(main.obs).toLocaleString()}{' '}
+      <span className="text-text-faint opacity-70">(was {Math.round(main.ref).toLocaleString()}, {sign}{Math.round(main.pct)}%)</span>
+    </span>
+  )
 }
 
 function AnomDeltaBars({
@@ -128,6 +169,12 @@ function AnomRow({ a, idx, last, onAck, onUnack, ackPending, dimmed }: AnomRowPr
           <span className="text-text-faint">target · </span>
           {a.provider} / {a.model}
         </div>
+        {a.factors && (
+          <div className="flex items-center gap-1 mt-[3px]">
+            <span className="font-mono text-[9px] text-text-faint uppercase tracking-[0.04em] opacity-60">why ·</span>
+            <FactorHint kind={a.kind} factors={a.factors} />
+          </div>
+        )}
       </div>
 
       <div>

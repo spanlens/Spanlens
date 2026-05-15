@@ -6,6 +6,16 @@ import type { ApiEnvelope } from './types'
 
 export type AnomalyKind = 'latency' | 'cost' | 'error_rate'
 
+export interface AnomalyContributingFactors {
+  obsPromptTokensMean: number | null
+  refPromptTokensMean: number | null
+  obsCompletionTokensMean: number | null
+  refCompletionTokensMean: number | null
+  obsTotalTokensMean: number | null
+  refTotalTokensMean: number | null
+  obsStatusDistribution: Array<{ code: number; count: number }>
+}
+
 export interface Anomaly {
   provider: string
   model: string
@@ -18,6 +28,8 @@ export interface Anomaly {
   referenceCount: number
   /** ISO timestamp when this anomaly was acknowledged, or null. */
   acknowledgedAt?: string | null
+  /** Root-cause contributing factors — token usage change, error code breakdown. */
+  factors?: AnomalyContributingFactors | null
 }
 
 export interface AnomalyHistoryEntry {

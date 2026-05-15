@@ -16,6 +16,17 @@ import { supabaseAdmin } from './db.js'
 
 export type AnomalyKind = 'latency' | 'cost' | 'error_rate'
 
+export interface AnomalyContributingFactors {
+  obsPromptTokensMean: number | null
+  refPromptTokensMean: number | null
+  obsCompletionTokensMean: number | null
+  refCompletionTokensMean: number | null
+  obsTotalTokensMean: number | null
+  refTotalTokensMean: number | null
+  /** Top error status codes observed in the observation window (for error_rate anomalies). */
+  obsStatusDistribution: Array<{ code: number; count: number }>
+}
+
 export const ANOMALY_DEFAULTS = {
   OBSERVATION_HOURS: 1,
   REFERENCE_HOURS: 168,
@@ -184,4 +195,55 @@ export async function detectAnomalies(
   // Most anomalous first
   anomalies.sort((a, b) => Math.abs(b.deviations) - Math.abs(a.deviations))
   return anomalies
+}
+
+interface FactorsRow {
+  obs_prompt_tokens_mean: number | null
+  ref_prompt_tokens_mean: number | null
+  obs_completion_tokens_mean: number | null
+  ref_completion_tokens_mean: number | null
+  obs_total_tokens_mean: number | null
+  ref_total_tokens_mean: number | null
+  obs_status_distribution: Array<{ code: number; count: number }> | null
+}
+
+/**
+ * Fetches contributing factor data for a single anomaly — token averages
+ * (obs vs reference window) and error status code distribution.
+ * Called after anomaly detection to explain *why* the anomaly occurred.
+ */
+export async function fetchContributingFactors(
+  organizationId: string,
+  provider: string,
+  model: string,
+  obsStart: string,
+  refStart: string,
+  projectId?: string,
+): Promise<AnomalyContributingFactors | null> {
+  const { data, error } = await supabaseAdmin.rpc('get_anomaly_factors', {
+    p_org_id:     organizationId,
+    p_provider:   provider,
+    p_model:      model,
+    p_obs_start:  obsStart,
+    p_ref_start:  refStart,
+    p_project_id: projectId ?? null,
+  })
+
+  if (error) {
+    console.error('[fetchContributingFactors] rpc error:', error.message)
+    return null
+  }
+  const rows = data as FactorsRow[] | null
+  if (!rows || rows.length === 0) return null
+
+  const row = rows[0]
+  return {
+    obsPromptTokensMean:     row.obs_prompt_tokens_mean,
+    refPromptTokensMean:     row.ref_prompt_tokens_mean,
+    obsCompletionTokensMean: row.obs_completion_tokens_mean,
+    refCompletionTokensMean: row.ref_completion_tokens_mean,
+    obsTotalTokensMean:      row.obs_total_tokens_mean,
+    refTotalTokensMean:      row.ref_total_tokens_mean,
+    obsStatusDistribution:   row.obs_status_distribution ?? [],
+  }
 }
