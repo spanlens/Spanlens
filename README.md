@@ -155,7 +155,44 @@ See [CLAUDE.md](./CLAUDE.md) for architecture rules and Known Gotchas (streaming
 
 ## Self-hosting
 
-Official Docker image:
+The easiest way to self-host is with the included `docker-compose.yml` — it runs both the **dashboard (web)** and the **proxy/API server** together.
+
+### 1. Create a `.env` file
+
+```bash
+# Supabase (cloud or self-hosted)
+NEXT_PUBLIC_SUPABASE_URL=https://xxxx.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...
+SUPABASE_URL=https://xxxx.supabase.co
+SUPABASE_ANON_KEY=eyJ...
+SUPABASE_SERVICE_ROLE_KEY=eyJ...
+
+# Encryption key — generate with: openssl rand -base64 32
+ENCRYPTION_KEY=<32-byte base64>
+
+# Random secret for cron endpoint
+CRON_SECRET=<random string>
+
+# Optional — for invite emails
+# WEB_URL=https://your-domain.com
+# RESEND_API_KEY=re_...
+# RESEND_FROM=Spanlens <no-reply@your-domain.com>
+```
+
+### 2. Build and start
+
+```bash
+docker compose up -d --build
+```
+
+- Dashboard: `http://localhost:3000`
+- API / proxy: `http://localhost:3001`
+
+The web container passes `NEXT_PUBLIC_*` vars as **build arguments** (Next.js bakes them into the client bundle), so they must be present before `docker compose build`.
+
+### Server-only (no dashboard)
+
+If you only need the proxy/API and run the dashboard separately:
 
 ```bash
 docker pull ghcr.io/sunes26/spanlens-server:latest
@@ -167,13 +204,15 @@ docker run -p 3001:3001 \
   ghcr.io/sunes26/spanlens-server:latest
 ```
 
-Your Spanlens server talks to your Supabase — we never see your data. Point your app's SDK at your self-hosted URL:
+### Point your SDK at your self-hosted URL
 
 ```ts
 const openai = createOpenAI({
   baseURL: 'https://your-spanlens.example.com/proxy/openai/v1',
 })
 ```
+
+Your Spanlens instance talks to your Supabase — we never see your data.
 
 ---
 
