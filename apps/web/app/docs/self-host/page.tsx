@@ -147,6 +147,18 @@ docker compose up -d`}</CodeBlock>
 # {"status":"ok"}`}</CodeBlock>
 
       <h4>4. Point your SDK at the self-hosted proxy</h4>
+      <p>
+        <strong>Option 1 — CLI wizard</strong> (automates the step below):
+      </p>
+      <CodeBlock language="bash">{`npx @spanlens/cli@latest init --server-url https://spanlens.yourcompany.com`}</CodeBlock>
+      <p className="text-sm text-muted-foreground">
+        Validates your key against your server, patches existing{' '}
+        <code>new OpenAI()</code> / <code>new Anthropic()</code> calls, and writes{' '}
+        <code>SPANLENS_BASE_URL</code> to <code>.env.local</code> automatically.
+      </p>
+      <p>
+        <strong>Option 2 — manual</strong>:
+      </p>
       <CodeBlock language="ts">{`import { createOpenAI } from '@spanlens/sdk/openai'
 
 const openai = createOpenAI({

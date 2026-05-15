@@ -109,6 +109,10 @@ const result = await model.generateContent('Hi')`}</CodeBlock>
         in one pass.
       </p>
       <CodeBlock language="bash">{`npx @spanlens/cli@latest init`}</CodeBlock>
+      <p className="text-sm text-muted-foreground">
+        Self-hosting? Add <code>--server-url https://spanlens.yourcompany.com</code> to point the
+        wizard at your own instance instead of spanlens.io.
+      </p>
 
       <p>The wizard:</p>
       <ol>
