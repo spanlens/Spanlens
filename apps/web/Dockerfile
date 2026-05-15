@@ -74,12 +74,18 @@ RUN addgroup -g 1001 -S nodejs && adduser -S nextjs -u 1001 -G nodejs
 
 # Standalone output is a self-contained server with traced node_modules.
 # The directory structure mirrors the monorepo layout:
-#   .next/standalone/apps/web/server.js  ← entry point
+#   .next/standalone/server.js           ← entry point (at repo root level)
 #   .next/standalone/apps/web/.next/     ← compiled pages
 COPY --from=builder --chown=nextjs:nodejs /repo/apps/web/.next/standalone ./
 # Static assets are NOT included in standalone and must be copied separately.
 COPY --from=builder --chown=nextjs:nodejs /repo/apps/web/.next/static ./apps/web/.next/static
 COPY --from=builder --chown=nextjs:nodejs /repo/apps/web/public ./apps/web/public
+
+# pnpm uses symlinks in node_modules that point to the content-addressed store
+# at node_modules/.pnpm. The standalone output copies those symlinks but not
+# the store itself. Copy the store so the symlinks resolve correctly at runtime.
+# (Only packages reachable via --filter web are present in this store.)
+COPY --from=builder --chown=nextjs:nodejs /repo/node_modules/.pnpm /node_modules/.pnpm
 
 USER nextjs
 EXPOSE 3000
@@ -87,4 +93,6 @@ EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \
   CMD wget --quiet --spider http://localhost:3000/ || exit 1
 
-CMD ["node", "apps/web/server.js"]
+# Next.js standalone puts server.js at the root of the standalone output,
+# regardless of the monorepo nesting depth.
+CMD ["node", "server.js"]
