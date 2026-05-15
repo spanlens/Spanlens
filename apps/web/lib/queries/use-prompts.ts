@@ -190,6 +190,22 @@ export function useDeletePromptVersion() {
   })
 }
 
+export function useRollbackPromptVersion() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (input: { name: string; version: number }) => {
+      const res = await apiPost<ApiEnvelope<PromptVersion>>(
+        `/api/v1/prompts/${encodeURIComponent(input.name)}/${input.version}/rollback`,
+        {},
+      )
+      return res.data
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: promptsQueryKey })
+    },
+  })
+}
+
 // ── Experiment hooks ──────────────────────────────────────────────────────────
 
 export function usePromptExperiments(promptName?: string | null, status?: string) {

@@ -1,7 +1,7 @@
 'use client'
 import { useState } from 'react'
-import { Trash2, ChevronDown, ChevronUp } from 'lucide-react'
-import { useDeletePromptVersion, type PromptVersion } from '@/lib/queries/use-prompts'
+import { Trash2, ChevronDown, ChevronUp, RotateCcw } from 'lucide-react'
+import { useDeletePromptVersion, useRollbackPromptVersion, type PromptVersion } from '@/lib/queries/use-prompts'
 import { PermissionGate } from '@/components/permission-gate'
 
 interface Props {
@@ -12,8 +12,10 @@ interface Props {
 
 export function VersionsTab({ name, versions, isLoading }: Props) {
   const deleteMutation = useDeletePromptVersion()
+  const rollbackMutation = useRollbackPromptVersion()
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [deleting, setDeleting] = useState<string | null>(null)
+  const [rollingBack, setRollingBack] = useState<string | null>(null)
 
   function toggle(id: string) {
     setExpanded((prev) => {
@@ -34,6 +36,18 @@ export function VersionsTab({ name, versions, isLoading }: Props) {
       await deleteMutation.mutateAsync({ name, version })
     } finally {
       setDeleting(null)
+    }
+  }
+
+  async function handleRollback(version: number) {
+    const latestVersion = versions?.[0]?.version ?? version
+    if (version === latestVersion) return
+    if (!confirm(`Roll back to v${version}? A new version will be created with the same content.`)) return
+    setRollingBack(String(version))
+    try {
+      await rollbackMutation.mutateAsync({ name, version })
+    } finally {
+      setRollingBack(null)
     }
   }
 
@@ -121,15 +135,28 @@ export function VersionsTab({ name, versions, isLoading }: Props) {
                     )}
                   </div>
                   <PermissionGate need="edit">
-                    <button
-                      type="button"
-                      onClick={() => void handleDelete(v.version)}
-                      disabled={deleting === String(v.version)}
-                      className="flex items-center gap-1.5 font-mono text-[11px] px-[8px] py-[4px] rounded-[4px] border border-border text-bad hover:bg-bad/10 transition-colors disabled:opacity-40"
-                    >
-                      <Trash2 className="h-3 w-3" />
-                      {deleting === String(v.version) ? 'Deleting…' : 'Delete'}
-                    </button>
+                    <div className="flex items-center gap-2">
+                      {v.version !== versions?.[0]?.version && (
+                        <button
+                          type="button"
+                          onClick={() => void handleRollback(v.version)}
+                          disabled={rollingBack === String(v.version)}
+                          className="flex items-center gap-1.5 font-mono text-[11px] px-[8px] py-[4px] rounded-[4px] border border-border text-text-muted hover:bg-bg-elev transition-colors disabled:opacity-40"
+                        >
+                          <RotateCcw className="h-3 w-3" />
+                          {rollingBack === String(v.version) ? 'Rolling back…' : 'Roll back'}
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => void handleDelete(v.version)}
+                        disabled={deleting === String(v.version)}
+                        className="flex items-center gap-1.5 font-mono text-[11px] px-[8px] py-[4px] rounded-[4px] border border-border text-bad hover:bg-bad/10 transition-colors disabled:opacity-40"
+                      >
+                        <Trash2 className="h-3 w-3" />
+                        {deleting === String(v.version) ? 'Deleting…' : 'Delete'}
+                      </button>
+                    </div>
                   </PermissionGate>
                 </div>
               </div>
