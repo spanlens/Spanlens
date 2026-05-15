@@ -126,6 +126,8 @@
 
 ### 3A. 이상 탐지 & 최적화 (Week 9~10)
 - [x] 모델별 평균 latency/비용 이상치 탐지 (3-sigma) — `lib/anomaly.ts` + `GET /api/v1/anomalies` + `/anomalies` 페이지. 1h 관측 vs 7일 baseline 샘플 stddev.
+- [x] **이상 탐지 Stage 1 — 원인 기여 인자 분석 (2026-05-15)**: 탐지된 이상치에 대해 "왜?" 설명 추가. `get_anomaly_factors` DB 함수 (단일 스캔으로 obs/ref 토큰 평균 + 에러 상태 코드 분포 반환) + `fetchContributingFactors()` + `/anomalies` UI의 `FactorHint` 컴포넌트 (cost/latency → 토큰 변화량 표시, error_rate → HTTP 상태 코드 분포 표시). (provider, model) 기준 dedup으로 DB 중복 호출 방지.
+- [ ] **이상 탐지 Stage 2 — 배포/코드 변경 상관 분석 (추후 구현 예정)**: 이상 탐지 시점과 코드 배포·설정 변경 이벤트를 자동으로 연관시켜 "오전 2:14 배포 이후 latency 급증" 같은 원인을 제시하는 기능. 구현 계획: (1) `deployments` 이벤트 테이블 + GitHub webhook 연동, (2) 이상 발생 시각과 가장 가까운 배포 이벤트 자동 매칭, (3) `/anomalies` UI에 "Recent deployments near this spike" 섹션 노출. 트리거: 유료 유저 50명+ 또는 "배포 후 이상 탐지" 요구 피드백 3건+.
 - [x] 프롬프트 주입·PII 감지 (경량 휴리스틱) — `lib/security-scan.ts` (정규식 6개 PII 규칙 + Luhn + 5개 injection 패턴) 로그 훅 + `requests.flags` JSONB + `GET /api/v1/security/{flagged,summary}` + `/security` 페이지.
 - [x] **Security 3종 확장 (2026-04-30)**: (1) 알림 이메일 — PII/injection 탐지 시 워크스페이스 오너에게 즉시 발송 (5분 쿨다운, atomic rate-limit); (2) 차단 모드 — 프로젝트별 토글, injection 탐지 시 422로 LLM 전달 차단; (3) 응답 스캔 — LLM 응답(output)도 스캔, `requests.response_flags` JSONB 저장 + `has_security_flags` 생성 컬럼. 신규 API: `GET /settings`, `PATCH /alert`, `PATCH /projects/:id/block`.
 - [x] 마이그레이션: `prompt_versions` (프롬프트 버저닝) — `prompt_versions` 테이블 (version immutable, UNIQUE org+name+version) + `requests.prompt_version_id` FK + RLS.
