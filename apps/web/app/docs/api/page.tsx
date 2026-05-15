@@ -107,7 +107,6 @@ export default function ApiReferencePage() {
         </thead>
         <tbody>
           <tr><td>Health</td><td><code>GET /health</code></td><td>None</td></tr>
-          <tr><td>Waitlist</td><td><code>POST /api/v1/waitlist</code></td><td>None</td></tr>
           <tr><td>Organizations</td><td><code>/api/v1/organizations</code></td><td>JWT</td></tr>
           <tr><td>Projects</td><td><code>/api/v1/projects</code></td><td>JWT</td></tr>
           <tr><td>API keys</td><td><code>/api/v1/api-keys</code></td><td>JWT</td></tr>
