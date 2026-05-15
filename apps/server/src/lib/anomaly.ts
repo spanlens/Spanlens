@@ -237,6 +237,7 @@ export async function fetchContributingFactors(
   if (!rows || rows.length === 0) return null
 
   const row = rows[0]
+  if (!row) return null
   return {
     obsPromptTokensMean:     row.obs_prompt_tokens_mean,
     refPromptTokensMean:     row.ref_prompt_tokens_mean,
