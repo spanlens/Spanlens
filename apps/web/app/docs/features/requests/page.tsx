@@ -143,7 +143,11 @@ export default function RequestsDocs() {
         The list auto-refreshes every 10 seconds so new requests appear without a page reload. A
         manual <em>↻</em> button in the toolbar forces an immediate refetch.
       </p>
-      <p>The main table is paginated (up to 100 rows/page) with these filters:</p>
+      <p>
+        The main table is paginated (up to 100 rows/page) with these filters. Filter state is{' '}
+        <strong>synced to the URL</strong> — copy and share the URL to hand off a pre-filtered
+        view, or use the browser&apos;s back button to restore a previous filter state.
+      </p>
       <ul>
         <li><strong>Provider</strong> — exact match (openai / anthropic / gemini)</li>
         <li>
