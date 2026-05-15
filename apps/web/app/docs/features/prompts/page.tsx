@@ -158,6 +158,13 @@ export default function PromptsDocs() {
             <td>Create a new version (auto-increments version number)</td>
           </tr>
           <tr>
+            <td><code>POST /api/v1/prompts/:name/:version/rollback</code></td>
+            <td>
+              Copy an older version&apos;s content as a new (latest) version. The old version is
+              not modified — the version counter always increases. Returns the newly created version.
+            </td>
+          </tr>
+          <tr>
             <td><code>DELETE /api/v1/prompts/:name/:version</code></td>
             <td>Delete one version</td>
           </tr>
@@ -231,7 +238,11 @@ const res = await observeOpenAI(
         대시보드에서 prompt 하나를 클릭하면 6개 서브탭이 보입니다:
       </p>
       <ul>
-        <li><strong>Versions</strong> — 모든 버전 목록 + 펼치기로 본문 확인</li>
+        <li>
+          <strong>Versions</strong> — 모든 버전 목록 + 펼치기로 본문 확인.{' '}
+          각 버전에 <strong>Roll back</strong> 버튼이 있어 해당 content를 그대로 새 버전으로
+          복사합니다 (기존 버전은 삭제되지 않음 — 버전 번호는 항상 증가).
+        </li>
         <li><strong>Diff</strong> — 두 버전 선택 → LCS 기반 line-level diff (+/− 색상)</li>
         <li>
           <strong>Traffic</strong> — 버전별 트래픽 share + 품질 색상 (≥90 green / 70–89 yellow / &lt;70 red)
