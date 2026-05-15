@@ -62,10 +62,13 @@ Same proxy, same dashboard. For agent tracing in Python (multi-step, async, tool
 | **Agent tracing** | Multi-step workflows as Gantt/waterfall span trees |
 | **Cost tracking** | Per-request cost breakdown with prompt-cache pricing (Anthropic / OpenAI cache hits billed at their reduced rate), daily rollups, budget alerts |
 | **Per-end-user analytics** | Tag calls with `x-spanlens-user` (SDK: `withUser()` / `with_user()`) → /users page shows per-user cost, tokens, errors, models, last seen |
-| **Anomaly detection** | 3σ deviations in latency or cost vs. your 7-day baseline |
+| **Anomaly detection** | 3σ deviations in latency, cost, or error rate vs. your 7-day baseline — with root-cause hints (token delta, HTTP status breakdown) |
 | **PII + prompt-injection scan** | Regex-based detection on request **and response** bodies; optional per-project blocking (422) for injections; instant alert emails to workspace owner |
-| **Model recommendations** | "Your gpt-4o calls look like classification — try gpt-4o-mini" |
-| **Prompt versioning + A/B** | Register prompt templates, compare versions side by side |
+| **Model recommendations** | "Your gpt-4o calls look like classification — try gpt-4o-mini" with estimated monthly savings |
+| **Prompt versioning + A/B** | Register prompt templates, run traffic-split experiments, compare versions side by side (latency / cost / error rate) |
+| **Prompts Playground** | Execute any prompt version with variable injection directly in the dashboard — see real cost and response before shipping |
+| **Evals & Experiments** | Build LLM-as-judge evaluators, create datasets, and run A/B experiments comparing two prompt versions; human annotation queue also included |
+| **Data export** | Download request logs as CSV or JSON (`GET /api/v1/exports/requests?format=csv`) for offline analysis or BI tooling |
 
 ---
 
@@ -215,10 +218,6 @@ const openai = createOpenAI({
 Your Spanlens instance talks to your Supabase — we never see your data.
 
 ---
-
-## Roadmap
-
-See [ROADMAP.md](./ROADMAP.md). Currently in **Phase 3 (Growth)** — anomaly detection, prompt A/B, and model recommendation features are live. **Phase 4** Product Hunt launch planned for ~2026.08.03.
 
 ---
 
