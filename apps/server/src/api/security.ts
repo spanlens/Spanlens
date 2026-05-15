@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { authJwt, type JwtContext } from '../middleware/authJwt.js'
 import { supabaseAdmin } from '../lib/db.js'
+import { parseIntMin, parsePositiveInt } from '../lib/params.js'
 
 /**
  * Security endpoints:
@@ -16,19 +17,13 @@ export const securityRouter = new Hono<JwtContext>()
 
 securityRouter.use('*', authJwt)
 
-function parseIntSafe(raw: string | undefined, fallback: number, min = 1): number {
-  if (!raw) return fallback
-  const n = Number(raw)
-  return Number.isInteger(n) && n >= min ? n : fallback
-}
-
 // GET /api/v1/security/flagged?limit=50&offset=0
 securityRouter.get('/flagged', async (c) => {
   const orgId = c.get('orgId')
   if (!orgId) return c.json({ error: 'Organization not found' }, 404)
 
-  const limit = Math.min(parseIntSafe(c.req.query('limit'), 50), 200)
-  const offset = parseIntSafe(c.req.query('offset'), 0, 0)
+  const limit = Math.min(parsePositiveInt(c.req.query('limit'), 50), 200)
+  const offset = parseIntMin(c.req.query('offset'), 0, 0)
 
   const { data, error, count } = await supabaseAdmin
     .from('requests')
@@ -58,7 +53,7 @@ securityRouter.get('/summary', async (c) => {
   const orgId = c.get('orgId')
   if (!orgId) return c.json({ error: 'Organization not found' }, 404)
 
-  const hours = Math.min(parseIntSafe(c.req.query('hours'), 24), 720)
+  const hours = Math.min(parsePositiveInt(c.req.query('hours'), 24), 720)
 
   const { data, error } = await supabaseAdmin.rpc('security_summary', {
     p_org_id: orgId,

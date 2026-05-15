@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { authJwt, type JwtContext } from '../middleware/authJwt.js'
 import { supabaseAdmin } from '../lib/db.js'
+import { parsePositiveInt } from '../lib/params.js'
 
 /**
  * Audit log endpoints. The `audit_logs` table is INSERT-by-service-role only
@@ -15,11 +16,6 @@ export const auditLogsRouter = new Hono<JwtContext>()
 
 auditLogsRouter.use('*', authJwt)
 
-function parseIntSafe(raw: string | undefined, fallback: number): number {
-  if (!raw) return fallback
-  const n = Number(raw)
-  return Number.isInteger(n) && n > 0 ? n : fallback
-}
 
 export interface AuditLogRow {
   id: string
@@ -36,8 +32,8 @@ auditLogsRouter.get('/', async (c) => {
   const orgId = c.get('orgId')
   if (!orgId) return c.json({ error: 'Organization not found' }, 404)
 
-  const limit = Math.min(parseIntSafe(c.req.query('limit'), 50), 200)
-  const offset = parseIntSafe(c.req.query('offset'), 0)
+  const limit = Math.min(parsePositiveInt(c.req.query('limit'), 50), 200)
+  const offset = parsePositiveInt(c.req.query('offset'), 0)
   const actionFilter = c.req.query('action')
 
   let query = supabaseAdmin
