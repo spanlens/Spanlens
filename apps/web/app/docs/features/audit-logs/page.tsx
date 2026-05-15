@@ -3,7 +3,7 @@ import { CodeBlock } from '../../_components/code-block'
 export const metadata = {
   title: 'Audit Logs · Spanlens Docs',
   description:
-    'API 키 생성, Provider 키 추가, 멤버 초대/역할 변경 등 조직 내 모든 변경 이력을 시간 순으로 기록하는 Audit Logs 가이드.',
+    'Chronological record of every organization-level change — API key creation, provider key additions, member invitations, role changes, and billing plan switches.',
 }
 
 export default function AuditLogsDocs() {
@@ -11,121 +11,121 @@ export default function AuditLogsDocs() {
     <div>
       <h1>Audit Logs</h1>
       <p className="lead">
-        Spanlens는 조직 내 중요한 작업을 모두 기록합니다. API 키 생성, Provider 키 추가,
-        멤버 초대 및 역할 변경, 플랜 전환 등 &ldquo;누가, 언제, 무엇을 바꿨는가&rdquo;를
-        추적할 수 있습니다. Settings → <strong>Audit log</strong>에서 바로 확인하거나
-        REST API로 조회해 외부 SIEM / 컴플라이언스 도구와 연동하세요.
+        Spanlens records every significant action within your organization. Track who changed what
+        and when — API key creation, provider key additions, member invitations, role changes, and
+        plan switches. View the log directly in Settings → <strong>Audit log</strong> or query it
+        via the REST API to feed into an external SIEM or compliance tool.
       </p>
 
-      <h2>사용 목적</h2>
+      <h2>Use cases</h2>
       <ul>
         <li>
-          <strong>보안 감사.</strong> 퇴직자가 마지막으로 어떤 키를 만들었는지,
-          예상치 못한 시간대에 관리자 역할이 바뀐 적이 있는지 확인합니다.
+          <strong>Security audits.</strong> Determine which keys a departing employee created, or
+          whether admin roles changed at an unexpected time.
         </li>
         <li>
-          <strong>컴플라이언스.</strong> SOC 2, ISO 27001 등 감사에서 &ldquo;변경 이력
-          접근 로그를 보여달라&rdquo;는 요구에 즉시 응답할 수 있습니다.
+          <strong>Compliance.</strong> Satisfy SOC 2, ISO 27001, and similar audit requirements
+          that ask for a change access log on demand.
         </li>
         <li>
-          <strong>장애 원인 추적.</strong> 프록시가 갑자기 인증 오류를 내기 시작했다면
-          Audit log에서 해당 시점 전후의 Provider 키 교체 이력을 찾아보세요.
+          <strong>Incident investigation.</strong> If the proxy starts returning auth errors, check
+          the audit log for provider key rotations around that time.
         </li>
       </ul>
 
-      <h2>기록되는 이벤트</h2>
+      <h2>Recorded events</h2>
       <table>
         <thead>
           <tr>
             <th>action</th>
-            <th>설명</th>
+            <th>Description</th>
           </tr>
         </thead>
         <tbody>
           <tr>
             <td><code>api_key.create</code></td>
-            <td>Spanlens API 키(<code>sl_live_*</code>) 신규 발급</td>
+            <td>New Spanlens API key (<code>sl_live_*</code>) issued</td>
           </tr>
           <tr>
             <td><code>api_key.delete</code></td>
-            <td>API 키 폐기</td>
+            <td>API key revoked</td>
           </tr>
           <tr>
             <td><code>provider_key.add</code></td>
-            <td>OpenAI / Anthropic / Gemini 등 Provider 키 등록</td>
+            <td>OpenAI / Anthropic / Gemini provider key registered</td>
           </tr>
           <tr>
             <td><code>provider_key.delete</code></td>
-            <td>Provider 키 삭제</td>
+            <td>Provider key removed</td>
           </tr>
           <tr>
             <td><code>member.invite</code></td>
-            <td>팀원 초대 발송</td>
+            <td>Team member invitation sent</td>
           </tr>
           <tr>
             <td><code>member.role_change</code></td>
-            <td>멤버 역할 변경 (admin / editor / viewer)</td>
+            <td>Member role updated (admin / editor / viewer)</td>
           </tr>
           <tr>
             <td><code>member.remove</code></td>
-            <td>멤버 조직에서 제거</td>
+            <td>Member removed from the organization</td>
           </tr>
           <tr>
             <td><code>billing.plan.change</code></td>
-            <td>플랜 업그레이드 또는 다운그레이드</td>
+            <td>Plan upgraded or downgraded</td>
           </tr>
           <tr>
             <td><code>org.settings.update</code></td>
-            <td>조직 이름, 보안 설정 등 조직 수준 설정 변경</td>
+            <td>Organization name, security settings, or other org-level config changed</td>
           </tr>
         </tbody>
       </table>
 
-      <h2>API 레퍼런스</h2>
+      <h2>API reference</h2>
 
-      <h3>목록 조회</h3>
+      <h3>List logs</h3>
       <CodeBlock language="bash">{`GET /api/v1/audit-logs?limit=50&offset=0
 
-# action으로 필터링
+# Filter by action
 GET /api/v1/audit-logs?limit=50&offset=0&action=api_key.create
 
-# 특정 사용자만 보기
+# Filter by user
 GET /api/v1/audit-logs?limit=50&offset=0&user_id=<uuid>`}</CodeBlock>
 
-      <h3>쿼리 파라미터</h3>
+      <h3>Query parameters</h3>
       <table>
         <thead>
           <tr>
-            <th>파라미터</th>
-            <th>기본값</th>
-            <th>설명</th>
+            <th>Parameter</th>
+            <th>Default</th>
+            <th>Description</th>
           </tr>
         </thead>
         <tbody>
           <tr>
             <td><code>limit</code></td>
             <td>50</td>
-            <td>페이지당 결과 수. 최대 200</td>
+            <td>Results per page. Maximum 200.</td>
           </tr>
           <tr>
             <td><code>offset</code></td>
             <td>0</td>
-            <td>페이지네이션 오프셋</td>
+            <td>Pagination offset.</td>
           </tr>
           <tr>
             <td><code>action</code></td>
-            <td>(전체)</td>
-            <td>특정 action 값으로 필터링. 예: <code>member.invite</code></td>
+            <td>(all)</td>
+            <td>Filter to a specific action value, e.g. <code>member.invite</code>.</td>
           </tr>
           <tr>
             <td><code>user_id</code></td>
-            <td>(전체)</td>
-            <td>특정 사용자가 수행한 작업만 조회</td>
+            <td>(all)</td>
+            <td>Show only actions performed by a specific user.</td>
           </tr>
         </tbody>
       </table>
 
-      <h3>응답 예시</h3>
+      <h3>Response example</h3>
       <CodeBlock language="json">{`{
   "data": [
     {
@@ -160,105 +160,105 @@ GET /api/v1/audit-logs?limit=50&offset=0&user_id=<uuid>`}</CodeBlock>
   "offset": 0
 }`}</CodeBlock>
 
-      <h3>응답 필드 설명</h3>
+      <h3>Response fields</h3>
       <table>
         <thead>
           <tr>
-            <th>필드</th>
-            <th>타입</th>
-            <th>설명</th>
+            <th>Field</th>
+            <th>Type</th>
+            <th>Description</th>
           </tr>
         </thead>
         <tbody>
           <tr>
             <td><code>id</code></td>
             <td>string</td>
-            <td>로그 고유 ID</td>
+            <td>Unique log entry ID</td>
           </tr>
           <tr>
             <td><code>action</code></td>
             <td>string</td>
-            <td>수행된 작업 종류 (위 이벤트 표 참고)</td>
+            <td>Action performed (see event table above)</td>
           </tr>
           <tr>
             <td><code>resource_type</code></td>
             <td>string</td>
-            <td>변경된 리소스 유형 (예: <code>api_key</code>, <code>org_member</code>)</td>
+            <td>Type of resource changed (e.g. <code>api_key</code>, <code>org_member</code>)</td>
           </tr>
           <tr>
             <td><code>resource_id</code></td>
             <td>string</td>
-            <td>변경된 리소스의 ID</td>
+            <td>ID of the changed resource</td>
           </tr>
           <tr>
             <td><code>user_id</code></td>
             <td>string</td>
-            <td>작업을 수행한 사용자의 ID</td>
+            <td>ID of the user who performed the action</td>
           </tr>
           <tr>
             <td><code>metadata</code></td>
             <td>object</td>
-            <td>이벤트별 부가 정보 (이전 값, 이후 값, 대상 이메일 등)</td>
+            <td>Event-specific detail (before/after values, target email, etc.)</td>
           </tr>
           <tr>
             <td><code>ip_address</code></td>
             <td>string</td>
-            <td>요청이 들어온 IP 주소</td>
+            <td>IP address of the request</td>
           </tr>
           <tr>
             <td><code>created_at</code></td>
             <td>string (ISO 8601)</td>
-            <td>이벤트 발생 시각 (UTC)</td>
+            <td>When the event occurred (UTC)</td>
           </tr>
         </tbody>
       </table>
 
-      <h2>curl 예시</h2>
-      <CodeBlock language="bash">{`# 최근 20건 조회
-curl "https://api.spanlens.io/api/v1/audit-logs?limit=20" \\
+      <h2>curl examples</h2>
+      <CodeBlock language="bash">{`# Fetch the 20 most recent entries
+curl "https://spanlens-server.vercel.app/api/v1/audit-logs?limit=20" \\
   -H "Authorization: Bearer <JWT>"
 
-# Provider 키 관련 이벤트만 필터링
-curl "https://api.spanlens.io/api/v1/audit-logs?action=provider_key.add&limit=50" \\
+# Filter to provider key events only
+curl "https://spanlens-server.vercel.app/api/v1/audit-logs?action=provider_key.add&limit=50" \\
   -H "Authorization: Bearer <JWT>"
 
-# 두 번째 페이지 (51~100번째)
-curl "https://api.spanlens.io/api/v1/audit-logs?limit=50&offset=50" \\
+# Second page (entries 51–100)
+curl "https://spanlens-server.vercel.app/api/v1/audit-logs?limit=50&offset=50" \\
   -H "Authorization: Bearer <JWT>"`}</CodeBlock>
 
-      <h2>제한 사항</h2>
+      <h2>Limitations</h2>
       <ul>
         <li>
-          <strong>admin만 접근 가능.</strong> Audit log는 조직의 admin 역할을 가진 멤버만 조회할 수
-          있습니다. editor / viewer는 API 및 대시보드 모두 접근이 차단됩니다.
+          <strong>Admin-only access.</strong> Only organization members with the admin role can
+          query audit logs. Editors and viewers are blocked in both the API and the dashboard.
         </li>
         <li>
-          <strong>페이지당 최대 200행.</strong> <code>limit</code>에 200을 초과하는 값을 전달하면
-          400 오류가 반환됩니다.
+          <strong>200 rows per page maximum.</strong> Passing a <code>limit</code> above 200
+          returns a 400 error.
         </li>
         <li>
-          <strong>최신순 정렬 고정.</strong> 현재 <code>created_at DESC</code>로만 정렬되며,
-          정렬 기준 변경 파라미터는 지원하지 않습니다.
+          <strong>Fixed sort order.</strong> Results are always returned in <code>created_at DESC</code>{' '}
+          order. Sort direction cannot be changed.
         </li>
         <li>
-          <strong>보존 기간.</strong> Free 플랜은 최근 30일, Pro 이상은 1년간 보관됩니다.
-          더 긴 보존이 필요하다면 정기적으로 API로 내보내 외부 스토리지에 적재하세요.
+          <strong>Retention.</strong> Free plan: 30 days. Pro and above: 1 year. For longer
+          retention, export the log periodically via the API and store it externally.
         </li>
         <li>
-          <strong>프록시 요청 자체는 기록되지 않음.</strong> LLM 요청/응답 이력은{' '}
-          <a href="/docs/features/requests">Requests</a> 및{' '}
-          <a href="/docs/features/traces">Traces</a> 페이지에서 확인하세요.
-          Audit log는 <em>조직 설정 변경</em>에 집중합니다.
+          <strong>Proxy requests are not recorded here.</strong> LLM request and response history
+          is in <a href="/docs/features/requests">Requests</a> and{' '}
+          <a href="/docs/features/traces">Traces</a>. Audit logs focus on{' '}
+          <em>organization configuration changes</em>.
         </li>
       </ul>
 
       <hr />
       <p className="text-sm text-muted-foreground">
-        관련 문서:{' '}
-        <a href="/docs/features/members-invitations">Members &amp; Invitations</a> (멤버 관리),{' '}
-        <a href="/docs/features/security">Security</a> (PII / 프롬프트 인젝션 스캔),{' '}
-        <a href="/docs/features/webhooks">Webhooks</a> (이벤트 HTTP 전달).
-        대시보드: Settings → <strong>Audit log</strong>.
+        Related:{' '}
+        <a href="/docs/features/members-invitations">Members &amp; Invitations</a>,{' '}
+        <a href="/docs/features/security">Security</a> (PII / prompt injection scanning),{' '}
+        <a href="/docs/features/webhooks">Webhooks</a> (HTTP event delivery).
+        Dashboard: Settings → <strong>Audit log</strong>.
       </p>
     </div>
   )
