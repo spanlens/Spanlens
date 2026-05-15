@@ -253,9 +253,25 @@ const answer = await observe(trace, { name: 'generate', spanType: 'llm' }, async
 await trace.end()
 ```
 
+## Graceful shutdown — `client.flush()`
+
+Background ingest writes are fire-and-forget. In short-lived processes (scripts, one-shot jobs, serverless cold starts) the process may exit before all POSTs complete. Call `flush()` before exit to drain them:
+
+```ts
+const client = new SpanlensClient({ apiKey: process.env.SPANLENS_API_KEY! })
+
+// ... your agent logic ...
+
+await client.flush()   // resolves when all in-flight ingest calls have settled
+process.exit(0)
+```
+
+`flush()` resolves even if some requests failed — it uses `Promise.allSettled` internally so a network error won't hang the process.
+
 ## Design notes
 
 - **Fire-and-forget ingest**: `startTrace()` and `trace.span()` return synchronously. Network writes run in the background so your hot path never waits on observability.
+- **Retry with back-off**: transient failures (network error, 429, 5xx) are retried up to 3 times with exponential back-off (200 ms → 400 ms → 800 ms). 4xx errors are not retried.
 - **Client-side UUIDs**: idempotent retries are safe — same UUID twice is a no-op on the server.
 - **No unhandled rejections**: background POST failures are silently swallowed; use the `onError` hook for visibility.
 - **No auto-instrumentation yet**: OpenAI/Anthropic wrappers ship in v0.2 — for now, wrap LLM calls manually inside `observe()` (or wrap via the proxy baseURL + manual span for tracing metadata).
