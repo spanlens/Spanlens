@@ -389,6 +389,79 @@ res = observe_openai(trace, "greeting", lambda headers:
         and <code>observeGemini()</code> / <code>observe_gemini()</code>.
       </p>
 
+      <h2 id="framework-integrations">Framework integrations (v0.3.0+)</h2>
+      <p>
+        If you use LangChain, Vercel AI SDK, or LlamaIndex, plug in the matching integration instead
+        of wiring callbacks manually. Each one records an LLM span automatically — tokens, latency,
+        model name — without importing from the framework itself (duck-typed, version-agnostic).
+      </p>
+
+      <h3 id="langchain">LangChain JS</h3>
+      <p>
+        Pass the handler to any chain, LLM, or agent via the <code>callbacks</code> option.
+        Works with both <code>BaseLLM</code> (text completion) and <code>BaseChatModel</code>.
+      </p>
+      <LangTabs
+        ts={`import { createSpanlensCallbackHandler } from '@spanlens/sdk/langchain'
+import { SpanlensClient } from '@spanlens/sdk'
+
+const client = new SpanlensClient({ apiKey: process.env.SPANLENS_API_KEY! })
+const handler = createSpanlensCallbackHandler({ client })
+
+// Attach to any LangChain chain / LLM / agent
+const result = await chain.invoke({ input: '...' }, { callbacks: [handler] })
+
+// Or attach to an existing trace
+const trace = client.startTrace({ name: 'rag_pipeline' })
+const handler2 = createSpanlensCallbackHandler({ client, trace })
+await llm.invoke('...', { callbacks: [handler2] })
+await trace.end()`}
+        py={`# LangChain Python integration — coming soon`}
+      />
+
+      <h3 id="vercel-ai">Vercel AI SDK</h3>
+      <p>
+        Pass <code>tracker.onStepFinish</code> and <code>tracker.onFinish</code> to{' '}
+        <code>generateText</code> / <code>streamText</code>. Works with AI SDK 4.x and 5.x.
+      </p>
+      <LangTabs
+        ts={`import { createSpanlensTracker } from '@spanlens/sdk/vercel-ai'
+import { SpanlensClient } from '@spanlens/sdk'
+import { generateText } from 'ai'
+import { openai } from '@ai-sdk/openai'
+
+const client = new SpanlensClient({ apiKey: process.env.SPANLENS_API_KEY! })
+const tracker = createSpanlensTracker({ client, modelName: 'gpt-4o' })
+
+const result = await generateText({
+  model: openai('gpt-4o'),
+  messages: [{ role: 'user', content: 'Hello' }],
+  onStepFinish: tracker.onStepFinish,  // records intermediate tool steps
+  onFinish: tracker.onFinish,          // closes span with final token counts
+})`}
+        py={`# Vercel AI SDK is TypeScript-only`}
+      />
+
+      <h3 id="llamaindex">LlamaIndex TS</h3>
+      <p>
+        Hook into <code>Settings.callbackManager</code> before running queries.
+        Call the returned <code>unregister()</code> function to detach when done.
+      </p>
+      <LangTabs
+        ts={`import { registerSpanlensCallbacks } from '@spanlens/sdk/llamaindex'
+import { SpanlensClient } from '@spanlens/sdk'
+import { Settings } from 'llamaindex'
+
+const client = new SpanlensClient({ apiKey: process.env.SPANLENS_API_KEY! })
+const unregister = registerSpanlensCallbacks(Settings, { client })
+
+// ... run your LlamaIndex queries ...
+await queryEngine.query({ query: 'What is RAG?' })
+
+unregister()  // remove callbacks when done (e.g. on process exit)`}
+        py={`# LlamaIndex Python integration — coming soon`}
+      />
+
       <h2 id="span-handle">Low-level: trace + span handles</h2>
       <p>
         For complex flows (parallel spans, manual timing) use the handle-based API directly. Spans
