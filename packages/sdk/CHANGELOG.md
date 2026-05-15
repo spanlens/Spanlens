@@ -1,5 +1,29 @@
 # @spanlens/sdk changelog
 
+## 0.3.0
+
+Framework callback integrations — trace LangChain, Vercel AI SDK, and LlamaIndex without touching the proxy URL.
+
+### Added
+
+- **`@spanlens/sdk/langchain`** — `createSpanlensCallbackHandler({ client, trace?, traceName? })`.
+  Returns a LangChain-compatible callback handler (duck-typed, no `@langchain/core` import). Pass to the `callbacks` option of any chain, LLM, or `RunnableConfig`. Captures `promptTokens`, `completionTokens`, `model_name` from `llmOutput`, handles concurrent runs by `runId`, and records error spans on `handleLLMError`.
+
+- **`@spanlens/sdk/vercel-ai`** — `createSpanlensTracker({ client, trace?, traceName?, modelName? })`.
+  Returns `{ onStepFinish, onFinish }` that spread directly into `generateText`, `streamText`, `generateObject`, and `streamObject` options. Auto-computes `totalTokens` when absent, records `finishReason` and multi-step count in span metadata.
+
+- **`@spanlens/sdk/llamaindex`** — `registerSpanlensCallbacks(Settings, { client, trace?, traceName? })`.
+  Hooks into `Settings.callbackManager` `llm-start` / `llm-end` events. Parses `raw.usage.input_tokens` / `output_tokens` from the LlamaIndex response. Returns an `unregister()` cleanup function.
+
+All three integrations:
+- Accept an optional `trace?: TraceHandle` — when provided, spans are attached to it and `trace.end()` is left to the caller. When omitted, a trace is auto-created and closed per LLM call.
+- Are fully duck-typed (no imports from the framework package) — compatible with any version.
+- Follow the SDK's fire-and-forget, silent-by-default contract.
+
+### Backward compatible
+
+All existing exports unchanged. The three new entry points are additive.
+
 ## 0.2.3
 
 Critical fix — long-running traces lost their spans on serverless runtimes.
