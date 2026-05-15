@@ -22,6 +22,18 @@
     "./gemini": {
       "import": "./dist/integrations/gemini.js",
       "types": "./dist/integrations/gemini.d.ts"
+    },
+    "./langchain": {
+      "import": "./dist/integrations/langchain.js",
+      "types": "./dist/integrations/langchain.d.ts"
+    },
+    "./vercel-ai": {
+      "import": "./dist/integrations/vercel-ai.js",
+      "types": "./dist/integrations/vercel-ai.d.ts"
+    },
+    "./llamaindex": {
+      "import": "./dist/integrations/llamaindex.js",
+      "types": "./dist/integrations/llamaindex.d.ts"
     }
   },
   "files": ["dist", "README.md", "CHANGELOG.md", "LICENSE"],
@@ -36,12 +48,18 @@
   "peerDependencies": {
     "openai": ">=4.0.0",
     "@anthropic-ai/sdk": ">=0.24.0",
-    "@google/generative-ai": ">=0.20.0"
+    "@google/generative-ai": ">=0.20.0",
+    "@langchain/core": ">=0.2.0",
+    "ai": ">=4.0.0",
+    "llamaindex": ">=0.4.0"
   },
   "peerDependenciesMeta": {
     "openai": { "optional": true },
     "@anthropic-ai/sdk": { "optional": true },
-    "@google/generative-ai": { "optional": true }
+    "@google/generative-ai": { "optional": true },
+    "@langchain/core": { "optional": true },
+    "ai": { "optional": true },
+    "llamaindex": { "optional": true }
   },
   "devDependencies": {
     "@anthropic-ai/sdk": "^0.32.0",
