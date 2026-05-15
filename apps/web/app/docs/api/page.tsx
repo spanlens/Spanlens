@@ -119,7 +119,19 @@ export default function ApiReferencePage() {
           <tr><td>Security</td><td><code>/api/v1/security</code></td><td>JWT</td></tr>
           <tr><td>Alerts</td><td><code>/api/v1/alerts</code></td><td>JWT</td></tr>
           <tr><td>Recommendations</td><td><code>/api/v1/recommendations</code></td><td>JWT</td></tr>
+          <tr><td>Evals</td><td><code>/api/v1/evaluators</code></td><td>JWT</td></tr>
+          <tr><td>Datasets</td><td><code>/api/v1/datasets</code></td><td>JWT</td></tr>
+          <tr><td>Experiments</td><td><code>/api/v1/experiments</code></td><td>JWT</td></tr>
+          <tr><td>Prompt experiments (A/B)</td><td><code>/api/v1/prompt-experiments</code></td><td>JWT</td></tr>
+          <tr><td>Prompt playground</td><td><code>/api/v1/prompts-playground/run</code></td><td>JWT</td></tr>
+          <tr><td>Human evals</td><td><code>/api/v1/human-evals</code></td><td>JWT</td></tr>
+          <tr><td>Annotation queue</td><td><code>/api/v1/annotation/queue</code></td><td>JWT</td></tr>
+          <tr><td>Webhooks</td><td><code>/api/v1/webhooks</code></td><td>JWT (admin/editor for writes)</td></tr>
+          <tr><td>Audit logs</td><td><code>/api/v1/audit-logs</code></td><td>JWT</td></tr>
+          <tr><td>Saved filters</td><td><code>/api/v1/saved-filters</code></td><td>JWT</td></tr>
+          <tr><td>Exports</td><td><code>/api/v1/exports/*</code></td><td>JWT</td></tr>
           <tr><td>Members</td><td><code>/api/v1/organizations/:orgId/members</code></td><td>JWT (admin for writes)</td></tr>
+          <tr><td>Invitations</td><td><code>/api/v1/organizations/:orgId/invitations</code></td><td>JWT (admin)</td></tr>
           <tr><td>Proxy — OpenAI</td><td><code>/proxy/openai/v1/*</code></td><td>API key</td></tr>
           <tr><td>Proxy — Anthropic</td><td><code>/proxy/anthropic/v1/*</code></td><td>API key</td></tr>
           <tr><td>Proxy — Gemini</td><td><code>/proxy/gemini/v1/*</code></td><td>API key</td></tr>

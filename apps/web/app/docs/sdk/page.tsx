@@ -194,11 +194,12 @@ res = client.chat.completions.create(
         set the header directly: <code>x-spanlens-prompt-version: &lt;id&gt;</code>.
       </p>
 
-      <h2 id="with-user">withUser() / withSession() — end-user 추적 (v0.2.7+)</h2>
+      <h2 id="with-user">withUser() / withSession() — end-user tracking (v0.2.7+)</h2>
       <p>
-        호출에 end-user ID와 session ID를 태그합니다. <code>requests.user_id</code> /{' '}
-        <code>requests.session_id</code> 컬럼에 저장되어 <a href="/docs/features/requests">/requests</a>{' '}
-        페이지에서 <code>?userId=</code>·<code>?sessionId=</code>로 필터링 가능합니다.
+        Tag a call with an end-user ID and session ID. The values are stored in{' '}
+        <code>requests.user_id</code> / <code>requests.session_id</code> and can be filtered on
+        the <a href="/docs/features/requests">/requests</a> page via{' '}
+        <code>?userId=</code> / <code>?sessionId=</code>.
       </p>
       <LangTabs
         ts={`import {
@@ -220,7 +221,7 @@ const res = await openai.chat.completions.create(
     },
   },
 )`}
-        py={`# Python SDK는 추후 지원 — 그때까지는 헤더 직접 전달
+        py={`# Python SDK support coming soon — pass headers directly in the meantime
 import openai
 
 client = openai.OpenAI(
@@ -233,12 +234,13 @@ client = openai.OpenAI(
 )`}
       />
       <p>
-        반환값은 <code>{`{ headers: { ... } }`}</code> 형태라 여러 헬퍼를 spread로 병합하면 됩니다.
-        Anthropic integration도 동일한 헬퍼를 export 합니다.
+        Each helper returns <code>{`{ headers: { ... } }`}</code>, so multiple helpers can be
+        spread together. The Anthropic integration exports the same helpers.
       </p>
       <p>
-        세 헤더 모두 <code>STRIP_PREFIXES</code> (<code>x-spanlens-*</code>) 정책으로 upstream
-        (OpenAI/Anthropic/Gemini)에는 forward 되지 않습니다 — Spanlens 내부 metadata로만 사용됩니다.
+        All three headers are stripped by the <code>STRIP_PREFIXES</code> (<code>x-spanlens-*</code>)
+        policy before forwarding to upstream providers (OpenAI/Anthropic/Gemini) — they are used
+        only as Spanlens internal metadata.
       </p>
 
       <h2 id="observe">observe() — agent tracing</h2>

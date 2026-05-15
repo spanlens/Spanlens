@@ -3,7 +3,7 @@ import { CodeBlock } from '../../_components/code-block'
 export const metadata = {
   title: 'Datasets · Spanlens Docs',
   description:
-    '재사용 가능한 (input, expected_output) 테스트 세트. Evals와 Experiments에서 production 트래픽 대신 사용할 수 있습니다.',
+    'Reusable (input, expected_output) test sets. Use in Evals and Experiments instead of pulling from live production traffic.',
 }
 
 export default function DatasetsDocs() {
@@ -11,75 +11,77 @@ export default function DatasetsDocs() {
     <div>
       <h1>Datasets</h1>
       <p className="lead">
-        명명된 (input, expected_output?) 테스트 세트입니다. <a href="/docs/features/evals">Evals</a>와{' '}
-        <a href="/docs/features/experiments">Experiments</a>에서 production 트래픽 대신 고정된
-        입력 세트로 평가할 때 사용합니다.
+        Named collections of <code>(input, expected_output?)</code> pairs.{' '}
+        <a href="/docs/features/evals">Evals</a> and{' '}
+        <a href="/docs/features/experiments">Experiments</a> can use a dataset instead of sampling
+        from live production traffic when you want evaluations against a fixed, controlled input
+        set.
       </p>
 
-      <h2>언제 필요한가</h2>
+      <h2>When to use a dataset</h2>
       <ul>
         <li>
-          <strong>신규 프롬프트라 production 트래픽이 없을 때</strong> — 첫 호출이 쌓이기 전에 미리
-          평가하고 싶음
+          <strong>No production traffic yet</strong> — you want to evaluate a prompt before the
+          first real calls accumulate.
         </li>
         <li>
-          <strong>production 데이터가 민감할 때</strong> — 의료/금융 등 컴플라이언스 이슈가 있어
-          익명화된 셋이 필요함
+          <strong>Sensitive production data</strong> — healthcare, finance, or other regulated
+          domains where you need an anonymized set.
         </li>
         <li>
-          <strong>회귀 테스트 셋이 필요할 때</strong> — 과거에 실패한 30개 케이스를 골든셋으로
-          묶어두고 신규 버전이 그걸 잘 처리하는지 매번 확인
+          <strong>Regression test set</strong> — a curated golden set of 30 past failure cases
+          that every new prompt version must handle correctly.
         </li>
       </ul>
 
-      <h2>구조</h2>
+      <h2>Schema</h2>
 
-      <h3><code>datasets</code> 테이블</h3>
+      <h3><code>datasets</code> table</h3>
       <ul>
-        <li><code>name</code> — org 내 유일</li>
-        <li><code>description</code> — 자유 텍스트</li>
+        <li><code>name</code> — unique within the organization</li>
+        <li><code>description</code> — free text</li>
         <li><code>archived_at</code> — soft delete</li>
       </ul>
 
-      <h3><code>dataset_items</code> 테이블</h3>
+      <h3><code>dataset_items</code> table</h3>
       <ul>
         <li>
-          <code>input</code> (jsonb) — 두 가지 shape 허용:
+          <code>input</code> (jsonb) — two shapes are accepted:
           <CodeBlock language="json">{`{ "variables": { "company_name": "Acme", "customer_name": "Alice" } }
 { "messages": [{ "role": "user", "content": "..." }] }`}</CodeBlock>
         </li>
         <li>
-          <code>expected_output</code> — 정답 텍스트 (선택). Evals dataset source에서 채점 대상이
-          됨. 비어있으면 자동 스킵.
+          <code>expected_output</code> — reference answer text (optional). Used as the scoring
+          target when running Evals in dataset mode. Items without a value are skipped.
         </li>
         <li>
-          <code>source_request_id</code> — production request에서 import된 경우의 출처
+          <code>source_request_id</code> — set when the item was imported from a production request.
         </li>
       </ul>
 
-      <h2>아이템 추가 방법 3가지</h2>
+      <h2>Three ways to add items</h2>
 
-      <h3>1. 수동 입력 (대시보드)</h3>
+      <h3>1. Manual entry (dashboard)</h3>
       <p>
-        <a href="/datasets">/datasets</a>에서 dataset 선택 → <strong>Add item</strong> → 두 모드 토글:
+        Go to <a href="/datasets">/datasets</a>, select a dataset, click{' '}
+        <strong>Add item</strong>, then toggle between two input modes:
       </p>
       <ul>
-        <li><strong>User message</strong> — chat-style 단일 user 메시지</li>
-        <li><strong>Variables JSON</strong> — <code>{`{{var}}`}</code> placeholder가 있는 prompt용</li>
+        <li><strong>User message</strong> — a single chat-style user message</li>
+        <li><strong>Variables JSON</strong> — for prompts with <code>{`{{var}}`}</code> placeholders</li>
       </ul>
 
-      <h3>2. Production request에서 import (API)</h3>
+      <h3>2. Import from production requests (API)</h3>
       <CodeBlock language="bash">{`curl https://spanlens-server.vercel.app/api/v1/datasets/<dataset-id>/items/import-requests \\
   -H "Authorization: Bearer $SPANLENS_JWT" \\
   -H "Content-Type: application/json" \\
   -d '{ "requestIds": ["uuid-1", "uuid-2", ...] }'`}</CodeBlock>
       <p>
-        서버가 각 request에서 <code>request_body.messages</code>를 <code>input</code>으로,{' '}
-        <code>response_body</code>의 응답 텍스트를 <code>expected_output</code>으로 추출해 일괄
-        저장합니다 (최대 200건/요청).
+        The server extracts <code>request_body.messages</code> as <code>input</code> and the
+        response text as <code>expected_output</code> and saves them in bulk (max 200 per request).
       </p>
 
-      <h3>3. 단일 아이템 (API)</h3>
+      <h3>3. Single item (API)</h3>
       <CodeBlock language="bash">{`curl https://spanlens-server.vercel.app/api/v1/datasets/<dataset-id>/items \\
   -H "Authorization: Bearer $SPANLENS_JWT" \\
   -H "Content-Type: application/json" \\
@@ -88,16 +90,16 @@ export default function DatasetsDocs() {
     "expectedOutput": "Hello Alice, how can I help?"
   }'`}</CodeBlock>
 
-      <h2>Evals와의 연결 (Replay 모드)</h2>
+      <h2>Connection to Evals (replay mode)</h2>
       <p>
-        Evals 실행 시 <strong>Source: Dataset</strong>을 선택하면 production 트래픽 대신 dataset의
-        <code>expected_output</code>이 채점 대상이 됩니다. expected_output이 비어있는 item은
-        스킵됩니다.
+        When running an Eval, select <strong>Source: Dataset</strong> to score the dataset&apos;s{' '}
+        <code>expected_output</code> values instead of live production responses. Items without an{' '}
+        <code>expected_output</code> are skipped.
       </p>
       <p>
-        이를 &quot;replay 모드&quot;라고 부릅니다 — 이미 생성된 응답을 다시 채점하는 방식입니다.{' '}
-        <em>Fresh run 모드</em>(dataset의 input으로 prompt를 직접 실행 후 채점)는{' '}
-        <a href="/docs/features/experiments">Experiments</a>에서 지원합니다.
+        This is called &quot;replay mode&quot; — scoring already-generated outputs.{' '}
+        <em>Fresh run mode</em> (run the prompt against each dataset input and then score the new
+        outputs) is handled by <a href="/docs/features/experiments">Experiments</a>.
       </p>
 
       <h2>API</h2>
@@ -105,21 +107,21 @@ export default function DatasetsDocs() {
         <thead>
           <tr>
             <th>Method + Path</th>
-            <th>설명</th>
+            <th>Description</th>
           </tr>
         </thead>
         <tbody>
           <tr>
             <td><code>POST /api/v1/datasets</code></td>
-            <td>Dataset 생성</td>
+            <td>Create a dataset</td>
           </tr>
           <tr>
             <td><code>GET /api/v1/datasets</code></td>
-            <td>목록 + item_count</td>
+            <td>List datasets with item_count</td>
           </tr>
           <tr>
             <td><code>GET /api/v1/datasets/:id</code></td>
-            <td>Dataset + items 전체</td>
+            <td>Dataset with all items</td>
           </tr>
           <tr>
             <td><code>DELETE /api/v1/datasets/:id</code></td>
@@ -127,39 +129,40 @@ export default function DatasetsDocs() {
           </tr>
           <tr>
             <td><code>POST /api/v1/datasets/:id/items</code></td>
-            <td>단일 item 추가</td>
+            <td>Add a single item</td>
           </tr>
           <tr>
             <td><code>POST /api/v1/datasets/:id/items/import-requests</code></td>
-            <td>request 일괄 import (최대 200건)</td>
+            <td>Bulk import from request IDs (max 200)</td>
           </tr>
           <tr>
             <td><code>DELETE /api/v1/datasets/:id/items/:itemId</code></td>
-            <td>Item 삭제</td>
+            <td>Delete a single item</td>
           </tr>
         </tbody>
       </table>
 
-      <h2>Limitations (MVP)</h2>
+      <h2>Limitations</h2>
       <ul>
         <li>
-          <strong>CSV 업로드 없음.</strong> 대시보드 수동 입력 또는 API의 import-requests만 가능.
-          CSV는 Phase 2.5+.
+          <strong>No CSV upload.</strong> Items must be added via the dashboard form or the API.
+          CSV import is planned for a later release.
         </li>
         <li>
-          <strong>Evals의 Dataset source는 replay 모드만.</strong> Fresh run은 Experiments에서
-          처리합니다.
+          <strong>Evals dataset source is replay mode only.</strong> Fresh-run evaluation
+          (running the prompt live against dataset inputs) is handled by Experiments.
         </li>
         <li>
-          <strong>Item 편집 UI 없음.</strong> 잘못 입력한 item은 삭제 후 다시 추가하세요.
+          <strong>No item edit UI.</strong> To correct a wrongly entered item, delete it and
+          add a new one.
         </li>
       </ul>
 
       <hr />
       <p className="text-sm text-muted-foreground">
-        관련: <a href="/docs/features/evals">Evals</a>,{' '}
+        Related: <a href="/docs/features/evals">Evals</a>,{' '}
         <a href="/docs/features/experiments">Experiments</a>,{' '}
-        <a href="/datasets">/datasets</a> 대시보드.
+        <a href="/datasets">/datasets</a> dashboard.
       </p>
     </div>
   )
