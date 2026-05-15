@@ -233,76 +233,80 @@ const res = await observeOpenAI(
         it just isn&apos;t linked to a version).
       </p>
 
-      <h2>Prompts 페이지의 서브탭들</h2>
+      <h2>Sub-tabs inside the Prompts page</h2>
       <p>
-        대시보드에서 prompt 하나를 클릭하면 6개 서브탭이 보입니다:
+        Clicking a prompt in the dashboard reveals six sub-tabs:
       </p>
       <ul>
         <li>
-          <strong>Versions</strong> — 모든 버전 목록 + 펼치기로 본문 확인.{' '}
-          각 버전에 <strong>Roll back</strong> 버튼이 있어 해당 content를 그대로 새 버전으로
-          복사합니다 (기존 버전은 삭제되지 않음 — 버전 번호는 항상 증가).
+          <strong>Versions</strong> — full version list with expandable content preview.{' '}
+          Each version has a <strong>Roll back</strong> button that copies its content as a new
+          latest version (the old version is never deleted — the version counter always increases).
         </li>
-        <li><strong>Diff</strong> — 두 버전 선택 → LCS 기반 line-level diff (+/− 색상)</li>
+        <li><strong>Diff</strong> — select any two versions for an LCS-based line-level diff (+/− colors)</li>
         <li>
-          <strong>Traffic</strong> — 버전별 트래픽 share + 품질 색상 (≥90 green / 70–89 yellow / &lt;70 red)
-        </li>
-        <li>
-          <strong>Calls</strong> — 버전별 호출수·레이턴시·에러율·<strong>QUALITY</strong>·비용·토큰 집계.
-          row 클릭 시 <code>/requests?promptVersionId=...</code>로 드릴다운.{' '}
-          <strong>Quality 컬럼</strong>은 <a href="/docs/features/evals">Evals</a>가 매긴
-          <code>eval_results</code> 평균을 표시.
+          <strong>Traffic</strong> — per-version traffic share with quality color coding
+          (≥90 green / 70–89 yellow / &lt;70 red)
         </li>
         <li>
-          <strong>A/B</strong> — 프로덕션 트래픽 A/B 라우팅. <a href="/docs/features/experiments">Experiments</a>의
-          오프라인 비교와는 다릅니다 (아래 표 참고).
+          <strong>Calls</strong> — per-version call count, latency, error rate,{' '}
+          <strong>QUALITY</strong>, cost, and token totals. Clicking a row drills down to{' '}
+          <code>/requests?promptVersionId=...</code>.{' '}
+          The <strong>Quality column</strong> shows the average <code>eval_results</code> score
+          from <a href="/docs/features/evals">Evals</a>.
         </li>
         <li>
-          <strong>Playground</strong> — 버전을 선택해 provider key·model·temperature·variables 설정 후 즉시
-          실행. SQL 쿼리 콘솔과 비슷한 도구로, 결과는 <code>requests</code> 테이블에 저장되지 않음.
-          Rate limit 20 req/min/user.
+          <strong>A/B</strong> — live production traffic A/B routing. Different from offline{' '}
+          <a href="/docs/features/experiments">Experiments</a> (see table below). →{' '}
+          <a href="/docs/features/prompt-ab">Full Prompt A/B docs</a>
+        </li>
+        <li>
+          <strong>Playground</strong> — select a version, configure provider key, model,
+          temperature, and variables, then run immediately. Results are not saved to the{' '}
+          <code>requests</code> table. Rate limit: 20 req/min/user. →{' '}
+          <a href="/docs/features/prompts-playground">Full Playground docs</a>
         </li>
       </ul>
 
-      <h2>A/B 라우팅 vs Experiments</h2>
+      <h2>A/B routing vs Experiments</h2>
       <p>
-        같은 &quot;실험&quot; 단어가 두 곳에 등장하므로 헷갈리지 않게 정리:
+        The word &quot;experiment&quot; appears in two places in Spanlens — here is how they differ:
       </p>
       <div className="overflow-x-auto">
         <table>
           <thead>
             <tr>
               <th></th>
-              <th>A/B (이 탭)</th>
+              <th>A/B (this tab)</th>
               <th><a href="/docs/features/experiments">Experiments</a></th>
             </tr>
           </thead>
           <tbody>
             <tr>
-              <td>데이터</td>
-              <td>프로덕션 트래픽</td>
-              <td>오프라인 dataset</td>
+              <td>Data</td>
+              <td>Live production traffic</td>
+              <td>Offline dataset</td>
             </tr>
             <tr>
-              <td>시점</td>
-              <td>실시간, 실제 사용자 노출</td>
-              <td>즉시 실행, 사용자 노출 없음</td>
+              <td>Timing</td>
+              <td>Real-time, real users exposed</td>
+              <td>Runs immediately, no user exposure</td>
             </tr>
             <tr>
-              <td>측정</td>
-              <td>통계 유의성 (Welch&apos;s t-test)</td>
-              <td>출력 텍스트 직접 비교 + 점수</td>
+              <td>Measurement</td>
+              <td>Statistical significance (Welch&apos;s t-test)</td>
+              <td>Direct output comparison + scores</td>
             </tr>
             <tr>
-              <td>위험</td>
-              <td>나쁜 버전이 사용자에게 감</td>
-              <td>없음</td>
+              <td>Risk</td>
+              <td>A bad version reaches real users</td>
+              <td>None</td>
             </tr>
           </tbody>
         </table>
       </div>
       <p>
-        보완 관계: <strong>Experiments로 사전 검증 → A/B로 프로덕션 검증</strong>.
+        Complementary: <strong>pre-validate with Experiments → confirm in production with A/B</strong>.
       </p>
 
       <h2>Limitations</h2>
@@ -325,10 +329,10 @@ const res = await observeOpenAI(
 
       <hr />
       <p className="text-sm text-muted-foreground">
-        관련: <a href="/docs/features/evals">Evals</a> (응답 품질 점수),{' '}
-        <a href="/docs/features/experiments">Experiments</a> (오프라인 비교),{' '}
+        Related: <a href="/docs/features/evals">Evals</a> (response quality scoring),{' '}
+        <a href="/docs/features/experiments">Experiments</a> (offline comparison),{' '}
         <a href="/docs/features/savings">Savings</a> (model substitution),{' '}
-        <a href="/docs/features/traces">Traces</a>, <a href="/prompts">/prompts</a> 대시보드.
+        <a href="/docs/features/traces">Traces</a>, <a href="/prompts">/prompts</a> dashboard.
       </p>
     </div>
   )

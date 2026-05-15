@@ -159,37 +159,39 @@ export default function RequestsDocs() {
         <li><strong>Date range</strong> — from / to</li>
       </ul>
 
-      <h4>URL 파라미터로만 적용되는 필터</h4>
+      <h4>URL-only filters</h4>
       <p>
-        다른 페이지에서 드릴다운으로 진입할 때 URL에 붙는 필터들. 페이지 상단에 활성 필터 배너가
-        표시되며 <strong>Clear ×</strong>로 해제 가능합니다.
+        These filters are applied when navigating here via a drilldown from another page. An
+        active filter banner appears at the top of the page and can be cleared with{' '}
+        <strong>Clear ×</strong>.
       </p>
       <table>
         <thead>
-          <tr><th>URL param</th><th>의미</th><th>주 진입 경로</th></tr>
+          <tr><th>URL param</th><th>Meaning</th><th>Primary entry point</th></tr>
         </thead>
         <tbody>
           <tr>
             <td><code>?promptVersionId=&lt;uuid&gt;</code></td>
-            <td>특정 prompt 버전을 사용한 호출만</td>
-            <td>Prompts → Calls 탭의 row 클릭</td>
+            <td>Only calls that used a specific prompt version</td>
+            <td>Prompts → Calls tab row click</td>
           </tr>
           <tr>
             <td><code>?userId=&lt;str&gt;</code></td>
-            <td>해당 end-user의 호출만</td>
-            <td>request detail의 User 항목 클릭</td>
+            <td>Only calls from a specific end-user</td>
+            <td>Request detail User field click</td>
           </tr>
           <tr>
             <td><code>?sessionId=&lt;str&gt;</code></td>
-            <td>해당 세션의 호출만</td>
-            <td>request detail의 Session 항목 클릭</td>
+            <td>Only calls from a specific session</td>
+            <td>Request detail Session field click</td>
           </tr>
         </tbody>
       </table>
       <p>
-        사용자가 <code>x-spanlens-user</code> / <code>x-spanlens-session</code> 헤더를 보내야{' '}
-        <code>user_id</code> / <code>session_id</code> 컬럼에 값이 채워집니다.{' '}
-        <a href="/docs/sdk">SDK 헬퍼</a> <code>withUser()</code> / <code>withSession()</code> 참고.
+        The <code>user_id</code> / <code>session_id</code> columns are only populated when the
+        caller sends the <code>x-spanlens-user</code> / <code>x-spanlens-session</code> headers.
+        See <a href="/docs/sdk">SDK helpers</a> <code>withUser()</code> /{' '}
+        <code>withSession()</code>.
       </p>
       <p>
         Column headers for <strong>Latency</strong>, <strong>Cost</strong>,{' '}
