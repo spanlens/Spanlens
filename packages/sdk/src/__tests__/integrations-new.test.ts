@@ -245,7 +245,7 @@ describe('registerSpanlensCallbacks (LlamaIndex)', () => {
           )
         },
         emit(event: string, payload: unknown) {
-          listeners.get(event)?.forEach((h) => h(payload))
+          listeners.get(event)?.forEach((h) => h({ detail: payload }))
         },
         listenerCount(event: string) {
           return listeners.get(event)?.length ?? 0
