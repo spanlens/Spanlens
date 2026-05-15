@@ -20,11 +20,11 @@ export default function SelfHostDocs() {
       <div className="rounded-lg border-2 border-accent bg-accent-bg p-4 my-6 not-prose">
         <p className="text-sm font-semibold text-accent mb-1">⚠️ Early access</p>
         <p className="text-sm text-accent">
-          The proxy server image is public and boots end-to-end (verified 2026-04-22). Rough
-          edges: Supabase is required (plain Postgres isn&apos;t supported yet), migrations
-          aren&apos;t bundled in the image, and a separate dashboard image isn&apos;t published
-          yet. Walk through the steps below; if you hit friction, file a GitHub issue and
-          we&apos;ll smooth it.
+          Both the proxy server and dashboard images boot end-to-end (verified 2026-05-15).
+          Rough edges: Supabase is required (plain Postgres isn&apos;t supported yet), and
+          migrations aren&apos;t bundled in the image — a manual <code>supabase db push</code>{' '}
+          step is required. Walk through the steps below; if you hit friction, file a GitHub
+          issue and we&apos;ll smooth it.
         </p>
       </div>
 
@@ -73,6 +73,52 @@ export default function SelfHostDocs() {
       </ol>
 
       <h2 id="quickstart">Walkthrough</h2>
+
+      <h3>Option A — docker-compose (recommended)</h3>
+      <p>
+        The easiest way to self-host. Runs both the <strong>dashboard (web)</strong> and the{' '}
+        <strong>proxy / API server</strong> together from a single compose file.
+      </p>
+
+      <h4>1. Clone the repo and create a <code>.env</code> file</h4>
+      <CodeBlock language="bash">{`git clone https://github.com/sunes26/Spanlens.git
+cd Spanlens`}</CodeBlock>
+      <CodeBlock language="bash">{`# .env — required variables
+NEXT_PUBLIC_SUPABASE_URL=https://<ref>.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...
+SUPABASE_URL=https://<ref>.supabase.co
+SUPABASE_ANON_KEY=eyJ...
+SUPABASE_SERVICE_ROLE_KEY=eyJ...          # keep server-side only
+ENCRYPTION_KEY=$(openssl rand -base64 32) # back this up — see below
+CRON_SECRET=$(openssl rand -hex 16)
+
+# Optional — for invite emails
+# WEB_URL=https://your-domain.com
+# RESEND_API_KEY=re_...
+# RESEND_FROM=Spanlens <no-reply@your-domain.com>`}</CodeBlock>
+
+      <h4>2. Apply the schema migrations</h4>
+      <CodeBlock language="bash">{`supabase login
+supabase link --project-ref <your-ref>
+supabase db push`}</CodeBlock>
+
+      <h4>3. Build and start</h4>
+      <CodeBlock language="bash">{`docker compose up -d --build`}</CodeBlock>
+      <ul>
+        <li>Dashboard: <code>http://localhost:3000</code></li>
+        <li>API / proxy: <code>http://localhost:3001</code></li>
+      </ul>
+      <p className="text-sm text-muted-foreground">
+        ⚠️ <code>NEXT_PUBLIC_*</code> vars are baked into the Next.js client bundle at build time.
+        They must be present in <code>.env</code> before running <code>docker compose build</code>.
+      </p>
+
+      <h3>Option B — server only</h3>
+      <p>
+        If you run the dashboard separately (hosted at{' '}
+        <a href="https://spanlens.io">spanlens.io</a> or your own Next.js deployment), you can
+        run just the API server:
+      </p>
 
       <h3>1. Create a Supabase project</h3>
       <p>
@@ -217,23 +263,24 @@ cd Spanlens && git pull && supabase db push`}</CodeBlock>
 
       <h2 id="dashboard">Dashboard access</h2>
       <p>
-        Two options today:
+        Three options:
       </p>
       <ul>
+        <li>
+          <strong>docker-compose</strong> — builds and runs the web dashboard alongside the server.
+          Recommended for full self-hosting. See <a href="#quickstart">Option A</a> above.
+        </li>
         <li>
           <strong>Use the hosted dashboard at <a href="https://spanlens.io">spanlens.io</a></strong>{' '}
           pointed at your self-hosted backend. Log in, then override the API base URL in your
           browser via <a href="/settings">/settings</a>.
         </li>
         <li>
-          <strong>Run the web app locally yourself</strong> — clone the repo and <code>pnpm --filter web dev</code> with <code>NEXT_PUBLIC_API_URL</code> pointed at your backend.
+          <strong>Run the web app locally yourself</strong> — clone the repo and{' '}
+          <code>pnpm --filter web dev</code> with <code>NEXT_PUBLIC_API_URL</code> pointed at
+          your backend.
         </li>
       </ul>
-      <p className="text-sm text-muted-foreground">
-        ⚠️ <em>Known gap:</em> a separate <code>ghcr.io/sunes26/spanlens-web</code> image is
-        planned but not yet published. Earlier versions of these docs claimed it existed — that
-        was aspirational, not reality.
-      </p>
 
       <h2 id="backups">Backups</h2>
       <p>
@@ -257,8 +304,10 @@ cd Spanlens && git pull && supabase db push`}</CodeBlock>
           <code>spanlens-migrate</code> tool is a post-launch priority.
         </li>
         <li>
-          <strong>No <code>spanlens-web</code> Docker image yet.</strong> Use the hosted
-          dashboard or run from source.
+          <strong>No published <code>ghcr.io/sunes26/spanlens-web</code> image yet.</strong> The
+          dashboard Dockerfile is in the repo — build it yourself via{' '}
+          <code>docker compose build</code> from the repo root. A pre-built image is on the
+          roadmap.
         </li>
         <li>
           <strong>Operational tooling is minimal.</strong> No built-in monitoring, no migration

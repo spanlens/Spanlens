@@ -424,6 +424,26 @@ with client.start_trace("multi-agent-workflow") as trace:
         span_b.end(output=result_b)`}
       />
 
+      <h2 id="flush">Graceful shutdown — <code>client.flush()</code></h2>
+      <p>
+        Ingest calls run in the background. In short-lived processes — scripts, one-shot jobs,
+        serverless cold starts — the process can exit before all POSTs complete. Call{' '}
+        <code>flush()</code> before exit to drain them:
+      </p>
+      <CodeBlock language="ts">{`const client = new SpanlensClient({ apiKey: process.env.SPANLENS_API_KEY! })
+
+// ... your agent logic ...
+
+await client.flush()   // resolves when all in-flight ingest calls have settled
+process.exit(0)`}</CodeBlock>
+      <p>
+        <code>flush()</code> uses <code>Promise.allSettled</code> internally — it resolves even if
+        some requests failed, so a network error won&apos;t hang the process. Failed writes are
+        silently dropped (or forwarded to your <code>onError</code> hook if set). Transient
+        failures are retried up to 3 times with exponential back-off (200 ms → 400 ms → 800 ms)
+        before giving up.
+      </p>
+
       <h2 id="non-blocking">Non-blocking by design</h2>
       <p>
         Both SDKs do the actual ingest HTTP calls in the background — the TypeScript SDK uses the
