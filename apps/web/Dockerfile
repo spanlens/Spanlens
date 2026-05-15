@@ -35,9 +35,12 @@ WORKDIR /repo
 RUN corepack enable && corepack prepare pnpm@10.33.0 --activate
 
 # NEXT_PUBLIC_* vars are statically inlined into the client bundle at build
-# time by Next.js — they must be present as build ARGs, not just runtime env.
-ARG NEXT_PUBLIC_SUPABASE_URL
-ARG NEXT_PUBLIC_SUPABASE_ANON_KEY
+# time by Next.js. For the pre-built GHCR image we compile in placeholder
+# strings that docker-entrypoint.sh replaces at container startup with the
+# real values from env. Pass real values here only when building locally
+# (docker compose up --build) — the docker-compose.yml does this already.
+ARG NEXT_PUBLIC_SUPABASE_URL=__PLACEHOLDER_SUPABASE_URL__
+ARG NEXT_PUBLIC_SUPABASE_ANON_KEY=__PLACEHOLDER_SUPABASE_ANON_KEY__
 # API_URL default matches the docker-compose service name "server".
 ARG API_URL=http://server:3001
 
@@ -87,12 +90,15 @@ COPY --from=builder --chown=nextjs:nodejs /repo/apps/web/public ./apps/web/publi
 # (Only packages reachable via --filter web are present in this store.)
 COPY --from=builder --chown=nextjs:nodejs /repo/node_modules/.pnpm /node_modules/.pnpm
 
+COPY --chown=nextjs:nodejs apps/web/docker-entrypoint.sh ./
+RUN chmod +x docker-entrypoint.sh
+
 USER nextjs
 EXPOSE 3000
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \
   CMD wget --quiet --spider http://localhost:3000/ || exit 1
 
-# Next.js standalone puts server.js at the root of the standalone output,
-# regardless of the monorepo nesting depth.
-CMD ["node", "server.js"]
+# docker-entrypoint.sh patches placeholder NEXT_PUBLIC_* strings in the
+# compiled bundle with the real values from env, then starts the server.
+CMD ["sh", "docker-entrypoint.sh"]
