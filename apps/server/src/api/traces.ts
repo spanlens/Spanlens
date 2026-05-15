@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { authJwt, type JwtContext } from '../middleware/authJwt.js'
 import { supabaseAdmin } from '../lib/db.js'
 import { computeCriticalPath } from '../lib/critical-path.js'
+import { parsePageLimit } from '../lib/params.js'
 
 export const tracesRouter = new Hono<JwtContext>()
 
@@ -17,9 +18,7 @@ tracesRouter.get('/', async (c) => {
   const status = c.req.query('status')
   const from = c.req.query('from')
   const to = c.req.query('to')
-  const page = Math.max(1, parseInt(c.req.query('page') ?? '1', 10))
-  const limit = Math.min(100, Math.max(1, parseInt(c.req.query('limit') ?? '50', 10)))
-  const offset = (page - 1) * limit
+  const { page, limit, offset } = parsePageLimit(c.req.query('page'), c.req.query('limit'))
 
   let query = supabaseAdmin
     .from('traces')

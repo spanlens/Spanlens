@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { authJwt, type JwtContext } from '../middleware/authJwt.js'
 import { supabaseAdmin } from '../lib/db.js'
+import { parseClampedFloat } from '../lib/params.js'
 
 /**
  * Stats endpoints — SQL-aggregated server-side.
@@ -158,8 +159,7 @@ statsRouter.get('/models', async (c) => {
   const orgId = c.get('orgId')
   if (!orgId) return c.json({ error: 'Organization not found' }, 404)
 
-  const hoursRaw = Number(c.req.query('hours'))
-  const hours = Number.isFinite(hoursRaw) && hoursRaw > 0 ? Math.min(hoursRaw, 24 * 30) : 24
+  const hours = parseClampedFloat(c.req.query('hours'), 24, 0.001, 24 * 30)
   const projectId = c.req.query('projectId')
   const fromIso = new Date(Date.now() - hours * 3_600_000).toISOString()
 
@@ -335,8 +335,7 @@ statsRouter.get('/latency', async (c) => {
   const orgId = c.get('orgId')
   if (!orgId) return c.json({ error: 'Organization not found' }, 404)
 
-  const hoursRaw = Number(c.req.query('hours'))
-  const hours = Number.isFinite(hoursRaw) && hoursRaw > 0 ? Math.min(hoursRaw, 24 * 30) : 24
+  const hours = parseClampedFloat(c.req.query('hours'), 24, 0.001, 24 * 30)
   const sinceIso = new Date(Date.now() - hours * 3_600_000).toISOString()
 
   const { data, error } = await supabaseAdmin
