@@ -3,7 +3,7 @@ import { CodeBlock } from '../../_components/code-block'
 export const metadata = {
   title: 'Experiments · Spanlens Docs',
   description:
-    '오프라인 side-by-side 비교 — dataset의 입력을 두 prompt 버전으로 실행해 출력·점수·비용을 직접 비교합니다.',
+    'Offline side-by-side comparison — run a dataset against two prompt versions and compare outputs, scores, and cost without touching production traffic.',
 }
 
 export default function ExperimentsDocs() {
@@ -11,133 +11,138 @@ export default function ExperimentsDocs() {
     <div>
       <h1>Experiments</h1>
       <p className="lead">
-        dataset의 각 입력을 <strong>두 prompt 버전</strong>으로 실행해 출력 텍스트를 단어 단위
-        diff로 비교하고, evaluator가 있으면 양쪽 점수까지 매깁니다. 프로덕션 트래픽에 영향 없이
-        &quot;v2가 정말 v3보다 나은가&quot;에 답할 수 있습니다.
+        Run each input in a dataset through <strong>two prompt versions</strong>, compare outputs
+        with a word-level diff, and optionally score both sides with an evaluator. Answer
+        &quot;is v3 actually better than v2?&quot; in minutes, with no impact on production traffic.
       </p>
 
-      <h2>A/B(Prompts) vs Experiments</h2>
+      <h2>A/B (Prompts) vs Experiments</h2>
       <p>
-        Spanlens에는 &quot;실험&quot;이라는 단어가 두 곳에 등장합니다. 헷갈리지 않도록 명확히
-        구분하세요:
+        Spanlens has two places where the word &quot;experiment&quot; appears. They serve
+        different purposes:
       </p>
       <div className="overflow-x-auto">
         <table>
           <thead>
             <tr>
               <th></th>
-              <th>A/B (Prompts 탭 내부)</th>
-              <th>Experiments (이 탭)</th>
+              <th>A/B (inside Prompts tab)</th>
+              <th>Experiments (this page)</th>
             </tr>
           </thead>
           <tbody>
             <tr>
-              <td>데이터</td>
-              <td>프로덕션 트래픽</td>
-              <td>오프라인 dataset</td>
+              <td>Data</td>
+              <td>Live production traffic</td>
+              <td>Offline dataset</td>
             </tr>
             <tr>
-              <td>시점</td>
-              <td>실시간, 실제 사용자 노출</td>
-              <td>즉시 실행, 사용자 노출 없음</td>
+              <td>Timing</td>
+              <td>Real-time (days to weeks)</td>
+              <td>Runs immediately (minutes)</td>
             </tr>
             <tr>
-              <td>측정</td>
-              <td>통계적 유의성 (Welch&apos;s t-test)</td>
-              <td>출력 텍스트 직접 비교 + 점수</td>
+              <td>Measurement</td>
+              <td>Statistical significance (Welch&apos;s t-test)</td>
+              <td>Direct output comparison + scores</td>
             </tr>
             <tr>
-              <td>위험</td>
-              <td>나쁜 버전이 사용자에게 감</td>
-              <td>없음</td>
+              <td>Risk</td>
+              <td>A bad version reaches real users</td>
+              <td>None</td>
             </tr>
             <tr>
-              <td>비용 예측</td>
-              <td>어려움 (며칠 운영)</td>
-              <td>명확 (items × 2 + judge × 2)</td>
+              <td>Cost predictability</td>
+              <td>Hard (days of traffic)</td>
+              <td>Exact (items × 2 + judge × 2)</td>
             </tr>
           </tbody>
         </table>
       </div>
       <p>
-        보완 관계입니다: <strong>Experiments로 사전 검증 → A/B로 프로덕션 검증</strong>.
+        They are complementary:{' '}
+        <strong>use Experiments to pre-validate → use A/B to confirm in production</strong>.
       </p>
 
-      <h2>실행 흐름</h2>
+      <h2>Run flow</h2>
       <ol>
         <li>
-          <a href="/experiments">/experiments</a>에서 <strong>New experiment</strong> 클릭
+          Go to <a href="/experiments">/experiments</a> and click <strong>New experiment</strong>.
         </li>
         <li>
-          name → prompt → Version A (control) / Version B (challenger) → dataset → optional
-          evaluator → run provider / model 선택
+          Choose name → prompt → Version A (control) / Version B (challenger) → dataset →
+          optional evaluator → run provider / model.
         </li>
         <li>
-          서버가 dataset의 각 item에 대해 양쪽 버전을 <em>같은 모델</em>로 병렬 실행 (concurrency 3)
+          The server runs both versions against each dataset item using the same model
+          (concurrency 3).
         </li>
         <li>
-          evaluator가 지정됐다면 양쪽 응답을 LLM judge로 채점
+          If an evaluator is specified, both outputs are scored by the LLM judge.
         </li>
         <li>
-          UI에 결과: KPI 카드 (avg_A, avg_B, Δ, total_cost) + 결과 row 펼치기 → 단어 단위 diff
-          하이라이트
+          Results appear as: KPI cards (avg_A, avg_B, Δ, total_cost) + expandable rows with
+          word-level diff highlighting.
         </li>
       </ol>
 
-      <h2>단어 단위 diff 하이라이트</h2>
-      <p>각 결과 row를 펼치면 양쪽 output이 나란히 보이고, 차이가 색으로 표시됩니다.</p>
+      <h2>Word-level diff highlighting</h2>
+      <p>Expanding a result row shows both outputs side by side, with differences color-coded.</p>
       <ul>
-        <li><strong>빨강</strong> — A에는 있는데 B에는 없는 단어</li>
-        <li><strong>초록</strong> — B에는 있는데 A에는 없는 단어</li>
-        <li>같은 단어는 색 없음</li>
+        <li><strong>Red</strong> — words present in A but not in B</li>
+        <li><strong>Green</strong> — words present in B but not in A</li>
+        <li>Identical words have no highlight</li>
       </ul>
       <p>
-        간단한 token-level 비교라 의미 단위는 아니지만, 어느 부분이 달라졌는지 즉시 보입니다.
+        This is a simple token-level comparison rather than a semantic diff, but it immediately
+        shows which parts of the output changed.
       </p>
 
-      <h2>비용 가시화</h2>
+      <h2>Cost visibility</h2>
       <p>
-        <strong>사용자의 provider key로 청구</strong>됩니다 (Spanlens 부담 없음). 대략:
+        All LLM calls are <strong>billed to your provider key</strong> (Spanlens does not cover
+        them). Approximate breakdown:
       </p>
       <ul>
-        <li>Prompt 실행: <code>dataset items × 2</code> (양쪽 arm)</li>
-        <li>Judge 호출(있는 경우): <code>+ dataset items × 2</code></li>
-        <li>총 호출 수 = <code>items × 2 × (evaluator 있으면 2)</code></li>
+        <li>Prompt runs: <code>dataset items × 2</code> (one per arm)</li>
+        <li>Judge calls (if evaluator set): <code>+ dataset items × 2</code></li>
+        <li>Total calls = <code>items × 2 × (2 if evaluator, else 1)</code></li>
       </ul>
       <p>
-        예: 50개 dataset × evaluator 사용 → 50×4 = 200 LLM 호출. gpt-4o-mini 기준 약 $0.1 미만.
+        Example: 50-item dataset with an evaluator → 50×4 = 200 LLM calls. With gpt-4o-mini,
+        roughly under $0.10.
       </p>
-      <p>안전장치: dataset items <strong>최대 200건 hard cap</strong>.</p>
+      <p>Hard cap: dataset items limited to <strong>200 per experiment</strong>.</p>
 
       <h2>API</h2>
       <table>
         <thead>
           <tr>
             <th>Method + Path</th>
-            <th>설명</th>
+            <th>Description</th>
           </tr>
         </thead>
         <tbody>
           <tr>
             <td><code>POST /api/v1/experiments</code></td>
-            <td>생성 + 백그라운드 실행 (즉시 202)</td>
+            <td>Create and start in background (returns 202 immediately)</td>
           </tr>
           <tr>
             <td><code>GET /api/v1/experiments?promptName=...</code></td>
-            <td>목록 조회 (max 50)</td>
+            <td>List experiments (max 50)</td>
           </tr>
           <tr>
             <td><code>GET /api/v1/experiments/:id</code></td>
-            <td>한 experiment의 상태/집계 (pending/running 동안 폴링)</td>
+            <td>Status and aggregated scores (poll while pending/running)</td>
           </tr>
           <tr>
             <td><code>GET /api/v1/experiments/:id/results</code></td>
-            <td>item별 양쪽 결과 + dataset_items 조인</td>
+            <td>Per-item results for both arms with dataset_items joined</td>
           </tr>
         </tbody>
       </table>
 
-      <h3>예시</h3>
+      <h3>Example</h3>
       <CodeBlock language="bash">{`curl https://spanlens-server.vercel.app/api/v1/experiments \\
   -H "Authorization: Bearer $SPANLENS_JWT" \\
   -H "Content-Type: application/json" \\
@@ -152,45 +157,47 @@ export default function ExperimentsDocs() {
     "runModel": "gpt-4o-mini"
   }'`}</CodeBlock>
 
-      <h2>입력 처리 규칙</h2>
+      <h2>Input handling rules</h2>
       <p>
-        dataset_item의 <code>input</code> shape에 따라 prompt 실행 방식이 달라집니다:
+        How the dataset item&apos;s <code>input</code> shape determines what gets sent to the model:
       </p>
       <ul>
         <li>
-          <code>{`{ "variables": {...} }`}</code> — prompt content의 <code>{`{{var}}`}</code>{' '}
-          placeholder를 치환한 결과를 user message로 전달
+          <code>{`{ "variables": {...} }`}</code> — substitutes <code>{`{{var}}`}</code>{' '}
+          placeholders in the prompt content and passes the result as the user message.
         </li>
         <li>
-          <code>{`{ "messages": [...] }`}</code> — 마지막 user 메시지를 추출해 user role로 전달
-          (prompt content는 system role)
+          <code>{`{ "messages": [...] }`}</code> — extracts the last user message and passes it
+          in the user role (prompt content becomes the system role).
         </li>
       </ul>
 
       <h2>Limitations</h2>
       <ul>
         <li>
-          <strong>2-arm 비교만.</strong> 3개 이상 버전 동시 비교는 추후.
+          <strong>Two arms only.</strong> Compare more than two versions by running separate
+          experiments.
         </li>
         <li>
-          <strong>같은 모델로만 비교.</strong> v2/v3 둘 다 같은 <code>run_model</code>로 실행됨.
-          모델까지 다르게 비교하고 싶다면 두 experiment를 따로 돌리세요.
+          <strong>Same model for both arms.</strong> Both versions run with the same{' '}
+          <code>run_model</code>. To compare different models, run two separate experiments.
         </li>
         <li>
-          <strong>실행 중단 / 재개 없음.</strong> 시작하면 끝까지 가거나 실패 처리.
+          <strong>No pause / resume.</strong> Once started, the experiment runs to completion or
+          fails.
         </li>
         <li>
-          <strong>200건 hard cap.</strong> 대규모 회귀 테스트는 dataset을 쪼개서 여러 experiment로
-          실행.
+          <strong>200-item hard cap.</strong> For large-scale regression testing, split the
+          dataset across multiple experiments.
         </li>
       </ul>
 
       <hr />
       <p className="text-sm text-muted-foreground">
-        관련: <a href="/docs/features/datasets">Datasets</a>,{' '}
+        Related: <a href="/docs/features/datasets">Datasets</a>,{' '}
         <a href="/docs/features/evals">Evals</a>,{' '}
-        <a href="/docs/features/prompts">Prompts</a> (A/B 라우팅 비교),{' '}
-        <a href="/experiments">/experiments</a> 대시보드.
+        <a href="/docs/features/prompts">Prompts</a> (A/B live traffic routing),{' '}
+        <a href="/experiments">/experiments</a> dashboard.
       </p>
     </div>
   )
