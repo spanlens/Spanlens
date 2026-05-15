@@ -1,7 +1,7 @@
 import { Hono, type Context } from 'hono'
 import { authJwt, type JwtContext } from '../middleware/authJwt.js'
 import { requireRole } from '../middleware/requireRole.js'
-import { detectAnomalies } from '../lib/anomaly.js'
+import { detectAnomalies, fetchContributingFactors } from '../lib/anomaly.js'
 import { getAnomalyHistory } from '../lib/anomaly-snapshot.js'
 import { supabaseAdmin } from '../lib/db.js'
 import { parsePositiveFloat, parseClampedFloat } from '../lib/params.js'
@@ -43,6 +43,10 @@ anomaliesRouter.get('/', async (c) => {
   const sigmaThreshold = parseClampedFloat(c.req.query('sigma'), 3, 1, 10)
   const projectId = c.req.query('projectId')
 
+  const now = Date.now()
+  const obsStart = new Date(now - observationHours * 3_600_000).toISOString()
+  const refStart = new Date(now - referenceHours * 3_600_000).toISOString()
+
   if (projectId) {
     const { data: proj } = await supabaseAdmin
       .from('projects')
@@ -81,9 +85,22 @@ anomaliesRouter.get('/', async (c) => {
     ackMap.set(ackKey(row as AckKey), (row as { acknowledged_at: string }).acknowledged_at)
   }
 
+  // Deduplicate by (provider, model) to avoid redundant DB calls when both
+  // cost and latency anomalies exist for the same model.
+  const uniqueModels = [...new Map(anomalies.map((a) => [`${a.provider}|${a.model}`, a])).values()]
+  const factorsList = await Promise.all(
+    uniqueModels.map((a) =>
+      fetchContributingFactors(orgId, a.provider, a.model, obsStart, refStart, projectId),
+    ),
+  )
+  const factorsMap = new Map(
+    uniqueModels.map((a, i) => [`${a.provider}|${a.model}`, factorsList[i]]),
+  )
+
   const withAcks = anomalies.map((a) => ({
     ...a,
     acknowledgedAt: ackMap.get(ackKey(a)) ?? null,
+    factors: factorsMap.get(`${a.provider}|${a.model}`) ?? null,
   }))
 
   return c.json({
