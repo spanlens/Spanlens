@@ -1564,20 +1564,10 @@ function DestinationsTab() {
         description="Export data to external data warehouses and storage systems."
       />
 
-      <div className="mb-5 border border-accent-border bg-accent-bg rounded-lg px-4 py-3 flex items-start gap-3">
-        <span className="w-5 h-5 rounded-full border border-accent text-accent flex items-center justify-center font-mono text-[10px] shrink-0 mt-0.5">!</span>
-        <div className="text-[12.5px] text-text-muted leading-relaxed">
-          Data export destinations are in beta. Configuration is saved but actual sync runs once the backend is wired up.
-        </div>
-      </div>
-
       <div className="space-y-4">
         {destinations.map((dest) => (
           <Section key={dest.id} title={dest.name} description={dest.description} className="mb-0">
             <div className="px-6 pb-5 space-y-4">
-              <div className="flex items-center gap-3 mt-2">
-                <MonoPill variant="faint">Beta</MonoPill>
-              </div>
               <FormRow label={dest.label}>
                 <div className="flex items-center gap-3 w-full max-w-[460px]">
                   <NativeInput

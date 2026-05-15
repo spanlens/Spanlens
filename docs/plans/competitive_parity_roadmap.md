@@ -1,7 +1,7 @@
 # Competitive Parity Roadmap
 
 > **목적**: Langfuse / Helicone 대비 Spanlens가 빠지거나 수준이 낮은 13개 항목을 모두 채우기 위한 개발 계획.
-> **기준일**: 2026-05-14 · **owner**: TBD
+> **기준일**: 2026-05-14 → **최종 업데이트**: 2026-05-15 · **owner**: TBD
 >
 > 우선순위는 "유저 가치 ÷ 구현 비용" 기준이며, 의존성과 인프라 부담을 함께 고려해 정렬했다.
 > 각 항목은 _현재 상태 → 목표 상태 → 단계별 작업 → DB/API/UI 변경 → 추정 공수 → 의존성_ 의 6칸 구조를 유지한다.
@@ -10,21 +10,21 @@
 
 ## 0. 우선순위 매트릭스
 
-| # | 기능 | 영향도 | 구현 난이도 | 의존성 | Phase |
-|---|------|--------|-------------|--------|-------|
-| 1 | User analytics 전용 뷰 | 🔥 High | 🟢 Low | — | **P1** |
-| 2 | Session 전용 뷰 | 🔥 High | 🟢 Low | requests.session_id (DONE) | **P1** |
-| 3 | Annotation 다중 reviewer 평균/일치도 | 🟡 Mid | 🟢 Low | IAA(DONE) | **P1** |
-| 4 | Cache 토큰 별도 비용 계산 | 🔥 High | 🟢 Low | — | **P1** |
-| 5 | Heuristic Evaluator 타입 | 🟡 Mid | 🟡 Mid | evals(DONE) | **P2** |
-| 6 | Experiments N-arm 확장 | 🟡 Mid | 🟡 Mid | experiments(DONE) | **P2** |
-| 7 | Playground 멀티 모델 비교 | 🟡 Mid | 🟡 Mid | playground(DONE) | **P2** |
-| 8 | 스트리밍 응답 본문 캡처 | 🟡 Mid | 🟡 Mid | parser(DONE) | **P2** |
-| 9 | Full-text 본문 검색 | 🟡 Mid | 🔴 High | pg_trgm | **P3** |
-| 10 | 10KB body cap → S3 풀바디 | 🟡 Mid | 🔴 High | R2/S3 인프라 | **P3** |
-| 11 | OTel Export (outbound) | 🟢 Low | 🟡 Mid | otlp(DONE) | **P3** |
-| 12 | Custom Dashboard (위젯 빌더) | 🟢 Low | 🔴 High | stats API | **P4** |
-| 13 | Multimodal Tracing | 🟢 Low | 🔴 High | S3 + parser 확장 | **P4** |
+| # | 기능 | 영향도 | 구현 난이도 | 의존성 | Phase | 상태 |
+|---|------|--------|-------------|--------|-------|------|
+| 1 | User analytics 전용 뷰 | 🔥 High | 🟢 Low | — | **P1** | ✅ 완료 (2026-05-14) |
+| 2 | Session 전용 뷰 | 🔥 High | 🟢 Low | requests.session_id (DONE) | **P1** | ⏳ 진행 예정 |
+| 3 | Annotation 다중 reviewer 평균/일치도 | 🟡 Mid | 🟢 Low | IAA(DONE) | **P1** | ⏳ 진행 예정 |
+| 4 | Cache 토큰 별도 비용 계산 | 🔥 High | 🟢 Low | — | **P1** | ✅ 완료 (2026-05-14) |
+| 5 | Heuristic Evaluator 타입 | 🟡 Mid | 🟡 Mid | evals(DONE) | **P2** | ⏳ 진행 예정 |
+| 6 | Experiments N-arm 확장 | 🟡 Mid | 🟡 Mid | experiments(DONE) | **P2** | ⏳ 진행 예정 |
+| 7 | Playground 멀티 모델 비교 | 🟡 Mid | 🟡 Mid | playground(DONE) | **P2** | 🔶 부분 완료 — Savings 페이지에 Compare 버튼 추가 (현재 모델 vs 추천 모델 side-by-side 실행). 독립 Experiments 탭은 별도 P2 항목 |
+| 8 | 스트리밍 응답 본문 캡처 | 🟡 Mid | 🟡 Mid | parser(DONE) | **P2** | ✅ 완료 (2026-05-14) |
+| 9 | Full-text 본문 검색 | 🟡 Mid | 🔴 High | pg_trgm | **P3** | ⏳ 진행 예정 |
+| 10 | 10KB body cap → S3 풀바디 | 🟡 Mid | 🔴 High | R2/S3 인프라 | **P3** | ⏳ 진행 예정 |
+| 11 | OTel Export (outbound) | 🟢 Low | 🟡 Mid | otlp(DONE) | **P3** | ⏳ 진행 예정 |
+| 12 | Custom Dashboard (위젯 빌더) | 🟢 Low | 🔴 High | stats API | **P4** | ⏳ 진행 예정 |
+| 13 | Multimodal Tracing | 🟢 Low | 🔴 High | S3 + parser 확장 | **P4** | ⏳ 진행 예정 |
 
 > **Phase 구분**
 > - **P1 (1주차)** — 기존 데이터로 신 화면만 추가하면 끝나는 quick win
