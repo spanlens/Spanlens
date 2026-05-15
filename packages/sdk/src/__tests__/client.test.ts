@@ -6,8 +6,12 @@ describe('SpanlensClient', () => {
   let fetchMock: ReturnType<typeof vi.fn>
 
   beforeEach(() => {
-    fetchMock = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ success: true }), { status: 201 }),
+    // Use mockImplementation (not mockResolvedValue) so each call gets a fresh
+    // Response instance. A shared Response has its body consumed after the first
+    // res.text() call, causing all subsequent calls to throw "body already used",
+    // which triggers the transport retry logic and breaks idempotency assertions.
+    fetchMock = vi.fn().mockImplementation(() =>
+      Promise.resolve(new Response(JSON.stringify({ success: true }), { status: 201 })),
     )
     vi.stubGlobal('fetch', fetchMock)
   })
