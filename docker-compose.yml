@@ -23,12 +23,16 @@
 
 services:
   web:
+    # Default: pull pre-built image from GHCR (no build required).
+    # docker-entrypoint.sh patches NEXT_PUBLIC_* placeholders at startup.
+    # To build locally instead: docker compose up -d --build
+    image: ghcr.io/sunes26/spanlens-web:latest
     build:
       context: .
       dockerfile: apps/web/Dockerfile
-      # NEXT_PUBLIC_* vars must be passed at build time — Next.js bakes them
-      # into the client bundle statically. Pass them again as runtime env below
-      # so middleware (Edge runtime) and RSC can also read them via process.env.
+      # Build args override the placeholder defaults so the bundle already
+      # contains real values (entrypoint sed is then a no-op). Omit args
+      # to rely on entrypoint patching instead (works either way).
       args:
         NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
         NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY}
@@ -52,6 +56,9 @@ services:
       retries: 3
 
   server:
+    # Default: pull pre-built image from GHCR.
+    # To build locally instead: docker compose up -d --build
+    image: ghcr.io/sunes26/spanlens-server:latest
     build:
       context: .
       dockerfile: apps/server/Dockerfile
