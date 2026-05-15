@@ -194,62 +194,100 @@ const res = await observeAnthropic(trace, 'reason', (headers) =>
 await trace.end()
 ```
 
-### LangChain (JS)
+### LangChain JS (v0.3.0+)
 
-LangChain calls go through the underlying OpenAI/Anthropic client — point that
-client at the Spanlens proxy and wrap the chain invocation in `observe()`:
+`@spanlens/sdk/langchain` ships a drop-in callback handler. Pass it to the
+`callbacks` option of any LangChain chain, LLM, or `RunnableConfig` — no
+proxy URL needed, no imports from `@langchain/core` required:
 
 ```ts
-import { ChatOpenAI } from '@langchain/openai'
-import { SpanlensClient, observe } from '@spanlens/sdk'
+import { SpanlensClient } from '@spanlens/sdk'
+import { createSpanlensCallbackHandler } from '@spanlens/sdk/langchain'
 
-const spanlens = new SpanlensClient({ apiKey: process.env.SPANLENS_API_KEY! })
+const client = new SpanlensClient({ apiKey: process.env.SPANLENS_API_KEY! })
+const handler = createSpanlensCallbackHandler({ client })
 
-const llm = new ChatOpenAI({
-  apiKey: process.env.SPANLENS_API_KEY!,
-  configuration: {
-    baseURL: 'https://spanlens-server.vercel.app/proxy/openai/v1',
-  },
-})
+// Works with any chain, LLM, or tool
+const result = await chain.invoke({ input: 'Hello' }, { callbacks: [handler] })
+// → prompt/completion tokens, model name, latency automatically recorded
+```
 
-const trace = spanlens.startTrace({ name: 'langchain_qa' })
+Attach to an existing trace to nest spans under your workflow:
 
-// LangChain's internal fetch won't carry our trace headers, so we group
-// the whole chain under one span for dashboard visibility.
-const answer = await observe(trace, { name: 'chain.invoke', spanType: 'llm' }, async () => {
-  return llm.invoke('What is Spanlens?')
-})
+```ts
+const trace = client.startTrace({ name: 'my_workflow' })
+const handler = createSpanlensCallbackHandler({ client, trace })
+
+await chain.invoke({ input: '...' }, { callbacks: [handler] })
+await someOtherStep()
 
 await trace.end()
 ```
 
-### LlamaIndex (TS)
+### Vercel AI SDK (v0.3.0+)
+
+`@spanlens/sdk/vercel-ai` provides `createSpanlensTracker()` whose
+`onStepFinish` and `onFinish` callbacks spread directly into `generateText`,
+`streamText`, `generateObject`, and `streamObject` options:
 
 ```ts
-import { OpenAI, VectorStoreIndex, SimpleDirectoryReader } from 'llamaindex'
-import { SpanlensClient, observe } from '@spanlens/sdk'
+import { generateText } from 'ai'
+import { openai } from '@ai-sdk/openai'
+import { SpanlensClient } from '@spanlens/sdk'
+import { createSpanlensTracker } from '@spanlens/sdk/vercel-ai'
 
-const spanlens = new SpanlensClient({ apiKey: process.env.SPANLENS_API_KEY! })
+const client = new SpanlensClient({ apiKey: process.env.SPANLENS_API_KEY! })
+const tracker = createSpanlensTracker({ client, modelName: 'gpt-4o' })
 
-const llm = new OpenAI({
-  apiKey: process.env.SPANLENS_API_KEY!,
-  additionalSessionOptions: {
-    baseURL: 'https://spanlens-server.vercel.app/proxy/openai/v1',
-  },
+const result = await generateText({
+  model: openai('gpt-4o'),
+  messages: [{ role: 'user', content: 'Hello!' }],
+  onStepFinish: tracker.onStepFinish,  // optional — captures multi-step tool calls
+  onFinish: tracker.onFinish,          // required  — records final usage
 })
+```
 
-const trace = spanlens.startTrace({ name: 'rag_query' })
+Attach to an existing trace:
 
-const retrieval = await observe(trace, { name: 'retrieve', spanType: 'retrieval' }, async () => {
-  const docs = await new SimpleDirectoryReader().loadData({ directoryPath: './docs' })
-  return VectorStoreIndex.fromDocuments(docs)
-})
+```ts
+const trace = client.startTrace({ name: 'ai_pipeline' })
+const tracker = createSpanlensTracker({ client, trace, modelName: 'gpt-4o' })
 
-const answer = await observe(trace, { name: 'generate', spanType: 'llm' }, async () => {
-  const engine = retrieval.asQueryEngine({ llm })
-  return engine.query({ query: 'What is Spanlens?' })
-})
+await generateText({ ..., onFinish: tracker.onFinish })
+await trace.end()
+```
 
+### LlamaIndex TS (v0.3.0+)
+
+`@spanlens/sdk/llamaindex` hooks directly into LlamaIndex's
+`Settings.callbackManager` — every LLM call is automatically traced:
+
+```ts
+import { Settings } from 'llamaindex'
+import { SpanlensClient } from '@spanlens/sdk'
+import { registerSpanlensCallbacks } from '@spanlens/sdk/llamaindex'
+
+const client = new SpanlensClient({ apiKey: process.env.SPANLENS_API_KEY! })
+
+// Register once at app startup
+const unregister = registerSpanlensCallbacks(Settings, { client })
+
+// All subsequent LlamaIndex LLM calls are now traced automatically
+const response = await queryEngine.query({ query: 'What is Spanlens?' })
+
+// Clean up when done (e.g. in tests or on process exit)
+unregister()
+```
+
+Attach to an existing trace for RAG pipelines:
+
+```ts
+const trace = client.startTrace({ name: 'rag_query' })
+const unregister = registerSpanlensCallbacks(Settings, { client, trace })
+
+await queryEngine.query({ query: '...' })
+
+unregister()
 await trace.end()
 ```
 
