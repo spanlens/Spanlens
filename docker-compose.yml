@@ -1,0 +1,82 @@
+# Production docker-compose for Spanlens self-hosted deployment.
+#
+# Prerequisites:
+#   1. Create a .env file in this directory with the required variables below.
+#   2. Point SUPABASE_URL / *_KEY at your Supabase project (cloud or self-hosted).
+#   3. Run: docker compose up -d --build
+#
+# Required .env variables:
+#   NEXT_PUBLIC_SUPABASE_URL      e.g. https://abc.supabase.co
+#   NEXT_PUBLIC_SUPABASE_ANON_KEY eyJ...
+#   SUPABASE_URL                  same as NEXT_PUBLIC_SUPABASE_URL (used by server)
+#   SUPABASE_ANON_KEY             same as NEXT_PUBLIC_SUPABASE_ANON_KEY
+#   SUPABASE_SERVICE_ROLE_KEY     service_role key (never expose to browser)
+#   ENCRYPTION_KEY                32-byte base64 string (see apps/server/.env.example)
+#   CRON_SECRET                   random secret for cron endpoint auth
+#
+# Optional .env variables:
+#   WEB_URL                       public URL of the web app (for invite emails)
+#   RESEND_API_KEY                for transactional email
+#   RESEND_FROM                   sender address (e.g. Spanlens <no-reply@yourdomain.com>)
+#   PADDLE_API_KEY / PADDLE_NOTIFICATION_SECRET / PADDLE_ENVIRONMENT
+#   PADDLE_PRICE_STARTER / PADDLE_PRICE_TEAM / PADDLE_PRICE_ENTERPRISE
+
+services:
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      # NEXT_PUBLIC_* vars must be passed at build time — Next.js bakes them
+      # into the client bundle statically. Pass them again as runtime env below
+      # so middleware (Edge runtime) and RSC can also read them via process.env.
+      args:
+        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY}
+        API_URL: http://server:3001
+    ports:
+      - '3000:3000'
+    environment:
+      API_URL: http://server:3001
+      NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY}
+    depends_on:
+      server:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ['CMD-SHELL', 'wget --quiet --spider http://localhost:3000/ || exit 1']
+      interval: 30s
+      timeout: 10s
+      start-period: 20s
+      retries: 3
+
+  server:
+    build:
+      context: .
+      dockerfile: apps/server/Dockerfile
+    ports:
+      - '3001:3001'
+    environment:
+      PORT: 3001
+      SUPABASE_URL: ${SUPABASE_URL}
+      SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      CRON_SECRET: ${CRON_SECRET}
+      WEB_URL: ${WEB_URL:-http://localhost:3000}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      RESEND_FROM: ${RESEND_FROM:-}
+      PADDLE_API_KEY: ${PADDLE_API_KEY:-}
+      PADDLE_NOTIFICATION_SECRET: ${PADDLE_NOTIFICATION_SECRET:-}
+      PADDLE_ENVIRONMENT: ${PADDLE_ENVIRONMENT:-sandbox}
+      PADDLE_PRICE_STARTER: ${PADDLE_PRICE_STARTER:-}
+      PADDLE_PRICE_TEAM: ${PADDLE_PRICE_TEAM:-}
+      PADDLE_PRICE_ENTERPRISE: ${PADDLE_PRICE_ENTERPRISE:-}
+    restart: unless-stopped
+    healthcheck:
+      test: ['CMD-SHELL', 'wget --quiet --spider http://localhost:3001/health || exit 1']
+      interval: 30s
+      timeout: 5s
+      start-period: 10s
+      retries: 3

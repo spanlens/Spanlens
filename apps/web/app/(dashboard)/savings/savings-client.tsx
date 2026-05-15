@@ -2,6 +2,8 @@
 import { useState, useEffect } from 'react'
 import { useRecommendations, type ModelRecommendation } from '@/lib/queries/use-recommendations'
 import { usePercentiles } from '@/lib/queries/use-recommendation-percentiles'
+import { usePrompts, usePlaygroundRun, type PlaygroundResult } from '@/lib/queries/use-prompts'
+import { useProviderKeys } from '@/lib/queries/use-provider-keys'
 import { Topbar } from '@/components/layout/topbar'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
@@ -255,6 +257,230 @@ function PercentileGrid({
   )
 }
 
+// ── Playground compare dialog ─────────────────────────────────────────────────
+
+function ResultCard({
+  label,
+  data,
+  error,
+  isPending,
+}: {
+  label: string
+  data: PlaygroundResult | undefined
+  error: Error | null
+  isPending: boolean
+}) {
+  if (isPending) {
+    return (
+      <div className="rounded-lg border border-border bg-bg-elev p-4 space-y-2 animate-pulse">
+        <div className="h-3 w-32 bg-border rounded" />
+        <div className="h-4 w-full bg-border rounded mt-3" />
+        <div className="h-24 bg-border rounded" />
+      </div>
+    )
+  }
+  if (error) {
+    return (
+      <div className="rounded-lg border border-bad/30 bg-bad/5 p-4 space-y-1">
+        <p className="font-mono text-[10px] uppercase tracking-[0.04em] text-text-faint">{label}</p>
+        <p className="font-mono text-[11px] text-bad">{error.message}</p>
+      </div>
+    )
+  }
+  if (!data) return null
+  return (
+    <div className="rounded-lg border border-border bg-bg-elev p-4 space-y-3">
+      <p className="font-mono text-[10px] uppercase tracking-[0.04em] text-text-faint truncate">{label}</p>
+      <div className="grid grid-cols-3 gap-2">
+        {[
+          { label: 'Cost', value: data.costUsd != null ? `$${data.costUsd.toFixed(5)}` : '—' },
+          { label: 'Latency', value: `${data.latencyMs}ms` },
+          { label: 'Tokens', value: data.totalTokens.toLocaleString() },
+        ].map((m) => (
+          <div key={m.label}>
+            <div className="font-mono text-[10px] text-text-faint">{m.label}</div>
+            <div className="font-mono text-[12px] font-medium text-text">{m.value}</div>
+          </div>
+        ))}
+      </div>
+      <div>
+        <div className="font-mono text-[10px] text-text-faint uppercase mb-1.5">Response</div>
+        <pre className="font-mono text-[11px] text-text bg-bg rounded p-2.5 max-h-44 overflow-y-auto whitespace-pre-wrap border border-border leading-relaxed">
+          {data.responseText || '(empty)'}
+        </pre>
+      </div>
+    </div>
+  )
+}
+
+function ComparePlaygroundDialog({
+  rec,
+  onClose,
+}: {
+  rec: ModelRecommendation
+  onClose: () => void
+}) {
+  const { data: prompts = [], isLoading: promptsLoading } = usePrompts()
+  const { data: allKeys = [], isLoading: keysLoading } = useProviderKeys()
+
+  const [versionId, setVersionId]         = useState('')
+  const [currentKeyId, setCurrentKeyId]   = useState('')
+  const [suggestedKeyId, setSuggestedKeyId] = useState('')
+
+  const currentMutation   = usePlaygroundRun()
+  const suggestedMutation = usePlaygroundRun()
+
+  const currentKeys  = allKeys.filter((k) => k.provider === rec.currentProvider  && k.is_active)
+  const suggestedKeys = allKeys.filter((k) => k.provider === rec.suggestedProvider && k.is_active)
+
+  const isRunning = currentMutation.isPending || suggestedMutation.isPending
+  const hasResults = currentMutation.data !== undefined || suggestedMutation.data !== undefined
+
+  const canRun = !!versionId && !!currentKeyId && !!suggestedKeyId && !isRunning
+
+  function handleRun() {
+    if (!canRun) return
+    void Promise.all([
+      currentMutation.mutateAsync({
+        promptVersionId: versionId,
+        providerKeyId:   currentKeyId,
+        model:           rec.currentModel,
+      }),
+      suggestedMutation.mutateAsync({
+        promptVersionId: versionId,
+        providerKeyId:   suggestedKeyId,
+        model:           rec.suggestedModel,
+      }),
+    ])
+  }
+
+  const selectClass =
+    'w-full font-mono text-[11.5px] text-text px-3 py-2 border border-border rounded-[5px] bg-bg focus:outline-none focus:border-border-strong appearance-none cursor-pointer disabled:opacity-50'
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-3xl max-h-[88vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Compare in playground</DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-4 mt-1">
+          <div className="font-mono text-[12px] flex items-center gap-2 flex-wrap">
+            <span className="text-text-faint line-through">{rec.currentProvider} / {rec.currentModel}</span>
+            <span className="text-text-faint">→</span>
+            <span className="text-text">{rec.suggestedProvider} / {rec.suggestedModel}</span>
+          </div>
+
+          {/* Prompt version */}
+          <div>
+            <label className="font-mono text-[10px] text-text-faint uppercase tracking-[0.05em] mb-1.5 block">
+              Prompt version
+            </label>
+            <select
+              value={versionId}
+              onChange={(e) => setVersionId(e.target.value)}
+              disabled={promptsLoading}
+              className={selectClass}
+            >
+              <option value="">
+                {promptsLoading ? 'Loading…' : prompts.length === 0 ? 'No prompts — create one first' : 'Select a prompt…'}
+              </option>
+              {prompts.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name} · v{p.version}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Provider key selectors */}
+          <div className="grid grid-cols-2 gap-3">
+            {([
+              { label: `Key · ${rec.currentProvider}`,   keys: currentKeys,   value: currentKeyId,   set: setCurrentKeyId },
+              { label: `Key · ${rec.suggestedProvider}`, keys: suggestedKeys, value: suggestedKeyId, set: setSuggestedKeyId },
+            ] as const).map((col) => (
+              <div key={col.label}>
+                <label className="font-mono text-[10px] text-text-faint uppercase tracking-[0.05em] mb-1.5 block">
+                  {col.label}
+                </label>
+                <select
+                  value={col.value}
+                  onChange={(e) => col.set(e.target.value)}
+                  disabled={keysLoading}
+                  className={selectClass}
+                >
+                  <option value="">
+                    {keysLoading ? 'Loading…' : col.keys.length === 0 ? 'No active keys' : 'Select key…'}
+                  </option>
+                  {col.keys.map((k) => (
+                    <option key={k.id} value={k.id}>{k.name}</option>
+                  ))}
+                </select>
+                {!keysLoading && col.keys.length === 0 && (
+                  <p className="font-mono text-[10.5px] text-bad mt-1">
+                    No active {col.label.split(' · ')[1]} keys found in this org.
+                  </p>
+                )}
+              </div>
+            ))}
+          </div>
+
+          <button
+            type="button"
+            onClick={handleRun}
+            disabled={!canRun}
+            className="w-full font-mono text-[12px] text-text px-4 py-2.5 border border-border rounded-[5px] hover:border-border-strong hover:bg-bg-elev transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            {isRunning ? 'Running…' : 'Run comparison'}
+          </button>
+
+          {hasResults && (
+            <div className="grid grid-cols-2 gap-3">
+              <ResultCard
+                label={`${rec.currentProvider} / ${rec.currentModel}`}
+                data={currentMutation.data}
+                error={currentMutation.error}
+                isPending={currentMutation.isPending}
+              />
+              <ResultCard
+                label={`${rec.suggestedProvider} / ${rec.suggestedModel}`}
+                data={suggestedMutation.data}
+                error={suggestedMutation.error}
+                isPending={suggestedMutation.isPending}
+              />
+            </div>
+          )}
+
+          {hasResults && currentMutation.data && suggestedMutation.data && (() => {
+            const curr = currentMutation.data
+            const sugg = suggestedMutation.data
+            const costDiff = curr.costUsd != null && sugg.costUsd != null
+              ? curr.costUsd - sugg.costUsd : null
+            const latDiff  = sugg.latencyMs - curr.latencyMs
+            return (
+              <div className="rounded-lg border border-border bg-bg-elev p-3 font-mono text-[11px] text-text-muted leading-relaxed">
+                {costDiff !== null && (
+                  <span className={cn('mr-3', costDiff > 0 ? 'text-good' : costDiff < 0 ? 'text-bad' : '')}>
+                    {costDiff > 0
+                      ? `↓ $${costDiff.toFixed(5)} cheaper`
+                      : costDiff < 0
+                      ? `↑ $${Math.abs(costDiff).toFixed(5)} more expensive`
+                      : 'same cost'}
+                  </span>
+                )}
+                <span className={cn(latDiff < 0 ? 'text-good' : latDiff > 0 ? 'text-warn' : '')}>
+                  {latDiff < 0 ? `↓ ${Math.abs(latDiff)}ms faster` : latDiff > 0 ? `↑ ${latDiff}ms slower` : 'same latency'}
+                </span>
+                <span className="ml-1 text-text-faint">(single sample · run multiple times for significance)</span>
+              </div>
+            )
+          })()}
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 // ── Page Client ───────────────────────────────────────────────────────────────
 
 export function SavingsClient() {
@@ -267,6 +493,7 @@ export function SavingsClient() {
   const [showHidden,     setShowHidden]      = useState(false)
   const [showAchieved,   setShowAchieved]    = useState(false)
   const [simRec,         setSimRec]          = useState<ModelRecommendation | null>(null)
+  const [compareRec,     setCompareRec]      = useState<ModelRecommendation | null>(null)
 
   useEffect(() => {
     setDismissed(loadDismissed())
@@ -428,13 +655,22 @@ export function SavingsClient() {
 
         <div className="flex justify-end gap-1.5 flex-wrap">
           {!isAchieved && (
-            <button
-              type="button"
-              onClick={() => setSimRec(r)}
-              className="font-mono text-[10.5px] text-text-muted px-[10px] py-[4px] border border-border rounded-[5px] hover:text-text transition-colors"
-            >
-              Simulate
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={() => setCompareRec(r)}
+                className="font-mono text-[10.5px] text-text-muted px-[10px] py-[4px] border border-border rounded-[5px] hover:text-text transition-colors"
+              >
+                Compare
+              </button>
+              <button
+                type="button"
+                onClick={() => setSimRec(r)}
+                className="font-mono text-[10.5px] text-text-muted px-[10px] py-[4px] border border-border rounded-[5px] hover:text-text transition-colors"
+              >
+                Simulate
+              </button>
+            </>
           )}
           {isHidden ? (
             <button
@@ -721,6 +957,11 @@ export function SavingsClient() {
           </>
         )}
       </div>
+
+      {/* Compare in playground dialog */}
+      {compareRec && (
+        <ComparePlaygroundDialog rec={compareRec} onClose={() => setCompareRec(null)} />
+      )}
 
       {/* Simulate dialog */}
       <Dialog open={simRec !== null} onOpenChange={(open) => !open && setSimRec(null)}>
