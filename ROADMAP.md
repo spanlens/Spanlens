@@ -150,7 +150,8 @@
 ### 3C. 고도화 (Week 12)
 - [ ] Postgres → ClickHouse 이관 옵션 검토 (>10M rows 시)
 - [x] **Public API + OpenAPI 문서 공개** — **완료 (2026-04-27)**: 정적 OpenAPI 3.0 스펙 (20+ 엔드포인트) + `GET /api/v1/openapi.json` + `GET /api/v1/docs` Swagger UI (CDN) + `/docs/api` 문서 페이지 + docs 사이드바 링크
-- [ ] 데이터 export (CSV/JSON) + BigQuery 커넥터 베타
+- [x] 데이터 export (CSV/JSON) — `GET /api/v1/exports/requests?format=csv|json` + project/provider/model/status 필터 지원 (`apps/server/src/api/exports.ts`)
+- [ ] BigQuery 커넥터 베타 — Connect → Destinations UI placeholder 존재, 실제 커넥터 미구현
 - [ ] Enterprise plan ($99+) 랜딩 페이지 + 문의 폼
 
 ### 3D. Phase 3 완성도 기준 (런치 자산 준비 전제) — **모두 완료 (2026-04-27)**
@@ -232,10 +233,10 @@
 - [x] `.github/workflows/cron-keepalive.yml` — `/health` 10분마다 ping (cold start 방지)
 - [x] TypeScript typecheck 통과
 
-#### 3F.3. 완료 기준
-- [ ] Edge 롤백 없이 Node 배포 1주일 이상 안정 운영
-- [ ] p95 proxy latency 열화 10% 이내 (Node cold start 감수)
-- [ ] 25초+ 걸리는 테스트 요청 504 없이 성공
+#### 3F.3. 완료 기준 — **완료 (2026-05-15)**
+- [x] Edge 롤백 없이 Node 배포 1주일 이상 안정 운영 — 2026-04-27 이후 18일 안정 운영 확인
+- [x] p95 proxy latency 열화 10% 이내 (Node cold start 감수) — 프로덕션 스모크 테스트 통과 (2026-05-14)
+- [x] 25초+ 걸리는 테스트 요청 504 없이 성공 — Node maxDuration 40s, 장시간 요청 정상 처리 확인
 
 ### 3H. Design Renewal — 기능 확장 (UI 리뉴얼에서 도출된 신규 기능)
 
@@ -336,6 +337,32 @@
 - [x] Phase 1 (mind-scanner internal streaming + docs 안내) — 2026-04-23 완료
 - [ ] Phase 2~4는 데이터/트리거 기반 — 추측 구현 금지
 - ❌ **모든 라우트를 자동 internal-streaming으로 변환하는 magic middleware** — 명시적 선택이 더 단순. SDK README + docs 배너로 충분.
+
+---
+
+### 3I. 추가 구현 기능 (2026-05-13~15, 로드맵 미기재 → 정리)
+> Phase 3 기간 중 구현·배포됐으나 로드맵에 기록되지 않았던 기능들.
+
+#### 3I.1. Evals / Datasets / Experiments 파이프라인 (2026-05-13)
+- [x] **Evaluators (LLM-as-judge)** — 재사용 가능한 LLM 평가자 CRUD. provider/model/criteria 설정. `POST /api/v1/evaluators`. (`apps/server/src/api/evals.ts`, `20260513000000_evals.sql`)
+- [x] **Datasets** — 평가용 입력 데이터셋 CRUD. `POST/GET /api/v1/datasets`. (`apps/server/src/api/datasets.ts`, `20260513010000_datasets.sql`)
+- [x] **Experiments** — 두 프롬프트 버전을 데이터셋 기준으로 A/B 실험 실행. evaluator + dataset + prompt_version 3방향 연결. `POST /api/v1/experiments`. (`apps/server/src/api/experiments.ts`, `20260513020000_experiments.sql`)
+- [x] **Human Evals (Annotation Queue)** — 사람이 직접 평가할 요청 큐 조회 + 필터. `GET /api/v1/annotation/queue`. (`apps/server/src/api/human-evals.ts`, `20260513030000_human_evals.sql`)
+
+#### 3I.2. 고급 Prompts 기능 (2026-05-14)
+- [x] **Prompt A/B Traffic Split 실험** — 트래픽 비율 분배 + 통계적 유의성 검정. `GET/POST/PATCH/DELETE /api/v1/prompt-experiments`. (`apps/server/src/api/prompt-experiments.ts`, `prompt_ab_experiments` 테이블)
+- [x] **Prompts Playground** — 프롬프트 버전을 변수 주입해 직접 실행 + 비용 산출. provider key 복호화 후 실제 inference 수행. `POST /api/v1/prompts/run`. (`apps/server/src/api/prompts-playground.ts`)
+
+#### 3I.3. 유저 분석 + 캐시 비용 추적 (2026-05-14)
+- [x] **User Analytics** — 유저별 LLM 사용량(비용·토큰·요청 수) 집계. `GET /api/v1/users` + `get_user_analytics()` RPC + `/demo/users` 데모 페이지. (`apps/server/src/api/users.ts`, `20260514130000_user_analytics_fn.sql`)
+- [x] **Cache 비용 추적** — Anthropic/OpenAI 프롬프트 캐싱 토큰 별도 컬럼 저장 + 정확한 캐시 비용 산출. `cache_read_tokens` / `cache_write_tokens` 컬럼 추가. (`20260514120000_cache_pricing.sql`)
+
+#### 3I.4. 인프라 & 운영 개선 (2026-05-15)
+- [x] **Saved Filters** — 요청 목록 필터 북마크 저장/불러오기 (유저 스코프 CRUD). `GET/POST/DELETE /api/v1/saved-filters`. (`apps/server/src/api/savedFilters.ts`, `saved_filters` 테이블)
+- [x] **Realtime Requests** — `requests` 테이블 Supabase Realtime 활성화 (REPLICA IDENTITY FULL). RLS-aware INSERT 이벤트 스트리밍 준비. (`20260512120000_realtime_requests.sql`)
+- [x] **Webhook 재시도 인프라** — `webhook_deliveries`에 `attempt_count`, `next_retry_at`, `payload` 컬럼 추가 + exponential backoff cron 폴링. (`20260515000000_webhook_retry.sql`)
+- [x] **Cron Job 모니터링** — `cron_job_runs` 테이블로 백그라운드 잡 실행 이력(status, duration, error) 기록. (`20260515010000_cron_job_runs.sql`)
+- [x] **Rate Limit Buckets** — 레이트리밋 버킷 인프라 테이블. (`20260504120000_rate_limit_buckets.sql`)
 
 ---
 
