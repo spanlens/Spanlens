@@ -124,15 +124,15 @@ export default function SecurityDocs() {
           </tr>
           <tr>
             <td><code>ignore-previous-ko</code></td>
-            <td>Korean: &ldquo;이전/앞/모든 지시사항/명령/프롬프트 무시해 / 잊어버려&rdquo;</td>
+            <td>Korean equivalents of &ldquo;ignore/forget all previous instructions/commands/prompts&rdquo;</td>
           </tr>
           <tr>
             <td><code>reveal-system-ko</code></td>
-            <td>Korean: &ldquo;시스템/초기/숨겨진 프롬프트/지시사항 알려줘 / 보여줘&rdquo;</td>
+            <td>Korean equivalents of &ldquo;tell/show me your system/initial/hidden prompt/instructions&rdquo;</td>
           </tr>
           <tr>
             <td><code>role-override-ko</code></td>
-            <td>Korean: &ldquo;이제부터/지금부터 너는 ... / ~인 척 해 / ~역할 해줘&rdquo;</td>
+            <td>Korean equivalents of &ldquo;from now on you are ... / pretend to be / act as ...&rdquo;</td>
           </tr>
         </tbody>
       </table>
