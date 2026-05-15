@@ -10,6 +10,10 @@ const withBundleAnalyzer = bundleAnalyzer({ enabled: process.env.ANALYZE === 'tr
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Enable standalone output for Docker self-hosted deployments.
+  // Produces apps/web/.next/standalone — a self-contained Node server with
+  // only the traced runtime dependencies bundled in (no full node_modules copy).
+  output: 'standalone',
   experimental: {
     // Tree-shake barrel-export packages so only used symbols land in the bundle.
     // Cuts recharts, lucide-react, and Radix from the initial JS chunk.

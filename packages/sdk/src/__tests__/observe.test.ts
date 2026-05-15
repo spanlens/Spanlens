@@ -6,8 +6,11 @@ describe('observe()', () => {
   let fetchMock: ReturnType<typeof vi.fn>
 
   beforeEach(() => {
-    fetchMock = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ success: true }), { status: 200 }),
+    // Use mockImplementation so each call gets a fresh Response instance.
+    // A shared Response body is consumed after the first res.text() call,
+    // which triggers transport retries and breaks patch-count assertions.
+    fetchMock = vi.fn().mockImplementation(() =>
+      Promise.resolve(new Response(JSON.stringify({ success: true }), { status: 200 })),
     )
     vi.stubGlobal('fetch', fetchMock)
   })
