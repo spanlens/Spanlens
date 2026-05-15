@@ -1568,7 +1568,6 @@ function DestinationsTab() {
         {destinations.map((dest) => (
           <Section key={dest.id} title={dest.name} description={dest.description} className="mb-0">
             <div className="px-6 pb-5 space-y-4">
-              <div className="flex items-center gap-3 mt-2">
               <FormRow label={dest.label}>
                 <div className="flex items-center gap-3 w-full max-w-[460px]">
                   <NativeInput
