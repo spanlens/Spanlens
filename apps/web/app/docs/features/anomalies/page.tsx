@@ -125,11 +125,59 @@ if deviations >= sigmaThreshold:
         <li>Baseline mean ± stddev</li>
         <li>Deviations (how many σ above normal)</li>
         <li>Sample counts (both windows)</li>
+        <li><strong>Contributing factors</strong> — a <code>why ·</code> hint explaining the likely root cause</li>
         <li>Acknowledged state (if you&apos;ve silenced it)</li>
       </ul>
       <p>
         No anomalies? The page tells you — that&apos;s the good state. Your infrastructure is
         behaving predictably.
+      </p>
+
+      <h3>Understanding why — Contributing factors</h3>
+      <p>
+        When a bucket is flagged, Spanlens automatically fetches root-cause context so you don&apos;t
+        have to dig through raw logs first. The <code>why ·</code> line appears beneath each anomaly
+        entry, powered by a single additional DB scan per unique <code>(provider, model)</code>.
+      </p>
+      <table>
+        <thead>
+          <tr>
+            <th>Signal</th>
+            <th>What the hint shows</th>
+            <th>How to interpret it</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Latency</strong> or <strong>Cost</strong></td>
+            <td>
+              The token type that changed most between obs and reference windows —
+              e.g. <em>Prompt tokens ↑ 3,200 (was 890, +259%)</em>
+            </td>
+            <td>
+              Prompt token spike → retrieval returning too many chunks, or context growth.
+              Completion token spike → verbose outputs, runaway generation, or a model switch.
+            </td>
+          </tr>
+          <tr>
+            <td><strong>Error rate</strong></td>
+            <td>
+              Top HTTP status codes in the observation window, ranked by frequency —
+              e.g. <em>429: 45 req · 500: 8 req</em>
+            </td>
+            <td>
+              429 → quota exhaustion or rate limiting.
+              500/503 → provider outage.
+              401/403 → auth misconfiguration or key rotation.
+              400/422 → request format change or upstream API shift.
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <p>
+        Contributing factors are fetched for the same time windows as the anomaly detection run.
+        If the obs window has no data yet (e.g. you just deployed), the hint is omitted rather than
+        showing misleading nulls.
       </p>
 
       <h3>Acknowledging an anomaly</h3>
@@ -173,7 +221,16 @@ DELETE /api/v1/anomalies/ack?provider=openai&model=gpt-4o&kind=latency`}</CodeBl
 #     "deviations": 39.4,
 #     "sampleCount": 42,
 #     "referenceCount": 18420,
-#     "acknowledgedAt": null       // ISO string if acked, null otherwise
+#     "acknowledgedAt": null,      // ISO string if acked, null otherwise
+#     "factors": {                 // root-cause contributing factors
+#       "obsPromptTokensMean": 3200,
+#       "refPromptTokensMean": 890,
+#       "obsCompletionTokensMean": 410,
+#       "refCompletionTokensMean": 390,
+#       "obsTotalTokensMean": 3610,
+#       "refTotalTokensMean": 1280,
+#       "obsStatusDistribution": [] // e.g. [{code:429,count:5},{code:500,count:2}]
+#     }
 #   }
 # ]`}</CodeBlock>
 
