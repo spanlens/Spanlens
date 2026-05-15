@@ -48,18 +48,12 @@
   "peerDependencies": {
     "openai": ">=4.0.0",
     "@anthropic-ai/sdk": ">=0.24.0",
-    "@google/generative-ai": ">=0.20.0",
-    "@langchain/core": ">=0.2.0",
-    "ai": ">=4.0.0",
-    "llamaindex": ">=0.4.0"
+    "@google/generative-ai": ">=0.20.0"
   },
   "peerDependenciesMeta": {
     "openai": { "optional": true },
     "@anthropic-ai/sdk": { "optional": true },
-    "@google/generative-ai": { "optional": true },
-    "@langchain/core": { "optional": true },
-    "ai": { "optional": true },
-    "llamaindex": { "optional": true }
+    "@google/generative-ai": { "optional": true }
   },
   "devDependencies": {
     "@anthropic-ai/sdk": "^0.32.0",
