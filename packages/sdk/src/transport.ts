@@ -85,13 +85,15 @@ export function createTransport(config: SpanlensConfig): Transport {
         try { return JSON.parse(text) } catch { return null }
       } catch (err) {
         clearTimeout(timer)
-        // AbortError (timeout) or network failure — retryable
+        // AbortError (timeout) or network failure — retryable.
+        // Call onError on every occurrence so callers receive the notification
+        // promptly rather than only after all retries are exhausted.
         lastErr = err
+        onError?.(err, `${method} ${path}`)
         if (attempt < MAX_RETRIES) {
           await sleep(retryDelayMs(attempt))
           continue
         }
-        onError?.(err, `${method} ${path}`)
         if (!silent) throw err
         return null
       }
