@@ -1,6 +1,6 @@
 'use client'
-import { useEffect, useMemo, useState } from 'react'
-import { useSearchParams } from 'next/navigation'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useSearchParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { ExportDropdown } from '@/components/ui/export-dropdown'
 import { cn } from '@/lib/utils'
@@ -30,7 +30,6 @@ interface UiFilters {
   providerKeyId: string
 }
 
-const DEFAULT_FILTERS: UiFilters = { provider: 'all', status: 'all', model: '', providerKeyId: 'all' }
 
 function relAge(dateStr: string): string {
   const s = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000)
@@ -811,31 +810,57 @@ function RequestsTable({
 // ── Page ──────────────────────────────────────────────────────────────────────
 export function RequestsClient() {
   const searchParams = useSearchParams()
-  const [filters, setFilters] = useState<UiFilters>(() => {
-    // Support deep-linking from Anomalies / etc. — ?provider=openai&model=gpt-4o
-    const providerParam = searchParams.get('provider') ?? undefined
-    const modelParam = searchParams.get('model') ?? undefined
-    return {
-      ...DEFAULT_FILTERS,
-      ...(providerParam && { provider: providerParam }),
-      ...(modelParam && { model: modelParam }),
-    }
-  })
+  const router = useRouter()
+
+  // Derive filter state from URL — makes links shareable and browser back/forward work
+  const provider = searchParams.get('provider') ?? 'all'
+  const status = (searchParams.get('status') ?? 'all') as StatusFilter
+  const providerKeyId = searchParams.get('providerKeyId') ?? 'all'
+  const sortField = (searchParams.get('sortBy') ?? 'created_at') as SortField
+  const sortDir = (searchParams.get('sortDir') ?? 'desc') as SortDir
+  const timeRange = (searchParams.get('timeRange') ?? 'all') as TimeRange
+
+  // Reconstruct the UiFilters struct consumed by serverFilters / UI
+  const filters: UiFilters = useMemo(() => ({
+    provider,
+    status,
+    model: searchParams.get('model') ?? '',
+    providerKeyId,
+  }), [provider, status, providerKeyId, searchParams])
+
+  // model input stays local for debounce; synced to URL 300ms after last keystroke
   const [modelInput, setModelInput] = useState(() => searchParams.get('model') ?? '')
+  const [page, setPage] = useState(1)
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [pendingNavigation, setPendingNavigation] = useState<'first' | 'last' | null>(null)
+
+  // Ref so the debounce effect always reads the latest searchParams without re-firing
+  const searchParamsRef = useRef(searchParams)
+  useEffect(() => { searchParamsRef.current = searchParams }, [searchParams])
+
+  // Merge updates into the current URL params and replace without scroll
+  function pushParams(updates: Record<string, string | null>) {
+    const params = new URLSearchParams(searchParamsRef.current.toString())
+    for (const [key, val] of Object.entries(updates)) {
+      if (val === null || val === '') params.delete(key)
+      else params.set(key, val)
+    }
+    router.replace(`/requests?${params.toString()}`, { scroll: false })
+  }
+
   useEffect(() => {
     const t = setTimeout(() => {
-      setFilters((f) => ({ ...f, model: modelInput.trim() }))
+      const params = new URLSearchParams(searchParamsRef.current.toString())
+      if (modelInput.trim()) params.set('model', modelInput.trim())
+      else params.delete('model')
+      router.replace(`/requests?${params.toString()}`, { scroll: false })
       setPage(1)
       setSelectedId(null)
     }, 300)
     return () => clearTimeout(t)
+  // router is stable; searchParamsRef is a ref — neither needs to be a dep
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [modelInput])
-  const [page, setPage] = useState(1)
-  const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [pendingNavigation, setPendingNavigation] = useState<'first' | 'last' | null>(null)
-  const [sortField, setSortField] = useState<SortField>('created_at')
-  const [sortDir, setSortDir] = useState<SortDir>('desc')
-  const [timeRange, setTimeRange] = useState<TimeRange>('all')
 
   const fromIso = useMemo(() => {
     const now = Date.now()
@@ -902,12 +927,11 @@ export function RequestsClient() {
     timeRange !== 'all'
 
   function handleSort(field: SortField) {
-    if (sortField === field) {
-      setSortDir((d) => (d === 'desc' ? 'asc' : 'desc'))
-    } else {
-      setSortField(field)
-      setSortDir('desc')
-    }
+    const newDir = sortField === field ? (sortDir === 'desc' ? 'asc' : 'desc') : 'desc'
+    pushParams({
+      sortBy: field === 'created_at' ? null : field,
+      sortDir: newDir === 'desc' ? null : newDir,
+    })
     setPage(1)
     setSelectedId(null)
   }
@@ -967,7 +991,7 @@ export function RequestsClient() {
           {(['all', 'today', '7d', '30d'] as TimeRange[]).map((r) => (
             <button
               key={r}
-              onClick={() => { setTimeRange(r); setPage(1); setSelectedId(null) }}
+              onClick={() => { pushParams({ timeRange: r === 'all' ? null : r }); setPage(1); setSelectedId(null) }}
               className={cn(
                 'px-[10px] py-[5px]',
                 timeRange === r ? 'bg-text text-bg' : 'text-text-muted hover:text-text transition-colors',
@@ -983,7 +1007,7 @@ export function RequestsClient() {
           {(['all', 'ok', '4xx', '5xx'] as StatusFilter[]).map((v) => (
             <button
               key={v}
-              onClick={() => { setFilters((f) => ({ ...f, status: v })); setPage(1); setSelectedId(null) }}
+              onClick={() => { pushParams({ status: v === 'all' ? null : v }); setPage(1); setSelectedId(null) }}
               className={cn(
                 'px-[10px] py-[5px] inline-flex items-center gap-1.5',
                 filters.status === v ? 'bg-text text-bg' : 'text-text-muted hover:text-text transition-colors',
@@ -1000,7 +1024,7 @@ export function RequestsClient() {
         {/* Provider select */}
         <select
           value={filters.provider}
-          onChange={(e) => { setFilters((f) => ({ ...f, provider: e.target.value, providerKeyId: 'all' })); setPage(1); setSelectedId(null) }}
+          onChange={(e) => { pushParams({ provider: e.target.value === 'all' ? null : e.target.value, providerKeyId: null }); setPage(1); setSelectedId(null) }}
           className="font-mono text-[11px] border border-border rounded-[5px] px-2 py-[5px] bg-bg text-text-muted hover:border-border-strong transition-colors focus:outline-none appearance-none cursor-pointer"
         >
           <option value="all">All providers</option>
@@ -1025,7 +1049,7 @@ export function RequestsClient() {
         {visibleKeys.length > 0 && (
           <select
             value={filters.providerKeyId}
-            onChange={(e) => { setFilters((f) => ({ ...f, providerKeyId: e.target.value })); setPage(1); setSelectedId(null) }}
+            onChange={(e) => { pushParams({ providerKeyId: e.target.value === 'all' ? null : e.target.value }); setPage(1); setSelectedId(null) }}
             className="font-mono text-[11px] border border-border rounded-[5px] px-2 py-[5px] bg-bg text-text-muted hover:border-border-strong transition-colors focus:outline-none appearance-none cursor-pointer max-w-[140px] truncate"
           >
             <option value="all">All keys</option>
@@ -1038,9 +1062,8 @@ export function RequestsClient() {
         {hasActiveFilters && (
           <button
             onClick={() => {
-              setFilters(DEFAULT_FILTERS)
               setModelInput('')
-              setTimeRange('all')
+              pushParams({ provider: null, status: null, model: null, providerKeyId: null, timeRange: null, sortBy: null, sortDir: null })
               setPage(1)
               setSelectedId(null)
             }}

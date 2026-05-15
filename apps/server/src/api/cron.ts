@@ -1,12 +1,14 @@
 import { Hono } from 'hono'
 import { supabaseAdmin } from '../lib/db.js'
 import { deliverToChannel, type AlertNotification } from '../lib/notifiers.js'
+import { retryFailedWebhooks } from '../lib/webhook-dispatch.js'
 import { computeAndReportOverages } from '../lib/paddle-usage.js'
 import { runQuotaWarningsJob } from '../lib/quota-warnings.js'
 import { snapshotAnomaliesForAllOrgs } from '../lib/anomaly-snapshot.js'
 import { runStaleKeyDigestJob } from '../lib/stale-key-digest.js'
 import { runLeakDetectionJob } from '../lib/leak-detection.js'
 import { sendHighConfidenceRecommendationAlerts } from '../lib/recommendation-notify.js'
+import { logCronRun } from '../lib/cron-logger.js'
 
 /**
  * Vercel cron endpoints. Invoked hourly via `crons` entry in `vercel.json`.
@@ -36,6 +38,7 @@ cronRouter.get('/aggregate-usage', async (c) => {
   const authFail = assertCronAuth(c.req.header('Authorization'))
   if (authFail) return c.json({ error: authFail }, 401)
 
+  const start = Date.now()
   const now = new Date()
   const today = now.toISOString().slice(0, 10)
   const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
@@ -52,6 +55,9 @@ cronRouter.get('/aggregate-usage', async (c) => {
       results.push({ date, rows: data as number })
     }
   }
+
+  const hasError = results.some((r) => r.error)
+  logCronRun('aggregate-usage', hasError ? 'error' : 'ok', Date.now() - start, hasError ? results.find((r) => r.error)?.error : undefined).catch(console.error)
 
   return c.json({
     success: true,
@@ -153,6 +159,7 @@ cronRouter.get('/evaluate-alerts', async (c) => {
   const authFail = assertCronAuth(c.req.header('Authorization'))
   if (authFail) return c.json({ error: authFail }, 401)
 
+  const start = Date.now()
   const dashboardBase = process.env['DASHBOARD_URL'] ?? 'https://spanlens-web.vercel.app'
 
   const { data: alerts } = await supabaseAdmin
@@ -258,6 +265,7 @@ cronRouter.get('/evaluate-alerts', async (c) => {
     report.push({ alert_id: alert.id, fired: true })
   }
 
+  logCronRun('evaluate-alerts', 'ok', Date.now() - start).catch(console.error)
   return c.json({ success: true, evaluated: report.length, report })
 })
 
@@ -266,11 +274,14 @@ cronRouter.get('/report-usage-overage', async (c) => {
   const authFail = assertCronAuth(c.req.header('Authorization'))
   if (authFail) return c.json({ error: authFail }, 401)
 
+  const start = Date.now()
   try {
     const reports = await computeAndReportOverages()
+    logCronRun('report-usage-overage', 'ok', Date.now() - start).catch(console.error)
     return c.json({ success: true, count: reports.length, reports })
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'unknown'
+    logCronRun('report-usage-overage', 'error', Date.now() - start, msg).catch(console.error)
     return c.json({ error: msg }, 500)
   }
 })
@@ -283,11 +294,14 @@ cronRouter.get('/check-quota-warnings', async (c) => {
   const authFail = assertCronAuth(c.req.header('Authorization'))
   if (authFail) return c.json({ error: authFail }, 401)
 
+  const start = Date.now()
   try {
     const result = await runQuotaWarningsJob()
+    logCronRun('check-quota-warnings', 'ok', Date.now() - start).catch(console.error)
     return c.json({ success: true, ...result })
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'unknown'
+    logCronRun('check-quota-warnings', 'error', Date.now() - start, msg).catch(console.error)
     return c.json({ error: msg }, 500)
   }
 })
@@ -299,13 +313,16 @@ cronRouter.get('/snapshot-anomalies', async (c) => {
   const authFail = assertCronAuth(c.req.header('Authorization'))
   if (authFail) return c.json({ error: authFail }, 401)
 
+  const start = Date.now()
   try {
     const results = await snapshotAnomaliesForAllOrgs()
     const total = results.reduce((s, r) => s + r.detected, 0)
     const errored = results.filter((r) => r.errors.length > 0).length
+    logCronRun('snapshot-anomalies', 'ok', Date.now() - start).catch(console.error)
     return c.json({ success: true, orgs: results.length, anomalies: total, errors: errored, results })
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'unknown'
+    logCronRun('snapshot-anomalies', 'error', Date.now() - start, msg).catch(console.error)
     return c.json({ error: msg }, 500)
   }
 })
@@ -315,13 +332,18 @@ cronRouter.get('/prune-logs', async (c) => {
   const authFail = assertCronAuth(c.req.header('Authorization'))
   if (authFail) return c.json({ error: authFail }, 401)
 
+  const start = Date.now()
   const [logsResult, bucketsResult] = await Promise.all([
     supabaseAdmin.rpc('prune_logs_by_retention'),
     supabaseAdmin.rpc('prune_rate_limit_buckets'),
   ])
 
-  if (logsResult.error) return c.json({ error: logsResult.error.message }, 500)
+  if (logsResult.error) {
+    logCronRun('prune-logs', 'error', Date.now() - start, logsResult.error.message).catch(console.error)
+    return c.json({ error: logsResult.error.message }, 500)
+  }
 
+  logCronRun('prune-logs', 'ok', Date.now() - start).catch(console.error)
   return c.json({
     success: true,
     logs: logsResult.data,
@@ -338,11 +360,14 @@ cronRouter.get('/stale-key-reminders', async (c) => {
   const authFail = assertCronAuth(c.req.header('Authorization'))
   if (authFail) return c.json({ error: authFail }, 401)
 
+  const start = Date.now()
   try {
     const result = await runStaleKeyDigestJob()
+    logCronRun('stale-key-reminders', 'ok', Date.now() - start).catch(console.error)
     return c.json({ success: true, ...result })
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'unknown'
+    logCronRun('stale-key-reminders', 'error', Date.now() - start, msg).catch(console.error)
     return c.json({ error: msg }, 500)
   }
 })
@@ -355,14 +380,36 @@ cronRouter.get('/recommend-savings-alerts', async (c) => {
   const authFail = assertCronAuth(c.req.header('Authorization'))
   if (authFail) return c.json({ error: authFail }, 401)
 
+  const start = Date.now()
   try {
     const results = await sendHighConfidenceRecommendationAlerts()
     const totalSent    = results.reduce((s, r) => s + r.sent, 0)
     const totalSkipped = results.reduce((s, r) => s + r.skipped, 0)
     const totalErrors  = results.reduce((s, r) => s + r.errors.length, 0)
+    logCronRun('recommend-savings-alerts', 'ok', Date.now() - start).catch(console.error)
     return c.json({ success: true, orgs: results.length, sent: totalSent, skipped: totalSkipped, errors: totalErrors, results })
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'unknown'
+    logCronRun('recommend-savings-alerts', 'error', Date.now() - start, msg).catch(console.error)
+    return c.json({ error: msg }, 500)
+  }
+})
+
+// ── Webhook retry (every 5 minutes) ────────────────────────────
+// Re-dispatches failed webhook_deliveries whose next_retry_at is past.
+// Uses exponential back-off up to MAX_ATTEMPTS (5).
+cronRouter.get('/retry-webhooks', async (c) => {
+  const authFail = assertCronAuth(c.req.header('Authorization'))
+  if (authFail) return c.json({ error: authFail }, 401)
+
+  const start = Date.now()
+  try {
+    const result = await retryFailedWebhooks()
+    logCronRun('retry-webhooks', 'ok', Date.now() - start).catch(console.error)
+    return c.json({ success: true, ...result })
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'unknown'
+    logCronRun('retry-webhooks', 'error', Date.now() - start, msg).catch(console.error)
     return c.json({ error: msg }, 500)
   }
 })
@@ -377,11 +424,14 @@ cronRouter.get('/leak-detect-keys', async (c) => {
   const authFail = assertCronAuth(c.req.header('Authorization'))
   if (authFail) return c.json({ error: authFail }, 401)
 
+  const start = Date.now()
   try {
     const result = await runLeakDetectionJob()
+    logCronRun('leak-detect-keys', 'ok', Date.now() - start).catch(console.error)
     return c.json({ success: true, ...result })
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'unknown'
+    logCronRun('leak-detect-keys', 'error', Date.now() - start, msg).catch(console.error)
     return c.json({ error: msg }, 500)
   }
 })

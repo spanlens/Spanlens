@@ -53,11 +53,12 @@ import {
 } from '@/lib/queries/use-webhooks'
 import type { WebhookEvent, WebhookRow } from '@/lib/queries/types'
 import { useNotificationChannels } from '@/lib/queries/use-alerts'
+import { CronJobsPanel } from './cron-jobs-panel'
 
 // ─── types ───────────────────────────────────────────────────────────────────
 
 type TabId =
-  | 'general' | 'members' | 'security' | 'audit-log'
+  | 'general' | 'members' | 'security' | 'audit-log' | 'system'
   | 'billing' | 'plan' | 'invoices'
   | 'profile' | 'notifications' | 'preferences'
   | 'integrations' | 'destinations' | 'webhooks' | 'opentelemetry'
@@ -74,6 +75,7 @@ const NAV: { group: string; items: NavItem[] }[] = [
       { id: 'members',    label: 'Members',    crumbs: [{ label: 'Workspace' }, { label: 'Settings' }, { label: 'Members' }] },
       { id: 'security',   label: 'Security',      crumbs: [{ label: 'Workspace' }, { label: 'Settings' }, { label: 'Security' }] },
       { id: 'audit-log',  label: 'Audit log',  crumbs: [{ label: 'Workspace' }, { label: 'Settings' }, { label: 'Audit log' }] },
+      { id: 'system',     label: 'System',     crumbs: [{ label: 'Workspace' }, { label: 'Settings' }, { label: 'System' }] },
     ],
   },
   {
@@ -637,6 +639,22 @@ function AuditLogTab() {
           </div>
         )}
       </Section>
+    </div>
+  )
+}
+
+// ─── SYSTEM tab ───────────────────────────────────────────────────────────────
+
+function SystemTab() {
+  return (
+    <div className="max-w-[980px]">
+      <TabHeader
+        title="System"
+        description="Cron job execution history. Runs are logged after each execution. Refreshes every 60s."
+      />
+      <div className="border border-border rounded-[8px] overflow-hidden">
+        <CronJobsPanel />
+      </div>
     </div>
   )
 }
@@ -1688,6 +1706,7 @@ function TabContent({ tab }: { tab: TabId }) {
     case 'members':       return <MembersTab />
     case 'security':      return <SecurityTab />
     case 'audit-log':     return <AuditLogTab />
+    case 'system':        return <SystemTab />
     case 'billing':       return <BillingTab />
     case 'plan':          return <PlanLimitsTab />
     case 'invoices':      return <InvoicesTab />

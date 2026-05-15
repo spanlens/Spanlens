@@ -6,6 +6,7 @@ import { getDecryptedProviderKeyById, getDecryptedProviderKey } from '../proxy/u
 import { calculateCost } from '../lib/cost.js'
 import { logRequestAsync } from '../lib/logger.js'
 import { fireAndForget } from '../lib/wait-until.js'
+import { parsePageLimit } from '../lib/params.js'
 
 export const requestsRouter = new Hono<JwtContext>()
 
@@ -22,9 +23,7 @@ requestsRouter.get('/', async (c) => {
   const model      = c.req.query('model')
   const from       = c.req.query('from')     // ISO date string
   const to         = c.req.query('to')
-  const page       = Math.max(1, parseInt(c.req.query('page') ?? '1', 10))
-  const limit      = Math.min(100, Math.max(1, parseInt(c.req.query('limit') ?? '50', 10)))
-  const offset     = (page - 1) * limit
+  const { page, limit, offset } = parsePageLimit(c.req.query('page'), c.req.query('limit'))
 
   // Optional new filter: provider_key_id ("show only requests that used this key")
   const providerKeyId    = c.req.query('providerKeyId')
