@@ -28,6 +28,17 @@ export class SpanlensClient {
     return createTrace(this.transport, options.name, options.metadata)
   }
 
+  /**
+   * Waits for all in-flight ingest calls to settle.
+   * Call this before process exit to ensure no spans are dropped.
+   *
+   * @example
+   * process.on('beforeExit', () => client.flush())
+   */
+  async flush(): Promise<void> {
+    return this.transport.flush()
+  }
+
   /** Exposed for wrappers (openai/anthropic auto-instrumentation). */
   get _transport(): Transport {
     return this.transport
