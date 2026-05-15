@@ -18,6 +18,14 @@ That's it. Follow the prompts.
 npx @spanlens/cli init --dry-run
 ```
 
+### Self-hosted Spanlens instance
+
+```bash
+npx @spanlens/cli init --server-url https://spanlens.yourcompany.com
+```
+
+Points the wizard at your own server: API key validation, dashboard links, and the generated `SPANLENS_BASE_URL` env var all use your URL instead of `spanlens.io`.
+
 ## What it does
 
 ```
@@ -108,6 +116,7 @@ npx @spanlens/cli init --dry-run
 - ✅ Confirms before overwriting an existing `SPANLENS_API_KEY` in your env file
 - ✅ Runs `tsc --noEmit` after patching to catch any breakage immediately
 - ✅ `--dry-run` flag (preview without writing or installing)
+- ✅ `--server-url <url>` flag for self-hosted deployments
 - ✅ Multiple `new XxxClient(...)` calls per project
 - ✅ Non-destructive env-file writes (preserves comments, other keys)
 
