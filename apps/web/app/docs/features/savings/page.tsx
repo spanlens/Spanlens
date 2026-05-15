@@ -271,9 +271,10 @@ dropPct = (priorWindowCost − currentWindowCost) / priorWindowCost`}</CodeBlock
         </li>
         <li>
           <strong>Open recommendations</strong> — each row shows: current model → suggested model,
-          the confidence bar, rationale text, projected monthly savings, and two action buttons:{' '}
-          <strong>Simulate</strong> (opens the{' '}
-          <a href="#simulate-dialog">Simulate dialog</a>) and <strong>Hide</strong>.
+          the confidence bar, rationale text, projected monthly savings, and three action buttons:{' '}
+          <strong>Compare</strong> (opens the{' '}
+          <a href="#compare-dialog">Compare dialog</a>), <strong>Simulate</strong> (opens the{' '}
+          <a href="#simulate-dialog">Simulate dialog</a>), and <strong>Hide</strong>.
         </li>
         <li>
           <strong>Achieved section</strong> — a collapsible section (click to expand) listing
@@ -287,6 +288,47 @@ dropPct = (priorWindowCost − currentWindowCost) / priorWindowCost`}</CodeBlock
           <strong>Unhide</strong> button to restore it.
         </li>
       </ul>
+
+      <h3 id="compare-dialog">Compare dialog</h3>
+      <p>
+        Click <strong>Compare</strong> on any open recommendation to run both models side by side
+        against a real prompt, without touching your application code.
+      </p>
+      <ol>
+        <li>
+          <strong>Pick a prompt version</strong> — choose any saved{' '}
+          <a href="/docs/features/prompts">Prompts</a> version as the input. The playground will
+          fill in the prompt template automatically.
+        </li>
+        <li>
+          <strong>Choose provider keys</strong> — select the provider key to use for each model
+          (current and suggested). Both models must have an active key registered in{' '}
+          <a href="/projects">/projects</a>.
+        </li>
+        <li>
+          <strong>Run</strong> — both models execute in parallel. While running, each column shows
+          a loading spinner.
+        </li>
+      </ol>
+      <p>
+        Each result card shows:
+      </p>
+      <ul>
+        <li>The model&apos;s full text response</li>
+        <li>Latency (ms) and total tokens</li>
+        <li>Cost in USD for that single call</li>
+      </ul>
+      <p>
+        Below the two cards, a <strong>delta summary</strong> line shows the cost and latency
+        difference between the suggested and current model (e.g. &ldquo;−$0.0004 / call · +120
+        ms&rdquo;). This gives you a quick sanity check on whether the savings estimate matches
+        real-world behavior on your prompt.
+      </p>
+      <p className="text-sm text-muted-foreground">
+        Compare calls are executed via the Playground endpoint (
+        <code>POST /api/v1/prompts/playground/run</code>) and <strong>are not logged</strong> as
+        production requests.
+      </p>
 
       <h3 id="simulate-dialog">Simulate dialog</h3>
       <p>
