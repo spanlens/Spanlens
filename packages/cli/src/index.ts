@@ -30,12 +30,12 @@ import {
   installPackage,
 } from './installer.js'
 
-const DASHBOARD_URL = 'https://www.spanlens.io'
-const API_BASE = process.env.SPANLENS_API_BASE ?? 'https://www.spanlens.io'
+const DEFAULT_URL = 'https://www.spanlens.io'
 
 interface Flags {
   dryRun: boolean
   subcommand: string
+  serverUrl: string | null
 }
 
 interface KeyInfo {
@@ -46,15 +46,19 @@ interface KeyInfo {
 
 function parseFlags(argv: readonly string[]): Flags {
   const args = argv.slice(2)
+  const serverUrlIdx = args.indexOf('--server-url')
+  const rawServerUrl = serverUrlIdx !== -1 ? (args[serverUrlIdx + 1] ?? null) : null
+  const serverUrl = rawServerUrl ? rawServerUrl.replace(/\/$/, '') : null
   return {
     subcommand: args[0] ?? 'init',
     dryRun: args.includes('--dry-run'),
+    serverUrl,
   }
 }
 
 /** Hit /api/v1/me/key-info with the user's Spanlens key. */
-async function fetchKeyInfo(apiKey: string): Promise<KeyInfo> {
-  const url = `${API_BASE}/api/v1/me/key-info`
+async function fetchKeyInfo(apiKey: string, apiBase: string): Promise<KeyInfo> {
+  const url = `${apiBase}/api/v1/me/key-info`
   let res: Response
   try {
     res = await fetch(url, {
@@ -62,7 +66,7 @@ async function fetchKeyInfo(apiKey: string): Promise<KeyInfo> {
     })
   } catch (err) {
     throw new Error(
-      `Network error contacting ${API_BASE}. Check your connection. (${err instanceof Error ? err.message : String(err)})`,
+      `Network error contacting ${apiBase}. Check your connection. (${err instanceof Error ? err.message : String(err)})`,
     )
   }
 
@@ -93,9 +97,12 @@ async function main(): Promise<void> {
   if (flags.subcommand !== 'init') {
     p.intro(pc.cyan('@spanlens/cli'))
     p.log.warn(`Unknown subcommand: ${flags.subcommand}`)
-    p.log.message('Usage:  npx @spanlens/cli init [--dry-run]')
+    p.log.message('Usage:  npx @spanlens/cli init [--dry-run] [--server-url <url>]')
     process.exit(1)
   }
+
+  const dashboardUrl = flags.serverUrl ?? DEFAULT_URL
+  const apiBase = flags.serverUrl ?? process.env.SPANLENS_API_BASE ?? DEFAULT_URL
 
   p.intro(pc.cyan('🔭  Spanlens setup'))
 
@@ -125,8 +132,8 @@ async function main(): Promise<void> {
   // ── Step 2: prerequisites reminder ────────────────────────────────
   p.log.message('')
   p.log.step(pc.bold('Before continuing, make sure you have:'))
-  p.log.message(`  1. A Spanlens account — ${pc.underline(DASHBOARD_URL)}`)
-  p.log.message(`  2. A Project at ${pc.underline(DASHBOARD_URL + '/projects')}`)
+  p.log.message(`  1. A Spanlens account — ${pc.underline(dashboardUrl)}`)
+  p.log.message(`  2. A Project at ${pc.underline(dashboardUrl + '/projects')}`)
   p.log.message(`  3. Provider keys (OpenAI / Anthropic / Gemini) added to that project`)
   p.log.message(`  4. A Spanlens key issued for that project (sl_live_…)`)
   p.log.message('')
@@ -161,7 +168,7 @@ async function main(): Promise<void> {
   sValidate.start('Validating key with Spanlens')
   let keyInfo: KeyInfo
   try {
-    keyInfo = await fetchKeyInfo(apiKey)
+    keyInfo = await fetchKeyInfo(apiKey, apiBase)
     sValidate.stop(
       `Key valid · project ${pc.bold(keyInfo.projectName)} · providers: ${
         keyInfo.providers.length > 0 ? keyInfo.providers.join(', ') : pc.dim('(none registered)')
@@ -178,7 +185,7 @@ async function main(): Promise<void> {
       'No active provider keys on this project — calls will return 400 until you add one.',
     )
     p.log.message(
-      `  Add provider keys at ${pc.underline(`${DASHBOARD_URL}/projects`)} → your project → "Add provider key"`,
+      `  Add provider keys at ${pc.underline(`${dashboardUrl}/projects`)} → your project → "Add provider key"`,
     )
   }
 
@@ -203,12 +210,15 @@ async function main(): Promise<void> {
   sEnv.start(`Updating ${fw.envFile}`)
   try {
     if (flags.dryRun) {
-      sEnv.stop(`[dry-run] would write SPANLENS_API_KEY to ${fw.envFile}`)
+      sEnv.stop(`[dry-run] would write SPANLENS_API_KEY${flags.serverUrl ? ' + SPANLENS_BASE_URL' : ''} to ${fw.envFile}`)
     } else {
       const r = upsertEnvVar(process.cwd(), fw.envFile, 'SPANLENS_API_KEY', apiKey)
-      if (r.created) sEnv.stop(`Created ${fw.envFile} with SPANLENS_API_KEY`)
-      else if (r.changed) sEnv.stop(`Updated SPANLENS_API_KEY in ${fw.envFile}`)
-      else sEnv.stop(`SPANLENS_API_KEY already up to date in ${fw.envFile}`)
+      if (flags.serverUrl) {
+        upsertEnvVar(process.cwd(), fw.envFile, 'SPANLENS_BASE_URL', flags.serverUrl)
+      }
+      if (r.created) sEnv.stop(`Created ${fw.envFile} with SPANLENS_API_KEY${flags.serverUrl ? ' + SPANLENS_BASE_URL' : ''}`)
+      else if (r.changed) sEnv.stop(`Updated SPANLENS_API_KEY in ${fw.envFile}${flags.serverUrl ? ' + wrote SPANLENS_BASE_URL' : ''}`)
+      else sEnv.stop(`SPANLENS_API_KEY already up to date in ${fw.envFile}${flags.serverUrl ? ' + wrote SPANLENS_BASE_URL' : ''}`)
     }
   } catch (err) {
     sEnv.stop(pc.red(`Failed to write ${fw.envFile}`))
@@ -344,15 +354,18 @@ async function main(): Promise<void> {
   }
 
   // ── Step 8: next steps ────────────────────────────────────────────
+  const deployEnvNote = flags.serverUrl
+    ? `     ${pc.dim('SPANLENS_API_KEY + SPANLENS_BASE_URL')}`
+    : `     ${pc.dim('(Vercel/Railway/Fly → Settings → Environment Variables)')}`
   p.note(
     [
-      `${pc.bold('1.')} Add ${pc.cyan('SPANLENS_API_KEY')} to your deployment environment`,
-      `     ${pc.dim('(Vercel/Railway/Fly → Settings → Environment Variables)')}`,
+      `${pc.bold('1.')} Add ${pc.cyan('SPANLENS_API_KEY')}${flags.serverUrl ? ` + ${pc.cyan('SPANLENS_BASE_URL')}` : ''} to your deployment environment`,
+      deployEnvNote,
       '',
       `${pc.bold('2.')} Redeploy your app`,
       '',
       `${pc.bold('3.')} Your requests will show up at:`,
-      `     ${pc.underline(DASHBOARD_URL + '/requests')}`,
+      `     ${pc.underline(dashboardUrl + '/requests')}`,
     ].join('\n'),
     'Next steps',
   )
