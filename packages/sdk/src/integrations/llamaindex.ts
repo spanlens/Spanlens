@@ -108,16 +108,16 @@ export function registerSpanlensCallbacks(
     { trace: TraceHandle; span: SpanHandle; isLocalTrace: boolean }
   >()
 
-  function onStart(payload: unknown): void {
-    const { id, messages } = payload as LLMStartPayload
+  function onStart(event: unknown): void {
+    const { id, messages } = (event as { detail: LLMStartPayload }).detail
     const isLocalTrace = options.trace === undefined
     const trace = options.trace ?? client.startTrace({ name: traceName })
     const span = trace.span({ name: 'llm.call', spanType: 'llm', input: messages })
     runs.set(id, { trace, span, isLocalTrace })
   }
 
-  function onEnd(payload: unknown): void {
-    const { id, response } = payload as LLMEndPayload
+  function onEnd(event: unknown): void {
+    const { id, response } = (event as { detail: LLMEndPayload }).detail
     const run = runs.get(id)
     if (!run) return
     runs.delete(id)

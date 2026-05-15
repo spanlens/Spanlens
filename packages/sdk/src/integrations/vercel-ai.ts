@@ -48,10 +48,16 @@ export interface SpanlensVercelAIOptions {
   modelName?: string
 }
 
-/** Token usage shape from Vercel AI SDK `onFinish` / `onStepFinish` events. */
+/**
+ * Token usage shape from Vercel AI SDK `onFinish` / `onStepFinish` events.
+ * AI SDK 4.x uses promptTokens/completionTokens; AI SDK 5.x uses inputTokens/outputTokens.
+ * Both are accepted.
+ */
 export interface VercelAIUsage {
-  promptTokens?: number
+  promptTokens?: number    // AI SDK 4.x
   completionTokens?: number
+  inputTokens?: number     // AI SDK 5.x
+  outputTokens?: number
   totalTokens?: number
 }
 
@@ -123,8 +129,8 @@ export function createSpanlensTracker(
         response?.modelId ?? response?.model ?? modelName ?? 'unknown'
       const isError = finishReason === 'error'
 
-      const promptTokens = usage?.promptTokens ?? 0
-      const completionTokens = usage?.completionTokens ?? 0
+      const promptTokens = usage?.promptTokens ?? usage?.inputTokens ?? 0
+      const completionTokens = usage?.completionTokens ?? usage?.outputTokens ?? 0
       const totalTokens =
         usage?.totalTokens ?? promptTokens + completionTokens
 
