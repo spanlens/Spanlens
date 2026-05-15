@@ -12,6 +12,7 @@ import { scanAll } from '../lib/security-scan.js'
 import { getDecryptedProviderKey, buildUpstreamHeaders, buildDownstreamHeaders, isBlockingEnabled } from './utils.js'
 
 const GEMINI_BASE = 'https://generativelanguage.googleapis.com'
+const UPSTREAM_TIMEOUT_MS = parseInt(process.env['UPSTREAM_TIMEOUT_MS'] ?? '35000', 10)
 
 export const geminiProxy = new Hono<ApiKeyContext>()
 
@@ -66,18 +67,26 @@ geminiProxy.all('/*', async (c) => {
 
   const startMs = Date.now()
   const fetchBody = c.req.method !== 'GET' && c.req.method !== 'HEAD' ? reqBodyText : null
+  const upstreamAbort = new AbortController()
+  const upstreamTimer = setTimeout(() => upstreamAbort.abort(), UPSTREAM_TIMEOUT_MS)
   let upstreamRes: Response
   try {
     upstreamRes = await fetch(originalUrl.toString(), {
       method: c.req.method,
       headers,
       body: fetchBody,
+      signal: upstreamAbort.signal,
     })
   } catch (err) {
+    clearTimeout(upstreamTimer)
     const msg = err instanceof Error ? err.message : 'Unknown error'
+    if (err instanceof Error && err.name === 'AbortError') {
+      return c.json({ error: `Upstream request timed out after ${UPSTREAM_TIMEOUT_MS}ms` }, 504)
+    }
     console.error('[gemini-proxy] upstream fetch error:', msg)
     return c.json({ error: `Upstream request failed: ${msg}` }, 502)
   }
+  clearTimeout(upstreamTimer)
   const latencyMs = Date.now() - startMs
   const proxyOverheadMs = startMs - handlerStartMs
 

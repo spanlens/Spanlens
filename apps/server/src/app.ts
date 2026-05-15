@@ -42,6 +42,7 @@ import { exportsRouter }       from './api/exports.js'
 import { openapiRouter }       from './api/openapi.js'
 import { providerKeysRouter }  from './api/providerKeys.js'
 import { meRouter }            from './api/me.js'
+import { systemRouter }       from './api/system.js'
 
 export const app = new Hono()
 
@@ -128,5 +129,6 @@ app.route('/api/v1/me/profile',     userProfilesRouter)
 app.route('/api/v1/me',             meRouter)        // sl_live_* introspection (CLI), registered AFTER other /me/* prefixes
 app.route('/api/v1/webhooks',       webhooksRouter)
 app.route('/api/v1/exports',        exportsRouter)
+app.route('/api/v1/system',         systemRouter)
 
 export default app

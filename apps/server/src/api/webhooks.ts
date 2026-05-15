@@ -3,6 +3,7 @@ import { authJwt, type JwtContext } from '../middleware/authJwt.js'
 import { requireRole } from '../middleware/requireRole.js'
 import { supabaseAdmin } from '../lib/db.js'
 import { randomHex } from '../lib/crypto.js'
+import { dispatchWebhookEvent } from '../lib/webhook-dispatch.js'
 
 export const webhooksRouter = new Hono<JwtContext>()
 webhooksRouter.use('*', authJwt)
@@ -166,74 +167,13 @@ webhooksRouter.post('/:id/test', requireEdit, async (c) => {
 
   if (fetchError || !webhook) return c.json({ error: 'Webhook not found' }, 404)
 
-  const payload = JSON.stringify({
-    event: 'test',
-    timestamp: new Date().toISOString(),
-    webhook_id: id,
-  })
-
-  // HMAC-SHA256 signature using Web Crypto API (Edge-compatible)
-  const encoder = new TextEncoder()
-  const keyMaterial = await crypto.subtle.importKey(
-    'raw',
-    encoder.encode(webhook.secret as string),
-    { name: 'HMAC', hash: 'SHA-256' },
-    false,
-    ['sign'],
+  await dispatchWebhookEvent(
+    { id: webhook.id as string, url: webhook.url as string, secret: webhook.secret as string },
+    'test',
+    {},
   )
-  const signatureBuffer = await crypto.subtle.sign(
-    'HMAC',
-    keyMaterial,
-    encoder.encode(payload),
-  )
-  const signature = Array.from(new Uint8Array(signatureBuffer))
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('')
 
-  const startMs = Date.now()
-  let httpStatus: number | null = null
-  let errorMessage: string | null = null
-  let status: 'success' | 'failed' = 'failed'
-
-  try {
-    const res = await fetch(webhook.url as string, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Spanlens-Signature': `sha256=${signature}`,
-      },
-      body: payload,
-      signal: AbortSignal.timeout(10_000),
-    })
-    httpStatus = res.status
-    status = res.ok ? 'success' : 'failed'
-    if (!res.ok) {
-      errorMessage = `HTTP ${res.status}`
-    }
-  } catch (err) {
-    errorMessage = err instanceof Error ? err.message : 'Request failed'
-  }
-
-  const durationMs = Date.now() - startMs
-
-  // Record the delivery (fire-and-forget, non-blocking)
-  void Promise.resolve(
-    supabaseAdmin
-      .from('webhook_deliveries')
-      .insert({
-        webhook_id: id,
-        event_type: 'test',
-        status,
-        http_status: httpStatus,
-        error_message: errorMessage,
-        duration_ms: durationMs,
-      }),
-  ).catch(console.error)
-
-  return c.json({
-    success: true,
-    data: { status, http_status: httpStatus, error_message: errorMessage, duration_ms: durationMs },
-  })
+  return c.json({ success: true, data: { dispatched: true } })
 })
 
 // ── GET /api/v1/webhooks/:id/deliveries ─────────────────────────

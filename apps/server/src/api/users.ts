@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { authJwt, type JwtContext } from '../middleware/authJwt.js'
 import { supabaseAdmin } from '../lib/db.js'
+import { parsePageLimit } from '../lib/params.js'
 
 export const usersRouter = new Hono<JwtContext>()
 
@@ -31,9 +32,7 @@ usersRouter.get('/', async (c) => {
   const to        = c.req.query('to') ?? null
   const sortBy    = c.req.query('sortBy') ?? 'cost'
   const sortDir   = c.req.query('sortDir') ?? 'desc'
-  const page      = Math.max(1, parseInt(c.req.query('page') ?? '1', 10))
-  const limit     = Math.min(100, Math.max(1, parseInt(c.req.query('limit') ?? '50', 10)))
-  const offset    = (page - 1) * limit
+  const { page, limit, offset } = parsePageLimit(c.req.query('page'), c.req.query('limit'))
 
   // Hand-rolled RPC — supabase-js doesn't expose GROUP BY in the table API.
   // The function lives in the migration we add below.
