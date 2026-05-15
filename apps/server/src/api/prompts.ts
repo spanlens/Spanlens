@@ -3,6 +3,7 @@ import { authJwt, type JwtContext } from '../middleware/authJwt.js'
 import { requireRole } from '../middleware/requireRole.js'
 import { supabaseAdmin } from '../lib/db.js'
 import { comparePromptVersions } from '../lib/prompt-compare.js'
+import { parsePositiveFloat } from '../lib/params.js'
 
 const requireEdit = requireRole('admin', 'editor')
 
@@ -87,8 +88,7 @@ promptsRouter.get('/', async (c) => {
 
   // Aggregate request metrics per prompt_version_id, then roll up per name.
   // sinceHours defaults to 24h; the UI passes the selected date range.
-  const sinceHoursRaw = Number(c.req.query('sinceHours'))
-  const sinceHours = Number.isFinite(sinceHoursRaw) && sinceHoursRaw > 0 ? sinceHoursRaw : 24
+  const sinceHours = parsePositiveFloat(c.req.query('sinceHours'), 24)
   const sinceIso = new Date(Date.now() - sinceHours * 3_600_000).toISOString()
   const allVersionIds = allRows.map((r) => r.id as string)
   const statsByName = new Map<string, PromptStats>()
@@ -192,9 +192,7 @@ promptsRouter.get('/:name/compare', async (c) => {
   const orgId = c.get('orgId')
   if (!orgId) return c.json({ error: 'Organization not found' }, 404)
   const name = c.req.param('name')
-  const sinceHoursRaw = Number(c.req.query('sinceHours'))
-  const sinceHours =
-    Number.isFinite(sinceHoursRaw) && sinceHoursRaw > 0 ? sinceHoursRaw : 24 * 30
+  const sinceHours = parsePositiveFloat(c.req.query('sinceHours'), 24 * 30)
 
   const metrics = await comparePromptVersions(orgId, name, { sinceHours })
   return c.json({ success: true, data: metrics, meta: { name, sinceHours } })
@@ -285,6 +283,59 @@ promptsRouter.post('/', requireEdit, async (c) => {
     .single()
 
   if (error || !data) return c.json({ error: 'Failed to create version' }, 500)
+  return c.json({ success: true, data }, 201)
+})
+
+// POST /:name/:version/rollback — create a new version copied from the target
+// "Rollback" is non-destructive: it creates a new version with the same
+// content and variables so version history stays intact.
+promptsRouter.post('/:name/:version/rollback', requireEdit, async (c) => {
+  const orgId = c.get('orgId')
+  const userId = c.get('userId')
+  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  const name = c.req.param('name')
+  const version = Number(c.req.param('version'))
+  if (!Number.isInteger(version) || version < 1) {
+    return c.json({ error: 'Invalid version' }, 400)
+  }
+
+  const { data: source, error: fetchErr } = await supabaseAdmin
+    .from('prompt_versions')
+    .select('content, variables, metadata, project_id')
+    .eq('organization_id', orgId)
+    .eq('name', name)
+    .eq('version', version)
+    .maybeSingle()
+
+  if (fetchErr || !source) return c.json({ error: 'Version not found' }, 404)
+
+  const { data: latest } = await supabaseAdmin
+    .from('prompt_versions')
+    .select('version')
+    .eq('organization_id', orgId)
+    .eq('name', name)
+    .order('version', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  const nextVersion = (latest?.version ?? 0) + 1
+
+  const { data, error } = await supabaseAdmin
+    .from('prompt_versions')
+    .insert({
+      organization_id: orgId,
+      project_id: source.project_id,
+      name,
+      version: nextVersion,
+      content: source.content,
+      variables: source.variables ?? [],
+      metadata: { ...(source.metadata as object ?? {}), rolledBackFrom: version },
+      created_by: userId,
+    })
+    .select('id, name, version, content, variables, metadata, project_id, created_at, created_by')
+    .single()
+
+  if (error || !data) return c.json({ error: 'Failed to create rollback version' }, 500)
   return c.json({ success: true, data }, 201)
 })
 
