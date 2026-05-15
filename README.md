@@ -158,9 +158,19 @@ See [CLAUDE.md](./CLAUDE.md) for architecture rules and Known Gotchas (streaming
 
 ## Self-hosting
 
-The easiest way to self-host is with the included `docker-compose.yml` — it runs both the **dashboard (web)** and the **proxy/API server** together.
+The easiest way to self-host is with the included `docker-compose.yml` — it runs both the **dashboard (web)** and the **proxy/API server** together using pre-built images from GHCR.
 
-### 1. Create a `.env` file
+### 1. Apply the database schema (one-time)
+
+Open your Supabase project → **SQL Editor → New query**, paste the contents of [`supabase/init.sql`](./supabase/init.sql), and click **Run**. That's it — no CLI needed.
+
+> **Alternative (psql):**
+> ```bash
+> psql "postgresql://postgres:<password>@db.<ref>.supabase.co:5432/postgres" \
+>   -f supabase/init.sql
+> ```
+
+### 2. Create a `.env` file
 
 ```bash
 # Supabase (cloud or self-hosted)
@@ -182,10 +192,10 @@ CRON_SECRET=<random string>
 # RESEND_FROM=Spanlens <no-reply@your-domain.com>
 ```
 
-### 2. Build and start
+### 3. Start
 
 ```bash
-docker compose up -d --build
+docker compose up -d
 ```
 
 - Dashboard: `http://localhost:3000`

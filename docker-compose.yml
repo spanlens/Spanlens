@@ -1,9 +1,11 @@
 # Production docker-compose for Spanlens self-hosted deployment.
 #
 # Prerequisites:
-#   1. Create a .env file in this directory with the required variables below.
-#   2. Point SUPABASE_URL / *_KEY at your Supabase project (cloud or self-hosted).
-#   3. Run: docker compose up -d --build
+#   1. Apply the database schema (one-time setup):
+#      Open Supabase Dashboard → SQL Editor → New query
+#      Paste the contents of supabase/init.sql and click Run
+#   2. Create a .env file in this directory with the required variables below.
+#   3. Run: docker compose up -d
 #
 # Required .env variables:
 #   NEXT_PUBLIC_SUPABASE_URL      e.g. https://abc.supabase.co
