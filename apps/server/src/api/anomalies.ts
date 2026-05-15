@@ -4,6 +4,7 @@ import { requireRole } from '../middleware/requireRole.js'
 import { detectAnomalies } from '../lib/anomaly.js'
 import { getAnomalyHistory } from '../lib/anomaly-snapshot.js'
 import { supabaseAdmin } from '../lib/db.js'
+import { parsePositiveFloat, parseClampedFloat } from '../lib/params.js'
 
 const requireEdit = requireRole('admin', 'editor')
 
@@ -22,18 +23,6 @@ anomaliesRouter.use('*', authJwt)
 
 const VALID_KINDS = new Set(['latency', 'cost', 'error_rate'])
 
-function parsePositiveNumber(raw: string | undefined, fallback: number): number {
-  if (!raw) return fallback
-  const n = Number(raw)
-  return Number.isFinite(n) && n > 0 ? n : fallback
-}
-
-function parseClampedNumber(raw: string | undefined, fallback: number, min: number, max: number): number {
-  if (!raw) return fallback
-  const n = Number(raw)
-  if (!Number.isFinite(n)) return fallback
-  return Math.max(min, Math.min(max, n))
-}
 
 interface AckKey {
   provider: string
@@ -49,9 +38,9 @@ anomaliesRouter.get('/', async (c) => {
   const orgId = c.get('orgId')
   if (!orgId) return c.json({ error: 'Organization not found' }, 404)
 
-  const observationHours = parseClampedNumber(c.req.query('observationHours'), 1, 0.25, 72)
-  const referenceHours = parseClampedNumber(c.req.query('referenceHours'), 168, 1, 8760)
-  const sigmaThreshold = parseClampedNumber(c.req.query('sigma'), 3, 1, 10)
+  const observationHours = parseClampedFloat(c.req.query('observationHours'), 1, 0.25, 72)
+  const referenceHours = parseClampedFloat(c.req.query('referenceHours'), 168, 1, 8760)
+  const sigmaThreshold = parseClampedFloat(c.req.query('sigma'), 3, 1, 10)
   const projectId = c.req.query('projectId')
 
   if (projectId) {
@@ -114,7 +103,7 @@ anomaliesRouter.get('/history', async (c) => {
   const orgId = c.get('orgId')
   if (!orgId) return c.json({ error: 'Organization not found' }, 404)
 
-  const days = Math.min(parsePositiveNumber(c.req.query('days'), 30), 365)
+  const days = Math.min(parsePositiveFloat(c.req.query('days'), 30), 365)
   const history = await getAnomalyHistory(orgId, days)
 
   return c.json({

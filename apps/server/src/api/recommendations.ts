@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { authJwt, type JwtContext } from '../middleware/authJwt.js'
 import { recommendModelSwaps } from '../lib/model-recommend.js'
 import { supabaseAdmin } from '../lib/db.js'
+import { parsePositiveFloat } from '../lib/params.js'
 
 /**
  * GET /api/v1/recommendations
@@ -28,11 +29,6 @@ export const recommendationsRouter = new Hono<JwtContext>()
 
 recommendationsRouter.use('*', authJwt)
 
-function parsePositive(raw: string | undefined, fallback: number): number {
-  if (!raw) return fallback
-  const n = Number(raw)
-  return Number.isFinite(n) && n > 0 ? n : fallback
-}
 
 // ── Shape returned by get_model_percentiles() ────────────────────────────────
 
@@ -52,8 +48,8 @@ recommendationsRouter.get('/', async (c) => {
   const orgId = c.get('orgId')
   if (!orgId) return c.json({ error: 'Organization not found' }, 404)
 
-  const hours = parsePositive(c.req.query('hours'), 24 * 7)
-  const minSavingsUsd = parsePositive(c.req.query('minSavings'), 5)
+  const hours = parsePositiveFloat(c.req.query('hours'), 24 * 7)
+  const minSavingsUsd = parsePositiveFloat(c.req.query('minSavings'), 5)
 
   const recommendations = await recommendModelSwaps(orgId, { hours, minSavingsUsd })
   return c.json({
@@ -73,7 +69,7 @@ recommendationsRouter.get('/percentiles', async (c) => {
 
   const provider = c.req.query('provider')
   const model    = c.req.query('model')
-  const hours    = parsePositive(c.req.query('hours'), 24 * 7)
+  const hours    = parsePositiveFloat(c.req.query('hours'), 24 * 7)
 
   if (!provider || provider.length > 64) {
     return c.json({ error: 'provider is required (max 64 chars)' }, 400)
