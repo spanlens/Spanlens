@@ -3,7 +3,7 @@ import { CodeBlock } from '../_components/code-block'
 export const metadata = {
   title: 'Self-hosting · Spanlens Docs',
   description:
-    'Run the Spanlens proxy on your own infra with a Supabase project. Honest walkthrough with current gaps clearly marked.',
+    'Run the full Spanlens stack (dashboard + proxy) on your own infra with a Supabase project.',
 }
 
 export default function SelfHostDocs() {
@@ -11,22 +11,9 @@ export default function SelfHostDocs() {
     <div>
       <h1>Self-hosting</h1>
       <p className="lead">
-        Run the Spanlens proxy + API on your own infra. Keeps all request bodies, traces, and
-        encrypted provider keys inside your network. The hosted dashboard at{' '}
-        <a href="https://spanlens.io">spanlens.io</a> can then read from your self-hosted
-        backend.
+        Run the Spanlens proxy, API, and dashboard on your own infra. Keeps all request bodies,
+        traces, and encrypted provider keys inside your network.
       </p>
-
-      <div className="rounded-lg border-2 border-accent bg-accent-bg p-4 my-6 not-prose">
-        <p className="text-sm font-semibold text-accent mb-1">⚠️ Early access</p>
-        <p className="text-sm text-accent">
-          Both the proxy server and dashboard images boot end-to-end (verified 2026-05-15).
-          Rough edges: Supabase is required (plain Postgres isn&apos;t supported yet), and
-          migrations aren&apos;t bundled in the image — a manual <code>supabase db push</code>{' '}
-          step is required. Walk through the steps below; if you hit friction, file a GitHub
-          issue and we&apos;ll smooth it.
-        </p>
-      </div>
 
       <h2>Who should self-host</h2>
       <ul>
@@ -42,20 +29,8 @@ export default function SelfHostDocs() {
           <a href="https://supabase.com" target="_blank" rel="noopener noreferrer">
             supabase.com
           </a>{' '}
-          is enough to start; power users can also self-host the full Supabase Docker stack on
-          their own Postgres. <strong>Plain Postgres is not supported</strong> — the server
+          is enough to start. <strong>Plain Postgres is not supported</strong> — the server
           uses <code>@supabase/supabase-js</code> directly.
-        </li>
-        <li>
-          <strong>The Supabase CLI</strong> locally, to push the schema migrations to your
-          Supabase project. Install:{' '}
-          <a
-            href="https://supabase.com/docs/guides/local-development/cli/getting-started"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            supabase.com/docs/guides/local-development/cli
-          </a>
         </li>
         <li>
           <strong>A 32-byte encryption key.</strong> Used for AES-256-GCM encryption of provider
@@ -68,7 +43,7 @@ export default function SelfHostDocs() {
         </li>
         <li>
           <strong>A reverse proxy with HTTPS</strong> in front (Caddy, nginx, Cloudflare Tunnel).
-          The container speaks HTTP on port 3001.
+          The containers speak HTTP on ports 3000 (web) and 3001 (server).
         </li>
       </ol>
 
@@ -76,14 +51,32 @@ export default function SelfHostDocs() {
 
       <h3>Option A — docker-compose (recommended)</h3>
       <p>
-        The easiest way to self-host. Runs both the <strong>dashboard (web)</strong> and the{' '}
-        <strong>proxy / API server</strong> together from a single compose file.
+        The easiest way to self-host. Pulls pre-built images from GHCR and runs both the{' '}
+        <strong>dashboard (web)</strong> and the <strong>proxy / API server</strong> together.
+        No source code needed.
       </p>
 
-      <h4>1. Clone the repo and create a <code>.env</code> file</h4>
-      <CodeBlock language="bash">{`git clone https://github.com/sunes26/Spanlens.git
-cd Spanlens`}</CodeBlock>
-      <CodeBlock language="bash">{`# .env — required variables
+      <h4>1. Apply the database schema</h4>
+      <p>
+        Open your Supabase project → <strong>SQL Editor → New query</strong>, paste the contents
+        of{' '}
+        <a
+          href="https://raw.githubusercontent.com/spanlens/Spanlens/main/supabase/init.sql"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          supabase/init.sql
+        </a>
+        , and click <strong>Run</strong>. No CLI needed.
+      </p>
+      <p className="text-sm text-muted-foreground">
+        Prefer the terminal? Use psql instead:
+      </p>
+      <CodeBlock language="bash">{`curl -o init.sql https://raw.githubusercontent.com/spanlens/Spanlens/main/supabase/init.sql
+psql "postgresql://postgres:<password>@db.<ref>.supabase.co:5432/postgres" -f init.sql`}</CodeBlock>
+
+      <h4>2. Create a <code>.env</code> file</h4>
+      <CodeBlock language="bash">{`# Required
 NEXT_PUBLIC_SUPABASE_URL=https://<ref>.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...
 SUPABASE_URL=https://<ref>.supabase.co
@@ -97,84 +90,63 @@ CRON_SECRET=$(openssl rand -hex 16)
 # RESEND_API_KEY=re_...
 # RESEND_FROM=Spanlens <no-reply@your-domain.com>`}</CodeBlock>
 
-      <h4>2. Apply the schema migrations</h4>
-      <CodeBlock language="bash">{`supabase login
-supabase link --project-ref <your-ref>
-supabase db push`}</CodeBlock>
-
-      <h4>3. Build and start</h4>
-      <CodeBlock language="bash">{`docker compose up -d --build`}</CodeBlock>
+      <h4>3. Start</h4>
+      <CodeBlock language="bash">{`curl -o docker-compose.yml https://raw.githubusercontent.com/spanlens/Spanlens/main/docker-compose.yml
+docker compose up -d`}</CodeBlock>
       <ul>
         <li>Dashboard: <code>http://localhost:3000</code></li>
         <li>API / proxy: <code>http://localhost:3001</code></li>
       </ul>
       <p className="text-sm text-muted-foreground">
-        ⚠️ <code>NEXT_PUBLIC_*</code> vars are baked into the Next.js client bundle at build time.
-        They must be present in <code>.env</code> before running <code>docker compose build</code>.
+        The web container reads <code>NEXT_PUBLIC_*</code> from env at startup and patches them
+        into the pre-built bundle automatically — no rebuild needed.
       </p>
 
       <h3>Option B — server only</h3>
       <p>
-        If you run the dashboard separately (hosted at{' '}
+        If you run the dashboard separately (at{' '}
         <a href="https://spanlens.io">spanlens.io</a> or your own Next.js deployment), you can
-        run just the API server:
+        run just the API server.
       </p>
 
-      <h3>1. Create a Supabase project</h3>
+      <h4>1. Create a Supabase project</h4>
       <p>
-        Sign in at <a href="https://supabase.com" target="_blank" rel="noopener noreferrer">supabase.com</a>, create a project, wait for it to provision (~1 minute).
-      </p>
-      <p>
-        From <code>Project Settings → API</code>, copy:
+        Sign in at <a href="https://supabase.com" target="_blank" rel="noopener noreferrer">supabase.com</a>,
+        create a project, wait for it to provision (~1 minute).
+        From <strong>Project Settings → API</strong>, copy:
       </p>
       <ul>
-        <li><strong>Project URL</strong> → will be your <code>SUPABASE_URL</code></li>
+        <li><strong>Project URL</strong> → <code>SUPABASE_URL</code></li>
         <li><strong>anon public key</strong> → <code>SUPABASE_ANON_KEY</code></li>
-        <li><strong>service_role secret key</strong> → <code>SUPABASE_SERVICE_ROLE_KEY</code> (keep this server-side only)</li>
+        <li><strong>service_role secret key</strong> → <code>SUPABASE_SERVICE_ROLE_KEY</code> (server-side only)</li>
       </ul>
 
-      <h3>2. Apply the schema migrations</h3>
+      <h4>2. Apply the schema</h4>
       <p>
-        Clone the repo to get the migration SQL files, then link your Supabase project and push:
-      </p>
-      <CodeBlock language="bash">{`git clone https://github.com/sunes26/Spanlens.git
-cd Spanlens
-
-# One-time: log in and link to your Supabase project
-supabase login
-supabase link --project-ref <your-ref>   # "ref" is the <ref>.supabase.co subdomain
-
-# Apply all migrations
-supabase db push`}</CodeBlock>
-      <p className="text-sm text-muted-foreground">
-        ⚠️ <em>Known gap:</em> migrations aren&apos;t bundled in the Docker image yet, so this
-        manual step is required. Roadmap: ship a separate <code>spanlens-migrate</code> image
-        that applies them for you.
+        Same as Option A step 1 — open <strong>SQL Editor → New query</strong>, paste{' '}
+        <a
+          href="https://raw.githubusercontent.com/spanlens/Spanlens/main/supabase/init.sql"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          init.sql
+        </a>
+        , run.
       </p>
 
-      <h3>3. Run the server</h3>
-      <CodeBlock language="bash">{`docker run -d --name spanlens \\
+      <h4>3. Run the server</h4>
+      <CodeBlock language="bash">{`docker run -d --name spanlens-server \\
   -p 3001:3001 \\
-  -e SUPABASE_URL="https://<your-ref>.supabase.co" \\
-  -e SUPABASE_ANON_KEY="eyJhbGciOi..." \\
-  -e SUPABASE_SERVICE_ROLE_KEY="eyJhbGciOi..." \\
+  -e SUPABASE_URL="https://<ref>.supabase.co" \\
+  -e SUPABASE_ANON_KEY="eyJ..." \\
+  -e SUPABASE_SERVICE_ROLE_KEY="eyJ..." \\
   -e ENCRYPTION_KEY="$(openssl rand -base64 32)" \\
-  ghcr.io/sunes26/spanlens-server:latest`}</CodeBlock>
-      <p>
-        Health check: <code>curl http://localhost:3001/health</code> should return <code>{`{"status":"ok"}`}</code>.
-      </p>
-      <p className="text-sm text-muted-foreground">
-        Verified 2026-04-22: the image pulls without auth and boots against fake env vars past
-        the DB init check. If you prefer building from source,{' '}
-        <code>docker build -f apps/server/Dockerfile -t spanlens-server .</code> from the repo
-        root works too.
-      </p>
+  -e CRON_SECRET="$(openssl rand -hex 16)" \\
+  ghcr.io/spanlens/spanlens-server:latest`}</CodeBlock>
+      <CodeBlock language="bash">{`curl http://localhost:3001/health
+# {"status":"ok"}`}</CodeBlock>
 
-      <h3>4. Point your application at the self-hosted proxy</h3>
-      <p>
-        Any <a href="/docs/sdk">SDK</a> or <a href="/docs/proxy">direct proxy</a> pattern works —
-        replace the default base URL with your self-hosted domain:
-      </p>
+      <h4>4. Point your SDK at the self-hosted proxy</h4>
       <CodeBlock language="ts">{`import { createOpenAI } from '@spanlens/sdk/openai'
 
 const openai = createOpenAI({
@@ -212,11 +184,21 @@ const openai = createOpenAI({
             <td>32-byte base64 key for AES-256-GCM provider-key encryption at rest</td>
           </tr>
           <tr>
+            <td><code>NEXT_PUBLIC_SUPABASE_URL</code></td>
+            <td>Yes (web only)</td>
+            <td>Same as <code>SUPABASE_URL</code> — exposed to the browser for Supabase Auth</td>
+          </tr>
+          <tr>
+            <td><code>NEXT_PUBLIC_SUPABASE_ANON_KEY</code></td>
+            <td>Yes (web only)</td>
+            <td>Same as <code>SUPABASE_ANON_KEY</code> — exposed to the browser for Supabase Auth</td>
+          </tr>
+          <tr>
             <td><code>WEB_URL</code></td>
             <td>Yes (multi-user)</td>
             <td>
               Base URL of your dashboard (e.g. <code>https://spanlens.example.com</code>).
-              Used to build the accept link in invitation emails. Falls back to
+              Used to build the accept link in invitation emails. Falls back to{' '}
               <code>http://localhost:3000</code> if unset — fine for local dev,
               broken in production.
             </td>
@@ -225,60 +207,54 @@ const openai = createOpenAI({
             <td><code>RESEND_API_KEY</code></td>
             <td>No</td>
             <td>
-              Resend (<a href="https://resend.com">resend.com</a>) API token for outbound
-              email (currently invitations). When unset, emails are skipped silently
-              and the invite endpoint returns the accept link as <code>devAcceptUrl</code>
-              in its JSON response so an admin can hand-deliver it.
+              Resend API token for outbound email (invitations). When unset, emails are skipped
+              silently and the invite endpoint returns the accept link as{' '}
+              <code>devAcceptUrl</code> so an admin can hand-deliver it.
             </td>
           </tr>
           <tr>
             <td><code>RESEND_FROM</code></td>
             <td>No</td>
             <td>
-              Sender header for outbound email. Default
-              <code>Spanlens &lt;notifications@spanlens.io&gt;</code>. Override with a
-              verified sender on your own domain (e.g.
-              <code>Spanlens &lt;notifications@mail.example.com&gt;</code>) — unverified
-              senders land in spam folders.
+              Sender header. Default <code>Spanlens &lt;notifications@spanlens.io&gt;</code>.
+              Override with a verified sender on your own domain to avoid spam filters.
             </td>
           </tr>
           <tr>
             <td><code>PORT</code></td>
             <td>No</td>
-            <td>HTTP port (default 3001)</td>
+            <td>HTTP port for the server (default 3001)</td>
           </tr>
         </tbody>
       </table>
 
       <h2 id="upgrading">Upgrading</h2>
-      <CodeBlock language="bash">{`docker pull ghcr.io/sunes26/spanlens-server:latest
-docker restart spanlens
+      <CodeBlock language="bash">{`# Pull the latest images and restart
+docker compose pull && docker compose up -d
 
-# If new migrations shipped, re-pull the repo and push:
-cd Spanlens && git pull && supabase db push`}</CodeBlock>
+# If a new release added migrations, re-run init.sql in SQL Editor
+# (all statements use CREATE IF NOT EXISTS / ALTER IF NOT EXISTS — safe to re-run)`}</CodeBlock>
       <p>
-        We ship semver tags (<code>ghcr.io/sunes26/spanlens-server:0.3.0</code>). Pin a tag in
-        production and upgrade deliberately.
+        We ship semver tags (<code>ghcr.io/spanlens/spanlens-server:0.3.0</code>,{' '}
+        <code>ghcr.io/spanlens/spanlens-web:0.3.0</code>). Pin a tag in production and upgrade
+        deliberately.
       </p>
 
-      <h2 id="dashboard">Dashboard access</h2>
-      <p>
-        Three options:
-      </p>
+      <h2 id="dashboard">Dashboard options</h2>
       <ul>
         <li>
-          <strong>docker-compose</strong> — builds and runs the web dashboard alongside the server.
-          Recommended for full self-hosting. See <a href="#quickstart">Option A</a> above.
+          <strong>docker-compose (recommended)</strong> — pulls{' '}
+          <code>ghcr.io/spanlens/spanlens-web:latest</code> alongside the server. Full
+          self-hosting with no source required. See <a href="#quickstart">Option A</a> above.
         </li>
         <li>
           <strong>Use the hosted dashboard at <a href="https://spanlens.io">spanlens.io</a></strong>{' '}
-          pointed at your self-hosted backend. Log in, then override the API base URL in your
-          browser via <a href="/settings">/settings</a>.
+          pointed at your self-hosted backend. Log in, then override the API base URL in{' '}
+          <a href="/settings">Settings</a>.
         </li>
         <li>
-          <strong>Run the web app locally yourself</strong> — clone the repo and{' '}
-          <code>pnpm --filter web dev</code> with <code>NEXT_PUBLIC_API_URL</code> pointed at
-          your backend.
+          <strong>Build from source</strong> — clone the repo and{' '}
+          <code>docker compose up -d --build</code> to build both images locally.
         </li>
       </ul>
 
@@ -288,26 +264,15 @@ cd Spanlens && git pull && supabase db push`}</CodeBlock>
         covers you. The critical thing to back up outside the DB is{' '}
         <code>ENCRYPTION_KEY</code> — without it, encrypted provider keys are unrecoverable.
         Store it in your secret manager (AWS Secrets Manager, GCP Secret Manager, HashiCorp
-        Vault) with a rotation schedule you can follow.
+        Vault) with a rotation schedule.
       </p>
 
-      <h2>Known gaps & roadmap</h2>
-      <p>Honest current state of self-host:</p>
+      <h2>Known limitations</h2>
       <ul>
         <li>
           <strong>Plain Postgres isn&apos;t supported.</strong> The server imports{' '}
-          <code>@supabase/supabase-js</code> directly. Moving to a thin Postgres abstraction is
-          on the roadmap but not a launch blocker.
-        </li>
-        <li>
-          <strong>Migrations ship separately</strong> (via Supabase CLI + repo clone). A bundled{' '}
-          <code>spanlens-migrate</code> tool is a post-launch priority.
-        </li>
-        <li>
-          <strong>No published <code>ghcr.io/sunes26/spanlens-web</code> image yet.</strong> The
-          dashboard Dockerfile is in the repo — build it yourself via{' '}
-          <code>docker compose build</code> from the repo root. A pre-built image is on the
-          roadmap.
+          <code>@supabase/supabase-js</code> directly. Moving to a thin abstraction layer is on
+          the roadmap but not a launch blocker.
         </li>
         <li>
           <strong>Operational tooling is minimal.</strong> No built-in monitoring, no migration
@@ -319,7 +284,7 @@ cd Spanlens && git pull && supabase db push`}</CodeBlock>
       <p className="text-sm text-muted-foreground">
         Found a problem?{' '}
         <a
-          href="https://github.com/sunes26/Spanlens/issues"
+          href="https://github.com/spanlens/Spanlens/issues"
           target="_blank"
           rel="noopener noreferrer"
         >
