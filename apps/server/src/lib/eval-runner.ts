@@ -12,6 +12,7 @@
  */
 
 import { supabaseAdmin } from './db.js'
+import { requestsScope, selectRequests } from './requests-query.js'
 import { aes256Decrypt } from './crypto.js'
 import { calculateCost } from './cost.js'
 
@@ -290,27 +291,58 @@ export async function runEvalRun(input: RunInput): Promise<void> {
     let preparedSamples: SampleRow[] = []
 
     if (source === 'production') {
-      let query = supabaseAdmin
-        .from('requests')
-        .select('id, response_body')
-        .eq('organization_id', organizationId)
-        .eq('prompt_version_id', promptVersionId)
-        .not('response_body', 'is', null)
-        .order('created_at', { ascending: false })
-        .limit(sampleSize)
+      // Sample production responses for LLM-as-judge. response_body is a JSON
+      // string in ClickHouse (vs JSONB in Supabase) — we parse it client-side
+      // before passing to extractResponseText, which already handles unknown.
+      const sampleFilters: string[] = [
+        'prompt_version_id = {promptVersionId:UUID}',
+        // response_body in ClickHouse is a non-null String (default '' for
+        // missing). Filter out empties at the DB instead of pulling them back.
+        "response_body != ''",
+      ]
+      const sampleParams: Record<string, unknown> = { promptVersionId }
+      if (sampleFrom) {
+        sampleFilters.push('created_at >= parseDateTime64BestEffort({sampleFrom:String})')
+        sampleParams['sampleFrom'] = sampleFrom
+      }
+      if (sampleTo) {
+        sampleFilters.push('created_at <= parseDateTime64BestEffort({sampleTo:String})')
+        sampleParams['sampleTo'] = sampleTo
+      }
 
-      if (sampleFrom) query = query.gte('created_at', sampleFrom)
-      if (sampleTo) query = query.lte('created_at', sampleTo)
+      interface SampleQueryRow {
+        id: string
+        response_body: string
+      }
+      let samples: SampleQueryRow[]
+      try {
+        const scope = await requestsScope(organizationId)
+        samples = await selectRequests<SampleQueryRow>({
+          scope,
+          select: 'id, response_body',
+          filters: sampleFilters.join(' AND '),
+          orderBy: 'created_at DESC',
+          limit: sampleSize,
+          params: sampleParams,
+        })
+      } catch (err) {
+        throw new Error(`Sample fetch failed: ${err instanceof Error ? err.message : String(err)}`)
+      }
 
-      const { data: samples, error: sampleErr } = await query
-      if (sampleErr) throw new Error(`Sample fetch failed: ${sampleErr.message}`)
-
-      preparedSamples = (samples ?? [])
-        .map((s) => ({
-          responseText: extractResponseText(s.response_body) ?? '',
-          requestId: s.id as string,
-          datasetItemId: null,
-        }))
+      preparedSamples = samples
+        .map((s) => {
+          let parsed: unknown
+          try {
+            parsed = JSON.parse(s.response_body)
+          } catch {
+            parsed = s.response_body
+          }
+          return {
+            responseText: extractResponseText(parsed) ?? '',
+            requestId: s.id,
+            datasetItemId: null,
+          }
+        })
         .filter((s) => s.responseText.length > 0)
     } else {
       // source === 'dataset'

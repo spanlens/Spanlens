@@ -1,4 +1,5 @@
 import { supabaseAdmin } from './db.js'
+import { requestsScope, selectRequests } from './requests-query.js'
 import {
   aggregate,
   type VersionMetrics,
@@ -35,20 +36,45 @@ export async function comparePromptVersions(
   if (typedVersions.length === 0) return []
 
   const versionIds = typedVersions.map((v) => v.id)
-  const windowStart = new Date(Date.now() - sinceHours * 3_600_000).toISOString()
+  const windowStart = new Date(Date.now() - sinceHours * 3_600_000)
+    .toISOString()
+    .replace('T', ' ')
+    .replace('Z', '')
 
-  const { data: requests } = await supabaseAdmin
-    .from('requests')
-    .select('prompt_version_id, latency_ms, cost_usd, status_code, prompt_tokens, completion_tokens')
-    .eq('organization_id', organizationId)
-    .in('prompt_version_id', versionIds)
-    .gte('created_at', windowStart)
+  // User-facing analytical query — plan retention applies. cost_usd arrives as
+  // a string from ClickHouse (Decimal); aggregator coerces it.
+  interface PromptCompareRow {
+    prompt_version_id: string | null
+    latency_ms: number
+    cost_usd: string | number | null
+    status_code: number
+    prompt_tokens: number
+    completion_tokens: number
+  }
+  const scope = await requestsScope(organizationId)
+  const rawRequests = await selectRequests<PromptCompareRow>({
+    scope,
+    select:
+      'prompt_version_id, latency_ms, cost_usd, status_code, prompt_tokens, completion_tokens',
+    filters:
+      'prompt_version_id IN {versionIds:Array(UUID)} ' +
+      'AND created_at >= parseDateTime64BestEffort({windowStart:String})',
+    params: { versionIds, windowStart },
+  })
 
   const byVersion = new Map<string, RequestMetricRow[]>()
-  for (const r of ((requests ?? []) as RequestMetricRow[])) {
+  for (const r of rawRequests) {
     if (!r.prompt_version_id) continue
+    const normalized: RequestMetricRow = {
+      prompt_version_id: r.prompt_version_id,
+      latency_ms: r.latency_ms,
+      cost_usd: r.cost_usd == null ? null : Number(r.cost_usd),
+      status_code: r.status_code,
+      prompt_tokens: r.prompt_tokens,
+      completion_tokens: r.completion_tokens,
+    }
     const bucket = byVersion.get(r.prompt_version_id) ?? []
-    bucket.push(r)
+    bucket.push(normalized)
     byVersion.set(r.prompt_version_id, bucket)
   }
 

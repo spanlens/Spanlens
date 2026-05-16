@@ -5,6 +5,19 @@ vi.mock('../lib/db.js', () => ({
   supabaseAdmin: { from: mockFrom },
 }))
 
+// snapshotAnomaliesForAllOrgs now queries ClickHouse for active orgs instead
+// of Supabase. Tests control which orgs come back via setActiveOrgsForCH.
+const mockChQuery = vi.hoisted(() => vi.fn())
+vi.mock('../lib/clickhouse.js', () => ({
+  getClickhouse: () => ({ query: mockChQuery }),
+}))
+
+function setActiveOrgsForCH(orgIds: string[]): void {
+  mockChQuery.mockResolvedValue({
+    json: () => Promise.resolve(orgIds.map((id) => ({ organization_id: id }))),
+  })
+}
+
 const mockDetectAnomalies = vi.hoisted(() => vi.fn())
 vi.mock('../lib/anomaly.js', () => ({
   detectAnomalies: mockDetectAnomalies,
@@ -58,10 +71,9 @@ function setupFrom({
   channels = [] as { kind: string; target: string }[],
   orgName = 'Test Org',
 } = {}) {
+  // Active-orgs discovery moved to ClickHouse — provide that response here too.
+  setActiveOrgsForCH(orgIds)
   mockFrom.mockImplementation((table: string) => {
-    if (table === 'requests') {
-      return makeChain({ data: orgIds.map((id) => ({ organization_id: id })), error: null })
-    }
     if (table === 'anomaly_events') {
       return { upsert: () => Promise.resolve({ error: upsertError }) }
     }
@@ -77,6 +89,7 @@ function setupFrom({
 
 beforeEach(() => {
   mockFrom.mockReset()
+  mockChQuery.mockReset()
   mockDetectAnomalies.mockReset()
   mockDeliverToChannel.mockReset()
 })
