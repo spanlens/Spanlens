@@ -11,6 +11,7 @@
  */
 
 import { supabaseAdmin } from './db.js'
+import { getClickhouse } from './clickhouse.js'
 import { sendEmail, renderStaleKeyDigestEmail } from './resend.js'
 import { getAdminEmails } from './admin-emails.js'
 
@@ -55,21 +56,40 @@ async function findStaleKeysForOrg(
   const cutoffMs = Date.now() - thresholdDays * 24 * 60 * 60 * 1000
   const stale: StaleKey[] = []
 
-  for (const key of keys) {
-    // Look at the single most recent request for this key. The partial
-    // index added in 20260428023000_security_settings.sql makes this an
-    // index-only lookup.
-    const { data: latest } = await supabaseAdmin
-      .from('requests')
-      .select('created_at')
-      .eq('provider_key_id', key.id)
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle()
+  // Bulk-fetch last-used per provider_key in one ClickHouse round-trip rather
+  // than one per key. ignoreRetention is implicit here — we want to know about
+  // stale keys regardless of plan retention (a key idle for 1 year is still
+  // stale even on a 14-day Free plan).
+  const keyIds = keys.map((k) => k.id)
+  const lastUsedMap = new Map<string, string>()
+  if (keyIds.length > 0) {
+    try {
+      const result = await getClickhouse().query({
+        query:
+          'SELECT provider_key_id AS id, max(created_at) AS last_used_at ' +
+          'FROM requests ' +
+          'WHERE organization_id = {orgId:UUID} ' +
+          '  AND provider_key_id IN {keyIds:Array(UUID)} ' +
+          'GROUP BY provider_key_id',
+        query_params: { orgId, keyIds },
+        format: 'JSONEachRow',
+      })
+      const rows = (await result.json()) as Array<{ id: string; last_used_at: string }>
+      for (const row of rows) lastUsedMap.set(row.id, row.last_used_at)
+    } catch (err) {
+      // Fall through — every key reports its created_at as the reference,
+      // which conservatively marks idle keys as stale.
+      console.error(
+        '[stale-key-digest] ClickHouse last-used lookup failed:',
+        err instanceof Error ? err.message : err,
+      )
+    }
+  }
 
-    const lastUsedIso = latest?.created_at ?? null
+  for (const key of keys) {
+    const lastUsedIso = lastUsedMap.get(key.id) ?? null
     const referenceMs = lastUsedIso
-      ? Date.parse(lastUsedIso)
+      ? Date.parse(lastUsedIso.replace(' ', 'T') + 'Z')
       : Date.parse(key.created_at)
 
     if (referenceMs < cutoffMs) {

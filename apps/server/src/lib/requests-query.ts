@@ -68,10 +68,22 @@ export interface RequestsScope {
   readonly plan: Plan
 }
 
+export interface RequestsScopeOptions {
+  /**
+   * Skip the plan retention window. Required for billing/quota counters
+   * and admin/cron jobs that need to see the full month (or full table)
+   * regardless of which retention tier the org is on.
+   *
+   * Do NOT use for user-facing reads — the dashboard must respect plan
+   * retention or Free users would see data past their tier.
+   */
+  readonly ignoreRetention?: boolean
+}
+
 /**
  * Resolves the org + retention WHERE scope for `requests` queries.
  * Callers must include `whereScope` in every query and merge `scopeParams`
- * into `query_params` — there is no escape hatch.
+ * into `query_params` — there is no escape hatch for tenant isolation.
  *
  * Example:
  *   const { whereScope, scopeParams } = await requestsScope(orgId)
@@ -81,13 +93,18 @@ export interface RequestsScope {
  *     format: 'JSONEachRow',
  *   })
  */
-export async function requestsScope(organizationId: string): Promise<RequestsScope> {
+export async function requestsScope(
+  organizationId: string,
+  options: RequestsScopeOptions = {},
+): Promise<RequestsScope> {
   const plan = await getOrgPlan(organizationId)
   const retentionDays = LOG_RETENTION_DAYS[plan]
+  const whereScope = options.ignoreRetention
+    ? 'organization_id = {orgId:UUID}'
+    : 'organization_id = {orgId:UUID} ' +
+      'AND created_at >= now() - INTERVAL {retentionDays:UInt32} DAY'
   return {
-    whereScope:
-      'organization_id = {orgId:UUID} ' +
-      'AND created_at >= now() - INTERVAL {retentionDays:UInt32} DAY',
+    whereScope,
     scopeParams: { orgId: organizationId, retentionDays },
     plan,
   }
