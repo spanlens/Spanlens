@@ -50,7 +50,7 @@ export default function PromptsPlaygroundDocs() {
       </p>
       <CodeBlock language="text">{`You are a {{language}} expert. Please answer {{userName}}'s question.`}</CodeBlock>
       <p>
-        With <code>language: {'"TypeScript"'}</code> and <code>userName: {'"Alice"'}</code>, the text
+        With <code>language: &quot;TypeScript&quot;</code> and <code>userName: &quot;Alice&quot;</code>, the text
         actually sent to the model is:
       </p>
       <CodeBlock language="text">{`You are a TypeScript expert. Please answer Alice's question.`}</CodeBlock>
