@@ -1,4 +1,5 @@
 import { supabaseAdmin } from './db.js'
+import { getClickhouse } from './clickhouse.js'
 import { detectAnomalies, ANOMALY_DEFAULTS, type AnomalyBucket } from './anomaly.js'
 import { deliverToChannel, type AlertNotification, type NotificationChannelRow } from './notifiers.js'
 
@@ -28,21 +29,30 @@ export async function snapshotAnomaliesForAllOrgs(
 
   // Pick orgs with at least one request in the past 24h — anomaly detection
   // needs traffic anyway, no point invoking it for inactive orgs.
-  const since = new Date(now.getTime() - 86_400_000).toISOString()
-  // Limit prevents OOM on high-traffic instances; JS dedup handles the rest.
-  // A proper DISTINCT RPC would be cleaner at very large scale.
-  const { data: orgs, error: orgsError } = await supabaseAdmin
-    .from('requests')
-    .select('organization_id')
-    .gte('created_at', since)
-    .limit(50000)
-    .returns<{ organization_id: string }[]>()
-
-  if (orgsError) {
-    throw new Error(`Failed to fetch active orgs: ${orgsError.message}`)
+  // ClickHouse can DISTINCT cheaply, so we let the database deduplicate
+  // instead of pulling rows back to JS like the old Supabase pattern.
+  const sinceTs = new Date(now.getTime() - 86_400_000)
+    .toISOString()
+    .replace('T', ' ')
+    .replace('Z', '')
+  let uniqueOrgIds: string[]
+  try {
+    const result = await getClickhouse().query({
+      query:
+        'SELECT DISTINCT organization_id ' +
+        'FROM requests ' +
+        'WHERE created_at >= parseDateTime64BestEffort({since:String})',
+      query_params: { since: sinceTs },
+      format: 'JSONEachRow',
+    })
+    const rows = (await result.json()) as Array<{ organization_id: string }>
+    uniqueOrgIds = rows.map((r) => r.organization_id)
+  } catch (err) {
+    throw new Error(
+      `Failed to fetch active orgs: ${err instanceof Error ? err.message : String(err)}`,
+    )
   }
 
-  const uniqueOrgIds = Array.from(new Set((orgs ?? []).map((r) => r.organization_id)))
   const results: SnapshotResult[] = []
 
   // Process in parallel chunks to avoid opening 1 DB connection per org while

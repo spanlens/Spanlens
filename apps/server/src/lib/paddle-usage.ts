@@ -30,7 +30,7 @@
  */
 
 import { supabaseAdmin } from './db.js'
-import { MONTHLY_REQUEST_LIMITS, type Plan } from './quota.js'
+import { MONTHLY_REQUEST_LIMITS, countMonthlyRequests, type Plan } from './quota.js'
 import { chargeSubscription } from './paddle-charge.js'
 import { isWithinChargingWindow, UNITS_PER_QUANTITY } from './paddle-usage-stats.js'
 
@@ -107,15 +107,16 @@ export async function computeAndReportOverages(
     const included = MONTHLY_REQUEST_LIMITS[s.plan] ?? 0
     const priceId = overagePriceIdForPlan(s.plan)
 
-    // Count requests in the current billing period
-    const { count, error: countErr } = await supabaseAdmin
-      .from('requests')
-      .select('id', { count: 'exact', head: true })
-      .eq('organization_id', s.organization_id)
-      .gte('created_at', s.current_period_start)
-      .lt('created_at', s.current_period_end)
-
-    if (countErr) {
+    // Count requests in the current billing period — bypasses plan retention
+    // because Paddle bills on the actual period, not the dashboard window.
+    let used: number
+    try {
+      used = await countMonthlyRequests(
+        s.organization_id,
+        new Date(s.current_period_start),
+        new Date(s.current_period_end),
+      )
+    } catch (err) {
       reports.push({
         ...report,
         included,
@@ -123,12 +124,10 @@ export async function computeAndReportOverages(
         overage_requests: 0,
         overage_quantity: 0,
         status: 'error',
-        error: `count failed: ${countErr.message}`,
+        error: `count failed: ${err instanceof Error ? err.message : String(err)}`,
       } as OverageReport)
       continue
     }
-
-    const used = count ?? 0
     const overageRequests = Math.max(0, used - included)
     const overageQuantity = Math.ceil(overageRequests / UNITS_PER_QUANTITY)
 
