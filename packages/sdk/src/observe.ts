@@ -1,6 +1,6 @@
 import type { SpanHandle } from './span.js'
 import type { TraceHandle } from './trace.js'
-import type { SpanOptions } from './types.js'
+import type { LogBodyMode, SpanOptions } from './types.js'
 import { parseOpenAIUsage, parseAnthropicUsage, parseGeminiUsage } from './parsers.js'
 
 /**
@@ -61,26 +61,39 @@ export async function observe<T>(
 type Usage = 'openai' | 'anthropic' | 'gemini'
 
 const PROMPT_VERSION_HEADER = 'x-spanlens-prompt-version'
+const LOG_BODY_HEADER = 'x-spanlens-log-body'
 
-/** Provider-observe options — narrower than SpanOptions; adds optional promptVersion. */
+/** Provider-observe options — narrower than SpanOptions; adds optional promptVersion + logBody. */
 export type ProviderObserveOptions = Omit<SpanOptions, 'spanType'> & {
   /** Tag the logged request with a Spanlens prompt version (name@version, name@latest, or UUID). */
   promptVersion?: string
+  /**
+   * Control how much of this call is persisted by Spanlens.
+   * Defaults to whatever the server has for `full` (the prompts and responses are saved).
+   * Override to `'meta'` or `'none'` for stricter data minimization — see LogBodyMode docs.
+   */
+  logBody?: LogBodyMode
 }
 
 function splitArgs(
   nameOrOptions: string | ProviderObserveOptions,
-): { spanOptions: SpanOptions; promptVersion: string | undefined } {
+): {
+  spanOptions: SpanOptions
+  promptVersion: string | undefined
+  logBody: LogBodyMode | undefined
+} {
   if (typeof nameOrOptions === 'string') {
     return {
       spanOptions: { name: nameOrOptions, spanType: 'llm' },
       promptVersion: undefined,
+      logBody: undefined,
     }
   }
-  const { promptVersion, ...rest } = nameOrOptions
+  const { promptVersion, logBody, ...rest } = nameOrOptions
   return {
     spanOptions: { ...rest, spanType: 'llm' },
     promptVersion,
+    logBody,
   }
 }
 
@@ -90,7 +103,7 @@ async function observeProvider<T>(
   nameOrOptions: string | ProviderObserveOptions,
   fn: (headers: Record<string, string>) => Promise<T>,
 ): Promise<T> {
-  const { spanOptions, promptVersion } = splitArgs(nameOrOptions)
+  const { spanOptions, promptVersion, logBody } = splitArgs(nameOrOptions)
 
   const span =
     'span' in parent && typeof parent.span === 'function'
@@ -99,6 +112,7 @@ async function observeProvider<T>(
 
   const headers: Record<string, string> = { ...span.traceHeaders() }
   if (promptVersion) headers[PROMPT_VERSION_HEADER] = promptVersion
+  if (logBody) headers[LOG_BODY_HEADER] = logBody
 
   try {
     const result = await fn(headers)

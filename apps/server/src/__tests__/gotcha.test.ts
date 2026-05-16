@@ -265,4 +265,103 @@ describe('logRequestAsync — ClickHouse write path', () => {
       })
     ).resolves.toBeUndefined()
   })
+
+  // ── logBody opt-out (x-spanlens-log-body header) ────────────────────────
+  // The customer-facing data-minimization knob. Tested here so the
+  // insert-payload contract stays explicit; the proxy layer is only
+  // responsible for parsing the header into logBodyMode.
+
+  it("logBodyMode='meta' drops bodies but keeps identifiers and tokens", async () => {
+    const { logRequestAsync } = await import('../lib/logger.js')
+
+    await logRequestAsync({
+      organizationId: 'org-1', projectId: 'p-1', apiKeyId: 'k-1',
+      provider: 'openai', model: 'gpt-4o',
+      promptTokens: 100, completionTokens: 50, totalTokens: 150,
+      costUsd: 0.001, latencyMs: 200, statusCode: 200,
+      requestBody: { messages: [{ role: 'user', content: 'sensitive prompt' }] },
+      responseBody: { choices: [{ message: { content: 'sensitive response' } }] },
+      errorMessage: null,
+      traceId: 'trace-x', spanId: 'span-y',
+      userId: 'user-z', sessionId: 'sess-w',
+      logBodyMode: 'meta',
+    })
+
+    const row = getInsertedRow()
+    expect(row.request_body).toBe('')
+    expect(row.response_body).toBe('')
+    // meta keeps everything else
+    expect(row.user_id).toBe('user-z')
+    expect(row.session_id).toBe('sess-w')
+    expect(row.total_tokens).toBe(150)
+    expect(row.model).toBe('gpt-4o')
+    expect(row.cost_usd).toBe(0.001)
+    expect(row.trace_id).toBe('trace-x')
+  })
+
+  it("logBodyMode='none' additionally drops user_id and session_id", async () => {
+    const { logRequestAsync } = await import('../lib/logger.js')
+
+    await logRequestAsync({
+      organizationId: 'org-1', projectId: 'p-1', apiKeyId: 'k-1',
+      provider: 'openai', model: 'gpt-4o',
+      promptTokens: 10, completionTokens: 5, totalTokens: 15,
+      costUsd: 0.0001, latencyMs: 50, statusCode: 200,
+      requestBody: { messages: [{ role: 'user', content: 'pii prompt' }] },
+      responseBody: { choices: [] },
+      errorMessage: null,
+      traceId: 't', spanId: 's',
+      userId: 'identifying-user', sessionId: 'identifying-session',
+      logBodyMode: 'none',
+    })
+
+    const row = getInsertedRow()
+    expect(row.request_body).toBe('')
+    expect(row.response_body).toBe('')
+    expect(row.user_id).toBeNull()
+    expect(row.session_id).toBeNull()
+    // Other metadata still flows through
+    expect(row.total_tokens).toBe(15)
+    expect(row.trace_id).toBe('t')
+  })
+
+  it("logBodyMode default is 'full' — bodies stored with masking", async () => {
+    const { logRequestAsync } = await import('../lib/logger.js')
+
+    await logRequestAsync({
+      organizationId: 'org-1', projectId: 'p-1', apiKeyId: 'k-1',
+      provider: 'openai', model: 'gpt-4o',
+      promptTokens: 0, completionTokens: 0, totalTokens: 0,
+      costUsd: null, latencyMs: 100, statusCode: 200,
+      requestBody: { messages: [{ role: 'user', content: 'hello' }] },
+      responseBody: { ok: true },
+      errorMessage: null,
+      traceId: null, spanId: null,
+      // logBodyMode intentionally omitted
+    })
+
+    const row = getInsertedRow()
+    expect(row.request_body).not.toBe('')
+    expect(JSON.parse(row.request_body as string)).toEqual({
+      messages: [{ role: 'user', content: 'hello' }],
+    })
+    expect(JSON.parse(row.response_body as string)).toEqual({ ok: true })
+  })
+})
+
+describe('parseLogBodyMode', () => {
+  it('accepts the three documented values', async () => {
+    const { parseLogBodyMode } = await import('../lib/logger.js')
+    expect(parseLogBodyMode('full')).toBe('full')
+    expect(parseLogBodyMode('meta')).toBe('meta')
+    expect(parseLogBodyMode('none')).toBe('none')
+  })
+
+  it('falls back to full for missing or invalid headers', async () => {
+    const { parseLogBodyMode } = await import('../lib/logger.js')
+    expect(parseLogBodyMode(null)).toBe('full')
+    expect(parseLogBodyMode(undefined)).toBe('full')
+    expect(parseLogBodyMode('garbage')).toBe('full')
+    expect(parseLogBodyMode('')).toBe('full')
+  })
 })
