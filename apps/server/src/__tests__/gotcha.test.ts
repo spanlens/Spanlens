@@ -11,7 +11,8 @@
  *
  * 이 파일에서 커버하는 항목:
  *  - Gotcha #5 심층: getDecryptedProviderKey()가 빈 문자열 대신 null 반환
- *  - Gotcha #3 RLS: logRequestAsync가 supabaseAdmin 사용 (구조적 검증)
+ *  - logRequestAsync — ClickHouse write path + API key masking
+ *    (replaces the old Supabase-RLS Gotcha #3 after the ClickHouse migration)
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
@@ -28,16 +29,28 @@ vi.mock('../lib/db.js', () => {
     eq: vi.fn().mockReturnThis(),
     limit: vi.fn().mockReturnThis(),
     single: vi.fn(),
+    update: vi.fn().mockReturnThis(),
+    or: vi.fn().mockReturnThis(),
   }
   return {
     supabaseAdmin: {
       from: vi.fn(() => mockChain),
+      auth: { admin: { getUserById: vi.fn().mockResolvedValue({ data: { user: null } }) } },
     },
     supabaseClient: {},
     // mockChain을 외부에서 접근하기 위해 내보냄
     __mockChain: mockChain,
   }
 })
+
+// ClickHouse client mock — logger.ts now writes here instead of Supabase.
+const mockClickhouseInsert = vi.fn().mockResolvedValue({ executed: true })
+vi.mock('../lib/clickhouse.js', () => ({
+  getClickhouse: () => ({ insert: mockClickhouseInsert }),
+  // logger.ts also imports toClickhouseTimestamp — return a deterministic
+  // value so test assertions on row contents stay stable.
+  toClickhouseTimestamp: () => '2026-05-16 11:49:23.749',
+}))
 
 // mock 선언 이후에 import
 import { getDecryptedProviderKey } from '../proxy/utils.js'
@@ -111,24 +124,34 @@ describe('getDecryptedProviderKey — Gotcha #5 (decryption empty string → nul
   })
 })
 
-// ── Gotcha #3: RLS — supabaseAdmin 사용 구조적 검증 ──────────────────────────
+// ── logRequestAsync — ClickHouse write path + API key masking ───────────────
+//
+// Original Gotcha #3 covered "logger must use supabaseAdmin so RLS doesn't
+// block the insert". After the ClickHouse migration the requests table no
+// longer lives in Supabase, so the test asserts the new contract:
+//   1. logger writes to ClickHouse via getClickhouse().insert(...)
+//   2. body columns are mask-scrubbed before insert (no leaked API keys)
+//   3. > 64KB bodies are truncated to keep rows bounded
+//   4. ClickHouse failures don't throw (fire-and-forget contract)
+//
+// See docs/plans/clickhouse-migration.md §3.4 for the masking policy.
 
-describe('Gotcha #3 — logRequestAsync uses supabaseAdmin for requests INSERT', () => {
+describe('logRequestAsync — ClickHouse write path', () => {
   beforeEach(() => {
-    vi.clearAllMocks()
+    mockClickhouseInsert.mockClear()
+    mockClickhouseInsert.mockResolvedValue({ executed: true })
   })
 
-  it('logRequestAsync calls supabaseAdmin.from("requests") — not the anon client', async () => {
-    // RLS 때문에 anon client로 INSERT 시 403 에러 발생.
-    // logRequestAsync는 반드시 supabaseAdmin(service_role)을 사용해야 함.
-    // 이 테스트는 supabaseAdmin.from이 'requests'로 호출되는지 검증합니다.
+  function getInsertedRow(): Record<string, unknown> {
+    const call = mockClickhouseInsert.mock.calls[0]?.[0] as
+      | { table: string; values: Array<Record<string, unknown>> }
+      | undefined
+    if (!call) throw new Error('ClickHouse insert was not called')
+    expect(call.table).toBe('requests')
+    return call.values[0]!
+  }
 
-    const mockInsert = vi.fn().mockResolvedValue({ error: null })
-
-    vi.mocked(supabaseAdmin.from).mockReturnValueOnce({
-      insert: mockInsert,
-    } as never)
-
+  it('inserts a row into the ClickHouse requests table', async () => {
     const { logRequestAsync } = await import('../lib/logger.js')
 
     await logRequestAsync({
@@ -150,22 +173,19 @@ describe('Gotcha #3 — logRequestAsync uses supabaseAdmin for requests INSERT',
       spanId: null,
     })
 
-    // supabaseAdmin.from이 'requests' 테이블로 호출되었는지 확인
-    expect(vi.mocked(supabaseAdmin.from)).toHaveBeenCalledWith('requests')
-    // insert도 실제 데이터와 함께 호출되었는지 확인
-    expect(mockInsert).toHaveBeenCalledOnce()
-    const insertArg = mockInsert.mock.calls[0]?.[0] as Record<string, unknown>
-    expect(insertArg.organization_id).toBe('org-1')
-    expect(insertArg.provider).toBe('openai')
+    expect(mockClickhouseInsert).toHaveBeenCalledOnce()
+    const row = getInsertedRow()
+    expect(row.organization_id).toBe('org-1')
+    expect(row.provider).toBe('openai')
+    expect(row.model).toBe('gpt-4o')
+    expect(row.total_tokens).toBe(30)
+    expect(typeof row.id).toBe('string')        // generated client-side
+    expect(typeof row.created_at).toBe('string') // ISO8601
   })
 
-  it('truncates request_body > 64KB before INSERT (prevents JSONB bloat)', async () => {
-    const mockInsert = vi.fn().mockResolvedValue({ error: null })
-    vi.mocked(supabaseAdmin.from).mockReturnValueOnce({ insert: mockInsert } as never)
-
+  it('truncates request_body > 64KB before insert', async () => {
     const { logRequestAsync } = await import('../lib/logger.js')
 
-    // 80KB 페이로드 — 64KB 임계치 초과
     const bigContent = 'x'.repeat(80 * 1024)
     await logRequestAsync({
       organizationId: 'org-1', projectId: 'p-1', apiKeyId: 'k-1',
@@ -177,17 +197,16 @@ describe('Gotcha #3 — logRequestAsync uses supabaseAdmin for requests INSERT',
       errorMessage: null, traceId: null, spanId: null,
     })
 
-    const arg = mockInsert.mock.calls[0]?.[0] as Record<string, unknown>
-    const body = arg.request_body as Record<string, unknown>
+    // request_body is a JSON string in ClickHouse (String column, not JSONB).
+    // After truncation it contains the envelope keys produced by maybeTruncateBody.
+    const row = getInsertedRow()
+    const body = JSON.parse(row.request_body as string) as Record<string, unknown>
     expect(body._truncated).toBe(true)
     expect(body._original_size_bytes).toBeGreaterThan(80 * 1024)
     expect((body._preview as string).length).toBeLessThanOrEqual(2 * 1024)
   })
 
   it('passes small body through unchanged (< 64KB)', async () => {
-    const mockInsert = vi.fn().mockResolvedValue({ error: null })
-    vi.mocked(supabaseAdmin.from).mockReturnValueOnce({ insert: mockInsert } as never)
-
     const { logRequestAsync } = await import('../lib/logger.js')
 
     const smallBody = { model: 'gpt-4o', messages: [{ role: 'user', content: 'hi' }] }
@@ -200,19 +219,41 @@ describe('Gotcha #3 — logRequestAsync uses supabaseAdmin for requests INSERT',
       errorMessage: null, traceId: null, spanId: null,
     })
 
-    const arg = mockInsert.mock.calls[0]?.[0] as Record<string, unknown>
-    expect(arg.request_body).toEqual(smallBody)
+    const row = getInsertedRow()
+    expect(JSON.parse(row.request_body as string)).toEqual(smallBody)
   })
 
-  it('logRequestAsync does not throw when DB returns an error', async () => {
-    // DB 에러 시 throw하지 않고 console.error만 해야 함 (fire-and-forget 패턴)
-    vi.mocked(supabaseAdmin.from).mockReturnValueOnce({
-      insert: vi.fn().mockResolvedValue({ error: { message: 'DB connection failed' } }),
-    } as never)
+  it('masks provider API keys leaked into the body before insert', async () => {
+    const { logRequestAsync } = await import('../lib/logger.js')
+
+    await logRequestAsync({
+      organizationId: 'org-1', projectId: 'p-1', apiKeyId: 'k-1',
+      provider: 'openai', model: 'gpt-4o',
+      promptTokens: 0, completionTokens: 0, totalTokens: 0,
+      costUsd: null, latencyMs: 100, statusCode: 200,
+      requestBody: {
+        messages: [{ role: 'system', content: 'use sk-abc123DEF456ghi789jkl for auth' }],
+      },
+      responseBody: { error: 'invalid AIzaSyABC123def456GHI789jkl' },
+      errorMessage: 'token sk-ant-abcdef123456789xyz expired',
+      traceId: null, spanId: null,
+    })
+
+    const row = getInsertedRow()
+    expect(row.request_body).toContain('sk-***')
+    expect(row.request_body).not.toContain('sk-abc123')
+    expect(row.response_body).toContain('AIza***')
+    expect(row.response_body).not.toContain('AIzaSyABC123')
+    expect(row.error_message).toBe('token sk-ant-*** expired')
+  })
+
+  it('does not throw when ClickHouse insert fails', async () => {
+    // Fire-and-forget contract: a logging failure must never bubble up to the
+    // proxy critical path. CLAUDE.md gotcha #8.
+    mockClickhouseInsert.mockRejectedValueOnce(new Error('CH connection refused'))
 
     const { logRequestAsync } = await import('../lib/logger.js')
 
-    // DB 에러가 있어도 예외가 전파되면 안 됨
     await expect(
       logRequestAsync({
         organizationId: 'org-1', projectId: 'proj-1', apiKeyId: 'key-1',
