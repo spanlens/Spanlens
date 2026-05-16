@@ -4,7 +4,7 @@ import { authApiKey, type ApiKeyContext } from '../middleware/authApiKey.js'
 import { enforceQuota } from '../middleware/quota.js'
 import { proxyRateLimit } from '../middleware/rateLimit.js'
 import { calculateCost } from '../lib/cost.js'
-import { logRequestAsync } from '../lib/logger.js'
+import { logRequestAsync, parseLogBodyMode } from '../lib/logger.js'
 import { resolvePromptVersion } from '../lib/resolve-prompt-version.js'
 import { fireAndForget } from '../lib/wait-until.js'
 import { parseOpenAIResponse } from '../parsers/openai.js'
@@ -120,6 +120,7 @@ openaiProxy.all('/*', async (c) => {
     providerKeyId: providerKey.id,
     userId: c.req.header('x-spanlens-user') ?? null,
     sessionId: c.req.header('x-spanlens-session') ?? null,
+    logBodyMode: parseLogBodyMode(c.req.header('x-spanlens-log-body')),
     preComputedRequestFlags: requestFlags,
   }
 
