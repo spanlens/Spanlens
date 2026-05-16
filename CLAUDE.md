@@ -87,6 +87,8 @@ parsers/gemini.ts — Gemini 파서
 - `x-trace-id`, `x-span-id` — 에이전트 트레이싱 (접두사 안 붙지만 같은 정책)
 - `x-spanlens-project` — 프로젝트 scoping
 - `x-spanlens-prompt-version` — Prompts A/B 링크 (SDK `withPromptVersion()` 헬퍼 또는 `observeOpenAI({ promptVersion })`로 자동 세팅)
+- `x-spanlens-user`, `x-spanlens-session` — 고객 측 end-user / session 식별자 (SDK `withUser()` / `withSession()`)
+- `x-spanlens-log-body` — `full | meta | none`. 고객이 body 저장 수준 제어. `meta`는 request_body/response_body만 빈 문자열, `none`은 거기에 더해 `user_id`/`session_id`까지 null로 저장. SDK `withLogBody()` 또는 `observeOpenAI({ logBody })`. 서버는 `logger.ts`의 `parseLogBodyMode`로 파싱 — 알 수 없는 값은 보수적으로 `full`로 폴백 (기존 동작 유지). 자동 PII 마스킹은 의도적으로 안 함 — 고객이 끄는 게 가장 안전.
 
 새 X-Spanlens-* 헤더 추가 시: (1) 서버에서 header→DB 매핑 (2) SDK에서 헬퍼 제공 (3) `/docs/proxy`에 문서화 (4) `/docs/sdk`에 SDK 사용법 문서화 — 네 곳 다 빠뜨리지 말 것.
 ## 코드 스타일

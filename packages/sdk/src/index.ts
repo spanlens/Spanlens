@@ -10,6 +10,7 @@ export type {
   SpanOptions,
   EndTraceOptions,
   EndSpanOptions,
+  LogBodyMode,
   SpanType,
   Status,
 } from './types.js'

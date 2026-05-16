@@ -5,6 +5,24 @@ import { maskApiKeysInBody, maskApiKeys } from './pii-mask.js'
 import { scanAll, type SecurityFlag } from './security-scan.js'
 import { sendEmail, renderSecurityAlertEmail } from './resend.js'
 
+/**
+ * Customer-controlled body logging mode (sent via the `x-spanlens-log-body`
+ * header by the SDK helpers `withLogBody()` / `observeOpenAI({ logBody })`).
+ *
+ * - `'full'` (default): persist request/response bodies after API-key masking.
+ * - `'meta'`: drop bodies but keep tokens/latency/cost/model + identifiers.
+ * - `'none'`: drop bodies AND user_id/session_id — strictest minimization.
+ *
+ * See packages/sdk/src/types.ts LogBodyMode for the matching SDK type.
+ */
+export type LogBodyMode = 'full' | 'meta' | 'none'
+
+/** Header-string → mode. Unknown values fall back to 'full' (no change in behavior). */
+export function parseLogBodyMode(header: string | null | undefined): LogBodyMode {
+  if (header === 'meta' || header === 'none') return header
+  return 'full'
+}
+
 export interface RequestLogData {
   organizationId: string
   projectId: string
@@ -39,6 +57,11 @@ export interface RequestLogData {
    * If provided, logger skips re-scanning the request body.
    */
   preComputedRequestFlags?: SecurityFlag[]
+  /**
+   * Customer-requested body retention level (x-spanlens-log-body header).
+   * Defaults to 'full' when absent — same behavior as before.
+   */
+  logBodyMode?: LogBodyMode
 }
 
 /**
@@ -172,13 +195,23 @@ export async function logRequestAsync(data: RequestLogData): Promise<void> {
   }
 
   // ── ClickHouse insertion ──────────────────────────────────────────────────
-  // Serialize body columns to compressed strings and mask any API key
-  // patterns (sk-, sk-ant-, sk-proj-, AIza, sl_live_) before they touch disk.
-  // The error_message column passes through the same mask in case an upstream
-  // 401 echoed back a key fragment.
-  const requestBody = maskApiKeysInBody(maybeTruncateBody(data.requestBody))
-  const responseBody = maskApiKeysInBody(maybeTruncateBody(data.responseBody))
+  // Body columns + identifiers respect the customer's logBodyMode opt-out.
+  //   - full: persist everything with API-key pattern masking (default)
+  //   - meta: drop request/response bodies; keep token counts + identifiers
+  //   - none: same as meta plus drop user_id / session_id
+  // The security scan still runs above so prompt-injection / leaked-key
+  // detection works even when bodies are dropped — flagging without storing.
+  // The error_message column passes through API-key masking in case an
+  // upstream 401 echoed back a key fragment.
+  const logBodyMode = data.logBodyMode ?? 'full'
+  const storeBody = logBodyMode === 'full'
+  const requestBody = storeBody ? maskApiKeysInBody(maybeTruncateBody(data.requestBody)) : ''
+  const responseBody = storeBody ? maskApiKeysInBody(maybeTruncateBody(data.responseBody)) : ''
   const errorMessage = data.errorMessage ? maskApiKeys(data.errorMessage) : null
+
+  const dropIdentifiers = logBodyMode === 'none'
+  const userId = dropIdentifiers ? null : (data.userId ?? null)
+  const sessionId = dropIdentifiers ? null : (data.sessionId ?? null)
 
   try {
     await getClickhouse().insert({
@@ -208,8 +241,8 @@ export async function logRequestAsync(data: RequestLogData): Promise<void> {
           span_id: data.spanId,
           prompt_version_id: data.promptVersionId ?? null,
           provider_key_id: data.providerKeyId ?? null,
-          user_id: data.userId ?? null,
-          session_id: data.sessionId ?? null,
+          user_id: userId,
+          session_id: sessionId,
           flags: JSON.stringify(requestFlags),
           response_flags: JSON.stringify(responseFlags),
           has_security_flags: requestFlags.length > 0 || responseFlags.length > 0,
