@@ -25,36 +25,36 @@ export default function BillingDocs() {
             <th>Monthly fee</th>
             <th>Included requests</th>
             <th>Log retention</th>
-            <th>Projects</th>
+            <th>Seats</th>
           </tr>
         </thead>
         <tbody>
           <tr>
             <td>Free</td>
             <td>$0</td>
-            <td>10,000</td>
-            <td>7 days</td>
+            <td>50,000</td>
+            <td>14 days</td>
             <td>1</td>
           </tr>
           <tr>
-            <td>Starter</td>
-            <td>$19</td>
+            <td>Pro</td>
+            <td>$29</td>
             <td>100,000</td>
-            <td>30 days</td>
-            <td>5</td>
+            <td>90 days</td>
+            <td>3</td>
           </tr>
           <tr>
             <td>Team</td>
-            <td>$49</td>
-            <td>500,000</td>
-            <td>90 days</td>
-            <td>unlimited</td>
+            <td>$149</td>
+            <td>1,000,000</td>
+            <td>365 days</td>
+            <td>10</td>
           </tr>
           <tr>
             <td>Enterprise</td>
             <td>custom</td>
             <td>unlimited</td>
-            <td>1 year</td>
+            <td>unlimited</td>
             <td>unlimited</td>
           </tr>
         </tbody>
@@ -78,23 +78,23 @@ export default function BillingDocs() {
         hard cap. You stay in control.
       </p>
 
-      <h3>Free plan — hard block at 10,000</h3>
+      <h3>Free plan — hard block at 50,000</h3>
       <p>
-        The 10,001st request returns HTTP <code>429 Too Many Requests</code> with a JSON body:
+        The 50,001st request returns HTTP <code>429 Too Many Requests</code> with a JSON body:
       </p>
       <CodeBlock language="json">{`{
   "error": "Monthly request quota reached on the Free plan. Upgrade to continue.",
   "reason": "free_limit",
   "plan": "free",
-  "used": 10000,
-  "limit": 10000,
+  "used": 50000,
+  "limit": 50000,
   "upgrade_url": "https://www.spanlens.io/billing"
 }`}</CodeBlock>
       <p>Requests resume at the next UTC month rollover, or when you upgrade.</p>
 
       <h3>Paid plans — overage billing (default)</h3>
       <p>
-        Starter and Team default to <em>allow overage</em>. When you pass your included quota,
+        Pro and Team default to <em>allow overage</em>. When you pass your included quota,
         requests keep flowing and extra usage is billed on your next invoice. The response
         carries an <code>X-Overage-Active: true</code> header so your code can detect the state
         if it wants to.
@@ -118,8 +118,8 @@ export default function BillingDocs() {
         <strong>hard cap</strong> is:
       </p>
       <CodeBlock language="text">{`hard_cap = monthly_limit × overage_cap_multiplier
-        = 100,000 × 5     (Starter, default)    = 500,000
-        = 500,000 × 5     (Team, default)       = 2,500,000`}</CodeBlock>
+        =   100,000 × 5   (Pro,  default)    =   500,000
+        = 1,000,000 × 5   (Team, default)    = 5,000,000`}</CodeBlock>
       <p>
         Requests past the hard cap return <code>429</code> with{' '}
         <code>reason: &quot;hard_cap&quot;</code>. You can raise or lower the multiplier (1–100)
@@ -130,30 +130,31 @@ export default function BillingDocs() {
 
       <h2 id="overage-pricing">Overage pricing</h2>
       <p>
-        Billed in <strong>1,000-request units</strong>. Any partial unit rounds up.
+        Billed in <strong>100,000-request units</strong>. Any partial unit rounds up.
       </p>
       <table>
         <thead>
           <tr>
             <th>Plan</th>
             <th>Overage rate</th>
-            <th>Example: 135,000 requests on Starter</th>
+            <th>Example</th>
           </tr>
         </thead>
         <tbody>
           <tr>
-            <td>Starter</td>
-            <td>$0.10 per 1,000 requests</td>
+            <td>Pro</td>
+            <td>$8 per 100,000 requests</td>
             <td>
-              35,000 over → ceil(35,000 / 1,000) = 35 units × $0.10 = <strong>$3.50</strong>{' '}
-              on next invoice
+              250,000 total on Pro → 150,000 over → ceil(150,000 / 100,000) = 2 units × $8 ={' '}
+              <strong>$16.00</strong> on next invoice
             </td>
           </tr>
           <tr>
             <td>Team</td>
-            <td>$0.08 per 1,000 requests</td>
+            <td>$5 per 100,000 requests</td>
             <td>
-              100,000 over → 100 units × $0.08 = <strong>$8.00</strong> on next invoice
+              1,500,000 total on Team → 500,000 over → 5 units × $5 ={' '}
+              <strong>$25.00</strong> on next invoice
             </td>
           </tr>
           <tr>
@@ -164,7 +165,7 @@ export default function BillingDocs() {
         </tbody>
       </table>
       <p>
-        Free plan has no overage rate — past 10K, it&apos;s a hard block. Upgrade to enable
+        Free plan has no overage rate — past 50K, it&apos;s a hard block. Upgrade to enable
         overage billing.
       </p>
 
@@ -176,13 +177,13 @@ export default function BillingDocs() {
       </p>
       <CodeBlock language="text">{`Invoice — May 1, 2026
 
-  Spanlens Starter Subscription                     $19.00
-  Starter - Overage unit (per 1,000 requests) × 35   $3.50
+  Spanlens Pro Subscription                        $29.00
+  Pro - Overage unit (per 100,000 requests) × 2    $16.00
   ─────────────────────────────────────────────────────────
-  Subtotal                                          $22.50
-  Tax (automatically handled by Paddle)             $ 2.25
+  Subtotal                                         $45.00
+  Tax (automatically handled by Paddle)            $ 4.50
   ─────────────────────────────────────────────────────────
-  Total                                             $24.75`}</CodeBlock>
+  Total                                            $49.50`}</CodeBlock>
 
       <h2 id="warnings">Warning emails</h2>
       <p>
@@ -225,8 +226,9 @@ export default function BillingDocs() {
       <h3>Can I cap my monthly bill at a specific dollar amount?</h3>
       <p>
         Yes, via the overage cap multiplier. Set it to <code>1</code> to never pay more than
-        the base plan fee (overage disabled equivalent). Set it to <code>3</code> on Starter
-        to cap at $19 + 300 × $0.10 = $49. Precise dollar limits will come in a future release.
+        the base plan fee (overage disabled equivalent). Set it to <code>3</code> on Pro to cap
+        spend at $29 + 2 × $8 = $45 (you get up to 300K total; the 3rd overage unit is blocked).
+        Precise dollar limits will come in a future release.
       </p>
 
       <h3>Do I pay for retries / failed requests?</h3>
