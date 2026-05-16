@@ -113,6 +113,42 @@ describe('observeOpenAI / observeAnthropic / observeGemini', () => {
     expect(receivedHeaders!['x-spanlens-prompt-version']).toBeUndefined()
   })
 
+  it('forwards logBody option as x-spanlens-log-body header', async () => {
+    const client = new SpanlensClient({ apiKey: 'k', baseUrl: 'http://x' })
+    const trace = client.startTrace({ name: 't' })
+
+    let receivedHeaders: Record<string, string> | null = null
+    await observeOpenAI(
+      trace,
+      { name: 'call', logBody: 'meta' },
+      async (headers) => {
+        receivedHeaders = headers
+        return {
+          model: 'gpt-4o',
+          usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+        }
+      },
+    )
+
+    expect(receivedHeaders!['x-spanlens-log-body']).toBe('meta')
+  })
+
+  it('omits logBody header when option is not provided (server defaults to full)', async () => {
+    const client = new SpanlensClient({ apiKey: 'k', baseUrl: 'http://x' })
+    const trace = client.startTrace({ name: 't' })
+
+    let receivedHeaders: Record<string, string> | null = null
+    await observeOpenAI(trace, 'call', async (headers) => {
+      receivedHeaders = headers
+      return {
+        model: 'gpt-4o',
+        usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+      }
+    })
+
+    expect(receivedHeaders!['x-spanlens-log-body']).toBeUndefined()
+  })
+
   it('observeOpenAI auto-parses usage into span.end', async () => {
     const client = new SpanlensClient({ apiKey: 'k', baseUrl: 'http://x' })
     const trace = client.startTrace({ name: 't' })

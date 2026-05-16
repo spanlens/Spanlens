@@ -16,6 +16,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
+    "@clickhouse/client": "^1.18.5",
     "@hono/node-server": "^1.13.2",
     "@supabase/supabase-js": "^2.45.4",
     "@vercel/functions": "^3.4.4",

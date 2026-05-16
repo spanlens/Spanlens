@@ -1,18 +1,30 @@
-import { supabaseAdmin } from './db.js'
+import { getClickhouse } from './clickhouse.js'
 
 /**
  * Anomaly detection over recent `requests` rows.
  *
- * Strategy: call the `detect_anomaly_stats` DB function which runs a single
- * GROUP BY scan over the requests table and returns pre-aggregated stats
- * (mean, stddev, count) per (provider, model) for both the observation and
- * reference windows. We then apply the sigma threshold here in TypeScript.
+ * Strategy: one ClickHouse GROUP BY scan over the requests table returns
+ * pre-aggregated stats (mean, stddev, count) per (provider, model) for both
+ * the observation and reference windows. The sigma threshold check runs here
+ * in TypeScript so the policy stays in one place.
  *
- * Using STDDEV_SAMP (n-1, Bessel-corrected) in the DB function.
+ * Uses stddevSamp (n-1, Bessel-corrected) — matches the previous Postgres
+ * STDDEV_SAMP behavior exactly.
  * Latency / cost are computed only over successful requests (status_code < 400).
  * Error rate uses ALL rows (Bernoulli proportion).
  * Error rate is one-sided: only upward spikes are flagged.
+ *
+ * Replaces the `detect_anomaly_stats` + `get_anomaly_factors` Postgres
+ * functions that lived in Supabase before the ClickHouse migration.
  */
+
+/**
+ * ClickHouse DateTime64 won't accept the trailing 'Z' in toISOString();
+ * strip it for parseDateTime64BestEffort like every other call site.
+ */
+function fmtTs(iso: string): string {
+  return iso.replace('T', ' ').replace('Z', '')
+}
 
 export type AnomalyKind = 'latency' | 'cost' | 'error_rate'
 
@@ -92,23 +104,81 @@ export async function detectAnomalies(
   const minSamples       = opts.minSamples       ?? ANOMALY_DEFAULTS.MIN_SAMPLES
 
   const now     = Date.now()
-  const obsStart = new Date(now - observationHours * 3_600_000).toISOString()
-  const refStart = new Date(now - referenceHours  * 3_600_000).toISOString()
+  const obsStart = fmtTs(new Date(now - observationHours * 3_600_000).toISOString())
+  const refStart = fmtTs(new Date(now - referenceHours  * 3_600_000).toISOString())
 
-  const { data: rawData, error } = await supabaseAdmin
-    .rpc('detect_anomaly_stats', {
-      p_org_id:     organizationId,
-      p_ref_start:  refStart,
-      p_obs_start:  obsStart,
-      p_project_id: opts.projectId ?? null,
+  const params: Record<string, unknown> = {
+    orgId: organizationId,
+    obsStart,
+    refStart,
+  }
+  let projectClause = ''
+  if (opts.projectId) {
+    projectClause = ' AND project_id = {projectId:UUID}'
+    params['projectId'] = opts.projectId
+  }
+
+  // One GROUP BY scan computes all 16 columns. The Postgres function used
+  // FILTER (WHERE …); ClickHouse's countIf/avgIf/stddevSampIf is the analog.
+  // success-only filters cover latency/cost (status_code < 400); error_rate
+  // averages a Bernoulli indicator across all rows.
+  const sql = `
+    SELECT
+      provider,
+      model,
+      avgIf(latency_ms,        created_at >= parseDateTime64BestEffort({obsStart:String}) AND status_code < 400 AND latency_ms > 0) AS obs_latency_mean,
+      countIf(                  created_at >= parseDateTime64BestEffort({obsStart:String}) AND status_code < 400 AND latency_ms > 0) AS obs_latency_count,
+      avgIf(latency_ms,        created_at <  parseDateTime64BestEffort({obsStart:String}) AND status_code < 400 AND latency_ms > 0) AS ref_latency_mean,
+      stddevSampIf(latency_ms, created_at <  parseDateTime64BestEffort({obsStart:String}) AND status_code < 400 AND latency_ms > 0) AS ref_latency_stddev,
+      countIf(                  created_at <  parseDateTime64BestEffort({obsStart:String}) AND status_code < 400 AND latency_ms > 0) AS ref_latency_count,
+      avgIf(cost_usd,          created_at >= parseDateTime64BestEffort({obsStart:String}) AND status_code < 400 AND isNotNull(cost_usd)) AS obs_cost_mean,
+      countIf(                  created_at >= parseDateTime64BestEffort({obsStart:String}) AND status_code < 400 AND isNotNull(cost_usd)) AS obs_cost_count,
+      avgIf(cost_usd,          created_at <  parseDateTime64BestEffort({obsStart:String}) AND status_code < 400 AND isNotNull(cost_usd)) AS ref_cost_mean,
+      stddevSampIf(cost_usd,   created_at <  parseDateTime64BestEffort({obsStart:String}) AND status_code < 400 AND isNotNull(cost_usd)) AS ref_cost_stddev,
+      countIf(                  created_at <  parseDateTime64BestEffort({obsStart:String}) AND status_code < 400 AND isNotNull(cost_usd)) AS ref_cost_count,
+      avgIf(if(status_code >= 400, 1.0, 0.0),       created_at >= parseDateTime64BestEffort({obsStart:String})) AS obs_error_rate,
+      countIf(                                       created_at >= parseDateTime64BestEffort({obsStart:String})) AS obs_all_count,
+      avgIf(if(status_code >= 400, 1.0, 0.0),       created_at <  parseDateTime64BestEffort({obsStart:String})) AS ref_error_rate,
+      stddevSampIf(if(status_code >= 400, 1.0, 0.0),created_at <  parseDateTime64BestEffort({obsStart:String})) AS ref_error_stddev,
+      countIf(                                       created_at <  parseDateTime64BestEffort({obsStart:String})) AS ref_all_count
+    FROM requests
+    WHERE organization_id = {orgId:UUID}
+      AND created_at >= parseDateTime64BestEffort({refStart:String})${projectClause}
+    GROUP BY provider, model
+    HAVING obs_all_count > 0 OR ref_all_count > 0`
+
+  let data: AnomalyStatsRow[]
+  try {
+    const result = await getClickhouse().query({
+      query: sql,
+      query_params: params,
+      format: 'JSONEachRow',
     })
-
-  if (error) {
-    console.error('[detectAnomalies] rpc error:', error.message)
+    const rawRows = (await result.json()) as Array<Record<string, string | number | null>>
+    data = rawRows.map((r) => ({
+      provider: String(r['provider'] ?? ''),
+      model: String(r['model'] ?? ''),
+      obs_latency_mean:   r['obs_latency_mean']   == null ? null : Number(r['obs_latency_mean']),
+      obs_latency_count:  Number(r['obs_latency_count']  ?? 0),
+      ref_latency_mean:   r['ref_latency_mean']   == null ? null : Number(r['ref_latency_mean']),
+      ref_latency_stddev: r['ref_latency_stddev'] == null ? null : Number(r['ref_latency_stddev']),
+      ref_latency_count:  Number(r['ref_latency_count']  ?? 0),
+      obs_cost_mean:      r['obs_cost_mean']      == null ? null : Number(r['obs_cost_mean']),
+      obs_cost_count:     Number(r['obs_cost_count']     ?? 0),
+      ref_cost_mean:      r['ref_cost_mean']      == null ? null : Number(r['ref_cost_mean']),
+      ref_cost_stddev:    r['ref_cost_stddev']    == null ? null : Number(r['ref_cost_stddev']),
+      ref_cost_count:     Number(r['ref_cost_count']     ?? 0),
+      obs_error_rate:     r['obs_error_rate']     == null ? null : Number(r['obs_error_rate']),
+      obs_all_count:      Number(r['obs_all_count']      ?? 0),
+      ref_error_rate:     r['ref_error_rate']     == null ? null : Number(r['ref_error_rate']),
+      ref_error_stddev:   r['ref_error_stddev']   == null ? null : Number(r['ref_error_stddev']),
+      ref_all_count:      Number(r['ref_all_count']      ?? 0),
+    }))
+  } catch (err) {
+    console.error('[detectAnomalies] ClickHouse query failed:', err instanceof Error ? err.message : err)
     return []
   }
-  const data = rawData as AnomalyStatsRow[] | null
-  if (!data) return []
+  if (data.length === 0) return []
 
   const anomalies: AnomalyBucket[] = []
 
@@ -197,20 +267,15 @@ export async function detectAnomalies(
   return anomalies
 }
 
-interface FactorsRow {
-  obs_prompt_tokens_mean: number | null
-  ref_prompt_tokens_mean: number | null
-  obs_completion_tokens_mean: number | null
-  ref_completion_tokens_mean: number | null
-  obs_total_tokens_mean: number | null
-  ref_total_tokens_mean: number | null
-  obs_status_distribution: Array<{ code: number; count: number }> | null
-}
-
 /**
  * Fetches contributing factor data for a single anomaly — token averages
  * (obs vs reference window) and error status code distribution.
  * Called after anomaly detection to explain *why* the anomaly occurred.
+ *
+ * Replaces the old `get_anomaly_factors` Postgres function. We now run two
+ * small ClickHouse queries (token CTE + status_code CTE) in parallel since
+ * they shape into different output formats — simpler than the original
+ * single-query approach and faster to add new factor columns later.
  */
 export async function fetchContributingFactors(
   organizationId: string,
@@ -220,31 +285,70 @@ export async function fetchContributingFactors(
   refStart: string,
   projectId?: string,
 ): Promise<AnomalyContributingFactors | null> {
-  const { data, error } = await supabaseAdmin.rpc('get_anomaly_factors', {
-    p_org_id:     organizationId,
-    p_provider:   provider,
-    p_model:      model,
-    p_obs_start:  obsStart,
-    p_ref_start:  refStart,
-    p_project_id: projectId ?? null,
-  })
-
-  if (error) {
-    console.error('[fetchContributingFactors] rpc error:', error.message)
-    return null
+  const obsTs = fmtTs(obsStart)
+  const refTs = fmtTs(refStart)
+  const baseParams: Record<string, unknown> = {
+    orgId: organizationId,
+    provider,
+    model,
+    obsStart: obsTs,
+    refStart: refTs,
   }
-  const rows = data as FactorsRow[] | null
-  if (!rows || rows.length === 0) return null
+  let projectClause = ''
+  if (projectId) {
+    projectClause = ' AND project_id = {projectId:UUID}'
+    baseParams['projectId'] = projectId
+  }
 
-  const row = rows[0]
-  if (!row) return null
-  return {
-    obsPromptTokensMean:     row.obs_prompt_tokens_mean,
-    refPromptTokensMean:     row.ref_prompt_tokens_mean,
-    obsCompletionTokensMean: row.obs_completion_tokens_mean,
-    refCompletionTokensMean: row.ref_completion_tokens_mean,
-    obsTotalTokensMean:      row.obs_total_tokens_mean,
-    refTotalTokensMean:      row.ref_total_tokens_mean,
-    obsStatusDistribution:   row.obs_status_distribution ?? [],
+  const tokensSql = `
+    SELECT
+      avgIf(prompt_tokens,     created_at >= parseDateTime64BestEffort({obsStart:String})) AS obs_prompt_tokens_mean,
+      avgIf(prompt_tokens,     created_at <  parseDateTime64BestEffort({obsStart:String})) AS ref_prompt_tokens_mean,
+      avgIf(completion_tokens, created_at >= parseDateTime64BestEffort({obsStart:String})) AS obs_completion_tokens_mean,
+      avgIf(completion_tokens, created_at <  parseDateTime64BestEffort({obsStart:String})) AS ref_completion_tokens_mean,
+      avgIf(total_tokens,      created_at >= parseDateTime64BestEffort({obsStart:String})) AS obs_total_tokens_mean,
+      avgIf(total_tokens,      created_at <  parseDateTime64BestEffort({obsStart:String})) AS ref_total_tokens_mean
+    FROM requests
+    WHERE organization_id = {orgId:UUID}
+      AND provider = {provider:String}
+      AND model    = {model:String}
+      AND created_at >= parseDateTime64BestEffort({refStart:String})${projectClause}`
+
+  const errorsSql = `
+    SELECT status_code AS code, count() AS cnt
+    FROM requests
+    WHERE organization_id = {orgId:UUID}
+      AND provider = {provider:String}
+      AND model    = {model:String}
+      AND created_at >= parseDateTime64BestEffort({obsStart:String})
+      AND status_code >= 400${projectClause}
+    GROUP BY status_code
+    ORDER BY cnt DESC
+    LIMIT 5`
+
+  try {
+    const ch = getClickhouse()
+    const [tokensResult, errorsResult] = await Promise.all([
+      ch.query({ query: tokensSql, query_params: baseParams, format: 'JSONEachRow' }),
+      ch.query({ query: errorsSql, query_params: baseParams, format: 'JSONEachRow' }),
+    ])
+    const tokenRows = (await tokensResult.json()) as Array<Record<string, string | number | null>>
+    const errorRows = (await errorsResult.json()) as Array<{ code: string | number; cnt: string | number }>
+
+    const tokenRow = tokenRows[0]
+    if (!tokenRow) return null
+
+    return {
+      obsPromptTokensMean:     tokenRow['obs_prompt_tokens_mean']     == null ? null : Number(tokenRow['obs_prompt_tokens_mean']),
+      refPromptTokensMean:     tokenRow['ref_prompt_tokens_mean']     == null ? null : Number(tokenRow['ref_prompt_tokens_mean']),
+      obsCompletionTokensMean: tokenRow['obs_completion_tokens_mean'] == null ? null : Number(tokenRow['obs_completion_tokens_mean']),
+      refCompletionTokensMean: tokenRow['ref_completion_tokens_mean'] == null ? null : Number(tokenRow['ref_completion_tokens_mean']),
+      obsTotalTokensMean:      tokenRow['obs_total_tokens_mean']      == null ? null : Number(tokenRow['obs_total_tokens_mean']),
+      refTotalTokensMean:      tokenRow['ref_total_tokens_mean']      == null ? null : Number(tokenRow['ref_total_tokens_mean']),
+      obsStatusDistribution:   errorRows.map((r) => ({ code: Number(r.code), count: Number(r.cnt) })),
+    }
+  } catch (err) {
+    console.error('[fetchContributingFactors] ClickHouse query failed:', err instanceof Error ? err.message : err)
+    return null
   }
 }

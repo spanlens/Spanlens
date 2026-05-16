@@ -1,5 +1,5 @@
 import { supabaseAdmin } from './db.js'
-import { MONTHLY_REQUEST_LIMITS, type Plan } from './quota.js'
+import { MONTHLY_REQUEST_LIMITS, countMonthlyRequests, type Plan } from './quota.js'
 import { sendQuotaWarningEmail } from './notifiers.js'
 import { decideQuotaWarning, currentMonthStartMs } from './quota-warnings-stats.js'
 
@@ -49,7 +49,6 @@ export interface QuotaWarningRunResult {
 export async function runQuotaWarningsJob(): Promise<QuotaWarningRunResult> {
   const nowMs = Date.now()
   const monthStartMs = currentMonthStartMs(new Date(nowMs))
-  const monthStartIso = new Date(monthStartMs).toISOString()
 
   // Fetch all orgs on a plan with a finite limit. Enterprise has a null
   // limit (unlimited) so we skip them via the plan filter.
@@ -79,19 +78,18 @@ export async function runQuotaWarningsJob(): Promise<QuotaWarningRunResult> {
 
     // Count this org's requests this month — same source of truth the
     // proxy middleware uses for 429 enforcement.
-    const { count, error: countErr } = await supabaseAdmin
-      .from('requests')
-      .select('id', { count: 'exact', head: true })
-      .eq('organization_id', org.id)
-      .gte('created_at', monthStartIso)
-
-    if (countErr) {
-      console.error(`[quota-warnings] count failed for org ${org.id}:`, countErr.message)
+    let used: number
+    try {
+      used = await countMonthlyRequests(org.id, new Date(monthStartMs))
+    } catch (err) {
+      console.error(
+        `[quota-warnings] count failed for org ${org.id}:`,
+        err instanceof Error ? err.message : err,
+      )
       result.errors++
       continue
     }
 
-    const used = count ?? 0
     const ratio = used / limit
 
     const decision = decideQuotaWarning(
