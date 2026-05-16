@@ -22,6 +22,12 @@
 #   RESEND_FROM                   sender address (e.g. Spanlens <no-reply@yourdomain.com>)
 #   PADDLE_API_KEY / PADDLE_NOTIFICATION_SECRET / PADDLE_ENVIRONMENT
 #   PADDLE_PRICE_STARTER / PADDLE_PRICE_TEAM / PADDLE_PRICE_ENTERPRISE
+#
+# ClickHouse (request logs are stored here, NOT Supabase):
+#   CLICKHOUSE_URL                http://clickhouse:8123 (in-network) or your managed URL
+#   CLICKHOUSE_USER               default: spanlens
+#   CLICKHOUSE_PASSWORD           required
+#   CLICKHOUSE_DB                 default: spanlens
 
 services:
   web:
@@ -54,7 +60,7 @@ services:
       test: ['CMD-SHELL', 'wget --quiet --spider http://localhost:3000/ || exit 1']
       interval: 30s
       timeout: 10s
-      start-period: 20s
+      start_period: 20s
       retries: 3
 
   server:
@@ -82,10 +88,51 @@ services:
       PADDLE_PRICE_STARTER: ${PADDLE_PRICE_STARTER:-}
       PADDLE_PRICE_TEAM: ${PADDLE_PRICE_TEAM:-}
       PADDLE_PRICE_ENTERPRISE: ${PADDLE_PRICE_ENTERPRISE:-}
+      CLICKHOUSE_URL: ${CLICKHOUSE_URL:-http://clickhouse:8123}
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-spanlens}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
+      CLICKHOUSE_DB: ${CLICKHOUSE_DB:-spanlens}
+    depends_on:
+      clickhouse:
+        condition: service_healthy
     restart: unless-stopped
     healthcheck:
       test: ['CMD-SHELL', 'wget --quiet --spider http://localhost:3001/health || exit 1']
       interval: 30s
       timeout: 5s
-      start-period: 10s
+      start_period: 10s
       retries: 3
+
+  # ClickHouse stores request logs (the `requests` table). High-volume
+  # append-only data lives here; transactional data stays in Supabase.
+  # Local dev: `docker compose up clickhouse` is enough (run alongside
+  # `supabase start` + `pnpm dev`).
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.10-alpine
+    ports:
+      - '8123:8123'  # HTTP interface
+      - '9000:9000'  # native protocol
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+      - clickhouse_logs:/var/log/clickhouse-server
+    environment:
+      CLICKHOUSE_DB: ${CLICKHOUSE_DB:-spanlens}
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-spanlens}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-spanlens}
+      # default user is locked down; only the named user above can connect
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: '1'
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    restart: unless-stopped
+    healthcheck:
+      test: ['CMD-SHELL', 'clickhouse-client --query "SELECT 1" || exit 1']
+      interval: 10s
+      timeout: 5s
+      start_period: 15s
+      retries: 5
+
+volumes:
+  clickhouse_data:
+  clickhouse_logs:
