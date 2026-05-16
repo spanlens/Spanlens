@@ -161,6 +161,7 @@ paddleWebhookRouter.post('/paddle', async (c) => {
   // ── subscription.* events ──────────────────────────────────────
   if (subscriptionEvents.has(event.event_type)) {
     const sub = event.data as PaddleSubscriptionPayload
+    const isTerminal = event.event_type === 'subscription.canceled'
 
     const organizationId = await resolveOrgId(sub.custom_data, sub.customer_id)
     if (!organizationId) {
@@ -169,19 +170,34 @@ paddleWebhookRouter.post('/paddle', async (c) => {
     }
 
     const priceId = extractPriceId(sub)
-    if (!priceId) {
-      console.error('[paddle-webhook] missing price id', event.event_id)
-      return c.json({ error: 'missing price id' }, 400)
-    }
+    // Cancellations don't need a valid (currently-configured) price ID — the
+    // sub may reference an archived/rotated price that no longer maps. We
+    // still want to record the canceled status, so fall back to the row's
+    // existing plan/price_id from the DB.
+    let plan: PlanTier | null = priceId ? planForPriceId(priceId) : null
+    let resolvedPriceId = priceId
 
-    const plan = planForPriceId(priceId)
     if (!plan) {
-      console.error('[paddle-webhook] unknown price id', priceId)
-      return c.json({ error: `unknown price id ${priceId}` }, 400)
+      if (isTerminal) {
+        const { data: existing } = await supabaseAdmin
+          .from('subscriptions')
+          .select('plan, paddle_price_id')
+          .eq('paddle_subscription_id', sub.id)
+          .maybeSingle()
+        plan = (existing?.plan as PlanTier | undefined) ?? 'starter'
+        resolvedPriceId = existing?.paddle_price_id ?? priceId ?? 'unknown'
+      } else {
+        if (!priceId) {
+          console.error('[paddle-webhook] missing price id', event.event_id)
+          return c.json({ error: 'missing price id' }, 400)
+        }
+        console.error('[paddle-webhook] unknown price id', priceId)
+        return c.json({ error: `unknown price id ${priceId}` }, 400)
+      }
     }
 
     try {
-      await upsertSubscription(event, sub, organizationId, plan, priceId)
+      await upsertSubscription(event, sub, organizationId, plan, resolvedPriceId ?? 'unknown')
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'unknown error'
       return c.json({ error: msg }, 500)
