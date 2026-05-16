@@ -78,3 +78,15 @@ export async function pingClickhouse(): Promise<boolean> {
     return false
   }
 }
+
+/**
+ * Formats a Date for a ClickHouse `DateTime64(3, 'UTC')` column.
+ *
+ * `Date.toISOString()` produces `2026-05-16T11:49:23.749Z`, but ClickHouse's
+ * JSONEachRow parser only accepts `2026-05-16 11:49:23.749` (space separator,
+ * no trailing `Z`). Sending the Z form causes a `CANNOT_PARSE_INPUT_ASSERTION_FAILED`
+ * error on every insert.
+ */
+export function toClickhouseTimestamp(date: Date = new Date()): string {
+  return date.toISOString().replace('T', ' ').replace('Z', '')
+}
