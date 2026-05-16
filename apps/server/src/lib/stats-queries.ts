@@ -241,6 +241,162 @@ export async function getStatsTimeseries(
   }))
 }
 
+// ─── Per-user analytics ─────────────────────────────────────────────────────
+//
+// Replaces the Postgres `get_user_analytics` function. Groups by user_id with
+// total counts, cost, tokens, latency, error rate, distinct models, and
+// first/last-seen markers. The sort column is parameterized; we whitelist
+// here (the column name lands in the SQL string, so it MUST be validated).
+
+export interface UserAnalyticsRow {
+  user_id: string
+  total_requests: number
+  total_tokens: number
+  total_cost_usd: number
+  avg_latency_ms: number | null
+  first_seen: string
+  last_seen: string
+  error_requests: number
+  distinct_models: number
+  total_count: number
+}
+
+export interface UserAnalyticsOptions {
+  projectId?: string | null | undefined
+  search?: string | null | undefined
+  from?: string | null | undefined
+  to?: string | null | undefined
+  sortBy: 'cost' | 'requests' | 'tokens' | 'last_seen'
+  sortDir: 'asc' | 'desc'
+  limit: number
+  offset: number
+}
+
+const USER_SORT_COL: Record<UserAnalyticsOptions['sortBy'], string> = {
+  cost:      'total_cost_usd',
+  requests:  'total_requests',
+  tokens:    'total_tokens',
+  last_seen: 'last_seen',
+}
+
+export async function getUserAnalytics(
+  organizationId: string,
+  options: UserAnalyticsOptions,
+): Promise<UserAnalyticsRow[]> {
+  const scope = await requestsScope(organizationId)
+
+  // Whitelist sort inputs — they're concatenated into SQL below.
+  const sortCol = USER_SORT_COL[options.sortBy] ?? 'total_cost_usd'
+  const sortDir = options.sortDir === 'asc' ? 'ASC' : 'DESC'
+
+  const filters: string[] = ['isNotNull(user_id)']
+  const params: Record<string, unknown> = { ...scope.scopeParams }
+  if (options.projectId) {
+    filters.push('project_id = {projectId:UUID}')
+    params['projectId'] = options.projectId
+  }
+  if (options.search) {
+    filters.push('positionCaseInsensitive(user_id, {search:String}) > 0')
+    params['search'] = options.search
+  }
+  const fromTs = fmt(options.from)
+  if (fromTs) {
+    filters.push('created_at >= parseDateTime64BestEffort({fromTs:String})')
+    params['fromTs'] = fromTs
+  }
+  const toTs = fmt(options.to)
+  if (toTs) {
+    filters.push('created_at <= parseDateTime64BestEffort({toTs:String})')
+    params['toTs'] = toTs
+  }
+
+  const where = [scope.whereScope, ...filters].join(' AND ')
+  // count() OVER () provides the windowed total so the list endpoint can
+  // paginate without a second roundtrip (matches the old Postgres behavior).
+  const sql = `
+    SELECT
+      user_id,
+      count()                                          AS total_requests,
+      sum(total_tokens)                                AS total_tokens,
+      sum(cost_usd)                                    AS total_cost_usd,
+      avg(latency_ms)                                  AS avg_latency_ms,
+      min(created_at)                                  AS first_seen,
+      max(created_at)                                  AS last_seen,
+      countIf(status_code >= 400)                      AS error_requests,
+      uniqExact(model)                                 AS distinct_models,
+      count() OVER ()                                  AS total_count
+    FROM requests
+    WHERE ${where}
+    GROUP BY user_id
+    ORDER BY ${sortCol} ${sortDir} NULLS LAST
+    LIMIT {limit:UInt32} OFFSET {offset:UInt32}`
+
+  params['limit'] = options.limit
+  params['offset'] = options.offset
+
+  const result = await getClickhouse().query({
+    query: sql,
+    query_params: params,
+    format: 'JSONEachRow',
+  })
+  const rows = (await result.json()) as Array<Record<string, string | number | null>>
+  return rows.map((r) => ({
+    user_id:         String(r['user_id'] ?? ''),
+    total_requests:  Number(r['total_requests'] ?? 0),
+    total_tokens:    Number(r['total_tokens'] ?? 0),
+    total_cost_usd:  Number(r['total_cost_usd'] ?? 0),
+    avg_latency_ms:  r['avg_latency_ms'] == null ? null : Number(r['avg_latency_ms']),
+    first_seen:      String(r['first_seen'] ?? ''),
+    last_seen:       String(r['last_seen'] ?? ''),
+    error_requests:  Number(r['error_requests'] ?? 0),
+    distinct_models: Number(r['distinct_models'] ?? 0),
+    total_count:     Number(r['total_count'] ?? 0),
+  }))
+}
+
+// ─── Security flag summary ──────────────────────────────────────────────────
+//
+// Replaces the Postgres `security_summary` function. ClickHouse stores the
+// `flags` column as a JSON string (not JSONB); we unroll with ARRAY JOIN +
+// JSONExtractArrayRaw, then pull each flag object's type + pattern fields.
+
+export interface SecuritySummaryRow {
+  flag_type: string
+  pattern: string
+  count: number
+}
+
+export async function getSecuritySummary(
+  organizationId: string,
+  hours: number,
+): Promise<SecuritySummaryRow[]> {
+  const scope = await requestsScope(organizationId, { ignoreRetention: true })
+  const sql = `
+    SELECT
+      JSONExtractString(flag, 'type')    AS flag_type,
+      JSONExtractString(flag, 'pattern') AS pattern,
+      count()                            AS count
+    FROM requests
+    ARRAY JOIN JSONExtractArrayRaw(flags) AS flag
+    WHERE ${scope.whereScope}
+      AND has_security_flags = 1
+      AND created_at >= now() - INTERVAL {hours:UInt32} HOUR
+    GROUP BY flag_type, pattern
+    ORDER BY count DESC`
+
+  const result = await getClickhouse().query({
+    query: sql,
+    query_params: { ...scope.scopeParams, hours },
+    format: 'JSONEachRow',
+  })
+  const rows = (await result.json()) as Array<Record<string, string | number>>
+  return rows.map((r) => ({
+    flag_type: String(r['flag_type'] ?? ''),
+    pattern:   String(r['pattern'] ?? ''),
+    count:     Number(r['count'] ?? 0),
+  }))
+}
+
 // ─── Latency percentiles ────────────────────────────────────────────────────
 //
 // The old endpoint pulled 5,000 raw rows and computed p50/p95/p99 in JS.

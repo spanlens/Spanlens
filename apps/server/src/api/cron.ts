@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import { supabaseAdmin } from '../lib/db.js'
+import { getClickhouse } from '../lib/clickhouse.js'
 import { deliverToChannel, type AlertNotification } from '../lib/notifiers.js'
 import { retryFailedWebhooks } from '../lib/webhook-dispatch.js'
 import { computeAndReportOverages } from '../lib/paddle-usage.js'
@@ -89,70 +90,67 @@ interface ChannelRow {
 }
 
 async function computeMetric(alert: AlertRow): Promise<number | null> {
-  const windowStart = new Date(Date.now() - alert.window_minutes * 60 * 1000).toISOString()
-  const org = alert.organization_id
-  const proj = alert.project_id
+  const windowStart = new Date(Date.now() - alert.window_minutes * 60 * 1000)
+    .toISOString()
+    .replace('T', ' ')
+    .replace('Z', '')
+  const params: Record<string, unknown> = {
+    orgId: alert.organization_id,
+    windowStart,
+  }
+  let projectClause = ''
+  if (alert.project_id) {
+    projectClause = ' AND project_id = {projectId:UUID}'
+    params['projectId'] = alert.project_id
+  }
+  const where =
+    'organization_id = {orgId:UUID} ' +
+    'AND created_at >= parseDateTime64BestEffort({windowStart:String})' +
+    projectClause
 
-  if (alert.type === 'budget') {
-    // Fetch cost_usd only. 10k row limit covers all practical alert windows.
-    let q = supabaseAdmin
-      .from('requests')
-      .select('cost_usd')
-      .eq('organization_id', org)
-      .gte('created_at', windowStart)
-      .limit(10000)
-    if (proj) q = q.eq('project_id', proj)
-    const { data, error } = await q
-    if (error || !data) return null
-    if (data.length === 10000) {
-      console.warn('[computeMetric] budget: 10k row limit reached — cost may be underreported', { alert_id: alert.id })
+  try {
+    if (alert.type === 'budget') {
+      // sum(cost_usd) — no row limit needed, ClickHouse aggregates over the
+      // whole window in-DB. Earlier Supabase implementation capped at 10k rows
+      // which silently under-reported large alert windows.
+      const result = await getClickhouse().query({
+        query: `SELECT sum(cost_usd) AS total FROM requests WHERE ${where}`,
+        query_params: params,
+        format: 'JSONEachRow',
+      })
+      const rows = (await result.json()) as Array<{ total: string | number | null }>
+      return Number(rows[0]?.total ?? 0)
     }
-    return (data as { cost_usd: number | string | null }[])
-      .reduce((sum, r) => sum + Number(r.cost_usd ?? 0), 0)
-  }
 
-  if (alert.type === 'error_rate') {
-    // Use HEAD requests (count only, no row data) to avoid the 1000-row default cap.
-    let totalQ = supabaseAdmin
-      .from('requests')
-      .select('*', { count: 'exact', head: true })
-      .eq('organization_id', org)
-      .gte('created_at', windowStart)
-    let errorQ = supabaseAdmin
-      .from('requests')
-      .select('*', { count: 'exact', head: true })
-      .eq('organization_id', org)
-      .gte('created_at', windowStart)
-      .gte('status_code', 400)
-    if (proj) {
-      totalQ = totalQ.eq('project_id', proj)
-      errorQ = errorQ.eq('project_id', proj)
+    if (alert.type === 'error_rate') {
+      // Single GROUP-less aggregation returns both numerator and denominator.
+      const result = await getClickhouse().query({
+        query: `
+          SELECT count() AS total, countIf(status_code >= 400) AS errors
+          FROM requests WHERE ${where}`,
+        query_params: params,
+        format: 'JSONEachRow',
+      })
+      const rows = (await result.json()) as Array<{ total: string | number; errors: string | number }>
+      const total = Number(rows[0]?.total ?? 0)
+      if (total === 0) return 0
+      return Number(rows[0]?.errors ?? 0) / total
     }
-    const [totalRes, errorRes] = await Promise.all([totalQ, errorQ])
-    if (totalRes.error || errorRes.error) return null
-    const total = totalRes.count ?? 0
-    if (total === 0) return 0
-    return (errorRes.count ?? 0) / total
-  }
 
-  // latency_p95 — fetch sorted latency_ms, compute percentile in JS.
-  let q = supabaseAdmin
-    .from('requests')
-    .select('latency_ms')
-    .eq('organization_id', org)
-    .gte('created_at', windowStart)
-    .order('latency_ms', { ascending: true })
-    .limit(10000)
-  if (proj) q = q.eq('project_id', proj)
-  const { data, error } = await q
-  if (error || !data) return null
-  if (data.length === 10000) {
-    console.warn('[computeMetric] latency_p95: 10k row limit reached — p95 may be underestimated', { alert_id: alert.id })
+    // latency_p95 — ClickHouse's quantile() computes in-DB. Replaces the old
+    // "pull 10k sorted rows, index into array" pattern (also subject to the
+    // 10k cap which silently under-estimated p95 at scale).
+    const result = await getClickhouse().query({
+      query: `SELECT quantileIf(0.95)(latency_ms, latency_ms > 0) AS p95 FROM requests WHERE ${where}`,
+      query_params: params,
+      format: 'JSONEachRow',
+    })
+    const rows = (await result.json()) as Array<{ p95: string | number | null }>
+    return Number(rows[0]?.p95 ?? 0)
+  } catch (err) {
+    console.error('[computeMetric] ClickHouse query failed:', err instanceof Error ? err.message : err, { alert_id: alert.id })
+    return null
   }
-  const latencies = (data as { latency_ms: number | string }[]).map((r) => Number(r.latency_ms))
-  if (latencies.length === 0) return 0
-  const idx = Math.ceil(latencies.length * 0.95) - 1
-  return latencies[Math.max(0, idx)] ?? 0
 }
 
 cronRouter.get('/evaluate-alerts', async (c) => {
