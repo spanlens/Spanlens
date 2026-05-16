@@ -268,7 +268,7 @@ curl -X PATCH https://spanlens-server.vercel.app/api/v1/prompt-experiments/<expe
           </tr>
           <tr>
             <td><code>PATCH /api/v1/prompt-experiments/:id</code></td>
-            <td>Set winner or manually stop (<code>status: "stopped"</code>)</td>
+            <td>Set winner or manually stop (<code>status: {'"stopped"'}</code>)</td>
           </tr>
         </tbody>
       </table>
