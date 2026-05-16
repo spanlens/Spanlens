@@ -11,9 +11,9 @@ import { supabaseAdmin } from './db.js'
 export type Plan = 'free' | 'starter' | 'team' | 'enterprise'
 
 export const MONTHLY_REQUEST_LIMITS: Record<Plan, number | null> = {
-  free: 10_000,
+  free: 50_000,
   starter: 100_000,
-  team: 500_000,
+  team: 1_000_000,
   enterprise: null, // unlimited
 }
 
@@ -31,10 +31,27 @@ export const PROJECT_LIMITS: Record<Plan, number | null> = {
 }
 
 export const LOG_RETENTION_DAYS: Record<Plan, number> = {
-  free: 7,
-  starter: 30,
-  team: 90,
-  enterprise: 365,
+  free: 14,
+  starter: 90,
+  team: 365,
+  enterprise: 36_500,
+}
+
+// Team seat limits per plan. enforced when inviting members.
+// null = unlimited (Enterprise only).
+export const SEAT_LIMITS: Record<Plan, number | null> = {
+  free: 1,
+  starter: 3,
+  team: 10,
+  enterprise: null,
+}
+
+// Per-100K overage rate in USD. null = no overage allowed (Free) or custom (Enterprise).
+export const OVERAGE_USD_PER_100K: Record<Plan, number | null> = {
+  free: null,
+  starter: 8,
+  team: 5,
+  enterprise: null,
 }
 
 export interface ProjectQuotaCheckResult {
