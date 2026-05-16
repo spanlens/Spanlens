@@ -12,9 +12,10 @@ export default function RequestsDocs() {
       <h1>Requests</h1>
       <p className="lead">
         Every LLM call that flows through the Spanlens proxy produces one row in the{' '}
-        <code>requests</code> table. <a href="/requests">/requests</a> is the viewer: filter, sort,
-        drill down, and read the actual request and response bodies. This is the raw substrate every
-        other feature (Traces, Anomalies, Savings, etc.) aggregates from.
+        <code>requests</code> table — backed by ClickHouse for fast analytical reads.{' '}
+        <a href="/requests">/requests</a> is the viewer: filter, sort, drill down, and read the
+        actual request and response bodies. This is the raw substrate every other feature
+        (Traces, Anomalies, Savings, etc.) aggregates from.
       </p>
 
       <h2>Why it matters</h2>
@@ -338,29 +339,47 @@ POST /api/v1/requests/:id/replay/run
           it&apos;s stored — your OpenAI/Anthropic/Gemini key never appears in logs.
         </li>
         <li>
-          <strong>10KB body cap.</strong> Large prompts (e.g. 40-page PDF extraction) are truncated
-          at 10KB with a visible marker. Full bodies would blow up storage and cost.
+          <strong>API key patterns are auto-masked</strong> in stored bodies. Anything matching{' '}
+          <code>sk-*</code>, <code>sk-proj-*</code>, <code>sk-ant-*</code>, <code>AIza*</code>, or{' '}
+          <code>sl_live_*</code> (≥12-char body) is replaced with <code>&lt;prefix&gt;***</code>{' '}
+          before insert. Defense-in-depth for keys that slip into prompts/tool output/error text.
+          See <a href="/docs/features/security">Security</a> for details.
         </li>
         <li>
-          <strong>Retention policy.</strong> Free plan: 7 days. Paid plans: 30/90 days. Old rows
-          are pruned nightly by <code>cron-prune-logs</code>.
+          <strong>64KB body cap.</strong> Large prompts (e.g. 40-page PDF extraction) are truncated
+          at 64KB with a visible marker. Full bodies would blow up storage and cost.
         </li>
         <li>
-          <strong>RLS-enforced.</strong> You can only see requests belonging to your own
-          organization. The <code>requests</code> table has Row Level Security enabled.
+          <strong>Body retention opt-out.</strong> Pass <code>logBody: &apos;meta&apos;</code> in
+          the SDK (or <code>X-Spanlens-Log-Body: meta</code> header) to skip body storage
+          entirely while keeping tokens / cost / latency / identifiers. Set{' '}
+          <code>&apos;none&apos;</code> to additionally drop <code>user_id</code> and{' '}
+          <code>session_id</code>. See <a href="/docs/sdk">SDK</a>.
+        </li>
+        <li>
+          <strong>Retention policy.</strong> Free plan: 14 days. Pro: 90 days. Team: 365 days.
+          Enterprise: configurable up to unlimited. Enforced by the table&apos;s TTL plus a
+          per-plan query-time clip — older rows are dropped by ClickHouse&apos;s background merge.
+        </li>
+        <li>
+          <strong>Tenant isolation.</strong> ClickHouse has no row-level security; every read
+          path goes through the <code>requestsScope()</code> helper which injects an{' '}
+          <code>organization_id = ?</code> filter on every query. Direct ClickHouse access is
+          server-only. The dashboard cannot bypass the filter.
         </li>
       </ul>
 
       <h2>Limitations</h2>
       <ul>
         <li>
-          <strong>10KB body cap is fixed.</strong> A &ldquo;full-body archive to S3&rdquo; opt-in
+          <strong>64KB body cap is fixed.</strong> A &ldquo;full-body archive to S3&rdquo; opt-in
           for Enterprise customers is on the roadmap.
         </li>
         <li>
-          <strong>No full-text body search in the UI.</strong> The model filter uses{' '}
-          <code>ilike</code>; there is no free-text search over request/response body content.
-          Heavier search needs a separate OLAP layer (ClickHouse is the likely path).
+          <strong>No full-text body search in the UI yet.</strong> The model filter uses
+          case-insensitive substring match; there is no free-text search over request/response
+          body content. ClickHouse can do it efficiently — the dashboard hasn&apos;t exposed it
+          yet.
         </li>
         <li>
           <strong>Streaming response bodies are reconstructed, not original.</strong> SSE chunks
