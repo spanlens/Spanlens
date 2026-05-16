@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { authJwt, type JwtContext } from '../middleware/authJwt.js'
 import { supabaseAdmin } from '../lib/db.js'
 import { detectAnomalies } from '../lib/anomaly.js'
+import { requestsScope, selectRequests } from '../lib/requests-query.js'
 
 export const exportsRouter = new Hono<JwtContext>()
 exportsRouter.use('*', authJwt)
@@ -44,27 +45,34 @@ exportsRouter.get('/requests', async (c) => {
   const rawLimit    = parseInt(c.req.query('limit') ?? String(MAX_EXPORT_ROWS), 10)
   const limit       = Math.min(MAX_EXPORT_ROWS, Math.max(1, isNaN(rawLimit) ? MAX_EXPORT_ROWS : rawLimit))
 
-  let query = supabaseAdmin
-    .from('requests')
-    .select(EXPORT_COLUMNS.join(', '))
-    .eq('organization_id', orgId)
-    .order('created_at', { ascending: false })
-    .limit(limit)
+  const filters: string[] = []
+  const params: Record<string, unknown> = {}
+  if (projectId)     { filters.push('project_id = {projectId:UUID}'); params['projectId'] = projectId }
+  if (provider)      { filters.push('provider = {provider:String}'); params['provider'] = provider }
+  if (model)         { filters.push('positionCaseInsensitive(model, {model:String}) > 0'); params['model'] = model }
+  if (providerKeyId) { filters.push('provider_key_id = {providerKeyId:UUID}'); params['providerKeyId'] = providerKeyId }
+  if (from)          { filters.push('created_at >= parseDateTime64BestEffort({from:String})'); params['from'] = from }
+  if (to)            { filters.push('created_at <= parseDateTime64BestEffort({to:String})'); params['to'] = to }
+  if (status === 'ok')  filters.push('status_code < 400')
+  if (status === '4xx') filters.push('status_code >= 400 AND status_code < 500')
+  if (status === '5xx') filters.push('status_code >= 500')
 
-  if (projectId)     query = query.eq('project_id', projectId)
-  if (provider)      query = query.eq('provider', provider)
-  if (model)         query = query.ilike('model', `%${model}%`)
-  if (providerKeyId) query = query.eq('provider_key_id', providerKeyId)
-  if (from)          query = query.gte('created_at', from)
-  if (to)            query = query.lte('created_at', to)
-  if (status === 'ok')  query = query.lt('status_code', 400)
-  if (status === '4xx') query = query.gte('status_code', 400).lt('status_code', 500)
-  if (status === '5xx') query = query.gte('status_code', 500)
+  let rows: Record<ExportColumn, unknown>[]
+  try {
+    const scope = await requestsScope(orgId)
+    rows = await selectRequests<Record<ExportColumn, unknown>>({
+      scope,
+      select: EXPORT_COLUMNS.join(', '),
+      filters: filters.length > 0 ? filters.join(' AND ') : undefined,
+      orderBy: 'created_at DESC',
+      limit,
+      params,
+    })
+  } catch (err) {
+    console.error('[exports:requests] ClickHouse query failed:', err instanceof Error ? err.message : err)
+    return c.json({ error: 'Failed to export requests' }, 500)
+  }
 
-  const { data, error } = await query
-  if (error) return c.json({ error: 'Failed to export requests' }, 500)
-
-  const rows = (data ?? []) as unknown as Record<ExportColumn, unknown>[]
   const dateStr = new Date().toISOString().slice(0, 10)
 
   if (format === 'json') {
@@ -222,21 +230,39 @@ exportsRouter.get('/security', async (c) => {
 
   const format = c.req.query('format') === 'json' ? 'json' : 'csv'
 
-  const { data, error } = await supabaseAdmin
-    .from('requests')
-    .select('id, provider, model, status_code, latency_ms, cost_usd, flags, created_at')
-    .eq('organization_id', orgId)
-    .not('flags', 'eq', '[]')
-    .order('created_at', { ascending: false })
-    .limit(MAX_EXPORT_ROWS)
+  let data: Array<{
+    id: string
+    provider: string
+    model: string
+    status_code: number
+    latency_ms: number
+    cost_usd: string | null
+    flags: string
+    created_at: string
+  }>
+  try {
+    const scope = await requestsScope(orgId)
+    data = await selectRequests({
+      scope,
+      select: 'id, provider, model, status_code, latency_ms, cost_usd, flags, created_at',
+      // has_security_flags is the boolean derived from flags+response_flags at
+      // insert time, indexed-friendly. Filtering on it beats string-comparing
+      // the JSON-encoded `flags` column.
+      filters: 'has_security_flags = 1',
+      orderBy: 'created_at DESC',
+      limit: MAX_EXPORT_ROWS,
+    })
+  } catch (err) {
+    console.error('[exports:security] ClickHouse query failed:', err instanceof Error ? err.message : err)
+    return c.json({ error: 'Failed to export security events' }, 500)
+  }
 
-  if (error) return c.json({ error: 'Failed to export security events' }, 500)
-
-  const rows: Record<string, unknown>[] = (data ?? []).map((r) => {
-    const row = r as Record<string, unknown>
-    return format === 'csv'
-      ? { ...row, flags: JSON.stringify(row.flags) }
-      : row
+  // CSV gets the flags column as a string literal; JSON parses it back to an array.
+  const rows: Record<string, unknown>[] = data.map((row) => {
+    if (format === 'csv') return row
+    let parsedFlags: unknown = []
+    try { parsedFlags = JSON.parse(row.flags) } catch { parsedFlags = row.flags }
+    return { ...row, flags: parsedFlags }
   })
 
   const dateStr = new Date().toISOString().slice(0, 10)
