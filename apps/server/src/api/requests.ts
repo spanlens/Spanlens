@@ -1,16 +1,51 @@
 import { Hono } from 'hono'
 import { authJwt, type JwtContext } from '../middleware/authJwt.js'
 import { requireRole } from '../middleware/requireRole.js'
-import { supabaseAdmin } from '../lib/db.js'
 import { getDecryptedProviderKeyById, getDecryptedProviderKey } from '../proxy/utils.js'
 import { calculateCost } from '../lib/cost.js'
 import { logRequestAsync } from '../lib/logger.js'
 import { fireAndForget } from '../lib/wait-until.js'
 import { parsePageLimit } from '../lib/params.js'
+import {
+  requestsScope,
+  selectRequests,
+  countRequests,
+  fetchProviderKeyNames,
+} from '../lib/requests-query.js'
 
 export const requestsRouter = new Hono<JwtContext>()
 
 requestsRouter.use('*', authJwt)
+
+// Columns surfaced in the list view. Kept in sync with the response contract
+// the dashboard expects (provider_key_name is flattened from provider_keys.name
+// via fetchProviderKeyNames after the main read).
+const LIST_COLUMNS =
+  'id, project_id, provider, model, prompt_tokens, completion_tokens, total_tokens, ' +
+  'cache_read_tokens, cache_write_tokens, cost_usd, latency_ms, status_code, error_message, ' +
+  'trace_id, span_id, provider_key_id, user_id, session_id, created_at'
+
+interface RequestRow {
+  id: string
+  project_id: string
+  provider: string
+  model: string
+  prompt_tokens: number
+  completion_tokens: number
+  total_tokens: number
+  cache_read_tokens: number
+  cache_write_tokens: number
+  cost_usd: string | number | null
+  latency_ms: number
+  status_code: number
+  error_message: string | null
+  trace_id: string | null
+  span_id: string | null
+  provider_key_id: string | null
+  user_id: string | null
+  session_id: string | null
+  created_at: string
+}
 
 // GET /api/v1/requests — list requests with optional filters + pagination
 // Query params: projectId, provider, model, status, from, to, page, limit
@@ -18,76 +53,114 @@ requestsRouter.get('/', async (c) => {
   const orgId = c.get('orgId')
   if (!orgId) return c.json({ error: 'Organization not found' }, 404)
 
-  const projectId = c.req.query('projectId')
-  const provider   = c.req.query('provider')
-  const model      = c.req.query('model')
-  const from       = c.req.query('from')     // ISO date string
-  const to         = c.req.query('to')
+  const projectId       = c.req.query('projectId')
+  const provider        = c.req.query('provider')
+  const model           = c.req.query('model')
+  const from            = c.req.query('from')
+  const to              = c.req.query('to')
+  const providerKeyId   = c.req.query('providerKeyId')
+  const promptVersionId = c.req.query('promptVersionId')
+  const userIdFilter    = c.req.query('userId')
+  const sessionIdFilter = c.req.query('sessionId')
+  const status          = c.req.query('status')
+  const sortByRaw       = c.req.query('sortBy')
+  const sortDirRaw      = c.req.query('sortDir')
   const { page, limit, offset } = parsePageLimit(c.req.query('page'), c.req.query('limit'))
-
-  // Optional new filter: provider_key_id ("show only requests that used this key")
-  const providerKeyId    = c.req.query('providerKeyId')
-  const promptVersionId  = c.req.query('promptVersionId')
-  const userIdFilter     = c.req.query('userId')
-  const sessionIdFilter  = c.req.query('sessionId')
-  const status     = c.req.query('status')   // 'ok' | '4xx' | '5xx'
-  const sortByRaw  = c.req.query('sortBy')   // 'latency_ms' | 'cost_usd' | 'total_tokens' | 'created_at'
-  const sortDirRaw = c.req.query('sortDir')  // 'asc' | 'desc'
 
   const validSortCols = ['created_at', 'latency_ms', 'cost_usd', 'total_tokens'] as const
   type SortCol = (typeof validSortCols)[number]
-  const sortCol: SortCol = validSortCols.includes(sortByRaw as SortCol) ? (sortByRaw as SortCol) : 'created_at'
-  const ascending = sortDirRaw === 'asc'
+  const sortCol: SortCol = validSortCols.includes(sortByRaw as SortCol)
+    ? (sortByRaw as SortCol)
+    : 'created_at'
+  const orderDir = sortDirRaw === 'asc' ? 'ASC' : 'DESC'
+  // ClickHouse: NULLS LAST mimics Supabase's nullsFirst: false.
+  const orderBy = `${sortCol} ${orderDir} NULLS LAST`
 
-  // Embed the provider_key row's `name` so the dashboard can render
-  // "openai · prod-key-2" without a second round-trip.
-  let query = supabaseAdmin
-    .from('requests')
-    .select(
-      'id, project_id, provider, model, prompt_tokens, completion_tokens, total_tokens, cache_read_tokens, cache_write_tokens, cost_usd, latency_ms, status_code, error_message, trace_id, span_id, provider_key_id, user_id, session_id, provider_keys ( name ), created_at',
-      { count: 'exact' },
-    )
-    .eq('organization_id', orgId)
-    .order(sortCol, { ascending, nullsFirst: false })
-    .range(offset, offset + limit - 1)
+  // Assemble the dynamic WHERE. Each fragment is a parametrized ClickHouse
+  // condition — never interpolate user input into the SQL string itself.
+  const filters: string[] = []
+  const params: Record<string, unknown> = {}
 
-  if (projectId)     query = query.eq('project_id', projectId)
-  if (provider)      query = query.eq('provider', provider)
-  if (model)         query = query.ilike('model', `%${model}%`)
-  if (providerKeyId)   query = query.eq('provider_key_id', providerKeyId)
-  if (promptVersionId) query = query.eq('prompt_version_id', promptVersionId)
-  if (userIdFilter)    query = query.eq('user_id', userIdFilter)
-  if (sessionIdFilter) query = query.eq('session_id', sessionIdFilter)
-  if (from)            query = query.gte('created_at', from)
-  if (to)            query = query.lte('created_at', to)
-  if (status === 'ok')   query = query.lt('status_code', 400)
-  else if (status === '4xx') query = query.gte('status_code', 400).lt('status_code', 500)
-  else if (status === '5xx') query = query.gte('status_code', 500)
+  if (projectId)       { filters.push('project_id = {projectId:UUID}'); params['projectId'] = projectId }
+  if (provider)        { filters.push('provider = {provider:String}'); params['provider'] = provider }
+  if (model)           { filters.push('positionCaseInsensitive(model, {model:String}) > 0'); params['model'] = model }
+  if (providerKeyId)   { filters.push('provider_key_id = {providerKeyId:UUID}'); params['providerKeyId'] = providerKeyId }
+  if (promptVersionId) { filters.push('prompt_version_id = {promptVersionId:UUID}'); params['promptVersionId'] = promptVersionId }
+  if (userIdFilter)    { filters.push('user_id = {userId:String}'); params['userId'] = userIdFilter }
+  if (sessionIdFilter) { filters.push('session_id = {sessionId:String}'); params['sessionId'] = sessionIdFilter }
+  if (from)            { filters.push('created_at >= parseDateTime64BestEffort({from:String})'); params['from'] = from }
+  if (to)              { filters.push('created_at <= parseDateTime64BestEffort({to:String})'); params['to'] = to }
 
-  const { data, error, count } = await query
-  if (error) return c.json({ error: 'Failed to fetch requests' }, 500)
+  if (status === 'ok')        filters.push('status_code < 400')
+  else if (status === '4xx')  filters.push('status_code >= 400 AND status_code < 500')
+  else if (status === '5xx')  filters.push('status_code >= 500')
 
-  // Flatten the embedded provider_keys.name onto the row for simpler client typing.
-  // supabase-js infers FK relations as arrays in its return type, so cast
-  // through `unknown` and pick name defensively (covers both shapes).
-  type EmbeddedKey = { name: string | null } | Array<{ name: string | null }> | null | undefined
-  type Row = { provider_keys?: EmbeddedKey; [k: string]: unknown }
-  const flat = ((data as unknown as Row[]) ?? []).map((row) => {
-    const nested = row.provider_keys
-    const keyName = Array.isArray(nested) ? nested[0]?.name ?? null : nested?.name ?? null
-    return {
+  const combinedFilters = filters.length > 0 ? filters.join(' AND ') : undefined
+
+  try {
+    const scope = await requestsScope(orgId)
+    const [rows, total] = await Promise.all([
+      selectRequests<RequestRow>({
+        scope,
+        select: LIST_COLUMNS,
+        filters: combinedFilters,
+        orderBy,
+        limit,
+        offset,
+        params,
+      }),
+      countRequests({ scope, filters: combinedFilters, params }),
+    ])
+
+    // App-layer replacement for Supabase's `provider_keys ( name )` nested select.
+    const keyMap = await fetchProviderKeyNames(orgId, rows.map((r) => r.provider_key_id))
+    const flat = rows.map((row) => ({
       ...row,
-      provider_key_name: keyName,
-      provider_keys: undefined, // strip the nested object
-    }
-  })
+      cost_usd: row.cost_usd == null ? null : Number(row.cost_usd),
+      provider_key_name: row.provider_key_id ? (keyMap.get(row.provider_key_id) ?? null) : null,
+    }))
 
-  return c.json({
-    success: true,
-    data: flat,
-    meta: { total: count ?? 0, page, limit },
-  })
+    return c.json({
+      success: true,
+      data: flat,
+      meta: { total, page, limit },
+    })
+  } catch (err) {
+    console.error('[requests:list] ClickHouse query failed:', err instanceof Error ? err.message : err)
+    return c.json({ error: 'Failed to fetch requests' }, 500)
+  }
 })
+
+// Columns surfaced in the detail view. Bodies are stored as JSON strings in
+// ClickHouse (not JSONB); we parse them at the boundary so the dashboard
+// keeps receiving objects.
+const DETAIL_COLUMNS =
+  'id, organization_id, project_id, api_key_id, provider, model, ' +
+  'prompt_tokens, completion_tokens, total_tokens, cache_read_tokens, cache_write_tokens, ' +
+  'cost_usd, latency_ms, proxy_overhead_ms, status_code, request_body, response_body, ' +
+  'error_message, trace_id, span_id, prompt_version_id, provider_key_id, ' +
+  'user_id, session_id, flags, response_flags, has_security_flags, created_at'
+
+interface RequestDetailRow extends RequestRow {
+  organization_id: string
+  api_key_id: string | null
+  proxy_overhead_ms: number | null
+  request_body: string
+  response_body: string
+  prompt_version_id: string | null
+  flags: string
+  response_flags: string
+  has_security_flags: boolean
+}
+
+function parseJsonColumn(value: string | null | undefined, fallback: unknown): unknown {
+  if (value == null || value === '') return fallback
+  try {
+    return JSON.parse(value)
+  } catch {
+    return value
+  }
+}
 
 // GET /api/v1/requests/:id — get full request detail including bodies
 requestsRouter.get('/:id', async (c) => {
@@ -95,29 +168,33 @@ requestsRouter.get('/:id', async (c) => {
   const orgId = c.get('orgId')
   if (!orgId) return c.json({ error: 'Organization not found' }, 404)
 
-  const { data, error } = await supabaseAdmin
-    .from('requests')
-    .select('*, provider_keys ( name )')
-    .eq('id', requestId)
-    .eq('organization_id', orgId)
-    .single()
+  try {
+    const scope = await requestsScope(orgId)
+    const rows = await selectRequests<RequestDetailRow>({
+      scope,
+      select: DETAIL_COLUMNS,
+      filters: 'id = {requestId:UUID}',
+      params: { requestId },
+      limit: 1,
+    })
+    const data = rows[0]
+    if (!data) return c.json({ error: 'Request not found' }, 404)
 
-  if (error || !data) return c.json({ error: 'Request not found' }, 404)
-
-  type EmbeddedKeyDetail =
-    | { name: string | null }
-    | Array<{ name: string | null }>
-    | null
-    | undefined
-  const nested = (data as unknown as { provider_keys?: EmbeddedKeyDetail }).provider_keys
-  const keyObj = Array.isArray(nested) ? nested[0] ?? null : nested ?? null
-  const flat = {
-    ...data,
-    provider_key_name: keyObj?.name ?? null,
-    provider_keys: undefined,
+    const keyMap = await fetchProviderKeyNames(orgId, [data.provider_key_id])
+    const flat = {
+      ...data,
+      cost_usd: data.cost_usd == null ? null : Number(data.cost_usd),
+      request_body: parseJsonColumn(data.request_body, null),
+      response_body: parseJsonColumn(data.response_body, null),
+      flags: parseJsonColumn(data.flags, []),
+      response_flags: parseJsonColumn(data.response_flags, []),
+      provider_key_name: data.provider_key_id ? (keyMap.get(data.provider_key_id) ?? null) : null,
+    }
+    return c.json({ success: true, data: flat })
+  } catch (err) {
+    console.error('[requests:detail] ClickHouse query failed:', err instanceof Error ? err.message : err)
+    return c.json({ error: 'Request not found' }, 404)
   }
-
-  return c.json({ success: true, data: flat })
 })
 
 // POST /api/v1/requests/:id/replay
@@ -146,23 +223,29 @@ requestsRouter.post('/:id/replay', requireRole('admin', 'editor'), async (c) => 
   }
   const overrideModel = typeof body.model === 'string' ? body.model : undefined
 
-  const { data, error } = await supabaseAdmin
-    .from('requests')
-    .select('id, organization_id, provider, model, request_body')
-    .eq('id', requestId)
-    .eq('organization_id', orgId)
-    .single()
+  interface ReplayRow {
+    provider: string
+    model: string
+    request_body: string
+  }
+  const scope = await requestsScope(orgId)
+  const rows = await selectRequests<ReplayRow>({
+    scope,
+    select: 'provider, model, request_body',
+    filters: 'id = {requestId:UUID}',
+    params: { requestId },
+    limit: 1,
+  })
+  const data = rows[0]
+  if (!data) return c.json({ error: 'Request not found' }, 404)
 
-  if (error || !data) return c.json({ error: 'Request not found' }, 404)
-
-  // Build the replay payload — same body, optionally swap the model field.
-  const original = (data.request_body ?? {}) as Record<string, unknown>
+  const original = (parseJsonColumn(data.request_body, {}) ?? {}) as Record<string, unknown>
   const replayBody = overrideModel
     ? { ...original, model: overrideModel }
     : original
 
-  // Strip truncation markers (these came from logger.serializeBody when the
-  // original body exceeded 10KB). Replays of truncated bodies are best-effort.
+  // Strip truncation markers (set by logger.maybeTruncateBody when the original
+  // body exceeded 64KB). Replays of truncated bodies are best-effort.
   if (
     typeof replayBody === 'object' &&
     replayBody !== null &&
@@ -195,7 +278,7 @@ requestsRouter.post('/:id/replay', requireRole('admin', 'editor'), async (c) => 
   return c.json({
     success: true,
     data: {
-      provider: data.provider as string,
+      provider: data.provider,
       replayBody,
       proxyPath,
     },
@@ -220,16 +303,26 @@ requestsRouter.post('/:id/replay/run', requireRole('admin', 'editor'), async (c)
   const overrideModel = typeof body.model === 'string' ? body.model : undefined
 
   // ── Fetch original request ────────────────────────────────────────────────
-  const { data, error } = await supabaseAdmin
-    .from('requests')
-    .select('id, organization_id, project_id, provider, model, request_body, provider_key_id, api_key_id')
-    .eq('id', requestId)
-    .eq('organization_id', orgId)
-    .single()
+  interface ReplayRunRow {
+    project_id: string
+    provider: string
+    model: string
+    request_body: string
+    provider_key_id: string | null
+    api_key_id: string | null
+  }
+  const scope = await requestsScope(orgId)
+  const rows = await selectRequests<ReplayRunRow>({
+    scope,
+    select: 'project_id, provider, model, request_body, provider_key_id, api_key_id',
+    filters: 'id = {requestId:UUID}',
+    params: { requestId },
+    limit: 1,
+  })
+  const data = rows[0]
+  if (!data) return c.json({ error: 'Request not found' }, 404)
 
-  if (error || !data) return c.json({ error: 'Request not found' }, 404)
-
-  const original = (data.request_body ?? {}) as Record<string, unknown>
+  const original = (parseJsonColumn(data.request_body, {}) ?? {}) as Record<string, unknown>
   if ('_truncated' in original) {
     return c.json(
       { error: 'Original request body was truncated and cannot be replayed exactly.' },
@@ -242,14 +335,11 @@ requestsRouter.post('/:id/replay/run', requireRole('admin', 'editor'), async (c)
   // used). Fall back to "current active provider key for this Spanlens key
   // + provider" when the original key has been rotated/deleted.
   let providerKey = data.provider_key_id
-    ? await getDecryptedProviderKeyById(data.provider_key_id as string, orgId)
+    ? await getDecryptedProviderKeyById(data.provider_key_id, orgId)
     : null
 
   if (!providerKey && data.api_key_id) {
-    providerKey = await getDecryptedProviderKey(
-      data.api_key_id as string,
-      data.provider as string,
-    )
+    providerKey = await getDecryptedProviderKey(data.api_key_id, data.provider)
   }
 
   if (!providerKey) return c.json({ error: 'Provider key not found or inactive' }, 400)
@@ -267,7 +357,7 @@ requestsRouter.post('/:id/replay/run', requireRole('admin', 'editor'), async (c)
   const model = (replayBody.model ?? data.model ?? '') as string
 
   // ── Resolve upstream endpoint + headers ───────────────────────────────────
-  const provider = data.provider as string
+  const provider = data.provider
   let upstreamUrl: string
   let upstreamHeaders: Record<string, string>
 
@@ -339,7 +429,7 @@ requestsRouter.post('/:id/replay/run', requireRole('admin', 'editor'), async (c)
     c,
     logRequestAsync({
       organizationId: orgId,
-      projectId: data.project_id as string,
+      projectId: data.project_id,
       apiKeyId: null,
       provider,
       model,
