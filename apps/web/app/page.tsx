@@ -38,22 +38,22 @@ const COMPAT = [
 const PLANS = [
   {
     name: 'Free', price: '$0', unit: '/mo',
-    bullets: ['10K req / mo', '7 day retention', '1 workspace · 1 member', 'All core features', 'Community support'],
+    bullets: ['50K req / mo', '14 day retention', '1 seat', 'All core features', 'Community support'],
     cta: 'Start free', href: '/signup', primary: false,
   },
   {
     name: 'Pro', price: '$29', unit: '/mo',
-    bullets: ['100K req / mo', '30 day retention', '3 workspaces · 5 members', '5 alerts · email notify', '+$8 / 100K extra'],
+    bullets: ['100K req / mo', '90 day retention', '3 seats', '5 alerts · email notify', '+$8 / 100K extra'],
     cta: 'Start Pro', href: '/signup?plan=starter', primary: true, tag: 'Most popular',
   },
   {
-    name: 'Team', price: '$99', unit: '/mo',
-    bullets: ['500K req / mo', '90 day retention', 'Unlimited workspaces & members', 'Slack · webhooks · unlimited alerts', '+$6 / 100K extra'],
+    name: 'Team', price: '$149', unit: '/mo',
+    bullets: ['1M req / mo', '365 day retention', '10 seats', 'Slack · webhooks · unlimited alerts', '+$5 / 100K extra'],
     cta: 'Start Team', href: '/signup?plan=team', primary: false,
   },
   {
     name: 'Enterprise', price: 'Custom', unit: '',
-    bullets: ['Custom volume & rate limits', 'Custom retention', 'SSO (SAML / Okta)', 'Unlimited everything', 'Dedicated support + SLA'],
+    bullets: ['Custom volume & rate limits', 'Unlimited retention', 'SSO (SAML / Okta)', 'Unlimited seats', 'Dedicated support + SLA'],
     cta: 'Contact us', href: 'mailto:hi@spanlens.io', primary: false,
   },
 ]
@@ -63,7 +63,7 @@ const FAQS: [string, string][] = [
   ['What about latency overhead?', 'p99 overhead is under 3ms. Ingestion happens async in a worker. If we ever fail, your request completes anyway — Spanlens never sits on the critical path.'],
   ['How do you handle PII?', 'Detectors run at log time, before persistence. Matches can be masked or blocked. Raw bodies can be kept in-memory only; only redacted copies land on disk.'],
   ['Do you support OpenTelemetry?', 'Yes — OTLP/HTTP ingest and export. Your existing OTel tracing flows into the same span store; LLM spans get LLM-specific attributes on top.'],
-  ['What\'s the data retention?', 'Free is 7 days. Pro is 30 days by default, extendable. Enterprise & self-hosted are configurable up to 1 year.'],
+  ['What\'s the data retention?', 'Free is 14 days. Pro is 90 days, Team is 365 days. Enterprise & self-hosted are configurable, including unlimited.'],
   ['Can I export my data?', 'Anytime. JSON, CSV, Parquet. Or pipe the raw stream to S3, BigQuery, or your warehouse via our sink connectors.'],
 ]
 

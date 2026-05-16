@@ -17,40 +17,45 @@ export const PLANS: PlanCardConfig[] = [
     pricePeriod: 'forever',
     description: 'For evaluation and small personal projects.',
     features: [
-      '10,000 requests / month',
-      '7-day log retention',
+      '50,000 requests / month',
+      '14-day log retention',
+      '1 seat',
       'Unlimited projects',
       'Community support',
     ],
   },
   {
     id: 'starter',
-    name: 'Starter',
-    priceUsd: 19,
+    name: 'Pro',
+    priceUsd: 29,
     pricePeriod: 'per month',
     description: 'For production apps and small teams.',
     features: [
       '100,000 requests / month',
-      '30-day log retention',
+      '90-day log retention',
+      '3 seats',
       'Unlimited projects',
       'Agent tracing',
       'Email alerts',
       'Email support',
+      '+$8 / 100K extra requests',
     ],
   },
   {
     id: 'team',
     name: 'Team',
-    priceUsd: 49,
+    priceUsd: 149,
     pricePeriod: 'per month',
     description: 'For growing teams with heavier workloads.',
     features: [
-      '500,000 requests / month',
-      '90-day log retention',
+      '1,000,000 requests / month',
+      '365-day log retention',
+      '10 seats',
       'Unlimited projects',
       'Slack / Discord alerts',
       'Team roles & audit log',
       'Priority support',
+      '+$5 / 100K extra requests',
     ],
   },
   {
@@ -61,7 +66,8 @@ export const PLANS: PlanCardConfig[] = [
     description: 'SSO, on-prem, custom SLAs.',
     features: [
       'Custom request volume',
-      '1-year log retention',
+      'Unlimited log retention',
+      'Unlimited seats',
       'SSO / SAML',
       'Dedicated Slack channel',
       'Custom SLA',
@@ -70,7 +76,21 @@ export const PLANS: PlanCardConfig[] = [
 ]
 
 export const PLAN_REQUEST_LIMITS: Record<string, number> = {
-  free: 10_000,
+  free: 50_000,
   starter: 100_000,
-  team: 500_000,
+  team: 1_000_000,
+}
+
+export const PLAN_SEAT_LIMITS: Record<string, number | null> = {
+  free: 1,
+  starter: 3,
+  team: 10,
+  enterprise: null,
+}
+
+export const PLAN_RETENTION_DAYS: Record<string, number> = {
+  free: 14,
+  starter: 90,
+  team: 365,
+  enterprise: 36_500,
 }

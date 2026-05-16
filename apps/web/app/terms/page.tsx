@@ -97,8 +97,8 @@ export default function TermsPage() {
             Usage at the time of the request is <strong>under 10% of the plan&apos;s included
             monthly quota</strong>:
             <ul>
-              <li>Starter plan: under 10,000 requests</li>
-              <li>Team plan: under 50,000 requests</li>
+              <li>Pro plan: under 10,000 requests</li>
+              <li>Team plan: under 100,000 requests</li>
             </ul>
           </li>
         </ol>
