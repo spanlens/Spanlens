@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { authJwt, type JwtContext } from '../middleware/authJwt.js'
 import { requireRole } from '../middleware/requireRole.js'
 import { supabaseAdmin } from '../lib/db.js'
+import { getClickhouse } from '../lib/clickhouse.js'
 import { aes256Encrypt } from '../lib/crypto.js'
 
 /**
@@ -66,27 +67,52 @@ providerKeysRouter.get('/', async (c) => {
     return c.json({ success: true, data: [] })
   }
 
+  // Bulk-fetch last_used_at for every provider key in ONE ClickHouse query —
+  // was N+1 (one supabase round-trip per key) before the migration. Same fix
+  // pattern as lib/stale-key-digest.ts.
+  const keyIds = rows.map((k) => k.id as string)
+  const lastUsedMap = new Map<string, string>()
+  try {
+    const result = await getClickhouse().query({
+      query:
+        'SELECT provider_key_id AS id, max(created_at) AS last_used_at ' +
+        'FROM requests ' +
+        'WHERE organization_id = {orgId:UUID} ' +
+        '  AND provider_key_id IN {keyIds:Array(UUID)} ' +
+        'GROUP BY provider_key_id',
+      query_params: { orgId, keyIds },
+      format: 'JSONEachRow',
+    })
+    const lastUsedRows = (await result.json()) as Array<{ id: string; last_used_at: string }>
+    for (const row of lastUsedRows) lastUsedMap.set(row.id, row.last_used_at)
+  } catch (err) {
+    console.error(
+      '[providerKeys] last-used lookup failed:',
+      err instanceof Error ? err.message : err,
+    )
+  }
+
+  // leak-scan lookup stays N+1 because the source table is still in Supabase
+  // and is low-volume (~1 row per key per scan day). Could be batched too but
+  // not on the hot path.
   const enriched = await Promise.all(
     rows.map(async (k) => {
-      const [{ data: lastReq }, { data: lastScan }] = await Promise.all([
-        supabaseAdmin
-          .from('requests')
-          .select('created_at')
-          .eq('provider_key_id', k.id)
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle(),
-        supabaseAdmin
-          .from('provider_key_leak_scans')
-          .select('scanned_at, result')
-          .eq('provider_key_id', k.id)
-          .order('scanned_at', { ascending: false })
-          .limit(1)
-          .maybeSingle(),
-      ])
+      const { data: lastScan } = await supabaseAdmin
+        .from('provider_key_leak_scans')
+        .select('scanned_at, result')
+        .eq('provider_key_id', k.id)
+        .order('scanned_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      const rawLastUsed = lastUsedMap.get(k.id as string)
+      // ClickHouse DateTime64 prints as 'YYYY-MM-DD HH:MM:SS.fff' — rewrite to
+      // ISO with 'T'/'Z' so the dashboard (which Date.parse's it) keeps working.
+      const last_used_at = rawLastUsed
+        ? rawLastUsed.replace(' ', 'T') + 'Z'
+        : null
       return {
         ...k,
-        last_used_at: lastReq?.created_at ?? null,
+        last_used_at,
         last_scan_at: lastScan?.scanned_at ?? null,
         last_scan_result: (lastScan?.result as 'clean' | 'leaked' | 'error' | undefined) ?? null,
       }

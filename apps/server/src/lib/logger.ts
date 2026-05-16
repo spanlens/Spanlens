@@ -1,6 +1,27 @@
+import { randomUUID } from 'node:crypto'
 import { supabaseAdmin } from './db.js'
+import { getClickhouse, toClickhouseTimestamp } from './clickhouse.js'
+import { maskApiKeysInBody, maskApiKeys } from './pii-mask.js'
 import { scanAll, type SecurityFlag } from './security-scan.js'
 import { sendEmail, renderSecurityAlertEmail } from './resend.js'
+
+/**
+ * Customer-controlled body logging mode (sent via the `x-spanlens-log-body`
+ * header by the SDK helpers `withLogBody()` / `observeOpenAI({ logBody })`).
+ *
+ * - `'full'` (default): persist request/response bodies after API-key masking.
+ * - `'meta'`: drop bodies but keep tokens/latency/cost/model + identifiers.
+ * - `'none'`: drop bodies AND user_id/session_id — strictest minimization.
+ *
+ * See packages/sdk/src/types.ts LogBodyMode for the matching SDK type.
+ */
+export type LogBodyMode = 'full' | 'meta' | 'none'
+
+/** Header-string → mode. Unknown values fall back to 'full' (no change in behavior). */
+export function parseLogBodyMode(header: string | null | undefined): LogBodyMode {
+  if (header === 'meta' || header === 'none') return header
+  return 'full'
+}
 
 export interface RequestLogData {
   organizationId: string
@@ -36,17 +57,30 @@ export interface RequestLogData {
    * If provided, logger skips re-scanning the request body.
    */
   preComputedRequestFlags?: SecurityFlag[]
+  /**
+   * Customer-requested body retention level (x-spanlens-log-body header).
+   * Defaults to 'full' when absent — same behavior as before.
+   */
+  logBodyMode?: LogBodyMode
 }
 
 /**
- * 64KB 초과 body는 DB에 저장하지 않고 truncate — Postgres JSONB 팽창 방지.
- * 전체 본문이 필요한 고객은 향후 Phase 2에서 Supabase Storage 버킷 업로드로 확장 예정.
- * 지금은 preview(앞 2KB) + 원본 크기 메타만 남기고 나머지는 드롭.
+ * Bodies above this size are truncated before ClickHouse insertion. ClickHouse
+ * compresses well with ZSTD(3) so the inline cap is generous, but we still cap
+ * to keep individual rows bounded for cheap scans.
+ *
+ * Larger bodies are replaced with a preview + size metadata. Phase 2 may move
+ * full bodies to object storage and link by reference.
  */
 const MAX_BODY_INLINE_BYTES = 64 * 1024
 const PREVIEW_BYTES = 2 * 1024
 
-function serializeBody(body: unknown): unknown {
+/**
+ * Returns the body shape that will go into the ClickHouse `request_body` /
+ * `response_body` column. Above the inline cap, replaces with a preview +
+ * size envelope; otherwise returns the body as-is for downstream serialization.
+ */
+function maybeTruncateBody(body: unknown): unknown {
   if (body == null) return null
 
   let serialized: string
@@ -59,13 +93,12 @@ function serializeBody(body: unknown): unknown {
   const bytes = new TextEncoder().encode(serialized).byteLength
   if (bytes <= MAX_BODY_INLINE_BYTES) return body
 
-  // Truncate — preserve a readable preview plus size metadata for the dashboard
   const preview = serialized.slice(0, PREVIEW_BYTES)
   return {
     _truncated: true,
     _original_size_bytes: bytes,
     _preview: preview,
-    _note: `Body exceeded ${MAX_BODY_INLINE_BYTES} bytes and was truncated. Full body storage via Supabase Storage is planned for Phase 2.`,
+    _note: `Body exceeded ${MAX_BODY_INLINE_BYTES} bytes and was truncated.`,
   }
 }
 
@@ -161,35 +194,69 @@ export async function logRequestAsync(data: RequestLogData): Promise<void> {
     responseFlags = []
   }
 
-  const { error } = await supabaseAdmin.from('requests').insert({
-    organization_id: data.organizationId,
-    project_id: data.projectId,
-    api_key_id: data.apiKeyId,
-    provider: data.provider,
-    model: data.model,
-    prompt_tokens: data.promptTokens,
-    completion_tokens: data.completionTokens,
-    total_tokens: data.totalTokens,
-    cache_read_tokens: data.cacheReadTokens ?? 0,
-    cache_write_tokens: data.cacheWriteTokens ?? 0,
-    cost_usd: data.costUsd,
-    latency_ms: data.latencyMs,
-    proxy_overhead_ms: data.proxyOverheadMs ?? null,
-    status_code: data.statusCode,
-    request_body: serializeBody(data.requestBody),
-    response_body: serializeBody(data.responseBody),
-    error_message: data.errorMessage,
-    trace_id: data.traceId,
-    span_id: data.spanId,
-    prompt_version_id: data.promptVersionId ?? null,
-    provider_key_id: data.providerKeyId ?? null,
-    user_id: data.userId ?? null,
-    session_id: data.sessionId ?? null,
-    flags: requestFlags,
-    response_flags: responseFlags,
-  })
-  if (error) {
-    console.error('[logger] Failed to log request:', error.message)
+  // ── ClickHouse insertion ──────────────────────────────────────────────────
+  // Body columns + identifiers respect the customer's logBodyMode opt-out.
+  //   - full: persist everything with API-key pattern masking (default)
+  //   - meta: drop request/response bodies; keep token counts + identifiers
+  //   - none: same as meta plus drop user_id / session_id
+  // The security scan still runs above so prompt-injection / leaked-key
+  // detection works even when bodies are dropped — flagging without storing.
+  // The error_message column passes through API-key masking in case an
+  // upstream 401 echoed back a key fragment.
+  const logBodyMode = data.logBodyMode ?? 'full'
+  const storeBody = logBodyMode === 'full'
+  const requestBody = storeBody ? maskApiKeysInBody(maybeTruncateBody(data.requestBody)) : ''
+  const responseBody = storeBody ? maskApiKeysInBody(maybeTruncateBody(data.responseBody)) : ''
+  const errorMessage = data.errorMessage ? maskApiKeys(data.errorMessage) : null
+
+  const dropIdentifiers = logBodyMode === 'none'
+  const userId = dropIdentifiers ? null : (data.userId ?? null)
+  const sessionId = dropIdentifiers ? null : (data.sessionId ?? null)
+
+  try {
+    await getClickhouse().insert({
+      table: 'requests',
+      format: 'JSONEachRow',
+      values: [
+        {
+          id: randomUUID(),
+          organization_id: data.organizationId,
+          project_id: data.projectId,
+          api_key_id: data.apiKeyId ?? null,
+          provider: data.provider,
+          model: data.model,
+          prompt_tokens: data.promptTokens,
+          completion_tokens: data.completionTokens,
+          total_tokens: data.totalTokens,
+          cache_read_tokens: data.cacheReadTokens ?? 0,
+          cache_write_tokens: data.cacheWriteTokens ?? 0,
+          cost_usd: data.costUsd,
+          latency_ms: data.latencyMs,
+          proxy_overhead_ms: data.proxyOverheadMs ?? null,
+          status_code: data.statusCode,
+          request_body: requestBody,
+          response_body: responseBody,
+          error_message: errorMessage,
+          trace_id: data.traceId,
+          span_id: data.spanId,
+          prompt_version_id: data.promptVersionId ?? null,
+          provider_key_id: data.providerKeyId ?? null,
+          user_id: userId,
+          session_id: sessionId,
+          flags: JSON.stringify(requestFlags),
+          response_flags: JSON.stringify(responseFlags),
+          has_security_flags: requestFlags.length > 0 || responseFlags.length > 0,
+          // ClickHouse DateTime64 wants 'YYYY-MM-DD HH:MM:SS.fff' (no Z).
+          // Postgres's gen_random_uuid()/now() defaults moved to the
+          // application layer — no behavioral difference, just a different
+          // write boundary.
+          created_at: toClickhouseTimestamp(),
+        },
+      ],
+    })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    console.error('[logger] ClickHouse insert failed:', message)
   }
 
   // ── Security alert ────────────────────────────────────────────────────────

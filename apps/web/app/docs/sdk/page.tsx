@@ -243,6 +243,93 @@ client = openai.OpenAI(
         only as Spanlens internal metadata.
       </p>
 
+      <h2 id="with-log-body">withLogBody() — control body retention (v0.3.x+)</h2>
+      <p>
+        Opt out of storing request/response bodies in your dashboard while keeping token counts,
+        cost, latency, and identifiers. Use when prompts may contain end-user PII you don&apos;t
+        want sent to Spanlens.
+      </p>
+      <table>
+        <thead>
+          <tr>
+            <th>Mode</th>
+            <th>request_body / response_body</th>
+            <th>tokens / cost / latency / model</th>
+            <th>user_id / session_id</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>&apos;full&apos;</code> (default)</td>
+            <td>Stored, with API-key pattern masking</td>
+            <td>Stored</td>
+            <td>Stored</td>
+          </tr>
+          <tr>
+            <td><code>&apos;meta&apos;</code></td>
+            <td><em>Empty</em></td>
+            <td>Stored</td>
+            <td>Stored</td>
+          </tr>
+          <tr>
+            <td><code>&apos;none&apos;</code></td>
+            <td><em>Empty</em></td>
+            <td>Stored</td>
+            <td><em>null</em></td>
+          </tr>
+        </tbody>
+      </table>
+      <p>
+        Even in <code>&apos;full&apos;</code> mode, the server auto-masks API key patterns
+        (<code>sk-*</code>, <code>sk-proj-*</code>, <code>sk-ant-*</code>, <code>AIza*</code>,
+        <code>sl_live_*</code>) in stored bodies. See{' '}
+        <a href="/docs/features/security">Security</a> for the masking policy.
+      </p>
+      <LangTabs
+        ts={`import { createOpenAI, withLogBody, withUser } from '@spanlens/sdk/openai'
+
+const openai = createOpenAI()
+
+// Single-call opt-out
+const res = await openai.chat.completions.create(
+  {
+    model: 'gpt-4o-mini',
+    messages: [{ role: 'user', content: somePromptThatMayContainPII }],
+  },
+  withLogBody('meta'),
+)
+
+// Combine with other helpers
+const res2 = await openai.chat.completions.create(
+  { model: 'gpt-4o-mini', messages: [...] },
+  {
+    headers: {
+      ...withLogBody('meta').headers,
+      ...withUser(currentUser.id).headers,
+    },
+  },
+)`}
+        py={`# Python helper coming soon — set the header directly
+from openai import OpenAI
+
+openai = OpenAI(
+    api_key=os.environ['SPANLENS_API_KEY'],
+    base_url='https://spanlens-server.vercel.app/proxy/openai/v1',
+    default_headers={'x-spanlens-log-body': 'meta'},
+)`}
+      />
+      <p>Raw curl:</p>
+      <CodeBlock>{`curl https://spanlens-server.vercel.app/proxy/openai/v1/chat/completions \\
+  -H "Authorization: Bearer $SPANLENS_API_KEY" \\
+  -H "x-spanlens-log-body: meta" \\
+  -H "Content-Type: application/json" \\
+  -d '{"model": "gpt-4o-mini", "messages": [...]}'`}</CodeBlock>
+      <p className="text-sm text-muted-foreground">
+        Note: <code>withUser</code> / <code>withSession</code> become no-ops when{' '}
+        <code>logBody: &apos;none&apos;</code> is set — the server drops those columns alongside
+        the bodies.
+      </p>
+
       <h2 id="observe">observe() — agent tracing</h2>
       <p>
         Wrap any function to turn it into a span in an agent trace. The callback&rsquo;s return value
@@ -370,11 +457,19 @@ async def streaming_span(trace):
       <LangTabs
         ts={`import { observeOpenAI } from '@spanlens/sdk'
 
+// String form — just give it a span name
 const res = await observeOpenAI(trace, 'greeting', (headers) =>
   openai.chat.completions.create(
     { model: 'gpt-4o-mini', messages: [{ role: 'user', content: 'Hi' }] },
     { headers, ...withPromptVersion('greeter@latest') },
   ),
+)
+
+// Options object — pass logBody to opt out of body storage per call
+const res2 = await observeOpenAI(
+  trace,
+  { name: 'pii-heavy-call', logBody: 'meta', promptVersion: 'greeter@latest' },
+  (headers) => openai.chat.completions.create({ ... }, { headers }),
 )`}
         py={`from spanlens import observe_openai
 
@@ -388,7 +483,9 @@ res = observe_openai(trace, "greeting", lambda headers:
       />
       <p>
         Same pattern works with <code>observeAnthropic()</code> / <code>observe_anthropic()</code>{' '}
-        and <code>observeGemini()</code> / <code>observe_gemini()</code>.
+        and <code>observeGemini()</code> / <code>observe_gemini()</code>. The{' '}
+        <code>logBody</code> option on the options form maps 1:1 to the{' '}
+        <a href="#with-log-body"><code>withLogBody()</code></a> helper.
       </p>
 
       <h2 id="framework-integrations">Framework integrations (v0.3.0+)</h2>

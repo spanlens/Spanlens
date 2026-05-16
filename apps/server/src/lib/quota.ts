@@ -1,4 +1,5 @@
 import { supabaseAdmin } from './db.js'
+import { getClickhouse } from './clickhouse.js'
 
 /**
  * Monthly request quota per plan tier. Checked in the proxy middleware
@@ -11,9 +12,9 @@ import { supabaseAdmin } from './db.js'
 export type Plan = 'free' | 'starter' | 'team' | 'enterprise'
 
 export const MONTHLY_REQUEST_LIMITS: Record<Plan, number | null> = {
-  free: 10_000,
+  free: 50_000,
   starter: 100_000,
-  team: 500_000,
+  team: 1_000_000,
   enterprise: null, // unlimited
 }
 
@@ -31,10 +32,64 @@ export const PROJECT_LIMITS: Record<Plan, number | null> = {
 }
 
 export const LOG_RETENTION_DAYS: Record<Plan, number> = {
-  free: 7,
-  starter: 30,
-  team: 90,
-  enterprise: 365,
+  free: 14,
+  starter: 90,
+  team: 365,
+  enterprise: 36_500,
+}
+
+// Team seat limits per plan. enforced when inviting members.
+// null = unlimited (Enterprise only).
+export const SEAT_LIMITS: Record<Plan, number | null> = {
+  free: 1,
+  starter: 3,
+  team: 10,
+  enterprise: null,
+}
+
+// Per-100K overage rate in USD. null = no overage allowed (Free) or custom (Enterprise).
+export const OVERAGE_USD_PER_100K: Record<Plan, number | null> = {
+  free: null,
+  starter: 8,
+  team: 5,
+  enterprise: null,
+}
+
+/**
+ * Counts `requests` rows for an org from `since` to now, bypassing plan
+ * retention. Used by billing quota checks and Paddle overage accounting —
+ * the metering window is the calendar/billing period, not the dashboard
+ * retention window.
+ *
+ * Exposed at the top of the file so callers can reuse it without rebuilding
+ * the same ClickHouse query.
+ */
+export async function countMonthlyRequests(
+  organizationId: string,
+  since: Date,
+  until?: Date,
+): Promise<number> {
+  // ClickHouse DateTime64 won't accept the trailing 'Z' that Date.toISOString
+  // produces — same gotcha logger.ts hits when inserting. We strip it here too.
+  const sinceTs = since.toISOString().replace('T', ' ').replace('Z', '')
+  const untilTs = until ? until.toISOString().replace('T', ' ').replace('Z', '') : null
+
+  const params: Record<string, unknown> = { orgId: organizationId, since: sinceTs }
+  let where =
+    'organization_id = {orgId:UUID} ' +
+    'AND created_at >= parseDateTime64BestEffort({since:String})'
+  if (untilTs) {
+    params['until'] = untilTs
+    where += ' AND created_at < parseDateTime64BestEffort({until:String})'
+  }
+
+  const result = await getClickhouse().query({
+    query: `SELECT count() AS n FROM requests WHERE ${where}`,
+    query_params: params,
+    format: 'JSONEachRow',
+  })
+  const rows = (await result.json()) as Array<{ n: string | number }>
+  return Number(rows[0]?.n ?? 0)
 }
 
 export interface ProjectQuotaCheckResult {
@@ -124,13 +179,9 @@ export async function checkMonthlyQuota(
   const now = new Date()
   const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1))
 
-  const { count } = await supabaseAdmin
-    .from('requests')
-    .select('id', { count: 'exact', head: true })
-    .eq('organization_id', organizationId)
-    .gte('created_at', monthStart.toISOString())
-
-  const used = count ?? 0
+  // Billing accuracy: count the full UTC month, bypassing plan retention.
+  // Free's 14-day window would otherwise undercount usage past day 14.
+  const used = await countMonthlyRequests(organizationId, monthStart)
 
   // Apply Pattern C policy
   const { evaluateQuotaPolicy } = await import('./quota-policy.js')
