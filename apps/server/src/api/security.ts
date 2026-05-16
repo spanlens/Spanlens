@@ -1,6 +1,8 @@
 import { Hono } from 'hono'
 import { authJwt, type JwtContext } from '../middleware/authJwt.js'
 import { supabaseAdmin } from '../lib/db.js'
+import { requestsScope, selectRequests, countRequests } from '../lib/requests-query.js'
+import { getSecuritySummary } from '../lib/stats-queries.js'
 import { parseIntMin, parsePositiveInt } from '../lib/params.js'
 
 /**
@@ -25,28 +27,51 @@ securityRouter.get('/flagged', async (c) => {
   const limit = Math.min(parsePositiveInt(c.req.query('limit'), 50), 200)
   const offset = parseIntMin(c.req.query('offset'), 0, 0)
 
-  const { data, error, count } = await supabaseAdmin
-    .from('requests')
-    .select('id, provider, model, status_code, latency_ms, cost_usd, flags, response_flags, created_at', { count: 'exact' })
-    .eq('organization_id', orgId)
-    .eq('has_security_flags', true)
-    .order('created_at', { ascending: false })
-    .range(offset, offset + limit - 1)
-
-  if (error) return c.json({ error: 'Failed to fetch flagged requests' }, 500)
-
-  return c.json({
-    success: true,
-    data: data ?? [],
-    meta: { total: count ?? 0, limit, offset },
-  })
+  interface FlaggedRow {
+    id: string
+    provider: string
+    model: string
+    status_code: number
+    latency_ms: number
+    cost_usd: string | number | null
+    flags: string
+    response_flags: string
+    created_at: string
+  }
+  try {
+    const scope = await requestsScope(orgId)
+    const [rows, total] = await Promise.all([
+      selectRequests<FlaggedRow>({
+        scope,
+        select: 'id, provider, model, status_code, latency_ms, cost_usd, flags, response_flags, created_at',
+        filters: 'has_security_flags = 1',
+        orderBy: 'created_at DESC',
+        limit,
+        offset,
+      }),
+      countRequests({ scope, filters: 'has_security_flags = 1' }),
+    ])
+    // ClickHouse stores JSON columns as strings; parse back to arrays so the
+    // dashboard response contract matches what supabase-js used to return.
+    const parseFlags = (s: string): unknown => {
+      try { return JSON.parse(s) } catch { return [] }
+    }
+    const data = rows.map((r) => ({
+      ...r,
+      cost_usd: r.cost_usd == null ? null : Number(r.cost_usd),
+      flags: parseFlags(r.flags),
+      response_flags: parseFlags(r.response_flags),
+    }))
+    return c.json({
+      success: true,
+      data,
+      meta: { total, limit, offset },
+    })
+  } catch (err) {
+    console.error('[security:flagged] ClickHouse query failed:', err instanceof Error ? err.message : err)
+    return c.json({ error: 'Failed to fetch flagged requests' }, 500)
+  }
 })
-
-interface SummaryRow {
-  flag_type: string
-  pattern: string
-  count: number
-}
 
 // GET /api/v1/security/summary?hours=24
 securityRouter.get('/summary', async (c) => {
@@ -55,26 +80,23 @@ securityRouter.get('/summary', async (c) => {
 
   const hours = Math.min(parsePositiveInt(c.req.query('hours'), 24), 720)
 
-  const { data, error } = await supabaseAdmin.rpc('security_summary', {
-    p_org_id: orgId,
-    p_hours: hours,
-  })
-
-  if (error) return c.json({ error: 'Failed to compute summary' }, 500)
-
-  const rows = (data as SummaryRow[] | null) ?? []
-  const summary = rows.map((r) => ({
-    type: r.flag_type,
-    pattern: r.pattern,
-    count: Number(r.count),
-  }))
-  const totalFlags = summary.reduce((s, r) => s + r.count, 0)
-
-  return c.json({
-    success: true,
-    data: summary,
-    meta: { hours, totalFlags },
-  })
+  try {
+    const rows = await getSecuritySummary(orgId, hours)
+    const summary = rows.map((r) => ({
+      type: r.flag_type,
+      pattern: r.pattern,
+      count: r.count,
+    }))
+    const totalFlags = summary.reduce((s, r) => s + r.count, 0)
+    return c.json({
+      success: true,
+      data: summary,
+      meta: { hours, totalFlags },
+    })
+  } catch (err) {
+    console.error('[security:summary] ClickHouse query failed:', err instanceof Error ? err.message : err)
+    return c.json({ error: 'Failed to compute summary' }, 500)
+  }
 })
 
 // GET /api/v1/security/settings

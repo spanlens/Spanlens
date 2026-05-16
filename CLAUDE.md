@@ -68,15 +68,27 @@ DB 읽기(조회) → supabaseClient (anon key, RLS 적용)
 4. DB 저장 전 request_body에서 Authorization 헤더 제거 필수
 5. 스트리밍: body.tee()로 복사, 원본 스트림 즉시 클라이언트 반환
 ## DB 작업 규칙
+**Supabase (Postgres) — 트랜잭션 / Auth / 관계형 데이터:**
 - 새 테이블 추가 시 반드시: ALTER TABLE t ENABLE ROW LEVEL SECURITY;
 - 기존 마이그레이션 파일 수정 금지 → 새 파일 추가 (YYYYMMDDHHMMSS_desc.sql)
-- supabase/types.ts 직접 수정 금지 → supabase gen types 사용
+- supabase/types.ts 직접 수정 금지 → supabase gen types 사용 (Phase 1 step 7에선 손 편집했음 — 다음 변경부터 다시 자동)
 - 마이그레이션 실행 후 반드시 supabase gen types 재실행
+
+**ClickHouse — `requests` 테이블 전용 (LLM 호출 로그):**
+- 마이그레이션: `clickhouse/migrations/NNN_desc.sql`, 적용: `pnpm ch:migrate` (멱등성 필수 — CREATE IF NOT EXISTS / ALTER ADD COLUMN IF NOT EXISTS만, DROP 절대 금지)
+- 로컬: `docker compose up clickhouse` 후 `pnpm ch:migrate`. 환경변수: `CLICKHOUSE_URL/USER/PASSWORD/DB`
+- 프로덕션: ClickHouse Cloud Development tier 시작 ($50/월). Plan은 [docs/plans/clickhouse-migration.md](docs/plans/clickhouse-migration.md) 참고
+- RLS 없음 → `apps/server/src/lib/requests-query.ts`의 `requestsScope` 헬퍼로 `organization_id` + retention 필터 자동 주입. 직접 `getClickhouse().query()` 호출은 lib 파일 한정, org 필터 직접 명시
 ## 핵심 모듈 — 중복 구현 금지
 lib/crypto.ts — AES-256-GCM 암/복호화 (Provider Key 전용)
 lib/cost.ts — 비용 계산 calculateCost(provider, model, usage)
-lib/logger.ts — 비동기 로깅 logRequestAsync(data)
+lib/logger.ts — 비동기 로깅 logRequestAsync(data) + parseLogBodyMode(header)
 lib/db.ts — supabaseAdmin / supabaseClient 인스턴스
+lib/clickhouse.ts — ClickHouse 싱글톤 + toClickhouseTimestamp() 헬퍼
+lib/requests-query.ts — requestsScope / selectRequests / countRequests / getOrgPlan / fetchProviderKeyNames (모든 requests 읽기는 여기 경유)
+lib/stats-queries.ts — getStatsOverview / getStatsModels / getStatsTimeseries / getLatencyPercentiles / getSecuritySummary / getUserAnalytics (구 Postgres RPC 대체)
+lib/anomaly.ts — detectAnomalies / fetchContributingFactors (구 detect_anomaly_stats / get_anomaly_factors RPC 대체, 인라인 ClickHouse SQL)
+lib/pii-mask.ts — maskApiKeys / maskApiKeysInBody (sk-, sk-ant-, sk-proj-, AIza, sl_live_ 패턴 마스킹)
 lib/resolve-prompt-version.ts — X-Spanlens-Prompt-Version 헤더 파싱 (name@version / name@latest / UUID)
 parsers/openai.ts — OpenAI 스트림 파서 (마지막 chunk에 usage)
 parsers/anthropic.ts — Anthropic 파서 (message_delta에 usage, OpenAI와 다름!)
@@ -122,7 +134,7 @@ PORT=3001 (server), 3000 (web)
 ## Known Gotchas — AgentOps 특유의 함정
 1. 스트리밍 토큰 0: Anthropic usage는 message_delta에 있음 (OpenAI는 마지막 chunk). parsers/anthropic.ts 확인.
 2. 비용 null: model_prices에 모델 없으면 calculateCost()가 null 반환. 새 모델 추가 시 seeds/model_prices.sql 업데이트. **OpenAI는 응답 body의 `model` 필드를 dated variant(`gpt-4o-mini-2024-07-18`)로 돌려주고 그게 `requests.model`에 저장됨** — 따라서 모델 키로 매칭하는 모든 서버 로직(`lib/cost.ts`, `lib/model-recommend-rules.ts`)은 **exact match + longest boundary-aware prefix** fallback을 써야 함. 새 기능 추가 시 이 패턴 재사용 필수.
-3. RLS 차단: anon 클라이언트로 INSERT → 403. 로깅은 반드시 supabaseAdmin 사용.
+3. **🔥 `requests` 테이블은 Supabase에 없음 — ClickHouse 전용 (2026-05-16 Phase 1 완료)**: `supabaseAdmin.from('requests')` 호출 시 컴파일 에러 (types.ts에 더 이상 없음). 모든 읽기는 `apps/server/src/lib/requests-query.ts`의 `selectRequests` / `countRequests` 헬퍼 경유 — 헬퍼가 `organization_id` 격리 + plan retention 필터(`free=14d / pro=90d / team=365d`)를 자동 주입함. 빌링/관리 쿼리(`quota.ts`, `paddle-usage.ts`)는 `requestsScope(orgId, { ignoreRetention: true })`로 retention 우회. 쓰기는 `logger.ts`의 `logRequestAsync` 경유. RLS는 없으므로 헬퍼 안 거치고 직접 `getClickhouse().query()` 쓰면 멀티테넌트 데이터 유출 위험 — 직접 호출은 lib 파일에서만, 항상 `organization_id` 필터 명시.
 4. spans FK 없음: spans.parent_span_id는 FK 제약 없음 (의도적). 에이전트 병렬 span 지원. 직접 FK 추가 금지.
 5. 복호화 빈 문자열: ENCRYPTION_KEY 불일치 시 에러 대신 빈 문자열 반환 가능. 복호화 결과 항상 length 체크.
 6. Paddle webhook `transaction.completed`: billing period 필드 없음. `fetchPaddleSubscription(sub_id)`로 Paddle API에서 보강해야 `current_period_start/end` 채워짐. `subscription.*` 이벤트는 `custom_data` 없을 수 있어 `paddle_customer_id` fallback 필수. paddleWebhook.ts 참고.
@@ -142,6 +154,9 @@ PORT=3001 (server), 3000 (web)
    - `WEB_URL` (필수, prod) — `https://www.spanlens.io`. 초대 이메일 accept 링크의 base URL. 누락 시 `http://localhost:3000` fallback → 사용자가 받은 링크 못 누름.
    - `RESEND_API_KEY` (선택) — Resend 토큰. 없으면 `lib/resend.ts`가 silent하게 발송 스킵하고 콘솔에 dev URL 출력. API 응답에는 `devAcceptUrl`이 들어감 (admin이 수동 전달 가능).
    - `RESEND_FROM` (선택) — 발신자 표시. Default `Spanlens <notifications@spanlens.io>`. 도메인 미인증 상태면 spam함 직행이라, Resend Domains에서 인증 후 `RESEND_FROM=Spanlens <notifications@mail.spanlens.io>` 같이 명시 권장. spanlens.io 자체는 이미 Verified (2026-04-25). DMARC는 `_dmarc` TXT 레코드 별도 추가 필요 (가비아 DNS).
+18. **🔥 ClickHouse DateTime64는 `Z` 접미사 거부 — `toClickhouseTimestamp()` 사용 필수**: `new Date().toISOString()`은 `2026-05-16T11:49:23.749Z`를 반환하는데 ClickHouse는 `2026-05-16 11:49:23.749` 형식만 받음 (`T` → space, `Z` 제거). 직접 INSERT 시 `CANNOT_PARSE_INPUT_ASSERTION_FAILED` 발생. `lib/clickhouse.ts`의 `toClickhouseTimestamp(date)` 헬퍼로 캡슐화됨. 새 ClickHouse 쓰기 코드 작성 시 직접 `.toISOString()` 쓰지 말고 헬퍼 경유. 읽기에서 ClickHouse가 반환한 DateTime64 문자열을 JS Date로 파싱할 때는 반대로 `T`/`Z` 다시 붙여야 함 (`stale-key-digest.ts`, `providerKeys.ts` 참고).
+19. **🔥 ClickHouse JSONEachRow는 모든 숫자를 string으로 반환 — `Number()` 변환 필수**: `Decimal(18, 8)` (cost_usd), `UInt64` (count), JSON 결과의 numeric 컬럼은 전부 string으로 옴. `r.cost_usd + 1` 하면 `"0.001" + 1 = "0.0011"` 같은 문자열 concat 버그 발생 (silent). API boundary에서 항상 `Number(r.cost_usd ?? 0)`로 강제 변환. `selectRequests<T>` 호출자도 row를 그대로 응답에 흘리면 클라이언트가 string으로 받음 — 반드시 `.map(r => ({ ...r, cost_usd: Number(r.cost_usd) }))` 패턴 적용.
+20. **ClickHouse `ilike` 없음 — `positionCaseInsensitive(col, 'x') > 0` 사용**: Supabase의 `.ilike('model', '%gpt%')` 직역하면 ClickHouse는 `ilike` 함수 자체가 없음. 대신 `positionCaseInsensitive(model, 'gpt') > 0` (substring 매치) 또는 `match(col, '(?i)pattern')` (regex). 또 `nullsFirst: false` → `ORDER BY col DESC NULLS LAST`. 마이그레이션 시 빠짐없이 치환.
 
 ## CI/CD Gotchas — GitHub Actions + npm + Docker
 1. **setup-node@v4 + registry-url → NPM_CONFIG_USERCONFIG shadow**: setup-node가 `NPM_CONFIG_USERCONFIG` env var를 자체 `.npmrc`로 설정. 패키지 디렉토리에 쓴 `.npmrc`가 무시됨. 해결: workflow에서 `unset NPM_CONFIG_USERCONFIG && npm publish --userconfig "$PWD/.npmrc"` + setup-node에서 `registry-url` 제거.

@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { authJwt, type JwtContext } from '../middleware/authJwt.js'
 import { supabaseAdmin } from '../lib/db.js'
+import { requestsScope, selectRequests } from '../lib/requests-query.js'
 
 export const datasetsRouter = new Hono<JwtContext>()
 
@@ -212,27 +213,49 @@ datasetsRouter.post('/:id/items/import-requests', async (c) => {
   const ids = body.requestIds.filter((x): x is string => typeof x === 'string').slice(0, 200)
   if (ids.length === 0) return c.json({ error: 'No valid request IDs' }, 400)
 
-  // Fetch source requests
-  const { data: requests, error: reqErr } = await supabaseAdmin
-    .from('requests')
-    .select('id, request_body, response_body')
-    .in('id', ids)
-    .eq('organization_id', orgId)
-
-  if (reqErr) return c.json({ error: reqErr.message }, 500)
-  if (!requests || requests.length === 0) {
+  // Fetch source requests from ClickHouse. body columns are JSON strings —
+  // parse at the boundary so the existing extraction logic stays unchanged.
+  interface SourceRow {
+    id: string
+    request_body: string
+    response_body: string
+  }
+  let rawRequests: SourceRow[]
+  try {
+    const scope = await requestsScope(orgId)
+    rawRequests = await selectRequests<SourceRow>({
+      scope,
+      select: 'id, request_body, response_body',
+      filters: 'id IN {ids:Array(UUID)}',
+      params: { ids },
+    })
+  } catch (err) {
+    return c.json({ error: err instanceof Error ? err.message : 'ClickHouse query failed' }, 500)
+  }
+  if (rawRequests.length === 0) {
     return c.json({ error: 'No matching requests found' }, 404)
   }
+  const requests = rawRequests.map((r) => {
+    const parse = (s: string): Record<string, unknown> | null => {
+      if (!s) return null
+      try { return JSON.parse(s) as Record<string, unknown> } catch { return null }
+    }
+    return {
+      id: r.id,
+      request_body: parse(r.request_body),
+      response_body: parse(r.response_body),
+    }
+  })
 
   // Build dataset_items rows. We try to extract the user message + final response.
   const rows = requests.map((r) => {
-    const reqBody = r.request_body as Record<string, unknown> | null
+    const reqBody = r.request_body
     const messages = Array.isArray(reqBody?.messages) ? reqBody.messages : null
     const input = messages
       ? { messages }
       : { variables: {} }
 
-    const responseBody = r.response_body as Record<string, unknown> | null
+    const responseBody = r.response_body
     let expectedOutput: string | null = null
     if (responseBody) {
       // OpenAI shape

@@ -3,6 +3,7 @@ import { authJwt, type JwtContext } from '../middleware/authJwt.js'
 import { requireRole } from '../middleware/requireRole.js'
 import { supabaseAdmin } from '../lib/db.js'
 import { comparePromptVersions } from '../lib/prompt-compare.js'
+import { requestsScope, selectRequests } from '../lib/requests-query.js'
 import { parsePositiveFloat } from '../lib/params.js'
 
 const requireEdit = requireRole('admin', 'editor')
@@ -94,23 +95,39 @@ promptsRouter.get('/', async (c) => {
   const statsByName = new Map<string, PromptStats>()
 
   if (allVersionIds.length > 0) {
-    const { data: reqs } = await supabaseAdmin
-      .from('requests')
-      .select('prompt_version_id, latency_ms, cost_usd, status_code')
-      .eq('organization_id', orgId)
-      .in('prompt_version_id', allVersionIds)
-      .gte('created_at', sinceIso)
+    interface PromptStatRow {
+      prompt_version_id: string | null
+      latency_ms: number | null
+      cost_usd: string | number | null
+      status_code: number | null
+    }
+    const sinceTs = sinceIso.replace('T', ' ').replace('Z', '')
+    let reqs: PromptStatRow[] = []
+    try {
+      const scope = await requestsScope(orgId)
+      reqs = await selectRequests<PromptStatRow>({
+        scope,
+        select: 'prompt_version_id, latency_ms, cost_usd, status_code',
+        filters:
+          'prompt_version_id IN {versionIds:Array(UUID)} ' +
+          'AND created_at >= parseDateTime64BestEffort({sinceTs:String})',
+        params: { versionIds: allVersionIds, sinceTs },
+      })
+    } catch (err) {
+      console.error('[prompts:stats] ClickHouse query failed:', err instanceof Error ? err.message : err)
+    }
 
     const versionIdToName = new Map<string, string>()
     for (const [name, ids] of idsByName) for (const id of ids) versionIdToName.set(id, name)
 
     const perName = new Map<string, { calls: number; cost: number; latency: number; errors: number }>()
-    for (const r of (reqs ?? []) as Array<{
-      prompt_version_id: string | null
-      latency_ms: number | null
-      cost_usd: number | null
-      status_code: number | null
-    }>) {
+    for (const raw of reqs) {
+      const r = {
+        prompt_version_id: raw.prompt_version_id,
+        latency_ms: raw.latency_ms,
+        cost_usd: raw.cost_usd == null ? null : Number(raw.cost_usd),
+        status_code: raw.status_code,
+      }
       if (!r.prompt_version_id) continue
       const name = versionIdToName.get(r.prompt_version_id)
       if (!name) continue
