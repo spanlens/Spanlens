@@ -41,7 +41,7 @@ import {
   useCurrentMember,
   type OrgRole,
 } from '@/lib/queries/use-members'
-import { PLANS, PLAN_REQUEST_LIMITS } from '@/lib/billing-plans'
+import { PLANS, PLAN_REQUEST_LIMITS, PLAN_SEAT_LIMITS, PLAN_RETENTION_DAYS } from '@/lib/billing-plans'
 import type { BillingPlan } from '@/lib/queries/types'
 import {
   useWebhooks,
@@ -799,6 +799,10 @@ function PlanLimitsTab() {
   const headroom = planLimit != null
     ? `${Math.max(0, Math.round((1 - usedThisMonth / planLimit) * 100))}%`
     : '∞'
+  const seatLimit = PLAN_SEAT_LIMITS[currentPlan]
+  const seatLimitLabel = seatLimit == null ? 'unlimited' : String(seatLimit)
+  const retentionDays = PLAN_RETENTION_DAYS[currentPlan] ?? 14
+  const retentionLabel = retentionDays >= 36_500 ? 'unlimited' : `${retentionDays} days`
 
   return (
     <div className="max-w-[1040px]">
@@ -886,10 +890,11 @@ function PlanLimitsTab() {
             {['Resource', 'Limit', 'Used now', 'Headroom'].map((h) => <span key={h}>{h}</span>)}
           </div>
           {[
-            ['Requests / month', limitLabel, usedThisMonth.toLocaleString(), headroom],
-            ['Team seats',       '10',       '—',                            '—'],
-            ['API keys',         '25',       '—',                            '—'],
-            ['Alert rules',      '100',      '—',                            '—'],
+            ['Requests / month', limitLabel,      usedThisMonth.toLocaleString(), headroom],
+            ['Team seats',       seatLimitLabel,  '—',                            '—'],
+            ['Log retention',    retentionLabel,  '—',                            '—'],
+            ['API keys',         '25',            '—',                            '—'],
+            ['Alert rules',      '100',           '—',                            '—'],
           ].map(([res, lim, used, head]) => (
             <div key={res} className="grid grid-cols-[1.4fr_1fr_1fr_1fr] gap-4 px-6 py-3">
               <span className="font-mono text-[12px] text-text-muted">{res}</span>
@@ -906,7 +911,7 @@ function PlanLimitsTab() {
         <Section title="Overage billing" description="Applies when your monthly quota is reached" className="mb-5">
           {isFree ? (
             <div className="px-6 py-4 text-[13px] text-text-muted">
-              Overage is not available on the Free plan. Upgrade to Starter or Team to continue serving requests past your quota.
+              Overage is not available on the Free plan. Logging pauses past the quota, but the proxy keeps forwarding requests. Upgrade to Pro or Team to resume logging and enable overage.
             </div>
           ) : (
             <>
