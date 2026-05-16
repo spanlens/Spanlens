@@ -393,13 +393,6 @@ export type Database = {
             referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
-          {
-            foreignKeyName: "dataset_items_source_request_id_fkey"
-            columns: ["source_request_id"]
-            isOneToOne: false
-            referencedRelation: "requests"
-            referencedColumns: ["id"]
-          },
         ]
       }
       datasets: {
@@ -497,13 +490,6 @@ export type Database = {
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "eval_results_request_id_fkey"
-            columns: ["request_id"]
-            isOneToOne: false
-            referencedRelation: "requests"
             referencedColumns: ["id"]
           },
         ]
@@ -884,13 +870,6 @@ export type Database = {
             columns: ["prompt_version_id"]
             isOneToOne: false
             referencedRelation: "prompt_versions"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "human_evals_request_id_fkey"
-            columns: ["request_id"]
-            isOneToOne: false
-            referencedRelation: "requests"
             referencedColumns: ["id"]
           },
         ]
@@ -1477,135 +1456,6 @@ export type Database = {
           },
         ]
       }
-      requests: {
-        Row: {
-          api_key_id: string | null
-          cache_read_tokens: number
-          cache_write_tokens: number
-          completion_tokens: number
-          cost_usd: number | null
-          created_at: string
-          error_message: string | null
-          flags: Json
-          has_security_flags: boolean | null
-          id: string
-          latency_ms: number
-          model: string
-          organization_id: string
-          project_id: string
-          prompt_tokens: number
-          prompt_version_id: string | null
-          provider: string
-          provider_key_id: string | null
-          proxy_overhead_ms: number | null
-          request_body: Json | null
-          response_body: Json | null
-          response_flags: Json
-          session_id: string | null
-          span_id: string | null
-          status_code: number
-          total_tokens: number
-          trace_id: string | null
-          user_id: string | null
-        }
-        Insert: {
-          api_key_id?: string | null
-          cache_read_tokens?: number
-          cache_write_tokens?: number
-          completion_tokens?: number
-          cost_usd?: number | null
-          created_at?: string
-          error_message?: string | null
-          flags?: Json
-          has_security_flags?: boolean | null
-          id?: string
-          latency_ms: number
-          model: string
-          organization_id: string
-          project_id: string
-          prompt_tokens?: number
-          prompt_version_id?: string | null
-          provider: string
-          provider_key_id?: string | null
-          proxy_overhead_ms?: number | null
-          request_body?: Json | null
-          response_body?: Json | null
-          response_flags?: Json
-          session_id?: string | null
-          span_id?: string | null
-          status_code: number
-          total_tokens?: number
-          trace_id?: string | null
-          user_id?: string | null
-        }
-        Update: {
-          api_key_id?: string | null
-          cache_read_tokens?: number
-          cache_write_tokens?: number
-          completion_tokens?: number
-          cost_usd?: number | null
-          created_at?: string
-          error_message?: string | null
-          flags?: Json
-          has_security_flags?: boolean | null
-          id?: string
-          latency_ms?: number
-          model?: string
-          organization_id?: string
-          project_id?: string
-          prompt_tokens?: number
-          prompt_version_id?: string | null
-          provider?: string
-          provider_key_id?: string | null
-          proxy_overhead_ms?: number | null
-          request_body?: Json | null
-          response_body?: Json | null
-          response_flags?: Json
-          session_id?: string | null
-          span_id?: string | null
-          status_code?: number
-          total_tokens?: number
-          trace_id?: string | null
-          user_id?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "requests_api_key_id_fkey"
-            columns: ["api_key_id"]
-            isOneToOne: false
-            referencedRelation: "api_keys"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "requests_organization_id_fkey"
-            columns: ["organization_id"]
-            isOneToOne: false
-            referencedRelation: "organizations"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "requests_project_id_fkey"
-            columns: ["project_id"]
-            isOneToOne: false
-            referencedRelation: "projects"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "requests_prompt_version_id_fkey"
-            columns: ["prompt_version_id"]
-            isOneToOne: false
-            referencedRelation: "prompt_versions"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "requests_provider_key_id_fkey"
-            columns: ["provider_key_id"]
-            isOneToOne: false
-            referencedRelation: "provider_keys"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       saved_filters: {
         Row: {
           created_at: string
@@ -1720,13 +1570,6 @@ export type Database = {
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "spans_request_id_fkey"
-            columns: ["request_id"]
-            isOneToOne: false
-            referencedRelation: "requests"
             referencedColumns: ["id"]
           },
           {
@@ -2141,33 +1984,6 @@ export type Database = {
         Args: { p_key: string; p_limit: number; p_window_key: string }
         Returns: boolean
       }
-      detect_anomaly_stats: {
-        Args: {
-          p_obs_start: string
-          p_org_id: string
-          p_project_id?: string
-          p_ref_start: string
-        }
-        Returns: {
-          model: string
-          obs_all_count: number
-          obs_cost_count: number
-          obs_cost_mean: number
-          obs_error_rate: number
-          obs_latency_count: number
-          obs_latency_mean: number
-          provider: string
-          ref_all_count: number
-          ref_cost_count: number
-          ref_cost_mean: number
-          ref_cost_stddev: number
-          ref_error_rate: number
-          ref_error_stddev: number
-          ref_latency_count: number
-          ref_latency_mean: number
-          ref_latency_stddev: number
-        }[]
-      }
       get_model_aggregates: {
         Args: {
           p_organization_id: string
@@ -2210,31 +2026,6 @@ export type Database = {
         }
         Returns: number
       }
-      get_user_analytics: {
-        Args: {
-          p_from: string
-          p_limit: number
-          p_offset: number
-          p_org_id: string
-          p_project_id: string
-          p_search: string
-          p_sort_by: string
-          p_sort_dir: string
-          p_to: string
-        }
-        Returns: {
-          avg_latency_ms: number
-          distinct_models: number
-          error_requests: number
-          first_seen: string
-          last_seen: string
-          total_cost_usd: number
-          total_count: number
-          total_requests: number
-          total_tokens: number
-          user_id: string
-        }[]
-      }
       get_prompts_quality_sparklines: {
         Args: {
           p_buckets?: number
@@ -2256,64 +2047,6 @@ export type Database = {
       }
       prune_logs_by_retention: { Args: never; Returns: Json }
       prune_rate_limit_buckets: { Args: never; Returns: number }
-      security_summary: {
-        Args: { p_hours?: number; p_org_id: string }
-        Returns: {
-          count: number
-          flag_type: string
-          pattern: string
-        }[]
-      }
-      stats_models: {
-        Args: {
-          p_from?: string
-          p_org_id: string
-          p_project_id?: string
-          p_to?: string
-        }
-        Returns: {
-          avg_latency_ms: number
-          error_rate: number
-          model: string
-          provider: string
-          requests: number
-          total_cost_usd: number
-        }[]
-      }
-      stats_overview: {
-        Args: {
-          p_from?: string
-          p_org_id: string
-          p_project_id?: string
-          p_to?: string
-        }
-        Returns: {
-          avg_latency_ms: number
-          completion_tokens: number
-          error_requests: number
-          prompt_tokens: number
-          success_requests: number
-          total_cost_usd: number
-          total_requests: number
-          total_tokens: number
-        }[]
-      }
-      stats_timeseries: {
-        Args: {
-          p_from?: string
-          p_granularity?: string
-          p_org_id: string
-          p_project_id?: string
-          p_to?: string
-        }
-        Returns: {
-          cost: number
-          day: string
-          errors: number
-          requests: number
-          tokens: number
-        }[]
-      }
     }
     Enums: {
       org_role: "admin" | "editor" | "viewer"
