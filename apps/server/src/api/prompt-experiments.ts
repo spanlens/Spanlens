@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { authJwt, type JwtContext } from '../middleware/authJwt.js'
 import { requireRole } from '../middleware/requireRole.js'
 import { supabaseAdmin } from '../lib/db.js'
+import { requestsScope, selectRequests } from '../lib/requests-query.js'
 import {
   errorRateTest,
   welchTest,
@@ -145,24 +146,44 @@ promptExperimentsRouter.get('/:id', async (c) => {
 
   if (error || !exp) return c.json({ error: 'Experiment not found' }, 404)
 
-  // Fetch request metrics for both arms
-  const sinceIso = exp.started_at
-  const untilIso = exp.concluded_at ?? new Date().toISOString()
+  // Fetch request metrics for both arms from ClickHouse.
+  const sinceTs = (exp.started_at as string).replace('T', ' ').replace('Z', '')
+  const untilTs = (exp.concluded_at as string | null ?? new Date().toISOString())
+    .replace('T', ' ')
+    .replace('Z', '')
 
-  const { data: reqs } = await supabaseAdmin
-    .from('requests')
-    .select('prompt_version_id, latency_ms, cost_usd, status_code')
-    .eq('organization_id', orgId)
-    .in('prompt_version_id', [exp.version_a_id, exp.version_b_id])
-    .gte('created_at', sinceIso)
-    .lte('created_at', untilIso)
-
-  const rows = (reqs ?? []) as Array<{
+  interface ArmMetricRow {
     prompt_version_id: string | null
     latency_ms: number | null
-    cost_usd: number | null
+    cost_usd: string | number | null
     status_code: number | null
-  }>
+  }
+  let rawRows: ArmMetricRow[] = []
+  try {
+    const scope = await requestsScope(orgId)
+    rawRows = await selectRequests<ArmMetricRow>({
+      scope,
+      select: 'prompt_version_id, latency_ms, cost_usd, status_code',
+      filters:
+        'prompt_version_id IN {versionIds:Array(UUID)} ' +
+        'AND created_at >= parseDateTime64BestEffort({sinceTs:String}) ' +
+        'AND created_at <= parseDateTime64BestEffort({untilTs:String})',
+      params: {
+        versionIds: [exp.version_a_id, exp.version_b_id],
+        sinceTs,
+        untilTs,
+      },
+    })
+  } catch (err) {
+    console.error('[prompt-experiments] ClickHouse query failed:', err instanceof Error ? err.message : err)
+  }
+  const rows = rawRows.map((r) => ({
+    prompt_version_id: r.prompt_version_id,
+    latency_ms: r.latency_ms,
+    // cost_usd arrives as a string for Decimal columns — coerce at the boundary.
+    cost_usd: r.cost_usd == null ? null : Number(r.cost_usd),
+    status_code: r.status_code,
+  }))
 
   const armRows = (vid: string) => rows.filter((r) => r.prompt_version_id === vid)
 

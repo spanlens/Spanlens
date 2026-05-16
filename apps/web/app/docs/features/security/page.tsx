@@ -234,6 +234,107 @@ PATCH /api/v1/security/alert
 PATCH /api/v1/security/projects/{projectId}/block
 { "enabled": true }`}</CodeBlock>
 
+      <h2 id="stored-body-sanitization">Stored-body sanitization (defense in depth)</h2>
+      <p>
+        Separately from the request-time scan above, every body that lands in ClickHouse passes
+        through a pattern-based key scrubber first. The goal is narrow: catch API keys that
+        accidentally end up in prompts, tool output, or error messages — so a compromised
+        Spanlens row never leaks a customer&apos;s upstream credentials.
+      </p>
+      <table>
+        <thead>
+          <tr>
+            <th>Provider</th>
+            <th>Prefix matched</th>
+            <th>Replacement</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Spanlens</td>
+            <td><code>sl_live_*</code></td>
+            <td><code>sl_live_***</code></td>
+          </tr>
+          <tr>
+            <td>Anthropic</td>
+            <td><code>sk-ant-*</code></td>
+            <td><code>sk-ant-***</code></td>
+          </tr>
+          <tr>
+            <td>OpenAI project keys</td>
+            <td><code>sk-proj-*</code></td>
+            <td><code>sk-proj-***</code></td>
+          </tr>
+          <tr>
+            <td>OpenAI (legacy)</td>
+            <td><code>sk-*</code></td>
+            <td><code>sk-***</code></td>
+          </tr>
+          <tr>
+            <td>Google (Gemini)</td>
+            <td><code>AIza*</code></td>
+            <td><code>AIza***</code></td>
+          </tr>
+        </tbody>
+      </table>
+      <p>
+        Each pattern requires at least 12 characters after the prefix so short identifiers that
+        share the prefix don&apos;t produce false positives. The masker runs against{' '}
+        <code>request_body</code>, <code>response_body</code>, and <code>error_message</code>.
+        Source: <code>apps/server/src/lib/pii-mask.ts</code>.
+      </p>
+
+      <h2 id="body-retention">Body retention modes — <code>logBody</code></h2>
+      <p>
+        Pattern masking covers <em>structured</em> secrets. It does <strong>not</strong> redact
+        natural-language PII (names, emails, addresses, medical information) that the regex
+        rules above also can&apos;t reliably catch. For PII-heavy workloads, the right answer
+        is to not store the body at all:
+      </p>
+      <table>
+        <thead>
+          <tr>
+            <th>Mode</th>
+            <th>Bodies stored</th>
+            <th>Tokens / cost / latency / model</th>
+            <th>user_id / session_id</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>full</code> (default)</td>
+            <td>Yes (with key masking above)</td>
+            <td>Yes</td>
+            <td>Yes</td>
+          </tr>
+          <tr>
+            <td><code>meta</code></td>
+            <td>No</td>
+            <td>Yes</td>
+            <td>Yes</td>
+          </tr>
+          <tr>
+            <td><code>none</code></td>
+            <td>No</td>
+            <td>Yes</td>
+            <td>No (null)</td>
+          </tr>
+        </tbody>
+      </table>
+      <p>
+        Set per-call via the SDK helper{' '}
+        <a href="/docs/sdk#with-log-body"><code>withLogBody(mode)</code></a> or the{' '}
+        <code>x-spanlens-log-body</code> header. The server falls back to{' '}
+        <code>full</code> on any unrecognized value, so a malformed header never silently
+        disables logging.
+      </p>
+      <p className="text-sm text-muted-foreground">
+        Spanlens does NOT ship automatic natural-language PII redaction. Pattern matching on
+        free text produces too many false positives/negatives to be the default — we&apos;d
+        rather give you a clean opt-out and let your prompts that need full bodies keep them.
+        Enterprise customers needing in-place redaction (medical / financial) — reach out.
+      </p>
+
       <h2>Limitations</h2>
       <ul>
         <li>
@@ -258,6 +359,13 @@ PATCH /api/v1/security/projects/{projectId}/block
           <strong>Regex is not ML.</strong> A sufficiently motivated attacker can rephrase
           injection phrases to slip through. What we catch is the long tail of accidentally bad
           inputs and low-effort attacks — which covers 90%+ of real incidents.
+        </li>
+        <li>
+          <strong>Natural-language PII is not auto-redacted.</strong> The{' '}
+          <a href="#stored-body-sanitization">key scrubber</a> only catches structured patterns
+          like API keys. Names, emails, card numbers in free-form prompts pass through. Use{' '}
+          <a href="#body-retention"><code>logBody: &apos;meta&apos;</code></a> to skip body
+          storage entirely for those workloads.
         </li>
       </ul>
 

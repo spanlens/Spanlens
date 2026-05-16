@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { authJwt, type JwtContext } from '../middleware/authJwt.js'
 import { supabaseAdmin } from '../lib/db.js'
+import { requestsScope, selectRequests } from '../lib/requests-query.js'
 
 export const humanEvalsRouter = new Hono<JwtContext>()
 
@@ -26,21 +27,19 @@ humanEvalsRouter.get('/annotation/queue', async (c) => {
   const lowJudgeScoreOnly = c.req.query('lowJudgeScoreOnly') === 'true'
   const limit = Math.min(200, Math.max(1, parseInt(c.req.query('limit') ?? '50', 10)))
 
-  // Build query: scope to requests that have a prompt_version_id (i.e. were
-  // tagged with a prompt) and a response_body (otherwise there's nothing to
-  // score). We fetch prompt_versions metadata in a separate query below
-  // (avoids supabase-js's brittle inline-join type inference).
-  let query = supabaseAdmin
-    .from('requests')
-    .select('id, prompt_version_id, model, created_at, request_body, response_body')
-    .eq('organization_id', orgId)
-    .not('prompt_version_id', 'is', null)
-    .not('response_body', 'is', null)
-    .order('created_at', { ascending: false })
-    .limit(limit)
-
-  if (promptVersionId) query = query.eq('prompt_version_id', promptVersionId)
-
+  // Scope to requests that have a prompt_version_id (i.e. were tagged with a
+  // prompt) and a non-empty response_body (otherwise there's nothing to
+  // score). prompt_versions metadata is hydrated in a second Supabase query
+  // below — that table stays in Postgres.
+  const filters: string[] = [
+    'isNotNull(prompt_version_id)',
+    "response_body != ''",
+  ]
+  const params: Record<string, unknown> = {}
+  if (promptVersionId) {
+    filters.push('prompt_version_id = {promptVersionId:UUID}')
+    params['promptVersionId'] = promptVersionId
+  }
   if (promptName) {
     const { data: versions } = await supabaseAdmin
       .from('prompt_versions')
@@ -49,14 +48,48 @@ humanEvalsRouter.get('/annotation/queue', async (c) => {
       .eq('name', promptName)
     const vids = (versions ?? []).map((v) => v.id)
     if (vids.length === 0) return c.json({ success: true, data: [] })
-    query = query.in('prompt_version_id', vids)
+    filters.push('prompt_version_id IN {vids:Array(UUID)}')
+    params['vids'] = vids
   }
 
-  const { data: requests, error } = await query
-  if (error) return c.json({ error: error.message }, 500)
-  if (!requests || requests.length === 0) {
+  interface QueueRow {
+    id: string
+    prompt_version_id: string | null
+    model: string
+    created_at: string
+    request_body: string
+    response_body: string
+  }
+  let rawRows: QueueRow[]
+  try {
+    const scope = await requestsScope(orgId)
+    rawRows = await selectRequests<QueueRow>({
+      scope,
+      select: 'id, prompt_version_id, model, created_at, request_body, response_body',
+      filters: filters.join(' AND '),
+      orderBy: 'created_at DESC',
+      limit,
+      params,
+    })
+  } catch (err) {
+    return c.json({ error: err instanceof Error ? err.message : 'ClickHouse query failed' }, 500)
+  }
+  if (rawRows.length === 0) {
     return c.json({ success: true, data: [] })
   }
+  // Parse JSON-string body columns to the object shape the downstream code expects.
+  const parseBody = (s: string): unknown => {
+    if (!s) return null
+    try { return JSON.parse(s) } catch { return null }
+  }
+  const requests = rawRows.map((r) => ({
+    id: r.id,
+    prompt_version_id: r.prompt_version_id,
+    model: r.model,
+    created_at: r.created_at,
+    request_body: parseBody(r.request_body),
+    response_body: parseBody(r.response_body),
+  }))
 
   const requestIds = requests.map((r) => r.id)
   const versionIds = [...new Set(requests.map((r) => r.prompt_version_id).filter((v): v is string => !!v))]
@@ -156,12 +189,20 @@ humanEvalsRouter.post('/human-evals', async (c) => {
   }
 
   // Look up prompt_version_id for denormalized filter
-  const { data: req } = await supabaseAdmin
-    .from('requests')
-    .select('id, prompt_version_id')
-    .eq('id', requestId)
-    .eq('organization_id', orgId)
-    .maybeSingle()
+  let req: { id: string; prompt_version_id: string | null } | null = null
+  try {
+    const scope = await requestsScope(orgId)
+    const rows = await selectRequests<{ id: string; prompt_version_id: string | null }>({
+      scope,
+      select: 'id, prompt_version_id',
+      filters: 'id = {requestId:UUID}',
+      params: { requestId },
+      limit: 1,
+    })
+    req = rows[0] ?? null
+  } catch (err) {
+    return c.json({ error: err instanceof Error ? err.message : 'ClickHouse query failed' }, 500)
+  }
   if (!req) return c.json({ error: 'Request not found' }, 404)
 
   const { data, error } = await supabaseAdmin

@@ -197,6 +197,43 @@ res, _ := client.CreateChatCompletion(ctx, openai.ChatCompletionRequest{
         <a href="/docs/features/users">Users docs</a> for tagging strategy and SDK helpers.
       </p>
 
+      <h3>Controlling body retention — <code>X-Spanlens-Log-Body</code></h3>
+      <p>
+        Spanlens stores the full request and response bodies by default (with API-key auto-masking
+        — see below). For PII-sensitive workloads, opt out per call with the{' '}
+        <code>X-Spanlens-Log-Body</code> header:
+      </p>
+      <CodeBlock>{`-H "X-Spanlens-Log-Body: full"   # default — store bodies (with key masking)
+-H "X-Spanlens-Log-Body: meta"   # drop bodies; keep tokens/cost/latency/user/session
+-H "X-Spanlens-Log-Body: none"   # same as meta + drop user_id/session_id`}</CodeBlock>
+      <p>
+        Unknown values fall back to <code>full</code> (the existing behavior) so a malformed
+        header never silently turns logging off. SDK equivalent:{' '}
+        <a href="/docs/sdk#with-log-body"><code>withLogBody()</code></a> /{' '}
+        <code>observeOpenAI(&#123; logBody &#125;)</code>.
+      </p>
+
+      <h3>Server-side body sanitization</h3>
+      <p>
+        Even in <code>full</code> mode, the server scans <code>request_body</code>,{' '}
+        <code>response_body</code>, and <code>error_message</code> for API key patterns before
+        the row is written to ClickHouse. Anything matching one of the patterns below (≥12
+        characters after the prefix) is replaced with <code>&lt;prefix&gt;***</code>:
+      </p>
+      <ul>
+        <li>Spanlens: <code>sl_live_*</code></li>
+        <li>Anthropic: <code>sk-ant-*</code></li>
+        <li>OpenAI project keys: <code>sk-proj-*</code></li>
+        <li>OpenAI legacy keys: <code>sk-*</code></li>
+        <li>Google: <code>AIza*</code></li>
+      </ul>
+      <p>
+        This is <strong>pattern-based, not ML-based</strong> — it catches keys that slip into
+        prompts/tool output/error strings, but it does <em>not</em> redact natural-language PII
+        (names, emails, card numbers). For those, use <code>X-Spanlens-Log-Body: meta</code>.
+        See <a href="/docs/features/security">Security docs</a> for full details.
+      </p>
+
       <h3>About prompt-cache breakdown</h3>
       <p>
         When Anthropic returns <code>cache_read_input_tokens</code> /{' '}

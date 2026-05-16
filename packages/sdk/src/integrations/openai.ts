@@ -21,6 +21,7 @@
 
 import OpenAI from 'openai'
 import type { ClientOptions } from 'openai'
+import type { LogBodyMode } from '../types.js'
 
 /** Default Spanlens proxy URL. Override for self-hosted deployments. */
 export const DEFAULT_SPANLENS_OPENAI_PROXY =
@@ -29,6 +30,7 @@ export const DEFAULT_SPANLENS_OPENAI_PROXY =
 export const PROMPT_VERSION_HEADER = 'x-spanlens-prompt-version'
 export const USER_HEADER = 'x-spanlens-user'
 export const SESSION_HEADER = 'x-spanlens-session'
+export const LOG_BODY_HEADER = 'x-spanlens-log-body'
 
 /**
  * Build an OpenAI client whose requests flow through the Spanlens proxy.
@@ -121,4 +123,32 @@ export function withUser(userId: string): { headers: Record<string, string> } {
  */
 export function withSession(sessionId: string): { headers: Record<string, string> } {
   return { headers: { [SESSION_HEADER]: sessionId } }
+}
+
+/**
+ * Opt out of body logging for a single request. The proxy still records
+ * tokens, latency, cost, model — just not the prompt/response bodies.
+ *
+ * - `'full'` (server default): stores request_body + response_body with
+ *   API-key pattern masking. Setting this explicitly is a no-op.
+ * - `'meta'`: prompts and responses are NOT stored, but token/cost/latency
+ *   metadata is. Use when prompts contain customer PII you don't want on
+ *   the Spanlens side.
+ * - `'none'`: same as `'meta'` plus drops `user_id` and `session_id` from
+ *   the log row. For the strictest data-minimization deployments.
+ *
+ * @example
+ *   import { createOpenAI, withLogBody } from '@spanlens/sdk/openai'
+ *   const openai = createOpenAI()
+ *
+ *   const res = await openai.chat.completions.create(
+ *     { model: 'gpt-4o-mini', messages: patientPrompt },
+ *     withLogBody('meta'),
+ *   )
+ *
+ * Combine with other helpers by merging headers:
+ *   { headers: { ...withLogBody('meta').headers, ...withUser(u).headers } }
+ */
+export function withLogBody(mode: LogBodyMode): { headers: Record<string, string> } {
+  return { headers: { [LOG_BODY_HEADER]: mode } }
 }

@@ -156,7 +156,7 @@ export function BillingClient() {
                 <div>
                   <h2 className="text-[15px] font-semibold text-text mb-1">Free plan</h2>
                   <p className="text-[13px] text-text-muted">
-                    10,000 requests / month · 7-day log retention
+                    50,000 requests / month · 14-day log retention · 1 seat
                   </p>
                 </div>
                 <span className="font-mono text-[10px] uppercase tracking-[0.04em] px-2 py-0.5 rounded-full border border-border bg-bg-elev text-text-muted">

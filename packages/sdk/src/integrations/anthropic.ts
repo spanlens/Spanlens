@@ -9,10 +9,12 @@
 
 import Anthropic from '@anthropic-ai/sdk'
 import type { ClientOptions } from '@anthropic-ai/sdk'
+import type { LogBodyMode } from '../types.js'
 
 export const PROMPT_VERSION_HEADER = 'x-spanlens-prompt-version'
 export const USER_HEADER = 'x-spanlens-user'
 export const SESSION_HEADER = 'x-spanlens-session'
+export const LOG_BODY_HEADER = 'x-spanlens-log-body'
 
 export const DEFAULT_SPANLENS_ANTHROPIC_PROXY =
   'https://spanlens-server.vercel.app/proxy/anthropic'
@@ -68,4 +70,21 @@ export function withUser(userId: string): { headers: Record<string, string> } {
 /** Tag a request with a session ID. Same semantics as the OpenAI helper. */
 export function withSession(sessionId: string): { headers: Record<string, string> } {
   return { headers: { [SESSION_HEADER]: sessionId } }
+}
+
+/**
+ * Opt out of body logging for a single request. See the OpenAI helper for
+ * full semantics — modes are identical (`'full'` | `'meta'` | `'none'`).
+ *
+ * @example
+ *   import { createAnthropic, withLogBody } from '@spanlens/sdk/anthropic'
+ *   const anthropic = createAnthropic()
+ *
+ *   const msg = await anthropic.messages.create(
+ *     { model: 'claude-3-5-sonnet-20241022', max_tokens: 1024, messages },
+ *     withLogBody('meta'),
+ *   )
+ */
+export function withLogBody(mode: LogBodyMode): { headers: Record<string, string> } {
+  return { headers: { [LOG_BODY_HEADER]: mode } }
 }

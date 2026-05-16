@@ -12,11 +12,11 @@ const PLANS = [
     price: '$0',
     description: 'For personal projects and exploration',
     features: [
-      '10K requests / month',
+      '50K requests / month',
       '60 req/min rate limit',
-      '1 workspace',
-      '1 member',
-      '7-day log retention',
+      '1 seat',
+      'Unlimited projects',
+      '14-day log retention',
       'All core features included',
       'CSV + JSON export',
       'Community support',
@@ -33,9 +33,9 @@ const PLANS = [
     features: [
       '100K requests / month',
       '300 req/min rate limit',
-      '3 workspaces',
-      'Up to 5 members',
-      '30-day log retention',
+      '3 seats',
+      'Unlimited projects',
+      '90-day log retention',
       '5 alerts',
       'Email notifications',
       'CSV + JSON export',
@@ -48,21 +48,21 @@ const PLANS = [
   },
   {
     name: 'Team',
-    price: '$99',
+    price: '$149',
     description: 'For teams that need full visibility',
     features: [
-      '500K requests / month',
+      '1M requests / month',
       '1,500 req/min rate limit',
-      'Unlimited workspaces',
-      'Unlimited members',
-      '90-day log retention',
+      '10 seats',
+      'Unlimited projects',
+      '365-day log retention',
       'Unlimited alerts',
       'Email + Slack notifications',
       'Webhooks',
       'CSV + JSON export',
       'Priority support',
     ],
-    overage: '$6 / 100K extra requests',
+    overage: '$5 / 100K extra requests',
     cta: 'Start Team',
     href: '/signup?plan=team',
     highlight: false,
@@ -74,9 +74,9 @@ const PLANS = [
     features: [
       'Custom requests / month',
       'Custom rate limit',
-      'Unlimited workspaces',
-      'Unlimited members',
-      'Custom log retention',
+      'Unlimited seats',
+      'Unlimited projects',
+      'Unlimited log retention',
       'Unlimited alerts',
       'Email + Slack + Discord',
       'Webhooks',
@@ -198,10 +198,10 @@ export default function PricingPage() {
           <ul className="text-[13px] text-text-muted space-y-2 mb-4">
             <li>
               <strong className="text-text">Soft limit</strong> — your plan&apos;s included quota (100K on Pro,
-              500K on Team). Extra requests pass through and accumulate.
+              1M on Team). Extra requests pass through and accumulate.
             </li>
             <li>
-              <strong className="text-text">Overage billing</strong> — Pro $8 / Team $6 per 100K extra
+              <strong className="text-text">Overage billing</strong> — Pro $8 / Team $5 per 100K extra
               requests, charged immediately at the end of your billing period (not deferred to next month).
             </li>
             <li>
@@ -213,8 +213,8 @@ export default function PricingPage() {
               hard-block at your quota instead.
             </li>
             <li>
-              <strong className="text-text">Free plan</strong> — always a hard block at 10K. Upgrade to Pro
-              for overage.
+              <strong className="text-text">Free plan</strong> — proxy keeps working past 50K, but logging
+              pauses (we don&apos;t want to break your app). Upgrade to Pro to resume logging plus overage.
             </li>
           </ul>
           <Link
