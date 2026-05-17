@@ -18,6 +18,8 @@
   "dependencies": {
     "@clickhouse/client": "^1.18.5",
     "@hono/node-server": "^1.13.2",
+    "@sentry/node": "^10.53.1",
+    "@sentry/profiling-node": "^10.53.1",
     "@supabase/supabase-js": "^2.45.4",
     "@vercel/functions": "^3.4.4",
     "dotenv": "^16.4.5",
