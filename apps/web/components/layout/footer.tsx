@@ -51,6 +51,7 @@ export function Footer() {
             <div className="flex flex-col gap-1.5">
               <Link href="/privacy" className="hover:text-text transition-colors">Privacy</Link>
               <Link href="/terms" className="hover:text-text transition-colors">Terms</Link>
+              <Link href="/refund" className="hover:text-text transition-colors">Refund policy</Link>
               <a href="mailto:support@spanlens.io" className="hover:text-text transition-colors">Contact</a>
             </div>
           </div>
