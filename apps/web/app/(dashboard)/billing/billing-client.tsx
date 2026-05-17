@@ -11,6 +11,7 @@ import {
   useSubscription,
   useCreateCheckout,
   useRefreshSubscription,
+  useCancelSubscription,
 } from '@/lib/queries/use-billing'
 import { QuotaBanner } from '@/components/dashboard/quota-banner'
 import { PLANS } from '@/lib/billing-plans'
@@ -23,10 +24,13 @@ export function BillingClient() {
 
   const { data: subscription, isLoading } = useSubscription()
   const createCheckout = useCreateCheckout()
+  const cancelSubscription = useCancelSubscription()
   const refreshSubscription = useRefreshSubscription()
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [paddle, setPaddle] = useState<Paddle | null>(null)
   const [checkoutCompleted, setCheckoutCompleted] = useState(false)
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false)
+  const [cancelDone, setCancelDone] = useState(false)
 
   const clientToken = process.env['NEXT_PUBLIC_PADDLE_CLIENT_TOKEN']
   const paddleEnv = (process.env['NEXT_PUBLIC_PADDLE_ENVIRONMENT'] ?? 'sandbox') as
@@ -90,6 +94,18 @@ export function BillingClient() {
     [paddle, createCheckout],
   )
 
+  const handleCancel = useCallback(async () => {
+    setErrorMessage(null)
+    try {
+      await cancelSubscription.mutateAsync()
+      setShowCancelConfirm(false)
+      setCancelDone(true)
+    } catch (err) {
+      setErrorMessage(err instanceof Error ? err.message : 'Failed to cancel subscription')
+      setShowCancelConfirm(false)
+    }
+  }, [cancelSubscription])
+
   const currentPlan: BillingPlan = subscription?.plan ?? 'free'
 
   return (
@@ -147,9 +163,48 @@ export function BillingClient() {
                       : 'Active'}
                   </p>
                 </div>
-                <p className="text-[12.5px] text-text-faint max-w-xs text-right">
-                  To cancel or update payment, use the link Paddle emailed on subscription creation.
-                </p>
+                <div className="text-right shrink-0">
+                  {cancelDone ? (
+                    <p className="text-[12.5px] text-good">
+                      Cancellation scheduled — access continues until period end.
+                    </p>
+                  ) : subscription.cancel_at_period_end ? (
+                    <p className="text-[12.5px] text-text-faint">
+                      Cancellation already scheduled.
+                    </p>
+                  ) : showCancelConfirm ? (
+                    <div className="flex flex-col items-end gap-2">
+                      <p className="text-[12px] text-text-muted max-w-[200px]">
+                        Your plan stays active until the end of this billing period.
+                      </p>
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setShowCancelConfirm(false)}
+                          className="text-[12px] text-text-muted hover:text-text transition-colors"
+                        >
+                          Keep plan
+                        </button>
+                        <button
+                          type="button"
+                          disabled={cancelSubscription.isPending}
+                          onClick={() => void handleCancel()}
+                          className="text-[12px] text-accent hover:opacity-80 transition-opacity disabled:opacity-40"
+                        >
+                          {cancelSubscription.isPending ? 'Cancelling…' : 'Confirm cancel'}
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setShowCancelConfirm(true)}
+                      className="text-[12px] text-text-faint hover:text-text-muted transition-colors"
+                    >
+                      Cancel subscription
+                    </button>
+                  )}
+                </div>
               </div>
             ) : (
               <div className="flex items-start justify-between gap-3 flex-wrap">

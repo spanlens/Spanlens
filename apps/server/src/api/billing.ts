@@ -5,6 +5,7 @@ import {
   createPaddleCustomer,
   createPaddleCheckoutTransaction,
   findPaddleCustomerByEmail,
+  cancelPaddleSubscription,
 } from '../lib/paddle.js'
 import { checkMonthlyQuota } from '../lib/quota.js'
 
@@ -12,7 +13,9 @@ import { checkMonthlyQuota } from '../lib/quota.js'
  * Dashboard billing endpoints — JWT authenticated.
  *
  *   GET  /api/v1/billing/subscription  → current subscription state
+ *   GET  /api/v1/billing/quota         → monthly quota usage
  *   POST /api/v1/billing/checkout      → create a Paddle checkout URL for a plan
+ *   POST /api/v1/billing/cancel        → cancel active subscription at period end
  */
 
 export const billingRouter = new Hono<JwtContext>()
@@ -124,5 +127,33 @@ billingRouter.post('/checkout', async (c) => {
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'unknown error'
     return c.json({ error: `Paddle checkout create failed: ${msg}` }, 502)
+  }
+})
+
+// ── POST /api/v1/billing/cancel ─────────────────────────────────
+// Cancels the active subscription at period end so the customer keeps access
+// through the current billing period (matches Terms section 5).
+billingRouter.post('/cancel', async (c) => {
+  const orgId = c.get('orgId')
+  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+
+  const { data: sub } = await supabaseAdmin
+    .from('subscriptions')
+    .select('paddle_subscription_id, cancel_at_period_end')
+    .eq('organization_id', orgId)
+    .in('status', ['active', 'trialing', 'past_due'])
+    .order('updated_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (!sub) return c.json({ error: 'No active subscription found' }, 404)
+  if (sub.cancel_at_period_end) return c.json({ error: 'Subscription is already scheduled for cancellation' }, 409)
+
+  try {
+    await cancelPaddleSubscription(sub.paddle_subscription_id)
+    return c.json({ success: true })
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'unknown error'
+    return c.json({ error: `Paddle cancel failed: ${msg}` }, 502)
   }
 })

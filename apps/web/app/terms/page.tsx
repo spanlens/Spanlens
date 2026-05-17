@@ -8,7 +8,7 @@ export const metadata = {
     'The agreement governing your use of Spanlens. Covers accounts, billing, the 14-day refund policy, acceptable use, and liability.',
 }
 
-const EFFECTIVE_DATE = '2026-04-22'
+const EFFECTIVE_DATE = '2026-05-17'
 
 export default function TermsPage() {
   return (
@@ -81,6 +81,14 @@ export default function TermsPage() {
             We may change plan prices with at least <strong>30 days&apos; notice</strong> by email.
             Existing billing periods are honored at the old price.
           </li>
+          <li>
+            <strong>Payment failure and grace period:</strong> If a payment fails, Paddle
+            automatically retries over the following <strong>7–14 days</strong>. Your access
+            continues at your current plan level throughout this period. If payment is not
+            recovered, Paddle will cancel the subscription and your account will revert to the
+            free plan. You can update your payment method at any time via the link in your
+            Paddle receipt email.
+          </li>
         </ul>
 
         <h2 id="refunds">5. Refund policy</h2>
@@ -116,7 +124,19 @@ export default function TermsPage() {
           <li>Overage charges that have already been invoiced</li>
         </ul>
         <p>
-          You may <strong>cancel your subscription at any time</strong> — cancellation stops
+          <strong>EU consumers:</strong> If you are resident in the European Union or European
+          Economic Area, you have a statutory right to withdraw from this contract within
+          14 calendar days of purchase without giving any reason, regardless of usage
+          (EU Consumer Rights Directive 2011/83/EU). If you have started using the service
+          during the withdrawal period, we may deduct a proportionate amount for actual usage
+          before issuing the refund. To exercise this right, contact{' '}
+          <a href="mailto:support@spanlens.io">support@spanlens.io</a> within 14 days of
+          your initial charge. The 10% usage condition above does not apply to EU statutory
+          withdrawal requests.
+        </p>
+        <p>
+          You may <strong>cancel your subscription at any time</strong> from the{' '}
+          <Link href="/billing">Billing page</Link> in your dashboard — cancellation stops
           future renewals but does not by itself trigger a refund. Your plan remains active
           through the end of the current billing period.
         </p>
