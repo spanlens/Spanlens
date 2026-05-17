@@ -79,11 +79,6 @@ https://spanlens-server.vercel.app/proxy/gemini/v1beta`}</CodeBlock>
             <td><code>x-goog-api-key: sl_live_…</code></td>
             <td>✓</td>
           </tr>
-          <tr>
-            <td>Google Generative AI (legacy / curl)</td>
-            <td>URL <code>?key=sl_live_…</code></td>
-            <td>✓ (fallback)</td>
-          </tr>
         </tbody>
       </table>
       <p className="text-sm text-muted-foreground">
