@@ -220,6 +220,23 @@ export async function verifyPaddleSignature(
   return timingSafeEqualHex(expected, parsed.h1)
 }
 
+// ── Subscription management ──────────────────────────────────────
+
+/**
+ * Cancel a Paddle subscription.
+ * Defaults to next_billing_period so the customer keeps access through the
+ * end of the current period (matches our Terms: "access until period end").
+ */
+export async function cancelPaddleSubscription(
+  subscriptionId: string,
+  effectiveFrom: 'immediately' | 'next_billing_period' = 'next_billing_period',
+): Promise<void> {
+  await paddleFetch<unknown>(`/subscriptions/${subscriptionId}/cancel`, {
+    method: 'POST',
+    body: JSON.stringify({ effective_from: effectiveFrom }),
+  })
+}
+
 // ── Price ID → plan tier mapping ─────────────────────────────────
 //
 // Set these in env vars after creating prices in the Paddle dashboard:
