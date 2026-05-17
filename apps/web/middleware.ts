@@ -147,6 +147,6 @@ export const config = {
   // Skip static assets + the `/api/*` proxy (handled by next.config rewrites
   // to the upstream server, which enforces its own JWT).
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|api/|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    '/((?!_next/static|_next/image|favicon.ico|api/|monitoring|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
 }
