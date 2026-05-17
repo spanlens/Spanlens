@@ -37,6 +37,15 @@ interface PaddleSubscriptionPayload {
   custom_data?: { organization_id?: string } | null
 }
 
+// Paddle adjustment event shape — used for refund/credit handling.
+interface PaddleAdjustmentPayload {
+  id: string
+  subscription_id: string | null
+  customer_id: string
+  action: 'refund' | 'credit' | 'chargeback' | 'chargeback_warning' | 'chargeback_reverse'
+  status: 'pending_approval' | 'approved' | 'rejected'
+}
+
 // Paddle transaction event shape — used for transaction.completed fallback.
 interface PaddleTransactionPayload {
   id: string  // txn_...
@@ -258,6 +267,33 @@ paddleWebhookRouter.post('/paddle', async (c) => {
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'unknown error'
       return c.json({ error: msg }, 500)
+    }
+
+    return c.json({ success: true, event_type: event.event_type })
+  }
+
+  // ── adjustment.created — refund approved → downgrade plan ────────
+  // Paddle fires this when a refund or credit is applied (e.g. 14-day
+  // money-back guarantee). We immediately revert the org to free so the
+  // customer cannot retain paid access after receiving their money back.
+  // Paddle will also send subscription.canceled separately, but there is a
+  // race window between the two events — handling it here closes that gap.
+  if (event.event_type === 'adjustment.created') {
+    const adj = event.data as unknown as PaddleAdjustmentPayload
+
+    if (adj.action === 'refund' && adj.status === 'approved') {
+      const organizationId = await resolveOrgId(null, adj.customer_id)
+      if (!organizationId) {
+        console.error('[paddle-webhook] could not resolve org for adjustment', event.event_id, adj.customer_id)
+        return c.json({ error: 'organization not found' }, 400)
+      }
+
+      await supabaseAdmin
+        .from('organizations')
+        .update({ plan: 'free' })
+        .eq('id', organizationId)
+
+      console.warn('[paddle-webhook] refund approved — org downgraded to free', organizationId, adj.id)
     }
 
     return c.json({ success: true, event_type: event.event_type })
