@@ -36,3 +36,6 @@ npm-debug.log*
 
 # Vercel
 .vercel
+
+# Internal planning documents — never commit to public repo
+*.pdf
