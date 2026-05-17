@@ -1,6 +1,7 @@
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import bundleAnalyzer from '@next/bundle-analyzer'
+import { withSentryConfig } from '@sentry/nextjs'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -88,4 +89,15 @@ const nextConfig = {
   },
 }
 
-export default withBundleAnalyzer(nextConfig)
+const sentryConfig = {
+  // Only upload source maps in CI/production to avoid slowing local builds
+  silent: true,
+  // Suppress the Sentry CLI output in CI
+  hideSourceMaps: true,
+  // Disable Sentry when DSN is not set (local dev without secrets)
+  disableLogger: true,
+  // Tunnel Sentry requests through Next.js to avoid ad-blocker interference
+  tunnelRoute: '/monitoring',
+}
+
+export default withSentryConfig(withBundleAnalyzer(nextConfig), sentryConfig)
