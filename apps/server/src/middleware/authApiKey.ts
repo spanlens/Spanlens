@@ -12,11 +12,14 @@ import { sha256Hex } from '../lib/crypto.js'
  *
  *   • OpenAI SDK            → Authorization: Bearer sl_live_…
  *   • Anthropic SDK         → x-api-key: sl_live_…
- *   • Google Generative AI  → x-goog-api-key: sl_live_…   (header form, current)
- *                              or URL ?key=sl_live_…       (query form, legacy)
+ *   • Google Generative AI  → x-goog-api-key: sl_live_…
  *
  * The first one found wins. After validation we put apiKeyId / projectId
  * / organizationId on the context for the proxy + logging layers.
+ *
+ * Note: ?key= query-string transport was removed (security: keys leak into
+ * server access logs, browser history, and Referer headers). All current
+ * Google Generative AI SDK versions use the x-goog-api-key header.
  */
 export type ApiKeyContext = {
   Variables: {
@@ -45,13 +48,6 @@ function extractApiKey(c: Context): string | null {
   const xGoogKey = c.req.header('x-goog-api-key')
   if (xGoogKey?.trim()) return xGoogKey.trim()
 
-  // 4. Legacy Google Generative AI / direct REST callers — query form.
-  //    Older docs and some hand-rolled clients put the key in `?key=`.
-  //    Note: query-string keys leak into server access logs; prefer the
-  //    header form when you control the client.
-  const queryKey = c.req.query('key')
-  if (queryKey?.trim()) return queryKey.trim()
-
   return null
 }
 
@@ -61,7 +57,7 @@ export const authApiKey = createMiddleware<ApiKeyContext>(async (c, next) => {
     return c.json(
       {
         error:
-          'Missing API key. Pass sl_live_… via Authorization: Bearer (OpenAI SDK), x-api-key (Anthropic SDK), or ?key= (Google Generative AI SDK).',
+          'Missing API key. Pass sl_live_… via Authorization: Bearer (OpenAI SDK), x-api-key (Anthropic SDK), or x-goog-api-key (Google Generative AI SDK).',
       },
       401,
     )

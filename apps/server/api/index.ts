@@ -1,5 +1,9 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
+import { initSentry, captureError } from '../src/lib/sentry.js'
 import { app } from '../src/app.js'
+
+// Initialise Sentry before any request is handled. No-op when SENTRY_DSN is unset.
+initSentry()
 
 // Node.js runtime: maxDuration set in vercel.json
 //
@@ -94,6 +98,7 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     res.end()
   } catch (err) {
     console.error('[handler] unhandled error:', err)
+    captureError(err, { url: req.url, method: req.method })
     if (!res.headersSent) {
       res.writeHead(500, { 'content-type': 'text/plain' })
     }
