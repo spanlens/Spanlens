@@ -1,5 +1,20 @@
 version: 2
 
+# Notes on the `ignore` rules below — these are workarounds, not preferences.
+# Re-evaluate each when the linked compatibility blocker resolves.
+#
+# - eslint 10: blocked by eslint-plugin-react 7.37 (transitive of
+#   eslint-config-next) using the removed context.getFilename() API. Re-enable
+#   when eslint-plugin-react ships an ESLint 10-compatible release.
+#
+# - vitest 4: requires vite ^6 || ^7 || ^8 as peer, but the workspace
+#   transitively resolves vite 5 (from other deps). Causes
+#   ERR_PACKAGE_PATH_NOT_EXPORTED on 'vite/module-runner' at vitest startup.
+#   Re-enable after upgrading vite to >=6 across the workspace.
+#
+# - globals 17: paired with the vitest 4 bump; safe on its own but Dependabot
+#   keeps grouping them. Drop this once vitest 4 is unblocked.
+
 updates:
   # Root workspace (pnpm-lock.yaml)
   - package-ecosystem: npm
@@ -10,6 +25,9 @@ updates:
     open-pull-requests-limit: 1
     labels:
       - dependencies
+    ignore:
+      - dependency-name: eslint
+        update-types: ["version-update:semver-major"]
     groups:
       all-deps:
         patterns: ["*"]
@@ -23,6 +41,9 @@ updates:
     open-pull-requests-limit: 1
     labels:
       - dependencies
+    ignore:
+      - dependency-name: eslint
+        update-types: ["version-update:semver-major"]
     groups:
       all-deps:
         patterns: ["*"]
@@ -36,6 +57,13 @@ updates:
     open-pull-requests-limit: 1
     labels:
       - dependencies
+    ignore:
+      - dependency-name: eslint
+        update-types: ["version-update:semver-major"]
+      - dependency-name: vitest
+        update-types: ["version-update:semver-major"]
+      - dependency-name: globals
+        update-types: ["version-update:semver-major"]
     groups:
       all-deps:
         patterns: ["*"]
@@ -49,6 +77,9 @@ updates:
     open-pull-requests-limit: 1
     labels:
       - dependencies
+    ignore:
+      - dependency-name: vitest
+        update-types: ["version-update:semver-major"]
     groups:
       all-deps:
         patterns: ["*"]
