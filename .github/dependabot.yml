@@ -17,6 +17,9 @@ version: 2
 
 updates:
   # Root workspace (pnpm-lock.yaml)
+  # NOTE: this entry's grouped PRs include bumps for any workspace package
+  # (cli, sdk, server, web) because the lockfile is shared. So the ignore
+  # set must cover every package's incompatibility, not just root deps.
   - package-ecosystem: npm
     directory: /
     schedule:
@@ -27,6 +30,10 @@ updates:
       - dependencies
     ignore:
       - dependency-name: eslint
+        update-types: ["version-update:semver-major"]
+      - dependency-name: vitest
+        update-types: ["version-update:semver-major"]
+      - dependency-name: globals
         update-types: ["version-update:semver-major"]
     groups:
       all-deps:
@@ -43,6 +50,10 @@ updates:
       - dependencies
     ignore:
       - dependency-name: eslint
+        update-types: ["version-update:semver-major"]
+      - dependency-name: vitest
+        update-types: ["version-update:semver-major"]
+      - dependency-name: globals
         update-types: ["version-update:semver-major"]
     groups:
       all-deps:
@@ -78,7 +89,11 @@ updates:
     labels:
       - dependencies
     ignore:
+      - dependency-name: eslint
+        update-types: ["version-update:semver-major"]
       - dependency-name: vitest
+        update-types: ["version-update:semver-major"]
+      - dependency-name: globals
         update-types: ["version-update:semver-major"]
     groups:
       all-deps:
