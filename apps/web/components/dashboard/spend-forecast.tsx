@@ -139,7 +139,7 @@ export function SpendForecastCard({ data }: SpendForecastCardProps) {
               fontSize: 11,
               fontFamily: 'monospace',
             }}
-            formatter={(value: unknown, name: string) => {
+            formatter={(value: unknown, name) => {
               const num = typeof value === 'number' ? value : 0
               const label = name === 'actual' ? 'Actual' : 'Projected'
               return [`$${num.toFixed(4)}`, label]
