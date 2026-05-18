@@ -76,7 +76,7 @@ const PLANS = [
       'Custom rate limit',
       'Unlimited seats',
       'Unlimited projects',
-      'Unlimited log retention',
+      '365-day log retention (extendable by contract)',
       'Unlimited alerts',
       'Email + Slack + Discord',
       'Webhooks',
