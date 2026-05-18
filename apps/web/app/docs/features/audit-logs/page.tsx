@@ -241,8 +241,12 @@ curl "https://spanlens-server.vercel.app/api/v1/audit-logs?limit=50&offset=50" \
           order. Sort direction cannot be changed.
         </li>
         <li>
-          <strong>Retention.</strong> Free plan: 30 days. Pro and above: 1 year. For longer
-          retention, export the log periodically via the API and store it externally.
+          <strong>Retention.</strong> Audit logs are retained for the lifetime of your
+          account and are not currently pruned on a fixed schedule. If you need a guaranteed
+          retention window for compliance reasons, export the log periodically via the API
+          and store it in your own system; a future release may introduce per-plan
+          retention windows, at which point this page and the{' '}
+          <a href="/privacy">Privacy Policy</a> will be updated together.
         </li>
         <li>
           <strong>Proxy requests are not recorded here.</strong> LLM request and response history
