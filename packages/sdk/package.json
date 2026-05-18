@@ -58,7 +58,7 @@
   "devDependencies": {
     "@anthropic-ai/sdk": "^0.32.0",
     "@google/generative-ai": "^0.21.0",
-    "@types/node": "^20.16.11",
+    "@types/node": "^25.8.0",
     "openai": "^4.77.0",
     "typescript": "^5.4.5",
     "vitest": "^2.1.3"
