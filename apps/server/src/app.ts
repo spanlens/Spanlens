@@ -36,6 +36,7 @@ import { membersRouter }       from './api/members.js'
 import { orgInvitationsRouter, invitationsRouter, meInvitationsRouter } from './api/invitations.js'
 import { dismissalsRouter }    from './api/dismissals.js'
 import { userProfilesRouter }  from './api/userProfiles.js'
+import { userConsentRouter }   from './api/userConsent.js'
 import { waitlistRouter }      from './api/waitlist.js'
 import { webhooksRouter }      from './api/webhooks.js'
 import { exportsRouter }       from './api/exports.js'
@@ -126,6 +127,7 @@ app.route('/api/v1/invitations', invitationsRouter)
 app.route('/api/v1/me/pending-invitations', meInvitationsRouter)
 app.route('/api/v1/dismissals',     dismissalsRouter)
 app.route('/api/v1/me/profile',     userProfilesRouter)
+app.route('/api/v1/me/consent',     userConsentRouter)
 app.route('/api/v1/me',             meRouter)        // sl_live_* introspection (CLI), registered AFTER other /me/* prefixes
 app.route('/api/v1/webhooks',       webhooksRouter)
 app.route('/api/v1/exports',        exportsRouter)
