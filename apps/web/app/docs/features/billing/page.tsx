@@ -54,7 +54,7 @@ export default function BillingDocs() {
             <td>Enterprise</td>
             <td>custom</td>
             <td>unlimited</td>
-            <td>unlimited</td>
+            <td>365 days (extendable by contract)</td>
             <td>unlimited</td>
           </tr>
         </tbody>

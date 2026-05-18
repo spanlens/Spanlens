@@ -328,6 +328,13 @@ docker compose pull && docker compose up -d
         <code>ghcr.io/spanlens/spanlens-web:0.3.0</code>). Pin a tag in production and upgrade
         deliberately.
       </p>
+      <p>
+        <strong>Supported architectures.</strong> Both images are published as
+        multi-arch manifests for <code>linux/amd64</code> and <code>linux/arm64</code>{' '}
+        — Docker pulls the right variant for your host automatically. M1 / M2 / M3
+        Macs and AWS Graviton instances run the native ARM binary; x86 hosts run
+        the amd64 binary. No platform flag needed.
+      </p>
 
       <h2 id="dashboard">Dashboard options</h2>
       <ul>

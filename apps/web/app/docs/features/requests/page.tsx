@@ -357,9 +357,10 @@ POST /api/v1/requests/:id/replay/run
           <code>session_id</code>. See <a href="/docs/sdk">SDK</a>.
         </li>
         <li>
-          <strong>Retention policy.</strong> Free plan: 14 days. Pro: 90 days. Team: 365 days.
-          Enterprise: configurable up to unlimited. Enforced by the table&apos;s TTL plus a
-          per-plan query-time clip — older rows are dropped by ClickHouse&apos;s background merge.
+          <strong>Retention policy.</strong> Free plan: 14 days. Pro: 90 days. Team and
+          Enterprise: 365 days (Enterprise is extendable by contract). Enforced by the
+          table&apos;s TTL plus a per-plan query-time clip — older rows are dropped by
+          ClickHouse&apos;s background merge.
         </li>
         <li>
           <strong>Tenant isolation.</strong> ClickHouse has no row-level security; every read

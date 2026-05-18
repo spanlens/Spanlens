@@ -96,6 +96,29 @@ export default function DocsIndex() {
             <code className="text-xs bg-bg-elev rounded px-1">prompt_tokens_details.cached_tokens</code> are parsed automatically and billed at each provider&apos;s reduced cache rate (≈ 0.1× input on Anthropic, ≈ 0.5× on OpenAI). The breakdown shows on every request detail page. Other tools that lump everything into prompt tokens overcount cache-heavy workloads by 2–10×.
           </p>
         </details>
+
+        <details className="rounded border p-4">
+          <summary className="cursor-pointer font-medium">
+            Where do I find compliance documents (Privacy, Terms, DPA, Subprocessors)?
+          </summary>
+          <p className="mt-2 text-muted-foreground">
+            All four are linked from the footer of every page and are publicly accessible
+            without an account:{' '}
+            <Link href="/privacy" className="text-accent hover:underline">Privacy Policy</Link>{' '}
+            (PIPA + GDPR coverage),{' '}
+            <Link href="/terms" className="text-accent hover:underline">Terms of Service</Link>,{' '}
+            <Link href="/dpa" className="text-accent hover:underline">Data Processing Addendum</Link>{' '}
+            (auto-incorporated on org creation; countersigned PDFs available on request),
+            and the{' '}
+            <Link href="/subprocessors" className="text-accent hover:underline">Subprocessors list</Link>{' '}
+            with per-vendor processing locations and transfer mechanisms. The DPA
+            incorporates EU SCCs Module 2 in Annex A. For security questionnaires or a
+            countersigned DPA, email{' '}
+            <a href="mailto:support@spanlens.io" className="text-accent hover:underline">
+              support@spanlens.io
+            </a>.
+          </p>
+        </details>
       </div>
     </div>
   )
