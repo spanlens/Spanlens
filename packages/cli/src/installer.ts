@@ -104,11 +104,11 @@ export async function installPackage(
       })
     }
 
-    child.on('error', (err) => {
+    child.on('error', (err: Error) => {
       resolvePromise({ ok: false, command, error: err.message })
     })
 
-    child.on('close', (code) => {
+    child.on('close', (code: number | null) => {
       if (code === 0) {
         resolvePromise({ ok: true, command })
       } else {
