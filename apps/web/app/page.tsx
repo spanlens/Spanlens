@@ -10,7 +10,7 @@ const FEATURES = [
   { kicker: '02', title: 'Cost tracking', body: 'Per-request breakdown, daily rollups, budget alerts before you blow the month.', accent: '−38%' },
   { kicker: '03', title: 'Agent tracing', body: 'Multi-step workflows as waterfall span trees. Find the one step that took 18s.', accent: '12 spans' },
   { kicker: '04', title: 'Anomaly detection', body: '3σ deviations in latency or cost vs. your 7-day baseline, flagged on arrival.', accent: '3.1σ' },
-  { kicker: '05', title: 'PII + injection scan', body: 'Regex detection on request bodies at log time. Redact before it hits disk.', accent: 'SSN · email' },
+  { kicker: '05', title: 'PII + injection scan', body: 'Regex detection on request bodies at log time. API keys auto-masked before storage; PII patterns flagged for review.', accent: 'SSN · email' },
   { kicker: '06', title: 'Model recommender', body: '"Your gpt-4o calls look like classification — try gpt-4o-mini." With numbers.', accent: '−$412/mo' },
 ]
 
@@ -61,7 +61,7 @@ const PLANS = [
 const FAQS: [string, string][] = [
   ['How does instrumentation work?', 'Swap the provider SDK for our drop-in. Same surface, same types. We record the full request and response on the wire — no extra round-trip, no sampling by default.'],
   ['What about latency overhead?', 'p99 overhead is under 3ms. Ingestion happens async in a worker. If we ever fail, your request completes anyway — Spanlens never sits on the critical path.'],
-  ['How do you handle PII?', 'Detectors run at log time, before persistence. Matches can be masked or blocked. Raw bodies can be kept in-memory only; only redacted copies land on disk.'],
+  ['How do you handle PII?', 'PII detectors (SSN, credit card, email, IBAN, passport, etc.) run at log time and flag matches for review in the Security dashboard — without blocking the request. API keys that slip into prompts are auto-masked before the row lands on disk. For workloads where prompt bodies must not be stored at all, opt out per-call with X-Spanlens-Log-Body: meta.'],
   ['Do you support OpenTelemetry?', 'Yes — OTLP/HTTP ingest and export. Your existing OTel tracing flows into the same span store; LLM spans get LLM-specific attributes on top.'],
   ['What\'s the data retention?', 'Free is 14 days. Pro is 90 days, Team is 365 days. Enterprise & self-hosted are configurable, including unlimited.'],
   ['Can I export my data?', 'Anytime. JSON, CSV, Parquet. Or pipe the raw stream to S3, BigQuery, or your warehouse via our sink connectors.'],
