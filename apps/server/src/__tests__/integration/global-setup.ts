@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
-import { provide } from 'vitest'
+import type { TestProject } from 'vitest/node'
 
 // Standard local Supabase credentials — same for every local project.
 const LOCAL_URL = 'http://127.0.0.1:54321'
@@ -26,7 +26,7 @@ function adminClient() {
   })
 }
 
-export async function setup() {
+export async function setup(testProject: TestProject) {
   const admin = adminClient()
 
   // 1. Auth user — needed for organizations.owner_id FK
@@ -69,7 +69,7 @@ export async function setup() {
     .single()
   if (keyErr || !apiKey) throw new Error(`setup: create api_key failed — ${keyErr?.message}`)
 
-  provide('fixtures', {
+  testProject.provide('fixtures', {
     orgId: org.id,
     projectId: project.id,
     apiKeyId: apiKey.id,
