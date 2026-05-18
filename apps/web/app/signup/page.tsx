@@ -4,6 +4,37 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { TERMS_VERSION, PRIVACY_VERSION } from '@/lib/legal-versions'
+
+/**
+ * Record the user's acceptance of Terms + Privacy on the new account.
+ * Fire-and-forget — failure to record consent must NOT block the signup
+ * flow (the user already clicked the checkbox; we don't want a transient
+ * server error to lock them out of their own onboarding). The server
+ * captures IP + UA from the request, not from the client body.
+ *
+ * If the call fails the user can still re-accept on a future prompt; we
+ * surface the failure to Sentry via the standard fetch error path.
+ */
+async function recordSignupConsent(accessToken: string): Promise<void> {
+  try {
+    await fetch('/api/v1/me/consent', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({
+        documents: [
+          { document: 'terms', version: TERMS_VERSION },
+          { document: 'privacy', version: PRIVACY_VERSION },
+        ],
+      }),
+    })
+  } catch (err) {
+    console.error('[signup] consent recording failed:', err)
+  }
+}
 
 function LogoMark() {
   return (
@@ -75,6 +106,17 @@ function SignupPageInner() {
       setError(authError.message)
       setLoading(false)
       return
+    }
+
+    // Record consent immediately after signUp succeeds. The session JWT
+    // is only present on local Supabase (auto-confirm) or when email
+    // confirmation is disabled — in the email-confirmation path we lose
+    // the chance to record consent at this exact moment, but the user
+    // clicked the checkbox before we accepted the request, so the
+    // contract is formed at this point regardless of whether we
+    // persisted it server-side.
+    if (signupData.session?.access_token) {
+      await recordSignupConsent(signupData.session.access_token)
     }
 
     // Invitation flow: skip onboarding, auto-accept the invite, go to dashboard.
