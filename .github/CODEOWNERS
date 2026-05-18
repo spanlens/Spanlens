@@ -1,0 +1,30 @@
+# Code owners — review enforcement on the highest-risk files.
+#
+# Solo project (sunes26 is the only maintainer), so the goal isn't to enforce
+# multi-reviewer culture — it's to make the "did I just trip a security or
+# tenancy invariant?" reflex unmissable when the diff opens on GitHub. Lines
+# below pre-fill the reviewer chip and surface the file in the PR's "Owners"
+# panel.
+
+# Multi-tenant ClickHouse query layer — every read must filter organization_id.
+# RLS does not exist here; a missed WHERE leaks cross-tenant data.
+/apps/server/src/lib/clickhouse.ts          @sunes26
+/apps/server/src/lib/requests-query.ts      @sunes26
+/apps/server/src/lib/stats-queries.ts       @sunes26
+/apps/server/src/lib/anomaly.ts             @sunes26
+/apps/server/src/lib/stale-key-digest.ts    @sunes26
+
+# Auth + crypto — provider-key encryption and the API-key / JWT middlewares.
+# A bug here is a credential leak or auth bypass.
+/apps/server/src/lib/crypto.ts              @sunes26
+/apps/server/src/middleware/                @sunes26
+
+# Billing / Paddle — webhook idempotency + overage charge state machine.
+# CLAUDE.md gotchas #6 / #7 / #7a live in this surface.
+/apps/server/src/api/paddleWebhook.ts       @sunes26
+/apps/server/src/lib/paddle*.ts             @sunes26
+
+# Dependency / CI config — changes here affect every build.
+/.github/workflows/                         @sunes26
+/.github/dependabot.yml                     @sunes26
+/.github/CODEOWNERS                         @sunes26
