@@ -41,7 +41,7 @@
   "devDependencies": {
     "@next/bundle-analyzer": "^16.2.6",
     "@tailwindcss/typography": "^0.5.19",
-    "@tanstack/react-query-devtools": "^5.99.2",
+    "@tanstack/react-query-devtools": "^5.100.10",
     "@types/node": "^20",
     "@types/react": "^18",
     "@types/react-dom": "^18",
