@@ -2,7 +2,8 @@ import Link from 'next/link'
 import { LogoMark } from '@/components/ui/logo'
 
 /**
- * Shared marketing footer. Applied to landing, /pricing, /docs/*, /terms, /privacy.
+ * Shared marketing footer. Applied to landing, /pricing, /docs/*, /terms,
+ * /privacy, /dpa, /subprocessors, /refund.
  *
  * The bottom row contains the Korean e-commerce commercial-info disclosure
  * required by 전자상거래법 — 상호, 대표자, 사업자번호, 통신판매업신고번호.
@@ -51,6 +52,8 @@ export function Footer() {
             <div className="flex flex-col gap-1.5">
               <Link href="/privacy" className="hover:text-text transition-colors">Privacy</Link>
               <Link href="/terms" className="hover:text-text transition-colors">Terms</Link>
+              <Link href="/dpa" className="hover:text-text transition-colors">DPA</Link>
+              <Link href="/subprocessors" className="hover:text-text transition-colors">Subprocessors</Link>
               <Link href="/refund" className="hover:text-text transition-colors">Refund policy</Link>
               <a href="mailto:support@spanlens.io" className="hover:text-text transition-colors">Contact</a>
             </div>
