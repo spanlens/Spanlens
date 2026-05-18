@@ -1,4 +1,5 @@
-import { supabaseAdmin } from './db.js'
+import { Redis } from '@upstash/redis'
+import { Ratelimit } from '@upstash/ratelimit'
 import type { Plan } from './quota.js'
 
 /**
@@ -22,34 +23,80 @@ export const PROXY_RATE_LIMITS: Record<Plan, number | null> = {
  */
 export const API_RATE_LIMIT = 120
 
-/** Returns the current UTC minute window string: "YYYY-MM-DDTHH:MM" */
-function currentWindow(): string {
-  return new Date().toISOString().slice(0, 16)
+// ---------------------------------------------------------------------------
+// Redis singleton — lazy init so the module is safe to import without env vars
+// ---------------------------------------------------------------------------
+
+let _redis: Redis | null = null
+
+function getRedis(): Redis | null {
+  if (_redis) return _redis
+
+  const url = process.env.KV_REST_API_URL
+  const token = process.env.KV_REST_API_TOKEN
+
+  if (!url || !token) return null
+
+  _redis = new Redis({ url, token })
+  return _redis
 }
 
+// ---------------------------------------------------------------------------
+// Ratelimit instances — one per unique limit value (free/starter/team/api)
+// ---------------------------------------------------------------------------
+
+const _limiters = new Map<number, Ratelimit>()
+
+function getLimiter(limit: number): Ratelimit | null {
+  const redis = getRedis()
+  if (!redis) return null
+
+  if (!_limiters.has(limit)) {
+    _limiters.set(
+      limit,
+      new Ratelimit({
+        redis,
+        limiter: Ratelimit.slidingWindow(limit, '60 s'),
+        // Prefix all keys so they don't collide with other Redis data
+        prefix: 'spanlens:rl',
+      }),
+    )
+  }
+
+  return _limiters.get(limit)!
+}
+
+// ---------------------------------------------------------------------------
+// Public API
+// ---------------------------------------------------------------------------
+
 /**
- * Atomically increments the request count for (key, currentMinute) and
- * returns whether the request is within the given limit.
+ * Checks whether `key` is within the sliding-window rate limit.
  *
- * Fails open (returns true) on any DB error so transient Supabase
- * hiccups never block legitimate traffic.
+ * Returns true (allow) when:
+ *   - the request is within the limit
+ *   - Redis is not configured (fails open — transient misconfiguration
+ *     should never block legitimate traffic)
+ *   - any Redis error occurs (fails open with a console warning)
+ *
+ * Returns false (deny) only when the limit is positively exceeded.
  */
 export async function checkRateLimit(
   key: string,
   limit: number,
 ): Promise<boolean> {
-  const window = currentWindow()
+  const limiter = getLimiter(limit)
 
-  const { data, error } = await supabaseAdmin.rpc('check_rate_limit', {
-    p_key: key,
-    p_window_key: window,
-    p_limit: limit,
-  })
-
-  if (error) {
-    console.error('[rate-limit] rpc error — failing open:', error.message)
+  if (!limiter) {
+    // Redis not configured — fail open (dev / misconfigured prod)
     return true
   }
 
-  return data as boolean
+  try {
+    const { success } = await limiter.limit(key)
+    return success
+  } catch (err) {
+    console.error('[rate-limit] Redis error — failing open:', err)
+    return true
+  }
 }
