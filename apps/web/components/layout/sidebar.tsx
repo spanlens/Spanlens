@@ -66,7 +66,9 @@ function WorkspaceSwitcher() {
     writeWorkspaceCookie(id)
     // Full reload so SSR middleware re-resolves the workspace and every
     // TanStack query starts fresh. Avoids stale org A data flashing while
-    // org B queries refetch.
+    // org B queries refetch. See CLAUDE.md gotcha #15 — router.push would
+    // keep RSC tree cache and miss the new x-spanlens-organization header.
+    // eslint-disable-next-line react-hooks/immutability -- intentional hard nav from event handler
     window.location.href = '/dashboard'
   }
 
@@ -273,6 +275,10 @@ export function Sidebar() {
   const alerts = useAlerts()
   const recommendations = useRecommendations()
   const { isOpen, close } = useSidebar()
+  // Capture "now" once at mount — drives the "firing in last hour" badge.
+  // Tanstack query refetches refresh `alerts.data`, so a fixed anchor here
+  // is fine for the small UI sliver this affects.
+  const [mountNow] = useState(() => Date.now())
 
   // Close sidebar when navigating on mobile
   useEffect(() => {
@@ -290,7 +296,7 @@ export function Sidebar() {
     (a) =>
       a.is_active &&
       a.last_triggered_at &&
-      Date.now() - new Date(a.last_triggered_at).getTime() < 60 * 60 * 1000,
+      mountNow - new Date(a.last_triggered_at).getTime() < 60 * 60 * 1000,
   ).length
   const savingsTotal = (recommendations.data ?? []).reduce((s, r) => s + r.estimatedMonthlySavingsUsd, 0)
 

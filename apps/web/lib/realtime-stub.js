@@ -65,8 +65,10 @@ export class RealtimeClient {
   }
 }
 
-export default {
+const realtimeStub = {
   RealtimeClient,
   RealtimeChannel,
   RealtimePresence,
 }
+
+export default realtimeStub

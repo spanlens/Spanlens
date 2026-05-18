@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
 
@@ -58,22 +58,20 @@ type UseCase = (typeof USE_CASES)[number]['id']
 type Role = (typeof ROLES)[number]['id']
 
 export default function OnboardingPage() {
-  // We don't know yet whether to start at 'pending' or 'workspace' —
-  // depends on the API response. Start in a transient loading state.
-  const [step, setStep] = useState<Step | null>(null)
+  // Once the user advances past the initial step, `manualStep` takes over.
+  // Before that, we derive the initial step from the pending-invitations
+  // fetch — no setState-in-effect required.
+  const [manualStep, setStep] = useState<Step | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
   const pending = usePendingInvitations()
   const acceptInvite = useAcceptPendingInvitation()
 
-  // Decide initial step once the pending fetch resolves. After this point,
-  // the user drives the step transitions manually.
-  useEffect(() => {
-    if (step !== null) return
-    if (!pending.isFetched) return
-    setStep((pending.data?.length ?? 0) > 0 ? 'pending' : 'workspace')
-  }, [pending.isFetched, pending.data, step])
+  const step: Step | null = manualStep
+    ?? (pending.isFetched
+      ? ((pending.data?.length ?? 0) > 0 ? 'pending' : 'workspace')
+      : null)
 
   // Step 1
   const [workspaceName, setWorkspaceName] = useState('')

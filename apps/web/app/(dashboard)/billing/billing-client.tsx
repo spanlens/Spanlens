@@ -26,7 +26,10 @@ export function BillingClient() {
   const createCheckout = useCreateCheckout()
   const cancelSubscription = useCancelSubscription()
   const refreshSubscription = useRefreshSubscription()
-  const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  // Local error state for runtime errors (checkout, cancel). The
+  // "missing client token" case is derived directly from env below — no
+  // effect needed for that branch.
+  const [runtimeError, setRuntimeError] = useState<string | null>(null)
   const [paddle, setPaddle] = useState<Paddle | null>(null)
   const [checkoutCompleted, setCheckoutCompleted] = useState(false)
   const [showCancelConfirm, setShowCancelConfirm] = useState(false)
@@ -37,13 +40,13 @@ export function BillingClient() {
     | 'sandbox'
     | 'production'
 
+  const errorMessage = runtimeError
+    ?? (clientToken
+      ? null
+      : 'Paddle client token not configured. Set NEXT_PUBLIC_PADDLE_CLIENT_TOKEN.')
+
   useEffect(() => {
-    if (!clientToken) {
-      setErrorMessage(
-        'Paddle client token not configured. Set NEXT_PUBLIC_PADDLE_CLIENT_TOKEN.',
-      )
-      return
-    }
+    if (!clientToken) return
 
     let cancelled = false
     void initializePaddle({
@@ -76,17 +79,17 @@ export function BillingClient() {
 
   const handleUpgrade = useCallback(
     async (plan: 'starter' | 'team') => {
-      setErrorMessage(null)
+      setRuntimeError(null)
       setCheckoutCompleted(false)
       if (!paddle) {
-        setErrorMessage('Paddle.js is not ready yet. Please try again in a moment.')
+        setRuntimeError('Paddle.js is not ready yet. Please try again in a moment.')
         return
       }
       try {
         const res = await createCheckout.mutateAsync({ plan })
         paddle.Checkout.open({ transactionId: res.transactionId })
       } catch (err) {
-        setErrorMessage(
+        setRuntimeError(
           err instanceof Error ? err.message : 'Failed to start checkout',
         )
       }
@@ -95,13 +98,13 @@ export function BillingClient() {
   )
 
   const handleCancel = useCallback(async () => {
-    setErrorMessage(null)
+    setRuntimeError(null)
     try {
       await cancelSubscription.mutateAsync()
       setShowCancelConfirm(false)
       setCancelDone(true)
     } catch (err) {
-      setErrorMessage(err instanceof Error ? err.message : 'Failed to cancel subscription')
+      setRuntimeError(err instanceof Error ? err.message : 'Failed to cancel subscription')
       setShowCancelConfirm(false)
     }
   }, [cancelSubscription])

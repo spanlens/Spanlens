@@ -224,8 +224,8 @@ function CopyButton({ getText }: { getText: () => string }) {
 }
 
 function RequestDrawer({ requestId, visible, onClose, onPrev, onNext, hasPrev, hasNext, position, total }: DrawerProps) {
+  // Parent remounts via `key={selectedId}` on row change.
   const [tab, setTab] = useState<DrawerTab>('request')
-  useEffect(() => { setTab('request') }, [requestId])
   const { data: req, isLoading, isError } = useRequest(requestId)
   const messages = useMemo(() => {
     if (!req?.request_body || typeof req.request_body !== 'object') return null
@@ -834,6 +834,9 @@ export function RequestsClient() {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [pendingNavigation, setPendingNavigation] = useState<'first' | 'last' | null>(null)
 
+  // Capture "now" once at mount — time-range filters anchor to load time.
+  const [mountNow] = useState(() => Date.now())
+
   // Ref so the debounce effect always reads the latest searchParams without re-firing
   const searchParamsRef = useRef(searchParams)
   useEffect(() => { searchParamsRef.current = searchParams }, [searchParams])
@@ -863,16 +866,15 @@ export function RequestsClient() {
   }, [modelInput])
 
   const fromIso = useMemo(() => {
-    const now = Date.now()
     if (timeRange === 'today') {
-      const d = new Date()
+      const d = new Date(mountNow)
       d.setUTCHours(0, 0, 0, 0)
       return d.toISOString()
     }
-    if (timeRange === '7d') return new Date(now - 7 * 24 * 3_600_000).toISOString()
-    if (timeRange === '30d') return new Date(now - 30 * 24 * 3_600_000).toISOString()
+    if (timeRange === '7d') return new Date(mountNow - 7 * 24 * 3_600_000).toISOString()
+    if (timeRange === '30d') return new Date(mountNow - 30 * 24 * 3_600_000).toISOString()
     return undefined
-  }, [timeRange])
+  }, [timeRange, mountNow])
 
   const promptVersionId = searchParams.get('promptVersionId') ?? undefined
   const userIdFilter = searchParams.get('userId') ?? undefined
@@ -911,10 +913,15 @@ export function RequestsClient() {
   const requests = useMemo(() => data?.data ?? [], [data])
   const meta = data?.meta ?? { total: 0, page: 1, limit: 50 }
 
-  // After a cross-page navigation, select the first or last item once the new page loads
+  // After a cross-page navigation, select the first or last item once the new page loads.
+  // We track the desired target with `pendingNavigation` and consume it here when data
+  // arrives. The set-state-in-effect rule flags this, but the underlying need ("react
+  // to an external async event") is exactly what an effect is for, and there is no
+  // synchronous derivation path because requests data lands via useQuery.
   useEffect(() => {
     if (!pendingNavigation || isLoading || requests.length === 0) return
     const target = pendingNavigation === 'first' ? requests[0] : requests[requests.length - 1]
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- async data arrival, no derived-state path
     if (target) setSelectedId(target.id)
     setPendingNavigation(null)
   }, [pendingNavigation, isLoading, requests])
@@ -1139,6 +1146,9 @@ export function RequestsClient() {
       </div>{/* end left column */}
 
       <RequestDrawer
+        // key={selectedId} remounts the drawer on row change so internal
+        // tab state resets without a setState-in-effect.
+        key={selectedId ?? '__none__'}
         requestId={selectedId ?? ''}
         visible={drawerOpen && !!selectedId}
         onClose={() => setSelectedId(null)}

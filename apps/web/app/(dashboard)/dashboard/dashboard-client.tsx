@@ -184,6 +184,9 @@ const LIVE_REFETCH_MS = 2 * 60_000
 export function DashboardClient() {
   const [timeRange, setTimeRange] = useState('24h')
   const hours = timeRangeToHours(timeRange)
+  // Capture "now" once at mount — fresh data drives the dashboard via
+  // react-query refetches, so a stable comparison anchor is correct.
+  const [mountNow] = useState(() => Date.now())
   useRealtimeRequests()
   const dismissalsQuery = useDismissals()
   const dismissMutation = useDismissCard()
@@ -303,10 +306,10 @@ export function DashboardClient() {
       (alerts.data ?? [])
         .filter((a) => {
           if (!a.last_triggered_at) return false
-          return Date.now() - new Date(a.last_triggered_at).getTime() < hours * 60 * 60 * 1000
+          return mountNow - new Date(a.last_triggered_at).getTime() < hours * 60 * 60 * 1000
         })
         .map((a) => a.last_triggered_at as string),
-    [alerts.data, hours],
+    [alerts.data, hours, mountNow],
   )
 
   // Active alert rules vs recently fired (within the selected time window)
@@ -319,9 +322,9 @@ export function DashboardClient() {
       activeAlertRules.filter(
         (a) =>
           a.last_triggered_at &&
-          Date.now() - new Date(a.last_triggered_at).getTime() < hours * 60 * 60 * 1000,
+          mountNow - new Date(a.last_triggered_at).getTime() < hours * 60 * 60 * 1000,
       ),
-    [activeAlertRules, hours],
+    [activeAlertRules, hours, mountNow],
   )
 
   // Build attention cards — security > anomaly > alert > savings
@@ -363,7 +366,7 @@ export function DashboardClient() {
     if (firingAlerts[0]) {
       const top = firingAlerts[0]
       const firedMinsAgo = top.last_triggered_at
-        ? Math.max(1, Math.round((Date.now() - new Date(top.last_triggered_at).getTime()) / 60_000))
+        ? Math.max(1, Math.round((mountNow - new Date(top.last_triggered_at).getTime()) / 60_000))
         : null
       const thresholdLabel =
         top.type === 'budget'
@@ -400,7 +403,7 @@ export function DashboardClient() {
     }
 
     return cards
-  }, [anomalies.data, firingAlerts, recommendations.data, securitySummary.data, timeRange])
+  }, [anomalies.data, firingAlerts, recommendations.data, securitySummary.data, timeRange, mountNow])
 
   // Border classes for KPI cells — responsive 2-col (mobile) / 4-col (lg)
   const kpiCellClasses: [string, string, string, string] = [
@@ -744,10 +747,10 @@ export function DashboardClient() {
               <div className="flex flex-col gap-2">
                 {activeAlertRules.slice(0, 3).map((a) => {
                   const fired = a.last_triggered_at
-                    ? Date.now() - new Date(a.last_triggered_at).getTime() < hours * 60 * 60 * 1000
+                    ? mountNow - new Date(a.last_triggered_at).getTime() < hours * 60 * 60 * 1000
                     : false
                   const minsAgo = a.last_triggered_at
-                    ? Math.max(1, Math.round((Date.now() - new Date(a.last_triggered_at).getTime()) / 60_000))
+                    ? Math.max(1, Math.round((mountNow - new Date(a.last_triggered_at).getTime()) / 60_000))
                     : null
                   return (
                     <div

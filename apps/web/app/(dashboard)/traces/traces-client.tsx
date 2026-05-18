@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useTraces } from '@/lib/queries/use-traces'
 import type { TraceRow, TraceStatus } from '@/lib/queries/types'
@@ -79,33 +79,45 @@ function SortHeader({
   )
 }
 
+// Lazy init from URL search params. SSR returns the default; on client mount
+// the initializer runs and reads window.location.search.
+function readUrlParams() {
+  const empty = {
+    statusFilter: 'all' as StatusFilter,
+    timeRange: 'all' as TimeRange,
+    nameSearch: '',
+    sortBy: 'started_at' as SortField,
+    sortDir: 'desc' as SortDir,
+    page: 1,
+  }
+  if (typeof window === 'undefined') return empty
+  const p = new URLSearchParams(window.location.search)
+  const s = p.get('status')
+  const r = p.get('range')
+  const q = p.get('q')
+  const sort = p.get('sort')
+  const pg = parseInt(p.get('page') ?? '', 10)
+  return {
+    statusFilter: (s === 'ok' || s === 'error' || s === 'running' ? s : 'all') as StatusFilter,
+    timeRange: (r === '1h' || r === '24h' || r === '7d' || r === '30d' ? r : 'all') as TimeRange,
+    nameSearch: q ?? '',
+    sortBy: (sort === 'duration_ms' || sort === 'total_cost_usd' || sort === 'span_count'
+      ? sort
+      : 'started_at') as SortField,
+    sortDir: (p.get('dir') === 'asc' ? 'asc' : 'desc') as SortDir,
+    page: !isNaN(pg) && pg > 1 ? pg : 1,
+  }
+}
+
 export function TracesClient() {
   const router = useRouter()
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
-  const [timeRange, setTimeRange] = useState<TimeRange>('all')
-  const [nameSearch, setNameSearch] = useState('')
-  const [sortBy, setSortBy] = useState<SortField>('started_at')
-  const [sortDir, setSortDir] = useState<SortDir>('desc')
-  const [page, setPage] = useState(1)
-
-  // Read URL params on mount
-  const didInitUrl = useRef(false)
-  useEffect(() => {
-    if (didInitUrl.current) return
-    didInitUrl.current = true
-    const p = new URLSearchParams(window.location.search)
-    const s = p.get('status')
-    if (s === 'ok' || s === 'error' || s === 'running') setStatusFilter(s)
-    const r = p.get('range')
-    if (r === '1h' || r === '24h' || r === '7d' || r === '30d') setTimeRange(r as TimeRange)
-    const q = p.get('q')
-    if (q) setNameSearch(q)
-    const sort = p.get('sort')
-    if (sort === 'duration_ms' || sort === 'total_cost_usd' || sort === 'span_count') setSortBy(sort as SortField)
-    if (p.get('dir') === 'asc') setSortDir('asc')
-    const pg = parseInt(p.get('page') ?? '', 10)
-    if (!isNaN(pg) && pg > 1) setPage(pg)
-  }, [])
+  const initial = useMemo(() => readUrlParams(), [])
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>(initial.statusFilter)
+  const [timeRange, setTimeRange] = useState<TimeRange>(initial.timeRange)
+  const [nameSearch, setNameSearch] = useState(initial.nameSearch)
+  const [sortBy, setSortBy] = useState<SortField>(initial.sortBy)
+  const [sortDir, setSortDir] = useState<SortDir>(initial.sortDir)
+  const [page, setPage] = useState(initial.page)
 
   // Sync filter state → URL
   useEffect(() => {

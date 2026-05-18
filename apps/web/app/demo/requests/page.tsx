@@ -411,7 +411,8 @@ function DemoRequestsContent() {
     setTimeout(() => setRefreshing(false), 400)
   }, [])
 
-  const now = Date.now()
+  // Capture "now" once at mount — demo data is static, no need for live time.
+  const [now] = useState(() => Date.now())
 
   const filtered = useMemo(() => {
     let rows = [...DEMO_REQUESTS]

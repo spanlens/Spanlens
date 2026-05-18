@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Star, Filter, MessageSquare } from 'lucide-react'
 import { Topbar } from '@/components/layout/topbar'
 import { cn } from '@/lib/utils'
@@ -100,17 +100,11 @@ function ScoringPanel({
   onSaved: () => void
 }) {
   const save = useSaveHumanEval()
-  const existingRaw = item.human_eval?.raw_score ?? null
-  const [stars, setStars] = useState<number | null>(existingRaw)
+  // Parent passes `key={item.id}` to remount this component on item change,
+  // so local state initialises fresh from the new item's human_eval.
+  const [stars, setStars] = useState<number | null>(item.human_eval?.raw_score ?? null)
   const [comment, setComment] = useState(item.human_eval?.comment ?? '')
   const [error, setError] = useState('')
-
-  // Reset on item change
-  useEffect(() => {
-    setStars(item.human_eval?.raw_score ?? null)
-    setComment(item.human_eval?.comment ?? '')
-    setError('')
-  }, [item.id, item.human_eval?.raw_score, item.human_eval?.comment])
 
   async function handleSave() {
     setError('')
@@ -250,7 +244,7 @@ function ItemCard({ item }: { item: AnnotationQueueItem }) {
         </div>
       </div>
 
-      <ScoringPanel item={item} onSaved={() => { /* react-query invalidation handles refresh */ }} />
+      <ScoringPanel key={item.id} item={item} onSaved={() => { /* react-query invalidation handles refresh */ }} />
     </div>
   )
 }

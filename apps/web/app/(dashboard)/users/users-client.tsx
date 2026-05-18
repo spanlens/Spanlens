@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { ArrowDown, ArrowUp, Search, Users as UsersIcon } from 'lucide-react'
@@ -39,6 +39,47 @@ function fmtRelativeTime(iso: string): string {
   return new Date(iso).toLocaleDateString()
 }
 
+interface SearchFormProps {
+  initialSearch: string
+  hasActiveSearch: boolean
+  onSubmit: (value: string) => void
+  onClear: () => void
+}
+
+function SearchForm({ initialSearch, hasActiveSearch, onSubmit, onClear }: SearchFormProps) {
+  // Local input state — parent remounts via `key={search}` to reset on
+  // URL change. No effect needed to sync URL → input.
+  const [value, setValue] = useState(initialSearch)
+  return (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault()
+        onSubmit(value)
+      }}
+      className="flex items-center gap-2"
+    >
+      <div className="relative flex-1 max-w-md">
+        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-text-faint" />
+        <input
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          placeholder="Search user ID…"
+          className="w-full pl-8 pr-3 py-1.5 font-mono text-[12px] bg-bg-elev border border-border rounded-[6px] text-text placeholder:text-text-faint focus:outline-none focus:border-accent"
+        />
+      </div>
+      {hasActiveSearch && (
+        <button
+          type="button"
+          onClick={onClear}
+          className="font-mono text-[11px] text-text-faint hover:text-text transition-colors"
+        >
+          Clear
+        </button>
+      )}
+    </form>
+  )
+}
+
 export function UsersClient() {
   const router = useRouter()
   const sp = useSearchParams()
@@ -49,10 +90,6 @@ export function UsersClient() {
   const sortBy  = (sp.get('sortBy') ?? 'cost') as SortBy
   const sortDir = (sp.get('sortDir') ?? 'desc') as SortDir
   const page    = Math.max(1, parseInt(sp.get('page') ?? '1', 10))
-
-  const [searchInput, setSearchInput] = useState(search)
-  // Sync URL → input when the user navigates back/forward.
-  useEffect(() => setSearchInput(search), [search])
 
   const filters = useMemo(() => {
     const base: { page: number; limit: number; sortBy: SortBy; sortDir: SortDir; search?: string } = {
@@ -80,9 +117,8 @@ export function UsersClient() {
     updateQuery({ sortBy: col, sortDir: nextDir, page: null })
   }
 
-  function onSubmitSearch(e: React.FormEvent) {
-    e.preventDefault()
-    updateQuery({ search: searchInput.trim() || null, page: null })
+  function onSubmitSearch(value: string) {
+    updateQuery({ search: value.trim() || null, page: null })
   }
 
   const rows = data?.data ?? []
@@ -107,26 +143,15 @@ export function UsersClient() {
       </div>
 
       {/* Filter bar */}
-      <form onSubmit={onSubmitSearch} className="flex items-center gap-2">
-        <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-text-faint" />
-          <input
-            value={searchInput}
-            onChange={(e) => setSearchInput(e.target.value)}
-            placeholder="Search user ID…"
-            className="w-full pl-8 pr-3 py-1.5 font-mono text-[12px] bg-bg-elev border border-border rounded-[6px] text-text placeholder:text-text-faint focus:outline-none focus:border-accent"
-          />
-        </div>
-        {search && (
-          <button
-            type="button"
-            onClick={() => updateQuery({ search: null, page: null })}
-            className="font-mono text-[11px] text-text-faint hover:text-text transition-colors"
-          >
-            Clear
-          </button>
-        )}
-      </form>
+      {/* key={search} remounts the form so the local input resets when URL
+          search changes (e.g. back/forward navigation) — no setState-in-effect. */}
+      <SearchForm
+        key={search}
+        initialSearch={search}
+        hasActiveSearch={!!search}
+        onSubmit={onSubmitSearch}
+        onClear={() => updateQuery({ search: null, page: null })}
+      />
 
       {/* Table */}
       <div className="border border-border rounded-[6px] overflow-hidden">

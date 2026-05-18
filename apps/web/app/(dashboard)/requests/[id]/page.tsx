@@ -8,7 +8,9 @@ export default async function RequestDetailPage({ params }: { params: { id: stri
 
   return (
     <HydrationBoundary state={state}>
-      <RequestDetailClient id={params.id} />
+      {/* key={params.id} remounts the client component on id change so
+          internal tab state resets without a setState-in-effect. */}
+      <RequestDetailClient key={params.id} id={params.id} />
     </HydrationBoundary>
   )
 }

@@ -1,5 +1,5 @@
 'use client'
-import { Suspense, useState, useEffect } from 'react'
+import { Suspense, useState } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
@@ -47,19 +47,15 @@ function SignupPageInner() {
   const params = useSearchParams()
   const inviteToken = params.get('invite')
   const prefillEmail = params.get('email') ?? ''
-  const [email, setEmail] = useState('')
+  // Prefill email from invitation link at mount via lazy init — the server
+  // issues invitations bound to a specific email, so typing a different one
+  // would just fail on accept. After mount the user controls the value.
+  const [email, setEmail] = useState(() => prefillEmail)
   const [password, setPassword] = useState('')
   const [consent, setConsent] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [sent, setSent] = useState(false)
-
-  // Prefill email from invitation link — the server issues invitations bound
-  // to a specific email, so typing a different one would just fail on accept.
-  useEffect(() => {
-    if (prefillEmail && !email) setEmail(prefillEmail)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [prefillEmail])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()

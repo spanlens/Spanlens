@@ -1,4 +1,5 @@
 'use client'
+import { useState } from 'react'
 import { Mail, MessageSquare } from 'lucide-react'
 import { DEMO_ALERTS, DEMO_CHANNELS, DEMO_DELIVERIES } from '@/lib/demo-data'
 import type { AlertRow } from '@/lib/queries/types'
@@ -143,8 +144,10 @@ export default function DemoAlertsPage() {
   const firing = alerts.filter((a) => a.is_active && isRecentlyFired(a.last_triggered_at))
   const active = alerts.filter((a) => a.is_active && !isRecentlyFired(a.last_triggered_at))
   const paused = alerts.filter((a) => !a.is_active)
+  // Capture "now" once at mount — demo data is static.
+  const [now] = useState(() => Date.now())
   const fires24h = deliveries.filter(
-    (d) => Date.now() - new Date(d.created_at).getTime() < 24 * 60 * 60 * 1000,
+    (d) => now - new Date(d.created_at).getTime() < 24 * 60 * 60 * 1000,
   ).length
 
   return (

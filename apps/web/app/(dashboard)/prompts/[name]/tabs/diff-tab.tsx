@@ -1,5 +1,5 @@
 'use client'
-import { useState, useMemo } from 'react'
+import { useState } from 'react'
 import { type PromptVersion } from '@/lib/queries/use-prompts'
 import { cn } from '@/lib/utils'
 
@@ -62,10 +62,11 @@ export function DiffTab({ versions }: Props) {
   const selectedA = vA != null ? sorted.find((v) => String(v.version) === vA) : null
   const selectedB = vB != null ? sorted.find((v) => String(v.version) === vB) : null
 
-  const diff = useMemo(() => {
-    if (!selectedA || !selectedB) return null
-    return lineDiff(selectedA.content, selectedB.content)
-  }, [selectedA, selectedB])
+  // React Compiler auto-memoizes — manual useMemo here can't preserve the
+  // dependency list because `find()` returns a fresh reference each render.
+  const diff = !selectedA || !selectedB
+    ? null
+    : lineDiff(selectedA.content, selectedB.content)
 
   const addedCount = diff?.filter((l) => l.type === 'added').length ?? 0
   const removedCount = diff?.filter((l) => l.type === 'removed').length ?? 0

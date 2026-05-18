@@ -1,5 +1,5 @@
 'use client'
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { cn } from '@/lib/utils'
 import type { SpanRow, SpanType, TraceStatus } from '@/lib/queries/types'
 
@@ -146,18 +146,22 @@ export function Gantt({
   criticalSpanIds,
 }: GanttProps) {
   const criticalSet = new Set(criticalSpanIds ?? [])
+  // For an in-progress trace (no end timestamp yet), anchor "now" at mount
+  // so the bar layout is stable across re-renders. The parent panel polls
+  // for new spans, which triggers remounts via trace id changes.
+  const [mountNow] = useState(() => Date.now())
   const positioned = useMemo(() => {
     const traceStartMs = new Date(traceStartedAt).getTime()
-    const traceEndMs = traceEndedAt ? new Date(traceEndedAt).getTime() : Date.now()
+    const traceEndMs = traceEndedAt ? new Date(traceEndedAt).getTime() : mountNow
     const ordered = buildSpanTree(spans)
     return computePositions(ordered, traceStartMs, traceEndMs)
-  }, [traceStartedAt, traceEndedAt, spans])
+  }, [traceStartedAt, traceEndedAt, spans, mountNow])
 
   const totalDurationMs = useMemo(() => {
     const start = new Date(traceStartedAt).getTime()
-    const end = traceEndedAt ? new Date(traceEndedAt).getTime() : Date.now()
+    const end = traceEndedAt ? new Date(traceEndedAt).getTime() : mountNow
     return Math.max(1, end - start)
-  }, [traceStartedAt, traceEndedAt])
+  }, [traceStartedAt, traceEndedAt, mountNow])
 
   // σ annotation: compute mean + std per span_type across this trace.
   // Requires ≥ 3 same-type spans to be meaningful.

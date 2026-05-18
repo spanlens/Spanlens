@@ -1,6 +1,6 @@
 'use client'
 import Link from 'next/link'
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { ArrowDown, Search, Users as UsersIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { DEMO_REQUESTS } from '@/lib/demo-data'
@@ -25,9 +25,9 @@ function fmtCount(n: number): string {
   return String(n)
 }
 
-function fmtRelativeTime(iso: string): string {
+function fmtRelativeTime(iso: string, now: number): string {
   const d = new Date(iso).getTime()
-  const diff = Date.now() - d
+  const diff = now - d
   if (diff < 60_000) return 'just now'
   if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`
   if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`
@@ -98,7 +98,8 @@ function aggregate(): UserAggregate[] {
 }
 
 export default function DemoUsersPage() {
-  const rows = useMemo(aggregate, [])
+  const rows = useMemo(() => aggregate(), [])
+  const [now] = useState(() => Date.now())
   const total = rows.length
 
   return (
@@ -167,7 +168,7 @@ export default function DemoUsersPage() {
                 <span className="text-text-muted">{fmtCount(u.total_tokens)}</span>
                 <span>{fmtCost(u.total_cost_usd)}</span>
                 <span className="text-text-muted">{Math.round(u.avg_latency_ms)}ms</span>
-                <span className="text-text-faint text-right">{fmtRelativeTime(u.last_seen)}</span>
+                <span className="text-text-faint text-right">{fmtRelativeTime(u.last_seen, now)}</span>
               </Link>
             ))}
           </div>

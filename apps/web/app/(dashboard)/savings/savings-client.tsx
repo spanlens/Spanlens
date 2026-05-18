@@ -65,6 +65,7 @@ const DISMISS_STORAGE_KEY    = 'spanlens:savings:dismissed'
 const SORT_FILTER_STORAGE_KEY = 'spanlens:savings:sort-filter'
 
 function loadDismissed(): Set<string> {
+  if (typeof window === 'undefined') return new Set()
   try {
     const raw = localStorage.getItem(DISMISS_STORAGE_KEY)
     if (!raw) return new Set()
@@ -92,6 +93,7 @@ const DEFAULT_SORT_FILTER: SortFilterState = {
 }
 
 function loadSortFilter(): SortFilterState {
+  if (typeof window === 'undefined') return DEFAULT_SORT_FILTER
   try {
     const raw = localStorage.getItem(SORT_FILTER_STORAGE_KEY)
     if (!raw) return DEFAULT_SORT_FILTER
@@ -487,29 +489,25 @@ export function SavingsClient() {
   const [hours, setHours] = useState<number>(24 * 7)
   const { data, isLoading, error } = useRecommendations({ hours, minSavings: 5 })
 
-  const [dismissed,      setDismissed]      = useState<Set<string>>(new Set())
-  const [sortFilter,     setSortFilter]      = useState<SortFilterState>(DEFAULT_SORT_FILTER)
-  const [isLoaded,       setIsLoaded]        = useState(false)
+  // Persisted state — lazy init reads from localStorage. SSR-safe via the
+  // typeof window guard inside the loaders (returns defaults during SSR).
+  // On client hydration the initializer runs again and reads the persisted
+  // value, which then replaces the server-rendered defaults on first paint.
+  const [dismissed,      setDismissed]      = useState<Set<string>>(loadDismissed)
+  const [sortFilter,     setSortFilter]      = useState<SortFilterState>(loadSortFilter)
   const [showHidden,     setShowHidden]      = useState(false)
   const [showAchieved,   setShowAchieved]    = useState(false)
   const [simRec,         setSimRec]          = useState<ModelRecommendation | null>(null)
   const [compareRec,     setCompareRec]      = useState<ModelRecommendation | null>(null)
 
+  // Persist changes back to localStorage.
   useEffect(() => {
-    setDismissed(loadDismissed())
-    setSortFilter(loadSortFilter())
-    setIsLoaded(true)
-  }, [])
-
-  useEffect(() => {
-    if (!isLoaded) return
     try { localStorage.setItem(DISMISS_STORAGE_KEY, JSON.stringify([...dismissed])) } catch { /* quota */ }
-  }, [dismissed, isLoaded])
+  }, [dismissed])
 
   useEffect(() => {
-    if (!isLoaded) return
     try { localStorage.setItem(SORT_FILTER_STORAGE_KEY, JSON.stringify(sortFilter)) } catch { /* quota */ }
-  }, [sortFilter, isLoaded])
+  }, [sortFilter])
 
   function dismiss(r: ModelRecommendation) {
     setDismissed((prev) => new Set([...prev, dismissKey(r)]))

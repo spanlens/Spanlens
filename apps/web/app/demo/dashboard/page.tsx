@@ -131,18 +131,11 @@ export default function DemoDashboardPage() {
   const firingAlert = DEMO_ALERTS.find((a) => a.is_active && a.last_triggered_at)!
   const topRec = DEMO_RECOMMENDATIONS[0]!
 
-  const sparkRequests = useMemo(
-    () => DEMO_TIMESERIES.slice(-10).map((d) => d.requests),
-    [],
-  )
-  const sparkCost = useMemo(
-    () => DEMO_TIMESERIES.slice(-10).map((d) => d.cost),
-    [],
-  )
-  const sparkErrors = useMemo(
-    () => DEMO_TIMESERIES.slice(-10).map((d) => d.errors),
-    [],
-  )
+  // Module-level demo data — React Compiler auto-memoizes; manual useMemo would
+  // block compilation since the input array reference is module-stable.
+  const sparkRequests = DEMO_TIMESERIES.slice(-10).map((d) => d.requests)
+  const sparkCost = DEMO_TIMESERIES.slice(-10).map((d) => d.cost)
+  const sparkErrors = DEMO_TIMESERIES.slice(-10).map((d) => d.errors)
 
   const kpiCellClasses: [string, string, string, string] = [
     'border-r border-b border-border lg:border-b-0',
@@ -151,8 +144,11 @@ export default function DemoDashboardPage() {
     'border-border',
   ]
 
+  // Capture "now" once at mount — demo timestamps are static relative to load.
+  const [now] = useState(() => Date.now())
+
   const firedMinsAgo = firingAlert.last_triggered_at
-    ? Math.max(1, Math.round((Date.now() - new Date(firingAlert.last_triggered_at).getTime()) / 60_000))
+    ? Math.max(1, Math.round((now - new Date(firingAlert.last_triggered_at).getTime()) / 60_000))
     : null
 
   const activeAlertRules = DEMO_ALERTS.filter((a) => a.is_active)
@@ -160,7 +156,7 @@ export default function DemoDashboardPage() {
     (a) =>
       a.is_active &&
       a.last_triggered_at &&
-      Date.now() - new Date(a.last_triggered_at).getTime() < 24 * 60 * 60 * 1000,
+      now - new Date(a.last_triggered_at).getTime() < 24 * 60 * 60 * 1000,
   )
 
   const alertFiredAt = DEMO_ALERTS
@@ -340,9 +336,9 @@ export default function DemoDashboardPage() {
               {activeAlertRules.slice(0, 3).map((a) => {
                 const fired =
                   a.last_triggered_at != null &&
-                  Date.now() - new Date(a.last_triggered_at).getTime() < 24 * 60 * 60 * 1000
+                  now - new Date(a.last_triggered_at).getTime() < 24 * 60 * 60 * 1000
                 const minsAgo = a.last_triggered_at
-                  ? Math.max(1, Math.round((Date.now() - new Date(a.last_triggered_at).getTime()) / 60_000))
+                  ? Math.max(1, Math.round((now - new Date(a.last_triggered_at).getTime()) / 60_000))
                   : null
                 return (
                   <div
