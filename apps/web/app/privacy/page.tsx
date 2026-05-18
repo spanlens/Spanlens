@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { Footer } from '@/components/layout/footer'
 import { MarketingNav } from '@/components/layout/marketing-nav'
 
@@ -7,7 +8,7 @@ export const metadata = {
     'How Spanlens collects, uses, and protects your data. Covers PIPA (Korea) and GDPR (EU) disclosures and your rights as a data subject.',
 }
 
-const EFFECTIVE_DATE = '2026-04-22'
+const EFFECTIVE_DATE = '2026-05-18'
 
 export default function PrivacyPage() {
   return (
@@ -140,60 +141,28 @@ export default function PrivacyPage() {
 
         <h2 id="third-parties">5. Third parties we share data with (sub-processors)</h2>
         <p>
-          We engage the following processors to operate Spanlens. Each processes your data only
-          as needed to provide their service, under contractual confidentiality obligations:
+          We engage third-party companies (&ldquo;sub-processors&rdquo;) to operate Spanlens.
+          Each processes your data only as needed to provide their service, under contractual
+          confidentiality obligations. A current, authoritative list — with processing
+          locations, data categories, and transfer mechanisms — is maintained at{' '}
+          <Link href="/subprocessors">spanlens.io/subprocessors</Link>.
         </p>
-        <table>
-          <thead>
-            <tr>
-              <th>Sub-processor</th>
-              <th>Purpose</th>
-              <th>Location</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td>Supabase Inc.</td>
-              <td>Database, authentication, storage</td>
-              <td>USA (AWS)</td>
-            </tr>
-            <tr>
-              <td>Vercel Inc.</td>
-              <td>Web and API hosting, Edge runtime</td>
-              <td>USA / EU (Vercel Edge Network)</td>
-            </tr>
-            <tr>
-              <td>Paddle.com Market Ltd.</td>
-              <td>Payment processing, Merchant of Record, invoicing</td>
-              <td>United Kingdom</td>
-            </tr>
-            <tr>
-              <td>Resend, Inc.</td>
-              <td>Transactional and alert emails</td>
-              <td>USA</td>
-            </tr>
-            <tr>
-              <td>OpenAI, L.L.C.</td>
-              <td>LLM request forwarding (when you target OpenAI endpoints)</td>
-              <td>USA</td>
-            </tr>
-            <tr>
-              <td>Anthropic, PBC</td>
-              <td>LLM request forwarding (Anthropic endpoints)</td>
-              <td>USA</td>
-            </tr>
-            <tr>
-              <td>Google LLC</td>
-              <td>LLM request forwarding (Gemini endpoints)</td>
-              <td>USA / EU (Google Cloud)</td>
-            </tr>
-            <tr>
-              <td>GitHub, Inc.</td>
-              <td>Code hosting, container registry (for self-host users)</td>
-              <td>USA</td>
-            </tr>
-          </tbody>
-        </table>
+        <p>
+          As of the effective date of this Policy, our infrastructure sub-processors are
+          Vercel Inc. (USA — compute), Supabase Inc. (Republic of Korea — Postgres,
+          authentication), ClickHouse, Inc. (USA — LLM request log store), Upstash, Inc.
+          (USA — rate-limit counters), and Paddle.com Market Ltd. (Ireland — Merchant of
+          Record). Our communications sub-processors are Resend, Inc. (USA — transactional
+          email) and Functional Software, Inc. / Sentry (USA — error monitoring). For B2B
+          customers, the full set of contractual safeguards applicable to these sub-processors
+          is set out in our <Link href="/dpa">Data Processing Addendum</Link>.
+        </p>
+        <p>
+          When you route LLM requests through Spanlens, we forward those requests to the
+          upstream LLM provider you target (OpenAI, Anthropic, or Google). Those providers
+          are independent controllers governed by their own terms, not Spanlens sub-processors.
+          See the Subprocessors page for direct links to each provider&apos;s terms.
+        </p>
         <p>
           <strong>We do not sell your data</strong> and we do not share it with advertising
           networks or data brokers.
@@ -201,12 +170,15 @@ export default function PrivacyPage() {
 
         <h2 id="international-transfers">6. International data transfers</h2>
         <p>
-          Because several of our sub-processors are located outside the Republic of Korea and
-          the EEA, your data may be transferred internationally. For transfers outside the EEA,
-          we rely on the European Commission&apos;s Standard Contractual Clauses or equivalent
-          safeguards offered by each sub-processor. PIPA-required cross-border disclosure
-          (recipient, purpose, data items, retention, transfer method) is satisfied by the
-          table above.
+          Because some of our sub-processors are located outside the Republic of Korea and
+          the EEA, your data may be transferred internationally. For transfers outside the
+          EEA, we rely on the European Commission&apos;s Standard Contractual Clauses
+          (Implementing Decision (EU) 2021/914), the UK International Data Transfer Addendum
+          where applicable, or equivalent safeguards offered by each sub-processor. Korea
+          has received an EU adequacy decision (2021/1772), which provides an additional
+          basis for transfers to our Supabase (Korea) data store. PIPA-required cross-border
+          disclosure (recipient, purpose, data items, retention, transfer method) is
+          satisfied by the Subprocessors page and the Data Processing Addendum.
         </p>
 
         <h2 id="retention">7. How long we keep your data</h2>
