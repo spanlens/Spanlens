@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import { Trash2, Mail, MessageSquare } from 'lucide-react'
 import {
@@ -199,8 +199,10 @@ export function AlertsClient() {
   const firing = alerts.filter((a) => a.is_active && isRecentlyFired(a.last_triggered_at))
   const active = alerts.filter((a) => a.is_active && !isRecentlyFired(a.last_triggered_at))
   const paused = alerts.filter((a) => !a.is_active)
+  // Capture "now" at mount — last-24h bucketing for header counter.
+  const [mountNow] = useState(() => Date.now())
   const fires24h = deliveries.filter(
-    (d) => Date.now() - new Date(d.created_at).getTime() < 24 * 60 * 60 * 1000,
+    (d) => mountNow - new Date(d.created_at).getTime() < 24 * 60 * 60 * 1000,
   ).length
   const isPending = updateAlert.isPending || deleteAlert.isPending
 

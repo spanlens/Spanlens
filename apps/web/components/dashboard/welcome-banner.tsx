@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import Link from 'next/link'
 import { Copy, Check, X, Terminal } from 'lucide-react'
 
@@ -25,19 +25,21 @@ const openai = createOpenAI()
 // Use it like a normal OpenAI SDK client:
 // await openai.chat.completions.create({ ... })`
 
+function loadApiKey(): string | null {
+  if (typeof window === 'undefined') return null
+  try {
+    return sessionStorage.getItem(STORAGE_KEY)
+  } catch {
+    return null
+  }
+}
+
 export function WelcomeBanner() {
-  const [apiKey, setApiKey] = useState<string | null>(null)
+  // Lazy init reads sessionStorage on client mount (SSR-safe via the typeof
+  // guard). After mount, `dismiss()` clears the value via setState.
+  const [apiKey, setApiKey] = useState<string | null>(loadApiKey)
   const [copiedKey, setCopiedKey] = useState(false)
   const [copiedSnippet, setCopiedSnippet] = useState(false)
-
-  useEffect(() => {
-    try {
-      const key = sessionStorage.getItem(STORAGE_KEY)
-      if (key) setApiKey(key)
-    } catch {
-      /* ignore */
-    }
-  }, [])
 
   if (!apiKey) return null
 
