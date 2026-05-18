@@ -810,7 +810,7 @@ function PlanLimitsTab() {
   const seatLimit = PLAN_SEAT_LIMITS[currentPlan]
   const seatLimitLabel = seatLimit == null ? 'unlimited' : String(seatLimit)
   const retentionDays = PLAN_RETENTION_DAYS[currentPlan] ?? 14
-  const retentionLabel = retentionDays >= 36_500 ? 'unlimited' : `${retentionDays} days`
+  const retentionLabel = `${retentionDays} days`
 
   return (
     <div className="max-w-[1040px]">

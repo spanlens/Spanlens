@@ -53,7 +53,7 @@ const PLANS = [
   },
   {
     name: 'Enterprise', price: 'Custom', unit: '',
-    bullets: ['Custom volume & rate limits', 'Unlimited retention', 'SSO (SAML / Okta)', 'Unlimited seats', 'Dedicated support + SLA'],
+    bullets: ['Custom volume & rate limits', '365 day retention (extendable)', 'SSO (SAML / Okta)', 'Unlimited seats', 'Dedicated support + SLA'],
     cta: 'Contact us', href: 'mailto:hi@spanlens.io', primary: false,
   },
 ]

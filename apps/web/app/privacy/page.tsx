@@ -224,7 +224,7 @@ export default function PrivacyPage() {
             </tr>
             <tr>
               <td>LLM request logs</td>
-              <td>Per your plan: 7 days (Free) / 30 days (Starter) / 90 days (Team) / 365 days (Enterprise)</td>
+              <td>Per your plan: 14 days (Free) / 90 days (Pro) / 365 days (Team) / 365 days (Enterprise; extendable by contract)</td>
             </tr>
             <tr>
               <td>Encrypted provider keys</td>

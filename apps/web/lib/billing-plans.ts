@@ -66,7 +66,7 @@ export const PLANS: PlanCardConfig[] = [
     description: 'SSO, on-prem, custom SLAs.',
     features: [
       'Custom request volume',
-      'Unlimited log retention',
+      '365-day log retention (extendable by contract)',
       'Unlimited seats',
       'SSO / SAML',
       'Dedicated Slack channel',
@@ -92,7 +92,10 @@ export const PLAN_RETENTION_DAYS: Record<string, number> = {
   free: 14,
   starter: 90,
   team: 365,
-  enterprise: 36_500,
+  // Default Enterprise retention — extendable per contract. Must match
+  // apps/server/src/lib/quota.ts LOG_RETENTION_DAYS to keep dashboard
+  // display consistent with server-enforced ClickHouse filtering.
+  enterprise: 365,
 }
 
 /**

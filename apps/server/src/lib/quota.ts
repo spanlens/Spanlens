@@ -35,7 +35,11 @@ export const LOG_RETENTION_DAYS: Record<Plan, number> = {
   free: 14,
   starter: 90,
   team: 365,
-  enterprise: 36_500,
+  // Enterprise default — extendable by separate contract. Previously 36500
+  // (100 years, effectively unlimited), but that conflicted with the
+  // published Privacy Policy and made GDPR data-minimization harder to
+  // justify. 365d aligns with the longest standard tier.
+  enterprise: 365,
 }
 
 // Team seat limits per plan. enforced when inviting members.
