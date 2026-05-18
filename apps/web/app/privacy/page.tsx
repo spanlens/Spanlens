@@ -257,16 +257,20 @@ export default function PrivacyPage() {
 
         <h2 id="cookies">10. Cookies</h2>
         <p>
-          We set <strong>functional cookies</strong> required to maintain your authenticated
-          session. These include the <code>sb-access-token</code> and <code>sb-refresh-token</code>
-          cookies managed by Supabase. We do <strong>not</strong> use advertising cookies,
-          tracking pixels, or third-party analytics cookies. No consent banner is required for
-          our current cookie usage under the ePrivacy Directive&apos;s &ldquo;strictly
-          necessary&rdquo; exception.
+          We set <strong>strictly necessary cookies</strong> required to maintain your
+          authenticated session. These include the <code>sb-access-token</code> and{' '}
+          <code>sb-refresh-token</code> cookies managed by Supabase. We do <strong>not</strong>{' '}
+          currently use advertising cookies, tracking pixels, or third-party analytics
+          cookies. No consent banner is required for our current cookie usage under the
+          ePrivacy Directive&apos;s &ldquo;strictly necessary&rdquo; exception.
         </p>
         <p>
-          If we add analytics in the future, we will update this policy and offer an opt-in
-          consent mechanism.
+          The consent infrastructure for any future opt-in analytics is already in place
+          (a consent banner component plus an <code>isAnalyticsAllowed()</code> gate that
+          all non-essential SDKs must check before initializing). Analytics imports are
+          additionally blocked at lint time so a contributor cannot ship a tracker without
+          first wiring up the consent gate. If we add analytics in the future, we will
+          update this policy and the banner will appear by default.
         </p>
 
         <h2 id="security">11. Security measures</h2>
