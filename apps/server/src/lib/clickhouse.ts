@@ -80,6 +80,31 @@ export async function pingClickhouse(): Promise<boolean> {
 }
 
 /**
+ * Returns the raw ClickHouse client scoped to a specific organization.
+ *
+ * This is a thin helper that pairs `getClickhouse()` with the caller's
+ * `organizationId` so API/middleware code must explicitly declare the org
+ * rather than calling the bare singleton. It does NOT automatically inject
+ * the WHERE clause — callers still write `organization_id = {orgId:UUID}` —
+ * but it makes the required scoping explicit at the call site.
+ *
+ * For higher-level helpers that fully handle scoping, prefer
+ * `requestsScope` / `selectRequests` / `countRequests` from
+ * `lib/requests-query.ts`.
+ *
+ * Usage:
+ *   const { client, orgId } = getOrgClickhouse(organizationId)
+ *   const result = await client.query({
+ *     query: 'SELECT id FROM requests WHERE organization_id = {orgId:UUID} AND ...',
+ *     query_params: { orgId, ... },
+ *     format: 'JSONEachRow',
+ *   })
+ */
+export function getOrgClickhouse(organizationId: string): { client: ClickHouseClient; orgId: string } {
+  return { client: getClickhouse(), orgId: organizationId }
+}
+
+/**
  * Formats a Date for a ClickHouse `DateTime64(3, 'UTC')` column.
  *
  * `Date.toISOString()` produces `2026-05-16T11:49:23.749Z`, but ClickHouse's

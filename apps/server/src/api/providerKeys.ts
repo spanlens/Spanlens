@@ -2,7 +2,7 @@ import { Hono } from 'hono'
 import { authJwt, type JwtContext } from '../middleware/authJwt.js'
 import { requireRole } from '../middleware/requireRole.js'
 import { supabaseAdmin } from '../lib/db.js'
-import { getClickhouse } from '../lib/clickhouse.js'
+import { getOrgClickhouse } from '../lib/clickhouse.js'
 import { aes256Encrypt } from '../lib/crypto.js'
 
 /**
@@ -72,8 +72,9 @@ providerKeysRouter.get('/', async (c) => {
   // pattern as lib/stale-key-digest.ts.
   const keyIds = rows.map((k) => k.id as string)
   const lastUsedMap = new Map<string, string>()
+  const { client: ch } = getOrgClickhouse(orgId)
   try {
-    const result = await getClickhouse().query({
+    const result = await ch.query({
       query:
         'SELECT provider_key_id AS id, max(created_at) AS last_used_at ' +
         'FROM requests ' +

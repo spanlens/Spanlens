@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { supabaseAdmin } from '../lib/db.js'
-import { getClickhouse } from '../lib/clickhouse.js'
+import { getOrgClickhouse } from '../lib/clickhouse.js'
 import { deliverToChannel, type AlertNotification } from '../lib/notifiers.js'
 import { retryFailedWebhooks } from '../lib/webhook-dispatch.js'
 import { computeAndReportOverages } from '../lib/paddle-usage.js'
@@ -108,12 +108,13 @@ async function computeMetric(alert: AlertRow): Promise<number | null> {
     'AND created_at >= parseDateTime64BestEffort({windowStart:String})' +
     projectClause
 
+  const { client: ch } = getOrgClickhouse(alert.organization_id)
   try {
     if (alert.type === 'budget') {
       // sum(cost_usd) — no row limit needed, ClickHouse aggregates over the
       // whole window in-DB. Earlier Supabase implementation capped at 10k rows
       // which silently under-reported large alert windows.
-      const result = await getClickhouse().query({
+      const result = await ch.query({
         query: `SELECT sum(cost_usd) AS total FROM requests WHERE ${where}`,
         query_params: params,
         format: 'JSONEachRow',
@@ -124,7 +125,7 @@ async function computeMetric(alert: AlertRow): Promise<number | null> {
 
     if (alert.type === 'error_rate') {
       // Single GROUP-less aggregation returns both numerator and denominator.
-      const result = await getClickhouse().query({
+      const result = await ch.query({
         query: `
           SELECT count() AS total, countIf(status_code >= 400) AS errors
           FROM requests WHERE ${where}`,
@@ -140,7 +141,7 @@ async function computeMetric(alert: AlertRow): Promise<number | null> {
     // latency_p95 — ClickHouse's quantile() computes in-DB. Replaces the old
     // "pull 10k sorted rows, index into array" pattern (also subject to the
     // 10k cap which silently under-estimated p95 at scale).
-    const result = await getClickhouse().query({
+    const result = await ch.query({
       query: `SELECT quantileIf(0.95)(latency_ms, latency_ms > 0) AS p95 FROM requests WHERE ${where}`,
       query_params: params,
       format: 'JSONEachRow',
