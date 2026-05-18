@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
-import type { GlobalSetupContext } from 'vitest/node'
+import { provide } from 'vitest'
 
 // Standard local Supabase credentials — same for every local project.
 const LOCAL_URL = 'http://127.0.0.1:54321'
@@ -26,7 +26,7 @@ function adminClient() {
   })
 }
 
-export async function setup({ provide }: GlobalSetupContext) {
+export async function setup() {
   const admin = adminClient()
 
   // 1. Auth user — needed for organizations.owner_id FK
