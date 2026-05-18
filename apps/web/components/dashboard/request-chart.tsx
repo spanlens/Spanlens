@@ -120,8 +120,8 @@ export function RequestChart({ data, firedAt = [] }: RequestChartProps) {
               fontSize: 11,
               fontFamily: 'monospace',
             }}
-            labelFormatter={(label: string) => {
-              if (!isHourly) return label
+            labelFormatter={(label) => {
+              if (typeof label !== 'string' || !isHourly) return String(label ?? '')
               const pt = formatted.find((d) => d.label === label)
               if (!pt) return label
               return new Date(pt.date).toLocaleString([], {
@@ -129,11 +129,11 @@ export function RequestChart({ data, firedAt = [] }: RequestChartProps) {
                 hour: '2-digit', minute: '2-digit', hour12: false,
               })
             }}
-            formatter={(value: unknown, name: string) => {
+            formatter={(value: unknown, name) => {
               const num = typeof value === 'number' ? value : 0
               if (name === 'cost') return [`$${num.toFixed(2)}`, 'Spend']
               if (name === 'requests') return [num.toLocaleString(), 'Requests']
-              return [String(num), name]
+              return [String(num), String(name ?? '')]
             }}
           />
 
