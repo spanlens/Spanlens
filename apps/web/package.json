@@ -6,7 +6,7 @@
     "dev": "next dev --port 3000",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint --dir app --dir components --dir lib",
+    "lint": "next lint .",
     "typecheck": "tsc --noEmit",
     "analyze": "ANALYZE=true next build",
     "clean": "rm -rf .next"
