@@ -73,6 +73,23 @@ export function useCreateCheckout() {
   })
 }
 
+/** Cancel the active subscription at period end. */
+export function useCancelSubscription() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async () => {
+      const res = await apiPost<ApiEnvelope<{ success: boolean }>>(
+        '/api/v1/billing/cancel',
+        {},
+      )
+      return res
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: subscriptionQueryKey })
+    },
+  })
+}
+
 /** Local helper — called after the user returns from Paddle checkout. */
 export function useRefreshSubscription() {
   const queryClient = useQueryClient()
