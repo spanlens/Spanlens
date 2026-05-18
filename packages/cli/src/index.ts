@@ -166,7 +166,7 @@ async function main(): Promise<void> {
   // Validate against the API + introspect registered providers.
   const sValidate = p.spinner()
   sValidate.start('Validating key with Spanlens')
-  let keyInfo: KeyInfo
+  let keyInfo!: KeyInfo
   try {
     keyInfo = await fetchKeyInfo(apiKey, apiBase)
     sValidate.stop(

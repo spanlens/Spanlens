@@ -24,7 +24,7 @@ export function upsertEnvVar(
   let found = false
   let valueChanged = false
 
-  const updated = lines.map((line) => {
+  const updated = lines.map((line: string) => {
     if (pattern.test(line)) {
       found = true
       const newLine = `${key}=${value}`
