@@ -94,3 +94,19 @@ export const PLAN_RETENTION_DAYS: Record<string, number> = {
   team: 365,
   enterprise: 36_500,
 }
+
+/**
+ * Display label for a plan identifier. Single source of truth for the
+ * marketing name attached to each internal plan id — keeps the rename
+ * `starter` → "Pro" in one place so the sidebar and settings widgets
+ * agree with the billing page's plan cards.
+ *
+ * Falls back to capitalizing the raw id, which keeps unknown future
+ * plans rendering sensibly without a hard failure.
+ */
+export function formatPlanLabel(planId: string | null | undefined): string {
+  if (!planId) return 'Free'
+  const known = PLANS.find((p) => p.id === planId)
+  if (known) return known.name
+  return planId.charAt(0).toUpperCase() + planId.slice(1)
+}
