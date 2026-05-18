@@ -198,10 +198,18 @@ paddleWebhookRouter.post('/paddle', async (c) => {
       } else {
         if (!priceId) {
           console.error('[paddle-webhook] missing price id', event.event_id)
-          return c.json({ error: 'missing price id' }, 400)
+          // Return 200 so Paddle does not retry — this is a config gap, not
+          // a transient error.  Add PADDLE_PRICE_* env vars to resolve.
+          return c.json({ skipped: 'missing price id', event_id: event.event_id })
         }
-        console.error('[paddle-webhook] unknown price id', priceId)
-        return c.json({ error: `unknown price id ${priceId}` }, 400)
+        // Unknown price ID means PADDLE_PRICE_* env var is not configured for
+        // this price.  Return 200 to stop Paddle's retry loop; log prominently
+        // so the operator knows to set the env var.
+        console.error(
+          '[paddle-webhook] unknown price id — add PADDLE_PRICE_* env var:',
+          priceId, 'event_id:', event.event_id,
+        )
+        return c.json({ skipped: 'unknown price id', price_id: priceId, event_id: event.event_id })
       }
     }
 
@@ -241,8 +249,13 @@ paddleWebhookRouter.post('/paddle', async (c) => {
 
     const plan = planForPriceId(priceId)
     if (!plan) {
-      console.error('[paddle-webhook] unknown price id in transaction', priceId)
-      return c.json({ error: `unknown price id ${priceId}` }, 400)
+      // Return 200 to stop Paddle's retry loop; operator must add the
+      // PADDLE_PRICE_* env var to process this event type going forward.
+      console.error(
+        '[paddle-webhook] unknown price id in transaction — add PADDLE_PRICE_* env var:',
+        priceId, 'event_id:', event.event_id,
+      )
+      return c.json({ skipped: 'unknown price id', price_id: priceId, event_id: event.event_id })
     }
 
     // Enrich with billing period + exact status from Paddle API. The
