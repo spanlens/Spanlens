@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useSyncExternalStore } from 'react'
 
 import { CodeBlock } from './code-block'
 
@@ -28,6 +28,18 @@ function readStoredLang(): Lang {
   return value === 'py' ? 'py' : 'ts'
 }
 
+// useSyncExternalStore subscriber: every <LangTabs> shares a single
+// in-memory snapshot driven by the EVENT_NAME custom event, so calling
+// pick() in one instance re-renders all of them on the page.
+function subscribe(onChange: () => void): () => void {
+  window.addEventListener(EVENT_NAME, onChange)
+  return () => window.removeEventListener(EVENT_NAME, onChange)
+}
+
+function getServerSnapshot(): Lang {
+  return 'ts'
+}
+
 interface LangTabsProps {
   ts?: string
   py?: string
@@ -35,22 +47,10 @@ interface LangTabsProps {
 
 export function LangTabs({ ts, py }: LangTabsProps) {
   // Default during SSR + first paint is `ts` to avoid layout shift for the
-  // most common reader. The effect below upgrades to the persisted choice.
-  const [lang, setLang] = useState<Lang>('ts')
-
-  useEffect(() => {
-    setLang(readStoredLang())
-
-    function onChange(e: Event) {
-      const detail = (e as CustomEvent<Lang>).detail
-      if (detail === 'ts' || detail === 'py') setLang(detail)
-    }
-    window.addEventListener(EVENT_NAME, onChange)
-    return () => window.removeEventListener(EVENT_NAME, onChange)
-  }, [])
+  // most common reader. After hydration the persisted choice takes over.
+  const lang = useSyncExternalStore(subscribe, readStoredLang, getServerSnapshot)
 
   function pick(next: Lang) {
-    setLang(next)
     window.localStorage.setItem(STORAGE_KEY, next)
     window.dispatchEvent(new CustomEvent<Lang>(EVENT_NAME, { detail: next }))
   }

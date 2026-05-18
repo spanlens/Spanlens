@@ -57,6 +57,9 @@ function MfaPageInner() {
       return
     }
 
+    // Use hard navigation (not router.push) so the dashboard layout
+    // re-evaluates middleware-derived headers fresh — see CLAUDE.md gotcha #15.
+    // eslint-disable-next-line react-hooks/immutability -- intentional hard nav after async submit
     window.location.href = '/dashboard'
   }
 

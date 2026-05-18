@@ -71,6 +71,10 @@ export function AlertDetailClient() {
     return m
   }, [channelsQuery.data])
 
+  // Capture "now" at mount — used to bucket deliveries into the last 24h.
+  // This is a UI sliver, not a billing window, so a fixed reference is fine.
+  const [mountNow] = useState(() => Date.now())
+
   const [editOpen, setEditOpen] = useState(false)
   const [editName, setEditName] = useState('')
   const [editThreshold, setEditThreshold] = useState('')
@@ -141,7 +145,7 @@ export function AlertDetailClient() {
 
   const firing = alert.is_active && isRecentlyFired(alert.last_triggered_at)
   const fires24h = deliveries.filter(
-    (d) => Date.now() - new Date(d.created_at).getTime() < 24 * 60 * 60 * 1000,
+    (d) => mountNow - new Date(d.created_at).getTime() < 24 * 60 * 60 * 1000,
   ).length
   const sent = deliveries.filter((d) => d.status === 'sent').length
   const failed = deliveries.filter((d) => d.status === 'failed').length

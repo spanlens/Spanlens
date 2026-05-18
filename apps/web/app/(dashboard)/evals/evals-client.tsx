@@ -223,19 +223,16 @@ function RunEvaluatorDialog({
   const createRun = useCreateEvalRun()
   const estimate = useEstimateEvalCost()
 
-  const [versionId, setVersionId] = useState('')
+  const [versionIdRaw, setVersionId] = useState('')
   const [source, setSource] = useState<'production' | 'dataset'>('production')
   const [datasetId, setDatasetId] = useState('')
   const [sampleSize, setSampleSize] = useState(50)
   const [days, setDays] = useState(7)
   const [error, setError] = useState('')
 
-  // Default to latest version
-  useEffect(() => {
-    if (!versionId && versions.data && versions.data.length > 0) {
-      setVersionId(versions.data[0]!.id)
-    }
-  }, [versions.data, versionId])
+  // Derive default selection from query data instead of syncing via an
+  // effect. Once the user picks a value, `versionIdRaw` wins.
+  const versionId = versionIdRaw || versions.data?.[0]?.id || ''
 
   const judgeModel = evaluator.config.judge_model
   const estimateMutate = estimate.mutateAsync

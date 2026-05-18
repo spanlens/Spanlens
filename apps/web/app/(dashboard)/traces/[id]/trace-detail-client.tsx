@@ -1,22 +1,24 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Topbar } from '@/components/layout/topbar'
 import { Skeleton } from '@/components/ui/skeleton'
 import { TracePanel } from '@/components/traces/trace-panel'
 import { useTrace } from '@/lib/queries/use-traces'
 
+function loadNavIds(): string[] {
+  if (typeof window === 'undefined') return []
+  try {
+    const raw = sessionStorage.getItem('traceNavList')
+    const parsed = raw ? (JSON.parse(raw) as { ids: string[] }) : null
+    return parsed?.ids ?? []
+  } catch { return [] }
+}
+
 export function TraceDetailClient({ id }: { id: string }) {
   const router = useRouter()
-  const [navIds, setNavIds] = useState<string[]>([])
-
-  useEffect(() => {
-    try {
-      const raw = sessionStorage.getItem('traceNavList')
-      const parsed = raw ? (JSON.parse(raw) as { ids: string[] }) : null
-      setNavIds(parsed?.ids ?? [])
-    } catch { /* ignore */ }
-  }, [])
+  // Lazy init reads sessionStorage on client mount (SSR-safe via typeof check).
+  const [navIds] = useState<string[]>(loadNavIds)
 
   const navIdx = navIds.indexOf(id)
   const prevId = navIdx > 0 ? navIds[navIdx - 1] : null

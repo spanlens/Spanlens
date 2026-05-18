@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import Link from 'next/link'
 import { ArrowLeft, Check, Copy, Play, RotateCw } from 'lucide-react'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -19,9 +19,9 @@ type Tab = 'request' | 'response' | 'error'
 
 export function RequestDetailClient({ id }: { id: string }) {
   const { data: req, isLoading, isError, refetch } = useRequest(id)
+  // Parent passes `key={id}` so this component remounts on id change —
+  // no setState-in-effect needed to reset the active tab.
   const [tab, setTab] = useState<Tab>('request')
-
-  useEffect(() => { setTab('request') }, [id])
 
   if (isLoading) {
     return (

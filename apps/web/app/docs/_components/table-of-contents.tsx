@@ -19,28 +19,30 @@ function slugify(text: string): string {
 }
 
 export function TableOfContents() {
-  const [headings, setHeadings] = useState<Heading[]>([])
-  const [activeId, setActiveId] = useState<string>('')
-
+  // Remount the inner component when pathname changes so state resets
+  // (headings + activeId) instead of using setState-in-effect.
   const pathname = usePathname()
+  return <TableOfContentsInner key={pathname} />
+}
 
-  useEffect(() => {
-    setActiveId('')
-
+function TableOfContentsInner() {
+  // Collect headings from the article DOM lazily. SSR returns [] so the
+  // server-rendered HTML matches; on client mount the lazy initializer runs
+  // and finds the article's headings — no setState-in-effect needed.
+  const [headings] = useState<Heading[]>(() => {
+    if (typeof document === 'undefined') return []
     const article = document.querySelector('article')
-    if (!article) return
-
+    if (!article) return []
     const els = Array.from(article.querySelectorAll('h2, h3')) as HTMLElement[]
-
-    const items: Heading[] = els.map((el) => {
-      if (!el.id) {
-        el.id = slugify(el.textContent ?? '')
-      }
+    return els.map((el) => {
+      if (!el.id) el.id = slugify(el.textContent ?? '')
       return { id: el.id, text: el.textContent ?? '', level: parseInt(el.tagName[1] ?? '2') }
     })
+  })
+  const [activeId, setActiveId] = useState<string>('')
 
-    setHeadings(items)
-
+  useEffect(() => {
+    if (headings.length === 0) return
     const observer = new IntersectionObserver(
       (entries) => {
         for (const entry of entries) {
@@ -49,9 +51,12 @@ export function TableOfContents() {
       },
       { rootMargin: '0px 0px -80% 0px' },
     )
-    els.forEach((el) => observer.observe(el))
+    for (const h of headings) {
+      const el = document.getElementById(h.id)
+      if (el) observer.observe(el)
+    }
     return () => observer.disconnect()
-  }, [pathname])
+  }, [headings])
 
   if (headings.length === 0) return null
 

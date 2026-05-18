@@ -1,5 +1,5 @@
 'use client'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { Plus, Trash2, Check, Sun, Moon, Monitor, type LucideIcon } from 'lucide-react'
@@ -273,6 +273,8 @@ function MembersTab() {
   const [inviteOpen, setInviteOpen] = useState(false)
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviteRole, setInviteRole] = useState<OrgRole>('editor')
+  // Capture "now" once at mount — drives the invitations expiry countdown.
+  const [mountNow] = useState(() => Date.now())
   const [inviteError, setInviteError] = useState('')
   const [inviteSuccess, setInviteSuccess] = useState<string | null>(null)
   const [rowError, setRowError] = useState<string | null>(null)
@@ -412,7 +414,7 @@ function MembersTab() {
           <div className="divide-y divide-border min-w-[520px]">
             {(invitations.data ?? []).map((inv) => {
               const expires = new Date(inv.expires_at)
-              const daysLeft = Math.max(0, Math.ceil((expires.getTime() - Date.now()) / 86_400_000))
+              const daysLeft = Math.max(0, Math.ceil((expires.getTime() - mountNow) / 86_400_000))
               return (
                 <div
                   key={inv.id}
@@ -497,11 +499,17 @@ function MembersTab() {
 
 function SecurityTab() {
   const { data: org } = useOrganization()
+  // Remount inner panel when org's threshold value changes so the local input
+  // state initialises from the new server value — avoids setState-in-effect.
+  return <SecurityTabInner key={String(org?.stale_key_threshold_days ?? '__loading__')} />
+}
+
+function SecurityTabInner() {
+  const { data: org } = useOrganization()
   const updateSecurity = useUpdateSecuritySettings()
-  const [thresholdDays, setThresholdDays] = useState<string>('90')
-  useEffect(() => {
-    if (org) setThresholdDays(String(org.stale_key_threshold_days))
-  }, [org])
+  const [thresholdDays, setThresholdDays] = useState<string>(
+    org ? String(org.stale_key_threshold_days) : '90',
+  )
   const staleAlertsEnabled = org?.stale_key_alerts_enabled ?? true
   const leakDetectionEnabled = org?.leak_detection_enabled ?? false
 

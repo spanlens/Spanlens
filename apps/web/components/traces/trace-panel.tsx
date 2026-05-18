@@ -321,8 +321,8 @@ interface SpanDrawerProps {
 }
 
 function SpanDrawer({ span, onClose, onPrev, onNext, hasPrev, hasNext, position, total, traceDurationMs, traceTotalCost, isCritical }: SpanDrawerProps) {
+  // Parent passes `key={span.id}` to remount on span change.
   const [tab, setTab] = useState<SpanTab>('input')
-  useEffect(() => { setTab('input') }, [span.id])
   const isLlm = span.span_type === 'llm'
 
   const durationPct = traceDurationMs && span.duration_ms
@@ -515,6 +515,12 @@ export interface TracePanelProps {
 }
 
 export function TracePanel({ traceId }: TracePanelProps) {
+  // Remount inner component on trace change so all local span-related state
+  // resets without a setState-in-effect.
+  return <TracePanelInner key={traceId} traceId={traceId} />
+}
+
+function TracePanelInner({ traceId }: TracePanelProps) {
   const [selectedSpan, setSelectedSpan] = useState<SpanRow | null>(null)
   const [spanSearch, setSpanSearch] = useState('')
   const [typeFilter, setTypeFilter] = useState<SpanType | 'all'>('all')
@@ -522,15 +528,6 @@ export function TracePanel({ traceId }: TracePanelProps) {
   const [errorJumpIdx, setErrorJumpIdx] = useState(0)
 
   const { data: trace, isLoading, isError } = useTrace(traceId)
-
-  // Reset span state when trace changes
-  useEffect(() => {
-    setSelectedSpan(null)
-    setSpanSearch('')
-    setTypeFilter('all')
-    setErrorsOnly(false)
-    setErrorJumpIdx(0)
-  }, [traceId])
 
   const filteredSpans = useMemo(() => {
     if (!trace) return []
@@ -798,6 +795,9 @@ export function TracePanel({ traceId }: TracePanelProps) {
 
       {selectedSpan && (
         <SpanDrawer
+          // key={selectedSpan.id} remounts the drawer on span change so the
+          // active tab resets to 'input' without a setState-in-effect.
+          key={selectedSpan.id}
           span={selectedSpan}
           onClose={() => setSelectedSpan(null)}
           onPrev={() => { if (allIdx > 0) setSelectedSpan(trace.spans[allIdx - 1] ?? null) }}
