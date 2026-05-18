@@ -28,7 +28,7 @@ jobs:
       # NOTE: intentionally NOT using setup-node's registry-url — it sets
       # NPM_CONFIG_USERCONFIG to point at its own .npmrc, which shadowed the
       # package-level .npmrc we tried to write. Manage auth ourselves.
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: '22'
           cache: 'pnpm'
