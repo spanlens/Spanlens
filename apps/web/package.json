@@ -6,7 +6,7 @@
     "dev": "next dev --port 3000",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint .",
+    "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "analyze": "ANALYZE=true next build",
     "clean": "rm -rf .next"
@@ -45,7 +45,7 @@
     "@types/node": "^25",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "eslint": "^10",
+    "eslint": "^9",
     "eslint-config-next": "16.2.6",
     "@tailwindcss/postcss": "^4.3.0",
     "postcss": "^8",
