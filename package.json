@@ -13,9 +13,9 @@
     "ch:migrate": "pnpm --filter server exec tsx ../../clickhouse/apply.ts"
   },
   "devDependencies": {
-    "typescript": "^5.4.5",
+    "typescript": "^6.0.3",
     "prettier": "^3.3.3",
-    "eslint": "^8.57.0"
+    "eslint": "^10.4.0"
   },
   "packageManager": "pnpm@10.33.0",
   "engines": {
