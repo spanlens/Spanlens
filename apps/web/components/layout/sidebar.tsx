@@ -9,6 +9,7 @@ import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
 import { useStatsOverview } from '@/lib/queries/use-stats'
 import { useQuota } from '@/lib/queries/use-billing'
+import { formatPlanLabel } from '@/lib/billing-plans'
 import { useSidebar } from '@/lib/sidebar-context'
 import { useAnomalies } from '@/lib/queries/use-anomalies'
 import { useAlerts } from '@/lib/queries/use-alerts'
@@ -403,7 +404,7 @@ export function Sidebar() {
       {/* Usage + upgrade widget */}
       <div className="mx-[18px] mb-[14px] mt-2 p-3 rounded-md border border-border bg-bg-muted">
         <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-1.5">
-          Plan · {quota.data?.plan ?? 'free'}
+          Plan · {formatPlanLabel(quota.data?.plan)}
         </div>
         <div className="text-[13px] text-text mb-1.5">
           {quota.data

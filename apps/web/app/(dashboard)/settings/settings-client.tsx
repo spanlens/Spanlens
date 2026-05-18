@@ -41,7 +41,7 @@ import {
   useCurrentMember,
   type OrgRole,
 } from '@/lib/queries/use-members'
-import { PLANS, PLAN_REQUEST_LIMITS, PLAN_SEAT_LIMITS, PLAN_RETENTION_DAYS } from '@/lib/billing-plans'
+import { PLANS, PLAN_REQUEST_LIMITS, PLAN_SEAT_LIMITS, PLAN_RETENTION_DAYS, formatPlanLabel } from '@/lib/billing-plans'
 import type { BillingPlan } from '@/lib/queries/types'
 import {
   useWebhooks,
@@ -674,7 +674,7 @@ function BillingTab() {
   const { data: quota } = useQuota()
 
   const planName = subscription?.plan ?? 'free'
-  const planLabel = planName.charAt(0).toUpperCase() + planName.slice(1)
+  const planLabel = formatPlanLabel(planName)
 
   const usedThisMonth = quota?.usedThisMonth ?? 0
   const limit = quota?.limit ?? 10_000
