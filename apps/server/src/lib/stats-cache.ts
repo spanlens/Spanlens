@@ -85,6 +85,25 @@ function refreshInBackground<T>(
  *
  * Returns the cached value (fresh or stale) or the loader's fresh result.
  */
+// DIAG: prove Redis round-trip works. One-shot per Lambda cold start.
+let _roundtripChecked = false
+async function checkRoundtrip(redis: Redis): Promise<void> {
+  if (_roundtripChecked) return
+  _roundtripChecked = true
+  const k = 'spanlens:diag:roundtrip:' + Date.now()
+  try {
+    await redis.set(k, { hello: 'world', ts: Date.now() }, { ex: 30 })
+    const back = await redis.get(k)
+    console.log('[stats-cache] diag: roundtrip', {
+      backType: typeof back,
+      backIsNull: back === null,
+      backJson: back === null ? null : JSON.stringify(back).slice(0, 200),
+    })
+  } catch (err) {
+    console.error('[stats-cache] diag: roundtrip failed:', err)
+  }
+}
+
 export async function withStatsCache<T>(
   c: Context,
   key: string,
@@ -96,6 +115,8 @@ export async function withStatsCache<T>(
     console.log('[stats-cache] diag: no-redis', { key: key.slice(0, 60) })
     return loader()
   }
+  // Fires once per Lambda cold start, proves SET→GET round-trip works.
+  fireAndForget(c, checkRoundtrip(redis))
 
   let entry: CacheEntry<T> | null = null
   try {
