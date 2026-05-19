@@ -92,7 +92,10 @@ export async function withStatsCache<T>(
   loader: () => Promise<T>,
 ): Promise<T> {
   const redis = getRedis()
-  if (!redis) return loader()
+  if (!redis) {
+    console.log('[stats-cache] diag: no-redis', { key: key.slice(0, 60) })
+    return loader()
+  }
 
   let entry: CacheEntry<T> | null = null
   try {
@@ -106,21 +109,32 @@ export async function withStatsCache<T>(
     const ageSeconds = (Date.now() - entry.cachedAt) / 1000
 
     if (ageSeconds < opts.freshSeconds) {
+      console.log('[stats-cache] diag: hit-fresh', { key: key.slice(0, 60), ageSeconds })
       return entry.data
     }
 
     if (ageSeconds < opts.staleSeconds) {
+      console.log('[stats-cache] diag: hit-stale', { key: key.slice(0, 60), ageSeconds })
       refreshInBackground(c, redis, key, opts.staleSeconds, loader)
       return entry.data
     }
     // Beyond stale (defensive — should already be expired by Redis TTL).
   }
 
+  console.log('[stats-cache] diag: miss', { key: key.slice(0, 60), entryWasNull: entry === null, ttl: opts.staleSeconds })
   const fresh = await loader()
   const newEntry: CacheEntry<T> = { data: fresh, cachedAt: Date.now() }
   // Must NOT use .catch() — Vercel drops the pending promise on handler
   // return. fireAndForget routes through @vercel/functions waitUntil.
-  fireAndForget(c, redis.set(key, newEntry, { ex: opts.staleSeconds }))
+  fireAndForget(c, (async () => {
+    try {
+      const result = await redis.set(key, newEntry, { ex: opts.staleSeconds })
+      console.log('[stats-cache] diag: write-ok', { key: key.slice(0, 60), result })
+    } catch (err) {
+      console.error('[stats-cache] diag: write-failed', { key: key.slice(0, 60), err: String(err) })
+      throw err
+    }
+  })())
   return fresh
 }
 
