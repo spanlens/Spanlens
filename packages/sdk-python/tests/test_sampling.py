@@ -24,8 +24,8 @@ import respx
 
 from spanlens import SpanlensClient
 from spanlens.sampler import (
-    BufferingTransport,
     MAX_BUFFER_SIZE,
+    BufferingTransport,
     should_sample,
     validate_sample_rate,
 )

@@ -20,7 +20,6 @@ from typing import Any, Callable, Optional
 
 from .transport import Transport
 
-
 # Cap on buffered ops per sampled-out trace. Bounds worst-case memory if a
 # long-running trace never ends. ~1000 ops = ~50 spans × 20-deep nesting.
 MAX_BUFFER_SIZE = 1000
