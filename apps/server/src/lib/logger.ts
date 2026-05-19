@@ -222,53 +222,73 @@ export async function logRequestAsync(data: RequestLogData): Promise<void> {
   const userId = dropIdentifiers ? null : (data.userId ?? null)
   const sessionId = dropIdentifiers ? null : (data.sessionId ?? null)
 
+  const clickhouseRow = {
+    id: randomUUID(),
+    organization_id: data.organizationId,
+    project_id: data.projectId,
+    api_key_id: data.apiKeyId ?? null,
+    provider: data.provider,
+    model: data.model,
+    prompt_tokens: data.promptTokens,
+    completion_tokens: data.completionTokens,
+    total_tokens: data.totalTokens,
+    cache_read_tokens: data.cacheReadTokens ?? 0,
+    cache_write_tokens: data.cacheWriteTokens ?? 0,
+    cost_usd: data.costUsd,
+    latency_ms: data.latencyMs,
+    proxy_overhead_ms: data.proxyOverheadMs ?? null,
+    status_code: data.statusCode,
+    request_body: requestBody,
+    response_body: responseBody,
+    error_message: errorMessage,
+    trace_id: data.traceId,
+    span_id: data.spanId,
+    prompt_version_id: data.promptVersionId ?? null,
+    provider_key_id: data.providerKeyId ?? null,
+    user_id: userId,
+    session_id: sessionId,
+    flags: JSON.stringify(requestFlags),
+    response_flags: JSON.stringify(responseFlags),
+    has_security_flags: requestFlags.length > 0 || responseFlags.length > 0,
+    // 0/1 because ClickHouse UInt8; never null even if the field was
+    // never set (older rows backfill via DEFAULT 0 on the column).
+    truncated: data.truncated ? 1 : 0,
+    // ClickHouse DateTime64 wants 'YYYY-MM-DD HH:MM:SS.fff' (no Z).
+    // Postgres's gen_random_uuid()/now() defaults moved to the
+    // application layer — no behavioral difference, just a different
+    // write boundary.
+    created_at: toClickhouseTimestamp(),
+  }
+
   try {
     await getClickhouse().insert({
       table: 'requests',
       format: 'JSONEachRow',
-      values: [
-        {
-          id: randomUUID(),
-          organization_id: data.organizationId,
-          project_id: data.projectId,
-          api_key_id: data.apiKeyId ?? null,
-          provider: data.provider,
-          model: data.model,
-          prompt_tokens: data.promptTokens,
-          completion_tokens: data.completionTokens,
-          total_tokens: data.totalTokens,
-          cache_read_tokens: data.cacheReadTokens ?? 0,
-          cache_write_tokens: data.cacheWriteTokens ?? 0,
-          cost_usd: data.costUsd,
-          latency_ms: data.latencyMs,
-          proxy_overhead_ms: data.proxyOverheadMs ?? null,
-          status_code: data.statusCode,
-          request_body: requestBody,
-          response_body: responseBody,
-          error_message: errorMessage,
-          trace_id: data.traceId,
-          span_id: data.spanId,
-          prompt_version_id: data.promptVersionId ?? null,
-          provider_key_id: data.providerKeyId ?? null,
-          user_id: userId,
-          session_id: sessionId,
-          flags: JSON.stringify(requestFlags),
-          response_flags: JSON.stringify(responseFlags),
-          has_security_flags: requestFlags.length > 0 || responseFlags.length > 0,
-          // 0/1 because ClickHouse UInt8; never null even if the field was
-          // never set (older rows backfill via DEFAULT 0 on the column).
-          truncated: data.truncated ? 1 : 0,
-          // ClickHouse DateTime64 wants 'YYYY-MM-DD HH:MM:SS.fff' (no Z).
-          // Postgres's gen_random_uuid()/now() defaults moved to the
-          // application layer — no behavioral difference, just a different
-          // write boundary.
-          created_at: toClickhouseTimestamp(),
-        },
-      ],
+      values: [clickhouseRow],
     })
   } catch (err) {
+    // ── ClickHouse fallback (P2.6) ─────────────────────────────────────────
+    // CH outage / network blip / Development tier cold-start → preserve the
+    // row in Supabase `requests_fallback` so the cron replayer can ingest
+    // it later. Without this backstop every CH outage silently loses customer
+    // billing data and dashboard entries.
     const message = err instanceof Error ? err.message : String(err)
-    console.error('[logger] ClickHouse insert failed:', message)
+    console.error('[logger] ClickHouse insert failed, queueing to fallback:', message)
+
+    try {
+      await supabaseAdmin.from('requests_fallback').insert({
+        payload: clickhouseRow,
+        organization_id: data.organizationId,
+        last_error: message.slice(0, 500),
+      })
+    } catch (fallbackErr) {
+      // Both DBs are down. Nothing more we can do — surface loudly so
+      // observability picks it up. The original CH error message is
+      // preserved in the log line above for triage.
+      const fallbackMessage =
+        fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr)
+      console.error('[logger] Fallback INSERT also failed — row LOST:', fallbackMessage)
+    }
   }
 
   // ── Security alert ────────────────────────────────────────────────────────
