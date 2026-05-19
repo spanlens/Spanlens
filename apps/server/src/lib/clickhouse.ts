@@ -53,6 +53,17 @@ export function getClickhouse(): ClickHouseClient {
       // ~10x throughput win — acceptable because logs are fire-and-forget.
       async_insert: 1,
       wait_for_async_insert: 0,
+      // Forward-compat safety net: if the code starts sending a column that
+      // the deployed table doesn't have yet (i.e. a new column landed in
+      // logger.ts before the matching migration ran), skip the unknown field
+      // silently instead of failing the entire INSERT. Without this every
+      // streaming request would error out on the deploy → migration window —
+      // exactly the regression P2.2's `truncated` column would have caused
+      // if shipped before its ClickHouse migration was applied.
+      // Trade-off: an actual typo in a column name fails silently and the
+      // data never lands. Accepted because the alternative is a logging
+      // outage every time a migration trails a deploy.
+      input_format_skip_unknown_fields: 1,
     },
   })
   return _client
