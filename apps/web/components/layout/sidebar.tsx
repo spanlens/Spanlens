@@ -193,23 +193,34 @@ function WorkspaceSwitcher() {
   )
 }
 
-/* ── Nav groups ── */
-const NAV_GROUPS = [
+/* ── Nav groups ──
+ *
+ * `heavy: true` opts the item OUT of viewport-based RSC prefetch. The page
+ * still prefetches on hover (Next.js default for `prefetch={false}`), so
+ * the UX cost of the first click is minimal while the server stops getting
+ * 12 simultaneous prefetchAll fan-outs every time the sidebar mounts.
+ *
+ * Heavy = page.tsx runs a costly prefetchAll (multiple specs and/or single
+ * spec hitting COUNT(*) / window functions). Light pages keep auto-prefetch.
+ */
+type NavItem = { href: string; label: string; heavy?: boolean }
+
+const NAV_GROUPS: { label: string | null; items: NavItem[] }[] = [
   {
     label: null,
     items: [
-      { href: '/dashboard',  label: 'Dashboard' },
-      { href: '/requests',   label: 'Requests' },
-      { href: '/traces',     label: 'Traces' },
-      { href: '/users',      label: 'Users' },
+      { href: '/dashboard',  label: 'Dashboard',  heavy: true },  // 10 specs
+      { href: '/requests',   label: 'Requests',   heavy: true },  // CH list + COUNT
+      { href: '/traces',     label: 'Traces',     heavy: true },  // Supabase list + COUNT
+      { href: '/users',      label: 'Users',      heavy: true },  // CH user analytics
     ],
   },
   {
     label: 'Observe',
     items: [
-      { href: '/anomalies',       label: 'Anomalies' },
-      { href: '/security',        label: 'Security' },
-      { href: '/savings', label: 'Savings' },
+      { href: '/anomalies',  label: 'Anomalies',  heavy: true },  // CH window functions
+      { href: '/security',   label: 'Security',   heavy: true },  // 3 specs incl. flagged scan
+      { href: '/savings',    label: 'Savings',    heavy: true },  // multi-query aggregate
     ],
   },
   {
@@ -219,7 +230,7 @@ const NAV_GROUPS = [
       { href: '/evals',       label: 'Evals' },
       { href: '/datasets',    label: 'Datasets' },
       { href: '/experiments', label: 'Experiments' },
-      { href: '/alerts',      label: 'Alerts' },
+      { href: '/alerts',      label: 'Alerts',     heavy: true },  // 3 specs incl. delivery scan
     ],
   },
   {
@@ -368,13 +379,16 @@ export function Sidebar() {
                 {group.label}
               </div>
             )}
-            {group.items.map(({ href, label }) => {
+            {group.items.map(({ href, label, heavy }) => {
               const active = pathname === href || pathname.startsWith(href + '/')
               const badge = BADGES[href]
               return (
                 <Link
                   key={href}
                   href={href}
+                  // Heavy pages: skip viewport prefetch (still prefetches on hover).
+                  // Cuts ~half the simultaneous RSC fan-out when the sidebar mounts.
+                  prefetch={heavy ? false : 'auto'}
                   className={cn(
                     'flex items-center justify-between px-[10px] py-[6px] rounded-[5px] text-[13px] transition-colors',
                     'border-l-2',
