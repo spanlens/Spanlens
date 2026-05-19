@@ -49,6 +49,17 @@ class SpanlensConfig(TypedDict, total=False):
     timeout_ms: NotRequired[int]
     silent: NotRequired[bool]
     on_error: NotRequired[Optional[Callable[[BaseException, str], None]]]
+    sample_rate: NotRequired[float]
+    """Fraction of traces to ingest, in ``[0.0, 1.0]``. Default ``1.0`` (no sampling).
+
+    Decisions are per-trace and apply to every span under that trace. Error
+    traces (``status='error'``) are always recorded regardless of the
+    configured rate (tail-based bypass) so debugging signal is preserved.
+
+    Affects only the agent-tracing layer (``/ingest/traces``,
+    ``/ingest/spans``). Spanlens proxy request logs are unaffected — every
+    LLM call still flows through ``/proxy/*`` and gets recorded.
+    """
 
 
 # ── Trace / span options ─────────────────────────────────────────
