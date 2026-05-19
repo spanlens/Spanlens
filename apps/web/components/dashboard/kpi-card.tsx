@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { cn } from '@/lib/utils'
+import { linkPrefetchFor } from '@/lib/heavy-pages'
 
 const VW = 100
 const VH = 44
@@ -99,6 +100,7 @@ export function KpiCard({
       {linkLabel && linkHref && (
         <Link
           href={linkHref}
+          prefetch={linkPrefetchFor(linkHref)}
           className="font-mono text-[10.5px] text-text-muted mt-2.5 tracking-[0.03em] hover:text-text transition-colors"
         >
           {linkLabel}
