@@ -163,6 +163,29 @@ function AnomRow({ a, idx, last, onAck, onUnack, ackPending, dimmed }: AnomRowPr
           >
             {kindLabel(a.kind)}
           </span>
+          {a.confidence && (
+            // P3.2: trustworthiness label based on reference window size.
+            //   • low   — under 30 baseline samples; treat as directional only
+            //   • medium— textbook 30+ sample threshold; reliable
+            //   • high  — 100+ samples; both mean + stddev well-estimated
+            <span
+              className={cn(
+                'font-mono text-[9px] px-[6px] py-[1px] rounded-[3px] border uppercase tracking-[0.04em]',
+                a.confidence === 'high' && 'text-text-muted border-border',
+                a.confidence === 'medium' && 'text-text-muted border-border opacity-90',
+                a.confidence === 'low' && 'text-text-faint border-border opacity-70',
+              )}
+              title={
+                a.confidence === 'low'
+                  ? `Low confidence — only ${a.referenceCount} baseline samples (< 30). Treat as directional only.`
+                  : a.confidence === 'medium'
+                    ? `Medium confidence — ${a.referenceCount} baseline samples.`
+                    : `High confidence — ${a.referenceCount} baseline samples.`
+              }
+            >
+              {a.confidence}
+            </span>
+          )}
           <span className="text-[13.5px] text-text font-medium truncate">{anomTitle(a)}</span>
         </div>
         <div className="font-mono text-[11px] text-text-muted tracking-[0.01em]">

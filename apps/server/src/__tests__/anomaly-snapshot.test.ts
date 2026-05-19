@@ -61,6 +61,8 @@ function makeAnomaly(overrides: Partial<AnomalyBucket> = {}): AnomalyBucket {
     deviations: 3.5,
     sampleCount: 40,
     referenceCount: 200,
+    // P3.2: referenceCount=200 → 'high' tier by classifyConfidence.
+    confidence: 'high',
     ...overrides,
   }
 }

@@ -6,6 +6,14 @@ import type { ApiEnvelope } from './types'
 
 export type AnomalyKind = 'latency' | 'cost' | 'error_rate'
 
+/**
+ * Statistical reliability of the anomaly given the size of the reference
+ * window. P3.2: surfaces low-confidence anomalies (10..29 ref samples) so
+ * new orgs see directional signal in their first week, while still labeling
+ * the result clearly. See `apps/server/src/lib/anomaly.ts:classifyConfidence`.
+ */
+export type AnomalyConfidence = 'low' | 'medium' | 'high'
+
 export interface AnomalyContributingFactors {
   obsPromptTokensMean: number | null
   refPromptTokensMean: number | null
@@ -30,6 +38,9 @@ export interface Anomaly {
   acknowledgedAt?: string | null
   /** Root-cause contributing factors — token usage change, error code breakdown. */
   factors?: AnomalyContributingFactors | null
+  /** Statistical reliability label. Always present on detection results from
+   *  the server; historical rows persisted before P3.2 may be null. */
+  confidence?: AnomalyConfidence
 }
 
 export interface AnomalyHistoryEntry {
@@ -44,6 +55,8 @@ export interface AnomalyHistoryEntry {
   deviations: number
   sampleCount: number
   referenceCount: number
+  /** Null for historical rows persisted before P3.2. */
+  confidence?: AnomalyConfidence | null
 }
 
 interface AnomalyResponseMeta {
