@@ -28,8 +28,12 @@ export default function CostTrackingDocs() {
 
       <h3>Price table</h3>
       <p>
-        <code>apps/server/src/lib/cost.ts</code> ships a curated <code>MODEL_PRICES</code> map —
-        USD per 1M tokens, separately for prompt and completion. Snapshot as of 2026-05:
+        Prices live in the <code>model_prices</code> Supabase table — USD per 1M tokens,
+        separately for prompt, completion, and cache read/write. The proxy reads them
+        through an in-memory cache (5-minute stale-while-revalidate) with a hardcoded
+        fallback in <code>apps/server/src/lib/model-prices-cache.ts</code> for cold-start.
+        Updates to the table take effect within 5 minutes per Vercel function instance,
+        no redeploy needed. Snapshot as of 2026-05:
       </p>
       <CodeBlock language="ts">{`// OpenAI
 'gpt-4o':                         { prompt: 2.5,   completion: 10   }
@@ -81,8 +85,8 @@ totalCost       = promptCost + cacheReadCost + cacheWriteCost + completionCost`}
         OpenAI returns <strong>dated variants</strong> in the <code>model</code> field of the
         response body (e.g. you request <code>gpt-4o-mini</code> and get back{' '}
         <code>gpt-4o-mini-2024-07-18</code>). That dated string is what lands in{' '}
-        <code>requests.model</code>. Naive lookup against <code>MODEL_PRICES[&apos;gpt-4o-mini&apos;]</code>
-        {' '}would miss and return <code>null</code>.
+        <code>requests.model</code>. Naive lookup against the price map keyed by{' '}
+        <code>gpt-4o-mini</code> would miss and return <code>null</code>.
       </p>
       <p>
         <code>calculateCost()</code> handles this by:
@@ -108,8 +112,10 @@ totalCost       = promptCost + cacheReadCost + cacheWriteCost + completionCost`}
         cost aggregates — we never estimate or fabricate. The gap is visible, not hidden.
       </p>
       <p>
-        Fix: open a PR to add the model to <code>MODEL_PRICES</code> with the provider&apos;s
-        official rate. Backfill isn&apos;t retroactive; cost appears on new requests only.
+        Fix: a Spanlens operator can add the row directly to{' '}
+        <code>model_prices</code> via the admin API (<code>POST /api/v1/admin/model-prices</code>) —
+        the cache picks it up within 5 minutes, no deploy required. Backfill isn&apos;t
+        retroactive; cost appears on new requests only.
       </p>
 
       <h2>Using it</h2>
