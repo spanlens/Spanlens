@@ -838,11 +838,15 @@ list view에서 실제로 표시하는 컬럼만 SELECT. 현재는 detail용 컬
 - ✅ **Step #3**: below-fold client query 전환 — PR #103 (`73eceef`)
 - ✅ **Step #7.1**: `/traces` planned count — PR #104 (`6f767f4`)
 
-### Sprint 3 (다음, 1주 예정)
-- ⏳ **Step #4**: 서버 측 KV 캐시 — SWR 패턴 (1일)
-- ⏳ **Step #7.2**: 무필터 첫 페이지 SWR 캐시 (반나절, Step #4 헬퍼 의존)
-- ⏳ **Step #7.3**: list 컬럼 축소 (반나절)
-- **검증**: fresh / stale-while-revalidate / thundering herd / tenant 격리 4개 시나리오 측정
+### Sprint 3 (보류)
+- ⏸ **Step #4**: 서버 측 KV 캐시 — **2026-05-19 시도 → 인프라 문제로 revert** (PR #106~#110)
+  - 원인: Vercel KV (Upstash Free 티어)가 raw `redis.set()` 명령을 silent reject
+  - Upstash MONITOR엔 SET 명령 도달, "OK" 응답 받지만 데이터 persist 안 됨
+  - 같은 인스턴스에서 `@upstash/ratelimit` (Lua EVAL)은 정상 작동 — Lua가 아닌 직접 write 명령만 거부
+  - 자세한 내용: CLAUDE.md gotcha #24
+  - **재도입 시 옵션**: (a) Pay-as-you-go 티어 ($0.20/100만 cmd), (b) `redis.eval(luaScript)` 패턴, (c) 별도 Redis provider
+- ⏸ **Step #7.2**: 무필터 첫 페이지 SWR 캐시 — Step #4 헬퍼 의존이라 함께 보류
+- ⏸ **Step #7.3**: list 컬럼 축소 — production 측정 후 필요성 재판단
 
 ### Backlog (보류)
 - ⏸ **Step #1**: 보안 분석 후 client-side cache 헤더 활용 가능성 재검토
@@ -973,9 +977,13 @@ list view에서 실제로 표시하는 컬럼만 SELECT. 현재는 detail용 컬
 
 ---
 
-### 11.3. Step #4 — SWR 캐시 성공조건
+### 11.3. Step #4 — SWR 캐시 성공조건 ❌ **보류 (2026-05-19, 인프라 미지원)**
 
-**구현 (Code)**
+> **결과**: 시도했지만 Vercel KV (Upstash Free 티어)의 미documented 동작으로 raw `redis.set()`이 silent reject됨. 전부 revert (PR #106 #107 #108 #110). 자세한 내용은 §8 Sprint 3 항목 + CLAUDE.md gotcha #24.
+
+> **재도입 시 변경 필요**: 헬퍼를 `redis.eval(luaScript)` 패턴으로 작성하거나, Pay-as-you-go 티어 사용. 그 외 모든 success 조건은 그대로 유효.
+
+**구현 (Code)** — 재도입 시 참고
 - [ ] `apps/server/src/lib/stats-cache.ts` 신규 생성
   - [ ] `withStatsCache(key, opts, loader)` export
   - [ ] `STATS_SWR` 상수 (fresh: 10, stale: 60) export
