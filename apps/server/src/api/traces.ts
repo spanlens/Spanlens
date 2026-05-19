@@ -20,11 +20,16 @@ tracesRouter.get('/', async (c) => {
   const to = c.req.query('to')
   const { page, limit, offset } = parsePageLimit(c.req.query('page'), c.req.query('limit'))
 
+  // `count: 'planned'` uses the Postgres query planner's row estimate instead
+  // of forcing a COUNT(*) scan. Saves -200~500ms per request on the traces
+  // table, which is fine here because the dashboard only renders the total as
+  // a display number ("N of M traces") — there's no pagination logic that
+  // gates "Next" on the exact total. Plan: docs/plans/dashboard-load-perf-2026-05.md §7.1.
   let query = supabaseAdmin
     .from('traces')
     .select(
       'id, project_id, name, status, started_at, ended_at, duration_ms, span_count, total_tokens, total_cost_usd, error_message, created_at',
-      { count: 'exact' },
+      { count: 'planned' },
     )
     .eq('organization_id', orgId)
     .order('started_at', { ascending: false })
