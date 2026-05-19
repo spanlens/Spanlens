@@ -3,7 +3,7 @@ import { CodeBlock } from '../../_components/code-block'
 export const metadata = {
   title: 'Data Export · Spanlens Docs',
   description:
-    'Download request logs, traces, anomalies, and security flags as CSV or JSON to feed into BI tools or data pipelines.',
+    'Download request logs, traces, anomalies, and security flags as CSV, JSONL, or JSON to feed into BI tools or data pipelines. Streamed for million-row exports.',
 }
 
 export default function ExportDocs() {
@@ -11,9 +11,10 @@ export default function ExportDocs() {
     <div>
       <h1>Data Export</h1>
       <p className="lead">
-        Download request logs, traces, anomaly snapshots, and security flags as CSV or JSON in one
-        shot. Connect directly to Pandas, Excel, Redash, Metabase, or any other BI tool, or ingest
-        the data on a schedule into your own pipeline.
+        Download request logs, traces, anomaly snapshots, and security flags as CSV, JSONL, or JSON
+        in one shot. CSV and JSONL stream directly from ClickHouse — a million-row export runs in
+        ~30&nbsp;MB of memory and finishes inside the function-execution window. Connect to Pandas,
+        BigQuery, Redash, Metabase, or your own pipeline.
       </p>
 
       <h2>Endpoints</h2>
@@ -61,7 +62,10 @@ export default function ExportDocs() {
           <tr>
             <td><code>format</code></td>
             <td><code>csv</code></td>
-            <td><code>csv</code> or <code>json</code></td>
+            <td>
+              <code>csv</code> · <code>jsonl</code> · <code>json</code>. CSV and JSONL stream; JSON
+              materialises a wrapper object. See <a href="#formats">Formats</a> below.
+            </td>
           </tr>
           <tr>
             <td><code>from</code></td>
@@ -78,11 +82,57 @@ export default function ExportDocs() {
           </tr>
           <tr>
             <td><code>limit</code></td>
-            <td><code>10000</code></td>
-            <td>1–10,000. Maximum 10,000 rows per request. For more data, paginate using <code>from</code>/<code>to</code>.</td>
+            <td>format-dependent</td>
+            <td>
+              CSV / JSONL: 1 – <strong>1,000,000</strong>. JSON: 1 – 10,000.
+              <code>/exports/requests</code> only — other endpoints stay at 10,000.
+            </td>
           </tr>
         </tbody>
       </table>
+
+      <h2 id="formats">Formats — when to pick each</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Format</th>
+            <th>Streamed?</th>
+            <th>Row cap</th>
+            <th>Best for</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>csv</code></td>
+            <td>Yes</td>
+            <td>1,000,000</td>
+            <td>BI tools, spreadsheets, ad-hoc analysis. Default.</td>
+          </tr>
+          <tr>
+            <td><code>jsonl</code></td>
+            <td>Yes</td>
+            <td>1,000,000</td>
+            <td>
+              Pipelines that preserve typing (jq, <code>pandas.read_json(lines=True)</code>,
+              BigQuery, ClickHouse). One JSON object per line, newline-delimited.
+            </td>
+          </tr>
+          <tr>
+            <td><code>json</code></td>
+            <td>No — buffered</td>
+            <td>10,000</td>
+            <td>
+              Wrapper object <code>{`{ exported_at, count, data: [...] }`}</code> for code that
+              wants a single parseable response. Use <code>jsonl</code> for anything larger.
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <p>
+        Streamed responses set <code>Cache-Control: no-store</code> so intermediaries don&apos;t
+        buffer the full body. Each ClickHouse batch (~64&nbsp;KB) is the only data held in memory at
+        any point — heap usage stays flat regardless of <code>limit</code>.
+      </p>
 
       <h2>Additional parameters for requests</h2>
       <p>
@@ -297,44 +347,63 @@ curl "https://spanlens-server.vercel.app/api/v1/exports/security?from=2026-05-01
   -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \\
   -o spanlens-security.csv`}</CodeBlock>
 
-      <h3>JSON download</h3>
+      <h3>JSONL download (large exports)</h3>
+      <CodeBlock language="bash">{`# One million rows, streamed. Pipe straight into jq for filtering.
+curl "https://spanlens-server.vercel.app/api/v1/exports/requests?format=jsonl&from=2026-01-01T00:00:00Z&limit=1000000" \\
+  -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \\
+  | jq -c 'select(.cost_usd != null and (.cost_usd | tonumber) > 0.01)' \\
+  > expensive-requests.jsonl
+
+# Each line is a self-contained JSON object:
+# {"id":"req_xxx","provider":"openai","model":"gpt-4o-mini-2024-07-18",...}
+# {"id":"req_yyy","provider":"anthropic","model":"claude-sonnet-4-5",...}`}</CodeBlock>
+
+      <h3>JSON download (small, wrapped)</h3>
       <CodeBlock language="bash">{`curl "https://spanlens-server.vercel.app/api/v1/exports/requests?format=json&limit=1000" \\
   -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN"
 
-# Response shape:
-# [
-#   {
-#     "id": "req_xxx",
-#     "project_id": "proj_xxx",
-#     "provider": "openai",
-#     "model": "gpt-4o-mini-2024-07-18",
-#     "prompt_tokens": 512,
-#     "completion_tokens": 128,
-#     "total_tokens": 640,
-#     "cost_usd": 0.000096,
-#     "latency_ms": 843,
-#     "status_code": 200,
-#     "error_message": null,
-#     "trace_id": null,
-#     "created_at": "2026-05-15T09:00:00.000Z"
-#   },
-#   ...
-# ]`}</CodeBlock>
+# Response shape (buffered, capped at 10,000 rows):
+# {
+#   "exported_at": "2026-05-19T08:30:00.000Z",
+#   "count": 1000,
+#   "data": [
+#     {
+#       "id": "req_xxx",
+#       "project_id": "proj_xxx",
+#       "provider": "openai",
+#       "model": "gpt-4o-mini-2024-07-18",
+#       "prompt_tokens": 512,
+#       "completion_tokens": 128,
+#       "total_tokens": 640,
+#       "cost_usd": 0.000096,
+#       "latency_ms": 843,
+#       "status_code": 200,
+#       "error_message": null,
+#       "trace_id": null,
+#       "created_at": "2026-05-15T09:00:00.000Z"
+#     },
+#     ...
+#   ]
+# }`}</CodeBlock>
 
       <h2>BI tool tips</h2>
 
       <h3>Pandas (Python)</h3>
       <CodeBlock language="python">{`import pandas as pd
-import requests, io
 
 token = "YOUR_SUPABASE_ACCESS_TOKEN"
+
+# Small / medium — CSV, single response.
 url = "https://spanlens-server.vercel.app/api/v1/exports/requests?from=2026-05-01T00:00:00Z&format=csv"
+df = pd.read_csv(url, storage_options={"Authorization": f"Bearer {token}"})
 
-r = requests.get(url, headers={"Authorization": f"Bearer {token}"})
-df = pd.read_csv(io.StringIO(r.text))
-
-# Average cost by model
-print(df.groupby("model")["cost_usd"].mean())`}</CodeBlock>
+# Million-row pipeline — JSONL, streamed line-by-line. Pandas reads it in
+# chunks so peak memory stays bounded.
+url = "https://spanlens-server.vercel.app/api/v1/exports/requests?format=jsonl&limit=1000000"
+chunks = pd.read_json(url, lines=True, chunksize=50_000,
+                      storage_options={"Authorization": f"Bearer {token}"})
+totals = pd.concat(chunk.groupby("model")["cost_usd"].sum() for chunk in chunks).groupby(level=0).sum()
+print(totals)`}</CodeBlock>
 
       <h3>Excel</h3>
       <p>
@@ -347,8 +416,12 @@ print(df.groupby("model")["cost_usd"].mean())`}</CodeBlock>
       <h2>Limitations</h2>
       <ul>
         <li>
-          <strong>10,000 row maximum.</strong> This is the hard cap per request. For larger datasets,
-          paginate by splitting the time range with <code>from</code>/<code>to</code>.
+          <strong>Row caps.</strong> <code>/exports/requests</code> goes up to 1,000,000 rows on the
+          streamed formats (<code>csv</code>, <code>jsonl</code>) and 10,000 on <code>json</code>.
+          The other endpoints (<code>/traces</code>, <code>/security</code>, <code>/anomalies</code>)
+          stay at 10,000. For datasets above the cap, paginate by splitting the time range with{' '}
+          <code>from</code> / <code>to</code>, or contact support — multi-GB exports with completion
+          emails / S3 pre-signed URLs are on the roadmap.
         </li>
         <li>
           <strong>request_body / response_body are not included.</strong> Body content is excluded
@@ -363,6 +436,11 @@ print(df.groupby("model")["cost_usd"].mean())`}</CodeBlock>
         <li>
           <strong>Rate limit.</strong> Export endpoints are capped at 10 requests per minute. Space
           out calls in bulk batch pipelines.
+        </li>
+        <li>
+          <strong>Plan retention applies.</strong> The window of accessible rows is bounded by your
+          plan&apos;s log retention (Free 14d / Pro 90d / Team 365d). Older rows are unavailable
+          even via <code>from</code>.
         </li>
       </ul>
 

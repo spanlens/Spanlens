@@ -42,8 +42,10 @@ export default function AnomaliesDocs() {
           Group requests in both windows by <code>(provider, model)</code>.
         </li>
         <li>
-          For each bucket with <strong>≥ 30 reference samples</strong>, compute sample mean (μ) and
-          sample standard deviation (σ) on the signal.
+          For each bucket with <strong>≥ 10 reference samples</strong>, compute sample mean (μ) and
+          sample standard deviation (σ) on the signal. Each anomaly is tagged with a{' '}
+          <strong>confidence label</strong> based on how many samples the baseline is built from —
+          see <a href="#confidence">Confidence tiers</a> below.
         </li>
         <li>
           Flag buckets where the observation-window mean sits <strong>3σ or more</strong> above
@@ -57,6 +59,51 @@ if deviations >= sigmaThreshold:
       <p>
         <strong>3σ</strong> corresponds to ~0.13% false-positive rate under a normal distribution —
         generous enough to catch real spikes without flooding your inbox.
+      </p>
+
+      <h3 id="confidence">Confidence tiers</h3>
+      <p>
+        The baseline&apos;s reliability scales with the size of the reference window. New
+        organisations (and rarely-used model buckets) need <em>some</em> directional signal in their
+        first week, but a 12-sample standard deviation is much noisier than a 1,000-sample one. The
+        confidence label tells you which regime you&apos;re in:
+      </p>
+      <table>
+        <thead>
+          <tr>
+            <th>Confidence</th>
+            <th>Reference samples</th>
+            <th>How to read it</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>low</strong></td>
+            <td>10 – 29</td>
+            <td>
+              Directional only. The σ estimate is noisy — treat as an early warning, verify against
+              the underlying requests before paging.
+            </td>
+          </tr>
+          <tr>
+            <td><strong>medium</strong></td>
+            <td>30 – 99</td>
+            <td>The classic 3σ threshold regime. False-positive rate is approximately as advertised.</td>
+          </tr>
+          <tr>
+            <td><strong>high</strong></td>
+            <td>100+</td>
+            <td>
+              Statistically robust. Use as the gate when wiring anomalies into a paging integration —
+              see <code>minSamples</code> below for the API parameter.
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <p>
+        Below 10 reference samples the bucket is suppressed entirely (no detection, regardless of
+        observation). Buckets ingested before this tier system was introduced are surfaced with
+        confidence <code>null</code> for back-compat.
       </p>
 
       <h3>Why per-bucket matters</h3>
@@ -125,6 +172,7 @@ if deviations >= sigmaThreshold:
         <li>Baseline mean ± stddev</li>
         <li>Deviations (how many σ above normal)</li>
         <li>Sample counts (both windows)</li>
+        <li><strong>Confidence badge</strong> — <em>low</em> / <em>medium</em> / <em>high</em> based on reference-window size (see <a href="#confidence">Confidence tiers</a>)</li>
         <li><strong>Contributing factors</strong> — a <code>why ·</code> hint explaining the likely root cause</li>
         <li>Acknowledged state (if you&apos;ve silenced it)</li>
       </ul>
@@ -221,6 +269,7 @@ DELETE /api/v1/anomalies/ack?provider=openai&model=gpt-4o&kind=latency`}</CodeBl
 #     "deviations": 39.4,
 #     "sampleCount": 42,
 #     "referenceCount": 18420,
+#     "confidence": "high",        // low | medium | high — reliability of the baseline
 #     "acknowledgedAt": null,      // ISO string if acked, null otherwise
 #     "factors": {                 // root-cause contributing factors
 #       "obsPromptTokensMean": 3200,
@@ -294,11 +343,21 @@ DELETE /api/v1/anomalies/ack?provider=openai&model=gpt-4o&kind=latency`}</CodeBl
             <td>—</td>
             <td>Scope detection to a single project instead of the whole org</td>
           </tr>
+          <tr>
+            <td><code>minSamples</code></td>
+            <td>10</td>
+            <td>
+              Raise to <code>30</code> or <code>100</code> to suppress low/medium-confidence findings
+              when wiring into paging or noisy channels.
+            </td>
+          </tr>
         </tbody>
       </table>
       <p>
-        The minimum reference sample count (30) is fixed and not adjustable — below that, the
-        standard deviation estimate is too noisy to be meaningful.
+        Below <code>minSamples</code> the bucket is suppressed entirely (no row, no notification).
+        The default <code>10</code> surfaces directional signal for new orgs in their first week;
+        the dashboard tags each finding with a <a href="#confidence">confidence badge</a> so you can
+        scan past low-confidence rows visually.
       </p>
 
       <h2>Design choices</h2>
@@ -327,8 +386,9 @@ DELETE /api/v1/anomalies/ack?provider=openai&model=gpt-4o&kind=latency`}</CodeBl
         </li>
         <li>
           <strong>Sparse buckets are skipped.</strong> Any <code>(provider, model, kind)</code>{' '}
-          combination with fewer than 30 requests in the reference window produces no signal — not
-          enough data for a reliable baseline.
+          combination with fewer than <code>minSamples</code> requests (default 10) in the reference
+          window produces no signal — not enough data for any baseline. Buckets between 10 and 29
+          samples surface with <strong>low confidence</strong> so you can decide whether to act.
         </li>
         <li>
           <strong>No anomaly-level alert routing.</strong> You can&apos;t route &ldquo;only
