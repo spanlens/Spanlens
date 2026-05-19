@@ -58,6 +58,26 @@ response = client.chat.completions.create(
 Spanlens automatically logs the request, response, latency, token counts,
 and cost — viewable in the dashboard under **Requests**.
 
+### Async (FastAPI, Django async views, asyncio)
+
+Mirror helpers return the async client:
+
+```python
+from spanlens.integrations.openai import create_async_openai
+from spanlens.integrations.anthropic import create_async_anthropic
+
+async def handler() -> str:
+    client = create_async_openai()  # openai.AsyncOpenAI
+    resp = await client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[{"role": "user", "content": "Hello!"}],
+    )
+    return resp.choices[0].message.content
+```
+
+The SDK's background ingest pool is thread-safe; you can fan out `asyncio.gather`
+of 50+ concurrent spans and trace/span POST ordering is preserved.
+
 ### Tagging requests with a prompt version
 
 ```python

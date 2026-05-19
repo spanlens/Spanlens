@@ -52,6 +52,39 @@ def test_create_openai_explicit_overrides_env(monkeypatch, openai_installed):
     assert str(client.base_url).rstrip("/") == "https://custom.test"
 
 
+# ── create_async_openai ────────────────────────────────────────
+
+
+def test_create_async_openai_requires_api_key(monkeypatch, openai_installed):
+    from spanlens.integrations.openai import create_async_openai
+
+    monkeypatch.delenv("SPANLENS_API_KEY", raising=False)
+    with pytest.raises(ValueError, match="SPANLENS_API_KEY is not set"):
+        create_async_openai()
+
+
+def test_create_async_openai_uses_env_var(monkeypatch, openai_installed):
+    from openai import AsyncOpenAI
+
+    from spanlens.integrations.openai import create_async_openai
+
+    monkeypatch.setenv("SPANLENS_API_KEY", "sl_test_async_env")
+    client = create_async_openai()
+    assert isinstance(client, AsyncOpenAI)
+    assert str(client.base_url).rstrip("/") == DEFAULT_SPANLENS_OPENAI_PROXY
+
+
+def test_create_async_openai_explicit_overrides_env(monkeypatch, openai_installed):
+    from spanlens.integrations.openai import create_async_openai
+
+    monkeypatch.setenv("SPANLENS_API_KEY", "sl_test_envkey")
+    client = create_async_openai(
+        api_key="sl_test_explicit_async",
+        base_url="https://custom-async.test",
+    )
+    assert str(client.base_url).rstrip("/") == "https://custom-async.test"
+
+
 # ── create_anthropic ───────────────────────────────────────────
 
 
@@ -66,6 +99,31 @@ def test_create_anthropic_requires_api_key(monkeypatch, anthropic_installed):
     monkeypatch.delenv("SPANLENS_API_KEY", raising=False)
     with pytest.raises(ValueError, match="SPANLENS_API_KEY is not set"):
         create_anthropic()
+
+
+# ── create_async_anthropic ─────────────────────────────────────
+
+
+def test_create_async_anthropic_requires_api_key(monkeypatch, anthropic_installed):
+    from spanlens.integrations.anthropic import create_async_anthropic
+
+    monkeypatch.delenv("SPANLENS_API_KEY", raising=False)
+    with pytest.raises(ValueError, match="SPANLENS_API_KEY is not set"):
+        create_async_anthropic()
+
+
+def test_create_async_anthropic_uses_env_var(monkeypatch, anthropic_installed):
+    from anthropic import AsyncAnthropic
+
+    from spanlens.integrations.anthropic import (
+        DEFAULT_SPANLENS_ANTHROPIC_PROXY,
+        create_async_anthropic,
+    )
+
+    monkeypatch.setenv("SPANLENS_API_KEY", "sl_test_async_anthropic")
+    client = create_async_anthropic()
+    assert isinstance(client, AsyncAnthropic)
+    assert str(client.base_url).rstrip("/") == DEFAULT_SPANLENS_ANTHROPIC_PROXY
 
 
 # ── create_gemini (no optional dep needed — pure httpx) ─────────
