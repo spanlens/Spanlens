@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+import type { OpenAPIV3 } from 'openapi-types'
 
 /**
  * OpenAPI 3.0 spec for the Spanlens public REST API.
@@ -8,9 +9,15 @@ import { Hono } from 'hono'
  *
  * Covers the externally useful endpoints only — internal cron, webhooks,
  * and invite-flow plumbing are intentionally omitted.
+ *
+ * P3.6 (2026-05-19): The SPEC constant is now typed as `OpenAPIV3.Document`
+ * so structural typos (wrong keys, missing `responses`, etc.) become compile
+ * errors instead of runtime spec drift. The drift-detector test in
+ * `__tests__/openapi-drift.test.ts` additionally enforces that every
+ * documented path is mounted on the real Hono app.
  */
 
-const SPEC = {
+export const SPEC: OpenAPIV3.Document = {
   openapi: '3.0.3',
   info: {
     title: 'Spanlens API',
@@ -312,28 +319,6 @@ const SPEC = {
           401: { description: 'Unauthorized' },
         },
       },
-      patch: {
-        tags: ['Organizations'],
-        summary: 'Update organization name',
-        operationId: 'updateOrg',
-        security: [{ BearerJWT: [] }],
-        requestBody: {
-          required: true,
-          content: {
-            'application/json': {
-              schema: {
-                type: 'object',
-                properties: { name: { type: 'string' } },
-              },
-            },
-          },
-        },
-        responses: {
-          200: { description: 'Updated' },
-          401: { description: 'Unauthorized' },
-          403: { description: 'Admin role required' },
-        },
-      },
     },
     '/api/v1/projects': {
       get: {
@@ -398,10 +383,13 @@ const SPEC = {
           },
         },
       },
+    },
+    '/api/v1/api-keys/issue': {
       post: {
         tags: ['API Keys'],
-        summary: 'Create API key',
-        operationId: 'createApiKey',
+        summary: 'Issue API key',
+        description: 'Issues a new Spanlens API key (`sl_live_*`). The raw key is returned exactly once in the response body — Spanlens stores only a SHA-256 hash, so this is the customer\'s only chance to capture it.',
+        operationId: 'issueApiKey',
         security: [{ BearerJWT: [] }],
         requestBody: {
           required: true,
