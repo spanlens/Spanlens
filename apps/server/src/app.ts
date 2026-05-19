@@ -70,7 +70,43 @@ app.use('*', cors({
 app.use('*', logger())
 
 // Health check
+// /health — basic liveness probe (no DB ping; always returns 200 if process is up).
 app.get('/health', (c) => c.json({ status: 'ok', timestamp: new Date().toISOString() }))
+
+// /health/deep — components view. Returns 503 if ClickHouse is unreachable
+// so external monitoring (Better Stack, UptimeRobot, etc.) can page on the
+// real outage, not just process liveness. `/health` stays cheap for Vercel's
+// own liveness checks.
+//
+// Response shape:
+//   { status: 'ok' | 'degraded', clickhouse: { ok, latencyMs }, fallback: { queue } }
+//
+// Concurrency: ping + queue-size query run in parallel to keep p95 low even
+// when one of them is slow.
+app.get('/health/deep', async (c) => {
+  const { pingClickhouse } = await import('./lib/clickhouse.js')
+  const { fallbackQueueSize } = await import('./lib/fallback-replay.js')
+
+  const start = Date.now()
+  const [chOk, fallbackQueue] = await Promise.all([
+    pingClickhouse().catch(() => false),
+    fallbackQueueSize().catch(() => null),
+  ])
+  const chLatency = Date.now() - start
+
+  const overallOk = chOk
+  return c.json(
+    {
+      status: overallOk ? 'ok' : 'degraded',
+      timestamp: new Date().toISOString(),
+      clickhouse: { ok: chOk, latencyMs: chLatency },
+      // Null means the lookup itself failed (e.g. Supabase down) — not an
+      // empty queue. Distinguish for triage.
+      fallback: { queue: fallbackQueue },
+    },
+    overallOk ? 200 : 503,
+  )
+})
 
 // ── Proxy routes (authApiKey middleware) ──────────────────────
 app.route('/proxy/openai',    openaiProxy)
