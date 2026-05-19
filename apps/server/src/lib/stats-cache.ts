@@ -1,4 +1,6 @@
+import type { Context } from 'hono'
 import { Redis } from '@upstash/redis'
+import { fireAndForget } from './wait-until.js'
 
 /**
  * Stale-while-revalidate (SWR) cache for ClickHouse aggregate queries.
@@ -12,6 +14,11 @@ import { Redis } from '@upstash/redis'
  * Tenancy: the caller is responsible for including `orgId` in `key`. Code
  * review must verify every withStatsCache() call uses a key that starts with
  * `org:<orgId>:` — see docs/plans/dashboard-load-perf-2026-05.md §4.
+ *
+ * Vercel note: redis.set() must run through `fireAndForget(c, ...)` instead
+ * of `.catch()`. Without it Vercel drops the pending Redis write the moment
+ * the handler returns, so cache hits never accumulate. See CLAUDE.md
+ * gotcha #8 — same root cause as the proxy logger race.
  */
 
 let _redis: Redis | null = null
@@ -45,6 +52,7 @@ export interface SwrOptions {
 const _inflight = new Map<string, Promise<unknown>>()
 
 function refreshInBackground<T>(
+  c: Context,
   redis: Redis,
   key: string,
   staleSeconds: number,
@@ -63,11 +71,14 @@ function refreshInBackground<T>(
     }
   })()
   _inflight.set(key, p)
+  fireAndForget(c, p)
 }
 
 /**
  * Wraps a ClickHouse aggregate query with SWR caching.
  *
+ *   `c`       Hono context — required to keep Redis writes alive on Vercel
+ *             (see CLAUDE.md gotcha #8).
  *   `key`     must include orgId for tenant isolation.
  *   `opts`    fresh/stale window in seconds (see {@link STATS_SWR}).
  *   `loader`  the actual query function — invoked only on cache miss / refresh.
@@ -75,6 +86,7 @@ function refreshInBackground<T>(
  * Returns the cached value (fresh or stale) or the loader's fresh result.
  */
 export async function withStatsCache<T>(
+  c: Context,
   key: string,
   opts: SwrOptions,
   loader: () => Promise<T>,
@@ -98,7 +110,7 @@ export async function withStatsCache<T>(
     }
 
     if (ageSeconds < opts.staleSeconds) {
-      refreshInBackground(redis, key, opts.staleSeconds, loader)
+      refreshInBackground(c, redis, key, opts.staleSeconds, loader)
       return entry.data
     }
     // Beyond stale (defensive — should already be expired by Redis TTL).
@@ -106,9 +118,9 @@ export async function withStatsCache<T>(
 
   const fresh = await loader()
   const newEntry: CacheEntry<T> = { data: fresh, cachedAt: Date.now() }
-  redis.set(key, newEntry, { ex: opts.staleSeconds }).catch((err) => {
-    console.warn('[stats-cache] write error (ignored):', err)
-  })
+  // Must NOT use .catch() — Vercel drops the pending promise on handler
+  // return. fireAndForget routes through @vercel/functions waitUntil.
+  fireAndForget(c, redis.set(key, newEntry, { ex: opts.staleSeconds }))
   return fresh
 }
 

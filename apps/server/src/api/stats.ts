@@ -67,7 +67,7 @@ statsRouter.get('/overview', async (c) => {
   const cacheKey = `org:${orgId}:stats:overview:${from ?? ''}:${to ?? ''}:${projectId ?? ''}:${compare}`
 
   try {
-    const payload = await withStatsCache(cacheKey, STATS_SWR, async () => {
+    const payload = await withStatsCache(c, cacheKey, STATS_SWR, async () => {
       if (compare) {
         // Compute previous period of equal duration, run both in parallel.
         const nowMs = Date.now()
@@ -130,7 +130,7 @@ statsRouter.get('/models', async (c) => {
   const cacheKey = `org:${orgId}:stats:models:${hours}:${projectId ?? ''}:${fromIso}`
 
   try {
-    const payload = await withStatsCache(cacheKey, STATS_SWR, async () => {
+    const payload = await withStatsCache(c, cacheKey, STATS_SWR, async () => {
       const rows = await getStatsModels(orgId, { projectId, from: fromIso })
       const models = rows.map((r) => ({
         provider: r.provider,
@@ -163,7 +163,7 @@ statsRouter.get('/timeseries', async (c) => {
   const cacheKey = `org:${orgId}:stats:timeseries:${from ?? ''}:${to ?? ''}:${projectId ?? ''}:${granularity}`
 
   try {
-    const payload = await withStatsCache(cacheKey, STATS_SWR, async () => {
+    const payload = await withStatsCache(c, cacheKey, STATS_SWR, async () => {
       const rows = await getStatsTimeseries(orgId, {
         projectId,
         from: from ?? null,
@@ -223,7 +223,7 @@ statsRouter.get('/spend-forecast', async (c) => {
 
   let rows: TimeseriesRow[]
   try {
-    rows = await withStatsCache(cacheKey, STATS_SWR_SLOW, () =>
+    rows = await withStatsCache(c, cacheKey, STATS_SWR_SLOW, () =>
       getStatsTimeseries(orgId, {
         projectId,
         from: monthStart,
