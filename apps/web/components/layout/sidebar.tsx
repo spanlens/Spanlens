@@ -19,6 +19,7 @@ import { useOrganization } from '@/lib/queries/use-organization'
 import { useWorkspaces, useCreateWorkspace } from '@/lib/queries/use-workspaces'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { writeWorkspaceCookie } from '@/lib/workspace-cookie'
+import { linkPrefetchFor } from '@/lib/heavy-pages'
 
 /* ── Logo mark ── */
 function LogoMark() {
@@ -194,7 +195,9 @@ function WorkspaceSwitcher() {
 }
 
 /* ── Nav groups ── */
-const NAV_GROUPS = [
+type NavItem = { href: string; label: string }
+
+const NAV_GROUPS: { label: string | null; items: NavItem[] }[] = [
   {
     label: null,
     items: [
@@ -207,9 +210,9 @@ const NAV_GROUPS = [
   {
     label: 'Observe',
     items: [
-      { href: '/anomalies',       label: 'Anomalies' },
-      { href: '/security',        label: 'Security' },
-      { href: '/savings', label: 'Savings' },
+      { href: '/anomalies',  label: 'Anomalies' },
+      { href: '/security',   label: 'Security' },
+      { href: '/savings',    label: 'Savings' },
     ],
   },
   {
@@ -375,6 +378,9 @@ export function Sidebar() {
                 <Link
                   key={href}
                   href={href}
+                  // See lib/heavy-pages.ts — heavy pages skip viewport prefetch.
+                  // Cuts ~half the simultaneous RSC fan-out when the sidebar mounts.
+                  prefetch={linkPrefetchFor(href)}
                   className={cn(
                     'flex items-center justify-between px-[10px] py-[6px] rounded-[5px] text-[13px] transition-colors',
                     'border-l-2',

@@ -14,6 +14,7 @@ import { usePrompts } from '@/lib/queries/use-prompts'
 import { useSecuritySummary } from '@/lib/queries/use-security'
 import { useDismissals, useDismissCard } from '@/lib/queries/use-dismissals'
 import { cn } from '@/lib/utils'
+import { linkPrefetchFor } from '@/lib/heavy-pages'
 import dynamic from 'next/dynamic'
 import { WelcomeBanner } from '@/components/dashboard/welcome-banner'
 import { LIVE_REFETCH_MS_ACTIVE as LIVE_REFETCH_MS } from '@/lib/queries/live-polling'
@@ -686,7 +687,7 @@ export function DashboardClient() {
             <div className="flex items-center mb-3">
               <span className="text-[14px] font-medium">Models in use · {timeRange}</span>
               <span className="flex-1" />
-              <Link href="/requests" className="font-mono text-[10.5px] text-text-muted tracking-[0.03em] hover:text-text transition-colors">
+              <Link href="/requests" prefetch={linkPrefetchFor('/requests')} className="font-mono text-[10.5px] text-text-muted tracking-[0.03em] hover:text-text transition-colors">
                 All requests →
               </Link>
             </div>
@@ -744,6 +745,7 @@ export function DashboardClient() {
               <span className="flex-1" />
               <Link
                 href="/alerts"
+                prefetch={linkPrefetchFor('/alerts')}
                 className={cn(
                   'font-mono text-[10.5px] tracking-[0.03em]',
                   firingAlerts.length > 0 ? 'text-accent' : 'text-text-muted',
@@ -794,7 +796,7 @@ export function DashboardClient() {
             <div className="flex items-center mb-3">
               <span className="text-[14px] font-medium">Savings queued</span>
               <span className="flex-1" />
-              <Link href="/savings" className="font-mono text-[10.5px] text-good tracking-[0.03em]">
+              <Link href="/savings" prefetch={linkPrefetchFor('/savings')} className="font-mono text-[10.5px] text-good tracking-[0.03em]">
                 View all →
               </Link>
             </div>
