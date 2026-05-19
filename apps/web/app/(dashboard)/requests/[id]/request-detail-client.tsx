@@ -87,6 +87,14 @@ export function RequestDetailClient({ id }: { id: string }) {
         </div>
         <div className="flex items-center gap-3 shrink-0">
           <ReplayButton requestId={req.id} originalModel={req.model} provider={req.provider} />
+          {req.truncated && (
+            <span
+              className="font-mono text-[11px] px-2 py-1 rounded border tracking-[0.04em] text-accent border-accent-border bg-accent-bg"
+              title="Stream closed early because the request approached the Spanlens proxy deadline (~290s). Token counts and the response body reflect what was captured up to that point."
+            >
+              truncated
+            </span>
+          )}
           <span className={cn(
             'font-mono text-[11px] px-2 py-1 rounded border tracking-[0.04em]',
             isErr

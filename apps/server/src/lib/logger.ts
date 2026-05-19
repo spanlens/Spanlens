@@ -62,6 +62,15 @@ export interface RequestLogData {
    * Defaults to 'full' when absent — same behavior as before.
    */
   logBodyMode?: LogBodyMode
+  /**
+   * Set to true when the proxy gracefully closed the request because it was
+   * approaching its Vercel function deadline. The row still records whatever
+   * tokens/text we managed to capture; consumers (dashboard, SDK, billing)
+   * can filter / surface accordingly.
+   *
+   * See proxy/stream-deadline.ts for the wiring rationale.
+   */
+  truncated?: boolean
 }
 
 /**
@@ -246,6 +255,9 @@ export async function logRequestAsync(data: RequestLogData): Promise<void> {
           flags: JSON.stringify(requestFlags),
           response_flags: JSON.stringify(responseFlags),
           has_security_flags: requestFlags.length > 0 || responseFlags.length > 0,
+          // 0/1 because ClickHouse UInt8; never null even if the field was
+          // never set (older rows backfill via DEFAULT 0 on the column).
+          truncated: data.truncated ? 1 : 0,
           // ClickHouse DateTime64 wants 'YYYY-MM-DD HH:MM:SS.fff' (no Z).
           // Postgres's gen_random_uuid()/now() defaults moved to the
           // application layer — no behavioral difference, just a different

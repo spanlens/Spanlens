@@ -11,6 +11,7 @@ import { parseOpenAIResponse } from '../parsers/openai.js'
 import { scanAll } from '../lib/security-scan.js'
 import { getDecryptedProviderKey, buildUpstreamHeaders, buildDownstreamHeaders, isBlockingEnabled } from './utils.js'
 import { logOpenAIStream } from './stream-logger.js'
+import { cancelReaderSilently, makeStreamDeadline, readWithDeadline } from './stream-deadline.js'
 
 const OPENAI_BASE = 'https://api.openai.com'
 const UPSTREAM_TIMEOUT_MS = parseInt(process.env['UPSTREAM_TIMEOUT_MS'] ?? '35000', 10)
@@ -135,27 +136,37 @@ openaiProxy.all('/*', async (c) => {
     return stream(c, async (honoStream) => {
       const reader = upstreamBody.getReader()
       const decoder = new TextDecoder()
+      const deadline = makeStreamDeadline(handlerStartMs)
       let buffer = ''
       const lines: string[] = []
+      let truncated = false
 
-      try {
-        for (;;) {
-          const { done, value } = await reader.read()
-          if (done) break
-
-          await honoStream.write(value)
-
-          buffer += decoder.decode(value, { stream: true })
-          const parts = buffer.split('\n')
-          buffer = parts.pop() ?? ''
-          lines.push(...parts)
+      pump: for (;;) {
+        const outcome = await readWithDeadline(reader, deadline)
+        switch (outcome.kind) {
+          case 'done':
+            break pump
+          case 'timeout':
+            truncated = true
+            console.warn('[openai-stream] deadline reached, closing gracefully')
+            await cancelReaderSilently(reader)
+            break pump
+          case 'error':
+            console.error('[openai-stream] reader error:', outcome.error)
+            break pump
+          case 'chunk': {
+            await honoStream.write(outcome.value)
+            buffer += decoder.decode(outcome.value, { stream: true })
+            const parts = buffer.split('\n')
+            buffer = parts.pop() ?? ''
+            lines.push(...parts)
+            break
+          }
         }
-        if (buffer.length > 0) lines.push(buffer)
-      } catch (err) {
-        console.error('[openai-stream] reader error:', err)
       }
+      if (buffer.length > 0) lines.push(buffer)
 
-      await logOpenAIStream(lines, { ...logBase, model }).catch((err) => {
+      await logOpenAIStream(lines, { ...logBase, model }, { truncated }).catch((err) => {
         console.error('[openai-stream] log error:', err)
       })
     })

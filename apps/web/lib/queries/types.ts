@@ -96,6 +96,13 @@ export interface RequestRow {
   user_id?: string | null
   /** Customer-supplied session ID (x-spanlens-session header). */
   session_id?: string | null
+  /**
+   * True when the proxy hit its Vercel function deadline and gracefully
+   * closed the stream. Token counts + body reflect whatever was captured
+   * up to that point; the dashboard shows a badge so customers can
+   * investigate (e.g. shorten max_tokens, switch to a faster model).
+   */
+  truncated?: boolean
   created_at: string
 }
 

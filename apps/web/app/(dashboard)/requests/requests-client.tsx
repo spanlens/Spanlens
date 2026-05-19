@@ -788,7 +788,17 @@ function RequestsTable({
                   <span>
                     {isErr && <span className="inline-block w-1.5 h-1.5 rounded-full bg-accent" />}
                   </span>
-                  <span className="text-text truncate pr-2">{req.model}</span>
+                  <span className="text-text truncate pr-2 flex items-center gap-1.5">
+                    <span className="truncate">{req.model}</span>
+                    {req.truncated && (
+                      <span
+                        className="shrink-0 px-1.5 py-px text-[10px] uppercase tracking-wide rounded bg-accent/10 text-accent border border-accent/30"
+                        title="Stream closed early — request approached the Spanlens proxy deadline"
+                      >
+                        truncated
+                      </span>
+                    )}
+                  </span>
                   {!drawerOpen && <span className="text-text-muted">{req.provider_key_name ?? req.provider}</span>}
                   <span className={isErr ? 'text-accent' : 'text-text'}>{req.latency_ms}ms</span>
                   <span className="text-text-muted">{req.total_tokens.toLocaleString()}</span>

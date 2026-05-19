@@ -10,6 +10,7 @@ import { fireAndForget } from '../lib/wait-until.js'
 import { parseGeminiResponse, extractGeminiStreamText } from '../parsers/gemini.js'
 import { scanAll } from '../lib/security-scan.js'
 import { getDecryptedProviderKey, buildUpstreamHeaders, buildDownstreamHeaders, isBlockingEnabled } from './utils.js'
+import { cancelReaderSilently, makeStreamDeadline, readWithDeadline } from './stream-deadline.js'
 
 const GEMINI_BASE = 'https://generativelanguage.googleapis.com'
 const UPSTREAM_TIMEOUT_MS = parseInt(process.env['UPSTREAM_TIMEOUT_MS'] ?? '35000', 10)
@@ -136,17 +137,28 @@ geminiProxy.all('/*', async (c) => {
     return stream(c, async (honoStream) => {
       const reader = upstreamBody.getReader()
       const decoder = new TextDecoder()
+      const deadline = makeStreamDeadline(handlerStartMs)
       const chunks: string[] = []
+      let truncated = false
 
-      try {
-        for (;;) {
-          const { done, value } = await reader.read()
-          if (done) break
-          await honoStream.write(value)
-          chunks.push(decoder.decode(value, { stream: true }))
+      pump: for (;;) {
+        const outcome = await readWithDeadline(reader, deadline)
+        switch (outcome.kind) {
+          case 'done':
+            break pump
+          case 'timeout':
+            truncated = true
+            console.warn('[gemini-stream] deadline reached, closing gracefully')
+            await cancelReaderSilently(reader)
+            break pump
+          case 'error':
+            console.error('[gemini-stream] reader error:', outcome.error)
+            break pump
+          case 'chunk':
+            await honoStream.write(outcome.value)
+            chunks.push(decoder.decode(outcome.value, { stream: true }))
+            break
         }
-      } catch (err) {
-        console.error('[gemini-stream] reader error:', err)
       }
 
       const buffer = chunks.join('')
@@ -202,6 +214,7 @@ geminiProxy.all('/*', async (c) => {
         totalTokens,
         costUsd: cost?.totalCost ?? null,
         responseBody,
+        truncated,
       }).catch((err) => {
         console.error('[gemini-stream] log error:', err)
       })

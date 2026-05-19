@@ -15,6 +15,15 @@ type StreamLogBase = Omit<
   | 'model'
 > & { model: string }
 
+/**
+ * Optional context for the streaming-log writers. `truncated` flows through
+ * to `requests.truncated` so the dashboard can surface deadline-bound rows.
+ * Other fields default sensibly when omitted.
+ */
+export interface StreamLogContext {
+  truncated?: boolean
+}
+
 async function injectSpanInput(spanId: string, organizationId: string, input: unknown): Promise<void> {
   const { error } = await supabaseAdmin
     .from('spans')
@@ -44,6 +53,7 @@ async function injectSpanOutput(spanId: string, organizationId: string, output: 
 export async function logOpenAIStream(
   lines: string[],
   base: StreamLogBase,
+  ctx: StreamLogContext = {},
 ): Promise<void> {
   let model = base.model
   let promptTokens = 0
@@ -99,6 +109,7 @@ export async function logOpenAIStream(
     cacheWriteTokens,
     costUsd: cost?.totalCost ?? null,
     responseBody,
+    truncated: ctx.truncated ?? false,
   })
 
   if (base.spanId) {
@@ -120,6 +131,7 @@ export async function logOpenAIStream(
 export async function logAnthropicStream(
   lines: string[],
   base: StreamLogBase,
+  ctx: StreamLogContext = {},
 ): Promise<void> {
   let model = base.model
   let promptTokens = 0
@@ -179,6 +191,7 @@ export async function logAnthropicStream(
     cacheWriteTokens,
     costUsd: cost?.totalCost ?? null,
     responseBody,
+    truncated: ctx.truncated ?? false,
   })
 
   if (base.spanId) {
