@@ -9,6 +9,7 @@ import {
   type OverviewRow,
   type TimeseriesRow,
 } from '../lib/stats-queries.js'
+import { withStatsCache, STATS_SWR, STATS_SWR_SLOW } from '../lib/stats-cache.js'
 
 /**
  * Stats endpoints — SQL-aggregated server-side.
@@ -61,44 +62,48 @@ statsRouter.get('/overview', async (c) => {
   const to = c.req.query('to')
   const compare = c.req.query('compare') === 'true'
 
+  // Cache key MUST include orgId. The web client rounds `from` to the minute
+  // so two callers in the same org/minute share a cache slot.
+  const cacheKey = `org:${orgId}:stats:overview:${from ?? ''}:${to ?? ''}:${projectId ?? ''}:${compare}`
+
   try {
-    if (compare) {
-      // Compute previous period of equal duration, run both in parallel.
-      const nowMs = Date.now()
-      const toMs = to ? new Date(to).getTime() : nowMs
-      const fromMs = from ? new Date(from).getTime() : toMs - 30 * 24 * 3_600_000
-      const duration = toMs - fromMs
-      const prevTo = new Date(fromMs).toISOString()
-      const prevFrom = new Date(fromMs - duration).toISOString()
+    const payload = await withStatsCache(cacheKey, STATS_SWR, async () => {
+      if (compare) {
+        // Compute previous period of equal duration, run both in parallel.
+        const nowMs = Date.now()
+        const toMs = to ? new Date(to).getTime() : nowMs
+        const fromMs = from ? new Date(from).getTime() : toMs - 30 * 24 * 3_600_000
+        const duration = toMs - fromMs
+        const prevTo = new Date(fromMs).toISOString()
+        const prevFrom = new Date(fromMs - duration).toISOString()
 
-      const [curr, prev] = await Promise.all([
-        getStatsOverview(orgId, { projectId, from: from ?? null, to: to ?? null }),
-        getStatsOverview(orgId, { projectId, from: prevFrom, to: prevTo }),
-      ])
+        const [curr, prev] = await Promise.all([
+          getStatsOverview(orgId, { projectId, from: from ?? null, to: to ?? null }),
+          getStatsOverview(orgId, { projectId, from: prevFrom, to: prevTo }),
+        ])
 
-      const currRow = rowToOverview(curr)
-      const prevRow = rowToOverview(prev)
+        const currRow = rowToOverview(curr)
+        const prevRow = rowToOverview(prev)
 
-      c.header('Cache-Control', CACHE_STATS_LIVE)
-      return c.json({
-        success: true,
-        data: {
+        return {
           ...currRow,
           requestsDelta: pctDelta(currRow.totalRequests, prevRow.totalRequests),
           costDelta: pctDelta(currRow.totalCostUsd, prevRow.totalCostUsd),
           latencyDelta: pctDelta(currRow.avgLatencyMs, prevRow.avgLatencyMs),
           errorRateDelta: pctDelta(currRow.errorRate, prevRow.errorRate),
-        },
-      })
-    }
+        }
+      }
 
-    const overview = await getStatsOverview(orgId, {
-      projectId,
-      from: from ?? null,
-      to: to ?? null,
+      const overview = await getStatsOverview(orgId, {
+        projectId,
+        from: from ?? null,
+        to: to ?? null,
+      })
+      return rowToOverview(overview)
     })
+
     c.header('Cache-Control', CACHE_STATS_LIVE)
-    return c.json({ success: true, data: rowToOverview(overview) })
+    return c.json({ success: true, data: payload })
   } catch (err) {
     console.error('[stats:overview] ClickHouse query failed:', err instanceof Error ? err.message : err)
     return c.json({ error: 'Failed to fetch stats' }, 500)
@@ -118,20 +123,27 @@ statsRouter.get('/models', async (c) => {
 
   const hours = parseClampedFloat(c.req.query('hours'), 24, 0.001, 24 * 30)
   const projectId = c.req.query('projectId')
-  const fromIso = new Date(Date.now() - hours * 3_600_000).toISOString()
+  // Bucket fromIso to the minute so concurrent callers in the same org share a key.
+  const fromIsoRaw = new Date(Date.now() - hours * 3_600_000).toISOString()
+  const fromIso = fromIsoRaw.slice(0, 16) + ':00.000Z'
+
+  const cacheKey = `org:${orgId}:stats:models:${hours}:${projectId ?? ''}:${fromIso}`
 
   try {
-    const rows = await getStatsModels(orgId, { projectId, from: fromIso })
-    const models = rows.map((r) => ({
-      provider: r.provider,
-      model: r.model,
-      requests: r.requests,
-      totalCostUsd: parseFloat(r.total_cost_usd.toFixed(6)),
-      avgLatencyMs: Math.round(r.avg_latency_ms),
-      errorRate: r.error_rate,
-    }))
+    const payload = await withStatsCache(cacheKey, STATS_SWR, async () => {
+      const rows = await getStatsModels(orgId, { projectId, from: fromIso })
+      const models = rows.map((r) => ({
+        provider: r.provider,
+        model: r.model,
+        requests: r.requests,
+        totalCostUsd: parseFloat(r.total_cost_usd.toFixed(6)),
+        avgLatencyMs: Math.round(r.avg_latency_ms),
+        errorRate: r.error_rate,
+      }))
+      return { models, count: models.length }
+    })
     c.header('Cache-Control', CACHE_STATS_LIVE)
-    return c.json({ success: true, data: models, meta: { hours, count: models.length } })
+    return c.json({ success: true, data: payload.models, meta: { hours, count: payload.count } })
   } catch (err) {
     console.error('[stats:models] ClickHouse query failed:', err instanceof Error ? err.message : err)
     return c.json({ error: 'Failed to fetch model stats' }, 500)
@@ -148,22 +160,26 @@ statsRouter.get('/timeseries', async (c) => {
   const to = c.req.query('to')
   const granularity = selectGranularity(from ?? null)
 
+  const cacheKey = `org:${orgId}:stats:timeseries:${from ?? ''}:${to ?? ''}:${projectId ?? ''}:${granularity}`
+
   try {
-    const rows = await getStatsTimeseries(orgId, {
-      projectId,
-      from: from ?? null,
-      to: to ?? null,
-      granularity,
+    const payload = await withStatsCache(cacheKey, STATS_SWR, async () => {
+      const rows = await getStatsTimeseries(orgId, {
+        projectId,
+        from: from ?? null,
+        to: to ?? null,
+        granularity,
+      })
+      return rows.map((r) => ({
+        date: r.day,
+        requests: r.requests,
+        cost: parseFloat(r.cost.toFixed(6)),
+        tokens: r.tokens,
+        errors: r.errors,
+      }))
     })
-    const series = rows.map((r) => ({
-      date: r.day,
-      requests: r.requests,
-      cost: parseFloat(r.cost.toFixed(6)),
-      tokens: r.tokens,
-      errors: r.errors,
-    }))
     c.header('Cache-Control', CACHE_STATS_LIVE)
-    return c.json({ success: true, data: series, meta: { granularity } })
+    return c.json({ success: true, data: payload, meta: { granularity } })
   } catch (err) {
     console.error('[stats:timeseries] ClickHouse query failed:', err instanceof Error ? err.message : err)
     return c.json({ error: 'Failed to fetch timeseries' }, 500)
@@ -200,14 +216,21 @@ statsRouter.get('/spend-forecast', async (c) => {
   const daysInMonth = new Date(Date.UTC(year, month + 1, 0)).getUTCDate()
   const monthStart = new Date(Date.UTC(year, month, 1)).toISOString()
 
+  // The downstream math (regression, projection) is pure and cheap — only the
+  // ClickHouse timeseries lookup is worth caching. monthStart is constant for
+  // the calendar month so a single cache key serves the whole day.
+  const cacheKey = `org:${orgId}:stats:spend-forecast-rows:${monthStart}:${projectId ?? ''}`
+
   let rows: TimeseriesRow[]
   try {
-    rows = await getStatsTimeseries(orgId, {
-      projectId,
-      from: monthStart,
-      to: null,
-      granularity: 'day',
-    })
+    rows = await withStatsCache(cacheKey, STATS_SWR_SLOW, () =>
+      getStatsTimeseries(orgId, {
+        projectId,
+        from: monthStart,
+        to: null,
+        granularity: 'day',
+      }),
+    )
   } catch (err) {
     console.error('[stats:spend-forecast] ClickHouse query failed:', err instanceof Error ? err.message : err)
     return c.json({ error: 'Failed to fetch spend forecast' }, 500)
