@@ -37,6 +37,24 @@ export interface SpanlensConfig {
   silent?: boolean
   /** Custom error hook — called when an ingest call fails. */
   onError?: (err: unknown, context: string) => void
+  /**
+   * Fraction of traces to ingest, in `[0.0, 1.0]`. Default `1.0` (no sampling).
+   *
+   * Decisions are made per-trace (at `client.startTrace()` time) and apply to
+   * every span under that trace, so each surviving trace remains fully
+   * coherent in the dashboard.
+   *
+   * **Tail-based error bypass**: traces that end with `status: 'error'` are
+   * always recorded, even when the trace would otherwise have been sampled
+   * out. This guarantees 100% of error traces reach the dashboard regardless
+   * of how aggressive the sample rate is.
+   *
+   * **Scope clarification**: only affects the agent-tracing layer
+   * (`/ingest/traces`, `/ingest/spans`). Spanlens proxy request logs
+   * (`/proxy/*` → ClickHouse `requests` table) are unaffected — every LLM
+   * call is still recorded for cost / quota / anomaly tracking.
+   */
+  sampleRate?: number
 }
 
 export interface TraceOptions {
