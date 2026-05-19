@@ -330,6 +330,76 @@ openai = OpenAI(
         the bodies.
       </p>
 
+      <h2 id="sample-rate">sampleRate — trace sampling (v0.3.x+)</h2>
+      <p>
+        Cap the volume of trace + span ingestion without changing your application code. The
+        decision is made per-trace at <code>startTrace()</code> / <code>start_trace()</code> time
+        and is sticky for every span beneath that trace, so each surviving trace stays internally
+        coherent in the dashboard (no half-sampled trees).
+      </p>
+      <LangTabs
+        ts={`import { SpanlensClient } from '@spanlens/sdk'
+
+const client = new SpanlensClient({
+  apiKey: process.env.SPANLENS_API_KEY!,
+  sampleRate: 0.1,   // keep 10% of successful traces; 100% of error traces
+})`}
+        py={`from spanlens import SpanlensClient
+
+client = SpanlensClient(
+    api_key="sl_live_...",
+    sample_rate=0.1,  # keep 10% of successful traces; 100% of error traces
+)`}
+      />
+
+      <h3>Tail-based error bypass</h3>
+      <p>
+        Sampled-out traces buffer their span POSTs and PATCHes in memory. When the trace ends:
+      </p>
+      <ul>
+        <li>
+          <strong>status = &quot;error&quot;</strong> → the buffer is replayed against the real
+          transport (preserving FIFO order) and then the trace-end PATCH is sent. The trace appears
+          in the dashboard identically to a sampled-in error trace.
+        </li>
+        <li>
+          <strong>status = &quot;completed&quot;</strong> → the buffer is dropped silently. Zero
+          network traffic for that trace&apos;s ingest layer.
+        </li>
+      </ul>
+      <p>
+        This means you can run aggressive sampling (e.g. <code>0.01</code> = 1%) and still get every
+        failure for debugging. The buffer is capped at 1,000 ops per trace to bound memory for
+        long-running agents.
+      </p>
+
+      <h3>What it does and doesn&apos;t affect</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Subsystem</th>
+            <th>Affected by sampleRate?</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Trace + span ingestion (<code>/ingest/traces</code>, <code>/ingest/spans</code>)</td>
+            <td><strong>Yes</strong> — this is the OTLP-equivalent agent-tracing layer</td>
+          </tr>
+          <tr>
+            <td>Proxy request logs (<code>/proxy/*</code> → ClickHouse <code>requests</code>)</td>
+            <td>
+              <strong>No</strong> — every LLM call is still recorded for cost / quota / anomaly
+              tracking. Billing does not depend on the SDK&apos;s sampling decision.
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <p>
+        Validation throws at client construction for values outside <code>[0.0, 1.0]</code> — fail
+        fast rather than silently dropping 100% of traces because a string was passed by accident.
+      </p>
+
       <h2 id="observe">observe() — agent tracing</h2>
       <p>
         Wrap any function to turn it into a span in an agent trace. The callback&rsquo;s return value
