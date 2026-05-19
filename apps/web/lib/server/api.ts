@@ -12,8 +12,6 @@ const API_URL =
 // Supabase auth roundtrips; with this wrapper it triggers exactly one.
 // Per-render, never cross-user — auth security is unaffected.
 const getServerSession = cache(async () => {
-  // TEMP-VERIFY-STEP2: remove after verification confirms dedup
-  console.log('[perf-step2] getServerSession called')
   const supabase = await createClient()
   const {
     data: { session },
