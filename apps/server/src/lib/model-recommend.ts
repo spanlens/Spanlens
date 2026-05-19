@@ -1,5 +1,9 @@
 import { supabaseAdmin } from './db.js'
-import { matchSubstitute } from './model-recommend-rules.js'
+// Import from the cache module directly — `model-recommend-rules.ts` no
+// longer re-exports `matchSubstitute` because doing so created a circular
+// ESM import that esbuild flattens into a TDZ ReferenceError at module
+// load time. See the note in `model-recommend-rules.ts`.
+import { matchSubstitute } from './model-recommendations-cache.js'
 
 /**
  * Heuristic model-recommendation engine.
