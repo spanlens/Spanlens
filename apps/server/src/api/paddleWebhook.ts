@@ -101,6 +101,30 @@ async function upsertSubscription(
   plan: PlanTier,
   priceId: string,
 ): Promise<void> {
+  // ── past_due_since lifecycle (P2.7) ────────────────────────────────────
+  // The auto-downgrade cron uses this column to age out delinquent subs
+  // after 7 days. Three cases:
+  //   1. Entering past_due:    if `past_due_since` is already set keep it
+  //                            (idempotent — duplicate webhooks don't reset
+  //                            the clock); otherwise stamp now().
+  //   2. Recovered to active:  clear the field so a future failure starts
+  //                            its own 7-day window from scratch.
+  //   3. Any other status:     leave untouched (carry through canceled
+  //                            for analytics).
+  let pastDueSinceUpdate: { past_due_since: string | null } | Record<string, never> = {}
+  if (sub.status === 'past_due') {
+    const { data: existing } = await supabaseAdmin
+      .from('subscriptions')
+      .select('past_due_since')
+      .eq('paddle_subscription_id', sub.id)
+      .maybeSingle()
+    if (!(existing as { past_due_since?: string | null } | null)?.past_due_since) {
+      pastDueSinceUpdate = { past_due_since: new Date().toISOString() }
+    }
+  } else if (sub.status === 'active' || sub.status === 'trialing') {
+    pastDueSinceUpdate = { past_due_since: null }
+  }
+
   const updates = {
     organization_id: organizationId,
     paddle_subscription_id: sub.id,
@@ -116,6 +140,7 @@ async function upsertSubscription(
       last_event_type: event.event_type,
       occurred_at: event.occurred_at,
     },
+    ...pastDueSinceUpdate,
   }
 
   const { error } = await supabaseAdmin

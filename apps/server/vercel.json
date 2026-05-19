@@ -15,6 +15,7 @@
     { "path": "/cron/stale-key-reminders",  "schedule": "0 9 * * 1" },
     { "path": "/cron/leak-detect-keys",          "schedule": "0 4 * * *" },
     { "path": "/cron/recommend-savings-alerts",  "schedule": "0 9 * * *" },
-    { "path": "/cron/replay-fallback",            "schedule": "*/5 * * * *" }
+    { "path": "/cron/replay-fallback",            "schedule": "*/5 * * * *" },
+    { "path": "/cron/check-past-due-downgrades",  "schedule": "0 10 * * *" }
   ]
 }

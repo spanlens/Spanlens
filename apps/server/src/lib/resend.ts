@@ -289,3 +289,106 @@ export function renderLeakAlertEmail(params: {
 
   return { subject, html }
 }
+
+/**
+ * P2.7 — past_due warning + auto-downgrade notification.
+ *
+ * Three flavours, picked by `params.stage`:
+ *   • 'warning-d3' — payment failed 4 days ago, 3 days until auto-downgrade
+ *   • 'warning-d1' — 6 days ago, 1 day until auto-downgrade
+ *   • 'downgraded' — sent immediately after the cron flips the org to free
+ *
+ * Tone: calm reminder, not dunning. Most past_due is an expired card.
+ */
+export function renderPastDueEmail(params: {
+  orgName: string
+  stage: 'warning-d3' | 'warning-d1' | 'downgraded'
+  pastDueSince: string
+  billingUrl: string
+}): { subject: string; html: string } {
+  const { orgName, stage, pastDueSince, billingUrl } = params
+  const sinceLabel = new Date(pastDueSince).toLocaleDateString('en-US', {
+    year: 'numeric', month: 'short', day: 'numeric',
+  })
+
+  let subject: string
+  let headerBg: string
+  let headerBorder: string
+  let headerColor: string
+  let headerTitle: string
+  let body: string
+  let ctaLabel: string
+
+  if (stage === 'warning-d3') {
+    subject = `[Spanlens] Payment failed — update your card to keep your plan`
+    headerBg = '#fff7ed'
+    headerBorder = '#fed7aa'
+    headerColor = '#9a3412'
+    headerTitle = 'Payment failed'
+    body = `
+      Hi ${escapeHtml(orgName)} team,
+      <br><br>
+      Your most recent Spanlens invoice didn&apos;t go through — usually an expired
+      or replaced card. We&apos;ll keep your plan active for <strong>3 more days</strong>;
+      after that the workspace automatically drops to the Free plan and log
+      retention shortens to 14 days.
+      <br><br>
+      Updating the card on file takes about 30 seconds and avoids any service
+      change.
+    `
+    ctaLabel = 'Update payment method'
+  } else if (stage === 'warning-d1') {
+    subject = `[Spanlens] Last reminder — auto-downgrade in 24 hours`
+    headerBg = '#fef2f2'
+    headerBorder = '#fecaca'
+    headerColor = '#991b1b'
+    headerTitle = 'Auto-downgrade in 24 hours'
+    body = `
+      Hi ${escapeHtml(orgName)} team,
+      <br><br>
+      We still haven&apos;t been able to charge the card on file (first failure on
+      ${escapeHtml(sinceLabel)}). If we don&apos;t recover by tomorrow, the workspace
+      drops to the Free plan and log retention shortens to 14 days.
+      <br><br>
+      You can re-upgrade at any time — this is just a heads-up so it&apos;s not a
+      surprise.
+    `
+    ctaLabel = 'Update payment method'
+  } else {
+    subject = `[Spanlens] Your workspace has been moved to the Free plan`
+    headerBg = '#f1f5f9'
+    headerBorder = '#e2e8f0'
+    headerColor = '#0f172a'
+    headerTitle = 'Plan changed to Free'
+    body = `
+      Hi ${escapeHtml(orgName)} team,
+      <br><br>
+      After 7 days without a successful payment (first failure
+      ${escapeHtml(sinceLabel)}), we&apos;ve moved this workspace to the Free plan.
+      Existing logs older than 14 days are no longer visible in the dashboard,
+      but they remain in our database for a 7-day grace window — re-upgrade in
+      that time and they reappear automatically.
+      <br><br>
+      Nothing has been deleted yet. Your data, projects, API keys, and integrations
+      are all intact — only the plan tier changed.
+    `
+    ctaLabel = 'Re-upgrade'
+  }
+
+  const html = `
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 580px; margin: 0 auto; padding: 24px; color: #111;">
+      <div style="background: ${headerBg}; border: 1px solid ${headerBorder}; border-radius: 8px; padding: 14px 16px; margin-bottom: 18px;">
+        <div style="font-weight: 600; font-size: 14px; color: ${headerColor};">${headerTitle}</div>
+      </div>
+      <p style="margin: 0 0 14px; color: #333; font-size: 13.5px; line-height: 1.55;">${body.trim()}</p>
+      <p style="margin: 22px 0;">
+        <a href="${billingUrl}" style="display: inline-block; padding: 10px 18px; background: #111; color: #fff; text-decoration: none; border-radius: 6px; font-weight: 500; font-size: 13px;">${ctaLabel}</a>
+      </p>
+      <p style="margin: 18px 0 0; color: #aaa; font-size: 11.5px;">
+        Questions? Reply to this email — it goes straight to the team.
+      </p>
+    </div>
+  `.trim()
+
+  return { subject, html }
+}
