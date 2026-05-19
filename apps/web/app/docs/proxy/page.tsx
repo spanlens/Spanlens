@@ -17,12 +17,14 @@ export default function ProxyDocs() {
       <div className="my-6 rounded-lg border-l-4 border-accent bg-accent-bg p-4 text-sm">
         <p className="m-0 font-semibold text-accent">⚡ Use streaming for long requests</p>
         <p className="mt-1 mb-0 text-accent">
-          The proxy runs on Node.js with a <strong>40-second max duration</strong>. Any request expected to take
-          longer (large <code>max_tokens</code>, slow models, JSON mode with big outputs) should use{' '}
-          <code>stream: true</code>. Streaming sidesteps the timeout entirely — first byte arrives in
-          ~200ms regardless of total duration. If you need a single JSON object back, accumulate chunks
-          server-side and return the merged string to your client (the &ldquo;internal streaming&rdquo;
-          pattern).
+          The proxy runs on Vercel Pro with a <strong>300-second hard ceiling</strong>, and Spanlens
+          gracefully closes streams at <strong>290 seconds</strong> to make room for the log to flush.
+          Long requests (large <code>max_tokens</code>, slow models, JSON mode with big outputs) should
+          use <code>stream: true</code> — first byte arrives in ~200 ms regardless of total duration.
+          If a stream gets cut off at the deadline, the row is logged with{' '}
+          <code>truncated: true</code> (visible as a badge in <a href="/requests">/requests</a>) so
+          you can see when it happens and tune <code>max_tokens</code> accordingly. Non-streaming
+          requests that exceed the upstream timeout return HTTP 504.
         </p>
       </div>
 

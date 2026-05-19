@@ -23,7 +23,7 @@ requestsRouter.use('*', authJwt)
 const LIST_COLUMNS =
   'id, project_id, provider, model, prompt_tokens, completion_tokens, total_tokens, ' +
   'cache_read_tokens, cache_write_tokens, cost_usd, latency_ms, status_code, error_message, ' +
-  'trace_id, span_id, provider_key_id, user_id, session_id, created_at'
+  'trace_id, span_id, provider_key_id, user_id, session_id, truncated, created_at'
 
 interface RequestRow {
   id: string
@@ -44,6 +44,8 @@ interface RequestRow {
   provider_key_id: string | null
   user_id: string | null
   session_id: string | null
+  /** ClickHouse UInt8 → number on the wire; we coerce to boolean at the API boundary. */
+  truncated: number | boolean
   created_at: string
 }
 
@@ -95,6 +97,13 @@ requestsRouter.get('/', async (c) => {
   else if (status === '4xx')  filters.push('status_code >= 400 AND status_code < 500')
   else if (status === '5xx')  filters.push('status_code >= 500')
 
+  // ?truncated=true  → only rows that hit the stream deadline
+  // ?truncated=false → only rows that completed cleanly
+  // (omit) → no filter
+  const truncatedRaw = c.req.query('truncated')
+  if (truncatedRaw === 'true')  filters.push('truncated = 1')
+  else if (truncatedRaw === 'false') filters.push('truncated = 0')
+
   const combinedFilters = filters.length > 0 ? filters.join(' AND ') : undefined
 
   try {
@@ -117,6 +126,8 @@ requestsRouter.get('/', async (c) => {
     const flat = rows.map((row) => ({
       ...row,
       cost_usd: row.cost_usd == null ? null : Number(row.cost_usd),
+      // ClickHouse returns UInt8 as a number ("0" / "1" depending on driver); normalize.
+      truncated: Boolean(Number(row.truncated)),
       provider_key_name: row.provider_key_id ? (keyMap.get(row.provider_key_id) ?? null) : null,
     }))
 
@@ -139,7 +150,7 @@ const DETAIL_COLUMNS =
   'prompt_tokens, completion_tokens, total_tokens, cache_read_tokens, cache_write_tokens, ' +
   'cost_usd, latency_ms, proxy_overhead_ms, status_code, request_body, response_body, ' +
   'error_message, trace_id, span_id, prompt_version_id, provider_key_id, ' +
-  'user_id, session_id, flags, response_flags, has_security_flags, created_at'
+  'user_id, session_id, flags, response_flags, has_security_flags, truncated, created_at'
 
 interface RequestDetailRow extends RequestRow {
   organization_id: string
@@ -184,6 +195,7 @@ requestsRouter.get('/:id', async (c) => {
     const flat = {
       ...data,
       cost_usd: data.cost_usd == null ? null : Number(data.cost_usd),
+      truncated: Boolean(Number(data.truncated)),
       request_body: parseJsonColumn(data.request_body, null),
       response_body: parseJsonColumn(data.response_body, null),
       flags: parseJsonColumn(data.flags, []),
