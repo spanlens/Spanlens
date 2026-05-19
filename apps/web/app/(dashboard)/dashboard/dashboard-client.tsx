@@ -16,7 +16,7 @@ import { useDismissals, useDismissCard } from '@/lib/queries/use-dismissals'
 import { cn } from '@/lib/utils'
 import dynamic from 'next/dynamic'
 import { WelcomeBanner } from '@/components/dashboard/welcome-banner'
-import { useRealtimeRequests } from '@/lib/hooks/use-realtime-requests'
+import { LIVE_REFETCH_MS_ACTIVE as LIVE_REFETCH_MS } from '@/lib/queries/live-polling'
 
 // Lazy-load recharts-heavy components. They render below the fold and are
 // not needed for the initial KPI row / greeting paint.
@@ -178,8 +178,15 @@ function AttnCard({ kind, title, meta, hint, cta, href, onDismiss }: AttnCardPro
 
 // ── Page ───────────────────────────────────────────────────────
 
-// Realtime WebSocket handles instant updates; polling is a safety-net fallback only.
-const LIVE_REFETCH_MS = 2 * 60_000
+// P3.9 (2026-05-19): polling interval re-tuned from 2min → 5s. The previous
+// comment claimed realtime WebSocket handled instant updates and polling
+// was a "safety-net fallback" — but the realtime subscription pointed at
+// the Supabase `public.requests` table, which was dropped in the
+// ClickHouse migration (20260516000000). With the dead subscription
+// removed, the 5-second interval imported from `lib/queries/live-polling`
+// is now the primary freshness mechanism; combined with the global
+// `refetchOnWindowFocus` default it gives ~5s freshness while visible
+// + instant on tab focus.
 
 export function DashboardClient() {
   const [timeRange, setTimeRange] = useState('24h')
@@ -187,7 +194,13 @@ export function DashboardClient() {
   // Capture "now" once at mount — fresh data drives the dashboard via
   // react-query refetches, so a stable comparison anchor is correct.
   const [mountNow] = useState(() => Date.now())
-  useRealtimeRequests()
+  // Note (P3.9, 2026-05-19): the previous Supabase Realtime subscription on
+  // `public.requests` was removed — that table was dropped in the ClickHouse
+  // migration (20260516000000), so the subscription had been silently
+  // delivering zero events. Live updates now come from polling intervals
+  // (`LIVE_REFETCH_MS` below) plus TanStack's `refetchOnWindowFocus: true`
+  // global default in `lib/query-client.ts`, which gives instant refresh
+  // whenever the user returns to the tab.
   const dismissalsQuery = useDismissals()
   const dismissMutation = useDismissCard()
   const dismissedCards = useMemo(

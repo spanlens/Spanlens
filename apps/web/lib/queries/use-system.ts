@@ -3,6 +3,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { apiGet } from '@/lib/api'
 import type { ApiEnvelope } from './types'
+import { LIVE_REFETCH_MS_HEALTH } from './live-polling'
 
 export interface CronJobRun {
   id: string
@@ -29,6 +30,8 @@ export function useCronRuns() {
       const res = await apiGet<ApiEnvelope<CronJobSummary[]>>('/api/v1/system/cron-runs')
       return res.data ?? []
     },
-    refetchInterval: 60_000,
+    // P3.9: slow-moving health surface — cron status updates per hour, so
+    // 60s polling is enough. Background tabs pause via TanStack defaults.
+    refetchInterval: LIVE_REFETCH_MS_HEALTH,
   })
 }
