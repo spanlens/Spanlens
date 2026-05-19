@@ -110,6 +110,7 @@ async function persistSnapshot(
     deviations: a.deviations,
     sample_count: a.sampleCount,
     reference_count: a.referenceCount,
+    confidence: a.confidence,
   }))
 
   // Upsert on the unique (org, day, provider, model, kind) tuple — re-runs
@@ -135,6 +136,8 @@ interface AnomalyEventRow {
   deviations: string | number
   sample_count: number
   reference_count: number
+  /** P3.2: nullable for rows persisted before the column was added. */
+  confidence: 'low' | 'medium' | 'high' | null
 }
 
 export interface AnomalyHistoryEntry {
@@ -149,6 +152,8 @@ export interface AnomalyHistoryEntry {
   deviations: number
   sampleCount: number
   referenceCount: number
+  /** Null for pre-P3.2 historical rows; otherwise 'low' | 'medium' | 'high'. */
+  confidence: 'low' | 'medium' | 'high' | null
 }
 
 async function notifyHighSeverityAnomalies(
@@ -224,7 +229,7 @@ export async function getAnomalyHistory(
   const { data, error } = await supabaseAdmin
     .from('anomaly_events')
     .select(
-      'id, detected_on, provider, model, kind, current_value, baseline_mean, baseline_stddev, deviations, sample_count, reference_count',
+      'id, detected_on, provider, model, kind, current_value, baseline_mean, baseline_stddev, deviations, sample_count, reference_count, confidence',
     )
     .eq('organization_id', organizationId)
     .gte('detected_on', since)
@@ -251,5 +256,6 @@ export async function getAnomalyHistory(
     deviations: Number(r.deviations) || 0,
     sampleCount: r.sample_count,
     referenceCount: r.reference_count,
+    confidence: r.confidence,
   }))
 }
