@@ -3,6 +3,7 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, apiDelete, apiGet, apiPost } from '@/lib/api'
 import type { ApiEnvelope, RequestDetail, RequestRow, RequestsPage } from './types'
+import { LIVE_REFETCH_MS_ACTIVE } from './live-polling'
 
 export interface RequestsFilters {
   page: number
@@ -52,7 +53,12 @@ export function useRequests(filters: RequestsFilters) {
       }
     },
     placeholderData: keepPreviousData,
-    refetchInterval: 10_000,
+    // P3.9: 10s → 5s while the tab is visible. Background tabs pause via
+    // TanStack's `refetchIntervalInBackground: false` default, and the
+    // global `refetchOnWindowFocus: true` in lib/query-client.ts triggers
+    // an immediate refresh whenever the user returns to the tab — so a
+    // burst of new requests becomes visible without manual reload.
+    refetchInterval: LIVE_REFETCH_MS_ACTIVE,
   })
 }
 

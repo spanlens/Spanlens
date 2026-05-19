@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiDelete, apiGet, apiPost } from '@/lib/api'
 import type { ApiEnvelope } from './types'
+import { LIVE_REFETCH_MS_SECONDARY } from './live-polling'
 
 export type AnomalyKind = 'latency' | 'cost' | 'error_rate'
 
@@ -97,7 +98,10 @@ export function useAnomalies(params: UseAnomaliesParams = {}) {
       return { data: res.data ?? [], meta: res.meta }
     },
     staleTime: 60_000,
-    refetchInterval: 60_000,
+    // P3.9: secondary live page — anomalies surface on the scale of minutes,
+    // not seconds. 30s is enough granularity for the on-call eye + cheap
+    // on the ClickHouse query budget. Pause when tab hidden; refresh on focus.
+    refetchInterval: LIVE_REFETCH_MS_SECONDARY,
     refetchOnWindowFocus: true,
   })
 }
