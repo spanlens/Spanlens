@@ -182,13 +182,20 @@ export function matchSubstituteIn(
 }
 
 /**
- * Production matcher — resolves rules from the DB-backed cache.
- * For backward compat with callers that import from this file. The actual
- * logic lives in `model-recommendations-cache.ts` so this module stays
- * free of the cache implementation (which depends on supabaseAdmin).
+ * Production matcher — see `./model-recommendations-cache.ts`.
+ *
+ * NOTE: do not re-export `matchSubstitute` from here. Doing so creates a
+ * circular ES-module import (rules.ts ↔ cache.ts) which esbuild bundles in
+ * a way that puts `SUBSTITUTES` in the temporal dead zone when the cache
+ * module evaluates its top-level `let cache = { ...FALLBACK_RULES }`. That
+ * surfaces as a runtime `ReferenceError: Cannot access 'X' before
+ * initialization` at module load time, taking the entire server down
+ * (every endpoint 500s, not just the recommendation route). The local test
+ * runner doesn't reproduce this because Vitest uses native ESM without
+ * the same bundle flattening. Import `matchSubstitute` from
+ * `./model-recommendations-cache.js` directly at the call site instead.
  *
  * Tests that want to exercise the rule MATCHING logic against a known
  * rule set should call `matchSubstituteIn(key, FALLBACK_RULES)` directly
  * — it's pure and free of any side effects.
  */
-export { matchSubstitute } from './model-recommendations-cache.js'

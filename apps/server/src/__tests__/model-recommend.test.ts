@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { matchSubstitute, SUBSTITUTES } from '../lib/model-recommend-rules.js'
+import { SUBSTITUTES } from '../lib/model-recommend-rules.js'
+import { matchSubstitute } from '../lib/model-recommendations-cache.js'
 
 describe('matchSubstitute — dated variant handling', () => {
   it('matches exact alias keys', () => {
