@@ -1,3 +1,17 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// Cost calculator — token usage → USD.
+//
+// Pricing source: see `model-prices-cache.ts`. Prices live in the
+// `model_prices` Supabase table and are mirrored to an in-memory map with
+// 5-minute stale-while-revalidate. Hardcoded fallback covers cold-start.
+//
+// This function is SYNCHRONOUS by design — it sits on the proxy hot path
+// (fire-and-forget logging) and must not await. The cache module handles
+// all DB I/O in the background.
+// ─────────────────────────────────────────────────────────────────────────────
+
+import { getCachedPrices, type ModelPrice } from './model-prices-cache.js'
+
 export type Provider = 'openai' | 'anthropic' | 'gemini'
 
 export interface Usage {
@@ -21,64 +35,23 @@ export interface CostResult {
   cacheWriteCost: number
 }
 
-interface ModelPrice {
-  prompt: number
-  completion: number
-  /** USD per 1M cached input tokens. If undefined, cache_read is billed at `prompt` rate. */
-  cacheRead?: number
-  /** USD per 1M cache-creation tokens. If undefined, cache_write is billed at `prompt` rate. */
-  cacheWrite?: number
-}
-
-// Prices in USD per 1M tokens (verified against provider pricing pages 2026-05).
-// Cache rates:
-//   • Anthropic — cache_read = 0.1 × input, cache_write (5min) = 1.25 × input
-//   • OpenAI    — cached input ≈ 0.5 × input (gpt-4o / gpt-4.1 families)
-const MODEL_PRICES: Record<string, ModelPrice> = {
-  // ── OpenAI ────────────────────────────────────────────────────────────────
-  'gpt-4o':        { prompt: 2.5,  completion: 10,  cacheRead: 1.25 },
-  'gpt-4o-mini':   { prompt: 0.15, completion: 0.6, cacheRead: 0.075 },
-  'gpt-4.1':       { prompt: 2.0,  completion: 8.0, cacheRead: 0.5 },
-  'gpt-4.1-mini':  { prompt: 0.4,  completion: 1.6, cacheRead: 0.1 },
-  'gpt-4.1-nano':  { prompt: 0.1,  completion: 0.4, cacheRead: 0.025 },
-  'gpt-4-turbo':   { prompt: 10,   completion: 30 },
-  'gpt-4':         { prompt: 30,   completion: 60 },
-  'gpt-3.5-turbo': { prompt: 0.5,  completion: 1.5 },
-  // ── Anthropic ────────────────────────────────────────────────────────────
-  'claude-opus-4-7':            { prompt: 5,    completion: 25, cacheRead: 0.5,  cacheWrite: 6.25 },
-  'claude-sonnet-4-6':          { prompt: 3,    completion: 15, cacheRead: 0.3,  cacheWrite: 3.75 },
-  // claude-haiku-4-5 — all aliases (dot notation API alias, dash API response body, dated)
-  'claude-haiku-4.5':           { prompt: 1,    completion: 5,  cacheRead: 0.1,  cacheWrite: 1.25 },
-  'claude-haiku-4-5':           { prompt: 1,    completion: 5,  cacheRead: 0.1,  cacheWrite: 1.25 },
-  'claude-haiku-4-5-20251001':  { prompt: 1,    completion: 5,  cacheRead: 0.1,  cacheWrite: 1.25 },
-  'claude-3-5-sonnet-20241022': { prompt: 3,    completion: 15, cacheRead: 0.3,  cacheWrite: 3.75 },
-  'claude-3-5-haiku-20241022':  { prompt: 0.8,  completion: 4,  cacheRead: 0.08, cacheWrite: 1.0 },
-  'claude-3-opus-20240229':     { prompt: 15,   completion: 75, cacheRead: 1.5,  cacheWrite: 18.75 },
-  // ── Gemini (caching not yet exposed in our integration) ──────────────────
-  'gemini-2.5-pro':        { prompt: 1.25,  completion: 10 },
-  'gemini-2.5-flash':      { prompt: 0.3,   completion: 2.5 },
-  'gemini-2.5-flash-lite': { prompt: 0.1,   completion: 0.4 },
-  'gemini-2.0-flash':      { prompt: 0.1,   completion: 0.4 }, // deprecated 2026-06-01, kept for historical data
-  'gemini-1.5-pro':        { prompt: 1.25,  completion: 5 },
-  'gemini-1.5-flash':      { prompt: 0.075, completion: 0.3 },
-}
-
 /**
  * OpenAI는 종종 dated suffix를 포함해 모델명을 반환합니다 (예: gpt-4o-mini-2024-07-18).
  * 정확 매칭이 실패하면 등록된 키들 중 가장 긴 prefix를 찾아 fallback 매칭합니다.
  * (boundary-aware: 다음 글자가 단어 경계가 되도록 — 'gpt-4'가 'gpt-4o' prefix로 잘못 잡히는 일 방지)
  */
 function lookupPrice(model: string): ModelPrice | null {
-  const exact = MODEL_PRICES[model]
+  const prices = getCachedPrices()
+  const exact = prices[model]
   if (exact) return exact
 
   let bestKey = ''
-  for (const key of Object.keys(MODEL_PRICES)) {
+  for (const key of Object.keys(prices)) {
     if (!model.startsWith(key)) continue
     // longest prefix wins
     if (key.length > bestKey.length) bestKey = key
   }
-  return bestKey ? MODEL_PRICES[bestKey] ?? null : null
+  return bestKey ? prices[bestKey] ?? null : null
 }
 
 export function calculateCost(

@@ -81,7 +81,8 @@ DB 읽기(조회) → supabaseClient (anon key, RLS 적용)
 - RLS 없음 → `apps/server/src/lib/requests-query.ts`의 `requestsScope` 헬퍼로 `organization_id` + retention 필터 자동 주입. 직접 `getClickhouse().query()` 호출은 lib 파일 한정, org 필터 직접 명시
 ## 핵심 모듈 — 중복 구현 금지
 lib/crypto.ts — AES-256-GCM 암/복호화 (Provider Key 전용)
-lib/cost.ts — 비용 계산 calculateCost(provider, model, usage)
+lib/cost.ts — 비용 계산 calculateCost(provider, model, usage). 동기 함수 — DB 가격은 lib/model-prices-cache.ts가 백그라운드로 stale-while-revalidate 갱신 (5분 TTL)
+lib/model-prices-cache.ts — getCachedPrices() 동기 lookup + refreshPricesNow() 강제 갱신. FALLBACK_PRICES 콜드스타트 안전망. 핫 패스에서 await 금지
 lib/logger.ts — 비동기 로깅 logRequestAsync(data) + parseLogBodyMode(header)
 lib/db.ts — supabaseAdmin / supabaseClient 인스턴스
 lib/clickhouse.ts — ClickHouse 싱글톤 + toClickhouseTimestamp() 헬퍼
@@ -157,6 +158,7 @@ PORT=3001 (server), 3000 (web)
    - `WEB_URL` (필수, prod) — `https://www.spanlens.io`. 초대 이메일 accept 링크의 base URL. 누락 시 `http://localhost:3000` fallback → 사용자가 받은 링크 못 누름.
    - `RESEND_API_KEY` (선택) — Resend 토큰. 없으면 `lib/resend.ts`가 silent하게 발송 스킵하고 콘솔에 dev URL 출력. API 응답에는 `devAcceptUrl`이 들어감 (admin이 수동 전달 가능).
    - `RESEND_FROM` (선택) — 발신자 표시. Default `Spanlens <notifications@spanlens.io>`. 도메인 미인증 상태면 spam함 직행이라, Resend Domains에서 인증 후 `RESEND_FROM=Spanlens <notifications@mail.spanlens.io>` 같이 명시 권장. spanlens.io 자체는 이미 Verified (2026-04-25). DMARC는 `_dmarc` TXT 레코드 별도 추가 필요 (가비아 DNS).
+   - `SPANLENS_ADMIN_EMAILS` (선택, internal-only routes 사용 시) — Spanlens 내부 운영자 이메일 allowlist (콤마 구분). `/api/v1/admin/*` 경로 접근 권한. 누락 시 모든 admin route 403 (fail-closed). 예: `SPANLENS_ADMIN_EMAILS=haeseong050321@gmail.com`. P2.1에서 `/admin/model-prices`용으로 도입됨.
 18. **🔥 ClickHouse DateTime64는 `Z` 접미사 거부 — `toClickhouseTimestamp()` 사용 필수**: `new Date().toISOString()`은 `2026-05-16T11:49:23.749Z`를 반환하는데 ClickHouse는 `2026-05-16 11:49:23.749` 형식만 받음 (`T` → space, `Z` 제거). 직접 INSERT 시 `CANNOT_PARSE_INPUT_ASSERTION_FAILED` 발생. `lib/clickhouse.ts`의 `toClickhouseTimestamp(date)` 헬퍼로 캡슐화됨. 새 ClickHouse 쓰기 코드 작성 시 직접 `.toISOString()` 쓰지 말고 헬퍼 경유. 읽기에서 ClickHouse가 반환한 DateTime64 문자열을 JS Date로 파싱할 때는 반대로 `T`/`Z` 다시 붙여야 함 (`stale-key-digest.ts`, `providerKeys.ts` 참고).
 19. **🔥 ClickHouse JSONEachRow는 모든 숫자를 string으로 반환 — `Number()` 변환 필수**: `Decimal(18, 8)` (cost_usd), `UInt64` (count), JSON 결과의 numeric 컬럼은 전부 string으로 옴. `r.cost_usd + 1` 하면 `"0.001" + 1 = "0.0011"` 같은 문자열 concat 버그 발생 (silent). API boundary에서 항상 `Number(r.cost_usd ?? 0)`로 강제 변환. `selectRequests<T>` 호출자도 row를 그대로 응답에 흘리면 클라이언트가 string으로 받음 — 반드시 `.map(r => ({ ...r, cost_usd: Number(r.cost_usd) }))` 패턴 적용.
 20. **ClickHouse `ilike` 없음 — `positionCaseInsensitive(col, 'x') > 0` 사용**: Supabase의 `.ilike('model', '%gpt%')` 직역하면 ClickHouse는 `ilike` 함수 자체가 없음. 대신 `positionCaseInsensitive(model, 'gpt') > 0` (substring 매치) 또는 `match(col, '(?i)pattern')` (regex). 또 `nullsFirst: false` → `ORDER BY col DESC NULLS LAST`. 마이그레이션 시 빠짐없이 치환.
