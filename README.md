@@ -231,6 +231,16 @@ Your Spanlens instance talks to your Supabase — we never see your data.
 
 ---
 
+## Contributing
+
+PRs and issues welcome. See [CONTRIBUTING.md](./CONTRIBUTING.md) for the
+project layout, local-dev setup, coding conventions, and what we look for
+in a PR. Commit messages follow [Conventional Commits](./.github/COMMIT_CONVENTION.md)
+and the PR template walks through the safety checklist.
+
+Security issues: please email `support@spanlens.io` instead of opening a
+public issue. See [SECURITY.md](./SECURITY.md).
+
 ## License
 
 [MIT](./LICENSE) — use, fork, self-host, or build on top freely. The hosted service at [spanlens.io](https://www.spanlens.io) is the recommended way to run Spanlens, but you can always pull the Docker image and run it yourself (see [docs/self-host](https://www.spanlens.io/docs/self-host)).
