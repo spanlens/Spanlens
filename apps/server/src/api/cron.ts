@@ -10,6 +10,7 @@ import { runStaleKeyDigestJob } from '../lib/stale-key-digest.js'
 import { runLeakDetectionJob } from '../lib/leak-detection.js'
 import { sendHighConfidenceRecommendationAlerts } from '../lib/recommendation-notify.js'
 import { logCronRun } from '../lib/cron-logger.js'
+import { replayFallbackQueue } from '../lib/fallback-replay.js'
 
 /**
  * Vercel cron endpoints. Invoked hourly via `crons` entry in `vercel.json`.
@@ -431,6 +432,31 @@ cronRouter.get('/leak-detect-keys', async (c) => {
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'unknown'
     logCronRun('leak-detect-keys', 'error', Date.now() - start, msg).catch(console.error)
+    return c.json({ error: msg }, 500)
+  }
+})
+
+// ── ClickHouse fallback replay (every 5 minutes) ────────────────
+// Drains rows queued in Supabase `requests_fallback` (populated by
+// logger.ts when ClickHouse INSERT throws) back into ClickHouse. Bounded
+// batch size + retry counter prevent runaway / poison payloads. See
+// lib/fallback-replay.ts for full design. Schedule wired in vercel.json.
+cronRouter.get('/replay-fallback', async (c) => {
+  const authFail = assertCronAuth(c.req.header('Authorization'))
+  if (authFail) return c.json({ error: authFail }, 401)
+
+  const start = Date.now()
+  try {
+    const result = await replayFallbackQueue()
+    // Treat partial failure (some rows still queued after retry++) as success
+    // for the cron infra — the rows will be retried next run. Only a top-level
+    // result.error (e.g. Supabase SELECT failed) is a hard cron failure.
+    const status = result.error ? 'error' : 'ok'
+    logCronRun('replay-fallback', status, Date.now() - start, result.error).catch(console.error)
+    return c.json({ success: !result.error, ...result })
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'unknown'
+    logCronRun('replay-fallback', 'error', Date.now() - start, msg).catch(console.error)
     return c.json({ error: msg }, 500)
   }
 })
