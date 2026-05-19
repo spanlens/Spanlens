@@ -28,6 +28,25 @@ function fmtTs(iso: string): string {
 
 export type AnomalyKind = 'latency' | 'cost' | 'error_rate'
 
+/**
+ * How statistically reliable this anomaly is, gated by the size of the
+ * reference window:
+ *
+ *   • 'low'    — 10 to 29 reference samples. Surface as informational only;
+ *                σ math is still mathematically valid but the small-sample
+ *                estimate of the population stddev is wide.
+ *   • 'medium' — 30 to 99. Roughly the cutoff where standard textbook
+ *                "n ≥ 30" approximation of normality kicks in.
+ *   • 'high'   — 100+. Both the mean and the stddev are well-estimated;
+ *                the σ count is trustworthy enough to page on.
+ *
+ * Before P3.2 the detector required ≥30 samples to flag *anything*, so brand
+ * new orgs (which have <30 historical samples for their first week) saw
+ * zero anomalies. Surfacing 'low' confidence at 10 samples lets them see
+ * directional signal while not making us look certain about a noisy stat.
+ */
+export type AnomalyConfidence = 'low' | 'medium' | 'high'
+
 export interface AnomalyContributingFactors {
   obsPromptTokensMean: number | null
   refPromptTokensMean: number | null
@@ -43,9 +62,32 @@ export const ANOMALY_DEFAULTS = {
   OBSERVATION_HOURS: 1,
   REFERENCE_HOURS: 168,
   SIGMA_THRESHOLD: 3,
-  MIN_SAMPLES: 30,
+  /**
+   * Minimum reference samples needed to surface an anomaly at any
+   * confidence level. Below this threshold, the stddev estimate is too
+   * noisy to be useful even with a clear "low confidence" label.
+   */
+  MIN_SAMPLES_LOW: 10,
+  /**
+   * Threshold for medium confidence — the historical "n ≥ 30 normality"
+   * cutoff. Pre-P3.2 this was the hard `MIN_SAMPLES` gate.
+   */
+  MIN_SAMPLES_MEDIUM: 30,
+  /** Threshold for high confidence — well-estimated mean + stddev. */
+  MIN_SAMPLES_HIGH: 100,
   HIGH_SEVERITY_SIGMA: 5,
 } as const
+
+/**
+ * Pure function so it's trivially testable. Returns null when the count
+ * is too small to surface as an anomaly at all (caller filters out).
+ */
+export function classifyConfidence(referenceCount: number): AnomalyConfidence | null {
+  if (referenceCount >= ANOMALY_DEFAULTS.MIN_SAMPLES_HIGH) return 'high'
+  if (referenceCount >= ANOMALY_DEFAULTS.MIN_SAMPLES_MEDIUM) return 'medium'
+  if (referenceCount >= ANOMALY_DEFAULTS.MIN_SAMPLES_LOW) return 'low'
+  return null
+}
 
 export interface AnomalyBucket {
   provider: string
@@ -59,6 +101,13 @@ export interface AnomalyBucket {
   sampleCount: number
   /** Number of requests in the reference (historical) window. */
   referenceCount: number
+  /**
+   * How trustworthy the σ count is, given the size of the reference window.
+   * Always present — even 'low' anomalies are surfaced (with a clear UI
+   * marker) so new orgs see directional signal. See `classifyConfidence`
+   * for the tier thresholds.
+   */
+  confidence: AnomalyConfidence
 }
 
 export interface DetectAnomaliesOptions {
@@ -101,7 +150,12 @@ export async function detectAnomalies(
   const observationHours = opts.observationHours ?? ANOMALY_DEFAULTS.OBSERVATION_HOURS
   const referenceHours   = opts.referenceHours  ?? ANOMALY_DEFAULTS.REFERENCE_HOURS
   const sigmaThreshold   = opts.sigmaThreshold  ?? ANOMALY_DEFAULTS.SIGMA_THRESHOLD
-  const minSamples       = opts.minSamples       ?? ANOMALY_DEFAULTS.MIN_SAMPLES
+  // Gate at the LOW threshold — anomalies between 10..29 reference samples
+  // still surface but are tagged `confidence: 'low'` for the UI to render
+  // less prominently. Callers can override `minSamples` to suppress low
+  // confidence entirely (e.g., the alert cron that only pages on
+  // medium/high).
+  const minSamples       = opts.minSamples       ?? ANOMALY_DEFAULTS.MIN_SAMPLES_LOW
 
   const now     = Date.now()
   const obsStart = fmtTs(new Date(now - observationHours * 3_600_000).toISOString())
@@ -195,17 +249,21 @@ export async function detectAnomalies(
       const deviations = (row.obs_latency_mean - row.ref_latency_mean) / row.ref_latency_stddev
       // One-sided: only flag SPIKES (improvements are not anomalies).
       if (deviations >= sigmaThreshold) {
-        anomalies.push({
-          provider:       row.provider,
-          model:          row.model,
-          kind:           'latency',
-          currentValue:   row.obs_latency_mean,
-          baselineMean:   row.ref_latency_mean,
-          baselineStdDev: row.ref_latency_stddev,
-          deviations,
-          sampleCount:    row.obs_latency_count,
-          referenceCount: row.ref_latency_count,
-        })
+        const confidence = classifyConfidence(row.ref_latency_count)
+        if (confidence !== null) {
+          anomalies.push({
+            provider:       row.provider,
+            model:          row.model,
+            kind:           'latency',
+            currentValue:   row.obs_latency_mean,
+            baselineMean:   row.ref_latency_mean,
+            baselineStdDev: row.ref_latency_stddev,
+            deviations,
+            sampleCount:    row.obs_latency_count,
+            referenceCount: row.ref_latency_count,
+            confidence,
+          })
+        }
       }
     }
 
@@ -221,17 +279,21 @@ export async function detectAnomalies(
       const deviations = (row.obs_cost_mean - row.ref_cost_mean) / row.ref_cost_stddev
       // One-sided: only flag SPIKES (cost drops are not anomalies).
       if (deviations >= sigmaThreshold) {
-        anomalies.push({
-          provider:       row.provider,
-          model:          row.model,
-          kind:           'cost',
-          currentValue:   row.obs_cost_mean,
-          baselineMean:   row.ref_cost_mean,
-          baselineStdDev: row.ref_cost_stddev,
-          deviations,
-          sampleCount:    row.obs_cost_count,
-          referenceCount: row.ref_cost_count,
-        })
+        const confidence = classifyConfidence(row.ref_cost_count)
+        if (confidence !== null) {
+          anomalies.push({
+            provider:       row.provider,
+            model:          row.model,
+            kind:           'cost',
+            currentValue:   row.obs_cost_mean,
+            baselineMean:   row.ref_cost_mean,
+            baselineStdDev: row.ref_cost_stddev,
+            deviations,
+            sampleCount:    row.obs_cost_count,
+            referenceCount: row.ref_cost_count,
+            confidence,
+          })
+        }
       }
     }
 
@@ -247,17 +309,21 @@ export async function detectAnomalies(
       const deviations = (row.obs_error_rate - row.ref_error_rate) / row.ref_error_stddev
       // One-sided: only flag SPIKES (more errors than baseline).
       if (deviations >= sigmaThreshold) {
-        anomalies.push({
-          provider:       row.provider,
-          model:          row.model,
-          kind:           'error_rate',
-          currentValue:   row.obs_error_rate,
-          baselineMean:   row.ref_error_rate,
-          baselineStdDev: row.ref_error_stddev,
-          deviations,
-          sampleCount:    row.obs_all_count,
-          referenceCount: row.ref_all_count,
-        })
+        const confidence = classifyConfidence(row.ref_all_count)
+        if (confidence !== null) {
+          anomalies.push({
+            provider:       row.provider,
+            model:          row.model,
+            kind:           'error_rate',
+            currentValue:   row.obs_error_rate,
+            baselineMean:   row.ref_error_rate,
+            baselineStdDev: row.ref_error_stddev,
+            deviations,
+            sampleCount:    row.obs_all_count,
+            referenceCount: row.ref_all_count,
+            confidence,
+          })
+        }
       }
     }
   }
