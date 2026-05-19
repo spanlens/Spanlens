@@ -2,12 +2,35 @@ import { Hono } from 'hono'
 import { authJwt, type JwtContext } from '../middleware/authJwt.js'
 import { supabaseAdmin } from '../lib/db.js'
 import { detectAnomalies } from '../lib/anomaly.js'
-import { requestsScope, selectRequests } from '../lib/requests-query.js'
+import { requestsScope, selectRequests, streamRequests } from '../lib/requests-query.js'
 
 export const exportsRouter = new Hono<JwtContext>()
 exportsRouter.use('*', authJwt)
 
+/**
+ * Row cap for the non-streamed `/requests?format=json` endpoint and for the
+ * smaller `/traces`, `/security`, `/anomalies` endpoints. These materialise
+ * the result in memory before encoding, so the cap prevents OOM.
+ */
 const MAX_EXPORT_ROWS = 10_000
+
+/**
+ * Row cap for the streamed `/requests?format=csv|jsonl` endpoints. The
+ * streaming path holds at most one ClickHouse batch (~64KB) in memory at a
+ * time, so a much larger cap is safe — enough for a year of Pro-plan data
+ * (millions of rows).
+ *
+ * Picked at 1M because:
+ *   - It satisfies P3.11's "100만 row export < 100MB" success criterion with
+ *     an order-of-magnitude headroom.
+ *   - It exceeds the 365-day retention × typical Team-plan volume.
+ *   - It keeps query time bounded under Vercel's 300s function deadline even
+ *     when filters are unselective.
+ *
+ * Multi-GB exports beyond this cap belong on the deferred "S3 presigned URL +
+ * email" path (P3.11 follow-up, when first user hits the cap).
+ */
+const MAX_EXPORT_ROWS_STREAM = 1_000_000
 
 const EXPORT_COLUMNS = [
   'id', 'project_id', 'provider', 'model',
@@ -17,6 +40,7 @@ const EXPORT_COLUMNS = [
 ] as const
 
 type ExportColumn = (typeof EXPORT_COLUMNS)[number]
+type ExportRow = Record<ExportColumn, unknown>
 
 function escapeCsv(val: unknown): string {
   if (val === null || val === undefined) return ''
@@ -27,23 +51,92 @@ function escapeCsv(val: unknown): string {
   return s
 }
 
+/** Three supported export formats. `csv` and `jsonl` stream; `json` materialises. */
+type ExportFormat = 'csv' | 'json' | 'jsonl'
+
+function parseFormat(raw: string | undefined): ExportFormat {
+  if (raw === 'json') return 'json'
+  if (raw === 'jsonl') return 'jsonl'
+  return 'csv'
+}
+
+/**
+ * Builds a streaming CSV response (header row + one line per source row).
+ *
+ * The async iterable is consumed lazily inside the ReadableStream `start`
+ * callback — no buffering. Each ClickHouse batch is enqueued as a single
+ * Uint8Array chunk; the Node response handler in `api/index.ts` writes each
+ * chunk to the socket with backpressure handling.
+ */
+export function buildCsvStream<Row extends Record<string, unknown>>(
+  cols: readonly string[],
+  rows: AsyncIterable<Row>,
+): ReadableStream<Uint8Array> {
+  const encoder = new TextEncoder()
+  return new ReadableStream<Uint8Array>({
+    async start(controller) {
+      try {
+        controller.enqueue(encoder.encode(cols.join(',') + '\n'))
+        for await (const row of rows) {
+          const line = cols.map((col) => escapeCsv(row[col])).join(',') + '\n'
+          controller.enqueue(encoder.encode(line))
+        }
+        controller.close()
+      } catch (err) {
+        controller.error(err)
+      }
+    },
+  })
+}
+
+/**
+ * Builds a streaming JSONL response (one JSON object per line, newline-
+ * delimited). This is the recommended format for very large exports — it
+ * preserves typing better than CSV and round-trips cleanly through `jq`,
+ * `pandas.read_json(lines=True)`, BigQuery, ClickHouse, etc.
+ */
+export function buildJsonlStream<Row>(rows: AsyncIterable<Row>): ReadableStream<Uint8Array> {
+  const encoder = new TextEncoder()
+  return new ReadableStream<Uint8Array>({
+    async start(controller) {
+      try {
+        for await (const row of rows) {
+          controller.enqueue(encoder.encode(JSON.stringify(row) + '\n'))
+        }
+        controller.close()
+      } catch (err) {
+        controller.error(err)
+      }
+    },
+  })
+}
+
 // GET /api/v1/exports/requests
-// Query: format (csv|json), projectId, provider, model, providerKeyId,
-//        status (ok|4xx|5xx), from, to, limit (max 10 000)
+// Query: format (csv|json|jsonl), projectId, provider, model, providerKeyId,
+//        status (ok|4xx|5xx), from, to, limit
+//
+// Memory profile:
+//   - csv / jsonl: streamed. At most one ClickHouse batch (~64KB) in memory.
+//                  Row cap: 1M (MAX_EXPORT_ROWS_STREAM).
+//   - json:        materialised wrapper object. Row cap: 10k (MAX_EXPORT_ROWS).
+//                  Use jsonl for larger JSON exports.
 exportsRouter.get('/requests', async (c) => {
   const orgId = c.get('orgId')
   if (!orgId) return c.json({ error: 'Organization not found' }, 404)
 
-  const format      = c.req.query('format') === 'json' ? 'json' : 'csv'
-  const projectId   = c.req.query('projectId')
-  const provider    = c.req.query('provider')
-  const model       = c.req.query('model')
+  const format        = parseFormat(c.req.query('format'))
+  const projectId     = c.req.query('projectId')
+  const provider      = c.req.query('provider')
+  const model         = c.req.query('model')
   const providerKeyId = c.req.query('providerKeyId')
-  const status      = c.req.query('status')   // 'ok' | '4xx' | '5xx'
-  const from        = c.req.query('from')
-  const to          = c.req.query('to')
-  const rawLimit    = parseInt(c.req.query('limit') ?? String(MAX_EXPORT_ROWS), 10)
-  const limit       = Math.min(MAX_EXPORT_ROWS, Math.max(1, isNaN(rawLimit) ? MAX_EXPORT_ROWS : rawLimit))
+  const status        = c.req.query('status')   // 'ok' | '4xx' | '5xx'
+  const from          = c.req.query('from')
+  const to            = c.req.query('to')
+
+  // Cap depends on format — streamed formats allow much larger exports.
+  const maxRows = format === 'json' ? MAX_EXPORT_ROWS : MAX_EXPORT_ROWS_STREAM
+  const rawLimit = parseInt(c.req.query('limit') ?? String(maxRows), 10)
+  const limit    = Math.min(maxRows, Math.max(1, isNaN(rawLimit) ? maxRows : rawLimit))
 
   const filters: string[] = []
   const params: Record<string, unknown> = {}
@@ -57,25 +150,33 @@ exportsRouter.get('/requests', async (c) => {
   if (status === '4xx') filters.push('status_code >= 400 AND status_code < 500')
   if (status === '5xx') filters.push('status_code >= 500')
 
-  let rows: Record<ExportColumn, unknown>[]
+  const filterSql = filters.length > 0 ? filters.join(' AND ') : undefined
+  const dateStr = new Date().toISOString().slice(0, 10)
+
+  let scope: Awaited<ReturnType<typeof requestsScope>>
   try {
-    const scope = await requestsScope(orgId)
-    rows = await selectRequests<Record<ExportColumn, unknown>>({
-      scope,
-      select: EXPORT_COLUMNS.join(', '),
-      filters: filters.length > 0 ? filters.join(' AND ') : undefined,
-      orderBy: 'created_at DESC',
-      limit,
-      params,
-    })
+    scope = await requestsScope(orgId)
   } catch (err) {
-    console.error('[exports:requests] ClickHouse query failed:', err instanceof Error ? err.message : err)
+    console.error('[exports:requests] scope lookup failed:', err instanceof Error ? err.message : err)
     return c.json({ error: 'Failed to export requests' }, 500)
   }
 
-  const dateStr = new Date().toISOString().slice(0, 10)
-
+  // ── JSON: legacy wrapped format. Materialised, capped at 10k. ────────────────
   if (format === 'json') {
+    let rows: ExportRow[]
+    try {
+      rows = await selectRequests<ExportRow>({
+        scope,
+        select: EXPORT_COLUMNS.join(', '),
+        filters: filterSql,
+        orderBy: 'created_at DESC',
+        limit,
+        params,
+      })
+    } catch (err) {
+      console.error('[exports:requests] ClickHouse query failed:', err instanceof Error ? err.message : err)
+      return c.json({ error: 'Failed to export requests' }, 500)
+    }
     const body = JSON.stringify(
       { exported_at: new Date().toISOString(), count: rows.length, data: rows },
       null,
@@ -89,17 +190,38 @@ exportsRouter.get('/requests', async (c) => {
     })
   }
 
-  // CSV
-  const csvHeader = [...EXPORT_COLUMNS].join(',')
-  const csvRows = rows.map((row) =>
-    EXPORT_COLUMNS.map((col) => escapeCsv(row[col])).join(','),
-  )
-  const csv = [csvHeader, ...csvRows].join('\n')
+  // ── Streaming path: CSV or JSONL. ────────────────────────────────────────────
+  //
+  // `streamRequests` is an async generator backed by the ClickHouse driver's
+  // batched Readable stream — peak memory is one batch (~64KB), independent
+  // of `limit`. The `buildCsvStream` / `buildJsonlStream` helpers transform
+  // rows on-the-fly inside the ReadableStream `start` callback, so backpressure
+  // propagates from the Node socket → Web stream controller → CH driver.
+  const rowsIter = streamRequests<ExportRow>({
+    scope,
+    select: EXPORT_COLUMNS.join(', '),
+    filters: filterSql,
+    orderBy: 'created_at DESC',
+    limit,
+    params,
+  })
 
-  return new Response(csv, {
+  if (format === 'jsonl') {
+    return new Response(buildJsonlStream(rowsIter), {
+      headers: {
+        'Content-Type': 'application/x-ndjson; charset=utf-8',
+        'Content-Disposition': `attachment; filename="spanlens-requests-${dateStr}.jsonl"`,
+        'Cache-Control': 'no-store',
+      },
+    })
+  }
+
+  // CSV (default)
+  return new Response(buildCsvStream(EXPORT_COLUMNS, rowsIter), {
     headers: {
       'Content-Type': 'text/csv; charset=utf-8',
       'Content-Disposition': `attachment; filename="spanlens-requests-${dateStr}.csv"`,
+      'Cache-Control': 'no-store',
     },
   })
 })
