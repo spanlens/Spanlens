@@ -68,7 +68,12 @@ Same proxy, same dashboard. For agent tracing in Python (multi-step, async, tool
 | **Prompt versioning + A/B** | Register prompt templates, run traffic-split experiments, compare versions side by side (latency / cost / error rate) |
 | **Prompts Playground** | Execute any prompt version with variable injection directly in the dashboard — see real cost and response before shipping |
 | **Evals & Experiments** | Build LLM-as-judge evaluators, create datasets, and run A/B experiments comparing two prompt versions; human annotation queue also included |
-| **Data export** | Download request logs as CSV or JSON (`GET /api/v1/exports/requests?format=csv`) for offline analysis or BI tooling |
+| **Saved filters** | Pin frequently used request-log queries (model, status, cost range, tags) and share them across the workspace |
+| **Outbound webhooks** | Subscribe to `request.created` / `trace.completed` / `alert.triggered` events. Payloads are HMAC-signed via `X-Spanlens-Signature: sha256=…` so receivers can verify origin |
+| **OpenTelemetry / OTLP ingest** | `POST /v1/traces` accepts OTLP/HTTP JSON exports using the `gen_ai.*` semantic conventions — drop in any OTel SDK without writing Spanlens-specific code |
+| **Provider-key security** | Weekly digest emails for stale (unused 90d+) provider keys + daily GitGuardian leak scan against your active keys, with per-key scan history |
+| **Privacy controls** | Per-request `x-spanlens-log-body: full \| meta \| none` header lets customers shrink what Spanlens stores (drop bodies, drop end-user IDs) without dropping the request itself |
+| **Data export** | Download request logs as CSV or JSON (`GET /api/v1/exports/requests?format=csv`) for offline analysis or BI tooling. Separate security export for flagged (PII / injection) calls |
 
 ---
 
@@ -108,13 +113,30 @@ Spanlens/
 │   ├── sdk/             — @spanlens/sdk:  TypeScript / JavaScript SDK
 │   ├── sdk-python/      — spanlens (PyPI): Python SDK
 │   └── cli/             — @spanlens/cli:  npx wizard for 1-command setup
+├── clickhouse/
+│   ├── migrations/      — ClickHouse schema for the `requests` log table
+│   └── apply.ts         — `pnpm ch:migrate` runner (idempotent)
 └── supabase/
-    ├── migrations/      — Postgres schema (14 tables, RLS-gated)
+    ├── migrations/      — Postgres schema (orgs, projects, keys, prompts, … — RLS-gated)
     └── seeds/           — model_prices.sql etc.
 ```
 
+### Storage split
+
+Spanlens uses **two databases**, each for what it's good at:
+
+- **Supabase (Postgres)** — transactional, relational, RLS-gated data: organizations, projects, members, API + provider keys, prompts, datasets, alerts, billing, audit log.
+- **ClickHouse** — the high-volume append-only `requests` table (every LLM call). All reads go through [`apps/server/src/lib/requests-query.ts`](./apps/server/src/lib/requests-query.ts), which auto-injects the `organization_id` filter and the per-plan retention window (free=14d / pro=90d / team=365d). If ClickHouse is briefly unreachable, the proxy falls back to a Supabase queue (`requests_fallback`) that a cron replays every 5 minutes — no log loss.
+
+### Projects, unified keys, and headers
+
+- A workspace can hold **multiple projects** (e.g. `dev` / `staging` / `prod`, or one per app). Each project gets its own quota slice, provider keys, and prompt namespace.
+- **Unified API keys** — one `sl_live_*` key per project is provider-agnostic. Spanlens infers the provider from the request path (`/proxy/openai/*` vs `/proxy/anthropic/*` vs `/proxy/gemini/*`), so you only need one Spanlens key even if you call multiple model vendors.
+- **`X-Spanlens-*` headers** (set automatically by the SDK helpers `withUser()`, `withSession()`, `withPromptVersion()`, `withLogBody()`): tag a request with end-user / session IDs, link it to a prompt-version experiment, or limit how much body Spanlens stores. Full list in [`/docs/proxy`](https://www.spanlens.io/docs/proxy).
+- **Streaming safety** — proxy responses are gracefully closed at 290s with a `truncated=true` flag in the log, so long streams never silently disappear.
+
 - **[apps/web](./apps/web)** — React dashboard. Deployed to Vercel.
-- **[apps/server](./apps/server)** — Edge runtime proxy on Vercel. Routes `/proxy/openai/*`, `/proxy/anthropic/*`, `/proxy/gemini/*`. REST API on `/api/v1/*`.
+- **[apps/server](./apps/server)** — Hono server on Vercel (Node runtime, 300s `maxDuration`). Routes `/proxy/openai/*`, `/proxy/anthropic/*`, `/proxy/gemini/*`. REST API on `/api/v1/*`, OTLP receiver on `/v1/traces`.
 - **[packages/sdk](./packages/sdk)** — TypeScript SDK (`@spanlens/sdk`). Helpers + tracing primitives. See its [README](./packages/sdk/README.md).
 - **[packages/sdk-python](./packages/sdk-python)** — Python SDK (`spanlens`). Same primitives, Pythonic API (context managers, sync + async). See its [README](./packages/sdk-python/README.md).
 - **[packages/cli](./packages/cli)** — Wizard (`@spanlens/cli`). See its [README](./packages/cli/README.md).
@@ -131,10 +153,13 @@ git clone https://github.com/sunes26/Spanlens.git
 cd Spanlens
 pnpm install
 
-# 2. Start local Supabase (requires Docker)
+# 2. Start local Supabase + ClickHouse (both require Docker)
 supabase start
-supabase db push        # apply migrations
+supabase db push        # apply Postgres migrations
 supabase gen types --lang typescript --local > supabase/types.ts
+
+docker compose up -d clickhouse   # start ClickHouse only (web/server run from pnpm dev)
+pnpm ch:migrate                   # apply ClickHouse migrations
 
 # 3. Env vars — see apps/server/.env.example
 cp apps/server/.env.example apps/server/.env
@@ -158,9 +183,9 @@ See [CLAUDE.md](./CLAUDE.md) for architecture rules and Known Gotchas (streaming
 
 ## Self-hosting
 
-The easiest way to self-host is with the included `docker-compose.yml` — it runs both the **dashboard (web)** and the **proxy/API server** together using pre-built images from GHCR.
+The easiest way to self-host is with the included `docker-compose.yml` — it runs the **dashboard (web)**, the **proxy/API server**, and a local **ClickHouse** instance together using pre-built images from GHCR.
 
-### 1. Apply the database schema (one-time)
+### 1. Apply the Supabase schema (one-time)
 
 Open your Supabase project → **SQL Editor → New query**, paste the contents of [`supabase/init.sql`](./supabase/init.sql), and click **Run**. That's it — no CLI needed.
 
@@ -186,20 +211,34 @@ ENCRYPTION_KEY=<32-byte base64>
 # Random secret for cron endpoint
 CRON_SECRET=<random string>
 
+# ClickHouse (request logs — required)
+CLICKHOUSE_URL=http://clickhouse:8123        # the in-network service from docker-compose
+CLICKHOUSE_USER=spanlens
+CLICKHOUSE_PASSWORD=<choose a strong password>
+CLICKHOUSE_DB=spanlens
+
 # Optional — for invite emails
 # WEB_URL=https://your-domain.com
 # RESEND_API_KEY=re_...
 # RESEND_FROM=Spanlens <no-reply@your-domain.com>
+
+# Optional — Paddle billing (only if you sell paid plans on your instance)
+# PADDLE_API_KEY=...
+# PADDLE_NOTIFICATION_SECRET=...
+# PADDLE_ENVIRONMENT=sandbox  # or production
 ```
 
 ### 3. Start
 
 ```bash
 docker compose up -d
+pnpm ch:migrate                # one-time: apply ClickHouse schema (requests table)
 ```
 
 - Dashboard: `http://localhost:3000`
 - API / proxy: `http://localhost:3001`
+- ClickHouse HTTP: `http://localhost:8123`
+- Health: `GET /health` (liveness) and `GET /health/deep` (ClickHouse + fallback queue depth)
 
 The web container passes `NEXT_PUBLIC_*` vars as **build arguments** (Next.js bakes them into the client bundle), so they must be present before `docker compose build`.
 
@@ -225,7 +264,21 @@ const openai = createOpenAI({
 })
 ```
 
-Your Spanlens instance talks to your Supabase — we never see your data.
+Your Spanlens instance talks to your Supabase + ClickHouse — we never see your data.
+
+### Background jobs (Vercel Cron / your scheduler)
+
+The hosted instance ships with the following cron tasks (see [`apps/server/vercel.json`](./apps/server/vercel.json)). On self-host, point any scheduler at the same paths with the `CRON_SECRET` bearer:
+
+| Path | Schedule | Purpose |
+|---|---|---|
+| `/cron/evaluate-alerts` | every 15m | Evaluate threshold + anomaly alerts, fire notifications |
+| `/cron/snapshot-anomalies` | daily 01:00 | Materialize daily anomaly baselines |
+| `/cron/replay-fallback` | every 5m | Replay `requests_fallback` queue into ClickHouse |
+| `/cron/stale-key-reminders` | weekly Mon 09:00 | Email digest of idle provider keys |
+| `/cron/leak-detect-keys` | daily 04:00 | GitGuardian scan of active provider keys |
+| `/cron/recommend-savings-alerts` | daily 09:00 | Email model-swap savings opportunities |
+| `/cron/check-past-due-downgrades` | daily 10:00 | D-3 / D-1 warnings + auto-downgrade past-due subs |
 
 ---
 
