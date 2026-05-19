@@ -44,6 +44,7 @@ import { openapiRouter }       from './api/openapi.js'
 import { providerKeysRouter }  from './api/providerKeys.js'
 import { meRouter }            from './api/me.js'
 import { systemRouter }       from './api/system.js'
+import { adminModelPricesRouter } from './api/admin/modelPrices.js'
 
 export const app = new Hono()
 
@@ -132,5 +133,8 @@ app.route('/api/v1/me',             meRouter)        // sl_live_* introspection 
 app.route('/api/v1/webhooks',       webhooksRouter)
 app.route('/api/v1/exports',        exportsRouter)
 app.route('/api/v1/system',         systemRouter)
+
+// ── Admin routes (authJwt + requireSystemAdmin via SPANLENS_ADMIN_EMAILS) ──
+app.route('/api/v1/admin/model-prices', adminModelPricesRouter)
 
 export default app
