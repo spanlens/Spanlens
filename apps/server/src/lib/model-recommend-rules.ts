@@ -141,7 +141,14 @@ export const SUBSTITUTES: Record<string, Substitute> = {
 }
 
 /**
- * Match a bucket key like 'openai:gpt-4o-mini-2024-07-18' against SUBSTITUTES.
+ * Match a bucket key like 'openai:gpt-4o-mini-2024-07-18' against the active
+ * substitute rules. The rules come from the DB-backed cache by default;
+ * callers may pass a precomputed `rules` map for tests / batch contexts.
+ *
+ * P3.3: rules are sourced from the `model_recommendations` table via
+ * `getCachedRules()` (stale-while-revalidate, 5-min TTL). The SUBSTITUTES
+ * constant above is the cold-start fallback — keep in sync with the seed
+ * at `supabase/seeds/model_recommendations.sql`.
  *
  * Order:
  *   1. Exact match.
@@ -153,16 +160,35 @@ export const SUBSTITUTES: Record<string, Substitute> = {
  * variant of the SUGGESTED model (e.g. gpt-4o-mini-2024-07-18) can match the
  * gpt-4o rule and would otherwise suggest switching to gpt-4o-mini, which is
  * a no-op. See model-recommend.ts for the suggestedKey guard.
+ *
+ * The `rules` parameter is optional: when omitted we resolve from the
+ * cache module via a dynamic import to avoid a circular static import
+ * (cache imports SUBSTITUTES from this file as its FALLBACK).
  */
-export function matchSubstitute(key: string): Substitute | null {
-  const exact = SUBSTITUTES[key]
+export function matchSubstituteIn(
+  key: string,
+  rules: Record<string, Substitute>,
+): Substitute | null {
+  const exact = rules[key]
   if (exact) return exact
 
   let bestKey = ''
-  for (const k of Object.keys(SUBSTITUTES)) {
+  for (const k of Object.keys(rules)) {
     if (key.startsWith(k + '-') && k.length > bestKey.length) {
       bestKey = k
     }
   }
-  return bestKey ? (SUBSTITUTES[bestKey] ?? null) : null
+  return bestKey ? (rules[bestKey] ?? null) : null
 }
+
+/**
+ * Production matcher — resolves rules from the DB-backed cache.
+ * For backward compat with callers that import from this file. The actual
+ * logic lives in `model-recommendations-cache.ts` so this module stays
+ * free of the cache implementation (which depends on supabaseAdmin).
+ *
+ * Tests that want to exercise the rule MATCHING logic against a known
+ * rule set should call `matchSubstituteIn(key, FALLBACK_RULES)` directly
+ * — it's pure and free of any side effects.
+ */
+export { matchSubstitute } from './model-recommendations-cache.js'

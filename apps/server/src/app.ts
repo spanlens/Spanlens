@@ -45,6 +45,7 @@ import { providerKeysRouter }  from './api/providerKeys.js'
 import { meRouter }            from './api/me.js'
 import { systemRouter }       from './api/system.js'
 import { adminModelPricesRouter } from './api/admin/modelPrices.js'
+import { adminModelRecommendationsRouter } from './api/admin/modelRecommendations.js'
 
 export const app = new Hono()
 
@@ -172,5 +173,6 @@ app.route('/api/v1/system',         systemRouter)
 
 // ── Admin routes (authJwt + requireSystemAdmin via SPANLENS_ADMIN_EMAILS) ──
 app.route('/api/v1/admin/model-prices', adminModelPricesRouter)
+app.route('/api/v1/admin/model-recommendations', adminModelRecommendationsRouter)
 
 export default app
