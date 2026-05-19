@@ -11,6 +11,7 @@ import { runLeakDetectionJob } from '../lib/leak-detection.js'
 import { sendHighConfidenceRecommendationAlerts } from '../lib/recommendation-notify.js'
 import { logCronRun } from '../lib/cron-logger.js'
 import { replayFallbackQueue } from '../lib/fallback-replay.js'
+import { runDowngradeCheck } from '../lib/billing-downgrade.js'
 
 /**
  * Vercel cron endpoints. Invoked hourly via `crons` entry in `vercel.json`.
@@ -457,6 +458,28 @@ cronRouter.get('/replay-fallback', async (c) => {
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'unknown'
     logCronRun('replay-fallback', 'error', Date.now() - start, msg).catch(console.error)
+    return c.json({ error: msg }, 500)
+  }
+})
+
+// ── Past-due downgrade check (daily, 10 UTC ≈ 19 KST) ───────────
+// Sends D-3 / D-1 warning emails and flips orgs to free after 7 days of
+// failed payments. Idempotent via the billing_downgrade_notifications
+// table. See lib/billing-downgrade.ts for the policy + state machine.
+cronRouter.get('/check-past-due-downgrades', async (c) => {
+  const authFail = assertCronAuth(c.req.header('Authorization'))
+  if (authFail) return c.json({ error: authFail }, 401)
+
+  const start = Date.now()
+  try {
+    const result = await runDowngradeCheck()
+    const status = result.errors.length > 0 ? 'error' : 'ok'
+    const errSummary = result.errors.length > 0 ? result.errors.join('; ').slice(0, 500) : undefined
+    logCronRun('check-past-due-downgrades', status, Date.now() - start, errSummary).catch(console.error)
+    return c.json({ success: result.errors.length === 0, ...result })
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'unknown'
+    logCronRun('check-past-due-downgrades', 'error', Date.now() - start, msg).catch(console.error)
     return c.json({ error: msg }, 500)
   }
 })
