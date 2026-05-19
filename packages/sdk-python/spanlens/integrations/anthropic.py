@@ -66,6 +66,65 @@ def create_anthropic(
     )
 
 
+def create_async_anthropic(
+    *,
+    api_key: Optional[str] = None,
+    base_url: Optional[str] = None,
+    **kwargs: Any,
+) -> Any:
+    """Build an ``anthropic.AsyncAnthropic`` client routed through the
+    Spanlens proxy.
+
+    Async-aware counterpart to :func:`create_anthropic`. Returns an
+    ``AsyncAnthropic(...)`` instance (same surface as the upstream class)
+    with ``base_url`` pointed at the Spanlens proxy and ``api_key``
+    defaulting to the ``SPANLENS_API_KEY`` environment variable. Use this
+    from FastAPI handlers, Django async views, or any ``asyncio`` code.
+
+    Example::
+
+        from spanlens.integrations.anthropic import create_async_anthropic
+
+        async def handler() -> str:
+            client = create_async_anthropic()
+            msg = await client.messages.create(
+                model="claude-3-5-sonnet-20241022",
+                max_tokens=1024,
+                messages=[{"role": "user", "content": "hi"}],
+            )
+            return msg.content[0].text
+
+    Args:
+        api_key: Spanlens API key. Defaults to ``SPANLENS_API_KEY`` env var.
+        base_url: Override the proxy URL — useful for self-hosted Spanlens.
+        **kwargs: Forwarded to ``anthropic.AsyncAnthropic(...)`` unchanged.
+
+    Raises:
+        ImportError: ``anthropic`` package is not installed.
+        ValueError: ``api_key`` not provided and ``SPANLENS_API_KEY`` unset.
+    """
+    try:
+        from anthropic import AsyncAnthropic
+    except ImportError as exc:  # pragma: no cover - import-time
+        raise ImportError(
+            "[spanlens] The `anthropic` package is required for create_async_anthropic(). "
+            'Install with: pip install "spanlens[anthropic]"'
+        ) from exc
+
+    resolved_key = api_key or os.environ.get("SPANLENS_API_KEY")
+    if not resolved_key:
+        raise ValueError(
+            "[spanlens] SPANLENS_API_KEY is not set. Pass api_key=... to "
+            "create_async_anthropic() or set the SPANLENS_API_KEY environment variable."
+        )
+
+    return AsyncAnthropic(
+        api_key=resolved_key,
+        base_url=base_url or DEFAULT_SPANLENS_ANTHROPIC_PROXY,
+        **kwargs,
+    )
+
+
 def with_prompt_version(prompt_version: str) -> dict[str, dict[str, str]]:
     """Tag a single Anthropic request with a Spanlens prompt version.
 
@@ -95,5 +154,6 @@ __all__ = [
     "DEFAULT_SPANLENS_ANTHROPIC_PROXY",
     "PROMPT_VERSION_HEADER",
     "create_anthropic",
+    "create_async_anthropic",
     "with_prompt_version",
 ]

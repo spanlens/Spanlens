@@ -71,6 +71,63 @@ def create_openai(
     )
 
 
+def create_async_openai(
+    *,
+    api_key: Optional[str] = None,
+    base_url: Optional[str] = None,
+    **kwargs: Any,
+) -> Any:
+    """Build an ``openai.AsyncOpenAI`` client routed through the Spanlens proxy.
+
+    Async-aware counterpart to :func:`create_openai`. Returns an
+    ``AsyncOpenAI(...)`` instance (same surface as the upstream class) with
+    ``base_url`` pointed at the Spanlens proxy and ``api_key`` defaulting to
+    the ``SPANLENS_API_KEY`` environment variable. Use this from FastAPI
+    handlers, Django async views, or any ``asyncio`` code.
+
+    Example::
+
+        from spanlens.integrations.openai import create_async_openai
+
+        async def handler() -> str:
+            client = create_async_openai()
+            resp = await client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{"role": "user", "content": "hi"}],
+            )
+            return resp.choices[0].message.content
+
+    Args:
+        api_key: Spanlens API key. Defaults to ``SPANLENS_API_KEY`` env var.
+        base_url: Override the proxy URL — useful for self-hosted Spanlens.
+        **kwargs: Forwarded to ``openai.AsyncOpenAI(...)`` unchanged.
+
+    Raises:
+        ImportError: ``openai`` package is not installed.
+        ValueError: ``api_key`` not provided and ``SPANLENS_API_KEY`` unset.
+    """
+    try:
+        from openai import AsyncOpenAI
+    except ImportError as exc:  # pragma: no cover - import-time
+        raise ImportError(
+            "[spanlens] The `openai` package is required for create_async_openai(). "
+            'Install with: pip install "spanlens[openai]"'
+        ) from exc
+
+    resolved_key = api_key or os.environ.get("SPANLENS_API_KEY")
+    if not resolved_key:
+        raise ValueError(
+            "[spanlens] SPANLENS_API_KEY is not set. Pass api_key=... to "
+            "create_async_openai() or set the SPANLENS_API_KEY environment variable."
+        )
+
+    return AsyncOpenAI(
+        api_key=resolved_key,
+        base_url=base_url or DEFAULT_SPANLENS_OPENAI_PROXY,
+        **kwargs,
+    )
+
+
 def with_prompt_version(prompt_version: str) -> dict[str, dict[str, str]]:
     """Tag a single OpenAI request with a Spanlens prompt version.
 
@@ -101,6 +158,7 @@ def with_prompt_version(prompt_version: str) -> dict[str, dict[str, str]]:
 __all__ = [
     "DEFAULT_SPANLENS_OPENAI_PROXY",
     "PROMPT_VERSION_HEADER",
+    "create_async_openai",
     "create_openai",
     "with_prompt_version",
 ]
