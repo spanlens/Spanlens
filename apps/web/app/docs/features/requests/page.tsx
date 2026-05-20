@@ -35,7 +35,7 @@ export default function RequestsDocs() {
         <tbody>
           <tr>
             <td><code>provider</code></td>
-            <td>openai / anthropic / gemini</td>
+            <td>openai / anthropic / gemini / azure</td>
           </tr>
           <tr>
             <td><code>model</code></td>
@@ -150,7 +150,7 @@ export default function RequestsDocs() {
         view, or use the browser&apos;s back button to restore a previous filter state.
       </p>
       <ul>
-        <li><strong>Provider</strong> — exact match (openai / anthropic / gemini)</li>
+        <li><strong>Provider</strong> — exact match (openai / anthropic / gemini / azure)</li>
         <li>
           <strong>Model</strong> — partial, case-insensitive match (e.g. searching &ldquo;mini&rdquo;
           matches <code>gpt-4o-mini-2024-07-18</code>)

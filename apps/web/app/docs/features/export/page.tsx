@@ -152,7 +152,7 @@ export default function ExportDocs() {
           </tr>
           <tr>
             <td><code>provider</code></td>
-            <td>One of <code>openai</code> / <code>anthropic</code> / <code>gemini</code>.</td>
+            <td>One of <code>openai</code> / <code>anthropic</code> / <code>gemini</code> / <code>azure</code>.</td>
           </tr>
           <tr>
             <td><code>model</code></td>
@@ -219,7 +219,7 @@ export default function ExportDocs() {
           </tr>
           <tr>
             <td><code>provider</code></td>
-            <td>openai / anthropic / gemini</td>
+            <td>openai / anthropic / gemini / azure</td>
           </tr>
           <tr>
             <td><code>model</code></td>

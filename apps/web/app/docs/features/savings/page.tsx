@@ -512,7 +512,7 @@ GET /api/v1/recommendations?minSavings=20      # only show ≥ $20/mo
           <tr>
             <td><code>provider</code></td>
             <td>Yes</td>
-            <td>Provider slug, e.g. <code>openai</code>, <code>anthropic</code>, <code>gemini</code>.</td>
+            <td>Provider slug, e.g. <code>openai</code>, <code>anthropic</code>, <code>gemini</code>, <code>azure</code>.</td>
           </tr>
           <tr>
             <td><code>model</code></td>
