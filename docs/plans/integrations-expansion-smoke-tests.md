@@ -181,6 +181,7 @@ await observeOpenAI(
 | Azure dashboard 검증 (Step 4) | ✅ resolved | 2026-05-20 | "stuck" 은 Chrome MCP artifact 였음. 사용자 브라우저 screenshot 에서 azure 행 정상 표시 + timestamp fix (PR #130) 후 elapsed time 정확 |
 | Ollama TS | ✅ | 2026-05-20 | `@spanlens/sdk@0.5.0` + `llama3.2:1b` (1.3GB) on Windows Ollama 0.24.0. trace `59147c35-...` ingest chain 4/4 200/201 |
 | Ollama Python | ✅ | 2026-05-20 | `spanlens==0.4.0` + 같은 Ollama 모델. trace `c673f0c3-...` 동일한 4/4 ingest chain |
+| LangChain / LangGraph TS | ✅ | 2026-05-20 | `@spanlens/sdk@0.6.0` + `@langchain/langgraph` + ChatOpenAI→Ollama. 2-node graph (planner → executor), elapsed 1.5s, trace `fbdb8361-...` — 6 span POST 201 + 5 span PATCH 200 + 1 trace PATCH 200 |
 
 ### Azure smoke 통과 증거 (curl raw)
 
@@ -369,4 +370,33 @@ client.flush()
 ### 통과 조건 ✅
 plain LangChain 또는 LangGraph 둘 중 하나 + 대시보드 span tree depth 정확 → **"LangGraph 지원" 마케팅 가능**.
 
-PR #136 plan 의 test plan box `Live smoke against a real @langchain/langgraph 2-node graph` → 검증 완료 표시.
+PR #136 plan 의 test plan box `Live smoke against a real @langchain/langgraph 2-node graph` → **retroactively 통과**.
+
+### Live smoke 통과 증거 (2026-05-20)
+
+**Setup**:
+- `/tmp/langgraph-smoke/` 디렉토리, `"type": "module"` + `@spanlens/sdk@0.6.0` + `@langchain/langgraph` + `@langchain/openai`
+- ChatOpenAI 가 로컬 Ollama (`llama3.2:1b`, `http://localhost:11434/v1`) 백엔드 사용 — 외부 LLM 비용 없이 검증
+
+**Script result**:
+```
+[smoke-langgraph] invoking graph…
+[smoke-langgraph] elapsed=1532ms
+[smoke-langgraph] plan="To answer the question 'What is 2+2?', you would provide a straightforward and a…"
+[smoke-langgraph] output="The answer is 4.…"
+[smoke-langgraph] flushed — check /traces
+```
+
+**서버측 Vercel logs** (trace `fbdb8361-4a8a-4c79-a734-bdc16533e6e9`):
+- `POST /ingest/traces` → 201 (1×)
+- `POST /ingest/traces/.../spans` → 201 (6×) — graph + planner + executor + chain wrappers + LLM 노드들
+- `PATCH /ingest/spans/...` → 200 (5×)
+- `PATCH /ingest/traces/.../` → 200 (1×)
+
+**의미**: LangGraph 의 노드 토폴로지가 `parentRunId` 를 통해 자동으로 span tree 로 변환됨. 같은 handler 가 LangChain / LCEL / LangGraph 어떤 것에도 attach 가능함을 production 환경에서 검증.
+
+### Gotchas (다음 사용자를 위해)
+
+- LangGraph `Annotation.Root({...})` 의 채널 이름과 노드 이름이 같으면 `addNode` 가 throw — 흔한 함정 (`plan` 채널 + `plan` 노드 충돌). 다른 이름 사용 (예: `planner` / `executor`).
+- 로컬 Ollama 서비스가 멈춰있으면 `ECONNREFUSED` — 재시작은 `ollama serve` (background).
+- ChatOpenAI 를 Ollama 에 붙일 때 `configuration: { baseURL: 'http://localhost:11434/v1' }` 형태 (`baseURL` 이 ChatOpenAI 의 첫 레벨 옵션이 아님).
