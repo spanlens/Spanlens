@@ -19,7 +19,6 @@ import { useOrganization } from '@/lib/queries/use-organization'
 import { useWorkspaces, useCreateWorkspace } from '@/lib/queries/use-workspaces'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { writeWorkspaceCookie } from '@/lib/workspace-cookie'
-import { linkPrefetchFor } from '@/lib/heavy-pages'
 
 /* ── Logo mark ── */
 function LogoMark() {
@@ -378,9 +377,17 @@ export function Sidebar() {
                 <Link
                   key={href}
                   href={href}
-                  // See lib/heavy-pages.ts — heavy pages skip viewport prefetch.
-                  // Cuts ~half the simultaneous RSC fan-out when the sidebar mounts.
-                  prefetch={linkPrefetchFor(href)}
+                  // All sidebar links skip prefetch entirely. Production
+                  // measurement showed 18 sibling-page RSC requests firing on
+                  // every dashboard mount, each costing ~327ms middleware
+                  // overhead, with ~17% returning 503 when Vercel ran out of
+                  // function concurrency. Trade-off: the first click to any
+                  // sidebar page now pays a one-time ~300-500ms cold cost
+                  // instead of being instant. Acceptable for users who
+                  // actively navigate between pages anyway.
+                  // KpiCard + inline drill-down Links still use linkPrefetchFor
+                  // for heavy-page filtering.
+                  prefetch={false}
                   className={cn(
                     'flex items-center justify-between px-[10px] py-[6px] rounded-[5px] text-[13px] transition-colors',
                     'border-l-2',
