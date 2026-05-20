@@ -107,8 +107,15 @@ requestsRouter.get('/', async (c) => {
 
   const combinedFilters = filters.length > 0 ? filters.join(' AND ') : undefined
 
+  // Timing instrumentation (temporary — investigating /requests SSR slow
+  // first-paint on 2026-05-20; remove after root cause lands).
+  const tStart = Date.now()
   try {
+    const tScope0 = Date.now()
     const scope = await requestsScope(orgId)
+    const scopeMs = Date.now() - tScope0
+
+    const tQuery0 = Date.now()
     const [rows, total] = await Promise.all([
       selectRequests<RequestRow>({
         scope,
@@ -121,9 +128,13 @@ requestsRouter.get('/', async (c) => {
       }),
       countRequests({ scope, filters: combinedFilters, params }),
     ])
+    const queryMs = Date.now() - tQuery0
 
     // App-layer replacement for Supabase's `provider_keys ( name )` nested select.
+    const tKeysMap0 = Date.now()
     const keyMap = await fetchProviderKeyNames(orgId, rows.map((r) => r.provider_key_id))
+    const keysMapMs = Date.now() - tKeysMap0
+    console.log(`[ssr-timing] GET /api/v1/requests scope=${scopeMs}ms query=${queryMs}ms keysMap=${keysMapMs}ms total=${Date.now() - tStart}ms rows=${rows.length}`)
     const flat = rows.map((row) => ({
       ...row,
       cost_usd: row.cost_usd == null ? null : Number(row.cost_usd),
