@@ -1,3 +1,4 @@
+Connecting to db 5432
 export type Json =
   | string
   | number
@@ -7,10 +8,30 @@ export type Json =
   | Json[]
 
 export type Database = {
-  // Allows to automatically instantiate createClient with right options
-  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
-  __InternalSupabase: {
-    PostgrestVersion: "14.5"
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          extensions?: Json
+          operationName?: string
+          query?: string
+          variables?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
   }
   public: {
     Tables: {
@@ -181,6 +202,7 @@ export type Database = {
         Row: {
           baseline_mean: number
           baseline_stddev: number
+          confidence: string | null
           current_value: number
           detected_at: string
           detected_on: string
@@ -196,6 +218,7 @@ export type Database = {
         Insert: {
           baseline_mean: number
           baseline_stddev: number
+          confidence?: string | null
           current_value: number
           detected_at?: string
           detected_on: string
@@ -211,6 +234,7 @@ export type Database = {
         Update: {
           baseline_mean?: number
           baseline_stddev?: number
+          confidence?: string | null
           current_value?: number
           detected_at?: string
           detected_on?: string
@@ -349,6 +373,62 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      billing_downgrade_notifications: {
+        Row: {
+          created_at: string
+          id: string
+          stage: string
+          subscription_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          stage: string
+          subscription_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          stage?: string
+          subscription_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "billing_downgrade_notifications_subscription_id_fkey"
+            columns: ["subscription_id"]
+            isOneToOne: false
+            referencedRelation: "subscriptions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cron_job_runs: {
+        Row: {
+          duration_ms: number | null
+          error_message: string | null
+          id: string
+          job_name: string
+          ran_at: string
+          status: string
+        }
+        Insert: {
+          duration_ms?: number | null
+          error_message?: string | null
+          id?: string
+          job_name: string
+          ran_at?: string
+          status: string
+        }
+        Update: {
+          duration_ms?: number | null
+          error_message?: string | null
+          id?: string
+          job_name?: string
+          ran_at?: string
+          status?: string
+        }
+        Relationships: []
       }
       dataset_items: {
         Row: {
@@ -874,12 +954,63 @@ export type Database = {
           },
         ]
       }
+      model_price_history: {
+        Row: {
+          cache_read_price_per_1m: number | null
+          cache_write_price_per_1m: number | null
+          change_kind: string
+          changed_at: string
+          changed_by: string | null
+          completion_price_per_1m: number
+          id: string
+          model: string
+          model_price_id: string
+          prompt_price_per_1m: number
+          provider: string
+        }
+        Insert: {
+          cache_read_price_per_1m?: number | null
+          cache_write_price_per_1m?: number | null
+          change_kind: string
+          changed_at?: string
+          changed_by?: string | null
+          completion_price_per_1m: number
+          id?: string
+          model: string
+          model_price_id: string
+          prompt_price_per_1m: number
+          provider: string
+        }
+        Update: {
+          cache_read_price_per_1m?: number | null
+          cache_write_price_per_1m?: number | null
+          change_kind?: string
+          changed_at?: string
+          changed_by?: string | null
+          completion_price_per_1m?: number
+          id?: string
+          model?: string
+          model_price_id?: string
+          prompt_price_per_1m?: number
+          provider?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "model_price_history_model_price_id_fkey"
+            columns: ["model_price_id"]
+            isOneToOne: false
+            referencedRelation: "model_prices"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       model_prices: {
         Row: {
           cache_read_price_per_1m: number | null
           cache_write_price_per_1m: number | null
           completion_price_per_1m: number
           created_at: string
+          effective_from: string
           id: string
           model: string
           prompt_price_per_1m: number
@@ -891,6 +1022,7 @@ export type Database = {
           cache_write_price_per_1m?: number | null
           completion_price_per_1m: number
           created_at?: string
+          effective_from?: string
           id?: string
           model: string
           prompt_price_per_1m: number
@@ -902,10 +1034,56 @@ export type Database = {
           cache_write_price_per_1m?: number | null
           completion_price_per_1m?: number
           created_at?: string
+          effective_from?: string
           id?: string
           model?: string
           prompt_price_per_1m?: number
           provider?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      model_recommendations: {
+        Row: {
+          cost_ratio: number
+          created_at: string
+          current_model: string
+          current_provider: string
+          effective_from: string
+          id: string
+          max_avg_completion_tokens: number
+          max_avg_prompt_tokens: number
+          reason: string
+          suggested_model: string
+          suggested_provider: string
+          updated_at: string
+        }
+        Insert: {
+          cost_ratio: number
+          created_at?: string
+          current_model: string
+          current_provider: string
+          effective_from?: string
+          id?: string
+          max_avg_completion_tokens: number
+          max_avg_prompt_tokens: number
+          reason: string
+          suggested_model: string
+          suggested_provider: string
+          updated_at?: string
+        }
+        Update: {
+          cost_ratio?: number
+          created_at?: string
+          current_model?: string
+          current_provider?: string
+          effective_from?: string
+          id?: string
+          max_avg_completion_tokens?: number
+          max_avg_prompt_tokens?: number
+          reason?: string
+          suggested_model?: string
+          suggested_provider?: string
           updated_at?: string
         }
         Relationships: []
@@ -1315,6 +1493,7 @@ export type Database = {
           name: string
           organization_id: string
           provider: string
+          provider_metadata: Json
           updated_at: string
         }
         Insert: {
@@ -1326,6 +1505,7 @@ export type Database = {
           name: string
           organization_id: string
           provider: string
+          provider_metadata?: Json
           updated_at?: string
         }
         Update: {
@@ -1337,6 +1517,7 @@ export type Database = {
           name?: string
           organization_id?: string
           provider?: string
+          provider_metadata?: Json
           updated_at?: string
         }
         Relationships: [
@@ -1455,6 +1636,36 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      requests_fallback: {
+        Row: {
+          created_at: string
+          id: string
+          last_error: string | null
+          last_retry_at: string | null
+          organization_id: string | null
+          payload: Json
+          retry_count: number
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          last_error?: string | null
+          last_retry_at?: string | null
+          organization_id?: string | null
+          payload: Json
+          retry_count?: number
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          last_error?: string | null
+          last_retry_at?: string | null
+          organization_id?: string | null
+          payload?: Json
+          retry_count?: number
+        }
+        Relationships: []
       }
       saved_filters: {
         Row: {
@@ -1646,6 +1857,7 @@ export type Database = {
           paddle_customer_id: string
           paddle_price_id: string
           paddle_subscription_id: string
+          past_due_since: string | null
           plan: string
           status: string
           updated_at: string
@@ -1661,6 +1873,7 @@ export type Database = {
           paddle_customer_id: string
           paddle_price_id: string
           paddle_subscription_id: string
+          past_due_since?: string | null
           plan: string
           status: string
           updated_at?: string
@@ -1676,6 +1889,7 @@ export type Database = {
           paddle_customer_id?: string
           paddle_price_id?: string
           paddle_subscription_id?: string
+          past_due_since?: string | null
           plan?: string
           status?: string
           updated_at?: string
@@ -1835,6 +2049,36 @@ export type Database = {
           },
         ]
       }
+      user_consents: {
+        Row: {
+          accepted_at: string
+          document: string
+          id: string
+          ip_address: unknown
+          user_agent: string | null
+          user_id: string
+          version: string
+        }
+        Insert: {
+          accepted_at?: string
+          document: string
+          id?: string
+          ip_address?: unknown
+          user_agent?: string | null
+          user_id: string
+          version: string
+        }
+        Update: {
+          accepted_at?: string
+          document?: string
+          id?: string
+          ip_address?: unknown
+          user_agent?: string | null
+          user_id?: string
+          version?: string
+        }
+        Relationships: []
+      }
       user_profiles: {
         Row: {
           created_at: string
@@ -1894,32 +2138,41 @@ export type Database = {
       }
       webhook_deliveries: {
         Row: {
+          attempt_count: number
           delivered_at: string
           duration_ms: number | null
           error_message: string | null
           event_type: string
           http_status: number | null
           id: string
+          next_retry_at: string | null
+          payload: Json | null
           status: string
           webhook_id: string
         }
         Insert: {
+          attempt_count?: number
           delivered_at?: string
           duration_ms?: number | null
           error_message?: string | null
           event_type: string
           http_status?: number | null
           id?: string
+          next_retry_at?: string | null
+          payload?: Json | null
           status: string
           webhook_id: string
         }
         Update: {
+          attempt_count?: number
           delivered_at?: string
           duration_ms?: number | null
           error_message?: string | null
           event_type?: string
           http_status?: number | null
           id?: string
+          next_retry_at?: string | null
+          payload?: Json | null
           status?: string
           webhook_id?: string
         }
@@ -2045,8 +2298,10 @@ export type Database = {
         Args: { p_trace_id: string }
         Returns: undefined
       }
+      prune_cron_job_runs: { Args: never; Returns: undefined }
       prune_logs_by_retention: { Args: never; Returns: Json }
       prune_rate_limit_buckets: { Args: never; Returns: number }
+      set_spanlens_actor: { Args: { actor_id: string }; Returns: undefined }
     }
     Enums: {
       org_role: "admin" | "editor" | "viewer"
@@ -2175,9 +2430,15 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
   public: {
     Enums: {
       org_role: ["admin", "editor", "viewer"],
     },
   },
 } as const
+
+A new version of Supabase CLI is available: v2.100.1 (currently installed v2.90.0)
+We recommend updating regularly for new features and bug fixes: https://supabase.com/docs/guides/cli/getting-started#updating-the-supabase-cli
