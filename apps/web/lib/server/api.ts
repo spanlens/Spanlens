@@ -26,16 +26,10 @@ const getServerSession = cache(async () => {
  * Must be called only from Server Components / Route Handlers.
  */
 export async function apiGetServer<T>(path: string): Promise<T> {
-  // Timing instrumentation (temporary — investigating /requests SSR slow
-  // first-paint on 2026-05-20).
-  const tStart = Date.now()
-  const tAuth0 = Date.now()
   const session = await getServerSession()
   const token = session?.access_token ?? null
-  const authMs = Date.now() - tAuth0
 
   const url = path.startsWith('http') ? path : `${API_URL}${path}`
-  const tFetch0 = Date.now()
   const res = await fetch(url, {
     headers: {
       'Content-Type': 'application/json',
@@ -43,13 +37,10 @@ export async function apiGetServer<T>(path: string): Promise<T> {
     },
     cache: 'no-store',
   })
-  const fetchMs = Date.now() - tFetch0
 
   if (!res.ok) {
-    console.log(`[ssr-timing] apiGetServer ${path} FAIL ${res.status} auth=${authMs}ms fetch=${fetchMs}ms total=${Date.now() - tStart}ms`)
     throw new Error(`Server API ${res.status}: ${path}`)
   }
 
-  console.log(`[ssr-timing] apiGetServer ${path} OK auth=${authMs}ms fetch=${fetchMs}ms total=${Date.now() - tStart}ms`)
   return res.json() as Promise<T>
 }
