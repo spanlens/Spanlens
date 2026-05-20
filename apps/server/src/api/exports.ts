@@ -3,6 +3,7 @@ import { authJwt, type JwtContext } from '../middleware/authJwt.js'
 import { supabaseAdmin } from '../lib/db.js'
 import { detectAnomalies } from '../lib/anomaly.js'
 import { requestsScope, selectRequests, streamRequests } from '../lib/requests-query.js'
+import { fromClickhouseTimestamp } from '../lib/clickhouse.js'
 
 export const exportsRouter = new Hono<JwtContext>()
 exportsRouter.use('*', authJwt)
@@ -177,8 +178,14 @@ exportsRouter.get('/requests', async (c) => {
       console.error('[exports:requests] ClickHouse query failed:', err instanceof Error ? err.message : err)
       return c.json({ error: 'Failed to export requests' }, 500)
     }
+    // ClickHouse DateTime64 → ISO UTC (gotcha #18). Streaming CSV/JSONL paths
+    // below still emit raw format; they should be wrapped too in a follow-up.
+    const normalised = rows.map((r) => ({
+      ...r,
+      created_at: fromClickhouseTimestamp(typeof r.created_at === 'string' ? r.created_at : null) ?? r.created_at,
+    }))
     const body = JSON.stringify(
-      { exported_at: new Date().toISOString(), count: rows.length, data: rows },
+      { exported_at: new Date().toISOString(), count: normalised.length, data: normalised },
       null,
       2,
     )
@@ -380,11 +387,15 @@ exportsRouter.get('/security', async (c) => {
   }
 
   // CSV gets the flags column as a string literal; JSON parses it back to an array.
+  // Both formats get a canonical ISO UTC `created_at` (with `Z` suffix) so
+  // downstream consumers don't have to guess the timezone of ClickHouse's
+  // 'YYYY-MM-DD HH:MM:SS.fff' format. Excel still parses ISO datetime fine.
   const rows: Record<string, unknown>[] = data.map((row) => {
-    if (format === 'csv') return row
+    const isoCreated = fromClickhouseTimestamp(row.created_at) ?? row.created_at
+    if (format === 'csv') return { ...row, created_at: isoCreated }
     let parsedFlags: unknown = []
     try { parsedFlags = JSON.parse(row.flags) } catch { parsedFlags = row.flags }
-    return { ...row, flags: parsedFlags }
+    return { ...row, flags: parsedFlags, created_at: isoCreated }
   })
 
   const dateStr = new Date().toISOString().slice(0, 10)

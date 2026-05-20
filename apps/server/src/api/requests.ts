@@ -12,6 +12,7 @@ import {
   countRequests,
   fetchProviderKeyNames,
 } from '../lib/requests-query.js'
+import { fromClickhouseTimestamp } from '../lib/clickhouse.js'
 
 export const requestsRouter = new Hono<JwtContext>()
 
@@ -128,6 +129,10 @@ requestsRouter.get('/', async (c) => {
       cost_usd: row.cost_usd == null ? null : Number(row.cost_usd),
       // ClickHouse returns UInt8 as a number ("0" / "1" depending on driver); normalize.
       truncated: Boolean(Number(row.truncated)),
+      // ClickHouse DateTime64 format ('YYYY-MM-DD HH:MM:SS.fff') has no 'T'/'Z'
+      // so JS new Date() interprets as local time → "9h ago" bug for KST users.
+      // Convert to canonical ISO UTC at the API boundary. See gotcha #18.
+      created_at: fromClickhouseTimestamp(row.created_at) ?? row.created_at,
       provider_key_name: row.provider_key_id ? (keyMap.get(row.provider_key_id) ?? null) : null,
     }))
 
@@ -196,6 +201,8 @@ requestsRouter.get('/:id', async (c) => {
       ...data,
       cost_usd: data.cost_usd == null ? null : Number(data.cost_usd),
       truncated: Boolean(Number(data.truncated)),
+      // ClickHouse timestamp → ISO UTC (see gotcha #18 / list endpoint).
+      created_at: fromClickhouseTimestamp(data.created_at) ?? data.created_at,
       request_body: parseJsonColumn(data.request_body, null),
       response_body: parseJsonColumn(data.response_body, null),
       flags: parseJsonColumn(data.flags, []),

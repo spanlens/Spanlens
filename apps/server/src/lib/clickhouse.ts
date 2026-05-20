@@ -126,3 +126,21 @@ export function getOrgClickhouse(organizationId: string): { client: ClickHouseCl
 export function toClickhouseTimestamp(date: Date = new Date()): string {
   return date.toISOString().replace('T', ' ').replace('Z', '')
 }
+
+/**
+ * Inverse of `toClickhouseTimestamp` — converts a ClickHouse DateTime64 string
+ * (`'YYYY-MM-DD HH:MM:SS.fff'`) back to an ISO-8601 UTC string ending in `Z`
+ * so client JS `new Date(...)` parses it as UTC, not local time.
+ *
+ * Symptom of forgetting this on the wire boundary: rows show up "9h ago"
+ * (KST offset) when they were actually created seconds ago — JS without the
+ * `Z` interprets the timestamp as local time. See CLAUDE.md gotcha #18.
+ *
+ * Returns null for null/empty input so callers can pass through nullable
+ * timestamp columns without extra branching.
+ */
+export function fromClickhouseTimestamp(s: string | null | undefined): string | null {
+  if (!s) return null
+  // ClickHouse format: '2026-05-20 07:00:00.000' → '2026-05-20T07:00:00.000Z'
+  return s.replace(' ', 'T') + 'Z'
+}
