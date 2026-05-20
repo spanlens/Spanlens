@@ -130,3 +130,57 @@ PR #129 docs 작성 후 한 번 더 들여다봄. **"영구 stuck" 이 아니라
 - PR #129 (이 docs)
 - PR #130 (timestamp fix) — 9h ago 표시의 별도 원인 fix
 - PR #128 (azure filter dropdown) — 직접 관련 없음. Suspense 문제는 머지 전에도 동일했을 가능성 큼 (재현 환경 차이만)
+
+---
+
+## 결론 — instrumentation으로 측정 (2026-05-20 두번째 후속)
+
+PR #132 (`chore/ssr-timing-instrumentation`) 머지 후 `[ssr-timing]` console.log 로 production에서 실제 측정. PR #133 (이 chore/revert-ssr-timing) 에서 revert.
+
+### 측정 결과
+
+**Web SSR** (Vercel function `spanlens-web`):
+```
+[ssr-timing] apiGetServer /api/v1/requests?page=1&limit=50 OK auth=627ms fetch=2496ms total=3123ms
+```
+- `auth` = Supabase `getSession()` = **627ms**
+- `fetch` = web→server Vercel hop = **2496ms** (서버 측 2000ms + 네트워크 hop ~500ms)
+- **Total = 3123ms (~3s)**
+
+**Server** (Vercel function `spanlens-server`):
+```
+[ssr-timing] GET /api/v1/requests scope=718ms query=561ms keysMap=267ms total=1546ms rows=7
+```
+- `scope` = `requestsScope()` (Supabase plan + retention lookup) = **718ms**
+- `query` = ClickHouse `selectRequests` + `countRequests` (parallel) = **561ms**
+- `keysMap` = `fetchProviderKeyNames()` (Supabase batch) = **267ms**
+- **Server total = 1546ms** + ~450ms HTTP encode/auth → 2s 전체 endpoint duration
+
+### 진짜 baseline 정리
+
+| 단계 | 측정값 |
+|---|---|
+| Web SSR (apiGetServer 한 번 호출) | **~3.1s** |
+| 서버 측 `/api/v1/requests` API | **~2.0s** |
+| Cross-Vercel-function hop overhead | **~500ms** |
+| 페이지 hydration + 첫 paint (추정) | ~1~2s |
+| **실 사용자 인지 시간 (추정)** | **~5~6s** |
+
+### "30초 stuck" 의 정체
+
+Chrome MCP 환경 artifact 였음. 같은 페이지를 일반 브라우저 탭에서 열면 사용자는 ~5~6s 안에 정상 렌더 (사용자 screenshot 으로 확인). Chrome MCP 의 extension content script (`chrome-extension://ghoijjgbijaijnlkckidlccocjmlnekp/content-final.js`) 가 React Suspense streaming 과 간섭하는 듯 — instrumentation 후 1~2분 기다려도 skeleton 유지됐고, 같은 시점 Vercel function logs 는 3초 안에 완료 표시. **production bug 아님**.
+
+### 남은 최적화 여지 (별도 cycle 후보, 시급 아님)
+
+| 항목 | 현재 | 최적화 후 (예상) | 효과 |
+|---|---|---|---|
+| `requestsScope()` (Supabase) | 718ms | ~10ms (1분 in-memory cache) | -700ms |
+| `fetchProviderKeyNames()` (Supabase) | 267ms | ~10ms (5분 in-memory cache) | -250ms |
+| Cross-Vercel-function hop | ~500ms | 0 (web SSR이 ClickHouse 직접 호출) | -500ms, 단 큰 refactor |
+| Web `getSession()` | 627ms | ~50ms (단일 호출 cache 유지) | 이미 `react cache()` 적용됨, 추가 개선 가능 |
+
+이 4개 모두 적용 시 web SSR ~3s → ~1.2s. **단 시급도 낮음** — 현재 baseline ~5~6s 이 일반적인 SSR 대시보드 수준.
+
+### Resolution
+
+이 plan 문서는 **resolved** 상태로 표시 — production 측 실제 bug는 없었음. 위 최적화 항목은 별도 perf 개선 cycle 에서 follow-up.
