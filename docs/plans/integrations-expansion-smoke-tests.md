@@ -177,8 +177,36 @@ await observeOpenAI(
 
 | Smoke | Status | 통과 일자 | 환경 |
 |---|---|---|---|
-| Azure proxy | ⬜ | | |
+| Azure proxy (curl Step 2+3) | ✅ proxy 자체 통과 | 2026-05-20 | Azure OpenAI `gpt-4.1-mini` deployment / eastus / Standard tier, resource `spanlens-smoke-haeseong-2026` |
+| Azure dashboard 검증 (Step 4) | ⏸️ 차단 | — | `/requests` SSR 무한 Suspense 별개 이슈 ([dashboard-ssr-suspense-stuck-2026-05.md](dashboard-ssr-suspense-stuck-2026-05.md)) |
 | Ollama TS | ⬜ | | |
 | Ollama Python | ⬜ | | |
 
-3개 다 통과 시 PR #125, #126 의 test plan 미체크 box 를 retroactively 체크 처리.
+### Azure smoke 통과 증거 (curl raw)
+
+**Step 2 비스트리밍** — HTTP 200, OpenAI-shape 응답:
+- `model: "gpt-4.1-mini-2025-04-14"` (Azure가 dated variant 반환 — `lib/cost.ts` longest-prefix fallback이 매칭함)
+- `usage: { prompt_tokens: 14, completion_tokens: 9, total_tokens: 23 }`
+- Azure 전용 필드 `content_filter_results`, `prompt_filter_results`, `system_fingerprint` 정상 passthrough
+- response body의 `choices[0].message.content`: "Hello there! Nice to meet you!"
+
+**Step 3 스트리밍** — SSE 정상:
+- 매 chunk 가 `data: {...}\n\n` 형식
+- delta content 누적: "Sure! Here you go: 1\n2\n3\n4\n5"
+- 마지막 chunk usage: `{ prompt_tokens: 12, completion_tokens: 16, total_tokens: 28 }`
+- `data: [DONE]` terminator 정상
+
+**검증된 chain (server side)**:
+1. `Authorization: Bearer sl_live_*` → `authApiKey` middleware 통과
+2. `apiKeyId + 'azure'` → `provider_keys` SELECT (active row hit)
+3. AES-256-GCM 복호화 → 평문 키
+4. `provider_metadata.resource_url` + `/openai/v1/chat/completions` 로 upstream URL 조립
+5. `Authorization: Bearer` → `api-key: <key>` 헤더 스왑 (`buildUpstreamHeaders` + 명시적 `headers.delete('authorization')`)
+6. Azure 응답 status/body passthrough
+7. (Streaming) `stream_options: {include_usage: true}` 자동 injection으로 마지막 usage chunk 확보
+
+PR #125 의 test plan 박스 `End-to-end smoke against a real Azure resource` → **retroactively 통과**.
+
+### 차단된 Step 4 — `/requests` SSR Suspense stuck
+
+대시보드에서 행 시각 확인을 하려고 했으나 `/requests`, `/dashboard` 둘 다 `<template id="B:0">` Suspense fallback 에서 무기한 멈춤. `animate-pulse` skeleton 영구 표시. 6초 wait, 페이지 reload 두 차례에도 회복 안 됨. Console 에러 없음 (browser extension 메시지뿐). 별개 이슈로 분리 — [`dashboard-ssr-suspense-stuck-2026-05.md`](dashboard-ssr-suspense-stuck-2026-05.md).
