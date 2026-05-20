@@ -33,10 +33,15 @@ export function useAddProviderKey() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (input: {
-      provider: 'openai' | 'anthropic' | 'gemini'
+      provider: 'openai' | 'anthropic' | 'gemini' | 'azure'
       key: string
       name: string
       api_key_id: string
+      /**
+       * Azure only: { resource_url: 'https://<resource>.openai.azure.com' }.
+       * Server rejects azure inserts without this; ignored for other providers.
+       */
+      provider_metadata?: { resource_url: string }
     }) => {
       const res = await apiPost<ApiEnvelope<ProviderKey>>('/api/v1/provider-keys', input)
       return res.data

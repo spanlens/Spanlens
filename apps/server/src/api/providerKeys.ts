@@ -18,9 +18,48 @@ providerKeysRouter.use('*', authJwt)
 
 const requireEdit = requireRole('admin', 'editor')
 
-const VALID_PROVIDERS = new Set(['openai', 'anthropic', 'gemini'])
+const VALID_PROVIDERS = new Set(['openai', 'anthropic', 'gemini', 'azure'])
 
-const SELECT_COLUMNS = 'id, provider, name, is_active, api_key_id, created_at, updated_at'
+const SELECT_COLUMNS =
+  'id, provider, name, is_active, api_key_id, provider_metadata, created_at, updated_at'
+
+/**
+ * Normalize a user-supplied Azure resource URL.
+ *
+ * Accepts forms customers commonly paste from the Azure portal:
+ *   "https://my-resource.openai.azure.com"
+ *   "https://my-resource.openai.azure.com/"  (trailing slash)
+ *   "https://my-resource.services.ai.azure.com"  (Foundry alternate domain)
+ *
+ * Returns the canonical origin (no trailing slash). Rejects anything
+ * that isn't an https URL on one of the two Azure domain families —
+ * we don't want to let customers proxy through arbitrary hosts.
+ *
+ * Exported for unit tests (see __tests__/azure-resource-url.test.ts).
+ */
+export function normalizeAzureResourceUrl(input: string): { ok: true; url: string } | { ok: false; error: string } {
+  let parsed: URL
+  try {
+    parsed = new URL(input.trim())
+  } catch {
+    return { ok: false, error: 'resource_url must be a valid URL (e.g. https://my-resource.openai.azure.com)' }
+  }
+  if (parsed.protocol !== 'https:') {
+    return { ok: false, error: 'resource_url must use https://' }
+  }
+  const host = parsed.hostname.toLowerCase()
+  const isAzureHost =
+    host.endsWith('.openai.azure.com') ||
+    host.endsWith('.services.ai.azure.com')
+  if (!isAzureHost) {
+    return {
+      ok: false,
+      error:
+        'resource_url host must end in .openai.azure.com or .services.ai.azure.com',
+    }
+  }
+  return { ok: true, url: parsed.origin }
+}
 
 /** Verify the api_key belongs to a project owned by `orgId`. */
 async function assertApiKeyInOrg(apiKeyId: string, orgId: string): Promise<boolean> {
@@ -134,6 +173,8 @@ providerKeysRouter.post('/', requireEdit, async (c) => {
     key?: unknown
     name?: unknown
     api_key_id?: unknown
+    /** Azure only: { resource_url: 'https://x.openai.azure.com' }. Ignored for other providers. */
+    provider_metadata?: unknown
   }
   try {
     body = (await c.req.json()) as typeof body
@@ -142,7 +183,7 @@ providerKeysRouter.post('/', requireEdit, async (c) => {
   }
 
   if (typeof body.provider !== 'string' || !VALID_PROVIDERS.has(body.provider)) {
-    return c.json({ error: 'provider must be one of: openai, anthropic, gemini' }, 400)
+    return c.json({ error: 'provider must be one of: openai, anthropic, gemini, azure' }, 400)
   }
   if (typeof body.key !== 'string' || body.key.trim().length === 0) {
     return c.json({ error: 'key is required' }, 400)
@@ -157,6 +198,25 @@ providerKeysRouter.post('/', requireEdit, async (c) => {
     return c.json({ error: 'api_key_id does not belong to this organization' }, 403)
   }
 
+  // Azure requires a resource_url in provider_metadata. Validate + normalize
+  // BEFORE the DB INSERT so error messages are user-friendly — the DB CHECK
+  // constraint would otherwise return a generic "violates check" message.
+  let providerMetadata: Record<string, unknown> = {}
+  if (body.provider === 'azure') {
+    const meta = body.provider_metadata as { resource_url?: unknown } | undefined
+    if (!meta || typeof meta.resource_url !== 'string') {
+      return c.json(
+        { error: 'provider_metadata.resource_url is required for azure' },
+        400,
+      )
+    }
+    const result = normalizeAzureResourceUrl(meta.resource_url)
+    if (!result.ok) {
+      return c.json({ error: result.error }, 400)
+    }
+    providerMetadata = { resource_url: result.url }
+  }
+
   const apiKeyId = body.api_key_id
   const encryptedKey = await aes256Encrypt(body.key.trim())
 
@@ -168,6 +228,7 @@ providerKeysRouter.post('/', requireEdit, async (c) => {
       provider: body.provider,
       name: body.name.trim(),
       encrypted_key: encryptedKey,
+      provider_metadata: providerMetadata,
     })
     .select(SELECT_COLUMNS)
     .single()

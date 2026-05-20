@@ -64,6 +64,14 @@ export interface ProviderKey {
   api_key_id: string
   created_at: string
   updated_at: string
+  /**
+   * Provider-specific config.
+   *   - azure: { resource_url: 'https://x.openai.azure.com' }
+   *   - openai/anthropic/gemini: {}
+   * Shape varies — callers must narrow before reading. Optional in case
+   * the server didn't include it (older API versions).
+   */
+  provider_metadata?: Record<string, unknown>
   /** MAX(requests.created_at) — null if never used. */
   last_used_at?: string | null
   /** Latest provider_key_leak_scans timestamp; null if never scanned. */

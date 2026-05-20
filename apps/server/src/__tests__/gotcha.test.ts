@@ -91,7 +91,7 @@ describe('getDecryptedProviderKey — Gotcha #5 (decryption empty string → nul
     mockKeyLookup({ data: { id: 'pk-uuid-123', encrypted_key: ciphertext }, error: null })
 
     const result = await getDecryptedProviderKey('api-key-789', 'openai')
-    expect(result).toEqual({ plaintext, id: 'pk-uuid-123' })
+    expect(result).toEqual({ plaintext, id: 'pk-uuid-123', metadata: {} })
   })
 
   it('returns null (not empty plaintext) when ENCRYPTION_KEY is wrong [Known Gotcha #5]', async () => {

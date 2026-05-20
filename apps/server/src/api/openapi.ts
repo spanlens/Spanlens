@@ -117,7 +117,7 @@ export const SPEC: OpenAPIV3.Document = {
         description: 'A request (or response) that matched one or more PII or injection rules.',
         properties: {
           id: { type: 'string', format: 'uuid' },
-          provider: { type: 'string', enum: ['openai', 'anthropic', 'gemini'] },
+          provider: { type: 'string', enum: ['openai', 'anthropic', 'gemini', 'azure'] },
           model: { type: 'string', example: 'gpt-4o-mini' },
           status_code: { type: 'integer' },
           latency_ms: { type: 'integer' },
@@ -131,7 +131,7 @@ export const SPEC: OpenAPIV3.Document = {
         type: 'object',
         properties: {
           id: { type: 'string', format: 'uuid' },
-          provider: { type: 'string', enum: ['openai', 'anthropic', 'gemini'] },
+          provider: { type: 'string', enum: ['openai', 'anthropic', 'gemini', 'azure'] },
           model: { type: 'string', example: 'gpt-4o-mini' },
           prompt_tokens: { type: 'integer', description: 'Gross input tokens (cache portions included).' },
           completion_tokens: { type: 'integer' },
@@ -445,7 +445,7 @@ export const SPEC: OpenAPIV3.Document = {
         security: [{ BearerJWT: [] }],
         parameters: [
           { name: 'projectId', in: 'query', schema: { type: 'string', format: 'uuid' } },
-          { name: 'provider', in: 'query', schema: { type: 'string', enum: ['openai', 'anthropic', 'gemini'] } },
+          { name: 'provider', in: 'query', schema: { type: 'string', enum: ['openai', 'anthropic', 'gemini', 'azure'] } },
           { name: 'model', in: 'query', schema: { type: 'string' } },
           { name: 'from', in: 'query', schema: { type: 'string', format: 'date-time' } },
           { name: 'to', in: 'query', schema: { type: 'string', format: 'date-time' } },
