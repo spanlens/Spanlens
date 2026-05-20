@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react'
 import { Star, Filter, MessageSquare } from 'lucide-react'
 import { Topbar } from '@/components/layout/topbar'
-import { cn } from '@/lib/utils'
+import { cn, formatDateTime } from '@/lib/utils'
 import {
   useAnnotationQueue,
   useSaveHumanEval,
@@ -186,7 +186,7 @@ function ItemCard({ item }: { item: AnnotationQueueItem }) {
             {item.prompt_name ?? '—'}{item.prompt_version != null ? ` · v${item.prompt_version}` : ''}
           </p>
           <p className="font-mono text-[10px] text-text-faint truncate">
-            {item.model} · {new Date(item.created_at).toLocaleString()}
+            {item.model} · {formatDateTime(item.created_at)}
           </p>
         </div>
         <div className="flex items-center gap-3 shrink-0">

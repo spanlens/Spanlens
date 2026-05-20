@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { Trash2, ChevronDown, ChevronUp, RotateCcw } from 'lucide-react'
 import { useDeletePromptVersion, useRollbackPromptVersion, type PromptVersion } from '@/lib/queries/use-prompts'
 import { PermissionGate } from '@/components/permission-gate'
+import { formatDate } from '@/lib/utils'
 
 interface Props {
   name: string
@@ -87,7 +88,7 @@ export function VersionsTab({ name, versions, isLoading }: Props) {
                 {v.content.length > 120 ? '…' : ''}
               </span>
               <span className="font-mono text-[11px] text-text-faint shrink-0">
-                {new Date(v.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                {formatDate(v.created_at)}
               </span>
               {isOpen ? (
                 <ChevronUp className="h-3.5 w-3.5 text-text-faint shrink-0" />

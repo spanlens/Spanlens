@@ -8,7 +8,7 @@ import {
 } from '@/lib/queries/use-prompts'
 import { Topbar } from '@/components/layout/topbar'
 import { PermissionGate } from '@/components/permission-gate'
-import { cn } from '@/lib/utils'
+import { cn, formatDate } from '@/lib/utils'
 
 function fmtUsd(v: number): string {
   return v >= 1 ? `$${v.toFixed(2)}` : `$${v.toFixed(5)}`
@@ -431,7 +431,7 @@ export function PromptsClient() {
 
               {/* Updated date */}
               <span className="text-text-faint text-right text-[11px]">
-                {new Date(p.created_at).toLocaleDateString()}
+                {formatDate(p.created_at)}
               </span>
             </button>
           ))}
