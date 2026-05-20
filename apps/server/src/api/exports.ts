@@ -62,6 +62,32 @@ function parseFormat(raw: string | undefined): ExportFormat {
 }
 
 /**
+ * Wrap a row stream so each row's `created_at` (ClickHouse's
+ * `'YYYY-MM-DD HH:MM:SS.fff'`) is converted to canonical ISO UTC
+ * (`'YYYY-MM-DD​T​HH:MM:SS.fff​Z'`) — same fix as the non-streaming endpoints
+ * applied to streaming exports.
+ *
+ * Returns an async generator so backpressure and `for-await` early-exit
+ * cancellation propagate through to the underlying ClickHouse driver stream.
+ * Rows without a string `created_at` are yielded unchanged.
+ *
+ * Exported for unit tests; otherwise only used by the `/exports/requests`
+ * streaming path below.
+ */
+export async function* withIsoCreatedAt<Row extends Record<string, unknown>>(
+  rows: AsyncIterable<Row>,
+): AsyncGenerator<Row, void, undefined> {
+  for await (const row of rows) {
+    const raw = row['created_at']
+    if (typeof raw === 'string') {
+      yield { ...row, created_at: fromClickhouseTimestamp(raw) ?? raw }
+    } else {
+      yield row
+    }
+  }
+}
+
+/**
  * Builds a streaming CSV response (header row + one line per source row).
  *
  * The async iterable is consumed lazily inside the ReadableStream `start`
@@ -204,7 +230,7 @@ exportsRouter.get('/requests', async (c) => {
   // of `limit`. The `buildCsvStream` / `buildJsonlStream` helpers transform
   // rows on-the-fly inside the ReadableStream `start` callback, so backpressure
   // propagates from the Node socket → Web stream controller → CH driver.
-  const rowsIter = streamRequests<ExportRow>({
+  const rawRowsIter = streamRequests<ExportRow>({
     scope,
     select: EXPORT_COLUMNS.join(', '),
     filters: filterSql,
@@ -212,6 +238,14 @@ exportsRouter.get('/requests', async (c) => {
     limit,
     params,
   })
+
+  // Transform `created_at` from ClickHouse's 'YYYY-MM-DD HH:MM:SS.fff' format
+  // (no T, no Z) into canonical ISO UTC. The non-streaming JSON path already
+  // does this — the streaming CSV/JSONL paths were missed in PR #130 because
+  // the row iterator is consumed inline by the stream builders. Wrapping with
+  // `withIsoCreatedAt` preserves backpressure and CH driver cancellation by
+  // re-yielding each row from the original iterator.
+  const rowsIter = withIsoCreatedAt(rawRowsIter)
 
   if (format === 'jsonl') {
     return new Response(buildJsonlStream(rowsIter), {
