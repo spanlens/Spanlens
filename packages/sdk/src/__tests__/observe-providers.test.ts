@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { SpanlensClient } from '../client.js'
-import { observeOpenAI, observeAnthropic, observeGemini } from '../observe.js'
+import { observeOpenAI, observeAnthropic, observeGemini, observeOllama } from '../observe.js'
 
 describe('observeOpenAI / observeAnthropic / observeGemini', () => {
   let fetchMock: ReturnType<typeof vi.fn>
@@ -287,6 +287,70 @@ describe('observeOpenAI / observeAnthropic / observeGemini', () => {
       return body.status === 'error' && body.error_message === 'api failed'
     })
     expect(errPatch).toBeDefined()
+  })
+
+  // ── Provider tag (Ollama + override) ───────────────────────────────────────
+
+  it('observeOpenAI stamps metadata.provider="openai" by default', async () => {
+    const client = new SpanlensClient({ apiKey: 'k', baseUrl: 'http://x' })
+    const trace = client.startTrace({ name: 't' })
+
+    await observeOpenAI(trace, 'call', async () => ({
+      model: 'gpt-4o-mini',
+      usage: { prompt_tokens: 1, completion_tokens: 2, total_tokens: 3 },
+    }))
+
+    const patchCall = fetchMock.mock.calls.find(
+      ([, init]) => (init as RequestInit).method === 'PATCH',
+    )
+    const body = JSON.parse((patchCall![1] as RequestInit).body as string) as Record<string, unknown>
+    expect((body.metadata as Record<string, unknown>).provider).toBe('openai')
+    // Model still flows through alongside the new provider tag.
+    expect((body.metadata as Record<string, unknown>).model).toBe('gpt-4o-mini')
+  })
+
+  it('observeOllama parses OpenAI-compatible response and tags provider="ollama"', async () => {
+    const client = new SpanlensClient({ apiKey: 'k', baseUrl: 'http://x' })
+    const trace = client.startTrace({ name: 't' })
+
+    // Ollama's /v1 endpoint returns an OpenAI-shaped payload.
+    await observeOllama(trace, 'chat', async () => ({
+      model: 'llama3.2',
+      usage: { prompt_tokens: 12, completion_tokens: 34, total_tokens: 46 },
+    }))
+
+    const patchCall = fetchMock.mock.calls.find(
+      ([, init]) => (init as RequestInit).method === 'PATCH',
+    )
+    expect(patchCall).toBeDefined()
+    const body = JSON.parse((patchCall![1] as RequestInit).body as string) as Record<string, unknown>
+    expect(body.prompt_tokens).toBe(12)
+    expect(body.completion_tokens).toBe(34)
+    expect(body.total_tokens).toBe(46)
+    expect((body.metadata as Record<string, unknown>).provider).toBe('ollama')
+    expect((body.metadata as Record<string, unknown>).model).toBe('llama3.2')
+  })
+
+  it('observeOpenAI provider override wins over default tag', async () => {
+    const client = new SpanlensClient({ apiKey: 'k', baseUrl: 'http://x' })
+    const trace = client.startTrace({ name: 't' })
+
+    // User points OpenAI SDK at vLLM (OpenAI-compatible) and wants the
+    // dashboard to label it as 'vllm' not 'openai'.
+    await observeOpenAI(
+      trace,
+      { name: 'vllm-call', provider: 'vllm' },
+      async () => ({
+        model: 'meta-llama/Llama-3-8B',
+        usage: { prompt_tokens: 1, completion_tokens: 2, total_tokens: 3 },
+      }),
+    )
+
+    const patchCall = fetchMock.mock.calls.find(
+      ([, init]) => (init as RequestInit).method === 'PATCH',
+    )
+    const body = JSON.parse((patchCall![1] as RequestInit).body as string) as Record<string, unknown>
+    expect((body.metadata as Record<string, unknown>).provider).toBe('vllm')
   })
 
   it('works when parent is a SpanHandle (nested LLM call)', async () => {

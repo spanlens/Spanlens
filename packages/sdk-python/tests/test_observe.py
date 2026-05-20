@@ -8,7 +8,13 @@ import httpx
 import pytest
 import respx
 
-from spanlens import SpanlensClient, observe, observe_anthropic, observe_openai
+from spanlens import (
+    SpanlensClient,
+    observe,
+    observe_anthropic,
+    observe_ollama,
+    observe_openai,
+)
 
 BASE_URL = "https://test.spanlens.local"
 
@@ -140,3 +146,81 @@ def test_observe_openai_marks_error_when_call_throws():
                     "answer",
                     lambda _h: (_ for _ in ()).throw(RuntimeError("upstream")),
                 )
+
+
+# ── Provider tag (Ollama + override) ────────────────────────────
+
+
+def _last_span_patch_body() -> dict:
+    """Return the JSON body of the last ``PATCH /ingest/spans/{id}`` call.
+
+    Tests inspect the patched span row to confirm provider/model metadata
+    landed in the right place.
+    """
+    import json
+
+    routes = respx.routes
+    for route in reversed(list(routes)):
+        for call in reversed(route.calls):
+            if call.request.method == "PATCH" and "/ingest/spans/" in str(call.request.url):
+                return json.loads(call.request.content.decode())
+    raise AssertionError("no PATCH /ingest/spans/{id} captured")
+
+
+@respx.mock
+def test_observe_openai_default_provider_tag():
+    _mock_ingest_routes()
+
+    fake_response = {
+        "model": "gpt-4o-mini",
+        "usage": {"prompt_tokens": 1, "completion_tokens": 2, "total_tokens": 3},
+    }
+
+    with _client() as client:
+        with client.start_trace("t1") as trace:
+            observe_openai(trace, "call", lambda _h: fake_response)
+
+    body = _last_span_patch_body()
+    assert body["metadata"]["provider"] == "openai"
+    # Model still flows through alongside the new provider tag.
+    assert body["metadata"]["model"] == "gpt-4o-mini"
+
+
+@respx.mock
+def test_observe_ollama_parses_openai_shape_and_tags_provider():
+    _mock_ingest_routes()
+
+    # Ollama's /v1 endpoint returns OpenAI-shaped JSON.
+    fake_response = {
+        "model": "llama3.2",
+        "usage": {"prompt_tokens": 12, "completion_tokens": 34, "total_tokens": 46},
+    }
+
+    with _client() as client:
+        with client.start_trace("t1") as trace:
+            observe_ollama(trace, "chat", lambda _h: fake_response)
+
+    body = _last_span_patch_body()
+    assert body["prompt_tokens"] == 12
+    assert body["completion_tokens"] == 34
+    assert body["total_tokens"] == 46
+    assert body["metadata"]["provider"] == "ollama"
+    assert body["metadata"]["model"] == "llama3.2"
+
+
+@respx.mock
+def test_observe_openai_provider_override():
+    """User points OpenAI SDK at vLLM and overrides the provider tag."""
+    _mock_ingest_routes()
+
+    fake_response = {
+        "model": "meta-llama/Llama-3-8B",
+        "usage": {"prompt_tokens": 1, "completion_tokens": 2, "total_tokens": 3},
+    }
+
+    with _client() as client:
+        with client.start_trace("t1") as trace:
+            observe_openai(trace, "vllm-call", lambda _h: fake_response, provider="vllm")
+
+    body = _last_span_patch_body()
+    assert body["metadata"]["provider"] == "vllm"

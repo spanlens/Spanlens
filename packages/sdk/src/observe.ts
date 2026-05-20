@@ -58,7 +58,7 @@ export async function observe<T>(
 //     openai.chat.completions.create({ ... }, { headers })
 //   )
 
-type Usage = 'openai' | 'anthropic' | 'gemini'
+type Usage = 'openai' | 'anthropic' | 'gemini' | 'ollama'
 
 const PROMPT_VERSION_HEADER = 'x-spanlens-prompt-version'
 const LOG_BODY_HEADER = 'x-spanlens-log-body'
@@ -73,6 +73,16 @@ export type ProviderObserveOptions = Omit<SpanOptions, 'spanType'> & {
    * Override to `'meta'` or `'none'` for stricter data minimization — see LogBodyMode docs.
    */
   logBody?: LogBodyMode
+  /**
+   * Override the provider tag on this span's metadata. Useful when calling an
+   * OpenAI-compatible endpoint that isn't actually OpenAI (Ollama, vLLM,
+   * LM Studio, Together, Groq, etc.). Defaults to the provider implied by the
+   * `observe<Provider>` helper used.
+   *
+   * For Ollama specifically, prefer the dedicated `observeOllama()` helper —
+   * this option is the escape hatch for everything else.
+   */
+  provider?: string
 }
 
 function splitArgs(
@@ -81,19 +91,22 @@ function splitArgs(
   spanOptions: SpanOptions
   promptVersion: string | undefined
   logBody: LogBodyMode | undefined
+  providerOverride: string | undefined
 } {
   if (typeof nameOrOptions === 'string') {
     return {
       spanOptions: { name: nameOrOptions, spanType: 'llm' },
       promptVersion: undefined,
       logBody: undefined,
+      providerOverride: undefined,
     }
   }
-  const { promptVersion, logBody, ...rest } = nameOrOptions
+  const { promptVersion, logBody, provider: providerOverride, ...rest } = nameOrOptions
   return {
     spanOptions: { ...rest, spanType: 'llm' },
     promptVersion,
     logBody,
+    providerOverride,
   }
 }
 
@@ -103,7 +116,7 @@ async function observeProvider<T>(
   nameOrOptions: string | ProviderObserveOptions,
   fn: (headers: Record<string, string>) => Promise<T>,
 ): Promise<T> {
-  const { spanOptions, promptVersion, logBody } = splitArgs(nameOrOptions)
+  const { spanOptions, promptVersion, logBody, providerOverride } = splitArgs(nameOrOptions)
 
   const span =
     'span' in parent && typeof parent.span === 'function'
@@ -117,13 +130,25 @@ async function observeProvider<T>(
   try {
     const result = await fn(headers)
 
-    // Auto-parse usage from the provider response shape
+    // Auto-parse usage from the provider response shape.
+    // Ollama uses OpenAI's response schema (it exposes an /v1 OpenAI-compat
+    // surface) so the OpenAI parser works as-is — only the provider tag differs.
     const parsed =
-      provider === 'openai'
+      provider === 'openai' || provider === 'ollama'
         ? parseOpenAIUsage(result)
         : provider === 'anthropic'
           ? parseAnthropicUsage(result)
           : parseGeminiUsage(result)
+
+    // Stamp the provider tag onto the span metadata. The explicit override
+    // (e.g. observeOpenAI(..., { provider: 'vllm' })) wins over the default,
+    // which is the wrapper name (openai/anthropic/gemini/ollama).
+    const providerTag = providerOverride ?? provider
+    const metadataWithProvider = {
+      ...(parsed.metadata ?? {}),
+      provider: providerTag,
+    }
+    const enriched = { ...parsed, metadata: metadataWithProvider }
 
     // Capture the full response as output unless it's a stream (not serializable)
     const isStream = result != null &&
@@ -131,7 +156,7 @@ async function observeProvider<T>(
       (Symbol.asyncIterator in (result as object) || Symbol.iterator in (result as object))
     const output = isStream ? undefined : result
 
-    await span.end({ status: 'completed', output, ...parsed })
+    await span.end({ status: 'completed', output, ...enriched })
     return result
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : String(err)
@@ -174,4 +199,41 @@ export function observeGemini<T>(
   fn: (headers: Record<string, string>) => Promise<T>,
 ): Promise<T> {
   return observeProvider('gemini', parent, nameOrOptions, fn)
+}
+
+/**
+ * Ollama variant — for **self-hosted** local LLMs through Ollama's
+ * OpenAI-compatible endpoint (`http://localhost:11434/v1`). The trace is
+ * tagged `provider: 'ollama'` so the dashboard surfaces it correctly even
+ * though the response shape is identical to OpenAI's.
+ *
+ * Cost is left as null (self-hosted compute = no per-token charge that
+ * Spanlens can compute) and the dashboard renders a "Self-hosted" badge
+ * in the cost column.
+ *
+ * @example
+ *   import OpenAI from 'openai'
+ *   import { observeOllama } from '@spanlens/sdk'
+ *
+ *   const ollama = new OpenAI({
+ *     baseURL: 'http://localhost:11434/v1',
+ *     apiKey: 'ollama', // ignored by local Ollama; required by the SDK
+ *   })
+ *
+ *   const res = await observeOllama(trace, 'chat', (headers) =>
+ *     ollama.chat.completions.create({
+ *       model: 'llama3.2',
+ *       messages: [{ role: 'user', content: 'Hello' }],
+ *     }, { headers })
+ *   )
+ *
+ * For other OpenAI-compatible self-hosted runtimes (vLLM, LM Studio, etc.)
+ * use `observeOpenAI(..., { provider: 'vllm' })` with the provider override.
+ */
+export function observeOllama<T>(
+  parent: TraceHandle | SpanHandle,
+  nameOrOptions: string | ProviderObserveOptions,
+  fn: (headers: Record<string, string>) => Promise<T>,
+): Promise<T> {
+  return observeProvider('ollama', parent, nameOrOptions, fn)
 }
