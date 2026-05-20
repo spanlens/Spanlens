@@ -20,7 +20,7 @@ process.env['CLICKHOUSE_URL'] ??= 'http://localhost:8123'
 process.env['CLICKHOUSE_USER'] ??= 'default'
 process.env['CLICKHOUSE_PASSWORD'] ??= 'test'
 
-import { buildCsvStream, buildJsonlStream } from '../api/exports.js'
+import { buildCsvStream, buildJsonlStream, withIsoCreatedAt } from '../api/exports.js'
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -198,11 +198,18 @@ describe('streaming-encoder memory bound', () => {
 
 const clickhouseQueryMock = vi.fn()
 
-vi.mock('../lib/clickhouse.js', () => ({
-  getClickhouse: () => ({
-    query: (opts: unknown) => clickhouseQueryMock(opts),
-  }),
-}))
+vi.mock('../lib/clickhouse.js', async (importOriginal) => {
+  // Partial mock: replace the client singleton with our mock query fn, but
+  // keep the real `fromClickhouseTimestamp` / `toClickhouseTimestamp` helpers
+  // intact so the streaming `withIsoCreatedAt` tests below exercise real logic.
+  const actual = await importOriginal<typeof import('../lib/clickhouse.js')>()
+  return {
+    ...actual,
+    getClickhouse: () => ({
+      query: (opts: unknown) => clickhouseQueryMock(opts),
+    }),
+  }
+})
 
 let streamRequests: typeof import('../lib/requests-query.js').streamRequests
 
@@ -318,5 +325,62 @@ describe('streamRequests', () => {
     // Pull one row then break — generator's finally should run.
     for await (const _ of iter) { void _; break }
     expect(result.close).toHaveBeenCalled()
+  })
+})
+
+// ── withIsoCreatedAt (PR #130 follow-up: streaming created_at conversion) ────
+
+describe('withIsoCreatedAt', () => {
+  async function collect<T>(iter: AsyncIterable<T>): Promise<T[]> {
+    const out: T[] = []
+    for await (const item of iter) out.push(item)
+    return out
+  }
+
+  test("converts ClickHouse 'YYYY-MM-DD HH:MM:SS.fff' to ISO UTC with Z", async () => {
+    const rows = await collect(withIsoCreatedAt(fromArray([
+      { id: '1', created_at: '2026-05-20 07:00:00.000' },
+      { id: '2', created_at: '2026-05-20 07:00:01.500' },
+    ])))
+    expect(rows).toEqual([
+      { id: '1', created_at: '2026-05-20T07:00:00.000Z' },
+      { id: '2', created_at: '2026-05-20T07:00:01.500Z' },
+    ])
+  })
+
+  test('preserves other fields unchanged (immutable spread)', async () => {
+    const rows = await collect(withIsoCreatedAt(fromArray([
+      { id: 'abc', cost_usd: 0.0042, model: 'gpt-4o', created_at: '2026-05-20 07:00:00.000' },
+    ])))
+    expect(rows[0]).toEqual({
+      id: 'abc',
+      cost_usd: 0.0042,
+      model: 'gpt-4o',
+      created_at: '2026-05-20T07:00:00.000Z',
+    })
+  })
+
+  test('passes through rows whose created_at is not a string (null / missing)', async () => {
+    const rows = await collect(withIsoCreatedAt(fromArray<Record<string, unknown>>([
+      { id: '1', created_at: null },
+      { id: '2' },
+    ])))
+    expect(rows).toEqual([
+      { id: '1', created_at: null },
+      { id: '2' },
+    ])
+  })
+
+  test('UTC parse round-trip — JS new Date() matches the original CH timestamp', async () => {
+    // This is the regression guard for the "9h ago" bug: without the Z suffix
+    // JS parses CH timestamps as local time. Confirm the converted string
+    // round-trips to the same UTC instant the CH row claimed.
+    const rows = await collect(withIsoCreatedAt(fromArray([
+      { created_at: '2026-05-20 07:00:00.000' },
+    ])))
+    const iso = (rows[0]!['created_at'] as string)
+    expect(new Date(iso).getUTCHours()).toBe(7)
+    expect(new Date(iso).getUTCDate()).toBe(20)
+    expect(new Date(iso).getUTCMonth()).toBe(4) // May = 4
   })
 })
