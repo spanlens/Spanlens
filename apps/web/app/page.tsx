@@ -141,31 +141,6 @@ export default function LandingPage() {
           </Link>
         </div>
 
-        {/* Floating signal pill — hidden on mobile/tablet, visible on lg+ */}
-        <div className="hidden lg:block absolute top-[110px] right-10 w-[300px] bg-bg-elev border border-border rounded-[10px] p-[14px] shadow-[0_8px_24px_rgba(0,0,0,0.06)]">
-          <div className="flex items-center justify-between mb-2">
-            <span className="font-mono text-[11px] text-text-faint tracking-[0.06em] uppercase">Anomaly · 2 min ago</span>
-            <span className="w-2 h-2 rounded-full bg-accent inline-block" />
-          </div>
-          <div className="text-[14px] font-medium mb-1.5">
-            <span className="text-accent">gpt-4o</span> latency{' '}
-            <span className="font-mono">4.2×</span> baseline
-          </div>
-          <div className="text-[12px] text-text-muted leading-snug">
-            7-day p50 was 820ms. Last 20 calls averaged 3,440ms. Upstream?
-          </div>
-          {/* Mini sparkline */}
-          <svg viewBox="0 0 272 36" className="w-full mt-2" style={{ display: 'block' }}>
-            <polyline
-              fill="none"
-              stroke="var(--accent)"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              points="2,30 22,28 42,30 62,27 82,24 102,26 122,22 142,18 162,4 182,3 202,6 222,2 262,1"
-            />
-          </svg>
-        </div>
       </section>
 
       {/* ── Dashboard preview ───────────────────────────────────────── */}

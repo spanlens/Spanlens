@@ -23,7 +23,7 @@ import {
 import { Topbar } from '@/components/layout/topbar'
 import { PermissionGate } from '@/components/permission-gate'
 import { GhostBtn, PrimaryBtn } from '@/components/ui/primitives'
-import { useCreateProject, useProjects } from '@/lib/queries/use-projects'
+import { useCreateProject, useDeleteProject, useProjects } from '@/lib/queries/use-projects'
 import {
   useApiKeys,
   useIssueApiKey,
@@ -82,6 +82,7 @@ export function ProjectsClient() {
   const providerKeysQuery = useProviderKeys() // org-wide list, grouped client-side by api_key_id
 
   const createProject = useCreateProject()
+  const deleteProject = useDeleteProject()
   const issueApiKey = useIssueApiKey()
   const toggleApiKey = useToggleApiKey()
   const deleteApiKey = useDeleteApiKey()
@@ -123,6 +124,12 @@ export function ProjectsClient() {
   // Delete confirms
   const [deleteApiKeyId, setDeleteApiKeyId] = useState<string | null>(null)
   const [deleteProvKeyId, setDeleteProvKeyId] = useState<string | null>(null)
+  // Project delete requires typing the project name as confirmation —
+  // deleting a project cascades through every Spanlens key, provider key,
+  // and (in ClickHouse) every request row's project_id reference.
+  const [deleteProject_target, setDeleteProject_target] = useState<{ id: string; name: string } | null>(null)
+  const [deleteProject_input, setDeleteProject_input] = useState('')
+  const [deleteProject_error, setDeleteProject_error] = useState<string | null>(null)
 
   // Track which specific toggle is pending
   const [pendingToggleId, setPendingToggleId] = useState<string | null>(null)
@@ -229,6 +236,33 @@ export function ProjectsClient() {
     if (!deleteProvKeyId) return
     await deleteProviderKey.mutateAsync(deleteProvKeyId)
     setDeleteProvKeyId(null)
+  }
+
+  function openDeleteProjectDialog(id: string, name: string) {
+    setDeleteProject_target({ id, name })
+    setDeleteProject_input('')
+    setDeleteProject_error(null)
+  }
+
+  function closeDeleteProjectDialog() {
+    setDeleteProject_target(null)
+    setDeleteProject_input('')
+    setDeleteProject_error(null)
+  }
+
+  async function handleDeleteProject() {
+    if (!deleteProject_target) return
+    if (deleteProject_input !== deleteProject_target.name) {
+      setDeleteProject_error('Project name does not match.')
+      return
+    }
+    setDeleteProject_error(null)
+    try {
+      await deleteProject.mutateAsync(deleteProject_target.id)
+      closeDeleteProjectDialog()
+    } catch (err) {
+      setDeleteProject_error(err instanceof Error ? err.message : 'Failed to delete project')
+    }
   }
 
   const loading =
@@ -385,14 +419,26 @@ export function ProjectsClient() {
                         <h2 className="text-[14px] font-semibold text-text">{proj.name}</h2>
                         <p className="font-mono text-[10.5px] text-text-faint mt-0.5">{proj.id}</p>
                       </div>
-                      <PermissionGate need="edit">
-                        <PrimaryBtn
-                          className="flex items-center gap-1.5 text-[12px] px-3 py-[5px] h-[28px]"
-                          onClick={() => openIssueDialog(proj.id)}
-                        >
-                          <Plus className="h-3.5 w-3.5" /> New Spanlens key
-                        </PrimaryBtn>
-                      </PermissionGate>
+                      <div className="flex items-center gap-2">
+                        <PermissionGate need="edit">
+                          <PrimaryBtn
+                            className="flex items-center gap-1.5 text-[12px] px-3 py-[5px] h-[28px]"
+                            onClick={() => openIssueDialog(proj.id)}
+                          >
+                            <Plus className="h-3.5 w-3.5" /> New Spanlens key
+                          </PrimaryBtn>
+                        </PermissionGate>
+                        <PermissionGate need="edit">
+                          <button
+                            type="button"
+                            onClick={() => openDeleteProjectDialog(proj.id, proj.name)}
+                            title="Delete project"
+                            className="p-1.5 rounded hover:bg-bad/10 text-text-faint hover:text-bad transition-colors"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </PermissionGate>
+                      </div>
                     </div>
 
                     {/* Spanlens key sections — each is a self-contained group:
@@ -841,18 +887,19 @@ export function ProjectsClient() {
         </DialogContent>
       </Dialog>
 
-      {/* Deactivate provider key confirm */}
+      {/* Delete provider key confirm */}
       <Dialog
         open={deleteProvKeyId !== null}
         onOpenChange={(open) => { if (!open) setDeleteProvKeyId(null) }}
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Deactivate provider key</DialogTitle>
+            <DialogTitle>Delete provider key</DialogTitle>
           </DialogHeader>
           <DialogDescription className="text-[12.5px] text-text-muted mt-1">
-            The Spanlens key will fail when calling this provider until you add a new active key.
-            Existing logs are preserved.
+            This provider key will be permanently removed. The parent Spanlens
+            key will fail when calling this provider until you add a new one.
+            Existing request logs stay intact.
           </DialogDescription>
 
           <div className="space-y-4 mt-2">
@@ -866,10 +913,71 @@ export function ProjectsClient() {
                 disabled={deleteProviderKey.isPending}
                 className="flex-1 h-9 rounded-[6px] bg-bad text-white font-medium text-[13px] hover:opacity-90 transition-opacity disabled:opacity-40"
               >
-                {deleteProviderKey.isPending ? 'Deactivating…' : 'Deactivate'}
+                {deleteProviderKey.isPending ? 'Deleting…' : 'Delete'}
               </button>
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete project confirm — requires typing the project name */}
+      <Dialog
+        open={deleteProject_target !== null}
+        onOpenChange={(open) => { if (!open) closeDeleteProjectDialog() }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete project</DialogTitle>
+          </DialogHeader>
+          <DialogDescription className="text-[12.5px] text-text-muted mt-1">
+            This permanently deletes the project and cascades through every
+            Spanlens key and provider key under it. Apps using these keys will
+            stop working immediately. Historical request logs are preserved
+            but the project name will no longer resolve.
+          </DialogDescription>
+
+          {deleteProject_target && (
+            <form
+              onSubmit={(e) => { e.preventDefault(); void handleDeleteProject() }}
+              className="space-y-4 mt-3"
+            >
+              <div className="space-y-1.5">
+                <label className="text-[12.5px] text-text-muted">
+                  Type{' '}
+                  <code className="font-mono text-[12px] bg-bg-elev border border-border px-1.5 py-0.5 rounded-[4px] text-text">
+                    {deleteProject_target.name}
+                  </code>
+                  {' '}to confirm.
+                </label>
+                <input
+                  value={deleteProject_input}
+                  onChange={(e) => { setDeleteProject_input(e.target.value); setDeleteProject_error(null) }}
+                  placeholder={deleteProject_target.name}
+                  autoFocus
+                  className="w-full h-9 px-3 rounded-[6px] border border-border bg-bg text-[13px] font-mono text-text placeholder:text-text-faint focus:outline-none focus:border-border-strong transition-colors"
+                />
+              </div>
+
+              {deleteProject_error && (
+                <div className="rounded-md border border-bad/30 bg-bad/10 px-3 py-2 text-[12px] text-bad">
+                  {deleteProject_error}
+                </div>
+              )}
+
+              <div className="flex gap-3">
+                <GhostBtn type="button" className="flex-1" onClick={closeDeleteProjectDialog}>
+                  Cancel
+                </GhostBtn>
+                <button
+                  type="submit"
+                  disabled={deleteProject_input !== deleteProject_target.name || deleteProject.isPending}
+                  className="flex-1 h-9 rounded-[6px] bg-bad text-white font-medium text-[13px] hover:opacity-90 transition-opacity disabled:opacity-40"
+                >
+                  {deleteProject.isPending ? 'Deleting…' : 'Delete project'}
+                </button>
+              </div>
+            </form>
+          )}
         </DialogContent>
       </Dialog>
     </div>
