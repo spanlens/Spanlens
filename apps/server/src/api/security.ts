@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { authJwt, type JwtContext } from '../middleware/authJwt.js'
 import { supabaseAdmin } from '../lib/db.js'
 import { requestsScope, selectRequests, countRequests } from '../lib/requests-query.js'
+import { fromClickhouseTimestamp } from '../lib/clickhouse.js'
 import { getSecuritySummary } from '../lib/stats-queries.js'
 import { parseIntMin, parsePositiveInt } from '../lib/params.js'
 
@@ -61,6 +62,8 @@ securityRouter.get('/flagged', async (c) => {
       cost_usd: r.cost_usd == null ? null : Number(r.cost_usd),
       flags: parseFlags(r.flags),
       response_flags: parseFlags(r.response_flags),
+      // Convert ClickHouse DateTime64 to canonical ISO UTC (gotcha #18).
+      created_at: fromClickhouseTimestamp(r.created_at) ?? r.created_at,
     }))
     return c.json({
       success: true,
