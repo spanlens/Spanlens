@@ -149,6 +149,223 @@ describe('createSpanlensCallbackHandler (LangChain)', () => {
 
     expect(spanPatches()).toHaveLength(2)
   })
+
+  // ── LangGraph / chain / tool / retriever (PR #137 expansion) ──────────────
+
+  /** Extract span POST bodies in arrival order — used for tree-shape assertions. */
+  function readSpanPosts(calls: FetchCall[]): Array<Record<string, unknown>> {
+    return calls
+      .filter((c) => c.method === 'POST' && c.url.includes('/spans'))
+      .map((c) => c.body)
+  }
+
+  it('captures chain start/end as a custom span with input + output', async () => {
+    const fixtures = stubFetch()
+    const handler = createSpanlensCallbackHandler({ client: makeClient() })
+
+    handler.handleChainStart({ id: ['langgraph', 'plan'] }, { topic: 'tokyo' }, 'chain-1')
+    await handler.handleChainEnd({ steps: ['a', 'b'] }, 'chain-1')
+    await tick()
+
+    const spanPosts = readSpanPosts(fixtures.calls)
+    expect(spanPosts).toHaveLength(1)
+    expect(spanPosts[0]!['name']).toBe('chain.plan')
+    expect(spanPosts[0]!['span_type']).toBe('custom')
+    expect(spanPosts[0]!['input']).toEqual({ topic: 'tokyo' })
+
+    const patch = fixtures.spanPatches()[0]!.body
+    expect(patch['status']).toBe('completed')
+    expect(patch['output']).toEqual({ steps: ['a', 'b'] })
+  })
+
+  it('wires parent → child via parentRunId (graph → node)', async () => {
+    const fixtures = stubFetch()
+    const handler = createSpanlensCallbackHandler({ client: makeClient() })
+
+    handler.handleChainStart({ id: ['LangGraph'] }, { input: 'q' }, 'graph-1')
+    handler.handleChainStart({ id: ['plan'] }, { input: 'q' }, 'node-1', undefined, undefined, undefined, undefined, 'graph-1')
+    await handler.handleChainEnd({ plan: '...' }, 'node-1')
+    await handler.handleChainEnd({ done: true }, 'graph-1')
+    await tick()
+
+    const spanPosts = readSpanPosts(fixtures.calls)
+    expect(spanPosts).toHaveLength(2)
+    const graphPost = spanPosts.find((s) => s['name'] === 'chain.LangGraph')!
+    const nodePost = spanPosts.find((s) => s['name'] === 'chain.plan')!
+    expect(graphPost['parent_span_id']).toBeUndefined()
+    expect(nodePost['parent_span_id']).toBe(graphPost['id'])
+  })
+
+  it('captures tool calls as tool spans with input + output', async () => {
+    const fixtures = stubFetch()
+    const handler = createSpanlensCallbackHandler({ client: makeClient() })
+
+    handler.handleToolStart({ id: ['TavilySearch'] }, 'best ramen tokyo', 'tool-1')
+    await handler.handleToolEnd(['result1', 'result2'], 'tool-1')
+    await tick()
+
+    const spanPosts = readSpanPosts(fixtures.calls)
+    expect(spanPosts).toHaveLength(1)
+    expect(spanPosts[0]!['name']).toBe('tool.TavilySearch')
+    expect(spanPosts[0]!['span_type']).toBe('tool')
+    expect(spanPosts[0]!['input']).toBe('best ramen tokyo')
+
+    const patch = fixtures.spanPatches()[0]!.body
+    expect(patch['output']).toEqual(['result1', 'result2'])
+  })
+
+  it('captures retriever calls with documents summarised as output', async () => {
+    const fixtures = stubFetch()
+    const handler = createSpanlensCallbackHandler({ client: makeClient() })
+
+    handler.handleRetrieverStart({ id: ['PineconeRetriever'] }, 'q', 'ret-1')
+    await handler.handleRetrieverEnd(
+      [
+        { pageContent: 'doc-a', metadata: { src: '1' } },
+        { pageContent: 'doc-b', metadata: { src: '2' } },
+      ],
+      'ret-1',
+    )
+    await tick()
+
+    const spanPosts = readSpanPosts(fixtures.calls)
+    expect(spanPosts).toHaveLength(1)
+    expect(spanPosts[0]!['name']).toBe('retrieval.PineconeRetriever')
+    expect(spanPosts[0]!['span_type']).toBe('retrieval')
+
+    const patch = fixtures.spanPatches()[0]!.body
+    const out = patch['output'] as Array<{ pageContent: string }>
+    expect(out).toHaveLength(2)
+    expect(out[0]!.pageContent).toBe('doc-a')
+  })
+
+  it('builds a 3-level span tree (graph → node → llm)', async () => {
+    const fixtures = stubFetch()
+    const handler = createSpanlensCallbackHandler({ client: makeClient() })
+
+    handler.handleChainStart({ id: ['LangGraph'] }, { input: 'q' }, 'graph')
+    handler.handleChainStart({ id: ['execute'] }, { input: 'q' }, 'node', undefined, undefined, undefined, undefined, 'graph')
+    handler.handleLLMStart({ id: ['ChatOpenAI'] }, ['p'], 'llm', 'node')
+    await handler.handleLLMEnd(
+      { llmOutput: { tokenUsage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 }, model_name: 'gpt-4o' } },
+      'llm',
+    )
+    await handler.handleChainEnd({ output: 'ok' }, 'node')
+    await handler.handleChainEnd({ done: true }, 'graph')
+    await tick()
+
+    const spanPosts = readSpanPosts(fixtures.calls)
+    expect(spanPosts).toHaveLength(3)
+    const byName = Object.fromEntries(spanPosts.map((p) => [p['name'], p]))
+    expect(byName['chain.LangGraph']!['parent_span_id']).toBeUndefined()
+    expect(byName['chain.execute']!['parent_span_id']).toBe(byName['chain.LangGraph']!['id'])
+    expect(byName['llm.ChatOpenAI']!['parent_span_id']).toBe(byName['chain.execute']!['id'])
+  })
+
+  it('handleChainError ends the span with error status', async () => {
+    const fixtures = stubFetch()
+    const handler = createSpanlensCallbackHandler({ client: makeClient() })
+
+    handler.handleChainStart({ id: ['failing'] }, {}, 'c1')
+    await handler.handleChainError(new Error('boom'), 'c1')
+    await tick()
+
+    const patch = fixtures.spanPatches()[0]!.body
+    expect(patch['status']).toBe('error')
+    expect(patch['error_message']).toBe('boom')
+  })
+
+  it('captureChains: false drops chain spans entirely', async () => {
+    const fixtures = stubFetch()
+    const handler = createSpanlensCallbackHandler({
+      client: makeClient(),
+      captureChains: false,
+    })
+
+    handler.handleChainStart({ id: ['ignored'] }, {}, 'c1')
+    await handler.handleChainEnd({}, 'c1')
+    await tick()
+
+    expect(readSpanPosts(fixtures.calls)).toHaveLength(0)
+  })
+
+  it('captureTools: false drops tool spans entirely', async () => {
+    const fixtures = stubFetch()
+    const handler = createSpanlensCallbackHandler({
+      client: makeClient(),
+      captureTools: false,
+    })
+
+    handler.handleToolStart({ id: ['x'] }, 'in', 't1')
+    await handler.handleToolEnd('out', 't1')
+    await tick()
+
+    expect(readSpanPosts(fixtures.calls)).toHaveLength(0)
+  })
+
+  it('maxInputBytes truncates oversize chain inputs into a marker object', async () => {
+    const fixtures = stubFetch()
+    const handler = createSpanlensCallbackHandler({
+      client: makeClient(),
+      maxInputBytes: 50,
+    })
+
+    const big = { state: 'x'.repeat(500) }
+    handler.handleChainStart({ id: ['big'] }, big, 'c1')
+    await handler.handleChainEnd({}, 'c1')
+    await tick()
+
+    const post = readSpanPosts(fixtures.calls)[0]!
+    const input = post['input'] as Record<string, unknown>
+    expect(input['__truncated']).toBe(true)
+    expect(typeof input['preview']).toBe('string')
+    expect(input['originalBytes']).toBeGreaterThan(50)
+  })
+
+  it('idempotent — duplicate handleChainEnd for same runId is silently ignored', async () => {
+    const fixtures = stubFetch()
+    const handler = createSpanlensCallbackHandler({ client: makeClient() })
+
+    handler.handleChainStart({ id: ['x'] }, {}, 'c1')
+    await handler.handleChainEnd({}, 'c1')
+    await handler.handleChainEnd({}, 'c1') // duplicate
+    await tick()
+
+    expect(fixtures.spanPatches()).toHaveLength(1)
+  })
+
+  it('orphan handleChainEnd (no prior start) is silently ignored', async () => {
+    const fixtures = stubFetch()
+    const handler = createSpanlensCallbackHandler({ client: makeClient() })
+
+    await handler.handleChainEnd({}, 'never-started')
+    await tick()
+
+    expect(fixtures.spanPatches()).toHaveLength(0)
+    expect(fixtures.posts()).toHaveLength(0)
+  })
+
+  it('parallel sibling chains under same parent both attach correctly', async () => {
+    const fixtures = stubFetch()
+    const handler = createSpanlensCallbackHandler({ client: makeClient() })
+
+    handler.handleChainStart({ id: ['parent'] }, {}, 'p')
+    // Two children start before either ends — common in LangGraph branching.
+    handler.handleChainStart({ id: ['left'] }, {}, 'l', undefined, undefined, undefined, undefined, 'p')
+    handler.handleChainStart({ id: ['right'] }, {}, 'r', undefined, undefined, undefined, undefined, 'p')
+    await handler.handleChainEnd({}, 'l')
+    await handler.handleChainEnd({}, 'r')
+    await handler.handleChainEnd({}, 'p')
+    await tick()
+
+    const spanPosts = readSpanPosts(fixtures.calls)
+    expect(spanPosts).toHaveLength(3)
+    const parentPost = spanPosts.find((p) => p['name'] === 'chain.parent')!
+    const leftPost = spanPosts.find((p) => p['name'] === 'chain.left')!
+    const rightPost = spanPosts.find((p) => p['name'] === 'chain.right')!
+    expect(leftPost['parent_span_id']).toBe(parentPost['id'])
+    expect(rightPost['parent_span_id']).toBe(parentPost['id'])
+  })
 })
 
 // ── Vercel AI SDK ──────────────────────────────────────────────────────────
