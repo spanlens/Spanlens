@@ -26,12 +26,18 @@ For proxy-mode (zero-code) instrumentation, see
 """
 
 from .client import SpanlensClient
-from .observe import observe, observe_anthropic, observe_gemini, observe_openai
+from .observe import (
+    observe,
+    observe_anthropic,
+    observe_gemini,
+    observe_ollama,
+    observe_openai,
+)
 from .parsers import parse_anthropic_usage, parse_gemini_usage, parse_openai_usage
 from .span import SpanHandle
 from .trace import TraceHandle
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 
 __all__ = [
     "SpanHandle",
@@ -41,6 +47,7 @@ __all__ = [
     "observe",
     "observe_anthropic",
     "observe_gemini",
+    "observe_ollama",
     "observe_openai",
     "parse_anthropic_usage",
     "parse_gemini_usage",
