@@ -1048,6 +1048,7 @@ export function RequestsClient() {
           <option value="openai">openai</option>
           <option value="anthropic">anthropic</option>
           <option value="gemini">gemini</option>
+          <option value="azure">azure</option>
         </select>
 
         {/* Model input — debounced, applies 300ms after last keystroke */}
