@@ -483,3 +483,16 @@ cronRouter.get('/check-past-due-downgrades', async (c) => {
     return c.json({ error: msg }, 500)
   }
 })
+
+// GET /cron/keep-warm
+// Lightweight ping that keeps the api/index.ts Lambda warm. Vercel hibernates
+// idle functions after ~10min, which costs a first-user 4-6s cold start. This
+// cron fires every 5min so the Lambda always has a recently-touched instance.
+//
+// Intentionally has zero side effects — no DB, no ClickHouse, no logCronRun.
+// Just verifies auth and returns. Logging this every 5min would spam cron_runs.
+cronRouter.get('/keep-warm', (c) => {
+  const authFail = assertCronAuth(c.req.header('Authorization'))
+  if (authFail) return c.json({ error: authFail }, 401)
+  return c.json({ ok: true, ts: new Date().toISOString() })
+})
