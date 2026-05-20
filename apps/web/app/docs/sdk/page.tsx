@@ -558,6 +558,81 @@ res = observe_openai(trace, "greeting", lambda headers:
         <a href="#with-log-body"><code>withLogBody()</code></a> helper.
       </p>
 
+      <h2 id="observe-ollama">observeOllama() — self-hosted LLMs (v0.5.0+ / 0.4.0+)</h2>
+      <p>
+        Ollama runs on your own machine (or in your VPC) and exposes an OpenAI-compatible API at{' '}
+        <code>http://localhost:11434/v1</code>. Because the Spanlens proxy is hosted, it can&rsquo;t
+        reach your local Ollama — but the SDK can. Wrap your Ollama call with{' '}
+        <code>observeOllama()</code> and only the trace metadata (model, tokens, latency) flows to
+        Spanlens. Your prompts and responses never leave your machine via Spanlens.
+      </p>
+      <p>
+        The dashboard tags the trace <code>provider: ollama</code> and leaves the cost column as
+        &ldquo;Self-hosted&rdquo; (no per-token billing to compute). Usage tokens still come through
+        because Ollama&rsquo;s response includes the same <code>usage</code> field OpenAI does.
+      </p>
+      <LangTabs
+        ts={`import OpenAI from 'openai'
+import { SpanlensClient, observeOllama } from '@spanlens/sdk'
+
+const client = new SpanlensClient({ apiKey: process.env.SPANLENS_API_KEY! })
+
+// Point the OpenAI SDK at your local Ollama — apiKey is required by the
+// SDK but ignored by Ollama itself when running locally.
+const ollama = new OpenAI({
+  baseURL: 'http://localhost:11434/v1',
+  apiKey: 'ollama',
+})
+
+const trace = client.startTrace({ name: 'local_chat' })
+const res = await observeOllama(trace, 'chat', (headers) =>
+  ollama.chat.completions.create(
+    {
+      model: 'llama3.2',
+      messages: [{ role: 'user', content: 'Hello' }],
+    },
+    { headers },
+  ),
+)
+await trace.end()`}
+        py={`from openai import OpenAI
+from spanlens import SpanlensClient, observe_ollama
+
+client = SpanlensClient(api_key=os.environ["SPANLENS_API_KEY"])
+
+ollama = OpenAI(
+    base_url="http://localhost:11434/v1",
+    api_key="ollama",  # ignored by local Ollama; required by the SDK
+)
+
+with client.start_trace("local_chat") as trace:
+    response = observe_ollama(trace, "chat", lambda headers:
+        ollama.chat.completions.create(
+            model="llama3.2",
+            messages=[{"role": "user", "content": "Hello"}],
+            extra_headers=headers,
+        )
+    )`}
+      />
+      <h3 id="other-openai-compatible">Other OpenAI-compatible runtimes (vLLM, LM Studio, Together, Groq, …)</h3>
+      <p>
+        For any other OpenAI-compatible endpoint, use <code>observeOpenAI</code> with the{' '}
+        <code>provider</code> override so the dashboard labels it correctly:
+      </p>
+      <LangTabs
+        ts={`await observeOpenAI(
+  trace,
+  { name: 'inference', provider: 'vllm' }, // or 'lm-studio', 'together', 'groq', …
+  (headers) => vllmClient.chat.completions.create({ ... }, { headers }),
+)`}
+        py={`observe_openai(
+    trace,
+    "inference",
+    lambda headers: vllm_client.chat.completions.create(...),
+    provider="vllm",  # or "lm-studio", "together", "groq", ...
+)`}
+      />
+
       <h2 id="framework-integrations">Framework integrations (v0.3.0+)</h2>
       <p>
         If you use LangChain, Vercel AI SDK, or LlamaIndex, plug in the matching integration instead
