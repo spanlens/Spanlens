@@ -13,7 +13,7 @@ import { useAuditLogs } from '@/lib/queries/use-audit-logs'
 import { usePrompts } from '@/lib/queries/use-prompts'
 import { useSecuritySummary } from '@/lib/queries/use-security'
 import { useDismissals, useDismissCard } from '@/lib/queries/use-dismissals'
-import { cn } from '@/lib/utils'
+import { cn, formatTime } from '@/lib/utils'
 import { linkPrefetchFor } from '@/lib/heavy-pages'
 import dynamic from 'next/dynamic'
 import { WelcomeBanner } from '@/components/dashboard/welcome-banner'
@@ -859,7 +859,7 @@ export function DashboardClient() {
                   {/* Mobile: stacked; Desktop: inline grid */}
                   <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 sm:grid sm:items-baseline" style={{ gridTemplateColumns: '56px 80px 1fr', gap: 14 }}>
                     <span className="font-mono text-[10.5px] text-text-faint shrink-0">
-                      {new Date(e.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })}
+                      {formatTime(e.created_at)}
                     </span>
                     <span className={cn(
                       'font-mono text-[9px] uppercase tracking-[0.04em] px-[5px] py-[1px] rounded-[3px] border self-center shrink-0',

@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Beaker, Play, Trash2, Plus, Loader2, AlertTriangle } from 'lucide-react'
 import { Topbar } from '@/components/layout/topbar'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { cn } from '@/lib/utils'
+import { cn, formatDateTime } from '@/lib/utils'
 import {
   useEvaluators,
   useDeleteEvaluator,
@@ -617,7 +617,7 @@ function EvaluatorRow({
                 >
                   <StatusBadge status={r.status} />
                   <span className="font-mono text-[11.5px] text-text-muted">
-                    {new Date(r.started_at).toLocaleString()}
+                    {formatDateTime(r.started_at)}
                   </span>
                   <span className="font-mono text-[11.5px] text-text-faint">
                     {r.scored_count}/{r.sample_size}

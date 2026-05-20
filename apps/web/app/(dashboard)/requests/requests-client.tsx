@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { ExportDropdown } from '@/components/ui/export-dropdown'
-import { cn } from '@/lib/utils'
+import { cn, formatDateTime } from '@/lib/utils'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Topbar } from '@/components/layout/topbar'
 import {
@@ -311,7 +311,7 @@ function RequestDrawer({ requestId, visible, onClose, onPrev, onNext, hasPrev, h
           <>
             <div className="font-mono text-[13px] text-text mb-1 truncate">{req.id}</div>
             <div className="flex items-center gap-2 text-[12px] text-text-muted">
-              <span suppressHydrationWarning>{new Date(req.created_at).toLocaleString()}</span>
+              <span>{formatDateTime(req.created_at)}</span>
               {req.status_code >= 400 && (
                 <>
                   <span className="text-text-faint">·</span>

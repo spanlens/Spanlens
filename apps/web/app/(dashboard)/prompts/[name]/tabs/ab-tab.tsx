@@ -9,7 +9,7 @@ import {
   type PromptExperiment,
 } from '@/lib/queries/use-prompts'
 import { PermissionGate } from '@/components/permission-gate'
-import { cn } from '@/lib/utils'
+import { cn, formatDate } from '@/lib/utils'
 
 interface Props {
   name: string
@@ -82,7 +82,7 @@ function CreateExperimentForm({ name, versions, onDone }: CreateFormProps) {
   }
 
   const versionLabel = (v: PromptVersion) =>
-    `v${v.version} — ${new Date(v.created_at).toLocaleDateString()}`
+    `v${v.version} — ${formatDate(v.created_at)}`
 
   return (
     <div className="bg-bg-elev border border-border rounded-[8px] p-[18px] space-y-4">
@@ -222,11 +222,11 @@ function ExperimentResults({ experimentId, versions }: ResultsProps) {
             {exp.status}
           </span>
           <span className="font-mono text-[11px] text-text-faint">
-            Started {new Date(exp.started_at).toLocaleDateString()}
+            Started {formatDate(exp.started_at)}
           </span>
           {exp.concluded_at && (
             <span className="font-mono text-[11px] text-text-faint">
-              · Concluded {new Date(exp.concluded_at).toLocaleDateString()}
+              · Concluded {formatDate(exp.concluded_at)}
             </span>
           )}
         </div>
@@ -432,8 +432,8 @@ export function AbTab({ name, versions, experiments }: Props) {
                   {exp.status}
                 </span>
                 <span className="font-mono text-[11px] text-text-muted">
-                  Started {new Date(exp.started_at).toLocaleDateString()}
-                  {exp.concluded_at && ` · Concluded ${new Date(exp.concluded_at).toLocaleDateString()}`}
+                  Started {formatDate(exp.started_at)}
+                  {exp.concluded_at && ` · Concluded ${formatDate(exp.concluded_at)}`}
                 </span>
                 {exp.winner_version_id && (
                   <span className="flex items-center gap-1 font-mono text-[11px] text-good ml-auto">

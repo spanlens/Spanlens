@@ -19,3 +19,33 @@ export function formatDate(iso: string | null): string {
     day: 'numeric',
   })
 }
+
+/**
+ * Date + time, en-US pinned. Use anywhere the ungated `.toLocaleString()` would
+ * sit in SSR-rendered output and trip React #418.
+ * Example: "May 18, 2026, 11:24 PM"
+ */
+export function formatDateTime(iso: string | null): string {
+  if (!iso) return '—'
+  return new Date(iso).toLocaleString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  })
+}
+
+/**
+ * 24h time only ("HH:mm"), en-US pinned. For activity logs / per-row timestamps
+ * where date is implied by context. Same #418 protection as formatDateTime.
+ */
+export function formatTime(iso: string | null): string {
+  if (!iso) return '—'
+  return new Date(iso).toLocaleTimeString('en-US', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  })
+}

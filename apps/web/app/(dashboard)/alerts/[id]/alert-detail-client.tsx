@@ -16,7 +16,7 @@ import { PermissionGate } from '@/components/permission-gate'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { cn } from '@/lib/utils'
+import { cn, formatDateTime } from '@/lib/utils'
 
 function fmtThreshold(type: AlertType, threshold: number): string {
   if (type === 'budget') return `$${threshold}`
@@ -293,7 +293,7 @@ export function AlertDetailClient() {
                       className="grid grid-cols-[150px_90px_1fr_1fr] gap-4 px-4 py-2.5 items-center text-[11.5px]"
                     >
                       <span className="font-mono text-text-muted" suppressHydrationWarning>
-                        {new Date(d.created_at).toLocaleString()}
+                        {formatDateTime(d.created_at)}
                       </span>
                       <span className={cn(
                         'font-mono text-[10px] uppercase tracking-[0.04em] px-1.5 py-0.5 rounded w-fit',

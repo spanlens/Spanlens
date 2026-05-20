@@ -1,7 +1,7 @@
 'use client'
 import { useState } from 'react'
 import { type PromptVersion } from '@/lib/queries/use-prompts'
-import { cn } from '@/lib/utils'
+import { cn, formatDate } from '@/lib/utils'
 
 interface Props {
   versions: PromptVersion[]
@@ -93,7 +93,7 @@ export function DiffTab({ versions }: Props) {
             <option value="">Select version…</option>
             {sorted.map((v) => (
               <option key={v.id} value={String(v.version)}>
-                v{v.version} — {new Date(v.created_at).toLocaleDateString()}
+                v{v.version} — {formatDate(v.created_at)}
               </option>
             ))}
           </select>
@@ -109,7 +109,7 @@ export function DiffTab({ versions }: Props) {
             <option value="">Select version…</option>
             {sorted.map((v) => (
               <option key={v.id} value={String(v.version)}>
-                v{v.version} — {new Date(v.created_at).toLocaleDateString()}
+                v{v.version} — {formatDate(v.created_at)}
               </option>
             ))}
           </select>
