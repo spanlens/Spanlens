@@ -20,6 +20,7 @@ from .anthropic import (
     with_prompt_version as with_anthropic_prompt_version,
 )
 from .gemini import DEFAULT_SPANLENS_GEMINI_PROXY, create_gemini
+from .langchain import SpanlensCallbackHandler
 from .openai import (
     DEFAULT_SPANLENS_OPENAI_PROXY,
     create_openai,
@@ -32,6 +33,7 @@ __all__ = [
     "DEFAULT_SPANLENS_ANTHROPIC_PROXY",
     "DEFAULT_SPANLENS_GEMINI_PROXY",
     "DEFAULT_SPANLENS_OPENAI_PROXY",
+    "SpanlensCallbackHandler",
     "create_anthropic",
     "create_gemini",
     "create_openai",
