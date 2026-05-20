@@ -91,6 +91,9 @@ export function useUpdateMemberRole() {
     },
     onSuccess: () => {
       if (orgId) void qc.invalidateQueries({ queryKey: membersKey(orgId) })
+      // The current user may have just demoted/promoted themselves —
+      // refetch ['me', 'role'] so the sidebar redraws admin-only items.
+      void qc.invalidateQueries({ queryKey: ['me', 'role'] })
     },
   })
 }
@@ -108,6 +111,8 @@ export function useRemoveMember() {
     },
     onSuccess: () => {
       if (orgId) void qc.invalidateQueries({ queryKey: membersKey(orgId) })
+      // Cover the (rare) case where the current user removes themselves.
+      void qc.invalidateQueries({ queryKey: ['me', 'role'] })
     },
   })
 }

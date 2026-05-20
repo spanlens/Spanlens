@@ -43,6 +43,7 @@ import { exportsRouter }       from './api/exports.js'
 import { openapiRouter }       from './api/openapi.js'
 import { providerKeysRouter }  from './api/providerKeys.js'
 import { meRouter }            from './api/me.js'
+import { meRoleRouter }        from './api/meRole.js'
 import { systemRouter }       from './api/system.js'
 import { adminModelPricesRouter } from './api/admin/modelPrices.js'
 import { adminModelRecommendationsRouter } from './api/admin/modelRecommendations.js'
@@ -166,6 +167,7 @@ app.route('/api/v1/me/pending-invitations', meInvitationsRouter)
 app.route('/api/v1/dismissals',     dismissalsRouter)
 app.route('/api/v1/me/profile',     userProfilesRouter)
 app.route('/api/v1/me/consent',     userConsentRouter)
+app.route('/api/v1/me/role',        meRoleRouter)    // JWT-auth — current user's org role (sidebar uses this)
 app.route('/api/v1/me',             meRouter)        // sl_live_* introspection (CLI), registered AFTER other /me/* prefixes
 app.route('/api/v1/webhooks',       webhooksRouter)
 app.route('/api/v1/exports',        exportsRouter)
