@@ -244,8 +244,8 @@ organizationsRouter.post('/bootstrap', async (c) => {
   }
 
   // Resolve workspace name: explicit body wins; otherwise derive from email.
-  const { data: userData } = await supabaseAdmin.auth.admin.getUserById(userId)
-  const workspaceName = bodyName ?? deriveWorkspaceName(userData?.user?.email)
+  // Email comes from JWT context — no need for a second auth roundtrip.
+  const workspaceName = bodyName ?? deriveWorkspaceName(c.get('email'))
 
   // 1. organization
   const { data: org, error: orgErr } = await supabaseAdmin
