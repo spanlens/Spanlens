@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { ArrowLeft } from 'lucide-react'
 import { Skeleton } from '@/components/ui/skeleton'
-import { cn } from '@/lib/utils'
+import { cn, formatDate } from '@/lib/utils'
 import { useUserDetail } from '@/lib/queries/use-users'
 
 // TODO: re-add `usePostHog()` + `user_detail_viewed` capture once the
@@ -67,11 +67,12 @@ export function UserDetailClient({ userId }: { userId: string }) {
     { label: 'Distinct models', value: fmtCount(data.distinct_models) },
     {
       label: 'First seen',
-      value: data.first_seen ? new Date(data.first_seen).toLocaleDateString() : '—',
+      // formatDate pins locale to en-US — see CLAUDE.md gotcha #22.
+      value: formatDate(data.first_seen),
     },
     {
       label: 'Last seen',
-      value: data.last_seen ? new Date(data.last_seen).toLocaleDateString() : '—',
+      value: formatDate(data.last_seen),
     },
   ]
 
