@@ -34,7 +34,8 @@ export default function ProxyDocs() {
       </p>
       <CodeBlock>{`https://spanlens-server.vercel.app/proxy/openai/v1
 https://spanlens-server.vercel.app/proxy/anthropic
-https://spanlens-server.vercel.app/proxy/gemini/v1beta`}</CodeBlock>
+https://spanlens-server.vercel.app/proxy/gemini/v1beta
+https://spanlens-server.vercel.app/proxy/azure`}</CodeBlock>
       <p>
         Send requests exactly as you would to the real provider, with two changes:
       </p>
@@ -81,8 +82,18 @@ https://spanlens-server.vercel.app/proxy/gemini/v1beta`}</CodeBlock>
             <td><code>x-goog-api-key: sl_live_…</code></td>
             <td>✓</td>
           </tr>
+          <tr>
+            <td>Azure OpenAI (any language)</td>
+            <td><code>Authorization: Bearer sl_live_…</code></td>
+            <td>✓</td>
+          </tr>
         </tbody>
       </table>
+      <p className="text-sm text-muted-foreground">
+        Azure note: your Spanlens key still goes on <code>Authorization: Bearer …</code>. The
+        real Azure <code>api-key</code> header is added by the proxy after looking up the
+        encrypted key you registered in the dashboard.
+      </p>
       <p className="text-sm text-muted-foreground">
         The <code>authApiKey</code> middleware tries them in order and the first non-empty
         one wins. Implementation: <code>apps/server/src/middleware/authApiKey.ts</code>.
@@ -114,6 +125,34 @@ msg = client.messages.create(
     max_tokens=1024,
     messages=[{"role": "user", "content": "Hi"}],
 )`}</CodeBlock>
+
+      <h2 id="python-azure">Python — Azure OpenAI</h2>
+      <p>
+        Azure OpenAI uses Microsoft&apos;s <code>/openai/v1/*</code> endpoint (GA Aug 2025) so
+        it is drop-in OpenAI-compatible — same request and response shapes, same streaming
+        format. Register your Azure resource URL + API key under the Spanlens key in the
+        dashboard once; the proxy then injects them at call time. Your client just talks to{' '}
+        <code>/proxy/azure</code>.
+      </p>
+      <CodeBlock language="python">{`from openai import OpenAI
+
+client = OpenAI(
+    api_key=os.environ["SPANLENS_API_KEY"],
+    base_url="https://spanlens-server.vercel.app/proxy/azure",
+)
+
+# 'model' is your Azure deployment name, not the underlying model id.
+res = client.chat.completions.create(
+    model="my-gpt4o-mini-deployment",
+    messages=[{"role": "user", "content": "Hi"}],
+)`}</CodeBlock>
+      <p className="text-sm text-muted-foreground">
+        Provider key registration step: dashboard → <a href="/projects">Projects &amp; Keys</a>
+        {' '}→ expand a Spanlens key → <em>Add provider key</em> → Azure OpenAI → paste{' '}
+        <code>https://&lt;your-resource&gt;.openai.azure.com</code> + API key 1 from Azure
+        portal. The proxy stores the URL on the key row and injects the right{' '}
+        <code>api-key</code> header on every request.
+      </p>
 
       <h2 id="curl">curl — raw HTTP</h2>
       <CodeBlock language="bash">{`curl https://spanlens-server.vercel.app/proxy/openai/v1/chat/completions \\

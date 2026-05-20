@@ -93,7 +93,8 @@ export default function SettingsDocs() {
       <h3>Decryption flow (on every proxy request)</h3>
       <ol>
         <li>
-          Your request arrives at <code>/proxy/&#123;openai|anthropic|gemini&#125;/…</code>{' '}
+          Your request arrives at{' '}
+          <code>/proxy/&#123;openai|anthropic|gemini|azure&#125;/…</code>{' '}
           carrying the Spanlens key in whichever transport the SDK uses (see{' '}
           <a href="/docs/proxy">Direct proxy</a> for the per-SDK mapping)
         </li>
@@ -102,7 +103,10 @@ export default function SettingsDocs() {
           → resolves <code>apiKeyId</code>
         </li>
         <li>
-          Provider is inferred from the URL path: <code>/proxy/openai/…</code> → OpenAI, etc.
+          Provider is inferred from the URL path: <code>/proxy/openai/…</code> → OpenAI,{' '}
+          <code>/proxy/azure/…</code> → Azure OpenAI, etc. Azure rows additionally carry a{' '}
+          <code>provider_metadata.resource_url</code> so the proxy knows which Azure endpoint
+          to forward to.
         </li>
         <li>
           Loads the active <code>provider_keys</code> row for{' '}
