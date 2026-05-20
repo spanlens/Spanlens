@@ -188,7 +188,16 @@ providerKeysRouter.post('/', requireEdit, async (c) => {
   return c.json({ success: true, data }, 201)
 })
 
-// DELETE /api/v1/provider-keys/:id — deactivate provider key (soft delete).
+// DELETE /api/v1/provider-keys/:id — hard delete the provider key row.
+//
+// We used to soft-delete (set is_active=false) so that historic request rows
+// could still resolve provider_key_id → key name. The dashboard then rendered
+// a strikethrough row, which users read as "still here, just dead" — confusing.
+// Users want delete to mean delete.
+//
+// ClickHouse `requests` keeps provider_key_id as a plain UUID with no FK, so
+// orphaning is fine: existing log rows show "(deleted)" via the
+// fetchProviderKeyNames helper's `?? null` fallback in lib/requests-query.ts.
 providerKeysRouter.delete('/:id', requireEdit, async (c) => {
   const keyId = c.req.param('id')
   const orgId = c.get('orgId')
@@ -196,11 +205,11 @@ providerKeysRouter.delete('/:id', requireEdit, async (c) => {
 
   const { error } = await supabaseAdmin
     .from('provider_keys')
-    .update({ is_active: false })
+    .delete()
     .eq('id', keyId)
     .eq('organization_id', orgId)
 
-  if (error) return c.json({ error: 'Failed to deactivate provider key' }, 500)
+  if (error) return c.json({ error: 'Failed to delete provider key' }, 500)
 
   return c.json({ success: true })
 })
