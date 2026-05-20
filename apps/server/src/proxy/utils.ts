@@ -6,6 +6,13 @@ export interface ResolvedProviderKey {
   plaintext: string
   /** UUID of the provider_keys row used. Stored on requests.provider_key_id. */
   id: string
+  /**
+   * Provider-specific config. For 'azure': { resource_url: 'https://x.openai.azure.com' }.
+   * For openai/anthropic/gemini this is `{}` (column has DEFAULT '{}' in DB).
+   * Type is `Record<string, unknown>` because the shape varies per provider —
+   * each proxy is responsible for narrowing what it needs.
+   */
+  metadata: Record<string, unknown>
 }
 
 /**
@@ -16,8 +23,9 @@ export interface ResolvedProviderKey {
  * receives the Spanlens key's id from authApiKey + the provider from the
  * URL path, then resolves them here.
  *
- * Returns both plaintext (for upstream Authorization) and the row id (for
- * requests.provider_key_id so the dashboard can show which key was used).
+ * Returns plaintext (for upstream Authorization), the row id (for
+ * requests.provider_key_id so the dashboard can show which key was used),
+ * and provider_metadata (e.g. Azure resource_url).
  */
 export async function getDecryptedProviderKey(
   apiKeyId: string,
@@ -25,7 +33,7 @@ export async function getDecryptedProviderKey(
 ): Promise<ResolvedProviderKey | null> {
   const { data } = await supabaseAdmin
     .from('provider_keys')
-    .select('id, encrypted_key')
+    .select('id, encrypted_key, provider_metadata')
     .eq('api_key_id', apiKeyId)
     .eq('provider', provider)
     .eq('is_active', true)
@@ -34,7 +42,11 @@ export async function getDecryptedProviderKey(
   if (!data) return null
   const decrypted = await aes256Decrypt(data.encrypted_key as string)
   if (decrypted.length === 0) return null
-  return { plaintext: decrypted, id: data.id as string }
+  return {
+    plaintext: decrypted,
+    id: data.id as string,
+    metadata: (data.provider_metadata as Record<string, unknown> | null) ?? {},
+  }
 }
 
 /**
@@ -47,7 +59,7 @@ export async function getDecryptedProviderKeyById(
 ): Promise<ResolvedProviderKey | null> {
   const { data } = await supabaseAdmin
     .from('provider_keys')
-    .select('id, encrypted_key')
+    .select('id, encrypted_key, provider_metadata')
     .eq('id', keyId)
     .eq('organization_id', organizationId)
     .eq('is_active', true)
@@ -56,7 +68,11 @@ export async function getDecryptedProviderKeyById(
   if (!data) return null
   const decrypted = await aes256Decrypt(data.encrypted_key as string)
   if (decrypted.length === 0) return null
-  return { plaintext: decrypted, id: data.id as string }
+  return {
+    plaintext: decrypted,
+    id: data.id as string,
+    metadata: (data.provider_metadata as Record<string, unknown> | null) ?? {},
+  }
 }
 
 /**

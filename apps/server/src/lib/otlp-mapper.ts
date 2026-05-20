@@ -205,7 +205,7 @@ export function mapOtlpSpan(
   let costUsd: number | null = null
   if (model && (promptTokens > 0 || completionTokens > 0)) {
     const result = calculateCost(
-      provider as 'openai' | 'anthropic' | 'gemini',
+      provider as 'openai' | 'anthropic' | 'gemini' | 'azure',
       model,
       { promptTokens, completionTokens },
     )

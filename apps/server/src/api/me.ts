@@ -14,11 +14,17 @@ export const meRouter = new Hono<ApiKeyContext>()
 
 meRouter.use('*', authApiKey)
 
+type KnownProvider = 'openai' | 'anthropic' | 'gemini' | 'azure'
+
+const KNOWN_PROVIDERS: ReadonlySet<KnownProvider> = new Set([
+  'openai', 'anthropic', 'gemini', 'azure',
+])
+
 interface KeyInfoResponse {
   projectId: string
   projectName: string
   /** Providers with an active provider_key under THIS Spanlens key. */
-  providers: Array<'openai' | 'anthropic' | 'gemini'>
+  providers: KnownProvider[]
 }
 
 // GET /api/v1/me/key-info — introspect the presented Spanlens key.
@@ -49,9 +55,7 @@ meRouter.get('/key-info', async (c) => {
 
   const providers = Array.from(
     new Set((providerKeys ?? []).map((row) => row.provider as string)),
-  ).filter((p): p is 'openai' | 'anthropic' | 'gemini' =>
-    p === 'openai' || p === 'anthropic' || p === 'gemini',
-  )
+  ).filter((p): p is KnownProvider => KNOWN_PROVIDERS.has(p as KnownProvider))
 
   const body: KeyInfoResponse = {
     projectId: project.id as string,

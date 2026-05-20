@@ -12,7 +12,11 @@
 
 import { getCachedPrices, type ModelPrice } from './model-prices-cache.js'
 
-export type Provider = 'openai' | 'anthropic' | 'gemini'
+// 'azure' shares the OpenAI price table (Azure OpenAI exposes OpenAI models
+// at OpenAI prices). The proxy in proxy/azure.ts calls calculateCost('openai', ...)
+// directly, but the type is included here so type-safe call sites that pass
+// `requests.provider` through don't have to special-case it.
+export type Provider = 'openai' | 'anthropic' | 'gemini' | 'azure'
 
 export interface Usage {
   /** Total input tokens INCLUDING any cached/cache-creation portion. */
