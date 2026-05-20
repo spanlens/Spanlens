@@ -81,7 +81,7 @@ exporter = OTLPSpanExporter(
           <tr>
             <td><code>gen_ai.provider.name</code></td>
             <td>string</td>
-            <td><code>openai</code>, <code>anthropic</code>, <code>gemini</code>, …</td>
+            <td><code>openai</code>, <code>anthropic</code>, <code>gemini</code>, <code>azure</code>, …</td>
           </tr>
           <tr>
             <td><code>gen_ai.request.model</code></td>

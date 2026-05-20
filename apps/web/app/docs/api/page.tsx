@@ -135,6 +135,7 @@ export default function ApiReferencePage() {
           <tr><td>Proxy — OpenAI</td><td><code>/proxy/openai/v1/*</code></td><td>API key</td></tr>
           <tr><td>Proxy — Anthropic</td><td><code>/proxy/anthropic/v1/*</code></td><td>API key</td></tr>
           <tr><td>Proxy — Gemini</td><td><code>/proxy/gemini/v1/*</code></td><td>API key</td></tr>
+          <tr><td>Proxy — Azure OpenAI</td><td><code>/proxy/azure/*</code></td><td>API key</td></tr>
           <tr><td>SDK Ingest</td><td><code>/ingest/*</code></td><td>API key</td></tr>
         </tbody>
       </table>
