@@ -3,14 +3,20 @@ import { prefetchAll } from '@/lib/server/dehydrate'
 import { requestSpec } from '@/lib/server/queries/requests'
 import { RequestDetailClient } from './request-detail-client'
 
-export default async function RequestDetailPage({ params }: { params: { id: string } }) {
-  const state = await prefetchAll([requestSpec(params.id)])
+// Next.js 15+ — `params` is a Promise (see traces/[id]/page.tsx for the same fix).
+export default async function RequestDetailPage({
+  params,
+}: {
+  params: Promise<{ id: string }>
+}) {
+  const { id } = await params
+  const state = await prefetchAll([requestSpec(id)])
 
   return (
     <HydrationBoundary state={state}>
-      {/* key={params.id} remounts the client component on id change so
+      {/* key={id} remounts the client component on id change so
           internal tab state resets without a setState-in-effect. */}
-      <RequestDetailClient key={params.id} id={params.id} />
+      <RequestDetailClient key={id} id={id} />
     </HydrationBoundary>
   )
 }
