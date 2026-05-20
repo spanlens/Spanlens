@@ -74,3 +74,59 @@
 - 첫 조사: 본 cycle 운영자 (필요시 클로드 driving)
 - Vercel logs 접근: 사용자 본인 (Vercel 계정 owner)
 - 30분 안에 root cause 잡히지 않으면 → Vercel support 티켓 + PR #128 revert 고려
+
+---
+
+## 추가 조사 (2026-05-20 후속)
+
+PR #129 docs 작성 후 한 번 더 들여다봄. **"영구 stuck" 이 아니라 "매우 느린 first paint"** 로 정정.
+
+### 사실 업데이트
+
+- 30초 대기 후 페이지 정상 렌더 (azure 행 7개 매칭, textLen=905, 6개 행 표시).
+- 즉 `/requests` 의 server component 가 결국 완료되긴 함 — 단지 Vercel function 의 30s default timeout 직전까지 매달림.
+- 표시된 timestamp 가 "9h" 인 것은 별개 timestamp 파싱 bug 였음 → PR #130 (`fix/clickhouse-timestamp-iso-zulu`) 에서 fix.
+
+### 느린 API 패턴
+
+`performance.getEntriesByType('resource')` 로 sidebar 측 동시 호출 latency:
+
+| Endpoint | Duration |
+|---|---|
+| `/api/v1/billing/quota` | **3649ms** |
+| `/api/v1/recommendations` | **3171ms** |
+| `/api/v1/organizations/me` | **3163ms** |
+| `/api/v1/me/pending-invitations` | **3023ms** |
+| `/api/v1/me/role` | **2545ms** |
+| `/api/v1/anomalies?observationHours=24` | 690ms |
+| `/api/v1/alerts` | 680ms |
+| `/api/v1/stats/overview?from=...` | 451ms |
+| `/api/v1/organizations` | 509ms |
+
+상위 5개가 거의 균일하게 ~3s. uniform latency 는 **개별 query 로직 문제가 아님** — 공통 경로(BFF middleware / Vercel cold start / Supabase auth validation)가 매번 ~2.5s 소요된다는 뜻.
+
+### 새 가설 (우선순위 재정렬)
+
+1. **Vercel Node function cold start + auth middleware** ⭐️ — 각 `/api/v1/*` 호출이 별도 Vercel function instance 일 가능성. 첫 hit 마다 cold start (~1.5s) + JWT validation (~1s) 누적. 8개 동시 호출이 다 ~3s 인 게 미스터리 — concurrent invocations 도 다 cold start 인가? 또는 `app.ts` import chain 의 모듈 평가가 ~2s 인가?
+2. **Server component sequential I/O** — `/requests/page.tsx` server component 가 `Promise.all` 대신 sequential `await` 로 ClickHouse + Supabase + ... 여러 query 를 실행할 가능성. server 측에서 ~10초+ 쌓이면 client 가 streaming response 받는 데 그만큼 늦음.
+3. **단일 함수의 import chain 무거움** — `apps/server/api/index.ts` 가 모든 router 를 한 번에 import. 첫 호출 시 모듈 평가 비용을 모든 endpoint 가 한 번씩 치름.
+
+### 다음 조사 단계 (재정렬)
+
+- [ ] **localhost vs production 비교** — `pnpm dev` 으로 같은 페이지 측정. 같은 timeout 패턴이면 query 자체 문제, 빠르면 Vercel 인프라 문제.
+- [ ] **Server-side timing 로그** — `apps/server/src/api/requests.ts` 에 `console.time` 추가해서 어느 query 가 비싼지 분리. 또는 OpenTelemetry로 RSC 내부 trace.
+- [ ] **단일 endpoint warm-call 비교** — 1번 호출 후 즉시 2번째 호출. 두 번째도 3s면 cold-start 아닌 latent 비용 (auth/DB).
+- [ ] **Vercel function logs** — 동일 timestamp 에 어떤 cold start / init 로그가 있는지.
+- [ ] **`apps/server/api/index.ts` runtime profile** — `console.time('app-init')` 을 router 등록 전후에 두고 deploy.
+
+### 임시 우회 (사용자용)
+
+- 페이지 진입 후 30초 가량 기다리면 결국 표시됨.
+- 더 빠르게 보려면 다른 페이지 갔다 다시 오면 warm cache 로 1~2초.
+- 표시된 시간이 "9h" 같이 이상해 보이면 PR #130 머지 + Vercel 재배포 후 해소.
+
+### 관련 PR
+
+- PR #129 (이 docs)
+- PR #130 (timestamp fix) — 9h ago 표시의 별도 원인 fix
+- PR #128 (azure filter dropdown) — 직접 관련 없음. Suspense 문제는 머지 전에도 동일했을 가능성 큼 (재현 환경 차이만)
