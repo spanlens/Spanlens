@@ -4,6 +4,7 @@ import { requireRole } from '../middleware/requireRole.js'
 import { supabaseAdmin } from '../lib/db.js'
 import { getOrgClickhouse } from '../lib/clickhouse.js'
 import { aes256Encrypt } from '../lib/crypto.js'
+import { resetProviderKeyNamesCache } from '../lib/requests-query.js'
 
 /**
  * Provider AI keys (OpenAI / Anthropic / Gemini). Under the nested-keys
@@ -246,6 +247,9 @@ providerKeysRouter.post('/', requireEdit, async (c) => {
     return c.json({ error: 'Failed to store provider key' }, 500)
   }
 
+  // Invalidate the cached org → key-name map so the new key shows up
+  // immediately on /requests instead of waiting for the 5-min TTL.
+  resetProviderKeyNamesCache()
   return c.json({ success: true, data }, 201)
 })
 
@@ -272,6 +276,7 @@ providerKeysRouter.delete('/:id', requireEdit, async (c) => {
 
   if (error) return c.json({ error: 'Failed to delete provider key' }, 500)
 
+  resetProviderKeyNamesCache()
   return c.json({ success: true })
 })
 
@@ -309,5 +314,6 @@ providerKeysRouter.patch('/:id', requireEdit, async (c) => {
 
   if (error || !data) return c.json({ error: 'Provider key not found or access denied' }, 404)
 
+  resetProviderKeyNamesCache()
   return c.json({ success: true, data })
 })
