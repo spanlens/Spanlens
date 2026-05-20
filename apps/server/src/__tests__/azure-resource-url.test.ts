@@ -52,7 +52,14 @@ describe('normalizeAzureResourceUrl', () => {
     it('arbitrary domain (host hijack prevention)', () => {
       const r = normalizeAzureResourceUrl('https://evil.example.com')
       expect(r).toMatchObject({ ok: false })
-      if (!r.ok) expect(r.error).toMatch(/openai\.azure\.com|services\.ai\.azure\.com/)
+      // Use substring matchers (not regex) — CodeQL's "missing regex anchor"
+      // rule fires when an unanchored alternation could be confused with URL
+      // validation. This is an error-message assertion, but toContain is
+      // strictly clearer anyway.
+      if (!r.ok) {
+        expect(r.error).toContain('.openai.azure.com')
+        expect(r.error).toContain('.services.ai.azure.com')
+      }
     })
 
     it('domain that contains azure.com but is not an Azure host', () => {
