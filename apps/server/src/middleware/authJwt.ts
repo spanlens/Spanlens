@@ -7,6 +7,13 @@ export type JwtContext = {
   Variables: {
     userId: string
     /**
+     * The signed-in user's email, lowercased. Populated from the JWT user
+     * record so handlers don't have to make a second `auth.admin.getUserById`
+     * roundtrip just to get it — that pattern previously cost 1.5~3s per
+     * dashboard request. Always present when authJwt runs.
+     */
+    email: string
+    /**
      * Organization id resolved from the user's org_members row.
      * `null` means the user has not joined any org yet (pre-onboarding).
      * Routes that require an org should guard with:
@@ -48,6 +55,10 @@ export const authJwt = createMiddleware<JwtContext>(async (c, next) => {
 
   const userId = data.user.id
   c.set('userId', userId)
+  // Email comes from the same verified user record — no need for handlers to
+  // re-fetch it via auth.admin.getUserById. Lowercased for case-insensitive
+  // matching (Supabase stores emails case-insensitively).
+  c.set('email', (data.user.email ?? '').toLowerCase())
 
   // Workspace resolution order:
   //   1. `sb-ws` cookie — explicit user choice from the sidebar switcher.

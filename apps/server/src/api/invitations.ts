@@ -120,20 +120,21 @@ orgInvitationsRouter.post('/', requireRole('admin'), async (c) => {
     return c.json({ error: 'Failed to create invitation' }, 500)
   }
 
-  // Fetch org name + inviter email for the email body
+  // Fetch org name for the email body. Inviter email comes straight from the
+  // JWT context — no second auth roundtrip needed.
   const { data: org } = await supabaseAdmin
     .from('organizations')
     .select('name')
     .eq('id', orgId)
     .single()
-  const { data: inviter } = await supabaseAdmin.auth.admin.getUserById(userId)
+  const inviterEmail = c.get('email')
 
   const webUrl = process.env.WEB_URL ?? 'http://localhost:3000'
   const acceptUrl = `${webUrl}/invite?token=${encodeURIComponent(token)}`
 
   const { subject, html } = renderInvitationEmail({
     orgName: org?.name ?? 'Spanlens workspace',
-    inviterEmail: inviter?.user?.email ?? 'someone',
+    inviterEmail: inviterEmail || 'someone',
     role,
     acceptUrl,
   })
@@ -234,9 +235,9 @@ invitationsRouter.post('/accept', authJwt, async (c) => {
 
   // Email check: invitation is bound to the invitee's email. Anyone else
   // with the link can't use it. Case-insensitive since auth.users emails
-  // are stored normalized but users type them any which way.
-  const { data: userData } = await supabaseAdmin.auth.admin.getUserById(userId)
-  const currentEmail = userData?.user?.email?.toLowerCase()
+  // are stored normalized but users type them any which way. Email comes
+  // from the JWT context (authJwt set it) — saves a getUserById roundtrip.
+  const currentEmail = c.get('email')
   if (!currentEmail || currentEmail !== inv.email.toLowerCase()) {
     return c.json({ error: 'This invitation was sent to a different email' }, 400)
   }
@@ -335,15 +336,9 @@ interface PendingInvitationRow {
   organizations: { id: string; name: string } | null
 }
 
-async function getCurrentUserEmail(userId: string): Promise<string | null> {
-  const { data } = await supabaseAdmin.auth.admin.getUserById(userId)
-  return data?.user?.email?.toLowerCase() ?? null
-}
-
 // GET /api/v1/me/pending-invitations
 meInvitationsRouter.get('/', async (c) => {
-  const userId = c.get('userId')
-  const email = await getCurrentUserEmail(userId)
+  const email = c.get('email')
   if (!email) return c.json({ success: true, data: [] })
 
   const { data, error } = await supabaseAdmin
@@ -376,7 +371,7 @@ meInvitationsRouter.get('/', async (c) => {
 // is useless without auth.
 meInvitationsRouter.post('/:id/accept', async (c) => {
   const userId = c.get('userId')
-  const email = await getCurrentUserEmail(userId)
+  const email = c.get('email')
   if (!email) return c.json({ error: 'User has no email' }, 400)
 
   const { data: inv } = await supabaseAdmin
@@ -441,8 +436,7 @@ meInvitationsRouter.post('/:id/accept', async (c) => {
 // the dashboard banner again. This matches the user's intent of "after
 // I decline, I never see it again unless explicitly re-invited".
 meInvitationsRouter.delete('/:id', async (c) => {
-  const userId = c.get('userId')
-  const email = await getCurrentUserEmail(userId)
+  const email = c.get('email')
   if (!email) return c.json({ error: 'User has no email' }, 400)
 
   const { error, count } = await supabaseAdmin
@@ -460,8 +454,7 @@ meInvitationsRouter.delete('/:id', async (c) => {
 // POST /api/v1/invitations/decline — token-based variant for the
 // /invite page. Mirrors the existing accept token flow.
 invitationsRouter.post('/decline', authJwt, async (c) => {
-  const userId = c.get('userId')
-  const email = await getCurrentUserEmail(userId)
+  const email = c.get('email')
   if (!email) return c.json({ error: 'User has no email' }, 400)
 
   let body: { token?: unknown }
