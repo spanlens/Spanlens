@@ -640,28 +640,122 @@ with client.start_trace("local_chat") as trace:
         model name — without importing from the framework itself (duck-typed, version-agnostic).
       </p>
 
-      <h3 id="langchain">LangChain JS</h3>
+      <h3 id="langchain">LangChain & LangGraph (v0.6.0+ / 0.5.0+)</h3>
       <p>
-        Pass the handler to any chain, LLM, or agent via the <code>callbacks</code> option.
-        Works with both <code>BaseLLM</code> (text completion) and <code>BaseChatModel</code>.
+        One callback handler works for plain LangChain chains, LCEL pipelines, and{' '}
+        <strong>LangGraph compiled graphs</strong>. Spanlens captures LLM, chain, tool, and
+        retriever spans automatically — and uses LangChain&rsquo;s built-in{' '}
+        <code>runId</code> / <code>parentRunId</code> tracking to assemble the right span tree
+        without any manual parent wiring.
       </p>
       <LangTabs
-        ts={`import { createSpanlensCallbackHandler } from '@spanlens/sdk/langchain'
-import { SpanlensClient } from '@spanlens/sdk'
+        ts={`import { SpanlensClient } from '@spanlens/sdk'
+import { createSpanlensCallbackHandler } from '@spanlens/sdk/langchain'
 
 const client = new SpanlensClient({ apiKey: process.env.SPANLENS_API_KEY! })
 const handler = createSpanlensCallbackHandler({ client })
 
-// Attach to any LangChain chain / LLM / agent
-const result = await chain.invoke({ input: '...' }, { callbacks: [handler] })
+// Plain LangChain — chain, LLM, agent, retriever — all work the same way:
+await chain.invoke({ input: '...' }, { callbacks: [handler] })
 
-// Or attach to an existing trace
-const trace = client.startTrace({ name: 'rag_pipeline' })
-const handler2 = createSpanlensCallbackHandler({ client, trace })
-await llm.invoke('...', { callbacks: [handler2] })
-await trace.end()`}
-        py={`# LangChain Python integration — coming soon`}
+// LangGraph — pass the same handler to the compiled graph:
+const graph = workflow.compile()
+const result = await graph.invoke(
+  { input: 'plan a trip to Tokyo' },
+  { callbacks: [handler] },
+)`}
+        py={`from spanlens import SpanlensClient
+from spanlens.integrations.langchain import SpanlensCallbackHandler
+
+client = SpanlensClient(api_key=os.environ["SPANLENS_API_KEY"])
+handler = SpanlensCallbackHandler(client=client)
+
+# Plain LangChain:
+chain.invoke({"input": "..."}, config={"callbacks": [handler]})
+
+# LangGraph — same handler:
+graph = workflow.compile()
+result = graph.invoke(
+    {"input": "plan a trip to Tokyo"},
+    config={"callbacks": [handler]},
+)`}
       />
+
+      <h4 id="langchain-span-tree">Resulting span tree</h4>
+      <p>
+        A 2-node LangGraph with one tool call produces this trace on the dashboard:
+      </p>
+      <CodeBlock>{`trace: langchain_run
+└─ chain.LangGraph                       (the graph itself)
+   ├─ chain.plan                         (node 1)
+   │  └─ llm.ChatOpenAI                  (model + tokens captured)
+   └─ chain.execute                      (node 2)
+      ├─ tool.search                     (input + output captured)
+      └─ llm.ChatOpenAI`}</CodeBlock>
+
+      <h4 id="langchain-options">Options</h4>
+      <p>All defaults preserve LangGraph&rsquo;s full structure. Turn things off to quiet down the dashboard:</p>
+      <table>
+        <thead>
+          <tr><th>Option</th><th>Default</th><th>What it controls</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>captureChains</code> / <code>capture_chains</code></td>
+            <td><code>true</code></td>
+            <td>Chain spans (LangGraph nodes, LCEL steps, plain chains). Off = LLM/tool/retriever spans become direct children of the trace.</td>
+          </tr>
+          <tr>
+            <td><code>captureTools</code> / <code>capture_tools</code></td>
+            <td><code>true</code></td>
+            <td>Tool call spans (each tool execution).</td>
+          </tr>
+          <tr>
+            <td><code>captureRetrieval</code> / <code>capture_retrieval</code></td>
+            <td><code>true</code></td>
+            <td>Retriever spans (with documents summarised as output).</td>
+          </tr>
+          <tr>
+            <td><code>maxInputBytes</code> / <code>max_input_bytes</code></td>
+            <td><code>16_384</code></td>
+            <td>JSON byte cap on <code>span.input</code>. Larger payloads become <code>{'{ __truncated: true, preview, originalBytes }'}</code>.</td>
+          </tr>
+          <tr>
+            <td><code>maxOutputBytes</code> / <code>max_output_bytes</code></td>
+            <td><code>16_384</code></td>
+            <td>Same as above, for <code>span.output</code>.</td>
+          </tr>
+          <tr>
+            <td><code>trace</code></td>
+            <td>—</td>
+            <td>Optional pre-existing trace to attach to. When given, the handler does <strong>not</strong> close the trace (caller owns the lifecycle).</td>
+          </tr>
+          <tr>
+            <td><code>traceName</code> / <code>trace_name</code></td>
+            <td><code>&quot;langchain_run&quot;</code></td>
+            <td>Name for auto-created traces (one per top-level run).</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h4 id="langchain-notes">Notes</h4>
+      <ul>
+        <li>
+          <strong>Single handler, multiple runs</strong> — concurrent invocations are tracked by
+          LangChain&rsquo;s per-run UUID, so one handler instance is safe to share across
+          parallel graph executions.
+        </li>
+        <li>
+          <strong>Duck-typed</strong> — Spanlens does not import from{' '}
+          <code>@langchain/core</code> or <code>langchain-core</code>. Major-version bumps in
+          LangChain itself don&rsquo;t require an SDK update.
+        </li>
+        <li>
+          <strong>Python optional dep</strong> — the handler falls back to a plain class when{' '}
+          <code>langchain-core</code> isn&rsquo;t installed, so unit tests for your own code can
+          drive it without LangChain being in the test environment.
+        </li>
+      </ul>
 
       <h3 id="vercel-ai">Vercel AI SDK</h3>
       <p>
