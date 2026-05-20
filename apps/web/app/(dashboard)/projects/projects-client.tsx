@@ -38,25 +38,33 @@ import {
 } from '@/lib/queries/use-provider-keys'
 import { cn } from '@/lib/utils'
 
-const PROVIDERS = ['openai', 'anthropic', 'gemini'] as const
+const PROVIDERS = ['openai', 'anthropic', 'gemini', 'azure'] as const
 type ProviderName = typeof PROVIDERS[number]
 
 const PROVIDER_LABELS: Record<ProviderName, string> = {
   openai: 'OpenAI',
   anthropic: 'Anthropic',
   gemini: 'Gemini',
+  azure: 'Azure OpenAI',
 }
 
 const PROVIDER_PLACEHOLDERS: Record<ProviderName, string> = {
   openai: 'sk-…',
   anthropic: 'sk-ant-…',
   gemini: 'AIza…',
+  // Azure keys are 32-char hex strings with no prefix — show two groups so users
+  // recognize the format.
+  azure: '0123456789abcdef0123456789abcdef',
 }
 
 /**
  * Code snippet shown after a provider key is added — the customer pastes
  * this into their app and the call routes through Spanlens automatically.
  * No CLI re-run needed once SPANLENS_API_KEY is in their .env.local.
+ *
+ * Azure uses the OpenAI SDK with a Spanlens-routed baseURL. The customer's
+ * Azure resource URL is held server-side on the provider key row — they
+ * don't need to repeat it in client code.
  */
 const PROVIDER_SNIPPETS: Record<ProviderName, string> = {
   openai: `import { createOpenAI } from '@spanlens/sdk/openai'
@@ -74,6 +82,15 @@ const anthropic = createAnthropic()
 const genAI = createGemini()
 const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' })
 // await model.generateContent('...')`,
+  azure: `import OpenAI from 'openai'
+
+// Azure resource URL is stored on the Spanlens provider key — your client
+// just talks to /proxy/azure and Spanlens forwards to the right Azure endpoint.
+const azure = new OpenAI({
+  baseURL: 'https://api.spanlens.io/proxy/azure',
+  apiKey: process.env.SPANLENS_API_KEY,
+})
+// await azure.chat.completions.create({ model: 'gpt-4o', messages: [...] })`,
 }
 
 export function ProjectsClient() {
@@ -105,6 +122,8 @@ export function ProjectsClient() {
   const [addProvProvider, setAddProvProvider] = useState<ProviderName>('openai')
   const [addProvName, setAddProvName] = useState('')
   const [addProvKey, setAddProvKey] = useState('')
+  // Azure only — empty for all other providers. Server validates + normalizes.
+  const [addProvAzureUrl, setAddProvAzureUrl] = useState('')
   const [addProvError, setAddProvError] = useState<string | null>(null)
   // After a successful add, show the integration snippet instead of closing.
   const [addProvAdded, setAddProvAdded] = useState<ProviderName | null>(null)
@@ -158,6 +177,7 @@ export function ProjectsClient() {
     setAddProvProvider('openai')
     setAddProvName('')
     setAddProvKey('')
+    setAddProvAzureUrl('')
     setAddProvError(null)
     setAddProvAdded(null)
     setAddProvDialogOpen(true)
@@ -171,6 +191,11 @@ export function ProjectsClient() {
         key: addProvKey.trim(),
         name: addProvName.trim(),
         api_key_id: addProvApiKeyId,
+        // Server enforces the resource_url shape (https + Azure host); we just
+        // pass through what the user typed and surface any validation error.
+        ...(addProvProvider === 'azure'
+          ? { provider_metadata: { resource_url: addProvAzureUrl.trim() } }
+          : {}),
       })
       // Don't close yet — switch the dialog to the snippet view so the
       // customer can copy the integration code immediately. They'll click
@@ -766,6 +791,24 @@ export function ProjectsClient() {
                   </Select>
                 </div>
 
+                {addProvProvider === 'azure' && (
+                  <div className="space-y-1.5">
+                    <label className="text-[12.5px] text-text-muted font-medium">
+                      Azure resource URL
+                    </label>
+                    <input
+                      value={addProvAzureUrl}
+                      onChange={(e) => setAddProvAzureUrl(e.target.value)}
+                      placeholder="https://my-resource.openai.azure.com"
+                      autoComplete="off"
+                      className="w-full h-9 px-3 rounded-[6px] border border-border bg-bg text-[13px] font-mono text-text placeholder:text-text-faint focus:outline-none focus:border-border-strong transition-colors"
+                    />
+                    <p className="text-[10.5px] text-text-faint">
+                      Copy from your Azure portal — the endpoint shown on your OpenAI resource overview. Must end in <code>.openai.azure.com</code> or <code>.services.ai.azure.com</code>.
+                    </p>
+                  </div>
+                )}
+
                 <div className="space-y-1.5">
                   <label className="text-[12.5px] text-text-muted font-medium">
                     {PROVIDER_LABELS[addProvProvider]} API key
@@ -801,7 +844,12 @@ export function ProjectsClient() {
 
                 <PrimaryBtn
                   type="submit"
-                  disabled={!addProvKey.trim() || !addProvName.trim() || addProviderKey.isPending}
+                  disabled={
+                    !addProvKey.trim() ||
+                    !addProvName.trim() ||
+                    (addProvProvider === 'azure' && !addProvAzureUrl.trim()) ||
+                    addProviderKey.isPending
+                  }
                 >
                   {addProviderKey.isPending ? 'Saving…' : 'Add provider key'}
                 </PrimaryBtn>
