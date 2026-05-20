@@ -1,16 +1,16 @@
 'use client'
 
-import React, { createContext, useCallback, useContext, useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-  CommandSeparator,
-} from '@/components/ui/command'
+import { createContext, useCallback, useContext, useEffect, useState } from 'react'
+import dynamic from 'next/dynamic'
+
+// cmdk + Command UI weighs ~30-50KB and shows up in the initial dashboard
+// chunk. Defer it: the dialog only renders when `open === true`, so wrapping
+// it in next/dynamic keeps the cmdk chunk out of the critical path. First
+// ⌘K press pays a one-time ~50ms fetch, every subsequent open is instant.
+const CommandPaletteDialog = dynamic(
+  () => import('./command-palette-dialog').then((m) => m.CommandPaletteDialog),
+  { ssr: false, loading: () => null },
+)
 
 // ── Context ───────────────────────────────────────────────────────────────────
 
@@ -77,56 +77,6 @@ const NAV_GROUPS: NavGroup[] = [
   },
 ]
 
-// ── Palette UI ────────────────────────────────────────────────────────────────
-
-function CommandPaletteDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const router = useRouter()
-
-  function handleSelect(href: string) {
-    router.push(href)
-    onClose()
-  }
-
-  if (!open) return null
-
-  return (
-    <>
-      {/* Backdrop */}
-      <div
-        className="fixed inset-0 z-40 bg-black/40 backdrop-blur-[2px]"
-        onClick={onClose}
-        aria-hidden="true"
-      />
-
-      {/* Palette panel */}
-      <div className="fixed top-[15vh] left-1/2 z-50 w-full max-w-[560px] -translate-x-1/2 px-4">
-        <Command className="border border-border shadow-2xl">
-          <CommandInput placeholder="Go to…" autoFocus />
-          <CommandList>
-            <CommandEmpty>No results found.</CommandEmpty>
-            {NAV_GROUPS.map((group, gi) => (
-              <React.Fragment key={group.heading}>
-                {gi > 0 && <CommandSeparator />}
-                <CommandGroup heading={group.heading}>
-                  {group.items.map((item) => (
-                    <CommandItem
-                      key={item.href}
-                      value={item.label}
-                      onSelect={() => handleSelect(item.href)}
-                    >
-                      {item.label}
-                    </CommandItem>
-                  ))}
-                </CommandGroup>
-              </React.Fragment>
-            ))}
-          </CommandList>
-        </Command>
-      </div>
-    </>
-  )
-}
-
 // ── Provider ──────────────────────────────────────────────────────────────────
 
 export function CommandPaletteProvider({ children }: { children: React.ReactNode }) {
@@ -152,7 +102,7 @@ export function CommandPaletteProvider({ children }: { children: React.ReactNode
   return (
     <CommandPaletteContext.Provider value={{ open, setOpen, toggle }}>
       {children}
-      <CommandPaletteDialog open={open} onClose={() => setOpen(false)} />
+      {open && <CommandPaletteDialog navGroups={NAV_GROUPS} onClose={() => setOpen(false)} />}
     </CommandPaletteContext.Provider>
   )
 }
