@@ -5,7 +5,7 @@ import { useTraces } from '@/lib/queries/use-traces'
 import type { TraceRow, TraceStatus } from '@/lib/queries/types'
 import { Topbar } from '@/components/layout/topbar'
 import { ExportDropdown } from '@/components/ui/export-dropdown'
-import { cn } from '@/lib/utils'
+import { cn, formatDateTime } from '@/lib/utils'
 
 function fmtDuration(ms: number | null): string {
   if (ms == null) return '—'
@@ -392,7 +392,7 @@ export function TracesClient() {
                       <span className="font-mono text-[9.5px] px-[5px] py-[2px] rounded-[3px] bg-bg-muted text-text-faint border border-border uppercase tracking-[0.04em]">ok</span>
                     )}
                   </span>
-                  <span className="text-text-faint text-right" title={new Date(t.started_at).toLocaleString()} suppressHydrationWarning>
+                  <span className="text-text-faint text-right" title={formatDateTime(t.started_at)} suppressHydrationWarning>
                     {fmtAge(t.started_at)}
                   </span>
                 </button>

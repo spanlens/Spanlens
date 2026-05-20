@@ -9,7 +9,7 @@ import { ArrowDown, ArrowUp, Search, Users as UsersIcon } from 'lucide-react'
 // capture once PostHog provider lands on main. Event payloads designed
 // in docs/launch/2026-05-14_cache-stream-users.md §3.
 import { Skeleton } from '@/components/ui/skeleton'
-import { cn } from '@/lib/utils'
+import { cn, formatDate } from '@/lib/utils'
 import { useUsers } from '@/lib/queries/use-users'
 
 type SortBy = 'cost' | 'requests' | 'tokens' | 'last_seen'
@@ -36,7 +36,8 @@ function fmtRelativeTime(iso: string): string {
   if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`
   if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`
   if (diff < 7 * 86_400_000) return `${Math.floor(diff / 86_400_000)}d ago`
-  return new Date(iso).toLocaleDateString()
+  // Locale pinned via formatDate — see CLAUDE.md gotcha #22 (React #418).
+  return formatDate(iso)
 }
 
 interface SearchFormProps {
@@ -221,7 +222,7 @@ export function UsersClient() {
                 <span className="text-text-muted">
                   {u.avg_latency_ms != null ? `${Math.round(Number(u.avg_latency_ms))}ms` : '—'}
                 </span>
-                <span className="text-text-faint text-right">{fmtRelativeTime(u.last_seen)}</span>
+                <span className="text-text-faint text-right" suppressHydrationWarning>{fmtRelativeTime(u.last_seen)}</span>
               </Link>
             ))}
           </div>

@@ -806,7 +806,7 @@ function RequestsTable({
                   <span className={isErr ? 'text-bad' : 'text-good'}>{req.status_code}</span>
                   <span
                     className="text-text-faint text-right"
-                    title={new Date(req.created_at).toLocaleString()}
+                    title={formatDateTime(req.created_at)}
                     suppressHydrationWarning
                   >{relAge(req.created_at)}</span>
                 </div>

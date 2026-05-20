@@ -3,7 +3,7 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { ArrowLeft, Check, Copy, Play, RotateCw } from 'lucide-react'
 import { Skeleton } from '@/components/ui/skeleton'
-import { cn } from '@/lib/utils'
+import { cn, formatDateTime } from '@/lib/utils'
 import { useRequest, useReplayRequest, useRunReplay } from '@/lib/queries/use-requests'
 
 // TODO: re-add `usePostHog()` + `cache_breakdown_viewed` capture once the
@@ -81,8 +81,8 @@ export function RequestDetailClient({ id }: { id: string }) {
           <h1 className="font-mono text-[20px] font-medium text-text tracking-[-0.3px]">
             {req.id.slice(0, 8)}…
           </h1>
-          <p suppressHydrationWarning className="font-mono text-[12px] text-text-muted mt-1">
-            {new Date(req.created_at).toLocaleString()}
+          <p className="font-mono text-[12px] text-text-muted mt-1">
+            {formatDateTime(req.created_at)}
           </p>
         </div>
         <div className="flex items-center gap-3 shrink-0">

@@ -364,7 +364,7 @@ function MembersTab() {
                     {m.email} {isMe && <span className="text-text-faint font-normal">(you)</span>}
                   </span>
                   <span className="font-mono text-[11px] text-text-muted truncate">
-                    joined {new Date(m.createdAt).toLocaleDateString()}
+                    joined {formatDate(m.createdAt)}
                   </span>
                   {isAdmin && !lockedLastAdmin ? (
                     <Select
@@ -995,7 +995,7 @@ function InvoicesTab() {
           </p>
           {subscription ? (
             <p className="font-mono text-[11.5px] text-text-faint">
-              Current subscription · {subscription.plan} · renews {subscription.current_period_end ? new Date(subscription.current_period_end).toLocaleDateString() : '—'}
+              Current subscription · {subscription.plan} · renews {formatDate(subscription.current_period_end)}
             </p>
           ) : (
             <p className="font-mono text-[11.5px] text-text-faint">
@@ -1032,7 +1032,7 @@ function ProfileTab() {
             </FormRow>
             <FormRow label="Account created">
               <div className="font-mono text-[12px] text-text-muted">
-                {new Date(user.created_at).toLocaleDateString()}
+                {formatDate(user.created_at)}
               </div>
             </FormRow>
           </>

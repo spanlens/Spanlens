@@ -1,4 +1,5 @@
 'use client'
+import { formatDateTime } from '@/lib/utils'
 import { useCronRuns, type CronJobSummary } from '@/lib/queries/use-system'
 
 // Known cron schedules for display (mirrors apps/server/vercel.json + cron.ts)
@@ -47,7 +48,8 @@ function JobRow({ job }: { job: CronJobSummary }) {
       </span>
       <span
         className="font-mono text-[11px] text-text-muted shrink-0 w-24 text-right"
-        title={new Date(job.lastRanAt).toLocaleString()}
+        title={formatDateTime(job.lastRanAt)}
+        suppressHydrationWarning
       >
         {relTime(job.lastRanAt)}
       </span>
