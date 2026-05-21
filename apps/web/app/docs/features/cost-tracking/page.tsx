@@ -1,4 +1,5 @@
 import { CodeBlock } from '../../_components/code-block'
+import { ModelPriceChart } from '../../_components/charts'
 
 export const metadata = {
   title: 'Cost tracking · Spanlens Docs',
@@ -25,6 +26,8 @@ export default function CostTrackingDocs() {
       </p>
 
       <h2>How it works</h2>
+
+      <ModelPriceChart />
 
       <h3>Price table</h3>
       <p>

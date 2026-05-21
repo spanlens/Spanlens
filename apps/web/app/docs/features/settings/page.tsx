@@ -1,4 +1,5 @@
 import { CodeBlock } from '../../_components/code-block'
+import { EncryptionFlowDiagram } from '../../_components/diagrams'
 
 export const metadata = {
   title: 'Keys & encryption · Spanlens Docs',
@@ -40,6 +41,9 @@ export default function SettingsDocs() {
       </ol>
 
       <h2>The two-key model</h2>
+
+      <EncryptionFlowDiagram />
+
       <p>
         Each <strong>Spanlens key</strong> owns its own pool of provider keys. So two
         Spanlens keys in the same project can carry different OpenAI / Anthropic / Gemini

@@ -1,4 +1,5 @@
 import { CodeBlock } from '../../_components/code-block'
+import { AnomalyChart } from '../../_components/charts'
 
 export const metadata = {
   title: 'Anomalies · Spanlens Docs',
@@ -30,6 +31,8 @@ export default function AnomaliesDocs() {
       </p>
 
       <h2>How it works</h2>
+
+      <AnomalyChart />
 
       <h3>The math (simple)</h3>
       <ol>

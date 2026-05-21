@@ -1,4 +1,5 @@
 import { CodeBlock } from '../../_components/code-block'
+import { AlertLoopDiagram } from '../../_components/diagrams'
 
 export const metadata = {
   title: 'Alerts · Spanlens Docs',
@@ -55,6 +56,9 @@ export default function AlertsDocs() {
       </table>
 
       <h3>Evaluation loop</h3>
+
+      <AlertLoopDiagram />
+
       <p>
         GitHub Actions fires <code>cron-evaluate-alerts</code> every 15 minutes. For each active
         rule, the evaluator:

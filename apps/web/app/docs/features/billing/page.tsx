@@ -1,4 +1,5 @@
 import { CodeBlock } from '../../_components/code-block'
+import { PlanQuotaChart } from '../../_components/charts'
 
 export const metadata = {
   title: 'Billing & quotas · Spanlens Docs',
@@ -18,6 +19,8 @@ export default function BillingDocs() {
 
       <h2>Plan quotas</h2>
       <p>Every plan has a fixed monthly request quota:</p>
+
+      <PlanQuotaChart />
       <table>
         <thead>
           <tr>

@@ -447,7 +447,7 @@ GET /api/v1/recommendations?minSavings=20      # only show ≥ $20/mo
       </table>
 
       <p>Response fields of note:</p>
-      <table>
+      <table className="[&_th:nth-child(2)]:text-left [&_td:nth-child(2)]:text-left [&_td:nth-child(2)]:whitespace-nowrap">
         <thead>
           <tr>
             <th>Field</th>

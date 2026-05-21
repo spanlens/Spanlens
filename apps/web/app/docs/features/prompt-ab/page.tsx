@@ -1,4 +1,5 @@
 import { CodeBlock } from '../../_components/code-block'
+import { PromptAbChart } from '../../_components/charts'
 
 export const metadata = {
   title: 'Prompt A/B · Spanlens Docs',
@@ -71,6 +72,9 @@ export default function PromptAbDocs() {
       </p>
 
       <h2>How it works</h2>
+
+      <PromptAbChart />
+
       <p>
         Creating an A/B experiment tells the server to split incoming requests for a given prompt
         name between Version A (control) and Version B (challenger) according to the{' '}
@@ -86,7 +90,7 @@ export default function PromptAbDocs() {
 
       <h3>Request parameters</h3>
       <div className="overflow-x-auto">
-        <table>
+        <table className="[&_th:nth-child(2)]:text-left [&_td:nth-child(2)]:text-left [&_td:nth-child(2)]:whitespace-nowrap">
           <thead>
             <tr>
               <th>Field</th>

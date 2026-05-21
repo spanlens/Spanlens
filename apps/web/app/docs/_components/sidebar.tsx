@@ -19,15 +19,21 @@ const NAV: NavGroup[] = [
     items: [
       { title: 'Overview', href: '/docs' },
       { title: 'Quick start', href: '/docs/quick-start' },
+      { title: 'Why Spanlens', href: '/docs/why' },
     ],
   },
   {
-    title: 'Features',
+    title: 'Core',
     items: [
       { title: 'Requests', href: '/docs/features/requests' },
       { title: 'Saved filters', href: '/docs/features/saved-filters' },
       { title: 'Users', href: '/docs/features/users' },
       { title: 'Traces', href: '/docs/features/traces' },
+    ],
+  },
+  {
+    title: 'Prompts & evaluation',
+    items: [
       { title: 'Prompts', href: '/docs/features/prompts' },
       { title: 'Prompt Playground', href: '/docs/features/prompts-playground' },
       { title: 'Prompt A/B', href: '/docs/features/prompt-ab' },
@@ -35,13 +41,28 @@ const NAV: NavGroup[] = [
       { title: 'Datasets', href: '/docs/features/datasets' },
       { title: 'Experiments', href: '/docs/features/experiments' },
       { title: 'Annotation', href: '/docs/features/annotation' },
+    ],
+  },
+  {
+    title: 'Reliability',
+    items: [
       { title: 'Security', href: '/docs/features/security' },
       { title: 'Anomalies', href: '/docs/features/anomalies' },
       { title: 'Alerts', href: '/docs/features/alerts' },
       { title: 'Webhooks', href: '/docs/features/webhooks' },
-      { title: 'Savings', href: '/docs/features/savings' },
+    ],
+  },
+  {
+    title: 'Cost',
+    items: [
       { title: 'Cost tracking', href: '/docs/features/cost-tracking' },
+      { title: 'Savings', href: '/docs/features/savings' },
       { title: 'Billing & quotas', href: '/docs/features/billing' },
+    ],
+  },
+  {
+    title: 'Workspace',
+    items: [
       { title: 'Projects & API keys', href: '/docs/features/projects' },
       { title: 'Keys & encryption', href: '/docs/features/settings' },
       { title: 'Members & invitations', href: '/docs/features/members-invitations' },
@@ -50,14 +71,12 @@ const NAV: NavGroup[] = [
     ],
   },
   {
-    title: 'SDK',
+    title: 'SDK & integrations',
     items: [
       { title: '@spanlens/sdk', href: '/docs/sdk' },
-    ],
-  },
-  {
-    title: 'Integrations',
-    items: [
+      { title: 'LangChain / LangGraph', href: '/docs/sdk#langchain' },
+      { title: 'Vercel AI SDK', href: '/docs/sdk#vercel-ai' },
+      { title: 'LlamaIndex', href: '/docs/sdk#llamaindex' },
       { title: 'OpenTelemetry (OTLP)', href: '/docs/otel' },
     ],
   },
@@ -65,7 +84,7 @@ const NAV: NavGroup[] = [
     title: 'API',
     items: [
       { title: 'Direct proxy (any language)', href: '/docs/proxy' },
-      { title: 'REST API reference (OpenAPI)', href: '/docs/api' },
+      { title: 'REST API reference', href: '/docs/api' },
     ],
   },
   {
@@ -89,7 +108,7 @@ export function DocsSidebar() {
             {group.items.map((item) => {
               const active = pathname === item.href
               return (
-                <li key={item.href}>
+                <li key={item.href + item.title}>
                   <Link
                     href={item.href}
                     className={cn(

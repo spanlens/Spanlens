@@ -73,7 +73,7 @@ export default function PromptsPlaygroundDocs() {
 
       <h2>Run parameters</h2>
       <div className="overflow-x-auto">
-        <table>
+        <table className="[&_th:nth-child(2)]:text-left [&_td:nth-child(2)]:text-left [&_td:nth-child(2)]:whitespace-nowrap">
           <thead>
             <tr>
               <th>Parameter</th>
@@ -125,7 +125,7 @@ export default function PromptsPlaygroundDocs() {
 
       <h2>Response structure</h2>
       <div className="overflow-x-auto">
-        <table>
+        <table className="[&_th:nth-child(2)]:text-left [&_td:nth-child(2)]:text-left [&_td:nth-child(2)]:whitespace-nowrap">
           <thead>
             <tr>
               <th>Field</th>

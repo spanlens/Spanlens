@@ -1,4 +1,5 @@
 import { CodeBlock } from '../../_components/code-block'
+import { TraceWaterfallDiagram } from '../../_components/diagrams'
 
 export const metadata = {
   title: 'Traces · Spanlens Docs',
@@ -43,6 +44,8 @@ export default function TracesDocs() {
     ├── generate                 (1.4s)   ← where the time went
     │   └── openai.chat.create   (1.4s, $0.0043, gpt-4o-mini)
     └── rerank                   (280ms)`}</CodeBlock>
+
+      <TraceWaterfallDiagram />
       <p>
         Every span records: start/end time, input, output (optional), status, and metadata. LLM
         spans automatically capture tokens, cost, model, and provider.
@@ -58,7 +61,7 @@ export default function TracesDocs() {
 
       <h2>Using it</h2>
 
-      <h3>Option 1, <code>observe()</code> (recommended)</h3>
+      <h3>Option 1 — <code>observe()</code> (recommended)</h3>
       <p>
         Wrap any async function. Nested <code>observe()</code> calls automatically become child
         spans:
@@ -80,7 +83,7 @@ const answer = await observe('answer-question', async () => {
   return response.choices[0].message.content
 }, { trace: 'user-session-abc123' })`}</CodeBlock>
 
-      <h3>Option 2, <code>observeOpenAI()</code> for single-call convenience</h3>
+      <h3>Option 2 — <code>observeOpenAI()</code> for single-call convenience</h3>
       <CodeBlock language="ts">{`import { observeOpenAI } from '@spanlens/sdk/openai'
 
 const res = await observeOpenAI(openai, {
@@ -92,7 +95,7 @@ const res = await observeOpenAI(openai, {
         Same thing exists for Anthropic (<code>observeAnthropic</code>) and Gemini (<code>observeGemini</code>).
       </p>
 
-      <h3>Option 3, Low-level handles (for parallel spans)</h3>
+      <h3>Option 3 — Low-level handles (for parallel spans)</h3>
       <CodeBlock language="ts">{`import { SpanlensClient } from '@spanlens/sdk'
 
 const client = new SpanlensClient()
@@ -108,7 +111,7 @@ const [resA, resB] = await Promise.all([
 
 await trace.end()`}</CodeBlock>
 
-      <h3>Option 4, OpenTelemetry SDK (OTLP)</h3>
+      <h3>Option 4 — OpenTelemetry SDK (OTLP)</h3>
       <p>
         Already using an OTel SDK in Python, Go, Java, or another language? Point its OTLP exporter
         at Spanlens and spans flow in automatically, no code rewrite required. Spanlens reads the{' '}

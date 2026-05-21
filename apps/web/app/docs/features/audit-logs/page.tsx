@@ -161,7 +161,7 @@ GET /api/v1/audit-logs?limit=50&offset=0&user_id=<uuid>`}</CodeBlock>
 }`}</CodeBlock>
 
       <h3>Response fields</h3>
-      <table>
+      <table className="[&_th:nth-child(2)]:text-left [&_td:nth-child(2)]:text-left [&_td:nth-child(2)]:whitespace-nowrap">
         <thead>
           <tr>
             <th>Field</th>

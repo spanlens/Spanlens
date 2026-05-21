@@ -86,7 +86,7 @@ Content-Type: application/json
 # 204 No Content`}</CodeBlock>
 
       <h2>Request / response schema</h2>
-      <table>
+      <table className="[&_th:first-child]:text-left [&_th:nth-child(2)]:text-left [&_td:first-child]:text-left [&_td:nth-child(2)]:text-left [&_td:first-child]:whitespace-nowrap [&_td:nth-child(2)]:whitespace-nowrap [&_td:first-child]:align-middle [&_td:nth-child(2)]:align-middle">
         <thead>
           <tr>
             <th>Field</th>
