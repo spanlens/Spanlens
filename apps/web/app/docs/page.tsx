@@ -70,7 +70,7 @@ export default function DocsIndex() {
             What providers are supported?
           </summary>
           <p className="mt-2 text-muted-foreground">
-            OpenAI, Anthropic, and Google Gemini — including streaming responses. We match the upstream API 1:1, so any SDK that talks to those providers works.
+            OpenAI, Anthropic, Google Gemini, Azure OpenAI, and self-hosted Ollama — including streaming responses. We match each upstream API 1:1, so any SDK that talks to those providers works. For LangChain, LangGraph, LCEL, Vercel AI SDK, and LlamaIndex, see the <a className="underline" href="/docs/sdk#framework-integrations">framework integrations</a>.
           </p>
         </details>
 

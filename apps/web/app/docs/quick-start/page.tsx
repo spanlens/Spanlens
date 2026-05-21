@@ -88,6 +88,15 @@ const genAI = createGemini()
 const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' })
 const result = await model.generateContent('Hi')`}</CodeBlock>
 
+      <h3 id="frameworks">Using LangChain, LangGraph, Vercel AI SDK, or LlamaIndex?</h3>
+      <p>
+        Skip the per-provider helpers above and use a single callback handler instead — it
+        captures LLM, chain, tool, and retriever spans automatically (including the full
+        LangGraph node topology). See{' '}
+        <a className="underline" href="/docs/sdk#framework-integrations">framework integrations</a>{' '}
+        for the per-framework snippet.
+      </p>
+
       <h3>Adding new providers later — no CLI needed</h3>
       <p>
         Once Steps 1 and 2 are done, adding a second or third provider is just:
