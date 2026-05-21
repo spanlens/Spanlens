@@ -633,11 +633,12 @@ with client.start_trace("local_chat") as trace:
 )`}
       />
 
-      <h2 id="framework-integrations">Framework integrations (v0.3.0+)</h2>
+      <h2 id="framework-integrations">Framework integrations</h2>
       <p>
-        If you use LangChain, Vercel AI SDK, or LlamaIndex, plug in the matching integration instead
-        of wiring callbacks manually. Each one records an LLM span automatically — tokens, latency,
-        model name — without importing from the framework itself (duck-typed, version-agnostic).
+        If you use LangChain, LangGraph (v0.6.0+ / 0.5.0+), Vercel AI SDK, or LlamaIndex, plug in
+        the matching integration instead of wiring callbacks manually. Each one records spans
+        automatically — tokens, latency, model name, and the full chain/tool/retriever topology —
+        without importing from the framework itself (duck-typed, version-agnostic).
       </p>
 
       <h3 id="langchain">LangChain & LangGraph (v0.6.0+ / 0.5.0+)</h3>
