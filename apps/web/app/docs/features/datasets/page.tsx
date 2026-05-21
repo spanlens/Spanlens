@@ -21,15 +21,15 @@ export default function DatasetsDocs() {
       <h2>When to use a dataset</h2>
       <ul>
         <li>
-          <strong>No production traffic yet</strong> — you want to evaluate a prompt before the
+          <strong>No production traffic yet</strong>, you want to evaluate a prompt before the
           first real calls accumulate.
         </li>
         <li>
-          <strong>Sensitive production data</strong> — healthcare, finance, or other regulated
+          <strong>Sensitive production data</strong>, healthcare, finance, or other regulated
           domains where you need an anonymized set.
         </li>
         <li>
-          <strong>Regression test set</strong> — a curated golden set of 30 past failure cases
+          <strong>Regression test set</strong>, a curated golden set of 30 past failure cases
           that every new prompt version must handle correctly.
         </li>
       </ul>
@@ -38,24 +38,24 @@ export default function DatasetsDocs() {
 
       <h3><code>datasets</code> table</h3>
       <ul>
-        <li><code>name</code> — unique within the organization</li>
-        <li><code>description</code> — free text</li>
-        <li><code>archived_at</code> — soft delete</li>
+        <li><code>name</code>, unique within the organization</li>
+        <li><code>description</code>, free text</li>
+        <li><code>archived_at</code>, soft delete</li>
       </ul>
 
       <h3><code>dataset_items</code> table</h3>
       <ul>
         <li>
-          <code>input</code> (jsonb) — two shapes are accepted:
+          <code>input</code> (jsonb), two shapes are accepted:
           <CodeBlock language="json">{`{ "variables": { "company_name": "Acme", "customer_name": "Alice" } }
 { "messages": [{ "role": "user", "content": "..." }] }`}</CodeBlock>
         </li>
         <li>
-          <code>expected_output</code> — reference answer text (optional). Used as the scoring
+          <code>expected_output</code>, reference answer text (optional). Used as the scoring
           target when running Evals in dataset mode. Items without a value are skipped.
         </li>
         <li>
-          <code>source_request_id</code> — set when the item was imported from a production request.
+          <code>source_request_id</code>, set when the item was imported from a production request.
         </li>
       </ul>
 
@@ -67,8 +67,8 @@ export default function DatasetsDocs() {
         <strong>Add item</strong>, then toggle between two input modes:
       </p>
       <ul>
-        <li><strong>User message</strong> — a single chat-style user message</li>
-        <li><strong>Variables JSON</strong> — for prompts with <code>{`{{var}}`}</code> placeholders</li>
+        <li><strong>User message</strong>, a single chat-style user message</li>
+        <li><strong>Variables JSON</strong>, for prompts with <code>{`{{var}}`}</code> placeholders</li>
       </ul>
 
       <h3>2. Import from production requests (API)</h3>
@@ -97,7 +97,7 @@ export default function DatasetsDocs() {
         <code>expected_output</code> are skipped.
       </p>
       <p>
-        This is called &quot;replay mode&quot; — scoring already-generated outputs.{' '}
+        This is called &quot;replay mode&quot;, scoring already-generated outputs.{' '}
         <em>Fresh run mode</em> (run the prompt against each dataset input and then score the new
         outputs) is handled by <a href="/docs/features/experiments">Experiments</a>.
       </p>

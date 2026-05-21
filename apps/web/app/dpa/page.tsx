@@ -65,7 +65,7 @@ export default function DPAPage() {
           <li>
             <strong>&ldquo;Customer Personal Data&rdquo;</strong> means Personal Data that
             the Customer or its end users submit to the Service or that the Service
-            generates on the Customer&apos;s behalf — including LLM request and response
+            generates on the Customer&apos;s behalf, including LLM request and response
             bodies, end-user identifiers, account profile data, and telemetry metadata.
           </li>
           <li>
@@ -252,10 +252,10 @@ export default function DPAPage() {
         <h2 id="assistance-art-32-36">10. Assistance with Arts. 32–36</h2>
         <p>
           Spanlens assists the Customer in ensuring compliance with the obligations
-          pursuant to Articles 32 to 36 of the GDPR — including security of processing,
+          pursuant to Articles 32 to 36 of the GDPR, including security of processing,
           notification of personal data breaches, communication of personal data breaches
           to the data subject, data protection impact assessments, and prior consultation
-          — taking into account the nature of processing and the information available
+         , taking into account the nature of processing and the information available
           to Spanlens.
         </p>
 
@@ -391,7 +391,7 @@ export default function DPAPage() {
           the SCCs as completed in Annex A.
         </p>
 
-        <h2 id="annex-a">Annex A — Completion of the Standard Contractual Clauses</h2>
+        <h2 id="annex-a">Annex A, Completion of the Standard Contractual Clauses</h2>
         <p className="text-sm text-muted-foreground">
           The following completions apply where the SCCs are incorporated under
           Section 14 of this DPA.
@@ -404,7 +404,7 @@ export default function DPAPage() {
             <strong>Docking clause (Clause 7):</strong> not used.
           </li>
           <li>
-            <strong>Sub-processors (Clause 9):</strong> Option 2 — general written
+            <strong>Sub-processors (Clause 9):</strong> Option 2, general written
             authorisation; notice period of 30 days as set out in Section 8 of this DPA.
           </li>
           <li>
@@ -420,7 +420,7 @@ export default function DPAPage() {
             resolution mechanism is not used.
           </li>
           <li>
-            <strong>Governing law of the SCCs (Clause 17):</strong> Option 1 — the law
+            <strong>Governing law of the SCCs (Clause 17):</strong> Option 1, the law
             of the Republic of Ireland.
           </li>
           <li>

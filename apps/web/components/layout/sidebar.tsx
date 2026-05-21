@@ -108,8 +108,8 @@ function WorkspaceSwitcher() {
           className="absolute left-0 right-0 mt-1 z-20 rounded-[6px] border border-border-strong bg-bg-elev shadow-lg overflow-hidden"
           role="menu"
         >
-          {/* Workspaces section: always renders the list — even with a
-              single workspace — so the user sees "I am here" instead of an
+          {/* Workspaces section: always renders the list, even with a
+              single workspace, so the user sees "I am here" instead of an
               empty list with just a "+ New workspace" button (which used to
               read as "my workspace disappeared"). The current workspace
               shows a check mark; switching is a no-op when only one exists. */}
@@ -428,7 +428,7 @@ export function Sidebar() {
                     : String(quota.data.limit)
                   : '∞'
               } requests`
-            : '— / — requests'}
+            : ', /, requests'}
         </div>
         <div className="h-1 rounded-full bg-bg overflow-hidden">
           <div

@@ -349,7 +349,7 @@ export default function DemoAnomaliesPage() {
       {/* Content */}
       <div className="flex-1 overflow-auto">
         <>
-          {/* Open — high severity */}
+          {/* Open, high severity */}
           {unackedHigh.length > 0 && (
             <div>
               <div className="flex items-center gap-2.5 px-[22px] py-[10px] bg-bg-muted border-b border-border border-t border-t-border">
@@ -369,7 +369,7 @@ export default function DemoAnomaliesPage() {
             </div>
           )}
 
-          {/* Open — medium severity */}
+          {/* Open, medium severity */}
           {unackedMedium.length > 0 && (
             <div>
               <div className="flex items-center gap-2.5 px-[22px] py-[10px] bg-bg-muted border-b border-border border-t border-t-border">
@@ -423,7 +423,7 @@ export default function DemoAnomaliesPage() {
               </p>
               <p className="font-mono text-[11.5px] text-text-faint">
                 {acked.length > 0
-                  ? `${acked.length} acknowledged — Unack to re-open.`
+                  ? `${acked.length} acknowledged, Unack to re-open.`
                   : 'Baselines look healthy.'}
               </p>
             </div>

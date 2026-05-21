@@ -13,13 +13,13 @@ export default function CostTrackingDocs() {
       <p className="lead">
         Every request row carries a <code>cost_usd</code> field computed at ingest time from your
         actual token usage and the provider&apos;s current list price. No approximations, no
-        post-hoc math in the dashboard — the number is deterministic and auditable.
+        post-hoc math in the dashboard, the number is deterministic and auditable.
       </p>
 
       <h2>Why it matters</h2>
       <p>
         Provider dashboards show spend a day late and at the billing-period level. That&apos;s
-        useless for the daily question — &ldquo;is my new feature&apos;s LLM usage going to blow
+        useless for the daily question, &ldquo;is my new feature&apos;s LLM usage going to blow
         up the budget?&rdquo; Spanlens computes cost the moment the response lands, so you can
         track per-minute, per-project, per-user cost without waiting for an invoice.
       </p>
@@ -28,7 +28,7 @@ export default function CostTrackingDocs() {
 
       <h3>Price table</h3>
       <p>
-        Prices live in the <code>model_prices</code> Supabase table — USD per 1M tokens,
+        Prices live in the <code>model_prices</code> Supabase table, USD per 1M tokens,
         separately for prompt, completion, and cache read/write. The proxy reads them
         through an in-memory cache (5-minute stale-while-revalidate) with a hardcoded
         fallback in <code>apps/server/src/lib/model-prices-cache.ts</code> for cold-start.
@@ -76,7 +76,7 @@ totalCost       = promptCost + cacheReadCost + cacheWriteCost + completionCost`}
       </p>
       <p>
         Historical rows (pre-2026-05-14) keep their original <code>cost_usd</code> and have{' '}
-        <code>cache_*_tokens = 0</code> — backfill isn&apos;t possible because the raw breakdown
+        <code>cache_*_tokens = 0</code>, backfill isn&apos;t possible because the raw breakdown
         wasn&apos;t recorded.
       </p>
 
@@ -92,7 +92,7 @@ totalCost       = promptCost + cacheReadCost + cacheWriteCost + completionCost`}
         <code>calculateCost()</code> handles this by:
       </p>
       <ol>
-        <li>Exact match first — if <code>gpt-4o-mini-2024-07-18</code> is in the table, use it.</li>
+        <li>Exact match first, if <code>gpt-4o-mini-2024-07-18</code> is in the table, use it.</li>
         <li>
           Otherwise, <strong>longest boundary-aware prefix match</strong>. The model id must start
           with a registered key followed by <code>-</code>, so <code>gpt-4</code> does not
@@ -109,11 +109,11 @@ totalCost       = promptCost + cacheReadCost + cacheWriteCost + completionCost`}
         If a request comes in for a model we don&apos;t have pricing for (brand-new release,
         fine-tuned custom model), <code>calculateCost()</code> returns <code>null</code> and the
         row&apos;s <code>cost_usd</code> is <code>NULL</code>. Dashboard filters this out of
-        cost aggregates — we never estimate or fabricate. The gap is visible, not hidden.
+        cost aggregates, we never estimate or fabricate. The gap is visible, not hidden.
       </p>
       <p>
         Fix: a Spanlens operator can add the row directly to{' '}
-        <code>model_prices</code> via the admin API (<code>POST /api/v1/admin/model-prices</code>) —
+        <code>model_prices</code> via the admin API (<code>POST /api/v1/admin/model-prices</code>) ,
         the cache picks it up within 5 minutes, no deploy required. Backfill isn&apos;t
         retroactive; cost appears on new requests only.
       </p>
@@ -149,11 +149,11 @@ GET /api/v1/stats?sinceHours=720&groupBy=model
           retroactively change. Audit-friendly.
         </li>
         <li>
-          <strong>Stored as <code>numeric(14,8)</code>.</strong> 8 decimal places of precision —
+          <strong>Stored as <code>numeric(14,8)</code>.</strong> 8 decimal places of precision ,
           enough to represent fractional cents on very cheap models without rounding error.
         </li>
         <li>
-          <strong>Table, not API.</strong> We don&apos;t fetch live prices from provider APIs —
+          <strong>Table, not API.</strong> We don&apos;t fetch live prices from provider APIs ,
           they don&apos;t expose one. Hand-maintained table is the reality for the industry.
         </li>
       </ul>
@@ -175,8 +175,8 @@ GET /api/v1/stats?sinceHours=720&groupBy=model
       <hr />
       <p className="text-sm text-muted-foreground">
         Note: this page is about <em>per-request USD cost</em> (how much each LLM call cost you
-        at the provider). For <em>Spanlens subscription billing</em> — plan quotas, overage
-        rates, invoicing — see <a href="/docs/features/billing">Billing &amp; quotas</a>.
+        at the provider). For <em>Spanlens subscription billing</em>, plan quotas, overage
+        rates, invoicing, see <a href="/docs/features/billing">Billing &amp; quotas</a>.
       </p>
       <p className="text-sm text-muted-foreground">
         Related: <a href="/docs/features/requests">Requests</a>, <a href="/docs/features/savings">Savings</a>,{' '}

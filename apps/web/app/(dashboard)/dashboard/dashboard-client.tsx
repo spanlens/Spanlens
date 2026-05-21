@@ -440,7 +440,7 @@ export function DashboardClient() {
         {/* Greeting */}
         <div className="px-[22px] py-[22px] border-b border-border">
           <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 mb-1">
-            {/* suppressHydrationWarning: greeting() uses new Date() — server UTC ≠ client local time */}
+            {/* suppressHydrationWarning: greeting() uses new Date(), server UTC ≠ client local time */}
             <span suppressHydrationWarning className="text-[22px] sm:text-[26px] font-medium tracking-[-0.6px]">
               {greeting()}.
             </span>
@@ -607,7 +607,7 @@ export function DashboardClient() {
           )}
         </div>
 
-        {/* Spend forecast — always monthly, independent of time range selector */}
+        {/* Spend forecast, always monthly, independent of time range selector */}
         {spendForecast.isLoading ? (
           <div className="px-[22px] py-5 border-b border-border">
             <Skeleton className="h-[320px] w-full" />

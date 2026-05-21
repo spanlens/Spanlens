@@ -12,7 +12,7 @@ export default function ExportDocs() {
       <h1>Data Export</h1>
       <p className="lead">
         Download request logs, traces, anomaly snapshots, and security flags as CSV, JSONL, or JSON
-        in one shot. CSV and JSONL stream directly from ClickHouse — a million-row export runs in
+        in one shot. CSV and JSONL stream directly from ClickHouse, a million-row export runs in
         ~30&nbsp;MB of memory and finishes inside the function-execution window. Connect to Pandas,
         BigQuery, Redash, Metabase, or your own pipeline.
       </p>
@@ -28,19 +28,19 @@ export default function ExportDocs() {
         <tbody>
           <tr>
             <td><code>GET /api/v1/exports/requests</code></td>
-            <td>Request logs — provider, model, tokens, cost, latency, etc.</td>
+            <td>Request logs, provider, model, tokens, cost, latency, etc.</td>
           </tr>
           <tr>
             <td><code>GET /api/v1/exports/traces</code></td>
-            <td>Traces — span count, total cost, duration, etc.</td>
+            <td>Traces, span count, total cost, duration, etc.</td>
           </tr>
           <tr>
             <td><code>GET /api/v1/exports/anomalies</code></td>
-            <td>Anomaly snapshots — daily history of buckets that exceeded 3σ</td>
+            <td>Anomaly snapshots, daily history of buckets that exceeded 3σ</td>
           </tr>
           <tr>
             <td><code>GET /api/v1/exports/security</code></td>
-            <td>Security flags — PII detections and prompt injection hits</td>
+            <td>Security flags, PII detections and prompt injection hits</td>
           </tr>
         </tbody>
       </table>
@@ -69,7 +69,7 @@ export default function ExportDocs() {
           </tr>
           <tr>
             <td><code>from</code></td>
-            <td>—</td>
+            <td>,</td>
             <td>
               ISO 8601 start time (e.g. <code>2026-05-01T00:00:00Z</code>). Defaults to 30 days
               ago if omitted.
@@ -77,7 +77,7 @@ export default function ExportDocs() {
           </tr>
           <tr>
             <td><code>to</code></td>
-            <td>—</td>
+            <td>,</td>
             <td>ISO 8601 end time. Defaults to now if omitted.</td>
           </tr>
           <tr>
@@ -85,13 +85,13 @@ export default function ExportDocs() {
             <td>format-dependent</td>
             <td>
               CSV / JSONL: 1 – <strong>1,000,000</strong>. JSON: 1 – 10,000.
-              <code>/exports/requests</code> only — other endpoints stay at 10,000.
+              <code>/exports/requests</code> only, other endpoints stay at 10,000.
             </td>
           </tr>
         </tbody>
       </table>
 
-      <h2 id="formats">Formats — when to pick each</h2>
+      <h2 id="formats">Formats, when to pick each</h2>
       <table>
         <thead>
           <tr>
@@ -119,7 +119,7 @@ export default function ExportDocs() {
           </tr>
           <tr>
             <td><code>json</code></td>
-            <td>No — buffered</td>
+            <td>No, buffered</td>
             <td>10,000</td>
             <td>
               Wrapper object <code>{`{ exported_at, count, data: [...] }`}</code> for code that
@@ -131,7 +131,7 @@ export default function ExportDocs() {
       <p>
         Streamed responses set <code>Cache-Control: no-store</code> so intermediaries don&apos;t
         buffer the full body. Each ClickHouse batch (~64&nbsp;KB) is the only data held in memory at
-        any point — heap usage stays flat regardless of <code>limit</code>.
+        any point, heap usage stays flat regardless of <code>limit</code>.
       </p>
 
       <h2>Additional parameters for requests</h2>
@@ -200,7 +200,7 @@ export default function ExportDocs() {
         </tbody>
       </table>
 
-      <h2>CSV columns — requests</h2>
+      <h2>CSV columns, requests</h2>
       <table>
         <thead>
           <tr>
@@ -264,7 +264,7 @@ export default function ExportDocs() {
         </tbody>
       </table>
 
-      <h2>CSV columns — traces</h2>
+      <h2>CSV columns, traces</h2>
       <table>
         <thead>
           <tr>
@@ -327,22 +327,22 @@ export default function ExportDocs() {
       <h2>curl examples</h2>
 
       <h3>CSV download</h3>
-      <CodeBlock language="bash">{`# Request logs — specific date range, GPT-4o only, CSV
+      <CodeBlock language="bash">{`# Request logs, specific date range, GPT-4o only, CSV
 curl "https://spanlens-server.vercel.app/api/v1/exports/requests?from=2026-05-01T00:00:00Z&to=2026-05-15T23:59:59Z&provider=openai&model=gpt-4o&format=csv" \\
   -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \\
   -o spanlens-requests.csv
 
-# Traces — last 7 days, JSON
+# Traces, last 7 days, JSON
 curl "https://spanlens-server.vercel.app/api/v1/exports/traces?from=2026-05-08T00:00:00Z&format=json" \\
   -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \\
   -o spanlens-traces.json
 
-# Anomaly history — defaults (30 days, CSV)
+# Anomaly history, defaults (30 days, CSV)
 curl "https://spanlens-server.vercel.app/api/v1/exports/anomalies" \\
   -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \\
   -o spanlens-anomalies.csv
 
-# Security flags — from a specific date
+# Security flags, from a specific date
 curl "https://spanlens-server.vercel.app/api/v1/exports/security?from=2026-05-01T00:00:00Z" \\
   -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \\
   -o spanlens-security.csv`}</CodeBlock>
@@ -393,11 +393,11 @@ curl "https://spanlens-server.vercel.app/api/v1/exports/requests?format=jsonl&fr
 
 token = "YOUR_SUPABASE_ACCESS_TOKEN"
 
-# Small / medium — CSV, single response.
+# Small / medium, CSV, single response.
 url = "https://spanlens-server.vercel.app/api/v1/exports/requests?from=2026-05-01T00:00:00Z&format=csv"
 df = pd.read_csv(url, storage_options={"Authorization": f"Bearer {token}"})
 
-# Million-row pipeline — JSONL, streamed line-by-line. Pandas reads it in
+# Million-row pipeline, JSONL, streamed line-by-line. Pandas reads it in
 # chunks so peak memory stays bounded.
 url = "https://spanlens-server.vercel.app/api/v1/exports/requests?format=jsonl&limit=1000000"
 chunks = pd.read_json(url, lines=True, chunksize=50_000,
@@ -409,7 +409,7 @@ print(totals)`}</CodeBlock>
       <p>
         Download the <code>.csv</code> file with curl, then import it into Excel via{' '}
         <strong>Data → From Text/CSV</strong>. The <code>created_at</code> column is an ISO 8601
-        string — convert it with <code>DATEVALUE</code> + <code>TIMEVALUE</code> or Power Query&apos;s
+        string, convert it with <code>DATEVALUE</code> + <code>TIMEVALUE</code> or Power Query&apos;s
         date/time type conversion before using it in pivot tables.
       </p>
 
@@ -420,7 +420,7 @@ print(totals)`}</CodeBlock>
           streamed formats (<code>csv</code>, <code>jsonl</code>) and 10,000 on <code>json</code>.
           The other endpoints (<code>/traces</code>, <code>/security</code>, <code>/anomalies</code>)
           stay at 10,000. For datasets above the cap, paginate by splitting the time range with{' '}
-          <code>from</code> / <code>to</code>, or contact support — multi-GB exports with completion
+          <code>from</code> / <code>to</code>, or contact support, multi-GB exports with completion
           emails / S3 pre-signed URLs are on the roadmap.
         </li>
         <li>

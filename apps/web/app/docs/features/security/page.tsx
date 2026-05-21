@@ -3,7 +3,7 @@ import { CodeBlock } from '../../_components/code-block'
 export const metadata = {
   title: 'Security (PII + prompt injection) · Spanlens Docs',
   description:
-    'Automatic PII detection and prompt-injection scanning on every LLM request and response — with optional blocking mode and real-time alert emails.',
+    'Automatic PII detection and prompt-injection scanning on every LLM request and response, with optional blocking mode and real-time alert emails.',
 }
 
 export default function SecurityDocs() {
@@ -25,7 +25,7 @@ export default function SecurityDocs() {
         PII in LLM calls is the #1 thing enterprise security teams ask about. If your chatbot
         receives a user&apos;s credit card number and that request body lands in OpenAI&apos;s
         training data (or your logs, or your support ticket queue), you have a GDPR/PCI incident
-        on your hands. Catching it at the proxy layer — before it hits the provider — is the
+        on your hands. Catching it at the proxy layer, before it hits the provider, is the
         cheapest mitigation point.
       </p>
       <p>
@@ -58,7 +58,7 @@ export default function SecurityDocs() {
           </tr>
           <tr>
             <td><code>iban</code></td>
-            <td>IBAN — EU 27 + UK, CH, NO and 30+ countries. Compact and spaced forms. mod-97 validated.</td>
+            <td>IBAN, EU 27 + UK, CH, NO and 30+ countries. Compact and spaced forms. mod-97 validated.</td>
             <td><code>GB82WEST12345698765432</code></td>
           </tr>
           <tr>
@@ -149,7 +149,7 @@ export default function SecurityDocs() {
 }`}</CodeBlock>
       <p>
         Request flags → <code>requests.flags</code>. Response flags → <code>requests.response_flags</code>.
-        The <code>sample</code> is a <strong>masked 6-character excerpt</strong> around the match —
+        The <code>sample</code> is a <strong>masked 6-character excerpt</strong> around the match ,
         just enough for you to audit what was flagged without storing raw PII back into the
         database. The original match is never persisted in readable form.
       </p>
@@ -167,7 +167,7 @@ export default function SecurityDocs() {
   "code": "INJECTION_BLOCKED"
 }`}</CodeBlock>
       <p>
-        PII flags are <strong>never</strong> blocked — PII may be legitimate user data (e.g. a
+        PII flags are <strong>never</strong> blocked, PII may be legitimate user data (e.g. a
         healthcare app). Only injection patterns trigger blocking. Toggle it in the{' '}
         <a href="/security">/security</a> dashboard under <em>Per-project blocking</em>.
       </p>
@@ -191,7 +191,7 @@ export default function SecurityDocs() {
       <p>
         Spanlens scans both directions: the request body (user input) and the LLM response body
         (model output). This catches cases where the model itself leaks PII it was given in
-        context — for example, echoing a credit card number back in a summary. Response flags are
+        context, for example, echoing a credit card number back in a summary. Response flags are
         stored separately in <code>requests.response_flags</code> and shown in the dashboard with
         a <em>↩</em> prefix to distinguish them from request flags.
       </p>
@@ -204,13 +204,13 @@ export default function SecurityDocs() {
       </p>
       <ul>
         <li>
-          <strong>Settings</strong> — Alert email toggle (org-wide) + per-project blocking toggles
+          <strong>Settings</strong>, Alert email toggle (org-wide) + per-project blocking toggles
         </li>
         <li>
-          <strong>Summary</strong> — Counts per rule over the selected window (24h / 7d / 30d)
+          <strong>Summary</strong>, Counts per rule over the selected window (24h / 7d / 30d)
         </li>
         <li>
-          <strong>Flagged</strong> — Paginated list of flagged requests with masked samples and
+          <strong>Flagged</strong>, Paginated list of flagged requests with masked samples and
           direction labels (request vs response), direct link to the full{' '}
           <a href="/requests">/requests</a> row for context
         </li>
@@ -238,7 +238,7 @@ PATCH /api/v1/security/projects/{projectId}/block
       <p>
         Separately from the request-time scan above, every body that lands in ClickHouse passes
         through a pattern-based key scrubber first. The goal is narrow: catch API keys that
-        accidentally end up in prompts, tool output, or error messages — so a compromised
+        accidentally end up in prompts, tool output, or error messages, so a compromised
         Spanlens row never leaks a customer&apos;s upstream credentials.
       </p>
       <table>
@@ -284,7 +284,7 @@ PATCH /api/v1/security/projects/{projectId}/block
         Source: <code>apps/server/src/lib/pii-mask.ts</code>.
       </p>
 
-      <h2 id="body-retention">Body retention modes — <code>logBody</code></h2>
+      <h2 id="body-retention">Body retention modes, <code>logBody</code></h2>
       <p>
         Pattern masking covers <em>structured</em> secrets. It does <strong>not</strong> redact
         natural-language PII (names, emails, addresses, medical information) that the regex
@@ -330,9 +330,9 @@ PATCH /api/v1/security/projects/{projectId}/block
       </p>
       <p className="text-sm text-muted-foreground">
         Spanlens does NOT ship automatic natural-language PII redaction. Pattern matching on
-        free text produces too many false positives/negatives to be the default — we&apos;d
+        free text produces too many false positives/negatives to be the default, we&apos;d
         rather give you a clean opt-out and let your prompts that need full bodies keep them.
-        Enterprise customers needing in-place redaction (medical / financial) — reach out.
+        Enterprise customers needing in-place redaction (medical / financial), reach out.
       </p>
 
       <h2>Limitations</h2>
@@ -358,7 +358,7 @@ PATCH /api/v1/security/projects/{projectId}/block
         <li>
           <strong>Regex is not ML.</strong> A sufficiently motivated attacker can rephrase
           injection phrases to slip through. What we catch is the long tail of accidentally bad
-          inputs and low-effort attacks — which covers 90%+ of real incidents.
+          inputs and low-effort attacks, which covers 90%+ of real incidents.
         </li>
         <li>
           <strong>Natural-language PII is not auto-redacted.</strong> The{' '}

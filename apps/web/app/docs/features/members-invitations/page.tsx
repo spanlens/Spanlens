@@ -13,7 +13,7 @@ export default function MembersInvitationsDocs() {
       <p className="lead">
         Spanlens is multi-user out of the box. Invite teammates by email,
         hand out roles, switch between workspaces, and watch every membership
-        event in the audit log. Nothing here costs extra — it&rsquo;s the
+        event in the audit log. Nothing here costs extra, it&rsquo;s the
         same flow on the Free plan as on Enterprise.
       </p>
 
@@ -46,18 +46,18 @@ export default function MembersInvitationsDocs() {
             <td><strong>editor</strong></td>
             <td>✓</td>
             <td>✓</td>
-            <td>—</td>
+            <td>,</td>
           </tr>
           <tr>
             <td><strong>viewer</strong></td>
             <td>✓</td>
-            <td>—</td>
-            <td>—</td>
+            <td>,</td>
+            <td>,</td>
           </tr>
         </tbody>
       </table>
       <p>
-        The <strong>last admin</strong> in a workspace is protected — the
+        The <strong>last admin</strong> in a workspace is protected, the
         API rejects any attempt to demote or remove them. Promote a second
         admin first if you need to leave.
       </p>
@@ -69,7 +69,7 @@ export default function MembersInvitationsDocs() {
         <code>/api/v1/organizations/:orgId/invitations</code>; the server
         creates an <code>org_invitations</code> row with a 7-day expiry and
         a sha256-hashed token. The raw token only ever lives in the email
-        URL — a database leak cannot turn into working invite links.
+        URL, a database leak cannot turn into working invite links.
       </p>
 
       <h3>Two ways the recipient sees it</h3>
@@ -83,8 +83,8 @@ export default function MembersInvitationsDocs() {
         </li>
         <li>
           <strong>Dashboard banner.</strong> Even if the email never
-          arrives — bounce, spam folder, admin DM&rsquo;d the invite
-          instead — the recipient&rsquo;s next dashboard navigation
+          arrives, bounce, spam folder, admin DM&rsquo;d the invite
+          instead, the recipient&rsquo;s next dashboard navigation
           surfaces a banner across the top:{' '}
           <em>&ldquo;Acme Inc. invited you as editor.&rdquo;</em> with{' '}
           <strong>Accept</strong> / <strong>Decline</strong> buttons. The
@@ -100,7 +100,7 @@ export default function MembersInvitationsDocs() {
         sets <code>onboarded_at</code> on the user&rsquo;s profile (so the
         dashboard layout&rsquo;s onboarding gate lets them through), and
         returns the joined organization id. The client writes that id to
-        the <code>sb-ws</code> cookie and hard-reloads — the user lands
+        the <code>sb-ws</code> cookie and hard-reloads, the user lands
         in the joined workspace immediately.
       </p>
 
@@ -111,12 +111,12 @@ export default function MembersInvitationsDocs() {
       </p>
       <ul>
         <li>
-          <strong>Decline</strong> — DELETEs the invitation row. The user
+          <strong>Decline</strong>, DELETEs the invitation row. The user
           will not see this invite again unless an admin re-invites the
           same email (which creates a new row).
         </li>
         <li>
-          <strong>⨯ Dismiss</strong> — session-only hide. Refreshing the
+          <strong>⨯ Dismiss</strong>, session-only hide. Refreshing the
           page brings the banner back. Use this for &ldquo;I see it, just
           not now.&rdquo;
         </li>
@@ -154,7 +154,7 @@ export default function MembersInvitationsDocs() {
         Click the workspace box at the top-left of the sidebar and pick
         a workspace from the <strong>Workspaces</strong> section. The
         sidebar writes the new id to <code>sb-ws</code> and hard-reloads
-        the page — middleware re-resolves, every TanStack Query cache is
+        the page, middleware re-resolves, every TanStack Query cache is
         cleared, and the dashboard re-renders against the new org.
       </p>
       <p>
@@ -210,7 +210,7 @@ DELETE /api/v1/organizations/:orgId/members/:userId`}</CodeBlock>
         not configured, the server skips the send and returns the accept
         URL as <code>devAcceptUrl</code> in the API response so an admin
         can hand-deliver it. Set up a verified Resend sender to avoid
-        spam folders — see <a href="/docs/self-host#env">self-host env vars</a>.
+        spam folders, see <a href="/docs/self-host#env">self-host env vars</a>.
       </p>
     </div>
   )

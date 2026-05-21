@@ -29,7 +29,7 @@ function ItemRow({ item }: { item: DatasetItem }) {
         </div>
         <button
           type="button"
-          onClick={(e) => { e.stopPropagation(); alert('Deleting items — sign up to use this') }}
+          onClick={(e) => { e.stopPropagation(); alert('Deleting items, sign up to use this') }}
           className="text-text-faint hover:text-bad shrink-0"
         >
           <Trash2 className="h-3.5 w-3.5" />
@@ -85,7 +85,7 @@ export default function DemoDatasetDetail({ params }: { params: { id: string } }
         right={
           <button
             type="button"
-            onClick={() => alert('Adding items — sign up to use this')}
+            onClick={() => alert('Adding items, sign up to use this')}
             className="font-mono text-[11.5px] px-3 py-[6px] rounded-[5px] bg-text text-bg font-medium hover:opacity-90 flex items-center gap-1.5"
           >
             <Plus className="h-3.5 w-3.5" />

@@ -11,13 +11,13 @@ function fmtUsd(v: number): string {
 }
 
 function fmtMs(v: number): string {
-  if (v === 0) return '—'
+  if (v === 0) return ','
   if (v >= 1000) return `${(v / 1000).toFixed(2)}s`
   return `${Math.round(v)}ms`
 }
 
 function QualityBadge({ score }: { score: number | null | undefined }) {
-  if (score == null) return <span className="text-text-faint">—</span>
+  if (score == null) return <span className="text-text-faint">,</span>
   const color = score >= 90 ? 'text-good' : score >= 70 ? 'text-warn' : 'text-bad'
   return <span className={cn('font-mono tabular-nums', color)}>{score}</span>
 }
@@ -76,7 +76,7 @@ export default function DemoPromptsPage() {
         crumbs={[{ label: 'Demo', href: '/demo/dashboard' }, { label: 'Prompts' }]}
         right={
           <div className="flex items-center gap-2">
-            {/* Search — desktop only */}
+            {/* Search, desktop only */}
             <div className="hidden md:flex items-center gap-2 px-[10px] py-[5px] border border-border rounded-[6px] bg-bg-elev w-[280px]">
               <span className="text-text-faint text-[14px] leading-none">⌕</span>
               <input
@@ -120,8 +120,8 @@ export default function DemoPromptsPage() {
           {[
             { label: 'Total prompts',             value: String(all.length) },
             { label: 'Total versions',            value: String(totalVersions) },
-            { label: `Total calls`,               value: totalCalls > 0 ? totalCalls.toLocaleString() : '—' },
-            { label: `Total spend`,               value: totalSpend > 0 ? fmtUsd(totalSpend) : '—' },
+            { label: `Total calls`,               value: totalCalls > 0 ? totalCalls.toLocaleString() : ',' },
+            { label: `Total spend`,               value: totalSpend > 0 ? fmtUsd(totalSpend) : ',' },
             { label: `A/B tests`,                 value: String(abCount) },
           ].map((s, i) => (
             <div key={i} className={cn('px-[18px] py-[14px]', i < 4 && 'border-r border-border')}>
@@ -342,17 +342,17 @@ export default function DemoPromptsPage() {
 
                 {/* Calls */}
                 <span className={cn(p.stats && p.stats.calls > 0 ? 'text-text' : 'text-text-faint')}>
-                  {p.stats?.calls ? p.stats.calls.toLocaleString() : '—'}
+                  {p.stats?.calls ? p.stats.calls.toLocaleString() : ','}
                 </span>
 
                 {/* Avg cost */}
                 <span className={cn(p.stats?.avgCostUsd != null ? 'text-text' : 'text-text-faint')}>
-                  {p.stats?.avgCostUsd != null ? fmtUsd(p.stats.avgCostUsd) : '—'}
+                  {p.stats?.avgCostUsd != null ? fmtUsd(p.stats.avgCostUsd) : ','}
                 </span>
 
                 {/* Avg latency */}
                 <span className={cn(p.stats?.avgLatencyMs != null ? 'text-text' : 'text-text-faint')}>
-                  {p.stats?.avgLatencyMs != null ? fmtMs(p.stats.avgLatencyMs) : '—'}
+                  {p.stats?.avgLatencyMs != null ? fmtMs(p.stats.avgLatencyMs) : ','}
                 </span>
 
                 {/* Quality score */}
@@ -366,7 +366,7 @@ export default function DemoPromptsPage() {
                       A/B
                     </span>
                   ) : (
-                    <span className="text-text-faint">—</span>
+                    <span className="text-text-faint">,</span>
                   )}
                 </span>
 

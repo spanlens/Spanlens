@@ -29,7 +29,7 @@ export default function SelfHostDocs() {
           <a href="https://supabase.com" target="_blank" rel="noopener noreferrer">
             supabase.com
           </a>{' '}
-          is enough to start. <strong>Plain Postgres is not supported</strong> — the server
+          is enough to start. <strong>Plain Postgres is not supported</strong>, the server
           uses <code>@supabase/supabase-js</code> directly.
         </li>
         <li>
@@ -49,7 +49,7 @@ export default function SelfHostDocs() {
 
       <h2 id="quickstart">Walkthrough</h2>
 
-      <h3>Option A — docker-compose (recommended)</h3>
+      <h3>Option A, docker-compose (recommended)</h3>
       <p>
         The easiest way to self-host. Pulls pre-built images from GHCR and runs both the{' '}
         <strong>dashboard (web)</strong> and the <strong>proxy / API server</strong> together.
@@ -82,10 +82,10 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...
 SUPABASE_URL=https://<ref>.supabase.co
 SUPABASE_ANON_KEY=eyJ...
 SUPABASE_SERVICE_ROLE_KEY=eyJ...          # keep server-side only
-ENCRYPTION_KEY=$(openssl rand -base64 32) # back this up — see below
+ENCRYPTION_KEY=$(openssl rand -base64 32) # back this up, see below
 CRON_SECRET=$(openssl rand -hex 16)
 
-# ClickHouse — request logs are stored here, NOT Supabase
+# ClickHouse, request logs are stored here, NOT Supabase
 # The bundled docker-compose ships a clickhouse container; these defaults
 # match it. Point at ClickHouse Cloud (or any managed ClickHouse) for prod.
 CLICKHOUSE_URL=http://clickhouse:8123
@@ -93,7 +93,7 @@ CLICKHOUSE_USER=spanlens
 CLICKHOUSE_PASSWORD=$(openssl rand -hex 16)
 CLICKHOUSE_DB=spanlens
 
-# Optional — for invite emails
+# Optional, for invite emails
 # WEB_URL=https://your-domain.com
 # RESEND_API_KEY=re_...
 # RESEND_FROM=Spanlens <no-reply@your-domain.com>`}</CodeBlock>
@@ -110,7 +110,7 @@ docker compose up -d`}</CodeBlock>
         Three containers come up: <code>web</code>, <code>server</code>, and{' '}
         <code>clickhouse</code>. The server waits for ClickHouse&apos;s healthcheck before
         accepting traffic. The web container reads <code>NEXT_PUBLIC_*</code> from env at
-        startup and patches them into the pre-built bundle automatically — no rebuild needed.
+        startup and patches them into the pre-built bundle automatically, no rebuild needed.
       </p>
 
       <h4>4. Apply the ClickHouse schema</h4>
@@ -121,12 +121,12 @@ docker compose up -d`}</CodeBlock>
       <CodeBlock language="bash">{`# Clone or fetch the migrations folder
 curl -L https://github.com/spanlens/Spanlens/archive/main.tar.gz | tar xz --strip-components=1 spanlens-main/clickhouse
 
-# Apply (idempotent — re-running is safe)
+# Apply (idempotent, re-running is safe)
 CLICKHOUSE_URL=http://localhost:8123 \\
 CLICKHOUSE_USER=spanlens CLICKHOUSE_PASSWORD=<password> CLICKHOUSE_DB=spanlens \\
   npx -y tsx clickhouse/apply.ts`}</CodeBlock>
 
-      <h3>Option B — server only</h3>
+      <h3>Option B, server only</h3>
       <p>
         If you run the dashboard separately (at{' '}
         <a href="https://spanlens.io">spanlens.io</a> or your own Next.js deployment), you can
@@ -147,7 +147,7 @@ CLICKHOUSE_USER=spanlens CLICKHOUSE_PASSWORD=<password> CLICKHOUSE_DB=spanlens \
 
       <h4>2. Apply the schema</h4>
       <p>
-        Same as Option A step 1 — open <strong>SQL Editor → New query</strong>, paste{' '}
+        Same as Option A step 1, open <strong>SQL Editor → New query</strong>, paste{' '}
         <a
           href="https://raw.githubusercontent.com/spanlens/Spanlens/main/supabase/init.sql"
           target="_blank"
@@ -164,14 +164,14 @@ CLICKHOUSE_USER=spanlens CLICKHOUSE_PASSWORD=<password> CLICKHOUSE_DB=spanlens \
       </p>
       <ul>
         <li>
-          <strong>ClickHouse Cloud</strong> (recommended for production) — sign up at{' '}
+          <strong>ClickHouse Cloud</strong> (recommended for production), sign up at{' '}
           <a href="https://clickhouse.cloud" target="_blank" rel="noopener noreferrer">
             clickhouse.cloud
           </a>
           , create a service, copy the HTTPS endpoint + credentials.
         </li>
         <li>
-          <strong>Self-hosted ClickHouse</strong> — run{' '}
+          <strong>Self-hosted ClickHouse</strong>, run{' '}
           <code>clickhouse/clickhouse-server:24.10-alpine</code> with persistent volumes (see
           the bundled <code>docker-compose.yml</code> for the canonical setup).
         </li>
@@ -201,7 +201,7 @@ CLICKHOUSE_USER=default CLICKHOUSE_PASSWORD=<password> CLICKHOUSE_DB=spanlens \\
 
       <h4>4. Point your SDK at the self-hosted proxy</h4>
       <p>
-        <strong>Option 1 — CLI wizard</strong> (automates the step below):
+        <strong>Option 1, CLI wizard</strong> (automates the step below):
       </p>
       <CodeBlock language="bash">{`npx @spanlens/cli@latest init --server-url https://spanlens.yourcompany.com`}</CodeBlock>
       <p className="text-sm text-muted-foreground">
@@ -210,7 +210,7 @@ CLICKHOUSE_USER=default CLICKHOUSE_PASSWORD=<password> CLICKHOUSE_DB=spanlens \\
         <code>SPANLENS_BASE_URL</code> to <code>.env.local</code> automatically.
       </p>
       <p>
-        <strong>Option 2 — manual</strong>:
+        <strong>Option 2, manual</strong>:
       </p>
       <CodeBlock language="ts">{`import { createOpenAI } from '@spanlens/sdk/openai'
 
@@ -236,12 +236,12 @@ const openai = createOpenAI({
           <tr>
             <td><code>SUPABASE_SERVICE_ROLE_KEY</code></td>
             <td>Yes</td>
-            <td>Service role key — used by the server to write to Supabase past RLS (orgs, projects, traces, etc.)</td>
+            <td>Service role key, used by the server to write to Supabase past RLS (orgs, projects, traces, etc.)</td>
           </tr>
           <tr>
             <td><code>SUPABASE_ANON_KEY</code></td>
             <td>Yes</td>
-            <td>Anon key — used for RLS-protected reads from dashboard queries</td>
+            <td>Anon key, used for RLS-protected reads from dashboard queries</td>
           </tr>
           <tr>
             <td><code>CLICKHOUSE_URL</code></td>
@@ -275,12 +275,12 @@ const openai = createOpenAI({
           <tr>
             <td><code>NEXT_PUBLIC_SUPABASE_URL</code></td>
             <td>Yes (web only)</td>
-            <td>Same as <code>SUPABASE_URL</code> — exposed to the browser for Supabase Auth</td>
+            <td>Same as <code>SUPABASE_URL</code>, exposed to the browser for Supabase Auth</td>
           </tr>
           <tr>
             <td><code>NEXT_PUBLIC_SUPABASE_ANON_KEY</code></td>
             <td>Yes (web only)</td>
-            <td>Same as <code>SUPABASE_ANON_KEY</code> — exposed to the browser for Supabase Auth</td>
+            <td>Same as <code>SUPABASE_ANON_KEY</code>, exposed to the browser for Supabase Auth</td>
           </tr>
           <tr>
             <td><code>WEB_URL</code></td>
@@ -288,7 +288,7 @@ const openai = createOpenAI({
             <td>
               Base URL of your dashboard (e.g. <code>https://spanlens.example.com</code>).
               Used to build the accept link in invitation emails. Falls back to{' '}
-              <code>http://localhost:3000</code> if unset — fine for local dev,
+              <code>http://localhost:3000</code> if unset, fine for local dev,
               broken in production.
             </td>
           </tr>
@@ -322,7 +322,7 @@ const openai = createOpenAI({
 docker compose pull && docker compose up -d
 
 # If a new release added migrations, re-run init.sql in SQL Editor
-# (all statements use CREATE IF NOT EXISTS / ALTER IF NOT EXISTS — safe to re-run)`}</CodeBlock>
+# (all statements use CREATE IF NOT EXISTS / ALTER IF NOT EXISTS, safe to re-run)`}</CodeBlock>
       <p>
         We ship semver tags (<code>ghcr.io/spanlens/spanlens-server:0.3.0</code>,{' '}
         <code>ghcr.io/spanlens/spanlens-web:0.3.0</code>). Pin a tag in production and upgrade
@@ -331,7 +331,7 @@ docker compose pull && docker compose up -d
       <p>
         <strong>Supported architectures.</strong> Both images are published as
         multi-arch manifests for <code>linux/amd64</code> and <code>linux/arm64</code>{' '}
-        — Docker pulls the right variant for your host automatically. M1 / M2 / M3
+       , Docker pulls the right variant for your host automatically. M1 / M2 / M3
         Macs and AWS Graviton instances run the native ARM binary; x86 hosts run
         the amd64 binary. No platform flag needed.
       </p>
@@ -339,7 +339,7 @@ docker compose pull && docker compose up -d
       <h2 id="dashboard">Dashboard options</h2>
       <ul>
         <li>
-          <strong>docker-compose (recommended)</strong> — pulls{' '}
+          <strong>docker-compose (recommended)</strong>, pulls{' '}
           <code>ghcr.io/spanlens/spanlens-web:latest</code> alongside the server. Full
           self-hosting with no source required. See <a href="#quickstart">Option A</a> above.
         </li>
@@ -349,7 +349,7 @@ docker compose pull && docker compose up -d
           <a href="/settings">Settings</a>.
         </li>
         <li>
-          <strong>Build from source</strong> — clone the repo and{' '}
+          <strong>Build from source</strong>, clone the repo and{' '}
           <code>docker compose up -d --build</code> to build both images locally.
         </li>
       </ul>
@@ -360,30 +360,30 @@ docker compose pull && docker compose up -d
       </p>
       <ul>
         <li>
-          <strong>Supabase Postgres</strong> — holds the transactional crown jewels (orgs,
+          <strong>Supabase Postgres</strong>, holds the transactional crown jewels (orgs,
           projects, provider keys, subscriptions, prompts, evals, traces). Standard{' '}
           <code>pg_dump</code> against your Supabase DB covers you. Catastrophic if lost.
         </li>
         <li>
-          <strong>ClickHouse</strong> — holds request logs only. Append-only telemetry. Options
+          <strong>ClickHouse</strong>, holds request logs only. Append-only telemetry. Options
           in order of effort:
           <ol>
             <li>
-              <strong>ClickHouse Cloud automatic backups</strong> (1-day RPO, same region) — set
+              <strong>ClickHouse Cloud automatic backups</strong> (1-day RPO, same region), set
               and forget.
             </li>
             <li>
-              <strong>BACKUP TO S3</strong> on a schedule — <code>BACKUP TABLE requests TO
+              <strong>BACKUP TO S3</strong> on a schedule, <code>BACKUP TABLE requests TO
               S3(&apos;s3://bucket/path&apos;)</code>.
             </li>
             <li>
-              <strong>Accept the loss</strong> — historical logs are observability, not
+              <strong>Accept the loss</strong>, historical logs are observability, not
               source-of-truth. Loss costs you the past N days of dashboards, not customer trust.
             </li>
           </ol>
         </li>
         <li>
-          <strong>ENCRYPTION_KEY</strong> (outside any DB) — back this up in your secret
+          <strong>ENCRYPTION_KEY</strong> (outside any DB), back this up in your secret
           manager (AWS Secrets Manager, GCP Secret Manager, HashiCorp Vault). Without it,
           encrypted provider keys are unrecoverable.
         </li>
@@ -399,7 +399,7 @@ docker compose pull && docker compose up -d
         <li>
           <strong>ClickHouse is required.</strong> The server&apos;s logger and analytics
           helpers all assume a reachable ClickHouse instance. A Postgres-only mode is not
-          provided — the dual-store architecture is intentional (OLAP workload, columnar
+          provided, the dual-store architecture is intentional (OLAP workload, columnar
           storage, faster aggregates).
         </li>
         <li>

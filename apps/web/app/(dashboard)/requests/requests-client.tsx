@@ -40,7 +40,7 @@ function relAge(dateStr: string): string {
 }
 
 function fmtCost(n: number | null): string {
-  if (n == null) return '—'
+  if (n == null) return ','
   return n < 0.001 ? '$' + n.toFixed(5) : '$' + n.toFixed(4)
 }
 
@@ -87,9 +87,9 @@ function StatStrip() {
   const anomalyCount = (anomalies.data?.data ?? []).length
 
   const stats = [
-    { label: 'Requests · 24h', value: o ? o.totalRequests.toLocaleString() : '—', spark: sparkReqs, warn: false, good: false },
-    { label: 'Avg latency', value: o ? `${o.avgLatencyMs}ms` : '—', spark: [], warn: o ? o.avgLatencyMs > 1000 : false, good: false },
-    { label: 'Spend · 24h', value: o ? '$' + o.totalCostUsd.toFixed(2) : '—', spark: sparkCost, warn: false, good: true },
+    { label: 'Requests · 24h', value: o ? o.totalRequests.toLocaleString() : ',', spark: sparkReqs, warn: false, good: false },
+    { label: 'Avg latency', value: o ? `${o.avgLatencyMs}ms` : ',', spark: [], warn: o ? o.avgLatencyMs > 1000 : false, good: false },
+    { label: 'Spend · 24h', value: o ? '$' + o.totalCostUsd.toFixed(2) : ',', spark: sparkCost, warn: false, good: true },
     { label: 'Error rate', value: errorRateStr, spark: sparkErrors, warn: errorRatePct > 1, good: false },
     { label: 'Anomalies', value: anomalyCount.toString(), spark: [], warn: anomalyCount > 0, good: false },
   ]
@@ -149,7 +149,7 @@ function TrafficBars() {
   const labels = useMemo(() => {
     const pts = (rawTs ?? []).slice(-30)
     const first = pts[0]
-    if (!pts.length || !first) return ['—', '—', '—', '—', 'NOW']
+    if (!pts.length || !first) return [',', ',', ',', ',', 'NOW']
     const fmt = (s: string) => new Date(s).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
     return [
       fmt(first.date),
@@ -341,7 +341,7 @@ function RequestDrawer({ requestId, visible, onClose, onPrev, onNext, hasPrev, h
             </div>
           ))}
 
-          {/* User — clickable analytics + filter link */}
+          {/* User, clickable analytics + filter link */}
           {req.user_id && (
             <div>
               <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-0.5">User</div>
@@ -364,7 +364,7 @@ function RequestDrawer({ requestId, visible, onClose, onPrev, onNext, hasPrev, h
             </div>
           )}
 
-          {/* Session — clickable filter link */}
+          {/* Session, clickable filter link */}
           {req.session_id && (
             <div>
               <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-0.5">Session</div>
@@ -378,7 +378,7 @@ function RequestDrawer({ requestId, visible, onClose, onPrev, onNext, hasPrev, h
             </div>
           )}
 
-          {/* Trace — link to trace page + copy full ID */}
+          {/* Trace, link to trace page + copy full ID */}
           <div>
             <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-0.5">Trace</div>
             {req.trace_id ? (
@@ -392,11 +392,11 @@ function RequestDrawer({ requestId, visible, onClose, onPrev, onNext, hasPrev, h
                 <CopyButton getText={() => req.trace_id!} />
               </div>
             ) : (
-              <div className="font-mono text-[12.5px] text-text">—</div>
+              <div className="font-mono text-[12.5px] text-text">,</div>
             )}
           </div>
 
-          {/* Span — copy full ID */}
+          {/* Span, copy full ID */}
           <div>
             <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-0.5">Span</div>
             {req.span_id ? (
@@ -405,7 +405,7 @@ function RequestDrawer({ requestId, visible, onClose, onPrev, onNext, hasPrev, h
                 <CopyButton getText={() => req.span_id!} />
               </div>
             ) : (
-              <div className="font-mono text-[12.5px] text-text">—</div>
+              <div className="font-mono text-[12.5px] text-text">,</div>
             )}
           </div>
         </div>
@@ -479,7 +479,7 @@ function RequestDrawer({ requestId, visible, onClose, onPrev, onNext, hasPrev, h
         ) : tab === 'response' ? (
           req.response_body == null ? (
             <p className="font-mono text-[11.5px] text-text-faint leading-relaxed">
-              Response body is not stored — the proxy streams the response directly to your application without buffering it.<br /><br />
+              Response body is not stored, the proxy streams the response directly to your application without buffering it.<br /><br />
               Full response capture is planned for a future release.
             </p>
           ) : (
@@ -561,7 +561,7 @@ function TraceTab({ traceId }: { traceId: string | null }) {
         ))}
         {trace.spans.length > 8 && (
           <div className="px-3 py-2 font-mono text-[10.5px] text-text-faint">
-            + {trace.spans.length - 8} more — open the full trace to see them all
+            + {trace.spans.length - 8} more, open the full trace to see them all
           </div>
         )}
       </div>
@@ -793,7 +793,7 @@ function RequestsTable({
                     {req.truncated && (
                       <span
                         className="shrink-0 px-1.5 py-px text-[10px] uppercase tracking-wide rounded bg-accent/10 text-accent border border-accent/30"
-                        title="Stream closed early — request approached the Spanlens proxy deadline"
+                        title="Stream closed early, request approached the Spanlens proxy deadline"
                       >
                         truncated
                       </span>
@@ -971,7 +971,7 @@ export function RequestsClient() {
       <StatStrip />
       <TrafficBars />
 
-      {/* Active URL filter banner — shown when ?promptVersionId / ?userId / ?sessionId
+      {/* Active URL filter banner, shown when ?promptVersionId / ?userId / ?sessionId
          is present in the URL. Click × to clear and return to unfiltered view. */}
       {(promptVersionId || userIdFilter || sessionIdFilter) && (
         <div className="flex items-center gap-2 px-[22px] py-[8px] bg-accent-bg border-b border-accent-border font-mono text-[11px] flex-wrap">
@@ -1051,7 +1051,7 @@ export function RequestsClient() {
           <option value="azure">azure</option>
         </select>
 
-        {/* Model input — debounced, applies 300ms after last keystroke */}
+        {/* Model input, debounced, applies 300ms after last keystroke */}
         <input
           type="text"
           placeholder="Model…"

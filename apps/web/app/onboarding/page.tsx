@@ -220,7 +220,7 @@ export default function OnboardingPage() {
           <div>
             <h1 className="text-[22px] font-medium tracking-[-0.4px] mb-1.5">Tell us about your project</h1>
             <p className="text-[13px] text-text-muted mb-5 leading-relaxed">
-              Helps us prioritize what to build. Both questions are optional — feel free to skip.
+              Helps us prioritize what to build. Both questions are optional, feel free to skip.
             </p>
 
             <div className="space-y-5">

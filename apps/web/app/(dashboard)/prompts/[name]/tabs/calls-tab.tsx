@@ -12,7 +12,7 @@ type DateRange = '7d' | '30d' | '90d'
 const HOURS: Record<DateRange, number> = { '7d': 24 * 7, '30d': 24 * 30, '90d': 24 * 90 }
 
 function fmtMs(v: number): string {
-  if (v === 0) return '—'
+  if (v === 0) return ','
   if (v >= 1000) return `${(v / 1000).toFixed(2)}s`
   return `${Math.round(v)}ms`
 }
@@ -74,7 +74,7 @@ export function CallsTab({ name }: Props) {
                 { label: 'Total errors', value: String(totalErrors), bad: totalErrors > 0 },
                 { label: 'Avg tokens',   value: (() => {
                   const wt = metrics.reduce((s, m) => s + m.sampleCount, 0)
-                  if (wt === 0) return '—'
+                  if (wt === 0) return ','
                   const avg = metrics.reduce((s, m) => s + (m.avgPromptTokens + m.avgCompletionTokens) * m.sampleCount, 0) / wt
                   return Math.round(avg).toLocaleString()
                 })() },
@@ -133,14 +133,14 @@ export function CallsTab({ name }: Props) {
                     )}
                     title={m.qualitySampleCount > 0 ? `${m.qualitySampleCount} eval samples` : 'No evals run'}
                   >
-                    {m.avgQualityScore == null ? '—' : (m.avgQualityScore * 100).toFixed(0)}
+                    {m.avgQualityScore == null ? ',' : (m.avgQualityScore * 100).toFixed(0)}
                   </span>
                   <span className="text-right font-mono text-[12px] text-text-muted">{fmtUsd(m.avgCostUsd)}</span>
                   <span className="text-right font-mono text-[12px] text-text-muted">
-                    {m.avgPromptTokens > 0 ? Math.round(m.avgPromptTokens).toLocaleString() : '—'}
+                    {m.avgPromptTokens > 0 ? Math.round(m.avgPromptTokens).toLocaleString() : ','}
                   </span>
                   <span className="text-right font-mono text-[12px] text-text-muted">
-                    {m.avgCompletionTokens > 0 ? Math.round(m.avgCompletionTokens).toLocaleString() : '—'}
+                    {m.avgCompletionTokens > 0 ? Math.round(m.avgCompletionTokens).toLocaleString() : ','}
                   </span>
                 </Link>
               ))}

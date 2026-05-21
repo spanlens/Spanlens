@@ -20,7 +20,7 @@ export default function OtelDocs() {
         >
           gen_ai semantic conventions
         </a>
-        . No code rewrite required — configure your existing OTel exporter and spans flow
+        . No code rewrite required, configure your existing OTel exporter and spans flow
         directly into the waterfall dashboard.
       </p>
 
@@ -38,7 +38,7 @@ Authorization: Bearer sl_live_<your-key>`}</CodeBlock>
         Use your Spanlens project API key (<code>sl_live_…</code>) as a Bearer token.
         Most OTel SDKs let you inject custom headers into the exporter:
       </p>
-      <CodeBlock language="python">{`# Python — opentelemetry-exporter-otlp-proto-http
+      <CodeBlock language="python">{`# Python, opentelemetry-exporter-otlp-proto-http
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 
 exporter = OTLPSpanExporter(
@@ -131,7 +131,7 @@ exporter = OTLPSpanExporter(
         </tbody>
       </table>
 
-      <h2>Quick start — Python (opentelemetry-sdk)</h2>
+      <h2>Quick start, Python (opentelemetry-sdk)</h2>
       <CodeBlock language="python">{`from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
@@ -160,7 +160,7 @@ with tracer.start_as_current_span("answer-question") as span:
     # ... call your LLM here
 `}</CodeBlock>
 
-      <h2>Quick start — Python with openai-agents SDK</h2>
+      <h2>Quick start, Python with openai-agents SDK</h2>
       <p>
         The{' '}
         <a
@@ -183,7 +183,7 @@ set_trace_processor(
 )
 `}</CodeBlock>
 
-      <h2>Quick start — Node.js</h2>
+      <h2>Quick start, Node.js</h2>
       <CodeBlock language="ts">{`import { NodeSDK } from '@opentelemetry/sdk-node'
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http'
 
@@ -230,7 +230,7 @@ sdk.start()
           <tr>
             <td>415</td>
             <td><code>{`{"error":"..."}`}</code></td>
-            <td>Protobuf encoding not supported — use <code>application/json</code></td>
+            <td>Protobuf encoding not supported, use <code>application/json</code></td>
           </tr>
         </tbody>
       </table>
@@ -239,7 +239,7 @@ sdk.start()
       <ul>
         <li>
           <strong>Trace IDs are external.</strong> OTel trace IDs (32-char hex) are stored separately
-          from Spanlens&apos; internal UUIDs. Duplicate exports of the same OTel trace are idempotent —
+          from Spanlens&apos; internal UUIDs. Duplicate exports of the same OTel trace are idempotent ,
           the trace row is upserted on <code>(organization_id, external_trace_id)</code>.
         </li>
         <li>
@@ -251,7 +251,7 @@ sdk.start()
         <li>
           <strong>Cost calculation.</strong> If <code>gen_ai.provider.name</code> and{' '}
           <code>gen_ai.request.model</code> match a known entry in Spanlens&apos; model price
-          table, cost is calculated automatically — no extra configuration required.
+          table, cost is calculated automatically, no extra configuration required.
         </li>
         <li>
           <strong>Protobuf not supported.</strong> Configure your OTel SDK to use HTTP/JSON

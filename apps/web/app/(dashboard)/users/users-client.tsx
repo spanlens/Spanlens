@@ -18,7 +18,7 @@ type SortDir = 'asc' | 'desc'
 const PAGE_SIZE = 50
 
 function fmtCost(n: number | null | undefined): string {
-  if (n == null) return '—'
+  if (n == null) return ','
   if (n === 0) return '$0.00'
   return n < 0.01 ? '< $0.01' : '$' + n.toFixed(2)
 }
@@ -145,7 +145,7 @@ export function UsersClient() {
 
       {/* Filter bar */}
       {/* key={search} remounts the form so the local input resets when URL
-          search changes (e.g. back/forward navigation) — no setState-in-effect. */}
+          search changes (e.g. back/forward navigation), no setState-in-effect. */}
       <SearchForm
         key={search}
         initialSearch={search}
@@ -220,7 +220,7 @@ export function UsersClient() {
                 <span className="text-text-muted">{fmtCount(u.total_tokens)}</span>
                 <span>{fmtCost(u.total_cost_usd ? Number(u.total_cost_usd) : null)}</span>
                 <span className="text-text-muted">
-                  {u.avg_latency_ms != null ? `${Math.round(Number(u.avg_latency_ms))}ms` : '—'}
+                  {u.avg_latency_ms != null ? `${Math.round(Number(u.avg_latency_ms))}ms` : ','}
                 </span>
                 <span className="text-text-faint text-right" suppressHydrationWarning>{fmtRelativeTime(u.last_seen)}</span>
               </Link>

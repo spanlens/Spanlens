@@ -3,7 +3,7 @@ import { CodeBlock } from '../../_components/code-block'
 export const metadata = {
   title: 'Evals · Spanlens Docs',
   description:
-    'LLM-as-judge evaluation — automatically score production responses on a 0..1 scale and quantify quality per prompt version.',
+    'LLM-as-judge evaluation, automatically score production responses on a 0..1 scale and quantify quality per prompt version.',
 }
 
 export default function EvalsDocs() {
@@ -12,7 +12,7 @@ export default function EvalsDocs() {
       <h1>Evals</h1>
       <p className="lead">
         Automatically score production response quality using an LLM-as-judge. Cost and latency
-        are already measured — Evals adds quality to the picture so you can answer{' '}
+        are already measured, Evals adds quality to the picture so you can answer{' '}
         <em>did this prompt actually get better?</em>
       </p>
 
@@ -32,16 +32,16 @@ export default function EvalsDocs() {
       <h3>Define an evaluator</h3>
       <p>An evaluator is a reusable definition of <em>how to score responses</em>.</p>
       <ul>
-        <li><code>prompt_name</code> — which prompt this evaluator targets</li>
-        <li><code>name</code> — e.g. &quot;Helpfulness check&quot;</li>
-        <li><code>type</code> — <code>llm_judge</code> (the only type in this release)</li>
+        <li><code>prompt_name</code>, which prompt this evaluator targets</li>
+        <li><code>name</code>, e.g. &quot;Helpfulness check&quot;</li>
+        <li><code>type</code>, <code>llm_judge</code> (the only type in this release)</li>
         <li>
           <code>config</code>:
           <ul>
-            <li><code>criterion</code> — scoring criterion sentence</li>
-            <li><code>judge_provider</code> — <code>openai</code> / <code>anthropic</code></li>
-            <li><code>judge_model</code> — e.g. <code>gpt-4o-mini</code></li>
-            <li><code>scale_min</code>, <code>scale_max</code> — score range (normalized to 0..1 on save)</li>
+            <li><code>criterion</code>, scoring criterion sentence</li>
+            <li><code>judge_provider</code>, <code>openai</code> / <code>anthropic</code></li>
+            <li><code>judge_model</code>, e.g. <code>gpt-4o-mini</code></li>
+            <li><code>scale_min</code>, <code>scale_max</code>, score range (normalized to 0..1 on save)</li>
           </ul>
         </li>
       </ul>
@@ -114,13 +114,13 @@ export default function EvalsDocs() {
       <p>
         The <strong>Quality</strong> column in Prompts → a specific prompt → Calls sub-tab shows
         the average <code>eval_results</code> score from evaluators run on this page. Versions that
-        have never been evaluated show <code>—</code>.
+        have never been evaluated show <code>,</code>.
       </p>
       <p>Color thresholds:</p>
       <ul>
-        <li><strong>≥70</strong> — good (green)</li>
-        <li><strong>40–69</strong> — warn (yellow)</li>
-        <li><strong>&lt;40</strong> — bad (red)</li>
+        <li><strong>≥70</strong>, good (green)</li>
+        <li><strong>40–69</strong>, warn (yellow)</li>
+        <li><strong>&lt;40</strong>, bad (red)</li>
       </ul>
 
       <h2>LLM judge reliability</h2>
@@ -131,9 +131,9 @@ export default function EvalsDocs() {
         page.
       </p>
       <ul>
-        <li><strong>r ≥ 0.7</strong> — Strong (judge can be trusted)</li>
-        <li><strong>0.4 ≤ r &lt; 0.7</strong> — Moderate</li>
-        <li><strong>r &lt; 0.4</strong> — Revisit the criterion</li>
+        <li><strong>r ≥ 0.7</strong>, Strong (judge can be trusted)</li>
+        <li><strong>0.4 ≤ r &lt; 0.7</strong>, Moderate</li>
+        <li><strong>r &lt; 0.4</strong>, Revisit the criterion</li>
       </ul>
 
       <h2>Cost</h2>
@@ -188,7 +188,7 @@ export default function EvalsDocs() {
         </tbody>
       </table>
 
-      <h2>Example — create and run an evaluator</h2>
+      <h2>Example, create and run an evaluator</h2>
       <CodeBlock language="bash">{`# 1. Define the evaluator
 curl https://spanlens-server.vercel.app/api/v1/evaluators \\
   -H "Authorization: Bearer $SPANLENS_JWT" \\
@@ -238,7 +238,7 @@ curl https://spanlens-server.vercel.app/api/v1/eval-runs/<run-id> \\
           The UI shows this as &quot;47/50 scored&quot;.
         </li>
         <li>
-          <strong>The judge itself can be inaccurate.</strong> That&apos;s why Annotation exists —
+          <strong>The judge itself can be inaccurate.</strong> That&apos;s why Annotation exists ,
           use it to validate the judge&apos;s reliability before relying on the scores.
         </li>
       </ul>

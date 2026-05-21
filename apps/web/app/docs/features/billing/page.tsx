@@ -12,7 +12,7 @@ export default function BillingDocs() {
       <h1>Billing &amp; quotas</h1>
       <p className="lead">
         Spanlens pricing is designed to be predictable. You pay a flat monthly fee for your plan,
-        and if you go past your included request quota, you pay only for what you used — capped
+        and if you go past your included request quota, you pay only for what you used, capped
         at a multiple of your plan so you can&apos;t get a surprise bill.
       </p>
 
@@ -61,13 +61,13 @@ export default function BillingDocs() {
       </table>
       <p>
         A <strong>request</strong> is one LLM call that flows through the{' '}
-        <a href="/docs/features/requests">Spanlens proxy</a> — regardless of which provider
+        <a href="/docs/features/requests">Spanlens proxy</a>, regardless of which provider
         (OpenAI, Anthropic, Gemini) or model. Streaming and non-streaming both count as one
         request each. Failed requests that reached our proxy also count (so a 500 from upstream
         still uses one).
       </p>
       <p>
-        Counting is per UTC calendar month — your counter resets at 00:00 UTC on the 1st of
+        Counting is per UTC calendar month, your counter resets at 00:00 UTC on the 1st of
         every month. This is simpler than per-subscription-period billing and matches what the
         dashboard shows you.
       </p>
@@ -78,7 +78,7 @@ export default function BillingDocs() {
         hard cap. You stay in control.
       </p>
 
-      <h3>Free plan — hard block at 50,000</h3>
+      <h3>Free plan, hard block at 50,000</h3>
       <p>
         The 50,001st request returns HTTP <code>429 Too Many Requests</code> with a JSON body:
       </p>
@@ -92,7 +92,7 @@ export default function BillingDocs() {
 }`}</CodeBlock>
       <p>Requests resume at the next UTC month rollover, or when you upgrade.</p>
 
-      <h3>Paid plans — overage billing (default)</h3>
+      <h3>Paid plans, overage billing (default)</h3>
       <p>
         Pro and Team default to <em>allow overage</em>. When you pass your included quota,
         requests keep flowing and extra usage is billed on your next invoice. The response
@@ -104,15 +104,15 @@ export default function BillingDocs() {
         will be billed.
       </p>
 
-      <h3>Paid plans — with overage disabled</h3>
+      <h3>Paid plans, with overage disabled</h3>
       <p>
         If you flip <strong>Allow overage charges</strong> off in{' '}
-        <a href="/settings">/settings</a>, paid plans behave like Free — hard block at the
+        <a href="/settings">/settings</a>, paid plans behave like Free, hard block at the
         quota, returning <code>429</code> with <code>reason: &quot;overage_disabled&quot;</code>.
         Choose this when you want cost certainty above all else.
       </p>
 
-      <h3>Hard cap — safety ceiling</h3>
+      <h3>Hard cap, safety ceiling</h3>
       <p>
         Even with overage enabled, we never let usage run unbounded. Your{' '}
         <strong>hard cap</strong> is:
@@ -123,7 +123,7 @@ export default function BillingDocs() {
       <p>
         Requests past the hard cap return <code>429</code> with{' '}
         <code>reason: &quot;hard_cap&quot;</code>. You can raise or lower the multiplier (1–100)
-        in <a href="/settings">/settings</a> to match your risk tolerance — for example set it
+        in <a href="/settings">/settings</a> to match your risk tolerance, for example set it
         to <code>1</code> to never pay more than the base plan fee, or <code>10</code> to
         absorb a huge traffic spike.
       </p>
@@ -160,22 +160,22 @@ export default function BillingDocs() {
           <tr>
             <td>Enterprise</td>
             <td>Negotiated</td>
-            <td>Included or custom — contact sales</td>
+            <td>Included or custom, contact sales</td>
           </tr>
         </tbody>
       </table>
       <p>
-        Free plan has no overage rate — past 50K, it&apos;s a hard block. Upgrade to enable
+        Free plan has no overage rate, past 50K, it&apos;s a hard block. Upgrade to enable
         overage billing.
       </p>
 
       <h2 id="invoices">What your invoice looks like</h2>
       <p>
         Paddle generates one invoice per billing period. Overage from the prior period is
-        bundled into the next invoice as an additional line item — you get <strong>one email
+        bundled into the next invoice as an additional line item, you get <strong>one email
         per month</strong>, not one per charge:
       </p>
-      <CodeBlock language="text">{`Invoice — May 1, 2026
+      <CodeBlock language="text">{`Invoice, May 1, 2026
 
   Spanlens Pro Subscription                        $29.00
   Pro - Overage unit (per 100,000 requests) × 2    $16.00
@@ -191,18 +191,18 @@ export default function BillingDocs() {
       </p>
       <ul>
         <li>
-          <strong>80%</strong> — heads-up that you&apos;re approaching the limit. Message varies
+          <strong>80%</strong>, heads-up that you&apos;re approaching the limit. Message varies
           based on whether overage is on (&ldquo;overage will absorb the overflow&rdquo;) or off
           (&ldquo;extra requests will 429&rdquo;).
         </li>
         <li>
-          <strong>100%</strong> — with overage on: &ldquo;overage billing is now active, you&apos;ll
+          <strong>100%</strong>, with overage on: &ldquo;overage billing is now active, you&apos;ll
           be billed on the next invoice.&rdquo; With overage off: &ldquo;requests are being
           rejected.&rdquo;
         </li>
       </ul>
       <p>
-        Each threshold fires at most once per calendar month per org — no spam. See{' '}
+        Each threshold fires at most once per calendar month per org, no spam. See{' '}
         <a href="/docs/features/alerts">Alerts</a> for the counting semantics.
       </p>
 
@@ -210,7 +210,7 @@ export default function BillingDocs() {
 
       <h3>Can I change plans mid-month? Is it prorated?</h3>
       <p>
-        Yes — Paddle handles plan changes with automatic proration. Upgrading mid-month gives
+        Yes, Paddle handles plan changes with automatic proration. Upgrading mid-month gives
         you the new plan&apos;s higher quota immediately; the monthly fee difference is charged
         proportionally for the remainder of the period. Downgrading takes effect at the next
         period boundary.
@@ -233,7 +233,7 @@ export default function BillingDocs() {
 
       <h3>Do I pay for retries / failed requests?</h3>
       <p>
-        Yes — any request that reaches our proxy counts, regardless of the upstream response
+        Yes, any request that reaches our proxy counts, regardless of the upstream response
         code. A 500 from OpenAI still uses one request. Rationale: the proxy did the work
         (auth, logging, forwarding, response buffering) and we have no way to distinguish
         &ldquo;legitimate retry&rdquo; from &ldquo;duplicate because you have a bug.&rdquo;
@@ -241,14 +241,14 @@ export default function BillingDocs() {
 
       <h3>Do streaming requests count differently?</h3>
       <p>
-        No — one stream = one request. Token cost is captured accurately via our stream parser
+        No, one stream = one request. Token cost is captured accurately via our stream parser
         (see <a href="/docs/features/cost-tracking">Cost tracking</a>), but the request counter
         increments by 1.
       </p>
 
       <h3>What if I self-host?</h3>
       <p>
-        Self-hosted Spanlens has no billing — you pay your own infra costs. Plan quotas and
+        Self-hosted Spanlens has no billing, you pay your own infra costs. Plan quotas and
         overage logic only exist on the hosted service at{' '}
         <a href="https://www.spanlens.io">spanlens.io</a>. See{' '}
         <a href="/docs/self-host">self-hosting</a>.

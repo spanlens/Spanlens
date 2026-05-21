@@ -13,7 +13,7 @@ import { cn } from '@/lib/utils'
 
 function formatRelative(iso: string): string {
   const ms = new Date(iso).getTime()
-  if (Number.isNaN(ms)) return '—'
+  if (Number.isNaN(ms)) return ','
   const diff = (Date.now() - ms) / 1000
   if (diff < 0) return 'just now'
   if (diff < 60) return `${Math.floor(diff)}s ago`
@@ -111,10 +111,10 @@ export function SecurityClient() {
       <div className="overflow-x-auto shrink-0 border-b border-border">
         <div className="grid grid-cols-5 min-w-[480px]">
           {[
-            { label: 'Events · 24h',      value: statsReady ? String(totalHits) : '—',  warn: statsReady && totalHits > 0 },
-            { label: 'PII hits',          value: statsReady ? String(piiHits)  : '—',  warn: statsReady && piiHits > 0 },
-            { label: 'Injection attempts',value: statsReady ? String(injHits)  : '—',  warn: statsReady && injHits > 0 },
-            { label: 'Recent flagged',    value: flaggedReady ? String(flaggedTotal) : '—', warn: flaggedReady && flaggedTotal > 0 },
+            { label: 'Events · 24h',      value: statsReady ? String(totalHits) : ',',  warn: statsReady && totalHits > 0 },
+            { label: 'PII hits',          value: statsReady ? String(piiHits)  : ',',  warn: statsReady && piiHits > 0 },
+            { label: 'Injection attempts',value: statsReady ? String(injHits)  : ',',  warn: statsReady && injHits > 0 },
+            { label: 'Recent flagged',    value: flaggedReady ? String(flaggedTotal) : ',', warn: flaggedReady && flaggedTotal > 0 },
             { label: 'Detectors',         value: String(detectors.length),              warn: false },
           ].map((s) => (
             <div key={s.label} className={cn('px-[18px] py-[14px]', s.label !== 'Detectors' && 'border-r border-border')}>
@@ -152,7 +152,7 @@ export function SecurityClient() {
             <div className="border border-border rounded-[6px] px-[16px] py-[14px]">
               <div className="mb-[8px]">
                 <span className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint">
-                  Injection blocking — per project
+                  Injection blocking, per project
                 </span>
               </div>
               {settings.isLoading ? (
@@ -187,7 +187,7 @@ export function SecurityClient() {
                 </div>
               )}
               <p className="text-[11px] text-text-faint mt-[8px] leading-relaxed">
-                When ON, injection attempts return 422 — request never reaches the LLM.
+                When ON, injection attempts return 422, request never reaches the LLM.
               </p>
             </div>
           </div>
@@ -196,7 +196,7 @@ export function SecurityClient() {
         <div className="px-[22px] pt-[14px] pb-0">
           <div className="flex items-center justify-between mb-3">
             <span className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint">
-              Detectors — {detectors.length} active · flag-only (no blocking unless enabled above)
+              Detectors, {detectors.length} active · flag-only (no blocking unless enabled above)
             </span>
             <ExportDropdown
               filename="spanlens-security"
@@ -240,7 +240,7 @@ export function SecurityClient() {
                   </span>
                 </span>
                 <span className={cn('text-right', statsReady && d.hits24h > 0 ? 'text-accent font-medium' : 'text-text-faint')}>
-                  {statsReady ? d.hits24h : '—'}
+                  {statsReady ? d.hits24h : ','}
                 </span>
               </div>
             ))}
