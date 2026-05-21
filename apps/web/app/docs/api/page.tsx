@@ -132,17 +132,17 @@ export default function ApiReferencePage() {
           <tr><td>Exports</td><td><code>/api/v1/exports/*</code></td><td>JWT</td></tr>
           <tr><td>Members</td><td><code>/api/v1/organizations/:orgId/members</code></td><td>JWT (admin for writes)</td></tr>
           <tr><td>Invitations</td><td><code>/api/v1/organizations/:orgId/invitations</code></td><td>JWT (admin)</td></tr>
-          <tr><td>Proxy — OpenAI</td><td><code>/proxy/openai/v1/*</code></td><td>API key</td></tr>
-          <tr><td>Proxy — Anthropic</td><td><code>/proxy/anthropic/v1/*</code></td><td>API key</td></tr>
-          <tr><td>Proxy — Gemini</td><td><code>/proxy/gemini/v1/*</code></td><td>API key</td></tr>
-          <tr><td>Proxy — Azure OpenAI</td><td><code>/proxy/azure/*</code></td><td>API key</td></tr>
+          <tr><td>Proxy, OpenAI</td><td><code>/proxy/openai/v1/*</code></td><td>API key</td></tr>
+          <tr><td>Proxy, Anthropic</td><td><code>/proxy/anthropic/v1/*</code></td><td>API key</td></tr>
+          <tr><td>Proxy, Gemini</td><td><code>/proxy/gemini/v1/*</code></td><td>API key</td></tr>
+          <tr><td>Proxy, Azure OpenAI</td><td><code>/proxy/azure/*</code></td><td>API key</td></tr>
           <tr><td>SDK Ingest</td><td><code>/ingest/*</code></td><td>API key</td></tr>
         </tbody>
       </table>
 
       <p>
-        For the full interactive spec — request/response schemas, try-it-out,
-        example curl commands — open the{' '}
+        For the full interactive spec, request/response schemas, try-it-out,
+        example curl commands, open the{' '}
         <a href={swaggerUiUrl} target="_blank" rel="noopener noreferrer">
           Swagger UI
         </a>.

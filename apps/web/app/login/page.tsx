@@ -48,7 +48,7 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen bg-bg-elev grid grid-cols-2">
 
-      {/* ── Left pane — product proof ─────────────────────────────── */}
+      {/* ── Left pane, product proof ─────────────────────────────── */}
       <div className="bg-bg border-r border-border p-10 flex flex-col justify-between">
         <div>
           <LogoMark />
@@ -70,7 +70,7 @@ export default function LoginPage() {
         </div>
       </div>
 
-      {/* ── Right pane — form ────────────────────────────────────────── */}
+      {/* ── Right pane, form ────────────────────────────────────────── */}
       <div className="flex items-center justify-center p-10">
         <div className="w-[360px] max-w-full">
           <div className="mb-[22px]">

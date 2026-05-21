@@ -3,7 +3,7 @@ import { CodeBlock } from '../../_components/code-block'
 export const metadata = {
   title: 'Audit Logs · Spanlens Docs',
   description:
-    'Chronological record of every organization-level change — API key creation, provider key additions, member invitations, role changes, and billing plan switches.',
+    'Chronological record of every organization-level change, API key creation, provider key additions, member invitations, role changes, and billing plan switches.',
 }
 
 export default function AuditLogsDocs() {
@@ -12,7 +12,7 @@ export default function AuditLogsDocs() {
       <h1>Audit Logs</h1>
       <p className="lead">
         Spanlens records every significant action within your organization. Track who changed what
-        and when — API key creation, provider key additions, member invitations, role changes, and
+        and when, API key creation, provider key additions, member invitations, role changes, and
         plan switches. View the log directly in Settings → <strong>Audit log</strong> or query it
         via the REST API to feed into an external SIEM or compliance tool.
       </p>

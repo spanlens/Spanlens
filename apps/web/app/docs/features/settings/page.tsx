@@ -29,12 +29,12 @@ export default function SettingsDocs() {
       <ol>
         <li>
           <strong>Your real keys never ship to the client.</strong> Frontend code, mobile apps,
-          anywhere — none of them need the sensitive provider key. They only need your
+          anywhere, none of them need the sensitive provider key. They only need your
           revocable Spanlens key.
         </li>
         <li>
           <strong>Centralized rotation.</strong> Replace the underlying provider key with the
-          pencil icon on its card in <a href="/projects">/projects</a> — all your services pick
+          pencil icon on its card in <a href="/projects">/projects</a>, all your services pick
           it up next request. Your <code>sl_live_…</code> stays the same. No redeploys.
         </li>
       </ol>
@@ -43,7 +43,7 @@ export default function SettingsDocs() {
       <p>
         Each <strong>Spanlens key</strong> owns its own pool of provider keys. So two
         Spanlens keys in the same project can carry different OpenAI / Anthropic / Gemini
-        credentials — useful for dev/prod splits or per-team accounting where the same
+        credentials, useful for dev/prod splits or per-team accounting where the same
         provider key shouldn&apos;t be shared.
       </p>
       <ul>
@@ -58,7 +58,7 @@ export default function SettingsDocs() {
           with the same 400.
         </li>
         <li>
-          Provider keys are uniquely active per <code>(spanlens_key, provider)</code> — only
+          Provider keys are uniquely active per <code>(spanlens_key, provider)</code>, only
           one OpenAI key per Spanlens key can be active at a time. Add a second OpenAI key
           when you want to rotate, then deactivate the old one.
         </li>
@@ -69,7 +69,7 @@ export default function SettingsDocs() {
       <h3>Storage flow</h3>
       <ol>
         <li>
-          You add a provider key to a Spanlens key in <a href="/projects">/projects</a> — click{' '}
+          You add a provider key to a Spanlens key in <a href="/projects">/projects</a>, click{' '}
           <em>+ Add provider key</em> next to the Spanlens key, pick the provider, paste your
           real <code>sk-…</code> / <code>sk-ant-…</code> / <code>AIza…</code> key
         </li>
@@ -135,7 +135,7 @@ export default function SettingsDocs() {
         </li>
         <li>
           <strong>Nonce-misuse awareness.</strong> One fresh IV per key ensures no two
-          ciphertexts share a keystream. (Reusing an IV with GCM is catastrophic — we
+          ciphertexts share a keystream. (Reusing an IV with GCM is catastrophic, we
           don&apos;t.)
         </li>
         <li>
@@ -154,7 +154,7 @@ export default function SettingsDocs() {
           <strong>Self-host</strong>: you generate it yourself (
           <code>openssl rand -base64 32</code>) and set it on the container.{' '}
           <strong>Back it up.</strong> Losing the encryption key makes every stored provider
-          key unrecoverable — you&apos;d need to re-register them all.
+          key unrecoverable, you&apos;d need to re-register them all.
         </li>
       </ul>
 
@@ -162,7 +162,7 @@ export default function SettingsDocs() {
 
       <h3>Dashboard</h3>
       <p>
-        Open <a href="/projects">/projects</a>. The flow is two steps — issue a Spanlens key,
+        Open <a href="/projects">/projects</a>. The flow is two steps, issue a Spanlens key,
         then attach provider keys to it.
       </p>
       <ol>
@@ -177,7 +177,7 @@ export default function SettingsDocs() {
         </li>
         <li>
           After saving, the dialog flips to a success view showing the exact integration
-          snippet for that provider — <code>createOpenAI()</code> /{' '}
+          snippet for that provider, <code>createOpenAI()</code> /{' '}
           <code>createAnthropic()</code> / <code>createGemini()</code>. Copy it into your
           codebase. No CLI re-run needed; the same <code>SPANLENS_API_KEY</code> already covers
           the new provider.
@@ -188,7 +188,7 @@ export default function SettingsDocs() {
       <p>
         Each provider key row has a pencil icon. Click it, paste the new{' '}
         <code>sk-…</code> / <code>sk-ant-…</code> / <code>AIza…</code> value, save. Your{' '}
-        <code>sl_live_…</code> Spanlens key and all deployed code stay unchanged — Spanlens
+        <code>sl_live_…</code> Spanlens key and all deployed code stay unchanged, Spanlens
         silently swaps the underlying credential on the next request.
       </p>
 

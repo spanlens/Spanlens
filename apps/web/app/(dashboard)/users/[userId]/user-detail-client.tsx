@@ -10,7 +10,7 @@ import { useUserDetail } from '@/lib/queries/use-users'
 // PostHog provider lands on main (separate PR).
 
 function fmtCost(n: number | null | undefined): string {
-  if (n == null) return '—'
+  if (n == null) return ','
   return '$' + Number(n).toFixed(6)
 }
 
@@ -61,7 +61,7 @@ export function UserDetailClient({ userId }: { userId: string }) {
     { label: 'Total cost', value: fmtCost(data.total_cost_usd ? Number(data.total_cost_usd) : null) },
     {
       label: 'Avg latency',
-      value: data.avg_latency_ms != null ? `${Math.round(Number(data.avg_latency_ms))} ms` : '—',
+      value: data.avg_latency_ms != null ? `${Math.round(Number(data.avg_latency_ms))} ms` : ',',
     },
     { label: 'Error count', value: fmtCount(data.error_requests), warn: data.error_requests > 0 },
     { label: 'Distinct models', value: fmtCount(data.distinct_models) },

@@ -9,11 +9,11 @@ import { DEMO_EXPERIMENTS } from '@/lib/demo-data'
 import type { Experiment, ExperimentStatus } from '@/lib/queries/use-experiments'
 
 function fmtUsd(n: number | null | undefined): string {
-  if (n == null) return '—'
+  if (n == null) return ','
   return n >= 0.01 ? `$${n.toFixed(3)}` : `$${n.toFixed(5)}`
 }
 function fmtScore(n: number | null | undefined): string {
-  return n == null ? '—' : (n * 100).toFixed(1)
+  return n == null ? ',' : (n * 100).toFixed(1)
 }
 
 function StatusBadge({ status }: { status: ExperimentStatus }) {
@@ -60,7 +60,7 @@ function ExperimentRow({ exp }: { exp: Experiment }) {
         'font-mono text-[12px] w-[80px] text-right',
         delta == null ? 'text-text-faint' : delta > 0 ? 'text-good' : delta < 0 ? 'text-bad' : 'text-text-muted',
       )}>
-        {delta == null ? '—' : (delta > 0 ? '+' : '') + (delta * 100).toFixed(1)}
+        {delta == null ? ',' : (delta > 0 ? '+' : '') + (delta * 100).toFixed(1)}
       </div>
       <div className="font-mono text-[11px] text-text-faint w-[80px] text-right">
         {fmtUsd(exp.total_cost_usd)}
@@ -78,7 +78,7 @@ export default function DemoExperimentsPage() {
         right={
           <button
             type="button"
-            onClick={() => alert('Creating experiments — sign up to use this')}
+            onClick={() => alert('Creating experiments, sign up to use this')}
             className="font-mono text-[11.5px] px-3 py-[6px] rounded-[5px] bg-text text-bg font-medium hover:opacity-90 flex items-center gap-1.5"
           >
             <Plus className="h-3.5 w-3.5" />

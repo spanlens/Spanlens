@@ -12,7 +12,7 @@ export default function WebhooksDocs() {
       <h1>Webhooks</h1>
       <p className="lead">
         Deliver Spanlens events to your own server as HTTP POST payloads in real time. Three event
-        types are supported — request created, trace completed, and alert triggered — all signed with
+        types are supported, request created, trace completed, and alert triggered, all signed with
         HMAC-SHA256 so you can verify authenticity. Use webhooks to build custom Slack bots, data
         pipelines, CI/CD triggers, or any other automation beyond the dashboard.
       </p>
@@ -117,7 +117,7 @@ GET    /api/v1/webhooks/:id/deliveries    # Last 10 delivery records`}</CodeBloc
 }`}</CodeBlock>
       <p>
         The <code>secret</code> is a 32-character hex string returned only at registration time.
-        Store it securely — it cannot be recovered if lost. Subsequent GET responses show only a
+        Store it securely, it cannot be recovered if lost. Subsequent GET responses show only a
         masked value.
       </p>
 
@@ -238,13 +238,13 @@ app.post('/hooks/spanlens', express.raw({ type: 'application/json' }), (req, res
             <td>Create / update / delete</td>
             <td>✓</td>
             <td>✓</td>
-            <td>—</td>
+            <td>,</td>
           </tr>
           <tr>
             <td>Test delivery</td>
             <td>✓</td>
             <td>✓</td>
-            <td>—</td>
+            <td>,</td>
           </tr>
         </tbody>
       </table>

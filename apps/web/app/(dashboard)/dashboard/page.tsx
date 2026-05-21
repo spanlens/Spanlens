@@ -19,7 +19,7 @@ export default async function DashboardPage() {
   const state = await prefetchAll([
     statsOverviewSpec(),     // KPI row (above-fold)
     statsTimeseriesSpec(),   // Traffic chart (above-fold)
-    dismissalsSpec(),        // UI state — cheap PK lookup
+    dismissalsSpec(),        // UI state, cheap PK lookup
   ])
 
   return (

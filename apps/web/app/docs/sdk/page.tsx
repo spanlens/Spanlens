@@ -4,7 +4,7 @@ import { LangTabs } from '../_components/lang-tabs'
 export const metadata = {
   title: 'Spanlens SDK · Spanlens Docs',
   description:
-    'Official SDK reference for TypeScript and Python — createOpenAI, createAnthropic, createGemini, observe(), and the trace / span API.',
+    'Official SDK reference for TypeScript and Python, createOpenAI, createAnthropic, createGemini, observe(), and the trace / span API.',
 }
 
 export default function SdkReference() {
@@ -13,7 +13,7 @@ export default function SdkReference() {
       <h1>Spanlens SDK</h1>
       <p className="lead">
         Thin wrappers around the official OpenAI / Anthropic / Gemini SDKs that route traffic through
-        Spanlens and add agent tracing primitives. Zero lock-in — response types and method signatures
+        Spanlens and add agent tracing primitives. Zero lock-in, response types and method signatures
         match the upstream SDKs 1:1. Available for TypeScript and Python.
       </p>
 
@@ -21,7 +21,7 @@ export default function SdkReference() {
         <p className="m-0 font-semibold text-accent">⚡ Tip: use streaming for long responses</p>
         <p className="mt-1 mb-0 text-accent">
           For requests with large <code>max_tokens</code>, slower models, or big JSON outputs, enable
-          streaming — first byte arrives in ~200ms and total duration is unbounded. If you still want a
+          streaming, first byte arrives in ~200ms and total duration is unbounded. If you still want a
           single object back, accumulate chunks server-side and return the merged result from your route
           handler. See the <a href="#observe-streaming">streaming example</a> below.
         </p>
@@ -47,7 +47,7 @@ pip install "spanlens[all]"`}
         Python, use the matching extras shown above.
       </p>
 
-      <h2 id="create-openai">createOpenAI() — proxy mode</h2>
+      <h2 id="create-openai">createOpenAI(), proxy mode</h2>
       <p>
         Constructs the official provider client with <code>base_url</code> pointed at the Spanlens proxy
         and <code>api_key</code> set to your Spanlens key. Your real OpenAI key never leaves the
@@ -57,8 +57,8 @@ pip install "spanlens[all]"`}
         ts={`import { createOpenAI } from '@spanlens/sdk/openai'
 
 const openai = createOpenAI({
-  apiKey: process.env.SPANLENS_API_KEY,   // optional — defaults to env
-  project: 'my-app',                      // optional — project scope
+  apiKey: process.env.SPANLENS_API_KEY,   // optional, defaults to env
+  project: 'my-app',                      // optional, project scope
 })
 
 const res = await openai.chat.completions.create({
@@ -152,7 +152,7 @@ print(res.json())
 # configure_gemini()  # routes all genai calls through Spanlens`}
       />
 
-      <h2 id="with-prompt-version">withPromptVersion() — tag a request with a prompt version</h2>
+      <h2 id="with-prompt-version">withPromptVersion(), tag a request with a prompt version</h2>
       <p>
         Link a logged request to a specific <a href="/docs/features/prompts">Prompts</a> version so
         it appears in the A/B comparison table. Pass the helper as the second argument (TS) or
@@ -185,8 +185,8 @@ res = client.chat.completions.create(
       />
       <p>Accepted formats:</p>
       <ul>
-        <li><code>{'<name>@<version>'}</code> — e.g. <code>chatbot-system@3</code></li>
-        <li><code>{'<name>@latest'}</code> — auto-resolves server-side on every call</li>
+        <li><code>{'<name>@<version>'}</code>, e.g. <code>chatbot-system@3</code></li>
+        <li><code>{'<name>@latest'}</code>, auto-resolves server-side on every call</li>
         <li>Raw <code>prompt_versions.id</code> UUID</li>
       </ul>
       <p>
@@ -194,7 +194,7 @@ res = client.chat.completions.create(
         set the header directly: <code>x-spanlens-prompt-version: &lt;id&gt;</code>.
       </p>
 
-      <h2 id="with-user">withUser() / withSession() — end-user tracking (v0.2.7+)</h2>
+      <h2 id="with-user">withUser() / withSession(), end-user tracking (v0.2.7+)</h2>
       <p>
         Tag a call with an end-user ID and session ID. The values are stored in{' '}
         <code>requests.user_id</code> / <code>requests.session_id</code> and can be filtered on
@@ -221,7 +221,7 @@ const res = await openai.chat.completions.create(
     },
   },
 )`}
-        py={`# Python SDK support coming soon — pass headers directly in the meantime
+        py={`# Python SDK support coming soon, pass headers directly in the meantime
 import openai
 
 client = openai.OpenAI(
@@ -239,11 +239,11 @@ client = openai.OpenAI(
       </p>
       <p>
         All three headers are stripped by the <code>STRIP_PREFIXES</code> (<code>x-spanlens-*</code>)
-        policy before forwarding to upstream providers (OpenAI/Anthropic/Gemini) — they are used
+        policy before forwarding to upstream providers (OpenAI/Anthropic/Gemini), they are used
         only as Spanlens internal metadata.
       </p>
 
-      <h2 id="with-log-body">withLogBody() — control body retention (v0.3.x+)</h2>
+      <h2 id="with-log-body">withLogBody(), control body retention (v0.3.x+)</h2>
       <p>
         Opt out of storing request/response bodies in your dashboard while keeping token counts,
         cost, latency, and identifiers. Use when prompts may contain end-user PII you don&apos;t
@@ -309,7 +309,7 @@ const res2 = await openai.chat.completions.create(
     },
   },
 )`}
-        py={`# Python helper coming soon — set the header directly
+        py={`# Python helper coming soon, set the header directly
 from openai import OpenAI
 
 openai = OpenAI(
@@ -326,11 +326,11 @@ openai = OpenAI(
   -d '{"model": "gpt-4o-mini", "messages": [...]}'`}</CodeBlock>
       <p className="text-sm text-muted-foreground">
         Note: <code>withUser</code> / <code>withSession</code> become no-ops when{' '}
-        <code>logBody: &apos;none&apos;</code> is set — the server drops those columns alongside
+        <code>logBody: &apos;none&apos;</code> is set, the server drops those columns alongside
         the bodies.
       </p>
 
-      <h2 id="sample-rate">sampleRate — trace sampling (v0.3.x+)</h2>
+      <h2 id="sample-rate">sampleRate, trace sampling (v0.3.x+)</h2>
       <p>
         Cap the volume of trace + span ingestion without changing your application code. The
         decision is made per-trace at <code>startTrace()</code> / <code>start_trace()</code> time
@@ -384,26 +384,26 @@ client = SpanlensClient(
         <tbody>
           <tr>
             <td>Trace + span ingestion (<code>/ingest/traces</code>, <code>/ingest/spans</code>)</td>
-            <td><strong>Yes</strong> — this is the OTLP-equivalent agent-tracing layer</td>
+            <td><strong>Yes</strong>, this is the OTLP-equivalent agent-tracing layer</td>
           </tr>
           <tr>
             <td>Proxy request logs (<code>/proxy/*</code> → ClickHouse <code>requests</code>)</td>
             <td>
-              <strong>No</strong> — every LLM call is still recorded for cost / quota / anomaly
+              <strong>No</strong>, every LLM call is still recorded for cost / quota / anomaly
               tracking. Billing does not depend on the SDK&apos;s sampling decision.
             </td>
           </tr>
         </tbody>
       </table>
       <p>
-        Validation throws at client construction for values outside <code>[0.0, 1.0]</code> — fail
+        Validation throws at client construction for values outside <code>[0.0, 1.0]</code>, fail
         fast rather than silently dropping 100% of traces because a string was passed by accident.
       </p>
 
-      <h2 id="observe">observe() — agent tracing</h2>
+      <h2 id="observe">observe(), agent tracing</h2>
       <p>
         Wrap any function to turn it into a span in an agent trace. The callback&rsquo;s return value
-        is automatically captured as the span&rsquo;s <strong>output</strong> — no extra code needed.
+        is automatically captured as the span&rsquo;s <strong>output</strong>, no extra code needed.
         Pass <code>input</code> in the span options to record the inputs too.
       </p>
       <LangTabs
@@ -455,7 +455,7 @@ with client.start_trace("answer-question") as trace:
         <p className="mt-1 mb-0 text-green-700 dark:text-green-400">
           If you route through the Spanlens proxy via <code>createOpenAI()</code>,{' '}
           <code>createAnthropic()</code>, or <code>createGemini()</code>, the proxy captures the
-          completed response server-side and writes it to your span automatically — no extra code
+          completed response server-side and writes it to your span automatically, no extra code
           needed. The <code>return accumulated</code> pattern below is the fallback for direct
           (non-proxy) calls.
         </p>
@@ -497,7 +497,7 @@ with client.start_trace("answer-question") as trace:
     return accumulated   // ← auto-saved as output; no need to pass output: here
   },
 )`}
-        py={`# Python streaming — accumulate manually, return for auto-capture
+        py={`# Python streaming, accumulate manually, return for auto-capture
 async def streaming_span(trace):
     async with observe(trace, {"name": "gpt-4o-mini", "span_type": "llm"}) as span:
         stream = openai_client.chat.completions.create(
@@ -518,7 +518,7 @@ async def streaming_span(trace):
         return accumulated  # auto-saved as output`}
       />
 
-      <h2 id="observe-openai">observeOpenAI() — span + auto-parsed usage</h2>
+      <h2 id="observe-openai">observeOpenAI(), span + auto-parsed usage</h2>
       <p>
         Shorthand that wraps a single LLM call as a span, injects the trace headers so the proxy
         log can be linked to the span, and auto-parses <code>usage</code> from the response. Pass{' '}
@@ -558,11 +558,11 @@ res = observe_openai(trace, "greeting", lambda headers:
         <a href="#with-log-body"><code>withLogBody()</code></a> helper.
       </p>
 
-      <h2 id="observe-ollama">observeOllama() — self-hosted LLMs (v0.5.0+ / 0.4.0+)</h2>
+      <h2 id="observe-ollama">observeOllama(), self-hosted LLMs (v0.5.0+ / 0.4.0+)</h2>
       <p>
         Ollama runs on your own machine (or in your VPC) and exposes an OpenAI-compatible API at{' '}
         <code>http://localhost:11434/v1</code>. Because the Spanlens proxy is hosted, it can&rsquo;t
-        reach your local Ollama — but the SDK can. Wrap your Ollama call with{' '}
+        reach your local Ollama, but the SDK can. Wrap your Ollama call with{' '}
         <code>observeOllama()</code> and only the trace metadata (model, tokens, latency) flows to
         Spanlens. Your prompts and responses never leave your machine via Spanlens.
       </p>
@@ -637,7 +637,7 @@ with client.start_trace("local_chat") as trace:
       <p>
         If you use LangChain, LangGraph (v0.6.0+ / 0.5.0+), Vercel AI SDK, or LlamaIndex, plug in
         the matching integration instead of wiring callbacks manually. Each one records spans
-        automatically — tokens, latency, model name, and the full chain/tool/retriever topology —
+        automatically, tokens, latency, model name, and the full chain/tool/retriever topology ,
         without importing from the framework itself (duck-typed, version-agnostic).
       </p>
 
@@ -645,7 +645,7 @@ with client.start_trace("local_chat") as trace:
       <p>
         One callback handler works for plain LangChain chains, LCEL pipelines, and{' '}
         <strong>LangGraph compiled graphs</strong>. Spanlens captures LLM, chain, tool, and
-        retriever spans automatically — and uses LangChain&rsquo;s built-in{' '}
+        retriever spans automatically, and uses LangChain&rsquo;s built-in{' '}
         <code>runId</code> / <code>parentRunId</code> tracking to assemble the right span tree
         without any manual parent wiring.
       </p>
@@ -674,7 +674,7 @@ handler = SpanlensCallbackHandler(client=client)
 # Plain LangChain:
 chain.invoke({"input": "..."}, config={"callbacks": [handler]})
 
-# LangGraph — same handler:
+# LangGraph, same handler:
 graph = workflow.compile()
 result = graph.invoke(
     {"input": "plan a trip to Tokyo"},
@@ -728,7 +728,7 @@ result = graph.invoke(
           </tr>
           <tr>
             <td><code>trace</code></td>
-            <td>—</td>
+            <td>,</td>
             <td>Optional pre-existing trace to attach to. When given, the handler does <strong>not</strong> close the trace (caller owns the lifecycle).</td>
           </tr>
           <tr>
@@ -742,17 +742,17 @@ result = graph.invoke(
       <h4 id="langchain-notes">Notes</h4>
       <ul>
         <li>
-          <strong>Single handler, multiple runs</strong> — concurrent invocations are tracked by
+          <strong>Single handler, multiple runs</strong>, concurrent invocations are tracked by
           LangChain&rsquo;s per-run UUID, so one handler instance is safe to share across
           parallel graph executions.
         </li>
         <li>
-          <strong>Duck-typed</strong> — Spanlens does not import from{' '}
+          <strong>Duck-typed</strong>, Spanlens does not import from{' '}
           <code>@langchain/core</code> or <code>langchain-core</code>. Major-version bumps in
           LangChain itself don&rsquo;t require an SDK update.
         </li>
         <li>
-          <strong>Python optional dep</strong> — the handler falls back to a plain class when{' '}
+          <strong>Python optional dep</strong>, the handler falls back to a plain class when{' '}
           <code>langchain-core</code> isn&rsquo;t installed, so unit tests for your own code can
           drive it without LangChain being in the test environment.
         </li>
@@ -798,7 +798,7 @@ const unregister = registerSpanlensCallbacks(Settings, { client })
 await queryEngine.query({ query: 'What is RAG?' })
 
 unregister()  // remove callbacks when done (e.g. on process exit)`}
-        py={`# LlamaIndex Python integration — coming soon`}
+        py={`# LlamaIndex Python integration, coming soon`}
       />
 
       <h2 id="span-handle">Low-level: trace + span handles</h2>
@@ -836,10 +836,10 @@ with client.start_trace("multi-agent-workflow") as trace:
         span_b.end(output=result_b)`}
       />
 
-      <h2 id="flush">Graceful shutdown — <code>client.flush()</code></h2>
+      <h2 id="flush">Graceful shutdown, <code>client.flush()</code></h2>
       <p>
-        Ingest calls run in the background. In short-lived processes — scripts, one-shot jobs,
-        serverless cold starts — the process can exit before all POSTs complete. Call{' '}
+        Ingest calls run in the background. In short-lived processes, scripts, one-shot jobs,
+        serverless cold starts, the process can exit before all POSTs complete. Call{' '}
         <code>flush()</code> before exit to drain them:
       </p>
       <CodeBlock language="ts">{`const client = new SpanlensClient({ apiKey: process.env.SPANLENS_API_KEY! })
@@ -849,7 +849,7 @@ with client.start_trace("multi-agent-workflow") as trace:
 await client.flush()   // resolves when all in-flight ingest calls have settled
 process.exit(0)`}</CodeBlock>
       <p>
-        <code>flush()</code> uses <code>Promise.allSettled</code> internally — it resolves even if
+        <code>flush()</code> uses <code>Promise.allSettled</code> internally, it resolves even if
         some requests failed, so a network error won&apos;t hang the process. Failed writes are
         silently dropped (or forwarded to your <code>onError</code> hook if set). Transient
         failures are retried up to 3 times with exponential back-off (200 ms → 400 ms → 800 ms)
@@ -858,7 +858,7 @@ process.exit(0)`}</CodeBlock>
 
       <h2 id="non-blocking">Non-blocking by design</h2>
       <p>
-        Both SDKs do the actual ingest HTTP calls in the background — the TypeScript SDK uses the
+        Both SDKs do the actual ingest HTTP calls in the background, the TypeScript SDK uses the
         runtime&rsquo;s native promise queue, while Python uses a small daemon thread pool. Either
         way, your hot path (the LLM call itself) is never delayed by Spanlens, and a slow / down
         Spanlens server never crashes your app. Failures are swallowed by default; pass{' '}
@@ -881,7 +881,7 @@ process.exit(0)`}</CodeBlock>
 
       <h2 className="sr-only">Reference: original CodeBlock without tabs</h2>
       <p className="hidden">
-        {/* Keeps CodeBlock import from being marked unused — it stays available
+        {/* Keeps CodeBlock import from being marked unused, it stays available
             for any future single-language snippet. */}
       </p>
       <CodeBlock language="bash">{`# Quick links

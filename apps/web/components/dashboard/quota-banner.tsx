@@ -49,11 +49,11 @@ export function QuotaBanner() {
     // Three sub-cases: free_limit, overage_disabled, hard_cap
     if (quota.plan === 'free') {
       title = 'Free plan quota reached'
-      detail = `${formattedUsed} of ${formattedLimit} requests. New requests return 429 — upgrade to continue.`
+      detail = `${formattedUsed} of ${formattedLimit} requests. New requests return 429, upgrade to continue.`
       cta = 'Upgrade plan →'
     } else if (!quota.allowOverage) {
       title = 'Monthly quota exceeded'
-      detail = `${formattedUsed} of ${formattedLimit} on the ${quota.plan} plan. Overage billing is disabled — requests return 429.`
+      detail = `${formattedUsed} of ${formattedLimit} on the ${quota.plan} plan. Overage billing is disabled, requests return 429.`
       cta = 'Enable overage →'
       ctaHref = '/settings'
     } else {
@@ -65,7 +65,7 @@ export function QuotaBanner() {
   } else if (overageActive) {
     const overageRequests = quota.usedThisMonth - quota.limit
     title = 'Overage billing active'
-    detail = `${formattedUsed} of ${formattedLimit} included — ${overageRequests.toLocaleString()} extra requests will be billed on your next invoice. Hard cap at ${formattedCap}.`
+    detail = `${formattedUsed} of ${formattedLimit} included, ${overageRequests.toLocaleString()} extra requests will be billed on your next invoice. Hard cap at ${formattedCap}.`
     cta = 'Manage settings →'
     ctaHref = '/settings'
   } else {

@@ -3,7 +3,7 @@ import { CodeBlock } from '../../_components/code-block'
 export const metadata = {
   title: 'Prompts · Spanlens Docs',
   description:
-    'Version-controlled prompt templates with real-data A/B comparison — latency, cost, and error rate per version.',
+    'Version-controlled prompt templates with real-data A/B comparison, latency, cost, and error rate per version.',
 }
 
 export default function PromptsDocs() {
@@ -13,13 +13,13 @@ export default function PromptsDocs() {
       <p className="lead">
         Store your prompt templates as named, versioned assets. Every time you tweak a prompt, Spanlens
         creates a new immutable version. Then compare versions side-by-side with real production
-        metrics — average latency, error rate, and cost per call.
+        metrics, average latency, error rate, and cost per call.
       </p>
 
       <h2>Why it matters</h2>
       <p>
         Prompts get edited constantly: a line added here, an example rewritten there, a tone shift
-        on Friday afternoon. The unanswered question is always the same — <em>is this actually
+        on Friday afternoon. The unanswered question is always the same, <em>is this actually
         better, or does it just feel better?</em>
       </p>
       <p>
@@ -44,10 +44,10 @@ export default function PromptsDocs() {
 
       <p>Each version stores:</p>
       <ul>
-        <li><code>content</code> — the template body (up to 100K chars)</li>
-        <li><code>variables</code> — typed placeholders like <code>{'{{userName}}'}</code> with description and <code>required</code> flag</li>
-        <li><code>metadata</code> — free-form JSON for tags (team, task type, model target, etc.)</li>
-        <li><code>project_id</code> — optional project scope</li>
+        <li><code>content</code>, the template body (up to 100K chars)</li>
+        <li><code>variables</code>, typed placeholders like <code>{'{{userName}}'}</code> with description and <code>required</code> flag</li>
+        <li><code>metadata</code>, free-form JSON for tags (team, task type, model target, etc.)</li>
+        <li><code>project_id</code>, optional project scope</li>
       </ul>
 
       <h3>A/B comparison on real traffic</h3>
@@ -161,7 +161,7 @@ export default function PromptsDocs() {
             <td><code>POST /api/v1/prompts/:name/:version/rollback</code></td>
             <td>
               Copy an older version&apos;s content as a new (latest) version. The old version is
-              not modified — the version counter always increases. Returns the newly created version.
+              not modified, the version counter always increases. Returns the newly created version.
             </td>
           </tr>
           <tr>
@@ -174,10 +174,10 @@ export default function PromptsDocs() {
       <h2>Tagging requests with a prompt version</h2>
       <p>
         For the A/B table to fill up, each LLM request needs to declare which version it
-        used. The SDK ships two ways to do that — pick whichever fits your call site.
+        used. The SDK ships two ways to do that, pick whichever fits your call site.
       </p>
 
-      <h3>Option 1 — <code>withPromptVersion()</code> per call</h3>
+      <h3>Option 1, <code>withPromptVersion()</code> per call</h3>
       <CodeBlock language="ts">{`import { createOpenAI, withPromptVersion } from '@spanlens/sdk/openai'
 
 const openai = createOpenAI()
@@ -194,7 +194,7 @@ const res = await openai.chat.completions.create(
 )`}</CodeBlock>
       <p>Same helper exists on <code>@spanlens/sdk/anthropic</code> for Claude calls.</p>
 
-      <h3>Option 2 — <code>observeOpenAI()</code> with promptVersion option</h3>
+      <h3>Option 2, <code>observeOpenAI()</code> with promptVersion option</h3>
       <p>If you&apos;re already using agent tracing, just add one option:</p>
       <CodeBlock language="ts">{`import { observeOpenAI } from '@spanlens/sdk'
 
@@ -239,29 +239,29 @@ const res = await observeOpenAI(
       </p>
       <ul>
         <li>
-          <strong>Versions</strong> — full version list with expandable content preview.{' '}
+          <strong>Versions</strong>, full version list with expandable content preview.{' '}
           Each version has a <strong>Roll back</strong> button that copies its content as a new
-          latest version (the old version is never deleted — the version counter always increases).
+          latest version (the old version is never deleted, the version counter always increases).
         </li>
-        <li><strong>Diff</strong> — select any two versions for an LCS-based line-level diff (+/− colors)</li>
+        <li><strong>Diff</strong>, select any two versions for an LCS-based line-level diff (+/− colors)</li>
         <li>
-          <strong>Traffic</strong> — per-version traffic share with quality color coding
+          <strong>Traffic</strong>, per-version traffic share with quality color coding
           (≥90 green / 70–89 yellow / &lt;70 red)
         </li>
         <li>
-          <strong>Calls</strong> — per-version call count, latency, error rate,{' '}
+          <strong>Calls</strong>, per-version call count, latency, error rate,{' '}
           <strong>QUALITY</strong>, cost, and token totals. Clicking a row drills down to{' '}
           <code>/requests?promptVersionId=...</code>.{' '}
           The <strong>Quality column</strong> shows the average <code>eval_results</code> score
           from <a href="/docs/features/evals">Evals</a>.
         </li>
         <li>
-          <strong>A/B</strong> — live production traffic A/B routing. Different from offline{' '}
+          <strong>A/B</strong>, live production traffic A/B routing. Different from offline{' '}
           <a href="/docs/features/experiments">Experiments</a> (see table below). →{' '}
           <a href="/docs/features/prompt-ab">Full Prompt A/B docs</a>
         </li>
         <li>
-          <strong>Playground</strong> — select a version, configure provider key, model,
+          <strong>Playground</strong>, select a version, configure provider key, model,
           temperature, and variables, then run immediately. Results are not saved to the{' '}
           <code>requests</code> table. Rate limit: 20 req/min/user. →{' '}
           <a href="/docs/features/prompts-playground">Full Playground docs</a>
@@ -270,7 +270,7 @@ const res = await observeOpenAI(
 
       <h2>A/B routing vs Experiments</h2>
       <p>
-        The word &quot;experiment&quot; appears in two places in Spanlens — here is how they differ:
+        The word &quot;experiment&quot; appears in two places in Spanlens, here is how they differ:
       </p>
       <div className="overflow-x-auto">
         <table>
@@ -313,7 +313,7 @@ const res = await observeOpenAI(
       <p>Honest view of what the feature does <em>not</em> do yet:</p>
       <ul>
         <li>
-          <strong>No editor affordances.</strong> The create/edit form is a plain textarea —
+          <strong>No editor affordances.</strong> The create/edit form is a plain textarea ,
           no diff view, no syntax highlighting, no variable autocomplete. Good enough for now;
           polish deferred to post-launch.
         </li>

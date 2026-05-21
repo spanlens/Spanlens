@@ -93,7 +93,7 @@ export function DiffTab({ versions }: Props) {
             <option value="">Select version…</option>
             {sorted.map((v) => (
               <option key={v.id} value={String(v.version)}>
-                v{v.version} — {formatDate(v.created_at)}
+                v{v.version}, {formatDate(v.created_at)}
               </option>
             ))}
           </select>
@@ -109,7 +109,7 @@ export function DiffTab({ versions }: Props) {
             <option value="">Select version…</option>
             {sorted.map((v) => (
               <option key={v.id} value={String(v.version)}>
-                v{v.version} — {formatDate(v.created_at)}
+                v{v.version}, {formatDate(v.created_at)}
               </option>
             ))}
           </select>

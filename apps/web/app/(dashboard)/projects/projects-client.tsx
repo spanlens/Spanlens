@@ -330,7 +330,7 @@ export function ProjectsClient() {
             <div className="rounded-xl border border-good/30 bg-good-bg px-5 py-4 mb-6">
               <div className="flex items-center justify-between mb-3">
                 <p className="text-[13px] font-medium text-good">
-                  Spanlens key created — copy now (won&apos;t be shown again)
+                  Spanlens key created, copy now (won&apos;t be shown again)
                 </p>
                 <button
                   type="button"
@@ -466,7 +466,7 @@ export function ProjectsClient() {
                       </div>
                     </div>
 
-                    {/* Spanlens key sections — each is a self-contained group:
+                    {/* Spanlens key sections, each is a self-contained group:
                         the key name acts as the header and "+ Add provider key"
                         sits next to it. Provider keys stay always-visible. */}
                     {projApiKeys.length === 0 ? (
@@ -481,7 +481,7 @@ export function ProjectsClient() {
                           )
                           return (
                             <div key={key.id}>
-                              {/* Spanlens key header — name + meta + add button + actions */}
+                              {/* Spanlens key header, name + meta + add button + actions */}
                               <div className="flex items-center gap-3 px-6 py-3 bg-bg/30">
                                 <KeyIcon className="h-3.5 w-3.5 text-text-faint shrink-0" />
                                 <div className="flex-1 min-w-0">
@@ -552,7 +552,7 @@ export function ProjectsClient() {
                                 </div>
                               </div>
 
-                              {/* Provider keys under this Spanlens key — always visible */}
+                              {/* Provider keys under this Spanlens key, always visible */}
                               {keyProvKeys.length === 0 ? (
                                 <p className="px-12 py-2.5 text-[12px] text-text-faint">
                                   No provider keys yet. Add OpenAI / Anthropic / Gemini to enable calls through this Spanlens key.
@@ -725,7 +725,7 @@ export function ProjectsClient() {
               </DialogHeader>
               <DialogDescription className="text-[12.5px] text-text-muted mt-1">
                 Drop this into your code to call {PROVIDER_LABELS[addProvAdded]} through
-                Spanlens. No CLI re-run needed — your existing{' '}
+                Spanlens. No CLI re-run needed, your existing{' '}
                 <code className="font-mono text-[11px]">SPANLENS_API_KEY</code> already
                 covers this provider.
               </DialogDescription>
@@ -755,7 +755,7 @@ export function ProjectsClient() {
 
                 <p className="font-mono text-[10.5px] text-text-faint">
                   Already running this code? It picks up the new provider on the next
-                  request — no redeploy needed.
+                  request, no redeploy needed.
                 </p>
 
                 <PrimaryBtn onClick={() => setAddProvDialogOpen(false)}>
@@ -804,7 +804,7 @@ export function ProjectsClient() {
                       className="w-full h-9 px-3 rounded-[6px] border border-border bg-bg text-[13px] font-mono text-text placeholder:text-text-faint focus:outline-none focus:border-border-strong transition-colors"
                     />
                     <p className="text-[10.5px] text-text-faint">
-                      Copy from your Azure portal — the endpoint shown on your OpenAI resource overview. Must end in <code>.openai.azure.com</code> or <code>.services.ai.azure.com</code>.
+                      Copy from your Azure portal, the endpoint shown on your OpenAI resource overview. Must end in <code>.openai.azure.com</code> or <code>.services.ai.azure.com</code>.
                     </p>
                   </div>
                 )}
@@ -968,7 +968,7 @@ export function ProjectsClient() {
         </DialogContent>
       </Dialog>
 
-      {/* Delete project confirm — requires typing the project name */}
+      {/* Delete project confirm, requires typing the project name */}
       <Dialog
         open={deleteProject_target !== null}
         onOpenChange={(open) => { if (!open) closeDeleteProjectDialog() }}

@@ -12,7 +12,7 @@ export default function AlertsDocs() {
       <h1>Alerts</h1>
       <p className="lead">
         Define simple threshold rules on your LLM traffic. When a rule fires, Spanlens sends a
-        notification to your chosen channel — email, Slack, or Discord. Runs on a 15-minute cron,
+        notification to your chosen channel, email, Slack, or Discord. Runs on a 15-minute cron,
         honors cooldowns, and logs every delivery so you can audit what fired when.
       </p>
 
@@ -150,7 +150,7 @@ Content-Type: application/json
         <li>
           <strong>Delivery is at-least-once.</strong> If Resend/Slack/Discord returns an error,
           we log it and retry on the next cron. At-most-once semantics would require per-channel
-          idempotency keys — not worth the complexity for ops alerts.
+          idempotency keys, not worth the complexity for ops alerts.
         </li>
         <li>
           <strong>Cron runs on GitHub Actions, not Vercel Cron.</strong> Why: easier to audit,
@@ -167,7 +167,7 @@ Content-Type: application/json
       <ul>
         <li>
           <strong>No PagerDuty / OpsGenie integration yet.</strong> Slack webhooks can be piped
-          through those services if you need escalation — but we don&apos;t natively integrate.
+          through those services if you need escalation, but we don&apos;t natively integrate.
         </li>
         <li>
           <strong>Fixed metric set.</strong> Only budget / error_rate / latency_p95 today. Custom
@@ -175,7 +175,7 @@ Content-Type: application/json
         </li>
         <li>
           <strong>Quota-overage warning emails run on a separate cron</strong> (hourly). Org
-          owners get automatic emails at 80% and 100% of the monthly request quota — no setup
+          owners get automatic emails at 80% and 100% of the monthly request quota, no setup
           required. Content is context-aware: at 100% with overage billing enabled, the email
           tells the user that overage charges are now active (not that their requests are being
           rejected). Toggle in <a href="/settings">/settings</a>.

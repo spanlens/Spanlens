@@ -165,7 +165,7 @@ export function PlaygroundTab({ versions }: Props) {
           )}
         </div>
 
-        {/* Model — only shown once a key is selected */}
+        {/* Model, only shown once a key is selected */}
         {selectedKey && (
           <div className="space-y-1.5">
             <label className="font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint">
@@ -281,7 +281,7 @@ export function PlaygroundTab({ versions }: Props) {
           <p className="font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint">Prompt preview</p>
           <div className="bg-bg-muted rounded-[6px] border border-border p-4 max-h-52 overflow-y-auto">
             <pre className="font-mono text-[12px] text-text-muted whitespace-pre-wrap leading-relaxed">
-              {selectedVersion?.content ?? '—'}
+              {selectedVersion?.content ?? ','}
             </pre>
           </div>
         </div>
@@ -307,7 +307,7 @@ export function PlaygroundTab({ versions }: Props) {
                 {[
                   { label: 'Model',   value: result.model },
                   { label: 'Tokens',  value: result.totalTokens.toLocaleString() },
-                  { label: 'Cost',    value: result.costUsd != null ? fmtUsd(result.costUsd) : '—' },
+                  { label: 'Cost',    value: result.costUsd != null ? fmtUsd(result.costUsd) : ',' },
                   {
                     label: 'Latency',
                     value: result.latencyMs >= 1000

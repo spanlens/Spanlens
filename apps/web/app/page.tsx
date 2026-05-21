@@ -6,12 +6,12 @@ import { CopyInstallButton } from '@/components/landing/copy-install-button'
 export const metadata = { title: 'Spanlens · LLM Observability' }
 
 const FEATURES = [
-  { kicker: '01', title: 'Request log', body: 'Every call — model, tokens, cost, latency, full body. Filter, group, export.', accent: '$0.0021' },
+  { kicker: '01', title: 'Request log', body: 'Every call with model, tokens, cost, latency, and full body. Filter, group, export.', accent: '$0.0021' },
   { kicker: '02', title: 'Cost tracking', body: 'Per-request breakdown, daily rollups, budget alerts before you blow the month.', accent: '−38%' },
   { kicker: '03', title: 'Agent tracing', body: 'Multi-step workflows as waterfall span trees. Find the one step that took 18s.', accent: '12 spans' },
   { kicker: '04', title: 'Anomaly detection', body: '3σ deviations in latency or cost vs. your 7-day baseline, flagged on arrival.', accent: '3.1σ' },
   { kicker: '05', title: 'PII + injection scan', body: 'Regex detection on request bodies at log time. API keys auto-masked before storage; PII patterns flagged for review.', accent: 'SSN · email' },
-  { kicker: '06', title: 'Model recommender', body: '"Your gpt-4o calls look like classification — try gpt-4o-mini." With numbers.', accent: '−$412/mo' },
+  { kicker: '06', title: 'Model recommender', body: '"Your gpt-4o calls look like classification, try gpt-4o-mini." With numbers.', accent: '−$412/mo' },
 ]
 
 const SURFACES = [
@@ -59,10 +59,10 @@ const PLANS = [
 ]
 
 const FAQS: [string, string][] = [
-  ['How does instrumentation work?', 'Swap the provider SDK for our drop-in. Same surface, same types. We record the full request and response on the wire — no extra round-trip, no sampling by default.'],
-  ['What about latency overhead?', 'p99 overhead is under 3ms. Ingestion happens async in a worker. If we ever fail, your request completes anyway — Spanlens never sits on the critical path.'],
-  ['How do you handle PII?', 'PII detectors (SSN, credit card, email, IBAN, passport, etc.) run at log time and flag matches for review in the Security dashboard — without blocking the request. API keys that slip into prompts are auto-masked before the row lands on disk. For workloads where prompt bodies must not be stored at all, opt out per-call with X-Spanlens-Log-Body: meta.'],
-  ['Do you support OpenTelemetry?', 'Yes — OTLP/HTTP ingest and export. Your existing OTel tracing flows into the same span store; LLM spans get LLM-specific attributes on top.'],
+  ['How does instrumentation work?', 'Swap the provider SDK for our drop-in. Same surface, same types. We record the full request and response on the wire, with no extra round-trip and no sampling by default.'],
+  ['What about latency overhead?', 'p99 overhead is under 3ms. Ingestion happens async in a worker. If we ever fail, your request completes anyway. Spanlens never sits on the critical path.'],
+  ['How do you handle PII?', 'PII detectors (SSN, credit card, email, IBAN, passport, etc.) run at log time and flag matches for review in the Security dashboard, without blocking the request. API keys that slip into prompts are auto-masked before the row lands on disk. For workloads where prompt bodies must not be stored at all, opt out per-call with X-Spanlens-Log-Body: meta.'],
+  ['Do you support OpenTelemetry?', 'Yes. OTLP/HTTP ingest and export. Your existing OTel tracing flows into the same span store; LLM spans get LLM-specific attributes on top.'],
   ['What\'s the data retention?', 'Free is 14 days. Pro is 90 days, Team is 365 days. Enterprise & self-hosted are configurable, including unlimited.'],
   ['Can I export my data?', 'Anytime. JSON, CSV, Parquet. Or pipe the raw stream to S3, BigQuery, or your warehouse via our sink connectors.'],
 ]
@@ -97,7 +97,7 @@ export default function LandingPage() {
         {/* Version badge */}
         <div className="inline-flex flex-wrap items-center gap-x-2 gap-y-1 px-2 py-[5px] rounded-full border border-accent-border bg-accent-bg text-accent font-mono text-[12px] tracking-[0.03em] mb-7 max-w-full">
           <span className="bg-accent text-bg px-[7px] py-[2px] rounded-full text-[10px] font-semibold tracking-[0.05em] shrink-0">NEW</span>
-          <span>SDK v0.3.0 — LangChain, Vercel AI SDK, LlamaIndex integrations</span>
+          <span>SDK v0.3.0 with LangChain, Vercel AI SDK, and LlamaIndex integrations</span>
           <code className="font-mono hidden sm:inline">· npm install @spanlens/sdk</code>
         </div>
 
@@ -107,12 +107,12 @@ export default function LandingPage() {
         </h1>
 
         <p className="text-[16px] sm:text-[18px] lg:text-[20px] leading-relaxed text-text-muted max-w-[640px] mb-10 [text-wrap:pretty]">
-          Record every OpenAI, Anthropic, and Gemini call — cost, latency, tokens, full
+          Record every OpenAI, Anthropic, and Gemini call with cost, latency, tokens, full
           request/response. Then surface anomalies, PII, and cheaper-model
           suggestions automatically.
         </p>
 
-        {/* Install block — stacked on mobile, inline on sm+ */}
+        {/* Install block: stacked on mobile, inline on sm+ */}
         <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-[18px]">
           <div className="flex items-center bg-bg-elev border border-border rounded-lg p-1 shadow-[0_1px_0_var(--border)] w-full sm:w-auto">
             <div className="px-[14px] py-2 font-mono text-[14px] flex-1 sm:flex-none">
@@ -185,7 +185,7 @@ export default function LandingPage() {
                 )
               })}
             </div>
-            {/* Table — horizontally scrollable on mobile */}
+            {/* Table: horizontally scrollable on mobile */}
             <div className="overflow-x-auto">
               <div className="min-w-[640px]">
                 {/* Table header */}
@@ -310,7 +310,7 @@ export default function LandingPage() {
             </h2>
             <p className="text-[15px] leading-[1.6] text-text-muted mb-5">
               Multi-step agents as waterfall trees. Critical path, cost attribution,
-              and latency outliers — highlighted automatically.
+              and latency outliers, highlighted automatically.
             </p>
             <div className="flex flex-col gap-2 font-mono text-[12px] text-text-muted">
               <div><span className="text-accent">●</span> critical path · 78% of wall-clock in 1 span</div>
@@ -435,7 +435,7 @@ export default function LandingPage() {
         <div className="font-mono text-[12px] text-accent tracking-[0.06em] uppercase mb-3">Pricing</div>
         <h2 className="text-[28px] sm:text-[36px] lg:text-[44px] font-medium tracking-[-1.2px] mb-2">Simple. Flat monthly.</h2>
         <p className="text-[15px] text-text-muted mb-8 max-w-[560px]">
-          Free while you&apos;re small. Flat monthly fee — not per seat. Self-host is free forever.
+          Free while you&apos;re small. Flat monthly fee, not per seat. Self-host is free forever.
         </p>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           {PLANS.map((p) => (
@@ -460,7 +460,7 @@ export default function LandingPage() {
               <div className="flex flex-col gap-[7px] mb-[18px]">
                 {p.bullets.map((b) => (
                   <div key={b} className="flex gap-2 text-[13px] text-text-muted items-start">
-                    <span className="font-mono text-[11px] text-text-faint pt-px">—</span>
+                    <span className="font-mono text-[11px] text-text-faint pt-px">·</span>
                     <span>{b}</span>
                   </div>
                 ))}
@@ -501,7 +501,7 @@ export default function LandingPage() {
           See what your app is saying.
         </h2>
         <p className="text-[16px] sm:text-[17px] text-text-muted max-w-[540px] mx-auto leading-relaxed mb-8">
-          30-second setup. Your first 50,000 requests are on us. Cancel anytime — there&apos;s nothing to cancel.
+          30-second setup. Your first 50,000 requests are on us. Cancel anytime. There&apos;s nothing to cancel.
         </p>
         <div className="inline-flex flex-wrap justify-center gap-2.5">
           <Link href="/signup" className="font-mono text-[13px] text-bg bg-text px-[18px] py-[10px] rounded-[7px] font-medium hover:opacity-90 transition-opacity">

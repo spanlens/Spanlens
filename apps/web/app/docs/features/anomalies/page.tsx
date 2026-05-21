@@ -13,7 +13,7 @@ export default function AnomaliesDocs() {
       <p className="lead">
         Spanlens continuously watches your request stream for latency spikes, cost spikes, and error
         rate increases that fall outside normal variation. No thresholds to configure, no baselines
-        to set — it uses textbook 3-sigma statistics against a rolling 7-day reference window,
+        to set, it uses textbook 3-sigma statistics against a rolling 7-day reference window,
         computed per <code>(provider, model)</code> bucket.
       </p>
 
@@ -44,7 +44,7 @@ export default function AnomaliesDocs() {
         <li>
           For each bucket with <strong>≥ 10 reference samples</strong>, compute sample mean (μ) and
           sample standard deviation (σ) on the signal. Each anomaly is tagged with a{' '}
-          <strong>confidence label</strong> based on how many samples the baseline is built from —
+          <strong>confidence label</strong> based on how many samples the baseline is built from ,
           see <a href="#confidence">Confidence tiers</a> below.
         </li>
         <li>
@@ -57,7 +57,7 @@ export default function AnomaliesDocs() {
 if deviations >= sigmaThreshold:
   flag as anomaly`}</CodeBlock>
       <p>
-        <strong>3σ</strong> corresponds to ~0.13% false-positive rate under a normal distribution —
+        <strong>3σ</strong> corresponds to ~0.13% false-positive rate under a normal distribution ,
         generous enough to catch real spikes without flooding your inbox.
       </p>
 
@@ -81,7 +81,7 @@ if deviations >= sigmaThreshold:
             <td><strong>low</strong></td>
             <td>10 – 29</td>
             <td>
-              Directional only. The σ estimate is noisy — treat as an early warning, verify against
+              Directional only. The σ estimate is noisy, treat as an early warning, verify against
               the underlying requests before paging.
             </td>
           </tr>
@@ -94,7 +94,7 @@ if deviations >= sigmaThreshold:
             <td><strong>high</strong></td>
             <td>100+</td>
             <td>
-              Statistically robust. Use as the gate when wiring anomalies into a paging integration —
+              Statistically robust. Use as the gate when wiring anomalies into a paging integration ,
               see <code>minSamples</code> below for the API parameter.
             </td>
           </tr>
@@ -147,7 +147,7 @@ if deviations >= sigmaThreshold:
         </tbody>
       </table>
       <p>
-        Each signal is computed against its own baseline — no coupling. Latency and cost baselines
+        Each signal is computed against its own baseline, no coupling. Latency and cost baselines
         use success-only rows (failed requests are fast and would distort the latency baseline).
         Error-rate detection intentionally includes all rows.
       </p>
@@ -155,7 +155,7 @@ if deviations >= sigmaThreshold:
       <h3>On-demand detection + daily history</h3>
       <p>
         The &ldquo;right now&rdquo; view runs on-demand when you open the dashboard or hit the API,
-        always using the current time — so the view is always fresh. A background cron job also runs
+        always using the current time, so the view is always fresh. A background cron job also runs
         once a day at 01:00 UTC to persist a snapshot into the 30-day history log.
       </p>
 
@@ -172,16 +172,16 @@ if deviations >= sigmaThreshold:
         <li>Baseline mean ± stddev</li>
         <li>Deviations (how many σ above normal)</li>
         <li>Sample counts (both windows)</li>
-        <li><strong>Confidence badge</strong> — <em>low</em> / <em>medium</em> / <em>high</em> based on reference-window size (see <a href="#confidence">Confidence tiers</a>)</li>
-        <li><strong>Contributing factors</strong> — a <code>why ·</code> hint explaining the likely root cause</li>
+        <li><strong>Confidence badge</strong>, <em>low</em> / <em>medium</em> / <em>high</em> based on reference-window size (see <a href="#confidence">Confidence tiers</a>)</li>
+        <li><strong>Contributing factors</strong>, a <code>why ·</code> hint explaining the likely root cause</li>
         <li>Acknowledged state (if you&apos;ve silenced it)</li>
       </ul>
       <p>
-        No anomalies? The page tells you — that&apos;s the good state. Your infrastructure is
+        No anomalies? The page tells you, that&apos;s the good state. Your infrastructure is
         behaving predictably.
       </p>
 
-      <h3>Understanding why — Contributing factors</h3>
+      <h3>Understanding why, Contributing factors</h3>
       <p>
         When a bucket is flagged, Spanlens automatically fetches root-cause context so you don&apos;t
         have to dig through raw logs first. The <code>why ·</code> line appears beneath each anomaly
@@ -199,7 +199,7 @@ if deviations >= sigmaThreshold:
           <tr>
             <td><strong>Latency</strong> or <strong>Cost</strong></td>
             <td>
-              The token type that changed most between obs and reference windows —
+              The token type that changed most between obs and reference windows ,
               e.g. <em>Prompt tokens ↑ 3,200 (was 890, +259%)</em>
             </td>
             <td>
@@ -210,7 +210,7 @@ if deviations >= sigmaThreshold:
           <tr>
             <td><strong>Error rate</strong></td>
             <td>
-              Top HTTP status codes in the observation window, ranked by frequency —
+              Top HTTP status codes in the observation window, ranked by frequency ,
               e.g. <em>429: 45 req · 500: 8 req</em>
             </td>
             <td>
@@ -242,7 +242,7 @@ Content-Type: application/json
   "provider": "openai",
   "model": "gpt-4o",
   "kind": "latency",
-  "projectId": "proj_xxx"   // optional — omit for org-wide ack
+  "projectId": "proj_xxx"   // optional, omit for org-wide ack
 }
 
 # Un-acknowledge
@@ -250,7 +250,7 @@ DELETE /api/v1/anomalies/ack?provider=openai&model=gpt-4o&kind=latency`}</CodeBl
       <p>
         Requires <strong>admin</strong> or <strong>editor</strong> role.
         Acks are scoped per <code>(org, project, provider, model, kind)</code>
-        — acknowledging a bucket org-wide doesn&apos;t silence it inside a specific project, and
+       , acknowledging a bucket org-wide doesn&apos;t silence it inside a specific project, and
         vice versa.
       </p>
 
@@ -269,7 +269,7 @@ DELETE /api/v1/anomalies/ack?provider=openai&model=gpt-4o&kind=latency`}</CodeBl
 #     "deviations": 39.4,
 #     "sampleCount": 42,
 #     "referenceCount": 18420,
-#     "confidence": "high",        // low | medium | high — reliability of the baseline
+#     "confidence": "high",        // low | medium | high, reliability of the baseline
 #     "acknowledgedAt": null,      // ISO string if acked, null otherwise
 #     "factors": {                 // root-cause contributing factors
 #       "obsPromptTokensMean": 3200,
@@ -287,7 +287,7 @@ DELETE /api/v1/anomalies/ack?provider=openai&model=gpt-4o&kind=latency`}</CodeBl
 
       <h3>30-day history</h3>
       <p>
-        The history view shows past daily snapshots — useful for spotting recurring patterns
+        The history view shows past daily snapshots, useful for spotting recurring patterns
         (&ldquo;every Monday morning, latency spikes on gpt-4o&rdquo;).
       </p>
       <CodeBlock language="bash">{`GET /api/v1/anomalies/history?days=30
@@ -299,7 +299,7 @@ DELETE /api/v1/anomalies/ack?provider=openai&model=gpt-4o&kind=latency`}</CodeBl
       <h3>High-severity auto-notifications (≥5σ)</h3>
       <p>
         Anomalies that reach <strong>5σ or more</strong> are automatically delivered to your
-        configured notification channels (Slack, email, Discord) by the daily snapshot job — no
+        configured notification channels (Slack, email, Discord) by the daily snapshot job, no
         alert rule needed. Medium-severity anomalies (3–5σ) are dashboard-only; use{' '}
         <a href="/docs/features/alerts">threshold-based alert rules</a> for finer-grained routing.
       </p>
@@ -326,7 +326,7 @@ DELETE /api/v1/anomalies/ack?provider=openai&model=gpt-4o&kind=latency`}</CodeBl
           <tr>
             <td><code>observationHours</code></td>
             <td>1</td>
-            <td>Bigger (6, 24) if you have low traffic — avoids small-sample noise</td>
+            <td>Bigger (6, 24) if you have low traffic, avoids small-sample noise</td>
           </tr>
           <tr>
             <td><code>referenceHours</code></td>
@@ -340,7 +340,7 @@ DELETE /api/v1/anomalies/ack?provider=openai&model=gpt-4o&kind=latency`}</CodeBl
           </tr>
           <tr>
             <td><code>projectId</code></td>
-            <td>—</td>
+            <td>,</td>
             <td>Scope detection to a single project instead of the whole org</td>
           </tr>
           <tr>
@@ -363,7 +363,7 @@ DELETE /api/v1/anomalies/ack?provider=openai&model=gpt-4o&kind=latency`}</CodeBl
       <h2>Design choices</h2>
       <ul>
         <li>
-          <strong>Sample stddev (n−1 denominator).</strong> Bessel&apos;s correction — unbiased
+          <strong>Sample stddev (n−1 denominator).</strong> Bessel&apos;s correction, unbiased
           estimator for a finite sample.
         </li>
         <li>
@@ -372,7 +372,7 @@ DELETE /api/v1/anomalies/ack?provider=openai&model=gpt-4o&kind=latency`}</CodeBl
           at current scale and harder to explain.
         </li>
         <li>
-          <strong>One-sided detection.</strong> Only &ldquo;spike above baseline&rdquo; triggers —
+          <strong>One-sided detection.</strong> Only &ldquo;spike above baseline&rdquo; triggers ,
           drops in latency or cost are good news, not incidents.
         </li>
       </ul>
@@ -387,7 +387,7 @@ DELETE /api/v1/anomalies/ack?provider=openai&model=gpt-4o&kind=latency`}</CodeBl
         <li>
           <strong>Sparse buckets are skipped.</strong> Any <code>(provider, model, kind)</code>{' '}
           combination with fewer than <code>minSamples</code> requests (default 10) in the reference
-          window produces no signal — not enough data for any baseline. Buckets between 10 and 29
+          window produces no signal, not enough data for any baseline. Buckets between 10 and 29
           samples surface with <strong>low confidence</strong> so you can decide whether to act.
         </li>
         <li>

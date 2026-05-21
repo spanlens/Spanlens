@@ -12,7 +12,7 @@ export function cn(...inputs: ClassValue[]) {
 // React #418 hydration mismatch. The dashboard UI is English, so en-US is
 // consistent with the surrounding copy ("Renews on May 18, 2026").
 export function formatDate(iso: string | null): string {
-  if (!iso) return '—'
+  if (!iso) return ','
   return new Date(iso).toLocaleDateString('en-US', {
     year: 'numeric',
     month: 'short',
@@ -26,7 +26,7 @@ export function formatDate(iso: string | null): string {
  * Example: "May 18, 2026, 11:24 PM"
  */
 export function formatDateTime(iso: string | null): string {
-  if (!iso) return '—'
+  if (!iso) return ','
   return new Date(iso).toLocaleString('en-US', {
     year: 'numeric',
     month: 'short',
@@ -42,7 +42,7 @@ export function formatDateTime(iso: string | null): string {
  * where date is implied by context. Same #418 protection as formatDateTime.
  */
 export function formatTime(iso: string | null): string {
-  if (!iso) return '—'
+  if (!iso) return ','
   return new Date(iso).toLocaleTimeString('en-US', {
     hour: '2-digit',
     minute: '2-digit',

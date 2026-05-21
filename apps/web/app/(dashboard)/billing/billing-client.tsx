@@ -169,7 +169,7 @@ export function BillingClient() {
                 <div className="text-right shrink-0">
                   {cancelDone ? (
                     <p className="text-[12.5px] text-good">
-                      Cancellation scheduled — access continues until period end.
+                      Cancellation scheduled, access continues until period end.
                     </p>
                   ) : subscription.cancel_at_period_end ? (
                     <p className="text-[12.5px] text-text-faint">

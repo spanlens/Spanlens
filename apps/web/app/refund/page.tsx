@@ -5,7 +5,7 @@ import { MarketingNav } from '@/components/layout/marketing-nav'
 export const metadata = {
   title: 'Refund Policy · Spanlens',
   description:
-    'Spanlens refund policy — 14-day money-back guarantee, EU statutory withdrawal rights, and how to request a refund.',
+    'Spanlens refund policy, 14-day money-back guarantee, EU statutory withdrawal rights, and how to request a refund.',
 }
 
 const EFFECTIVE_DATE = '2026-05-17'
@@ -84,7 +84,7 @@ export default function RefundPage() {
         <p>
           You may cancel your subscription at any time from the{' '}
           <Link href="/billing">Billing page</Link> in your dashboard. Cancellation stops future
-          renewals but does not by itself trigger a refund — your plan remains active through the
+          renewals but does not by itself trigger a refund, your plan remains active through the
           end of the current billing period.
         </p>
 

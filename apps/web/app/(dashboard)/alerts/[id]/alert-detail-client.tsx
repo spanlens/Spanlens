@@ -199,7 +199,7 @@ export function AlertDetailClient() {
             <ArrowLeft className="h-3 w-3" /> All alerts
           </Link>
 
-          {/* Header — rule state */}
+          {/* Header, rule state */}
           <div className="flex items-center gap-3 mb-1">
             <span
               className={cn(

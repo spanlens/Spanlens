@@ -22,11 +22,11 @@ export default function QuickStart() {
           A project at <a href="/projects">/projects</a>
         </li>
         <li>
-          A <strong>Spanlens key</strong> (<code>sl_live_…</code>) — click{' '}
+          A <strong>Spanlens key</strong> (<code>sl_live_…</code>), click{' '}
           <em>+ New Spanlens key</em> on the project card
         </li>
         <li>
-          One or more <strong>provider keys</strong> registered under that Spanlens key —
+          One or more <strong>provider keys</strong> registered under that Spanlens key ,
           click <em>+ Add provider key</em> next to it (OpenAI, Anthropic, and/or Gemini)
         </li>
       </ol>
@@ -35,18 +35,18 @@ export default function QuickStart() {
         need separate keys per provider.
       </p>
 
-      <h2 id="path-a">Path A — Starting from scratch (no CLI)</h2>
+      <h2 id="path-a">Path A, Starting from scratch (no CLI)</h2>
       <p>
         If your code doesn&apos;t already call OpenAI / Anthropic / Gemini directly, this
         is the simpler path. Three steps, never run the CLI.
       </p>
 
-      <h3>Step 1 — Install the SDK</h3>
+      <h3>Step 1, Install the SDK</h3>
       <CodeBlock language="bash">{`pnpm add @spanlens/sdk
 # or: npm install @spanlens/sdk
 # or: yarn add @spanlens/sdk`}</CodeBlock>
 
-      <h3>Step 2 — Add the env variable</h3>
+      <h3>Step 2, Add the env variable</h3>
       <p>
         Copy the <code>sl_live_…</code> value shown when you issued the Spanlens key
         (it&apos;s only displayed once) and put it in your env file:
@@ -54,9 +54,9 @@ export default function QuickStart() {
       <CodeBlock language="env">{`# .env.local
 SPANLENS_API_KEY=sl_live_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx`}</CodeBlock>
 
-      <h3>Step 3 — Use the helper for each provider you registered</h3>
+      <h3>Step 3, Use the helper for each provider you registered</h3>
       <p>
-        Each helper is a drop-in replacement for the provider&apos;s normal client — same
+        Each helper is a drop-in replacement for the provider&apos;s normal client, same
         methods, same return types. <code>SPANLENS_API_KEY</code> is read automatically.
       </p>
 
@@ -90,14 +90,14 @@ const result = await model.generateContent('Hi')`}</CodeBlock>
 
       <h3 id="frameworks">Using LangChain, LangGraph, Vercel AI SDK, or LlamaIndex?</h3>
       <p>
-        Skip the per-provider helpers above and use a single callback handler instead — it
+        Skip the per-provider helpers above and use a single callback handler instead, it
         captures LLM, chain, tool, and retriever spans automatically (including the full
         LangGraph node topology). See{' '}
         <a className="underline" href="/docs/sdk#framework-integrations">framework integrations</a>{' '}
         for the per-framework snippet.
       </p>
 
-      <h3>Adding new providers later — no CLI needed</h3>
+      <h3>Adding new providers later, no CLI needed</h3>
       <p>
         Once Steps 1 and 2 are done, adding a second or third provider is just:
       </p>
@@ -111,7 +111,7 @@ const result = await model.generateContent('Hi')`}</CodeBlock>
         <code>SPANLENS_API_KEY</code> already covers the new provider.
       </p>
 
-      <h2 id="path-b">Path B — Migrating existing OpenAI / Anthropic / Gemini code (CLI)</h2>
+      <h2 id="path-b">Path B, Migrating existing OpenAI / Anthropic / Gemini code (CLI)</h2>
       <p>
         If your codebase already has direct calls like{' '}
         <code>new OpenAI(&#123; apiKey: ... &#125;)</code>, the CLI rewrites them in place
@@ -135,7 +135,7 @@ const result = await model.generateContent('Hi')`}</CodeBlock>
         <li>
           Patches every <code>new OpenAI(...)</code> / <code>new Anthropic(...)</code> /{' '}
           <code>new GoogleGenerativeAI(...)</code> call to the matching{' '}
-          <code>createXxx()</code> helper — only for providers you have keys for
+          <code>createXxx()</code> helper, only for providers you have keys for
         </li>
         <li>Runs <code>tsc --noEmit</code> to verify the patch compiles</li>
       </ol>
@@ -143,7 +143,7 @@ const result = await model.generateContent('Hi')`}</CodeBlock>
       <p>Then deploy:</p>
       <ol>
         <li>Add <code>SPANLENS_API_KEY</code> to your production env (Vercel / Railway / Fly)</li>
-        <li>Redeploy — new env values don&apos;t apply to existing deployments</li>
+        <li>Redeploy, new env values don&apos;t apply to existing deployments</li>
       </ol>
 
       <p className="text-sm text-muted-foreground">
@@ -153,7 +153,7 @@ const result = await model.generateContent('Hi')`}</CodeBlock>
 
       <h3>When does the CLI need to run again?</h3>
       <p>
-        Almost never. Once a file is patched it stays patched — rotating, adding, or
+        Almost never. Once a file is patched it stays patched, rotating, adding, or
         deactivating provider keys in the dashboard doesn&apos;t require a re-run. The
         only time you re-run is when:
       </p>
@@ -184,7 +184,7 @@ const result = await model.generateContent('Hi')`}</CodeBlock>
 
       <h2>What about /traces?</h2>
       <p>
-        The proxy setup above populates <a href="/requests">/requests</a> only —{' '}
+        The proxy setup above populates <a href="/requests">/requests</a> only ,{' '}
         <a href="/traces">/traces</a> will be empty. That&apos;s expected.
       </p>
       <p>
@@ -194,7 +194,7 @@ const result = await model.generateContent('Hi')`}</CodeBlock>
         parent trace.
       </p>
       <p>
-        See the <a href="/docs/sdk">SDK reference</a> to add tracing in a few lines — or
+        See the <a href="/docs/sdk">SDK reference</a> to add tracing in a few lines, or
         jump straight to <a href="/docs/features/traces">how traces work</a> if you want to
         understand the model first.
       </p>
@@ -207,9 +207,9 @@ const result = await model.generateContent('Hi')`}</CodeBlock>
           Confirm <code>SPANLENS_API_KEY</code> is set in <em>both</em>{' '}
           <code>.env.local</code> AND your deployment environment
         </li>
-        <li>After adding env vars in Vercel, <strong>redeploy</strong> — new values don&apos;t apply retroactively</li>
+        <li>After adding env vars in Vercel, <strong>redeploy</strong>, new values don&apos;t apply retroactively</li>
         <li>
-          Check the Network tab — your request should hit{' '}
+          Check the Network tab, your request should hit{' '}
           <code>server.spanlens.io/proxy/*</code>, not{' '}
           <code>api.openai.com</code> directly
         </li>
@@ -219,7 +219,7 @@ const result = await model.generateContent('Hi')`}</CodeBlock>
       <p>
         You called a provider you haven&apos;t registered yet. Open{' '}
         <a href="/projects">/projects</a>, find the Spanlens key, and click{' '}
-        <em>+ Add provider key</em> — pick the matching provider (OpenAI / Anthropic /
+        <em>+ Add provider key</em>, pick the matching provider (OpenAI / Anthropic /
         Gemini) and paste your AI key.
       </p>
 
@@ -228,7 +228,7 @@ const result = await model.generateContent('Hi')`}</CodeBlock>
         Either <code>SPANLENS_API_KEY</code> is missing in the runtime, or you&apos;re
         still constructing the upstream client directly (<code>new OpenAI(...)</code>) and
         passing the wrong <code>baseURL</code>. The simplest fix is to use the SDK helper
-        — <code>createOpenAI()</code> sets both <code>apiKey</code> and{' '}
+       , <code>createOpenAI()</code> sets both <code>apiKey</code> and{' '}
         <code>baseURL</code> for you.
       </p>
 

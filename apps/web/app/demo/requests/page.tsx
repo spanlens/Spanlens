@@ -26,7 +26,7 @@ function relAge(dateStr: string): string {
 }
 
 function fmtCost(n: number | null): string {
-  if (n == null) return '—'
+  if (n == null) return ','
   return n < 0.001 ? '$' + n.toFixed(5) : '$' + n.toFixed(4)
 }
 
@@ -186,11 +186,11 @@ function TrafficBars() {
 
   const labels = useMemo(() => {
     const pts = ts.slice(-30)
-    if (!pts.length) return ['—', '—', '—', '—', 'NOW']
+    if (!pts.length) return [',', ',', ',', ',', 'NOW']
     const fmt = (s: string) =>
       new Date(s).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
     const first = pts[0]
-    if (!first) return ['—', '—', '—', '—', 'NOW']
+    if (!first) return [',', ',', ',', ',', 'NOW']
     return [
       fmt(first.date),
       fmt((pts[Math.floor(pts.length * 0.25)] ?? first).date),

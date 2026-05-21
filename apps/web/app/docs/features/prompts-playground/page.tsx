@@ -3,7 +3,7 @@ import { CodeBlock } from '../../_components/code-block'
 export const metadata = {
   title: 'Prompts Playground · Spanlens Docs',
   description:
-    'Interactive console inside the Prompts tab — select a version, set model, temperature, and variables, then run it immediately and see cost and token counts.',
+    'Interactive console inside the Prompts tab, select a version, set model, temperature, and variables, then run it immediately and see cost and token counts.',
 }
 
 export default function PromptsPlaygroundDocs() {
@@ -11,7 +11,7 @@ export default function PromptsPlaygroundDocs() {
     <div>
       <h1>Prompts Playground</h1>
       <p className="lead">
-        Like a SQL query console for prompts — select a version, adjust model, temperature, and
+        Like a SQL query console for prompts, select a version, adjust model, temperature, and
         variables, then click <strong>Run</strong> to get an immediate result with cost and token
         counts. Verify how a prompt actually behaves before deploying it to production.
       </p>
@@ -63,12 +63,12 @@ export default function PromptsPlaygroundDocs() {
       <h2>Supported providers</h2>
       <p>The Playground currently supports:</p>
       <ul>
-        <li><strong>OpenAI</strong> — GPT model family</li>
-        <li><strong>Anthropic</strong> — Claude model family</li>
+        <li><strong>OpenAI</strong>, GPT model family</li>
+        <li><strong>Anthropic</strong>, Claude model family</li>
       </ul>
       <p>
         Runs use your own <strong>provider key</strong> stored in Spanlens. The cost of each run
-        is billed directly to your provider account — Spanlens does not cover it.
+        is billed directly to your provider account, Spanlens does not cover it.
       </p>
 
       <h2>Run parameters</h2>
@@ -86,19 +86,19 @@ export default function PromptsPlaygroundDocs() {
             <tr>
               <td><code>promptVersionId</code></td>
               <td>string (UUID)</td>
-              <td>—</td>
+              <td>,</td>
               <td>ID of the prompt version to run (required)</td>
             </tr>
             <tr>
               <td><code>providerKeyId</code></td>
               <td>string (UUID)</td>
-              <td>—</td>
+              <td>,</td>
               <td>Provider key to use (required)</td>
             </tr>
             <tr>
               <td><code>model</code></td>
               <td>string</td>
-              <td>—</td>
+              <td>,</td>
               <td>Model to run (e.g. <code>gpt-4o-mini</code>, <code>claude-3-5-haiku-20241022</code>)</td>
             </tr>
             <tr>

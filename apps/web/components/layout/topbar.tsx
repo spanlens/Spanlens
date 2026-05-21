@@ -29,7 +29,7 @@ export function Topbar({ crumbs, right, className }: TopbarProps) {
         className,
       )}
     >
-      {/* Hamburger — mobile only */}
+      {/* Hamburger, mobile only */}
       <button
         type="button"
         onClick={toggle}
@@ -67,7 +67,7 @@ export function Topbar({ crumbs, right, className }: TopbarProps) {
       </nav>
 
       <div className="flex-1" />
-      {/* Search pill — hidden on mobile to make room for right-slot actions */}
+      {/* Search pill, hidden on mobile to make room for right-slot actions */}
       <CmdKPill className="hidden md:inline-flex" />
       {right}
     </div>

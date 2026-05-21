@@ -136,7 +136,7 @@ export default function TermsPage() {
         </p>
         <p>
           You may <strong>cancel your subscription at any time</strong> from the{' '}
-          <Link href="/billing">Billing page</Link> in your dashboard — cancellation stops
+          <Link href="/billing">Billing page</Link> in your dashboard, cancellation stops
           future renewals but does not by itself trigger a refund. Your plan remains active
           through the end of the current billing period.
         </p>
@@ -178,7 +178,7 @@ export default function TermsPage() {
         <ul>
           <li>Accepting and complying with those providers&apos; terms of service.</li>
           <li>Keeping your own provider API keys secure and authorized for the use cases you put through our proxy.</li>
-          <li>Any charges those providers bill you directly (Spanlens does not bill you for provider API usage — that&apos;s your account with OpenAI/Anthropic/Google).</li>
+          <li>Any charges those providers bill you directly (Spanlens does not bill you for provider API usage, that&apos;s your account with OpenAI/Anthropic/Google).</li>
         </ul>
 
         <h2 id="ip">8. Intellectual property</h2>
@@ -211,8 +211,8 @@ export default function TermsPage() {
         <h2 id="liability">10. Limitation of liability</h2>
         <p>
           To the maximum extent permitted by law, Oceancode&apos;s total aggregate liability
-          arising out of or relating to the service — whether in contract, tort, or any other
-          theory — is limited to the <strong>amount you paid to Spanlens in the 12 months
+          arising out of or relating to the service, whether in contract, tort, or any other
+          theory, is limited to the <strong>amount you paid to Spanlens in the 12 months
           preceding the event giving rise to liability</strong>.
         </p>
         <p>

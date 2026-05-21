@@ -162,7 +162,7 @@ function SignupPageInner() {
   return (
     <div className="min-h-screen bg-bg-elev grid grid-cols-2">
 
-      {/* ── Left pane — product proof ─────────────────────────────── */}
+      {/* ── Left pane, product proof ─────────────────────────────── */}
       <div className="bg-bg border-r border-border p-10 flex flex-col justify-between">
         <div>
           <LogoMark />
@@ -173,7 +173,7 @@ function SignupPageInner() {
               are on us.
             </h2>
             <p className="text-[14px] text-text-muted leading-[1.55] mt-4">
-              No credit card. Self-host forever-free. Cancel anytime — there is nothing to cancel.
+              No credit card. Self-host forever-free. Cancel anytime, there is nothing to cancel.
             </p>
           </div>
         </div>
@@ -185,7 +185,7 @@ function SignupPageInner() {
         </div>
       </div>
 
-      {/* ── Right pane — form ────────────────────────────────────────── */}
+      {/* ── Right pane, form ────────────────────────────────────────── */}
       <div className="flex items-center justify-center p-10">
         <div className="w-[360px] max-w-full">
           {sent ? (

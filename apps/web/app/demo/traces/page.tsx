@@ -9,14 +9,14 @@ import type { TraceRow } from '@/lib/queries/types'
 // ── Helpers ────────────────────────────────────────────────────
 
 function fmtDuration(ms: number | null): string {
-  if (ms == null) return '—'
+  if (ms == null) return ','
   if (ms < 1) return '<1ms'
   if (ms < 1000) return `${Math.round(ms)}ms`
   return `${(ms / 1000).toFixed(2)}s`
 }
 
 function fmtCost(n: number): string {
-  if (n <= 0) return '—'
+  if (n <= 0) return ','
   return n < 0.001 ? `$${n.toFixed(5)}` : `$${n.toFixed(4)}`
 }
 
@@ -160,7 +160,7 @@ export default function DemoTracesPage() {
             { label: 'Traces',            value: DEMO_TRACES.length.toLocaleString(), warn: false },
             { label: 'p50 duration',      value: fmtDuration(p50),                   warn: false },
             { label: 'p95 duration',      value: fmtDuration(p95),                   warn: p95 != null && p95 > 8000 },
-            { label: 'Avg spans / trace', value: avgSpans != null ? avgSpans.toFixed(1) : '—', warn: false },
+            { label: 'Avg spans / trace', value: avgSpans != null ? avgSpans.toFixed(1) : ',', warn: false },
             { label: 'Errors',            value: String(errors),                      warn: errors > 0 },
           ].map((s, i) => (
             <div

@@ -6,7 +6,7 @@ import { Topbar } from '@/components/layout/topbar'
 import { DEMO_DATASETS } from '@/lib/demo-data'
 
 function demoNotice(action: string) {
-  return () => alert(`${action} — sign up to use this`)
+  return () => alert(`${action}, sign up to use this`)
 }
 
 export default function DemoDatasetsPage() {

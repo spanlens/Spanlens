@@ -177,10 +177,10 @@ function AnomRow({ a, idx, last, onAck, onUnack, ackPending, dimmed }: AnomRowPr
               )}
               title={
                 a.confidence === 'low'
-                  ? `Low confidence — only ${a.referenceCount} baseline samples (< 30). Treat as directional only.`
+                  ? `Low confidence, only ${a.referenceCount} baseline samples (< 30). Treat as directional only.`
                   : a.confidence === 'medium'
-                    ? `Medium confidence — ${a.referenceCount} baseline samples.`
-                    : `High confidence — ${a.referenceCount} baseline samples.`
+                    ? `Medium confidence, ${a.referenceCount} baseline samples.`
+                    : `High confidence, ${a.referenceCount} baseline samples.`
               }
             >
               {a.confidence}
@@ -479,7 +479,7 @@ export function AnomaliesClient() {
                 </p>
                 <p className="font-mono text-[11.5px] text-text-faint">
                   {acked.length > 0
-                    ? `${acked.length} acknowledged — Unack to re-open.`
+                    ? `${acked.length} acknowledged, Unack to re-open.`
                     : 'Baselines look healthy.'}
                 </p>
               </div>

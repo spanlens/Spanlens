@@ -2,7 +2,7 @@ import { CodeBlock } from '../_components/code-block'
 
 export const metadata = {
   title: 'Direct proxy · Spanlens Docs',
-  description: 'Use Spanlens from any language — Python, Ruby, Go, curl. Just swap the base URL.',
+  description: 'Use Spanlens from any language, Python, Ruby, Go, curl. Just swap the base URL.',
 }
 
 export default function ProxyDocs() {
@@ -20,7 +20,7 @@ export default function ProxyDocs() {
           The proxy runs on Vercel Pro with a <strong>300-second hard ceiling</strong>, and Spanlens
           gracefully closes streams at <strong>290 seconds</strong> to make room for the log to flush.
           Long requests (large <code>max_tokens</code>, slow models, JSON mode with big outputs) should
-          use <code>stream: true</code> — first byte arrives in ~200 ms regardless of total duration.
+          use <code>stream: true</code>, first byte arrives in ~200 ms regardless of total duration.
           If a stream gets cut off at the deadline, the row is logged with{' '}
           <code>truncated: true</code> (visible as a badge in <a href="/requests">/requests</a>) so
           you can see when it happens and tune <code>max_tokens</code> accordingly. Non-streaming
@@ -41,12 +41,12 @@ https://spanlens-server.vercel.app/proxy/azure`}</CodeBlock>
       </p>
       <ol>
         <li>
-          <strong>Base URL</strong> — point your SDK at the Spanlens proxy
+          <strong>Base URL</strong>, point your SDK at the Spanlens proxy
         </li>
         <li>
-          <strong>API key</strong> — use your Spanlens API key (starts with{' '}
+          <strong>API key</strong>, use your Spanlens API key (starts with{' '}
           <code>sl_live_</code>) instead of the provider&apos;s. The real provider key
-          registered under your Spanlens key is decrypted server-side and forwarded — your
+          registered under your Spanlens key is decrypted server-side and forwarded, your
           client never sees it.
         </li>
       </ol>
@@ -54,7 +54,7 @@ https://spanlens-server.vercel.app/proxy/azure`}</CodeBlock>
       <h3 id="auth-transports">Authentication transports per SDK</h3>
       <p>
         Each provider&apos;s SDK puts the API key on the wire differently. Spanlens accepts
-        whichever shape the SDK sends — you don&apos;t need to override anything when using
+        whichever shape the SDK sends, you don&apos;t need to override anything when using
         the upstream client. If you&apos;re writing a hand-rolled client (curl, raw fetch, a
         language without an official SDK), pick whichever transport is convenient.
       </p>
@@ -99,7 +99,7 @@ https://spanlens-server.vercel.app/proxy/azure`}</CodeBlock>
         one wins. Implementation: <code>apps/server/src/middleware/authApiKey.ts</code>.
       </p>
 
-      <h2 id="python-openai">Python — OpenAI</h2>
+      <h2 id="python-openai">Python, OpenAI</h2>
       <CodeBlock language="python">{`from openai import OpenAI
 
 client = OpenAI(
@@ -112,7 +112,7 @@ res = client.chat.completions.create(
     messages=[{"role": "user", "content": "Hi"}],
 )`}</CodeBlock>
 
-      <h2 id="python-anthropic">Python — Anthropic</h2>
+      <h2 id="python-anthropic">Python, Anthropic</h2>
       <CodeBlock language="python">{`from anthropic import Anthropic
 
 client = Anthropic(
@@ -126,10 +126,10 @@ msg = client.messages.create(
     messages=[{"role": "user", "content": "Hi"}],
 )`}</CodeBlock>
 
-      <h2 id="python-azure">Python — Azure OpenAI</h2>
+      <h2 id="python-azure">Python, Azure OpenAI</h2>
       <p>
         Azure OpenAI uses Microsoft&apos;s <code>/openai/v1/*</code> endpoint (GA Aug 2025) so
-        it is drop-in OpenAI-compatible — same request and response shapes, same streaming
+        it is drop-in OpenAI-compatible, same request and response shapes, same streaming
         format. Register your Azure resource URL + API key under the Spanlens key in the
         dashboard once; the proxy then injects them at call time. Your client just talks to{' '}
         <code>/proxy/azure</code>.
@@ -154,7 +154,7 @@ res = client.chat.completions.create(
         <code>api-key</code> header on every request.
       </p>
 
-      <h2 id="curl">curl — raw HTTP</h2>
+      <h2 id="curl">curl, raw HTTP</h2>
       <CodeBlock language="bash">{`curl https://spanlens-server.vercel.app/proxy/openai/v1/chat/completions \\
   -H "Authorization: Bearer $SPANLENS_API_KEY" \\
   -H "Content-Type: application/json" \\
@@ -193,7 +193,7 @@ res, _ := client.CreateChatCompletion(ctx, openai.ChatCompletionRequest{
 
       <h2>Streaming</h2>
       <p>
-        Server-Sent Events streaming works transparently. Spanlens tees the stream — one copy flows to
+        Server-Sent Events streaming works transparently. Spanlens tees the stream, one copy flows to
         you in real time, the other is parsed asynchronously to extract token usage. Latency overhead
         is negligible (10–50ms).
       </p>
@@ -215,7 +215,7 @@ res, _ := client.CreateChatCompletion(ctx, openai.ChatCompletionRequest{
 # or
 -H "X-Spanlens-Prompt-Version: ae1c3c1e-99eb-2b98-5f05-012345678901"`}</CodeBlock>
       <p className="text-sm text-muted-foreground">
-        Invalid or unknown values silently resolve to null — the proxy never fails because a
+        Invalid or unknown values silently resolve to null, the proxy never fails because a
         prompt tag is stale. The request just isn&apos;t linked to a version.
       </p>
 
@@ -233,13 +233,13 @@ res, _ := client.CreateChatCompletion(ctx, openai.ChatCompletionRequest{
         <a href="/docs/features/users">Users docs</a> for tagging strategy and SDK helpers.
       </p>
 
-      <h3>Controlling body retention — <code>X-Spanlens-Log-Body</code></h3>
+      <h3>Controlling body retention, <code>X-Spanlens-Log-Body</code></h3>
       <p>
         Spanlens stores the full request and response bodies by default (with API-key auto-masking
-        — see below). For PII-sensitive workloads, opt out per call with the{' '}
+       , see below). For PII-sensitive workloads, opt out per call with the{' '}
         <code>X-Spanlens-Log-Body</code> header:
       </p>
-      <CodeBlock>{`-H "X-Spanlens-Log-Body: full"   # default — store bodies (with key masking)
+      <CodeBlock>{`-H "X-Spanlens-Log-Body: full"   # default, store bodies (with key masking)
 -H "X-Spanlens-Log-Body: meta"   # drop bodies; keep tokens/cost/latency/user/session
 -H "X-Spanlens-Log-Body: none"   # same as meta + drop user_id/session_id`}</CodeBlock>
       <p>
@@ -264,7 +264,7 @@ res, _ := client.CreateChatCompletion(ctx, openai.ChatCompletionRequest{
         <li>Google: <code>AIza*</code></li>
       </ul>
       <p>
-        This is <strong>pattern-based, not ML-based</strong> — it catches keys that slip into
+        This is <strong>pattern-based, not ML-based</strong>, it catches keys that slip into
         prompts/tool output/error strings, but it does <em>not</em> redact natural-language PII
         (names, emails, card numbers). For those, use <code>X-Spanlens-Log-Body: meta</code>.
         See <a href="/docs/features/security">Security docs</a> for full details.

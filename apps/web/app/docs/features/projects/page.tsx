@@ -12,12 +12,12 @@ export default function ProjectsDocs() {
       <h1>Projects, Spanlens keys &amp; provider keys</h1>
       <p className="lead">
         A Spanlens organization contains one or more <strong>projects</strong>. Each project
-        owns one or more <strong>Spanlens keys</strong> (<code>sl_live_…</code>) — the value
+        owns one or more <strong>Spanlens keys</strong> (<code>sl_live_…</code>), the value
         you put in your app&apos;s <code>SPANLENS_API_KEY</code> env. Each Spanlens key in
         turn owns its own pool of <strong>provider keys</strong> (the real OpenAI / Anthropic
         / Gemini credentials), so two Spanlens keys in the same project can carry different
         underlying credentials. Projects let you separate dev/staging/prod, per-service, or
-        per-team — whatever scoping makes sense.
+        per-team, whatever scoping makes sense.
       </p>
 
       <h2>Why projects</h2>
@@ -41,7 +41,7 @@ export default function ProjectsDocs() {
       <ul>
         <li>
           <strong>Real provider keys never ship to clients.</strong> Frontend bundles, mobile
-          apps, anywhere — they only ever see the revocable <code>sl_live_…</code>.
+          apps, anywhere, they only ever see the revocable <code>sl_live_…</code>.
         </li>
         <li>
           <strong>Centralized rotation.</strong> Replace the OpenAI key on the dashboard
@@ -61,7 +61,7 @@ export default function ProjectsDocs() {
       <h3>Spanlens key format</h3>
       <p>
         Keys are <code>sl_live_</code> + 48 random hex chars. At creation time the plaintext
-        is shown once in the dashboard — copy it immediately. On the server we compute{' '}
+        is shown once in the dashboard, copy it immediately. On the server we compute{' '}
         <strong>SHA-256</strong> over the key and store only the hash in{' '}
         <code>api_keys.key_hash</code>.
       </p>
@@ -77,16 +77,16 @@ export default function ProjectsDocs() {
         Provider keys (the real <code>sk-…</code> / <code>sk-ant-…</code> / <code>AIza…</code>{' '}
         values) are stored encrypted with <strong>AES-256-GCM</strong>. See{' '}
         <a href="/docs/features/settings">Keys &amp; encryption</a> for the cryptographic
-        details — fresh IV per key, authenticated, decrypted only in memory for the duration
+        details, fresh IV per key, authenticated, decrypted only in memory for the duration
         of one upstream <code>fetch()</code>.
       </p>
 
       <h3>Per-key metadata tracked</h3>
       <ul>
-        <li><code>name</code> — human label (e.g. &ldquo;prod-backend&rdquo;)</li>
-        <li><code>key_prefix</code> — first 15 chars (Spanlens key only), shown in UI for ID</li>
-        <li><code>last_used_at</code> — updated on every successful auth</li>
-        <li><code>is_active</code> — revoke flag; inactive keys return 401</li>
+        <li><code>name</code>, human label (e.g. &ldquo;prod-backend&rdquo;)</li>
+        <li><code>key_prefix</code>, first 15 chars (Spanlens key only), shown in UI for ID</li>
+        <li><code>last_used_at</code>, updated on every successful auth</li>
+        <li><code>is_active</code>, revoke flag; inactive keys return 401</li>
       </ul>
 
       <h2>Using it</h2>
@@ -109,7 +109,7 @@ export default function ProjectsDocs() {
           After you save a provider key the dialog flips to a success view showing the
           one-line integration snippet for that provider (<code>createOpenAI()</code>,{' '}
           <code>createAnthropic()</code>, <code>createGemini()</code>). Drop it into your
-          code — no CLI re-run needed.
+          code, no CLI re-run needed.
         </li>
       </ol>
 
@@ -119,7 +119,7 @@ export default function ProjectsDocs() {
       <ul>
         <li>
           <strong>Toggled active/inactive</strong> via the switch on the Spanlens key row.
-          Inactive keys return 401 immediately — no cache to invalidate.
+          Inactive keys return 401 immediately, no cache to invalidate.
         </li>
         <li>
           <strong>Provider keys rotated</strong> via the pencil icon on each provider key
@@ -127,7 +127,7 @@ export default function ProjectsDocs() {
           changes.
         </li>
         <li>
-          <strong>Provider keys deactivated</strong> via the trash icon (soft delete — flips{' '}
+          <strong>Provider keys deactivated</strong> via the trash icon (soft delete, flips{' '}
           <code>is_active = false</code>, preserves request logs).
         </li>
         <li>
@@ -140,7 +140,7 @@ export default function ProjectsDocs() {
         The page also surfaces a wizard hint: <code>npx @spanlens/cli init</code> can
         bootstrap an existing OpenAI/Anthropic/Gemini codebase by rewriting{' '}
         <code>new OpenAI(...)</code> → <code>createOpenAI()</code> in one pass. For{' '}
-        <em>new</em> code, you don&apos;t need the CLI — copy the snippet from the dashboard
+        <em>new</em> code, you don&apos;t need the CLI, copy the snippet from the dashboard
         and you&apos;re done.
       </p>
 
@@ -198,7 +198,7 @@ DELETE /api/v1/provider-keys/:id             # soft delete (is_active=false)`}</
         </li>
         <li>
           <strong>Provider keys are scoped to one Spanlens key.</strong> A stolen Spanlens
-          key only unlocks the provider keys you registered under it — not the org&apos;s
+          key only unlocks the provider keys you registered under it, not the org&apos;s
           other Spanlens keys&apos; provider keys. (UNIQUE INDEX <code>(api_key_id,
           provider) WHERE is_active = true</code> enforces 1 active per Spanlens key per
           provider.)
@@ -208,7 +208,7 @@ DELETE /api/v1/provider-keys/:id             # soft delete (is_active=false)`}</
       <h2>Limitations</h2>
       <ul>
         <li>
-          <strong>No per-key rate limits yet.</strong> Enterprise ask — on roadmap.
+          <strong>No per-key rate limits yet.</strong> Enterprise ask, on roadmap.
         </li>
         <li>
           <strong>No automatic rotation.</strong> Provider key rotation is manual (pencil
@@ -221,7 +221,7 @@ DELETE /api/v1/provider-keys/:id             # soft delete (is_active=false)`}</
         </li>
         <li>
           <strong>Spanlens key plaintext shown once.</strong> No &ldquo;reveal existing
-          key&rdquo; escape hatch — by design. If CI lost the value, delete the key, create
+          key&rdquo; escape hatch, by design. If CI lost the value, delete the key, create
           a new one, and update the secret in your CI settings.
         </li>
       </ul>

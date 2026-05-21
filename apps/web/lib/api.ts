@@ -27,7 +27,7 @@ export class ApiError extends Error {
   }
 }
 
-const SESSION_TTL_MS = 10_000 // 10s — well under the default 1h access-token lifetime
+const SESSION_TTL_MS = 10_000 // 10s, well under the default 1h access-token lifetime
 
 interface CachedSession {
   token: string | null

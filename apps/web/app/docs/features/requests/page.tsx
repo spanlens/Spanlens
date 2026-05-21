@@ -3,7 +3,7 @@ import { CodeBlock } from '../../_components/code-block'
 export const metadata = {
   title: 'Requests · Spanlens Docs',
   description:
-    'Complete log of every LLM call routed through Spanlens — model, tokens, cost, latency, full request/response bodies.',
+    'Complete log of every LLM call routed through Spanlens, model, tokens, cost, latency, full request/response bodies.',
 }
 
 export default function RequestsDocs() {
@@ -12,7 +12,7 @@ export default function RequestsDocs() {
       <h1>Requests</h1>
       <p className="lead">
         Every LLM call that flows through the Spanlens proxy produces one row in the{' '}
-        <code>requests</code> table — backed by ClickHouse for fast analytical reads.{' '}
+        <code>requests</code> table, backed by ClickHouse for fast analytical reads.{' '}
         <a href="/requests">/requests</a> is the viewer: filter, sort, drill down, and read the
         actual request and response bodies. This is the raw substrate every other feature
         (Traces, Anomalies, Savings, etc.) aggregates from.
@@ -20,9 +20,9 @@ export default function RequestsDocs() {
 
       <h2>Why it matters</h2>
       <p>
-        Aggregate views summarize — they smooth over individual outliers. When something goes wrong
-        — a user reports a wrong answer, a cost spike is unaccounted for, a prompt injection slips
-        through — you need to see the <em>actual bytes that went out</em> and{' '}
+        Aggregate views summarize, they smooth over individual outliers. When something goes wrong
+       , a user reports a wrong answer, a cost spike is unaccounted for, a prompt injection slips
+        through, you need to see the <em>actual bytes that went out</em> and{' '}
         <em>came back</em>. Requests gives you that exact record.
       </p>
 
@@ -146,18 +146,18 @@ export default function RequestsDocs() {
       </p>
       <p>
         The main table is paginated (up to 100 rows/page) with these filters. Filter state is{' '}
-        <strong>synced to the URL</strong> — copy and share the URL to hand off a pre-filtered
+        <strong>synced to the URL</strong>, copy and share the URL to hand off a pre-filtered
         view, or use the browser&apos;s back button to restore a previous filter state.
       </p>
       <ul>
-        <li><strong>Provider</strong> — exact match (openai / anthropic / gemini / azure)</li>
+        <li><strong>Provider</strong>, exact match (openai / anthropic / gemini / azure)</li>
         <li>
-          <strong>Model</strong> — partial, case-insensitive match (e.g. searching &ldquo;mini&rdquo;
+          <strong>Model</strong>, partial, case-insensitive match (e.g. searching &ldquo;mini&rdquo;
           matches <code>gpt-4o-mini-2024-07-18</code>)
         </li>
-        <li><strong>Provider key</strong> — dropdown of your registered keys, to isolate traffic by key</li>
-        <li><strong>Status</strong> — All / OK (2xx) / 4xx / 5xx</li>
-        <li><strong>Date range</strong> — from / to</li>
+        <li><strong>Provider key</strong>, dropdown of your registered keys, to isolate traffic by key</li>
+        <li><strong>Status</strong>, All / OK (2xx) / 4xx / 5xx</li>
+        <li><strong>Date range</strong>, from / to</li>
       </ul>
 
       <h4>URL-only filters</h4>
@@ -206,7 +206,7 @@ export default function RequestsDocs() {
       <h3>Replay</h3>
       <p>
         Every request detail page has a <strong>Replay</strong> button. It opens a modal where you
-        can re-run the original call against a different model and compare the result inline —
+        can re-run the original call against a different model and compare the result inline ,
         without touching your application code.
       </p>
       <ul>
@@ -231,7 +231,7 @@ export default function RequestsDocs() {
 
       <h3>Detail drawer</h3>
       <p>
-        Clicking any row opens a 480 px right-side drawer — no page navigation. The drawer shows:
+        Clicking any row opens a 480 px right-side drawer, no page navigation. The drawer shows:
       </p>
       <ul>
         <li>Request ID, timestamp, and error badge (if applicable)</li>
@@ -242,7 +242,7 @@ export default function RequestsDocs() {
         </li>
         <li>Metrics row: Latency, Cost, Total tokens (with prompt / completion breakdown)</li>
         <li>
-          <strong>Prev / Next</strong> navigation buttons — step through the current result set one
+          <strong>Prev / Next</strong> navigation buttons, step through the current result set one
           row at a time. When you reach the end of a page the drawer automatically loads the next
           page and jumps to the first (or last) row. An <em>Open →</em> link opens the standalone
           detail page <code>/requests/[id]</code> if you need a shareable URL.
@@ -298,7 +298,7 @@ export default function RequestsDocs() {
 
       <h2>API</h2>
 
-      <CodeBlock language="bash">{`# List requests — paginated, sortable, filterable
+      <CodeBlock language="bash">{`# List requests, paginated, sortable, filterable
 GET /api/v1/requests
   ?projectId=<uuid>      # filter by project
   &provider=openai       # exact match
@@ -318,11 +318,11 @@ GET /api/v1/requests
 # One request by id (includes full request_body + response_body)
 GET /api/v1/requests/:id
 
-# Replay — curl snippet (proxy-ready payload)
+# Replay, curl snippet (proxy-ready payload)
 POST /api/v1/requests/:id/replay
   Body: { "model": "gpt-4o-mini" }  # optional model override
 
-# Replay — execute server-side and return result (latency / tokens / cost)
+# Replay, execute server-side and return result (latency / tokens / cost)
 POST /api/v1/requests/:id/replay/run
   Body: { "model": "gpt-4o-mini" }  # optional model override`}</CodeBlock>
 
@@ -336,7 +336,7 @@ POST /api/v1/requests/:id/replay/run
       <ul>
         <li>
           <strong>Authorization headers are stripped</strong> from <code>request_body</code> before
-          it&apos;s stored — your OpenAI/Anthropic/Gemini key never appears in logs.
+          it&apos;s stored, your OpenAI/Anthropic/Gemini key never appears in logs.
         </li>
         <li>
           <strong>API key patterns are auto-masked</strong> in stored bodies. Anything matching{' '}
@@ -359,7 +359,7 @@ POST /api/v1/requests/:id/replay/run
         <li>
           <strong>Retention policy.</strong> Free plan: 14 days. Pro: 90 days. Team and
           Enterprise: 365 days (Enterprise is extendable by contract). Enforced by the
-          table&apos;s TTL plus a per-plan query-time clip — older rows are dropped by
+          table&apos;s TTL plus a per-plan query-time clip, older rows are dropped by
           ClickHouse&apos;s background merge.
         </li>
         <li>
@@ -379,7 +379,7 @@ POST /api/v1/requests/:id/replay/run
         <li>
           <strong>No full-text body search in the UI yet.</strong> The model filter uses
           case-insensitive substring match; there is no free-text search over request/response
-          body content. ClickHouse can do it efficiently — the dashboard hasn&apos;t exposed it
+          body content. ClickHouse can do it efficiently, the dashboard hasn&apos;t exposed it
           yet.
         </li>
         <li>
@@ -387,7 +387,7 @@ POST /api/v1/requests/:id/replay/run
           are tee&apos;d while pass-through to the client. After the stream closes, the assistant
           text is reassembled and written to <code>response_body</code> in the upstream&apos;s
           standard non-streaming shape (so the dashboard renders it identically to a non-stream
-          response). Tool calls / images / non-text content blocks are not preserved — only the
+          response). Tool calls / images / non-text content blocks are not preserved, only the
           assistant-visible text portion. Aborted streams keep whatever was received up to the
           break.
         </li>

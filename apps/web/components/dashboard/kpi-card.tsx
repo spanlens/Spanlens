@@ -72,7 +72,7 @@ export function KpiCard({
         )}
       </div>
 
-      {/* Sparkline — fills full card width, fixed 44px tall */}
+      {/* Sparkline, fills full card width, fixed 44px tall */}
       <div className="w-full" style={{ height: VH }}>
         {path ? (
           <svg

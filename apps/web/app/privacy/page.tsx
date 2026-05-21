@@ -39,7 +39,7 @@ export default function PrivacyPage() {
           <li><strong>E-commerce Registration Number:</strong> 2025-경기광주-2133</li>
           <li><strong>Jurisdiction:</strong> Republic of Korea</li>
           <li>
-            <strong>Privacy Officer (개인정보보호책임자):</strong> Jeon Haesung —{' '}
+            <strong>Privacy Officer (개인정보보호책임자):</strong> Jeon Haesung ,{' '}
             <a href="mailto:support@spanlens.io">support@spanlens.io</a>
           </li>
         </ul>
@@ -57,7 +57,7 @@ export default function PrivacyPage() {
         <h3>Service telemetry (LLM requests routed through our proxy)</h3>
         <ul>
           <li>
-            Request and response bodies, <strong>truncated to a 10 KB preview</strong> — these
+            Request and response bodies, <strong>truncated to a 10 KB preview</strong>, these
             may contain whatever you or your end users submitted to the LLM, including prompts,
             file contents, user messages, and retrieved context.
           </li>
@@ -75,7 +75,7 @@ export default function PrivacyPage() {
           </li>
           <li>
             Security flags (PII patterns, prompt-injection patterns) detected in the request
-            body, stored as <strong>masked samples</strong> of 6 characters — never the raw
+            body, stored as <strong>masked samples</strong> of 6 characters, never the raw
             matched text.
           </li>
           <li>
@@ -122,19 +122,19 @@ export default function PrivacyPage() {
         <p>For EU users, we process data on the following legal bases (GDPR Art. 6):</p>
         <ul>
           <li>
-            <strong>Performance of a contract</strong> (Art. 6(1)(b)) — most service operation
+            <strong>Performance of a contract</strong> (Art. 6(1)(b)), most service operation
             falls here, because we process data to fulfill our service obligations to you.
           </li>
           <li>
-            <strong>Legitimate interests</strong> (Art. 6(1)(f)) — security monitoring, fraud
+            <strong>Legitimate interests</strong> (Art. 6(1)(f)), security monitoring, fraud
             prevention, and service improvement.
           </li>
           <li>
-            <strong>Legal obligation</strong> (Art. 6(1)(c)) — tax record retention and legal
+            <strong>Legal obligation</strong> (Art. 6(1)(c)), tax record retention and legal
             requests from Korean authorities.
           </li>
           <li>
-            <strong>Consent</strong> (Art. 6(1)(a)) — used for optional features; you may
+            <strong>Consent</strong> (Art. 6(1)(a)), used for optional features; you may
             withdraw consent at any time.
           </li>
         </ul>
@@ -143,17 +143,17 @@ export default function PrivacyPage() {
         <p>
           We engage third-party companies (&ldquo;sub-processors&rdquo;) to operate Spanlens.
           Each processes your data only as needed to provide their service, under contractual
-          confidentiality obligations. A current, authoritative list — with processing
-          locations, data categories, and transfer mechanisms — is maintained at{' '}
+          confidentiality obligations. A current, authoritative list, with processing
+          locations, data categories, and transfer mechanisms, is maintained at{' '}
           <Link href="/subprocessors">spanlens.io/subprocessors</Link>.
         </p>
         <p>
           As of the effective date of this Policy, our infrastructure sub-processors are
-          Vercel Inc. (USA — compute), Supabase Inc. (Republic of Korea — Postgres,
-          authentication), ClickHouse, Inc. (USA — LLM request log store), Upstash, Inc.
-          (USA — rate-limit counters), and Paddle.com Market Ltd. (Ireland — Merchant of
-          Record). Our communications sub-processors are Resend, Inc. (USA — transactional
-          email) and Functional Software, Inc. / Sentry (USA — error monitoring). For B2B
+          Vercel Inc. (USA, compute), Supabase Inc. (Republic of Korea, Postgres,
+          authentication), ClickHouse, Inc. (USA, LLM request log store), Upstash, Inc.
+          (USA, rate-limit counters), and Paddle.com Market Ltd. (Ireland, Merchant of
+          Record). Our communications sub-processors are Resend, Inc. (USA, transactional
+          email) and Functional Software, Inc. / Sentry (USA, error monitoring). For B2B
           customers, the full set of contractual safeguards applicable to these sub-processors
           is set out in our <Link href="/dpa">Data Processing Addendum</Link>.
         </p>
@@ -236,7 +236,7 @@ export default function PrivacyPage() {
           <li>Rectification (Art. 16)</li>
           <li>Erasure / &ldquo;right to be forgotten&rdquo; (Art. 17)</li>
           <li>Restriction of processing (Art. 18)</li>
-          <li>Data portability — export in machine-readable format (Art. 20)</li>
+          <li>Data portability, export in machine-readable format (Art. 20)</li>
           <li>Objection to processing based on legitimate interests (Art. 21)</li>
           <li>Lodging a complaint with your national Data Protection Authority</li>
         </ul>

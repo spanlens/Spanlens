@@ -21,7 +21,7 @@ export default function SavingsDocs() {
       <h2>Why it matters</h2>
       <p>
         The most common LLM cost mistake is <em>using GPT-4 for everything</em>. Extraction,
-        classification, short-form generation, intent detection — these workloads are
+        classification, short-form generation, intent detection, these workloads are
         indistinguishable from GPT-4o-mini at 1/15 the price, but teams default to the most
         capable model out of caution and never revisit.
       </p>
@@ -40,9 +40,9 @@ export default function SavingsDocs() {
         <code>(provider, model)</code>, computing:
       </p>
       <ul>
-        <li><code>sampleCount</code> — how many requests in the bucket</li>
+        <li><code>sampleCount</code>, how many requests in the bucket</li>
         <li><code>avgPromptTokens</code>, <code>avgCompletionTokens</code></li>
-        <li><code>totalCostUsdLastNDays</code> — actual spend over the window</li>
+        <li><code>totalCostUsdLastNDays</code>, actual spend over the window</li>
         <li>Extrapolated monthly cost = window total ÷ window days × 30</li>
       </ul>
 
@@ -126,7 +126,7 @@ export default function SavingsDocs() {
       </table>
       <p>
         A recommendation fires only if <strong>both</strong> avg-prompt and avg-completion fit
-        inside the envelope. This is the conservative guard — if your average request exceeds the
+        inside the envelope. This is the conservative guard, if your average request exceeds the
         envelope, the suggested cheaper model probably will underperform on your actual workload,
         and we don&apos;t show it.
       </p>
@@ -148,7 +148,7 @@ monthlyCostSuggested = monthlyCostCurrent * substitute.costRatio
 estimatedMonthlySavingsUsd = monthlyCostCurrent - monthlyCostSuggested`}</CodeBlock>
       <p>
         Only recommendations with <code>estimatedMonthlySavingsUsd ≥ $5</code> surface in the
-        dashboard by default — below that, the signal-to-noise isn&apos;t worth your attention.
+        dashboard by default, below that, the signal-to-noise isn&apos;t worth your attention.
         You can override this with the <code>?minSavings=</code> query parameter.
       </p>
 
@@ -205,13 +205,13 @@ dropPct = (priorWindowCost − currentWindowCost) / priorWindowCost`}</CodeBlock
       </p>
       <ul>
         <li>A green <strong>ACHIEVED</strong> badge instead of SWAP</li>
-        <li><strong>ACTUAL / MO</strong> — the realized monthly savings based on the observed drop</li>
+        <li><strong>ACTUAL / MO</strong>, the realized monthly savings based on the observed drop</li>
         <li>The drop percentage vs. the prior window (&ldquo;usage dropped 72% vs prior 7d&rdquo;)</li>
         <li>The originally projected savings for comparison</li>
       </ul>
       <p>
         Achieved recommendations live in a separate collapsible section below the open list. They
-        bypass the <code>minSavings</code> filter (you&apos;ve already made the change — hiding the
+        bypass the <code>minSavings</code> filter (you&apos;ve already made the change, hiding the
         row would be confusing) but still require the prior window spend to be meaningful (≥ the{' '}
         <code>minSavings</code> threshold annualized).
       </p>
@@ -233,18 +233,18 @@ dropPct = (priorWindowCost − currentWindowCost) / priorWindowCost`}</CodeBlock
       </p>
       <ul>
         <li>
-          <strong>7 days</strong> — most responsive to recent model usage changes; default.
+          <strong>7 days</strong>, most responsive to recent model usage changes; default.
         </li>
         <li>
-          <strong>14 days</strong> — smooths out weekly spikes; useful when traffic is seasonal.
+          <strong>14 days</strong>, smooths out weekly spikes; useful when traffic is seasonal.
         </li>
         <li>
-          <strong>30 days</strong> — highest sample counts, most stable confidence tiers.
+          <strong>30 days</strong>, highest sample counts, most stable confidence tiers.
         </li>
       </ul>
       <p>
         Changing the window re-fetches the API with a different <code>?hours=</code> value and
-        recomputes all savings estimates in-page — no page reload needed. The achieved tracking
+        recomputes all savings estimates in-page, no page reload needed. The achieved tracking
         prior window always equals the same duration as the selected analysis window.
       </p>
 
@@ -256,34 +256,34 @@ dropPct = (priorWindowCost − currentWindowCost) / priorWindowCost`}</CodeBlock
       </p>
       <ul>
         <li>
-          <strong>Hero tile</strong> — shows your total projected open savings, best confidence
+          <strong>Hero tile</strong>, shows your total projected open savings, best confidence
           tier, and (when present) achieved monthly savings. The three stat tiles to the right
           show spend in the window, open count, and achieved savings / best confidence tier.
-          Hero tile totals are computed from the <em>unfiltered</em> open set — active filters
+          Hero tile totals are computed from the <em>unfiltered</em> open set, active filters
           don&apos;t shrink the headline number.
         </li>
         <li>
-          <strong>Sort &amp; filter bar</strong> — sort by Savings (default), Confidence, or Name;
+          <strong>Sort &amp; filter bar</strong>, sort by Savings (default), Confidence, or Name;
           filter by Provider (OpenAI / Anthropic / Gemini) or Confidence tier (High / Medium / Low).
           Sort and filter state is persisted in <code>localStorage</code> across page reloads.
           A filter badge shows how many recommendations are visible vs. total when filters are
           active. A &ldquo;Clear filters&rdquo; empty state appears if filters exclude all open rows.
         </li>
         <li>
-          <strong>Open recommendations</strong> — each row shows: current model → suggested model,
+          <strong>Open recommendations</strong>, each row shows: current model → suggested model,
           the confidence bar, rationale text, projected monthly savings, and three action buttons:{' '}
           <strong>Compare</strong> (opens the{' '}
           <a href="#compare-dialog">Compare dialog</a>), <strong>Simulate</strong> (opens the{' '}
           <a href="#simulate-dialog">Simulate dialog</a>), and <strong>Hide</strong>.
         </li>
         <li>
-          <strong>Achieved section</strong> — a collapsible section (click to expand) listing
+          <strong>Achieved section</strong>, a collapsible section (click to expand) listing
           recommendations where Spanlens detected a ≥70% spend drop. Rows show a green ACHIEVED
           badge, the realized monthly savings, and the drop percentage vs. the prior window. No
-          Simulate button — you already switched.
+          Simulate button, you already switched.
         </li>
         <li>
-          <strong>Hidden section</strong> — recommendations you&apos;ve dismissed live here. A
+          <strong>Hidden section</strong>, recommendations you&apos;ve dismissed live here. A
           &ldquo;Show hidden&rdquo; toggle expands the section; each row has an{' '}
           <strong>Unhide</strong> button to restore it.
         </li>
@@ -296,17 +296,17 @@ dropPct = (priorWindowCost − currentWindowCost) / priorWindowCost`}</CodeBlock
       </p>
       <ol>
         <li>
-          <strong>Pick a prompt version</strong> — choose any saved{' '}
+          <strong>Pick a prompt version</strong>, choose any saved{' '}
           <a href="/docs/features/prompts">Prompts</a> version as the input. The playground will
           fill in the prompt template automatically.
         </li>
         <li>
-          <strong>Choose provider keys</strong> — select the provider key to use for each model
+          <strong>Choose provider keys</strong>, select the provider key to use for each model
           (current and suggested). Both models must have an active key registered in{' '}
           <a href="/projects">/projects</a>.
         </li>
         <li>
-          <strong>Run</strong> — both models execute in parallel. While running, each column shows
+          <strong>Run</strong>, both models execute in parallel. While running, each column shows
           a loading spinner.
         </li>
       </ol>
@@ -337,24 +337,24 @@ dropPct = (priorWindowCost − currentWindowCost) / priorWindowCost`}</CodeBlock
       </p>
       <ul>
         <li>
-          <strong>Cost summary</strong> — spend in the current window, projected monthly savings,
+          <strong>Cost summary</strong>, spend in the current window, projected monthly savings,
           and the projection formula for transparency.
         </li>
         <li>
-          <strong>Token distribution</strong> — a P50 / P95 / P99 table for prompt and completion
+          <strong>Token distribution</strong>, a P50 / P95 / P99 table for prompt and completion
           tokens, computed from your actual requests (not just the average). Each row is compared
-          against the substitute rule&apos;s <em>envelope</em> — the maximum average token count
+          against the substitute rule&apos;s <em>envelope</em>, the maximum average token count
           the cheaper model is rated for.
         </li>
       </ul>
       <p>
         If <strong>P95 exceeds the envelope</strong> for prompt or completion tokens, a yellow
         warning box appears: &ldquo;P95 exceeds the substitute envelope for prompt tokens. Some
-        requests may degrade in quality — run a shadow comparison first.&rdquo; This is the key
+        requests may degrade in quality, run a shadow comparison first.&rdquo; This is the key
         signal that the average looks safe but the tail of your distribution might not be.
       </p>
       <p>
-        Token distribution data is fetched lazily — the API call only fires when you open the
+        Token distribution data is fetched lazily, the API call only fires when you open the
         dialog, not on page load.
       </p>
 
@@ -363,12 +363,12 @@ dropPct = (priorWindowCost − currentWindowCost) / priorWindowCost`}</CodeBlock
         Click <strong>Hide</strong> on a row to dismiss a recommendation you&apos;ve already
         evaluated and decided against. Dismissed rows move to the collapsible &ldquo;Hidden
         recommendations&rdquo; section at the bottom of the page and are stored in{' '}
-        <code>localStorage</code> — they persist across page reloads in the same browser. Click{' '}
+        <code>localStorage</code>, they persist across page reloads in the same browser. Click{' '}
         <strong>Unhide</strong> inside the hidden section to bring a row back.
       </p>
       <p>
         When all visible recommendations have been hidden, the empty state message changes from the
-        generic &ldquo;no opportunities&rdquo; copy to &ldquo;All recommendations are hidden —
+        generic &ldquo;no opportunities&rdquo; copy to &ldquo;All recommendations are hidden ,
         use Show hidden to review them.&rdquo;
       </p>
 
@@ -386,7 +386,7 @@ dropPct = (priorWindowCost − currentWindowCost) / priorWindowCost`}</CodeBlock
         <li>A direct link to the Savings dashboard</li>
       </ul>
       <p>
-        Notifications are idempotent — each (org, swap pair) triggers at most one email, stored
+        Notifications are idempotent, each (org, swap pair) triggers at most one email, stored
         in the <code>recommendation_notifications</code> table. Future cron runs skip already-
         notified pairs. A new notification fires only if a net-new high-confidence recommendation
         appears (e.g., more traffic builds confidence on a previously low-tier swap).
@@ -459,7 +459,7 @@ GET /api/v1/recommendations?minSavings=20      # only show ≥ $20/mo
           <tr>
             <td><code>maxPromptTokens</code></td>
             <td><code>number</code></td>
-            <td>The substitute rule&apos;s max avg prompt token envelope — used by the Simulate dialog.</td>
+            <td>The substitute rule&apos;s max avg prompt token envelope, used by the Simulate dialog.</td>
           </tr>
           <tr>
             <td><code>maxCompletionTokens</code></td>
@@ -529,7 +529,7 @@ GET /api/v1/recommendations?minSavings=20      # only show ≥ $20/mo
       <p>
         Returns <code>null</code> in <code>data</code> if fewer than 5 requests with non-null
         token counts exist in the window. Computed in-database via{' '}
-        <code>percentile_cont</code> ordered-set aggregation — no row scanning in application code.
+        <code>percentile_cont</code> ordered-set aggregation, no row scanning in application code.
       </p>
 
       <h2>Design choices</h2>
@@ -547,7 +547,7 @@ GET /api/v1/recommendations?minSavings=20      # only show ≥ $20/mo
         </li>
         <li>
           <strong>No A/B auto-rollout.</strong> We show you the recommendation; you decide whether
-          to switch. Automated multi-armed-bandit model routing is out of scope for launch — it&apos;s
+          to switch. Automated multi-armed-bandit model routing is out of scope for launch, it&apos;s
           a different product surface.
         </li>
         <li>
@@ -562,7 +562,7 @@ GET /api/v1/recommendations?minSavings=20      # only show ≥ $20/mo
         </li>
         <li>
           <strong>P95 vs. P99 for envelope warnings.</strong> P95 was chosen as the warning
-          threshold rather than P99 — P99 would suppress warnings for tails that are meaningfully
+          threshold rather than P99, P99 would suppress warnings for tails that are meaningfully
           out-of-envelope. P99 is shown for reference in the Simulate dialog.
         </li>
       </ul>
@@ -573,11 +573,11 @@ GET /api/v1/recommendations?minSavings=20      # only show ≥ $20/mo
           <strong>Token-based, not task-based.</strong> A 200-token prompt can be &ldquo;summarize
           this article&rdquo; (gpt-4o-mini is fine) or &ldquo;generate the JSON schema for my
           domain model&rdquo; (gpt-4o is better). The envelope catches most cases but occasional
-          false positives are possible — hence the manual-approval loop.
+          false positives are possible, hence the manual-approval loop.
         </li>
         <li>
           <strong>No cross-provider recommendations yet.</strong> We don&apos;t suggest
-          &ldquo;switch from gpt-4o-mini to claude-haiku&rdquo; even when cheaper — accuracy
+          &ldquo;switch from gpt-4o-mini to claude-haiku&rdquo; even when cheaper, accuracy
           comparisons across providers are too workload-dependent to ship blind.
         </li>
         <li>
@@ -587,7 +587,7 @@ GET /api/v1/recommendations?minSavings=20      # only show ≥ $20/mo
         <li>
           <strong>Achieved tracking requires two full windows of data.</strong> If your organization
           has been on Spanlens for less than 2× the analysis window, the prior window will be empty
-          and <code>priorWindowCostUsd</code> will be <code>null</code> — achieved detection is
+          and <code>priorWindowCostUsd</code> will be <code>null</code>, achieved detection is
           not possible for that period.
         </li>
       </ul>

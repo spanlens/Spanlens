@@ -253,7 +253,7 @@ function DemoPercentileGrid({
         <div className="border border-warn/30 bg-warn/5 rounded-[5px] px-3 py-2 font-mono text-[10.5px] text-warn leading-relaxed">
           P95 exceeds the substitute envelope
           {promptWarn && complWarn ? ' for both prompt and completion' : promptWarn ? ' for prompt tokens' : ' for completion tokens'}.
-          {' '}Some requests may degrade in quality — run a shadow comparison first.
+          {' '}Some requests may degrade in quality, run a shadow comparison first.
         </div>
       )}
     </div>
@@ -338,7 +338,7 @@ function RecRow({
           <>
             <div className="font-mono text-[10px] text-text-faint uppercase tracking-[0.03em] mb-[3px]">ACTUAL / MO</div>
             <div className="font-mono text-[18px] font-medium tracking-[-0.3px] text-good">
-              {r.actualMonthlySavingsUsd != null ? fmtUsd(r.actualMonthlySavingsUsd) : '—'}
+              {r.actualMonthlySavingsUsd != null ? fmtUsd(r.actualMonthlySavingsUsd) : ','}
             </div>
             <div className="font-mono text-[10.5px] text-text-faint mt-0.5">
               est. {fmtUsd(r.estimatedMonthlySavingsUsd)} projected
@@ -456,7 +456,7 @@ export default function DemoSavingsPage() {
   const statTiles = [
     {
       label: `Spend · ${windowLabel}`,
-      value: totalSpend > 0 ? fmtUsd(totalSpend) : '—',
+      value: totalSpend > 0 ? fmtUsd(totalSpend) : ',',
       delta: 'analyzed models',
       good: false,
     },
@@ -468,7 +468,7 @@ export default function DemoSavingsPage() {
     },
     {
       label: achieved.length > 0 ? 'Achieved' : (bestConfLevel ? `${bestConfLevel.charAt(0).toUpperCase() + bestConfLevel.slice(1)} conf.` : 'Confidence'),
-      value: achieved.length > 0 ? fmtUsd(totalAchieved) : (bestConfLevel !== null ? String(bestConfCount) : '—'),
+      value: achieved.length > 0 ? fmtUsd(totalAchieved) : (bestConfLevel !== null ? String(bestConfCount) : ','),
       delta: achieved.length > 0 ? `${achieved.length} swap${achieved.length > 1 ? 's' : ''} adopted` : (bestConfLevel ? bestConfLabel[bestConfLevel] : 'no recommendations yet'),
       good: achieved.length > 0 || bestConfLevel === 'high',
     },
@@ -521,7 +521,7 @@ export default function DemoSavingsPage() {
             <div className="flex items-baseline gap-2 mb-1.5">
               <span className={cn('font-medium leading-none tracking-[-1.6px]',
                 totalOpen > 0 ? 'text-[40px] text-accent' : 'text-[30px] text-text-faint')}>
-                {totalOpen > 0 ? fmtUsd(totalOpen) : '—'}
+                {totalOpen > 0 ? fmtUsd(totalOpen) : ','}
               </span>
               <span className="font-mono text-[10px] text-text-muted">/ mo</span>
             </div>

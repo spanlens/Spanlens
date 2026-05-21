@@ -17,7 +17,7 @@ export default function PromptAbDocs() {
         users to make the final call.
       </p>
 
-      <h2>A/B vs Experiments — which one to use</h2>
+      <h2>A/B vs Experiments, which one to use</h2>
       <p>
         Spanlens has two places where the word &quot;experiment&quot; appears. Here is how they
         differ:
@@ -44,7 +44,7 @@ export default function PromptAbDocs() {
             </tr>
             <tr>
               <td>User exposure</td>
-              <td>Yes — real users see it</td>
+              <td>Yes, real users see it</td>
               <td>None</td>
             </tr>
             <tr>
@@ -171,7 +171,7 @@ export default function PromptAbDocs() {
             </tr>
             <tr>
               <td><code>stopped</code></td>
-              <td>Manually stopped before conclusion — no winner declared</td>
+              <td>Manually stopped before conclusion, no winner declared</td>
             </tr>
           </tbody>
         </table>
@@ -211,7 +211,7 @@ export default function PromptAbDocs() {
       </div>
       <p>
         A <strong>p-value &lt; 0.05</strong> means the difference is statistically significant.
-        With small sample sizes (tens of requests), p-values cluster near 1 — wait a few days for
+        With small sample sizes (tens of requests), p-values cluster near 1, wait a few days for
         data to accumulate before drawing conclusions.
       </p>
       <p>

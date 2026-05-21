@@ -19,7 +19,7 @@ export default function UsersDocs() {
       <h2>How tagging works</h2>
       <p>
         Set the <code>x-spanlens-user</code> header on any proxied request. The value is a string
-        of your choosing — Spanlens never interprets it. Typical patterns: your DB user UUID,
+        of your choosing, Spanlens never interprets it. Typical patterns: your DB user UUID,
         email hash, or a workspace identifier.
       </p>
       <p>
@@ -41,16 +41,16 @@ await openai.chat.completions.create(
       <h2>What the dashboard shows</h2>
       <ul>
         <li>
-          <strong><a href="/users">/users</a></strong> — sortable table of every tagged end-user
+          <strong><a href="/users">/users</a></strong>, sortable table of every tagged end-user
           with total requests, tokens, cost, average latency, error count, distinct models, and
           first/last seen.
         </li>
         <li>
-          <strong>Row click</strong> opens <code>/users/[id]</code> — the same stats plus the last
+          <strong>Row click</strong> opens <code>/users/[id]</code>, the same stats plus the last
           50 requests for that user, each linkable to its full <a href="/docs/features/requests">request detail</a>.
         </li>
         <li>
-          <strong>Filter pivot</strong> — from any request drawer the user_id chip links to the
+          <strong>Filter pivot</strong>, from any request drawer the user_id chip links to the
           analytics page; the small <em>filter</em> link next to it scopes <code>/requests</code> to
           just that user.
         </li>
@@ -69,16 +69,16 @@ await openai.chat.completions.create(
           <tr><td><code>cost</code> (default)</td><td>Highest-spending users first.</td></tr>
           <tr><td><code>requests</code></td><td>Most-active users first.</td></tr>
           <tr><td><code>tokens</code></td><td>Heaviest token consumers (large prompts).</td></tr>
-          <tr><td><code>last_seen</code></td><td>Most recently active first — useful for triage.</td></tr>
+          <tr><td><code>last_seen</code></td><td>Most recently active first, useful for triage.</td></tr>
         </tbody>
       </table>
 
       <h2>API</h2>
       <p>Both endpoints scope to your organization automatically via JWT.</p>
-      <CodeBlock language="bash">{`# List — sort by cost desc, page 1
+      <CodeBlock language="bash">{`# List, sort by cost desc, page 1
 GET /api/v1/users?sortBy=cost&sortDir=desc&page=1&limit=50
 
-# Detail — aggregates + recent 50 requests
+# Detail, aggregates + recent 50 requests
 GET /api/v1/users/<user-id>?projectId=<optional>&from=<iso>&to=<iso>`}</CodeBlock>
 
       <h2>Limitations</h2>

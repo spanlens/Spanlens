@@ -3,7 +3,7 @@ import { CodeBlock } from '../../_components/code-block'
 export const metadata = {
   title: 'Experiments · Spanlens Docs',
   description:
-    'Offline side-by-side comparison — run a dataset against two prompt versions and compare outputs, scores, and cost without touching production traffic.',
+    'Offline side-by-side comparison, run a dataset against two prompt versions and compare outputs, scores, and cost without touching production traffic.',
 }
 
 export default function ExperimentsDocs() {
@@ -89,8 +89,8 @@ export default function ExperimentsDocs() {
       <h2>Word-level diff highlighting</h2>
       <p>Expanding a result row shows both outputs side by side, with differences color-coded.</p>
       <ul>
-        <li><strong>Red</strong> — words present in A but not in B</li>
-        <li><strong>Green</strong> — words present in B but not in A</li>
+        <li><strong>Red</strong>, words present in A but not in B</li>
+        <li><strong>Green</strong>, words present in B but not in A</li>
         <li>Identical words have no highlight</li>
       </ul>
       <p>
@@ -163,11 +163,11 @@ export default function ExperimentsDocs() {
       </p>
       <ul>
         <li>
-          <code>{`{ "variables": {...} }`}</code> — substitutes <code>{`{{var}}`}</code>{' '}
+          <code>{`{ "variables": {...} }`}</code>, substitutes <code>{`{{var}}`}</code>{' '}
           placeholders in the prompt content and passes the result as the user message.
         </li>
         <li>
-          <code>{`{ "messages": [...] }`}</code> — extracts the last user message and passes it
+          <code>{`{ "messages": [...] }`}</code>, extracts the last user message and passes it
           in the user role (prompt content becomes the system role).
         </li>
       </ul>

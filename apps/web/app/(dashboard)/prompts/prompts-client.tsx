@@ -15,13 +15,13 @@ function fmtUsd(v: number): string {
 }
 
 function fmtMs(v: number): string {
-  if (v === 0) return '—'
+  if (v === 0) return ','
   if (v >= 1000) return `${(v / 1000).toFixed(2)}s`
   return `${Math.round(v)}ms`
 }
 
 function QualityBadge({ score }: { score: number | null | undefined }) {
-  if (score == null) return <span className="text-text-faint">—</span>
+  if (score == null) return <span className="text-text-faint">,</span>
   const color = score >= 90 ? 'text-good' : score >= 70 ? 'text-warn' : 'text-bad'
   return <span className={cn('font-mono tabular-nums', color)}>{score}</span>
 }
@@ -104,7 +104,7 @@ export function PromptsClient() {
         crumbs={[{ label: 'Workspace', href: '/dashboard' }, { label: 'Prompts' }]}
         right={
           <div className="flex items-center gap-2">
-            {/* Search — desktop only; mobile search lives in the filter bar */}
+            {/* Search, desktop only; mobile search lives in the filter bar */}
             <div className="hidden md:flex items-center gap-2 px-[10px] py-[5px] border border-border rounded-[6px] bg-bg-elev w-[280px]">
               <span className="text-text-faint text-[14px] leading-none">⌕</span>
               <input
@@ -151,9 +151,9 @@ export function PromptsClient() {
           {[
             { label: 'Prompts',              value: String(all.length)                                         },
             { label: 'Versions',             value: String(totalVersions)                                      },
-            { label: `Calls · ${dateRange}`, value: totalCalls > 0 ? totalCalls.toLocaleString() : '—'        },
-            { label: `Avg quality`,          value: avgQuality != null ? String(avgQuality) : '—'              },
-            { label: `Spend · ${dateRange}`, value: totalSpend > 0 ? fmtUsd(totalSpend) : '—'                 },
+            { label: `Calls · ${dateRange}`, value: totalCalls > 0 ? totalCalls.toLocaleString() : ','        },
+            { label: `Avg quality`,          value: avgQuality != null ? String(avgQuality) : ','              },
+            { label: `Spend · ${dateRange}`, value: totalSpend > 0 ? fmtUsd(totalSpend) : ','                 },
           ].map((s, i) => (
             <div key={i} className={cn('px-[18px] py-[14px]', i < 4 && 'border-r border-border')}>
               <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-2">{s.label}</div>
@@ -165,7 +165,7 @@ export function PromptsClient() {
 
       {/* Filter toolbar */}
       <div className="flex flex-col gap-[6px] px-[22px] py-[10px] border-b border-border shrink-0">
-      {/* Mobile search — shown only on small screens */}
+      {/* Mobile search, shown only on small screens */}
       <div className="md:hidden flex items-center gap-2 px-[10px] py-[5px] border border-border rounded-[6px] bg-bg-elev">
         <span className="text-text-faint text-[14px] leading-none">⌕</span>
         <input
@@ -284,7 +284,7 @@ export function PromptsClient() {
       </div>
       </div>
 
-      {/* Create form panel — outside scroll container so it stays pinned */}
+      {/* Create form panel, outside scroll container so it stays pinned */}
       {formOpen && (
         <div className="px-[22px] py-[14px] bg-bg-elev border-b border-border-strong shrink-0 space-y-3">
           <div className="flex items-center justify-between">
@@ -352,7 +352,7 @@ export function PromptsClient() {
           </div>
         ) : (
           <div className="min-w-[700px]">
-            {/* Column headers — sticky so they stay visible on vertical scroll */}
+            {/* Column headers, sticky so they stay visible on vertical scroll */}
             <div
               className="grid sticky top-0 z-10 font-mono text-[10px] text-text-faint uppercase tracking-[0.05em] px-[22px] py-[9px] bg-bg-muted border-b border-border"
               style={{ gridTemplateColumns: GRID }}
@@ -401,17 +401,17 @@ export function PromptsClient() {
 
               {/* Calls */}
               <span className={cn(p.stats && p.stats.calls > 0 ? 'text-text' : 'text-text-faint')}>
-                {p.stats?.calls ? p.stats.calls.toLocaleString() : '—'}
+                {p.stats?.calls ? p.stats.calls.toLocaleString() : ','}
               </span>
 
               {/* Avg cost */}
               <span className={cn(p.stats?.avgCostUsd != null ? 'text-text' : 'text-text-faint')}>
-                {p.stats?.avgCostUsd != null ? fmtUsd(p.stats.avgCostUsd) : '—'}
+                {p.stats?.avgCostUsd != null ? fmtUsd(p.stats.avgCostUsd) : ','}
               </span>
 
               {/* Avg latency */}
               <span className={cn(p.stats?.avgLatencyMs != null ? 'text-text' : 'text-text-faint')}>
-                {p.stats?.avgLatencyMs != null ? fmtMs(p.stats.avgLatencyMs) : '—'}
+                {p.stats?.avgLatencyMs != null ? fmtMs(p.stats.avgLatencyMs) : ','}
               </span>
 
               {/* Quality score */}
@@ -425,7 +425,7 @@ export function PromptsClient() {
                     A/B
                   </span>
                 ) : (
-                  <span className="text-text-faint">—</span>
+                  <span className="text-text-faint">,</span>
                 )}
               </span>
 

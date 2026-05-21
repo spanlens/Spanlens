@@ -94,11 +94,11 @@ export function WelcomeBanner() {
           </button>
         </div>
 
-        {/* Step 1 — copy the key */}
+        {/* Step 1, copy the key */}
         <div className="mb-4">
           <div className="text-[12px] font-medium text-text mb-2">
             <span className="font-mono text-[10px] text-accent mr-1.5">1.</span>
-            Copy this key — it won&apos;t be shown again
+            Copy this key, it won&apos;t be shown again
           </div>
           <div className="flex items-center gap-2 bg-bg border border-border rounded-md px-3 py-2">
             <span className="font-mono text-[10px] text-text-faint uppercase tracking-[0.05em] shrink-0">
@@ -119,11 +119,11 @@ export function WelcomeBanner() {
             <code className="font-mono bg-bg border border-border px-1 rounded text-[10.5px]">
               .env.local
             </code>{' '}
-            (or your deployment&apos;s env settings — Vercel, Railway, etc.).
+            (or your deployment&apos;s env settings, Vercel, Railway, etc.).
           </p>
         </div>
 
-        {/* Step 2 — register a provider key */}
+        {/* Step 2, register a provider key */}
         <div className="mb-4">
           <div className="text-[12px] font-medium text-text mb-2">
             <span className="font-mono text-[10px] text-accent mr-1.5">2.</span>
@@ -139,11 +139,11 @@ export function WelcomeBanner() {
             </Link>
             , find your Spanlens key, click <em>+ Add provider key</em>, and paste your AI
             provider&apos;s API key. Spanlens stores it encrypted and uses it on your
-            behalf — your app never sees it again.
+            behalf, your app never sees it again.
           </p>
         </div>
 
-        {/* Step 3 — paste the snippet */}
+        {/* Step 3, paste the snippet */}
         <div>
           <div className="text-[12px] font-medium text-text mb-2">
             <span className="font-mono text-[10px] text-accent mr-1.5">3.</span>

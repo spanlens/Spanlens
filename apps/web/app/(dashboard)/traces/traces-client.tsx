@@ -8,14 +8,14 @@ import { ExportDropdown } from '@/components/ui/export-dropdown'
 import { cn, formatDateTime } from '@/lib/utils'
 
 function fmtDuration(ms: number | null): string {
-  if (ms == null) return '—'
+  if (ms == null) return ','
   if (ms < 1) return '<1ms'
   if (ms < 1000) return `${Math.round(ms)}ms`
   return `${(ms / 1000).toFixed(2)}s`
 }
 
 function fmtCost(n: number): string {
-  if (n <= 0) return '—'
+  if (n <= 0) return ','
   return n < 0.001 ? `$${n.toFixed(5)}` : `$${n.toFixed(4)}`
 }
 
@@ -214,7 +214,7 @@ export function TracesClient() {
             { label: 'Traces',            value: meta.total.toLocaleString(),                         warn: false },
             { label: 'p50 duration',      value: fmtDuration(p50),  tip: 'Current page only',        warn: false },
             { label: 'p95 duration',      value: fmtDuration(p95),  tip: 'Current page only',        warn: p95 != null && p95 > 8000 },
-            { label: 'Avg spans / trace', value: avgSpans != null ? avgSpans.toFixed(1) : '—',        warn: false },
+            { label: 'Avg spans / trace', value: avgSpans != null ? avgSpans.toFixed(1) : ',',        warn: false },
             { label: 'Errors',            value: String(errors),                                       warn: errors > 0 },
           ].map((s, i) => (
             <div
@@ -311,7 +311,7 @@ export function TracesClient() {
           </span>
         </div>
 
-        {/* Rows — header lives inside same scroll container so horizontal scroll is in sync */}
+        {/* Rows, header lives inside same scroll container so horizontal scroll is in sync */}
         <div className="flex-1 overflow-auto">
           {isLoading ? (
             <div className="p-6 space-y-2">

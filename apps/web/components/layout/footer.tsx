@@ -13,7 +13,7 @@ export function Footer() {
   return (
     <footer className="border-t border-border px-4 sm:px-6 lg:px-10 pt-10 pb-[60px] text-text-muted text-[13px]">
       <div className="max-w-[1200px] mx-auto flex flex-col sm:flex-row sm:justify-between sm:items-end gap-8 sm:gap-0">
-        {/* Left — logo + tagline */}
+        {/* Left: logo + tagline */}
         <div>
           <Link href="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
             <LogoMark size={20} className="rounded-[5px]" />
@@ -30,14 +30,24 @@ export function Footer() {
           </div>
         </div>
 
-        {/* Right — 3-col link groups */}
-        <div className="flex gap-8 sm:gap-12 font-mono text-[12px]">
+        {/* Right: 4-col link groups */}
+        <div className="flex flex-wrap gap-8 sm:gap-12 font-mono text-[12px]">
           <div>
             <div className="text-text-faint mb-2 tracking-[0.05em] uppercase text-[10px]">Product</div>
             <div className="flex flex-col gap-1.5">
               <Link href="/docs" className="hover:text-text transition-colors">Docs</Link>
               <Link href="/pricing" className="hover:text-text transition-colors">Pricing</Link>
               <Link href="/docs/quick-start" className="hover:text-text transition-colors">Quick start</Link>
+            </div>
+          </div>
+          <div>
+            <div className="text-text-faint mb-2 tracking-[0.05em] uppercase text-[10px]">Compare</div>
+            <div className="flex flex-col gap-1.5">
+              <Link href="/compare/langfuse" className="hover:text-text transition-colors">Langfuse</Link>
+              <Link href="/compare/helicone" className="hover:text-text transition-colors">Helicone</Link>
+              <Link href="/compare/langsmith" className="hover:text-text transition-colors">LangSmith</Link>
+              <Link href="/compare/braintrust" className="hover:text-text transition-colors">Braintrust</Link>
+              <Link href="/compare/arize-phoenix" className="hover:text-text transition-colors">Arize Phoenix</Link>
             </div>
           </div>
           <div>

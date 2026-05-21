@@ -9,7 +9,7 @@ import type { SpanRow, SpanType } from '@/lib/queries/types'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 export function fmtMs(ms: number | null): string {
-  if (ms == null) return '—'
+  if (ms == null) return ','
   if (ms < 1) return '<1ms'
   if (ms < 1000) return `${Math.round(ms)}ms`
   return `${(ms / 1000).toFixed(2)}s`
@@ -22,7 +22,7 @@ export function fmtTimestamp(iso: string): string {
 }
 
 export function fmtCost(n: number | null): string {
-  if (n == null || n === 0) return '—'
+  if (n == null || n === 0) return ','
   return n < 0.001 ? '$' + n.toFixed(5) : '$' + n.toFixed(4)
 }
 
@@ -405,7 +405,7 @@ function SpanDrawer({ span, onClose, onPrev, onNext, hasPrev, hasNext, position,
           { label: 'Cost', value: fmtCost(span.cost_usd) },
           {
             label: 'Tokens',
-            value: span.total_tokens > 0 ? span.total_tokens.toLocaleString() : '—',
+            value: span.total_tokens > 0 ? span.total_tokens.toLocaleString() : ',',
             sub: span.total_tokens > 0 ? `${span.prompt_tokens} in / ${span.completion_tokens} out` : '',
           },
         ].map((s, i) => (
@@ -441,7 +441,7 @@ function SpanDrawer({ span, onClose, onPrev, onNext, hasPrev, hasNext, position,
         ))}
       </div>
 
-      {/* BOTTLENECK section — sticky at bottom when this span is the critical path */}
+      {/* BOTTLENECK section, sticky at bottom when this span is the critical path */}
       {isCritical && (
         <div className="px-5 py-4 border-t border-accent-border bg-accent-bg shrink-0">
           <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-accent mb-2">
@@ -600,7 +600,7 @@ function TracePanelInner({ traceId }: TracePanelProps) {
     <div className="flex h-full overflow-hidden border-l border-border bg-bg">
       <div className="flex flex-col flex-1 overflow-hidden">
 
-        {/* Live indicator — only when trace is still running */}
+        {/* Live indicator, only when trace is still running */}
         {trace.status === 'running' && (
           <div className="flex items-center gap-2 px-[22px] py-[5px] border-b border-accent-border/50 bg-accent-bg shrink-0">
             <span className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse inline-block shrink-0" />
@@ -637,7 +637,7 @@ function TracePanelInner({ traceId }: TracePanelProps) {
               { label: 'Cost', value: fmtCost(trace.total_cost_usd) },
               {
                 label: 'Longest Span',
-                value: bottleneck ? `${bottleneckPct}% · ${bottleneck.name}` : '—',
+                value: bottleneck ? `${bottleneckPct}% · ${bottleneck.name}` : ',',
                 accent: !!bottleneck,
               },
             ].map((s) => (

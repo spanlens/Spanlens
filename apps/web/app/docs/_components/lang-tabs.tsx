@@ -79,7 +79,7 @@ export function LangTabs({ ts, py }: LangTabsProps) {
         <div className="rounded-b-lg border border-t-0 border-border/40 bg-[#1a1816] px-4 py-6 text-sm text-[#7c7770]">
           {lang === 'py'
             ? 'Python sample coming soon. The TypeScript sample on the other tab works the same way.'
-            : 'TypeScript sample coming soon — see the Python tab.'}
+            : 'TypeScript sample coming soon, see the Python tab.'}
         </div>
       )}
     </div>
