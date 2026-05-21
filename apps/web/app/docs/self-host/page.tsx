@@ -1,4 +1,5 @@
 import { CodeBlock } from '../_components/code-block'
+import { SelfHostArchitectureDiagram } from '../_components/diagrams'
 
 export const metadata = {
   title: 'Self-hosting · Spanlens Docs',
@@ -55,6 +56,8 @@ export default function SelfHostDocs() {
         <strong>dashboard (web)</strong> and the <strong>proxy / API server</strong> together.
         No source code needed.
       </p>
+
+      <SelfHostArchitectureDiagram />
 
       <h4>1. Apply the database schema</h4>
       <p>
@@ -201,7 +204,7 @@ CLICKHOUSE_USER=default CLICKHOUSE_PASSWORD=<password> CLICKHOUSE_DB=spanlens \\
 
       <h4>4. Point your SDK at the self-hosted proxy</h4>
       <p>
-        <strong>Option 1, CLI wizard</strong> (automates the step below):
+        <strong>Option 1 — CLI wizard</strong> (automates the step below):
       </p>
       <CodeBlock language="bash">{`npx @spanlens/cli@latest init --server-url https://spanlens.yourcompany.com`}</CodeBlock>
       <p className="text-sm text-muted-foreground">
@@ -210,7 +213,7 @@ CLICKHOUSE_USER=default CLICKHOUSE_PASSWORD=<password> CLICKHOUSE_DB=spanlens \\
         <code>SPANLENS_BASE_URL</code> to <code>.env.local</code> automatically.
       </p>
       <p>
-        <strong>Option 2, manual</strong>:
+        <strong>Option 2 — manual</strong>:
       </p>
       <CodeBlock language="ts">{`import { createOpenAI } from '@spanlens/sdk/openai'
 

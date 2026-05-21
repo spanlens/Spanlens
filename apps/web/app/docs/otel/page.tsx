@@ -1,4 +1,5 @@
 import { CodeBlock } from '../_components/code-block'
+import { OtelMappingDiagram } from '../_components/diagrams'
 
 export const metadata = {
   title: 'OpenTelemetry · Spanlens Docs',
@@ -60,7 +61,9 @@ exporter = OTLPSpanExporter(
         . At minimum, attach these attributes to get useful data in the dashboard:
       </p>
 
-      <table>
+      <OtelMappingDiagram />
+
+      <table className="[&_th:nth-child(2)]:text-left [&_td:nth-child(2)]:text-left [&_td:nth-child(2)]:whitespace-nowrap">
         <thead>
           <tr>
             <th>Attribute</th>
@@ -198,7 +201,7 @@ sdk.start()
 `}</CodeBlock>
 
       <h2>Response codes</h2>
-      <table>
+      <table className="[&_th:nth-child(2)]:text-left [&_td:nth-child(2)]:text-left [&_td:nth-child(2)]:whitespace-nowrap">
         <thead>
           <tr>
             <th>Code</th>

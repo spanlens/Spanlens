@@ -56,7 +56,7 @@ export default function PromptsDocs() {
         every version that has received production traffic in the last 30 days:
       </p>
       <div className="overflow-x-auto">
-        <table>
+        <table className="[&_th:first-child]:text-left [&_td:first-child]:text-left [&_td:first-child]:whitespace-nowrap [&_td:first-child]:align-middle">
           <thead>
             <tr>
               <th>Version</th>
@@ -129,7 +129,7 @@ export default function PromptsDocs() {
 #   { version, sampleCount, avgLatencyMs, errorRate, avgCostUsd, totalCostUsd }`}</CodeBlock>
 
       <h3>API reference</h3>
-      <table>
+      <table className="[&_th:first-child]:text-left [&_td:first-child]:text-left [&_td:first-child]:whitespace-nowrap [&_td:first-child]:align-middle">
         <thead>
           <tr>
             <th>Method + Path</th>
@@ -177,7 +177,7 @@ export default function PromptsDocs() {
         used. The SDK ships two ways to do that, pick whichever fits your call site.
       </p>
 
-      <h3>Option 1, <code>withPromptVersion()</code> per call</h3>
+      <h3>Option 1 — <code>withPromptVersion()</code> per call</h3>
       <CodeBlock language="ts">{`import { createOpenAI, withPromptVersion } from '@spanlens/sdk/openai'
 
 const openai = createOpenAI()
@@ -194,7 +194,7 @@ const res = await openai.chat.completions.create(
 )`}</CodeBlock>
       <p>Same helper exists on <code>@spanlens/sdk/anthropic</code> for Claude calls.</p>
 
-      <h3>Option 2, <code>observeOpenAI()</code> with promptVersion option</h3>
+      <h3>Option 2 — <code>observeOpenAI()</code> with promptVersion option</h3>
       <p>If you&apos;re already using agent tracing, just add one option:</p>
       <CodeBlock language="ts">{`import { observeOpenAI } from '@spanlens/sdk'
 
@@ -205,7 +205,7 @@ const res = await observeOpenAI(
 )`}</CodeBlock>
 
       <h3>Accepted id formats</h3>
-      <table>
+      <table className="[&_th:first-child]:text-left [&_th:nth-child(2)]:text-left [&_td:first-child]:text-left [&_td:nth-child(2)]:text-left [&_td:first-child]:whitespace-nowrap [&_td:nth-child(2)]:whitespace-nowrap [&_td:first-child]:align-middle [&_td:nth-child(2)]:align-middle">
         <thead>
           <tr><th>Format</th><th>Example</th><th>Notes</th></tr>
         </thead>
@@ -273,7 +273,7 @@ const res = await observeOpenAI(
         The word &quot;experiment&quot; appears in two places in Spanlens, here is how they differ:
       </p>
       <div className="overflow-x-auto">
-        <table>
+        <table className="[&_th:first-child]:text-left [&_td:first-child]:text-left [&_td:first-child]:whitespace-nowrap [&_td:first-child]:align-middle [&_td:not(:first-child)]:align-middle">
           <thead>
             <tr>
               <th></th>

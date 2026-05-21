@@ -15,7 +15,7 @@ export default function ProxyDocs() {
       </p>
 
       <div className="my-6 rounded-lg border-l-4 border-accent bg-accent-bg p-4 text-sm">
-        <p className="m-0 font-semibold text-accent">⚡ Use streaming for long requests</p>
+        <p className="m-0 font-semibold text-accent">Use streaming for long requests</p>
         <p className="mt-1 mb-0 text-accent">
           The proxy runs on Vercel Pro with a <strong>300-second hard ceiling</strong>, and Spanlens
           gracefully closes streams at <strong>290 seconds</strong> to make room for the log to flush.

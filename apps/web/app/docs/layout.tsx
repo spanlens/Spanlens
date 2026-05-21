@@ -29,6 +29,9 @@ export default function DocsLayout({ children }: { children: React.ReactNode }) 
               prose-pre:bg-[#1a1816] prose-pre:text-[#d4cfc8] prose-pre:shadow-sm prose-pre:border prose-pre:border-border/40
               prose-a:text-accent prose-a:no-underline hover:prose-a:opacity-80
               prose-table:text-sm
+              [&_table_th]:align-middle [&_table_td]:align-middle
+              [&_table_th:first-child]:text-left [&_table_td:first-child]:text-left
+              [&_table_td:first-child]:whitespace-nowrap
               [&_:not(pre)>code]:bg-bg-elev [&_:not(pre)>code]:text-text [&_:not(pre)>code]:font-normal [&_:not(pre)>code]:text-[0.9em] [&_:not(pre)>code]:rounded [&_:not(pre)>code]:px-1 [&_:not(pre)>code]:py-0.5 [&_:not(pre)>code]:border [&_:not(pre)>code]:border-border
               [&_:not(pre)>code]:before:content-none [&_:not(pre)>code]:after:content-none
               [&_pre_code]:bg-transparent [&_pre_code]:text-inherit [&_pre_code]:p-0 [&_pre_code]:rounded-none [&_pre_code]:text-sm [&_pre_code]:font-normal [&_pre_code]:before:content-none [&_pre_code]:after:content-none"

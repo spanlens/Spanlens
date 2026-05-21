@@ -18,7 +18,7 @@ export default function SdkReference() {
       </p>
 
       <div className="my-6 rounded-lg border-l-4 border-accent bg-accent-bg p-4 text-sm">
-        <p className="m-0 font-semibold text-accent">⚡ Tip: use streaming for long responses</p>
+        <p className="m-0 font-semibold text-accent">Tip: use streaming for long responses</p>
         <p className="mt-1 mb-0 text-accent">
           For requests with large <code>max_tokens</code>, slower models, or big JSON outputs, enable
           streaming, first byte arrives in ~200ms and total duration is unbounded. If you still want a
@@ -47,7 +47,7 @@ pip install "spanlens[all]"`}
         Python, use the matching extras shown above.
       </p>
 
-      <h2 id="create-openai">createOpenAI(), proxy mode</h2>
+      <h2 id="create-openai">createOpenAI() — proxy mode</h2>
       <p>
         Constructs the official provider client with <code>base_url</code> pointed at the Spanlens proxy
         and <code>api_key</code> set to your Spanlens key. Your real OpenAI key never leaves the
@@ -77,7 +77,7 @@ res = client.chat.completions.create(
       />
 
       <h3>Options</h3>
-      <table>
+      <table className="[&_th:nth-child(2)]:text-left [&_td:nth-child(2)]:text-left [&_td:nth-child(2)]:whitespace-nowrap">
         <thead>
           <tr>
             <th>Option</th>

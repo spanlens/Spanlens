@@ -1,4 +1,5 @@
 import { CodeBlock } from '../../_components/code-block'
+import { DatasetSchemaDiagram } from '../../_components/diagrams'
 
 export const metadata = {
   title: 'Datasets · Spanlens Docs',
@@ -35,6 +36,8 @@ export default function DatasetsDocs() {
       </ul>
 
       <h2>Schema</h2>
+
+      <DatasetSchemaDiagram />
 
       <h3><code>datasets</code> table</h3>
       <ul>

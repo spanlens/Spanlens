@@ -58,7 +58,7 @@ GET    /api/v1/webhooks/:id/deliveries    # Last 10 delivery records`}</CodeBloc
       <h2>Registering a webhook</h2>
 
       <h3>Request schema</h3>
-      <table>
+      <table className="[&_th:nth-child(2)]:text-left [&_td:nth-child(2)]:text-left [&_td:nth-child(2)]:whitespace-nowrap">
         <thead>
           <tr>
             <th>Field</th>

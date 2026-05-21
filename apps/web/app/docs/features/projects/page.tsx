@@ -1,4 +1,5 @@
 import { CodeBlock } from '../../_components/code-block'
+import { ProjectsHierarchyDiagram } from '../../_components/diagrams'
 
 export const metadata = {
   title: 'Projects, Spanlens keys & provider keys · Spanlens Docs',
@@ -57,6 +58,8 @@ export default function ProjectsDocs() {
       </ul>
 
       <h2>How keys work</h2>
+
+      <ProjectsHierarchyDiagram />
 
       <h3>Spanlens key format</h3>
       <p>
