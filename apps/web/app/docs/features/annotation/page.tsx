@@ -35,7 +35,7 @@ export default function AnnotationDocs() {
         <li>
           Use the top filters: select a prompt / enable <strong>Unscored only</strong> (show
           only what you haven&apos;t rated yet) / enable{' '}
-          <strong>Low judge score</strong> (judge scored below 50 — highest validation priority).
+          <strong>Low judge score</strong> (judge scored below 50, highest validation priority).
         </li>
         <li>
           Each card shows the user input and response in two columns. Click{' '}
@@ -82,10 +82,10 @@ export default function AnnotationDocs() {
       <p>
         A <code>UNIQUE (request_id, reviewer_id)</code> constraint ensures each user leaves
         at most one score per request. Rating the same row again performs an{' '}
-        <strong>upsert</strong> — it updates <code>raw_score</code>, <code>score</code>, and{' '}
+        <strong>upsert</strong>, it updates <code>raw_score</code>, <code>score</code>, and{' '}
         <code>comment</code>.
       </p>
-      <p>Multiple reviewers can rate the same request — each gets their own row.</p>
+      <p>Multiple reviewers can rate the same request, each gets their own row.</p>
 
       <h2>Correlation card on the Evals page</h2>
       <p>
@@ -95,13 +95,13 @@ export default function AnnotationDocs() {
       </p>
       <ul>
         <li>
-          <strong>r ≥ 0.7</strong> — Strong: judge can be trusted
+          <strong>r ≥ 0.7</strong>, Strong: judge can be trusted
         </li>
         <li>
-          <strong>0.4 ≤ r &lt; 0.7</strong> — Moderate
+          <strong>0.4 ≤ r &lt; 0.7</strong>, Moderate
         </li>
         <li>
-          <strong>r &lt; 0.4</strong> — Revisit the judge criterion
+          <strong>r &lt; 0.4</strong>, Revisit the judge criterion
         </li>
       </ul>
       <p>
@@ -111,9 +111,9 @@ export default function AnnotationDocs() {
 
       <h2>RLS policy</h2>
       <ul>
-        <li><strong>SELECT</strong> — any org member (you can see others&apos; scores)</li>
-        <li><strong>INSERT</strong> — any org member</li>
-        <li><strong>UPDATE / DELETE</strong> — own rows only (<code>reviewer_id = auth.uid()</code>)</li>
+        <li><strong>SELECT</strong>, any org member (you can see others&apos; scores)</li>
+        <li><strong>INSERT</strong>, any org member</li>
+        <li><strong>UPDATE / DELETE</strong>, own rows only (<code>reviewer_id = auth.uid()</code>)</li>
       </ul>
 
       <h2>API</h2>
@@ -148,7 +148,7 @@ export default function AnnotationDocs() {
         </tbody>
       </table>
 
-      <h3>Example — save a rating</h3>
+      <h3>Example, save a rating</h3>
       <CodeBlock language="bash">{`# 4 stars + comment
 curl https://spanlens-server.vercel.app/api/v1/human-evals \\
   -H "Authorization: Bearer $SPANLENS_JWT" \\

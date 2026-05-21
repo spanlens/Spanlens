@@ -163,7 +163,7 @@ export default function SubprocessorsPage() {
                 chargeback handling.
               </td>
               <td>
-                Customer name, billing address, card / IBAN (held by Paddle — not by
+                Customer name, billing address, card / IBAN (held by Paddle, not by
                 Spanlens), Paddle customer and subscription identifiers.
               </td>
               <td>
@@ -236,8 +236,8 @@ export default function SubprocessorsPage() {
         <h2 id="upstream-providers">Upstream LLM providers</h2>
         <p>
           Spanlens is a proxy. When you send a request to the Spanlens proxy targeting an
-          upstream LLM provider, we forward that request — including any prompt content
-          you submit — to the provider you chose, using API credentials you supplied.
+          upstream LLM provider, we forward that request, including any prompt content
+          you submit, to the provider you chose, using API credentials you supplied.
         </p>
         <p>
           The upstream providers are <strong>independent controllers</strong> with respect

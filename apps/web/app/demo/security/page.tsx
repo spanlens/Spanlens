@@ -8,7 +8,7 @@ import { DEMO_SECURITY_SUMMARY, DEMO_FLAGGED_REQUESTS } from '@/lib/demo-data'
 
 function formatRelative(iso: string): string {
   const ms = new Date(iso).getTime()
-  if (Number.isNaN(ms)) return '—'
+  if (Number.isNaN(ms)) return ','
   const diff = (Date.now() - ms) / 1000
   if (diff < 0) return 'just now'
   if (diff < 60) return `${Math.floor(diff)}s ago`
@@ -281,7 +281,7 @@ export default function DemoSecurityPage() {
             <div className="border border-border rounded-[6px] px-[16px] py-[14px]">
               <div className="mb-[8px]">
                 <span className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint">
-                  Injection blocking — per project
+                  Injection blocking, per project
                 </span>
               </div>
               <div className="space-y-[6px]">
@@ -298,7 +298,7 @@ export default function DemoSecurityPage() {
                 </div>
               </div>
               <p className="text-[11px] text-text-faint mt-[8px] leading-relaxed">
-                When ON, injection attempts return 422 — request never reaches the LLM.
+                When ON, injection attempts return 422, request never reaches the LLM.
               </p>
               <p className="text-[10.5px] text-text-faint mt-2 font-mono">
                 Sign up to configure →
@@ -311,7 +311,7 @@ export default function DemoSecurityPage() {
         <div className="px-[22px] pt-[14px] pb-0">
           <div className="flex items-center justify-between mb-3">
             <span className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint">
-              Detectors — {detectors.length} active · flag-only (no blocking unless enabled
+              Detectors, {detectors.length} active · flag-only (no blocking unless enabled
               above)
             </span>
           </div>

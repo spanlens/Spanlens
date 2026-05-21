@@ -226,7 +226,7 @@ function GeneralTab() {
         </FormRow>
         <FormRow label="Plan">
           <MonoPill variant={org?.plan === 'enterprise' ? 'good' : 'accent'} dot>
-            {org?.plan ?? '—'}
+            {org?.plan ?? ','}
           </MonoPill>
         </FormRow>
       </Section>
@@ -450,7 +450,7 @@ function MembersTab() {
             <DialogTitle>Invite member</DialogTitle>
           </DialogHeader>
           {/* Stacked layout (label above input). The settings page's
-              <FormRow> uses a 260px label column + px-6 — that overflows the
+              <FormRow> uses a 260px label column + px-6, that overflows the
               ~512px dialog width and pushes the inputs past the right edge. */}
           <form onSubmit={(e) => void submitInvite(e)} className="mt-3 space-y-4">
             <div>
@@ -472,9 +472,9 @@ function MembersTab() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="admin">Admin — manage everything</SelectItem>
-                  <SelectItem value="editor">Editor — create/modify data</SelectItem>
-                  <SelectItem value="viewer">Viewer — read-only</SelectItem>
+                  <SelectItem value="admin">Admin, manage everything</SelectItem>
+                  <SelectItem value="editor">Editor, create/modify data</SelectItem>
+                  <SelectItem value="viewer">Viewer, read-only</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -550,7 +550,7 @@ function SecurityTabInner() {
             />
           </div>
         </FormRow>
-        <FormRow label="Leaked-key detection" hint="Daily GitGuardian scan against public sources. Email-only — admins decide whether to revoke.">
+        <FormRow label="Leaked-key detection" hint="Daily GitGuardian scan against public sources. Email-only, admins decide whether to revoke.">
           <Toggle
             on={leakDetectionEnabled}
             disabled={updateSecurity.isPending}
@@ -899,10 +899,10 @@ function PlanLimitsTab() {
           </div>
           {[
             ['Requests / month', limitLabel,      usedThisMonth.toLocaleString(), headroom],
-            ['Team seats',       seatLimitLabel,  '—',                            '—'],
-            ['Log retention',    retentionLabel,  '—',                            '—'],
-            ['API keys',         '25',            '—',                            '—'],
-            ['Alert rules',      '100',           '—',                            '—'],
+            ['Team seats',       seatLimitLabel,  ',',                            ','],
+            ['Log retention',    retentionLabel,  ',',                            ','],
+            ['API keys',         '25',            ',',                            ','],
+            ['Alert rules',      '100',           ',',                            ','],
           ].map(([res, lim, used, head]) => (
             <div key={res} className="grid grid-cols-[1.4fr_1fr_1fr_1fr] gap-4 px-6 py-3">
               <span className="font-mono text-[12px] text-text-muted">{res}</span>
@@ -999,7 +999,7 @@ function InvoicesTab() {
             </p>
           ) : (
             <p className="font-mono text-[11.5px] text-text-faint">
-              You&apos;re on the free plan — no invoices generated.
+              You&apos;re on the free plan, no invoices generated.
             </p>
           )}
         </div>
@@ -1025,7 +1025,7 @@ function ProfileTab() {
         ) : user ? (
           <>
             <FormRow label="Email">
-              <div className="font-mono text-[12.5px] text-text">{user.email ?? '—'}</div>
+              <div className="font-mono text-[12.5px] text-text">{user.email ?? ','}</div>
             </FormRow>
             <FormRow label="User ID">
               <div className="font-mono text-[11px] text-text-muted truncate">{user.id}</div>
@@ -1069,7 +1069,7 @@ function NotificationsTab() {
             on the <a href="/alerts" className="text-accent hover:opacity-80 transition-opacity">Alerts page</a>.
           </p>
           <p>
-            Personal notification preferences (per-event mute, quiet hours, mobile push) aren&apos;t built yet —
+            Personal notification preferences (per-event mute, quiet hours, mobile push) aren&apos;t built yet ,
             every rule fires according to the thresholds you set on it.
           </p>
         </div>
@@ -1206,8 +1206,8 @@ function DeliveryHistory({ webhookId }: { webhookId: string }) {
           <MonoPill variant={d.status === 'success' ? 'good' : 'faint'} dot>
             {d.status}
           </MonoPill>
-          <span className="font-mono text-[11px] text-text-muted">{d.http_status ?? '—'}</span>
-          <span className="font-mono text-[11px] text-text-faint truncate">{d.error_message ?? '—'}</span>
+          <span className="font-mono text-[11px] text-text-muted">{d.http_status ?? ','}</span>
+          <span className="font-mono text-[11px] text-text-faint truncate">{d.error_message ?? ','}</span>
         </div>
       ))}
     </div>
@@ -1262,7 +1262,7 @@ function WebhooksTab() {
       setTestResult((prev) => ({
         ...prev,
         [webhook.id]: result
-          ? `${result.status} · HTTP ${result.http_status ?? '—'} · ${result.duration_ms}ms`
+          ? `${result.status} · HTTP ${result.http_status ?? ','} · ${result.duration_ms}ms`
           : 'Sent',
       }))
       setSelectedId(webhook.id)
@@ -1735,7 +1735,7 @@ export function SettingsClient() {
 
   return (
     <div className="-mx-4 -my-4 md:-mx-8 md:-my-7 flex flex-col h-screen overflow-hidden">
-      {/* Mobile nav dropdown — visible only on small screens */}
+      {/* Mobile nav dropdown, visible only on small screens */}
       <div className="md:hidden flex items-center gap-3 px-4 py-3 border-b border-border bg-bg-elev shrink-0">
         <span className="font-mono text-[10px] text-text-faint uppercase tracking-[0.05em] shrink-0">Settings</span>
         <select

@@ -12,7 +12,7 @@ export default function DocsIndex() {
     <div className="not-prose">
       <h1 className="text-4xl font-bold tracking-tight mb-3">Spanlens Docs</h1>
       <p className="text-lg text-muted-foreground mb-10">
-        LLM observability — cost tracking (with prompt-cache breakdown), per-end-user analytics, agent tracing, PII + prompt-injection detection, and model recommendations for OpenAI / Anthropic / Gemini calls.
+        LLM observability, cost tracking (with prompt-cache breakdown), per-end-user analytics, agent tracing, PII + prompt-injection detection, and model recommendations for OpenAI / Anthropic / Gemini calls.
       </p>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-12">
@@ -44,7 +44,7 @@ export default function DocsIndex() {
             Does Spanlens add latency to my requests?
           </summary>
           <p className="mt-2 text-muted-foreground">
-            Typical overhead is 10–50ms per call — a thin pass-through proxy. Your requests flow to OpenAI / Anthropic / Gemini; responses stream back. Logging is fire-and-forget via Vercel&apos;s{' '}
+            Typical overhead is 10–50ms per call, a thin pass-through proxy. Your requests flow to OpenAI / Anthropic / Gemini; responses stream back. Logging is fire-and-forget via Vercel&apos;s{' '}
             <code className="text-xs bg-bg-elev rounded px-1">waitUntil</code>, so it never blocks the response.
           </p>
         </details>
@@ -61,7 +61,7 @@ export default function DocsIndex() {
             Can I use Spanlens with my existing Langfuse / Helicone setup?
           </summary>
           <p className="mt-2 text-muted-foreground">
-            Yes — Spanlens is a drop-in replacement at the baseURL level. You can keep both running side-by-side during migration.
+            Yes, Spanlens is a drop-in replacement at the baseURL level. You can keep both running side-by-side during migration.
           </p>
         </details>
 
@@ -70,7 +70,7 @@ export default function DocsIndex() {
             What providers are supported?
           </summary>
           <p className="mt-2 text-muted-foreground">
-            OpenAI, Anthropic, Google Gemini, Azure OpenAI, and self-hosted Ollama — including streaming responses. We match each upstream API 1:1, so any SDK that talks to those providers works. For LangChain, LangGraph, LCEL, Vercel AI SDK, and LlamaIndex, see the <a className="underline" href="/docs/sdk#framework-integrations">framework integrations</a>.
+            OpenAI, Anthropic, Google Gemini, Azure OpenAI, and self-hosted Ollama, including streaming responses. We match each upstream API 1:1, so any SDK that talks to those providers works. For LangChain, LangGraph, LCEL, Vercel AI SDK, and LlamaIndex, see the <a className="underline" href="/docs/sdk#framework-integrations">framework integrations</a>.
           </p>
         </details>
 
@@ -81,7 +81,7 @@ export default function DocsIndex() {
           <p className="mt-2 text-muted-foreground">
             Yes. Tag each call with the <code className="text-xs bg-bg-elev rounded px-1">x-spanlens-user</code> header (SDK helper{' '}
             <code className="text-xs bg-bg-elev rounded px-1">withUser()</code>) and the{' '}
-            <Link href="/users" className="text-accent hover:underline">/users</Link> page shows a sortable per-end-user breakdown — cost, requests, tokens, error rate, models used. Drill into any user for their full request history. See{' '}
+            <Link href="/users" className="text-accent hover:underline">/users</Link> page shows a sortable per-end-user breakdown, cost, requests, tokens, error rate, models used. Drill into any user for their full request history. See{' '}
             <Link href="/docs/features/users" className="text-accent hover:underline">users docs</Link>.
           </p>
         </details>
@@ -135,19 +135,19 @@ const SECTIONS = [
     icon: Code,
     title: '@spanlens/sdk',
     href: '/docs/sdk',
-    description: 'TypeScript SDK reference — createOpenAI, observe, span helpers, trace API.',
+    description: 'TypeScript SDK reference, createOpenAI, observe, span helpers, trace API.',
   },
   {
     icon: Globe,
     title: 'Direct proxy (any language)',
     href: '/docs/proxy',
-    description: 'Use Python, Ruby, Go, or raw HTTP — just swap the base URL.',
+    description: 'Use Python, Ruby, Go, or raw HTTP, just swap the base URL.',
   },
   {
     icon: Activity,
     title: 'OpenTelemetry (OTLP)',
     href: '/docs/otel',
-    description: 'Already using an OTel SDK? Point it at Spanlens — Python, Go, Java, Node.js all work.',
+    description: 'Already using an OTel SDK? Point it at Spanlens, Python, Go, Java, Node.js all work.',
   },
   {
     icon: Server,

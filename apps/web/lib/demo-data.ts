@@ -972,7 +972,7 @@ const REASONS_GOOD = [
   'Concise and respects the user\'s time.',
 ]
 const REASONS_BAD = [
-  'Response is vague — no concrete next step suggested.',
+  'Response is vague, no concrete next step suggested.',
   'Generic apology, doesn\'t actually answer the question.',
   'Tone is too formal for the casual customer message.',
   'Response is overly long with redundant context.',
@@ -1072,7 +1072,7 @@ const SUPPORT_ITEMS: DatasetItem[] = [
     organization_id: DEMO_ORG_ID,
     dataset_id: 'ds-001',
     input: { messages: [{ role: 'user', content: 'I was charged twice for the same order #ORD-4521.' }] },
-    expected_output: 'I see two charges for order #ORD-4521. I\'ve refunded the duplicate charge — it should appear in 3–5 business days. Sorry for the inconvenience!',
+    expected_output: 'I see two charges for order #ORD-4521. I\'ve refunded the duplicate charge, it should appear in 3–5 business days. Sorry for the inconvenience!',
     source_request_id: 'req-1042',
     created_at: day(14),
   },
@@ -1238,7 +1238,7 @@ export const DEMO_EXPERIMENT_RESULTS: Record<string, ExperimentResult[]> = {
         ? 'I\'m sorry to hear that. Please contact billing@acme.com with your order number and we\'ll look into the duplicate charge.'
         : `[v6 response to "${item.input.messages?.[0]?.content?.slice(0, 40)}…"]`,
       output_b: i === 0
-        ? 'I see two charges for order #ORD-4521 on your account. I\'ve initiated a refund for the duplicate charge — it should appear in 3-5 business days. Anything else I can help with?'
+        ? 'I see two charges for order #ORD-4521 on your account. I\'ve initiated a refund for the duplicate charge, it should appear in 3-5 business days. Anything else I can help with?'
         : `[v7 response to "${item.input.messages?.[0]?.content?.slice(0, 40)}…"]`,
       cost_a_usd: 0.0015,
       cost_b_usd: 0.0019,
@@ -1268,7 +1268,7 @@ const QUEUE_BASE_REQUESTS = [
     prompt_version: 7,
     model: 'claude-sonnet-4-5',
     user_msg: 'Hi, I\'ve been charged twice for the same subscription this month. Can you help?',
-    response: 'I see two charges on your account from yesterday. I\'ve refunded the duplicate — it should reflect in your bank within 3-5 business days. Sorry for the trouble!',
+    response: 'I see two charges on your account from yesterday. I\'ve refunded the duplicate, it should reflect in your bank within 3-5 business days. Sorry for the trouble!',
     llm_judge_score: 0.92,
     human_score: 0.75,
     human_raw: 4,
@@ -1300,7 +1300,7 @@ const QUEUE_BASE_REQUESTS = [
     llm_judge_score: 0.42,
     human_score: 0.0,
     human_raw: 1,
-    human_comment: 'Has markdown fences — instructions were "return only valid JSON, no explanation". Fence breaks downstream parsers.',
+    human_comment: 'Has markdown fences, instructions were "return only valid JSON, no explanation". Fence breaks downstream parsers.',
     age_min: 45,
   },
   {
@@ -1309,7 +1309,7 @@ const QUEUE_BASE_REQUESTS = [
     prompt_name: 'email-classifier',
     prompt_version: 2,
     model: 'gpt-4o-mini',
-    user_msg: 'Subject: 50% OFF EVERYTHING — Last chance!',
+    user_msg: 'Subject: 50% OFF EVERYTHING, Last chance!',
     response: '{"category": "spam", "confidence": 0.94, "reasoning": "Promotional language + urgency"}',
     llm_judge_score: 0.95,
     human_score: 1.0,
@@ -1342,7 +1342,7 @@ const QUEUE_BASE_REQUESTS = [
     llm_judge_score: 0.35,
     human_score: 0.75,
     human_raw: 4,
-    human_comment: 'Actually correct behavior — "approximately" is vague. Judge undervalued this.',
+    human_comment: 'Actually correct behavior, "approximately" is vague. Judge undervalued this.',
     age_min: 240,
   },
 ]

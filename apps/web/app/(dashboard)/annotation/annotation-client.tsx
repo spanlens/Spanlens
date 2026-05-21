@@ -47,7 +47,7 @@ function extractRequestUserText(body: Record<string, unknown> | null): string {
 }
 
 function fmtScore(n: number | null | undefined): string {
-  if (n == null) return '—'
+  if (n == null) return ','
   return (n * 100).toFixed(0)
 }
 
@@ -183,7 +183,7 @@ function ItemCard({ item }: { item: AnnotationQueueItem }) {
       <div className="flex items-center px-[14px] py-[10px] bg-bg-muted border-b border-border">
         <div className="flex-1 min-w-0">
           <p className="font-mono text-[12px] text-text font-medium truncate">
-            {item.prompt_name ?? '—'}{item.prompt_version != null ? ` · v${item.prompt_version}` : ''}
+            {item.prompt_name ?? ','}{item.prompt_version != null ? ` · v${item.prompt_version}` : ''}
           </p>
           <p className="font-mono text-[10px] text-text-faint truncate">
             {item.model} · {formatDateTime(item.created_at)}
@@ -209,7 +209,7 @@ function ItemCard({ item }: { item: AnnotationQueueItem }) {
         </div>
       </div>
 
-      {/* Body — user input + response */}
+      {/* Body, user input + response */}
       <div className="grid grid-cols-2 gap-3 p-3">
         <div className="min-w-0">
           <p className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-1">
@@ -219,7 +219,7 @@ function ItemCard({ item }: { item: AnnotationQueueItem }) {
             'font-mono text-[11.5px] text-text-muted leading-relaxed whitespace-pre-wrap',
             !expanded && 'line-clamp-3',
           )}>
-            {userMsg || '—'}
+            {userMsg || ','}
           </p>
         </div>
         <div className="min-w-0">
@@ -239,7 +239,7 @@ function ItemCard({ item }: { item: AnnotationQueueItem }) {
             'font-mono text-[12px] text-text leading-relaxed whitespace-pre-wrap',
             !expanded && 'line-clamp-5',
           )}>
-            {responseText || '—'}
+            {responseText || ','}
           </p>
         </div>
       </div>
@@ -311,7 +311,7 @@ export function AnnotationClient() {
       <div className="px-[22px] py-[10px] border-b border-border flex items-center gap-2 font-mono text-[11px] text-text-muted">
         <MessageSquare className="h-3.5 w-3.5" />
         <span>
-          Manually score responses. Your ratings calibrate against LLM judge scores —
+          Manually score responses. Your ratings calibrate against LLM judge scores ,
           a low correlation signals the judge needs work.
         </span>
       </div>

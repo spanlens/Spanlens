@@ -13,7 +13,7 @@ export default function TracesDocs() {
       <p className="lead">
         When your code makes one LLM call, a flat request log is enough. When it makes ten calls
         orchestrated across retrieval, generation, tool-use, and re-ranking, you need a tree.
-        Spanlens Traces give you that tree — automatically when you wrap code in{' '}
+        Spanlens Traces give you that tree, automatically when you wrap code in{' '}
         <code>observe()</code>, or manually with the low-level span API.
       </p>
 
@@ -22,7 +22,7 @@ export default function TracesDocs() {
         Agent workflows are hard to debug because the interesting failure is never in one call.
         It&apos;s in the interaction: retrieval returned garbage, so generation hallucinated, so the
         re-ranker picked a bad answer. Flat logs show three unrelated lines. A trace shows one tree
-        with timings — immediately obvious where the bug lives.
+        with timings, immediately obvious where the bug lives.
       </p>
       <p>
         LangSmith and LangFuse popularized this view. Spanlens delivers the same thing without
@@ -34,7 +34,7 @@ export default function TracesDocs() {
       <h3>The data model</h3>
       <p>
         A <strong>trace</strong> groups related spans under one id. A <strong>span</strong> is any
-        piece of async work — an LLM call, a vector DB search, a tool invocation, a custom
+        piece of async work, an LLM call, a vector DB search, a tool invocation, a custom
         function. Spans nest via <code>parent_span_id</code>, forming a tree.
       </p>
       <CodeBlock language="text">{`trace: "user-session-abc123"
@@ -52,13 +52,13 @@ export default function TracesDocs() {
       <p>
         The database schema intentionally does NOT enforce a foreign key on <code>parent_span_id</code>.
         This lets you fire off parallel children, record them as they finish, and close the parent
-        later — no ordering constraints. Essential for real agent code that runs{' '}
+        later, no ordering constraints. Essential for real agent code that runs{' '}
         <code>Promise.all([agentA(), agentB()])</code>.
       </p>
 
       <h2>Using it</h2>
 
-      <h3>Option 1 — <code>observe()</code> (recommended)</h3>
+      <h3>Option 1, <code>observe()</code> (recommended)</h3>
       <p>
         Wrap any async function. Nested <code>observe()</code> calls automatically become child
         spans:
@@ -80,7 +80,7 @@ const answer = await observe('answer-question', async () => {
   return response.choices[0].message.content
 }, { trace: 'user-session-abc123' })`}</CodeBlock>
 
-      <h3>Option 2 — <code>observeOpenAI()</code> for single-call convenience</h3>
+      <h3>Option 2, <code>observeOpenAI()</code> for single-call convenience</h3>
       <CodeBlock language="ts">{`import { observeOpenAI } from '@spanlens/sdk/openai'
 
 const res = await observeOpenAI(openai, {
@@ -92,7 +92,7 @@ const res = await observeOpenAI(openai, {
         Same thing exists for Anthropic (<code>observeAnthropic</code>) and Gemini (<code>observeGemini</code>).
       </p>
 
-      <h3>Option 3 — Low-level handles (for parallel spans)</h3>
+      <h3>Option 3, Low-level handles (for parallel spans)</h3>
       <CodeBlock language="ts">{`import { SpanlensClient } from '@spanlens/sdk'
 
 const client = new SpanlensClient()
@@ -108,10 +108,10 @@ const [resA, resB] = await Promise.all([
 
 await trace.end()`}</CodeBlock>
 
-      <h3>Option 4 — OpenTelemetry SDK (OTLP)</h3>
+      <h3>Option 4, OpenTelemetry SDK (OTLP)</h3>
       <p>
         Already using an OTel SDK in Python, Go, Java, or another language? Point its OTLP exporter
-        at Spanlens and spans flow in automatically — no code rewrite required. Spanlens reads the{' '}
+        at Spanlens and spans flow in automatically, no code rewrite required. Spanlens reads the{' '}
         <a
           href="https://opentelemetry.io/docs/specs/semconv/gen-ai/gen-ai-spans/"
           target="_blank"
@@ -182,8 +182,8 @@ await trace.end()`}</CodeBlock>
           <strong>σ (sigma) annotation.</strong> When a trace contains three or more spans of the
           same type, Spanlens computes the mean and standard deviation for that type. Any span whose
           duration is ≥ 2σ above the mean receives a <code>2.3σ latency</code> label in the
-          waterfall. This surfaces statistical outliers — a retrieval call that took five times longer
-          than usual — without you having to compare numbers manually.
+          waterfall. This surfaces statistical outliers, a retrieval call that took five times longer
+          than usual, without you having to compare numbers manually.
         </li>
         <li>
           <strong>Span drawer.</strong> Click any span bar to open the detail drawer. It has four
@@ -198,11 +198,11 @@ await trace.end()`}</CodeBlock>
         <li>
           <strong>Fire-and-forget ingest.</strong> <code>startTrace()</code> and{' '}
           <code>span()</code> return synchronously; network POSTs to Spanlens run in the background.
-          Your request hot path is never blocked by span ingest — typical overhead is under 1ms per
+          Your request hot path is never blocked by span ingest, typical overhead is under 1ms per
           span call.
         </li>
         <li>
-          <strong>Client-generated UUIDs.</strong> Idempotent — if your retry loop calls{' '}
+          <strong>Client-generated UUIDs.</strong> Idempotent, if your retry loop calls{' '}
           <code>span.end()</code> twice with the same UUID, the second call is a server-side
           no-op. No duplicated spans.
         </li>
@@ -223,7 +223,7 @@ await trace.end()`}</CodeBlock>
         <li>
           <strong>No zoom or pan yet.</strong> The waterfall fits the trace
           duration to the viewport width. For traces with thousands of spans
-          you&apos;ll want to drill into a sub-tree — that lives on the
+          you&apos;ll want to drill into a sub-tree, that lives on the
           roadmap.
         </li>
         <li>
@@ -234,13 +234,13 @@ await trace.end()`}</CodeBlock>
         </li>
         <li>
           <strong>No OpenTelemetry export yet.</strong> Spanlens accepts OTLP{' '}
-          <em>ingest</em> (OTel SDK → Spanlens), but the reverse direction — exporting
-          Spanlens spans into Datadog, Honeycomb, or another APM — is not yet supported.
+          <em>ingest</em> (OTel SDK → Spanlens), but the reverse direction, exporting
+          Spanlens spans into Datadog, Honeycomb, or another APM, is not yet supported.
           Planned for a future release.
         </li>
         <li>
           <strong>Trace IDs are opaque strings.</strong> We don&apos;t yet enforce W3C traceparent
-          format — so linking Spanlens traces to your app&apos;s APM traces requires you to pass the
+          format, so linking Spanlens traces to your app&apos;s APM traces requires you to pass the
           same id to both.
         </li>
       </ul>

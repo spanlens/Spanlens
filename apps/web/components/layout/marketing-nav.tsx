@@ -28,7 +28,7 @@ export function MarketingNav({ signupLabel = 'Start free →', subtitle }: Marke
           )}
         </Link>
 
-        {/* Links — hidden on mobile */}
+        {/* Links, hidden on mobile */}
         <div className="hidden sm:flex items-center gap-5 lg:gap-7 font-mono text-[13px] text-text-muted tracking-[0.015em]">
           <Link href="/#product" className="hover:text-text transition-colors">Product</Link>
           <Link href="/docs" className="hover:text-text transition-colors">Docs</Link>

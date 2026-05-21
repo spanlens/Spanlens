@@ -197,23 +197,23 @@ export default function PricingPage() {
           </p>
           <ul className="text-[13px] text-text-muted space-y-2 mb-4">
             <li>
-              <strong className="text-text">Soft limit</strong> — your plan&apos;s included quota (100K on Pro,
+              <strong className="text-text">Soft limit</strong>, your plan&apos;s included quota (100K on Pro,
               1M on Team). Extra requests pass through and accumulate.
             </li>
             <li>
-              <strong className="text-text">Overage billing</strong> — Pro $8 / Team $5 per 100K extra
+              <strong className="text-text">Overage billing</strong>, Pro $8 / Team $5 per 100K extra
               requests, charged immediately at the end of your billing period (not deferred to next month).
             </li>
             <li>
-              <strong className="text-text">Hard cap</strong> — default 5× the soft limit. Past this,
+              <strong className="text-text">Hard cap</strong>, default 5× the soft limit. Past this,
               requests return 429 even with overage enabled. Adjustable 1–100× in settings.
             </li>
             <li>
-              <strong className="text-text">Cost certainty mode</strong> — flip overage off in settings to
+              <strong className="text-text">Cost certainty mode</strong>, flip overage off in settings to
               hard-block at your quota instead.
             </li>
             <li>
-              <strong className="text-text">Free plan</strong> — proxy keeps working past 50K, but logging
+              <strong className="text-text">Free plan</strong>, proxy keeps working past 50K, but logging
               pauses (we don&apos;t want to break your app). Upgrade to Pro to resume logging plus overage.
             </li>
           </ul>

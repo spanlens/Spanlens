@@ -11,15 +11,15 @@ export default function SavedFiltersDocs() {
     <div>
       <h1>Saved Filters</h1>
       <p className="lead">
-        Save any filter combination set on the <a href="/requests">/requests</a> page — provider,
-        model, status, date range, and more — under a name, then restore the entire state in one
+        Save any filter combination set on the <a href="/requests">/requests</a> page, provider,
+        model, status, date range, and more, under a name, then restore the entire state in one
         click on future visits. Useful for recurring debug queries or shared team views.
       </p>
 
       <h2>How to use</h2>
       <ol>
         <li>
-          Go to <a href="/requests">/requests</a> and configure your filters — provider, model,
+          Go to <a href="/requests">/requests</a> and configure your filters, provider, model,
           status, date range, etc.
         </li>
         <li>
@@ -98,14 +98,14 @@ Content-Type: application/json
           <tr>
             <td><code>name</code></td>
             <td><code>string</code></td>
-            <td>1–80 characters. Must be unique per user — returns 409 on duplicate.</td>
+            <td>1–80 characters. Must be unique per user, returns 409 on duplicate.</td>
           </tr>
           <tr>
             <td><code>filters</code></td>
             <td><code>object</code></td>
             <td>
               Free-form JSON object containing the filter values. Stored as JSONB without
-              server-side parsing — the UI reads and writes it in its own format.
+              server-side parsing, the UI reads and writes it in its own format.
             </td>
           </tr>
           <tr>

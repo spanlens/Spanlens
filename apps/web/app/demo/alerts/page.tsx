@@ -255,7 +255,7 @@ export default function DemoAlertsPage() {
             </div>
             {channels.length === 0 ? (
               <div className="rounded-[5px] border border-dashed border-border py-5 text-center font-mono text-[12px] text-text-muted">
-                No channels yet — add an email or webhook to receive alerts.
+                No channels yet, add an email or webhook to receive alerts.
               </div>
             ) : (
               <div className="rounded-[6px] border border-border overflow-hidden">

@@ -28,12 +28,12 @@ const JUDGE_MODELS = {
 } as const
 
 function fmtUsd(n: number | null | undefined): string {
-  if (n == null) return '—'
+  if (n == null) return ','
   return n >= 0.01 ? `$${n.toFixed(3)}` : `$${n.toFixed(5)}`
 }
 
 function fmtScore(n: number | null | undefined): string {
-  if (n == null) return '—'
+  if (n == null) return ','
   return `${(n * 100).toFixed(1)}`
 }
 
@@ -575,7 +575,7 @@ function EvaluatorRow({
           </p>
         </div>
         <div className="font-mono text-[12px] text-text-muted w-[100px] text-right">
-          {latestCompleted ? fmtScore(latestCompleted.avg_score) : '—'}
+          {latestCompleted ? fmtScore(latestCompleted.avg_score) : ','}
         </div>
         <div className="font-mono text-[11px] text-text-faint w-[80px] text-right">
           {runs.data?.length ?? 0} runs
@@ -653,7 +653,7 @@ function CorrelationCard({ promptName }: { promptName: string }) {
 
   // Interpret r — same buckets as standard correlation rules of thumb.
   const interpretation = r == null
-    ? '—'
+    ? ','
     : Math.abs(r) >= 0.7 ? 'Strong'
     : Math.abs(r) >= 0.4 ? 'Moderate'
     : Math.abs(r) >= 0.2 ? 'Weak'
@@ -670,7 +670,7 @@ function CorrelationCard({ promptName }: { promptName: string }) {
       <div className="flex items-start gap-4">
         {/* Scatter plot */}
         <svg width={W} height={H} className="shrink-0 bg-bg rounded-[4px] border border-border">
-          {/* Diagonal reference line — perfect agreement */}
+          {/* Diagonal reference line, perfect agreement */}
           <line
             x1={PAD} y1={H - PAD} x2={W - PAD} y2={PAD}
             stroke="var(--border-strong, currentColor)"
@@ -696,7 +696,7 @@ function CorrelationCard({ promptName }: { promptName: string }) {
             </p>
             <div className="flex items-baseline gap-2">
               <span className={cn('font-mono text-[22px] font-medium', rColor)}>
-                {r == null ? '—' : r.toFixed(2)}
+                {r == null ? ',' : r.toFixed(2)}
               </span>
               <span className="font-mono text-[10.5px] text-text-muted">
                 Pearson r · {interpretation}
@@ -776,7 +776,7 @@ export function EvalsClient() {
             </span>
           </div>
 
-          {/* Correlation card — appears only if Annotation has paired samples */}
+          {/* Correlation card, appears only if Annotation has paired samples */}
           {list.length > 0 && <CorrelationRow evaluators={list} />}
 
           {evaluators.isLoading ? (

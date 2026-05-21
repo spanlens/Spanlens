@@ -128,7 +128,7 @@ function AddItemDialog({
               className="w-full px-2 py-2 rounded-[5px] border border-border bg-bg font-mono text-[12px] text-text resize-none"
             />
             <p className="font-mono text-[10px] text-text-faint mt-1">
-              Required for Evals dataset source — judge scores this text against your criterion.
+              Required for Evals dataset source, judge scores this text against your criterion.
             </p>
           </div>
 
@@ -189,7 +189,7 @@ function ItemRow({ item, datasetId }: { item: DatasetItem; datasetId: string }) 
         </div>
         <div className="flex items-center gap-2 shrink-0">
           {!hasExpected && (
-            <span className="font-mono text-[10px] text-warn flex items-center gap-1" title="No expected output — won't be evaluated">
+            <span className="font-mono text-[10px] text-warn flex items-center gap-1" title="No expected output, won't be evaluated">
               <AlertTriangle className="h-3 w-3" />
               no output
             </span>
