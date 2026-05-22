@@ -1,5 +1,6 @@
 'use client'
 import { useState } from 'react'
+import Link from 'next/link'
 import { Mail, MessageSquare } from 'lucide-react'
 import { DEMO_ALERTS, DEMO_CHANNELS, DEMO_DELIVERIES } from '@/lib/demo-data'
 import type { AlertRow } from '@/lib/queries/types'
@@ -40,11 +41,12 @@ function AlertRuleRow({ a, last }: { a: AlertRow; last: boolean }) {
   const fires = alertFires(a.id)
 
   return (
-    <div
+    <Link
+      href={`/demo/alerts/${a.id}`}
       className={cn(
-        'grid items-center px-[22px] py-[12px]',
+        'grid items-center px-[22px] py-[12px] transition-colors hover:bg-bg-muted/40',
         !last && 'border-b border-border',
-        isFiring && 'bg-accent-bg',
+        isFiring && 'bg-accent-bg hover:bg-accent-bg/80',
       )}
       style={{ gridTemplateColumns: '28px 1fr 160px 60px 200px', gap: 14 }}
     >
@@ -115,24 +117,28 @@ function AlertRuleRow({ a, last }: { a: AlertRow; last: boolean }) {
         <div className="font-mono text-[10px] text-text-faint">fires</div>
       </div>
 
-      {/* actions (demo: disabled) */}
+      {/* actions (demo: disabled, also stop link nav) */}
       <div className="flex items-center justify-end gap-1.5">
         <button
           type="button"
-          onClick={() => alert('Sign up to edit alerts')}
-          className="font-mono text-[10.5px] text-text-muted px-2 py-[3px] border border-border rounded-[4px] hover:text-text transition-colors"
+          disabled
+          title="Disabled in demo"
+          onClick={(e) => { e.preventDefault(); e.stopPropagation() }}
+          className="font-mono text-[10.5px] text-text-muted px-2 py-[3px] border border-border rounded-[4px] opacity-60 cursor-not-allowed"
         >
           Edit
         </button>
         <button
           type="button"
-          onClick={() => alert('Sign up to manage alerts')}
-          className="font-mono text-[10.5px] text-text-muted px-2 py-[3px] border border-border rounded-[4px] hover:text-text transition-colors"
+          disabled
+          title="Disabled in demo"
+          onClick={(e) => { e.preventDefault(); e.stopPropagation() }}
+          className="font-mono text-[10.5px] text-text-muted px-2 py-[3px] border border-border rounded-[4px] opacity-60 cursor-not-allowed"
         >
           {a.is_active ? 'Pause' : 'Resume'}
         </button>
       </div>
-    </div>
+    </Link>
   )
 }
 

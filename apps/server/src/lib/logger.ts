@@ -71,6 +71,16 @@ export interface RequestLogData {
    * See proxy/stream-deadline.ts for the wiring rationale.
    */
   truncated?: boolean
+  /**
+   * Actual processing tier the provider served the request from. Extracted by
+   * parsers from the response body — see parsers/openai.ts (`service_tier`)
+   * and parsers/gemini.ts (`usageMetadata.serviceTier`). Used by the cost
+   * calculator to apply Flex/Priority multipliers and surfaced on the
+   * dashboard for tier-distribution analytics.
+   *
+   * Empty string written to CH when unknown / unsupported (Anthropic).
+   */
+  serviceTier?: string | null | undefined
 }
 
 /**
@@ -253,6 +263,9 @@ export async function logRequestAsync(data: RequestLogData): Promise<void> {
     // 0/1 because ClickHouse UInt8; never null even if the field was
     // never set (older rows backfill via DEFAULT 0 on the column).
     truncated: data.truncated ? 1 : 0,
+    // Empty string when unknown — matches the column DEFAULT '' from migration
+    // 003_add_service_tier.sql and keeps CH LowCardinality dictionary tight.
+    service_tier: data.serviceTier ?? '',
     // ClickHouse DateTime64 wants 'YYYY-MM-DD HH:MM:SS.fff' (no Z).
     // Postgres's gen_random_uuid()/now() defaults moved to the
     // application layer — no behavioral difference, just a different
