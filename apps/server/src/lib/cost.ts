@@ -54,6 +54,7 @@ export interface Usage {
  */
 const TIER_MULTIPLIERS: Record<ServiceTier, number> = {
   default: 1.0,
+  standard: 1.0,  // Gemini + Anthropic report this name for the Standard tier
   auto: 1.0,
   scale: 1.0,
   batch: 0.5,

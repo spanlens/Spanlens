@@ -1,4 +1,14 @@
-import type { ParsedUsage } from './openai.js'
+import type { ParsedUsage, ServiceTier } from './openai.js'
+
+const KNOWN_TIERS: ReadonlySet<ServiceTier> = new Set([
+  'default', 'standard', 'auto', 'flex', 'priority', 'scale', 'batch',
+])
+
+/** Anthropic exposes the served tier at `usage.service_tier`. Same shape as OpenAI. */
+function coerceServiceTier(value: unknown): ServiceTier | undefined {
+  if (typeof value !== 'string') return undefined
+  return KNOWN_TIERS.has(value as ServiceTier) ? (value as ServiceTier) : undefined
+}
 
 /**
  * Anthropic 응답에서 usage를 추출합니다.
@@ -9,13 +19,20 @@ import type { ParsedUsage } from './openai.js'
  * 세 필드를 합산해서 promptTokens에 넣고, 캐시 부분은 별도 필드로도 노출합니다.
  *
  * (참고: streaming은 message_start에서 input_tokens + cache_*가 함께 옴 — 동일하게 합산)
+ *
+ * service_tier는 Anthropic이 `usage.service_tier`로 노출 (OpenAI/Gemini와 유사).
+ * 초기 가정 ("Anthropic은 tier를 응답에 안 줌")이 틀렸음 — 응답 body의 usage 객체
+ * 안에 있다.
  */
-function buildAnthropicUsage(usage: Record<string, number>, model: string): ParsedUsage {
-  const inputTokens = usage.input_tokens ?? 0
-  const cacheRead = usage.cache_read_input_tokens ?? 0
-  const cacheWrite = usage.cache_creation_input_tokens ?? 0
+function buildAnthropicUsage(
+  usage: Record<string, unknown>,
+  model: string,
+): ParsedUsage {
+  const inputTokens = (usage.input_tokens as number) ?? 0
+  const cacheRead = (usage.cache_read_input_tokens as number) ?? 0
+  const cacheWrite = (usage.cache_creation_input_tokens as number) ?? 0
   const promptTokens = inputTokens + cacheRead + cacheWrite
-  const completionTokens = usage.output_tokens ?? 0
+  const completionTokens = (usage.output_tokens as number) ?? 0
   return {
     promptTokens,
     completionTokens,
@@ -23,11 +40,12 @@ function buildAnthropicUsage(usage: Record<string, number>, model: string): Pars
     model,
     cacheReadTokens: cacheRead,
     cacheWriteTokens: cacheWrite,
+    serviceTier: coerceServiceTier(usage.service_tier),
   }
 }
 
 export function parseAnthropicResponse(body: Record<string, unknown>): ParsedUsage | null {
-  const usage = body.usage as Record<string, number> | undefined
+  const usage = body.usage as Record<string, unknown> | undefined
   if (!usage) return null
   return buildAnthropicUsage(usage, (body.model as string) ?? '')
 }
@@ -72,16 +90,17 @@ export function parseAnthropicStreamStart(line: string): Partial<ParsedUsage> | 
     const json = JSON.parse(data) as Record<string, unknown>
     if (json.type !== 'message_start') return null
     const message = json.message as Record<string, unknown> | undefined
-    const usage = message?.usage as Record<string, number> | undefined
+    const usage = message?.usage as Record<string, unknown> | undefined
     if (!usage) return null
-    const inputTokens = usage.input_tokens ?? 0
-    const cacheRead = usage.cache_read_input_tokens ?? 0
-    const cacheWrite = usage.cache_creation_input_tokens ?? 0
+    const inputTokens = (usage.input_tokens as number) ?? 0
+    const cacheRead = (usage.cache_read_input_tokens as number) ?? 0
+    const cacheWrite = (usage.cache_creation_input_tokens as number) ?? 0
     return {
       promptTokens: inputTokens + cacheRead + cacheWrite,
       cacheReadTokens: cacheRead,
       cacheWriteTokens: cacheWrite,
       model: (message?.model as string) ?? '',
+      serviceTier: coerceServiceTier(usage.service_tier),
     }
   } catch {
     return null

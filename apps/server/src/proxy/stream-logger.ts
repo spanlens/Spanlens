@@ -142,6 +142,7 @@ export async function logAnthropicStream(
   let completionTokens = 0
   let cacheReadTokens = 0
   let cacheWriteTokens = 0
+  let serviceTier: ServiceTier | undefined
 
   for (const line of lines) {
     const start = parseAnthropicStreamStart(line)
@@ -150,6 +151,7 @@ export async function logAnthropicStream(
       if (start.cacheReadTokens) cacheReadTokens = start.cacheReadTokens
       if (start.cacheWriteTokens) cacheWriteTokens = start.cacheWriteTokens
       if (start.model) model = start.model
+      if (start.serviceTier) serviceTier = start.serviceTier
       continue
     }
     const delta = parseAnthropicStreamChunk(line)
@@ -158,7 +160,7 @@ export async function logAnthropicStream(
 
   const totalTokens = promptTokens + completionTokens
   const cost = calculateCost('anthropic' as Provider, model, {
-    promptTokens, completionTokens, cacheReadTokens, cacheWriteTokens,
+    promptTokens, completionTokens, cacheReadTokens, cacheWriteTokens, serviceTier,
   })
 
   // Reconstruct upstream-shape usage so the dashboard preserves the raw
@@ -193,6 +195,7 @@ export async function logAnthropicStream(
     totalTokens,
     cacheReadTokens,
     cacheWriteTokens,
+    serviceTier: serviceTier ?? null,
     costUsd: cost?.totalCost ?? null,
     responseBody,
     truncated: ctx.truncated ?? false,
