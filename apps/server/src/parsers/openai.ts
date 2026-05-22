@@ -25,19 +25,23 @@ export interface ParsedUsage {
    * OpenAI: `usage.prompt_tokens_details.cached_tokens`.
    * Charged at the reduced cache_read price in lib/cost.ts.
    */
-  cacheReadTokens?: number
+  cacheReadTokens?: number | undefined
   /**
    * Cache-creation input tokens (subset of promptTokens).
    * OpenAI: no equivalent in the public API as of 2026-05; always 0/undefined.
    */
-  cacheWriteTokens?: number
+  cacheWriteTokens?: number | undefined
   /**
    * Actual processing tier the provider used to fulfill this request.
    * IMPORTANT: this is the *served* tier, not what the caller requested —
    * OpenAI can downgrade a priority request to 'default' on ramp-rate breach,
    * and that downgrade shows up here. Always trust this over request params.
+   *
+   * `| undefined` is explicit because the repo uses
+   * `exactOptionalPropertyTypes: true` — a bare `?:` would forbid assigning
+   * `undefined`, only allow omission of the property entirely.
    */
-  serviceTier?: ServiceTier
+  serviceTier?: ServiceTier | undefined
 }
 
 const KNOWN_TIERS: ReadonlySet<ServiceTier> = new Set([

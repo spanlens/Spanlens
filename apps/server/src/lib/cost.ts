@@ -24,16 +24,17 @@ export interface Usage {
   promptTokens: number
   completionTokens: number
   /** Subset of promptTokens that hit a prompt cache (charged at reduced rate). */
-  cacheReadTokens?: number
+  cacheReadTokens?: number | undefined
   /** Subset of promptTokens that created a cache entry (charged at premium rate). */
-  cacheWriteTokens?: number
+  cacheWriteTokens?: number | undefined
   /**
    * Tier the provider actually served the request from (NOT the requested tier).
    * Extracted by parsers from response body — see parsers/openai.ts and
    * parsers/gemini.ts. When omitted, no tier adjustment is applied
    * (equivalent to Standard / `default`).
+   * `| undefined` explicit because of exactOptionalPropertyTypes.
    */
-  serviceTier?: ServiceTier
+  serviceTier?: ServiceTier | undefined
 }
 
 /**

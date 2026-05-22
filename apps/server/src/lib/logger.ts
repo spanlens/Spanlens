@@ -80,7 +80,7 @@ export interface RequestLogData {
    *
    * Empty string written to CH when unknown / unsupported (Anthropic).
    */
-  serviceTier?: string | null
+  serviceTier?: string | null | undefined
 }
 
 /**

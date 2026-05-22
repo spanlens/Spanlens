@@ -34,9 +34,9 @@ export interface ModelPrice {
   prompt: number
   completion: number
   /** USD per 1M cached input tokens. If undefined, cache_read is billed at `prompt` rate. */
-  cacheRead?: number
+  cacheRead?: number | undefined
   /** USD per 1M cache-creation tokens. If undefined, cache_write is billed at `prompt` rate. */
-  cacheWrite?: number
+  cacheWrite?: number | undefined
   /**
    * Long-context tier overrides. When `longThreshold` is set and the request's
    * `promptTokens > longThreshold`, calculateCost() swaps in the long* prices
@@ -45,12 +45,14 @@ export interface ModelPrice {
    *
    *   OpenAI GPT-5.x  → longThreshold = 272000 tokens
    *   Gemini Pro 2.5+ → longThreshold = 200000 tokens
+   *
+   * `| undefined` explicit on all optionals because of exactOptionalPropertyTypes.
    */
-  longThreshold?: number
-  longPrompt?: number
-  longCompletion?: number
-  longCacheRead?: number
-  longCacheWrite?: number
+  longThreshold?: number | undefined
+  longPrompt?: number | undefined
+  longCompletion?: number | undefined
+  longCacheRead?: number | undefined
+  longCacheWrite?: number | undefined
 }
 
 // Prices in USD per 1M tokens (verified against provider pricing pages 2026-05-22).
@@ -259,15 +261,20 @@ async function doRefresh(): Promise<void> {
 
   const next: Record<string, ModelPrice> = {}
   for (const row of data) {
-    // Row type is loose because long_* columns may not exist in types.ts yet
-    // (added in migration 20260522010000; types.ts regenerates on next gen).
-    // Guard each access so a stale types.ts doesn't break the refresh.
-    const r = row as Record<string, unknown>
-    next[row.model] = {
-      prompt: Number(row.prompt_price_per_1m),
-      completion: Number(row.completion_price_per_1m),
-      ...(row.cache_read_price_per_1m != null && { cacheRead: Number(row.cache_read_price_per_1m) }),
-      ...(row.cache_write_price_per_1m != null && { cacheWrite: Number(row.cache_write_price_per_1m) }),
+    // Cast row to Record<string, unknown> — supabase types.ts is regenerated
+    // separately from migrations, so columns added by migration
+    // 20260522010000 (long_*) may not exist in the generated types yet at
+    // build time. CI specifically catches this because its types.ts is
+    // pristine. Treat every column as an unknown key access and Number()
+    // the values defensively.
+    const r = row as unknown as Record<string, unknown>
+    const model = r['model'] as string
+    if (!model) continue
+    next[model] = {
+      prompt: Number(r['prompt_price_per_1m']),
+      completion: Number(r['completion_price_per_1m']),
+      ...(r['cache_read_price_per_1m'] != null && { cacheRead: Number(r['cache_read_price_per_1m']) }),
+      ...(r['cache_write_price_per_1m'] != null && { cacheWrite: Number(r['cache_write_price_per_1m']) }),
       ...(r['long_context_threshold_tokens'] != null && {
         longThreshold: Number(r['long_context_threshold_tokens']),
       }),
