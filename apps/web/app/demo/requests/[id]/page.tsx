@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import { use, useState } from 'react'
 import Link from 'next/link'
 import { ArrowLeft } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -34,8 +34,9 @@ function CopyButton({ getText }: { getText: () => string }) {
 
 type Tab = 'request' | 'response' | 'error'
 
-export default function DemoRequestDetailPage({ params }: { params: { id: string } }) {
-  const req = DEMO_REQUEST_DETAILS[params.id] ?? null
+export default function DemoRequestDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = use(params)
+  const req = DEMO_REQUEST_DETAILS[id] ?? null
   const [tab, setTab] = useState<Tab>('request')
 
   if (!req) {

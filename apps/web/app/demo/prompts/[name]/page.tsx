@@ -1,19 +1,20 @@
 'use client'
-import { useState } from 'react'
+import { use, useState } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, FlaskConical, GitCommit, ArrowLeftRight, BarChart2, Phone } from 'lucide-react'
+import { ArrowLeft, FlaskConical, GitCommit, ArrowLeftRight, BarChart2, Phone, Play, CheckCircle2, Key } from 'lucide-react'
 import { DEMO_PROMPTS, DEMO_REQUESTS } from '@/lib/demo-data'
 import { Topbar } from '@/components/layout/topbar'
 import { cn } from '@/lib/utils'
 
-type Tab = 'versions' | 'calls' | 'traffic' | 'ab' | 'diff'
+type Tab = 'versions' | 'calls' | 'traffic' | 'ab' | 'diff' | 'playground'
 
 const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
-  { id: 'versions', label: 'Versions',  icon: <GitCommit className="h-3.5 w-3.5" /> },
-  { id: 'diff',     label: 'Diff',      icon: <ArrowLeftRight className="h-3.5 w-3.5" /> },
-  { id: 'traffic',  label: 'Traffic',   icon: <BarChart2 className="h-3.5 w-3.5" /> },
-  { id: 'calls',    label: 'Calls',     icon: <Phone className="h-3.5 w-3.5" /> },
-  { id: 'ab',       label: 'A/B',       icon: <FlaskConical className="h-3.5 w-3.5" /> },
+  { id: 'versions',   label: 'Versions',   icon: <GitCommit className="h-3.5 w-3.5" /> },
+  { id: 'diff',       label: 'Diff',       icon: <ArrowLeftRight className="h-3.5 w-3.5" /> },
+  { id: 'traffic',    label: 'Traffic',    icon: <BarChart2 className="h-3.5 w-3.5" /> },
+  { id: 'calls',      label: 'Calls',      icon: <Phone className="h-3.5 w-3.5" /> },
+  { id: 'playground', label: 'Playground', icon: <Play className="h-3.5 w-3.5" /> },
+  { id: 'ab',         label: 'A/B',        icon: <FlaskConical className="h-3.5 w-3.5" /> },
 ]
 
 function fmtUsd(v: number): string {
@@ -365,14 +366,245 @@ function DiffTab({ prompt }: { prompt: (typeof DEMO_PROMPTS)[number] }) {
   )
 }
 
+// ── Playground Tab ────────────────────────────────────────────────────────────
+
+const DEMO_PROVIDER_KEYS = [
+  { id: 'pk-1', name: 'OpenAI prod',    provider: 'openai',    label: 'OpenAI' },
+  { id: 'pk-2', name: 'Anthropic prod', provider: 'anthropic', label: 'Anthropic' },
+  { id: 'pk-4', name: 'OpenAI staging', provider: 'openai',    label: 'OpenAI' },
+]
+
+const DEMO_MODELS_BY_PROVIDER: Record<string, string[]> = {
+  openai: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo'],
+  anthropic: ['claude-sonnet-4-6', 'claude-opus-4-5', 'claude-3-5-haiku-20241022'],
+  gemini: ['gemini-2.0-flash', 'gemini-1.5-pro'],
+}
+
+const VAR_RE = /\{\{\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g
+
+function extractVars(content: string): string[] {
+  const names = new Set<string>()
+  for (const match of content.matchAll(VAR_RE)) {
+    names.add(match[1]!)
+  }
+  return [...names]
+}
+
+function PlaygroundTab({ prompt }: { prompt: (typeof DEMO_PROMPTS)[number] }) {
+  const [selectedKeyId, setSelectedKeyId] = useState(DEMO_PROVIDER_KEYS[0]?.id ?? '')
+  const [model, setModel] = useState('claude-sonnet-4-6')
+  const [temperature, setTemperature] = useState(0.7)
+  const [maxTokens, setMaxTokens] = useState(1024)
+  const [variables, setVariables] = useState<Record<string, string>>({})
+  const [showResult, setShowResult] = useState(true)
+
+  const selectedKey = DEMO_PROVIDER_KEYS.find((k) => k.id === selectedKeyId) ?? null
+  const availableModels = selectedKey ? (DEMO_MODELS_BY_PROVIDER[selectedKey.provider] ?? []) : []
+  const detectedVars = extractVars(prompt.content)
+
+  // Static "demo" result — wired up to look like a real run completed.
+  const demoResult = {
+    model: model || 'claude-sonnet-4-6',
+    promptTokens: 142,
+    completionTokens: 187,
+    totalTokens: 329,
+    costUsd: 0.00428,
+    latencyMs: 1248,
+    responseText:
+      "Thanks for reaching out! I understand you're experiencing an issue with your account.\n\nLet me take a look — based on what you described, I'd recommend the following steps:\n\n1. Verify your email address on file\n2. Reset your password from the login page\n3. Clear your browser cache and try again\n\nIf the problem persists, I can escalate to our technical team. Just let me know!",
+  }
+
+  return (
+    <div className="flex h-full min-h-0">
+      {/* Config panel */}
+      <div className="w-[320px] shrink-0 border-r border-border overflow-y-auto p-[18px] space-y-5">
+        <div className="space-y-1.5">
+          <label className="font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint">Version</label>
+          <select
+            value={`v${prompt.version}`}
+            disabled
+            className="w-full h-8 px-2 rounded-[4px] border border-border bg-bg font-mono text-[12px] text-text-muted opacity-80 cursor-not-allowed"
+          >
+            <option>v{prompt.version} (latest)</option>
+          </select>
+        </div>
+
+        <div className="space-y-1.5">
+          <label className="font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint flex items-center gap-1.5">
+            <Key className="h-3 w-3" /> Provider Key
+          </label>
+          <select
+            value={selectedKeyId}
+            onChange={(e) => setSelectedKeyId(e.target.value)}
+            className="w-full h-8 px-2 rounded-[4px] border border-border bg-bg font-mono text-[12px] text-text focus:outline-none focus:border-border-strong"
+          >
+            {DEMO_PROVIDER_KEYS.map((k) => (
+              <option key={k.id} value={k.id}>
+                {k.name} · {k.label}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {selectedKey && (
+          <div className="space-y-1.5">
+            <label className="font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint">
+              Model
+              <span className="ml-2 px-[5px] py-[1px] rounded-[3px] bg-bg-elev border border-border text-text-muted normal-case tracking-normal">
+                {selectedKey.label}
+              </span>
+            </label>
+            <select
+              value={model}
+              onChange={(e) => setModel(e.target.value)}
+              className="w-full h-8 px-2 rounded-[4px] border border-border bg-bg font-mono text-[12px] text-text focus:outline-none focus:border-border-strong"
+            >
+              {availableModels.map((m) => (
+                <option key={m} value={m}>{m}</option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between">
+            <label className="font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint">Temperature</label>
+            <span className="font-mono text-[11px] text-text-muted">{temperature.toFixed(1)}</span>
+          </div>
+          <input
+            type="range"
+            min="0" max="2" step="0.1"
+            value={temperature}
+            onChange={(e) => setTemperature(parseFloat(e.target.value))}
+            className="w-full accent-text"
+          />
+          <div className="flex justify-between font-mono text-[10px] text-text-faint">
+            <span>0 precise</span>
+            <span>2 creative</span>
+          </div>
+        </div>
+
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between">
+            <label className="font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint">Max tokens</label>
+            <span className="font-mono text-[11px] text-text-muted">{maxTokens}</span>
+          </div>
+          <input
+            type="number"
+            min="1" max="8192"
+            value={maxTokens}
+            onChange={(e) =>
+              setMaxTokens(Math.min(8192, Math.max(1, parseInt(e.target.value, 10) || 1)))
+            }
+            className="w-full h-8 px-2 rounded-[4px] border border-border bg-bg font-mono text-[12px] text-text focus:outline-none focus:border-border-strong"
+          />
+        </div>
+
+        {detectedVars.length > 0 && (
+          <div className="space-y-2.5">
+            <label className="font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint">Variables</label>
+            {detectedVars.map((varName) => (
+              <div key={varName} className="space-y-1">
+                <label className="font-mono text-[11px] text-text-muted">{`{{${varName}}}`}</label>
+                <input
+                  type="text"
+                  placeholder={`Value for ${varName}…`}
+                  value={variables[varName] ?? ''}
+                  onChange={(e) => setVariables((prev) => ({ ...prev, [varName]: e.target.value }))}
+                  className="w-full h-8 px-2 rounded-[4px] border border-border bg-bg font-mono text-[12px] text-text placeholder:text-text-faint focus:outline-none focus:border-border-strong"
+                />
+              </div>
+            ))}
+          </div>
+        )}
+
+        <button
+          type="button"
+          onClick={() => setShowResult(true)}
+          className="w-full flex items-center justify-center gap-2 h-9 rounded-[5px] bg-text text-bg font-mono text-[12px] font-medium hover:opacity-90 transition-opacity"
+        >
+          <Play className="h-3.5 w-3.5" />
+          Run (demo)
+        </button>
+
+        <p className="font-mono text-[10.5px] text-text-faint text-center leading-relaxed">
+          Playground is fully interactive in the live app.{' '}
+          <Link href="/signup" className="text-accent hover:opacity-80">Sign up free</Link>{' '}
+          to run against your own keys.
+        </p>
+      </div>
+
+      {/* Preview + Result */}
+      <div className="flex-1 min-w-0 overflow-y-auto flex flex-col">
+        <div className="p-[18px] border-b border-border space-y-2 shrink-0">
+          <p className="font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint">Prompt preview</p>
+          <div className="bg-bg-muted rounded-[6px] border border-border p-4 max-h-52 overflow-y-auto">
+            <pre className="font-mono text-[12px] text-text-muted whitespace-pre-wrap leading-relaxed">
+              {prompt.content}
+            </pre>
+          </div>
+        </div>
+
+        <div className="p-[18px] space-y-4 flex-1">
+          {showResult && (
+            <>
+              <div className="grid grid-cols-4 gap-3">
+                {[
+                  { label: 'Model', value: demoResult.model },
+                  { label: 'Tokens', value: demoResult.totalTokens.toLocaleString() },
+                  { label: 'Cost', value: `$${demoResult.costUsd.toFixed(5)}` },
+                  { label: 'Latency', value: `${(demoResult.latencyMs / 1000).toFixed(2)}s` },
+                ].map((s) => (
+                  <div key={s.label} className="bg-bg-elev rounded-[5px] border border-border px-3 py-2.5">
+                    <p className="font-mono text-[9.5px] uppercase tracking-[0.06em] text-text-faint mb-1">
+                      {s.label}
+                    </p>
+                    <p className="font-mono text-[12px] text-text font-medium truncate" title={s.value}>
+                      {s.value}
+                    </p>
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex items-center flex-wrap gap-x-4 gap-y-1 font-mono text-[11px] text-text-faint">
+                <span><span className="text-text-muted">{demoResult.promptTokens}</span> prompt</span>
+                <span>+</span>
+                <span><span className="text-text-muted">{demoResult.completionTokens}</span> completion</span>
+                <span>=</span>
+                <span><span className="text-text-muted">{demoResult.totalTokens}</span> total</span>
+              </div>
+
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-2">
+                  <p className="font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint">Response</p>
+                  <CheckCircle2 className="h-3 w-3 text-good" />
+                  <span className="font-mono text-[9px] uppercase tracking-[0.05em] px-1.5 py-0.5 rounded-[3px] bg-accent/10 border border-accent/20 text-accent ml-auto">
+                    demo response
+                  </span>
+                </div>
+                <div className="bg-bg-muted rounded-[6px] border border-border p-4">
+                  <pre className="font-mono text-[12.5px] text-text whitespace-pre-wrap leading-relaxed">
+                    {demoResult.responseText}
+                  </pre>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 interface Props {
-  params: { name: string }
+  params: Promise<{ name: string }>
 }
 
 export default function DemoPromptDetailPage({ params }: Props) {
-  const name = decodeURIComponent(params.name)
+  const { name: rawName } = use(params)
+  const name = decodeURIComponent(rawName)
   const [tab, setTab] = useState<Tab>('versions')
 
   const prompt = DEMO_PROMPTS.find((p) => p.name === name)
@@ -471,11 +703,12 @@ export default function DemoPromptDetailPage({ params }: Props) {
 
       {/* Tab content */}
       <div className="flex-1 overflow-auto">
-        {tab === 'versions' && <VersionsTab prompt={prompt} />}
-        {tab === 'calls'    && <CallsTab />}
-        {tab === 'traffic'  && <TrafficTab prompt={prompt} />}
-        {tab === 'ab'       && <AbTab prompt={prompt} />}
-        {tab === 'diff'     && <DiffTab prompt={prompt} />}
+        {tab === 'versions'   && <VersionsTab prompt={prompt} />}
+        {tab === 'calls'      && <CallsTab />}
+        {tab === 'traffic'    && <TrafficTab prompt={prompt} />}
+        {tab === 'ab'         && <AbTab prompt={prompt} />}
+        {tab === 'diff'       && <DiffTab prompt={prompt} />}
+        {tab === 'playground' && <PlaygroundTab prompt={prompt} />}
       </div>
     </div>
   )
