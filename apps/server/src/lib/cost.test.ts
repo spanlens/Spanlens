@@ -99,6 +99,171 @@ describe('calculateCost — cache breakdown', () => {
   })
 })
 
+describe('calculateCost — tiered (long context) pricing', () => {
+  test('gpt-5.5 short tier: 100k prompt billed at short rate', () => {
+    // short: prompt 5, completion 30
+    const cost = calculateCost('openai', 'gpt-5.5', {
+      promptTokens: 100_000,
+      completionTokens: 1_000,
+    })
+    expect(cost).not.toBeNull()
+    // 100k × 5/1M + 1k × 30/1M = 0.5 + 0.03 = 0.53
+    expect(cost!.totalCost).toBeCloseTo(0.53, 6)
+  })
+
+  test('gpt-5.5 long tier: 300k prompt billed at long rate (≥272k threshold)', () => {
+    // long: prompt 10, completion 45
+    const cost = calculateCost('openai', 'gpt-5.5', {
+      promptTokens: 300_000,
+      completionTokens: 1_000,
+    })
+    expect(cost).not.toBeNull()
+    // 300k × 10/1M + 1k × 45/1M = 3.0 + 0.045 = 3.045
+    expect(cost!.totalCost).toBeCloseTo(3.045, 6)
+  })
+
+  test('gpt-5.5 long tier: cache_read uses long cache rate ($1/M)', () => {
+    // long: prompt 10, completion 45, cacheRead 1.0
+    const cost = calculateCost('openai', 'gpt-5.5', {
+      promptTokens: 300_000,
+      completionTokens: 0,
+      cacheReadTokens: 100_000,
+    })
+    expect(cost).not.toBeNull()
+    // non-cached = 200k × 10/1M = 2.0
+    // cache_read = 100k × 1.0/1M = 0.1
+    expect(cost!.promptCost).toBeCloseTo(2.0, 6)
+    expect(cost!.cacheReadCost).toBeCloseTo(0.1, 6)
+    expect(cost!.totalCost).toBeCloseTo(2.1, 6)
+  })
+
+  test('gpt-5.5 boundary: exactly at threshold (272k) stays in short tier', () => {
+    // condition is `promptTokens > threshold` (strict), so 272k → short
+    const cost = calculateCost('openai', 'gpt-5.5', {
+      promptTokens: 272_000,
+      completionTokens: 0,
+    })
+    expect(cost).not.toBeNull()
+    // short: 272k × 5/1M = 1.36
+    expect(cost!.totalCost).toBeCloseTo(1.36, 6)
+  })
+
+  test('gpt-5.5 boundary: one token over threshold flips to long', () => {
+    const cost = calculateCost('openai', 'gpt-5.5', {
+      promptTokens: 272_001,
+      completionTokens: 0,
+    })
+    expect(cost).not.toBeNull()
+    // long: 272001 × 10/1M ≈ 2.72001
+    expect(cost!.totalCost).toBeCloseTo(2.72001, 5)
+  })
+
+  test('gemini-2.5-pro long tier: 250k prompt billed at long rate', () => {
+    // short: 1.25 / 10, long: 2.5 / 15, threshold 200k
+    const cost = calculateCost('gemini', 'gemini-2.5-pro', {
+      promptTokens: 250_000,
+      completionTokens: 5_000,
+    })
+    expect(cost).not.toBeNull()
+    // 250k × 2.5/1M + 5k × 15/1M = 0.625 + 0.075 = 0.7
+    expect(cost!.totalCost).toBeCloseTo(0.7, 6)
+  })
+
+  test('gpt-5.4-mini has no long tier → 500k prompt still short rate', () => {
+    // short only: prompt 0.75, completion 4.5
+    const cost = calculateCost('openai', 'gpt-5.4-mini', {
+      promptTokens: 500_000,
+      completionTokens: 0,
+    })
+    expect(cost).not.toBeNull()
+    // 500k × 0.75/1M = 0.375
+    expect(cost!.totalCost).toBeCloseTo(0.375, 6)
+  })
+})
+
+describe('calculateCost — service tier multiplier', () => {
+  test('default tier matches no-tier cost (1.0× multiplier)', () => {
+    const baseline = calculateCost('openai', 'gpt-4o-mini', {
+      promptTokens: 1000, completionTokens: 500,
+    })!
+    const defaulted = calculateCost('openai', 'gpt-4o-mini', {
+      promptTokens: 1000, completionTokens: 500, serviceTier: 'default',
+    })!
+    expect(defaulted.totalCost).toBeCloseTo(baseline.totalCost, 10)
+  })
+
+  test('flex tier applies 0.5× discount', () => {
+    const baseline = calculateCost('openai', 'gpt-4o-mini', {
+      promptTokens: 1000, completionTokens: 500,
+    })!
+    const flex = calculateCost('openai', 'gpt-4o-mini', {
+      promptTokens: 1000, completionTokens: 500, serviceTier: 'flex',
+    })!
+    expect(flex.totalCost).toBeCloseTo(baseline.totalCost * 0.5, 10)
+  })
+
+  test('priority tier applies 1.8× premium', () => {
+    const baseline = calculateCost('openai', 'gpt-4o-mini', {
+      promptTokens: 1000, completionTokens: 500,
+    })!
+    const priority = calculateCost('openai', 'gpt-4o-mini', {
+      promptTokens: 1000, completionTokens: 500, serviceTier: 'priority',
+    })!
+    expect(priority.totalCost).toBeCloseTo(baseline.totalCost * 1.8, 10)
+  })
+
+  test('batch tier applies 0.5× discount', () => {
+    const baseline = calculateCost('openai', 'gpt-4o-mini', {
+      promptTokens: 1000, completionTokens: 500,
+    })!
+    const batch = calculateCost('openai', 'gpt-4o-mini', {
+      promptTokens: 1000, completionTokens: 500, serviceTier: 'batch',
+    })!
+    expect(batch.totalCost).toBeCloseTo(baseline.totalCost * 0.5, 10)
+  })
+
+  test('priority scales cache_read alongside prompt/completion', () => {
+    // Anthropic Sonnet — cache_read is 0.3, prompt 3, completion 15.
+    // Priority should scale all three by 1.8.
+    const baseline = calculateCost('anthropic', 'claude-sonnet-4-6', {
+      promptTokens: 10_000, completionTokens: 500, cacheReadTokens: 5_000,
+    })!
+    const priority = calculateCost('anthropic', 'claude-sonnet-4-6', {
+      promptTokens: 10_000, completionTokens: 500, cacheReadTokens: 5_000,
+      serviceTier: 'priority',
+    })!
+    expect(priority.promptCost).toBeCloseTo(baseline.promptCost * 1.8, 8)
+    expect(priority.cacheReadCost).toBeCloseTo(baseline.cacheReadCost * 1.8, 8)
+    expect(priority.completionCost).toBeCloseTo(baseline.completionCost * 1.8, 8)
+    expect(priority.totalCost).toBeCloseTo(baseline.totalCost * 1.8, 8)
+  })
+
+  test('flex + long context: multipliers stack correctly', () => {
+    // gpt-5.5 long tier: prompt $10 / completion $45. Flex = 0.5×.
+    // 300k prompt + 1k completion at flex:
+    //   prompt: 300k × 10 × 0.5 / 1M = 1.50
+    //   completion: 1k × 45 × 0.5 / 1M = 0.0225
+    const cost = calculateCost('openai', 'gpt-5.5', {
+      promptTokens: 300_000, completionTokens: 1_000, serviceTier: 'flex',
+    })!
+    expect(cost.totalCost).toBeCloseTo(1.5225, 5)
+  })
+
+  test('unknown serviceTier value defaults to 1.0×', () => {
+    const baseline = calculateCost('openai', 'gpt-4o-mini', {
+      promptTokens: 1000, completionTokens: 500,
+    })!
+    // TS won't let unknown tier through normally, but runtime might receive
+    // a value we never enumerated — calculator must not crash and must
+    // default to Standard.
+    const unknown = calculateCost('openai', 'gpt-4o-mini', {
+      promptTokens: 1000, completionTokens: 500,
+      serviceTier: 'something-weird' as never,
+    })!
+    expect(unknown.totalCost).toBeCloseTo(baseline.totalCost, 10)
+  })
+})
+
 describe('calculateCost — regression vs. old behavior', () => {
   test('no cache tokens → identical total to pre-migration cost', () => {
     // Anthropic Haiku, 1000 prompt + 500 completion, NO cache.

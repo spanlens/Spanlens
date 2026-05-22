@@ -169,6 +169,7 @@ geminiProxy.all('/*', async (c) => {
       let promptTokens = 0
       let completionTokens = 0
       let totalTokens = 0
+      let serviceTier: import('../parsers/openai.js').ServiceTier | undefined
       try {
         // Try parsing the joined buffer as a JSON array of partial responses
         const lastChunkText = buffer.trim().replace(/^\[/, '').replace(/\]$/, '')
@@ -181,6 +182,7 @@ geminiProxy.all('/*', async (c) => {
             promptTokens = parsed.promptTokens
             completionTokens = parsed.completionTokens
             totalTokens = parsed.totalTokens
+            serviceTier = parsed.serviceTier
           }
         }
       } catch { /* usage may be missing on aborted streams — acceptable */ }
@@ -195,7 +197,7 @@ geminiProxy.all('/*', async (c) => {
         )
       }
 
-      const cost = calculateCost('gemini', model, { promptTokens, completionTokens })
+      const cost = calculateCost('gemini', model, { promptTokens, completionTokens, serviceTier })
       const responseBody = text ? {
         candidates: [{ content: { parts: [{ text }] } }],
         modelVersion: model,
@@ -212,6 +214,7 @@ geminiProxy.all('/*', async (c) => {
         promptTokens,
         completionTokens,
         totalTokens,
+        serviceTier: serviceTier ?? null,
         costUsd: cost?.totalCost ?? null,
         responseBody,
         truncated,
@@ -230,6 +233,7 @@ geminiProxy.all('/*', async (c) => {
   let promptTokens = 0
   let completionTokens = 0
   let totalTokens = 0
+  let serviceTier: import('../parsers/openai.js').ServiceTier | undefined
 
   if (upstreamRes.ok && resBodyJson) {
     try {
@@ -239,11 +243,12 @@ geminiProxy.all('/*', async (c) => {
         promptTokens = parsed.promptTokens
         completionTokens = parsed.completionTokens
         totalTokens = parsed.totalTokens
+        serviceTier = parsed.serviceTier
       }
     } catch { /* ignore */ }
   }
 
-  const cost = calculateCost('gemini', model, { promptTokens, completionTokens })
+  const cost = calculateCost('gemini', model, { promptTokens, completionTokens, serviceTier })
 
   fireAndForget(c, logRequestAsync({
     ...logBase,
@@ -251,6 +256,7 @@ geminiProxy.all('/*', async (c) => {
     promptTokens,
     completionTokens,
     totalTokens,
+    serviceTier: serviceTier ?? null,
     costUsd: cost?.totalCost ?? null,
     responseBody: resBodyJson,
     errorMessage: upstreamRes.ok ? null : resBodyText.slice(0, 1000),

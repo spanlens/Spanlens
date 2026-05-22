@@ -1,13 +1,33 @@
-import type { ParsedUsage } from './openai.js'
+import type { ParsedUsage, ServiceTier } from './openai.js'
+
+const KNOWN_TIERS: ReadonlySet<ServiceTier> = new Set([
+  'default', 'auto', 'flex', 'priority', 'scale', 'batch',
+])
+
+/**
+ * Gemini's enum names mostly match OpenAI but the docs aren't fully
+ * normalized — some snapshots use 'GENERATE_CONTENT_PROCESSING_TIER_DEFAULT'
+ * style constants. We accept short and SCREAMING_SNAKE forms.
+ */
+function coerceGeminiTier(value: unknown): ServiceTier | undefined {
+  if (typeof value !== 'string' || value === '') return undefined
+  const lower = value.toLowerCase()
+  // SCREAMING_SNAKE_CASE → suffix lookup ("..._FLEX" → "flex")
+  const tail = lower.split('_').pop() ?? lower
+  if (KNOWN_TIERS.has(tail as ServiceTier)) return tail as ServiceTier
+  if (KNOWN_TIERS.has(lower as ServiceTier)) return lower as ServiceTier
+  return undefined
+}
 
 export function parseGeminiResponse(body: Record<string, unknown>): ParsedUsage | null {
-  const meta = body.usageMetadata as Record<string, number> | undefined
+  const meta = body.usageMetadata as Record<string, unknown> | undefined
   if (!meta) return null
   return {
-    promptTokens: meta.promptTokenCount ?? 0,
-    completionTokens: meta.candidatesTokenCount ?? 0,
-    totalTokens: meta.totalTokenCount ?? 0,
+    promptTokens: (meta.promptTokenCount as number) ?? 0,
+    completionTokens: (meta.candidatesTokenCount as number) ?? 0,
+    totalTokens: (meta.totalTokenCount as number) ?? 0,
     model: (body.modelVersion as string) ?? '',
+    serviceTier: coerceGeminiTier(meta.serviceTier),
   }
 }
 

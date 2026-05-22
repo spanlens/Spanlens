@@ -206,6 +206,7 @@ azureProxy.all('/*', async (c) => {
   let cacheReadTokens = 0
   let cacheWriteTokens = 0
   let resolvedModel = model
+  let serviceTier: import('../parsers/openai.js').ServiceTier | undefined
 
   if (upstreamRes.ok && resBodyJson) {
     try {
@@ -217,6 +218,7 @@ azureProxy.all('/*', async (c) => {
         totalTokens = parsed.totalTokens
         cacheReadTokens = parsed.cacheReadTokens ?? 0
         cacheWriteTokens = parsed.cacheWriteTokens ?? 0
+        serviceTier = parsed.serviceTier
       }
     } catch { /* ignore */ }
   }
@@ -227,7 +229,7 @@ azureProxy.all('/*', async (c) => {
   // key, lookupPrice() returns null and cost_usd ends up NULL (existing
   // behavior, no regression).
   const cost = calculateCost('openai', resolvedModel, {
-    promptTokens, completionTokens, cacheReadTokens, cacheWriteTokens,
+    promptTokens, completionTokens, cacheReadTokens, cacheWriteTokens, serviceTier,
   })
 
   fireAndForget(c, logRequestAsync({
@@ -235,6 +237,7 @@ azureProxy.all('/*', async (c) => {
     model: resolvedModel,
     promptTokens, completionTokens, totalTokens,
     cacheReadTokens, cacheWriteTokens,
+    serviceTier: serviceTier ?? null,
     costUsd: cost?.totalCost ?? null,
     responseBody: resBodyJson,
     errorMessage: upstreamRes.ok ? null : resBodyText.slice(0, 1000),

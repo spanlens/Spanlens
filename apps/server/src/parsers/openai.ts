@@ -1,3 +1,15 @@
+/**
+ * Provider-reported service tier values we recognize. Stored verbatim in
+ * ClickHouse `requests.service_tier` so the dashboard can group by it. The
+ * cost calculator maps these to multipliers (see lib/cost.ts).
+ *
+ *   OpenAI (`response.service_tier`): 'default' | 'auto' | 'flex' | 'priority' | 'scale'
+ *   Gemini (`response.usageMetadata.serviceTier`): mirrors the OpenAI names
+ *     for the most part; 'default' = Standard, 'flex', 'priority', 'batch'.
+ *   Unknown / missing → undefined; caller logs '' (empty string).
+ */
+export type ServiceTier = 'default' | 'auto' | 'flex' | 'priority' | 'scale' | 'batch'
+
 export interface ParsedUsage {
   /**
    * Total input tokens (INCLUDING any cached portion).
@@ -19,6 +31,23 @@ export interface ParsedUsage {
    * OpenAI: no equivalent in the public API as of 2026-05; always 0/undefined.
    */
   cacheWriteTokens?: number
+  /**
+   * Actual processing tier the provider used to fulfill this request.
+   * IMPORTANT: this is the *served* tier, not what the caller requested —
+   * OpenAI can downgrade a priority request to 'default' on ramp-rate breach,
+   * and that downgrade shows up here. Always trust this over request params.
+   */
+  serviceTier?: ServiceTier
+}
+
+const KNOWN_TIERS: ReadonlySet<ServiceTier> = new Set([
+  'default', 'auto', 'flex', 'priority', 'scale', 'batch',
+])
+
+/** Narrow an unknown string to ServiceTier, dropping anything we don't recognize. */
+function coerceServiceTier(value: unknown): ServiceTier | undefined {
+  if (typeof value !== 'string') return undefined
+  return KNOWN_TIERS.has(value as ServiceTier) ? (value as ServiceTier) : undefined
 }
 
 export function parseOpenAIResponse(body: Record<string, unknown>): ParsedUsage | null {
@@ -33,6 +62,7 @@ export function parseOpenAIResponse(body: Record<string, unknown>): ParsedUsage 
     model: (body.model as string) ?? '',
     cacheReadTokens,
     cacheWriteTokens: 0,
+    serviceTier: coerceServiceTier(body.service_tier),
   }
 }
 
@@ -68,6 +98,7 @@ export function parseOpenAIStreamChunk(line: string): Partial<ParsedUsage> | nul
       model: (json.model as string) ?? '',
       cacheReadTokens: promptDetails?.cached_tokens ?? 0,
       cacheWriteTokens: 0,
+      serviceTier: coerceServiceTier(json.service_tier),
     }
   } catch {
     return null
