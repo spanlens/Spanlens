@@ -8,7 +8,7 @@
  *     for the most part; 'default' = Standard, 'flex', 'priority', 'batch'.
  *   Unknown / missing → undefined; caller logs '' (empty string).
  */
-export type ServiceTier = 'default' | 'auto' | 'flex' | 'priority' | 'scale' | 'batch'
+export type ServiceTier = 'default' | 'standard' | 'auto' | 'flex' | 'priority' | 'scale' | 'batch'
 
 export interface ParsedUsage {
   /**
@@ -45,7 +45,7 @@ export interface ParsedUsage {
 }
 
 const KNOWN_TIERS: ReadonlySet<ServiceTier> = new Set([
-  'default', 'auto', 'flex', 'priority', 'scale', 'batch',
+  'default', 'standard', 'auto', 'flex', 'priority', 'scale', 'batch',
 ])
 
 /** Narrow an unknown string to ServiceTier, dropping anything we don't recognize. */

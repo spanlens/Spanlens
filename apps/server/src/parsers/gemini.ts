@@ -1,7 +1,7 @@
 import type { ParsedUsage, ServiceTier } from './openai.js'
 
 const KNOWN_TIERS: ReadonlySet<ServiceTier> = new Set([
-  'default', 'auto', 'flex', 'priority', 'scale', 'batch',
+  'default', 'standard', 'auto', 'flex', 'priority', 'scale', 'batch',
 ])
 
 /**
