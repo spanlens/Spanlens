@@ -11,6 +11,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { getCachedPrices, type ModelPrice } from './model-prices-cache.js'
+import type { ServiceTier } from '../parsers/openai.js'
 
 // 'azure' shares the OpenAI price table (Azure OpenAI exposes OpenAI models
 // at OpenAI prices). The proxy in proxy/azure.ts calls calculateCost('openai', ...)
@@ -23,9 +24,46 @@ export interface Usage {
   promptTokens: number
   completionTokens: number
   /** Subset of promptTokens that hit a prompt cache (charged at reduced rate). */
-  cacheReadTokens?: number
+  cacheReadTokens?: number | undefined
   /** Subset of promptTokens that created a cache entry (charged at premium rate). */
-  cacheWriteTokens?: number
+  cacheWriteTokens?: number | undefined
+  /**
+   * Tier the provider actually served the request from (NOT the requested tier).
+   * Extracted by parsers from response body — see parsers/openai.ts and
+   * parsers/gemini.ts. When omitted, no tier adjustment is applied
+   * (equivalent to Standard / `default`).
+   * `| undefined` explicit because of exactOptionalPropertyTypes.
+   */
+  serviceTier?: ServiceTier | undefined
+}
+
+/**
+ * Tier-to-multiplier table.
+ *
+ * Per-1M-token rates in model_prices are the **Standard** tier. These factors
+ * convert to other tiers using the provider-published deltas:
+ *
+ *   default / auto / scale → 1.0× (Standard or auto-resolved-to-Standard)
+ *   batch                  → 0.5× (50% discount; Batch API + Gemini Batch)
+ *   flex                   → 0.5× (OpenAI: "Tokens are priced at Batch API rates")
+ *   priority               → 1.8× (OpenAI: "+80% over Standard")
+ *
+ * Approximations on purpose — exact per-tier prices vary by model and would
+ * need a separate table. The multiplier is correct to within a few percent
+ * for the documented tier pricing as of 2026-05.
+ */
+const TIER_MULTIPLIERS: Record<ServiceTier, number> = {
+  default: 1.0,
+  auto: 1.0,
+  scale: 1.0,
+  batch: 0.5,
+  flex: 0.5,
+  priority: 1.8,
+}
+
+function tierMultiplier(tier: ServiceTier | undefined): number {
+  if (!tier) return 1.0
+  return TIER_MULTIPLIERS[tier] ?? 1.0
 }
 
 export interface CostResult {
@@ -73,16 +111,33 @@ export function calculateCost(
   // in case of unexpected reporter inconsistencies.
   const nonCachedPromptTokens = Math.max(0, usage.promptTokens - cacheRead - cacheWrite)
 
-  // Models without explicit cache pricing fall back to the regular prompt rate
-  // (matches the historical behavior — no surprise cost reduction for models
-  // that lack a published cache price).
-  const cacheReadPrice = prices.cacheRead ?? prices.prompt
-  const cacheWritePrice = prices.cacheWrite ?? prices.prompt
+  // Tier selection — if longThreshold is set and the full prompt crossed it,
+  // swap in the long_* prices for axes that have them. Axes left undefined
+  // on the long tier fall through to the short-tier prices (e.g. gpt-5.5-pro
+  // has long prompt/completion but no separate long cache_read price).
+  //
+  // We branch on usage.promptTokens (total input, cache included) rather than
+  // nonCachedPromptTokens — OpenAI/Gemini both bill the long tier based on the
+  // raw context size sent to the model, not on the non-cached subset.
+  const inLongTier =
+    prices.longThreshold != null && usage.promptTokens > prices.longThreshold
+  const promptPrice     = inLongTier ? (prices.longPrompt     ?? prices.prompt)     : prices.prompt
+  const completionPrice = inLongTier ? (prices.longCompletion ?? prices.completion) : prices.completion
+  const cacheReadShort  = prices.cacheRead  ?? prices.prompt
+  const cacheWriteShort = prices.cacheWrite ?? prices.prompt
+  const cacheReadPrice  = inLongTier ? (prices.longCacheRead  ?? cacheReadShort)  : cacheReadShort
+  const cacheWritePrice = inLongTier ? (prices.longCacheWrite ?? cacheWriteShort) : cacheWriteShort
 
-  const promptCost = (nonCachedPromptTokens / 1_000_000) * prices.prompt
-  const cacheReadCost = (cacheRead / 1_000_000) * cacheReadPrice
-  const cacheWriteCost = (cacheWrite / 1_000_000) * cacheWritePrice
-  const completionCost = (usage.completionTokens / 1_000_000) * prices.completion
+  // Tier multiplier applies AFTER cache-aware breakdown. Provider tier
+  // pricing is published as a flat factor over the Standard rate — Flex
+  // discount and Priority premium scale all axes (prompt / completion /
+  // cache) identically. See TIER_MULTIPLIERS comment.
+  const tierMult = tierMultiplier(usage.serviceTier)
+
+  const promptCost = (nonCachedPromptTokens / 1_000_000) * promptPrice * tierMult
+  const cacheReadCost = (cacheRead / 1_000_000) * cacheReadPrice * tierMult
+  const cacheWriteCost = (cacheWrite / 1_000_000) * cacheWritePrice * tierMult
+  const completionCost = (usage.completionTokens / 1_000_000) * completionPrice * tierMult
 
   return {
     promptCost,

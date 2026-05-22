@@ -46,6 +46,36 @@ describe('OpenAI parser', () => {
     const line = `data: ${JSON.stringify({ model: 'gpt-4o', usage: { prompt_tokens: 5, completion_tokens: 10, total_tokens: 15 } })}`
     expect(parseOpenAIStreamChunk(line)?.promptTokens).toBe(5)
   })
+
+  it('extracts service_tier when provided (priority, flex, default)', () => {
+    for (const tier of ['priority', 'flex', 'default', 'auto', 'scale'] as const) {
+      const body = {
+        model: 'gpt-5.5',
+        service_tier: tier,
+        usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
+      }
+      expect(parseOpenAIResponse(body)?.serviceTier).toBe(tier)
+    }
+  })
+
+  it('drops unknown service_tier values', () => {
+    const body = {
+      model: 'gpt-5.5',
+      service_tier: 'experimental-unknown',
+      usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
+    }
+    expect(parseOpenAIResponse(body)?.serviceTier).toBeUndefined()
+  })
+
+  it('leaves serviceTier undefined when response omits the field', () => {
+    const body = { model: 'gpt-4o', usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } }
+    expect(parseOpenAIResponse(body)?.serviceTier).toBeUndefined()
+  })
+
+  it('extracts service_tier from streaming chunk usage', () => {
+    const line = `data: ${JSON.stringify({ model: 'gpt-5.5', service_tier: 'flex', usage: { prompt_tokens: 5, completion_tokens: 10, total_tokens: 15 } })}`
+    expect(parseOpenAIStreamChunk(line)?.serviceTier).toBe('flex')
+  })
 })
 
 describe('Anthropic parser', () => {
@@ -121,5 +151,33 @@ describe('Gemini parser', () => {
       totalTokens: 15,
       model: 'gemini-1.5-pro',
     })
+  })
+
+  it('extracts serviceTier from usageMetadata (lowercase + SCREAMING_SNAKE)', () => {
+    const cases = [
+      { input: 'priority', expected: 'priority' },
+      { input: 'PRIORITY', expected: 'priority' },
+      { input: 'flex', expected: 'flex' },
+      { input: 'GENERATE_CONTENT_PROCESSING_TIER_FLEX', expected: 'flex' },
+      { input: 'default', expected: 'default' },
+    ]
+    for (const { input, expected } of cases) {
+      const body = {
+        modelVersion: 'gemini-2.5-pro',
+        usageMetadata: {
+          promptTokenCount: 10, candidatesTokenCount: 5, totalTokenCount: 15,
+          serviceTier: input,
+        },
+      }
+      expect(parseGeminiResponse(body)?.serviceTier).toBe(expected)
+    }
+  })
+
+  it('returns undefined serviceTier when missing or unrecognized', () => {
+    const body = {
+      modelVersion: 'gemini-2.5-pro',
+      usageMetadata: { promptTokenCount: 1, candidatesTokenCount: 1, totalTokenCount: 2 },
+    }
+    expect(parseGeminiResponse(body)?.serviceTier).toBeUndefined()
   })
 })

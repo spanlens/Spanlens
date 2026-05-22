@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { use, useState } from 'react'
 import Link from 'next/link'
 import { Plus, Trash2 } from 'lucide-react'
 import { Topbar } from '@/components/layout/topbar'
@@ -55,8 +55,8 @@ function ItemRow({ item }: { item: DatasetItem }) {
   )
 }
 
-export default function DemoDatasetDetail({ params }: { params: { id: string } }) {
-  const { id } = params
+export default function DemoDatasetDetail({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = use(params)
   const ds = DEMO_DATASET_DETAILS[id]
 
   if (!ds) {

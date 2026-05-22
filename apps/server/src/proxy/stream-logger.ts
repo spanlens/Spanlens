@@ -1,7 +1,7 @@
 import { calculateCost, type Provider } from '../lib/cost.js'
 import { logRequestAsync, type RequestLogData } from '../lib/logger.js'
 import { supabaseAdmin } from '../lib/db.js'
-import { parseOpenAIStreamChunk, extractOpenAIStreamText } from '../parsers/openai.js'
+import { parseOpenAIStreamChunk, extractOpenAIStreamText, type ServiceTier } from '../parsers/openai.js'
 import { parseAnthropicStreamStart, parseAnthropicStreamChunk, extractAnthropicStreamText } from '../parsers/anthropic.js'
 
 type StreamLogBase = Omit<
@@ -11,6 +11,7 @@ type StreamLogBase = Omit<
   | 'totalTokens'
   | 'cacheReadTokens'
   | 'cacheWriteTokens'
+  | 'serviceTier'
   | 'costUsd'
   | 'model'
 > & { model: string }
@@ -61,6 +62,7 @@ export async function logOpenAIStream(
   let totalTokens = 0
   let cacheReadTokens = 0
   let cacheWriteTokens = 0
+  let serviceTier: ServiceTier | undefined
 
   for (const line of lines) {
     const parsed = parseOpenAIStreamChunk(line)
@@ -71,10 +73,11 @@ export async function logOpenAIStream(
     if (parsed.totalTokens) totalTokens = parsed.totalTokens
     if (parsed.cacheReadTokens) cacheReadTokens = parsed.cacheReadTokens
     if (parsed.cacheWriteTokens) cacheWriteTokens = parsed.cacheWriteTokens
+    if (parsed.serviceTier) serviceTier = parsed.serviceTier
   }
 
   const cost = calculateCost('openai' as Provider, model, {
-    promptTokens, completionTokens, cacheReadTokens, cacheWriteTokens,
+    promptTokens, completionTokens, cacheReadTokens, cacheWriteTokens, serviceTier,
   })
 
   const text = extractOpenAIStreamText(lines)
@@ -107,6 +110,7 @@ export async function logOpenAIStream(
     totalTokens,
     cacheReadTokens,
     cacheWriteTokens,
+    serviceTier: serviceTier ?? null,
     costUsd: cost?.totalCost ?? null,
     responseBody,
     truncated: ctx.truncated ?? false,

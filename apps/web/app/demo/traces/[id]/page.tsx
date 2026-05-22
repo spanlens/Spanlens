@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import { use, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Topbar } from '@/components/layout/topbar'
 import { cn } from '@/lib/utils'
@@ -235,12 +235,13 @@ function flattenSpanTree(spans: SpanRow[]): SpanNode[] {
 
 // ── Page ───────────────────────────────────────────────────────
 
-export default function DemoTraceDetailPage({ params }: { params: { id: string } }) {
+export default function DemoTraceDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = use(params)
   const router = useRouter()
   const [selectedSpanId, setSelectedSpanId] = useState<string | null>(null)
 
-  const traceDetail = DEMO_TRACE_DETAILS[params.id]
-  const traceIdx = DEMO_TRACES.findIndex((t) => t.id === params.id)
+  const traceDetail = DEMO_TRACE_DETAILS[id]
+  const traceIdx = DEMO_TRACES.findIndex((t) => t.id === id)
   const prevTrace = traceIdx > 0 ? DEMO_TRACES[traceIdx - 1] : null
   const nextTrace = traceIdx < DEMO_TRACES.length - 1 ? DEMO_TRACES[traceIdx + 1] : null
 
