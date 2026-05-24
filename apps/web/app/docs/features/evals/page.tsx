@@ -39,8 +39,17 @@ export default function EvalsDocs() {
           <code>config</code>:
           <ul>
             <li><code>criterion</code>, scoring criterion sentence</li>
-            <li><code>judge_provider</code>, <code>openai</code> / <code>anthropic</code></li>
-            <li><code>judge_model</code>, e.g. <code>gpt-4o-mini</code></li>
+            <li>
+              <code>judge_provider</code>, <code>openai</code>, <code>anthropic</code>, or{' '}
+              <code>gemini</code>. Gemini uses <code>responseMimeType: application/json</code> with{' '}
+              <code>responseSchema</code> for strict JSON output (matches OpenAI&apos;s{' '}
+              <code>response_format: json_object</code> strictness).
+            </li>
+            <li>
+              <code>judge_model</code>, any model in <code>model_prices</code> for that provider.
+              The Evals UI picker reads from <code>/api/v1/models</code> so newly seeded models
+              appear automatically.
+            </li>
             <li><code>scale_min</code>, <code>scale_max</code>, score range (normalized to 0..1 on save)</li>
           </ul>
         </li>
@@ -67,8 +76,29 @@ export default function EvalsDocs() {
       </p>
       <p>
         To use a <strong>Dataset</strong> as the sample source instead, see the{' '}
-        <a href="/docs/features/datasets">Datasets</a> page. The dataset&apos;s{' '}
-        <code>expected_output</code> field becomes the scoring target.
+        <a href="/docs/features/datasets">Datasets</a> page. In dataset mode the runner does
+        two things back to back:
+      </p>
+      <ol>
+        <li>
+          For each item, run the chosen prompt version against its <code>input</code> using{' '}
+          <code>runProvider</code> + <code>runModel</code> (an active provider key of that
+          provider must exist on the workspace). This produces a fresh response.
+        </li>
+        <li>Send the fresh response to the judge, which scores it against the criterion.</li>
+      </ol>
+      <p>
+        That means dataset mode measures how the prompt actually performs on the curated inputs,
+        not how friendly the static <code>expected_output</code> text is. The{' '}
+        <code>expected_output</code> field is reference only in this release; a later release may
+        feed it to the judge as a target for similarity checks.
+      </p>
+      <p>
+        On the Eval Run dialog, switching the Sample source toggle to <strong>Dataset</strong>{' '}
+        exposes a <strong>Plus Upload</strong> button next to the dataset picker. Picking a JSON
+        or CSV file creates a fresh dataset with an auto generated name (for example{' '}
+        <code>upload-2026-05-22-2245</code>), bulk inserts every parsed item, and pre selects it.
+        Rename or delete the dataset from <a href="/datasets">/datasets</a> later.
       </p>
 
       <h2>How Evals differs from A/B</h2>
@@ -216,6 +246,21 @@ curl https://spanlens-server.vercel.app/api/v1/eval-runs \\
     "source": "production",
     "sampleSize": 50,
     "sampleFrom": "2026-05-06T00:00:00Z"
+  }'
+
+# 2b. Dataset mode also accepts runProvider + runModel.
+#     The runner generates a response per item before scoring.
+curl https://spanlens-server.vercel.app/api/v1/eval-runs \\
+  -H "Authorization: Bearer $SPANLENS_JWT" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "evaluatorId": "<evaluator-id>",
+    "promptVersionId": "<v2-id>",
+    "source": "dataset",
+    "datasetId": "<dataset-id>",
+    "sampleSize": 50,
+    "runProvider": "openai",
+    "runModel": "gpt-4o-mini"
   }'
 
 # 3. Poll for results (status: pending → running → completed)
