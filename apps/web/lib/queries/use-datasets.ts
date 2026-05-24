@@ -115,6 +115,31 @@ export function useAddDatasetItem() {
   })
 }
 
+/**
+ * Bulk-upload pre-parsed items into a dataset. Skips invalid rows server-side
+ * and reports counts back. Used by the file-upload flow on the Eval Run
+ * dialog — see `useUploadDatasetFromFile` below.
+ */
+export function useBulkAddDatasetItems() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (input: {
+      datasetId: string
+      items: Array<{ input: unknown; expected_output?: string | null }>
+    }) => {
+      const res = await apiPost<ApiEnvelope<{ inserted: number; skipped: Array<{ index: number; reason: string }> }>>(
+        `/api/v1/datasets/${input.datasetId}/items/bulk`,
+        { items: input.items },
+      )
+      return res.data
+    },
+    onSuccess: (_data, vars) => {
+      void qc.invalidateQueries({ queryKey: ['datasets', vars.datasetId] })
+      void qc.invalidateQueries({ queryKey: datasetsQueryKey() })
+    },
+  })
+}
+
 export function useImportRequestsToDataset() {
   const qc = useQueryClient()
   return useMutation({

@@ -174,10 +174,20 @@ function ItemRow({ item, datasetId }: { item: DatasetItem; datasetId: string }) 
 
   return (
     <div className="border-b border-border last:border-0">
-      <button
-        type="button"
+      {/* Outer container is a div (not <button>) so the inner Delete <button>
+          and source-request <Link> don't violate HTML's "no nested buttons"
+          rule. Keyboard activation preserved via role + Enter/Space. */}
+      <div
+        role="button"
+        tabIndex={0}
         onClick={() => setExpanded((v) => !v)}
-        className="w-full flex items-start gap-3 px-[16px] py-[11px] hover:bg-bg-muted transition-colors text-left"
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault()
+            setExpanded((v) => !v)
+          }
+        }}
+        className="w-full flex items-start gap-3 px-[16px] py-[11px] hover:bg-bg-muted transition-colors text-left cursor-pointer"
       >
         <div className="flex-1 min-w-0">
           <p className="font-mono text-[12px] text-text truncate">{inputPreview}</p>
@@ -196,7 +206,7 @@ function ItemRow({ item, datasetId }: { item: DatasetItem; datasetId: string }) 
           )}
           {item.source_request_id && (
             <Link
-              href={`/requests?id=${item.source_request_id}`}
+              href={`/requests/${item.source_request_id}`}
               onClick={(e) => e.stopPropagation()}
               className="text-text-faint hover:text-text"
               aria-label="View source request"
@@ -213,7 +223,7 @@ function ItemRow({ item, datasetId }: { item: DatasetItem; datasetId: string }) 
             <Trash2 className="h-3.5 w-3.5" />
           </button>
         </div>
-      </button>
+      </div>
       {expanded && (
         <div className="bg-bg-muted/50 px-[16px] py-[10px] border-t border-border space-y-2 font-mono text-[11.5px]">
           <div>
