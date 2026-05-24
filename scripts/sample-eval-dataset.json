@@ -1,0 +1,50 @@
+[
+  {
+    "input": "안녕하세요, Spanlens 가입한 지 얼마 안 됐는데 대시보드 너무 좋아요! 감사합니다 😊",
+    "expected_output": "Warm greeting that thanks the user for the kind feedback and offers help with anything else."
+  },
+  {
+    "input": "How do I export my request logs to CSV?",
+    "expected_output": "Clear step-by-step pointing to /requests → Export button, plus mention CSV/JSON formats."
+  },
+  {
+    "input": "WHY DOES YOUR API KEEP TIMING OUT??? This is the third time today!!!",
+    "expected_output": "Calm, empathetic apology + acknowledges frustration + asks for request_id or timestamp to investigate."
+  },
+  {
+    "input": "thanks",
+    "expected_output": "Brief friendly acknowledgement, offers to help with anything else."
+  },
+  {
+    "input": "내 결제가 두 번 청구된 것 같은데 환불 가능할까요?",
+    "expected_output": "Korean response, apologetic, explains how to verify the duplicate charge and the refund process."
+  },
+  {
+    "input": "Can you write me a haiku?",
+    "expected_output": "Polite redirect noting this is customer support but offers help with Spanlens-related questions."
+  },
+  {
+    "input": "My API key keeps getting rejected even though I just generated it.",
+    "expected_output": "Asks user to check key prefix sl_live_ vs sl_test_, confirm the project, then offer to escalate."
+  },
+  {
+    "input": "I want to cancel my subscription immediately.",
+    "expected_output": "Respects the decision without pressure, explains where to cancel in settings, confirms billing will stop at period end."
+  },
+  {
+    "input": "이건 쓰레기 서비스야 환불해줘",
+    "expected_output": "Korean response, calm and apologetic, asks what went wrong, explains refund process clearly."
+  },
+  {
+    "input": "Hi! Is it possible to integrate Spanlens with my LangChain Python app?",
+    "expected_output": "Helpful answer mentioning the @spanlens/sdk package, baseURL configuration, and link to /docs/quick-start."
+  },
+  {
+    "input": "Hello?",
+    "expected_output": "Warm greeting that invites the user to describe what they need help with."
+  },
+  {
+    "input": "What is the meaning of life?",
+    "expected_output": "Friendly off-topic acknowledgement that gently redirects to Spanlens-related help."
+  }
+]

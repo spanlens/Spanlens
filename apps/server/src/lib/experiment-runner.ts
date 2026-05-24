@@ -23,7 +23,7 @@ const TEMPERATURE = 0.7
 // JudgeConfig kept in sync with eval-runner.ts. Inlined to avoid circular imports.
 interface JudgeConfig {
   criterion: string
-  judge_provider: 'openai' | 'anthropic'
+  judge_provider: 'openai' | 'anthropic' | 'gemini'
   judge_model: string
   scale_min: number
   scale_max: number
@@ -58,7 +58,7 @@ interface PromptVersionRow {
 async function runPrompt(
   content: string,
   item: DatasetItemRow,
-  provider: 'openai' | 'anthropic',
+  provider: 'openai' | 'anthropic' | 'gemini',
   model: string,
   apiKey: string,
 ): Promise<RunResult | { error: string }> {
@@ -110,36 +110,71 @@ async function runPrompt(
       return { output, cost, latencyMs, tokens: promptTokens + completionTokens }
     }
 
-    // Anthropic
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
+    if (provider === 'anthropic') {
+      const res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+        },
+        body: JSON.stringify({
+          model,
+          max_tokens: MAX_TOKENS,
+          temperature: TEMPERATURE,
+          system: content,
+          messages: [{ role: 'user', content: userContent }],
+        }),
+      })
+      const latencyMs = Date.now() - startMs
+      if (!res.ok) {
+        const text = await res.text().catch(() => '')
+        return { error: `Anthropic error (${res.status}): ${text.slice(0, 200)}` }
+      }
+      const json = await res.json() as {
+        content: Array<{ type: string; text: string }>
+        usage: { input_tokens: number; output_tokens: number }
+        model: string
+      }
+      const output = json.content?.find((b) => b.type === 'text')?.text ?? ''
+      const promptTokens = json.usage?.input_tokens ?? 0
+      const completionTokens = json.usage?.output_tokens ?? 0
+      const cost = calculateCost('anthropic', json.model ?? model, { promptTokens, completionTokens })?.totalCost ?? 0
+      return { output, cost, latencyMs, tokens: promptTokens + completionTokens }
+    }
+
+    // Gemini — `content` is the system prompt, `userContent` the data item.
+    // Gemini doesn't have a dedicated "system" message role; pass via
+    // systemInstruction so it gets the same treatment as Anthropic's `system`.
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          systemInstruction: { parts: [{ text: content }] },
+          contents: [{ role: 'user', parts: [{ text: userContent }] }],
+          generationConfig: {
+            temperature: TEMPERATURE,
+            maxOutputTokens: MAX_TOKENS,
+          },
+        }),
       },
-      body: JSON.stringify({
-        model,
-        max_tokens: MAX_TOKENS,
-        temperature: TEMPERATURE,
-        system: content,
-        messages: [{ role: 'user', content: userContent }],
-      }),
-    })
+    )
     const latencyMs = Date.now() - startMs
     if (!res.ok) {
       const text = await res.text().catch(() => '')
-      return { error: `Anthropic error (${res.status}): ${text.slice(0, 200)}` }
+      return { error: `Gemini error (${res.status}): ${text.slice(0, 200)}` }
     }
     const json = await res.json() as {
-      content: Array<{ type: string; text: string }>
-      usage: { input_tokens: number; output_tokens: number }
-      model: string
+      candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>
+      usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number }
+      modelVersion?: string
     }
-    const output = json.content?.find((b) => b.type === 'text')?.text ?? ''
-    const promptTokens = json.usage?.input_tokens ?? 0
-    const completionTokens = json.usage?.output_tokens ?? 0
-    const cost = calculateCost('anthropic', json.model ?? model, { promptTokens, completionTokens })?.totalCost ?? 0
+    const output = json.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
+    const promptTokens = json.usageMetadata?.promptTokenCount ?? 0
+    const completionTokens = json.usageMetadata?.candidatesTokenCount ?? 0
+    const cost = calculateCost('gemini', json.modelVersion ?? model, { promptTokens, completionTokens })?.totalCost ?? 0
     return { output, cost, latencyMs, tokens: promptTokens + completionTokens }
   } catch (err) {
     return { error: err instanceof Error ? err.message : 'Unknown error' }
@@ -224,40 +259,91 @@ async function callJudge(
       tokens,
     }
   }
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-    },
-    body: JSON.stringify({
-      model: config.judge_model,
-      max_tokens: 200,
-      temperature: 0,
-      messages: [{ role: 'user', content: prompt }],
-    }),
-  })
-  if (!res.ok) return null
-  const json = await res.json() as {
-    content: Array<{ type: string; text: string }>
-    usage: { input_tokens: number; output_tokens: number }
-    model: string
+  if (config.judge_provider === 'anthropic') {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: config.judge_model,
+        max_tokens: 200,
+        temperature: 0,
+        messages: [{ role: 'user', content: prompt }],
+      }),
+    })
+    if (!res.ok) return null
+    const json = await res.json() as {
+      content: Array<{ type: string; text: string }>
+      usage: { input_tokens: number; output_tokens: number }
+      model: string
+    }
+    const text = json.content?.find((b) => b.type === 'text')?.text ?? ''
+    const parsed = parseJudgeReply(text, config.scale_min, config.scale_max)
+    if (!parsed) return null
+    const tokens = (json.usage?.input_tokens ?? 0) + (json.usage?.output_tokens ?? 0)
+    const cost = calculateCost('anthropic', json.model ?? config.judge_model, {
+      promptTokens: json.usage?.input_tokens ?? 0,
+      completionTokens: json.usage?.output_tokens ?? 0,
+    })?.totalCost ?? 0
+    const range = config.scale_max - config.scale_min || 1
+    return {
+      score: (parsed.score - config.scale_min) / range,
+      reasoning: parsed.reasoning,
+      cost,
+      tokens,
+    }
   }
-  const text = json.content?.find((b) => b.type === 'text')?.text ?? ''
-  const parsed = parseJudgeReply(text, config.scale_min, config.scale_max)
-  if (!parsed) return null
-  const tokens = (json.usage?.input_tokens ?? 0) + (json.usage?.output_tokens ?? 0)
-  const cost = calculateCost('anthropic', json.model ?? config.judge_model, {
-    promptTokens: json.usage?.input_tokens ?? 0,
-    completionTokens: json.usage?.output_tokens ?? 0,
+
+  // Gemini judge — JSON output via responseMimeType + responseSchema
+  // (matches OpenAI's `response_format: json_object` strictness).
+  const geminiRes = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${config.judge_model}:generateContent?key=${apiKey}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        generationConfig: {
+          temperature: 0,
+          maxOutputTokens: 200,
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: 'object',
+            properties: {
+              score: { type: 'number' },
+              reasoning: { type: 'string' },
+            },
+            required: ['score', 'reasoning'],
+          },
+        },
+      }),
+    },
+  )
+  if (!geminiRes.ok) return null
+  const geminiJson = await geminiRes.json() as {
+    candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>
+    usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number }
+    modelVersion?: string
+  }
+  const geminiText = geminiJson.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
+  const geminiParsed = parseJudgeReply(geminiText, config.scale_min, config.scale_max)
+  if (!geminiParsed) return null
+  const geminiTokens =
+    (geminiJson.usageMetadata?.promptTokenCount ?? 0) +
+    (geminiJson.usageMetadata?.candidatesTokenCount ?? 0)
+  const geminiCost = calculateCost('gemini', geminiJson.modelVersion ?? config.judge_model, {
+    promptTokens: geminiJson.usageMetadata?.promptTokenCount ?? 0,
+    completionTokens: geminiJson.usageMetadata?.candidatesTokenCount ?? 0,
   })?.totalCost ?? 0
-  const range = config.scale_max - config.scale_min || 1
+  const geminiRange = config.scale_max - config.scale_min || 1
   return {
-    score: (parsed.score - config.scale_min) / range,
-    reasoning: parsed.reasoning,
-    cost,
-    tokens,
+    score: (geminiParsed.score - config.scale_min) / geminiRange,
+    reasoning: geminiParsed.reasoning,
+    cost: geminiCost,
+    tokens: geminiTokens,
   }
 }
 
@@ -291,7 +377,7 @@ interface RunInput {
   versionBId: string
   datasetId: string
   evaluatorId: string | null
-  runProvider: 'openai' | 'anthropic'
+  runProvider: 'openai' | 'anthropic' | 'gemini'
   runModel: string
 }
 

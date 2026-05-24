@@ -3,6 +3,7 @@ import { useState, useMemo } from 'react'
 import { Play, Loader2, AlertTriangle, CheckCircle2, Key } from 'lucide-react'
 import { usePlaygroundRun, type PromptVersion, type PlaygroundResult } from '@/lib/queries/use-prompts'
 import { useProviderKeys } from '@/lib/queries/use-provider-keys'
+import { useModels, type ModelsByProvider } from '@/lib/queries/use-models'
 
 const VAR_RE = /\{\{\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g
 
@@ -14,22 +15,20 @@ function extractVars(content: string): string[] {
   return [...names]
 }
 
-const MODELS_BY_PROVIDER: Record<string, string[]> = {
-  openai: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-3.5-turbo'],
-  anthropic: [
-    'claude-sonnet-4-6',
-    'claude-opus-4-5',
-    'claude-3-5-sonnet-20241022',
-    'claude-3-5-haiku-20241022',
-    'claude-3-opus-20240229',
-  ],
-  gemini: ['gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-1.5-flash'],
-}
-
 const PROVIDER_LABELS: Record<string, string> = {
   openai: 'OpenAI',
   anthropic: 'Anthropic',
   gemini: 'Gemini',
+}
+
+/** Pick the model strings for a provider out of the catalog. */
+function modelsForProvider(
+  catalog: ModelsByProvider | undefined,
+  provider: string | undefined | null,
+): string[] {
+  if (!catalog || !provider) return []
+  const key = provider as keyof ModelsByProvider
+  return (catalog[key] ?? []).map((m) => m.model)
 }
 
 function fmtUsd(v: number): string {
@@ -51,6 +50,7 @@ export function PlaygroundTab({ versions }: Props) {
   const [result, setResult] = useState<PlaygroundResult | null>(null)
 
   const { data: allKeys, isLoading: keysLoading } = useProviderKeys()
+  const { data: modelsCatalog } = useModels()
   const runMutation = usePlaygroundRun()
 
   // Playground runs against a provider key directly — no Spanlens key here.
@@ -65,8 +65,8 @@ export function PlaygroundTab({ versions }: Props) {
   )
 
   const availableModels = useMemo(
-    () => (selectedKey?.provider ? (MODELS_BY_PROVIDER[selectedKey.provider] ?? []) : []),
-    [selectedKey],
+    () => modelsForProvider(modelsCatalog, selectedKey?.provider),
+    [modelsCatalog, selectedKey],
   )
 
   // Reset model when key changes
@@ -74,7 +74,7 @@ export function PlaygroundTab({ versions }: Props) {
     setSelectedKeyId(keyId)
     setResult(null)
     const key = activeKeys.find((k) => k.id === keyId)
-    const models = key?.provider ? (MODELS_BY_PROVIDER[key.provider] ?? []) : []
+    const models = modelsForProvider(modelsCatalog, key?.provider)
     setModel(models[0] ?? '')
   }
 

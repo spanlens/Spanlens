@@ -184,6 +184,95 @@ datasetsRouter.post('/:id/items', async (c) => {
   return c.json({ success: true, data }, 201)
 })
 
+// POST /api/v1/datasets/:id/items/bulk — bulk INSERT of items uploaded
+// from a client-side parsed file (JSON / CSV). Treats each row as an
+// independent item; partial-failure surfaced with per-row status so the UI
+// can show "8/10 inserted, 2 skipped (missing input)".
+datasetsRouter.post('/:id/items/bulk', async (c) => {
+  const orgId = c.get('orgId')
+  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+
+  const datasetId = c.req.param('id')
+
+  // Verify ownership (same pattern as POST /items)
+  const { data: ds } = await supabaseAdmin
+    .from('datasets')
+    .select('id')
+    .eq('id', datasetId)
+    .eq('organization_id', orgId)
+    .is('archived_at', null)
+    .maybeSingle()
+  if (!ds) return c.json({ error: 'Dataset not found' }, 404)
+
+  let body: { items?: unknown }
+  try {
+    body = (await c.req.json()) as typeof body
+  } catch {
+    return c.json({ error: 'Invalid JSON body' }, 400)
+  }
+
+  if (!Array.isArray(body.items)) {
+    return c.json({ error: 'items must be an array' }, 400)
+  }
+  if (body.items.length === 0) {
+    return c.json({ error: 'items array is empty' }, 400)
+  }
+  // Cap per-request size to keep payload + memory bounded. Most uploads
+  // are <1000 rows in practice.
+  if (body.items.length > 5000) {
+    return c.json({ error: 'items array too large (max 5000)' }, 400)
+  }
+
+  // Normalize each row to the schema enforced by single-item POST:
+  // input must be an object containing `variables` or `messages`.
+  const rows: { organization_id: string; dataset_id: string; input: Record<string, unknown>; expected_output: string | null }[] = []
+  const skipped: { index: number; reason: string }[] = []
+
+  for (let i = 0; i < body.items.length; i++) {
+    const raw = body.items[i] as Record<string, unknown> | undefined
+    if (!raw || typeof raw !== 'object') {
+      skipped.push({ index: i, reason: 'not an object' })
+      continue
+    }
+
+    const rawInput = raw['input']
+    let input: Record<string, unknown> | null = null
+
+    if (typeof rawInput === 'string') {
+      // Plain-text input → wrap as a single user message so it fits the
+      // schema. Most common shape for CSV uploads.
+      input = { messages: [{ role: 'user', content: rawInput }] }
+    } else if (rawInput && typeof rawInput === 'object' && !Array.isArray(rawInput)) {
+      const obj = rawInput as Record<string, unknown>
+      const hasVars = obj['variables'] && typeof obj['variables'] === 'object'
+      const hasMsgs = Array.isArray(obj['messages'])
+      if (hasVars || hasMsgs) input = obj
+    }
+
+    if (!input) {
+      skipped.push({ index: i, reason: 'input missing or invalid shape' })
+      continue
+    }
+
+    const expected = raw['expected_output'] ?? raw['expectedOutput']
+    rows.push({
+      organization_id: orgId,
+      dataset_id: datasetId,
+      input,
+      expected_output: typeof expected === 'string' ? expected : null,
+    })
+  }
+
+  if (rows.length === 0) {
+    return c.json({ error: 'No valid items in upload', skipped }, 400)
+  }
+
+  const { error } = await supabaseAdmin.from('dataset_items').insert(rows)
+  if (error) return c.json({ error: error.message }, 500)
+
+  return c.json({ success: true, data: { inserted: rows.length, skipped } }, 201)
+})
+
 // POST /api/v1/datasets/:id/items/import-requests — bulk import from production
 datasetsRouter.post('/:id/items/import-requests', async (c) => {
   const orgId = c.get('orgId')

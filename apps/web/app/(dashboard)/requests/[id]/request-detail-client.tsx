@@ -5,6 +5,7 @@ import { ArrowLeft, Check, Copy, Play, RotateCw } from 'lucide-react'
 import { Skeleton } from '@/components/ui/skeleton'
 import { cn, formatDateTime } from '@/lib/utils'
 import { useRequest, useReplayRequest, useRunReplay } from '@/lib/queries/use-requests'
+import { useModels, type ModelsByProvider } from '@/lib/queries/use-models'
 
 // TODO: re-add `usePostHog()` + `cache_breakdown_viewed` capture once the
 // PostHog provider lands on main (separate PR). The event payload is fully
@@ -224,31 +225,14 @@ export function RequestDetailClient({ id }: { id: string }) {
 
 // ── Replay button + dialog ─────────────────────────────────────────────
 
-const MODELS_BY_PROVIDER: Record<string, string[]> = {
-  openai: [
-    'gpt-4o',
-    'gpt-4o-mini',
-    'o1',
-    'o1-mini',
-    'o3-mini',
-    'gpt-4-turbo',
-    'gpt-3.5-turbo',
-  ],
-  anthropic: [
-    'claude-opus-4-5',
-    'claude-sonnet-4-5',
-    'claude-haiku-3-5',
-    'claude-3-5-sonnet-20241022',
-    'claude-3-5-haiku-20241022',
-    'claude-3-opus-20240229',
-  ],
-  gemini: [
-    'gemini-2.0-flash',
-    'gemini-2.0-flash-exp',
-    'gemini-1.5-pro',
-    'gemini-1.5-flash',
-    'gemini-1.5-flash-8b',
-  ],
+/** Pull provider model strings out of the live catalog. */
+function modelsForProvider(
+  catalog: ModelsByProvider | undefined,
+  provider: string,
+): string[] {
+  if (!catalog) return []
+  const key = provider as keyof ModelsByProvider
+  return (catalog[key] ?? []).map((m) => m.model)
 }
 
 function buildCurlSnippet(proxyPath: string, body: Record<string, unknown>): string {
@@ -274,12 +258,17 @@ function ReplayButton({ requestId, originalModel, provider }: ReplayButtonProps)
 
   const prepare = useReplayRequest()
   const run = useRunReplay()
+  const { data: modelsCatalog } = useModels()
 
-  // Model options: provider list + original if not already included
-  const providerModels = MODELS_BY_PROVIDER[provider] ?? []
-  const modelOptions = providerModels.includes(originalModel)
-    ? providerModels
-    : [originalModel, ...providerModels]
+  // Model options: provider list from the live catalog + original if not
+  // already included. Falls back to just the original while the catalog
+  // is loading so the dropdown isn't empty.
+  const providerModels = modelsForProvider(modelsCatalog, provider)
+  const modelOptions = providerModels.length === 0
+    ? [originalModel]
+    : providerModels.includes(originalModel)
+      ? providerModels
+      : [originalModel, ...providerModels]
 
   function reset(): void {
     setModel(originalModel)

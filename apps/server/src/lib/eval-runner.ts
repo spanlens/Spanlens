@@ -21,7 +21,7 @@ const MAX_RESPONSE_CHARS = 4000 // truncate long responses fed to judge
 
 interface JudgeConfig {
   criterion: string
-  judge_provider: 'openai' | 'anthropic'
+  judge_provider: 'openai' | 'anthropic' | 'gemini'
   judge_model: string
   scale_min: number
   scale_max: number
@@ -66,6 +66,105 @@ function extractResponseText(body: unknown): string | null {
   }
 
   return null
+}
+
+/**
+ * Generate a response for a dataset item by running the supplied prompt
+ * content + the item's input through the chosen provider. Mirrors the
+ * runPrompt() helper in experiment-runner.ts (intentionally inlined here
+ * to avoid the runner-to-runner import cycle).
+ *
+ * Returns the assistant text on success, null on any failure (network,
+ * 4xx/5xx, empty output). Callers should filter nulls.
+ */
+async function generateForItem(
+  promptContent: string,
+  itemInput: Record<string, unknown>,
+  provider: 'openai' | 'anthropic' | 'gemini',
+  model: string,
+  apiKey: string,
+): Promise<string | null> {
+  // The dataset-item shape allows either `variables` (template substitution)
+  // or `messages` (already-formatted chat). Translate to a single user
+  // message string for the LLM call.
+  let userContent: string
+  if (itemInput['variables'] && typeof itemInput['variables'] === 'object') {
+    // Variables are substituted into the prompt content. The judge sees
+    // the response, not the substituted prompt — so this branch produces a
+    // response based on the variable values + the prompt's template.
+    const vars = itemInput['variables'] as Record<string, string>
+    userContent = Object.entries(vars).map(([k, v]) => `${k}: ${v}`).join('\n')
+  } else if (Array.isArray(itemInput['messages'])) {
+    const msgs = itemInput['messages'] as Array<{ role: string; content: string }>
+    const lastUser = [...msgs].reverse().find((m) => m.role === 'user')
+    userContent = lastUser?.content ?? ''
+  } else {
+    return null
+  }
+  if (!userContent) return null
+
+  try {
+    if (provider === 'openai') {
+      const res = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+        body: JSON.stringify({
+          model,
+          messages: [
+            { role: 'system', content: promptContent },
+            { role: 'user', content: userContent },
+          ],
+          temperature: 0.7,
+          max_tokens: 1024,
+        }),
+      })
+      if (!res.ok) return null
+      const json = await res.json() as { choices: Array<{ message: { content: string } }> }
+      return json.choices?.[0]?.message?.content ?? null
+    }
+
+    if (provider === 'anthropic') {
+      const res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+        },
+        body: JSON.stringify({
+          model,
+          max_tokens: 1024,
+          temperature: 0.7,
+          system: promptContent,
+          messages: [{ role: 'user', content: userContent }],
+        }),
+      })
+      if (!res.ok) return null
+      const json = await res.json() as { content: Array<{ type: string; text: string }> }
+      return json.content?.find((b) => b.type === 'text')?.text ?? null
+    }
+
+    // Gemini
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          systemInstruction: { parts: [{ text: promptContent }] },
+          contents: [{ role: 'user', parts: [{ text: userContent }] }],
+          generationConfig: { temperature: 0.7, maxOutputTokens: 1024 },
+        }),
+      },
+    )
+    if (!res.ok) return null
+    const json = await res.json() as {
+      candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>
+    }
+    return json.candidates?.[0]?.content?.parts?.[0]?.text ?? null
+  } catch {
+    return null
+  }
 }
 
 /** Builds the judge prompt asking it to score `responseText` against `criterion`. */
@@ -156,41 +255,94 @@ async function callJudge(
     }
   }
 
-  // Anthropic
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-    },
-    body: JSON.stringify({
-      model: config.judge_model,
-      max_tokens: 200,
-      temperature: 0,
-      messages: [{ role: 'user', content: prompt }],
-    }),
-  })
-  if (!res.ok) return null
-  const json = await res.json() as {
-    content: Array<{ type: string; text: string }>
-    usage: { input_tokens: number; output_tokens: number }
-    model: string
+  if (config.judge_provider === 'anthropic') {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: config.judge_model,
+        max_tokens: 200,
+        temperature: 0,
+        messages: [{ role: 'user', content: prompt }],
+      }),
+    })
+    if (!res.ok) return null
+    const json = await res.json() as {
+      content: Array<{ type: string; text: string }>
+      usage: { input_tokens: number; output_tokens: number }
+      model: string
+    }
+    const text = json.content?.find((b) => b.type === 'text')?.text ?? ''
+    const parsed = parseJudgeReply(text, config.scale_min, config.scale_max)
+    if (!parsed) return null
+    const tokens = (json.usage?.input_tokens ?? 0) + (json.usage?.output_tokens ?? 0)
+    const cost = calculateCost('anthropic', json.model ?? config.judge_model, {
+      promptTokens: json.usage?.input_tokens ?? 0,
+      completionTokens: json.usage?.output_tokens ?? 0,
+    })?.totalCost ?? 0
+    const range = config.scale_max - config.scale_min || 1
+    return {
+      score: (parsed.score - config.scale_min) / range,
+      reasoning: parsed.reasoning,
+      cost,
+      tokens,
+    }
   }
-  const text = json.content?.find((b) => b.type === 'text')?.text ?? ''
-  const parsed = parseJudgeReply(text, config.scale_min, config.scale_max)
-  if (!parsed) return null
-  const tokens = (json.usage?.input_tokens ?? 0) + (json.usage?.output_tokens ?? 0)
-  const cost = calculateCost('anthropic', json.model ?? config.judge_model, {
-    promptTokens: json.usage?.input_tokens ?? 0,
-    completionTokens: json.usage?.output_tokens ?? 0,
+
+  // Gemini — JSON output enforced via responseMimeType + responseSchema. This
+  // matches OpenAI's `response_format: json_object` strictness so the judge
+  // reply is always parseable. We hit `generateContent` directly (not our
+  // /proxy) because eval-runner runs on the server — calls to api.openai.com
+  // and generativelanguage.googleapis.com bypass our own proxy on purpose.
+  const geminiRes = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${config.judge_model}:generateContent?key=${apiKey}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        generationConfig: {
+          temperature: 0,
+          maxOutputTokens: 200,
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: 'object',
+            properties: {
+              score: { type: 'number' },
+              reasoning: { type: 'string' },
+            },
+            required: ['score', 'reasoning'],
+          },
+        },
+      }),
+    },
+  )
+  if (!geminiRes.ok) return null
+  const geminiJson = await geminiRes.json() as {
+    candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>
+    usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number }
+    modelVersion?: string
+  }
+  const geminiText = geminiJson.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
+  const geminiParsed = parseJudgeReply(geminiText, config.scale_min, config.scale_max)
+  if (!geminiParsed) return null
+  const geminiTokens =
+    (geminiJson.usageMetadata?.promptTokenCount ?? 0) +
+    (geminiJson.usageMetadata?.candidatesTokenCount ?? 0)
+  const geminiCost = calculateCost('gemini', geminiJson.modelVersion ?? config.judge_model, {
+    promptTokens: geminiJson.usageMetadata?.promptTokenCount ?? 0,
+    completionTokens: geminiJson.usageMetadata?.candidatesTokenCount ?? 0,
   })?.totalCost ?? 0
-  const range = config.scale_max - config.scale_min || 1
+  const geminiRange = config.scale_max - config.scale_min || 1
   return {
-    score: (parsed.score - config.scale_min) / range,
-    reasoning: parsed.reasoning,
-    cost,
-    tokens,
+    score: (geminiParsed.score - config.scale_min) / geminiRange,
+    reasoning: geminiParsed.reasoning,
+    cost: geminiCost,
+    tokens: geminiTokens,
   }
 }
 
@@ -225,6 +377,15 @@ interface RunInput {
   sampleSize: number
   sampleFrom?: string | null
   sampleTo?: string | null
+  /**
+   * When source = 'dataset', the prompt content must be executed against each
+   * item's input to produce a response — THEN that response is judged.
+   * (Scoring `expected_output` directly was the previous bug: it measured the
+   *  curated golden answer, not whatever the prompt actually generates.)
+   * These fields are required for dataset runs; ignored for production.
+   */
+  runProvider?: 'openai' | 'anthropic' | 'gemini' | null
+  runModel?: string | null
 }
 
 /** Result of one sample's scoring, shared between production and dataset paths. */
@@ -239,7 +400,19 @@ interface SampleOutcome extends JudgeOutcome {
  * caller gets an immediate 202 while work continues in the background.
  */
 export async function runEvalRun(input: RunInput): Promise<void> {
-  const { evalRunId, organizationId, evaluatorId, promptVersionId, source, datasetId, sampleSize, sampleFrom, sampleTo } = input
+  const {
+    evalRunId,
+    organizationId,
+    evaluatorId,
+    promptVersionId,
+    source,
+    datasetId,
+    sampleSize,
+    sampleFrom,
+    sampleTo,
+    runProvider,
+    runModel,
+  } = input
 
   // Mark running
   await supabaseAdmin
@@ -345,26 +518,72 @@ export async function runEvalRun(input: RunInput): Promise<void> {
         })
         .filter((s) => s.responseText.length > 0)
     } else {
-      // source === 'dataset'
+      // source === 'dataset' — run the prompt against each item's input,
+      // THEN score the generated response. expected_output is reference-only
+      // (a future enhancement could feed it into the judge prompt as a target).
       if (!datasetId) throw new Error('datasetId is required when source = dataset')
+      if (!runProvider || !runModel) {
+        throw new Error('runProvider and runModel are required when source = dataset')
+      }
 
+      // 1. Resolve the prompt version's content + the run provider key
+      const { data: pv, error: pvErr } = await supabaseAdmin
+        .from('prompt_versions')
+        .select('content')
+        .eq('id', promptVersionId)
+        .eq('organization_id', organizationId)
+        .maybeSingle()
+      if (pvErr || !pv) throw new Error(`Prompt version not found: ${pvErr?.message ?? promptVersionId}`)
+      const promptContent = pv.content as string
+
+      const { data: runKeyRow, error: runKeyErr } = await supabaseAdmin
+        .from('provider_keys')
+        .select('encrypted_key')
+        .eq('organization_id', organizationId)
+        .eq('provider', runProvider)
+        .eq('is_active', true)
+        .limit(1)
+        .maybeSingle()
+      if (runKeyErr || !runKeyRow) {
+        throw new Error(`No active ${runProvider} provider key found for prompt generation`)
+      }
+      const runApiKey = await aes256Decrypt(runKeyRow.encrypted_key as string)
+      if (!runApiKey) throw new Error('Failed to decrypt run provider key')
+
+      // 2. Fetch all items in the dataset (no expected_output filter — we
+      //    generate fresh responses, so items without a golden answer are
+      //    still scorable on the criterion alone)
       const { data: items, error: itemsErr } = await supabaseAdmin
         .from('dataset_items')
-        .select('id, expected_output')
+        .select('id, input')
         .eq('dataset_id', datasetId)
         .eq('organization_id', organizationId)
-        .not('expected_output', 'is', null)
         .order('created_at', { ascending: false })
         .limit(sampleSize)
-
       if (itemsErr) throw new Error(`Dataset items fetch failed: ${itemsErr.message}`)
 
-      preparedSamples = (items ?? [])
-        .filter((i) => typeof i.expected_output === 'string' && i.expected_output.length > 0)
-        .map((i) => ({
-          responseText: i.expected_output as string,
+      // 3. Generate a response for each item by running the prompt against
+      //    its input. Failures (network, model rejection) are dropped — the
+      //    eval still completes with whatever scored.
+      const generated = await Promise.all(
+        (items ?? []).map(async (i) => {
+          const out = await generateForItem(
+            promptContent,
+            i.input as Record<string, unknown>,
+            runProvider,
+            runModel,
+            runApiKey,
+          )
+          return out ? { responseText: out, datasetItemId: i.id as string } : null
+        }),
+      )
+
+      preparedSamples = generated
+        .filter((g): g is { responseText: string; datasetItemId: string } => g !== null && g.responseText.length > 0)
+        .map((g) => ({
+          responseText: g.responseText,
           requestId: null,
-          datasetItemId: i.id as string,
+          datasetItemId: g.datasetItemId,
         }))
     }
 

@@ -8,7 +8,7 @@ import type { ApiEnvelope } from './types'
 
 export interface JudgeConfig {
   criterion: string
-  judge_provider: 'openai' | 'anthropic'
+  judge_provider: 'openai' | 'anthropic' | 'gemini'
   judge_model: string
   scale_min: number
   scale_max: number
@@ -175,6 +175,10 @@ export interface CreateEvalRunInput {
   sampleSize: number
   sampleFrom?: string
   sampleTo?: string
+  /** Required when source = 'dataset' — used to generate the response that
+   *  then gets scored by the judge. */
+  runProvider?: 'openai' | 'anthropic' | 'gemini'
+  runModel?: string
 }
 
 export function useCreateEvalRun() {

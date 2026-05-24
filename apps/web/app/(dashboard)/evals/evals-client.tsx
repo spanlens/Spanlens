@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Beaker, Play, Trash2, Plus, Loader2, AlertTriangle } from 'lucide-react'
 import { Topbar } from '@/components/layout/topbar'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -19,12 +19,22 @@ import {
 } from '@/lib/queries/use-evals'
 import { usePrompts, usePromptVersions } from '@/lib/queries/use-prompts'
 import type { PromptVersion } from '@/lib/queries/use-prompts'
-import { useDatasets } from '@/lib/queries/use-datasets'
+import {
+  useDatasets,
+  useCreateDataset,
+  useBulkAddDatasetItems,
+} from '@/lib/queries/use-datasets'
+import { parseUploadedFile, generateUploadName } from '@/lib/dataset-upload'
 import { useCorrelation, pearsonR } from '@/lib/queries/use-human-evals'
+import { useModels } from '@/lib/queries/use-models'
 
-const JUDGE_MODELS = {
-  openai: ['gpt-4o-mini', 'gpt-4o', 'gpt-4-turbo'],
-  anthropic: ['claude-3-5-haiku-20241022', 'claude-3-5-sonnet-20241022'],
+// Fallback used only when /api/v1/models is still loading. Real list comes
+// from useModels(). Keep this minimal — just enough to render <select>
+// without an empty initial frame.
+const JUDGE_MODELS_FALLBACK = {
+  openai: ['gpt-4o-mini'],
+  anthropic: ['claude-haiku-4-5'],
+  gemini: ['gemini-2.5-flash-lite'],
 } as const
 
 function fmtUsd(n: number | null | undefined): string {
@@ -56,11 +66,23 @@ function StatusBadge({ status }: { status: EvalRunStatus }) {
 function NewEvaluatorDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const prompts = usePrompts()
   const createMutation = useCreateEvaluator()
+  const { data: modelsCatalog } = useModels()
+  // Map the catalog's full shape down to the openai/anthropic strings that
+  // this picker needs. Gemini is excluded — the eval API only supports
+  // OpenAI/Anthropic judges as of 2026-05.
+  const judgeModels: { openai: string[]; anthropic: string[]; gemini: string[] } = {
+    openai: (modelsCatalog?.openai ?? []).map((m) => m.model),
+    anthropic: (modelsCatalog?.anthropic ?? []).map((m) => m.model),
+    gemini: (modelsCatalog?.gemini ?? []).map((m) => m.model),
+  }
+  if (judgeModels.openai.length === 0) judgeModels.openai = [...JUDGE_MODELS_FALLBACK.openai]
+  if (judgeModels.anthropic.length === 0) judgeModels.anthropic = [...JUDGE_MODELS_FALLBACK.anthropic]
+  if (judgeModels.gemini.length === 0) judgeModels.gemini = [...JUDGE_MODELS_FALLBACK.gemini]
 
   const [promptName, setPromptName] = useState('')
   const [name, setName] = useState('')
   const [criterion, setCriterion] = useState('')
-  const [judgeProvider, setJudgeProvider] = useState<'openai' | 'anthropic'>('openai')
+  const [judgeProvider, setJudgeProvider] = useState<'openai' | 'anthropic' | 'gemini'>('openai')
   const [judgeModel, setJudgeModel] = useState('gpt-4o-mini')
   const [scaleMin] = useState(0)
   const [scaleMax] = useState(1)
@@ -155,14 +177,15 @@ function NewEvaluatorDialog({ open, onClose }: { open: boolean; onClose: () => v
               <select
                 value={judgeProvider}
                 onChange={(e) => {
-                  const p = e.target.value as 'openai' | 'anthropic'
+                  const p = e.target.value as 'openai' | 'anthropic' | 'gemini'
                   setJudgeProvider(p)
-                  setJudgeModel(JUDGE_MODELS[p][0])
+                  setJudgeModel(judgeModels[p][0] ?? '')
                 }}
                 className="w-full h-9 px-2 rounded-[5px] border border-border bg-bg font-mono text-[12px] text-text focus:outline-none focus:border-border-strong"
               >
                 <option value="openai">OpenAI</option>
                 <option value="anthropic">Anthropic</option>
+                <option value="gemini">Gemini</option>
               </select>
             </div>
             <div>
@@ -174,7 +197,7 @@ function NewEvaluatorDialog({ open, onClose }: { open: boolean; onClose: () => v
                 onChange={(e) => setJudgeModel(e.target.value)}
                 className="w-full h-9 px-2 rounded-[5px] border border-border bg-bg font-mono text-[12px] text-text focus:outline-none focus:border-border-strong"
               >
-                {JUDGE_MODELS[judgeProvider].map((m) => (
+                {judgeModels[judgeProvider].map((m) => (
                   <option key={m} value={m}>{m}</option>
                 ))}
               </select>
@@ -222,6 +245,8 @@ function RunEvaluatorDialog({
   const datasets = useDatasets()
   const createRun = useCreateEvalRun()
   const estimate = useEstimateEvalCost()
+  const createDataset = useCreateDataset()
+  const bulkAddItems = useBulkAddDatasetItems()
 
   const [versionIdRaw, setVersionId] = useState('')
   const [source, setSource] = useState<'production' | 'dataset'>('production')
@@ -229,6 +254,60 @@ function RunEvaluatorDialog({
   const [sampleSize, setSampleSize] = useState(50)
   const [days, setDays] = useState(7)
   const [error, setError] = useState('')
+  // For dataset mode: which provider+model runs the prompt before judging.
+  // Production mode doesn't need these — responses are already in CH.
+  const [runProvider, setRunProvider] = useState<'openai' | 'anthropic' | 'gemini'>('openai')
+  const [runModel, setRunModel] = useState('gpt-4o-mini')
+  const modelsCatalog = useModels()
+  const runModelOptions = (modelsCatalog.data?.[runProvider] ?? []).map((m) => m.model)
+  const [uploadingState, setUploadingState] = useState<'idle' | 'uploading' | 'done'>('idle')
+  const [uploadMsg, setUploadMsg] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    // Reset the input so picking the same file twice still fires onChange.
+    if (e.target) e.target.value = ''
+    if (!file) return
+
+    setUploadMsg(null)
+    setUploadingState('uploading')
+    try {
+      // 1. Parse client-side. Failures here mean malformed file — no API call.
+      const { items, warnings } = await parseUploadedFile(file)
+      if (items.length === 0) {
+        setError('No valid items in file')
+        setUploadingState('idle')
+        return
+      }
+
+      // 2. Create a fresh dataset with an auto-generated name. User can
+      //    rename / delete from /datasets later if they want.
+      const created = await createDataset.mutateAsync({
+        name: generateUploadName(),
+        description: `Uploaded from ${file.name} (${items.length} items)`,
+      })
+
+      // 3. Bulk insert items. Server reports per-row skip reasons.
+      const result = await bulkAddItems.mutateAsync({
+        datasetId: created.id,
+        items,
+      })
+
+      setDatasetId(created.id)
+      setUploadingState('done')
+      const skippedNote = result.skipped.length > 0
+        ? `, ${result.skipped.length} skipped by server`
+        : ''
+      const warnNote = warnings.length > 0
+        ? `, ${warnings.length} warnings client-side`
+        : ''
+      setUploadMsg(`Uploaded ${result.inserted} items${skippedNote}${warnNote}.`)
+    } catch (err) {
+      setUploadingState('idle')
+      setError(err instanceof Error ? err.message : 'Upload failed')
+    }
+  }
 
   // Derive default selection from query data instead of syncing via an
   // effect. Once the user picks a value, `versionIdRaw` wins.
@@ -245,13 +324,14 @@ function RunEvaluatorDialog({
     setError('')
     if (!versionId) { setError('Select a version'); return }
     if (source === 'dataset' && !datasetId) { setError('Select a dataset'); return }
+    if (source === 'dataset' && !runModel) { setError('Select a model to run the prompt'); return }
     try {
       const run = await createRun.mutateAsync({
         evaluatorId: evaluator.id,
         promptVersionId: versionId,
         source,
         sampleSize,
-        ...(source === 'dataset' && datasetId && { datasetId }),
+        ...(source === 'dataset' && datasetId && { datasetId, runProvider, runModel }),
         ...(source === 'production' && {
           sampleFrom: new Date(Date.now() - days * 86400_000).toISOString(),
         }),
@@ -314,21 +394,88 @@ function RunEvaluatorDialog({
               <label className="block font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint mb-1">
                 Dataset
               </label>
-              <select
-                value={datasetId}
-                onChange={(e) => setDatasetId(e.target.value)}
-                required
-                className="w-full h-9 px-2 rounded-[5px] border border-border bg-bg font-mono text-[12px] text-text"
-              >
-                <option value="">Select dataset…</option>
-                {(datasets.data ?? []).map((d) => (
-                  <option key={d.id} value={d.id}>
-                    {d.name} ({d.item_count ?? 0} items)
-                  </option>
-                ))}
-              </select>
+              <div className="flex gap-1.5">
+                <select
+                  value={datasetId}
+                  onChange={(e) => setDatasetId(e.target.value)}
+                  required
+                  className="flex-1 h-9 px-2 rounded-[5px] border border-border bg-bg font-mono text-[12px] text-text"
+                >
+                  <option value="">Select dataset…</option>
+                  {(datasets.data ?? []).map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {d.name} ({d.item_count ?? 0} items)
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploadingState === 'uploading'}
+                  className="font-mono text-[11px] px-3 py-1 rounded-[4px] border border-border bg-bg-elev hover:bg-bg-muted disabled:opacity-50 transition-colors whitespace-nowrap"
+                  title="Upload JSON or CSV. Saved as a new dataset with an auto-generated name; rename or delete from /datasets later."
+                >
+                  {uploadingState === 'uploading' ? 'Uploading…' : '+ Upload'}
+                </button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".json,.csv,application/json,text/csv"
+                  onChange={(e) => void handleFileUpload(e)}
+                  className="hidden"
+                />
+              </div>
+              {uploadMsg && (
+                <p className="font-mono text-[10px] text-good mt-1">{uploadMsg}</p>
+              )}
               <p className="font-mono text-[10px] text-text-faint mt-1">
-                Only items with expected_output are scored.
+                JSON: array of <code>{`{ input, expected_output? }`}</code>.
+                CSV: header row <code>input,expected_output</code>. Uploads
+                are saved as datasets (auto-named) so you can re-run later.
+              </p>
+
+              {/* Generator picker — dataset items hold inputs only; we need
+                  a provider+model to actually run the prompt against each
+                  input before the judge can score the response. */}
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint mb-1">
+                    Run provider
+                  </label>
+                  <select
+                    value={runProvider}
+                    onChange={(e) => {
+                      const p = e.target.value as 'openai' | 'anthropic' | 'gemini'
+                      setRunProvider(p)
+                      const opts = (modelsCatalog.data?.[p] ?? []).map((m) => m.model)
+                      setRunModel(opts[0] ?? '')
+                    }}
+                    className="w-full h-9 px-2 rounded-[5px] border border-border bg-bg font-mono text-[12px] text-text"
+                  >
+                    <option value="openai">OpenAI</option>
+                    <option value="anthropic">Anthropic</option>
+                    <option value="gemini">Gemini</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint mb-1">
+                    Run model
+                  </label>
+                  <select
+                    value={runModel}
+                    onChange={(e) => setRunModel(e.target.value)}
+                    className="w-full h-9 px-2 rounded-[5px] border border-border bg-bg font-mono text-[12px] text-text"
+                  >
+                    {runModelOptions.length === 0 && <option value="">Loading…</option>}
+                    {runModelOptions.map((m) => (
+                      <option key={m} value={m}>{m}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <p className="font-mono text-[10px] text-text-faint mt-1">
+                Runs each dataset input through this model first, then the judge
+                scores the generated response.
               </p>
             </div>
           )}
@@ -404,6 +551,67 @@ function RunEvaluatorDialog({
 }
 
 // ── Run detail panel ─────────────────────────────────────────────────────────
+
+/**
+ * One row in "Lowest-scoring samples". Click to expand → shows full
+ * reasoning (no line clamp) + a link to the source request when this row
+ * came from production traffic. Dataset-source rows don't have a
+ * /requests/[id] target — they expand to reasoning only since the
+ * dataset item input isn't fetched here (would need a separate query).
+ */
+function LowestScoreRow({
+  res,
+}: {
+  res: { id: string; score: number; reasoning: string | null; judge_cost_usd: number; request_id: string | null; dataset_item_id: string | null }
+}) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={() => setOpen((v) => !v)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          setOpen((v) => !v)
+        }
+      }}
+      className="block p-2 rounded-[5px] border border-border hover:bg-bg-muted transition-colors cursor-pointer"
+    >
+      <div className="flex justify-between items-center mb-1">
+        <span className="font-mono text-[12px] text-text font-medium">
+          {fmtScore(res.score)}
+        </span>
+        <span className="font-mono text-[10px] text-text-faint">
+          {fmtUsd(res.judge_cost_usd)}
+        </span>
+      </div>
+      {res.reasoning && (
+        <p className={`font-mono text-[10.5px] text-text-muted ${open ? '' : 'line-clamp-2'}`}>
+          {res.reasoning}
+        </p>
+      )}
+      {open && res.request_id && (
+        <div className="mt-2 pt-2 border-t border-border">
+          <a
+            href={`/requests/${res.request_id}`}
+            onClick={(e) => e.stopPropagation()}
+            className="font-mono text-[10.5px] text-accent hover:underline"
+          >
+            → View source request
+          </a>
+        </div>
+      )}
+      {open && !res.request_id && res.dataset_item_id && (
+        <div className="mt-2 pt-2 border-t border-border">
+          <span className="font-mono text-[10.5px] text-text-faint">
+            Dataset item · {res.dataset_item_id.slice(0, 8)}
+          </span>
+        </div>
+      )}
+    </div>
+  )
+}
 
 function RunDetailPanel({ runId, onClose }: { runId: string; onClose: () => void }) {
   const run = useEvalRun(runId, { pollWhilePending: true })
@@ -501,38 +709,54 @@ function RunDetailPanel({ runId, onClose }: { runId: string; onClose: () => void
               </div>
             </div>
 
-            {/* Worst N */}
-            <div>
-              <p className="font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint mb-2">
-                Lowest-scoring samples
-              </p>
-              <div className="space-y-2">
-                {results.data.slice(0, 5).map((res) => (
-                  <a
-                    key={res.id}
-                    href={res.request_id ? `/requests?id=${res.request_id}` : undefined}
-                    className="block p-2 rounded-[5px] border border-border hover:bg-bg-muted transition-colors"
-                  >
-                    <div className="flex justify-between items-center mb-1">
-                      <span className="font-mono text-[12px] text-text font-medium">
-                        {fmtScore(res.score)}
-                      </span>
-                      <span className="font-mono text-[10px] text-text-faint">
-                        {fmtUsd(res.judge_cost_usd)}
-                      </span>
-                    </div>
-                    {res.reasoning && (
-                      <p className="font-mono text-[10.5px] text-text-muted line-clamp-2">
-                        {res.reasoning}
-                      </p>
-                    )}
-                  </a>
-                ))}
-              </div>
-            </div>
+            {/* Samples — bottom-5 by default, toggle to see all 12 */}
+            <SampleList samples={results.data} />
           </>
         )}
       </div>
+    </div>
+  )
+}
+
+/**
+ * Eval results sorted ascending by score (server enforces, see
+ * apps/server/src/api/evals.ts). We show the worst 5 by default —
+ * that's where prompt-engineering effort pays off — with a toggle to
+ * reveal every scored sample for the curious. Avoids the confusion
+ * users hit when the visible 5 don't reconcile with the panel's
+ * average score (the hidden samples are higher and pull avg up).
+ */
+function SampleList({
+  samples,
+}: {
+  samples: Array<{ id: string; score: number; reasoning: string | null; judge_cost_usd: number; request_id: string | null; dataset_item_id: string | null }>
+}) {
+  const [showAll, setShowAll] = useState(false)
+  const visible = showAll ? samples : samples.slice(0, 5)
+  const total = samples.length
+  const moreCount = total - 5
+
+  return (
+    <div>
+      <p className="font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint mb-2">
+        {showAll
+          ? `All samples · ${total}`
+          : `Lowest-scoring · ${Math.min(5, total)} of ${total}`}
+      </p>
+      <div className="space-y-2">
+        {visible.map((res) => (
+          <LowestScoreRow key={res.id} res={res} />
+        ))}
+      </div>
+      {moreCount > 0 && (
+        <button
+          type="button"
+          onClick={() => setShowAll((v) => !v)}
+          className="w-full mt-2 py-2 font-mono text-[10.5px] text-accent hover:bg-bg-muted rounded-[5px] border border-dashed border-border transition-colors"
+        >
+          {showAll ? 'show less' : 'show all'}
+        </button>
+      )}
     </div>
   )
 }
@@ -562,10 +786,20 @@ function EvaluatorRow({
 
   return (
     <div className="border-b border-border last:border-0">
-      <button
-        type="button"
+      {/* Outer container is a div, not a button: HTML forbids nested buttons,
+          and we need the Run/Delete buttons inside the same row. Keyboard
+          activation is preserved via role="button" + Enter/Space handlers. */}
+      <div
+        role="button"
+        tabIndex={0}
         onClick={() => setExpanded((v) => !v)}
-        className="w-full flex items-center px-[16px] py-[12px] hover:bg-bg-muted transition-colors text-left"
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault()
+            setExpanded((v) => !v)
+          }
+        }}
+        className="w-full flex items-center px-[16px] py-[12px] hover:bg-bg-muted transition-colors text-left cursor-pointer"
         style={{ gridTemplateColumns: '1fr 140px 100px 100px 120px' }}
       >
         <div className="flex-1 min-w-0">
@@ -597,7 +831,7 @@ function EvaluatorRow({
             <Trash2 className="h-3.5 w-3.5" />
           </button>
         </div>
-      </button>
+      </div>
 
       {expanded && (
         <div className="bg-bg-muted/50 px-[16px] py-[10px] border-t border-border">

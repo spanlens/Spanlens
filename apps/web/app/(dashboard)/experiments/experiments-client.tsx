@@ -15,10 +15,13 @@ import {
 import { usePrompts, usePromptVersions } from '@/lib/queries/use-prompts'
 import { useDatasets } from '@/lib/queries/use-datasets'
 import { useEvaluators } from '@/lib/queries/use-evals'
+import { useModels } from '@/lib/queries/use-models'
 
-const RUN_MODELS = {
-  openai: ['gpt-4o-mini', 'gpt-4o', 'gpt-4-turbo', 'gpt-3.5-turbo'],
-  anthropic: ['claude-3-5-haiku-20241022', 'claude-3-5-sonnet-20241022'],
+// Fallback for the first paint before useModels() resolves.
+const RUN_MODELS_FALLBACK = {
+  openai: ['gpt-4o-mini'],
+  anthropic: ['claude-haiku-4-5'],
+  gemini: ['gemini-2.5-flash-lite'],
 } as const
 
 function fmtUsd(n: number | null | undefined): string {
@@ -51,6 +54,15 @@ function NewExperimentDialog({ open, onClose }: { open: boolean; onClose: () => 
   const prompts = usePrompts()
   const datasets = useDatasets()
   const create = useCreateExperiment()
+  const { data: modelsCatalog } = useModels()
+  const runModels: { openai: string[]; anthropic: string[]; gemini: string[] } = {
+    openai: (modelsCatalog?.openai ?? []).map((m) => m.model),
+    anthropic: (modelsCatalog?.anthropic ?? []).map((m) => m.model),
+    gemini: (modelsCatalog?.gemini ?? []).map((m) => m.model),
+  }
+  if (runModels.openai.length === 0) runModels.openai = [...RUN_MODELS_FALLBACK.openai]
+  if (runModels.anthropic.length === 0) runModels.anthropic = [...RUN_MODELS_FALLBACK.anthropic]
+  if (runModels.gemini.length === 0) runModels.gemini = [...RUN_MODELS_FALLBACK.gemini]
 
   const [name, setName] = useState('')
   const [promptName, setPromptName] = useState('')
@@ -60,7 +72,7 @@ function NewExperimentDialog({ open, onClose }: { open: boolean; onClose: () => 
   const [versionBId, setVersionBId] = useState('')
   const [datasetId, setDatasetId] = useState('')
   const [evaluatorId, setEvaluatorId] = useState('')
-  const [runProvider, setRunProvider] = useState<'openai' | 'anthropic'>('openai')
+  const [runProvider, setRunProvider] = useState<'openai' | 'anthropic' | 'gemini'>('openai')
   const [runModel, setRunModel] = useState<string>('gpt-4o-mini')
   const [error, setError] = useState('')
 
@@ -219,14 +231,15 @@ function NewExperimentDialog({ open, onClose }: { open: boolean; onClose: () => 
               <select
                 value={runProvider}
                 onChange={(e) => {
-                  const p = e.target.value as 'openai' | 'anthropic'
+                  const p = e.target.value as 'openai' | 'anthropic' | 'gemini'
                   setRunProvider(p)
-                  setRunModel(RUN_MODELS[p][0])
+                  setRunModel(runModels[p][0] ?? '')
                 }}
                 className="w-full h-9 px-2 rounded-[5px] border border-border bg-bg font-mono text-[12px] text-text"
               >
                 <option value="openai">OpenAI</option>
                 <option value="anthropic">Anthropic</option>
+                <option value="gemini">Gemini</option>
               </select>
             </div>
             <div>
@@ -238,7 +251,7 @@ function NewExperimentDialog({ open, onClose }: { open: boolean; onClose: () => 
                 onChange={(e) => setRunModel(e.target.value)}
                 className="w-full h-9 px-2 rounded-[5px] border border-border bg-bg font-mono text-[12px] text-text"
               >
-                {RUN_MODELS[runProvider].map((m) => (
+                {runModels[runProvider].map((m) => (
                   <option key={m} value={m}>{m}</option>
                 ))}
               </select>

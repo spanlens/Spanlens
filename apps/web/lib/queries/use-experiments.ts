@@ -107,7 +107,7 @@ export interface CreateExperimentInput {
   versionBId: string
   datasetId: string
   evaluatorId?: string
-  runProvider: 'openai' | 'anthropic'
+  runProvider: 'openai' | 'anthropic' | 'gemini'
   runModel: string
 }
 
