@@ -39,3 +39,4 @@ npm-debug.log*
 
 # Internal planning documents — never commit to public repo
 *.pdf
+*.pptx

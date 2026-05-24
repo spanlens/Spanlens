@@ -37,7 +37,10 @@ experimentsRouter.post('/', async (c) => {
   const datasetId = typeof body.datasetId === 'string' ? body.datasetId.trim() : ''
   const evaluatorId = typeof body.evaluatorId === 'string' && body.evaluatorId.trim()
     ? body.evaluatorId.trim() : null
-  const runProvider = body.runProvider === 'anthropic' ? 'anthropic' : 'openai'
+  const runProvider: 'openai' | 'anthropic' | 'gemini' =
+    body.runProvider === 'anthropic' ? 'anthropic'
+    : body.runProvider === 'gemini' ? 'gemini'
+    : 'openai'
   const runModel = typeof body.runModel === 'string' ? body.runModel.trim() : ''
 
   if (!name) return c.json({ error: 'name is required' }, 400)

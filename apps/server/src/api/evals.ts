@@ -48,8 +48,8 @@ evalsRouter.post('/evaluators', async (c) => {
   const scaleMax = typeof config.scale_max === 'number' ? config.scale_max : 1
 
   if (!criterion) return c.json({ error: 'config.criterion is required' }, 400)
-  if (judgeProvider !== 'openai' && judgeProvider !== 'anthropic') {
-    return c.json({ error: 'config.judge_provider must be "openai" or "anthropic"' }, 400)
+  if (judgeProvider !== 'openai' && judgeProvider !== 'anthropic' && judgeProvider !== 'gemini') {
+    return c.json({ error: 'config.judge_provider must be "openai", "anthropic", or "gemini"' }, 400)
   }
   if (!judgeModel) return c.json({ error: 'config.judge_model is required' }, 400)
   if (!(scaleMax > scaleMin)) {
@@ -136,6 +136,8 @@ evalsRouter.post('/eval-runs', async (c) => {
     sampleSize?: unknown
     sampleFrom?: unknown
     sampleTo?: unknown
+    runProvider?: unknown
+    runModel?: unknown
   }
   try {
     body = (await c.req.json()) as typeof body
@@ -158,6 +160,18 @@ evalsRouter.post('/eval-runs', async (c) => {
   }
   if (source === 'dataset' && !datasetId) {
     return c.json({ error: 'datasetId is required when source = dataset' }, 400)
+  }
+
+  // Dataset evals run the prompt against each item's input before judging.
+  // The picker can only emit our three supported provider strings.
+  const runProvider: 'openai' | 'anthropic' | 'gemini' | null =
+    body.runProvider === 'openai' || body.runProvider === 'anthropic' || body.runProvider === 'gemini'
+      ? body.runProvider
+      : null
+  const runModel = typeof body.runModel === 'string' ? body.runModel.trim() : null
+  if (source === 'dataset') {
+    if (!runProvider) return c.json({ error: 'runProvider is required when source = dataset' }, 400)
+    if (!runModel) return c.json({ error: 'runModel is required when source = dataset' }, 400)
   }
 
   // Verify both belong to org
@@ -222,6 +236,8 @@ evalsRouter.post('/eval-runs', async (c) => {
     sampleSize,
     sampleFrom,
     sampleTo,
+    runProvider,
+    runModel,
   }))
 
   return c.json({ success: true, data: run }, 202)
