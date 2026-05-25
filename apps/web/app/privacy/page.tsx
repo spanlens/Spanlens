@@ -33,13 +33,13 @@ export default function PrivacyPage() {
 
         <h2 id="controller">1. Data controller</h2>
         <ul>
-          <li><strong>Trade name:</strong> Oceancode (오션코드)</li>
-          <li><strong>Representative:</strong> Jeon Haesung (전해성)</li>
+          <li><strong>Trade name:</strong> Oceancode</li>
+          <li><strong>Representative:</strong> Jeon Haesung</li>
           <li><strong>Business Registration Number:</strong> 676-71-00622</li>
-          <li><strong>E-commerce Registration Number:</strong> 2025-경기광주-2133</li>
+          <li><strong>E-commerce Registration Number:</strong> 2025-Gyeonggi-Gwangju-2133</li>
           <li><strong>Jurisdiction:</strong> Republic of Korea</li>
           <li>
-            <strong>Privacy Officer (개인정보보호책임자):</strong> Jeon Haesung ,{' '}
+            <strong>Privacy Officer:</strong> Jeon Haesung ,{' '}
             <a href="mailto:support@spanlens.io">support@spanlens.io</a>
           </li>
         </ul>

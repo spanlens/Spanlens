@@ -36,10 +36,10 @@ export default function TermsPage() {
           Republic of Korea.
         </p>
         <ul>
-          <li><strong>Trade name:</strong> Oceancode (오션코드)</li>
-          <li><strong>Representative:</strong> Jeon Haesung (전해성)</li>
+          <li><strong>Trade name:</strong> Oceancode</li>
+          <li><strong>Representative:</strong> Jeon Haesung</li>
           <li><strong>Business Registration Number:</strong> 676-71-00622</li>
-          <li><strong>E-commerce Registration Number (통신판매업신고번호):</strong> 2025-경기광주-2133</li>
+          <li><strong>E-commerce Registration Number:</strong> 2025-Gyeonggi-Gwangju-2133</li>
           <li><strong>Contact:</strong> support@spanlens.io</li>
         </ul>
 

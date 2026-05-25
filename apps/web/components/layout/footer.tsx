@@ -5,8 +5,12 @@ import { LogoMark } from '@/components/ui/logo'
  * Shared marketing footer. Applied to landing, /pricing, /docs/*, /terms,
  * /privacy, /dpa, /subprocessors, /refund.
  *
- * The bottom row contains the Korean e-commerce commercial-info disclosure
- * required by 전자상거래법 — 상호, 대표자, 사업자번호, 통신판매업신고번호.
+ * The bottom row carries the e-commerce commercial-info disclosure
+ * required by the Korean Act on the Consumer Protection in Electronic
+ * Commerce: legal entity name, CEO, business registration number,
+ * and mail-order business registration number. The values are the
+ * legally registered ones; only the labels are translated to English
+ * for our customer-facing English-only surface.
  * Do not remove these fields without a replacement compliance path.
  */
 export function Footer() {
@@ -22,10 +26,12 @@ export function Footer() {
           <div className="mt-3 font-mono text-[12px] text-text-faint">
             MIT · self-hostable · © {new Date().getFullYear()} Spanlens
           </div>
-          {/* Korean legal disclosure (전자상거래법) */}
+          {/* Korean e-commerce commercial-info disclosure — labels in
+              English to match the customer-facing English surface; the
+              numbers are the legally registered values. */}
           <div className="mt-3 font-mono text-[10.5px] text-text-faint space-y-0.5 max-w-xs leading-relaxed">
-            <div>Oceancode (오션코드) · 대표: 전해성</div>
-            <div>사업자번호: 676-71-00622 · 통신판매업: 2025-경기광주-2133</div>
+            <div>Oceancode · CEO: Haeseong Jeon</div>
+            <div>Business Reg. No.: 676-71-00622 · Mail-Order Reg.: 2025-Gyeonggi-Gwangju-2133</div>
             <div>support@spanlens.io</div>
           </div>
         </div>
