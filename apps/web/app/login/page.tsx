@@ -1,9 +1,28 @@
 'use client'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+
+/**
+ * Maps the `?error=<code>` query (set by /auth/callback when OAuth
+ * exchange fails) to a user-facing English message. Keep keys aligned
+ * with `mapOAuthError` in apps/web/app/auth/callback/route.ts.
+ */
+const OAUTH_ERROR_MESSAGES: Record<string, string> = {
+  email_conflict:
+    'An account with this email already exists. Sign in with your password, then connect Google or GitHub from Settings → Sign-in methods.',
+  identity_already_linked:
+    'This provider is already connected to your account.',
+  identity_linked_to_other_user:
+    'This Google/GitHub account is already linked to a different Spanlens user. Sign in with that account, or use a different provider account.',
+  manual_linking_disabled:
+    'Account linking is currently disabled. Please contact support.',
+  provider_disabled:
+    'This sign-in method is currently unavailable. Please use another provider or email.',
+  oauth_callback_failed: 'Sign-in failed. Please try again.',
+}
 
 function LogoMark() {
   return (
@@ -30,6 +49,27 @@ export default function LoginPage() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
+  // Surface OAuth callback errors. Read once on mount and clean the
+  // query so the message disappears on a manual reload. `useSearchParams`
+  // would force a Suspense boundary refactor on this page; reading
+  // `window.location` keeps the change local. The setState happens
+  // exactly once per mount, so the cascading-render concern the lint
+  // rule guards against does not apply here.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const errorCode = params.get('error')
+    if (!errorCode) return
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setError(OAUTH_ERROR_MESSAGES[errorCode] ?? 'Sign-in failed. Please try again.')
+    params.delete('error')
+    const next = params.toString()
+    window.history.replaceState(
+      null,
+      '',
+      `${window.location.pathname}${next ? `?${next}` : ''}`,
+    )
+  }, [])
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError('')
@@ -43,6 +83,23 @@ export default function LoginPage() {
     }
     router.push('/dashboard')
     router.refresh()
+  }
+
+  async function handleOAuth(provider: 'google' | 'github') {
+    setError('')
+    setLoading(true)
+    const supabase = createClient()
+    const { error: authError } = await supabase.auth.signInWithOAuth({
+      provider,
+      options: { redirectTo: `${window.location.origin}/auth/callback` },
+    })
+    if (authError) {
+      setError(authError.message)
+      setLoading(false)
+    }
+    // On success the browser is redirected to the provider — no further
+    // action needed here. We deliberately leave `loading` true so the
+    // button stays disabled until the redirect actually navigates away.
   }
 
   return (
@@ -88,7 +145,9 @@ export default function LoginPage() {
           <div className="flex flex-col gap-2 mb-2">
             <button
               type="button"
-              className="flex items-center gap-2.5 px-[14px] py-[10px] border border-border-strong rounded-[7px] bg-bg text-[13px] text-text hover:opacity-80 transition-opacity"
+              onClick={() => void handleOAuth('google')}
+              disabled={loading}
+              className="flex items-center gap-2.5 px-[14px] py-[10px] border border-border-strong rounded-[7px] bg-bg text-[13px] text-text hover:opacity-80 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
             >
               <span className="w-[18px] h-[18px] rounded-[4px] bg-bg-muted flex items-center justify-center font-mono text-[10px] text-text-muted font-bold">G</span>
               <span className="flex-1 text-left">Continue with Google</span>
@@ -96,7 +155,9 @@ export default function LoginPage() {
             </button>
             <button
               type="button"
-              className="flex items-center gap-2.5 px-[14px] py-[10px] border border-border-strong rounded-[7px] bg-bg text-[13px] text-text hover:opacity-80 transition-opacity"
+              onClick={() => void handleOAuth('github')}
+              disabled={loading}
+              className="flex items-center gap-2.5 px-[14px] py-[10px] border border-border-strong rounded-[7px] bg-bg text-[13px] text-text hover:opacity-80 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
             >
               <span className="w-[18px] h-[18px] rounded-[4px] bg-bg-muted flex items-center justify-center font-mono text-[10px] text-text-muted font-bold">⌥</span>
               <span className="flex-1 text-left">Continue with GitHub</span>

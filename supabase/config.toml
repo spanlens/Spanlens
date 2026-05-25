@@ -49,3 +49,18 @@ enabled = true
 
 [analytics]
 enabled = false
+
+# OAuth providers — disabled by default. To enable locally, populate the
+# four env vars below (e.g. in apps/web/.env.local) and restart the stack
+# with `supabase stop && supabase start`. Production providers are
+# configured via Supabase Dashboard, not this file. See
+# docs/auth-oauth-setup.md for the full setup guide.
+[auth.external.google]
+enabled = true
+client_id = "env(SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID)"
+secret = "env(SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET)"
+
+[auth.external.github]
+enabled = true
+client_id = "env(SUPABASE_AUTH_EXTERNAL_GITHUB_CLIENT_ID)"
+secret = "env(SUPABASE_AUTH_EXTERNAL_GITHUB_SECRET)"
