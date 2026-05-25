@@ -221,11 +221,6 @@ export default function LoginPage() {
               {!loading && <span className="font-mono text-[11px] opacity-70">↵</span>}
             </button>
           </form>
-
-          <div className="mt-[18px] flex justify-between font-mono text-[10.5px] text-text-faint tracking-[0.02em]">
-            <span>🔒 TLS 1.3 · SOC 2 Type II</span>
-            <span>spanlens.io/security</span>
-          </div>
         </div>
       </div>
     </div>

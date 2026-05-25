@@ -341,10 +341,6 @@ function SignupPageInner() {
                   {loading ? 'Creating workspace…' : 'Create workspace →'}
                 </button>
               </form>
-
-              <div className="mt-[18px] font-mono text-[10.5px] text-text-faint leading-[1.6]">
-                Included · 50k requests / mo · 14d retention · unlimited projects
-              </div>
             </>
           )}
         </div>
