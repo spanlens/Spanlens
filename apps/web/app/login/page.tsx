@@ -45,6 +45,23 @@ export default function LoginPage() {
     router.refresh()
   }
 
+  async function handleOAuth(provider: 'google' | 'github') {
+    setError('')
+    setLoading(true)
+    const supabase = createClient()
+    const { error: authError } = await supabase.auth.signInWithOAuth({
+      provider,
+      options: { redirectTo: `${window.location.origin}/auth/callback` },
+    })
+    if (authError) {
+      setError(authError.message)
+      setLoading(false)
+    }
+    // On success the browser is redirected to the provider — no further
+    // action needed here. We deliberately leave `loading` true so the
+    // button stays disabled until the redirect actually navigates away.
+  }
+
   return (
     <div className="min-h-screen bg-bg-elev grid grid-cols-2">
 
@@ -88,7 +105,9 @@ export default function LoginPage() {
           <div className="flex flex-col gap-2 mb-2">
             <button
               type="button"
-              className="flex items-center gap-2.5 px-[14px] py-[10px] border border-border-strong rounded-[7px] bg-bg text-[13px] text-text hover:opacity-80 transition-opacity"
+              onClick={() => void handleOAuth('google')}
+              disabled={loading}
+              className="flex items-center gap-2.5 px-[14px] py-[10px] border border-border-strong rounded-[7px] bg-bg text-[13px] text-text hover:opacity-80 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
             >
               <span className="w-[18px] h-[18px] rounded-[4px] bg-bg-muted flex items-center justify-center font-mono text-[10px] text-text-muted font-bold">G</span>
               <span className="flex-1 text-left">Continue with Google</span>
@@ -96,7 +115,9 @@ export default function LoginPage() {
             </button>
             <button
               type="button"
-              className="flex items-center gap-2.5 px-[14px] py-[10px] border border-border-strong rounded-[7px] bg-bg text-[13px] text-text hover:opacity-80 transition-opacity"
+              onClick={() => void handleOAuth('github')}
+              disabled={loading}
+              className="flex items-center gap-2.5 px-[14px] py-[10px] border border-border-strong rounded-[7px] bg-bg text-[13px] text-text hover:opacity-80 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
             >
               <span className="w-[18px] h-[18px] rounded-[4px] bg-bg-muted flex items-center justify-center font-mono text-[10px] text-text-muted font-bold">⌥</span>
               <span className="flex-1 text-left">Continue with GitHub</span>
