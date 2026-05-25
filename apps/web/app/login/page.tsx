@@ -1,9 +1,24 @@
 'use client'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+
+/**
+ * Maps the `?error=<code>` query (set by /auth/callback when OAuth
+ * exchange fails) to a user-facing English message. Keep keys aligned
+ * with `mapOAuthError` in apps/web/app/auth/callback/route.ts.
+ */
+const OAUTH_ERROR_MESSAGES: Record<string, string> = {
+  email_conflict:
+    'An account with this email already exists. Sign in with your password, then connect Google or GitHub from Settings → Sign-in methods.',
+  identity_already_linked:
+    'This provider is already connected to your account.',
+  provider_disabled:
+    'This sign-in method is currently unavailable. Please use another provider or email.',
+  oauth_callback_failed: 'Sign-in failed. Please try again.',
+}
 
 function LogoMark() {
   return (
@@ -29,6 +44,27 @@ export default function LoginPage() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+
+  // Surface OAuth callback errors. Read once on mount and clean the
+  // query so the message disappears on a manual reload. `useSearchParams`
+  // would force a Suspense boundary refactor on this page; reading
+  // `window.location` keeps the change local. The setState happens
+  // exactly once per mount, so the cascading-render concern the lint
+  // rule guards against does not apply here.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const errorCode = params.get('error')
+    if (!errorCode) return
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setError(OAUTH_ERROR_MESSAGES[errorCode] ?? 'Sign-in failed. Please try again.')
+    params.delete('error')
+    const next = params.toString()
+    window.history.replaceState(
+      null,
+      '',
+      `${window.location.pathname}${next ? `?${next}` : ''}`,
+    )
+  }, [])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()

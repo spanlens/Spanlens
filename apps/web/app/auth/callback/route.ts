@@ -62,7 +62,7 @@ export async function GET(request: Request): Promise<NextResponse> {
 
   if (error) {
     return NextResponse.redirect(
-      `${redirectBase}/login?error=${encodeURIComponent('oauth_callback_failed')}`,
+      `${redirectBase}/login?error=${encodeURIComponent(mapOAuthError(error))}`,
     )
   }
 
@@ -80,4 +80,25 @@ export async function GET(request: Request): Promise<NextResponse> {
   }
 
   return response
+}
+
+/**
+ * Translate a Supabase auth error into a stable query-string code that
+ * the login page can match without depending on Supabase's wording.
+ * Add new cases here as we observe them in production logs — Supabase
+ * error shapes change between SDK versions, so defaulting to a generic
+ * code is the safe path.
+ */
+function mapOAuthError(error: { message?: string | null }): string {
+  const msg = error.message?.toLowerCase() ?? ''
+  if (msg.includes('email') && (msg.includes('already') || msg.includes('exists'))) {
+    return 'email_conflict'
+  }
+  if (msg.includes('identity') && msg.includes('exists')) {
+    return 'identity_already_linked'
+  }
+  if (msg.includes('provider') && msg.includes('disabled')) {
+    return 'provider_disabled'
+  }
+  return 'oauth_callback_failed'
 }
