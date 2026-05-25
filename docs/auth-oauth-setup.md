@@ -126,3 +126,80 @@ After saving in the Supabase Dashboard:
 | Returns to `/login` immediately after OAuth | Middleware ran before Supabase set the cookie. Hard-refresh once; if persistent, check that `apps/web/middleware.ts` PUBLIC_PATHS includes `/auth/` (it does). |
 | No `user_consents` row for new OAuth user | The callback succeeded but `/api/v1/me/consent` POST failed. Check server logs for `[auth/callback] consent recording failed`. Server endpoint requires authJwt — the access token must be valid. |
 | Existing email user clicks Google, gets a separate account | Supabase by default does NOT link OAuth identities to existing email accounts unless email confirmation is shared. If we want auto-link later, enable "Same email = same account" or use identity linking API. |
+
+## 7. Account linking (Settings → Sign-in methods)
+
+Once at least one provider is connected, users can link / unlink
+providers from `/settings?tab=auth-methods`. This requires one extra
+project setting that is **disabled by default**:
+
+- Supabase Dashboard → Authentication → Sign In/Providers → **User
+  Signups** → toggle **"Allow manual linking"** ON → Save changes.
+
+Without that toggle, `supabase.auth.linkIdentity()` rejects every call
+with `"Manual linking is disabled"`.
+
+## 8. Operational gotchas observed in setup
+
+These four traps each cost a debug round-trip during the initial
+configuration. Worth checking on every new Supabase project.
+
+### 8.1 Always Reveal-verify pasted secrets
+
+Pasting a Client Secret into Supabase's password input field sometimes
+prepends an unexpected character (observed `a` prefix on both Google
+and GitHub secrets in the same session — looks like a key event from
+the dashboard's keyboard shortcuts firing into the focused input
+before the paste). The Save button accepts the (now-corrupted) value
+silently, then OAuth fails at token exchange with
+`Unable to exchange external code`.
+
+**Always:** save → reopen the provider drawer → click **Reveal** →
+verify the secret matches the source character-for-character before
+declaring done. Re-paste if it doesn't match.
+
+### 8.2 `1` (one) vs `l` (lowercase L) in GitHub Client IDs
+
+GitHub OAuth Client IDs are short alphanumeric strings (≈20 chars)
+where `1` and `l` are visually identical in many fonts. Manually
+transcribing from a screenshot leads to `Ov23liPp2XBkxPa6KJ1n` vs
+`Ov23liPp2XBkxPa6KJln` mistakes that surface as a 404 from
+`github.com/login/oauth/authorize`.
+
+**Always:** use GitHub's "Copy" button next to the Client ID,
+never re-type from sight.
+
+### 8.3 Redirect URL allowlist wildcard rules
+
+Supabase's allowlist supports glob-style wildcards but the matching is
+stricter than it looks:
+
+- `*` (single star) matches a single segment with no separator
+  characters. It will **not** match a Vercel preview branch URL whose
+  branch name contains hyphens, e.g.
+  `spanlens-*-sunes26s-projects.vercel.app` does **not** match
+  `spanlens-web-git-feat-oauth-login-sunes26s-projects.vercel.app`.
+- `**` (double star) matches any character sequence including
+  hyphens, but only inside path or host segments — it doesn't always
+  work in host position depending on Supabase version.
+
+**Recommendation:** for every long-running preview branch, add the
+exact deployment URL to the allowlist alongside the wildcard.
+Wildcards alone are not a reliable safety net.
+
+### 8.4 RedirectTo must match the *base* URL only
+
+When calling `supabase.auth.signInWithOAuth({ options: { redirectTo } })`
+or `supabase.auth.linkIdentity({ options: { redirectTo } })`, do not
+append `?query=string` to the `redirectTo` value — Supabase compares
+the full URL (including query) against the allowlist, and the query
+turns a matching entry into a mismatch. The user then silently lands
+on the project's Site URL (the marketing home page in our case)
+instead of `/auth/callback`.
+
+**Pattern we use** for the Settings → Sign-in methods link flow:
+keep `redirectTo: \`${origin}/auth/callback\``, and stash the desired
+return path in a short-lived cookie (`sl_oauth_return`, 5 min,
+SameSite=Lax). The callback route reads + clears the cookie.
+See `apps/web/lib/queries/use-identities.ts` and
+`apps/web/app/auth/callback/route.ts`.
