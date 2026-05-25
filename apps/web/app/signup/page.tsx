@@ -88,6 +88,27 @@ function SignupPageInner() {
   const [loading, setLoading] = useState(false)
   const [sent, setSent] = useState(false)
 
+  async function handleOAuth(provider: 'google' | 'github') {
+    setError('')
+    setLoading(true)
+    const supabase = createClient()
+    // The callback route records Terms + Privacy consent automatically
+    // on first sign-in for OAuth users — the implicit-consent notice
+    // shown next to the SSO buttons covers the explicit acknowledgement.
+    const callback = `${window.location.origin}/auth/callback`
+    const next = inviteToken
+      ? `${callback}?next=${encodeURIComponent(`/invite?token=${inviteToken}`)}`
+      : callback
+    const { error: authError } = await supabase.auth.signInWithOAuth({
+      provider,
+      options: { redirectTo: next },
+    })
+    if (authError) {
+      setError(authError.message)
+      setLoading(false)
+    }
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError('')
@@ -214,7 +235,9 @@ function SignupPageInner() {
               <div className="flex flex-col gap-2 mb-2">
                 <button
                   type="button"
-                  className="flex items-center gap-2.5 px-[14px] py-[10px] border border-border-strong rounded-[7px] bg-bg text-[13px] text-text hover:opacity-80 transition-opacity"
+                  onClick={() => void handleOAuth('google')}
+                  disabled={loading}
+                  className="flex items-center gap-2.5 px-[14px] py-[10px] border border-border-strong rounded-[7px] bg-bg text-[13px] text-text hover:opacity-80 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   <span className="w-[18px] h-[18px] rounded-[4px] bg-bg-muted flex items-center justify-center font-mono text-[10px] text-text-muted font-bold">G</span>
                   <span className="flex-1 text-left">Continue with Google</span>
@@ -222,12 +245,21 @@ function SignupPageInner() {
                 </button>
                 <button
                   type="button"
-                  className="flex items-center gap-2.5 px-[14px] py-[10px] border border-border-strong rounded-[7px] bg-bg text-[13px] text-text hover:opacity-80 transition-opacity"
+                  onClick={() => void handleOAuth('github')}
+                  disabled={loading}
+                  className="flex items-center gap-2.5 px-[14px] py-[10px] border border-border-strong rounded-[7px] bg-bg text-[13px] text-text hover:opacity-80 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   <span className="w-[18px] h-[18px] rounded-[4px] bg-bg-muted flex items-center justify-center font-mono text-[10px] text-text-muted font-bold">⌥</span>
                   <span className="flex-1 text-left">Continue with GitHub</span>
                 </button>
               </div>
+
+              <p className="text-[11px] text-text-faint leading-snug mb-2">
+                By continuing with Google or GitHub, you agree to our{' '}
+                <Link href="/terms" target="_blank" className="text-text-muted hover:text-text transition-colors underline underline-offset-2">Terms</Link>
+                {' '}and{' '}
+                <Link href="/privacy" target="_blank" className="text-text-muted hover:text-text transition-colors underline underline-offset-2">Privacy Policy</Link>.
+              </p>
 
               {/* Divider */}
               <div className="flex items-center gap-2.5 my-4">
