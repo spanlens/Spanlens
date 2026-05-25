@@ -4,6 +4,7 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { GithubIcon, GoogleIcon } from '@/components/ui/provider-icons'
 
 /**
  * Maps the `?error=<code>` query (set by /auth/callback when OAuth
@@ -147,21 +148,19 @@ export default function LoginPage() {
               type="button"
               onClick={() => void handleOAuth('google')}
               disabled={loading}
-              className="flex items-center gap-2.5 px-[14px] py-[10px] border border-border-strong rounded-[7px] bg-bg text-[13px] text-text hover:opacity-80 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
+              className="flex items-center justify-center gap-2.5 px-[14px] py-[10px] border border-border-strong rounded-[7px] bg-white text-[13px] font-medium text-[#111] hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              <span className="w-[18px] h-[18px] rounded-[4px] bg-bg-muted flex items-center justify-center font-mono text-[10px] text-text-muted font-bold">G</span>
-              <span className="flex-1 text-left">Continue with Google</span>
-              <span className="font-mono text-[10px] text-text-faint tracking-[0.03em]">sso · oauth</span>
+              <GoogleIcon className="w-[18px] h-[18px] shrink-0" />
+              <span>Continue with Google</span>
             </button>
             <button
               type="button"
               onClick={() => void handleOAuth('github')}
               disabled={loading}
-              className="flex items-center gap-2.5 px-[14px] py-[10px] border border-border-strong rounded-[7px] bg-bg text-[13px] text-text hover:opacity-80 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
+              className="flex items-center justify-center gap-2.5 px-[14px] py-[10px] rounded-[7px] bg-black text-[13px] font-medium text-white hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              <span className="w-[18px] h-[18px] rounded-[4px] bg-bg-muted flex items-center justify-center font-mono text-[10px] text-text-muted font-bold">⌥</span>
-              <span className="flex-1 text-left">Continue with GitHub</span>
-              <span className="font-mono text-[10px] text-text-faint tracking-[0.03em]">sso · oauth</span>
+              <GithubIcon className="w-[18px] h-[18px] shrink-0" />
+              <span>Continue with GitHub</span>
             </button>
           </div>
 
@@ -222,11 +221,6 @@ export default function LoginPage() {
               {!loading && <span className="font-mono text-[11px] opacity-70">↵</span>}
             </button>
           </form>
-
-          <div className="mt-[18px] flex justify-between font-mono text-[10.5px] text-text-faint tracking-[0.02em]">
-            <span>🔒 TLS 1.3 · SOC 2 Type II</span>
-            <span>spanlens.io/security</span>
-          </div>
         </div>
       </div>
     </div>

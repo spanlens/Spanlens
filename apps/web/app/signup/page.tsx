@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { TERMS_VERSION, PRIVACY_VERSION } from '@/lib/legal-versions'
+import { GithubIcon, GoogleIcon } from '@/components/ui/provider-icons'
 
 /**
  * Record the user's acceptance of Terms + Privacy on the new account.
@@ -237,20 +238,19 @@ function SignupPageInner() {
                   type="button"
                   onClick={() => void handleOAuth('google')}
                   disabled={loading}
-                  className="flex items-center gap-2.5 px-[14px] py-[10px] border border-border-strong rounded-[7px] bg-bg text-[13px] text-text hover:opacity-80 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
+                  className="flex items-center justify-center gap-2.5 px-[14px] py-[10px] border border-border-strong rounded-[7px] bg-white text-[13px] font-medium text-[#111] hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
                 >
-                  <span className="w-[18px] h-[18px] rounded-[4px] bg-bg-muted flex items-center justify-center font-mono text-[10px] text-text-muted font-bold">G</span>
-                  <span className="flex-1 text-left">Continue with Google</span>
-                  <span className="font-mono text-[10px] text-text-faint tracking-[0.03em]">recommended</span>
+                  <GoogleIcon className="w-[18px] h-[18px] shrink-0" />
+                  <span>Continue with Google</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => void handleOAuth('github')}
                   disabled={loading}
-                  className="flex items-center gap-2.5 px-[14px] py-[10px] border border-border-strong rounded-[7px] bg-bg text-[13px] text-text hover:opacity-80 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
+                  className="flex items-center justify-center gap-2.5 px-[14px] py-[10px] rounded-[7px] bg-black text-[13px] font-medium text-white hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
                 >
-                  <span className="w-[18px] h-[18px] rounded-[4px] bg-bg-muted flex items-center justify-center font-mono text-[10px] text-text-muted font-bold">⌥</span>
-                  <span className="flex-1 text-left">Continue with GitHub</span>
+                  <GithubIcon className="w-[18px] h-[18px] shrink-0" />
+                  <span>Continue with GitHub</span>
                 </button>
               </div>
 
@@ -341,10 +341,6 @@ function SignupPageInner() {
                   {loading ? 'Creating workspace…' : 'Create workspace →'}
                 </button>
               </form>
-
-              <div className="mt-[18px] font-mono text-[10.5px] text-text-faint leading-[1.6]">
-                Included · 50k requests / mo · 14d retention · unlimited projects
-              </div>
             </>
           )}
         </div>
