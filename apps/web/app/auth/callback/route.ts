@@ -62,7 +62,7 @@ export async function GET(request: Request): Promise<NextResponse> {
 
   if (error) {
     return NextResponse.redirect(
-      `${redirectBase}/login?error=${encodeURIComponent(mapOAuthError(error))}`,
+      buildErrorRedirect(redirectBase, next, mapOAuthError(error)),
     )
   }
 
@@ -91,14 +91,42 @@ export async function GET(request: Request): Promise<NextResponse> {
  */
 function mapOAuthError(error: { message?: string | null }): string {
   const msg = error.message?.toLowerCase() ?? ''
+  // Order matters: more specific patterns first. "linked to another user"
+  // and plain "already exists" both contain "exists"/"linked" so the
+  // cross-user case needs to be checked before the generic one.
+  if (
+    msg.includes('another user') ||
+    (msg.includes('linked') && msg.includes('another'))
+  ) {
+    return 'identity_linked_to_other_user'
+  }
   if (msg.includes('email') && (msg.includes('already') || msg.includes('exists'))) {
     return 'email_conflict'
   }
   if (msg.includes('identity') && msg.includes('exists')) {
     return 'identity_already_linked'
   }
+  if (msg.includes('manual linking') && msg.includes('disabled')) {
+    return 'manual_linking_disabled'
+  }
   if (msg.includes('provider') && msg.includes('disabled')) {
     return 'provider_disabled'
   }
   return 'oauth_callback_failed'
+}
+
+/**
+ * Pick the right page to land on after a failed callback. If the
+ * original `next` was a known authenticated route (settings), keep
+ * the user there so the error appears in context. Otherwise default
+ * to /login because the user almost certainly isn't authenticated.
+ *
+ * Stripping any existing `?` from `next` because the supabase
+ * exchangeCodeForSession call already consumed the URL and we want
+ * a clean target to append `?error=...` to.
+ */
+function buildErrorRedirect(base: string, next: string, code: string): string {
+  const safeNext = next.split('?')[0] ?? '/login'
+  const target = safeNext.startsWith('/settings') ? safeNext : '/login'
+  return `${base}${target}?error=${encodeURIComponent(code)}`
 }

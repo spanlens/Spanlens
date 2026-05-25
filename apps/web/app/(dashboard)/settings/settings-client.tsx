@@ -1073,12 +1073,50 @@ const SIGNIN_PROVIDERS: ProviderConfig[] = [
   { id: 'github', label: 'GitHub', glyph: '⌥' },
 ]
 
+/**
+ * Translates `?error=<code>` query left by /auth/callback after a failed
+ * linkIdentity flow into something the user can act on. Codes mirror
+ * `mapOAuthError` in apps/web/app/auth/callback/route.ts.
+ */
+const LINK_ERROR_MESSAGES: Record<string, string> = {
+  identity_already_linked:
+    'This provider is already connected to your account.',
+  identity_linked_to_other_user:
+    'This Google or GitHub account is already linked to a different Spanlens user. Use a different provider account, or sign in with that one instead.',
+  manual_linking_disabled:
+    'Account linking is currently disabled. Please contact support.',
+  provider_disabled:
+    'This sign-in method is currently unavailable.',
+  oauth_callback_failed: 'Connecting the provider failed. Please try again.',
+}
+
 function SignInMethodsTab() {
   const { data: user, isLoading: userLoading } = useCurrentUser()
   const { data: identities, isLoading: identitiesLoading, error: identitiesError } = useIdentities()
   const linkMutation = useLinkIdentity()
   const unlinkMutation = useUnlinkIdentity()
   const [actionError, setActionError] = useState<string | null>(null)
+
+  // Surface failures that happened in /auth/callback (linkIdentity flow
+  // round-trips through the provider, so a thrown mutation here can't
+  // catch them — the callback redirects back with `?error=<code>`).
+  // Same `window.location` pattern as the login page; runs once per
+  // mount so cascading-render concerns don't apply.
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const params = new URLSearchParams(window.location.search)
+    const code = params.get('error')
+    if (!code) return
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setActionError(LINK_ERROR_MESSAGES[code] ?? 'Connecting the provider failed. Please try again.')
+    params.delete('error')
+    const next = params.toString()
+    window.history.replaceState(
+      null,
+      '',
+      `${window.location.pathname}${next ? `?${next}` : ''}`,
+    )
+  }, [])
 
   const identityList: UserIdentity[] = identities ?? []
   const isLastIdentity = identityList.length <= 1

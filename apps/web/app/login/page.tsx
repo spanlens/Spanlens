@@ -15,6 +15,10 @@ const OAUTH_ERROR_MESSAGES: Record<string, string> = {
     'An account with this email already exists. Sign in with your password, then connect Google or GitHub from Settings → Sign-in methods.',
   identity_already_linked:
     'This provider is already connected to your account.',
+  identity_linked_to_other_user:
+    'This Google/GitHub account is already linked to a different Spanlens user. Sign in with that account, or use a different provider account.',
+  manual_linking_disabled:
+    'Account linking is currently disabled. Please contact support.',
   provider_disabled:
     'This sign-in method is currently unavailable. Please use another provider or email.',
   oauth_callback_failed: 'Sign-in failed. Please try again.',
