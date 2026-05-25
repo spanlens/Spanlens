@@ -47,16 +47,25 @@ interface LinkIdentityVariables {
 }
 
 /**
+ * Cookie used to remember the page that started a linkIdentity flow.
+ * `/auth/callback` reads + clears it on return. We use a cookie rather
+ * than `?next=` on the redirectTo URL because Supabase's redirect URL
+ * allowlist matches against the base URL — wildcards (and even some
+ * exact entries) reject a URL with `?query` appended, which causes
+ * Supabase to fall back to the project Site URL and dump the user on
+ * the marketing home page instead of /settings.
+ */
+const OAUTH_RETURN_COOKIE = 'sl_oauth_return'
+
+/**
  * Start the OAuth flow to attach an additional provider to the
  * currently signed-in user. The browser is redirected to the provider;
  * after consent it hits `/auth/v1/callback` → our `/auth/callback`,
  * which calls `exchangeCodeForSession` and adds the new identity to
  * the existing user record (no new user row created).
  *
- * The mutation resolves once Supabase has handed back the redirect URL;
- * the actual identity will appear after the round-trip completes and
- * the page re-mounts. We still invalidate `identitiesQueryKey` so any
- * cached list is refetched on return.
+ * We stash the desired return path in a short-lived cookie so the
+ * server callback can route the user back to where they started.
  */
 export function useLinkIdentity() {
   const qc = useQueryClient()
@@ -65,11 +74,18 @@ export function useLinkIdentity() {
       provider,
       redirectPath = '/settings?tab=auth-methods',
     }: LinkIdentityVariables) => {
+      // 5-minute lifetime is plenty for a provider round-trip and short
+      // enough to not pollute the cookie jar if the user abandons the
+      // flow. SameSite=Lax so the cookie survives the cross-site OAuth
+      // bounce (Strict would drop it on return).
+      if (typeof document !== 'undefined') {
+        document.cookie = `${OAUTH_RETURN_COOKIE}=${encodeURIComponent(redirectPath)}; path=/; max-age=300; samesite=lax`
+      }
       const supabase = createClient()
       const { data, error } = await supabase.auth.linkIdentity({
         provider,
         options: {
-          redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(redirectPath)}`,
+          redirectTo: `${window.location.origin}/auth/callback`,
         },
       })
       if (error) throw error

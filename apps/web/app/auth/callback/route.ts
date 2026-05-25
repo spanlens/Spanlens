@@ -24,22 +24,38 @@ import { recordOAuthConsentIfMissing } from '@/lib/oauth-consent'
  * out-of-band via fire-and-forget — the redirect must not wait on a
  * server round-trip. Helper is idempotent so re-logins do nothing.
  */
+const OAUTH_RETURN_COOKIE = 'sl_oauth_return'
+
 export async function GET(request: Request): Promise<NextResponse> {
   const { searchParams, origin } = new URL(request.url)
   const code = searchParams.get('code')
-  const next = searchParams.get('next') ?? '/dashboard'
 
   const forwardedHost = request.headers.get('x-forwarded-host')
   const isLocal = process.env.NODE_ENV === 'development'
   const redirectBase =
     isLocal || !forwardedHost ? origin : `https://${forwardedHost}`
 
+  // Priority order for the post-callback destination:
+  //   1. `?next=` query (legacy / magic-link)
+  //   2. `sl_oauth_return` cookie (linkIdentity flow — see use-identities.ts)
+  //   3. `/dashboard` default
+  // The cookie is cleared on the response regardless of success / failure
+  // so a stale value never persists into the next sign-in.
+  const cookieStore = await cookies()
+  const returnCookie = cookieStore.get(OAUTH_RETURN_COOKIE)?.value
+  const next =
+    searchParams.get('next') ??
+    (returnCookie ? decodeURIComponent(returnCookie) : null) ??
+    '/dashboard'
+
   if (!code) {
-    return NextResponse.redirect(`${redirectBase}${next}`)
+    const r = NextResponse.redirect(`${redirectBase}${next}`)
+    if (returnCookie) r.cookies.delete(OAUTH_RETURN_COOKIE)
+    return r
   }
 
   const response = NextResponse.redirect(`${redirectBase}${next}`)
-  const cookieStore = await cookies()
+  if (returnCookie) response.cookies.delete(OAUTH_RETURN_COOKIE)
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -61,9 +77,11 @@ export async function GET(request: Request): Promise<NextResponse> {
   const { data, error } = await supabase.auth.exchangeCodeForSession(code)
 
   if (error) {
-    return NextResponse.redirect(
+    const errResponse = NextResponse.redirect(
       buildErrorRedirect(redirectBase, next, mapOAuthError(error)),
     )
+    if (returnCookie) errResponse.cookies.delete(OAUTH_RETURN_COOKIE)
+    return errResponse
   }
 
   // Fire-and-forget. The redirect response is already prepared; we
