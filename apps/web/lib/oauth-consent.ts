@@ -17,6 +17,21 @@ import { TERMS_VERSION, PRIVACY_VERSION } from './legal-versions'
  *
  * The endpoint captures IP + UA from the request server-side, so we
  * deliberately do not forward them here.
+ *
+ * ## SSRF hardening
+ *
+ * Earlier revisions took an `origin` argument derived from the request
+ * URL and built `${origin}/api/v1/me/consent`. CodeQL flagged this as
+ * `js/request-forgery` (critical): the callback route derives origin
+ * from `x-forwarded-host`, which is attacker-controllable, so a
+ * malicious header would have caused this helper to POST the user's
+ * access token to an external server. The Authorization header carries
+ * a live Supabase JWT — leaking that to an attacker is account takeover.
+ *
+ * Fix: pin the destination to the server URL configured at build /
+ * deploy time (`API_URL` / `NEXT_PUBLIC_API_URL`), exactly the same
+ * source `next.config.mjs` uses for its `/api/*` rewrite. The request
+ * never depends on user input again.
  */
 
 interface ConsentRow {
@@ -29,16 +44,26 @@ interface ConsentListResponse {
   data?: ConsentRow[]
 }
 
+function getServerBase(): string {
+  // Mirror the resolution order in apps/web/next.config.mjs so the
+  // helper and the rewrite always target the same upstream server.
+  return (
+    process.env.API_URL ??
+    process.env.NEXT_PUBLIC_API_URL ??
+    'http://localhost:3001'
+  )
+}
+
 export async function recordOAuthConsentIfMissing(
   accessToken: string,
-  origin: string,
 ): Promise<void> {
+  const base = getServerBase()
   const headers = {
     'Content-Type': 'application/json',
     Authorization: `Bearer ${accessToken}`,
   }
 
-  const existingRes = await fetch(`${origin}/api/v1/me/consent`, {
+  const existingRes = await fetch(`${base}/api/v1/me/consent`, {
     headers,
     cache: 'no-store',
   })
@@ -59,7 +84,7 @@ export async function recordOAuthConsentIfMissing(
   )
   if (missing.length === 0) return
 
-  await fetch(`${origin}/api/v1/me/consent`, {
+  await fetch(`${base}/api/v1/me/consent`, {
     method: 'POST',
     headers,
     body: JSON.stringify({ documents: missing }),

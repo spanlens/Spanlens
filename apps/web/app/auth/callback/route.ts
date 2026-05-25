@@ -90,7 +90,7 @@ export async function GET(request: Request): Promise<NextResponse> {
   // stays alive long enough for this promise to settle. If it doesn't,
   // the helper is idempotent — the next sign-in tries again.
   if (data.session?.access_token) {
-    recordOAuthConsentIfMissing(data.session.access_token, redirectBase).catch(
+    recordOAuthConsentIfMissing(data.session.access_token).catch(
       (err: unknown) => {
         console.error('[auth/callback] consent recording failed:', err)
       },
