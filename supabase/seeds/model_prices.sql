@@ -109,6 +109,39 @@ ON CONFLICT (provider, model) DO UPDATE
       cache_write_price_per_1m = EXCLUDED.cache_write_price_per_1m,
       updated_at               = now();
 
+-- Mark models that cannot be used via /v1/chat/completions.
+UPDATE model_prices
+   SET chat_capable = FALSE
+ WHERE provider = 'openai'
+   AND model IN (
+     -- legacy completions models
+     'davinci-002',
+     'babbage-002',
+     'gpt-3.5-turbo-instruct',
+     -- wrong / non-existent names
+     'gpt-3.5-0301',
+     -- deprecated (OpenAI returns model_not_found)
+     'gpt-3.5-turbo-0613',
+     'gpt-3.5-turbo-16k-0613',
+     'gpt-4-0314',
+     'gpt-4-1106-vision-preview',
+     -- not found / no access
+     'gpt-4-0125-preview',
+     'gpt-4-1106-preview',
+     'gpt-4-32k',
+     'o1-mini',
+     -- responses API only (not /v1/chat/completions)
+     'gpt-5-pro',
+     'gpt-5.5-pro',
+     'o1-pro',
+     -- not a chat model
+     'gpt-5.2-pro',
+     'gpt-5.3-codex',
+     'gpt-5.4-pro',
+     -- requires verified org
+     'o3-pro'
+   );
+
 -- ── Long context (tiered) pricing ───────────────────────────────────────────
 -- See lib/cost.ts: when promptTokens > long_context_threshold_tokens the
 -- long_* columns override the short-tier prices on the same row.
