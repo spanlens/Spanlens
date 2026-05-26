@@ -1,4 +1,8 @@
-Connecting to db 5432
+WARN: environment variable is unset: SUPABASE_AUTH_EXTERNAL_GITHUB_CLIENT_ID
+WARN: environment variable is unset: SUPABASE_AUTH_EXTERNAL_GITHUB_SECRET
+WARN: environment variable is unset: SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID
+WARN: environment variable is unset: SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET
+Initialising login role...
 export type Json =
   | string
   | number
@@ -8,6 +12,11 @@ export type Json =
   | Json[]
 
 export type Database = {
+  // Allows to automatically instantiate createClient with right options
+  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
+  __InternalSupabase: {
+    PostgrestVersion: "14.5"
+  }
   graphql_public: {
     Tables: {
       [_ in never]: never
@@ -994,24 +1003,22 @@ export type Database = {
           prompt_price_per_1m?: number
           provider?: string
         }
-        Relationships: [
-          {
-            foreignKeyName: "model_price_history_model_price_id_fkey"
-            columns: ["model_price_id"]
-            isOneToOne: false
-            referencedRelation: "model_prices"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
       model_prices: {
         Row: {
           cache_read_price_per_1m: number | null
           cache_write_price_per_1m: number | null
+          chat_capable: boolean
           completion_price_per_1m: number
           created_at: string
           effective_from: string
           id: string
+          long_cache_read_price_per_1m: number | null
+          long_cache_write_price_per_1m: number | null
+          long_completion_price_per_1m: number | null
+          long_context_threshold_tokens: number | null
+          long_prompt_price_per_1m: number | null
           model: string
           prompt_price_per_1m: number
           provider: string
@@ -1020,10 +1027,16 @@ export type Database = {
         Insert: {
           cache_read_price_per_1m?: number | null
           cache_write_price_per_1m?: number | null
+          chat_capable?: boolean
           completion_price_per_1m: number
           created_at?: string
           effective_from?: string
           id?: string
+          long_cache_read_price_per_1m?: number | null
+          long_cache_write_price_per_1m?: number | null
+          long_completion_price_per_1m?: number | null
+          long_context_threshold_tokens?: number | null
+          long_prompt_price_per_1m?: number | null
           model: string
           prompt_price_per_1m: number
           provider: string
@@ -1032,10 +1045,16 @@ export type Database = {
         Update: {
           cache_read_price_per_1m?: number | null
           cache_write_price_per_1m?: number | null
+          chat_capable?: boolean
           completion_price_per_1m?: number
           created_at?: string
           effective_from?: string
           id?: string
+          long_cache_read_price_per_1m?: number | null
+          long_cache_write_price_per_1m?: number | null
+          long_completion_price_per_1m?: number | null
+          long_context_threshold_tokens?: number | null
+          long_prompt_price_per_1m?: number | null
           model?: string
           prompt_price_per_1m?: number
           provider?: string
@@ -2439,6 +2458,5 @@ export const Constants = {
     },
   },
 } as const
-
-A new version of Supabase CLI is available: v2.100.1 (currently installed v2.90.0)
+A new version of Supabase CLI is available: v2.101.0 (currently installed v2.90.0)
 We recommend updating regularly for new features and bug fixes: https://supabase.com/docs/guides/cli/getting-started#updating-the-supabase-cli
