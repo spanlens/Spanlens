@@ -4,6 +4,7 @@ import { Play, Loader2, AlertTriangle, CheckCircle2, Key } from 'lucide-react'
 import { usePlaygroundRun, type PromptVersion, type PlaygroundResult } from '@/lib/queries/use-prompts'
 import { useProviderKeys } from '@/lib/queries/use-provider-keys'
 import { useModels, type ModelsByProvider } from '@/lib/queries/use-models'
+import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '@/components/ui/select'
 
 const VAR_RE = /\{\{\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g
 
@@ -123,17 +124,16 @@ export function PlaygroundTab({ versions }: Props) {
         {/* Version */}
         <div className="space-y-1.5">
           <label className="font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint">Version</label>
-          <select
-            value={selectedVersionId}
-            onChange={(e) => { setSelectedVersionId(e.target.value); setResult(null) }}
-            className="w-full h-8 px-2 rounded-[4px] border border-border bg-bg font-mono text-[12px] text-text focus:outline-none focus:border-border-strong"
-          >
-            {versions.map((v) => (
-              <option key={v.id} value={v.id}>
-                v{v.version}{v.id === latestVersion?.id ? ' (latest)' : ''}
-              </option>
-            ))}
-          </select>
+          <Select {...(selectedVersionId ? { value: selectedVersionId } : {})} onValueChange={(v) => { setSelectedVersionId(v); setResult(null) }}>
+            <SelectTrigger className="h-8 rounded-[4px]"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {versions.map((v) => (
+                <SelectItem key={v.id} value={v.id}>
+                  v{v.version}{v.id === latestVersion?.id ? ' (latest)' : ''}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
 
         {/* Provider Key */}
@@ -150,18 +150,16 @@ export function PlaygroundTab({ versions }: Props) {
               <a href="/projects" className="underline">Projects &amp; Keys</a>.
             </p>
           ) : (
-            <select
-              value={selectedKeyId}
-              onChange={(e) => handleKeyChange(e.target.value)}
-              className="w-full h-8 px-2 rounded-[4px] border border-border bg-bg font-mono text-[12px] text-text focus:outline-none focus:border-border-strong"
-            >
-              <option value="">Select a key…</option>
-              {activeKeys.map((k) => (
-                <option key={k.id} value={k.id}>
-                  {k.name} · {PROVIDER_LABELS[k.provider ?? ''] ?? k.provider}
-                </option>
-              ))}
-            </select>
+            <Select {...(selectedKeyId ? { value: selectedKeyId } : {})} onValueChange={handleKeyChange}>
+              <SelectTrigger className="h-8 rounded-[4px]"><SelectValue placeholder="Select a key…" /></SelectTrigger>
+              <SelectContent>
+                {activeKeys.map((k) => (
+                  <SelectItem key={k.id} value={k.id}>
+                    {k.name} · {PROVIDER_LABELS[k.provider ?? ''] ?? k.provider}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           )}
         </div>
 
@@ -174,15 +172,14 @@ export function PlaygroundTab({ versions }: Props) {
                 {PROVIDER_LABELS[selectedKey.provider ?? ''] ?? selectedKey.provider}
               </span>
             </label>
-            <select
-              value={model}
-              onChange={(e) => setModel(e.target.value)}
-              className="w-full h-8 px-2 rounded-[4px] border border-border bg-bg font-mono text-[12px] text-text focus:outline-none focus:border-border-strong"
-            >
-              {availableModels.map((m) => (
-                <option key={m} value={m}>{m}</option>
-              ))}
-            </select>
+            <Select {...(model ? { value: model } : {})} onValueChange={setModel}>
+              <SelectTrigger className="h-8 rounded-[4px]"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {availableModels.map((m) => (
+                  <SelectItem key={m} value={m}>{m}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         )}
 

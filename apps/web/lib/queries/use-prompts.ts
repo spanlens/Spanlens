@@ -115,6 +115,7 @@ export function usePrompts(projectId?: string, sinceHours = 24) {
       const res = await apiGet<ApiEnvelope<PromptVersion[]>>(`/api/v1/prompts${suffix}`)
       return res.data ?? []
     },
+    placeholderData: (prev) => prev,
   })
 }
 

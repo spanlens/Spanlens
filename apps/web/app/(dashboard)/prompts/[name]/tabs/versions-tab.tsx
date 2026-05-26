@@ -35,6 +35,8 @@ export function VersionsTab({ name, versions, isLoading }: Props) {
     setDeleting(String(version))
     try {
       await deleteMutation.mutateAsync({ name, version })
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to delete')
     } finally {
       setDeleting(null)
     }

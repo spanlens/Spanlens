@@ -27,6 +27,7 @@ import {
 import { parseUploadedFile, generateUploadName } from '@/lib/dataset-upload'
 import { useCorrelation, pearsonR } from '@/lib/queries/use-human-evals'
 import { useModels } from '@/lib/queries/use-models'
+import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '@/components/ui/select'
 
 // Fallback used only when /api/v1/models is still loading. Real list comes
 // from useModels(). Keep this minimal — just enough to render <select>
@@ -125,17 +126,14 @@ function NewEvaluatorDialog({ open, onClose }: { open: boolean; onClose: () => v
             <label className="block font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint mb-1">
               Prompt
             </label>
-            <select
-              value={promptName}
-              onChange={(e) => setPromptName(e.target.value)}
-              required
-              className="w-full h-9 px-2 rounded-[5px] border border-border bg-bg font-mono text-[12px] text-text focus:outline-none focus:border-border-strong"
-            >
-              <option value="">Select prompt…</option>
-              {(prompts.data ?? []).map((p: PromptVersion) => (
-                <option key={p.id} value={p.name}>{p.name}</option>
-              ))}
-            </select>
+            <Select {...(promptName ? { value: promptName } : {})} onValueChange={setPromptName}>
+              <SelectTrigger><SelectValue placeholder="Select prompt…" /></SelectTrigger>
+              <SelectContent>
+                {(prompts.data ?? []).map((p: PromptVersion) => (
+                  <SelectItem key={p.id} value={p.name}>{p.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           <div>
@@ -174,33 +172,31 @@ function NewEvaluatorDialog({ open, onClose }: { open: boolean; onClose: () => v
               <label className="block font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint mb-1">
                 Judge provider
               </label>
-              <select
-                value={judgeProvider}
-                onChange={(e) => {
-                  const p = e.target.value as 'openai' | 'anthropic' | 'gemini'
+              <Select value={judgeProvider || undefined} onValueChange={(v) => {
+                  const p = v as 'openai' | 'anthropic' | 'gemini'
                   setJudgeProvider(p)
                   setJudgeModel(judgeModels[p][0] ?? '')
-                }}
-                className="w-full h-9 px-2 rounded-[5px] border border-border bg-bg font-mono text-[12px] text-text focus:outline-none focus:border-border-strong"
-              >
-                <option value="openai">OpenAI</option>
-                <option value="anthropic">Anthropic</option>
-                <option value="gemini">Gemini</option>
-              </select>
+                }}>
+                <SelectTrigger><SelectValue placeholder="Select provider…" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="openai">OpenAI</SelectItem>
+                  <SelectItem value="anthropic">Anthropic</SelectItem>
+                  <SelectItem value="gemini">Gemini</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             <div>
               <label className="block font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint mb-1">
                 Judge model
               </label>
-              <select
-                value={judgeModel}
-                onChange={(e) => setJudgeModel(e.target.value)}
-                className="w-full h-9 px-2 rounded-[5px] border border-border bg-bg font-mono text-[12px] text-text focus:outline-none focus:border-border-strong"
-              >
-                {judgeModels[judgeProvider].map((m) => (
-                  <option key={m} value={m}>{m}</option>
-                ))}
-              </select>
+              <Select {...(judgeModel ? { value: judgeModel } : {})} onValueChange={setJudgeModel}>
+                <SelectTrigger><SelectValue placeholder="Select model…" /></SelectTrigger>
+                <SelectContent>
+                  {judgeModels[judgeProvider].map((m) => (
+                    <SelectItem key={m} value={m}>{m}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
 
@@ -353,17 +349,14 @@ function RunEvaluatorDialog({
             <label className="block font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint mb-1">
               Version
             </label>
-            <select
-              value={versionId}
-              onChange={(e) => setVersionId(e.target.value)}
-              required
-              className="w-full h-9 px-2 rounded-[5px] border border-border bg-bg font-mono text-[12px] text-text"
-            >
-              <option value="">Select version…</option>
-              {(versions.data ?? []).map((v) => (
-                <option key={v.id} value={v.id}>v{v.version}</option>
-              ))}
-            </select>
+            <Select {...(versionId ? { value: versionId } : {})} onValueChange={setVersionId}>
+              <SelectTrigger><SelectValue placeholder="Select version…" /></SelectTrigger>
+              <SelectContent>
+                {(versions.data ?? []).map((v) => (
+                  <SelectItem key={v.id} value={v.id}>v{v.version}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           {/* Source toggle */}
@@ -395,19 +388,18 @@ function RunEvaluatorDialog({
                 Dataset
               </label>
               <div className="flex gap-1.5">
-                <select
-                  value={datasetId}
-                  onChange={(e) => setDatasetId(e.target.value)}
-                  required
-                  className="flex-1 h-9 px-2 rounded-[5px] border border-border bg-bg font-mono text-[12px] text-text"
-                >
-                  <option value="">Select dataset…</option>
-                  {(datasets.data ?? []).map((d) => (
-                    <option key={d.id} value={d.id}>
-                      {d.name} ({d.item_count ?? 0} items)
-                    </option>
-                  ))}
-                </select>
+                <div className="flex-1">
+                  <Select {...(datasetId ? { value: datasetId } : {})} onValueChange={setDatasetId}>
+                    <SelectTrigger><SelectValue placeholder="Select dataset…" /></SelectTrigger>
+                    <SelectContent>
+                      {(datasets.data ?? []).map((d) => (
+                        <SelectItem key={d.id} value={d.id}>
+                          {d.name} ({d.item_count ?? 0} items)
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
@@ -442,35 +434,32 @@ function RunEvaluatorDialog({
                   <label className="block font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint mb-1">
                     Run provider
                   </label>
-                  <select
-                    value={runProvider}
-                    onChange={(e) => {
-                      const p = e.target.value as 'openai' | 'anthropic' | 'gemini'
+                  <Select value={runProvider || undefined} onValueChange={(v) => {
+                      const p = v as 'openai' | 'anthropic' | 'gemini'
                       setRunProvider(p)
                       const opts = (modelsCatalog.data?.[p] ?? []).map((m) => m.model)
                       setRunModel(opts[0] ?? '')
-                    }}
-                    className="w-full h-9 px-2 rounded-[5px] border border-border bg-bg font-mono text-[12px] text-text"
-                  >
-                    <option value="openai">OpenAI</option>
-                    <option value="anthropic">Anthropic</option>
-                    <option value="gemini">Gemini</option>
-                  </select>
+                    }}>
+                    <SelectTrigger><SelectValue placeholder="Select provider…" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="openai">OpenAI</SelectItem>
+                      <SelectItem value="anthropic">Anthropic</SelectItem>
+                      <SelectItem value="gemini">Gemini</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div>
                   <label className="block font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint mb-1">
                     Run model
                   </label>
-                  <select
-                    value={runModel}
-                    onChange={(e) => setRunModel(e.target.value)}
-                    className="w-full h-9 px-2 rounded-[5px] border border-border bg-bg font-mono text-[12px] text-text"
-                  >
-                    {runModelOptions.length === 0 && <option value="">Loading…</option>}
-                    {runModelOptions.map((m) => (
-                      <option key={m} value={m}>{m}</option>
-                    ))}
-                  </select>
+                  <Select {...(runModel ? { value: runModel } : {})} onValueChange={setRunModel}>
+                    <SelectTrigger><SelectValue placeholder={runModelOptions.length === 0 ? 'Loading…' : 'Select model…'} /></SelectTrigger>
+                    <SelectContent>
+                      {runModelOptions.map((m) => (
+                        <SelectItem key={m} value={m}>{m}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
               <p className="font-mono text-[10px] text-text-faint mt-1">
@@ -486,16 +475,15 @@ function RunEvaluatorDialog({
                 <label className="block font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint mb-1">
                   Last N days
                 </label>
-                <select
-                  value={days}
-                  onChange={(e) => setDays(Number(e.target.value))}
-                  className="w-full h-9 px-2 rounded-[5px] border border-border bg-bg font-mono text-[12px] text-text"
-                >
-                  <option value={1}>1 day</option>
-                  <option value={7}>7 days</option>
-                  <option value={30}>30 days</option>
-                  <option value={90}>90 days</option>
-                </select>
+                <Select value={String(days)} onValueChange={(v) => setDays(Number(v))}>
+                  <SelectTrigger><SelectValue placeholder="Select days…" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="1">1 day</SelectItem>
+                    <SelectItem value="7">7 days</SelectItem>
+                    <SelectItem value="30">30 days</SelectItem>
+                    <SelectItem value="90">90 days</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             )}
             <div className={source === 'dataset' ? 'col-span-2' : ''}>

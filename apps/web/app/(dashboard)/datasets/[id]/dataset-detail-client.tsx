@@ -1,16 +1,85 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import Link from 'next/link'
-import { Plus, Trash2, ExternalLink, AlertTriangle } from 'lucide-react'
+import { Plus, Trash2, ExternalLink, AlertTriangle, Upload } from 'lucide-react'
 import { Topbar } from '@/components/layout/topbar'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import {
   useDataset,
   useAddDatasetItem,
   useDeleteDatasetItem,
+  useBulkAddDatasetItems,
   type DatasetItem,
 } from '@/lib/queries/use-datasets'
+
+// ── File parser ───────────────────────────────────────────────────────────────
+
+interface RawItem {
+  input: unknown
+  expected_output?: string | null
+  expectedOutput?: string | null
+}
+
+function parseCsvLine(line: string): string[] {
+  const fields: string[] = []
+  let field = ''
+  let inQuotes = false
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i]
+    if (inQuotes) {
+      if (ch === '"' && line[i + 1] === '"') { field += '"'; i++ }
+      else if (ch === '"') { inQuotes = false }
+      else { field += ch }
+    } else {
+      if (ch === '"') { inQuotes = true }
+      else if (ch === ',') { fields.push(field); field = '' }
+      else { field += ch }
+    }
+  }
+  fields.push(field)
+  return fields
+}
+
+function parseDatasetFile(text: string): RawItem[] {
+  const trimmed = text.trim()
+  if (!trimmed) throw new Error('File is empty')
+
+  if (trimmed.startsWith('[')) {
+    const arr = JSON.parse(trimmed) as unknown
+    if (!Array.isArray(arr)) throw new Error('Expected a JSON array')
+    return arr as RawItem[]
+  }
+
+  if (trimmed.startsWith('{')) {
+    // JSONL — one JSON object per line
+    const lines = trimmed.split('\n').filter((l) => l.trim())
+    return lines.map((l, i) => {
+      try {
+        return JSON.parse(l) as RawItem
+      } catch {
+        throw new Error(`Line ${i + 1}: invalid JSON`)
+      }
+    })
+  }
+
+  // CSV — header row required with "input" column, optional "expected_output"
+  const lines = trimmed.split('\n').filter((l) => l.trim())
+  if (lines.length < 2) throw new Error('CSV must have a header row and at least one data row')
+  const headers = parseCsvLine(lines[0] ?? '').map((h) => h.trim().toLowerCase())
+  const inputIdx = headers.indexOf('input')
+  const outputIdx = headers.indexOf('expected_output')
+  if (inputIdx === -1) throw new Error('CSV must have an "input" column')
+  return lines.slice(1).map((line, i) => {
+    const fields = parseCsvLine(line)
+    const rawInput = fields[inputIdx]?.trim() ?? ''
+    if (!rawInput) throw new Error(`Row ${i + 2}: "input" is empty`)
+    let input: unknown
+    try { input = JSON.parse(rawInput) } catch { input = { messages: [{ role: 'user', content: rawInput }] } }
+    const rawOutput = outputIdx >= 0 ? (fields[outputIdx]?.trim() ?? '') : ''
+    return { input, expected_output: rawOutput || null }
+  })
+}
 
 // ── Add item dialog (manual entry) ───────────────────────────────────────────
 
@@ -248,7 +317,33 @@ function ItemRow({ item, datasetId }: { item: DatasetItem; datasetId: string }) 
 
 export function DatasetDetailClient({ datasetId }: { datasetId: string }) {
   const ds = useDataset(datasetId)
+  const bulkAdd = useBulkAddDatasetItems()
+  const importRef = useRef<HTMLInputElement>(null)
   const [addOpen, setAddOpen] = useState(false)
+  const [importMsg, setImportMsg] = useState('')
+
+  function handleImportFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (importRef.current) importRef.current.value = ''
+    setImportMsg('')
+    const reader = new FileReader()
+    reader.onload = (ev) => {
+      try {
+        const items = parseDatasetFile(ev.target?.result as string)
+        bulkAdd.mutateAsync({ datasetId, items }).then((res) => {
+          const added = (res as { added?: number })?.added ?? items.length
+          setImportMsg(`${added} item${added !== 1 ? 's' : ''} imported`)
+          setTimeout(() => setImportMsg(''), 4000)
+        }).catch((err: unknown) => {
+          setImportMsg(err instanceof Error ? err.message : 'Import failed')
+        })
+      } catch (err) {
+        setImportMsg(err instanceof Error ? err.message : 'Failed to parse file')
+      }
+    }
+    reader.readAsText(file)
+  }
 
   if (ds.isLoading) {
     return (
@@ -285,14 +380,37 @@ export function DatasetDetailClient({ datasetId }: { datasetId: string }) {
           { label: dataset.name },
         ]}
         right={
-          <button
-            type="button"
-            onClick={() => setAddOpen(true)}
-            className="font-mono text-[11.5px] px-3 py-[6px] rounded-[5px] bg-text text-bg font-medium hover:opacity-90 flex items-center gap-1.5"
-          >
-            <Plus className="h-3.5 w-3.5" />
-            Add item
-          </button>
+          <div className="flex items-center gap-2">
+            {importMsg && (
+              <span className={`font-mono text-[11px] ${importMsg.includes('failed') || importMsg.includes('invalid') || importMsg.includes('empty') ? 'text-bad' : 'text-good'}`}>
+                {importMsg}
+              </span>
+            )}
+            <input
+              ref={importRef}
+              type="file"
+              accept=".json,.jsonl,.csv"
+              onChange={handleImportFile}
+              className="hidden"
+            />
+            <button
+              type="button"
+              onClick={() => importRef.current?.click()}
+              disabled={bulkAdd.isPending}
+              className="font-mono text-[11.5px] px-3 py-[6px] rounded-[5px] border border-border text-text-muted hover:text-text flex items-center gap-1.5 disabled:opacity-40"
+            >
+              <Upload className="h-3.5 w-3.5" />
+              {bulkAdd.isPending ? 'Importing…' : 'Import items'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setAddOpen(true)}
+              className="font-mono text-[11.5px] px-3 py-[6px] rounded-[5px] bg-text text-bg font-medium hover:opacity-90 flex items-center gap-1.5"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              Add item
+            </button>
+          </div>
         }
       />
 

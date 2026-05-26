@@ -16,6 +16,7 @@ import { usePrompts, usePromptVersions } from '@/lib/queries/use-prompts'
 import { useDatasets } from '@/lib/queries/use-datasets'
 import { useEvaluators } from '@/lib/queries/use-evals'
 import { useModels } from '@/lib/queries/use-models'
+import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '@/components/ui/select'
 
 // Fallback for the first paint before useModels() resolves.
 const RUN_MODELS_FALLBACK = {
@@ -71,7 +72,7 @@ function NewExperimentDialog({ open, onClose }: { open: boolean; onClose: () => 
   const [versionAId, setVersionAId] = useState('')
   const [versionBId, setVersionBId] = useState('')
   const [datasetId, setDatasetId] = useState('')
-  const [evaluatorId, setEvaluatorId] = useState('')
+  const [evaluatorId, setEvaluatorId] = useState('__none__')
   const [runProvider, setRunProvider] = useState<'openai' | 'anthropic' | 'gemini'>('openai')
   const [runModel, setRunModel] = useState<string>('gpt-4o-mini')
   const [error, setError] = useState('')
@@ -81,7 +82,7 @@ function NewExperimentDialog({ open, onClose }: { open: boolean; onClose: () => 
     setPromptName(v)
     setVersionAId('')
     setVersionBId('')
-    setEvaluatorId('')
+    setEvaluatorId('__none__')
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -100,13 +101,13 @@ function NewExperimentDialog({ open, onClose }: { open: boolean; onClose: () => 
         versionAId,
         versionBId,
         datasetId,
-        ...(evaluatorId && { evaluatorId }),
+        ...(evaluatorId && evaluatorId !== '__none__' && { evaluatorId }),
         runProvider,
         runModel,
       })
       onClose()
       setName(''); setPromptName(''); setVersionAId(''); setVersionBId('')
-      setDatasetId(''); setEvaluatorId('')
+      setDatasetId(''); setEvaluatorId('__none__')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create')
     }
@@ -137,17 +138,14 @@ function NewExperimentDialog({ open, onClose }: { open: boolean; onClose: () => 
             <label className="block font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint mb-1">
               Prompt
             </label>
-            <select
-              value={promptName}
-              onChange={(e) => handlePromptChange(e.target.value)}
-              required
-              className="w-full h-9 px-2 rounded-[5px] border border-border bg-bg font-mono text-[12px] text-text"
-            >
-              <option value="">Select prompt…</option>
-              {(prompts.data ?? []).map((p) => (
-                <option key={p.id} value={p.name}>{p.name}</option>
-              ))}
-            </select>
+            <Select {...(promptName ? { value: promptName } : {})} onValueChange={handlePromptChange}>
+              <SelectTrigger><SelectValue placeholder="Select prompt…" /></SelectTrigger>
+              <SelectContent>
+                {(prompts.data ?? []).map((p) => (
+                  <SelectItem key={p.id} value={p.name}>{p.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
@@ -155,35 +153,27 @@ function NewExperimentDialog({ open, onClose }: { open: boolean; onClose: () => 
               <label className="block font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint mb-1">
                 Version A (control)
               </label>
-              <select
-                value={versionAId}
-                onChange={(e) => setVersionAId(e.target.value)}
-                disabled={!promptName}
-                required
-                className="w-full h-9 px-2 rounded-[5px] border border-border bg-bg font-mono text-[12px] text-text disabled:opacity-40"
-              >
-                <option value="">Select…</option>
-                {(versions.data ?? []).map((v) => (
-                  <option key={v.id} value={v.id}>v{v.version}</option>
-                ))}
-              </select>
+              <Select {...(versionAId ? { value: versionAId } : {})} onValueChange={setVersionAId} disabled={!promptName}>
+                <SelectTrigger><SelectValue placeholder="Select…" /></SelectTrigger>
+                <SelectContent>
+                  {(versions.data ?? []).map((v) => (
+                    <SelectItem key={v.id} value={v.id}>v{v.version}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div>
               <label className="block font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint mb-1">
                 Version B (challenger)
               </label>
-              <select
-                value={versionBId}
-                onChange={(e) => setVersionBId(e.target.value)}
-                disabled={!promptName}
-                required
-                className="w-full h-9 px-2 rounded-[5px] border border-border bg-bg font-mono text-[12px] text-text disabled:opacity-40"
-              >
-                <option value="">Select…</option>
-                {(versions.data ?? []).map((v) => (
-                  <option key={v.id} value={v.id}>v{v.version}</option>
-                ))}
-              </select>
+              <Select {...(versionBId ? { value: versionBId } : {})} onValueChange={setVersionBId} disabled={!promptName}>
+                <SelectTrigger><SelectValue placeholder="Select…" /></SelectTrigger>
+                <SelectContent>
+                  {(versions.data ?? []).map((v) => (
+                    <SelectItem key={v.id} value={v.id}>v{v.version}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
 
@@ -191,36 +181,31 @@ function NewExperimentDialog({ open, onClose }: { open: boolean; onClose: () => 
             <label className="block font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint mb-1">
               Dataset
             </label>
-            <select
-              value={datasetId}
-              onChange={(e) => setDatasetId(e.target.value)}
-              required
-              className="w-full h-9 px-2 rounded-[5px] border border-border bg-bg font-mono text-[12px] text-text"
-            >
-              <option value="">Select dataset…</option>
-              {(datasets.data ?? []).map((d) => (
-                <option key={d.id} value={d.id}>
-                  {d.name} ({d.item_count ?? 0} items)
-                </option>
-              ))}
-            </select>
+            <Select {...(datasetId ? { value: datasetId } : {})} onValueChange={setDatasetId}>
+              <SelectTrigger><SelectValue placeholder="Select dataset…" /></SelectTrigger>
+              <SelectContent>
+                {(datasets.data ?? []).map((d) => (
+                  <SelectItem key={d.id} value={d.id}>
+                    {d.name} ({d.item_count ?? 0} items)
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           <div>
             <label className="block font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint mb-1">
               Evaluator (optional, for side-by-side scoring)
             </label>
-            <select
-              value={evaluatorId}
-              onChange={(e) => setEvaluatorId(e.target.value)}
-              disabled={!promptName}
-              className="w-full h-9 px-2 rounded-[5px] border border-border bg-bg font-mono text-[12px] text-text disabled:opacity-40"
-            >
-              <option value="">None (outputs only, no scoring)</option>
-              {(evaluators.data ?? []).map((ev) => (
-                <option key={ev.id} value={ev.id}>{ev.name}</option>
-              ))}
-            </select>
+            <Select value={evaluatorId} onValueChange={setEvaluatorId} disabled={!promptName}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none__">None (outputs only, no scoring)</SelectItem>
+                {(evaluators.data ?? []).map((ev) => (
+                  <SelectItem key={ev.id} value={ev.id}>{ev.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
@@ -228,33 +213,27 @@ function NewExperimentDialog({ open, onClose }: { open: boolean; onClose: () => 
               <label className="block font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint mb-1">
                 Run provider
               </label>
-              <select
-                value={runProvider}
-                onChange={(e) => {
-                  const p = e.target.value as 'openai' | 'anthropic' | 'gemini'
-                  setRunProvider(p)
-                  setRunModel(runModels[p][0] ?? '')
-                }}
-                className="w-full h-9 px-2 rounded-[5px] border border-border bg-bg font-mono text-[12px] text-text"
-              >
-                <option value="openai">OpenAI</option>
-                <option value="anthropic">Anthropic</option>
-                <option value="gemini">Gemini</option>
-              </select>
+              <Select value={runProvider} onValueChange={(v) => { const p = v as 'openai' | 'anthropic' | 'gemini'; setRunProvider(p); setRunModel(runModels[p][0] ?? '') }}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="openai">OpenAI</SelectItem>
+                  <SelectItem value="anthropic">Anthropic</SelectItem>
+                  <SelectItem value="gemini">Gemini</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             <div>
               <label className="block font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint mb-1">
                 Run model
               </label>
-              <select
-                value={runModel}
-                onChange={(e) => setRunModel(e.target.value)}
-                className="w-full h-9 px-2 rounded-[5px] border border-border bg-bg font-mono text-[12px] text-text"
-              >
-                {runModels[runProvider].map((m) => (
-                  <option key={m} value={m}>{m}</option>
-                ))}
-              </select>
+              <Select value={runModel} onValueChange={setRunModel}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {runModels[runProvider].map((m) => (
+                    <SelectItem key={m} value={m}>{m}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
 
