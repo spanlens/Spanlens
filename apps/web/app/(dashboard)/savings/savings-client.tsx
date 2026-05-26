@@ -1,9 +1,10 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useRecommendations, type ModelRecommendation } from '@/lib/queries/use-recommendations'
 import { usePercentiles } from '@/lib/queries/use-recommendation-percentiles'
 import { usePrompts, usePlaygroundRun, type PlaygroundResult } from '@/lib/queries/use-prompts'
 import { useProviderKeys } from '@/lib/queries/use-provider-keys'
+import { useModels } from '@/lib/queries/use-models'
 import { Topbar } from '@/components/layout/topbar'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
@@ -261,53 +262,81 @@ function PercentileGrid({
 
 // ── Playground compare dialog ─────────────────────────────────────────────────
 
-function ResultCard({
-  label,
+function ResultPanel({
   data,
   error,
   isPending,
+  compareTo,
 }: {
-  label: string
   data: PlaygroundResult | undefined
   error: Error | null
   isPending: boolean
+  compareTo?: PlaygroundResult | undefined
 }) {
   if (isPending) {
     return (
-      <div className="rounded-lg border border-border bg-bg-elev p-4 space-y-2 animate-pulse">
-        <div className="h-3 w-32 bg-border rounded" />
-        <div className="h-4 w-full bg-border rounded mt-3" />
+      <div className="space-y-2 animate-pulse pt-3">
+        <div className="h-3 w-28 bg-border rounded" />
+        <div className="h-16 bg-border rounded" />
         <div className="h-24 bg-border rounded" />
       </div>
     )
   }
   if (error) {
     return (
-      <div className="rounded-lg border border-bad/30 bg-bad/5 p-4 space-y-1">
-        <p className="font-mono text-[10px] uppercase tracking-[0.04em] text-text-faint">{label}</p>
-        <p className="font-mono text-[11px] text-bad">{error.message}</p>
+      <div className="mt-3 rounded-[5px] border border-bad/30 bg-bad/5 px-3 py-2 overflow-hidden">
+        <p className="font-mono text-[11px] text-bad leading-relaxed break-all">{error.message}</p>
       </div>
     )
   }
   if (!data) return null
+
+  const costDelta = compareTo?.costUsd != null && data.costUsd != null
+    ? data.costUsd - compareTo.costUsd
+    : null
+  const latDelta = compareTo != null ? data.latencyMs - compareTo.latencyMs : null
+
   return (
-    <div className="rounded-lg border border-border bg-bg-elev p-4 space-y-3">
-      <p className="font-mono text-[10px] uppercase tracking-[0.04em] text-text-faint truncate">{label}</p>
+    <div className="pt-3 space-y-3">
       <div className="grid grid-cols-3 gap-2">
         {[
-          { label: 'Cost', value: data.costUsd != null ? `$${data.costUsd.toFixed(5)}` : ',' },
-          { label: 'Latency', value: `${data.latencyMs}ms` },
-          { label: 'Tokens', value: data.totalTokens.toLocaleString() },
+          {
+            label: 'Cost',
+            value: data.costUsd != null ? `$${data.costUsd.toFixed(5)}` : '—',
+            delta: costDelta != null
+              ? costDelta < 0 ? `↓ $${Math.abs(costDelta).toFixed(5)}` : costDelta > 0 ? `↑ $${costDelta.toFixed(5)}` : null
+              : null,
+            deltaGood: costDelta != null && costDelta < 0,
+          },
+          {
+            label: 'Latency',
+            value: `${data.latencyMs}ms`,
+            delta: latDelta != null
+              ? latDelta < 0 ? `↓ ${Math.abs(latDelta)}ms` : latDelta > 0 ? `↑ ${latDelta}ms` : null
+              : null,
+            deltaGood: latDelta != null && latDelta < 0,
+          },
+          {
+            label: 'Tokens',
+            value: data.totalTokens.toLocaleString(),
+            delta: null,
+            deltaGood: false,
+          },
         ].map((m) => (
           <div key={m.label}>
-            <div className="font-mono text-[10px] text-text-faint">{m.label}</div>
+            <div className="font-mono text-[10px] text-text-faint mb-0.5">{m.label}</div>
             <div className="font-mono text-[12px] font-medium text-text">{m.value}</div>
+            {m.delta && (
+              <div className={cn('font-mono text-[10px] mt-0.5', m.deltaGood ? 'text-good' : 'text-warn')}>
+                {m.delta}
+              </div>
+            )}
           </div>
         ))}
       </div>
       <div>
-        <div className="font-mono text-[10px] text-text-faint uppercase mb-1.5">Response</div>
-        <pre className="font-mono text-[11px] text-text bg-bg rounded p-2.5 max-h-44 overflow-y-auto whitespace-pre-wrap border border-border leading-relaxed">
+        <div className="font-mono text-[10px] text-text-faint uppercase tracking-[0.04em] mb-1.5">Response</div>
+        <pre className="font-mono text-[11px] text-text bg-bg rounded-[5px] p-2.5 max-h-44 overflow-y-auto whitespace-pre-wrap border border-border leading-relaxed">
           {data.responseText || '(empty)'}
         </pre>
       </div>
@@ -317,28 +346,112 @@ function ResultCard({
 
 function ComparePlaygroundDialog({
   rec,
+  hours,
   onClose,
 }: {
   rec: ModelRecommendation
+  hours: number
   onClose: () => void
 }) {
   const { data: prompts = [], isLoading: promptsLoading } = usePrompts()
-  const { data: allKeys = [], isLoading: keysLoading } = useProviderKeys()
+  const { data: allKeys = [], isLoading: keysLoading }    = useProviderKeys()
+  const { data: modelsCatalog, isLoading: modelsLoading } = useModels()
 
-  const [versionId, setVersionId]         = useState('')
-  const [currentKeyId, setCurrentKeyId]   = useState('')
+  const [versionId, setVersionId]           = useState('')
+  const [currentKeyId, setCurrentKeyId]     = useState('')
   const [suggestedKeyId, setSuggestedKeyId] = useState('')
+  const [suggestedProvider, setSuggestedProvider] = useState(rec.suggestedProvider)
+  const [suggestedModel, setSuggestedModel]       = useState(rec.suggestedModel)
 
   const currentMutation   = usePlaygroundRun()
   const suggestedMutation = usePlaygroundRun()
 
-  const currentKeys  = allKeys.filter((k) => k.provider === rec.currentProvider  && k.is_active)
-  const suggestedKeys = allKeys.filter((k) => k.provider === rec.suggestedProvider && k.is_active)
+  const currentKeys   = allKeys.filter((k) => k.provider === rec.currentProvider && k.is_active)
+  const suggestedKeys = allKeys.filter((k) => k.provider === suggestedProvider    && k.is_active)
 
-  const isRunning = currentMutation.isPending || suggestedMutation.isPending
+  // Auto-select first prompt version when list loads.
+  useEffect(() => {
+    if (versionId === '' && prompts.length > 0) setVersionId(prompts[0]!.id)
+  }, [prompts, versionId])
+
+  // Auto-select first key for each side when keys load.
+  useEffect(() => {
+    if (currentKeyId === '' && currentKeys.length > 0) setCurrentKeyId(currentKeys[0]!.id)
+  }, [currentKeys, currentKeyId])
+
+  useEffect(() => {
+    if (suggestedKeyId === '' && suggestedKeys.length > 0) setSuggestedKeyId(suggestedKeys[0]!.id)
+  }, [suggestedKeys, suggestedKeyId])
+
+  // Flat list of all models except the current one, preserving provider info.
+  const allModelOptions = useMemo(() => {
+    if (!modelsCatalog) return []
+    return (
+      Object.entries(modelsCatalog) as [string, typeof modelsCatalog.openai][]
+    ).flatMap(([provider, entries]) =>
+      entries
+        .filter((e) => !(provider === rec.currentProvider && e.model === rec.currentModel))
+        .map((e) => ({ provider, model: e.model, promptPricePer1m: e.promptPricePer1m, completionPricePer1m: e.completionPricePer1m })),
+    )
+  }, [modelsCatalog, rec.currentProvider, rec.currentModel])
+
+  // If the recommendation's suggestedModel is no longer chat_capable (filtered
+  // out of the list), fall back to the first available option.
+  useEffect(() => {
+    if (allModelOptions.length === 0) return
+    const isInList = allModelOptions.some(
+      (e) => e.provider === suggestedProvider && e.model === suggestedModel,
+    )
+    if (!isInList) {
+      const first = allModelOptions[0]!
+      setSuggestedProvider(first.provider)
+      setSuggestedModel(first.model)
+      setSuggestedKeyId('')
+    }
+  }, [allModelOptions, suggestedProvider, suggestedModel])
+
+  // Grouped for <optgroup> rendering.
+  const modelOptionsByProvider = useMemo(() => {
+    const map: Record<string, typeof allModelOptions> = {}
+    for (const entry of allModelOptions) {
+      ;(map[entry.provider] ??= []).push(entry)
+    }
+    return map
+  }, [allModelOptions])
+
+  // Dynamic savings: recalculate whenever the user picks a different suggested model.
+  const dynamicSavings = useMemo(() => {
+    const currentEntry = modelsCatalog?.[rec.currentProvider as keyof typeof modelsCatalog]
+      ?.find((e) => e.model === rec.currentModel)
+    const suggestedEntry = modelsCatalog?.[suggestedProvider as keyof typeof modelsCatalog]
+      ?.find((e) => e.model === suggestedModel)
+
+    if (!currentEntry || !suggestedEntry) return rec.estimatedMonthlySavingsUsd
+
+    const avgPrompt     = rec.avgPromptTokens
+    const avgCompletion = rec.avgCompletionTokens
+
+    const currentCost   = (currentEntry.promptPricePer1m   * avgPrompt + currentEntry.completionPricePer1m   * avgCompletion) / 1_000_000
+    const suggestedCost = (suggestedEntry.promptPricePer1m * avgPrompt + suggestedEntry.completionPricePer1m * avgCompletion) / 1_000_000
+
+    if (currentCost === 0) return 0
+
+    const monthFactor = (24 * 30) / hours
+    return rec.totalCostUsdLastNDays * monthFactor * (1 - suggestedCost / currentCost)
+  }, [modelsCatalog, rec, suggestedProvider, suggestedModel, hours])
+
+  function handleModelSelect(value: string) {
+    const sep = value.indexOf(':')
+    const newProvider = value.slice(0, sep)
+    const newModel    = value.slice(sep + 1)
+    setSuggestedProvider(newProvider)
+    setSuggestedModel(newModel)
+    if (newProvider !== suggestedProvider) setSuggestedKeyId('')
+  }
+
+  const isRunning  = currentMutation.isPending || suggestedMutation.isPending
   const hasResults = currentMutation.data !== undefined || suggestedMutation.data !== undefined
-
-  const canRun = !!versionId && !!currentKeyId && !!suggestedKeyId && !isRunning
+  const canRun     = !!versionId && !!currentKeyId && !!suggestedKeyId && !isRunning
 
   function handleRun() {
     if (!canRun) return
@@ -351,7 +464,7 @@ function ComparePlaygroundDialog({
       suggestedMutation.mutateAsync({
         promptVersionId: versionId,
         providerKeyId:   suggestedKeyId,
-        model:           rec.suggestedModel,
+        model:           suggestedModel,
       }),
     ])
   }
@@ -359,21 +472,39 @@ function ComparePlaygroundDialog({
   const selectClass =
     'w-full font-mono text-[11.5px] text-text px-3 py-2 border border-border rounded-[5px] bg-bg focus:outline-none focus:border-border-strong appearance-none cursor-pointer disabled:opacity-50'
 
+  const savingsPositive = dynamicSavings > 0
+
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-3xl max-h-[88vh] overflow-y-auto">
+      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Compare in playground</DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-4 mt-1">
-          <div className="font-mono text-[12px] flex items-center gap-2 flex-wrap">
-            <span className="text-text-faint line-through">{rec.currentProvider} / {rec.currentModel}</span>
-            <span className="text-text-faint">→</span>
-            <span className="text-text">{rec.suggestedProvider} / {rec.suggestedModel}</span>
+        <div className="space-y-5 mt-1">
+
+          {/* Context strip */}
+          <div className={cn(
+            'flex items-center gap-3 rounded-lg border px-4 py-3',
+            savingsPositive ? 'border-good/25 bg-good/5' : 'border-bad/25 bg-bad/5',
+          )}>
+            <span className={cn('text-base leading-none', savingsPositive ? 'text-good' : 'text-bad')}>
+              {savingsPositive ? '↓' : '↑'}
+            </span>
+            <div className="font-mono text-[12px] text-text leading-snug">
+              Switching{' '}
+              <span className="text-text-muted">{rec.currentModel}</span>
+              {' → '}
+              <span className="font-medium text-text">{suggestedModel}</span>
+              {' '}
+              {savingsPositive
+                ? <>could save <span className="font-medium text-good">${dynamicSavings.toFixed(0)}/mo</span></>
+                : <>would cost <span className="font-medium text-bad">${Math.abs(dynamicSavings).toFixed(0)}/mo more</span></>
+              }
+            </div>
           </div>
 
-          {/* Prompt version */}
+          {/* Prompt version — shared, full-width */}
           <div>
             <label className="font-mono text-[10px] text-text-faint uppercase tracking-[0.05em] mb-1.5 block">
               Prompt version
@@ -385,98 +516,160 @@ function ComparePlaygroundDialog({
               className={selectClass}
             >
               <option value="">
-                {promptsLoading ? 'Loading…' : prompts.length === 0 ? 'No prompts, create one first' : 'Select a prompt…'}
+                {promptsLoading ? 'Loading…' : prompts.length === 0 ? 'No prompts — create one first' : 'Select a prompt version…'}
               </option>
               {prompts.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name} · v{p.version}
-                </option>
+                <option key={p.id} value={p.id}>{p.name} · v{p.version}</option>
               ))}
             </select>
           </div>
 
-          {/* Provider key selectors */}
+          {/* Two-column model cards */}
           <div className="grid grid-cols-2 gap-3">
-            {([
-              { label: `Key · ${rec.currentProvider}`,   keys: currentKeys,   value: currentKeyId,   set: setCurrentKeyId },
-              { label: `Key · ${rec.suggestedProvider}`, keys: suggestedKeys, value: suggestedKeyId, set: setSuggestedKeyId },
-            ] as const).map((col) => (
-              <div key={col.label}>
+
+            {/* ── Current model card (read-only) ── */}
+            <div className="rounded-lg border border-border bg-bg-elev p-4 space-y-3">
+              <div>
+                <div className="font-mono text-[10px] uppercase tracking-[0.05em] font-medium text-text-faint mb-1">
+                  Current
+                </div>
+                <div className="font-mono text-[12px] text-text leading-tight">{rec.currentModel}</div>
+                <div className="font-mono text-[10.5px] text-text-muted mt-0.5">{rec.currentProvider}</div>
+              </div>
+              <div>
                 <label className="font-mono text-[10px] text-text-faint uppercase tracking-[0.05em] mb-1.5 block">
-                  {col.label}
+                  API Key
                 </label>
                 <select
-                  value={col.value}
-                  onChange={(e) => col.set(e.target.value)}
+                  value={currentKeyId}
+                  onChange={(e) => setCurrentKeyId(e.target.value)}
                   disabled={keysLoading}
                   className={selectClass}
                 >
                   <option value="">
-                    {keysLoading ? 'Loading…' : col.keys.length === 0 ? 'No active keys' : 'Select key…'}
+                    {keysLoading ? 'Loading…' : currentKeys.length === 0 ? 'No active keys' : 'Select key…'}
                   </option>
-                  {col.keys.map((k) => (
+                  {currentKeys.map((k) => (
                     <option key={k.id} value={k.id}>{k.name}</option>
                   ))}
                 </select>
-                {!keysLoading && col.keys.length === 0 && (
+                {!keysLoading && currentKeys.length === 0 && (
                   <p className="font-mono text-[10.5px] text-bad mt-1">
-                    No active {col.label.split(' · ')[1]} keys found in this org.
+                    No active {rec.currentProvider} keys found.
                   </p>
                 )}
               </div>
-            ))}
+              {(currentMutation.data !== undefined || currentMutation.error || currentMutation.isPending) && (
+                <ResultPanel
+                  data={currentMutation.data}
+                  error={currentMutation.error}
+                  isPending={currentMutation.isPending}
+                />
+              )}
+            </div>
+
+            {/* ── Suggested model card (editable) ── */}
+            <div className={cn(
+              'rounded-lg border p-4 space-y-3',
+              savingsPositive ? 'border-good/30 bg-good/[0.03]' : 'border-bad/30 bg-bad/[0.03]',
+            )}>
+              <div className="flex items-start justify-between gap-2">
+                <div className={cn(
+                  'font-mono text-[10px] uppercase tracking-[0.05em] font-medium',
+                  savingsPositive ? 'text-good' : 'text-bad',
+                )}>
+                  Suggested
+                </div>
+                <span className={cn(
+                  'font-mono text-[10px] border px-1.5 py-0.5 rounded-[4px] whitespace-nowrap',
+                  savingsPositive
+                    ? 'text-good border-good/30 bg-good/10'
+                    : 'text-bad border-bad/30 bg-bad/10',
+                )}>
+                  {savingsPositive ? `$${dynamicSavings.toFixed(0)}/mo saved` : `$${Math.abs(dynamicSavings).toFixed(0)}/mo more`}
+                </span>
+              </div>
+
+              {/* Model selector */}
+              <div>
+                <label className="font-mono text-[10px] text-text-faint uppercase tracking-[0.05em] mb-1.5 block">
+                  Model
+                </label>
+                <select
+                  value={`${suggestedProvider}:${suggestedModel}`}
+                  onChange={(e) => handleModelSelect(e.target.value)}
+                  disabled={modelsLoading}
+                  className={selectClass}
+                >
+                  {modelsLoading && <option value="">Loading models…</option>}
+                  {Object.entries(modelOptionsByProvider).map(([provider, entries]) => (
+                    <optgroup key={provider} label={provider}>
+                      {entries.map((e) => (
+                        <option key={`${provider}:${e.model}`} value={`${provider}:${e.model}`}>
+                          {e.model}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ))}
+                </select>
+              </div>
+
+              {/* API Key */}
+              <div>
+                <label className="font-mono text-[10px] text-text-faint uppercase tracking-[0.05em] mb-1.5 block">
+                  API Key
+                </label>
+                <select
+                  value={suggestedKeyId}
+                  onChange={(e) => setSuggestedKeyId(e.target.value)}
+                  disabled={keysLoading}
+                  className={selectClass}
+                >
+                  <option value="">
+                    {keysLoading ? 'Loading…' : suggestedKeys.length === 0 ? 'No active keys' : 'Select key…'}
+                  </option>
+                  {suggestedKeys.map((k) => (
+                    <option key={k.id} value={k.id}>{k.name}</option>
+                  ))}
+                </select>
+                {!keysLoading && suggestedKeys.length === 0 && (
+                  <p className="font-mono text-[10.5px] text-bad mt-1">
+                    No active {suggestedProvider} keys found.
+                  </p>
+                )}
+              </div>
+
+              {(suggestedMutation.data !== undefined || suggestedMutation.error || suggestedMutation.isPending) && (
+                <ResultPanel
+                  data={suggestedMutation.data}
+                  error={suggestedMutation.error}
+                  isPending={suggestedMutation.isPending}
+                  compareTo={currentMutation.data}
+                />
+              )}
+            </div>
           </div>
 
+          {/* Run button */}
           <button
             type="button"
             onClick={handleRun}
             disabled={!canRun}
-            className="w-full font-mono text-[12px] text-text px-4 py-2.5 border border-border rounded-[5px] hover:border-border-strong hover:bg-bg-elev transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            className={cn(
+              'w-full font-mono text-[12.5px] px-4 py-3 rounded-[6px] transition-colors font-medium',
+              canRun
+                ? 'bg-text text-bg hover:bg-text/90 cursor-pointer'
+                : 'bg-border text-text-faint cursor-not-allowed opacity-60',
+            )}
           >
-            {isRunning ? 'Running…' : 'Run comparison'}
+            {isRunning ? 'Running…' : hasResults ? 'Run again' : 'Run comparison'}
           </button>
 
           {hasResults && (
-            <div className="grid grid-cols-2 gap-3">
-              <ResultCard
-                label={`${rec.currentProvider} / ${rec.currentModel}`}
-                data={currentMutation.data}
-                error={currentMutation.error}
-                isPending={currentMutation.isPending}
-              />
-              <ResultCard
-                label={`${rec.suggestedProvider} / ${rec.suggestedModel}`}
-                data={suggestedMutation.data}
-                error={suggestedMutation.error}
-                isPending={suggestedMutation.isPending}
-              />
-            </div>
+            <p className="font-mono text-[10.5px] text-text-faint text-center -mt-2">
+              Single sample · run multiple times for statistical significance
+            </p>
           )}
-
-          {hasResults && currentMutation.data && suggestedMutation.data && (() => {
-            const curr = currentMutation.data
-            const sugg = suggestedMutation.data
-            const costDiff = curr.costUsd != null && sugg.costUsd != null
-              ? curr.costUsd - sugg.costUsd : null
-            const latDiff  = sugg.latencyMs - curr.latencyMs
-            return (
-              <div className="rounded-lg border border-border bg-bg-elev p-3 font-mono text-[11px] text-text-muted leading-relaxed">
-                {costDiff !== null && (
-                  <span className={cn('mr-3', costDiff > 0 ? 'text-good' : costDiff < 0 ? 'text-bad' : '')}>
-                    {costDiff > 0
-                      ? `↓ $${costDiff.toFixed(5)} cheaper`
-                      : costDiff < 0
-                      ? `↑ $${Math.abs(costDiff).toFixed(5)} more expensive`
-                      : 'same cost'}
-                  </span>
-                )}
-                <span className={cn(latDiff < 0 ? 'text-good' : latDiff > 0 ? 'text-warn' : '')}>
-                  {latDiff < 0 ? `↓ ${Math.abs(latDiff)}ms faster` : latDiff > 0 ? `↑ ${latDiff}ms slower` : 'same latency'}
-                </span>
-                <span className="ml-1 text-text-faint">(single sample · run multiple times for significance)</span>
-              </div>
-            )
-          })()}
         </div>
       </DialogContent>
     </Dialog>
@@ -489,16 +682,21 @@ export function SavingsClient() {
   const [hours, setHours] = useState<number>(24 * 7)
   const { data, isLoading, error } = useRecommendations({ hours, minSavings: 5 })
 
-  // Persisted state — lazy init reads from localStorage. SSR-safe via the
-  // typeof window guard inside the loaders (returns defaults during SSR).
-  // On client hydration the initializer runs again and reads the persisted
-  // value, which then replaces the server-rendered defaults on first paint.
-  const [dismissed,      setDismissed]      = useState<Set<string>>(loadDismissed)
-  const [sortFilter,     setSortFilter]      = useState<SortFilterState>(loadSortFilter)
+  // Persisted state — always start with SSR-safe defaults, then hydrate from
+  // localStorage in a useEffect to avoid React #418 hydration mismatch.
+  const [dismissed,      setDismissed]      = useState<Set<string>>(() => new Set())
+  const [sortFilter,     setSortFilter]      = useState<SortFilterState>(DEFAULT_SORT_FILTER)
   const [showHidden,     setShowHidden]      = useState(false)
   const [showAchieved,   setShowAchieved]    = useState(false)
   const [simRec,         setSimRec]          = useState<ModelRecommendation | null>(null)
   const [compareRec,     setCompareRec]      = useState<ModelRecommendation | null>(null)
+
+  // Load persisted state after mount to avoid SSR/client mismatch (React #418).
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time mount hydration from localStorage, no derived-state path
+    setDismissed(loadDismissed())
+    setSortFilter(loadSortFilter())
+  }, [])
 
   // Persist changes back to localStorage.
   useEffect(() => {
@@ -618,7 +816,7 @@ export function SavingsClient() {
             <>
               <div className="font-mono text-[10px] text-text-faint uppercase tracking-[0.03em] mb-[3px]">ACTUAL / MO</div>
               <div className="font-mono text-[18px] font-medium tracking-[-0.3px] text-good">
-                {r.actualMonthlySavingsUsd != null ? fmtUsd(r.actualMonthlySavingsUsd) : ','}
+                {r.actualMonthlySavingsUsd != null ? fmtUsd(r.actualMonthlySavingsUsd) : '—'}
               </div>
               <div className="font-mono text-[10.5px] text-text-faint mt-0.5">
                 est. {fmtUsd(r.estimatedMonthlySavingsUsd)} projected
@@ -727,7 +925,7 @@ export function SavingsClient() {
             </div>
             <div className="flex items-baseline gap-2 mb-1.5">
               <span className={cn('font-medium leading-none tracking-[-1.6px]', totalOpen > 0 ? 'text-[40px] text-accent' : 'text-[30px] text-text-faint')}>
-                {totalOpen > 0 ? fmtUsd(totalOpen) : ','}
+                {totalOpen > 0 ? fmtUsd(totalOpen) : '—'}
               </span>
               <span className="font-mono text-[10px] text-text-muted">/ mo</span>
             </div>
@@ -758,7 +956,7 @@ export function SavingsClient() {
           {[
             {
               label: `Spend · ${windowLabel}`,
-              value: totalSpend > 0 ? fmtUsd(totalSpend) : ',',
+              value: totalSpend > 0 ? fmtUsd(totalSpend) : '—',
               delta: 'analyzed models',
               good: false,
             },
@@ -770,7 +968,7 @@ export function SavingsClient() {
             },
             {
               label: achieved.length > 0 ? 'Achieved' : (bestConfLevel ? `${bestConfLevel.charAt(0).toUpperCase() + bestConfLevel.slice(1)} conf.` : 'Confidence'),
-              value: achieved.length > 0 ? fmtUsd(totalAchieved) : (bestConfLevel !== null ? String(bestConfCount) : ','),
+              value: achieved.length > 0 ? fmtUsd(totalAchieved) : (bestConfLevel !== null ? String(bestConfCount) : '—'),
               delta: achieved.length > 0 ? `${achieved.length} swap${achieved.length > 1 ? 's' : ''} adopted` : (bestConfLevel ? bestConfLabel[bestConfLevel] : 'no recommendations yet'),
               good: achieved.length > 0 || bestConfLevel === 'high',
             },
@@ -958,7 +1156,7 @@ export function SavingsClient() {
 
       {/* Compare in playground dialog */}
       {compareRec && (
-        <ComparePlaygroundDialog rec={compareRec} onClose={() => setCompareRec(null)} />
+        <ComparePlaygroundDialog rec={compareRec} hours={hours} onClose={() => setCompareRec(null)} />
       )}
 
       {/* Simulate dialog */}
@@ -969,10 +1167,18 @@ export function SavingsClient() {
           </DialogHeader>
           {simRec && (
             <div className="space-y-4 mt-2 text-[13px] text-text-muted">
-              <div className="font-mono text-[12px]">
-                <span className="text-text-faint line-through">{simRec.currentProvider} / {simRec.currentModel}</span>
-                <span className="mx-2 text-text-faint">→</span>
-                <span className="text-text">{simRec.suggestedProvider} / {simRec.suggestedModel}</span>
+
+              {/* Context strip — matches Compare dialog style */}
+              <div className="flex items-center gap-3 rounded-lg border border-good/25 bg-good/5 px-4 py-3">
+                <span className="text-good text-base leading-none">↓</span>
+                <div className="font-mono text-[12px] text-text leading-snug">
+                  Switching{' '}
+                  <span className="text-text-muted">{simRec.currentModel}</span>
+                  {' → '}
+                  <span className="font-medium text-text">{simRec.suggestedModel}</span>
+                  {' '}could save{' '}
+                  <span className="font-medium text-good">{fmtUsd(simRec.estimatedMonthlySavingsUsd)}/mo</span>
+                </div>
               </div>
 
               <div className="rounded-lg border border-border bg-bg-elev p-4 space-y-3">
@@ -984,7 +1190,7 @@ export function SavingsClient() {
                   </div>
                   <div>
                     <div className="text-text-faint uppercase text-[10px] tracking-[0.05em] mb-1">Projected monthly save</div>
-                    <div className="text-accent font-medium text-[14px]">{fmtUsd(simRec.estimatedMonthlySavingsUsd)}</div>
+                    <div className="text-good font-medium text-[14px]">{fmtUsd(simRec.estimatedMonthlySavingsUsd)}</div>
                     <div className="text-text-muted text-[10.5px]">/mo at current volume</div>
                   </div>
                 </div>
