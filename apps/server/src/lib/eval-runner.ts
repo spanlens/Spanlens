@@ -15,6 +15,7 @@ import { supabaseAdmin } from './db.js'
 import { requestsScope, selectRequests } from './requests-query.js'
 import { aes256Decrypt } from './crypto.js'
 import { calculateCost } from './cost.js'
+import { buildOpenAIBody } from './playground-runner.js'
 
 const JUDGE_CONCURRENCY = 5
 const MAX_RESPONSE_CHARS = 4000 // truncate long responses fed to judge
@@ -108,15 +109,11 @@ async function generateForItem(
       const res = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-        body: JSON.stringify({
+        body: JSON.stringify(buildOpenAIBody(
           model,
-          messages: [
-            { role: 'system', content: promptContent },
-            { role: 'user', content: userContent },
-          ],
-          temperature: 0.7,
-          max_tokens: 1024,
-        }),
+          [{ role: 'system', content: promptContent }, { role: 'user', content: userContent }],
+          { temperature: 0.7, maxTokens: 1024 },
+        )),
       })
       if (!res.ok) return null
       const json = await res.json() as { choices: Array<{ message: { content: string } }> }
@@ -223,13 +220,11 @@ async function callJudge(
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${apiKey}`,
       },
-      body: JSON.stringify({
-        model: config.judge_model,
-        messages: [{ role: 'user', content: prompt }],
-        temperature: 0,
-        max_tokens: 200,
-        response_format: { type: 'json_object' },
-      }),
+      body: JSON.stringify(buildOpenAIBody(
+        config.judge_model,
+        [{ role: 'user', content: prompt }],
+        { temperature: 0, maxTokens: 200, responseFormat: { type: 'json_object' } },
+      )),
     })
     if (!res.ok) return null
     const json = await res.json() as {

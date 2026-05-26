@@ -14,7 +14,7 @@
 import { supabaseAdmin } from './db.js'
 import { aes256Decrypt } from './crypto.js'
 import { calculateCost } from './cost.js'
-import { interpolate } from './playground-runner.js'
+import { interpolate, buildOpenAIBody } from './playground-runner.js'
 
 const ITEM_CONCURRENCY = 3
 const MAX_TOKENS = 1024
@@ -86,12 +86,11 @@ async function runPrompt(
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${apiKey}`,
         },
-        body: JSON.stringify({
+        body: JSON.stringify(buildOpenAIBody(
           model,
-          messages: [{ role: 'system', content }, { role: 'user', content: userContent }],
-          temperature: TEMPERATURE,
-          max_tokens: MAX_TOKENS,
-        }),
+          [{ role: 'system', content }, { role: 'user', content: userContent }],
+          { temperature: TEMPERATURE, maxTokens: MAX_TOKENS },
+        )),
       })
       const latencyMs = Date.now() - startMs
       if (!res.ok) {
@@ -229,13 +228,11 @@ async function callJudge(
     const res = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-      body: JSON.stringify({
-        model: config.judge_model,
-        messages: [{ role: 'user', content: prompt }],
-        temperature: 0,
-        max_tokens: 200,
-        response_format: { type: 'json_object' },
-      }),
+      body: JSON.stringify(buildOpenAIBody(
+        config.judge_model,
+        [{ role: 'user', content: prompt }],
+        { temperature: 0, maxTokens: 200, responseFormat: { type: 'json_object' } },
+      )),
     })
     if (!res.ok) return null
     const json = await res.json() as {
