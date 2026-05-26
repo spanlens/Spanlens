@@ -3,7 +3,7 @@ import { authJwt, type JwtContext } from '../middleware/authJwt.js'
 import { supabaseAdmin } from '../lib/db.js'
 import { aes256Decrypt } from '../lib/crypto.js'
 import { calculateCost } from '../lib/cost.js'
-import { interpolate, inferProvider } from '../lib/playground-runner.js'
+import { interpolate, inferProvider, buildOpenAIBody } from '../lib/playground-runner.js'
 
 export const promptsPlaygroundRouter = new Hono<JwtContext>()
 
@@ -115,12 +115,11 @@ promptsPlaygroundRouter.post('/run', async (c) => {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${plaintext}`,
       },
-      body: JSON.stringify({
+      body: JSON.stringify(buildOpenAIBody(
         model,
-        messages: [{ role: 'user', content: interpolated }],
-        temperature,
-        max_tokens: maxTokens,
-      }),
+        [{ role: 'user', content: interpolated }],
+        { temperature, maxTokens },
+      )),
     })
 
     const latencyMs = Date.now() - startMs
