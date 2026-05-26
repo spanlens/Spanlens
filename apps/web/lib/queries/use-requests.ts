@@ -53,7 +53,7 @@ export function useRequests(filters: RequestsFilters) {
       }
     },
     placeholderData: keepPreviousData,
-    // P3.9: 10s → 5s while the tab is visible. Background tabs pause via
+    // P3.9: 30s while the tab is visible. Background tabs pause via
     // TanStack's `refetchIntervalInBackground: false` default, and the
     // global `refetchOnWindowFocus: true` in lib/query-client.ts triggers
     // an immediate refresh whenever the user returns to the tab — so a

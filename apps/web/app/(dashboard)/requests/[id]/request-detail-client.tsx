@@ -11,9 +11,10 @@ import { useModels, type ModelsByProvider } from '@/lib/queries/use-models'
 // PostHog provider lands on main (separate PR). The event payload is fully
 // designed — see docs/launch/2026-05-14_cache-stream-users.md §3.
 
-function fmtCost(n: number | null): string {
-  if (n == null) return ','
-  return '$' + n.toFixed(6)
+function fmtCost(n: number | null | undefined): string {
+  if (n == null) return '—'
+  if (n === 0) return '$0.00'
+  return n < 0.01 ? '< $0.01' : '$' + n.toFixed(2)
 }
 
 type Tab = 'request' | 'response' | 'error'
@@ -117,7 +118,7 @@ export function RequestDetailClient({ id }: { id: string }) {
           { label: 'Prompt tokens', value: req.prompt_tokens.toLocaleString() },
           { label: 'Completion tokens', value: req.completion_tokens.toLocaleString() },
           { label: 'Total tokens', value: req.total_tokens.toLocaleString() },
-          { label: 'Trace ID', value: req.trace_id ? req.trace_id.slice(0, 16) + '…' : ',' },
+          { label: 'Trace ID', value: req.trace_id ? req.trace_id.slice(0, 16) + '…' : '—' },
         ].map(({ label, value, warn }) => (
           <div key={label} className="border border-border rounded-[6px] px-4 py-3 bg-bg-elev">
             <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-1.5">{label}</div>
@@ -177,7 +178,7 @@ export function RequestDetailClient({ id }: { id: string }) {
               <span className="font-medium">
                 {req.prompt_tokens > 0
                   ? `${(((req.cache_read_tokens ?? 0) / req.prompt_tokens) * 100).toFixed(1)}%`
-                  : ','}
+                  : '—'}
               </span>
             </div>
           </div>
@@ -389,7 +390,7 @@ function ReplayButton({ requestId, originalModel, provider }: ReplayButtonProps)
             <div className="grid grid-cols-2 gap-x-6 gap-y-2">
               {[
                 { label: 'Latency', value: `${run.data.latencyMs} ms` },
-                { label: 'Cost', value: run.data.costUsd != null ? `$${run.data.costUsd.toFixed(6)}` : ',' },
+                { label: 'Cost', value: fmtCost(run.data.costUsd) },
                 { label: 'Prompt tokens', value: run.data.promptTokens.toLocaleString() },
                 { label: 'Completion tokens', value: run.data.completionTokens.toLocaleString() },
                 { label: 'Total tokens', value: run.data.totalTokens.toLocaleString() },

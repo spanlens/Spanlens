@@ -18,7 +18,7 @@ type SortDir = 'asc' | 'desc'
 const PAGE_SIZE = 50
 
 function fmtCost(n: number | null | undefined): string {
-  if (n == null) return ','
+  if (n == null) return '—'
   if (n === 0) return '$0.00'
   return n < 0.01 ? '< $0.01' : '$' + n.toFixed(2)
 }
@@ -157,7 +157,7 @@ export function UsersClient() {
       {/* Table */}
       <div className="border border-border rounded-[6px] overflow-hidden">
         {/* Header row */}
-        <div className="grid grid-cols-[2fr,1fr,1fr,1fr,1fr,1fr] gap-3 px-4 py-2.5 bg-bg-elev border-b border-border font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint">
+        <div className="grid grid-cols-[2fr_1fr_1fr_1fr_1fr_1fr] gap-3 px-4 py-2.5 bg-bg-elev border-b border-border font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint">
           <span>User ID</span>
           <SortBtn label="Requests" col="requests" sortBy={sortBy} sortDir={sortDir} onSort={onSort} />
           <SortBtn label="Tokens" col="tokens" sortBy={sortBy} sortDir={sortDir} onSort={onSort} />
@@ -170,7 +170,7 @@ export function UsersClient() {
         {isLoading && (
           <div className="divide-y divide-border">
             {Array.from({ length: 8 }).map((_, i) => (
-              <div key={i} className="grid grid-cols-[2fr,1fr,1fr,1fr,1fr,1fr] gap-3 px-4 py-3">
+              <div key={i} className="grid grid-cols-[2fr_1fr_1fr_1fr_1fr_1fr] gap-3 px-4 py-3">
                 <Skeleton className="h-3 w-40" />
                 <Skeleton className="h-3 w-12" />
                 <Skeleton className="h-3 w-14" />
@@ -208,7 +208,7 @@ export function UsersClient() {
               <Link
                 key={u.user_id}
                 href={`/users/${encodeURIComponent(u.user_id)}`}
-                className="grid grid-cols-[2fr,1fr,1fr,1fr,1fr,1fr] gap-3 items-center px-4 py-3 font-mono text-[12px] text-text hover:bg-bg-elev transition-colors"
+                className="grid grid-cols-[2fr_1fr_1fr_1fr_1fr_1fr] gap-3 items-center px-4 py-3 font-mono text-[12px] text-text hover:bg-bg-elev transition-colors"
               >
                 <span className="truncate">{u.user_id}</span>
                 <span className="text-text-muted">
@@ -218,9 +218,9 @@ export function UsersClient() {
                   )}
                 </span>
                 <span className="text-text-muted">{fmtCount(u.total_tokens)}</span>
-                <span>{fmtCost(u.total_cost_usd ? Number(u.total_cost_usd) : null)}</span>
+                <span>{fmtCost(u.total_cost_usd != null ? Number(u.total_cost_usd) : null)}</span>
                 <span className="text-text-muted">
-                  {u.avg_latency_ms != null ? `${Math.round(Number(u.avg_latency_ms))}ms` : ','}
+                  {u.avg_latency_ms != null ? `${Math.round(Number(u.avg_latency_ms))}ms` : '—'}
                 </span>
                 <span className="text-text-faint text-right" suppressHydrationWarning>{fmtRelativeTime(u.last_seen)}</span>
               </Link>
@@ -270,6 +270,7 @@ function SortBtn({
   const active = sortBy === col
   return (
     <button
+      type="button"
       onClick={() => onSort(col)}
       className={cn(
         'inline-flex items-center gap-1 text-left hover:text-text transition-colors',

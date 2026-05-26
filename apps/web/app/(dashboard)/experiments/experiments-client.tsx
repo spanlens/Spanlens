@@ -25,12 +25,12 @@ const RUN_MODELS_FALLBACK = {
 } as const
 
 function fmtUsd(n: number | null | undefined): string {
-  if (n == null) return ','
+  if (n == null) return '—'
   return n >= 0.01 ? `$${n.toFixed(3)}` : `$${n.toFixed(5)}`
 }
 
 function fmtScore(n: number | null | undefined): string {
-  if (n == null) return ','
+  if (n == null) return '—'
   return (n * 100).toFixed(1)
 }
 
@@ -320,7 +320,7 @@ function ExperimentRow({ exp }: { exp: Experiment }) {
         'font-mono text-[12px] w-[80px] text-right',
         delta == null ? 'text-text-faint' : delta > 0 ? 'text-good' : delta < 0 ? 'text-bad' : 'text-text-muted',
       )}>
-        {delta == null ? ',' : (delta > 0 ? '+' : '') + (delta * 100).toFixed(1)}
+        {delta == null ? '—' : (delta > 0 ? '+' : '') + (delta * 100).toFixed(1)}
       </div>
       <div className="font-mono text-[11px] text-text-faint w-[80px] text-right">
         {fmtUsd(exp.total_cost_usd)}

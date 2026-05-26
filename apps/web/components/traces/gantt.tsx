@@ -109,14 +109,14 @@ function computePositions(
 }
 
 function formatMs(ms: number | null): string {
-  if (ms == null) return ','
+  if (ms == null) return '—'
   if (ms < 1) return '<1ms'
   if (ms < 1000) return `${Math.round(ms)}ms`
   return `${(ms / 1000).toFixed(2)}s`
 }
 
 function formatCost(n: number | null): string {
-  if (n == null || n <= 0) return ','
+  if (n == null || n <= 0) return '—'
   if (n < 0.001) return `$${n.toFixed(5)}`
   if (n < 0.01) return `$${n.toFixed(4)}`
   return `$${n.toFixed(3)}`

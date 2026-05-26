@@ -2,20 +2,21 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useTraces } from '@/lib/queries/use-traces'
+import { LIVE_REFETCH_MS_SECONDARY } from '@/lib/queries/live-polling'
 import type { TraceRow, TraceStatus } from '@/lib/queries/types'
 import { Topbar } from '@/components/layout/topbar'
 import { ExportDropdown } from '@/components/ui/export-dropdown'
 import { cn, formatDateTime } from '@/lib/utils'
 
 function fmtDuration(ms: number | null): string {
-  if (ms == null) return ','
+  if (ms == null) return '—'
   if (ms < 1) return '<1ms'
   if (ms < 1000) return `${Math.round(ms)}ms`
   return `${(ms / 1000).toFixed(2)}s`
 }
 
 function fmtCost(n: number): string {
-  if (n <= 0) return ','
+  if (n <= 0) return '—'
   return n < 0.001 ? `$${n.toFixed(5)}` : `$${n.toFixed(4)}`
 }
 
@@ -49,11 +50,6 @@ type TimeRange = '1h' | '24h' | '7d' | '30d' | 'all'
 type SortField = 'started_at' | 'duration_ms' | 'total_cost_usd' | 'span_count'
 type SortDir = 'asc' | 'desc'
 
-function timeRangeToFrom(range: TimeRange): string | undefined {
-  if (range === 'all') return undefined
-  const ms = { '1h': 3600_000, '24h': 86400_000, '7d': 7 * 86400_000, '30d': 30 * 86400_000 }[range]
-  return new Date(Date.now() - ms).toISOString()
-}
 
 const GRID = '20px 1.4fr 1.2fr 0.6fr 0.8fr 0.8fr 0.9fr 1.2fr 1.2fr 0.5fr'
 
@@ -138,11 +134,16 @@ export function TracesClient() {
     : statusFilter === 'running' ? 'running'
     : 'all'
 
-  const fromIso = timeRangeToFrom(timeRange)
+  const fromIso = useMemo(() => {
+    if (timeRange === 'all') return undefined
+    const ms = { '1h': 3600_000, '24h': 86400_000, '7d': 7 * 86400_000, '30d': 30 * 86400_000 }[timeRange]
+    const fromMs = Math.floor((Date.now() - ms) / 60_000) * 60_000
+    return new Date(fromMs).toISOString()
+  }, [timeRange])
 
   const { data, isLoading, isFetching, refetch } = useTraces(
     { page, limit: 50, status: apiStatus, ...(fromIso ? { from: fromIso } : {}) },
-    { refetchInterval: 10_000 },
+    { refetchInterval: LIVE_REFETCH_MS_SECONDARY },
   )
 
   const rawTraces = useMemo(() => data?.data ?? [], [data])
@@ -214,7 +215,7 @@ export function TracesClient() {
             { label: 'Traces',            value: meta.total.toLocaleString(),                         warn: false },
             { label: 'p50 duration',      value: fmtDuration(p50),  tip: 'Current page only',        warn: false },
             { label: 'p95 duration',      value: fmtDuration(p95),  tip: 'Current page only',        warn: p95 != null && p95 > 8000 },
-            { label: 'Avg spans / trace', value: avgSpans != null ? avgSpans.toFixed(1) : ',',        warn: false },
+            { label: 'Avg spans / trace', value: avgSpans != null ? avgSpans.toFixed(1) : '—',        warn: false },
             { label: 'Errors',            value: String(errors),                                       warn: errors > 0 },
           ].map((s, i) => (
             <div

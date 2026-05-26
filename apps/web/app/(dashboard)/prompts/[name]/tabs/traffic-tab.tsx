@@ -11,7 +11,7 @@ type DateRange = '7d' | '30d' | '90d'
 const HOURS: Record<DateRange, number> = { '7d': 24 * 7, '30d': 24 * 30, '90d': 24 * 90 }
 
 function fmtMs(v: number): string {
-  if (v === 0) return ','
+  if (v === 0) return '—'
   if (v >= 1000) return `${(v / 1000).toFixed(2)}s`
   return `${Math.round(v)}ms`
 }
@@ -67,7 +67,7 @@ export function TrafficTab({ name }: Props) {
                 { label: 'Active versions', value: String(metrics.filter((m) => m.sampleCount > 0).length) },
                 { label: 'Best error rate', value: (() => {
                   const best = metrics.filter((m) => m.sampleCount > 0).sort((a, b) => a.errorRate - b.errorRate)[0]
-                  return best ? `${(best.errorRate * 100).toFixed(1)}%` : ','
+                  return best ? `${(best.errorRate * 100).toFixed(1)}%` : '—'
                 })() },
               ].map((s, i) => (
                 <div key={i} className="bg-bg-elev border border-border rounded-[6px] px-[16px] py-[12px]">

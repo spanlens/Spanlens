@@ -9,14 +9,14 @@ import type { SpanRow } from '@/lib/queries/types'
 // ── Helpers ────────────────────────────────────────────────────
 
 function fmtDuration(ms: number | null): string {
-  if (ms == null) return ','
+  if (ms == null) return '—'
   if (ms < 1) return '<1ms'
   if (ms < 1000) return `${Math.round(ms)}ms`
   return `${(ms / 1000).toFixed(2)}s`
 }
 
 function fmtCost(n: number | null): string {
-  if (n == null || n <= 0) return ','
+  if (n == null || n <= 0) return '—'
   return n < 0.001 ? `$${n.toFixed(5)}` : `$${n.toFixed(4)}`
 }
 
@@ -67,7 +67,7 @@ function SpanDetailPanel({ span, onClose }: SpanDetailPanelProps) {
           {[
             { label: 'Duration', value: fmtDuration(span.duration_ms) },
             { label: 'Status',   value: span.status },
-            { label: 'Tokens',   value: span.total_tokens > 0 ? span.total_tokens.toLocaleString() : ',' },
+            { label: 'Tokens',   value: span.total_tokens > 0 ? span.total_tokens.toLocaleString() : '—' },
             { label: 'Cost',     value: fmtCost(span.cost_usd) },
           ].map((s) => (
             <div key={s.label} className="rounded-[5px] border border-border bg-bg-elev px-3 py-2">

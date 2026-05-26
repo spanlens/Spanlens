@@ -1,6 +1,6 @@
 'use client'
 
-import type { ReactNode } from 'react'
+import { useState, useEffect, type ReactNode } from 'react'
 import { useCurrentRole } from '@/lib/queries/use-current-role'
 import type { OrgRole } from '@/lib/queries/use-members'
 
@@ -32,7 +32,17 @@ interface PermissionGateProps {
  * trades a slight delay for a non-jarring initial render.
  */
 export function PermissionGate({ need, children, fallback = null }: PermissionGateProps) {
+  const [mounted, setMounted] = useState(false)
   const role = useCurrentRole()
+
+  useEffect(() => setMounted(true), [])
+
+  // Before mount, always render fallback to match SSR output (role is always
+  // null server-side). Without this, a cached role in the TanStack Query store
+  // causes the client to render children on hydration while SSR rendered
+  // nothing → React #418 hydration mismatch.
+  if (!mounted) return <>{fallback}</>
+
   const allowed: OrgRole[] = need === 'admin' ? ['admin'] : ['admin', 'editor']
   if (!role || !allowed.includes(role)) return <>{fallback}</>
   return <>{children}</>

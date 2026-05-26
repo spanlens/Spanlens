@@ -26,7 +26,7 @@ function extractRequestUserText(body: Record<string, unknown> | null): string {
   return ''
 }
 function fmtScore(n: number | null | undefined): string {
-  return n == null ? ',' : (n * 100).toFixed(0)
+  return n == null ? '—' : (n * 100).toFixed(0)
 }
 
 function StarRating({ value, onChange }: { value: number | null; onChange: (v: number) => void }) {
@@ -73,7 +73,7 @@ function ItemCard({ item }: { item: AnnotationQueueItem }) {
       <div className="flex items-center px-[14px] py-[10px] bg-bg-muted border-b border-border">
         <div className="flex-1 min-w-0">
           <p className="font-mono text-[12px] text-text font-medium truncate">
-            {item.prompt_name ?? ','}{item.prompt_version != null ? ` · v${item.prompt_version}` : ''}
+            {item.prompt_name ?? '—'}{item.prompt_version != null ? ` · v${item.prompt_version}` : ''}
           </p>
           <p className="font-mono text-[10px] text-text-faint truncate">
             {item.model} · {new Date(item.created_at).toLocaleString()}
@@ -103,7 +103,7 @@ function ItemCard({ item }: { item: AnnotationQueueItem }) {
         <div className="min-w-0">
           <p className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-1">User input</p>
           <p className={cn('font-mono text-[11.5px] text-text-muted leading-relaxed whitespace-pre-wrap', !expanded && 'line-clamp-3')}>
-            {userMsg || ','}
+            {userMsg || '—'}
           </p>
         </div>
         <div className="min-w-0">
@@ -114,7 +114,7 @@ function ItemCard({ item }: { item: AnnotationQueueItem }) {
             </button>
           </div>
           <p className={cn('font-mono text-[12px] text-text leading-relaxed whitespace-pre-wrap', !expanded && 'line-clamp-5')}>
-            {responseText || ','}
+            {responseText || '—'}
           </p>
         </div>
       </div>

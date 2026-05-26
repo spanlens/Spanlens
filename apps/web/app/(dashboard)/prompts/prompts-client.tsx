@@ -15,7 +15,7 @@ function fmtUsd(v: number): string {
 }
 
 function fmtMs(v: number): string {
-  if (v === 0) return ','
+  if (v === 0) return '—'
   if (v >= 1000) return `${(v / 1000).toFixed(2)}s`
   return `${Math.round(v)}ms`
 }
@@ -151,9 +151,9 @@ export function PromptsClient() {
           {[
             { label: 'Prompts',              value: String(all.length)                                         },
             { label: 'Versions',             value: String(totalVersions)                                      },
-            { label: `Calls · ${dateRange}`, value: totalCalls > 0 ? totalCalls.toLocaleString() : ','        },
-            { label: `Avg quality`,          value: avgQuality != null ? String(avgQuality) : ','              },
-            { label: `Spend · ${dateRange}`, value: totalSpend > 0 ? fmtUsd(totalSpend) : ','                 },
+            { label: `Calls · ${dateRange}`, value: totalCalls > 0 ? totalCalls.toLocaleString() : '—'        },
+            { label: `Avg quality`,          value: avgQuality != null ? String(avgQuality) : '—'              },
+            { label: `Spend · ${dateRange}`, value: totalSpend > 0 ? fmtUsd(totalSpend) : '—'                 },
           ].map((s, i) => (
             <div key={i} className={cn('px-[18px] py-[14px]', i < 4 && 'border-r border-border')}>
               <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-2">{s.label}</div>
@@ -401,17 +401,17 @@ export function PromptsClient() {
 
               {/* Calls */}
               <span className={cn(p.stats && p.stats.calls > 0 ? 'text-text' : 'text-text-faint')}>
-                {p.stats?.calls ? p.stats.calls.toLocaleString() : ','}
+                {p.stats?.calls ? p.stats.calls.toLocaleString() : '—'}
               </span>
 
               {/* Avg cost */}
               <span className={cn(p.stats?.avgCostUsd != null ? 'text-text' : 'text-text-faint')}>
-                {p.stats?.avgCostUsd != null ? fmtUsd(p.stats.avgCostUsd) : ','}
+                {p.stats?.avgCostUsd != null ? fmtUsd(p.stats.avgCostUsd) : '—'}
               </span>
 
               {/* Avg latency */}
               <span className={cn(p.stats?.avgLatencyMs != null ? 'text-text' : 'text-text-faint')}>
-                {p.stats?.avgLatencyMs != null ? fmtMs(p.stats.avgLatencyMs) : ','}
+                {p.stats?.avgLatencyMs != null ? fmtMs(p.stats.avgLatencyMs) : '—'}
               </span>
 
               {/* Quality score */}

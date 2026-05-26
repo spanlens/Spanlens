@@ -18,7 +18,7 @@ interface Props {
 }
 
 function fmtMs(v: number): string {
-  if (v === 0) return ','
+  if (v === 0) return '—'
   if (v >= 1000) return `${(v / 1000).toFixed(2)}s`
   return `${Math.round(v)}ms`
 }
@@ -29,7 +29,7 @@ function fmtPct(v: number): string {
   return `${(v * 100).toFixed(1)}%`
 }
 function fmtLift(lift: number | null): string {
-  if (lift == null) return ','
+  if (lift == null) return '—'
   const sign = lift > 0 ? '+' : ''
   return `${sign}${(lift * 100).toFixed(1)}%`
 }
@@ -285,7 +285,7 @@ function ExperimentResults({ experimentId, versions }: ResultsProps) {
                   { label: 'Error rate', value: fmtPct(arm.errorRate),
                     color: arm.errorRate === 0 ? 'text-good' : arm.errorRate < 0.05 ? 'text-warn' : 'text-bad' },
                   { label: 'Avg latency', value: fmtMs(arm.avgLatencyMs) },
-                  { label: 'Avg cost',    value: arm.avgCostUsd > 0 ? fmtUsd(arm.avgCostUsd) : ',' },
+                  { label: 'Avg cost',    value: arm.avgCostUsd > 0 ? fmtUsd(arm.avgCostUsd) : '—' },
                 ].map((m, i) => (
                   <div key={i}>
                     <div className="font-mono text-[10px] text-text-faint mb-0.5">{m.label}</div>

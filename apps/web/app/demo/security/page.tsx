@@ -8,7 +8,7 @@ import { DEMO_SECURITY_SUMMARY, DEMO_FLAGGED_REQUESTS } from '@/lib/demo-data'
 
 function formatRelative(iso: string): string {
   const ms = new Date(iso).getTime()
-  if (Number.isNaN(ms)) return ','
+  if (Number.isNaN(ms)) return '—'
   const diff = (Date.now() - ms) / 1000
   if (diff < 0) return 'just now'
   if (diff < 60) return `${Math.floor(diff)}s ago`

@@ -234,7 +234,7 @@ function GeneralTab() {
         </FormRow>
         <FormRow label="Plan">
           <MonoPill variant={org?.plan === 'enterprise' ? 'good' : 'accent'} dot>
-            {org?.plan ?? ','}
+            {org?.plan ?? '—'}
           </MonoPill>
         </FormRow>
       </Section>
@@ -907,10 +907,10 @@ function PlanLimitsTab() {
           </div>
           {[
             ['Requests / month', limitLabel,      usedThisMonth.toLocaleString(), headroom],
-            ['Team seats',       seatLimitLabel,  ',',                            ','],
-            ['Log retention',    retentionLabel,  ',',                            ','],
-            ['API keys',         '25',            ',',                            ','],
-            ['Alert rules',      '100',           ',',                            ','],
+            ['Team seats',       seatLimitLabel,  '—',                            '—'],
+            ['Log retention',    retentionLabel,  '—',                            '—'],
+            ['API keys',         '25',            '—',                            '—'],
+            ['Alert rules',      '100',           '—',                            '—'],
           ].map(([res, lim, used, head]) => (
             <div key={res} className="grid grid-cols-[1.4fr_1fr_1fr_1fr] gap-4 px-6 py-3">
               <span className="font-mono text-[12px] text-text-muted">{res}</span>
@@ -1033,7 +1033,7 @@ function ProfileTab() {
         ) : user ? (
           <>
             <FormRow label="Email">
-              <div className="font-mono text-[12.5px] text-text">{user.email ?? ','}</div>
+              <div className="font-mono text-[12.5px] text-text">{user.email ?? '—'}</div>
             </FormRow>
             <FormRow label="User ID">
               <div className="font-mono text-[11px] text-text-muted truncate">{user.id}</div>
@@ -1390,8 +1390,8 @@ function DeliveryHistory({ webhookId }: { webhookId: string }) {
           <MonoPill variant={d.status === 'success' ? 'good' : 'faint'} dot>
             {d.status}
           </MonoPill>
-          <span className="font-mono text-[11px] text-text-muted">{d.http_status ?? ','}</span>
-          <span className="font-mono text-[11px] text-text-faint truncate">{d.error_message ?? ','}</span>
+          <span className="font-mono text-[11px] text-text-muted">{d.http_status ?? '—'}</span>
+          <span className="font-mono text-[11px] text-text-faint truncate">{d.error_message ?? '—'}</span>
         </div>
       ))}
     </div>
@@ -1446,7 +1446,7 @@ function WebhooksTab() {
       setTestResult((prev) => ({
         ...prev,
         [webhook.id]: result
-          ? `${result.status} · HTTP ${result.http_status ?? ','} · ${result.duration_ms}ms`
+          ? `${result.status} · HTTP ${result.http_status ?? '—'} · ${result.duration_ms}ms`
           : 'Sent',
       }))
       setSelectedId(webhook.id)

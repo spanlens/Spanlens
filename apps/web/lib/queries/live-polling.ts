@@ -32,8 +32,8 @@
 // No extra config needed.
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** ~5 seconds — primary dashboards (`/dashboard`, `/requests`). */
-export const LIVE_REFETCH_MS_ACTIVE = 5_000
+/** ~30 seconds — primary dashboards (`/dashboard`, `/requests`). */
+export const LIVE_REFETCH_MS_ACTIVE = 30_000
 
 /** 30 seconds — secondary live pages (`/anomalies`, `/security`). */
 export const LIVE_REFETCH_MS_SECONDARY = 30_000

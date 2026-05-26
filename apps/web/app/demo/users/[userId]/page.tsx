@@ -11,7 +11,7 @@ import { DEMO_REQUESTS } from '@/lib/demo-data'
 // ─────────────────────────────────────────────────────────────────────────────
 
 function fmtCost(n: number | null | undefined): string {
-  if (n == null) return ','
+  if (n == null) return '—'
   return '$' + Number(n).toFixed(6)
 }
 
@@ -45,8 +45,8 @@ export default async function DemoUserDetailPage({ params }: { params: Promise<{
     { label: 'Avg latency', value: `${Math.round(avgLatency)} ms` },
     { label: 'Error count', value: fmtCount(errorCount), warn: errorCount > 0 },
     { label: 'Distinct models', value: fmtCount(distinctModels) },
-    { label: 'First seen', value: firstSeen ? new Date(firstSeen).toLocaleDateString() : ',' },
-    { label: 'Last seen', value: lastSeen ? new Date(lastSeen).toLocaleDateString() : ',' },
+    { label: 'First seen', value: firstSeen ? new Date(firstSeen).toLocaleDateString() : '—' },
+    { label: 'Last seen', value: lastSeen ? new Date(lastSeen).toLocaleDateString() : '—' },
   ]
 
   return (

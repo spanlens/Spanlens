@@ -18,11 +18,11 @@ function demoNotice(action: string) {
 }
 
 function fmtUsd(n: number | null | undefined): string {
-  if (n == null) return ','
+  if (n == null) return '—'
   return n >= 0.01 ? `$${n.toFixed(3)}` : `$${n.toFixed(5)}`
 }
 function fmtScore(n: number | null | undefined): string {
-  return n == null ? ',' : `${(n * 100).toFixed(1)}`
+  return n == null ? '—' : `${(n * 100).toFixed(1)}`
 }
 
 function StatusBadge({ status }: { status: EvalRunStatus }) {
@@ -51,7 +51,7 @@ function CorrelationCard({ promptName }: { promptName: string }) {
   const dotY = (s: number) => H - PAD - s * (H - 2 * PAD)
 
   const interpretation = r == null
-    ? ','
+    ? '—'
     : Math.abs(r) >= 0.7 ? 'Strong'
     : Math.abs(r) >= 0.4 ? 'Moderate'
     : Math.abs(r) >= 0.2 ? 'Weak'
@@ -72,7 +72,7 @@ function CorrelationCard({ promptName }: { promptName: string }) {
             <p className="font-mono text-[11px] text-text-faint mb-0.5 truncate">{promptName}</p>
             <div className="flex items-baseline gap-2">
               <span className={cn('font-mono text-[22px] font-medium', rColor)}>
-                {r == null ? ',' : r.toFixed(2)}
+                {r == null ? '—' : r.toFixed(2)}
               </span>
               <span className="font-mono text-[10.5px] text-text-muted">
                 Pearson r · {interpretation}
@@ -204,7 +204,7 @@ function EvaluatorRow({
           </p>
         </div>
         <div className="font-mono text-[12px] text-text-muted w-[100px] text-right">
-          {latestCompleted ? fmtScore(latestCompleted.avg_score) : ','}
+          {latestCompleted ? fmtScore(latestCompleted.avg_score) : '—'}
         </div>
         <div className="font-mono text-[11px] text-text-faint w-[80px] text-right">
           {runs.length} runs

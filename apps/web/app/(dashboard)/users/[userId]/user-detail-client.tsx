@@ -10,8 +10,9 @@ import { useUserDetail } from '@/lib/queries/use-users'
 // PostHog provider lands on main (separate PR).
 
 function fmtCost(n: number | null | undefined): string {
-  if (n == null) return ','
-  return '$' + Number(n).toFixed(6)
+  if (n == null) return '—'
+  if (n === 0) return '$0.00'
+  return n < 0.01 ? '< $0.01' : '$' + Number(n).toFixed(2)
 }
 
 function fmtCount(n: number): string {
@@ -58,10 +59,10 @@ export function UserDetailClient({ userId }: { userId: string }) {
   const stats = [
     { label: 'Requests', value: fmtCount(data.total_requests) },
     { label: 'Total tokens', value: fmtCount(data.total_tokens) },
-    { label: 'Total cost', value: fmtCost(data.total_cost_usd ? Number(data.total_cost_usd) : null) },
+    { label: 'Total cost', value: fmtCost(data.total_cost_usd != null ? Number(data.total_cost_usd) : null) },
     {
       label: 'Avg latency',
-      value: data.avg_latency_ms != null ? `${Math.round(Number(data.avg_latency_ms))} ms` : ',',
+      value: data.avg_latency_ms != null ? `${Math.round(Number(data.avg_latency_ms))} ms` : '—',
     },
     { label: 'Error count', value: fmtCount(data.error_requests), warn: data.error_requests > 0 },
     { label: 'Distinct models', value: fmtCount(data.distinct_models) },
@@ -114,7 +115,7 @@ export function UserDetailClient({ userId }: { userId: string }) {
           Recent requests
         </h2>
         <div className="border border-border rounded-[6px] overflow-hidden">
-          <div className="grid grid-cols-[1fr,1fr,1fr,1fr,1fr] gap-3 px-4 py-2.5 bg-bg-elev border-b border-border font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint">
+          <div className="grid grid-cols-[1fr_1fr_1fr_1fr_1fr] gap-3 px-4 py-2.5 bg-bg-elev border-b border-border font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint">
             <span>Time</span>
             <span>Model</span>
             <span>Tokens</span>
@@ -134,10 +135,10 @@ export function UserDetailClient({ userId }: { userId: string }) {
                   <Link
                     key={r.id}
                     href={`/requests/${r.id}`}
-                    className="grid grid-cols-[1fr,1fr,1fr,1fr,1fr] gap-3 items-center px-4 py-2.5 font-mono text-[12px] text-text hover:bg-bg-elev transition-colors"
+                    className="grid grid-cols-[1fr_1fr_1fr_1fr_1fr] gap-3 items-center px-4 py-2.5 font-mono text-[12px] text-text hover:bg-bg-elev transition-colors"
                   >
-                    <span className="text-text-muted">
-                      {new Date(r.created_at).toLocaleString(undefined, {
+                    <span className="text-text-muted" suppressHydrationWarning>
+                      {new Date(r.created_at).toLocaleString('en-US', {
                         month: 'short',
                         day: 'numeric',
                         hour: '2-digit',

@@ -8,7 +8,7 @@ import { DEMO_REQUEST_DETAILS } from '@/lib/demo-data'
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function fmtCost(n: number | null): string {
-  if (n == null) return ','
+  if (n == null) return '—'
   return '$' + n.toFixed(6)
 }
 
@@ -89,7 +89,7 @@ export default function DemoRequestDetailPage({ params }: { params: Promise<{ id
     { label: 'Total tokens', value: req.total_tokens.toLocaleString() },
     ...(req.trace_id
       ? [{ label: 'Trace ID', value: req.trace_id.slice(0, 16) + '…', link: `/demo/traces/${req.trace_id}` }]
-      : [{ label: 'Trace ID', value: ',' }]),
+      : [{ label: 'Trace ID', value: '—' }]),
     { label: 'Status', value: String(req.status_code), warn: isErr },
     ...(req.user_id ? [{ label: 'User', value: req.user_id, link: `/demo/requests?userId=${req.user_id}` }] : []),
     ...(req.session_id ? [{ label: 'Session', value: req.session_id, link: `/demo/requests?sessionId=${req.session_id}` }] : []),

@@ -23,6 +23,8 @@ interface RequestChartProps {
   data: TimeseriesPoint[]
   /** ISO timestamps when alerts fired — rendered as dots on the requests line. */
   firedAt?: string[]
+  /** True when data buckets are hourly; false for daily (7d/30d). */
+  isHourly?: boolean
 }
 
 // CSS vars are plain hex — do NOT wrap in hsl()
@@ -35,7 +37,7 @@ const C = {
   bgElev:    'var(--bg-elev)',
 } as const
 
-export function RequestChart({ data, firedAt = [] }: RequestChartProps) {
+export function RequestChart({ data, firedAt = [], isHourly = true }: RequestChartProps) {
   if (data.length === 0) {
     return (
       <div className="h-[220px] flex items-center justify-center font-mono text-[12px] text-text-faint">
@@ -43,8 +45,6 @@ export function RequestChart({ data, firedAt = [] }: RequestChartProps) {
       </div>
     )
   }
-
-  const isHourly = data.length > 0 && data[0]!.date.length > 10
 
   const formatted = data.map((d) => ({
     ...d,

@@ -40,7 +40,7 @@ function relAge(dateStr: string): string {
 }
 
 function fmtCost(n: number | null): string {
-  if (n == null) return ','
+  if (n == null) return '—'
   return n < 0.001 ? '$' + n.toFixed(5) : '$' + n.toFixed(4)
 }
 
@@ -65,16 +65,16 @@ function InlineSpark({ values, w = 120, h = 18, stroke = 'var(--border-strong)' 
   if (!path) return null
   return (
     <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} className="block w-full">
-      <path d={path} stroke={stroke} strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+      <path d={path} stroke={stroke} strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" suppressHydrationWarning />
     </svg>
   )
 }
 
 // ── Stat strip ────────────────────────────────────────────────────────────────
 function StatStrip() {
-  const overview = useStatsOverview({ hours: 24 })
+  const overview = useStatsOverview({ hours: 24, compare: true })
   const timeseries = useStatsTimeseries({ hours: 24 })
-  const anomalies = useAnomalies()
+  const anomalies = useAnomalies({ observationHours: 24 })
 
   const o = overview.data
   const ts = timeseries.data ?? []
@@ -87,28 +87,12 @@ function StatStrip() {
   const anomalyCount = (anomalies.data?.data ?? []).length
 
   const stats = [
-    { label: 'Requests · 24h', value: o ? o.totalRequests.toLocaleString() : ',', spark: sparkReqs, warn: false, good: false },
-    { label: 'Avg latency', value: o ? `${o.avgLatencyMs}ms` : ',', spark: [], warn: o ? o.avgLatencyMs > 1000 : false, good: false },
-    { label: 'Spend · 24h', value: o ? '$' + o.totalCostUsd.toFixed(2) : ',', spark: sparkCost, warn: false, good: true },
+    { label: 'Requests · 24h', value: o ? o.totalRequests.toLocaleString() : '—', spark: sparkReqs, warn: false, good: false },
+    { label: 'Avg latency', value: o ? `${o.avgLatencyMs}ms` : '—', spark: [], warn: o ? o.avgLatencyMs > 1000 : false, good: false },
+    { label: 'Spend · 24h', value: o ? '$' + o.totalCostUsd.toFixed(2) : '—', spark: sparkCost, warn: false, good: true },
     { label: 'Error rate', value: errorRateStr, spark: sparkErrors, warn: errorRatePct > 1, good: false },
     { label: 'Anomalies', value: anomalyCount.toString(), spark: [], warn: anomalyCount > 0, good: false },
   ]
-
-  if (overview.isLoading) {
-    return (
-      <div className="overflow-x-auto shrink-0 border-b border-border">
-        <div className="grid grid-cols-5 min-w-[480px]">
-          {Array.from({ length: 5 }).map((_, i) => (
-            <div key={i} className={cn('px-[18px] py-[14px]', i < 4 && 'border-r border-border')}>
-              <Skeleton className="h-2.5 w-20 mb-2" />
-              <Skeleton className="h-7 w-24 mb-1.5" />
-              <Skeleton className="h-[18px] w-full" />
-            </div>
-          ))}
-        </div>
-      </div>
-    )
-  }
 
   return (
     <div className="overflow-x-auto shrink-0 border-b border-border">
@@ -116,7 +100,10 @@ function StatStrip() {
         {stats.map((s, i) => (
           <div key={i} className={cn('px-[18px] py-[14px]', i < 4 && 'border-r border-border')}>
             <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-2">{s.label}</div>
-            <div className={cn('text-[24px] font-medium tracking-[-0.6px] leading-none mb-1.5', s.warn ? 'text-accent' : 'text-text')}>
+            <div
+              className={cn('text-[24px] font-medium tracking-[-0.6px] leading-none mb-1.5', s.warn ? 'text-accent' : 'text-text')}
+              suppressHydrationWarning
+            >
               {s.value}
             </div>
             <InlineSpark
@@ -132,7 +119,7 @@ function StatStrip() {
 
 // ── Traffic bars ──────────────────────────────────────────────────────────────
 function TrafficBars() {
-  const timeseries = useStatsTimeseries()
+  const timeseries = useStatsTimeseries({ hours: 720 })
   const rawTs = timeseries.data
 
   const bars = useMemo(() => {
@@ -149,7 +136,7 @@ function TrafficBars() {
   const labels = useMemo(() => {
     const pts = (rawTs ?? []).slice(-30)
     const first = pts[0]
-    if (!pts.length || !first) return [',', ',', ',', ',', 'NOW']
+    if (!pts.length || !first) return ['—', '—', '—', '—', 'NOW']
     const fmt = (s: string) => new Date(s).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
     return [
       fmt(first.date),
