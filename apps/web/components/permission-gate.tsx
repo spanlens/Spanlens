@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, type ReactNode } from 'react'
+import { useSyncExternalStore, type ReactNode } from 'react'
 import { useCurrentRole } from '@/lib/queries/use-current-role'
 import type { OrgRole } from '@/lib/queries/use-members'
 
@@ -32,10 +32,15 @@ interface PermissionGateProps {
  * trades a slight delay for a non-jarring initial render.
  */
 export function PermissionGate({ need, children, fallback = null }: PermissionGateProps) {
-  const [mounted, setMounted] = useState(false)
+  // useSyncExternalStore gives false on the server and true on the client
+  // without needing useEffect + setState, avoiding the cascading-render lint
+  // rule while still preventing the SSR hydration mismatch (React #418).
+  const mounted = useSyncExternalStore(
+    (_cb) => () => {},
+    () => true,
+    () => false,
+  )
   const role = useCurrentRole()
-
-  useEffect(() => setMounted(true), [])
 
   // Before mount, always render fallback to match SSR output (role is always
   // null server-side). Without this, a cached role in the TanStack Query store

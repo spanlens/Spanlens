@@ -134,12 +134,15 @@ export function TracesClient() {
     : statusFilter === 'running' ? 'running'
     : 'all'
 
+  // Stable mount-time snapshot for the from-date calculation.
+  // Date.now() in a lazy useState initializer is allowed (runs once on mount).
+  const [now] = useState(() => Date.now())
   const fromIso = useMemo(() => {
     if (timeRange === 'all') return undefined
-    const ms = { '1h': 3600_000, '24h': 86400_000, '7d': 7 * 86400_000, '30d': 30 * 86400_000 }[timeRange]
-    const fromMs = Math.floor((Date.now() - ms) / 60_000) * 60_000
+    const ms = { '1h': 3600_000, '24h': 86400_000, '7d': 7 * 86400_000, '30d': 30 * 86400_000 }[timeRange]!
+    const fromMs = Math.floor((now - ms) / 60_000) * 60_000
     return new Date(fromMs).toISOString()
-  }, [timeRange])
+  }, [timeRange, now])
 
   const { data, isLoading, isFetching, refetch } = useTraces(
     { page, limit: 50, status: apiStatus, ...(fromIso ? { from: fromIso } : {}) },

@@ -366,22 +366,7 @@ function ComparePlaygroundDialog({
   const currentMutation   = usePlaygroundRun()
   const suggestedMutation = usePlaygroundRun()
 
-  const currentKeys   = allKeys.filter((k) => k.provider === rec.currentProvider && k.is_active)
-  const suggestedKeys = allKeys.filter((k) => k.provider === suggestedProvider    && k.is_active)
-
-  // Auto-select first prompt version when list loads.
-  useEffect(() => {
-    if (versionId === '' && prompts.length > 0) setVersionId(prompts[0]!.id)
-  }, [prompts, versionId])
-
-  // Auto-select first key for each side when keys load.
-  useEffect(() => {
-    if (currentKeyId === '' && currentKeys.length > 0) setCurrentKeyId(currentKeys[0]!.id)
-  }, [currentKeys, currentKeyId])
-
-  useEffect(() => {
-    if (suggestedKeyId === '' && suggestedKeys.length > 0) setSuggestedKeyId(suggestedKeys[0]!.id)
-  }, [suggestedKeys, suggestedKeyId])
+  const currentKeys = allKeys.filter((k) => k.provider === rec.currentProvider && k.is_active)
 
   // Flat list of all models except the current one, preserving provider info.
   const allModelOptions = useMemo(() => {
@@ -395,20 +380,26 @@ function ComparePlaygroundDialog({
     )
   }, [modelsCatalog, rec.currentProvider, rec.currentModel])
 
-  // If the recommendation's suggestedModel is no longer chat_capable (filtered
-  // out of the list), fall back to the first available option.
-  useEffect(() => {
-    if (allModelOptions.length === 0) return
+  // If the recommendation's suggestedModel is no longer in the list (deprecated),
+  // fall back to the first available option without useEffect + setState.
+  const { provider: effectiveSuggestedProvider, model: effectiveSuggestedModel } = useMemo(() => {
+    if (allModelOptions.length === 0) return { provider: suggestedProvider, model: suggestedModel }
     const isInList = allModelOptions.some(
       (e) => e.provider === suggestedProvider && e.model === suggestedModel,
     )
     if (!isInList) {
       const first = allModelOptions[0]!
-      setSuggestedProvider(first.provider)
-      setSuggestedModel(first.model)
-      setSuggestedKeyId('')
+      return { provider: first.provider, model: first.model }
     }
+    return { provider: suggestedProvider, model: suggestedModel }
   }, [allModelOptions, suggestedProvider, suggestedModel])
+
+  const suggestedKeys = allKeys.filter((k) => k.provider === effectiveSuggestedProvider && k.is_active)
+
+  // Derived auto-selections: avoid useEffect + setState for initialization.
+  const effectiveVersionId      = versionId      !== '' ? versionId      : (prompts[0]?.id    ?? '')
+  const effectiveCurrentKeyId   = currentKeyId   !== '' ? currentKeyId   : (currentKeys[0]?.id ?? '')
+  const effectiveSuggestedKeyId = suggestedKeyId !== '' ? suggestedKeyId : (suggestedKeys[0]?.id ?? '')
 
   // Grouped for <optgroup> rendering.
   const modelOptionsByProvider = useMemo(() => {
@@ -423,8 +414,8 @@ function ComparePlaygroundDialog({
   const dynamicSavings = useMemo(() => {
     const currentEntry = modelsCatalog?.[rec.currentProvider as keyof typeof modelsCatalog]
       ?.find((e) => e.model === rec.currentModel)
-    const suggestedEntry = modelsCatalog?.[suggestedProvider as keyof typeof modelsCatalog]
-      ?.find((e) => e.model === suggestedModel)
+    const suggestedEntry = modelsCatalog?.[effectiveSuggestedProvider as keyof typeof modelsCatalog]
+      ?.find((e) => e.model === effectiveSuggestedModel)
 
     if (!currentEntry || !suggestedEntry) return rec.estimatedMonthlySavingsUsd
 
@@ -438,7 +429,7 @@ function ComparePlaygroundDialog({
 
     const monthFactor = (24 * 30) / hours
     return rec.totalCostUsdLastNDays * monthFactor * (1 - suggestedCost / currentCost)
-  }, [modelsCatalog, rec, suggestedProvider, suggestedModel, hours])
+  }, [modelsCatalog, rec, effectiveSuggestedProvider, effectiveSuggestedModel, hours])
 
   function handleModelSelect(value: string) {
     const sep = value.indexOf(':')
@@ -446,25 +437,25 @@ function ComparePlaygroundDialog({
     const newModel    = value.slice(sep + 1)
     setSuggestedProvider(newProvider)
     setSuggestedModel(newModel)
-    if (newProvider !== suggestedProvider) setSuggestedKeyId('')
+    if (newProvider !== effectiveSuggestedProvider) setSuggestedKeyId('')
   }
 
   const isRunning  = currentMutation.isPending || suggestedMutation.isPending
   const hasResults = currentMutation.data !== undefined || suggestedMutation.data !== undefined
-  const canRun     = !!versionId && !!currentKeyId && !!suggestedKeyId && !isRunning
+  const canRun     = !!effectiveVersionId && !!effectiveCurrentKeyId && !!effectiveSuggestedKeyId && !isRunning
 
   function handleRun() {
     if (!canRun) return
     void Promise.all([
       currentMutation.mutateAsync({
-        promptVersionId: versionId,
-        providerKeyId:   currentKeyId,
+        promptVersionId: effectiveVersionId,
+        providerKeyId:   effectiveCurrentKeyId,
         model:           rec.currentModel,
       }),
       suggestedMutation.mutateAsync({
-        promptVersionId: versionId,
-        providerKeyId:   suggestedKeyId,
-        model:           suggestedModel,
+        promptVersionId: effectiveVersionId,
+        providerKeyId:   effectiveSuggestedKeyId,
+        model:           effectiveSuggestedModel,
       }),
     ])
   }
@@ -495,7 +486,7 @@ function ComparePlaygroundDialog({
               Switching{' '}
               <span className="text-text-muted">{rec.currentModel}</span>
               {' → '}
-              <span className="font-medium text-text">{suggestedModel}</span>
+              <span className="font-medium text-text">{effectiveSuggestedModel}</span>
               {' '}
               {savingsPositive
                 ? <>could save <span className="font-medium text-good">${dynamicSavings.toFixed(0)}/mo</span></>
@@ -510,7 +501,7 @@ function ComparePlaygroundDialog({
               Prompt version
             </label>
             <select
-              value={versionId}
+              value={effectiveVersionId}
               onChange={(e) => setVersionId(e.target.value)}
               disabled={promptsLoading}
               className={selectClass}
@@ -541,7 +532,7 @@ function ComparePlaygroundDialog({
                   API Key
                 </label>
                 <select
-                  value={currentKeyId}
+                  value={effectiveCurrentKeyId}
                   onChange={(e) => setCurrentKeyId(e.target.value)}
                   disabled={keysLoading}
                   className={selectClass}
@@ -596,7 +587,7 @@ function ComparePlaygroundDialog({
                   Model
                 </label>
                 <select
-                  value={`${suggestedProvider}:${suggestedModel}`}
+                  value={`${effectiveSuggestedProvider}:${effectiveSuggestedModel}`}
                   onChange={(e) => handleModelSelect(e.target.value)}
                   disabled={modelsLoading}
                   className={selectClass}
@@ -620,7 +611,7 @@ function ComparePlaygroundDialog({
                   API Key
                 </label>
                 <select
-                  value={suggestedKeyId}
+                  value={effectiveSuggestedKeyId}
                   onChange={(e) => setSuggestedKeyId(e.target.value)}
                   disabled={keysLoading}
                   className={selectClass}
@@ -634,7 +625,7 @@ function ComparePlaygroundDialog({
                 </select>
                 {!keysLoading && suggestedKeys.length === 0 && (
                   <p className="font-mono text-[10.5px] text-bad mt-1">
-                    No active {suggestedProvider} keys found.
+                    No active {effectiveSuggestedProvider} keys found.
                   </p>
                 )}
               </div>
