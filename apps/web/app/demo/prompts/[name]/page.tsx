@@ -22,7 +22,7 @@ function fmtUsd(v: number): string {
 }
 
 function fmtMs(v: number): string {
-  if (v === 0) return ','
+  if (v === 0) return '—'
   if (v >= 1000) return `${(v / 1000).toFixed(2)}s`
   return `${Math.round(v)}ms`
 }
@@ -183,7 +183,7 @@ function CallsTab() {
             </span>
             <span className="text-text-muted">{r.total_tokens.toLocaleString()}</span>
             <span className="text-text-muted">
-              {r.cost_usd != null ? `$${r.cost_usd.toFixed(5)}` : ','}
+              {r.cost_usd != null ? `$${r.cost_usd.toFixed(5)}` : '—'}
             </span>
             <span className="text-text-muted">{r.latency_ms}ms</span>
             <span className="text-text-faint text-right text-[11px]">
@@ -205,9 +205,9 @@ function TrafficTab({ prompt }: { prompt: (typeof DEMO_PROMPTS)[number] }) {
   const statItems = [
     { label: 'Total calls',   value: stats.calls.toLocaleString() },
     { label: 'Total spend',   value: fmtUsd(stats.totalCostUsd) },
-    { label: 'Avg cost/call', value: stats.avgCostUsd != null ? fmtUsd(stats.avgCostUsd) : ',' },
-    { label: 'Avg latency',   value: stats.avgLatencyMs != null ? fmtMs(stats.avgLatencyMs) : ',' },
-    { label: 'Error rate',    value: stats.errorRate != null ? `${(stats.errorRate * 100).toFixed(1)}%` : ',' },
+    { label: 'Avg cost/call', value: stats.avgCostUsd != null ? fmtUsd(stats.avgCostUsd) : '—' },
+    { label: 'Avg latency',   value: stats.avgLatencyMs != null ? fmtMs(stats.avgLatencyMs) : '—' },
+    { label: 'Error rate',    value: stats.errorRate != null ? `${(stats.errorRate * 100).toFixed(1)}%` : '—' },
   ]
 
   return (

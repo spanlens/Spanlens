@@ -35,7 +35,7 @@ function StatusDot({ status }: { status: 'ok' | 'error' }) {
 }
 
 function JobRow({ job }: { job: CronJobSummary }) {
-  const schedule = CRON_SCHEDULES[job.jobName] ?? ','
+  const schedule = CRON_SCHEDULES[job.jobName] ?? '—'
 
   return (
     <div className="flex items-center gap-3 px-[22px] py-[11px] border-b border-border last:border-0">
@@ -54,7 +54,7 @@ function JobRow({ job }: { job: CronJobSummary }) {
         {relTime(job.lastRanAt)}
       </span>
       <span className="font-mono text-[11px] text-text-faint shrink-0 w-16 text-right">
-        {job.lastDurationMs != null ? `${job.lastDurationMs}ms` : ','}
+        {job.lastDurationMs != null ? `${job.lastDurationMs}ms` : '—'}
       </span>
       {job.lastStatus === 'error' && job.lastErrorMessage && (
         <span

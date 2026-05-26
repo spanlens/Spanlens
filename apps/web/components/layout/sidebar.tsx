@@ -272,11 +272,11 @@ function ThemeToggleButton() {
 export function Sidebar() {
   const pathname = usePathname()
   const router = useRouter()
-  const overview = useStatsOverview()
+  const overview = useStatsOverview({ hours: 24, compare: true })
   const isAdmin = useIsAdmin()
   const anomalies = useAnomalies({ observationHours: 24 })
   const alerts = useAlerts()
-  const recommendations = useRecommendations()
+  const recommendations = useRecommendations({ hours: 24 })
   const { isOpen, close } = useSidebar()
   // Capture "now" once at mount — drives the "firing in last hour" badge.
   // Tanstack query refetches refresh `alerts.data`, so a fixed anchor here

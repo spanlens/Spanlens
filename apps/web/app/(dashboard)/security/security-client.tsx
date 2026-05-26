@@ -13,7 +13,7 @@ import { cn } from '@/lib/utils'
 
 function formatRelative(iso: string): string {
   const ms = new Date(iso).getTime()
-  if (Number.isNaN(ms)) return ','
+  if (Number.isNaN(ms)) return '—'
   const diff = (Date.now() - ms) / 1000
   if (diff < 0) return 'just now'
   if (diff < 60) return `${Math.floor(diff)}s ago`
@@ -111,10 +111,10 @@ export function SecurityClient() {
       <div className="overflow-x-auto shrink-0 border-b border-border">
         <div className="grid grid-cols-5 min-w-[480px]">
           {[
-            { label: 'Events · 24h',      value: statsReady ? String(totalHits) : ',',  warn: statsReady && totalHits > 0 },
-            { label: 'PII hits',          value: statsReady ? String(piiHits)  : ',',  warn: statsReady && piiHits > 0 },
-            { label: 'Injection attempts',value: statsReady ? String(injHits)  : ',',  warn: statsReady && injHits > 0 },
-            { label: 'Recent flagged',    value: flaggedReady ? String(flaggedTotal) : ',', warn: flaggedReady && flaggedTotal > 0 },
+            { label: 'Events · 24h',      value: statsReady ? String(totalHits) : '—',  warn: statsReady && totalHits > 0 },
+            { label: 'PII hits',          value: statsReady ? String(piiHits)  : '—',  warn: statsReady && piiHits > 0 },
+            { label: 'Injection attempts',value: statsReady ? String(injHits)  : '—',  warn: statsReady && injHits > 0 },
+            { label: 'Recent flagged',    value: flaggedReady ? String(flaggedTotal) : '—', warn: flaggedReady && flaggedTotal > 0 },
             { label: 'Detectors',         value: String(detectors.length),              warn: false },
           ].map((s) => (
             <div key={s.label} className={cn('px-[18px] py-[14px]', s.label !== 'Detectors' && 'border-r border-border')}>
@@ -240,7 +240,7 @@ export function SecurityClient() {
                   </span>
                 </span>
                 <span className={cn('text-right', statsReady && d.hits24h > 0 ? 'text-accent font-medium' : 'text-text-faint')}>
-                  {statsReady ? d.hits24h : ','}
+                  {statsReady ? d.hits24h : '—'}
                 </span>
               </div>
             ))}

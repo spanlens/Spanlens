@@ -9,14 +9,14 @@ import { DEMO_EXPERIMENTS, DEMO_EXPERIMENT_RESULTS } from '@/lib/demo-data'
 import type { ExperimentResult } from '@/lib/queries/use-experiments'
 
 function fmtUsd(n: number | null | undefined): string {
-  if (n == null) return ','
+  if (n == null) return '—'
   return n >= 0.01 ? `$${n.toFixed(3)}` : `$${n.toFixed(5)}`
 }
 function fmtScore(n: number | null | undefined): string {
-  return n == null ? ',' : (n * 100).toFixed(1)
+  return n == null ? '—' : (n * 100).toFixed(1)
 }
 function fmtMs(n: number | null | undefined): string {
-  if (n == null) return ','
+  if (n == null) return '—'
   if (n >= 1000) return `${(n / 1000).toFixed(2)}s`
   return `${Math.round(n)}ms`
 }
@@ -67,7 +67,7 @@ function ResultRow({ result, idx }: { result: ExperimentResult; idx: number }) {
           'font-mono text-[11.5px] w-[60px] text-right',
           scoreDelta == null ? 'text-text-faint' : scoreDelta > 0 ? 'text-good' : scoreDelta < 0 ? 'text-bad' : 'text-text-muted',
         )}>
-          {scoreDelta == null ? ',' : (scoreDelta > 0 ? '+' : '') + (scoreDelta * 100).toFixed(1)}
+          {scoreDelta == null ? '—' : (scoreDelta > 0 ? '+' : '') + (scoreDelta * 100).toFixed(1)}
         </span>
         <span className="ml-3 text-text-faint">
           {expanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
@@ -171,7 +171,7 @@ export default function DemoExperimentDetail({ params }: { params: Promise<{ id:
                 'font-mono text-[18px] font-medium',
                 delta == null ? 'text-text-faint' : delta > 0 ? 'text-good' : delta < 0 ? 'text-bad' : 'text-text',
               )}>
-                {delta == null ? ',' : (delta > 0 ? '+' : '') + (delta * 100).toFixed(1)}
+                {delta == null ? '—' : (delta > 0 ? '+' : '') + (delta * 100).toFixed(1)}
               </p>
             </div>
             <div className="bg-bg-muted border border-border rounded-[5px] px-3 py-2.5">

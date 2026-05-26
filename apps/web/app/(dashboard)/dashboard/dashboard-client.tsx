@@ -603,7 +603,7 @@ export function DashboardClient() {
           {isLoading || !timeseries.data ? (
             <Skeleton className="h-[220px] w-full" />
           ) : (
-            <RequestChart data={timeseries.data} firedAt={alertFiredAt} />
+            <RequestChart data={timeseries.data} firedAt={alertFiredAt} isHourly={hours <= 48} />
           )}
         </div>
 
@@ -620,7 +620,7 @@ export function DashboardClient() {
         <div className="grid grid-cols-1 md:grid-cols-2 border-b border-border">
           <div className="px-[22px] py-[18px] border-b border-border md:border-b-0 md:border-r">
             <div className="flex items-center mb-3">
-              <span className="text-[14px] font-medium">Top prompts · 24h spend</span>
+              <span className="text-[14px] font-medium">Top prompts · spend</span>
               <span className="flex-1" />
               <Link href="/prompts" className="font-mono text-[10.5px] text-text-muted tracking-[0.03em] hover:text-text transition-colors">
                 All prompts →
