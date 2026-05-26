@@ -373,6 +373,13 @@ promptsRouter.delete('/:name/:version', requireEdit, async (c) => {
     .eq('name', name)
     .eq('version', version)
 
-  if (error) return c.json({ error: 'Failed to delete' }, 500)
+  if (error) {
+    console.error('[DELETE prompt version]', error)
+    // FK violation: version is referenced by an experiment
+    if (error.code === '23503') {
+      return c.json({ error: 'This version is referenced by an A/B experiment and cannot be deleted.' }, 409)
+    }
+    return c.json({ error: 'Failed to delete' }, 500)
+  }
   return c.json({ success: true })
 })

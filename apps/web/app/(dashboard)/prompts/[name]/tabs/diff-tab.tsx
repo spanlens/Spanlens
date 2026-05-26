@@ -2,6 +2,7 @@
 import { useState } from 'react'
 import { type PromptVersion } from '@/lib/queries/use-prompts'
 import { cn, formatDate } from '@/lib/utils'
+import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '@/components/ui/select'
 
 interface Props {
   versions: PromptVersion[]
@@ -85,34 +86,34 @@ export function DiffTab({ versions }: Props) {
       <div className="flex flex-wrap items-center gap-x-2 gap-y-2 px-[22px] py-[12px] border-b border-border shrink-0 bg-bg-muted">
         <div className="flex items-center gap-2 flex-1 min-w-[150px]">
           <span className="font-mono text-[11px] text-text-faint shrink-0">From</span>
-          <select
-            value={vA ?? ''}
-            onChange={(e) => setVA(e.target.value || null)}
-            className="h-7 px-2 rounded-[4px] border border-border bg-bg font-mono text-[12px] text-text focus:outline-none focus:border-border-strong flex-1 min-w-0"
-          >
-            <option value="">Select version…</option>
-            {sorted.map((v) => (
-              <option key={v.id} value={String(v.version)}>
-                v{v.version}, {formatDate(v.created_at)}
-              </option>
-            ))}
-          </select>
+          <div className="flex-1 min-w-0">
+            <Select {...(vA ? { value: vA } : {})} onValueChange={(v) => setVA(v || null)}>
+              <SelectTrigger className="h-7 rounded-[4px]"><SelectValue placeholder="Select version…" /></SelectTrigger>
+              <SelectContent>
+                {sorted.map((v) => (
+                  <SelectItem key={v.id} value={String(v.version)}>
+                    v{v.version}, {formatDate(v.created_at)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
         <span className="font-mono text-[11px] text-text-faint shrink-0">→</span>
         <div className="flex items-center gap-2 flex-1 min-w-[150px]">
           <span className="font-mono text-[11px] text-text-faint shrink-0">To</span>
-          <select
-            value={vB ?? ''}
-            onChange={(e) => setVB(e.target.value || null)}
-            className="h-7 px-2 rounded-[4px] border border-border bg-bg font-mono text-[12px] text-text focus:outline-none focus:border-border-strong flex-1 min-w-0"
-          >
-            <option value="">Select version…</option>
-            {sorted.map((v) => (
-              <option key={v.id} value={String(v.version)}>
-                v{v.version}, {formatDate(v.created_at)}
-              </option>
-            ))}
-          </select>
+          <div className="flex-1 min-w-0">
+            <Select {...(vB ? { value: vB } : {})} onValueChange={(v) => setVB(v || null)}>
+              <SelectTrigger className="h-7 rounded-[4px]"><SelectValue placeholder="Select version…" /></SelectTrigger>
+              <SelectContent>
+                {sorted.map((v) => (
+                  <SelectItem key={v.id} value={String(v.version)}>
+                    v{v.version}, {formatDate(v.created_at)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
 
         {diff && (

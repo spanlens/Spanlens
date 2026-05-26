@@ -12,7 +12,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
@@ -1923,19 +1925,23 @@ export function SettingsClient() {
       {/* Mobile nav dropdown, visible only on small screens */}
       <div className="md:hidden flex items-center gap-3 px-4 py-3 border-b border-border bg-bg-elev shrink-0">
         <span className="font-mono text-[10px] text-text-faint uppercase tracking-[0.05em] shrink-0">Settings</span>
-        <select
-          value={tab}
-          onChange={(e) => setTab(e.target.value as TabId)}
-          className="flex-1 h-8 px-2 rounded-[6px] border border-border bg-bg text-[13px] text-text focus:outline-none focus:border-border-strong"
-        >
-          {NAV.map((group) => (
-            <optgroup key={group.group} label={group.group}>
-              {group.items.map((item) => (
-                <option key={item.id} value={item.id}>{item.label}</option>
+        <div className="flex-1">
+          <Select value={tab} onValueChange={(v) => setTab(v as TabId)}>
+            <SelectTrigger className="h-8 rounded-[6px] text-[13px] font-sans">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {NAV.map((group) => (
+                <SelectGroup key={group.group}>
+                  <SelectLabel>{group.group}</SelectLabel>
+                  {group.items.map((item) => (
+                    <SelectItem key={item.id} value={item.id}>{item.label}</SelectItem>
+                  ))}
+                </SelectGroup>
               ))}
-            </optgroup>
-          ))}
-        </select>
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
       {/* Body: sidebar + content */}

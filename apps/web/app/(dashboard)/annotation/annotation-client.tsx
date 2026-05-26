@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react'
 import { Star, Filter, MessageSquare } from 'lucide-react'
 import { Topbar } from '@/components/layout/topbar'
 import { cn, formatDateTime } from '@/lib/utils'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import {
   useAnnotationQueue,
   useSaveHumanEval,
@@ -275,16 +276,16 @@ export function AnnotationClient() {
       {/* Filter bar */}
       <div className="flex items-center gap-3 px-[22px] py-[12px] border-b border-border bg-bg-muted">
         <Filter className="h-3.5 w-3.5 text-text-faint" />
-        <select
-          value={promptName}
-          onChange={(e) => setPromptName(e.target.value)}
-          className="h-7 px-2 rounded-[4px] border border-border bg-bg font-mono text-[11.5px] text-text"
-        >
-          <option value="">All prompts</option>
-          {(prompts.data ?? []).map((p) => (
-            <option key={p.id} value={p.name}>{p.name}</option>
-          ))}
-        </select>
+        <Select {...(promptName ? { value: promptName } : {})} onValueChange={setPromptName}>
+          <SelectTrigger className="w-auto h-7 rounded-[4px] text-[11.5px]">
+            <SelectValue placeholder="All prompts" />
+          </SelectTrigger>
+          <SelectContent>
+            {(prompts.data ?? []).map((p) => (
+              <SelectItem key={p.id} value={p.name}>{p.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
         <label className="flex items-center gap-1.5 font-mono text-[11.5px] text-text-muted cursor-pointer">
           <input
             type="checkbox"

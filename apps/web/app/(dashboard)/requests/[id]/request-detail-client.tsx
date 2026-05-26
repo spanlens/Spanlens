@@ -6,6 +6,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { cn, formatDateTime } from '@/lib/utils'
 import { useRequest, useReplayRequest, useRunReplay } from '@/lib/queries/use-requests'
 import { useModels, type ModelsByProvider } from '@/lib/queries/use-models'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
 // TODO: re-add `usePostHog()` + `cache_breakdown_viewed` capture once the
 // PostHog provider lands on main (separate PR). The event payload is fully
@@ -345,17 +346,18 @@ function ReplayButton({ requestId, originalModel, provider }: ReplayButtonProps)
           <label className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint">
             Model
           </label>
-          <select
-            value={model}
-            onChange={(e) => { setModel(e.target.value); prepare.reset(); run.reset() }}
-            className="w-full font-mono text-[12.5px] border border-border rounded-[5px] px-3 py-2 bg-bg-elev text-text focus:outline-none focus:border-border-strong transition-colors appearance-none cursor-pointer"
-          >
-            {modelOptions.map((m) => (
-              <option key={m} value={m}>
-                {m}{m === originalModel ? ' (original)' : ''}
-              </option>
-            ))}
-          </select>
+          <Select value={model} onValueChange={(v) => { setModel(v); prepare.reset(); run.reset() }}>
+            <SelectTrigger className="h-auto py-2 text-[12.5px] pl-3 bg-bg-elev transition-colors">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {modelOptions.map((m) => (
+                <SelectItem key={m} value={m}>
+                  {m}{m === originalModel ? ' (original)' : ''}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <p className="font-mono text-[10.5px] text-text-faint">
             Swap model to compare cost / latency, or keep original.
           </p>

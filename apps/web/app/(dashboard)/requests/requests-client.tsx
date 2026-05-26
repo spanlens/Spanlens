@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ExportDropdown } from '@/components/ui/export-dropdown'
 import { cn, formatDateTime } from '@/lib/utils'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -1026,17 +1027,18 @@ export function RequestsClient() {
         </div>
 
         {/* Provider select */}
-        <select
-          value={filters.provider}
-          onChange={(e) => { pushParams({ provider: e.target.value === 'all' ? null : e.target.value, providerKeyId: null }); setPage(1); setSelectedId(null) }}
-          className="font-mono text-[11px] border border-border rounded-[5px] px-2 py-[5px] bg-bg text-text-muted hover:border-border-strong transition-colors focus:outline-none appearance-none cursor-pointer"
-        >
-          <option value="all">All providers</option>
-          <option value="openai">openai</option>
-          <option value="anthropic">anthropic</option>
-          <option value="gemini">gemini</option>
-          <option value="azure">azure</option>
-        </select>
+        <Select value={filters.provider} onValueChange={(v) => { pushParams({ provider: v === 'all' ? null : v, providerKeyId: null }); setPage(1); setSelectedId(null) }}>
+          <SelectTrigger className="w-auto h-auto py-[5px] text-[11px] text-text-muted rounded-[5px] hover:border-border-strong transition-colors">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All providers</SelectItem>
+            <SelectItem value="openai">openai</SelectItem>
+            <SelectItem value="anthropic">anthropic</SelectItem>
+            <SelectItem value="gemini">gemini</SelectItem>
+            <SelectItem value="azure">azure</SelectItem>
+          </SelectContent>
+        </Select>
 
         {/* Model input, debounced, applies 300ms after last keystroke */}
         <input
@@ -1052,16 +1054,19 @@ export function RequestsClient() {
 
         {/* Key select */}
         {visibleKeys.length > 0 && (
-          <select
-            value={filters.providerKeyId}
-            onChange={(e) => { pushParams({ providerKeyId: e.target.value === 'all' ? null : e.target.value }); setPage(1); setSelectedId(null) }}
-            className="font-mono text-[11px] border border-border rounded-[5px] px-2 py-[5px] bg-bg text-text-muted hover:border-border-strong transition-colors focus:outline-none appearance-none cursor-pointer max-w-[140px] truncate"
-          >
-            <option value="all">All keys</option>
-            {visibleKeys.map((k) => (
-              <option key={k.id} value={k.id}>{k.name}</option>
-            ))}
-          </select>
+          <div className="max-w-[140px]">
+            <Select value={filters.providerKeyId} onValueChange={(v) => { pushParams({ providerKeyId: v === 'all' ? null : v }); setPage(1); setSelectedId(null) }}>
+              <SelectTrigger className="w-auto h-auto py-[5px] text-[11px] text-text-muted rounded-[5px] hover:border-border-strong transition-colors">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All keys</SelectItem>
+                {visibleKeys.map((k) => (
+                  <SelectItem key={k.id} value={k.id}>{k.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         )}
 
         {hasActiveFilters && (

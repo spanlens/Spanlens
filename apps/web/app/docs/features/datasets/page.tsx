@@ -96,41 +96,51 @@ export default function DatasetsDocs() {
     "expectedOutput": "Hello Alice, how can I help?"
   }'`}</CodeBlock>
 
-      <h3>4. File upload from the Eval Run dialog</h3>
-      <p>
-        On the Eval Run dialog, switch <strong>Sample source</strong> to <strong>Dataset</strong>,
-        click the <strong>Plus Upload</strong> button next to the picker, and choose a JSON or
-        CSV file. The file is parsed in the browser (no external deps), a fresh dataset with an
-        auto generated name is created (for example <code>upload-2026-05-22-2245</code>), every
-        valid row is inserted in one bulk call, and the new dataset is pre selected so you can
-        click Run immediately.
-      </p>
-      <p>Accepted file shapes:</p>
+      <h3>4. File upload (dashboard)</h3>
+      <p>Two entry points accept a file and bulk-insert its rows in one step:</p>
       <ul>
         <li>
-          <strong>JSON</strong>, an array of <code>{`{ input, expected_output? }`}</code> objects.{' '}
-          <code>input</code> can be a plain string (wrapped as a one message conversation),{' '}
-          <code>{`{ messages: [...] }`}</code>, or <code>{`{ variables: {...} }`}</code>.
+          <strong>New dataset dialog</strong> — on the <a href="/datasets">/datasets</a> list page,
+          click <strong>New dataset</strong>, then switch to the <strong>Upload file</strong> tab.
+          Pick a file, confirm the name (auto-filled from the filename), and click{' '}
+          <strong>Create</strong>. A new dataset is created and all rows are inserted immediately.
         </li>
         <li>
-          <strong>CSV</strong>, header row with <code>input</code> (required) and{' '}
-          <code>expected_output</code> (optional). Quoted fields are supported.
+          <strong>Import items button</strong> — on an existing dataset&apos;s detail page, click{' '}
+          <strong>Import items</strong> in the top-right and pick a file. Rows are added to the
+          existing dataset and a confirmation count appears inline.
         </li>
       </ul>
-      <p>
-        The dataset stays in <a href="/datasets">/datasets</a> for later reuse. Rename it (so you
-        can find it months later), keep it as is, or delete it after the run.
-      </p>
+      <p>All parsing is done in the browser (no file is sent to the server). Accepted formats:</p>
+      <ul>
+        <li>
+          <strong>JSON array</strong> (<code>.json</code>), an array of{' '}
+          <code>{`{ input, expected_output? }`}</code> objects where <code>input</code> is{' '}
+          <code>{`{ messages: [...] }`}</code> or <code>{`{ variables: {...} }`}</code>.
+          <CodeBlock language="json">{`[
+  { "input": { "messages": [{ "role": "user", "content": "What is 2+2?" }] }, "expected_output": "4" },
+  { "input": { "variables": { "name": "Alice" } }, "expected_output": "Hello Alice" }
+]`}</CodeBlock>
+        </li>
+        <li>
+          <strong>JSONL</strong> (<code>.jsonl</code>), one JSON object per line, same shape as
+          above.
+        </li>
+        <li>
+          <strong>CSV</strong> (<code>.csv</code>), header row with <code>input</code> (required)
+          and <code>expected_output</code> (optional). Quoted fields are supported. Plain-text{' '}
+          <code>input</code> values are automatically wrapped as a single user message.
+          <CodeBlock language="text">{`input,expected_output
+What is the capital of France?,Paris
+"What is 2+2?",4`}</CodeBlock>
+        </li>
+      </ul>
       <p>Behind the scenes the upload calls:</p>
       <CodeBlock language="bash">{`curl https://spanlens-server.vercel.app/api/v1/datasets/<dataset-id>/items/bulk \\
   -H "Authorization: Bearer $SPANLENS_JWT" \\
   -H "Content-Type: application/json" \\
-  -d '{ "items": [ { "input": "..." }, ... ] }'`}</CodeBlock>
-      <p>
-        Max 5000 items per request. Rows the server cannot normalize (missing or wrong shape){' '}
-        come back in a <code>skipped</code> array with per row reasons instead of failing the
-        whole batch.
-      </p>
+  -d '{ "items": [ { "input": { "messages": [...] } }, ... ] }'`}</CodeBlock>
+      <p>Max 5000 items per request.</p>
 
       <h2>Connection to Evals</h2>
       <p>

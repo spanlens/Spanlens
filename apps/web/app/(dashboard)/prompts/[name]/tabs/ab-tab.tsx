@@ -10,6 +10,7 @@ import {
 } from '@/lib/queries/use-prompts'
 import { PermissionGate } from '@/components/permission-gate'
 import { cn, formatDate } from '@/lib/utils'
+import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '@/components/ui/select'
 
 interface Props {
   name: string
@@ -94,23 +95,21 @@ function CreateExperimentForm({ name, versions, onDone }: CreateFormProps) {
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-1.5">
           <label className="font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint">Version A (control)</label>
-          <select
-            value={vA}
-            onChange={(e) => setVA(e.target.value)}
-            className="w-full h-8 px-2 rounded-[4px] border border-border bg-bg font-mono text-[12px] text-text focus:outline-none focus:border-border-strong"
-          >
-            {sorted.map((v) => <option key={v.id} value={v.id}>{versionLabel(v)}</option>)}
-          </select>
+          <Select {...(vA ? { value: vA } : {})} onValueChange={setVA}>
+            <SelectTrigger className="h-8 rounded-[4px]"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {sorted.map((v) => <SelectItem key={v.id} value={v.id}>{versionLabel(v)}</SelectItem>)}
+            </SelectContent>
+          </Select>
         </div>
         <div className="space-y-1.5">
           <label className="font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint">Version B (challenger)</label>
-          <select
-            value={vB}
-            onChange={(e) => setVB(e.target.value)}
-            className="w-full h-8 px-2 rounded-[4px] border border-border bg-bg font-mono text-[12px] text-text focus:outline-none focus:border-border-strong"
-          >
-            {sorted.map((v) => <option key={v.id} value={v.id}>{versionLabel(v)}</option>)}
-          </select>
+          <Select {...(vB ? { value: vB } : {})} onValueChange={setVB}>
+            <SelectTrigger className="h-8 rounded-[4px]"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {sorted.map((v) => <SelectItem key={v.id} value={v.id}>{versionLabel(v)}</SelectItem>)}
+            </SelectContent>
+          </Select>
         </div>
       </div>
 

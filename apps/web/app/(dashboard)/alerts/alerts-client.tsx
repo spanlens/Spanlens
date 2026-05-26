@@ -1,5 +1,5 @@
 'use client'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { Trash2, Mail, MessageSquare } from 'lucide-react'
 import {
@@ -161,6 +161,13 @@ export function AlertsClient() {
   const createChannel = useCreateChannel()
   const deleteChannel = useDeleteChannel()
 
+  // `mounted` ensures SSR and client initial hydration render identically.
+  // Skeleton checks use this flag so they only activate after client mount —
+  // before mount, both SSR and client hydration render the data-based state
+  // (empty or list), preventing the skeleton vs empty-state mismatch.
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => setMounted(true), [])
+
   const [alertDialogOpen, setAlertDialogOpen] = useState(false)
   const [channelDialogOpen, setChannelDialogOpen] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -290,7 +297,7 @@ export function AlertsClient() {
       </div>
 
       <div className="flex-1 overflow-auto">
-        {alertsQuery.isLoading ? (
+        {mounted && alertsQuery.data === undefined ? (
           <div className="p-6 space-y-2">
             {[1, 2, 3].map((i) => <div key={i} className="h-14 bg-bg-elev rounded animate-pulse" />)}
           </div>
@@ -370,7 +377,7 @@ export function AlertsClient() {
               <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-3">
                 Notification channels
               </div>
-              {channelsQuery.isLoading ? (
+              {mounted && channelsQuery.data === undefined ? (
                 <div className="h-12 bg-bg-elev rounded animate-pulse" />
               ) : channels.length === 0 ? (
                 <div className="rounded-[5px] border border-dashed border-border py-5 text-center font-mono text-[12px] text-text-muted">

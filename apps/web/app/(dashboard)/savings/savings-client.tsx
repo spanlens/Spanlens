@@ -6,6 +6,7 @@ import { usePrompts, usePlaygroundRun, type PlaygroundResult } from '@/lib/queri
 import { useProviderKeys } from '@/lib/queries/use-provider-keys'
 import { useModels } from '@/lib/queries/use-models'
 import { Topbar } from '@/components/layout/topbar'
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
 
@@ -148,15 +149,16 @@ function SelectControl<T extends string>({
   options: { value: T; label: string }[]
 }) {
   return (
-    <select
-      value={value}
-      onChange={(e) => onChange(e.target.value as T)}
-      className="font-mono text-[10.5px] text-text-muted px-[8px] py-[3px] border border-border rounded-[4px] bg-bg hover:border-border-strong transition-colors appearance-none cursor-pointer"
-    >
-      {options.map((o) => (
-        <option key={o.value} value={o.value}>{o.label}</option>
-      ))}
-    </select>
+    <Select value={value} onValueChange={onChange}>
+      <SelectTrigger className="w-auto h-auto py-[3px] text-[10.5px] text-text-muted rounded-[4px] hover:border-border-strong transition-colors">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {options.map((o) => (
+          <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   )
 }
 
@@ -500,19 +502,14 @@ function ComparePlaygroundDialog({
             <label className="font-mono text-[10px] text-text-faint uppercase tracking-[0.05em] mb-1.5 block">
               Prompt version
             </label>
-            <select
-              value={effectiveVersionId}
-              onChange={(e) => setVersionId(e.target.value)}
-              disabled={promptsLoading}
-              className={selectClass}
-            >
-              <option value="">
-                {promptsLoading ? 'Loading…' : prompts.length === 0 ? 'No prompts — create one first' : 'Select a prompt version…'}
-              </option>
-              {prompts.map((p) => (
-                <option key={p.id} value={p.id}>{p.name} · v{p.version}</option>
-              ))}
-            </select>
+            <Select {...(effectiveVersionId ? { value: effectiveVersionId } : {})} onValueChange={setVersionId} disabled={promptsLoading}>
+              <SelectTrigger className={selectClass}><SelectValue placeholder={promptsLoading ? 'Loading…' : prompts.length === 0 ? 'No prompts — create one first' : 'Select a prompt version…'} /></SelectTrigger>
+              <SelectContent>
+                {prompts.map((p) => (
+                  <SelectItem key={p.id} value={p.id}>{p.name} · v{p.version}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           {/* Two-column model cards */}
@@ -531,19 +528,14 @@ function ComparePlaygroundDialog({
                 <label className="font-mono text-[10px] text-text-faint uppercase tracking-[0.05em] mb-1.5 block">
                   API Key
                 </label>
-                <select
-                  value={effectiveCurrentKeyId}
-                  onChange={(e) => setCurrentKeyId(e.target.value)}
-                  disabled={keysLoading}
-                  className={selectClass}
-                >
-                  <option value="">
-                    {keysLoading ? 'Loading…' : currentKeys.length === 0 ? 'No active keys' : 'Select key…'}
-                  </option>
-                  {currentKeys.map((k) => (
-                    <option key={k.id} value={k.id}>{k.name}</option>
-                  ))}
-                </select>
+                <Select {...(effectiveCurrentKeyId ? { value: effectiveCurrentKeyId } : {})} onValueChange={setCurrentKeyId} disabled={keysLoading}>
+                  <SelectTrigger className={selectClass}><SelectValue placeholder={keysLoading ? 'Loading…' : currentKeys.length === 0 ? 'No active keys' : 'Select key…'} /></SelectTrigger>
+                  <SelectContent>
+                    {currentKeys.map((k) => (
+                      <SelectItem key={k.id} value={k.id}>{k.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 {!keysLoading && currentKeys.length === 0 && (
                   <p className="font-mono text-[10.5px] text-bad mt-1">
                     No active {rec.currentProvider} keys found.
@@ -586,23 +578,19 @@ function ComparePlaygroundDialog({
                 <label className="font-mono text-[10px] text-text-faint uppercase tracking-[0.05em] mb-1.5 block">
                   Model
                 </label>
-                <select
-                  value={`${effectiveSuggestedProvider}:${effectiveSuggestedModel}`}
-                  onChange={(e) => handleModelSelect(e.target.value)}
-                  disabled={modelsLoading}
-                  className={selectClass}
-                >
-                  {modelsLoading && <option value="">Loading models…</option>}
-                  {Object.entries(modelOptionsByProvider).map(([provider, entries]) => (
-                    <optgroup key={provider} label={provider}>
-                      {entries.map((e) => (
-                        <option key={`${provider}:${e.model}`} value={`${provider}:${e.model}`}>
-                          {e.model}
-                        </option>
-                      ))}
-                    </optgroup>
-                  ))}
-                </select>
+                <Select value={`${effectiveSuggestedProvider}:${effectiveSuggestedModel}`} onValueChange={handleModelSelect} disabled={modelsLoading}>
+                  <SelectTrigger className={selectClass}><SelectValue placeholder={modelsLoading ? 'Loading models…' : undefined} /></SelectTrigger>
+                  <SelectContent>
+                    {Object.entries(modelOptionsByProvider).map(([provider, entries]) => (
+                      <SelectGroup key={provider}>
+                        <SelectLabel>{provider}</SelectLabel>
+                        {entries.map((e) => (
+                          <SelectItem key={`${provider}:${e.model}`} value={`${provider}:${e.model}`}>{e.model}</SelectItem>
+                        ))}
+                      </SelectGroup>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
 
               {/* API Key */}
@@ -610,19 +598,14 @@ function ComparePlaygroundDialog({
                 <label className="font-mono text-[10px] text-text-faint uppercase tracking-[0.05em] mb-1.5 block">
                   API Key
                 </label>
-                <select
-                  value={effectiveSuggestedKeyId}
-                  onChange={(e) => setSuggestedKeyId(e.target.value)}
-                  disabled={keysLoading}
-                  className={selectClass}
-                >
-                  <option value="">
-                    {keysLoading ? 'Loading…' : suggestedKeys.length === 0 ? 'No active keys' : 'Select key…'}
-                  </option>
-                  {suggestedKeys.map((k) => (
-                    <option key={k.id} value={k.id}>{k.name}</option>
-                  ))}
-                </select>
+                <Select {...(effectiveSuggestedKeyId ? { value: effectiveSuggestedKeyId } : {})} onValueChange={setSuggestedKeyId} disabled={keysLoading}>
+                  <SelectTrigger className={selectClass}><SelectValue placeholder={keysLoading ? 'Loading…' : suggestedKeys.length === 0 ? 'No active keys' : 'Select key…'} /></SelectTrigger>
+                  <SelectContent>
+                    {suggestedKeys.map((k) => (
+                      <SelectItem key={k.id} value={k.id}>{k.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 {!keysLoading && suggestedKeys.length === 0 && (
                   <p className="font-mono text-[10.5px] text-bad mt-1">
                     No active {effectiveSuggestedProvider} keys found.
