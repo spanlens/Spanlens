@@ -55,6 +55,7 @@ modelsRouter.get('/', async (c) => {
       ' cache_read_price_per_1m, cache_write_price_per_1m,' +
       ' long_context_threshold_tokens',
     )
+    .eq('chat_capable', true)
     .order('model', { ascending: true })
 
   if (error) {

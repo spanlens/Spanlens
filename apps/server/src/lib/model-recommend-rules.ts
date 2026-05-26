@@ -124,19 +124,19 @@ export const SUBSTITUTES: Record<string, Substitute> = {
   },
   'gemini:gemini-1.5-pro': {
     suggestedProvider: 'gemini',
-    suggestedModel: 'gemini-1.5-flash',
-    costRatio: 0.06,           // 1.5-flash is ~17x cheaper ($0.075 vs $1.25/1M input)
+    suggestedModel: 'gemini-2.5-flash',
+    costRatio: 0.24,           // 2.5-flash ($0.30) is ~4x cheaper than 1.5-pro ($1.25/1M input)
     maxAvgPromptTokens: 1000,
     maxAvgCompletionTokens: 300,
-    reason: 'Gemini 1.5 Flash is ~17x cheaper than Pro on short requests and typically within 5% accuracy on structured tasks.',
+    reason: 'Gemini 2.5 Flash is ~4x cheaper than 1.5 Pro and significantly faster on short requests.',
   },
   'gemini:gemini-2.0-pro': {
     suggestedProvider: 'gemini',
-    suggestedModel: 'gemini-2.0-flash',
-    costRatio: 0.1,
+    suggestedModel: 'gemini-2.5-flash',
+    costRatio: 0.15,
     maxAvgPromptTokens: 1000,
     maxAvgCompletionTokens: 300,
-    reason: 'Gemini 2.0 Flash delivers similar output quality at ~10x lower cost for short-context tasks.',
+    reason: 'Gemini 2.5 Flash delivers better output quality at lower cost for short-context tasks.',
   },
 }
 
