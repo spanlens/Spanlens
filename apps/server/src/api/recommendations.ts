@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { authJwt, type JwtContext } from '../middleware/authJwt.js'
 import { recommendModelSwaps } from '../lib/model-recommend.js'
-import { getClickhouse, toClickhouseTimestamp } from '../lib/clickhouse.js'
+import { getOrgClickhouse, toClickhouseTimestamp } from '../lib/clickhouse.js'
 import { requestsScope } from '../lib/requests-query.js'
 import { parsePositiveFloat } from '../lib/params.js'
 
@@ -86,7 +86,7 @@ recommendationsRouter.get('/percentiles', async (c) => {
 
   let row: PercentileRow | null = null
   try {
-    const res = await getClickhouse().query({
+    const res = await getOrgClickhouse(orgId).client.query({
       query: `
         SELECT
           quantile(0.50)(prompt_tokens)     AS p50_prompt,
