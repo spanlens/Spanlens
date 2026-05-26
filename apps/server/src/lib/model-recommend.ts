@@ -1,4 +1,5 @@
-import { supabaseAdmin } from './db.js'
+import { getClickhouse, toClickhouseTimestamp } from './clickhouse.js'
+import { requestsScope } from './requests-query.js'
 // Import from the cache module directly — `model-recommend-rules.ts` no
 // longer re-exports `matchSubstitute` because doing so created a circular
 // ESM import that esbuild flattens into a TDZ ReferenceError at module
@@ -48,14 +49,14 @@ export interface ModelRecommendation {
   actualMonthlySavingsUsd: number | null
 }
 
-/** Shape returned by the get_model_aggregates() Postgres function */
+/** Shape returned by the ClickHouse aggregates query (all numbers are strings in JSONEachRow) */
 interface AggregateRow {
   provider: string
   model: string
-  sample_count: number
-  avg_prompt_tokens: number
-  avg_completion_tokens: number
-  total_cost_usd: number
+  sample_count: string
+  avg_prompt_tokens: string
+  avg_completion_tokens: string
+  total_cost_usd: string | null
 }
 
 export interface RecommendOptions {
@@ -83,18 +84,46 @@ export async function recommendModelSwaps(
   const minSavingsUsd = opts.minSavingsUsd ?? 5
   const monthFactor = (24 * 30) / hours
 
-  const windowStart = new Date(Date.now() - hours * 3_600_000).toISOString()
-  const priorWindowEnd = windowStart
-  const priorWindowStart = new Date(Date.now() - 2 * hours * 3_600_000).toISOString()
+  const windowStartDate      = new Date(Date.now() - hours * 3_600_000)
+  const priorWindowEndDate   = windowStartDate
+  const priorWindowStartDate = new Date(Date.now() - 2 * hours * 3_600_000)
+
+  const windowStartTs      = toClickhouseTimestamp(windowStartDate)
+  const priorWindowEndTs   = toClickhouseTimestamp(priorWindowEndDate)
+  const priorWindowStartTs = toClickhouseTimestamp(priorWindowStartDate)
+
+  // Recommendations need to look back up to 2× the window, so skip plan
+  // retention — otherwise a free user doing 30d analysis would lose the prior
+  // window (30–60 days ago). Organisation isolation is still enforced.
+  const scope = await requestsScope(organizationId, { ignoreRetention: true })
 
   // ── Phase 1: current-window aggregates ───────────────────────────────────
-  const { data, error } = await supabaseAdmin.rpc('get_model_aggregates', {
-    p_organization_id: organizationId,
-    p_window_start: windowStart,
-    p_status_codes: [200, 201, 202, 204],
-  })
-
-  if (error || !data) return []
+  let data: AggregateRow[] = []
+  try {
+    const res = await getClickhouse().query({
+      query: `
+        SELECT
+          provider,
+          model,
+          count()                AS sample_count,
+          avg(prompt_tokens)     AS avg_prompt_tokens,
+          avg(completion_tokens) AS avg_completion_tokens,
+          sum(cost_usd)          AS total_cost_usd
+        FROM requests
+        WHERE ${scope.whereScope}
+          AND created_at >= parseDateTime64BestEffort({windowStart:String})
+          AND status_code IN (200, 201, 202, 204)
+          AND model    != ''
+          AND provider != ''
+        GROUP BY provider, model
+      `,
+      query_params: { ...scope.scopeParams, windowStart: windowStartTs },
+      format: 'JSONEachRow',
+    })
+    data = await res.json<AggregateRow>()
+  } catch {
+    return []
+  }
 
   // ── Phase 2: build candidates (no minSavings filter yet) ─────────────────
   interface Candidate extends ModelRecommendation {
@@ -103,8 +132,13 @@ export async function recommendModelSwaps(
 
   const candidates: Candidate[] = []
 
-  for (const row of data as AggregateRow[]) {
-    const { provider, model, sample_count, avg_prompt_tokens, avg_completion_tokens, total_cost_usd } = row
+  for (const row of data) {
+    const provider            = row.provider
+    const model               = row.model
+    const sample_count        = Number(row.sample_count)
+    const avg_prompt_tokens   = Number(row.avg_prompt_tokens)
+    const avg_completion_tokens = Number(row.avg_completion_tokens)
+    const total_cost_usd      = Number(row.total_cost_usd ?? 0)
 
     if (sample_count < minSamples) continue
 
@@ -148,14 +182,30 @@ export async function recommendModelSwaps(
   // ── Phase 3: prior-window cost (parallel) ────────────────────────────────
   async function fetchPriorCost(provider: string, model: string): Promise<number> {
     try {
-      const r = await supabaseAdmin.rpc('get_model_prior_window_cost', {
-        p_organization_id: organizationId,
-        p_provider: provider,
-        p_model: model,
-        p_window_start: priorWindowStart,
-        p_window_end: priorWindowEnd,
+      interface CostRow { total_cost_usd: string | null }
+      const res = await getClickhouse().query({
+        query: `
+          SELECT sum(cost_usd) AS total_cost_usd
+          FROM requests
+          WHERE ${scope.whereScope}
+            AND provider = {provider:String}
+            AND (model = {model:String} OR startsWith(model, {modelPrefix:String}))
+            AND created_at >= parseDateTime64BestEffort({windowStart:String})
+            AND created_at <  parseDateTime64BestEffort({windowEnd:String})
+            AND status_code IN (200, 201, 202, 204)
+        `,
+        query_params: {
+          ...scope.scopeParams,
+          provider,
+          model,
+          modelPrefix: model + '-',
+          windowStart: priorWindowStartTs,
+          windowEnd: priorWindowEndTs,
+        },
+        format: 'JSONEachRow',
       })
-      return typeof r.data === 'number' ? r.data : 0
+      const rows = await res.json<CostRow>()
+      return Number(rows[0]?.total_cost_usd ?? 0)
     } catch {
       return 0 // fail open — no prior data is not a blocker
     }

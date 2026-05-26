@@ -1,7 +1,8 @@
 import { Hono } from 'hono'
 import { authJwt, type JwtContext } from '../middleware/authJwt.js'
 import { recommendModelSwaps } from '../lib/model-recommend.js'
-import { supabaseAdmin } from '../lib/db.js'
+import { getClickhouse, toClickhouseTimestamp } from '../lib/clickhouse.js'
+import { requestsScope } from '../lib/requests-query.js'
 import { parsePositiveFloat } from '../lib/params.js'
 
 /**
@@ -30,16 +31,16 @@ export const recommendationsRouter = new Hono<JwtContext>()
 recommendationsRouter.use('*', authJwt)
 
 
-// ── Shape returned by get_model_percentiles() ────────────────────────────────
+// ── Shape returned by ClickHouse percentiles query (all numbers as strings) ───
 
 interface PercentileRow {
-  p50_prompt: number | null
-  p95_prompt: number | null
-  p99_prompt: number | null
-  p50_completion: number | null
-  p95_completion: number | null
-  p99_completion: number | null
-  sample_count: number | string  // Postgres bigint → string in some drivers
+  p50_prompt: string | null
+  p95_prompt: string | null
+  p99_prompt: string | null
+  p50_completion: string | null
+  p95_completion: string | null
+  p99_completion: string | null
+  sample_count: string
 }
 
 // ── Routes ───────────────────────────────────────────────────────────────────
@@ -78,18 +79,47 @@ recommendationsRouter.get('/percentiles', async (c) => {
     return c.json({ error: 'model is required (max 128 chars)' }, 400)
   }
 
-  const windowStart = new Date(Date.now() - hours * 3_600_000).toISOString()
+  const windowStart = new Date(Date.now() - hours * 3_600_000)
+  const windowStartTs = toClickhouseTimestamp(windowStart)
 
-  const { data, error } = await supabaseAdmin.rpc('get_model_percentiles', {
-    p_organization_id: orgId,
-    p_provider: provider,
-    p_model: model,
-    p_window_start: windowStart,
-  })
+  const scope = await requestsScope(orgId, { ignoreRetention: true })
 
-  if (error) return c.json({ error: error.message }, 500)
+  let row: PercentileRow | null = null
+  try {
+    const res = await getClickhouse().query({
+      query: `
+        SELECT
+          quantile(0.50)(prompt_tokens)     AS p50_prompt,
+          quantile(0.95)(prompt_tokens)     AS p95_prompt,
+          quantile(0.99)(prompt_tokens)     AS p99_prompt,
+          quantile(0.50)(completion_tokens) AS p50_completion,
+          quantile(0.95)(completion_tokens) AS p95_completion,
+          quantile(0.99)(completion_tokens) AS p99_completion,
+          count()                           AS sample_count
+        FROM requests
+        WHERE ${scope.whereScope}
+          AND provider = {provider:String}
+          AND (model = {model:String} OR startsWith(model, {modelPrefix:String}))
+          AND created_at >= parseDateTime64BestEffort({windowStart:String})
+          AND status_code IN (200, 201, 202, 204)
+          AND prompt_tokens     > 0
+          AND completion_tokens > 0
+      `,
+      query_params: {
+        ...scope.scopeParams,
+        provider,
+        model,
+        modelPrefix: model + '-',
+        windowStart: windowStartTs,
+      },
+      format: 'JSONEachRow',
+    })
+    const rows = await res.json<PercentileRow>()
+    row = rows[0] ?? null
+  } catch (err) {
+    return c.json({ error: String(err) }, 500)
+  }
 
-  const row = (data as PercentileRow[] | null)?.[0] ?? null
   const sampleCount = row ? Number(row.sample_count) : 0
 
   if (!row || sampleCount === 0) {
@@ -99,12 +129,12 @@ recommendationsRouter.get('/percentiles', async (c) => {
   return c.json({
     success: true,
     data: {
-      p50PromptTokens:      Math.round(row.p50_prompt      ?? 0),
-      p95PromptTokens:      Math.round(row.p95_prompt      ?? 0),
-      p99PromptTokens:      Math.round(row.p99_prompt      ?? 0),
-      p50CompletionTokens:  Math.round(row.p50_completion  ?? 0),
-      p95CompletionTokens:  Math.round(row.p95_completion  ?? 0),
-      p99CompletionTokens:  Math.round(row.p99_completion  ?? 0),
+      p50PromptTokens:      Math.round(Number(row.p50_prompt      ?? 0)),
+      p95PromptTokens:      Math.round(Number(row.p95_prompt      ?? 0)),
+      p99PromptTokens:      Math.round(Number(row.p99_prompt      ?? 0)),
+      p50CompletionTokens:  Math.round(Number(row.p50_completion  ?? 0)),
+      p95CompletionTokens:  Math.round(Number(row.p95_completion  ?? 0)),
+      p99CompletionTokens:  Math.round(Number(row.p99_completion  ?? 0)),
       sampleCount,
     },
   })

@@ -23,8 +23,8 @@ INSERT INTO model_recommendations (
   ('anthropic', 'claude-3-5-sonnet-20241022', 'anthropic', 'claude-haiku-4.5', 0.333, 800,  250, 'Sonnet 3.5 is overkill for short-context classification — Haiku 4.5 is ~3x cheaper with comparable accuracy at this token range.'),
   -- ── Gemini ─────────────────────────────────────────────────────────
   ('gemini', 'gemini-2.5-pro', 'gemini', 'gemini-2.5-flash', 0.25, 1000, 300, 'Gemini 2.5 Flash is ~4x cheaper than 2.5 Pro on short requests with comparable accuracy on structured tasks.'),
-  ('gemini', 'gemini-1.5-pro', 'gemini', 'gemini-1.5-flash', 0.06, 1000, 300, 'Gemini 1.5 Flash is ~17x cheaper than Pro on short requests and typically within 5% accuracy on structured tasks.'),
-  ('gemini', 'gemini-2.0-pro', 'gemini', 'gemini-2.0-flash', 0.10, 1000, 300, 'Gemini 2.0 Flash delivers similar output quality at ~10x lower cost for short-context tasks.')
+  ('gemini', 'gemini-1.5-pro', 'gemini', 'gemini-2.5-flash', 0.24, 1000, 300, 'Gemini 2.5 Flash is ~4x cheaper than 1.5 Pro and significantly faster on short requests.'),
+  ('gemini', 'gemini-2.0-pro', 'gemini', 'gemini-2.5-flash', 0.15, 1000, 300, 'Gemini 2.5 Flash delivers better output quality at lower cost for short-context tasks.')
 ON CONFLICT (current_provider, current_model) DO UPDATE
   SET suggested_provider        = EXCLUDED.suggested_provider,
       suggested_model           = EXCLUDED.suggested_model,
