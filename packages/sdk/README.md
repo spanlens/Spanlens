@@ -1,10 +1,10 @@
 # @spanlens/sdk
 
-LLM observability SDK for [Spanlens](https://spanlens.io). Record agent traces, LLM calls, tool invocations, and retrievals — with a single line change.
+LLM observability SDK for [Spanlens](https://spanlens.io). Record agent traces, LLM calls, tool invocations, and retrievals with a single line change.
 
-**Zero-instrumentation mode** — just swap your `baseURL` to Spanlens proxy and you get request logging + cost tracking automatically. Use this SDK when you also want **agent tracing** (multi-step workflows, parallel fan-out, nested spans).
+**Zero-instrumentation mode**. Just swap your `baseURL` to Spanlens proxy and you get request logging + cost tracking automatically. Use this SDK when you also want **agent tracing** (multi-step workflows, parallel fan-out, nested spans).
 
-> 💡 **Next.js user?** Run **[`npx @spanlens/cli init`](https://www.npmjs.com/package/@spanlens/cli)** — the wizard installs this SDK, writes your env var, and auto-rewrites `new OpenAI({...})` into `createOpenAI()` for you (30 seconds).
+> 💡 **Next.js user?** Run **[`npx @spanlens/cli init`](https://www.npmjs.com/package/@spanlens/cli)**. The wizard installs this SDK, writes your env var, and auto-rewrites `new OpenAI({...})` into `createOpenAI()` for you (30 seconds).
 
 ## Install
 
@@ -16,7 +16,7 @@ pnpm add @spanlens/sdk
 
 ## 1-line setup (v0.2.0+) ⚡
 
-For the common case — **just route your LLM calls through Spanlens** for logging + cost tracking — use the pre-configured client helpers. No `baseURL` to remember:
+For the common case where you **just want to route your LLM calls through Spanlens** for logging + cost tracking, use the pre-configured client helpers. No `baseURL` to remember:
 
 ```ts
 // Before
@@ -44,7 +44,7 @@ const gemini    = createGemini()
 // gemini.getGenerativeModel() auto-routes through Spanlens proxy
 ```
 
-The returned clients are **identical** to `new OpenAI(...)` etc — all options (timeout, headers, organization, etc.) forward through. Peer dependencies (`openai`, `@anthropic-ai/sdk`, `@google/generative-ai`) are optional — install only the ones you use.
+The returned clients are **identical** to `new OpenAI(...)` etc, so all options (timeout, headers, organization, etc.) forward through. Peer dependencies (`openai`, `@anthropic-ai/sdk`, `@google/generative-ai`) are optional. Install only the ones you use.
 
 ### Prompt A/B tagging (v0.2.2+)
 
@@ -76,15 +76,15 @@ await openai.chat.completions.create(
     headers: {
       ...withUser(currentUser.id).headers,        // per-user analytics in /users
       ...withSession(sessionId).headers,          // group calls into one session
-      ...withLogBody('meta').headers,             // 'full' | 'meta' | 'none' — body redaction
+      ...withLogBody('meta').headers,             // 'full' | 'meta' | 'none' (body redaction level)
     },
   },
 )
 ```
 
-- **`withUser(id)`** — Tags the call so it shows up under that user in the [/users](https://www.spanlens.io/users) page (cost, tokens, error rate, last seen).
-- **`withSession(id)`** — Groups calls in the same chat / conversation so multi-turn flows are easy to inspect.
-- **`withLogBody('meta')`** — Stores only metadata, not request / response bodies. Use `'none'` to also drop end-user IDs. Useful for HIPAA-style data minimization without dropping the request entirely.
+- **`withUser(id)`** tags the call so it shows up under that user in the [/users](https://www.spanlens.io/users) page (cost, tokens, error rate, last seen).
+- **`withSession(id)`** groups calls in the same chat / conversation so multi-turn flows are easy to inspect.
+- **`withLogBody('meta')`** stores only metadata, not request / response bodies. Use `'none'` to also drop end-user IDs. Useful for HIPAA-style data minimization without dropping the request entirely.
 
 For **multi-step agent tracing** (Gantt view, parent/child spans, RAG pipelines), continue to the Quick start below.
 
@@ -106,7 +106,7 @@ try {
   const docs = await vectorStore.query('...')
   await retrievalSpan.end({ output: { doc_count: docs.length } })
 
-  // Auto-end via observe helper — handles errors, always closes the span
+  // Auto-end via observe helper (handles errors, always closes the span)
   const answer = await observe(trace, { name: 'gpt4o_answer', spanType: 'llm' }, async (span) => {
     const res = await openai.chat.completions.create({ ... })
     span.end({
@@ -129,27 +129,27 @@ try {
 
 | Option | Type | Default | Description |
 |---|---|---|---|
-| `apiKey` | `string` | — | **required** Spanlens API key (`sl_live_...`). |
+| `apiKey` | `string` | (required) | Spanlens API key (`sl_live_...`). |
 | `baseUrl` | `string` | `https://spanlens-server.vercel.app` | API base URL. |
 | `timeoutMs` | `number` | `3000` | Request timeout for ingest calls. |
 | `silent` | `boolean` | `true` | Swallow network errors so instrumentation never crashes user code. |
-| `onError` | `(err, ctx) => void` | — | Called on every ingest failure (even when `silent`). |
+| `onError` | `(err, ctx) => void` | (none) | Called on every ingest failure (even when `silent`). |
 
 ### `client.startTrace({ name, metadata? })` → `TraceHandle`
 
-Starts a new trace. Returns immediately — the backend ingest POST runs in the background.
+Starts a new trace. Returns immediately. The backend ingest POST runs in the background.
 
 ### `TraceHandle`
 
-- `.traceId: string` — client-generated UUID.
-- `.span(options) → SpanHandle` — create a root span under this trace.
-- `.end({ status?, errorMessage?, metadata? })` — mark trace complete (idempotent).
+- `.traceId: string`. A client-generated UUID.
+- `.span(options) → SpanHandle` creates a root span under this trace.
+- `.end({ status?, errorMessage?, metadata? })` marks the trace complete (idempotent).
 
 ### `SpanHandle`
 
 - `.spanId: string`
-- `.child(options) → SpanHandle` — nested span (auto-sets `parent_span_id`).
-- `.end({ status?, output?, errorMessage?, promptTokens?, completionTokens?, totalTokens?, costUsd?, requestId?, metadata? })` — idempotent.
+- `.child(options) → SpanHandle` creates a nested span (auto-sets `parent_span_id`).
+- `.end({ status?, output?, errorMessage?, promptTokens?, completionTokens?, totalTokens?, costUsd?, requestId?, metadata? })` is idempotent.
 
 **`spanType`**: `'llm' | 'tool' | 'retrieval' | 'embedding' | 'custom'` (default `'custom'`).
 
@@ -161,7 +161,7 @@ Wraps an async function in a span. Auto-ends the span on success or failure (ret
 const result = await observe(traceOrSpan, { name: 'work' }, async (span) => {
   // span is open here
   return doWork()
-  // span automatically closes — .end() is idempotent so you can still
+  // span automatically closes; .end() is idempotent so you can still
   // call span.end({ totalTokens, costUsd }) inside to capture metrics.
 })
 ```
@@ -221,7 +221,7 @@ await trace.end()
 ### LangChain JS (v0.3.0+)
 
 `@spanlens/sdk/langchain` ships a drop-in callback handler. Pass it to the
-`callbacks` option of any LangChain chain, LLM, or `RunnableConfig` — no
+`callbacks` option of any LangChain chain, LLM, or `RunnableConfig`. No
 proxy URL needed, no imports from `@langchain/core` required:
 
 ```ts
@@ -266,8 +266,8 @@ const tracker = createSpanlensTracker({ client, modelName: 'gpt-4o' })
 const result = await generateText({
   model: openai('gpt-4o'),
   messages: [{ role: 'user', content: 'Hello!' }],
-  onStepFinish: tracker.onStepFinish,  // optional — captures multi-step tool calls
-  onFinish: tracker.onFinish,          // required  — records final usage
+  onStepFinish: tracker.onStepFinish,  // optional (captures multi-step tool calls)
+  onFinish: tracker.onFinish,          // required (records final usage)
 })
 ```
 
@@ -283,7 +283,7 @@ await trace.end()
 
 ### Ollama (local LLMs)
 
-`observeOllama()` traces calls against a local Ollama instance. Use the OpenAI client pointed at Ollama's OpenAI-compatible endpoint — the wrapper tags the span as `provider: 'ollama'` so the dashboard charts it separately:
+`observeOllama()` traces calls against a local Ollama instance. Use the OpenAI client pointed at Ollama's OpenAI-compatible endpoint. The wrapper tags the span as `provider: 'ollama'` so the dashboard charts it separately:
 
 ```ts
 import OpenAI from 'openai'
@@ -308,7 +308,7 @@ await trace.end()
 ### LlamaIndex TS (v0.3.0+)
 
 `@spanlens/sdk/llamaindex` hooks directly into LlamaIndex's
-`Settings.callbackManager` — every LLM call is automatically traced:
+`Settings.callbackManager`, so every LLM call is automatically traced:
 
 ```ts
 import { Settings } from 'llamaindex'
@@ -339,7 +339,7 @@ unregister()
 await trace.end()
 ```
 
-## Graceful shutdown — `client.flush()`
+## Graceful shutdown with `client.flush()`
 
 Background ingest writes are fire-and-forget. In short-lived processes (scripts, one-shot jobs, serverless cold starts) the process may exit before all POSTs complete. Call `flush()` before exit to drain them:
 
@@ -352,13 +352,13 @@ await client.flush()   // resolves when all in-flight ingest calls have settled
 process.exit(0)
 ```
 
-`flush()` resolves even if some requests failed — it uses `Promise.allSettled` internally so a network error won't hang the process.
+`flush()` resolves even if some requests failed. It uses `Promise.allSettled` internally so a network error won't hang the process.
 
 ## Design notes
 
 - **Fire-and-forget ingest**: `startTrace()` and `trace.span()` return synchronously. Network writes run in the background so your hot path never waits on observability.
 - **Retry with back-off**: transient failures (network error, 429, 5xx) are retried up to 3 times with exponential back-off (200 ms → 400 ms → 800 ms). 4xx errors are not retried.
-- **Client-side UUIDs**: idempotent retries are safe — same UUID twice is a no-op on the server.
+- **Client-side UUIDs**: idempotent retries are safe, since the same UUID twice is a no-op on the server.
 - **No unhandled rejections**: background POST failures are silently swallowed; use the `onError` hook for visibility.
 
 ## License

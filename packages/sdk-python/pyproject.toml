@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "spanlens"
 version = "0.5.0"
-description = "Spanlens SDK — agent tracing, LLM usage capture, and cost observability for Python."
+description = "Spanlens SDK for Python. Agent tracing, LLM usage capture, and cost observability."
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.9"
@@ -27,6 +27,7 @@ keywords = [
     "token-tracking",
     "langchain",
     "llamaindex",
+    "ollama",
     "helicone-alternative",
     "langfuse-alternative",
     "langsmith-alternative",
@@ -57,10 +58,12 @@ dependencies = [
 openai = ["openai>=1.0.0"]
 anthropic = ["anthropic>=0.18.0"]
 gemini = ["google-generativeai>=0.5.0"]
+langchain = ["langchain-core>=0.1.0"]
 all = [
     "openai>=1.0.0",
     "anthropic>=0.18.0",
     "google-generativeai>=0.5.0",
+    "langchain-core>=0.1.0",
 ]
 dev = [
     "pytest>=7.4.0",
@@ -77,8 +80,9 @@ dev = [
 [project.urls]
 Homepage = "https://spanlens.io"
 Documentation = "https://spanlens.io/docs/sdk"
-Repository = "https://github.com/sunes26/Spanlens"
-Issues = "https://github.com/sunes26/Spanlens/issues"
+Repository = "https://github.com/spanlens/Spanlens"
+Issues = "https://github.com/spanlens/Spanlens/issues"
+Changelog = "https://github.com/spanlens/Spanlens/blob/main/packages/sdk-python/CHANGELOG.md"
 
 [tool.hatch.build.targets.wheel]
 packages = ["spanlens"]

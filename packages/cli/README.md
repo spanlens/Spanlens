@@ -34,7 +34,7 @@ Points the wizard at your own server: API key validation, dashboard links, and t
   ✓ Detected Next.js (TypeScript)
 
   Before continuing, make sure you have:
-    1. A Spanlens account — https://www.spanlens.io
+    1. A Spanlens account at https://www.spanlens.io
     2. A Project at https://www.spanlens.io/projects
     3. Provider keys (OpenAI / Anthropic / Gemini) added to that project
     4. A Spanlens key issued for that project (sl_live_…)
@@ -105,12 +105,12 @@ Points the wizard at your own server: API key validation, dashboard links, and t
 + const genAI = createGemini()
 ```
 
-`apiKey` and `baseURL` are stripped — every factory reads `SPANLENS_API_KEY` from env and routes through the Spanlens proxy. Other options (`timeout`, `organization`, `defaultHeaders`, etc.) stay put.
+`apiKey` and `baseURL` are stripped, since every factory reads `SPANLENS_API_KEY` from env and routes through the Spanlens proxy. Other options (`timeout`, `organization`, `defaultHeaders`, etc.) stay put.
 
 ## What's supported
 
 - ✅ Next.js (TypeScript + JavaScript)
-- ✅ **OpenAI / Anthropic / Gemini** — auto-detected from your registered provider keys
+- ✅ **OpenAI / Anthropic / Gemini**, auto-detected from your registered provider keys
 - ✅ Auto-installs `@spanlens/sdk` using your package manager (npm / pnpm / yarn / bun)
 - ✅ Validates the Spanlens key against the API before writing anything
 - ✅ Confirms before overwriting an existing `SPANLENS_API_KEY` in your env file
@@ -128,7 +128,7 @@ Points the wizard at your own server: API key validation, dashboard links, and t
 
 ## Manual integration (if wizard doesn't fit your stack)
 
-See [@spanlens/sdk README](https://www.npmjs.com/package/@spanlens/sdk) — the same helpers work without the wizard:
+See [@spanlens/sdk README](https://www.npmjs.com/package/@spanlens/sdk). The same helpers work without the wizard:
 
 ```ts
 import { createOpenAI }   from '@spanlens/sdk/openai'
