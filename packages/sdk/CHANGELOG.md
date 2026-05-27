@@ -1,5 +1,25 @@
 # @spanlens/sdk changelog
 
+## 0.6.1
+
+Metadata + docs polish. No runtime API changes (already-shipped 0.6 features remain identical: `observeOllama`, LangGraph callback handler, `withLogBody`, etc.).
+
+### Added
+
+- `sideEffects: false` in `package.json`. Bundlers (Webpack, Vite, Next.js, Rspack) can now tree-shake unused subpath imports, so users who import only `@spanlens/sdk/openai` no longer pull in the LangChain, Vercel AI, LlamaIndex, or Llamaindex modules.
+- `engines.node` set to `>=18.0.0`. Install on Node 16 now warns instead of failing at runtime when the SDK calls native `fetch`.
+- `ollama` keyword for npm search discoverability (`observeOllama` shipped in 0.6.0 but the keyword list was not updated then).
+
+### Fixed
+
+- `clean` script is now cross-platform. Local Windows publish flow (`pnpm run clean && pnpm run build`) used to abort because `rm -rf dist` is not a Windows command. Replaced with a Node-based `fs.rmSync`.
+
+### Docs
+
+- README documents `withUser` / `withSession` / `withLogBody` alongside the existing `withPromptVersion` section (all four header helpers were already exported in 0.4+).
+- New `observeOllama` section showing the OpenAI-compatible client pattern.
+- Removed a stale "no auto-instrumentation yet" design note that contradicted the `createOpenAI` / `createAnthropic` / `createGemini` one-liners documented elsewhere on the page.
+
 ## 0.3.0
 
 Framework callback integrations — trace LangChain, Vercel AI SDK, and LlamaIndex without touching the proxy URL.
