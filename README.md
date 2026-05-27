@@ -28,14 +28,18 @@
 | Open source | ✅ MIT | ✅ MIT | ✅ MIT |
 | Self-hostable | ✅ Docker one-liner | ✅ | ✅ |
 | Free tier | 50K req/mo | 50K events/mo | 10K req/mo |
-| Team plan (1M req/mo) | **$129/mo** | $271/mo | ~$200/mo |
+| Team plan (1M req/mo) | **$149/mo** | $271/mo | ~$200/mo |
 | Agent tracing | ✅ | ✅ | ⚠️ limited |
 | LLM-as-judge evals | ✅ | ✅ | ❌ |
 | PII + injection scan | ✅ | ❌ | ❌ |
 | Model recommendations | ✅ | ❌ | ❌ |
 | Prompt A/B experiments | ✅ | ✅ | ❌ |
 
-![Spanlens Team vs Langfuse Pro pricing](.github/assets/pricing-vs-langfuse.png)
+![Spanlens Team $149/mo vs Langfuse Pro $271/mo at 1M requests per month](.github/assets/pricing-vs-langfuse.png)
+
+**Predictable bills, no quota cliff.** Free hits a hard `429` at 50K requests so a runaway loop in dev can't cost you money. Paid plans use a soft limit with authorized overage (Pro: +$8 / 100K, Team: +$5 / 100K) up to a hard cap you control, so a traffic spike charges you fairly instead of dropping requests.
+
+**Seats**: Free 1 · Pro 3 · Team 10 · Enterprise unlimited. Unlimited projects on every paid tier.
 
 ---
 
@@ -99,17 +103,19 @@ Every request logged with model, provider, latency, tokens, cost, and full promp
 | **Cost tracking** | Per-request cost breakdown with prompt-cache pricing (Anthropic / OpenAI cache hits billed at their reduced rate), daily rollups, budget alerts |
 | **Per-end-user analytics** | Tag calls with `x-spanlens-user` (SDK: `withUser()` / `with_user()`) and the /users page shows per-user cost, tokens, errors, models, last seen |
 | **Anomaly detection** | 3σ deviations in latency, cost, or error rate vs. your 7-day baseline, with root-cause hints (token delta, HTTP status breakdown) |
+| **Alerts** | Threshold rules on budget, error rate, and p95 latency. Delivered via Email (Resend), Slack, or Discord webhooks. Evaluated on a 15-minute cron with at-least-once delivery |
 | **PII + prompt-injection scan** | Regex-based detection on request **and response** bodies; optional per-project blocking (422) for injections; instant alert emails to workspace owner |
-| **Model recommendations** | "Your gpt-4o calls look like classification. Try gpt-4o-mini" with estimated monthly savings |
+| **Savings (model recommendations)** | The `/savings` dashboard surfaces calls that match a cheaper model's profile ("Your gpt-4o calls look like classification. Try gpt-4o-mini") with estimated monthly savings |
 | **Prompt versioning + A/B** | Register prompt templates, run traffic-split experiments, compare versions side by side (latency / cost / error rate) |
 | **Prompts Playground** | Execute any prompt version with variable injection directly in the dashboard to see real cost and response before shipping |
-| **Evals & Experiments** | Build LLM-as-judge evaluators, create datasets, and run A/B experiments comparing two prompt versions; human annotation queue also included |
+| **Datasets** | Reusable (input, expected_output) test sets you can rerun against any prompt version or model. Powers offline evals and regression checks |
+| **Evals & Experiments** | Build LLM-as-judge evaluators, run A/B experiments comparing two prompt versions, and queue runs for human annotation with Pearson-correlation against the judge to measure reliability |
 | **Saved filters** | Pin frequently used request-log queries (model, status, cost range, tags) and share them across the workspace |
 | **Outbound webhooks** | Subscribe to `request.created` / `trace.completed` / `alert.triggered` events. Payloads are HMAC-signed via `X-Spanlens-Signature: sha256=…` so receivers can verify origin |
 | **OpenTelemetry / OTLP ingest** | `POST /v1/traces` accepts OTLP/HTTP JSON exports using the `gen_ai.*` semantic conventions, so you can drop in any OTel SDK without writing Spanlens-specific code |
 | **Provider-key security** | Weekly digest emails for stale (unused 90d+) provider keys + daily GitGuardian leak scan against your active keys, with per-key scan history |
 | **Privacy controls** | Per-request `x-spanlens-log-body: full \| meta \| none` header lets customers shrink what Spanlens stores (drop bodies, drop end-user IDs) without dropping the request itself |
-| **Data export** | Download request logs as CSV or JSON (`GET /api/v1/exports/requests?format=csv`) for offline analysis or BI tooling. Separate security export for flagged (PII / injection) calls |
+| **Data export** | CSV or JSON download for requests, traces, anomalies, and flagged security events (`GET /api/v1/exports/{requests,traces,anomalies,security}?format=csv`). Streamed server-side for 100K+ row pulls so big exports don't OOM |
 
 ---
 
