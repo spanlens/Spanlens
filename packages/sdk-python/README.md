@@ -8,7 +8,7 @@ and link calls back to your Spanlens dashboard with one line of code.
 [![Python](https://img.shields.io/pypi/pyversions/spanlens.svg)](https://pypi.org/project/spanlens/)
 
 > **Spanlens** is the open-source LLM observability platform. This is the
-> official Python SDK — for the dashboard, signup, and proxy docs, head to
+> official Python SDK. For the dashboard, signup, and proxy docs, head to
 > [spanlens.io](https://spanlens.io).
 
 ---
@@ -22,6 +22,7 @@ pip install spanlens
 pip install "spanlens[openai]"
 pip install "spanlens[anthropic]"
 pip install "spanlens[gemini]"
+pip install "spanlens[langchain]"
 pip install "spanlens[all]"
 ```
 
@@ -29,7 +30,7 @@ pip install "spanlens[all]"
 
 | Mode | Best for | Setup |
 | --- | --- | --- |
-| **Proxy** | Single-call observability — drop-in for the OpenAI/Anthropic SDK | Replace `base_url` |
+| **Proxy** | Single-call observability, drop-in for the OpenAI/Anthropic SDK | Replace `base_url` |
 | **SDK tracing** | Multi-step agents, RAG, tool calls, manual spans | `SpanlensClient(...)` |
 
 You can mix both. The proxy logs the raw request; the SDK groups multiple
@@ -37,7 +38,7 @@ requests into a single trace with parent / child spans.
 
 ---
 
-## Mode 1 — Proxy (zero-code)
+## Mode 1. Proxy (zero-code)
 
 Get a Spanlens API key from your dashboard, then point your provider SDK at
 the Spanlens proxy:
@@ -56,7 +57,7 @@ response = client.chat.completions.create(
 ```
 
 Spanlens automatically logs the request, response, latency, token counts,
-and cost — viewable in the dashboard under **Requests**.
+and cost. View them in the dashboard under **Requests**.
 
 ### Async (FastAPI, Django async views, asyncio)
 
@@ -91,12 +92,12 @@ res = client.chat.completions.create(
 )
 ```
 
-The same pattern works for Anthropic — see
+The same pattern works for Anthropic. See
 [`spanlens.integrations.anthropic`](./spanlens/integrations/anthropic.py).
 
 ---
 
-## Mode 2 — SDK tracing (multi-step agents)
+## Mode 2. SDK tracing (multi-step agents)
 
 Use the SDK when one user request spans multiple LLM calls, retrieval, tool
 use, etc. Spans appear nested under a single trace in the dashboard.
@@ -131,7 +132,7 @@ automatically marked `error` with the exception message.
 
 ### Helper: `observe_openai`
 
-Boilerplate-free version of the LLM span — auto-injects trace headers,
+Boilerplate-free version of the LLM span. Auto-injects trace headers,
 auto-parses `usage`, and auto-ends the span:
 
 ```python
@@ -160,6 +161,34 @@ async def go():
         async_openai.chat.completions.create(..., extra_headers=h),
     )
 ```
+
+---
+
+## Ollama (local LLMs)
+
+`observe_ollama()` traces calls against a local Ollama instance. Use the OpenAI client pointed at Ollama's OpenAI-compatible endpoint, then wrap with the helper so the dashboard tags the span as `provider: "ollama"` instead of OpenAI:
+
+```python
+from openai import OpenAI
+from spanlens import SpanlensClient, observe_ollama
+
+client = SpanlensClient(api_key="sl_live_...")
+ollama = OpenAI(
+    base_url="http://localhost:11434/v1",
+    api_key="ollama",   # ignored by Ollama; required by the openai SDK
+)
+
+with client.start_trace("local_summarize") as trace:
+    result = observe_ollama(trace, "llama3_summary", lambda h:
+        ollama.chat.completions.create(
+            model="llama3.1",
+            messages=[{"role": "user", "content": "Summarize: ..."}],
+            extra_headers=h,
+        ),
+    )
+```
+
+Cost is left as `None` because Ollama is self-hosted, so there is no per-token bill to compute.
 
 ---
 
@@ -195,8 +224,9 @@ with client.start_trace("agent_run") as trace:
     # ... other steps in the same trace ...
 ```
 
-The handler depends on `langchain-core` at runtime — `pip install langchain`
-(or whatever LangChain extras you already use) brings it in.
+The handler depends on `langchain-core` at runtime. Either install the
+`spanlens[langchain]` extra above, or any LangChain extras you already use
+will bring it in.
 
 ---
 
@@ -214,8 +244,8 @@ SpanlensClient(
 
 Environment variables:
 
-* `SPANLENS_API_KEY` — picked up by `create_openai()`, `create_anthropic()`,
-  `create_gemini()` when `api_key=` is omitted.
+* `SPANLENS_API_KEY` is picked up by `create_openai()`, `create_anthropic()`,
+  and `create_gemini()` when `api_key=` is omitted.
 
 ---
 
@@ -227,8 +257,8 @@ runs on a background thread pool with a configurable timeout, so:
 * Your hot path (the LLM call itself) is never slowed down.
 * The Spanlens server being slow / down does not crash your app.
 * Order is still preserved: a span POST always waits for its parent trace
-  POST to finish — the server's ownership check would otherwise 404 and the
-  span would be silently lost.
+  POST to finish, because the server's ownership check would otherwise 404
+  and the span would be silently lost.
 
 For short-lived scripts, call `client.close()` before exit (or use
 `with SpanlensClient(...) as client:`) to drain the queue.
@@ -261,7 +291,7 @@ openai = create_openai(base_url="https://spanlens.mycompany.com/proxy/openai/v1"
 
 ## License
 
-MIT — see [LICENSE](./LICENSE).
+MIT. See [LICENSE](./LICENSE).
 
 ## Links
 
