@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.5.1
+
+PyPI metadata fixes + docs polish. No runtime API changes (already-shipped 0.5 features remain identical: `SpanlensCallbackHandler` for LangChain / LangGraph, `observe_ollama`, async helpers, sampling).
+
+### Fixed
+
+- `Repository` and `Issues` URLs in `pyproject.toml` pointed at the legacy `sunes26/Spanlens` GitHub org. PyPI sidebar links were 404. Updated to `spanlens/Spanlens`.
+
+### Added
+
+- New `[langchain]` optional dependency (`pip install "spanlens[langchain]"` now pulls in `langchain-core>=0.1.0`). Also rolled into the `[all]` extra. The `SpanlensCallbackHandler` already shipped in 0.5.0 but users had to install LangChain manually.
+- `ollama` keyword for PyPI search discoverability.
+- `Changelog` URL so the PyPI sidebar links straight to `CHANGELOG.md`.
+
+### Docs
+
+- New Ollama section in the README documenting `observe_ollama()` against a local Ollama via the OpenAI-compatible client.
+- New LangChain / LangGraph section showing the `SpanlensCallbackHandler` plug-in pattern.
+- Em dash removal across the README and the package description for a cleaner read on the PyPI page.
+
 ## 0.2.0
 
 Async-first integration release. Verifies the SDK behaves correctly under
