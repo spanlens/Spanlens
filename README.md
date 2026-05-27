@@ -5,9 +5,35 @@
 [![PyPI version](https://img.shields.io/pypi/v/spanlens.svg)](https://pypi.org/project/spanlens/)
 [![npm downloads](https://img.shields.io/npm/dm/@spanlens/sdk.svg)](https://www.npmjs.com/package/@spanlens/sdk)
 
-LLM observability that gets out of your way. Record every OpenAI / Anthropic / Gemini call — cost, latency, tokens, full request/response — then surface anomalies, PII, and model-swap suggestions automatically. Available for **TypeScript** and **Python**.
+**Open-source LLM observability.** Record every OpenAI / Anthropic / Gemini call with one line of code — cost, latency, tokens, traces, anomalies, PII scan, and model-swap suggestions. Self-hostable. MIT.
 
-> **Hosted**: [spanlens.io](https://www.spanlens.io) · **npm**: [`@spanlens/sdk`](https://www.npmjs.com/package/@spanlens/sdk) · **PyPI**: [`spanlens`](https://pypi.org/project/spanlens/) · **CLI**: [`@spanlens/cli`](https://www.npmjs.com/package/@spanlens/cli) · **Open source (MIT)** · **Self-hostable** (Docker)
+> **Hosted**: [spanlens.io](https://www.spanlens.io) · **npm**: [`@spanlens/sdk`](https://www.npmjs.com/package/@spanlens/sdk) · **PyPI**: [`spanlens`](https://pypi.org/project/spanlens/) · **CLI**: [`@spanlens/cli`](https://www.npmjs.com/package/@spanlens/cli)
+
+---
+
+![One key swap. Every LLM call, observed.](.github/assets/code-swap.png)
+
+---
+
+## Why Spanlens?
+
+- **Helicone** was acquired and its roadmap is uncertain.
+- **Langfuse** is powerful but complex to set up and expensive to scale.
+- **Spanlens** ships the 20% of features that cover 80% of real production needs — request log, cost tracking, agent tracing, anomaly detection, PII scanning, prompt versioning — with a clean UI, a two-minute setup, and a price that doesn't punish growth.
+
+| | Spanlens | Langfuse Pro | Helicone |
+|---|---|---|---|
+| Open source | ✅ MIT | ✅ MIT | ✅ MIT |
+| Self-hostable | ✅ Docker one-liner | ✅ | ✅ |
+| Free tier | 50K req/mo | 50K events/mo | 10K req/mo |
+| Team plan (1M req/mo) | **$129/mo** | $271/mo | ~$200/mo |
+| Agent tracing | ✅ | ✅ | ⚠️ limited |
+| LLM-as-judge evals | ✅ | ✅ | ❌ |
+| PII + injection scan | ✅ | ❌ | ❌ |
+| Model recommendations | ✅ | ❌ | ❌ |
+| Prompt A/B experiments | ✅ | ✅ | ❌ |
+
+![Spanlens Team vs Langfuse Pro pricing](.github/assets/pricing-vs-langfuse.png)
 
 ---
 
@@ -50,7 +76,15 @@ res = client.chat.completions.create(
 )
 ```
 
-Same proxy, same dashboard. For agent tracing in Python (multi-step, async, tool calls) see the [Python SDK README](./packages/sdk-python/README.md) and [`/docs/sdk`](https://www.spanlens.io/docs/sdk).
+For agent tracing in Python (multi-step, async, tool calls) see the [Python SDK README](./packages/sdk-python/README.md).
+
+---
+
+## What you see
+
+![Spanlens request log — every LLM call with latency, cost, tokens, status](.github/assets/dashboard-requests.png)
+
+Every request — model, provider, latency, tokens, cost, full prompt + response body. Filter, search, export. Streaming responses reconstructed automatically.
 
 ---
 
@@ -135,12 +169,6 @@ Spanlens uses **two databases**, each for what it's good at:
 - **`X-Spanlens-*` headers** (set automatically by the SDK helpers `withUser()`, `withSession()`, `withPromptVersion()`, `withLogBody()`): tag a request with end-user / session IDs, link it to a prompt-version experiment, or limit how much body Spanlens stores. Full list in [`/docs/proxy`](https://www.spanlens.io/docs/proxy).
 - **Streaming safety** — proxy responses are gracefully closed at 290s with a `truncated=true` flag in the log, so long streams never silently disappear.
 
-- **[apps/web](./apps/web)** — React dashboard. Deployed to Vercel.
-- **[apps/server](./apps/server)** — Hono server on Vercel (Node runtime, 300s `maxDuration`). Routes `/proxy/openai/*`, `/proxy/anthropic/*`, `/proxy/gemini/*`. REST API on `/api/v1/*`, OTLP receiver on `/v1/traces`.
-- **[packages/sdk](./packages/sdk)** — TypeScript SDK (`@spanlens/sdk`). Helpers + tracing primitives. See its [README](./packages/sdk/README.md).
-- **[packages/sdk-python](./packages/sdk-python)** — Python SDK (`spanlens`). Same primitives, Pythonic API (context managers, sync + async). See its [README](./packages/sdk-python/README.md).
-- **[packages/cli](./packages/cli)** — Wizard (`@spanlens/cli`). See its [README](./packages/cli/README.md).
-
 ---
 
 ## Local development
@@ -149,7 +177,7 @@ Prerequisites: Node 20+, pnpm 10.33.0+, Docker (for local Supabase), [Vercel CLI
 
 ```bash
 # 1. Clone + install
-git clone https://github.com/sunes26/Spanlens.git
+git clone https://github.com/spanlens/Spanlens.git
 cd Spanlens
 pnpm install
 
@@ -184,6 +212,8 @@ See [CLAUDE.md](./CLAUDE.md) for architecture rules and Known Gotchas (streaming
 ## Self-hosting
 
 The easiest way to self-host is with the included `docker-compose.yml` — it runs the **dashboard (web)**, the **proxy/API server**, and a local **ClickHouse** instance together using pre-built images from GHCR.
+
+![Run Spanlens in your own VPC — one Docker command](.github/assets/self-host.png)
 
 ### 1. Apply the Supabase schema (one-time)
 
@@ -247,13 +277,13 @@ The web container passes `NEXT_PUBLIC_*` vars as **build arguments** (Next.js ba
 If you only need the proxy/API and run the dashboard separately:
 
 ```bash
-docker pull ghcr.io/sunes26/spanlens-server:latest
+docker pull ghcr.io/spanlens/spanlens-server:latest
 docker run -p 3001:3001 \
   -e SUPABASE_URL=... \
   -e SUPABASE_ANON_KEY=... \
   -e SUPABASE_SERVICE_ROLE_KEY=... \
   -e ENCRYPTION_KEY=... \
-  ghcr.io/sunes26/spanlens-server:latest
+  ghcr.io/spanlens/spanlens-server:latest
 ```
 
 ### Point your SDK at your self-hosted URL
@@ -279,8 +309,6 @@ The hosted instance ships with the following cron tasks (see [`apps/server/verce
 | `/cron/leak-detect-keys` | daily 04:00 | GitGuardian scan of active provider keys |
 | `/cron/recommend-savings-alerts` | daily 09:00 | Email model-swap savings opportunities |
 | `/cron/check-past-due-downgrades` | daily 10:00 | D-3 / D-1 warnings + auto-downgrade past-due subs |
-
----
 
 ---
 
