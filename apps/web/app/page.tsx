@@ -97,7 +97,7 @@ export default function LandingPage() {
         {/* Version badge */}
         <div className="inline-flex flex-wrap items-center gap-x-2 gap-y-1 px-2 py-[5px] rounded-full border border-accent-border bg-accent-bg text-accent font-mono text-[12px] tracking-[0.03em] mb-7 max-w-full">
           <span className="bg-accent text-bg px-[7px] py-[2px] rounded-full text-[10px] font-semibold tracking-[0.05em] shrink-0">NEW</span>
-          <span>SDK v0.3.0 with LangChain, Vercel AI SDK, and LlamaIndex integrations</span>
+          <span>SDK v0.6.0 with Ollama (local LLMs) and LangGraph tracing</span>
           <code className="font-mono hidden sm:inline">· npm install @spanlens/sdk</code>
         </div>
 
