@@ -37,13 +37,17 @@
     }
   },
   "files": ["dist", "README.md", "CHANGELOG.md", "LICENSE"],
+  "sideEffects": false,
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
     "prepublishOnly": "pnpm run clean && pnpm run build && pnpm run test",
-    "clean": "rm -rf dist"
+    "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\""
   },
   "peerDependencies": {
     "openai": ">=4.0.0",
@@ -85,6 +89,7 @@
     "llamaindex",
     "vercel-ai",
     "ai-sdk",
+    "ollama",
     "next.js",
     "nextjs",
     "typescript",
