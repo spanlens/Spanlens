@@ -3,7 +3,12 @@ import { Footer } from '@/components/layout/footer'
 import { MarketingNav } from '@/components/layout/marketing-nav'
 import { CopyInstallButton } from '@/components/landing/copy-install-button'
 
-export const metadata = { title: 'Spanlens · LLM Observability' }
+export const metadata = {
+  title: 'Spanlens · LLM Observability',
+  alternates: { canonical: '/' },
+}
+
+const SITE_URL = 'https://www.spanlens.io'
 
 const FEATURES = [
   { kicker: '01', title: 'Request log', body: 'Every call with model, tokens, cost, latency, and full body. Filter, group, export.', accent: '$0.0021' },
@@ -85,9 +90,52 @@ const TRACE_SPANS = [
   { name: 'format_reply',           depth: 1, start: 90, width: 6,   critical: false, label: '480ms' },
 ]
 
+const softwareApplicationJsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'SoftwareApplication',
+  name: 'Spanlens',
+  applicationCategory: 'DeveloperApplication',
+  applicationSubCategory: 'LLM Observability',
+  operatingSystem: 'Web, Linux, macOS, Windows (Docker)',
+  url: SITE_URL,
+  description:
+    'Drop-in LLM observability for OpenAI, Anthropic, and Gemini. Request logging, cost tracking, agent tracing, anomaly detection, and PII scanning. Open source, self-hostable.',
+  offers: PLANS.map((p) => ({
+    '@type': 'Offer',
+    name: p.name,
+    price: p.price === 'Custom' ? undefined : p.price.replace('$', ''),
+    priceCurrency: p.price === 'Custom' ? undefined : 'USD',
+    category: p.unit ? `subscription${p.unit}` : 'custom',
+  })),
+  featureList: FEATURES.map((f) => `${f.title}: ${f.body}`),
+  softwareVersion: '0.6.1',
+  license: 'https://opensource.org/licenses/MIT',
+}
+
+const faqJsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'FAQPage',
+  mainEntity: FAQS.map(([q, a]) => ({
+    '@type': 'Question',
+    name: q,
+    acceptedAnswer: {
+      '@type': 'Answer',
+      text: a,
+    },
+  })),
+}
+
 export default function LandingPage() {
   return (
     <div className="bg-bg text-text min-h-screen">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(softwareApplicationJsonLd) }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd) }}
+      />
 
       {/* ── Nav ─────────────────────────────────────────────────────── */}
       <MarketingNav signupLabel="Start free →" />
