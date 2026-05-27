@@ -5,7 +5,7 @@
 [![PyPI version](https://img.shields.io/pypi/v/spanlens.svg)](https://pypi.org/project/spanlens/)
 [![npm downloads](https://img.shields.io/npm/dm/@spanlens/sdk.svg)](https://www.npmjs.com/package/@spanlens/sdk)
 
-**Open-source LLM observability.** Record every OpenAI / Anthropic / Gemini / Azure OpenAI call with one line of code. Plugs into Vercel AI SDK, LangChain, and LlamaIndex too. Get cost, latency, tokens, traces, anomalies, PII scan, and model-swap suggestions out of the box. Self-hostable. MIT.
+**Open-source LLM observability.** Record every OpenAI / Anthropic / Gemini / Azure OpenAI / Ollama call with one line of code. Plugs into Vercel AI SDK, LangChain, and LlamaIndex too. Get cost, latency, tokens, traces, anomalies, PII scan, and model-swap suggestions out of the box. Self-hostable. MIT.
 
 > **Hosted**: [spanlens.io](https://www.spanlens.io) · **npm**: [`@spanlens/sdk`](https://www.npmjs.com/package/@spanlens/sdk) · **PyPI**: [`spanlens`](https://pypi.org/project/spanlens/) · **CLI**: [`@spanlens/cli`](https://www.npmjs.com/package/@spanlens/cli)
 
@@ -129,6 +129,18 @@ const unregister = registerSpanlensCallbacks(Settings, { client })
 
 **Python: LangChain** — `from spanlens.integrations.langchain import SpanlensCallbackHandler`. Same `BaseCallbackHandler` contract, works with chains, LCEL, and LangGraph.
 
+**Ollama (local LLMs)** — Use the OpenAI-compatible client pointed at your local Ollama, then wrap with `observeOllama()` so the dashboard tags the call as Ollama instead of OpenAI.
+
+```ts
+import OpenAI from 'openai'
+import { observeOllama } from '@spanlens/sdk'
+
+const ollama = new OpenAI({ baseURL: 'http://localhost:11434/v1', apiKey: 'ollama' })
+await observeOllama('chat', () => ollama.chat.completions.create({
+  model: 'llama3.1', messages: [...]
+}))
+```
+
 ---
 
 ## What you see
@@ -145,7 +157,7 @@ Every request logged with model, provider, latency, tokens, cost, and full promp
 |---|---|
 | **Request log** | Every LLM call logged with model, tokens, cost, latency, and full request/response body (streaming reconstructed too) |
 | **Agent tracing** | Multi-step workflows as Gantt/waterfall span trees |
-| **Cost tracking** | Per-request cost breakdown with prompt-cache pricing (Anthropic / OpenAI cache hits billed at their reduced rate), daily rollups, budget alerts |
+| **Cost tracking** | Per-request cost breakdown with daily rollups and budget alerts. Prompt-cache tokens (`cache_read` / `cache_creation` on Anthropic, `prompt_tokens_details.cached_tokens` on OpenAI) are parsed separately and billed at the discounted rate so you can see actual cache savings, not just sticker price |
 | **Per-end-user analytics** | Tag calls with `x-spanlens-user` (SDK: `withUser()` / `with_user()`) and the /users page shows per-user cost, tokens, errors, models, last seen |
 | **Anomaly detection** | 3σ deviations in latency, cost, or error rate vs. your 7-day baseline, with root-cause hints (token delta, HTTP status breakdown) |
 | **Alerts** | Threshold rules on budget, error rate, and p95 latency. Delivered via Email (Resend), Slack, or Discord webhooks. Evaluated on a 15-minute cron with at-least-once delivery |
@@ -153,8 +165,9 @@ Every request logged with model, provider, latency, tokens, cost, and full promp
 | **Savings (model recommendations)** | The `/savings` dashboard surfaces calls that match a cheaper model's profile ("Your gpt-4o calls look like classification. Try gpt-4o-mini") with estimated monthly savings |
 | **Prompt versioning + A/B** | Register prompt templates, run traffic-split experiments, compare versions side by side (latency / cost / error rate) |
 | **Prompts Playground** | Execute any prompt version with variable injection directly in the dashboard to see real cost and response before shipping |
-| **Datasets** | Reusable (input, expected_output) test sets you can rerun against any prompt version or model. Powers offline evals and regression checks |
-| **Evals & Experiments** | Build LLM-as-judge evaluators, run A/B experiments comparing two prompt versions, and queue runs for human annotation with Pearson-correlation against the judge to measure reliability |
+| **Datasets** | Reusable (input, expected_output) test sets you can rerun against any prompt version or model. Upload CSV / JSONL files directly from the dashboard or POST programmatically. Powers offline evals and regression checks |
+| **Evals & Experiments** | Build LLM-as-judge evaluators (judge with OpenAI, Anthropic, **or Gemini** — pick the cheapest/best for the criterion), run A/B experiments comparing two prompt versions, and queue runs for human annotation with Pearson-correlation against the judge to measure reliability |
+| **OpenAPI 3.0 spec + Swagger UI** | Machine-readable spec at `GET /api/v1/openapi.json` and interactive explorer at `GET /api/v1/docs`. A drift test enforces that every router stays documented |
 | **Saved filters** | Pin frequently used request-log queries (model, status, cost range, tags) and share them across the workspace |
 | **Outbound webhooks** | Subscribe to `request.created` / `trace.completed` / `alert.triggered` events. Payloads are HMAC-signed via `X-Spanlens-Signature: sha256=…` so receivers can verify origin |
 | **OpenTelemetry / OTLP ingest** | `POST /v1/traces` accepts OTLP/HTTP JSON exports using the `gen_ai.*` semantic conventions, so you can drop in any OTel SDK without writing Spanlens-specific code |
@@ -351,6 +364,7 @@ The hosted instance ships with the following cron tasks (see [`apps/server/verce
 | `/cron/leak-detect-keys` | daily 04:00 | GitGuardian scan of active provider keys |
 | `/cron/recommend-savings-alerts` | daily 09:00 | Email model-swap savings opportunities |
 | `/cron/check-past-due-downgrades` | daily 10:00 | D-3 / D-1 warnings + auto-downgrade past-due subs |
+| `/cron/keep-warm` | every 5m | Lightweight ping that keeps the Vercel function warm (skip on always-on platforms like Fly.io / Railway) |
 
 ---
 
