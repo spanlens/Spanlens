@@ -4,6 +4,7 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { writeWorkspaceCookie } from '@/lib/workspace-cookie'
 import { TERMS_VERSION, PRIVACY_VERSION } from '@/lib/legal-versions'
 import { GithubIcon, GoogleIcon } from '@/components/ui/provider-icons'
 
@@ -155,12 +156,14 @@ function SignupPageInner() {
         body: JSON.stringify({ token: inviteToken }),
       })
       if (accept.ok) {
-        router.push('/dashboard')
+        const acceptBody = (await accept.json().catch(() => ({}))) as { data?: { organizationId?: string } }
+        if (acceptBody.data?.organizationId) writeWorkspaceCookie(acceptBody.data.organizationId)
+        window.location.href = '/dashboard'
         return
       }
       // Fall through: account was created but accept failed. Send them to
       // /invite which will show the error clearly with options.
-      router.push(`/invite?token=${encodeURIComponent(inviteToken)}`)
+      window.location.href = `/invite?token=${encodeURIComponent(inviteToken)}`
       return
     }
 

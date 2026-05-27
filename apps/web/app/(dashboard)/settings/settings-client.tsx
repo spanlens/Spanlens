@@ -207,6 +207,15 @@ function GeneralTab() {
   const [name, setName] = useState(org?.name ?? '')
   const currentMember = useCurrentMember()
   const isAdmin = currentMember?.role === 'admin'
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => setMounted(true), [])
+
+  const plan = mounted ? org?.plan : undefined
+  const retention = plan === 'team' ? '90 days'
+    : plan === 'starter' ? '30 days'
+    : plan === 'enterprise' ? '1 year'
+    : '7 days'
+  const timezone = mounted ? Intl.DateTimeFormat().resolvedOptions().timeZone : '—'
 
   return (
     <div className="max-w-[920px]">
@@ -235,8 +244,8 @@ function GeneralTab() {
           </div>
         </FormRow>
         <FormRow label="Plan">
-          <MonoPill variant={org?.plan === 'enterprise' ? 'good' : 'accent'} dot>
-            {org?.plan ?? '—'}
+          <MonoPill variant={plan === 'enterprise' ? 'good' : 'accent'} dot>
+            {plan ?? '—'}
           </MonoPill>
         </FormRow>
       </Section>
@@ -244,16 +253,13 @@ function GeneralTab() {
       <Section title="Data retention" description="Log retention is determined by your plan" className="mb-5">
         <FormRow label="Current retention">
           <div className="font-mono text-[12.5px] text-text-muted">
-            {org?.plan === 'team' ? '90 days'
-              : org?.plan === 'starter' ? '30 days'
-              : org?.plan === 'enterprise' ? '1 year'
-              : '7 days'}
-            <span className="ml-2 text-text-faint">· {org?.plan ?? 'free'} plan</span>
+            {retention}
+            <span className="ml-2 text-text-faint">· {plan ?? 'free'} plan</span>
           </div>
         </FormRow>
         <FormRow label="Timestamps" hint="All timestamps in the UI use your browser's local timezone.">
           <div className="font-mono text-[12.5px] text-text-muted">
-            {Intl.DateTimeFormat().resolvedOptions().timeZone}
+            {timezone}
           </div>
         </FormRow>
       </Section>
