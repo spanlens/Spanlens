@@ -13,6 +13,8 @@
 
 ![One key swap. Every LLM call, observed.](.github/assets/code-swap.png)
 
+![Spanlens dashboard — anomaly alerts, spend forecast, traffic chart](.github/assets/dashboard.png)
+
 ---
 
 ## Why Spanlens?
