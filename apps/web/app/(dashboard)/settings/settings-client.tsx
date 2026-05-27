@@ -1,5 +1,5 @@
 'use client'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { Plus, Trash2, Check, Sun, Moon, Monitor, type LucideIcon } from 'lucide-react'
@@ -207,8 +207,13 @@ function GeneralTab() {
   const [name, setName] = useState(org?.name ?? '')
   const currentMember = useCurrentMember()
   const isAdmin = currentMember?.role === 'admin'
-  const [mounted, setMounted] = useState(false)
-  useEffect(() => setMounted(true), [])
+  // useSyncExternalStore returns false on the server and true on the client
+  // without needing useEffect + setState (avoids react-hooks/set-state-in-effect).
+  const mounted = useSyncExternalStore(
+    (_cb) => () => {},
+    () => true,
+    () => false,
+  )
 
   const plan = mounted ? org?.plan : undefined
   const retention = plan === 'team' ? '90 days'

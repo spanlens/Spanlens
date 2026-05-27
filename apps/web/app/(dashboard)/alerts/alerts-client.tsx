@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState, useSyncExternalStore } from 'react'
 import Link from 'next/link'
 import { Trash2, Mail, MessageSquare } from 'lucide-react'
 import {
@@ -165,8 +165,14 @@ export function AlertsClient() {
   // Skeleton checks use this flag so they only activate after client mount —
   // before mount, both SSR and client hydration render the data-based state
   // (empty or list), preventing the skeleton vs empty-state mismatch.
-  const [mounted, setMounted] = useState(false)
-  useEffect(() => setMounted(true), [])
+  // useSyncExternalStore returns false on the server and true on the client
+  // without needing useEffect + setState (which the react-hooks/set-state-in-effect
+  // rule flags as a cascading-render anti-pattern).
+  const mounted = useSyncExternalStore(
+    (_cb) => () => {},
+    () => true,
+    () => false,
+  )
 
   const [alertDialogOpen, setAlertDialogOpen] = useState(false)
   const [channelDialogOpen, setChannelDialogOpen] = useState(false)
