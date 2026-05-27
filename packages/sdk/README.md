@@ -62,6 +62,30 @@ const res = await openai.chat.completions.create(
 
 Same helper on `@spanlens/sdk/anthropic`. For `observeOpenAI/Anthropic/Gemini`, pass `promptVersion` in options.
 
+### Per-user, per-session, and body-redaction tagging
+
+The same `headers`-style helpers cover the other `X-Spanlens-*` headers. Available on both `@spanlens/sdk/openai` and `@spanlens/sdk/anthropic`.
+
+```ts
+import { createOpenAI, withUser, withSession, withLogBody } from '@spanlens/sdk/openai'
+const openai = createOpenAI()
+
+await openai.chat.completions.create(
+  { model: 'gpt-4o-mini', messages: [...] },
+  {
+    headers: {
+      ...withUser(currentUser.id).headers,        // per-user analytics in /users
+      ...withSession(sessionId).headers,          // group calls into one session
+      ...withLogBody('meta').headers,             // 'full' | 'meta' | 'none' — body redaction
+    },
+  },
+)
+```
+
+- **`withUser(id)`** — Tags the call so it shows up under that user in the [/users](https://www.spanlens.io/users) page (cost, tokens, error rate, last seen).
+- **`withSession(id)`** — Groups calls in the same chat / conversation so multi-turn flows are easy to inspect.
+- **`withLogBody('meta')`** — Stores only metadata, not request / response bodies. Use `'none'` to also drop end-user IDs. Useful for HIPAA-style data minimization without dropping the request entirely.
+
 For **multi-step agent tracing** (Gantt view, parent/child spans, RAG pipelines), continue to the Quick start below.
 
 ## Quick start
@@ -257,6 +281,30 @@ await generateText({ ..., onFinish: tracker.onFinish })
 await trace.end()
 ```
 
+### Ollama (local LLMs)
+
+`observeOllama()` traces calls against a local Ollama instance. Use the OpenAI client pointed at Ollama's OpenAI-compatible endpoint — the wrapper tags the span as `provider: 'ollama'` so the dashboard charts it separately:
+
+```ts
+import OpenAI from 'openai'
+import { SpanlensClient, observeOllama } from '@spanlens/sdk'
+
+const client = new SpanlensClient({ apiKey: process.env.SPANLENS_API_KEY! })
+const ollama = new OpenAI({
+  baseURL: 'http://localhost:11434/v1',
+  apiKey: 'ollama',   // ignored by Ollama; required by the openai SDK
+})
+
+const trace = client.startTrace({ name: 'local_summarize' })
+const res = await observeOllama(trace, 'llama3_summary', () =>
+  ollama.chat.completions.create({
+    model: 'llama3.1',
+    messages: [{ role: 'user', content: 'Summarize: ...' }],
+  }),
+)
+await trace.end()
+```
+
 ### LlamaIndex TS (v0.3.0+)
 
 `@spanlens/sdk/llamaindex` hooks directly into LlamaIndex's
@@ -312,7 +360,6 @@ process.exit(0)
 - **Retry with back-off**: transient failures (network error, 429, 5xx) are retried up to 3 times with exponential back-off (200 ms → 400 ms → 800 ms). 4xx errors are not retried.
 - **Client-side UUIDs**: idempotent retries are safe — same UUID twice is a no-op on the server.
 - **No unhandled rejections**: background POST failures are silently swallowed; use the `onError` hook for visibility.
-- **No auto-instrumentation yet**: OpenAI/Anthropic wrappers ship in v0.2 — for now, wrap LLM calls manually inside `observe()` (or wrap via the proxy baseURL + manual span for tracing metadata).
 
 ## License
 
