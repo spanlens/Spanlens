@@ -5,7 +5,7 @@
 [![PyPI version](https://img.shields.io/pypi/v/spanlens.svg)](https://pypi.org/project/spanlens/)
 [![npm downloads](https://img.shields.io/npm/dm/@spanlens/sdk.svg)](https://www.npmjs.com/package/@spanlens/sdk)
 
-**Open-source LLM observability.** Record every OpenAI / Anthropic / Gemini call with one line of code. Get cost, latency, tokens, traces, anomalies, PII scan, and model-swap suggestions out of the box. Self-hostable. MIT.
+**Open-source LLM observability.** Record every OpenAI / Anthropic / Gemini / Azure OpenAI call with one line of code. Plugs into Vercel AI SDK, LangChain, and LlamaIndex too. Get cost, latency, tokens, traces, anomalies, PII scan, and model-swap suggestions out of the box. Self-hostable. MIT.
 
 > **Hosted**: [spanlens.io](https://www.spanlens.io) · **npm**: [`@spanlens/sdk`](https://www.npmjs.com/package/@spanlens/sdk) · **PyPI**: [`spanlens`](https://pypi.org/project/spanlens/) · **CLI**: [`@spanlens/cli`](https://www.npmjs.com/package/@spanlens/cli)
 
@@ -83,6 +83,51 @@ res = client.chat.completions.create(
 ```
 
 For agent tracing in Python (multi-step, async, tool calls) see the [Python SDK README](./packages/sdk-python/README.md).
+
+### Framework integrations
+
+Already using an orchestration framework? Plug Spanlens in as a callback. No code rewrites.
+
+**Vercel AI SDK** (Next.js / edge friendly)
+
+```ts
+import { SpanlensClient } from '@spanlens/sdk'
+import { createSpanlensTracker } from '@spanlens/sdk/vercel-ai'
+
+const tracker = createSpanlensTracker({
+  client: new SpanlensClient({ apiKey: process.env.SPANLENS_API_KEY! }),
+  modelName: 'gpt-4o',
+})
+
+await generateText({
+  model: openai('gpt-4o'),
+  messages,
+  onStepFinish: tracker.onStepFinish,
+  onFinish: tracker.onFinish,
+})
+```
+
+**LangChain JS / LangGraph**
+
+```ts
+import { createSpanlensCallbackHandler } from '@spanlens/sdk/langchain'
+
+const handler = createSpanlensCallbackHandler({ client })
+await chain.invoke({ input }, { callbacks: [handler] })   // LangChain
+await graph.invoke({ input }, { callbacks: [handler] })   // LangGraph
+```
+
+**LlamaIndex TS**
+
+```ts
+import { Settings } from 'llamaindex'
+import { registerSpanlensCallbacks } from '@spanlens/sdk/llamaindex'
+
+const unregister = registerSpanlensCallbacks(Settings, { client })
+// ... run queries ... unregister() on shutdown
+```
+
+**Python: LangChain** — `from spanlens.integrations.langchain import SpanlensCallbackHandler`. Same `BaseCallbackHandler` contract, works with chains, LCEL, and LangGraph.
 
 ---
 
@@ -162,7 +207,7 @@ Spanlens uses **two databases**, each for what it's good at.
 ### Projects, unified keys, and headers
 
 - A workspace can hold **multiple projects** (e.g. `dev` / `staging` / `prod`, or one per app). Each project gets its own quota slice, provider keys, and prompt namespace.
-- **Unified API keys** give you one `sl_live_*` key per project that is provider-agnostic. Spanlens infers the provider from the request path (`/proxy/openai/*` vs `/proxy/anthropic/*` vs `/proxy/gemini/*`), so you only need one Spanlens key even if you call multiple model vendors.
+- **Unified API keys** give you one `sl_live_*` key per project that is provider-agnostic. Spanlens infers the provider from the request path (`/proxy/openai/*`, `/proxy/anthropic/*`, `/proxy/gemini/*`, `/proxy/azure/*`), so you only need one Spanlens key even if you call multiple model vendors.
 - **`X-Spanlens-*` headers** (set automatically by the SDK helpers `withUser()`, `withSession()`, `withPromptVersion()`, `withLogBody()`): tag a request with end-user / session IDs, link it to a prompt-version experiment, or limit how much body Spanlens stores. Full list in [`/docs/proxy`](https://www.spanlens.io/docs/proxy).
 - **Streaming safety** ensures proxy responses are gracefully closed at 290s with a `truncated=true` flag in the log, so long streams never silently disappear.
 
