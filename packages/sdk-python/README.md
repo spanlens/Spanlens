@@ -163,6 +163,43 @@ async def go():
 
 ---
 
+## LangChain / LangGraph
+
+`SpanlensCallbackHandler` plugs into LangChain's standard `BaseCallbackHandler`
+contract, so it works for plain LangChain chains, LCEL pipelines, and
+LangGraph compiled graphs without code changes. Every LLM / chain / tool /
+retriever node becomes a span with the run-id tree mirroring the graph
+topology.
+
+```python
+from spanlens import SpanlensClient
+from spanlens.integrations.langchain import SpanlensCallbackHandler
+
+client = SpanlensClient(api_key="sl_live_...")
+handler = SpanlensCallbackHandler(client=client)
+
+# LangChain / LCEL
+result = chain.invoke({"input": "Hello"}, config={"callbacks": [handler]})
+
+# LangGraph
+graph = workflow.compile()
+result = graph.invoke({"input": "Hello"}, config={"callbacks": [handler]})
+```
+
+Attach to an existing trace to nest the chain under a larger workflow:
+
+```python
+with client.start_trace("agent_run") as trace:
+    handler = SpanlensCallbackHandler(client=client, trace=trace)
+    chain.invoke({"input": "..."}, config={"callbacks": [handler]})
+    # ... other steps in the same trace ...
+```
+
+The handler depends on `langchain-core` at runtime — `pip install langchain`
+(or whatever LangChain extras you already use) brings it in.
+
+---
+
 ## Configuration reference
 
 ```python
@@ -231,4 +268,4 @@ MIT — see [LICENSE](./LICENSE).
 * [Spanlens dashboard](https://spanlens.io)
 * [Proxy docs](https://spanlens.io/docs/proxy)
 * [TypeScript SDK](https://www.npmjs.com/package/@spanlens/sdk)
-* [GitHub](https://github.com/sunes26/Spanlens)
+* [GitHub](https://github.com/spanlens/Spanlens)
