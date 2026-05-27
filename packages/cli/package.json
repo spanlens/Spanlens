@@ -9,12 +9,15 @@
   },
   "main": "./dist/index.js",
   "files": ["dist", "README.md", "LICENSE"],
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "dev": "tsx src/index.ts",
-    "clean": "rm -rf dist",
+    "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
     "prepublishOnly": "pnpm run clean && pnpm run build && pnpm run test"
   },
   "dependencies": {
