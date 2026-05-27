@@ -6,7 +6,8 @@ import { Footer } from '@/components/layout/footer'
 export const metadata = {
   title: 'Docs · Spanlens',
   description:
-    'Spanlens documentation, quick start, SDK reference, proxy API, self-hosting.',
+    'Spanlens documentation: quick start, SDK reference, proxy API, OpenTelemetry, and self-hosting for drop-in LLM observability.',
+  alternates: { canonical: '/docs' },
 }
 
 export default function DocsLayout({ children }: { children: React.ReactNode }) {

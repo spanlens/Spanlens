@@ -4,7 +4,9 @@ import { QuickTabs } from './_components/quick-tabs'
 
 export const metadata = {
   title: 'Spanlens Docs',
-  description: 'LLM observability in 30 seconds. Everything you need to integrate Spanlens into your app.',
+  description:
+    'Integrate drop-in LLM observability for OpenAI, Anthropic, and Gemini in 30 seconds. SDK reference, proxy API, OpenTelemetry, and self-hosting guides.',
+  alternates: { canonical: '/docs' },
 }
 
 const TS_SNIPPET = `import { createOpenAI } from '@spanlens/sdk/openai'
