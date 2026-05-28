@@ -45,14 +45,16 @@ type ViewMode = 'all' | 'active'
 
 const DATE_RANGE_HOURS: Record<DateRange, number> = { '24h': 24, '7d': 24 * 7, '30d': 24 * 30 }
 
-// Responsive grid: mobile keeps just the essentials (dot, name, active,
-// versions, calls, A/B) so the row fits 360-420px viewports without a
-// horizontal scrollbar. sm+ restores the full 10-col layout with avg
-// cost / latency / quality / updated.
+// Responsive grid: mobile keeps just the at-a-glance columns (dot, name,
+// calls, A/B). Active version, version count, cost, latency, quality, and
+// updated are all accessible once the user taps into the detail page.
+// Earlier we tried to keep 6 cols on mobile but the header labels
+// ("ACTIVE", "VERSIONS", "CALLS · 24H") were wider than the columns and
+// crammed into an unreadable strip.
 // Tailwind needs these literals in source for JIT to pick them up — do
 // not refactor into a runtime-built string.
 const GRID_CLASS =
-  'grid-cols-[16px_minmax(0,1fr)_36px_44px_56px_42px] ' +
+  'grid-cols-[14px_minmax(0,1fr)_64px_44px] ' +
   'sm:grid-cols-[20px_minmax(0,1.5fr)_0.55fr_0.55fr_0.8fr_0.8fr_0.8fr_0.7fr_0.5fr_0.5fr]'
 
 export function PromptsClient() {
@@ -276,9 +278,12 @@ export function PromptsClient() {
         </Link>
       </div>
 
-      {/* Stat strip */}
-      <div className="overflow-x-auto shrink-0 border-b border-border">
-        <div className="grid grid-cols-5 min-w-[480px]">
+      {/* Stat strip — on mobile, wrap to a 2-col grid so cards stay
+          readable without horizontal scroll. The 5th card lays out alone
+          on its own row, which is fine for a secondary stat. md+ keeps
+          the original 5-across single row. */}
+      <div className="shrink-0 border-b border-border">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5">
           {[
             { label: 'Prompts',              value: String(all.length)                                         },
             { label: 'Versions',             value: String(totalVersions)                                      },
@@ -286,9 +291,22 @@ export function PromptsClient() {
             { label: `Avg quality`,          value: avgQuality != null ? String(avgQuality) : '—'              },
             { label: `Spend · ${dateRange}`, value: totalSpend > 0 ? fmtUsd(totalSpend) : '—'                 },
           ].map((s, i) => (
-            <div key={i} className={cn('px-[18px] py-[14px]', i < 4 && 'border-r border-border')}>
+            <div
+              key={i}
+              className={cn(
+                'px-[18px] py-[14px] border-border',
+                // Bottom rule between rows on the wrapped layouts.
+                'border-b sm:border-b-0 md:border-b-0',
+                // Vertical rules — keep the original right rule on md+,
+                // and add a 2-col / 3-col rule for the wrapped layouts.
+                i % 2 === 0 && 'border-r sm:border-r-0',
+                'sm:[&:not(:nth-child(3n))]:border-r',
+                i < 4 && 'md:border-r',
+                'md:!border-b-0',
+              )}
+            >
               <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-2">{s.label}</div>
-              <span className="text-[24px] font-medium leading-none tracking-[-0.6px] text-text">{s.value}</span>
+              <span className="text-[22px] sm:text-[24px] font-medium leading-none tracking-[-0.6px] text-text">{s.value}</span>
             </div>
           ))}
         </div>
@@ -526,9 +544,9 @@ export function PromptsClient() {
             >
               <span />
               <span>Prompt</span>
-              <span>Active</span>
-              <span>Versions</span>
-              <span>Calls · {dateRange}</span>
+              <span className="hidden sm:block">Active</span>
+              <span className="hidden sm:block">Versions</span>
+              <span className="text-right sm:text-left">Calls · {dateRange}</span>
               <span className="hidden sm:block">Avg cost</span>
               <span className="hidden sm:block">Avg lat</span>
               <span className="hidden sm:block">Quality · {dateRange}</span>
@@ -567,11 +585,11 @@ export function PromptsClient() {
                 </span>
               </span>
 
-              {/* Active version */}
-              <span className="text-text-muted">v{p.version}</span>
+              {/* Active version — hidden on mobile */}
+              <span className="hidden sm:block text-text-muted">v{p.version}</span>
 
-              {/* Version count — deep-link to the Versions tab on detail page. */}
-              <span>
+              {/* Version count — deep-link to the Versions tab on detail page. Hidden on mobile. */}
+              <span className="hidden sm:block">
                 <Link
                   href={`/prompts/${encodeURIComponent(p.name)}?tab=versions`}
                   onClick={(e) => e.stopPropagation()}
@@ -581,8 +599,8 @@ export function PromptsClient() {
                 </Link>
               </span>
 
-              {/* Calls */}
-              <span className={cn(p.stats && p.stats.calls > 0 ? 'text-text' : 'text-text-faint')}>
+              {/* Calls — right-aligned on mobile to match the header */}
+              <span className={cn('text-right sm:text-left tabular-nums', p.stats && p.stats.calls > 0 ? 'text-text' : 'text-text-faint')}>
                 {p.stats?.calls ? p.stats.calls.toLocaleString() : '—'}
               </span>
 
