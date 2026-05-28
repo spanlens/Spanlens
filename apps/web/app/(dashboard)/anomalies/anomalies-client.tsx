@@ -1,22 +1,42 @@
 'use client'
-import { useMemo, useState } from 'react'
+import { useMemo, useRef } from 'react'
 import Link from 'next/link'
+import { useRouter, useSearchParams } from 'next/navigation'
 import {
   useAnomalies,
   useAnomalyHistory,
   useAckAnomaly,
   useUnackAnomaly,
   type Anomaly,
+  type AnomalyConfidence,
   type AnomalyContributingFactors,
   type AnomalyHistoryEntry,
   type AnomalyKind,
 } from '@/lib/queries/use-anomalies'
-import { Topbar } from '@/components/layout/topbar'
+import { Topbar, LiveDot } from '@/components/layout/topbar'
 import { PermissionGate } from '@/components/permission-gate'
 import { ExportDropdown } from '@/components/ui/export-dropdown'
 import { cn } from '@/lib/utils'
 
 type KindFilter = 'all' | AnomalyKind
+type ConfidenceFilter = 'all' | 'high' | 'medium_plus'
+type WindowPreset = '1h-7d' | '24h-30d' | '7d-30d'
+type HistoryDays = '7' | '30' | '90'
+
+const KIND_FILTERS: { v: KindFilter; l: string }[] = [
+  { v: 'all',        l: 'All' },
+  { v: 'latency',    l: 'latency' },
+  { v: 'cost',       l: 'cost' },
+  { v: 'error_rate', l: 'errors' },
+]
+
+const WINDOW_PRESETS: Record<WindowPreset, { obs: number; ref: number; label: string }> = {
+  '1h-7d':   { obs: 1,      ref: 24 * 7,  label: '1h vs 7d' },
+  '24h-30d': { obs: 24,     ref: 24 * 30, label: '24h vs 30d' },
+  '7d-30d':  { obs: 24 * 7, ref: 24 * 30, label: '7d vs 30d' },
+}
+
+const HISTORY_OPTS: HistoryDays[] = ['7', '30', '90']
 
 function fmtValue(kind: AnomalyKind, v: number): string {
   if (kind === 'latency') return `${Math.round(v)}ms`
@@ -32,6 +52,18 @@ function fmtDelta(kind: AnomalyKind, current: number, baseline: number): string 
 
 function kindLabel(k: AnomalyKind): string {
   return { latency: 'LATENCY', cost: 'COST', error_rate: 'ERRORS' }[k] ?? k.toUpperCase()
+}
+
+// Stable display ID derived from the anomaly's natural key (provider/model/kind).
+// Earlier this was `AN-${100 + idx}` which changed every time sort or filter
+// shifted — same anomaly got a new ID on each render and shareable references
+// became meaningless. djb2 hash → 4-char hex keeps the label short and stable
+// across the page lifetime.
+function anomDisplayId(provider: string, model: string, kind: AnomalyKind): string {
+  const s = `${provider}|${model}|${kind}`
+  let h = 5381
+  for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) & 0xffffffff
+  return `AN-${(h >>> 0).toString(16).slice(0, 4).toUpperCase()}`
 }
 
 interface AnomalyTitleFields {
@@ -89,10 +121,12 @@ function FactorHint({ kind, factors }: { kind: AnomalyKind; factors: AnomalyCont
 }
 
 function AnomDeltaBars({
+  kind,
   currentValue,
   baselineMean,
   deviations,
 }: {
+  kind: AnomalyKind
   currentValue: number
   baselineMean: number
   deviations: number
@@ -104,12 +138,12 @@ function AnomDeltaBars({
   return (
     <div className="flex items-end gap-[4px] h-[18px]">
       <div
-        title={`baseline ${baselineMean.toFixed(3)}`}
+        title={`baseline ${fmtValue(kind, baselineMean)}`}
         style={{ height: `${basePct}%`, width: 8 }}
         className="rounded-[1px] bg-border-strong opacity-70"
       />
       <div
-        title={`now ${currentValue.toFixed(3)}`}
+        title={`now ${fmtValue(kind, currentValue)}`}
         style={{ height: `${nowPct}%`, width: 8 }}
         className={cn('rounded-[1px]', isHigh ? 'bg-bad' : 'bg-accent')}
       />
@@ -119,20 +153,24 @@ function AnomDeltaBars({
 
 interface AnomRowProps {
   a: Anomaly
-  idx: number
   last: boolean
   onAck: () => void
   onUnack: () => void
   ackPending: boolean
   dimmed?: boolean
+  /** Investigate link maps the observation window to /requests `timeRange`. */
+  investigateRange: 'today' | '7d' | '30d'
 }
 
-function AnomRow({ a, idx, last, onAck, onUnack, ackPending, dimmed }: AnomRowProps) {
+function AnomRow({ a, last, onAck, onUnack, ackPending, dimmed, investigateRange }: AnomRowProps) {
   const isHigh = a.deviations >= 5
   const isAcked = Boolean(a.acknowledgedAt)
   const tint = isHigh ? 'text-bad' : 'text-accent'
   const dotBg = isHigh ? 'bg-bad' : 'bg-accent'
-  const anomId = `AN-${100 + idx}`
+  const anomId = anomDisplayId(a.provider, a.model, a.kind)
+
+  const investigateHref =
+    `/requests?provider=${encodeURIComponent(a.provider)}&model=${encodeURIComponent(a.model)}&timeRange=${investigateRange}`
 
   return (
     <div
@@ -164,10 +202,6 @@ function AnomRow({ a, idx, last, onAck, onUnack, ackPending, dimmed }: AnomRowPr
             {kindLabel(a.kind)}
           </span>
           {a.confidence && (
-            // P3.2: trustworthiness label based on reference window size.
-            //   • low   — under 30 baseline samples; treat as directional only
-            //   • medium— textbook 30+ sample threshold; reliable
-            //   • high  — 100+ samples; both mean + stddev well-estimated
             <span
               className={cn(
                 'font-mono text-[9px] px-[6px] py-[1px] rounded-[3px] border uppercase tracking-[0.04em]',
@@ -215,6 +249,7 @@ function AnomRow({ a, idx, last, onAck, onUnack, ackPending, dimmed }: AnomRowPr
       <div>
         <div className="font-mono text-[10px] text-text-faint uppercase tracking-[0.03em] mb-1">BASE · NOW</div>
         <AnomDeltaBars
+          kind={a.kind}
           currentValue={a.currentValue}
           baselineMean={a.baselineMean}
           deviations={a.deviations}
@@ -245,7 +280,7 @@ function AnomRow({ a, idx, last, onAck, onUnack, ackPending, dimmed }: AnomRowPr
           </button>
         </PermissionGate>
         <Link
-          href={`/requests?provider=${encodeURIComponent(a.provider)}&model=${encodeURIComponent(a.model)}`}
+          href={investigateHref}
           className="font-mono text-[10.5px] text-text px-2 py-[3px] border border-border-strong rounded-[4px] bg-bg-elev hover:bg-bg-muted transition-colors"
         >
           Investigate →
@@ -280,6 +315,7 @@ function HistoryRow({ e, last }: { e: AnomalyHistoryEntry; last: boolean }) {
       </div>
       <div>
         <AnomDeltaBars
+          kind={e.kind}
           currentValue={e.currentValue}
           baselineMean={e.baselineMean}
           deviations={e.deviations}
@@ -294,22 +330,64 @@ function HistoryRow({ e, last }: { e: AnomalyHistoryEntry; last: boolean }) {
   )
 }
 
-const KIND_FILTERS: { v: KindFilter; l: string }[] = [
-  { v: 'all', l: 'All' },
-  { v: 'latency', l: 'latency' },
-  { v: 'cost', l: 'cost' },
-  { v: 'error_rate', l: 'errors' },
-]
+function confidenceRank(c: AnomalyConfidence | undefined | null): number {
+  if (c === 'high') return 3
+  if (c === 'medium') return 2
+  if (c === 'low') return 1
+  return 0
+}
+
+function investigateRangeForWindow(w: WindowPreset): 'today' | '7d' | '30d' {
+  // 1h / 24h obs both fit inside `today` (24h). 7d obs maps to 7d range.
+  if (w === '7d-30d') return '7d'
+  return 'today'
+}
 
 export function AnomaliesClient() {
-  const [kindFilter, setKindFilter] = useState<KindFilter>('all')
+  const router = useRouter()
+  const sp = useSearchParams()
 
-  const { data: anomalyResult, isLoading: loadingCurrent, error: errorCurrent } = useAnomalies({
-    observationHours: 1,
-    referenceHours: 24 * 7,
+  // URL-backed filter state. Lets users share a pre-filtered view and keeps
+  // the filters across hard reloads.
+  const kindFilter = (sp.get('kind') ?? 'all') as KindFilter
+  const confFilter = (sp.get('conf') ?? 'all') as ConfidenceFilter
+  const windowPreset = ((sp.get('window') as WindowPreset | null) && WINDOW_PRESETS[sp.get('window') as WindowPreset])
+    ? (sp.get('window') as WindowPreset)
+    : '1h-7d'
+  const historyDays = (HISTORY_OPTS.includes(sp.get('history') as HistoryDays)
+    ? sp.get('history')
+    : '30') as HistoryDays
+
+  function updateQuery(updates: Record<string, string | null>) {
+    const next = new URLSearchParams(sp.toString())
+    Object.entries(updates).forEach(([k, v]) => {
+      if (v == null || v === '') next.delete(k)
+      else next.set(k, v)
+    })
+    router.replace(`/anomalies?${next.toString()}`)
+  }
+
+  const win = WINDOW_PRESETS[windowPreset]
+  const investigateRange = investigateRangeForWindow(windowPreset)
+
+  const {
+    data: anomalyResult,
+    isLoading: loadingCurrent,
+    isFetching: fetchingCurrent,
+    error: errorCurrent,
+    refetch: refetchCurrent,
+  } = useAnomalies({
+    observationHours: win.obs,
+    referenceHours: win.ref,
     sigma: 3,
   })
-  const { data: history, isLoading: loadingHistory, error: errorHistory } = useAnomalyHistory(30)
+  const {
+    data: history,
+    isLoading: loadingHistory,
+    isFetching: fetchingHistory,
+    error: errorHistory,
+    refetch: refetchHistory,
+  } = useAnomalyHistory(Number(historyDays))
   const fetchError = errorCurrent ?? errorHistory
   const ackMutation = useAckAnomaly()
   const unackMutation = useUnackAnomaly()
@@ -320,56 +398,114 @@ export function AnomaliesClient() {
     unackMutation.mutate({ provider: a.provider, model: a.model, kind: a.kind })
   const ackPending = ackMutation.isPending || unackMutation.isPending
 
-  const current = useMemo(() => {
+  const filteredCurrent = useMemo(() => {
     const all = anomalyResult?.data ?? []
-    return kindFilter === 'all' ? all : all.filter((a) => a.kind === kindFilter)
-  }, [anomalyResult, kindFilter])
+    return all.filter((a) => {
+      if (kindFilter !== 'all' && a.kind !== kindFilter) return false
+      if (confFilter === 'high' && a.confidence !== 'high') return false
+      if (confFilter === 'medium_plus' && confidenceRank(a.confidence) < 2) return false
+      return true
+    })
+  }, [anomalyResult, kindFilter, confFilter])
 
   const historyFiltered = useMemo(() => {
     const all = history ?? []
-    return kindFilter === 'all' ? all : all.filter((a) => a.kind === kindFilter)
-  }, [history, kindFilter])
+    return all.filter((a) => {
+      if (kindFilter !== 'all' && a.kind !== kindFilter) return false
+      if (confFilter === 'high' && a.confidence !== 'high') return false
+      if (confFilter === 'medium_plus' && confidenceRank(a.confidence) < 2) return false
+      return true
+    })
+  }, [history, kindFilter, confFilter])
 
-  const unackedHigh   = current.filter((a) => a.deviations >= 5 && !a.acknowledgedAt)
-  const unackedMedium = current.filter((a) => a.deviations < 5  && !a.acknowledgedAt)
-  const acked         = current.filter((a) => Boolean(a.acknowledgedAt))
+  const unackedHigh   = filteredCurrent.filter((a) => a.deviations >= 5 && !a.acknowledgedAt)
+  const unackedMedium = filteredCurrent.filter((a) => a.deviations < 5  && !a.acknowledgedAt)
+  const acked         = filteredCurrent.filter((a) => Boolean(a.acknowledgedAt))
 
   const historyCount = history?.length ?? 0
   const isLoading = loadingCurrent || loadingHistory
+  const isFetching = fetchingCurrent || fetchingHistory
+
+  // Anchor refs let the stat-card clicks scroll the user to the matching
+  // section in the list instead of forcing them to find it by eye.
+  const highRef   = useRef<HTMLDivElement>(null)
+  const mediumRef = useRef<HTMLDivElement>(null)
+  const ackedRef  = useRef<HTMLDivElement>(null)
+  const historyRef = useRef<HTMLDivElement>(null)
+  function scrollTo(ref: React.RefObject<HTMLDivElement | null>) {
+    ref.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+
+  function refreshAll() {
+    void refetchCurrent()
+    void refetchHistory()
+  }
 
   return (
-    <div className="-mx-4 -my-4 md:-mx-8 md:-my-7 flex flex-col h-screen overflow-hidden bg-bg">
-      <Topbar
-        crumbs={[{ label: 'Workspace', href: '/dashboard' }, { label: 'Anomalies' }]}
-        right={null}
-      />
+    <div className="-mx-4 -my-4 md:-mx-8 md:-my-7 flex flex-col min-h-screen">
+      <div className="sticky top-0 z-20 bg-bg">
+        <Topbar
+          crumbs={[{ label: 'Anomalies' }]}
+          right={
+            <div className="flex items-center gap-3">
+              <LiveDot refetching={isFetching} />
+              <button
+                type="button"
+                onClick={refreshAll}
+                disabled={isFetching}
+                title="Refresh now"
+                className="font-mono text-[11px] text-text-muted hover:text-text border border-border rounded px-2 py-1 transition-colors disabled:opacity-40"
+              >
+                <span className={cn('inline-block', isFetching && 'animate-spin')}>↻</span>
+              </button>
+            </div>
+          }
+        />
+        <h1 className="sr-only">Anomalies</h1>
+      </div>
 
+      {/* Stat strip — cards are now buttons that scroll to the matching
+          section. "Baseline" is purely informational so it stays a static
+          card. */}
       <div className="overflow-x-auto shrink-0 border-b border-border">
-      <div className="grid grid-cols-5 min-w-[480px]">
-        {[
-          { label: 'Open · high',   value: String(unackedHigh.length),   warn: unackedHigh.length > 0 },
-          { label: 'Open · medium', value: String(unackedMedium.length), warn: false },
-          { label: 'Acknowledged',  value: String(acked.length),         warn: false },
-          { label: 'History · 30d', value: String(historyCount),          warn: false },
-          { label: 'Baseline',      value: '7d',                         warn: false },
-        ].map((s, i) => (
-          <div key={s.label} className={cn('px-[18px] py-[14px]', i < 4 && 'border-r border-border')}>
-            <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-2">{s.label}</div>
-            <span className={cn('text-[24px] font-medium leading-none tracking-[-0.6px]', s.warn ? 'text-accent' : 'text-text')}>
-              {s.value}
-            </span>
-          </div>
-        ))}
-      </div>
+        <div className="grid grid-cols-5 min-w-[480px]">
+          {[
+            { label: 'Open · high',   value: String(unackedHigh.length),   warn: unackedHigh.length > 0, ref: highRef,    enabled: unackedHigh.length > 0 },
+            { label: 'Open · medium', value: String(unackedMedium.length), warn: false,                  ref: mediumRef,  enabled: unackedMedium.length > 0 },
+            { label: 'Acknowledged',  value: String(acked.length),         warn: false,                  ref: ackedRef,   enabled: acked.length > 0 },
+            { label: `History · ${historyDays}d`, value: String(historyCount), warn: false, ref: historyRef, enabled: historyCount > 0 },
+            { label: 'Baseline',      value: win.label.split(' vs ')[1] ?? win.label, warn: false, ref: null, enabled: false },
+          ].map((s, i) => {
+            const interactive = s.enabled && s.ref
+            const Wrap: React.ElementType = interactive ? 'button' : 'div'
+            return (
+              <Wrap
+                key={s.label}
+                {...(interactive ? { type: 'button', onClick: () => scrollTo(s.ref!) } : {})}
+                className={cn(
+                  'px-[18px] py-[14px] text-left',
+                  i < 4 && 'border-r border-border',
+                  interactive && 'hover:bg-bg-elev transition-colors cursor-pointer',
+                )}
+              >
+                <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-2">{s.label}</div>
+                <span className={cn('text-[24px] font-medium leading-none tracking-[-0.6px]', s.warn ? 'text-accent' : 'text-text')}>
+                  {s.value}
+                </span>
+              </Wrap>
+            )
+          })}
+        </div>
       </div>
 
-      <div className="flex items-center gap-2 px-[22px] py-[10px] border-b border-border shrink-0">
+      {/* Filter row — kind / confidence / observation window / history days */}
+      <div className="flex items-center gap-2 px-[22px] py-[10px] border-b border-border shrink-0 flex-wrap">
         <span className="font-mono text-[10px] text-text-faint uppercase tracking-[0.05em]">Kind</span>
         {KIND_FILTERS.map(({ v, l }) => (
           <button
             key={v}
             type="button"
-            onClick={() => setKindFilter(v)}
+            onClick={() => updateQuery({ kind: v === 'all' ? null : v })}
             className={cn(
               'font-mono text-[11px] px-[9px] py-[3px] rounded-[4px] border transition-colors',
               kindFilter === v
@@ -380,6 +516,66 @@ export function AnomaliesClient() {
             {l}
           </button>
         ))}
+
+        <span className="font-mono text-[10px] text-text-faint uppercase tracking-[0.05em] ml-2">Confidence</span>
+        {(['all', 'medium_plus', 'high'] as ConfidenceFilter[]).map((v) => (
+          <button
+            key={v}
+            type="button"
+            onClick={() => updateQuery({ conf: v === 'all' ? null : v })}
+            className={cn(
+              'font-mono text-[11px] px-[9px] py-[3px] rounded-[4px] border transition-colors',
+              confFilter === v
+                ? 'border-border-strong bg-bg-elev text-text'
+                : 'border-border text-text-muted hover:text-text',
+            )}
+            title={
+              v === 'high'
+                ? 'Only high-confidence anomalies (100+ baseline samples).'
+                : v === 'medium_plus'
+                  ? 'High + medium confidence (30+ baseline samples).'
+                  : 'All anomalies including low-confidence directional signal.'
+            }
+          >
+            {v === 'medium_plus' ? 'medium+' : v}
+          </button>
+        ))}
+
+        <span className="font-mono text-[10px] text-text-faint uppercase tracking-[0.05em] ml-2">Window</span>
+        {(Object.keys(WINDOW_PRESETS) as WindowPreset[]).map((v) => (
+          <button
+            key={v}
+            type="button"
+            onClick={() => updateQuery({ window: v === '1h-7d' ? null : v })}
+            className={cn(
+              'font-mono text-[11px] px-[9px] py-[3px] rounded-[4px] border transition-colors',
+              windowPreset === v
+                ? 'border-border-strong bg-bg-elev text-text'
+                : 'border-border text-text-muted hover:text-text',
+            )}
+            title={`Compare last ${WINDOW_PRESETS[v].obs}h against ${WINDOW_PRESETS[v].ref / 24}d baseline.`}
+          >
+            {WINDOW_PRESETS[v].label}
+          </button>
+        ))}
+
+        <span className="font-mono text-[10px] text-text-faint uppercase tracking-[0.05em] ml-2">History</span>
+        {HISTORY_OPTS.map((d) => (
+          <button
+            key={d}
+            type="button"
+            onClick={() => updateQuery({ history: d === '30' ? null : d })}
+            className={cn(
+              'font-mono text-[11px] px-[9px] py-[3px] rounded-[4px] border transition-colors',
+              historyDays === d
+                ? 'border-border-strong bg-bg-elev text-text'
+                : 'border-border text-text-muted hover:text-text',
+            )}
+          >
+            {d}d
+          </button>
+        ))}
+
         <span className="flex-1" />
         <ExportDropdown
           filename="spanlens-anomalies"
@@ -388,7 +584,7 @@ export function AnomaliesClient() {
         <span className="font-mono text-[10px] text-text-faint">Sorted by severity · σ desc</span>
       </div>
 
-      <div className="flex-1 overflow-auto">
+      <div>
         {fetchError ? (
           <div className="flex flex-col items-center justify-center py-12 gap-2 text-text-muted">
             <span className="text-[28px] leading-none">⚠</span>
@@ -404,7 +600,7 @@ export function AnomaliesClient() {
         ) : (
           <>
             {unackedHigh.length > 0 && (
-              <div>
+              <div ref={highRef}>
                 <div className="flex items-center gap-2.5 px-[22px] py-[10px] bg-bg-muted border-b border-border border-t border-t-border">
                   <span className="font-mono text-[10px] uppercase tracking-[0.06em] text-accent">
                     New · high · {unackedHigh.length}
@@ -414,18 +610,18 @@ export function AnomaliesClient() {
                   <AnomRow
                     key={`${a.provider}-${a.model}-${a.kind}`}
                     a={a}
-                    idx={i}
                     last={i === unackedHigh.length - 1}
                     onAck={() => ackAnomaly(a)}
                     onUnack={() => unackAnomaly(a)}
                     ackPending={ackPending}
+                    investigateRange={investigateRange}
                   />
                 ))}
               </div>
             )}
 
             {unackedMedium.length > 0 && (
-              <div>
+              <div ref={mediumRef}>
                 <div className="flex items-center gap-2.5 px-[22px] py-[10px] bg-bg-muted border-b border-border border-t border-t-border">
                   <span className="font-mono text-[10px] uppercase tracking-[0.06em] text-accent">
                     New · medium · {unackedMedium.length}
@@ -435,37 +631,35 @@ export function AnomaliesClient() {
                   <AnomRow
                     key={`${a.provider}-${a.model}-${a.kind}-m`}
                     a={a}
-                    idx={unackedHigh.length + i}
                     last={i === unackedMedium.length - 1}
                     onAck={() => ackAnomaly(a)}
                     onUnack={() => unackAnomaly(a)}
                     ackPending={ackPending}
+                    investigateRange={investigateRange}
                   />
                 ))}
               </div>
             )}
 
             {acked.length > 0 && (
-              <div>
+              <div ref={ackedRef}>
                 <div className="flex items-center gap-2.5 px-[22px] py-[10px] bg-bg-muted border-b border-border border-t border-t-border">
                   <span className="font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint">
                     Acknowledged · {acked.length}
                   </span>
                 </div>
-                <div className="opacity-60">
-                  {acked.map((a, i) => (
-                    <AnomRow
-                      key={`${a.provider}-${a.model}-${a.kind}-ack`}
-                      a={a}
-                      idx={unackedHigh.length + unackedMedium.length + i}
-                      last={i === acked.length - 1}
-                      onAck={() => ackAnomaly(a)}
-                      onUnack={() => unackAnomaly(a)}
-                      ackPending={ackPending}
-                      dimmed
-                    />
-                  ))}
-                </div>
+                {acked.map((a, i) => (
+                  <AnomRow
+                    key={`${a.provider}-${a.model}-${a.kind}-ack`}
+                    a={a}
+                    last={i === acked.length - 1}
+                    onAck={() => ackAnomaly(a)}
+                    onUnack={() => unackAnomaly(a)}
+                    ackPending={ackPending}
+                    dimmed
+                    investigateRange={investigateRange}
+                  />
+                ))}
               </div>
             )}
 
@@ -474,22 +668,28 @@ export function AnomaliesClient() {
                 <span className="text-[28px] leading-none">✓</span>
                 <p className="text-[13px]">
                   {kindFilter === 'all'
-                    ? 'No anomalies in the last hour.'
-                    : `No ${kindFilter.replace('_', ' ')} anomalies in the last hour.`}
+                    ? 'No anomalies in the current window.'
+                    : `No ${kindFilter.replace('_', ' ')} anomalies in the current window.`}
                 </p>
                 <p className="font-mono text-[11.5px] text-text-faint">
                   {acked.length > 0
                     ? `${acked.length} acknowledged, Unack to re-open.`
                     : 'Baselines look healthy.'}
                 </p>
+                <Link
+                  href="/docs/features/anomalies"
+                  className="font-mono text-[11px] mt-2 px-2.5 py-1 rounded border border-border text-text-muted hover:text-text hover:border-border-strong transition-colors"
+                >
+                  How anomaly detection works →
+                </Link>
               </div>
             )}
 
             {historyFiltered.length > 0 && (
-              <div>
+              <div ref={historyRef}>
                 <div className="flex items-center gap-2.5 px-[22px] py-[10px] bg-bg-muted border-b border-border border-t border-t-border">
                   <span className="font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint opacity-75">
-                    Past detections · 30d · {historyFiltered.length}
+                    Past detections · {historyDays}d · {historyFiltered.length}
                   </span>
                 </div>
                 <div className="opacity-75">
