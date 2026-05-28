@@ -1,6 +1,7 @@
 'use client'
 import Link from 'next/link'
-import { useState } from 'react'
+import { useEffect, useMemo, useState, useSyncExternalStore } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import {
   Plus,
   Copy,
@@ -8,6 +9,7 @@ import {
   Check,
   ExternalLink,
   Pencil,
+  Search,
   Trash2,
   Key as KeyIcon,
 } from 'lucide-react'
@@ -20,7 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Topbar } from '@/components/layout/topbar'
+import { Topbar, LiveDot } from '@/components/layout/topbar'
 import { PermissionGate } from '@/components/permission-gate'
 import { GhostBtn, PrimaryBtn } from '@/components/ui/primitives'
 import { useCreateProject, useDeleteProject, useProjects } from '@/lib/queries/use-projects'
@@ -37,6 +39,36 @@ import {
   useDeleteProviderKey,
 } from '@/lib/queries/use-provider-keys'
 import { cn } from '@/lib/utils'
+
+// Hydration-safe mounted gate, same pattern as the other overhauled pages.
+const subscribeNoop = () => () => {}
+const getTrue = () => true
+const getFalse = () => false
+function useMounted(): boolean {
+  return useSyncExternalStore(subscribeNoop, getTrue, getFalse)
+}
+
+// Click-to-copy text element. Shows a transient "Copied" affordance.
+function CopyIdButton({ value, label = 'Copy ID' }: { value: string; label?: string }) {
+  const [copied, setCopied] = useState(false)
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation()
+        void navigator.clipboard.writeText(value).then(() => {
+          setCopied(true)
+          setTimeout(() => setCopied(false), 1200)
+        })
+      }}
+      title={label}
+      aria-label={label}
+      className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded text-text-faint hover:text-text"
+    >
+      {copied ? <Check className="h-3 w-3 text-good" /> : <Copy className="h-3 w-3" />}
+    </button>
+  )
+}
 
 const PROVIDERS = ['openai', 'anthropic', 'gemini', 'azure'] as const
 type ProviderName = typeof PROVIDERS[number]
@@ -290,31 +322,169 @@ export function ProjectsClient() {
     }
   }
 
+  const router = useRouter()
+  const sp = useSearchParams()
+  const mounted = useMounted()
+
   const loading =
     projectsQuery.isLoading ||
     apiKeysQuery.isLoading ||
     providerKeysQuery.isLoading
-  const projects = projectsQuery.data ?? []
-  const apiKeys = apiKeysQuery.data ?? []
-  const providerKeys = providerKeysQuery.data ?? []
+  const isFetching =
+    projectsQuery.isFetching ||
+    apiKeysQuery.isFetching ||
+    providerKeysQuery.isFetching
+  const allProjects = useMemo(() => projectsQuery.data ?? [], [projectsQuery.data])
+  const allApiKeys = useMemo(() => apiKeysQuery.data ?? [], [apiKeysQuery.data])
+  const allProviderKeys = useMemo(() => providerKeysQuery.data ?? [], [providerKeysQuery.data])
+
+  // URL-backed search — matches project name, Spanlens key name, and
+  // provider key name. Hides projects whose tree contains zero matches.
+  const search = sp.get('q') ?? ''
+  function updateQuery(updates: Record<string, string | null>) {
+    const next = new URLSearchParams(sp.toString())
+    Object.entries(updates).forEach(([k, v]) => {
+      if (v == null || v === '') next.delete(k)
+      else next.set(k, v)
+    })
+    router.replace(`/projects?${next.toString()}`)
+  }
+  const [searchInput, setSearchInput] = useState(search)
+  useEffect(() => {
+    const id = setTimeout(() => {
+      if (searchInput !== search) updateQuery({ q: searchInput.trim() || null })
+    }, 300)
+    return () => clearTimeout(id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchInput])
+
+  // After filter: a project is visible if its name matches OR any nested
+  // Spanlens key or provider key matches.
+  const { projects, apiKeys, providerKeys } = useMemo(() => {
+    if (!search) {
+      return { projects: allProjects, apiKeys: allApiKeys, providerKeys: allProviderKeys }
+    }
+    const needle = search.toLowerCase()
+    const provHit = allProviderKeys.filter((pk) => (pk.name ?? '').toLowerCase().includes(needle))
+    const provHitKeyIds = new Set(provHit.map((pk) => pk.api_key_id))
+    const akHit = allApiKeys.filter((k) =>
+      k.name.toLowerCase().includes(needle) || provHitKeyIds.has(k.id),
+    )
+    const akHitProjIds = new Set(akHit.map((k) => k.project_id))
+    const projHit = allProjects.filter((p) =>
+      p.name.toLowerCase().includes(needle) || akHitProjIds.has(p.id),
+    )
+    const projHitIds = new Set(projHit.map((p) => p.id))
+    const visibleApiKeys = allApiKeys.filter((k) => projHitIds.has(k.project_id))
+    const visibleApiKeyIds = new Set(visibleApiKeys.map((k) => k.id))
+    const visibleProviderKeys = allProviderKeys.filter((pk) => visibleApiKeyIds.has(pk.api_key_id))
+    return { projects: projHit, apiKeys: visibleApiKeys, providerKeys: visibleProviderKeys }
+  }, [allProjects, allApiKeys, allProviderKeys, search])
+
+  // Stat strip totals — always from the unfiltered list so the strip is a
+  // consistent overview, not a reflection of the current search.
+  const activeApiKeys = allApiKeys.filter((k) => k.is_active).length
+
+  function refreshAll() {
+    void projectsQuery.refetch()
+    void apiKeysQuery.refetch()
+    void providerKeysQuery.refetch()
+  }
 
   return (
-    <div className="-mx-4 -my-4 md:-mx-8 md:-my-7 flex flex-col h-screen overflow-hidden">
-      <Topbar
-        crumbs={[{ label: 'Workspace', href: '/dashboard' }, { label: 'Projects' }]}
-        right={
-          <PermissionGate need="edit">
-            <GhostBtn
-              onClick={() => setProjDialogOpen(true)}
-              className="flex items-center gap-1.5 text-[12.5px] px-3 py-[5px]"
-            >
-              <Plus className="h-3.5 w-3.5" /> New project
-            </GhostBtn>
-          </PermissionGate>
-        }
-      />
+    <div className="-mx-4 -my-4 md:-mx-8 md:-my-7 flex flex-col min-h-screen">
+      <div className="sticky top-0 z-20 bg-bg">
+        <Topbar
+          crumbs={[{ label: 'Projects' }]}
+          right={
+            <div className="flex items-center gap-3">
+              <LiveDot refetching={mounted && isFetching} />
+              <button
+                type="button"
+                onClick={refreshAll}
+                disabled={mounted && isFetching}
+                title="Refresh now"
+                className="font-mono text-[11px] text-text-muted hover:text-text border border-border rounded px-2 py-1 transition-colors disabled:opacity-40"
+              >
+                <span className={cn('inline-block', mounted && isFetching && 'animate-spin')}>↻</span>
+              </button>
+              <PermissionGate need="edit">
+                <GhostBtn
+                  onClick={() => setProjDialogOpen(true)}
+                  title="New project"
+                  aria-label="New project"
+                  className="flex items-center gap-1.5 text-[12.5px] px-2 sm:px-3 py-[5px] whitespace-nowrap shrink-0"
+                >
+                  <Plus className="h-3.5 w-3.5 shrink-0" />
+                  <span className="hidden sm:inline">New project</span>
+                </GhostBtn>
+              </PermissionGate>
+            </div>
+          }
+        />
+      </div>
 
-      <div className="flex-1 overflow-y-auto">
+      {/* Stat strip — unfiltered overview. 2 cols on mobile, 4 on md+. */}
+      <div className="shrink-0 border-b border-border">
+        <div className="grid grid-cols-2 md:grid-cols-4">
+          {[
+            { label: 'Projects',       value: String(allProjects.length) },
+            { label: 'Spanlens keys',  value: String(allApiKeys.length) },
+            { label: 'Active keys',    value: String(activeApiKeys),    warn: false },
+            { label: 'Provider keys',  value: String(allProviderKeys.length) },
+          ].map((s, i) => (
+            <div
+              key={s.label}
+              className={cn(
+                'px-[18px] py-[14px] border-border',
+                i % 2 === 0 && 'border-r',
+                i === 1 && 'border-b md:border-b-0 md:border-r',
+                i === 0 && 'border-b md:border-b-0',
+                i === 2 && 'md:border-r',
+              )}
+            >
+              <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-2">{s.label}</div>
+              <span className="text-[22px] sm:text-[24px] font-medium leading-none tracking-[-0.6px] tabular-nums text-text">
+                {mounted ? s.value : ' '}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Search bar */}
+      <div className="px-[22px] py-[10px] border-b border-border flex items-center gap-2 flex-wrap shrink-0">
+        <div className="relative max-w-md flex-1 min-w-[180px]">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-text-faint" />
+          <input
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') {
+                setSearchInput('')
+                updateQuery({ q: null })
+              }
+            }}
+            placeholder="Search project, Spanlens key, or provider key…"
+            className="w-full pl-8 pr-3 py-1.5 font-mono text-[12px] bg-bg-elev border border-border rounded-[6px] text-text placeholder:text-text-faint focus:outline-none focus:border-accent"
+          />
+        </div>
+        {search && (
+          <button
+            type="button"
+            onClick={() => { setSearchInput(''); updateQuery({ q: null }) }}
+            className="font-mono text-[11px] text-text-faint hover:text-text transition-colors"
+          >
+            Clear
+          </button>
+        )}
+        <span className="flex-1" />
+        <span className="font-mono text-[11px] text-text-faint">
+          {mounted ? (projects.length === allProjects.length ? `${allProjects.length} projects` : `${projects.length} of ${allProjects.length}`) : ' '}
+        </span>
+      </div>
+
+      <div>
         <div className="px-7 py-6 max-w-4xl">
           <div className="mb-6">
             <h1 className="text-[22px] font-semibold text-text tracking-[-0.4px] mb-1">
@@ -429,6 +599,40 @@ export function ProjectsClient() {
                 </div>
               ))}
             </div>
+          ) : allProjects.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-border p-10 text-center">
+              <h2 className="text-[14px] font-semibold text-text mb-1.5">No projects yet</h2>
+              <p className="text-[12.5px] text-text-muted max-w-md mx-auto mb-4">
+                Create a project to start grouping Spanlens keys and the provider keys they call.
+              </p>
+              <PermissionGate need="edit">
+                <PrimaryBtn
+                  onClick={() => setProjDialogOpen(true)}
+                  className="inline-flex items-center gap-1.5 text-[12.5px] px-3 py-[6px]"
+                >
+                  <Plus className="h-3.5 w-3.5" /> Create first project
+                </PrimaryBtn>
+              </PermissionGate>
+              <div className="mt-3">
+                <Link
+                  href="/docs/features/projects"
+                  className="font-mono text-[11.5px] px-2.5 py-1 rounded border border-border text-text-muted hover:text-text hover:border-border-strong transition-colors inline-block"
+                >
+                  How projects work →
+                </Link>
+              </div>
+            </div>
+          ) : projects.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-border p-10 text-center">
+              <p className="text-[12.5px] text-text-muted">No projects match the current search.</p>
+              <button
+                type="button"
+                onClick={() => { setSearchInput(''); updateQuery({ q: null }) }}
+                className="font-mono text-[11.5px] mt-3 px-2.5 py-1 rounded border border-border text-text-muted hover:text-text hover:border-border-strong transition-colors"
+              >
+                Clear search
+              </button>
+            </div>
           ) : (
             <div className="space-y-6">
               {projects.map((proj) => {
@@ -438,19 +642,26 @@ export function ProjectsClient() {
                     key={proj.id}
                     className="rounded-xl border border-border bg-bg-elev overflow-hidden"
                   >
-                    {/* Project header */}
-                    <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-bg">
-                      <div>
-                        <h2 className="text-[14px] font-semibold text-text">{proj.name}</h2>
-                        <p className="font-mono text-[10.5px] text-text-faint mt-0.5">{proj.id}</p>
+                    {/* Project header — buttons collapse to icon on mobile so
+                        the action row never wraps under the project name. */}
+                    <div className="flex items-center justify-between gap-2 px-6 py-4 border-b border-border bg-bg flex-wrap">
+                      <div className="min-w-0 flex-1">
+                        <h2 className="text-[14px] font-semibold text-text break-all">{proj.name}</h2>
+                        <div className="group flex items-center gap-1 mt-0.5">
+                          <p className="font-mono text-[10.5px] text-text-faint truncate">{proj.id}</p>
+                          <CopyIdButton value={proj.id} label="Copy project ID" />
+                        </div>
                       </div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 shrink-0">
                         <PermissionGate need="edit">
                           <PrimaryBtn
-                            className="flex items-center gap-1.5 text-[12px] px-3 py-[5px] h-[28px]"
+                            className="flex items-center gap-1.5 text-[12px] px-2 sm:px-3 py-[5px] h-[28px] whitespace-nowrap"
                             onClick={() => openIssueDialog(proj.id)}
+                            title="New Spanlens key"
+                            aria-label="New Spanlens key"
                           >
-                            <Plus className="h-3.5 w-3.5" /> New Spanlens key
+                            <Plus className="h-3.5 w-3.5" />
+                            <span className="hidden sm:inline">New Spanlens key</span>
                           </PrimaryBtn>
                         </PermissionGate>
                         <PermissionGate need="edit">
@@ -458,6 +669,7 @@ export function ProjectsClient() {
                             type="button"
                             onClick={() => openDeleteProjectDialog(proj.id, proj.name)}
                             title="Delete project"
+                            aria-label="Delete project"
                             className="p-1.5 rounded hover:bg-bad/10 text-text-faint hover:text-bad transition-colors"
                           >
                             <Trash2 className="h-3.5 w-3.5" />
@@ -495,10 +707,14 @@ export function ProjectsClient() {
                                   </div>
                                   <div className="font-mono text-[10.5px] text-text-faint mt-0.5">
                                     {key.key_prefix}…
-                                    <span suppressHydrationWarning className="ml-2">
-                                      {key.last_used_at
-                                        ? `· last used ${Math.floor((Date.now() - Date.parse(key.last_used_at)) / 86_400_000)}d ago`
-                                        : '· never used'}
+                                    <span className="ml-2">
+                                      {/* Relative time depends on Date.now() — defer to client mount
+                                          to keep SSR / first paint deterministic. */}
+                                      {!mounted
+                                        ? '· …'
+                                        : key.last_used_at
+                                          ? `· last used ${Math.floor((Date.now() - Date.parse(key.last_used_at)) / 86_400_000)}d ago`
+                                          : '· never used'}
                                     </span>
                                   </div>
                                 </div>
