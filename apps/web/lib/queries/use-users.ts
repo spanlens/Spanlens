@@ -11,7 +11,7 @@ export interface UsersFilters {
   search?: string
   from?: string
   to?: string
-  sortBy?: 'cost' | 'requests' | 'tokens' | 'last_seen'
+  sortBy?: 'cost' | 'requests' | 'tokens' | 'last_seen' | 'latency'
   sortDir?: 'asc' | 'desc'
 }
 

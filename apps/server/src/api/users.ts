@@ -33,8 +33,8 @@ usersRouter.get('/', async (c) => {
   const to        = c.req.query('to') ?? null
   const sortByRaw = c.req.query('sortBy') ?? 'cost'
   const sortDirRaw = c.req.query('sortDir') ?? 'desc'
-  const sortBy: 'cost' | 'requests' | 'tokens' | 'last_seen' =
-    sortByRaw === 'requests' || sortByRaw === 'tokens' || sortByRaw === 'last_seen'
+  const sortBy: 'cost' | 'requests' | 'tokens' | 'last_seen' | 'latency' =
+    sortByRaw === 'requests' || sortByRaw === 'tokens' || sortByRaw === 'last_seen' || sortByRaw === 'latency'
       ? sortByRaw
       : 'cost'
   const sortDir: 'asc' | 'desc' = sortDirRaw === 'asc' ? 'asc' : 'desc'

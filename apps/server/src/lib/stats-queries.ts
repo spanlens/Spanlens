@@ -266,7 +266,7 @@ export interface UserAnalyticsOptions {
   search?: string | null | undefined
   from?: string | null | undefined
   to?: string | null | undefined
-  sortBy: 'cost' | 'requests' | 'tokens' | 'last_seen'
+  sortBy: 'cost' | 'requests' | 'tokens' | 'last_seen' | 'latency'
   sortDir: 'asc' | 'desc'
   limit: number
   offset: number
@@ -277,6 +277,7 @@ const USER_SORT_COL: Record<UserAnalyticsOptions['sortBy'], string> = {
   requests:  'total_requests',
   tokens:    'total_tokens',
   last_seen: 'last_seen',
+  latency:   'avg_latency_ms',
 }
 
 export async function getUserAnalytics(
