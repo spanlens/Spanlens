@@ -1,8 +1,18 @@
 'use client'
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useSyncExternalStore } from 'react'
+
+// Hydration-safe mounted gate. Same pattern as the other overhauled pages —
+// avoids the suppressHydrationWarning band-aid on cells that depend on
+// Date.now() or the user's local timezone.
+const subscribeNoop = () => () => {}
+const getTrue = () => true
+const getFalse = () => false
+function useMounted(): boolean {
+  return useSyncExternalStore(subscribeNoop, getTrue, getFalse)
+}
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, Trash2 } from 'lucide-react'
+import { Trash2 } from 'lucide-react'
 import {
   useAlerts,
   useDeleteAlert,
@@ -74,6 +84,7 @@ export function AlertDetailClient() {
   // Capture "now" at mount — used to bucket deliveries into the last 24h.
   // This is a UI sliver, not a billing window, so a fixed reference is fine.
   const [mountNow] = useState(() => Date.now())
+  const mounted = useMounted()
 
   const [editOpen, setEditOpen] = useState(false)
   const [editName, setEditName] = useState('')
@@ -118,8 +129,10 @@ export function AlertDetailClient() {
 
   if (alertsQuery.isLoading) {
     return (
-      <div className="-mx-4 -my-4 md:-mx-8 md:-my-7 flex flex-col h-screen overflow-hidden bg-bg">
-        <Topbar crumbs={[{ label: 'Workspace', href: '/dashboard' }, { label: 'Alerts', href: '/alerts' }, { label: '…' }]} />
+      <div className="-mx-4 -my-4 md:-mx-8 md:-my-7 flex flex-col min-h-screen">
+        <div className="sticky top-0 z-20 bg-bg">
+          <Topbar crumbs={[{ label: 'Alerts', href: '/alerts' }, { label: '…' }]} />
+        </div>
         <div className="p-6 space-y-3">
           <Skeleton className="h-8 w-64" />
           <Skeleton className="h-32 w-full" />
@@ -131,9 +144,11 @@ export function AlertDetailClient() {
 
   if (!alert) {
     return (
-      <div className="-mx-4 -my-4 md:-mx-8 md:-my-7 flex flex-col h-screen overflow-hidden bg-bg">
-        <Topbar crumbs={[{ label: 'Workspace', href: '/dashboard' }, { label: 'Alerts', href: '/alerts' }, { label: 'Not found' }]} />
-        <div className="flex flex-col items-center justify-center flex-1 gap-3 text-text-muted">
+      <div className="-mx-4 -my-4 md:-mx-8 md:-my-7 flex flex-col min-h-screen">
+        <div className="sticky top-0 z-20 bg-bg">
+          <Topbar crumbs={[{ label: 'Alerts', href: '/alerts' }, { label: 'Not found' }]} />
+        </div>
+        <div className="flex flex-col items-center justify-center h-64 gap-3 text-text-muted">
           <p className="text-[13px]">Alert rule not found.</p>
           <Link href="/alerts" className="font-mono text-[12px] text-accent hover:opacity-80 transition-opacity">
             ← Back to all alerts
@@ -151,55 +166,56 @@ export function AlertDetailClient() {
   const failed = deliveries.filter((d) => d.status === 'failed').length
 
   return (
-    <div className="-mx-4 -my-4 md:-mx-8 md:-my-7 flex flex-col h-screen overflow-hidden bg-bg">
-      <Topbar
-        crumbs={[
-          { label: 'Workspace', href: '/dashboard' },
-          { label: 'Alerts', href: '/alerts' },
-          { label: alert.name },
-        ]}
-        right={
-          <PermissionGate need="edit">
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={openEdit}
-                className="font-mono text-[11px] text-text-muted px-[10px] py-[5px] border border-border rounded-[5px] bg-bg-elev hover:text-text transition-colors"
-              >
-                Edit
-              </button>
-              <button
-                type="button"
-                onClick={() => void handleToggle()}
-                disabled={updateAlert.isPending}
-                className="font-mono text-[11px] text-text-muted px-[10px] py-[5px] border border-border rounded-[5px] bg-bg-elev hover:text-text transition-colors disabled:opacity-40"
-              >
-                {alert.is_active ? 'Pause' : 'Resume'}
-              </button>
-              <button
-                type="button"
-                onClick={() => void handleDelete()}
-                disabled={deleteAlert.isPending}
-                className="p-2 text-text-faint hover:text-bad transition-colors disabled:opacity-40"
-                title="Delete rule"
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-              </button>
-            </div>
-          </PermissionGate>
-        }
-      />
+    <div className="-mx-4 -my-4 md:-mx-8 md:-my-7 flex flex-col min-h-screen">
+      <div className="sticky top-0 z-20 bg-bg">
+        <Topbar
+          crumbs={[
+            { label: 'Alerts', href: '/alerts' },
+            { label: alert.name },
+          ]}
+          right={
+            <PermissionGate need="edit">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={openEdit}
+                  title="Edit"
+                  aria-label="Edit"
+                  className="font-mono text-[11px] text-text-muted px-2 sm:px-[10px] py-[5px] border border-border rounded-[5px] bg-bg-elev hover:text-text transition-colors whitespace-nowrap shrink-0"
+                >
+                  <span className="sm:hidden">✎</span>
+                  <span className="hidden sm:inline">Edit</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleToggle()}
+                  disabled={updateAlert.isPending}
+                  title={alert.is_active ? 'Pause' : 'Resume'}
+                  aria-label={alert.is_active ? 'Pause' : 'Resume'}
+                  className="font-mono text-[11px] text-text-muted px-2 sm:px-[10px] py-[5px] border border-border rounded-[5px] bg-bg-elev hover:text-text transition-colors disabled:opacity-40 whitespace-nowrap shrink-0"
+                >
+                  <span className="sm:hidden">{alert.is_active ? '⏸' : '▶'}</span>
+                  <span className="hidden sm:inline">{alert.is_active ? 'Pause' : 'Resume'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleDelete()}
+                  disabled={deleteAlert.isPending}
+                  className="p-2 text-text-faint hover:text-bad transition-colors disabled:opacity-40"
+                  title="Delete rule"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </PermissionGate>
+          }
+        />
+      </div>
 
-      <div className="flex-1 overflow-auto">
+      <div>
         <div className="px-[22px] py-6 max-w-4xl">
-          <Link
-            href="/alerts"
-            className="inline-flex items-center gap-1 font-mono text-[11px] text-text-muted hover:text-text transition-colors mb-4"
-          >
-            <ArrowLeft className="h-3 w-3" /> All alerts
-          </Link>
-
-          {/* Header, rule state */}
+          {/* Header, rule state — breadcrumb already links back to /alerts,
+              so the in-content "All alerts" backlink is redundant. */}
           <div className="flex items-center gap-3 mb-1">
             <span
               className={cn(
@@ -226,11 +242,13 @@ export function AlertDetailClient() {
             ].map((s) => (
               <div key={s.label}>
                 <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-1.5">{s.label}</div>
-                <div suppressHydrationWarning className={cn(
+                <div className={cn(
                   'font-mono text-[16px] font-medium tracking-[-0.2px]',
                   s.label === 'Last fired' && firing ? 'text-accent' : 'text-text',
                 )}>
-                  {s.value}
+                  {/* Last-fired uses Date.now() inside relTime — defer to client
+                      mount so SSR + first paint render identical text. */}
+                  {s.label === 'Last fired' && !mounted ? '—' : s.value}
                 </div>
               </div>
             ))}
@@ -292,8 +310,8 @@ export function AlertDetailClient() {
                       key={d.id}
                       className="grid grid-cols-[150px_90px_1fr_1fr] gap-4 px-4 py-2.5 items-center text-[11.5px]"
                     >
-                      <span className="font-mono text-text-muted" suppressHydrationWarning>
-                        {formatDateTime(d.created_at)}
+                      <span className="font-mono text-text-muted">
+                        {mounted ? formatDateTime(d.created_at) : '—'}
                       </span>
                       <span className={cn(
                         'font-mono text-[10px] uppercase tracking-[0.04em] px-1.5 py-0.5 rounded w-fit',
