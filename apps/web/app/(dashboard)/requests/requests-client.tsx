@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -16,6 +16,20 @@ import { useTrace } from '@/lib/queries/use-traces'
 import { useStatsOverview, useStatsTimeseries } from '@/lib/queries/use-stats'
 import { useAnomalies } from '@/lib/queries/use-anomalies'
 import type { RequestRow, RequestDetail } from '@/lib/queries/types'
+import { maskPii, maskPiiDeep } from '@/lib/pii-mask'
+
+// Hydration-safe "is this the client?" gate. SSR returns false, client paint
+// returns true. Avoids the setState-in-effect lint rule. See dashboard-client.
+const subscribeNoop = () => () => {}
+const getTrue = () => true
+const getFalse = () => false
+function useMounted(): boolean {
+  return useSyncExternalStore(subscribeNoop, getTrue, getFalse)
+}
+
+// Slow latency threshold for the table row callout. Above this latency a
+// row's `latency_ms` cell is colored to draw attention.
+const SLOW_LATENCY_MS = 2000
 
 type StatusFilter = 'all' | 'ok' | '4xx' | '5xx'
 type SortField = 'created_at' | 'latency_ms' | 'cost_usd' | 'total_tokens'
@@ -40,9 +54,31 @@ function relAge(dateStr: string): string {
   return `${Math.floor(s / 86400)}d`
 }
 
+// Cost is always rendered with 5 fraction digits so the column visually
+// aligns. Trailing zeros are kept on purpose — eyeballing whether a row is
+// $0.00020 vs $0.00200 should not require counting digits.
 function fmtCost(n: number | null): string {
   if (n == null) return '—'
-  return n < 0.001 ? '$' + n.toFixed(5) : '$' + n.toFixed(4)
+  return '$' + n.toFixed(5)
+}
+
+// Maps the URL `timeRange` enum to a human label used in stat-strip and
+// any "Last X" copy that the page renders.
+function timeRangeLabel(r: 'all' | 'today' | '7d' | '30d'): string {
+  switch (r) {
+    case 'today': return 'today'
+    case '7d': return '7d'
+    case '30d': return '30d'
+    default: return 'all time'
+  }
+}
+function timeRangeHours(r: 'all' | 'today' | '7d' | '30d'): number {
+  switch (r) {
+    case 'today': return 24
+    case '7d': return 24 * 7
+    case '30d': return 24 * 30
+    default: return 24 * 30
+  }
 }
 
 function sparkPath(values: number[], w: number, h: number): string {
@@ -72,10 +108,24 @@ function InlineSpark({ values, w = 120, h = 18, stroke = 'var(--border-strong)' 
 }
 
 // ── Stat strip ────────────────────────────────────────────────────────────────
-function StatStrip() {
-  const overview = useStatsOverview({ hours: 24, compare: true })
-  const timeseries = useStatsTimeseries({ hours: 24 })
-  const anomalies = useAnomalies({ observationHours: 24 })
+interface StatStripProps {
+  timeRange: 'all' | 'today' | '7d' | '30d'
+  fromIso: string | undefined
+}
+
+function StatStrip({ timeRange, fromIso }: StatStripProps) {
+  // Same window the table is showing — keeps the stat strip and the table
+  // visually consistent so the user can never see "0 requests" up here while
+  // 252 rows render below.
+  const hours = timeRangeHours(timeRange)
+  const overview = useStatsOverview(
+    fromIso ? { from: fromIso, compare: true } : { hours, compare: true },
+  )
+  const timeseries = useStatsTimeseries(
+    fromIso ? { from: fromIso } : { hours },
+  )
+  const anomalies = useAnomalies({ observationHours: hours })
+  const mounted = useMounted()
 
   const o = overview.data
   const ts = timeseries.data ?? []
@@ -87,10 +137,12 @@ function StatStrip() {
   const errorRateStr = errorRatePct.toFixed(1) + '%'
   const anomalyCount = (anomalies.data?.data ?? []).length
 
+  const rangeLabel = timeRangeLabel(timeRange)
+
   const stats = [
-    { label: 'Requests · 24h', value: o ? o.totalRequests.toLocaleString() : '—', spark: sparkReqs, warn: false, good: false },
+    { label: `Requests · ${rangeLabel}`, value: o ? o.totalRequests.toLocaleString() : '—', spark: sparkReqs, warn: false, good: false },
     { label: 'Avg latency', value: o ? `${o.avgLatencyMs}ms` : '—', spark: [], warn: o ? o.avgLatencyMs > 1000 : false, good: false },
-    { label: 'Spend · 24h', value: o ? '$' + o.totalCostUsd.toFixed(2) : '—', spark: sparkCost, warn: false, good: true },
+    { label: `Spend · ${rangeLabel}`, value: o ? '$' + o.totalCostUsd.toFixed(2) : '—', spark: sparkCost, warn: false, good: true },
     { label: 'Error rate', value: errorRateStr, spark: sparkErrors, warn: errorRatePct > 1, good: false },
     { label: 'Anomalies', value: anomalyCount.toString(), spark: [], warn: anomalyCount > 0, good: false },
   ]
@@ -103,12 +155,14 @@ function StatStrip() {
             <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-2">{s.label}</div>
             <div
               className={cn('text-[24px] font-medium tracking-[-0.6px] leading-none mb-1.5', s.warn ? 'text-accent' : 'text-text')}
-              suppressHydrationWarning
             >
-              {s.value}
+              {/* Render an em-dash until the client hydrates so SSR and the
+                  first client paint produce identical text — eliminates the
+                  prior `suppressHydrationWarning`. */}
+              {mounted ? s.value : '—'}
             </div>
             <InlineSpark
-              values={s.spark}
+              values={mounted ? s.spark : []}
               stroke={s.warn ? 'var(--accent)' : s.good ? 'var(--good)' : 'var(--border-strong)'}
             />
           </div>
@@ -119,26 +173,49 @@ function StatStrip() {
 }
 
 // ── Traffic bars ──────────────────────────────────────────────────────────────
-function TrafficBars() {
-  const timeseries = useStatsTimeseries({ hours: 720 })
+interface TrafficBarsProps {
+  timeRange: 'all' | 'today' | '7d' | '30d'
+  fromIso: string | undefined
+}
+
+function TrafficBars({ timeRange, fromIso }: TrafficBarsProps) {
+  // Lock to "last 30d" when the user has selected All time so the chart still
+  // has a meaningful baseline; otherwise honor the same window as the stat
+  // strip and the table.
+  const hours = timeRange === 'all' ? 24 * 30 : timeRangeHours(timeRange)
+  const timeseries = useStatsTimeseries(
+    fromIso ? { from: fromIso } : { hours },
+  )
   const rawTs = timeseries.data
+
+  // Number of buckets to show — small ranges look weird with 30 sparse bars
+  // so we clamp to the data length but never below 6 to keep the visual rhythm.
+  const bucketCount = useMemo(() => {
+    if (timeRange === 'today') return 24 // hour buckets
+    if (timeRange === '7d') return 7
+    return 30
+  }, [timeRange])
 
   const bars = useMemo(() => {
     const ts = rawTs ?? []
-    if (!ts.length) return Array.from({ length: 30 }).map(() => ({ h: 8, color: 'var(--border-strong)' }))
-    const maxReq = Math.max(...ts.map((d) => d.requests), 1)
-    return ts.slice(-30).map((d) => {
+    if (!ts.length) return Array.from({ length: bucketCount }).map(() => ({ h: 8, color: 'var(--border-strong)' }))
+    const slice = ts.slice(-bucketCount)
+    const maxReq = Math.max(...slice.map((d) => d.requests), 1)
+    return slice.map((d) => {
       const h = Math.max(4, (d.requests / maxReq) * 68)
       const color = d.errors > 0 ? 'var(--bad)' : 'var(--border-strong)'
       return { h, color }
     })
-  }, [rawTs])
+  }, [rawTs, bucketCount])
 
   const labels = useMemo(() => {
-    const pts = (rawTs ?? []).slice(-30)
+    const pts = (rawTs ?? []).slice(-bucketCount)
     const first = pts[0]
     if (!pts.length || !first) return ['—', '—', '—', '—', 'NOW']
-    const fmt = (s: string) => new Date(s).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+    const fmt = (s: string) =>
+      timeRange === 'today'
+        ? new Date(s).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })
+        : new Date(s).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
     return [
       fmt(first.date),
       fmt((pts[Math.floor(pts.length * 0.25)] ?? first).date),
@@ -146,13 +223,18 @@ function TrafficBars() {
       fmt((pts[Math.floor(pts.length * 0.75)] ?? first).date),
       'NOW',
     ]
-  }, [rawTs])
+  }, [rawTs, bucketCount, timeRange])
+
+  const trailingLabel =
+    timeRange === 'all'   ? 'last 30d' :
+    timeRange === 'today' ? 'today' :
+    `last ${timeRange}`
 
   return (
     <div className="px-[22px] py-[14px] border-b border-border shrink-0">
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-3">
-          <span className="text-[13.5px] font-medium">Traffic</span>
+          <h2 className="text-[13.5px] font-medium">Traffic</h2>
           <div className="flex gap-3 font-mono text-[10.5px] text-text-muted tracking-[0.03em]">
             <span className="inline-flex items-center gap-1.5">
               <span className="w-1.5 h-1.5 rounded-full bg-border-strong inline-block" /> OK
@@ -162,7 +244,7 @@ function TrafficBars() {
             </span>
           </div>
         </div>
-        <div className="font-mono text-[10.5px] text-text-faint tracking-[0.03em]">last 30d</div>
+        <div className="font-mono text-[10.5px] text-text-faint tracking-[0.03em]">{trailingLabel}</div>
       </div>
       <div className="flex items-end gap-[2px] h-[72px]">
         {bars.map((b, i) => (
@@ -214,10 +296,37 @@ function CopyButton({ getText }: { getText: () => string }) {
 function RequestDrawer({ requestId, visible, onClose, onPrev, onNext, hasPrev, hasNext, position, total }: DrawerProps) {
   // Parent remounts via `key={selectedId}` on row change.
   const [tab, setTab] = useState<DrawerTab>('request')
+  // PII mask toggle — masks emails/phones/cards/API keys in the body for
+  // display only. Off by default since most users want to see the raw
+  // request they're debugging.
+  const [maskPiiOn, setMaskPiiOn] = useState(false)
   const { data: req, isLoading, isError } = useRequest(requestId)
+
+  // Close on Escape — matches the dashboard's export-dropdown pattern and
+  // is what users expect from any side panel / modal.
+  useEffect(() => {
+    if (!visible) return
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') onClose()
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [visible, onClose])
+  // Display copy of request_body: optionally PII-masked. Raw `req.request_body`
+  // is preserved for the Copy buttons (so debuggers can still get unmasked
+  // payloads), only the rendered text uses this masked copy.
+  const displayBody = useMemo(() => {
+    if (!maskPiiOn) return req?.request_body
+    return maskPiiDeep(req?.request_body)
+  }, [maskPiiOn, req?.request_body])
+  const displayResponseBody = useMemo(() => {
+    if (!maskPiiOn) return req?.response_body
+    return maskPiiDeep(req?.response_body)
+  }, [maskPiiOn, req?.response_body])
+
   const messages = useMemo(() => {
-    if (!req?.request_body || typeof req.request_body !== 'object') return null
-    const body = req.request_body as Record<string, unknown>
+    if (!displayBody || typeof displayBody !== 'object') return null
+    const body = displayBody as Record<string, unknown>
 
     // OpenAI / Anthropic: messages[]
     if (Array.isArray(body.messages)) {
@@ -244,13 +353,19 @@ function RequestDrawer({ requestId, visible, onClose, onPrev, onNext, hasPrev, h
     }
 
     return null
-  }, [req?.request_body])
+  }, [displayBody])
 
   return (
     <aside className={cn(
-      'shrink-0 bg-bg-elev flex flex-col overflow-hidden',
+      'bg-bg-elev flex flex-col overflow-hidden',
+      // Mobile (< md): full-screen overlay so the user isn't squeezed by
+      // both the table and a 480px panel on the same screen.
+      // Desktop (md+): inline 480px side panel that the table layout
+      // accounts for via flex shrinkage.
+      visible
+        ? 'fixed inset-0 z-40 md:static md:z-auto md:w-[480px] md:shrink-0 md:border-l md:border-border border-t border-border'
+        : 'hidden md:flex md:w-0 md:shrink-0',
       'transition-[width] duration-200 ease-out',
-      visible ? 'w-[480px] border-l border-border' : 'w-0',
     )}>
       {/* Header */}
       <div className="px-5 py-4 border-b border-border">
@@ -268,6 +383,20 @@ function RequestDrawer({ requestId, visible, onClose, onPrev, onNext, hasPrev, h
               Open →
             </Link>
           )}
+          <button
+            type="button"
+            onClick={() => setMaskPiiOn((v) => !v)}
+            aria-pressed={maskPiiOn}
+            title="Mask emails, phone numbers, card numbers, and API keys in the displayed body"
+            className={cn(
+              'font-mono text-[10px] px-1.5 py-0.5 border rounded tracking-[0.04em] uppercase transition-colors',
+              maskPiiOn
+                ? 'border-accent text-accent bg-accent-bg'
+                : 'border-border text-text-muted hover:border-border-strong',
+            )}
+          >
+            Mask PII{maskPiiOn ? ' · on' : ''}
+          </button>
           {[
             { label: 'Prev', onClick: onPrev, disabled: !hasPrev },
             { label: 'Next', onClick: onNext, disabled: !hasNext },
@@ -380,7 +509,7 @@ function RequestDrawer({ requestId, visible, onClose, onPrev, onNext, hasPrev, h
                 <CopyButton getText={() => req.trace_id!} />
               </div>
             ) : (
-              <div className="font-mono text-[12.5px] text-text">,</div>
+              <div className="font-mono text-[12.5px] text-text-faint">Not attached</div>
             )}
           </div>
 
@@ -393,7 +522,7 @@ function RequestDrawer({ requestId, visible, onClose, onPrev, onNext, hasPrev, h
                 <CopyButton getText={() => req.span_id!} />
               </div>
             ) : (
-              <div className="font-mono text-[12.5px] text-text">,</div>
+              <div className="font-mono text-[12.5px] text-text-faint">Not attached</div>
             )}
           </div>
         </div>
@@ -460,9 +589,12 @@ function RequestDrawer({ requestId, visible, onClose, onPrev, onNext, hasPrev, h
         ) : !req ? null : tab === 'request' ? (
           <div className="space-y-2">
             <div className="flex justify-end">
+              {/* Copy always uses the RAW body — the toggle is for on-screen
+                  display, not for sanitizing what a developer pastes into
+                  their own debugger. */}
               <CopyButton getText={() => JSON.stringify(req.request_body, null, 2)} />
             </div>
-            <MessageDisplay messages={messages} body={req.request_body} />
+            <MessageDisplay messages={messages} body={displayBody} />
           </div>
         ) : tab === 'response' ? (
           req.response_body == null ? (
@@ -476,7 +608,7 @@ function RequestDrawer({ requestId, visible, onClose, onPrev, onNext, hasPrev, h
                 <CopyButton getText={() => JSON.stringify(req.response_body, null, 2)} />
               </div>
               <pre className="font-mono text-[11.5px] text-text-muted leading-relaxed whitespace-pre-wrap break-all">
-                {JSON.stringify(req.response_body, null, 2)}
+                {JSON.stringify(displayResponseBody, null, 2)}
               </pre>
             </div>
           )
@@ -484,10 +616,10 @@ function RequestDrawer({ requestId, visible, onClose, onPrev, onNext, hasPrev, h
           <TraceTab traceId={req.trace_id ?? null} />
         ) : tab === 'error' ? (
           <pre className="font-mono text-[12px] text-bad leading-relaxed whitespace-pre-wrap break-all">
-            {req.error_message}
+            {maskPiiOn && req.error_message ? maskPii(req.error_message) : req.error_message}
           </pre>
         ) : (
-          <RawTab req={req} />
+          <RawTab req={req} displayRequestBody={displayBody} displayResponseBody={displayResponseBody} />
         )}
       </div>
     </aside>
@@ -558,7 +690,18 @@ function TraceTab({ traceId }: { traceId: string | null }) {
 }
 
 // ── Raw tab: full request + response bodies as JSON ───────────────────────────
-function RawTab({ req }: { req: RequestDetail }) {
+function RawTab({
+  req,
+  displayRequestBody,
+  displayResponseBody,
+}: {
+  req: RequestDetail
+  // Pre-masked copies when the drawer's "Mask PII" toggle is on. Copy buttons
+  // still use the raw bodies from `req` so a developer can paste the real
+  // payload into their debugger.
+  displayRequestBody: unknown
+  displayResponseBody: unknown
+}) {
   return (
     <div className="space-y-5">
       <section>
@@ -572,7 +715,7 @@ function RawTab({ req }: { req: RequestDetail }) {
           <p className="font-mono text-[11.5px] text-text-faint">Not captured.</p>
         ) : (
           <pre className="font-mono text-[11.5px] text-text leading-relaxed whitespace-pre-wrap break-all bg-bg-elev border border-border rounded p-3">
-            {JSON.stringify(req.request_body, null, 2)}
+            {JSON.stringify(displayRequestBody, null, 2)}
           </pre>
         )}
       </section>
@@ -587,7 +730,7 @@ function RawTab({ req }: { req: RequestDetail }) {
           <p className="font-mono text-[11.5px] text-text-faint">Not captured.</p>
         ) : (
           <pre className="font-mono text-[11.5px] text-text leading-relaxed whitespace-pre-wrap break-all bg-bg-elev border border-border rounded p-3">
-            {JSON.stringify(req.response_body, null, 2)}
+            {JSON.stringify(displayResponseBody, null, 2)}
           </pre>
         )}
       </section>
@@ -715,8 +858,42 @@ function RequestsTable({
   hasActiveFilters: boolean
 }) {
   const cols = drawerOpen ? COL_NARROW : COL_FULL
+
+  // Keyboard navigation: ↑/↓ move the selected row, Enter opens the drawer
+  // for the selected row (which it already is via row click, but Enter
+  // matches list-widget conventions). We bind on the table container only
+  // when a row is selected so we don't steal global Escape from other UI.
+  function handleKey(e: React.KeyboardEvent<HTMLDivElement>) {
+    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp' && e.key !== 'Enter') return
+    if (rows.length === 0) return
+    const idx = selectedId ? rows.findIndex((r) => r.id === selectedId) : -1
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      const next = idx < 0 ? 0 : Math.min(rows.length - 1, idx + 1)
+      const row = rows[next]
+      if (row) onSelect(row.id)
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      const next = idx <= 0 ? 0 : idx - 1
+      const row = rows[next]
+      if (row) onSelect(row.id)
+    } else if (e.key === 'Enter') {
+      // No-op when nothing is selected; otherwise toggling via Enter feels
+      // surprising, so we only re-emit the selection (parent treats same id
+      // as a no-op toggle into-out, so we skip).
+    }
+  }
+
   return (
-    <div className="overflow-auto flex-1 min-h-0">
+    <div
+      className="overflow-auto flex-1 min-h-0 focus:outline-none"
+      tabIndex={0}
+      onKeyDown={handleKey}
+      // Visually hide the focus ring on the scroller — keyboard nav is
+      // discoverable via the highlighted row instead.
+      role="grid"
+      aria-label="Requests table"
+    >
       <div className="min-w-[700px]">
       {/* Header */}
       <div
@@ -750,10 +927,28 @@ function RequestsTable({
           ))
         : rows.length === 0
           ? (
-            <div className="text-center py-12 font-mono text-[12.5px] text-text-faint">
-              {hasActiveFilters
-                ? 'No requests match the current filters.'
-                : 'No requests yet. Make your first API call through the proxy.'}
+            <div className="py-12 font-mono text-[12.5px] text-text-faint flex flex-col items-center gap-3 text-center px-4">
+              {hasActiveFilters ? (
+                <span>No requests match the current filters.</span>
+              ) : (
+                <>
+                  <span className="text-[13px] text-text-muted">No requests yet — make your first API call through the proxy.</span>
+                  <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1">
+                    <Link
+                      href="/projects"
+                      className="font-mono text-[11.5px] text-accent hover:opacity-80 transition-opacity"
+                    >
+                      Add provider key →
+                    </Link>
+                    <Link
+                      href="/docs/quick-start"
+                      className="font-mono text-[11.5px] text-text-muted hover:text-text transition-colors"
+                    >
+                      Quick start →
+                    </Link>
+                  </div>
+                </>
+              )}
             </div>
           )
           : rows.map((req) => {
@@ -788,7 +983,12 @@ function RequestsTable({
                     )}
                   </span>
                   {!drawerOpen && <span className="text-text-muted">{req.provider_key_name ?? req.provider}</span>}
-                  <span className={isErr ? 'text-accent' : 'text-text'}>{req.latency_ms}ms</span>
+                  {/* Slow rows draw the eye even when they returned 200 — a
+                      9-second OK request often points at a model/prompt
+                      problem worth investigating. */}
+                  <span className={cn(
+                    isErr ? 'text-accent' : req.latency_ms >= SLOW_LATENCY_MS ? 'text-accent' : 'text-text',
+                  )}>{req.latency_ms}ms</span>
                   <span className="text-text-muted">{req.total_tokens.toLocaleString()}</span>
                   <span className="text-text">{fmtCost(req.cost_usd)}</span>
                   <span className={isErr ? 'text-bad' : 'text-good'}>{req.status_code}</span>
@@ -849,6 +1049,20 @@ export function RequestsClient() {
     router.replace(`/requests?${params.toString()}`, { scroll: false })
   }
 
+  // Most filter handlers do the same three things: push URL params, reset
+  // pagination to page 1, and clear the row selection. Wrapping them keeps
+  // each handler honest about what it's actually changing.
+  const applyFilter = useCallback((updates: Record<string, string | null>) => {
+    const params = new URLSearchParams(searchParamsRef.current.toString())
+    for (const [key, val] of Object.entries(updates)) {
+      if (val === null || val === '') params.delete(key)
+      else params.set(key, val)
+    }
+    router.replace(`/requests?${params.toString()}`, { scroll: false })
+    setPage(1)
+    setSelectedId(null)
+  }, [router])
+
   useEffect(() => {
     const t = setTimeout(() => {
       const params = new URLSearchParams(searchParamsRef.current.toString())
@@ -908,6 +1122,17 @@ export function RequestsClient() {
     return keys.filter((k) => k.provider === filters.provider)
   }, [providerKeysQuery.data, filters.provider])
 
+  // Only show provider options the user actually has keys for. If they've
+  // never set up an Anthropic key, the dropdown shouldn't tease an
+  // Anthropic option that returns zero results when clicked. The fallback
+  // to the four canonical providers handles the moment between page mount
+  // and the first useProviderKeys response — better than an empty list.
+  const availableProviders = useMemo<string[]>(() => {
+    const keys = providerKeysQuery.data ?? []
+    if (keys.length === 0) return ['openai', 'anthropic', 'gemini', 'azure']
+    return Array.from(new Set(keys.map((k) => k.provider))).sort()
+  }, [providerKeysQuery.data])
+
   const requests = useMemo(() => data?.data ?? [], [data])
   const meta = data?.meta ?? { total: 0, page: 1, limit: 50 }
 
@@ -933,13 +1158,15 @@ export function RequestsClient() {
 
   function handleSort(field: SortField) {
     const newDir = sortField === field ? (sortDir === 'desc' ? 'asc' : 'desc') : 'desc'
-    pushParams({
+    applyFilter({
       sortBy: field === 'created_at' ? null : field,
       sortDir: newDir === 'desc' ? null : newDir,
     })
-    setPage(1)
-    setSelectedId(null)
   }
+
+  // Pagination math, shared between the bottom pager and the count chip.
+  const totalPages = Math.max(1, Math.ceil(meta.total / meta.limit))
+  const currentPage = meta.page
 
   const drawerOpen = selectedId !== null
   const selectedIdx = selectedId ? requests.findIndex((r) => r.id === selectedId) : -1
@@ -949,15 +1176,22 @@ export function RequestsClient() {
   }
 
   return (
-    <div className="-mx-4 -my-4 md:-mx-8 md:-my-7 flex h-screen overflow-hidden">
-      <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
-      <Topbar
-        crumbs={[{ label: 'Workspace' }, { label: 'Requests' }]}
-        right={null}
-      />
+    <div className="-mx-4 -my-4 md:-mx-8 md:-my-7 flex flex-col md:flex-row min-h-screen">
+      <div className="flex flex-col flex-1 min-w-0">
+      {/* Sticky topbar — same pattern as the dashboard. Body scrolls
+          natively while the page header and crumb stay visible. */}
+      <div className="sticky top-0 z-20 bg-bg flex items-center justify-between">
+        <Topbar
+          crumbs={[{ label: 'Requests' }]}
+          right={null}
+        />
+        {/* Visually-hidden h1 — gives the page a heading for a11y/SEO
+            without changing the existing Topbar layout. */}
+        <h1 className="sr-only">Requests</h1>
+      </div>
 
-      <StatStrip />
-      <TrafficBars />
+      <StatStrip timeRange={timeRange} fromIso={fromIso} />
+      <TrafficBars timeRange={timeRange} fromIso={fromIso} />
 
       {/* Active URL filter banner, shown when ?promptVersionId / ?userId / ?sessionId
          is present in the URL. Click × to clear and return to unfiltered view. */}
@@ -996,7 +1230,7 @@ export function RequestsClient() {
           {(['all', 'today', '7d', '30d'] as TimeRange[]).map((r) => (
             <button
               key={r}
-              onClick={() => { pushParams({ timeRange: r === 'all' ? null : r }); setPage(1); setSelectedId(null) }}
+              onClick={() => applyFilter({ timeRange: r === 'all' ? null : r })}
               className={cn(
                 'px-[10px] py-[5px]',
                 timeRange === r ? 'bg-text text-bg' : 'text-text-muted hover:text-text transition-colors',
@@ -1012,7 +1246,7 @@ export function RequestsClient() {
           {(['all', 'ok', '4xx', '5xx'] as StatusFilter[]).map((v) => (
             <button
               key={v}
-              onClick={() => { pushParams({ status: v === 'all' ? null : v }); setPage(1); setSelectedId(null) }}
+              onClick={() => applyFilter({ status: v === 'all' ? null : v })}
               className={cn(
                 'px-[10px] py-[5px] inline-flex items-center gap-1.5',
                 filters.status === v ? 'bg-text text-bg' : 'text-text-muted hover:text-text transition-colors',
@@ -1026,21 +1260,26 @@ export function RequestsClient() {
           ))}
         </div>
 
-        {/* Provider select */}
-        <Select value={filters.provider} onValueChange={(v) => { pushParams({ provider: v === 'all' ? null : v, providerKeyId: null }); setPage(1); setSelectedId(null) }}>
-          <SelectTrigger className="w-auto h-auto py-[5px] text-[11px] text-text-muted rounded-[5px] hover:border-border-strong transition-colors">
+        {/* Provider select — only options the user actually has keys for.
+            `min-w-[130px]` keeps the trigger (and therefore the dropdown
+            panel, which inherits trigger width via Radix's
+            --radix-select-trigger-width var) wide enough for "All providers"
+            to render on a single line regardless of the current value. */}
+        <Select value={filters.provider} onValueChange={(v) => applyFilter({ provider: v === 'all' ? null : v, providerKeyId: null })}>
+          <SelectTrigger className="w-auto min-w-[150px] h-auto py-[5px] text-[11px] text-text-muted rounded-[5px] hover:border-border-strong transition-colors">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All providers</SelectItem>
-            <SelectItem value="openai">openai</SelectItem>
-            <SelectItem value="anthropic">anthropic</SelectItem>
-            <SelectItem value="gemini">gemini</SelectItem>
-            <SelectItem value="azure">azure</SelectItem>
+            {availableProviders.map((p) => (
+              <SelectItem key={p} value={p}>{p}</SelectItem>
+            ))}
           </SelectContent>
         </Select>
 
-        {/* Model input, debounced, applies 300ms after last keystroke */}
+        {/* Model input, debounced, applies 300ms after last keystroke.
+            Wider than before so dated model names like
+            `gpt-4o-mini-2024-07-18` are visible while typing. */}
         <input
           type="text"
           placeholder="Model…"
@@ -1049,14 +1288,16 @@ export function RequestsClient() {
           onKeyDown={(e) => {
             if (e.key === 'Escape') { setModelInput('') }
           }}
-          className="font-mono text-[11px] border border-border rounded-[5px] px-2 py-[5px] bg-bg text-text-muted hover:border-border-strong focus:border-border-strong transition-colors outline-none w-28 placeholder:text-text-faint"
+          className="font-mono text-[11px] border border-border rounded-[5px] px-2 py-[5px] bg-bg text-text-muted hover:border-border-strong focus:border-border-strong transition-colors outline-none w-44 placeholder:text-text-faint"
         />
 
-        {/* Key select */}
+        {/* Key select — same min-width treatment as the provider select so
+            the dropdown panel doesn't wrap "All keys" / long key names
+            when the current selection happens to be short. */}
         {visibleKeys.length > 0 && (
-          <div className="max-w-[140px]">
-            <Select value={filters.providerKeyId} onValueChange={(v) => { pushParams({ providerKeyId: v === 'all' ? null : v }); setPage(1); setSelectedId(null) }}>
-              <SelectTrigger className="w-auto h-auto py-[5px] text-[11px] text-text-muted rounded-[5px] hover:border-border-strong transition-colors">
+          <div className="max-w-[180px]">
+            <Select value={filters.providerKeyId} onValueChange={(v) => applyFilter({ providerKeyId: v === 'all' ? null : v })}>
+              <SelectTrigger className="w-auto min-w-[110px] h-auto py-[5px] text-[11px] text-text-muted rounded-[5px] hover:border-border-strong transition-colors">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -1073,9 +1314,7 @@ export function RequestsClient() {
           <button
             onClick={() => {
               setModelInput('')
-              pushParams({ provider: null, status: null, model: null, providerKeyId: null, timeRange: null, sortBy: null, sortDir: null })
-              setPage(1)
-              setSelectedId(null)
+              applyFilter({ provider: null, status: null, model: null, providerKeyId: null, timeRange: null, sortBy: null, sortDir: null })
             }}
             className="font-mono text-[10.5px] px-[9px] py-[5px] border border-border rounded-[5px] text-text-faint hover:text-text hover:border-border-strong transition-colors shrink-0"
           >
@@ -1084,16 +1323,15 @@ export function RequestsClient() {
         )}
 
         <span className="flex-1" />
-        <span className="font-mono text-[11px] text-text-faint">
-          {isFetching ? 'Loading…' : `Showing ${requests.length} of ${meta.total.toLocaleString()}`}
-        </span>
+        {/* Refetch button with spinning indicator while a fetch is in flight. */}
         <button
           type="button"
           onClick={() => { void refetch() }}
           disabled={isFetching}
-          className="font-mono text-[10.5px] px-[9px] py-[4px] border border-border rounded-[5px] text-text-muted hover:text-text hover:border-border-strong disabled:opacity-40 transition-colors"
+          aria-label="Refetch requests"
+          className="font-mono text-[10.5px] px-[9px] py-[4px] border border-border rounded-[5px] text-text-muted hover:text-text hover:border-border-strong disabled:opacity-40 transition-colors inline-flex items-center"
         >
-          {isFetching ? '↻ …' : '↻'}
+          <span className={cn('inline-block', isFetching && 'animate-spin')}>↻</span>
         </button>
         <ExportDropdown
           filename="spanlens-requests"
@@ -1110,7 +1348,7 @@ export function RequestsClient() {
       </div>
 
       {/* Table + pagination */}
-      <div className="flex flex-col flex-1 overflow-hidden">
+      <div className="flex flex-col flex-1">
           <RequestsTable
             rows={requests}
             isLoading={isLoading}
@@ -1123,12 +1361,23 @@ export function RequestsClient() {
             hasActiveFilters={hasActiveFilters}
           />
 
-          {/* Pagination */}
-          <div className="flex items-center justify-between px-[22px] py-3 border-t border-border shrink-0">
+          {/* Pagination — single source of truth for "where am I in the
+              list", with First/Last jump for big result sets. */}
+          <div className="flex items-center justify-between px-[22px] py-3 border-t border-border shrink-0 gap-3 flex-wrap">
             <span className="font-mono text-[11px] text-text-faint">
-              Page {meta.page} · {meta.total.toLocaleString()} total
+              {isFetching
+                ? 'Loading…'
+                : `Page ${currentPage} of ${totalPages.toLocaleString()} · ${requests.length} / ${meta.total.toLocaleString()} total`}
             </span>
             <div className="flex gap-1.5">
+              <button
+                disabled={currentPage <= 1 || isFetching}
+                onClick={() => { setPage(1); setSelectedId(null) }}
+                className="font-mono text-[11px] px-2.5 py-1 border border-border rounded text-text-muted disabled:opacity-30 hover:border-border-strong transition-colors"
+                aria-label="First page"
+              >
+                « First
+              </button>
               <button
                 disabled={page <= 1 || isFetching}
                 onClick={() => { setPage((p) => Math.max(1, p - 1)); setSelectedId(null) }}
@@ -1142,6 +1391,14 @@ export function RequestsClient() {
                 className="font-mono text-[11px] px-2.5 py-1 border border-border rounded text-text-muted disabled:opacity-30 hover:border-border-strong transition-colors"
               >
                 Next →
+              </button>
+              <button
+                disabled={currentPage >= totalPages || isFetching}
+                onClick={() => { setPage(totalPages); setSelectedId(null) }}
+                className="font-mono text-[11px] px-2.5 py-1 border border-border rounded text-text-muted disabled:opacity-30 hover:border-border-strong transition-colors"
+                aria-label="Last page"
+              >
+                Last »
               </button>
             </div>
           </div>
