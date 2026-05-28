@@ -383,15 +383,19 @@ export function AlertsClient() {
           crumbs={[{ label: 'Alerts' }]}
           right={
             <div className="flex items-center gap-3">
-              <LiveDot refetching={isFetching} />
+              {/* Live + refresh visuals depend on isFetching, which differs
+                  between SSR (no queries running) and the first client paint
+                  (cache may be refetching after a mutation). Gate on `mounted`
+                  to keep the SSR snapshot deterministic. */}
+              <LiveDot refetching={mounted && isFetching} />
               <button
                 type="button"
                 onClick={refreshAll}
-                disabled={isFetching}
+                disabled={mounted && isFetching}
                 title="Refresh now"
                 className="font-mono text-[11px] text-text-muted hover:text-text border border-border rounded px-2 py-1 transition-colors disabled:opacity-40"
               >
-                <span className={cn('inline-block', isFetching && 'animate-spin')}>↻</span>
+                <span className={cn('inline-block', mounted && isFetching && 'animate-spin')}>↻</span>
               </button>
               <PermissionGate need="edit">
                 <button
@@ -421,13 +425,16 @@ export function AlertsClient() {
         <h1 className="sr-only">Alerts</h1>
       </div>
 
-      {/* Stat strip — 2 cols on mobile, 3 on sm, 5 on md+. */}
+      {/* Stat strip — 2 cols on mobile, 3 on sm, 5 on md+. Values are gated
+          on `mounted` because the prefetched SSR snapshot can diverge from
+          the client cache after a mutation (e.g. paused alert flips
+          Rules active 1 → 0 instantly client-side; SSR still saw 1). */}
       <div className="shrink-0 border-b border-border">
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5">
           {[
-            { label: 'Firing now',    value: String(totalFiring),  warn: totalFiring > 0 },
+            { label: 'Firing now',    value: String(totalFiring),  warn: mounted && totalFiring > 0 },
             { label: 'Rules active',  value: String(totalActive),  warn: false },
-            { label: 'Fires 24h',     value: String(fires24h),     warn: fires24h > 0 },
+            { label: 'Fires 24h',     value: String(fires24h),     warn: mounted && fires24h > 0 },
             { label: 'Rules total',   value: String(alerts.length), warn: false },
             { label: 'Channels',      value: String(channels.length), warn: false },
           ].map((s, i) => (
@@ -443,7 +450,7 @@ export function AlertsClient() {
             >
               <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-2">{s.label}</div>
               <span className={cn('text-[22px] sm:text-[24px] font-medium leading-none tracking-[-0.6px] tabular-nums', s.warn ? 'text-accent' : 'text-text')}>
-                {s.value}
+                {mounted ? s.value : ' '}
               </span>
             </div>
           ))}
@@ -483,10 +490,10 @@ export function AlertsClient() {
         </div>
         <div className="flex items-center gap-1 flex-wrap">
           {([
-            { v: 'all',     l: `All ${alerts.length}` },
-            { v: 'firing',  l: `firing ${totalFiring}` },
-            { v: 'active',  l: `active ${totalActive}` },
-            { v: 'paused',  l: `paused ${totalPaused}` },
+            { v: 'all',     l: mounted ? `All ${alerts.length}`      : 'All' },
+            { v: 'firing',  l: mounted ? `firing ${totalFiring}`     : 'firing' },
+            { v: 'active',  l: mounted ? `active ${totalActive}`     : 'active' },
+            { v: 'paused',  l: mounted ? `paused ${totalPaused}`     : 'paused' },
           ] as { v: StatusFilter; l: string }[]).map(({ v, l }) => (
             <button
               key={v}
@@ -508,7 +515,7 @@ export function AlertsClient() {
           <button
             type="button"
             onClick={() => setExportOpen((v) => !v)}
-            disabled={alerts.length === 0}
+            disabled={mounted && alerts.length === 0}
             className="font-mono text-[11px] text-text-muted hover:text-text border border-border rounded px-2.5 py-1 transition-colors disabled:opacity-40"
           >
             Export ▾
@@ -531,7 +538,15 @@ export function AlertsClient() {
       </div>
 
       <div>
-        {mounted && alertsQuery.data === undefined ? (
+        {!mounted ? (
+          // Hold an SSR-stable placeholder until client mount. After mount the
+          // real conditional below picks the matching branch. This avoids the
+          // empty-state ↔ populated branch swap that fires when SSR sees the
+          // prefetch snapshot but the client cache already has fresh data.
+          <div className="p-6 space-y-2">
+            {[1, 2, 3].map((i) => <div key={i} className="h-14 bg-bg-elev rounded animate-pulse" />)}
+          </div>
+        ) : alertsQuery.data === undefined ? (
           <div className="p-6 space-y-2">
             {[1, 2, 3].map((i) => <div key={i} className="h-14 bg-bg-elev rounded animate-pulse" />)}
           </div>
