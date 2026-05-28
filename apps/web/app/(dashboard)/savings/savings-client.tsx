@@ -1,14 +1,24 @@
 'use client'
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef, useSyncExternalStore } from 'react'
+import Link from 'next/link'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { useRecommendations, type ModelRecommendation } from '@/lib/queries/use-recommendations'
 import { usePercentiles } from '@/lib/queries/use-recommendation-percentiles'
 import { usePrompts, usePlaygroundRun, type PlaygroundResult } from '@/lib/queries/use-prompts'
 import { useProviderKeys } from '@/lib/queries/use-provider-keys'
 import { useModels } from '@/lib/queries/use-models'
-import { Topbar } from '@/components/layout/topbar'
+import { Topbar, LiveDot } from '@/components/layout/topbar'
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
+
+// Hydration-safe mounted gate, same pattern as the other overhauled pages.
+const subscribeNoop = () => () => {}
+const getTrue = () => true
+const getFalse = () => false
+function useMounted(): boolean {
+  return useSyncExternalStore(subscribeNoop, getTrue, getFalse)
+}
 
 // ── Formatters ────────────────────────────────────────────────────────────────
 
@@ -64,7 +74,6 @@ function dismissKey(r: ModelRecommendation): string {
 }
 
 const DISMISS_STORAGE_KEY    = 'spanlens:savings:dismissed'
-const SORT_FILTER_STORAGE_KEY = 'spanlens:savings:sort-filter'
 
 function loadDismissed(): Set<string> {
   if (typeof window === 'undefined') return new Set()
@@ -92,15 +101,6 @@ const DEFAULT_SORT_FILTER: SortFilterState = {
   sortKey: 'savings',
   filterProvider: 'all',
   filterConf: 'all',
-}
-
-function loadSortFilter(): SortFilterState {
-  if (typeof window === 'undefined') return DEFAULT_SORT_FILTER
-  try {
-    const raw = localStorage.getItem(SORT_FILTER_STORAGE_KEY)
-    if (!raw) return DEFAULT_SORT_FILTER
-    return { ...DEFAULT_SORT_FILTER, ...(JSON.parse(raw) as Partial<SortFilterState>) }
-  } catch { return DEFAULT_SORT_FILTER }
 }
 
 function applyFilter(
@@ -653,43 +653,75 @@ function ComparePlaygroundDialog({
 // ── Page Client ───────────────────────────────────────────────────────────────
 
 export function SavingsClient() {
-  const [hours, setHours] = useState<number>(24 * 7)
-  const { data, isLoading, error } = useRecommendations({ hours, minSavings: 5 })
+  const router = useRouter()
+  const sp = useSearchParams()
+  const mounted = useMounted()
 
-  // Persisted state — always start with SSR-safe defaults, then hydrate from
-  // localStorage in a useEffect to avoid React #418 hydration mismatch.
-  const [dismissed,      setDismissed]      = useState<Set<string>>(() => new Set())
-  const [sortFilter,     setSortFilter]      = useState<SortFilterState>(DEFAULT_SORT_FILTER)
-  const [showHidden,     setShowHidden]      = useState(false)
-  const [showAchieved,   setShowAchieved]    = useState(false)
-  const [simRec,         setSimRec]          = useState<ModelRecommendation | null>(null)
-  const [compareRec,     setCompareRec]      = useState<ModelRecommendation | null>(null)
+  // URL-backed window + sort + filter state. Shareable view + survives reload.
+  const windowParam = sp.get('window')
+  const hours = (windowParam === '14d' ? 24 * 14 : windowParam === '30d' ? 24 * 30 : 24 * 7)
+  const sortFilter: SortFilterState = {
+    sortKey:       (sp.get('sort') as SortKey)         ?? DEFAULT_SORT_FILTER.sortKey,
+    filterProvider:(sp.get('provider') as ProviderFilter) ?? DEFAULT_SORT_FILTER.filterProvider,
+    filterConf:    (sp.get('conf') as ConfFilter)      ?? DEFAULT_SORT_FILTER.filterConf,
+  }
+
+  function updateQuery(updates: Record<string, string | null>) {
+    const next = new URLSearchParams(sp.toString())
+    Object.entries(updates).forEach(([k, v]) => {
+      if (v == null || v === '') next.delete(k)
+      else next.set(k, v)
+    })
+    router.replace(`/savings?${next.toString()}`)
+  }
+  function setHoursUrl(h: number) {
+    const label = h === 24 * 14 ? '14d' : h === 24 * 30 ? '30d' : null
+    updateQuery({ window: label })
+  }
+  function updateSort(sortKey: SortKey)            { updateQuery({ sort: sortKey === 'savings' ? null : sortKey }) }
+  function updateFilterProvider(v: ProviderFilter) { updateQuery({ provider: v === 'all' ? null : v }) }
+  function updateFilterConf(v: ConfFilter)         { updateQuery({ conf: v === 'all' ? null : v }) }
+
+  const { data, isLoading, isFetching, error, refetch } = useRecommendations({ hours, minSavings: 5 })
+
+  // dismissed stays in localStorage — it's per-user/per-browser preference and
+  // there's no value in encoding it in a shareable URL.
+  const [dismissed,    setDismissed]    = useState<Set<string>>(() => new Set())
+  const [showHidden,   setShowHidden]   = useState(false)
+  const [showAchieved, setShowAchieved] = useState(false)
+  const [simRec,       setSimRec]       = useState<ModelRecommendation | null>(null)
+  const [compareRec,   setCompareRec]   = useState<ModelRecommendation | null>(null)
+  // Inline undo affordance after Hide — auto-clears after 5s so it doesn't
+  // accumulate. Cleaner than introducing a toast lib for one action.
+  const [lastDismissed, setLastDismissed] = useState<ModelRecommendation | null>(null)
 
   // Load persisted state after mount to avoid SSR/client mismatch (React #418).
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time mount hydration from localStorage, no derived-state path
     setDismissed(loadDismissed())
-    setSortFilter(loadSortFilter())
   }, [])
 
   // Persist changes back to localStorage.
   useEffect(() => {
+    if (!mounted) return  // skip the SSR/first-paint defaults write
     try { localStorage.setItem(DISMISS_STORAGE_KEY, JSON.stringify([...dismissed])) } catch { /* quota */ }
-  }, [dismissed])
+  }, [dismissed, mounted])
 
+  // Auto-dismiss the undo affordance after 5 seconds.
   useEffect(() => {
-    try { localStorage.setItem(SORT_FILTER_STORAGE_KEY, JSON.stringify(sortFilter)) } catch { /* quota */ }
-  }, [sortFilter])
+    if (!lastDismissed) return
+    const id = setTimeout(() => setLastDismissed(null), 5000)
+    return () => clearTimeout(id)
+  }, [lastDismissed])
 
   function dismiss(r: ModelRecommendation) {
     setDismissed((prev) => new Set([...prev, dismissKey(r)]))
+    setLastDismissed(r)
   }
   function unhide(r: ModelRecommendation) {
     setDismissed((prev) => { const n = new Set(prev); n.delete(dismissKey(r)); return n })
+    if (lastDismissed && dismissKey(lastDismissed) === dismissKey(r)) setLastDismissed(null)
   }
-  function updateSort(sortKey: SortKey)               { setSortFilter((p) => ({ ...p, sortKey })) }
-  function updateFilterProvider(v: ProviderFilter)    { setSortFilter((p) => ({ ...p, filterProvider: v })) }
-  function updateFilterConf(v: ConfFilter)            { setSortFilter((p) => ({ ...p, filterConf: v })) }
 
   const all = data ?? []
 
@@ -726,6 +758,76 @@ export function SavingsClient() {
     enabled:  simRec !== null,
   })
 
+  // Section anchors for the clickable hero strip — hovering hero card
+  // scrolls to the matching section instead of forcing the user to find it
+  // by eye. Same pattern as anomalies / security.
+  const openRef     = useRef<HTMLDivElement>(null)
+  const achievedRef = useRef<HTMLDivElement>(null)
+  const hiddenRef   = useRef<HTMLDivElement>(null)
+  function scrollTo(ref: React.RefObject<HTMLDivElement | null>) {
+    ref.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+
+  // CSV / JSON export — finance reconciliation use case. Client-side build
+  // matches the dashboard pattern (RFC 4180 escaping).
+  function csvField(v: string | number): string {
+    const s = String(v)
+    return /["\n\r,]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
+  }
+  function csvRow(cells: (string | number)[]): string {
+    return cells.map(csvField).join(',')
+  }
+  function downloadFile(content: string, mime: string, ext: string) {
+    const blob = new Blob([content], { type: `${mime};charset=utf-8;` })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `spanlens-savings-${windowLabel}-${new Date().toISOString().slice(0, 10)}.${ext}`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+  function exportCsv() {
+    const lines: string[] = []
+    lines.push(csvRow([`Savings (${windowLabel})`]))
+    lines.push(csvRow(['Status', 'Current Provider', 'Current Model', 'Suggested Provider', 'Suggested Model', 'Est. $/mo', 'Actual $/mo', 'Samples', 'Confidence', 'Reason']))
+    for (const r of openSorted) {
+      lines.push(csvRow([
+        'open', r.currentProvider, r.currentModel, r.suggestedProvider, r.suggestedModel,
+        r.estimatedMonthlySavingsUsd.toFixed(2), '', r.sampleCount, getConfidence(r), r.reason,
+      ]))
+    }
+    for (const r of achieved) {
+      lines.push(csvRow([
+        'achieved', r.currentProvider, r.currentModel, r.suggestedProvider, r.suggestedModel,
+        r.estimatedMonthlySavingsUsd.toFixed(2), (r.actualMonthlySavingsUsd ?? 0).toFixed(2), r.sampleCount, getConfidence(r), r.reason,
+      ]))
+    }
+    downloadFile(lines.join('\n'), 'text/csv', 'csv')
+  }
+  function exportJson() {
+    const payload = {
+      window: windowLabel,
+      open:     openSorted.map((r) => ({ ...r, confidence: getConfidence(r) })),
+      achieved: achieved.map((r)   => ({ ...r, confidence: getConfidence(r) })),
+    }
+    downloadFile(JSON.stringify(payload, null, 2), 'application/json', 'json')
+  }
+  const [exportOpen, setExportOpen] = useState(false)
+  const exportRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!exportOpen) return
+    function onDown(e: MouseEvent) {
+      if (exportRef.current && !exportRef.current.contains(e.target as Node)) setExportOpen(false)
+    }
+    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') setExportOpen(false) }
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDown)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [exportOpen])
+
   function RecRow({
     r,
     isHidden = false,
@@ -742,7 +844,12 @@ export function SavingsClient() {
 
     return (
       <div
-        className="border-b border-border hover:bg-bg-elev transition-colors"
+        className={cn(
+          'border-b border-border hover:bg-bg-elev transition-colors',
+          // Low-confidence rows get a faint left rule so the visual signal
+          // matches the badge state without yelling at the user.
+          !isAchieved && conf === 'low' && 'border-l-2 border-l-text-faint/40',
+        )}
         style={{
           display: 'grid',
           gridTemplateColumns: '1.7fr 170px 130px 150px 120px',
@@ -865,32 +972,48 @@ export function SavingsClient() {
   }
 
   return (
-    <div className="-mx-4 -my-4 md:-mx-8 md:-my-7 flex flex-col h-screen overflow-hidden bg-bg">
-      <Topbar
-        crumbs={[{ label: 'Workspace', href: '/dashboard' }, { label: 'Savings' }]}
-        right={
-          <div className="flex items-center gap-1">
-            {WINDOW_OPTIONS.map((opt) => (
+    <div className="-mx-4 -my-4 md:-mx-8 md:-my-7 flex flex-col min-h-screen">
+      <div className="sticky top-0 z-20 bg-bg">
+        <Topbar
+          crumbs={[{ label: 'Savings' }]}
+          right={
+            <div className="flex items-center gap-3">
+              <LiveDot refetching={isFetching} />
+              <div className="flex items-center gap-1">
+                {WINDOW_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.hours}
+                    type="button"
+                    onClick={() => setHoursUrl(opt.hours)}
+                    className={cn(
+                      'font-mono text-[11px] px-[8px] py-[3px] rounded-[4px] transition-colors',
+                      hours === opt.hours
+                        ? 'bg-bg-elev text-text border border-border-strong'
+                        : 'text-text-faint hover:text-text',
+                    )}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+                <span className="hidden sm:inline font-mono text-[11px] text-text-muted ml-1.5">Analysis window</span>
+              </div>
               <button
-                key={opt.hours}
                 type="button"
-                onClick={() => setHours(opt.hours)}
-                className={cn(
-                  'font-mono text-[11px] px-[8px] py-[3px] rounded-[4px] transition-colors',
-                  hours === opt.hours
-                    ? 'bg-bg-elev text-text border border-border-strong'
-                    : 'text-text-faint hover:text-text',
-                )}
+                onClick={() => void refetch()}
+                disabled={isFetching}
+                title="Refresh now"
+                className="font-mono text-[11px] text-text-muted hover:text-text border border-border rounded px-2 py-1 transition-colors disabled:opacity-40"
               >
-                {opt.label}
+                <span className={cn('inline-block', isFetching && 'animate-spin')}>↻</span>
               </button>
-            ))}
-            <span className="hidden sm:inline font-mono text-[11px] text-text-muted ml-1.5">Analysis window</span>
-          </div>
-        }
-      />
+            </div>
+          }
+        />
+        <h1 className="sr-only">Savings</h1>
+      </div>
 
-      {/* Hero strip */}
+      {/* Hero strip — Open / Achieved cards are buttons that scroll to the
+          matching section when populated. Same pattern as anomalies / security. */}
       <div className="overflow-x-auto shrink-0 border-b border-border">
         <div className="grid min-w-[700px]" style={{ gridTemplateColumns: '1.25fr 1fr 1fr 1fr' }}>
           <div className="px-[16px] py-[16px] bg-bg-elev border-r border-border">
@@ -933,38 +1056,51 @@ export function SavingsClient() {
               value: totalSpend > 0 ? fmtUsd(totalSpend) : '—',
               delta: 'analyzed models',
               good: false,
+              ref: null,
+              onClick: null,
             },
             {
               label: 'Open',
               value: String(openAll.length),
               delta: 'model swaps',
               good: false,
+              ref: openRef,
+              onClick: openAll.length > 0 ? () => scrollTo(openRef) : null,
             },
             {
               label: achieved.length > 0 ? 'Achieved' : (bestConfLevel ? `${bestConfLevel.charAt(0).toUpperCase() + bestConfLevel.slice(1)} conf.` : 'Confidence'),
               value: achieved.length > 0 ? fmtUsd(totalAchieved) : (bestConfLevel !== null ? String(bestConfCount) : '—'),
               delta: achieved.length > 0 ? `${achieved.length} swap${achieved.length > 1 ? 's' : ''} adopted` : (bestConfLevel ? bestConfLabel[bestConfLevel] : 'no recommendations yet'),
               good: achieved.length > 0 || bestConfLevel === 'high',
+              ref: achievedRef,
+              onClick: achieved.length > 0 ? () => { setShowAchieved(true); setTimeout(() => scrollTo(achievedRef), 60) } : null,
             },
-          ].map((s, i) => (
-            <div key={i} className={cn('px-[16px] py-[16px]', i < 2 && 'border-r border-border')}>
-              <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-2">{s.label}</div>
-              <div className={cn('text-[28px] font-medium leading-none tracking-[-0.8px]', s.good ? 'text-good' : 'text-text')}>
-                {s.value}
-              </div>
-              <div className="font-mono text-[10px] text-text-muted mt-1.5 whitespace-nowrap">{s.delta}</div>
-            </div>
-          ))}
+          ].map((s, i) => {
+            const Wrap: React.ElementType = s.onClick ? 'button' : 'div'
+            return (
+              <Wrap
+                key={i}
+                {...(s.onClick ? { type: 'button', onClick: s.onClick } : {})}
+                className={cn(
+                  'px-[16px] py-[16px] text-left',
+                  i < 2 && 'border-r border-border',
+                  s.onClick && 'hover:bg-bg-elev transition-colors cursor-pointer',
+                )}
+              >
+                <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-2">{s.label}</div>
+                <div className={cn('text-[28px] font-medium leading-none tracking-[-0.8px]', s.good ? 'text-good' : 'text-text')}>
+                  {s.value}
+                </div>
+                <div className="font-mono text-[10px] text-text-muted mt-1.5 whitespace-nowrap">{s.delta}</div>
+              </Wrap>
+            )
+          })}
         </div>
       </div>
 
-      {/* Filter row */}
+      {/* Filter row — "Type · model swap" chip dropped (single value, no filter
+          purpose). Open count moves into the section header below. */}
       <div className="flex items-center gap-2 px-[22px] py-[10px] border-b border-border shrink-0 flex-wrap">
-        <span className="font-mono text-[10px] text-text-faint uppercase tracking-[0.05em]">Type</span>
-        <span className="font-mono text-[11px] text-text px-[9px] py-[3px] border border-border-strong bg-bg-elev rounded-[4px]">
-          model swap · {openSorted.length}{filterActive ? ` / ${openAll.length}` : ''}
-        </span>
-
         <SelectControl<SortKey>
           value={sortFilter.sortKey}
           onChange={updateSort}
@@ -1010,13 +1146,64 @@ export function SavingsClient() {
           </button>
         )}
         <span className="flex-1" />
+
+        <div ref={exportRef} className="relative">
+          <button
+            type="button"
+            onClick={() => setExportOpen((v) => !v)}
+            disabled={openSorted.length === 0 && achieved.length === 0}
+            className="font-mono text-[11px] text-text-muted hover:text-text border border-border rounded px-2.5 py-1 transition-colors disabled:opacity-40"
+          >
+            Export ▾
+          </button>
+          {exportOpen && (
+            <div className="absolute right-0 top-full mt-1 z-30 bg-bg-elev border border-border rounded-md shadow-lg py-1 min-w-[110px]">
+              <button
+                type="button"
+                onClick={() => { setExportOpen(false); exportCsv() }}
+                className="block w-full px-3 py-1.5 text-left font-mono text-[11px] uppercase tracking-[0.04em] text-text-muted hover:text-text hover:bg-bg transition-colors"
+              >CSV</button>
+              <button
+                type="button"
+                onClick={() => { setExportOpen(false); exportJson() }}
+                className="block w-full px-3 py-1.5 text-left font-mono text-[11px] uppercase tracking-[0.04em] text-text-muted hover:text-text hover:bg-bg transition-colors"
+              >JSON</button>
+            </div>
+          )}
+        </div>
+
         <span className="hidden sm:inline font-mono text-[10px] text-text-faint whitespace-nowrap shrink-0">
           {sortLabel}
         </span>
       </div>
 
+      {/* Inline undo affordance for the most recent Hide. Auto-clears in 5s. */}
+      {mounted && lastDismissed && (
+        <div className="flex items-center gap-3 px-[22px] py-[8px] bg-bg-muted border-b border-border font-mono text-[11px]">
+          <span className="text-text-faint">
+            Hidden <span className="text-text">{lastDismissed.currentProvider} / {lastDismissed.currentModel}</span>.
+          </span>
+          <button
+            type="button"
+            onClick={() => { unhide(lastDismissed); }}
+            className="text-accent hover:underline"
+          >
+            Undo
+          </button>
+          <span className="flex-1" />
+          <button
+            type="button"
+            onClick={() => setLastDismissed(null)}
+            className="text-text-faint hover:text-text-muted"
+            aria-label="Dismiss undo"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       {/* Content */}
-      <div className="flex-1 overflow-auto">
+      <div>
         {isLoading ? (
           <div className="p-6 space-y-3">
             {[1, 2, 3].map((i) => (
@@ -1050,12 +1237,18 @@ export function SavingsClient() {
                   {hours < 24 * 30 && (
                     <p className="font-mono text-[11.5px] text-text-faint">
                       Try a longer window{' '}
-                      <button type="button" className="text-text underline underline-offset-2 hover:no-underline" onClick={() => setHours(24 * 30)}>
+                      <button type="button" className="text-text underline underline-offset-2 hover:no-underline" onClick={() => setHoursUrl(24 * 30)}>
                         30d
                       </button>
                       {' '}to capture more data.
                     </p>
                   )}
+                  <Link
+                    href="/docs/features/savings"
+                    className="font-mono text-[11px] mt-2 px-2.5 py-1 rounded border border-border text-text-muted hover:text-text hover:border-border-strong transition-colors"
+                  >
+                    How recommendations work →
+                  </Link>
                 </div>
               )
             )}
@@ -1066,7 +1259,7 @@ export function SavingsClient() {
                 <button
                   type="button"
                   className="font-mono text-[11.5px] text-text underline underline-offset-2 hover:no-underline"
-                  onClick={() => setSortFilter(DEFAULT_SORT_FILTER)}
+                  onClick={() => updateQuery({ sort: null, provider: null, conf: null })}
                 >
                   Clear filters
                 </button>
@@ -1074,7 +1267,7 @@ export function SavingsClient() {
             )}
 
             {openSorted.length > 0 && (
-              <div className="flex items-center gap-2.5 px-[22px] py-[10px] bg-bg-muted border-b border-border border-t border-t-border">
+              <div ref={openRef} className="flex items-center gap-2.5 px-[22px] py-[10px] bg-bg-muted border-b border-border border-t border-t-border">
                 <span className="font-mono text-[10px] uppercase tracking-[0.06em] text-accent">
                   Open · {openSorted.length}{filterActive && openSorted.length < openAll.length ? ` (${openAll.length} total)` : ''} · {fmtUsd(totalOpen)} / mo
                 </span>
@@ -1086,7 +1279,7 @@ export function SavingsClient() {
 
             {achieved.length > 0 && (
               <>
-                <div className="flex items-center gap-2.5 px-[22px] py-[10px] bg-bg-muted border-b border-border border-t border-t-border">
+                <div ref={achievedRef} className="flex items-center gap-2.5 px-[22px] py-[10px] bg-bg-muted border-b border-border border-t border-t-border">
                   <button
                     type="button"
                     onClick={() => setShowAchieved((v) => !v)}
@@ -1108,7 +1301,7 @@ export function SavingsClient() {
 
             {showHidden && dismissed.size > 0 && (
               <>
-                <div className="flex items-center gap-2.5 px-[22px] py-[10px] bg-bg-muted border-b border-border border-t border-t-border">
+                <div ref={hiddenRef} className="flex items-center gap-2.5 px-[22px] py-[10px] bg-bg-muted border-b border-border border-t border-t-border">
                   <span className="font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint">
                     Hidden · {dismissed.size}
                   </span>
