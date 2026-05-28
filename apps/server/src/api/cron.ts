@@ -161,7 +161,10 @@ cronRouter.get('/evaluate-alerts', async (c) => {
   if (authFail) return c.json({ error: authFail }, 401)
 
   const start = Date.now()
-  const dashboardBase = process.env['DASHBOARD_URL'] ?? 'https://spanlens-web.vercel.app'
+  // Use the canonical WEB_URL (matches anomaly-snapshot, leak-detection,
+  // recommendation-notify, stale-key-digest). Avoid introducing a parallel
+  // DASHBOARD_URL env var that would silently drift from WEB_URL on rename.
+  const webUrl = process.env['WEB_URL'] ?? 'https://www.spanlens.io'
 
   const { data: alerts } = await supabaseAdmin
     .from('alerts')
@@ -234,7 +237,9 @@ cronRouter.get('/evaluate-alerts', async (c) => {
       currentValue: current,
       windowMinutes: alert.window_minutes,
       organizationName: orgName,
-      dashboardUrl: `${dashboardBase}/dashboard`,
+      // Send users to /alerts (where the firing rule lives) instead of the
+      // generic /dashboard — fewer clicks to silence or adjust the threshold.
+      dashboardUrl: `${webUrl}/alerts`,
     }
 
     if (channels.length === 0) {
