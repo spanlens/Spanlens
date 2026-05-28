@@ -9,7 +9,8 @@ export const tracesRouter = new Hono<JwtContext>()
 tracesRouter.use('*', authJwt)
 
 // GET /api/v1/traces — list traces with filters + pagination
-// Query params: projectId, status, from, to, page, limit
+// Query params: projectId, status, from, to, q (name or trace-id substring),
+// page, limit
 tracesRouter.get('/', async (c) => {
   const orgId = c.get('orgId')
   if (!orgId) return c.json({ error: 'Organization not found' }, 404)
@@ -18,6 +19,10 @@ tracesRouter.get('/', async (c) => {
   const status = c.req.query('status')
   const from = c.req.query('from')
   const to = c.req.query('to')
+  // `q` does a case-insensitive substring search over both `name` and `id`.
+  // Without this the /traces page filtered client-side over the current 50-row
+  // page only, which silently dropped matches living on other pages.
+  const q = c.req.query('q')?.trim()
   const { page, limit, offset } = parsePageLimit(c.req.query('page'), c.req.query('limit'))
 
   // `count: 'planned'` uses the Postgres query planner's row estimate instead
@@ -39,6 +44,21 @@ tracesRouter.get('/', async (c) => {
   if (status) query = query.eq('status', status)
   if (from) query = query.gte('started_at', from)
   if (to) query = query.lte('started_at', to)
+  if (q) {
+    // `id` is a UUID, which PostgreSQL refuses to match with LIKE/ILIKE — so
+    // we ilike on `name` (text) and `external_trace_id` (text, OTLP hex)
+    // and only fall back to `id.eq` when the query looks like a full UUID.
+    // Short UUID-prefix searches aren't supported here; the user can paste
+    // a full ID or jump in via /traces/<id> directly.
+    const escaped = q.replace(/[%,]/g, '\\$&')
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(q)
+    const clauses = [
+      `name.ilike.%${escaped}%`,
+      `external_trace_id.ilike.%${escaped}%`,
+      ...(isUuid ? [`id.eq.${q}`] : []),
+    ]
+    query = query.or(clauses.join(','))
+  }
 
   const { data, error, count } = await query
   if (error) return c.json({ error: 'Failed to fetch traces' }, 500)
