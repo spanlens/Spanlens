@@ -76,42 +76,47 @@ interface NavItem { id: TabId; label: string; crumbs: { label: string }[] }
 
 // ─── nav definition ───────────────────────────────────────────────────────────
 
+// Crumb shape is now `[{ label: 'Settings' }, { label: <Item> }]` across the
+// board. The leading "Workspace" / "Account" / "Connect" prefix was
+// redundant (the inner nav already shows the group) and inconsistent
+// between groups. Normalising everything to "Settings / <Item>" matches
+// the breadcrumb pattern used on the rest of the dashboard.
 const NAV: { group: string; items: NavItem[] }[] = [
   {
     group: 'Workspace',
     items: [
-      { id: 'general',    label: 'General',    crumbs: [{ label: 'Workspace' }, { label: 'Settings' }, { label: 'General' }] },
-      { id: 'members',    label: 'Members',    crumbs: [{ label: 'Workspace' }, { label: 'Settings' }, { label: 'Members' }] },
-      { id: 'security',   label: 'Security',      crumbs: [{ label: 'Workspace' }, { label: 'Settings' }, { label: 'Security' }] },
-      { id: 'audit-log',  label: 'Audit log',  crumbs: [{ label: 'Workspace' }, { label: 'Settings' }, { label: 'Audit log' }] },
-      { id: 'system',     label: 'System',     crumbs: [{ label: 'Workspace' }, { label: 'Settings' }, { label: 'System' }] },
+      { id: 'general',    label: 'General',       crumbs: [{ label: 'Settings' }, { label: 'General' }] },
+      { id: 'members',    label: 'Members',       crumbs: [{ label: 'Settings' }, { label: 'Members' }] },
+      { id: 'security',   label: 'Security',      crumbs: [{ label: 'Settings' }, { label: 'Security' }] },
+      { id: 'audit-log',  label: 'Audit log',     crumbs: [{ label: 'Settings' }, { label: 'Audit log' }] },
+      { id: 'system',     label: 'System',        crumbs: [{ label: 'Settings' }, { label: 'System' }] },
     ],
   },
   {
     group: 'Usage',
     items: [
-      { id: 'billing',  label: 'Billing',      crumbs: [{ label: 'Workspace' }, { label: 'Settings' }, { label: 'Billing' }] },
-      { id: 'plan',     label: 'Plan & limits', crumbs: [{ label: 'Workspace' }, { label: 'Settings' }, { label: 'Plan & limits' }] },
-      { id: 'invoices', label: 'Invoices',      crumbs: [{ label: 'Workspace' }, { label: 'Settings' }, { label: 'Invoices' }] },
+      { id: 'billing',  label: 'Billing',         crumbs: [{ label: 'Settings' }, { label: 'Billing' }] },
+      { id: 'plan',     label: 'Plan & limits',   crumbs: [{ label: 'Settings' }, { label: 'Plan & limits' }] },
+      { id: 'invoices', label: 'Invoices',        crumbs: [{ label: 'Settings' }, { label: 'Invoices' }] },
     ],
   },
   {
     group: 'Account',
     items: [
-      { id: 'profile',       label: 'Profile',          crumbs: [{ label: 'Account' }, { label: 'Profile' }] },
-      { id: 'auth-methods',  label: 'Sign-in methods',  crumbs: [{ label: 'Account' }, { label: 'Sign-in methods' }] },
-      { id: 'notifications', label: 'Notifications',    crumbs: [{ label: 'Account' }, { label: 'Notifications' }] },
-      { id: 'preferences',   label: 'Preferences',      crumbs: [{ label: 'Account' }, { label: 'Preferences' }] },
+      { id: 'profile',       label: 'Profile',         crumbs: [{ label: 'Settings' }, { label: 'Profile' }] },
+      { id: 'auth-methods',  label: 'Sign-in methods', crumbs: [{ label: 'Settings' }, { label: 'Sign-in methods' }] },
+      { id: 'notifications', label: 'Notifications',   crumbs: [{ label: 'Settings' }, { label: 'Notifications' }] },
+      { id: 'preferences',   label: 'Preferences',     crumbs: [{ label: 'Settings' }, { label: 'Preferences' }] },
     ],
   },
   {
     group: 'Connect',
     items: [
-      { id: 'integrations',  label: 'Integrations',  crumbs: [{ label: 'Connect' }, { label: 'Integrations' }] },
+      { id: 'integrations',  label: 'Integrations',   crumbs: [{ label: 'Settings' }, { label: 'Integrations' }] },
       // DESTINATIONS_HIDDEN: uncomment when BigQuery/S3/Snowflake connectors are implemented
-      // { id: 'destinations',  label: 'Destinations',  crumbs: [{ label: 'Connect' }, { label: 'Destinations' }] },
-      { id: 'webhooks',      label: 'Webhooks',       crumbs: [{ label: 'Connect' }, { label: 'Webhooks' }] },
-      { id: 'opentelemetry', label: 'OpenTelemetry',  crumbs: [{ label: 'Connect' }, { label: 'OpenTelemetry' }] },
+      // { id: 'destinations',  label: 'Destinations',   crumbs: [{ label: 'Settings' }, { label: 'Destinations' }] },
+      { id: 'webhooks',      label: 'Webhooks',       crumbs: [{ label: 'Settings' }, { label: 'Webhooks' }] },
+      { id: 'opentelemetry', label: 'OpenTelemetry',  crumbs: [{ label: 'Settings' }, { label: 'OpenTelemetry' }] },
     ],
   },
 ]
@@ -296,6 +301,13 @@ function MembersTab() {
   const [inviteRole, setInviteRole] = useState<OrgRole>('editor')
   // Capture "now" once at mount — drives the invitations expiry countdown.
   const [mountNow] = useState(() => Date.now())
+  // Hydration-safe gate so the "expires in Xd" cell doesn't flicker between
+  // SSR (no clock) and the first client paint.
+  const mounted = useSyncExternalStore(
+    (_cb) => () => {},
+    () => true,
+    () => false,
+  )
   const [inviteError, setInviteError] = useState('')
   const [inviteSuccess, setInviteSuccess] = useState<string | null>(null)
   const [rowError, setRowError] = useState<string | null>(null)
@@ -366,7 +378,10 @@ function MembersTab() {
       )}
 
       <Section title="Members" className="mb-5">
-        {members.isLoading ? (
+        {/* Gate on `mounted` so SSR + first paint pick the same branch.
+            Without this, SSR renders "No members yet" (no query data) and
+            client renders the loaded list, triggering React #418. */}
+        {!mounted || members.isLoading ? (
           <div className="px-6 py-4 text-[12.5px] text-text-faint">Loading…</div>
         ) : (members.data ?? []).length === 0 ? (
           <div className="px-6 py-4 text-[12.5px] text-text-faint">No members yet.</div>
@@ -442,8 +457,12 @@ function MembersTab() {
                   className="grid grid-cols-[1.6fr_1fr_130px_100px] gap-4 px-6 py-3 items-center"
                 >
                   <span className="text-[13px] text-text truncate">{inv.email}</span>
-                  <span suppressHydrationWarning className="font-mono text-[11px] text-text-muted">
-                    expires in {daysLeft}d
+                  <span className="font-mono text-[11px] text-text-muted">
+                    {/* Pre-mount we don't know the user's local clock yet —
+                        render a stable placeholder so SSR + first paint agree.
+                        The `mountNow` closure recomputes daysLeft on the
+                        post-mount render. */}
+                    {mounted ? `expires in ${daysLeft}d` : 'expires in …'}
                   </span>
                   <MonoPill variant="neutral" dot>{inv.role}</MonoPill>
                   {isAdmin ? (
@@ -1931,66 +1950,112 @@ export function SettingsClient() {
   )
   const active = ALL_ITEMS.find((i) => i.id === tab) ?? ALL_ITEMS[0]!
 
+  // Inner-nav search/filter. Empty input shows the full grouped nav.
+  const [navSearch, setNavSearch] = useState('')
+  const filteredNav = useMemo(() => {
+    if (!navSearch.trim()) return NAV
+    const needle = navSearch.toLowerCase()
+    return NAV
+      .map((g) => ({
+        ...g,
+        items: g.items.filter((i) =>
+          i.label.toLowerCase().includes(needle) ||
+          g.group.toLowerCase().includes(needle),
+        ),
+      }))
+      .filter((g) => g.items.length > 0)
+  }, [navSearch])
+
   return (
-    <div className="-mx-4 -my-4 md:-mx-8 md:-my-7 flex flex-col h-screen overflow-hidden">
-      {/* Mobile nav dropdown, visible only on small screens */}
-      <div className="md:hidden flex items-center gap-3 px-4 py-3 border-b border-border bg-bg-elev shrink-0">
-        <span className="font-mono text-[10px] text-text-faint uppercase tracking-[0.05em] shrink-0">Settings</span>
-        <div className="flex-1">
-          <Select value={tab} onValueChange={(v) => setTab(v as TabId)}>
-            <SelectTrigger className="h-8 rounded-[6px] text-[13px] font-sans">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {NAV.map((group) => (
-                <SelectGroup key={group.group}>
-                  <SelectLabel>{group.group}</SelectLabel>
-                  {group.items.map((item) => (
-                    <SelectItem key={item.id} value={item.id}>{item.label}</SelectItem>
+    <div className="-mx-4 -my-4 md:-mx-8 md:-my-7 flex flex-col min-h-screen">
+      {/* Sticky Topbar at the true viewport top. Mobile gets the tab
+          picker in the right slot so there's no second header row. */}
+      <div className="sticky top-0 z-30 bg-bg">
+        <Topbar
+          crumbs={active.crumbs}
+          right={
+            <div className="md:hidden min-w-[200px]">
+              <Select value={tab} onValueChange={(v) => setTab(v as TabId)}>
+                <SelectTrigger className="h-8 rounded-[6px] text-[12.5px] font-sans">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {NAV.map((group) => (
+                    <SelectGroup key={group.group}>
+                      <SelectLabel>{group.group}</SelectLabel>
+                      {group.items.map((item) => (
+                        <SelectItem key={item.id} value={item.id}>{item.label}</SelectItem>
+                      ))}
+                    </SelectGroup>
                   ))}
-                </SelectGroup>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+                </SelectContent>
+              </Select>
+            </div>
+          }
+        />
       </div>
 
       {/* Body: sidebar + content */}
-      <div className="flex flex-1 overflow-hidden min-h-0">
-        {/* Settings inner nav */}
-        <aside className="hidden md:flex md:flex-col w-[260px] shrink-0 border-r border-border bg-bg-elev overflow-y-auto">
-          <div className="px-5 py-4 font-mono text-[10px] text-text-faint uppercase tracking-[0.05em]">Settings</div>
-          {NAV.map((group) => (
-            <div key={group.group} className="mb-4">
-              <div className="px-5 py-1.5 font-mono text-[9.5px] text-text-faint uppercase tracking-[0.05em]">
-                {group.group}
+      <div className="flex flex-1 min-h-0">
+        {/* Settings inner nav (desktop only) */}
+        <aside className="hidden md:flex md:flex-col w-[260px] shrink-0 border-r border-border bg-bg-elev sticky top-[52px] self-start max-h-[calc(100vh-52px)] overflow-y-auto">
+          <div className="px-5 py-4 font-mono text-[10px] text-text-faint uppercase tracking-[0.05em] flex items-center justify-between">
+            <span>Settings</span>
+            <Link
+              href="/docs/features/settings"
+              className="text-[10px] text-text-faint hover:text-text-muted transition-colors normal-case tracking-normal"
+              title="Settings docs"
+            >
+              Docs →
+            </Link>
+          </div>
+          {/* Nav search */}
+          <div className="px-3 pb-3">
+            <input
+              type="text"
+              value={navSearch}
+              onChange={(e) => setNavSearch(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') setNavSearch('')
+              }}
+              placeholder="Filter settings…"
+              className="w-full px-2 py-1.5 font-mono text-[11.5px] bg-bg border border-border rounded-[5px] text-text placeholder:text-text-faint focus:outline-none focus:border-border-strong"
+            />
+          </div>
+          {filteredNav.length === 0 ? (
+            <div className="px-5 py-2 font-mono text-[11px] text-text-faint">No matches.</div>
+          ) : (
+            filteredNav.map((group) => (
+              <div key={group.group} className="mb-4">
+                <div className="px-5 py-1.5 font-mono text-[9.5px] text-text-faint uppercase tracking-[0.05em]">
+                  {group.group}
+                </div>
+                {group.items.map((item) => {
+                  const isActive = item.id === tab
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => setTab(item.id)}
+                      className={cn(
+                        'w-full text-left px-5 py-2 text-[13px] transition-colors border-l-2 -ml-px',
+                        isActive
+                          ? 'border-accent bg-bg text-text font-medium'
+                          : 'border-transparent text-text-muted hover:text-text hover:bg-bg/50',
+                      )}
+                    >
+                      {item.label}
+                    </button>
+                  )
+                })}
               </div>
-              {group.items.map((item) => {
-                const isActive = item.id === tab
-                return (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={() => setTab(item.id)}
-                    className={cn(
-                      'w-full text-left px-5 py-2 text-[13px] transition-colors border-l-2 -ml-px',
-                      isActive
-                        ? 'border-accent bg-bg text-text font-medium'
-                        : 'border-transparent text-text-muted hover:text-text hover:bg-bg/50',
-                    )}
-                  >
-                    {item.label}
-                  </button>
-                )
-              })}
-            </div>
-          ))}
+            ))
+          )}
         </aside>
 
         {/* Content area */}
-        <main className="flex-1 flex flex-col overflow-hidden">
-          <Topbar crumbs={active.crumbs} />
-          <div className="flex-1 overflow-y-auto bg-bg px-4 py-4 md:px-8 md:py-6">
+        <main className="flex-1 min-w-0">
+          <div className="bg-bg px-4 py-4 md:px-8 md:py-6">
             <TabContent tab={tab} />
           </div>
         </main>
