@@ -1,6 +1,5 @@
 'use client'
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { ArrowLeft, FlaskConical, GitCommit, ArrowLeftRight, BarChart2, Phone, Terminal } from 'lucide-react'
 import {
   usePromptVersions,
@@ -18,6 +17,8 @@ import { PlaygroundTab } from './tabs/playground-tab'
 
 type Tab = 'versions' | 'diff' | 'traffic' | 'calls' | 'ab' | 'playground'
 
+const VALID_TABS: readonly Tab[] = ['versions', 'diff', 'traffic', 'calls', 'ab', 'playground']
+
 const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
   { id: 'versions',   label: 'Versions',   icon: <GitCommit className="h-3.5 w-3.5" /> },
   { id: 'diff',       label: 'Diff',       icon: <ArrowLeftRight className="h-3.5 w-3.5" /> },
@@ -34,7 +35,19 @@ interface Props {
 export function PromptDetailClient({ params }: Props) {
   const name = decodeURIComponent(params.name)
   const router = useRouter()
-  const [tab, setTab] = useState<Tab>('versions')
+  const sp = useSearchParams()
+
+  // URL-backed tab — refresh keeps the active tab, deep-links from the list
+  // (?tab=versions) land on the right pane.
+  const tabParam = sp.get('tab') as Tab | null
+  const tab: Tab = tabParam != null && VALID_TABS.includes(tabParam) ? tabParam : 'versions'
+  function setTab(next: Tab) {
+    const params = new URLSearchParams(sp.toString())
+    if (next === 'versions') params.delete('tab')
+    else params.set('tab', next)
+    const qs = params.toString()
+    router.replace(`/prompts/${encodeURIComponent(name)}${qs ? `?${qs}` : ''}`)
+  }
 
   const { data: versions, isLoading } = usePromptVersions(name)
   const { data: experiments } = usePromptExperiments(name)
@@ -42,26 +55,27 @@ export function PromptDetailClient({ params }: Props) {
   const hasRunning = experiments?.some((e) => e.status === 'running') ?? false
 
   return (
-    <div className="-mx-4 -my-4 md:-mx-8 md:-my-7 flex flex-col h-screen overflow-hidden bg-bg">
-      <Topbar
-        crumbs={[
-          { label: 'Workspace', href: '/dashboard' },
-          { label: 'Prompts', href: '/prompts' },
-          { label: name },
-        ]}
-        right={
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => router.back()}
-              className="font-mono text-[11px] text-text-muted hover:text-text flex items-center gap-1 transition-colors"
-            >
-              <ArrowLeft className="h-3.5 w-3.5" />
-              Back
-            </button>
-          </div>
-        }
-      />
+    <div className="-mx-4 -my-4 md:-mx-8 md:-my-7 flex flex-col min-h-screen">
+      <div className="sticky top-0 z-20 bg-bg">
+        <Topbar
+          crumbs={[
+            { label: 'Prompts', href: '/prompts' },
+            { label: name },
+          ]}
+          right={
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => router.back()}
+                className="font-mono text-[11px] text-text-muted hover:text-text flex items-center gap-1 transition-colors"
+              >
+                <ArrowLeft className="h-3.5 w-3.5" />
+                Back
+              </button>
+            </div>
+          }
+        />
+      </div>
 
       {/* Header row */}
       <div className="flex items-center gap-3 px-[22px] py-[14px] border-b border-border shrink-0">
@@ -74,7 +88,7 @@ export function PromptDetailClient({ params }: Props) {
           </p>
         </div>
         {hasRunning && (
-          <span className="inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.05em] px-[8px] py-[3px] rounded-[4px] bg-accent-bg border border-accent-border text-accent">
+          <span className="inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.05em] px-[8px] py-[3px] rounded-[4px] bg-accent-bg border border-accent-border text-accent animate-pulse">
             <FlaskConical className="h-3 w-3" />
             A/B running
           </span>
@@ -115,7 +129,7 @@ export function PromptDetailClient({ params }: Props) {
       </div>
 
       {/* Tab content */}
-      <div className="flex-1 overflow-auto">
+      <div>
         {tab === 'versions' && <VersionsTab name={name} versions={versions} isLoading={isLoading} />}
         {tab === 'diff'     && <DiffTab versions={versions ?? []} />}
         {tab === 'traffic'  && <TrafficTab name={name} />}

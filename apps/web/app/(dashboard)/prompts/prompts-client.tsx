@@ -1,14 +1,23 @@
 'use client'
-import { useState, useRef, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState, useRef, useEffect, useSyncExternalStore } from 'react'
+import Link from 'next/link'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { X, FlaskConical } from 'lucide-react'
 import {
   usePrompts,
   useCreatePromptVersion,
 } from '@/lib/queries/use-prompts'
-import { Topbar } from '@/components/layout/topbar'
+import { Topbar, LiveDot } from '@/components/layout/topbar'
 import { PermissionGate } from '@/components/permission-gate'
 import { cn, formatDate } from '@/lib/utils'
+
+// Hydration-safe mounted gate, same pattern as the other overhauled pages.
+const subscribeNoop = () => () => {}
+const getTrue = () => true
+const getFalse = () => false
+function useMounted(): boolean {
+  return useSyncExternalStore(subscribeNoop, getTrue, getFalse)
+}
 
 function fmtUsd(v: number): string {
   return v >= 1 ? `$${v.toFixed(2)}` : `$${v.toFixed(5)}`
@@ -21,7 +30,10 @@ function fmtMs(v: number): string {
 }
 
 function QualityBadge({ score }: { score: number | null | undefined }) {
-  if (score == null) return <span className="text-text-faint">,</span>
+  // Was rendering a stray comma (`<span>,</span>`) when null — that looked
+  // like punctuation noise next to real numbers. Use an em-dash like every
+  // other "no data" cell on the page.
+  if (score == null) return <span className="text-text-faint">—</span>
   const color = score >= 90 ? 'text-good' : score >= 70 ? 'text-warn' : 'text-bad'
   return <span className={cn('font-mono tabular-nums', color)}>{score}</span>
 }
@@ -37,32 +49,70 @@ const GRID = '20px 1.5fr 0.55fr 0.55fr 0.8fr 0.8fr 0.8fr 0.7fr 0.5fr 0.5fr'
 
 export function PromptsClient() {
   const router = useRouter()
-  const [search, setSearch] = useState('')
-  const [filter, setFilter] = useState<FilterType>('all')
-  const [minCalls, setMinCalls] = useState<MinCalls>(0)
+  const sp = useSearchParams()
+  const mounted = useMounted()
+
+  // URL-backed filter state — shareable, survives reload.
+  const search    = sp.get('q') ?? ''
+  const filter    = (sp.get('filter') ?? 'all') as FilterType
+  const minCalls  = (parseInt(sp.get('minCalls') ?? '0', 10) || 0) as MinCalls
+  const dateRange = (sp.get('range') ?? '24h') as DateRange
+  const viewMode  = (sp.get('view') ?? 'all') as ViewMode
+
+  function updateQuery(updates: Record<string, string | null>) {
+    const next = new URLSearchParams(sp.toString())
+    Object.entries(updates).forEach(([k, v]) => {
+      if (v == null || v === '') next.delete(k)
+      else next.set(k, v)
+    })
+    router.replace(`/prompts?${next.toString()}`)
+  }
+
+  // Local search input — debounced to URL after 300ms so each keystroke
+  // doesn't push a history entry.
+  const [searchInput, setSearchInput] = useState(search)
+  useEffect(() => {
+    const id = setTimeout(() => {
+      if (searchInput !== search) updateQuery({ q: searchInput.trim() || null })
+    }, 300)
+    return () => clearTimeout(id)
+    // searchInput intentionally only — URL change re-mounts the input via key=
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchInput])
+
   const [callsMenuOpen, setCallsMenuOpen] = useState(false)
-  const [dateRange, setDateRange] = useState<DateRange>('24h')
   const [dateMenuOpen, setDateMenuOpen] = useState(false)
-  const [viewMode, setViewMode] = useState<ViewMode>('all')
   const [formOpen, setFormOpen] = useState(false)
   const [form, setForm] = useState({ name: '', content: '' })
   const [formError, setFormError] = useState<string | null>(null)
+  const [exportOpen, setExportOpen] = useState(false)
 
   const callsMenuRef = useRef<HTMLDivElement>(null)
   const dateMenuRef = useRef<HTMLDivElement>(null)
+  const exportRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    if (!callsMenuOpen && !dateMenuOpen) return
+    if (!callsMenuOpen && !dateMenuOpen && !exportOpen) return
     const handler = (e: PointerEvent) => {
       if (callsMenuOpen && !callsMenuRef.current?.contains(e.target as Node)) setCallsMenuOpen(false)
       if (dateMenuOpen && !dateMenuRef.current?.contains(e.target as Node)) setDateMenuOpen(false)
+      if (exportOpen && !exportRef.current?.contains(e.target as Node)) setExportOpen(false)
+    }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setCallsMenuOpen(false); setDateMenuOpen(false); setExportOpen(false)
+      }
     }
     document.addEventListener('pointerdown', handler)
-    return () => document.removeEventListener('pointerdown', handler)
-  }, [callsMenuOpen, dateMenuOpen])
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('pointerdown', handler)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [callsMenuOpen, dateMenuOpen, exportOpen])
 
   const hours = DATE_RANGE_HOURS[dateRange]
-  const { data: prompts, isLoading } = usePrompts(undefined, hours)
+  const { data: prompts, isLoading, isFetching, refetch } = usePrompts(undefined, hours)
   const createMutation = useCreatePromptVersion()
 
   const all = prompts ?? []
@@ -98,35 +148,105 @@ export function PromptsClient() {
     }
   }
 
+  // CSV / JSON export — RFC 4180 escaping, same pattern as savings/users.
+  function csvField(v: string | number): string {
+    const s = String(v)
+    return /["\n\r,]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
+  }
+  function csvRow(cells: (string | number)[]): string {
+    return cells.map(csvField).join(',')
+  }
+  function downloadFile(content: string, mime: string, ext: string) {
+    const blob = new Blob([content], { type: `${mime};charset=utf-8;` })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `spanlens-prompts-${dateRange}-${new Date().toISOString().slice(0, 10)}.${ext}`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+  function exportCsv() {
+    const lines: string[] = []
+    lines.push(csvRow([`Prompts (${dateRange})`]))
+    lines.push(csvRow(['Name', 'Active Version', 'Versions', `Calls ${dateRange}`, 'Avg Cost USD', 'Avg Latency ms', `Quality ${dateRange}`, 'A/B Running', 'Updated']))
+    for (const p of filtered) {
+      lines.push(csvRow([
+        p.name,
+        `v${p.version}`,
+        p.versionCount ?? p.version,
+        p.stats?.calls ?? 0,
+        p.stats?.avgCostUsd != null ? p.stats.avgCostUsd.toFixed(5) : '',
+        p.stats?.avgLatencyMs != null ? Math.round(p.stats.avgLatencyMs) : '',
+        p.qualityScore ?? '',
+        p.activeExperiment ? 'yes' : 'no',
+        p.created_at,
+      ]))
+    }
+    downloadFile(lines.join('\n'), 'text/csv', 'csv')
+  }
+  function exportJson() {
+    downloadFile(JSON.stringify({ range: dateRange, prompts: filtered }, null, 2), 'application/json', 'json')
+  }
+
   return (
-    <div className="-mx-4 -my-4 md:-mx-8 md:-my-7 flex flex-col h-screen overflow-hidden bg-bg">
-      <Topbar
-        crumbs={[{ label: 'Workspace', href: '/dashboard' }, { label: 'Prompts' }]}
-        right={
-          <div className="flex items-center gap-2">
-            {/* Search, desktop only; mobile search lives in the filter bar */}
-            <div className="hidden md:flex items-center gap-2 px-[10px] py-[5px] border border-border rounded-[6px] bg-bg-elev w-[280px]">
-              <span className="text-text-faint text-[14px] leading-none">⌕</span>
-              <input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search prompts…"
-                className="flex-1 bg-transparent font-mono text-[12px] text-text-muted placeholder:text-text-faint focus:outline-none"
-              />
-              <span className="font-mono text-[10px] text-text-faint border border-border rounded-[3px] px-[5px] py-[1px]">⌘K</span>
-            </div>
-            <PermissionGate need="edit">
+    <div className="-mx-4 -my-4 md:-mx-8 md:-my-7 flex flex-col min-h-screen">
+      <div className="sticky top-0 z-20 bg-bg">
+        <Topbar
+          crumbs={[{ label: 'Prompts' }]}
+          right={
+            <div className="flex items-center gap-2">
+              <LiveDot refetching={isFetching} />
+              {/* Search, desktop only; mobile search lives in the filter bar.
+                  Debounced 300ms to the URL `?q=` param. */}
+              <div className="hidden md:flex items-center gap-2 px-[10px] py-[5px] border border-border rounded-[6px] bg-bg-elev w-[240px]">
+                <span className="text-text-faint text-[14px] leading-none">⌕</span>
+                <input
+                  key={search}
+                  value={searchInput}
+                  onChange={(e) => setSearchInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Escape') {
+                      setSearchInput('')
+                      updateQuery({ q: null })
+                    }
+                  }}
+                  placeholder="Search prompts…"
+                  className="flex-1 bg-transparent font-mono text-[12px] text-text-muted placeholder:text-text-faint focus:outline-none"
+                />
+                {searchInput && (
+                  <button
+                    type="button"
+                    onClick={() => { setSearchInput(''); updateQuery({ q: null }) }}
+                    className="text-text-faint hover:text-text transition-colors"
+                    aria-label="Clear search"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                )}
+              </div>
               <button
                 type="button"
-                onClick={() => setFormOpen((v) => !v)}
-                className="font-mono text-[11px] text-text px-[10px] py-[5px] border border-border-strong rounded-[5px] bg-bg-elev hover:bg-bg-muted transition-colors whitespace-nowrap shrink-0"
+                onClick={() => void refetch()}
+                disabled={isFetching}
+                title="Refresh now"
+                className="font-mono text-[11px] text-text-muted hover:text-text border border-border rounded px-2 py-1 transition-colors disabled:opacity-40"
               >
-                + register prompt
+                <span className={cn('inline-block', isFetching && 'animate-spin')}>↻</span>
               </button>
-            </PermissionGate>
-          </div>
-        }
-      />
+              <PermissionGate need="edit">
+                <button
+                  type="button"
+                  onClick={() => setFormOpen((v) => !v)}
+                  className="font-mono text-[11px] text-text px-[10px] py-[5px] border border-border-strong rounded-[5px] bg-bg-elev hover:bg-bg-muted transition-colors whitespace-nowrap shrink-0"
+                >
+                  + register prompt
+                </button>
+              </PermissionGate>
+            </div>
+          }
+        />
+        <h1 className="sr-only">Prompts</h1>
+      </div>
 
       {/* Info banner */}
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 px-[22px] py-[10px] bg-bg-muted border-b border-border text-[12px] text-text-muted shrink-0">
@@ -140,9 +260,12 @@ export function PromptsClient() {
           </code>{' '}
           header.
         </span>
-        <span className="font-mono text-[11px] text-text cursor-pointer hover:opacity-80 transition-opacity ml-auto">
+        <Link
+          href="/docs/features/prompts"
+          className="font-mono text-[11px] text-text hover:opacity-80 transition-opacity ml-auto"
+        >
           View setup guide →
-        </span>
+        </Link>
       </div>
 
       {/* Stat strip */}
@@ -169,13 +292,20 @@ export function PromptsClient() {
       <div className="md:hidden flex items-center gap-2 px-[10px] py-[5px] border border-border rounded-[6px] bg-bg-elev">
         <span className="text-text-faint text-[14px] leading-none">⌕</span>
         <input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
+          key={`mobile-${search}`}
+          value={searchInput}
+          onChange={(e) => setSearchInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') {
+              setSearchInput('')
+              updateQuery({ q: null })
+            }
+          }}
           placeholder="Search prompts…"
           className="flex-1 bg-transparent font-mono text-[12px] text-text-muted placeholder:text-text-faint focus:outline-none"
         />
-        {search && (
-          <button type="button" onClick={() => setSearch('')} className="text-text-faint hover:text-text transition-colors">
+        {searchInput && (
+          <button type="button" onClick={() => { setSearchInput(''); updateQuery({ q: null }) }} className="text-text-faint hover:text-text transition-colors">
             <X className="h-3.5 w-3.5" />
           </button>
         )}
@@ -186,7 +316,7 @@ export function PromptsClient() {
             <button
               key={v}
               type="button"
-              onClick={() => setFilter(v)}
+              onClick={() => updateQuery({ filter: v === 'all' ? null : v })}
               className={cn(
                 'px-[10px] py-[3px] rounded-[3px] flex items-center gap-1.5 transition-colors',
                 filter === v ? 'bg-text text-bg' : 'text-text-muted hover:text-text',
@@ -199,7 +329,7 @@ export function PromptsClient() {
         </div>
         <button
           type="button"
-          onClick={() => setViewMode((v) => (v === 'all' ? 'active' : 'all'))}
+          onClick={() => updateQuery({ view: viewMode === 'all' ? 'active' : null })}
           className={cn(
             'flex items-center gap-1.5 px-[10px] py-[4px] rounded-[5px] border font-mono text-[11px] tracking-[0.03em] transition-colors',
             viewMode === 'active'
@@ -233,7 +363,7 @@ export function PromptsClient() {
                 <button
                   key={n}
                   type="button"
-                  onClick={() => { setMinCalls(n); setCallsMenuOpen(false) }}
+                  onClick={() => { updateQuery({ minCalls: n === 0 ? null : String(n) }); setCallsMenuOpen(false) }}
                   className={cn(
                     'w-full text-left px-[10px] py-[5px] font-mono text-[11px] transition-colors',
                     minCalls === n ? 'text-text bg-bg-muted' : 'text-text-muted hover:text-text hover:bg-bg-muted',
@@ -265,7 +395,7 @@ export function PromptsClient() {
                 <button
                   key={r}
                   type="button"
-                  onClick={() => { setDateRange(r); setDateMenuOpen(false) }}
+                  onClick={() => { updateQuery({ range: r === '24h' ? null : r }); setDateMenuOpen(false) }}
                   className={cn(
                     'w-full text-left px-[10px] py-[5px] font-mono text-[11px] transition-colors',
                     dateRange === r ? 'text-text bg-bg-muted' : 'text-text-muted hover:text-text hover:bg-bg-muted',
@@ -278,8 +408,34 @@ export function PromptsClient() {
           )}
         </div>
         <span className="flex-1" />
+
+        <div className="relative" ref={exportRef}>
+          <button
+            type="button"
+            onClick={() => setExportOpen((v) => !v)}
+            disabled={filtered.length === 0}
+            className="font-mono text-[11px] text-text-muted hover:text-text border border-border rounded-[5px] px-2.5 py-1 transition-colors disabled:opacity-40"
+          >
+            Export ▾
+          </button>
+          {exportOpen && (
+            <div className="absolute right-0 top-full mt-1 z-20 bg-bg-elev border border-border rounded-md shadow-lg py-1 min-w-[110px]">
+              <button
+                type="button"
+                onClick={() => { setExportOpen(false); exportCsv() }}
+                className="block w-full px-3 py-1.5 text-left font-mono text-[11px] uppercase tracking-[0.04em] text-text-muted hover:text-text hover:bg-bg transition-colors"
+              >CSV</button>
+              <button
+                type="button"
+                onClick={() => { setExportOpen(false); exportJson() }}
+                className="block w-full px-3 py-1.5 text-left font-mono text-[11px] uppercase tracking-[0.04em] text-text-muted hover:text-text hover:bg-bg transition-colors"
+              >JSON</button>
+            </div>
+          )}
+        </div>
+
         <span className="font-mono text-[11px] text-text-faint">
-          {filtered.length === all.length ? `${all.length} prompts` : `${filtered.length} of ${all.length} prompts`}
+          {mounted ? (filtered.length === all.length ? `${all.length} prompts` : `${filtered.length} of ${all.length} prompts`) : ' '}
         </span>
       </div>
       </div>
@@ -333,8 +489,8 @@ export function PromptsClient() {
         </div>
       )}
 
-      {/* Table: header + rows share ONE scroll container so they move together */}
-      <div className="flex-1 overflow-auto">
+      {/* Table: header + rows */}
+      <div>
         {isLoading ? (
           <div className="p-6 space-y-2">
             {[1, 2, 3].map((i) => <div key={i} className="h-10 bg-bg-elev rounded animate-pulse" />)}
@@ -354,7 +510,7 @@ export function PromptsClient() {
           <div className="min-w-[700px]">
             {/* Column headers, sticky so they stay visible on vertical scroll */}
             <div
-              className="grid sticky top-0 z-10 font-mono text-[10px] text-text-faint uppercase tracking-[0.05em] px-[22px] py-[9px] bg-bg-muted border-b border-border"
+              className="grid sticky top-[52px] z-10 font-mono text-[10px] text-text-faint uppercase tracking-[0.05em] px-[22px] py-[9px] bg-bg-muted border-b border-border"
               style={{ gridTemplateColumns: GRID }}
             >
               <span />
@@ -369,12 +525,19 @@ export function PromptsClient() {
               <span className="text-right">Updated</span>
             </div>
             {filtered.map((p) => (
-            <button
+            <div
               key={p.id}
-              type="button"
+              role="button"
+              tabIndex={0}
               onClick={() => router.push(`/prompts/${encodeURIComponent(p.name)}`)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault()
+                  router.push(`/prompts/${encodeURIComponent(p.name)}`)
+                }
+              }}
               className={cn(
-                'w-full grid items-center px-[22px] py-[11px] border-b border-border font-mono text-[12.5px] text-left hover:bg-bg-elev transition-colors group',
+                'w-full grid items-center px-[22px] py-[11px] border-b border-border font-mono text-[12.5px] text-left hover:bg-bg-elev transition-colors group cursor-pointer focus:outline-none focus:bg-bg-elev',
               )}
               style={{ gridTemplateColumns: GRID }}
             >
@@ -396,8 +559,16 @@ export function PromptsClient() {
               {/* Active version */}
               <span className="text-text-muted">v{p.version}</span>
 
-              {/* Version count */}
-              <span className="text-text-muted">{p.versionCount ?? p.version}</span>
+              {/* Version count — deep-link to the Versions tab on detail page. */}
+              <span>
+                <Link
+                  href={`/prompts/${encodeURIComponent(p.name)}?tab=versions`}
+                  onClick={(e) => e.stopPropagation()}
+                  className="text-text-muted hover:text-accent transition-colors"
+                >
+                  {p.versionCount ?? p.version}
+                </Link>
+              </span>
 
               {/* Calls */}
               <span className={cn(p.stats && p.stats.calls > 0 ? 'text-text' : 'text-text-faint')}>
@@ -417,15 +588,16 @@ export function PromptsClient() {
               {/* Quality score */}
               <QualityBadge score={p.qualityScore} />
 
-              {/* A/B badge */}
+              {/* A/B badge — pulses while a test is running so the eye lands
+                  on the active one in a list of many prompts. */}
               <span>
                 {p.activeExperiment ? (
-                  <span className="inline-flex items-center gap-1 font-mono text-[9px] uppercase tracking-[0.05em] px-[5px] py-[2px] rounded-[3px] bg-accent-bg border border-accent-border text-accent">
+                  <span className="inline-flex items-center gap-1 font-mono text-[9px] uppercase tracking-[0.05em] px-[5px] py-[2px] rounded-[3px] bg-accent-bg border border-accent-border text-accent animate-pulse">
                     <FlaskConical className="h-2.5 w-2.5" />
                     A/B
                   </span>
                 ) : (
-                  <span className="text-text-faint">,</span>
+                  <span className="text-text-faint">—</span>
                 )}
               </span>
 
@@ -433,7 +605,7 @@ export function PromptsClient() {
               <span className="text-text-faint text-right text-[11px]">
                 {formatDate(p.created_at)}
               </span>
-            </button>
+            </div>
           ))}
           </div>
         )}
