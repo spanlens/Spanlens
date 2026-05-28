@@ -83,8 +83,10 @@ export function RequestChart({ data, firedAt = [], isHourly = true }: RequestCha
         )}
       </div>
 
+      {/* margin.left at 0 keeps both Y-axis tick labels (left: requests,
+          right: $cost) inside the chart bounds. */}
       <ResponsiveContainer width="100%" height={220}>
-        <ComposedChart data={formatted} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
+        <ComposedChart data={formatted} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke={C.border} vertical={false} />
 
           <XAxis

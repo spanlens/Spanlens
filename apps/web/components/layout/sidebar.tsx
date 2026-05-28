@@ -20,6 +20,22 @@ import { useWorkspaces, useCreateWorkspace } from '@/lib/queries/use-workspaces'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { writeWorkspaceCookie } from '@/lib/workspace-cookie'
 
+// Unified compact request-count formatter so the "used / limit" pair always
+// uses the same unit. Picks the largest unit that keeps the larger of the
+// two numbers under 1000 — avoids the "1,120 / 1000k" mismatch where one
+// side was raw and the other abbreviated.
+function formatRequestCount(n: number): string {
+  if (n >= 1_000_000) {
+    const m = n / 1_000_000
+    return m >= 10 ? `${m.toFixed(0)}M` : `${m.toFixed(1)}M`
+  }
+  if (n >= 1_000) {
+    const k = n / 1_000
+    return k >= 10 ? `${k.toFixed(0)}k` : `${k.toFixed(1)}k`
+  }
+  return n.toLocaleString()
+}
+
 /* ── Logo mark ── */
 function LogoMark() {
   return (
@@ -421,14 +437,10 @@ export function Sidebar() {
         </div>
         <div className="text-[13px] text-text mb-1.5">
           {quota.data
-            ? `${quota.data.usedThisMonth.toLocaleString()} / ${
-                quota.data.limit != null
-                  ? quota.data.limit >= 1000
-                    ? `${(quota.data.limit / 1000).toFixed(0)}k`
-                    : String(quota.data.limit)
-                  : '∞'
+            ? `${formatRequestCount(quota.data.usedThisMonth)} / ${
+                quota.data.limit != null ? formatRequestCount(quota.data.limit) : '∞'
               } requests`
-            : ', /, requests'}
+            : '— / — requests'}
         </div>
         <div className="h-1 rounded-full bg-bg overflow-hidden">
           <div
@@ -445,7 +457,11 @@ export function Sidebar() {
             onClick={() => router.push('/settings')}
             className="mt-2.5 text-[12px] font-medium text-accent hover:opacity-80 transition-opacity"
           >
-            Upgrade →
+            {/* Upgrade only makes sense below Team. On Team/Enterprise the
+                same widget links to plan management instead. */}
+            {(quota.data?.plan === 'team' || quota.data?.plan === 'enterprise')
+              ? 'Manage plan →'
+              : 'Upgrade →'}
           </button>
         )}
       </div>
