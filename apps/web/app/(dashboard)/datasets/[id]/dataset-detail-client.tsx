@@ -347,8 +347,10 @@ export function DatasetDetailClient({ datasetId }: { datasetId: string }) {
 
   if (ds.isLoading) {
     return (
-      <div className="flex flex-col h-full">
-        <Topbar crumbs={[{ label: 'Workspace', href: '/dashboard' }, { label: 'Datasets', href: '/datasets' }, { label: '...' }]} />
+      <div className="-mx-4 -my-4 md:-mx-8 md:-my-7 flex flex-col min-h-screen">
+        <div className="sticky top-0 z-20 bg-bg">
+          <Topbar crumbs={[{ label: 'Datasets', href: '/datasets' }, { label: '...' }]} />
+        </div>
         <div className="p-[22px] space-y-2">
           <div className="h-12 bg-bg-elev rounded animate-pulse" />
         </div>
@@ -358,8 +360,10 @@ export function DatasetDetailClient({ datasetId }: { datasetId: string }) {
 
   if (!ds.data) {
     return (
-      <div className="flex flex-col h-full">
-        <Topbar crumbs={[{ label: 'Workspace', href: '/dashboard' }, { label: 'Datasets', href: '/datasets' }, { label: 'Not found' }]} />
+      <div className="-mx-4 -my-4 md:-mx-8 md:-my-7 flex flex-col min-h-screen">
+        <div className="sticky top-0 z-20 bg-bg">
+          <Topbar crumbs={[{ label: 'Datasets', href: '/datasets' }, { label: 'Not found' }]} />
+        </div>
         <div className="flex items-center justify-center h-64 text-text-muted font-mono text-[13px]">
           Dataset not found.
         </div>
@@ -372,58 +376,59 @@ export function DatasetDetailClient({ datasetId }: { datasetId: string }) {
   const itemsWithOutput = items.filter((i) => !!i.expected_output).length
 
   return (
-    <div className="flex flex-col h-full">
-      <Topbar
-        crumbs={[
-          { label: 'Workspace', href: '/dashboard' },
-          { label: 'Datasets', href: '/datasets' },
-          { label: dataset.name },
-        ]}
-        right={
-          <div className="flex items-center gap-2">
-            {importMsg && (
-              <span className={`font-mono text-[11px] ${importMsg.includes('failed') || importMsg.includes('invalid') || importMsg.includes('empty') ? 'text-bad' : 'text-good'}`}>
-                {importMsg}
-              </span>
-            )}
-            <input
-              ref={importRef}
-              type="file"
-              accept=".json,.jsonl,.csv"
-              onChange={handleImportFile}
-              className="hidden"
-            />
-            <button
-              type="button"
-              onClick={() => importRef.current?.click()}
-              disabled={bulkAdd.isPending}
-              className="font-mono text-[11.5px] px-3 py-[6px] rounded-[5px] border border-border text-text-muted hover:text-text flex items-center gap-1.5 disabled:opacity-40"
-            >
-              <Upload className="h-3.5 w-3.5" />
-              {bulkAdd.isPending ? 'Importing…' : 'Import items'}
-            </button>
-            <button
-              type="button"
-              onClick={() => setAddOpen(true)}
-              className="font-mono text-[11.5px] px-3 py-[6px] rounded-[5px] bg-text text-bg font-medium hover:opacity-90 flex items-center gap-1.5"
-            >
-              <Plus className="h-3.5 w-3.5" />
-              Add item
-            </button>
-          </div>
-        }
-      />
+    <div className="-mx-4 -my-4 md:-mx-8 md:-my-7 flex flex-col min-h-screen">
+      <div className="sticky top-0 z-20 bg-bg">
+        <Topbar
+          crumbs={[
+            { label: 'Datasets', href: '/datasets' },
+            { label: dataset.name },
+          ]}
+          right={
+            <div className="flex items-center gap-2">
+              {importMsg && (
+                <span className={`font-mono text-[11px] ${importMsg.includes('failed') || importMsg.includes('invalid') || importMsg.includes('empty') ? 'text-bad' : 'text-good'}`}>
+                  {importMsg}
+                </span>
+              )}
+              <input
+                ref={importRef}
+                type="file"
+                accept=".json,.jsonl,.csv"
+                onChange={handleImportFile}
+                className="hidden"
+              />
+              <button
+                type="button"
+                onClick={() => importRef.current?.click()}
+                disabled={bulkAdd.isPending}
+                className="font-mono text-[11.5px] px-3 py-[6px] rounded-[5px] border border-border text-text-muted hover:text-text flex items-center gap-1.5 disabled:opacity-40"
+              >
+                <Upload className="h-3.5 w-3.5" />
+                {bulkAdd.isPending ? 'Importing…' : 'Import items'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setAddOpen(true)}
+                className="font-mono text-[11.5px] px-3 py-[6px] rounded-[5px] bg-text text-bg font-medium hover:opacity-90 flex items-center gap-1.5"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Add item
+              </button>
+            </div>
+          }
+        />
+      </div>
 
-      <div className="flex-1 overflow-y-auto">
-        {/* Header info */}
-        <div className="px-[22px] py-[12px] border-b border-border space-y-1">
-          <p className="font-mono text-[15px] text-text font-medium">{dataset.name}</p>
+      <div>
+        {/* Header info — dataset.name is the page's h1 now. */}
+        <div className="px-[22px] py-[14px] border-b border-border space-y-1">
+          <h1 className="font-mono text-[15px] text-text font-medium break-all">{dataset.name}</h1>
           {dataset.description && (
             <p className="font-mono text-[12px] text-text-muted">{dataset.description}</p>
           )}
           <div className="flex items-center gap-4 font-mono text-[11px] text-text-faint pt-1">
-            <span>{items.length} items</span>
-            <span>{itemsWithOutput} with expected output</span>
+            <span className="tabular-nums">{items.length.toLocaleString()} items</span>
+            <span className="tabular-nums">{itemsWithOutput.toLocaleString()} with expected output</span>
           </div>
         </div>
 
