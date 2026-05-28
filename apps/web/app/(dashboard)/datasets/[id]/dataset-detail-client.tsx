@@ -385,8 +385,11 @@ export function DatasetDetailClient({ datasetId }: { datasetId: string }) {
           ]}
           right={
             <div className="flex items-center gap-2">
+              {/* Import status message — hidden on mobile to keep the button
+                  row compact. Long messages would otherwise push the action
+                  buttons off-screen on phones. */}
               {importMsg && (
-                <span className={`font-mono text-[11px] ${importMsg.includes('failed') || importMsg.includes('invalid') || importMsg.includes('empty') ? 'text-bad' : 'text-good'}`}>
+                <span className={`hidden md:inline font-mono text-[11px] ${importMsg.includes('failed') || importMsg.includes('invalid') || importMsg.includes('empty') ? 'text-bad' : 'text-good'}`}>
                   {importMsg}
                 </span>
               )}
@@ -397,22 +400,31 @@ export function DatasetDetailClient({ datasetId }: { datasetId: string }) {
                 onChange={handleImportFile}
                 className="hidden"
               />
+              {/* Labels collapse to icon-only on mobile so the buttons stop
+                  wrapping into two-line stacks. `title` keeps a tooltip for
+                  pointer + screen-reader users. */}
               <button
                 type="button"
                 onClick={() => importRef.current?.click()}
                 disabled={bulkAdd.isPending}
-                className="font-mono text-[11.5px] px-3 py-[6px] rounded-[5px] border border-border text-text-muted hover:text-text flex items-center gap-1.5 disabled:opacity-40"
+                title={bulkAdd.isPending ? 'Importing…' : 'Import items'}
+                aria-label={bulkAdd.isPending ? 'Importing items' : 'Import items'}
+                className="font-mono text-[11.5px] px-2 sm:px-3 py-[6px] rounded-[5px] border border-border text-text-muted hover:text-text flex items-center gap-1.5 disabled:opacity-40 whitespace-nowrap shrink-0"
               >
-                <Upload className="h-3.5 w-3.5" />
-                {bulkAdd.isPending ? 'Importing…' : 'Import items'}
+                <Upload className="h-3.5 w-3.5 shrink-0" />
+                <span className="hidden sm:inline">
+                  {bulkAdd.isPending ? 'Importing…' : 'Import items'}
+                </span>
               </button>
               <button
                 type="button"
                 onClick={() => setAddOpen(true)}
-                className="font-mono text-[11.5px] px-3 py-[6px] rounded-[5px] bg-text text-bg font-medium hover:opacity-90 flex items-center gap-1.5"
+                title="Add item"
+                aria-label="Add item"
+                className="font-mono text-[11.5px] px-2 sm:px-3 py-[6px] rounded-[5px] bg-text text-bg font-medium hover:opacity-90 flex items-center gap-1.5 whitespace-nowrap shrink-0"
               >
-                <Plus className="h-3.5 w-3.5" />
-                Add item
+                <Plus className="h-3.5 w-3.5 shrink-0" />
+                <span className="hidden sm:inline">Add item</span>
               </button>
             </div>
           }
