@@ -1,10 +1,11 @@
 'use client'
 
-import { useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import Link from 'next/link'
-import { Database, Plus, Trash2, FileText, Hash, Upload } from 'lucide-react'
-import { Topbar } from '@/components/layout/topbar'
-import { formatDate } from '@/lib/utils'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { Database, Plus, Trash2, FileText, Search, Upload } from 'lucide-react'
+import { Topbar, LiveDot } from '@/components/layout/topbar'
+import { cn, formatDate } from '@/lib/utils'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import {
   useDatasets,
@@ -13,6 +14,14 @@ import {
   useBulkAddDatasetItems,
   type Dataset,
 } from '@/lib/queries/use-datasets'
+
+// Hydration-safe mounted gate, same pattern as the other overhauled pages.
+const subscribeNoop = () => () => {}
+const getTrue = () => true
+const getFalse = () => false
+function useMounted(): boolean {
+  return useSyncExternalStore(subscribeNoop, getTrue, getFalse)
+}
 
 // ── File parser ──────────────────────────────────────────────────────────────
 
@@ -275,11 +284,12 @@ function DatasetRow({ dataset }: { dataset: Dataset }) {
           </p>
         )}
       </div>
-      <div className="flex items-center gap-1 font-mono text-[11px] text-text-muted w-[80px] justify-end">
-        <Hash className="h-3 w-3" />
-        {dataset.item_count ?? 0}
+      <div className="font-mono text-[11.5px] text-text-muted w-[80px] text-right tabular-nums">
+        {dataset.item_count ?? 0} <span className="text-text-faint">items</span>
       </div>
-      <div className="font-mono text-[10.5px] text-text-faint w-[140px] text-right">
+      {/* Created column hidden on mobile to keep the row from going
+          horizontal on narrow viewports. */}
+      <div className="hidden sm:block font-mono text-[10.5px] text-text-faint w-[140px] text-right">
         {formatDate(dataset.created_at)}
       </div>
       <button
@@ -297,34 +307,219 @@ function DatasetRow({ dataset }: { dataset: Dataset }) {
 // ── Main page ────────────────────────────────────────────────────────────────
 
 export function DatasetsClient() {
+  const router = useRouter()
+  const sp = useSearchParams()
+  const mounted = useMounted()
+
   const datasets = useDatasets()
   const [newOpen, setNewOpen] = useState(false)
-  const list = datasets.data ?? []
+
+  // URL-backed search — shareable, survives reload.
+  const search = sp.get('q') ?? ''
+  function updateQuery(updates: Record<string, string | null>) {
+    const next = new URLSearchParams(sp.toString())
+    Object.entries(updates).forEach(([k, v]) => {
+      if (v == null || v === '') next.delete(k)
+      else next.set(k, v)
+    })
+    router.replace(`/datasets?${next.toString()}`)
+  }
+  const [searchInput, setSearchInput] = useState(search)
+  useEffect(() => {
+    const id = setTimeout(() => {
+      if (searchInput !== search) updateQuery({ q: searchInput.trim() || null })
+    }, 300)
+    return () => clearTimeout(id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchInput])
+
+  const list = useMemo(() => datasets.data ?? [], [datasets.data])
+  const filtered = useMemo(() => {
+    if (!search) return list
+    const needle = search.toLowerCase()
+    return list.filter((d) =>
+      d.name.toLowerCase().includes(needle) ||
+      (d.description ?? '').toLowerCase().includes(needle),
+    )
+  }, [list, search])
+
+  // Stat strip values — derived from list only, no extra fetch.
+  const totalItems = list.reduce((s, d) => s + (d.item_count ?? 0), 0)
+  const lastCreatedDate = list.length > 0
+    ? list.map((d) => d.created_at).sort().slice(-1)[0]
+    : null
+
+  // CSV / JSON export — client-side, RFC 4180 escaping.
+  function csvField(v: string | number): string {
+    const s = String(v)
+    return /["\n\r,]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
+  }
+  function csvRow(cells: (string | number)[]): string {
+    return cells.map(csvField).join(',')
+  }
+  function downloadFile(content: string, mime: string, ext: string) {
+    const blob = new Blob([content], { type: `${mime};charset=utf-8;` })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `spanlens-datasets-${new Date().toISOString().slice(0, 10)}.${ext}`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+  function exportCsv() {
+    const lines: string[] = []
+    lines.push(csvRow(['ID', 'Name', 'Description', 'Items', 'Created']))
+    for (const d of filtered) {
+      lines.push(csvRow([d.id, d.name, d.description ?? '', d.item_count ?? 0, d.created_at]))
+    }
+    downloadFile(lines.join('\n'), 'text/csv', 'csv')
+  }
+  function exportJson() {
+    downloadFile(JSON.stringify({ datasets: filtered }, null, 2), 'application/json', 'json')
+  }
+  const [exportOpen, setExportOpen] = useState(false)
+  const exportRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!exportOpen) return
+    function onDown(e: MouseEvent) {
+      if (exportRef.current && !exportRef.current.contains(e.target as Node)) setExportOpen(false)
+    }
+    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') setExportOpen(false) }
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDown)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [exportOpen])
 
   return (
-    <div className="flex flex-col h-full">
-      <Topbar
-        crumbs={[{ label: 'Workspace', href: '/dashboard' }, { label: 'Datasets' }]}
-        right={
+    <div className="-mx-4 -my-4 md:-mx-8 md:-my-7 flex flex-col min-h-screen">
+      <div className="sticky top-0 z-20 bg-bg">
+        <Topbar
+          crumbs={[{ label: 'Datasets' }]}
+          right={
+            <div className="flex items-center gap-3">
+              <LiveDot refetching={datasets.isFetching} />
+              <button
+                type="button"
+                onClick={() => void datasets.refetch()}
+                disabled={datasets.isFetching}
+                title="Refresh now"
+                className="font-mono text-[11px] text-text-muted hover:text-text border border-border rounded px-2 py-1 transition-colors disabled:opacity-40"
+              >
+                <span className={cn('inline-block', datasets.isFetching && 'animate-spin')}>↻</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setNewOpen(true)}
+                className="font-mono text-[11.5px] px-3 py-[6px] rounded-[5px] bg-text text-bg font-medium hover:opacity-90 flex items-center gap-1.5"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                New dataset
+              </button>
+            </div>
+          }
+        />
+        <h1 className="sr-only">Datasets</h1>
+      </div>
+
+      {/* Stat strip — counts derived from list. Wraps to 2-col on mobile. */}
+      <div className="shrink-0 border-b border-border">
+        <div className="grid grid-cols-2 md:grid-cols-3">
+          {[
+            { label: 'Datasets',     value: String(list.length) },
+            { label: 'Total items',  value: totalItems.toLocaleString() },
+            { label: 'Last created', value: lastCreatedDate ? formatDate(lastCreatedDate) : '—' },
+          ].map((s, i) => (
+            <div
+              key={s.label}
+              className={cn(
+                'px-[18px] py-[14px] border-border',
+                i === 0 && 'border-r',
+                i === 1 && 'border-b md:border-b-0 md:border-r',
+              )}
+            >
+              <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-2">{s.label}</div>
+              <span className="text-[22px] sm:text-[24px] font-medium leading-none tracking-[-0.6px] text-text">
+                {mounted ? s.value : ' '}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Info banner with docs link */}
+      <div className="px-[22px] py-[12px] bg-bg-muted border-b border-border flex items-center gap-2 font-mono text-[11px] text-text-muted flex-wrap">
+        <Database className="h-3.5 w-3.5 shrink-0" />
+        <span>
+          Datasets are reusable test inputs for Evals. Import production requests or add items manually.
+        </span>
+        <Link
+          href="/docs/features/datasets"
+          className="text-text hover:opacity-80 transition-opacity ml-auto"
+        >
+          How datasets work →
+        </Link>
+      </div>
+
+      {/* Search + Export bar */}
+      <div className="px-[22px] py-[10px] border-b border-border flex items-center gap-2 flex-wrap">
+        <div className="relative max-w-md flex-1 min-w-[180px]">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-text-faint" />
+          <input
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') {
+                setSearchInput('')
+                updateQuery({ q: null })
+              }
+            }}
+            placeholder="Search by name or description…"
+            className="w-full pl-8 pr-3 py-1.5 font-mono text-[12px] bg-bg-elev border border-border rounded-[6px] text-text placeholder:text-text-faint focus:outline-none focus:border-accent"
+          />
+        </div>
+        {search && (
           <button
             type="button"
-            onClick={() => setNewOpen(true)}
-            className="font-mono text-[11.5px] px-3 py-[6px] rounded-[5px] bg-text text-bg font-medium hover:opacity-90 flex items-center gap-1.5"
+            onClick={() => { setSearchInput(''); updateQuery({ q: null }) }}
+            className="font-mono text-[11px] text-text-faint hover:text-text transition-colors"
           >
-            <Plus className="h-3.5 w-3.5" />
-            New dataset
+            Clear
           </button>
-        }
-      />
-
-      <div className="flex-1 overflow-y-auto">
-        <div className="px-[22px] py-[12px] bg-bg-muted border-b border-border flex items-center gap-2 font-mono text-[11px] text-text-muted">
-          <Database className="h-3.5 w-3.5" />
-          <span>
-            Datasets are reusable test inputs for Evals. Import production requests or add items manually.
-          </span>
+        )}
+        <span className="flex-1" />
+        <div ref={exportRef} className="relative">
+          <button
+            type="button"
+            onClick={() => setExportOpen((v) => !v)}
+            disabled={filtered.length === 0}
+            className="font-mono text-[11px] text-text-muted hover:text-text border border-border rounded px-2.5 py-1 transition-colors disabled:opacity-40"
+          >
+            Export ▾
+          </button>
+          {exportOpen && (
+            <div className="absolute right-0 top-full mt-1 z-20 bg-bg-elev border border-border rounded-md shadow-lg py-1 min-w-[110px]">
+              <button
+                type="button"
+                onClick={() => { setExportOpen(false); exportCsv() }}
+                className="block w-full px-3 py-1.5 text-left font-mono text-[11px] uppercase tracking-[0.04em] text-text-muted hover:text-text hover:bg-bg transition-colors"
+              >CSV</button>
+              <button
+                type="button"
+                onClick={() => { setExportOpen(false); exportJson() }}
+                className="block w-full px-3 py-1.5 text-left font-mono text-[11px] uppercase tracking-[0.04em] text-text-muted hover:text-text hover:bg-bg transition-colors"
+              >JSON</button>
+            </div>
+          )}
         </div>
+        <span className="font-mono text-[11px] text-text-faint">
+          {mounted ? (filtered.length === list.length ? `${list.length} datasets` : `${filtered.length} of ${list.length}`) : ' '}
+        </span>
+      </div>
 
+      <div>
         {datasets.isLoading ? (
           <div className="p-[22px] space-y-2">
             {[1, 2].map((i) => <div key={i} className="h-14 bg-bg-elev rounded animate-pulse" />)}
@@ -341,16 +536,33 @@ export function DatasetsClient() {
               <Plus className="h-3.5 w-3.5" />
               Create your first dataset
             </button>
+            <Link
+              href="/docs/features/datasets"
+              className="font-mono text-[11.5px] mt-1 px-2.5 py-1 rounded border border-border text-text-muted hover:text-text hover:border-border-strong transition-colors"
+            >
+              How datasets work →
+            </Link>
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-40 gap-3 text-text-muted">
+            <p className="font-mono text-[12.5px]">No datasets match the current search.</p>
+            <button
+              type="button"
+              onClick={() => { setSearchInput(''); updateQuery({ q: null }) }}
+              className="font-mono text-[11px] text-text underline underline-offset-2 hover:no-underline"
+            >
+              Clear search
+            </button>
           </div>
         ) : (
           <>
             <div className="flex items-center px-[16px] py-[8px] bg-bg-muted border-b border-border font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint">
               <span className="flex-1">Name</span>
               <span className="w-[80px] text-right">Items</span>
-              <span className="w-[140px] text-right">Created</span>
+              <span className="hidden sm:block w-[140px] text-right">Created</span>
               <span className="w-[40px]" />
             </div>
-            {list.map((d) => <DatasetRow key={d.id} dataset={d} />)}
+            {filtered.map((d) => <DatasetRow key={d.id} dataset={d} />)}
           </>
         )}
       </div>
