@@ -1,7 +1,8 @@
 'use client'
-import { useMemo, useState, useSyncExternalStore } from 'react'
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import Link from 'next/link'
-import { Trash2, Mail, MessageSquare } from 'lucide-react'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { Bell, Mail, MessageSquare, Plus, Search, Trash2 } from 'lucide-react'
 import {
   useAlerts,
   useCreateAlert,
@@ -15,7 +16,7 @@ import {
 import type { AlertType, ChannelKind, AlertRow } from '@/lib/queries/types'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Topbar } from '@/components/layout/topbar'
+import { Topbar, LiveDot } from '@/components/layout/topbar'
 import { PermissionGate } from '@/components/permission-gate'
 import { cn, formatDateTime } from '@/lib/utils'
 
@@ -64,11 +65,11 @@ function AlertRuleRow({
   return (
     <div
       className={cn(
-        'grid items-center px-[22px] py-[12px]',
+        'grid items-center px-[16px] sm:px-[22px] py-[12px] gap-3',
+        'grid-cols-[20px_minmax(0,1fr)_56px_72px] sm:grid-cols-[28px_minmax(0,1fr)_160px_60px_200px] sm:gap-[14px]',
         !last && 'border-b border-border',
         isFiring && 'bg-accent-bg',
       )}
-      style={{ gridTemplateColumns: '28px 1fr 160px 60px 200px', gap: 14 }}
     >
       <div className="flex items-center justify-center">
         <span
@@ -80,7 +81,7 @@ function AlertRuleRow({
       </div>
 
       <div className="min-w-0">
-        <div className="flex items-center gap-2 mb-1">
+        <div className="flex items-center gap-2 mb-1 flex-wrap">
           <Link
             href={`/alerts/${a.id}`}
             className="text-[13.5px] text-text font-medium truncate hover:text-accent transition-colors"
@@ -107,7 +108,8 @@ function AlertRuleRow({
         </div>
       </div>
 
-      <div>
+      {/* WINDOW · COOLDOWN — hidden on mobile, the row body already mentions window. */}
+      <div className="hidden sm:block">
         <div className="font-mono text-[10px] text-text-faint uppercase tracking-[0.03em] mb-[3px]">WINDOW · COOLDOWN</div>
         <div className="font-mono text-[12px] text-text-muted">
           {a.window_minutes}m · {a.cooldown_minutes}m
@@ -115,32 +117,41 @@ function AlertRuleRow({
       </div>
 
       <div className="text-right">
-        <div className="font-mono text-[13px] text-text">{fires}</div>
+        <div className="font-mono text-[13px] text-text tabular-nums">{fires}</div>
         <div className="font-mono text-[10px] text-text-faint">fires</div>
       </div>
 
       <PermissionGate need="edit">
         <div className="flex items-center justify-end gap-1.5">
+          {/* Action buttons: full label on sm+, icon-only on mobile. */}
           <button
             type="button"
             onClick={onEdit}
             disabled={isPending}
-            className="font-mono text-[10.5px] text-text-muted px-2 py-[3px] border border-border rounded-[4px] hover:text-text transition-colors disabled:opacity-40"
+            title="Edit"
+            aria-label="Edit"
+            className="font-mono text-[10.5px] text-text-muted px-1.5 sm:px-2 py-[3px] border border-border rounded-[4px] hover:text-text transition-colors disabled:opacity-40"
           >
-            Edit
+            <span className="sm:hidden">✎</span>
+            <span className="hidden sm:inline">Edit</span>
           </button>
           <button
             type="button"
             onClick={onToggle}
             disabled={isPending}
-            className="font-mono text-[10.5px] text-text-muted px-2 py-[3px] border border-border rounded-[4px] hover:text-text transition-colors disabled:opacity-40"
+            title={a.is_active ? 'Pause' : 'Resume'}
+            aria-label={a.is_active ? 'Pause' : 'Resume'}
+            className="font-mono text-[10.5px] text-text-muted px-1.5 sm:px-2 py-[3px] border border-border rounded-[4px] hover:text-text transition-colors disabled:opacity-40"
           >
-            {a.is_active ? 'Pause' : 'Resume'}
+            <span className="sm:hidden">{a.is_active ? '⏸' : '▶'}</span>
+            <span className="hidden sm:inline">{a.is_active ? 'Pause' : 'Resume'}</span>
           </button>
           <button
             type="button"
             onClick={onDelete}
             disabled={isPending}
+            title="Delete"
+            aria-label="Delete"
             className="p-1.5 text-text-faint hover:text-bad transition-colors disabled:opacity-40"
           >
             <Trash2 className="h-3.5 w-3.5" />
@@ -151,7 +162,12 @@ function AlertRuleRow({
   )
 }
 
+type StatusFilter = 'all' | 'firing' | 'active' | 'paused'
+
 export function AlertsClient() {
+  const router = useRouter()
+  const sp = useSearchParams()
+
   const alertsQuery = useAlerts()
   const channelsQuery = useNotificationChannels()
   const deliveriesQuery = useAlertDeliveries()
@@ -160,6 +176,29 @@ export function AlertsClient() {
   const updateAlert = useUpdateAlert()
   const createChannel = useCreateChannel()
   const deleteChannel = useDeleteChannel()
+
+  // URL-backed search + status filter — shareable, survives reload.
+  const search = sp.get('q') ?? ''
+  const statusFilter = (sp.get('status') ?? 'all') as StatusFilter
+
+  function updateQuery(updates: Record<string, string | null>) {
+    const next = new URLSearchParams(sp.toString())
+    Object.entries(updates).forEach(([k, v]) => {
+      if (v == null || v === '') next.delete(k)
+      else next.set(k, v)
+    })
+    router.replace(`/alerts?${next.toString()}`)
+  }
+
+  // Debounced search → URL.
+  const [searchInput, setSearchInput] = useState(search)
+  useEffect(() => {
+    const id = setTimeout(() => {
+      if (searchInput !== search) updateQuery({ q: searchInput.trim() || null })
+    }, 300)
+    return () => clearTimeout(id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchInput])
 
   // `mounted` ensures SSR and client initial hydration render identically.
   // Skeleton checks use this flag so they only activate after client mount —
@@ -205,13 +244,30 @@ export function AlertsClient() {
     setAlertDialogOpen(true)
   }
 
-  const alerts = alertsQuery.data ?? []
+  const alerts = useMemo(() => alertsQuery.data ?? [], [alertsQuery.data])
   const channels = channelsQuery.data ?? []
   const deliveries = deliveriesQuery.data ?? []
 
-  const firing = alerts.filter((a) => a.is_active && isRecentlyFired(a.last_triggered_at))
-  const active = alerts.filter((a) => a.is_active && !isRecentlyFired(a.last_triggered_at))
-  const paused = alerts.filter((a) => !a.is_active)
+  // Apply search + status filter before bucketing.
+  const filteredAlerts = useMemo(() => {
+    const needle = search.toLowerCase()
+    return alerts.filter((a) => {
+      if (needle && !a.name.toLowerCase().includes(needle)) return false
+      if (statusFilter === 'firing')  return a.is_active && isRecentlyFired(a.last_triggered_at)
+      if (statusFilter === 'active')  return a.is_active && !isRecentlyFired(a.last_triggered_at)
+      if (statusFilter === 'paused')  return !a.is_active
+      return true
+    })
+  }, [alerts, search, statusFilter])
+
+  const firing = filteredAlerts.filter((a) => a.is_active && isRecentlyFired(a.last_triggered_at))
+  const active = filteredAlerts.filter((a) => a.is_active && !isRecentlyFired(a.last_triggered_at))
+  const paused = filteredAlerts.filter((a) => !a.is_active)
+
+  // Unfiltered counts for the stat strip + filter chips.
+  const totalFiring = alerts.filter((a) => a.is_active && isRecentlyFired(a.last_triggered_at)).length
+  const totalActive = alerts.filter((a) => a.is_active && !isRecentlyFired(a.last_triggered_at)).length
+  const totalPaused = alerts.filter((a) => !a.is_active).length
   // Capture "now" at mount — last-24h bucketing for header counter.
   const [mountNow] = useState(() => Date.now())
   const fires24h = deliveries.filter(
@@ -257,44 +313,136 @@ export function AlertsClient() {
     setChannelDialogOpen(false)
   }
 
-  return (
-    <div className="-mx-4 -my-4 md:-mx-8 md:-my-7 flex flex-col h-screen overflow-hidden bg-bg">
-      <Topbar
-        crumbs={[{ label: 'Workspace', href: '/dashboard' }, { label: 'Alerts' }]}
-        right={
-          <PermissionGate need="edit">
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setChannelDialogOpen(true)}
-                className="font-mono text-[11px] text-text-muted px-[10px] py-[5px] border border-border rounded-[5px] bg-bg-elev hover:text-text transition-colors"
-              >
-                + Add channel
-              </button>
-              <button
-                type="button"
-                onClick={openCreateAlert}
-                className="font-mono text-[11px] text-bg px-[10px] py-[5px] rounded-[5px] bg-text font-medium hover:opacity-90 transition-opacity"
-              >
-                + New alert
-              </button>
-            </div>
-          </PermissionGate>
-        }
-      />
+  // CSV / JSON export — client-side, RFC 4180 escaping.
+  function csvField(v: string | number): string {
+    const s = String(v)
+    return /["\n\r,]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
+  }
+  function csvRow(cells: (string | number)[]): string {
+    return cells.map(csvField).join(',')
+  }
+  function downloadFile(content: string, mime: string, ext: string) {
+    const blob = new Blob([content], { type: `${mime};charset=utf-8;` })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `spanlens-alerts-${new Date().toISOString().slice(0, 10)}.${ext}`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+  function exportCsv() {
+    const lines: string[] = []
+    lines.push(csvRow(['Alerts']))
+    lines.push(csvRow(['ID', 'Name', 'Type', 'Threshold', 'Window (min)', 'Cooldown (min)', 'Active', 'Last Triggered', 'Fires Total']))
+    for (const a of filteredAlerts) {
+      lines.push(csvRow([
+        a.id, a.name, a.type, a.threshold, a.window_minutes, a.cooldown_minutes,
+        a.is_active ? 'yes' : 'no',
+        a.last_triggered_at ?? '',
+        alertFires(a.id),
+      ]))
+    }
+    lines.push('')
+    lines.push(csvRow(['Recent deliveries']))
+    lines.push(csvRow(['When', 'Alert ID', 'Status', 'Error']))
+    for (const d of deliveries.slice(0, 100)) {
+      lines.push(csvRow([d.created_at, d.alert_id, d.status, d.error_message ?? '']))
+    }
+    downloadFile(lines.join('\n'), 'text/csv', 'csv')
+  }
+  function exportJson() {
+    downloadFile(JSON.stringify({ alerts: filteredAlerts, channels, deliveries }, null, 2), 'application/json', 'json')
+  }
+  const [exportOpen, setExportOpen] = useState(false)
+  const exportRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!exportOpen) return
+    function onDown(e: MouseEvent) {
+      if (exportRef.current && !exportRef.current.contains(e.target as Node)) setExportOpen(false)
+    }
+    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') setExportOpen(false) }
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDown)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [exportOpen])
 
-      <div className="overflow-x-auto shrink-0 border-b border-border">
-        <div className="grid grid-cols-5 min-w-[480px]">
+  function refreshAll() {
+    void alertsQuery.refetch()
+    void channelsQuery.refetch()
+    void deliveriesQuery.refetch()
+  }
+  const isFetching = alertsQuery.isFetching || channelsQuery.isFetching || deliveriesQuery.isFetching
+
+  return (
+    <div className="-mx-4 -my-4 md:-mx-8 md:-my-7 flex flex-col min-h-screen">
+      <div className="sticky top-0 z-20 bg-bg">
+        <Topbar
+          crumbs={[{ label: 'Alerts' }]}
+          right={
+            <div className="flex items-center gap-3">
+              <LiveDot refetching={isFetching} />
+              <button
+                type="button"
+                onClick={refreshAll}
+                disabled={isFetching}
+                title="Refresh now"
+                className="font-mono text-[11px] text-text-muted hover:text-text border border-border rounded px-2 py-1 transition-colors disabled:opacity-40"
+              >
+                <span className={cn('inline-block', isFetching && 'animate-spin')}>↻</span>
+              </button>
+              <PermissionGate need="edit">
+                <button
+                  type="button"
+                  onClick={() => setChannelDialogOpen(true)}
+                  title="Add channel"
+                  aria-label="Add channel"
+                  className="font-mono text-[11px] text-text-muted px-2 sm:px-[10px] py-[5px] border border-border rounded-[5px] bg-bg-elev hover:text-text transition-colors whitespace-nowrap shrink-0 flex items-center gap-1.5"
+                >
+                  <Bell className="h-3.5 w-3.5 shrink-0" />
+                  <span className="hidden sm:inline">Add channel</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={openCreateAlert}
+                  title="New alert"
+                  aria-label="New alert"
+                  className="font-mono text-[11px] text-bg px-2 sm:px-[10px] py-[5px] rounded-[5px] bg-text font-medium hover:opacity-90 transition-opacity whitespace-nowrap shrink-0 flex items-center gap-1.5"
+                >
+                  <Plus className="h-3.5 w-3.5 shrink-0" />
+                  <span className="hidden sm:inline">New alert</span>
+                </button>
+              </PermissionGate>
+            </div>
+          }
+        />
+        <h1 className="sr-only">Alerts</h1>
+      </div>
+
+      {/* Stat strip — 2 cols on mobile, 3 on sm, 5 on md+. */}
+      <div className="shrink-0 border-b border-border">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5">
           {[
-            { label: 'Firing now',    value: String(firing.length),                              warn: firing.length > 0 },
-            { label: 'Rules active',  value: String(alerts.filter((a) => a.is_active).length),  warn: false },
-            { label: 'Fires 24h',     value: String(fires24h),                                  warn: fires24h > 0 },
-            { label: 'Rules total',   value: String(alerts.length),                             warn: false },
-            { label: 'Channels',      value: String(channels.length),                           warn: false },
+            { label: 'Firing now',    value: String(totalFiring),  warn: totalFiring > 0 },
+            { label: 'Rules active',  value: String(totalActive),  warn: false },
+            { label: 'Fires 24h',     value: String(fires24h),     warn: fires24h > 0 },
+            { label: 'Rules total',   value: String(alerts.length), warn: false },
+            { label: 'Channels',      value: String(channels.length), warn: false },
           ].map((s, i) => (
-            <div key={i} className={cn('px-[18px] py-[14px]', i < 4 && 'border-r border-border')}>
+            <div
+              key={s.label}
+              className={cn(
+                'px-[18px] py-[14px] border-border',
+                i % 2 === 0 && 'border-r sm:border-r-0',
+                'sm:[&:not(:nth-child(3n))]:border-r',
+                i < 4 && 'md:border-r',
+                i < 4 && 'border-b sm:border-b md:!border-b-0',
+              )}
+            >
               <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-2">{s.label}</div>
-              <span className={cn('text-[24px] font-medium leading-none tracking-[-0.6px]', s.warn ? 'text-accent' : 'text-text')}>
+              <span className={cn('text-[22px] sm:text-[24px] font-medium leading-none tracking-[-0.6px] tabular-nums', s.warn ? 'text-accent' : 'text-text')}>
                 {s.value}
               </span>
             </div>
@@ -302,15 +450,96 @@ export function AlertsClient() {
         </div>
       </div>
 
-      <div className="flex-1 overflow-auto">
+      {/* Info banner with docs link */}
+      <div className="px-[22px] py-[12px] bg-bg-muted border-b border-border flex items-center gap-2 font-mono text-[11px] text-text-muted flex-wrap">
+        <Bell className="h-3.5 w-3.5 shrink-0" />
+        <span>
+          Threshold-based rules on cost, error rate, and p95 latency. Evaluated every ~5 minutes.
+        </span>
+        <Link
+          href="/docs/features/alerts"
+          className="text-text hover:opacity-80 transition-opacity ml-auto"
+        >
+          How alerts work →
+        </Link>
+      </div>
+
+      {/* Search + status filter + export */}
+      <div className="px-[22px] py-[10px] border-b border-border flex items-center gap-2 flex-wrap">
+        <div className="relative max-w-md flex-1 min-w-[180px]">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-text-faint" />
+          <input
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') {
+                setSearchInput('')
+                updateQuery({ q: null })
+              }
+            }}
+            placeholder="Search by name…"
+            className="w-full pl-8 pr-3 py-1.5 font-mono text-[12px] bg-bg-elev border border-border rounded-[6px] text-text placeholder:text-text-faint focus:outline-none focus:border-accent"
+          />
+        </div>
+        <div className="flex items-center gap-1 flex-wrap">
+          {([
+            { v: 'all',     l: `All ${alerts.length}` },
+            { v: 'firing',  l: `firing ${totalFiring}` },
+            { v: 'active',  l: `active ${totalActive}` },
+            { v: 'paused',  l: `paused ${totalPaused}` },
+          ] as { v: StatusFilter; l: string }[]).map(({ v, l }) => (
+            <button
+              key={v}
+              type="button"
+              onClick={() => updateQuery({ status: v === 'all' ? null : v })}
+              className={cn(
+                'font-mono text-[11px] px-[9px] py-[3px] rounded-[4px] border transition-colors',
+                statusFilter === v
+                  ? 'border-border-strong bg-bg-elev text-text'
+                  : 'border-border text-text-muted hover:text-text',
+              )}
+            >
+              {l}
+            </button>
+          ))}
+        </div>
+        <span className="flex-1" />
+        <div ref={exportRef} className="relative">
+          <button
+            type="button"
+            onClick={() => setExportOpen((v) => !v)}
+            disabled={alerts.length === 0}
+            className="font-mono text-[11px] text-text-muted hover:text-text border border-border rounded px-2.5 py-1 transition-colors disabled:opacity-40"
+          >
+            Export ▾
+          </button>
+          {exportOpen && (
+            <div className="absolute right-0 top-full mt-1 z-20 bg-bg-elev border border-border rounded-md shadow-lg py-1 min-w-[110px]">
+              <button
+                type="button"
+                onClick={() => { setExportOpen(false); exportCsv() }}
+                className="block w-full px-3 py-1.5 text-left font-mono text-[11px] uppercase tracking-[0.04em] text-text-muted hover:text-text hover:bg-bg transition-colors"
+              >CSV</button>
+              <button
+                type="button"
+                onClick={() => { setExportOpen(false); exportJson() }}
+                className="block w-full px-3 py-1.5 text-left font-mono text-[11px] uppercase tracking-[0.04em] text-text-muted hover:text-text hover:bg-bg transition-colors"
+              >JSON</button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div>
         {mounted && alertsQuery.data === undefined ? (
           <div className="p-6 space-y-2">
             {[1, 2, 3].map((i) => <div key={i} className="h-14 bg-bg-elev rounded animate-pulse" />)}
           </div>
         ) : alerts.length === 0 && channels.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full gap-3 text-text-muted">
+          <div className="flex flex-col items-center justify-center h-64 gap-3 text-text-muted">
+            <Bell className="h-10 w-10 text-text-faint" />
             <p className="text-[13px]">No alert rules yet.</p>
-            <p className="font-mono text-[12px]">Create an alert to get notified about budget, error rate, or latency issues.</p>
+            <p className="font-mono text-[12px] text-center max-w-md">Create an alert to get notified about budget, error rate, or latency issues.</p>
             <PermissionGate need="edit">
               <button
                 type="button"
@@ -320,6 +549,23 @@ export function AlertsClient() {
                 + New alert
               </button>
             </PermissionGate>
+            <Link
+              href="/docs/features/alerts"
+              className="font-mono text-[11.5px] mt-1 px-2.5 py-1 rounded border border-border text-text-muted hover:text-text hover:border-border-strong transition-colors"
+            >
+              How alerts work →
+            </Link>
+          </div>
+        ) : filteredAlerts.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-40 gap-3 text-text-muted">
+            <p className="font-mono text-[12.5px]">No alerts match the current filters.</p>
+            <button
+              type="button"
+              onClick={() => { setSearchInput(''); updateQuery({ q: null, status: null }) }}
+              className="font-mono text-[11px] text-text underline underline-offset-2 hover:no-underline"
+            >
+              Clear filters
+            </button>
           </div>
         ) : (
           <>
