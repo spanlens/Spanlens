@@ -8,9 +8,11 @@
 // trade-offs explicit:
 //
 //   • LIVE_REFETCH_MS_ACTIVE  — page is the user's current focus (`/requests`,
-//                                 `/dashboard` overview). Tight refresh so new
-//                                 traffic shows up within ~5 seconds without
-//                                 making the user reach for F5.
+//                                 `/dashboard` overview). Tight enough that
+//                                 new traffic shows up within ~30 seconds
+//                                 without the user reaching for F5, loose
+//                                 enough to keep ClickHouse query budget
+//                                 sane for a tab left open all day.
 //   • LIVE_REFETCH_MS_SECONDARY — pages that don't drive the immediate "is
 //                                  it working?" question (`/anomalies`,
 //                                  `/security`). 30s is enough; tighter
@@ -32,7 +34,7 @@
 // No extra config needed.
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** ~30 seconds — primary dashboards (`/dashboard`, `/requests`). */
+/** 30 seconds — primary dashboards (`/dashboard`, `/requests`). */
 export const LIVE_REFETCH_MS_ACTIVE = 30_000
 
 /** 30 seconds — secondary live pages (`/anomalies`, `/security`). */
