@@ -1,8 +1,10 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { Beaker, Play, Trash2, Plus, Loader2, AlertTriangle } from 'lucide-react'
-import { Topbar } from '@/components/layout/topbar'
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import Link from 'next/link'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { Beaker, Play, Trash2, Plus, Loader2, AlertTriangle, Search } from 'lucide-react'
+import { Topbar, LiveDot } from '@/components/layout/topbar'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { cn, formatDateTime } from '@/lib/utils'
 import {
@@ -38,6 +40,14 @@ const JUDGE_MODELS_FALLBACK = {
   gemini: ['gemini-2.5-flash-lite'],
 } as const
 
+// Hydration-safe mounted gate, same pattern as the other overhauled pages.
+const subscribeNoop = () => () => {}
+const getTrue = () => true
+const getFalse = () => false
+function useMounted(): boolean {
+  return useSyncExternalStore(subscribeNoop, getTrue, getFalse)
+}
+
 function fmtUsd(n: number | null | undefined): string {
   if (n == null) return '—'
   return n >= 0.01 ? `$${n.toFixed(3)}` : `$${n.toFixed(5)}`
@@ -46,6 +56,16 @@ function fmtUsd(n: number | null | undefined): string {
 function fmtScore(n: number | null | undefined): string {
   if (n == null) return '—'
   return `${(n * 100).toFixed(1)}`
+}
+
+// Color tier for score 0..1 — matches the QualityBadge thresholds on the
+// prompts page so the visual language is consistent across the dashboard.
+// >= 0.80 good, >= 0.60 warn, otherwise bad. Null returns the muted token.
+function scoreColor(score: number | null | undefined): string {
+  if (score == null) return 'text-text-faint'
+  if (score >= 0.8) return 'text-good'
+  if (score >= 0.6) return 'text-warn'
+  return 'text-bad'
 }
 
 function StatusBadge({ status }: { status: EvalRunStatus }) {
@@ -621,7 +641,7 @@ function RunDetailPanel({ runId, onClose }: { runId: string; onClose: () => void
 
   if (!run.data) {
     return (
-      <div className="border-l border-border w-[400px] shrink-0 flex items-center justify-center text-text-faint">
+      <div className="fixed inset-0 z-30 bg-bg md:static md:inset-auto md:z-auto border-l border-border md:w-[400px] shrink-0 flex items-center justify-center text-text-faint">
         <Loader2 className="h-4 w-4 animate-spin" />
       </div>
     )
@@ -630,7 +650,7 @@ function RunDetailPanel({ runId, onClose }: { runId: string; onClose: () => void
   const r = run.data
 
   return (
-    <div className="border-l border-border w-[420px] shrink-0 overflow-y-auto">
+    <div className="fixed inset-0 z-30 bg-bg md:static md:inset-auto md:z-auto border-l border-border md:w-[420px] shrink-0 overflow-y-auto">
       <div className="sticky top-0 bg-bg-elev border-b border-border px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <StatusBadge status={r.status} />
@@ -646,7 +666,7 @@ function RunDetailPanel({ runId, onClose }: { runId: string; onClose: () => void
         <div className="grid grid-cols-3 gap-2">
           <div className="bg-bg-muted border border-border rounded-[5px] px-3 py-2">
             <p className="font-mono text-[9.5px] uppercase tracking-[0.06em] text-text-faint">Avg score</p>
-            <p className="font-mono text-[16px] text-text font-medium">{fmtScore(r.avg_score)}</p>
+            <p className={cn('font-mono text-[16px] font-medium tabular-nums', scoreColor(r.avg_score))}>{fmtScore(r.avg_score)}</p>
           </div>
           <div className="bg-bg-muted border border-border rounded-[5px] px-3 py-2">
             <p className="font-mono text-[9.5px] uppercase tracking-[0.06em] text-text-faint">Samples</p>
@@ -796,7 +816,7 @@ function EvaluatorRow({
             {evaluator.prompt_name} · judge: {evaluator.config.judge_model}
           </p>
         </div>
-        <div className="font-mono text-[12px] text-text-muted w-[100px] text-right">
+        <div className={cn('font-mono text-[12px] w-[100px] text-right tabular-nums', latestCompleted ? scoreColor(latestCompleted.avg_score) : 'text-text-faint')}>
           {latestCompleted ? fmtScore(latestCompleted.avg_score) : '—'}
         </div>
         <div className="font-mono text-[11px] text-text-faint w-[80px] text-right">
@@ -844,7 +864,7 @@ function EvaluatorRow({
                   <span className="font-mono text-[11.5px] text-text-faint">
                     {r.scored_count}/{r.sample_size}
                   </span>
-                  <span className="font-mono text-[12px] text-text ml-auto">
+                  <span className={cn('font-mono text-[12px] ml-auto tabular-nums', scoreColor(r.avg_score))}>
                     {fmtScore(r.avg_score)}
                   </span>
                 </button>
@@ -964,37 +984,154 @@ function CorrelationRow({ evaluators }: { evaluators: Evaluator[] }) {
 }
 
 export function EvalsClient() {
+  const router = useRouter()
+  const sp = useSearchParams()
+  const mounted = useMounted()
+
   const evaluators = useEvaluators()
   const [newOpen, setNewOpen] = useState(false)
   const [runDialog, setRunDialog] = useState<Evaluator | null>(null)
-  const [selectedRunId, setSelectedRunId] = useState<string | null>(null)
 
-  const list = evaluators.data ?? []
+  // URL-backed state — run pane survives reload, search is shareable.
+  const selectedRunId = sp.get('run')
+  const search = sp.get('q') ?? ''
+  function updateQuery(updates: Record<string, string | null>) {
+    const next = new URLSearchParams(sp.toString())
+    Object.entries(updates).forEach(([k, v]) => {
+      if (v == null || v === '') next.delete(k)
+      else next.set(k, v)
+    })
+    router.replace(`/evals?${next.toString()}`)
+  }
+  function setSelectedRunId(id: string | null) { updateQuery({ run: id }) }
+  function clearRun() { updateQuery({ run: null }) }
+
+  // Search input — debounced 300ms to URL so each keystroke doesn't push.
+  const [searchInput, setSearchInput] = useState(search)
+  useEffect(() => {
+    const id = setTimeout(() => {
+      if (searchInput !== search) updateQuery({ q: searchInput.trim() || null })
+    }, 300)
+    return () => clearTimeout(id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchInput])
+
+  const list = useMemo(() => evaluators.data ?? [], [evaluators.data])
+  const filtered = useMemo(() => {
+    if (!search) return list
+    const needle = search.toLowerCase()
+    return list.filter((ev) =>
+      ev.name.toLowerCase().includes(needle) ||
+      ev.prompt_name.toLowerCase().includes(needle),
+    )
+  }, [list, search])
+
+  // Stat-strip values — only metadata that's derivable from the evaluator
+  // list itself. Per-evaluator runs / cost / score live in the row's own
+  // useEvalRuns query; pulling them up here would require an n+1 round
+  // trip just for the strip, so we skip.
+  const distinctPrompts = new Set(list.map((ev) => ev.prompt_name)).size
+  const distinctJudges  = new Set(list.map((ev) => ev.config.judge_model)).size
+  const archivedCount   = list.filter((ev) => ev.archived_at != null).length
 
   return (
-    <div className="flex flex-col h-full">
-      <Topbar
-        crumbs={[{ label: 'Workspace', href: '/dashboard' }, { label: 'Evals' }]}
-        right={
-          <button
-            type="button"
-            onClick={() => setNewOpen(true)}
-            className="font-mono text-[11.5px] px-3 py-[6px] rounded-[5px] bg-text text-bg font-medium hover:opacity-90 flex items-center gap-1.5"
-          >
-            <Plus className="h-3.5 w-3.5" />
-            New evaluator
-          </button>
-        }
-      />
+    <div className="-mx-4 -my-4 md:-mx-8 md:-my-7 flex flex-col min-h-screen">
+      <div className="sticky top-0 z-20 bg-bg">
+        <Topbar
+          crumbs={[{ label: 'Evals' }]}
+          right={
+            <div className="flex items-center gap-3">
+              <LiveDot refetching={evaluators.isFetching} />
+              <button
+                type="button"
+                onClick={() => void evaluators.refetch()}
+                disabled={evaluators.isFetching}
+                title="Refresh now"
+                className="font-mono text-[11px] text-text-muted hover:text-text border border-border rounded px-2 py-1 transition-colors disabled:opacity-40"
+              >
+                <span className={cn('inline-block', evaluators.isFetching && 'animate-spin')}>↻</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setNewOpen(true)}
+                className="font-mono text-[11.5px] px-3 py-[6px] rounded-[5px] bg-text text-bg font-medium hover:opacity-90 flex items-center gap-1.5"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                New evaluator
+              </button>
+            </div>
+          }
+        />
+        <h1 className="sr-only">Evals</h1>
+      </div>
 
-      <div className="flex flex-1 min-h-0">
-        <div className="flex-1 overflow-y-auto">
-          {/* Info banner */}
-          <div className="px-[22px] py-[12px] bg-bg-muted border-b border-border flex items-center gap-2 font-mono text-[11px] text-text-muted">
-            <Beaker className="h-3.5 w-3.5" />
+      {/* Stat strip — counts that are derivable from the evaluator list
+          itself. Per-evaluator run / cost / score totals stay inside each
+          row to avoid an n+1 fetch just to populate the strip. */}
+      <div className="overflow-x-auto shrink-0 border-b border-border">
+        <div className="grid grid-cols-4 min-w-[480px]">
+          {[
+            { label: 'Evaluators',       value: String(list.length) },
+            { label: 'Distinct prompts', value: String(distinctPrompts) },
+            { label: 'Distinct judges',  value: String(distinctJudges) },
+            { label: 'Archived',         value: String(archivedCount) },
+          ].map((s, i) => (
+            <div key={s.label} className={cn('px-[18px] py-[14px]', i < 3 && 'border-r border-border')}>
+              <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-2">{s.label}</div>
+              <span className="text-[24px] font-medium leading-none tracking-[-0.6px] tabular-nums text-text">
+                {mounted ? s.value : ' '}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="flex flex-1 min-h-0 flex-col md:flex-row">
+        <div className="flex-1 min-w-0">
+          {/* Info banner with docs link */}
+          <div className="px-[22px] py-[12px] bg-bg-muted border-b border-border flex items-center gap-2 font-mono text-[11px] text-text-muted flex-wrap">
+            <Beaker className="h-3.5 w-3.5 shrink-0" />
             <span>
               LLM-as-judge scores production responses against a criterion you define.
               Cost is billed to your provider key.
+            </span>
+            <Link
+              href="/docs/features/evals"
+              className="text-text hover:opacity-80 transition-opacity ml-auto"
+            >
+              How evals work →
+            </Link>
+          </div>
+
+          {/* Search bar */}
+          <div className="px-[22px] py-[10px] border-b border-border flex items-center gap-2">
+            <div className="relative max-w-md flex-1">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-text-faint" />
+              <input
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') {
+                    setSearchInput('')
+                    updateQuery({ q: null })
+                  }
+                }}
+                placeholder="Search evaluator or prompt name…"
+                className="w-full pl-8 pr-3 py-1.5 font-mono text-[12px] bg-bg-elev border border-border rounded-[6px] text-text placeholder:text-text-faint focus:outline-none focus:border-accent"
+              />
+            </div>
+            {search && (
+              <button
+                type="button"
+                onClick={() => { setSearchInput(''); updateQuery({ q: null }) }}
+                className="font-mono text-[11px] text-text-faint hover:text-text transition-colors"
+              >
+                Clear
+              </button>
+            )}
+            <span className="flex-1" />
+            <span className="font-mono text-[11px] text-text-faint">
+              {mounted ? (filtered.length === list.length ? `${list.length} evaluators` : `${filtered.length} of ${list.length}`) : ' '}
             </span>
           </div>
 
@@ -1017,6 +1154,23 @@ export function EvalsClient() {
                 <Plus className="h-3.5 w-3.5" />
                 Create your first evaluator
               </button>
+              <Link
+                href="/docs/features/evals"
+                className="font-mono text-[11.5px] mt-1 px-2.5 py-1 rounded border border-border text-text-muted hover:text-text hover:border-border-strong transition-colors"
+              >
+                How evals work →
+              </Link>
+            </div>
+          ) : filtered.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-40 gap-3 text-text-muted">
+              <p className="font-mono text-[12.5px]">No evaluators match the current search.</p>
+              <button
+                type="button"
+                onClick={() => { setSearchInput(''); updateQuery({ q: null }) }}
+                className="font-mono text-[11px] text-text underline underline-offset-2 hover:no-underline"
+              >
+                Clear search
+              </button>
             </div>
           ) : (
             <>
@@ -1027,7 +1181,7 @@ export function EvalsClient() {
                 <span className="w-[80px] text-right">Runs</span>
                 <span className="w-[150px]" />
               </div>
-              {list.map((ev) => (
+              {filtered.map((ev) => (
                 <EvaluatorRow
                   key={ev.id}
                   evaluator={ev}
@@ -1040,7 +1194,7 @@ export function EvalsClient() {
         </div>
 
         {selectedRunId && (
-          <RunDetailPanel runId={selectedRunId} onClose={() => setSelectedRunId(null)} />
+          <RunDetailPanel runId={selectedRunId} onClose={clearRun} />
         )}
       </div>
 
