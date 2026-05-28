@@ -113,9 +113,11 @@ export function SpendForecastCard({ data }: SpendForecastCardProps) {
         </div>
       </div>
 
-      {/* Chart */}
+      {/* Chart — margin.left at 0 so the `$` prefix on Y-axis ticks isn't
+          clipped by the chart's clipping box. Earlier `left: -16` shaved off
+          the dollar sign and the values read as dimensionless. */}
       <ResponsiveContainer width="100%" height={200}>
-        <ComposedChart data={formatted} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
+        <ComposedChart data={formatted} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke={C.border} vertical={false} />
           <XAxis
             dataKey="label"
@@ -128,7 +130,7 @@ export function SpendForecastCard({ data }: SpendForecastCardProps) {
             tick={{ fontSize: 10, fontFamily: 'monospace', fill: C.faint }}
             tickLine={false}
             axisLine={false}
-            width={46}
+            width={56}
             tickFormatter={(v: number) => `$${v.toFixed(2)}`}
           />
           <Tooltip
