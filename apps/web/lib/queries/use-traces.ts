@@ -17,6 +17,9 @@ export interface TracesFilters {
   status?: TraceStatus | 'all'
   from?: string
   to?: string
+  // Case-insensitive substring search over trace name + id. Server handles
+  // the matching so users get hits from any page, not just the first 50.
+  q?: string
 }
 
 export const tracesQueryKey = (filters: TracesFilters) => ['traces', filters] as const
@@ -35,6 +38,7 @@ export function useTraces(
       if (filters.status && filters.status !== 'all') params.set('status', filters.status)
       if (filters.from) params.set('from', filters.from)
       if (filters.to) params.set('to', filters.to)
+      if (filters.q && filters.q.trim()) params.set('q', filters.q.trim())
 
       const res = await apiGet<ApiEnvelope<TraceRow[]>>(`/api/v1/traces?${params}`)
       return {
