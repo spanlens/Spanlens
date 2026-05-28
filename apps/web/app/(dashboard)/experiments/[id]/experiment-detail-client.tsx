@@ -26,6 +26,14 @@ function fmtMs(n: number | null | undefined): string {
   return `${Math.round(n)}ms`
 }
 
+// Score color tier — matches evals / prompts thresholds.
+function scoreColor(score: number | null | undefined): string {
+  if (score == null) return 'text-text-faint'
+  if (score >= 0.8) return 'text-good'
+  if (score >= 0.6) return 'text-warn'
+  return 'text-bad'
+}
+
 // Lightweight word-level diff highlighter for two strings.
 function diffHighlight(a: string, b: string): { aTokens: Array<{ t: string; cls: string }>; bTokens: Array<{ t: string; cls: string }> } {
   const aw = a.split(/(\s+)/)
@@ -184,8 +192,10 @@ export function ExperimentDetailClient({ experimentId }: { experimentId: string 
 
   if (exp.isLoading || !exp.data) {
     return (
-      <div className="flex flex-col h-full">
-        <Topbar crumbs={[{ label: 'Workspace', href: '/dashboard' }, { label: 'Experiments', href: '/experiments' }, { label: '...' }]} />
+      <div className="-mx-4 -my-4 md:-mx-8 md:-my-7 flex flex-col min-h-screen">
+        <div className="sticky top-0 z-20 bg-bg">
+          <Topbar crumbs={[{ label: 'Experiments', href: '/experiments' }, { label: '...' }]} />
+        </div>
         <div className="flex items-center justify-center h-64 text-text-faint">
           <Loader2 className="h-4 w-4 animate-spin" />
         </div>
@@ -199,19 +209,20 @@ export function ExperimentDetailClient({ experimentId }: { experimentId: string 
     : null
 
   return (
-    <div className="flex flex-col h-full">
-      <Topbar
-        crumbs={[
-          { label: 'Workspace', href: '/dashboard' },
-          { label: 'Experiments', href: '/experiments' },
-          { label: e.name },
-        ]}
-      />
+    <div className="-mx-4 -my-4 md:-mx-8 md:-my-7 flex flex-col min-h-screen">
+      <div className="sticky top-0 z-20 bg-bg">
+        <Topbar
+          crumbs={[
+            { label: 'Experiments', href: '/experiments' },
+            { label: e.name },
+          ]}
+        />
+      </div>
 
-      <div className="flex-1 overflow-y-auto">
-        {/* Header */}
+      <div>
+        {/* Header — experiment.name promoted to real h1. */}
         <div className="px-[22px] py-[14px] border-b border-border">
-          <p className="font-mono text-[15px] text-text font-medium">{e.name}</p>
+          <h1 className="font-mono text-[15px] text-text font-medium break-all">{e.name}</h1>
           <p className="font-mono text-[11.5px] text-text-faint mt-0.5">
             {e.prompt_name} · {e.run_model}
           </p>
@@ -235,14 +246,14 @@ export function ExperimentDetailClient({ experimentId }: { experimentId: string 
 
         {/* KPIs */}
         {e.status === 'completed' && (
-          <div className="grid grid-cols-4 gap-3 px-[22px] py-[14px] border-b border-border">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 px-[22px] py-[14px] border-b border-border">
             <div className="bg-bg-muted border border-border rounded-[5px] px-3 py-2.5">
               <p className="font-mono text-[9.5px] uppercase tracking-[0.06em] text-text-faint mb-1">Avg score A</p>
-              <p className="font-mono text-[18px] text-text font-medium">{fmtScore(e.avg_score_a)}</p>
+              <p className={cn('font-mono text-[18px] font-medium tabular-nums', scoreColor(e.avg_score_a))}>{fmtScore(e.avg_score_a)}</p>
             </div>
             <div className="bg-bg-muted border border-border rounded-[5px] px-3 py-2.5">
               <p className="font-mono text-[9.5px] uppercase tracking-[0.06em] text-text-faint mb-1">Avg score B</p>
-              <p className="font-mono text-[18px] text-text font-medium">{fmtScore(e.avg_score_b)}</p>
+              <p className={cn('font-mono text-[18px] font-medium tabular-nums', scoreColor(e.avg_score_b))}>{fmtScore(e.avg_score_b)}</p>
             </div>
             <div className="bg-bg-muted border border-border rounded-[5px] px-3 py-2.5">
               <p className="font-mono text-[9.5px] uppercase tracking-[0.06em] text-text-faint mb-1">Δ (B − A)</p>
