@@ -45,7 +45,15 @@ type ViewMode = 'all' | 'active'
 
 const DATE_RANGE_HOURS: Record<DateRange, number> = { '24h': 24, '7d': 24 * 7, '30d': 24 * 30 }
 
-const GRID = '20px 1.5fr 0.55fr 0.55fr 0.8fr 0.8fr 0.8fr 0.7fr 0.5fr 0.5fr'
+// Responsive grid: mobile keeps just the essentials (dot, name, active,
+// versions, calls, A/B) so the row fits 360-420px viewports without a
+// horizontal scrollbar. sm+ restores the full 10-col layout with avg
+// cost / latency / quality / updated.
+// Tailwind needs these literals in source for JIT to pick them up — do
+// not refactor into a runtime-built string.
+const GRID_CLASS =
+  'grid-cols-[16px_minmax(0,1fr)_36px_44px_56px_42px] ' +
+  'sm:grid-cols-[20px_minmax(0,1.5fr)_0.55fr_0.55fr_0.8fr_0.8fr_0.8fr_0.7fr_0.5fr_0.5fr]'
 
 export function PromptsClient() {
   const router = useRouter()
@@ -507,22 +515,25 @@ export function PromptsClient() {
             )}
           </div>
         ) : (
-          <div className="min-w-[700px]">
-            {/* Column headers, sticky so they stay visible on vertical scroll */}
+          <div>
+            {/* Column headers, sticky so they stay visible on vertical scroll.
+                Cols hidden on mobile: avg cost, avg lat, quality, updated. */}
             <div
-              className="grid sticky top-[52px] z-10 font-mono text-[10px] text-text-faint uppercase tracking-[0.05em] px-[22px] py-[9px] bg-bg-muted border-b border-border"
-              style={{ gridTemplateColumns: GRID }}
+              className={cn(
+                'grid sticky top-[52px] z-10 font-mono text-[10px] text-text-faint uppercase tracking-[0.05em] px-[16px] sm:px-[22px] py-[9px] bg-bg-muted border-b border-border gap-2 sm:gap-0',
+                GRID_CLASS,
+              )}
             >
               <span />
               <span>Prompt</span>
               <span>Active</span>
               <span>Versions</span>
               <span>Calls · {dateRange}</span>
-              <span>Avg cost</span>
-              <span>Avg lat</span>
-              <span>Quality · {dateRange}</span>
+              <span className="hidden sm:block">Avg cost</span>
+              <span className="hidden sm:block">Avg lat</span>
+              <span className="hidden sm:block">Quality · {dateRange}</span>
               <span>A/B</span>
-              <span className="text-right">Updated</span>
+              <span className="hidden sm:block text-right">Updated</span>
             </div>
             {filtered.map((p) => (
             <div
@@ -537,9 +548,9 @@ export function PromptsClient() {
                 }
               }}
               className={cn(
-                'w-full grid items-center px-[22px] py-[11px] border-b border-border font-mono text-[12.5px] text-left hover:bg-bg-elev transition-colors group cursor-pointer focus:outline-none focus:bg-bg-elev',
+                'w-full grid items-center px-[16px] sm:px-[22px] py-[11px] border-b border-border font-mono text-[12.5px] text-left hover:bg-bg-elev transition-colors group cursor-pointer focus:outline-none focus:bg-bg-elev gap-2 sm:gap-0',
+                GRID_CLASS,
               )}
-              style={{ gridTemplateColumns: GRID }}
             >
               {/* Status dot */}
               <span>
@@ -575,18 +586,20 @@ export function PromptsClient() {
                 {p.stats?.calls ? p.stats.calls.toLocaleString() : '—'}
               </span>
 
-              {/* Avg cost */}
-              <span className={cn(p.stats?.avgCostUsd != null ? 'text-text' : 'text-text-faint')}>
+              {/* Avg cost — hidden on mobile */}
+              <span className={cn('hidden sm:block', p.stats?.avgCostUsd != null ? 'text-text' : 'text-text-faint')}>
                 {p.stats?.avgCostUsd != null ? fmtUsd(p.stats.avgCostUsd) : '—'}
               </span>
 
-              {/* Avg latency */}
-              <span className={cn(p.stats?.avgLatencyMs != null ? 'text-text' : 'text-text-faint')}>
+              {/* Avg latency — hidden on mobile */}
+              <span className={cn('hidden sm:block', p.stats?.avgLatencyMs != null ? 'text-text' : 'text-text-faint')}>
                 {p.stats?.avgLatencyMs != null ? fmtMs(p.stats.avgLatencyMs) : '—'}
               </span>
 
-              {/* Quality score */}
-              <QualityBadge score={p.qualityScore} />
+              {/* Quality score — hidden on mobile */}
+              <span className="hidden sm:block">
+                <QualityBadge score={p.qualityScore} />
+              </span>
 
               {/* A/B badge — pulses while a test is running so the eye lands
                   on the active one in a list of many prompts. */}
@@ -601,8 +614,8 @@ export function PromptsClient() {
                 )}
               </span>
 
-              {/* Updated date */}
-              <span className="text-text-faint text-right text-[11px]">
+              {/* Updated date — hidden on mobile */}
+              <span className="hidden sm:block text-text-faint text-right text-[11px]">
                 {formatDate(p.created_at)}
               </span>
             </div>
