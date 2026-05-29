@@ -29,7 +29,10 @@ file_size_limit = "50MiB"
 [auth]
 enabled = true
 site_url = "http://127.0.0.1:3000"
-additional_redirect_urls = ["https://127.0.0.1:3000"]
+# Wildcards so `redirectTo` (OAuth + password recovery via /auth/callback?next=...)
+# is honored instead of falling back to site_url. Both hosts because the dev
+# server is reachable as 127.0.0.1 and localhost.
+additional_redirect_urls = ["http://127.0.0.1:3000/**", "http://localhost:3000/**"]
 jwt_expiry = 3600
 enable_refresh_token_rotation = true
 refresh_token_reuse_interval = 10
