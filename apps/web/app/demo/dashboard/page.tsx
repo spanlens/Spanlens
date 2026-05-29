@@ -401,7 +401,7 @@ export default function DemoDashboardPage() {
             <span className="text-[14px] font-medium">Recent activity</span>
             <span className="flex-1" />
             <Link
-              href="/demo/dashboard"
+              href="/demo/settings?tab=audit-log"
               className="font-mono text-[10.5px] text-text-muted tracking-[0.03em] hover:text-text transition-colors"
             >
               Audit log →
