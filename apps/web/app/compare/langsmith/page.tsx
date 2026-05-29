@@ -10,7 +10,7 @@ const whySpanlens: ComparePoint[] = [
   {
     title: 'Framework-agnostic by design',
     body:
-      "Spanlens is a proxy. Any HTTP client, any framework, any language sees instant traces. LangSmith is best when you're using LangChain or LangGraph; without them, you fall back to manual SDK calls and miss most of the product surface.",
+      "Spanlens is a proxy. Any HTTP client, any framework, any language sees instant traces. LangSmith markets itself as framework-agnostic too and supports non-LangChain code via SDK wrappers, but its deepest integration (and features like the native graph view) still assume LangChain or LangGraph.",
   },
   {
     title: 'No LangChain lock-in',
@@ -30,7 +30,7 @@ const whySpanlens: ComparePoint[] = [
   {
     title: 'Prompt A/B with statistical testing',
     body:
-      'Spanlens runs prompt variants and reports Welch t-test results on latency, cost, and judge scores. LangSmith has experiments but the statistical layer is something you assemble.',
+      'Spanlens runs prompt variants and reports Welch t-test results on latency and cost, plus a z-test on error rate. LangSmith has experiments but the statistical layer is something you assemble.',
   },
   {
     title: 'Model savings recommender',
@@ -158,7 +158,7 @@ export default function VsLangSmithPage() {
   return (
     <CompareTemplate
       competitor="LangSmith"
-      tagline="Framework-agnostic instead of LangChain-coupled. MIT and self-hostable today, not a sales call away."
+      tagline="A 1-line proxy that works with any stack, no SDK wrapping required. MIT and self-hostable today, not a sales call away."
       tldr="LangSmith is the right call if you're committed to LangChain or LangGraph. The integration depth is unmatched. Spanlens is the right call if you want a tool that works with anything, installs with a 1-line baseURL swap, ships fully under MIT, and bundles Prompt A/B with statistical testing."
       whySpanlens={whySpanlens}
       whyCompetitor={whyCompetitor}

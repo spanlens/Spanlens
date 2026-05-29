@@ -27,7 +27,7 @@ const ENTRIES: CompareEntry[] = [
     slug: 'helicone',
     competitor: 'Helicone',
     blurb:
-      'The closest architectural match. Both are proxy-based. We add Critical Path agent tracing, Prompt A/B with Welch t-test, and tighter logging durability with ClickHouse fallback.',
+      'The closest architectural match. Both are proxy-based, though Helicone entered maintenance mode after its 2026 Mintlify acquisition. We add Critical Path agent tracing, Prompt A/B with Welch t-test, and tighter logging durability with ClickHouse fallback.',
     tag: 'Proxy-based',
   },
   {
@@ -48,8 +48,8 @@ const ENTRIES: CompareEntry[] = [
     slug: 'arize-phoenix',
     competitor: 'Arize Phoenix',
     blurb:
-      'OSS observability from Arize. Python-first, ML-engineer-leaning. Spanlens is built for the application developer running LLM calls in production.',
-    tag: 'OSS · Python-first',
+      'Source-available (ELv2) observability from Arize. Python-first, ML-engineer-leaning. Spanlens is built for the application developer running LLM calls in production.',
+    tag: 'Source-available · Python-first',
   },
 ]
 

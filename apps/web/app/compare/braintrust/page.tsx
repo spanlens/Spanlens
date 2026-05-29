@@ -8,14 +8,14 @@ export const metadata = {
 
 const whySpanlens: ComparePoint[] = [
   {
-    title: 'Observability plus eval in one tool, not eval-only',
+    title: 'A proxy-first platform, not an eval-first SDK',
     body:
-      'Braintrust is excellent at evals but expects you to bring observability from somewhere else. Spanlens combines per-request logging, cost tracking, agent tracing, anomaly detection, and eval into a single product.',
+      'Braintrust has added logging and tracing, but capture is through their SDK and the product is built around evals. Spanlens is proxy-first (swap your baseURL) and bundles per-request logging, cost tracking, agent tracing, anomaly detection, and security scanning alongside eval in one platform.',
   },
   {
     title: 'Fully MIT and self-hostable',
     body:
-      "Braintrust is closed-source SaaS only. Spanlens ships under MIT with a docker-compose self-host. That matters when prompts contain customer data you can't send to a third party.",
+      "Braintrust's platform is closed-source SaaS (its SDKs and the autoevals library are open, but the backend you would run is not). Spanlens ships entirely under MIT with a docker-compose self-host. That matters when prompts contain customer data you can't send to a third party.",
   },
   {
     title: 'Proxy-based capture, no code changes',
@@ -66,8 +66,8 @@ const groups: CompareGroup[] = [
   {
     title: 'Scope',
     rows: [
-      { feature: 'Per-request observability', spanlens: 'yes', competitor: 'partial' },
-      { feature: 'Agent tracing (multi-step waterfall)', spanlens: 'yes', competitor: 'partial' },
+      { feature: 'Per-request observability', spanlens: 'yes', competitor: 'yes' },
+      { feature: 'Agent tracing (multi-step waterfall)', spanlens: 'yes', competitor: 'yes', note: 'Braintrust added full logging and tracing; capture is via their SDK, not a proxy.' },
       { feature: 'LLM eval framework', spanlens: 'yes', competitor: 'yes' },
       { feature: 'Cost dashboards & budgets', spanlens: 'yes', competitor: 'partial' },
       { feature: 'Security scanning (PII / keys / injection)', spanlens: 'yes', competitor: 'partial' },
@@ -131,7 +131,7 @@ const groups: CompareGroup[] = [
         feature: 'Open source (MIT)',
         spanlens: 'yes',
         competitor: 'no',
-        note: 'Braintrust is closed-source SaaS.',
+        note: "Braintrust's platform is closed-source; only its SDKs and autoevals library are open.",
       },
       { feature: 'Docker Compose self-host', spanlens: 'yes', competitor: 'no' },
       { feature: 'Managed cloud option', spanlens: 'yes', competitor: 'yes' },
