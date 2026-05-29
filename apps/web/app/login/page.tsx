@@ -195,7 +195,7 @@ export default function LoginPage() {
             <div className="mb-[14px]">
               <div className="flex justify-between mb-1.5">
                 <label htmlFor="password" className="font-mono text-[12px] text-text-muted tracking-[0.02em]">Password</label>
-                <Link href="#" className="font-mono text-[10.5px] text-accent">Forgot?</Link>
+                <Link href="/forgot-password" className="font-mono text-[10.5px] text-accent hover:opacity-80 transition-opacity">Forgot?</Link>
               </div>
               <div className="flex items-center gap-2 px-3 py-[10px] border border-border-strong rounded-[7px] bg-bg-elev">
                 <span className="font-mono text-[11px] text-text-faint">◉</span>
