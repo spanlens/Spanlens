@@ -1,9 +1,12 @@
 import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
+import { HydrationBoundary } from '@tanstack/react-query'
 import { Sidebar } from '@/components/layout/sidebar'
 import { PendingInvitationsBanner } from '@/components/layout/pending-invitations-banner'
 import { SidebarProvider } from '@/lib/sidebar-context'
 import { CommandPaletteProvider } from '@/components/command-palette'
+import { prefetchAll } from '@/lib/server/dehydrate'
+import { sidebarSpecs } from '@/lib/server/queries/sidebar'
 
 /**
  * Dashboard layout. Reads auth state from the `x-spanlens-*` headers the
@@ -21,6 +24,32 @@ import { CommandPaletteProvider } from '@/components/command-palette'
  *   • `x-spanlens-onboarded` missing = survey hasn't been completed/skipped.
  * Either case routes to /onboarding; the page handles both states (resumes
  * at the survey step if the workspace already exists).
+ *
+ * Sidebar + PendingInvitationsBanner prefetch
+ * -------------------------------------------
+ * The Sidebar (workspace switcher, role-gated nav, anomalies/alerts/
+ * recommendations badge counts) and the PendingInvitationsBanner each mount
+ * a useQuery() hook the moment the layout hydrates. Without server-side
+ * prefetch + a HydrationBoundary in scope, every dashboard page paid 6-7
+ * client-side waterfall fetches after hydration (measured: ~2-5s on cold
+ * visits, ~1-2s warm).
+ *
+ * We prefetch the seven layout-level queries here and wrap the actual layout
+ * subtree (Sidebar + main) in a HydrationBoundary so the hooks find their
+ * data in the cache immediately on mount and skip the network round-trip.
+ *
+ * Trade-off: layout SSR now blocks on `await prefetchAll(sidebarSpecs())`.
+ * In RSC, layout awaits run sequentially BEFORE the page's awaits — so the
+ * page's own prefetch starts only after layout's resolves. Total SSR =
+ * max(sidebar specs) + max(page specs). The page-specific path is
+ * unavoidably longer, but eliminating the client-side waterfall makes
+ * time-to-data shorter end-to-end.
+ *
+ * Earlier attempt (commit 906b4c2) tried to spread sidebarSpecs() into each
+ * page's prefetchAll instead. That failed because the page-level
+ * HydrationBoundary only scopes the page subtree — Sidebar lives in the
+ * layout, OUTSIDE that boundary, so the prefetched cache was never visible
+ * to the components that needed it. The boundary MUST wrap the consumers.
  */
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const h = await headers()
@@ -31,20 +60,24 @@ export default async function DashboardLayout({ children }: { children: React.Re
   if (!userId) redirect('/login')
   if (!orgId || !onboarded) redirect('/onboarding')
 
+  const sidebarState = await prefetchAll(sidebarSpecs())
+
   return (
     <CommandPaletteProvider>
       <SidebarProvider>
-        <div className="flex h-screen overflow-hidden bg-bg">
-          <Sidebar />
-          <main className="flex-1 overflow-y-auto min-w-0">
-            {/* Pending workspace invitations surface here: any dashboard
-                page renders this banner at the top, so a user who never
-                clicked the email link still sees the invite waiting for
-                them. Self-hides when there are none / after dismissal. */}
-            <PendingInvitationsBanner />
-            <div className="px-4 py-4 md:px-8 md:py-7">{children}</div>
-          </main>
-        </div>
+        <HydrationBoundary state={sidebarState}>
+          <div className="flex h-screen overflow-hidden bg-bg">
+            <Sidebar />
+            <main className="flex-1 overflow-y-auto min-w-0">
+              {/* Pending workspace invitations surface here: any dashboard
+                  page renders this banner at the top, so a user who never
+                  clicked the email link still sees the invite waiting for
+                  them. Self-hides when there are none / after dismissal. */}
+              <PendingInvitationsBanner />
+              <div className="px-4 py-4 md:px-8 md:py-7">{children}</div>
+            </main>
+          </div>
+        </HydrationBoundary>
       </SidebarProvider>
     </CommandPaletteProvider>
   )
