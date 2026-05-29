@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { Copy, Check, X, Terminal } from 'lucide-react'
 
@@ -35,11 +35,19 @@ function loadApiKey(): string | null {
 }
 
 export function WelcomeBanner() {
-  // Lazy init reads sessionStorage on client mount (SSR-safe via the typeof
-  // guard). After mount, `dismiss()` clears the value via setState.
-  const [apiKey, setApiKey] = useState<string | null>(loadApiKey)
+  // Start null so the first client render matches the server (sessionStorage
+  // is browser-only; the server always renders nothing here). Reading it
+  // during render / via lazy useState init would diverge from SSR and trigger
+  // a hydration mismatch — see gotcha #22. We read it after mount instead;
+  // the banner then appears on the next paint. `dismiss()` clears it.
+  const [apiKey, setApiKey] = useState<string | null>(null)
   const [copiedKey, setCopiedKey] = useState(false)
   const [copiedSnippet, setCopiedSnippet] = useState(false)
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setApiKey(loadApiKey())
+  }, [])
 
   if (!apiKey) return null
 
