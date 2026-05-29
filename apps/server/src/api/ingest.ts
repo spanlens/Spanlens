@@ -1,6 +1,8 @@
 import { Hono } from 'hono'
 import { authApiKey, type ApiKeyContext } from '../middleware/authApiKey.js'
 import { supabaseAdmin } from '../lib/db.js'
+import { fireAndForget } from '../lib/wait-until.js'
+import { emitWebhookEvent } from '../lib/webhook-emit.js'
 
 /**
  * SDK용 ingestion 라우터 — authApiKey 미들웨어로 SHA-256 해시 API 키 검증.
@@ -150,6 +152,24 @@ ingestRouter.patch('/traces/:id', async (c) => {
 
   if (error || !data) {
     return c.json({ error: 'Trace not found or access denied' }, 404)
+  }
+
+  // Outbound webhook: trace.completed. fireAndForget so the SDK's PATCH
+  // response isn't blocked on customer-endpoint latency, and the promise is
+  // drained on Vercel (gotcha #8). Best-effort — no-op for orgs without a
+  // subscribed webhook.
+  if (data.status === 'completed') {
+    fireAndForget(
+      c,
+      emitWebhookEvent(organizationId, 'trace.completed', {
+        trace: {
+          id: data.id,
+          status: data.status,
+          ended_at: data.ended_at,
+          duration_ms: data.duration_ms,
+        },
+      }),
+    )
   }
 
   return c.json({ success: true, data })
