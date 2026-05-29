@@ -61,7 +61,14 @@ import {
   useWebhookDeliveries,
 } from '@/lib/queries/use-webhooks'
 import type { WebhookEvent, WebhookRow } from '@/lib/queries/types'
-import { useNotificationChannels } from '@/lib/queries/use-alerts'
+import { useNotificationChannels, useDeleteChannel } from '@/lib/queries/use-alerts'
+import {
+  useNotificationPrefs,
+  useUpdateNotificationPrefs,
+} from '@/lib/queries/use-notification-prefs'
+import type { ChannelKind, NotificationChannelRow } from '@/lib/queries/types'
+import { AddChannelDialog } from '@/components/channels/add-channel-dialog'
+import { PermissionGate } from '@/components/permission-gate'
 import { CronJobsPanel } from './cron-jobs-panel'
 
 // ─── types ───────────────────────────────────────────────────────────────────
@@ -1270,24 +1277,64 @@ function SignInMethodsTab() {
 
 // ─── NOTIFICATIONS tab ────────────────────────────────────────────────────────
 
+interface NotificationPrefDef {
+  key: 'security_alert_emails' | 'marketing_emails' | 'product_update_emails'
+  label: string
+  hint: string
+}
+
+const NOTIFICATION_PREFS: NotificationPrefDef[] = [
+  {
+    key: 'security_alert_emails',
+    label: 'Security alerts',
+    hint: 'Stale-key reminders and leaked-key detection alerts for workspaces you admin.',
+  },
+  {
+    key: 'product_update_emails',
+    label: 'Product updates',
+    hint: 'Occasional changelog and new-feature emails. No more than monthly.',
+  },
+  {
+    key: 'marketing_emails',
+    label: 'Marketing',
+    hint: 'Launch announcements and offers. You can opt out at any time.',
+  },
+]
+
 function NotificationsTab() {
+  const { data: prefs, isLoading } = useNotificationPrefs()
+  const update = useUpdateNotificationPrefs()
+
   return (
     <div className="max-w-[980px]">
       <TabHeader
         title="Notifications"
-        description="Alert routing lives on the Alerts page, where each rule is bound to a channel."
+        description="Which emails Spanlens sends you. These are personal to your account."
       />
 
-      <Section title="How notifications work today" className="mb-5">
-        <div className="px-6 py-5 space-y-3 text-[13px] text-text-muted leading-relaxed">
-          <p>
-            Each alert rule targets one channel (email, Slack, or Discord webhook). Channels are configured
-            on the <a href="/alerts" className="text-accent hover:opacity-80 transition-opacity">Alerts page</a>.
-          </p>
-          <p>
-            Personal notification preferences (per-event mute, quiet hours, mobile push) aren&apos;t built yet ,
-            every rule fires according to the thresholds you set on it.
-          </p>
+      <Section title="Email preferences" className="mb-5">
+        {NOTIFICATION_PREFS.map((pref) => (
+          <FormRow key={pref.key} label={pref.label} hint={pref.hint}>
+            <Toggle
+              on={prefs?.[pref.key] ?? true}
+              disabled={isLoading || update.isPending}
+              onToggle={() =>
+                void update.mutateAsync({ [pref.key]: !(prefs?.[pref.key] ?? true) })
+              }
+            />
+          </FormRow>
+        ))}
+      </Section>
+
+      <Section title="Alert routing" className="mb-5">
+        <div className="px-6 py-4 text-[13px] text-text-muted leading-relaxed">
+          Where alerts are delivered (Slack, Discord, or email channels) is a workspace-level
+          setting. Manage destinations in{' '}
+          <a href="/settings?tab=integrations" className="text-accent hover:opacity-80 transition-opacity">
+            Integrations
+          </a>{' '}
+          and the rules that trigger them on the{' '}
+          <a href="/alerts" className="text-accent hover:opacity-80 transition-opacity">Alerts page</a>.
         </div>
       </Section>
     </div>
@@ -1355,10 +1402,10 @@ function PreferencesTab() {
 
 // ─── WEBHOOKS tab ─────────────────────────────────────────────────────────────
 
-const ALL_WEBHOOK_EVENTS: { value: WebhookEvent; label: string }[] = [
-  { value: 'request.created',  label: 'request.created'  },
-  { value: 'trace.completed',  label: 'trace.completed'  },
-  { value: 'alert.triggered',  label: 'alert.triggered'  },
+const ALL_WEBHOOK_EVENTS: { value: WebhookEvent; label: string; hint: string }[] = [
+  { value: 'request.created',  label: 'request.created',  hint: 'fires on every LLM call' },
+  { value: 'trace.completed',  label: 'trace.completed',  hint: 'fires when a trace ends' },
+  { value: 'alert.triggered',  label: 'alert.triggered',  hint: 'fires when an alert rule trips' },
 ]
 
 function SecretField({ secret }: { secret: string }) {
@@ -1636,15 +1683,16 @@ function WebhooksTab() {
             <div>
               <label className="block text-[12px] text-text-muted mb-2">Events</label>
               <div className="space-y-2">
-                {ALL_WEBHOOK_EVENTS.map(({ value, label }) => (
-                  <label key={value} className="flex items-center gap-2 cursor-pointer">
+                {ALL_WEBHOOK_EVENTS.map(({ value, label, hint }) => (
+                  <label key={value} className="flex items-baseline gap-2 cursor-pointer">
                     <input
                       type="checkbox"
                       checked={newEvents.includes(value)}
                       onChange={() => toggleEvent(value)}
-                      className="rounded border-border"
+                      className="rounded border-border self-center"
                     />
                     <span className="font-mono text-[12px] text-text-muted">{label}</span>
+                    <span className="text-[11px] text-text-faint">{hint}</span>
                   </label>
                 ))}
               </div>
@@ -1669,92 +1717,149 @@ function WebhooksTab() {
 
 // ─── INTEGRATIONS tab ─────────────────────────────────────────────────────────
 
-function StatusPill({ connected }: { connected: boolean }) {
+interface ChannelProviderDef {
+  kind: ChannelKind
+  name: string
+  description: string
+}
+
+const CHANNEL_PROVIDERS: ChannelProviderDef[] = [
+  { kind: 'slack',   name: 'Slack',   description: 'Post alerts to Slack via incoming webhook.' },
+  { kind: 'discord', name: 'Discord', description: 'Post alerts to Discord via incoming webhook.' },
+  { kind: 'email',   name: 'Email',   description: 'Email alerts to one or more addresses.' },
+]
+
+const COMING_SOON: { id: string; name: string; description: string }[] = [
+  { id: 'pagerduty', name: 'PagerDuty', description: 'Route critical alerts to on-call engineers.' },
+  { id: 'datadog',   name: 'Datadog',   description: 'Forward metrics and traces to your Datadog account.' },
+]
+
+/** Webhook URLs are partially secret and unreadable — show only a tail. */
+function maskTarget(kind: ChannelKind, target: string): string {
+  if (kind === 'email') return target
+  const tail = target.length > 10 ? target.slice(-10) : target
+  return `••••${tail}`
+}
+
+function ProviderChannelCard({
+  provider,
+  channels,
+  onAdd,
+  onDelete,
+  deletingId,
+}: {
+  provider: ChannelProviderDef
+  channels: NotificationChannelRow[]
+  onAdd: () => void
+  onDelete: (id: string) => void
+  deletingId: string | null
+}) {
+  const mine = channels.filter((ch) => ch.kind === provider.kind)
   return (
-    <MonoPill variant={connected ? 'good' : 'neutral'} dot>
-      {connected ? 'Connected' : 'Not connected'}
-    </MonoPill>
+    <div className="rounded-[8px] border border-border bg-bg-elev p-5 flex flex-col gap-3">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="text-[15px] font-medium text-text mb-1">{provider.name}</div>
+          <div className="text-[12.5px] text-text-muted leading-relaxed">{provider.description}</div>
+        </div>
+        {mine.length > 0
+          ? <MonoPill variant="good" dot>{mine.length} connected</MonoPill>
+          : <MonoPill variant="neutral" dot>Not connected</MonoPill>}
+      </div>
+
+      {mine.length > 0 && (
+        <div className="rounded-[6px] border border-border overflow-hidden">
+          {mine.map((ch) => (
+            <div
+              key={ch.id}
+              className="flex items-center gap-3 px-[12px] py-2.5 border-b border-border last:border-0"
+            >
+              <div className="min-w-0 flex-1">
+                {ch.label && (
+                  <div className="font-mono text-[12px] text-text truncate">{ch.label}</div>
+                )}
+                <div className="font-mono text-[11px] text-text-faint truncate">{maskTarget(ch.kind, ch.target)}</div>
+              </div>
+              <PermissionGate need="edit">
+                <button
+                  type="button"
+                  onClick={() => onDelete(ch.id)}
+                  disabled={deletingId === ch.id}
+                  title="Remove channel"
+                  className="text-text-faint hover:text-bad transition-colors p-1 disabled:opacity-40 shrink-0"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              </PermissionGate>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <PermissionGate need="edit">
+        <div className="mt-auto">
+          <GhostBtn className="text-[12px]" onClick={onAdd}>
+            <Plus className="w-3.5 h-3.5" /> Add {provider.name} channel
+          </GhostBtn>
+        </div>
+      </PermissionGate>
+    </div>
   )
 }
 
 function IntegrationsTab() {
-  const { data: channels } = useNotificationChannels()
-  const hasSlack   = (channels ?? []).some((ch) => ch.kind === 'slack')
-  const hasDiscord = (channels ?? []).some((ch) => ch.kind === 'discord')
+  const { data: channels, isLoading } = useNotificationChannels()
+  const deleteChannel = useDeleteChannel()
+  const [addKind, setAddKind] = useState<ChannelKind | null>(null)
 
-  const integrations = [
-    {
-      id: 'slack',
-      name: 'Slack',
-      description: 'Send alert notifications to a Slack channel via incoming webhook.',
-      connected: hasSlack,
-    },
-    {
-      id: 'discord',
-      name: 'Discord',
-      description: 'Send alert notifications to a Discord channel via incoming webhook.',
-      connected: hasDiscord,
-    },
-    {
-      id: 'pagerduty',
-      name: 'PagerDuty',
-      description: 'Route critical alerts to on-call engineers.',
-      coming: true,
-    },
-    {
-      id: 'datadog',
-      name: 'Datadog',
-      description: 'Forward metrics and traces to your Datadog account.',
-      coming: true,
-    },
-  ] as const
+  const allChannels = channels ?? []
 
   return (
     <div className="max-w-[980px]">
       <TabHeader
         title="Integrations"
-        description="Connect Spanlens with the tools your team already uses."
+        description="Connect Spanlens with the tools your team already uses. Channels here receive every alert you configure on the Alerts page."
       />
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        {integrations.map((integration) => (
-          <div
-            key={integration.id}
-            className="rounded-[8px] border border-border bg-bg-elev p-5 flex flex-col gap-3"
-          >
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <div className="text-[15px] font-medium text-text mb-1">{integration.name}</div>
-                <div className="text-[12.5px] text-text-muted leading-relaxed">{integration.description}</div>
-              </div>
-              {'coming' in integration && integration.coming ? (
+      {isLoading ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {[1, 2].map((i) => <div key={i} className="h-40 bg-bg-elev rounded-[8px] animate-pulse" />)}
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {CHANNEL_PROVIDERS.map((provider) => (
+            <ProviderChannelCard
+              key={provider.kind}
+              provider={provider}
+              channels={allChannels}
+              onAdd={() => setAddKind(provider.kind)}
+              onDelete={(id) => void deleteChannel.mutateAsync(id)}
+              deletingId={deleteChannel.isPending ? (deleteChannel.variables ?? null) : null}
+            />
+          ))}
+
+          {COMING_SOON.map((integration) => (
+            <div
+              key={integration.id}
+              className="rounded-[8px] border border-border bg-bg-elev p-5 flex flex-col gap-3 opacity-75"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="text-[15px] font-medium text-text mb-1">{integration.name}</div>
+                  <div className="text-[12.5px] text-text-muted leading-relaxed">{integration.description}</div>
+                </div>
                 <MonoPill variant="faint">coming soon</MonoPill>
-              ) : (
-                <StatusPill connected={('connected' in integration) ? integration.connected : false} />
-              )}
-            </div>
-            {'coming' in integration && integration.coming ? null : (
-              <div className="mt-auto">
-                {('connected' in integration) && integration.connected ? (
-                  <GhostBtn
-                    className="text-[12px]"
-                    onClick={() => { window.location.href = '/alerts' }}
-                  >
-                    Manage in Alerts
-                  </GhostBtn>
-                ) : (
-                  <GhostBtn
-                    className="text-[12px]"
-                    onClick={() => { window.location.href = '/alerts' }}
-                  >
-                    Connect
-                  </GhostBtn>
-                )}
               </div>
-            )}
-          </div>
-        ))}
-      </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <AddChannelDialog
+        open={addKind !== null}
+        onOpenChange={(open) => { if (!open) setAddKind(null) }}
+        {...(addKind ? { fixedKind: addKind } : {})}
+      />
     </div>
   )
 }

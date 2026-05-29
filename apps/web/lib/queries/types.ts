@@ -304,8 +304,17 @@ export interface NotificationChannelRow {
   id: string
   kind: ChannelKind
   target: string
+  /** Optional human-readable name, e.g. "#prod-alerts". Null for older rows. */
+  label: string | null
   is_active: boolean
   created_at: string
+}
+
+/** Per-user email notification preferences (Settings → Notifications). */
+export interface UserNotificationPrefs {
+  security_alert_emails: boolean
+  marketing_emails: boolean
+  product_update_emails: boolean
 }
 
 export interface AlertDeliveryRow {
