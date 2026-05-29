@@ -1,6 +1,8 @@
 'use client'
-import { useState, Suspense } from 'react'
+import { useMemo, useState, Suspense } from 'react'
+import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
+import { Search } from 'lucide-react'
 import { Topbar } from '@/components/layout/topbar'
 import { cn } from '@/lib/utils'
 
@@ -34,17 +36,17 @@ const NAV: { group: string; items: NavItem[] }[] = [
   {
     group: 'Account',
     items: [
-      { id: 'profile', label: 'Profile', crumbs: [{ label: 'Demo' }, { label: 'Profile' }] },
-      { id: 'notifications', label: 'Notifications', crumbs: [{ label: 'Demo' }, { label: 'Notifications' }] },
-      { id: 'preferences', label: 'Preferences', crumbs: [{ label: 'Demo' }, { label: 'Preferences' }] },
+      { id: 'profile', label: 'Profile', crumbs: [{ label: 'Demo' }, { label: 'Settings' }, { label: 'Profile' }] },
+      { id: 'notifications', label: 'Notifications', crumbs: [{ label: 'Demo' }, { label: 'Settings' }, { label: 'Notifications' }] },
+      { id: 'preferences', label: 'Preferences', crumbs: [{ label: 'Demo' }, { label: 'Settings' }, { label: 'Preferences' }] },
     ],
   },
   {
     group: 'Connect',
     items: [
-      { id: 'integrations', label: 'Integrations', crumbs: [{ label: 'Demo' }, { label: 'Integrations' }] },
-      { id: 'webhooks', label: 'Webhooks', crumbs: [{ label: 'Demo' }, { label: 'Webhooks' }] },
-      { id: 'opentelemetry', label: 'OpenTelemetry', crumbs: [{ label: 'Demo' }, { label: 'OpenTelemetry' }] },
+      { id: 'integrations', label: 'Integrations', crumbs: [{ label: 'Demo' }, { label: 'Settings' }, { label: 'Integrations' }] },
+      { id: 'webhooks', label: 'Webhooks', crumbs: [{ label: 'Demo' }, { label: 'Settings' }, { label: 'Webhooks' }] },
+      { id: 'opentelemetry', label: 'OpenTelemetry', crumbs: [{ label: 'Demo' }, { label: 'Settings' }, { label: 'OpenTelemetry' }] },
     ],
   },
 ]
@@ -549,62 +551,111 @@ function SettingsInner() {
   const [tab, setTab] = useState<TabId>(
     ALL_ITEMS.some((i) => i.id === initialTab) ? initialTab : 'general',
   )
+  const [navSearch, setNavSearch] = useState('')
   const active = ALL_ITEMS.find((i) => i.id === tab) ?? ALL_ITEMS[0]!
 
+  const filteredNav = useMemo(() => {
+    const q = navSearch.trim().toLowerCase()
+    if (!q) return NAV
+    return NAV
+      .map((group) => ({
+        ...group,
+        items: group.items.filter(
+          (item) => item.label.toLowerCase().includes(q) || group.group.toLowerCase().includes(q),
+        ),
+      }))
+      .filter((group) => group.items.length > 0)
+  }, [navSearch])
+
   return (
-    <div className="-mx-4 -my-4 md:-mx-8 md:-my-7 flex flex-col h-screen overflow-hidden">
-      <div className="md:hidden flex items-center gap-3 px-4 py-3 border-b border-border bg-bg-elev shrink-0">
-        <span className="font-mono text-[10px] text-text-faint uppercase tracking-[0.05em] shrink-0">Settings</span>
-        <select
-          value={tab}
-          onChange={(e) => setTab(e.target.value as TabId)}
-          className="flex-1 h-8 px-2 rounded-[6px] border border-border bg-bg text-[13px] text-text focus:outline-none focus:border-border-strong"
-        >
-          {NAV.map((group) => (
-            <optgroup key={group.group} label={group.group}>
-              {group.items.map((item) => (
-                <option key={item.id} value={item.id}>{item.label}</option>
-              ))}
-            </optgroup>
-          ))}
-        </select>
+    <div className="-mx-4 -my-4 md:-mx-8 md:-my-7 flex flex-col min-h-screen">
+      {/* Topbar at true viewport top */}
+      <div className="sticky top-0 z-20 bg-bg">
+        <Topbar
+          crumbs={active.crumbs}
+          right={
+            <div className="md:hidden">
+              <select
+                value={tab}
+                onChange={(e) => setTab(e.target.value as TabId)}
+                className="h-8 px-2 rounded-[6px] border border-border bg-bg text-[12.5px] text-text focus:outline-none focus:border-border-strong"
+                aria-label="Select settings tab"
+              >
+                {NAV.map((group) => (
+                  <optgroup key={group.group} label={group.group}>
+                    {group.items.map((item) => (
+                      <option key={item.id} value={item.id}>{item.label}</option>
+                    ))}
+                  </optgroup>
+                ))}
+              </select>
+            </div>
+          }
+        />
       </div>
 
-      <div className="flex flex-1 overflow-hidden min-h-0">
-        <aside className="hidden md:flex md:flex-col w-[260px] shrink-0 border-r border-border bg-bg-elev overflow-y-auto">
-          <div className="px-5 py-4 font-mono text-[10px] text-text-faint uppercase tracking-[0.05em]">Settings</div>
-          {NAV.map((group) => (
-            <div key={group.group} className="mb-4">
-              <div className="px-5 py-1.5 font-mono text-[9.5px] text-text-faint uppercase tracking-[0.05em]">
-                {group.group}
-              </div>
-              {group.items.map((item) => {
-                const isActive = item.id === tab
-                return (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={() => setTab(item.id)}
-                    className={cn(
-                      'w-full text-left px-5 py-2 text-[13px] transition-colors border-l-2 -ml-px',
-                      isActive
-                        ? 'border-accent bg-bg text-text font-medium'
-                        : 'border-transparent text-text-muted hover:text-text hover:bg-bg/50',
-                    )}
-                  >
-                    {item.label}
-                  </button>
-                )
-              })}
+      <div className="flex flex-1 min-h-0">
+        <aside className="hidden md:flex md:flex-col w-[260px] shrink-0 border-r border-border bg-bg-elev sticky top-[52px] self-start max-h-[calc(100vh-52px)] overflow-y-auto">
+          {/* Nav header: search + docs */}
+          <div className="px-4 py-3 border-b border-border space-y-2.5">
+            <div className="flex items-center justify-between">
+              <span className="font-mono text-[10px] text-text-faint uppercase tracking-[0.05em]">Settings</span>
+              <Link
+                href="/docs"
+                className="font-mono text-[10.5px] text-text-muted hover:text-text transition-colors"
+              >
+                Docs →
+              </Link>
             </div>
-          ))}
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-text-faint" />
+              <input
+                value={navSearch}
+                onChange={(e) => setNavSearch(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') setNavSearch('')
+                }}
+                placeholder="Filter settings…"
+                className="w-full pl-8 pr-3 py-1.5 font-mono text-[11.5px] bg-bg border border-border rounded-[6px] text-text placeholder:text-text-faint focus:outline-none focus:border-accent"
+              />
+            </div>
+          </div>
+
+          <div className="py-2">
+            {filteredNav.length === 0 ? (
+              <div className="px-5 py-4 font-mono text-[11.5px] text-text-faint">No settings match</div>
+            ) : (
+              filteredNav.map((group) => (
+                <div key={group.group} className="mb-4">
+                  <div className="px-5 py-1.5 font-mono text-[9.5px] text-text-faint uppercase tracking-[0.05em]">
+                    {group.group}
+                  </div>
+                  {group.items.map((item) => {
+                    const isActive = item.id === tab
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => setTab(item.id)}
+                        className={cn(
+                          'w-full text-left px-5 py-2 text-[13px] transition-colors border-l-2 -ml-px',
+                          isActive
+                            ? 'border-accent bg-bg text-text font-medium'
+                            : 'border-transparent text-text-muted hover:text-text hover:bg-bg/50',
+                        )}
+                      >
+                        {item.label}
+                      </button>
+                    )
+                  })}
+                </div>
+              ))
+            )}
+          </div>
         </aside>
 
-        <main className="flex-1 flex flex-col overflow-hidden">
-          <Topbar crumbs={active.crumbs} />
-          <div className="flex-1 overflow-y-auto bg-bg px-4 py-4 md:px-8 md:py-6">
-            <TabContent tab={tab} />
-          </div>
+        <main className="flex-1 min-w-0 bg-bg px-4 py-4 md:px-8 md:py-6">
+          <TabContent tab={tab} />
         </main>
       </div>
     </div>
