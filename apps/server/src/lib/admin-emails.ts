@@ -1,11 +1,15 @@
 import { supabaseAdmin } from './db.js'
 
 /**
- * Resolve email addresses for all admin members of an org.
+ * Resolve email addresses for all admin members of an org who have NOT
+ * opted out of security alert emails.
  * Falls back to empty array if no admins are found or no emails are set.
  *
- * Used by leak-detection.ts and stale-key-digest.ts (admin alerts).
- * Security alert emails use a separate owner-only lookup in logger.ts.
+ * Used by leak-detection.ts and stale-key-digest.ts (admin alerts) — both
+ * are "security alert" emails, so they honour the per-user
+ * `security_alert_emails` preference (default true; only users who
+ * explicitly turned it off are excluded). Quota-warning emails use a
+ * separate owner-only lookup in logger.ts.
  */
 export async function getAdminEmails(orgId: string): Promise<string[]> {
   const { data: members } = await supabaseAdmin
@@ -17,8 +21,18 @@ export async function getAdminEmails(orgId: string): Promise<string[]> {
   const userIds = (members ?? []).map((m) => m.user_id)
   if (userIds.length === 0) return []
 
+  // Per-user opt-out: a row with security_alert_emails = false excludes that
+  // admin. Users with no prefs row default to opted-in.
+  const { data: optedOut } = await supabaseAdmin
+    .from('user_notification_prefs')
+    .select('user_id')
+    .in('user_id', userIds)
+    .eq('security_alert_emails', false)
+  const optedOutSet = new Set((optedOut ?? []).map((r) => r.user_id as string))
+
   const emails: string[] = []
   for (const userId of userIds) {
+    if (optedOutSet.has(userId)) continue
     const { data } = await supabaseAdmin.auth.admin.getUserById(userId)
     if (data?.user?.email) emails.push(data.user.email)
   }

@@ -155,7 +155,7 @@ alertsRouter.post('/channels', requireEdit, async (c) => {
   const orgId = c.get('orgId')
   if (!orgId) return c.json({ error: 'Organization not found' }, 404)
 
-  let body: { kind?: unknown; target?: unknown }
+  let body: { kind?: unknown; target?: unknown; label?: unknown }
   try {
     body = (await c.req.json()) as typeof body
   } catch {
@@ -177,9 +177,29 @@ alertsRouter.post('/channels', requireEdit, async (c) => {
     return c.json({ error: 'webhook target must start with https://' }, 400)
   }
 
+  const target = body.target.trim()
+  // Optional human-readable label (e.g. "#prod-alerts"). Empty string → null.
+  const label =
+    typeof body.label === 'string' && body.label.trim().length > 0
+      ? body.label.trim()
+      : null
+
+  // Dedup: a workspace can hold many channels of the same kind, but not the
+  // exact same destination twice — that would double-send every alert.
+  const { data: existing } = await supabaseAdmin
+    .from('notification_channels')
+    .select('id')
+    .eq('organization_id', orgId)
+    .eq('kind', body.kind)
+    .eq('target', target)
+    .maybeSingle()
+  if (existing) {
+    return c.json({ error: 'A channel with this destination already exists' }, 409)
+  }
+
   const { data, error } = await supabaseAdmin
     .from('notification_channels')
-    .insert({ organization_id: orgId, kind: body.kind, target: body.target.trim() })
+    .insert({ organization_id: orgId, kind: body.kind, target, label })
     .select('*')
     .single()
   if (error || !data) return c.json({ error: 'Failed to create channel' }, 500)

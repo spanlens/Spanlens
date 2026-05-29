@@ -323,17 +323,7 @@ export function UsersClient() {
     <div className="-mx-4 -my-4 md:-mx-8 md:-my-7 flex flex-col min-h-screen">
       {/* Sticky topbar — same pattern as dashboard/requests/traces. */}
       <div className="sticky top-0 z-20 bg-bg">
-        <Topbar
-          crumbs={[{ label: 'Users' }]}
-          right={
-            <TimeRangeSelector
-              value={rangeParam}
-              onChange={(v) => onRangeChange(v as TimeRange)}
-              customRange={customRange}
-              onCustomRange={onCustomRange}
-            />
-          }
-        />
+        <Topbar crumbs={[{ label: 'Users' }]} />
         <h1 className="sr-only">Users</h1>
       </div>
 
@@ -383,14 +373,25 @@ export function UsersClient() {
         </div>
 
         {/* Filter bar — key={search} remounts the form so the local input
-            resets when URL search changes (e.g. back/forward navigation). */}
-        <SearchForm
-          key={search}
-          initialSearch={search}
-          hasActiveSearch={!!search}
-          onChange={onSearch}
-          onClear={() => updateQuery({ search: null, page: null })}
-        />
+            resets when URL search changes (e.g. back/forward navigation).
+            Time range selector sits at the far right of this row. */}
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="flex-1 min-w-0">
+            <SearchForm
+              key={search}
+              initialSearch={search}
+              hasActiveSearch={!!search}
+              onChange={onSearch}
+              onClear={() => updateQuery({ search: null, page: null })}
+            />
+          </div>
+          <TimeRangeSelector
+            value={rangeParam}
+            onChange={(v) => onRangeChange(v as TimeRange)}
+            customRange={customRange}
+            onCustomRange={onCustomRange}
+          />
+        </div>
 
         {/* Table — mobile hides Tokens & Avg latency cols; user ID expands. */}
         <div

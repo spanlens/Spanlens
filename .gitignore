@@ -40,3 +40,12 @@ npm-debug.log*
 # Internal planning documents — never commit to public repo
 *.pdf
 *.pptx
+
+# Claude Code local tooling (per-machine, not shared)
+.claude/worktrees/
+apps/web/.claude/
+
+# Local scratch / throwaway artifacts
+apps/web/tc-result.txt
+paddle_compare_*.png
+twitter_guide.txt
