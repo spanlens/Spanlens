@@ -21,7 +21,7 @@ export default function DemoDatasetsPage() {
   }, [query])
 
   const totalItems = useMemo(
-    () => DEMO_DATASETS.reduce((a, ds) => a + ds.item_count, 0),
+    () => DEMO_DATASETS.reduce((a, ds) => a + (ds.item_count ?? 0), 0),
     [],
   )
   const isFiltered = query.trim().length > 0
@@ -38,7 +38,7 @@ export default function DemoDatasetsPage() {
                 rows={filtered}
                 columns={[
                   { header: 'Name', value: (ds) => ds.name },
-                  { header: 'Items', value: (ds) => ds.item_count },
+                  { header: 'Items', value: (ds) => ds.item_count ?? 0 },
                   { header: 'Description', value: (ds) => ds.description ?? '' },
                 ]}
               />
@@ -132,7 +132,7 @@ export default function DemoDatasetsPage() {
                       <Database className="h-4 w-4 text-text-faint" />
                       <span className="text-[14px] font-medium text-text">{ds.name}</span>
                     </div>
-                    <span className="font-mono text-[11px] text-text-faint">{ds.item_count} items</span>
+                    <span className="font-mono text-[11px] text-text-faint">{ds.item_count ?? 0} items</span>
                   </div>
                   {ds.description && (
                     <p className="text-[12.5px] text-text-muted mt-2 ml-[26px]">{ds.description}</p>

@@ -1,19 +1,73 @@
 'use client'
 import Link from 'next/link'
 import { useMemo, useState } from 'react'
-import { Plus, FlaskConical, Search } from 'lucide-react'
+import { Plus, Search } from 'lucide-react'
 import { Topbar } from '@/components/layout/topbar'
 import { DemoExportButton } from '@/components/ui/demo-export-button'
-import { DEMO_EXPERIMENTS } from '@/lib/demo-data'
 import { cn } from '@/lib/utils'
+import { DEMO_EXPERIMENTS } from '@/lib/demo-data'
+import type { Experiment, ExperimentStatus } from '@/lib/queries/use-experiments'
 
-function statusColor(status: string): string {
-  if (status === 'running') return 'bg-accent'
-  if (status === 'completed') return 'bg-good'
-  return 'bg-text-faint'
+function fmtUsd(n: number | null | undefined): string {
+  if (n == null) return '—'
+  return n >= 0.01 ? `$${n.toFixed(3)}` : `$${n.toFixed(5)}`
+}
+function fmtScore(n: number | null | undefined): string {
+  return n == null ? '—' : (n * 100).toFixed(1)
 }
 
-const STATUS_FILTERS = ['all', 'running', 'completed', 'draft'] as const
+function StatusBadge({ status }: { status: ExperimentStatus }) {
+  const config = {
+    pending:   { label: 'Pending',   cls: 'bg-bg-elev text-text-faint' },
+    running:   { label: 'Running',   cls: 'bg-accent-bg text-accent border border-accent-border' },
+    completed: { label: 'Completed', cls: 'bg-good/10 text-good border border-good/30' },
+    failed:    { label: 'Failed',    cls: 'bg-bad/10 text-bad border border-bad/30' },
+  }[status]
+  return (
+    <span className={cn('font-mono text-[10px] px-[6px] py-[1.5px] rounded-[3px]', config.cls)}>
+      {config.label}
+    </span>
+  )
+}
+
+function ExperimentRow({ exp }: { exp: Experiment }) {
+  const delta =
+    exp.avg_score_a == null || exp.avg_score_b == null ? null : exp.avg_score_b - exp.avg_score_a
+
+  return (
+    <Link
+      href={`/demo/experiments/${exp.id}`}
+      className="flex items-center px-[16px] py-[12px] border-b border-border last:border-0 hover:bg-bg-muted transition-colors"
+    >
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 mb-0.5">
+          <p className="font-mono text-[13px] text-text font-medium truncate">{exp.name}</p>
+          <StatusBadge status={exp.status} />
+        </div>
+        <p className="font-mono text-[11px] text-text-faint truncate">
+          {exp.prompt_name} · {exp.run_model}
+        </p>
+      </div>
+      <div className="hidden sm:block font-mono text-[12px] text-text-muted w-[90px] text-right">
+        {fmtScore(exp.avg_score_a)}
+      </div>
+      <div className="hidden sm:block font-mono text-[12px] text-text-muted w-[90px] text-right">
+        {fmtScore(exp.avg_score_b)}
+      </div>
+      <div className={cn(
+        'font-mono text-[12px] w-[70px] text-right',
+        delta == null ? 'text-text-faint' : delta > 0 ? 'text-good' : delta < 0 ? 'text-bad' : 'text-text-muted',
+      )}>
+        {delta == null ? '—' : (delta > 0 ? '+' : '') + (delta * 100).toFixed(1)}
+      </div>
+      <div className="hidden sm:block font-mono text-[11px] text-text-faint w-[80px] text-right">
+        {fmtUsd(exp.total_cost_usd)}
+      </div>
+    </Link>
+  )
+}
+
+const STATUS_FILTERS = ['all', 'running', 'completed', 'pending', 'failed'] as const
 type StatusFilter = (typeof STATUS_FILTERS)[number]
 
 export default function DemoExperimentsPage() {
@@ -34,7 +88,7 @@ export default function DemoExperimentsPage() {
     const q = query.trim().toLowerCase()
     return DEMO_EXPERIMENTS.filter((e) => {
       if (status !== 'all' && e.status !== status) return false
-      if (q && !(e.name.toLowerCase().includes(q) || (e.description?.toLowerCase().includes(q) ?? false))) {
+      if (q && !(e.name.toLowerCase().includes(q) || e.prompt_name.toLowerCase().includes(q) || e.run_model.toLowerCase().includes(q))) {
         return false
       }
       return true
@@ -56,14 +110,17 @@ export default function DemoExperimentsPage() {
                 columns={[
                   { header: 'Name', value: (e) => e.name },
                   { header: 'Status', value: (e) => e.status },
-                  { header: 'Description', value: (e) => e.description ?? '' },
+                  { header: 'Prompt', value: (e) => e.prompt_name },
+                  { header: 'Model', value: (e) => e.run_model },
+                  { header: 'Score A', value: (e) => fmtScore(e.avg_score_a) },
+                  { header: 'Score B', value: (e) => fmtScore(e.avg_score_b) },
+                  { header: 'Cost USD', value: (e) => e.total_cost_usd ?? '' },
                 ]}
               />
               <button
                 type="button"
-                disabled
-                className="flex items-center gap-1.5 text-[12.5px] px-3 py-[5px] rounded-[5px] border border-border bg-bg-elev text-text-muted opacity-60 cursor-not-allowed"
-                title="Disabled in demo"
+                onClick={() => alert('Creating experiments, sign up to use this')}
+                className="font-mono text-[11.5px] px-3 py-[6px] rounded-[5px] bg-text text-bg font-medium hover:opacity-90 flex items-center gap-1.5"
               >
                 <Plus className="h-3.5 w-3.5" />
                 <span className="hidden sm:inline">New experiment</span>
@@ -90,94 +147,87 @@ export default function DemoExperimentsPage() {
       </div>
 
       <div className="flex-1">
-        <div className="px-6 py-5 max-w-3xl">
-          <p className="text-[13px] text-text-muted mb-4">
-            A/B test prompts, models, or params. Each experiment splits live traffic and compares quality + cost.
-          </p>
+        <div className="px-[22px] py-[12px] bg-bg-muted border-b border-border flex items-center gap-2 font-mono text-[11px] text-text-muted">
+          <span>
+            Offline side-by-side: runs both prompt versions on a dataset and compares outputs.
+            Unlike A/B (Prompts), no production traffic is affected.
+          </span>
+        </div>
 
-          {/* Search + status filter */}
-          <div className="flex flex-wrap items-center gap-2 mb-4">
-            <div className="relative flex-1 min-w-[180px] max-w-md">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-text-faint" />
-              <input
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Escape') setQuery('')
-                }}
-                placeholder="Search experiments…"
-                className="w-full pl-8 pr-8 py-1.5 font-mono text-[12px] bg-bg-elev border border-border rounded-[6px] text-text placeholder:text-text-faint focus:outline-none focus:border-accent"
-              />
-              {query && (
-                <button
-                  type="button"
-                  onClick={() => setQuery('')}
-                  aria-label="Clear search"
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-text-faint hover:text-text transition-colors"
-                >
-                  ✕
-                </button>
-              )}
-            </div>
-            <div className="flex border border-border rounded-[6px] overflow-hidden">
-              {STATUS_FILTERS.map((s) => (
-                <button
-                  key={s}
-                  type="button"
-                  onClick={() => setStatus(s)}
-                  className={cn(
-                    'font-mono text-[11px] px-[10px] py-[6px] border-r border-border last:border-r-0 transition-colors capitalize',
-                    s === status ? 'bg-bg-elev text-text font-medium' : 'bg-transparent text-text-muted hover:text-text',
-                  )}
-                >
-                  {s}
-                </button>
-              ))}
-            </div>
+        {/* Search + status filter */}
+        <div className="flex flex-wrap items-center gap-2 px-[16px] py-[10px] border-b border-border">
+          <div className="relative flex-1 min-w-[180px] max-w-md">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-text-faint" />
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') setQuery('')
+              }}
+              placeholder="Search experiments…"
+              className="w-full pl-8 pr-8 py-1.5 font-mono text-[12px] bg-bg-elev border border-border rounded-[6px] text-text placeholder:text-text-faint focus:outline-none focus:border-accent"
+            />
+            {query && (
+              <button
+                type="button"
+                onClick={() => setQuery('')}
+                aria-label="Clear search"
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-text-faint hover:text-text transition-colors"
+              >
+                ✕
+              </button>
+            )}
           </div>
-
-          {filtered.length === 0 ? (
-            <div className="border border-border rounded-[8px] px-5 py-12 text-center bg-bg-elev">
-              <p className="text-[13px] text-text mb-1.5">No experiments match your filters</p>
-              {isFiltered && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setQuery('')
-                    setStatus('all')
-                  }}
-                  className="font-mono text-[11px] text-accent hover:opacity-80 transition-opacity"
-                >
-                  Clear filters
-                </button>
-              )}
-            </div>
-          ) : (
-            <div className="space-y-2.5">
-              {filtered.map((exp) => (
-                <Link
-                  key={exp.id}
-                  href={`/demo/experiments/${exp.id}`}
-                  className="block border border-border rounded-[8px] px-5 py-4 bg-bg-elev hover:border-border-strong transition-colors"
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      <FlaskConical className="h-4 w-4 text-text-faint shrink-0" />
-                      <span className="text-[14px] font-medium text-text truncate">{exp.name}</span>
-                    </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      <span className={cn('inline-block w-2 h-2 rounded-full', statusColor(exp.status))} />
-                      <span className="font-mono text-[11px] text-text-muted">{exp.status}</span>
-                    </div>
-                  </div>
-                  {exp.description && (
-                    <p className="text-[12.5px] text-text-muted ml-[26px]">{exp.description}</p>
-                  )}
-                </Link>
-              ))}
-            </div>
+          <div className="flex border border-border rounded-[6px] overflow-hidden">
+            {STATUS_FILTERS.map((s) => (
+              <button
+                key={s}
+                type="button"
+                onClick={() => setStatus(s)}
+                className={cn(
+                  'font-mono text-[11px] px-[10px] py-[6px] border-r border-border last:border-r-0 transition-colors capitalize',
+                  s === status ? 'bg-bg-elev text-text font-medium' : 'bg-transparent text-text-muted hover:text-text',
+                )}
+              >
+                {s}
+              </button>
+            ))}
+          </div>
+          {isFiltered && (
+            <span className="font-mono text-[11px] text-text-faint whitespace-nowrap">
+              {filtered.length} of {counts.total}
+            </span>
           )}
         </div>
+
+        {/* Column header */}
+        <div className="flex items-center px-[16px] py-[8px] bg-bg-muted border-b border-border font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint">
+          <span className="flex-1">Name</span>
+          <span className="hidden sm:block w-[90px] text-right">A score</span>
+          <span className="hidden sm:block w-[90px] text-right">B score</span>
+          <span className="w-[70px] text-right">Δ</span>
+          <span className="hidden sm:block w-[80px] text-right">Cost</span>
+        </div>
+
+        {filtered.length === 0 ? (
+          <div className="px-[16px] py-16 text-center">
+            <p className="font-mono text-[12.5px] text-text-muted mb-1.5">No experiments match your filters</p>
+            {isFiltered && (
+              <button
+                type="button"
+                onClick={() => {
+                  setQuery('')
+                  setStatus('all')
+                }}
+                className="font-mono text-[11px] text-accent hover:opacity-80 transition-opacity"
+              >
+                Clear filters
+              </button>
+            )}
+          </div>
+        ) : (
+          filtered.map((exp) => <ExperimentRow key={exp.id} exp={exp} />)
+        )}
       </div>
     </div>
   )

@@ -150,10 +150,24 @@ export default function DemoAlertsPage() {
   const alerts = DEMO_ALERTS
   const channels = DEMO_CHANNELS
   const deliveries = DEMO_DELIVERIES
+  const [query, setQuery] = useState('')
+  const [status, setStatus] = useState<StatusFilter>('all')
 
-  const firing = alerts.filter((a) => a.is_active && isRecentlyFired(a.last_triggered_at))
-  const active = alerts.filter((a) => a.is_active && !isRecentlyFired(a.last_triggered_at))
-  const paused = alerts.filter((a) => !a.is_active)
+  const allFiring = alerts.filter((a) => a.is_active && isRecentlyFired(a.last_triggered_at))
+  const allActive = alerts.filter((a) => a.is_active && !isRecentlyFired(a.last_triggered_at))
+  const allPaused = alerts.filter((a) => !a.is_active)
+
+  const matchQ = (a: AlertRow): boolean => {
+    const q = query.trim().toLowerCase()
+    if (!q) return true
+    return a.name.toLowerCase().includes(q) || a.type.toLowerCase().includes(q)
+  }
+  const firing = status === 'all' || status === 'firing' ? allFiring.filter(matchQ) : []
+  const active = status === 'all' || status === 'active' ? allActive.filter(matchQ) : []
+  const paused = status === 'all' || status === 'inactive' ? allPaused.filter(matchQ) : []
+  const filteredAll = [...firing, ...active, ...paused]
+  const isFiltered = query.trim().length > 0 || status !== 'all'
+
   // Capture "now" once at mount — demo data is static.
   const [now] = useState(() => Date.now())
   const fires24h = deliveries.filter(
@@ -167,10 +181,22 @@ export default function DemoAlertsPage() {
           crumbs={[{ label: 'Demo', href: '/demo/dashboard' }, { label: 'Alerts' }]}
           right={
             <div className="flex items-center gap-2">
+              <DemoExportButton
+                base="alerts"
+                rows={filteredAll}
+                columns={[
+                  { header: 'Name', value: (a: AlertRow) => a.name },
+                  { header: 'Type', value: (a: AlertRow) => a.type },
+                  { header: 'Threshold', value: (a: AlertRow) => fmtThreshold(a.type, a.threshold) },
+                  { header: 'Window (min)', value: (a: AlertRow) => a.window_minutes },
+                  { header: 'Active', value: (a: AlertRow) => a.is_active },
+                  { header: 'Fires', value: (a: AlertRow) => alertFires(a.id) },
+                ]}
+              />
               <button
                 type="button"
                 onClick={() => alert('Sign up to add notification channels')}
-                className="font-mono text-[11px] text-text-muted px-[10px] py-[5px] border border-border rounded-[5px] bg-bg-elev hover:text-text transition-colors"
+                className="hidden sm:inline-flex font-mono text-[11px] text-text-muted px-[10px] py-[5px] border border-border rounded-[5px] bg-bg-elev hover:text-text transition-colors"
               >
                 + Add channel
               </button>
@@ -190,7 +216,7 @@ export default function DemoAlertsPage() {
       <div className="overflow-x-auto shrink-0 border-b border-border">
         <div className="grid grid-cols-5 min-w-[480px]">
           {[
-            { label: 'Firing now',   value: String(firing.length),                             warn: firing.length > 0 },
+            { label: 'Firing now',   value: String(allFiring.length),                          warn: allFiring.length > 0 },
             { label: 'Rules active', value: String(alerts.filter((a) => a.is_active).length),  warn: false },
             { label: 'Fires 24h',    value: String(fires24h),                                  warn: fires24h > 0 },
             { label: 'Rules total',  value: String(alerts.length),                             warn: false },
@@ -213,9 +239,70 @@ export default function DemoAlertsPage() {
         </div>
       </div>
 
+      {/* Filter bar */}
+      <div className="flex flex-wrap items-center gap-3 px-[22px] py-[12px] border-b border-border">
+        <div className="relative flex-1 min-w-[160px] max-w-xs">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-text-faint" />
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') setQuery('')
+            }}
+            placeholder="Search alerts…"
+            className="w-full pl-8 pr-8 py-1.5 font-mono text-[12px] bg-bg-elev border border-border rounded-[6px] text-text placeholder:text-text-faint focus:outline-none focus:border-accent"
+          />
+          {query && (
+            <button
+              type="button"
+              onClick={() => setQuery('')}
+              aria-label="Clear search"
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-text-faint hover:text-text transition-colors"
+            >
+              ✕
+            </button>
+          )}
+        </div>
+        <div className="flex border border-border rounded-[6px] overflow-hidden">
+          {STATUS_FILTERS.map((s) => (
+            <button
+              key={s}
+              type="button"
+              onClick={() => setStatus(s)}
+              className={cn(
+                'font-mono text-[11px] px-[10px] py-[6px] border-r border-border last:border-r-0 transition-colors capitalize',
+                s === status ? 'bg-bg-elev text-text font-medium' : 'bg-transparent text-text-muted hover:text-text',
+              )}
+            >
+              {s}
+            </button>
+          ))}
+        </div>
+        {isFiltered && (
+          <span className="font-mono text-[11px] text-text-faint whitespace-nowrap">
+            {filteredAll.length} of {alerts.length}
+          </span>
+        )}
+      </div>
+
       {/* Content */}
       <div className="flex-1 overflow-auto">
         <>
+          {isFiltered && filteredAll.length === 0 && (
+            <div className="px-[22px] py-16 text-center">
+              <p className="font-mono text-[12.5px] text-text-muted mb-1.5">No alerts match your filters</p>
+              <button
+                type="button"
+                onClick={() => {
+                  setQuery('')
+                  setStatus('all')
+                }}
+                className="font-mono text-[11px] text-accent hover:opacity-80 transition-opacity"
+              >
+                Clear filters
+              </button>
+            </div>
+          )}
           {/* Firing */}
           {firing.length > 0 && (
             <div>
