@@ -17,6 +17,9 @@ const FEATURES = [
   { kicker: '04', title: 'Anomaly detection', body: '3σ deviations in latency or cost vs. your 7-day baseline, flagged on arrival.', accent: '3.1σ' },
   { kicker: '05', title: 'PII + injection scan', body: 'Regex detection on request bodies at log time. API keys auto-masked before storage; PII patterns flagged for review.', accent: 'SSN · email' },
   { kicker: '06', title: 'Model recommender', body: '"Your gpt-4o calls look like classification, try gpt-4o-mini." With numbers.', accent: '−$412/mo' },
+  { kicker: '07', title: 'Evals', body: 'LLM-as-judge scores every response 0 to 1. Know if v8 is actually better than v7, not just cheaper.', accent: '0.82 avg' },
+  { kicker: '08', title: 'Experiments & datasets', body: 'Replay a fixed dataset across prompt versions and models. Quality, cost, and latency side by side.', accent: 'v7 vs v8' },
+  { kicker: '09', title: 'User analytics', body: 'Per end-user and per-session cost, volume, and errors. Find the customer burning your budget.', accent: '1,204 users' },
 ]
 
 const SURFACES = [
@@ -26,6 +29,12 @@ const SURFACES = [
   { k: 'Anomalies', hint: '3 open · high',  body: '7-day rolling baseline, z-score triggers.' },
   { k: 'Security',  hint: '48 masked',      body: 'PII · secrets · injection · jailbreak detectors.' },
   { k: 'Savings',   hint: '$7.2k / mo',     body: 'Swap, cache, trim. Ranked by evidence.' },
+  { k: 'Users',     hint: '1,204',          body: 'Per end-user and session cost, volume, and error rates.' },
+  { k: 'Playground', hint: '4 models',      body: 'Test a prompt across models and versions on real inputs.' },
+  { k: 'Evals',     hint: '0.82 avg',       body: 'LLM-as-judge scoring per prompt version. Quality, quantified.' },
+  { k: 'Experiments', hint: 'v7 vs v8',     body: 'Run a dataset through versions and models. Compare on evidence.' },
+  { k: 'Datasets',  hint: '320 cases',      body: 'Golden test cases built from real production traffic.' },
+  { k: 'Annotation', hint: '58 reviewed',   body: 'Human-in-the-loop review to build labels and golden sets.' },
 ]
 
 const COMPAT = [
@@ -70,6 +79,8 @@ const FAQS: [string, string][] = [
   ['Do you support OpenTelemetry?', 'Yes. OTLP/HTTP ingest and export. Your existing OTel tracing flows into the same span store; LLM spans get LLM-specific attributes on top.'],
   ['What\'s the data retention?', 'Free is 14 days. Pro is 90 days, Team is 365 days. Enterprise & self-hosted are configurable, including unlimited.'],
   ['Can I export my data?', 'Anytime. JSON, CSV, Parquet. Or pipe the raw stream to S3, BigQuery, or your warehouse via our sink connectors.'],
+  ['Can Spanlens tell me if a prompt actually got better?', 'Yes. Evals scores responses with an LLM-as-judge on a 0 to 1 scale, per prompt version. Pair it with Experiments to replay a dataset across versions and models, so you compare quality, cost, and latency on the same inputs before you roll out.'],
+  ['Does Spanlens work for a whole team?', 'Projects isolate workloads, roles and invitations manage access, and audit logs record every change. Team and Enterprise add Slack, webhooks, unlimited alerts, and SSO.'],
 ]
 
 const PREVIEW_ROWS = [
@@ -99,7 +110,7 @@ const softwareApplicationJsonLd = {
   operatingSystem: 'Web, Linux, macOS, Windows (Docker)',
   url: SITE_URL,
   description:
-    'Drop-in LLM observability for OpenAI, Anthropic, and Gemini. Request logging, cost tracking, agent tracing, anomaly detection, and PII scanning. Open source, self-hostable.',
+    'Drop-in LLM observability for OpenAI, Anthropic, and Gemini. Request logging, cost tracking, agent tracing, evals, experiments, anomaly detection, and PII scanning. Open source, self-hostable.',
   offers: PLANS.map((p) => ({
     '@type': 'Offer',
     name: p.name,
@@ -155,9 +166,9 @@ export default function LandingPage() {
         </h1>
 
         <p className="text-[16px] sm:text-[18px] lg:text-[20px] leading-relaxed text-text-muted max-w-[640px] mb-10 [text-wrap:pretty]">
-          Record every OpenAI, Anthropic, and Gemini call with cost, latency, tokens, full
-          request/response. Then surface anomalies, PII, and cheaper-model
-          suggestions automatically.
+          Record every OpenAI, Anthropic, and Gemini call: cost, latency, tokens, full
+          request and response. Then score quality, run experiments, catch anomalies and
+          PII, and ship cheaper models with proof.
         </p>
 
         {/* Install block: stacked on mobile, inline on sm+ */}
@@ -412,12 +423,70 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* ── Improvement loop ─────────────────────────────────────────── */}
+      <section className="max-w-[1200px] mx-auto px-4 sm:px-6 lg:px-10 py-16 lg:py-20 flex flex-col lg:grid lg:gap-[60px] lg:items-center gap-10" style={{ gridTemplateColumns: '380px 1fr' }}>
+        <div>
+          <div className="font-mono text-[12px] text-accent tracking-[0.06em] uppercase mb-3">The improvement loop</div>
+          <h2 className="text-[26px] sm:text-[34px] lg:text-[40px] font-medium tracking-[-1.1px] leading-[1.05] mb-[18px]">
+            Don&apos;t just watch.<br />Improve.
+          </h2>
+          <p className="text-[15px] leading-[1.6] text-text-muted mb-5">
+            Cost and latency tell you what happened. Spanlens tells you whether it got
+            better. Capture real traffic into datasets, score it with an LLM judge or your
+            own team, then run the next prompt version against it before you ship.
+          </p>
+          <div className="flex flex-col gap-2 font-mono text-[12px] text-text-muted">
+            <div><span className="text-accent">●</span> Evals · LLM-as-judge scores, 0 to 1, per version</div>
+            <div><span className="text-accent">●</span> Experiments · replay a dataset across versions and models</div>
+            <div><span className="text-accent">●</span> Annotation · human review to build golden sets</div>
+            <div><span className="text-accent">●</span> Playground · iterate on real inputs, compare side by side</div>
+          </div>
+        </div>
+        {/* Experiment comparison preview */}
+        <div className="border border-border rounded-xl bg-bg overflow-hidden">
+          <div className="flex items-center gap-2.5 px-4 py-[10px] border-b border-border bg-bg-muted font-mono text-[11px] text-text-faint tracking-[0.04em] uppercase flex-wrap gap-y-1">
+            <span className="text-text">experiment_241</span>
+            <span>· support-reply · 320 cases ·</span>
+            <span className="text-accent">winner: v8</span>
+          </div>
+          <div className="p-3 overflow-x-auto">
+            <div className="min-w-[440px]">
+              <div className="grid px-3 py-[10px] border-b border-border font-mono text-[11px] text-text-faint tracking-[0.05em] uppercase" style={{ gridTemplateColumns: '1.4fr 1fr 1fr 1fr', gap: '12px' }}>
+                <span>Version</span><span>Quality</span><span>Cost / 1k</span><span>p50</span>
+              </div>
+              {[
+                { v: 'gpt-4o · v7',      q: '0.71', c: '$4.82', p: '1240ms', win: false },
+                { v: 'gpt-4o-mini · v8', q: '0.82', c: '$0.31', p: '410ms',  win: true  },
+                { v: 'gpt-4o-mini · v6', q: '0.64', c: '$0.30', p: '430ms',  win: false },
+              ].map((r) => (
+                <div
+                  key={r.v}
+                  className="grid px-3 py-[13px] font-mono text-[13px] items-center"
+                  style={{ gridTemplateColumns: '1.4fr 1fr 1fr 1fr', gap: '12px', background: r.win ? 'var(--accent-bg)' : 'transparent' }}
+                >
+                  <span className="text-text flex items-center gap-2">
+                    {r.win && <span className="w-1.5 h-1.5 rounded-full bg-accent shrink-0 inline-block" />}
+                    {r.v}
+                  </span>
+                  <span style={{ color: r.win ? 'var(--accent)' : 'var(--text)' }}>{r.q}</span>
+                  <span className="text-text-muted">{r.c}</span>
+                  <span className="text-text-muted">{r.p}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="px-4 py-3 border-t border-border font-mono text-[11px] text-text-muted">
+            v8 · <span className="text-good">+0.11 quality</span> · <span className="text-good">−94% cost</span> · same dataset
+          </div>
+        </div>
+      </section>
+
       {/* ── Product surfaces ─────────────────────────────────────────── */}
       <section className="max-w-[1200px] mx-auto px-4 sm:px-6 lg:px-10 pt-16 sm:pt-24 pb-16">
         <div className="flex flex-col lg:flex-row lg:items-baseline lg:justify-between gap-4 mb-10">
           <div>
             <div className="font-mono text-[12px] text-accent tracking-[0.06em] uppercase mb-2.5">The product</div>
-            <h2 className="text-[28px] sm:text-[36px] lg:text-[44px] font-medium tracking-[-1.2px]">Six surfaces. One source of truth.</h2>
+            <h2 className="text-[28px] sm:text-[36px] lg:text-[44px] font-medium tracking-[-1.2px]">One platform. One source of truth.</h2>
           </div>
           <div className="text-[14px] text-text-muted lg:max-w-[360px] leading-relaxed">
             Every screen reads the same span store. Move from a cost chart to the
@@ -474,6 +543,24 @@ export default function LandingPage() {
             <div>{'  '}-e <span className="text-[#b4e0a0]">ENCRYPTION_KEY</span>=<span className="text-[#f2a65a]">&quot;$(openssl rand -base64 32)&quot;</span> \</div>
             <div>{'  '}ghcr.io/sunes26/spanlens-server:latest</div>
             <div className="text-[#7a7a7a] mt-2.5"># → curl http://localhost:3001/health</div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── Built for teams ──────────────────────────────────────────── */}
+      <section className="max-w-[1200px] mx-auto px-4 sm:px-6 lg:px-10 py-10 pb-20">
+        <div className="border border-border rounded-xl bg-bg-elev p-6 lg:p-10">
+          <div className="font-mono text-[12px] text-accent tracking-[0.06em] uppercase mb-3">Built for teams</div>
+          <h3 className="text-[24px] sm:text-[28px] lg:text-[34px] font-medium tracking-[-0.8px] leading-[1.1] mb-4">Ship together. Stay audited.</h3>
+          <p className="text-[15px] leading-[1.6] text-text-muted mb-6 max-w-[640px]">
+            Projects isolate workloads, roles and invitations manage the whole team, and an
+            audit log records every change. Wire Spanlens into your stack with webhooks and
+            alerts.
+          </p>
+          <div className="flex gap-2 flex-wrap">
+            {['Projects', 'Roles & invitations', 'Audit log', 'Webhooks', 'Alerts', 'Saved filters'].map((t) => (
+              <span key={t} className="font-mono text-[11px] text-text-muted px-[10px] py-[5px] border border-border rounded-[5px]">{t}</span>
+            ))}
           </div>
         </div>
       </section>
