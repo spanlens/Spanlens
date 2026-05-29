@@ -166,12 +166,14 @@ export default function DemoDashboardPage() {
   const topModels = DEMO_MODELS.slice(0, 5)
 
   return (
-    <div className="-mx-4 -my-4 md:-mx-8 md:-my-7 flex flex-col h-screen overflow-hidden bg-bg">
-      <Topbar
-        crumbs={[{ label: 'Demo', href: '/demo/dashboard' }, { label: 'Dashboard' }]}
-      />
+    <div className="-mx-4 -my-4 md:-mx-8 md:-my-7 flex flex-col min-h-screen">
+      <div className="sticky top-0 z-20 bg-bg">
+        <Topbar
+          crumbs={[{ label: 'Demo', href: '/demo/dashboard' }, { label: 'Dashboard' }]}
+        />
+      </div>
 
-      <div className="flex-1 overflow-y-auto">
+      <div>
         {/* Greeting */}
         <div className="px-[22px] py-[22px] border-b border-border">
           <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 mb-1">
