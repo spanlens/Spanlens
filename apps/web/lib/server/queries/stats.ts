@@ -12,10 +12,15 @@ function fromIso(hours: number): string {
   return new Date(fromMs).toISOString()
 }
 
-// Must exactly match useStatsOverview queryKey in use-stats.ts
+// Must exactly match useStatsOverview queryKey in use-stats.ts.
+// The client hook always includes `from`/`to` in the key (null when not
+// passed). Omitting them here used to produce a structurally different key
+// (`{hours,compare:true}` vs `{hours,compare:true,from:null,to:null}`),
+// so dehydrated state never hit the cache and the prefetch was effectively
+// wasted — every page paid a client-side refetch after hydration.
 export function statsOverviewSpec(hours = 24): QuerySpec {
   return {
-    queryKey: ['stats', 'overview', { hours, compare: true }] as const,
+    queryKey: ['stats', 'overview', { hours, compare: true, from: null, to: null }] as const,
     queryFn: async () => {
       const from = fromIso(hours)
       const qs = new URLSearchParams({ from, compare: 'true' })
