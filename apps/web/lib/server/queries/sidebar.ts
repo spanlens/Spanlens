@@ -2,9 +2,11 @@ import 'server-only'
 import type { QuerySpec } from '@/lib/server/dehydrate'
 import { alertsSpec } from './alerts'
 import { anomaliesSpec } from './anomalies'
+import { quotaSpec } from './billing'
 import { currentRoleSpec, pendingInvitationsSpec } from './me'
 import { organizationSpec } from './organization'
 import { recommendationsSpec } from './recommendations'
+import { statsOverviewSpec } from './stats'
 import { workspacesSpec } from './workspaces'
 
 /**
@@ -28,6 +30,8 @@ import { workspacesSpec } from './workspaces'
  *   • workspaces             — workspace switcher dropdown
  *   • current role           — admin-gated nav items
  *   • pending invitations    — top-of-page banner
+ *   • stats overview (24h)   — sidebar compact header (req count + status)
+ *   • billing quota          — sidebar bottom card (usage progress bar)
  *
  * staleTime is set per-spec to match the corresponding client hook. After
  * hydration, the client QueryClient picks up the cached data and avoids
@@ -44,5 +48,7 @@ export function sidebarSpecs(): QuerySpec[] {
     workspacesSpec(),
     currentRoleSpec(),
     pendingInvitationsSpec(),
+    statsOverviewSpec(),
+    quotaSpec(),
   ]
 }
