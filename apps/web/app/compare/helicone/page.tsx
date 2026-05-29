@@ -8,6 +8,11 @@ export const metadata = {
 
 const whySpanlens: ComparePoint[] = [
   {
+    title: 'Actively developed, not in maintenance mode',
+    body:
+      'Helicone was acquired by Mintlify in 2026 and is now in maintenance mode: security patches, bug fixes, and new-model support continue, but active feature development has ended and the founders moved on. Spanlens is actively building. If you want a tool that keeps shipping new capabilities, that gap matters.',
+  },
+  {
     title: 'Critical Path on agent traces',
     body:
       'Multi-step agents show as waterfalls in both tools. Only Spanlens highlights the longest dependency chain, the actual bottleneck. Helicone shows you spans, and you find the slow one yourself.',
@@ -15,7 +20,7 @@ const whySpanlens: ComparePoint[] = [
   {
     title: 'Prompt A/B with built-in Welch t-test',
     body:
-      'Spanlens lets you split traffic between prompt variants and reports statistical significance (Welch t-test on latency, cost, judge score). Helicone supports prompt versioning, but A/B comparison and significance testing are bring-your-own.',
+      'Spanlens lets you split traffic between prompt variants and reports statistical significance (Welch t-test on latency and cost, plus a z-test on error rate). Helicone supports prompt versioning, but A/B comparison and significance testing are bring-your-own.',
   },
   {
     title: 'Judge to human correlation tracking',
@@ -149,7 +154,7 @@ const groups: CompareGroup[] = [
   {
     title: 'License & deployment',
     rows: [
-      { feature: 'Fully MIT (entire repo)', spanlens: 'yes', competitor: 'yes' },
+      { feature: 'Fully open source', spanlens: 'yes', competitor: 'yes', note: 'Spanlens is MIT; Helicone is Apache 2.0.' },
       { feature: 'Docker Compose self-host', spanlens: 'yes', competitor: 'yes' },
       { feature: 'Managed cloud option', spanlens: 'yes', competitor: 'yes' },
     ],
@@ -161,7 +166,7 @@ export default function VsHeliconePage() {
     <CompareTemplate
       competitor="Helicone"
       tagline="Same proxy-first architecture, with more observability depth: Critical Path tracing, statistical A/B testing, and a fallback-replay durability layer."
-      tldr="Helicone proved the proxy-based LLM observability model and ships a polished, focused product. Spanlens uses the same architecture and adds Critical Path tracing on agent runs, Welch t-test on A/B prompt experiments, judge to human correlation tracking, and a ClickHouse fallback-replay queue so logs are not silently dropped on infra hiccups."
+      tldr="Helicone proved the proxy-based LLM observability model and ships a polished, focused product, though it entered maintenance mode after its 2026 Mintlify acquisition. Spanlens uses the same architecture, is actively developed, and adds Critical Path tracing on agent runs, Welch t-test on A/B prompt experiments, judge to human correlation tracking, and a ClickHouse fallback-replay queue so logs are not silently dropped on infra hiccups."
       whySpanlens={whySpanlens}
       whyCompetitor={whyCompetitor}
       groups={groups}

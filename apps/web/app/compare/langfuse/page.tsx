@@ -13,14 +13,14 @@ const whySpanlens: ComparePoint[] = [
       'Spanlens is proxy-first. Replace api.openai.com with your Spanlens endpoint and every call is captured. Langfuse requires wrapping clients with their SDK or wiring OTel. That works fine for greenfield apps but gets painful when existing codebases have many call sites.',
   },
   {
-    title: 'Fully MIT, no EE or commercial folder',
+    title: 'Fully MIT, no EE folder at all',
     body:
-      'Every line of Spanlens ships under MIT. Langfuse is open-source, but features like SSO, audit logs, and some analytics live behind their EE folder under a commercial license. With Spanlens, what you self-host is what we run.',
+      'Every line of Spanlens ships under MIT. Langfuse moved all product features to MIT too, but still keeps an ee/ folder that gates enterprise security and compliance add-ons (SCIM, audit logs, data retention, project RBAC, data masking) behind a commercial license. Spanlens has no ee/ folder: what you self-host is exactly what we run.',
   },
   {
     title: 'Prompt A/B with Welch t-test built in',
     body:
-      'Spanlens lets you run prompt variants side by side and gives you a Welch t-test on latency, cost, and judge scores, not just average bars. Langfuse has prompt management and experiments, but statistical significance testing is something you build yourself.',
+      'Spanlens lets you run prompt variants side by side and gives you a Welch t-test on latency and cost, plus a z-test on error rate, not just average bars. Langfuse has prompt management and experiments, but statistical significance testing is something you build yourself.',
   },
   {
     title: 'Judge to human correlation surfaced as a metric',
@@ -162,7 +162,7 @@ const groups: CompareGroup[] = [
         feature: 'Fully MIT (entire repo)',
         spanlens: 'yes',
         competitor: 'no',
-        note: 'Langfuse has an EE folder under a commercial license.',
+        note: 'Langfuse core is MIT; an ee/ folder gates enterprise security and compliance add-ons (SCIM, audit logs, RBAC, data masking) under a commercial license.',
       },
       { feature: 'Docker Compose self-host', spanlens: 'yes', competitor: 'yes' },
       { feature: 'Managed cloud option', spanlens: 'yes', competitor: 'yes' },

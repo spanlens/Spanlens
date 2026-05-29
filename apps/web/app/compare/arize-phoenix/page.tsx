@@ -23,9 +23,9 @@ const whySpanlens: ComparePoint[] = [
       'Phoenix uses OpenInference SDKs that wrap your client. You touch every call site. Spanlens is a baseURL swap. Existing apps with hundreds of LLM calls get instrumented in one config change.',
   },
   {
-    title: 'Managed cloud option without a sales call',
+    title: 'MIT license, not source-available',
     body:
-      "Phoenix is OSS-only; Arize's managed product is enterprise-priced. Spanlens has a free managed tier and a transparent $29 Pro plan so you can pick OSS or hosted without a procurement cycle.",
+      'Spanlens ships under MIT, an OSI-approved license you can use, modify, and even run as a service. Phoenix is Elastic License 2.0, which is source-available but restricts offering it as a managed service. Both now have a free hosted tier, so the real difference is what the license lets you do with the code.',
   },
   {
     title: 'Model savings recommender with dollar figures',
@@ -115,7 +115,7 @@ const groups: CompareGroup[] = [
     title: 'Eval & quality',
     rows: [
       { feature: 'LLM-as-judge scoring', spanlens: 'yes', competitor: 'yes' },
-      { feature: 'Human annotation queue', spanlens: 'yes', competitor: 'partial' },
+      { feature: 'Human annotation queue', spanlens: 'yes', competitor: 'yes' },
       {
         feature: 'Judge to human correlation tracking',
         spanlens: 'yes',
@@ -155,13 +155,18 @@ const groups: CompareGroup[] = [
   {
     title: 'License & deployment',
     rows: [
-      { feature: 'Fully open source (MIT-class)', spanlens: 'yes', competitor: 'yes' },
-      { feature: 'Docker Compose self-host', spanlens: 'yes', competitor: 'yes' },
       {
-        feature: 'Managed cloud at transparent SMB price',
+        feature: 'OSI-approved open-source license',
         spanlens: 'yes',
         competitor: 'no',
-        note: "Arize's managed offering is enterprise-priced.",
+        note: 'Spanlens is MIT. Phoenix is Elastic License 2.0 (source-available), not an OSI-approved open-source license.',
+      },
+      { feature: 'Docker Compose self-host', spanlens: 'yes', competitor: 'yes' },
+      {
+        feature: 'Managed cloud with a free tier',
+        spanlens: 'yes',
+        competitor: 'yes',
+        note: 'Phoenix Cloud added a free tier and a $50/mo Pro plan; both products now offer transparent hosted pricing.',
       },
     ],
   },
@@ -172,7 +177,7 @@ export default function VsArizePhoenixPage() {
     <CompareTemplate
       competitor="Arize Phoenix"
       tagline="Built for the production app developer, not the ML engineer in a notebook. JS/TS gets equal billing with Python."
-      tldr="Phoenix has serious ML-observability DNA from Arize and is excellent if you're an ML engineer who lives in Python notebooks. Spanlens is built for the app developer who shipped an LLM feature last week, with proxy-first install, JS/TS equal-class with Python, statistical A/B testing, and a managed tier that doesn't require an enterprise sales call."
+      tldr="Phoenix has serious ML-observability DNA from Arize and is excellent if you're an ML engineer who lives in Python notebooks. Spanlens is built for the app developer who shipped an LLM feature last week, with proxy-first install, JS/TS equal-class with Python, statistical A/B testing, and a fully MIT-licensed codebase (Phoenix is source-available under ELv2)."
       whySpanlens={whySpanlens}
       whyCompetitor={whyCompetitor}
       groups={groups}
