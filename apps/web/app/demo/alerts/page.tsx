@@ -157,28 +157,30 @@ export default function DemoAlertsPage() {
   ).length
 
   return (
-    <div className="-mx-4 -my-4 md:-mx-8 md:-my-7 flex flex-col h-screen overflow-hidden bg-bg">
-      <Topbar
-        crumbs={[{ label: 'Demo', href: '/demo/dashboard' }, { label: 'Alerts' }]}
-        right={
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => alert('Sign up to add notification channels')}
-              className="font-mono text-[11px] text-text-muted px-[10px] py-[5px] border border-border rounded-[5px] bg-bg-elev hover:text-text transition-colors"
-            >
-              + Add channel
-            </button>
-            <button
-              type="button"
-              onClick={() => alert('Sign up to create alerts')}
-              className="font-mono text-[11px] text-bg px-[10px] py-[5px] rounded-[5px] bg-text font-medium hover:opacity-90 transition-opacity"
-            >
-              + New alert
-            </button>
-          </div>
-        }
-      />
+    <div className="-mx-4 -my-4 md:-mx-8 md:-my-7 flex flex-col min-h-screen">
+      <div className="sticky top-0 z-20 bg-bg">
+        <Topbar
+          crumbs={[{ label: 'Demo', href: '/demo/dashboard' }, { label: 'Alerts' }]}
+          right={
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => alert('Sign up to add notification channels')}
+                className="font-mono text-[11px] text-text-muted px-[10px] py-[5px] border border-border rounded-[5px] bg-bg-elev hover:text-text transition-colors"
+              >
+                + Add channel
+              </button>
+              <button
+                type="button"
+                onClick={() => alert('Sign up to create alerts')}
+                className="font-mono text-[11px] text-bg px-[10px] py-[5px] rounded-[5px] bg-text font-medium hover:opacity-90 transition-opacity"
+              >
+                + New alert
+              </button>
+            </div>
+          }
+        />
+      </div>
 
       {/* Stat strip */}
       <div className="overflow-x-auto shrink-0 border-b border-border">

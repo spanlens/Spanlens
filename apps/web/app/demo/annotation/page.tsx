@@ -1,7 +1,6 @@
 'use client'
-
-import { useMemo, useState } from 'react'
-import { Star, Filter, MessageSquare } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Filter, MessageSquare, Star } from 'lucide-react'
 import { Topbar } from '@/components/layout/topbar'
 import { cn } from '@/lib/utils'
 import { DEMO_ANNOTATION_QUEUE } from '@/lib/demo-data'
@@ -56,27 +55,39 @@ function StarRating({ value, onChange }: { value: number | null; onChange: (v: n
   )
 }
 
-function ItemCard({ item }: { item: AnnotationQueueItem }) {
+interface ItemCardProps {
+  item: AnnotationQueueItem
+  focused: boolean
+  localScore: number | null
+  onRate: (raw: number) => void
+  onFocus: () => void
+  cardRef: (el: HTMLDivElement | null) => void
+}
+
+function ItemCard({ item, focused, localScore, onRate, onFocus, cardRef }: ItemCardProps) {
   const userMsg = useMemo(() => extractRequestUserText(item.request_body), [item.request_body])
   const responseText = useMemo(() => extractResponseText(item.response_body), [item.response_body])
   const [expanded, setExpanded] = useState(false)
-  const [stars, setStars] = useState<number | null>(item.human_eval?.raw_score ?? null)
   const [comment, setComment] = useState(item.human_eval?.comment ?? '')
 
-  function handleSave() {
-    if (stars == null) { alert('Pick a rating first'); return }
-    alert('Saving ratings, sign up to use this')
-  }
+  const score = localScore ?? item.human_eval?.raw_score ?? null
 
   return (
-    <div className="border border-border rounded-[6px] bg-bg overflow-hidden">
+    <div
+      ref={cardRef}
+      onClick={onFocus}
+      className={cn(
+        'border rounded-[6px] bg-bg overflow-hidden transition-colors',
+        focused ? 'border-accent ring-1 ring-accent/40' : 'border-border',
+      )}
+    >
       <div className="flex items-center px-[14px] py-[10px] bg-bg-muted border-b border-border">
         <div className="flex-1 min-w-0">
           <p className="font-mono text-[12px] text-text font-medium truncate">
             {item.prompt_name ?? '—'}{item.prompt_version != null ? ` · v${item.prompt_version}` : ''}
           </p>
           <p className="font-mono text-[10px] text-text-faint truncate">
-            {item.model} · {new Date(item.created_at).toLocaleString()}
+            {item.model} · {new Date(item.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
           </p>
         </div>
         <div className="flex items-center gap-3 shrink-0">
@@ -91,15 +102,15 @@ function ItemCard({ item }: { item: AnnotationQueueItem }) {
               </span>
             </div>
           )}
-          {item.human_eval && (
+          {score != null && (
             <div className="flex items-center gap-1 font-mono text-[10.5px] text-good">
-              <span>You: {fmtScore(item.human_eval.score)}</span>
+              <span>You: {(((score - 1) / 4) * 100).toFixed(0)}</span>
             </div>
           )}
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 p-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3">
         <div className="min-w-0">
           <p className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-1">User input</p>
           <p className={cn('font-mono text-[11.5px] text-text-muted leading-relaxed whitespace-pre-wrap', !expanded && 'line-clamp-3')}>
@@ -109,7 +120,7 @@ function ItemCard({ item }: { item: AnnotationQueueItem }) {
         <div className="min-w-0">
           <div className="flex items-center justify-between mb-1">
             <p className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint">Response</p>
-            <button type="button" onClick={() => setExpanded((v) => !v)} className="font-mono text-[10px] text-text-faint hover:text-text">
+            <button type="button" onClick={(e) => { e.stopPropagation(); setExpanded((v) => !v) }} className="font-mono text-[10px] text-text-faint hover:text-text">
               {expanded ? 'collapse' : 'expand'}
             </button>
           </div>
@@ -122,10 +133,10 @@ function ItemCard({ item }: { item: AnnotationQueueItem }) {
       <div className="border-t border-border p-4 bg-bg-elev space-y-3">
         <div className="flex items-center gap-3">
           <span className="font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint">Your rating</span>
-          <StarRating value={stars} onChange={setStars} />
-          {stars != null && (
-            <span className="font-mono text-[11px] text-text-muted">
-              {stars}/5 ({(((stars - 1) / 4) * 100).toFixed(0)} normalized)
+          <StarRating value={score} onChange={onRate} />
+          {score != null && (
+            <span className="font-mono text-[11px] text-text-muted" title={`${(((score - 1) / 4) * 100).toFixed(0)} normalized`}>
+              {score}/5
             </span>
           )}
         </div>
@@ -135,6 +146,7 @@ function ItemCard({ item }: { item: AnnotationQueueItem }) {
           </label>
           <textarea
             value={comment}
+            onClick={(e) => e.stopPropagation()}
             onChange={(e) => setComment(e.target.value)}
             rows={2}
             placeholder="Why this rating?"
@@ -144,8 +156,8 @@ function ItemCard({ item }: { item: AnnotationQueueItem }) {
         <div className="flex items-center justify-end">
           <button
             type="button"
-            onClick={handleSave}
-            disabled={stars == null}
+            onClick={(e) => { e.stopPropagation(); alert('Saving ratings, sign up to use this') }}
+            disabled={score == null}
             className="font-mono text-[11.5px] px-3 py-[6px] rounded-[5px] bg-text text-bg font-medium hover:opacity-90 disabled:opacity-40"
           >
             {item.human_eval ? 'Update' : 'Save rating'}
@@ -160,6 +172,8 @@ export default function DemoAnnotationPage() {
   const [promptName, setPromptName] = useState<string>('')
   const [unscoredOnly, setUnscoredOnly] = useState(false)
   const [lowJudgeScoreOnly, setLowJudgeScoreOnly] = useState(false)
+  // Local ratings so the demo feels interactive (resets on reload).
+  const [localScores, setLocalScores] = useState<Record<string, number>>({})
 
   const promptNames = useMemo(() => {
     const set = new Set<string>()
@@ -176,13 +190,95 @@ export default function DemoAnnotationPage() {
     })
   }, [promptName, unscoredOnly, lowJudgeScoreOnly])
 
-  const scoredCount = items.filter((i) => !!i.human_eval).length
+  // Keyboard focus — clamp on render instead of resetting in an effect.
+  const [rawFocusedIdx, setRawFocusedIdx] = useState(0)
+  const focusedIdx = items.length === 0 ? 0 : Math.min(rawFocusedIdx, items.length - 1)
+  const cardRefs = useRef<(HTMLDivElement | null)[]>([])
+
+  const rate = useCallback((id: string, raw: number) => {
+    setLocalScores((prev) => ({ ...prev, [id]: raw }))
+  }, [])
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      const t = e.target as HTMLElement
+      if (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT') return
+
+      if (e.key === 'ArrowDown' || e.key === 'j') {
+        e.preventDefault()
+        setRawFocusedIdx((i) => Math.min(i + 1, items.length - 1))
+      } else if (e.key === 'ArrowUp' || e.key === 'k') {
+        e.preventDefault()
+        setRawFocusedIdx((i) => Math.max(i - 1, 0))
+      } else if (e.key >= '1' && e.key <= '5') {
+        const focused = items[focusedIdx]
+        if (focused) {
+          e.preventDefault()
+          rate(focused.id, Number(e.key))
+        }
+      }
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [items, focusedIdx, rate])
+
+  useEffect(() => {
+    cardRefs.current[focusedIdx]?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+  }, [focusedIdx])
+
+  // Stat strip — computed over the unfiltered queue.
+  const total = DEMO_ANNOTATION_QUEUE.length
+  const ratedCount = useMemo(() => {
+    let n = 0
+    for (const q of DEMO_ANNOTATION_QUEUE) {
+      if (localScores[q.id] != null || q.human_eval) n += 1
+    }
+    return n
+  }, [localScores])
+  const avgHuman = useMemo(() => {
+    const raws: number[] = []
+    for (const q of DEMO_ANNOTATION_QUEUE) {
+      const raw = localScores[q.id] ?? q.human_eval?.raw_score ?? null
+      if (raw != null) raws.push(raw)
+    }
+    if (raws.length === 0) return '—'
+    return (raws.reduce((a, b) => a + b, 0) / raws.length).toFixed(1)
+  }, [localScores])
+  const judgeCoverage = useMemo(() => {
+    const covered = DEMO_ANNOTATION_QUEUE.filter((q) => q.llm_judge_score != null).length
+    return total > 0 ? `${Math.round((covered / total) * 100)}%` : '—'
+  }, [total])
+
+  const scoredInView = items.filter((i) => localScores[i.id] != null || i.human_eval).length
 
   return (
-    <div className="-mx-4 -my-4 md:-mx-8 md:-my-7 flex flex-col h-screen overflow-hidden bg-bg">
-      <Topbar crumbs={[{ label: 'Demo', href: '/demo/dashboard' }, { label: 'Annotation' }]} />
+    <div className="-mx-4 -my-4 md:-mx-8 md:-my-7 flex flex-col min-h-screen">
+      <div className="sticky top-0 z-20 bg-bg">
+        <Topbar crumbs={[{ label: 'Demo', href: '/demo/dashboard' }, { label: 'Annotation' }]} />
+      </div>
 
-      <div className="flex items-center gap-3 px-[22px] py-[12px] border-b border-border bg-bg-muted">
+      {/* Stat strip */}
+      <div className="overflow-x-auto shrink-0 border-b border-border">
+        <div className="grid grid-cols-2 sm:grid-cols-4 min-w-[360px]">
+          {[
+            { label: 'Queue', value: String(total) },
+            { label: 'Rated', value: `${ratedCount}/${total}` },
+            { label: 'Avg human', value: avgHuman },
+            { label: 'Judge coverage', value: judgeCoverage },
+          ].map((s, i) => (
+            <div
+              key={s.label}
+              className={cn('px-[18px] py-[14px] border-border', i < 3 && 'border-r', i < 2 && 'border-b sm:border-b-0')}
+            >
+              <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-2">{s.label}</div>
+              <div className="text-[20px] font-medium tracking-[-0.4px] text-text">{s.value}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Filter bar */}
+      <div className="flex flex-wrap items-center gap-3 px-[22px] py-[12px] border-b border-border bg-bg-muted">
         <Filter className="h-3.5 w-3.5 text-text-faint" />
         <select
           value={promptName}
@@ -202,25 +298,35 @@ export default function DemoAnnotationPage() {
         </label>
         <span className="flex-1" />
         <span className="font-mono text-[11px] text-text-faint">
-          {items.length} requests · {scoredCount} rated by you
+          {items.length} requests · {scoredInView} rated
         </span>
       </div>
 
       <div className="px-[22px] py-[10px] border-b border-border flex items-center gap-2 font-mono text-[11px] text-text-muted">
         <MessageSquare className="h-3.5 w-3.5" />
         <span>
-          Manually score responses. Your ratings calibrate against LLM judge scores ,
-          a low correlation signals the judge needs work.
+          Manually score responses to calibrate against LLM judge scores. A low correlation signals the judge needs work.
+          Keyboard: ↑ ↓ or j k to move, 1-5 to rate.
         </span>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-[22px] py-[14px] space-y-3">
+      <div className="flex-1 px-[22px] py-[14px] space-y-3">
         {items.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-64 gap-2 text-text-muted">
             <p className="font-mono text-[13px]">No requests match these filters.</p>
           </div>
         ) : (
-          items.map((item) => <ItemCard key={item.id} item={item} />)
+          items.map((item, idx) => (
+            <ItemCard
+              key={item.id}
+              item={item}
+              focused={idx === focusedIdx}
+              localScore={localScores[item.id] ?? null}
+              onRate={(raw) => { setRawFocusedIdx(idx); rate(item.id, raw) }}
+              onFocus={() => setRawFocusedIdx(idx)}
+              cardRef={(el) => { cardRefs.current[idx] = el }}
+            />
+          ))
         )}
       </div>
     </div>

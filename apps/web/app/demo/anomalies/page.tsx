@@ -289,11 +289,13 @@ export default function DemoAnomaliesPage() {
   const baselineDisplay = '3.1'
 
   return (
-    <div className="-mx-4 -my-4 md:-mx-8 md:-my-7 flex flex-col h-screen overflow-hidden bg-bg">
-      <Topbar
-        crumbs={[{ label: 'Demo', href: '/demo/dashboard' }, { label: 'Anomalies' }]}
-        right={null}
-      />
+    <div className="-mx-4 -my-4 md:-mx-8 md:-my-7 flex flex-col min-h-screen">
+      <div className="sticky top-0 z-20 bg-bg">
+        <Topbar
+          crumbs={[{ label: 'Demo', href: '/demo/dashboard' }, { label: 'Anomalies' }]}
+          right={null}
+        />
+      </div>
 
       {/* Stat strip */}
       <div className="overflow-x-auto shrink-0 border-b border-border">
