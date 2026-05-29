@@ -8,6 +8,7 @@ import { supabaseAdmin } from '../lib/db.js'
 // eslint-disable-next-line no-restricted-imports
 import { getClickhouse, getOrgClickhouse } from '../lib/clickhouse.js'
 import { deliverToChannel, type AlertNotification } from '../lib/notifiers.js'
+import { emitWebhookEvent } from '../lib/webhook-emit.js'
 import { retryFailedWebhooks } from '../lib/webhook-dispatch.js'
 import { computeAndReportOverages } from '../lib/paddle-usage.js'
 import { runQuotaWarningsJob } from '../lib/quota-warnings.js'
@@ -273,6 +274,20 @@ cronRouter.get('/evaluate-alerts', async (c) => {
       .from('alerts')
       .update({ last_triggered_at: new Date().toISOString() })
       .eq('id', alert.id)
+
+    // Outbound webhook: alert.triggered. Awaited (cron is a batch job, not
+    // latency-sensitive); best-effort so a webhook failure never aborts the run.
+    await emitWebhookEvent(alert.organization_id, 'alert.triggered', {
+      alert: {
+        id: alert.id,
+        name: alert.name,
+        type: alert.type,
+        threshold: alert.threshold,
+        current_value: current,
+        window_minutes: alert.window_minutes,
+      },
+      organization: { name: orgName },
+    })
 
     report.push({ alert_id: alert.id, fired: true })
   }

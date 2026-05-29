@@ -555,17 +555,7 @@ export function DashboardClient() {
       {/* Sticky topbar — keeps the time range + crumbs in view while the
           page scrolls natively (no inner overflow container). */}
       <div className="sticky top-0 z-20 bg-bg">
-        <Topbar
-          crumbs={[{ label: 'Dashboard' }]}
-          right={
-            <TimeRangeSelector
-              value={timeRange}
-              onChange={(v) => { setTimeRange(v); if (v !== 'custom') setCustomRange(null) }}
-              customRange={customRange}
-              onCustomRange={(r) => { setCustomRange(r); setTimeRange('custom') }}
-            />
-          }
-        />
+        <Topbar crumbs={[{ label: 'Dashboard' }]} />
       </div>
 
       <div>
@@ -621,35 +611,43 @@ export function DashboardClient() {
             ) : (
               <span className="text-text-faint">&nbsp;</span>
             )}
-            <div ref={exportRef} className="ml-auto relative shrink-0">
-              <button
-                type="button"
-                onClick={() => setExportOpen((v) => !v)}
-                className="font-mono text-[11px] text-text-muted hover:text-text border border-border rounded px-2.5 py-1 transition-colors"
-              >
-                Export ↓
-              </button>
-              {exportOpen && (
-                <>
-                  <div className="fixed inset-0 z-10" onClick={() => setExportOpen(false)} />
-                  <div className="absolute right-0 top-full mt-1 z-20 bg-bg-elev border border-border rounded shadow-sm min-w-[100px]">
-                    <button
-                      type="button"
-                      onClick={exportCsv}
-                      className="w-full text-left px-3 py-2 font-mono text-[11px] text-text-muted hover:text-text hover:bg-bg transition-colors"
-                    >
-                      CSV
-                    </button>
-                    <button
-                      type="button"
-                      onClick={exportJson}
-                      className="w-full text-left px-3 py-2 font-mono text-[11px] text-text-muted hover:text-text hover:bg-bg transition-colors"
-                    >
-                      JSON
-                    </button>
-                  </div>
-                </>
-              )}
+            <div className="ml-auto flex items-center gap-2 shrink-0">
+              <TimeRangeSelector
+                value={timeRange}
+                onChange={(v) => { setTimeRange(v); if (v !== 'custom') setCustomRange(null) }}
+                customRange={customRange}
+                onCustomRange={(r) => { setCustomRange(r); setTimeRange('custom') }}
+              />
+              <div ref={exportRef} className="relative shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setExportOpen((v) => !v)}
+                  className="font-mono text-[11px] text-text-muted hover:text-text border border-border rounded px-2.5 py-1 transition-colors"
+                >
+                  Export ↓
+                </button>
+                {exportOpen && (
+                  <>
+                    <div className="fixed inset-0 z-10" onClick={() => setExportOpen(false)} />
+                    <div className="absolute right-0 top-full mt-1 z-20 bg-bg-elev border border-border rounded shadow-sm min-w-[100px]">
+                      <button
+                        type="button"
+                        onClick={exportCsv}
+                        className="w-full text-left px-3 py-2 font-mono text-[11px] text-text-muted hover:text-text hover:bg-bg transition-colors"
+                      >
+                        CSV
+                      </button>
+                      <button
+                        type="button"
+                        onClick={exportJson}
+                        className="w-full text-left px-3 py-2 font-mono text-[11px] text-text-muted hover:text-text hover:bg-bg transition-colors"
+                      >
+                        JSON
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
           </div>
         </div>

@@ -2,18 +2,16 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { Bell, Mail, MessageSquare, Plus, Search, Trash2 } from 'lucide-react'
+import { Bell, Mail, MessageSquare, Plus, Search, Settings2, Trash2 } from 'lucide-react'
 import {
   useAlerts,
   useCreateAlert,
   useDeleteAlert,
   useUpdateAlert,
   useNotificationChannels,
-  useCreateChannel,
-  useDeleteChannel,
   useAlertDeliveries,
 } from '@/lib/queries/use-alerts'
-import type { AlertType, ChannelKind, AlertRow } from '@/lib/queries/types'
+import type { AlertType, AlertRow } from '@/lib/queries/types'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Topbar, LiveDot } from '@/components/layout/topbar'
@@ -174,8 +172,6 @@ export function AlertsClient() {
   const createAlert = useCreateAlert()
   const deleteAlert = useDeleteAlert()
   const updateAlert = useUpdateAlert()
-  const createChannel = useCreateChannel()
-  const deleteChannel = useDeleteChannel()
 
   // URL-backed search + status filter — shareable, survives reload.
   const search = sp.get('q') ?? ''
@@ -214,15 +210,12 @@ export function AlertsClient() {
   )
 
   const [alertDialogOpen, setAlertDialogOpen] = useState(false)
-  const [channelDialogOpen, setChannelDialogOpen] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [newName, setNewName] = useState('')
   const [newType, setNewType] = useState<AlertType>('budget')
   const [newThreshold, setNewThreshold] = useState('')
   const [newWindow, setNewWindow] = useState('60')
   const [newCooldown, setNewCooldown] = useState('60')
-  const [newChannelKind, setNewChannelKind] = useState<ChannelKind>('email')
-  const [newChannelTarget, setNewChannelTarget] = useState('')
 
   function openCreateAlert() {
     setEditingId(null)
@@ -304,13 +297,6 @@ export function AlertsClient() {
     }
     setAlertDialogOpen(false)
     setEditingId(null)
-  }
-
-  async function handleCreateChannel() {
-    if (!newChannelTarget.trim()) return
-    await createChannel.mutateAsync({ kind: newChannelKind, target: newChannelTarget.trim() })
-    setNewChannelTarget('')
-    setChannelDialogOpen(false)
   }
 
   // CSV / JSON export — client-side, RFC 4180 escaping.
@@ -397,17 +383,15 @@ export function AlertsClient() {
               >
                 <span className={cn('inline-block', mounted && isFetching && 'animate-spin')}>↻</span>
               </button>
+              <Link
+                href="/settings?tab=integrations"
+                title="Manage notification channels"
+                className="font-mono text-[11px] text-text-muted px-2 sm:px-[10px] py-[5px] border border-border rounded-[5px] bg-bg-elev hover:text-text transition-colors whitespace-nowrap shrink-0 flex items-center gap-1.5"
+              >
+                <Settings2 className="h-3.5 w-3.5 shrink-0" />
+                <span className="hidden sm:inline">Channels</span>
+              </Link>
               <PermissionGate need="edit">
-                <button
-                  type="button"
-                  onClick={() => setChannelDialogOpen(true)}
-                  title="Add channel"
-                  aria-label="Add channel"
-                  className="font-mono text-[11px] text-text-muted px-2 sm:px-[10px] py-[5px] border border-border rounded-[5px] bg-bg-elev hover:text-text transition-colors whitespace-nowrap shrink-0 flex items-center gap-1.5"
-                >
-                  <Bell className="h-3.5 w-3.5 shrink-0" />
-                  <span className="hidden sm:inline">Add channel</span>
-                </button>
                 <button
                   type="button"
                   onClick={openCreateAlert}
@@ -641,39 +625,44 @@ export function AlertsClient() {
             )}
 
             <div className="px-[22px] py-[18px]">
-              <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-3">
-                Notification channels
+              <div className="flex items-center justify-between mb-3 gap-2">
+                <span className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint">
+                  Notification channels
+                </span>
+                <Link
+                  href="/settings?tab=integrations"
+                  className="font-mono text-[11px] text-accent hover:opacity-80 transition-opacity"
+                >
+                  Manage channels →
+                </Link>
               </div>
+              {/* Read-only here: every active rule fans out to these channels.
+                  Add/remove lives in Settings → Integrations (org-level). */}
               {mounted && channelsQuery.data === undefined ? (
                 <div className="h-12 bg-bg-elev rounded animate-pulse" />
               ) : channels.length === 0 ? (
                 <div className="rounded-[5px] border border-dashed border-border py-5 text-center font-mono text-[12px] text-text-muted">
-                  No channels yet, add an email or webhook to receive alerts.
+                  No channels yet.{' '}
+                  <Link href="/settings?tab=integrations" className="text-accent hover:opacity-80 transition-opacity">
+                    Connect Slack, Discord, or email
+                  </Link>{' '}
+                  to receive alerts.
                 </div>
               ) : (
                 <div className="rounded-[6px] border border-border overflow-hidden">
                   {channels.map((ch) => (
                     <div
                       key={ch.id}
-                      className="flex items-center justify-between px-[14px] py-3 border-b border-border last:border-0"
+                      className="flex items-center gap-3 px-[14px] py-3 border-b border-border last:border-0"
                     >
-                      <div className="flex items-center gap-3">
-                        <span className="text-text-muted">
-                          {ch.kind === 'email' ? <Mail className="h-3.5 w-3.5" /> : <MessageSquare className="h-3.5 w-3.5" />}
-                        </span>
-                        <span className="font-mono text-[11px] uppercase tracking-[0.04em] text-text-muted">{ch.kind}</span>
-                        <span className="font-mono text-[12px] text-text-faint truncate max-w-xs">{ch.target}</span>
-                      </div>
-                      <PermissionGate need="edit">
-                        <button
-                          type="button"
-                          onClick={() => void deleteChannel.mutateAsync(ch.id)}
-                          disabled={deleteChannel.isPending}
-                          className="text-text-faint hover:text-bad transition-colors p-1 disabled:opacity-40"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      </PermissionGate>
+                      <span className="text-text-muted">
+                        {ch.kind === 'email' ? <Mail className="h-3.5 w-3.5" /> : <MessageSquare className="h-3.5 w-3.5" />}
+                      </span>
+                      <span className="font-mono text-[11px] uppercase tracking-[0.04em] text-text-muted">{ch.kind}</span>
+                      {ch.label && (
+                        <span className="font-mono text-[12px] text-text truncate max-w-[160px]">{ch.label}</span>
+                      )}
+                      <span className="font-mono text-[12px] text-text-faint truncate max-w-xs">{ch.target}</span>
                     </div>
                   ))}
                 </div>
@@ -779,45 +768,6 @@ export function AlertsClient() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={channelDialogOpen} onOpenChange={setChannelDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Add notification channel</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 mt-2">
-            <div className="space-y-2">
-              <label className="font-mono text-[11px] text-text-muted uppercase tracking-[0.04em]">Kind</label>
-              <Select value={newChannelKind} onValueChange={(v) => setNewChannelKind(v as ChannelKind)}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="email">Email (Resend)</SelectItem>
-                  <SelectItem value="slack">Slack webhook</SelectItem>
-                  <SelectItem value="discord">Discord webhook</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <label className="font-mono text-[11px] text-text-muted uppercase tracking-[0.04em]">
-                {newChannelKind === 'email' ? 'Email address' : 'Webhook URL'}
-              </label>
-              <input
-                value={newChannelTarget}
-                onChange={(e) => setNewChannelTarget(e.target.value)}
-                placeholder={newChannelKind === 'email' ? 'alerts@yourco.com' : 'https://hooks.slack.com/…'}
-                className="w-full h-9 px-3 rounded border border-border bg-bg text-[13px] focus:outline-none focus:border-border-strong"
-              />
-            </div>
-            <button
-              type="button"
-              onClick={() => void handleCreateChannel()}
-              disabled={!newChannelTarget.trim() || createChannel.isPending}
-              className="w-full py-2 rounded bg-text text-bg font-mono text-[13px] font-medium hover:opacity-90 transition-opacity disabled:opacity-40"
-            >
-              {createChannel.isPending ? 'Adding…' : 'Add channel'}
-            </button>
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   )
 }

@@ -979,24 +979,6 @@ export function SavingsClient() {
           right={
             <div className="flex items-center gap-3">
               <LiveDot refetching={isFetching} />
-              <div className="flex items-center gap-1">
-                {WINDOW_OPTIONS.map((opt) => (
-                  <button
-                    key={opt.hours}
-                    type="button"
-                    onClick={() => setHoursUrl(opt.hours)}
-                    className={cn(
-                      'font-mono text-[11px] px-[8px] py-[3px] rounded-[4px] transition-colors',
-                      hours === opt.hours
-                        ? 'bg-bg-elev text-text border border-border-strong'
-                        : 'text-text-faint hover:text-text',
-                    )}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-                <span className="hidden sm:inline font-mono text-[11px] text-text-muted ml-1.5">Analysis window</span>
-              </div>
               <button
                 type="button"
                 onClick={() => void refetch()}
@@ -1146,6 +1128,26 @@ export function SavingsClient() {
           </button>
         )}
         <span className="flex-1" />
+
+        {/* Analysis window — relocated from the topbar to sit left of Export. */}
+        <div className="flex items-center gap-1">
+          {WINDOW_OPTIONS.map((opt) => (
+            <button
+              key={opt.hours}
+              type="button"
+              onClick={() => setHoursUrl(opt.hours)}
+              className={cn(
+                'font-mono text-[11px] px-[8px] py-[3px] rounded-[4px] transition-colors',
+                hours === opt.hours
+                  ? 'bg-bg-elev text-text border border-border-strong'
+                  : 'text-text-faint hover:text-text',
+              )}
+            >
+              {opt.label}
+            </button>
+          ))}
+          <span className="hidden sm:inline font-mono text-[11px] text-text-muted ml-1.5">Analysis window</span>
+        </div>
 
         <div ref={exportRef} className="relative">
           <button
