@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation'
 import { X, FlaskConical } from 'lucide-react'
 import { DEMO_PROMPTS } from '@/lib/demo-data'
 import { Topbar } from '@/components/layout/topbar'
+import { DemoExportButton } from '@/components/ui/demo-export-button'
 import { cn } from '@/lib/utils'
 
 function fmtUsd(v: number): string {
@@ -89,6 +90,17 @@ export default function DemoPromptsPage() {
                 ⌘K
               </span>
             </div>
+            <DemoExportButton
+              base="prompts"
+              rows={filtered}
+              columns={[
+                { header: 'Name', value: (p) => p.name },
+                { header: 'Version', value: (p) => p.versionCount ?? p.version },
+                { header: 'Calls', value: (p) => p.stats?.calls ?? 0 },
+                { header: 'Cost USD', value: (p) => (p.stats?.totalCostUsd ?? 0).toFixed(4) },
+                { header: 'A/B', value: (p) => (p.activeExperiment != null ? 'yes' : 'no') },
+              ]}
+            />
             <button
               type="button"
               onClick={() => alert('Sign up to create prompts')}

@@ -2,6 +2,7 @@
 import { useState } from 'react'
 import { cn } from '@/lib/utils'
 import { Topbar } from '@/components/layout/topbar'
+import { DemoExportButton } from '@/components/ui/demo-export-button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { DEMO_RECOMMENDATIONS } from '@/lib/demo-data'
 import type { ModelRecommendation } from '@/lib/queries/use-recommendations'
@@ -480,6 +481,17 @@ export default function DemoSavingsPage() {
         crumbs={[{ label: 'Demo', href: '/demo/dashboard' }, { label: 'Savings' }]}
         right={
           <div className="flex items-center gap-2">
+            <DemoExportButton
+              base="savings"
+              rows={notDismissed}
+              columns={[
+                { header: 'Current model', value: (r: ModelRecommendation) => `${r.currentProvider}/${r.currentModel}` },
+                { header: 'Suggested model', value: (r: ModelRecommendation) => `${r.suggestedProvider}/${r.suggestedModel}` },
+                { header: 'Est. monthly savings USD', value: (r: ModelRecommendation) => r.estimatedMonthlySavingsUsd.toFixed(2) },
+                { header: 'Sample count', value: (r: ModelRecommendation) => r.sampleCount },
+                { header: 'Cost last N days USD', value: (r: ModelRecommendation) => r.totalCostUsdLastNDays.toFixed(2) },
+              ]}
+            />
             <a
               href="/signup"
               className="hidden sm:inline font-mono text-[11px] px-[10px] py-[3px] rounded-[5px] bg-text text-bg hover:opacity-90 transition-opacity"

@@ -3,6 +3,7 @@ import { Suspense, useCallback, useMemo, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import { Topbar } from '@/components/layout/topbar'
+import { DemoExportButton } from '@/components/ui/demo-export-button'
 import { DEMO_REQUESTS, DEMO_SECURITY_SUMMARY, DEMO_TIMESERIES } from '@/lib/demo-data'
 import type { RequestRow } from '@/lib/queries/types'
 
@@ -502,7 +503,22 @@ function DemoRequestsContent() {
     <div className="-mx-4 -my-4 md:-mx-8 md:-my-7 flex flex-col h-screen overflow-hidden bg-bg">
       <Topbar
         crumbs={[{ label: 'Demo', href: '/demo/dashboard' }, { label: 'Requests' }]}
-        right={null}
+        right={
+          <DemoExportButton
+            base="requests"
+            rows={filtered}
+            columns={[
+              { header: 'Created', value: (r: RequestRow) => r.created_at },
+              { header: 'Provider', value: (r: RequestRow) => r.provider },
+              { header: 'Model', value: (r: RequestRow) => r.model },
+              { header: 'Status', value: (r: RequestRow) => r.status_code },
+              { header: 'Latency ms', value: (r: RequestRow) => r.latency_ms },
+              { header: 'Tokens', value: (r: RequestRow) => r.total_tokens },
+              { header: 'Cost USD', value: (r: RequestRow) => r.cost_usd ?? '' },
+              { header: 'User', value: (r: RequestRow) => r.user_id ?? '' },
+            ]}
+          />
+        }
       />
 
       {(userIdFilter || sessionIdFilter) && (
