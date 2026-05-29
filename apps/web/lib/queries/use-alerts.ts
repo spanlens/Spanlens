@@ -91,7 +91,7 @@ export function useNotificationChannels() {
 export function useCreateChannel() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: async (input: { kind: ChannelKind; target: string }) => {
+    mutationFn: async (input: { kind: ChannelKind; target: string; label?: string }) => {
       const res = await apiPost<ApiEnvelope<NotificationChannelRow>>(
         '/api/v1/alerts/channels',
         input,

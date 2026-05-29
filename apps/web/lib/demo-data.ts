@@ -681,8 +681,8 @@ export const DEMO_ALERTS: AlertRow[] = [
 ]
 
 export const DEMO_CHANNELS: NotificationChannelRow[] = [
-  { id: 'ch-001', kind: 'email', target: 'haeseong@acme.com', is_active: true, created_at: day(14) },
-  { id: 'ch-002', kind: 'slack', target: 'https://hooks.slack.com/services/T00000/B000000/XXXXXXXX', is_active: true, created_at: day(10) },
+  { id: 'ch-001', kind: 'email', target: 'haeseong@acme.com', label: null, is_active: true, created_at: day(14) },
+  { id: 'ch-002', kind: 'slack', target: 'https://hooks.slack.com/services/T00000/B000000/XXXXXXXX', label: '#prod-alerts', is_active: true, created_at: day(10) },
 ]
 
 export const DEMO_DELIVERIES: AlertDeliveryRow[] = [
