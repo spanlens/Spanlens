@@ -1,5 +1,5 @@
 'use client'
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import Link from 'next/link'
 import { Mail, MessageSquare, Search } from 'lucide-react'
 import { DEMO_ALERTS, DEMO_CHANNELS, DEMO_DELIVERIES } from '@/lib/demo-data'
