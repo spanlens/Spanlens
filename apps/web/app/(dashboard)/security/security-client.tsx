@@ -205,12 +205,6 @@ export function SecurityClient() {
           right={
             <div className="flex items-center gap-3">
               <LiveDot refetching={isFetching} />
-              <TimeRangeSelector
-                value={rangeParam}
-                onChange={(v) => updateQuery({ range: v === '24h' ? null : v, from: null, to: null, page: null })}
-                customRange={customRange}
-                onCustomRange={(r) => updateQuery({ range: 'custom', from: r.from, to: r.to, page: null })}
-              />
               <button
                 type="button"
                 onClick={refreshAll}
@@ -329,10 +323,18 @@ export function SecurityClient() {
             <span className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint">
               Detectors, {detectors.length} active · flag-only (no blocking unless enabled above)
             </span>
-            <ExportDropdown
-              filename="spanlens-security"
-              buildUrl={(fmt) => `/api/v1/exports/security?format=${fmt}`}
-            />
+            <div className="flex items-center gap-2">
+              <TimeRangeSelector
+                value={rangeParam}
+                onChange={(v) => updateQuery({ range: v === '24h' ? null : v, from: null, to: null, page: null })}
+                customRange={customRange}
+                onCustomRange={(r) => updateQuery({ range: 'custom', from: r.from, to: r.to, page: null })}
+              />
+              <ExportDropdown
+                filename="spanlens-security"
+                buildUrl={(fmt) => `/api/v1/exports/security?format=${fmt}`}
+              />
+            </div>
           </div>
 
           <div className="overflow-x-auto">
