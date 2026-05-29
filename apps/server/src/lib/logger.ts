@@ -4,6 +4,7 @@ import { getClickhouse, toClickhouseTimestamp } from './clickhouse.js'
 import { maskApiKeysInBody, maskApiKeys } from './pii-mask.js'
 import { scanAll, type SecurityFlag } from './security-scan.js'
 import { sendEmail, renderSecurityAlertEmail } from './resend.js'
+import { emitWebhookEvent } from './webhook-emit.js'
 
 /**
  * Customer-controlled body logging mode (sent via the `x-spanlens-log-body`
@@ -318,5 +319,29 @@ export async function logRequestAsync(data: RequestLogData): Promise<void> {
     }).catch((err) => {
       console.error('[security-alert] failed:', err instanceof Error ? err.message : String(err))
     })
+  }
+
+  // ── Outbound webhook: request.created ──────────────────────────────────────
+  // Gated by an in-memory cache so orgs without a subscribed webhook pay only a
+  // Map lookup. Awaited inside the outer fireAndForget(c, logRequestAsync(...))
+  // drain budget (gotcha #8). Wrapped so a webhook failure never breaks logging.
+  try {
+    await emitWebhookEvent(data.organizationId, 'request.created', {
+      request: {
+        id: clickhouseRow.id,
+        provider: data.provider,
+        model: data.model,
+        prompt_tokens: data.promptTokens,
+        completion_tokens: data.completionTokens,
+        total_tokens: data.totalTokens,
+        cost_usd: data.costUsd,
+        latency_ms: data.latencyMs,
+        status_code: data.statusCode,
+        trace_id: data.traceId,
+        created_at: clickhouseRow.created_at,
+      },
+    })
+  } catch (err) {
+    console.error('[logger] request.created webhook emit failed:', err instanceof Error ? err.message : err)
   }
 }
