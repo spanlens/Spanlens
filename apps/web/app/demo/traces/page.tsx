@@ -2,6 +2,7 @@
 import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Topbar } from '@/components/layout/topbar'
+import { DemoExportButton } from '@/components/ui/demo-export-button'
 import { cn } from '@/lib/utils'
 import { DEMO_TRACES } from '@/lib/demo-data'
 import type { TraceRow } from '@/lib/queries/types'
@@ -151,7 +152,23 @@ export default function DemoTracesPage() {
 
   return (
     <div className="-mx-4 -my-4 md:-mx-8 md:-my-7 flex flex-col h-screen overflow-hidden bg-bg">
-      <Topbar crumbs={[{ label: 'Demo', href: '/demo/dashboard' }, { label: 'Traces' }]} />
+      <Topbar
+        crumbs={[{ label: 'Demo', href: '/demo/dashboard' }, { label: 'Traces' }]}
+        right={
+          <DemoExportButton
+            base="traces"
+            rows={traces}
+            columns={[
+              { header: 'Name', value: (t: TraceRow) => t.name },
+              { header: 'Status', value: (t: TraceRow) => t.status },
+              { header: 'Started', value: (t: TraceRow) => t.started_at },
+              { header: 'Duration ms', value: (t: TraceRow) => t.duration_ms ?? '' },
+              { header: 'Spans', value: (t: TraceRow) => t.span_count },
+              { header: 'Cost USD', value: (t: TraceRow) => t.total_cost_usd },
+            ]}
+          />
+        }
+      />
 
       {/* Stat strip */}
       <div className="overflow-x-auto shrink-0 border-b border-border">

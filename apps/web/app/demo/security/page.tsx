@@ -2,6 +2,7 @@
 import { useState } from 'react'
 import { cn } from '@/lib/utils'
 import { Topbar } from '@/components/layout/topbar'
+import { DemoExportButton } from '@/components/ui/demo-export-button'
 import { DEMO_SECURITY_SUMMARY, DEMO_FLAGGED_REQUESTS } from '@/lib/demo-data'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -199,6 +200,23 @@ export default function DemoSecurityPage() {
       <div className="sticky top-0 z-20 bg-bg">
         <Topbar
           crumbs={[{ label: 'Demo', href: '/demo/dashboard' }, { label: 'Security' }]}
+          right={
+            DEMO_FLAGGED_REQUESTS.length > 0 ? (
+              <DemoExportButton
+                base="security-flags"
+                rows={DEMO_FLAGGED_REQUESTS}
+                columns={[
+                  { header: 'Created', value: (f) => f.created_at },
+                  { header: 'Provider', value: (f) => f.provider },
+                  { header: 'Model', value: (f) => f.model },
+                  { header: 'Status', value: (f) => f.status_code },
+                  { header: 'Request flags', value: (f) => f.flags.map((x) => `${x.type}:${x.pattern}`).join(' | ') },
+                  { header: 'Response flags', value: (f) => f.response_flags.map((x) => `${x.type}:${x.pattern}`).join(' | ') },
+                  { header: 'Cost USD', value: (f) => f.cost_usd ?? '' },
+                ]}
+              />
+            ) : null
+          }
         />
       </div>
 

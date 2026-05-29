@@ -3,6 +3,7 @@ import { useState, useMemo } from 'react'
 import { DEMO_ANOMALIES, DEMO_ANOMALY_HISTORY } from '@/lib/demo-data'
 import type { Anomaly, AnomalyHistoryEntry, AnomalyKind } from '@/lib/queries/use-anomalies'
 import { Topbar } from '@/components/layout/topbar'
+import { DemoExportButton } from '@/components/ui/demo-export-button'
 import { cn } from '@/lib/utils'
 
 type KindFilter = 'all' | AnomalyKind
@@ -293,7 +294,21 @@ export default function DemoAnomaliesPage() {
       <div className="sticky top-0 z-20 bg-bg">
         <Topbar
           crumbs={[{ label: 'Demo', href: '/demo/dashboard' }, { label: 'Anomalies' }]}
-          right={null}
+          right={
+            <DemoExportButton
+              base="anomalies"
+              rows={current}
+              columns={[
+                { header: 'Provider', value: (a) => a.provider },
+                { header: 'Model', value: (a) => a.model },
+                { header: 'Kind', value: (a) => a.kind },
+                { header: 'Deviations', value: (a) => a.deviations.toFixed(1) },
+                { header: 'Current', value: (a) => a.currentValue },
+                { header: 'Baseline', value: (a) => a.baselineMean },
+                { header: 'Acknowledged', value: (a) => (a.acknowledgedAt ? 'yes' : 'no') },
+              ]}
+            />
+          }
         />
       </div>
 
