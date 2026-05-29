@@ -34,11 +34,23 @@ export default function ForgotPasswordPage() {
     setLoading(true)
     const supabase = createClient()
     // Route the recovery link through the existing OAuth/magic-link callback,
-    // which exchanges the PKCE `code` for a session and then forwards to
-    // `next`. Reusing /auth/callback means no new Supabase Redirect URL needs
-    // allowlisting. The recovery session it establishes lets /reset-password
-    // call updateUser({ password }).
-    const redirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent('/reset-password')}`
+    // which exchanges the PKCE `code` for a session and then forwards on. The
+    // recovery session it establishes lets /reset-password call updateUser.
+    //
+    // The post-recovery destination is carried in the short-lived
+    // `sl_oauth_return` cookie that /auth/callback already reads (same
+    // mechanism as the OAuth-link flow in use-identities.ts), NOT a `?next=`
+    // query on redirectTo. A query string is present at validation time and
+    // would not match the exact Redirect URL allowlist entries in the Supabase
+    // dashboard, causing a silent fallback to site_url (which drops the code on
+    // the marketing root). The clean /auth/callback URL matches the allowlist
+    // exactly; Supabase appends `?code=` only after validation. SameSite=Lax so
+    // the cookie survives the cross-site verify bounce; the 1h lifetime matches
+    // the recovery token expiry.
+    if (typeof document !== 'undefined') {
+      document.cookie = `sl_oauth_return=${encodeURIComponent('/reset-password')}; path=/; max-age=3600; samesite=lax`
+    }
+    const redirectTo = `${window.location.origin}/auth/callback`
     const { error: authError } = await supabase.auth.resetPasswordForEmail(email, { redirectTo })
     // Deliberately do NOT surface "user not found": showing the same success
     // state regardless of whether the email exists prevents account
