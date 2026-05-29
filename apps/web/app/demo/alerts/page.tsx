@@ -1,12 +1,16 @@
 'use client'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import Link from 'next/link'
-import { Mail, MessageSquare } from 'lucide-react'
+import { Mail, MessageSquare, Search } from 'lucide-react'
 import { DEMO_ALERTS, DEMO_CHANNELS, DEMO_DELIVERIES } from '@/lib/demo-data'
 import type { AlertRow } from '@/lib/queries/types'
 import type { AlertType } from '@/lib/queries/types'
 import { Topbar } from '@/components/layout/topbar'
+import { DemoExportButton } from '@/components/ui/demo-export-button'
 import { cn } from '@/lib/utils'
+
+const STATUS_FILTERS = ['all', 'firing', 'active', 'inactive'] as const
+type StatusFilter = (typeof STATUS_FILTERS)[number]
 
 function fmtThreshold(type: AlertType, threshold: number): string {
   if (type === 'budget') return `$${threshold}`
