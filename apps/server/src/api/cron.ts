@@ -1,6 +1,12 @@
 import { Hono } from 'hono'
 import { supabaseAdmin } from '../lib/db.js'
-import { getOrgClickhouse } from '../lib/clickhouse.js'
+// `getClickhouse` is used by the /cron/keep-warm handler below to run
+// `SELECT 1` with no org context. The lint rule guards against multi-tenant
+// leaks via tenant-blind reads; this call site can't leak because it returns
+// no rows. The org-scoped helpers all require an orgId we don't have at
+// warmup time, so this is the only viable client for the warmup ping.
+// eslint-disable-next-line no-restricted-imports
+import { getClickhouse, getOrgClickhouse } from '../lib/clickhouse.js'
 import { deliverToChannel, type AlertNotification } from '../lib/notifiers.js'
 import { retryFailedWebhooks } from '../lib/webhook-dispatch.js'
 import { computeAndReportOverages } from '../lib/paddle-usage.js'
@@ -490,14 +496,47 @@ cronRouter.get('/check-past-due-downgrades', async (c) => {
 })
 
 // GET /cron/keep-warm
-// Lightweight ping that keeps the api/index.ts Lambda warm. Vercel hibernates
-// idle functions after ~10min, which costs a first-user 4-6s cold start. This
-// cron fires every 5min so the Lambda always has a recently-touched instance.
+// Lightweight ping that keeps the api/index.ts Lambda + DB connection pools
+// warm. Vercel hibernates idle functions after ~10min (4-6s cold start cost)
+// AND first-query latency to Supabase/ClickHouse pays connection setup even
+// on a warm Lambda. This cron fires every 5min and touches both layers so
+// the first real user request hits an already-paved path.
 //
-// Intentionally has zero side effects — no DB, no ClickHouse, no logCronRun.
-// Just verifies auth and returns. Logging this every 5min would spam cron_runs.
-cronRouter.get('/keep-warm', (c) => {
+// What it does:
+//   1. Lambda CPU/memory: just executing the handler keeps the instance hot.
+//   2. Supabase Postgres: one trivial select. Warms the connection pool.
+//   3. ClickHouse: SELECT 1 against the shared (no-org) client. Warms HTTP
+//      keep-alive + auth token cache. Per-org clients lazily init on first
+//      org request — those still pay first-call latency but the underlying
+//      ClickHouse cluster cache is hot from this ping.
+//
+// All three steps run in parallel via Promise.allSettled — one slow / failing
+// dependency doesn't block the others, and we never throw (cron retries are
+// noisy and a transient warmup failure is not worth alerting on). No
+// logCronRun call: this fires every 5min and would spam cron_runs.
+cronRouter.get('/keep-warm', async (c) => {
   const authFail = assertCronAuth(c.req.header('Authorization'))
   if (authFail) return c.json({ error: authFail }, 401)
-  return c.json({ ok: true, ts: new Date().toISOString() })
+
+  const started = Date.now()
+  const results = await Promise.allSettled([
+    // Supabase: cheapest possible read against an indexed PK. `limit(1)` +
+    // `head: true` skips the row body, so the request is HEAD-shaped and
+    // doesn't transfer payload — just warms the pool.
+    supabaseAdmin.from('organizations').select('id', { count: 'exact', head: true }).limit(1),
+    // ClickHouse: `SELECT 1` is the canonical no-op query. Bypasses any
+    // table cache but exercises HTTP keep-alive, auth, and the cluster's
+    // query parser. Format `JSONEachRow` matches our normal calls so the
+    // shared client doesn't switch modes on the first real call.
+    getClickhouse().query({ query: 'SELECT 1 AS ok', format: 'JSONEachRow' }).then((r) => r.json()),
+  ])
+
+  const supabaseOk = results[0].status === 'fulfilled'
+  const clickhouseOk = results[1].status === 'fulfilled'
+  return c.json({
+    ok: supabaseOk && clickhouseOk,
+    ts: new Date().toISOString(),
+    durationMs: Date.now() - started,
+    warmed: { supabase: supabaseOk, clickhouse: clickhouseOk },
+  })
 })
