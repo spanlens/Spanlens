@@ -1,53 +1,6 @@
 'use client'
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useState,
-  useSyncExternalStore,
-  type ReactNode,
-} from 'react'
-
-const COLLAPSE_STORAGE_KEY = 'sidebar-collapsed'
-
-/* ── Desktop collapse: localStorage-backed external store ──
- *
- * The desktop hide/show preference lives in localStorage so it survives
- * reloads. We read it through useSyncExternalStore rather than a
- * useEffect+setState dance: that keeps SSR safe (getServerSnapshot returns the
- * default), avoids the react-hooks/set-state-in-effect lint rule, and gives
- * cross-tab sync for free via the `storage` event.
- */
-function readCollapsed(): boolean {
-  try {
-    return localStorage.getItem(COLLAPSE_STORAGE_KEY) === '1'
-  } catch {
-    // localStorage can throw in private-mode / blocked-cookie contexts.
-    return false
-  }
-}
-
-const collapseListeners = new Set<() => void>()
-
-function subscribeCollapsed(callback: () => void): () => void {
-  collapseListeners.add(callback)
-  window.addEventListener('storage', callback)
-  return () => {
-    collapseListeners.delete(callback)
-    window.removeEventListener('storage', callback)
-  }
-}
-
-function writeCollapsed(next: boolean): void {
-  try {
-    localStorage.setItem(COLLAPSE_STORAGE_KEY, next ? '1' : '0')
-  } catch {
-    // Ignore persistence failures — the in-memory snapshot still updates.
-  }
-  // `storage` events don't fire in the tab that made the change, so notify
-  // this tab's subscribers explicitly.
-  collapseListeners.forEach((l) => l())
-}
+import { createContext, useContext, useState, type ReactNode } from 'react'
+import { writeSidebarCollapsedCookie } from '@/lib/sidebar-cookie'
 
 interface SidebarContextValue {
   /** Mobile drawer open/closed. Desktop ignores this (sidebar is in-flow). */
@@ -58,9 +11,11 @@ interface SidebarContextValue {
    * Desktop hide/show. Independent from `isOpen` on purpose: the mobile
    * drawer and the desktop hide are two different behaviors, and mixing them
    * into one flag leads to "closed the drawer on mobile, sidebar vanished on
-   * desktop" cross-talk. Persisted to localStorage. SSR + first paint default
-   * to `false` (visible); a collapsed user sees a one-frame flash of the
-   * sidebar before it hides, which we accept for simplicity.
+   * desktop" cross-talk.
+   *
+   * Seeded from a server-read cookie (`initialCollapsed`) so SSR renders the
+   * correct state on first paint — no flash of the sidebar before the client
+   * hydrates. Toggling updates the cookie so the next request stays in sync.
    */
   isCollapsed: boolean
   toggleCollapsed: () => void
@@ -74,16 +29,23 @@ const SidebarContext = createContext<SidebarContextValue>({
   toggleCollapsed: () => {},
 })
 
-export function SidebarProvider({ children }: { children: ReactNode }) {
+export function SidebarProvider({
+  children,
+  initialCollapsed = false,
+}: {
+  children: ReactNode
+  initialCollapsed?: boolean
+}) {
   const [isOpen, setIsOpen] = useState(false)
+  const [isCollapsed, setIsCollapsed] = useState(initialCollapsed)
 
-  // Server snapshot is always `false` (visible) — there's no localStorage on
-  // the server. The client snapshot reads the stored value after hydration.
-  const isCollapsed = useSyncExternalStore(subscribeCollapsed, readCollapsed, () => false)
-
-  const toggleCollapsed = useCallback(() => {
-    writeCollapsed(!readCollapsed())
-  }, [])
+  function toggleCollapsed() {
+    setIsCollapsed((v) => {
+      const next = !v
+      writeSidebarCollapsedCookie(next)
+      return next
+    })
+  }
 
   return (
     <SidebarContext.Provider
