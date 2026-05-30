@@ -100,6 +100,15 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(organizationJsonLd) }}
         />
+        {/* Pre-paint theme application — prevents a flash of the wrong theme.
+            Emitted from the server <head> (real HTML), NOT from a client
+            component, so React 19 doesn't warn about a <script> in the tree.
+            Logic mirrors ThemeProvider (localStorage 'theme' → .dark class). */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var t=localStorage.getItem('theme')||'system';var d=t==='dark'||(t==='system'&&window.matchMedia('(prefers-color-scheme: dark)').matches);var r=document.documentElement;r.classList.remove('light','dark');r.classList.add(d?'dark':'light');r.style.colorScheme=d?'dark':'light';}catch(e){}})();`,
+          }}
+        />
       </head>
       <body className={`${GeistSans.variable} ${GeistMono.variable} antialiased`}>
         <QueryProvider>

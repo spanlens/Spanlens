@@ -3,8 +3,8 @@ import Image from 'next/image'
 import { useState, useRef, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { useTheme } from 'next-themes'
-import { Sun, Moon, Monitor, X } from 'lucide-react'
+import { useTheme } from '@/components/providers/theme-provider'
+import { Sun, Moon, Monitor, X, MessageSquarePlus } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
 import { useStatsOverview } from '@/lib/queries/use-stats'
@@ -219,6 +219,7 @@ const NAV_GROUPS: { label: string | null; items: NavItem[] }[] = [
       { href: '/dashboard',  label: 'Dashboard' },
       { href: '/requests',   label: 'Requests' },
       { href: '/traces',     label: 'Traces' },
+      { href: '/sessions',   label: 'Sessions' },
       { href: '/users',      label: 'Users' },
     ],
   },
@@ -466,8 +467,21 @@ export function Sidebar() {
         )}
       </div>
 
-      {/* Theme toggle + Sign out */}
+      {/* Feedback + Theme toggle + Sign out */}
       <div className="px-[14px] pb-[14px] space-y-0.5">
+        <Link
+          href="/feedback"
+          prefetch={false}
+          className={cn(
+            'flex w-full items-center gap-2 px-[10px] py-[6px] rounded-[5px] text-[13px] transition-colors',
+            pathname === '/feedback' || pathname.startsWith('/feedback/')
+              ? 'bg-bg-muted text-text font-medium'
+              : 'text-text-muted hover:bg-bg-muted hover:text-text',
+          )}
+        >
+          <MessageSquarePlus className="h-3.5 w-3.5 shrink-0" />
+          <span>Feedback</span>
+        </Link>
         <ThemeToggleButton />
         <button
           onClick={handleSignOut}

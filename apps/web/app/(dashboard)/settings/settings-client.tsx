@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { Plus, Trash2, Check, Sun, Moon, Monitor, type LucideIcon } from 'lucide-react'
-import { useTheme } from 'next-themes'
+import { useTheme } from '@/components/providers/theme-provider'
 import { initializePaddle, type Paddle } from '@paddle/paddle-js'
 import { cn, formatDate } from '@/lib/utils'
 import { Topbar } from '@/components/layout/topbar'
