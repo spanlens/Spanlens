@@ -349,22 +349,32 @@ export function SessionsClient() {
                 const lat = s.avg_latency_ms != null ? Math.round(Number(s.avg_latency_ms)) : null
                 const isSlow = lat != null && lat >= SLOW_LATENCY_MS
                 return (
-                  <Link
+                  <div
                     key={s.session_id}
-                    href={`/sessions/${encodeURIComponent(s.session_id)}`}
                     role="row"
-                    className="group grid grid-cols-[2fr_1fr_1fr_1fr] sm:grid-cols-[2fr_1.2fr_1fr_1fr_1fr_1fr] gap-3 items-center px-4 py-3 font-mono text-[12px] text-text hover:bg-bg-elev transition-colors"
+                    className="group relative grid grid-cols-[2fr_1fr_1fr_1fr] sm:grid-cols-[2fr_1.2fr_1fr_1fr_1fr_1fr] gap-3 items-center px-4 py-3 font-mono text-[12px] text-text hover:bg-bg-elev transition-colors"
                   >
+                    {/* Stretched overlay link: the whole row navigates to the
+                        session without wrapping the row in an <a>. Wrapping
+                        would nest the user link and copy button inside an
+                        anchor — invalid HTML that triggers a hydration error.
+                        Interactive children sit above this overlay via z-index. */}
+                    <Link
+                      href={`/sessions/${encodeURIComponent(s.session_id)}`}
+                      aria-label={`Open session ${s.session_id}`}
+                      className="absolute inset-0 z-[1]"
+                    />
                     <span className="flex items-center gap-1.5 min-w-0">
                       <span className="truncate">{s.session_id}</span>
-                      <CopyButton value={s.session_id} />
+                      <span className="relative z-[2]">
+                        <CopyButton value={s.session_id} />
+                      </span>
                     </span>
                     <span className="text-text-muted truncate hidden sm:block">
                       {s.user_id ? (
                         <Link
                           href={`/users/${encodeURIComponent(s.user_id)}`}
-                          onClick={(e) => e.stopPropagation()}
-                          className="hover:underline"
+                          className="relative z-[2] hover:underline"
                         >
                           {s.user_id}
                         </Link>
@@ -383,7 +393,7 @@ export function SessionsClient() {
                     <span className="text-text-faint text-right" title={fmtAbsolute(s.last_seen)}>
                       {fmtRelativeTime(s.last_seen)}
                     </span>
-                  </Link>
+                  </div>
                 )
               })}
             </div>
