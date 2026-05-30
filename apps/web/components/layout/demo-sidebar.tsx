@@ -3,8 +3,8 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { useEffect, useRef, useState } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
-import { useTheme } from 'next-themes'
-import { Sun, Moon, Monitor, X } from 'lucide-react'
+import { useTheme } from '@/components/providers/theme-provider'
+import { Sun, Moon, Monitor, X, MessageSquarePlus } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useSidebar } from '@/lib/sidebar-context'
 
@@ -252,8 +252,21 @@ function SidebarContent() {
         </Link>
       </div>
 
-      {/* Theme + Sign out */}
+      {/* Feedback + Theme + Sign out */}
       <div className="px-[14px] pb-[14px] space-y-0.5">
+        <Link
+          href="/demo/feedback"
+          prefetch={false}
+          className={cn(
+            'flex w-full items-center gap-2 px-[10px] py-[6px] rounded-[5px] text-[13px] transition-colors',
+            pathname === '/demo/feedback' || pathname.startsWith('/demo/feedback/')
+              ? 'bg-bg-muted text-text font-medium'
+              : 'text-text-muted hover:bg-bg-muted hover:text-text',
+          )}
+        >
+          <MessageSquarePlus className="h-3.5 w-3.5 shrink-0" />
+          <span>Feedback</span>
+        </Link>
         <ThemeToggleButton />
         <button
           onClick={handleSignOut}

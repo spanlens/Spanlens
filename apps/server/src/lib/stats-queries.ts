@@ -355,6 +355,130 @@ export async function getUserAnalytics(
   }))
 }
 
+// ─── Per-session analytics ──────────────────────────────────────────────────
+//
+// Groups requests by session_id — the conversation/session IDs the customer
+// attaches via x-spanlens-session. One row per distinct (org, session_id) with
+// totals, latency, error rate, distinct models, a representative user_id, and
+// first/last-seen markers. Mirrors getUserAnalytics; the sort column is
+// whitelisted because it lands in the SQL string.
+
+export interface SessionAnalyticsRow {
+  session_id: string
+  user_id: string | null
+  total_requests: number
+  total_tokens: number
+  total_cost_usd: number
+  avg_latency_ms: number | null
+  first_seen: string
+  last_seen: string
+  error_requests: number
+  distinct_models: number
+  total_count: number
+}
+
+export interface SessionAnalyticsOptions {
+  projectId?: string | null | undefined
+  userId?: string | null | undefined
+  search?: string | null | undefined
+  from?: string | null | undefined
+  to?: string | null | undefined
+  sortBy: 'cost' | 'requests' | 'tokens' | 'last_seen' | 'latency'
+  sortDir: 'asc' | 'desc'
+  limit: number
+  offset: number
+}
+
+const SESSION_SORT_COL: Record<SessionAnalyticsOptions['sortBy'], string> = {
+  cost:      'total_cost_usd',
+  requests:  'total_requests',
+  tokens:    'total_tokens',
+  last_seen: 'last_seen',
+  latency:   'avg_latency_ms',
+}
+
+export async function getSessionAnalytics(
+  organizationId: string,
+  options: SessionAnalyticsOptions,
+): Promise<SessionAnalyticsRow[]> {
+  const scope = await requestsScope(organizationId)
+
+  // Whitelist sort inputs — they're concatenated into SQL below.
+  const sortCol = SESSION_SORT_COL[options.sortBy] ?? 'last_seen'
+  const sortDir = options.sortDir === 'asc' ? 'ASC' : 'DESC'
+
+  const filters: string[] = ['isNotNull(session_id)']
+  const params: Record<string, unknown> = { ...scope.scopeParams }
+  if (options.projectId) {
+    filters.push('project_id = {projectId:UUID}')
+    params['projectId'] = options.projectId
+  }
+  if (options.userId) {
+    filters.push('user_id = {userId:String}')
+    params['userId'] = options.userId
+  }
+  if (options.search) {
+    filters.push('positionCaseInsensitive(session_id, {search:String}) > 0')
+    params['search'] = options.search
+  }
+  const fromTs = fmt(options.from)
+  if (fromTs) {
+    filters.push('created_at >= parseDateTime64BestEffort({fromTs:String})')
+    params['fromTs'] = fromTs
+  }
+  const toTs = fmt(options.to)
+  if (toTs) {
+    filters.push('created_at <= parseDateTime64BestEffort({toTs:String})')
+    params['toTs'] = toTs
+  }
+
+  const where = [scope.whereScope, ...filters].join(' AND ')
+  // any(user_id) gives a representative end-user for the session — sessions
+  // are virtually always single-user, so the first non-deterministic pick is
+  // fine for display. count() OVER () returns the windowed total for paging.
+  const sql = `
+    SELECT
+      session_id,
+      any(user_id)                                     AS user_id,
+      count()                                          AS total_requests,
+      sum(total_tokens)                                AS total_tokens,
+      sum(cost_usd)                                    AS total_cost_usd,
+      avg(latency_ms)                                  AS avg_latency_ms,
+      min(created_at)                                  AS first_seen,
+      max(created_at)                                  AS last_seen,
+      countIf(status_code >= 400)                      AS error_requests,
+      uniqExact(model)                                 AS distinct_models,
+      count() OVER ()                                  AS total_count
+    FROM requests
+    WHERE ${where}
+    GROUP BY session_id
+    ORDER BY ${sortCol} ${sortDir} NULLS LAST
+    LIMIT {limit:UInt32} OFFSET {offset:UInt32}`
+
+  params['limit'] = options.limit
+  params['offset'] = options.offset
+
+  const result = await getClickhouse().query({
+    query: sql,
+    query_params: params,
+    format: 'JSONEachRow',
+  })
+  const rows = (await result.json()) as Array<Record<string, string | number | null>>
+  return rows.map((r) => ({
+    session_id:      String(r['session_id'] ?? ''),
+    user_id:         r['user_id'] == null || r['user_id'] === '' ? null : String(r['user_id']),
+    total_requests:  Number(r['total_requests'] ?? 0),
+    total_tokens:    Number(r['total_tokens'] ?? 0),
+    total_cost_usd:  Number(r['total_cost_usd'] ?? 0),
+    avg_latency_ms:  r['avg_latency_ms'] == null ? null : Number(r['avg_latency_ms']),
+    first_seen:      String(r['first_seen'] ?? ''),
+    last_seen:       String(r['last_seen'] ?? ''),
+    error_requests:  Number(r['error_requests'] ?? 0),
+    distinct_models: Number(r['distinct_models'] ?? 0),
+    total_count:     Number(r['total_count'] ?? 0),
+  }))
+}
+
 // ─── Security flag summary ──────────────────────────────────────────────────
 //
 // Replaces the Postgres `security_summary` function. ClickHouse stores the

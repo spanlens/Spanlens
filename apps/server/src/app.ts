@@ -12,6 +12,7 @@ import { projectsRouter }      from './api/projects.js'
 import { apiKeysRouter }       from './api/apiKeys.js'
 import { requestsRouter }      from './api/requests.js'
 import { usersRouter }         from './api/users.js'
+import { sessionsRouter }      from './api/sessions.js'
 import { savedFiltersRouter }  from './api/savedFilters.js'
 import { statsRouter }         from './api/stats.js'
 import { tracesRouter }        from './api/traces.js'
@@ -48,6 +49,7 @@ import { meRoleRouter }        from './api/meRole.js'
 import { userNotificationPrefsRouter } from './api/userNotificationPrefs.js'
 import { modelsRouter }        from './api/models.js'
 import { systemRouter }       from './api/system.js'
+import { feedbackRouter }     from './api/feedback.js'
 import { adminModelPricesRouter } from './api/admin/modelPrices.js'
 import { adminModelRecommendationsRouter } from './api/admin/modelRecommendations.js'
 
@@ -148,6 +150,7 @@ app.route('/api/v1/api-keys',       apiKeysRouter)
 app.route('/api/v1/provider-keys',  providerKeysRouter)
 app.route('/api/v1/requests',       requestsRouter)
 app.route('/api/v1/users',          usersRouter)
+app.route('/api/v1/sessions',       sessionsRouter)
 app.route('/api/v1/saved-filters',  savedFiltersRouter)
 app.route('/api/v1/stats',          statsRouter)
 app.route('/api/v1/traces',         tracesRouter)
@@ -178,6 +181,7 @@ app.route('/api/v1/me',             meRouter)        // sl_live_* introspection 
 app.route('/api/v1/webhooks',       webhooksRouter)
 app.route('/api/v1/exports',        exportsRouter)
 app.route('/api/v1/system',         systemRouter)
+app.route('/api/v1/feedback',       feedbackRouter)
 
 // ── Admin routes (authJwt + requireSystemAdmin via SPANLENS_ADMIN_EMAILS) ──
 app.route('/api/v1/admin/model-prices', adminModelPricesRouter)

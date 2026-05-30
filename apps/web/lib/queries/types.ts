@@ -256,6 +256,54 @@ export interface TracesPage {
 
 // ── Billing ────────────────────────────────────────────────────
 
+// ── Session Analytics ──────────────────────────────────────────
+
+export interface SessionAnalyticsRow {
+  session_id: string
+  user_id: string | null
+  total_requests: number
+  total_tokens: number
+  total_cost_usd: number
+  avg_latency_ms: number | null
+  first_seen: string
+  last_seen: string
+  error_requests: number
+  distinct_models: number
+}
+
+export interface SessionTurn {
+  id: string
+  provider: string
+  model: string
+  prompt_tokens: number
+  completion_tokens: number
+  total_tokens: number
+  cost_usd: number | null
+  latency_ms: number
+  status_code: number
+  error_message: string | null
+  trace_id: string | null
+  user_id: string | null
+  request_body: unknown
+  response_body: unknown
+  created_at: string
+}
+
+export interface SessionDetail {
+  session_id: string
+  user_id: string | null
+  total_requests: number
+  total_tokens: number
+  total_cost_usd: number
+  avg_latency_ms: number | null
+  first_seen: string | null
+  last_seen: string | null
+  error_requests: number
+  distinct_models: number
+  turns: SessionTurn[]
+  turns_truncated: boolean
+}
+
 export type BillingPlan = 'free' | 'starter' | 'team' | 'enterprise'
 export type SubscriptionStatus =
   | 'active'
