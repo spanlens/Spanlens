@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useTheme } from '@/components/providers/theme-provider'
-import { Sun, Moon, Monitor, X, MessageSquarePlus } from 'lucide-react'
+import { Sun, Moon, Monitor, X, MessageSquarePlus, PanelLeftClose } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
 import { useStatsOverview } from '@/lib/queries/use-stats'
@@ -294,7 +294,7 @@ export function Sidebar() {
   const anomalies = useAnomalies({ observationHours: 24 })
   const alerts = useAlerts()
   const recommendations = useRecommendations({ hours: 24 })
-  const { isOpen, close } = useSidebar()
+  const { isOpen, close, isCollapsed, toggleCollapsed } = useSidebar()
   // Capture "now" once at mount — drives the "firing in last hour" badge.
   // Tanstack query refetches refresh `alerts.data`, so a fixed anchor here
   // is fine for the small UI sliver this affects.
@@ -354,8 +354,12 @@ export function Sidebar() {
           'fixed inset-y-0 left-0 z-50 w-[272px] h-screen',
           'transition-transform duration-200 ease-in-out',
           isOpen ? 'translate-x-0' : '-translate-x-full',
-          // Desktop: back in flow, always visible
-          'md:relative md:w-56 md:shrink-0 md:translate-x-0 md:transition-none',
+          // Desktop: back in flow. Width animates between full (w-56) and
+          // hidden (w-0) so the "hide sidebar" toggle collapses it smoothly;
+          // overflow-hidden clips the content while it's at zero width.
+          'md:relative md:shrink-0 md:translate-x-0',
+          'md:transition-[width] md:duration-200 md:ease-in-out',
+          isCollapsed ? 'md:w-0 md:overflow-hidden md:border-r-0' : 'md:w-56',
         )}
       >
       {/* Mobile close button */}
@@ -368,9 +372,20 @@ export function Sidebar() {
         <X size={16} />
       </button>
 
-      {/* Logo */}
-      <div className="px-[18px] pt-[18px] pb-3">
+      {/* Logo + desktop hide toggle. The hide button is desktop-only
+          (md:inline-flex) because mobile already closes via the drawer X
+          above; on desktop it collapses the sidebar to zero width. */}
+      <div className="px-[18px] pt-[18px] pb-3 flex items-center justify-between gap-2">
         <LogoMark />
+        <button
+          type="button"
+          onClick={toggleCollapsed}
+          className="hidden md:inline-flex shrink-0 p-1 rounded-[5px] text-text-faint hover:text-text hover:bg-bg-muted transition-colors"
+          aria-label="Hide sidebar"
+          title="Hide sidebar"
+        >
+          <PanelLeftClose size={16} />
+        </button>
       </div>
 
       {/* Workspace / project switcher */}
