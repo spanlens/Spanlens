@@ -469,20 +469,30 @@ export function UsersClient() {
                 const lat = u.avg_latency_ms != null ? Math.round(Number(u.avg_latency_ms)) : null
                 const isSlow = lat != null && lat >= SLOW_LATENCY_MS
                 return (
-                  <Link
+                  <div
                     key={u.user_id}
-                    href={`/users/${encodeURIComponent(u.user_id)}`}
                     onMouseEnter={() => setFocusedIdx(idx)}
                     role="row"
                     aria-selected={isFocused}
                     className={cn(
-                      'group grid grid-cols-[2fr_1fr_1fr_1fr] sm:grid-cols-[2fr_1fr_1fr_1fr_1fr_1fr] gap-3 items-center px-4 py-3 font-mono text-[12px] text-text transition-colors',
+                      'group relative grid grid-cols-[2fr_1fr_1fr_1fr] sm:grid-cols-[2fr_1fr_1fr_1fr_1fr_1fr] gap-3 items-center px-4 py-3 font-mono text-[12px] text-text transition-colors',
                       isFocused ? 'bg-bg-elev' : 'hover:bg-bg-elev',
                     )}
                   >
+                    {/* Stretched overlay link: the row navigates to the user
+                        without wrapping the row in an <a>. Wrapping would put
+                        the copy button (a <button>) inside an anchor — invalid
+                        HTML that triggers a hydration error. */}
+                    <Link
+                      href={`/users/${encodeURIComponent(u.user_id)}`}
+                      aria-label={`Open user ${u.user_id}`}
+                      className="absolute inset-0 z-[1]"
+                    />
                     <span className="flex items-center gap-1.5 min-w-0">
                       <span className="truncate">{u.user_id}</span>
-                      <CopyButton value={u.user_id} />
+                      <span className="relative z-[2]">
+                        <CopyButton value={u.user_id} />
+                      </span>
                     </span>
                     <span className="text-text-muted">
                       {fmtCount(u.total_requests)}
@@ -501,7 +511,7 @@ export function UsersClient() {
                     >
                       {fmtRelativeTime(u.last_seen)}
                     </span>
-                  </Link>
+                  </div>
                 )
               })}
             </div>
