@@ -90,13 +90,14 @@ export async function sendWebhook(
  * Dispatches an event to a single webhook endpoint and writes a delivery record.
  *
  * On failure, sets `next_retry_at` for the first attempt so the retry cron
- * can pick it up. Returns the created delivery row ID.
+ * can pick it up. Returns the delivery result along with the created delivery
+ * row ID (empty string if the insert failed).
  */
 export async function dispatchWebhookEvent(
   webhook: WebhookRow,
   eventType: string,
   payloadObj: Record<string, unknown>,
-): Promise<string> {
+): Promise<DispatchResult & { deliveryId: string }> {
   const fullPayload = {
     ...payloadObj,
     event: eventType,
@@ -130,7 +131,13 @@ export async function dispatchWebhookEvent(
     .select('id')
     .single()
 
-  return (data as { id: string } | null)?.id ?? ''
+  return {
+    ok,
+    httpStatus,
+    errorMessage,
+    durationMs,
+    deliveryId: (data as { id: string } | null)?.id ?? '',
+  }
 }
 
 /**

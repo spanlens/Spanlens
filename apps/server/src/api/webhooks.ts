@@ -171,13 +171,21 @@ webhooksRouter.post('/:id/test', requireEdit, async (c) => {
 
   if (fetchError || !webhook) return c.json({ error: 'Webhook not found' }, 404)
 
-  await dispatchWebhookEvent(
+  const result = await dispatchWebhookEvent(
     { id: webhook.id as string, url: webhook.url as string, secret: webhook.secret as string },
     'test',
     {},
   )
 
-  return c.json({ success: true, data: { dispatched: true } })
+  return c.json({
+    success: true,
+    data: {
+      status: result.ok ? 'success' : 'failed',
+      http_status: result.httpStatus,
+      error_message: result.errorMessage,
+      duration_ms: result.durationMs,
+    },
+  })
 })
 
 // ── GET /api/v1/webhooks/:id/deliveries ─────────────────────────
