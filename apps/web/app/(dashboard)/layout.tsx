@@ -66,7 +66,14 @@ export default async function DashboardLayout({ children }: { children: React.Re
     <CommandPaletteProvider>
       <SidebarProvider>
         <HydrationBoundary state={sidebarState}>
-          <div className="flex h-screen overflow-hidden bg-bg">
+          {/* Dashboard renders at 125% scale (zoom) for a roomier default
+              view. Height is divided by the SAME factor so the zoomed
+              container still resolves to exactly one viewport height — without
+              the correction, 100vh * 1.25 would overflow and add a stray
+              scrollbar. The zoom factor and the height divisor must always
+              match. Scoped to the dashboard only; landing/docs/demo keep
+              their 100% scale. */}
+          <div className="flex h-[calc(100vh/1.25)] overflow-hidden bg-bg [zoom:1.25]">
             <Sidebar />
             <main className="flex-1 overflow-y-auto min-w-0">
               {/* Pending workspace invitations surface here: any dashboard
