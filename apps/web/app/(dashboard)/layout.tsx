@@ -1,4 +1,4 @@
-import { headers } from 'next/headers'
+import { cookies, headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { HydrationBoundary } from '@tanstack/react-query'
 import { Sidebar } from '@/components/layout/sidebar'
@@ -6,6 +6,8 @@ import { SidebarShowToggle } from '@/components/layout/sidebar-show-toggle'
 import { DashboardContent } from '@/components/layout/dashboard-content'
 import { PendingInvitationsBanner } from '@/components/layout/pending-invitations-banner'
 import { SidebarProvider } from '@/lib/sidebar-context'
+import { SIDEBAR_COLLAPSED_COOKIE } from '@/lib/sidebar-cookie'
+import { OverlayContainerProvider, OverlayContainerTarget } from '@/lib/overlay-container'
 import { CommandPaletteProvider } from '@/components/command-palette'
 import { prefetchAll } from '@/lib/server/dehydrate'
 import { sidebarSpecs } from '@/lib/server/queries/sidebar'
@@ -64,33 +66,47 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   const sidebarState = await prefetchAll(sidebarSpecs())
 
+  // Seed the desktop collapse state from the cookie so SSR renders the right
+  // layout on first paint (no flash of the sidebar before hydration).
+  const cookieStore = await cookies()
+  const initialCollapsed = cookieStore.get(SIDEBAR_COLLAPSED_COOKIE)?.value === '1'
+
   return (
-    <CommandPaletteProvider>
-      <SidebarProvider>
-        <HydrationBoundary state={sidebarState}>
-          {/* Dashboard renders at 125% scale (zoom) for a roomier default
-              view. Height is divided by the SAME factor so the zoomed
-              container still resolves to exactly one viewport height — without
-              the correction, 100vh * 1.25 would overflow and add a stray
-              scrollbar. The zoom factor and the height divisor must always
-              match. Scoped to the dashboard only; landing/docs/demo keep
-              their 100% scale. */}
-          <div className="flex h-[calc(100vh/1.25)] overflow-hidden bg-bg [zoom:1.25]">
-            <Sidebar />
-            {/* Brings the sidebar back when it's collapsed to zero width.
-                Renders nothing while the sidebar is visible. */}
-            <SidebarShowToggle />
-            <main className="flex-1 overflow-y-auto min-w-0">
-              {/* Pending workspace invitations surface here: any dashboard
-                  page renders this banner at the top, so a user who never
-                  clicked the email link still sees the invite waiting for
-                  them. Self-hides when there are none / after dismissal. */}
-              <PendingInvitationsBanner />
-              <DashboardContent>{children}</DashboardContent>
-            </main>
-          </div>
-        </HydrationBoundary>
-      </SidebarProvider>
-    </CommandPaletteProvider>
+    // OverlayContainerProvider must sit above CommandPaletteProvider so the
+    // palette (and Radix dialogs) can read the portal target; the target node
+    // itself lives inside the zoom wrapper below, so overlays inherit the 125%
+    // scale instead of rendering at 100% off the document body.
+    <OverlayContainerProvider>
+      <CommandPaletteProvider>
+        <SidebarProvider initialCollapsed={initialCollapsed}>
+          <HydrationBoundary state={sidebarState}>
+            {/* Dashboard renders at 125% scale (zoom) for a roomier default
+                view. Height is divided by the SAME factor so the zoomed
+                container still resolves to exactly one viewport height — without
+                the correction, 100vh * 1.25 would overflow and add a stray
+                scrollbar. The zoom factor and the height divisor must always
+                match. Scoped to the dashboard only; landing/docs/demo keep
+                their 100% scale. */}
+            <div className="flex h-[calc(100vh/1.25)] overflow-hidden bg-bg [zoom:1.25]">
+              <Sidebar />
+              {/* Brings the sidebar back when it's collapsed to zero width.
+                  Renders nothing while the sidebar is visible. */}
+              <SidebarShowToggle />
+              <main className="flex-1 overflow-y-auto min-w-0">
+                {/* Pending workspace invitations surface here: any dashboard
+                    page renders this banner at the top, so a user who never
+                    clicked the email link still sees the invite waiting for
+                    them. Self-hides when there are none / after dismissal. */}
+                <PendingInvitationsBanner />
+                <DashboardContent>{children}</DashboardContent>
+              </main>
+              {/* Portal target for dialogs / command palette — inside the zoom
+                  wrapper so overlays render at the same 125% scale. */}
+              <OverlayContainerTarget />
+            </div>
+          </HydrationBoundary>
+        </SidebarProvider>
+      </CommandPaletteProvider>
+    </OverlayContainerProvider>
   )
 }
