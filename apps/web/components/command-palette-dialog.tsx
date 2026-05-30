@@ -1,7 +1,9 @@
 'use client'
 
 import React from 'react'
+import { createPortal } from 'react-dom'
 import { useRouter } from 'next/navigation'
+import { useOverlayContainer } from '@/lib/overlay-container'
 import {
   Command,
   CommandEmpty,
@@ -39,13 +41,16 @@ interface Props {
 
 export function CommandPaletteDialog({ navGroups, onClose }: Props) {
   const router = useRouter()
+  // Portal into the dashboard's zoom wrapper so the palette scales with the
+  // rest of the UI. Falls back to body (100%) if the target isn't mounted.
+  const container = useOverlayContainer()
 
   function handleSelect(href: string) {
     router.push(href)
     onClose()
   }
 
-  return (
+  return createPortal(
     <>
       {/* Backdrop */}
       <div
@@ -79,6 +84,7 @@ export function CommandPaletteDialog({ navGroups, onClose }: Props) {
           </CommandList>
         </Command>
       </div>
-    </>
+    </>,
+    container ?? document.body,
   )
 }
