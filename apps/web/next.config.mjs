@@ -40,6 +40,9 @@ const nextConfig = {
   async redirects() {
     return [
       { source: '/recommendations', destination: '/savings', permanent: true },
+      // /doc → /docs (mistyped singular; common typo, surfaced as a 404 in analytics)
+      { source: '/doc', destination: '/docs', permanent: true },
+      { source: '/doc/:path*', destination: '/docs/:path*', permanent: true },
     ]
   },
   async rewrites() {
