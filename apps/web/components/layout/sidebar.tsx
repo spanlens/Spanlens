@@ -362,7 +362,13 @@ export function Sidebar() {
           // Desktop: back in flow. Width animates between full (w-56) and
           // hidden (w-0) so the "hide sidebar" toggle collapses it smoothly;
           // overflow-hidden clips the content while it's at zero width.
-          'md:relative md:shrink-0 md:translate-x-0',
+          // `md:[zoom:0.8]` cancels the dashboard wrapper's `[zoom:1.25]`
+          // (1.25 * 0.8 = 1.0) so the sidebar renders at its original 100%
+          // size while the main content stays at 125%. Without this, 17 nav
+          // items + plan widget + footer overflow on smaller laptop screens
+          // and need to be scrolled. Scoped to md+ because mobile uses
+          // `fixed` positioning, which interacts poorly with CSS `zoom`.
+          'md:relative md:shrink-0 md:translate-x-0 md:[zoom:0.8]',
           'md:transition-[width] md:duration-200 md:ease-in-out',
           isCollapsed ? 'md:w-0 md:overflow-hidden md:border-r-0' : 'md:w-56',
         )}
