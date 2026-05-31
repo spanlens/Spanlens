@@ -20,6 +20,23 @@ const NAV: NavGroup[] = [
       { title: 'Overview', href: '/docs' },
       { title: 'Quick start', href: '/docs/quick-start' },
       { title: 'Why Spanlens', href: '/docs/why' },
+      { title: 'Data model', href: '/docs/concepts/data-model' },
+    ],
+  },
+  {
+    title: 'Migrate from',
+    items: [
+      { title: 'Langfuse', href: '/docs/migrate/from-langfuse' },
+      { title: 'Helicone', href: '/docs/migrate/from-helicone' },
+      { title: 'LangSmith', href: '/docs/migrate/from-langsmith' },
+    ],
+  },
+  {
+    title: 'Tutorials',
+    items: [
+      { title: 'RAG chatbot', href: '/docs/tutorials/rag-chatbot' },
+      { title: 'Multi-step agent', href: '/docs/tutorials/agent-tracing' },
+      { title: 'Nightly evals', href: '/docs/tutorials/nightly-evals' },
     ],
   },
   {
@@ -74,10 +91,18 @@ const NAV: NavGroup[] = [
     title: 'SDK & integrations',
     items: [
       { title: '@spanlens/sdk', href: '/docs/sdk' },
-      { title: 'LangChain / LangGraph', href: '/docs/sdk#langchain' },
+      { title: 'LangGraph', href: '/docs/integrations/langgraph' },
+      { title: 'LangChain', href: '/docs/sdk#langchain' },
       { title: 'Vercel AI SDK', href: '/docs/sdk#vercel-ai' },
       { title: 'LlamaIndex', href: '/docs/sdk#llamaindex' },
       { title: 'OpenTelemetry (OTLP)', href: '/docs/otel' },
+    ],
+  },
+  {
+    title: 'Production',
+    items: [
+      { title: 'Reliability', href: '/docs/production/reliability' },
+      { title: 'Scaling', href: '/docs/production/scaling' },
     ],
   },
   {
