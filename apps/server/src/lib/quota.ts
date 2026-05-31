@@ -59,6 +59,47 @@ export const OVERAGE_USD_PER_100K: Record<Plan, number | null> = {
   enterprise: null,
 }
 
+// Max number of workspaces a single user can OWN (be `owner_id` of). Counted
+// across all their owned organizations regardless of which plan each one is
+// on. Limits "free tier quota multiplication" (a free user splitting traffic
+// across N workspaces to N×50K free quota) without restricting how many
+// workspaces they can JOIN as a member — joining is unbounded because the
+// owner of that workspace is paying for it. null = unlimited (Enterprise).
+//
+// The check uses the user's "effective plan" = the highest tier among the
+// workspaces they own. Upgrading any single owned workspace immediately
+// raises the cap. See `effectiveOwnedPlan()` and POST /api/v1/organizations.
+export const OWNED_WORKSPACE_LIMITS: Record<Plan, number | null> = {
+  free: 1,
+  starter: 2,
+  team: 5,
+  enterprise: null,
+}
+
+// Highest-to-lowest plan order. Used by `effectiveOwnedPlan()` to pick the
+// strongest tier across a user's owned workspaces (so upgrading one workspace
+// to Team gives the user Team-level workspace-creation rights everywhere).
+const PLAN_RANK: Record<Plan, number> = {
+  free: 0,
+  starter: 1,
+  team: 2,
+  enterprise: 3,
+}
+
+/**
+ * Returns the highest-tier plan from a list. Used to compute a user's
+ * effective workspace-creation rights from their owned workspaces' plans.
+ * Empty input falls back to `'free'` (the implicit floor before any
+ * workspace exists, e.g. for defensive checks in the very first bootstrap).
+ */
+export function effectiveOwnedPlan(plans: ReadonlyArray<Plan>): Plan {
+  let best: Plan = 'free'
+  for (const p of plans) {
+    if (PLAN_RANK[p] > PLAN_RANK[best]) best = p
+  }
+  return best
+}
+
 /**
  * Counts `requests` rows for an org from `since` to now, bypassing plan
  * retention. Used by billing quota checks and Paddle overage accounting —

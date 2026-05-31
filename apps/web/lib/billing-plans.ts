@@ -20,6 +20,7 @@ export const PLANS: PlanCardConfig[] = [
       '50,000 requests / month',
       '14-day log retention',
       '1 seat',
+      '1 workspace',
       'Unlimited projects',
       'Community support',
     ],
@@ -34,6 +35,7 @@ export const PLANS: PlanCardConfig[] = [
       '100,000 requests / month',
       '90-day log retention',
       '3 seats',
+      '2 workspaces',
       'Unlimited projects',
       'Agent tracing',
       'Email alerts',
@@ -51,6 +53,7 @@ export const PLANS: PlanCardConfig[] = [
       '1,000,000 requests / month',
       '365-day log retention',
       '10 seats',
+      '5 workspaces',
       'Unlimited projects',
       'Slack / Discord alerts',
       'Team roles & audit log',
@@ -68,6 +71,7 @@ export const PLANS: PlanCardConfig[] = [
       'Custom request volume',
       '365-day log retention (extendable by contract)',
       'Unlimited seats',
+      'Unlimited workspaces',
       'SSO / SAML',
       'Dedicated Slack channel',
       'Custom SLA',
@@ -85,6 +89,17 @@ export const PLAN_SEAT_LIMITS: Record<string, number | null> = {
   free: 1,
   starter: 3,
   team: 10,
+  enterprise: null,
+}
+
+// Max workspaces a user can OWN (be `owner_id` of). Mirrors
+// `OWNED_WORKSPACE_LIMITS` in apps/server/src/lib/quota.ts — server is the
+// source of truth, this is for the UI to render the limit row in
+// Settings → Plan & limits without an extra fetch.
+export const PLAN_WORKSPACE_LIMITS: Record<string, number | null> = {
+  free: 1,
+  starter: 2,
+  team: 5,
   enterprise: null,
 }
 

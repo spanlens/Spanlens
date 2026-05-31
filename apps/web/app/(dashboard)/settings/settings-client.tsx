@@ -50,7 +50,7 @@ import {
   useCurrentMember,
   type OrgRole,
 } from '@/lib/queries/use-members'
-import { PLANS, PLAN_REQUEST_LIMITS, PLAN_SEAT_LIMITS, PLAN_RETENTION_DAYS, formatPlanLabel } from '@/lib/billing-plans'
+import { PLANS, PLAN_REQUEST_LIMITS, PLAN_SEAT_LIMITS, PLAN_RETENTION_DAYS, PLAN_WORKSPACE_LIMITS, formatPlanLabel } from '@/lib/billing-plans'
 import type { BillingPlan } from '@/lib/queries/types'
 import {
   useWebhooks,
@@ -856,6 +856,8 @@ function PlanLimitsTab() {
     : '∞'
   const seatLimit = PLAN_SEAT_LIMITS[currentPlan]
   const seatLimitLabel = seatLimit == null ? 'unlimited' : String(seatLimit)
+  const workspaceLimit = PLAN_WORKSPACE_LIMITS[currentPlan]
+  const workspaceLimitLabel = workspaceLimit == null ? 'unlimited' : String(workspaceLimit)
   const retentionDays = PLAN_RETENTION_DAYS[currentPlan] ?? 14
   const retentionLabel = `${retentionDays} days`
 
@@ -945,11 +947,12 @@ function PlanLimitsTab() {
             {['Resource', 'Limit', 'Used now', 'Headroom'].map((h) => <span key={h}>{h}</span>)}
           </div>
           {[
-            ['Requests / month', limitLabel,      usedThisMonth.toLocaleString(), headroom],
-            ['Team seats',       seatLimitLabel,  '—',                            '—'],
-            ['Log retention',    retentionLabel,  '—',                            '—'],
-            ['API keys',         '25',            '—',                            '—'],
-            ['Alert rules',      '100',           '—',                            '—'],
+            ['Requests / month',     limitLabel,           usedThisMonth.toLocaleString(), headroom],
+            ['Team seats',           seatLimitLabel,       '—',                            '—'],
+            ['Workspaces (owned)',   workspaceLimitLabel,  '—',                            '—'],
+            ['Log retention',        retentionLabel,       '—',                            '—'],
+            ['API keys',             '25',                 '—',                            '—'],
+            ['Alert rules',          '100',                '—',                            '—'],
           ].map(([res, lim, used, head]) => (
             <div key={res} className="grid grid-cols-[1.4fr_1fr_1fr_1fr] gap-4 px-6 py-3">
               <span className="font-mono text-[12px] text-text-muted">{res}</span>
