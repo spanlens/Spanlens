@@ -350,8 +350,13 @@ export function Sidebar() {
         className={cn(
           // Base
           'flex flex-col bg-bg-elev border-r border-border',
-          // Mobile: fixed overlay drawer
-          'fixed inset-y-0 left-0 z-50 w-[272px] h-screen',
+          // Mobile: fixed overlay drawer. `inset-y-0` already pins to the
+          // full viewport height, so no `h-screen` here — on desktop the
+          // sidebar lives inside the dashboard's `[zoom:1.25]` wrapper whose
+          // height is `100vh/1.25`, and an explicit `h-screen` would overflow
+          // that parent by 25% and hide the Plan widget / Feedback / Theme /
+          // Sign out at the bottom. The flex parent gives us the height we need.
+          'fixed inset-y-0 left-0 z-50 w-[272px]',
           'transition-transform duration-200 ease-in-out',
           isOpen ? 'translate-x-0' : '-translate-x-full',
           // Desktop: back in flow. Width animates between full (w-56) and
