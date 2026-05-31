@@ -158,14 +158,18 @@ export function ModelPriceChart() {
 /* ───────────────────────── 4. Billing: plan quotas ───────────────────────── */
 
 export function PlanQuotaChart() {
+  // Must mirror MONTHLY_REQUEST_LIMITS in apps/server/src/lib/quota.ts —
+  // the server is authoritative, this chart just visualizes it. Enterprise
+  // is actually unlimited; we render a finite headroom value (10× Team)
+  // for a sensible bar height while keeping the caption honest about it.
   const data = [
-    { plan: 'Free', requests: 10000, retention: 14 },
-    { plan: 'Pro', requests: 500000, retention: 90 },
-    { plan: 'Team', requests: 5000000, retention: 365 },
-    { plan: 'Enterprise', requests: 50000000, retention: 365 },
+    { plan: 'Free', requests: 50_000, retention: 14 },
+    { plan: 'Pro', requests: 100_000, retention: 90 },
+    { plan: 'Team', requests: 1_000_000, retention: 365 },
+    { plan: 'Enterprise', requests: 10_000_000, retention: 365 },
   ]
   return (
-    <Figure caption="Monthly request quota (left) and retention window (right) per plan. Enterprise retention is extendable by contract; quotas overflow into metered overage at the rate shown in the billing table.">
+    <Figure caption="Monthly request quota (left) and retention window (right) per plan. The Enterprise bar is shown at an illustrative 10M to keep the chart readable; the actual Enterprise quota is unlimited and negotiated per contract. Paid quotas overflow into metered overage at the rate shown in the billing table.">
       <ResponsiveContainer width="100%" height="100%">
         <BarChart data={data} margin={{ top: 20, right: 60, left: 20, bottom: 30 }}>
           <CartesianGrid strokeDasharray="3 3" stroke={COLORS.mutedLight} />

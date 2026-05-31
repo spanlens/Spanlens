@@ -147,6 +147,24 @@ export default function ApiReferencePage() {
           Swagger UI
         </a>.
       </p>
+
+      <h3>Plan-gated responses to know about</h3>
+      <p>
+        A few endpoints respond with <code>HTTP 402 Payment Required</code>{' '}
+        when a plan limit is hit, so your client can distinguish &quot;you ran out
+        of headroom&quot; from a generic 400/403:
+      </p>
+      <ul>
+        <li>
+          <code>POST /api/v1/organizations</code> returns 402 with{' '}
+          <code>{`{ "code": "workspace_limit_reached", "error": "…", "owned": N, "limit": M, "effectivePlan": "…" }`}</code>{' '}
+          when the caller already owns the maximum workspaces their effective
+          plan allows (Free 1, Pro 2, Team 5, Enterprise unlimited). Upgrade
+          any owned workspace and retry. See{' '}
+          <a href="/docs/features/billing">Billing &amp; quotas</a> for the
+          full per-plan table.
+        </li>
+      </ul>
     </div>
   )
 }

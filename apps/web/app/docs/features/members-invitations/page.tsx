@@ -163,6 +163,18 @@ export default function MembersInvitationsDocs() {
         dropdown opens a modal; the server creates the org + admin
         membership + a default project in one round-trip.
       </p>
+      <p>
+        How many workspaces you can own is capped per plan: Free 1,
+        Pro 2, Team 5, Enterprise unlimited. The cap counts workspaces
+        you own (you are the <code>owner_id</code>); joining a workspace
+        someone else owns is always free. Your effective limit is the
+        highest tier across your owned workspaces, so upgrading any
+        single one to Pro raises the cap to 2, upgrading one to Team
+        raises it to 5, and so on. Hitting the cap returns{' '}
+        <code>HTTP 402</code> with a <code>workspace_limit_reached</code>{' '}
+        code from <code>POST /api/v1/organizations</code>; the modal
+        surfaces the upgrade path in line.
+      </p>
 
       <h2 id="audit">Audit log</h2>
       <p>
