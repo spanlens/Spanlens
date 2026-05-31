@@ -29,6 +29,7 @@ export default function BillingDocs() {
             <th>Included requests</th>
             <th>Log retention</th>
             <th>Seats</th>
+            <th>Workspaces</th>
           </tr>
         </thead>
         <tbody>
@@ -38,6 +39,7 @@ export default function BillingDocs() {
             <td>50,000</td>
             <td>14 days</td>
             <td>1</td>
+            <td>1</td>
           </tr>
           <tr>
             <td>Pro</td>
@@ -45,6 +47,7 @@ export default function BillingDocs() {
             <td>100,000</td>
             <td>90 days</td>
             <td>3</td>
+            <td>2</td>
           </tr>
           <tr>
             <td>Team</td>
@@ -52,6 +55,7 @@ export default function BillingDocs() {
             <td>1,000,000</td>
             <td>365 days</td>
             <td>10</td>
+            <td>5</td>
           </tr>
           <tr>
             <td>Enterprise</td>
@@ -59,9 +63,19 @@ export default function BillingDocs() {
             <td>unlimited</td>
             <td>365 days (extendable by contract)</td>
             <td>unlimited</td>
+            <td>unlimited</td>
           </tr>
         </tbody>
       </table>
+      <p>
+        The <strong>Workspaces</strong> column counts workspaces you{' '}
+        <em>own</em> (you are the <code>owner_id</code>). Joining a workspace
+        someone else owns doesn&apos;t consume your quota: the cap exists so
+        a single user can&apos;t multiply the free-tier request quota by
+        spinning up many empty orgs. Upgrading any one of your owned
+        workspaces lifts the cap for all of your future creates, your effective
+        plan is the highest tier among the workspaces you own.
+      </p>
       <p>
         A <strong>request</strong> is one LLM call that flows through the{' '}
         <a href="/docs/features/requests">Spanlens proxy</a>, regardless of which provider
