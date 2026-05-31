@@ -7,7 +7,13 @@ export default function DemoLayout({ children }: { children: React.ReactNode }) 
   return (
     <CommandPaletteProvider>
     <SidebarProvider>
-    <div className="flex h-screen overflow-hidden bg-bg">
+    {/* Mirrors the live (dashboard) layout: 125% zoom for a roomier default
+        view, with height divided by the same factor so the zoomed container
+        still resolves to exactly one viewport height. Without the height
+        correction, 100vh * 1.25 overflows and adds a stray scrollbar.
+        DemoSidebar applies `md:[zoom:0.8]` to cancel this parent zoom so the
+        sidebar itself renders at 100% while the main content stays at 125%. */}
+    <div className="flex h-[calc(100vh/1.25)] overflow-hidden bg-bg [zoom:1.25]">
       <DemoSidebar />
       <div className="flex-1 flex flex-col overflow-hidden min-w-0">
         {/* Demo banner */}

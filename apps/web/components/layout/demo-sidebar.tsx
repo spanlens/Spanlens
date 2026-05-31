@@ -295,10 +295,20 @@ export function DemoSidebar() {
       <aside
         className={cn(
           'flex flex-col bg-bg-elev border-r border-border',
-          'fixed inset-y-0 left-0 z-50 w-[272px] h-screen',
+          // Mobile: fixed overlay drawer. `inset-y-0` already pins to the full
+          // viewport height — no `h-screen` needed. On desktop the sidebar
+          // lives inside the demo layout's `[zoom:1.25]` wrapper whose height
+          // is `100vh/1.25`; an explicit `h-screen` would overflow that parent
+          // by 25% and hide the Plan widget / Feedback / Theme / Sign out.
+          'fixed inset-y-0 left-0 z-50 w-[272px]',
           'transition-transform duration-200 ease-in-out',
           isOpen ? 'translate-x-0' : '-translate-x-full',
-          'md:relative md:w-56 md:shrink-0 md:translate-x-0 md:transition-none',
+          // `md:[zoom:0.8]` cancels the demo layout's `[zoom:1.25]` (1.25 * 0.8
+          // = 1.0) so the sidebar renders at its original 100% size while the
+          // demo main content stays at 125%. Mirrors the live sidebar — keep
+          // these two in sync. Scoped to md+ because mobile uses `fixed`,
+          // which interacts poorly with CSS zoom.
+          'md:relative md:w-56 md:shrink-0 md:translate-x-0 md:transition-none md:[zoom:0.8]',
         )}
       >
         {/* Mobile close */}
