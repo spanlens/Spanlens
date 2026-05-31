@@ -3,6 +3,7 @@ import { authJwt, type JwtContext, type OrgRole } from '../middleware/authJwt.js
 import { requireRole } from '../middleware/requireRole.js'
 import { supabaseAdmin } from '../lib/db.js'
 import { randomHex, sha256Hex } from '../lib/crypto.js'
+import { OWNED_WORKSPACE_LIMITS, effectiveOwnedPlan, type Plan } from '../lib/quota.js'
 
 export const organizationsRouter = new Hono<JwtContext>()
 
@@ -341,6 +342,38 @@ organizationsRouter.post('/', async (c) => {
 
   if (typeof body.name !== 'string' || body.name.trim().length === 0) {
     return c.json({ error: 'name is required' }, 400)
+  }
+
+  // Owned-workspace cap. Counts every org the user is `owner_id` of (regardless
+  // of plan), and gates new creation on the highest tier among them. Free=1 /
+  // Pro=2 / Team=5 / Enterprise=unlimited — upgrading any one workspace lifts
+  // the cap for the user globally. Bypasses to bootstrap (signup-time first
+  // workspace) since that path doesn't hit this endpoint.
+  const { data: ownedRows, error: ownedErr } = await supabaseAdmin
+    .from('organizations')
+    .select('plan')
+    .eq('owner_id', userId)
+  if (ownedErr) return c.json({ error: 'Failed to check workspace count' }, 500)
+  const ownedPlans = (ownedRows ?? []).map((r) => r.plan as Plan)
+  const effective = effectiveOwnedPlan(ownedPlans)
+  const cap = OWNED_WORKSPACE_LIMITS[effective]
+  if (cap !== null && ownedPlans.length >= cap) {
+    // `error` is the user-facing message because the shared client
+    // (`apps/web/lib/api.ts`) surfaces that field as the thrown Error
+    // message. `code` is the machine-readable slug for UI to key special
+    // rendering (e.g. an Upgrade CTA) off of.
+    return c.json(
+      {
+        error: `You already own ${ownedPlans.length} workspace${ownedPlans.length === 1 ? '' : 's'} on the ${effective === 'starter' ? 'Pro' : effective[0]!.toUpperCase() + effective.slice(1)} plan (limit ${cap}). Upgrade an existing workspace to create more.`,
+        code: 'workspace_limit_reached',
+        owned: ownedPlans.length,
+        limit: cap,
+        effectivePlan: effective,
+      },
+      // 402 Payment Required — surfaces the upgrade path more cleanly than
+      // 403 in client error handlers that key off status.
+      402,
+    )
   }
 
   const { data: org, error } = await supabaseAdmin
