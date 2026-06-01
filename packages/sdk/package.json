@@ -60,7 +60,7 @@
     "@google/generative-ai": { "optional": true }
   },
   "devDependencies": {
-    "@anthropic-ai/sdk": "^0.96.0",
+    "@anthropic-ai/sdk": "^0.100.1",
     "@google/generative-ai": "^0.24.1",
     "@types/node": "^25.8.0",
     "openai": "^6.38.0",
