@@ -2,7 +2,10 @@ import 'server-only'
 import { cache } from 'react'
 import { cookies } from 'next/headers'
 import { createClient } from '@/lib/supabase/server'
-import { WORKSPACE_COOKIE } from '@/lib/workspace-cookie'
+
+// Duplicated from lib/workspace-cookie.ts (a 'use client' module) so server
+// code stays free of that boundary. If this name changes, change both files.
+const WORKSPACE_COOKIE = 'sb-ws'
 
 const API_URL =
   process.env.API_URL ??
@@ -48,6 +51,10 @@ export async function apiGetServer<T>(path: string): Promise<T> {
     getServerWorkspaceCookie(),
   ])
   const token = session?.access_token ?? null
+
+  // TEMP DEBUG (workspace-switcher fix verification): log whether the cookie
+  // was read at SSR time and is being forwarded. Remove after confirming.
+  console.log('[apiGetServer]', path, 'sbWs=', sbWs ? sbWs.slice(0, 8) : 'null', 'hasToken=', token ? 'yes' : 'no')
 
   const url = path.startsWith('http') ? path : `${API_URL}${path}`
   const res = await fetch(url, {
