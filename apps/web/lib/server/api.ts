@@ -54,7 +54,7 @@ export async function apiGetServer<T>(path: string): Promise<T> {
 
   // TEMP DEBUG (workspace-switcher fix verification): log whether the cookie
   // was read at SSR time and is being forwarded. Remove after confirming.
-  console.log('[apiGetServer]', path, 'sbWs=', sbWs ? sbWs.slice(0, 8) : 'null', 'hasToken=', token ? 'yes' : 'no')
+  console.log('[apiGetServer]', path, 'sbWs=', sbWs ? sbWs.slice(0, 8) : 'null', 'hasToken=', token ? 'yes' : 'no', 'apiUrl=', API_URL)
 
   const url = path.startsWith('http') ? path : `${API_URL}${path}`
   const res = await fetch(url, {
@@ -73,5 +73,13 @@ export async function apiGetServer<T>(path: string): Promise<T> {
     throw new Error(`Server API ${res.status}: ${path}`)
   }
 
-  return res.json() as Promise<T>
+  // TEMP DEBUG: peek at the response so we can correlate the request's sb-ws
+  // with what the backend actually returned. Only log the org-related paths
+  // to keep the noise down.
+  const body = (await res.json()) as T
+  if (path.startsWith('/api/v1/organizations/me') || path === '/api/v1/organizations') {
+    const preview = JSON.stringify(body).slice(0, 200)
+    console.log('[apiGetServer:response]', path, 'returned', preview)
+  }
+  return body
 }
