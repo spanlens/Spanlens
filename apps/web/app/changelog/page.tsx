@@ -51,15 +51,6 @@ export default function ChangelogPage() {
               <Rss className="h-4 w-4" />
               RSS feed
             </Link>
-            <span className="text-text-faint">·</span>
-            <a
-              href="https://github.com/sunes26/Spanlens/commits/main"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-accent hover:opacity-80"
-            >
-              Raw git log
-            </a>
           </div>
         </header>
 
