@@ -117,8 +117,8 @@ export default function SavingsDocs() {
             <td>prompt ≤ 1000, completion ≤ 300</td>
           </tr>
           <tr>
-            <td><code>gemini:gemini-1.5-pro</code></td>
-            <td><code>gemini:gemini-2.0-flash</code></td>
+            <td><code>gemini:gemini-2.5-pro</code></td>
+            <td><code>gemini:gemini-2.5-flash</code></td>
             <td>6%</td>
             <td>prompt ≤ 1000, completion ≤ 300</td>
           </tr>

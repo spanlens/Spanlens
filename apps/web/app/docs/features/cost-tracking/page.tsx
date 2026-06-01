@@ -49,15 +49,13 @@ export default function CostTrackingDocs() {
 // Anthropic
 'claude-opus-4-7':                { prompt: 5,     completion: 25   }
 'claude-sonnet-4-6':              { prompt: 3,     completion: 15   }
-'claude-haiku-4.5':               { prompt: 1,     completion: 5    }
-'claude-haiku-4-5':     { prompt: 3,     completion: 15   }
+'claude-haiku-4-5':               { prompt: 1,     completion: 5    }
 'claude-3-5-haiku-20241022':      { prompt: 0.8,   completion: 4    }
 // Gemini
 'gemini-2.5-pro':                 { prompt: 1.25,  completion: 10   }
 'gemini-2.5-flash':               { prompt: 0.3,   completion: 2.5  }
 'gemini-2.5-flash-lite':          { prompt: 0.1,   completion: 0.4  }
-'gemini-1.5-pro':                 { prompt: 1.25,  completion: 5    }
-'gemini-2.0-flash':               { prompt: 0.075, completion: 0.3  }
+'gemini-2.0-flash':               { prompt: 0.1,   completion: 0.4  }
 // ...`}</CodeBlock>
 
       <h3>The formula</h3>

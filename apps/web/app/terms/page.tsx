@@ -246,8 +246,8 @@ export default function TermsPage() {
           These Terms are governed by the laws of the Republic of Korea, without regard to
           conflict-of-laws principles. Any dispute arising out of or relating to these Terms or
           the service shall be subject to the exclusive jurisdiction of the Seoul Central
-          District Court (서울중앙지방법원), unless otherwise required by applicable consumer
-          protection law in your country of residence.
+          District Court, unless otherwise required by applicable consumer protection law
+          in your country of residence.
         </p>
 
         <h2 id="contact">14. Contact</h2>

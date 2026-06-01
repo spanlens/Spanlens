@@ -79,7 +79,7 @@ const DETECTORS: readonly DetectorDef[] = [
   { id: 'pii.phone',    name: 'Phone numbers',       description: 'E.164 + common formats',   type: 'pii',       summaryKey: 'phone' },
   { id: 'pii.card',     name: 'Credit cards',        description: '13–19 digit PANs',         type: 'pii',       summaryKey: 'credit-card' },
   { id: 'pii.ssn-us',   name: 'US SSN',              description: 'NNN-NN-NNNN',              type: 'pii',       summaryKey: 'ssn-us' },
-  { id: 'pii.ssn-kr',   name: 'Korean RRN',          description: '주민등록번호 XXXXXX-XXXXXXX', type: 'pii',    summaryKey: 'ssn-kr' },
+  { id: 'pii.ssn-kr',   name: 'Korean RRN',          description: 'YYMMDD-NNNNNNN',           type: 'pii',       summaryKey: 'ssn-kr' },
   { id: 'pii.iban',     name: 'IBAN',                description: 'EU + UK + 30 countries',   type: 'pii',       summaryKey: 'iban' },
   { id: 'pii.passport', name: 'Passport numbers',    description: 'Generic letter+digit',     type: 'pii',       summaryKey: 'passport' },
   { id: 'sec.injection', name: 'Prompt injection',   description: 'Override/reveal/role/jailbreak/smuggle (EN + KO)', type: 'injection', summaryKey: '*' },
