@@ -43,7 +43,7 @@ const whyCompetitor: ComparePoint[] = [
   {
     title: 'Larger community and ecosystem',
     body:
-      'Langfuse has been public since 2023 with thousands of GitHub stars and a busy community. If proven adoption is your top criterion, Langfuse is ahead. Spanlens is younger and is still growing its community.',
+      'Langfuse has been public since 2023 with thousands of GitHub stars and a busy community. If proven OSS adoption is your top criterion, Langfuse is ahead. Spanlens shipped in 2026 with Critical Path tracing and Welch t-test A/B already in v1, capabilities Langfuse has not added.',
   },
   {
     title: 'You already use OpenTelemetry everywhere',
@@ -53,12 +53,12 @@ const whyCompetitor: ComparePoint[] = [
   {
     title: 'You need a scoring or eval marketplace',
     body:
-      'Langfuse offers a richer set of pre-built evaluators like toxicity and helpfulness that you can chain. Spanlens leans on LLM-as-judge with your own rubric plus human annotation.',
+      "Langfuse offers a richer set of pre-built evaluators like toxicity and helpfulness that you can chain. Spanlens leans on LLM-as-judge with your own rubric plus human annotation, which stays flexible when your team's quality criteria don't match a stock evaluator.",
   },
   {
     title: 'Datasets-as-a-product workflow',
     body:
-      "Langfuse's datasets feature is mature for building golden test sets and re-running them on every prompt change. Spanlens has datasets too but they're lighter-weight.",
+      "Langfuse's datasets feature is mature for building golden test sets and re-running them on every prompt change. Spanlens datasets cover the same flow with a simpler UI; if your golden-set workflow already lives in CI scripts, the surface difference matters less than it looks.",
   },
 ]
 

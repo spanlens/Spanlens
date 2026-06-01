@@ -126,7 +126,7 @@ const groups: CompareGroup[] = [
         feature: 'Embedding projector / drift analysis',
         spanlens: 'no',
         competitor: 'yes',
-        note: "Phoenix's ML-observability roots show here.",
+        note: "Spanlens does not ship an embedding projector. If drift analysis on embeddings is part of your release gate, that's a Phoenix-side requirement.",
       },
     ],
   },

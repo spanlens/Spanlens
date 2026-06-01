@@ -58,7 +58,7 @@ const whyCompetitor: ComparePoint[] = [
   {
     title: 'Built-in playgrounds for many models',
     body:
-      "Braintrust's side-by-side playground for comparing arbitrary models on the same input is more polished than Spanlens's.",
+      "Braintrust's side-by-side playground compares arbitrary models on the same input with a polished UI. Spanlens has a playground built into prompt versions; for cross-vendor head-to-head shopping, Braintrust fits that use case more natively.",
   },
 ]
 
@@ -100,7 +100,7 @@ const groups: CompareGroup[] = [
         feature: 'Side-by-side output diff UI',
         spanlens: 'partial',
         competitor: 'yes',
-        note: "Braintrust's diff and eval UX is more polished.",
+        note: "Braintrust's diff UX is the most polished in the market. Spanlens shows trace pairs side by side from the request log, sufficient for spot-checks but less optimized for daily eval review.",
       },
     ],
   },

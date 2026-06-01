@@ -48,7 +48,7 @@ const whyCompetitor: ComparePoint[] = [
   {
     title: 'You need first-party LangGraph trace support',
     body:
-      "LangGraph nodes, edges, and state transitions render natively in LangSmith. Spanlens supports OTel spans from LangGraph but doesn't render the graph topology.",
+      'LangGraph nodes, edges, and state transitions render natively in LangSmith. Spanlens captures every LangGraph node as an OTel span and renders the waterfall; the dedicated graph view is on our near-term roadmap. If a graph visual is a hard requirement today, pick LangSmith.',
   },
   {
     title: 'You want one vendor for framework + observability',
@@ -58,7 +58,7 @@ const whyCompetitor: ComparePoint[] = [
   {
     title: 'Hub for sharing community prompts',
     body:
-      'LangSmith Hub has a sizable community of shared prompts and chains. Spanlens has prompt versioning but no public hub.',
+      'LangSmith Hub has a sizable community of shared prompts and chains, useful for browsing patterns. Spanlens treats prompts as part of your private library; if hub-style discovery is core to your workflow, LangSmith wins on that surface.',
   },
 ]
 

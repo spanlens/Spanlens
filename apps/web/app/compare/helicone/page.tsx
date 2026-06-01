@@ -48,7 +48,7 @@ const whyCompetitor: ComparePoint[] = [
   {
     title: 'Longer track record and wider docs',
     body:
-      'Helicone has been public longer with extensive docs and case studies. If proven adoption is your top criterion, Helicone is ahead. Spanlens is younger and is still growing its public footprint.',
+      'Helicone has been public longer with extensive docs and case studies. If proven adoption is your top criterion, Helicone is ahead. Spanlens shipped in 2026 with Critical Path tracing, Welch t-test A/B, and the ClickHouse fallback queue already in v1.',
   },
   {
     title: 'Wider integration list today',
@@ -58,7 +58,7 @@ const whyCompetitor: ComparePoint[] = [
   {
     title: 'Simpler ops surface for tiny teams',
     body:
-      "Helicone is a more focused product. If you want logging and cost dashboards and nothing else, Helicone's narrower scope is easier to onboard.",
+      "Helicone is a more focused product. If you want logging and cost dashboards and nothing else, Helicone's narrower scope is easier to onboard. Spanlens covers the same surface in its default dashboard and only adds depth when you opt into it.",
   },
   {
     title: 'Gateway features and rate limiting',
