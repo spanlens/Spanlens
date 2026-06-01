@@ -60,7 +60,7 @@ const DETECTORS: readonly DetectorDef[] = [
   {
     id: 'pii.ssn-kr',
     name: 'Korean RRN',
-    description: '주민등록번호 XXXXXX-XXXXXXX',
+    description: 'YYMMDD-NNNNNNN',
     type: 'pii',
     summaryKey: 'ssn-kr',
   },

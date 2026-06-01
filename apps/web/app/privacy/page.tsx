@@ -222,11 +222,11 @@ export default function PrivacyPage() {
         <h3>Under Korean PIPA</h3>
         <p>You have the right to:</p>
         <ul>
-          <li>Access the personal data we hold about you (열람 요구)</li>
-          <li>Correct inaccuracies (정정·삭제 요구)</li>
-          <li>Request deletion or processing suspension (삭제·처리정지 요구)</li>
+          <li>Access the personal data we hold about you</li>
+          <li>Correct inaccuracies</li>
+          <li>Request deletion or suspension of processing</li>
           <li>Withdraw previously given consent at any time</li>
-          <li>File a complaint with the Personal Information Protection Commission (개인정보보호위원회, <a href="https://www.pipc.go.kr" target="_blank" rel="noopener noreferrer">pipc.go.kr</a>) or relevant authority.</li>
+          <li>File a complaint with the Personal Information Protection Commission (<a href="https://www.pipc.go.kr" target="_blank" rel="noopener noreferrer">pipc.go.kr</a>) or relevant authority.</li>
         </ul>
 
         <h3>Under GDPR (EU users)</h3>
