@@ -48,7 +48,7 @@ const whyCompetitor: ComparePoint[] = [
   {
     title: 'You need first-party LangGraph trace support',
     body:
-      'LangGraph nodes, edges, and state transitions render natively in LangSmith. Spanlens captures every LangGraph node as an OTel span and renders the waterfall; the dedicated graph view is on our near-term roadmap. If a graph visual is a hard requirement today, pick LangSmith.',
+      'LangGraph nodes, edges, and state transitions render natively in LangSmith. Spanlens also renders a graph topology view of your LangGraph runs (with the critical path highlighted), but the depth of state-transition introspection in LangSmith is still ahead. If you need to debug LangGraph state mutations specifically, LangSmith goes deeper.',
   },
   {
     title: 'You want one vendor for framework + observability',
@@ -78,7 +78,12 @@ const groups: CompareGroup[] = [
         spanlens: 'yes',
         competitor: 'yes',
       },
-      { feature: 'LangGraph native graph view', spanlens: 'no', competitor: 'yes' },
+      {
+        feature: 'LangGraph graph topology view',
+        spanlens: 'yes',
+        competitor: 'yes',
+        note: 'Both render the node graph. LangSmith goes deeper into state-transition introspection.',
+      },
       { feature: 'Vercel AI SDK', spanlens: 'yes', competitor: 'yes' },
     ],
   },

@@ -1,10 +1,14 @@
 'use client'
-import { use, useState } from 'react'
+import { use, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Topbar } from '@/components/layout/topbar'
 import { cn } from '@/lib/utils'
 import { DEMO_TRACES, DEMO_TRACE_DETAILS } from '@/lib/demo-data'
 import type { SpanRow } from '@/lib/queries/types'
+import { TopologyGraph } from '@/components/traces/topology-graph'
+import { shouldShowGraphView } from '@/lib/topology'
+
+type TraceView = 'timeline' | 'graph'
 
 // ── Helpers ────────────────────────────────────────────────────
 
@@ -245,6 +249,12 @@ export default function DemoTraceDetailPage({ params }: { params: Promise<{ id: 
   const prevTrace = traceIdx > 0 ? DEMO_TRACES[traceIdx - 1] : null
   const nextTrace = traceIdx < DEMO_TRACES.length - 1 ? DEMO_TRACES[traceIdx + 1] : null
 
+  const graphAvailable = useMemo(
+    () => (traceDetail ? shouldShowGraphView(traceDetail.spans) : false),
+    [traceDetail],
+  )
+  const [view, setView] = useState<TraceView>(graphAvailable ? 'graph' : 'timeline')
+
   if (!traceDetail) {
     return (
       <div className="-mx-4 -my-4 md:-mx-8 md:-my-7 flex flex-col h-screen overflow-hidden bg-bg">
@@ -366,49 +376,95 @@ export default function DemoTraceDetailPage({ params }: { params: Promise<{ id: 
         </div>
       )}
 
-      {/* Main area: waterfall + optional detail panel */}
+      {/* Main area: waterfall or graph + optional detail panel */}
       <div className="flex-1 flex overflow-hidden">
-        {/* Waterfall */}
-        <div className="flex-1 overflow-auto">
-          {/* Waterfall header */}
-          <div className="flex items-center gap-2 px-4 py-2 border-b border-border bg-bg-muted sticky top-0 z-10">
-            <span className="shrink-0 w-[220px] font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint">Span</span>
-            <span className="flex-1 font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint">Timeline</span>
-            <span className="shrink-0 w-16 text-right font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint">Dur</span>
+        <div className="flex-1 flex flex-col overflow-hidden">
+          {/* View toggle */}
+          <div className="flex items-center gap-2 px-4 py-2 border-b border-border bg-bg-muted shrink-0">
+            <span className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint">View</span>
+            <div
+              className="flex border border-border rounded-[5px] overflow-hidden bg-bg font-mono text-[10px] tracking-[0.03em]"
+              title={graphAvailable ? undefined : 'Graph view requires LangChain / LangGraph callback spans'}
+            >
+              {([
+                ['timeline', 'Timeline'],
+                ['graph', 'Graph'],
+              ] as [TraceView, string][]).map(([v, label]) => {
+                const isGraph = v === 'graph'
+                const disabled = isGraph && !graphAvailable
+                return (
+                  <button
+                    key={v}
+                    type="button"
+                    disabled={disabled}
+                    onClick={() => !disabled && setView(v)}
+                    className={cn(
+                      'px-[10px] py-[4px] inline-flex items-center',
+                      view === v ? 'bg-text text-bg' : 'text-text-muted hover:text-text transition-colors',
+                      disabled && 'opacity-40 cursor-not-allowed hover:text-text-muted',
+                    )}
+                  >
+                    {label}
+                  </button>
+                )
+              })}
+            </div>
+            <span className="flex-1" />
+            <span className="font-mono text-[10.5px] text-text-faint">{spans.length} spans</span>
           </div>
 
-          {flatSpans.map(({ span, depth }) => (
-            <SpanWaterfallRow
-              key={span.id}
-              span={span}
-              depth={depth}
-              totalDurationMs={totalDurationMs}
-              traceStartMs={traceStartMs}
-              isSelected={selectedSpanId === span.id}
-              onClick={() => setSelectedSpanId(selectedSpanId === span.id ? null : span.id)}
-            />
-          ))}
+          {view === 'graph' ? (
+            <div className="flex-1 min-h-0 relative">
+              <TopologyGraph
+                spans={spans}
+                criticalSpanIds={traceDetail.critical_span_ids ?? []}
+                onSelectSpan={(s) => setSelectedSpanId(selectedSpanId === s.id ? null : s.id)}
+                selectedSpanId={selectedSpanId}
+              />
+            </div>
+          ) : (
+            <div className="flex-1 overflow-auto">
+              {/* Waterfall column header */}
+              <div className="flex items-center gap-2 px-4 py-2 border-b border-border bg-bg-muted/60 sticky top-0 z-10">
+                <span className="shrink-0 w-[220px] font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint">Span</span>
+                <span className="flex-1 font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint">Timeline</span>
+                <span className="shrink-0 w-16 text-right font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint">Dur</span>
+              </div>
 
-          {flatSpans.length === 0 && (
-            <div className="flex items-center justify-center h-32 text-[13px] text-text-muted">
-              No spans recorded for this trace.
+              {flatSpans.map(({ span, depth }) => (
+                <SpanWaterfallRow
+                  key={span.id}
+                  span={span}
+                  depth={depth}
+                  totalDurationMs={totalDurationMs}
+                  traceStartMs={traceStartMs}
+                  isSelected={selectedSpanId === span.id}
+                  onClick={() => setSelectedSpanId(selectedSpanId === span.id ? null : span.id)}
+                />
+              ))}
+
+              {flatSpans.length === 0 && (
+                <div className="flex items-center justify-center h-32 text-[13px] text-text-muted">
+                  No spans recorded for this trace.
+                </div>
+              )}
+
+              {/* Trace metadata footer */}
+              <div className="px-4 py-4 border-t border-border mt-2">
+                <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-2">Trace metadata</div>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-2 font-mono text-[11px] text-text-muted">
+                  <span><span className="text-text-faint">ID:</span> {traceDetail.id}</span>
+                  <span><span className="text-text-faint">Started:</span> {new Date(traceDetail.started_at).toLocaleString()}</span>
+                  {Boolean(traceDetail.metadata?.environment) && (
+                    <span><span className="text-text-faint">Env:</span> {String(traceDetail.metadata?.environment ?? '')}</span>
+                  )}
+                  {Boolean(traceDetail.metadata?.agent_version) && (
+                    <span><span className="text-text-faint">Version:</span> {String(traceDetail.metadata?.agent_version ?? '')}</span>
+                  )}
+                </div>
+              </div>
             </div>
           )}
-
-          {/* Trace metadata footer */}
-          <div className="px-4 py-4 border-t border-border mt-2">
-            <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-2">Trace metadata</div>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-2 font-mono text-[11px] text-text-muted">
-              <span><span className="text-text-faint">ID:</span> {traceDetail.id}</span>
-              <span><span className="text-text-faint">Started:</span> {new Date(traceDetail.started_at).toLocaleString()}</span>
-              {Boolean(traceDetail.metadata?.environment) && (
-                <span><span className="text-text-faint">Env:</span> {String(traceDetail.metadata?.environment ?? '')}</span>
-              )}
-              {Boolean(traceDetail.metadata?.agent_version) && (
-                <span><span className="text-text-faint">Version:</span> {String(traceDetail.metadata?.agent_version ?? '')}</span>
-              )}
-            </div>
-          </div>
         </div>
 
         {/* Span detail panel */}

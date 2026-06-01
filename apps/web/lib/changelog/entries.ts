@@ -40,6 +40,17 @@ export type ChangelogTag =
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
     date: '2026-06-01',
+    slug: 'langgraph-topology-view',
+    title: 'LangGraph topology view in /traces',
+    tags: ['feature'],
+    body: [
+      'Trace detail pages now have a Timeline / Graph toggle. The Graph view renders LangGraph (and any LangChain callback) traces as a node-and-edge diagram, with each `chain.*` span as a node and edges inferred from sibling execution order. Parallel fan-out, sequential transitions, and the critical path are all visible at a glance.',
+      'Critical-path nodes and edges are drawn in accent color so the slowest dependency chain stands out without reading numbers. Click any node to open the existing span drawer.',
+      'The Graph tab is enabled automatically when a trace contains enough `chain.*` spans to be worth the view (currently 20% of total spans). Simple two-call RAG traces continue to default to the Gantt. See the [LangGraph integration docs](/docs/integrations/langgraph) for instrumentation details.',
+    ].join('\n\n'),
+  },
+  {
+    date: '2026-06-01',
     slug: 'public-status-page',
     title: 'Public status page at status.spanlens.io',
     tags: ['reliability'],

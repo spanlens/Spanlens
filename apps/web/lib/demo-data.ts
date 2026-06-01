@@ -35,6 +35,20 @@ const ts = (base: number, offsetMs: number) => new Date(base + offsetMs).toISOSt
 
 export const DEMO_TRACES: TraceRow[] = [
   {
+    id: 'demo-trace-langgraph',
+    project_id: 'demo-proj',
+    name: 'multi-agent-orchestrator',
+    status: 'completed',
+    started_at: min(0.2),
+    ended_at: ts(N - 0.2 * 60_000, 3200),
+    duration_ms: 3200,
+    span_count: 11,
+    total_tokens: 2607,
+    total_cost_usd: 0.0036,
+    error_message: null,
+    created_at: min(0.2),
+  },
+  {
     id: 'demo-trace-001',
     project_id: 'demo-proj',
     name: 'Customer Support Agent',
@@ -329,10 +343,120 @@ function makeSimpleDetail(trace: TraceRow): TraceDetail {
   }
 }
 
+// ── LangGraph demo trace ─────────────────────────────────────────────────────
+//
+// Shape mirrors what the Spanlens LangChain / LangGraph callback handler
+// emits: a `chain.<node_name>` root + sequential nodes, a `chain.dispatch`
+// node containing parallel fan-out branches (`chain.lookup_*`), each branch
+// in turn wrapping its own llm / tool / retrieval children. The trace is the
+// one the Graph view was designed for — toggling between Timeline and Graph
+// on this trace is the demo "money shot".
+
+const T_LANGGRAPH = N - 0.2 * 60_000
+
+function lgSpan(
+  id: string,
+  parentId: string | null,
+  name: string,
+  spanType: SpanRow['span_type'],
+  offsetMs: number,
+  durationMs: number,
+  extras: Partial<SpanRow> = {},
+): SpanRow {
+  return {
+    id,
+    parent_span_id: parentId,
+    name,
+    span_type: spanType,
+    status: 'completed',
+    started_at: ts(T_LANGGRAPH, offsetMs),
+    ended_at: ts(T_LANGGRAPH, offsetMs + durationMs),
+    duration_ms: durationMs,
+    input: null,
+    output: null,
+    metadata: null,
+    error_message: null,
+    request_id: null,
+    prompt_tokens: 0,
+    completion_tokens: 0,
+    total_tokens: 0,
+    cost_usd: null,
+    ...extras,
+  }
+}
+
+const DEMO_SPANS_LANGGRAPH: SpanRow[] = [
+  lgSpan('lg-root', null, 'chain.agent_orchestrator', 'custom', 0, 3200, {
+    input: { user_message: 'Where is my order #4421 and can I get a refund if it never arrived?' },
+    output: { reply: 'Your order shipped Tuesday and is out for delivery today; let me know if it does not arrive by end of day and I will start the refund.', resolved: true },
+  }),
+
+  lgSpan('lg-classify', 'lg-root', 'chain.classify_intent', 'custom', 0, 450, {
+    input: { user_message: 'Where is my order #4421 and can I get a refund if it never arrived?' },
+    output: { intents: ['order_status', 'refund_policy'], confidence: 0.94 },
+  }),
+  lgSpan('lg-classify-llm', 'lg-classify', 'llm.ChatOpenAI', 'llm', 20, 410, {
+    prompt_tokens: 280,
+    completion_tokens: 24,
+    total_tokens: 304,
+    cost_usd: 0.0008,
+    metadata: { model: 'gpt-4o-mini', provider: 'openai' },
+  }),
+
+  lgSpan('lg-dispatch', 'lg-root', 'chain.dispatch', 'custom', 450, 2700, {
+    input: { intents: ['order_status', 'refund_policy'] },
+    output: { branches_used: ['lookup_order', 'lookup_kb'], parallel: true },
+  }),
+
+  lgSpan('lg-order', 'lg-dispatch', 'chain.lookup_order', 'custom', 450, 1100),
+  lgSpan('lg-order-tool', 'lg-order', 'tool.shopify_query', 'tool', 470, 840, {
+    input: { order_id: '4421' },
+    output: { status: 'out_for_delivery', shipped_at: '2026-05-30T09:21:00Z', carrier: 'UPS' },
+  }),
+  lgSpan('lg-order-llm', 'lg-order', 'llm.ChatOpenAI', 'llm', 1320, 220, {
+    prompt_tokens: 412,
+    completion_tokens: 31,
+    total_tokens: 443,
+    cost_usd: 0.0005,
+    metadata: { model: 'gpt-4o-mini', provider: 'openai' },
+  }),
+
+  lgSpan('lg-kb', 'lg-dispatch', 'chain.lookup_kb', 'custom', 450, 2700),
+  lgSpan('lg-kb-retrieval', 'lg-kb', 'retrieval.PineconeStore', 'retrieval', 470, 300, {
+    input: { query: 'refund policy undelivered shipment', top_k: 5 },
+    output: { docs: [{ id: 'kb-220', title: 'Refunds for undelivered orders', score: 0.93 }, { id: 'kb-118', title: 'Carrier disputes', score: 0.81 }] },
+  }),
+  lgSpan('lg-kb-llm', 'lg-kb', 'llm.ChatAnthropic', 'llm', 800, 2330, {
+    prompt_tokens: 1320,
+    completion_tokens: 540,
+    total_tokens: 1860,
+    cost_usd: 0.0023,
+    metadata: { model: 'claude-haiku-4-5', provider: 'anthropic' },
+  }),
+
+  lgSpan('lg-compose', 'lg-root', 'chain.compose_final', 'custom', 3150, 40, {
+    output: { reply: 'Your order shipped Tuesday and is out for delivery today; let me know if it does not arrive by end of day and I will start the refund.' },
+  }),
+]
+
+export const DEMO_TRACE_LANGGRAPH_DETAIL: TraceDetail = {
+  ...DEMO_TRACES[0]!,
+  metadata: { user_id: 'u_demo_alice', session_id: 'sess_demo_1', environment: 'production', agent_version: '3.4.0' },
+  api_key_id: 'demo-key-001',
+  organization_id: 'demo-org-001',
+  updated_at: ts(T_LANGGRAPH, 3200),
+  spans: DEMO_SPANS_LANGGRAPH,
+  // Critical path: root → classify → dispatch → lookup_kb (slowest branch)
+  // → compose_final. The kb LLM call is the actual bottleneck inside the
+  // branch and is highlighted alongside its chain ancestor.
+  critical_span_ids: ['lg-root', 'lg-classify', 'lg-dispatch', 'lg-kb', 'lg-kb-llm', 'lg-compose'],
+}
+
 export const DEMO_TRACE_DETAILS: Record<string, TraceDetail> = {
+  'demo-trace-langgraph': DEMO_TRACE_LANGGRAPH_DETAIL,
   'demo-trace-002': DEMO_TRACE_002_DETAIL,
   ...Object.fromEntries(
-    DEMO_TRACES.filter((t) => t.id !== 'demo-trace-002').map((t) => [t.id, makeSimpleDetail(t)]),
+    DEMO_TRACES.filter((t) => t.id !== 'demo-trace-002' && t.id !== 'demo-trace-langgraph').map((t) => [t.id, makeSimpleDetail(t)]),
   ),
 }
 
