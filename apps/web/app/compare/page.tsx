@@ -63,8 +63,8 @@ export default function ComparePage() {
           How Spanlens compares
         </h1>
         <p className="mt-4 text-[18px] text-text-muted leading-relaxed max-w-[680px]">
-          Honest, side-by-side comparisons. We tell you when the alternative is the better choice
-          for your team. Building trust is more valuable than winning every checkbox.
+          Honest, side-by-side comparisons. We show where each alternative wins and where
+          Spanlens does. Real tradeoffs without marketing fog.
         </p>
       </section>
 
