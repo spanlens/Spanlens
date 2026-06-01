@@ -7,7 +7,7 @@
 
 **Open-source LLM observability.** Record every OpenAI / Anthropic / Gemini / Azure OpenAI / Ollama call with one line of code. Plugs into Vercel AI SDK, LangChain, and LlamaIndex too. Get cost, latency, tokens, traces, anomalies, PII scan, and model-swap suggestions out of the box. Self-hostable. MIT.
 
-> **Hosted**: [spanlens.io](https://www.spanlens.io) · **npm**: [`@spanlens/sdk`](https://www.npmjs.com/package/@spanlens/sdk) · **PyPI**: [`spanlens`](https://pypi.org/project/spanlens/) · **CLI**: [`@spanlens/cli`](https://www.npmjs.com/package/@spanlens/cli)
+> **Hosted**: [spanlens.io](https://www.spanlens.io) · **npm**: [`@spanlens/sdk`](https://www.npmjs.com/package/@spanlens/sdk) · **PyPI**: [`spanlens`](https://pypi.org/project/spanlens/) · **CLI**: [`@spanlens/cli`](https://www.npmjs.com/package/@spanlens/cli) · **Status**: [status.spanlens.io](https://status.spanlens.io) · **Changelog**: [spanlens.io/changelog](https://www.spanlens.io/changelog)
 
 ---
 
@@ -156,14 +156,14 @@ Every request logged with model, provider, latency, tokens, cost, and full promp
 | Feature | Description |
 |---|---|
 | **Request log** | Every LLM call logged with model, tokens, cost, latency, and full request/response body (streaming reconstructed too) |
-| **Agent tracing** | Multi-step workflows as Gantt/waterfall span trees |
+| **Agent tracing** | Multi-step workflows as Gantt waterfall span trees with **Critical Path** highlighted (the longest dependency chain across a fan-out, not just the slowest single span), plus a node-and-edge **graph topology view** for LangChain / LangGraph callback traces |
 | **Cost tracking** | Per-request cost breakdown with daily rollups and budget alerts. Prompt-cache tokens (`cache_read` / `cache_creation` on Anthropic, `prompt_tokens_details.cached_tokens` on OpenAI) are parsed separately and billed at the discounted rate so you can see actual cache savings, not just sticker price |
 | **Per-end-user analytics** | Tag calls with `x-spanlens-user` (SDK: `withUser()` / `with_user()`) and the /users page shows per-user cost, tokens, errors, models, last seen |
 | **Anomaly detection** | 3σ deviations in latency, cost, or error rate vs. your 7-day baseline, with root-cause hints (token delta, HTTP status breakdown) |
 | **Alerts** | Threshold rules on budget, error rate, and p95 latency. Delivered via Email (Resend), Slack, or Discord webhooks. Evaluated on a 15-minute cron with at-least-once delivery |
 | **PII + prompt-injection scan** | Regex-based detection on request **and response** bodies; optional per-project blocking (422) for injections; instant alert emails to workspace owner |
 | **Savings (model recommendations)** | The `/savings` dashboard surfaces calls that match a cheaper model's profile ("Your gpt-4o calls look like classification. Try gpt-4o-mini") with estimated monthly savings |
-| **Prompt versioning + A/B** | Register prompt templates, run traffic-split experiments, compare versions side by side (latency / cost / error rate) |
+| **Prompt versioning + A/B** | Register prompt templates, run traffic-split experiments, compare versions side by side on latency / cost / error rate — reported with **Welch's t-test** on latency and cost plus a z-test on error rate, so you get statistical significance rather than just averages |
 | **Prompts Playground** | Execute any prompt version with variable injection directly in the dashboard to see real cost and response before shipping |
 | **Datasets** | Reusable (input, expected_output) test sets you can rerun against any prompt version or model. Upload CSV / JSONL files directly from the dashboard or POST programmatically. Powers offline evals and regression checks |
 | **Evals & Experiments** | Build LLM-as-judge evaluators (judge with OpenAI, Anthropic, **or Gemini** — pick the cheapest/best for the criterion), run A/B experiments comparing two prompt versions, and queue runs for human annotation with Pearson-correlation against the judge to measure reliability |
