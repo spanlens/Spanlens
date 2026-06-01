@@ -109,7 +109,7 @@ res = client.chat.completions.create(
 const anthropic = createAnthropic()
 
 const msg = await anthropic.messages.create({
-  model: 'claude-3-5-sonnet-20241022',
+  model: 'claude-haiku-4-5',
   max_tokens: 1024,
   messages: [{ role: 'user', content: 'Hi' }],
 })`}
@@ -118,7 +118,7 @@ const msg = await anthropic.messages.create({
 client = create_anthropic()
 
 msg = client.messages.create(
-    model="claude-3-5-sonnet-20241022",
+    model="claude-haiku-4-5",
     max_tokens=1024,
     messages=[{"role": "user", "content": "Hi"}],
 )`}
@@ -135,14 +135,14 @@ msg = client.messages.create(
         ts={`import { createGemini } from '@spanlens/sdk/gemini'
 
 const genAI = createGemini()
-const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' })
+const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' })
 
 const result = await model.generateContent('Hi')`}
         py={`from spanlens.integrations.gemini import create_gemini
 
 client = create_gemini()  # httpx.Client pointed at the Spanlens proxy
 res = client.post(
-    "/v1beta/models/gemini-1.5-flash:generateContent",
+    "/v1beta/models/gemini-2.0-flash:generateContent",
     json={"contents": [{"parts": [{"text": "Hi"}]}]},
 )
 print(res.json())
@@ -226,7 +226,7 @@ import openai
 
 client = openai.OpenAI(
     api_key=os.environ["SPANLENS_API_KEY"],
-    base_url="https://spanlens-server.vercel.app/proxy/openai/v1",
+    base_url="https://server.spanlens.io/proxy/openai/v1",
     default_headers={
         "x-spanlens-user": current_user_id,
         "x-spanlens-session": session_id,
@@ -314,12 +314,12 @@ from openai import OpenAI
 
 openai = OpenAI(
     api_key=os.environ['SPANLENS_API_KEY'],
-    base_url='https://spanlens-server.vercel.app/proxy/openai/v1',
+    base_url='https://server.spanlens.io/proxy/openai/v1',
     default_headers={'x-spanlens-log-body': 'meta'},
 )`}
       />
       <p>Raw curl:</p>
-      <CodeBlock>{`curl https://spanlens-server.vercel.app/proxy/openai/v1/chat/completions \\
+      <CodeBlock>{`curl https://server.spanlens.io/proxy/openai/v1/chat/completions \\
   -H "Authorization: Bearer $SPANLENS_API_KEY" \\
   -H "x-spanlens-log-body: meta" \\
   -H "Content-Type: application/json" \\
@@ -879,14 +879,6 @@ process.exit(0)`}</CodeBlock>
         <a href="/docs/self-host">self-hosting</a>.
       </p>
 
-      <h2 className="sr-only">Reference: original CodeBlock without tabs</h2>
-      <p className="hidden">
-        {/* Keeps CodeBlock import from being marked unused, it stays available
-            for any future single-language snippet. */}
-      </p>
-      <CodeBlock language="bash">{`# Quick links
-# • TypeScript:  https://www.npmjs.com/package/@spanlens/sdk
-# • Python:      https://pypi.org/project/spanlens/`}</CodeBlock>
     </div>
   )
 }

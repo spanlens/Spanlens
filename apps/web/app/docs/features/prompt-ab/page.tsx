@@ -144,7 +144,7 @@ export default function PromptAbDocs() {
       </div>
 
       <h3>Example</h3>
-      <CodeBlock language="bash">{`curl https://spanlens-server.vercel.app/api/v1/prompt-experiments \\
+      <CodeBlock language="bash">{`curl https://server.spanlens.io/api/v1/prompt-experiments \\
   -H "Authorization: Bearer $SPANLENS_JWT" \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -230,7 +230,7 @@ export default function PromptAbDocs() {
       </p>
       <CodeBlock language="bash">{`PATCH /api/v1/prompt-experiments/:id
 
-curl -X PATCH https://spanlens-server.vercel.app/api/v1/prompt-experiments/<experiment-id> \\
+curl -X PATCH https://server.spanlens.io/api/v1/prompt-experiments/<experiment-id> \\
   -H "Authorization: Bearer $SPANLENS_JWT" \\
   -H "Content-Type: application/json" \\
   -d '{

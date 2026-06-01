@@ -205,7 +205,7 @@ const res = await openai.chat.completions.create(
             <td>Most provider SDKs retry by default. The OpenAI SDK retries up to 2 times; Anthropic 2 times. Tune at the SDK level rather than the proxy.</td>
           </tr>
           <tr>
-            <td>Provider fallback (gpt-4o → claude-3-5-sonnet on failure)</td>
+            <td>Provider fallback (gpt-4o → claude-haiku-4-5 on failure)</td>
             <td>Not built-in. Pattern: catch in your app code, swap clients (<code>createOpenAI()</code> ↔ <code>createAnthropic()</code>). Both share the same Spanlens key.</td>
           </tr>
         </tbody>

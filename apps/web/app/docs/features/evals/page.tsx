@@ -220,7 +220,7 @@ export default function EvalsDocs() {
 
       <h2>Example, create and run an evaluator</h2>
       <CodeBlock language="bash">{`# 1. Define the evaluator
-curl https://spanlens-server.vercel.app/api/v1/evaluators \\
+curl https://server.spanlens.io/api/v1/evaluators \\
   -H "Authorization: Bearer $SPANLENS_JWT" \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -237,7 +237,7 @@ curl https://spanlens-server.vercel.app/api/v1/evaluators \\
   }'
 
 # 2. Score v2 with 50 samples from the last 7 days
-curl https://spanlens-server.vercel.app/api/v1/eval-runs \\
+curl https://server.spanlens.io/api/v1/eval-runs \\
   -H "Authorization: Bearer $SPANLENS_JWT" \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -250,7 +250,7 @@ curl https://spanlens-server.vercel.app/api/v1/eval-runs \\
 
 # 2b. Dataset mode also accepts runProvider + runModel.
 #     The runner generates a response per item before scoring.
-curl https://spanlens-server.vercel.app/api/v1/eval-runs \\
+curl https://server.spanlens.io/api/v1/eval-runs \\
   -H "Authorization: Bearer $SPANLENS_JWT" \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -264,7 +264,7 @@ curl https://spanlens-server.vercel.app/api/v1/eval-runs \\
   }'
 
 # 3. Poll for results (status: pending → running → completed)
-curl https://spanlens-server.vercel.app/api/v1/eval-runs/<run-id> \\
+curl https://server.spanlens.io/api/v1/eval-runs/<run-id> \\
   -H "Authorization: Bearer $SPANLENS_JWT"`}</CodeBlock>
 
       <h2>Limitations</h2>
