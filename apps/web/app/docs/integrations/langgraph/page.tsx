@@ -15,7 +15,9 @@ export default function LangGraphIntegration() {
         LangGraph reuses LangChain&apos;s callback contract, so the same Spanlens handler
         works for both. Every node invocation becomes a span; the <code>runId</code> and{' '}
         <code>parentRunId</code> on each callback give Spanlens the graph topology, which
-        shows up as a nested tree in <a href="/traces">/traces</a>.
+        renders in two ways on <a href="/traces">/traces</a>: as a Gantt waterfall (Timeline
+        tab) and as a node-and-edge graph (Graph tab) with the critical path highlighted in
+        accent color.
       </p>
 
       <h2>Install</h2>

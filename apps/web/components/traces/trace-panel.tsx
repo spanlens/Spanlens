@@ -3,9 +3,13 @@ import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { cn } from '@/lib/utils'
 import { Gantt } from '@/components/traces/gantt'
+import { TopologyGraph } from '@/components/traces/topology-graph'
 import { useTrace } from '@/lib/queries/use-traces'
 import { Skeleton } from '@/components/ui/skeleton'
 import type { SpanRow, SpanType } from '@/lib/queries/types'
+import { shouldShowGraphView } from '@/lib/topology'
+
+type TraceView = 'timeline' | 'graph'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 export function fmtMs(ms: number | null): string {
@@ -526,8 +530,11 @@ function TracePanelInner({ traceId }: TracePanelProps) {
   const [typeFilter, setTypeFilter] = useState<SpanType | 'all'>('all')
   const [errorsOnly, setErrorsOnly] = useState(false)
   const [errorJumpIdx, setErrorJumpIdx] = useState(0)
+  const [view, setView] = useState<TraceView>('timeline')
 
   const { data: trace, isLoading, isError } = useTrace(traceId)
+
+  const graphAvailable = useMemo(() => (trace ? shouldShowGraphView(trace.spans) : false), [trace])
 
   const filteredSpans = useMemo(() => {
     if (!trace) return []
@@ -725,9 +732,47 @@ function TracePanelInner({ traceId }: TracePanelProps) {
               : <>{trace.span_count} total</>
             }
           </span>
+
+          <div
+            className="flex border border-border rounded-[5px] overflow-hidden bg-bg-elev font-mono text-[10px] tracking-[0.03em]"
+            title={graphAvailable ? undefined : 'Graph view requires LangChain / LangGraph callback spans'}
+          >
+            {([
+              ['timeline', 'Timeline'],
+              ['graph', 'Graph'],
+            ] as [TraceView, string][]).map(([v, label]) => {
+              const isGraph = v === 'graph'
+              const disabled = isGraph && !graphAvailable
+              return (
+                <button
+                  key={v}
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => !disabled && setView(v)}
+                  className={cn(
+                    'px-[8px] py-[4px] inline-flex items-center',
+                    view === v ? 'bg-text text-bg' : 'text-text-muted hover:text-text transition-colors',
+                    disabled && 'opacity-40 cursor-not-allowed hover:text-text-muted',
+                  )}
+                >
+                  {label}
+                </button>
+              )
+            })}
+          </div>
         </div>
 
-        {/* Gantt */}
+        {/* Gantt or Graph */}
+        {view === 'graph' ? (
+          <div className="flex-1 min-h-0 relative" style={{ minHeight: 400 }}>
+            <TopologyGraph
+              spans={trace.spans}
+              criticalSpanIds={trace.critical_span_ids ?? []}
+              onSelectSpan={setSelectedSpan}
+              selectedSpanId={selectedSpan?.id ?? null}
+            />
+          </div>
+        ) : (
         <div className="overflow-auto flex-1 min-h-0">
           <div className="p-[22px]">
             <Gantt
@@ -791,6 +836,7 @@ function TracePanelInner({ traceId }: TracePanelProps) {
             )}
           </div>
         </div>
+        )}
       </div>
 
       {selectedSpan && (

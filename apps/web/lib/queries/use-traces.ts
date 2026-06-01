@@ -57,6 +57,11 @@ export function useTrace(id: string) {
   return useQuery({
     queryKey: traceQueryKey(id),
     queryFn: async () => {
+      // Dev-only mock fixtures so the UI can be validated without seeded data.
+      if (process.env.NODE_ENV === 'development' && id.startsWith('__demo_')) {
+        const { mockLangGraphTrace } = await import('@/lib/mock-traces')
+        if (id === '__demo_langgraph__') return mockLangGraphTrace()
+      }
       const res = await apiGet<ApiEnvelope<TraceDetail>>(`/api/v1/traces/${id}`)
       return res.data
     },
