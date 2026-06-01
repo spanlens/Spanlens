@@ -80,13 +80,28 @@ function WorkspaceSwitcher() {
 
   function switchWorkspace(id: string) {
     if (id === org.data?.id) { setOpen(false); return }
+    setOpen(false)
     writeWorkspaceCookie(id)
-    // Full reload so SSR middleware re-resolves the workspace and every
-    // TanStack query starts fresh. Avoids stale org A data flashing while
-    // org B queries refetch. See CLAUDE.md gotcha #15 — router.push would
-    // keep RSC tree cache and miss the new x-spanlens-organization header.
-    // eslint-disable-next-line react-hooks/immutability -- intentional hard nav from event handler
-    window.location.href = '/dashboard'
+
+    // Visual feedback during the hard reload.
+    // WorkspaceSwitchOverlay listens for this event and renders a top
+    // progress bar + dim layer for the duration of the SSR round-trip.
+    window.dispatchEvent(new CustomEvent('spanlens:workspace-switching'))
+
+    // Double rAF so the browser actually paints the overlay BEFORE we
+    // navigate away. A single rAF only schedules a paint; the second one
+    // runs after layout/paint commits, guaranteeing the user sees the
+    // transition UI rather than a frozen-then-blank flash.
+    //
+    // Hard reload (not router.push) is required so SSR middleware re-resolves
+    // the workspace and every TanStack query starts fresh. See CLAUDE.md
+    // gotcha #15 — router.push would keep the RSC tree cache and miss the
+    // new x-spanlens-organization header.
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        window.location.href = '/dashboard'
+      })
+    })
   }
 
   async function handleCreateWorkspace(e: React.FormEvent) {
@@ -100,7 +115,12 @@ function WorkspaceSwitcher() {
       // existing switch path so there's exactly one code path for "active
       // workspace changed".
       writeWorkspaceCookie(created.id)
-      window.location.href = '/dashboard'
+      window.dispatchEvent(new CustomEvent('spanlens:workspace-switching'))
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          window.location.href = '/dashboard'
+        })
+      })
     } catch (err) {
       setNewError(err instanceof Error ? err.message : 'Failed to create workspace')
     }
