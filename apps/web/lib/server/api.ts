@@ -1,6 +1,8 @@
 import 'server-only'
 import { cache } from 'react'
+import { cookies } from 'next/headers'
 import { createClient } from '@/lib/supabase/server'
+import { WORKSPACE_COOKIE } from '@/lib/workspace-cookie'
 
 const API_URL =
   process.env.API_URL ??
@@ -19,14 +21,32 @@ const getServerSession = cache(async () => {
   return session
 })
 
+// Request-scoped workspace-cookie reader, cached per render the same way
+// as getServerSession so layout + page prefetches share a single read.
+const getServerWorkspaceCookie = cache(async (): Promise<string | null> => {
+  const c = await cookies()
+  return c.get(WORKSPACE_COOKIE)?.value ?? null
+})
+
 /**
  * Server-side API helper that reads the Supabase session from cookies and
  * forwards the Bearer token to the internal API server.
  *
+ * Also forwards the `sb-ws` workspace cookie. Without this the backend's
+ * authJwt middleware falls back to the user's oldest org_members row, which
+ * means SSR prefetch always sees the user's first workspace regardless of
+ * which one the sidebar switcher picked. That mismatch then hydrates the
+ * client-side React Query cache with the "wrong" workspace data; a later
+ * client-side refetch returns the right workspace, but the already-rendered
+ * UI keeps showing the stale value (workspace-switch appears to "do nothing").
+ *
  * Must be called only from Server Components / Route Handlers.
  */
 export async function apiGetServer<T>(path: string): Promise<T> {
-  const session = await getServerSession()
+  const [session, sbWs] = await Promise.all([
+    getServerSession(),
+    getServerWorkspaceCookie(),
+  ])
   const token = session?.access_token ?? null
 
   const url = path.startsWith('http') ? path : `${API_URL}${path}`
@@ -34,6 +54,10 @@ export async function apiGetServer<T>(path: string): Promise<T> {
     headers: {
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      // Forward ONLY the workspace cookie. Forwarding the full incoming cookie
+      // header would leak the Supabase auth-token cookie to the backend
+      // unnecessarily (we already pass the access token via Authorization).
+      ...(sbWs ? { Cookie: `${WORKSPACE_COOKIE}=${encodeURIComponent(sbWs)}` } : {}),
     },
     cache: 'no-store',
   })
