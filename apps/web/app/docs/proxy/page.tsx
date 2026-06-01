@@ -32,10 +32,10 @@ export default function ProxyDocs() {
       <p>
         Spanlens exposes a 1:1 compatible proxy at:
       </p>
-      <CodeBlock>{`https://spanlens-server.vercel.app/proxy/openai/v1
-https://spanlens-server.vercel.app/proxy/anthropic
-https://spanlens-server.vercel.app/proxy/gemini/v1beta
-https://spanlens-server.vercel.app/proxy/azure`}</CodeBlock>
+      <CodeBlock>{`https://server.spanlens.io/proxy/openai/v1
+https://server.spanlens.io/proxy/anthropic
+https://server.spanlens.io/proxy/gemini/v1beta
+https://server.spanlens.io/proxy/azure`}</CodeBlock>
       <p>
         Send requests exactly as you would to the real provider, with two changes:
       </p>
@@ -104,7 +104,7 @@ https://spanlens-server.vercel.app/proxy/azure`}</CodeBlock>
 
 client = OpenAI(
     api_key=os.environ["SPANLENS_API_KEY"],
-    base_url="https://spanlens-server.vercel.app/proxy/openai/v1",
+    base_url="https://server.spanlens.io/proxy/openai/v1",
 )
 
 res = client.chat.completions.create(
@@ -117,11 +117,11 @@ res = client.chat.completions.create(
 
 client = Anthropic(
     api_key=os.environ["SPANLENS_API_KEY"],
-    base_url="https://spanlens-server.vercel.app/proxy/anthropic",
+    base_url="https://server.spanlens.io/proxy/anthropic",
 )
 
 msg = client.messages.create(
-    model="claude-3-5-sonnet-20241022",
+    model="claude-haiku-4-5",
     max_tokens=1024,
     messages=[{"role": "user", "content": "Hi"}],
 )`}</CodeBlock>
@@ -138,7 +138,7 @@ msg = client.messages.create(
 
 client = OpenAI(
     api_key=os.environ["SPANLENS_API_KEY"],
-    base_url="https://spanlens-server.vercel.app/proxy/azure",
+    base_url="https://server.spanlens.io/proxy/azure",
 )
 
 # 'model' is your Azure deployment name, not the underlying model id.
@@ -155,7 +155,7 @@ res = client.chat.completions.create(
       </p>
 
       <h2 id="curl">curl, raw HTTP</h2>
-      <CodeBlock language="bash">{`curl https://spanlens-server.vercel.app/proxy/openai/v1/chat/completions \\
+      <CodeBlock language="bash">{`curl https://server.spanlens.io/proxy/openai/v1/chat/completions \\
   -H "Authorization: Bearer $SPANLENS_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -168,7 +168,7 @@ res = client.chat.completions.create(
 
 client = OpenAI::Client.new(
   access_token: ENV["SPANLENS_API_KEY"],
-  uri_base: "https://spanlens-server.vercel.app/proxy/openai",
+  uri_base: "https://server.spanlens.io/proxy/openai",
 )
 
 res = client.chat(parameters: {
@@ -180,7 +180,7 @@ res = client.chat(parameters: {
       <CodeBlock language="go">{`import "github.com/sashabaranov/go-openai"
 
 config := openai.DefaultConfig(os.Getenv("SPANLENS_API_KEY"))
-config.BaseURL = "https://spanlens-server.vercel.app/proxy/openai/v1"
+config.BaseURL = "https://server.spanlens.io/proxy/openai/v1"
 
 client := openai.NewClientWithConfig(config)
 

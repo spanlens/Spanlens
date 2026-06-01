@@ -105,7 +105,7 @@ export default function SavingsDocs() {
             <td>prompt ≤ 800, completion ≤ 250</td>
           </tr>
           <tr>
-            <td><code>anthropic:claude-3-5-sonnet-20241022</code></td>
+            <td><code>anthropic:claude-haiku-4-5</code></td>
             <td><code>anthropic:claude-haiku-4.5</code></td>
             <td>33.3%</td>
             <td>prompt ≤ 800, completion ≤ 250</td>
@@ -118,7 +118,7 @@ export default function SavingsDocs() {
           </tr>
           <tr>
             <td><code>gemini:gemini-1.5-pro</code></td>
-            <td><code>gemini:gemini-1.5-flash</code></td>
+            <td><code>gemini:gemini-2.0-flash</code></td>
             <td>6%</td>
             <td>prompt ≤ 1000, completion ≤ 300</td>
           </tr>
