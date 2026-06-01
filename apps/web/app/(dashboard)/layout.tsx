@@ -5,6 +5,7 @@ import { Sidebar } from '@/components/layout/sidebar'
 import { SidebarShowToggle } from '@/components/layout/sidebar-show-toggle'
 import { DashboardContent } from '@/components/layout/dashboard-content'
 import { PendingInvitationsBanner } from '@/components/layout/pending-invitations-banner'
+import { WorkspaceSwitchOverlay } from '@/components/layout/workspace-switch-overlay'
 import { SidebarProvider } from '@/lib/sidebar-context'
 import { SIDEBAR_COLLAPSED_COOKIE } from '@/lib/sidebar-cookie'
 import { OverlayContainerProvider, OverlayContainerTarget } from '@/lib/overlay-container'
@@ -103,6 +104,10 @@ export default async function DashboardLayout({ children }: { children: React.Re
               {/* Portal target for dialogs / command palette — inside the zoom
                   wrapper so overlays render at the same 125% scale. */}
               <OverlayContainerTarget />
+              {/* Workspace-switch loading UI. Self-mounted because the sidebar
+                  uses hard reload; this listens on a window event and renders
+                  during the SSR round-trip. */}
+              <WorkspaceSwitchOverlay />
             </div>
           </HydrationBoundary>
         </SidebarProvider>

@@ -106,3 +106,24 @@
     color: var(--text-faint);
   }
 }
+
+/*
+ * Workspace-switch transition.
+ *
+ * The sidebar switcher does a hard navigation (`window.location.href`) so SSR
+ * picks up the new sb-ws cookie. The browser keeps the OLD DOM painted while
+ * it fetches the new HTML, so a brief progress + dim overlay here is visible
+ * for the entire ~800ms-1.5s wait. The fake-progress bar fills from 0 → 90%
+ * over 2s; in practice the navigation completes (and the bar vanishes) well
+ * before it reaches 90%, which is the standard "fake progress" UX pattern
+ * used by GitHub, Vercel, Linear.
+ */
+@keyframes spanlens-progress-once {
+  0%   { transform: scaleX(0); }
+  100% { transform: scaleX(0.9); }
+}
+
+.spanlens-progress-bar {
+  transform-origin: left;
+  animation: spanlens-progress-once 2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
