@@ -159,13 +159,14 @@ export default function ReliabilityDocs() {
       <p>
         Public status: <a href="https://status.spanlens.io" rel="noopener noreferrer" target="_blank">status.spanlens.io</a>{' '}
         (when the service is down our marketing pages may be down too; bookmark this URL
-        directly). Incidents are posted with a one-line summary within 15 minutes of
-        first detection and updated until resolved.
+        directly). The page tracks the proxy (liveness + deep health) and the dashboard
+        independently, and posts incident updates within 15 minutes of first detection.
       </p>
       <p>
-        For real-time pages on critical work, subscribe to the status page RSS or set up
-        your own probe against <code>/health/deep</code>. The status page lags real
-        detection by minutes.
+        Subscribe by email or RSS directly on the status page (Subscribe button, top
+        right). For real-time pages on critical work, set up your own probe against{' '}
+        <code>/health/deep</code> as well, the status page lags real detection by
+        minutes.
       </p>
 
       <h2>What you should do client-side</h2>
