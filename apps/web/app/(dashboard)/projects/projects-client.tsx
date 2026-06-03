@@ -26,6 +26,7 @@ import { Topbar, LiveDot } from '@/components/layout/topbar'
 import { PermissionGate } from '@/components/permission-gate'
 import { GhostBtn, PrimaryBtn } from '@/components/ui/primitives'
 import { useCreateProject, useDeleteProject, useProjects } from '@/lib/queries/use-projects'
+import { useCurrentRoleLoading } from '@/lib/queries/use-current-role'
 import {
   useApiKeys,
   useIssueApiKey,
@@ -112,7 +113,7 @@ const anthropic = createAnthropic()
   gemini: `import { createGemini } from '@spanlens/sdk/gemini'
 
 const genAI = createGemini()
-const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' })
+const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' })
 // await model.generateContent('...')`,
   azure: `import OpenAI from 'openai'
 
@@ -326,10 +327,15 @@ export function ProjectsClient() {
   const sp = useSearchParams()
   const mounted = useMounted()
 
+  // Includes role loading — otherwise the page paints with PermissionGate'd
+  // write buttons hidden (role still null), then the buttons pop in a moment
+  // later. Most visible right after sign-up when no role cache exists.
+  const roleLoading = useCurrentRoleLoading()
   const loading =
     projectsQuery.isLoading ||
     apiKeysQuery.isLoading ||
-    providerKeysQuery.isLoading
+    providerKeysQuery.isLoading ||
+    roleLoading
   const isFetching =
     projectsQuery.isFetching ||
     apiKeysQuery.isFetching ||
