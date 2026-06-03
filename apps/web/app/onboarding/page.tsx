@@ -10,6 +10,7 @@ import {
   type PendingInvitation,
 } from '@/lib/queries/use-pending-invitations'
 import { writeWorkspaceCookie } from '@/lib/workspace-cookie'
+import { writeWelcomeStash } from '@/lib/welcome-stash'
 import { cn } from '@/lib/utils'
 
 /**
@@ -34,6 +35,7 @@ type Step = 'pending' | 'workspace' | 'survey'
 interface BootstrapResponse {
   data?: {
     apiKey?: string
+    userId?: string
   }
 }
 
@@ -126,12 +128,11 @@ export default function OnboardingPage() {
         throw err
       })
 
-      if (res?.data?.apiKey) {
-        try {
-          sessionStorage.setItem('spanlens:welcome_api_key', res.data.apiKey)
-        } catch {
-          // sessionStorage blocked — the welcome banner just won't show.
-        }
+      // Bind the cached key to the userId from the same bootstrap response
+      // so a logout-without-dismiss can't surface this key to whoever signs
+      // in next on the same tab. See lib/welcome-stash.ts for the contract.
+      if (res?.data?.apiKey && res.data.userId) {
+        writeWelcomeStash(res.data.apiKey, res.data.userId)
       }
       setStep('survey')
     } catch (err) {
