@@ -940,6 +940,40 @@ function PlanLimitsTab() {
         })}
       </div>
 
+      {/* Renewal + refund disclosure — placed right under the plan cards so
+          the policy is visible at the point of purchase decision. Matches the
+          requirement of the Korean Act on Consumer Protection in Electronic
+          Commerce (전자상거래법) for refund terms accessible from the order
+          surface, and keeps the trust-building information one scroll away
+          from the upgrade buttons. */}
+      <Section title="Billing & refunds" className="mb-5">
+        <div className="px-6 py-4 text-[13px] text-text-muted leading-relaxed space-y-2">
+          <p>
+            Paid plans renew automatically at the start of each billing period.
+            Cancel any time from the Paddle receipt link or by emailing{' '}
+            <a
+              href="mailto:support@spanlens.io"
+              className="text-accent font-medium hover:opacity-80 transition-opacity"
+            >
+              support@spanlens.io
+            </a>
+            . Your plan stays active through the period you have already paid for.
+          </p>
+          <p>
+            Full refund available within 14 days of the initial charge if usage
+            is below 10% of plan quota. See our{' '}
+            <Link
+              href="/refund"
+              className="text-accent font-medium hover:opacity-80 transition-opacity"
+            >
+              Refund Policy
+            </Link>
+            {' '}for the full terms, EU statutory withdrawal rights, and how to
+            request a refund.
+          </p>
+        </div>
+      </Section>
+
       <Section title="Hard limits" action={<Hint>{currentPlan} plan</Hint>} className="mb-5">
         <div className="overflow-x-auto">
         <div className="divide-y divide-border min-w-[420px]">
