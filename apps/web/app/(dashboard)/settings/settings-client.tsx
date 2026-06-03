@@ -776,9 +776,37 @@ function BillingTab() {
         </div>
       </div>
 
-      <Section title="Payment" className="mb-5">
-        <div className="px-6 py-4 text-[13px] text-text-muted leading-relaxed">
-          Payments are processed by Paddle. To update your payment method or cancel your subscription, use the link Paddle sent when you subscribed.
+      {/* Payment + refund disclosure, post-purchase variant. PLAN & LIMITS
+          has the same information in pre-purchase wording; keeping both
+          surfaces self-contained means a user who lands on either tab
+          finds the cancellation and refund paths without bouncing around. */}
+      <Section title="Payment, cancellation & refunds" className="mb-5">
+        <div className="px-6 py-4 text-[13px] text-text-muted leading-relaxed space-y-2">
+          <p>
+            Payments are processed by Paddle. Update your payment method or
+            cancel your subscription from the link Paddle sent when you
+            subscribed, or email{' '}
+            <a
+              href="mailto:support@spanlens.io"
+              className="text-accent font-medium hover:opacity-80 transition-opacity"
+            >
+              support@spanlens.io
+            </a>
+            . Cancellation stops future renewals; your current plan stays
+            active through the billing period you already paid for.
+          </p>
+          <p>
+            Eligible for a full refund within 14 days of the initial charge
+            if usage is below 10% of plan quota. See our{' '}
+            <Link
+              href="/refund"
+              className="text-accent font-medium hover:opacity-80 transition-opacity"
+            >
+              Refund Policy
+            </Link>
+            {' '}for the full terms, EU statutory withdrawal rights, and how
+            to request a refund.
+          </p>
         </div>
       </Section>
 
