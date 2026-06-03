@@ -135,14 +135,14 @@ msg = client.messages.create(
         ts={`import { createGemini } from '@spanlens/sdk/gemini'
 
 const genAI = createGemini()
-const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' })
+const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' })
 
 const result = await model.generateContent('Hi')`}
         py={`from spanlens.integrations.gemini import create_gemini
 
 client = create_gemini()  # httpx.Client pointed at the Spanlens proxy
 res = client.post(
-    "/v1beta/models/gemini-2.0-flash:generateContent",
+    "/v1beta/models/gemini-2.5-flash:generateContent",
     json={"contents": [{"parts": [{"text": "Hi"}]}]},
 )
 print(res.json())

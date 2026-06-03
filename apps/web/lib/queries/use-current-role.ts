@@ -28,8 +28,8 @@ interface MeRolePayload {
   orgId: string | null
 }
 
-export function useCurrentRole(): OrgRole | null {
-  const query = useQuery({
+function useCurrentRoleQuery() {
+  return useQuery({
     queryKey: ['me', 'role'] as const,
     queryFn: async () => {
       const res = await apiGet<ApiEnvelope<MeRolePayload>>('/api/v1/me/role')
@@ -40,7 +40,22 @@ export function useCurrentRole(): OrgRole | null {
     // are responsible for invalidating ['me', 'role'].
     staleTime: 5 * 60_000,
   })
+}
+
+export function useCurrentRole(): OrgRole | null {
+  const query = useCurrentRoleQuery()
   return query.data?.role ?? null
+}
+
+/**
+ * True while the role query is in flight on first load (no cache yet).
+ * Pages that gate write buttons behind `PermissionGate` should fold this
+ * into their loading skeleton so write actions don't flicker in after
+ * the main content paints — the symptom users see right after sign-up
+ * when there is no cached role.
+ */
+export function useCurrentRoleLoading(): boolean {
+  return useCurrentRoleQuery().isLoading
 }
 
 /**

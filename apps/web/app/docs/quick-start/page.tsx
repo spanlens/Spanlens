@@ -80,7 +80,7 @@ const msg = await anthropic.messages.create({
       <CodeBlock language="ts">{`import { createGemini } from '@spanlens/sdk/gemini'
 
 const genAI = createGemini()
-const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' })
+const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' })
 const result = await model.generateContent('Hi')`}</CodeBlock>
 
       <QuickStartFlowDiagram />
