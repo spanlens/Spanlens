@@ -19,6 +19,7 @@ import { useOrganization } from '@/lib/queries/use-organization'
 import { useWorkspaces, useCreateWorkspace } from '@/lib/queries/use-workspaces'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { writeWorkspaceCookie } from '@/lib/workspace-cookie'
+import { clearWelcomeStash } from '@/lib/welcome-stash'
 
 // Unified compact request-count formatter so the "used / limit" pair always
 // uses the same unit. Picks the largest unit that keeps the larger of the
@@ -349,6 +350,12 @@ export function Sidebar() {
   }
 
   async function handleSignOut() {
+    // Wipe the post-signup welcome stash before tearing down the auth
+    // session. If the user signed up, never opened /dashboard (so the
+    // banner never consumed the stash) and then logged out, the next
+    // person to sign in on the same browser tab would otherwise see the
+    // previous user's sl_live_ key on /dashboard. See lib/welcome-stash.ts.
+    clearWelcomeStash()
     const supabase = createClient()
     await supabase.auth.signOut()
     router.push('/login')

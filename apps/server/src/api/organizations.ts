@@ -320,6 +320,11 @@ organizationsRouter.post('/bootstrap', async (c) => {
       organization: org,
       project,
       apiKey: rawKey, // raw value — shown once on the welcome screen
+      // userId echoed so the client can bind the cached key to the
+      // signed-in user. The welcome banner refuses to render a stash
+      // whose userId does not match the current session, blocking a
+      // cross-account leak on shared tabs.
+      userId,
     },
   }, 201)
 })

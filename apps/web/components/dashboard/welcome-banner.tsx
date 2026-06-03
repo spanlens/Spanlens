@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { Copy, Check, X, Terminal } from 'lucide-react'
+import { createClient } from '@/lib/supabase/client'
+import { consumeWelcomeStash, clearWelcomeStash } from '@/lib/welcome-stash'
 
 /**
  * One-time welcome banner shown right after signup. Pulls the freshly
@@ -14,10 +16,16 @@ import { Copy, Check, X, Terminal } from 'lucide-react'
  *   2. Add a provider key (OpenAI / Anthropic / Gemini) at /projects
  *   3. Paste the SDK helper snippet into their code
  *
- * Dismiss clears the storage key so the banner never reappears.
+ * Lifecycle contract — see lib/welcome-stash.ts for the full rationale:
+ *
+ *   - The stash is **consumed on first mount**: read, validated against the
+ *     current signed-in user, and removed. Refreshing /dashboard or
+ *     navigating away then back will not re-display the key.
+ *   - If the stashed `userId` does not match the signed-in user, the entry
+ *     is silently discarded (cross-account leak protection on shared tabs).
+ *   - Dismiss is now purely a UI affordance — the storage entry is
+ *     already gone by the time the X button is clickable.
  */
-
-const STORAGE_KEY = 'spanlens:welcome_api_key'
 
 const SNIPPET_OPENAI = `import { createOpenAI } from '@spanlens/sdk/openai'
 
@@ -25,28 +33,41 @@ const openai = createOpenAI()
 // Use it like a normal OpenAI SDK client:
 // await openai.chat.completions.create({ ... })`
 
-function loadApiKey(): string | null {
-  if (typeof window === 'undefined') return null
-  try {
-    return sessionStorage.getItem(STORAGE_KEY)
-  } catch {
-    return null
-  }
-}
-
 export function WelcomeBanner() {
   // Start null so the first client render matches the server (sessionStorage
   // is browser-only; the server always renders nothing here). Reading it
   // during render / via lazy useState init would diverge from SSR and trigger
-  // a hydration mismatch — see gotcha #22. We read it after mount instead;
-  // the banner then appears on the next paint. `dismiss()` clears it.
+  // a hydration mismatch — see gotcha #22. We resolve it after mount.
   const [apiKey, setApiKey] = useState<string | null>(null)
   const [copiedKey, setCopiedKey] = useState(false)
   const [copiedSnippet, setCopiedSnippet] = useState(false)
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setApiKey(loadApiKey())
+    // Resolve the current user, then consume the stash IF it was written
+    // for this user. Anything else (no session, no stash, mismatched user,
+    // bad JSON) ends with the stash cleared and no banner shown.
+    let cancelled = false
+    void (async () => {
+      try {
+        const supabase = createClient()
+        const { data, error } = await supabase.auth.getUser()
+        if (cancelled) return
+        if (error || !data.user) {
+          // No session — clear any stale stash defensively. A logged-out
+          // user landing on /dashboard would have been redirected by
+          // middleware anyway, but this keeps the storage tidy.
+          clearWelcomeStash()
+          return
+        }
+        const key = consumeWelcomeStash(data.user.id)
+        if (key) setApiKey(key)
+      } catch {
+        clearWelcomeStash()
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   if (!apiKey) return null
@@ -72,11 +93,10 @@ export function WelcomeBanner() {
   }
 
   function dismiss() {
-    try {
-      sessionStorage.removeItem(STORAGE_KEY)
-    } catch {
-      /* ignore */
-    }
+    // Storage was already consumed on mount; this only drops the in-memory
+    // copy so the banner unmounts. Defensive clear in case a future change
+    // re-introduces a stashed entry mid-session.
+    clearWelcomeStash()
     setApiKey(null)
   }
 
