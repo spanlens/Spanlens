@@ -2,7 +2,7 @@ import { CodeBlock } from '../../_components/code-block'
 import { LangTabs } from '../../_components/lang-tabs'
 
 export const metadata = {
-  title: 'Migrate from Helicone · Spanlens Docs',
+  title: 'Migrate from Helicone to Spanlens · 2026 Guide',
   description:
     'Move from Helicone to Spanlens in under 15 minutes. Base URL swap, properties to user / session mapping, and what to do about the AI Gateway features.',
   alternates: { canonical: '/docs/migrate/from-helicone' },
@@ -11,7 +11,7 @@ export const metadata = {
 export default function MigrateFromHelicone() {
   return (
     <div>
-      <h1>Migrate from Helicone</h1>
+      <h1>Migrate from Helicone · 2026</h1>
       <p className="lead">
         Helicone and Spanlens share the same fundamental shape: a proxy that you point your
         provider SDK at. The migration is mostly a base URL swap. The interesting question

@@ -2,7 +2,7 @@ import { CodeBlock } from '../../_components/code-block'
 import { LangTabs } from '../../_components/lang-tabs'
 
 export const metadata = {
-  title: 'Migrate from Langfuse · Spanlens Docs',
+  title: 'Migrate from Langfuse to Spanlens · 2026 Guide',
   description:
     'Move from Langfuse to Spanlens in under 30 minutes. Code diffs, data model mapping, and dual-running steps so you can switch without losing history.',
   alternates: { canonical: '/docs/migrate/from-langfuse' },
@@ -11,7 +11,7 @@ export const metadata = {
 export default function MigrateFromLangfuse() {
   return (
     <div>
-      <h1>Migrate from Langfuse</h1>
+      <h1>Migrate from Langfuse · 2026</h1>
       <p className="lead">
         Spanlens covers the same observability surface as Langfuse: traces, generations,
         prompts, evals, datasets. The integration is one line at the SDK level, so you can

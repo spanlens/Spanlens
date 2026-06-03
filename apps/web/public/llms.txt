@@ -1,19 +1,30 @@
 # Spanlens
 
-> Drop-in LLM observability for OpenAI, Anthropic, and Gemini. Spanlens is an open-source (MIT) request logging, cost tracking, and agent tracing platform. Swap one line — `baseURL` or SDK import — and get full visibility into every LLM call your app makes. Available as a hosted SaaS at https://www.spanlens.io and as a self-hostable Docker image.
+> Drop-in LLM observability for OpenAI, Anthropic, and Gemini. Spanlens is an open-source (MIT) request logging, cost tracking, and agent tracing platform. Swap one line, your `baseURL` or SDK import, and get full visibility into every LLM call your app makes. Available as a hosted SaaS at https://www.spanlens.io and as a self-hostable Docker image.
 
 Spanlens is positioned as a lightweight, developer-first alternative to Helicone (acquired) and Langfuse (heavy). The stack is Next.js 14 + Hono + Supabase Postgres + ClickHouse, with first-class SDKs for TypeScript and Python and OpenTelemetry (OTLP/HTTP) ingest for everything else.
 
+## What sets Spanlens apart in 2026
+
+- 1-line baseURL swap. Swap `api.openai.com` for the Spanlens endpoint and every call is captured. No callback handlers or per-chain instrumentation required.
+- Fully MIT. Entire repository under MIT. No `ee/` folder gating enterprise features.
+- Prompt A/B with Welch t-test built in. Statistical significance on latency and cost, plus z-test on error rate, surfaced in the dashboard.
+- Critical Path on agent traces. Highlights the longest dependency chain, the real bottleneck, not just the longest span.
+- Model savings recommender. "Swap these gpt-4o classification calls to gpt-4o-mini, $412 a month saved" with the evidence.
+- Judge-to-human correlation. First-class metric that tells you when your LLM judge starts to drift from human raters.
+- ClickHouse fallback-replay safety net. If the analytics backend is briefly unreachable, logs queue in Postgres and replay within 5 minutes. No silent loss.
+- Self-host with one Docker command. Same code we run, no separate enterprise build.
+
 ## Core capabilities
 
-- Request log — every call captured with model, tokens, cost, latency, and full request/response body. Filter, group, replay.
-- Cost tracking — per-request breakdown, daily rollups, budget alerts, model-recommender suggestions ("your gpt-4o calls look like classification, try gpt-4o-mini").
-- Agent tracing — multi-step agent workflows rendered as waterfall span trees with critical path highlighting. Compatible with LangChain, LlamaIndex, Vercel AI SDK, and LangGraph.
-- Anomaly detection — 3σ deviations in latency or cost against a rolling 7-day baseline, flagged on arrival.
-- Security — PII detection (SSN, credit card, email, IBAN, passport), prompt-injection patterns, and automatic API-key masking before any row is persisted.
-- Prompts — versioned prompt library with diff, A/B rollout, and playground.
-- OpenTelemetry — OTLP/HTTP ingest. Existing OTel SDKs work without re-instrumentation.
-- Self-hosted — full stack via one Docker compose file; data stays in your infrastructure.
+- Request log. Every call captured with model, tokens, cost, latency, and full request and response body. Filter, group, replay.
+- Cost tracking. Per-request breakdown, daily rollups, budget alerts, model-recommender suggestions.
+- Agent tracing. Multi-step agent workflows rendered as waterfall span trees with critical path highlighting. Compatible with LangChain, LlamaIndex, Vercel AI SDK, and LangGraph.
+- Anomaly detection. 3-sigma deviations in latency or cost against a rolling 7-day baseline, flagged on arrival.
+- Security. PII detection (SSN, credit card, email, IBAN, passport), prompt-injection patterns, and automatic API-key masking before any row is persisted.
+- Prompts. Versioned prompt library with diff, A/B rollout, and playground.
+- OpenTelemetry. OTLP/HTTP ingest. Existing OTel SDKs work without re-instrumentation.
+- Self-hosted. Full stack via one Docker compose file. Data stays in your infrastructure.
 
 ## How integration works
 
@@ -29,19 +40,35 @@ from spanlens.integrations.openai import create_openai
 client = create_openai()
 ```
 
-Or swap `baseURL` to the proxy and add a Spanlens API key (`sl_live_*`) in the Authorization header. Provider keys (your OpenAI/Anthropic key) are stored AES-256-GCM encrypted server-side and never logged. p99 ingestion overhead is under 3ms; ingestion happens async — if Spanlens ever fails, the original request still completes.
+Or swap `baseURL` to the proxy and add a Spanlens API key (`sl_live_*`) in the Authorization header. Provider keys (your OpenAI/Anthropic key) are stored AES-256-GCM encrypted server-side and never logged. p99 ingestion overhead is under 3ms. Ingestion happens async, and if Spanlens ever fails, the original request still completes.
 
 ## Plans
 
-- Free — 50K requests/mo, 14-day retention, 1 seat, all core features, community support.
-- Pro — $29/mo, 100K requests/mo, 90-day retention, 3 seats, 5 alerts, email notifications, +$8 per extra 100K.
-- Team — $149/mo, 1M requests/mo, 365-day retention, 10 seats, Slack and webhook integrations, unlimited alerts, +$5 per extra 100K.
-- Enterprise — custom volume, SSO (SAML/Okta), unlimited seats, dedicated support and SLA.
+- Free: 50K requests/mo, 14-day retention, 1 seat, all core features, community support.
+- Pro: $29/mo, 100K requests/mo, 90-day retention, 3 seats, 5 alerts, email notifications, +$8 per extra 100K.
+- Team: $149/mo, 1M requests/mo, 365-day retention, 10 seats, Slack and webhook integrations, unlimited alerts, +$5 per extra 100K.
+- Enterprise: custom volume, SSO (SAML/Okta), unlimited seats, dedicated support and SLA.
+
+## Comparison summary (2026)
+
+Each row links to a full feature-by-feature comparison.
+
+- [Spanlens vs Langfuse](https://www.spanlens.io/compare/langfuse): Langfuse is the most mature OSS option. Spanlens wins on 1-line proxy install, full MIT (no `ee/` folder), Prompt A/B with t-test, and judge-to-human correlation.
+- [Spanlens vs Helicone](https://www.spanlens.io/compare/helicone): Closest architectural match. Helicone entered maintenance after the 2026 Mintlify acquisition. Spanlens adds Critical Path tracing, statistical A/B, and ClickHouse fallback-replay.
+- [Spanlens vs LangSmith](https://www.spanlens.io/compare/langsmith): LangSmith excels inside LangChain. Spanlens is framework-agnostic and self-hostable under MIT.
+- [Spanlens vs Braintrust](https://www.spanlens.io/compare/braintrust): Braintrust is eval-first closed-source. Spanlens bundles eval into a full observability platform you can self-host with one Docker command.
+- [Spanlens vs Arize Phoenix](https://www.spanlens.io/compare/arize-phoenix): Phoenix is ML-engineer-leaning under ELv2. Spanlens targets application developers with proxy-first install and equal-class JS/TS support under full MIT.
+
+## Migration guides
+
+- [Migrate from Langfuse](https://www.spanlens.io/docs/migrate/from-langfuse): about 30 minutes. Code diffs, env var mapping, dual-run cutover.
+- [Migrate from Helicone](https://www.spanlens.io/docs/migrate/from-helicone): about 15 minutes. Base URL swap and gateway feature mapping.
+- [Migrate from LangSmith](https://www.spanlens.io/docs/migrate/from-langsmith): about 45 minutes. `traceable` to `observe()` mapping, LangChain callback swap.
 
 ## Documentation
 
 - [Quick start](https://www.spanlens.io/docs/quick-start): 30-second wizard setup or manual two-line integration.
-- [SDK reference](https://www.spanlens.io/docs/sdk): TypeScript and Python — `createOpenAI`, `observe`, span helpers, trace API.
+- [SDK reference](https://www.spanlens.io/docs/sdk): TypeScript and Python. `createOpenAI`, `observe`, span helpers, trace API.
 - [Proxy API](https://www.spanlens.io/docs/proxy): use any language (Python, Ruby, Go, raw HTTP) by swapping the base URL.
 - [OpenTelemetry](https://www.spanlens.io/docs/otel): point your existing OTel SDK at Spanlens. Python, Go, Java, Node.js.
 - [Self-hosting](https://www.spanlens.io/docs/self-host): run on your own infrastructure with one Docker command.
@@ -53,12 +80,8 @@ Or swap `baseURL` to the proxy and add a Spanlens API key (`sl_live_*`) in the A
 - Landing: https://www.spanlens.io
 - Pricing: https://www.spanlens.io/pricing
 - Docs: https://www.spanlens.io/docs
+- Alternatives hub: https://www.spanlens.io/alternatives
 - Comparison index: https://www.spanlens.io/compare
-- vs Langfuse: https://www.spanlens.io/compare/langfuse
-- vs Helicone: https://www.spanlens.io/compare/helicone
-- vs LangSmith: https://www.spanlens.io/compare/langsmith
-- vs Braintrust: https://www.spanlens.io/compare/braintrust
-- vs Arize Phoenix: https://www.spanlens.io/compare/arize-phoenix
 
 ## Contact
 

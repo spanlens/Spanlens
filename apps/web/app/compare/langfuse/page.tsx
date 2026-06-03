@@ -1,7 +1,7 @@
 import { CompareTemplate, type CompareGroup, type ComparePoint } from '@/components/marketing/compare-template'
 
 export const metadata = {
-  title: 'Spanlens vs Langfuse · Compare',
+  title: 'Spanlens vs Langfuse · 2026 Comparison',
   description:
     'Spanlens is a drop-in proxy with eval, agent tracing, and Prompt A/B testing built in. Fully MIT-licensed. Langfuse uses an SDK + OTel model with an EE folder for commercial features. Read the honest comparison.',
 }
