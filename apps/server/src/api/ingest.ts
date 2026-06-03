@@ -111,7 +111,23 @@ ingestRouter.patch('/traces/:id', async (c) => {
   }
 
   const updates: Record<string, unknown> = {}
-  if (typeof body.status === 'string' && VALID_TRACE_STATUS.has(body.status as TraceStatus)) {
+  // Status is enum-constrained: reject unknown values with 400 instead of
+  // silently dropping. The silent-drop behavior produced inconsistent rows
+  // (ended_at filled, status still 'running') that the dashboard rendered as
+  // LIVE forever. Verified against the JS and Python SDKs — both only emit
+  // 'completed' | 'error', so this is safe to harden.
+  if (body.status !== undefined) {
+    if (
+      typeof body.status !== 'string' ||
+      !VALID_TRACE_STATUS.has(body.status as TraceStatus)
+    ) {
+      return c.json(
+        {
+          error: `Invalid status. Expected one of: ${Array.from(VALID_TRACE_STATUS).join(', ')}.`,
+        },
+        400,
+      )
+    }
     updates['status'] = body.status
   }
   if (typeof body.ended_at === 'string') {
@@ -274,7 +290,22 @@ ingestRouter.patch('/spans/:id', async (c) => {
   }
 
   const updates: Record<string, unknown> = {}
-  if (typeof body.status === 'string' && VALID_SPAN_STATUS.has(body.status as SpanStatus)) {
+  // Match the trace PATCH handler — reject unknown status with 400 rather
+  // than dropping silently. Otherwise a span ends up with ended_at filled
+  // but status stuck on 'running', which the topology view renders with
+  // the pulsing accent badge and a misleading "still running" hint.
+  if (body.status !== undefined) {
+    if (
+      typeof body.status !== 'string' ||
+      !VALID_SPAN_STATUS.has(body.status as SpanStatus)
+    ) {
+      return c.json(
+        {
+          error: `Invalid status. Expected one of: ${Array.from(VALID_SPAN_STATUS).join(', ')}.`,
+        },
+        400,
+      )
+    }
     updates['status'] = body.status
   }
   if (typeof body.ended_at === 'string') {
