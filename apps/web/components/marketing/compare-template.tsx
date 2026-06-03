@@ -116,26 +116,23 @@ function buildSoftwareCompareJsonLd(competitor: string, slug: string, year: numb
       name: 'Spanlens',
       url: SITE_URL,
     },
-    about: [
-      {
-        '@type': 'SoftwareApplication',
-        name: 'Spanlens',
-        applicationCategory: 'DeveloperApplication',
-        operatingSystem: 'Web, Docker',
-        url: SITE_URL,
-        offers: {
-          '@type': 'Offer',
-          price: '0',
-          priceCurrency: 'USD',
-          description: 'Free plan with 50K requests/mo',
-        },
+    about: {
+      '@type': 'SoftwareApplication',
+      name: 'Spanlens',
+      applicationCategory: 'DeveloperApplication',
+      operatingSystem: 'Web, Docker',
+      url: SITE_URL,
+      offers: {
+        '@type': 'Offer',
+        price: '0',
+        priceCurrency: 'USD',
+        description: 'Free plan with 50K requests/mo',
       },
-      {
-        '@type': 'SoftwareApplication',
-        name: competitor,
-        applicationCategory: 'DeveloperApplication',
-      },
-    ],
+    },
+    mentions: {
+      '@type': 'Thing',
+      name: competitor,
+    },
   }
   return JSON.stringify(payload)
 }
