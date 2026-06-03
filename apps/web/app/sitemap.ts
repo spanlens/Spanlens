@@ -5,12 +5,19 @@ const SITE_URL = 'https://www.spanlens.io'
 const MARKETING_ROUTES = [
   '',
   '/pricing',
+  '/alternatives',
   '/compare',
   '/compare/langfuse',
   '/compare/helicone',
   '/compare/langsmith',
   '/compare/braintrust',
   '/compare/arize-phoenix',
+] as const
+
+const MIGRATION_ROUTES = [
+  '/docs/migrate/from-langfuse',
+  '/docs/migrate/from-helicone',
+  '/docs/migrate/from-langsmith',
 ] as const
 
 const DOCS_ROUTES = [
@@ -71,6 +78,12 @@ export default function sitemap(): MetadataRoute.Sitemap {
       lastModified: now,
       changeFrequency: 'weekly' as const,
       priority: path === '/docs' ? 0.9 : 0.6,
+    })),
+    ...MIGRATION_ROUTES.map((path) => ({
+      url: `${SITE_URL}${path}`,
+      lastModified: now,
+      changeFrequency: 'monthly' as const,
+      priority: 0.7,
     })),
     ...LEGAL_ROUTES.map((path) => ({
       url: `${SITE_URL}${path}`,

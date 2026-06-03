@@ -2,7 +2,7 @@ import { CodeBlock } from '../../_components/code-block'
 import { LangTabs } from '../../_components/lang-tabs'
 
 export const metadata = {
-  title: 'Migrate from LangSmith · Spanlens Docs',
+  title: 'Migrate from LangSmith to Spanlens · 2026 Guide',
   description:
     'Move from LangSmith to Spanlens in under 45 minutes. traceable decorator to observe() mapping, LangChain callback swap, and Run / Project / Dataset to Spanlens schema.',
   alternates: { canonical: '/docs/migrate/from-langsmith' },
@@ -11,7 +11,7 @@ export const metadata = {
 export default function MigrateFromLangsmith() {
   return (
     <div>
-      <h1>Migrate from LangSmith</h1>
+      <h1>Migrate from LangSmith · 2026</h1>
       <p className="lead">
         LangSmith is tightly bound to the LangChain ecosystem. Spanlens speaks the same
         graph-aware tracing shape but is provider-neutral: you can run it on plain OpenAI

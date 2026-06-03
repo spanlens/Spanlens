@@ -1,7 +1,7 @@
 import { CompareTemplate, type CompareGroup, type ComparePoint } from '@/components/marketing/compare-template'
 
 export const metadata = {
-  title: 'Spanlens vs Helicone · Compare',
+  title: 'Spanlens vs Helicone · 2026 Comparison',
   description:
     'Both Spanlens and Helicone are proxy-based LLM observability tools. Spanlens adds Critical Path agent tracing, Prompt A/B with Welch t-test, judge to human correlation tracking, and a ClickHouse fallback-replay safety net.',
 }
