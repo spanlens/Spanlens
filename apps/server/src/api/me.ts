@@ -34,7 +34,14 @@ interface KeyInfoResponse {
 // Under the nested-keys model, providers are scoped to this Spanlens key
 // (api_key_id), NOT the project — two keys in the same project can return
 // different provider lists.
-meRouter.get('/key-info', async (c) => {
+//
+// Internal path is `/` because the router is mounted at the full path
+// (`/api/v1/me/key-info`) in app.ts. Mounting at the exact path avoids
+// the wildcard-collision problem where evalsRouter/humanEvalsRouter, both
+// mounted broadly at `/api/v1` with `.use('*', authJwt)`, were running
+// their JWT gate first and rejecting `sl_live_*` keys with the misleading
+// "Invalid or expired token" error.
+meRouter.get('/', async (c) => {
   const projectId = c.get('projectId')
   const apiKeyId = c.get('apiKeyId')
 

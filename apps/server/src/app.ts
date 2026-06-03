@@ -143,6 +143,20 @@ app.route('/api/v1',          openapiRouter)   // GET /api/v1/openapi.json, GET 
 // DB lookup needed. Fails open so public endpoints are unaffected.
 app.use('/api/v1/*', apiRateLimit)
 
+// ── CLI introspection (authApiKey middleware) ─────────────────
+// MUST be registered BEFORE any sub-router that mounts at the broad
+// `/api/v1` prefix with `.use('*', authJwt)` (evalsRouter and
+// humanEvalsRouter below). Hono runs middleware that matches the path
+// in registration order — if those routers' JWT wildcard middleware
+// is registered first, it intercepts `/api/v1/me/key-info` with the
+// misleading "Invalid or expired token" 401 before `authApiKey` ever
+// runs, breaking the `sl_live_*` introspection used by
+// `npx @spanlens/cli init`.
+// Mounted at the EXACT key-info path (not /api/v1/me) so meRouter's
+// own `.use('*', authApiKey)` cannot accidentally swallow sibling
+// JWT-only routes like /api/v1/me/role.
+app.route('/api/v1/me/key-info',    meRouter)
+
 // ── REST API routes (authJwt middleware) ──────────────────────
 app.route('/api/v1/organizations',  organizationsRouter)
 app.route('/api/v1/projects',       projectsRouter)
@@ -177,7 +191,6 @@ app.route('/api/v1/me/consent',     userConsentRouter)
 app.route('/api/v1/me/notification-prefs', userNotificationPrefsRouter)  // JWT-auth — per-user email prefs
 app.route('/api/v1/me/role',        meRoleRouter)    // JWT-auth — current user's org role (sidebar uses this)
 app.route('/api/v1/models',         modelsRouter)    // JWT-auth — model catalog (grouped by provider) for Playground
-app.route('/api/v1/me',             meRouter)        // sl_live_* introspection (CLI), registered AFTER other /me/* prefixes
 app.route('/api/v1/webhooks',       webhooksRouter)
 app.route('/api/v1/exports',        exportsRouter)
 app.route('/api/v1/system',         systemRouter)
