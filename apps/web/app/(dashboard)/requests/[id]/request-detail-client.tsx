@@ -7,6 +7,7 @@ import { cn, formatDateTime } from '@/lib/utils'
 import { useRequest, useReplayRequest, useRunReplay } from '@/lib/queries/use-requests'
 import { useModels, type ModelsByProvider } from '@/lib/queries/use-models'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { ShareDialog } from '@/components/share/share-dialog'
 
 // TODO: re-add `usePostHog()` + `cache_breakdown_viewed` capture once the
 // PostHog provider lands on main (separate PR). The event payload is fully
@@ -89,6 +90,7 @@ export function RequestDetailClient({ id }: { id: string }) {
           </p>
         </div>
         <div className="flex items-center gap-3 shrink-0">
+          <ShareDialog scope="request" targetId={req.id} variant="secondary" />
           <ReplayButton requestId={req.id} originalModel={req.model} provider={req.provider} />
           {req.truncated && (
             <span

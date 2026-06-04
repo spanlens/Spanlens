@@ -1758,6 +1758,65 @@ export type Database = {
           },
         ]
       }
+      shared_links: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          expires_at: string | null
+          id: string
+          indexable: boolean
+          organization_id: string
+          redact_cost: boolean
+          redact_pii: boolean
+          redact_tokens: boolean
+          revoked_at: string | null
+          scope: string
+          target_id: string
+          token: string
+          view_count: number
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          expires_at?: string | null
+          id?: string
+          indexable?: boolean
+          organization_id: string
+          redact_cost?: boolean
+          redact_pii?: boolean
+          redact_tokens?: boolean
+          revoked_at?: string | null
+          scope: string
+          target_id: string
+          token: string
+          view_count?: number
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          expires_at?: string | null
+          id?: string
+          indexable?: boolean
+          organization_id?: string
+          redact_cost?: boolean
+          redact_pii?: boolean
+          redact_tokens?: boolean
+          revoked_at?: string | null
+          scope?: string
+          target_id?: string
+          token?: string
+          view_count?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shared_links_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       spans: {
         Row: {
           completion_tokens: number
