@@ -96,6 +96,7 @@ const NAV: NavGroup[] = [
       { title: 'Vercel AI SDK', href: '/docs/sdk#vercel-ai' },
       { title: 'LlamaIndex', href: '/docs/sdk#llamaindex' },
       { title: 'OpenTelemetry (OTLP)', href: '/docs/otel' },
+      { title: 'MCP (Cursor / Claude Desktop)', href: '/docs/integrations/mcp' },
     ],
   },
   {
