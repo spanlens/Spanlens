@@ -541,7 +541,7 @@ export default function LandingPage() {
             <div>{'  '}-p 3001:3001 \</div>
             <div>{'  '}-e <span className="text-[#b4e0a0]">SUPABASE_URL</span>=<span className="text-[#f2a65a]">&quot;https://...&quot;</span> \</div>
             <div>{'  '}-e <span className="text-[#b4e0a0]">ENCRYPTION_KEY</span>=<span className="text-[#f2a65a]">&quot;$(openssl rand -base64 32)&quot;</span> \</div>
-            <div>{'  '}ghcr.io/sunes26/spanlens-server:latest</div>
+            <div>{'  '}ghcr.io/spanlens/spanlens-server:latest</div>
             <div className="text-[#7a7a7a] mt-2.5"># → curl http://localhost:3001/health</div>
           </div>
         </div>

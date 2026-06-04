@@ -34,7 +34,7 @@ services:
     # Default: pull pre-built image from GHCR (no build required).
     # docker-entrypoint.sh patches NEXT_PUBLIC_* placeholders at startup.
     # To build locally instead: docker compose up -d --build
-    image: ghcr.io/sunes26/spanlens-web:latest
+    image: ghcr.io/spanlens/spanlens-web:latest
     build:
       context: .
       dockerfile: apps/web/Dockerfile
@@ -66,7 +66,7 @@ services:
   server:
     # Default: pull pre-built image from GHCR.
     # To build locally instead: docker compose up -d --build
-    image: ghcr.io/sunes26/spanlens-server:latest
+    image: ghcr.io/spanlens/spanlens-server:latest
     build:
       context: .
       dockerfile: apps/server/Dockerfile
