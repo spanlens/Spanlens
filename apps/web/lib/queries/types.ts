@@ -42,11 +42,14 @@ export interface Project {
   updated_at?: string
 }
 
+export type ApiKeyScope = 'full' | 'readonly'
+
 export interface ApiKey {
   id: string
   project_id: string
   name: string
   key_prefix: string
+  scope: ApiKeyScope
   is_active: boolean
   last_used_at: string | null
   created_at: string

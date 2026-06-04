@@ -33,6 +33,7 @@ import {
   useToggleApiKey,
   useDeleteApiKey,
 } from '@/lib/queries/use-api-keys'
+import type { ApiKeyScope } from '@/lib/queries/types'
 import {
   useProviderKeys,
   useAddProviderKey,
@@ -166,6 +167,7 @@ export function ProjectsClient() {
   const [issueDialogOpen, setIssueDialogOpen] = useState(false)
   const [issueProjectId, setIssueProjectId] = useState('')
   const [issueName, setIssueName] = useState('')
+  const [issueScope, setIssueScope] = useState<ApiKeyScope>('full')
   const [issueError, setIssueError] = useState<string | null>(null)
 
   // Rotate provider key dialog
@@ -249,6 +251,7 @@ export function ProjectsClient() {
   function openIssueDialog(projectId: string) {
     setIssueProjectId(projectId)
     setIssueName('')
+    setIssueScope('full')
     setIssueError(null)
     setIssueDialogOpen(true)
   }
@@ -259,6 +262,7 @@ export function ProjectsClient() {
       const result = await issueApiKey.mutateAsync({
         name: issueName.trim(),
         projectId: issueProjectId,
+        scope: issueScope,
       })
       setNewKey(result?.key ?? null)
       setIssueDialogOpen(false)
@@ -705,11 +709,19 @@ export function ProjectsClient() {
                                 <div className="flex-1 min-w-0">
                                   <div
                                     className={cn(
-                                      'text-[13.5px] font-semibold truncate',
+                                      'text-[13.5px] font-semibold truncate flex items-center gap-2',
                                       !key.is_active && 'line-through text-text-faint',
                                     )}
                                   >
-                                    {key.name}
+                                    <span className="truncate">{key.name}</span>
+                                    {key.scope === 'readonly' && (
+                                      <span
+                                        className="shrink-0 font-mono text-[9.5px] uppercase tracking-[0.05em] px-1.5 py-0.5 rounded border border-border bg-bg-elev text-text-muted"
+                                        title="Dashboard reads only — cannot call LLM proxy or ingest"
+                                      >
+                                        Read-only
+                                      </span>
+                                    )}
                                   </div>
                                   <div className="font-mono text-[10.5px] text-text-faint mt-0.5">
                                     {key.key_prefix}…
@@ -882,7 +894,11 @@ export function ProjectsClient() {
         open={issueDialogOpen}
         onOpenChange={(open) => {
           setIssueDialogOpen(open)
-          if (!open) { setIssueProjectId(''); setIssueError(null) }
+          if (!open) {
+            setIssueProjectId('')
+            setIssueScope('full')
+            setIssueError(null)
+          }
         }}
       >
         <DialogContent>
@@ -909,6 +925,52 @@ export function ProjectsClient() {
                 className="w-full h-9 px-3 rounded-[6px] border border-border bg-bg text-[13px] text-text placeholder:text-text-faint focus:outline-none focus:border-border-strong transition-colors"
               />
             </div>
+
+            <fieldset className="space-y-2">
+              <legend className="text-[12.5px] text-text-muted font-medium">Permission</legend>
+              <label className="flex items-start gap-2.5 rounded-[6px] border border-border p-3 cursor-pointer hover:border-border-strong transition-colors">
+                <input
+                  type="radio"
+                  name="issueScope"
+                  value="full"
+                  checked={issueScope === 'full'}
+                  onChange={() => setIssueScope('full')}
+                  className="mt-0.5"
+                />
+                <div className="flex-1 min-w-0">
+                  <div className="text-[13px] text-text font-medium flex items-center gap-2">
+                    Full access
+                    <code className="font-mono text-[10.5px] text-text-faint bg-bg-elev border border-border px-1 rounded">
+                      sl_live_…
+                    </code>
+                  </div>
+                  <div className="text-[11.5px] text-text-muted mt-0.5">
+                    Make LLM proxy calls, ingest traces, and read dashboard data.
+                  </div>
+                </div>
+              </label>
+              <label className="flex items-start gap-2.5 rounded-[6px] border border-border p-3 cursor-pointer hover:border-border-strong transition-colors">
+                <input
+                  type="radio"
+                  name="issueScope"
+                  value="readonly"
+                  checked={issueScope === 'readonly'}
+                  onChange={() => setIssueScope('readonly')}
+                  className="mt-0.5"
+                />
+                <div className="flex-1 min-w-0">
+                  <div className="text-[13px] text-text font-medium flex items-center gap-2">
+                    Read-only
+                    <code className="font-mono text-[10.5px] text-text-faint bg-bg-elev border border-border px-1 rounded">
+                      sl_live_ro_…
+                    </code>
+                  </div>
+                  <div className="text-[11.5px] text-text-muted mt-0.5">
+                    Dashboard reads only. Safe for MCP servers, BI tools, and embeds where the key sits in a high-leak-surface location.
+                  </div>
+                </div>
+              </label>
+            </fieldset>
 
             {issueError && (
               <div className="rounded-md border border-bad/30 bg-bad/10 px-3 py-2 text-[12px] text-bad">

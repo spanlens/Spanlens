@@ -21,11 +21,14 @@ import { sha256Hex } from '../lib/crypto.js'
  * server access logs, browser history, and Referer headers). All current
  * Google Generative AI SDK versions use the x-goog-api-key header.
  */
+export type ApiKeyScope = 'full' | 'readonly'
+
 export type ApiKeyContext = {
   Variables: {
     organizationId: string
     projectId: string
     apiKeyId: string
+    apiKeyScope: ApiKeyScope
   }
 }
 
@@ -67,7 +70,7 @@ export const authApiKey = createMiddleware<ApiKeyContext>(async (c, next) => {
 
   const { data, error } = await supabaseAdmin
     .from('api_keys')
-    .select('id, project_id, projects(organization_id)')
+    .select('id, project_id, scope, projects(organization_id)')
     .eq('key_hash', keyHash)
     .eq('is_active', true)
     .single()
@@ -81,9 +84,12 @@ export const authApiKey = createMiddleware<ApiKeyContext>(async (c, next) => {
     return c.json({ error: 'Project not found' }, 401)
   }
 
+  const scope = (data.scope as string | null) === 'readonly' ? 'readonly' : 'full'
+
   c.set('apiKeyId', data.id as string)
   c.set('projectId', data.project_id as string)
   c.set('organizationId', project.organization_id)
+  c.set('apiKeyScope', scope)
 
   return next()
 })

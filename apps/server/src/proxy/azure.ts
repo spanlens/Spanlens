@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { stream } from 'hono/streaming'
 import { authApiKey, type ApiKeyContext } from '../middleware/authApiKey.js'
+import { requireFullScope } from '../middleware/requireFullScope.js'
 import { enforceQuota } from '../middleware/quota.js'
 import { proxyRateLimit } from '../middleware/rateLimit.js'
 import { calculateCost } from '../lib/cost.js'
@@ -31,6 +32,7 @@ const UPSTREAM_TIMEOUT_MS = parseInt(process.env['UPSTREAM_TIMEOUT_MS'] ?? '3500
 export const azureProxy = new Hono<ApiKeyContext>()
 
 azureProxy.use('*', authApiKey)
+azureProxy.use('*', requireFullScope)
 azureProxy.use('*', proxyRateLimit)
 azureProxy.use('*', enforceQuota)
 

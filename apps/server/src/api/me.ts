@@ -25,6 +25,8 @@ interface KeyInfoResponse {
   projectName: string
   /** Providers with an active provider_key under THIS Spanlens key. */
   providers: KnownProvider[]
+  /** 'full' = can call proxy + ingest. 'readonly' = dashboard reads only. */
+  scope: 'full' | 'readonly'
 }
 
 // GET /api/v1/me/key-info — introspect the presented Spanlens key.
@@ -68,6 +70,7 @@ meRouter.get('/', async (c) => {
     projectId: project.id as string,
     projectName: project.name as string,
     providers,
+    scope: c.get('apiKeyScope'),
   }
   return c.json({ success: true, data: body })
 })

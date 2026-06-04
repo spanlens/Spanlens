@@ -40,7 +40,7 @@ apiKeysRouter.get('/', async (c) => {
 
   let query = supabaseAdmin
     .from('api_keys')
-    .select('id, project_id, name, key_prefix, is_active, last_used_at, created_at')
+    .select('id, project_id, name, key_prefix, scope, is_active, last_used_at, created_at')
     .order('created_at', { ascending: false })
 
   if (projectId) {
@@ -70,7 +70,7 @@ apiKeysRouter.post('/issue', requireEdit, async (c) => {
   const orgId = c.get('orgId')
   if (!orgId) return c.json({ error: 'Organization not found' }, 404)
 
-  let body: { name?: unknown; projectId?: unknown }
+  let body: { name?: unknown; projectId?: unknown; scope?: unknown }
   try {
     body = (await c.req.json()) as typeof body
   } catch {
@@ -84,10 +84,21 @@ apiKeysRouter.post('/issue', requireEdit, async (c) => {
     return c.json({ error: 'projectId is required' }, 400)
   }
 
+  // scope: 'full' (default, can call proxy + ingest) or 'readonly' (dashboard
+  // reads only — safe for MCP servers / BI tools / public read embeds where
+  // the key sits in a high-leak-surface location).
+  const scope: 'full' | 'readonly' = body.scope === 'readonly' ? 'readonly' : 'full'
+
   const belongs = await projectBelongsToOrg(body.projectId, orgId)
   if (!belongs) return c.json({ error: 'Project not found' }, 404)
 
-  const rawKey = `sl_live_${randomHex(24)}`
+  // Prefix encodes scope so a user can spot leaked permissions at a glance
+  // (and grep for them in logs). `key_prefix` stays the same length (15)
+  // regardless of scope so existing UI columns line up.
+  //   full      → sl_live_<24 hex>
+  //   readonly  → sl_live_ro_<24 hex>
+  const rawKey =
+    scope === 'readonly' ? `sl_live_ro_${randomHex(24)}` : `sl_live_${randomHex(24)}`
   const keyHash = await sha256Hex(rawKey)
   const keyPrefix = rawKey.slice(0, 15)
 
@@ -98,8 +109,9 @@ apiKeysRouter.post('/issue', requireEdit, async (c) => {
       name: body.name.trim(),
       key_hash: keyHash,
       key_prefix: keyPrefix,
+      scope,
     })
-    .select('id, project_id, name, key_prefix, is_active, created_at')
+    .select('id, project_id, name, key_prefix, scope, is_active, created_at')
     .single()
 
   if (error || !data) return c.json({ error: 'Failed to create API key' }, 500)

@@ -19,6 +19,7 @@
 
 import { Hono } from 'hono'
 import { authApiKey, type ApiKeyContext } from '../middleware/authApiKey.js'
+import { requireFullScope } from '../middleware/requireFullScope.js'
 import { supabaseAdmin } from '../lib/db.js'
 import {
   groupByTrace,
@@ -34,7 +35,7 @@ export const otlpRouter = new Hono<ApiKeyContext>()
 
 // ── POST /v1/traces ────────────────────────────────────────────────────────────
 
-otlpRouter.post('/v1/traces', authApiKey, async (c) => {
+otlpRouter.post('/v1/traces', authApiKey, requireFullScope, async (c) => {
   const organizationId = c.get('organizationId')
   const projectId      = c.get('projectId')
   const apiKeyId       = c.get('apiKeyId')

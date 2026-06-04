@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiDelete, apiGet, apiPatch, apiPost } from '@/lib/api'
-import type { ApiEnvelope, ApiKey, IssuedApiKey } from './types'
+import type { ApiEnvelope, ApiKey, ApiKeyScope, IssuedApiKey } from './types'
 
 /**
  * Spanlens (sl_live_*) keys. Under the unified-keys model these are
@@ -29,7 +29,7 @@ export function useApiKeys(projectId?: string) {
 export function useIssueApiKey() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: async (input: { name: string; projectId: string }) => {
+    mutationFn: async (input: { name: string; projectId: string; scope?: ApiKeyScope }) => {
       const res = await apiPost<ApiEnvelope<IssuedApiKey>>('/api/v1/api-keys/issue', input)
       return res.data
     },

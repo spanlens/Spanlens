@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import { authApiKey, type ApiKeyContext } from '../middleware/authApiKey.js'
+import { requireFullScope } from '../middleware/requireFullScope.js'
 import { supabaseAdmin } from '../lib/db.js'
 import { fireAndForget } from '../lib/wait-until.js'
 import { emitWebhookEvent } from '../lib/webhook-emit.js'
@@ -21,6 +22,7 @@ import { emitWebhookEvent } from '../lib/webhook-emit.js'
 export const ingestRouter = new Hono<ApiKeyContext>()
 
 ingestRouter.use('*', authApiKey)
+ingestRouter.use('*', requireFullScope)
 
 type TraceStatus = 'running' | 'completed' | 'error'
 type SpanStatus = 'running' | 'completed' | 'error'
