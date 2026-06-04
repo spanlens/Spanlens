@@ -39,6 +39,17 @@ export type ChangelogTag =
 
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    date: '2026-06-04',
+    slug: 'mcp-server-for-ide-agents',
+    title: 'Query Spanlens from Cursor, Claude Desktop, or Continue via MCP',
+    tags: ['feature'],
+    body: [
+      'Spanlens now ships an official MCP server, so the agent inside Cursor, Claude Desktop, or Continue can answer questions about your workspace without you leaving the editor. Ask things like *"what is our OpenAI spend this week?"*, *"any cost anomalies?"*, or *"walk me through trace X"* and the agent picks the right tool automatically.',
+      'Seven read-only tools ship in v0.1: stats overview, request listing, trace discovery, agent span tree, anomalies, savings recommendations, and per-end-user analytics. The server boots only with a public-scope key (`sl_live_pub_*`) so the credential — which sits in a plaintext IDE config file — never has the power to incur LLM spend on your account.',
+      'Install in one line: `npx -y @spanlens/mcp-server`. The [MCP integration guide](/docs/integrations/mcp) has the full Cursor / Claude Desktop / Continue config snippets and the safety model. The server is also listed on the official MCP Registry as `io.github.spanlens/mcp-server`.',
+    ].join('\n\n'),
+  },
+  {
     date: '2026-06-01',
     slug: 'langgraph-topology-view',
     title: 'LangGraph topology view in /traces',
