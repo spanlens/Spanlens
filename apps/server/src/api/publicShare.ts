@@ -104,6 +104,11 @@ publicShareRouter.get('/:token', async (c) => {
   }
   if (!payload) return c.json(NOT_FOUND_BODY, 404)
 
+  // PLG Loop ② — the "Observed by Spanlens" footer can be hidden only while
+  // the share's org sits on team or enterprise. Free/Starter forces it on
+  // even if the column is true (e.g. lingering from a previous Team window).
+  const hidePoweredBy = await shouldHidePoweredBy(share.organization_id)
+
   // Bump view_count. Fire-and-forget — a viewer should never see a 500 because
   // the counter update failed. The next page load will sync.
   supabaseAdmin
@@ -122,10 +127,28 @@ publicShareRouter.get('/:token', async (c) => {
       createdAt: share.created_at,
       expiresAt: share.expires_at,
       viewCount: share.view_count + 1,
+      hidePoweredBy,
       payload,
     },
   })
 })
+
+/**
+ * PLG Loop ② gate. Free/Starter always render the footer regardless of the
+ * stored preference — those tiers are where the badge does its compounding
+ * distribution work. Team/Enterprise honour the org's setting.
+ */
+async function shouldHidePoweredBy(organizationId: string): Promise<boolean> {
+  const { data } = await supabaseAdmin
+    .from('organizations')
+    .select('plan, hide_powered_by_badge')
+    .eq('id', organizationId)
+    .single()
+  if (!data) return false
+  const plan = data.plan as string | null
+  const hide = data.hide_powered_by_badge === true
+  return hide && (plan === 'team' || plan === 'enterprise')
+}
 
 // ── Trace loader ────────────────────────────────────────────────────────────
 

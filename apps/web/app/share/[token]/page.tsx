@@ -9,6 +9,7 @@ interface SharePayload {
   createdAt: string
   expiresAt: string | null
   viewCount: number
+  hidePoweredBy?: boolean
   payload: unknown
 }
 

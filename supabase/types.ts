@@ -1262,6 +1262,7 @@ export type Database = {
         Row: {
           allow_overage: boolean
           created_at: string
+          hide_powered_by_badge: boolean
           id: string
           last_security_alert_at: string | null
           leak_detection_enabled: boolean
@@ -1280,6 +1281,7 @@ export type Database = {
         Insert: {
           allow_overage?: boolean
           created_at?: string
+          hide_powered_by_badge?: boolean
           id?: string
           last_security_alert_at?: string | null
           leak_detection_enabled?: boolean
@@ -1298,6 +1300,7 @@ export type Database = {
         Update: {
           allow_overage?: boolean
           created_at?: string
+          hide_powered_by_badge?: boolean
           id?: string
           last_security_alert_at?: string | null
           leak_detection_enabled?: boolean

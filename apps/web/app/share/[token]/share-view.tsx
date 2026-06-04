@@ -9,6 +9,8 @@ interface ShareViewProps {
     createdAt: string
     expiresAt: string | null
     viewCount: number
+    /** PLG Loop ② — true only when the share's org is on team+ and opted out. */
+    hidePoweredBy?: boolean
     payload: unknown
   }
 }
@@ -74,7 +76,7 @@ export function ShareView({ share }: ShareViewProps) {
           <RequestView payload={share.payload as SharedRequestPayload} />
         )}
       </main>
-      <ShareFooter />
+      {!share.hidePoweredBy && <ShareFooter />}
     </div>
   )
 }

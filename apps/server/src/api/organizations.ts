@@ -64,7 +64,7 @@ organizationsRouter.get('/me', async (c) => {
 
   const { data, error } = await supabaseAdmin
     .from('organizations')
-    .select('id, name, plan, allow_overage, overage_cap_multiplier, stale_key_alerts_enabled, stale_key_threshold_days, leak_detection_enabled, created_at, updated_at')
+    .select('id, name, plan, allow_overage, overage_cap_multiplier, stale_key_alerts_enabled, stale_key_threshold_days, leak_detection_enabled, hide_powered_by_badge, created_at, updated_at')
     .eq('id', orgId)
     .single()
 
@@ -136,7 +136,7 @@ organizationsRouter.patch('/me/security', requireAdmin, async (c) => {
     .from('organizations')
     .update(patch)
     .eq('id', orgId)
-    .select('id, name, plan, allow_overage, overage_cap_multiplier, stale_key_alerts_enabled, stale_key_threshold_days, leak_detection_enabled, created_at, updated_at')
+    .select('id, name, plan, allow_overage, overage_cap_multiplier, stale_key_alerts_enabled, stale_key_threshold_days, leak_detection_enabled, hide_powered_by_badge, created_at, updated_at')
     .single()
 
   if (error || !data) {
@@ -198,6 +198,71 @@ organizationsRouter.patch('/me/overage', requireAdmin, async (c) => {
   if (error || !data) {
     return c.json({ error: 'Organization not found or update failed' }, 404)
   }
+
+  return c.json({ success: true, data })
+})
+
+// PATCH /api/v1/organizations/me/branding — toggle the "Observed by Spanlens"
+// footer on public share pages (PLG Loop ②).
+//
+// Gate: 402 unless the org is on team or enterprise. We store the preference
+// regardless (so a Team org that downgrades and re-upgrades keeps its choice),
+// but the share viewer ignores it while the plan is not Team+.
+//
+// Body: { hide_powered_by_badge: boolean }
+organizationsRouter.patch('/me/branding', requireAdmin, async (c) => {
+  const userId = c.get('userId')
+  const orgId = c.get('orgId')
+  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+
+  let body: { hide_powered_by_badge?: unknown }
+  try {
+    body = (await c.req.json()) as typeof body
+  } catch {
+    return c.json({ error: 'Invalid JSON body' }, 400)
+  }
+
+  if (typeof body.hide_powered_by_badge !== 'boolean') {
+    return c.json({ error: 'hide_powered_by_badge must be a boolean' }, 400)
+  }
+
+  // Plan gate. Read the current plan and require team+ to flip the switch ON.
+  // Turning it OFF is always allowed (downgrade-friendly).
+  const { data: org } = await supabaseAdmin
+    .from('organizations')
+    .select('plan')
+    .eq('id', orgId)
+    .single()
+  const plan = (org?.plan as Plan | undefined) ?? 'free'
+  const wantsHide = body.hide_powered_by_badge === true
+  if (wantsHide && plan !== 'team' && plan !== 'enterprise') {
+    return c.json(
+      {
+        error: 'Removing the Spanlens badge requires the Team plan or above.',
+        plan,
+        upgrade_url: 'https://www.spanlens.io/pricing',
+      },
+      402,
+    )
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from('organizations')
+    .update({ hide_powered_by_badge: wantsHide })
+    .eq('id', orgId)
+    .select('id, plan, hide_powered_by_badge')
+    .single()
+
+  if (error || !data) return c.json({ error: 'Update failed' }, 500)
+
+  await supabaseAdmin.from('audit_logs').insert({
+    organization_id: orgId,
+    user_id: userId,
+    action: 'org.branding.update',
+    resource_type: 'organization',
+    resource_id: orgId,
+    metadata: { hide_powered_by_badge: wantsHide },
+  })
 
   return c.json({ success: true, data })
 })
