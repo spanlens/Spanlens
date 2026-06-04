@@ -1,0 +1,9 @@
+# Build output
+dist/
+
+# mcp-publisher CLI binary — downloaded locally for registry publishing,
+# not part of the source tree.
+mcp-publisher
+mcp-publisher.exe
+mcp-publisher.tar.gz
+LICENSE
