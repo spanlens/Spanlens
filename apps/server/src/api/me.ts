@@ -21,10 +21,13 @@ const KNOWN_PROVIDERS: ReadonlySet<KnownProvider> = new Set([
 ])
 
 interface KeyInfoResponse {
-  projectId: string
-  projectName: string
+  /** Null for public (workspace-level) keys — they aren't tied to a single project. */
+  projectId: string | null
+  projectName: string | null
   /** Providers with an active provider_key under THIS Spanlens key. */
   providers: KnownProvider[]
+  /** 'full' = can call proxy + ingest. 'public' = dashboard reads only. */
+  scope: 'full' | 'public'
 }
 
 // GET /api/v1/me/key-info — introspect the presented Spanlens key.
@@ -44,6 +47,21 @@ interface KeyInfoResponse {
 meRouter.get('/', async (c) => {
   const projectId = c.get('projectId')
   const apiKeyId = c.get('apiKeyId')
+  const scope = c.get('apiKeyScope')
+
+  // Public keys are workspace-scoped — no owning project, no provider keys
+  // attached. Skip both lookups for them and return a minimal response.
+  if (!projectId) {
+    return c.json({
+      success: true,
+      data: {
+        projectId: null,
+        projectName: null,
+        providers: [],
+        scope,
+      } satisfies KeyInfoResponse,
+    })
+  }
 
   const [{ data: project }, { data: providerKeys }] = await Promise.all([
     supabaseAdmin
@@ -68,6 +86,7 @@ meRouter.get('/', async (c) => {
     projectId: project.id as string,
     projectName: project.name as string,
     providers,
+    scope,
   }
   return c.json({ success: true, data: body })
 })

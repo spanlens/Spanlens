@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiDelete, apiGet, apiPatch, apiPost } from '@/lib/api'
-import type { ApiEnvelope, ApiKey, IssuedApiKey } from './types'
+import type { ApiEnvelope, ApiKey, ApiKeyScope, IssuedApiKey } from './types'
 
 /**
  * Spanlens (sl_live_*) keys. Under the unified-keys model these are
@@ -26,10 +26,36 @@ export function useApiKeys(projectId?: string) {
   })
 }
 
+/**
+ * Workspace-level `scope='public'` keys. Separate hook from `useApiKeys` so
+ * the public-keys card on /projects has its own cache key and refetch
+ * trigger — issuing a new public key doesn't perturb the project-level lists.
+ */
+export const publicKeysQueryKey = [...apiKeysQueryKey, { scope: 'public' }] as const
+
+export function usePublicKeys() {
+  return useQuery({
+    queryKey: publicKeysQueryKey,
+    queryFn: async () => {
+      const res = await apiGet<ApiEnvelope<ApiKey[]>>('/api/v1/api-keys?scope=public')
+      return res.data
+    },
+  })
+}
+
+/**
+ * Issue a Spanlens key.
+ *   { name, projectId }              — full key, project-scoped (default)
+ *   { name, scope: 'public' }        — workspace-level public key
+ */
 export function useIssueApiKey() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: async (input: { name: string; projectId: string }) => {
+    mutationFn: async (
+      input:
+        | { name: string; projectId: string; scope?: 'full' }
+        | { name: string; scope: 'public' },
+    ) => {
       const res = await apiPost<ApiEnvelope<IssuedApiKey>>('/api/v1/api-keys/issue', input)
       return res.data
     },
@@ -38,6 +64,9 @@ export function useIssueApiKey() {
     },
   })
 }
+
+// Re-export for callers that build their own types around scope.
+export type { ApiKeyScope }
 
 export function useToggleApiKey() {
   const qc = useQueryClient()

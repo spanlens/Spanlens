@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
-import { authJwt, type JwtContext } from '../middleware/authJwt.js'
+import type { JwtContext } from '../middleware/authJwt.js'
+import { authJwtOrApiKey } from '../middleware/authJwtOrApiKey.js'
 import { parseClampedFloat } from '../lib/params.js'
 import {
   getStatsOverview,
@@ -22,7 +23,7 @@ import {
 
 export const statsRouter = new Hono<JwtContext>()
 
-statsRouter.use('*', authJwt)
+statsRouter.use('*', authJwtOrApiKey)
 
 // Cache-Control presets for stats endpoints.
 // `private` — per-user data, never store on shared/CDN caches.

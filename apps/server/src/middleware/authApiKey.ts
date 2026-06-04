@@ -4,7 +4,7 @@ import { supabaseAdmin } from '../lib/db.js'
 import { sha256Hex } from '../lib/crypto.js'
 
 /**
- * Validates a Spanlens API key (sl_live_…) against `api_keys`.
+ * Validates a Spanlens API key (sl_live_* or sl_live_pub_*) against `api_keys`.
  *
  * Each provider SDK uses a different transport for the key, so this
  * middleware accepts whichever shape the SDK sends — the proxy is
@@ -14,18 +14,23 @@ import { sha256Hex } from '../lib/crypto.js'
  *   • Anthropic SDK         → x-api-key: sl_live_…
  *   • Google Generative AI  → x-goog-api-key: sl_live_…
  *
- * The first one found wins. After validation we put apiKeyId / projectId
- * / organizationId on the context for the proxy + logging layers.
+ * The first one found wins. After validation we put apiKeyId, scope, and
+ * organizationId on the context. `projectId` is set ONLY for `full` keys —
+ * `public` keys are workspace-scoped and have no single owning project.
  *
  * Note: ?key= query-string transport was removed (security: keys leak into
  * server access logs, browser history, and Referer headers). All current
  * Google Generative AI SDK versions use the x-goog-api-key header.
  */
+export type ApiKeyScope = 'full' | 'public'
+
 export type ApiKeyContext = {
   Variables: {
     organizationId: string
-    projectId: string
+    /** Always present for `full` scope; null for `public` (workspace-level) keys. */
+    projectId: string | null
     apiKeyId: string
+    apiKeyScope: ApiKeyScope
   }
 }
 
@@ -65,9 +70,12 @@ export const authApiKey = createMiddleware<ApiKeyContext>(async (c, next) => {
 
   const keyHash = await sha256Hex(rawKey)
 
+  // Select both ownership columns + scope. The CHECK constraint in the
+  // migration guarantees exactly one of (project_id, organization_id) is
+  // non-null, so we can branch on scope without defensive validation.
   const { data, error } = await supabaseAdmin
     .from('api_keys')
-    .select('id, project_id, projects(organization_id)')
+    .select('id, project_id, organization_id, scope, projects(organization_id)')
     .eq('key_hash', keyHash)
     .eq('is_active', true)
     .single()
@@ -76,14 +84,27 @@ export const authApiKey = createMiddleware<ApiKeyContext>(async (c, next) => {
     return c.json({ error: 'Invalid API key' }, 401)
   }
 
-  const project = data.projects as unknown as { organization_id: string } | null
-  if (!project) {
-    return c.json({ error: 'Project not found' }, 401)
+  const scope: ApiKeyScope = (data.scope as string) === 'public' ? 'public' : 'full'
+
+  // Resolve organizationId based on scope:
+  //   full   → from projects join (api_keys.project_id → projects.organization_id)
+  //   public → directly from api_keys.organization_id
+  let organizationId: string | null = null
+  if (scope === 'full') {
+    const project = data.projects as unknown as { organization_id: string } | null
+    organizationId = project?.organization_id ?? null
+  } else {
+    organizationId = (data.organization_id as string | null) ?? null
+  }
+
+  if (!organizationId) {
+    return c.json({ error: 'API key has no owning organization' }, 401)
   }
 
   c.set('apiKeyId', data.id as string)
-  c.set('projectId', data.project_id as string)
-  c.set('organizationId', project.organization_id)
+  c.set('apiKeyScope', scope)
+  c.set('organizationId', organizationId)
+  c.set('projectId', (data.project_id as string | null) ?? null)
 
   return next()
 })
