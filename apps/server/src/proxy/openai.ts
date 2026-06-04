@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { stream } from 'hono/streaming'
 import { authApiKey, type ApiKeyContext } from '../middleware/authApiKey.js'
+import { requireFullScope } from '../middleware/requireFullScope.js'
 import { enforceQuota } from '../middleware/quota.js'
 import { proxyRateLimit } from '../middleware/rateLimit.js'
 import { calculateCost } from '../lib/cost.js'
@@ -19,6 +20,7 @@ const UPSTREAM_TIMEOUT_MS = parseInt(process.env['UPSTREAM_TIMEOUT_MS'] ?? '3500
 export const openaiProxy = new Hono<ApiKeyContext>()
 
 openaiProxy.use('*', authApiKey)
+openaiProxy.use('*', requireFullScope)
 openaiProxy.use('*', proxyRateLimit)
 openaiProxy.use('*', enforceQuota)
 
@@ -26,7 +28,11 @@ openaiProxy.all('/*', async (c) => {
   const handlerStartMs = Date.now()
 
   const organizationId = c.get('organizationId')
-  const projectId = c.get('projectId')
+  // projectId is guaranteed non-null on this path: requireFullScope rejects
+  // 'public' keys and the api_keys_scope_owner_consistency CHECK constraint
+  // forces 'full' keys to carry a project_id. Narrowing here is purely a
+  // TS aid since the dual-owner model made ApiKeyContext.projectId nullable.
+  const projectId = c.get('projectId') as string
   const apiKeyId = c.get('apiKeyId')
 
   // Nested-keys model: provider key pool is owned by this Spanlens key.

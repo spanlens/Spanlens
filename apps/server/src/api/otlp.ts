@@ -19,6 +19,7 @@
 
 import { Hono } from 'hono'
 import { authApiKey, type ApiKeyContext } from '../middleware/authApiKey.js'
+import { requireFullScope } from '../middleware/requireFullScope.js'
 import { supabaseAdmin } from '../lib/db.js'
 import {
   groupByTrace,
@@ -34,9 +35,11 @@ export const otlpRouter = new Hono<ApiKeyContext>()
 
 // ── POST /v1/traces ────────────────────────────────────────────────────────────
 
-otlpRouter.post('/v1/traces', authApiKey, async (c) => {
+otlpRouter.post('/v1/traces', authApiKey, requireFullScope, async (c) => {
   const organizationId = c.get('organizationId')
-  const projectId      = c.get('projectId')
+  // Narrowing: requireFullScope (mounted on this route) + DB CHECK constraint
+  // guarantee non-null here.
+  const projectId      = c.get('projectId') as string
   const apiKeyId       = c.get('apiKeyId')
 
   // Protobuf not supported — tell the client to use JSON

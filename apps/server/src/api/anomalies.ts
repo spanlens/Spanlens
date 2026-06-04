@@ -1,5 +1,6 @@
 import { Hono, type Context } from 'hono'
-import { authJwt, type JwtContext } from '../middleware/authJwt.js'
+import type { JwtContext } from '../middleware/authJwt.js'
+import { authJwtOrApiKey } from '../middleware/authJwtOrApiKey.js'
 import { requireRole } from '../middleware/requireRole.js'
 import { detectAnomalies, fetchContributingFactors } from '../lib/anomaly.js'
 import { getAnomalyHistory } from '../lib/anomaly-snapshot.js'
@@ -19,7 +20,7 @@ const requireEdit = requireRole('admin', 'editor')
 
 export const anomaliesRouter = new Hono<JwtContext>()
 
-anomaliesRouter.use('*', authJwt)
+anomaliesRouter.use('*', authJwtOrApiKey)
 
 const VALID_KINDS = new Set(['latency', 'cost', 'error_rate'])
 

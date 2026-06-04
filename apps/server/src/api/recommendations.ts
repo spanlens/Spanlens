@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
-import { authJwt, type JwtContext } from '../middleware/authJwt.js'
+import type { JwtContext } from '../middleware/authJwt.js'
+import { authJwtOrApiKey } from '../middleware/authJwtOrApiKey.js'
 import { recommendModelSwaps } from '../lib/model-recommend.js'
 import { getOrgClickhouse, toClickhouseTimestamp } from '../lib/clickhouse.js'
 import { requestsScope } from '../lib/requests-query.js'
@@ -28,7 +29,7 @@ import { parsePositiveFloat } from '../lib/params.js'
 
 export const recommendationsRouter = new Hono<JwtContext>()
 
-recommendationsRouter.use('*', authJwt)
+recommendationsRouter.use('*', authJwtOrApiKey)
 
 
 // ── Shape returned by ClickHouse percentiles query (all numbers as strings) ───

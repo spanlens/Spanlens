@@ -32,6 +32,7 @@ import {
   useIssueApiKey,
   useToggleApiKey,
   useDeleteApiKey,
+  usePublicKeys,
 } from '@/lib/queries/use-api-keys'
 import {
   useProviderKeys,
@@ -168,6 +169,13 @@ export function ProjectsClient() {
   const [issueName, setIssueName] = useState('')
   const [issueError, setIssueError] = useState<string | null>(null)
 
+  // Issue workspace-level public key dialog (separate from the per-project flow)
+  const [issuePublicDialogOpen, setIssuePublicDialogOpen] = useState(false)
+  const [issuePublicName, setIssuePublicName] = useState('')
+  const [issuePublicError, setIssuePublicError] = useState<string | null>(null)
+  const publicKeysQuery = usePublicKeys()
+  const publicKeys = publicKeysQuery.data ?? []
+
   // Rotate provider key dialog
   const [rotateProvKeyId, setRotateProvKeyId] = useState<string | null>(null)
   const [rotateProvNew, setRotateProvNew] = useState('')
@@ -264,6 +272,26 @@ export function ProjectsClient() {
       setIssueDialogOpen(false)
     } catch (err) {
       setIssueError(err instanceof Error ? err.message : 'Failed to issue key')
+    }
+  }
+
+  function openIssuePublicDialog() {
+    setIssuePublicName('')
+    setIssuePublicError(null)
+    setIssuePublicDialogOpen(true)
+  }
+
+  async function handleIssuePublicKey() {
+    setIssuePublicError(null)
+    try {
+      const result = await issueApiKey.mutateAsync({
+        name: issuePublicName.trim(),
+        scope: 'public',
+      })
+      setNewKey(result?.key ?? null)
+      setIssuePublicDialogOpen(false)
+    } catch (err) {
+      setIssuePublicError(err instanceof Error ? err.message : 'Failed to issue key')
     }
   }
 
@@ -376,12 +404,18 @@ export function ProjectsClient() {
     const akHit = allApiKeys.filter((k) =>
       k.name.toLowerCase().includes(needle) || provHitKeyIds.has(k.id),
     )
-    const akHitProjIds = new Set(akHit.map((k) => k.project_id))
+    // Public keys (project_id null) are surfaced in their own card above
+    // the project list — drop them from the search-narrowed project view.
+    const akHitProjIds = new Set(
+      akHit.map((k) => k.project_id).filter((id): id is string => id !== null),
+    )
     const projHit = allProjects.filter((p) =>
       p.name.toLowerCase().includes(needle) || akHitProjIds.has(p.id),
     )
     const projHitIds = new Set(projHit.map((p) => p.id))
-    const visibleApiKeys = allApiKeys.filter((k) => projHitIds.has(k.project_id))
+    const visibleApiKeys = allApiKeys.filter(
+      (k) => k.project_id !== null && projHitIds.has(k.project_id),
+    )
     const visibleApiKeyIds = new Set(visibleApiKeys.map((k) => k.id))
     const visibleProviderKeys = allProviderKeys.filter((pk) => visibleApiKeyIds.has(pk.api_key_id))
     return { projects: projHit, apiKeys: visibleApiKeys, providerKeys: visibleProviderKeys }
@@ -492,16 +526,10 @@ export function ProjectsClient() {
 
       <div>
         <div className="px-7 py-6 max-w-4xl">
-          <div className="mb-6">
-            <h1 className="text-[22px] font-semibold text-text tracking-[-0.4px] mb-1">
-              Projects & Keys
-            </h1>
-            <p className="text-[13px] text-text-muted">
-              Each Spanlens key holds its own AI provider keys. Expand a key to see and add OpenAI / Anthropic / Gemini keys it can call.
-            </p>
-          </div>
-
-          {/* New key banner */}
+          {/* New key banner — surfaces freshly minted keys (full OR public)
+              at the very top of the content, between the search bar and the
+              Public Keys card. The user just clicked "Create", so the
+              plaintext value should be the first thing they see. */}
           {newKey && (
             <div className="rounded-xl border border-good/30 bg-good-bg px-5 py-4 mb-6">
               <div className="flex items-center justify-between mb-3">
@@ -574,6 +602,95 @@ export function ProjectsClient() {
               </div>
             </div>
           )}
+
+          {/* Public Keys card — workspace-level credentials for MCP servers,
+              BI tools, and read embeds. Placed above the page title so it
+              reads as a distinct workspace-scope concept, separate from the
+              per-project key list below. */}
+          <div className="rounded-xl border border-border bg-bg-elev px-5 py-4 mb-6">
+            <div className="flex items-start justify-between gap-4 mb-3">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 mb-0.5">
+                  <h2 className="text-[14px] font-semibold text-text">Public keys</h2>
+                  <span className="font-mono text-[9.5px] uppercase tracking-[0.05em] px-1.5 py-0.5 rounded border border-border text-text-faint">
+                    workspace
+                  </span>
+                </div>
+                <p className="text-[12px] text-text-muted">
+                  Read-only credentials safe for MCP servers, BI tools, and embeds. Cannot make LLM calls or ingest traces.
+                </p>
+              </div>
+              <PermissionGate need="edit">
+                <PrimaryBtn
+                  onClick={openIssuePublicDialog}
+                  className="shrink-0 flex items-center gap-1.5 text-[12px] px-3 py-[5px] h-[28px]"
+                >
+                  <Plus className="h-3.5 w-3.5" /> New public key
+                </PrimaryBtn>
+              </PermissionGate>
+            </div>
+
+            {publicKeys.length === 0 ? (
+              <div className="rounded-md border border-dashed border-border px-4 py-3 text-[12px] text-text-faint">
+                No public keys yet. Generate one to read your workspace&apos;s stats from outside Spanlens.
+              </div>
+            ) : (
+              <ul className="divide-y divide-border rounded-md border border-border bg-bg/40">
+                {publicKeys.map((key) => (
+                  <li key={key.id} className="flex items-center gap-3 px-3 py-2.5">
+                    <KeyIcon className="h-3.5 w-3.5 text-text-faint shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <div
+                        className={cn(
+                          'text-[13px] font-medium truncate',
+                          !key.is_active && 'line-through text-text-faint',
+                        )}
+                      >
+                        {key.name}
+                      </div>
+                      <div className="font-mono text-[10.5px] text-text-faint mt-0.5">
+                        {key.key_prefix}…
+                        <span className="ml-2">
+                          {/* Date-relative — defer to client mount to keep SSR
+                              and first paint deterministic. Same pattern as the
+                              project-key list below; React Compiler's purity
+                              check trips on the simpler nesting here, so the
+                              rule is disabled inline rather than refactoring
+                              two identical readouts. */}
+                          {!mounted
+                            ? '· …'
+                            : key.last_used_at
+                              // eslint-disable-next-line react-hooks/purity
+                              ? `· last used ${Math.floor((Date.now() - Date.parse(key.last_used_at)) / 86_400_000)}d ago`
+                              : '· never used'}
+                        </span>
+                      </div>
+                    </div>
+                    <PermissionGate need="edit">
+                      <button
+                        type="button"
+                        onClick={() => deleteApiKey.mutate(key.id)}
+                        className="text-text-faint hover:text-bad transition-colors p-1"
+                        title="Revoke"
+                        aria-label="Revoke public key"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </PermissionGate>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
+          <div className="mb-6">
+            <h1 className="text-[22px] font-semibold text-text tracking-[-0.4px] mb-1">
+              Projects & Keys
+            </h1>
+            <p className="text-[13px] text-text-muted">
+              Each Spanlens key holds its own AI provider keys. Expand a key to see and add OpenAI / Anthropic / Gemini keys it can call.
+            </p>
+          </div>
 
           {/* Integration hint */}
           {!newKey && projects.length > 0 && (
@@ -921,6 +1038,63 @@ export function ProjectsClient() {
               disabled={!issueName.trim() || issueApiKey.isPending}
             >
               {issueApiKey.isPending ? 'Creating…' : 'Create key'}
+            </PrimaryBtn>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Issue workspace-level public key dialog */}
+      <Dialog
+        open={issuePublicDialogOpen}
+        onOpenChange={(open) => {
+          setIssuePublicDialogOpen(open)
+          if (!open) {
+            setIssuePublicName('')
+            setIssuePublicError(null)
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>New public key</DialogTitle>
+          </DialogHeader>
+          <DialogDescription className="text-[12.5px] text-text-muted mt-1">
+            Issues a{' '}
+            <code className="font-mono bg-bg-elev border border-border px-1 rounded text-[11px]">
+              sl_live_pub_…
+            </code>{' '}
+            key scoped to this workspace. Safe to paste into MCP servers, BI tools, or read-only embeds — it can only read dashboard data, never trigger LLM spend.
+          </DialogDescription>
+
+          <form
+            onSubmit={(e) => {
+              e.preventDefault()
+              void handleIssuePublicKey()
+            }}
+            className="space-y-4 mt-2"
+          >
+            <div className="space-y-1.5">
+              <label className="text-[12.5px] text-text-muted font-medium">Key name</label>
+              <input
+                value={issuePublicName}
+                onChange={(e) => setIssuePublicName(e.target.value)}
+                placeholder="e.g. Cursor MCP"
+                autoFocus
+                className="w-full h-9 px-3 rounded-[6px] border border-border bg-bg text-[13px] text-text placeholder:text-text-faint focus:outline-none focus:border-border-strong transition-colors"
+              />
+            </div>
+
+            {issuePublicError && (
+              <div className="rounded-md border border-bad/30 bg-bad/10 px-3 py-2 text-[12px] text-bad">
+                {issuePublicError}
+              </div>
+            )}
+
+            <PrimaryBtn
+              type="submit"
+              disabled={!issuePublicName.trim() || issueApiKey.isPending}
+            >
+              {issueApiKey.isPending ? 'Creating…' : 'Create public key'}
             </PrimaryBtn>
           </form>
         </DialogContent>

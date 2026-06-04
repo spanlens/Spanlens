@@ -1,12 +1,13 @@
 import { Hono } from 'hono'
-import { authJwt, type JwtContext } from '../middleware/authJwt.js'
+import type { JwtContext } from '../middleware/authJwt.js'
+import { authJwtOrApiKey } from '../middleware/authJwtOrApiKey.js'
 import { parsePageLimit } from '../lib/params.js'
 import { getUserAnalytics, type UserAnalyticsRow } from '../lib/stats-queries.js'
 import { requestsScope, selectRequests } from '../lib/requests-query.js'
 
 export const usersRouter = new Hono<JwtContext>()
 
-usersRouter.use('*', authJwt)
+usersRouter.use('*', authJwtOrApiKey)
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/v1/users — aggregate per-user usage

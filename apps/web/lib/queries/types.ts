@@ -42,11 +42,17 @@ export interface Project {
   updated_at?: string
 }
 
+export type ApiKeyScope = 'full' | 'public'
+
 export interface ApiKey {
   id: string
-  project_id: string
+  /** Null for `public` (workspace-level) keys. */
+  project_id: string | null
+  /** Set only for `public` keys. */
+  organization_id: string | null
   name: string
   key_prefix: string
+  scope: ApiKeyScope
   is_active: boolean
   last_used_at: string | null
   created_at: string
