@@ -71,6 +71,13 @@ export function renderInvitationEmail(params: {
 }): { subject: string; html: string } {
   const { orgName, inviterEmail, role, acceptUrl } = params
   const subject = `You're invited to ${orgName} on Spanlens`
+  // PLG Loop ⑤ — quiet brand footer. The invitee often hasn't heard of Spanlens
+  // before; one informational line tells them what they've been invited into
+  // without acting like an ad. Tone matches the waitlist email's closing.
+  // utm tags identify invite-driven traffic in marketing analytics.
+  const brandLink =
+    'https://www.spanlens.io?utm_source=invite_email&utm_medium=email&utm_campaign=plg'
+
   const html = `
     <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 560px; margin: 0 auto; padding: 24px; color: #111;">
       <h2 style="margin: 0 0 16px; font-size: 20px;">You're invited to <strong>${escapeHtml(orgName)}</strong></h2>
@@ -78,6 +85,9 @@ export function renderInvitationEmail(params: {
       <p style="margin: 24px 0;"><a href="${acceptUrl}" style="display: inline-block; padding: 10px 18px; background: #111; color: #fff; text-decoration: none; border-radius: 6px; font-weight: 500;">Accept invitation</a></p>
       <p style="margin: 16px 0 0; color: #888; font-size: 13px;">Or copy this link: <br/><span style="word-break: break-all;">${acceptUrl}</span></p>
       <p style="margin: 24px 0 0; color: #aaa; font-size: 12px;">This invitation expires in 7 days. If you weren't expecting it, you can safely ignore this email.</p>
+      <div style="margin-top: 28px; padding-top: 16px; border-top: 1px solid #eee; font-size: 11.5px; color: #aaa;">
+        <a href="${brandLink}" style="color: #aaa; text-decoration: none;">Spanlens</a> — open-source LLM observability
+      </div>
     </div>
   `.trim()
   return { subject, html }
