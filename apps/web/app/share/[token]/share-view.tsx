@@ -67,7 +67,7 @@ interface SharedRequestPayload {
 
 export function ShareView({ share }: ShareViewProps) {
   return (
-    <div className="min-h-screen bg-bg text-text">
+    <div className="min-h-screen bg-bg text-text [zoom:1.25]">
       <ShareHeader share={share} />
       <main className="max-w-5xl mx-auto px-6 py-8">
         {share.scope === 'trace' ? (
