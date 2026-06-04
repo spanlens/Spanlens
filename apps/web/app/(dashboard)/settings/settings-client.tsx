@@ -334,7 +334,7 @@ function BrandingSection({ plan, hideBadge }: { plan: string | null; hideBadge: 
           />
           {!canHide && (
             <Link
-              href="/settings/plan"
+              href="/settings?tab=plan"
               className="font-mono text-[11.5px] text-accent hover:opacity-80"
             >
               Upgrade →
