@@ -36,8 +36,13 @@ updates:
       - dependency-name: globals
         update-types: ["version-update:semver-major"]
     groups:
+      # Bundle every safe (minor + patch) bump into a single weekly PR.
+      # Majors land as individual PRs so each can be reviewed against
+      # its own breaking-change notes — TypeScript 6, zod 4, @types/node 25,
+      # @vitest/coverage-v8 4 all want code-level attention.
       all-deps:
         patterns: ["*"]
+        update-types: ["minor", "patch"]
 
   # Next.js web app
   - package-ecosystem: npm
@@ -56,8 +61,13 @@ updates:
       - dependency-name: globals
         update-types: ["version-update:semver-major"]
     groups:
+      # Bundle every safe (minor + patch) bump into a single weekly PR.
+      # Majors land as individual PRs so each can be reviewed against
+      # its own breaking-change notes — TypeScript 6, zod 4, @types/node 25,
+      # @vitest/coverage-v8 4 all want code-level attention.
       all-deps:
         patterns: ["*"]
+        update-types: ["minor", "patch"]
 
   # Hono server
   - package-ecosystem: npm
@@ -76,8 +86,13 @@ updates:
       - dependency-name: globals
         update-types: ["version-update:semver-major"]
     groups:
+      # Bundle every safe (minor + patch) bump into a single weekly PR.
+      # Majors land as individual PRs so each can be reviewed against
+      # its own breaking-change notes — TypeScript 6, zod 4, @types/node 25,
+      # @vitest/coverage-v8 4 all want code-level attention.
       all-deps:
         patterns: ["*"]
+        update-types: ["minor", "patch"]
 
   # JS/TS SDK
   - package-ecosystem: npm
@@ -96,8 +111,13 @@ updates:
       - dependency-name: globals
         update-types: ["version-update:semver-major"]
     groups:
+      # Bundle every safe (minor + patch) bump into a single weekly PR.
+      # Majors land as individual PRs so each can be reviewed against
+      # its own breaking-change notes — TypeScript 6, zod 4, @types/node 25,
+      # @vitest/coverage-v8 4 all want code-level attention.
       all-deps:
         patterns: ["*"]
+        update-types: ["minor", "patch"]
 
   # GitHub Actions
   - package-ecosystem: github-actions
