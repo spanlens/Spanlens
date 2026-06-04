@@ -32,13 +32,13 @@
   ],
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.18.0",
-    "zod": "^3.23.0"
+    "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@types/node": "^22.10.0",
-    "tsx": "^4.22.0",
-    "typescript": "^5.7.0",
-    "vitest": "^3.0.0"
+    "@types/node": "^25.9.1",
+    "tsx": "^4.22.4",
+    "typescript": "^6.0.3",
+    "vitest": "^3.2.6"
   },
   "repository": {
     "type": "git",
