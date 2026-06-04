@@ -1,0 +1,54 @@
+{
+  "name": "@spanlens/mcp-server",
+  "version": "0.1.0",
+  "description": "MCP server for Spanlens — query LLM cost, anomalies, traces, and per-user analytics from inside Cursor, Continue, or Claude Desktop.",
+  "type": "module",
+  "bin": {
+    "spanlens-mcp": "./dist/index.js"
+  },
+  "main": "./dist/index.js",
+  "files": ["dist", "README.md", "LICENSE"],
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "dev": "tsx src/index.ts",
+    "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
+    "prepublishOnly": "pnpm run clean && pnpm run build && pnpm run test"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "spanlens",
+    "llm-observability",
+    "cursor",
+    "claude-desktop",
+    "openai",
+    "anthropic",
+    "cost-tracking"
+  ],
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.18.0",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsx": "^4.22.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/spanlens/Spanlens.git",
+    "directory": "packages/mcp-server"
+  },
+  "homepage": "https://spanlens.io/docs/integrations/mcp",
+  "bugs": "https://github.com/spanlens/Spanlens/issues",
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  }
+}

@@ -181,11 +181,16 @@ app.route('/api/v1/prompts/playground', promptsPlaygroundRouter)
 app.route('/api/v1/prompts',        promptsRouter)
 app.route('/api/v1/prompt-experiments', promptExperimentsRouter)
 app.route('/api/v1/invitations', invitationsRouter)           // public GET /accept — must be before evalsRouter/humanEvalsRouter
+// Must be mounted BEFORE evalsRouter/humanEvalsRouter for the same reason
+// meRouter is: those two mount at the broad `/api/v1` prefix with
+// `.use('*', authJwt)`, so any route registered after them and matching
+// their wildcard gets the misleading "Invalid or expired token" 401
+// instead of running its own (here: dual JWT / sl_live_*) auth.
+app.route('/api/v1/recommendations', recommendationsRouter)
 app.route('/api/v1',                evalsRouter)
 app.route('/api/v1/datasets',       datasetsRouter)
 app.route('/api/v1/experiments',    experimentsRouter)
 app.route('/api/v1',                humanEvalsRouter)
-app.route('/api/v1/recommendations', recommendationsRouter)
 app.route('/api/v1/audit-logs',     auditLogsRouter)
 app.route('/api/v1/organizations/:orgId/members', membersRouter)
 app.route('/api/v1/organizations/:orgId/invitations', orgInvitationsRouter)
