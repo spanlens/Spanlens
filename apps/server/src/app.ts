@@ -54,6 +54,7 @@ import { adminModelPricesRouter } from './api/admin/modelPrices.js'
 import { adminModelRecommendationsRouter } from './api/admin/modelRecommendations.js'
 import { sharesRouter }           from './api/shares.js'
 import { publicShareRouter }      from './api/publicShare.js'
+import { badgeRouter }            from './api/badge.js'
 
 export const app = new Hono()
 
@@ -140,6 +141,7 @@ app.route('/webhooks',        paddleWebhookRouter)
 app.route('/api/v1/waitlist', waitlistRouter)
 app.route('/api/v1',          openapiRouter)   // GET /api/v1/openapi.json, GET /api/v1/docs
 app.route('/share',           publicShareRouter)  // PLG Loop ① — public share viewer, per-IP rate limited
+app.route('/badge',           badgeRouter)        // PLG Loop ③ — README badge SVG, per-IP rate limited
 
 // ── Dashboard API rate limit (120 req/min, all plans) ────────
 // Runs before authJwt using a token hash as the key — no extra

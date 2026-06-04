@@ -64,6 +64,13 @@ const nextConfig = {
         source: '/api/share-view/:token',
         destination: `${apiUrl}/share/:token`,
       },
+      // PLG Loop ③ — README badge SVG. Lives under the marketing domain
+      // (spanlens.io/badge/<org>.svg) so URLs pasted into READMEs hit the
+      // canonical site, not the server's bare host. Static SVG → CDN caches.
+      {
+        source: '/badge/:path*',
+        destination: `${apiUrl}/badge/:path*`,
+      },
     ]
   },
 
