@@ -17,6 +17,8 @@ vi.mock('../lib/db.js', () => ({
               data: {
                 id: 'key-1',
                 project_id: 'proj-1',
+                organization_id: null,
+                scope: 'full',
                 projects: { organization_id: 'org-1' },
               },
               error: null,
@@ -48,6 +50,8 @@ vi.mock('../lib/db.js', () => ({
                   data: {
                     id: 'key-1',
                     project_id: 'proj-1',
+                    organization_id: null,
+                    scope: 'full',
                     projects: { organization_id: 'org-1' },
                   },
                   error: null,
@@ -70,6 +74,7 @@ function buildApp() {
       ok: true,
       orgId: c.get('organizationId'),
       projectId: c.get('projectId'),
+      scope: c.get('apiKeyScope'),
     }),
   )
   return app
@@ -83,9 +88,11 @@ describe('authApiKey — accepted transports', () => {
       headers: { Authorization: `Bearer ${VALID_KEY}` },
     })
     expect(res.status).toBe(200)
-    const body = (await res.json()) as { ok: boolean; orgId: string }
+    const body = (await res.json()) as { ok: boolean; orgId: string; scope: string }
     expect(body.ok).toBe(true)
     expect(body.orgId).toBe('org-1')
+    // scope is populated on the context so downstream guards can read it.
+    expect(body.scope).toBe('full')
   })
 
   test('x-api-key passes', async () => {

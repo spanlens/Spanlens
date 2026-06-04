@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { stream } from 'hono/streaming'
 import { authApiKey, type ApiKeyContext } from '../middleware/authApiKey.js'
+import { requireFullScope } from '../middleware/requireFullScope.js'
 import { enforceQuota } from '../middleware/quota.js'
 import { proxyRateLimit } from '../middleware/rateLimit.js'
 import { calculateCost } from '../lib/cost.js'
@@ -18,6 +19,7 @@ const UPSTREAM_TIMEOUT_MS = parseInt(process.env['UPSTREAM_TIMEOUT_MS'] ?? '3500
 export const geminiProxy = new Hono<ApiKeyContext>()
 
 geminiProxy.use('*', authApiKey)
+geminiProxy.use('*', requireFullScope)
 geminiProxy.use('*', proxyRateLimit)
 geminiProxy.use('*', enforceQuota)
 
@@ -25,7 +27,8 @@ geminiProxy.all('/*', async (c) => {
   const handlerStartMs = Date.now()
 
   const organizationId = c.get('organizationId')
-  const projectId = c.get('projectId')
+  // Narrowing: requireFullScope + DB CHECK constraint guarantee non-null. See openai.ts.
+  const projectId = c.get('projectId') as string
   const apiKeyId = c.get('apiKeyId')
 
   const providerKey = await getDecryptedProviderKey(apiKeyId, 'gemini')

@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
-import { authJwt, type JwtContext } from '../middleware/authJwt.js'
+import type { JwtContext } from '../middleware/authJwt.js'
+import { authJwtOrApiKey } from '../middleware/authJwtOrApiKey.js'
 import { requireRole } from '../middleware/requireRole.js'
 import { getDecryptedProviderKeyById, getDecryptedProviderKey } from '../proxy/utils.js'
 import { calculateCost } from '../lib/cost.js'
@@ -16,7 +17,7 @@ import { fromClickhouseTimestamp } from '../lib/clickhouse.js'
 
 export const requestsRouter = new Hono<JwtContext>()
 
-requestsRouter.use('*', authJwt)
+requestsRouter.use('*', authJwtOrApiKey)
 
 // Columns surfaced in the list view. Kept in sync with the response contract
 // the dashboard expects (provider_key_name is flattened from provider_keys.name

@@ -1,12 +1,13 @@
 import { Hono } from 'hono'
-import { authJwt, type JwtContext } from '../middleware/authJwt.js'
+import type { JwtContext } from '../middleware/authJwt.js'
+import { authJwtOrApiKey } from '../middleware/authJwtOrApiKey.js'
 import { supabaseAdmin } from '../lib/db.js'
 import { computeCriticalPath } from '../lib/critical-path.js'
 import { parsePageLimit } from '../lib/params.js'
 
 export const tracesRouter = new Hono<JwtContext>()
 
-tracesRouter.use('*', authJwt)
+tracesRouter.use('*', authJwtOrApiKey)
 
 // GET /api/v1/traces — list traces with filters + pagination
 // Query params: projectId, status, from, to, q (name or trace-id substring),
