@@ -1,6 +1,7 @@
 {
   "name": "@spanlens/mcp-server",
-  "version": "0.1.0",
+  "version": "0.1.1",
+  "mcpName": "io.github.spanlens/mcp-server",
   "description": "MCP server for Spanlens — query LLM cost, anomalies, traces, and per-user analytics from inside Cursor, Continue, or Claude Desktop.",
   "type": "module",
   "bin": {
