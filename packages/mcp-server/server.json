@@ -1,0 +1,37 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.spanlens/mcp-server",
+  "description": "MCP server for Spanlens — query LLM cost, anomalies, traces, and per-user analytics from inside Cursor, Continue, or Claude Desktop.",
+  "repository": {
+    "url": "https://github.com/spanlens/Spanlens",
+    "source": "github",
+    "subfolder": "packages/mcp-server"
+  },
+  "version": "0.1.1",
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "@spanlens/mcp-server",
+      "version": "0.1.1",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "SPANLENS_API_KEY",
+          "description": "Spanlens API key. Must be a scope=public key (sl_live_pub_*) issued from the Public Keys card at https://spanlens.io/projects — the server refuses to start with a full-access sl_live_* key.",
+          "isRequired": true,
+          "format": "string",
+          "isSecret": true
+        },
+        {
+          "name": "SPANLENS_BASE_URL",
+          "description": "Override the API endpoint for self-hosted Spanlens. Default: https://api.spanlens.io",
+          "isRequired": false,
+          "format": "string",
+          "default": "https://api.spanlens.io"
+        }
+      ]
+    }
+  ]
+}
