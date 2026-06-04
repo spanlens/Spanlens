@@ -127,10 +127,54 @@ export function registerTools(server: McpServer, client: SpanlensClient): void {
     },
   )
 
-  // ── 3. get_trace ────────────────────────────────────────────────────────
+  // ── 3. list_traces ──────────────────────────────────────────────────────
+  // Closes the discovery loop for get_trace — without this, a user has to
+  // know a trace UUID from elsewhere before they can pull the span tree.
+  // The most common workflow ("show me my agent runs and let me drill in")
+  // needs both tools.
+  server.tool(
+    'list_traces',
+    'List agent traces with optional filters. Use to discover trace IDs to feed into get_trace, or to scan recent agent runs. Returns trace summaries (name, status, duration, span count, total tokens, total cost). Does NOT include individual span data — call get_trace with a trace ID for that.',
+    {
+      limit: z
+        .number()
+        .int()
+        .min(1)
+        .max(100)
+        .optional()
+        .describe('Max traces to return. Default 20, max 100.'),
+      status: z
+        .enum(['running', 'completed', 'error'])
+        .optional()
+        .describe('Filter by trace status.'),
+      since: z
+        .string()
+        .optional()
+        .describe('ISO 8601 lower bound on `started_at`. Only return traces that started at or after this time.'),
+      query: z
+        .string()
+        .optional()
+        .describe('Substring match on trace name or trace id.'),
+    },
+    async ({ limit, status, since, query }) => {
+      try {
+        const data = await client.get('/api/v1/traces', {
+          limit: limit ?? 20,
+          status,
+          from: since,
+          q: query,
+        })
+        return formatJson(data)
+      } catch (err) {
+        return formatError(err)
+      }
+    },
+  )
+
+  // ── 4. get_trace ────────────────────────────────────────────────────────
   server.tool(
     'get_trace',
-    'Fetch the full span tree for a single agent trace by id — every llm/tool/retrieval span with timing, tokens, and cost. Use when the user names a trace, asks why one was slow, or asks what an agent did step by step.',
+    'Fetch the full span tree for a single agent trace by id — every llm/tool/retrieval span with timing, tokens, and cost. Use when the user names a trace, asks why one was slow, or asks what an agent did step by step. Pair with list_traces if you need to discover the trace id first.',
     {
       traceId: z.string().describe('UUID of the trace.'),
     },

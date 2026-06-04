@@ -95,9 +95,13 @@ requestsRouter.get('/', async (c) => {
   if (from)            { filters.push('created_at >= parseDateTime64BestEffort({from:String})'); params['from'] = from }
   if (to)              { filters.push('created_at <= parseDateTime64BestEffort({to:String})'); params['to'] = to }
 
-  if (status === 'ok')        filters.push('status_code < 400')
-  else if (status === '4xx')  filters.push('status_code >= 400 AND status_code < 500')
-  else if (status === '5xx')  filters.push('status_code >= 500')
+  // Accept friendly `success`/`error` synonyms alongside the original
+  // `ok`/`4xx`/`5xx` enum so callers without HTTP intuition (MCP tools,
+  // BI dashboards) can filter without knowing status-code ranges.
+  if (status === 'ok' || status === 'success')   filters.push('status_code < 400')
+  else if (status === '4xx')                     filters.push('status_code >= 400 AND status_code < 500')
+  else if (status === '5xx')                     filters.push('status_code >= 500')
+  else if (status === 'error')                   filters.push('status_code >= 400')
 
   // ?truncated=true  → only rows that hit the stream deadline
   // ?truncated=false → only rows that completed cleanly
