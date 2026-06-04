@@ -1,0 +1,61 @@
+name: Publish @spanlens/mcp-server
+
+# Triggers:
+#   • push a git tag like `mcp-server-v0.1.0` → automated publish
+#   • manual via workflow_dispatch
+#
+# Reuses the NPM_TOKEN secret. Requires the token to grant publish on
+# @spanlens scope (or specifically on @spanlens/mcp-server). Same scope
+# as @spanlens/cli and @spanlens/sdk, so the existing Granular token's
+# scope-wide selection works without rotation.
+
+on:
+  push:
+    tags:
+      - 'mcp-server-v*'
+  workflow_dispatch:
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write  # npm provenance attestation
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10.33.0
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Test MCP server
+        run: pnpm --filter @spanlens/mcp-server test
+
+      - name: Build MCP server
+        run: pnpm --filter @spanlens/mcp-server build
+
+      - name: Publish to npm
+        working-directory: packages/mcp-server
+        run: |
+          if [ -z "$NPM_TOKEN" ]; then
+            echo "::error::NPM_TOKEN secret is empty or not forwarded"
+            exit 1
+          fi
+          # Write the token to a package-local .npmrc and pass it explicitly
+          # via --userconfig. The setup-node action plants NPM_CONFIG_USERCONFIG
+          # pointing at its own .npmrc, which would shadow the file we wrote
+          # if we relied on the default lookup (CLAUDE.md CI gotcha #1).
+          printf '//registry.npmjs.org/:_authToken=%s\n' "$NPM_TOKEN" > .npmrc
+          unset NPM_CONFIG_USERCONFIG
+          npm publish --provenance --access public --userconfig "$PWD/.npmrc"
+          rm -f .npmrc
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
