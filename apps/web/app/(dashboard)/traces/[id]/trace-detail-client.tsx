@@ -5,6 +5,7 @@ import { Topbar } from '@/components/layout/topbar'
 import { Skeleton } from '@/components/ui/skeleton'
 import { TracePanel } from '@/components/traces/trace-panel'
 import { useTrace } from '@/lib/queries/use-traces'
+import { ShareDialog } from '@/components/share/share-dialog'
 
 function loadNavIds(): string[] {
   if (typeof window === 'undefined') return []
@@ -71,28 +72,27 @@ export function TraceDetailClient({ id }: { id: string }) {
           { label: crumbLabel },
         ]}
         right={
-          prevId || nextId ? (
-            <div className="flex items-center gap-2">
-              {prevId && (
-                <button
-                  type="button"
-                  onClick={() => router.push(`/traces/${prevId}`)}
-                  className="font-mono text-[11px] px-[9px] py-1 border border-border rounded-[5px] text-text-muted hover:border-border-strong transition-colors"
-                >
-                  ← prev
-                </button>
-              )}
-              {nextId && (
-                <button
-                  type="button"
-                  onClick={() => router.push(`/traces/${nextId}`)}
-                  className="font-mono text-[11px] px-[9px] py-1 border border-border rounded-[5px] text-text-muted hover:border-border-strong transition-colors"
-                >
-                  next →
-                </button>
-              )}
-            </div>
-          ) : undefined
+          <div className="flex items-center gap-2">
+            {prevId && (
+              <button
+                type="button"
+                onClick={() => router.push(`/traces/${prevId}`)}
+                className="font-mono text-[11px] px-[9px] py-1 border border-border rounded-[5px] text-text-muted hover:border-border-strong transition-colors"
+              >
+                ← prev
+              </button>
+            )}
+            {nextId && (
+              <button
+                type="button"
+                onClick={() => router.push(`/traces/${nextId}`)}
+                className="font-mono text-[11px] px-[9px] py-1 border border-border rounded-[5px] text-text-muted hover:border-border-strong transition-colors"
+              >
+                next →
+              </button>
+            )}
+            <ShareDialog scope="trace" targetId={id} variant="primary" />
+          </div>
         }
       />
       <div className="flex-1 overflow-hidden">

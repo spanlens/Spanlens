@@ -370,6 +370,19 @@ async function main(): Promise<void> {
     'Next steps',
   )
 
+  // ── Step 9: welcome message — PLG Loop ④ ─────────────────────────
+  // Subtle GitHub Star CTA after a successful init. Stars are evaluator-
+  // first social proof for OSS projects; every init is one chance to ask.
+  // Single strong CTA + one quiet secondary link — anything more dilutes.
+  // utm_source distinguishes init traffic from other channels in GH analytics.
+  p.log.message('')
+  p.log.message(
+    `${pc.yellow('★')}  Star Spanlens on GitHub:  ${pc.underline('https://github.com/spanlens/Spanlens?utm_source=cli_init')}`,
+  )
+  p.log.message(
+    pc.dim(`   Read the docs:           https://spanlens.io/docs`),
+  )
+
   p.outro(pc.green('🎉 Spanlens setup complete'))
 }
 

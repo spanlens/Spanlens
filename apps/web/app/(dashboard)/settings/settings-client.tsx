@@ -23,6 +23,7 @@ import {
   useUpdateOrganization,
   useUpdateOverageSettings,
   useUpdateSecuritySettings,
+  useUpdateBrandingSettings,
 } from '@/lib/queries/use-organization'
 import {
   useSubscription,
@@ -267,6 +268,9 @@ function GeneralTab() {
         </FormRow>
       </Section>
 
+      {isAdmin && <BrandingSection plan={plan ?? null} hideBadge={org?.hide_powered_by_badge ?? false} />}
+      {org && <EmbedBadgeSection orgId={org.id} />}
+
       <Section title="Data retention" description="Log retention is determined by your plan" className="mb-5">
         <FormRow label="Current retention">
           <div className="font-mono text-[12.5px] text-text-muted">
@@ -289,6 +293,121 @@ function GeneralTab() {
         </div>
       </Section>
     </div>
+  )
+}
+
+// ─── Branding (share footer) — PLG Loop ② ────────────────────────────────────
+
+function BrandingSection({ plan, hideBadge }: { plan: string | null; hideBadge: boolean }) {
+  const update = useUpdateBrandingSettings()
+  const canHide = plan === 'team' || plan === 'enterprise'
+  const [error, setError] = useState<string | null>(null)
+
+  async function handleToggle() {
+    setError(null)
+    try {
+      await update.mutateAsync({ hide_powered_by_badge: !hideBadge })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Update failed')
+    }
+  }
+
+  return (
+    <Section
+      title="Share branding"
+      description='Public share pages show an "Observed by Spanlens" footer.'
+      className="mb-5"
+    >
+      <FormRow
+        label="Hide Spanlens footer"
+        hint={
+          canHide
+            ? 'Removes the footer from /share/<token> pages your workspace creates.'
+            : 'Available on the Team plan. The footer is part of how we keep Free and Starter sustainable.'
+        }
+      >
+        <div className="flex items-center gap-3">
+          <Toggle
+            on={canHide && hideBadge}
+            disabled={!canHide || update.isPending}
+            onToggle={handleToggle}
+          />
+          {!canHide && (
+            <Link
+              href="/settings/plan"
+              className="font-mono text-[11.5px] text-accent hover:opacity-80"
+            >
+              Upgrade →
+            </Link>
+          )}
+        </div>
+      </FormRow>
+      {error && (
+        <div className="px-6 pb-4 -mt-2 font-mono text-[11.5px] text-status-error">
+          {error}
+        </div>
+      )}
+    </Section>
+  )
+}
+
+// ─── Embed badge (README SVG) — PLG Loop ③ ───────────────────────────────────
+
+function EmbedBadgeSection({ orgId }: { orgId: string }) {
+  // Snippet always points at the canonical production domain so users don't
+  // accidentally paste a localhost URL into their README during local dev.
+  const snippetUrl = `https://www.spanlens.io/badge/${orgId}.svg`
+  const markdown = `[![Observed by Spanlens](${snippetUrl})](https://www.spanlens.io)`
+  const [copied, setCopied] = useState(false)
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(markdown)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    } catch {
+      // Older browsers / non-secure contexts — fall through silently. User can
+      // still select-all manually.
+    }
+  }
+
+  return (
+    <Section
+      title="README badge"
+      description="Show off Spanlens observability on your repo. Paste this snippet into your project's README."
+      className="mb-5"
+    >
+      <FormRow label="Markdown" hint="Renders as the badge above on GitHub, GitLab, and npm.">
+        <div className="flex flex-col gap-2 w-full max-w-[640px]">
+          <div className="flex items-center gap-3">
+            {/* Preview uses same-origin so devs see the actual rendered SVG
+                even before the change ships to production. Plain <img> is
+                deliberate — next/image is overkill for a 148x20 static SVG
+                served straight from the server with long cache headers. */}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={`/badge/${orgId}.svg`}
+              alt="Observed by Spanlens"
+              width={148}
+              height={20}
+              className="h-5"
+            />
+          </div>
+          <textarea
+            readOnly
+            value={markdown}
+            onFocus={(e) => e.currentTarget.select()}
+            className="w-full px-3 py-2 border border-border rounded-md bg-bg-elevated font-mono text-[11.5px] resize-none"
+            rows={2}
+          />
+          <div className="flex">
+            <GhostBtn onClick={copy}>
+              {copied ? 'Copied' : 'Copy markdown'}
+            </GhostBtn>
+          </div>
+        </div>
+      </FormRow>
+    </Section>
   )
 }
 

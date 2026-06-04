@@ -61,6 +61,30 @@ export interface SecuritySettingsUpdate {
   leak_detection_enabled?: boolean
 }
 
+export interface BrandingSettingsUpdate {
+  hide_powered_by_badge: boolean
+}
+
+/**
+ * PATCH /api/v1/organizations/me/branding — toggle the "Observed by Spanlens"
+ * share footer (PLG Loop ②). Server returns 402 if the org is not on team+.
+ */
+export function useUpdateBrandingSettings() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (update: BrandingSettingsUpdate) => {
+      const res = await apiPatch<ApiEnvelope<Organization>>(
+        '/api/v1/organizations/me/branding',
+        update,
+      )
+      return res.data
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: organizationQueryKey })
+    },
+  })
+}
+
 /**
  * PATCH /api/v1/organizations/me/security — notification-only key security
  * settings (stale-key digest, GitGuardian leak detection). Neither auto-revokes
