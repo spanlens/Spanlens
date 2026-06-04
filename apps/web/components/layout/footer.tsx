@@ -61,7 +61,7 @@ export function Footer() {
           <div>
             <div className="text-text-faint mb-2 tracking-[0.05em] uppercase text-[10px]">Open Source</div>
             <div className="flex flex-col gap-1.5">
-              <a href="https://github.com/sunes26/Spanlens" target="_blank" rel="noopener noreferrer" className="hover:text-text transition-colors">GitHub</a>
+              <a href="https://github.com/spanlens/Spanlens" target="_blank" rel="noopener noreferrer" className="hover:text-text transition-colors">GitHub</a>
               <Link href="/docs/self-host" className="hover:text-text transition-colors">Self-host</Link>
             </div>
           </div>

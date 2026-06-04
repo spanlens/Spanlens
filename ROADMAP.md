@@ -111,7 +111,7 @@
 - [x] Paddle Sandbox end-to-end 검증 (signup → upgrade → Paddle.js 오버레이 → webhook → plan=starter, status=active) — 테스트 카드 `4242 4242 4242 4242` 로 전체 플로우 성공. `transaction.completed` 핸들러가 `fetchPaddleSubscription` 으로 billing period 보강하도록 수정 완료.
 - [ ] **Paddle 프로덕션 KYC 통과** + Production price ID 환경변수 전환 — **외부 의존, 유저 작업**. 사업자등록증 + 신분증 + 웹사이트 URL + 이용약관 제출 → 심사 1~2주.
 - [ ] 에이전트 트레이싱 **내부 dogfood** 프로젝트 3개+ (본인 프로젝트들을 Spanlens로 관측) — **점진적**. SDK 배포 완료됐으므로 실제 서비스에 연결만 하면 됨. 현재 `projects=1, traces=0`.
-- [x] **셀프호스팅 공식 Docker 이미지** `docker pull ghcr.io/sunes26/spanlens-server:latest` 배포 — multi-stage node:22-alpine, non-root user, HEALTHCHECK 포함. `.github/workflows/docker-publish.yml` 로 amd64+arm64 자동 빌드. 3m 43s 소요. (※ GHCR 패키지 public 전환은 유저 수동 작업.)
+- [x] **셀프호스팅 공식 Docker 이미지** `docker pull ghcr.io/spanlens/spanlens-server:latest` 배포 — multi-stage node:22-alpine, non-root user, HEALTHCHECK 포함. `.github/workflows/docker-publish.yml` 로 amd64+arm64 자동 빌드. 3m 43s 소요. (※ GHCR 패키지 public 전환은 유저 수동 작업.)
 - [x] 스트리밍/논스트리밍 토큰·비용 ±1% 오차 유지 — server 39 + sdk 28 = 총 67 테스트 그린. OpenAI 프로덕션 streaming e2e 검증 완료.
 - [x] SDK npm publish 완료 — `@spanlens/sdk@0.1.0` (로컬 수동 publish) + `@spanlens/sdk@0.1.1` (CI 자동 publish, provenance 포함). `sdk-v*` 태그 푸시 시 `publish-sdk.yml` 자동 실행. LangChain/LlamaIndex 실기기 검증은 dogfood 단계에서 수행 예정.
 - [x] 보안: Provider Key 로그 노출 정적 스캔 0건 (test-e2e.ts도 마스킹 처리), RLS 누락 테이블 0건 (`SELECT FROM pg_tables WHERE rowsecurity=false AND schemaname='public'` = 빈 결과).
@@ -422,7 +422,7 @@ Product Hunt + HN + 커뮤니티 동시 런치. Phase 1~3에서 쌓은 차별화
 - [x] `db.ts` 에러 메시지 개선 — 어느 env var 빠졌는지 구체적으로 출력
 - [x] `docker-compose.yml` → `docker-compose.dev.yml` 이름 변경 (dev 전용 명시)
 - [x] `/docs/self-host` 재작성 — "plain Postgres 지원" 허위 주장 제거, "early access" 배너, Supabase 필수 + CLI 마이그레이션 스텝 + 각 gap을 inline 경고로 명시
-- [x] **GHCR 패키지를 public으로 전환** — 완료 (2026-04-22). 공식 이미지 `docker pull ghcr.io/sunes26/spanlens-server:latest` → 부팅 + `/health` 200 검증됨
+- [x] **GHCR 패키지를 public으로 전환** — 완료 (2026-04-22). 공식 이미지 `docker pull ghcr.io/spanlens/spanlens-server:latest` → 부팅 + `/health` 200 검증됨
 - [ ] 마이그레이션 번들 — `spanlens-migrate` Docker 이미지 또는 entrypoint 스크립트로 자동 적용 (현재는 유저가 repo clone + supabase CLI 설치 + `db push` 수동)
 - [ ] `spanlens-web` Docker 이미지 publish — 현재 workflow 없음. web 대시보드도 self-host 가능하게 별도 이미지 빌드 필요 (docs 주장과 일치시키기)
 - [ ] Plain Postgres 지원 — `@supabase/supabase-js` 직접 의존 제거, 얇은 abstraction layer 도입 (리팩토링 큼, 런칭 후 이관)

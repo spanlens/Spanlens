@@ -25,7 +25,7 @@ export const SPEC: OpenAPIV3.Document = {
     description:
       'REST API for Spanlens LLM observability. All authenticated endpoints require a Supabase JWT in `Authorization: Bearer <token>`. Proxy endpoints use a Spanlens API key.',
     contact: { email: 'support@spanlens.io' },
-    license: { name: 'MIT', url: 'https://github.com/sunes26/Spanlens/blob/main/LICENSE' },
+    license: { name: 'MIT', url: 'https://github.com/spanlens/Spanlens/blob/main/LICENSE' },
   },
   externalDocs: {
     description: 'Full documentation',
