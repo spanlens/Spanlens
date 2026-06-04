@@ -55,6 +55,22 @@ const nextConfig = {
         source: '/api/:path*',
         destination: `${apiUrl}/api/:path*`,
       },
+      // PLG Loop ① — the share page (web) calls the server's public viewer at
+      // /share/:token via an XHR. Same-origin rewrite keeps it simple; the
+      // server route is rate-limited per-IP so direct access is also safe.
+      // We expose the API path under /api/share-view/* to avoid colliding
+      // with the Next.js page route at /share/[token].
+      {
+        source: '/api/share-view/:token',
+        destination: `${apiUrl}/share/:token`,
+      },
+      // PLG Loop ③ — README badge SVG. Lives under the marketing domain
+      // (spanlens.io/badge/<org>.svg) so URLs pasted into READMEs hit the
+      // canonical site, not the server's bare host. Static SVG → CDN caches.
+      {
+        source: '/badge/:path*',
+        destination: `${apiUrl}/badge/:path*`,
+      },
     ]
   },
 

@@ -28,6 +28,8 @@ export interface Organization {
   stale_key_threshold_days: number
   /** Notification-only: GitGuardian HasMySecretLeaked daily scan. Off by default. */
   leak_detection_enabled: boolean
+  /** PLG Loop ② — Team+ may hide the "Observed by Spanlens" share footer. */
+  hide_powered_by_badge: boolean
   created_at: string
   updated_at: string
 }

@@ -16,6 +16,10 @@ export default function robots(): MetadataRoute.Robots {
           '/signup',
           '/verify-email',
           '/invite/',
+          // PLG Loop ① — share pages default to noindex via per-page Metadata.
+          // Disallowed here as defence in depth; opt-in indexable shares rely
+          // on the per-page robots meta and direct manual links still work.
+          '/share/',
         ],
       },
       { userAgent: 'GPTBot', allow: '/' },
