@@ -45,12 +45,15 @@ supabase db reset # 로컬 DB 초기화 (주의: 전체 삭제)
 | packages/sdk | pnpm --filter sdk build && typecheck |
 | 크로스 패키지 변경 | pnpm typecheck && pnpm lint (전체) |
 ## 인증 계층 — YOU MUST FOLLOW
-/proxy/* 경로 → authApiKey 미들웨어 (API Key SHA-256 해시 검증)
-/api/* 경로 → authJwt 미들웨어 (Supabase JWT)
-/api/v1/me/key-info → authApiKey (CLI introspection — JWT 없이 sl_live_* 만 검증)
+/proxy/* 경로 → authApiKey + **requireFullScope** (sl_live_* full 키만 통과, sl_live_pub_*는 403 `PUBLIC_KEY_WRITE_FORBIDDEN`)
+/ingest/* 경로 → authApiKey + requireFullScope (동일)
+/v1/traces (OTLP) → authApiKey + requireFullScope (동일)
+/api/v1/{stats, requests, users, traces, anomalies, recommendations} → **authJwtOrApiKey** (Supabase JWT 또는 sl_live_* — full/public 둘 다 통과)
+/api/v1/me/key-info → authApiKey (CLI introspection — JWT 없이 sl_live_* 만 검증, scope 응답에 포함)
+/api/* 그 외 → authJwt (Supabase JWT)
 DB 쓰기(로깅) → supabaseAdmin (service_role, RLS bypass)
 DB 읽기(조회) → supabaseClient (anon key, RLS 적용)
-두 미들웨어 절대 혼용 금지.
+미들웨어 혼용 금지. dual-auth가 필요한 read API는 `authJwtOrApiKey` 한 곳만 사용.
 
 ### 통합 키(unified key) 모델 — 2026-05-05부터
 - `api_keys.provider_key_id` **컬럼 없음** (마이그레이션 20260505040000_unified_keys로 제거).
@@ -61,6 +64,14 @@ DB 읽기(조회) → supabaseClient (anon key, RLS 적용)
 - 같은 `(project_id, provider)`에 active=true 키 1개만 허용 (UNIQUE INDEX).
 - 새 provider key 발급/조회: `apps/server/src/api/providerKeys.ts` (`/api/v1/provider-keys`).
 - 새 Spanlens key 발급/조회: `apps/server/src/api/apiKeys.ts` (`/api/v1/api-keys`) — provider 정보 더 이상 안 받음.
+
+### Public scope 모델 — 2026-06-04부터 (마이그레이션 20260604040000)
+- `api_keys.scope` text NOT NULL DEFAULT `'full'` CHECK in (`'full'`, `'public'`).
+- **scope=full**: `sl_live_<hex>` 프리픽스, **project-scoped** (`project_id` NOT NULL, `organization_id` NULL). 기존 동작 동일 — proxy/ingest + read 다 허용.
+- **scope=public**: `sl_live_pub_<hex>` 프리픽스, **workspace-scoped** (`project_id` NULL, `organization_id` NOT NULL). read만 허용, proxy/ingest는 403. MCP 서버·BI 도구·공개 read 임베드처럼 키가 평문 노출되는 위치에 안전.
+- `api_keys_scope_owner_consistency` CHECK constraint가 (scope, project_id, organization_id) 3개 컬럼 정합성을 DB 레벨에서 강제. app-layer 버그로 깨진 row 생성 불가능.
+- `/projects` 페이지 상단 "Public Keys" 카드에서 발급. 발급 시 organization 단위.
+- PII 마스킹: 기존 `sl_live_` 패턴이 `sl_live_pub_*`까지 자동 매칭 (`lib/pii-mask.ts`) — 별도 처리 불필요.
 ## 보안 규칙 — IMPORTANT (위반 시 보안 사고)
 1. Provider Key(실제 OpenAI/Anthropic key) 절대 로그 출력 금지
 2. Provider Key 복호화: apps/server/src/lib/crypto.ts의 aes256Decrypt()만 사용
@@ -90,8 +101,11 @@ lib/clickhouse.ts — ClickHouse 싱글톤 + toClickhouseTimestamp() 헬퍼
 lib/requests-query.ts — requestsScope / selectRequests / countRequests / getOrgPlan / fetchProviderKeyNames (모든 requests 읽기는 여기 경유)
 lib/stats-queries.ts — getStatsOverview / getStatsModels / getStatsTimeseries / getLatencyPercentiles / getSecuritySummary / getUserAnalytics (구 Postgres RPC 대체)
 lib/anomaly.ts — detectAnomalies / fetchContributingFactors (구 detect_anomaly_stats / get_anomaly_factors RPC 대체, 인라인 ClickHouse SQL)
-lib/pii-mask.ts — maskApiKeys / maskApiKeysInBody (sk-, sk-ant-, sk-proj-, AIza, sl_live_ 패턴 마스킹)
+lib/pii-mask.ts — maskApiKeys / maskApiKeysInBody (sk-, sk-ant-, sk-proj-, AIza, sl_live_ 패턴 마스킹 — `sl_live_pub_*` 까지 자동 커버)
 lib/resolve-prompt-version.ts — X-Spanlens-Prompt-Version 헤더 파싱 (name@version / name@latest / UUID)
+middleware/authApiKey.ts — sl_live_* 키 검증 + scope 추출 + organizationId/projectId set (full은 projects join, public은 organization_id 직접). 모든 proxy/ingest/OTLP의 첫 게이트.
+middleware/requireFullScope.ts — scope=public이면 403 + `PUBLIC_KEY_WRITE_FORBIDDEN`. authApiKey 다음에 mount해서 write 라우터에만 적용 (proxy/* + ingest/* + OTLP /v1/traces).
+middleware/authJwtOrApiKey.ts — `/api/v1/*` read 라우터용 dual-auth. Authorization 헤더가 `Bearer sl_live_*`면 authApiKey + orgId bridge, 그 외엔 authJwt. 기존 read 핸들러는 `c.get('orgId')`만 읽으면 둘 다 호환.
 parsers/openai.ts — OpenAI 스트림 파서 (마지막 chunk에 usage)
 parsers/anthropic.ts — Anthropic 파서 (message_delta에 usage, OpenAI와 다름!)
 parsers/gemini.ts — Gemini 파서
@@ -115,7 +129,11 @@ proxy/stream-deadline.ts — `readWithDeadline()` / `makeStreamDeadline()` / `ST
 ## 새 기능 추가 시 흐름
 1. DB 변경 필요? → supabase/migrations/ 새 파일 → db push → gen types
 2. API 엔드포인트 → apps/server/src/api/ 해당 라우터에 추가
-3. 인증 미들웨어 → /api/* 는 authJwt, /proxy/* 는 authApiKey 반드시 확인
+3. 인증 미들웨어 선택:
+   - read API (`/api/v1/*`)이고 외부 도구(MCP/BI/embed)에서도 호출 → `authJwtOrApiKey`
+   - read API인데 user identity 필요 (audit, members 등) → `authJwt`만
+   - write API (`/proxy/*`, `/ingest/*`, OTLP) → `authApiKey` + `requireFullScope`
+   - app.ts에서 mount 순서 주의: `/api/v1` wildcard 라우터(evalsRouter/humanEvalsRouter) **뒤**에 mount하면 wildcard authJwt가 먼저 잡아 dual-auth 무력화 (recommendations 사고 패턴, 2026-06-04 발견)
 4. UI → apps/web에서 fetch('/api/v1/...') 또는 TanStack Query
 5. 검증 → pnpm typecheck && lint && test
 ## 환경변수 (필수)
@@ -170,6 +188,18 @@ PORT=3001 (server), 3000 (web)
 24. **🔥 Vercel KV(Upstash Free 티어)에서 raw `redis.set()`은 silent reject — Lua script만 persist**: 2026-05-19 Step #4 SWR 캐시 시도 중 발견. `@upstash/redis`로 `redis.set(key, value, { ex: N })` 호출 시 (1) Upstash MONITOR에 SET 명령 도달, (2) SDK는 "OK" 응답을 받음, (3) 그러나 Data Browser에 키가 존재하지 않고 후속 `redis.get(key)`는 즉시 `null` 반환. **같은 인스턴스, 같은 토큰, 같은 코드 경로**에서 `@upstash/ratelimit` (내부적으로 Lua `EVAL` 사용)은 정상 작동 — 차이는 raw 명령 vs Lua script. 라벨 Free / AWS us-east-1 / Global mode에서 재현. 추정 원인: Upstash Free 티어가 Lua가 아닌 직접 write 명령에 대해 silent acceptance만 하고 persist는 안 함 (또는 Vercel KV 통합의 미documented 동작). **새 캐시 도입 시**: (a) Pay-as-you-go 티어 사용 ($0.20/100만 cmd), 또는 (b) helper를 `redis.eval(luaScript, ...)`로 작성해 Lua 경유. PR #106~#110 revert 됨. 향후 캐시 재도입 시 Lua 패턴 채택 또는 Redis provider 교체 검토.
 25. **🔥 Postgres 마이그레이션은 코드 deploy 전에 production에 적용되어야 함 — `deploy-server.yml` 워크플로가 migrate → deploy 순서 강제**: 2026-06-04 PLG Loop ② 머지 후 `/api/v1/organizations/me` 가 prod에서 500/404 반환. 원인: 코드가 새 컬럼(`hide_powered_by_badge`)을 SELECT 하는데 production DB에 컬럼이 없었음. Vercel git integration 으로 서버 코드는 자동 배포되지만 `supabase db push --linked` 는 수동이었음 → 코드만 갔고 스키마는 안 따라감. ClickHouse gotcha #21 과 정확히 같은 패턴(스키마 먼저 → 코드 다음). 해결: `.github/workflows/deploy-server.yml` 을 단일 통합 워크플로로 재작성 — Job 1 `migrate` (`supabase db push --linked --include-all`, 멱등) 가 성공해야 Job 2 `deploy` (Vercel) 가 실행. 깨진 마이그레이션은 deploy 자체를 막아서 stale-but-running 상태 유지. 필요 시크릿: `SUPABASE_ACCESS_TOKEN` (account/tokens 페이지), `SUPABASE_DB_PASSWORD` (Project Settings → Database). Web (Vercel git integration) 은 이 순서 밖이라 web → server 간 race는 별도. 다행히 추가성(additive) 마이그레이션만 작성하는 컨벤션 덕분에 web 이 옛 server API 응답을 잠시 받아도 새 필드 undefined 로 graceful degrade. **새 컬럼/테이블 추가 PR 작성 시**: (a) 마이그레이션은 IF NOT EXISTS/ADD COLUMN IF NOT EXISTS 같이 멱등 작성 (b) 컬럼을 NOT NULL + DEFAULT 로 추가해 backfill 자동화 (c) `concurrency: prod-deploy` 그룹 덕분에 빠른 연속 push 도 race 없이 직렬화.
 
+26. **🔥 Dependabot의 pnpm sub-directory entries는 lockfile 갱신 못 함 — root only**: `.github/dependabot.yml`에 `/apps/server`, `/apps/web`, `/packages/sdk` 같은 sub-dir entry를 두면 dependabot이 그 디렉토리의 `package.json`만 bump하고 **root의 `pnpm-lock.yaml`은 못 만짐**. CI 첫 단계 `pnpm install --frozen-lockfile`이 `ERR_PNPM_OUTDATED_LOCKFILE`로 죽어서 typecheck/test 실행 자체가 안 됨. 같은 변경의 root entry (`/`) PR은 lockfile도 같이 갱신되어 통과. 정답: dependabot.yml에 **root 한 entry**만 두고 group을 `update-types: ["minor", "patch"]`로 제한해서 majors 분리. 사고 이력: 2026-06-04 PR #185, #186이 같은 패턴으로 fail → PR #188로 sub-dir entries 제거.
+
+27. **🔥 Dependabot PR description의 update table은 거짓일 수 있음 — 실제 diff 확인 필수**: dependabot의 PR body는 일부 패키지만 listing하면서 실제 변경에는 더 많이 들어가는 경우 있음. 2026-06-04 PR #187 ("all-deps with 27 updates")의 body에는 `typescript`/`@types/node`가 **없었는데** 실제 diff엔 5.x→6.0 + 22.x→25.x가 머지 후 main에 들어가 있었음 (옛 commit에서 들어와 있던 거지만 listing 누락). 그 결과 docker-publish 워크플로우가 `TS2591 Cannot find name 'process'`로 50+ 파일에서 죽음 (PR #190 `apps/server/tsconfig.json`에 `"types": ["node"]` 명시로 fix). **머지 전 PR diff (`gh pr diff <N>`) 직접 확인**하거나, 머지 직후 docker-publish/Vercel deploy 같은 별도 build path가 깨지는지 모니터.
+
+28. **🔥 `apps/server/tsconfig.json`에 `"types": ["node"]` 명시 필수 — Dockerfile `--filter server` install + TS 6 + @types/node 25 조합에서 자동 lookup 실패**: 로컬 monorepo install은 root에서 모든 workspace의 `@types/*`를 hoist해서 default behavior로 `@types/node` 자동 include. Dockerfile은 `pnpm install --frozen-lockfile --filter server`라 narrower hoist tree → TS 6 / @types/node 25 환경에서 `process`, `node:crypto`, `NodeJS` 못 찾음. 해결: tsconfig `compilerOptions.types: ["node"]`로 명시. Vercel server deploy는 별도 build path라 영향 없고 docker-publish만 깨지는 패턴이라 발견 늦음.
+
+29. **`mcp-publisher init`의 부수효과 — CWD에 `LICENSE` + `README.md` 생성/덮어쓰기**: `npx mcp-publisher init`은 `server.json` 만들 때 같은 디렉토리에 자기 binary가 따라오는 LICENSE와 함께 modelcontextprotocol/registry repo의 README를 fetch해서 떨어뜨림. 기존 패키지의 README가 통째로 덮어쓰여서 git diff에 큰 변경 발생 — 발견 못 하고 commit하면 패키지 README가 registry README로 바뀐다. **mcp-publisher binary + LICENSE + tar.gz는 `.gitignore`에 추가** (`packages/mcp-server/.gitignore` 참고). `init` 후 항상 `git status`로 의도치 않은 파일 검증.
+
+30. **MCP Registry는 GitHub org publish 시 **public membership** 필요**: `mcp-publisher publish`가 `io.github.<org>/...` namespace에 publish하려 할 때 GitHub API로 org membership을 확인. 멤버십이 private면 403 `You have permission to publish: io.github.<your-username>/*. Attempting to publish: io.github.<org>/...`. 해결: GitHub `Organizations` 설정에서 본인 멤버십을 Public으로 전환 (https://github.com/orgs/<org>/people → 본인 옆 visibility) → mcp-publisher **logout + re-login**으로 토큰 재발급. 사고 이력: 2026-06-04 첫 publish 시도에서 발생.
+
+31. **MCP Registry description 100자 제한**: server.json의 `description`이 100자를 초과하면 publish 시 `422 expected length <= 100`. npm package.json은 길어도 OK이지만 registry는 stricter. 발견 시점에는 description 137자였음. 짧고 핵심만 — 사용자가 registry 검색 결과에서 바로 use case 인지하도록 작성.
+
 ## CI/CD Gotchas — GitHub Actions + npm + Docker
 1. **setup-node@v4 + registry-url → NPM_CONFIG_USERCONFIG shadow**: setup-node가 `NPM_CONFIG_USERCONFIG` env var를 자체 `.npmrc`로 설정. 패키지 디렉토리에 쓴 `.npmrc`가 무시됨. 해결: workflow에서 `unset NPM_CONFIG_USERCONFIG && npm publish --userconfig "$PWD/.npmrc"` + setup-node에서 `registry-url` 제거.
 2. **npm Granular token의 "새 scope" 제약**: 이전 기록("새 패키지 첫 publish 불가")은 부정확. 정확히는 **scope 자체가 존재하지 않으면** Granular token의 첫 publish가 실패함. 한 번 scope가 만들어지면 그 scope 내의 **다른 새 패키지**는 Granular token으로 CI publish 가능. 증거: `@spanlens/sdk` 첫 publish는 로컬 `npm login` 세션 필요했지만, 이후 `@spanlens/cli` 신규 패키지는 Granular token CI workflow로 정상 publish됨. Classic token UI는 npm이 숨겼지만 `npm token create --packages-all --packages-and-scopes-permission=read-write --bypass-2fa`로 CLI에서 생성 가능.
@@ -180,6 +210,15 @@ PORT=3001 (server), 3000 (web)
 7. **`vercel deploy` CLI 접근 불가 시**: Claude의 bash 환경에서 `/dev/tty` 없어서 git push 프롬프트 블록. credential manager가 캐시한 뒤엔 정상. 대안: 빈 커밋으로 webhook 트리거 `git commit --allow-empty && git push`.
 8. **🔥 npm Granular token 최대 90일 만료 — 매 cliff 운영 부담**: npm UI에서 Granular token 발급 시 Expiration 드롭다운 최대값이 **90일** (2026-05-20 확인). `365 days` 선택지 없음. 짧은 cycle로 분기마다 publish 멈춤 사고 위험 → (a) 발급 시 **다음 만료일을 캘린더 등록** (만료 1주 전 알림 필수), (b) 만료 임박 시 publish 작업 줄서있으면 미리 교체, (c) 만료 없는 토큰이 필요하면 **Classic Automation token** 사용 (`npm token create --packages-all --packages-and-scopes-permission=read-write --bypass-2fa` CLI로 발급 — npm이 UI에서 숨겼지만 CLI는 여전히 동작). 단 Automation token은 권한이 broader라 scope 격리는 Granular보다 약함. 발견 이력: 2026-04~05 두 토큰이 같은 날(05-20) 만료 → publish 워크플로우 실패 → 새 토큰 발급 → 90일 max라 8월에 또 만료 예정.
 9. **🔥 `Bypass 2FA` 체크박스 누락 → CI publish가 `EOTP` 에러로 실패**: npm 계정이 2FA 모드 "Authorization and publishing"이면 publish 시 OTP 요구. GitHub Actions는 OTP 입력 불가 → `npm error code EOTP`. Granular token 발급 페이지 상단의 **`Bypass two-factor authentication (2FA)` 체크박스 ON 필수** (default OFF). 발급 후 Summary에 `Bypass two-factor authentication` 줄이 보여야 정상. 안 보이면 폐기하고 재발급. 대안 (덜 추천): 계정 전체 2FA 모드를 "Authorization only"로 낮추기 — security regression. 발견 이력: 2026-05-20 새 토큰 발급 시 체크 누락 → workflow `EOTP` 실패 → 재발급으로 해결.
+## @spanlens/mcp-server — 외부 IDE 통합 (2026-06-04부터)
+- 위치: `packages/mcp-server/`. 패키지명 `@spanlens/mcp-server`, bin `spanlens-mcp`. Public scope 키(`sl_live_pub_*`)만 받음 (full 키 부팅 시 거부).
+- 7개 tools: `get_stats`, `query_requests`, `list_traces`, `get_trace`, `get_anomalies`, `get_savings`, `get_user_analytics`. 모두 `/api/v1/*`의 dual-auth read API를 호출.
+- 발행:
+  - npm: `git tag mcp-server-v<X.Y.Z> && git push --tags` → `.github/workflows/publish-mcp-server.yml`이 자동 publish.
+  - MCP Registry: `cd packages/mcp-server && mcp-publisher login github && mcp-publisher publish` (수동, OAuth 필요). `mcpName: io.github.spanlens/mcp-server`로 등재됨.
+- `server.json` (registry metadata) + `package.json`의 `mcpName` 필드를 동시에 유지. 미스매치면 registry verifier가 reject.
+- 새 tool 추가 시: (1) `packages/mcp-server/src/tools.ts`에 zod 스키마 + 핸들러 (2) README의 "Available tools" 표 갱신 (3) version bump + tag.
+
 ## 금지 사항
 - git reset --hard 금지
 - generated/ dist/ .next/ supabase/types.ts 직접 수정 금지
@@ -188,6 +227,9 @@ PORT=3001 (server), 3000 (web)
 - console.log에 key/secret/token 포함 금지
 - pnpm 외 패키지 매니저 사용 금지
 - lib/cost.ts, lib/crypto.ts 함수 다른 곳에 재구현 금지
+- `.github/dependabot.yml`에 npm sub-directory entry 추가 금지 — pnpm-lock 갱신 못 함 (gotcha #26)
+- `apps/server/tsconfig.json`의 `compilerOptions.types: ["node"]` 제거 금지 — Docker build 깨짐 (gotcha #28)
+- `requireFullScope` 미들웨어를 read 라우터에 mount 금지 — public 키 사용자 차단
 ## 커밋 규칙
 Conventional Commits: type(scope): description
 type: feat | fix | refactor | perf | test | docs | chore
