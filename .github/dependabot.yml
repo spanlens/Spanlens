@@ -1,5 +1,12 @@
 version: 2
 
+# Single root entry covers every workspace package (cli, sdk, server, web)
+# because pnpm-lock.yaml lives at the repo root. Per-directory entries were
+# tried earlier and they failed: dependabot bumped sub-directory
+# package.json files but couldn't update the root pnpm-lock.yaml, so every
+# CI run on those PRs died with ERR_PNPM_OUTDATED_LOCKFILE before any
+# typecheck or test ever ran. The root entry handles the lockfile correctly.
+#
 # Notes on the `ignore` rules below — these are workarounds, not preferences.
 # Re-evaluate each when the linked compatibility blocker resolves.
 #
@@ -16,10 +23,6 @@ version: 2
 #   keeps grouping them. Drop this once vitest 4 is unblocked.
 
 updates:
-  # Root workspace (pnpm-lock.yaml)
-  # NOTE: this entry's grouped PRs include bumps for any workspace package
-  # (cli, sdk, server, web) because the lockfile is shared. So the ignore
-  # set must cover every package's incompatibility, not just root deps.
   - package-ecosystem: npm
     directory: /
     schedule:
@@ -44,82 +47,6 @@ updates:
         patterns: ["*"]
         update-types: ["minor", "patch"]
 
-  # Next.js web app
-  - package-ecosystem: npm
-    directory: /apps/web
-    schedule:
-      interval: weekly
-      day: monday
-    open-pull-requests-limit: 1
-    labels:
-      - dependencies
-    ignore:
-      - dependency-name: eslint
-        update-types: ["version-update:semver-major"]
-      - dependency-name: vitest
-        update-types: ["version-update:semver-major"]
-      - dependency-name: globals
-        update-types: ["version-update:semver-major"]
-    groups:
-      # Bundle every safe (minor + patch) bump into a single weekly PR.
-      # Majors land as individual PRs so each can be reviewed against
-      # its own breaking-change notes — TypeScript 6, zod 4, @types/node 25,
-      # @vitest/coverage-v8 4 all want code-level attention.
-      all-deps:
-        patterns: ["*"]
-        update-types: ["minor", "patch"]
-
-  # Hono server
-  - package-ecosystem: npm
-    directory: /apps/server
-    schedule:
-      interval: weekly
-      day: monday
-    open-pull-requests-limit: 1
-    labels:
-      - dependencies
-    ignore:
-      - dependency-name: eslint
-        update-types: ["version-update:semver-major"]
-      - dependency-name: vitest
-        update-types: ["version-update:semver-major"]
-      - dependency-name: globals
-        update-types: ["version-update:semver-major"]
-    groups:
-      # Bundle every safe (minor + patch) bump into a single weekly PR.
-      # Majors land as individual PRs so each can be reviewed against
-      # its own breaking-change notes — TypeScript 6, zod 4, @types/node 25,
-      # @vitest/coverage-v8 4 all want code-level attention.
-      all-deps:
-        patterns: ["*"]
-        update-types: ["minor", "patch"]
-
-  # JS/TS SDK
-  - package-ecosystem: npm
-    directory: /packages/sdk
-    schedule:
-      interval: weekly
-      day: monday
-    open-pull-requests-limit: 1
-    labels:
-      - dependencies
-    ignore:
-      - dependency-name: eslint
-        update-types: ["version-update:semver-major"]
-      - dependency-name: vitest
-        update-types: ["version-update:semver-major"]
-      - dependency-name: globals
-        update-types: ["version-update:semver-major"]
-    groups:
-      # Bundle every safe (minor + patch) bump into a single weekly PR.
-      # Majors land as individual PRs so each can be reviewed against
-      # its own breaking-change notes — TypeScript 6, zod 4, @types/node 25,
-      # @vitest/coverage-v8 4 all want code-level attention.
-      all-deps:
-        patterns: ["*"]
-        update-types: ["minor", "patch"]
-
-  # GitHub Actions
   - package-ecosystem: github-actions
     directory: /
     schedule:
