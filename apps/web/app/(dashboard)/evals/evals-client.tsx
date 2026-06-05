@@ -170,31 +170,25 @@ function NewEvaluatorDialog({
     return datedMatch ?? list[0] ?? preferred
   }
 
+  // Template values are picked up by the useState initializers below. Parent
+  // remounts the dialog via key={dialogSession} on every "New evaluator" click,
+  // so opening with a different template starts the form fresh — no useEffect
+  // syncing prop → state (which triggers cascading renders, see lint rule
+  // react-hooks/set-state-in-effect).
   const [promptName, setPromptName] = useState('')
   const [name, setName] = useState(initialTemplate?.name ?? '')
   const [criterion, setCriterion] = useState(initialTemplate?.criterion ?? '')
   const [judgeProvider, setJudgeProvider] = useState<'openai' | 'anthropic' | 'gemini'>(
     initialTemplate?.judgeProvider ?? 'openai',
   )
-  const [judgeModel, setJudgeModel] = useState(initialTemplate?.judgeModel ?? 'gpt-4o-mini')
+  const [judgeModel, setJudgeModel] = useState(() =>
+    initialTemplate
+      ? resolveJudgeModel(initialTemplate.judgeProvider, initialTemplate.judgeModel)
+      : 'gpt-4o-mini',
+  )
   const [scaleMin] = useState(0)
   const [scaleMax] = useState(1)
   const [error, setError] = useState('')
-
-  // When the dialog reopens with a new template, sync the form fields. The
-  // prompt picker stays user-controlled — templates only seed the criterion.
-  // judgeModels is included so we re-resolve once the catalog finishes loading.
-  useEffect(() => {
-    if (!open) return
-    setError('')
-    if (initialTemplate) {
-      setName(initialTemplate.name)
-      setCriterion(initialTemplate.criterion)
-      setJudgeProvider(initialTemplate.judgeProvider)
-      setJudgeModel(resolveJudgeModel(initialTemplate.judgeProvider, initialTemplate.judgeModel))
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, initialTemplate, judgeModels])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -1177,11 +1171,15 @@ export function EvalsClient() {
   const evaluators = useEvaluators()
   const [newOpen, setNewOpen] = useState(false)
   const [pendingTemplate, setPendingTemplate] = useState<EvaluatorTemplate | undefined>(undefined)
+  // Incremented on every open call so the dialog remounts with fresh useState
+  // initializers — avoids prop-to-state syncing via useEffect.
+  const [dialogSession, setDialogSession] = useState(0)
   const [runDialog, setRunDialog] = useState<Evaluator | null>(null)
 
   function openNewEvaluator(template?: EvaluatorTemplate) {
     setPendingTemplate(template)
     setNewOpen(true)
+    setDialogSession((v) => v + 1)
   }
   function closeNewEvaluator() {
     setNewOpen(false)
@@ -1465,6 +1463,7 @@ export function EvalsClient() {
       </div>
 
       <NewEvaluatorDialog
+        key={dialogSession}
         open={newOpen}
         onClose={closeNewEvaluator}
         {...(pendingTemplate ? { initialTemplate: pendingTemplate } : {})}
