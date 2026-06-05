@@ -14,6 +14,8 @@ import {
   useBulkAddDatasetItems,
   type Dataset,
 } from '@/lib/queries/use-datasets'
+import { useEvalRuns, type EvalRun } from '@/lib/queries/use-evals'
+import { useExperiments, type Experiment } from '@/lib/queries/use-experiments'
 
 // Hydration-safe mounted gate, same pattern as the other overhauled pages.
 const subscribeNoop = () => () => {}
@@ -306,6 +308,173 @@ function DatasetRow({ dataset }: { dataset: Dataset }) {
 
 // ── Main page ────────────────────────────────────────────────────────────────
 
+// ── Runs view: every eval-run and experiment that used a dataset ──────────────
+
+interface DatasetRunsViewProps {
+  datasetsById: Map<string, Dataset>
+}
+
+interface CombinedRun {
+  id: string
+  kind: 'eval' | 'experiment'
+  startedAt: string
+  datasetId: string | null
+  status: string
+  itemsCompleted: number
+  itemsTotal: number
+  score: number | null
+  costUsd: number
+  name: string
+  subName: string
+}
+
+function statusPill(status: string): { cls: string; label: string } {
+  if (status === 'completed') return { cls: 'border-good/30 bg-good/10 text-good', label: 'Completed' }
+  if (status === 'running')   return { cls: 'border-accent-border bg-accent-bg text-accent', label: 'Running' }
+  if (status === 'failed')    return { cls: 'border-bad/30 bg-bad/10 text-bad', label: 'Failed' }
+  return { cls: 'border-border bg-bg-elev text-text-muted', label: status }
+}
+
+function DatasetRunsView({ datasetsById }: DatasetRunsViewProps) {
+  const evalRuns = useEvalRuns()
+  const experiments = useExperiments()
+
+  const combined = useMemo<CombinedRun[]>(() => {
+    const out: CombinedRun[] = []
+    for (const r of evalRuns.data ?? []) {
+      if (!r.dataset_id) continue // only show runs that used a dataset
+      out.push({
+        id: r.id,
+        kind: 'eval',
+        startedAt: r.started_at,
+        datasetId: r.dataset_id,
+        status: r.status,
+        itemsCompleted: r.scored_count,
+        itemsTotal: r.sample_size,
+        score: r.avg_score,
+        costUsd: r.total_cost_usd,
+        name: 'Eval run',
+        subName: r.evaluators?.name ?? r.evaluator_id.slice(0, 8),
+      })
+    }
+    for (const e of experiments.data ?? []) {
+      out.push({
+        id: e.id,
+        kind: 'experiment',
+        startedAt: e.started_at,
+        datasetId: e.dataset_id,
+        status: e.status,
+        itemsCompleted: e.completed_items,
+        itemsTotal: e.total_items,
+        score: e.avg_score_b ?? e.avg_score_a,
+        costUsd: e.total_cost_usd,
+        name: e.name,
+        subName: `${e.prompt_name} · ${e.run_provider}/${e.run_model}`,
+      })
+    }
+    return out.sort((a, b) => (b.startedAt > a.startedAt ? 1 : -1))
+  }, [evalRuns.data, experiments.data])
+
+  const isLoading = evalRuns.isLoading || experiments.isLoading
+
+  if (isLoading) {
+    return (
+      <div className="p-[22px] space-y-2">
+        {[1, 2, 3].map((i) => (
+          <div key={i} className="h-12 bg-bg-elev rounded animate-pulse" />
+        ))}
+      </div>
+    )
+  }
+
+  if (combined.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center h-64 gap-3 text-text-muted">
+        <FileText className="h-9 w-9 text-text-faint" />
+        <p className="font-mono text-[13px]">No dataset runs yet.</p>
+        <p className="font-mono text-[11.5px] text-text-faint max-w-[400px] text-center">
+          Every time an evaluator or experiment runs against one of your datasets, it shows up here as a row.
+        </p>
+      </div>
+    )
+  }
+
+  const rowGridStyle: React.CSSProperties = {
+    display: 'grid',
+    gridTemplateColumns: '160px 1.6fr 1.2fr 110px 90px 90px',
+    gap: 12,
+    alignItems: 'center',
+  }
+
+  function fmtScore(s: number | null): string {
+    if (s == null) return '—'
+    return (s * 100).toFixed(1)
+  }
+  function fmtCost(n: number): string {
+    return '$' + n.toFixed(5)
+  }
+  function fmtDate(s: string): string {
+    return new Date(s).toLocaleString('en-US', {
+      month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false,
+    })
+  }
+
+  return (
+    <div>
+      <div
+        className="px-[22px] py-[8px] bg-bg-muted border-b border-border font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint"
+        style={rowGridStyle}
+      >
+        <span>Started</span>
+        <span>Dataset</span>
+        <span>Producer</span>
+        <span>Status</span>
+        <span>Avg score</span>
+        <span className="text-right">Cost</span>
+      </div>
+      {combined.map((r) => {
+        const ds = r.datasetId ? datasetsById.get(r.datasetId) : null
+        const pill = statusPill(r.status)
+        return (
+          <div
+            key={`${r.kind}-${r.id}`}
+            className="px-[22px] py-[10px] border-b border-border"
+            style={rowGridStyle}
+          >
+            <span className="font-mono text-[11px] text-text-muted tabular-nums">
+              {fmtDate(r.startedAt)}
+            </span>
+            <div className="min-w-0">
+              <div className="text-[12.5px] text-text truncate">{ds?.name ?? 'Unknown dataset'}</div>
+              <div className="font-mono text-[10.5px] text-text-faint">
+                {r.itemsCompleted}/{r.itemsTotal} items
+              </div>
+            </div>
+            <div className="min-w-0">
+              <div className="text-[12px] text-text-muted truncate">
+                <span className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mr-1.5">
+                  {r.kind === 'eval' ? 'EVAL' : 'EXPERIMENT'}
+                </span>
+                {r.name}
+              </div>
+              <div className="font-mono text-[10.5px] text-text-faint truncate">{r.subName}</div>
+            </div>
+            <span>
+              <span className={cn('inline-flex font-mono text-[10px] px-[6px] py-[1.5px] rounded-[3px] border uppercase tracking-[0.04em]', pill.cls)}>
+                {pill.label}
+              </span>
+            </span>
+            <span className="font-mono text-[12px] text-text tabular-nums">{fmtScore(r.score)}</span>
+            <span className="font-mono text-[11px] text-text-muted text-right tabular-nums">
+              {fmtCost(r.costUsd)}
+            </span>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 export function DatasetsClient() {
   const router = useRouter()
   const sp = useSearchParams()
@@ -313,6 +482,14 @@ export function DatasetsClient() {
 
   const datasets = useDatasets()
   const [newOpen, setNewOpen] = useState(false)
+
+  const tabParam = sp.get('tab')
+  const tab: 'datasets' | 'runs' = tabParam === 'runs' ? 'runs' : 'datasets'
+  function setTab(t: 'datasets' | 'runs') {
+    const next = new URLSearchParams(sp.toString())
+    if (t === 'datasets') next.delete('tab'); else next.set('tab', t)
+    router.replace(`/datasets?${next.toString()}`)
+  }
 
   // URL-backed search — shareable, survives reload.
   const search = sp.get('q') ?? ''
@@ -334,6 +511,11 @@ export function DatasetsClient() {
   }, [searchInput])
 
   const list = useMemo(() => datasets.data ?? [], [datasets.data])
+  const datasetsById = useMemo(() => {
+    const m = new Map<string, Dataset>()
+    for (const d of list) m.set(d.id, d)
+    return m
+  }, [list])
   const filtered = useMemo(() => {
     if (!search) return list
     const needle = search.toLowerCase()
@@ -449,11 +631,33 @@ export function DatasetsClient() {
         </div>
       </div>
 
+      {/* Tab strip: Datasets (definitions) vs Runs (eval+experiment timeline) */}
+      <div className="shrink-0 border-b border-border bg-bg flex items-center gap-1 px-[22px]">
+        {(['datasets', 'runs'] as const).map((t) => (
+          <button
+            key={t}
+            type="button"
+            onClick={() => setTab(t)}
+            className={cn(
+              'font-mono text-[11px] uppercase tracking-[0.06em] px-3 py-2.5 transition-colors relative',
+              tab === t ? 'text-text' : 'text-text-faint hover:text-text-muted',
+            )}
+          >
+            {t === 'datasets' ? 'Datasets' : 'Runs'}
+            {tab === t && (
+              <span className="absolute bottom-[-1px] left-3 right-3 h-[2px] bg-accent" />
+            )}
+          </button>
+        ))}
+      </div>
+
       {/* Info banner with docs link */}
       <div className="px-[22px] py-[12px] bg-bg-muted border-b border-border flex items-center gap-2 font-mono text-[11px] text-text-muted flex-wrap">
         <Database className="h-3.5 w-3.5 shrink-0" />
         <span>
-          Datasets are reusable test inputs for Evals. Import production requests or add items manually.
+          {tab === 'datasets'
+            ? 'Datasets are reusable test inputs for Evals. Import production requests or add items manually.'
+            : 'Every evaluator run and experiment that targeted one of your datasets, in one timeline.'}
         </span>
         <Link
           href="/docs/features/datasets"
@@ -463,6 +667,10 @@ export function DatasetsClient() {
         </Link>
       </div>
 
+      {tab === 'runs' ? (
+        <DatasetRunsView datasetsById={datasetsById} />
+      ) : (
+      <>
       {/* Search + Export bar */}
       <div className="px-[22px] py-[10px] border-b border-border flex items-center gap-2 flex-wrap">
         <div className="relative max-w-md flex-1 min-w-[180px]">
@@ -566,6 +774,8 @@ export function DatasetsClient() {
           </>
         )}
       </div>
+      </>
+      )}
 
       <NewDatasetDialog open={newOpen} onClose={() => setNewOpen(false)} />
     </div>

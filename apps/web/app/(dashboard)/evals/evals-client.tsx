@@ -82,32 +82,119 @@ function StatusBadge({ status }: { status: EvalRunStatus }) {
   )
 }
 
+// ── Evaluator templates (used by empty-state quick-start cards) ──────────────
+
+interface EvaluatorTemplate {
+  name: string
+  criterion: string
+  judgeProvider: 'openai' | 'anthropic' | 'gemini'
+  judgeModel: string
+}
+
+interface EvaluatorTemplateCard extends EvaluatorTemplate {
+  id: string
+  label: string
+  description: string
+}
+
+const EVALUATOR_TEMPLATES: ReadonlyArray<EvaluatorTemplateCard> = [
+  {
+    id: 'response-quality',
+    label: 'Response quality',
+    description: 'Catch when answers stop addressing the actual question.',
+    name: 'Response quality',
+    criterion: 'Is the response complete, accurate, and directly answers the user question? Score 1 if it fully addresses the user, 0 if it misses or contradicts.',
+    judgeProvider: 'openai',
+    judgeModel: 'gpt-4o-mini',
+  },
+  {
+    id: 'pii-leak',
+    label: 'PII leak',
+    description: 'Score 0 when the response leaks personal data not in the prompt.',
+    name: 'No PII leak',
+    criterion: 'Does the response contain personally identifiable information (email, phone, address, SSN, credit card, national ID) that was not in the original prompt? Score 1 if clean, 0 if it leaks any PII.',
+    judgeProvider: 'openai',
+    judgeModel: 'gpt-4o-mini',
+  },
+  {
+    id: 'persona-match',
+    label: 'Persona match',
+    description: 'Make sure the assistant stays in voice and follows tone rules.',
+    name: 'Persona match',
+    criterion: 'Does the response match a professional, concise, friendly support voice? Score 1 if it stays in voice, 0 if it is off-brand or breaks tone.',
+    judgeProvider: 'openai',
+    judgeModel: 'gpt-4o-mini',
+  },
+] as const
+
 // ── New evaluator dialog ─────────────────────────────────────────────────────
 
-function NewEvaluatorDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+function NewEvaluatorDialog({
+  open,
+  onClose,
+  initialTemplate,
+}: {
+  open: boolean
+  onClose: () => void
+  initialTemplate?: EvaluatorTemplate
+}) {
   const prompts = usePrompts()
   const createMutation = useCreateEvaluator()
   const { data: modelsCatalog } = useModels()
   // Map the catalog's full shape down to the openai/anthropic strings that
   // this picker needs. Gemini is excluded — the eval API only supports
   // OpenAI/Anthropic judges as of 2026-05.
-  const judgeModels: { openai: string[]; anthropic: string[]; gemini: string[] } = {
-    openai: (modelsCatalog?.openai ?? []).map((m) => m.model),
-    anthropic: (modelsCatalog?.anthropic ?? []).map((m) => m.model),
-    gemini: (modelsCatalog?.gemini ?? []).map((m) => m.model),
+  //
+  // Memoised so dependent effects (template sync below) don't re-run on
+  // every render and cause loops.
+  const judgeModels = useMemo<{ openai: string[]; anthropic: string[]; gemini: string[] }>(() => {
+    const next = {
+      openai: (modelsCatalog?.openai ?? []).map((m) => m.model),
+      anthropic: (modelsCatalog?.anthropic ?? []).map((m) => m.model),
+      gemini: (modelsCatalog?.gemini ?? []).map((m) => m.model),
+    }
+    if (next.openai.length === 0) next.openai = [...JUDGE_MODELS_FALLBACK.openai]
+    if (next.anthropic.length === 0) next.anthropic = [...JUDGE_MODELS_FALLBACK.anthropic]
+    if (next.gemini.length === 0) next.gemini = [...JUDGE_MODELS_FALLBACK.gemini]
+    return next
+  }, [modelsCatalog])
+
+  // Templates specify a model family (e.g. 'gpt-4o-mini'); the catalog may
+  // only have dated variants ('gpt-4o-mini-2024-07-18'). Resolve to the
+  // first available dated variant under the same family, or fall back to
+  // the catalog's first model for the provider.
+  function resolveJudgeModel(provider: 'openai' | 'anthropic' | 'gemini', preferred: string): string {
+    const list = judgeModels[provider]
+    if (list.includes(preferred)) return preferred
+    const datedMatch = list.find((m) => m.startsWith(preferred + '-'))
+    return datedMatch ?? list[0] ?? preferred
   }
-  if (judgeModels.openai.length === 0) judgeModels.openai = [...JUDGE_MODELS_FALLBACK.openai]
-  if (judgeModels.anthropic.length === 0) judgeModels.anthropic = [...JUDGE_MODELS_FALLBACK.anthropic]
-  if (judgeModels.gemini.length === 0) judgeModels.gemini = [...JUDGE_MODELS_FALLBACK.gemini]
 
   const [promptName, setPromptName] = useState('')
-  const [name, setName] = useState('')
-  const [criterion, setCriterion] = useState('')
-  const [judgeProvider, setJudgeProvider] = useState<'openai' | 'anthropic' | 'gemini'>('openai')
-  const [judgeModel, setJudgeModel] = useState('gpt-4o-mini')
+  const [name, setName] = useState(initialTemplate?.name ?? '')
+  const [criterion, setCriterion] = useState(initialTemplate?.criterion ?? '')
+  const [judgeProvider, setJudgeProvider] = useState<'openai' | 'anthropic' | 'gemini'>(
+    initialTemplate?.judgeProvider ?? 'openai',
+  )
+  const [judgeModel, setJudgeModel] = useState(initialTemplate?.judgeModel ?? 'gpt-4o-mini')
   const [scaleMin] = useState(0)
   const [scaleMax] = useState(1)
   const [error, setError] = useState('')
+
+  // When the dialog reopens with a new template, sync the form fields. The
+  // prompt picker stays user-controlled — templates only seed the criterion.
+  // judgeModels is included so we re-resolve once the catalog finishes loading.
+  useEffect(() => {
+    if (!open) return
+    setError('')
+    if (initialTemplate) {
+      setName(initialTemplate.name)
+      setCriterion(initialTemplate.criterion)
+      setJudgeProvider(initialTemplate.judgeProvider)
+      setJudgeModel(resolveJudgeModel(initialTemplate.judgeProvider, initialTemplate.judgeModel))
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, initialTemplate, judgeModels])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -983,6 +1070,105 @@ function CorrelationRow({ evaluators }: { evaluators: Evaluator[] }) {
   )
 }
 
+// ── Runs view (Results tab) ──────────────────────────────────────────────────
+
+function RunsView({
+  evaluatorsById,
+  onSelectRun,
+  selectedRunId,
+}: {
+  evaluatorsById: Map<string, Evaluator>
+  onSelectRun: (id: string) => void
+  selectedRunId: string | null
+}) {
+  const runs = useEvalRuns()
+  const list = runs.data ?? []
+
+  if (runs.isLoading) {
+    return (
+      <div className="p-[22px] space-y-2">
+        {[1, 2, 3].map((i) => (
+          <div key={i} className="h-12 bg-bg-elev rounded animate-pulse" />
+        ))}
+      </div>
+    )
+  }
+
+  if (list.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center h-64 gap-3 text-text-muted">
+        <Play className="h-9 w-9 text-text-faint" />
+        <p className="font-mono text-[13px]">No runs yet.</p>
+        <p className="font-mono text-[11.5px] text-text-faint max-w-[360px] text-center">
+          Create an evaluator, then run it against a dataset or production traffic to see results here.
+        </p>
+      </div>
+    )
+  }
+
+  // Inline grid template — Tailwind's JIT does not always parse arbitrary
+  // grid-cols with commas reliably, so set columns via style for stability.
+  const rowGridStyle: React.CSSProperties = {
+    display: 'grid',
+    gridTemplateColumns: '160px 1.6fr 110px 90px 90px 90px',
+    gap: 12,
+    alignItems: 'center',
+  }
+
+  return (
+    <div>
+      {/* Header */}
+      <div
+        className="px-[22px] py-[8px] bg-bg-muted border-b border-border font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint"
+        style={rowGridStyle}
+      >
+        <span>Started</span>
+        <span>Evaluator · Prompt</span>
+        <span>Status</span>
+        <span>Avg score</span>
+        <span>Samples</span>
+        <span className="text-right">Cost</span>
+      </div>
+      {list.map((r) => {
+        const ev = evaluatorsById.get(r.evaluator_id)
+        const isSelected = selectedRunId === r.id
+        return (
+          <button
+            key={r.id}
+            type="button"
+            onClick={() => onSelectRun(r.id)}
+            className={cn(
+              'px-[22px] py-[10px] border-b border-border text-left hover:bg-bg-elev transition-colors w-full',
+              isSelected && 'bg-bg-elev',
+            )}
+            style={rowGridStyle}
+          >
+            <span className="font-mono text-[11px] text-text-muted tabular-nums">
+              {formatDateTime(r.started_at)}
+            </span>
+            <div className="min-w-0">
+              <div className="text-[12.5px] text-text truncate">{ev?.name ?? 'Unknown evaluator'}</div>
+              <div className="font-mono text-[10.5px] text-text-faint truncate">
+                {ev?.prompt_name ?? '—'} · {r.source}
+              </div>
+            </div>
+            <StatusBadge status={r.status} />
+            <span className={cn('font-mono text-[12px] tabular-nums', scoreColor(r.avg_score))}>
+              {fmtScore(r.avg_score)}
+            </span>
+            <span className="font-mono text-[11.5px] text-text-muted tabular-nums">
+              {r.scored_count}/{r.sample_size}
+            </span>
+            <span className="font-mono text-[11.5px] text-text-muted text-right tabular-nums">
+              {fmtUsd(r.total_cost_usd)}
+            </span>
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
 export function EvalsClient() {
   const router = useRouter()
   const sp = useSearchParams()
@@ -990,11 +1176,23 @@ export function EvalsClient() {
 
   const evaluators = useEvaluators()
   const [newOpen, setNewOpen] = useState(false)
+  const [pendingTemplate, setPendingTemplate] = useState<EvaluatorTemplate | undefined>(undefined)
   const [runDialog, setRunDialog] = useState<Evaluator | null>(null)
+
+  function openNewEvaluator(template?: EvaluatorTemplate) {
+    setPendingTemplate(template)
+    setNewOpen(true)
+  }
+  function closeNewEvaluator() {
+    setNewOpen(false)
+    setPendingTemplate(undefined)
+  }
 
   // URL-backed state — run pane survives reload, search is shareable.
   const selectedRunId = sp.get('run')
   const search = sp.get('q') ?? ''
+  const tabParam = sp.get('tab')
+  const tab: 'evaluators' | 'results' = tabParam === 'results' ? 'results' : 'evaluators'
   function updateQuery(updates: Record<string, string | null>) {
     const next = new URLSearchParams(sp.toString())
     Object.entries(updates).forEach(([k, v]) => {
@@ -1005,6 +1203,15 @@ export function EvalsClient() {
   }
   function setSelectedRunId(id: string | null) { updateQuery({ run: id }) }
   function clearRun() { updateQuery({ run: null }) }
+  function setTab(t: 'evaluators' | 'results') {
+    updateQuery({ tab: t === 'evaluators' ? null : t, run: null })
+  }
+
+  const evaluatorsById = useMemo(() => {
+    const m = new Map<string, Evaluator>()
+    for (const ev of evaluators.data ?? []) m.set(ev.id, ev)
+    return m
+  }, [evaluators.data])
 
   // Search input — debounced 300ms to URL so each keystroke doesn't push.
   const [searchInput, setSearchInput] = useState(search)
@@ -1053,7 +1260,7 @@ export function EvalsClient() {
               </button>
               <button
                 type="button"
-                onClick={() => setNewOpen(true)}
+                onClick={() => openNewEvaluator()}
                 className="font-mono text-[11.5px] px-3 py-[6px] rounded-[5px] bg-text text-bg font-medium hover:opacity-90 flex items-center gap-1.5"
               >
                 <Plus className="h-3.5 w-3.5" />
@@ -1086,8 +1293,36 @@ export function EvalsClient() {
         </div>
       </div>
 
+      {/* Tab strip: Evaluators (definitions) vs Results (runs) */}
+      <div className="shrink-0 border-b border-border bg-bg flex items-center gap-1 px-[22px]">
+        {(['evaluators', 'results'] as const).map((t) => (
+          <button
+            key={t}
+            type="button"
+            onClick={() => setTab(t)}
+            className={cn(
+              'font-mono text-[11px] uppercase tracking-[0.06em] px-3 py-2.5 transition-colors relative',
+              tab === t ? 'text-text' : 'text-text-faint hover:text-text-muted',
+            )}
+          >
+            {t === 'evaluators' ? 'Evaluators' : 'Results'}
+            {tab === t && (
+              <span className="absolute bottom-[-1px] left-3 right-3 h-[2px] bg-accent" />
+            )}
+          </button>
+        ))}
+      </div>
+
       <div className="flex flex-1 min-h-0 flex-col md:flex-row">
         <div className="flex-1 min-w-0">
+          {tab === 'results' ? (
+            <RunsView
+              evaluatorsById={evaluatorsById}
+              onSelectRun={setSelectedRunId}
+              selectedRunId={selectedRunId}
+            />
+          ) : (
+          <>
           {/* Info banner with docs link */}
           <div className="px-[22px] py-[12px] bg-bg-muted border-b border-border flex items-center gap-2 font-mono text-[11px] text-text-muted flex-wrap">
             <Beaker className="h-3.5 w-3.5 shrink-0" />
@@ -1143,23 +1378,52 @@ export function EvalsClient() {
               {[1, 2].map((i) => <div key={i} className="h-14 bg-bg-elev rounded animate-pulse" />)}
             </div>
           ) : list.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-64 gap-3 text-text-muted">
-              <Beaker className="h-10 w-10 text-text-faint" />
-              <p className="font-mono text-[13px]">No evaluators yet.</p>
-              <button
-                type="button"
-                onClick={() => setNewOpen(true)}
-                className="font-mono text-[11.5px] px-3 py-[6px] rounded-[5px] bg-text text-bg font-medium hover:opacity-90 flex items-center gap-1.5"
-              >
-                <Plus className="h-3.5 w-3.5" />
-                Create your first evaluator
-              </button>
-              <Link
-                href="/docs/features/evals"
-                className="font-mono text-[11.5px] mt-1 px-2.5 py-1 rounded border border-border text-text-muted hover:text-text hover:border-border-strong transition-colors"
-              >
-                How evals work →
-              </Link>
+            <div className="flex flex-col items-center py-12 gap-6 text-text-muted px-6">
+              <div className="flex flex-col items-center gap-2 text-center">
+                <Beaker className="h-9 w-9 text-text-faint" />
+                <p className="text-[13px] text-text">Start with a template</p>
+                <p className="font-mono text-[11.5px] text-text-faint max-w-[400px]">
+                  Pre-filled criteria you can tune. Pick a prompt, edit the scoring rule, and run.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 w-full max-w-[820px]">
+                {EVALUATOR_TEMPLATES.map((t) => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => openNewEvaluator(t)}
+                    className="text-left p-4 rounded-[6px] border border-border bg-bg hover:bg-bg-elev hover:border-border-strong transition-colors group"
+                  >
+                    <div className="font-mono text-[9.5px] uppercase tracking-[0.06em] text-text-faint mb-2">
+                      Template
+                    </div>
+                    <div className="text-[13px] font-medium text-text mb-1.5">{t.label}</div>
+                    <p className="text-[11.5px] text-text-muted leading-relaxed">{t.description}</p>
+                    <div className="font-mono text-[10.5px] text-text-faint mt-3 flex items-center gap-1 group-hover:text-text transition-colors">
+                      <Plus className="h-3 w-3" />
+                      Use template
+                    </div>
+                  </button>
+                ))}
+              </div>
+
+              <div className="flex items-center gap-3 font-mono text-[11px] text-text-faint">
+                <button
+                  type="button"
+                  onClick={() => openNewEvaluator()}
+                  className="text-text-muted hover:text-text underline underline-offset-2"
+                >
+                  Or start blank
+                </button>
+                <span>·</span>
+                <Link
+                  href="/docs/features/evals"
+                  className="text-text-muted hover:text-text underline underline-offset-2"
+                >
+                  How evals work
+                </Link>
+              </div>
             </div>
           ) : filtered.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-40 gap-3 text-text-muted">
@@ -1191,6 +1455,8 @@ export function EvalsClient() {
               ))}
             </>
           )}
+          </>
+          )}
         </div>
 
         {selectedRunId && (
@@ -1198,7 +1464,11 @@ export function EvalsClient() {
         )}
       </div>
 
-      <NewEvaluatorDialog open={newOpen} onClose={() => setNewOpen(false)} />
+      <NewEvaluatorDialog
+        open={newOpen}
+        onClose={closeNewEvaluator}
+        {...(pendingTemplate ? { initialTemplate: pendingTemplate } : {})}
+      />
 
       {runDialog && (
         <RunEvaluatorDialog

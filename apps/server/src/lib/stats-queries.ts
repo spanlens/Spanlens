@@ -174,6 +174,25 @@ export interface TimeseriesRow {
   cost: number
   tokens: number
   errors: number
+  errors_4xx: number
+  errors_5xx: number
+  /** p50 latency in milliseconds. Null when the bucket has zero requests. */
+  p50_latency_ms: number | null
+  /** p95 latency in milliseconds. Null when the bucket has zero requests. */
+  p95_latency_ms: number | null
+}
+
+export interface BucketBreakdownEntry {
+  value: string
+  count: number
+}
+
+export interface BucketBreakdownRow {
+  day: string
+  /** Top-N status codes for this bucket, sorted by count descending. */
+  top_status: BucketBreakdownEntry[]
+  /** Top-N (provider, model) values for this bucket, sorted by count descending. */
+  top_models: BucketBreakdownEntry[]
 }
 
 export interface TimeseriesOptions {
@@ -214,13 +233,19 @@ export async function getStatsTimeseries(
   const where = [scope.whereScope, ...filters].join(' AND ')
   // Re-format the bucket back to ISO with 'Z' so the dashboard timeline code
   // (which treats `day` as a UTC instant) keeps working unchanged.
+  // 4xx and 5xx are split to power the chart's error toggle; p50/p95 latency
+  // is computed per bucket so the chart can overlay a latency trend line.
   const sql = `
     SELECT
       formatDateTime(${bucket}(created_at), '%Y-%m-%dT%H:%i:%SZ') AS day,
       count()                                                    AS requests,
       sum(cost_usd)                                              AS cost,
       sum(total_tokens)                                          AS tokens,
-      countIf(status_code >= 400)                                AS errors
+      countIf(status_code >= 400)                                AS errors,
+      countIf(status_code >= 400 AND status_code < 500)          AS errors_4xx,
+      countIf(status_code >= 500)                                AS errors_5xx,
+      quantile(0.5)(latency_ms)                                  AS p50_latency_ms,
+      quantile(0.95)(latency_ms)                                 AS p95_latency_ms
     FROM requests
     WHERE ${where}
     GROUP BY day
@@ -233,12 +258,100 @@ export async function getStatsTimeseries(
   })
   const rows = (await result.json()) as Array<Record<string, string | number | null>>
   return rows.map((r) => ({
-    day:      String(r['day'] ?? ''),
-    requests: Number(r['requests'] ?? 0),
-    cost:     Number(r['cost'] ?? 0),
-    tokens:   Number(r['tokens'] ?? 0),
-    errors:   Number(r['errors'] ?? 0),
+    day:            String(r['day'] ?? ''),
+    requests:       Number(r['requests'] ?? 0),
+    cost:           Number(r['cost'] ?? 0),
+    tokens:         Number(r['tokens'] ?? 0),
+    errors:         Number(r['errors'] ?? 0),
+    errors_4xx:     Number(r['errors_4xx'] ?? 0),
+    errors_5xx:     Number(r['errors_5xx'] ?? 0),
+    p50_latency_ms: r['p50_latency_ms'] == null ? null : Number(r['p50_latency_ms']),
+    p95_latency_ms: r['p95_latency_ms'] == null ? null : Number(r['p95_latency_ms']),
   }))
+}
+
+// ─── Per-bucket breakdown (top status codes + models) ────────────────────────
+//
+// Used by the Requests page chart tooltip to explain "why did errors spike at
+// 14:00?" — top 3 status codes and top 3 models per bucket. One query returns
+// both kinds via UNION ALL; the API layer keeps only the top N per (bucket, kind).
+
+export async function getTimeseriesBreakdown(
+  organizationId: string,
+  options: TimeseriesOptions = {},
+): Promise<BucketBreakdownRow[]> {
+  const granularity = options.granularity ?? 'day'
+  const bucket = granularity === 'hour' ? 'toStartOfHour' : 'toStartOfDay'
+
+  const scope = await requestsScope(organizationId)
+  const filters: string[] = []
+  const params: Record<string, unknown> = { ...scope.scopeParams }
+  if (options.projectId) {
+    filters.push('project_id = {projectId:UUID}')
+    params['projectId'] = options.projectId
+  }
+  const fromTs = fmt(options.from)
+  if (fromTs) {
+    filters.push('created_at >= parseDateTime64BestEffort({fromTs:String})')
+    params['fromTs'] = fromTs
+  } else {
+    filters.push('created_at >= now() - INTERVAL 30 DAY')
+  }
+  const toTs = fmt(options.to)
+  if (toTs) {
+    filters.push('created_at <= parseDateTime64BestEffort({toTs:String})')
+    params['toTs'] = toTs
+  }
+
+  const where = [scope.whereScope, ...filters].join(' AND ')
+
+  const sql = `
+    SELECT day, kind, value, c FROM (
+      SELECT
+        formatDateTime(${bucket}(created_at), '%Y-%m-%dT%H:%i:%SZ') AS day,
+        'status' AS kind,
+        toString(status_code) AS value,
+        count() AS c
+      FROM requests
+      WHERE ${where}
+      GROUP BY day, value
+      UNION ALL
+      SELECT
+        formatDateTime(${bucket}(created_at), '%Y-%m-%dT%H:%i:%SZ') AS day,
+        'model' AS kind,
+        concat(provider, ' / ', model) AS value,
+        count() AS c
+      FROM requests
+      WHERE ${where}
+      GROUP BY day, value
+    )
+    ORDER BY day ASC, kind ASC, c DESC`
+
+  const result = await getClickhouse().query({
+    query: sql,
+    query_params: params,
+    format: 'JSONEachRow',
+  })
+  const rows = (await result.json()) as Array<{ day: string; kind: 'status' | 'model'; value: string; c: string | number }>
+
+  const byBucket = new Map<string, BucketBreakdownRow>()
+  const TOP_N = 3
+
+  for (const r of rows) {
+    const day = String(r.day ?? '')
+    if (!day) continue
+    let row = byBucket.get(day)
+    if (!row) {
+      row = { day, top_status: [], top_models: [] }
+      byBucket.set(day, row)
+    }
+    const list = r.kind === 'status' ? row.top_status : row.top_models
+    if (list.length < TOP_N) {
+      list.push({ value: String(r.value), count: Number(r.c) })
+    }
+  }
+
+  return Array.from(byBucket.values())
 }
 
 // ─── Per-user analytics ─────────────────────────────────────────────────────

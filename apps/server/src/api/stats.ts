@@ -6,6 +6,7 @@ import {
   getStatsOverview,
   getStatsModels,
   getStatsTimeseries,
+  getTimeseriesBreakdown,
   getLatencyPercentiles,
   type OverviewRow,
   type TimeseriesRow,
@@ -162,12 +163,48 @@ statsRouter.get('/timeseries', async (c) => {
       cost: parseFloat(r.cost.toFixed(6)),
       tokens: r.tokens,
       errors: r.errors,
+      errors4xx: r.errors_4xx,
+      errors5xx: r.errors_5xx,
+      p50LatencyMs: r.p50_latency_ms,
+      p95LatencyMs: r.p95_latency_ms,
     }))
     c.header('Cache-Control', CACHE_STATS_LIVE)
     return c.json({ success: true, data: series, meta: { granularity } })
   } catch (err) {
     console.error('[stats:timeseries] ClickHouse query failed:', err instanceof Error ? err.message : err)
     return c.json({ error: 'Failed to fetch timeseries' }, 500)
+  }
+})
+
+// GET /api/v1/stats/timeseries-breakdown
+// Returns per-bucket top status codes + top models, used by the Requests
+// page chart's hover tooltip to explain spikes.
+statsRouter.get('/timeseries-breakdown', async (c) => {
+  const orgId = c.get('orgId')
+  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+
+  const projectId = c.req.query('projectId')
+  const from = c.req.query('from')
+  const to = c.req.query('to')
+  const granularity = selectGranularity(from ?? null)
+
+  try {
+    const rows = await getTimeseriesBreakdown(orgId, {
+      projectId,
+      from: from ?? null,
+      to: to ?? null,
+      granularity,
+    })
+    const data = rows.map((r) => ({
+      date: r.day,
+      topStatus: r.top_status,
+      topModels: r.top_models,
+    }))
+    c.header('Cache-Control', CACHE_STATS_LIVE)
+    return c.json({ success: true, data, meta: { granularity } })
+  } catch (err) {
+    console.error('[stats:timeseries-breakdown] ClickHouse query failed:', err instanceof Error ? err.message : err)
+    return c.json({ error: 'Failed to fetch timeseries breakdown' }, 500)
   }
 })
 

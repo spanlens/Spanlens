@@ -19,6 +19,8 @@
     --good-bg: #e8f4ec;
     --bad: #b84545;
     --bad-bg: #fbebea;
+    --warn: #c2780a;
+    --warn-bg: #fdf1df;
     --grid: rgba(0, 0, 0, 0.04);
 
     /* ── shadcn/ui compatibility (mapped to design tokens) ── */

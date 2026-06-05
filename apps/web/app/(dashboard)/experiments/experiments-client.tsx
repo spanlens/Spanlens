@@ -351,6 +351,10 @@ export function ExperimentsClient() {
   // URL-backed search + status filter — shareable, survives reload.
   const search = sp.get('q') ?? ''
   const statusFilter = (sp.get('status') ?? 'all') as StatusFilter
+  const tabParam = sp.get('tab')
+  const tab: 'all' | 'active' | 'completed' =
+    tabParam === 'active' ? 'active' :
+    tabParam === 'completed' ? 'completed' : 'all'
 
   function updateQuery(updates: Record<string, string | null>) {
     const next = new URLSearchParams(sp.toString())
@@ -375,6 +379,10 @@ export function ExperimentsClient() {
   const filtered = useMemo(() => {
     const needle = search.toLowerCase()
     return list.filter((e) => {
+      // Tab gates the list to active vs completed buckets. Within a tab the
+      // status dropdown can narrow further (e.g. tab=active + status=failed).
+      if (tab === 'active' && !(e.status === 'running' || e.status === 'pending')) return false
+      if (tab === 'completed' && e.status !== 'completed') return false
       if (statusFilter !== 'all' && e.status !== statusFilter) return false
       if (!needle) return true
       return (
@@ -382,7 +390,7 @@ export function ExperimentsClient() {
         e.prompt_name.toLowerCase().includes(needle)
       )
     })
-  }, [list, search, statusFilter])
+  }, [list, search, statusFilter, tab])
 
   // Stat strip values
   const runningCount   = list.filter((e) => e.status === 'running' || e.status === 'pending').length
@@ -504,6 +512,27 @@ export function ExperimentsClient() {
             </div>
           ))}
         </div>
+      </div>
+
+      {/* Tab strip: All / Active / Completed buckets — consistent with the
+          Evals and Datasets pages. Drives the URL ?tab= param. */}
+      <div className="shrink-0 border-b border-border bg-bg flex items-center gap-1 px-[22px]">
+        {(['all', 'active', 'completed'] as const).map((t) => (
+          <button
+            key={t}
+            type="button"
+            onClick={() => updateQuery({ tab: t === 'all' ? null : t })}
+            className={cn(
+              'font-mono text-[11px] uppercase tracking-[0.06em] px-3 py-2.5 transition-colors relative',
+              tab === t ? 'text-text' : 'text-text-faint hover:text-text-muted',
+            )}
+          >
+            {t === 'all' ? 'All' : t === 'active' ? 'Active' : 'Completed'}
+            {tab === t && (
+              <span className="absolute bottom-[-1px] left-3 right-3 h-[2px] bg-accent" />
+            )}
+          </button>
+        ))}
       </div>
 
       {/* Info banner with docs link */}

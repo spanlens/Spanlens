@@ -1231,23 +1231,92 @@ export function SavingsClient() {
                   </p>
                 </div>
               ) : (
-                <div className="flex flex-col items-center justify-center py-20 gap-3 text-text-muted">
-                  <p className="text-[13px]">No cost-saving opportunities right now.</p>
-                  <p className="font-mono text-[12px]">
-                    Need more traffic (min 30 requests per model) or already optimal.
-                  </p>
-                  {hours < 24 * 30 && (
-                    <p className="font-mono text-[11.5px] text-text-faint">
-                      Try a longer window{' '}
-                      <button type="button" className="text-text underline underline-offset-2 hover:no-underline" onClick={() => setHoursUrl(24 * 30)}>
-                        30d
-                      </button>
-                      {' '}to capture more data.
+                <div className="flex flex-col items-center py-14 gap-5 text-text-muted">
+                  <div className="flex flex-col items-center gap-2 text-center">
+                    <p className="text-[13px]">No cost-saving opportunities right now.</p>
+                    <p className="font-mono text-[12px]">
+                      Need more traffic (min 30 requests per model) or already optimal.
                     </p>
-                  )}
+                    {hours < 24 * 30 && (
+                      <p className="font-mono text-[11.5px] text-text-faint">
+                        Try a longer window{' '}
+                        <button type="button" className="text-text underline underline-offset-2 hover:no-underline" onClick={() => setHoursUrl(24 * 30)}>
+                          30d
+                        </button>
+                        {' '}to capture more data.
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Example card: shows users what a real recommendation looks like.
+                      Mock data, non-interactive, visually muted with EXAMPLE badge. */}
+                  <div className="w-full max-w-[920px] px-6">
+                    <div className="font-mono text-[10.5px] uppercase tracking-[0.06em] text-text-faint mb-2 text-center">
+                      Sample of what a recommendation looks like
+                    </div>
+                    <div
+                      className="border border-dashed border-border rounded-[6px] bg-bg-elev/40 opacity-75 select-none"
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: '1.7fr 170px 130px 150px 120px',
+                        gap: 16,
+                        alignItems: 'center',
+                        padding: '14px 22px',
+                        minWidth: '700px',
+                      }}
+                      aria-hidden="true"
+                    >
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 mb-1 flex-wrap">
+                          <span className="font-mono text-[9px] px-[6px] py-[1px] rounded-[3px] border uppercase tracking-[0.04em] border-border bg-bg text-text-faint">
+                            EXAMPLE
+                          </span>
+                          <span className="text-[13.5px] font-medium truncate text-text-muted">
+                            openai / gpt-4o → openai / gpt-4o-mini
+                          </span>
+                        </div>
+                        <div className="font-mono text-[11.5px] text-text-faint flex items-center gap-2 flex-wrap">
+                          <span className="line-through">openai / gpt-4o</span>
+                          <span>→</span>
+                          <span>openai / gpt-4o-mini</span>
+                        </div>
+                        <p className="text-[12px] text-text-faint mt-1 leading-relaxed">
+                          Short inputs/outputs fit the gpt-4o-mini envelope — ~17x cheaper with comparable accuracy on classification and short-form generation.
+                        </p>
+                      </div>
+
+                      <div>
+                        <div className="font-mono text-[10px] text-text-faint uppercase tracking-[0.03em] mb-[3px]">SAVE / MO</div>
+                        <div className="font-mono text-[18px] font-medium tracking-[-0.3px] text-text-muted">$412.00</div>
+                        <div className="font-mono text-[10.5px] text-text-faint mt-0.5">was $96.13 /7d</div>
+                      </div>
+
+                      <div>
+                        <div className="font-mono text-[10px] text-text-faint uppercase tracking-[0.03em] mb-[3px]">SAMPLES</div>
+                        <div className="text-[12.5px] text-text-muted">1,840</div>
+                        <div className="font-mono text-[10.5px] text-text-faint mt-0.5">~92 output tk</div>
+                      </div>
+
+                      <div>
+                        <div className="font-mono text-[10px] text-text-faint uppercase tracking-[0.03em] mb-[5px]">CONFIDENCE</div>
+                        <ConfidenceBar level="high" />
+                        <div className="font-mono text-[10.5px] text-text-faint mt-1">≥$40/mo · ≥100 req</div>
+                      </div>
+
+                      <div className="flex justify-end gap-1.5 flex-wrap">
+                        <span className="font-mono text-[10.5px] text-text-faint px-[10px] py-[4px] border border-border rounded-[5px]">
+                          Compare
+                        </span>
+                        <span className="font-mono text-[10.5px] text-text-faint px-[10px] py-[4px] border border-border rounded-[5px]">
+                          Simulate
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
                   <Link
                     href="/docs/features/savings"
-                    className="font-mono text-[11px] mt-2 px-2.5 py-1 rounded border border-border text-text-muted hover:text-text hover:border-border-strong transition-colors"
+                    className="font-mono text-[11px] px-2.5 py-1 rounded border border-border text-text-muted hover:text-text hover:border-border-strong transition-colors"
                   >
                     How recommendations work →
                   </Link>

@@ -155,6 +155,25 @@ export interface TimeseriesPoint {
   cost: number
   tokens: number
   errors: number
+  /** 4xx error count (subset of `errors`). Optional for backward compat with the demo data shim. */
+  errors4xx?: number
+  /** 5xx error count (subset of `errors`). Optional for backward compat with the demo data shim. */
+  errors5xx?: number
+  /** Median latency in ms for this bucket. Null when bucket is empty. */
+  p50LatencyMs?: number | null
+  /** 95th percentile latency in ms for this bucket. Null when bucket is empty. */
+  p95LatencyMs?: number | null
+}
+
+export interface BucketBreakdownEntry {
+  value: string
+  count: number
+}
+
+export interface TimeseriesBreakdownPoint {
+  date: string
+  topStatus: BucketBreakdownEntry[]
+  topModels: BucketBreakdownEntry[]
 }
 
 export interface SpendForecast {
