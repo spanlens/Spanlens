@@ -59,3 +59,62 @@ jobs:
           rm -f .npmrc
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      # ── MCP Registry publish ────────────────────────────────────────────
+      # Mirrors the npm release to registry.modelcontextprotocol.io so the
+      # listing's `version` stays in lock-step with what's actually on npm.
+      # Uses GitHub Actions OIDC (no manual OAuth) — works because the
+      # workflow's `permissions.id-token: write` is already granted above
+      # for npm provenance.
+      - name: Download mcp-publisher CLI
+        working-directory: packages/mcp-server
+        run: |
+          curl -sL "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_linux_amd64.tar.gz" \
+            | tar xz mcp-publisher
+          chmod +x mcp-publisher
+          ./mcp-publisher --help | head -1
+
+      - name: Sync server.json version with package.json
+        working-directory: packages/mcp-server
+        run: |
+          # server.json's top-level `version` and `packages[0].version` must
+          # match the just-published npm version exactly, or the registry
+          # verifier rejects the publish. Read the canonical value from
+          # package.json so a forgotten manual edit on server.json can't
+          # take the workflow down.
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          echo "Syncing server.json to v$PKG_VERSION"
+          node -e "
+            const fs = require('fs');
+            const s = JSON.parse(fs.readFileSync('server.json', 'utf8'));
+            s.version = '$PKG_VERSION';
+            if (Array.isArray(s.packages) && s.packages[0]) {
+              s.packages[0].version = '$PKG_VERSION';
+            }
+            fs.writeFileSync('server.json', JSON.stringify(s, null, 2) + '\n');
+          "
+          # Show the resolved file for the run log so a verify failure is
+          # easy to diagnose without re-running with --debug.
+          cat server.json | head -20
+
+      - name: Login to MCP Registry (GitHub Actions OIDC)
+        working-directory: packages/mcp-server
+        run: ./mcp-publisher login github-oidc
+
+      - name: Publish to MCP Registry
+        working-directory: packages/mcp-server
+        # The npm tarball needs a moment to propagate before the registry's
+        # verifier can fetch the `mcpName` from package.json metadata. A
+        # short retry loop covers the rare slow propagation; the typical
+        # delay is sub-second.
+        run: |
+          for attempt in 1 2 3 4 5; do
+            if ./mcp-publisher publish; then
+              echo "::notice::MCP Registry publish succeeded on attempt $attempt"
+              exit 0
+            fi
+            echo "::warning::publish attempt $attempt failed — sleeping then retrying"
+            sleep 15
+          done
+          echo "::error::MCP Registry publish failed after 5 attempts"
+          exit 1
