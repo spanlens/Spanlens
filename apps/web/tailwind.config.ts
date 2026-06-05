@@ -26,6 +26,8 @@ const config: Config = {
         'good-bg':       'var(--good-bg)',
         bad:             'var(--bad)',
         'bad-bg':        'var(--bad-bg)',
+        warn:            'var(--warn)',
+        'warn-bg':       'var(--warn-bg)',
 
         /* ── shadcn/ui compatibility ── */
         border:      'var(--border)',

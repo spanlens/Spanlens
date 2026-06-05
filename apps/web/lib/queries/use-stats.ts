@@ -2,7 +2,7 @@
 
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { apiGet } from '@/lib/api'
-import type { ApiEnvelope, StatsOverview, TimeseriesPoint, SpendForecast } from './types'
+import type { ApiEnvelope, StatsOverview, TimeseriesPoint, TimeseriesBreakdownPoint, SpendForecast } from './types'
 
 // Truncated to the minute — must match server-side fromIso() in lib/server/queries/stats.ts
 // so the queryKey is stable across SSR render and client hydration.
@@ -114,6 +114,35 @@ export function useStatsTimeseries(
     staleTime: 60_000,
     placeholderData: keepPreviousData,
     ...(options?.refetchInterval != null ? { refetchInterval: options.refetchInterval } : {}),
+  })
+}
+
+// Per-bucket top status codes + top models. Used by the Requests page chart
+// tooltip to explain "why did errors spike at 14:00?" — kept separate from
+// the main timeseries so the table view doesn't pay for this query.
+export function useTimeseriesBreakdown(
+  params?: { hours?: number; from?: string; to?: string },
+) {
+  const hours = params?.hours ?? 24
+  const customFrom = params?.from
+  const customTo = params?.to
+  return useQuery({
+    queryKey: ['stats', 'timeseries-breakdown', {
+      hours,
+      ...(customFrom != null ? { from: customFrom } : {}),
+      ...(customTo != null ? { to: customTo } : {}),
+    }] as const,
+    queryFn: async () => {
+      const from = customFrom ?? fromIso(hours)
+      const qs = new URLSearchParams({ from })
+      if (customTo) qs.set('to', customTo)
+      const res = await apiGet<ApiEnvelope<TimeseriesBreakdownPoint[]>>(
+        `/api/v1/stats/timeseries-breakdown?${qs}`,
+      )
+      return res.data ?? []
+    },
+    staleTime: 60_000,
+    placeholderData: keepPreviousData,
   })
 }
 

@@ -13,7 +13,7 @@ import {
 } from '@/lib/queries/use-requests'
 import { useProviderKeys } from '@/lib/queries/use-provider-keys'
 import { useTrace } from '@/lib/queries/use-traces'
-import { useStatsOverview, useStatsTimeseries } from '@/lib/queries/use-stats'
+import { useStatsOverview, useStatsTimeseries, useTimeseriesBreakdown } from '@/lib/queries/use-stats'
 import { useAnomalies } from '@/lib/queries/use-anomalies'
 import type { RequestRow, RequestDetail } from '@/lib/queries/types'
 import { maskPii, maskPiiDeep } from '@/lib/pii-mask'
@@ -60,6 +60,42 @@ function relAge(dateStr: string): string {
 function fmtCost(n: number | null): string {
   if (n == null) return '—'
   return '$' + n.toFixed(5)
+}
+
+// Provider colors — used as a small dot before the model name to make the
+// table scannable at a glance. Brand-leaning hues to match user mental model
+// (OpenAI green-teal, Anthropic warm orange, Gemini blue, Mistral red).
+// Falls back to a muted gray for unknown providers.
+const PROVIDER_DOT: Record<string, string> = {
+  openai:    '#10a37f',
+  anthropic: '#cc785c',
+  gemini:    '#4285f4',
+  google:    '#4285f4',
+  mistral:   '#fa520f',
+}
+
+function providerDotColor(provider: string): string {
+  return PROVIDER_DOT[provider.toLowerCase()] ?? 'var(--text-faint)'
+}
+
+// Tiered latency color — gives the column visual depth so the eye finds
+// outliers without needing the user to read every number.
+// <500ms quiet, <2s normal, <5s warn, ≥5s loud.
+function latencyClass(latencyMs: number, isError: boolean): string {
+  if (isError) return 'text-accent'
+  if (latencyMs >= 5000) return 'text-bad'
+  if (latencyMs >= SLOW_LATENCY_MS) return 'text-warn'
+  if (latencyMs < 500) return 'text-text-muted'
+  return 'text-text'
+}
+
+// Status code pill — same shape across 2xx/4xx/5xx so column width stays
+// stable, color tells the story.
+function statusPillClass(code: number): string {
+  if (code >= 500) return 'border-bad/30 bg-bad/10 text-bad'
+  if (code >= 400) return 'border-warn/30 bg-warn/10 text-warn'
+  if (code >= 200 && code < 300) return 'border-good/30 bg-good/10 text-good'
+  return 'border-border bg-bg text-text-muted'
 }
 
 // Maps the URL `timeRange` enum to a human label used in stat-strip and
@@ -178,38 +214,74 @@ interface TrafficBarsProps {
   fromIso: string | undefined
 }
 
+const CHART_H = 96  // px — total bar/line plot area
+
 function TrafficBars({ timeRange, fromIso }: TrafficBarsProps) {
   // Lock to "last 30d" when the user has selected All time so the chart still
   // has a meaningful baseline; otherwise honor the same window as the stat
   // strip and the table.
   const hours = timeRange === 'all' ? 24 * 30 : timeRangeHours(timeRange)
-  const timeseries = useStatsTimeseries(
-    fromIso ? { from: fromIso } : { hours },
-  )
+  const queryParams = fromIso ? { from: fromIso } : { hours }
+  const timeseries = useStatsTimeseries(queryParams)
+  const breakdown = useTimeseriesBreakdown(queryParams)
   const rawTs = timeseries.data
 
-  // Number of buckets to show — small ranges look weird with 30 sparse bars
-  // so we clamp to the data length but never below 6 to keep the visual rhythm.
+  // Toggle whether the latency overlay lines are rendered.
+  const [showLatency, setShowLatency] = useState(true)
+  const [hoverIdx, setHoverIdx] = useState<number | null>(null)
+
   const bucketCount = useMemo(() => {
-    if (timeRange === 'today') return 24 // hour buckets
+    if (timeRange === 'today') return 24
     if (timeRange === '7d') return 7
     return 30
   }, [timeRange])
 
-  const bars = useMemo(() => {
-    const ts = rawTs ?? []
-    if (!ts.length) return Array.from({ length: bucketCount }).map(() => ({ h: 8, color: 'var(--border-strong)' }))
-    const slice = ts.slice(-bucketCount)
-    const maxReq = Math.max(...slice.map((d) => d.requests), 1)
-    return slice.map((d) => {
-      const h = Math.max(4, (d.requests / maxReq) * 68)
-      const color = d.errors > 0 ? 'var(--bad)' : 'var(--border-strong)'
-      return { h, color }
+  const slice = useMemo(() => (rawTs ?? []).slice(-bucketCount), [rawTs, bucketCount])
+
+  const breakdownByDate = useMemo(() => {
+    const m = new Map<string, { topStatus: { value: string; count: number }[]; topModels: { value: string; count: number }[] }>()
+    for (const p of breakdown.data ?? []) {
+      m.set(p.date, { topStatus: p.topStatus, topModels: p.topModels })
+    }
+    return m
+  }, [breakdown.data])
+
+  const { bars, maxReq, maxLatency } = useMemo(() => {
+    if (!slice.length) {
+      return {
+        bars: Array.from({ length: bucketCount }).map(() => ({
+          requests: 0, ok: 0, e4xx: 0, e5xx: 0, p50: null as number | null, p95: null as number | null,
+          hOk: 4, hE4xx: 0, hE5xx: 0,
+        })),
+        maxReq: 1,
+        maxLatency: 1,
+      }
+    }
+    const localMaxReq = Math.max(...slice.map((d) => d.requests), 1)
+    const localMaxLat = Math.max(...slice.map((d) => d.p95LatencyMs ?? 0), 1)
+    const bars = slice.map((d) => {
+      const e4xx = d.errors4xx ?? 0
+      const e5xx = d.errors5xx ?? Math.max(0, (d.errors ?? 0) - e4xx)
+      const ok = Math.max(0, d.requests - e4xx - e5xx)
+      const total = d.requests
+      const scaleH = (n: number) => (total === 0 ? 0 : (n / localMaxReq) * (CHART_H - 8))
+      return {
+        requests: total,
+        ok,
+        e4xx,
+        e5xx,
+        p50: d.p50LatencyMs ?? null,
+        p95: d.p95LatencyMs ?? null,
+        hOk:  Math.max(total > 0 ? 2 : 0, scaleH(ok)),
+        hE4xx: scaleH(e4xx),
+        hE5xx: scaleH(e5xx),
+      }
     })
-  }, [rawTs, bucketCount])
+    return { bars, maxReq: localMaxReq, maxLatency: localMaxLat }
+  }, [slice, bucketCount])
 
   const labels = useMemo(() => {
-    const pts = (rawTs ?? []).slice(-bucketCount)
+    const pts = slice
     const first = pts[0]
     if (!pts.length || !first) return ['—', '—', '—', '—', 'NOW']
     const fmt = (s: string) =>
@@ -223,41 +295,215 @@ function TrafficBars({ timeRange, fromIso }: TrafficBarsProps) {
       fmt((pts[Math.floor(pts.length * 0.75)] ?? first).date),
       'NOW',
     ]
-  }, [rawTs, bucketCount, timeRange])
+  }, [slice, timeRange])
 
   const trailingLabel =
     timeRange === 'all'   ? 'last 30d' :
     timeRange === 'today' ? 'today' :
     `last ${timeRange}`
 
+  // SVG polyline points for the latency overlay
+  const latencyPoints = useMemo(() => {
+    if (!slice.length) return { p50: '', p95: '' }
+    const w = 100 // percent units
+    const stepX = w / Math.max(1, slice.length - 1)
+    const yFor = (v: number | null) => {
+      if (v == null || maxLatency === 0) return null
+      return CHART_H - 4 - (v / maxLatency) * (CHART_H - 12)
+    }
+    const buildLine = (vals: (number | null)[]): string => {
+      const pts: string[] = []
+      vals.forEach((v, i) => {
+        const y = yFor(v)
+        if (y == null) return
+        pts.push(`${(i * stepX).toFixed(2)},${y.toFixed(2)}`)
+      })
+      return pts.join(' ')
+    }
+    return {
+      p50: buildLine(bars.map((b) => b.p50)),
+      p95: buildLine(bars.map((b) => b.p95)),
+    }
+  }, [bars, slice, maxLatency])
+
+  const hoverDate = hoverIdx != null ? slice[hoverIdx]?.date ?? null : null
+  const hoverBreakdown = hoverDate ? breakdownByDate.get(hoverDate) : undefined
+  const hoverBar = hoverIdx != null ? bars[hoverIdx] : null
+
+  const fmtTooltipDate = (s: string) =>
+    timeRange === 'today'
+      ? new Date(s).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })
+      : new Date(s).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+
   return (
     <div className="px-[22px] py-[14px] border-b border-border shrink-0">
       <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
           <h2 className="text-[13.5px] font-medium">Traffic</h2>
           <div className="flex gap-3 font-mono text-[10.5px] text-text-muted tracking-[0.03em]">
             <span className="inline-flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-border-strong inline-block" /> OK
+              <span className="w-1.5 h-1.5 rounded-[1px] bg-border-strong inline-block" /> OK
             </span>
             <span className="inline-flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-bad inline-block" /> ERROR
+              <span className="w-1.5 h-1.5 rounded-[1px] bg-warn inline-block" /> 4xx
             </span>
+            <span className="inline-flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-[1px] bg-bad inline-block" /> 5xx
+            </span>
+            <button
+              type="button"
+              onClick={() => setShowLatency((v) => !v)}
+              className={cn(
+                'inline-flex items-center gap-1.5 hover:text-text transition-colors',
+                showLatency ? 'text-text-muted' : 'text-text-faint',
+              )}
+              title="Toggle latency overlay"
+            >
+              <span className="inline-block w-3 border-t-2 border-dotted border-text-muted" /> p50
+              <span className="inline-block w-3 border-t-2 border-text-muted ml-1" /> p95
+            </button>
           </div>
         </div>
         <div className="font-mono text-[10.5px] text-text-faint tracking-[0.03em]">{trailingLabel}</div>
       </div>
-      <div className="flex items-end gap-[2px] h-[72px]">
-        {bars.map((b, i) => (
+
+      <div
+        className="relative"
+        style={{ height: CHART_H }}
+        onMouseLeave={() => setHoverIdx(null)}
+      >
+        {/* Bars (stacked OK / 4xx / 5xx, bottom-up) */}
+        <div className="absolute inset-0 flex items-end gap-[2px]">
+          {bars.map((b, i) => {
+            const isHover = hoverIdx === i
+            return (
+              <div
+                key={i}
+                className="flex-1 flex flex-col-reverse min-w-0 cursor-default"
+                onMouseEnter={() => setHoverIdx(i)}
+              >
+                {b.hOk > 0 && (
+                  <div
+                    className={cn('rounded-t-[1px]', b.hE4xx === 0 && b.hE5xx === 0 ? 'rounded-t-[1px]' : 'rounded-none')}
+                    style={{ height: b.hOk, background: isHover ? 'var(--text-muted)' : 'var(--border-strong)' }}
+                  />
+                )}
+                {b.hE4xx > 0 && (
+                  <div style={{ height: b.hE4xx, background: 'var(--warn)' }} />
+                )}
+                {b.hE5xx > 0 && (
+                  <div
+                    className="rounded-t-[1px]"
+                    style={{ height: b.hE5xx, background: 'var(--bad)' }}
+                  />
+                )}
+              </div>
+            )
+          })}
+        </div>
+
+        {/* Latency overlay (p50 dotted, p95 solid) */}
+        {showLatency && slice.length > 1 && (
+          <svg
+            className="absolute inset-0 pointer-events-none"
+            viewBox={`0 0 100 ${CHART_H}`}
+            preserveAspectRatio="none"
+            style={{ width: '100%', height: '100%' }}
+          >
+            {latencyPoints.p95 && (
+              <polyline
+                points={latencyPoints.p95}
+                fill="none"
+                stroke="var(--accent)"
+                strokeWidth={1.5}
+                vectorEffect="non-scaling-stroke"
+              />
+            )}
+            {latencyPoints.p50 && (
+              <polyline
+                points={latencyPoints.p50}
+                fill="none"
+                stroke="var(--accent)"
+                strokeWidth={1.25}
+                strokeDasharray="3 2"
+                strokeOpacity={0.6}
+                vectorEffect="non-scaling-stroke"
+              />
+            )}
+          </svg>
+        )}
+
+        {/* Hover tracker line */}
+        {hoverIdx != null && bars.length > 0 && (
           <div
-            key={i}
-            className="flex-1 rounded-[1px]"
-            style={{ height: b.h, background: b.color }}
+            className="absolute top-0 bottom-0 w-px bg-text-faint pointer-events-none"
+            style={{ left: `${((hoverIdx + 0.5) / bars.length) * 100}%` }}
           />
-        ))}
+        )}
       </div>
+
       <div className="flex justify-between font-mono text-[10px] text-text-faint tracking-[0.04em] mt-2">
         {labels.map((l, i) => <span key={i}>{l}</span>)}
       </div>
+
+      {/* Tooltip */}
+      {hoverIdx != null && hoverBar && hoverDate && (
+        <div className="mt-3 rounded-[5px] border border-border bg-bg-elev px-3 py-2 font-mono text-[11px]">
+          <div className="flex items-baseline justify-between gap-3 mb-1.5">
+            <span className="text-text">{fmtTooltipDate(hoverDate)}</span>
+            <span className="text-text-faint text-[10.5px]">
+              {hoverBar.requests.toLocaleString()} req
+            </span>
+          </div>
+          <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-[10.5px] text-text-muted">
+            <div className="flex justify-between">
+              <span>4xx</span>
+              <span className={hoverBar.e4xx > 0 ? 'text-warn' : 'text-text-faint'}>
+                {hoverBar.e4xx.toLocaleString()}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span>p50</span>
+              <span className="text-text">{hoverBar.p50 != null ? `${Math.round(hoverBar.p50)}ms` : '—'}</span>
+            </div>
+            <div className="flex justify-between">
+              <span>5xx</span>
+              <span className={hoverBar.e5xx > 0 ? 'text-bad' : 'text-text-faint'}>
+                {hoverBar.e5xx.toLocaleString()}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span>p95</span>
+              <span className="text-text">{hoverBar.p95 != null ? `${Math.round(hoverBar.p95)}ms` : '—'}</span>
+            </div>
+          </div>
+          {hoverBreakdown && (hoverBreakdown.topStatus.length > 0 || hoverBreakdown.topModels.length > 0) && (
+            <div className="mt-2 pt-2 border-t border-border grid grid-cols-2 gap-x-6 gap-y-0.5 text-[10.5px]">
+              <div>
+                <div className="text-text-faint uppercase tracking-[0.05em] text-[9.5px] mb-1">Top status</div>
+                {hoverBreakdown.topStatus.slice(0, 3).map((s) => (
+                  <div key={s.value} className="flex justify-between text-text-muted">
+                    <span className={cn(
+                      Number(s.value) >= 500 ? 'text-bad' :
+                      Number(s.value) >= 400 ? 'text-warn' : 'text-text-muted',
+                    )}>{s.value}</span>
+                    <span>{s.count.toLocaleString()}</span>
+                  </div>
+                ))}
+              </div>
+              <div>
+                <div className="text-text-faint uppercase tracking-[0.05em] text-[9.5px] mb-1">Top models</div>
+                {hoverBreakdown.topModels.slice(0, 3).map((m) => (
+                  <div key={m.value} className="flex justify-between text-text-muted gap-2">
+                    <span className="truncate">{m.value.split(' / ').pop()}</span>
+                    <span className="shrink-0">{m.count.toLocaleString()}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }
@@ -968,8 +1214,13 @@ function RequestsTable({
                   )}
                   style={{ gridTemplateColumns: cols, paddingLeft: isSelected ? 20 : 22 }}
                 >
-                  <span>
-                    {isErr && <span className="inline-block w-1.5 h-1.5 rounded-full bg-accent" />}
+                  <span className="flex items-center">
+                    <span
+                      className="inline-block w-2 h-2 rounded-full shrink-0"
+                      style={{ background: providerDotColor(req.provider) }}
+                      title={req.provider}
+                      aria-label={`provider ${req.provider}`}
+                    />
                   </span>
                   <span className="text-text truncate pr-2 flex items-center gap-1.5">
                     <span className="truncate">{req.model}</span>
@@ -985,13 +1236,20 @@ function RequestsTable({
                   {!drawerOpen && <span className="text-text-muted">{req.provider_key_name ?? req.provider}</span>}
                   {/* Slow rows draw the eye even when they returned 200 — a
                       9-second OK request often points at a model/prompt
-                      problem worth investigating. */}
-                  <span className={cn(
-                    isErr ? 'text-accent' : req.latency_ms >= SLOW_LATENCY_MS ? 'text-accent' : 'text-text',
-                  )}>{req.latency_ms}ms</span>
+                      problem worth investigating. Tiered colors via latencyClass. */}
+                  <span className={latencyClass(req.latency_ms, isErr)}>{req.latency_ms}ms</span>
                   <span className="text-text-muted">{req.total_tokens.toLocaleString()}</span>
                   <span className="text-text">{fmtCost(req.cost_usd)}</span>
-                  <span className={isErr ? 'text-bad' : 'text-good'}>{req.status_code}</span>
+                  <span>
+                    <span
+                      className={cn(
+                        'inline-flex items-center justify-center font-mono text-[10.5px] px-1.5 py-px rounded-[3px] border tabular-nums',
+                        statusPillClass(req.status_code),
+                      )}
+                    >
+                      {req.status_code}
+                    </span>
+                  </span>
                   <span
                     className="text-text-faint text-right"
                     title={formatDateTime(req.created_at)}

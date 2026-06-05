@@ -33,6 +33,8 @@ export interface EvalRun {
   organization_id: string
   evaluator_id: string
   prompt_version_id: string
+  /** Optional dataset link. Set when source is 'dataset'. */
+  dataset_id?: string | null
   source: 'production' | 'dataset'
   sample_size: number
   sample_from: string | null

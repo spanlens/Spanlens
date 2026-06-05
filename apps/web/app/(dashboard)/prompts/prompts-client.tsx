@@ -57,6 +57,93 @@ const GRID_CLASS =
   'grid-cols-[14px_minmax(0,1fr)_64px_44px] ' +
   'sm:grid-cols-[20px_minmax(0,1.5fr)_0.55fr_0.55fr_0.8fr_0.8fr_0.8fr_0.7fr_0.5fr_0.5fr]'
 
+// ── Usage tab: rolls up production calls per prompt version ──────────────────
+
+interface PromptRowLike {
+  name: string
+  version: number
+  stats?: { calls?: number; totalCostUsd?: number } | null
+}
+
+function PromptsUsageView({ prompts, hours }: { prompts: PromptRowLike[]; hours: number }) {
+  const promptsWithCalls = prompts.filter((p) => (p.stats?.calls ?? 0) > 0)
+  const rangeLabel = hours <= 24 ? '24h' : hours <= 24 * 7 ? '7d' : '30d'
+
+  if (promptsWithCalls.length === 0) {
+    return (
+      <div className="flex flex-col items-center py-14 gap-4 text-text-muted px-6">
+        <FlaskConical className="h-9 w-9 text-text-faint" />
+        <p className="text-[13px] text-text">No tagged production calls yet</p>
+        <p className="font-mono text-[11.5px] text-text-faint max-w-[520px] text-center leading-relaxed">
+          To see per-version usage, tag each proxy call with the{' '}
+          <code className="font-mono text-[11px] px-1 rounded border border-border bg-bg text-text">
+            X-Spanlens-Prompt-Version
+          </code>{' '}
+          header (or use{' '}
+          <code className="font-mono text-[11px] px-1 rounded border border-border bg-bg text-text">
+            withPromptVersion()
+          </code>{' '}
+          in the SDK). Once tagged, calls show up here grouped by version.
+        </p>
+        <Link
+          href="/docs/features/prompts"
+          className="font-mono text-[11px] mt-1 px-2.5 py-1 rounded border border-border text-text-muted hover:text-text hover:border-border-strong transition-colors"
+        >
+          Setup guide →
+        </Link>
+      </div>
+    )
+  }
+
+  const rowGridStyle: React.CSSProperties = {
+    display: 'grid',
+    gridTemplateColumns: '1.6fr 90px 110px 110px',
+    gap: 12,
+    alignItems: 'center',
+  }
+
+  function fmtUsdLocal(n: number): string {
+    if (n >= 100) return '$' + n.toFixed(0)
+    return '$' + n.toFixed(4)
+  }
+
+  return (
+    <div>
+      <div
+        className="px-[22px] py-[8px] bg-bg-muted border-b border-border font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint"
+        style={rowGridStyle}
+      >
+        <span>Prompt · version</span>
+        <span>Calls · {rangeLabel}</span>
+        <span>Spend · {rangeLabel}</span>
+        <span className="text-right">Cost / call</span>
+      </div>
+      {promptsWithCalls.map((p) => {
+        const calls = p.stats?.calls ?? 0
+        const spend = p.stats?.totalCostUsd ?? 0
+        const costPerCall = calls > 0 ? spend / calls : 0
+        return (
+          <div
+            key={`${p.name}-${p.version}`}
+            className="px-[22px] py-[10px] border-b border-border"
+            style={rowGridStyle}
+          >
+            <div className="min-w-0">
+              <div className="text-[12.5px] text-text truncate">{p.name}</div>
+              <div className="font-mono text-[10.5px] text-text-faint">v{p.version}</div>
+            </div>
+            <span className="font-mono text-[12px] text-text tabular-nums">{calls.toLocaleString()}</span>
+            <span className="font-mono text-[12px] text-text tabular-nums">{fmtUsdLocal(spend)}</span>
+            <span className="font-mono text-[12px] text-text-muted tabular-nums text-right">
+              {fmtUsdLocal(costPerCall)}
+            </span>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 export function PromptsClient() {
   const router = useRouter()
   const sp = useSearchParams()
@@ -68,6 +155,8 @@ export function PromptsClient() {
   const minCalls  = (parseInt(sp.get('minCalls') ?? '0', 10) || 0) as MinCalls
   const dateRange = (sp.get('range') ?? '24h') as DateRange
   const viewMode  = (sp.get('view') ?? 'all') as ViewMode
+  const tabParam  = sp.get('tab')
+  const tab: 'versions' | 'usage' = tabParam === 'usage' ? 'usage' : 'versions'
 
   function updateQuery(updates: Record<string, string | null>) {
     const next = new URLSearchParams(sp.toString())
@@ -312,6 +401,30 @@ export function PromptsClient() {
         </div>
       </div>
 
+      {/* Tab strip: Versions (definitions) vs Usage (production calls per version) */}
+      <div className="shrink-0 border-b border-border bg-bg flex items-center gap-1 px-[22px]">
+        {(['versions', 'usage'] as const).map((t) => (
+          <button
+            key={t}
+            type="button"
+            onClick={() => updateQuery({ tab: t === 'versions' ? null : t })}
+            className={cn(
+              'font-mono text-[11px] uppercase tracking-[0.06em] px-3 py-2.5 transition-colors relative',
+              tab === t ? 'text-text' : 'text-text-faint hover:text-text-muted',
+            )}
+          >
+            {t === 'versions' ? 'Versions' : 'Usage'}
+            {tab === t && (
+              <span className="absolute bottom-[-1px] left-3 right-3 h-[2px] bg-accent" />
+            )}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'usage' ? (
+        <PromptsUsageView prompts={all} hours={hours} />
+      ) : (
+      <>
       {/* Filter toolbar */}
       <div className="flex flex-col gap-[6px] px-[22px] py-[10px] border-b border-border shrink-0">
       {/* Mobile search, shown only on small screens */}
@@ -641,6 +754,8 @@ export function PromptsClient() {
           </div>
         )}
       </div>
+      </>
+      )}
     </div>
   )
 }
