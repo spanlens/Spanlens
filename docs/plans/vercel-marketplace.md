@@ -167,5 +167,26 @@ Overview draft (under 768 chars):
 ## Status
 
 - 2026-06-05: Plan written. Form payload drafted. Asset inventory
-  done (`docs/plans/vercel-marketplace.md`). Awaiting decision to
-  start Phase 1.
+  done.
+- 2026-06-05: **Deferred.** Public launch hit zero hosted sign-ups
+  by the time we walked through the Marketplace Program form. Filing
+  partner contact at zero traction risks (a) a soft reject we cannot
+  un-file and (b) an early bad impression that lingers in partnerships
+  team notes when we resubmit later. Phase 1 cost (~5 days of OAuth
+  build) has no ROI without users to convert through the listing.
+
+### Resume conditions
+
+Restart this workstream when any of the following is true:
+
+- At least the low hundreds of monthly active hosted users (any
+  scope: free + paid), with weekly week-over-week growth.
+- A clear public reason to launch on Vercel specifically (e.g. a
+  Next.js-shaped customer asking for the install button, or an
+  internal Vercel contact opening the door).
+- A specific dated launch loop ready to ride the listing (paid
+  campaign + content + X thread) so the listing landing has a
+  burst of installs rather than zero.
+
+Until one of these holds, leave this plan alone. Form submission is
+worth more once we have something to show on the traction question.
