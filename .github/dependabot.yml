@@ -21,6 +21,12 @@ version: 2
 #
 # - globals 17: paired with the vitest 4 bump; safe on its own but Dependabot
 #   keeps grouping them. Drop this once vitest 4 is unblocked.
+#
+# - @types/node 25+: runtime target is Node 22 LTS, so the typings stay on
+#   the 22.x line until the runtime moves. The TS 6 + @types/node 25
+#   combination already cost a Docker build break (CLAUDE.md gotcha #28);
+#   leaving majors un-ignored means dependabot keeps re-issuing the same
+#   broken PR every week. Re-enable when the runtime is bumped past 22.
 
 updates:
   - package-ecosystem: npm
@@ -37,6 +43,8 @@ updates:
       - dependency-name: vitest
         update-types: ["version-update:semver-major"]
       - dependency-name: globals
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@types/node"
         update-types: ["version-update:semver-major"]
     groups:
       # Bundle every safe (minor + patch) bump into a single weekly PR.
