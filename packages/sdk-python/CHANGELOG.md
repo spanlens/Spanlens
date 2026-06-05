@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.6.0
+
+LlamaIndex integration release. Drop `SpanlensCallbackHandler` onto any LlamaIndex query engine, agent, or workflow and every `CBEventType` (LLM, RETRIEVE, EMBEDDING, FUNCTION_CALL, QUERY) becomes a typed Spanlens span with parent / child linkage matching the framework's per-event UUIDs.
+
+### Added
+
+- `spanlens.integrations.llama_index.SpanlensCallbackHandler` — subclasses LlamaIndex's `BaseCallbackHandler` so `Settings.callback_manager.add_handler(handler)` is the entire integration. Maps each event type to a Spanlens `span_type`, extracts token usage from the `response.raw.usage` shape OpenAI / LiteLLM / Anthropic LLM backends share, summarises retrieved nodes (count + top scores) instead of dumping full text, and truncates large inputs / outputs at 16 KB by default.
+- Optional dependency: `pip install "spanlens[llama-index]"` (pulls in `llama-index-core>=0.10.0`). Also rolled into the `[all]` extra.
+- `llamaindex` / `llama-index` / `langgraph` keywords on the PyPI listing for discoverability.
+
+### Verified
+
+- 7 unit tests with `respx` mock the ingest HTTP layer and exercise event dispatch, parent linkage, exception handling, external-trace lifecycle, and retrieved-node summarisation. Run with `pytest tests/test_integrations_llama_index.py`.
+- An integration smoke script (`scripts/test_llama_index_integration.py`) drives a synthetic query through the real `CallbackManager` + `CBEventType` + `EventPayload` from `llama-index-core 0.14.22` and asserts the on-wire shape (trace POST + span POSTs + PATCHes). Setting `SPANLENS_LIVE_URL` switches it to live mode against a real server.
+
+### Docs
+
+- New LlamaIndex docs page at `/docs/integrations/llamaindex` covering install, minimal setup, CBEventType → span_type mapping, trace-tree shape, long-lived trace lifecycle, proxy pairing for cost, and prompt-version linking.
+
 ## 0.5.1
 
 PyPI metadata fixes + docs polish. No runtime API changes (already-shipped 0.5 features remain identical: `SpanlensCallbackHandler` for LangChain / LangGraph, `observe_ollama`, async helpers, sampling).
