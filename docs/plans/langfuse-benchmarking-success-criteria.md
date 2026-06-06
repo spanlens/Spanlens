@@ -422,7 +422,8 @@
 **평가/실험/playground 실행이 Spanlens 자체 trace로 기록되어 /traces에서 조회 가능**
 
 **📅 1차 PR 머지: 2026-06-06 (#215) — `internal-tracing.ts` 라이브러리 + `eval-runner.ts` 통합**
-**📅 잔여: 실제 Vercel env 등록 + `spanlens-team` workspace 생성 → runtime activation (사용자 admin 작업)**
+**📅 2차 PR 머지: 2026-06-06 (#217) — `experiment-runner.ts` + `prompts-playground.ts` 통합**
+**📅 활성화 완료: 2026-06-06 05:30 UTC — `spanlens-internal` project + `sl_live_20b057...` key + Vercel env 2개 + redeploy. Smoke test trace `smoke_test_4b2` 시각 확인 ✅**
 
 ### 🔧 Code Complete (#215)
 - [x] `apps/server/src/lib/internal-tracing.ts` 신규 (250줄, no SDK dep, fail-open, no-op fallback)
@@ -430,8 +431,8 @@
 - [ ] Vercel env 등록 (production + preview) — **사용자 admin 작업**
 - [ ] `spanlens-team` workspace + project + full-scope API key 발급 — **사용자 admin 작업**
 - [x] `eval-runner.ts`에 `traceInternal` 통합: `eval_run` trace + per-sample `llm_judge` span, 3개 종료 path (성공/allFailed/catch) 모두 trace.end
-- [ ] `experiment-runner.ts` 통합 — **별도 PR (eval-runner와 동일 패턴 재사용)**
-- [ ] `playground-runner.ts` 통합 (옵션) — **별도 PR**
+- [x] `experiment-runner.ts` 통합 (#217): `ab_experiment` trace + per-item `ab_item` span (양쪽 arm + 옵션 judge를 한 span에 묶음), 2개 종료 path 모두 trace.end
+- [x] `prompts-playground.ts` 통합 (#217): `playground_call` trace + single `llm` span, 4개 종료 path (openai 4xx/ok + anthropic 4xx/ok) 모두 trace.end
 - [x] **무한 재귀 방지**: internal trace는 별도 workspace의 sl_live_* 키로 ingest API 사용. evaluator가 internal workspace의 prompt를 가리키지 않으면 재귀 불가능 (구조적 보장)
 
 ### 🧪 Testing
