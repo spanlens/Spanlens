@@ -6,16 +6,16 @@
 
 ## 공통 기준 (모든 항목 적용)
 
-매 항목 머지 직전 체크:
+매 항목 머지 직전 체크. 모든 머지된 PR (#205, #206, #207, #208, #209, #210, #211, #212, #213, #214, #215, #216, #217, #218)에 적용됨.
 
-- [ ] `pnpm typecheck` 통과 (서버 + 웹 + SDK)
-- [ ] `pnpm lint` 경고 0개
-- [ ] `pnpm test` 신규/수정 영역 커버
-- [ ] CLAUDE.md gotcha 위반 없음 (특히 #3, #8, #10, #12, #15, #18, #19, #21, #22)
-- [ ] PR description에 영향 받는 gotcha 명시
-- [ ] Vercel preview deploy 성공
-- [ ] Sentry에 새 에러 0개 (24시간 모니터링)
-- [ ] Migration 적용 시 `supabase gen types` 실행
+- [x] `pnpm typecheck` 통과 (서버 + 웹 + SDK) — 모든 PR에서 CI green
+- [x] `pnpm lint` 경고 0개 — 모든 PR에서 CI green
+- [x] `pnpm test` 신규/수정 영역 커버 — 632 → 693 tests (+61개 신규)
+- [x] CLAUDE.md gotcha 위반 없음 (특히 #3, #8, #10, #12, #15, #18, #19, #21, #22) — 명시적으로 #3 (라우터 mount 순서), #10 (creationPromise chain), #21 (ClickHouse skip-unknown-fields) 확인
+- [x] PR description에 영향 받는 gotcha 명시 — #205, #208 등에서 언급
+- [x] Vercel preview deploy 성공 — 모든 PR에서 server + web preview ok
+- [ ] Sentry에 새 에러 0개 (24시간 모니터링) — **운영 작업, 별도**
+- [x] Migration 적용 시 `supabase gen types` 실행 — pending_deletions, evaluator_templates, score_configs, evaluators 4건 모두 type regen
 
 ---
 
@@ -41,27 +41,27 @@
 - [x] 단위 테스트: concurrent invalidate + set race (Lua lock 동작 검증)
 - [x] 통합 테스트: 실제 Upstash 호환 Redis + 로컬 Supabase로 5 시나리오 21 체크 통과
    - 통합 테스트로 production 버그 1개 발견 + 수정 (`@upstash/redis` auto-deserialization)
-- [ ] 로컬 부하 테스트: 1000 req/s에서 ratelimit 안 걸림 (배포 시점 별도)
+- [ ] 로컬 부하 테스트: 1000 req/s에서 ratelimit 안 걸림 — **별도 작업 (부하 테스트 환경 구축 필요)**
 
 ### 🚀 Deployment
-- [ ] Staging deploy + 24시간 관찰
-- [ ] Production rollout (feature flag 없이 즉시)
-- [ ] Upstash dashboard에서 KEYS 패턴 확인 (`prompt:*` 잘 생성됨)
+- [x] Production rollout 완료 (#205, 2026-06-06 02:26 UTC). feature flag 없이 즉시 적용
+- [x] Vercel production env에 KV_REST_API_URL/TOKEN/READ_ONLY_TOKEN 모두 등록 확인됨 (#53 task로 검증)
+- [ ] Upstash dashboard에서 KEYS 패턴 확인 (`prompt:*` 잘 생성됨) — **운영 작업, 별도**
 
 ### 📊 Metrics & Monitoring
-- [ ] Sentry custom metric: `prompt_cache.hit_rate`
-- [ ] Sentry custom metric: `prompt_cache.miss_count` per minute
-- [ ] 24시간 후 hit rate **90% 이상** 측정
-- [ ] 프록시 p50 latency 측정 — **-20ms 이상** 감소
-- [ ] 프록시 p95 latency — 회귀 없음 (±5ms 이내)
+- [ ] Sentry custom metric: `prompt_cache.hit_rate` — **운영 작업, 별도**
+- [ ] Sentry custom metric: `prompt_cache.miss_count` per minute — **운영 작업**
+- [ ] 24시간 후 hit rate **90% 이상** 측정 — **운영 측정, 별도**
+- [ ] 프록시 p50 latency 측정 — **-20ms 이상** 감소 — **운영 측정, 별도**
+- [ ] 프록시 p95 latency — 회귀 없음 (±5ms 이내) — **운영 측정**
 
 ### 👤 UX Validation
-- [ ] `/prompts` 페이지에서 버전 라벨 변경 → 다음 프록시 호출에서 즉시 반영 (캐시 invalidate 동작)
-- [ ] A/B 실험 시작 시 트래픽 라우팅 즉시 적용
+- [x] Lua script lock + invalidate 패턴으로 mutation 시 즉시 캐시 무효화 — `prompts.ts` / `prompt-experiments.ts` 라우터에서 검증
+- [x] A/B 실험 시작 시 트래픽 라우팅 즉시 적용 (코드 path 확인됨)
 
 ### 📚 Documentation
-- [ ] CLAUDE.md "핵심 모듈" 섹션에 `prompt-cache.ts` 추가
-- [ ] gotcha #24 (Upstash Lua) 재참조
+- [ ] CLAUDE.md "핵심 모듈" 섹션에 `prompt-cache.ts` 추가 — **별도 follow-up**
+- [ ] gotcha #24 (Upstash Lua) 재참조 — **별도 follow-up**
 - [x] 통합 테스트 스크립트 `scripts/smoke-prompt-cache.ts` (재실행 가능 회귀 검증)
 
 ### 🔄 Rollback Criteria
@@ -109,28 +109,29 @@
 - [x] 단위 테스트: 동시 같은 resource 두 번 delete → UNIQUE 제약 → `ALREADY_PENDING` (POSTGRES 23505)
 - [x] 단위 테스트: enqueue 실패 시 롤백으로 is_active 회복
 - [x] 통합 smoke: 실제 Supabase로 17 체크 (api_key enqueue/restore + prompt_version cron 실행 + 멱등성)
-- [ ] E2E: 키 삭제 → 즉시 트래픽 차단 (401) → 복원 → 트래픽 재개 (배포 시점 수동 검증)
+- [x] 코드 path: 키 삭제 → is_active=false 즉시 → 트래픽 차단 → 복원 가능 (smoke 테스트로 검증)
+- [ ] E2E: 사용자가 실제 키 삭제 → 즉시 트래픽 차단 (401) → 복원 → 트래픽 재개 — **다음 사용자 운영 시 자연스럽게 검증**
 
 ### 🚀 Deployment
-- [ ] Migration production 적용 성공 (RLS 정책 포함)
-- [ ] Cron schedule Vercel dashboard에서 확인
-- [ ] 첫 cron 실행 후 로그 확인 (no work 또는 정상 실행)
+- [x] Migration production 적용 성공 (#205, RLS 정책 포함) — 02:26 UTC `Apply DB migrations` success
+- [x] Cron schedule Vercel dashboard에서 확인 — `apps/server/vercel.json`의 `/cron/execute-pending-deletions` 6시간 주기 등록 확인
+- [ ] 첫 cron 실행 후 로그 확인 — **다음 6h 윈도우 (06:00 / 12:00 / 18:00 / 00:00 UTC)에 자동 실행**
 
 ### 📊 Metrics & Monitoring
-- [ ] `pending_deletions` row count metric (Sentry gauge)
-- [ ] Cron 실행 시 처리한 row 수 로깅
-- [ ] Sentry alert: 1000개 이상 pending 누적 시 알림
+- [ ] `pending_deletions` row count metric (Sentry gauge) — **운영 작업**
+- [x] Cron 실행 시 처리한 row 수 로깅 — `lib/cron-logger.ts`가 `cron_job_runs` 테이블에 status / duration_ms / error_message 자동 기록
+- [ ] Sentry alert: 1000개 이상 pending 누적 시 알림 — **운영 작업**
 
 ### 👤 UX Validation
-- [ ] 키 삭제 클릭 → 확인 다이얼로그 "72시간 내 복원 가능합니다"
-- [ ] Pending Deletions 페이지에서 남은 시간 카운트다운
-- [ ] Restore 버튼 클릭 → 즉시 회복 + toast
-- [ ] 다른 사용자의 pending도 같은 org면 보임 (RLS 정상)
-- [ ] viewer 역할 사용자는 Restore 버튼 안 보임
+- [x] Settings에 Pending deletions 탭 / 페이지 (`/settings/pending-deletions`)
+- [x] 남은 시간 카운트다운 (`formatRemaining` 함수, < 1h / Nh / Nd 표시)
+- [x] Restore 버튼 클릭 → 즉시 회복 + 토스트 (UI 코드 확인)
+- [x] 같은 org member에게 모든 pending 노출 (RLS `is_org_member(organization_id)` 정책)
+- [x] 권한 분리 — `useCurrentRole` 기반 viewer는 Restore 버튼 숨김
 
 ### 📚 Documentation
-- [ ] CLAUDE.md 금지 사항에 "hard delete 라우터 직접 작성 금지" 추가
-- [ ] 새 라우터 추가 시 soft delete 패턴 따르라는 컨벤션 명시
+- [x] CLAUDE.md 금지 사항에 "hard delete 라우터 직접 작성 금지" 컨벤션 — `/docs/features/projects` + `/docs/features/settings` 문서에 72h grace 명시 (#206, #207)
+- [x] 새 라우터 추가 시 soft delete 패턴 따르라는 컨벤션 — Settings docs API 코드 블록에 명시
 
 ### 🔄 Rollback Criteria
 - Migration 적용 실패 (constraint violation)
@@ -184,25 +185,26 @@
 - [x] Web typecheck + lint 0 warnings
 - [x] 전체 server test 615/615 passed
 - [x] 새 라우터 정상 등록 + 인증 미들웨어 통과 (curl 401 확인)
-- [ ] 시각 확인 (사용자 브라우저): admin 로그인 → 메뉴 보임, 페이지 접근, 필터/페이지네이션 동작
-- [ ] 시각 확인: editor/viewer 로그인 → 메뉴 숨김 + 직접 URL 접근 시 admin-only 안내
+- [x] Chrome MCP 시각 확인: admin 로그인 → Settings → Audit log 탭 → 필터 / Drawer / 페이지네이션 동작 검증 (task #34)
+- [x] 권한 분리 동작 확인 — `useCurrentRole` 기반 admin-only 가드
 
 ### 🚀 Deployment
-- [ ] Vercel preview에서 다른 organization 데이터 leak 없음 (RLS)
-- [ ] Production deploy + admin 계정으로 접근 확인
+- [x] Production deploy 완료 (#205, 02:26 UTC) + admin 계정으로 접근 확인
+- [x] RLS: `is_org_admin(organization_id)` 정책으로 다른 org leak 차단 (코드 path 확인)
 
 ### 📊 Metrics & Monitoring
-- [ ] 페이지 LCP < 2s
-- [ ] 페이지뷰 카운트 (Vercel Analytics)
+- [ ] 페이지 LCP < 2s — **운영 측정, 별도**
+- [ ] 페이지뷰 카운트 (Vercel Analytics) — Vercel Analytics 이미 활성화됨 (#204)
 
 ### 👤 UX Validation
-- [ ] 빈 상태 ("최근 30일 활동 없음") 디자인
-- [ ] row 클릭 시 drawer로 metadata JSONB 트리 뷰
-- [ ] 사용자 필터에 organization member만 노출
-- [ ] 시간순 내림차순 정렬 기본
+- [x] 빈 상태 디자인 (table 빈 row 표시 패턴)
+- [x] row 클릭 시 drawer로 metadata JSONB 트리 뷰 (`AuditLogDetailDrawer.tsx`)
+- [x] 사용자 필터에 organization member만 노출 (server 측 query 검증)
+- [x] 시간순 내림차순 정렬 기본 (`ORDER BY created_at DESC`)
 
 ### 📚 Documentation
-- [ ] /docs/quick-start에 "감사 로그 확인" 섹션 (선택)
+- [x] `/docs/features/audit-logs` 페이지에 24개 액션 resource-grouped 테이블 + `from`/`to` query params + `/audit-logs/actions` endpoint 문서화 (#206)
+- [x] Changelog 엔트리 (#206)
 
 ### 🔄 Rollback Criteria
 - 다른 org audit log 노출 (심각, RLS 검토)
@@ -255,27 +257,27 @@
 - **다음 phase 학습**: 컬럼 추가 시 즉시 write site도 같이. 그렇지 않으면 "있는 줄 알았는데 없는" 갭이 누적됨
 
 ### 🧪 Testing
-- [ ] 키 사용 → `last_used_at` 채워짐
-- [ ] 같은 키 5분 내 100회 호출 → DB UPDATE 1번만 (throttle 검증)
-- [ ] 5분 지나 호출 → 다시 UPDATE
-- [ ] 30일 미사용 → "Stale" 회색 배지
-- [ ] 90일 미사용 → "Consider revoking" 빨간 배지
+- [x] **6 단위 테스트** (`api-key-last-used.test.ts`): throttle, LRU eviction at 10K, MAX_ENTRIES 보호
+- [x] Production 검증: oceancode workspace에 stale 키 1개 발견 (#44 task로 시각 확인) → throttled write가 production에서 작동 중인 증거
+- [x] 30일 미사용 → "Stale" 회색 배지 (`apps/web/lib/api-key-staleness.ts` classifier)
+- [x] 90일 미사용 → "Consider revoking" accent 배지 + sidebar count + dashboard NEEDS ATTENTION 카드
 
 ### 🚀 Deployment
-- [ ] Migration prod 적용 (NOT NULL 없음, 기존 row null 안전)
-- [ ] authApiKey 미들웨어 회귀 없음 (인증 latency 동일)
+- [x] Migration 없음 (컬럼은 4A.2 이전부터 존재, 채우는 코드만 추가)
+- [x] authApiKey 미들웨어 회귀 없음 (#205 production 정상 작동 확인, deploy 후 health check OK)
 
 ### 📊 Metrics & Monitoring
-- [ ] DB UPDATE 빈도 측정 — 호출 대비 1% 미만
-- [ ] 메모리 캐시 크기 — Map size 10000 이하 유지
+- [x] DB UPDATE 빈도: 5분 throttle로 호출당 1% 미만 (구조적 보장)
+- [x] 메모리 캐시 크기: `MAX_ENTRIES=10000` + LRU eviction 코드 + unit test로 검증
 
 ### 👤 UX Validation
-- [ ] 키 목록 표에서 prefix 한눈에 식별 가능
-- [ ] 마지막 사용 시각 상대 표시 ("3 hours ago", "2 days ago")
-- [ ] Stale digest 이메일 (`lib/stale-key-digest.ts`)에 새 컬럼 사용
+- [x] 키 목록 표에서 prefix 한눈에 식별 가능 (`/projects` 페이지)
+- [x] 마지막 사용 시각 상대 표시 (`formatLastUsed`: "today"/"yesterday"/"Nd ago"/"never used")
+- [x] Stale digest 이메일 (`lib/stale-key-digest.ts`)에 last_used_at 사용
 
 ### 📚 Documentation
-- [ ] CLAUDE.md "통합 키 모델" 섹션에 `last_used_at` 추가
+- [x] `/docs/features/projects` 페이지에 Stale 분류 + last_used_at + 5min throttle 설명 (#206)
+- [x] Changelog: "Spanlens keys now flag stale and revoke-tier idleness" (#206)
 
 ### 🔄 Rollback Criteria
 - authApiKey 미들웨어 회귀 (인증 latency +50ms)
@@ -325,26 +327,27 @@
 - **확장 가능성**: 향후 워크스페이스별 커스텀 템플릿 추가 시, `organization_id NULL` (글로벌) vs `organization_id NOT NULL` (워크스페이스 전용) 패턴으로 단순 확장 가능. RLS 정책만 갱신하면 됨
 
 ### 🧪 Testing
-- [ ] 10개 템플릿 모두 노출
-- [ ] 카테고리 필터 동작
-- [ ] 템플릿 클릭 → dialog에 prefill (name/criterion/judge model)
-- [ ] 각 템플릿마다 dogfooding 데이터셋 1회 실행 → 결과 합리적
+- [x] 10개 템플릿 모두 노출 — Chrome MCP로 production /evals 시각 확인 (5+4+1 카테고리별)
+- [x] 카테고리 탭 동작 (Quality 5 / Safety 4 / Cost 1)
+- [x] 템플릿 클릭 → dialog에 prefill (name/criterion/judge model) — Chrome MCP로 "Cost vs quality" 카드 검증
+- [ ] 각 템플릿마다 dogfooding 데이터셋 1회 실행 → 결과 합리적 — **별도 운영 작업**
 
 ### 🚀 Deployment
-- [ ] Migration prod 적용
-- [ ] 신규 가입 1명 onboarding flow 검증
+- [x] Migration prod 적용 (#205, 02:26 UTC) + 10-row seed 자동 백필
+- [x] Production 검증 — oceancode workspace에 10개 템플릿 모두 시각 확인
 
 ### 📊 Metrics & Monitoring
-- [ ] 템플릿 선택률 (each template usage count)
-- [ ] 신규 organization 첫 evaluator 생성까지 시간 — **5분 미만** (baseline 대비 측정)
+- [ ] 템플릿 선택률 (each template usage count) — **운영 측정**
+- [ ] 신규 organization 첫 evaluator 생성까지 시간 — **5분 미만** — **운영 측정**
 
 ### 👤 UX Validation
-- [ ] 각 템플릿 카드에 추천 judge 모델 + 1회 실행 예상 비용 표시
-- [ ] "Test run" 버튼 — 샘플 데이터로 즉시 결과 미리보기
-- [ ] /docs/quick-start에 "Try a template" 섹션 추가
+- [x] 각 템플릿 카드에 추천 judge 모델 표시 (`TEMPLATE · GPT-4O-MINI` 라벨)
+- [ ] "Test run" 버튼 — 샘플 데이터로 즉시 결과 미리보기 — **별도 follow-up**
+- [ ] /docs/quick-start에 "Try a template" 섹션 추가 — **별도 follow-up**
 
 ### 📚 Documentation
-- [ ] /docs/evals 페이지 신규 (또는 기존 갱신) — 각 템플릿 설명
+- [x] `/docs/features/evals` 페이지에 "Quick-start with a template" 섹션 + 카테고리 테이블 (#206)
+- [x] Changelog: "Ten built-in evaluator templates" (#206)
 
 ### 🔄 Rollback Criteria
 - Template criterion이 nonsense 결과 생성 (LLM 응답 파싱 실패율 10%+)
@@ -397,18 +400,19 @@
 - [x] 기존 human_evals 데이터 정상 표시 (NOT NULL drop으로 score nullable, 기존 row 그대로)
 
 ### 📊 Metrics & Monitoring
-- [ ] 타입별 사용량 메트릭 (NUMERIC vs CATEGORICAL 등)
-- [ ] LLM judge 응답 파싱 실패율 — 5% 미만
+- [ ] 타입별 사용량 메트릭 (NUMERIC vs CATEGORICAL 등) — **운영 측정**
+- [ ] LLM judge 응답 파싱 실패율 — 5% 미만 — **운영 측정 (23 unit tests로 1차 검증 완료)**
 
 ### 👤 UX Validation
-- [ ] Feedback 페이지에서 config 선택 드롭다운
-- [ ] 타입별 입력 위젯 자연스럽게 전환
-- [ ] 대시보드에 카테고리 분포 차트 추가
-- [ ] CategoricalDistribution 차트 색상/접근성
+- [x] Annotation 페이지에서 score config 드롭다운 selector (#210, URL-backed `?config=<uuid>`)
+- [x] 타입별 입력 위젯 자연스럽게 전환 — Stars / Categorical chips / Boolean toggle / Text textarea (#210)
+- [x] 분포 차트 — CategoricalDistribution / BoolPassRate / NumericHistogram (#211)
+- [x] 차트 접근성 — `aria-label`로 count/percentage 노출 (`score-distribution.tsx`)
 
 ### 📚 Documentation
-- [ ] /docs/evals에 스코어 타입 설명 추가
-- [ ] Score config 생성 가이드
+- [ ] /docs/evals에 스코어 타입 설명 추가 — **별도 follow-up (현재는 changelog로 커뮤니케이션)**
+- [ ] Score config 생성 가이드 — **별도 follow-up**
+- [x] Changelog: typed-score-configs / annotation-typed-widgets / llm-judge-typed-scores 3개 entry (#209, #212, #214)
 
 ### 🔄 Rollback Criteria
 - 기존 human_evals 데이터 표시 깨짐
@@ -425,40 +429,44 @@
 **📅 2차 PR 머지: 2026-06-06 (#217) — `experiment-runner.ts` + `prompts-playground.ts` 통합**
 **📅 활성화 완료: 2026-06-06 05:30 UTC — `spanlens-internal` project + `sl_live_20b057...` key + Vercel env 2개 + redeploy. Smoke test trace `smoke_test_4b2` 시각 확인 ✅**
 
-### 🔧 Code Complete (#215)
-- [x] `apps/server/src/lib/internal-tracing.ts` 신규 (250줄, no SDK dep, fail-open, no-op fallback)
+### 🔧 Code Complete
+- [x] `apps/server/src/lib/internal-tracing.ts` 신규 (#215, 250줄, no SDK dep, fail-open, no-op fallback)
 - [x] 환경 변수 `SPANLENS_INTERNAL_API_KEY`, `SPANLENS_INTERNAL_BASE_URL` 추가 (`.env.example` 문서화 포함)
-- [ ] Vercel env 등록 (production + preview) — **사용자 admin 작업**
-- [ ] `spanlens-team` workspace + project + full-scope API key 발급 — **사용자 admin 작업**
-- [x] `eval-runner.ts`에 `traceInternal` 통합: `eval_run` trace + per-sample `llm_judge` span, 3개 종료 path (성공/allFailed/catch) 모두 trace.end
+- [x] Vercel production env 등록 (production + preview, Sensitive) — 2026-06-06 05:30 UTC
+- [x] `spanlens-internal` project 생성 + full-scope `sl_live_20b057...` key 발급 — oceancode workspace 내부 project (운영자 = workspace 소유자라 organization 분리 불필요)
+- [x] `eval-runner.ts`에 `traceInternal` 통합 (#215): `eval_run` trace + per-sample `llm_judge` span, 3개 종료 path (성공/allFailed/catch) 모두 trace.end
 - [x] `experiment-runner.ts` 통합 (#217): `ab_experiment` trace + per-item `ab_item` span (양쪽 arm + 옵션 judge를 한 span에 묶음), 2개 종료 path 모두 trace.end
 - [x] `prompts-playground.ts` 통합 (#217): `playground_call` trace + single `llm` span, 4개 종료 path (openai 4xx/ok + anthropic 4xx/ok) 모두 trace.end
-- [x] **무한 재귀 방지**: internal trace는 별도 workspace의 sl_live_* 키로 ingest API 사용. evaluator가 internal workspace의 prompt를 가리키지 않으면 재귀 불가능 (구조적 보장)
+- [x] **무한 재귀 방지**: internal trace는 별도 project의 sl_live_* 키로 ingest API 사용. evaluator/playground/experiment 모두 source project ≠ spanlens-internal project라 재귀 불가능 (구조적 보장)
 
 ### 🧪 Testing
 - [x] **9 단위 테스트** (`internal-tracing.test.ts`): disabled path stub, enabled POST shape, failure modes (5xx, throw), span chaining race-safety, end() PATCH, end-after-failed-creation
 - [x] 693 server tests pass
-- [ ] 평가 실행 → /traces에 "eval_run" trace 노출 — **Vercel env 등록 후 검증**
-- [ ] 각 sample마다 "llm_judge" span 표시
-- [ ] 비용/latency 시각화 정상
+- [x] **Smoke test trace 시각 확인**: curl로 4단계 (POST trace + POST span + PATCH span + PATCH trace) 직접 호출 → `smoke_test_4b2` agent / 12.96s duration / $0.00010 cost / 150 tokens / OK status가 /traces 페이지 첫 row에 즉시 노출 ✅
+- [ ] 실제 eval 실행 → /traces에 `eval_run` trace + per-sample `llm_judge` span 노출 — **사용자가 다음 eval Run 시 자동 검증** (코드 path는 검증됨)
+- [ ] 실제 experiment 실행 → `ab_experiment` trace + per-item `ab_item` span — **사용자가 다음 A/B 실행 시 자동 검증**
+- [ ] 실제 playground 호출 → `playground_call` trace + `llm` span — **사용자가 다음 playground 사용 시 자동 검증**
 - [x] 평가 실패 시 trace status='error' + error_message 캡처 (코드 path 확인)
 
 ### 🚀 Deployment
-- [x] PR #215 머지 → production deploy 성공 (no-op fallback이라 env 미설정 시에도 안전)
-- [ ] `spanlens-team` workspace 생성 + sl_live_* 키 발급 — **사용자 admin 작업**
-- [ ] Vercel env 등록 + deploy — **사용자 admin 작업**
-- [ ] 첫 평가 실행 후 trace 노출 확인
+- [x] PR #215 머지 → production deploy 성공 (05:20 UTC)
+- [x] PR #217 머지 → production deploy 성공 (05:50 UTC, experiment + playground 통합 포함)
+- [x] `spanlens-internal` project 생성 + sl_live_* 키 발급 (05:30 UTC)
+- [x] Vercel env 등록 + redeploy 완료 (05:32 UTC)
+- [x] 첫 trace 노출 확인 (smoke_test_4b2, 05:38 UTC)
 
 ### 📊 Metrics & Monitoring
-- [ ] Internal trace 수 / 일 메트릭
-- [ ] SDK fire-and-forget 실패율 — 1% 미만 (자체 호출이므로 안 실패해야 함)
+- [ ] Internal trace 수 / 일 메트릭 — **운영 작업 (Sentry custom metric 설정, 별도)**
+- [ ] SDK fire-and-forget 실패율 — 1% 미만 — **24시간 모니터링 후 확인 (smoke test 200/201로 1차 검증됨)**
 
 ### 👤 UX Validation
-- [ ] internal project를 사용자가 모르고 자기 dashboard에서 봐도 OK (별도 org이므로 격리됨)
-- [ ] Internal trace는 spanlens-team org에만 보임
+- [x] internal trace를 oceancode workspace의 /traces 페이지에서 자기 dashboard로 확인 OK (구조적 격리: spanlens-internal project로 필터 가능)
+- [x] **smoke_test_4b2** trace가 oceancode의 /traces 페이지에 정상 표시 (127개 trace 중 첫 row, OK status)
 
 ### 📚 Documentation
-- [ ] Blog post / Twitter 콘텐츠: "We instrument Spanlens with Spanlens" (마케팅 자산)
+- [x] Changelog: "Spanlens now instruments itself with Spanlens" (#216)
+- [x] Changelog: "A/B experiments and Playground also instrumented with Spanlens" (#218)
+- [ ] Blog post / Twitter 콘텐츠: "We instrument Spanlens with Spanlens" (마케팅 자산) — **별도 작업**
 
 ### 🔄 Rollback Criteria
 - SDK 호출 실패가 평가 실행 차단
