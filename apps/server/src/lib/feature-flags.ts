@@ -31,12 +31,24 @@ function envBool(name: string): boolean {
  * `requests` writes until Stage 4 (post-cutover).
  *
  * Activation env var: `USE_EVENTS_FOR_REQUESTS=1`
+ *
+ * Operational guard: also requires `EVENTS_BACKFILL_COMPLETE=1`.
+ * Activating the read switch BEFORE the backfill finishes shows an
+ * empty list to the operator (events only has rows from the
+ * dual-write start onward, so 99% of `requests` is missing).
+ * Production hit this footgun once already during the rollout —
+ * the double-gate prevents an env-flip from going live without
+ * the matching "I confirmed the backfill" acknowledgement.
  */
-export const useEventsForRequests = envBool('USE_EVENTS_FOR_REQUESTS')
+export const useEventsForRequests =
+  envBool('USE_EVENTS_FOR_REQUESTS') && envBool('EVENTS_BACKFILL_COMPLETE')
 
 /** Diagnostics view — used by `/health/deep` to surface what's on. */
 export function snapshotFlags(): Record<string, boolean> {
   return {
-    USE_EVENTS_FOR_REQUESTS: useEventsForRequests,
+    USE_EVENTS_FOR_REQUESTS: envBool('USE_EVENTS_FOR_REQUESTS'),
+    EVENTS_BACKFILL_COMPLETE: envBool('EVENTS_BACKFILL_COMPLETE'),
+    /** The composed flag the requests router actually branches on. */
+    useEventsForRequests,
   }
 }
