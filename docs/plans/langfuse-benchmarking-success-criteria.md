@@ -553,17 +553,28 @@
 - [ ] **Production ClickHouse 마이그레이션** — 사용자가 `pnpm ch:migrate`로 ClickHouse Cloud에 적용 필요 (deploy-server.yml은 ClickHouse 자동 적용 안 함)
 
 ### 🔧 Code Complete (Stage 2: backfill)
-- [ ] Background migration `backfillEventsFromRequests` 등록
-- [ ] Chunk size 50K row, 약 3분
-- [ ] State: `last_created_at` 추적
-- [ ] 진행률 UI 모니터링
+
+**📅 PR 머지: 2026-06-06 (#225)**
+
+- [x] Background migration `backfill-events-from-requests` 등록 (4B.3 framework 사용)
+- [x] Chunk size 5K row (50K은 ClickHouse 단일 INSERT로 무겁다 — 5K로 줄임, 4분 budget 내 50 chunks 처리 가능)
+- [x] State: `(last_created_at, last_id, rows_processed, total_estimate)` 튜플 cursor
+- [x] 진행률 UI 모니터링 (4B.3의 `/settings/background-migrations` 자동 사용, 첫 chunk에서 total_estimate 산출 → 퍼센티지 표시)
+- [x] 11 unit tests: cursor advance, empty → done, no-advance 루프 가드, INSERT shape, 메타데이터 source 태그
+- [ ] **사용자 admin 작업**: production CH에 `INSERT INTO background_migrations` 한 row로 backfill 트리거
 
 ### 🔧 Code Complete (Stage 3: reading switch)
-- [ ] Feature flag `USE_EVENTS_TABLE` per-route
-- [ ] `/api/v1/traces` events로 마이그레이션
-- [ ] `/api/v1/requests` events로 마이그레이션
-- [ ] `/api/v1/stats/*` events로 마이그레이션
-- [ ] Trace 시각화 페이지 events 사용
+
+**📅 1차 PR 머지: 2026-06-06 (#226) — feature flag + /api/v1/requests**
+
+- [x] Feature flag 모듈 `lib/feature-flags.ts` (env-var 기반, 엄격 truthy check — 리터럴 `1`만 활성화)
+- [x] `useEventsForRequests` 플래그 + `USE_EVENTS_FOR_REQUESTS=1` env var
+- [x] `events-query.ts`의 `selectGenerationsAsRequests` + `countGenerations` 호환 shim (events 컬럼을 requests-router가 기대하는 shape으로 alias)
+- [x] `/api/v1/requests` 라우트 분기 — flag on이면 events, off면 requests
+- [x] 12 unit tests: feature-flags + events-query (event_type filter, 컬럼 alias, 중립 default, filter/order/limit passthrough)
+- [ ] `/api/v1/traces` events로 마이그레이션 — **future PR**
+- [ ] `/api/v1/stats/*` events로 마이그레이션 — **future PR**
+- [ ] Trace 시각화 페이지 events 사용 — **future PR**
 
 ### 🧪 Testing
 - [ ] Dual-write 후 1시간: requests row count ≈ events row count (LLM span만)

@@ -40,6 +40,17 @@ export type ChangelogTag =
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
     date: '2026-06-06',
+    slug: 'events-table-backfill-and-read-switch',
+    title: 'Events table backfill + read switch for /api/v1/requests',
+    tags: ['infrastructure'],
+    body: [
+      'Second and third stages of the events-table unification. Stage 2 lands a background migration that copies historical `requests` rows into the new `events` table in chunks of 5,000, ordered by `(created_at, id)` so the migration only ever scans a narrow window. Six months of data backfills in a day or so without touching the proxy hot path.',
+      'Stage 3 wires a feature flag — `USE_EVENTS_FOR_REQUESTS=1` — that flips `/api/v1/requests` to read from `events` instead of `requests`. The events helper projects every column back into the shape the dashboard expects, so a flip-flop test (flag on → flag off) returns byte-identical rows. Subsequent PRs extend the same flag pattern to `/api/v1/stats/*` and `/api/v1/traces`.',
+      'Activation is incremental and reversible by design. Stage 2 starts with a single SQL INSERT into `background_migrations`; Stage 3 is a Vercel env-var flip plus redeploy. Either can be rolled back without a code change.',
+    ].join('\n\n'),
+  },
+  {
+    date: '2026-06-06',
     slug: 'events-table-shadow-write',
     title: 'Unified events table now shadow-writes every LLM call',
     tags: ['infrastructure'],
