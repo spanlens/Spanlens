@@ -14,6 +14,7 @@ import { computeAndReportOverages } from '../lib/paddle-usage.js'
 import { runQuotaWarningsJob } from '../lib/quota-warnings.js'
 import { snapshotAnomaliesForAllOrgs } from '../lib/anomaly-snapshot.js'
 import { runStaleKeyDigestJob } from '../lib/stale-key-digest.js'
+import { runDueMigrations } from '../lib/background-migrations/runner.js'
 import { runLeakDetectionJob } from '../lib/leak-detection.js'
 import { sendHighConfidenceRecommendationAlerts } from '../lib/recommendation-notify.js'
 import { logCronRun } from '../lib/cron-logger.js'
@@ -550,6 +551,35 @@ cronRouter.get('/execute-pending-deletions', async (c) => {
 
   return c.json({
     ok: result.failed === 0,
+    ts: new Date().toISOString(),
+    durationMs,
+    ...result,
+  })
+})
+
+// GET /cron/run-background-migrations
+// Picks one eligible row from `background_migrations` and runs it in a
+// chunked loop until either complete or close to the function timeout
+// (CHUNK_BUDGET_MS = 240s; Vercel Pro cap is 300s). Idempotent — a
+// concurrent firing acquires no advisory lock and returns 'skipped'.
+// Runs every 5 minutes so a paused migration resumes promptly.
+cronRouter.get('/run-background-migrations', async (c) => {
+  const authFail = assertCronAuth(c.req.header('Authorization'))
+  if (authFail) return c.json({ error: authFail }, 401)
+
+  const started = Date.now()
+  const result = await runDueMigrations()
+  const durationMs = Date.now() - started
+
+  await logCronRun(
+    'run-background-migrations',
+    result.status === 'failed' ? 'error' : 'ok',
+    durationMs,
+    result.errorMessage,
+  )
+
+  return c.json({
+    ok: result.status !== 'failed',
     ts: new Date().toISOString(),
     durationMs,
     ...result,
