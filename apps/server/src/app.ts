@@ -32,6 +32,7 @@ import { evalsRouter } from './api/evals.js'
 import { datasetsRouter } from './api/datasets.js'
 import { experimentsRouter } from './api/experiments.js'
 import { humanEvalsRouter } from './api/human-evals.js'
+import { scoreConfigsRouter } from './api/scoreConfigs.js'
 import { recommendationsRouter } from './api/recommendations.js'
 import { auditLogsRouter }     from './api/auditLogs.js'
 import { membersRouter }       from './api/members.js'
@@ -191,6 +192,8 @@ app.route('/api/v1/recommendations', recommendationsRouter)
 // pendingDeletions must be mounted BEFORE evalsRouter/humanEvalsRouter for
 // the same wildcard-collision reason as recommendations (gotcha #3).
 app.route('/api/v1/pending-deletions', pendingDeletionsRouter)
+// scoreConfigs has the same wildcard-collision concern as the routes above.
+app.route('/api/v1/score-configs',  scoreConfigsRouter)
 app.route('/api/v1',                evalsRouter)
 app.route('/api/v1/datasets',       datasetsRouter)
 app.route('/api/v1/experiments',    experimentsRouter)

@@ -2,6 +2,40 @@ import { Hono } from 'hono'
 import { authJwt, type JwtContext } from '../middleware/authJwt.js'
 import { supabaseAdmin } from '../lib/db.js'
 import { requestsScope, selectRequests } from '../lib/requests-query.js'
+import { validateScore, type ScoreConfig } from '../lib/score-validation.js'
+
+/**
+ * Resolve a `scoreConfigId` (explicit or fallback to workspace default)
+ * into a full ScoreConfig row, scoped to the org. Returns null when the
+ * id doesn't resolve so the caller can surface a 404.
+ */
+async function loadScoreConfig(
+  orgId: string,
+  explicitId: string | null,
+): Promise<ScoreConfig | null> {
+  if (explicitId) {
+    const { data } = await supabaseAdmin
+      .from('score_configs')
+      .select('id, data_type, min_value, max_value, categories, bool_true_label, bool_false_label')
+      .eq('id', explicitId)
+      .eq('organization_id', orgId)
+      .is('archived_at', null)
+      .maybeSingle()
+    if (!data) return null
+    return data as ScoreConfig
+  }
+  // Fall back to the workspace's default. Workspaces always have one
+  // (the migration backfilled one per org and the CRUD route blocks
+  // archiving the only default), but we guard the null path anyway.
+  const { data } = await supabaseAdmin
+    .from('score_configs')
+    .select('id, data_type, min_value, max_value, categories, bool_true_label, bool_false_label')
+    .eq('organization_id', orgId)
+    .eq('is_default', true)
+    .is('archived_at', null)
+    .maybeSingle()
+  return (data as ScoreConfig | null) ?? null
+}
 
 export const humanEvalsRouter = new Hono<JwtContext>()
 
@@ -171,7 +205,18 @@ humanEvalsRouter.post('/human-evals', async (c) => {
   if (!orgId) return c.json({ error: 'Organization not found' }, 404)
   if (!userId) return c.json({ error: 'User not authenticated' }, 401)
 
-  let body: { requestId?: unknown; score?: unknown; rawScore?: unknown; comment?: unknown }
+  let body: {
+    requestId?: unknown
+    scoreConfigId?: unknown
+    value?: unknown
+    // Legacy fields kept so pre-4B.1 clients (current /annotation page)
+    // keep working until the UI catches up. When `value` is missing we
+    // fall back to `score` and feed it to the workspace's default
+    // NUMERIC config.
+    score?: unknown
+    rawScore?: unknown
+    comment?: unknown
+  }
   try {
     body = (await c.req.json()) as typeof body
   } catch {
@@ -179,13 +224,33 @@ humanEvalsRouter.post('/human-evals', async (c) => {
   }
 
   const requestId = typeof body.requestId === 'string' ? body.requestId.trim() : ''
-  const score = typeof body.score === 'number' ? body.score : NaN
+  const explicitConfigId =
+    typeof body.scoreConfigId === 'string' && body.scoreConfigId.trim().length > 0
+      ? body.scoreConfigId.trim()
+      : null
   const rawScore = typeof body.rawScore === 'number' ? body.rawScore : null
   const comment = typeof body.comment === 'string' ? body.comment.trim() || null : null
 
   if (!requestId) return c.json({ error: 'requestId is required' }, 400)
-  if (!Number.isFinite(score) || score < 0 || score > 1) {
-    return c.json({ error: 'score must be a number between 0 and 1' }, 400)
+
+  // Resolve the score config first so we know which value field to
+  // validate. Without a config we can't insert (the NOT NULL FK was
+  // intentionally avoided in the migration so existing rows survive,
+  // but new rows should always carry one).
+  const config = await loadScoreConfig(orgId, explicitConfigId)
+  if (!config) {
+    return c.json(
+      { error: explicitConfigId ? 'Score config not found' : 'No default score config configured for this workspace' },
+      explicitConfigId ? 404 : 500,
+    )
+  }
+
+  // Prefer the typed `value` field; fall back to legacy `score` for
+  // NUMERIC configs only.
+  const rawValue = body.value !== undefined ? body.value : body.score
+  const validation = validateScore(config, rawValue)
+  if (!validation.ok) {
+    return c.json({ error: validation.message }, 400)
   }
 
   // Look up prompt_version_id for denormalized filter
@@ -213,9 +278,16 @@ humanEvalsRouter.post('/human-evals', async (c) => {
         request_id: requestId,
         prompt_version_id: req.prompt_version_id,
         reviewer_id: userId,
-        score,
+        // Legacy `score` mirrors value_number for NUMERIC configs and is
+        // null for everything else. Pre-4B.1 dashboard queries that AVG
+        // this column keep working without changes.
+        score: validation.fields.score,
         raw_score: rawScore,
         comment,
+        score_config_id: config.id,
+        value_number: validation.fields.value_number,
+        value_string: validation.fields.value_string,
+        value_boolean: validation.fields.value_boolean,
       },
       { onConflict: 'request_id,reviewer_id' },
     )
