@@ -11,9 +11,24 @@ vi.mock('./clickhouse.js', () => ({
     d.toISOString().replace('T', ' ').replace('Z', ''),
 }))
 
+// Mock the Supabase admin client too so the fallback enqueue path can
+// be exercised without a network call.
+const fallbackInsertMock = vi.fn().mockResolvedValue({ error: null })
+vi.mock('./db.js', () => ({
+  supabaseAdmin: {
+    from: (_table: string) => ({
+      insert: fallbackInsertMock,
+    }),
+  },
+}))
+
 import { writeRequestAsEvent, writeTraceAsEvent, writeSpanAsEvent } from './events-writer.js'
 
-afterEach(() => insertMock.mockClear())
+afterEach(() => {
+  insertMock.mockClear()
+  fallbackInsertMock.mockClear()
+  insertMock.mockResolvedValue(undefined)
+})
 
 describe('writeRequestAsEvent', () => {
   const baseData = {
@@ -148,5 +163,97 @@ describe('writeSpanAsEvent', () => {
     })
     expect(row.cost_details).toEqual({ total_cost_usd: 0.0008 })
     expect(row.total_tokens).toBe(275)
+  })
+})
+
+describe('insertEventOrQueue — 5.3 lite fallback path', () => {
+  const baseData = {
+    organizationId: 'org-1',
+    projectId: 'prj-1',
+    provider: 'openai',
+    model: 'gpt-4o-mini',
+    promptTokens: 100,
+    completionTokens: 50,
+    totalTokens: 150,
+    costUsd: 0.001,
+    latencyMs: 1200,
+    statusCode: 200,
+    requestBody: null,
+    responseBody: null,
+    errorMessage: null,
+    traceId: null,
+    spanId: null,
+  } as const
+
+  const requestRow = {
+    id: 'evt-99',
+    cost_usd: 0.001,
+    created_at: '2026-06-06 00:00:00.000',
+    request_body: '',
+    response_body: '',
+    error_message: null,
+  }
+
+  it('enqueues the row into events_fallback when ClickHouse throws', async () => {
+    insertMock.mockRejectedValueOnce(new Error('CH cold start'))
+
+    // The writer itself should still resolve — failure is contained.
+    await expect(writeRequestAsEvent(baseData, requestRow)).resolves.toBeUndefined()
+
+    expect(fallbackInsertMock).toHaveBeenCalledTimes(1)
+    const enqueued = fallbackInsertMock.mock.calls[0]?.[0] as {
+      payload: { event_id: string; event_type: string }
+      event_type: string
+      last_error: string
+    }
+    expect(enqueued.event_type).toBe('generation')
+    expect(enqueued.payload.event_id).toBe('evt-99')
+    expect(enqueued.last_error).toContain('CH cold start')
+  })
+
+  it('still resolves quietly when the Supabase enqueue itself fails (last-resort log)', async () => {
+    insertMock.mockRejectedValueOnce(new Error('CH down'))
+    fallbackInsertMock.mockRejectedValueOnce(new Error('supabase down too'))
+
+    await expect(writeRequestAsEvent(baseData, requestRow)).resolves.toBeUndefined()
+    // Row really is lost at this point — no further backstop. Test
+    // exists so a future regression that throws here is caught.
+  })
+
+  it('queues trace shadow writes when CH throws', async () => {
+    insertMock.mockRejectedValueOnce(new Error('CH unreachable'))
+
+    await writeTraceAsEvent({
+      traceId: 'trc-x',
+      organizationId: 'org-1',
+      projectId: 'prj-1',
+      name: 'eval_run',
+      startedAt: '2026-06-06T00:00:00.000Z',
+    })
+
+    expect(fallbackInsertMock).toHaveBeenCalledTimes(1)
+    expect(fallbackInsertMock.mock.calls[0]?.[0].event_type).toBe('trace')
+  })
+
+  it('queues span shadow writes when CH throws', async () => {
+    insertMock.mockRejectedValueOnce(new Error('CH unreachable'))
+
+    await writeSpanAsEvent({
+      spanId: 'spn-x',
+      traceId: 'trc-x',
+      organizationId: 'org-1',
+      projectId: 'prj-1',
+      name: 'llm_call',
+      startedAt: '2026-06-06T00:00:00.000Z',
+    })
+
+    expect(fallbackInsertMock).toHaveBeenCalledTimes(1)
+    expect(fallbackInsertMock.mock.calls[0]?.[0].event_type).toBe('span')
+  })
+
+  it('does NOT touch events_fallback on the happy path', async () => {
+    // insertMock default = resolves(undefined). No CH error.
+    await writeRequestAsEvent(baseData, requestRow)
+    expect(fallbackInsertMock).not.toHaveBeenCalled()
   })
 })

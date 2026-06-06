@@ -22,7 +22,46 @@
 
 import { randomUUID } from 'node:crypto'
 import { getClickhouse, toClickhouseTimestamp } from './clickhouse.js'
+import { supabaseAdmin } from './db.js'
 import type { RequestLogData } from './logger.js'
+
+/**
+ * Shared insert path for every events shadow write. Wraps the ClickHouse
+ * insert so that a CH-side failure (Cloud dev-tier auto-pause, transient
+ * network blip) queues the row into Supabase `events_fallback` instead of
+ * being lost. The `/cron/replay-fallback` cron drains that queue every
+ * five minutes — same retry semantics as `requests_fallback` (P2.6).
+ *
+ * Never throws. Caller treats events shadow writes as best-effort.
+ */
+async function insertEventOrQueue(row: Record<string, unknown>): Promise<void> {
+  try {
+    await getClickhouse().insert({
+      table: 'events',
+      format: 'JSONEachRow',
+      values: [row],
+    })
+  } catch (chErr) {
+    const message = chErr instanceof Error ? chErr.message : String(chErr)
+    console.error(
+      '[events-writer] CH insert failed → queueing to events_fallback:',
+      message,
+    )
+    try {
+      await supabaseAdmin.from('events_fallback').insert({
+        payload: row,
+        event_type: String(row['event_type'] ?? 'unknown'),
+        last_error: message.slice(0, 500),
+      })
+    } catch (queueErr) {
+      // Last-resort: even the Supabase enqueue failed. Surface loudly so
+      // sustained outages don't go silently. The row is genuinely lost
+      // at this point — there is no further backstop.
+      const queueMsg = queueErr instanceof Error ? queueErr.message : String(queueErr)
+      console.error('[events-writer] events_fallback enqueue failed too:', queueMsg)
+    }
+  }
+}
 
 /**
  * Shape of the row that landed in `requests`. We re-use the field
@@ -128,11 +167,7 @@ export async function writeRequestAsEvent(
     created_at: requestRow.created_at,
   }
 
-  await getClickhouse().insert({
-    table: 'events',
-    format: 'JSONEachRow',
-    values: [eventRow],
-  })
+  await insertEventOrQueue(eventRow)
 }
 
 // ── Trace + span shadow writes (used by ingest API) ──────────────────────────
@@ -194,11 +229,7 @@ export async function writeTraceAsEvent(input: TraceEventInput): Promise<void> {
     created_at: created,
   }
 
-  await getClickhouse().insert({
-    table: 'events',
-    format: 'JSONEachRow',
-    values: [eventRow],
-  })
+  await insertEventOrQueue(eventRow)
 }
 
 export interface SpanEventInput {
@@ -272,9 +303,5 @@ export async function writeSpanAsEvent(input: SpanEventInput): Promise<void> {
     created_at: created,
   }
 
-  await getClickhouse().insert({
-    table: 'events',
-    format: 'JSONEachRow',
-    values: [eventRow],
-  })
+  await insertEventOrQueue(eventRow)
 }

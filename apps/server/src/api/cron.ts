@@ -19,7 +19,7 @@ import { runReconciliationCron } from '../lib/events-reconciliation.js'
 import { runLeakDetectionJob } from '../lib/leak-detection.js'
 import { sendHighConfidenceRecommendationAlerts } from '../lib/recommendation-notify.js'
 import { logCronRun } from '../lib/cron-logger.js'
-import { replayFallbackQueue } from '../lib/fallback-replay.js'
+import { replayFallbackQueue, replayEventsFallbackQueue } from '../lib/fallback-replay.js'
 import { runDowngradeCheck } from '../lib/billing-downgrade.js'
 import { executePendingDeletions } from './pendingDeletions.js'
 
@@ -477,13 +477,23 @@ cronRouter.get('/replay-fallback', async (c) => {
 
   const start = Date.now()
   try {
-    const result = await replayFallbackQueue()
+    // 5.3 lite — drain both backstop queues in one cron tick. Independent
+    // promises so a CH outage on one path doesn't block the other.
+    const [requestsResult, eventsResult] = await Promise.all([
+      replayFallbackQueue(),
+      replayEventsFallbackQueue(),
+    ])
     // Treat partial failure (some rows still queued after retry++) as success
     // for the cron infra — the rows will be retried next run. Only a top-level
     // result.error (e.g. Supabase SELECT failed) is a hard cron failure.
-    const status = result.error ? 'error' : 'ok'
-    logCronRun('replay-fallback', status, Date.now() - start, result.error).catch(console.error)
-    return c.json({ success: !result.error, ...result })
+    const topErr = requestsResult.error ?? eventsResult.error
+    const status = topErr ? 'error' : 'ok'
+    logCronRun('replay-fallback', status, Date.now() - start, topErr).catch(console.error)
+    return c.json({
+      success: !topErr,
+      requests: requestsResult,
+      events: eventsResult,
+    })
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'unknown'
     logCronRun('replay-fallback', 'error', Date.now() - start, msg).catch(console.error)
