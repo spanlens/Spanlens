@@ -198,17 +198,20 @@ export default function SettingsDocs() {
 
       <h3>Deactivating a provider key</h3>
       <p>
-        The trash icon next to a provider key flips <code>is_active = false</code>. Subsequent
-        requests for that provider on that Spanlens key return{' '}
-        <code>400 No active provider key</code> until you add a new one. Existing
-        request logs are preserved.
+        The trash icon next to a provider key flips <code>is_active = false</code> right
+        away and queues a hard delete for 72 hours later. Subsequent requests for that
+        provider on that Spanlens key return <code>400 No active provider key</code>{' '}
+        until you add a new one. Restore the row from <strong>Pending deletions</strong>{' '}
+        if you mis-clicked — see <a href="/docs/features/projects#restoring-an-accidental-deletion">Restoring an accidental deletion</a>.
       </p>
 
       <h3>Deleting a Spanlens key</h3>
       <p>
-        The trash icon next to a Spanlens key hard-deletes it. Provider keys under it are
-        removed by <code>ON DELETE CASCADE</code>. Apps using that key start failing with 401
-        immediately.
+        The trash icon next to a Spanlens key flips <code>is_active = false</code>{' '}
+        immediately (so apps using that key start failing with 401 right away) and queues
+        the hard delete for 72 hours later. Provider keys attached to the key stay around
+        for that window too. Cron runs every six hours and finalises any expired rows;
+        restore is possible until then.
       </p>
 
       <h3>API</h3>
@@ -217,7 +220,7 @@ GET    /api/v1/api-keys?projectId=<uuid>
 POST   /api/v1/api-keys/issue           { "name": "prod-backend", "projectId": "<uuid>" }
 # → { "id": ..., "key": "sl_live_..." }   ← shown ONCE
 PATCH  /api/v1/api-keys/:id             { "is_active": false }    # toggle
-DELETE /api/v1/api-keys/:id             # hard delete (CASCADE removes provider_keys)
+DELETE /api/v1/api-keys/:id             # is_active=false + 72h delete queue
 
 # ── Provider keys (under a specific Spanlens key) ──────────────
 GET    /api/v1/provider-keys?apiKeyId=<spanlens-key-uuid>
@@ -225,7 +228,12 @@ POST   /api/v1/provider-keys            { "api_key_id": "<uuid>", "provider": "o
                                           "key": "sk-...", "name": "prod-openai" }
 PATCH  /api/v1/provider-keys/:id        { "key": "sk-rotated..." }   # rotate
 PATCH  /api/v1/provider-keys/:id        { "name": "renamed" }        # rename
-DELETE /api/v1/provider-keys/:id        # soft delete (sets is_active=false)`}</CodeBlock>
+DELETE /api/v1/provider-keys/:id        # is_active=false + 72h delete queue
+
+# ── Pending deletions queue (restore within 72h) ───────────────
+GET    /api/v1/pending-deletions             # active queue
+GET    /api/v1/pending-deletions/history     # terminal rows
+POST   /api/v1/pending-deletions/:id/restore # cancel + reactivate`}</CodeBlock>
 
       <h2>Security guarantees</h2>
       <ul>
