@@ -40,6 +40,17 @@ export type ChangelogTag =
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
     date: '2026-06-06',
+    slug: 'background-migration-framework',
+    title: 'Background migration framework for long-running data backfills',
+    tags: ['infrastructure'],
+    body: [
+      'When Spanlens needs to rewrite a billion-row table (think: switching from a single `score` float to four typed value columns), the natural approach — a SQL migration that backfills inline — is the wrong one. It either takes locks that spike p99 latency or it blows past Vercel\'s 5-minute function timeout halfway through the backfill, leaving the table half-rewritten.',
+      'New framework lifted from Langfuse / PostHog: a `background_migrations` table tracks long-running data work; a 5-minute cron picks up a pending row, takes a Postgres advisory lock so two workers can\'t race, runs chunks (~5k rows at a time) until close to the function timeout, persists the cursor, and yields. The next tick resumes from the cursor. A heartbeat sentinel reclaims rows from crashed workers.',
+      'Admin-only view at Settings → **Background migrations** shows what\'s pending / running / completed / failed, with progress percentage, last heartbeat, attempts counter, and cancel / retry buttons. Engineering work — most users never see it — but it unlocks the kind of schema evolution we were avoiding before.',
+    ].join('\n\n'),
+  },
+  {
+    date: '2026-06-06',
     slug: 'dogfooding-experiment-and-playground',
     title: 'A/B experiments and Playground also instrumented with Spanlens',
     tags: ['infrastructure'],
