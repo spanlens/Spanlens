@@ -2,6 +2,7 @@ import { Hono, type Context } from 'hono'
 import { authJwt, type JwtContext, type OrgRole } from '../middleware/authJwt.js'
 import { requireRole } from '../middleware/requireRole.js'
 import { supabaseAdmin } from '../lib/db.js'
+import { recordAuditEvent } from '../lib/audit-log.js'
 
 /**
  * /api/v1/organizations/:orgId/members — team roster + role management.
@@ -127,6 +128,14 @@ membersRouter.patch('/:userId', requireAdmin, async (c) => {
     .eq('user_id', userId)
 
   if (error) return c.json({ error: 'Failed to update role' }, 500)
+
+  void recordAuditEvent(c, {
+    action: 'member.role_change',
+    resourceType: 'org_members',
+    resourceId: userId,
+    metadata: { previous_role: current, new_role: newRole },
+  })
+
   return c.json({ success: true, data: { role: newRole } })
 })
 
@@ -152,5 +161,13 @@ membersRouter.delete('/:userId', requireAdmin, async (c) => {
     .eq('user_id', userId)
 
   if (error) return c.json({ error: 'Failed to remove member' }, 500)
+
+  void recordAuditEvent(c, {
+    action: 'member.remove',
+    resourceType: 'org_members',
+    resourceId: userId,
+    metadata: { removed_role: current },
+  })
+
   return c.json({ success: true })
 })

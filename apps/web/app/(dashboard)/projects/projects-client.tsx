@@ -41,6 +41,8 @@ import {
   useDeleteProviderKey,
 } from '@/lib/queries/use-provider-keys'
 import { cn } from '@/lib/utils'
+import { formatLastUsed } from '@/lib/api-key-staleness'
+import { StaleBadge } from '@/components/ui/stale-badge'
 
 // Hydration-safe mounted gate, same pattern as the other overhauled pages.
 const subscribeNoop = () => () => {}
@@ -642,27 +644,27 @@ export function ProjectsClient() {
                     <div className="flex-1 min-w-0">
                       <div
                         className={cn(
-                          'text-[13px] font-medium truncate',
+                          'flex items-center gap-2 text-[13px] font-medium',
                           !key.is_active && 'line-through text-text-faint',
                         )}
                       >
-                        {key.name}
+                        <span className="truncate">{key.name}</span>
+                        {/* Stale indicator only meaningful after client mount,
+                            otherwise SSR may render a different badge than the
+                            client computes against `Date.now()`. */}
+                        {mounted && key.is_active && (
+                          <StaleBadge
+                            lastUsedAt={key.last_used_at}
+                            createdAt={key.created_at}
+                          />
+                        )}
                       </div>
                       <div className="font-mono text-[10.5px] text-text-faint mt-0.5">
                         {key.key_prefix}…
                         <span className="ml-2">
-                          {/* Date-relative — defer to client mount to keep SSR
-                              and first paint deterministic. Same pattern as the
-                              project-key list below; React Compiler's purity
-                              check trips on the simpler nesting here, so the
-                              rule is disabled inline rather than refactoring
-                              two identical readouts. */}
                           {!mounted
                             ? '· …'
-                            : key.last_used_at
-                              // eslint-disable-next-line react-hooks/purity
-                              ? `· last used ${Math.floor((Date.now() - Date.parse(key.last_used_at)) / 86_400_000)}d ago`
-                              : '· never used'}
+                            : `· ${formatLastUsed({ lastUsedAt: key.last_used_at, createdAt: key.created_at })}`}
                         </span>
                       </div>
                     </div>
@@ -822,22 +824,24 @@ export function ProjectsClient() {
                                 <div className="flex-1 min-w-0">
                                   <div
                                     className={cn(
-                                      'text-[13.5px] font-semibold truncate',
+                                      'flex items-center gap-2 text-[13.5px] font-semibold',
                                       !key.is_active && 'line-through text-text-faint',
                                     )}
                                   >
-                                    {key.name}
+                                    <span className="truncate">{key.name}</span>
+                                    {mounted && key.is_active && (
+                                      <StaleBadge
+                                        lastUsedAt={key.last_used_at}
+                                        createdAt={key.created_at}
+                                      />
+                                    )}
                                   </div>
                                   <div className="font-mono text-[10.5px] text-text-faint mt-0.5">
                                     {key.key_prefix}…
                                     <span className="ml-2">
-                                      {/* Relative time depends on Date.now() — defer to client mount
-                                          to keep SSR / first paint deterministic. */}
                                       {!mounted
                                         ? '· …'
-                                        : key.last_used_at
-                                          ? `· last used ${Math.floor((Date.now() - Date.parse(key.last_used_at)) / 86_400_000)}d ago`
-                                          : '· never used'}
+                                        : `· ${formatLastUsed({ lastUsedAt: key.last_used_at, createdAt: key.created_at })}`}
                                     </span>
                                   </div>
                                 </div>

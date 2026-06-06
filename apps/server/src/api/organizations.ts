@@ -4,6 +4,7 @@ import { requireRole } from '../middleware/requireRole.js'
 import { supabaseAdmin } from '../lib/db.js'
 import { randomHex, sha256Hex } from '../lib/crypto.js'
 import { OWNED_WORKSPACE_LIMITS, effectiveOwnedPlan, type Plan } from '../lib/quota.js'
+import { recordAuditEvent } from '../lib/audit-log.js'
 
 export const organizationsRouter = new Hono<JwtContext>()
 
@@ -85,7 +86,6 @@ organizationsRouter.get('/me', async (c) => {
 //   stale_key_threshold_days : 30..365
 //   leak_detection_enabled   : boolean
 organizationsRouter.patch('/me/security', requireAdmin, async (c) => {
-  const userId = c.get('userId')
   const orgId = c.get('orgId')
   if (!orgId) return c.json({ error: 'Organization not found' }, 404)
 
@@ -143,12 +143,10 @@ organizationsRouter.patch('/me/security', requireAdmin, async (c) => {
     return c.json({ error: 'Update failed' }, 500)
   }
 
-  await supabaseAdmin.from('audit_logs').insert({
-    organization_id: orgId,
-    user_id: userId,
-    action: 'org.security.update',
-    resource_type: 'organization',
-    resource_id: orgId,
+  void recordAuditEvent(c, {
+    action: 'workspace.security_update',
+    resourceType: 'organizations',
+    resourceId: orgId,
     metadata: patch,
   })
 
@@ -199,6 +197,13 @@ organizationsRouter.patch('/me/overage', requireAdmin, async (c) => {
     return c.json({ error: 'Organization not found or update failed' }, 404)
   }
 
+  void recordAuditEvent(c, {
+    action: 'workspace.overage_update',
+    resourceType: 'organizations',
+    resourceId: data.id,
+    metadata: patch,
+  })
+
   return c.json({ success: true, data })
 })
 
@@ -211,7 +216,6 @@ organizationsRouter.patch('/me/overage', requireAdmin, async (c) => {
 //
 // Body: { hide_powered_by_badge: boolean }
 organizationsRouter.patch('/me/branding', requireAdmin, async (c) => {
-  const userId = c.get('userId')
   const orgId = c.get('orgId')
   if (!orgId) return c.json({ error: 'Organization not found' }, 404)
 
@@ -255,12 +259,10 @@ organizationsRouter.patch('/me/branding', requireAdmin, async (c) => {
 
   if (error || !data) return c.json({ error: 'Update failed' }, 500)
 
-  await supabaseAdmin.from('audit_logs').insert({
-    organization_id: orgId,
-    user_id: userId,
-    action: 'org.branding.update',
-    resource_type: 'organization',
-    resource_id: orgId,
+  void recordAuditEvent(c, {
+    action: 'workspace.branding_update',
+    resourceType: 'organizations',
+    resourceId: orgId,
     metadata: { hide_powered_by_badge: wantsHide },
   })
 
@@ -506,6 +508,13 @@ organizationsRouter.patch('/:id', requireAdmin, async (c) => {
   if (error || !data) {
     return c.json({ error: 'Organization not found or access denied' }, 404)
   }
+
+  void recordAuditEvent(c, {
+    action: 'workspace.rename',
+    resourceType: 'organizations',
+    resourceId: data.id,
+    metadata: { new_name: data.name },
+  })
 
   return c.json({ success: true, data })
 })

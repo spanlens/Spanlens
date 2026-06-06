@@ -3,6 +3,8 @@ import { authJwt, type JwtContext } from '../middleware/authJwt.js'
 import { requireRole } from '../middleware/requireRole.js'
 import { supabaseAdmin } from '../lib/db.js'
 import { randomHex, sha256Hex } from '../lib/crypto.js'
+import { enqueueDeletion } from '../lib/pending-deletions.js'
+import { recordAuditEvent } from '../lib/audit-log.js'
 
 /**
  * Spanlens keys come in two shapes:
@@ -165,6 +167,19 @@ apiKeysRouter.post('/issue', requireEdit, async (c) => {
 
   if (error || !data) return c.json({ error: 'Failed to create API key' }, 500)
 
+  void recordAuditEvent(c, {
+    action: 'api_key.create',
+    resourceType: 'api_keys',
+    resourceId: data.id,
+    metadata: {
+      name: data.name,
+      scope: data.scope,
+      project_id: data.project_id,
+      organization_id: data.organization_id,
+      key_prefix: data.key_prefix,
+    },
+  })
+
   return c.json(
     {
       success: true,
@@ -232,22 +247,72 @@ apiKeysRouter.patch('/:id', requireEdit, async (c) => {
     .eq('id', keyId)
   if (error) return c.json({ error: 'Failed to update API key' }, 500)
 
+  void recordAuditEvent(c, {
+    action: body.is_active ? 'api_key.enable' : 'api_key.disable',
+    resourceType: 'api_keys',
+    resourceId: keyId,
+    metadata: { is_active: body.is_active },
+  })
+
   return c.json({ success: true })
 })
 
-// DELETE /api/v1/api-keys/:id — hard delete. No more linked provider_keys
-// to clean up: provider AI keys are independent resources now.
+// DELETE /api/v1/api-keys/:id — soft delete via pending_deletions queue.
+//
+// The key is immediately deactivated (is_active=false) so proxy traffic
+// stops within the next authApiKey check, but the row stays around for
+// ~72 hours so an accidental deletion can be undone from
+// /settings/pending-deletions. Cron in apps/server/api/cron.ts walks the
+// queue and hard-deletes due rows.
 apiKeysRouter.delete('/:id', requireEdit, async (c) => {
   const keyId = c.req.param('id')
   const orgId = c.get('orgId')
+  const userId = c.get('userId')
   if (!orgId) return c.json({ error: 'Organization not found' }, 404)
 
   const ownership = await loadKeyOwnership(keyId)
   if (!ownership) return c.json({ error: 'API key not found' }, 404)
   if (ownership.orgId !== orgId) return c.json({ error: 'Access denied' }, 403)
 
-  const { error } = await supabaseAdmin.from('api_keys').delete().eq('id', keyId)
-  if (error) return c.json({ error: 'Failed to delete API key' }, 500)
+  // Snapshot the row before deactivation so the audit log and any restore
+  // attempt have the full original state to work with.
+  const { data: snapshot } = await supabaseAdmin
+    .from('api_keys')
+    .select('*')
+    .eq('id', keyId)
+    .maybeSingle()
+  if (!snapshot) return c.json({ error: 'API key not found' }, 404)
 
-  return c.json({ success: true })
+  const enqueued = await enqueueDeletion({
+    organizationId: orgId,
+    resourceType: 'api_key',
+    resourceId: keyId,
+    resourceSnapshot: snapshot as Record<string, unknown>,
+    requestedBy: userId ?? null,
+  })
+
+  if (!enqueued.ok) {
+    if (enqueued.code === 'ALREADY_PENDING') {
+      return c.json({ error: 'Already queued for deletion' }, 409)
+    }
+    return c.json({ error: enqueued.error ?? 'Failed to queue deletion' }, 500)
+  }
+
+  void recordAuditEvent(c, {
+    action: 'api_key.delete',
+    resourceType: 'api_keys',
+    resourceId: keyId,
+    metadata: {
+      name: (snapshot as { name?: string }).name,
+      scope: (snapshot as { scope?: string }).scope,
+      pending_deletion_id: enqueued.pendingId,
+      scheduled_for: enqueued.scheduledFor,
+    },
+  })
+
+  return c.json({
+    success: true,
+    pendingDeletionId: enqueued.pendingId,
+    scheduledFor: enqueued.scheduledFor,
+  })
 })

@@ -3,6 +3,7 @@ import { authJwt, type JwtContext } from '../middleware/authJwt.js'
 import { requireRole } from '../middleware/requireRole.js'
 import { supabaseAdmin } from '../lib/db.js'
 import { checkProjectQuota } from '../lib/quota.js'
+import { recordAuditEvent } from '../lib/audit-log.js'
 
 export const projectsRouter = new Hono<JwtContext>()
 
@@ -86,6 +87,13 @@ projectsRouter.post('/', requireEdit, async (c) => {
 
   if (error || !data) return c.json({ error: 'Failed to create project' }, 500)
 
+  void recordAuditEvent(c, {
+    action: 'project.create',
+    resourceType: 'projects',
+    resourceId: data.id,
+    metadata: { name: data.name },
+  })
+
   return c.json({ success: true, data }, 201)
 })
 
@@ -123,6 +131,13 @@ projectsRouter.patch('/:id', requireEdit, async (c) => {
 
   if (error || !data) return c.json({ error: 'Project not found or access denied' }, 404)
 
+  void recordAuditEvent(c, {
+    action: 'project.update',
+    resourceType: 'projects',
+    resourceId: data.id,
+    metadata: { fields: Object.keys(updates) },
+  })
+
   return c.json({ success: true, data })
 })
 
@@ -139,6 +154,12 @@ projectsRouter.delete('/:id', requireAdmin, async (c) => {
     .eq('organization_id', orgId)
 
   if (error) return c.json({ error: 'Failed to delete project' }, 500)
+
+  void recordAuditEvent(c, {
+    action: 'project.delete',
+    resourceType: 'projects',
+    resourceId: projectId,
+  })
 
   return c.json({ success: true })
 })
