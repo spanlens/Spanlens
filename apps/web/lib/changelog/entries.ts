@@ -40,6 +40,17 @@ export type ChangelogTag =
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
     date: '2026-06-06',
+    slug: 'events-table-shadow-write',
+    title: 'Unified events table now shadow-writes every LLM call',
+    tags: ['infrastructure'],
+    body: [
+      'First stage of the events-table unification work. New ClickHouse `events` table where an LLM generation, a trace, and a span are all variants of the same row shape — same idea Langfuse and PostHog converged on. Token kinds (vision input, reasoning, cache write) and per-provider cost breakdowns live in `Map(String, …)` columns so new keys don\'t need a column migration.',
+      'Stage 1 is shadow-only: every successful `requests` insert and every `/ingest/traces` or `/ingest/spans` call also fans out a best-effort write to `events`. Reads are unchanged — the dashboard still queries `requests` and the Postgres trace tables. A failed event write logs to the console but never affects the source insert.',
+      'Stage 2 (background-migration backfill) and Stage 3 (feature-flag dashboard reads, route by route) ship over the coming weeks. The eventual win is one query for "show me everything in this trace" instead of the current cross-database join.',
+    ].join('\n\n'),
+  },
+  {
+    date: '2026-06-06',
     slug: 'background-migration-framework',
     title: 'Background migration framework for long-running data backfills',
     tags: ['infrastructure'],
