@@ -66,11 +66,11 @@ export async function eventsScope(
 export async function selectEvents<T>(opts: {
   scope: EventsScope
   select: string
-  filters?: string
-  params?: Record<string, unknown>
-  orderBy?: string
-  limit?: number
-  offset?: number
+  filters?: string | undefined
+  params?: Record<string, unknown> | undefined
+  orderBy?: string | undefined
+  limit?: number | undefined
+  offset?: number | undefined
 }): Promise<T[]> {
   const { scope, select, filters, params, orderBy, limit, offset } = opts
 
@@ -99,11 +99,111 @@ export async function selectEvents<T>(opts: {
  */
 export async function countEvents(opts: {
   scope: EventsScope
-  filters?: string
-  params?: Record<string, unknown>
+  filters?: string | undefined
+  params?: Record<string, unknown> | undefined
 }): Promise<number> {
   const { scope, filters, params } = opts
   const whereParts = [scope.whereScope]
+  if (filters && filters.length > 0) whereParts.push(filters)
+  const where = whereParts.join(' AND ')
+  const query = `SELECT count() AS c FROM events WHERE ${where}`
+  const res = await getClickhouse().query({
+    query,
+    query_params: { ...scope.scopeParams, ...(params ?? {}) },
+    format: 'JSONEachRow',
+  })
+  const rows = (await res.json()) as Array<{ c: string }>
+  return Number(rows[0]?.c ?? 0)
+}
+
+/**
+ * Phase 5.1 Stage 3 — read-side compatibility shim for the
+ * `/api/v1/requests` list endpoint.
+ *
+ * Selects `event_type='generation'` rows from `events` and projects
+ * the columns into the shape the requests router already returns to
+ * the dashboard. Columns the events table doesn't carry (security
+ * flags, truncation marker) fall back to neutral defaults so the
+ * dashboard's badges stay consistent — Stage 3 is a read switch,
+ * not a feature regression.
+ *
+ * `extraFilters` is concatenated with AND to the events-scoped
+ * WHERE. Callers should NOT include `event_type` themselves; this
+ * helper adds it.
+ */
+export async function selectGenerationsAsRequests<T>(opts: {
+  scope: EventsScope
+  filters?: string | undefined
+  params?: Record<string, unknown> | undefined
+  orderBy?: string | undefined
+  limit?: number | undefined
+  offset?: number | undefined
+}): Promise<T[]> {
+  const { scope, filters, params, orderBy, limit, offset } = opts
+
+  const whereParts = [scope.whereScope, "event_type = 'generation'"]
+  if (filters && filters.length > 0) whereParts.push(filters)
+  const where = whereParts.join(' AND ')
+
+  const tail: string[] = []
+  if (orderBy) tail.push(`ORDER BY ${orderBy}`)
+  if (typeof limit === 'number') tail.push(`LIMIT ${Math.max(0, Math.floor(limit))}`)
+  if (typeof offset === 'number') tail.push(`OFFSET ${Math.max(0, Math.floor(offset))}`)
+
+  // Column aliases match the existing requests-router SELECT exactly
+  // so the post-query mapping (cost coercion, key-name lookup, etc.)
+  // works unchanged. usage_details map lookups default to 0 when the
+  // key is absent.
+  const query = `
+    SELECT
+      toString(event_id)                          AS id,
+      provider,
+      model,
+      toUInt32OrZero(toString(usage_details['prompt_tokens']))     AS prompt_tokens,
+      toUInt32OrZero(toString(usage_details['completion_tokens'])) AS completion_tokens,
+      toUInt32OrZero(toString(usage_details['total_tokens']))      AS total_tokens,
+      toUInt32OrZero(toString(usage_details['cache_read_tokens'])) AS cache_read_tokens,
+      toUInt32OrZero(toString(usage_details['cache_write_tokens']))AS cache_write_tokens,
+      total_cost_usd                              AS cost_usd,
+      duration_ms                                 AS latency_ms,
+      status_code,
+      input                                       AS request_body,
+      output                                      AS response_body,
+      error_message,
+      trace_id,
+      parent_event_id                             AS span_id,
+      provider_key_id,
+      user_id,
+      session_id,
+      -- Security flags and truncation live only in \`requests\`; surface
+      -- empty defaults so dashboard badges (no flag → no badge) stay
+      -- consistent until those columns land on \`events\`.
+      ''                                          AS flags,
+      '{}'                                        AS response_flags,
+      0                                           AS has_security_flags,
+      0                                           AS truncated,
+      toString(created_at)                        AS created_at
+    FROM events
+    WHERE ${where}
+    ${tail.join(' ')}
+  `.trim()
+
+  const res = await getClickhouse().query({
+    query,
+    query_params: { ...scope.scopeParams, ...(params ?? {}) },
+    format: 'JSONEachRow',
+  })
+  return (await res.json()) as T[]
+}
+
+/** Companion COUNT used by the same flag branch in /api/v1/requests. */
+export async function countGenerations(opts: {
+  scope: EventsScope
+  filters?: string | undefined
+  params?: Record<string, unknown> | undefined
+}): Promise<number> {
+  const { scope, filters, params } = opts
+  const whereParts = [scope.whereScope, "event_type = 'generation'"]
   if (filters && filters.length > 0) whereParts.push(filters)
   const where = whereParts.join(' AND ')
   const query = `SELECT count() AS c FROM events WHERE ${where}`
