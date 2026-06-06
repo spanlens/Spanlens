@@ -14,6 +14,11 @@ import {
 } from '@/lib/queries/use-human-evals'
 import { usePrompts } from '@/lib/queries/use-prompts'
 import { useScoreConfigs, type ScoreConfig } from '@/lib/queries/use-score-configs'
+import {
+  CategoricalDistribution,
+  BoolPassRate,
+  NumericHistogram,
+} from '@/components/charts/score-distribution'
 
 /**
  * Truncate a long label so the per-item "You" badge doesn't blow up
@@ -817,6 +822,62 @@ export function AnnotationClient() {
           ))}
         </div>
       </div>
+
+      {/* Type-aware distribution panel — hides when there are no
+          captured ratings yet so the empty workspace doesn't carry
+          extra vertical chrome. */}
+      {activeConfig && scoredCount > 0 && (
+        <div className="border-b border-border px-[22px] py-[14px] bg-bg">
+          <div className="font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint mb-2">
+            {activeConfig.data_type === 'CATEGORICAL' && 'Category distribution'}
+            {activeConfig.data_type === 'BOOLEAN' && 'Pass rate'}
+            {activeConfig.data_type === 'NUMERIC' && 'Score histogram'}
+            {activeConfig.data_type === 'TEXT' && 'Sample ratings'}
+          </div>
+
+          {activeConfig.data_type === 'CATEGORICAL' && (
+            <CategoricalDistribution
+              categories={activeConfig.categories ?? []}
+              values={items.map((i) => i.human_eval?.value_string)}
+            />
+          )}
+
+          {activeConfig.data_type === 'BOOLEAN' && (
+            <BoolPassRate
+              values={items.map((i) => i.human_eval?.value_boolean)}
+              trueLabel={activeConfig.bool_true_label ?? 'Pass'}
+              falseLabel={activeConfig.bool_false_label ?? 'Fail'}
+            />
+          )}
+
+          {activeConfig.data_type === 'NUMERIC' && (
+            <NumericHistogram
+              values={items.map((i) => i.human_eval?.value_number ?? i.human_eval?.score)}
+              min={activeConfig.min_value ?? 0}
+              max={activeConfig.max_value ?? 1}
+              buckets={5}
+            />
+          )}
+
+          {activeConfig.data_type === 'TEXT' && (
+            <div className="space-y-1.5">
+              {items
+                .map((i) => i.human_eval?.value_string)
+                .filter((s): s is string => !!s)
+                .slice(0, 5)
+                .map((s, idx) => (
+                  <div
+                    key={idx}
+                    className="font-mono text-[11.5px] text-text-muted truncate"
+                    title={s}
+                  >
+                    &ldquo;{s}&rdquo;
+                  </div>
+                ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Filter bar */}
       <div className="flex items-center gap-3 px-[22px] py-[12px] border-b border-border bg-bg-muted flex-wrap">
