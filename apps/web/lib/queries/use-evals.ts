@@ -85,18 +85,23 @@ export interface CreateEvaluatorInput {
   promptName: string
   name: string
   config: JudgeConfig
+  /** 4B.1c — optional pointer at a typed score config. NULL preserves
+   *  the legacy NUMERIC 0..1 behaviour. */
+  scoreConfigId?: string | null
 }
 
 export function useCreateEvaluator() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (input: CreateEvaluatorInput) => {
-      const res = await apiPost<ApiEnvelope<Evaluator>>('/api/v1/evaluators', {
+      const body: Record<string, unknown> = {
         promptName: input.promptName,
         name: input.name,
         type: 'llm_judge',
         config: input.config,
-      })
+      }
+      if (input.scoreConfigId) body.scoreConfigId = input.scoreConfigId
+      const res = await apiPost<ApiEnvelope<Evaluator>>('/api/v1/evaluators', body)
       return res.data
     },
     onSuccess: (_data, vars) => {
