@@ -537,13 +537,20 @@
 ### Definition of Done
 **ClickHouse `events` 테이블에 trace + span + LLM 호출이 통합 저장. dual-write 6개월 안정 후 dashboard reading switch 완료**
 
+**📅 Stage 1 PR 머지: 2026-06-06 (#222) — production deploy 성공**
+
 ### 🔧 Code Complete (Stage 1: dual-write 시작)
-- [ ] ClickHouse migration `clickhouse/migrations/004_create_events.sql` 적용
-- [ ] `apps/server/src/lib/logger.ts`에 `logEventAsync()` 추가
-- [ ] 4개 proxy (openai/anthropic/gemini/azure) dual-write 통합
-- [ ] `apps/server/src/api/ingest.ts` (trace + span) dual-write
-- [ ] `apps/server/src/lib/events-query.ts` 신규 (eventsScope/selectEvents/countEvents)
-- [ ] `logger.ts`의 fallback queue에 events 페이로드도 포함
+- [x] ClickHouse migration `clickhouse/migrations/004_create_events.sql` — 통합 schema (event_type 'generation'/'trace'/'span', usage_details Map, cost_details Map)
+- [x] `apps/server/src/lib/events-writer.ts` 신규 — `writeRequestAsEvent` / `writeTraceAsEvent` / `writeSpanAsEvent` 3개 best-effort 헬퍼
+- [x] `logger.ts`의 requests INSERT 후 events shadow-write (detached promise, never throws)
+- [x] 4개 proxy 자동 통합 (proxy → logger.ts → events 자동 fan-out)
+- [x] `apps/server/src/api/ingest.ts` (trace + span) dual-write — POST /ingest/traces + POST /ingest/spans 모두
+- [x] `apps/server/src/lib/events-query.ts` 신규 (eventsScope/selectEvents/countEvents) — Stage 3 read-switch 위한 contract lock-in
+- [ ] `logger.ts`의 fallback queue에 events 페이로드 — **의도적으로 안 함**: events는 shadow store라 fallback 보장 불필요. 읽기가 events로 옮겨가는 Stage 3 시점에 fallback 추가 예정
+
+### 🚀 Deployment (Stage 1)
+- [x] PR #222 머지 + production deploy 성공 (06:47 UTC)
+- [ ] **Production ClickHouse 마이그레이션** — 사용자가 `pnpm ch:migrate`로 ClickHouse Cloud에 적용 필요 (deploy-server.yml은 ClickHouse 자동 적용 안 함)
 
 ### 🔧 Code Complete (Stage 2: backfill)
 - [ ] Background migration `backfillEventsFromRequests` 등록
