@@ -361,7 +361,8 @@
 **📅 1차 PR 머지: 2026-06-06 (#208) — backend + 관리 페이지**
 **📅 2차 PR 머지: 2026-06-06 (#210) — annotation 위젯 분기 + selector + 단축키**
 **📅 3차 PR 머지: 2026-06-06 (#211) — distribution 차트 (categorical/boolean/numeric/text)**
-**📅 잔여: eval-runner judge 응답 파싱 분기 → 별도 phase (4B.1c)**
+**📅 4차 PR 머지: 2026-06-06 (#213) — eval-runner judge 응답 분기 + NewEvaluatorDialog selector**
+**🎉 4B.1 완료 (4개 핵심 PR + 2개 docs/changelog PR)**
 
 ### 🔧 Code Complete (1차 PR)
 - [x] Migration `20260608010000_score_configs.sql` 적용 (production 백필 검증됨)
@@ -373,8 +374,10 @@
 - [x] `apps/web/app/(dashboard)/settings/score-configs/page.tsx` (관리 페이지)
 - [x] `apps/web/app/(dashboard)/annotation/annotation-client.tsx` 입력 위젯 분기 (#210)
 - [x] `apps/web/components/charts/score-distribution.tsx` — CategoricalDistribution + BoolPassRate + NumericHistogram (#211)
-- [ ] `apps/server/src/lib/eval-runner.ts` 수정 (타입별 파싱) — **4B.1c 별도 phase**: evaluators 테이블에 score_config_id FK 추가 + judge 프롬프트 재작성 + 응답 파싱 분기 필요 (production eval 안전성 검증 별도)
-- [ ] `apps/server/src/lib/stats-queries.ts` 수정 (타입별 집계) — **4B.1c**: evaluator-results 차트가 typed value 기반으로 그려지려면 stats-queries 의존 (현재 /annotation 페이지의 인라인 차트로 충분히 검증 가능)
+- [x] `apps/server/src/lib/eval-runner.ts` 수정 (#213): `score_config_id` opt-in 분기, NUMERIC/BOOLEAN/CATEGORICAL/TEXT 모두 파싱. NULL이면 기존 동작 그대로 (backward compat). 23 unit tests로 검증
+- [x] Migration `20260608020000_evaluators_score_config.sql` — additive nullable FK, no backfill (#213)
+- [x] NewEvaluatorDialog "Score config (optional)" picker — default "Numeric 0..1 (default)"로 기존 동작 유지 (#213)
+- [ ] `apps/server/src/lib/stats-queries.ts` 수정 (타입별 집계) — **장기 follow-up**: evaluator-results 페이지의 차트가 typed value 기반으로 그려지려면 stats-queries 의존. 현재 /annotation 페이지의 인라인 차트로 사용자 가시 가치는 이미 확보됨
 
 ### 🧪 Testing
 - [x] Server typecheck + lint clean
