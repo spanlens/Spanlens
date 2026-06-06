@@ -1,8 +1,3 @@
-WARN: environment variable is unset: SUPABASE_AUTH_EXTERNAL_GITHUB_CLIENT_ID
-WARN: environment variable is unset: SUPABASE_AUTH_EXTERNAL_GITHUB_SECRET
-WARN: environment variable is unset: SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID
-WARN: environment variable is unset: SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET
-Connecting to db 5432
 export type Json =
   | string
   | number
@@ -542,6 +537,10 @@ export type Database = {
           reasoning: string | null
           request_id: string | null
           score: number
+          score_config_id: string | null
+          value_boolean: boolean | null
+          value_number: number | null
+          value_string: string | null
         }
         Insert: {
           created_at?: string
@@ -554,6 +553,10 @@ export type Database = {
           reasoning?: string | null
           request_id?: string | null
           score: number
+          score_config_id?: string | null
+          value_boolean?: boolean | null
+          value_number?: number | null
+          value_string?: string | null
         }
         Update: {
           created_at?: string
@@ -566,6 +569,10 @@ export type Database = {
           reasoning?: string | null
           request_id?: string | null
           score?: number
+          score_config_id?: string | null
+          value_boolean?: boolean | null
+          value_number?: number | null
+          value_string?: string | null
         }
         Relationships: [
           {
@@ -587,6 +594,13 @@ export type Database = {
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "eval_results_score_config_id_fkey"
+            columns: ["score_config_id"]
+            isOneToOne: false
+            referencedRelation: "score_configs"
             referencedColumns: ["id"]
           },
         ]
@@ -1013,8 +1027,12 @@ export type Database = {
           raw_score: number | null
           request_id: string
           reviewer_id: string
-          score: number
+          score: number | null
+          score_config_id: string | null
           updated_at: string
+          value_boolean: boolean | null
+          value_number: number | null
+          value_string: string | null
         }
         Insert: {
           comment?: string | null
@@ -1025,8 +1043,12 @@ export type Database = {
           raw_score?: number | null
           request_id: string
           reviewer_id: string
-          score: number
+          score?: number | null
+          score_config_id?: string | null
           updated_at?: string
+          value_boolean?: boolean | null
+          value_number?: number | null
+          value_string?: string | null
         }
         Update: {
           comment?: string | null
@@ -1037,8 +1059,12 @@ export type Database = {
           raw_score?: number | null
           request_id?: string
           reviewer_id?: string
-          score?: number
+          score?: number | null
+          score_config_id?: string | null
           updated_at?: string
+          value_boolean?: boolean | null
+          value_number?: number | null
+          value_string?: string | null
         }
         Relationships: [
           {
@@ -1053,6 +1079,13 @@ export type Database = {
             columns: ["prompt_version_id"]
             isOneToOne: false
             referencedRelation: "prompt_versions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "human_evals_score_config_id_fkey"
+            columns: ["score_config_id"]
+            isOneToOne: false
+            referencedRelation: "score_configs"
             referencedColumns: ["id"]
           },
         ]
@@ -1864,6 +1897,68 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "saved_filters_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      score_configs: {
+        Row: {
+          archived_at: string | null
+          bool_false_label: string | null
+          bool_true_label: string | null
+          categories: Json | null
+          created_at: string
+          created_by: string | null
+          data_type: string
+          description: string | null
+          id: string
+          is_default: boolean
+          max_value: number | null
+          min_value: number | null
+          name: string
+          organization_id: string
+          updated_at: string
+        }
+        Insert: {
+          archived_at?: string | null
+          bool_false_label?: string | null
+          bool_true_label?: string | null
+          categories?: Json | null
+          created_at?: string
+          created_by?: string | null
+          data_type: string
+          description?: string | null
+          id?: string
+          is_default?: boolean
+          max_value?: number | null
+          min_value?: number | null
+          name: string
+          organization_id: string
+          updated_at?: string
+        }
+        Update: {
+          archived_at?: string | null
+          bool_false_label?: string | null
+          bool_true_label?: string | null
+          categories?: Json | null
+          created_at?: string
+          created_by?: string | null
+          data_type?: string
+          description?: string | null
+          id?: string
+          is_default?: boolean
+          max_value?: number | null
+          min_value?: number | null
+          name?: string
+          organization_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "score_configs_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
@@ -2695,5 +2790,3 @@ export const Constants = {
   },
 } as const
 
-A new version of Supabase CLI is available: v2.105.0 (currently installed v2.90.0)
-We recommend updating regularly for new features and bug fixes: https://supabase.com/docs/guides/cli/getting-started#updating-the-supabase-cli
