@@ -123,21 +123,48 @@ requestsRouter.get('/', async (c) => {
     let total: number
 
     if (useEventsForRequests) {
-      // Phase 5.1 Stage 3 — read from the unified events table. The
-      // helper projects events columns into the same shape selectRequests
-      // returns so the downstream mapping below works unchanged.
-      const eventsScopeResolved = await eventsScope(orgId)
-      ;[rows, total] = await Promise.all([
-        selectGenerationsAsRequests<RequestRow>({
-          scope: eventsScopeResolved,
-          filters: combinedFilters,
-          orderBy,
-          limit,
-          offset,
-          params,
-        }),
-        countGenerations({ scope: eventsScopeResolved, filters: combinedFilters, params }),
-      ])
+      // Phase 5.1 Stage 3 — read from the unified events table.
+      //
+      // Safety net: if the events path throws for ANY reason — schema
+      // drift, missing column, retention edge case — fall back to the
+      // requests path so the dashboard never shows an empty list due
+      // to an internal Stage 3 issue. The error is logged loudly so
+      // a sustained outage is visible in Vercel logs.
+      let usedFallback = false
+      try {
+        const eventsScopeResolved = await eventsScope(orgId)
+        ;[rows, total] = await Promise.all([
+          selectGenerationsAsRequests<RequestRow>({
+            scope: eventsScopeResolved,
+            filters: combinedFilters,
+            orderBy,
+            limit,
+            offset,
+            params,
+          }),
+          countGenerations({ scope: eventsScopeResolved, filters: combinedFilters, params }),
+        ])
+      } catch (eventsErr) {
+        console.error(
+          '[requests:list] events path failed, falling back to requests table:',
+          eventsErr instanceof Error ? eventsErr.message : eventsErr,
+        )
+        usedFallback = true
+        const scope = await requestsScope(orgId)
+        ;[rows, total] = await Promise.all([
+          selectRequests<RequestRow>({
+            scope,
+            select: LIST_COLUMNS,
+            filters: combinedFilters,
+            orderBy,
+            limit,
+            offset,
+            params,
+          }),
+          countRequests({ scope, filters: combinedFilters, params }),
+        ])
+      }
+      void usedFallback
     } else {
       const scope = await requestsScope(orgId)
       ;[rows, total] = await Promise.all([
