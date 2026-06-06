@@ -55,6 +55,7 @@ import { adminModelRecommendationsRouter } from './api/admin/modelRecommendation
 import { sharesRouter }           from './api/shares.js'
 import { publicShareRouter }      from './api/publicShare.js'
 import { badgeRouter }            from './api/badge.js'
+import { pendingDeletionsRouter } from './api/pendingDeletions.js'
 
 export const app = new Hono()
 
@@ -187,6 +188,9 @@ app.route('/api/v1/invitations', invitationsRouter)           // public GET /acc
 // their wildcard gets the misleading "Invalid or expired token" 401
 // instead of running its own (here: dual JWT / sl_live_*) auth.
 app.route('/api/v1/recommendations', recommendationsRouter)
+// pendingDeletions must be mounted BEFORE evalsRouter/humanEvalsRouter for
+// the same wildcard-collision reason as recommendations (gotcha #3).
+app.route('/api/v1/pending-deletions', pendingDeletionsRouter)
 app.route('/api/v1',                evalsRouter)
 app.route('/api/v1/datasets',       datasetsRouter)
 app.route('/api/v1/experiments',    experimentsRouter)

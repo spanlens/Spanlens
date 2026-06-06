@@ -5,6 +5,7 @@ import { supabaseAdmin } from '../lib/db.js'
 import { randomHex } from '../lib/crypto.js'
 import { dispatchWebhookEvent } from '../lib/webhook-dispatch.js'
 import { invalidateWebhookCache } from '../lib/webhook-emit.js'
+import { recordAuditEvent } from '../lib/audit-log.js'
 
 export const webhooksRouter = new Hono<JwtContext>()
 webhooksRouter.use('*', authJwt)
@@ -83,6 +84,14 @@ webhooksRouter.post('/', requireEdit, async (c) => {
 
   if (error || !data) return c.json({ error: 'Failed to create webhook' }, 500)
   invalidateWebhookCache(orgId)
+
+  void recordAuditEvent(c, {
+    action: 'webhook.create',
+    resourceType: 'webhooks',
+    resourceId: data.id,
+    metadata: { name: data.name, url: data.url, events: data.events },
+  })
+
   return c.json({ success: true, data }, 201)
 })
 
@@ -136,6 +145,14 @@ webhooksRouter.patch('/:id', requireEdit, async (c) => {
 
   if (error || !data) return c.json({ error: 'Webhook not found' }, 404)
   invalidateWebhookCache(orgId)
+
+  void recordAuditEvent(c, {
+    action: 'webhook.update',
+    resourceType: 'webhooks',
+    resourceId: data.id,
+    metadata: { fields: Object.keys(updates) },
+  })
+
   return c.json({ success: true, data })
 })
 
@@ -153,6 +170,13 @@ webhooksRouter.delete('/:id', requireEdit, async (c) => {
 
   if (error) return c.json({ error: 'Failed to delete webhook' }, 500)
   invalidateWebhookCache(orgId)
+
+  void recordAuditEvent(c, {
+    action: 'webhook.delete',
+    resourceType: 'webhooks',
+    resourceId: id,
+  })
+
   return c.json({ success: true })
 })
 

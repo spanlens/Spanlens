@@ -32,7 +32,15 @@ import {
   useQuota,
 } from '@/lib/queries/use-billing'
 import { QuotaBanner } from '@/components/dashboard/quota-banner'
-import { useAuditLogs } from '@/lib/queries/use-audit-logs'
+import {
+  useAuditLogActions,
+  useAuditLogs,
+  useAuditLogsPage,
+  type UseAuditLogsParams,
+} from '@/lib/queries/use-audit-logs'
+import { inferAuditSeverity } from '@/lib/audit-logs'
+import { AuditLogsTable } from '@/components/audit-logs/AuditLogsTable'
+import { useIsAdmin, useCurrentRoleLoading } from '@/lib/queries/use-current-role'
 import { useCurrentUser } from '@/lib/queries/use-current-user'
 import {
   useIdentities,
@@ -730,29 +738,94 @@ function SecurityTabInner() {
 
 // ─── AUDIT LOG tab ────────────────────────────────────────────────────────────
 
-function formatTime(iso: string): string {
-  const d = new Date(iso)
-  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })
+const PAGE_SIZE_AUDIT = 50
+type AuditTimeWindow = '7d' | '30d' | '90d' | 'all'
+
+const AUDIT_TIME_WINDOWS: { value: AuditTimeWindow; label: string; days: number | null }[] = [
+  { value: '7d',  label: 'Last 7 days',  days: 7 },
+  { value: '30d', label: 'Last 30 days', days: 30 },
+  { value: '90d', label: 'Last 90 days', days: 90 },
+  { value: 'all', label: 'All time',     days: null },
+]
+
+function auditWindowToFrom(window: AuditTimeWindow): string | undefined {
+  const entry = AUDIT_TIME_WINDOWS.find((w) => w.value === window)
+  if (!entry || entry.days === null) return undefined
+  return new Date(Date.now() - entry.days * 24 * 60 * 60 * 1000).toISOString()
 }
 
 /**
- * Severity inferred from the action string. High = destructive / billing /
- * auth-critical. Medium = creation / modification. Low = the rest.
+ * AuditLogTab — full audit log viewer.
+ *
+ * Renders the same content the dedicated /settings/audit-logs route used to
+ * before we collapsed it back here. Filters by time window + action, paginates,
+ * and opens a Drawer with the metadata JSON when a row is clicked.
+ *
+ * Admin-gated because audit logs surface IPs and actor UUIDs across the org.
+ * Non-admins land on a clean explanation instead of a hard 403.
  */
-function inferSeverity(action: string): 'high' | 'med' | 'low' {
-  if (/\.(delete|revoke|rotate)$|billing\.|workspace\.|member\.remove/.test(action)) return 'high'
-  if (/\.(create|add|update|change|invite)$/.test(action)) return 'med'
-  return 'low'
-}
-
 function AuditLogTab() {
-  const { data, isLoading } = useAuditLogs({ limit: 100 })
-  const events = data ?? []
+  const roleLoading = useCurrentRoleLoading()
+  const isAdmin = useIsAdmin()
+  const [timeWindow, setTimeWindow] = useState<AuditTimeWindow>('30d')
+  const [actionFilter, setActionFilter] = useState<string>('')
+  const [page, setPage] = useState(0)
 
-  const bySev = {
-    high: events.filter((e) => inferSeverity(e.action) === 'high').length,
-    med:  events.filter((e) => inferSeverity(e.action) === 'med').length,
-    low:  events.filter((e) => inferSeverity(e.action) === 'low').length,
+  const params: UseAuditLogsParams = useMemo(() => {
+    // exactOptionalPropertyTypes: true — only set keys we have values for.
+    const next: UseAuditLogsParams = {
+      limit: PAGE_SIZE_AUDIT,
+      offset: page * PAGE_SIZE_AUDIT,
+    }
+    if (actionFilter) next.action = actionFilter
+    const from = auditWindowToFrom(timeWindow)
+    if (from) next.from = from
+    return next
+  }, [actionFilter, timeWindow, page])
+
+  const query = useAuditLogsPage(params, { enabled: isAdmin })
+  const actionsQuery = useAuditLogActions()
+  // Stabilise `rows` so the dependent useMemo doesn't recompute every render.
+  // The `?? []` on the raw expression would create a fresh array on each call
+  // and bust memoisation downstream.
+  const rows = useMemo(() => query.data?.rows ?? [], [query.data?.rows])
+  const total = query.data?.meta.total ?? 0
+  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE_AUDIT))
+  const showingFrom = total === 0 ? 0 : page * PAGE_SIZE_AUDIT + 1
+  const showingTo = Math.min(total, page * PAGE_SIZE_AUDIT + PAGE_SIZE_AUDIT)
+
+  const bySev = useMemo(() => ({
+    high: rows.filter((e) => inferAuditSeverity(e.action) === 'high').length,
+    med:  rows.filter((e) => inferAuditSeverity(e.action) === 'med').length,
+    low:  rows.filter((e) => inferAuditSeverity(e.action) === 'low').length,
+  }), [rows])
+
+  if (roleLoading) {
+    return (
+      <div className="max-w-[980px]">
+        <TabHeader title="Audit log" description="Checking permissions…" />
+      </div>
+    )
+  }
+
+  if (!isAdmin) {
+    return (
+      <div className="max-w-[980px]">
+        <TabHeader
+          title="Audit log"
+          description="Every state change in the workspace. Immutable · service-role writes only."
+        />
+        <div className="rounded-lg border border-border bg-bg-elev p-6">
+          <div className="font-mono text-[12.5px] text-text mb-2">Admin only</div>
+          <div className="font-mono text-[11.5px] text-text-muted">
+            The full audit log viewer is restricted to workspace admins. Audit rows
+            surface actor IDs and IP addresses across every member — only admins
+            can see them. Editors and viewers don&apos;t lose the ability to act;
+            they just can&apos;t inspect history here.
+          </div>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -778,38 +851,75 @@ function AuditLogTab() {
         ))}
       </div>
 
-      <Section title="Events" action={<Hint>Newest first · last 100</Hint>} className="mb-5">
-        {isLoading ? (
-          <div className="px-6 py-8 text-center font-mono text-[12.5px] text-text-faint">Loading…</div>
-        ) : events.length === 0 ? (
-          <div className="px-6 py-8 text-center font-mono text-[12.5px] text-text-faint">
-            No audit events yet.
+      <Section
+        title="Events"
+        action={(
+          <div className="flex items-center gap-2">
+            <select
+              value={timeWindow}
+              onChange={(e) => { setTimeWindow(e.target.value as AuditTimeWindow); setPage(0) }}
+              className="bg-bg-elev border border-border rounded-[5px] px-2 py-1 font-mono text-[11px] text-text"
+            >
+              {AUDIT_TIME_WINDOWS.map((w) => (
+                <option key={w.value} value={w.value}>{w.label}</option>
+              ))}
+            </select>
+            <select
+              value={actionFilter}
+              onChange={(e) => { setActionFilter(e.target.value); setPage(0) }}
+              className="bg-bg-elev border border-border rounded-[5px] px-2 py-1 font-mono text-[11px] text-text min-w-[180px]"
+            >
+              <option value="">All actions</option>
+              {(actionsQuery.data ?? []).map((action) => (
+                <option key={action} value={action}>{action}</option>
+              ))}
+            </select>
           </div>
-        ) : (
-          <div className="overflow-x-auto">
-          <div className="divide-y divide-border min-w-[480px]">
-            <div className="grid grid-cols-[100px_60px_180px_1fr] gap-4 px-6 py-3 font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint">
-              <span>Time</span>
-              <span>Sev</span>
-              <span>Action</span>
-              <span>Resource</span>
+        )}
+        className="mb-5"
+      >
+        <AuditLogsTable
+          rows={rows}
+          isLoading={query.isLoading}
+          emptyHint={
+            actionFilter || timeWindow !== 'all'
+              ? 'No events match the current filters. Try widening the time range.'
+              : 'No audit events yet.'
+          }
+        />
+
+        {total > 0 && (
+          <div className="border-t border-border px-6 py-3 flex items-center justify-between text-[11.5px] font-mono">
+            <span className="text-text-faint">
+              Showing {showingFrom}–{showingTo} of {total.toLocaleString('en-US')}
+            </span>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                disabled={page === 0}
+                onClick={() => setPage((p) => Math.max(0, p - 1))}
+                className={cn(
+                  'rounded-[5px] border border-border px-2 py-1 text-[11px]',
+                  page === 0 ? 'opacity-40 cursor-not-allowed' : 'hover:bg-bg-muted',
+                )}
+              >
+                ← Prev
+              </button>
+              <span className="text-text-faint px-2">
+                Page {page + 1} / {pageCount}
+              </span>
+              <button
+                type="button"
+                disabled={page + 1 >= pageCount}
+                onClick={() => setPage((p) => p + 1)}
+                className={cn(
+                  'rounded-[5px] border border-border px-2 py-1 text-[11px]',
+                  page + 1 >= pageCount ? 'opacity-40 cursor-not-allowed' : 'hover:bg-bg-muted',
+                )}
+              >
+                Next →
+              </button>
             </div>
-            {events.map((e) => {
-              const sev = inferSeverity(e.action)
-              return (
-                <div key={e.id} className="grid grid-cols-[100px_60px_180px_1fr] gap-4 px-6 py-3 items-center">
-                  <span className="font-mono text-[11.5px] text-text-muted">{formatTime(e.created_at)}</span>
-                  <span className={cn('font-mono text-[9px] uppercase tracking-[0.04em]', sev === 'high' ? 'text-accent' : sev === 'med' ? 'text-text' : 'text-text-faint')}>
-                    ● {sev}
-                  </span>
-                  <span className={cn('font-mono text-[11.5px] font-medium', sev === 'high' ? 'text-accent' : 'text-text')}>{e.action}</span>
-                  <span className="font-mono text-[11.5px] text-text-muted truncate">
-                    {e.resource_type}{e.resource_id ? ` · ${e.resource_id.slice(0, 12)}` : ''}
-                  </span>
-                </div>
-              )
-            })}
-          </div>
           </div>
         )}
       </Section>

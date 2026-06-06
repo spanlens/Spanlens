@@ -2,6 +2,8 @@ import type { Context } from 'hono'
 import { createMiddleware } from 'hono/factory'
 import { supabaseAdmin } from '../lib/db.js'
 import { sha256Hex } from '../lib/crypto.js'
+import { maybeStampLastUsed } from '../lib/api-key-last-used.js'
+import { fireAndForget } from '../lib/wait-until.js'
 
 /**
  * Validates a Spanlens API key (sl_live_* or sl_live_pub_*) against `api_keys`.
@@ -105,6 +107,11 @@ export const authApiKey = createMiddleware<ApiKeyContext>(async (c, next) => {
   c.set('apiKeyScope', scope)
   c.set('organizationId', organizationId)
   c.set('projectId', (data.project_id as string | null) ?? null)
+
+  // Refresh `last_used_at` so the dashboard can surface stale keys.
+  // Fire-and-forget: a slow write must never block the proxy hot path.
+  // Throttled in-memory to ~1 UPDATE per key per 5 min — see api-key-last-used.ts.
+  fireAndForget(c, maybeStampLastUsed(data.id as string))
 
   return next()
 })

@@ -1,3 +1,8 @@
+WARN: environment variable is unset: SUPABASE_AUTH_EXTERNAL_GITHUB_CLIENT_ID
+WARN: environment variable is unset: SUPABASE_AUTH_EXTERNAL_GITHUB_SECRET
+WARN: environment variable is unset: SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID
+WARN: environment variable is unset: SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET
+Connecting to db 5432
 export type Json =
   | string
   | number
@@ -265,7 +270,9 @@ export type Database = {
           key_prefix: string
           last_used_at: string | null
           name: string
-          project_id: string
+          organization_id: string | null
+          project_id: string | null
+          scope: string
           updated_at: string
         }
         Insert: {
@@ -276,7 +283,9 @@ export type Database = {
           key_prefix: string
           last_used_at?: string | null
           name: string
-          project_id: string
+          organization_id?: string | null
+          project_id?: string | null
+          scope?: string
           updated_at?: string
         }
         Update: {
@@ -287,10 +296,19 @@ export type Database = {
           key_prefix?: string
           last_used_at?: string | null
           name?: string
-          project_id?: string
+          organization_id?: string | null
+          project_id?: string | null
+          scope?: string
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "api_keys_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "api_keys_project_id_fkey"
             columns: ["project_id"]
@@ -661,6 +679,48 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      evaluator_templates: {
+        Row: {
+          category: string
+          created_at: string
+          criterion: string
+          description: string
+          display_order: number
+          id: string
+          is_active: boolean
+          name: string
+          recommended_judge_model: string
+          recommended_judge_provider: string
+          slug: string
+        }
+        Insert: {
+          category: string
+          created_at?: string
+          criterion: string
+          description: string
+          display_order?: number
+          id?: string
+          is_active?: boolean
+          name: string
+          recommended_judge_model: string
+          recommended_judge_provider: string
+          slug: string
+        }
+        Update: {
+          category?: string
+          created_at?: string
+          criterion?: string
+          description?: string
+          display_order?: number
+          id?: string
+          is_active?: boolean
+          name?: string
+          recommended_judge_model?: string
+          recommended_judge_provider?: string
+          slug?: string
+        }
+        Relationships: []
       }
       evaluators: {
         Row: {
@@ -1317,6 +1377,56 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      pending_deletions: {
+        Row: {
+          cancelled_at: string | null
+          cancelled_by: string | null
+          executed_at: string | null
+          id: string
+          organization_id: string
+          requested_at: string
+          requested_by: string | null
+          resource_id: string
+          resource_snapshot: Json
+          resource_type: string
+          scheduled_for: string
+        }
+        Insert: {
+          cancelled_at?: string | null
+          cancelled_by?: string | null
+          executed_at?: string | null
+          id?: string
+          organization_id: string
+          requested_at?: string
+          requested_by?: string | null
+          resource_id: string
+          resource_snapshot: Json
+          resource_type: string
+          scheduled_for: string
+        }
+        Update: {
+          cancelled_at?: string | null
+          cancelled_by?: string | null
+          executed_at?: string | null
+          id?: string
+          organization_id?: string
+          requested_at?: string
+          requested_by?: string | null
+          resource_id?: string
+          resource_snapshot?: Json
+          resource_type?: string
+          scheduled_for?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pending_deletions_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       projects: {
         Row: {
@@ -2585,3 +2695,5 @@ export const Constants = {
   },
 } as const
 
+A new version of Supabase CLI is available: v2.105.0 (currently installed v2.90.0)
+We recommend updating regularly for new features and bug fixes: https://supabase.com/docs/guides/cli/getting-started#updating-the-supabase-cli

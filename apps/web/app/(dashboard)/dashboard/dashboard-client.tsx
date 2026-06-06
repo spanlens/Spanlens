@@ -9,6 +9,7 @@ import { useStatsOverview, useStatsTimeseries, useStatsModels, useSpendForecast 
 import { useAnomalies } from '@/lib/queries/use-anomalies'
 import { useAlerts } from '@/lib/queries/use-alerts'
 import { useRecommendations, type ModelRecommendation } from '@/lib/queries/use-recommendations'
+import { useStaleKeyCounts } from '@/lib/queries/use-stale-keys'
 import { useAuditLogs } from '@/lib/queries/use-audit-logs'
 import { usePrompts } from '@/lib/queries/use-prompts'
 import { useSecuritySummary } from '@/lib/queries/use-security'
@@ -284,6 +285,7 @@ export function DashboardClient() {
   const anomalies = useAnomalies({ observationHours: hours })
   const alerts = useAlerts()
   const recommendations = useRecommendations({ hours })
+  const staleKeys = useStaleKeyCounts()
   const auditLogs = useAuditLogs({ limit: 6 })
   const promptsQuery = usePrompts()
   const modelsQuery = useStatsModels(hours, undefined, { refetchInterval: LIVE_REFETCH_MS })
@@ -520,6 +522,25 @@ export function DashboardClient() {
       })
     }
 
+    // Stale API keys — surface revoke-tier (90d+) as a warning ahead of
+    // any savings card, since orphaned keys are a security concern. The
+    // bare "stale-tier" (30-89d) is intentionally NOT surfaced here — we
+    // don't want to nag for every key the user took a holiday on, only
+    // for ones that have crossed the "this is probably forgotten" line.
+    if (staleKeys.revoke > 0) {
+      const n = staleKeys.revoke
+      const sample = staleKeys.sampleName
+      cards.push({
+        kind: 'warning',
+        cardKey: `stale_keys:${n}`,
+        title: `${n} API key${n === 1 ? '' : 's'} idle 90+ days`,
+        meta: sample ? `${sample}${n > 1 ? ` · +${n - 1} more` : ''}` : 'review · rotate · revoke',
+        hint: 'Long-idle keys are usually forgotten — revoke them before a leak happens.',
+        cta: 'Review keys →',
+        href: '/projects',
+      })
+    }
+
     const topRec = (recommendations.data ?? [])[0] as (ModelRecommendation & { id?: string }) | undefined
     if (topRec) {
       cards.push({
@@ -534,7 +555,7 @@ export function DashboardClient() {
     }
 
     return cards
-  }, [anomalies.data, firingAlerts, recommendations.data, securitySummary.data, timeRange, customRange, mountNow])
+  }, [anomalies.data, firingAlerts, recommendations.data, securitySummary.data, staleKeys.revoke, staleKeys.sampleName, timeRange, customRange, mountNow])
 
   // Border classes for KPI cells — responsive 2-col (mobile) / 4-col (lg)
   const kpiCellClasses: [string, string, string, string] = [

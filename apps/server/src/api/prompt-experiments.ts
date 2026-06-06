@@ -2,6 +2,8 @@ import { Hono } from 'hono'
 import { authJwt, type JwtContext } from '../middleware/authJwt.js'
 import { requireRole } from '../middleware/requireRole.js'
 import { supabaseAdmin } from '../lib/db.js'
+import { invalidatePromptName } from '../lib/prompt-cache.js'
+import { recordAuditEvent } from '../lib/audit-log.js'
 import { requestsScope, selectRequests } from '../lib/requests-query.js'
 import {
   errorRateTest,
@@ -126,6 +128,22 @@ promptExperimentsRouter.post('/', requireEdit, async (c) => {
       return c.json({ error: 'An experiment is already running for this prompt' }, 409)
     return c.json({ error: 'Failed to create experiment' }, 500)
   }
+
+  // Invalidate the resolve cache: the next `name@latest` request must see
+  // the new experiment metadata, not a pre-experiment cached versionId.
+  await invalidatePromptName(orgId, promptName)
+
+  void recordAuditEvent(c, {
+    action: 'ab_experiment.start',
+    resourceType: 'prompt_ab_experiments',
+    resourceId: data.id,
+    metadata: {
+      prompt_name: promptName,
+      version_a_id: versionAId,
+      version_b_id: versionBId,
+      traffic_split: trafficSplit,
+    },
+  })
 
   return c.json({ success: true, data }, 201)
 })
@@ -300,6 +318,35 @@ promptExperimentsRouter.patch('/:id', requireEdit, async (c) => {
     .maybeSingle()
 
   if (error || !data) return c.json({ error: 'Failed to update experiment' }, 500)
+
+  // Status change (concluded/stopped) flips traffic back to plain `latest`,
+  // so the cached experiment metadata must be dropped.
+  if (typeof data.prompt_name === 'string') {
+    await invalidatePromptName(orgId, data.prompt_name)
+  }
+
+  // Map the new status to a distinct audit verb so the timeline reads
+  // naturally ("ab_experiment.conclude" vs "ab_experiment.stop"). Updates
+  // that only change ends_at fall through to a generic `update`.
+  const newStatus = typeof updates.status === 'string' ? updates.status : null
+  const action =
+    newStatus === 'concluded'
+      ? 'ab_experiment.conclude'
+      : newStatus === 'stopped'
+        ? 'ab_experiment.stop'
+        : 'ab_experiment.update'
+  void recordAuditEvent(c, {
+    action,
+    resourceType: 'prompt_ab_experiments',
+    resourceId: data.id as string,
+    metadata: {
+      prompt_name: data.prompt_name,
+      status: newStatus ?? undefined,
+      winner_version_id: updates.winner_version_id ?? undefined,
+      ends_at: updates.ends_at ?? undefined,
+    },
+  })
+
   return c.json({ success: true, data })
 })
 
@@ -313,7 +360,7 @@ promptExperimentsRouter.delete('/:id', requireRole('admin'), async (c) => {
   // Only allow deleting non-running experiments
   const { data: exp } = await supabaseAdmin
     .from('prompt_ab_experiments')
-    .select('status')
+    .select('status, prompt_name')
     .eq('organization_id', orgId)
     .eq('id', id)
     .maybeSingle()
@@ -329,5 +376,22 @@ promptExperimentsRouter.delete('/:id', requireRole('admin'), async (c) => {
     .eq('id', id)
 
   if (error) return c.json({ error: 'Failed to delete experiment' }, 500)
+  // Belt-and-braces: PATCH already invalidated when status moved to
+  // stopped/concluded, but a direct delete (e.g. backfill cleanup) still
+  // needs the cache flushed in case anything raced.
+  if (typeof exp.prompt_name === 'string') {
+    await invalidatePromptName(orgId, exp.prompt_name)
+  }
+
+  void recordAuditEvent(c, {
+    action: 'ab_experiment.delete',
+    resourceType: 'prompt_ab_experiments',
+    resourceId: id,
+    metadata: {
+      prompt_name: exp.prompt_name,
+      previous_status: exp.status,
+    },
+  })
+
   return c.json({ success: true })
 })
