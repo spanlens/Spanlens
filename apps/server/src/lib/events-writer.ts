@@ -36,6 +36,15 @@ interface RequestRowLike {
   request_body: string
   response_body: string
   error_message: string | null
+  /**
+   * Pre-computed in logger.ts and threaded straight through so events
+   * gets the same security/truncation values as `requests`. Added by
+   * migration 006.
+   */
+  flags?: string
+  response_flags?: string
+  has_security_flags?: boolean
+  truncated?: number
 }
 
 /**
@@ -65,7 +74,20 @@ export async function writeRequestAsEvent(
 
   const metadata: Record<string, string> = {}
   if (data.serviceTier) metadata['service_tier'] = data.serviceTier
+  // `truncated` used to live in the metadata map as a string; from
+  // migration 006 it has a dedicated typed column. Keep the map entry
+  // for one release cycle so older consumers don't break.
   if (data.truncated) metadata['truncated'] = 'true'
+
+  // Phase 5.1 PR-5 — the four columns added by migration 006. The
+  // logger already wrote these into the `requests` row; we read them
+  // back off `requestRow` so events stays bit-identical to what
+  // landed in `requests`. Defaults match the requests-table column
+  // defaults so a missing prop never produces a wrong value.
+  const flagsValue = requestRow.flags ?? '[]'
+  const responseFlagsValue = requestRow.response_flags ?? '{}'
+  const hasSecurityFlagsValue = requestRow.has_security_flags ?? false
+  const truncatedValue = requestRow.truncated ?? (data.truncated ? 1 : 0)
 
   const eventRow = {
     event_id: requestRow.id,
@@ -99,6 +121,10 @@ export async function writeRequestAsEvent(
     session_id: data.sessionId ?? null,
     prompt_version_id: data.promptVersionId ?? null,
     provider_key_id: data.providerKeyId ?? null,
+    flags: flagsValue,
+    response_flags: responseFlagsValue,
+    has_security_flags: hasSecurityFlagsValue,
+    truncated: truncatedValue,
     created_at: requestRow.created_at,
   }
 
