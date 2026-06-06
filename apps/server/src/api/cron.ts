@@ -19,6 +19,7 @@ import { sendHighConfidenceRecommendationAlerts } from '../lib/recommendation-no
 import { logCronRun } from '../lib/cron-logger.js'
 import { replayFallbackQueue } from '../lib/fallback-replay.js'
 import { runDowngradeCheck } from '../lib/billing-downgrade.js'
+import { executePendingDeletions } from './pendingDeletions.js'
 
 /**
  * Vercel cron endpoints. Invoked hourly via `crons` entry in `vercel.json`.
@@ -525,6 +526,36 @@ cronRouter.get('/check-past-due-downgrades', async (c) => {
 //      org request — those still pay first-call latency but the underlying
 //      ClickHouse cluster cache is hot from this ping.
 //
+// GET /cron/execute-pending-deletions
+// Walks the soft-delete queue: rows whose scheduled_for has elapsed get
+// hard-deleted from their source table and stamped `executed_at`. Runs
+// every 6 hours — the resolution of the grace window doesn't need to be
+// tighter than that for UX, and infrequent runs keep cron_runs noise down.
+cronRouter.get('/execute-pending-deletions', async (c) => {
+  const authFail = assertCronAuth(c.req.header('Authorization'))
+  if (authFail) return c.json({ error: authFail }, 401)
+
+  const started = Date.now()
+  const result = await executePendingDeletions({ batchSize: 100 })
+  const durationMs = Date.now() - started
+
+  await logCronRun(
+    'execute-pending-deletions',
+    result.failed === 0 ? 'ok' : 'error',
+    durationMs,
+    result.failed === 0
+      ? undefined
+      : `${result.failed} failures: ${result.errors.map((e) => e.error).slice(0, 3).join('; ')}`,
+  )
+
+  return c.json({
+    ok: result.failed === 0,
+    ts: new Date().toISOString(),
+    durationMs,
+    ...result,
+  })
+})
+
 // All three steps run in parallel via Promise.allSettled — one slow / failing
 // dependency doesn't block the others, and we never throw (cron retries are
 // noisy and a transient warmup failure is not worth alerting on). No

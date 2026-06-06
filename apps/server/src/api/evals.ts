@@ -104,6 +104,28 @@ evalsRouter.get('/evaluators', async (c) => {
   return c.json({ success: true, data: data ?? [] })
 })
 
+// GET /api/v1/evaluator-templates — global catalogue of pre-baked evaluators
+//
+// The dashboard renders these as quick-start cards on the empty state of
+// /evals. The catalogue is workspace-agnostic: every org sees the same
+// suggestions (RLS on the table allows any authenticated user to read).
+// Active rows only, ordered category → display_order so the response is
+// already render-ready.
+evalsRouter.get('/evaluator-templates', async (c) => {
+  const orgId = c.get('orgId')
+  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+
+  const { data, error } = await supabaseAdmin
+    .from('evaluator_templates')
+    .select('id, slug, name, description, category, criterion, recommended_judge_provider, recommended_judge_model, display_order')
+    .eq('is_active', true)
+    .order('category', { ascending: true })
+    .order('display_order', { ascending: true })
+
+  if (error) return c.json({ error: 'Failed to load templates' }, 500)
+  return c.json({ success: true, data: data ?? [] })
+})
+
 // DELETE /api/v1/evaluators/:id — soft delete (archive)
 evalsRouter.delete('/evaluators/:id', async (c) => {
   const orgId = c.get('orgId')

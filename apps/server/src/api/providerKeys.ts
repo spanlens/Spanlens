@@ -4,6 +4,8 @@ import { requireRole } from '../middleware/requireRole.js'
 import { supabaseAdmin } from '../lib/db.js'
 import { getOrgClickhouse } from '../lib/clickhouse.js'
 import { aes256Encrypt } from '../lib/crypto.js'
+import { enqueueDeletion } from '../lib/pending-deletions.js'
+import { recordAuditEvent } from '../lib/audit-log.js'
 import { resetProviderKeyNamesCache } from '../lib/requests-query.js'
 
 /**
@@ -250,34 +252,80 @@ providerKeysRouter.post('/', requireEdit, async (c) => {
   // Invalidate the cached org → key-name map so the new key shows up
   // immediately on /requests instead of waiting for the 5-min TTL.
   resetProviderKeyNamesCache()
+
+  void recordAuditEvent(c, {
+    action: 'provider_key.add',
+    resourceType: 'provider_keys',
+    resourceId: data.id as string,
+    metadata: {
+      provider: body.provider,
+      name: body.name.trim(),
+      api_key_id: apiKeyId,
+    },
+  })
+
   return c.json({ success: true, data }, 201)
 })
 
-// DELETE /api/v1/provider-keys/:id — hard delete the provider key row.
+// DELETE /api/v1/provider-keys/:id — soft delete via pending_deletions queue.
 //
-// We used to soft-delete (set is_active=false) so that historic request rows
-// could still resolve provider_key_id → key name. The dashboard then rendered
-// a strikethrough row, which users read as "still here, just dead" — confusing.
-// Users want delete to mean delete.
+// Provider keys cost real money when leaked, and accidental deletion is the
+// #1 inbound support ticket pattern. We trade the previous "delete means
+// delete" simplicity for a 72-hour grace window: the row is flipped
+// is_active=false right away so proxy calls fail immediately, and a cron
+// performs the hard delete unless the user restores it first.
 //
-// ClickHouse `requests` keeps provider_key_id as a plain UUID with no FK, so
-// orphaning is fine: existing log rows show "(deleted)" via the
-// fetchProviderKeyNames helper's `?? null` fallback in lib/requests-query.ts.
+// The "(deleted)" rendering for orphaned ClickHouse rows still works after
+// hard delete — the fetchProviderKeyNames helper in lib/requests-query.ts
+// already null-coalesces missing keys.
 providerKeysRouter.delete('/:id', requireEdit, async (c) => {
   const keyId = c.req.param('id')
   const orgId = c.get('orgId')
+  const userId = c.get('userId')
   if (!orgId) return c.json({ error: 'Organization not found' }, 404)
 
-  const { error } = await supabaseAdmin
+  const { data: snapshot } = await supabaseAdmin
     .from('provider_keys')
-    .delete()
+    .select('*')
     .eq('id', keyId)
     .eq('organization_id', orgId)
+    .maybeSingle()
+  if (!snapshot) return c.json({ error: 'Provider key not found' }, 404)
 
-  if (error) return c.json({ error: 'Failed to delete provider key' }, 500)
+  const enqueued = await enqueueDeletion({
+    organizationId: orgId,
+    resourceType: 'provider_key',
+    resourceId: keyId,
+    resourceSnapshot: snapshot as Record<string, unknown>,
+    requestedBy: userId ?? null,
+  })
+
+  if (!enqueued.ok) {
+    if (enqueued.code === 'ALREADY_PENDING') {
+      return c.json({ error: 'Already queued for deletion' }, 409)
+    }
+    return c.json({ error: enqueued.error ?? 'Failed to queue deletion' }, 500)
+  }
 
   resetProviderKeyNamesCache()
-  return c.json({ success: true })
+
+  void recordAuditEvent(c, {
+    action: 'provider_key.delete',
+    resourceType: 'provider_keys',
+    resourceId: keyId,
+    metadata: {
+      provider: (snapshot as { provider?: string }).provider,
+      name: (snapshot as { name?: string }).name,
+      pending_deletion_id: enqueued.pendingId,
+      scheduled_for: enqueued.scheduledFor,
+    },
+  })
+
+  return c.json({
+    success: true,
+    pendingDeletionId: enqueued.pendingId,
+    scheduledFor: enqueued.scheduledFor,
+  })
 })
 
 // PATCH /api/v1/provider-keys/:id — rotate (replace encrypted_key) and/or rename.
@@ -315,5 +363,22 @@ providerKeysRouter.patch('/:id', requireEdit, async (c) => {
   if (error || !data) return c.json({ error: 'Provider key not found or access denied' }, 404)
 
   resetProviderKeyNamesCache()
+
+  // Rotate vs rename are operationally different — rotating exposes a fresh
+  // secret to upstream providers, renaming is cosmetic. Surface both action
+  // names so the audit log filter can distinguish them.
+  const isRotate = 'encrypted_key' in updates
+  void recordAuditEvent(c, {
+    action: isRotate ? 'provider_key.rotate' : 'provider_key.update',
+    resourceType: 'provider_keys',
+    resourceId: keyId,
+    metadata: {
+      provider: data.provider,
+      name: data.name,
+      fields: Object.keys(updates).filter((k) => k !== 'encrypted_key'),
+      rotated: isRotate,
+    },
+  })
+
   return c.json({ success: true, data })
 })

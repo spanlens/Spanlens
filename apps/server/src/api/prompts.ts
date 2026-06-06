@@ -3,6 +3,9 @@ import { authJwt, type JwtContext } from '../middleware/authJwt.js'
 import { requireRole } from '../middleware/requireRole.js'
 import { supabaseAdmin } from '../lib/db.js'
 import { comparePromptVersions } from '../lib/prompt-compare.js'
+import { invalidatePromptName } from '../lib/prompt-cache.js'
+import { enqueueDeletion } from '../lib/pending-deletions.js'
+import { recordAuditEvent } from '../lib/audit-log.js'
 import { requestsScope, selectRequests } from '../lib/requests-query.js'
 import { parsePositiveFloat } from '../lib/params.js'
 
@@ -300,6 +303,21 @@ promptsRouter.post('/', requireEdit, async (c) => {
     .single()
 
   if (error || !data) return c.json({ error: 'Failed to create version' }, 500)
+  // Invalidate resolve-prompt-version cache for this prompt name so the new
+  // latest version is served immediately on the next proxy call.
+  await invalidatePromptName(orgId, name)
+
+  void recordAuditEvent(c, {
+    action: 'prompt_version.create',
+    resourceType: 'prompt_versions',
+    resourceId: data.id,
+    metadata: {
+      name: data.name,
+      version: data.version,
+      project_id: data.project_id,
+    },
+  })
+
   return c.json({ success: true, data }, 201)
 })
 
@@ -353,12 +371,33 @@ promptsRouter.post('/:name/:version/rollback', requireEdit, async (c) => {
     .single()
 
   if (error || !data) return c.json({ error: 'Failed to create rollback version' }, 500)
+  await invalidatePromptName(orgId, name)
+
+  void recordAuditEvent(c, {
+    action: 'prompt_version.rollback',
+    resourceType: 'prompt_versions',
+    resourceId: data.id,
+    metadata: {
+      name: data.name,
+      new_version: data.version,
+      rolled_back_from: version,
+    },
+  })
+
   return c.json({ success: true, data }, 201)
 })
 
-// DELETE /:name/:version — remove one version
+// DELETE /:name/:version — soft delete via pending_deletions queue.
+//
+// The row stays around for ~72 hours. A running A/B experiment that
+// references this version will still resolve correctly during the grace
+// window (the row is intact, only the queue marks it for removal). The
+// FK-violation check used to live here; under the new model the cron
+// re-runs the hard delete on the next pass if it still fails, so users
+// don't need to manually retry.
 promptsRouter.delete('/:name/:version', requireEdit, async (c) => {
   const orgId = c.get('orgId')
+  const userId = c.get('userId')
   if (!orgId) return c.json({ error: 'Organization not found' }, 404)
   const name = c.req.param('name')
   const version = Number(c.req.param('version'))
@@ -366,20 +405,50 @@ promptsRouter.delete('/:name/:version', requireEdit, async (c) => {
     return c.json({ error: 'Invalid version' }, 400)
   }
 
-  const { error } = await supabaseAdmin
+  const { data: snapshot } = await supabaseAdmin
     .from('prompt_versions')
-    .delete()
+    .select('*')
     .eq('organization_id', orgId)
     .eq('name', name)
     .eq('version', version)
+    .maybeSingle()
+  if (!snapshot) return c.json({ error: 'Version not found' }, 404)
 
-  if (error) {
-    console.error('[DELETE prompt version]', error)
-    // FK violation: version is referenced by an experiment
-    if (error.code === '23503') {
-      return c.json({ error: 'This version is referenced by an A/B experiment and cannot be deleted.' }, 409)
+  const enqueued = await enqueueDeletion({
+    organizationId: orgId,
+    resourceType: 'prompt_version',
+    resourceId: snapshot.id as string,
+    resourceSnapshot: snapshot as Record<string, unknown>,
+    requestedBy: userId ?? null,
+  })
+
+  if (!enqueued.ok) {
+    if (enqueued.code === 'ALREADY_PENDING') {
+      return c.json({ error: 'Already queued for deletion' }, 409)
     }
-    return c.json({ error: 'Failed to delete' }, 500)
+    return c.json({ error: enqueued.error ?? 'Failed to queue deletion' }, 500)
   }
-  return c.json({ success: true })
+
+  // Resolve cache must drop any "latest" entry that pointed here; if this
+  // was the highest version the next resolve should fall back to the next
+  // version down (still alive during the grace window).
+  await invalidatePromptName(orgId, name)
+
+  void recordAuditEvent(c, {
+    action: 'prompt_version.delete',
+    resourceType: 'prompt_versions',
+    resourceId: snapshot.id as string,
+    metadata: {
+      name,
+      version,
+      pending_deletion_id: enqueued.pendingId,
+      scheduled_for: enqueued.scheduledFor,
+    },
+  })
+
+  return c.json({
+    success: true,
+    pendingDeletionId: enqueued.pendingId,
+    scheduledFor: enqueued.scheduledFor,
+  })
 })

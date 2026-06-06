@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { authJwt, type JwtContext } from '../middleware/authJwt.js'
 import { requireRole } from '../middleware/requireRole.js'
 import { supabaseAdmin } from '../lib/db.js'
+import { recordAuditEvent } from '../lib/audit-log.js'
 
 export const alertsRouter = new Hono<JwtContext>()
 alertsRouter.use('*', authJwt)
@@ -77,6 +78,14 @@ alertsRouter.post('/', requireEdit, async (c) => {
     .select('*')
     .single()
   if (error || !data) return c.json({ error: 'Failed to create alert' }, 500)
+
+  void recordAuditEvent(c, {
+    action: 'alert.create',
+    resourceType: 'alerts',
+    resourceId: data.id,
+    metadata: { name: data.name, type: data.type, threshold: data.threshold },
+  })
+
   return c.json({ success: true, data }, 201)
 })
 
@@ -118,6 +127,14 @@ alertsRouter.patch('/:id', requireEdit, async (c) => {
     .select('*')
     .single()
   if (error || !data) return c.json({ error: 'Alert not found' }, 404)
+
+  void recordAuditEvent(c, {
+    action: 'alert.update',
+    resourceType: 'alerts',
+    resourceId: data.id,
+    metadata: { fields: Object.keys(updates) },
+  })
+
   return c.json({ success: true, data })
 })
 
@@ -133,6 +150,13 @@ alertsRouter.delete('/:id', requireEdit, async (c) => {
     .eq('id', id)
     .eq('organization_id', orgId)
   if (error) return c.json({ error: 'Failed to delete alert' }, 500)
+
+  void recordAuditEvent(c, {
+    action: 'alert.delete',
+    resourceType: 'alerts',
+    resourceId: id,
+  })
+
   return c.json({ success: true })
 })
 
@@ -203,6 +227,14 @@ alertsRouter.post('/channels', requireEdit, async (c) => {
     .select('*')
     .single()
   if (error || !data) return c.json({ error: 'Failed to create channel' }, 500)
+
+  void recordAuditEvent(c, {
+    action: 'notification_channel.create',
+    resourceType: 'notification_channels',
+    resourceId: data.id,
+    metadata: { kind: data.kind, label: data.label },
+  })
+
   return c.json({ success: true, data }, 201)
 })
 
@@ -217,6 +249,13 @@ alertsRouter.delete('/channels/:id', requireEdit, async (c) => {
     .eq('id', id)
     .eq('organization_id', orgId)
   if (error) return c.json({ error: 'Failed to delete channel' }, 500)
+
+  void recordAuditEvent(c, {
+    action: 'notification_channel.delete',
+    resourceType: 'notification_channels',
+    resourceId: id,
+  })
+
   return c.json({ success: true })
 })
 

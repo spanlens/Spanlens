@@ -4,6 +4,11 @@ import { requireRole } from '../middleware/requireRole.js'
 import { supabaseAdmin } from '../lib/db.js'
 import { randomHex, sha256Hex } from '../lib/crypto.js'
 import { sendEmail, renderInvitationEmail } from '../lib/resend.js'
+import {
+  auditContextFromHono,
+  recordAuditEvent,
+  recordAuditLog,
+} from '../lib/audit-log.js'
 
 /**
  * Invitations — email-based org member onboarding.
@@ -140,6 +145,13 @@ orgInvitationsRouter.post('/', requireRole('admin'), async (c) => {
   })
 
   const emailResult = await sendEmail({ to: email, subject, html, devPreviewUrl: acceptUrl })
+
+  void recordAuditEvent(c, {
+    action: 'member.invite',
+    resourceType: 'org_invitations',
+    resourceId: inserted.id,
+    metadata: { email, role, email_sent: emailResult.sent },
+  })
 
   return c.json({
     success: true,
@@ -290,6 +302,25 @@ invitationsRouter.post('/accept', authJwt, async (c) => {
       { onConflict: 'user_id', ignoreDuplicates: false },
     )
 
+  // The accepter's Hono context never carries orgId (they just joined),
+  // so the generic recordAuditEvent helper would drop the row with a
+  // "missing organization_id" warning. Pull the IP from the context but
+  // pass the org we just resolved explicitly.
+  const ipOnly = auditContextFromHono(c).ipAddress ?? null
+  void recordAuditLog(
+    {
+      organizationId: inv.organization_id,
+      userId,
+      ipAddress: ipOnly,
+    },
+    {
+      action: 'member.invite_accept',
+      resourceType: 'org_invitations',
+      resourceId: inv.id,
+      metadata: { email: inv.email, role: inv.role },
+    },
+  )
+
   return c.json({ success: true, data: { organizationId: inv.organization_id, role: inv.role } })
 })
 
@@ -311,6 +342,13 @@ invitationsRouter.delete('/:id', authJwt, requireRole('admin'), async (c) => {
 
   if (error) return c.json({ error: 'Failed to cancel invitation' }, 500)
   if (count === 0) return c.json({ error: 'Invitation not found' }, 404)
+
+  void recordAuditEvent(c, {
+    action: 'member.invite_cancel',
+    resourceType: 'org_invitations',
+    resourceId: id,
+  })
+
   return c.json({ success: true })
 })
 
