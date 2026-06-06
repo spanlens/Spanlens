@@ -40,6 +40,17 @@ export type ChangelogTag =
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
     date: '2026-06-06',
+    slug: 'spanlens-dogfoods-itself',
+    title: 'Spanlens now instruments itself with Spanlens',
+    tags: ['infrastructure'],
+    body: [
+      'Every eval run on our own server now posts an `eval_run` trace to a dedicated Spanlens-team workspace, with one `llm_judge` span per sample. We see our own LLM-as-judge cost, latency, and error rate in the same [/traces](/traces) view our customers use — and when something regresses we notice on the same dashboard you do.',
+      'The integration is fail-open by design. If the internal workspace is unreachable or the API key is missing, the tracing helper degrades to a stub so customer evals never fail because our own observability stopped working. Spans chain their POSTs behind the parent trace creation, matching the SDK\'s `_creationPromise` pattern so the server-side ownership check never races.',
+      'No user-facing config to flip — production env is registered server-side. The point of this entry is the engineering commit: when we say we use Spanlens for our own LLM work, we mean it.',
+    ].join('\n\n'),
+  },
+  {
+    date: '2026-06-06',
     slug: 'llm-judge-typed-scores',
     title: 'LLM judge can score categorical, boolean, and free-text rubrics',
     tags: ['feature'],
