@@ -40,6 +40,17 @@ export type ChangelogTag =
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
     date: '2026-06-06',
+    slug: 'events-unified-read-switch-live',
+    title: 'Unified events table now powers every dashboard read',
+    tags: ['infrastructure', 'reliability'],
+    body: [
+      'The dashboard now reads requests, stats, and traces from the unified `events` table. Same data, single source — `requests` / `traces` / `spans` write paths still run as a safety net, but the read switch behind `USE_EVENTS_FOR_REQUESTS=1` is live across `/api/v1/requests`, every `/api/v1/stats/*` endpoint, `/api/v1/traces`, and `/api/v1/traces/:id`.',
+      'Why this matters in practice: future token kinds (`vision_input_tokens`, `reasoning_tokens`, cache-write tiers) land in the open Map columns without a schema migration, the stats pipeline gets the same shape as Langfuse / PostHog / Datadog so an upgrade path stays open, and the per-route read switch keeps a flag-flip rollback available for the entire stage.',
+      'Operational guard rails ship alongside: every route falls back to the original Postgres/requests path if the events read throws, a daily reconciliation cron alerts on >1% row-count drift, and the read switch double-gates on a separate `EVENTS_BACKFILL_COMPLETE=1` env so an env flip alone cannot expose an empty list.',
+    ].join('\n\n'),
+  },
+  {
+    date: '2026-06-06',
     slug: 'events-table-backfill-and-read-switch',
     title: 'Events table backfill + read switch for /api/v1/requests',
     tags: ['infrastructure'],
