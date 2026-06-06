@@ -29,6 +29,52 @@ export default function EvalsDocs() {
 
       <h2>How it works</h2>
 
+      <h3>Quick-start with a template</h3>
+      <p>
+        Visit <a href="/evals">/evals</a> on a fresh workspace and the empty state shows ten
+        built-in evaluator templates grouped into three categories. Click <em>Use template</em>{' '}
+        to pre-fill the New evaluator dialog with a curated criterion and a recommended judge
+        model — you only need to pick which prompt the evaluator targets.
+      </p>
+      <table>
+        <thead>
+          <tr>
+            <th>Category</th>
+            <th>Templates</th>
+            <th>Default judge</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Quality</strong> (5)</td>
+            <td>
+              Response quality · Readability · Completeness · Persona match · Conciseness
+            </td>
+            <td><code>gpt-4o-mini</code></td>
+          </tr>
+          <tr>
+            <td><strong>Safety</strong> (4)</td>
+            <td>
+              No PII leak · Toxicity · Hallucination · Prompt injection
+            </td>
+            <td><code>gpt-4o-mini</code> (Hallucination uses{' '}
+              <code>claude-3-5-sonnet</code> for reasoning depth)</td>
+          </tr>
+          <tr>
+            <td><strong>Cost</strong> (1)</td>
+            <td>Cost vs quality (could a cheaper model have produced this answer?)</td>
+            <td><code>claude-3-5-sonnet</code></td>
+          </tr>
+        </tbody>
+      </table>
+      <p>
+        Templates are stored in <code>evaluator_templates</code> on the server, not hard-coded
+        in the dashboard, so new templates can ship without a frontend deploy. The catalogue
+        is global (every workspace sees the same suggestions) and read-only from the dashboard;
+        every field on a template (criterion, judge provider/model, score range) is still
+        editable in the New evaluator dialog after you load it.
+      </p>
+
       <h3>Define an evaluator</h3>
       <p>An evaluator is a reusable definition of <em>how to score responses</em>.</p>
       <ul>

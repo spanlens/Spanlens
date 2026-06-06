@@ -39,6 +39,50 @@ export type ChangelogTag =
 
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    date: '2026-06-06',
+    slug: 'evaluator-templates-quality-safety-cost',
+    title: 'Ten built-in evaluator templates across Quality / Safety / Cost',
+    tags: ['feature'],
+    body: [
+      'Opening [/evals](/evals) on a fresh workspace used to drop you at a blank New evaluator dialog. It now shows a curated catalogue of ten built-in templates split into three tabs — Quality (5), Safety (4), and Cost (1) — each with a recommended judge model and a tuned criterion you can run as-is or edit.',
+      'Hallucination and Cost-vs-quality default to `claude-3-5-sonnet` because their rubrics need more reasoning depth; the rest run on `gpt-4o-mini` so high-volume judging stays cheap. Templates ship as DB rows (`evaluator_templates` table) rather than hard-coded constants, so new ones can land without a frontend deploy.',
+      'See the full list and the prompt text for each criterion in the [Evals docs](/docs/features/evals#quick-start-with-a-template).',
+    ].join('\n\n'),
+  },
+  {
+    date: '2026-06-06',
+    slug: 'api-key-stale-tracking',
+    title: 'Spanlens keys now flag stale and revoke-tier idleness',
+    tags: ['improvement'],
+    body: [
+      'Every successful proxy auth now refreshes `api_keys.last_used_at` (throttled to one write per key per five minutes so the proxy hot path stays cheap). The dashboard buckets active keys by idleness and surfaces forgotten ones in three places.',
+      'A neutral "Stale" badge appears next to the key name on [/projects](/projects) after 30 days of silence; the badge flips to accent "Consider revoking" at 90 days. The Admin sidebar entry carries a red count of stale + revoke-tier keys, and the dashboard "Needs Attention" strip surfaces a warning card with a sample key name when at least one key has crossed the 90-day line.',
+      'Brand-new keys (no `last_used_at` yet) fall back to `created_at`, so an unused key isn\'t flagged on day one. Revoked keys are excluded from the count — nagging about already-disabled keys is noise. See [Projects & keys → Stale key surfacing](/docs/features/projects#stale-key-surfacing).',
+    ].join('\n\n'),
+  },
+  {
+    date: '2026-06-06',
+    slug: 'soft-delete-grace-period',
+    title: 'Accidental key/prompt deletions can be restored within 72 hours',
+    tags: ['improvement'],
+    body: [
+      'Clicking the trash icon on a Spanlens key, provider key, or prompt version used to hard-delete the row immediately, which meant a mis-click turned into a support ticket the moment proxy traffic started returning 401. Deletes now flip `is_active = false` right away (traffic stops within seconds) and queue the hard delete for 72 hours later.',
+      'A new **Pending deletions** tab under [Settings](/settings) lists every queued row with a countdown and a Restore button. Click Restore to flip `is_active` back to true and the deletion is cancelled; after the window expires the hard delete runs and the row is gone for good.',
+      'Both the original delete request and the restore are audited (`api_key.delete`, `pending_deletion.restore`, …) so the change trail stays intact even when the action is reversed. Full reference: [Projects & keys → Restoring an accidental deletion](/docs/features/projects#restoring-an-accidental-deletion).',
+    ].join('\n\n'),
+  },
+  {
+    date: '2026-06-06',
+    slug: 'audit-log-expanded-coverage',
+    title: 'Audit log now records twenty-four actions across thirteen routes',
+    tags: ['improvement'],
+    body: [
+      'Audit-log coverage used to be uneven — some destructive routes never wrote a row, so a security investigation often had to fall back to ClickHouse logs. Every mutation route that ships today now emits a row through a single helper, with the actor user id and IP (`x-forwarded-for` / `x-real-ip` / `cf-connecting-ip`) attached.',
+      'New actions are grouped by resource: Spanlens keys, provider keys (including `rotate`), prompt versions, A/B experiments, members and invitations, workspace settings, billing checkout / cancel, projects, alerts and channels, webhooks, and the new pending-deletion restore path. See the [full table](/docs/features/audit-logs#recorded-events).',
+      'The Settings audit-log tab is also rebuilt: time-window + action filters, paginated 50 per page, click any row to open a drawer with the full metadata JSON, IP, and event ID. Admins see every row; editors and viewers see an abbreviated preview on the same tab. Two new query parameters (`from`, `to`) are exposed via the REST API for ISO 8601 time-range filtering.',
+    ].join('\n\n'),
+  },
+  {
     date: '2026-06-04',
     slug: 'mcp-server-for-ide-agents',
     title: 'Query Spanlens from Cursor, Claude Desktop, or Continue via MCP',
