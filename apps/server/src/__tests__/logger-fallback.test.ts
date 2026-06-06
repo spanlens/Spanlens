@@ -96,7 +96,8 @@ describe('logRequestAsync — happy path', () => {
 
     await logRequestAsync(baseLog)
 
-    expect(clickhouseInsertMock).toHaveBeenCalledOnce()
+    // Phase 5.1 dual-write: requests + events shadow insert = 2 calls.
+    expect(clickhouseInsertMock).toHaveBeenCalledTimes(2)
     expect(fallbackInsertMock).not.toHaveBeenCalled()
   })
 })
