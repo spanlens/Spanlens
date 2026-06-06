@@ -44,7 +44,7 @@ export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
     title: 'Unified events table now powers every dashboard read',
     tags: ['infrastructure', 'reliability'],
     body: [
-      'The dashboard now reads requests, stats, and traces from the unified `events` table. Same data, single source — `requests` / `traces` / `spans` write paths still run as a safety net, but the read switch behind `USE_EVENTS_FOR_REQUESTS=1` is live across `/api/v1/requests`, every `/api/v1/stats/*` endpoint, `/api/v1/traces`, and `/api/v1/traces/:id`.',
+      'The dashboard now reads requests, stats, and traces from the unified `events` table. Same data, single source. The `requests` / `traces` / `spans` write paths still run as a safety net, but the read switch behind `USE_EVENTS_FOR_REQUESTS=1` is live across `/api/v1/requests`, every `/api/v1/stats/*` endpoint, `/api/v1/traces`, and `/api/v1/traces/:id`.',
       'Why this matters in practice: future token kinds (`vision_input_tokens`, `reasoning_tokens`, cache-write tiers) land in the open Map columns without a schema migration, the stats pipeline gets the same shape as Langfuse / PostHog / Datadog so an upgrade path stays open, and the per-route read switch keeps a flag-flip rollback available for the entire stage.',
       'Operational guard rails ship alongside: every route falls back to the original Postgres/requests path if the events read throws, a daily reconciliation cron alerts on >1% row-count drift, and the read switch double-gates on a separate `EVENTS_BACKFILL_COMPLETE=1` env so an env flip alone cannot expose an empty list.',
     ].join('\n\n'),
@@ -56,7 +56,7 @@ export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
     tags: ['infrastructure'],
     body: [
       'Second and third stages of the events-table unification. Stage 2 lands a background migration that copies historical `requests` rows into the new `events` table in chunks of 5,000, ordered by `(created_at, id)` so the migration only ever scans a narrow window. Six months of data backfills in a day or so without touching the proxy hot path.',
-      'Stage 3 wires a feature flag — `USE_EVENTS_FOR_REQUESTS=1` — that flips `/api/v1/requests` to read from `events` instead of `requests`. The events helper projects every column back into the shape the dashboard expects, so a flip-flop test (flag on → flag off) returns byte-identical rows. Subsequent PRs extend the same flag pattern to `/api/v1/stats/*` and `/api/v1/traces`.',
+      'Stage 3 wires a feature flag, `USE_EVENTS_FOR_REQUESTS=1`, that flips `/api/v1/requests` to read from `events` instead of `requests`. The events helper projects every column back into the shape the dashboard expects, so a flip-flop test (flag on → flag off) returns byte-identical rows. Subsequent PRs extend the same flag pattern to `/api/v1/stats/*` and `/api/v1/traces`.',
       'Activation is incremental and reversible by design. Stage 2 starts with a single SQL INSERT into `background_migrations`; Stage 3 is a Vercel env-var flip plus redeploy. Either can be rolled back without a code change.',
     ].join('\n\n'),
   },
@@ -66,8 +66,8 @@ export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
     title: 'Unified events table now shadow-writes every LLM call',
     tags: ['infrastructure'],
     body: [
-      'First stage of the events-table unification work. New ClickHouse `events` table where an LLM generation, a trace, and a span are all variants of the same row shape — same idea Langfuse and PostHog converged on. Token kinds (vision input, reasoning, cache write) and per-provider cost breakdowns live in `Map(String, …)` columns so new keys don\'t need a column migration.',
-      'Stage 1 is shadow-only: every successful `requests` insert and every `/ingest/traces` or `/ingest/spans` call also fans out a best-effort write to `events`. Reads are unchanged — the dashboard still queries `requests` and the Postgres trace tables. A failed event write logs to the console but never affects the source insert.',
+      'First stage of the events-table unification work. New ClickHouse `events` table where an LLM generation, a trace, and a span are all variants of the same row shape, the same idea Langfuse and PostHog converged on. Token kinds (vision input, reasoning, cache write) and per-provider cost breakdowns live in `Map(String, …)` columns so new keys don\'t need a column migration.',
+      'Stage 1 is shadow-only: every successful `requests` insert and every `/ingest/traces` or `/ingest/spans` call also fans out a best-effort write to `events`. Reads are unchanged, so the dashboard still queries `requests` and the Postgres trace tables. A failed event write logs to the console but never affects the source insert.',
       'Stage 2 (background-migration backfill) and Stage 3 (feature-flag dashboard reads, route by route) ship over the coming weeks. The eventual win is one query for "show me everything in this trace" instead of the current cross-database join.',
     ].join('\n\n'),
   },
@@ -77,9 +77,9 @@ export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
     title: 'Background migration framework for long-running data backfills',
     tags: ['infrastructure'],
     body: [
-      'When Spanlens needs to rewrite a billion-row table (think: switching from a single `score` float to four typed value columns), the natural approach — a SQL migration that backfills inline — is the wrong one. It either takes locks that spike p99 latency or it blows past Vercel\'s 5-minute function timeout halfway through the backfill, leaving the table half-rewritten.',
+      'When Spanlens needs to rewrite a billion-row table (think: switching from a single `score` float to four typed value columns), the natural approach of a SQL migration that backfills inline is the wrong one. It either takes locks that spike p99 latency or it blows past Vercel\'s 5-minute function timeout halfway through the backfill, leaving the table half-rewritten.',
       'New framework lifted from Langfuse / PostHog: a `background_migrations` table tracks long-running data work; a 5-minute cron picks up a pending row, takes a Postgres advisory lock so two workers can\'t race, runs chunks (~5k rows at a time) until close to the function timeout, persists the cursor, and yields. The next tick resumes from the cursor. A heartbeat sentinel reclaims rows from crashed workers.',
-      'Admin-only view at Settings → **Background migrations** shows what\'s pending / running / completed / failed, with progress percentage, last heartbeat, attempts counter, and cancel / retry buttons. Engineering work — most users never see it — but it unlocks the kind of schema evolution we were avoiding before.',
+      'Admin-only view at Settings → **Background migrations** shows what\'s pending / running / completed / failed, with progress percentage, last heartbeat, attempts counter, and cancel / retry buttons. This is engineering work that most users never see, but it unlocks the kind of schema evolution we were avoiding before.',
     ].join('\n\n'),
   },
   {
@@ -89,7 +89,7 @@ export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
     tags: ['infrastructure'],
     body: [
       'Follow-up to the eval-runner dogfooding shipped earlier. Every A/B experiment now posts an `ab_experiment` trace with one `ab_item` span per dataset item, and every Playground run posts a `playground_call` trace with the underlying LLM fetch as its only span.',
-      'Together with the eval-runner integration this covers all three places Spanlens itself spends LLM money on the customer\'s behalf. We see our own per-arm A/B cost, judge agreement, and Playground tinkering in /traces — every dollar we spend running someone else\'s eval shows up on our own dashboard.',
+      'Together with the eval-runner integration this covers all three places Spanlens itself spends LLM money on the customer\'s behalf. We see our own per-arm A/B cost, judge agreement, and Playground tinkering in /traces, so every dollar we spend running someone else\'s eval shows up on our own dashboard.',
       'Same fail-open helper as before. No env vars set on the deployment → every method becomes a no-op and nothing changes for the customer. Coverage is opt-in by activation.',
     ].join('\n\n'),
   },
@@ -99,9 +99,9 @@ export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
     title: 'Spanlens now instruments itself with Spanlens',
     tags: ['infrastructure'],
     body: [
-      'Every eval run on our own server now posts an `eval_run` trace to a dedicated Spanlens-team workspace, with one `llm_judge` span per sample. We see our own LLM-as-judge cost, latency, and error rate in the same [/traces](/traces) view our customers use — and when something regresses we notice on the same dashboard you do.',
+      'Every eval run on our own server now posts an `eval_run` trace to a dedicated Spanlens-team workspace, with one `llm_judge` span per sample. We see our own LLM-as-judge cost, latency, and error rate in the same [/traces](/traces) view our customers use, and when something regresses we notice on the same dashboard you do.',
       'The integration is fail-open by design. If the internal workspace is unreachable or the API key is missing, the tracing helper degrades to a stub so customer evals never fail because our own observability stopped working. Spans chain their POSTs behind the parent trace creation, matching the SDK\'s `_creationPromise` pattern so the server-side ownership check never races.',
-      'No user-facing config to flip — production env is registered server-side. The point of this entry is the engineering commit: when we say we use Spanlens for our own LLM work, we mean it.',
+      'No user-facing config to flip. The production env is registered server-side. The point of this entry is the engineering commit: when we say we use Spanlens for our own LLM work, we mean it.',
     ].join('\n\n'),
   },
   {
@@ -110,7 +110,7 @@ export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
     title: 'LLM judge can score categorical, boolean, and free-text rubrics',
     tags: ['feature'],
     body: [
-      'The third and final piece of today\'s typed score work. An evaluator can now point at any of your workspace\'s score configs and the LLM-as-judge runner will ask for the right shape of answer — a boolean for pass/fail rubrics, a category from your allow-list, a short free-text label, or the legacy 0..1 numeric score.',
+      'The third and final piece of today\'s typed score work. An evaluator can now point at any of your workspace\'s score configs and the LLM-as-judge runner will ask for the right shape of answer, whether a boolean for pass/fail rubrics, a category from your allow-list, a short free-text label, or the legacy 0..1 numeric score.',
       'Pick the config in the New evaluator dialog. The default is still the legacy numeric path so every existing evaluator continues to run bit-identically; the new behaviour is fully opt-in. For boolean judges the run summary becomes a pass rate; for categorical and free-text it surfaces the per-category distribution and sample notes on the run page instead of a misleading average.',
       'Under the hood: Gemini\'s strict response schema is regenerated to match the active config so its JSON output stays valid, and 23 new unit tests cover the bug-prone edges (case-sensitive categorical allow-list, boolean string aliases, the parser tolerating either `{"score": …}` or `{"value": …}` on the numeric path).',
     ].join('\n\n'),
@@ -122,8 +122,8 @@ export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
     tags: ['feature'],
     body: [
       'Follow-up to the typed score configs that shipped earlier today. The [/annotation](/annotation) page now picks the right input widget based on the active score config: chip rows for categorical scores, a pass/fail toggle for boolean, a textarea for free-text, and the existing stars / slider for numeric.',
-      'New filter-bar control lets you switch the active config without leaving the page (`?config=<uuid>` is URL-backed for deep links). The stat strip aggregate switches with it — average score, top category, pass rate, or note count depending on what the config measures.',
-      'A small distribution panel under the stat strip shows the spread at a glance: category bars for categorical, a split pass/fail bar for boolean, a five-bucket histogram for numeric, and the latest five notes for free-text. Keyboard quick-rate is type-aware too — `1`..`9` picks the n-th category, `y`/`n` toggles boolean, `1`..`5` stays for star configs.',
+      'New filter-bar control lets you switch the active config without leaving the page (`?config=<uuid>` is URL-backed for deep links). The stat strip aggregate switches with it, showing average score, top category, pass rate, or note count depending on what the config measures.',
+      'A small distribution panel under the stat strip shows the spread at a glance: category bars for categorical, a split pass/fail bar for boolean, a five-bucket histogram for numeric, and the latest five notes for free-text. Keyboard quick-rate is type-aware too, so `1`..`9` picks the n-th category, `y`/`n` toggles boolean, and `1`..`5` stays for star configs.',
     ].join('\n\n'),
   },
   {
@@ -133,7 +133,7 @@ export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
     tags: ['feature'],
     body: [
       "Until today every eval result and every reviewer score was a single number on a 0..1 slider. That covers \"how helpful is this answer\" but it can't represent a persona check (\"on brand\" / \"off brand\"), a pass/fail toggle (toxicity, PII leak), or a reviewer's free-form note.",
-      'New page at [Settings → Score configs](/settings/score-configs). Pick a type — Numeric, Categorical, Boolean, or Free text — give it a name, and the annotation queue will pick the right input widget automatically. Workspaces already had a default `Helpfulness` 0..1 config seeded for backward compatibility, so existing dashboards keep working.',
+      'New page at [Settings → Score configs](/settings/score-configs). Pick a type (Numeric, Categorical, Boolean, or Free text), give it a name, and the annotation queue will pick the right input widget automatically. Workspaces already had a default `Helpfulness` 0..1 config seeded for backward compatibility, so existing dashboards keep working.',
       'This is the foundation PR; the annotation page widget switch, the LLM-judge response parser, and the per-type aggregation charts ship in follow-ups over the coming days.',
     ].join('\n\n'),
   },
@@ -143,7 +143,7 @@ export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
     title: 'Ten built-in evaluator templates across Quality / Safety / Cost',
     tags: ['feature'],
     body: [
-      'Opening [/evals](/evals) on a fresh workspace used to drop you at a blank New evaluator dialog. It now shows a curated catalogue of ten built-in templates split into three tabs — Quality (5), Safety (4), and Cost (1) — each with a recommended judge model and a tuned criterion you can run as-is or edit.',
+      'Opening [/evals](/evals) on a fresh workspace used to drop you at a blank New evaluator dialog. It now shows a curated catalogue of ten built-in templates split across three tabs covering Quality (5), Safety (4), and Cost (1). Each ships with a recommended judge model and a tuned criterion you can run as-is or edit.',
       'Hallucination and Cost-vs-quality default to `claude-3-5-sonnet` because their rubrics need more reasoning depth; the rest run on `gpt-4o-mini` so high-volume judging stays cheap. Templates ship as DB rows (`evaluator_templates` table) rather than hard-coded constants, so new ones can land without a frontend deploy.',
       'See the full list and the prompt text for each criterion in the [Evals docs](/docs/features/evals#quick-start-with-a-template).',
     ].join('\n\n'),
@@ -156,7 +156,7 @@ export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
     body: [
       'Every successful proxy auth now refreshes `api_keys.last_used_at` (throttled to one write per key per five minutes so the proxy hot path stays cheap). The dashboard buckets active keys by idleness and surfaces forgotten ones in three places.',
       'A neutral "Stale" badge appears next to the key name on [/projects](/projects) after 30 days of silence; the badge flips to accent "Consider revoking" at 90 days. The Admin sidebar entry carries a red count of stale + revoke-tier keys, and the dashboard "Needs Attention" strip surfaces a warning card with a sample key name when at least one key has crossed the 90-day line.',
-      'Brand-new keys (no `last_used_at` yet) fall back to `created_at`, so an unused key isn\'t flagged on day one. Revoked keys are excluded from the count — nagging about already-disabled keys is noise. See [Projects & keys → Stale key surfacing](/docs/features/projects#stale-key-surfacing).',
+      'Brand-new keys (no `last_used_at` yet) fall back to `created_at`, so an unused key isn\'t flagged on day one. Revoked keys are excluded from the count, since nagging about already-disabled keys is noise. See [Projects & keys → Stale key surfacing](/docs/features/projects#stale-key-surfacing).',
     ].join('\n\n'),
   },
   {
@@ -176,7 +176,7 @@ export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
     title: 'Audit log now records twenty-four actions across thirteen routes',
     tags: ['improvement'],
     body: [
-      'Audit-log coverage used to be uneven — some destructive routes never wrote a row, so a security investigation often had to fall back to ClickHouse logs. Every mutation route that ships today now emits a row through a single helper, with the actor user id and IP (`x-forwarded-for` / `x-real-ip` / `cf-connecting-ip`) attached.',
+      'Audit-log coverage used to be uneven, and some destructive routes never wrote a row, so a security investigation often had to fall back to ClickHouse logs. Every mutation route that ships today now emits a row through a single helper, with the actor user id and IP (`x-forwarded-for` / `x-real-ip` / `cf-connecting-ip`) attached.',
       'New actions are grouped by resource: Spanlens keys, provider keys (including `rotate`), prompt versions, A/B experiments, members and invitations, workspace settings, billing checkout / cancel, projects, alerts and channels, webhooks, and the new pending-deletion restore path. See the [full table](/docs/features/audit-logs#recorded-events).',
       'The Settings audit-log tab is also rebuilt: time-window + action filters, paginated 50 per page, click any row to open a drawer with the full metadata JSON, IP, and event ID. Admins see every row; editors and viewers see an abbreviated preview on the same tab. Two new query parameters (`from`, `to`) are exposed via the REST API for ISO 8601 time-range filtering.',
     ].join('\n\n'),
@@ -188,7 +188,7 @@ export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
     tags: ['feature'],
     body: [
       'Spanlens now ships an official MCP server, so the agent inside Cursor, Claude Desktop, or Continue can answer questions about your workspace without you leaving the editor. Ask things like *"what is our OpenAI spend this week?"*, *"any cost anomalies?"*, or *"walk me through trace X"* and the agent picks the right tool automatically.',
-      'Seven read-only tools ship in v0.1: stats overview, request listing, trace discovery, agent span tree, anomalies, savings recommendations, and per-end-user analytics. The server boots only with a public-scope key (`sl_live_pub_*`) so the credential — which sits in a plaintext IDE config file — never has the power to incur LLM spend on your account.',
+      'Seven read-only tools ship in v0.1: stats overview, request listing, trace discovery, agent span tree, anomalies, savings recommendations, and per-end-user analytics. The server boots only with a public-scope key (`sl_live_pub_*`), so the credential, which sits in a plaintext IDE config file, never has the power to incur LLM spend on your account.',
       'Install in one line: `npx -y @spanlens/mcp-server`. The [MCP integration guide](/docs/integrations/mcp) has the full Cursor / Claude Desktop / Continue config snippets and the safety model. The server is also listed on the official MCP Registry as `io.github.spanlens/mcp-server`.',
     ].join('\n\n'),
   },
