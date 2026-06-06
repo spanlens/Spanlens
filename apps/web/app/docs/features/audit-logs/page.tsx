@@ -34,52 +34,108 @@ export default function AuditLogsDocs() {
       </ul>
 
       <h2>Recorded events</h2>
+      <p>
+        Twenty-four distinct actions are emitted across thirteen mutation routes. Severity
+        in the dashboard is inferred from the verb (<code>.delete</code> /{' '}
+        <code>.rotate</code> / <code>billing.*</code> / <code>workspace.*</code> are HIGH,{' '}
+        <code>.create</code> / <code>.update</code> / <code>.invite</code> are MED, the
+        rest are LOW). Every row carries the actor user id and IP address pulled from{' '}
+        <code>x-forwarded-for</code> / <code>x-real-ip</code> / <code>cf-connecting-ip</code>.
+      </p>
       <table>
         <thead>
           <tr>
-            <th>action</th>
-            <th>Description</th>
+            <th>Resource</th>
+            <th>Actions</th>
           </tr>
         </thead>
         <tbody>
           <tr>
-            <td><code>api_key.create</code></td>
-            <td>New Spanlens API key (<code>sl_live_*</code>) issued</td>
+            <td><strong>Spanlens key</strong></td>
+            <td>
+              <code>api_key.create</code> · <code>api_key.enable</code> ·{' '}
+              <code>api_key.disable</code> · <code>api_key.delete</code>
+            </td>
           </tr>
           <tr>
-            <td><code>api_key.delete</code></td>
-            <td>API key revoked</td>
+            <td><strong>Provider key</strong></td>
+            <td>
+              <code>provider_key.add</code> · <code>provider_key.update</code> ·{' '}
+              <code>provider_key.rotate</code> · <code>provider_key.delete</code>
+            </td>
           </tr>
           <tr>
-            <td><code>provider_key.add</code></td>
-            <td>OpenAI / Anthropic / Gemini provider key registered</td>
+            <td><strong>Prompt version</strong></td>
+            <td>
+              <code>prompt_version.create</code> · <code>prompt_version.rollback</code> ·{' '}
+              <code>prompt_version.delete</code>
+            </td>
           </tr>
           <tr>
-            <td><code>provider_key.delete</code></td>
-            <td>Provider key removed</td>
+            <td><strong>A/B experiment</strong></td>
+            <td>
+              <code>ab_experiment.start</code> · <code>ab_experiment.update</code> ·{' '}
+              <code>ab_experiment.conclude</code> · <code>ab_experiment.stop</code> ·{' '}
+              <code>ab_experiment.delete</code>
+            </td>
           </tr>
           <tr>
-            <td><code>member.invite</code></td>
-            <td>Team member invitation sent</td>
+            <td><strong>Members</strong></td>
+            <td>
+              <code>member.invite</code> · <code>member.invite_accept</code> ·{' '}
+              <code>member.invite_cancel</code> · <code>member.role_change</code> ·{' '}
+              <code>member.remove</code>
+            </td>
           </tr>
           <tr>
-            <td><code>member.role_change</code></td>
-            <td>Member role updated (admin / editor / viewer)</td>
+            <td><strong>Workspace</strong></td>
+            <td>
+              <code>workspace.rename</code> · <code>workspace.security_update</code> ·{' '}
+              <code>workspace.branding_update</code> · <code>workspace.overage_update</code>
+            </td>
           </tr>
           <tr>
-            <td><code>member.remove</code></td>
-            <td>Member removed from the organization</td>
+            <td><strong>Billing</strong></td>
+            <td>
+              <code>billing.checkout_create</code> · <code>billing.cancel</code>
+            </td>
           </tr>
           <tr>
-            <td><code>billing.plan.change</code></td>
-            <td>Plan upgraded or downgraded</td>
+            <td><strong>Project</strong></td>
+            <td>
+              <code>project.create</code> · <code>project.update</code> ·{' '}
+              <code>project.delete</code>
+            </td>
           </tr>
           <tr>
-            <td><code>org.settings.update</code></td>
-            <td>Organization name, security settings, or other org-level config changed</td>
+            <td><strong>Alert / channel</strong></td>
+            <td>
+              <code>alert.create</code> · <code>alert.update</code> ·{' '}
+              <code>alert.delete</code> · <code>notification_channel.create</code> ·{' '}
+              <code>notification_channel.delete</code>
+            </td>
+          </tr>
+          <tr>
+            <td><strong>Webhook</strong></td>
+            <td>
+              <code>webhook.create</code> · <code>webhook.update</code> ·{' '}
+              <code>webhook.delete</code>
+            </td>
+          </tr>
+          <tr>
+            <td><strong>Pending deletion queue</strong></td>
+            <td><code>pending_deletion.restore</code></td>
           </tr>
         </tbody>
       </table>
+
+      <p>
+        View the log in <a href="/settings">Settings</a> → <strong>Audit log</strong>{' '}
+        (admin-only full viewer with time-window + action filters, paginated 50 per page,
+        click any row to open a drawer with the metadata JSON, IP, and actor UUID). Editors
+        and viewers see the abbreviated table on the same Settings tab. Programmatic
+        consumers should hit the REST API below.
+      </p>
 
       <h2>API reference</h2>
 
@@ -90,7 +146,14 @@ export default function AuditLogsDocs() {
 GET /api/v1/audit-logs?limit=50&offset=0&action=api_key.create
 
 # Filter by user
-GET /api/v1/audit-logs?limit=50&offset=0&user_id=<uuid>`}</CodeBlock>
+GET /api/v1/audit-logs?limit=50&offset=0&user_id=<uuid>
+
+# Filter by inclusive time range (ISO 8601)
+GET /api/v1/audit-logs?from=2026-05-01T00:00:00Z&to=2026-05-31T23:59:59Z
+
+# List the distinct action values seen on this workspace
+# (powers the filter dropdown; capped at the last 1000 rows)
+GET /api/v1/audit-logs/actions`}</CodeBlock>
 
       <h3>Query parameters</h3>
       <table>
@@ -120,7 +183,22 @@ GET /api/v1/audit-logs?limit=50&offset=0&user_id=<uuid>`}</CodeBlock>
           <tr>
             <td><code>user_id</code></td>
             <td>(all)</td>
-            <td>Show only actions performed by a specific user.</td>
+            <td>Show only actions performed by a specific user (UUID).</td>
+          </tr>
+          <tr>
+            <td><code>from</code></td>
+            <td>(no lower bound)</td>
+            <td>
+              Inclusive lower bound on <code>created_at</code>, ISO 8601 timestamp.
+              Malformed values return 400.
+            </td>
+          </tr>
+          <tr>
+            <td><code>to</code></td>
+            <td>(no upper bound)</td>
+            <td>
+              Inclusive upper bound on <code>created_at</code>, ISO 8601 timestamp.
+            </td>
           </tr>
         </tbody>
       </table>
