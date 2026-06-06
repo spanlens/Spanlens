@@ -40,6 +40,17 @@ export type ChangelogTag =
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
     date: '2026-06-06',
+    slug: 'dogfooding-experiment-and-playground',
+    title: 'A/B experiments and Playground also instrumented with Spanlens',
+    tags: ['infrastructure'],
+    body: [
+      'Follow-up to the eval-runner dogfooding shipped earlier. Every A/B experiment now posts an `ab_experiment` trace with one `ab_item` span per dataset item, and every Playground run posts a `playground_call` trace with the underlying LLM fetch as its only span.',
+      'Together with the eval-runner integration this covers all three places Spanlens itself spends LLM money on the customer\'s behalf. We see our own per-arm A/B cost, judge agreement, and Playground tinkering in /traces — every dollar we spend running someone else\'s eval shows up on our own dashboard.',
+      'Same fail-open helper as before. No env vars set on the deployment → every method becomes a no-op and nothing changes for the customer. Coverage is opt-in by activation.',
+    ].join('\n\n'),
+  },
+  {
+    date: '2026-06-06',
     slug: 'spanlens-dogfoods-itself',
     title: 'Spanlens now instruments itself with Spanlens',
     tags: ['infrastructure'],
