@@ -40,6 +40,17 @@ export type ChangelogTag =
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
     date: '2026-06-06',
+    slug: 'typed-score-configs',
+    title: 'Score configs: categorical, boolean, and free-text scoring',
+    tags: ['feature'],
+    body: [
+      "Until today every eval result and every reviewer score was a single number on a 0..1 slider. That covers \"how helpful is this answer\" but it can't represent a persona check (\"on brand\" / \"off brand\"), a pass/fail toggle (toxicity, PII leak), or a reviewer's free-form note.",
+      'New page at [Settings → Score configs](/settings/score-configs). Pick a type — Numeric, Categorical, Boolean, or Free text — give it a name, and the annotation queue will pick the right input widget automatically. Workspaces already had a default `Helpfulness` 0..1 config seeded for backward compatibility, so existing dashboards keep working.',
+      'This is the foundation PR; the annotation page widget switch, the LLM-judge response parser, and the per-type aggregation charts ship in follow-ups over the coming days.',
+    ].join('\n\n'),
+  },
+  {
+    date: '2026-06-06',
     slug: 'evaluator-templates-quality-safety-cost',
     title: 'Ten built-in evaluator templates across Quality / Safety / Cost',
     tags: ['feature'],
