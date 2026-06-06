@@ -1,8 +1,3 @@
-WARN: environment variable is unset: SUPABASE_AUTH_EXTERNAL_GITHUB_CLIENT_ID
-WARN: environment variable is unset: SUPABASE_AUTH_EXTERNAL_GITHUB_SECRET
-WARN: environment variable is unset: SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID
-WARN: environment variable is unset: SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET
-Connecting to db 5432
 export type Json =
   | string
   | number
@@ -390,6 +385,54 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      background_migrations: {
+        Row: {
+          attempts: number
+          completed_at: string | null
+          created_at: string
+          description: string
+          error_message: string | null
+          last_heartbeat_at: string | null
+          name: string
+          progress_current: number | null
+          progress_total: number | null
+          started_at: string | null
+          state: Json
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          attempts?: number
+          completed_at?: string | null
+          created_at?: string
+          description: string
+          error_message?: string | null
+          last_heartbeat_at?: string | null
+          name: string
+          progress_current?: number | null
+          progress_total?: number | null
+          started_at?: string | null
+          state?: Json
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          attempts?: number
+          completed_at?: string | null
+          created_at?: string
+          description?: string
+          error_message?: string | null
+          last_heartbeat_at?: string | null
+          name?: string
+          progress_current?: number | null
+          progress_total?: number | null
+          started_at?: string | null
+          state?: Json
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
       }
       billing_downgrade_notifications: {
         Row: {
@@ -2666,7 +2709,15 @@ export type Database = {
       prune_cron_job_runs: { Args: never; Returns: undefined }
       prune_logs_by_retention: { Args: never; Returns: Json }
       prune_rate_limit_buckets: { Args: never; Returns: number }
+      release_advisory_lock_for_migration: {
+        Args: { p_name: string }
+        Returns: boolean
+      }
       set_spanlens_actor: { Args: { actor_id: string }; Returns: undefined }
+      try_advisory_lock_for_migration: {
+        Args: { p_name: string }
+        Returns: boolean
+      }
     }
     Enums: {
       org_role: "admin" | "editor" | "viewer"
@@ -2804,6 +2855,3 @@ export const Constants = {
     },
   },
 } as const
-
-A new version of Supabase CLI is available: v2.105.0 (currently installed v2.90.0)
-We recommend updating regularly for new features and bug fixes: https://supabase.com/docs/guides/cli/getting-started#updating-the-supabase-cli

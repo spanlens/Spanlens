@@ -53,6 +53,7 @@ import { systemRouter }       from './api/system.js'
 import { feedbackRouter }     from './api/feedback.js'
 import { adminModelPricesRouter } from './api/admin/modelPrices.js'
 import { adminModelRecommendationsRouter } from './api/admin/modelRecommendations.js'
+import { adminBackgroundMigrationsRouter } from './api/admin/backgroundMigrations.js'
 import { sharesRouter }           from './api/shares.js'
 import { publicShareRouter }      from './api/publicShare.js'
 import { badgeRouter }            from './api/badge.js'
@@ -217,5 +218,6 @@ app.route('/api/v1/shares',         sharesRouter)   // PLG Loop ① — owner-si
 // ── Admin routes (authJwt + requireSystemAdmin via SPANLENS_ADMIN_EMAILS) ──
 app.route('/api/v1/admin/model-prices', adminModelPricesRouter)
 app.route('/api/v1/admin/model-recommendations', adminModelRecommendationsRouter)
+app.route('/api/v1/admin/background-migrations', adminBackgroundMigrationsRouter)
 
 export default app
