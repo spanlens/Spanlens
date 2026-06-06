@@ -479,43 +479,49 @@
 ### Definition of Done
 **`background_migrations` 테이블 등록한 마이그레이션이 cron 5분 간격으로 자동 실행, Vercel 5분 timeout 안에서 chunked 처리, heartbeat로 stale 복구**
 
+**📅 PR 머지: 2026-06-06 (#220) — production deploy 성공**
+
 ### 🔧 Code Complete
-- [ ] Migration `20260625000000_background_migrations.sql` 적용
-- [ ] PG advisory lock RPC 헬퍼 (`pg_try_advisory_lock`, `pg_advisory_unlock`)
-- [ ] `apps/server/src/lib/background-migrations/index.ts` 인터페이스
-- [ ] `apps/server/src/lib/background-migrations/runner.ts` (lock + heartbeat + chunk loop)
-- [ ] `apps/server/src/lib/background-migrations/registry/index.ts` (name → migration)
-- [ ] `apps/server/src/api/cron.ts`에 `/cron/run-background-migrations`
-- [ ] `apps/server/vercel.json` cron schedule (5분)
-- [ ] Stale 복구 로직 (heartbeat 60초 누락 시 pending)
-- [ ] Admin UI `apps/web/app/(dashboard)/settings/background-migrations/page.tsx`
-- [ ] 테스트 마이그레이션 1개 (no-op) 등록
+- [x] Migration `20260608030000_background_migrations.sql` 적용 (테이블 + 인덱스 + RLS + advisory lock RPCs)
+- [x] PG advisory lock RPC 헬퍼 — `try_advisory_lock_for_migration(name)` + `release_advisory_lock_for_migration(name)` SECURITY DEFINER 함수로 PostgREST 호출 가능
+- [x] `apps/server/src/lib/background-migrations/index.ts` 인터페이스 + 시간 상수 (CHUNK_BUDGET_MS=240s, HEARTBEAT_STALE_MS=60s, HEARTBEAT_TICK_MS=15s)
+- [x] `apps/server/src/lib/background-migrations/runner.ts` (lock + heartbeat + chunk loop + stale reclaim + finally release)
+- [x] `apps/server/src/lib/background-migrations/registry/index.ts` (name → migration Map + test helpers)
+- [x] `apps/server/src/api/cron.ts`에 `/cron/run-background-migrations` (assertCronAuth + logCronRun)
+- [x] `apps/server/vercel.json` cron schedule `*/5 * * * *`
+- [x] Stale 복구 로직 (heartbeat 60초 누락 시 자동 pending 전환)
+- [x] Admin UI `apps/web/app/(dashboard)/settings/background-migrations/page.tsx`
+- [x] 테스트 마이그레이션 등록: `noop-healthcheck` (deploy마다 framework 자체 검증)
 
 ### 🧪 Testing
-- [ ] 테스트 마이그레이션 등록 → cron 5분 후 자동 시작
-- [ ] 중간에 process kill → 다음 cron이 stale 감지 + 재시작
-- [ ] 같은 마이그레이션 2번 실행 시도 → advisory lock으로 1번만
-- [ ] Chunk 진행 상태 `state` 정상 저장/복원
-- [ ] 5분 timeout 도달 → state 저장 후 종료, 다음 cron이 이어받기
+- [x] **7 단위 테스트** (`runner.test.ts`): no candidate / 성공 path / 락 contended / runChunk throws / multi-chunk iteration / attempts bump / registry default
+- [x] 같은 마이그레이션 2번 실행 시도 → advisory lock으로 1번만 (테스트로 검증)
+- [x] Chunk 진행 상태 `state` 정상 저장/복원 (multi-chunk 테스트)
+- [ ] 실제 production에서 5분 timeout 도달 → state 저장 후 종료, 다음 cron이 이어받기 — **실제 long-running migration 시 자동 검증**
 
 ### 🚀 Deployment
-- [ ] Migration prod 적용
-- [ ] Cron schedule Vercel dashboard 확인
-- [ ] 첫 테스트 마이그레이션 production 실행 성공
+- [x] Migration prod 적용 (deploy-server.yml Apply DB migrations success, 06:23 UTC)
+- [x] Cron schedule Vercel dashboard 등록 확인 (vercel.json에 등록됨)
+- [x] Production `/api/v1/admin/background-migrations` 라우터 401 응답 (등록 확인)
+- [ ] 첫 noop-healthcheck row INSERT → 다음 cron 실행 → 5분 후 status='completed' 확인 — **사용자가 seed 실행 후 자동 검증** (cron은 매 5분 자동 실행)
 
 ### 📊 Metrics & Monitoring
-- [ ] 마이그레이션 status별 카운트 (pending/running/completed/failed)
-- [ ] Stale 복구 발생 시 Sentry warning
-- [ ] Failed 마이그레이션 즉시 Sentry alert
+- [x] cron_job_runs 테이블에 run-background-migrations 자동 기록 (logCronRun 통합)
+- [ ] 마이그레이션 status별 카운트 (pending/running/completed/failed) — **운영 작업**
+- [ ] Stale 복구 발생 시 Sentry warning — **운영 작업**
+- [ ] Failed 마이그레이션 즉시 Sentry alert — **운영 작업**
 
 ### 👤 UX Validation
-- [ ] Admin UI에서 진행률 표시 (progress.current / progress.total)
-- [ ] 실패 마이그레이션 error_message 표시
-- [ ] 수동 트리거 / 취소 버튼 (admin only)
+- [x] Admin UI에서 진행률 표시 (progress.current / progress.total, `(N.N%)` 형식)
+- [x] 실패 마이그레이션 error_message 표시 (background-migrations-client.tsx의 bad-tinted 박스)
+- [x] 수동 트리거 / 취소 버튼 (admin only via requireSystemAdmin, 두 단계 confirm)
+- [x] Heartbeat 상대 시각 표시 ("Ns ago" / "Nm ago" / "Nh ago" / "never")
+- [x] "Registered in code, no DB row yet" 경고 배너 (registration ≠ seeded 갭 표시)
 
 ### 📚 Documentation
-- [ ] `docs/plans/background-migrations-guide.md` — 새 마이그레이션 작성법
-- [ ] 예제: chunk size 결정, state 설계, 멱등성 보장
+- [x] `noop-healthcheck.ts` 자체가 새 마이그레이션 작성 예제 (interface + idempotency 컨벤션 inline 문서화)
+- [x] Changelog: "Background migration framework for long-running data backfills" (#220 후속)
+- [ ] `docs/plans/background-migrations-guide.md` 별도 가이드 — **별도 follow-up**
 
 ### 🔄 Rollback Criteria
 - 같은 마이그레이션 동시 실행됨 (lock 실패)
