@@ -24,11 +24,18 @@
 
 import type { BackgroundMigration } from '../index.js'
 import { noopHealthcheck } from './migrations/noop-healthcheck.js'
+import { backfillEventsFromRequests } from './migrations/backfill-events-from-requests.js'
 
 const REGISTRY = new Map<string, BackgroundMigration>([
   // Always-registered no-op so the cron has something to exercise on
   // a fresh deploy. Safe to run anytime — it just yields immediately.
   [noopHealthcheck.name, noopHealthcheck],
+
+  // Phase 5.1 Stage 2 — backfill historical requests into the new
+  // events table. INSERT a row into `background_migrations` with
+  // name='backfill-events-from-requests' to start it; the cron will
+  // pick it up on the next 5-minute tick.
+  [backfillEventsFromRequests.name, backfillEventsFromRequests],
 ])
 
 export function getRegistry(): ReadonlyMap<string, BackgroundMigration> {
