@@ -13,6 +13,12 @@ import {
   countRequests,
   fetchProviderKeyNames,
 } from '../lib/requests-query.js'
+import {
+  eventsScope,
+  selectGenerationsAsRequests,
+  countGenerations,
+} from '../lib/events-query.js'
+import { useEventsForRequests } from '../lib/feature-flags.js'
 import { fromClickhouseTimestamp } from '../lib/clickhouse.js'
 
 export const requestsRouter = new Hono<JwtContext>()
@@ -113,19 +119,40 @@ requestsRouter.get('/', async (c) => {
   const combinedFilters = filters.length > 0 ? filters.join(' AND ') : undefined
 
   try {
-    const scope = await requestsScope(orgId)
-    const [rows, total] = await Promise.all([
-      selectRequests<RequestRow>({
-        scope,
-        select: LIST_COLUMNS,
-        filters: combinedFilters,
-        orderBy,
-        limit,
-        offset,
-        params,
-      }),
-      countRequests({ scope, filters: combinedFilters, params }),
-    ])
+    let rows: RequestRow[]
+    let total: number
+
+    if (useEventsForRequests) {
+      // Phase 5.1 Stage 3 — read from the unified events table. The
+      // helper projects events columns into the same shape selectRequests
+      // returns so the downstream mapping below works unchanged.
+      const eventsScopeResolved = await eventsScope(orgId)
+      ;[rows, total] = await Promise.all([
+        selectGenerationsAsRequests<RequestRow>({
+          scope: eventsScopeResolved,
+          filters: combinedFilters,
+          orderBy,
+          limit,
+          offset,
+          params,
+        }),
+        countGenerations({ scope: eventsScopeResolved, filters: combinedFilters, params }),
+      ])
+    } else {
+      const scope = await requestsScope(orgId)
+      ;[rows, total] = await Promise.all([
+        selectRequests<RequestRow>({
+          scope,
+          select: LIST_COLUMNS,
+          filters: combinedFilters,
+          orderBy,
+          limit,
+          offset,
+          params,
+        }),
+        countRequests({ scope, filters: combinedFilters, params }),
+      ])
+    }
 
     // App-layer replacement for Supabase's `provider_keys ( name )` nested select.
     const keyMap = await fetchProviderKeyNames(orgId, rows.map((r) => r.provider_key_id))
