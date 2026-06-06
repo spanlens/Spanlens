@@ -188,12 +188,30 @@ export async function selectGenerationsAsRequests<T>(opts: {
     ${tail.join(' ')}
   `.trim()
 
-  const res = await getClickhouse().query({
-    query,
-    query_params: { ...scope.scopeParams, ...(params ?? {}) },
-    format: 'JSONEachRow',
-  })
-  return (await res.json()) as T[]
+  try {
+    const res = await getClickhouse().query({
+      query,
+      query_params: { ...scope.scopeParams, ...(params ?? {}) },
+      format: 'JSONEachRow',
+    })
+    return (await res.json()) as T[]
+  } catch (err) {
+    // Phase 5.1 Stage 3 root-cause hunt — dump the exact query, scope,
+    // and caller params so the next Vercel log shows what actually
+    // failed instead of a one-line generic message. Remove this
+    // helper once the events path is stable.
+    console.error('[events-query:selectGenerationsAsRequests] FAILED', {
+      query,
+      query_params: { ...scope.scopeParams, ...(params ?? {}) },
+      filters,
+      orderBy,
+      limit,
+      offset,
+      err_message: err instanceof Error ? err.message : String(err),
+      err_stack: err instanceof Error ? err.stack : undefined,
+    })
+    throw err
+  }
 }
 
 /** Companion COUNT used by the same flag branch in /api/v1/requests. */
@@ -207,11 +225,21 @@ export async function countGenerations(opts: {
   if (filters && filters.length > 0) whereParts.push(filters)
   const where = whereParts.join(' AND ')
   const query = `SELECT count() AS c FROM events WHERE ${where}`
-  const res = await getClickhouse().query({
-    query,
-    query_params: { ...scope.scopeParams, ...(params ?? {}) },
-    format: 'JSONEachRow',
-  })
-  const rows = (await res.json()) as Array<{ c: string }>
-  return Number(rows[0]?.c ?? 0)
+  try {
+    const res = await getClickhouse().query({
+      query,
+      query_params: { ...scope.scopeParams, ...(params ?? {}) },
+      format: 'JSONEachRow',
+    })
+    const rows = (await res.json()) as Array<{ c: string }>
+    return Number(rows[0]?.c ?? 0)
+  } catch (err) {
+    console.error('[events-query:countGenerations] FAILED', {
+      query,
+      query_params: { ...scope.scopeParams, ...(params ?? {}) },
+      filters,
+      err_message: err instanceof Error ? err.message : String(err),
+    })
+    throw err
+  }
 }
