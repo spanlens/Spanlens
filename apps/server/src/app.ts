@@ -98,12 +98,15 @@ app.get('/health', (c) => c.json({ status: 'ok', timestamp: new Date().toISOStri
 // when one of them is slow.
 app.get('/health/deep', async (c) => {
   const { pingClickhouse } = await import('./lib/clickhouse.js')
-  const { fallbackQueueSize } = await import('./lib/fallback-replay.js')
+  const { fallbackQueueSize, eventsFallbackQueueSize } = await import(
+    './lib/fallback-replay.js'
+  )
 
   const start = Date.now()
-  const [chOk, fallbackQueue] = await Promise.all([
+  const [chOk, fallbackQueue, eventsFallback] = await Promise.all([
     pingClickhouse().catch(() => false),
     fallbackQueueSize().catch(() => null),
+    eventsFallbackQueueSize().catch(() => null),
   ])
   const chLatency = Date.now() - start
 
@@ -115,7 +118,7 @@ app.get('/health/deep', async (c) => {
       clickhouse: { ok: chOk, latencyMs: chLatency },
       // Null means the lookup itself failed (e.g. Supabase down) — not an
       // empty queue. Distinguish for triage.
-      fallback: { queue: fallbackQueue },
+      fallback: { queue: fallbackQueue, eventsQueue: eventsFallback },
     },
     overallOk ? 200 : 503,
   )
