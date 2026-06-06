@@ -40,6 +40,17 @@ export type ChangelogTag =
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
     date: '2026-06-06',
+    slug: 'annotation-typed-widgets',
+    title: 'Annotation: type-aware rating widgets and distribution charts',
+    tags: ['feature'],
+    body: [
+      'Follow-up to the typed score configs that shipped earlier today. The [/annotation](/annotation) page now picks the right input widget based on the active score config: chip rows for categorical scores, a pass/fail toggle for boolean, a textarea for free-text, and the existing stars / slider for numeric.',
+      'New filter-bar control lets you switch the active config without leaving the page (`?config=<uuid>` is URL-backed for deep links). The stat strip aggregate switches with it — average score, top category, pass rate, or note count depending on what the config measures.',
+      'A small distribution panel under the stat strip shows the spread at a glance: category bars for categorical, a split pass/fail bar for boolean, a five-bucket histogram for numeric, and the latest five notes for free-text. Keyboard quick-rate is type-aware too — `1`..`9` picks the n-th category, `y`/`n` toggles boolean, `1`..`5` stays for star configs.',
+    ].join('\n\n'),
+  },
+  {
+    date: '2026-06-06',
     slug: 'typed-score-configs',
     title: 'Score configs: categorical, boolean, and free-text scoring',
     tags: ['feature'],
