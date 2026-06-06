@@ -173,7 +173,8 @@ describe('logRequestAsync — ClickHouse write path', () => {
       spanId: null,
     })
 
-    expect(mockClickhouseInsert).toHaveBeenCalledOnce()
+    // Phase 5.1 dual-write: requests + events shadow insert = 2 calls.
+    expect(mockClickhouseInsert).toHaveBeenCalledTimes(2)
     const row = getInsertedRow()
     expect(row.organization_id).toBe('org-1')
     expect(row.provider).toBe('openai')
