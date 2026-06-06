@@ -4,6 +4,7 @@ import { supabaseAdmin } from '../lib/db.js'
 import { aes256Decrypt } from '../lib/crypto.js'
 import { calculateCost } from '../lib/cost.js'
 import { interpolate, inferProvider, buildOpenAIBody } from '../lib/playground-runner.js'
+import { startInternalTrace } from '../lib/internal-tracing.js'
 
 export const promptsPlaygroundRouter = new Hono<JwtContext>()
 
@@ -106,6 +107,23 @@ promptsPlaygroundRouter.post('/run', async (c) => {
 
   const { result: interpolated, missingVars } = interpolate(pv.content, variables)
 
+  // 4B.2b — dogfood ourselves. Each playground run posts a
+  // `playground_call` trace + a single `llm` span to the spanlens-team
+  // workspace so we can audit our own model/temperature/maxTokens
+  // choices alongside customer traffic.
+  const internalTrace = startInternalTrace('playground_call', {
+    organization_id: orgId,
+    prompt_version_id: promptVersionId,
+    model,
+    provider: modelProvider,
+    temperature,
+    max_tokens: maxTokens,
+  })
+  const span = internalTrace.startSpan('llm', {
+    spanType: 'llm',
+    metadata: { model, provider: modelProvider },
+  })
+
   const startMs = Date.now()
 
   if (modelProvider === 'openai') {
@@ -126,6 +144,8 @@ promptsPlaygroundRouter.post('/run', async (c) => {
 
     if (!upstreamRes.ok) {
       const text = await upstreamRes.text().catch(() => '')
+      span.end({ status: 'error', errorMessage: `OpenAI ${upstreamRes.status}` })
+      internalTrace.end({ status: 'error', errorMessage: `OpenAI ${upstreamRes.status}` })
       return c.json({ error: `OpenAI error: ${text}`, upstreamStatus: upstreamRes.status }, 502)
     }
 
@@ -140,6 +160,19 @@ promptsPlaygroundRouter.post('/run', async (c) => {
     const completionTokens = json.usage?.completion_tokens ?? 0
     const resolvedModel = json.model ?? model
     const cost = calculateCost('openai', resolvedModel, { promptTokens, completionTokens })
+
+    span.end({
+      status: 'completed',
+      ...(cost?.totalCost != null ? { costUsd: cost.totalCost } : {}),
+      promptTokens,
+      completionTokens,
+      totalTokens: promptTokens + completionTokens,
+      metadata: { resolved_model: resolvedModel, latency_ms: latencyMs },
+    })
+    internalTrace.end({
+      status: 'completed',
+      metadata: { latency_ms: latencyMs, cost_usd: cost?.totalCost ?? null },
+    })
 
     return c.json({
       success: true,
@@ -176,6 +209,8 @@ promptsPlaygroundRouter.post('/run', async (c) => {
 
   if (!upstreamRes.ok) {
     const text = await upstreamRes.text().catch(() => '')
+    span.end({ status: 'error', errorMessage: `Anthropic ${upstreamRes.status}` })
+    internalTrace.end({ status: 'error', errorMessage: `Anthropic ${upstreamRes.status}` })
     return c.json({ error: `Anthropic error: ${text}`, upstreamStatus: upstreamRes.status }, 502)
   }
 
@@ -190,6 +225,19 @@ promptsPlaygroundRouter.post('/run', async (c) => {
   const completionTokens = json.usage?.output_tokens ?? 0
   const resolvedModel = json.model ?? model
   const cost = calculateCost('anthropic', resolvedModel, { promptTokens, completionTokens })
+
+  span.end({
+    status: 'completed',
+    ...(cost?.totalCost != null ? { costUsd: cost.totalCost } : {}),
+    promptTokens,
+    completionTokens,
+    totalTokens: promptTokens + completionTokens,
+    metadata: { resolved_model: resolvedModel, latency_ms: latencyMs },
+  })
+  internalTrace.end({
+    status: 'completed',
+    metadata: { latency_ms: latencyMs, cost_usd: cost?.totalCost ?? null },
+  })
 
   return c.json({
     success: true,
