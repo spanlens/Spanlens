@@ -4,6 +4,11 @@ import { authJwtOrApiKey } from '../middleware/authJwtOrApiKey.js'
 import { supabaseAdmin } from '../lib/db.js'
 import { computeCriticalPath } from '../lib/critical-path.js'
 import { parsePageLimit } from '../lib/params.js'
+import { useEventsForRequests } from '../lib/feature-flags.js'
+import {
+  listTracesFromEvents,
+  getTraceWithSpansFromEvents,
+} from '../lib/traces-events-queries.js'
 
 export const tracesRouter = new Hono<JwtContext>()
 
@@ -25,6 +30,36 @@ tracesRouter.get('/', async (c) => {
   // page only, which silently dropped matches living on other pages.
   const q = c.req.query('q')?.trim()
   const { page, limit, offset } = parsePageLimit(c.req.query('page'), c.req.query('limit'))
+
+  // Phase 5.1 PR-7b — when the read switch is on, read from the events
+  // table via traces_view/spans_view. Catch-and-fall-back to Postgres
+  // so a regression on the events side degrades to "same behaviour as
+  // before Stage 3" rather than 500.
+  if (useEventsForRequests) {
+    try {
+      const result = await listTracesFromEvents({
+        organizationId: orgId,
+        projectId,
+        status,
+        from,
+        to,
+        q,
+        limit,
+        offset,
+      })
+      return c.json({
+        success: true,
+        data: result.rows,
+        meta: { total: result.total, page, limit },
+      })
+    } catch (eventsErr) {
+      console.error('[traces:list] events path failed, falling back to Postgres:', {
+        message: eventsErr instanceof Error ? eventsErr.message : String(eventsErr),
+        orgId,
+      })
+      // fall through to the Postgres path below
+    }
+  }
 
   // `count: 'planned'` uses the Postgres query planner's row estimate instead
   // of forcing a COUNT(*) scan. Saves -200~500ms per request on the traces
@@ -76,6 +111,25 @@ tracesRouter.get('/:id', async (c) => {
   const traceId = c.req.param('id')
   const orgId = c.get('orgId')
   if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+
+  if (useEventsForRequests) {
+    try {
+      const { trace, spans } = await getTraceWithSpansFromEvents(traceId, orgId)
+      if (!trace) return c.json({ error: 'Trace not found' }, 404)
+      const criticalSpanIds = computeCriticalPath(spans)
+      return c.json({
+        success: true,
+        data: { ...trace, spans, critical_span_ids: criticalSpanIds },
+      })
+    } catch (eventsErr) {
+      console.error('[traces:detail] events path failed, falling back to Postgres:', {
+        message: eventsErr instanceof Error ? eventsErr.message : String(eventsErr),
+        traceId,
+        orgId,
+      })
+      // fall through to the Postgres path below
+    }
+  }
 
   const { data: trace, error: traceErr } = await supabaseAdmin
     .from('traces')
