@@ -8,6 +8,7 @@ import {
   cancelPaddleSubscription,
 } from '../lib/paddle.js'
 import { checkMonthlyQuota } from '../lib/quota.js'
+import { recordAuditEvent } from '../lib/audit-log.js'
 
 /**
  * Dashboard billing endpoints — JWT authenticated.
@@ -123,6 +124,14 @@ billingRouter.post('/checkout', async (c) => {
     if (!tx.checkout?.url) {
       return c.json({ error: 'Paddle did not return a checkout URL' }, 502)
     }
+    void recordAuditEvent(c, {
+      action: 'billing.checkout_create',
+      resourceType: 'subscriptions',
+      resourceId: tx.id,
+      // The price ID identifies the plan being purchased. We deliberately
+      // do not log card / personal info — that's Paddle's domain.
+      metadata: { paddle_transaction_id: tx.id, price_id: priceId },
+    })
     return c.json({ success: true, data: { url: tx.checkout.url, transactionId: tx.id } })
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'unknown error'
@@ -151,6 +160,11 @@ billingRouter.post('/cancel', async (c) => {
 
   try {
     await cancelPaddleSubscription(sub.paddle_subscription_id)
+    void recordAuditEvent(c, {
+      action: 'billing.cancel',
+      resourceType: 'subscriptions',
+      resourceId: sub.paddle_subscription_id,
+    })
     return c.json({ success: true })
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'unknown error'

@@ -14,6 +14,7 @@ import { useSidebar } from '@/lib/sidebar-context'
 import { useAnomalies } from '@/lib/queries/use-anomalies'
 import { useAlerts } from '@/lib/queries/use-alerts'
 import { useRecommendations } from '@/lib/queries/use-recommendations'
+import { useStaleKeyCounts } from '@/lib/queries/use-stale-keys'
 import { useIsAdmin } from '@/lib/queries/use-current-role'
 import { useOrganization } from '@/lib/queries/use-organization'
 import { useWorkspaces, useCreateWorkspace } from '@/lib/queries/use-workspaces'
@@ -315,6 +316,7 @@ export function Sidebar() {
   const anomalies = useAnomalies({ observationHours: 24 })
   const alerts = useAlerts()
   const recommendations = useRecommendations({ hours: 24 })
+  const staleKeys = useStaleKeyCounts()
   const { isOpen, close, isCollapsed, toggleCollapsed } = useSidebar()
   // Capture "now" once at mount — drives the "firing in last hour" badge.
   // Tanstack query refetches refresh `alerts.data`, so a fixed anchor here
@@ -347,6 +349,12 @@ export function Sidebar() {
     '/security':   {},
     '/savings': savingsTotal > 0 ? { label: '$' + (savingsTotal >= 1000 ? (savingsTotal / 1000).toFixed(0) + 'k' : savingsTotal.toFixed(0)) } : {},
     '/alerts':     firingCount > 0 ? { label: String(firingCount), warn: true } : {},
+    // Sum stale + revoke so the badge surfaces both tiers in one glance.
+    // We don't separate them here — the dashboard "Needs Attention" card
+    // and the in-row badges on /projects already split them.
+    '/projects':   staleKeys.revoke + staleKeys.stale > 0
+      ? { label: String(staleKeys.revoke + staleKeys.stale), warn: staleKeys.revoke > 0 }
+      : {},
   }
 
   async function handleSignOut() {
