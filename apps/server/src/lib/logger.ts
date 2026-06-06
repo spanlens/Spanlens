@@ -282,16 +282,20 @@ export async function logRequestAsync(data: RequestLogData): Promise<void> {
       values: [clickhouseRow],
     })
     // ── Phase 5.1 dual-write to events ───────────────────────────────────────
-    // Best-effort. A failure here MUST NOT roll back the requests INSERT —
-    // events is still in the "shadow" stage; reads come from requests, so
-    // a missing events row is recoverable later by backfill. We log
-    // loudly so a sustained outage gets noticed, but don't escalate.
-    void writeRequestAsEvent(data, clickhouseRow).catch((err) => {
+    // Best-effort. A failure here MUST NOT roll back the requests INSERT.
+    // Awaited rather than fire-and-forget: on Vercel Node runtime an
+    // unawaited promise inside an already-fireAndForget-wrapped
+    // function is silently dropped at response time (CLAUDE.md gotcha #8).
+    // The events INSERT round-trip is ~30ms on ClickHouse Cloud — within
+    // the waitUntil budget logRequestAsync already runs under.
+    try {
+      await writeRequestAsEvent(data, clickhouseRow)
+    } catch (err) {
       console.error(
         '[logger] events shadow INSERT failed:',
         err instanceof Error ? err.message : err,
       )
-    })
+    }
   } catch (err) {
     // ── ClickHouse fallback (P2.6) ─────────────────────────────────────────
     // CH outage / network blip / Development tier cold-start → preserve the
