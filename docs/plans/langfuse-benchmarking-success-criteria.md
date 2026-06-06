@@ -358,31 +358,38 @@
 ### Definition of Done
 **NUMERIC/CATEGORICAL/BOOLEAN/TEXT 4가지 타입의 스코어 모두 입력/저장/집계/시각화 가능**
 
-### 🔧 Code Complete
-- [ ] Migration `20260620000000_score_configs.sql` 적용
-- [ ] `supabase gen types` 실행
-- [ ] 기본 numeric config 모든 기존 org에 자동 생성 (시드)
-- [ ] `apps/server/src/api/scoreConfigs.ts` 신규 라우터 (CRUD + archive)
-- [ ] `apps/server/src/lib/score-validation.ts` 신규 (타입별 검증)
-- [ ] `apps/server/src/api/human-evals.ts` 수정 (config_id + string value)
-- [ ] `apps/server/src/lib/eval-runner.ts` 수정 (타입별 파싱)
-- [ ] `apps/server/src/lib/stats-queries.ts` 수정 (타입별 집계)
-- [ ] `apps/web/app/(dashboard)/settings/score-configs/page.tsx`
-- [ ] `apps/web/app/(dashboard)/feedback/feedback-client.tsx` 입력 위젯 분기
-- [ ] `apps/web/components/charts/CategoricalDistribution.tsx` 신규
+**📅 1차 PR 머지: 2026-06-06 (#208) — backend + 관리 페이지**
+**📅 잔여: annotation 위젯 분기 + eval-runner + 차트 (별도 PR 예정)**
+
+### 🔧 Code Complete (1차 PR)
+- [x] Migration `20260608010000_score_configs.sql` 적용 (production 백필 검증됨)
+- [x] `supabase gen types` 실행
+- [x] 기본 numeric config 모든 기존 org에 자동 생성 (시드) — production oceancode 워크스페이스에서 검증
+- [x] `apps/server/src/api/scoreConfigs.ts` 신규 라우터 (CRUD + archive + audit log)
+- [x] `apps/server/src/lib/score-validation.ts` 신규 (타입별 검증, 29 unit tests)
+- [x] `apps/server/src/api/human-evals.ts` 수정 (config_id + value 필드, backward compat)
+- [x] `apps/web/app/(dashboard)/settings/score-configs/page.tsx` (관리 페이지)
+- [ ] `apps/server/src/lib/eval-runner.ts` 수정 (타입별 파싱) — **별도 PR**
+- [ ] `apps/server/src/lib/stats-queries.ts` 수정 (타입별 집계) — **별도 PR**
+- [ ] `apps/web/app/(dashboard)/annotation/annotation-client.tsx` 입력 위젯 분기 — **별도 PR**
+- [ ] `apps/web/components/charts/CategoricalDistribution.tsx` — **별도 PR**
 
 ### 🧪 Testing
-- [ ] NUMERIC: 슬라이더 → 0..1 저장 → 평균 집계
-- [ ] CATEGORICAL: 라디오 → string 저장 → 분포 차트
-- [ ] BOOLEAN: 토글 → pass rate 집계
-- [ ] TEXT: textarea → 저장 + 샘플 표시
-- [ ] 기존 numeric 데이터 backward compat (config_id null 안전)
-- [ ] Validation: NUMERIC 범위 밖 값 거부, CATEGORICAL 미정의 값 거부
+- [x] Server typecheck + lint clean
+- [x] Web typecheck + lint clean
+- [x] 661 server unit tests pass (+29 score-validation)
+- [x] Validation: NUMERIC 범위 밖 값 거부, CATEGORICAL 미정의 값 거부, BOOLEAN 임의 truthy 거부, TEXT 빈 문자열 거부 (모두 단위 테스트로 검증)
+- [x] CRUD UI 시각 검증 — Chrome MCP로 CATEGORICAL config 생성 + 표시 end-to-end
+- [x] 기존 numeric 데이터 backward compat: legacy POST `{ score: 0.8 }` → 기본 NUMERIC config 사용해 typed 컬럼에도 저장
+- [ ] NUMERIC: 슬라이더 → 0..1 저장 → 평균 집계 — **별도 PR**
+- [ ] CATEGORICAL: 라디오 → string 저장 → 분포 차트 — **별도 PR**
+- [ ] BOOLEAN: 토글 → pass rate 집계 — **별도 PR**
+- [ ] TEXT: textarea → 저장 + 샘플 표시 — **별도 PR**
 
 ### 🚀 Deployment
-- [ ] Migration prod 적용
-- [ ] 기존 모든 organization에 default_numeric config 생성 확인
-- [ ] 기존 human_evals 데이터 정상 표시
+- [x] Migration prod 적용 (deploy-server.yml Apply DB migrations success)
+- [x] 기존 모든 organization에 default_numeric config 생성 확인 (production oceancode에 "Helpfulness" DEFAULT 시각 확인)
+- [x] 기존 human_evals 데이터 정상 표시 (NOT NULL drop으로 score nullable, 기존 row 그대로)
 
 ### 📊 Metrics & Monitoring
 - [ ] 타입별 사용량 메트릭 (NUMERIC vs CATEGORICAL 등)
