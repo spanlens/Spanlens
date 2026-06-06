@@ -142,3 +142,80 @@ export async function fallbackQueueSize(): Promise<number | null> {
   if (error) return null
   return count ?? 0
 }
+
+/**
+ * 5.3 lite — drain `events_fallback` into the ClickHouse `events` table.
+ * Mirrors `replayFallbackQueue` so the same cron endpoint can call both.
+ * Separate function (not parameterised) so the SQL stays readable and a
+ * future per-table tuning (chunk size, age) doesn't bleed across.
+ */
+export async function replayEventsFallbackQueue(): Promise<ReplayResult> {
+  const result: ReplayResult = {
+    attempted: 0,
+    replayed: 0,
+    failed: 0,
+    expired: 0,
+  }
+
+  const expiry = new Date(Date.now() - MAX_AGE_DAYS * 24 * 60 * 60 * 1000).toISOString()
+  const { count: expiredCount } = await supabaseAdmin
+    .from('events_fallback')
+    .delete({ count: 'exact' })
+    .or(`created_at.lt.${expiry},retry_count.gte.${MAX_RETRY_COUNT}`)
+  result.expired = expiredCount ?? 0
+
+  const { data: rows, error: selectError } = await supabaseAdmin
+    .from('events_fallback')
+    .select('id, payload, retry_count')
+    .order('created_at', { ascending: true })
+    .limit(REPLAY_BATCH_SIZE)
+
+  if (selectError) {
+    result.error = `select failed: ${selectError.message}`
+    return result
+  }
+
+  if (!rows || rows.length === 0) {
+    return result
+  }
+
+  result.attempted = rows.length
+
+  try {
+    await getClickhouse().insert({
+      table: 'events',
+      format: 'JSONEachRow',
+      values: rows.map((r) => r.payload as Record<string, unknown>),
+    })
+    const ids = rows.map((r) => r.id as string)
+    await supabaseAdmin.from('events_fallback').delete().in('id', ids)
+    result.replayed = rows.length
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    result.failed = rows.length
+    result.error = `clickhouse insert failed: ${message.slice(0, 300)}`
+
+    const now = new Date().toISOString()
+    for (const row of rows) {
+      await supabaseAdmin
+        .from('events_fallback')
+        .update({
+          retry_count: (row.retry_count as number) + 1,
+          last_retry_at: now,
+          last_error: message.slice(0, 500),
+        })
+        .eq('id', row.id as string)
+    }
+  }
+
+  return result
+}
+
+/** Companion size getter for `/health/deep` panels. */
+export async function eventsFallbackQueueSize(): Promise<number | null> {
+  const { count, error } = await supabaseAdmin
+    .from('events_fallback')
+    .select('id', { count: 'exact', head: true })
+  if (error) return null
+  return count ?? 0
+}
