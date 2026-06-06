@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { Filter, MessageSquare, Star } from 'lucide-react'
+import { Filter, MessageSquare, Star, Check, X, Type as TypeIcon } from 'lucide-react'
 import { Topbar, LiveDot } from '@/components/layout/topbar'
 import { cn, formatDateTime } from '@/lib/utils'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -13,6 +13,40 @@ import {
   type AnnotationQueueItem,
 } from '@/lib/queries/use-human-evals'
 import { usePrompts } from '@/lib/queries/use-prompts'
+import { useScoreConfigs, type ScoreConfig } from '@/lib/queries/use-score-configs'
+
+/**
+ * Truncate a long label so the per-item "You" badge doesn't blow up
+ * the header when a categorical category is verbose.
+ */
+function truncate(value: string, max: number): string {
+  if (value.length <= max) return value
+  return value.slice(0, max - 1) + '…'
+}
+
+/**
+ * Render the user's existing score as a short string for the
+ * ItemCard header. Falls back to the legacy `score` column when the
+ * row predates 4B.1 typed columns.
+ */
+function existingScoreLabel(
+  he: AnnotationQueueItem['human_eval'],
+  config: ScoreConfig | null,
+): string {
+  if (!he) return ''
+  if (he.value_string != null) return truncate(he.value_string, 18)
+  if (he.value_boolean != null) {
+    if (config?.data_type === 'BOOLEAN') {
+      return he.value_boolean
+        ? (config.bool_true_label ?? 'Pass')
+        : (config.bool_false_label ?? 'Fail')
+    }
+    return he.value_boolean ? 'Pass' : 'Fail'
+  }
+  if (he.value_number != null) return ((he.value_number) * 100).toFixed(0)
+  if (he.score != null) return ((he.score) * 100).toFixed(0)
+  return 'rated'
+}
 
 // Hydration-safe mounted gate, same pattern as the other overhauled pages.
 const subscribeNoop = () => () => {}
@@ -100,30 +134,217 @@ function StarRating({
   )
 }
 
+// ── Categorical / boolean / text rating widgets ─────────────────────────────
+
+function CategoricalRating({
+  categories,
+  value,
+  onChange,
+}: {
+  categories: string[]
+  value: string | null
+  onChange: (v: string) => void
+}) {
+  return (
+    <div className="flex items-center gap-1 flex-wrap">
+      {categories.map((c) => {
+        const selected = value === c
+        return (
+          <button
+            key={c}
+            type="button"
+            onClick={() => onChange(c)}
+            className={cn(
+              'rounded-[5px] border px-2 py-1 font-mono text-[11.5px] transition-colors',
+              selected
+                ? 'border-accent bg-accent-bg/40 text-text'
+                : 'border-border bg-bg text-text-muted hover:border-border-strong',
+            )}
+          >
+            {c}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+function BooleanRating({
+  value,
+  onChange,
+  trueLabel,
+  falseLabel,
+}: {
+  value: boolean | null
+  onChange: (v: boolean) => void
+  trueLabel: string
+  falseLabel: string
+}) {
+  return (
+    <div className="flex items-center gap-1">
+      <button
+        type="button"
+        onClick={() => onChange(true)}
+        className={cn(
+          'flex items-center gap-1 rounded-[5px] border px-2.5 py-1 font-mono text-[11.5px] transition-colors',
+          value === true
+            ? 'border-good bg-good/15 text-good'
+            : 'border-border bg-bg text-text-muted hover:border-border-strong',
+        )}
+      >
+        <Check className="h-3.5 w-3.5" />
+        {trueLabel}
+      </button>
+      <button
+        type="button"
+        onClick={() => onChange(false)}
+        className={cn(
+          'flex items-center gap-1 rounded-[5px] border px-2.5 py-1 font-mono text-[11.5px] transition-colors',
+          value === false
+            ? 'border-bad bg-bad/15 text-bad'
+            : 'border-border bg-bg text-text-muted hover:border-border-strong',
+        )}
+      >
+        <X className="h-3.5 w-3.5" />
+        {falseLabel}
+      </button>
+    </div>
+  )
+}
+
+function TextRating({
+  value,
+  onChange,
+}: {
+  value: string
+  onChange: (v: string) => void
+}) {
+  return (
+    <textarea
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      rows={3}
+      placeholder="Your label / score / note for this response…"
+      className="w-full rounded-[5px] border border-border bg-bg px-2 py-2 font-mono text-[12px] text-text placeholder:text-text-faint focus:outline-none focus:border-border-strong resize-none"
+    />
+  )
+}
+
 // ── Scoring panel ───────────────────────────────────────────────────────────
 
-function ScoringPanel({
-  item,
-  onSaved,
-}: {
+interface ScoringPanelProps {
   item: AnnotationQueueItem
+  config: ScoreConfig | null
   onSaved: () => void
-}) {
+}
+
+function ScoringPanel({ item, config, onSaved }: ScoringPanelProps) {
   const save = useSaveHumanEval()
-  const [stars, setStars] = useState<number | null>(item.human_eval?.raw_score ?? null)
+
+  // Seed widget state from any existing typed value on the row. We
+  // deliberately key each input on its primitive type so changing the
+  // active config doesn't carry stale state across.
+  const [numericValue, setNumericValue] = useState<number | null>(
+    item.human_eval?.value_number ?? item.human_eval?.raw_score ?? null,
+  )
+  const [categoricalValue, setCategoricalValue] = useState<string | null>(
+    item.human_eval?.value_string ?? null,
+  )
+  const [booleanValue, setBooleanValue] = useState<boolean | null>(
+    item.human_eval?.value_boolean ?? null,
+  )
+  const [textValue, setTextValue] = useState<string>(
+    item.human_eval?.value_string ?? '',
+  )
   const [comment, setComment] = useState(item.human_eval?.comment ?? '')
   const [error, setError] = useState('')
 
+  if (!config) {
+    return (
+      <div className="border-t border-border p-4 bg-bg-elev font-mono text-[11.5px] text-text-faint">
+        Workspace has no score config. Create one under{' '}
+        <Link href="/settings/score-configs" className="text-accent underline">
+          Settings → Score configs
+        </Link>{' '}
+        to start rating.
+      </div>
+    )
+  }
+
+  // Resolve the raw value that the active widget owns, then build the
+  // mutation payload from there. The server validates against the
+  // config type and 400s on mismatch.
+  function buildPayload(): {
+    requestId: string
+    scoreConfigId: string
+    value: number | string | boolean
+    rawScore?: number
+    comment?: string
+  } | null {
+    if (!config) return null
+
+    if (config.data_type === 'NUMERIC') {
+      if (numericValue == null) return null
+      const min = config.min_value ?? 0
+      const max = config.max_value ?? 1
+      // If the workspace is still on the legacy 0..1 default and the
+      // user is using the 1..5 stars widget, normalise here so the
+      // server stores a 0..1 value_number.
+      const isStars = min === 0 && max === 1
+      const normalised = isStars ? (numericValue - 1) / 4 : numericValue
+      const result: { requestId: string; scoreConfigId: string; value: number; rawScore?: number; comment?: string } = {
+        requestId: item.id,
+        scoreConfigId: config.id,
+        value: normalised,
+      }
+      if (isStars) result.rawScore = numericValue
+      if (comment.trim()) result.comment = comment.trim()
+      return result
+    }
+    if (config.data_type === 'CATEGORICAL') {
+      if (!categoricalValue) return null
+      const result: { requestId: string; scoreConfigId: string; value: string; comment?: string } = {
+        requestId: item.id,
+        scoreConfigId: config.id,
+        value: categoricalValue,
+      }
+      if (comment.trim()) result.comment = comment.trim()
+      return result
+    }
+    if (config.data_type === 'BOOLEAN') {
+      if (booleanValue == null) return null
+      const result: { requestId: string; scoreConfigId: string; value: boolean; comment?: string } = {
+        requestId: item.id,
+        scoreConfigId: config.id,
+        value: booleanValue,
+      }
+      if (comment.trim()) result.comment = comment.trim()
+      return result
+    }
+    // TEXT
+    if (!textValue.trim()) return null
+    const result: { requestId: string; scoreConfigId: string; value: string; comment?: string } = {
+      requestId: item.id,
+      scoreConfigId: config.id,
+      value: textValue.trim(),
+    }
+    if (comment.trim()) result.comment = comment.trim()
+    return result
+  }
+
   async function handleSave() {
     setError('')
-    if (stars == null) { setError('Pick a rating first'); return }
+    const payload = buildPayload()
+    if (!payload) {
+      setError(
+        config?.data_type === 'TEXT'
+          ? 'Write something first'
+          : 'Pick a rating first',
+      )
+      return
+    }
     try {
-      await save.mutateAsync({
-        requestId: item.id,
-        score: (stars - 1) / 4,
-        rawScore: stars,
-        ...(comment.trim() && { comment: comment.trim() }),
-      })
+      await save.mutateAsync(payload)
       onSaved()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save')
@@ -131,25 +352,62 @@ function ScoringPanel({
   }
 
   const isUpdate = !!item.human_eval
+  const isStarsLayout =
+    config.data_type === 'NUMERIC'
+    && (config.min_value ?? 0) === 0
+    && (config.max_value ?? 1) === 1
 
   return (
     <div className="border-t border-border p-4 bg-bg-elev space-y-3">
       <div className="flex items-center gap-3 flex-wrap">
         <span className="font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint">
-          Your rating
+          {config.name}
         </span>
-        <StarRating value={stars} onChange={setStars} />
-        {/* Normalized math is an engineering detail; expose it only as a
-            tooltip on hover so the rating row stays visually quiet. */}
-        {stars != null && (
-          <span
-            className="font-mono text-[11px] text-text-muted"
-            title={`Normalized score = (${stars} − 1) / 4 = ${(((stars - 1) / 4) * 100).toFixed(0)}`}
-          >
-            {stars}/5
-          </span>
+
+        {config.data_type === 'NUMERIC' && (
+          isStarsLayout ? (
+            <>
+              <StarRating
+                value={numericValue == null ? null : Math.max(1, Math.min(5, Math.round(numericValue <= 1 ? numericValue * 4 + 1 : numericValue)))}
+                onChange={(stars) => setNumericValue(stars)}
+              />
+              {numericValue != null && (
+                <span className="font-mono text-[11px] text-text-muted">
+                  {Math.max(1, Math.min(5, Math.round(numericValue <= 1 ? numericValue * 4 + 1 : numericValue)))}/5
+                </span>
+              )}
+            </>
+          ) : (
+            <NumericSlider
+              value={numericValue}
+              min={config.min_value ?? 0}
+              max={config.max_value ?? 1}
+              onChange={setNumericValue}
+            />
+          )
+        )}
+
+        {config.data_type === 'CATEGORICAL' && (
+          <CategoricalRating
+            categories={config.categories ?? []}
+            value={categoricalValue}
+            onChange={setCategoricalValue}
+          />
+        )}
+
+        {config.data_type === 'BOOLEAN' && (
+          <BooleanRating
+            value={booleanValue}
+            onChange={setBooleanValue}
+            trueLabel={config.bool_true_label ?? 'Pass'}
+            falseLabel={config.bool_false_label ?? 'Fail'}
+          />
         )}
       </div>
+
+      {config.data_type === 'TEXT' && (
+        <TextRating value={textValue} onChange={setTextValue} />
+      )}
 
       <div>
         <label className="block font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint mb-1">
@@ -173,12 +431,41 @@ function ScoringPanel({
         <button
           type="button"
           onClick={() => void handleSave()}
-          disabled={save.isPending || stars == null}
+          disabled={save.isPending}
           className="font-mono text-[11.5px] px-3 py-[6px] rounded-[5px] bg-text text-bg font-medium hover:opacity-90 disabled:opacity-40"
         >
           {save.isPending ? 'Saving…' : isUpdate ? 'Update' : 'Save rating'}
         </button>
       </div>
+    </div>
+  )
+}
+
+function NumericSlider({
+  value,
+  min,
+  max,
+  onChange,
+}: {
+  value: number | null
+  min: number
+  max: number
+  onChange: (v: number) => void
+}) {
+  return (
+    <div className="flex items-center gap-2 min-w-[200px]">
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={(max - min) / 100}
+        value={value ?? (min + max) / 2}
+        onChange={(e) => onChange(Number(e.target.value))}
+        className="flex-1"
+      />
+      <span className="font-mono text-[11px] text-text-muted tabular-nums w-12 text-right">
+        {value == null ? '—' : value.toFixed(2)}
+      </span>
     </div>
   )
 }
@@ -189,10 +476,12 @@ function ItemCard({
   item,
   focused,
   onFocus,
+  activeConfig,
 }: {
   item: AnnotationQueueItem
   focused: boolean
   onFocus: () => void
+  activeConfig: ScoreConfig | null
 }) {
   const userMsg = useMemo(() => extractRequestUserText(item.request_body), [item.request_body])
   const responseText = useMemo(() => extractResponseText(item.response_body), [item.response_body])
@@ -230,7 +519,7 @@ function ItemCard({
           )}
           {item.human_eval && (
             <div className="flex items-center gap-1 font-mono text-[10.5px] text-good">
-              <span>You: {fmtScore(item.human_eval.score)}</span>
+              <span>You: {existingScoreLabel(item.human_eval, activeConfig)}</span>
             </div>
           )}
         </div>
@@ -271,7 +560,12 @@ function ItemCard({
         </div>
       </div>
 
-      <ScoringPanel key={item.id} item={item} onSaved={() => { /* react-query invalidation handles refresh */ }} />
+      <ScoringPanel
+        key={`${item.id}:${activeConfig?.id ?? 'noconfig'}`}
+        item={item}
+        config={activeConfig}
+        onSaved={() => { /* react-query invalidation handles refresh */ }}
+      />
     </div>
   )
 }
@@ -284,12 +578,28 @@ export function AnnotationClient() {
   const mounted = useMounted()
 
   const prompts = usePrompts()
+  const scoreConfigs = useScoreConfigs()
 
   // URL-backed filters — shareable + survive reload.
   const promptName = sp.get('prompt') ?? ''
   const unscoredOnly = sp.get('unscored') === '1'
   const lowJudgeScoreOnly = sp.get('lowjudge') === '1'
   const page = Math.max(1, parseInt(sp.get('page') ?? '1', 10))
+  // Active score config is URL-backed too so a deep link onto someone
+  // else's machine renders the right widget. Empty string = workspace
+  // default (the first config returned by the API, sorted by
+  // is_default DESC, created_at DESC).
+  const configIdParam = sp.get('config') ?? ''
+
+  const activeConfigList = useMemo(() => scoreConfigs.data ?? [], [scoreConfigs.data])
+  const activeConfig = useMemo(() => {
+    if (activeConfigList.length === 0) return null
+    if (configIdParam) {
+      const found = activeConfigList.find((c) => c.id === configIdParam)
+      if (found) return found
+    }
+    return activeConfigList.find((c) => c.is_default) ?? activeConfigList[0] ?? null
+  }, [activeConfigList, configIdParam])
 
   function updateQuery(updates: Record<string, string | null>) {
     const next = new URLSearchParams(sp.toString())
@@ -308,13 +618,55 @@ export function AnnotationClient() {
 
   const items = useMemo(() => queue.data ?? [], [queue.data])
   const scoredCount = items.filter((i) => !!i.human_eval).length
-  const humanScores = items
-    .map((i) => i.human_eval?.score)
-    .filter((s): s is number => s != null)
-  const avgHuman = humanScores.length > 0
-    ? humanScores.reduce((a, b) => a + b, 0) / humanScores.length
-    : null
   const judgeCount = items.filter((i) => i.llm_judge_score != null).length
+
+  // Aggregate human scores by the active config's type. NUMERIC →
+  // average. CATEGORICAL → top label + share. BOOLEAN → pass rate.
+  // TEXT → sample count only.
+  const aggregate = useMemo((): { label: string; value: string } => {
+    if (!activeConfig) return { label: 'Avg human score', value: '—' }
+    if (activeConfig.data_type === 'NUMERIC') {
+      const values = items
+        .map((i) => i.human_eval?.value_number ?? i.human_eval?.score)
+        .filter((s): s is number => s != null)
+      if (values.length === 0) return { label: 'Avg human score', value: '—' }
+      const avg = values.reduce((a, b) => a + b, 0) / values.length
+      return { label: 'Avg human score', value: fmtScore(avg) }
+    }
+    if (activeConfig.data_type === 'CATEGORICAL') {
+      const counts = new Map<string, number>()
+      for (const i of items) {
+        const v = i.human_eval?.value_string
+        if (v) counts.set(v, (counts.get(v) ?? 0) + 1)
+      }
+      if (counts.size === 0) return { label: 'Top category', value: '—' }
+      let topLabel = ''
+      let topCount = 0
+      let total = 0
+      counts.forEach((c, label) => {
+        total += c
+        if (c > topCount) { topCount = c; topLabel = label }
+      })
+      const share = total > 0 ? Math.round((topCount / total) * 100) : 0
+      return { label: 'Top category', value: `${truncate(topLabel, 10)} ${share}%` }
+    }
+    if (activeConfig.data_type === 'BOOLEAN') {
+      let pass = 0
+      let total = 0
+      for (const i of items) {
+        const v = i.human_eval?.value_boolean
+        if (v == null) continue
+        total += 1
+        if (v) pass += 1
+      }
+      if (total === 0) return { label: 'Pass rate', value: '—' }
+      return { label: 'Pass rate', value: `${Math.round((pass / total) * 100)}%` }
+    }
+    // TEXT
+    let textCount = 0
+    for (const i of items) if (i.human_eval?.value_string != null) textCount += 1
+    return { label: 'Notes captured', value: String(textCount) }
+  }, [items, activeConfig])
 
   // Client-side pagination — server returns the whole queue up to its
   // internal limit. Slice to a reasonable page so large queues stay
@@ -342,24 +694,69 @@ export function AnnotationClient() {
       if (e.key === 'ArrowDown' || e.key === 'j') {
         e.preventDefault()
         setFocusedIdx((i) => Math.min(pageItems.length - 1, i + 1))
-      } else if (e.key === 'ArrowUp' || e.key === 'k') {
+        return
+      }
+      if (e.key === 'ArrowUp' || e.key === 'k') {
         e.preventDefault()
         setFocusedIdx((i) => Math.max(0, i - 1))
-      } else if (['1', '2', '3', '4', '5'].includes(e.key)) {
-        const stars = Number(e.key)
-        const target = pageItems[focusedIdx]
-        if (!target) return
-        e.preventDefault()
-        save.mutate({
-          requestId: target.id,
-          score: (stars - 1) / 4,
-          rawScore: stars,
-        })
+        return
       }
+
+      const target = pageItems[focusedIdx]
+      if (!target || !activeConfig) return
+
+      // Type-aware quick-rate shortcuts. Each branch validates the key
+      // belongs to the current widget so a stray "y" doesn't confuse
+      // a numeric workspace.
+      if (activeConfig.data_type === 'NUMERIC' && ['1', '2', '3', '4', '5'].includes(e.key)) {
+        const stars = Number(e.key)
+        const min = activeConfig.min_value ?? 0
+        const max = activeConfig.max_value ?? 1
+        const isStarsLayout = min === 0 && max === 1
+        const numeric = isStarsLayout ? (stars - 1) / 4 : Math.min(max, Math.max(min, stars))
+        e.preventDefault()
+        const payload: { requestId: string; scoreConfigId: string; value: number; rawScore?: number } = {
+          requestId: target.id,
+          scoreConfigId: activeConfig.id,
+          value: numeric,
+        }
+        if (isStarsLayout) payload.rawScore = stars
+        save.mutate(payload)
+        return
+      }
+      if (activeConfig.data_type === 'CATEGORICAL') {
+        const idx = ['1', '2', '3', '4', '5', '6', '7', '8', '9'].indexOf(e.key)
+        const cats = activeConfig.categories ?? []
+        if (idx >= 0 && idx < cats.length) {
+          const chosen = cats[idx]
+          if (chosen) {
+            e.preventDefault()
+            save.mutate({
+              requestId: target.id,
+              scoreConfigId: activeConfig.id,
+              value: chosen,
+            })
+          }
+        }
+        return
+      }
+      if (activeConfig.data_type === 'BOOLEAN') {
+        if (e.key === 'y' || e.key === 'Y' || e.key === 'p' || e.key === '1') {
+          e.preventDefault()
+          save.mutate({ requestId: target.id, scoreConfigId: activeConfig.id, value: true })
+          return
+        }
+        if (e.key === 'n' || e.key === 'N' || e.key === 'f' || e.key === '0') {
+          e.preventDefault()
+          save.mutate({ requestId: target.id, scoreConfigId: activeConfig.id, value: false })
+          return
+        }
+      }
+      // TEXT has no quick-rate.
     }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
-  }, [pageItems, focusedIdx, save])
+  }, [pageItems, focusedIdx, save, activeConfig])
 
   // Scroll focused card into view on focus change.
   const cardsRef = useRef<Array<HTMLDivElement | null>>([])
@@ -391,13 +788,15 @@ export function AnnotationClient() {
         <h1 className="sr-only">Annotation</h1>
       </div>
 
-      {/* Stat strip — Queue / Rated / Avg human / Judge coverage. Wraps on mobile. */}
+      {/* Stat strip — Queue / Rated / Type-aware aggregate / Judge coverage.
+          Aggregate label & value switch with the active config so a
+          BOOLEAN workspace sees pass rate instead of a meaningless avg. */}
       <div className="shrink-0 border-b border-border">
         <div className="grid grid-cols-2 md:grid-cols-4">
           {[
             { label: 'In queue',       value: String(items.length) },
             { label: 'Rated by you',   value: String(scoredCount) },
-            { label: 'Avg human score', value: avgHuman != null ? fmtScore(avgHuman) : '—' },
+            { label: aggregate.label,  value: aggregate.value },
             { label: 'Judge coverage', value: items.length > 0 ? `${Math.round((judgeCount / items.length) * 100)}%` : '—' },
           ].map((s, i) => (
             <div
@@ -460,6 +859,35 @@ export function AnnotationClient() {
           />
           Low judge score (&lt;50)
         </label>
+        {activeConfigList.length > 0 && (
+          <div className="flex items-center gap-1.5">
+            <span className="font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint">
+              Score config
+            </span>
+            <Select
+              value={activeConfig?.id ?? ''}
+              onValueChange={(v) => updateQuery({ config: v || null })}
+            >
+              <SelectTrigger className="w-auto h-7 rounded-[4px] text-[11.5px]">
+                <SelectValue placeholder="Default" />
+              </SelectTrigger>
+              <SelectContent>
+                {activeConfigList.map((c) => (
+                  <SelectItem key={c.id} value={c.id}>
+                    {c.name} · {c.data_type.toLowerCase()}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Link
+              href="/settings/score-configs"
+              className="font-mono text-[10.5px] text-text-faint hover:text-text-muted"
+              title="Manage score configs"
+            >
+              ⚙
+            </Link>
+          </div>
+        )}
         <span className="flex-1" />
         <span className="font-mono text-[11px] text-text-faint">
           {mounted ? `${items.length} requests · ${scoredCount} rated by you` : ' '}
@@ -512,6 +940,7 @@ export function AnnotationClient() {
                   item={item}
                   focused={idx === focusedIdx}
                   onFocus={() => setFocusedIdx(idx)}
+                  activeConfig={activeConfig}
                 />
               </div>
             ))}

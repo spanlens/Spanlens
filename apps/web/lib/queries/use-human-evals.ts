@@ -17,9 +17,18 @@ export interface AnnotationQueueItem {
   response_body: Record<string, unknown> | null
   llm_judge_score: number | null
   human_eval: {
-    score: number
+    // Legacy NUMERIC score; nullable so categorical/boolean/text rows
+    // can save without inventing a fake float.
+    score: number | null
     raw_score: number | null
     comment: string | null
+    // 4B.1 typed value columns. Exactly one of value_number /
+    // value_string / value_boolean is non-null for a given row; the
+    // matching score_config row decides which.
+    score_config_id: string | null
+    value_number: number | null
+    value_string: string | null
+    value_boolean: boolean | null
   } | null
 }
 
@@ -78,8 +87,16 @@ export function useAnnotationQueue(filters: QueueFilters = {}) {
 
 export interface SaveHumanEvalInput {
   requestId: string
-  score: number       // normalized 0..1
-  rawScore?: number   // UI value (e.g. 1..5)
+  // 4B.1: explicit config + typed value path. When `scoreConfigId` is
+  // omitted the server falls back to the workspace's default NUMERIC
+  // config and validates `value` (or legacy `score`) against it.
+  scoreConfigId?: string
+  value?: number | string | boolean
+  // Legacy NUMERIC-only fields kept for backward compatibility.
+  // `score` is required iff `value` is not supplied AND the workspace
+  // default is NUMERIC. Pre-4B.1 callers can keep sending it unchanged.
+  score?: number       // normalized 0..1
+  rawScore?: number    // UI value (e.g. 1..5)
   comment?: string
 }
 
