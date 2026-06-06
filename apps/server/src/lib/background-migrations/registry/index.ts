@@ -25,6 +25,8 @@
 import type { BackgroundMigration } from '../index.js'
 import { noopHealthcheck } from './migrations/noop-healthcheck.js'
 import { backfillEventsFromRequests } from './migrations/backfill-events-from-requests.js'
+import { backfillTracesFromSupabase } from './migrations/backfill-traces-from-supabase.js'
+import { backfillSpansFromSupabase } from './migrations/backfill-spans-from-supabase.js'
 
 const REGISTRY = new Map<string, BackgroundMigration>([
   // Always-registered no-op so the cron has something to exercise on
@@ -36,6 +38,14 @@ const REGISTRY = new Map<string, BackgroundMigration>([
   // name='backfill-events-from-requests' to start it; the cron will
   // pick it up on the next 5-minute tick.
   [backfillEventsFromRequests.name, backfillEventsFromRequests],
+
+  // Phase 5.1 PR-7a — backfill historical traces and spans from
+  // Postgres into the unified events table. Run traces first (parent
+  // rows) then spans. INSERT one row per migration:
+  //   name='backfill-traces-from-supabase'
+  //   name='backfill-spans-from-supabase'
+  [backfillTracesFromSupabase.name, backfillTracesFromSupabase],
+  [backfillSpansFromSupabase.name, backfillSpansFromSupabase],
 ])
 
 export function getRegistry(): ReadonlyMap<string, BackgroundMigration> {
