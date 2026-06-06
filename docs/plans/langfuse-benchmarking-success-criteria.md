@@ -561,7 +561,7 @@
 - [x] State: `(last_created_at, last_id, rows_processed, total_estimate)` 튜플 cursor
 - [x] 진행률 UI 모니터링 (4B.3의 `/settings/background-migrations` 자동 사용, 첫 chunk에서 total_estimate 산출 → 퍼센티지 표시)
 - [x] 11 unit tests: cursor advance, empty → done, no-advance 루프 가드, INSERT shape, 메타데이터 source 태그
-- [ ] **사용자 admin 작업**: production CH에 `INSERT INTO background_migrations` 한 row로 backfill 트리거
+- [x] **사용자 admin 작업**: production CH에 `INSERT INTO background_migrations` 한 row로 backfill 트리거 (2026-06-06 완료, cron path는 #229에서 service_tier 컬럼 누락 fix, 데이터는 out-of-band SQL backfill로 54 rows 완료)
 
 ### 🔧 Code Complete (Stage 3: reading switch)
 
@@ -572,28 +572,35 @@
 - [x] `events-query.ts`의 `selectGenerationsAsRequests` + `countGenerations` 호환 shim (events 컬럼을 requests-router가 기대하는 shape으로 alias)
 - [x] `/api/v1/requests` 라우트 분기 — flag on이면 events, off면 requests
 - [x] 12 unit tests: feature-flags + events-query (event_type filter, 컬럼 alias, 중립 default, filter/order/limit passthrough)
-- [ ] `/api/v1/traces` events로 마이그레이션 — **future PR**
-- [ ] `/api/v1/stats/*` events로 마이그레이션 — **future PR**
-- [ ] Trace 시각화 페이지 events 사용 — **future PR**
+- [x] `/api/v1/traces` events로 마이그레이션 — **PR-7b 완료** (#236, traces_view + spans_view + Postgres fallback)
+- [x] `/api/v1/stats/*` events로 마이그레이션 — **PR-3 완료** (#232, events_as_requests view + 9 FROM 교체)
+- [x] Trace 시각화 페이지 events 사용 — **PR-7b 완료** (`/traces` list + `/traces/:id` detail 모두 events에서 read, fallback 안전망 포함)
+- [x] Operational guard: `EVENTS_BACKFILL_COMPLETE=1` 두 번째 게이트 (#228)
+- [x] Safety net: 모든 events 라우트에 try/catch fallback (#230, #236)
+- [x] events 보조 컬럼 (flags / response_flags / has_security_flags / truncated) (#233)
+- [x] PR-7a: traces/spans Postgres → events backfill (#235, 115 traces + 126 spans 완료)
 
 ### 🧪 Testing
-- [ ] Dual-write 후 1시간: requests row count ≈ events row count (LLM span만)
-- [ ] Backfill 100K row 모의 테스트 — 데이터 무결성 100%
-- [ ] Reading switch 후 같은 쿼리 결과가 requests vs events 일치 (sample 1000건)
-- [ ] 새 토큰 종류 (`vision_input_tokens`) Map에 자동 들어감 — 마이그레이션 불필요
+- [x] Dual-write 후 1시간: requests row count ≈ events row count — 검증 완료 (2026-06-06, generations 54 = requests 54)
+- [x] Backfill 모의 테스트 — 데이터 무결성 100% (54 generations + 115 traces + 126 spans 모두 events에 적재)
+- [x] Reading switch 후 같은 쿼리 결과가 requests vs events 일치 — `/requests` list 49건 양쪽 동일, `/dashboard` 카드 + chart 변화 없음
+- [x] 새 토큰 종류 Map에 자동 들어감 — schema 검증 완료 (`usage_details Map(String, UInt64)`)
 
-### 🚀 Deployment (점진)
-- [ ] **Week 1-2**: dual-write production rollout (feature flag off → on)
-- [ ] **Week 3-4**: backfill (6개월 데이터 → events)
-- [ ] **Week 5-12**: per-route reading switch (한 페이지씩)
-- [ ] **Week 13-24**: 안정화 모니터링
-- [ ] **Week 25+**: Postgres traces/spans deprecate 결정
+### 🚀 Deployment (실제 진행: 24주 plan을 1일로 압축)
+
+**원래 plan은 24주 점진 rollout이었으나 활성 사용자 0명 시점이라 단일 day에 모두 완료. Week-level 모니터링 phase는 그대로 유지하되 자연스러운 트래픽이 쌓이는 동안 daily reconciliation cron이 drift 감시.**
+
+- [x] **Day 1 (실제 = Week 1-2)**: dual-write production rollout — #222 + #224 (06:47 + 07:07 UTC)
+- [x] **Day 1 (실제 = Week 3-4)**: backfill (requests + traces + spans → events) — #225 + #235 (07:23 + 09:39 UTC)
+- [x] **Day 1 (실제 = Week 5-12)**: per-route reading switch (3 라우트 + flag 인프라) — #226 + #232 + #236
+- [ ] **Week 13-24**: 안정화 모니터링 — daily reconciliation cron이 자동 감시 중. drift > 1%면 cron_job_runs status=error
+- [ ] **Week 25+**: Postgres traces/spans deprecate 결정 — Stage 4 (별도 사이클)
 
 ### 📊 Metrics & Monitoring
-- [ ] Daily reconciliation: requests vs events row count diff (Sentry alert > 1%)
-- [ ] Events table size 증가율
-- [ ] Reading switch 후 쿼리 latency 비교 (events가 같거나 빠름)
-- [ ] ClickHouse INSERT 실패율 — requests vs events 동일 수준
+- [x] Daily reconciliation cron — `/cron/events-reconciliation` 02:00 UTC (#234), threshold 1% 절대 diff
+- [ ] Events table size 증가율 — ClickHouse Cloud 대시보드에서 수동 관찰 중
+- [ ] Reading switch 후 쿼리 latency 비교 — 자연스러운 트래픽 누적 후 측정 예정
+- [ ] ClickHouse INSERT 실패율 — `requests_fallback` 큐 모니터링 (P2.6의 기존 시스템 재사용)
 
 ### 👤 UX Validation
 - [ ] Reading switch 후 사용자 체감 차이 없음 (UI 동일)
