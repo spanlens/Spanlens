@@ -88,9 +88,44 @@ export default function ProjectsDocs() {
       <ul>
         <li><code>name</code>, human label (e.g. &ldquo;prod-backend&rdquo;)</li>
         <li><code>key_prefix</code>, first 15 chars (Spanlens key only), shown in UI for ID</li>
-        <li><code>last_used_at</code>, updated on every successful auth</li>
+        <li>
+          <code>last_used_at</code>, updated on every successful auth (throttled to one
+          write per key per 5 minutes so the proxy hot path stays cheap)
+        </li>
         <li><code>is_active</code>, revoke flag; inactive keys return 401</li>
       </ul>
+
+      <h3>Stale key surfacing</h3>
+      <p>
+        The dashboard classifies each active key by how long it has been idle and surfaces
+        forgotten keys before they leak:
+      </p>
+      <ul>
+        <li>
+          <strong>30–89 days idle</strong> → neutral &ldquo;Stale&rdquo; badge on the key row
+          in <a href="/projects">/projects</a>.
+        </li>
+        <li>
+          <strong>90+ days idle</strong> → accent &ldquo;Consider revoking&rdquo; badge,
+          surfaced in two extra places so it&apos;s hard to miss:
+          <ul>
+            <li>
+              The sidebar <strong>Projects &amp; Keys</strong> entry carries a red count
+              of stale + revoke-tier keys.
+            </li>
+            <li>
+              The dashboard <strong>Needs Attention</strong> strip shows a warning card
+              with a sample key name and a deep link to <a href="/projects">/projects</a>.
+            </li>
+          </ul>
+        </li>
+      </ul>
+      <p>
+        Keys that have never authenticated fall back to <code>created_at</code> as the
+        idleness floor — a brand-new key isn&apos;t flagged for the first 30 days. Revoked
+        keys (<code>is_active=false</code>) are excluded from staleness reporting entirely:
+        once you&apos;ve already disabled a key, nagging about it is noise.
+      </p>
 
       <h2>Using it</h2>
 
@@ -130,14 +165,29 @@ export default function ProjectsDocs() {
           changes.
         </li>
         <li>
-          <strong>Provider keys deactivated</strong> via the trash icon (soft delete, flips{' '}
-          <code>is_active = false</code>, preserves request logs).
-        </li>
-        <li>
-          <strong>Spanlens key hard-deleted</strong> via the trash icon on the Spanlens key
-          row. <code>ON DELETE CASCADE</code> removes all attached provider keys.
+          <strong>Deleted with a 72-hour grace period.</strong> The trash icon on a
+          Spanlens key or a provider key flips <code>is_active = false</code> right away
+          so the proxy stops accepting it, then queues a hard delete that runs every six
+          hours. While the row is in the queue you can restore it from{' '}
+          <a href="/settings">Settings</a> → <strong>Pending deletions</strong>. After the
+          grace window the hard delete runs and the row is gone for good.
         </li>
       </ul>
+
+      <h3>Restoring an accidental deletion</h3>
+      <p>
+        Misclicked the trash icon? Open <a href="/settings">Settings</a> →{' '}
+        <strong>Pending deletions</strong>. Every soft-deleted key, provider key, and
+        prompt version shows up there with a timer; click <em>Restore</em> to reactivate
+        the row. After the timer expires the row is hard-deleted and restore is no longer
+        possible — you&apos;d have to issue a fresh key (the SHA-256 hash is irreversible).
+      </p>
+      <p>
+        Audit events are recorded both for the original delete request
+        (<code>api_key.delete</code> / <code>provider_key.delete</code>) and for the
+        restore (<code>pending_deletion.restore</code>), so the trail stays intact even
+        when the action is reversed.
+      </p>
 
       <p>
         The page also surfaces a wizard hint: <code>npx @spanlens/cli init</code> can
@@ -159,7 +209,7 @@ POST   /api/v1/api-keys/issue                { "name": "prod-backend",
                                                "projectId": "<uuid>" }
 # → { "id": "...", "key": "sl_live_..." }   ← shown ONCE
 PATCH  /api/v1/api-keys/:id                  { "is_active": false }    # toggle
-DELETE /api/v1/api-keys/:id                  # hard delete (CASCADE provider_keys)
+DELETE /api/v1/api-keys/:id                  # is_active=false + 72h delete queue
 
 # ── Provider keys (under a specific Spanlens key) ─────────────
 GET    /api/v1/provider-keys?apiKeyId=<spanlens-key-uuid>
@@ -169,7 +219,12 @@ POST   /api/v1/provider-keys                 { "api_key_id": "<uuid>",
                                                "name": "prod-openai" }
 PATCH  /api/v1/provider-keys/:id             { "key": "sk-rotated..." }   # rotate
 PATCH  /api/v1/provider-keys/:id             { "name": "renamed" }        # rename
-DELETE /api/v1/provider-keys/:id             # soft delete (is_active=false)`}</CodeBlock>
+DELETE /api/v1/provider-keys/:id             # is_active=false + 72h delete queue
+
+# ── Pending deletions queue (restore within 72h) ──────────────
+GET    /api/v1/pending-deletions             # active queue
+GET    /api/v1/pending-deletions/history     # terminal rows (executed or cancelled)
+POST   /api/v1/pending-deletions/:id/restore # cancel + flip is_active back to true`}</CodeBlock>
 
       <h3>Tagging requests with a project from client code</h3>
       <p>
