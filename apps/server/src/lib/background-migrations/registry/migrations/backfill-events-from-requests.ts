@@ -67,7 +67,6 @@ interface RequestRow {
   provider_key_id: string | null
   user_id: string | null
   session_id: string | null
-  service_tier: string
   created_at: string
 }
 
@@ -124,7 +123,6 @@ function mapRequestToEventRow(r: RequestRow): Record<string, unknown> {
   }
 
   const metadata: Record<string, string> = { source: 'backfill_requests' }
-  if (r.service_tier) metadata['service_tier'] = r.service_tier
 
   // ClickHouse SELECT can return non-null Nullable(UUID) as the
   // string '00000000-...' when DEFAULT was applied — treat that as
@@ -218,7 +216,6 @@ export const backfillEventsFromRequests: BackgroundMigration = {
           toString(provider_key_id) AS provider_key_id,
           user_id,
           session_id,
-          service_tier,
           toString(created_at) AS created_at
         FROM requests
         WHERE (created_at, id) > (parseDateTime64BestEffort({cursor_ts:String}), {cursor_id:UUID})
