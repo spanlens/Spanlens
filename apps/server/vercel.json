@@ -19,6 +19,7 @@
     { "path": "/cron/replay-fallback",            "schedule": "*/5 * * * *" },
     { "path": "/cron/check-past-due-downgrades",  "schedule": "0 10 * * *" },
     { "path": "/cron/execute-pending-deletions",  "schedule": "0 */6 * * *" },
+    { "path": "/cron/run-background-migrations",  "schedule": "*/5 * * * *" },
     { "path": "/cron/keep-warm",                  "schedule": "*/5 * * * *" }
   ]
 }
