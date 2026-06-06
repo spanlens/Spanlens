@@ -21,6 +21,9 @@ evalsRouter.post('/evaluators', async (c) => {
     name?: unknown
     type?: unknown
     config?: unknown
+    // 4B.1c — optional pointer at a typed score config. NULL preserves
+    // the legacy NUMERIC 0..1 behaviour.
+    scoreConfigId?: unknown
   }
   try {
     body = (await c.req.json()) as typeof body
@@ -64,6 +67,22 @@ evalsRouter.post('/evaluators', async (c) => {
     .eq('name', promptName)
   if (!promptCount) return c.json({ error: 'Prompt not found' }, 404)
 
+  // Optional score config — verified to belong to the same org so a
+  // caller can't bind an evaluator to someone else's config row.
+  let scoreConfigId: string | null = null
+  if (typeof body.scoreConfigId === 'string' && body.scoreConfigId.trim().length > 0) {
+    const candidate = body.scoreConfigId.trim()
+    const { data: sc } = await supabaseAdmin
+      .from('score_configs')
+      .select('id')
+      .eq('id', candidate)
+      .eq('organization_id', orgId)
+      .is('archived_at', null)
+      .maybeSingle()
+    if (!sc) return c.json({ error: 'scoreConfigId not found' }, 404)
+    scoreConfigId = sc.id
+  }
+
   const { data, error } = await supabaseAdmin
     .from('evaluators')
     .insert({
@@ -73,6 +92,7 @@ evalsRouter.post('/evaluators', async (c) => {
       type,
       config: { criterion, judge_provider: judgeProvider, judge_model: judgeModel, scale_min: scaleMin, scale_max: scaleMax },
       created_by: userId ?? null,
+      score_config_id: scoreConfigId,
     })
     .select()
     .single()

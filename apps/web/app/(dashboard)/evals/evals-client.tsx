@@ -34,6 +34,7 @@ import {
   type EvaluatorTemplate as DbEvaluatorTemplate,
   type EvaluatorTemplateCategory,
 } from '@/lib/queries/use-evaluator-templates'
+import { useScoreConfigs } from '@/lib/queries/use-score-configs'
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '@/components/ui/select'
 
 // Fallback used only when /api/v1/models is still loading. Real list comes
@@ -187,6 +188,12 @@ function NewEvaluatorDialog({
   )
   const [scaleMin] = useState(0)
   const [scaleMax] = useState(1)
+  // Optional pointer at a workspace score_config. Empty string = use the
+  // legacy NUMERIC 0..1 path (omits scoreConfigId from the POST body so
+  // the server keeps the historic behaviour for pre-4B.1c evaluators).
+  const [scoreConfigId, setScoreConfigId] = useState<string>('')
+  const scoreConfigsQuery = useScoreConfigs()
+  const scoreConfigsList = useMemo(() => scoreConfigsQuery.data ?? [], [scoreConfigsQuery.data])
   const [error, setError] = useState('')
 
   async function handleSubmit(e: React.FormEvent) {
@@ -207,6 +214,7 @@ function NewEvaluatorDialog({
           scale_min: scaleMin,
           scale_max: scaleMax,
         },
+        ...(scoreConfigId ? { scoreConfigId } : {}),
       })
       onClose()
       setName(''); setCriterion(''); setPromptName('')
@@ -299,6 +307,36 @@ function NewEvaluatorDialog({
               </Select>
             </div>
           </div>
+
+          {/* Optional typed score config. When omitted the evaluator
+              falls back to the legacy NUMERIC 0..1 scoring path so
+              existing dashboards keep working unchanged. */}
+          {scoreConfigsList.length > 0 && (
+            <div>
+              <label className="block font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint mb-1">
+                Score config (optional)
+              </label>
+              <Select
+                value={scoreConfigId || 'NONE'}
+                onValueChange={(v) => setScoreConfigId(v === 'NONE' ? '' : v)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Numeric 0..1 (default)" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="NONE">Numeric 0..1 (default)</SelectItem>
+                  {scoreConfigsList.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.name} · {c.data_type.toLowerCase()}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="mt-1 font-mono text-[10.5px] text-text-faint">
+                Pick a non-numeric config to ask the judge for a category, pass/fail, or free-text label instead of a slider score.
+              </p>
+            </div>
+          )}
 
           {error && (
             <p className="font-mono text-[11.5px] text-bad">{error}</p>
