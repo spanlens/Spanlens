@@ -40,6 +40,17 @@ export type ChangelogTag =
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
     date: '2026-06-06',
+    slug: 'llm-judge-typed-scores',
+    title: 'LLM judge can score categorical, boolean, and free-text rubrics',
+    tags: ['feature'],
+    body: [
+      'The third and final piece of today\'s typed score work. An evaluator can now point at any of your workspace\'s score configs and the LLM-as-judge runner will ask for the right shape of answer — a boolean for pass/fail rubrics, a category from your allow-list, a short free-text label, or the legacy 0..1 numeric score.',
+      'Pick the config in the New evaluator dialog. The default is still the legacy numeric path so every existing evaluator continues to run bit-identically; the new behaviour is fully opt-in. For boolean judges the run summary becomes a pass rate; for categorical and free-text it surfaces the per-category distribution and sample notes on the run page instead of a misleading average.',
+      'Under the hood: Gemini\'s strict response schema is regenerated to match the active config so its JSON output stays valid, and 23 new unit tests cover the bug-prone edges (case-sensitive categorical allow-list, boolean string aliases, the parser tolerating either `{"score": …}` or `{"value": …}` on the numeric path).',
+    ].join('\n\n'),
+  },
+  {
+    date: '2026-06-06',
     slug: 'annotation-typed-widgets',
     title: 'Annotation: type-aware rating widgets and distribution charts',
     tags: ['feature'],
