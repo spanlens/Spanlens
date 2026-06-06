@@ -359,7 +359,9 @@
 **NUMERIC/CATEGORICAL/BOOLEAN/TEXT 4가지 타입의 스코어 모두 입력/저장/집계/시각화 가능**
 
 **📅 1차 PR 머지: 2026-06-06 (#208) — backend + 관리 페이지**
-**📅 잔여: annotation 위젯 분기 + eval-runner + 차트 (별도 PR 예정)**
+**📅 2차 PR 머지: 2026-06-06 (#210) — annotation 위젯 분기 + selector + 단축키**
+**📅 3차 PR 머지: 2026-06-06 (#211) — distribution 차트 (categorical/boolean/numeric/text)**
+**📅 잔여: eval-runner judge 응답 파싱 분기 → 별도 phase (4B.1c)**
 
 ### 🔧 Code Complete (1차 PR)
 - [x] Migration `20260608010000_score_configs.sql` 적용 (production 백필 검증됨)
@@ -369,10 +371,10 @@
 - [x] `apps/server/src/lib/score-validation.ts` 신규 (타입별 검증, 29 unit tests)
 - [x] `apps/server/src/api/human-evals.ts` 수정 (config_id + value 필드, backward compat)
 - [x] `apps/web/app/(dashboard)/settings/score-configs/page.tsx` (관리 페이지)
-- [ ] `apps/server/src/lib/eval-runner.ts` 수정 (타입별 파싱) — **별도 PR**
-- [ ] `apps/server/src/lib/stats-queries.ts` 수정 (타입별 집계) — **별도 PR**
-- [ ] `apps/web/app/(dashboard)/annotation/annotation-client.tsx` 입력 위젯 분기 — **별도 PR**
-- [ ] `apps/web/components/charts/CategoricalDistribution.tsx` — **별도 PR**
+- [x] `apps/web/app/(dashboard)/annotation/annotation-client.tsx` 입력 위젯 분기 (#210)
+- [x] `apps/web/components/charts/score-distribution.tsx` — CategoricalDistribution + BoolPassRate + NumericHistogram (#211)
+- [ ] `apps/server/src/lib/eval-runner.ts` 수정 (타입별 파싱) — **4B.1c 별도 phase**: evaluators 테이블에 score_config_id FK 추가 + judge 프롬프트 재작성 + 응답 파싱 분기 필요 (production eval 안전성 검증 별도)
+- [ ] `apps/server/src/lib/stats-queries.ts` 수정 (타입별 집계) — **4B.1c**: evaluator-results 차트가 typed value 기반으로 그려지려면 stats-queries 의존 (현재 /annotation 페이지의 인라인 차트로 충분히 검증 가능)
 
 ### 🧪 Testing
 - [x] Server typecheck + lint clean
@@ -381,10 +383,10 @@
 - [x] Validation: NUMERIC 범위 밖 값 거부, CATEGORICAL 미정의 값 거부, BOOLEAN 임의 truthy 거부, TEXT 빈 문자열 거부 (모두 단위 테스트로 검증)
 - [x] CRUD UI 시각 검증 — Chrome MCP로 CATEGORICAL config 생성 + 표시 end-to-end
 - [x] 기존 numeric 데이터 backward compat: legacy POST `{ score: 0.8 }` → 기본 NUMERIC config 사용해 typed 컬럼에도 저장
-- [ ] NUMERIC: 슬라이더 → 0..1 저장 → 평균 집계 — **별도 PR**
-- [ ] CATEGORICAL: 라디오 → string 저장 → 분포 차트 — **별도 PR**
-- [ ] BOOLEAN: 토글 → pass rate 집계 — **별도 PR**
-- [ ] TEXT: textarea → 저장 + 샘플 표시 — **별도 PR**
+- [x] NUMERIC: 슬라이더/별점 → 0..1 저장 → 평균 집계 + 히스토그램 (#210, #211)
+- [x] CATEGORICAL: 라디오 칩 → string 저장 → 분포 차트 (#210, #211)
+- [x] BOOLEAN: 토글 → pass rate 집계 + split 바 (#210, #211)
+- [x] TEXT: textarea → 저장 + 첫 5개 샘플 표시 (#210, #211)
 
 ### 🚀 Deployment
 - [x] Migration prod 적용 (deploy-server.yml Apply DB migrations success)
