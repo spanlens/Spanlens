@@ -5,6 +5,7 @@ import { maskApiKeysInBody, maskApiKeys } from './pii-mask.js'
 import { scanAll, type SecurityFlag } from './security-scan.js'
 import { sendEmail, renderSecurityAlertEmail } from './resend.js'
 import { emitWebhookEvent } from './webhook-emit.js'
+import { writeRequestAsEvent } from './events-writer.js'
 
 /**
  * Customer-controlled body logging mode (sent via the `x-spanlens-log-body`
@@ -279,6 +280,17 @@ export async function logRequestAsync(data: RequestLogData): Promise<void> {
       table: 'requests',
       format: 'JSONEachRow',
       values: [clickhouseRow],
+    })
+    // ── Phase 5.1 dual-write to events ───────────────────────────────────────
+    // Best-effort. A failure here MUST NOT roll back the requests INSERT —
+    // events is still in the "shadow" stage; reads come from requests, so
+    // a missing events row is recoverable later by backfill. We log
+    // loudly so a sustained outage gets noticed, but don't escalate.
+    void writeRequestAsEvent(data, clickhouseRow).catch((err) => {
+      console.error(
+        '[logger] events shadow INSERT failed:',
+        err instanceof Error ? err.message : err,
+      )
     })
   } catch (err) {
     // ── ClickHouse fallback (P2.6) ─────────────────────────────────────────

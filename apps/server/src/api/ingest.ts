@@ -40,6 +40,8 @@ function computeDurationMs(startedAt: string | null, endedAt: string | null): nu
   return end - start
 }
 
+import { writeTraceAsEvent, writeSpanAsEvent } from '../lib/events-writer.js'
+
 // ── POST /ingest/traces ──────────────────────────────────────
 ingestRouter.post('/traces', async (c) => {
   const organizationId = c.get('organizationId')
@@ -93,6 +95,20 @@ ingestRouter.post('/traces', async (c) => {
   if (error || !data) {
     return c.json({ error: 'Failed to create trace', detail: error?.message }, 500)
   }
+
+  // Phase 5.1 dual-write to events. Best-effort — events is still
+  // the shadow store; reads come from Postgres traces.
+  void writeTraceAsEvent({
+    traceId: data.id as string,
+    organizationId,
+    projectId,
+    apiKeyId,
+    name: insert.name,
+    startedAt: (data.started_at as string) ?? new Date().toISOString(),
+    metadata: insert.metadata ?? null,
+  }).catch((err) => {
+    console.error('[ingest] trace events shadow INSERT failed:', err instanceof Error ? err.message : err)
+  })
 
   return c.json({ success: true, data }, 201)
 })
@@ -266,6 +282,23 @@ ingestRouter.post('/traces/:id/spans', async (c) => {
   if (error || !data) {
     return c.json({ error: 'Failed to create span', detail: error?.message }, 500)
   }
+
+  // Phase 5.1 dual-write to events.
+  void writeSpanAsEvent({
+    spanId: data.id as string,
+    traceId,
+    parentSpanId: insert.parent_span_id ?? null,
+    organizationId,
+    projectId: (insert as { project_id?: string }).project_id ?? '',
+    apiKeyId: null,
+    name: insert.name,
+    spanType: insert.span_type ?? null,
+    startedAt: (data.started_at as string) ?? new Date().toISOString(),
+    input: insert.input,
+    metadata: insert.metadata ?? null,
+  }).catch((err) => {
+    console.error('[ingest] span events shadow INSERT failed:', err instanceof Error ? err.message : err)
+  })
 
   return c.json({ success: true, data }, 201)
 })
