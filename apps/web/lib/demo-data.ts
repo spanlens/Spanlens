@@ -1482,7 +1482,18 @@ export const DEMO_ANNOTATION_QUEUE: AnnotationQueueItem[] = QUEUE_BASE_REQUESTS.
   response_body: { choices: [{ message: { content: q.response } }] } as Record<string, unknown>,
   llm_judge_score: q.llm_judge_score,
   human_eval: q.human_score != null
-    ? { score: q.human_score, raw_score: q.human_raw, comment: q.human_comment }
+    ? {
+        score: q.human_score,
+        raw_score: q.human_raw,
+        comment: q.human_comment,
+        // 4B.1 typed value columns are null for the demo dataset; the
+        // UI falls back to the legacy `score` column when these are
+        // missing.
+        score_config_id: null,
+        value_number: q.human_score,
+        value_string: null,
+        value_boolean: null,
+      }
     : null,
 }))
 

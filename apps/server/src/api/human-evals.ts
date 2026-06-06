@@ -140,19 +140,34 @@ humanEvalsRouter.get('/annotation/queue', async (c) => {
     }
   }
 
-  // Existing human scores by this user (to mark/filter "already scored")
+  // Existing human scores by this user (to mark/filter "already scored").
+  // The typed value columns (4B.1) are included so the dashboard can
+  // render categorical / boolean / text scores without re-querying.
   const { data: existingHuman } = await supabaseAdmin
     .from('human_evals')
-    .select('request_id, score, raw_score, comment')
+    .select('request_id, score, raw_score, comment, score_config_id, value_number, value_string, value_boolean')
     .in('request_id', requestIds)
     .eq('reviewer_id', userId ?? '')
 
-  const humanMap = new Map<string, { score: number; raw_score: number | null; comment: string | null }>()
+  interface HumanEvalRow {
+    score: number | null
+    raw_score: number | null
+    comment: string | null
+    score_config_id: string | null
+    value_number: number | null
+    value_string: string | null
+    value_boolean: boolean | null
+  }
+  const humanMap = new Map<string, HumanEvalRow>()
   for (const h of existingHuman ?? []) {
     humanMap.set(h.request_id as string, {
       score: h.score,
       raw_score: h.raw_score,
       comment: h.comment,
+      score_config_id: h.score_config_id,
+      value_number: h.value_number,
+      value_string: h.value_string,
+      value_boolean: h.value_boolean,
     })
   }
 
