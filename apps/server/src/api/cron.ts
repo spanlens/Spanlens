@@ -15,6 +15,7 @@ import { runQuotaWarningsJob } from '../lib/quota-warnings.js'
 import { snapshotAnomaliesForAllOrgs } from '../lib/anomaly-snapshot.js'
 import { runStaleKeyDigestJob } from '../lib/stale-key-digest.js'
 import { runDueMigrations } from '../lib/background-migrations/runner.js'
+import { runReconciliationCron } from '../lib/events-reconciliation.js'
 import { runLeakDetectionJob } from '../lib/leak-detection.js'
 import { sendHighConfidenceRecommendationAlerts } from '../lib/recommendation-notify.js'
 import { logCronRun } from '../lib/cron-logger.js'
@@ -584,6 +585,30 @@ cronRouter.get('/run-background-migrations', async (c) => {
     durationMs,
     ...result,
   })
+})
+
+// GET /cron/events-reconciliation
+// Phase 5.1 Stage 3 — daily integrity check that the dual-write hasn't
+// drifted. Compares the row count of `requests` vs `events` (filtered
+// to event_type='generation') over a recent 24h window. Out-of-tolerance
+// drift (>1%) marks the cron run failed so it surfaces in Vercel logs
+// and the cron_job_runs table. Schedule: 02:00 UTC daily so it runs
+// after the day's traffic has settled but before the operator's
+// morning dashboard glance.
+cronRouter.get('/events-reconciliation', async (c) => {
+  const authFail = assertCronAuth(c.req.header('Authorization'))
+  if (authFail) return c.json({ error: authFail }, 401)
+
+  const started = Date.now()
+  try {
+    const result = await runReconciliationCron()
+    await logCronRun('events-reconciliation', 'ok', Date.now() - started)
+    return c.json({ ok: true, ts: new Date().toISOString(), ...result })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'unknown error'
+    await logCronRun('events-reconciliation', 'error', Date.now() - started, message)
+    return c.json({ ok: false, ts: new Date().toISOString(), error: message }, 200)
+  }
 })
 
 // All three steps run in parallel via Promise.allSettled — one slow / failing
