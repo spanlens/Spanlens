@@ -61,7 +61,9 @@ describe('internal-tracing — enabled (env present)', () => {
     const id = await trace.creationPromise
     expect(id).toBe('trc_1')
     expect(fetchMock).toHaveBeenCalledTimes(1)
-    const [url, init] = fetchMock.mock.calls[0]
+    const call = fetchMock.mock.calls[0]
+    if (!call) throw new Error('fetch was not called')
+    const [url, init] = call as [string, RequestInit]
     expect(url).toBe('https://example.test/ingest/traces')
     const initHeaders = init.headers as Record<string, string>
     expect(initHeaders['Authorization']).toBe('Bearer sl_live_test')
@@ -109,8 +111,10 @@ describe('internal-tracing — enabled (env present)', () => {
 
     // Two POSTs total — trace then span.
     expect(fetchMock).toHaveBeenCalledTimes(2)
-    const [, spanInit] = fetchMock.mock.calls[1]
-    expect((fetchMock.mock.calls[1][0] as string)).toBe('https://example.test/ingest/traces/trc_1/spans')
+    const spanCall = fetchMock.mock.calls[1]
+    if (!spanCall) throw new Error('span fetch not called')
+    const [spanUrl, spanInit] = spanCall as [string, RequestInit]
+    expect(spanUrl).toBe('https://example.test/ingest/traces/trc_1/spans')
     const spanBody = JSON.parse(spanInit.body as string)
     expect(spanBody.name).toBe('s')
     expect(spanBody.span_type).toBe('llm')
@@ -131,7 +135,9 @@ describe('internal-tracing — enabled (env present)', () => {
     await new Promise((r) => setTimeout(r, 5))
 
     expect(fetchMock).toHaveBeenCalledTimes(2)
-    const [url, init] = fetchMock.mock.calls[1]
+    const endCall = fetchMock.mock.calls[1]
+    if (!endCall) throw new Error('end PATCH not called')
+    const [url, init] = endCall as [string, RequestInit]
     expect(url).toBe('https://example.test/ingest/traces/trc_42')
     expect(init.method).toBe('PATCH')
     const body = JSON.parse(init.body as string)
