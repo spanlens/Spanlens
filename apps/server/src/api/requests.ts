@@ -145,10 +145,18 @@ requestsRouter.get('/', async (c) => {
           countGenerations({ scope: eventsScopeResolved, filters: combinedFilters, params }),
         ])
       } catch (eventsErr) {
-        console.error(
-          '[requests:list] events path failed, falling back to requests table:',
-          eventsErr instanceof Error ? eventsErr.message : eventsErr,
-        )
+        // Phase 5.1 Stage 3 root-cause hunt — print everything so the
+        // Vercel log makes the failure debuggable from one record.
+        console.error('[requests:list] events path failed, falling back to requests table:', {
+          message: eventsErr instanceof Error ? eventsErr.message : String(eventsErr),
+          stack: eventsErr instanceof Error ? eventsErr.stack : undefined,
+          orgId,
+          combinedFilters,
+          orderBy,
+          limit,
+          offset,
+          params,
+        })
         usedFallback = true
         const scope = await requestsScope(orgId)
         ;[rows, total] = await Promise.all([
