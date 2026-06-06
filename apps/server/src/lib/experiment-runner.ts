@@ -15,6 +15,7 @@ import { supabaseAdmin } from './db.js'
 import { aes256Decrypt } from './crypto.js'
 import { calculateCost } from './cost.js'
 import { interpolate, buildOpenAIBody } from './playground-runner.js'
+import { startInternalTrace } from './internal-tracing.js'
 
 const ITEM_CONCURRENCY = 3
 const MAX_TOKENS = 1024
@@ -386,6 +387,24 @@ export async function runExperiment(input: RunInput): Promise<void> {
     .update({ status: 'running' })
     .eq('id', experimentId)
 
+  // 4B.2b — dogfood ourselves. Every A/B experiment posts an
+  // `ab_experiment` trace to the spanlens-team workspace so we can see
+  // our own per-arm cost and judge agreement in /traces. Each dataset
+  // item becomes one `ab_item` span — we keep both arms inside a single
+  // span (with arm details in metadata) rather than spamming two spans
+  // per item, since the trace UI groups by name and a 100-item dataset
+  // would otherwise create 200 sibling spans that are hard to scan.
+  const internalTrace = startInternalTrace('ab_experiment', {
+    experiment_id: experimentId,
+    organization_id: organizationId,
+    version_a_id: versionAId,
+    version_b_id: versionBId,
+    dataset_id: datasetId,
+    evaluator_id: evaluatorId ?? null,
+    run_provider: runProvider,
+    run_model: runModel,
+  })
+
   try {
     // Load both prompt versions
     const { data: versions, error: vErr } = await supabaseAdmin
@@ -482,49 +501,81 @@ export async function runExperiment(input: RunInput): Promise<void> {
     }
 
     const outcomes = await pool(items as DatasetItemRow[], ITEM_CONCURRENCY, async (item): Promise<ItemOutcome> => {
-      // Run both arms in parallel
-      const [aResult, bResult] = await Promise.all([
-        runPrompt(versionA.content, item, runProvider, runModel, runApiKey),
-        runPrompt(versionB.content, item, runProvider, runModel, runApiKey),
-      ])
+      // One span per item covering both A/B arms + the optional judge
+      // call. End-state is decided once we know if either arm errored.
+      const itemSpan = internalTrace.startSpan('ab_item', {
+        spanType: 'chain',
+        metadata: { dataset_item_id: item.id },
+      })
 
-      const outcome: ItemOutcome = {
-        datasetItemId: item.id,
-        outputA: 'output' in aResult ? aResult.output : null,
-        outputB: 'output' in bResult ? bResult.output : null,
-        costA: 'cost' in aResult ? aResult.cost : 0,
-        costB: 'cost' in bResult ? bResult.cost : 0,
-        latencyA: 'latencyMs' in aResult ? aResult.latencyMs : null,
-        latencyB: 'latencyMs' in bResult ? bResult.latencyMs : null,
-        tokensA: 'tokens' in aResult ? aResult.tokens : 0,
-        tokensB: 'tokens' in bResult ? bResult.tokens : 0,
-        scoreA: null, scoreB: null,
-        reasoningA: null, reasoningB: null,
-        errorA: 'error' in aResult ? aResult.error : null,
-        errorB: 'error' in bResult ? bResult.error : null,
-      }
+      try {
+        // Run both arms in parallel
+        const [aResult, bResult] = await Promise.all([
+          runPrompt(versionA.content, item, runProvider, runModel, runApiKey),
+          runPrompt(versionB.content, item, runProvider, runModel, runApiKey),
+        ])
 
-      // Optionally judge both outputs
-      if (evaluatorConfig && judgeApiKey) {
-        if (outcome.outputA) {
-          const j = await callJudge(evaluatorConfig, outcome.outputA, judgeApiKey)
-          if (j) {
-            outcome.scoreA = j.score
-            outcome.reasoningA = j.reasoning
-            outcome.costA += j.cost
+        const outcome: ItemOutcome = {
+          datasetItemId: item.id,
+          outputA: 'output' in aResult ? aResult.output : null,
+          outputB: 'output' in bResult ? bResult.output : null,
+          costA: 'cost' in aResult ? aResult.cost : 0,
+          costB: 'cost' in bResult ? bResult.cost : 0,
+          latencyA: 'latencyMs' in aResult ? aResult.latencyMs : null,
+          latencyB: 'latencyMs' in bResult ? bResult.latencyMs : null,
+          tokensA: 'tokens' in aResult ? aResult.tokens : 0,
+          tokensB: 'tokens' in bResult ? bResult.tokens : 0,
+          scoreA: null, scoreB: null,
+          reasoningA: null, reasoningB: null,
+          errorA: 'error' in aResult ? aResult.error : null,
+          errorB: 'error' in bResult ? bResult.error : null,
+        }
+
+        // Optionally judge both outputs
+        if (evaluatorConfig && judgeApiKey) {
+          if (outcome.outputA) {
+            const j = await callJudge(evaluatorConfig, outcome.outputA, judgeApiKey)
+            if (j) {
+              outcome.scoreA = j.score
+              outcome.reasoningA = j.reasoning
+              outcome.costA += j.cost
+            }
+          }
+          if (outcome.outputB) {
+            const j = await callJudge(evaluatorConfig, outcome.outputB, judgeApiKey)
+            if (j) {
+              outcome.scoreB = j.score
+              outcome.reasoningB = j.reasoning
+              outcome.costB += j.cost
+            }
           }
         }
-        if (outcome.outputB) {
-          const j = await callJudge(evaluatorConfig, outcome.outputB, judgeApiKey)
-          if (j) {
-            outcome.scoreB = j.score
-            outcome.reasoningB = j.reasoning
-            outcome.costB += j.cost
-          }
-        }
-      }
 
-      return outcome
+        // Both arms ok-ish? Even partial success counts — error_a /
+        // error_b on the row is the per-arm detail.
+        const bothErrored = outcome.errorA && outcome.errorB
+        itemSpan.end({
+          status: bothErrored ? 'error' : 'completed',
+          output: {
+            cost_a_usd: outcome.costA,
+            cost_b_usd: outcome.costB,
+            score_a: outcome.scoreA,
+            score_b: outcome.scoreB,
+          },
+          costUsd: outcome.costA + outcome.costB,
+          totalTokens: outcome.tokensA + outcome.tokensB,
+          ...(bothErrored
+            ? { errorMessage: `A: ${outcome.errorA} · B: ${outcome.errorB}` }
+            : {}),
+        })
+        return outcome
+      } catch (err) {
+        itemSpan.end({
+          status: 'error',
+          errorMessage: err instanceof Error ? err.message : 'item processing threw',
+        })
+        throw err
+      }
     })
 
     // Persist results
@@ -571,6 +622,15 @@ export async function runExperiment(input: RunInput): Promise<void> {
         completed_at: new Date().toISOString(),
       })
       .eq('id', experimentId)
+    internalTrace.end({
+      status: 'completed',
+      metadata: {
+        completed_items: outcomes.length,
+        avg_score_a: avgA,
+        avg_score_b: avgB,
+        total_cost_usd: totalCost,
+      },
+    })
   } catch (err) {
     await supabaseAdmin
       .from('experiments')
@@ -580,5 +640,9 @@ export async function runExperiment(input: RunInput): Promise<void> {
         completed_at: new Date().toISOString(),
       })
       .eq('id', experimentId)
+    internalTrace.end({
+      status: 'error',
+      errorMessage: err instanceof Error ? err.message : 'Unknown error',
+    })
   }
 }
