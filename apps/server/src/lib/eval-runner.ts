@@ -16,6 +16,7 @@ import { requestsScope, selectRequests } from './requests-query.js'
 import { aes256Decrypt } from './crypto.js'
 import { calculateCost } from './cost.js'
 import { buildOpenAIBody } from './playground-runner.js'
+import { startInternalTrace } from './internal-tracing.js'
 
 const JUDGE_CONCURRENCY = 5
 const MAX_RESPONSE_CHARS = 4000 // truncate long responses fed to judge
@@ -637,6 +638,19 @@ export async function runEvalRun(input: RunInput): Promise<void> {
     .update({ status: 'running' })
     .eq('id', evalRunId)
 
+  // 4B.2 — dogfood ourselves. Every eval run posts a trace to the
+  // spanlens-team workspace so we see our own eval cost / latency /
+  // error rate in the same /traces view our customers use. The handle
+  // is created up front so per-sample spans can chain off its
+  // creationPromise without a blocking await.
+  const internalTrace = startInternalTrace('eval_run', {
+    eval_run_id: evalRunId,
+    evaluator_id: evaluatorId,
+    organization_id: organizationId,
+    source,
+    sample_size: sampleSize,
+  })
+
   try {
     // Load evaluator config. `score_config_id` is nullable — when NULL we
     // keep the legacy NUMERIC-only behaviour exactly so existing
@@ -850,17 +864,50 @@ export async function runEvalRun(input: RunInput): Promise<void> {
       return
     }
 
-    // Score each sample with the judge LLM
+    // Score each sample with the judge LLM. Each sample becomes one
+    // `llm_judge` span under the eval_run trace so we can see per-call
+    // cost / latency / token use in /traces. Span lifecycle is
+    // intentionally outside the try/catch so a failed judge call still
+    // gets ended with status='error' instead of leaving a dangling
+    // LIVE span.
     const outcomes = await pool(preparedSamples, JUDGE_CONCURRENCY, async (sample): Promise<SampleOutcome | null> => {
+      const span = internalTrace.startSpan('llm_judge', {
+        spanType: 'llm',
+        metadata: {
+          judge_provider: config.judge_provider,
+          judge_model: config.judge_model,
+          request_id: sample.requestId,
+          dataset_item_id: sample.datasetItemId,
+        },
+      })
       try {
         const outcome = await callJudge(config, sample.responseText, judgeKey)
-        if (!outcome) return null
+        if (!outcome) {
+          span.end({ status: 'error', errorMessage: 'callJudge returned null' })
+          return null
+        }
+        span.end({
+          status: 'completed',
+          output: {
+            score: outcome.score,
+            value_number: outcome.value_number,
+            value_string: outcome.value_string,
+            value_boolean: outcome.value_boolean,
+            reasoning: outcome.reasoning,
+          },
+          costUsd: outcome.cost,
+          totalTokens: outcome.tokens,
+        })
         return {
           requestId: sample.requestId,
           datasetItemId: sample.datasetItemId,
           ...outcome,
         }
-      } catch {
+      } catch (err) {
+        span.end({
+          status: 'error',
+          errorMessage: err instanceof Error ? err.message : 'callJudge threw',
+        })
         return null
       }
     })
@@ -876,6 +923,11 @@ export async function runEvalRun(input: RunInput): Promise<void> {
           completed_at: new Date().toISOString(),
         })
         .eq('id', evalRunId)
+      internalTrace.end({
+        status: 'error',
+        errorMessage: 'All judge calls failed',
+        metadata: { scored_count: 0, total_samples: preparedSamples.length },
+      })
       return
     }
 
@@ -940,6 +992,15 @@ export async function runEvalRun(input: RunInput): Promise<void> {
         completed_at: new Date().toISOString(),
       })
       .eq('id', evalRunId)
+    internalTrace.end({
+      status: 'completed',
+      metadata: {
+        scored_count: scored.length,
+        total_samples: preparedSamples.length,
+        avg_score: avgScore,
+        total_cost_usd: totalCost,
+      },
+    })
   } catch (err) {
     await supabaseAdmin
       .from('eval_runs')
@@ -949,6 +1010,10 @@ export async function runEvalRun(input: RunInput): Promise<void> {
         completed_at: new Date().toISOString(),
       })
       .eq('id', evalRunId)
+    internalTrace.end({
+      status: 'error',
+      errorMessage: err instanceof Error ? err.message : 'Unknown error',
+    })
   }
 }
 
