@@ -1,3 +1,8 @@
+WARN: environment variable is unset: SUPABASE_AUTH_EXTERNAL_GITHUB_CLIENT_ID
+WARN: environment variable is unset: SUPABASE_AUTH_EXTERNAL_GITHUB_SECRET
+WARN: environment variable is unset: SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID
+WARN: environment variable is unset: SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET
+Connecting to db 5432
 export type Json =
   | string
   | number
@@ -746,6 +751,7 @@ export type Database = {
           name: string
           organization_id: string
           prompt_name: string
+          score_config_id: string | null
           type: string
         }
         Insert: {
@@ -757,6 +763,7 @@ export type Database = {
           name: string
           organization_id: string
           prompt_name: string
+          score_config_id?: string | null
           type?: string
         }
         Update: {
@@ -768,6 +775,7 @@ export type Database = {
           name?: string
           organization_id?: string
           prompt_name?: string
+          score_config_id?: string | null
           type?: string
         }
         Relationships: [
@@ -776,6 +784,13 @@ export type Database = {
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "evaluators_score_config_id_fkey"
+            columns: ["score_config_id"]
+            isOneToOne: false
+            referencedRelation: "score_configs"
             referencedColumns: ["id"]
           },
         ]
@@ -2790,3 +2805,5 @@ export const Constants = {
   },
 } as const
 
+A new version of Supabase CLI is available: v2.105.0 (currently installed v2.90.0)
+We recommend updating regularly for new features and bug fixes: https://supabase.com/docs/guides/cli/getting-started#updating-the-supabase-cli

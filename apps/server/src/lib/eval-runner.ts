@@ -26,13 +26,42 @@ interface JudgeConfig {
   judge_model: string
   scale_min: number
   scale_max: number
+  // 4B.1c — optional pointer at a workspace score_config. When NULL we
+  // preserve the legacy NUMERIC 0..1 behaviour exactly: the judge is
+  // asked for a number in [scale_min, scale_max], the result clamps and
+  // normalises to 0..1, and only the `score` column is filled. When
+  // non-NULL we route through the type-aware prompt + parser below.
+  score_config?: TypedScoreConfig | null
+}
+
+/**
+ * Minimal projection of the score_configs row that the runner actually
+ * needs. Mirrors the shape used by `lib/score-validation.ts` so we can
+ * share the validator without re-fetching.
+ */
+export interface TypedScoreConfig {
+  id: string
+  data_type: 'NUMERIC' | 'CATEGORICAL' | 'BOOLEAN' | 'TEXT'
+  min_value: number | null
+  max_value: number | null
+  categories: unknown
+  bool_true_label: string | null
+  bool_false_label: string | null
 }
 
 interface JudgeOutcome {
-  score: number          // normalized to 0..1
+  // For NUMERIC configs (and the legacy NULL path) this stays the
+  // normalized 0..1 score. For CATEGORICAL / BOOLEAN / TEXT it is null
+  // and the typed columns below carry the actual answer.
+  score: number | null
   reasoning: string
   cost: number
   tokens: number
+  // 4B.1c — typed value columns. Exactly one of these is non-null per
+  // outcome (mirrors the eval_results table layout).
+  value_number: number | null
+  value_string: string | null
+  value_boolean: boolean | null
 }
 
 /** Extracts the assistant response text from a stored response_body. */
@@ -164,44 +193,171 @@ async function generateForItem(
   }
 }
 
-/** Builds the judge prompt asking it to score `responseText` against `criterion`. */
-function buildJudgePrompt(criterion: string, responseText: string, scaleMin: number, scaleMax: number): string {
+/**
+ * Build the judge prompt. When a score_config is attached we switch
+ * the response shape so the LLM emits the right primitive for the
+ * config type. The legacy numeric prompt is preserved exactly when
+ * score_config is NULL so existing evaluators behave bit-identically.
+ */
+export function buildJudgePrompt(
+  criterion: string,
+  responseText: string,
+  config: { scale_min: number; scale_max: number; score_config?: TypedScoreConfig | null },
+): string {
   const truncated = responseText.length > MAX_RESPONSE_CHARS
     ? responseText.slice(0, MAX_RESPONSE_CHARS) + '… [truncated]'
     : responseText
 
-  return `You are an evaluator. Score the assistant response below against this criterion.
+  const intro = `You are an evaluator. Score the assistant response below against this criterion.
 
 Criterion: ${criterion}
 
 Response to evaluate:
 """
 ${truncated}
-"""
+"""`
+
+  const sc = config.score_config
+
+  // Legacy NUMERIC path — unchanged from before 4B.1c.
+  if (!sc || sc.data_type === 'NUMERIC') {
+    const min = sc?.min_value ?? config.scale_min
+    const max = sc?.max_value ?? config.scale_max
+    return `${intro}
 
 Reply ONLY in JSON with this exact shape:
-{"score": <number between ${scaleMin} and ${scaleMax}>, "reasoning": "<one short sentence>"}
+{"score": <number between ${min} and ${max}>, "reasoning": "<one short sentence>"}
 
 No prose outside the JSON. No markdown fences.`
+  }
+
+  if (sc.data_type === 'BOOLEAN') {
+    const trueLabel = sc.bool_true_label ?? 'pass'
+    const falseLabel = sc.bool_false_label ?? 'fail'
+    return `${intro}
+
+Reply ONLY in JSON with this exact shape:
+{"value": <true or false>, "reasoning": "<one short sentence>"}
+
+\`true\` means "${trueLabel}", \`false\` means "${falseLabel}". No prose outside the JSON. No markdown fences.`
+  }
+
+  if (sc.data_type === 'CATEGORICAL') {
+    const cats = Array.isArray(sc.categories)
+      ? sc.categories.filter((c): c is string => typeof c === 'string')
+      : []
+    return `${intro}
+
+Reply ONLY in JSON with this exact shape:
+{"value": "<one of: ${cats.map((c) => JSON.stringify(c)).join(', ')}>", "reasoning": "<one short sentence>"}
+
+The \`value\` MUST be one of the categories above, exact case match. No prose outside the JSON. No markdown fences.`
+  }
+
+  // TEXT — judge writes a free-form short answer.
+  return `${intro}
+
+Reply ONLY in JSON with this exact shape:
+{"value": "<short answer>", "reasoning": "<one short sentence>"}
+
+Keep \`value\` under 200 characters. No prose outside the JSON. No markdown fences.`
 }
 
-/** Parses the judge's JSON reply, tolerating common formatting drift. */
-function parseJudgeReply(text: string, scaleMin: number, scaleMax: number): { score: number; reasoning: string } | null {
-  // Strip markdown fences if present
+/**
+ * Parse the judge's JSON reply into the right typed column. Falls back
+ * to NUMERIC parsing (clamp + normalise to 0..1) when score_config is
+ * absent or NUMERIC, which preserves the legacy behaviour exactly.
+ */
+export function parseJudgeReply(
+  text: string,
+  config: { scale_min: number; scale_max: number; score_config?: TypedScoreConfig | null },
+): {
+  score: number | null
+  value_number: number | null
+  value_string: string | null
+  value_boolean: boolean | null
+  reasoning: string
+} | null {
+  // Strip markdown fences if present.
   let cleaned = text.trim()
   if (cleaned.startsWith('```')) {
     cleaned = cleaned.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim()
   }
 
+  let parsed: { score?: unknown; value?: unknown; reasoning?: unknown }
   try {
-    const parsed = JSON.parse(cleaned) as { score?: unknown; reasoning?: unknown }
-    const rawScore = typeof parsed.score === 'number' ? parsed.score : Number(parsed.score)
-    if (!Number.isFinite(rawScore)) return null
-    const clamped = Math.max(scaleMin, Math.min(scaleMax, rawScore))
-    const reasoning = typeof parsed.reasoning === 'string' ? parsed.reasoning.trim() : ''
-    return { score: clamped, reasoning }
+    parsed = JSON.parse(cleaned) as typeof parsed
   } catch {
     return null
+  }
+  const reasoning = typeof parsed.reasoning === 'string' ? parsed.reasoning.trim() : ''
+  const sc = config.score_config
+
+  // Legacy / explicit NUMERIC path. Keep the prior clamp + normalise so
+  // result-table aggregations stay backwards compatible.
+  if (!sc || sc.data_type === 'NUMERIC') {
+    // Accept either {score: number} (legacy) or {value: number} (new),
+    // so an LLM that drifts between the two formats still works.
+    const raw = parsed.score ?? parsed.value
+    const numeric = typeof raw === 'number' ? raw : Number(raw)
+    if (!Number.isFinite(numeric)) return null
+    const min = sc?.min_value ?? config.scale_min
+    const max = sc?.max_value ?? config.scale_max
+    const clamped = Math.max(min, Math.min(max, numeric))
+    return {
+      score: clamped, // legacy column — same value as the new path filled below
+      value_number: clamped,
+      value_string: null,
+      value_boolean: null,
+      reasoning,
+    }
+  }
+
+  if (sc.data_type === 'BOOLEAN') {
+    const raw = parsed.value
+    let normalised: boolean | null = null
+    if (typeof raw === 'boolean') normalised = raw
+    else if (raw === 'true' || raw === 'pass' || raw === 'yes') normalised = true
+    else if (raw === 'false' || raw === 'fail' || raw === 'no') normalised = false
+    if (normalised === null) return null
+    return {
+      score: null,
+      value_number: null,
+      value_string: null,
+      value_boolean: normalised,
+      reasoning,
+    }
+  }
+
+  if (sc.data_type === 'CATEGORICAL') {
+    const raw = parsed.value
+    if (typeof raw !== 'string' || raw.length === 0) return null
+    const cats = Array.isArray(sc.categories)
+      ? sc.categories.filter((c): c is string => typeof c === 'string')
+      : []
+    if (!cats.includes(raw)) return null
+    return {
+      score: null,
+      value_number: null,
+      value_string: raw,
+      value_boolean: null,
+      reasoning,
+    }
+  }
+
+  // TEXT — accept any non-empty string, trim it. The judge has been
+  // told to keep it under 200 chars; we don't strictly enforce on read
+  // since human reviewers might prefer the long version.
+  const raw = parsed.value
+  if (typeof raw !== 'string') return null
+  const trimmed = raw.trim()
+  if (trimmed.length === 0) return null
+  return {
+    score: null,
+    value_number: null,
+    value_string: trimmed,
+    value_boolean: null,
+    reasoning,
   }
 }
 
@@ -211,7 +367,51 @@ async function callJudge(
   responseText: string,
   apiKey: string,
 ): Promise<JudgeOutcome | null> {
-  const prompt = buildJudgePrompt(config.criterion, responseText, config.scale_min, config.scale_max)
+  const prompt = buildJudgePrompt(config.criterion, responseText, {
+    scale_min: config.scale_min,
+    scale_max: config.scale_max,
+    score_config: config.score_config ?? null,
+  })
+
+  // Helper that turns a parsed judge reply into the JudgeOutcome the
+  // caller stores. NUMERIC and legacy paths normalise into 0..1 so the
+  // `score` column stays consistent with pre-4B.1c rows.
+  function buildOutcome(
+    parsed: NonNullable<ReturnType<typeof parseJudgeReply>>,
+    cost: number,
+    tokens: number,
+  ): JudgeOutcome {
+    const sc = config.score_config
+    if (!sc || sc.data_type === 'NUMERIC') {
+      // Legacy: clamp + normalise to 0..1 against scale_min / scale_max.
+      // parseJudgeReply already returned a clamped value, so we just
+      // shift + scale here.
+      const min = sc?.min_value ?? config.scale_min
+      const max = sc?.max_value ?? config.scale_max
+      const range = max - min || 1
+      const raw = parsed.value_number ?? parsed.score ?? 0
+      const normalised = (raw - min) / range
+      return {
+        score: normalised,
+        value_number: normalised,
+        value_string: null,
+        value_boolean: null,
+        reasoning: parsed.reasoning,
+        cost,
+        tokens,
+      }
+    }
+    // Typed paths — value columns are already populated by the parser.
+    return {
+      score: null,
+      value_number: parsed.value_number,
+      value_string: parsed.value_string,
+      value_boolean: parsed.value_boolean,
+      reasoning: parsed.reasoning,
+      cost,
+      tokens,
+    }
+  }
 
   if (config.judge_provider === 'openai') {
     const res = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -233,21 +433,18 @@ async function callJudge(
       model: string
     }
     const text = json.choices?.[0]?.message?.content ?? ''
-    const parsed = parseJudgeReply(text, config.scale_min, config.scale_max)
+    const parsed = parseJudgeReply(text, {
+      scale_min: config.scale_min,
+      scale_max: config.scale_max,
+      score_config: config.score_config ?? null,
+    })
     if (!parsed) return null
     const tokens = (json.usage?.prompt_tokens ?? 0) + (json.usage?.completion_tokens ?? 0)
     const cost = calculateCost('openai', json.model ?? config.judge_model, {
       promptTokens: json.usage?.prompt_tokens ?? 0,
       completionTokens: json.usage?.completion_tokens ?? 0,
     })?.totalCost ?? 0
-    // Normalize to 0..1
-    const range = config.scale_max - config.scale_min || 1
-    return {
-      score: (parsed.score - config.scale_min) / range,
-      reasoning: parsed.reasoning,
-      cost,
-      tokens,
-    }
+    return buildOutcome(parsed, cost, tokens)
   }
 
   if (config.judge_provider === 'anthropic') {
@@ -272,20 +469,18 @@ async function callJudge(
       model: string
     }
     const text = json.content?.find((b) => b.type === 'text')?.text ?? ''
-    const parsed = parseJudgeReply(text, config.scale_min, config.scale_max)
+    const parsed = parseJudgeReply(text, {
+      scale_min: config.scale_min,
+      scale_max: config.scale_max,
+      score_config: config.score_config ?? null,
+    })
     if (!parsed) return null
     const tokens = (json.usage?.input_tokens ?? 0) + (json.usage?.output_tokens ?? 0)
     const cost = calculateCost('anthropic', json.model ?? config.judge_model, {
       promptTokens: json.usage?.input_tokens ?? 0,
       completionTokens: json.usage?.output_tokens ?? 0,
     })?.totalCost ?? 0
-    const range = config.scale_max - config.scale_min || 1
-    return {
-      score: (parsed.score - config.scale_min) / range,
-      reasoning: parsed.reasoning,
-      cost,
-      tokens,
-    }
+    return buildOutcome(parsed, cost, tokens)
   }
 
   // Gemini — JSON output enforced via responseMimeType + responseSchema. This
@@ -304,14 +499,43 @@ async function callJudge(
           temperature: 0,
           maxOutputTokens: 200,
           responseMimeType: 'application/json',
-          responseSchema: {
-            type: 'object',
-            properties: {
-              score: { type: 'number' },
-              reasoning: { type: 'string' },
-            },
-            required: ['score', 'reasoning'],
-          },
+          // The Gemini responseSchema MUST match the prompt we ship for
+          // the active score config or the model returns a schema error.
+          // For BOOLEAN / CATEGORICAL / TEXT we ask for `value`; for
+          // legacy NUMERIC we keep `score` so old runs are byte-identical.
+          responseSchema: (() => {
+            const sc = config.score_config
+            if (!sc || sc.data_type === 'NUMERIC') {
+              return {
+                type: 'object',
+                properties: {
+                  score: { type: 'number' },
+                  reasoning: { type: 'string' },
+                },
+                required: ['score', 'reasoning'],
+              }
+            }
+            if (sc.data_type === 'BOOLEAN') {
+              return {
+                type: 'object',
+                properties: {
+                  value: { type: 'boolean' },
+                  reasoning: { type: 'string' },
+                },
+                required: ['value', 'reasoning'],
+              }
+            }
+            // CATEGORICAL + TEXT both emit strings; the parser validates
+            // CATEGORICAL against the allow-list afterwards.
+            return {
+              type: 'object',
+              properties: {
+                value: { type: 'string' },
+                reasoning: { type: 'string' },
+              },
+              required: ['value', 'reasoning'],
+            }
+          })(),
         },
       }),
     },
@@ -323,7 +547,11 @@ async function callJudge(
     modelVersion?: string
   }
   const geminiText = geminiJson.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
-  const geminiParsed = parseJudgeReply(geminiText, config.scale_min, config.scale_max)
+  const geminiParsed = parseJudgeReply(geminiText, {
+    scale_min: config.scale_min,
+    scale_max: config.scale_max,
+    score_config: config.score_config ?? null,
+  })
   if (!geminiParsed) return null
   const geminiTokens =
     (geminiJson.usageMetadata?.promptTokenCount ?? 0) +
@@ -332,13 +560,7 @@ async function callJudge(
     promptTokens: geminiJson.usageMetadata?.promptTokenCount ?? 0,
     completionTokens: geminiJson.usageMetadata?.candidatesTokenCount ?? 0,
   })?.totalCost ?? 0
-  const geminiRange = config.scale_max - config.scale_min || 1
-  return {
-    score: (geminiParsed.score - config.scale_min) / geminiRange,
-    reasoning: geminiParsed.reasoning,
-    cost: geminiCost,
-    tokens: geminiTokens,
-  }
+  return buildOutcome(geminiParsed, geminiCost, geminiTokens)
 }
 
 /** Runs a small async pool with concurrency cap. */
@@ -416,10 +638,12 @@ export async function runEvalRun(input: RunInput): Promise<void> {
     .eq('id', evalRunId)
 
   try {
-    // Load evaluator config
+    // Load evaluator config. `score_config_id` is nullable — when NULL we
+    // keep the legacy NUMERIC-only behaviour exactly so existing
+    // evaluators don't change semantics overnight.
     const { data: evaluator, error: evErr } = await supabaseAdmin
       .from('evaluators')
-      .select('id, config')
+      .select('id, config, score_config_id')
       .eq('id', evaluatorId)
       .eq('organization_id', organizationId)
       .maybeSingle()
@@ -431,6 +655,34 @@ export async function runEvalRun(input: RunInput): Promise<void> {
     const config = evaluator.config as unknown as JudgeConfig
     if (!config?.criterion || !config?.judge_provider || !config?.judge_model) {
       throw new Error('Evaluator config missing required fields (criterion / judge_provider / judge_model)')
+    }
+
+    // Resolve the optional typed score config. Fetch once up front so
+    // every judge call carries the same definition (no per-sample
+    // round-trips).
+    if (evaluator.score_config_id) {
+      const { data: sc } = await supabaseAdmin
+        .from('score_configs')
+        .select('id, data_type, min_value, max_value, categories, bool_true_label, bool_false_label')
+        .eq('id', evaluator.score_config_id)
+        .eq('organization_id', organizationId)
+        .is('archived_at', null)
+        .maybeSingle()
+      if (sc) {
+        config.score_config = {
+          id: sc.id,
+          data_type: sc.data_type as TypedScoreConfig['data_type'],
+          min_value: sc.min_value,
+          max_value: sc.max_value,
+          categories: sc.categories,
+          bool_true_label: sc.bool_true_label,
+          bool_false_label: sc.bool_false_label,
+        }
+      }
+      // If the config row was archived between evaluator creation and run
+      // we silently fall through to the legacy NUMERIC path. The
+      // evaluator-level rebuild UI is the proper place to surface
+      // "config archived" warnings.
     }
 
     // Find an active provider key matching the judge provider
@@ -627,7 +879,10 @@ export async function runEvalRun(input: RunInput): Promise<void> {
       return
     }
 
-    // Persist per-sample results
+    // Persist per-sample results. Typed value columns are always set
+    // from the JudgeOutcome — the legacy `score` column also gets the
+    // normalised 0..1 value for NUMERIC (and NULL otherwise) so
+    // pre-4B.1c dashboard queries (`AVG(score)`) keep working unchanged.
     const resultRows = scored.map((s) => ({
       organization_id: organizationId,
       eval_run_id: evalRunId,
@@ -637,6 +892,10 @@ export async function runEvalRun(input: RunInput): Promise<void> {
       reasoning: s.reasoning,
       judge_cost_usd: s.cost,
       judge_tokens: s.tokens,
+      score_config_id: config.score_config?.id ?? null,
+      value_number: s.value_number,
+      value_string: s.value_string,
+      value_boolean: s.value_boolean,
     }))
 
     const { error: insertErr } = await supabaseAdmin
@@ -646,7 +905,30 @@ export async function runEvalRun(input: RunInput): Promise<void> {
     if (insertErr) throw new Error(`Result insert failed: ${insertErr.message}`)
 
     const totalCost = scored.reduce((sum, s) => sum + s.cost, 0)
-    const avgScore = scored.reduce((sum, s) => sum + s.score, 0) / scored.length
+    // `eval_runs.avg_score` is a NUMERIC summary. For typed configs that
+    // don't aggregate as an average (CATEGORICAL, BOOLEAN, TEXT) we
+    // emit a derived 0..1 number where it has a natural meaning
+    // (BOOLEAN pass-rate) and NULL otherwise so the dashboard knows to
+    // render a different summary instead of a misleading 0.50.
+    const avgScore = (() => {
+      const sc = config.score_config
+      if (!sc || sc.data_type === 'NUMERIC') {
+        const numericValues = scored
+          .map((s) => s.value_number ?? s.score)
+          .filter((v): v is number => v != null)
+        if (numericValues.length === 0) return null
+        return numericValues.reduce((a, b) => a + b, 0) / numericValues.length
+      }
+      if (sc.data_type === 'BOOLEAN') {
+        const bools = scored
+          .map((s) => s.value_boolean)
+          .filter((v): v is boolean => v != null)
+        if (bools.length === 0) return null
+        const passes = bools.filter(Boolean).length
+        return passes / bools.length
+      }
+      return null
+    })()
 
     await supabaseAdmin
       .from('eval_runs')
