@@ -7,10 +7,11 @@
 --     reconstructed by joining requests + traces + spans across
 --     ClickHouse and Postgres. Dashboards do this join on every
 --     pageview.
---   * Langfuse (and PostHog, and Datadog APM) found that a single
---     append-only `events` table — where a trace, span, and LLM
---     generation are all variants of the same row shape — is far
---     simpler to query and roughly 3x faster than the join.
+--   * Production-grade event analytics stores (PostHog, Datadog APM)
+--     converged on the same answer: a single append-only `events`
+--     table — where a trace, span, and LLM generation are all variants
+--     of the same row shape — is far simpler to query and roughly 3x
+--     faster than the join.
 --   * `usage_details` as a Map lets future token kinds (vision,
 --     reasoning, cache-write tiers) land without a column migration.
 --   * Same for `cost_details` — different providers split cost

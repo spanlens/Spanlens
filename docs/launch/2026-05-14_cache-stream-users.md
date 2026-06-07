@@ -2,7 +2,7 @@
 
 > **Branch**: `demo/evals-datasets-experiments-annotation`
 > **Commits**: `f1adc77` (cache) · `915e9f8` (stream) · `7f0105d` (users) · `3593768` (follow-ups) · `4b41483` (types sync)
-> **Roadmap source**: [`docs/plans/competitive_parity_roadmap.md`](../plans/competitive_parity_roadmap.md) — items #4, #8, #1.
+> **Roadmap source**: internal roadmap — items "cache cost", "stream body", "users analytics".
 
 이 문서는 3개 feature 출시 직전/직후에 영업·운영·측정을 묶어주는 단일 진실 소스. 출시 후 1주 동안 이 문서만 보면 무엇이 떨어졌는지 / 어떻게 팔지 / 어떻게 측정할지 다 잡힘.
 
@@ -44,7 +44,7 @@
 ### Demo 안티-패턴 (하지 말 것)
 - ❌ Sessions 뷰 약속하기 — 아직 없음
 - ❌ Custom dashboard 약속하기 — roadmap에 없음
-- ❌ "Langfuse보다 좋다" — 비교 프레임 들어가지 말 것. 그냥 "쉽다 + 정확하다"만
+- ❌ 경쟁사 직접 비교 프레임 들어가지 말 것. 그냥 "쉽다 + 정확하다"만
 
 ---
 

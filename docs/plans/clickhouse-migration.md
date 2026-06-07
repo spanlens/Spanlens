@@ -16,7 +16,7 @@ Spanlens는 LLM 프록시 특성상 모든 API 호출마다 `requests` 테이블
 - PostgreSQL은 1천만 건 이상에서 컬럼 집계 쿼리가 급격히 느려짐
 - JSONB 형태의 `request_body`, `response_body`는 저장 효율이 나쁨
 
-ClickHouse는 정확히 이 워크로드(append-only, 시계열, 집계)를 위해 설계된 컬럼형 DB입니다. Langfuse, PostHog, Helicone 등 동종 업계가 모두 동일한 아키텍처를 채택했습니다.
+ClickHouse는 정확히 이 워크로드(append-only, 시계열, 집계)를 위해 설계된 컬럼형 DB입니다. PostHog 등 동종 업계의 대규모 시계열 분석 스택이 보편적으로 채택한 아키텍처입니다.
 
 **런칭 전인 지금이 가장 좋은 타이밍**입니다. 이관할 운영 데이터가 없고, 사용자에게 다운타임을 설명할 필요가 없습니다.
 
@@ -578,5 +578,4 @@ Phase 2 (`usage_daily` 결정)는 Phase 1 안정화 1주 이후 별도 산정.
 
 - ClickHouse 공식 문서: https://clickhouse.com/docs
 - `@clickhouse/client` npm: https://www.npmjs.com/package/@clickhouse/client
-- Langfuse ClickHouse 마이그레이션 사례: https://langfuse.com/blog/2024-09-clickhouse-migration
 - PostHog ClickHouse 도입 사례: https://posthog.com/blog/clickhouse-announcement

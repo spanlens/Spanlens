@@ -200,7 +200,7 @@ Datasets 탭 진입
 ### 3-6. BUILD → IMPROVE 섹션명 변경
 
 **결정 필요**. 현재 입장:
-- BUILD: 직관적, 익숙 (Langfuse도 BUILD 사용)
+- BUILD: 직관적, 익숙 (카테고리 내 다수 도구가 BUILD 사용)
 - IMPROVE: Evals/Annotation이 "개선" 의미에 더 가까움. Prompts 만들기보다는 *기존을 더 좋게 만드는* 도구들.
 
 → **권장: 일단 BUILD 유지**, Phase 1·2 끝난 후 사용자 인터뷰에서 다시 검토.

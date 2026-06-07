@@ -25,7 +25,7 @@ PR breakdown 4개 + 검증 1개. 총 약 **5~7일 작업량** 예상 (TS 기능 
 | 신호 | 비고 |
 |---|---|
 | LangChain 0.3.0+ 의 표준 agent 패턴 | 단순 chain 너머 multi-step / multi-agent 워크플로 사용자가 LangGraph 로 이주 중 |
-| Anthropic / OpenAI 의 "agentic SDK" 흐름 | LangGraph 가 가장 성숙한 OSS 옵션. Helicone / Langfuse / LangSmith 모두 우선 지원 |
+| Anthropic / OpenAI 의 "agentic SDK" 흐름 | LangGraph 가 가장 성숙한 OSS 옵션. 카테고리 내 다른 LLM observability 도구들도 모두 우선 지원 |
 | Spanlens 의 "AgentOps" 포지셔닝 | CLAUDE.md 의 정식 명 = Spanlens(AgentOps). 멀티 에이전트 trace 가 핵심 강점이라면 LangGraph 미지원은 신뢰 hole |
 
 ### 우선순위 (Integrations Expansion §4 plan 에서 별도 cycle 로 분리한 항목)
@@ -137,7 +137,7 @@ const result = await graph.invoke(
 
 이유:
 1. LangGraph 가 LangChain callback 을 그대로 쓰는 게 LangGraph 팀의 의도된 설계
-2. Helicone / LangSmith / Langfuse 도 동일 패턴 (단일 handler)
+2. 다른 LLM observability 도구들도 동일 패턴 (단일 handler)
 3. 향후 LangGraph 전용 metadata 가 필요해질 때 `handler.options.langgraph: true` 같은 추가 옵션으로 분기 가능 — 처음부터 분리할 필요 없음
 
 → docs 에 **LangGraph 사용 예시 섹션**만 따로 만들어서 discoverability 챙김.
@@ -276,7 +276,7 @@ pytest 기반. 동일 시나리오 12개 미러링. respx + 가짜 callback emit
 | `output` / `input` 객체가 매우 큼 (graph state) | `maxInputBytes` / `maxOutputBytes` 옵션 + truncate marker. 기본 16KB |
 | 동일 trace 에 100+ span (큰 graph) | 현재 server `/ingest/traces/:id/spans` 처리량 OK. P3.8 sampling 도 trace 단위라 손해 없음 |
 | handleChainStart 의 `runType` 이 `chain`/`tool`/`retriever` 등 다양 | `runType` 으로 분기 가능 — 다만 LangGraph 노드는 그냥 `chain` 으로 옴. `metadata.langgraph_node` 같은 식별자가 있는지 검증 필요 (구현 시 LangGraph 실제 payload 로 확인) |
-| Python LangChain `BaseCallbackHandler` 추상 메서드 시그니처가 TS 와 미묘하게 다름 (e.g. `inputs: Dict[str, Any]`) | 둘 다 구현 시 양쪽 spec 별도 확인. Helicone/Langfuse 오픈소스 reference 검토 |
+| Python LangChain `BaseCallbackHandler` 추상 메서드 시그니처가 TS 와 미묘하게 다름 (e.g. `inputs: Dict[str, Any]`) | 둘 다 구현 시 양쪽 spec 별도 확인. 카테고리 내 다른 OSS 도구들의 reference 구현 참고 |
 
 ---
 
@@ -299,6 +299,4 @@ pytest 기반. 동일 시나리오 12개 미러링. respx + 가짜 callback emit
 - LangChain Python `BaseCallbackHandler` 시그니처: `langchain-ai/langchain/libs/core/langchain_core/callbacks/base.py`
 - LangGraph JS: `@langchain/langgraph` (npm)
 - LangGraph Python: `langgraph` (PyPI)
-- Helicone LangGraph integration: 단일 handler 패턴 (확인 필요)
-- Langfuse LangGraph integration: 단일 handler 패턴
 - 기존 Spanlens 코드: `packages/sdk/src/integrations/langchain.ts`, `packages/sdk/src/__tests__/integrations.test.ts`

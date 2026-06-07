@@ -45,7 +45,7 @@ export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
     tags: ['infrastructure', 'reliability'],
     body: [
       'The dashboard now reads requests, stats, and traces from the unified `events` table. Same data, single source. The `requests` / `traces` / `spans` write paths still run as a safety net, but the read switch behind `USE_EVENTS_FOR_REQUESTS=1` is live across `/api/v1/requests`, every `/api/v1/stats/*` endpoint, `/api/v1/traces`, and `/api/v1/traces/:id`.',
-      'Why this matters in practice: future token kinds (`vision_input_tokens`, `reasoning_tokens`, cache-write tiers) land in the open Map columns without a schema migration, the stats pipeline gets the same shape as Langfuse / PostHog / Datadog so an upgrade path stays open, and the per-route read switch keeps a flag-flip rollback available for the entire stage.',
+      'Why this matters in practice: future token kinds (`vision_input_tokens`, `reasoning_tokens`, cache-write tiers) land in the open Map columns without a schema migration, the stats pipeline gets the same shape as established append-only event-table designs (PostHog / Datadog APM), so an upgrade path stays open, and the per-route read switch keeps a flag-flip rollback available for the entire stage.',
       'Operational guard rails ship alongside: every route falls back to the original Postgres/requests path if the events read throws, a daily reconciliation cron alerts on >1% row-count drift, and the read switch double-gates on a separate `EVENTS_BACKFILL_COMPLETE=1` env so an env flip alone cannot expose an empty list.',
     ].join('\n\n'),
   },
@@ -66,7 +66,7 @@ export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
     title: 'Unified events table now shadow-writes every LLM call',
     tags: ['infrastructure'],
     body: [
-      'First stage of the events-table unification work. New ClickHouse `events` table where an LLM generation, a trace, and a span are all variants of the same row shape, the same idea Langfuse and PostHog converged on. Token kinds (vision input, reasoning, cache write) and per-provider cost breakdowns live in `Map(String, …)` columns so new keys don\'t need a column migration.',
+      'First stage of the events-table unification work. New ClickHouse `events` table where an LLM generation, a trace, and a span are all variants of the same row shape — the same idea production-grade event analytics stores like PostHog have long converged on. Token kinds (vision input, reasoning, cache write) and per-provider cost breakdowns live in `Map(String, …)` columns so new keys don\'t need a column migration.',
       'Stage 1 is shadow-only: every successful `requests` insert and every `/ingest/traces` or `/ingest/spans` call also fans out a best-effort write to `events`. Reads are unchanged, so the dashboard still queries `requests` and the Postgres trace tables. A failed event write logs to the console but never affects the source insert.',
       'Stage 2 (background-migration backfill) and Stage 3 (feature-flag dashboard reads, route by route) ship over the coming weeks. The eventual win is one query for "show me everything in this trace" instead of the current cross-database join.',
     ].join('\n\n'),
@@ -78,7 +78,7 @@ export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
     tags: ['infrastructure'],
     body: [
       'When Spanlens needs to rewrite a billion-row table (think: switching from a single `score` float to four typed value columns), the natural approach of a SQL migration that backfills inline is the wrong one. It either takes locks that spike p99 latency or it blows past Vercel\'s 5-minute function timeout halfway through the backfill, leaving the table half-rewritten.',
-      'New framework lifted from Langfuse / PostHog: a `background_migrations` table tracks long-running data work; a 5-minute cron picks up a pending row, takes a Postgres advisory lock so two workers can\'t race, runs chunks (~5k rows at a time) until close to the function timeout, persists the cursor, and yields. The next tick resumes from the cursor. A heartbeat sentinel reclaims rows from crashed workers.',
+      'New framework based on the standard chunked-backfill-with-advisory-lock pattern that PostHog and similar OSS analytics stacks use: a `background_migrations` table tracks long-running data work; a 5-minute cron picks up a pending row, takes a Postgres advisory lock so two workers can\'t race, runs chunks (~5k rows at a time) until close to the function timeout, persists the cursor, and yields. The next tick resumes from the cursor. A heartbeat sentinel reclaims rows from crashed workers.',
       'Admin-only view at Settings → **Background migrations** shows what\'s pending / running / completed / failed, with progress percentage, last heartbeat, attempts counter, and cancel / retry buttons. This is engineering work that most users never see, but it unlocks the kind of schema evolution we were avoiding before.',
     ].join('\n\n'),
   },
