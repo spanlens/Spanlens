@@ -651,7 +651,7 @@ Route (app)                              Size     First Load JS
 
 ### 비교 기준점
 
-- **외부 비교 대상:** Helicone (https://helicone.ai), Langfuse (https://langfuse.com), PostHog (https://posthog.com)
+- **외부 비교 대상:** Helicone (https://helicone.ai), PostHog (https://posthog.com)
 - 같은 PageSpeed Insights로 측정해서 우리 위치 확인
 - "FCP < 1.8초, LCP < 2.5초" 가 Good, 이게 최소 목표
 

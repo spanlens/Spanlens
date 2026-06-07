@@ -2,8 +2,9 @@
 
 Goal: list Spanlens on the Vercel Integrations Marketplace under the
 Observability category. The LLM observability slot is effectively
-vacant on Vercel (Langfuse / Helicone unlisted; Braintrust is the
-nearest peer), so this is a one-shot land-grab opportunity.
+vacant on Vercel (most LLM observability competitors unlisted;
+Braintrust is the nearest peer), so this is a one-shot land-grab
+opportunity.
 
 This is intentionally a multi-day, multi-phase workstream. Phase 0
 proves nothing more than "we can submit". The real cost sits in
