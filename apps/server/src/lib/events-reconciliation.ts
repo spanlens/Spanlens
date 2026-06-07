@@ -16,10 +16,9 @@
  * window otherwise. (events writes 30ms after `requests`; an
  * in-flight call would skew the diff toward "events smaller".)
  *
- * Threshold (`DIFF_TOLERANCE_RATIO = 0.01`, i.e. 1%) is the value
- * called out in docs/plans/langfuse-benchmarking-success-criteria.md
- * §Metrics. Bump it once we get a few days of baseline data and know
- * the natural noise floor.
+ * Threshold (`DIFF_TOLERANCE_RATIO = 0.01`, i.e. 1%) is the noise floor
+ * we expect dual-write race conditions to produce. Bump it once we
+ * have a few days of baseline data and know the natural noise floor.
  */
 
 import { getClickhouse } from './clickhouse.js'

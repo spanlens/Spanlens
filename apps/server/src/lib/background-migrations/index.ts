@@ -11,7 +11,8 @@
  *     get killed at the 5-min mark, taking a half-done backfill with
  *     them.
  *
- * The pattern (lifted from Langfuse / PostHog):
+ * The pattern (standard chunked-backfill-with-advisory-lock used by
+ * append-only analytics stores like PostHog):
  *
  *   1. Ship the SQL migration first, adding columns nullable.
  *   2. Register a `BackgroundMigration` whose `runChunk(state)`

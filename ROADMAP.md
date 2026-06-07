@@ -198,7 +198,7 @@
 #### 3E.3. 완료 기준
 - [x] 새 유저가 **1분 내** 온보딩 완료 — `npx @spanlens/cli init` 한 줄로 SDK 설치 + .env + baseURL 교체까지
 - [x] 기존 수동 baseURL 통합 대비 오류 제보 **0건** (현재까지)
-- [x] Helicone / Langfuse 대비 경쟁 우위 명문화 — landing/docs에서 "npx 한 줄 설치" 카피 노출
+- [x] 경쟁 우위 명문화 — landing/docs에서 "npx 한 줄 설치" 카피 노출
 
 #### 3E.4. Python SDK — 완료 (2026-04-25)
 > mind-scanner dogfood 도중 발견된 큰 gap — Python 개발자(LLM 시장의 80%)에게 Spanlens가 닿지 않음. TypeScript SDK 1:1 포팅 + PyPI publish + docs 통합까지 한 세션에 마무리. PyPI 라이브: `pip install spanlens` 0.1.0.
@@ -375,7 +375,7 @@ Product Hunt + HN + 커뮤니티 동시 런치. Phase 1~3에서 쌓은 차별화
 ### 4A.0 폴리시-퍼스트 런칭 준거 (Polish-First Launch Criteria)
 
 > **전략 결정 (2026-04-22)**: Lean/Ship-fast 대신 **폴리시-퍼스트**로 감.
-> 근거: Spanlens는 개발자 신뢰 기반 인프라 제품 → 첫인상이 전부. Langfuse/Helicone 대비 최소 동등 이상의 마감 수준 필수. 1인 founder + VC burn rate 없음 → 폴리시 시간이 경쟁 우위.
+> 근거: Spanlens는 개발자 신뢰 기반 인프라 제품 → 첫인상이 전부. 기존 LLM observability 카테고리 대비 최소 동등 이상의 마감 수준 필수. 1인 founder + VC burn rate 없음 → 폴리시 시간이 경쟁 우위.
 >
 > **이 체크리스트는 변경 금지 규약.** 전 항목 완료 시 즉시 런치, 미완료 시 D-Day 연기. 중간에 "하나만 더" 추가 금지.
 
@@ -554,7 +554,7 @@ Enterprise `$99+` 플랜은 이미 Pricing 페이지에 판매 중. **첫 Enterp
 |---|---|
 | Provider API 스펙 변경 (특히 Anthropic 스트리밍) | 파서 계약 테스트 + weekly canary |
 | Supabase Postgres 쓰기 병목 (100K req/day↑) | `logRequestAsync` 큐잉 + ClickHouse 이관 플랜 |
-| Helicone/Langfuse 재진입 | 독립성·셀프호스팅·단순함 메시지 강화 |
+| 경쟁사 재진입 / 신규 진입 | 독립성·셀프호스팅·단순함 메시지 강화 |
 | 결제/Paddle 장애 | Grace period 3일 + 알림 이중화, Paddle webhook 재시도 큐 모니터링 |
 | Paddle KYC 반려 또는 지연 | 사업자등록증·대표 신분증 미리 준비, 1차 반려 시 Week 8 안에 2차 제출 — 런치(Week 13~14) 전 승인 목표. Phase 2C에 KYC 통과 체크 있음. 최악의 경우 수동 인보이스(Toss/Stripe Atlas 대체안)로 첫 결제 1~2주 흡수 |
 | ENCRYPTION_KEY 분실 | 운영 runbook + KMS 이관 검토 (Phase 3) |
