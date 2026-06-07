@@ -4,7 +4,8 @@
 -- needs to backfill a billion-row table without blocking a single
 -- request and without blowing past Vercel's 5-minute function timeout.
 --
--- The pattern (lifted from Langfuse, who lifted it from PostHog):
+-- The pattern (standard chunked-backfill-with-advisory-lock used by
+-- append-only analytics stores like PostHog):
 --
 --   1. The schema migration lands first, adding the new columns
 --      nullable or with a safe default.

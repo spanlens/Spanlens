@@ -1,14 +1,13 @@
 # CLAUDE.md — AgentOps (가칭 · 정식명: Spanlens)
 <!--
 Claude Code 작업 지침서
-리서치 기반: Helicone CLAUDE.md + Langfuse AGENTS.md + Anthropic Best Practices
 3회 검증 완료 (2026.04)
 -->
 ## 프로젝트
 LLM 개발자를 위한 AI 관측 플랫폼 (오픈소스 SaaS · MIT · GitHub public).
 baseURL을 1줄 교체해 요청 로깅, 비용 추적, 에이전트 트레이싱 제공.
-타깃: Helicone(인수됨)·Langfuse(복잡함)의 대안. Docker 이미지로 셀프호스팅 지원.
-라이선스 전략: 전체 레포 MIT (Langfuse/PostHog 모델). 해자는 SaaS 운영·brand·support이며 코드 공개 자체는 신뢰 시그널. 장래 복제 위협 커지면 Sentry 방식(BSL 전환) 옵션 열려 있음.
+타깃: 기존 LLM observability 도구들(인수·복잡함)의 가벼운 대안. Docker 이미지로 셀프호스팅 지원.
+라이선스 전략: 전체 레포 MIT (OSS dev-tool 표준 모델). 해자는 SaaS 운영·brand·support이며 코드 공개 자체는 신뢰 시그널. 장래 복제 위협 커지면 Sentry 방식(BSL 전환) 옵션 열려 있음.
 스택: Next.js 14 + Hono + Supabase PostgreSQL + TypeScript + pnpm monorepo
 ## 구조
 apps/web/ — Next.js 14 대시보드 (App Router)

@@ -9,7 +9,8 @@
 --   • CATEGORICAL: A/B preference, persona match { 'on_brand', 'off_brand' }
 --   • BOOLEAN: pass/fail toggles (toxicity, PII leak, prompt injection)
 --   • TEXT: free-form labels or reviewer comments treated as the primary
---     scoring signal (rare but Langfuse supports it; we match)
+--     scoring signal (uncommon but supported for parity with common
+--     LLM eval frameworks)
 --
 -- We introduce a `score_configs` table that defines, per workspace, the
 -- shape of a score: its name (e.g. "Helpfulness"), its type, and

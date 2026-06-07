@@ -12,7 +12,7 @@
 --   and reuses ClickHouse's query planner on the underlying table.
 --
 -- WHY column-by-column aliasing:
---   `events` is the canonical Langfuse-style schema with
+--   `events` is the canonical append-only event schema with
 --   `total_cost_usd`, `duration_ms`, `usage_details Map`, `input`,
 --   `output`. The legacy stats queries reference the historical
 --   names. The view bridges the two so the feature flag flip in
