@@ -1,6 +1,15 @@
 import tsParser from '@typescript-eslint/parser'
 import tsPlugin from '@typescript-eslint/eslint-plugin'
-import spanlensPlugin from '@spanlens/eslint-plugin'
+// `@spanlens/eslint-plugin` deliberately not in package.json. Adding it as a
+// workspace dependency breaks Vercel deploys: vercel runs `npm install` from
+// `apps/server/`, npm rejects `workspace:*` at package.json parse time, and
+// switching to pnpm hits "Headless installation requires a pnpm-lock.yaml file"
+// because the lockfile lives at the monorepo root. Pulling the plugin in via
+// relative path keeps the server's install graph npm-compatible while still
+// resolving for `pnpm --filter server lint` locally and in CI (where the
+// plugin is built first by the dedicated `Build @spanlens/eslint-plugin`
+// step in .github/workflows/ci.yml).
+import spanlensPlugin from '../../packages/eslint-plugin/dist/index.js'
 import globals from 'globals'
 
 // R-Q6: `unscopedClickhouse` (renamed from `getClickhouse`) returns the
