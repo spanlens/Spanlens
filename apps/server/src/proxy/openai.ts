@@ -14,7 +14,15 @@ import { getDecryptedProviderKey, buildUpstreamHeaders, buildDownstreamHeaders, 
 import { logOpenAIStream } from './stream-logger.js'
 import { cancelReaderSilently, makeStreamDeadline, readWithDeadline } from './stream-deadline.js'
 
-const OPENAI_BASE = 'https://api.openai.com'
+// Overridable so E2E (apps/web/__e2e__/smoke.spec.ts via docker-compose
+// dev mock-openai) can point this at http://localhost:4000 without hitting
+// real OpenAI credits or rate limits. Production leaves OPENAI_API_BASE
+// unset and the default api.openai.com applies. Strip a trailing /v1 if
+// the operator includes it — OpenAI's path already starts with /v1, and
+// duplicating it produces /v1/v1/chat/completions which 404s.
+const OPENAI_BASE = (
+  process.env['OPENAI_API_BASE'] ?? 'https://api.openai.com'
+).replace(/\/v1\/?$/, '')
 const UPSTREAM_TIMEOUT_MS = parseInt(process.env['UPSTREAM_TIMEOUT_MS'] ?? '35000', 10)
 
 export const openaiProxy = new Hono<ApiKeyContext>()
