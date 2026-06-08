@@ -1,12 +1,32 @@
-# 로컬 개발용 Docker Compose
-# 공식 셀프호스팅 배포는 Phase 2E에서 별도 구성
+# 로컬 개발용 Docker Compose — R-23 통합 dev stack (Sprint 3-4).
 #
-# 사용법:
-#   docker compose up -d
-#   docker compose down
+# 사용법
+#   docker compose -f docker-compose.dev.yml up -d
+#   docker compose -f docker-compose.dev.yml down -v   # -v로 volume까지 정리
 #
-# 참고: Supabase는 `supabase start`(CLI)를 권장.
-# 이 파일은 CI 환경 또는 Docker만 사용하는 경우를 위한 대안.
+# 무엇을 포함하나 / 무엇을 포함 안 하나
+#
+#   포함:
+#     - server     (apps/server, Hono, tsx-watch)
+#     - db         (Postgres 17 — production과 메이저 버전 매칭, gotcha #16)
+#     - clickhouse (ClickHouse 24.10-alpine — requests 로그 전용)
+#     - mock-openai (R-3 E2E용 mock LLM, scripts/mock-openai-server.ts)
+#
+#   포함 안 함 (의도적):
+#     - GoTrue + Kong + Supabase Studio — 로컬은 `supabase start` CLI가
+#       표준 (CLAUDE.md "supabase start" 권장). dev compose에서 이 셋을
+#       관리하면 supabase CLI와 두 가지 진실의 출처가 됨. CI에서도
+#       `supabase start`를 sidecar로 띄우는 게 supabase 팀이 유지하는
+#       세팅 그대로라 깨질 일 적음.
+#     - web (apps/web)            — `pnpm --filter web dev`로 직접 실행.
+#       Next.js dev server는 hot reload + RSC 변경 감지가 컨테이너 외부
+#       실행이 훨씬 빠름.
+#
+# 환경 변수 (.env 또는 export)
+#   필수: SUPABASE_URL / SUPABASE_ANON_KEY / SUPABASE_SERVICE_ROLE_KEY /
+#         ENCRYPTION_KEY
+#   ClickHouse(컨테이너): 아래 service 안에서 자동 설정 (외부 .env 불필요)
+#   Mock OpenAI: 자동 (port 4000)
 
 version: '3.9'
 
@@ -23,11 +43,24 @@ services:
       SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY}
       SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY}
       ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      # R-23: server가 in-network ClickHouse를 가리키게. spanlens DB와
+      # default user/password는 아래 clickhouse service 환경변수와 일치.
+      CLICKHOUSE_URL: http://clickhouse:8123
+      CLICKHOUSE_USER: spanlens
+      CLICKHOUSE_PASSWORD: spanlens_dev_password
+      CLICKHOUSE_DB: spanlens
+      # E2E 모드에서 mock OpenAI를 LLM upstream으로 사용. proxy가 실제
+      # OpenAI API에 도달하지 않게 하려면 OPENAI_API_BASE를 mock-openai
+      # service URL로 override. 평상시 dev에선 unset 두면 진짜 OpenAI.
+      OPENAI_API_BASE: ${OPENAI_API_BASE:-}
     volumes:
       - ./apps/server/src:/app/src
     restart: unless-stopped
     depends_on:
-      - db
+      db:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
     # R-22: readiness probe — same endpoint Vercel preview / production
     # docker invocations use. /health/ready pings Postgres + ClickHouse +
     # Upstash (Upstash 'skipped' is OK), so a half-broken container shows
@@ -47,7 +80,12 @@ services:
       start_period: 30s
 
   db:
-    image: postgres:15-alpine
+    # R-23: production은 Postgres 17 (gotcha #16). dev도 17로 맞춰서
+    # major-version skew로 인한 SQL/feature 차이 없게. supabase/postgres
+    # 이미지는 extension까지 포함이라 supabase CLI 환경과 동일하지만
+    # 별도 dependency가 무거우므로 plain alpine으로 시작 — extension
+    # 필요해지면 image만 supabase/postgres:17.x로 swap.
+    image: postgres:17-alpine
     ports:
       - '54322:5432'
     environment:
@@ -62,5 +100,61 @@ services:
       timeout: 5s
       retries: 5
 
+  clickhouse:
+    # R-23: requests 테이블 호스트. production은 ClickHouse Cloud
+    # Development tier, dev/CI는 컨테이너로 충분 (CLAUDE.md DB 작업
+    # 규칙 참조). 24.10은 production tier가 사용하는 메이저 라인.
+    image: clickhouse/clickhouse-server:24.10-alpine
+    ports:
+      - '8123:8123'  # HTTP — server가 사용
+      - '9000:9000'  # native protocol — clickhouse-client / tooling
+    environment:
+      CLICKHOUSE_DB: spanlens
+      CLICKHOUSE_USER: spanlens
+      CLICKHOUSE_PASSWORD: spanlens_dev_password
+      # dev에서 임의 SQL을 빠르게 시도할 수 있게 default user 권한 풀어둠.
+      # production 이미지엔 들어가지 않게 분리된 dev compose 파일.
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: '1'
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    healthcheck:
+      # ClickHouse는 HTTP 8123에 GET /ping → "Ok." 200을 반환.
+      # node -e fetch 패턴은 ClickHouse 컨테이너에 node가 없어 사용 불가
+      # — wget은 alpine ClickHouse 이미지에 포함되어 있음.
+      test: ['CMD-SHELL', 'wget -q -O - http://localhost:8123/ping | grep -q Ok']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  mock-openai:
+    # R-3 E2E용 OpenAI-compatible mock. server의 OPENAI_API_BASE를
+    # http://mock-openai:4000/v1로 override하면 실제 OpenAI API에 비용
+    # 없이 E2E를 돌릴 수 있다. 평상시 dev에선 OPENAI_API_BASE를 비워두면
+    # 진짜 OpenAI로 갑니다 (이 컨테이너는 그래도 띄우지만 traffic이 안 옴).
+    build:
+      context: ./apps/server
+      dockerfile: Dockerfile.dev
+    command: ['pnpm', 'exec', 'tsx', 'scripts/mock-openai-server.ts']
+    ports:
+      - '4000:4000'
+    environment:
+      MOCK_OPENAI_PORT: 4000
+    volumes:
+      - ./apps/server/scripts:/app/scripts
+    healthcheck:
+      test:
+        - 'CMD-SHELL'
+        - "node -e \"fetch('http://localhost:4000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
 volumes:
   postgres_data:
+  clickhouse_data:
