@@ -1,0 +1,39 @@
+{
+  "name": "@spanlens/eslint-plugin",
+  "version": "0.0.1",
+  "description": "Spanlens-internal ESLint rules. Guards against silent-data-loss patterns the type system cannot catch (empty-string decrypt fallthrough, etc.).",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "RULES.md"
+  ],
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --dts --clean",
+    "dev": "tsup src/index.ts --format esm --dts --watch",
+    "lint": "echo 'noop'",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@typescript-eslint/utils": "^8.60.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.9.0",
+    "@typescript-eslint/rule-tester": "^8.60.1",
+    "tsup": "^8.3.5",
+    "typescript": "^6.0.3",
+    "vitest": "^3.2.4"
+  },
+  "peerDependencies": {
+    "eslint": ">=9.0.0"
+  }
+}
