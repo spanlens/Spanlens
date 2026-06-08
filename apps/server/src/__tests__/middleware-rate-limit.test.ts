@@ -38,23 +38,18 @@ beforeEach(async () => {
   ;({ proxyRateLimit, apiRateLimit } = await import('../middleware/rateLimit.js'))
 })
 
-function planLookup(plan: string | null) {
-  return {
-    select: vi.fn().mockReturnThis(),
-    eq: vi.fn().mockReturnThis(),
-    single: vi.fn().mockResolvedValue({
-      data: plan ? { plan } : null,
-      error: plan ? null : { message: 'not found' },
-    }),
-  }
-}
-
 // ── proxyRateLimit ────────────────────────────────────────────────────────────
+//
+// R-4/R-5: proxyRateLimit no longer SELECTs `organizations.plan` —
+// authApiKey caches the plan onto the context as part of its lookup.
+// These tests inject `plan` directly via c.set('plan', ...) to mirror
+// the production wiring.
 
-function makeProxyApp(orgId: string | null) {
-  const app = new Hono<{ Variables: { organizationId: string | null } }>()
+function makeProxyApp(orgId: string | null, plan: string | null = null) {
+  const app = new Hono<{ Variables: { organizationId: string | null; plan: string | null } }>()
   app.use('*', async (c, next) => {
     c.set('organizationId', orgId)
+    if (plan !== null) c.set('plan', plan)
     return next()
   })
   app.use('*', proxyRateLimit as unknown as Parameters<typeof app.use>[1])
@@ -70,21 +65,22 @@ describe('proxyRateLimit', () => {
   })
 
   test('free plan within limit → pass with X-RateLimit headers', async () => {
-    fromMock.mockReturnValue(planLookup('free'))
     checkRateLimitMock.mockResolvedValue(true)
 
-    const res = await makeProxyApp('org_1').request('/probe')
+    const res = await makeProxyApp('org_1', 'free').request('/probe')
     expect(res.status).toBe(200)
     expect(res.headers.get('X-RateLimit-Limit')).toBe('60')
     expect(res.headers.get('X-RateLimit-Window')).toBe('60s')
+    expect(res.headers.get('X-RateLimit-Reset')).not.toBeNull()
     expect(checkRateLimitMock).toHaveBeenCalledWith('proxy:org_1', 60)
+    // R-5: no DB SELECT for plan anymore — authApiKey caches it
+    expect(fromMock).not.toHaveBeenCalled()
   })
 
   test('free plan over limit → 429 with structured error + Retry-After', async () => {
-    fromMock.mockReturnValue(planLookup('free'))
     checkRateLimitMock.mockResolvedValue(false)
 
-    const res = await makeProxyApp('org_1').request('/probe')
+    const res = await makeProxyApp('org_1', 'free').request('/probe')
     expect(res.status).toBe(429)
     const body = await res.json() as Record<string, unknown>
     expect(body['limit']).toBe(60)
@@ -94,30 +90,26 @@ describe('proxyRateLimit', () => {
     expect(res.headers.get('X-RateLimit-Remaining')).toBe('0')
   })
 
-  test('unknown plan falls back to free (60 req/min)', async () => {
-    // The DB lookup returns null → middleware treats org as 'free'
-    fromMock.mockReturnValue(planLookup(null))
+  test('missing plan falls back to free (60 req/min)', async () => {
+    // The cached lookup didn't set plan → middleware defaults to 'free'
     checkRateLimitMock.mockResolvedValue(true)
 
-    const res = await makeProxyApp('org_1').request('/probe')
+    const res = await makeProxyApp('org_1', null).request('/probe')
     expect(res.status).toBe(200)
     expect(res.headers.get('X-RateLimit-Limit')).toBe('60')
   })
 
-  test('enterprise plan (limit=null) → unlimited, no headers set, no checkRateLimit call', async () => {
-    fromMock.mockReturnValue(planLookup('enterprise'))
-
-    const res = await makeProxyApp('org_1').request('/probe')
+  test('enterprise plan (limit=null) → unlimited, no rate-limit headers set', async () => {
+    const res = await makeProxyApp('org_1', 'enterprise').request('/probe')
     expect(res.status).toBe(200)
     expect(res.headers.get('X-RateLimit-Limit')).toBeNull()
     expect(checkRateLimitMock).not.toHaveBeenCalled()
   })
 
   test('team plan limit is 1500 req/min', async () => {
-    fromMock.mockReturnValue(planLookup('team'))
     checkRateLimitMock.mockResolvedValue(true)
 
-    await makeProxyApp('org_1').request('/probe')
+    await makeProxyApp('org_1', 'team').request('/probe')
     expect(checkRateLimitMock).toHaveBeenCalledWith('proxy:org_1', 1500)
   })
 })

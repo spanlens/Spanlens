@@ -5,6 +5,7 @@ import { supabaseAdmin } from '../lib/db.js'
 import { randomHex, sha256Hex } from '../lib/crypto.js'
 import { enqueueDeletion } from '../lib/pending-deletions.js'
 import { recordAuditEvent } from '../lib/audit-log.js'
+import { invalidateApiKeyCache } from '../middleware/authApiKey.js'
 
 /**
  * Spanlens keys come in two shapes:
@@ -297,6 +298,15 @@ apiKeysRouter.delete('/:id', requireEdit, async (c) => {
     }
     return c.json({ error: enqueued.error ?? 'Failed to queue deletion' }, 500)
   }
+
+  // R-4/R-5: drop the auth cache entry for this key the instant the
+  // soft-delete is queued. Without this, the cached lookup could keep
+  // authenticating proxy traffic for up to 30s after the operator
+  // pressed delete — the exact incident the cache TTL choice tried to
+  // bound. The snapshot row carries `key_hash` (sha256 of the raw key),
+  // which is what the cache is indexed by.
+  const snapshotKeyHash = (snapshot as { key_hash?: string }).key_hash
+  if (snapshotKeyHash) invalidateApiKeyCache(snapshotKeyHash)
 
   void recordAuditEvent(c, {
     action: 'api_key.delete',

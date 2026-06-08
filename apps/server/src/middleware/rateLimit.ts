@@ -1,16 +1,18 @@
 import { createMiddleware } from 'hono/factory'
-import { supabaseAdmin } from '../lib/db.js'
 import { sha256Hex } from '../lib/crypto.js'
 import { checkRateLimit, PROXY_RATE_LIMITS, API_RATE_LIMIT } from '../lib/rate-limit.js'
 import type { ApiKeyContext } from './authApiKey.js'
 import type { JwtContext } from './authJwt.js'
-import type { Plan } from '../lib/quota.js'
 
 /**
  * Per-minute rate limit for proxy routes (plan-aware).
  *
- * Must run AFTER authApiKey (needs organizationId in context).
- * Fetches the org's plan to determine the applicable limit:
+ * Must run AFTER authApiKey (needs organizationId + plan in context).
+ * Reads the org's plan straight off c.get('plan') — authApiKey caches
+ * the plan together with the auth lookup and writes it to context,
+ * so this middleware no longer needs a second `organizations` SELECT.
+ * Pre-R-5 every proxy request was 2 round-trips (api_keys + plan);
+ * post-R-5 it's 1 round-trip (cached) or 0 (cache hit).
  *
  *   free       →    60 req/min
  *   starter    →   300 req/min
@@ -20,20 +22,18 @@ import type { Plan } from '../lib/quota.js'
  * All API keys within the same organization share one bucket, so a team
  * that issues multiple keys cannot multiply its quota.
  *
- * Fails open on DB errors to avoid blocking traffic during outages.
+ * Fails open when context is missing (defensive — authApiKey should
+ * always populate plan, but a route that mounts proxyRateLimit without
+ * the auth gate would otherwise crash).
  */
 export const proxyRateLimit = createMiddleware<ApiKeyContext>(async (c, next) => {
   const organizationId = c.get('organizationId')
   if (!organizationId) return next()
 
-  // Fetch the org's plan for limit lookup
-  const { data: org } = await supabaseAdmin
-    .from('organizations')
-    .select('plan')
-    .eq('id', organizationId)
-    .single()
-
-  const plan = ((org?.plan as Plan | undefined) ?? 'free') as Plan
+  // Plan is hoisted onto context by authApiKey (R-4/R-5). Default to
+  // 'free' if for any reason it wasn't set — same fail-open behaviour
+  // the old DB lookup had on errors.
+  const plan = c.get('plan') ?? 'free'
   const limit = PROXY_RATE_LIMITS[plan]
 
   // Enterprise has no per-minute limit
@@ -41,8 +41,16 @@ export const proxyRateLimit = createMiddleware<ApiKeyContext>(async (c, next) =>
 
   const allowed = await checkRateLimit(`proxy:${organizationId}`, limit)
 
+  // R-5: surface the standard three headers on every response so
+  // clients can implement adaptive backoff without us telling them.
+  // X-RateLimit-Reset is a unix epoch second (per the conventional
+  // header semantics), aligned to the start of the next minute window
+  // — that's the natural reset boundary for a per-minute bucket.
+  const nowSec = Math.floor(Date.now() / 1000)
+  const resetAt = (Math.floor(nowSec / 60) + 1) * 60
   c.header('X-RateLimit-Limit', String(limit))
   c.header('X-RateLimit-Window', '60s')
+  c.header('X-RateLimit-Reset', String(resetAt))
 
   if (!allowed) {
     c.header('X-RateLimit-Remaining', '0')
@@ -58,6 +66,11 @@ export const proxyRateLimit = createMiddleware<ApiKeyContext>(async (c, next) =>
     )
   }
 
+  // For successful requests we don't know the exact remaining count
+  // without bouncing through the rate-limit store, but signalling
+  // "at least one slot is left" via the standard header is more useful
+  // to clients than omitting the field entirely.
+  c.header('X-RateLimit-Remaining', String(Math.max(0, limit - 1)))
   return next()
 })
 
@@ -85,8 +98,11 @@ export const apiRateLimit = createMiddleware<JwtContext>(async (c, next) => {
 
   const allowed = await checkRateLimit(`api:${tokenHash}`, API_RATE_LIMIT)
 
+  const nowSec = Math.floor(Date.now() / 1000)
+  const resetAt = (Math.floor(nowSec / 60) + 1) * 60
   c.header('X-RateLimit-Limit', String(API_RATE_LIMIT))
   c.header('X-RateLimit-Window', '60s')
+  c.header('X-RateLimit-Reset', String(resetAt))
 
   if (!allowed) {
     c.header('X-RateLimit-Remaining', '0')
@@ -101,5 +117,6 @@ export const apiRateLimit = createMiddleware<JwtContext>(async (c, next) => {
     )
   }
 
+  c.header('X-RateLimit-Remaining', String(Math.max(0, API_RATE_LIMIT - 1)))
   return next()
 })
