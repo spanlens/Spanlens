@@ -35,6 +35,7 @@ import { humanEvalsRouter } from './api/human-evals.js'
 import { scoreConfigsRouter } from './api/scoreConfigs.js'
 import { recommendationsRouter } from './api/recommendations.js'
 import { auditLogsRouter }     from './api/auditLogs.js'
+import { healthRouter }        from './api/health.js'
 import { membersRouter }       from './api/members.js'
 import { orgInvitationsRouter, invitationsRouter, meInvitationsRouter } from './api/invitations.js'
 import { dismissalsRouter }    from './api/dismissals.js'
@@ -83,47 +84,46 @@ app.use('*', cors({
 }))
 app.use('*', logger())
 
-// Health check
-// /health — basic liveness probe (no DB ping; always returns 200 if process is up).
-app.get('/health', (c) => c.json({ status: 'ok', timestamp: new Date().toISOString() }))
-
-// /health/deep — components view. Returns 503 if ClickHouse is unreachable
-// so external monitoring (Better Stack, UptimeRobot, etc.) can page on the
-// real outage, not just process liveness. `/health` stays cheap for Vercel's
-// own liveness checks.
+// Health check routes extracted to api/health.ts for unit-test isolation.
+// See that file for the contract and the rationale behind each endpoint.
 //
-// Response shape:
-//   { status: 'ok' | 'degraded', clickhouse: { ok, latencyMs }, fallback: { queue } }
+// Three-level health surface (R-22):
 //
-// Concurrency: ping + queue-size query run in parallel to keep p95 low even
-// when one of them is slow.
-app.get('/health/deep', async (c) => {
-  const { pingClickhouse } = await import('./lib/clickhouse.js')
-  const { fallbackQueueSize, eventsFallbackQueueSize } = await import(
-    './lib/fallback-replay.js'
-  )
-
-  const start = Date.now()
-  const [chOk, fallbackQueue, eventsFallback] = await Promise.all([
-    pingClickhouse().catch(() => false),
-    fallbackQueueSize().catch(() => null),
-    eventsFallbackQueueSize().catch(() => null),
-  ])
-  const chLatency = Date.now() - start
-
-  const overallOk = chOk
-  return c.json(
-    {
-      status: overallOk ? 'ok' : 'degraded',
-      timestamp: new Date().toISOString(),
-      clickhouse: { ok: chOk, latencyMs: chLatency },
-      // Null means the lookup itself failed (e.g. Supabase down) — not an
-      // empty queue. Distinguish for triage.
-      fallback: { queue: fallbackQueue, eventsQueue: eventsFallback },
-    },
-    overallOk ? 200 : 503,
-  )
-})
+//   /health        — liveness. Always 200 while the process is up. Vercel
+//                    polls this internally; do not add DB pings here or the
+//                    cold-start budget blows up. Now includes `version`
+//                    (Vercel commit SHA) so we can correlate dashboards with
+//                    the deployed build at a glance.
+//
+//   /health/ready  — readiness. Pings Postgres + ClickHouse + Upstash in
+//                    parallel. Returns 503 if any dependency is unreachable
+//                    so the load balancer / docker healthcheck can route
+//                    around a half-broken instance. Cheap enough to run on
+//                    every 30s docker healthcheck (no aggregate queries,
+//                    one round-trip per dep). Upstash is best-effort — when
+//                    KV_REST_API_URL is unset we report `skipped`, not a
+//                    failure (local dev / preview environments often run
+//                    without the KV store).
+//
+//   /health/deep   — components view + R-11 entry-trigger metrics. Adds the
+//                    `crons.max_runtime_ms` (24h MAX duration_ms from
+//                    cron_job_runs) and `webhooks.backlog_count`
+//                    (webhook_deliveries that missed their retry window)
+//                    fields so external monitoring (Better Stack,
+//                    UptimeRobot, our own dashboards) can page on slow cron
+//                    drift or webhook delivery failure spikes before they
+//                    show up as customer complaints. `concurrent_count` is
+//                    intentionally NOT here — cron_job_runs only INSERTs on
+//                    completion, so in-progress count requires either an
+//                    extra `cron_in_progress` table or Postgres advisory
+//                    locks. Tracked as R-22 follow-up; the 503 path doesn't
+//                    depend on it.
+//
+// Why split readiness from deep: readiness must be fast enough to run
+// every 30s on a tight container loop without melting Supabase. The deep
+// endpoint aggregates last-24h MAX(duration_ms) etc. which is fine to call
+// every 5 min but not every 30 sec.
+app.route('/', healthRouter)
 
 // ── Proxy routes (authApiKey middleware) ──────────────────────
 app.route('/proxy/openai',    openaiProxy)
