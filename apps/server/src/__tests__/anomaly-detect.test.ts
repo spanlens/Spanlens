@@ -1,12 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 // detectAnomalies now queries ClickHouse directly (was a Postgres RPC).
-// Mock getClickhouse() so tests run without a real container; the test
+// Mock unscopedClickhouse() so tests run without a real container; the test
 // helpers below shape the response the way @clickhouse/client returns it
 // (a ResultSet whose .json() resolves to an array of plain rows).
 const mockChQuery = vi.hoisted(() => vi.fn())
 vi.mock('../lib/clickhouse.js', () => ({
-  getClickhouse: () => ({ query: mockChQuery }),
+  unscopedClickhouse: () => ({ query: mockChQuery }),
 }))
 
 import { detectAnomalies } from '../lib/anomaly.js'

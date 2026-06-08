@@ -1,4 +1,4 @@
-import { getClickhouse } from './clickhouse.js'
+import { unscopedClickhouse } from './clickhouse.js'
 import { requestsScope } from './requests-query.js'
 import { statsSource } from './stats-source.js'
 
@@ -85,7 +85,7 @@ export async function getStatsOverview(
     FROM ${statsSource()}
     WHERE ${where}`
 
-  const result = await getClickhouse().query({
+  const result = await unscopedClickhouse().query({
     query: sql,
     query_params: params,
     format: 'JSONEachRow',
@@ -150,7 +150,7 @@ export async function getStatsModels(
     GROUP BY provider, model
     ORDER BY total_cost_usd DESC`
 
-  const result = await getClickhouse().query({
+  const result = await unscopedClickhouse().query({
     query: sql,
     query_params: params,
     format: 'JSONEachRow',
@@ -252,7 +252,7 @@ export async function getStatsTimeseries(
     GROUP BY day
     ORDER BY day ASC`
 
-  const result = await getClickhouse().query({
+  const result = await unscopedClickhouse().query({
     query: sql,
     query_params: params,
     format: 'JSONEachRow',
@@ -328,7 +328,7 @@ export async function getTimeseriesBreakdown(
     )
     ORDER BY day ASC, kind ASC, c DESC`
 
-  const result = await getClickhouse().query({
+  const result = await unscopedClickhouse().query({
     query: sql,
     query_params: params,
     format: 'JSONEachRow',
@@ -449,7 +449,7 @@ export async function getUserAnalytics(
   params['limit'] = options.limit
   params['offset'] = options.offset
 
-  const result = await getClickhouse().query({
+  const result = await unscopedClickhouse().query({
     query: sql,
     query_params: params,
     format: 'JSONEachRow',
@@ -572,7 +572,7 @@ export async function getSessionAnalytics(
   params['limit'] = options.limit
   params['offset'] = options.offset
 
-  const result = await getClickhouse().query({
+  const result = await unscopedClickhouse().query({
     query: sql,
     query_params: params,
     format: 'JSONEachRow',
@@ -623,7 +623,7 @@ export async function getSecuritySummary(
     GROUP BY flag_type, pattern
     ORDER BY count DESC`
 
-  const result = await getClickhouse().query({
+  const result = await unscopedClickhouse().query({
     query: sql,
     query_params: { ...scope.scopeParams, hours },
     format: 'JSONEachRow',
@@ -677,7 +677,7 @@ export async function getLatencyPercentiles(
     WHERE ${scope.whereScope}
       AND created_at >= parseDateTime64BestEffort({sinceTs:String})`
 
-  const result = await getClickhouse().query({
+  const result = await unscopedClickhouse().query({
     query: sql,
     query_params: { ...scope.scopeParams, sinceTs },
     format: 'JSONEachRow',

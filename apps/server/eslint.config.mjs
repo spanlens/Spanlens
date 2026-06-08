@@ -3,19 +3,32 @@ import tsPlugin from '@typescript-eslint/eslint-plugin'
 import spanlensPlugin from '@spanlens/eslint-plugin'
 import globals from 'globals'
 
+// R-Q6: `unscopedClickhouse` (renamed from `getClickhouse`) returns the
+// raw ClickHouse client with no organization scoping. Importing it from
+// API/middleware code is a cross-tenant leak waiting to happen because
+// ClickHouse has no row-level security; every read MUST filter on
+// organization_id at the application layer. The org-scoped helpers in
+// `lib/requests-query.ts` / `lib/events-query.ts` (and `getOrgClickhouse`)
+// thread the org id through automatically.
+//
+// The block targets both the function name and the legacy alias so a
+// pre-R-Q6 stash that still says `getClickhouse` is also rejected — the
+// alias does not exist anymore, but a stale auto-import in someone's
+// editor could try to add it back, and the explicit message is clearer
+// than a "module not found" error.
 const restrictedClickhouse = {
   paths: [
     {
       name: '../lib/clickhouse.js',
-      importNames: ['getClickhouse'],
+      importNames: ['unscopedClickhouse', 'getClickhouse'],
       message:
-        'Use getOrgClickhouse(orgId) from lib/clickhouse.ts or the helpers in lib/requests-query.ts instead of getClickhouse() directly.',
+        'Use getOrgClickhouse(orgId) from lib/clickhouse.ts (or the helpers in lib/requests-query.ts / lib/events-query.ts) instead. For health checks use pingClickhouse(). unscopedClickhouse() is for lib/** internals only.',
     },
     {
       name: '../../lib/clickhouse.js',
-      importNames: ['getClickhouse'],
+      importNames: ['unscopedClickhouse', 'getClickhouse'],
       message:
-        'Use getOrgClickhouse(orgId) from lib/clickhouse.ts or the helpers in lib/requests-query.ts instead of getClickhouse() directly.',
+        'Use getOrgClickhouse(orgId) from lib/clickhouse.ts (or the helpers in lib/requests-query.ts / lib/events-query.ts) instead. For health checks use pingClickhouse(). unscopedClickhouse() is for lib/** internals only.',
     },
   ],
 }

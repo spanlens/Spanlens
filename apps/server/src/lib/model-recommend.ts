@@ -1,4 +1,4 @@
-import { getClickhouse, toClickhouseTimestamp } from './clickhouse.js'
+import { unscopedClickhouse, toClickhouseTimestamp } from './clickhouse.js'
 import { requestsScope } from './requests-query.js'
 // Import from the cache module directly — `model-recommend-rules.ts` no
 // longer re-exports `matchSubstitute` because doing so created a circular
@@ -100,7 +100,7 @@ export async function recommendModelSwaps(
   // ── Phase 1: current-window aggregates ───────────────────────────────────
   let data: AggregateRow[] = []
   try {
-    const res = await getClickhouse().query({
+    const res = await unscopedClickhouse().query({
       query: `
         SELECT
           provider,
@@ -183,7 +183,7 @@ export async function recommendModelSwaps(
   async function fetchPriorCost(provider: string, model: string): Promise<number> {
     try {
       interface CostRow { total_cost_usd: string | null }
-      const res = await getClickhouse().query({
+      const res = await unscopedClickhouse().query({
         query: `
           SELECT sum(cost_usd) AS total_cost_usd
           FROM requests

@@ -19,7 +19,7 @@
  * doesn't carry them as first-class columns.
  */
 
-import { getClickhouse } from './clickhouse.js'
+import { unscopedClickhouse } from './clickhouse.js'
 
 export interface TraceListOptions {
   organizationId: string
@@ -133,7 +133,7 @@ export async function listTracesFromEvents(opts: TraceListOptions): Promise<Trac
 
   const countQuery = `SELECT count() AS c FROM traces_view t WHERE ${where}`
 
-  const ch = getClickhouse()
+  const ch = unscopedClickhouse()
   const [listRes, countRes] = await Promise.all([
     ch.query({
       query: listQuery,
@@ -207,7 +207,7 @@ export async function getTraceWithSpansFromEvents(
   traceId: string,
   organizationId: string,
 ): Promise<TraceDetailResult> {
-  const ch = getClickhouse()
+  const ch = unscopedClickhouse()
 
   const params = { traceId, orgId: organizationId }
 

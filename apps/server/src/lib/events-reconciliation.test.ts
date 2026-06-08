@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 const queryMock = vi.fn()
 vi.mock('./clickhouse.js', () => ({
-  getClickhouse: () => ({ query: queryMock }),
+  unscopedClickhouse: () => ({ query: queryMock }),
 }))
 
 import { computeReconciliation, runReconciliationCron } from './events-reconciliation.js'

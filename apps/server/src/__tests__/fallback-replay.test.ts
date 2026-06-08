@@ -26,7 +26,7 @@ vi.mock('../lib/db.js', () => ({
 }))
 
 vi.mock('../lib/clickhouse.js', () => ({
-  getClickhouse: () => ({
+  unscopedClickhouse: () => ({
     insert: (opts: unknown) => clickhouseInsertMock(opts),
   }),
 }))

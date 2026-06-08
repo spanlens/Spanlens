@@ -1,5 +1,5 @@
 import type { BackgroundMigration, ChunkResult, ChunkState } from '../../index.js'
-import { getClickhouse, toClickhouseTimestamp } from '../../../clickhouse.js'
+import { unscopedClickhouse, toClickhouseTimestamp } from '../../../clickhouse.js'
 
 /**
  * Phase 5.1 Stage 2 — backfill the `events` table from historical
@@ -172,7 +172,7 @@ export const backfillEventsFromRequests: BackgroundMigration = {
 
   async runChunk(state: ChunkState): Promise<ChunkResult> {
     const cursor = readCursor(state)
-    const ch = getClickhouse()
+    const ch = unscopedClickhouse()
 
     // First-run-only: estimate the total row count so the admin UI
     // can show a progress percentage. SELECT count() on a 6-month

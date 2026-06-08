@@ -9,7 +9,7 @@ vi.mock('../lib/db.js', () => ({
 // of Supabase. Tests control which orgs come back via setActiveOrgsForCH.
 const mockChQuery = vi.hoisted(() => vi.fn())
 vi.mock('../lib/clickhouse.js', () => ({
-  getClickhouse: () => ({ query: mockChQuery }),
+  unscopedClickhouse: () => ({ query: mockChQuery }),
 }))
 
 function setActiveOrgsForCH(orgIds: string[]): void {
