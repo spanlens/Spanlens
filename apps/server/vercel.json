@@ -23,6 +23,7 @@
     { "path": "/cron/events-reconciliation",      "schedule": "0 2 * * *" },
     { "path": "/cron/detect-missing-model-prices","schedule": "0 * * * *" },
     { "path": "/cron/self-monitor",               "schedule": "31 * * * *" },
+    { "path": "/cron/detect-orphan-spans",        "schedule": "17 * * * *" },
     { "path": "/cron/keep-warm",                  "schedule": "*/5 * * * *" }
   ]
 }

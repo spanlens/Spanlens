@@ -138,18 +138,18 @@ otlpRouter.post('/v1/traces', authApiKey, requireFullScope, async (c) => {
         }
       }
 
-      // ── 5. Resolve external parent → UUID parent links ─────────────
-      // link_otlp_span_parents() updates child.parent_span_id = parent.id
-      // by matching child.external_parent_span_id = parent.external_span_id
-      // within this trace. Only updates rows where parent_span_id IS NULL
-      // so the call is idempotent.
-      const { error: linkErr } = await supabaseAdmin.rpc('link_otlp_span_parents', {
-        p_trace_id: traceUuid,
-      })
-      if (linkErr) {
-        // Non-fatal: spans are still visible; just parent linkage is missing.
-        console.error('[otlp] link_otlp_span_parents failed:', linkErr.message)
-      }
+      // ── 5. Parent linkage runs asynchronously (R-14, Sprint 5) ─────
+      // The synchronous link_otlp_span_parents() RPC used to run here
+      // turned each OTLP batch into N+1 round-trips on the spans table.
+      // It now lives in the `orphan-span-link` background migration
+      // (registry/migrations/orphan-span-link.ts) which scans rows
+      // matching the spans_orphan_external_parent_idx in chunks. The
+      // RPC itself is still in the DB for one-shot reconciliation but
+      // no request path calls it. Children whose parent arrived in a
+      // later batch are visible immediately (rendered with a null
+      // parent until the background job runs, typically within minutes).
+      // The /cron/detect-orphan-spans cron alerts if the orphan count
+      // exceeds threshold so a stuck job is noticed quickly.
     } catch (err) {
       console.error('[otlp] unexpected error processing trace group:', externalTraceId, err)
       rejectedSpans += spans.length

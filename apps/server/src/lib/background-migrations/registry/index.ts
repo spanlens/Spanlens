@@ -27,6 +27,7 @@ import { noopHealthcheck } from './migrations/noop-healthcheck.js'
 import { backfillEventsFromRequests } from './migrations/backfill-events-from-requests.js'
 import { backfillTracesFromSupabase } from './migrations/backfill-traces-from-supabase.js'
 import { backfillSpansFromSupabase } from './migrations/backfill-spans-from-supabase.js'
+import { orphanSpanLink } from './migrations/orphan-span-link.js'
 
 const REGISTRY = new Map<string, BackgroundMigration>([
   // Always-registered no-op so the cron has something to exercise on
@@ -46,6 +47,15 @@ const REGISTRY = new Map<string, BackgroundMigration>([
   //   name='backfill-spans-from-supabase'
   [backfillTracesFromSupabase.name, backfillTracesFromSupabase],
   [backfillSpansFromSupabase.name, backfillSpansFromSupabase],
+
+  // R-14 (Sprint 5) — resolve OTLP external_parent_span_id → UUID
+  // parent_span_id outside the request path. The OTLP receiver used
+  // to call link_otlp_span_parents() RPC synchronously, which added
+  // 50-200ms to every OTLP POST at hot traces. INSERT a row into
+  // `background_migrations` with name='orphan-span-link' to start it;
+  // the chunked scan reuses the `spans_orphan_external_parent_idx`
+  // partial index so each tick is cheap.
+  [orphanSpanLink.name, orphanSpanLink],
 ])
 
 export function getRegistry(): ReadonlyMap<string, BackgroundMigration> {
