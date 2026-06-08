@@ -174,7 +174,7 @@ export default function DemoTracesPage() {
       <div className="overflow-x-auto shrink-0 border-b border-border">
         <div className="grid grid-cols-5 min-w-[480px]">
           {[
-            { label: 'Traces',            value: DEMO_TRACES.length.toLocaleString(), warn: false },
+            { label: 'Traces',            value: DEMO_TRACES.length.toLocaleString('en-US'), warn: false },
             { label: 'p50 duration',      value: fmtDuration(p50),                   warn: false },
             { label: 'p95 duration',      value: fmtDuration(p95),                   warn: p95 != null && p95 > 8000 },
             { label: 'Avg spans / trace', value: avgSpans != null ? avgSpans.toFixed(1) : '—', warn: false },
@@ -301,7 +301,7 @@ export default function DemoTracesPage() {
                   <span className="text-text-muted">{t.span_count}</span>
                   <span className={isErr ? 'text-bad' : 'text-text'}>{fmtDuration(t.duration_ms)}</span>
                   <span className="text-text">{fmtCost(t.total_cost_usd)}</span>
-                  <span className="text-text-muted">{t.total_tokens.toLocaleString()}</span>
+                  <span className="text-text-muted">{t.total_tokens.toLocaleString('en-US')}</span>
                   <span className="pr-4 flex items-center">
                     <TraceDurationBar
                       durationMs={t.duration_ms}
@@ -319,7 +319,7 @@ export default function DemoTracesPage() {
                       <span className="font-mono text-[9.5px] px-[5px] py-[2px] rounded-[3px] bg-bg-muted text-text-faint border border-border uppercase tracking-[0.04em]">ok</span>
                     )}
                   </span>
-                  <span className="text-text-faint text-right" title={new Date(t.started_at).toLocaleString()}>
+                  <span className="text-text-faint text-right" title={new Date(t.started_at).toLocaleString('en-US')}>
                     {fmtAge(t.started_at)}
                   </span>
                 </button>

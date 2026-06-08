@@ -16,7 +16,7 @@ function fmtCost(n: number | null | undefined): string {
 }
 
 function fmtCount(n: number): string {
-  return n.toLocaleString()
+  return n.toLocaleString('en-US')
 }
 
 export default async function DemoUserDetailPage({ params }: { params: Promise<{ userId: string }> }) {
@@ -45,8 +45,8 @@ export default async function DemoUserDetailPage({ params }: { params: Promise<{
     { label: 'Avg latency', value: `${Math.round(avgLatency)} ms` },
     { label: 'Error count', value: fmtCount(errorCount), warn: errorCount > 0 },
     { label: 'Distinct models', value: fmtCount(distinctModels) },
-    { label: 'First seen', value: firstSeen ? new Date(firstSeen).toLocaleDateString() : '—' },
-    { label: 'Last seen', value: lastSeen ? new Date(lastSeen).toLocaleDateString() : '—' },
+    { label: 'First seen', value: firstSeen ? new Date(firstSeen).toLocaleDateString('en-US') : '—' },
+    { label: 'Last seen', value: lastSeen ? new Date(lastSeen).toLocaleDateString('en-US') : '—' },
   ]
 
   return (
@@ -109,7 +109,7 @@ export default async function DemoUserDetailPage({ params }: { params: Promise<{
                     })}
                   </span>
                   <span className="truncate">{r.model}</span>
-                  <span className="text-text-muted">{r.total_tokens.toLocaleString()}</span>
+                  <span className="text-text-muted">{r.total_tokens.toLocaleString('en-US')}</span>
                   <span>{fmtCost(r.cost_usd)}</span>
                   <span className={isErr ? 'text-bad' : 'text-good'}>{r.status_code}</span>
                 </Link>

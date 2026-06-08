@@ -84,9 +84,9 @@ export default function DemoRequestDetailPage({ params }: { params: Promise<{ id
     { label: 'Model', value: req.model },
     { label: 'Latency', value: `${req.latency_ms} ms`, warn: req.latency_ms > 2000 },
     { label: 'Cost', value: fmtCost(req.cost_usd) },
-    { label: 'Prompt tokens', value: req.prompt_tokens.toLocaleString() },
-    { label: 'Completion tokens', value: req.completion_tokens.toLocaleString() },
-    { label: 'Total tokens', value: req.total_tokens.toLocaleString() },
+    { label: 'Prompt tokens', value: req.prompt_tokens.toLocaleString('en-US') },
+    { label: 'Completion tokens', value: req.completion_tokens.toLocaleString('en-US') },
+    { label: 'Total tokens', value: req.total_tokens.toLocaleString('en-US') },
     ...(req.trace_id
       ? [{ label: 'Trace ID', value: req.trace_id.slice(0, 16) + '…', link: `/demo/traces/${req.trace_id}` }]
       : [{ label: 'Trace ID', value: '—' }]),
@@ -112,7 +112,7 @@ export default function DemoRequestDetailPage({ params }: { params: Promise<{ id
             {req.id.startsWith('req-') ? req.id : req.id.slice(0, 8) + '…'}
           </h1>
           <p className="font-mono text-[12px] text-text-muted mt-1">
-            {new Date(req.created_at).toLocaleString()}
+            {new Date(req.created_at).toLocaleString('en-US')}
           </p>
         </div>
         <span

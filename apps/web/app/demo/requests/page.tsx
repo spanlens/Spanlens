@@ -1,6 +1,7 @@
 'use client'
 import { Suspense, useCallback, useMemo, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
+import { useHydrationSafeNow } from '@/lib/hydration-safe-now'
 import { cn } from '@/lib/utils'
 import { Topbar } from '@/components/layout/topbar'
 import { DemoExportButton } from '@/components/ui/demo-export-button'
@@ -99,7 +100,7 @@ function StatStrip() {
   const stats = [
     {
       label: 'Requests · 24h',
-      value: totalReqs.toLocaleString(),
+      value: totalReqs.toLocaleString('en-US'),
       spark: sparkReqs,
       warn: false,
       good: false,
@@ -372,12 +373,12 @@ function RequestsTable({
                 <span className={isErr ? 'text-accent' : 'text-text'}>
                   {req.latency_ms}ms
                 </span>
-                <span className="text-text-muted">{req.total_tokens.toLocaleString()}</span>
+                <span className="text-text-muted">{req.total_tokens.toLocaleString('en-US')}</span>
                 <span className="text-text">{fmtCost(req.cost_usd)}</span>
                 <span className={isErr ? 'text-bad' : 'text-good'}>{req.status_code}</span>
                 <span
                   className="text-text-faint text-right"
-                  title={new Date(req.created_at).toLocaleString()}
+                  title={new Date(req.created_at).toLocaleString('en-US')}
                 >
                   {relAge(req.created_at)}
                 </span>
@@ -413,7 +414,7 @@ function DemoRequestsContent() {
   }, [])
 
   // Capture "now" once at mount — demo data is static, no need for live time.
-  const [now] = useState(() => Date.now())
+  const now = useHydrationSafeNow()
 
   const filtered = useMemo(() => {
     let rows = [...DEMO_REQUESTS]
@@ -658,7 +659,7 @@ function DemoRequestsContent() {
         {/* Pagination (demo: single page) */}
         <div className="flex items-center justify-between px-[22px] py-3 border-t border-border shrink-0">
           <span className="font-mono text-[11px] text-text-faint">
-            Page 1 · {filtered.length.toLocaleString()} total
+            Page 1 · {filtered.length.toLocaleString('en-US')} total
           </span>
           <div className="flex gap-1.5">
             <button
