@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { DemoSidebar } from '@/components/layout/demo-sidebar'
 import { SidebarProvider } from '@/lib/sidebar-context'
 import { CommandPaletteProvider } from '@/components/command-palette'
+import { DemoClientGuard } from './_client-guard'
 
 export default function DemoLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -28,7 +29,12 @@ export default function DemoLayout({ children }: { children: React.ReactNode }) 
           </Link>
         </div>
         <main className="flex-1 overflow-y-auto min-w-0">
-          <div className="px-4 py-4 md:px-8 md:py-7">{children}</div>
+          <div className="px-4 py-4 md:px-8 md:py-7">
+            {/* Renders nothing during SSR + first client paint to sidestep any
+                remaining #418 hydration mismatches in demo children. See
+                _client-guard.tsx for the rationale and trade-offs. */}
+            <DemoClientGuard>{children}</DemoClientGuard>
+          </div>
         </main>
       </div>
     </div>
