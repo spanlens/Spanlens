@@ -59,6 +59,15 @@ jobs:
       - name: Start Supabase stack
         run: |
           supabase start
+          # `supabase start` brings up the stack with a baseline schema, but
+          # does NOT always replay every file under supabase/migrations/
+          # against the local DB — a row from a newer migration can be
+          # missing from PostgREST's schema cache (PR #269 CI #4 hit exactly
+          # this: provider_keys.project_id added in 20260505040000_unified_keys.sql
+          # was absent). `db reset --no-seed` re-applies all migrations in
+          # order and reloads the schema cache. `--no-seed` skips
+          # supabase/seed.sql so dev fixtures don't pollute the E2E run.
+          supabase db reset --no-seed
           # Persist the resolved URLs/keys so subsequent steps can read them
           # via $GITHUB_ENV without grepping the supabase status output again.
           status_json=$(supabase status -o json)
