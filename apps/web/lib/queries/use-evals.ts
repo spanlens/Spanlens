@@ -81,14 +81,44 @@ export function useEvaluators(promptName?: string) {
   })
 }
 
-export interface CreateEvaluatorInput {
-  promptName: string
-  name: string
-  config: JudgeConfig
-  /** 4B.1c — optional pointer at a typed score config. NULL preserves
-   *  the legacy NUMERIC 0..1 behaviour. */
-  scoreConfigId?: string | null
+/**
+ * R-7 Phase 1: code evaluator config shapes.
+ *
+ * Both are deterministic per-sample checks. The server stores them as
+ * the evaluator row's `config` jsonb verbatim, and the runner
+ * dispatches on `evaluator.type` (not on which keys are present).
+ */
+export interface RegexConfig {
+  pattern: string
+  flags?: string
 }
+
+export interface JsonSchemaConfig {
+  schema: unknown
+}
+
+export type CreateEvaluatorInput =
+  | {
+      promptName: string
+      name: string
+      type?: 'llm_judge'
+      config: JudgeConfig
+      /** 4B.1c — optional pointer at a typed score config. NULL preserves
+       *  the legacy NUMERIC 0..1 behaviour. */
+      scoreConfigId?: string | null
+    }
+  | {
+      promptName: string
+      name: string
+      type: 'regex'
+      config: RegexConfig
+    }
+  | {
+      promptName: string
+      name: string
+      type: 'json_schema'
+      config: JsonSchemaConfig
+    }
 
 export function useCreateEvaluator() {
   const qc = useQueryClient()
@@ -97,10 +127,12 @@ export function useCreateEvaluator() {
       const body: Record<string, unknown> = {
         promptName: input.promptName,
         name: input.name,
-        type: 'llm_judge',
+        type: input.type ?? 'llm_judge',
         config: input.config,
       }
-      if (input.scoreConfigId) body.scoreConfigId = input.scoreConfigId
+      if (input.type === undefined || input.type === 'llm_judge') {
+        if (input.scoreConfigId) body.scoreConfigId = input.scoreConfigId
+      }
       const res = await apiPost<ApiEnvelope<Evaluator>>('/api/v1/evaluators', body)
       return res.data
     },

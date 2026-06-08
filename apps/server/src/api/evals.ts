@@ -37,26 +37,56 @@ evalsRouter.post('/evaluators', async (c) => {
 
   if (!promptName) return c.json({ error: 'promptName is required' }, 400)
   if (!name) return c.json({ error: 'name is required' }, 400)
-  if (type !== 'llm_judge') return c.json({ error: 'Unsupported evaluator type' }, 400)
+  if (type !== 'llm_judge' && type !== 'regex' && type !== 'json_schema') {
+    return c.json({ error: 'type must be one of: llm_judge, regex, json_schema' }, 400)
+  }
 
   if (!body.config || typeof body.config !== 'object' || Array.isArray(body.config)) {
     return c.json({ error: 'config object is required' }, 400)
   }
   const config = body.config as Record<string, unknown>
 
-  const criterion = typeof config.criterion === 'string' ? config.criterion.trim() : ''
-  const judgeProvider = typeof config.judge_provider === 'string' ? config.judge_provider : ''
-  const judgeModel = typeof config.judge_model === 'string' ? config.judge_model.trim() : ''
-  const scaleMin = typeof config.scale_min === 'number' ? config.scale_min : 0
-  const scaleMax = typeof config.scale_max === 'number' ? config.scale_max : 1
+  // R-7 Phase 1 — per-type config validation. Each type carries its own
+  // shape, and we store it verbatim so the runner can dispatch off the
+  // `type` column without consulting a schema registry.
+  let validatedConfig: Record<string, unknown>
 
-  if (!criterion) return c.json({ error: 'config.criterion is required' }, 400)
-  if (judgeProvider !== 'openai' && judgeProvider !== 'anthropic' && judgeProvider !== 'gemini') {
-    return c.json({ error: 'config.judge_provider must be "openai", "anthropic", or "gemini"' }, 400)
-  }
-  if (!judgeModel) return c.json({ error: 'config.judge_model is required' }, 400)
-  if (!(scaleMax > scaleMin)) {
-    return c.json({ error: 'config.scale_max must be greater than scale_min' }, 400)
+  if (type === 'llm_judge') {
+    const criterion = typeof config.criterion === 'string' ? config.criterion.trim() : ''
+    const judgeProvider = typeof config.judge_provider === 'string' ? config.judge_provider : ''
+    const judgeModel = typeof config.judge_model === 'string' ? config.judge_model.trim() : ''
+    const scaleMin = typeof config.scale_min === 'number' ? config.scale_min : 0
+    const scaleMax = typeof config.scale_max === 'number' ? config.scale_max : 1
+
+    if (!criterion) return c.json({ error: 'config.criterion is required' }, 400)
+    if (judgeProvider !== 'openai' && judgeProvider !== 'anthropic' && judgeProvider !== 'gemini') {
+      return c.json({ error: 'config.judge_provider must be "openai", "anthropic", or "gemini"' }, 400)
+    }
+    if (!judgeModel) return c.json({ error: 'config.judge_model is required' }, 400)
+    if (!(scaleMax > scaleMin)) {
+      return c.json({ error: 'config.scale_max must be greater than scale_min' }, 400)
+    }
+    validatedConfig = { criterion, judge_provider: judgeProvider, judge_model: judgeModel, scale_min: scaleMin, scale_max: scaleMax }
+  } else if (type === 'regex') {
+    const pattern = typeof config.pattern === 'string' ? config.pattern : ''
+    const flags = typeof config.flags === 'string' ? config.flags : ''
+    if (!pattern) return c.json({ error: 'config.pattern is required' }, 400)
+    // Compile-test the pattern at create time so a typo can't lurk
+    // until first eval run — same fail-fast pattern as score_configs
+    // does for category validation.
+    try {
+      new RegExp(pattern, flags)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      return c.json({ error: `invalid regex pattern: ${message}` }, 400)
+    }
+    validatedConfig = { pattern, flags }
+  } else {
+    // type === 'json_schema'
+    if (!config.schema || typeof config.schema !== 'object' || Array.isArray(config.schema)) {
+      return c.json({ error: 'config.schema must be a JSON Schema object' }, 400)
+    }
+    validatedConfig = { schema: config.schema }
   }
 
   // Verify prompt exists for this org
@@ -67,10 +97,15 @@ evalsRouter.post('/evaluators', async (c) => {
     .eq('name', promptName)
   if (!promptCount) return c.json({ error: 'Prompt not found' }, 404)
 
-  // Optional score config — verified to belong to the same org so a
-  // caller can't bind an evaluator to someone else's config row.
+  // Optional score config — only meaningful for LLM-as-judge runs.
+  // Verified to belong to the same org so a caller can't bind an
+  // evaluator to someone else's config row.
   let scoreConfigId: string | null = null
-  if (typeof body.scoreConfigId === 'string' && body.scoreConfigId.trim().length > 0) {
+  if (
+    type === 'llm_judge' &&
+    typeof body.scoreConfigId === 'string' &&
+    body.scoreConfigId.trim().length > 0
+  ) {
     const candidate = body.scoreConfigId.trim()
     const { data: sc } = await supabaseAdmin
       .from('score_configs')
@@ -90,7 +125,7 @@ evalsRouter.post('/evaluators', async (c) => {
       prompt_name: promptName,
       name,
       type,
-      config: { criterion, judge_provider: judgeProvider, judge_model: judgeModel, scale_min: scaleMin, scale_max: scaleMax },
+      config: validatedConfig,
       created_by: userId ?? null,
       score_config_id: scoreConfigId,
     })
