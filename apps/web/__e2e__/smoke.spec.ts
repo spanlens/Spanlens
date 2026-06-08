@@ -76,31 +76,43 @@ test.describe('smoke: signup → api key → proxy → /requests', () => {
       email_confirm: true,
     })
     if (createErr || !createdUser.user) throw new Error(`createUser failed: ${createErr?.message}`)
+    const userId = createdUser.user.id
 
-    // ── 2. Sign in via the actual login form ──────────────────────────────────
+    // ── 2. Pre-bootstrap workspace + project so /login lands on /dashboard ────
+    //
+    // Spanlens does NOT have an `on_auth_user_created` Postgres trigger that
+    // auto-creates an org for new users. Instead the /onboarding page calls
+    // POST /api/v1/organizations/bootstrap once the user picks a workspace
+    // name (see apps/server/src/api/organizations.ts:272). Replicating that
+    // bootstrap server-side via service_role keeps the smoke spec out of the
+    // onboarding UI entirely — that flow has its own dedicated spec.
+    const { data: org, error: orgErr } = await supabase
+      .from('organizations')
+      .insert({ name: 'e2e-workspace', owner_id: userId })
+      .select('id')
+      .single()
+    if (orgErr || !org) throw new Error(`org insert failed: ${orgErr?.message}`)
+    const orgId = org.id as string
+
+    const { error: memberErr } = await supabase
+      .from('org_members')
+      .insert({ organization_id: orgId, user_id: userId, role: 'admin' })
+    if (memberErr) throw new Error(`org_members insert failed: ${memberErr.message}`)
+
+    const { data: project, error: projErr } = await supabase
+      .from('projects')
+      .insert({ organization_id: orgId, name: 'Default Project' })
+      .select('id')
+      .single()
+    if (projErr || !project) throw new Error(`project insert failed: ${projErr?.message}`)
+    const projectId = project.id as string
+
+    // ── 3. Sign in via the actual login form ──────────────────────────────────
     await page.goto('/login')
     await page.fill('#email', email)
     await page.fill('#password', password)
     await page.click('button[type="submit"]')
-    await page.waitForURL(/\/(onboarding|projects|dashboard)/, { timeout: 30_000 })
-
-    // ── 3. Resolve the org + project from Supabase. The signup trigger
-    //      provisions a personal org + default project; we read them
-    //      back so the API key INSERT in step 4 targets the right rows.
-    const { data: members } = await supabase
-      .from('org_members')
-      .select('organization_id, organizations(id)')
-      .eq('user_id', createdUser.user.id)
-    const orgId = (members?.[0]?.organization_id as string) ?? null
-    if (!orgId) throw new Error('No organization found for e2e user — signup trigger may be broken')
-
-    const { data: projects } = await supabase
-      .from('projects')
-      .select('id')
-      .eq('organization_id', orgId)
-      .limit(1)
-    const projectId = (projects?.[0]?.id as string) ?? null
-    if (!projectId) throw new Error('No project found for e2e user — signup trigger may be broken')
+    await page.waitForURL(/\/(projects|dashboard)/, { timeout: 30_000 })
 
     // ── 4. Issue an sl_live_* key directly via service-role INSERT.
     //      Going through /api/v1/api-keys would also work but requires
