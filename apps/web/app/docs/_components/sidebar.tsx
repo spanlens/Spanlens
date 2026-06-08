@@ -81,6 +81,7 @@ const NAV: NavGroup[] = [
     title: 'Workspace',
     items: [
       { title: 'Projects & API keys', href: '/docs/features/projects' },
+      { title: 'Shared links', href: '/docs/features/shares' },
       { title: 'Keys & encryption', href: '/docs/features/settings' },
       { title: 'Members & invitations', href: '/docs/features/members-invitations' },
       { title: 'Audit logs', href: '/docs/features/audit-logs' },
