@@ -13,6 +13,50 @@ interface SharePayload {
   payload: unknown
 }
 
+/**
+ * Canonical site URL — used for the share permalink + OG image base.
+ * WEB_URL is the same env var the server-side notification code uses
+ * (see CLAUDE.md "도메인 & CORS 정책"). NEXT_PUBLIC_WEB_URL is the
+ * fallback for branch deploys where only the public version is set.
+ */
+function siteUrl(): string {
+  return (
+    process.env.WEB_URL ??
+    process.env.NEXT_PUBLIC_WEB_URL ??
+    'https://www.spanlens.io'
+  )
+}
+
+/**
+ * Pull a human-readable preview snippet from the share payload so the
+ * OG `description` actually represents the content. The share API
+ * already returns redacted payloads when the share is non-indexable,
+ * so this snippet is safe to publish (PII-scrubbed at the source).
+ *
+ * Cap at 140 chars so the result fits Twitter card constraints and
+ * social previews don't truncate mid-sentence.
+ */
+function previewDescription(share: SharePayload): string {
+  const fallback = 'A shared LLM trace observed by Spanlens.'
+  const payload = share.payload
+  if (!payload || typeof payload !== 'object') return fallback
+
+  if (share.scope === 'trace') {
+    const t = payload as { name?: string | null; status?: string | null }
+    if (t.name) return `${t.name}${t.status ? ` (${t.status})` : ''}`.slice(0, 140)
+  }
+  if (share.scope === 'request') {
+    const r = payload as { provider?: string; model?: string; status_code?: number }
+    if (r.provider && r.model) {
+      return `${r.provider} · ${r.model}${r.status_code ? ` · ${r.status_code}` : ''}`.slice(
+        0,
+        140,
+      )
+    }
+  }
+  return fallback
+}
+
 // SSR fetch: the share viewer renders read-only data, so we render the entire
 // page on the server. No client-side query / no auth. Falls back to notFound()
 // on any non-2xx so 404 / 410 / 500 all funnel through Next.js's not-found
@@ -48,10 +92,38 @@ export async function generateMetadata({
     ? { index: true, follow: true }
     : { index: false, follow: false }
   const scope = share?.scope === 'request' ? 'Request' : 'Trace'
+  const title = share ? `Shared ${scope} · Spanlens` : 'Share · Spanlens'
+  const description = share ? previewDescription(share) : 'A shared LLM trace observed by Spanlens.'
+  const url = `${siteUrl()}/share/${encodeURIComponent(token)}`
+
+  // R-26 Sprint 5: emit OG + Twitter card metadata so the share link
+  // produces a useful preview when posted to Slack, X, LinkedIn, etc.
+  // We intentionally do NOT set `openGraph.images` yet — there is no
+  // canonical share preview asset in /public, and pointing at a path
+  // that 404s makes Slack/X show a broken-image card (worse than no
+  // image, which falls back to the site favicon). Sprint 6 owns either
+  // a static `/og-share.png` upload or a dynamic `/api/og-image` route
+  // that renders a per-trace summary card via vercel/og. The current
+  // metadata still drives a clean text card with title + description.
   return {
-    title: share ? `Shared ${scope} · Spanlens` : 'Share · Spanlens',
-    description: 'A shared LLM trace observed by Spanlens.',
+    title,
+    description,
     robots,
+    alternates: {
+      canonical: url,
+    },
+    openGraph: {
+      title,
+      description,
+      url,
+      siteName: 'Spanlens',
+      type: 'article',
+    },
+    twitter: {
+      card: 'summary',
+      title,
+      description,
+    },
   }
 }
 
@@ -73,5 +145,12 @@ export default async function ShareTokenPage({
   const share = await fetchShare(token)
   if (!share) notFound()
 
-  return <ShareView share={share} />
+  // Build the permalink server-side so the CopyPermalink button doesn't
+  // touch `window.location` at first render — share-view.tsx is a Client
+  // Component but the very first hydration pass runs both SSR and CSR,
+  // and `window` is undefined in SSR. Passing the URL down explicitly
+  // keeps the two passes identical (no React hydration mismatch).
+  const permalink = `${siteUrl()}/share/${encodeURIComponent(token)}`
+
+  return <ShareView share={{ ...share, permalink }} />
 }
