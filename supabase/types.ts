@@ -584,7 +584,7 @@ export type Database = {
           organization_id: string
           reasoning: string | null
           request_id: string | null
-          score: number
+          score: number | null
           score_config_id: string | null
           value_boolean: boolean | null
           value_number: number | null
@@ -600,7 +600,7 @@ export type Database = {
           organization_id: string
           reasoning?: string | null
           request_id?: string | null
-          score: number
+          score?: number | null
           score_config_id?: string | null
           value_boolean?: boolean | null
           value_number?: number | null
@@ -616,7 +616,7 @@ export type Database = {
           organization_id?: string
           reasoning?: string | null
           request_id?: string | null
-          score?: number
+          score?: number | null
           score_config_id?: string | null
           value_boolean?: boolean | null
           value_number?: number | null
@@ -837,6 +837,36 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      events_fallback: {
+        Row: {
+          created_at: string
+          event_type: string
+          id: string
+          last_error: string | null
+          last_retry_at: string | null
+          payload: Json
+          retry_count: number
+        }
+        Insert: {
+          created_at?: string
+          event_type: string
+          id?: string
+          last_error?: string | null
+          last_retry_at?: string | null
+          payload: Json
+          retry_count?: number
+        }
+        Update: {
+          created_at?: string
+          event_type?: string
+          id?: string
+          last_error?: string | null
+          last_retry_at?: string | null
+          payload?: Json
+          retry_count?: number
+        }
+        Relationships: []
       }
       experiment_results: {
         Row: {
@@ -2855,3 +2885,4 @@ export const Constants = {
     },
   },
 } as const
+
