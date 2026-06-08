@@ -143,14 +143,38 @@ test.describe('smoke: signup → api key → proxy → /requests', () => {
     if (projErr || !project) throw new Error(`project insert failed: ${projErr?.message}`)
     const projectId = project.id as string
 
-    // ── 2b. Register a provider key so the proxy has something to decrypt ─────
+    // ── 2b. Issue the API key NOW (was step 4) so the provider_key below
+    //         can point at it. provider_keys.api_key_id is NOT NULL
+    //         after migration 20260505080000_provider_keys_under_api_keys.sql,
+    //         which moved ownership from project → api_key.
+    const { randomBytes, createHash } = await import('node:crypto')
+    const rawKey = `sl_live_${randomBytes(24).toString('hex')}`
+    const keyHash = createHash('sha256').update(rawKey).digest('hex')
+
+    const { data: apiKeyRow, error: keyInsertErr } = await supabase
+      .from('api_keys')
+      .insert({
+        project_id: projectId,
+        organization_id: null,
+        key_hash: keyHash,
+        key_prefix: rawKey.slice(0, 14),
+        name: 'e2e-smoke',
+        scope: 'full',
+        is_active: true,
+      })
+      .select('id')
+      .single()
+    if (keyInsertErr || !apiKeyRow) throw new Error(`api_keys insert failed: ${keyInsertErr?.message}`)
+    const apiKeyId = apiKeyRow.id as string
+
+    // ── 2c. Register a provider key so the proxy has something to decrypt ─────
     //
     // The proxy in apps/server/src/proxy/openai.ts looks up
-    // provider_keys.encrypted_key for the org, AES-256-GCM-decrypts it,
-    // and uses the plaintext as the upstream Authorization Bearer. With
-    // OPENAI_API_BASE pointed at mock-openai the actual key value never
-    // matters — mock accepts anything — but the row HAS to exist, and
-    // the ciphertext has to decrypt cleanly or the proxy returns 500.
+    // provider_keys.encrypted_key for the API key, AES-256-GCM-decrypts
+    // it, and uses the plaintext as the upstream Authorization Bearer.
+    // With OPENAI_API_BASE pointed at mock-openai the actual key value
+    // never matters — mock accepts anything — but the row HAS to exist,
+    // and the ciphertext has to decrypt cleanly or the proxy returns 500.
     //
     // We encrypt right here (Web Crypto, no Node-only APIs) using the
     // same ENCRYPTION_KEY the server is configured with. Reusing
@@ -163,7 +187,7 @@ test.describe('smoke: signup → api key → proxy → /requests', () => {
 
     const { error: pkErr } = await supabase.from('provider_keys').insert({
       organization_id: orgId,
-      project_id: projectId,
+      api_key_id: apiKeyId,
       provider: 'openai',
       name: 'e2e mock',
       encrypted_key: encryptedProviderKey,
@@ -177,25 +201,6 @@ test.describe('smoke: signup → api key → proxy → /requests', () => {
     await page.fill('#password', password)
     await page.click('button[type="submit"]')
     await page.waitForURL(/\/(projects|dashboard)/, { timeout: 30_000 })
-
-    // ── 4. Issue an sl_live_* key directly via service-role INSERT.
-    //      Going through /api/v1/api-keys would also work but requires
-    //      a session cookie; the direct insert keeps the test focused on
-    //      the proxy → ClickHouse → dashboard pipe.
-    const { randomBytes, createHash } = await import('node:crypto')
-    const rawKey = `sl_live_${randomBytes(24).toString('hex')}`
-    const keyHash = createHash('sha256').update(rawKey).digest('hex')
-
-    const { error: insertErr } = await supabase.from('api_keys').insert({
-      project_id: projectId,
-      organization_id: null,
-      key_hash: keyHash,
-      key_prefix: rawKey.slice(0, 14),
-      name: 'e2e-smoke',
-      scope: 'full',
-      is_active: true,
-    })
-    if (insertErr) throw new Error(`api_keys insert failed: ${insertErr.message}`)
 
     // ── 5. Issue a chat-completions call through the proxy. Server's
     //      OPENAI_API_BASE is pointed at mock-openai in the CI compose
