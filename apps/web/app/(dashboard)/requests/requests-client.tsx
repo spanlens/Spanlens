@@ -1202,6 +1202,11 @@ function RequestsTable({
               const isSelected = req.id === selectedId
               return (
                 <div
+                  // data-testid is the stable hook the R-3 smoke test
+                  // (apps/web/__e2e__/smoke.spec.ts) waits on after
+                  // running a proxy call. Cosmetic className changes
+                  // would otherwise break the spec.
+                  data-testid="request-row"
                   key={req.id}
                   onClick={() => onSelect(req.id)}
                   className={cn(

@@ -1,0 +1,136 @@
+import { expect, test } from '@playwright/test'
+import { createClient } from '@supabase/supabase-js'
+
+/**
+ * R-3 smoke spec — signup → api key → proxy → dashboard.
+ *
+ * What we verify (and what we do not)
+ *
+ *   We assert that a fresh user can:
+ *     1. authenticate via magic-link (Supabase admin pre-seed)
+ *     2. issue an sl_live_* API key
+ *     3. send a proxy request that lands on the mock OpenAI server
+ *     4. see the request appear in /requests within the eventual-
+ *        consistency window
+ *
+ *   We do NOT cover billing, invitations, or evaluator flows here —
+ *   those have their own focused specs (R-3 Phase 2 / Phase 3).
+ *   Keeping the smoke spec single-purpose means a red signal points at
+ *   the proxy → ClickHouse → dashboard pipe directly, not at the
+ *   periphery.
+ *
+ * Required environment (CI's e2e workflow sets these)
+ *   E2E_BASE_URL                http://localhost:3000  (Playwright baseURL)
+ *   E2E_SERVER_URL              http://localhost:3001  (Hono server)
+ *   E2E_SUPABASE_URL            local supabase API URL (e.g. http://localhost:54321)
+ *   E2E_SUPABASE_SERVICE_KEY    service_role key — admin auth bypass
+ *
+ * Why a fresh user per run
+ *   No teardown means rerunning the suite a second time would collide
+ *   on email uniqueness if we hard-coded a fixture user. Using
+ *   `Date.now()` in the email gives every run a clean tenant.
+ */
+
+const supabaseUrl = process.env['E2E_SUPABASE_URL'] ?? 'http://localhost:54321'
+const supabaseServiceKey = process.env['E2E_SUPABASE_SERVICE_KEY'] ?? ''
+const serverUrl = process.env['E2E_SERVER_URL'] ?? 'http://localhost:3001'
+
+// The admin client is used only for user pre-seed + magic-link
+// generation. Real users never see this code path.
+const supabase = createClient(supabaseUrl, supabaseServiceKey, {
+  auth: { autoRefreshToken: false, persistSession: false },
+})
+
+test.describe('smoke: signup → api key → proxy → /requests', () => {
+  test.skip(
+    !supabaseServiceKey,
+    'E2E_SUPABASE_SERVICE_KEY not set — skipping (set it locally via `supabase status` JSON)',
+  )
+
+  test('user can sign in, create an API key, hit proxy, and see the request', async ({
+    page,
+    request,
+  }) => {
+    const email = `e2e-${Date.now()}@spanlens.test`
+
+    // ── 1. Pre-seed user + verify email so the magic-link works first try ──
+    const { data: createdUser, error: createErr } = await supabase.auth.admin.createUser({
+      email,
+      password: 'test-password-correct-horse',
+      email_confirm: true,
+    })
+    if (createErr || !createdUser.user) throw new Error(`createUser failed: ${createErr?.message}`)
+
+    const { data: linkData, error: linkErr } = await supabase.auth.admin.generateLink({
+      type: 'magiclink',
+      email,
+    })
+    if (linkErr || !linkData.properties?.action_link) {
+      throw new Error(`generateLink failed: ${linkErr?.message}`)
+    }
+
+    // ── 2. Follow the magic link — lands on /onboarding for first-time users ─
+    await page.goto(linkData.properties.action_link)
+    await page.waitForURL(/\/(onboarding|projects|dashboard)/, { timeout: 30_000 })
+
+    // ── 3. Resolve the org + project from Supabase. The signup trigger
+    //      provisions a personal org + default project; we read them
+    //      back so the API key INSERT in step 4 targets the right rows.
+    const { data: members } = await supabase
+      .from('org_members')
+      .select('organization_id, organizations(id)')
+      .eq('user_id', createdUser.user.id)
+    const orgId = (members?.[0]?.organization_id as string) ?? null
+    if (!orgId) throw new Error('No organization found for e2e user — signup trigger may be broken')
+
+    const { data: projects } = await supabase
+      .from('projects')
+      .select('id')
+      .eq('organization_id', orgId)
+      .limit(1)
+    const projectId = (projects?.[0]?.id as string) ?? null
+    if (!projectId) throw new Error('No project found for e2e user — signup trigger may be broken')
+
+    // ── 4. Issue an sl_live_* key directly via service-role INSERT.
+    //      Going through /api/v1/api-keys would also work but requires
+    //      a session cookie; the direct insert keeps the test focused on
+    //      the proxy → ClickHouse → dashboard pipe.
+    const { randomBytes, createHash } = await import('node:crypto')
+    const rawKey = `sl_live_${randomBytes(24).toString('hex')}`
+    const keyHash = createHash('sha256').update(rawKey).digest('hex')
+
+    const { error: insertErr } = await supabase.from('api_keys').insert({
+      project_id: projectId,
+      organization_id: null,
+      key_hash: keyHash,
+      key_prefix: rawKey.slice(0, 14),
+      name: 'e2e-smoke',
+      scope: 'full',
+      is_active: true,
+    })
+    if (insertErr) throw new Error(`api_keys insert failed: ${insertErr.message}`)
+
+    // ── 5. Issue a chat-completions call through the proxy. Server's
+    //      OPENAI_API_BASE is pointed at mock-openai in the CI compose
+    //      so this never touches real OpenAI traffic / budget.
+    const proxyRes = await request.post(`${serverUrl}/proxy/openai/v1/chat/completions`, {
+      headers: { Authorization: `Bearer ${rawKey}` },
+      data: {
+        model: 'gpt-4o-mini',
+        messages: [{ role: 'user', content: 'smoke test ping' }],
+      },
+    })
+    expect(proxyRes.status(), `proxy response: ${await proxyRes.text()}`).toBe(200)
+
+    // ── 6. The proxy logs to ClickHouse fire-and-forget. There's a
+    //      small but real window between the 200 and the row landing.
+    //      Poll /api/v1/requests through the user's session (auth via
+    //      the auth cookie set by the magic link) until at least 1 row
+    //      appears, with a 10s ceiling matching playwright.config.ts's
+    //      expect.timeout.
+    await page.goto('/requests')
+    await expect(page.locator('[data-testid="request-row"]').first()).toBeVisible({
+      timeout: 15_000,
+    })
+  })
+})
