@@ -1,5 +1,6 @@
 'use client'
 import { useMemo, useState, useSyncExternalStore } from 'react'
+import dynamic from 'next/dynamic'
 
 // Module-level cache so useSyncExternalStore's getSnapshot returns the
 // same number on every call. Without the cache, each call returned a
@@ -22,7 +23,19 @@ function subscribeNow(): () => void {
 import Link from 'next/link'
 import { Topbar } from '@/components/layout/topbar'
 import { KpiCard } from '@/components/dashboard/kpi-card'
-import { RequestChart } from '@/components/dashboard/request-chart'
+// recharts' ResponsiveContainer reads element size via ResizeObserver,
+// which is unavailable during SSR. That produces a 0-width SVG on the
+// server render and a real-width SVG on the first client paint —
+// React #418 hydration mismatch. ssr:false skips the server render
+// entirely; users see a tiny height-220 blank for ~1 frame instead of
+// the broken-then-redrawn chart they got before, which is an
+// improvement on every measurable axis. SEO is a non-goal for
+// /demo/dashboard so the lost SSR pass costs nothing.
+const RequestChart = dynamic(
+  () =>
+    import('@/components/dashboard/request-chart').then((m) => m.RequestChart),
+  { ssr: false, loading: () => <div className="h-[220px]" /> },
+)
 import { cn } from '@/lib/utils'
 import {
   DEMO_STATS_OVERVIEW,
@@ -400,9 +413,14 @@ export default function DemoDashboardPage() {
               </Link>
             </div>
             <div className="flex flex-col gap-2">
-              {DEMO_RECOMMENDATIONS.slice(0, 3).map((r) => (
+              {DEMO_RECOMMENDATIONS.slice(0, 3).map((r, i) => (
                 <div
-                  key={`${r.currentModel}->${r.suggestedModel}`}
+                  // DEMO_RECOMMENDATIONS can carry duplicate (currentModel,
+                  // suggestedModel) pairs (e.g. two distinct gpt-4o → gpt-4o-mini
+                  // suggestions surfaced for different traffic shapes), so the
+                  // composite key alone collides. Pre-fix this triggered React's
+                  // "two children with the same key" warning on every render.
+                  key={`${r.currentModel}->${r.suggestedModel}#${i}`}
                   className="flex items-center gap-3 px-3 py-2.5 rounded-[5px] bg-bg-elev border border-border"
                 >
                   <div className="flex-1 min-w-0">
