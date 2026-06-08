@@ -621,6 +621,97 @@ cronRouter.get('/events-reconciliation', async (c) => {
   }
 })
 
+// GET /cron/detect-missing-model-prices
+//
+// Hourly scan over the last hour's `requests` table for rows where `model`
+// is populated but `cost_usd` is NULL. That combination means lib/cost.ts'
+// `calculateCost()` couldn't resolve a price row for the model — almost
+// always because `model_prices` doesn't have the SKU yet (gotcha #2: new
+// LLM releases land in production before our price seed catches up).
+//
+// Threshold: 100 missing rows / hour / model. Below that, transient
+// hiccups (mis-spelled model in a customer request, model in the middle
+// of being deprecated, etc.) fire too many false-positives. 100/hour
+// represents a real customer routing real traffic through an unpriced
+// model and losing cost attribution every minute they wait.
+//
+// Output: one `internal_alerts` row of kind `missing_model_prices` per
+// run when at least one model crosses the threshold. The details JSONB
+// carries the per-model breakdown so the operator can decide which seed
+// rows to add first. Multiple runs against the same unseeded model
+// produce multiple alerts — we don't de-dup, because the operator clicks
+// Resolve when they fix it and the next hour either re-fires (still
+// broken) or stays quiet (fixed). De-duping with "skip if unresolved
+// alert exists" would mask a still-failing fix.
+//
+// gotcha #32: this cron is internal ops, not org-scoped, so the
+// events/requests feature-flag dual-read pattern does not apply.
+// When Phase 5.1 Stage 4 lands and `requests` is dropped, the query
+// here moves to `events` in the same PR.
+cronRouter.get('/detect-missing-model-prices', async (c) => {
+  const authFail = assertCronAuth(c.req.header('Authorization'))
+  if (authFail) return c.json({ error: authFail }, 401)
+
+  const start = Date.now()
+
+  // We query ClickHouse directly (not via requestsScope) on purpose —
+  // this is a global health check, not a per-org read. The lint rule
+  // guards against tenant-blind reads from org-facing handlers; this
+  // handler is gated by CRON_SECRET, not by an org context. Same
+  // exception applied as `/keep-warm`.
+  try {
+    const rs = await getClickhouse().query({
+      query: `
+        SELECT model, count() AS missing_count
+        FROM requests
+        WHERE created_at >= now() - INTERVAL 1 HOUR
+          AND cost_usd IS NULL
+          AND model != ''
+        GROUP BY model
+        HAVING missing_count > 100
+        ORDER BY missing_count DESC
+      `,
+      format: 'JSONEachRow',
+    }).then((r) => r.json<{ model: string; missing_count: string }>())
+
+    // ClickHouse JSONEachRow returns numbers as strings (gotcha #19).
+    const models = rs.map((row) => ({
+      model: row.model,
+      count: Number(row.missing_count),
+    }))
+
+    if (models.length === 0) {
+      logCronRun('detect-missing-model-prices', 'ok', Date.now() - start).catch(console.error)
+      return c.json({ ok: true, missing: 0 })
+    }
+
+    const totalRows = models.reduce((sum, m) => sum + m.count, 0)
+    const { error: insertError } = await supabaseAdmin.from('internal_alerts').insert({
+      kind: 'missing_model_prices',
+      severity: 'warn',
+      message: `${models.length} model(s) missing prices in last 1h (${totalRows} rows)`,
+      details: { models, threshold: 100 },
+    })
+
+    if (insertError) {
+      logCronRun(
+        'detect-missing-model-prices',
+        'error',
+        Date.now() - start,
+        `internal_alerts insert failed: ${insertError.message}`,
+      ).catch(console.error)
+      return c.json({ ok: false, error: 'failed to insert alert' }, 500)
+    }
+
+    logCronRun('detect-missing-model-prices', 'ok', Date.now() - start).catch(console.error)
+    return c.json({ ok: true, missing: models.length, models })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    logCronRun('detect-missing-model-prices', 'error', Date.now() - start, message).catch(console.error)
+    return c.json({ ok: false, error: message }, 500)
+  }
+})
+
 // All three steps run in parallel via Promise.allSettled — one slow / failing
 // dependency doesn't block the others, and we never throw (cron retries are
 // noisy and a transient warmup failure is not worth alerting on). No
