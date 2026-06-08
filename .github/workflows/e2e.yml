@@ -68,22 +68,27 @@ jobs:
           # order. `--no-seed` skips supabase/seed.sql so dev fixtures don't
           # pollute the E2E run.
           supabase db reset --no-seed
-          # PostgREST builds its schema cache at process start and does NOT
-          # automatically detect ALTER TABLE / CREATE TABLE landed after
-          # boot. `db reset` re-applies migrations but the kong + postgrest
-          # containers keep serving from the old cache, so the spec sees
-          # "Could not find the X column of Y" for any column added after
-          # the initial schema (PR #269 CI #5 hit this even after the
-          # reset above). Force a reload via NOTIFY — PostgREST listens for
-          # `pgrst` channel + 'reload schema' payload by default. psql is
-          # in the runner image already so this is a one-line probe with
-          # no extra installs.
+          # Diagnostic: confirm the column actually landed in the DB. If
+          # this prints `project_id` then the migration ran and the issue
+          # is PostgREST schema cache (next step handles it). If absent,
+          # the migration itself didn't apply and the next step's bounce
+          # won't help.
           PGPASSWORD=postgres psql -h localhost -p 54322 -U postgres -d postgres \
-            -c "NOTIFY pgrst, 'reload schema';"
-          # Tiny settle window — the LISTEN handler reads the notification,
-          # rebuilds the cache, then PostgREST switches over. 2s is well
-          # under the per-step overhead of the rest of this workflow.
-          sleep 2
+            -c "SELECT column_name FROM information_schema.columns WHERE table_name='provider_keys' ORDER BY ordinal_position;"
+          # NOTIFY-based reload (CI #6) did not flip the cache — supabase
+          # CLI's bundled PostgREST either ignores the notification or
+          # caches the schema in a way the LISTEN handler doesn't rebuild.
+          # Bounce the whole supabase stack instead. Adds ~60-90s to the
+          # workflow but guarantees PostgREST rebuilds the schema cache
+          # from the current DB state. The earlier `db reset` is still
+          # needed because `supabase start` after `supabase stop` doesn't
+          # re-apply migrations a second time.
+          supabase stop --no-backup
+          supabase start
+          # Re-read keys after the bounce — the new instance may have
+          # rotated them (in practice supabase keeps deterministic
+          # local-dev keys but we don't want to rely on that).
+          status_json=$(supabase status -o json)
           # Persist the resolved URLs/keys so subsequent steps can read them
           # via $GITHUB_ENV without grepping the supabase status output again.
           status_json=$(supabase status -o json)
