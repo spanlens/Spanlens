@@ -35,6 +35,42 @@ const supabaseUrl = process.env['E2E_SUPABASE_URL'] ?? 'http://localhost:54321'
 const supabaseServiceKey = process.env['E2E_SUPABASE_SERVICE_KEY'] ?? ''
 const serverUrl = process.env['E2E_SERVER_URL'] ?? 'http://localhost:3001'
 
+/**
+ * Inline AES-256-GCM encryption that mirrors apps/server/src/lib/crypto.ts.
+ *
+ * Storage format: base64(iv[12] || tag[16] || ciphertext[N]). Web Crypto's
+ * encrypt() returns `ciphertext || tag`; we reorder to `iv || tag || cipher`
+ * so the server's aes256Decrypt() reads it back cleanly. This must stay
+ * bit-identical to the server helper — if the layout drifts, the proxy
+ * silently returns 500 on every E2E run because the decrypted plaintext
+ * is garbage and gets sent as an upstream Authorization header.
+ */
+async function aes256EncryptB64(plaintext: string, keyB64: string): Promise<string> {
+  const IV_LENGTH = 12
+  const TAG_LENGTH = 16
+  const keyBytes = Uint8Array.from(Buffer.from(keyB64, 'base64'))
+  if (keyBytes.length !== 32) throw new Error('ENCRYPTION_KEY must be 32 bytes base64')
+  const key = await crypto.subtle.importKey(
+    'raw',
+    keyBytes.buffer.slice(keyBytes.byteOffset, keyBytes.byteOffset + keyBytes.byteLength) as ArrayBuffer,
+    { name: 'AES-GCM' },
+    false,
+    ['encrypt'],
+  )
+  const iv = crypto.getRandomValues(new Uint8Array(IV_LENGTH))
+  const encoded = new TextEncoder().encode(plaintext)
+  const encrypted = new Uint8Array(
+    await crypto.subtle.encrypt({ name: 'AES-GCM', iv: iv as BufferSource }, key, encoded as BufferSource),
+  )
+  const cipherOnly = encrypted.subarray(0, encrypted.length - TAG_LENGTH)
+  const tag = encrypted.subarray(encrypted.length - TAG_LENGTH)
+  const result = new Uint8Array(IV_LENGTH + TAG_LENGTH + cipherOnly.length)
+  result.set(iv, 0)
+  result.set(tag, IV_LENGTH)
+  result.set(cipherOnly, IV_LENGTH + TAG_LENGTH)
+  return Buffer.from(result).toString('base64')
+}
+
 // The admin client is used only for user pre-seed + magic-link
 // generation. Real users never see this code path.
 const supabase = createClient(supabaseUrl, supabaseServiceKey, {
@@ -106,6 +142,34 @@ test.describe('smoke: signup → api key → proxy → /requests', () => {
       .single()
     if (projErr || !project) throw new Error(`project insert failed: ${projErr?.message}`)
     const projectId = project.id as string
+
+    // ── 2b. Register a provider key so the proxy has something to decrypt ─────
+    //
+    // The proxy in apps/server/src/proxy/openai.ts looks up
+    // provider_keys.encrypted_key for the org, AES-256-GCM-decrypts it,
+    // and uses the plaintext as the upstream Authorization Bearer. With
+    // OPENAI_API_BASE pointed at mock-openai the actual key value never
+    // matters — mock accepts anything — but the row HAS to exist, and
+    // the ciphertext has to decrypt cleanly or the proxy returns 500.
+    //
+    // We encrypt right here (Web Crypto, no Node-only APIs) using the
+    // same ENCRYPTION_KEY the server is configured with. Reusing
+    // apps/server/src/lib/crypto.ts via cross-workspace import would
+    // drag the server's tsconfig into the web build; inlining ~20
+    // lines is cheaper.
+    const encryptionKey = process.env['ENCRYPTION_KEY']
+    if (!encryptionKey) throw new Error('ENCRYPTION_KEY env required for e2e (must match server)')
+    const encryptedProviderKey = await aes256EncryptB64('sk-mock-e2e', encryptionKey)
+
+    const { error: pkErr } = await supabase.from('provider_keys').insert({
+      organization_id: orgId,
+      project_id: projectId,
+      provider: 'openai',
+      name: 'e2e mock',
+      encrypted_key: encryptedProviderKey,
+      is_active: true,
+    })
+    if (pkErr) throw new Error(`provider_keys insert failed: ${pkErr.message}`)
 
     // ── 3. Sign in via the actual login form ──────────────────────────────────
     await page.goto('/login')

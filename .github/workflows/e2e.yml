@@ -158,6 +158,10 @@ jobs:
         env:
           E2E_BASE_URL: http://localhost:3000
           E2E_SERVER_URL: http://localhost:3001
+          # provider_keys.encrypted_key must decrypt with the same key the
+          # server boots with. Reuse the same secret so the spec's inline
+          # AES-256-GCM helper can write a ciphertext the server reads back.
+          ENCRYPTION_KEY: ${{ secrets.CI_ENCRYPTION_KEY }}
         run: pnpm --filter web exec playwright test --reporter=list
 
       - name: Upload Playwright artifacts on failure
