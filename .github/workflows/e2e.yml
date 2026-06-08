@@ -65,9 +65,25 @@ jobs:
           # missing from PostgREST's schema cache (PR #269 CI #4 hit exactly
           # this: provider_keys.project_id added in 20260505040000_unified_keys.sql
           # was absent). `db reset --no-seed` re-applies all migrations in
-          # order and reloads the schema cache. `--no-seed` skips
-          # supabase/seed.sql so dev fixtures don't pollute the E2E run.
+          # order. `--no-seed` skips supabase/seed.sql so dev fixtures don't
+          # pollute the E2E run.
           supabase db reset --no-seed
+          # PostgREST builds its schema cache at process start and does NOT
+          # automatically detect ALTER TABLE / CREATE TABLE landed after
+          # boot. `db reset` re-applies migrations but the kong + postgrest
+          # containers keep serving from the old cache, so the spec sees
+          # "Could not find the X column of Y" for any column added after
+          # the initial schema (PR #269 CI #5 hit this even after the
+          # reset above). Force a reload via NOTIFY — PostgREST listens for
+          # `pgrst` channel + 'reload schema' payload by default. psql is
+          # in the runner image already so this is a one-line probe with
+          # no extra installs.
+          PGPASSWORD=postgres psql -h localhost -p 54322 -U postgres -d postgres \
+            -c "NOTIFY pgrst, 'reload schema';"
+          # Tiny settle window — the LISTEN handler reads the notification,
+          # rebuilds the cache, then PostgREST switches over. 2s is well
+          # under the per-step overhead of the rest of this workflow.
+          sleep 2
           # Persist the resolved URLs/keys so subsequent steps can read them
           # via $GITHUB_ENV without grepping the supabase status output again.
           status_json=$(supabase status -o json)
