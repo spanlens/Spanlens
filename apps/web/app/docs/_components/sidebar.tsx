@@ -91,6 +91,7 @@ const NAV: NavGroup[] = [
     title: 'SDK & integrations',
     items: [
       { title: '@spanlens/sdk', href: '/docs/sdk' },
+      { title: '@spanlens/cli', href: '/docs/cli' },
       { title: 'LangGraph', href: '/docs/integrations/langgraph' },
       { title: 'LangChain', href: '/docs/sdk#langchain' },
       { title: 'Vercel AI SDK', href: '/docs/sdk#vercel-ai' },

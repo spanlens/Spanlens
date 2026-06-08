@@ -198,6 +198,12 @@ export default function LandingPage() {
           >
             Try live demo →
           </Link>
+          <Link
+            href="/docs/cli"
+            className="font-mono text-[13px] text-accent hover:opacity-80 transition-opacity shrink-0"
+          >
+            How the CLI rewrites your code →
+          </Link>
         </div>
 
       </section>
