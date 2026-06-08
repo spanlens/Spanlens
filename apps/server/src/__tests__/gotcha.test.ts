@@ -46,7 +46,7 @@ vi.mock('../lib/db.js', () => {
 // ClickHouse client mock — logger.ts now writes here instead of Supabase.
 const mockClickhouseInsert = vi.fn().mockResolvedValue({ executed: true })
 vi.mock('../lib/clickhouse.js', () => ({
-  getClickhouse: () => ({ insert: mockClickhouseInsert }),
+  unscopedClickhouse: () => ({ insert: mockClickhouseInsert }),
   // logger.ts also imports toClickhouseTimestamp — return a deterministic
   // value so test assertions on row contents stay stable.
   toClickhouseTimestamp: () => '2026-05-16 11:49:23.749',
@@ -129,7 +129,7 @@ describe('getDecryptedProviderKey — Gotcha #5 (decryption empty string → nul
 // Original Gotcha #3 covered "logger must use supabaseAdmin so RLS doesn't
 // block the insert". After the ClickHouse migration the requests table no
 // longer lives in Supabase, so the test asserts the new contract:
-//   1. logger writes to ClickHouse via getClickhouse().insert(...)
+//   1. logger writes to ClickHouse via unscopedClickhouse().insert(...)
 //   2. body columns are mask-scrubbed before insert (no leaked API keys)
 //   3. > 64KB bodies are truncated to keep rows bounded
 //   4. ClickHouse failures don't throw (fire-and-forget contract)

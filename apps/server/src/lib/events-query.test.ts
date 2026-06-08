@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 // retention clip is the longest non-Enterprise value.
 const queryMock = vi.fn()
 vi.mock('./clickhouse.js', () => ({
-  getClickhouse: () => ({ query: queryMock }),
+  unscopedClickhouse: () => ({ query: queryMock }),
 }))
 vi.mock('./requests-query.js', async () => {
   const actual = await vi.importActual<typeof import('./requests-query.js')>('./requests-query.js')

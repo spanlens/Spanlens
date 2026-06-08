@@ -36,7 +36,37 @@ function readEnv(): ClickhouseEnv {
   return { url, username, password, database }
 }
 
-export function getClickhouse(): ClickHouseClient {
+/**
+ * Return the singleton ClickHouse client without any organization scoping.
+ *
+ * **Do not call this from request handlers.** ClickHouse has no row-level
+ * security; every read MUST filter on `organization_id` before any user
+ * sees the result. The org-scoped helpers in `lib/requests-query.ts` /
+ * `lib/events-query.ts` (and `getOrgClickhouse` below) thread the org
+ * id through automatically. A tenant-blind call from a handler is a
+ * cross-tenant leak waiting to happen.
+ *
+ * Legitimate callers — all in `apps/server/src/lib/**` — are:
+ *
+ *   - The query helpers themselves (requests-query, events-query,
+ *     stats-queries, anomaly, etc.) which take an `orgId` argument and
+ *     interpolate it into every WHERE clause.
+ *   - The fallback replay (`fallback-replay.ts`) which writes rows
+ *     queued in Supabase back into ClickHouse — the orgId travels with
+ *     the row, not with the client.
+ *   - The reconciliation cron (`events-reconciliation.ts`) which counts
+ *     across tenants by design (operator-facing diagnostic).
+ *   - The schema inspectors (`clickhouse.test.ts`).
+ *
+ * Anything outside `lib/` is blocked by the ESLint
+ * `no-restricted-imports` rule on this export name.
+ *
+ * Renamed from `getClickhouse` in R-Q6 (2026-06-08). The old name was
+ * a footgun: it read as "get me a ClickHouse client" with no warning
+ * that the caller now owns the multi-tenant filter. The new name
+ * forces every code reader to ask "scoped to what?"
+ */
+export function unscopedClickhouse(): ClickHouseClient {
   if (_client) return _client
   const env = readEnv()
   _client = createClient({
@@ -83,7 +113,7 @@ export function resetClickhouseClient(): void {
  */
 export async function pingClickhouse(): Promise<boolean> {
   try {
-    const result = await getClickhouse().ping()
+    const result = await unscopedClickhouse().ping()
     return result.success
   } catch {
     return false
@@ -93,7 +123,7 @@ export async function pingClickhouse(): Promise<boolean> {
 /**
  * Returns the raw ClickHouse client scoped to a specific organization.
  *
- * This is a thin helper that pairs `getClickhouse()` with the caller's
+ * This is a thin helper that pairs `unscopedClickhouse()` with the caller's
  * `organizationId` so API/middleware code must explicitly declare the org
  * rather than calling the bare singleton. It does NOT automatically inject
  * the WHERE clause — callers still write `organization_id = {orgId:UUID}` —
@@ -112,7 +142,7 @@ export async function pingClickhouse(): Promise<boolean> {
  *   })
  */
 export function getOrgClickhouse(organizationId: string): { client: ClickHouseClient; orgId: string } {
-  return { client: getClickhouse(), orgId: organizationId }
+  return { client: unscopedClickhouse(), orgId: organizationId }
 }
 
 /**

@@ -6,7 +6,7 @@ const queryMock = vi.fn()
 const insertMock = vi.fn().mockResolvedValue(undefined)
 
 vi.mock('../../../clickhouse.js', () => ({
-  getClickhouse: () => ({ query: queryMock, insert: insertMock }),
+  unscopedClickhouse: () => ({ query: queryMock, insert: insertMock }),
   toClickhouseTimestamp: (d: Date = new Date()) =>
     d.toISOString().replace('T', ' ').replace('Z', ''),
 }))

@@ -14,7 +14,7 @@
  * cover the helpers so the contract is locked in.
  */
 
-import { getClickhouse } from './clickhouse.js'
+import { unscopedClickhouse } from './clickhouse.js'
 import { LOG_RETENTION_DAYS, type Plan } from './quota.js'
 import { getOrgPlan } from './requests-query.js'
 
@@ -85,7 +85,7 @@ export async function selectEvents<T>(opts: {
 
   const query = `SELECT ${select} FROM events WHERE ${where} ${tail.join(' ')}`.trim()
 
-  const res = await getClickhouse().query({
+  const res = await unscopedClickhouse().query({
     query,
     query_params: { ...scope.scopeParams, ...(params ?? {}) },
     format: 'JSONEachRow',
@@ -107,7 +107,7 @@ export async function countEvents(opts: {
   if (filters && filters.length > 0) whereParts.push(filters)
   const where = whereParts.join(' AND ')
   const query = `SELECT count() AS c FROM events WHERE ${where}`
-  const res = await getClickhouse().query({
+  const res = await unscopedClickhouse().query({
     query,
     query_params: { ...scope.scopeParams, ...(params ?? {}) },
     format: 'JSONEachRow',
@@ -189,7 +189,7 @@ export async function selectGenerationsAsRequests<T>(opts: {
   `.trim()
 
   try {
-    const res = await getClickhouse().query({
+    const res = await unscopedClickhouse().query({
       query,
       query_params: { ...scope.scopeParams, ...(params ?? {}) },
       format: 'JSONEachRow',
@@ -226,7 +226,7 @@ export async function countGenerations(opts: {
   const where = whereParts.join(' AND ')
   const query = `SELECT count() AS c FROM events WHERE ${where}`
   try {
-    const res = await getClickhouse().query({
+    const res = await unscopedClickhouse().query({
       query,
       query_params: { ...scope.scopeParams, ...(params ?? {}) },
       format: 'JSONEachRow',

@@ -25,7 +25,7 @@
 //     data and is poisoning the queue; surface and drop.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { getClickhouse } from './clickhouse.js'
+import { unscopedClickhouse } from './clickhouse.js'
 import { supabaseAdmin } from './db.js'
 
 /** Max rows replayed per cron invocation. Bounded so a stuck cron can't run away. */
@@ -89,7 +89,7 @@ export async function replayFallbackQueue(): Promise<ReplayResult> {
   // 3. Bulk INSERT the entire batch. ClickHouse JSONEachRow accepts arrays —
   //    one round trip for the whole batch instead of N.
   try {
-    await getClickhouse().insert({
+    await unscopedClickhouse().insert({
       table: 'requests',
       format: 'JSONEachRow',
       values: rows.map((r) => r.payload as Record<string, unknown>),
@@ -182,7 +182,7 @@ export async function replayEventsFallbackQueue(): Promise<ReplayResult> {
   result.attempted = rows.length
 
   try {
-    await getClickhouse().insert({
+    await unscopedClickhouse().insert({
       table: 'events',
       format: 'JSONEachRow',
       values: rows.map((r) => r.payload as Record<string, unknown>),

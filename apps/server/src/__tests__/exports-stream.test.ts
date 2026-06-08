@@ -205,7 +205,7 @@ vi.mock('../lib/clickhouse.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../lib/clickhouse.js')>()
   return {
     ...actual,
-    getClickhouse: () => ({
+    unscopedClickhouse: () => ({
       query: (opts: unknown) => clickhouseQueryMock(opts),
     }),
   }

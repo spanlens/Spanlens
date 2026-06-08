@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { supabaseAdmin } from './db.js'
-import { getClickhouse, toClickhouseTimestamp } from './clickhouse.js'
+import { unscopedClickhouse, toClickhouseTimestamp } from './clickhouse.js'
 import { maskApiKeysInBody, maskApiKeys } from './pii-mask.js'
 import { scanAll, type SecurityFlag } from './security-scan.js'
 import { sendEmail, renderSecurityAlertEmail } from './resend.js'
@@ -276,7 +276,7 @@ export async function logRequestAsync(data: RequestLogData): Promise<void> {
   }
 
   try {
-    await getClickhouse().insert({
+    await unscopedClickhouse().insert({
       table: 'requests',
       format: 'JSONEachRow',
       values: [clickhouseRow],

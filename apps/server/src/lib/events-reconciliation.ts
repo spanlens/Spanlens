@@ -21,7 +21,7 @@
  * have a few days of baseline data and know the natural noise floor.
  */
 
-import { getClickhouse } from './clickhouse.js'
+import { unscopedClickhouse } from './clickhouse.js'
 
 const RECON_WINDOW_HOURS = 24
 const RECON_END_LAG_HOURS = 1
@@ -42,7 +42,7 @@ export interface ReconciliationResult {
  * error so the caller can mark the cron run failed.
  */
 async function singleCount(query: string, params: Record<string, unknown>): Promise<number> {
-  const res = await getClickhouse().query({
+  const res = await unscopedClickhouse().query({
     query,
     query_params: params,
     format: 'JSONEachRow',

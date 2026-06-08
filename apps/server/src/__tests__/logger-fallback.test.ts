@@ -17,7 +17,7 @@ vi.mock('../lib/clickhouse.js', async () => {
   )
   return {
     ...actual,
-    getClickhouse: () => ({
+    unscopedClickhouse: () => ({
       insert: (opts: unknown) => clickhouseInsertMock(opts),
     }),
   }

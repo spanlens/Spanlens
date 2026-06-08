@@ -56,7 +56,7 @@ let stubbedRows: unknown[] = []
 
 vi.mock('../lib/clickhouse.js', () => {
   return {
-    getClickhouse: () => ({
+    unscopedClickhouse: () => ({
       query: async (opts: CapturedQuery) => {
         captured.push({
           query: opts.query,

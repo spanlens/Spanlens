@@ -1,5 +1,5 @@
 import { supabaseAdmin } from './db.js'
-import { getClickhouse } from './clickhouse.js'
+import { unscopedClickhouse } from './clickhouse.js'
 
 /**
  * Monthly request quota per plan tier. Checked in the proxy middleware
@@ -128,7 +128,7 @@ export async function countMonthlyRequests(
     where += ' AND created_at < parseDateTime64BestEffort({until:String})'
   }
 
-  const result = await getClickhouse().query({
+  const result = await unscopedClickhouse().query({
     query: `SELECT count() AS n FROM requests WHERE ${where}`,
     query_params: params,
     format: 'JSONEachRow',

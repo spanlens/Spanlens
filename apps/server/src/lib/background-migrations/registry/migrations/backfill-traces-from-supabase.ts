@@ -1,5 +1,5 @@
 import type { BackgroundMigration, ChunkResult, ChunkState } from '../../index.js'
-import { getClickhouse, toClickhouseTimestamp } from '../../../clickhouse.js'
+import { unscopedClickhouse, toClickhouseTimestamp } from '../../../clickhouse.js'
 import { supabaseAdmin } from '../../../db.js'
 
 /**
@@ -161,7 +161,7 @@ export const backfillTracesFromSupabase: BackgroundMigration = {
     if (rows.length === 0) return { done: true }
 
     const eventRows = rows.map(mapTraceToEventRow)
-    await getClickhouse().insert({
+    await unscopedClickhouse().insert({
       table: 'events',
       format: 'JSONEachRow',
       values: eventRows,

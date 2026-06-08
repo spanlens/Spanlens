@@ -13,7 +13,7 @@ import { beforeEach, describe, expect, test, vi } from 'vitest'
 const clickhouseQueryMock = vi.fn()
 
 vi.mock('../lib/clickhouse.js', () => ({
-  getClickhouse: () => ({
+  unscopedClickhouse: () => ({
     query: (opts: unknown) => clickhouseQueryMock(opts),
   }),
 }))

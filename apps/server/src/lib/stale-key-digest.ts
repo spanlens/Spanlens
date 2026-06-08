@@ -11,7 +11,7 @@
  */
 
 import { supabaseAdmin } from './db.js'
-import { getClickhouse } from './clickhouse.js'
+import { unscopedClickhouse } from './clickhouse.js'
 import { sendEmail, renderStaleKeyDigestEmail } from './resend.js'
 import { getAdminEmails } from './admin-emails.js'
 
@@ -64,7 +64,7 @@ async function findStaleKeysForOrg(
   const lastUsedMap = new Map<string, string>()
   if (keyIds.length > 0) {
     try {
-      const result = await getClickhouse().query({
+      const result = await unscopedClickhouse().query({
         query:
           'SELECT provider_key_id AS id, max(created_at) AS last_used_at ' +
           'FROM requests ' +

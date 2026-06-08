@@ -1,4 +1,4 @@
-import { getClickhouse } from './clickhouse.js'
+import { unscopedClickhouse } from './clickhouse.js'
 import { supabaseAdmin } from './db.js'
 import { LOG_RETENTION_DAYS, type Plan } from './quota.js'
 
@@ -109,7 +109,7 @@ export interface RequestsScopeOptions {
  *
  * Example:
  *   const { whereScope, scopeParams } = await requestsScope(orgId)
- *   const result = await getClickhouse().query({
+ *   const result = await unscopedClickhouse().query({
  *     query: `SELECT id FROM requests WHERE ${whereScope} AND provider = {provider:String}`,
  *     query_params: { ...scopeParams, provider: 'openai' },
  *     format: 'JSONEachRow',
@@ -241,7 +241,7 @@ export async function selectRequests<T>(opts: {
   if (limit != null) sql += ` LIMIT ${Number(limit)}`
   if (offset != null) sql += ` OFFSET ${Number(offset)}`
 
-  const result = await getClickhouse().query({
+  const result = await unscopedClickhouse().query({
     query: sql,
     query_params: { ...scope.scopeParams, ...params },
     format: 'JSONEachRow',
@@ -283,7 +283,7 @@ export async function* streamRequests<T>(opts: {
   if (orderBy) sql += ` ORDER BY ${orderBy}`
   if (limit != null) sql += ` LIMIT ${Number(limit)}`
 
-  const result = await getClickhouse().query({
+  const result = await unscopedClickhouse().query({
     query: sql,
     query_params: { ...scope.scopeParams, ...params },
     format: 'JSONEachRow',
@@ -320,7 +320,7 @@ export async function countRequests(opts: {
 }): Promise<number> {
   const { scope, filters, params = {} } = opts
   const where = filters ? `${scope.whereScope} AND ${filters}` : scope.whereScope
-  const result = await getClickhouse().query({
+  const result = await unscopedClickhouse().query({
     query: `SELECT count() AS n FROM requests WHERE ${where}`,
     query_params: { ...scope.scopeParams, ...params },
     format: 'JSONEachRow',

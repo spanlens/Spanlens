@@ -1,12 +1,16 @@
 import { Hono } from 'hono'
 import { supabaseAdmin } from '../lib/db.js'
-// `getClickhouse` is used by the /cron/keep-warm handler below to run
-// `SELECT 1` with no org context. The lint rule guards against multi-tenant
-// leaks via tenant-blind reads; this call site can't leak because it returns
-// no rows. The org-scoped helpers all require an orgId we don't have at
-// warmup time, so this is the only viable client for the warmup ping.
+// `unscopedClickhouse` is used by /cron/detect-missing-model-prices below
+// to GROUP BY model across all tenants — that scan is the entire point of
+// the alert and cannot be done per-org. The lint rule guards against
+// tenant-blind reads from request handlers; this is operator-facing cron
+// gated by CRON_SECRET, so the exception is intentional.
+//
+// /cron/keep-warm previously used unscopedClickhouse().query('SELECT 1')
+// to warm the HTTP pool. We now use pingClickhouse() instead — same warmup
+// effect, no need to reach for the raw client. See R-Q6.
 // eslint-disable-next-line no-restricted-imports
-import { getClickhouse, getOrgClickhouse } from '../lib/clickhouse.js'
+import { unscopedClickhouse, getOrgClickhouse, pingClickhouse } from '../lib/clickhouse.js'
 import { deliverToChannel, type AlertNotification } from '../lib/notifiers.js'
 import { emitWebhookEvent } from '../lib/webhook-emit.js'
 import { retryFailedWebhooks } from '../lib/webhook-dispatch.js'
@@ -660,7 +664,7 @@ cronRouter.get('/detect-missing-model-prices', async (c) => {
   // handler is gated by CRON_SECRET, not by an org context. Same
   // exception applied as `/keep-warm`.
   try {
-    const rs = await getClickhouse().query({
+    const rs = await unscopedClickhouse().query({
       query: `
         SELECT model, count() AS missing_count
         FROM requests
@@ -726,15 +730,20 @@ cronRouter.get('/keep-warm', async (c) => {
     // `head: true` skips the row body, so the request is HEAD-shaped and
     // doesn't transfer payload — just warms the pool.
     supabaseAdmin.from('organizations').select('id', { count: 'exact', head: true }).limit(1),
-    // ClickHouse: `SELECT 1` is the canonical no-op query. Bypasses any
-    // table cache but exercises HTTP keep-alive, auth, and the cluster's
-    // query parser. Format `JSONEachRow` matches our normal calls so the
-    // shared client doesn't switch modes on the first real call.
-    getClickhouse().query({ query: 'SELECT 1 AS ok', format: 'JSONEachRow' }).then((r) => r.json()),
+    // ClickHouse: pingClickhouse() under the hood runs `.ping()` against
+    // the singleton client, which exercises HTTP keep-alive, auth, and
+    // the client's connection pool — exactly what keep-warm needs. Less
+    // verbose than a synthetic SELECT and survives the no-restricted-imports
+    // tightening from R-Q6.
+    pingClickhouse(),
   ])
 
   const supabaseOk = results[0].status === 'fulfilled'
-  const clickhouseOk = results[1].status === 'fulfilled'
+  // pingClickhouse() swallows its own errors and resolves to false, so the
+  // outer settled-status is always 'fulfilled'. Look at the resolved value
+  // instead — that's where the actual reachability signal lives.
+  const clickhouseOk =
+    results[1].status === 'fulfilled' && results[1].value === true
   return c.json({
     ok: supabaseOk && clickhouseOk,
     ts: new Date().toISOString(),

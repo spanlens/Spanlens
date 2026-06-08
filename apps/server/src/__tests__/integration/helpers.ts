@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { supabaseAdmin } from '../../lib/db.js'
-import { getClickhouse } from '../../lib/clickhouse.js'
+import { unscopedClickhouse } from '../../lib/clickhouse.js'
 
 export interface InsertRequestsArgs {
   orgId: string
@@ -57,13 +57,13 @@ export async function insertRequests(args: InsertRequestsArgs): Promise<void> {
     has_security_flags: false,
     created_at: createdAt,
   }))
-  await getClickhouse().insert({ table: 'requests', format: 'JSONEachRow', values: rows })
+  await unscopedClickhouse().insert({ table: 'requests', format: 'JSONEachRow', values: rows })
 }
 
 export async function cleanupRequests(orgId: string): Promise<void> {
   // ClickHouse mutations (ALTER ... DELETE) are async on disk but synchronous
   // from the client's perspective for our test sizes — safe to await.
-  await getClickhouse().command({
+  await unscopedClickhouse().command({
     query: 'ALTER TABLE requests DELETE WHERE organization_id = {orgId:UUID}',
     query_params: { orgId },
   })
