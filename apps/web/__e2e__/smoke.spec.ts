@@ -53,24 +53,35 @@ test.describe('smoke: signup → api key → proxy → /requests', () => {
   }) => {
     const email = `e2e-${Date.now()}@spanlens.test`
 
-    // ── 1. Pre-seed user + verify email so the magic-link works first try ──
+    const password = 'test-password-correct-horse'
+
+    // ── 1. Pre-seed user + verify email so the password sign-in works first try ──
+    //
+    // Why password sign-in instead of magic-link: the /auth/callback route in
+    // apps/web/app/auth/callback/route.ts only handles PKCE OAuth (`?code=`).
+    // `supabase.auth.admin.generateLink({type:'magiclink'})` returns a URL
+    // with a `token_hash` query + hash-fragment, which our callback doesn't
+    // verify — first-try `page.goto(magiclink)` redirects to /dashboard
+    // without setting a session, middleware bounces to /login, and the
+    // smoke's `waitForURL(/onboarding|projects|dashboard/)` times out.
+    //
+    // Going through the actual login form exercises the same client-side
+    // supabase-js path a real user takes and writes cookies the middleware
+    // recognises. The added cost is ~1s for two `page.fill` calls, well
+    // under the savings from not chasing magic-link callback bugs every
+    // time supabase SSR cookie internals change.
     const { data: createdUser, error: createErr } = await supabase.auth.admin.createUser({
       email,
-      password: 'test-password-correct-horse',
+      password,
       email_confirm: true,
     })
     if (createErr || !createdUser.user) throw new Error(`createUser failed: ${createErr?.message}`)
 
-    const { data: linkData, error: linkErr } = await supabase.auth.admin.generateLink({
-      type: 'magiclink',
-      email,
-    })
-    if (linkErr || !linkData.properties?.action_link) {
-      throw new Error(`generateLink failed: ${linkErr?.message}`)
-    }
-
-    // ── 2. Follow the magic link — lands on /onboarding for first-time users ─
-    await page.goto(linkData.properties.action_link)
+    // ── 2. Sign in via the actual login form ──────────────────────────────────
+    await page.goto('/login')
+    await page.fill('#email', email)
+    await page.fill('#password', password)
+    await page.click('button[type="submit"]')
     await page.waitForURL(/\/(onboarding|projects|dashboard)/, { timeout: 30_000 })
 
     // ── 3. Resolve the org + project from Supabase. The signup trigger

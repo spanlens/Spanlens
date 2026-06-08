@@ -1,13 +1,13 @@
 name: E2E (Playwright smoke)
 
-# Manual-only for the first iteration. R-3 Sprint 4 first-try shipped a
-# spec + workflow but stabilising the cold-start sequence (Next 16
-# compile time, supabase status JSON shape, magic-link redirect timing)
-# takes more than a single PR worth of CI iterations. Flipping this back
-# to `pull_request` + `push` triggers after the manual run passes 5x
-# clean is the Sprint 3-4 success criterion check — tracked as
-# follow-up in 06-development-plan.md.
+# Temporarily re-enabled on pull_request for this branch to validate the
+# password-signin fix (replaces the magic-link path that never wrote a
+# session cookie). If the run is clean we flip back to manual-only via
+# follow-up commit before merging. If still red, the artifact tells us
+# what to chase next.
 on:
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 # R-3 / R-23 — single smoke spec exercising signup → api key → proxy → /requests.
