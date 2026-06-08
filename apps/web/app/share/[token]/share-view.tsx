@@ -1,6 +1,8 @@
 'use client'
 
 import Link from 'next/link'
+import { IOPreview } from '@/components/share/io-preview'
+import { CopyPermalink } from '@/components/share/copy-permalink'
 
 interface ShareViewProps {
   share: {
@@ -12,6 +14,10 @@ interface ShareViewProps {
     /** PLG Loop ② — true only when the share's org is on team+ and opted out. */
     hidePoweredBy?: boolean
     payload: unknown
+    /** R-26 Sprint 5: canonical share URL passed from the SSR page so
+     *  the CopyPermalink button doesn't read window.location at first
+     *  render (would crash SSR). */
+    permalink?: string
   }
 }
 
@@ -100,8 +106,11 @@ function ShareHeader({ share }: ShareViewProps) {
             Shared {share.scope}
           </span>
         </div>
-        <div className="font-mono text-[11px] text-text-muted">
-          {share.viewCount} {share.viewCount === 1 ? 'view' : 'views'} · expires {expiresLabel}
+        <div className="flex items-center gap-3">
+          <div className="font-mono text-[11px] text-text-muted">
+            {share.viewCount} {share.viewCount === 1 ? 'view' : 'views'} · expires {expiresLabel}
+          </div>
+          {share.permalink ? <CopyPermalink url={share.permalink} /> : null}
         </div>
       </div>
     </header>
@@ -212,17 +221,14 @@ function SpanRow({ span, isCritical }: { span: SharedSpan; isCritical: boolean }
           {span.total_tokens != null && <span>{span.total_tokens} tok</span>}
         </div>
       </summary>
-      <div className="px-4 pb-4 border-t border-border space-y-3">
+      <div className="px-4 pb-4 border-t border-border space-y-3 pt-3">
         {span.error_message && (
           <div className="font-mono text-[11.5px] text-status-error whitespace-pre-wrap">
             {span.error_message}
           </div>
         )}
-        {span.input != null && (
-          <JsonBlock label="Input" value={span.input} />
-        )}
-        {span.output != null && (
-          <JsonBlock label="Output" value={span.output} />
+        {(span.input != null || span.output != null) && (
+          <IOPreview input={span.input} output={span.output} />
         )}
       </div>
     </details>
@@ -274,11 +280,13 @@ function RequestView({ payload }: { payload: SharedRequestPayload }) {
         </div>
       )}
 
-      {payload.request_body != null && (
-        <JsonBlock label="Request" value={payload.request_body} />
-      )}
-      {payload.response_body != null && (
-        <JsonBlock label="Response" value={payload.response_body} />
+      {(payload.request_body != null || payload.response_body != null) && (
+        <IOPreview
+          input={payload.request_body}
+          output={payload.response_body}
+          inputLabel="Request"
+          outputLabel="Response"
+        />
       )}
     </div>
   )
@@ -295,17 +303,6 @@ function Stat({ label, value }: { label: string; value: string }) {
   )
 }
 
-function JsonBlock({ label, value }: { label: string; value: unknown }) {
-  const text =
-    typeof value === 'string' ? value : JSON.stringify(value, null, 2)
-  return (
-    <div>
-      <div className="text-[10px] uppercase tracking-wider text-text-muted mb-2">
-        {label}
-      </div>
-      <pre className="bg-bg-elevated border border-border rounded-md p-3 font-mono text-[11.5px] overflow-x-auto whitespace-pre-wrap break-words">
-        {text}
-      </pre>
-    </div>
-  )
-}
+// JsonBlock was replaced by IOPreview (R-26 Sprint 5) — input/output now
+// render side-by-side on desktop. The legacy single-pane component had no
+// remaining call sites; removed to keep this file focused.
