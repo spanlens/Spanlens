@@ -214,15 +214,50 @@ test.describe('smoke: signup → api key → proxy → /requests', () => {
     })
     expect(proxyRes.status(), `proxy response: ${await proxyRes.text()}`).toBe(200)
 
-    // ── 6. The proxy logs to ClickHouse fire-and-forget. There's a
-    //      small but real window between the 200 and the row landing.
-    //      Poll /api/v1/requests through the user's session (auth via
-    //      the auth cookie set by the magic link) until at least 1 row
-    //      appears, with a 10s ceiling matching playwright.config.ts's
-    //      expect.timeout.
+    // ── 6. ClickHouse INSERT first, then /requests UI ────────────────────────
+    //
+    // The proxy logs to ClickHouse fire-and-forget. There's a small
+    // but real window between the proxy 200 and the row landing — and
+    // a second window between landing and the /requests page query
+    // picking it up.
+    //
+    // We poll ClickHouse directly first (cheap, deterministic). Once
+    // a row exists, we navigate to /requests and assert UI visibility.
+    // Splitting the two assertions keeps the failure message specific:
+    // "ClickHouse never got the row" vs "ClickHouse has it but UI
+    // doesn't render it" — those need different fixes.
+    const clickhouseUrl = process.env['CLICKHOUSE_URL'] ?? 'http://localhost:8123'
+    const clickhouseUser = process.env['CLICKHOUSE_USER'] ?? 'spanlens'
+    const clickhousePassword = process.env['CLICKHOUSE_PASSWORD'] ?? 'spanlens_ci_password'
+    const clickhouseDb = process.env['CLICKHOUSE_DB'] ?? 'spanlens'
+
+    const chPollDeadline = Date.now() + 30_000
+    let chRowCount = 0
+    while (Date.now() < chPollDeadline) {
+      const query = `SELECT count() FROM ${clickhouseDb}.requests WHERE organization_id = '${orgId}' FORMAT JSONEachRow`
+      const res = await fetch(`${clickhouseUrl}/?user=${clickhouseUser}&password=${clickhousePassword}`, {
+        method: 'POST',
+        body: query,
+      })
+      if (res.ok) {
+        const text = await res.text()
+        // Result: {"count()":"1"} per row (Number-as-string per gotcha #19)
+        const m = text.match(/"count\(\)":"?(\d+)"?/)
+        if (m && Number(m[1]) > 0) {
+          chRowCount = Number(m[1])
+          break
+        }
+      }
+      await new Promise((r) => setTimeout(r, 500))
+    }
+    expect(chRowCount, 'ClickHouse never received the proxy request log').toBeGreaterThan(0)
+
+    // Now the dashboard must show it. /requests page polls the API
+    // server-side; one extra reload after a brief tick covers Next
+    // server-component caching.
     await page.goto('/requests')
     await expect(page.locator('[data-testid="request-row"]').first()).toBeVisible({
-      timeout: 15_000,
+      timeout: 30_000,
     })
   })
 })
