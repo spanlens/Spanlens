@@ -54,9 +54,6 @@ importers:
         specifier: ^4.12.23
         version: 4.12.23
     devDependencies:
-      '@spanlens/eslint-plugin':
-        specifier: workspace:*
-        version: link:../../packages/eslint-plugin
       '@types/node':
         specifier: ^25.8.0
         version: 25.8.0

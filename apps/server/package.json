@@ -28,7 +28,6 @@
     "hono": "^4.12.23"
   },
   "devDependencies": {
-    "@spanlens/eslint-plugin": "workspace:*",
     "@types/node": "^25.8.0",
     "@typescript-eslint/eslint-plugin": "^8.60.1",
     "@typescript-eslint/parser": "^8.60.1",
