@@ -125,26 +125,83 @@ sharesRouter.post('/', async (c) => {
   return c.json({ success: true, data })
 })
 
-// GET /api/v1/shares — list active shares the caller created in this org.
+// GET /api/v1/shares — list shares in this org.
+//
+// Query params (all optional):
+//   scope:   'mine' (default) — shares the caller created
+//            'org'  — every active share in the org (workspace dashboard)
+//   sort:    'created' (default, desc) | 'views' (desc) | 'expires_soon' (asc, nulls last)
+//   include: 'revoked' to include soft-deleted rows (default: exclude)
+//
+// 'org' scope matches the DELETE handler's policy — any member can see / revoke
+// any share in their workspace. Default 'mine' keeps the existing per-user UX.
+//
+// Trace name enrichment: for scope='trace' rows we batch-fetch traces.name in a
+// single follow-up query. Request scope rows leave a `target_label` of
+// '<scope> <short_id>' since the names would require a separate ClickHouse round
+// trip (deferred to Sprint 7 if the UX warrants it).
 sharesRouter.get('/', async (c) => {
   const orgId = c.get('orgId')
   const userId = c.get('userId')
   if (!orgId) return c.json({ error: 'Organization not found' }, 404)
 
-  const { data, error } = await supabaseAdmin
-    .from('shared_links')
-    .select('id, token, scope, target_id, expires_at, redact_pii, redact_cost, redact_tokens, indexable, view_count, revoked_at, created_at')
-    .eq('organization_id', orgId)
-    .eq('created_by', userId)
-    .is('revoked_at', null)
-    .order('created_at', { ascending: false })
-    .limit(100)
+  const scope = c.req.query('scope') === 'org' ? 'org' : 'mine'
+  const sortParam = c.req.query('sort')
+  const includeRevoked = c.req.query('include') === 'revoked'
 
+  let query = supabaseAdmin
+    .from('shared_links')
+    .select(
+      'id, token, scope, target_id, expires_at, redact_pii, redact_cost, redact_tokens, indexable, view_count, revoked_at, created_at, created_by',
+    )
+    .eq('organization_id', orgId)
+    .limit(200)
+
+  if (scope === 'mine') query = query.eq('created_by', userId)
+  if (!includeRevoked) query = query.is('revoked_at', null)
+
+  if (sortParam === 'views') {
+    query = query.order('view_count', { ascending: false }).order('created_at', { ascending: false })
+  } else if (sortParam === 'expires_soon') {
+    // Nulls last so "never expires" rows do not flood the top of an expiry sort.
+    query = query.order('expires_at', { ascending: true, nullsFirst: false })
+  } else {
+    query = query.order('created_at', { ascending: false })
+  }
+
+  const { data, error } = await query
   if (error) {
     console.error('[shares:list] select failed:', error.message)
     return c.json({ error: 'Failed to list shares' }, 500)
   }
-  return c.json({ success: true, data: data ?? [] })
+
+  const rows = data ?? []
+
+  // Batch trace name enrichment. Avoid an N+1 round trip by collecting all
+  // trace target_ids and issuing one .in() query.
+  const traceIds = Array.from(
+    new Set(rows.filter((r) => r.scope === 'trace').map((r) => r.target_id)),
+  )
+  let traceNames = new Map<string, string | null>()
+  if (traceIds.length > 0) {
+    const { data: traces } = await supabaseAdmin
+      .from('traces')
+      .select('id, name')
+      .in('id', traceIds)
+      .eq('organization_id', orgId)
+    for (const t of traces ?? []) {
+      traceNames.set(t.id as string, (t.name as string | null) ?? null)
+    }
+  }
+
+  const enriched = rows.map((r) => {
+    const traceName = r.scope === 'trace' ? traceNames.get(r.target_id) ?? null : null
+    const shortId = r.target_id.slice(0, 8)
+    const targetLabel = traceName ?? (r.scope === 'trace' ? `Trace ${shortId}` : `Request ${shortId}`)
+    return { ...r, target_label: targetLabel, target_name: traceName }
+  })
+
+  return c.json({ success: true, data: enriched })
 })
 
 // DELETE /api/v1/shares/:token — revoke a share (soft delete).
