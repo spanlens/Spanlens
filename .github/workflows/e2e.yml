@@ -1,0 +1,188 @@
+name: E2E (Playwright smoke)
+
+# Manual-only for the first iteration. R-3 Sprint 4 first-try shipped a
+# spec + workflow but stabilising the cold-start sequence (Next 16
+# compile time, supabase status JSON shape, magic-link redirect timing)
+# takes more than a single PR worth of CI iterations. Flipping this back
+# to `pull_request` + `push` triggers after the manual run passes 5x
+# clean is the Sprint 3-4 success criterion check — tracked as
+# follow-up in 06-development-plan.md.
+on:
+  workflow_dispatch:
+
+# R-3 / R-23 — single smoke spec exercising signup → api key → proxy → /requests.
+# Spec lives in apps/web/__e2e__/smoke.spec.ts.
+#
+# Stack we bring up in CI (mirrors `docker compose -f docker-compose.dev.yml`):
+#
+#   supabase  via `supabase start` CLI (gotrue + kong + db, official wiring)
+#   clickhouse  via docker-compose service (24.10-alpine)
+#   server      pnpm --filter server dev (background)
+#   web         pnpm --filter web dev (background)
+#   mock-openai pnpm --filter server exec tsx scripts/mock-openai-server.ts (background)
+#
+# We do NOT use `docker compose up server` in CI because the dev container
+# rebuilds on every push and that wastes 60-90s. Running the dev servers
+# directly with `pnpm dev` is faster and gives Playwright a tighter signal.
+#
+# Artifacts: test-results/ (traces, screenshots, videos) + playwright-report/
+# uploaded on failure for triage.
+
+jobs:
+  e2e:
+    name: Playwright smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10.33.0
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      # supabase start brings up the full Postgres + GoTrue + Kong + Studio
+      # stack on a set of well-known ports. The status output is JSON so we
+      # can read service_role_key + api_url without parsing log lines.
+      - name: Start Supabase stack
+        run: |
+          supabase start
+          # Persist the resolved URLs/keys so subsequent steps can read them
+          # via $GITHUB_ENV without grepping the supabase status output again.
+          status_json=$(supabase status -o json)
+          {
+            echo "E2E_SUPABASE_URL=$(echo "$status_json" | jq -r .API_URL)"
+            echo "E2E_SUPABASE_SERVICE_KEY=$(echo "$status_json" | jq -r .SERVICE_ROLE_KEY)"
+            echo "E2E_SUPABASE_ANON_KEY=$(echo "$status_json" | jq -r .ANON_KEY)"
+          } >> "$GITHUB_ENV"
+
+      # ClickHouse alone — no rebuild needed, the official image starts in ~5s.
+      # We sidecar it rather than running the full docker-compose stack so the
+      # server can run from `pnpm dev` and pick up source changes without a
+      # container rebuild.
+      - name: Start ClickHouse sidecar
+        run: |
+          docker run -d --name clickhouse \
+            -e CLICKHOUSE_DB=spanlens \
+            -e CLICKHOUSE_USER=spanlens \
+            -e CLICKHOUSE_PASSWORD=spanlens_ci_password \
+            -e CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT=1 \
+            -p 8123:8123 -p 9000:9000 \
+            --ulimit nofile=262144:262144 \
+            clickhouse/clickhouse-server:24.10-alpine
+          # Wait for ClickHouse to answer HTTP. The image takes ~5-10s to
+          # boot; busy-loop a bit rather than a flat sleep.
+          for i in {1..30}; do
+            if curl -sf http://localhost:8123/ping | grep -q Ok; then
+              echo "ClickHouse ready"
+              break
+            fi
+            sleep 1
+          done
+
+      - name: Apply ClickHouse schema
+        env:
+          CLICKHOUSE_URL: http://localhost:8123
+          CLICKHOUSE_USER: spanlens
+          CLICKHOUSE_PASSWORD: spanlens_ci_password
+          CLICKHOUSE_DB: spanlens
+        # `ch:migrate` is a root-level script (package.json) that runs the
+        # apply.ts migration runner — see CLAUDE.md DB 작업 규칙.
+        run: pnpm ch:migrate
+
+      - name: Install Playwright browsers
+        run: pnpm --filter web exec playwright install --with-deps chromium
+
+      - name: Start mock OpenAI
+        run: |
+          pnpm --filter server exec tsx scripts/mock-openai-server.ts &
+          # Wait for /health
+          for i in {1..20}; do
+            if curl -sf http://localhost:4000/health > /dev/null; then
+              echo "mock-openai ready"
+              break
+            fi
+            sleep 1
+          done
+
+      - name: Start server (background)
+        env:
+          PORT: 3001
+          SUPABASE_URL: ${{ env.E2E_SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ env.E2E_SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ env.E2E_SUPABASE_SERVICE_KEY }}
+          ENCRYPTION_KEY: ${{ secrets.CI_ENCRYPTION_KEY }}
+          CLICKHOUSE_URL: http://localhost:8123
+          CLICKHOUSE_USER: spanlens
+          CLICKHOUSE_PASSWORD: spanlens_ci_password
+          CLICKHOUSE_DB: spanlens
+          OPENAI_API_BASE: http://localhost:4000/v1
+        run: |
+          pnpm --filter server dev > /tmp/server.log 2>&1 &
+          for i in {1..40}; do
+            if curl -sf http://localhost:3001/health/ready > /dev/null; then
+              echo "server ready"
+              break
+            fi
+            sleep 1
+          done
+
+      - name: Start web (background)
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ env.E2E_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ env.E2E_SUPABASE_ANON_KEY }}
+          NEXT_PUBLIC_API_URL: http://localhost:3001
+        run: |
+          pnpm --filter web dev > /tmp/web.log 2>&1 &
+          for i in {1..60}; do
+            if curl -sf http://localhost:3000 > /dev/null; then
+              echo "web ready"
+              break
+            fi
+            sleep 1
+          done
+
+      - name: Run Playwright smoke
+        env:
+          E2E_BASE_URL: http://localhost:3000
+          E2E_SERVER_URL: http://localhost:3001
+        run: pnpm --filter web exec playwright test --reporter=list
+
+      - name: Upload Playwright artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-${{ github.run_id }}
+          path: |
+            apps/web/test-results/
+            apps/web/playwright-report/
+          retention-days: 7
+
+      - name: Upload server/web logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dev-server-logs-${{ github.run_id }}
+          path: |
+            /tmp/server.log
+            /tmp/web.log
+          retention-days: 7
+
+      - name: Stop services
+        if: always()
+        run: |
+          docker stop clickhouse || true
+          docker rm clickhouse || true
+          supabase stop --no-backup || true

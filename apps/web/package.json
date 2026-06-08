@@ -41,6 +41,7 @@
   },
   "devDependencies": {
     "@next/bundle-analyzer": "^16.2.7",
+    "@playwright/test": "^1.60.0",
     "@tailwindcss/postcss": "^4.3.0",
     "@tailwindcss/typography": "^0.5.19",
     "@tanstack/react-query-devtools": "^5.101.0",
