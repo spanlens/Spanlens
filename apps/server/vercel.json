@@ -21,6 +21,7 @@
     { "path": "/cron/execute-pending-deletions",  "schedule": "0 */6 * * *" },
     { "path": "/cron/run-background-migrations",  "schedule": "*/5 * * * *" },
     { "path": "/cron/events-reconciliation",      "schedule": "0 2 * * *" },
+    { "path": "/cron/detect-missing-model-prices","schedule": "0 * * * *" },
     { "path": "/cron/keep-warm",                  "schedule": "*/5 * * * *" }
   ]
 }
