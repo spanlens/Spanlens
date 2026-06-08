@@ -34,7 +34,16 @@ const SCAN_BATCH_SIZE = 100
 
 let _redis: Redis | null = null
 
-function getRedis(): Redis | null {
+/**
+ * Lazy Upstash Redis singleton. Returns null when env is missing — local
+ * dev and preview environments often run without KV configured, and the
+ * prompt-cache call sites already handle null (skip the cache).
+ *
+ * Exported so /health/ready (R-22) can ping the same instance instead of
+ * spinning up its own client. Keep this the only constructor of the
+ * shared Redis singleton to avoid drift between callers.
+ */
+export function getRedis(): Redis | null {
   if (_redis) return _redis
 
   const url = process.env.KV_REST_API_URL

@@ -28,6 +28,23 @@ services:
     restart: unless-stopped
     depends_on:
       - db
+    # R-22: readiness probe — same endpoint Vercel preview / production
+    # docker invocations use. /health/ready pings Postgres + ClickHouse +
+    # Upstash (Upstash 'skipped' is OK), so a half-broken container shows
+    # up as "unhealthy" before Docker routes traffic to it. start_period
+    # gives node + tsx-watch time to compile on cold container start.
+    #
+    # Why `node -e` instead of curl/wget: node:22-alpine ships neither by
+    # default, and adding an apk install just for healthcheck inflates the
+    # image. node 22 has fetch built in, so this stays zero-dep.
+    healthcheck:
+      test:
+        - 'CMD-SHELL'
+        - "node -e \"fetch('http://localhost:3001/health/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
 
   db:
     image: postgres:15-alpine
