@@ -196,28 +196,86 @@ function NewEvaluatorDialog({
   const scoreConfigsList = useMemo(() => scoreConfigsQuery.data ?? [], [scoreConfigsQuery.data])
   const [error, setError] = useState('')
 
+  // R-7 Phase 1: evaluator type. llm_judge keeps the existing form,
+  // regex / json_schema swap criterion + provider/model out for a
+  // pattern field or a JSON Schema textarea. Templates always create
+  // llm_judge evaluators today, so the selector defaults to that even
+  // when initialTemplate is set.
+  const [evaluatorType, setEvaluatorType] = useState<'llm_judge' | 'regex' | 'json_schema'>(
+    'llm_judge',
+  )
+  const [regexPattern, setRegexPattern] = useState('')
+  const [regexFlags, setRegexFlags] = useState('')
+  const [jsonSchemaText, setJsonSchemaText] = useState('{\n  "type": "object"\n}')
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError('')
-    if (!promptName || !name.trim() || !criterion.trim()) {
-      setError('All fields required')
+    if (!promptName || !name.trim()) {
+      setError('Prompt and name are required')
       return
     }
     try {
-      await createMutation.mutateAsync({
-        promptName,
-        name: name.trim(),
-        config: {
-          criterion: criterion.trim(),
-          judge_provider: judgeProvider,
-          judge_model: judgeModel,
-          scale_min: scaleMin,
-          scale_max: scaleMax,
-        },
-        ...(scoreConfigId ? { scoreConfigId } : {}),
-      })
+      if (evaluatorType === 'llm_judge') {
+        if (!criterion.trim()) {
+          setError('Criterion is required for LLM-as-judge evaluators')
+          return
+        }
+        await createMutation.mutateAsync({
+          promptName,
+          name: name.trim(),
+          config: {
+            criterion: criterion.trim(),
+            judge_provider: judgeProvider,
+            judge_model: judgeModel,
+            scale_min: scaleMin,
+            scale_max: scaleMax,
+          },
+          ...(scoreConfigId ? { scoreConfigId } : {}),
+        })
+      } else if (evaluatorType === 'regex') {
+        if (!regexPattern) {
+          setError('Pattern is required')
+          return
+        }
+        // Compile-check on the client too — the operator sees the
+        // SyntaxError without a server round-trip.
+        try {
+          new RegExp(regexPattern, regexFlags)
+        } catch (err) {
+          setError(err instanceof Error ? err.message : 'Invalid regex')
+          return
+        }
+        await createMutation.mutateAsync({
+          promptName,
+          name: name.trim(),
+          type: 'regex',
+          config: { pattern: regexPattern, flags: regexFlags },
+        })
+      } else {
+        let parsedSchema: unknown
+        try {
+          parsedSchema = JSON.parse(jsonSchemaText)
+        } catch (err) {
+          setError(`Schema is not valid JSON: ${err instanceof Error ? err.message : String(err)}`)
+          return
+        }
+        if (!parsedSchema || typeof parsedSchema !== 'object' || Array.isArray(parsedSchema)) {
+          setError('Schema must be a JSON object')
+          return
+        }
+        await createMutation.mutateAsync({
+          promptName,
+          name: name.trim(),
+          type: 'json_schema',
+          config: { schema: parsedSchema },
+        })
+      }
       onClose()
       setName(''); setCriterion(''); setPromptName('')
+      setRegexPattern(''); setRegexFlags('')
+      setJsonSchemaText('{\n  "type": "object"\n}')
+      setEvaluatorType('llm_judge')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create')
     }
@@ -258,60 +316,140 @@ function NewEvaluatorDialog({
             />
           </div>
 
+          {/* R-7 Phase 1: type selector. Switches the rest of the form
+              between LLM-as-judge (criterion + provider + model) and the
+              two deterministic types (regex pattern, JSON Schema). */}
           <div>
             <label className="block font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint mb-1">
-              Criterion (what to score)
+              Type
             </label>
-            <textarea
-              value={criterion}
-              onChange={(e) => setCriterion(e.target.value)}
-              rows={3}
-              placeholder="e.g. Is the response friendly, polite, and clearly addresses the customer's question?"
-              required
-              className="w-full px-2 py-2 rounded-[5px] border border-border bg-bg font-mono text-[12px] text-text placeholder:text-text-faint focus:outline-none focus:border-border-strong resize-none"
-            />
+            <Select
+              value={evaluatorType}
+              onValueChange={(v) => setEvaluatorType(v as 'llm_judge' | 'regex' | 'json_schema')}
+            >
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="llm_judge">LLM as judge</SelectItem>
+                <SelectItem value="regex">Regex (pattern match)</SelectItem>
+                <SelectItem value="json_schema">JSON Schema (structure check)</SelectItem>
+              </SelectContent>
+            </Select>
             <p className="font-mono text-[10.5px] text-text-faint mt-1">
-              Judge model scores 0–1 against this criterion.
+              {evaluatorType === 'llm_judge'
+                ? 'Judge model scores 0..1 against a free-form criterion.'
+                : evaluatorType === 'regex'
+                  ? 'Deterministic 0/1 — passes when the pattern matches the response.'
+                  : 'Deterministic 0/1 — passes when the response parses as JSON and matches the schema.'}
             </p>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint mb-1">
-                Judge provider
-              </label>
-              <Select value={judgeProvider || undefined} onValueChange={(v) => {
-                  const p = v as 'openai' | 'anthropic' | 'gemini'
-                  setJudgeProvider(p)
-                  setJudgeModel(judgeModels[p][0] ?? '')
-                }}>
-                <SelectTrigger><SelectValue placeholder="Select provider…" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="openai">OpenAI</SelectItem>
-                  <SelectItem value="anthropic">Anthropic</SelectItem>
-                  <SelectItem value="gemini">Gemini</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <label className="block font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint mb-1">
-                Judge model
-              </label>
-              <Select {...(judgeModel ? { value: judgeModel } : {})} onValueChange={setJudgeModel}>
-                <SelectTrigger><SelectValue placeholder="Select model…" /></SelectTrigger>
-                <SelectContent>
-                  {judgeModels[judgeProvider].map((m) => (
-                    <SelectItem key={m} value={m}>{m}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
+          {evaluatorType === 'llm_judge' && (
+            <>
+              <div>
+                <label className="block font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint mb-1">
+                  Criterion (what to score)
+                </label>
+                <textarea
+                  value={criterion}
+                  onChange={(e) => setCriterion(e.target.value)}
+                  rows={3}
+                  placeholder="e.g. Is the response friendly, polite, and clearly addresses the customer's question?"
+                  required
+                  className="w-full px-2 py-2 rounded-[5px] border border-border bg-bg font-mono text-[12px] text-text placeholder:text-text-faint focus:outline-none focus:border-border-strong resize-none"
+                />
+                <p className="font-mono text-[10.5px] text-text-faint mt-1">
+                  Judge model scores 0–1 against this criterion.
+                </p>
+              </div>
 
-          {/* Optional typed score config. When omitted the evaluator
-              falls back to the legacy NUMERIC 0..1 scoring path so
-              existing dashboards keep working unchanged. */}
-          {scoreConfigsList.length > 0 && (
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint mb-1">
+                    Judge provider
+                  </label>
+                  <Select value={judgeProvider || undefined} onValueChange={(v) => {
+                      const p = v as 'openai' | 'anthropic' | 'gemini'
+                      setJudgeProvider(p)
+                      setJudgeModel(judgeModels[p][0] ?? '')
+                    }}>
+                    <SelectTrigger><SelectValue placeholder="Select provider…" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="openai">OpenAI</SelectItem>
+                      <SelectItem value="anthropic">Anthropic</SelectItem>
+                      <SelectItem value="gemini">Gemini</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <label className="block font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint mb-1">
+                    Judge model
+                  </label>
+                  <Select {...(judgeModel ? { value: judgeModel } : {})} onValueChange={setJudgeModel}>
+                    <SelectTrigger><SelectValue placeholder="Select model…" /></SelectTrigger>
+                    <SelectContent>
+                      {judgeModels[judgeProvider].map((m) => (
+                        <SelectItem key={m} value={m}>{m}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </>
+          )}
+
+          {evaluatorType === 'regex' && (
+            <div className="grid grid-cols-[1fr_120px] gap-3">
+              <div>
+                <label className="block font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint mb-1">
+                  Pattern
+                </label>
+                <input
+                  type="text"
+                  value={regexPattern}
+                  onChange={(e) => setRegexPattern(e.target.value)}
+                  placeholder="e.g. ^\\{.*\\}$"
+                  required
+                  className="w-full h-9 px-2 rounded-[5px] border border-border bg-bg font-mono text-[12px] text-text placeholder:text-text-faint focus:outline-none focus:border-border-strong"
+                />
+              </div>
+              <div>
+                <label className="block font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint mb-1">
+                  Flags
+                </label>
+                <input
+                  type="text"
+                  value={regexFlags}
+                  onChange={(e) => setRegexFlags(e.target.value)}
+                  placeholder="e.g. im"
+                  className="w-full h-9 px-2 rounded-[5px] border border-border bg-bg font-mono text-[12px] text-text placeholder:text-text-faint focus:outline-none focus:border-border-strong"
+                />
+              </div>
+            </div>
+          )}
+
+          {evaluatorType === 'json_schema' && (
+            <div>
+              <label className="block font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint mb-1">
+                JSON Schema
+              </label>
+              <textarea
+                value={jsonSchemaText}
+                onChange={(e) => setJsonSchemaText(e.target.value)}
+                rows={8}
+                spellCheck={false}
+                required
+                className="w-full px-2 py-2 rounded-[5px] border border-border bg-bg font-mono text-[11.5px] text-text placeholder:text-text-faint focus:outline-none focus:border-border-strong resize-y"
+              />
+              <p className="font-mono text-[10.5px] text-text-faint mt-1">
+                Standard JSON Schema (draft-07). Default accepts any object.
+              </p>
+            </div>
+          )}
+
+          {/* Optional typed score config (LLM-as-judge only). When omitted
+              the evaluator falls back to the legacy NUMERIC 0..1 scoring
+              path so existing dashboards keep working unchanged. */}
+          {evaluatorType === 'llm_judge' && scoreConfigsList.length > 0 && (
             <div>
               <label className="block font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint mb-1">
                 Score config (optional)
