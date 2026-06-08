@@ -242,7 +242,7 @@ function EvaluatorRow({
               >
                 <StatusBadge status={r.status} />
                 <span className="font-mono text-[11.5px] text-text-muted">
-                  {new Date(r.started_at).toLocaleString()}
+                  {new Date(r.started_at).toLocaleString('en-US')}
                 </span>
                 <span className="font-mono text-[11.5px] text-text-faint">
                   {r.scored_count}/{r.sample_size}

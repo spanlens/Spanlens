@@ -40,7 +40,7 @@ function VersionsTab({ prompt }: { prompt: (typeof DEMO_PROMPTS)[number] }) {
             current
           </span>
           <span className="font-mono text-[11px] text-text-faint ml-auto">
-            {new Date(prompt.created_at).toLocaleDateString()} · by {prompt.created_by}
+            {new Date(prompt.created_at).toLocaleDateString('en-US')} · by {prompt.created_by}
           </span>
         </div>
 
@@ -121,10 +121,10 @@ function VersionsTab({ prompt }: { prompt: (typeof DEMO_PROMPTS)[number] }) {
                 )}
                 <span className="font-mono text-[11px] text-text-faint ml-auto">
                   {v === prompt.version
-                    ? new Date(prompt.created_at).toLocaleDateString()
+                    ? new Date(prompt.created_at).toLocaleDateString('en-US')
                     : new Date(
                         new Date(prompt.created_at).getTime() - (prompt.version - v) * 86400000 * 3,
-                      ).toLocaleDateString()}
+                      ).toLocaleDateString('en-US')}
                 </span>
                 <span className="font-mono text-[11px] text-text-faint">{prompt.created_by}</span>
               </div>
@@ -181,13 +181,13 @@ function CallsTab() {
                 {r.status_code}
               </span>
             </span>
-            <span className="text-text-muted">{r.total_tokens.toLocaleString()}</span>
+            <span className="text-text-muted">{r.total_tokens.toLocaleString('en-US')}</span>
             <span className="text-text-muted">
               {r.cost_usd != null ? `$${r.cost_usd.toFixed(5)}` : '—'}
             </span>
             <span className="text-text-muted">{r.latency_ms}ms</span>
             <span className="text-text-faint text-right text-[11px]">
-              {new Date(r.created_at).toLocaleTimeString()}
+              {new Date(r.created_at).toLocaleTimeString('en-US')}
             </span>
           </div>
         ))}
@@ -203,7 +203,7 @@ function TrafficTab({ prompt }: { prompt: (typeof DEMO_PROMPTS)[number] }) {
   if (!stats) return <div className="p-[22px] text-text-muted text-[13px]">No traffic data.</div>
 
   const statItems = [
-    { label: 'Total calls',   value: stats.calls.toLocaleString() },
+    { label: 'Total calls',   value: stats.calls.toLocaleString('en-US') },
     { label: 'Total spend',   value: fmtUsd(stats.totalCostUsd) },
     { label: 'Avg cost/call', value: stats.avgCostUsd != null ? fmtUsd(stats.avgCostUsd) : '—' },
     { label: 'Avg latency',   value: stats.avgLatencyMs != null ? fmtMs(stats.avgLatencyMs) : '—' },
@@ -551,7 +551,7 @@ function PlaygroundTab({ prompt }: { prompt: (typeof DEMO_PROMPTS)[number] }) {
               <div className="grid grid-cols-4 gap-3">
                 {[
                   { label: 'Model', value: demoResult.model },
-                  { label: 'Tokens', value: demoResult.totalTokens.toLocaleString() },
+                  { label: 'Tokens', value: demoResult.totalTokens.toLocaleString('en-US') },
                   { label: 'Cost', value: `$${demoResult.costUsd.toFixed(5)}` },
                   { label: 'Latency', value: `${(demoResult.latencyMs / 1000).toFixed(2)}s` },
                 ].map((s) => (

@@ -226,7 +226,7 @@ export default function DemoDashboardPage() {
           </div>
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] sm:text-[14px] text-text-muted">
             <span>Last 24h:</span>
-            <b className="text-text font-medium">{o.totalRequests.toLocaleString()} requests</b>
+            <b className="text-text font-medium">{o.totalRequests.toLocaleString('en-US')} requests</b>
             <span className="text-text-faint">·</span>
             <b className="text-text font-medium">{fmtCost(o.totalCostUsd)} spent</b>
             <span className="text-text-faint">·</span>
@@ -274,7 +274,7 @@ export default function DemoDashboardPage() {
           <KpiCard
             className={kpiCellClasses[0]}
             label="Requests · 24h"
-            value={o.totalRequests.toLocaleString()}
+            value={o.totalRequests.toLocaleString('en-US')}
             delta={fmtDelta(o.requestsDelta)}
             deltaVariant={deltaVariantFor(o.requestsDelta, true)}
             sparkValues={sparkRequests}
@@ -347,7 +347,7 @@ export default function DemoDashboardPage() {
                     <span className="text-text-faint text-[10.5px] uppercase tracking-[0.04em] mr-1.5">{m.provider}</span>
                     {m.model}
                   </span>
-                  <span className="text-[12px] text-text-muted text-right">{m.requestCount.toLocaleString()}</span>
+                  <span className="text-[12px] text-text-muted text-right">{m.requestCount.toLocaleString('en-US')}</span>
                   <span className="text-[12px] text-text font-medium text-right">{fmtCost(m.totalCostUsd)}</span>
                 </div>
               ))}

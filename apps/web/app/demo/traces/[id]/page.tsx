@@ -71,7 +71,7 @@ function SpanDetailPanel({ span, onClose }: SpanDetailPanelProps) {
           {[
             { label: 'Duration', value: fmtDuration(span.duration_ms) },
             { label: 'Status',   value: span.status },
-            { label: 'Tokens',   value: span.total_tokens > 0 ? span.total_tokens.toLocaleString() : '—' },
+            { label: 'Tokens',   value: span.total_tokens > 0 ? span.total_tokens.toLocaleString('en-US') : '—' },
             { label: 'Cost',     value: fmtCost(span.cost_usd) },
           ].map((s) => (
             <div key={s.label} className="rounded-[5px] border border-border bg-bg-elev px-3 py-2">
@@ -88,9 +88,9 @@ function SpanDetailPanel({ span, onClose }: SpanDetailPanelProps) {
           <div>
             <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-1.5">Tokens</div>
             <div className="flex gap-3 font-mono text-[12px] text-text-muted">
-              <span>{span.prompt_tokens.toLocaleString()} prompt</span>
+              <span>{span.prompt_tokens.toLocaleString('en-US')} prompt</span>
               <span className="text-text-faint">·</span>
-              <span>{span.completion_tokens.toLocaleString()} completion</span>
+              <span>{span.completion_tokens.toLocaleString('en-US')} completion</span>
             </div>
           </div>
         )}
@@ -347,7 +347,7 @@ export default function DemoTraceDetailPage({ params }: { params: Promise<{ id: 
             },
             {
               label: 'Tokens',
-              value: traceDetail.total_tokens.toLocaleString(),
+              value: traceDetail.total_tokens.toLocaleString('en-US'),
               warn: false,
             },
             {
@@ -454,7 +454,7 @@ export default function DemoTraceDetailPage({ params }: { params: Promise<{ id: 
                 <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-2">Trace metadata</div>
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-2 font-mono text-[11px] text-text-muted">
                   <span><span className="text-text-faint">ID:</span> {traceDetail.id}</span>
-                  <span><span className="text-text-faint">Started:</span> {new Date(traceDetail.started_at).toLocaleString()}</span>
+                  <span><span className="text-text-faint">Started:</span> {new Date(traceDetail.started_at).toLocaleString('en-US')}</span>
                   {Boolean(traceDetail.metadata?.environment) && (
                     <span><span className="text-text-faint">Env:</span> {String(traceDetail.metadata?.environment ?? '')}</span>
                   )}

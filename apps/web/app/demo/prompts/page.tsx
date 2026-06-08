@@ -132,7 +132,7 @@ export default function DemoPromptsPage() {
           {[
             { label: 'Total prompts',             value: String(all.length) },
             { label: 'Total versions',            value: String(totalVersions) },
-            { label: `Total calls`,               value: totalCalls > 0 ? totalCalls.toLocaleString() : '—' },
+            { label: `Total calls`,               value: totalCalls > 0 ? totalCalls.toLocaleString('en-US') : '—' },
             { label: `Total spend`,               value: totalSpend > 0 ? fmtUsd(totalSpend) : '—' },
             { label: `A/B tests`,                 value: String(abCount) },
           ].map((s, i) => (
@@ -354,7 +354,7 @@ export default function DemoPromptsPage() {
 
                 {/* Calls */}
                 <span className={cn(p.stats && p.stats.calls > 0 ? 'text-text' : 'text-text-faint')}>
-                  {p.stats?.calls ? p.stats.calls.toLocaleString() : '—'}
+                  {p.stats?.calls ? p.stats.calls.toLocaleString('en-US') : '—'}
                 </span>
 
                 {/* Avg cost */}
@@ -384,7 +384,7 @@ export default function DemoPromptsPage() {
 
                 {/* Updated date */}
                 <span className="text-text-faint text-right text-[11px]">
-                  {new Date(p.created_at).toLocaleDateString()}
+                  {new Date(p.created_at).toLocaleDateString('en-US')}
                 </span>
               </button>
             ))}

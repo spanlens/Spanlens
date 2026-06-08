@@ -1,6 +1,7 @@
 'use client'
 import { useState } from 'react'
 import Link from 'next/link'
+import { useHydrationSafeNow } from '@/lib/hydration-safe-now'
 import { Mail, MessageSquare, Search } from 'lucide-react'
 import { DEMO_ALERTS, DEMO_CHANNELS, DEMO_DELIVERIES } from '@/lib/demo-data'
 import type { AlertRow } from '@/lib/queries/types'
@@ -99,7 +100,7 @@ function AlertRuleRow({ a, last }: { a: AlertRow; last: boolean }) {
           {a.window_minutes}m
           {a.last_triggered_at && (
             <span className="text-text-faint ml-2">
-              · last fired {new Date(a.last_triggered_at).toLocaleString()}
+              · last fired {new Date(a.last_triggered_at).toLocaleString('en-US')}
             </span>
           )}
         </div>
@@ -169,7 +170,7 @@ export default function DemoAlertsPage() {
   const isFiltered = query.trim().length > 0 || status !== 'all'
 
   // Capture "now" once at mount — demo data is static.
-  const [now] = useState(() => Date.now())
+  const now = useHydrationSafeNow()
   const fires24h = deliveries.filter(
     (d) => now - new Date(d.created_at).getTime() < 24 * 60 * 60 * 1000,
   ).length
@@ -407,7 +408,7 @@ export default function DemoAlertsPage() {
                     className="flex items-center gap-4 px-[14px] py-2 border-b border-border last:border-0 text-[11.5px]"
                   >
                     <span className="font-mono text-text-faint">
-                      {new Date(d.created_at).toLocaleString()}
+                      {new Date(d.created_at).toLocaleString('en-US')}
                     </span>
                     <span
                       className={cn(
