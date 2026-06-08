@@ -222,13 +222,13 @@ function DemoPercentileGrid({
         style={{ display: 'grid', gridTemplateColumns: '80px 1fr 1fr 1fr 80px', gap: 8, alignItems: 'center' }}
       >
         <span className="text-text-faint">Prompt</span>
-        <span className="text-text text-center">{data.p50PromptTokens.toLocaleString()}</span>
+        <span className="text-text text-center">{data.p50PromptTokens.toLocaleString('en-US')}</span>
         <span className={cn('text-center font-medium', promptWarn ? 'text-warn' : 'text-text')}>
-          {data.p95PromptTokens.toLocaleString()}
+          {data.p95PromptTokens.toLocaleString('en-US')}
         </span>
-        <span className="text-text-muted text-center">{data.p99PromptTokens.toLocaleString()}</span>
+        <span className="text-text-muted text-center">{data.p99PromptTokens.toLocaleString('en-US')}</span>
         <span className={cn('text-right', promptWarn ? 'text-warn' : 'text-text-faint')}>
-          ≤ {maxPromptTokens.toLocaleString()}
+          ≤ {maxPromptTokens.toLocaleString('en-US')}
           {promptWarn ? ' ⚠' : ' ✓'}
         </span>
       </div>
@@ -239,13 +239,13 @@ function DemoPercentileGrid({
         style={{ display: 'grid', gridTemplateColumns: '80px 1fr 1fr 1fr 80px', gap: 8, alignItems: 'center' }}
       >
         <span className="text-text-faint">Completion</span>
-        <span className="text-text text-center">{data.p50CompletionTokens.toLocaleString()}</span>
+        <span className="text-text text-center">{data.p50CompletionTokens.toLocaleString('en-US')}</span>
         <span className={cn('text-center font-medium', complWarn ? 'text-warn' : 'text-text')}>
-          {data.p95CompletionTokens.toLocaleString()}
+          {data.p95CompletionTokens.toLocaleString('en-US')}
         </span>
-        <span className="text-text-muted text-center">{data.p99CompletionTokens.toLocaleString()}</span>
+        <span className="text-text-muted text-center">{data.p99CompletionTokens.toLocaleString('en-US')}</span>
         <span className={cn('text-right', complWarn ? 'text-warn' : 'text-text-faint')}>
-          ≤ {maxCompletionTokens.toLocaleString()}
+          ≤ {maxCompletionTokens.toLocaleString('en-US')}
           {complWarn ? ' ⚠' : ' ✓'}
         </span>
       </div>
@@ -361,7 +361,7 @@ function RecRow({
       {/* Samples */}
       <div>
         <div className="font-mono text-[10px] text-text-faint uppercase tracking-[0.03em] mb-[3px]">SAMPLES</div>
-        <div className={cn('text-[12.5px]', isHidden ? 'text-text-muted' : 'text-text')}>{r.sampleCount.toLocaleString()}</div>
+        <div className={cn('text-[12.5px]', isHidden ? 'text-text-muted' : 'text-text')}>{r.sampleCount.toLocaleString('en-US')}</div>
         <div className="font-mono text-[10.5px] text-text-faint mt-0.5">~{Math.round(r.avgCompletionTokens)} output tk</div>
       </div>
 
@@ -737,7 +737,7 @@ export default function DemoSavingsPage() {
                   <div>
                     <div className="text-text-faint uppercase text-[10px] tracking-[0.05em] mb-1">Last {windowLabel}</div>
                     <div className="text-text font-medium">{fmtUsd(simRec.totalCostUsdLastNDays)}</div>
-                    <div className="text-text-muted text-[10.5px]">{simRec.sampleCount.toLocaleString()} requests</div>
+                    <div className="text-text-muted text-[10.5px]">{simRec.sampleCount.toLocaleString('en-US')} requests</div>
                   </div>
                   <div>
                     <div className="text-text-faint uppercase text-[10px] tracking-[0.05em] mb-1">Projected monthly save</div>

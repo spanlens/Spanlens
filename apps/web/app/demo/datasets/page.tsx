@@ -61,7 +61,7 @@ export default function DemoDatasetsPage() {
         <div className="grid grid-cols-2 min-w-[280px]">
           {[
             { label: 'Datasets', value: String(DEMO_DATASETS.length) },
-            { label: 'Total items', value: totalItems.toLocaleString() },
+            { label: 'Total items', value: totalItems.toLocaleString('en-US') },
           ].map((s, i) => (
             <div key={s.label} className={cn('px-[18px] py-[14px]', i < 1 && 'border-r border-border')}>
               <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-2">{s.label}</div>

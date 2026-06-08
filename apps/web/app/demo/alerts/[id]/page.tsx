@@ -6,6 +6,7 @@ import { DEMO_ALERTS, DEMO_CHANNELS, DEMO_DELIVERIES } from '@/lib/demo-data'
 import type { AlertType } from '@/lib/queries/types'
 import { Topbar } from '@/components/layout/topbar'
 import { cn, formatDateTime } from '@/lib/utils'
+import { useHydrationSafeNow } from '@/lib/hydration-safe-now'
 
 function fmtThreshold(type: AlertType, threshold: number): string {
   if (type === 'budget') return `$${threshold}`
@@ -37,7 +38,7 @@ export default function DemoAlertDetailPage({ params }: { params: Promise<{ id: 
   const { id } = use(params)
   // Stable "now" for the 24h delivery bucket. Demo data has fixed timestamps,
   // so re-evaluating on every render isn't useful.
-  const [mountNow] = useState(() => Date.now())
+  const mountNow = useHydrationSafeNow()
 
   const alert = DEMO_ALERTS.find((a) => a.id === id)
   const channels = DEMO_CHANNELS

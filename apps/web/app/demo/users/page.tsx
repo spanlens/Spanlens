@@ -1,6 +1,7 @@
 'use client'
 import Link from 'next/link'
 import { useMemo, useState } from 'react'
+import { useHydrationSafeNow } from '@/lib/hydration-safe-now'
 import { ArrowDown, ArrowUp, ArrowUpDown, Check, Copy, Search, Users as UsersIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Topbar } from '@/components/layout/topbar'
@@ -165,7 +166,7 @@ function SortBtn({
 
 export default function DemoUsersPage() {
   const all = useMemo(() => aggregate(), [])
-  const [now] = useState(() => Date.now())
+  const now = useHydrationSafeNow()
   const [query, setQuery] = useState('')
   const [sortKey, setSortKey] = useState<SortKey>('total_cost_usd')
   const [sortDir, setSortDir] = useState<SortDir>('desc')
