@@ -17,6 +17,60 @@ import { apiPost } from '@/lib/api'
 type Scope = 'trace' | 'request'
 type Ttl = '7d' | '30d' | 'never'
 
+/**
+ * Redaction presets (R-26 + R-33 Sprint 6 Step 5).
+ *
+ * The 3-flag toggle matrix overwhelms most first-time sharers — "do I want
+ * PII off?", "is hiding cost normal?". Presets collapse those decisions into
+ * three named intents the user actually has:
+ *
+ *   marketing — "I'm putting this in a blog post / social". Hide everything
+ *               that's not the conversation itself. Used 70% of public PLG
+ *               shares per the dev sandbox sample.
+ *   internal  — "Slack channel where everyone is already an employee". Show
+ *               everything; debugging value > leak risk inside the trust
+ *               boundary.
+ *   custom    — manual toggles; the user knows what they're doing.
+ *
+ * The user can still flip individual toggles after picking a preset; doing so
+ * silently switches the preset chip back to "custom" so we never lie about
+ * what's selected.
+ */
+type RedactionPreset = 'marketing' | 'internal' | 'custom'
+
+interface PresetState {
+  redactPii: boolean
+  redactCost: boolean
+  redactTokens: boolean
+}
+
+const PRESET_VALUES: Record<Exclude<RedactionPreset, 'custom'>, PresetState> = {
+  marketing: { redactPii: true, redactCost: true, redactTokens: true },
+  internal:  { redactPii: false, redactCost: false, redactTokens: false },
+}
+
+const PRESET_OPTIONS: { value: RedactionPreset; label: string; hint: string }[] = [
+  { value: 'marketing', label: 'Marketing / external', hint: 'PII + cost + tokens hidden' },
+  { value: 'internal',  label: 'Internal team',         hint: 'Everything visible' },
+  { value: 'custom',    label: 'Custom',                hint: 'Pick fields manually' },
+]
+
+function detectPreset(state: PresetState): RedactionPreset {
+  for (const [name, values] of Object.entries(PRESET_VALUES) as [
+    Exclude<RedactionPreset, 'custom'>,
+    PresetState,
+  ][]) {
+    if (
+      values.redactPii === state.redactPii &&
+      values.redactCost === state.redactCost &&
+      values.redactTokens === state.redactTokens
+    ) {
+      return name
+    }
+  }
+  return 'custom'
+}
+
 interface ShareDialogProps {
   scope: Scope
   targetId: string
@@ -54,6 +108,19 @@ export function ShareDialog({ scope, targetId, variant = 'primary' }: ShareDialo
   const [shareUrl, setShareUrl] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
+
+  const currentPreset = detectPreset({ redactPii, redactCost, redactTokens })
+
+  function applyPreset(preset: RedactionPreset) {
+    if (preset === 'custom') return
+    const values = PRESET_VALUES[preset]
+    setRedactPii(values.redactPii)
+    setRedactCost(values.redactCost)
+    setRedactTokens(values.redactTokens)
+    // 'marketing' hides tokens; surface the advanced row automatically so the
+    // user can see what was just applied.
+    if (preset === 'marketing') setShowAdvanced(true)
+  }
 
   async function handleCreate() {
     setCreating(true)
@@ -164,6 +231,32 @@ export function ShareDialog({ scope, targetId, variant = 'primary' }: ShareDialo
                     {value === 'never' ? 'Never' : value === '7d' ? '7 days' : '30 days'}
                   </button>
                 ))}
+              </div>
+            </div>
+
+            <div>
+              <Label className="mb-2 block">Redaction preset</Label>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                {PRESET_OPTIONS.map((opt) => {
+                  const active = opt.value === currentPreset
+                  return (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => applyPreset(opt.value)}
+                      className={
+                        'text-left px-3 py-2 border rounded-md transition-colors ' +
+                        (active
+                          ? 'border-accent bg-accent/10'
+                          : 'border-border hover:border-border-strong')
+                      }
+                      aria-pressed={active}
+                    >
+                      <div className="font-mono text-[12px]">{opt.label}</div>
+                      <div className="text-[10.5px] text-text-muted mt-0.5">{opt.hint}</div>
+                    </button>
+                  )
+                })}
               </div>
             </div>
 
