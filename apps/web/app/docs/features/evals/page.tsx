@@ -34,7 +34,7 @@ export default function EvalsDocs() {
         Visit <a href="/evals">/evals</a> on a fresh workspace and the empty state shows ten
         built-in evaluator templates grouped into three categories. Click <em>Use template</em>{' '}
         to pre-fill the New evaluator dialog with a curated criterion and a recommended judge
-        model — you only need to pick which prompt the evaluator targets.
+        model. You only need to pick which prompt the evaluator targets.
       </p>
       <table>
         <thead>
@@ -80,7 +80,14 @@ export default function EvalsDocs() {
       <ul>
         <li><code>prompt_name</code>, which prompt this evaluator targets</li>
         <li><code>name</code>, e.g. &quot;Helpfulness check&quot;</li>
-        <li><code>type</code>, <code>llm_judge</code> (the only type in this release)</li>
+        <li>
+          <code>type</code>, one of <code>llm_judge</code>, <code>regex</code>, or{' '}
+          <code>json_schema</code>. The <code>regex</code> type checks the response body
+          against a configured pattern and scores 1 on match (or 0 if you flag
+          {' '}<code>must_not_match</code>). The <code>json_schema</code> type validates the
+          response body against a JSON Schema document via Ajv and scores 1 on valid.
+          Both code evaluators are free of LLM cost since no judge model is called.
+        </li>
         <li>
           <code>config</code>:
           <ul>
@@ -316,8 +323,11 @@ curl https://server.spanlens.io/api/v1/eval-runs/<run-id> \\
       <h2>Limitations</h2>
       <ul>
         <li>
-          <strong>Only <code>llm_judge</code> evaluator type.</strong> Heuristic evaluators
-          (regex, JSON schema, length) are planned for a later release.
+          <strong>Three evaluator types ship today.</strong> <code>llm_judge</code> uses a
+          model to score, <code>regex</code> checks the response against a pattern with
+          configurable match expectation, and <code>json_schema</code> validates the
+          response body against a JSON Schema document. Length and embedding similarity
+          evaluators are planned for a later release.
         </li>
         <li>
           <strong>One evaluator run at a time.</strong> Concurrent runs on the same evaluator

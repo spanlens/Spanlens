@@ -39,6 +39,61 @@ export type ChangelogTag =
 
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    date: '2026-06-08',
+    slug: 'shares-workspace-dashboard',
+    title: 'Workspace dashboard and redaction presets for shared links',
+    tags: ['feature'],
+    body: [
+      'A new [Shared links](/shares) page under the Admin section of the dashboard lists every active public share in your workspace, not just the ones you created. Sort by newest, most viewed, or expiring soonest. Each row carries redaction chips so you can spot a leak at a glance, a view counter, and a one click revoke. Any organization member can revoke any share, so a leaked token from a teammate does not need an admin to clean up.',
+      'The share creation modal on trace and request pages now offers three redaction presets instead of asking you to flip every toggle individually. Pick "Marketing / external" to hide PII, cost, and token counts in one click. Pick "Internal team" to show everything for a Slack channel inside your trust boundary. Pick "Custom" to keep manual control. Flipping any toggle silently switches the preset chip to Custom so the dialog never lies about what is selected.',
+      'See [Shared links](/docs/features/shares) for the full guide including the API endpoints for scripting bulk audit or revoke.',
+    ].join('\n\n'),
+  },
+  {
+    date: '2026-06-08',
+    slug: 'share-viewer-iopreview-og',
+    title: 'Cleaner public share viewer with input and output side by side',
+    tags: ['improvement'],
+    body: [
+      'The public `/share/<token>` page now renders input and output as two columns on desktop and stacks them on mobile. Each pane scrolls independently so a 200 KB response body no longer pushes the request out of view. The legacy stacked layout inside an expander was awkward to compare; the split panel matches how most readers actually scan an LLM call.',
+      'The share header also gets a Copy link button with a confirming "Copied" state, and the page now emits Open Graph and Twitter card metadata. A link pasted in Slack, X, or LinkedIn now produces a useful preview card showing the trace name or the provider and model rather than a blank URL.',
+      'Search engine indexing stays off by default. The viewer still respects every redaction flag you picked when you published the share.',
+    ].join('\n\n'),
+  },
+  {
+    date: '2026-06-08',
+    slug: 'otlp-faster-batches',
+    title: 'OTLP ingest is 50 to 200 ms faster per batch',
+    tags: ['improvement'],
+    body: [
+      'The OTLP receiver at `/v1/traces` used to call a synchronous Postgres function after every span insert to resolve parent linkage. On hot traces with hundreds of spans per batch that added 50 to 200 ms to the receiver p95. We moved the linkage step to a background migration that scans a new partial index in 500 row chunks, so the receiver now finishes as soon as the bulk insert returns.',
+      'OpenTelemetry SDK users should see the latency drop immediately with no client changes. A new hourly watchdog at `/cron/detect-orphan-spans` alerts if too many spans accumulate without a resolved parent, so a stuck background job surfaces fast.',
+      'Child spans whose parent arrives in a later batch render with a temporary null parent until the background job runs, typically within minutes. The UI has always tolerated null parents (parallel agent spans use them legitimately) so the eventual consistency window is visually invisible.',
+    ].join('\n\n'),
+  },
+  {
+    date: '2026-06-08',
+    slug: 'proxy-rate-limit-headers',
+    title: 'Standard rate limit headers on every proxy response',
+    tags: ['improvement'],
+    body: [
+      'Every response from `/proxy/*` and `/api/v1/*` now carries four rate limit headers so your client can back off without guessing. `X-RateLimit-Limit` is the requests allowed per window, `X-RateLimit-Remaining` is the requests left right now, `X-RateLimit-Reset` is the unix epoch second at which the window rolls over, and `X-RateLimit-Window` is the window length (currently 60s).',
+      'On a 429 the response also includes `Retry-After: 60` so a naive retry after sleep loop still works. Use `X-RateLimit-Reset` if you want to sleep until the next minute boundary precisely instead.',
+      'See the [proxy reference](/docs/proxy) for the full header list and the per plan limits.',
+    ].join('\n\n'),
+  },
+  {
+    date: '2026-06-08',
+    slug: 'evaluators-regex-json-schema',
+    title: 'Code evaluators: regex and JSON Schema (no LLM cost)',
+    tags: ['feature'],
+    body: [
+      'Two new evaluator types ship alongside the existing LLM as judge evaluator. The `regex` type checks the response body against a configured pattern and scores 1 on match (or 0 when you flag `must_not_match` to invert the check). The `json_schema` type validates the response body against a JSON Schema document via Ajv and scores 1 when the body conforms.',
+      'Neither type calls a judge model so neither type spends LLM credits. Use them for the cheap, fast checks where an LLM would be overkill. Catch when the response stops being valid JSON. Catch when a forbidden phrase slips through. Run them on every dataset row without worrying about cost.',
+      'Create them from the [Evals](/evals) page using the new evaluator dialog. Pick the type from the dropdown and the rest of the form swaps to the matching configuration. See the [Evals guide](/docs/features/evals) for the full reference.',
+    ].join('\n\n'),
+  },
+  {
     date: '2026-06-06',
     slug: 'events-unified-read-switch-live',
     title: 'Unified events table now powers every dashboard read',

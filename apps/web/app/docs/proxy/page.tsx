@@ -281,6 +281,39 @@ res, _ := client.CreateChatCompletion(ctx, openai.ChatCompletionRequest{
         See <a href="/docs/features/cost-tracking">cost tracking</a> for the full formula.
       </p>
 
+      <h2>Rate limits and response headers</h2>
+      <p>
+        Every <code>/proxy/*</code> response, including the rare <code>429</code>, carries
+        four standard rate limit headers so your client can back off without guessing.
+      </p>
+      <ul>
+        <li>
+          <code>X-RateLimit-Limit</code>, requests allowed in the current window. Default
+          is 120 per minute per Spanlens key; team and enterprise plans get higher caps.
+        </li>
+        <li>
+          <code>X-RateLimit-Remaining</code>, requests left in the current window. Drops to
+          0 right before the next 429.
+        </li>
+        <li>
+          <code>X-RateLimit-Reset</code>, unix epoch second at which the window rolls over.
+          Use this directly in a sleep until the next minute boundary; do not parse the
+          server clock from <code>Date</code> since clock skew costs you retries.
+        </li>
+        <li>
+          <code>X-RateLimit-Window</code>, the window length in seconds. Currently always{' '}
+          <code>60s</code>, exposed as a header so we can change it without breaking
+          clients that read it.
+        </li>
+      </ul>
+      <p>
+        On a <code>429</code> the response also includes <code>Retry-After: 60</code>,
+        matching the window length so a naive retry-after-sleep client still works
+        correctly. The same headers ship from <code>/api/v1/*</code> dashboard endpoints
+        with a higher per-token cap, so an SDK that mirrors the proxy logic against your
+        own API works without special casing.
+      </p>
+
       <h2>Self-hosting</h2>
       <p>
         If you&apos;re running Spanlens on your own infra, replace the base URL:
