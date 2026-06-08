@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useSyncExternalStore } from 'react'
 import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
 
@@ -18,27 +18,71 @@ function slugify(text: string): string {
     .trim()
 }
 
+// Empty snapshot reused across renders so React's identity check in
+// useSyncExternalStore stays stable on the server. Returning a fresh
+// `[]` each call would force the hook to schedule a re-render every
+// pass, which React warns about during SSR.
+const EMPTY_HEADINGS: Heading[] = []
+
+/**
+ * Scan the article DOM for h2/h3 headings, slug-ifying any that lack an id.
+ *
+ * Memoised at the module level so React's identity comparison in
+ * useSyncExternalStore reuses the prior snapshot until the article actually
+ * mutates. Without a stable identity, React would call the snapshot on
+ * every render and re-run the IntersectionObserver effect downstream.
+ */
+let cachedSnapshot: { article: Element | null; headings: Heading[] } = {
+  article: null,
+  headings: EMPTY_HEADINGS,
+}
+function getClientHeadings(): Heading[] {
+  const article = typeof document === 'undefined' ? null : document.querySelector('article')
+  if (!article) {
+    cachedSnapshot = { article: null, headings: EMPTY_HEADINGS }
+    return EMPTY_HEADINGS
+  }
+  if (cachedSnapshot.article === article) {
+    return cachedSnapshot.headings
+  }
+  const els = Array.from(article.querySelectorAll('h2, h3')) as HTMLElement[]
+  const headings = els.map((el) => {
+    if (!el.id) el.id = slugify(el.textContent ?? '')
+    return {
+      id: el.id,
+      text: el.textContent ?? '',
+      level: parseInt(el.tagName[1] ?? '2'),
+    }
+  })
+  cachedSnapshot = { article, headings }
+  return headings
+}
+
+// No-op subscriber — heading list does not change after mount (a new
+// pathname remounts the parent via key={pathname}). React requires a
+// function reference here, so we hand it a stable no-op rather than
+// allocating a fresh one each render.
+function noopSubscribe() {
+  return () => {}
+}
+
 export function TableOfContents() {
-  // Remount the inner component when pathname changes so state resets
-  // (headings + activeId) instead of using setState-in-effect.
+  // Remount the inner component when pathname changes so the heading
+  // snapshot cache is invalidated and the IntersectionObserver rebinds
+  // against the new article's headings.
   const pathname = usePathname()
   return <TableOfContentsInner key={pathname} />
 }
 
 function TableOfContentsInner() {
-  // Collect headings from the article DOM lazily. SSR returns [] so the
-  // server-rendered HTML matches; on client mount the lazy initializer runs
-  // and finds the article's headings — no setState-in-effect needed.
-  const [headings] = useState<Heading[]>(() => {
-    if (typeof document === 'undefined') return []
-    const article = document.querySelector('article')
-    if (!article) return []
-    const els = Array.from(article.querySelectorAll('h2, h3')) as HTMLElement[]
-    return els.map((el) => {
-      if (!el.id) el.id = slugify(el.textContent ?? '')
-      return { id: el.id, text: el.textContent ?? '', level: parseInt(el.tagName[1] ?? '2') }
-    })
-  })
+  // useSyncExternalStore is the React-blessed escape hatch for values
+  // that legitimately differ between SSR and client. The server snapshot
+  // returns [] (no DOM) and the client snapshot walks the article. React
+  // hydrates against the server value, then on commit switches to the
+  // client value in a single, mismatch-free pass — distinct from a
+  // useState/useEffect dance, which would either fire a render-phase
+  // side effect or trigger the set-state-in-effect lint rule.
+  const headings = useSyncExternalStore(noopSubscribe, getClientHeadings, () => EMPTY_HEADINGS)
   const [activeId, setActiveId] = useState<string>('')
 
   useEffect(() => {
