@@ -35,7 +35,7 @@ vi.mock('../lib/db.js', () => ({
 }))
 
 vi.mock('../lib/clickhouse.js', () => ({
-  getClickhouse: () => ({
+  unscopedClickhouse: () => ({
     query: (opts: unknown) => clickhouseQueryMock(opts),
   }),
   getOrgClickhouse: () => ({ query: () => Promise.resolve({ json: () => [] }) }),

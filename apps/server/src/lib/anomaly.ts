@@ -1,4 +1,4 @@
-import { getClickhouse } from './clickhouse.js'
+import { unscopedClickhouse } from './clickhouse.js'
 
 /**
  * Anomaly detection over recent `requests` rows.
@@ -203,7 +203,7 @@ export async function detectAnomalies(
 
   let data: AnomalyStatsRow[]
   try {
-    const result = await getClickhouse().query({
+    const result = await unscopedClickhouse().query({
       query: sql,
       query_params: params,
       format: 'JSONEachRow',
@@ -393,7 +393,7 @@ export async function fetchContributingFactors(
     LIMIT 5`
 
   try {
-    const ch = getClickhouse()
+    const ch = unscopedClickhouse()
     const [tokensResult, errorsResult] = await Promise.all([
       ch.query({ query: tokensSql, query_params: baseParams, format: 'JSONEachRow' }),
       ch.query({ query: errorsSql, query_params: baseParams, format: 'JSONEachRow' }),

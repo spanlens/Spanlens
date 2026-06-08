@@ -21,7 +21,7 @@
  */
 
 import { randomUUID } from 'node:crypto'
-import { getClickhouse, toClickhouseTimestamp } from './clickhouse.js'
+import { unscopedClickhouse, toClickhouseTimestamp } from './clickhouse.js'
 import { supabaseAdmin } from './db.js'
 import type { RequestLogData } from './logger.js'
 
@@ -36,7 +36,7 @@ import type { RequestLogData } from './logger.js'
  */
 async function insertEventOrQueue(row: Record<string, unknown>): Promise<void> {
   try {
-    await getClickhouse().insert({
+    await unscopedClickhouse().insert({
       table: 'events',
       format: 'JSONEachRow',
       values: [row],

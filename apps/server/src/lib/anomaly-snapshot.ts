@@ -1,5 +1,5 @@
 import { supabaseAdmin } from './db.js'
-import { getClickhouse } from './clickhouse.js'
+import { unscopedClickhouse } from './clickhouse.js'
 import { detectAnomalies, ANOMALY_DEFAULTS, type AnomalyBucket } from './anomaly.js'
 import { deliverToChannel, type AlertNotification, type NotificationChannelRow } from './notifiers.js'
 
@@ -37,7 +37,7 @@ export async function snapshotAnomaliesForAllOrgs(
     .replace('Z', '')
   let uniqueOrgIds: string[]
   try {
-    const result = await getClickhouse().query({
+    const result = await unscopedClickhouse().query({
       query:
         'SELECT DISTINCT organization_id ' +
         'FROM requests ' +

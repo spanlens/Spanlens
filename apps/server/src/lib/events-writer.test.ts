@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 // mock is in place when the module wires its imports.
 const insertMock = vi.fn().mockResolvedValue(undefined)
 vi.mock('./clickhouse.js', () => ({
-  getClickhouse: () => ({ insert: insertMock }),
+  unscopedClickhouse: () => ({ insert: insertMock }),
   // Strip 'T' / 'Z' the way the real toClickhouseTimestamp does so
   // assertions stay deterministic.
   toClickhouseTimestamp: (d: Date = new Date()) =>
