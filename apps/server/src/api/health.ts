@@ -54,7 +54,15 @@ healthRouter.get('/health', (c) =>
     // null in local / docker-compose runs. Surface it directly so on-call
     // can confirm which commit a misbehaving instance is running without
     // diff-checking the Vercel dashboard.
-    version: process.env['VERCEL_GIT_COMMIT_SHA'] ?? null,
+    // Use || (truthy) not ?? (nullish) — Vercel populates the env var as
+    // an empty string when "Automatically expose System Environment
+    // Variables" is OFF or the project hasn't opted into git-metadata
+    // injection. Production /health was returning version:"" instead of
+    // null after R-22 landed (PR #261) for exactly this reason. Treating
+    // "" as null means dashboards display "unknown" rather than an empty
+    // chip, which is what an operator actually wants when the SHA
+    // genuinely isn't available.
+    version: process.env['VERCEL_GIT_COMMIT_SHA'] || null,
   }),
 )
 
@@ -163,7 +171,15 @@ healthRouter.get('/health/deep', async (c) => {
     {
       status: overallOk ? 'ok' : 'degraded',
       timestamp: new Date().toISOString(),
-      version: process.env['VERCEL_GIT_COMMIT_SHA'] ?? null,
+      // Use || (truthy) not ?? (nullish) — Vercel populates the env var as
+    // an empty string when "Automatically expose System Environment
+    // Variables" is OFF or the project hasn't opted into git-metadata
+    // injection. Production /health was returning version:"" instead of
+    // null after R-22 landed (PR #261) for exactly this reason. Treating
+    // "" as null means dashboards display "unknown" rather than an empty
+    // chip, which is what an operator actually wants when the SHA
+    // genuinely isn't available.
+    version: process.env['VERCEL_GIT_COMMIT_SHA'] || null,
       clickhouse: { ok: chOk, latencyMs: chLatency },
       // Null means the lookup itself failed (e.g. Supabase down) — not an
       // empty queue. Distinguish for triage.
