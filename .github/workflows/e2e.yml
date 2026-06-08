@@ -52,6 +52,17 @@ jobs:
         uses: supabase/setup-cli@v1
         with:
           version: latest
+        env:
+          # `setup-cli` resolves the latest release via the GitHub API.
+          # Without GITHUB_TOKEN it goes anonymous and burns the 60/h
+          # rate limit shared across the runner's IP — PR #269 CI #9 hit
+          # exactly this (rate limit exceeded, install failed before any
+          # other step ran). The token is auto-provisioned by Actions
+          # with `public_repo` scope on PRs, which is enough for the
+          # release lookup. Pinning to a specific version (e.g.
+          # `version: 1.226.x`) would also work but skips security
+          # patches between bumps.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       # supabase start brings up the full Postgres + GoTrue + Kong + Studio
       # stack on a set of well-known ports. The status output is JSON so we
