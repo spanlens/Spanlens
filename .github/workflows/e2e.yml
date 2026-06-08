@@ -123,7 +123,12 @@ jobs:
           SUPABASE_URL: ${{ env.E2E_SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ env.E2E_SUPABASE_ANON_KEY }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ env.E2E_SUPABASE_SERVICE_KEY }}
-          ENCRYPTION_KEY: ${{ secrets.CI_ENCRYPTION_KEY }}
+          # Hardcoded dummy ENCRYPTION_KEY for CI — E2E never handles real
+          # provider keys (mock-openai accepts anything). Stable value here
+          # so the spec's inline aes256Encrypt and the server's
+          # aes256Decrypt agree on the key material without needing a
+          # GitHub Actions secret. NOT used in production deploy paths.
+          ENCRYPTION_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
           CLICKHOUSE_URL: http://localhost:8123
           CLICKHOUSE_USER: spanlens
           CLICKHOUSE_PASSWORD: spanlens_ci_password
@@ -158,10 +163,11 @@ jobs:
         env:
           E2E_BASE_URL: http://localhost:3000
           E2E_SERVER_URL: http://localhost:3001
-          # provider_keys.encrypted_key must decrypt with the same key the
-          # server boots with. Reuse the same secret so the spec's inline
-          # AES-256-GCM helper can write a ciphertext the server reads back.
-          ENCRYPTION_KEY: ${{ secrets.CI_ENCRYPTION_KEY }}
+          # Must match the dummy ENCRYPTION_KEY the server boots with so the
+          # spec's inline AES-256-GCM helper writes a ciphertext the server's
+          # aes256Decrypt can read back. See the "Start server" step above for
+          # the rationale on hardcoding instead of using a secret.
+          ENCRYPTION_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
         run: pnpm --filter web exec playwright test --reporter=list
 
       - name: Upload Playwright artifacts on failure
