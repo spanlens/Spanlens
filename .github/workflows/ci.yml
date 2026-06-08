@@ -25,6 +25,13 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # `apps/server/eslint.config.mjs` imports `@spanlens/eslint-plugin` from
+      # its compiled `dist/`. `pnpm install` does not run dependent packages'
+      # build scripts, so without this step the Lint (server) job fails with
+      # `Cannot find module '@spanlens/eslint-plugin/dist/index.js'`.
+      - name: Build @spanlens/eslint-plugin
+        run: pnpm --filter @spanlens/eslint-plugin build
+
       - name: Typecheck (all packages)
         run: pnpm --recursive typecheck
 
