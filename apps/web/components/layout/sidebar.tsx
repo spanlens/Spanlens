@@ -273,6 +273,12 @@ const NAV_GROUPS: { label: string | null; items: NavItem[] }[] = [
     label: 'Admin',
     items: [
       { href: '/projects',  label: 'Projects & Keys' },
+      // Public share tokens live in the same Admin section as API keys —
+      // both are externally-issued credentials with the same operator
+      // workflow (list / inspect / revoke). Sitting them next to each
+      // other keeps the leak-audit flow ("rotate the key, revoke the
+      // share") one cursor move apart.
+      { href: '/shares',    label: 'Shared links' },
       { href: '/settings',  label: 'Settings' },
       { href: '/docs',      label: 'Docs' },
     ],
