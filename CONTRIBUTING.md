@@ -57,6 +57,7 @@ cp apps/server/.env.example apps/server/.env  # fill in the values
 
 # Install + start dev servers
 pnpm install
+pnpm exec lefthook install   # pre-commit guards for supabase migrations
 pnpm dev                # web :3000, server :3001
 
 # Apply migrations
@@ -113,7 +114,17 @@ Smaller scopes:
 - ClickHouse: `clickhouse/migrations/NNN_description.sql`. **Idempotent only**
   (`CREATE IF NOT EXISTS`, `ALTER … ADD COLUMN IF NOT EXISTS`).
 - Always run `supabase gen types` after a Postgres migration so
-  `supabase/types.ts` stays in sync.
+  `supabase/types.ts` stays in sync. Pipe stderr to `/dev/null` — the CLI
+  leaks warning lines onto stdout that, if captured into the file, break
+  `tsc`:
+  ```
+  supabase gen types --lang typescript --local 2>/dev/null > supabase/types.ts
+  ```
+- These conventions are enforced locally by [`lefthook`](./lefthook.yml).
+  Run `pnpm exec lefthook install` once per clone to wire up the
+  `pre-commit` guards (rejects edits to merged migrations, rejects
+  off-pattern filenames, warns when `supabase/types.ts` changes without a
+  paired migration).
 
 ---
 
