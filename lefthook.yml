@@ -1,0 +1,44 @@
+# lefthook — git hook orchestrator
+#
+# Local-only guards on the migration workflow. Repository conventions
+# (CLAUDE.md "DB 작업 규칙") forbid:
+#
+#   1. Editing or deleting an already-merged migration file. The
+#      remote migration history is hash-keyed; editing a committed
+#      migration breaks `db push` on every other dev's machine and on
+#      the deploy-server.yml migrate job.
+#
+#   2. Migrations named outside the YYYYMMDDHHMMSS_lowercase_snake.sql
+#      pattern. Supabase orders by filename; a mistyped prefix lands
+#      the new migration in the wrong slot and tips production.
+#
+#   3. Hand-editing supabase/types.ts. Always regenerate via
+#      `supabase gen types --lang typescript --local 2>/dev/null > supabase/types.ts`
+#      so the file matches the committed migration set. The hook
+#      warns but does not block: a regenerated types.ts is sometimes
+#      a legitimate solo change after pulling someone else's
+#      migration.
+#
+# Install once per clone:    `pnpm exec lefthook install`
+# Uninstall:                  `pnpm exec lefthook uninstall`
+# Bypass a single commit:     `git commit --no-verify`
+#
+# Multi-line shell snippets here would be re-quoted by lefthook before
+# `sh -c` ran them and broke on the first nested $variable. Each rule
+# lives in `.lefthook/<name>.sh` instead, where the shell can read the
+# script straight off disk.
+
+pre-commit:
+  parallel: true
+  commands:
+    no-migration-edits:
+      tags: db
+      run: bash .lefthook/no-migration-edits.sh
+
+    migration-naming:
+      tags: db
+      run: bash .lefthook/migration-naming.sh
+
+    no-types-edit:
+      tags: db
+      run: bash .lefthook/no-types-edit.sh
