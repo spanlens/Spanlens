@@ -1,12 +1,15 @@
 name: E2E (Playwright smoke)
 
-# Manual-only for the first iteration. R-3 Sprint 4 first-try shipped a
-# spec + workflow but stabilising the cold-start sequence (Next 16
-# compile time, supabase status JSON shape, magic-link redirect timing)
-# takes more than a single PR worth of CI iterations. Flipping this back
-# to `pull_request` + `push` triggers after the manual run passes 5x
-# clean is the Sprint 3-4 success criterion check — tracked as
-# follow-up in 06-development-plan.md.
+# Manual-only after PR #269's stabilisation. CI #13 was the first green
+# run after 12 layered fixes (password sign-in, workspace bootstrap,
+# encrypted provider_keys, supabase stack bounce, OPENAI_API_BASE env,
+# GITHUB_TOKEN for setup-cli, ClickHouse direct poll, etc.). Now that
+# the spec is stable, we keep automatic trigger off to avoid burning
+# CI minutes on unrelated PRs — operator runs it from the Actions UI
+# before merging anything that touches proxy / auth / log paths.
+#
+# Flip back to `pull_request` triggers after 5 consecutive clean
+# manual runs (Sprint 3-4 success criterion in 06-development-plan.md).
 on:
   workflow_dispatch:
 
@@ -52,6 +55,17 @@ jobs:
         uses: supabase/setup-cli@v1
         with:
           version: latest
+        env:
+          # `setup-cli` resolves the latest release via the GitHub API.
+          # Without GITHUB_TOKEN it goes anonymous and burns the 60/h
+          # rate limit shared across the runner's IP — PR #269 CI #9 hit
+          # exactly this (rate limit exceeded, install failed before any
+          # other step ran). The token is auto-provisioned by Actions
+          # with `public_repo` scope on PRs, which is enough for the
+          # release lookup. Pinning to a specific version (e.g.
+          # `version: 1.226.x`) would also work but skips security
+          # patches between bumps.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       # supabase start brings up the full Postgres + GoTrue + Kong + Studio
       # stack on a set of well-known ports. The status output is JSON so we
@@ -59,6 +73,36 @@ jobs:
       - name: Start Supabase stack
         run: |
           supabase start
+          # `supabase start` brings up the stack with a baseline schema, but
+          # does NOT always replay every file under supabase/migrations/
+          # against the local DB — a row from a newer migration can be
+          # missing from PostgREST's schema cache (PR #269 CI #4 hit exactly
+          # this: provider_keys.project_id added in 20260505040000_unified_keys.sql
+          # was absent). `db reset --no-seed` re-applies all migrations in
+          # order. `--no-seed` skips supabase/seed.sql so dev fixtures don't
+          # pollute the E2E run.
+          supabase db reset --no-seed
+          # Diagnostic: confirm the column actually landed in the DB. If
+          # this prints `project_id` then the migration ran and the issue
+          # is PostgREST schema cache (next step handles it). If absent,
+          # the migration itself didn't apply and the next step's bounce
+          # won't help.
+          PGPASSWORD=postgres psql -h localhost -p 54322 -U postgres -d postgres \
+            -c "SELECT column_name FROM information_schema.columns WHERE table_name='provider_keys' ORDER BY ordinal_position;"
+          # NOTIFY-based reload (CI #6) did not flip the cache — supabase
+          # CLI's bundled PostgREST either ignores the notification or
+          # caches the schema in a way the LISTEN handler doesn't rebuild.
+          # Bounce the whole supabase stack instead. Adds ~60-90s to the
+          # workflow but guarantees PostgREST rebuilds the schema cache
+          # from the current DB state. The earlier `db reset` is still
+          # needed because `supabase start` after `supabase stop` doesn't
+          # re-apply migrations a second time.
+          supabase stop --no-backup
+          supabase start
+          # Re-read keys after the bounce — the new instance may have
+          # rotated them (in practice supabase keeps deterministic
+          # local-dev keys but we don't want to rely on that).
+          status_json=$(supabase status -o json)
           # Persist the resolved URLs/keys so subsequent steps can read them
           # via $GITHUB_ENV without grepping the supabase status output again.
           status_json=$(supabase status -o json)
@@ -123,7 +167,12 @@ jobs:
           SUPABASE_URL: ${{ env.E2E_SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ env.E2E_SUPABASE_ANON_KEY }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ env.E2E_SUPABASE_SERVICE_KEY }}
-          ENCRYPTION_KEY: ${{ secrets.CI_ENCRYPTION_KEY }}
+          # Hardcoded dummy ENCRYPTION_KEY for CI — E2E never handles real
+          # provider keys (mock-openai accepts anything). Stable value here
+          # so the spec's inline aes256Encrypt and the server's
+          # aes256Decrypt agree on the key material without needing a
+          # GitHub Actions secret. NOT used in production deploy paths.
+          ENCRYPTION_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
           CLICKHOUSE_URL: http://localhost:8123
           CLICKHOUSE_USER: spanlens
           CLICKHOUSE_PASSWORD: spanlens_ci_password
@@ -158,6 +207,11 @@ jobs:
         env:
           E2E_BASE_URL: http://localhost:3000
           E2E_SERVER_URL: http://localhost:3001
+          # Must match the dummy ENCRYPTION_KEY the server boots with so the
+          # spec's inline AES-256-GCM helper writes a ciphertext the server's
+          # aes256Decrypt can read back. See the "Start server" step above for
+          # the rationale on hardcoding instead of using a secret.
+          ENCRYPTION_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
         run: pnpm --filter web exec playwright test --reporter=list
 
       - name: Upload Playwright artifacts on failure
