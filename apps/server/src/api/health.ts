@@ -189,26 +189,6 @@ healthRouter.get('/health/deep', async (c) => {
       // OR the Supabase query failed — both are actionable.
       crons: { max_runtime_ms: cronMaxRuntime },
       webhooks: { backlog_count: webhookBacklog },
-      // R-22 follow-up diagnosis: production /health.version stays null
-      // even after the "Enable access to System Environment Variables"
-      // toggle is on. The four flags below tell us which class of system
-      // env actually reaches process.env at runtime:
-      //   - vercel_env=null + all has_*=false → no system env is exposed
-      //     (toggle didn't take, or the project never had it set)
-      //   - vercel_env='production', has_url=true, has_commit_*=false →
-      //     base envs are exposed but git-metadata is filtered out
-      //     (a separate "Expose Git Information" toggle exists in some
-      //     Vercel project shapes)
-      //   - all true → SHA is reaching us; the /health filter is wrong
-      // This block is intentionally short-lived — once we know which
-      // class we're in, the fix lands and this block is removed in the
-      // same PR that fixes the root cause.
-      _debug: {
-        vercel_env: process.env['VERCEL_ENV'] ?? null,
-        has_commit_sha: Boolean(process.env['VERCEL_GIT_COMMIT_SHA']),
-        has_commit_ref: Boolean(process.env['VERCEL_GIT_COMMIT_REF']),
-        has_url: Boolean(process.env['VERCEL_URL']),
-      },
     },
     overallOk ? 200 : 503,
   )
