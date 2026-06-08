@@ -827,6 +827,82 @@ cronRouter.get('/self-monitor', async (c) => {
   }
 })
 
+// GET /cron/detect-orphan-spans
+// R-14 (Sprint 5/6) watchdog. The `orphan-span-link` background migration
+// is supposed to resolve external_parent_span_id → parent_span_id for OTLP
+// spans whose parent arrived in a later batch. If that job is stuck (lock
+// stolen by a crashed worker, registry mismatch, or just genuinely too
+// many orphans for the chunk budget) we want a single internal_alerts row
+// rather than silent data drift.
+//
+// Threshold logic: count orphans older than 1h (anything younger may still
+// be in flight from a recently-arrived sibling batch). Alert when the
+// count exceeds 100 — picked low enough that a real backlog surfaces fast,
+// high enough that one slow OTLP batch doesn't page the operator.
+// Dedup against unresolved alerts of the same kind so the operator gets
+// one chip, not one per cron tick.
+cronRouter.get('/detect-orphan-spans', async (c) => {
+  const authFail = assertCronAuth(c.req.header('Authorization'))
+  if (authFail) return c.json({ error: authFail }, 401)
+
+  const start = Date.now()
+  const THRESHOLD = 100
+  const olderThan = new Date(Date.now() - 60 * 60 * 1000).toISOString()
+
+  try {
+    const { count, error: countError } = await supabaseAdmin
+      .from('spans')
+      .select('id', { count: 'exact', head: true })
+      .is('parent_span_id', null)
+      .not('external_parent_span_id', 'is', null)
+      .lt('created_at', olderThan)
+
+    if (countError) {
+      logCronRun('detect-orphan-spans', 'error', Date.now() - start, countError.message).catch(console.error)
+      return c.json({ ok: false, error: countError.message }, 500)
+    }
+
+    const orphanCount = count ?? 0
+
+    if (orphanCount <= THRESHOLD) {
+      logCronRun('detect-orphan-spans', 'ok', Date.now() - start).catch(console.error)
+      return c.json({ ok: true, count: orphanCount, threshold: THRESHOLD, alerted: false })
+    }
+
+    const { data: existing } = await supabaseAdmin
+      .from('internal_alerts')
+      .select('id')
+      .eq('kind', 'orphan_spans')
+      .is('resolved_at', null)
+      .limit(1)
+      .maybeSingle()
+
+    if (existing) {
+      logCronRun('detect-orphan-spans', 'ok', Date.now() - start).catch(console.error)
+      return c.json({ ok: true, count: orphanCount, threshold: THRESHOLD, alerted: false, deduped: true, existing_alert_id: existing.id })
+    }
+
+    const { error: insertError } = await supabaseAdmin.from('internal_alerts').insert({
+      kind: 'orphan_spans',
+      severity: 'warn',
+      message: `${orphanCount} orphan spans > 1h old (threshold ${THRESHOLD})`,
+      details: { count: orphanCount, threshold: THRESHOLD, older_than: olderThan },
+    })
+
+    if (insertError) {
+      logCronRun('detect-orphan-spans', 'error', Date.now() - start, `internal_alerts insert failed: ${insertError.message}`).catch(console.error)
+      return c.json({ ok: false, error: 'failed to insert alert' }, 500)
+    }
+
+    logCronRun('detect-orphan-spans', 'ok', Date.now() - start).catch(console.error)
+    return c.json({ ok: true, count: orphanCount, threshold: THRESHOLD, alerted: true })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    logCronRun('detect-orphan-spans', 'error', Date.now() - start, message).catch(console.error)
+    return c.json({ ok: false, error: message }, 500)
+  }
+})
+
 // All three steps run in parallel via Promise.allSettled — one slow / failing
 // dependency doesn't block the others, and we never throw (cron retries are
 // noisy and a transient warmup failure is not worth alerting on). No
