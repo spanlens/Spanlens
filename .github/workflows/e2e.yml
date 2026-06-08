@@ -1,13 +1,16 @@
 name: E2E (Playwright smoke)
 
-# Temporarily re-enabled on pull_request for this branch to validate the
-# password-signin fix (replaces the magic-link path that never wrote a
-# session cookie). If the run is clean we flip back to manual-only via
-# follow-up commit before merging. If still red, the artifact tells us
-# what to chase next.
+# Manual-only after PR #269's stabilisation. CI #13 was the first green
+# run after 12 layered fixes (password sign-in, workspace bootstrap,
+# encrypted provider_keys, supabase stack bounce, OPENAI_API_BASE env,
+# GITHUB_TOKEN for setup-cli, ClickHouse direct poll, etc.). Now that
+# the spec is stable, we keep automatic trigger off to avoid burning
+# CI minutes on unrelated PRs — operator runs it from the Actions UI
+# before merging anything that touches proxy / auth / log paths.
+#
+# Flip back to `pull_request` triggers after 5 consecutive clean
+# manual runs (Sprint 3-4 success criterion in 06-development-plan.md).
 on:
-  pull_request:
-    branches: [main]
   workflow_dispatch:
 
 # R-3 / R-23 — single smoke spec exercising signup → api key → proxy → /requests.
