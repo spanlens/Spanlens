@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { ArrowRight, Zap, Code, Globe, Server, Activity } from 'lucide-react'
+import { ArrowRight, Zap, Code, Globe, Server, Activity, Terminal } from 'lucide-react'
 import { QuickTabs } from './_components/quick-tabs'
 
 export const metadata = {
@@ -138,6 +138,12 @@ const SECTIONS = [
     title: '@spanlens/sdk',
     href: '/docs/sdk',
     description: 'TypeScript and Python SDK reference: createOpenAI, observe, span helpers, trace API.',
+  },
+  {
+    icon: Terminal,
+    title: '@spanlens/cli',
+    href: '/docs/cli',
+    description: 'One-command setup: AST-rewrites every OpenAI / Anthropic / Gemini call to use Spanlens. Dry-run safe.',
   },
   {
     icon: Globe,
