@@ -716,6 +716,117 @@ cronRouter.get('/detect-missing-model-prices', async (c) => {
   }
 })
 
+// GET /cron/self-monitor
+//
+// Production-side watchdog. Scans cron_job_runs for failures in the
+// last hour and writes a single internal_alerts row of kind
+// `cron_failure` summarising what broke. Replaces the
+// "keep a Claude session open for 24h" pattern with something that
+// works even when the operator's laptop is closed.
+//
+// Why a separate cron instead of generic monitoring:
+//
+//   - The existing alert pipeline (internal_alerts → /settings/alerts)
+//     is the single place to triage production issues. Writing into
+//     it keeps everything in one queue.
+//   - Vercel cron + CRON_SECRET is enough infrastructure on its own.
+//     Adding Sentry / Datadog / Slack would be more moving parts for
+//     the level of signal we need at this scale.
+//   - The watchdog runs after most other crons (xx:00 / xx:05 / xx:15
+//     etc.) so any failure they logged in this hour is visible.
+//
+// Dedup: skip the INSERT when an unresolved cron_failure row already
+// exists. The same broken cron firing every 5 minutes would otherwise
+// flood /settings/alerts. The operator resolves the existing row when
+// they push the fix; the next watchdog run after that re-fires if the
+// issue is still happening (same pattern as missing_model_prices).
+cronRouter.get('/self-monitor', async (c) => {
+  const authFail = assertCronAuth(c.req.header('Authorization'))
+  if (authFail) return c.json({ error: authFail }, 401)
+
+  const start = Date.now()
+
+  try {
+    // 1) Find cron_job_runs failures in the last hour, grouped by job.
+    //    Includes the most recent error_message for triage.
+    const { data: failures, error: failuresErr } = await supabaseAdmin
+      .from('cron_job_runs')
+      .select('job_name, status, error_message, ran_at')
+      .eq('status', 'error')
+      .gte('ran_at', new Date(Date.now() - 60 * 60 * 1000).toISOString())
+      .order('ran_at', { ascending: false })
+
+    if (failuresErr) {
+      logCronRun('self-monitor', 'error', Date.now() - start, `cron_job_runs query failed: ${failuresErr.message}`).catch(console.error)
+      return c.json({ ok: false, error: 'query failed' }, 500)
+    }
+
+    const failureRows = failures ?? []
+    if (failureRows.length === 0) {
+      logCronRun('self-monitor', 'ok', Date.now() - start).catch(console.error)
+      return c.json({ ok: true, failures: 0 })
+    }
+
+    // 2) Aggregate by job_name. Count of failures + most recent error_message
+    //    per job goes into the alert details JSON.
+    const byJob = new Map<string, { count: number; lastError: string | null; lastRanAt: string }>()
+    for (const row of failureRows) {
+      const existing = byJob.get(row.job_name)
+      if (existing) {
+        existing.count += 1
+      } else {
+        byJob.set(row.job_name, {
+          count: 1,
+          lastError: row.error_message ?? null,
+          lastRanAt: row.ran_at,
+        })
+      }
+    }
+    const jobs = Array.from(byJob.entries()).map(([job_name, summary]) => ({
+      job_name,
+      count: summary.count,
+      last_error: summary.lastError,
+      last_ran_at: summary.lastRanAt,
+    }))
+    const totalFailures = failureRows.length
+
+    // 3) Dedup: don't write a new alert if an unresolved cron_failure
+    //    row already exists. The operator resolves it; the next watchdog
+    //    re-fires if the issue persists.
+    const { data: existing } = await supabaseAdmin
+      .from('internal_alerts')
+      .select('id')
+      .eq('kind', 'cron_failure')
+      .is('resolved_at', null)
+      .limit(1)
+      .maybeSingle()
+
+    if (existing) {
+      logCronRun('self-monitor', 'ok', Date.now() - start).catch(console.error)
+      return c.json({ ok: true, failures: totalFailures, deduped: true, existing_alert_id: existing.id })
+    }
+
+    const { error: insertError } = await supabaseAdmin.from('internal_alerts').insert({
+      kind: 'cron_failure',
+      severity: 'error',
+      message: `${jobs.length} cron job(s) failed in the last 1h (${totalFailures} run${totalFailures === 1 ? '' : 's'})`,
+      details: { jobs, window_minutes: 60 },
+    })
+
+    if (insertError) {
+      logCronRun('self-monitor', 'error', Date.now() - start, `internal_alerts insert failed: ${insertError.message}`).catch(console.error)
+      return c.json({ ok: false, error: 'failed to insert alert' }, 500)
+    }
+
+    logCronRun('self-monitor', 'ok', Date.now() - start).catch(console.error)
+    return c.json({ ok: true, failures: totalFailures, jobs })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    logCronRun('self-monitor', 'error', Date.now() - start, message).catch(console.error)
+    return c.json({ ok: false, error: message }, 500)
+  }
+})
+
 // All three steps run in parallel via Promise.allSettled — one slow / failing
 // dependency doesn't block the others, and we never throw (cron retries are
 // noisy and a transient warmup failure is not worth alerting on). No
