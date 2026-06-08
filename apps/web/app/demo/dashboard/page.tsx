@@ -1,5 +1,24 @@
 'use client'
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useSyncExternalStore } from 'react'
+
+// Module-level cache so useSyncExternalStore's getSnapshot returns the
+// same number on every call. Without the cache, each call returned a
+// fresh Date.now() and React's identity comparison treated every render
+// as "store changed" → forceStoreRerender → render → forceStoreRerender,
+// until "Maximum update depth exceeded" fired. The cache is fine for the
+// demo dashboard: the page only needs `now` once at mount to compute
+// "fired X mins ago" relative timestamps.
+let cachedClientNow = 0
+function getClientNow(): number {
+  if (cachedClientNow === 0) cachedClientNow = Date.now()
+  return cachedClientNow
+}
+function getServerNow(): number {
+  return 0
+}
+function subscribeNow(): () => void {
+  return () => {}
+}
 import Link from 'next/link'
 import { Topbar } from '@/components/layout/topbar'
 import { KpiCard } from '@/components/dashboard/kpi-card'
@@ -144,8 +163,16 @@ export default function DemoDashboardPage() {
     'border-border',
   ]
 
-  // Capture "now" once at mount — demo timestamps are static relative to load.
-  const [now] = useState(() => Date.now())
+  // SSR + first client paint return 0 so React hydrates from identical
+  // HTML. The client snapshot returns a *cached* timestamp (captured on
+  // first call) so subsequent invocations return the same reference and
+  // React stops re-rendering. Returning a fresh `Date.now()` on every
+  // call sent useSyncExternalStore into an infinite update loop that
+  // bubbled up through recharts as "Maximum update depth exceeded".
+  //
+  // Same shape as the R-Q3 docs/_components/table-of-contents.tsx fix.
+  // CLAUDE.md gotcha #22 pattern.
+  const now = useSyncExternalStore(subscribeNow, getClientNow, getServerNow)
 
   const firedMinsAgo = firingAlert.last_triggered_at
     ? Math.max(1, Math.round((now - new Date(firingAlert.last_triggered_at).getTime()) / 60_000))
@@ -417,7 +444,7 @@ export default function DemoDashboardPage() {
               >
                 <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 sm:grid sm:items-baseline" style={{ gridTemplateColumns: '56px 80px 1fr', gap: 14 }}>
                   <span className="font-mono text-[10.5px] text-text-faint shrink-0">
-                    {new Date(e.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })}
+                    {new Date(e.created_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })}
                   </span>
                   <span className={cn(
                     'font-mono text-[9px] uppercase tracking-[0.04em] px-[5px] py-[1px] rounded-[3px] border self-center shrink-0',
