@@ -25,7 +25,12 @@ import type { Dataset, DatasetItem, DatasetWithItems } from '@/lib/queries/use-d
 import type { Experiment, ExperimentResult } from '@/lib/queries/use-experiments'
 import type { AnnotationQueueItem, CorrelationPair } from '@/lib/queries/use-human-evals'
 
-const N = Date.now()
+// Round to the hour so SSR (server bundle module-load time) and CSR
+// (client bundle module-load time) agree even when they evaluate in
+// different processes. Hydration mismatch only re-emerges if the two
+// land on opposite sides of an hour boundary, which is a 1-in-3600
+// race we accept for demo data. CLAUDE.md gotcha #22.
+const N = Math.floor(Date.now() / 3_600_000) * 3_600_000
 const min = (m: number) => new Date(N - m * 60_000).toISOString()
 const hrs = (h: number) => min(h * 60)
 const day = (d: number) => hrs(d * 24)
@@ -566,8 +571,13 @@ export const DEMO_STATS_OVERVIEW: StatsOverview = {
 function generateTimeseries(): TimeseriesPoint[] {
   const points: TimeseriesPoint[] = []
   for (let i = 23; i >= 0; i--) {
-    const base = Math.round(95 + Math.sin(i * 0.4) * 20 + Math.random() * 10)
-    const cost = parseFloat((base * 0.034 + Math.random() * 0.5).toFixed(3))
+    // Deterministic "noise" so KpiCard sparkline SVG paths match between
+    // SSR and CSR. Using Math.random() here produced different values on
+    // the two module-load evaluations and React #418'd the dashboard.
+    const noise1 = Math.sin(i * 13.7) * 5 + 5 // 0..10 pseudo-noise
+    const noise2 = Math.sin(i * 7.3) * 0.25 + 0.25 // 0..0.5 pseudo-noise
+    const base = Math.round(95 + Math.sin(i * 0.4) * 20 + noise1)
+    const cost = parseFloat((base * 0.034 + noise2).toFixed(3))
     points.push({
       date: new Date(N - i * 3_600_000).toISOString(),
       requests: base,
@@ -590,7 +600,11 @@ export const DEMO_SPEND_FORECAST: SpendForecast = {
   weeklyDeltaPct: 12.4,
   dailyTrendUsd: 2.18,
   timeseries: Array.from({ length: 31 }, (_, i) => ({
-    date: new Date(N - (new Date().getDate() - 1 - i) * 86_400_000).toISOString().slice(0, 10),
+    // Use a fixed dayOfMonth (matches DEMO_SPEND_FORECAST.dayOfMonth above)
+    // instead of `new Date().getDate()` — the latter would be evaluated on
+    // SSR vs CSR with different "now" values, producing off-by-one dates
+    // around the user's midnight (gotcha #22 again).
+    date: new Date(N - (4 - 1 - i) * 86_400_000).toISOString().slice(0, 10),
     actual: i < 4 ? parseFloat((60 + i * 2.1 + Math.sin(i) * 4).toFixed(2)) : null,
     projected: i >= 3 ? parseFloat((61 + i * 2.2 + Math.sin(i) * 3).toFixed(2)) : null,
   })),
