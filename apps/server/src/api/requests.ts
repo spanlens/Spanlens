@@ -20,6 +20,7 @@ import {
 } from '../lib/events-query.js'
 import { useEventsForRequests } from '../lib/feature-flags.js'
 import { fromClickhouseTimestamp } from '../lib/clickhouse.js'
+import { ApiError } from '../lib/errors.js'
 
 export const requestsRouter = new Hono<JwtContext>()
 
@@ -61,7 +62,7 @@ interface RequestRow {
 // Query params: projectId, provider, model, status, from, to, page, limit
 requestsRouter.get('/', async (c) => {
   const orgId = c.get('orgId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   const projectId       = c.req.query('projectId')
   const provider        = c.req.query('provider')
@@ -210,7 +211,7 @@ requestsRouter.get('/', async (c) => {
     })
   } catch (err) {
     console.error('[requests:list] ClickHouse query failed:', err instanceof Error ? err.message : err)
-    return c.json({ error: 'Failed to fetch requests' }, 500)
+    throw new ApiError('INTERNAL_ERROR', 'Failed to fetch requests')
   }
 })
 
@@ -249,7 +250,7 @@ function parseJsonColumn(value: string | null | undefined, fallback: unknown): u
 requestsRouter.get('/:id', async (c) => {
   const requestId = c.req.param('id')
   const orgId = c.get('orgId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   try {
     const scope = await requestsScope(orgId)
@@ -261,7 +262,7 @@ requestsRouter.get('/:id', async (c) => {
       limit: 1,
     })
     const data = rows[0]
-    if (!data) return c.json({ error: 'Request not found' }, 404)
+    if (!data) throw new ApiError('NOT_FOUND', 'Request not found')
 
     const keyMap = await fetchProviderKeyNames(orgId, [data.provider_key_id])
     const flat = {
@@ -279,7 +280,7 @@ requestsRouter.get('/:id', async (c) => {
     return c.json({ success: true, data: flat })
   } catch (err) {
     console.error('[requests:detail] ClickHouse query failed:', err instanceof Error ? err.message : err)
-    return c.json({ error: 'Request not found' }, 404)
+    throw new ApiError('NOT_FOUND', 'Request not found')
   }
 })
 
@@ -299,7 +300,7 @@ requestsRouter.get('/:id', async (c) => {
 requestsRouter.post('/:id/replay', requireRole('admin', 'editor'), async (c) => {
   const requestId = c.req.param('id')
   const orgId = c.get('orgId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   let body: { model?: unknown } = {}
   try {
@@ -323,7 +324,7 @@ requestsRouter.post('/:id/replay', requireRole('admin', 'editor'), async (c) => 
     limit: 1,
   })
   const data = rows[0]
-  if (!data) return c.json({ error: 'Request not found' }, 404)
+  if (!data) throw new ApiError('NOT_FOUND', 'Request not found')
 
   const original = (parseJsonColumn(data.request_body, {}) ?? {}) as Record<string, unknown>
   const replayBody = overrideModel
@@ -382,7 +383,7 @@ requestsRouter.post('/:id/replay', requireRole('admin', 'editor'), async (c) => 
 requestsRouter.post('/:id/replay/run', requireRole('admin', 'editor'), async (c) => {
   const requestId = c.req.param('id')
   const orgId = c.get('orgId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   let body: { model?: unknown } = {}
   try { body = (await c.req.json()) as { model?: unknown } } catch { body = {} }
@@ -406,7 +407,7 @@ requestsRouter.post('/:id/replay/run', requireRole('admin', 'editor'), async (c)
     limit: 1,
   })
   const data = rows[0]
-  if (!data) return c.json({ error: 'Request not found' }, 404)
+  if (!data) throw new ApiError('NOT_FOUND', 'Request not found')
 
   const original = (parseJsonColumn(data.request_body, {}) ?? {}) as Record<string, unknown>
   if ('_truncated' in original) {
@@ -428,7 +429,7 @@ requestsRouter.post('/:id/replay/run', requireRole('admin', 'editor'), async (c)
     providerKey = await getDecryptedProviderKey(data.api_key_id, data.provider)
   }
 
-  if (!providerKey) return c.json({ error: 'Provider key not found or inactive' }, 400)
+  if (!providerKey) throw new ApiError('BAD_REQUEST', 'Provider key not found or inactive')
 
   // ── Build replay body (force non-streaming) ───────────────────────────────
   // We force non-streaming because the dashboard expects a single JSON

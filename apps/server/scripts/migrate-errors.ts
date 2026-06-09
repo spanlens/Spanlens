@@ -224,19 +224,58 @@ function transformFile(filePath: string): FileResult {
   })
 
   // Insert ApiError import if any throw was emitted and not already
-  // imported. This is a textual check — simple but reliable since the
-  // import line shape is standard across the codebase.
+  // imported. Multi-line imports are common in this codebase
+  //   import {
+  //     foo,
+  //     bar,
+  //   } from './x.js'
+  // so a single-line `^import .+$` regex matches the FIRST line of a
+  // multi-line block and inserting after it lands inside the brace —
+  // a syntax error. Instead, find the end of the contiguous import
+  // block at the top of the file: the first non-import, non-blank,
+  // non-comment line marks where source code begins; insert just
+  // before it (or at the end of the last line before it). For files
+  // that have only single-line imports the behaviour is identical to
+  // the old logic.
   if (result.transformed > 0 && !content.match(/from\s+['"][^'"]*lib\/errors(\.js)?['"]/)) {
     const importPath = relativeErrorsImport(filePath)
-    // Insert after the last existing import line. If no imports exist
-    // (unlikely for this codebase) prepend at top.
-    const importMatches = [...content.matchAll(/^import .+$/gm)]
-    if (importMatches.length === 0) {
+    const lines = content.split('\n')
+
+    // Walk top-down keeping track of whether we're inside a multi-line
+    // import. Stop at the first line that is OUTSIDE any import and is
+    // not blank/comment.
+    let braceDepth = 0
+    let insertAfterLine = -1
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i]
+      const trimmed = line.trim()
+      if (braceDepth > 0) {
+        braceDepth += (line.match(/\{/g) ?? []).length
+        braceDepth -= (line.match(/\}/g) ?? []).length
+        insertAfterLine = i
+        continue
+      }
+      if (trimmed.startsWith('import ')) {
+        braceDepth += (line.match(/\{/g) ?? []).length
+        braceDepth -= (line.match(/\}/g) ?? []).length
+        insertAfterLine = i
+        continue
+      }
+      if (trimmed === '' || trimmed.startsWith('//') || trimmed.startsWith('/*') || trimmed.startsWith('*')) {
+        // Blank or comment line between imports. Keep going to capture
+        // imports that follow a comment.
+        continue
+      }
+      // First real code line. Stop.
+      break
+    }
+
+    if (insertAfterLine < 0) {
+      // No imports at all (unlikely). Prepend.
       content = `import { ApiError } from '${importPath}'\n${content}`
     } else {
-      const last = importMatches[importMatches.length - 1]
-      const insertAt = (last.index ?? 0) + last[0].length
-      content = `${content.slice(0, insertAt)}\nimport { ApiError } from '${importPath}'${content.slice(insertAt)}`
+      lines.splice(insertAfterLine + 1, 0, `import { ApiError } from '${importPath}'`)
+      content = lines.join('\n')
     }
   }
 

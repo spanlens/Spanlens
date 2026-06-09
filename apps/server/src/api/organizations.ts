@@ -5,6 +5,7 @@ import { supabaseAdmin } from '../lib/db.js'
 import { randomHex, sha256Hex } from '../lib/crypto.js'
 import { OWNED_WORKSPACE_LIMITS, effectiveOwnedPlan, type Plan } from '../lib/quota.js'
 import { recordAuditEvent } from '../lib/audit-log.js'
+import { ApiError } from '../lib/errors.js'
 
 export const organizationsRouter = new Hono<JwtContext>()
 
@@ -36,7 +37,7 @@ organizationsRouter.get('/', async (c) => {
     .eq('user_id', userId)
     .order('created_at', { ascending: true })
 
-  if (error) return c.json({ error: 'Failed to fetch workspaces' }, 500)
+  if (error) throw new ApiError('INTERNAL_ERROR', 'Failed to fetch workspaces')
 
   // Shape the join output so the client sees a flat list with role attached.
   interface Row {
@@ -61,7 +62,7 @@ organizationsRouter.get('/', async (c) => {
 // on owner_id — that broke invited members who aren't owners.
 organizationsRouter.get('/me', async (c) => {
   const orgId = c.get('orgId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   const { data, error } = await supabaseAdmin
     .from('organizations')
@@ -70,7 +71,7 @@ organizationsRouter.get('/me', async (c) => {
     .single()
 
   if (error || !data) {
-    return c.json({ error: 'Organization not found' }, 404)
+    throw new ApiError('NOT_FOUND', 'Organization not found')
   }
 
   return c.json({ success: true, data })
@@ -87,7 +88,7 @@ organizationsRouter.get('/me', async (c) => {
 //   leak_detection_enabled   : boolean
 organizationsRouter.patch('/me/security', requireAdmin, async (c) => {
   const orgId = c.get('orgId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   let body: {
     stale_key_alerts_enabled?: unknown
@@ -97,7 +98,7 @@ organizationsRouter.patch('/me/security', requireAdmin, async (c) => {
   try {
     body = (await c.req.json()) as typeof body
   } catch {
-    return c.json({ error: 'Invalid JSON body' }, 400)
+    throw new ApiError('INVALID_JSON_BODY', 'Invalid JSON body')
   }
 
   const patch: {
@@ -108,7 +109,7 @@ organizationsRouter.patch('/me/security', requireAdmin, async (c) => {
 
   if (body.stale_key_alerts_enabled !== undefined) {
     if (typeof body.stale_key_alerts_enabled !== 'boolean') {
-      return c.json({ error: 'stale_key_alerts_enabled must be a boolean' }, 400)
+      throw new ApiError('VALIDATION_FAILED', 'stale_key_alerts_enabled must be a boolean')
     }
     patch.stale_key_alerts_enabled = body.stale_key_alerts_enabled
   }
@@ -116,20 +117,20 @@ organizationsRouter.patch('/me/security', requireAdmin, async (c) => {
   if (body.stale_key_threshold_days !== undefined) {
     const n = Number(body.stale_key_threshold_days)
     if (!Number.isInteger(n) || n < 30 || n > 365) {
-      return c.json({ error: 'stale_key_threshold_days must be an integer between 30 and 365' }, 400)
+      throw new ApiError('VALIDATION_FAILED', 'stale_key_threshold_days must be an integer between 30 and 365')
     }
     patch.stale_key_threshold_days = n
   }
 
   if (body.leak_detection_enabled !== undefined) {
     if (typeof body.leak_detection_enabled !== 'boolean') {
-      return c.json({ error: 'leak_detection_enabled must be a boolean' }, 400)
+      throw new ApiError('VALIDATION_FAILED', 'leak_detection_enabled must be a boolean')
     }
     patch.leak_detection_enabled = body.leak_detection_enabled
   }
 
   if (Object.keys(patch).length === 0) {
-    return c.json({ error: 'no fields to update' }, 400)
+    throw new ApiError('BAD_REQUEST', 'no fields to update')
   }
 
   const { data, error } = await supabaseAdmin
@@ -140,7 +141,7 @@ organizationsRouter.patch('/me/security', requireAdmin, async (c) => {
     .single()
 
   if (error || !data) {
-    return c.json({ error: 'Update failed' }, 500)
+    throw new ApiError('INTERNAL_ERROR', 'Update failed')
   }
 
   void recordAuditEvent(c, {
@@ -162,14 +163,14 @@ organizationsRouter.patch('/me/overage', requireAdmin, async (c) => {
   try {
     body = (await c.req.json()) as typeof body
   } catch {
-    return c.json({ error: 'Invalid JSON body' }, 400)
+    throw new ApiError('INVALID_JSON_BODY', 'Invalid JSON body')
   }
 
   const patch: { allow_overage?: boolean; overage_cap_multiplier?: number } = {}
 
   if (body.allow_overage !== undefined) {
     if (typeof body.allow_overage !== 'boolean') {
-      return c.json({ error: 'allow_overage must be a boolean' }, 400)
+      throw new ApiError('VALIDATION_FAILED', 'allow_overage must be a boolean')
     }
     patch.allow_overage = body.allow_overage
   }
@@ -177,13 +178,13 @@ organizationsRouter.patch('/me/overage', requireAdmin, async (c) => {
   if (body.overage_cap_multiplier !== undefined) {
     const n = Number(body.overage_cap_multiplier)
     if (!Number.isInteger(n) || n < 1 || n > 100) {
-      return c.json({ error: 'overage_cap_multiplier must be an integer between 1 and 100' }, 400)
+      throw new ApiError('VALIDATION_FAILED', 'overage_cap_multiplier must be an integer between 1 and 100')
     }
     patch.overage_cap_multiplier = n
   }
 
   if (Object.keys(patch).length === 0) {
-    return c.json({ error: 'no fields to update' }, 400)
+    throw new ApiError('BAD_REQUEST', 'no fields to update')
   }
 
   const { data, error } = await supabaseAdmin
@@ -194,7 +195,7 @@ organizationsRouter.patch('/me/overage', requireAdmin, async (c) => {
     .single()
 
   if (error || !data) {
-    return c.json({ error: 'Organization not found or update failed' }, 404)
+    throw new ApiError('NOT_FOUND', 'Organization not found or update failed')
   }
 
   void recordAuditEvent(c, {
@@ -217,17 +218,17 @@ organizationsRouter.patch('/me/overage', requireAdmin, async (c) => {
 // Body: { hide_powered_by_badge: boolean }
 organizationsRouter.patch('/me/branding', requireAdmin, async (c) => {
   const orgId = c.get('orgId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   let body: { hide_powered_by_badge?: unknown }
   try {
     body = (await c.req.json()) as typeof body
   } catch {
-    return c.json({ error: 'Invalid JSON body' }, 400)
+    throw new ApiError('INVALID_JSON_BODY', 'Invalid JSON body')
   }
 
   if (typeof body.hide_powered_by_badge !== 'boolean') {
-    return c.json({ error: 'hide_powered_by_badge must be a boolean' }, 400)
+    throw new ApiError('VALIDATION_FAILED', 'hide_powered_by_badge must be a boolean')
   }
 
   // Plan gate. Read the current plan and require team+ to flip the switch ON.
@@ -257,7 +258,7 @@ organizationsRouter.patch('/me/branding', requireAdmin, async (c) => {
     .select('id, plan, hide_powered_by_badge')
     .single()
 
-  if (error || !data) return c.json({ error: 'Update failed' }, 500)
+  if (error || !data) throw new ApiError('INTERNAL_ERROR', 'Update failed')
 
   void recordAuditEvent(c, {
     action: 'workspace.branding_update',
@@ -321,7 +322,7 @@ organizationsRouter.post('/bootstrap', async (c) => {
     .insert({ name: workspaceName, owner_id: userId })
     .select('id, name, plan, created_at, updated_at')
     .single()
-  if (orgErr || !org) return c.json({ error: 'Failed to create organization' }, 500)
+  if (orgErr || !org) throw new ApiError('INTERNAL_ERROR', 'Failed to create organization')
 
   // Rollback helper — on any later failure, undo the org + anything downstream.
   const rollback = async () => {
@@ -334,7 +335,7 @@ organizationsRouter.post('/bootstrap', async (c) => {
     .insert({ organization_id: org.id, user_id: userId, role: 'admin' })
   if (memberErr) {
     await rollback()
-    return c.json({ error: 'Failed to create org membership' }, 500)
+    throw new ApiError('INTERNAL_ERROR', 'Failed to create org membership')
   }
 
   // 3. default project — idempotent: reuse one if it already exists with
@@ -358,7 +359,7 @@ organizationsRouter.post('/bootstrap', async (c) => {
       .single()
     if (projErr || !created) {
       await rollback()
-      return c.json({ error: 'Failed to create default project' }, 500)
+      throw new ApiError('INTERNAL_ERROR', 'Failed to create default project')
     }
     project = created
   }
@@ -378,7 +379,7 @@ organizationsRouter.post('/bootstrap', async (c) => {
   })
   if (keyErr) {
     await rollback()
-    return c.json({ error: 'Failed to create API key' }, 500)
+    throw new ApiError('INTERNAL_ERROR', 'Failed to create API key')
   }
 
   return c.json({
@@ -409,11 +410,11 @@ organizationsRouter.post('/', async (c) => {
   try {
     body = await c.req.json() as { name?: unknown }
   } catch {
-    return c.json({ error: 'Invalid JSON body' }, 400)
+    throw new ApiError('INVALID_JSON_BODY', 'Invalid JSON body')
   }
 
   if (typeof body.name !== 'string' || body.name.trim().length === 0) {
-    return c.json({ error: 'name is required' }, 400)
+    throw new ApiError('VALIDATION_FAILED', 'name is required')
   }
 
   // Owned-workspace cap. Counts every org the user is `owner_id` of (regardless
@@ -425,7 +426,7 @@ organizationsRouter.post('/', async (c) => {
     .from('organizations')
     .select('plan')
     .eq('owner_id', userId)
-  if (ownedErr) return c.json({ error: 'Failed to check workspace count' }, 500)
+  if (ownedErr) throw new ApiError('INTERNAL_ERROR', 'Failed to check workspace count')
   const ownedPlans = (ownedRows ?? []).map((r) => r.plan as Plan)
   const effective = effectiveOwnedPlan(ownedPlans)
   const cap = OWNED_WORKSPACE_LIMITS[effective]
@@ -454,7 +455,7 @@ organizationsRouter.post('/', async (c) => {
     .select('id, name, plan, created_at, updated_at')
     .single()
 
-  if (error || !org) return c.json({ error: 'Failed to create workspace' }, 500)
+  if (error || !org) throw new ApiError('INTERNAL_ERROR', 'Failed to create workspace')
 
   const rollback = async () => {
     await supabaseAdmin.from('organizations').delete().eq('id', org.id)
@@ -465,7 +466,7 @@ organizationsRouter.post('/', async (c) => {
     .insert({ organization_id: org.id, user_id: userId, role: 'admin' })
   if (memberError) {
     await rollback()
-    return c.json({ error: 'Failed to create workspace membership' }, 500)
+    throw new ApiError('INTERNAL_ERROR', 'Failed to create workspace membership')
   }
 
   // Default project so the new workspace opens to something usable rather
@@ -475,7 +476,7 @@ organizationsRouter.post('/', async (c) => {
     .insert({ organization_id: org.id, name: 'Default Project' })
   if (projErr) {
     await rollback()
-    return c.json({ error: 'Failed to create default project' }, 500)
+    throw new ApiError('INTERNAL_ERROR', 'Failed to create default project')
   }
 
   return c.json({ success: true, data: org }, 201)
@@ -490,11 +491,11 @@ organizationsRouter.patch('/:id', requireAdmin, async (c) => {
   try {
     body = await c.req.json() as { name?: unknown }
   } catch {
-    return c.json({ error: 'Invalid JSON body' }, 400)
+    throw new ApiError('INVALID_JSON_BODY', 'Invalid JSON body')
   }
 
   if (typeof body.name !== 'string' || body.name.trim().length === 0) {
-    return c.json({ error: 'name is required' }, 400)
+    throw new ApiError('VALIDATION_FAILED', 'name is required')
   }
 
   const { data, error } = await supabaseAdmin
@@ -506,7 +507,7 @@ organizationsRouter.patch('/:id', requireAdmin, async (c) => {
     .single()
 
   if (error || !data) {
-    return c.json({ error: 'Organization not found or access denied' }, 404)
+    throw new ApiError('NOT_FOUND', 'Organization not found or access denied')
   }
 
   void recordAuditEvent(c, {
