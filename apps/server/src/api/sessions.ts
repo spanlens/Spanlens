@@ -4,6 +4,7 @@ import { parsePageLimit } from '../lib/params.js'
 import { getSessionAnalytics, type SessionAnalyticsRow } from '../lib/stats-queries.js'
 import { requestsScope, selectRequests } from '../lib/requests-query.js'
 import { fromClickhouseTimestamp } from '../lib/clickhouse.js'
+import { ApiError } from '../lib/errors.js'
 
 export const sessionsRouter = new Hono<JwtContext>()
 
@@ -41,7 +42,7 @@ function parseJsonColumn(value: string | null | undefined, fallback: unknown): u
 // ─────────────────────────────────────────────────────────────────────────────
 sessionsRouter.get('/', async (c) => {
   const orgId = c.get('orgId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   const projectId = c.req.query('projectId') ?? null
   const userId    = c.req.query('userId') ?? null
@@ -64,7 +65,7 @@ sessionsRouter.get('/', async (c) => {
     })
   } catch (err) {
     console.error('[sessions] ClickHouse query failed:', err instanceof Error ? err.message : err)
-    return c.json({ error: 'Failed to fetch session analytics' }, 500)
+    throw new ApiError('INTERNAL_ERROR', 'Failed to fetch session analytics')
   }
 
   const totalCount = rows[0]?.total_count ?? 0
@@ -91,7 +92,7 @@ sessionsRouter.get('/', async (c) => {
 // ─────────────────────────────────────────────────────────────────────────────
 sessionsRouter.get('/:sessionId', async (c) => {
   const orgId = c.get('orgId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
   const sessionId = c.req.param('sessionId')
 
   const projectId = c.req.query('projectId') ?? null
@@ -109,7 +110,7 @@ sessionsRouter.get('/:sessionId', async (c) => {
     })
   } catch (err) {
     console.error('[sessions:detail] ClickHouse query failed:', err instanceof Error ? err.message : err)
-    return c.json({ error: 'Failed to fetch session analytics' }, 500)
+    throw new ApiError('INTERNAL_ERROR', 'Failed to fetch session analytics')
   }
   const agg = aggRows.find((r) => r.session_id === sessionId) ?? null
   if (!agg) {
@@ -218,6 +219,6 @@ sessionsRouter.get('/:sessionId', async (c) => {
     })
   } catch (err) {
     console.error('[sessions:detail] turns error:', err instanceof Error ? err.message : err)
-    return c.json({ error: 'Failed to fetch session turns' }, 500)
+    throw new ApiError('INTERNAL_ERROR', 'Failed to fetch session turns')
   }
 })

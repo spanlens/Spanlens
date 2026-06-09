@@ -4,6 +4,7 @@ import { requireSystemAdmin } from '../../middleware/requireSystemAdmin.js'
 import { supabaseAdmin } from '../../lib/db.js'
 import { refreshPricesNow } from '../../lib/model-prices-cache.js'
 import { parsePositiveInt } from '../../lib/params.js'
+import { ApiError } from '../../lib/errors.js'
 
 const ALLOWED_PROVIDERS = new Set(['openai', 'anthropic', 'gemini'])
 
@@ -94,7 +95,7 @@ adminModelPricesRouter.get('/', async (c) => {
     .order('provider', { ascending: true })
     .order('model', { ascending: true })
 
-  if (error) return c.json({ error: 'Failed to fetch model prices' }, 500)
+  if (error) throw new ApiError('INTERNAL_ERROR', 'Failed to fetch model prices')
 
   return c.json({
     success: true,
@@ -198,7 +199,7 @@ adminModelPricesRouter.get('/:id/history', async (c) => {
     .order('changed_at', { ascending: false })
     .range(offset, offset + limit - 1)
 
-  if (error) return c.json({ error: 'Failed to fetch history' }, 500)
+  if (error) throw new ApiError('INTERNAL_ERROR', 'Failed to fetch history')
 
   return c.json({
     success: true,

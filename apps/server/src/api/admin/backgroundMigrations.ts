@@ -3,6 +3,7 @@ import { authJwt, type JwtContext } from '../../middleware/authJwt.js'
 import { requireSystemAdmin } from '../../middleware/requireSystemAdmin.js'
 import { supabaseAdmin } from '../../lib/db.js'
 import { getRegistry } from '../../lib/background-migrations/registry/index.js'
+import { ApiError } from '../../lib/errors.js'
 
 /**
  * Admin-only CRUD-ish surface for the background migration framework.
@@ -50,7 +51,7 @@ adminBackgroundMigrationsRouter.get('/', async (c) => {
     .select('*')
     .order('updated_at', { ascending: false })
 
-  if (error) return c.json({ error: 'Failed to load background migrations' }, 500)
+  if (error) throw new ApiError('INTERNAL_ERROR', 'Failed to load background migrations')
 
   const registeredNames = new Set(getRegistry().keys())
   const rows: RowResponse[] = (data ?? []).map((row) => ({
@@ -91,8 +92,8 @@ adminBackgroundMigrationsRouter.post('/:name/cancel', async (c) => {
     .select('status')
     .eq('name', name)
     .maybeSingle()
-  if (loadErr) return c.json({ error: 'Failed to load row' }, 500)
-  if (!row) return c.json({ error: 'Not found' }, 404)
+  if (loadErr) throw new ApiError('INTERNAL_ERROR', 'Failed to load row')
+  if (!row) throw new ApiError('NOT_FOUND', 'Not found')
   if (row.status !== 'pending' && row.status !== 'running') {
     return c.json({ error: `Cannot cancel row in status=${row.status as string}` }, 409)
   }
@@ -104,7 +105,7 @@ adminBackgroundMigrationsRouter.post('/:name/cancel', async (c) => {
       completed_at: new Date().toISOString(),
     })
     .eq('name', name)
-  if (error) return c.json({ error: 'Failed to cancel' }, 500)
+  if (error) throw new ApiError('INTERNAL_ERROR', 'Failed to cancel')
 
   return c.json({ success: true })
 })
@@ -117,8 +118,8 @@ adminBackgroundMigrationsRouter.post('/:name/retry', async (c) => {
     .select('status')
     .eq('name', name)
     .maybeSingle()
-  if (loadErr) return c.json({ error: 'Failed to load row' }, 500)
-  if (!row) return c.json({ error: 'Not found' }, 404)
+  if (loadErr) throw new ApiError('INTERNAL_ERROR', 'Failed to load row')
+  if (!row) throw new ApiError('NOT_FOUND', 'Not found')
   if (row.status !== 'failed' && row.status !== 'cancelled') {
     return c.json({ error: `Cannot retry row in status=${row.status as string}` }, 409)
   }
@@ -134,7 +135,7 @@ adminBackgroundMigrationsRouter.post('/:name/retry', async (c) => {
       last_heartbeat_at: null,
     })
     .eq('name', name)
-  if (error) return c.json({ error: 'Failed to retry' }, 500)
+  if (error) throw new ApiError('INTERNAL_ERROR', 'Failed to retry')
 
   return c.json({ success: true })
 })

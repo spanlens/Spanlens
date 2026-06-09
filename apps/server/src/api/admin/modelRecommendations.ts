@@ -4,6 +4,7 @@ import { requireSystemAdmin } from '../../middleware/requireSystemAdmin.js'
 import { supabaseAdmin } from '../../lib/db.js'
 import { refreshRulesNow } from '../../lib/model-recommendations-cache.js'
 import { parsePositiveInt } from '../../lib/params.js'
+import { ApiError } from '../../lib/errors.js'
 
 /**
  * Admin-only CRUD for `model_recommendations` substitute rules (P3.3).
@@ -105,7 +106,7 @@ adminModelRecommendationsRouter.get('/', async (c) => {
     .order('current_model', { ascending: true })
     .range(offset, offset + limit - 1)
 
-  if (error) return c.json({ error: 'Failed to fetch recommendations' }, 500)
+  if (error) throw new ApiError('INTERNAL_ERROR', 'Failed to fetch recommendations')
 
   return c.json({
     success: true,
