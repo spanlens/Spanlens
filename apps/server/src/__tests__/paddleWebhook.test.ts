@@ -368,7 +368,7 @@ describe('paddleWebhook — subscription.* edge cases', () => {
       event('subscription.created', subPayload({ custom_data: null })),
     )
     expect(res.status).toBe(400)
-    expect(body['error']).toBe('organization not found')
+    expect((body['error'] as { message: string }).message).toBe('organization not found')
   })
 
   it('non-cancel event with missing price id → 200 skipped (not 4xx — avoids Paddle retry storm)', async () => {
@@ -502,7 +502,7 @@ describe('paddleWebhook — transaction.completed', () => {
       event('transaction.completed', txPayload({ items: [] })),
     )
     expect(res.status).toBe(400)
-    expect(body['error']).toBe('missing price id')
+    expect((body['error'] as { message: string }).message).toBe('missing price id')
   })
 
   it('unknown price id in transaction → 200 skipped (avoid retry storm)', async () => {
@@ -556,7 +556,7 @@ describe('paddleWebhook — adjustment.created', () => {
     setOrgLookup(null)
     const { res, body } = await postWebhook(event('adjustment.created', adjPayload()))
     expect(res.status).toBe(400)
-    expect(body['error']).toBe('organization not found')
+    expect((body['error'] as { message: string }).message).toBe('organization not found')
   })
 })
 
