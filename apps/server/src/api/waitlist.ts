@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { supabaseAdmin } from '../lib/db.js'
 import { sendEmail, renderWaitlistConfirmationEmail } from '../lib/resend.js'
 import { fireAndForget } from '../lib/wait-until.js'
+import { ApiError } from '../lib/errors.js'
 
 /**
  * Public waitlist — no auth required.
@@ -20,12 +21,12 @@ waitlistRouter.post('/', async (c) => {
   try {
     body = await c.req.json() as Record<string, unknown>
   } catch {
-    return c.json({ error: 'Invalid JSON body' }, 400)
+    throw new ApiError('INVALID_JSON_BODY', 'Invalid JSON body')
   }
 
   const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : null
   if (!email || !email.includes('@')) {
-    return c.json({ error: 'A valid email is required' }, 400)
+    throw new ApiError('VALIDATION_FAILED', 'A valid email is required')
   }
 
   const name    = typeof body.name     === 'string' ? body.name.trim()     : null
@@ -49,7 +50,7 @@ waitlistRouter.post('/', async (c) => {
 
   if (error) {
     console.error('waitlist insert error:', error.message)
-    return c.json({ error: 'Failed to join waitlist' }, 500)
+    throw new ApiError('INTERNAL_ERROR', 'Failed to join waitlist')
   }
 
   // Fire-and-forget confirmation email — don't block the response
@@ -65,7 +66,7 @@ waitlistRouter.get('/', async (c) => {
   const cronSecret = process.env.CRON_SECRET
   const auth = c.req.header('Authorization') ?? ''
   if (!cronSecret || auth !== `Bearer ${cronSecret}`) {
-    return c.json({ error: 'Unauthorized' }, 401)
+    throw new ApiError('UNAUTHORIZED', 'Unauthorized')
   }
 
   const { data, error } = await supabaseAdmin
@@ -73,7 +74,7 @@ waitlistRouter.get('/', async (c) => {
     .select('id, email, name, company, use_case, status, created_at')
     .order('created_at', { ascending: false })
 
-  if (error) return c.json({ error: 'Failed to fetch waitlist' }, 500)
+  if (error) throw new ApiError('INTERNAL_ERROR', 'Failed to fetch waitlist')
 
   return c.json({ success: true, data, total: data?.length ?? 0 })
 })

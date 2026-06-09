@@ -4,6 +4,7 @@ import { supabaseAdmin } from '../lib/db.js'
 import { detectAnomalies } from '../lib/anomaly.js'
 import { requestsScope, selectRequests, streamRequests } from '../lib/requests-query.js'
 import { fromClickhouseTimestamp } from '../lib/clickhouse.js'
+import { ApiError } from '../lib/errors.js'
 
 export const exportsRouter = new Hono<JwtContext>()
 exportsRouter.use('*', authJwt)
@@ -149,7 +150,7 @@ export function buildJsonlStream<Row>(rows: AsyncIterable<Row>): ReadableStream<
 //                  Use jsonl for larger JSON exports.
 exportsRouter.get('/requests', async (c) => {
   const orgId = c.get('orgId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   const format        = parseFormat(c.req.query('format'))
   const projectId     = c.req.query('projectId')
@@ -185,7 +186,7 @@ exportsRouter.get('/requests', async (c) => {
     scope = await requestsScope(orgId)
   } catch (err) {
     console.error('[exports:requests] scope lookup failed:', err instanceof Error ? err.message : err)
-    return c.json({ error: 'Failed to export requests' }, 500)
+    throw new ApiError('INTERNAL_ERROR', 'Failed to export requests')
   }
 
   // ── JSON: legacy wrapped format. Materialised, capped at 10k. ────────────────
@@ -202,7 +203,7 @@ exportsRouter.get('/requests', async (c) => {
       })
     } catch (err) {
       console.error('[exports:requests] ClickHouse query failed:', err instanceof Error ? err.message : err)
-      return c.json({ error: 'Failed to export requests' }, 500)
+      throw new ApiError('INTERNAL_ERROR', 'Failed to export requests')
     }
     // ClickHouse DateTime64 → ISO UTC (gotcha #18). Streaming CSV/JSONL paths
     // below still emit raw format; they should be wrapped too in a follow-up.
@@ -297,7 +298,7 @@ const TRACE_COLS = [
 
 exportsRouter.get('/traces', async (c) => {
   const orgId = c.get('orgId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   const format  = c.req.query('format') === 'json' ? 'json' : 'csv'
   const status  = c.req.query('status')
@@ -318,7 +319,7 @@ exportsRouter.get('/traces', async (c) => {
   if (to)   query = query.lte('created_at', to)
 
   const { data, error } = await query
-  if (error) return c.json({ error: 'Failed to export traces' }, 500)
+  if (error) throw new ApiError('INTERNAL_ERROR', 'Failed to export traces')
 
   const rows = (data ?? []) as unknown as Record<string, unknown>[]
   const dateStr = new Date().toISOString().slice(0, 10)
@@ -339,7 +340,7 @@ const ANOMALY_COLS = [
 
 exportsRouter.get('/anomalies', async (c) => {
   const orgId = c.get('orgId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   const format = c.req.query('format') === 'json' ? 'json' : 'csv'
   const projectId = c.req.query('projectId')
@@ -351,7 +352,7 @@ exportsRouter.get('/anomalies', async (c) => {
       .eq('id', projectId)
       .eq('organization_id', orgId)
       .single()
-    if (!proj) return c.json({ error: 'Project not found' }, 404)
+    if (!proj) throw new ApiError('NOT_FOUND', 'Project not found')
   }
 
   const anomalies = await detectAnomalies(orgId, {
@@ -389,7 +390,7 @@ const SECURITY_COLS = [
 
 exportsRouter.get('/security', async (c) => {
   const orgId = c.get('orgId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   const format = c.req.query('format') === 'json' ? 'json' : 'csv'
 
@@ -417,7 +418,7 @@ exportsRouter.get('/security', async (c) => {
     })
   } catch (err) {
     console.error('[exports:security] ClickHouse query failed:', err instanceof Error ? err.message : err)
-    return c.json({ error: 'Failed to export security events' }, 500)
+    throw new ApiError('INTERNAL_ERROR', 'Failed to export security events')
   }
 
   // CSV gets the flags column as a string literal; JSON parses it back to an array.

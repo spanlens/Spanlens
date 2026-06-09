@@ -30,6 +30,7 @@ import {
   type OtlpExportRequest,
   type MappedSpanRow,
 } from '../lib/otlp-mapper.js'
+import { ApiError } from '../lib/errors.js'
 
 export const otlpRouter = new Hono<ApiKeyContext>()
 
@@ -55,7 +56,7 @@ otlpRouter.post('/v1/traces', authApiKey, requireFullScope, async (c) => {
   try {
     body = (await c.req.json()) as OtlpExportRequest
   } catch {
-    return c.json({ error: 'Invalid JSON body' }, 400)
+    throw new ApiError('INVALID_JSON_BODY', 'Invalid JSON body')
   }
 
   const groups = groupByTrace(body)
