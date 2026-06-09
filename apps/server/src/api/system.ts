@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { authJwt, type JwtContext } from '../middleware/authJwt.js'
 import { requireRole } from '../middleware/requireRole.js'
 import { supabaseAdmin } from '../lib/db.js'
+import { ApiError } from '../lib/errors.js'
 
 /**
  * /api/v1/system — internal system monitoring endpoints.
@@ -22,7 +23,7 @@ systemRouter.get('/cron-runs', requireAdmin, async (c) => {
     .order('ran_at', { ascending: false })
     .limit(500)
 
-  if (error) return c.json({ error: 'Failed to fetch cron runs' }, 500)
+  if (error) throw new ApiError('INTERNAL_ERROR', 'Failed to fetch cron runs')
 
   // Collapse to latest run per job
   const latestByJob = new Map<string, typeof data[0]>()
