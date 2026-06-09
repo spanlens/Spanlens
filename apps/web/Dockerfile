@@ -20,13 +20,31 @@ RUN corepack enable && corepack prepare pnpm@10.33.0 --activate
 
 # Copy workspace manifests so pnpm can resolve the workspace graph.
 # apps/server and packages/sdk manifests are needed because they are
-# declared in pnpm-workspace.yaml, even though web doesn't import them.
+# declared in pnpm-workspace.yaml. Sprint 7 R-20 (PR #277) added two
+# real dependencies that web now consumes:
+#   - @spanlens/api-types (runtime helper for the error envelope)
+#   - `server` workspace devDep (type-only `import type { AppType }`)
+# Both manifests must exist before `pnpm install --filter web` so the
+# workspace links resolve. The actual source for both is copied in the
+# build stage below.
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/web/package.json ./apps/web/
 COPY apps/server/package.json ./apps/server/
 COPY packages/sdk/package.json ./packages/sdk/
+COPY packages/api-types/package.json ./packages/api-types/
 
-RUN pnpm install --frozen-lockfile --filter web
+# Sprint 7 R-20 (PR #277) made apps/web do a type-only import from
+# `server/src/app`, and that server file itself imports from hono,
+# supabase-js, sentry, etc. The tsc invocation inside `next build`
+# reads server's source to resolve AppType and therefore needs every
+# transitive dep of apps/server installed. `--filter web` and even
+# `--filter ...web` (which should include workspace transitive deps)
+# both proved insufficient in CI — apps/server/node_modules/hono was
+# not populated either way. Drop the filter so every workspace package's
+# deps install. Image size is unaffected: the runner stage only copies
+# the Next standalone bundle, which already strips anything not
+# imported at runtime.
+RUN pnpm install --frozen-lockfile
 
 # ── Stage 2: build ──────────────────────────────────────────────
 FROM node:22-alpine AS builder
@@ -52,14 +70,34 @@ ENV NODE_ENV=production
 
 COPY --from=deps /repo/node_modules ./node_modules
 COPY --from=deps /repo/apps/web/node_modules ./apps/web/node_modules
+# Sprint 7 R-20 (PR #277): apps/web/lib/api-client.ts does a type-only
+# `import type { AppType } from 'server/src/app'`. tsc reading that
+# server source needs the hono / @sentry/node / supabase-js etc. type
+# packages to resolve from apps/server/node_modules. Same reasoning
+# for packages/api-types — its dist/ is the runtime entry and tsc
+# walks its own node_modules. Without these COPY lines the build
+# fails with "Cannot find module 'hono'" inside server/src/app.ts.
+COPY --from=deps /repo/apps/server/node_modules ./apps/server/node_modules
+COPY --from=deps /repo/packages/api-types/node_modules ./packages/api-types/node_modules
 
 # Copy workspace manifests (needed for pnpm exec)
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/web ./apps/web
-COPY apps/server/package.json ./apps/server/
+# Sprint 7 R-20 (PR #277): apps/web/lib/api-client.ts does
+#   `import type { AppType } from 'server/src/app'`
+# so the server source files must exist for tsc to resolve AppType when
+# next build runs. The import is type-only, so nothing from apps/server
+# runs at runtime and no server JS bytes land in the Next bundle.
+COPY apps/server ./apps/server
+# packages/api-types is a runtime dependency (isApiErrorEnvelope helper
+# is called from apps/web/lib/api-client.ts). Its `dist/` must be
+# built before next build runs since the package.json `main`/`types`
+# fields point into dist/.
+COPY packages/api-types ./packages/api-types
 COPY packages/sdk/package.json ./packages/sdk/
 COPY tsconfig*.json ./
 
+RUN pnpm --filter @spanlens/api-types build
 RUN pnpm --filter web build
 
 # ── Stage 3: runner ─────────────────────────────────────────────
