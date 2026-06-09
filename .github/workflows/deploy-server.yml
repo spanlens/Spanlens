@@ -34,6 +34,9 @@ on:
     paths:
       - 'apps/server/**'
       - 'supabase/migrations/**'
+  # Manual trigger for re-running the migrate step after a fix that did
+  # not touch the matched paths (e.g. a change to this workflow itself).
+  workflow_dispatch:
 
 # Concurrency: serialize main-branch deploys so two pushes in quick
 # succession don't fight over the linked project's migration lock.
