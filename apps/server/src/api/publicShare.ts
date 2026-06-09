@@ -10,6 +10,7 @@ import {
 } from '../lib/requests-query.js'
 import { fromClickhouseTimestamp } from '../lib/clickhouse.js'
 import { checkRateLimit } from '../lib/rate-limit.js'
+import { ApiError } from '../lib/errors.js'
 
 /**
  * Public share viewer (PLG Loop ①). Mounted at `/share/:token` on the root
@@ -46,7 +47,7 @@ const publicRateLimit = createMiddleware(async (c, next) => {
   const allowed = await checkRateLimit(`share:${ip}`, PUBLIC_SHARE_RATE_LIMIT)
   if (!allowed) {
     c.header('Retry-After', '60')
-    return c.json({ error: 'Too many requests' }, 429)
+    throw new ApiError('RATE_LIMIT', 'Too many requests')
   }
   return next()
 })

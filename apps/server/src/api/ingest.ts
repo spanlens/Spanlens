@@ -4,6 +4,7 @@ import { requireFullScope } from '../middleware/requireFullScope.js'
 import { supabaseAdmin } from '../lib/db.js'
 import { fireAndForget } from '../lib/wait-until.js'
 import { emitWebhookEvent } from '../lib/webhook-emit.js'
+import { ApiError } from '../lib/errors.js'
 
 /**
  * SDK용 ingestion 라우터 — authApiKey 미들웨어로 SHA-256 해시 API 키 검증.
@@ -59,11 +60,11 @@ ingestRouter.post('/traces', async (c) => {
   try {
     body = (await c.req.json()) as typeof body
   } catch {
-    return c.json({ error: 'Invalid JSON body' }, 400)
+    throw new ApiError('INVALID_JSON_BODY', 'Invalid JSON body')
   }
 
   if (typeof body.name !== 'string' || body.name.trim().length === 0) {
-    return c.json({ error: 'name is required' }, 400)
+    throw new ApiError('VALIDATION_FAILED', 'name is required')
   }
 
   const insert: {
@@ -131,7 +132,7 @@ ingestRouter.patch('/traces/:id', async (c) => {
   try {
     body = (await c.req.json()) as typeof body
   } catch {
-    return c.json({ error: 'Invalid JSON body' }, 400)
+    throw new ApiError('INVALID_JSON_BODY', 'Invalid JSON body')
   }
 
   const updates: Record<string, unknown> = {}
@@ -165,7 +166,7 @@ ingestRouter.patch('/traces/:id', async (c) => {
   }
 
   if (Object.keys(updates).length === 0) {
-    return c.json({ error: 'No valid fields to update' }, 400)
+    throw new ApiError('BAD_REQUEST', 'No valid fields to update')
   }
 
   // duration_ms 자동 계산 — ended_at이 오고 현재 started_at만 있다면
@@ -191,7 +192,7 @@ ingestRouter.patch('/traces/:id', async (c) => {
     .single()
 
   if (error || !data) {
-    return c.json({ error: 'Trace not found or access denied' }, 404)
+    throw new ApiError('NOT_FOUND', 'Trace not found or access denied')
   }
 
   // Outbound webhook: trace.completed. fireAndForget so the SDK's PATCH
@@ -233,11 +234,11 @@ ingestRouter.post('/traces/:id/spans', async (c) => {
   try {
     body = (await c.req.json()) as typeof body
   } catch {
-    return c.json({ error: 'Invalid JSON body' }, 400)
+    throw new ApiError('INVALID_JSON_BODY', 'Invalid JSON body')
   }
 
   if (typeof body.name !== 'string' || body.name.trim().length === 0) {
-    return c.json({ error: 'name is required' }, 400)
+    throw new ApiError('VALIDATION_FAILED', 'name is required')
   }
 
   // trace 소유권 확인 — 다른 org의 trace에 span 추가 시도 차단
@@ -247,7 +248,7 @@ ingestRouter.post('/traces/:id/spans', async (c) => {
     .eq('id', traceId)
     .eq('organization_id', organizationId)
     .single()
-  if (!trace) return c.json({ error: 'Trace not found' }, 404)
+  if (!trace) throw new ApiError('NOT_FOUND', 'Trace not found')
 
   const insert: {
     trace_id: string
@@ -330,7 +331,7 @@ ingestRouter.patch('/spans/:id', async (c) => {
   try {
     body = (await c.req.json()) as typeof body
   } catch {
-    return c.json({ error: 'Invalid JSON body' }, 400)
+    throw new ApiError('INVALID_JSON_BODY', 'Invalid JSON body')
   }
 
   const updates: Record<string, unknown> = {}
@@ -371,7 +372,7 @@ ingestRouter.patch('/spans/:id', async (c) => {
   if (typeof body.request_id === 'string') updates['request_id'] = body.request_id
 
   if (Object.keys(updates).length === 0) {
-    return c.json({ error: 'No valid fields to update' }, 400)
+    throw new ApiError('BAD_REQUEST', 'No valid fields to update')
   }
 
   if (updates['ended_at']) {
@@ -396,7 +397,7 @@ ingestRouter.patch('/spans/:id', async (c) => {
     .single()
 
   if (error || !data) {
-    return c.json({ error: 'Span not found or access denied' }, 404)
+    throw new ApiError('NOT_FOUND', 'Span not found or access denied')
   }
 
   return c.json({ success: true, data })
