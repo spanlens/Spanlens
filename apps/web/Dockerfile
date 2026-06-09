@@ -20,11 +20,18 @@ RUN corepack enable && corepack prepare pnpm@10.33.0 --activate
 
 # Copy workspace manifests so pnpm can resolve the workspace graph.
 # apps/server and packages/sdk manifests are needed because they are
-# declared in pnpm-workspace.yaml, even though web doesn't import them.
+# declared in pnpm-workspace.yaml. Sprint 7 R-20 (PR #277) added two
+# real dependencies that web now consumes:
+#   - @spanlens/api-types (runtime helper for the error envelope)
+#   - `server` workspace devDep (type-only `import type { AppType }`)
+# Both manifests must exist before `pnpm install --filter web` so the
+# workspace links resolve. The actual source for both is copied in the
+# build stage below.
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/web/package.json ./apps/web/
 COPY apps/server/package.json ./apps/server/
 COPY packages/sdk/package.json ./packages/sdk/
+COPY packages/api-types/package.json ./packages/api-types/
 
 RUN pnpm install --frozen-lockfile --filter web
 
@@ -56,10 +63,21 @@ COPY --from=deps /repo/apps/web/node_modules ./apps/web/node_modules
 # Copy workspace manifests (needed for pnpm exec)
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/web ./apps/web
-COPY apps/server/package.json ./apps/server/
+# Sprint 7 R-20 (PR #277): apps/web/lib/api-client.ts does
+#   `import type { AppType } from 'server/src/app'`
+# so the server source files must exist for tsc to resolve AppType when
+# next build runs. The import is type-only, so nothing from apps/server
+# runs at runtime and no server JS bytes land in the Next bundle.
+COPY apps/server ./apps/server
+# packages/api-types is a runtime dependency (isApiErrorEnvelope helper
+# is called from apps/web/lib/api-client.ts). Its `dist/` must be
+# built before next build runs since the package.json `main`/`types`
+# fields point into dist/.
+COPY packages/api-types ./packages/api-types
 COPY packages/sdk/package.json ./packages/sdk/
 COPY tsconfig*.json ./
 
+RUN pnpm --filter @spanlens/api-types build
 RUN pnpm --filter web build
 
 # ── Stage 3: runner ─────────────────────────────────────────────

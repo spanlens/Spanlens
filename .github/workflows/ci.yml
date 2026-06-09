@@ -62,3 +62,47 @@ jobs:
 
       - name: Build (sdk)
         run: pnpm --filter sdk build
+
+      # Sprint 7 regression guard — broken migration sat in main for 4 PRs
+      # before the Deploy production workflow caught it (PR #273's
+      # 20260609150000 missed the NOT NULL `description` column on
+      # background_migrations, transactionally rolled back every push).
+      # CI now runs `supabase db reset --no-seed` which applies every
+      # migration in order against a throwaway local Postgres. Any
+      # constraint violation, syntax error, or out-of-order dependency
+      # fails the PR build instead of the Deploy production workflow
+      # after merge. The setup-cli rate-limit pattern (gotcha #33) needs
+      # GITHUB_TOKEN here too.
+      - name: Install Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Validate migrations apply cleanly (supabase db reset --no-seed)
+        run: |
+          supabase start
+          # --no-seed because supabase/seed.sql is dev fixtures; we are
+          # only validating that migrations apply, not that fixtures load.
+          supabase db reset --no-seed
+          supabase stop --no-backup
+
+      # Sprint 7 regression guard — apps/web/Dockerfile silently missed
+      # the `apps/server` source copy after PR #277 added a type-only
+      # AppType import. Vercel deploys kept working (full repo install)
+      # but the Publish spanlens-web Docker image workflow failed on
+      # every main push for 2 PRs. Run the same docker build in CI so
+      # the failure surfaces on the PR.
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build apps/web Docker image (regression guard, no push)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/web/Dockerfile
+          push: false
+          # Single platform to keep this guard fast; the publish
+          # workflow on main still does linux/amd64 + linux/arm64.
+          platforms: linux/amd64
