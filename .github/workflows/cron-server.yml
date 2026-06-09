@@ -1,0 +1,89 @@
+name: Cron — server sub-daily
+
+# GitHub Actions cron for sub-daily Spanlens server jobs that Vercel's
+# scheduled crons keep not picking up. The history: project moved to
+# Vercel Pro in commit aeebecb (May 2026), so we consolidated GitHub
+# Actions cron workflows back into vercel.json. New crons added since
+# then have not been syncing to Vercel's scheduler, so a subset is
+# stale (only ~5 of the ~14 defined in vercel.json actually fire).
+# Rather than burn a support ticket waiting for Vercel to resync, run
+# the two highest-leverage sub-daily jobs from GitHub Actions as a
+# durable safety net. Vercel scheduled crons stay configured in
+# vercel.json so they fire too if/when Vercel resyncs — the GH runs
+# are idempotent.
+#
+# Idempotency: every Spanlens cron handler treats double-firing as a
+# no-op or natural retry. Worst case both schedulers fire the same
+# minute and the second call sees state from the first.
+#
+# Required secrets:
+#   CRON_SECRET — same value the handlers compare against (Vercel env var
+#                 of the same name). Used as Bearer token below.
+#
+# Endpoints invoked here:
+#   /cron/run-background-migrations  every 5 min
+#     Picks one pending background_migrations row, runs it in chunks
+#     until done or near the function timeout. Without this fire, every
+#     background migration the operator schedules sits forever.
+#   /cron/keep-warm                  every 5 min
+#     Warms the serverless runtime + ClickHouse + Supabase pools so
+#     the first real request after an idle window does not eat the
+#     full cold-start latency.
+
+on:
+  schedule:
+    # Both jobs run every 5 minutes. Offset by 2 minutes so they do
+    # not collide on the same runner queue and so the keep-warm finishes
+    # before run-background-migrations potentially keeps a function
+    # warm for its full chunk budget.
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+# Concurrency: serialize so a slow run-background-migrations does not
+# overlap with the next tick (the chunk runner already takes an
+# advisory lock server-side, but the GH-side queue prevents wasted
+# runner minutes).
+concurrency:
+  group: cron-server
+  cancel-in-progress: false
+
+jobs:
+  run-background-migrations:
+    name: POST /cron/run-background-migrations
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Invoke endpoint
+        run: |
+          # Production base URL. Hardcoded because the GH runner has no
+          # other place to read it from. Update here AND in the Vercel
+          # project alias settings if the hostname ever changes.
+          BASE_URL='https://spanlens-server.vercel.app'
+          STATUS=$(curl -sS -o /tmp/body -w '%{http_code}' \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            "$BASE_URL/cron/run-background-migrations")
+          echo "Status: $STATUS"
+          cat /tmp/body
+          # A 200 with body status='skipped' is fine (no pending job).
+          # Any 4xx/5xx fails the workflow so the operator sees it on
+          # the Actions dashboard.
+          if [ "$STATUS" -ge 400 ]; then exit 1; fi
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+
+  keep-warm:
+    name: POST /cron/keep-warm
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Invoke endpoint
+        run: |
+          BASE_URL='https://spanlens-server.vercel.app'
+          STATUS=$(curl -sS -o /tmp/body -w '%{http_code}' \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            "$BASE_URL/cron/keep-warm")
+          echo "Status: $STATUS"
+          cat /tmp/body
+          if [ "$STATUS" -ge 400 ]; then exit 1; fi
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
