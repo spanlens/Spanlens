@@ -39,6 +39,28 @@ export type ChangelogTag =
 
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    date: '2026-06-09',
+    slug: 'feedback-public-roadmap',
+    title: 'Public feedback page with voting and admin response',
+    tags: ['feature'],
+    body: [
+      'The submit-only feedback box is now a public roadmap. Visit [/feedback](/feedback) without logging in to read every suggestion ranked by community votes. Each item carries a status chip (new, planned, in progress, shipped, declined), the original message, and a public response from the Spanlens team when one is posted. Items moved to shipped link out to the matching changelog entry.',
+      'Signed in users can upvote any item, un-vote with the same click, and submit a new suggestion from the inline panel. The vote count updates optimistically and rolls back if the server rejects the write. Anonymous visitors see the same list but the vote pill links to sign in instead of casting a vote — no anonymous voting, no spam channel.',
+      'Behind the scenes the new `/api/v1/feedback` endpoints follow the standard error envelope from the [API errors reference](/docs/api/errors), and admin status updates run through a separate authenticated endpoint that stamps the responder and timestamp on each row.',
+    ].join('\n\n'),
+  },
+  {
+    date: '2026-06-09',
+    slug: 'error-envelope-catalog-complete',
+    title: 'Every API endpoint now returns the standard error envelope',
+    tags: ['improvement'],
+    body: [
+      'The standard `{ error: { code, message, requestId } }` envelope rolled out for the first 8 routers in Sprint 7 has reached every endpoint the server exposes — proxy, ingest, OTLP, every `/api/v1/*` route, every webhook handler, every cron endpoint. The 18 stable codes in the [API errors reference](/docs/api/errors) cover every 4xx and 5xx the server emits.',
+      'For SDK users this means `if (err.code === "RATE_LIMIT")` works against any response from any path. The TypeScript catch path narrows to a single `SpanlensApiError` shape regardless of which router answered. A new `INJECTION_BLOCKED` code (HTTP 422) joins the catalog for proxy requests rejected by the security policy when prompt injection is detected.',
+      'The change is fully backward compatible. Existing clients that read `error.message` keep working; clients that want stable identifiers can switch to `error.code` at their own pace.',
+    ].join('\n\n'),
+  },
+  {
     date: '2026-06-08',
     slug: 'shares-workspace-dashboard',
     title: 'Workspace dashboard and redaction presets for shared links',
