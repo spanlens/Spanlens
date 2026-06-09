@@ -61,6 +61,7 @@ import { adminModelPricesRouter } from './api/admin/modelPrices.js'
 import { adminModelRecommendationsRouter } from './api/admin/modelRecommendations.js'
 import { adminBackgroundMigrationsRouter } from './api/admin/backgroundMigrations.js'
 import { adminAlertsRouter } from './api/admin/alerts.js'
+import { adminFeedbackRouter } from './api/admin/feedback.js'
 import { sharesRouter }           from './api/shares.js'
 import { publicShareRouter }      from './api/publicShare.js'
 import { badgeRouter }            from './api/badge.js'
@@ -232,6 +233,7 @@ app.route('/api/v1/admin/model-prices', adminModelPricesRouter)
 app.route('/api/v1/admin/model-recommendations', adminModelRecommendationsRouter)
 app.route('/api/v1/admin/background-migrations', adminBackgroundMigrationsRouter)
 app.route('/api/v1/admin/alerts', adminAlertsRouter)
+app.route('/api/v1/admin/feedback', adminFeedbackRouter)
 
 // Sprint 7 R-15 + R-20: global error handler. Every router can now
 // `throw new ApiError('CODE', 'message?')` and rely on this handler to
