@@ -72,6 +72,15 @@ jobs:
       # can read service_role_key + api_url without parsing log lines.
       - name: Start Supabase stack
         run: |
+          # Skip known-superseded migrations that have been fake-applied in
+          # production (see CLAUDE.md "Broken migration 복구 절차"). Mirrors
+          # the same workaround in .github/workflows/ci.yml — the broken
+          # 20260609150000 file stays in git for audit, but the CI runner
+          # removes it so `supabase db reset` against the fresh local
+          # Postgres can finish without retripping the original constraint
+          # violation. Add new entries here only after the supabase MCP
+          # fake-apply has been executed in production.
+          rm -f supabase/migrations/20260609150000_register_orphan_span_link.sql
           supabase start
           # `supabase start` brings up the stack with a baseline schema, but
           # does NOT always replay every file under supabase/migrations/
