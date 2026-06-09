@@ -105,7 +105,7 @@ promptExperimentsRouter.post('/', requireEdit, async (c) => {
 
   for (const v of versions) {
     if (v.name !== promptName)
-      return c.json({ error: `Version ${v.id} belongs to prompt "${v.name}", not "${promptName}"` }, 400)
+      throw new ApiError('VALIDATION_FAILED', `Version ${v.id} belongs to prompt "${v.name}", not "${promptName}"`)
   }
 
   const { data, error } = await supabaseAdmin

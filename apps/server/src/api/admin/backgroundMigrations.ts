@@ -95,7 +95,7 @@ adminBackgroundMigrationsRouter.post('/:name/cancel', async (c) => {
   if (loadErr) throw new ApiError('INTERNAL_ERROR', 'Failed to load row')
   if (!row) throw new ApiError('NOT_FOUND', 'Not found')
   if (row.status !== 'pending' && row.status !== 'running') {
-    return c.json({ error: `Cannot cancel row in status=${row.status as string}` }, 409)
+    throw new ApiError('CONFLICT', `Cannot cancel row in status=${row.status as string}`)
   }
 
   const { error } = await supabaseAdmin
@@ -121,7 +121,7 @@ adminBackgroundMigrationsRouter.post('/:name/retry', async (c) => {
   if (loadErr) throw new ApiError('INTERNAL_ERROR', 'Failed to load row')
   if (!row) throw new ApiError('NOT_FOUND', 'Not found')
   if (row.status !== 'failed' && row.status !== 'cancelled') {
-    return c.json({ error: `Cannot retry row in status=${row.status as string}` }, 409)
+    throw new ApiError('CONFLICT', `Cannot retry row in status=${row.status as string}`)
   }
 
   // Reset the runtime fields. Leaves `attempts` alone — the count is

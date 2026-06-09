@@ -114,10 +114,10 @@ azureProxy.all('/*', async (c) => {
     clearTimeout(upstreamTimer)
     const msg = err instanceof Error ? err.message : 'Unknown error'
     if (err instanceof Error && err.name === 'AbortError') {
-      return c.json({ error: `Upstream request timed out after ${UPSTREAM_TIMEOUT_MS}ms` }, 504)
+      throw new ApiError('UPSTREAM_TIMEOUT', `Upstream request timed out after ${UPSTREAM_TIMEOUT_MS}ms`)
     }
     console.error('[azure-proxy] upstream fetch error:', msg)
-    return c.json({ error: `Upstream request failed: ${msg}` }, 502)
+    throw new ApiError('UPSTREAM_FAILED', `Upstream request failed: ${msg}`)
   }
   clearTimeout(upstreamTimer)
   const latencyMs = Date.now() - startMs

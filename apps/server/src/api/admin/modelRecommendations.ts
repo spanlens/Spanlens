@@ -132,7 +132,7 @@ adminModelRecommendationsRouter.post('/', async (c) => {
     .select()
     .single()
 
-  if (error) return c.json({ error: `Upsert failed: ${error.message}` }, 500)
+  if (error) throw new ApiError('INTERNAL_ERROR', `Upsert failed: ${error.message}`)
 
   // Make the new rule visible on this instance immediately. Others pick it up
   // within TTL (≤5 min).
@@ -166,7 +166,7 @@ adminModelRecommendationsRouter.delete('/:id', async (c) => {
     .delete()
     .eq('id', id)
 
-  if (error) return c.json({ error: `Delete failed: ${error.message}` }, 500)
+  if (error) throw new ApiError('INTERNAL_ERROR', `Delete failed: ${error.message}`)
 
   await refreshRulesNow()
 

@@ -126,9 +126,13 @@ pendingDeletionsRouter.post('/:id/restore', requireEdit, async (c) => {
   if (!row) throw new ApiError('NOT_FOUND', 'Pending deletion not found')
   if (row.organization_id !== orgId) throw new ApiError('FORBIDDEN', 'Access denied')
   if (row.executed_at) {
-    // TODO(sprint-8): manual migration (unmapped status 410)
-    // TODO(sprint-8): manual migration (unmapped status 410)
-    return c.json({ error: 'Already hard-deleted; cannot restore' }, 410)
+    // Status 410 (Gone) is semantically "the resource existed but has
+    // been permanently removed". The closest catalog code is NOT_FOUND
+    // (404 status) — slight semantic loss but the SDK contract stays
+    // typed and SpanlensApiError.code === 'NOT_FOUND' is what the
+    // caller can switch on. The original message preserves the
+    // "hard-deleted; cannot restore" nuance.
+    throw new ApiError('NOT_FOUND', 'Already hard-deleted; cannot restore')
   }
   if (row.cancelled_at) {
     throw new ApiError('CONFLICT', 'Already restored')
