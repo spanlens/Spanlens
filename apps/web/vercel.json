@@ -1,6 +1,7 @@
 {
   "framework": "nextjs",
   "installCommand": "pnpm install --frozen-lockfile",
-  "buildCommand": "pnpm --filter web build",
+  "buildCommand": "pnpm --filter @spanlens/api-types build && pnpm --filter web build",
   "regions": ["icn1"]
 }
+
