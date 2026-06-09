@@ -50,6 +50,7 @@ describe('error contract: server ERROR_CODES ↔ @spanlens/api-types KnownApiErr
       'NOT_FOUND',
       'CONFLICT',
       'RATE_LIMIT',
+      'INJECTION_BLOCKED',
       'DECRYPT_FAILED',
       'INTERNAL_ERROR',
       'NO_PROVIDER_KEY',

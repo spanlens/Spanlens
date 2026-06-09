@@ -118,10 +118,10 @@ describe('authApiKey — rejected transports', () => {
   test('?key= query string returns 401 (key must not be in URL)', async () => {
     const res = await app.request(`/probe?key=${VALID_KEY}`)
     expect(res.status).toBe(401)
-    const body = (await res.json()) as { error: string }
+    const body = (await res.json()) as { error: { code: string; message: string } }
     // Should mention the supported header transports, not ?key=
-    expect(body.error).toContain('x-goog-api-key')
-    expect(body.error).not.toContain('?key=')
+    expect(body.error.message).toContain('x-goog-api-key')
+    expect(body.error.message).not.toContain('?key=')
   })
 
   test('no key returns 401', async () => {

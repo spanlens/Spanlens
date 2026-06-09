@@ -56,10 +56,10 @@ anthropicProxy.all('/*', async (c) => {
   const requestFlags = scanAll(reqBodyJson)
   const hasInjection = requestFlags.some((f) => f.type === 'injection')
   if (hasInjection && await isBlockingEnabled(projectId)) {
-    return c.json({
-      error: 'Request blocked by Spanlens security policy: prompt injection detected.',
-      code: 'INJECTION_BLOCKED',
-    }, 422)
+    throw new ApiError(
+      'INJECTION_BLOCKED',
+      'Request blocked by Spanlens security policy: prompt injection detected.',
+    )
   }
 
   const path = c.req.path.replace(/^\/proxy\/anthropic/, '')

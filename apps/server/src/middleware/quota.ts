@@ -2,6 +2,7 @@ import { createMiddleware } from 'hono/factory'
 import type { ApiKeyContext } from './authApiKey.js'
 import { checkMonthlyQuota } from '../lib/quota.js'
 import { evaluateQuotaPolicy, blockMessage } from '../lib/quota-policy.js'
+import { ApiError } from '../lib/errors.js'
 
 /**
  * Monthly request quota enforcement for `/proxy/*` (Pattern C policy).
@@ -42,9 +43,10 @@ export const enforceQuota = createMiddleware<ApiKeyContext>(async (c, next) => {
     c.header('X-RateLimit-Limit', String(check.limit ?? 0))
     c.header('X-RateLimit-Remaining', '0')
     c.header('X-RateLimit-Plan', check.plan)
-    return c.json(
+    throw new ApiError(
+      'RATE_LIMIT',
+      blockMessage(decision.reason),
       {
-        error: blockMessage(decision.reason),
         reason: decision.reason,
         plan: check.plan,
         used: check.usedThisMonth,
@@ -52,7 +54,6 @@ export const enforceQuota = createMiddleware<ApiKeyContext>(async (c, next) => {
         hard_cap: check.limit !== null ? check.limit * check.capMultiplier : null,
         upgrade_url: 'https://www.spanlens.io/billing',
       },
-      429,
     )
   }
 

@@ -59,6 +59,18 @@ export const ERROR_CODES = {
   // this code so the SDK can switch on err.code === 'RATE_LIMIT'.
   RATE_LIMIT: { status: 429, message: 'Rate limit exceeded' },
 
+  // Security policy block. Proxy endpoints (proxy/openai|anthropic|azure|
+  // gemini) raise this when scanAll() detects a prompt-injection attempt
+  // in the request body AND the project has Spanlens security blocking
+  // enabled. Different from VALIDATION_FAILED (schema issue) and
+  // UNAUTHORIZED (auth issue) — the request is well-formed but the
+  // policy refuses to forward it upstream. 422 mirrors what most LLM
+  // proxies use for "well-formed but rejected" content.
+  INJECTION_BLOCKED: {
+    status: 422,
+    message: 'Request blocked by Spanlens security policy: prompt injection detected',
+  },
+
   // Upstream / infrastructure failures.
   DECRYPT_FAILED: {
     status: 503,

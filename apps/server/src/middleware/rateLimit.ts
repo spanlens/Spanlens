@@ -3,6 +3,7 @@ import { sha256Hex } from '../lib/crypto.js'
 import { checkRateLimit, PROXY_RATE_LIMITS, API_RATE_LIMIT } from '../lib/rate-limit.js'
 import type { ApiKeyContext } from './authApiKey.js'
 import type { JwtContext } from './authJwt.js'
+import { ApiError } from '../lib/errors.js'
 
 /**
  * Per-minute rate limit for proxy routes (plan-aware).
@@ -55,14 +56,14 @@ export const proxyRateLimit = createMiddleware<ApiKeyContext>(async (c, next) =>
   if (!allowed) {
     c.header('X-RateLimit-Remaining', '0')
     c.header('Retry-After', '60')
-    return c.json(
+    throw new ApiError(
+      'RATE_LIMIT',
+      `Rate limit exceeded: ${limit} requests/min on the ${plan} plan. Upgrade or retry after 60 seconds.`,
       {
-        error: `Rate limit exceeded: ${limit} requests/min on the ${plan} plan. Upgrade or retry after 60 seconds.`,
         limit,
         window: '60s',
         upgrade_url: 'https://www.spanlens.io/pricing',
       },
-      429,
     )
   }
 
@@ -107,13 +108,13 @@ export const apiRateLimit = createMiddleware<JwtContext>(async (c, next) => {
   if (!allowed) {
     c.header('X-RateLimit-Remaining', '0')
     c.header('Retry-After', '60')
-    return c.json(
+    throw new ApiError(
+      'RATE_LIMIT',
+      `API rate limit exceeded: ${API_RATE_LIMIT} requests/min. Retry after 60 seconds.`,
       {
-        error: `API rate limit exceeded: ${API_RATE_LIMIT} requests/min. Retry after 60 seconds.`,
         limit: API_RATE_LIMIT,
         window: '60s',
       },
-      429,
     )
   }
 

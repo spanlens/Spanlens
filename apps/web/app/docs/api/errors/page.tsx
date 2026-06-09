@@ -96,6 +96,12 @@ const ERROR_CATALOG_ROWS: CatalogRow[] = [
       'Per-key rate limit exceeded. The Retry-After header and X-RateLimit-* headers carry the remaining quota and reset time. Back off and retry.',
   },
   {
+    code: 'INJECTION_BLOCKED',
+    status: 422,
+    description:
+      'The proxy detected a prompt-injection attempt in the request body and the project has Spanlens security blocking enabled. The request is well-formed but the policy refused to forward it upstream. Inspect the prompt or disable security blocking on the project.',
+  },
+  {
     code: 'UPSTREAM_TIMEOUT',
     status: 504,
     description:
