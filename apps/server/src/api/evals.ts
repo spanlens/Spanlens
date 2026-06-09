@@ -79,7 +79,7 @@ evalsRouter.post('/evaluators', async (c) => {
       new RegExp(pattern, flags)
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
-      return c.json({ error: `invalid regex pattern: ${message}` }, 400)
+      throw new ApiError('VALIDATION_FAILED', `invalid regex pattern: ${message}`)
     }
     validatedConfig = { pattern, flags }
   } else {

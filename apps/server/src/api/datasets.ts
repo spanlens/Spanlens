@@ -265,7 +265,7 @@ datasetsRouter.post('/:id/items/bulk', async (c) => {
   }
 
   if (rows.length === 0) {
-    return c.json({ error: 'No valid items in upload', skipped }, 400)
+    throw new ApiError('VALIDATION_FAILED', 'No valid items in upload', { skipped })
   }
 
   const { error } = await supabaseAdmin.from('dataset_items').insert(rows)
