@@ -10,6 +10,7 @@ import {
   welchTest,
   type StatResult,
 } from '../lib/prompt-experiment-stats.js'
+import { ApiError } from '../lib/errors.js'
 
 const requireEdit = requireRole('admin', 'editor')
 
@@ -31,7 +32,7 @@ promptExperimentsRouter.use('*', authJwt)
 
 promptExperimentsRouter.get('/', async (c) => {
   const orgId = c.get('orgId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   const promptName = c.req.query('promptName')
   const status = c.req.query('status') // 'running' | 'concluded' | 'stopped'
@@ -49,7 +50,7 @@ promptExperimentsRouter.get('/', async (c) => {
   if (status) query = query.eq('status', status)
 
   const { data, error } = await query
-  if (error) return c.json({ error: 'Failed to fetch experiments' }, 500)
+  if (error) throw new ApiError('INTERNAL_ERROR', 'Failed to fetch experiments')
 
   return c.json({ success: true, data: data ?? [] })
 })
@@ -59,7 +60,7 @@ promptExperimentsRouter.get('/', async (c) => {
 promptExperimentsRouter.post('/', requireEdit, async (c) => {
   const orgId = c.get('orgId')
   const userId = c.get('userId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   let body: {
     promptName?: unknown
@@ -72,22 +73,22 @@ promptExperimentsRouter.post('/', requireEdit, async (c) => {
   try {
     body = (await c.req.json()) as typeof body
   } catch {
-    return c.json({ error: 'Invalid JSON body' }, 400)
+    throw new ApiError('INVALID_JSON_BODY', 'Invalid JSON body')
   }
 
   const promptName = typeof body.promptName === 'string' ? body.promptName.trim() : ''
   const versionAId = typeof body.versionAId === 'string' ? body.versionAId.trim() : ''
   const versionBId = typeof body.versionBId === 'string' ? body.versionBId.trim() : ''
 
-  if (!promptName) return c.json({ error: 'promptName is required' }, 400)
-  if (!versionAId) return c.json({ error: 'versionAId is required' }, 400)
-  if (!versionBId) return c.json({ error: 'versionBId is required' }, 400)
-  if (versionAId === versionBId) return c.json({ error: 'versionAId and versionBId must differ' }, 400)
+  if (!promptName) throw new ApiError('VALIDATION_FAILED', 'promptName is required')
+  if (!versionAId) throw new ApiError('VALIDATION_FAILED', 'versionAId is required')
+  if (!versionBId) throw new ApiError('VALIDATION_FAILED', 'versionBId is required')
+  if (versionAId === versionBId) throw new ApiError('BAD_REQUEST', 'versionAId and versionBId must differ')
 
   const trafficSplit =
     typeof body.trafficSplit === 'number' ? Math.round(body.trafficSplit) : 50
   if (trafficSplit < 1 || trafficSplit > 99)
-    return c.json({ error: 'trafficSplit must be between 1 and 99' }, 400)
+    throw new ApiError('VALIDATION_FAILED', 'trafficSplit must be between 1 and 99')
 
   const endsAt = typeof body.endsAt === 'string' ? body.endsAt : null
   const projectId = typeof body.projectId === 'string' ? body.projectId : null
@@ -100,7 +101,7 @@ promptExperimentsRouter.post('/', requireEdit, async (c) => {
     .in('id', [versionAId, versionBId])
 
   if (!versions || versions.length !== 2)
-    return c.json({ error: 'One or both prompt versions not found in this organization' }, 404)
+    throw new ApiError('NOT_FOUND', 'One or both prompt versions not found in this organization')
 
   for (const v of versions) {
     if (v.name !== promptName)
@@ -125,8 +126,8 @@ promptExperimentsRouter.post('/', requireEdit, async (c) => {
   if (error) {
     // Unique partial index violation → already running experiment
     if (error.code === '23505')
-      return c.json({ error: 'An experiment is already running for this prompt' }, 409)
-    return c.json({ error: 'Failed to create experiment' }, 500)
+      throw new ApiError('CONFLICT', 'An experiment is already running for this prompt')
+    throw new ApiError('INTERNAL_ERROR', 'Failed to create experiment')
   }
 
   // Invalidate the resolve cache: the next `name@latest` request must see
@@ -152,7 +153,7 @@ promptExperimentsRouter.post('/', requireEdit, async (c) => {
 
 promptExperimentsRouter.get('/:id', async (c) => {
   const orgId = c.get('orgId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
   const id = c.req.param('id')
 
   const { data: exp, error } = await supabaseAdmin
@@ -162,7 +163,7 @@ promptExperimentsRouter.get('/:id', async (c) => {
     .eq('id', id)
     .maybeSingle()
 
-  if (error || !exp) return c.json({ error: 'Experiment not found' }, 404)
+  if (error || !exp) throw new ApiError('NOT_FOUND', 'Experiment not found')
 
   // Fetch request metrics for both arms from ClickHouse.
   const sinceTs = (exp.started_at as string).replace('T', ' ').replace('Z', '')
@@ -275,7 +276,7 @@ promptExperimentsRouter.get('/:id', async (c) => {
 
 promptExperimentsRouter.patch('/:id', requireEdit, async (c) => {
   const orgId = c.get('orgId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
   const id = c.req.param('id')
 
   let body: {
@@ -286,14 +287,14 @@ promptExperimentsRouter.patch('/:id', requireEdit, async (c) => {
   try {
     body = (await c.req.json()) as typeof body
   } catch {
-    return c.json({ error: 'Invalid JSON body' }, 400)
+    throw new ApiError('INVALID_JSON_BODY', 'Invalid JSON body')
   }
 
   const updates: Record<string, unknown> = {}
 
   if (typeof body.status === 'string') {
     if (!['concluded', 'stopped'].includes(body.status))
-      return c.json({ error: 'status must be "concluded" or "stopped"' }, 400)
+      throw new ApiError('VALIDATION_FAILED', 'status must be "concluded" or "stopped"')
     updates.status = body.status
     if (body.status === 'concluded') {
       updates.concluded_at = new Date().toISOString()
@@ -307,7 +308,7 @@ promptExperimentsRouter.patch('/:id', requireEdit, async (c) => {
   }
 
   if (Object.keys(updates).length === 0)
-    return c.json({ error: 'No valid fields to update' }, 400)
+    throw new ApiError('BAD_REQUEST', 'No valid fields to update')
 
   const { data, error } = await supabaseAdmin
     .from('prompt_ab_experiments')
@@ -317,7 +318,7 @@ promptExperimentsRouter.patch('/:id', requireEdit, async (c) => {
     .select()
     .maybeSingle()
 
-  if (error || !data) return c.json({ error: 'Failed to update experiment' }, 500)
+  if (error || !data) throw new ApiError('INTERNAL_ERROR', 'Failed to update experiment')
 
   // Status change (concluded/stopped) flips traffic back to plain `latest`,
   // so the cached experiment metadata must be dropped.
@@ -354,7 +355,7 @@ promptExperimentsRouter.patch('/:id', requireEdit, async (c) => {
 
 promptExperimentsRouter.delete('/:id', requireRole('admin'), async (c) => {
   const orgId = c.get('orgId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
   const id = c.req.param('id')
 
   // Only allow deleting non-running experiments
@@ -365,9 +366,9 @@ promptExperimentsRouter.delete('/:id', requireRole('admin'), async (c) => {
     .eq('id', id)
     .maybeSingle()
 
-  if (!exp) return c.json({ error: 'Experiment not found' }, 404)
+  if (!exp) throw new ApiError('NOT_FOUND', 'Experiment not found')
   if (exp.status === 'running')
-    return c.json({ error: 'Stop or conclude the experiment before deleting' }, 409)
+    throw new ApiError('CONFLICT', 'Stop or conclude the experiment before deleting')
 
   const { error } = await supabaseAdmin
     .from('prompt_ab_experiments')
@@ -375,7 +376,7 @@ promptExperimentsRouter.delete('/:id', requireRole('admin'), async (c) => {
     .eq('organization_id', orgId)
     .eq('id', id)
 
-  if (error) return c.json({ error: 'Failed to delete experiment' }, 500)
+  if (error) throw new ApiError('INTERNAL_ERROR', 'Failed to delete experiment')
   // Belt-and-braces: PATCH already invalidated when status moved to
   // stopped/concluded, but a direct delete (e.g. backfill cleanup) still
   // needs the cache flushed in case anything raced.
