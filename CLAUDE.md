@@ -54,15 +54,15 @@ DB 쓰기(로깅) → supabaseAdmin (service_role, RLS bypass)
 DB 읽기(조회) → supabaseClient (anon key, RLS 적용)
 미들웨어 혼용 금지. dual-auth가 필요한 read API는 `authJwtOrApiKey` 한 곳만 사용.
 
-### 통합 키(unified key) 모델 — 2026-05-05부터
+### 통합 키(unified key) 모델 — 2026-05-05 + 2026-05-05 nested
 - `api_keys.provider_key_id` **컬럼 없음** (마이그레이션 20260505040000_unified_keys로 제거).
 - `sl_live_*` 키는 **프로젝트 단위**로 발급되고 provider-agnostic. provider는 request URL path
   (`/proxy/openai/...` vs `/proxy/anthropic/...` vs `/proxy/gemini/...`)에서 추론.
-- `provider_keys.project_id`는 **NOT NULL** — 모든 provider AI key는 명시적으로 한 프로젝트에 속함.
-  org-level fallback row 사라짐.
-- 같은 `(project_id, provider)`에 active=true 키 1개만 허용 (UNIQUE INDEX).
+- **`provider_keys.api_key_id` NOT NULL** (마이그레이션 `20260505080000_provider_keys_under_api_keys.sql`로 `project_id` 컬럼 DROP + `api_key_id` 컬럼 추가). Provider key는 이제 한 Spanlens API key에 nested된 형태로 소유됨 — `apps/server/src/proxy/openai.ts`의 `getDecryptedProviderKey(apiKeyId, 'openai')`가 이 컬럼으로 lookup. **CLAUDE.md 이전 버전이 "provider_keys.project_id NOT NULL"이라고 잘못 적혀있었음** (PR #269의 E2E spec 13-fix 시리즈 8번째 fix에서 발견).
+- 같은 `(api_key_id, provider)`에 active=true 키 1개만 허용 (UNIQUE INDEX).
 - 새 provider key 발급/조회: `apps/server/src/api/providerKeys.ts` (`/api/v1/provider-keys`).
 - 새 Spanlens key 발급/조회: `apps/server/src/api/apiKeys.ts` (`/api/v1/api-keys`) — provider 정보 더 이상 안 받음.
+- 새 코드 또는 마이그레이션 작성 시 CLAUDE.md 이 섹션만 보지 말고 `supabase/migrations/` 최신 file (특히 20260505080000) 까지 확인 (gotcha ㉜ 참고).
 
 ### Public scope 모델 — 2026-06-04부터 (마이그레이션 20260604040000)
 - `api_keys.scope` text NOT NULL DEFAULT `'full'` CHECK in (`'full'`, `'public'`).
