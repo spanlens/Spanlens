@@ -5,6 +5,7 @@ import { requestsScope, selectRequests, countRequests } from '../lib/requests-qu
 import { fromClickhouseTimestamp } from '../lib/clickhouse.js'
 import { getSecuritySummary } from '../lib/stats-queries.js'
 import { parseIntMin, parsePositiveInt } from '../lib/params.js'
+import { ApiError } from '../lib/errors.js'
 
 /**
  * Security endpoints:
@@ -23,7 +24,7 @@ securityRouter.use('*', authJwt)
 // GET /api/v1/security/flagged?limit=50&offset=0
 securityRouter.get('/flagged', async (c) => {
   const orgId = c.get('orgId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   const limit = Math.min(parsePositiveInt(c.req.query('limit'), 50), 200)
   const offset = parseIntMin(c.req.query('offset'), 0, 0)
@@ -72,14 +73,14 @@ securityRouter.get('/flagged', async (c) => {
     })
   } catch (err) {
     console.error('[security:flagged] ClickHouse query failed:', err instanceof Error ? err.message : err)
-    return c.json({ error: 'Failed to fetch flagged requests' }, 500)
+    throw new ApiError('INTERNAL_ERROR', 'Failed to fetch flagged requests')
   }
 })
 
 // GET /api/v1/security/summary?hours=24
 securityRouter.get('/summary', async (c) => {
   const orgId = c.get('orgId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   const hours = Math.min(parsePositiveInt(c.req.query('hours'), 24), 720)
 
@@ -98,7 +99,7 @@ securityRouter.get('/summary', async (c) => {
     })
   } catch (err) {
     console.error('[security:summary] ClickHouse query failed:', err instanceof Error ? err.message : err)
-    return c.json({ error: 'Failed to compute summary' }, 500)
+    throw new ApiError('INTERNAL_ERROR', 'Failed to compute summary')
   }
 })
 
@@ -106,7 +107,7 @@ securityRouter.get('/summary', async (c) => {
 // Returns org-level alert setting + list of all projects with their block setting.
 securityRouter.get('/settings', async (c) => {
   const orgId = c.get('orgId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   const [orgResult, projectsResult] = await Promise.all([
     supabaseAdmin
@@ -121,8 +122,8 @@ securityRouter.get('/settings', async (c) => {
       .order('name', { ascending: true }),
   ])
 
-  if (orgResult.error) return c.json({ error: 'Failed to fetch settings' }, 500)
-  if (projectsResult.error) return c.json({ error: 'Failed to fetch projects' }, 500)
+  if (orgResult.error) throw new ApiError('INTERNAL_ERROR', 'Failed to fetch settings')
+  if (projectsResult.error) throw new ApiError('INTERNAL_ERROR', 'Failed to fetch projects')
 
   return c.json({
     success: true,
@@ -141,17 +142,17 @@ securityRouter.get('/settings', async (c) => {
 // Body: { enabled: boolean }
 securityRouter.patch('/alert', async (c) => {
   const orgId = c.get('orgId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   let body: { enabled?: unknown }
   try {
     body = await c.req.json()
   } catch {
-    return c.json({ error: 'Invalid JSON body' }, 400)
+    throw new ApiError('INVALID_JSON_BODY', 'Invalid JSON body')
   }
 
   if (typeof body.enabled !== 'boolean') {
-    return c.json({ error: 'enabled must be a boolean' }, 400)
+    throw new ApiError('VALIDATION_FAILED', 'enabled must be a boolean')
   }
 
   const { error } = await supabaseAdmin
@@ -159,7 +160,7 @@ securityRouter.patch('/alert', async (c) => {
     .update({ security_alert_enabled: body.enabled })
     .eq('id', orgId)
 
-  if (error) return c.json({ error: 'Failed to update alert setting' }, 500)
+  if (error) throw new ApiError('INTERNAL_ERROR', 'Failed to update alert setting')
 
   return c.json({ success: true, data: { alertEnabled: body.enabled } })
 })
@@ -168,7 +169,7 @@ securityRouter.patch('/alert', async (c) => {
 // Body: { enabled: boolean }
 securityRouter.patch('/projects/:projectId/block', async (c) => {
   const orgId = c.get('orgId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   const projectId = c.req.param('projectId')
 
@@ -176,11 +177,11 @@ securityRouter.patch('/projects/:projectId/block', async (c) => {
   try {
     body = await c.req.json()
   } catch {
-    return c.json({ error: 'Invalid JSON body' }, 400)
+    throw new ApiError('INVALID_JSON_BODY', 'Invalid JSON body')
   }
 
   if (typeof body.enabled !== 'boolean') {
-    return c.json({ error: 'enabled must be a boolean' }, 400)
+    throw new ApiError('VALIDATION_FAILED', 'enabled must be a boolean')
   }
 
   // Verify the project belongs to this org before updating
@@ -192,7 +193,7 @@ securityRouter.patch('/projects/:projectId/block', async (c) => {
     .single()
 
   if (fetchError || !project) {
-    return c.json({ error: 'Project not found' }, 404)
+    throw new ApiError('NOT_FOUND', 'Project not found')
   }
 
   const { error } = await supabaseAdmin
@@ -201,7 +202,7 @@ securityRouter.patch('/projects/:projectId/block', async (c) => {
     .eq('id', projectId)
     .eq('organization_id', orgId) // defense-in-depth: re-scope to this org
 
-  if (error) return c.json({ error: 'Failed to update block setting' }, 500)
+  if (error) throw new ApiError('INTERNAL_ERROR', 'Failed to update block setting')
 
   return c.json({ success: true, data: { projectId, blockEnabled: body.enabled } })
 })
