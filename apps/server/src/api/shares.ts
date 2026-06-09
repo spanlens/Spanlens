@@ -3,6 +3,7 @@ import { authJwt, type JwtContext } from '../middleware/authJwt.js'
 import { supabaseAdmin } from '../lib/db.js'
 import { randomHex } from '../lib/crypto.js'
 import { requestsScope, selectRequests } from '../lib/requests-query.js'
+import { ApiError } from '../lib/errors.js'
 
 /**
  * /api/v1/shares — owner-side CRUD for public share tokens (PLG Loop ①).
@@ -77,23 +78,23 @@ async function targetExists(
 sharesRouter.post('/', async (c) => {
   const orgId = c.get('orgId')
   const userId = c.get('userId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   let body: CreateShareBody
   try {
     body = (await c.req.json()) as CreateShareBody
   } catch {
-    return c.json({ error: 'Invalid JSON body' }, 400)
+    throw new ApiError('INVALID_JSON_BODY', 'Invalid JSON body')
   }
 
   if (!isScope(body.scope)) {
-    return c.json({ error: "scope must be 'trace' or 'request'" }, 400)
+    throw new ApiError('VALIDATION_FAILED', 'scope must be \'trace\' or \'request\'')
   }
   const targetId = typeof body.targetId === 'string' ? body.targetId.trim() : ''
-  if (!targetId) return c.json({ error: 'targetId is required' }, 400)
+  if (!targetId) throw new ApiError('VALIDATION_FAILED', 'targetId is required')
 
   const ok = await targetExists(body.scope, targetId, orgId)
-  if (!ok) return c.json({ error: 'Target not found' }, 404)
+  if (!ok) throw new ApiError('NOT_FOUND', 'Target not found')
 
   const token = randomHex(16) // 32 hex chars → ~128 bits
   const expiresAt = ttlToExpiresAt(body.ttl)
@@ -119,7 +120,7 @@ sharesRouter.post('/', async (c) => {
 
   if (error || !data) {
     console.error('[shares:create] insert failed:', error?.message)
-    return c.json({ error: 'Failed to create share' }, 500)
+    throw new ApiError('INTERNAL_ERROR', 'Failed to create share')
   }
 
   return c.json({ success: true, data })
@@ -143,7 +144,7 @@ sharesRouter.post('/', async (c) => {
 sharesRouter.get('/', async (c) => {
   const orgId = c.get('orgId')
   const userId = c.get('userId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   const scope = c.req.query('scope') === 'org' ? 'org' : 'mine'
   const sortParam = c.req.query('sort')
@@ -172,7 +173,7 @@ sharesRouter.get('/', async (c) => {
   const { data, error } = await query
   if (error) {
     console.error('[shares:list] select failed:', error.message)
-    return c.json({ error: 'Failed to list shares' }, 500)
+    throw new ApiError('INTERNAL_ERROR', 'Failed to list shares')
   }
 
   const rows = data ?? []
@@ -207,7 +208,7 @@ sharesRouter.get('/', async (c) => {
 // DELETE /api/v1/shares/:token — revoke a share (soft delete).
 sharesRouter.delete('/:token', async (c) => {
   const orgId = c.get('orgId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
   const token = c.req.param('token')
 
   // Org-scoped: any member of the org can revoke any share in their org.
@@ -222,9 +223,9 @@ sharesRouter.delete('/:token', async (c) => {
 
   if (error) {
     console.error('[shares:revoke] update failed:', error.message)
-    return c.json({ error: 'Failed to revoke share' }, 500)
+    throw new ApiError('INTERNAL_ERROR', 'Failed to revoke share')
   }
-  if (!count) return c.json({ error: 'Share not found' }, 404)
+  if (!count) throw new ApiError('NOT_FOUND', 'Share not found')
 
   return c.json({ success: true })
 })

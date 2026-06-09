@@ -6,6 +6,7 @@ import { randomHex, sha256Hex } from '../lib/crypto.js'
 import { enqueueDeletion } from '../lib/pending-deletions.js'
 import { recordAuditEvent } from '../lib/audit-log.js'
 import { invalidateApiKeyCache } from '../middleware/authApiKey.js'
+import { ApiError } from '../lib/errors.js'
 
 /**
  * Spanlens keys come in two shapes:
@@ -52,7 +53,7 @@ apiKeysRouter.get('/', async (c) => {
   const projectId = c.req.query('projectId')
   const scopeFilter = c.req.query('scope')
   const orgId = c.get('orgId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   let query = supabaseAdmin
     .from('api_keys')
@@ -66,7 +67,7 @@ apiKeysRouter.get('/', async (c) => {
     query = query.eq('organization_id', orgId).eq('scope', 'public')
   } else if (projectId) {
     const belongs = await projectBelongsToOrg(projectId, orgId)
-    if (!belongs) return c.json({ error: 'Project not found' }, 404)
+    if (!belongs) throw new ApiError('NOT_FOUND', 'Project not found')
     query = query.eq('project_id', projectId)
   } else {
     // No filter: every key on every project in the org PLUS workspace-level
@@ -87,7 +88,7 @@ apiKeysRouter.get('/', async (c) => {
   }
 
   const { data, error } = await query
-  if (error) return c.json({ error: 'Failed to fetch API keys' }, 500)
+  if (error) throw new ApiError('INTERNAL_ERROR', 'Failed to fetch API keys')
 
   return c.json({ success: true, data: data ?? [] })
 })
@@ -98,17 +99,17 @@ apiKeysRouter.get('/', async (c) => {
 //   { name, scope: 'public' }          — public key, workspace-scoped
 apiKeysRouter.post('/issue', requireEdit, async (c) => {
   const orgId = c.get('orgId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   let body: { name?: unknown; projectId?: unknown; scope?: unknown }
   try {
     body = (await c.req.json()) as typeof body
   } catch {
-    return c.json({ error: 'Invalid JSON body' }, 400)
+    throw new ApiError('INVALID_JSON_BODY', 'Invalid JSON body')
   }
 
   if (typeof body.name !== 'string' || body.name.trim().length === 0) {
-    return c.json({ error: 'name is required' }, 400)
+    throw new ApiError('VALIDATION_FAILED', 'name is required')
   }
 
   const scope: 'full' | 'public' = body.scope === 'public' ? 'public' : 'full'
@@ -137,10 +138,10 @@ apiKeysRouter.post('/issue', requireEdit, async (c) => {
 
   if (scope === 'full') {
     if (typeof body.projectId !== 'string') {
-      return c.json({ error: 'projectId is required for full-access keys' }, 400)
+      throw new ApiError('VALIDATION_FAILED', 'projectId is required for full-access keys')
     }
     const belongs = await projectBelongsToOrg(body.projectId, orgId)
-    if (!belongs) return c.json({ error: 'Project not found' }, 404)
+    if (!belongs) throw new ApiError('NOT_FOUND', 'Project not found')
     insertRow = {
       project_id: body.projectId,
       name: body.name.trim(),
@@ -166,7 +167,7 @@ apiKeysRouter.post('/issue', requireEdit, async (c) => {
     )
     .single()
 
-  if (error || !data) return c.json({ error: 'Failed to create API key' }, 500)
+  if (error || !data) throw new ApiError('INTERNAL_ERROR', 'Failed to create API key')
 
   void recordAuditEvent(c, {
     action: 'api_key.create',
@@ -226,27 +227,27 @@ async function loadKeyOwnership(
 apiKeysRouter.patch('/:id', requireEdit, async (c) => {
   const keyId = c.req.param('id')
   const orgId = c.get('orgId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   let body: { is_active?: unknown }
   try {
     body = (await c.req.json()) as typeof body
   } catch {
-    return c.json({ error: 'Invalid JSON body' }, 400)
+    throw new ApiError('INVALID_JSON_BODY', 'Invalid JSON body')
   }
   if (typeof body.is_active !== 'boolean') {
-    return c.json({ error: 'is_active (boolean) is required' }, 400)
+    throw new ApiError('VALIDATION_FAILED', 'is_active (boolean) is required')
   }
 
   const ownership = await loadKeyOwnership(keyId)
-  if (!ownership) return c.json({ error: 'API key not found' }, 404)
-  if (ownership.orgId !== orgId) return c.json({ error: 'Access denied' }, 403)
+  if (!ownership) throw new ApiError('NOT_FOUND', 'API key not found')
+  if (ownership.orgId !== orgId) throw new ApiError('FORBIDDEN', 'Access denied')
 
   const { error } = await supabaseAdmin
     .from('api_keys')
     .update({ is_active: body.is_active })
     .eq('id', keyId)
-  if (error) return c.json({ error: 'Failed to update API key' }, 500)
+  if (error) throw new ApiError('INTERNAL_ERROR', 'Failed to update API key')
 
   void recordAuditEvent(c, {
     action: body.is_active ? 'api_key.enable' : 'api_key.disable',
@@ -269,11 +270,11 @@ apiKeysRouter.delete('/:id', requireEdit, async (c) => {
   const keyId = c.req.param('id')
   const orgId = c.get('orgId')
   const userId = c.get('userId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   const ownership = await loadKeyOwnership(keyId)
-  if (!ownership) return c.json({ error: 'API key not found' }, 404)
-  if (ownership.orgId !== orgId) return c.json({ error: 'Access denied' }, 403)
+  if (!ownership) throw new ApiError('NOT_FOUND', 'API key not found')
+  if (ownership.orgId !== orgId) throw new ApiError('FORBIDDEN', 'Access denied')
 
   // Snapshot the row before deactivation so the audit log and any restore
   // attempt have the full original state to work with.
@@ -282,7 +283,7 @@ apiKeysRouter.delete('/:id', requireEdit, async (c) => {
     .select('*')
     .eq('id', keyId)
     .maybeSingle()
-  if (!snapshot) return c.json({ error: 'API key not found' }, 404)
+  if (!snapshot) throw new ApiError('NOT_FOUND', 'API key not found')
 
   const enqueued = await enqueueDeletion({
     organizationId: orgId,
@@ -294,7 +295,7 @@ apiKeysRouter.delete('/:id', requireEdit, async (c) => {
 
   if (!enqueued.ok) {
     if (enqueued.code === 'ALREADY_PENDING') {
-      return c.json({ error: 'Already queued for deletion' }, 409)
+      throw new ApiError('CONFLICT', 'Already queued for deletion')
     }
     return c.json({ error: enqueued.error ?? 'Failed to queue deletion' }, 500)
   }
