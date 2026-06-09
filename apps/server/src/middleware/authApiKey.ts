@@ -164,12 +164,9 @@ function extractApiKey(c: Context): string | null {
 export const authApiKey = createMiddleware<ApiKeyContext>(async (c, next) => {
   const rawKey = extractApiKey(c)
   if (!rawKey) {
-    return c.json(
-      {
-        error:
-          'Missing API key. Pass sl_live_… via Authorization: Bearer (OpenAI SDK), x-api-key (Anthropic SDK), or x-goog-api-key (Google Generative AI SDK).',
-      },
-      401,
+    throw new ApiError(
+      'UNAUTHORIZED',
+      'Missing API key. Pass sl_live_… via Authorization: Bearer (OpenAI SDK), x-api-key (Anthropic SDK), or x-goog-api-key (Google Generative AI SDK).',
     )
   }
 

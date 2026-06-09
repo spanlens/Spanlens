@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { Hono } from 'hono'
+import { installOnError } from './helpers/install-on-error.js'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Tests for the two rate-limit middlewares (proxyRateLimit + apiRateLimit).
@@ -54,6 +55,8 @@ function makeProxyApp(orgId: string | null, plan: string | null = null) {
   })
   app.use('*', proxyRateLimit as unknown as Parameters<typeof app.use>[1])
   app.get('/probe', (c) => c.json({ ok: true }))
+  // Sprint 8 hotfix — proxyRateLimit throws ApiError now.
+  installOnError(app)
   return app
 }
 
@@ -83,9 +86,9 @@ describe('proxyRateLimit', () => {
     const res = await makeProxyApp('org_1', 'free').request('/probe')
     expect(res.status).toBe(429)
     const body = await res.json() as Record<string, unknown>
-    expect(body['limit']).toBe(60)
-    expect(body['window']).toBe('60s')
-    expect(body['upgrade_url']).toBe('https://www.spanlens.io/pricing')
+    expect((body['error'] as { details: { limit: number } }).details.limit).toBe(60)
+    expect((body['error'] as { details: Record<string, unknown> }).details['window']).toBe('60s')
+    expect((body['error'] as { details: Record<string, unknown> }).details['upgrade_url']).toBe('https://www.spanlens.io/pricing')
     expect(res.headers.get('Retry-After')).toBe('60')
     expect(res.headers.get('X-RateLimit-Remaining')).toBe('0')
   })
@@ -120,6 +123,8 @@ function makeApiApp() {
   const app = new Hono()
   app.use('*', apiRateLimit as unknown as Parameters<typeof app.use>[1])
   app.get('/probe', (c) => c.json({ ok: true }))
+  // Sprint 8 hotfix — apiRateLimit throws ApiError now.
+  installOnError(app)
   return app
 }
 
@@ -157,8 +162,8 @@ describe('apiRateLimit', () => {
     })
     expect(res.status).toBe(429)
     const body = await res.json() as Record<string, unknown>
-    expect(body['limit']).toBe(120)
-    expect(body['window']).toBe('60s')
+    expect((body['error'] as { details: { limit: number } }).details.limit).toBe(120)
+    expect((body['error'] as { details: Record<string, unknown> }).details['window']).toBe('60s')
     expect(res.headers.get('Retry-After')).toBe('60')
   })
 
