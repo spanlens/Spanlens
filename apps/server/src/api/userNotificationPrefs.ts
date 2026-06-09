@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { authJwt, type JwtContext } from '../middleware/authJwt.js'
 import { supabaseAdmin } from '../lib/db.js'
+import { ApiError } from '../lib/errors.js'
 
 /**
  * /api/v1/me/notification-prefs — per-USER email notification preferences.
@@ -43,7 +44,7 @@ userNotificationPrefsRouter.get('/', async (c) => {
     .eq('user_id', userId)
     .maybeSingle()
 
-  if (error) return c.json({ error: 'Failed to fetch notification preferences' }, 500)
+  if (error) throw new ApiError('INTERNAL_ERROR', 'Failed to fetch notification preferences')
   return c.json({ success: true, data: { ...DEFAULT_PREFS, ...(data ?? {}) } })
 })
 
@@ -54,7 +55,7 @@ userNotificationPrefsRouter.patch('/', async (c) => {
   try {
     body = (await c.req.json()) as typeof body
   } catch {
-    return c.json({ error: 'Invalid JSON body' }, 400)
+    throw new ApiError('INVALID_JSON_BODY', 'Invalid JSON body')
   }
 
   // Pick only known boolean keys — ignore anything else the client sends.
@@ -64,7 +65,7 @@ userNotificationPrefsRouter.patch('/', async (c) => {
     if (typeof value === 'boolean') updates[key] = value
   }
   if (Object.keys(updates).length === 0) {
-    return c.json({ error: 'No valid preference fields provided' }, 400)
+    throw new ApiError('BAD_REQUEST', 'No valid preference fields provided')
   }
 
   const { data, error } = await supabaseAdmin
@@ -73,6 +74,6 @@ userNotificationPrefsRouter.patch('/', async (c) => {
     .select('security_alert_emails, marketing_emails, product_update_emails')
     .single()
 
-  if (error || !data) return c.json({ error: 'Failed to save notification preferences' }, 500)
+  if (error || !data) throw new ApiError('INTERNAL_ERROR', 'Failed to save notification preferences')
   return c.json({ success: true, data: { ...DEFAULT_PREFS, ...data } })
 })

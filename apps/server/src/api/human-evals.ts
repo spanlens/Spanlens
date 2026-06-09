@@ -3,6 +3,7 @@ import { authJwt, type JwtContext } from '../middleware/authJwt.js'
 import { supabaseAdmin } from '../lib/db.js'
 import { requestsScope, selectRequests } from '../lib/requests-query.js'
 import { validateScore, type ScoreConfig } from '../lib/score-validation.js'
+import { ApiError } from '../lib/errors.js'
 
 /**
  * Resolve a `scoreConfigId` (explicit or fallback to workspace default)
@@ -53,7 +54,7 @@ humanEvalsRouter.use('*', authJwt)
 humanEvalsRouter.get('/annotation/queue', async (c) => {
   const orgId = c.get('orgId')
   const userId = c.get('userId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   const promptName = c.req.query('promptName')
   const promptVersionId = c.req.query('promptVersionId')
@@ -217,8 +218,8 @@ humanEvalsRouter.get('/annotation/queue', async (c) => {
 humanEvalsRouter.post('/human-evals', async (c) => {
   const orgId = c.get('orgId')
   const userId = c.get('userId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
-  if (!userId) return c.json({ error: 'User not authenticated' }, 401)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
+  if (!userId) throw new ApiError('UNAUTHORIZED', 'User not authenticated')
 
   let body: {
     requestId?: unknown
@@ -235,7 +236,7 @@ humanEvalsRouter.post('/human-evals', async (c) => {
   try {
     body = (await c.req.json()) as typeof body
   } catch {
-    return c.json({ error: 'Invalid JSON body' }, 400)
+    throw new ApiError('INVALID_JSON_BODY', 'Invalid JSON body')
   }
 
   const requestId = typeof body.requestId === 'string' ? body.requestId.trim() : ''
@@ -246,7 +247,7 @@ humanEvalsRouter.post('/human-evals', async (c) => {
   const rawScore = typeof body.rawScore === 'number' ? body.rawScore : null
   const comment = typeof body.comment === 'string' ? body.comment.trim() || null : null
 
-  if (!requestId) return c.json({ error: 'requestId is required' }, 400)
+  if (!requestId) throw new ApiError('VALIDATION_FAILED', 'requestId is required')
 
   // Resolve the score config first so we know which value field to
   // validate. Without a config we can't insert (the NOT NULL FK was
@@ -283,7 +284,7 @@ humanEvalsRouter.post('/human-evals', async (c) => {
   } catch (err) {
     return c.json({ error: err instanceof Error ? err.message : 'ClickHouse query failed' }, 500)
   }
-  if (!req) return c.json({ error: 'Request not found' }, 404)
+  if (!req) throw new ApiError('NOT_FOUND', 'Request not found')
 
   const { data, error } = await supabaseAdmin
     .from('human_evals')
@@ -318,7 +319,7 @@ humanEvalsRouter.post('/human-evals', async (c) => {
 // GET /api/v1/human-evals?promptVersionId=...
 humanEvalsRouter.get('/human-evals', async (c) => {
   const orgId = c.get('orgId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   const promptVersionId = c.req.query('promptVersionId')
   let query = supabaseAdmin
@@ -339,8 +340,8 @@ humanEvalsRouter.get('/human-evals', async (c) => {
 humanEvalsRouter.delete('/human-evals/:id', async (c) => {
   const orgId = c.get('orgId')
   const userId = c.get('userId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
-  if (!userId) return c.json({ error: 'User not authenticated' }, 401)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
+  if (!userId) throw new ApiError('UNAUTHORIZED', 'User not authenticated')
 
   const id = c.req.param('id')
   const { error } = await supabaseAdmin
@@ -359,7 +360,7 @@ humanEvalsRouter.delete('/human-evals/:id', async (c) => {
 // Client computes Pearson r. Server just provides paired data.
 humanEvalsRouter.get('/human-evals/correlation', async (c) => {
   const orgId = c.get('orgId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   const promptName = c.req.query('promptName')
   const promptVersionId = c.req.query('promptVersionId')
