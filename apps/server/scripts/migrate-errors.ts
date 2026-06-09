@@ -211,7 +211,12 @@ const EXPRESSION_PATTERN = /return\s+c\.json\(\s*\{\s*error:\s*([^\s,{}'"`][^,{}
 //   - balanced single-pair: `${expr}` where expr has no `}`
 // Nested objects inside `${}` still bail out — those stay multi-line
 // manual cleanup.
-const TEMPLATE_PATTERN = /return\s+c\.json\(\s*\{\s*error:\s*(`(?:[^`\\]|\\.|\$\{[^{}]*\})*`)\s*\}\s*,\s*(\d{3})\s*\)/g
+//
+// The body alternatives are mutually exclusive (no overlap between
+// `[^`\\$]`, `\\.`, `\${...}`, and `$(?!\{)`) so the regex engine
+// cannot exponentially backtrack on adversarial input like
+// `return c.json({error:\`${{}}${{}}...\`` (CodeQL js/redos).
+const TEMPLATE_PATTERN = /return\s+c\.json\(\s*\{\s*error:\s*(`(?:[^`\\$]|\\.|\$\{[^{}]*\}|\$(?!\{))*`)\s*\}\s*,\s*(\d{3})\s*\)/g
 
 // ─── per-file transform ────────────────────────────────────────
 interface FileResult {
