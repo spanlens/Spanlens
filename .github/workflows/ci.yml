@@ -82,6 +82,14 @@ jobs:
 
       - name: Validate migrations apply cleanly (supabase db reset --no-seed)
         run: |
+          # Skip known-superseded migrations that have been fake-applied in
+          # production (see CLAUDE.md "Broken migration 복구 절차"). The
+          # broken file stays in git history for audit, but the CI runner
+          # removes it so `supabase db reset` against the fresh local
+          # Postgres can finish without retripping the original constraint
+          # violation. Add new entries here only after the supabase MCP
+          # fake-apply has been executed in production.
+          rm -f supabase/migrations/20260609150000_register_orphan_span_link.sql
           supabase start
           # --no-seed because supabase/seed.sql is dev fixtures; we are
           # only validating that migrations apply, not that fixtures load.

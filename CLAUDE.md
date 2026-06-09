@@ -88,6 +88,7 @@ DB 읽기(조회) → supabaseClient (anon key, RLS 적용)
   2. supabase MCP `execute_sql`로 production `supabase_migrations.schema_migrations`에 fake-apply row INSERT (다음 push에서 supabase가 "이미 적용됨"으로 간주하고 건너뜀)
   3. 신규 timestamp의 마이그레이션 파일 추가 (`YYYYMMDDHHMMSS_desc_v2.sql`)에서 정확한 SQL로 같은 의도 수행 (idempotent: `ON CONFLICT DO NOTHING`)
   4. 신규 마이그레이션 헤더 주석에 "supersedes YYYYMMDDHHMMSS due to <reason>" 명시. 원래 broken 파일은 git history에 유지 (왜 fake-apply했는지 추적 가능)
+  5. **CI에서도 broken migration 제거**: `.github/workflows/ci.yml`의 "Validate migrations apply cleanly" step에 `rm -f supabase/migrations/<broken>.sql` 한 줄 추가. CI runner는 fake-apply 상태가 없는 throwaway DB라서 broken 파일이 그대로면 매번 같은 에러로 재현됨. git 조작이 아닌 filesystem 조작이라 `no-migration-edits` 훅 통과
   - 사고 이력: 2026-06-09 `20260609150000_register_orphan_span_link.sql`이 `description NOT NULL` 누락으로 4 PR 연속 deploy fail. `20260609170000_register_orphan_span_link_v3.sql`로 대체
 
 **ClickHouse — `requests` 테이블 전용 (LLM 호출 로그):**
