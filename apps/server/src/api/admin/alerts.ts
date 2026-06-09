@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { authJwt, type JwtContext } from '../../middleware/authJwt.js'
 import { requireSystemAdmin } from '../../middleware/requireSystemAdmin.js'
 import { supabaseAdmin } from '../../lib/db.js'
+import { ApiError } from '../../lib/errors.js'
 
 /**
  * Admin-only internal_alerts management.
@@ -36,7 +37,10 @@ adminAlertsRouter.get('/', async (c) => {
 
   const { data, error } = await query
   if (error) {
-    return c.json({ error: 'Failed to fetch alerts' }, 500)
+    // Sprint 7 R-15: standard error envelope. Carries the supabase error
+    // message in `details` so an operator triaging the alert can see why
+    // the fetch failed without grepping Vercel logs for the same time.
+    throw ApiError.from('INTERNAL_ERROR', { supabaseMessage: error.message })
   }
 
   return c.json({ success: true, data: data ?? [] })
@@ -57,8 +61,15 @@ adminAlertsRouter.post('/:id/resolve', async (c) => {
     .select('id, resolved_at')
     .maybeSingle()
 
-  if (error) return c.json({ error: `Resolve failed: ${error.message}` }, 500)
-  if (!data) return c.json({ error: 'Alert not found or already resolved' }, 404)
+  if (error) {
+    throw ApiError.from('INTERNAL_ERROR', { supabaseMessage: error.message })
+  }
+  if (!data) {
+    // 404 with a specific code so the dashboard can distinguish "wrong
+    // id" from "already resolved" if it ever wants to surface a friendlier
+    // toast for the idempotent case.
+    throw new ApiError('NOT_FOUND', 'Alert not found or already resolved')
+  }
 
   return c.json({ success: true, data })
 })
