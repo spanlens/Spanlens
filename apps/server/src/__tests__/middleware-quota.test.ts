@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest'
+import { installOnError } from './helpers/install-on-error.js'
 import { Hono } from 'hono'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -33,6 +34,10 @@ function makeApp(orgId: string | null) {
   // Cast satisfies ApiKeyContext shape requirement
   app.use('*', enforceQuota as unknown as Parameters<typeof app.use>[1])
   app.get('/probe', (c) => c.json({ ok: true }))
+  // Sprint 8 hotfix: enforceQuota now throws ApiError (was: return c.json).
+  // Without the onError serialiser the thrown error surfaces as a generic
+  // 500 and assertions like expect(res.status).toBe(429) fail.
+  installOnError(app)
   return app
 }
 
@@ -89,12 +94,12 @@ describe('enforceQuota — Free plan (hard block at limit)', () => {
     const res = await makeApp('org_1').request('/probe')
     expect(res.status).toBe(429)
     const body = await res.json() as Record<string, unknown>
-    expect(body['reason']).toBe('free_limit')
-    expect(body['plan']).toBe('free')
-    expect(body['used']).toBe(50_000)
-    expect(body['limit']).toBe(50_000)
-    expect(body['hard_cap']).toBe(50_000) // limit × capMultiplier(1)
-    expect(body['upgrade_url']).toBe('https://www.spanlens.io/billing')
+    expect((body['error'] as { details: { reason: string } }).details.reason).toBe('free_limit')
+    expect((body['error'] as { details: Record<string, unknown> }).details['plan']).toBe('free')
+    expect((body['error'] as { details: Record<string, unknown> }).details['used']).toBe(50_000)
+    expect((body['error'] as { details: { limit: number } }).details.limit).toBe(50_000)
+    expect((body['error'] as { details: Record<string, unknown> }).details['hard_cap']).toBe(50_000) // limit × capMultiplier(1)
+    expect((body['error'] as { details: Record<string, unknown> }).details['upgrade_url']).toBe('https://www.spanlens.io/billing')
     expect(res.headers.get('X-RateLimit-Remaining')).toBe('0')
   })
 })
@@ -111,8 +116,8 @@ describe('enforceQuota — Paid plan with overage disabled', () => {
     const res = await makeApp('org_1').request('/probe')
     expect(res.status).toBe(429)
     const body = await res.json() as Record<string, unknown>
-    expect(body['reason']).toBe('overage_disabled')
-    expect(body['plan']).toBe('pro')
+    expect((body['error'] as { details: { reason: string } }).details.reason).toBe('overage_disabled')
+    expect((body['error'] as { details: Record<string, unknown> }).details['plan']).toBe('pro')
   })
 })
 
@@ -143,8 +148,8 @@ describe('enforceQuota — Paid plan with overage allowed', () => {
     const res = await makeApp('org_1').request('/probe')
     expect(res.status).toBe(429)
     const body = await res.json() as Record<string, unknown>
-    expect(body['reason']).toBe('hard_cap')
-    expect(body['hard_cap']).toBe(500_000)
+    expect((body['error'] as { details: { reason: string } }).details.reason).toBe('hard_cap')
+    expect((body['error'] as { details: Record<string, unknown> }).details['hard_cap']).toBe(500_000)
   })
 })
 
