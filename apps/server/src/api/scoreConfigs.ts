@@ -6,6 +6,7 @@ import {
   parseCategories,
   validateScoreConfigShape,
 } from '../lib/score-validation.js'
+import { ApiError } from '../lib/errors.js'
 
 /**
  * Score configs CRUD. Drives the typed-score work in 4B.1: every
@@ -56,7 +57,7 @@ function normaliseNullableNumber(value: unknown): number | null {
 // GET /api/v1/score-configs — active configs for the org, newest first
 scoreConfigsRouter.get('/', async (c) => {
   const orgId = c.get('orgId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   const includeArchived = c.req.query('includeArchived') === '1'
 
@@ -69,14 +70,14 @@ scoreConfigsRouter.get('/', async (c) => {
   if (!includeArchived) query = query.is('archived_at', null)
 
   const { data, error } = await query
-  if (error) return c.json({ error: 'Failed to load score configs' }, 500)
+  if (error) throw new ApiError('INTERNAL_ERROR', 'Failed to load score configs')
   return c.json({ success: true, data: data ?? [] })
 })
 
 // GET /api/v1/score-configs/:id
 scoreConfigsRouter.get('/:id', async (c) => {
   const orgId = c.get('orgId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
   const id = c.req.param('id')
 
   const { data, error } = await supabaseAdmin
@@ -85,8 +86,8 @@ scoreConfigsRouter.get('/:id', async (c) => {
     .eq('id', id)
     .eq('organization_id', orgId)
     .maybeSingle()
-  if (error) return c.json({ error: 'Failed to load score config' }, 500)
-  if (!data) return c.json({ error: 'Score config not found' }, 404)
+  if (error) throw new ApiError('INTERNAL_ERROR', 'Failed to load score config')
+  if (!data) throw new ApiError('NOT_FOUND', 'Score config not found')
   return c.json({ success: true, data })
 })
 
@@ -94,18 +95,18 @@ scoreConfigsRouter.get('/:id', async (c) => {
 scoreConfigsRouter.post('/', async (c) => {
   const orgId = c.get('orgId')
   const userId = c.get('userId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   let body: ScoreConfigBody
   try {
     body = (await c.req.json()) as ScoreConfigBody
   } catch {
-    return c.json({ error: 'Invalid JSON body' }, 400)
+    throw new ApiError('INVALID_JSON_BODY', 'Invalid JSON body')
   }
 
   const name = normaliseString(body.name)
-  if (name.length === 0) return c.json({ error: 'name is required' }, 400)
-  if (name.length > 100) return c.json({ error: 'name must be 100 characters or fewer' }, 400)
+  if (name.length === 0) throw new ApiError('VALIDATION_FAILED', 'name is required')
+  if (name.length > 100) throw new ApiError('VALIDATION_FAILED', 'name must be 100 characters or fewer')
 
   const data_type = typeof body.data_type === 'string' ? body.data_type.toUpperCase() : ''
   if (!ALLOWED_TYPES.includes(data_type as (typeof ALLOWED_TYPES)[number])) {
@@ -178,9 +179,9 @@ scoreConfigsRouter.post('/', async (c) => {
 
   if (error) {
     if (error.code === '23505') {
-      return c.json({ error: 'A score config with that name already exists' }, 409)
+      throw new ApiError('CONFLICT', 'A score config with that name already exists')
     }
-    return c.json({ error: 'Failed to create score config' }, 500)
+    throw new ApiError('INTERNAL_ERROR', 'Failed to create score config')
   }
 
   void recordAuditEvent(c, {
@@ -196,14 +197,14 @@ scoreConfigsRouter.post('/', async (c) => {
 // PATCH /api/v1/score-configs/:id — update mutable fields
 scoreConfigsRouter.patch('/:id', async (c) => {
   const orgId = c.get('orgId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
   const id = c.req.param('id')
 
   let body: ScoreConfigBody
   try {
     body = (await c.req.json()) as ScoreConfigBody
   } catch {
-    return c.json({ error: 'Invalid JSON body' }, 400)
+    throw new ApiError('INVALID_JSON_BODY', 'Invalid JSON body')
   }
 
   // Load existing row so we can validate the merged shape.
@@ -213,15 +214,15 @@ scoreConfigsRouter.patch('/:id', async (c) => {
     .eq('id', id)
     .eq('organization_id', orgId)
     .maybeSingle()
-  if (loadError) return c.json({ error: 'Failed to load score config' }, 500)
-  if (!existing) return c.json({ error: 'Score config not found' }, 404)
+  if (loadError) throw new ApiError('INTERNAL_ERROR', 'Failed to load score config')
+  if (!existing) throw new ApiError('NOT_FOUND', 'Score config not found')
 
   // Data type is immutable — flipping NUMERIC → BOOLEAN mid-stream
   // would invalidate every existing value column. If the user really
   // wants a different shape they archive this one and create a new
   // config.
   if (typeof body.data_type === 'string' && body.data_type !== existing.data_type) {
-    return c.json({ error: 'data_type cannot be changed; archive and create a new config instead' }, 400)
+    throw new ApiError('BAD_REQUEST', 'data_type cannot be changed; archive and create a new config instead')
   }
 
   const updates: Record<string, unknown> = {}
@@ -229,8 +230,8 @@ scoreConfigsRouter.patch('/:id', async (c) => {
 
   if (typeof body.name === 'string') {
     const n = normaliseString(body.name)
-    if (n.length === 0) return c.json({ error: 'name must not be empty' }, 400)
-    if (n.length > 100) return c.json({ error: 'name must be 100 characters or fewer' }, 400)
+    if (n.length === 0) throw new ApiError('BAD_REQUEST', 'name must not be empty')
+    if (n.length > 100) throw new ApiError('VALIDATION_FAILED', 'name must be 100 characters or fewer')
     updates.name = n
     auditedFields.push('name')
   }
@@ -306,9 +307,9 @@ scoreConfigsRouter.patch('/:id', async (c) => {
     .single()
   if (error) {
     if (error.code === '23505') {
-      return c.json({ error: 'A score config with that name already exists' }, 409)
+      throw new ApiError('CONFLICT', 'A score config with that name already exists')
     }
-    return c.json({ error: 'Failed to update score config' }, 500)
+    throw new ApiError('INTERNAL_ERROR', 'Failed to update score config')
   }
 
   void recordAuditEvent(c, {
@@ -329,7 +330,7 @@ scoreConfigsRouter.patch('/:id', async (c) => {
 // cleanup is a separate concern handled by a future cron.
 scoreConfigsRouter.delete('/:id', async (c) => {
   const orgId = c.get('orgId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
   const id = c.req.param('id')
 
   const { data: existing, error: loadError } = await supabaseAdmin
@@ -338,8 +339,8 @@ scoreConfigsRouter.delete('/:id', async (c) => {
     .eq('id', id)
     .eq('organization_id', orgId)
     .maybeSingle()
-  if (loadError) return c.json({ error: 'Failed to load score config' }, 500)
-  if (!existing) return c.json({ error: 'Score config not found' }, 404)
+  if (loadError) throw new ApiError('INTERNAL_ERROR', 'Failed to load score config')
+  if (!existing) throw new ApiError('NOT_FOUND', 'Score config not found')
   if (existing.archived_at) return c.json({ success: true, data: existing })
 
   if (existing.is_default) {
@@ -356,7 +357,7 @@ scoreConfigsRouter.delete('/:id', async (c) => {
     .eq('organization_id', orgId)
     .select()
     .single()
-  if (error) return c.json({ error: 'Failed to archive score config' }, 500)
+  if (error) throw new ApiError('INTERNAL_ERROR', 'Failed to archive score config')
 
   void recordAuditEvent(c, {
     action: 'score_config.archive',
