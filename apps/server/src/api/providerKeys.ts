@@ -7,6 +7,7 @@ import { aes256Encrypt } from '../lib/crypto.js'
 import { enqueueDeletion } from '../lib/pending-deletions.js'
 import { recordAuditEvent } from '../lib/audit-log.js'
 import { resetProviderKeyNamesCache } from '../lib/requests-query.js'
+import { ApiError } from '../lib/errors.js'
 
 /**
  * Provider AI keys (OpenAI / Anthropic / Gemini). Under the nested-keys
@@ -86,7 +87,7 @@ async function assertApiKeyInOrg(apiKeyId: string, orgId: string): Promise<boole
 //   - last_scan_result: 'clean' | 'leaked' | 'error' | null
 providerKeysRouter.get('/', async (c) => {
   const orgId = c.get('orgId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   const apiKeyIdFilter = c.req.query('apiKeyId')
 
@@ -102,7 +103,7 @@ providerKeysRouter.get('/', async (c) => {
 
   const { data, error } = await query
 
-  if (error) return c.json({ error: 'Failed to fetch provider keys' }, 500)
+  if (error) throw new ApiError('INTERNAL_ERROR', 'Failed to fetch provider keys')
 
   const rows = data ?? []
   if (rows.length === 0) {
@@ -169,7 +170,7 @@ providerKeysRouter.get('/', async (c) => {
 // Spanlens key. Body: { api_key_id, provider, key, name }.
 providerKeysRouter.post('/', requireEdit, async (c) => {
   const orgId = c.get('orgId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   let body: {
     provider?: unknown
@@ -182,23 +183,23 @@ providerKeysRouter.post('/', requireEdit, async (c) => {
   try {
     body = (await c.req.json()) as typeof body
   } catch {
-    return c.json({ error: 'Invalid JSON body' }, 400)
+    throw new ApiError('INVALID_JSON_BODY', 'Invalid JSON body')
   }
 
   if (typeof body.provider !== 'string' || !VALID_PROVIDERS.has(body.provider)) {
-    return c.json({ error: 'provider must be one of: openai, anthropic, gemini, azure' }, 400)
+    throw new ApiError('VALIDATION_FAILED', 'provider must be one of: openai, anthropic, gemini, azure')
   }
   if (typeof body.key !== 'string' || body.key.trim().length === 0) {
-    return c.json({ error: 'key is required' }, 400)
+    throw new ApiError('VALIDATION_FAILED', 'key is required')
   }
   if (typeof body.name !== 'string' || body.name.trim().length === 0) {
-    return c.json({ error: 'name is required' }, 400)
+    throw new ApiError('VALIDATION_FAILED', 'name is required')
   }
   if (typeof body.api_key_id !== 'string' || body.api_key_id.trim().length === 0) {
-    return c.json({ error: 'api_key_id is required' }, 400)
+    throw new ApiError('VALIDATION_FAILED', 'api_key_id is required')
   }
   if (!(await assertApiKeyInOrg(body.api_key_id, orgId))) {
-    return c.json({ error: 'api_key_id does not belong to this organization' }, 403)
+    throw new ApiError('FORBIDDEN', 'api_key_id does not belong to this organization')
   }
 
   // Azure requires a resource_url in provider_metadata. Validate + normalize
@@ -246,7 +247,7 @@ providerKeysRouter.post('/', requireEdit, async (c) => {
         409,
       )
     }
-    return c.json({ error: 'Failed to store provider key' }, 500)
+    throw new ApiError('INTERNAL_ERROR', 'Failed to store provider key')
   }
 
   // Invalidate the cached org → key-name map so the new key shows up
@@ -282,7 +283,7 @@ providerKeysRouter.delete('/:id', requireEdit, async (c) => {
   const keyId = c.req.param('id')
   const orgId = c.get('orgId')
   const userId = c.get('userId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   const { data: snapshot } = await supabaseAdmin
     .from('provider_keys')
@@ -290,7 +291,7 @@ providerKeysRouter.delete('/:id', requireEdit, async (c) => {
     .eq('id', keyId)
     .eq('organization_id', orgId)
     .maybeSingle()
-  if (!snapshot) return c.json({ error: 'Provider key not found' }, 404)
+  if (!snapshot) throw new ApiError('NOT_FOUND', 'Provider key not found')
 
   const enqueued = await enqueueDeletion({
     organizationId: orgId,
@@ -302,7 +303,7 @@ providerKeysRouter.delete('/:id', requireEdit, async (c) => {
 
   if (!enqueued.ok) {
     if (enqueued.code === 'ALREADY_PENDING') {
-      return c.json({ error: 'Already queued for deletion' }, 409)
+      throw new ApiError('CONFLICT', 'Already queued for deletion')
     }
     return c.json({ error: enqueued.error ?? 'Failed to queue deletion' }, 500)
   }
@@ -332,13 +333,13 @@ providerKeysRouter.delete('/:id', requireEdit, async (c) => {
 providerKeysRouter.patch('/:id', requireEdit, async (c) => {
   const keyId = c.req.param('id')
   const orgId = c.get('orgId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   let body: { key?: unknown; name?: unknown }
   try {
     body = (await c.req.json()) as { key?: unknown; name?: unknown }
   } catch {
-    return c.json({ error: 'Invalid JSON body' }, 400)
+    throw new ApiError('INVALID_JSON_BODY', 'Invalid JSON body')
   }
 
   const updates: Record<string, unknown> = {}
@@ -349,7 +350,7 @@ providerKeysRouter.patch('/:id', requireEdit, async (c) => {
     updates['name'] = body.name.trim()
   }
   if (Object.keys(updates).length === 0) {
-    return c.json({ error: 'No valid fields to update' }, 400)
+    throw new ApiError('BAD_REQUEST', 'No valid fields to update')
   }
 
   const { data, error } = await supabaseAdmin
@@ -360,7 +361,7 @@ providerKeysRouter.patch('/:id', requireEdit, async (c) => {
     .select(SELECT_COLUMNS)
     .single()
 
-  if (error || !data) return c.json({ error: 'Provider key not found or access denied' }, 404)
+  if (error || !data) throw new ApiError('NOT_FOUND', 'Provider key not found or access denied')
 
   resetProviderKeyNamesCache()
 

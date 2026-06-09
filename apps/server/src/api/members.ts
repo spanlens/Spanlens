@@ -3,6 +3,7 @@ import { authJwt, type JwtContext, type OrgRole } from '../middleware/authJwt.js
 import { requireRole } from '../middleware/requireRole.js'
 import { supabaseAdmin } from '../lib/db.js'
 import { recordAuditEvent } from '../lib/audit-log.js'
+import { ApiError } from '../lib/errors.js'
 
 /**
  * /api/v1/organizations/:orgId/members — team roster + role management.
@@ -53,8 +54,8 @@ async function memberRole(orgId: string, userId: string): Promise<OrgRole | null
 // All members (incl. viewers) can see the team roster.
 membersRouter.get('/', async (c) => {
   const orgId = c.get('orgId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
-  if (orgMismatch(c)) return c.json({ error: 'Forbidden' }, 403)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
+  if (orgMismatch(c)) throw new ApiError('FORBIDDEN', 'Forbidden')
 
   // Join to auth.users for email. supabase-js can't join auth.users in a
   // single .select() because it's cross-schema, so we fetch members then
@@ -65,7 +66,7 @@ membersRouter.get('/', async (c) => {
     .eq('organization_id', orgId)
     .order('created_at', { ascending: true })
 
-  if (error) return c.json({ error: 'Failed to fetch members' }, 500)
+  if (error) throw new ApiError('INTERNAL_ERROR', 'Failed to fetch members')
 
   const userIds = (members ?? []).map((m) => m.user_id)
   const emails = new Map<string, string>()
@@ -93,8 +94,8 @@ membersRouter.get('/', async (c) => {
 // Change a member's role. Admin only. Blocks demoting the last admin.
 membersRouter.patch('/:userId', requireAdmin, async (c) => {
   const orgId = c.get('orgId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
-  if (orgMismatch(c)) return c.json({ error: 'Forbidden' }, 403)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
+  if (orgMismatch(c)) throw new ApiError('FORBIDDEN', 'Forbidden')
 
   const userId = c.req.param('userId')
 
@@ -102,22 +103,22 @@ membersRouter.patch('/:userId', requireAdmin, async (c) => {
   try {
     body = (await c.req.json()) as typeof body
   } catch {
-    return c.json({ error: 'Invalid JSON body' }, 400)
+    throw new ApiError('INVALID_JSON_BODY', 'Invalid JSON body')
   }
 
   if (typeof body.role !== 'string' || !VALID_ROLES.includes(body.role as OrgRole)) {
-    return c.json({ error: 'role must be admin | editor | viewer' }, 400)
+    throw new ApiError('VALIDATION_FAILED', 'role must be admin | editor | viewer')
   }
   const newRole = body.role as OrgRole
 
   const current = await memberRole(orgId, userId)
-  if (!current) return c.json({ error: 'Member not found' }, 404)
+  if (!current) throw new ApiError('NOT_FOUND', 'Member not found')
   if (current === newRole) return c.json({ success: true, data: { role: current } })
 
   // Last-admin protection: demoting the last admin locks the org out.
   if (current === 'admin' && newRole !== 'admin') {
     if ((await adminCount(orgId)) <= 1) {
-      return c.json({ error: 'Cannot demote the last admin' }, 400)
+      throw new ApiError('BAD_REQUEST', 'Cannot demote the last admin')
     }
   }
 
@@ -127,7 +128,7 @@ membersRouter.patch('/:userId', requireAdmin, async (c) => {
     .eq('organization_id', orgId)
     .eq('user_id', userId)
 
-  if (error) return c.json({ error: 'Failed to update role' }, 500)
+  if (error) throw new ApiError('INTERNAL_ERROR', 'Failed to update role')
 
   void recordAuditEvent(c, {
     action: 'member.role_change',
@@ -143,15 +144,15 @@ membersRouter.patch('/:userId', requireAdmin, async (c) => {
 // Remove a member. Admin only. Blocks removing the last admin.
 membersRouter.delete('/:userId', requireAdmin, async (c) => {
   const orgId = c.get('orgId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
-  if (orgMismatch(c)) return c.json({ error: 'Forbidden' }, 403)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
+  if (orgMismatch(c)) throw new ApiError('FORBIDDEN', 'Forbidden')
 
   const userId = c.req.param('userId')
   const current = await memberRole(orgId, userId)
-  if (!current) return c.json({ error: 'Member not found' }, 404)
+  if (!current) throw new ApiError('NOT_FOUND', 'Member not found')
 
   if (current === 'admin' && (await adminCount(orgId)) <= 1) {
-    return c.json({ error: 'Cannot remove the last admin' }, 400)
+    throw new ApiError('BAD_REQUEST', 'Cannot remove the last admin')
   }
 
   const { error } = await supabaseAdmin
@@ -160,7 +161,7 @@ membersRouter.delete('/:userId', requireAdmin, async (c) => {
     .eq('organization_id', orgId)
     .eq('user_id', userId)
 
-  if (error) return c.json({ error: 'Failed to remove member' }, 500)
+  if (error) throw new ApiError('INTERNAL_ERROR', 'Failed to remove member')
 
   void recordAuditEvent(c, {
     action: 'member.remove',

@@ -9,6 +9,7 @@ import {
   recordAuditEvent,
   recordAuditLog,
 } from '../lib/audit-log.js'
+import { ApiError } from '../lib/errors.js'
 
 /**
  * Invitations — email-based org member onboarding.
@@ -55,21 +56,21 @@ const hashToken = sha256Hex
 orgInvitationsRouter.post('/', requireRole('admin'), async (c) => {
   const orgId = c.get('orgId')
   const userId = c.get('userId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
-  if (orgMismatch(c)) return c.json({ error: 'Forbidden' }, 403)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
+  if (orgMismatch(c)) throw new ApiError('FORBIDDEN', 'Forbidden')
 
   let body: { email?: unknown; role?: unknown }
   try {
     body = (await c.req.json()) as typeof body
   } catch {
-    return c.json({ error: 'Invalid JSON body' }, 400)
+    throw new ApiError('INVALID_JSON_BODY', 'Invalid JSON body')
   }
 
   if (typeof body.email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(body.email)) {
-    return c.json({ error: 'Valid email is required' }, 400)
+    throw new ApiError('VALIDATION_FAILED', 'Valid email is required')
   }
   if (typeof body.role !== 'string' || !VALID_ROLES.includes(body.role as OrgRole)) {
-    return c.json({ error: 'role must be admin | editor | viewer' }, 400)
+    throw new ApiError('VALIDATION_FAILED', 'role must be admin | editor | viewer')
   }
 
   const email = body.email.toLowerCase().trim()
@@ -87,7 +88,7 @@ orgInvitationsRouter.post('/', requireRole('admin'), async (c) => {
       .eq('user_id', matched.id)
       .maybeSingle()
     if (alreadyMember) {
-      return c.json({ error: 'This user is already a member of the organization' }, 409)
+      throw new ApiError('CONFLICT', 'This user is already a member of the organization')
     }
   }
 
@@ -101,7 +102,7 @@ orgInvitationsRouter.post('/', requireRole('admin'), async (c) => {
     .gt('expires_at', new Date().toISOString())
     .maybeSingle()
   if (pending) {
-    return c.json({ error: 'A pending invitation for this email already exists' }, 409)
+    throw new ApiError('CONFLICT', 'A pending invitation for this email already exists')
   }
 
   const token = randomHex(32)
@@ -122,7 +123,7 @@ orgInvitationsRouter.post('/', requireRole('admin'), async (c) => {
     .single()
 
   if (error || !inserted) {
-    return c.json({ error: 'Failed to create invitation' }, 500)
+    throw new ApiError('INTERNAL_ERROR', 'Failed to create invitation')
   }
 
   // Fetch org name for the email body. Inviter email comes straight from the
@@ -165,8 +166,8 @@ orgInvitationsRouter.post('/', requireRole('admin'), async (c) => {
 // Any member can see pending invites (list in Settings > Members).
 orgInvitationsRouter.get('/', async (c) => {
   const orgId = c.get('orgId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
-  if (orgMismatch(c)) return c.json({ error: 'Forbidden' }, 403)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
+  if (orgMismatch(c)) throw new ApiError('FORBIDDEN', 'Forbidden')
 
   const { data, error } = await supabaseAdmin
     .from('org_invitations')
@@ -175,7 +176,7 @@ orgInvitationsRouter.get('/', async (c) => {
     .is('accepted_at', null)
     .order('created_at', { ascending: false })
 
-  if (error) return c.json({ error: 'Failed to fetch invitations' }, 500)
+  if (error) throw new ApiError('INTERNAL_ERROR', 'Failed to fetch invitations')
   return c.json({ success: true, data: data ?? [] })
 })
 
@@ -189,7 +190,7 @@ export const invitationsRouter = new Hono<JwtContext>()
 // unregistered users can see what they're about to sign up for.
 invitationsRouter.get('/accept', async (c) => {
   const token = c.req.query('token')
-  if (!token) return c.json({ error: 'Missing token' }, 400)
+  if (!token) throw new ApiError('BAD_REQUEST', 'Missing token')
 
   const { data: inv } = await supabaseAdmin
     .from('org_invitations')
@@ -197,10 +198,10 @@ invitationsRouter.get('/accept', async (c) => {
     .eq('token_hash', await hashToken(token))
     .maybeSingle()
 
-  if (!inv) return c.json({ error: 'Invalid invitation' }, 404)
-  if (inv.accepted_at) return c.json({ error: 'Invitation already accepted' }, 400)
+  if (!inv) throw new ApiError('NOT_FOUND', 'Invalid invitation')
+  if (inv.accepted_at) throw new ApiError('BAD_REQUEST', 'Invitation already accepted')
   if (new Date(inv.expires_at) < new Date()) {
-    return c.json({ error: 'Invitation expired' }, 400)
+    throw new ApiError('BAD_REQUEST', 'Invitation expired')
   }
 
   const { data: org } = await supabaseAdmin
@@ -227,10 +228,10 @@ invitationsRouter.post('/accept', authJwt, async (c) => {
   try {
     body = (await c.req.json()) as typeof body
   } catch {
-    return c.json({ error: 'Invalid JSON body' }, 400)
+    throw new ApiError('INVALID_JSON_BODY', 'Invalid JSON body')
   }
   if (typeof body.token !== 'string' || body.token.length === 0) {
-    return c.json({ error: 'Token is required' }, 400)
+    throw new ApiError('VALIDATION_FAILED', 'Token is required')
   }
 
   const { data: inv } = await supabaseAdmin
@@ -239,10 +240,10 @@ invitationsRouter.post('/accept', authJwt, async (c) => {
     .eq('token_hash', await hashToken(body.token))
     .maybeSingle()
 
-  if (!inv) return c.json({ error: 'Invalid invitation' }, 404)
-  if (inv.accepted_at) return c.json({ error: 'Invitation already accepted' }, 400)
+  if (!inv) throw new ApiError('NOT_FOUND', 'Invalid invitation')
+  if (inv.accepted_at) throw new ApiError('BAD_REQUEST', 'Invitation already accepted')
   if (new Date(inv.expires_at) < new Date()) {
-    return c.json({ error: 'Invitation expired' }, 400)
+    throw new ApiError('BAD_REQUEST', 'Invitation expired')
   }
 
   // Email check: invitation is bound to the invitee's email. Anyone else
@@ -251,7 +252,7 @@ invitationsRouter.post('/accept', authJwt, async (c) => {
   // from the JWT context (authJwt set it) — saves a getUserById roundtrip.
   const currentEmail = c.get('email')
   if (!currentEmail || currentEmail !== inv.email.toLowerCase()) {
-    return c.json({ error: 'This invitation was sent to a different email' }, 400)
+    throw new ApiError('BAD_REQUEST', 'This invitation was sent to a different email')
   }
 
   // Idempotent: if user is already in the org (another channel?), just mark
@@ -270,7 +271,7 @@ invitationsRouter.post('/accept', authJwt, async (c) => {
       role: inv.role as OrgRole,
       invited_by: inv.id ? null : null, // invited_by points at a user, not invite — we don't have inviter id here
     })
-    if (insertErr) return c.json({ error: 'Failed to add member' }, 500)
+    if (insertErr) throw new ApiError('INTERNAL_ERROR', 'Failed to add member')
   }
 
   const { error: markErr } = await supabaseAdmin
@@ -327,7 +328,7 @@ invitationsRouter.post('/accept', authJwt, async (c) => {
 // DELETE /api/v1/invitations/:id — admin cancel (auth required)
 invitationsRouter.delete('/:id', authJwt, requireRole('admin'), async (c) => {
   const orgId = c.get('orgId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   const id = c.req.param('id')
 
@@ -340,8 +341,8 @@ invitationsRouter.delete('/:id', authJwt, requireRole('admin'), async (c) => {
     .eq('organization_id', orgId)
     .is('accepted_at', null)
 
-  if (error) return c.json({ error: 'Failed to cancel invitation' }, 500)
-  if (count === 0) return c.json({ error: 'Invitation not found' }, 404)
+  if (error) throw new ApiError('INTERNAL_ERROR', 'Failed to cancel invitation')
+  if (count === 0) throw new ApiError('NOT_FOUND', 'Invitation not found')
 
   void recordAuditEvent(c, {
     action: 'member.invite_cancel',
@@ -387,7 +388,7 @@ meInvitationsRouter.get('/', async (c) => {
     .gt('expires_at', new Date().toISOString())
     .order('created_at', { ascending: false })
 
-  if (error) return c.json({ error: 'Failed to fetch pending invitations' }, 500)
+  if (error) throw new ApiError('INTERNAL_ERROR', 'Failed to fetch pending invitations')
 
   // Shape the join output to a flat list — same pattern as
   // GET /organizations.
@@ -410,7 +411,7 @@ meInvitationsRouter.get('/', async (c) => {
 meInvitationsRouter.post('/:id/accept', async (c) => {
   const userId = c.get('userId')
   const email = c.get('email')
-  if (!email) return c.json({ error: 'User has no email' }, 400)
+  if (!email) throw new ApiError('BAD_REQUEST', 'User has no email')
 
   const { data: inv } = await supabaseAdmin
     .from('org_invitations')
@@ -418,13 +419,13 @@ meInvitationsRouter.post('/:id/accept', async (c) => {
     .eq('id', c.req.param('id'))
     .maybeSingle()
 
-  if (!inv) return c.json({ error: 'Invalid invitation' }, 404)
-  if (inv.accepted_at) return c.json({ error: 'Invitation already accepted' }, 400)
+  if (!inv) throw new ApiError('NOT_FOUND', 'Invalid invitation')
+  if (inv.accepted_at) throw new ApiError('BAD_REQUEST', 'Invitation already accepted')
   if (new Date(inv.expires_at) < new Date()) {
-    return c.json({ error: 'Invitation expired' }, 400)
+    throw new ApiError('BAD_REQUEST', 'Invitation expired')
   }
   if (inv.email.toLowerCase() !== email) {
-    return c.json({ error: 'This invitation was sent to a different email' }, 400)
+    throw new ApiError('BAD_REQUEST', 'This invitation was sent to a different email')
   }
 
   // Idempotent member INSERT — same shape as the token-based path.
@@ -441,7 +442,7 @@ meInvitationsRouter.post('/:id/accept', async (c) => {
       user_id: userId,
       role: inv.role as OrgRole,
     })
-    if (insertErr) return c.json({ error: 'Failed to add member' }, 500)
+    if (insertErr) throw new ApiError('INTERNAL_ERROR', 'Failed to add member')
   }
 
   await supabaseAdmin
@@ -475,7 +476,7 @@ meInvitationsRouter.post('/:id/accept', async (c) => {
 // I decline, I never see it again unless explicitly re-invited".
 meInvitationsRouter.delete('/:id', async (c) => {
   const email = c.get('email')
-  if (!email) return c.json({ error: 'User has no email' }, 400)
+  if (!email) throw new ApiError('BAD_REQUEST', 'User has no email')
 
   const { error, count } = await supabaseAdmin
     .from('org_invitations')
@@ -484,8 +485,8 @@ meInvitationsRouter.delete('/:id', async (c) => {
     .ilike('email', email)
     .is('accepted_at', null)
 
-  if (error) return c.json({ error: 'Failed to decline invitation' }, 500)
-  if (count === 0) return c.json({ error: 'Invitation not found' }, 404)
+  if (error) throw new ApiError('INTERNAL_ERROR', 'Failed to decline invitation')
+  if (count === 0) throw new ApiError('NOT_FOUND', 'Invitation not found')
   return c.json({ success: true })
 })
 
@@ -493,16 +494,16 @@ meInvitationsRouter.delete('/:id', async (c) => {
 // /invite page. Mirrors the existing accept token flow.
 invitationsRouter.post('/decline', authJwt, async (c) => {
   const email = c.get('email')
-  if (!email) return c.json({ error: 'User has no email' }, 400)
+  if (!email) throw new ApiError('BAD_REQUEST', 'User has no email')
 
   let body: { token?: unknown }
   try {
     body = (await c.req.json()) as typeof body
   } catch {
-    return c.json({ error: 'Invalid JSON body' }, 400)
+    throw new ApiError('INVALID_JSON_BODY', 'Invalid JSON body')
   }
   if (typeof body.token !== 'string' || body.token.length === 0) {
-    return c.json({ error: 'Token is required' }, 400)
+    throw new ApiError('VALIDATION_FAILED', 'Token is required')
   }
 
   const { error, count } = await supabaseAdmin
@@ -512,7 +513,7 @@ invitationsRouter.post('/decline', authJwt, async (c) => {
     .ilike('email', email)
     .is('accepted_at', null)
 
-  if (error) return c.json({ error: 'Failed to decline invitation' }, 500)
-  if (count === 0) return c.json({ error: 'Invitation not found' }, 404)
+  if (error) throw new ApiError('INTERNAL_ERROR', 'Failed to decline invitation')
+  if (count === 0) throw new ApiError('NOT_FOUND', 'Invitation not found')
   return c.json({ success: true })
 })
