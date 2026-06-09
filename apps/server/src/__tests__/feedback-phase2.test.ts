@@ -109,7 +109,11 @@ vi.mock('../lib/wait-until.js', () => ({
   fireAndForget: vi.fn(),
 }))
 
-// authJwt: every request comes through as user-1 (admin@spanlens.io).
+// authJwt: write endpoints (POST submit, vote, un-vote, admin PATCH) come
+// through as admin-user (matches the supabaseClient.auth.getUser mock above).
+// The public GET handler now resolves its userId from the Bearer token via
+// supabaseClient.auth.getUser, so tests that need has_voted=true must send
+// `Authorization: Bearer <anything>` and rely on the same getUser mock.
 vi.mock('../middleware/authJwt.js', () => ({
   authJwt: async (
     c: {
@@ -118,7 +122,7 @@ vi.mock('../middleware/authJwt.js', () => ({
     },
     next: () => Promise<unknown>,
   ) => {
-    c.set('userId', 'user-1')
+    c.set('userId', 'admin-user')
     c.set('orgId', 'org-1')
     c.set('email', 'admin@spanlens.io')
     return next()
@@ -186,7 +190,14 @@ describe('GET /feedback — public roadmap', () => {
       error: null,
     }
 
-    const res = await makePublicApp().request('/feedback')
+    // Authorization header is required for has_voted resolution — the public
+    // GET handler is anonymous-safe but only populates has_voted when a valid
+    // Bearer token surfaces a userId via supabaseClient.auth.getUser (mocked
+    // above to return admin-user). Without the header has_voted would be
+    // false for every row.
+    const res = await makePublicApp().request('/feedback', {
+      headers: { Authorization: 'Bearer fake' },
+    })
     expect(res.status).toBe(200)
     const body = (await res.json()) as {
       success: boolean
@@ -198,6 +209,36 @@ describe('GET /feedback — public roadmap', () => {
     expect(body.data[0]?.vote_count).toBe(12)
     expect(body.data[0]?.has_voted).toBe(true)
     expect(body.data[1]?.has_voted).toBe(false)
+  })
+
+  test('anonymous caller (no Authorization) → list returns but has_voted=false', async () => {
+    dbResponses['select:feedback'] = {
+      data: [
+        {
+          id: 'f-1',
+          message: 'Anonymous-visible item',
+          category: 'feature',
+          status: 'planned',
+          response_message: null,
+          changelog_url: null,
+          responded_at: null,
+          created_at: '2026-06-09T00:00:00Z',
+          feedback_votes: [{ count: 3 }],
+        },
+      ],
+      error: null,
+    }
+    // No `select:feedback_votes` configured — anonymous path must skip that
+    // query entirely. Test ensures we don't 500 by trying to dereference an
+    // absent vote-set.
+
+    const res = await makePublicApp().request('/feedback')
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as {
+      data: Array<{ id: string; vote_count: number; has_voted: boolean }>
+    }
+    expect(body.data[0]?.vote_count).toBe(3)
+    expect(body.data[0]?.has_voted).toBe(false)
   })
 
   test('rejects invalid status filter with VALIDATION_FAILED envelope', async () => {
