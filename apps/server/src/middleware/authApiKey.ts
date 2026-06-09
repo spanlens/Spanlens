@@ -4,6 +4,7 @@ import { supabaseAdmin } from '../lib/db.js'
 import { sha256Hex } from '../lib/crypto.js'
 import { maybeStampLastUsed } from '../lib/api-key-last-used.js'
 import { fireAndForget } from '../lib/wait-until.js'
+import { ApiError } from '../lib/errors.js'
 import type { Plan } from '../lib/quota.js'
 
 /**
@@ -209,7 +210,10 @@ export const authApiKey = createMiddleware<ApiKeyContext>(async (c, next) => {
     .single()
 
   if (error || !data) {
-    return c.json({ error: 'Invalid API key' }, 401)
+    // Sprint 7 R-15: standard envelope. Don't leak whether the key was
+    // unknown vs. inactive vs. revoked — UNAUTHORIZED covers all three
+    // with one indistinguishable response (defence against token probing).
+    throw new ApiError('UNAUTHORIZED', 'Invalid API key')
   }
 
   const scope: ApiKeyScope = (data.scope as string) === 'public' ? 'public' : 'full'
@@ -232,7 +236,14 @@ export const authApiKey = createMiddleware<ApiKeyContext>(async (c, next) => {
   }
 
   if (!organizationId) {
-    return c.json({ error: 'API key has no owning organization' }, 401)
+    // The api_keys row should always carry either project_id (full scope)
+    // or organization_id (public scope) per the DB CHECK constraint. A
+    // missing org here means the data integrity contract was violated;
+    // INTERNAL_ERROR with a hint via details for the operator log path.
+    throw ApiError.from('INTERNAL_ERROR', {
+      reason: 'api_keys row has no resolvable organization',
+      apiKeyId: data.id as string,
+    })
   }
 
   const apiKeyId = data.id as string

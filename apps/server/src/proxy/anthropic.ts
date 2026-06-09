@@ -13,6 +13,7 @@ import { scanAll } from '../lib/security-scan.js'
 import { getDecryptedProviderKey, buildUpstreamHeaders, buildDownstreamHeaders, isBlockingEnabled } from './utils.js'
 import { logAnthropicStream } from './stream-logger.js'
 import { cancelReaderSilently, makeStreamDeadline, readWithDeadline } from './stream-deadline.js'
+import { ApiError } from '../lib/errors.js'
 
 const ANTHROPIC_BASE = 'https://api.anthropic.com'
 const UPSTREAM_TIMEOUT_MS = parseInt(process.env['UPSTREAM_TIMEOUT_MS'] ?? '35000', 10)
@@ -34,7 +35,11 @@ anthropicProxy.all('/*', async (c) => {
 
   const providerKey = await getDecryptedProviderKey(apiKeyId, 'anthropic')
   if (!providerKey) {
-    return c.json({ error: 'No active Anthropic provider key registered for this Spanlens key' }, 400)
+    throw new ApiError(
+      'NO_PROVIDER_KEY',
+      'No active Anthropic provider key registered for this Spanlens key',
+      { provider: 'anthropic' },
+    )
   }
   const decryptedKey = providerKey.plaintext
 
@@ -80,10 +85,16 @@ anthropicProxy.all('/*', async (c) => {
     clearTimeout(upstreamTimer)
     const msg = err instanceof Error ? err.message : 'Unknown error'
     if (err instanceof Error && err.name === 'AbortError') {
-      return c.json({ error: `Upstream request timed out after ${UPSTREAM_TIMEOUT_MS}ms` }, 504)
+      throw new ApiError(
+        'UPSTREAM_TIMEOUT',
+        `Upstream request timed out after ${UPSTREAM_TIMEOUT_MS}ms`,
+        { provider: 'anthropic', timeoutMs: UPSTREAM_TIMEOUT_MS },
+      )
     }
     console.error('[anthropic-proxy] upstream fetch error:', msg)
-    return c.json({ error: `Upstream request failed: ${msg}` }, 502)
+    throw new ApiError('UPSTREAM_FAILED', `Upstream request failed: ${msg}`, {
+      provider: 'anthropic',
+    })
   }
   clearTimeout(upstreamTimer)
   const latencyMs = Date.now() - startMs

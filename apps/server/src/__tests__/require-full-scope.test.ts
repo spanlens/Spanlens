@@ -2,6 +2,7 @@ import { describe, expect, test, vi } from 'vitest'
 import { Hono } from 'hono'
 import { authApiKey, type ApiKeyContext } from '../middleware/authApiKey.js'
 import { requireFullScope } from '../middleware/requireFullScope.js'
+import { installOnError } from './helpers/install-on-error.js'
 
 /**
  * requireFullScope rejects `public`-scope Spanlens keys with 403 before they
@@ -72,6 +73,7 @@ function buildApp() {
   app.use('*', authApiKey)
   app.use('*', requireFullScope)
   app.post('/write', (c) => c.json({ ok: true, scope: c.get('apiKeyScope') }))
+  installOnError(app)
   return app
 }
 
@@ -95,11 +97,10 @@ describe('requireFullScope', () => {
       headers: { Authorization: `Bearer ${PUB_KEY}` },
     })
     expect(res.status).toBe(403)
-    const body = (await res.json()) as { error: string; code: string }
-    expect(body.code).toBe('PUBLIC_KEY_WRITE_FORBIDDEN')
-    // Error message should point the user at where to mint a full-access key
-    // so they aren't left debugging blindly.
-    expect(body.error.toLowerCase()).toContain('public api key')
+    // Sprint 7 R-15: standard envelope via global onError handler.
+    const body = (await res.json()) as { error: { code: string; message: string } }
+    expect(body.error.code).toBe('PUBLIC_KEY_WRITE_FORBIDDEN')
+    expect(body.error.message.toLowerCase()).toContain('public api key')
   })
 
   test('public-key rejection applies on every accepted transport', async () => {
@@ -127,6 +128,7 @@ describe('authApiKey owner resolution', () => {
       scope: c.get('apiKeyScope'),
     }),
   )
+  installOnError(app)
 
   test('full key resolves organizationId via projects join, projectId set', async () => {
     const res = await app.request('/probe', { headers: { Authorization: `Bearer ${FULL_KEY}` } })

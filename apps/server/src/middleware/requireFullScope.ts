@@ -1,5 +1,6 @@
 import { createMiddleware } from 'hono/factory'
 import type { ApiKeyContext } from './authApiKey.js'
+import { ApiError } from '../lib/errors.js'
 
 /**
  * Rejects requests authenticated with a `public`-scope Spanlens key.
@@ -23,13 +24,13 @@ import type { ApiKeyContext } from './authApiKey.js'
 export const requireFullScope = createMiddleware<ApiKeyContext>(async (c, next) => {
   const scope = c.get('apiKeyScope')
   if (scope === 'public') {
-    return c.json(
-      {
-        error:
-          'Public API key cannot perform write operations. Issue a full-access key on the Projects & Keys page to enable LLM proxy and ingest endpoints.',
-        code: 'PUBLIC_KEY_WRITE_FORBIDDEN',
-      },
-      403,
+    // Sprint 7 R-15: standard envelope. PUBLIC_KEY_WRITE_FORBIDDEN is in
+    // ERROR_CODES so the SDK can pattern-match on error.code without
+    // string-comparing the message. The original message stays as the
+    // user-facing text since it includes the actionable upgrade hint.
+    throw new ApiError(
+      'PUBLIC_KEY_WRITE_FORBIDDEN',
+      'Public API key cannot perform write operations. Issue a full-access key on the Projects & Keys page to enable LLM proxy and ingest endpoints.',
     )
   }
   return next()

@@ -1,6 +1,7 @@
 import { describe, expect, test, vi } from 'vitest'
 import { Hono } from 'hono'
 import { authApiKey, type ApiKeyContext } from '../middleware/authApiKey.js'
+import { installOnError } from './helpers/install-on-error.js'
 
 // Stub supabaseAdmin so tests never hit a real database.
 // The stub returns a valid key record only when key_hash matches VALID_HASH.
@@ -77,6 +78,7 @@ function buildApp() {
       scope: c.get('apiKeyScope'),
     }),
   )
+  installOnError(app)
   return app
 }
 
@@ -132,8 +134,10 @@ describe('authApiKey — rejected transports', () => {
       headers: { Authorization: 'Bearer sl_live_wrong_key' },
     })
     expect(res.status).toBe(401)
-    const body = (await res.json()) as { error: string }
-    expect(body.error).toBe('Invalid API key')
+    const body = (await res.json()) as { error: { code: string; message: string } }
+    // Sprint 7 R-15: standard envelope shape via global onError handler.
+    expect(body.error.code).toBe('UNAUTHORIZED')
+    expect(body.error.message).toBe('Invalid API key')
   })
 
   test('Bearer with empty value returns 401', async () => {

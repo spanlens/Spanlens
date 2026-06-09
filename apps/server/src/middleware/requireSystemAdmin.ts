@@ -1,6 +1,18 @@
 import { createMiddleware } from 'hono/factory'
 import { supabaseClient } from '../lib/db.js'
+import { ApiError } from '../lib/errors.js'
 import type { JwtContext } from './authJwt.js'
+
+/**
+ * Single 403 message used for every reject reason in this middleware.
+ * Intentionally identical across the five branches below: a non-admin
+ * caller must not be able to distinguish "your email is not on the
+ * allowlist" from "the allowlist itself is unset" from "your token is
+ * invalid". That distinction would be a probing vector. Operators
+ * needing the real reason can read the request id from the response
+ * envelope and grep server logs.
+ */
+const FORBIDDEN = (): ApiError => new ApiError('FORBIDDEN', 'Insufficient permission')
 
 /**
  * Gate an endpoint to Spanlens internal operators (system admin), as
@@ -21,7 +33,7 @@ import type { JwtContext } from './authJwt.js'
  */
 export const requireSystemAdmin = createMiddleware<JwtContext>(async (c, next) => {
   const userId = c.get('userId')
-  if (!userId) return c.json({ error: 'Insufficient permission' }, 403)
+  if (!userId) throw FORBIDDEN()
 
   const allowlistRaw = process.env['SPANLENS_ADMIN_EMAILS'] ?? ''
   const allowlist = allowlistRaw
@@ -30,23 +42,23 @@ export const requireSystemAdmin = createMiddleware<JwtContext>(async (c, next) =
     .filter(Boolean)
 
   if (allowlist.length === 0) {
-    return c.json({ error: 'Insufficient permission' }, 403)
+    throw FORBIDDEN()
   }
 
   // Look up email via auth.users — we don't put it on the JWT context to
   // avoid leaking it through every other request.
   const authHeader = c.req.header('Authorization')
   if (!authHeader?.startsWith('Bearer ')) {
-    return c.json({ error: 'Insufficient permission' }, 403)
+    throw FORBIDDEN()
   }
   const token = authHeader.slice(7)
   const { data, error } = await supabaseClient.auth.getUser(token)
   if (error || !data.user?.email) {
-    return c.json({ error: 'Insufficient permission' }, 403)
+    throw FORBIDDEN()
   }
 
   if (!allowlist.includes(data.user.email.toLowerCase())) {
-    return c.json({ error: 'Insufficient permission' }, 403)
+    throw FORBIDDEN()
   }
 
   return next()

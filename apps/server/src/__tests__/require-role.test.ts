@@ -1,11 +1,18 @@
 import { describe, expect, test } from 'vitest'
 import { Hono } from 'hono'
+import type { ContentfulStatusCode } from 'hono/utils/http-status'
 import { requireRole } from '../middleware/requireRole.js'
 import type { JwtContext, OrgRole } from '../middleware/authJwt.js'
+import { isApiError } from '../lib/errors.js'
 
 // Build a minimal app that stubs authJwt by pre-setting role via header,
 // then gates a handler with requireRole. This isolates the middleware under
 // test from the real Supabase call without any mocking framework.
+//
+// Sprint 7 R-15 + R-20 update: requireRole now throws ApiError instead of
+// returning c.json directly. Mount the same onError serialiser the real
+// app.ts uses so the assertions still target the rendered HTTP response
+// rather than an uncaught throw (which would surface as a 500).
 function buildApp(allowed: OrgRole[]) {
   const app = new Hono<JwtContext>()
   app.use('*', async (c, next) => {
@@ -16,6 +23,15 @@ function buildApp(allowed: OrgRole[]) {
     return next()
   })
   app.post('/write', requireRole(...allowed), (c) => c.json({ ok: true }))
+  app.onError((err, c) => {
+    if (isApiError(err)) {
+      return c.json(
+        { error: { code: err.code, message: err.message } },
+        err.status as ContentfulStatusCode,
+      )
+    }
+    throw err
+  })
   return app
 }
 
@@ -36,8 +52,9 @@ describe('requireRole middleware', () => {
       headers: { 'x-test-role': 'viewer' },
     })
     expect(res.status).toBe(403)
-    const body = (await res.json()) as { error: string }
-    expect(body.error).toBe('Insufficient permission')
+    const body = (await res.json()) as { error: { code: string; message: string } }
+    expect(body.error.code).toBe('FORBIDDEN')
+    expect(body.error.message).toMatch(/Forbidden/)
   })
 
   test('rejects editor on admin-only endpoint', async () => {

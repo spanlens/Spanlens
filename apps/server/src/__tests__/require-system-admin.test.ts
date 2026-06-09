@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { Hono } from 'hono'
+import type { ContentfulStatusCode } from 'hono/utils/http-status'
+import { isApiError } from '../lib/errors.js'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Tests for the system-admin gate that protects internal-only routes (e.g.
@@ -32,7 +34,13 @@ afterEach(() => {
   else process.env['SPANLENS_ADMIN_EMAILS'] = origEnv
 })
 
-/** Apps the middleware on top of a fake authJwt that just stuffs userId. */
+/**
+ * Apps the middleware on top of a fake authJwt that just stuffs userId.
+ *
+ * Sprint 7 R-15 + R-20 update: requireSystemAdmin now throws ApiError
+ * instead of returning c.json. Mount the standard onError serialiser so
+ * the test assertions still target a rendered HTTP response.
+ */
 function makeApp(userId: string | null, opts: { authHeader?: string } = {}) {
   const app = new Hono<{ Variables: { userId: string | null } }>()
   app.use('*', async (c, next) => {
@@ -41,6 +49,15 @@ function makeApp(userId: string | null, opts: { authHeader?: string } = {}) {
   })
   app.use('*', requireSystemAdmin as unknown as Parameters<typeof app.use>[1])
   app.get('/probe', (c) => c.json({ ok: true }))
+  app.onError((err, c) => {
+    if (isApiError(err)) {
+      return c.json(
+        { error: { code: err.code, message: err.message } },
+        err.status as ContentfulStatusCode,
+      )
+    }
+    throw err
+  })
   return {
     request: () =>
       app.request(
@@ -56,7 +73,9 @@ describe('requireSystemAdmin — fail-closed defaults', () => {
   test('SPANLENS_ADMIN_EMAILS unset → 403 (no one is admin by default)', async () => {
     const res = await makeApp('usr_1', { authHeader: 'Bearer t' }).request()
     expect(res.status).toBe(403)
-    expect(await res.json()).toEqual({ error: 'Insufficient permission' })
+    expect(await res.json()).toEqual({
+      error: { code: 'FORBIDDEN', message: 'Insufficient permission' },
+    })
   })
 
   test('SPANLENS_ADMIN_EMAILS set to whitespace/empty → 403', async () => {

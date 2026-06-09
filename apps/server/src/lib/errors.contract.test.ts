@@ -50,6 +50,9 @@ describe('error contract: server ERROR_CODES ↔ @spanlens/api-types KnownApiErr
       'CONFLICT',
       'DECRYPT_FAILED',
       'INTERNAL_ERROR',
+      'NO_PROVIDER_KEY',
+      'UPSTREAM_TIMEOUT',
+      'UPSTREAM_FAILED',
     ]
     for (const code of knownAtCompileTime) {
       expect(ERROR_CODES).toHaveProperty(code)
