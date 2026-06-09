@@ -18,7 +18,7 @@ export type JwtContext = {
      * Organization id resolved from the user's org_members row.
      * `null` means the user has not joined any org yet (pre-onboarding).
      * Routes that require an org should guard with:
-     *   if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+     *   if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
      */
     orgId: string | null
     /**

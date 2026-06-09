@@ -13,6 +13,7 @@ import { scanAll } from '../lib/security-scan.js'
 import { getDecryptedProviderKey, buildUpstreamHeaders, buildDownstreamHeaders, isBlockingEnabled } from './utils.js'
 import { logOpenAIStream } from './stream-logger.js'
 import { cancelReaderSilently, makeStreamDeadline, readWithDeadline } from './stream-deadline.js'
+import { ApiError } from '../lib/errors.js'
 
 // Azure OpenAI v1 endpoint (Microsoft, Aug 2025+). Drop-in compatible with
 // OpenAI request/response shape — no api-version query, no per-deployment
@@ -46,7 +47,7 @@ azureProxy.all('/*', async (c) => {
 
   const providerKey = await getDecryptedProviderKey(apiKeyId, 'azure')
   if (!providerKey) {
-    return c.json({ error: 'No active Azure provider key registered for this Spanlens key' }, 400)
+    throw new ApiError('NO_PROVIDER_KEY', 'No active Azure provider key registered for this Spanlens key')
   }
   const decryptedKey = providerKey.plaintext
 
@@ -58,7 +59,7 @@ azureProxy.all('/*', async (c) => {
   const resourceUrl = (providerKey.metadata['resource_url'] as string | undefined) ?? ''
   if (resourceUrl.length === 0) {
     console.error('[azure-proxy] provider_key missing resource_url:', providerKey.id)
-    return c.json({ error: 'Azure provider key is missing resource_url — re-register it' }, 500)
+    throw new ApiError('INTERNAL_ERROR', 'Azure provider key is missing resource_url — re-register it')
   }
 
   const reqBodyText = await c.req.text()
