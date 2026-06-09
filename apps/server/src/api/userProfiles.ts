@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { authJwt, type JwtContext } from '../middleware/authJwt.js'
 import { supabaseAdmin } from '../lib/db.js'
+import { ApiError } from '../lib/errors.js'
 
 /**
  * /api/v1/me/profile — onboarding survey + completion flag.
@@ -43,7 +44,7 @@ userProfilesRouter.get('/', async (c) => {
     .eq('user_id', userId)
     .maybeSingle()
 
-  if (error) return c.json({ error: 'Failed to fetch profile' }, 500)
+  if (error) throw new ApiError('INTERNAL_ERROR', 'Failed to fetch profile')
   return c.json({ success: true, data: data ?? null })
 })
 
@@ -78,6 +79,6 @@ userProfilesRouter.post('/complete', async (c) => {
     .select('user_id, use_case, role, onboarded_at')
     .single()
 
-  if (error || !data) return c.json({ error: 'Failed to save profile' }, 500)
+  if (error || !data) throw new ApiError('INTERNAL_ERROR', 'Failed to save profile')
   return c.json({ success: true, data }, 201)
 })
