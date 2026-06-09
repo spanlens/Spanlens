@@ -32,6 +32,14 @@ jobs:
       - name: Build @spanlens/eslint-plugin
         run: pnpm --filter @spanlens/eslint-plugin build
 
+      # `apps/server` and `apps/web` import from `@spanlens/api-types`
+      # whose `package.json` exports point at `dist/index.d.ts`. `pnpm
+      # install` does not build dependents, so without this step the
+      # typecheck job fails with `Cannot find module '@spanlens/api-types'`.
+      # See Sprint 7 PR 2 (#277) where this was added.
+      - name: Build @spanlens/api-types
+        run: pnpm --filter @spanlens/api-types build
+
       - name: Typecheck (all packages)
         run: pnpm --recursive typecheck
 
