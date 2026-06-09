@@ -1064,33 +1064,45 @@ export type Database = {
       feedback: {
         Row: {
           category: string
+          changelog_url: string | null
           created_at: string
           email: string | null
           id: string
           message: string
           organization_id: string | null
+          responded_at: string | null
+          responded_by: string | null
+          response_message: string | null
           source: string
           status: string
           user_id: string | null
         }
         Insert: {
           category?: string
+          changelog_url?: string | null
           created_at?: string
           email?: string | null
           id?: string
           message: string
           organization_id?: string | null
+          responded_at?: string | null
+          responded_by?: string | null
+          response_message?: string | null
           source?: string
           status?: string
           user_id?: string | null
         }
         Update: {
           category?: string
+          changelog_url?: string | null
           created_at?: string
           email?: string | null
           id?: string
           message?: string
           organization_id?: string | null
+          responded_at?: string | null
+          responded_by?: string | null
+          response_message?: string | null
           source?: string
           status?: string
           user_id?: string | null
@@ -1101,6 +1113,35 @@ export type Database = {
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      feedback_votes: {
+        Row: {
+          created_at: string
+          feedback_id: string
+          id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          feedback_id: string
+          id?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          feedback_id?: string
+          id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "feedback_votes_feedback_id_fkey"
+            columns: ["feedback_id"]
+            isOneToOne: false
+            referencedRelation: "feedback"
             referencedColumns: ["id"]
           },
         ]
