@@ -5,6 +5,7 @@ import { aes256Decrypt } from '../lib/crypto.js'
 import { calculateCost } from '../lib/cost.js'
 import { interpolate, inferProvider, buildOpenAIBody } from '../lib/playground-runner.js'
 import { startInternalTrace } from '../lib/internal-tracing.js'
+import { ApiError } from '../lib/errors.js'
 
 export const promptsPlaygroundRouter = new Hono<JwtContext>()
 
@@ -30,10 +31,10 @@ function checkRateLimit(userId: string): boolean {
 promptsPlaygroundRouter.post('/run', async (c) => {
   const orgId = c.get('orgId')
   const userId = c.get('userId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   if (userId && !checkRateLimit(userId)) {
-    return c.json({ error: 'Rate limit exceeded. Try again in a minute.' }, 429)
+    throw new ApiError('RATE_LIMIT', 'Rate limit exceeded. Try again in a minute.')
   }
 
   let body: {
@@ -47,17 +48,17 @@ promptsPlaygroundRouter.post('/run', async (c) => {
   try {
     body = (await c.req.json()) as typeof body
   } catch {
-    return c.json({ error: 'Invalid JSON body' }, 400)
+    throw new ApiError('INVALID_JSON_BODY', 'Invalid JSON body')
   }
 
   const promptVersionId = typeof body.promptVersionId === 'string' ? body.promptVersionId.trim() : ''
-  if (!promptVersionId) return c.json({ error: 'promptVersionId is required' }, 400)
+  if (!promptVersionId) throw new ApiError('VALIDATION_FAILED', 'promptVersionId is required')
 
   const providerKeyId = typeof body.providerKeyId === 'string' ? body.providerKeyId.trim() : ''
-  if (!providerKeyId) return c.json({ error: 'providerKeyId is required' }, 400)
+  if (!providerKeyId) throw new ApiError('VALIDATION_FAILED', 'providerKeyId is required')
 
   const model = typeof body.model === 'string' ? body.model.trim() : ''
-  if (!model) return c.json({ error: 'model is required' }, 400)
+  if (!model) throw new ApiError('VALIDATION_FAILED', 'model is required')
 
   const temperature = typeof body.temperature === 'number'
     ? Math.min(2, Math.max(0, body.temperature))
@@ -77,7 +78,7 @@ promptsPlaygroundRouter.post('/run', async (c) => {
     .eq('organization_id', orgId)
     .maybeSingle()
 
-  if (pvErr || !pv) return c.json({ error: 'Prompt version not found' }, 404)
+  if (pvErr || !pv) throw new ApiError('NOT_FOUND', 'Prompt version not found')
 
   // Fetch the specified provider key (scoped to org, must be active)
   const { data: pkRow, error: pkErr } = await supabaseAdmin
@@ -89,7 +90,7 @@ promptsPlaygroundRouter.post('/run', async (c) => {
     .maybeSingle()
 
   if (pkErr || !pkRow) {
-    return c.json({ error: 'Provider key not found or inactive' }, 400)
+    throw new ApiError('BAD_REQUEST', 'Provider key not found or inactive')
   }
 
   // Validate key provider matches model
@@ -102,7 +103,7 @@ promptsPlaygroundRouter.post('/run', async (c) => {
 
   const plaintext = await aes256Decrypt(pkRow.encrypted_key as string)
   if (!plaintext) {
-    return c.json({ error: 'Failed to decrypt provider key. Check your ENCRYPTION_KEY.' }, 500)
+    throw new ApiError('INTERNAL_ERROR', 'Failed to decrypt provider key. Check your ENCRYPTION_KEY.')
   }
 
   const { result: interpolated, missingVars } = interpolate(pv.content, variables)

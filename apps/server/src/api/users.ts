@@ -4,6 +4,7 @@ import { authJwtOrApiKey } from '../middleware/authJwtOrApiKey.js'
 import { parsePageLimit } from '../lib/params.js'
 import { getUserAnalytics, type UserAnalyticsRow } from '../lib/stats-queries.js'
 import { requestsScope, selectRequests } from '../lib/requests-query.js'
+import { ApiError } from '../lib/errors.js'
 
 export const usersRouter = new Hono<JwtContext>()
 
@@ -26,7 +27,7 @@ usersRouter.use('*', authJwtOrApiKey)
 // ─────────────────────────────────────────────────────────────────────────────
 usersRouter.get('/', async (c) => {
   const orgId = c.get('orgId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   const projectId = c.req.query('projectId') ?? null
   const search    = c.req.query('search') ?? null
@@ -48,7 +49,7 @@ usersRouter.get('/', async (c) => {
     })
   } catch (err) {
     console.error('[users] ClickHouse query failed:', err instanceof Error ? err.message : err)
-    return c.json({ error: 'Failed to fetch user analytics' }, 500)
+    throw new ApiError('INTERNAL_ERROR', 'Failed to fetch user analytics')
   }
 
   const totalCount = rows[0]?.total_count ?? 0
@@ -68,7 +69,7 @@ usersRouter.get('/', async (c) => {
 // ─────────────────────────────────────────────────────────────────────────────
 usersRouter.get('/:userId', async (c) => {
   const orgId = c.get('orgId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
   const userId = c.req.param('userId')
 
   const projectId = c.req.query('projectId') ?? null
@@ -85,7 +86,7 @@ usersRouter.get('/:userId', async (c) => {
     })
   } catch (err) {
     console.error('[users:detail] ClickHouse query failed:', err instanceof Error ? err.message : err)
-    return c.json({ error: 'Failed to fetch user analytics' }, 500)
+    throw new ApiError('INTERNAL_ERROR', 'Failed to fetch user analytics')
   }
   const agg = aggRows.find((r) => r.user_id === userId) ?? null
   if (!agg) {
@@ -158,7 +159,7 @@ usersRouter.get('/:userId', async (c) => {
     }))
   } catch (err) {
     console.error('[users:detail] recent error:', err instanceof Error ? err.message : err)
-    return c.json({ error: 'Failed to fetch recent requests' }, 500)
+    throw new ApiError('INTERNAL_ERROR', 'Failed to fetch recent requests')
   }
 
   return c.json({

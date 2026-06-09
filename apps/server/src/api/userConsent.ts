@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { authJwt, type JwtContext } from '../middleware/authJwt.js'
 import { supabaseAdmin } from '../lib/db.js'
+import { ApiError } from '../lib/errors.js'
 
 /**
  * /api/v1/me/consent — append-only record of the user's acceptance
@@ -76,7 +77,7 @@ userConsentRouter.post('/', async (c) => {
   try {
     body = (await c.req.json()) as RecordBody
   } catch {
-    return c.json({ error: 'Invalid JSON body' }, 400)
+    throw new ApiError('INVALID_JSON_BODY', 'Invalid JSON body')
   }
 
   const items = parseDocuments(body.documents)
@@ -109,7 +110,7 @@ userConsentRouter.post('/', async (c) => {
 
   if (error) {
     console.error('[user-consent] insert failed:', error.message)
-    return c.json({ error: 'Failed to record consent' }, 500)
+    throw new ApiError('INTERNAL_ERROR', 'Failed to record consent')
   }
 
   return c.json({ success: true, data })
@@ -126,7 +127,7 @@ userConsentRouter.get('/', async (c) => {
 
   if (error) {
     console.error('[user-consent] fetch failed:', error.message)
-    return c.json({ error: 'Failed to fetch consent history' }, 500)
+    throw new ApiError('INTERNAL_ERROR', 'Failed to fetch consent history')
   }
 
   return c.json({ success: true, data: data ?? [] })
