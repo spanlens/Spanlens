@@ -12,6 +12,7 @@ import { parseGeminiResponse, extractGeminiStreamText } from '../parsers/gemini.
 import { scanAll } from '../lib/security-scan.js'
 import { getDecryptedProviderKey, buildUpstreamHeaders, buildDownstreamHeaders, isBlockingEnabled } from './utils.js'
 import { cancelReaderSilently, makeStreamDeadline, readWithDeadline } from './stream-deadline.js'
+import { ApiError } from '../lib/errors.js'
 
 const GEMINI_BASE = 'https://generativelanguage.googleapis.com'
 const UPSTREAM_TIMEOUT_MS = parseInt(process.env['UPSTREAM_TIMEOUT_MS'] ?? '35000', 10)
@@ -33,7 +34,11 @@ geminiProxy.all('/*', async (c) => {
 
   const providerKey = await getDecryptedProviderKey(apiKeyId, 'gemini')
   if (!providerKey) {
-    return c.json({ error: 'No active Gemini provider key registered for this Spanlens key' }, 400)
+    throw new ApiError(
+      'NO_PROVIDER_KEY',
+      'No active Gemini provider key registered for this Spanlens key',
+      { provider: 'gemini' },
+    )
   }
   const decryptedKey = providerKey.plaintext
 
@@ -85,10 +90,16 @@ geminiProxy.all('/*', async (c) => {
     clearTimeout(upstreamTimer)
     const msg = err instanceof Error ? err.message : 'Unknown error'
     if (err instanceof Error && err.name === 'AbortError') {
-      return c.json({ error: `Upstream request timed out after ${UPSTREAM_TIMEOUT_MS}ms` }, 504)
+      throw new ApiError(
+        'UPSTREAM_TIMEOUT',
+        `Upstream request timed out after ${UPSTREAM_TIMEOUT_MS}ms`,
+        { provider: 'gemini', timeoutMs: UPSTREAM_TIMEOUT_MS },
+      )
     }
     console.error('[gemini-proxy] upstream fetch error:', msg)
-    return c.json({ error: `Upstream request failed: ${msg}` }, 502)
+    throw new ApiError('UPSTREAM_FAILED', `Upstream request failed: ${msg}`, {
+      provider: 'gemini',
+    })
   }
   clearTimeout(upstreamTimer)
   const latencyMs = Date.now() - startMs

@@ -93,6 +93,9 @@ export type KnownApiErrorCode =
   | 'CONFLICT'
   | 'DECRYPT_FAILED'
   | 'INTERNAL_ERROR'
+  | 'NO_PROVIDER_KEY'
+  | 'UPSTREAM_TIMEOUT'
+  | 'UPSTREAM_FAILED'
 
 /**
  * Branded string type: a code is known if it matches the literal union,

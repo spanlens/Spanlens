@@ -2,6 +2,7 @@ import { describe, expect, test, vi, beforeEach } from 'vitest'
 import { Hono } from 'hono'
 import { authJwtOrApiKey, type DualAuthContext } from '../middleware/authJwtOrApiKey.js'
 import { _clearAuthCacheForTests } from '../middleware/authJwt.js'
+import { installOnError } from './helpers/install-on-error.js'
 
 /**
  * The dual-auth middleware on `/api/v1/*` routes to one of two auth flows
@@ -89,6 +90,7 @@ function buildApp() {
       scope: c.get('apiKeyScope') ?? null,
     }),
   )
+  installOnError(app)
   return app
 }
 
