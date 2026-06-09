@@ -63,7 +63,7 @@ feedbackRouter.post('/', async (c) => {
     throw new ApiError('VALIDATION_FAILED', 'Message is too short')
   }
   if (message.length > MAX_MESSAGE_LEN) {
-    return c.json({ error: `Message must be ${MAX_MESSAGE_LEN} characters or fewer` }, 400)
+    throw new ApiError('VALIDATION_FAILED', `Message must be ${MAX_MESSAGE_LEN} characters or fewer`)
   }
 
   const category =

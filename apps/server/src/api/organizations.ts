@@ -295,7 +295,7 @@ organizationsRouter.post('/bootstrap', async (c) => {
     .eq('user_id', userId)
     .maybeSingle()
   if (existingMember) {
-    return c.json({ error: 'Already onboarded', organizationId: existingMember.organization_id }, 409)
+    throw new ApiError('CONFLICT', 'Already onboarded', { organizationId: existingMember.organization_id })
   }
 
   // Body parse — body is OPTIONAL on this endpoint (legacy clients send

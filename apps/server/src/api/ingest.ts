@@ -94,7 +94,7 @@ ingestRouter.post('/traces', async (c) => {
     .single()
 
   if (error || !data) {
-    return c.json({ error: 'Failed to create trace', detail: error?.message }, 500)
+    throw new ApiError('INTERNAL_ERROR', 'Failed to create trace', { detail: error?.message })
   }
 
   // Phase 5.1 dual-write to events. Best-effort — events is the shadow
@@ -285,7 +285,7 @@ ingestRouter.post('/traces/:id/spans', async (c) => {
     .single()
 
   if (error || !data) {
-    return c.json({ error: 'Failed to create span', detail: error?.message }, 500)
+    throw new ApiError('INTERNAL_ERROR', 'Failed to create span', { detail: error?.message })
   }
 
   // Phase 5.1 dual-write to events — awaited for the same reason as the

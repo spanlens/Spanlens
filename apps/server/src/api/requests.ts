@@ -463,7 +463,7 @@ requestsRouter.post('/:id/replay/run', requireRole('admin', 'editor'), async (c)
     upstreamUrl = `https://generativelanguage.googleapis.com/v1beta/${geminiModel}:generateContent?key=${providerKey.plaintext}`
     upstreamHeaders = { 'Content-Type': 'application/json' }
   } else {
-    return c.json({ error: `Unsupported provider for run: ${provider}` }, 400)
+    throw new ApiError('VALIDATION_FAILED', `Unsupported provider for run: ${provider}`)
   }
 
   // ── Call upstream ─────────────────────────────────────────────────────────
@@ -476,7 +476,7 @@ requestsRouter.post('/:id/replay/run', requireRole('admin', 'editor'), async (c)
       body: JSON.stringify(replayBody),
     })
   } catch (fetchErr) {
-    return c.json({ error: `Failed to reach upstream: ${String(fetchErr)}` }, 502)
+    throw new ApiError('UPSTREAM_FAILED', `Failed to reach upstream: ${String(fetchErr)}`)
   }
 
   const latencyMs = Date.now() - startMs
@@ -485,6 +485,13 @@ requestsRouter.post('/:id/replay/run', requireRole('admin', 'editor'), async (c)
 
   if (!upstreamRes.ok) {
     const errMsg = (resBody.error as Record<string, unknown> | undefined)?.message as string | undefined
+    // Proxy passthrough — preserve the upstream status code dynamically
+    // rather than mapping into the ApiError catalog (which would lock
+    // the response to a fixed 502 UPSTREAM_FAILED status). The dashboard
+    // "Run again" feature shows the original upstream status next to
+    // the original message, so this single endpoint intentionally keeps
+    // the legacy c.json shape. Marked here so the next migration sweep
+    // does not "fix" it.
     return c.json({ error: errMsg ?? `Provider returned ${statusCode}`, statusCode }, statusCode as 400)
   }
 

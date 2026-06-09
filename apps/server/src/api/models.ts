@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { authJwt, type JwtContext } from '../middleware/authJwt.js'
 import { supabaseAdmin } from '../lib/db.js'
+import { ApiError } from '../lib/errors.js'
 
 /**
  * GET /api/v1/models — list of all priced models, grouped by provider.
@@ -59,7 +60,7 @@ modelsRouter.get('/', async (c) => {
     .order('model', { ascending: true })
 
   if (error) {
-    return c.json({ error: 'Failed to load models', detail: error.message }, 500)
+    throw new ApiError('INTERNAL_ERROR', 'Failed to load models', { detail: error.message })
   }
 
   const groups: ModelsResponse = { openai: [], anthropic: [], gemini: [] }

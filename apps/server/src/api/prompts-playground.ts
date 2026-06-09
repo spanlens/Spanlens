@@ -147,7 +147,7 @@ promptsPlaygroundRouter.post('/run', async (c) => {
       const text = await upstreamRes.text().catch(() => '')
       span.end({ status: 'error', errorMessage: `OpenAI ${upstreamRes.status}` })
       internalTrace.end({ status: 'error', errorMessage: `OpenAI ${upstreamRes.status}` })
-      return c.json({ error: `OpenAI error: ${text}`, upstreamStatus: upstreamRes.status }, 502)
+      throw new ApiError('UPSTREAM_FAILED', `OpenAI error: ${text}`, { upstreamStatus: upstreamRes.status })
     }
 
     const json = await upstreamRes.json() as {
@@ -212,7 +212,7 @@ promptsPlaygroundRouter.post('/run', async (c) => {
     const text = await upstreamRes.text().catch(() => '')
     span.end({ status: 'error', errorMessage: `Anthropic ${upstreamRes.status}` })
     internalTrace.end({ status: 'error', errorMessage: `Anthropic ${upstreamRes.status}` })
-    return c.json({ error: `Anthropic error: ${text}`, upstreamStatus: upstreamRes.status }, 502)
+    throw new ApiError('UPSTREAM_FAILED', `Anthropic error: ${text}`, { upstreamStatus: upstreamRes.status })
   }
 
   const json = await upstreamRes.json() as {

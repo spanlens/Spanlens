@@ -130,7 +130,7 @@ adminModelPricesRouter.post('/', async (c) => {
     .select()
     .single()
 
-  if (error) return c.json({ error: `Upsert failed: ${error.message}` }, 500)
+  if (error) throw new ApiError('INTERNAL_ERROR', `Upsert failed: ${error.message}`)
 
   // Refresh cache so the new price is visible immediately on this instance.
   // Other instances pick it up within their TTL (≤5 min).
@@ -169,7 +169,7 @@ adminModelPricesRouter.delete('/:id', async (c) => {
     .delete()
     .eq('id', id)
 
-  if (error) return c.json({ error: `Delete failed: ${error.message}` }, 500)
+  if (error) throw new ApiError('INTERNAL_ERROR', `Delete failed: ${error.message}`)
 
   await refreshPricesNow()
 

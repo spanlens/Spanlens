@@ -110,7 +110,7 @@ scoreConfigsRouter.post('/', async (c) => {
 
   const data_type = typeof body.data_type === 'string' ? body.data_type.toUpperCase() : ''
   if (!ALLOWED_TYPES.includes(data_type as (typeof ALLOWED_TYPES)[number])) {
-    return c.json({ error: `data_type must be one of ${ALLOWED_TYPES.join(', ')}` }, 400)
+    throw new ApiError('VALIDATION_FAILED', `data_type must be one of ${ALLOWED_TYPES.join(', ')}`)
   }
 
   const min_value = normaliseNullableNumber(body.min_value)

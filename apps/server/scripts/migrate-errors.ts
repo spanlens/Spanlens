@@ -201,7 +201,22 @@ const SIMPLE_PATTERN = /return\s+c\.json\(\s*\{\s*error:\s*('([^'\\]|\\.)*'|"([^
 // field objects (`error: 'a', detail: b`) never match — those need
 // the codemod to emit `ApiError.from(code, { details: { ... } })` by
 // hand, not be auto-transformed.
-const EXPRESSION_PATTERN = /return\s+c\.json\(\s*\{\s*error:\s*([^\s,{}'"][^,{}]*?)\s*\}\s*,\s*(\d{3})\s*\)/g
+const EXPRESSION_PATTERN = /return\s+c\.json\(\s*\{\s*error:\s*([^\s,{}'"`][^,{}]*?)\s*\}\s*,\s*(\d{3})\s*\)/g
+
+// TEMPLATE_PATTERN matches template literals specifically — backtick
+// strings whose body can contain `${...}` substitutions. v2's
+// EXPRESSION_PATTERN's `[^,{}]` body rule rejects the `{` inside
+// `${var}` so this needs its own pass. Allowed substitution shapes:
+//   - simple identifier or member access: `${row.status as string}`
+//   - balanced single-pair: `${expr}` where expr has no `}`
+// Nested objects inside `${}` still bail out — those stay multi-line
+// manual cleanup.
+//
+// The body alternatives are mutually exclusive (no overlap between
+// `[^`\\$]`, `\\.`, `\${...}`, and `$(?!\{)`) so the regex engine
+// cannot exponentially backtrack on adversarial input like
+// `return c.json({error:\`${{}}${{}}...\`` (CodeQL js/redos).
+const TEMPLATE_PATTERN = /return\s+c\.json\(\s*\{\s*error:\s*(`(?:[^`\\$]|\\.|\$\{[^{}]*\}|\$(?!\{))*`)\s*\}\s*,\s*(\d{3})\s*\)/g
 
 // ─── per-file transform ────────────────────────────────────────
 interface FileResult {
@@ -249,6 +264,41 @@ function transformFile(filePath: string): FileResult {
 
     result.transformed++
     return `throw new ApiError('${mapping.code}', ${jsString(decoded)})`
+  })
+
+  // Template-literal pass — same status-driven mapping as the
+  // expression pass but only matches backtick strings with `${}`
+  // substitutions (which v2 EXPRESSION_PATTERN can't catch because
+  // its body rule forbids the `{` in `${`).
+  content = content.replace(TEMPLATE_PATTERN, (match, template, statusStr) => {
+    const status = Number(statusStr)
+    const code = (() => {
+      switch (status) {
+        case 400: return 'VALIDATION_FAILED'
+        case 401: return 'UNAUTHORIZED'
+        case 403: return 'FORBIDDEN'
+        case 404: return 'NOT_FOUND'
+        case 409: return 'CONFLICT'
+        case 410: return 'NOT_FOUND'
+        case 429: return 'RATE_LIMIT'
+        case 500: return 'INTERNAL_ERROR'
+        case 502: return 'UPSTREAM_FAILED'
+        case 503: return 'INTERNAL_ERROR'
+        case 504: return 'UPSTREAM_TIMEOUT'
+        default: return null
+      }
+    })()
+    if (!code) {
+      result.manual++
+      result.manualSites.push({
+        line: lineNumberOf(content, match),
+        reason: `unmapped status ${status}`,
+        snippet: match,
+      })
+      return `// TODO(sprint-8): manual migration (unmapped status ${status})\n    ${match}`
+    }
+    result.transformed++
+    return `throw new ApiError('${code}', ${template})`
   })
 
   // Second pass: variable / template-literal message expressions.

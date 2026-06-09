@@ -77,7 +77,7 @@ billingRouter.post('/checkout', async (c) => {
   }
   const priceId = priceIdByPlan[plan]
   if (!priceId) {
-    return c.json({ error: `Unknown or unconfigured plan: ${plan}` }, 400)
+    throw new ApiError('VALIDATION_FAILED', `Unknown or unconfigured plan: ${plan}`)
   }
 
   // Look up the user's email + org's paddle_customer_id
@@ -107,7 +107,7 @@ billingRouter.post('/checkout', async (c) => {
         paddleCustomerId = created.id
       } catch (err) {
         const msg = err instanceof Error ? err.message : 'unknown error'
-        return c.json({ error: `Paddle customer create failed: ${msg}` }, 502)
+        throw new ApiError('UPSTREAM_FAILED', `Paddle customer create failed: ${msg}`)
       }
     }
     await supabaseAdmin
@@ -136,7 +136,7 @@ billingRouter.post('/checkout', async (c) => {
     return c.json({ success: true, data: { url: tx.checkout.url, transactionId: tx.id } })
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'unknown error'
-    return c.json({ error: `Paddle checkout create failed: ${msg}` }, 502)
+    throw new ApiError('UPSTREAM_FAILED', `Paddle checkout create failed: ${msg}`)
   }
 })
 
@@ -169,6 +169,6 @@ billingRouter.post('/cancel', async (c) => {
     return c.json({ success: true })
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'unknown error'
-    return c.json({ error: `Paddle cancel failed: ${msg}` }, 502)
+    throw new ApiError('UPSTREAM_FAILED', `Paddle cancel failed: ${msg}`)
   }
 })
