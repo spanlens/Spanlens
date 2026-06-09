@@ -1,30 +1,32 @@
-name: Deploy production (DB + server)
+name: Apply production DB migrations
 
-# Single workflow that owns the production deployment path. Triggers on any
-# main push that touches the server OR the Supabase migrations folder.
+# Applies any pending Supabase migrations to the linked production project
+# on every main push that touches apps/server or supabase/migrations.
+# Idempotent via the supabase_migrations.schema_migrations ledger.
 #
-# Job order (sequential by design):
-#   1. migrate  — applies any pending Supabase migrations to the linked
-#                 production project. Idempotent (already-applied migrations
-#                 are no-ops via the supabase_migrations.schema_migrations
-#                 ledger).
-#   2. deploy   — pushes the server build to Vercel. Only runs if step 1
-#                 succeeds, so a broken migration blocks the code rollout
-#                 instead of producing the "code expects column X, prod
-#                 doesn't have it" 500 failure mode that bit us before
-#                 (see CLAUDE.md gotcha #25).
+# Server code deployment is handled by Vercel's git integration directly
+# (the "Vercel – spanlens-server" check on every commit). Originally this
+# workflow also ran `npx vercel --cwd apps/server --prod` as a second
+# `deploy` job that needs(migrate), aiming to guarantee migrate-before-
+# deploy ordering (CLAUDE.md gotcha #25). That step never actually
+# coordinated: Vercel git integration deploys in parallel anyway, and
+# after PR #277 added a workspace:* dep the CLI deploy started failing
+# unconditionally because `--cwd apps/server` uploads only that folder
+# without pnpm-workspace.yaml, so npm could not resolve workspace:*.
 #
-# Required secrets (one-time setup in repo Settings → Secrets):
+# Removed the deploy job. The migrate step is what this workflow now
+# owns. Best-effort ordering: migrate usually finishes in seconds while
+# the Vercel server build takes ~2-3 minutes, so migrate completes first
+# in practice. If a tighter guarantee becomes necessary we can switch to
+# uploading the full repo with `npx vercel --prod` (no --cwd) so
+# workspace deps resolve, but the simpler approach is to keep the two
+# pipelines independent.
+#
+# Required secrets:
 #   SUPABASE_ACCESS_TOKEN  — personal access token from
 #                            https://supabase.com/dashboard/account/tokens
 #   SUPABASE_DB_PASSWORD   — production DB password (Supabase dashboard →
 #                            Project Settings → Database)
-#   VERCEL_TOKEN           — already set, used by the deploy job
-#
-# If migrate fails, deploy is skipped — the previous server build stays
-# live and the broken migration can be fixed in a follow-up PR. Migrations
-# are append-only per project convention, so rolling back the server alone
-# does not require a DB rollback.
 
 on:
   push:
@@ -58,15 +60,3 @@ jobs:
           supabase link --project-ref gebocvcsjlarxhyauadf
           supabase db push --linked --include-all
 
-  deploy:
-    name: Deploy server to Vercel
-    needs: migrate
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Deploy to Vercel
-        run: npx vercel --cwd apps/server --prod --yes --token ${{ secrets.VERCEL_TOKEN }}
-        env:
-          VERCEL_ORG_ID: team_kQ5H3egALXHjt7J0NSUg6AL6
-          VERCEL_PROJECT_ID: prj_0jC72P2dIZYjjD79SyX8eaNP0GPx
