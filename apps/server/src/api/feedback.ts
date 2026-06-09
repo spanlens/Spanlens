@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { authJwt, type JwtContext } from '../middleware/authJwt.js'
-import { supabaseAdmin } from '../lib/db.js'
+import { supabaseAdmin, supabaseClient } from '../lib/db.js'
 import { sendEmail } from '../lib/resend.js'
 import { fireAndForget } from '../lib/wait-until.js'
 import { ApiError } from '../lib/errors.js'
@@ -22,20 +22,20 @@ function getOpsEmails(): string[] {
  *
  * Phase 2 (R-32, this file + 20260609180000_feedback_phase2.sql) turns the
  * submission box into a public roadmap:
- *   GET    /                 — list submissions ranked by community vote
- *   POST   /                 — submit a suggestion (unchanged from Phase 1)
- *   POST   /:id/vote         — upvote (idempotent)
- *   DELETE /:id/vote         — un-vote
+ *   GET    /                 — list submissions ranked by community vote (PUBLIC)
+ *   POST   /                 — submit a suggestion (auth required)
+ *   POST   /:id/vote         — upvote (auth required, idempotent)
+ *   DELETE /:id/vote         — un-vote (auth required, idempotent)
  *
  * Admin response surface lives in apps/server/src/api/admin/feedback.ts.
  *
- * Auth: every endpoint requires authJwt — only logged-in users see, vote on,
- * or submit feedback. This doubles as spam defense (no anon writes) and as
- * the natural place to hang `hasVoted` per-row.
+ * Auth model: GET is public so anonymous visitors can see the roadmap.
+ * Write endpoints (POST/DELETE) attach authJwt per-route via Hono's
+ * route-level middleware syntax. This used to be a router-wide
+ * `feedbackRouter.use('*', authJwt)` but that 401'd anonymous list
+ * requests, breaking the public-roadmap promise. PR #303 hotfix.
  */
 export const feedbackRouter = new Hono<JwtContext>()
-
-feedbackRouter.use('*', authJwt)
 
 const VALID_CATEGORIES = new Set(['feature', 'bug', 'other'])
 const VALID_STATUSES = new Set(['new', 'planned', 'in_progress', 'shipped', 'declined'])
@@ -61,7 +61,27 @@ function escapeHtml(s: string): string {
     .replace(/"/g, '&quot;')
 }
 
-// ── GET /api/v1/feedback — public roadmap list ────────────────────────────────
+/**
+ * Optional userId resolution for the public GET handler.
+ *
+ * If the caller sent a Bearer token we validate it against Supabase Auth and
+ * return the user id so `has_voted` can be populated per row. If the token is
+ * missing or invalid we return null and serve the row list without per-user
+ * vote state — anonymous visitors still see the roadmap.
+ *
+ * Why not authJwt: that middleware throws on a missing/invalid token. Here a
+ * 401 would defeat the whole purpose of a public roadmap.
+ */
+async function resolveOptionalUserId(authHeader: string | undefined): Promise<string | null> {
+  if (!authHeader?.startsWith('Bearer ')) return null
+  const token = authHeader.slice(7).trim()
+  if (!token) return null
+  const { data, error } = await supabaseClient.auth.getUser(token)
+  if (error || !data.user?.id) return null
+  return data.user.id
+}
+
+// ── GET /api/v1/feedback — PUBLIC roadmap list ────────────────────────────────
 //
 // Query params:
 //   ?status=new|planned|in_progress|shipped|declined   filter (default: all)
@@ -72,9 +92,10 @@ function escapeHtml(s: string): string {
 // PostgREST does not expose ORDER BY on a referenced relation aggregate).
 //
 // hasVoted per-row: derived from a single follow-up query keyed by the page's
-// feedback ids, not a per-row N+1.
+// feedback ids, not a per-row N+1. Anonymous callers (no Bearer token) get
+// has_voted=false for every row without the extra query.
 feedbackRouter.get('/', async (c) => {
-  const userId = c.get('userId')
+  const userId = await resolveOptionalUserId(c.req.header('Authorization'))
 
   const rawLimit = parseInt(c.req.query('limit') ?? '', 10)
   const limit =
@@ -122,7 +143,7 @@ feedbackRouter.get('/', async (c) => {
   const ids = rows.map((r) => r.id)
 
   // Single follow-up query for "did THIS user vote on these page rows".
-  // Empty page → skip the round-trip.
+  // Empty page or anonymous caller → skip the round-trip.
   let votedSet: Set<string> = new Set()
   if (ids.length > 0 && userId) {
     const { data: voted, error: votedError } = await supabaseAdmin
@@ -158,8 +179,8 @@ feedbackRouter.get('/', async (c) => {
   return c.json({ success: true, data: items })
 })
 
-// POST /api/v1/feedback — submit a suggestion.
-feedbackRouter.post('/', async (c) => {
+// POST /api/v1/feedback — submit a suggestion. Auth required.
+feedbackRouter.post('/', authJwt, async (c) => {
   const userId = c.get('userId')
   const orgId = c.get('orgId')
   const email = c.get('email')
@@ -226,14 +247,14 @@ feedbackRouter.post('/', async (c) => {
   return c.json({ success: true })
 })
 
-// ── POST /api/v1/feedback/:id/vote — idempotent upvote ────────────────────────
+// ── POST /api/v1/feedback/:id/vote — idempotent upvote (auth required) ────────
 //
 // One vote per (user, feedback). Idempotency is enforced by the
 // (feedback_id, user_id) UNIQUE constraint on feedback_votes; we INSERT
 // unconditionally and treat a unique-violation as success. That keeps the
 // happy path one round-trip (no SELECT-then-INSERT) and is race-safe under
 // concurrent double-clicks.
-feedbackRouter.post('/:id/vote', async (c) => {
+feedbackRouter.post('/:id/vote', authJwt, async (c) => {
   const userId = c.get('userId')
   if (!userId) {
     // authJwt should have already rejected this; defensive throw keeps the
@@ -273,8 +294,8 @@ feedbackRouter.post('/:id/vote', async (c) => {
   return c.json({ success: true })
 })
 
-// ── DELETE /api/v1/feedback/:id/vote — un-vote (also idempotent) ──────────────
-feedbackRouter.delete('/:id/vote', async (c) => {
+// ── DELETE /api/v1/feedback/:id/vote — un-vote (auth required, also idempotent) ──
+feedbackRouter.delete('/:id/vote', authJwt, async (c) => {
   const userId = c.get('userId')
   if (!userId) {
     throw new ApiError('UNAUTHORIZED', 'Authentication required to un-vote')
