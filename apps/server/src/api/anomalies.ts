@@ -6,6 +6,7 @@ import { detectAnomalies, fetchContributingFactors } from '../lib/anomaly.js'
 import { getAnomalyHistory } from '../lib/anomaly-snapshot.js'
 import { supabaseAdmin } from '../lib/db.js'
 import { parsePositiveFloat, parseClampedFloat } from '../lib/params.js'
+import { ApiError } from '../lib/errors.js'
 
 const requireEdit = requireRole('admin', 'editor')
 
@@ -37,7 +38,7 @@ function ackKey(a: AckKey): string {
 
 anomaliesRouter.get('/', async (c) => {
   const orgId = c.get('orgId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   const observationHours = parseClampedFloat(c.req.query('observationHours'), 1, 0.25, 72)
   const referenceHours = parseClampedFloat(c.req.query('referenceHours'), 168, 1, 8760)
@@ -55,7 +56,7 @@ anomaliesRouter.get('/', async (c) => {
       .eq('id', projectId)
       .eq('organization_id', orgId)
       .single()
-    if (!proj) return c.json({ error: 'Project not found' }, 404)
+    if (!proj) throw new ApiError('NOT_FOUND', 'Project not found')
   }
 
   // Fetch acks scoped to the same project context (NULL = org-wide).
@@ -119,7 +120,7 @@ anomaliesRouter.get('/', async (c) => {
 // GET /api/v1/anomalies/history?days=30
 anomaliesRouter.get('/history', async (c) => {
   const orgId = c.get('orgId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   const days = Math.min(parsePositiveFloat(c.req.query('days'), 30), 365)
   const history = await getAnomalyHistory(orgId, days)
@@ -164,7 +165,7 @@ async function parseAckBody(
 anomaliesRouter.post('/ack', requireEdit, async (c) => {
   const orgId = c.get('orgId')
   const userId = c.get('userId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   const parsed = await parseAckBody(c)
   if ('error' in parsed) return c.json({ error: parsed.error }, 400)
@@ -176,7 +177,7 @@ anomaliesRouter.post('/ack', requireEdit, async (c) => {
       .eq('id', parsed.projectId)
       .eq('organization_id', orgId)
       .single()
-    if (!proj) return c.json({ error: 'Project not found' }, 404)
+    if (!proj) throw new ApiError('NOT_FOUND', 'Project not found')
   }
 
   const { error } = await supabaseAdmin
@@ -191,7 +192,7 @@ anomaliesRouter.post('/ack', requireEdit, async (c) => {
       acknowledged_at: new Date().toISOString(),
     }, { onConflict: 'organization_id,project_id,provider,model,kind' })
 
-  if (error) return c.json({ error: 'Failed to acknowledge anomaly' }, 500)
+  if (error) throw new ApiError('INTERNAL_ERROR', 'Failed to acknowledge anomaly')
 
   return c.json({ success: true })
 })
@@ -199,17 +200,17 @@ anomaliesRouter.post('/ack', requireEdit, async (c) => {
 // DELETE /api/v1/anomalies/ack?provider=X&model=Y&kind=Z[&projectId=P] — un-acknowledge
 anomaliesRouter.delete('/ack', requireEdit, async (c) => {
   const orgId = c.get('orgId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   const provider = c.req.query('provider')
   const model = c.req.query('model')
   const kind = c.req.query('kind')
   const projectId = c.req.query('projectId')
 
-  if (!provider) return c.json({ error: 'provider is required' }, 400)
-  if (!model) return c.json({ error: 'model is required' }, 400)
+  if (!provider) throw new ApiError('VALIDATION_FAILED', 'provider is required')
+  if (!model) throw new ApiError('VALIDATION_FAILED', 'model is required')
   if (!kind || !VALID_KINDS.has(kind)) {
-    return c.json({ error: 'kind must be one of: latency, cost, error_rate' }, 400)
+    throw new ApiError('VALIDATION_FAILED', 'kind must be one of: latency, cost, error_rate')
   }
 
   if (projectId) {
@@ -219,7 +220,7 @@ anomaliesRouter.delete('/ack', requireEdit, async (c) => {
       .eq('id', projectId)
       .eq('organization_id', orgId)
       .single()
-    if (!proj) return c.json({ error: 'Project not found' }, 404)
+    if (!proj) throw new ApiError('NOT_FOUND', 'Project not found')
   }
 
   let deleteQuery = supabaseAdmin
@@ -238,7 +239,7 @@ anomaliesRouter.delete('/ack', requireEdit, async (c) => {
 
   const { error } = await deleteQuery
 
-  if (error) return c.json({ error: 'Failed to un-acknowledge' }, 500)
+  if (error) throw new ApiError('INTERNAL_ERROR', 'Failed to un-acknowledge')
 
   return c.json({ success: true })
 })

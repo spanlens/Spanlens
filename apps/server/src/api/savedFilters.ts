@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { authJwt, type JwtContext } from '../middleware/authJwt.js'
 import { supabaseAdmin } from '../lib/db.js'
+import { ApiError } from '../lib/errors.js'
 
 /**
  * /api/v1/saved-filters — per-user named filter bookmarks.
@@ -25,7 +26,7 @@ interface SavedFilterRow {
 
 savedFiltersRouter.get('/', async (c) => {
   const userId = c.get('userId')
-  if (!userId) return c.json({ error: 'Not authenticated' }, 401)
+  if (!userId) throw new ApiError('UNAUTHORIZED', 'Not authenticated')
 
   const { data, error } = await supabaseAdmin
     .from('saved_filters')
@@ -34,25 +35,25 @@ savedFiltersRouter.get('/', async (c) => {
     .order('created_at', { ascending: false })
     .returns<SavedFilterRow[]>()
 
-  if (error) return c.json({ error: 'Failed to fetch filters' }, 500)
+  if (error) throw new ApiError('INTERNAL_ERROR', 'Failed to fetch filters')
   return c.json({ success: true, data: data ?? [] })
 })
 
 savedFiltersRouter.post('/', async (c) => {
   const userId = c.get('userId')
   const orgId = c.get('orgId')
-  if (!userId || !orgId) return c.json({ error: 'Not authenticated' }, 401)
+  if (!userId || !orgId) throw new ApiError('UNAUTHORIZED', 'Not authenticated')
 
   let body: { name?: unknown; filters?: unknown }
   try {
     body = (await c.req.json()) as typeof body
   } catch {
-    return c.json({ error: 'Invalid JSON body' }, 400)
+    throw new ApiError('INVALID_JSON_BODY', 'Invalid JSON body')
   }
 
   const name = typeof body.name === 'string' ? body.name.trim() : ''
   if (!name || name.length > 80) {
-    return c.json({ error: 'name must be 1–80 characters' }, 400)
+    throw new ApiError('VALIDATION_FAILED', 'name must be 1–80 characters')
   }
   const filters = typeof body.filters === 'object' && body.filters !== null ? body.filters : {}
 
@@ -64,16 +65,16 @@ savedFiltersRouter.post('/', async (c) => {
 
   if (error) {
     if ((error as { code?: string }).code === '23505') {
-      return c.json({ error: 'A filter with this name already exists' }, 409)
+      throw new ApiError('CONFLICT', 'A filter with this name already exists')
     }
-    return c.json({ error: 'Failed to save filter' }, 500)
+    throw new ApiError('INTERNAL_ERROR', 'Failed to save filter')
   }
   return c.json({ success: true, data }, 201)
 })
 
 savedFiltersRouter.delete('/:id', async (c) => {
   const userId = c.get('userId')
-  if (!userId) return c.json({ error: 'Not authenticated' }, 401)
+  if (!userId) throw new ApiError('UNAUTHORIZED', 'Not authenticated')
 
   const id = c.req.param('id')
   const { error } = await supabaseAdmin
@@ -82,6 +83,6 @@ savedFiltersRouter.delete('/:id', async (c) => {
     .eq('id', id)
     .eq('user_id', userId)
 
-  if (error) return c.json({ error: 'Failed to delete' }, 500)
+  if (error) throw new ApiError('INTERNAL_ERROR', 'Failed to delete')
   return c.json({ success: true })
 })
