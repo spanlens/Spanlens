@@ -187,6 +187,11 @@ jobs:
           CLICKHOUSE_PASSWORD: spanlens_ci_password
           CLICKHOUSE_DB: spanlens
           OPENAI_API_BASE: http://localhost:4000/v1
+          # R-32 Phase E — feedback admin allowlist for the spec. The value
+          # must match E2E_FEEDBACK_ADMIN_EMAIL in the "Run Playwright smoke"
+          # step or the PATCH assertion 403s. Stable string so production
+          # SPANLENS_ADMIN_EMAILS does not need to know about it.
+          SPANLENS_ADMIN_EMAILS: admin-e2e@spanlens.test
         run: |
           pnpm --filter server dev > /tmp/server.log 2>&1 &
           for i in {1..40}; do
@@ -221,6 +226,11 @@ jobs:
           # aes256Decrypt can read back. See the "Start server" step above for
           # the rationale on hardcoding instead of using a secret.
           ENCRYPTION_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+          # R-32 Phase E — admin email used by feedback.spec.ts. Must be
+          # listed in the server's SPANLENS_ADMIN_EMAILS (set in the "Start
+          # server" step). The spec emits a targeted error on 403 if these
+          # drift apart.
+          E2E_FEEDBACK_ADMIN_EMAIL: admin-e2e@spanlens.test
         run: pnpm --filter web exec playwright test --reporter=list
 
       - name: Upload Playwright artifacts on failure
