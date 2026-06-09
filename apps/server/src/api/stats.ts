@@ -11,6 +11,7 @@ import {
   type OverviewRow,
   type TimeseriesRow,
 } from '../lib/stats-queries.js'
+import { ApiError } from '../lib/errors.js'
 
 /**
  * Stats endpoints — SQL-aggregated server-side.
@@ -56,7 +57,7 @@ function rowToOverview(row: OverviewRow) {
 // GET /api/v1/stats/overview?compare=true
 statsRouter.get('/overview', async (c) => {
   const orgId = c.get('orgId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   const projectId = c.req.query('projectId')
   const from = c.req.query('from')
@@ -103,7 +104,7 @@ statsRouter.get('/overview', async (c) => {
     return c.json({ success: true, data: rowToOverview(overview) })
   } catch (err) {
     console.error('[stats:overview] ClickHouse query failed:', err instanceof Error ? err.message : err)
-    return c.json({ error: 'Failed to fetch stats' }, 500)
+    throw new ApiError('INTERNAL_ERROR', 'Failed to fetch stats')
   }
 })
 
@@ -116,7 +117,7 @@ function selectGranularity(fromIso: string | null): 'hour' | 'day' {
 // GET /api/v1/stats/models?hours=24 — per-model breakdown, sorted by cost desc
 statsRouter.get('/models', async (c) => {
   const orgId = c.get('orgId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   const hours = parseClampedFloat(c.req.query('hours'), 24, 0.001, 24 * 30)
   const projectId = c.req.query('projectId')
@@ -136,14 +137,14 @@ statsRouter.get('/models', async (c) => {
     return c.json({ success: true, data: models, meta: { hours, count: models.length } })
   } catch (err) {
     console.error('[stats:models] ClickHouse query failed:', err instanceof Error ? err.message : err)
-    return c.json({ error: 'Failed to fetch model stats' }, 500)
+    throw new ApiError('INTERNAL_ERROR', 'Failed to fetch model stats')
   }
 })
 
 // GET /api/v1/stats/timeseries
 statsRouter.get('/timeseries', async (c) => {
   const orgId = c.get('orgId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   const projectId = c.req.query('projectId')
   const from = c.req.query('from')
@@ -172,7 +173,7 @@ statsRouter.get('/timeseries', async (c) => {
     return c.json({ success: true, data: series, meta: { granularity } })
   } catch (err) {
     console.error('[stats:timeseries] ClickHouse query failed:', err instanceof Error ? err.message : err)
-    return c.json({ error: 'Failed to fetch timeseries' }, 500)
+    throw new ApiError('INTERNAL_ERROR', 'Failed to fetch timeseries')
   }
 })
 
@@ -181,7 +182,7 @@ statsRouter.get('/timeseries', async (c) => {
 // page chart's hover tooltip to explain spikes.
 statsRouter.get('/timeseries-breakdown', async (c) => {
   const orgId = c.get('orgId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   const projectId = c.req.query('projectId')
   const from = c.req.query('from')
@@ -204,7 +205,7 @@ statsRouter.get('/timeseries-breakdown', async (c) => {
     return c.json({ success: true, data, meta: { granularity } })
   } catch (err) {
     console.error('[stats:timeseries-breakdown] ClickHouse query failed:', err instanceof Error ? err.message : err)
-    return c.json({ error: 'Failed to fetch timeseries breakdown' }, 500)
+    throw new ApiError('INTERNAL_ERROR', 'Failed to fetch timeseries breakdown')
   }
 })
 
@@ -227,7 +228,7 @@ function olsRegression(ys: number[]): { slope: number; intercept: number } {
 // GET /api/v1/stats/spend-forecast — monthly spend forecast via linear regression
 statsRouter.get('/spend-forecast', async (c) => {
   const orgId = c.get('orgId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   const projectId = c.req.query('projectId')
 
@@ -248,7 +249,7 @@ statsRouter.get('/spend-forecast', async (c) => {
     })
   } catch (err) {
     console.error('[stats:spend-forecast] ClickHouse query failed:', err instanceof Error ? err.message : err)
-    return c.json({ error: 'Failed to fetch spend forecast' }, 500)
+    throw new ApiError('INTERNAL_ERROR', 'Failed to fetch spend forecast')
   }
 
   const costByDate = new Map<string, number>()
@@ -328,7 +329,7 @@ statsRouter.get('/spend-forecast', async (c) => {
  */
 statsRouter.get('/latency', async (c) => {
   const orgId = c.get('orgId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   const hours = parseClampedFloat(c.req.query('hours'), 24, 0.001, 24 * 30)
 
@@ -361,6 +362,6 @@ statsRouter.get('/latency', async (c) => {
     })
   } catch (err) {
     console.error('[stats:latency] ClickHouse query failed:', err instanceof Error ? err.message : err)
-    return c.json({ error: 'Failed to fetch latency data' }, 500)
+    throw new ApiError('INTERNAL_ERROR', 'Failed to fetch latency data')
   }
 })

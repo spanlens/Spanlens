@@ -9,6 +9,7 @@ import {
   listTracesFromEvents,
   getTraceWithSpansFromEvents,
 } from '../lib/traces-events-queries.js'
+import { ApiError } from '../lib/errors.js'
 
 export const tracesRouter = new Hono<JwtContext>()
 
@@ -19,7 +20,7 @@ tracesRouter.use('*', authJwtOrApiKey)
 // page, limit
 tracesRouter.get('/', async (c) => {
   const orgId = c.get('orgId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   const projectId = c.req.query('projectId')
   const status = c.req.query('status')
@@ -97,7 +98,7 @@ tracesRouter.get('/', async (c) => {
   }
 
   const { data, error, count } = await query
-  if (error) return c.json({ error: 'Failed to fetch traces' }, 500)
+  if (error) throw new ApiError('INTERNAL_ERROR', 'Failed to fetch traces')
 
   return c.json({
     success: true,
@@ -110,12 +111,12 @@ tracesRouter.get('/', async (c) => {
 tracesRouter.get('/:id', async (c) => {
   const traceId = c.req.param('id')
   const orgId = c.get('orgId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   if (useEventsForRequests) {
     try {
       const { trace, spans } = await getTraceWithSpansFromEvents(traceId, orgId)
-      if (!trace) return c.json({ error: 'Trace not found' }, 404)
+      if (!trace) throw new ApiError('NOT_FOUND', 'Trace not found')
       const criticalSpanIds = computeCriticalPath(spans)
       return c.json({
         success: true,
@@ -138,7 +139,7 @@ tracesRouter.get('/:id', async (c) => {
     .eq('organization_id', orgId)
     .single()
 
-  if (traceErr || !trace) return c.json({ error: 'Trace not found' }, 404)
+  if (traceErr || !trace) throw new ApiError('NOT_FOUND', 'Trace not found')
 
   const { data: spans, error: spansErr } = await supabaseAdmin
     .from('spans')
@@ -148,7 +149,7 @@ tracesRouter.get('/:id', async (c) => {
     .eq('trace_id', traceId)
     .order('started_at', { ascending: true })
 
-  if (spansErr) return c.json({ error: 'Failed to fetch spans' }, 500)
+  if (spansErr) throw new ApiError('INTERNAL_ERROR', 'Failed to fetch spans')
 
   const criticalSpanIds = computeCriticalPath(spans ?? [])
 

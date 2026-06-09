@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { authApiKey, type ApiKeyContext } from '../middleware/authApiKey.js'
 import { supabaseAdmin } from '../lib/db.js'
+import { ApiError } from '../lib/errors.js'
 
 /**
  * Endpoints that introspect the *Spanlens API key* presented in the
@@ -76,7 +77,7 @@ meRouter.get('/', async (c) => {
       .eq('is_active', true),
   ])
 
-  if (!project) return c.json({ error: 'Project not found' }, 404)
+  if (!project) throw new ApiError('NOT_FOUND', 'Project not found')
 
   const providers = Array.from(
     new Set((providerKeys ?? []).map((row) => row.provider as string)),
