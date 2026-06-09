@@ -8,6 +8,7 @@ import { enqueueDeletion } from '../lib/pending-deletions.js'
 import { recordAuditEvent } from '../lib/audit-log.js'
 import { requestsScope, selectRequests } from '../lib/requests-query.js'
 import { parsePositiveFloat } from '../lib/params.js'
+import { ApiError } from '../lib/errors.js'
 
 const requireEdit = requireRole('admin', 'editor')
 
@@ -52,7 +53,7 @@ const EMPTY_STATS: PromptStats = {
 // GET /  — latest version of every named prompt, with 24h usage stats inline
 promptsRouter.get('/', async (c) => {
   const orgId = c.get('orgId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   const projectId = c.req.query('projectId')
 
@@ -66,7 +67,7 @@ promptsRouter.get('/', async (c) => {
   if (projectId) query = query.eq('project_id', projectId)
 
   const { data, error } = await query
-  if (error) return c.json({ error: 'Failed to fetch prompts' }, 500)
+  if (error) throw new ApiError('INTERNAL_ERROR', 'Failed to fetch prompts')
 
   const allRows = data ?? []
 
@@ -193,7 +194,7 @@ promptsRouter.get('/', async (c) => {
 // GET /:name — all versions of a named prompt
 promptsRouter.get('/:name', async (c) => {
   const orgId = c.get('orgId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
   const name = c.req.param('name')
 
   const { data, error } = await supabaseAdmin
@@ -203,14 +204,14 @@ promptsRouter.get('/:name', async (c) => {
     .eq('name', name)
     .order('version', { ascending: false })
 
-  if (error) return c.json({ error: 'Failed to fetch versions' }, 500)
+  if (error) throw new ApiError('INTERNAL_ERROR', 'Failed to fetch versions')
   return c.json({ success: true, data: data ?? [] })
 })
 
 // GET /:name/compare — per-version metrics for A/B comparison
 promptsRouter.get('/:name/compare', async (c) => {
   const orgId = c.get('orgId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
   const name = c.req.param('name')
   const sinceHours = parsePositiveFloat(c.req.query('sinceHours'), 24 * 30)
 
@@ -221,11 +222,11 @@ promptsRouter.get('/:name/compare', async (c) => {
 // GET /:name/:version — one specific version
 promptsRouter.get('/:name/:version', async (c) => {
   const orgId = c.get('orgId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
   const name = c.req.param('name')
   const version = Number(c.req.param('version'))
   if (!Number.isInteger(version) || version < 1) {
-    return c.json({ error: 'Invalid version' }, 400)
+    throw new ApiError('VALIDATION_FAILED', 'Invalid version')
   }
 
   const { data, error } = await supabaseAdmin
@@ -236,7 +237,7 @@ promptsRouter.get('/:name/:version', async (c) => {
     .eq('version', version)
     .maybeSingle()
 
-  if (error || !data) return c.json({ error: 'Version not found' }, 404)
+  if (error || !data) throw new ApiError('NOT_FOUND', 'Version not found')
   return c.json({ success: true, data })
 })
 
@@ -244,7 +245,7 @@ promptsRouter.get('/:name/:version', async (c) => {
 promptsRouter.post('/', requireEdit, async (c) => {
   const orgId = c.get('orgId')
   const userId = c.get('userId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   let body: {
     name?: unknown
@@ -256,15 +257,15 @@ promptsRouter.post('/', requireEdit, async (c) => {
   try {
     body = (await c.req.json()) as typeof body
   } catch {
-    return c.json({ error: 'Invalid JSON body' }, 400)
+    throw new ApiError('INVALID_JSON_BODY', 'Invalid JSON body')
   }
 
   const name = typeof body.name === 'string' ? body.name.trim() : ''
   const content = typeof body.content === 'string' ? body.content : ''
-  if (!name) return c.json({ error: 'name is required' }, 400)
-  if (!content) return c.json({ error: 'content is required' }, 400)
-  if (name.length > 128) return c.json({ error: 'name too long (max 128)' }, 400)
-  if (content.length > 100_000) return c.json({ error: 'content too long (max 100K)' }, 400)
+  if (!name) throw new ApiError('VALIDATION_FAILED', 'name is required')
+  if (!content) throw new ApiError('VALIDATION_FAILED', 'content is required')
+  if (name.length > 128) throw new ApiError('VALIDATION_FAILED', 'name too long (max 128)')
+  if (content.length > 100_000) throw new ApiError('VALIDATION_FAILED', 'content too long (max 100K)')
 
   const variables: PromptVariable[] = Array.isArray(body.variables)
     ? (body.variables as PromptVariable[]).filter(
@@ -302,7 +303,7 @@ promptsRouter.post('/', requireEdit, async (c) => {
     .select('id, name, version, content, variables, metadata, project_id, created_at, created_by')
     .single()
 
-  if (error || !data) return c.json({ error: 'Failed to create version' }, 500)
+  if (error || !data) throw new ApiError('INTERNAL_ERROR', 'Failed to create version')
   // Invalidate resolve-prompt-version cache for this prompt name so the new
   // latest version is served immediately on the next proxy call.
   await invalidatePromptName(orgId, name)
@@ -327,11 +328,11 @@ promptsRouter.post('/', requireEdit, async (c) => {
 promptsRouter.post('/:name/:version/rollback', requireEdit, async (c) => {
   const orgId = c.get('orgId')
   const userId = c.get('userId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
   const name = c.req.param('name')
   const version = Number(c.req.param('version'))
   if (!Number.isInteger(version) || version < 1) {
-    return c.json({ error: 'Invalid version' }, 400)
+    throw new ApiError('VALIDATION_FAILED', 'Invalid version')
   }
 
   const { data: source, error: fetchErr } = await supabaseAdmin
@@ -342,7 +343,7 @@ promptsRouter.post('/:name/:version/rollback', requireEdit, async (c) => {
     .eq('version', version)
     .maybeSingle()
 
-  if (fetchErr || !source) return c.json({ error: 'Version not found' }, 404)
+  if (fetchErr || !source) throw new ApiError('NOT_FOUND', 'Version not found')
 
   const { data: latest } = await supabaseAdmin
     .from('prompt_versions')
@@ -370,7 +371,7 @@ promptsRouter.post('/:name/:version/rollback', requireEdit, async (c) => {
     .select('id, name, version, content, variables, metadata, project_id, created_at, created_by')
     .single()
 
-  if (error || !data) return c.json({ error: 'Failed to create rollback version' }, 500)
+  if (error || !data) throw new ApiError('INTERNAL_ERROR', 'Failed to create rollback version')
   await invalidatePromptName(orgId, name)
 
   void recordAuditEvent(c, {
@@ -398,11 +399,11 @@ promptsRouter.post('/:name/:version/rollback', requireEdit, async (c) => {
 promptsRouter.delete('/:name/:version', requireEdit, async (c) => {
   const orgId = c.get('orgId')
   const userId = c.get('userId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
   const name = c.req.param('name')
   const version = Number(c.req.param('version'))
   if (!Number.isInteger(version) || version < 1) {
-    return c.json({ error: 'Invalid version' }, 400)
+    throw new ApiError('VALIDATION_FAILED', 'Invalid version')
   }
 
   const { data: snapshot } = await supabaseAdmin
@@ -412,7 +413,7 @@ promptsRouter.delete('/:name/:version', requireEdit, async (c) => {
     .eq('name', name)
     .eq('version', version)
     .maybeSingle()
-  if (!snapshot) return c.json({ error: 'Version not found' }, 404)
+  if (!snapshot) throw new ApiError('NOT_FOUND', 'Version not found')
 
   const enqueued = await enqueueDeletion({
     organizationId: orgId,
@@ -424,7 +425,7 @@ promptsRouter.delete('/:name/:version', requireEdit, async (c) => {
 
   if (!enqueued.ok) {
     if (enqueued.code === 'ALREADY_PENDING') {
-      return c.json({ error: 'Already queued for deletion' }, 409)
+      throw new ApiError('CONFLICT', 'Already queued for deletion')
     }
     return c.json({ error: enqueued.error ?? 'Failed to queue deletion' }, 500)
   }

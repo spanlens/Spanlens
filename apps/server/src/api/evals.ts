@@ -3,6 +3,7 @@ import { authJwt, type JwtContext } from '../middleware/authJwt.js'
 import { supabaseAdmin } from '../lib/db.js'
 import { runEvalRun, estimateJudgeCostUsd } from '../lib/eval-runner.js'
 import { fireAndForget } from '../lib/wait-until.js'
+import { ApiError } from '../lib/errors.js'
 
 export const evalsRouter = new Hono<JwtContext>()
 
@@ -14,7 +15,7 @@ evalsRouter.use('*', authJwt)
 evalsRouter.post('/evaluators', async (c) => {
   const orgId = c.get('orgId')
   const userId = c.get('userId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   let body: {
     promptName?: unknown
@@ -28,21 +29,21 @@ evalsRouter.post('/evaluators', async (c) => {
   try {
     body = (await c.req.json()) as typeof body
   } catch {
-    return c.json({ error: 'Invalid JSON body' }, 400)
+    throw new ApiError('INVALID_JSON_BODY', 'Invalid JSON body')
   }
 
   const promptName = typeof body.promptName === 'string' ? body.promptName.trim() : ''
   const name = typeof body.name === 'string' ? body.name.trim() : ''
   const type = typeof body.type === 'string' ? body.type.trim() : 'llm_judge'
 
-  if (!promptName) return c.json({ error: 'promptName is required' }, 400)
-  if (!name) return c.json({ error: 'name is required' }, 400)
+  if (!promptName) throw new ApiError('VALIDATION_FAILED', 'promptName is required')
+  if (!name) throw new ApiError('VALIDATION_FAILED', 'name is required')
   if (type !== 'llm_judge' && type !== 'regex' && type !== 'json_schema') {
-    return c.json({ error: 'type must be one of: llm_judge, regex, json_schema' }, 400)
+    throw new ApiError('VALIDATION_FAILED', 'type must be one of: llm_judge, regex, json_schema')
   }
 
   if (!body.config || typeof body.config !== 'object' || Array.isArray(body.config)) {
-    return c.json({ error: 'config object is required' }, 400)
+    throw new ApiError('VALIDATION_FAILED', 'config object is required')
   }
   const config = body.config as Record<string, unknown>
 
@@ -58,19 +59,19 @@ evalsRouter.post('/evaluators', async (c) => {
     const scaleMin = typeof config.scale_min === 'number' ? config.scale_min : 0
     const scaleMax = typeof config.scale_max === 'number' ? config.scale_max : 1
 
-    if (!criterion) return c.json({ error: 'config.criterion is required' }, 400)
+    if (!criterion) throw new ApiError('VALIDATION_FAILED', 'config.criterion is required')
     if (judgeProvider !== 'openai' && judgeProvider !== 'anthropic' && judgeProvider !== 'gemini') {
-      return c.json({ error: 'config.judge_provider must be "openai", "anthropic", or "gemini"' }, 400)
+      throw new ApiError('VALIDATION_FAILED', 'config.judge_provider must be "openai", "anthropic", or "gemini"')
     }
-    if (!judgeModel) return c.json({ error: 'config.judge_model is required' }, 400)
+    if (!judgeModel) throw new ApiError('VALIDATION_FAILED', 'config.judge_model is required')
     if (!(scaleMax > scaleMin)) {
-      return c.json({ error: 'config.scale_max must be greater than scale_min' }, 400)
+      throw new ApiError('VALIDATION_FAILED', 'config.scale_max must be greater than scale_min')
     }
     validatedConfig = { criterion, judge_provider: judgeProvider, judge_model: judgeModel, scale_min: scaleMin, scale_max: scaleMax }
   } else if (type === 'regex') {
     const pattern = typeof config.pattern === 'string' ? config.pattern : ''
     const flags = typeof config.flags === 'string' ? config.flags : ''
-    if (!pattern) return c.json({ error: 'config.pattern is required' }, 400)
+    if (!pattern) throw new ApiError('VALIDATION_FAILED', 'config.pattern is required')
     // Compile-test the pattern at create time so a typo can't lurk
     // until first eval run — same fail-fast pattern as score_configs
     // does for category validation.
@@ -84,7 +85,7 @@ evalsRouter.post('/evaluators', async (c) => {
   } else {
     // type === 'json_schema'
     if (!config.schema || typeof config.schema !== 'object' || Array.isArray(config.schema)) {
-      return c.json({ error: 'config.schema must be a JSON Schema object' }, 400)
+      throw new ApiError('VALIDATION_FAILED', 'config.schema must be a JSON Schema object')
     }
     validatedConfig = { schema: config.schema }
   }
@@ -95,7 +96,7 @@ evalsRouter.post('/evaluators', async (c) => {
     .select('id', { count: 'exact', head: true })
     .eq('organization_id', orgId)
     .eq('name', promptName)
-  if (!promptCount) return c.json({ error: 'Prompt not found' }, 404)
+  if (!promptCount) throw new ApiError('NOT_FOUND', 'Prompt not found')
 
   // Optional score config — only meaningful for LLM-as-judge runs.
   // Verified to belong to the same org so a caller can't bind an
@@ -114,7 +115,7 @@ evalsRouter.post('/evaluators', async (c) => {
       .eq('organization_id', orgId)
       .is('archived_at', null)
       .maybeSingle()
-    if (!sc) return c.json({ error: 'scoreConfigId not found' }, 404)
+    if (!sc) throw new ApiError('NOT_FOUND', 'scoreConfigId not found')
     scoreConfigId = sc.id
   }
 
@@ -141,7 +142,7 @@ evalsRouter.post('/evaluators', async (c) => {
 // GET /api/v1/evaluators?promptName=...
 evalsRouter.get('/evaluators', async (c) => {
   const orgId = c.get('orgId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   const promptName = c.req.query('promptName')
 
@@ -168,7 +169,7 @@ evalsRouter.get('/evaluators', async (c) => {
 // already render-ready.
 evalsRouter.get('/evaluator-templates', async (c) => {
   const orgId = c.get('orgId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   const { data, error } = await supabaseAdmin
     .from('evaluator_templates')
@@ -177,14 +178,14 @@ evalsRouter.get('/evaluator-templates', async (c) => {
     .order('category', { ascending: true })
     .order('display_order', { ascending: true })
 
-  if (error) return c.json({ error: 'Failed to load templates' }, 500)
+  if (error) throw new ApiError('INTERNAL_ERROR', 'Failed to load templates')
   return c.json({ success: true, data: data ?? [] })
 })
 
 // DELETE /api/v1/evaluators/:id — soft delete (archive)
 evalsRouter.delete('/evaluators/:id', async (c) => {
   const orgId = c.get('orgId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   const id = c.req.param('id')
   const { error } = await supabaseAdmin
@@ -203,7 +204,7 @@ evalsRouter.delete('/evaluators/:id', async (c) => {
 evalsRouter.post('/eval-runs', async (c) => {
   const orgId = c.get('orgId')
   const userId = c.get('userId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   let body: {
     evaluatorId?: unknown
@@ -219,7 +220,7 @@ evalsRouter.post('/eval-runs', async (c) => {
   try {
     body = (await c.req.json()) as typeof body
   } catch {
-    return c.json({ error: 'Invalid JSON body' }, 400)
+    throw new ApiError('INVALID_JSON_BODY', 'Invalid JSON body')
   }
 
   const evaluatorId = typeof body.evaluatorId === 'string' ? body.evaluatorId.trim() : ''
@@ -230,13 +231,13 @@ evalsRouter.post('/eval-runs', async (c) => {
   const sampleFrom = typeof body.sampleFrom === 'string' ? body.sampleFrom : null
   const sampleTo = typeof body.sampleTo === 'string' ? body.sampleTo : null
 
-  if (!evaluatorId) return c.json({ error: 'evaluatorId is required' }, 400)
-  if (!promptVersionId) return c.json({ error: 'promptVersionId is required' }, 400)
+  if (!evaluatorId) throw new ApiError('VALIDATION_FAILED', 'evaluatorId is required')
+  if (!promptVersionId) throw new ApiError('VALIDATION_FAILED', 'promptVersionId is required')
   if (sampleSize < 1 || sampleSize > 1000) {
-    return c.json({ error: 'sampleSize must be between 1 and 1000' }, 400)
+    throw new ApiError('VALIDATION_FAILED', 'sampleSize must be between 1 and 1000')
   }
   if (source === 'dataset' && !datasetId) {
-    return c.json({ error: 'datasetId is required when source = dataset' }, 400)
+    throw new ApiError('VALIDATION_FAILED', 'datasetId is required when source = dataset')
   }
 
   // Dataset evals run the prompt against each item's input before judging.
@@ -247,8 +248,8 @@ evalsRouter.post('/eval-runs', async (c) => {
       : null
   const runModel = typeof body.runModel === 'string' ? body.runModel.trim() : null
   if (source === 'dataset') {
-    if (!runProvider) return c.json({ error: 'runProvider is required when source = dataset' }, 400)
-    if (!runModel) return c.json({ error: 'runModel is required when source = dataset' }, 400)
+    if (!runProvider) throw new ApiError('VALIDATION_FAILED', 'runProvider is required when source = dataset')
+    if (!runModel) throw new ApiError('VALIDATION_FAILED', 'runModel is required when source = dataset')
   }
 
   // Verify both belong to org
@@ -259,7 +260,7 @@ evalsRouter.post('/eval-runs', async (c) => {
     .eq('organization_id', orgId)
     .is('archived_at', null)
     .maybeSingle()
-  if (!evaluator) return c.json({ error: 'Evaluator not found' }, 404)
+  if (!evaluator) throw new ApiError('NOT_FOUND', 'Evaluator not found')
 
   const { data: pv } = await supabaseAdmin
     .from('prompt_versions')
@@ -267,7 +268,7 @@ evalsRouter.post('/eval-runs', async (c) => {
     .eq('id', promptVersionId)
     .eq('organization_id', orgId)
     .maybeSingle()
-  if (!pv) return c.json({ error: 'Prompt version not found' }, 404)
+  if (!pv) throw new ApiError('NOT_FOUND', 'Prompt version not found')
 
   // Verify dataset belongs to org if requested
   if (source === 'dataset' && datasetId) {
@@ -278,7 +279,7 @@ evalsRouter.post('/eval-runs', async (c) => {
       .eq('organization_id', orgId)
       .is('archived_at', null)
       .maybeSingle()
-    if (!ds) return c.json({ error: 'Dataset not found' }, 404)
+    if (!ds) throw new ApiError('NOT_FOUND', 'Dataset not found')
   }
 
   const { data: run, error: runErr } = await supabaseAdmin
@@ -323,7 +324,7 @@ evalsRouter.post('/eval-runs', async (c) => {
 // GET /api/v1/eval-runs?evaluatorId=...&promptVersionId=...
 evalsRouter.get('/eval-runs', async (c) => {
   const orgId = c.get('orgId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   const evaluatorId = c.req.query('evaluatorId')
   const promptVersionId = c.req.query('promptVersionId')
@@ -346,7 +347,7 @@ evalsRouter.get('/eval-runs', async (c) => {
 // GET /api/v1/eval-runs/:id
 evalsRouter.get('/eval-runs/:id', async (c) => {
   const orgId = c.get('orgId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   const id = c.req.param('id')
   const { data, error } = await supabaseAdmin
@@ -356,14 +357,14 @@ evalsRouter.get('/eval-runs/:id', async (c) => {
     .eq('organization_id', orgId)
     .maybeSingle()
 
-  if (error || !data) return c.json({ error: 'Eval run not found' }, 404)
+  if (error || !data) throw new ApiError('NOT_FOUND', 'Eval run not found')
   return c.json({ success: true, data })
 })
 
 // GET /api/v1/eval-runs/:id/results
 evalsRouter.get('/eval-runs/:id/results', async (c) => {
   const orgId = c.get('orgId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   const runId = c.req.param('id')
 
@@ -374,7 +375,7 @@ evalsRouter.get('/eval-runs/:id/results', async (c) => {
     .eq('id', runId)
     .eq('organization_id', orgId)
     .maybeSingle()
-  if (!run) return c.json({ error: 'Eval run not found' }, 404)
+  if (!run) throw new ApiError('NOT_FOUND', 'Eval run not found')
 
   const { data, error } = await supabaseAdmin
     .from('eval_results')
@@ -392,7 +393,7 @@ evalsRouter.post('/eval-runs/estimate', async (c) => {
   try {
     body = (await c.req.json()) as typeof body
   } catch {
-    return c.json({ error: 'Invalid JSON body' }, 400)
+    throw new ApiError('INVALID_JSON_BODY', 'Invalid JSON body')
   }
   const sampleSize = typeof body.sampleSize === 'number' ? Math.round(body.sampleSize) : 50
   const judgeModel = typeof body.judgeModel === 'string' ? body.judgeModel : 'gpt-4o-mini'
