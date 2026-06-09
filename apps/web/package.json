@@ -23,6 +23,7 @@
     "@radix-ui/react-toast": "^1.2.1",
     "@radix-ui/react-tooltip": "^1.1.3",
     "@sentry/nextjs": "^10.56.0",
+    "@spanlens/api-types": "workspace:*",
     "@supabase/ssr": "^0.10.3",
     "@supabase/supabase-js": "^2.107.0",
     "@tanstack/react-query": "^5.101.0",
@@ -50,7 +51,9 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.2.7",
+    "hono": "^4.12.23",
     "postcss": "^8",
+    "server": "workspace:*",
     "tailwindcss": "^4.3.0",
     "typescript": "^6"
   }
