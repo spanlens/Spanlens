@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { authJwt, type JwtContext } from '../middleware/authJwt.js'
 import { supabaseAdmin } from '../lib/db.js'
 import { requestsScope, selectRequests } from '../lib/requests-query.js'
+import { ApiError } from '../lib/errors.js'
 
 export const datasetsRouter = new Hono<JwtContext>()
 
@@ -13,18 +14,18 @@ datasetsRouter.use('*', authJwt)
 datasetsRouter.post('/', async (c) => {
   const orgId = c.get('orgId')
   const userId = c.get('userId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   let body: { name?: unknown; description?: unknown }
   try {
     body = (await c.req.json()) as typeof body
   } catch {
-    return c.json({ error: 'Invalid JSON body' }, 400)
+    throw new ApiError('INVALID_JSON_BODY', 'Invalid JSON body')
   }
 
   const name = typeof body.name === 'string' ? body.name.trim() : ''
   const description = typeof body.description === 'string' ? body.description.trim() : null
-  if (!name) return c.json({ error: 'name is required' }, 400)
+  if (!name) throw new ApiError('VALIDATION_FAILED', 'name is required')
 
   const { data, error } = await supabaseAdmin
     .from('datasets')
@@ -39,7 +40,7 @@ datasetsRouter.post('/', async (c) => {
 
   if (error || !data) {
     if (error?.code === '23505') {
-      return c.json({ error: 'A dataset with this name already exists' }, 409)
+      throw new ApiError('CONFLICT', 'A dataset with this name already exists')
     }
     return c.json({ error: error?.message ?? 'Failed to create dataset' }, 500)
   }
@@ -49,7 +50,7 @@ datasetsRouter.post('/', async (c) => {
 // GET /api/v1/datasets — list (with item counts)
 datasetsRouter.get('/', async (c) => {
   const orgId = c.get('orgId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   const { data: datasets, error } = await supabaseAdmin
     .from('datasets')
@@ -87,7 +88,7 @@ datasetsRouter.get('/', async (c) => {
 // GET /api/v1/datasets/:id — single dataset + items
 datasetsRouter.get('/:id', async (c) => {
   const orgId = c.get('orgId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   const id = c.req.param('id')
 
@@ -99,7 +100,7 @@ datasetsRouter.get('/:id', async (c) => {
     .is('archived_at', null)
     .maybeSingle()
 
-  if (dsErr || !dataset) return c.json({ error: 'Dataset not found' }, 404)
+  if (dsErr || !dataset) throw new ApiError('NOT_FOUND', 'Dataset not found')
 
   const { data: items, error: itemsErr } = await supabaseAdmin
     .from('dataset_items')
@@ -115,7 +116,7 @@ datasetsRouter.get('/:id', async (c) => {
 // DELETE /api/v1/datasets/:id — soft delete (archive)
 datasetsRouter.delete('/:id', async (c) => {
   const orgId = c.get('orgId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   const id = c.req.param('id')
   const { error } = await supabaseAdmin
@@ -133,7 +134,7 @@ datasetsRouter.delete('/:id', async (c) => {
 // POST /api/v1/datasets/:id/items — add a single item
 datasetsRouter.post('/:id/items', async (c) => {
   const orgId = c.get('orgId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   const datasetId = c.req.param('id')
 
@@ -145,24 +146,24 @@ datasetsRouter.post('/:id/items', async (c) => {
     .eq('organization_id', orgId)
     .is('archived_at', null)
     .maybeSingle()
-  if (!ds) return c.json({ error: 'Dataset not found' }, 404)
+  if (!ds) throw new ApiError('NOT_FOUND', 'Dataset not found')
 
   let body: { input?: unknown; expectedOutput?: unknown; sourceRequestId?: unknown }
   try {
     body = (await c.req.json()) as typeof body
   } catch {
-    return c.json({ error: 'Invalid JSON body' }, 400)
+    throw new ApiError('INVALID_JSON_BODY', 'Invalid JSON body')
   }
 
   if (!body.input || typeof body.input !== 'object' || Array.isArray(body.input)) {
-    return c.json({ error: 'input must be an object' }, 400)
+    throw new ApiError('VALIDATION_FAILED', 'input must be an object')
   }
   const input = body.input as Record<string, unknown>
   // Accept shapes: { variables: {...} } or { messages: [...] }
   const hasVars = input.variables && typeof input.variables === 'object'
   const hasMsgs = Array.isArray(input.messages)
   if (!hasVars && !hasMsgs) {
-    return c.json({ error: 'input must contain "variables" object or "messages" array' }, 400)
+    throw new ApiError('VALIDATION_FAILED', 'input must contain "variables" object or "messages" array')
   }
 
   const expectedOutput = typeof body.expectedOutput === 'string' ? body.expectedOutput : null
@@ -190,7 +191,7 @@ datasetsRouter.post('/:id/items', async (c) => {
 // can show "8/10 inserted, 2 skipped (missing input)".
 datasetsRouter.post('/:id/items/bulk', async (c) => {
   const orgId = c.get('orgId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   const datasetId = c.req.param('id')
 
@@ -202,25 +203,25 @@ datasetsRouter.post('/:id/items/bulk', async (c) => {
     .eq('organization_id', orgId)
     .is('archived_at', null)
     .maybeSingle()
-  if (!ds) return c.json({ error: 'Dataset not found' }, 404)
+  if (!ds) throw new ApiError('NOT_FOUND', 'Dataset not found')
 
   let body: { items?: unknown }
   try {
     body = (await c.req.json()) as typeof body
   } catch {
-    return c.json({ error: 'Invalid JSON body' }, 400)
+    throw new ApiError('INVALID_JSON_BODY', 'Invalid JSON body')
   }
 
   if (!Array.isArray(body.items)) {
-    return c.json({ error: 'items must be an array' }, 400)
+    throw new ApiError('VALIDATION_FAILED', 'items must be an array')
   }
   if (body.items.length === 0) {
-    return c.json({ error: 'items array is empty' }, 400)
+    throw new ApiError('BAD_REQUEST', 'items array is empty')
   }
   // Cap per-request size to keep payload + memory bounded. Most uploads
   // are <1000 rows in practice.
   if (body.items.length > 5000) {
-    return c.json({ error: 'items array too large (max 5000)' }, 400)
+    throw new ApiError('VALIDATION_FAILED', 'items array too large (max 5000)')
   }
 
   // Normalize each row to the schema enforced by single-item POST:
@@ -276,7 +277,7 @@ datasetsRouter.post('/:id/items/bulk', async (c) => {
 // POST /api/v1/datasets/:id/items/import-requests — bulk import from production
 datasetsRouter.post('/:id/items/import-requests', async (c) => {
   const orgId = c.get('orgId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   const datasetId = c.req.param('id')
 
@@ -287,20 +288,20 @@ datasetsRouter.post('/:id/items/import-requests', async (c) => {
     .eq('organization_id', orgId)
     .is('archived_at', null)
     .maybeSingle()
-  if (!ds) return c.json({ error: 'Dataset not found' }, 404)
+  if (!ds) throw new ApiError('NOT_FOUND', 'Dataset not found')
 
   let body: { requestIds?: unknown }
   try {
     body = (await c.req.json()) as typeof body
   } catch {
-    return c.json({ error: 'Invalid JSON body' }, 400)
+    throw new ApiError('INVALID_JSON_BODY', 'Invalid JSON body')
   }
 
   if (!Array.isArray(body.requestIds) || body.requestIds.length === 0) {
-    return c.json({ error: 'requestIds (array) is required' }, 400)
+    throw new ApiError('VALIDATION_FAILED', 'requestIds (array) is required')
   }
   const ids = body.requestIds.filter((x): x is string => typeof x === 'string').slice(0, 200)
-  if (ids.length === 0) return c.json({ error: 'No valid request IDs' }, 400)
+  if (ids.length === 0) throw new ApiError('BAD_REQUEST', 'No valid request IDs')
 
   // Fetch source requests from ClickHouse. body columns are JSON strings —
   // parse at the boundary so the existing extraction logic stays unchanged.
@@ -322,7 +323,7 @@ datasetsRouter.post('/:id/items/import-requests', async (c) => {
     return c.json({ error: err instanceof Error ? err.message : 'ClickHouse query failed' }, 500)
   }
   if (rawRequests.length === 0) {
-    return c.json({ error: 'No matching requests found' }, 404)
+    throw new ApiError('NOT_FOUND', 'No matching requests found')
   }
   const requests = rawRequests.map((r) => {
     const parse = (s: string): Record<string, unknown> | null => {
@@ -384,7 +385,7 @@ datasetsRouter.post('/:id/items/import-requests', async (c) => {
 // DELETE /api/v1/datasets/:id/items/:itemId
 datasetsRouter.delete('/:id/items/:itemId', async (c) => {
   const orgId = c.get('orgId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   const itemId = c.req.param('itemId')
   const { error } = await supabaseAdmin

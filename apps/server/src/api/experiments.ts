@@ -3,6 +3,7 @@ import { authJwt, type JwtContext } from '../middleware/authJwt.js'
 import { supabaseAdmin } from '../lib/db.js'
 import { runExperiment } from '../lib/experiment-runner.js'
 import { fireAndForget } from '../lib/wait-until.js'
+import { ApiError } from '../lib/errors.js'
 
 export const experimentsRouter = new Hono<JwtContext>()
 
@@ -12,7 +13,7 @@ experimentsRouter.use('*', authJwt)
 experimentsRouter.post('/', async (c) => {
   const orgId = c.get('orgId')
   const userId = c.get('userId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   let body: {
     name?: unknown
@@ -27,7 +28,7 @@ experimentsRouter.post('/', async (c) => {
   try {
     body = (await c.req.json()) as typeof body
   } catch {
-    return c.json({ error: 'Invalid JSON body' }, 400)
+    throw new ApiError('INVALID_JSON_BODY', 'Invalid JSON body')
   }
 
   const name = typeof body.name === 'string' ? body.name.trim() : ''
@@ -43,12 +44,12 @@ experimentsRouter.post('/', async (c) => {
     : 'openai'
   const runModel = typeof body.runModel === 'string' ? body.runModel.trim() : ''
 
-  if (!name) return c.json({ error: 'name is required' }, 400)
-  if (!promptName) return c.json({ error: 'promptName is required' }, 400)
-  if (!versionAId || !versionBId) return c.json({ error: 'versionAId and versionBId are required' }, 400)
-  if (versionAId === versionBId) return c.json({ error: 'versionA and versionB must differ' }, 400)
-  if (!datasetId) return c.json({ error: 'datasetId is required' }, 400)
-  if (!runModel) return c.json({ error: 'runModel is required' }, 400)
+  if (!name) throw new ApiError('VALIDATION_FAILED', 'name is required')
+  if (!promptName) throw new ApiError('VALIDATION_FAILED', 'promptName is required')
+  if (!versionAId || !versionBId) throw new ApiError('BAD_REQUEST', 'versionAId and versionBId are required')
+  if (versionAId === versionBId) throw new ApiError('BAD_REQUEST', 'versionA and versionB must differ')
+  if (!datasetId) throw new ApiError('VALIDATION_FAILED', 'datasetId is required')
+  if (!runModel) throw new ApiError('VALIDATION_FAILED', 'runModel is required')
 
   // Verify ownership
   const { data: versions } = await supabaseAdmin
@@ -57,7 +58,7 @@ experimentsRouter.post('/', async (c) => {
     .eq('organization_id', orgId)
     .in('id', [versionAId, versionBId])
   if (!versions || versions.length !== 2) {
-    return c.json({ error: 'Prompt versions not found' }, 404)
+    throw new ApiError('NOT_FOUND', 'Prompt versions not found')
   }
 
   const { data: dataset } = await supabaseAdmin
@@ -67,7 +68,7 @@ experimentsRouter.post('/', async (c) => {
     .eq('organization_id', orgId)
     .is('archived_at', null)
     .maybeSingle()
-  if (!dataset) return c.json({ error: 'Dataset not found' }, 404)
+  if (!dataset) throw new ApiError('NOT_FOUND', 'Dataset not found')
 
   if (evaluatorId) {
     const { data: ev } = await supabaseAdmin
@@ -77,7 +78,7 @@ experimentsRouter.post('/', async (c) => {
       .eq('organization_id', orgId)
       .is('archived_at', null)
       .maybeSingle()
-    if (!ev) return c.json({ error: 'Evaluator not found' }, 404)
+    if (!ev) throw new ApiError('NOT_FOUND', 'Evaluator not found')
   }
 
   const { data: exp, error: expErr } = await supabaseAdmin
@@ -119,7 +120,7 @@ experimentsRouter.post('/', async (c) => {
 // GET /api/v1/experiments?promptName=...
 experimentsRouter.get('/', async (c) => {
   const orgId = c.get('orgId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   const promptName = c.req.query('promptName')
 
@@ -140,7 +141,7 @@ experimentsRouter.get('/', async (c) => {
 // GET /api/v1/experiments/:id
 experimentsRouter.get('/:id', async (c) => {
   const orgId = c.get('orgId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   const id = c.req.param('id')
   const { data, error } = await supabaseAdmin
@@ -150,14 +151,14 @@ experimentsRouter.get('/:id', async (c) => {
     .eq('organization_id', orgId)
     .maybeSingle()
 
-  if (error || !data) return c.json({ error: 'Experiment not found' }, 404)
+  if (error || !data) throw new ApiError('NOT_FOUND', 'Experiment not found')
   return c.json({ success: true, data })
 })
 
 // GET /api/v1/experiments/:id/results
 experimentsRouter.get('/:id/results', async (c) => {
   const orgId = c.get('orgId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   const id = c.req.param('id')
 
@@ -168,7 +169,7 @@ experimentsRouter.get('/:id/results', async (c) => {
     .eq('id', id)
     .eq('organization_id', orgId)
     .maybeSingle()
-  if (!exp) return c.json({ error: 'Experiment not found' }, 404)
+  if (!exp) throw new ApiError('NOT_FOUND', 'Experiment not found')
 
   const { data, error } = await supabaseAdmin
     .from('experiment_results')
