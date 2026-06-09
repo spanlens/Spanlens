@@ -128,3 +128,47 @@ export function isApiError(value: unknown): value is ApiError {
     typeof (value as ApiError).code === 'string'
   )
 }
+
+/**
+ * Serialise an error as the standard envelope. Called from app.ts's
+ * global `app.onError` handler and from any standalone router whose
+ * tests exercise it directly (paddleWebhookRouter is the current example
+ * — its unit tests invoke `paddleWebhookRouter.request(...)` rather than
+ * the full app, so a thrown ApiError must be caught at the router level
+ * instead of bubbling up to app.onError).
+ *
+ * Keep the shape identical to app.ts so the SDK contract stays one
+ * shape regardless of which onError handler caught the throw.
+ *
+ * `requestId` is plucked from context if the requestId middleware ran;
+ * tests that mount the router without that middleware pass through as
+ * null.
+ */
+export function serializeErrorEnvelope(
+  err: unknown,
+  requestId: string | null,
+): { status: number; body: { error: { code: string; message: string; details?: Record<string, unknown>; requestId: string | null } } } {
+  if (isApiError(err)) {
+    return {
+      status: err.status,
+      body: {
+        error: {
+          code: err.code,
+          message: err.message,
+          ...(err.details ? { details: err.details } : {}),
+          requestId,
+        },
+      },
+    }
+  }
+  return {
+    status: 500,
+    body: {
+      error: {
+        code: 'INTERNAL_ERROR',
+        message: 'Unexpected error',
+        requestId,
+      },
+    },
+  }
+}

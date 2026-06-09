@@ -1,5 +1,7 @@
 import { Hono } from 'hono'
+import type { ContentfulStatusCode } from 'hono/utils/http-status'
 import { supabaseAdmin } from '../lib/db.js'
+import { ApiError, serializeErrorEnvelope } from '../lib/errors.js'
 // `unscopedClickhouse` is used by /cron/detect-missing-model-prices below
 // to GROUP BY model across all tenants — that scan is the entire point of
 // the alert and cannot be done per-org. The lint rule guards against
@@ -39,11 +41,38 @@ import { executePendingDeletions } from './pendingDeletions.js'
 
 export const cronRouter = new Hono()
 
-function assertCronAuth(authHeader: string | undefined): string | null {
+// Standalone router onError handler. Mirrors paddleWebhookRouter.onError
+// — the cron handler unit tests call cronRouter.request() directly so
+// thrown ApiError needs catching at the router level (the global
+// app.onError only fires for requests that go through the parent app).
+cronRouter.onError((err, c) => {
+  const requestId =
+    ((c as unknown as { get: (k: string) => string | undefined }).get('requestId')) ?? null
+  const { status, body } = serializeErrorEnvelope(err, requestId)
+  return c.json(body, status as ContentfulStatusCode)
+})
+
+/**
+ * Validates the bearer token against CRON_SECRET. Throws ApiError so
+ * the global onError handler serialises the standard envelope; before
+ * Sprint 8 every cron handler had a two-line check-and-return that
+ * accounted for 38 of the codebase's legacy `return c.json({error}, 401)`
+ * sites — collapsing them into a throwing helper let the migration
+ * codemod skip cron.ts entirely and the cleanup PR do this single
+ * function change instead.
+ *
+ * Fail-closed: if CRON_SECRET is unset the endpoint refuses to run.
+ * The cron scheduler (Vercel cron + GitHub Actions cron-server.yml)
+ * always supplies the bearer header.
+ */
+function assertCronAuth(authHeader: string | undefined): void {
   const secret = process.env['CRON_SECRET']
-  if (!secret) return 'CRON_SECRET not configured'
-  if (authHeader !== `Bearer ${secret}`) return 'invalid cron auth'
-  return null
+  // The existing tests treat a missing CRON_SECRET the same as a failed
+  // auth check (401), so map both to UNAUTHORIZED here to preserve the
+  // contract. Operators still see CRON_SECRET not configured at startup
+  // because a missing secret in production is alerted by self-monitor.
+  if (!secret) throw new ApiError('UNAUTHORIZED', 'CRON_SECRET not configured')
+  if (authHeader !== `Bearer ${secret}`) throw new ApiError('UNAUTHORIZED', 'invalid cron auth')
 }
 
 // GET /cron/aggregate-usage
@@ -52,8 +81,7 @@ function assertCronAuth(authHeader: string | undefined): string | null {
 // only get aggregated after midnight UTC, so the first run of the new day
 // finalizes yesterday's totals.
 cronRouter.get('/aggregate-usage', async (c) => {
-  const authFail = assertCronAuth(c.req.header('Authorization'))
-  if (authFail) return c.json({ error: authFail }, 401)
+  assertCronAuth(c.req.header('Authorization'))
 
   const start = Date.now()
   const now = new Date()
@@ -266,8 +294,7 @@ async function computeMetric(alert: AlertRow): Promise<number | null> {
 }
 
 cronRouter.get('/evaluate-alerts', async (c) => {
-  const authFail = assertCronAuth(c.req.header('Authorization'))
-  if (authFail) return c.json({ error: authFail }, 401)
+  assertCronAuth(c.req.header('Authorization'))
 
   const start = Date.now()
   // Use the canonical WEB_URL (matches anomaly-snapshot, leak-detection,
@@ -400,8 +427,7 @@ cronRouter.get('/evaluate-alerts', async (c) => {
 
 // ── Paddle usage overage reporting (daily) ──────────────────────
 cronRouter.get('/report-usage-overage', async (c) => {
-  const authFail = assertCronAuth(c.req.header('Authorization'))
-  if (authFail) return c.json({ error: authFail }, 401)
+  assertCronAuth(c.req.header('Authorization'))
 
   const start = Date.now()
   try {
@@ -420,8 +446,7 @@ cronRouter.get('/report-usage-overage', async (c) => {
 // request quota, send a warning email via Resend. Idempotent per calendar
 // month per threshold (tracked on organizations.quota_warning_*_sent_at).
 cronRouter.get('/check-quota-warnings', async (c) => {
-  const authFail = assertCronAuth(c.req.header('Authorization'))
-  if (authFail) return c.json({ error: authFail }, 401)
+  assertCronAuth(c.req.header('Authorization'))
 
   const start = Date.now()
   try {
@@ -439,8 +464,7 @@ cronRouter.get('/check-quota-warnings', async (c) => {
 // Records detected anomalies into anomaly_events for the dashboard's
 // "history" view. Idempotent per (org, day, provider, model, kind).
 cronRouter.get('/snapshot-anomalies', async (c) => {
-  const authFail = assertCronAuth(c.req.header('Authorization'))
-  if (authFail) return c.json({ error: authFail }, 401)
+  assertCronAuth(c.req.header('Authorization'))
 
   const start = Date.now()
   try {
@@ -458,8 +482,7 @@ cronRouter.get('/snapshot-anomalies', async (c) => {
 
 // ── Log retention + rate-limit bucket cleanup (daily) ──────────
 cronRouter.get('/prune-logs', async (c) => {
-  const authFail = assertCronAuth(c.req.header('Authorization'))
-  if (authFail) return c.json({ error: authFail }, 401)
+  assertCronAuth(c.req.header('Authorization'))
 
   const start = Date.now()
   const [logsResult, bucketsResult] = await Promise.all([
@@ -486,8 +509,7 @@ cronRouter.get('/prune-logs', async (c) => {
 // Notification-only — keys are NOT auto-revoked. Schedule weekly via
 // Vercel cron (Mondays 9am UTC) — see apps/server/vercel.json.
 cronRouter.get('/stale-key-reminders', async (c) => {
-  const authFail = assertCronAuth(c.req.header('Authorization'))
-  if (authFail) return c.json({ error: authFail }, 401)
+  assertCronAuth(c.req.header('Authorization'))
 
   const start = Date.now()
   try {
@@ -506,8 +528,7 @@ cronRouter.get('/stale-key-reminders', async (c) => {
 // high-confidence (≥$40/mo + ≥100 samples) and hasn't been notified yet,
 // send an email to the org owner and record the notification for idempotency.
 cronRouter.get('/recommend-savings-alerts', async (c) => {
-  const authFail = assertCronAuth(c.req.header('Authorization'))
-  if (authFail) return c.json({ error: authFail }, 401)
+  assertCronAuth(c.req.header('Authorization'))
 
   const start = Date.now()
   try {
@@ -528,8 +549,7 @@ cronRouter.get('/recommend-savings-alerts', async (c) => {
 // Re-dispatches failed webhook_deliveries whose next_retry_at is past.
 // Uses exponential back-off up to MAX_ATTEMPTS (5).
 cronRouter.get('/retry-webhooks', async (c) => {
-  const authFail = assertCronAuth(c.req.header('Authorization'))
-  if (authFail) return c.json({ error: authFail }, 401)
+  assertCronAuth(c.req.header('Authorization'))
 
   const start = Date.now()
   try {
@@ -550,8 +570,7 @@ cronRouter.get('/retry-webhooks', async (c) => {
 // Per-key scan results stored in provider_key_leak_scans for dedup +
 // dashboard display. Requires GITGUARDIAN_API_KEY env var.
 cronRouter.get('/leak-detect-keys', async (c) => {
-  const authFail = assertCronAuth(c.req.header('Authorization'))
-  if (authFail) return c.json({ error: authFail }, 401)
+  assertCronAuth(c.req.header('Authorization'))
 
   const start = Date.now()
   try {
@@ -571,8 +590,7 @@ cronRouter.get('/leak-detect-keys', async (c) => {
 // batch size + retry counter prevent runaway / poison payloads. See
 // lib/fallback-replay.ts for full design. Schedule wired in vercel.json.
 cronRouter.get('/replay-fallback', async (c) => {
-  const authFail = assertCronAuth(c.req.header('Authorization'))
-  if (authFail) return c.json({ error: authFail }, 401)
+  assertCronAuth(c.req.header('Authorization'))
 
   const start = Date.now()
   try {
@@ -605,8 +623,7 @@ cronRouter.get('/replay-fallback', async (c) => {
 // failed payments. Idempotent via the billing_downgrade_notifications
 // table. See lib/billing-downgrade.ts for the policy + state machine.
 cronRouter.get('/check-past-due-downgrades', async (c) => {
-  const authFail = assertCronAuth(c.req.header('Authorization'))
-  if (authFail) return c.json({ error: authFail }, 401)
+  assertCronAuth(c.req.header('Authorization'))
 
   const start = Date.now()
   try {
@@ -643,8 +660,7 @@ cronRouter.get('/check-past-due-downgrades', async (c) => {
 // every 6 hours — the resolution of the grace window doesn't need to be
 // tighter than that for UX, and infrequent runs keep cron_runs noise down.
 cronRouter.get('/execute-pending-deletions', async (c) => {
-  const authFail = assertCronAuth(c.req.header('Authorization'))
-  if (authFail) return c.json({ error: authFail }, 401)
+  assertCronAuth(c.req.header('Authorization'))
 
   const started = Date.now()
   const result = await executePendingDeletions({ batchSize: 100 })
@@ -674,8 +690,7 @@ cronRouter.get('/execute-pending-deletions', async (c) => {
 // concurrent firing acquires no advisory lock and returns 'skipped'.
 // Runs every 5 minutes so a paused migration resumes promptly.
 cronRouter.get('/run-background-migrations', async (c) => {
-  const authFail = assertCronAuth(c.req.header('Authorization'))
-  if (authFail) return c.json({ error: authFail }, 401)
+  assertCronAuth(c.req.header('Authorization'))
 
   const started = Date.now()
   const result = await runDueMigrations()
@@ -705,8 +720,7 @@ cronRouter.get('/run-background-migrations', async (c) => {
 // after the day's traffic has settled but before the operator's
 // morning dashboard glance.
 cronRouter.get('/events-reconciliation', async (c) => {
-  const authFail = assertCronAuth(c.req.header('Authorization'))
-  if (authFail) return c.json({ error: authFail }, 401)
+  assertCronAuth(c.req.header('Authorization'))
 
   const started = Date.now()
   try {
@@ -748,8 +762,7 @@ cronRouter.get('/events-reconciliation', async (c) => {
 // When Phase 5.1 Stage 4 lands and `requests` is dropped, the query
 // here moves to `events` in the same PR.
 cronRouter.get('/detect-missing-model-prices', async (c) => {
-  const authFail = assertCronAuth(c.req.header('Authorization'))
-  if (authFail) return c.json({ error: authFail }, 401)
+  assertCronAuth(c.req.header('Authorization'))
 
   const start = Date.now()
 
@@ -836,8 +849,7 @@ cronRouter.get('/detect-missing-model-prices', async (c) => {
 // they push the fix; the next watchdog run after that re-fires if the
 // issue is still happening (same pattern as missing_model_prices).
 cronRouter.get('/self-monitor', async (c) => {
-  const authFail = assertCronAuth(c.req.header('Authorization'))
-  if (authFail) return c.json({ error: authFail }, 401)
+  assertCronAuth(c.req.header('Authorization'))
 
   const start = Date.now()
 
@@ -937,8 +949,7 @@ cronRouter.get('/self-monitor', async (c) => {
 // Dedup against unresolved alerts of the same kind so the operator gets
 // one chip, not one per cron tick.
 cronRouter.get('/detect-orphan-spans', async (c) => {
-  const authFail = assertCronAuth(c.req.header('Authorization'))
-  if (authFail) return c.json({ error: authFail }, 401)
+  assertCronAuth(c.req.header('Authorization'))
 
   const start = Date.now()
   const THRESHOLD = 100
@@ -1003,8 +1014,7 @@ cronRouter.get('/detect-orphan-spans', async (c) => {
 // noisy and a transient warmup failure is not worth alerting on). No
 // logCronRun call: this fires every 5min and would spam cron_runs.
 cronRouter.get('/keep-warm', async (c) => {
-  const authFail = assertCronAuth(c.req.header('Authorization'))
-  if (authFail) return c.json({ error: authFail }, 401)
+  assertCronAuth(c.req.header('Authorization'))
 
   const started = Date.now()
   const results = await Promise.allSettled([
