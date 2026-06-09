@@ -55,9 +55,14 @@ jobs:
     steps:
       - name: Invoke endpoint
         run: |
+          # Diagnostic — confirms secret is actually injected without
+          # leaking the value. A length of 0 means the secret named
+          # "CRON_SECRET" is not registered in GH Settings → Secrets.
+          # Anything else means it is injected; mismatch with the value
+          # the server compares against is then the cause of a 401.
+          echo "CRON_SECRET length: ${#CRON_SECRET}"
           # Production base URL. Hardcoded because the GH runner has no
-          # other place to read it from. Update here AND in the Vercel
-          # project alias settings if the hostname ever changes.
+          # other place to read it from.
           BASE_URL='https://spanlens-server.vercel.app'
           STATUS=$(curl -sS -o /tmp/body -w '%{http_code}' \
             -H "Authorization: Bearer $CRON_SECRET" \
