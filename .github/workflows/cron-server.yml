@@ -50,10 +50,18 @@ name: Cron — server sub-daily
 on:
   schedule:
     # Cadence has to match what the handler expects. Listed here in the
-    # same order as the `if:` checks below for grepability.
+    # same order as the `if:` checks below for grepability. Each entry
+    # fires only the matching job (the `if:` predicates downstream
+    # compare github.event.schedule to the cron string).
     - cron: '*/5 * * * *'      # every 5 min — replay-fallback, run-background-migrations, keep-warm
     - cron: '0 */6 * * *'      # every 6h on the hour — execute-pending-deletions
-    - cron: '31 * * * *'       # hourly at :31 — self-monitor
+    - cron: '31 * * * *'       # hourly :31 — self-monitor
+    - cron: '17 * * * *'       # hourly :17 — detect-orphan-spans
+    - cron: '0 * * * *'        # hourly :00 — detect-missing-model-prices
+    - cron: '0 2 * * *'        # daily 02:00 — events-reconciliation
+    - cron: '0 9 * * *'        # daily 09:00 — recommend-savings-alerts
+    - cron: '0 10 * * *'       # daily 10:00 — check-past-due-downgrades
+    - cron: '0 9 * * 1'        # weekly Monday 09:00 — stale-key-reminders
   workflow_dispatch:
 
 concurrency:
@@ -133,6 +141,114 @@ jobs:
           STATUS=$(curl -sS -o /tmp/body -w '%{http_code}' \
             -H "Authorization: Bearer $CRON_SECRET" \
             "$BASE_URL/cron/self-monitor")
+          echo "Status: $STATUS"
+          cat /tmp/body
+          if [ "$STATUS" -ge 400 ]; then exit 1; fi
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+
+  hourly-17:
+    name: Hourly at :17 (detect-orphan-spans)
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.schedule == '17 * * * *' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: POST /cron/detect-orphan-spans
+        run: |
+          BASE_URL='https://spanlens-server.vercel.app'
+          STATUS=$(curl -sS -o /tmp/body -w '%{http_code}' \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            "$BASE_URL/cron/detect-orphan-spans")
+          echo "Status: $STATUS"
+          cat /tmp/body
+          if [ "$STATUS" -ge 400 ]; then exit 1; fi
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+
+  hourly-00:
+    name: Hourly at :00 (detect-missing-model-prices)
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.schedule == '0 * * * *' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: POST /cron/detect-missing-model-prices
+        run: |
+          BASE_URL='https://spanlens-server.vercel.app'
+          STATUS=$(curl -sS -o /tmp/body -w '%{http_code}' \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            "$BASE_URL/cron/detect-missing-model-prices")
+          echo "Status: $STATUS"
+          cat /tmp/body
+          if [ "$STATUS" -ge 400 ]; then exit 1; fi
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+
+  daily-02:
+    name: Daily 02:00 UTC (events-reconciliation)
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.schedule == '0 2 * * *' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: POST /cron/events-reconciliation
+        run: |
+          BASE_URL='https://spanlens-server.vercel.app'
+          STATUS=$(curl -sS -o /tmp/body -w '%{http_code}' \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            "$BASE_URL/cron/events-reconciliation")
+          echo "Status: $STATUS"
+          cat /tmp/body
+          if [ "$STATUS" -ge 400 ]; then exit 1; fi
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+
+  daily-09:
+    name: Daily 09:00 UTC (recommend-savings-alerts)
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.schedule == '0 9 * * *' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: POST /cron/recommend-savings-alerts
+        run: |
+          BASE_URL='https://spanlens-server.vercel.app'
+          STATUS=$(curl -sS -o /tmp/body -w '%{http_code}' \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            "$BASE_URL/cron/recommend-savings-alerts")
+          echo "Status: $STATUS"
+          cat /tmp/body
+          if [ "$STATUS" -ge 400 ]; then exit 1; fi
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+
+  daily-10:
+    name: Daily 10:00 UTC (check-past-due-downgrades)
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.schedule == '0 10 * * *' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: POST /cron/check-past-due-downgrades
+        run: |
+          BASE_URL='https://spanlens-server.vercel.app'
+          STATUS=$(curl -sS -o /tmp/body -w '%{http_code}' \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            "$BASE_URL/cron/check-past-due-downgrades")
+          echo "Status: $STATUS"
+          cat /tmp/body
+          if [ "$STATUS" -ge 400 ]; then exit 1; fi
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+
+  weekly-mon-09:
+    name: Weekly Monday 09:00 UTC (stale-key-reminders)
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.schedule == '0 9 * * 1' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: POST /cron/stale-key-reminders
+        run: |
+          BASE_URL='https://spanlens-server.vercel.app'
+          STATUS=$(curl -sS -o /tmp/body -w '%{http_code}' \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            "$BASE_URL/cron/stale-key-reminders")
           echo "Status: $STATUS"
           cat /tmp/body
           if [ "$STATUS" -ge 400 ]; then exit 1; fi
