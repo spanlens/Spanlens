@@ -3,6 +3,7 @@ import { authJwt, type JwtContext } from '../middleware/authJwt.js'
 import { requireRole } from '../middleware/requireRole.js'
 import { supabaseAdmin } from '../lib/db.js'
 import { recordAuditEvent } from '../lib/audit-log.js'
+import { ApiError } from '../lib/errors.js'
 
 export const alertsRouter = new Hono<JwtContext>()
 alertsRouter.use('*', authJwt)
@@ -15,7 +16,7 @@ const VALID_CHANNEL_KINDS = new Set(['email', 'slack', 'discord'])
 // ── GET /api/v1/alerts ──────────────────────────────────────────
 alertsRouter.get('/', async (c) => {
   const orgId = c.get('orgId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   const { data, error } = await supabaseAdmin
     .from('alerts')
@@ -23,14 +24,14 @@ alertsRouter.get('/', async (c) => {
     .eq('organization_id', orgId)
     .order('created_at', { ascending: false })
 
-  if (error) return c.json({ error: 'Failed to fetch alerts' }, 500)
+  if (error) throw new ApiError('INTERNAL_ERROR', 'Failed to fetch alerts')
   return c.json({ success: true, data: data ?? [] })
 })
 
 // ── POST /api/v1/alerts ─────────────────────────────────────────
 alertsRouter.post('/', requireEdit, async (c) => {
   const orgId = c.get('orgId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   let body: {
     name?: unknown
@@ -43,17 +44,17 @@ alertsRouter.post('/', requireEdit, async (c) => {
   try {
     body = (await c.req.json()) as typeof body
   } catch {
-    return c.json({ error: 'Invalid JSON body' }, 400)
+    throw new ApiError('INVALID_JSON_BODY', 'Invalid JSON body')
   }
 
   if (typeof body.name !== 'string' || body.name.trim().length === 0) {
-    return c.json({ error: 'name is required' }, 400)
+    throw new ApiError('VALIDATION_FAILED', 'name is required')
   }
   if (typeof body.type !== 'string' || !VALID_ALERT_TYPES.has(body.type)) {
-    return c.json({ error: 'type must be budget | error_rate | latency_p95' }, 400)
+    throw new ApiError('VALIDATION_FAILED', 'type must be budget | error_rate | latency_p95')
   }
   if (typeof body.threshold !== 'number' || body.threshold <= 0) {
-    return c.json({ error: 'threshold must be a positive number' }, 400)
+    throw new ApiError('VALIDATION_FAILED', 'threshold must be a positive number')
   }
 
   const insert = {
@@ -77,7 +78,7 @@ alertsRouter.post('/', requireEdit, async (c) => {
     .insert(insert)
     .select('*')
     .single()
-  if (error || !data) return c.json({ error: 'Failed to create alert' }, 500)
+  if (error || !data) throw new ApiError('INTERNAL_ERROR', 'Failed to create alert')
 
   void recordAuditEvent(c, {
     action: 'alert.create',
@@ -93,7 +94,7 @@ alertsRouter.post('/', requireEdit, async (c) => {
 alertsRouter.patch('/:id', requireEdit, async (c) => {
   const orgId = c.get('orgId')
   const id = c.req.param('id')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   let body: {
     name?: unknown
@@ -105,7 +106,7 @@ alertsRouter.patch('/:id', requireEdit, async (c) => {
   try {
     body = (await c.req.json()) as typeof body
   } catch {
-    return c.json({ error: 'Invalid JSON body' }, 400)
+    throw new ApiError('INVALID_JSON_BODY', 'Invalid JSON body')
   }
 
   const updates: Record<string, unknown> = {}
@@ -116,7 +117,7 @@ alertsRouter.patch('/:id', requireEdit, async (c) => {
   if (typeof body.is_active === 'boolean') updates['is_active'] = body.is_active
 
   if (Object.keys(updates).length === 0) {
-    return c.json({ error: 'No valid fields to update' }, 400)
+    throw new ApiError('BAD_REQUEST', 'No valid fields to update')
   }
 
   const { data, error } = await supabaseAdmin
@@ -126,7 +127,7 @@ alertsRouter.patch('/:id', requireEdit, async (c) => {
     .eq('organization_id', orgId)
     .select('*')
     .single()
-  if (error || !data) return c.json({ error: 'Alert not found' }, 404)
+  if (error || !data) throw new ApiError('NOT_FOUND', 'Alert not found')
 
   void recordAuditEvent(c, {
     action: 'alert.update',
@@ -142,14 +143,14 @@ alertsRouter.patch('/:id', requireEdit, async (c) => {
 alertsRouter.delete('/:id', requireEdit, async (c) => {
   const orgId = c.get('orgId')
   const id = c.req.param('id')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   const { error } = await supabaseAdmin
     .from('alerts')
     .delete()
     .eq('id', id)
     .eq('organization_id', orgId)
-  if (error) return c.json({ error: 'Failed to delete alert' }, 500)
+  if (error) throw new ApiError('INTERNAL_ERROR', 'Failed to delete alert')
 
   void recordAuditEvent(c, {
     action: 'alert.delete',
@@ -164,41 +165,41 @@ alertsRouter.delete('/:id', requireEdit, async (c) => {
 
 alertsRouter.get('/channels', async (c) => {
   const orgId = c.get('orgId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   const { data, error } = await supabaseAdmin
     .from('notification_channels')
     .select('*')
     .eq('organization_id', orgId)
     .order('created_at', { ascending: false })
-  if (error) return c.json({ error: 'Failed to fetch channels' }, 500)
+  if (error) throw new ApiError('INTERNAL_ERROR', 'Failed to fetch channels')
   return c.json({ success: true, data: data ?? [] })
 })
 
 alertsRouter.post('/channels', requireEdit, async (c) => {
   const orgId = c.get('orgId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   let body: { kind?: unknown; target?: unknown; label?: unknown }
   try {
     body = (await c.req.json()) as typeof body
   } catch {
-    return c.json({ error: 'Invalid JSON body' }, 400)
+    throw new ApiError('INVALID_JSON_BODY', 'Invalid JSON body')
   }
 
   if (typeof body.kind !== 'string' || !VALID_CHANNEL_KINDS.has(body.kind)) {
-    return c.json({ error: 'kind must be email | slack | discord' }, 400)
+    throw new ApiError('VALIDATION_FAILED', 'kind must be email | slack | discord')
   }
   if (typeof body.target !== 'string' || body.target.trim().length === 0) {
-    return c.json({ error: 'target is required' }, 400)
+    throw new ApiError('VALIDATION_FAILED', 'target is required')
   }
 
   // Lightweight format validation
   if (body.kind === 'email' && !body.target.includes('@')) {
-    return c.json({ error: 'email target must contain @' }, 400)
+    throw new ApiError('VALIDATION_FAILED', 'email target must contain @')
   }
   if ((body.kind === 'slack' || body.kind === 'discord') && !body.target.startsWith('https://')) {
-    return c.json({ error: 'webhook target must start with https://' }, 400)
+    throw new ApiError('BAD_REQUEST', 'webhook target must start with https://')
   }
 
   const target = body.target.trim()
@@ -218,7 +219,7 @@ alertsRouter.post('/channels', requireEdit, async (c) => {
     .eq('target', target)
     .maybeSingle()
   if (existing) {
-    return c.json({ error: 'A channel with this destination already exists' }, 409)
+    throw new ApiError('CONFLICT', 'A channel with this destination already exists')
   }
 
   const { data, error } = await supabaseAdmin
@@ -226,7 +227,7 @@ alertsRouter.post('/channels', requireEdit, async (c) => {
     .insert({ organization_id: orgId, kind: body.kind, target, label })
     .select('*')
     .single()
-  if (error || !data) return c.json({ error: 'Failed to create channel' }, 500)
+  if (error || !data) throw new ApiError('INTERNAL_ERROR', 'Failed to create channel')
 
   void recordAuditEvent(c, {
     action: 'notification_channel.create',
@@ -241,14 +242,14 @@ alertsRouter.post('/channels', requireEdit, async (c) => {
 alertsRouter.delete('/channels/:id', requireEdit, async (c) => {
   const orgId = c.get('orgId')
   const id = c.req.param('id')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   const { error } = await supabaseAdmin
     .from('notification_channels')
     .delete()
     .eq('id', id)
     .eq('organization_id', orgId)
-  if (error) return c.json({ error: 'Failed to delete channel' }, 500)
+  if (error) throw new ApiError('INTERNAL_ERROR', 'Failed to delete channel')
 
   void recordAuditEvent(c, {
     action: 'notification_channel.delete',
@@ -262,7 +263,7 @@ alertsRouter.delete('/channels/:id', requireEdit, async (c) => {
 // ── GET /api/v1/alerts/deliveries ───────────────────────────────
 alertsRouter.get('/deliveries', async (c) => {
   const orgId = c.get('orgId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   const { data, error } = await supabaseAdmin
     .from('alert_deliveries')
@@ -270,6 +271,6 @@ alertsRouter.get('/deliveries', async (c) => {
     .eq('organization_id', orgId)
     .order('created_at', { ascending: false })
     .limit(100)
-  if (error) return c.json({ error: 'Failed to fetch deliveries' }, 500)
+  if (error) throw new ApiError('INTERNAL_ERROR', 'Failed to fetch deliveries')
   return c.json({ success: true, data: data ?? [] })
 })

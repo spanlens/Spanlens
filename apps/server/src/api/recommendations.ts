@@ -5,6 +5,7 @@ import { recommendModelSwaps } from '../lib/model-recommend.js'
 import { getOrgClickhouse, toClickhouseTimestamp } from '../lib/clickhouse.js'
 import { requestsScope } from '../lib/requests-query.js'
 import { parsePositiveFloat } from '../lib/params.js'
+import { ApiError } from '../lib/errors.js'
 
 /**
  * GET /api/v1/recommendations
@@ -48,7 +49,7 @@ interface PercentileRow {
 
 recommendationsRouter.get('/', async (c) => {
   const orgId = c.get('orgId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   const hours = parsePositiveFloat(c.req.query('hours'), 24 * 7)
   const minSavingsUsd = parsePositiveFloat(c.req.query('minSavings'), 5)
@@ -67,17 +68,17 @@ recommendationsRouter.get('/', async (c) => {
 
 recommendationsRouter.get('/percentiles', async (c) => {
   const orgId = c.get('orgId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   const provider = c.req.query('provider')
   const model    = c.req.query('model')
   const hours    = parsePositiveFloat(c.req.query('hours'), 24 * 7)
 
   if (!provider || provider.length > 64) {
-    return c.json({ error: 'provider is required (max 64 chars)' }, 400)
+    throw new ApiError('VALIDATION_FAILED', 'provider is required (max 64 chars)')
   }
   if (!model || model.length > 128) {
-    return c.json({ error: 'model is required (max 128 chars)' }, 400)
+    throw new ApiError('VALIDATION_FAILED', 'model is required (max 128 chars)')
   }
 
   const windowStart = new Date(Date.now() - hours * 3_600_000)

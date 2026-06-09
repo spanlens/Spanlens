@@ -6,6 +6,7 @@ import { randomHex } from '../lib/crypto.js'
 import { dispatchWebhookEvent } from '../lib/webhook-dispatch.js'
 import { invalidateWebhookCache } from '../lib/webhook-emit.js'
 import { recordAuditEvent } from '../lib/audit-log.js'
+import { ApiError } from '../lib/errors.js'
 
 export const webhooksRouter = new Hono<JwtContext>()
 webhooksRouter.use('*', authJwt)
@@ -21,7 +22,7 @@ const VALID_EVENTS = new Set([
 // ── GET /api/v1/webhooks ────────────────────────────────────────
 webhooksRouter.get('/', async (c) => {
   const orgId = c.get('orgId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   const { data, error } = await supabaseAdmin
     .from('webhooks')
@@ -29,14 +30,14 @@ webhooksRouter.get('/', async (c) => {
     .eq('organization_id', orgId)
     .order('created_at', { ascending: false })
 
-  if (error) return c.json({ error: 'Failed to fetch webhooks' }, 500)
+  if (error) throw new ApiError('INTERNAL_ERROR', 'Failed to fetch webhooks')
   return c.json({ success: true, data: data ?? [] })
 })
 
 // ── POST /api/v1/webhooks ───────────────────────────────────────
 webhooksRouter.post('/', requireEdit, async (c) => {
   const orgId = c.get('orgId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   let body: {
     name?: unknown
@@ -47,14 +48,14 @@ webhooksRouter.post('/', requireEdit, async (c) => {
   try {
     body = (await c.req.json()) as typeof body
   } catch {
-    return c.json({ error: 'Invalid JSON body' }, 400)
+    throw new ApiError('INVALID_JSON_BODY', 'Invalid JSON body')
   }
 
   if (typeof body.name !== 'string' || body.name.trim().length === 0) {
-    return c.json({ error: 'name is required' }, 400)
+    throw new ApiError('VALIDATION_FAILED', 'name is required')
   }
   if (typeof body.url !== 'string' || !body.url.startsWith('https://')) {
-    return c.json({ error: 'url must start with https://' }, 400)
+    throw new ApiError('BAD_REQUEST', 'url must start with https://')
   }
 
   const events: string[] = Array.isArray(body.events)
@@ -64,7 +65,7 @@ webhooksRouter.post('/', requireEdit, async (c) => {
     : ['request.created']
 
   if (events.length === 0) {
-    return c.json({ error: 'At least one valid event is required' }, 400)
+    throw new ApiError('VALIDATION_FAILED', 'At least one valid event is required')
   }
 
   const insert = {
@@ -82,7 +83,7 @@ webhooksRouter.post('/', requireEdit, async (c) => {
     .select('*')
     .single()
 
-  if (error || !data) return c.json({ error: 'Failed to create webhook' }, 500)
+  if (error || !data) throw new ApiError('INTERNAL_ERROR', 'Failed to create webhook')
   invalidateWebhookCache(orgId)
 
   void recordAuditEvent(c, {
@@ -99,7 +100,7 @@ webhooksRouter.post('/', requireEdit, async (c) => {
 webhooksRouter.patch('/:id', requireEdit, async (c) => {
   const orgId = c.get('orgId')
   const id = c.req.param('id')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   let body: {
     name?: unknown
@@ -110,7 +111,7 @@ webhooksRouter.patch('/:id', requireEdit, async (c) => {
   try {
     body = (await c.req.json()) as typeof body
   } catch {
-    return c.json({ error: 'Invalid JSON body' }, 400)
+    throw new ApiError('INVALID_JSON_BODY', 'Invalid JSON body')
   }
 
   const updates: Record<string, unknown> = {}
@@ -132,7 +133,7 @@ webhooksRouter.patch('/:id', requireEdit, async (c) => {
   }
 
   if (Object.keys(updates).length === 0) {
-    return c.json({ error: 'No valid fields to update' }, 400)
+    throw new ApiError('BAD_REQUEST', 'No valid fields to update')
   }
 
   const { data, error } = await supabaseAdmin
@@ -143,7 +144,7 @@ webhooksRouter.patch('/:id', requireEdit, async (c) => {
     .select('*')
     .single()
 
-  if (error || !data) return c.json({ error: 'Webhook not found' }, 404)
+  if (error || !data) throw new ApiError('NOT_FOUND', 'Webhook not found')
   invalidateWebhookCache(orgId)
 
   void recordAuditEvent(c, {
@@ -160,7 +161,7 @@ webhooksRouter.patch('/:id', requireEdit, async (c) => {
 webhooksRouter.delete('/:id', requireEdit, async (c) => {
   const orgId = c.get('orgId')
   const id = c.req.param('id')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   const { error } = await supabaseAdmin
     .from('webhooks')
@@ -168,7 +169,7 @@ webhooksRouter.delete('/:id', requireEdit, async (c) => {
     .eq('id', id)
     .eq('organization_id', orgId)
 
-  if (error) return c.json({ error: 'Failed to delete webhook' }, 500)
+  if (error) throw new ApiError('INTERNAL_ERROR', 'Failed to delete webhook')
   invalidateWebhookCache(orgId)
 
   void recordAuditEvent(c, {
@@ -184,7 +185,7 @@ webhooksRouter.delete('/:id', requireEdit, async (c) => {
 webhooksRouter.post('/:id/test', requireEdit, async (c) => {
   const orgId = c.get('orgId')
   const id = c.req.param('id')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   const { data: webhook, error: fetchError } = await supabaseAdmin
     .from('webhooks')
@@ -193,7 +194,7 @@ webhooksRouter.post('/:id/test', requireEdit, async (c) => {
     .eq('organization_id', orgId)
     .single()
 
-  if (fetchError || !webhook) return c.json({ error: 'Webhook not found' }, 404)
+  if (fetchError || !webhook) throw new ApiError('NOT_FOUND', 'Webhook not found')
 
   const result = await dispatchWebhookEvent(
     { id: webhook.id as string, url: webhook.url as string, secret: webhook.secret as string },
@@ -216,7 +217,7 @@ webhooksRouter.post('/:id/test', requireEdit, async (c) => {
 webhooksRouter.get('/:id/deliveries', async (c) => {
   const orgId = c.get('orgId')
   const id = c.req.param('id')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   // Verify ownership before returning delivery records
   const { data: webhook, error: fetchError } = await supabaseAdmin
@@ -226,7 +227,7 @@ webhooksRouter.get('/:id/deliveries', async (c) => {
     .eq('organization_id', orgId)
     .single()
 
-  if (fetchError || !webhook) return c.json({ error: 'Webhook not found' }, 404)
+  if (fetchError || !webhook) throw new ApiError('NOT_FOUND', 'Webhook not found')
 
   const { data, error } = await supabaseAdmin
     .from('webhook_deliveries')
@@ -235,6 +236,6 @@ webhooksRouter.get('/:id/deliveries', async (c) => {
     .order('delivered_at', { ascending: false })
     .limit(10)
 
-  if (error) return c.json({ error: 'Failed to fetch deliveries' }, 500)
+  if (error) throw new ApiError('INTERNAL_ERROR', 'Failed to fetch deliveries')
   return c.json({ success: true, data: data ?? [] })
 })
