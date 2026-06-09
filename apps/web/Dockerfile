@@ -33,7 +33,20 @@ COPY apps/server/package.json ./apps/server/
 COPY packages/sdk/package.json ./packages/sdk/
 COPY packages/api-types/package.json ./packages/api-types/
 
-RUN pnpm install --frozen-lockfile --filter web
+# Sprint 7 R-20 (PR #277) made apps/web do a type-only import from
+# `server/src/app`, and that server file itself imports from hono. The
+# tsc invocation inside `next build` reads server's source to resolve
+# AppType and therefore needs hono installed under apps/server. The
+# previous `--filter web` install only pulled web's own (dev)deps, so
+# the chain broke with "Cannot find module 'hono'" inside the Docker
+# build. Use `--filter ...web` (note the leading "..." dependency
+# selector) which includes web AND every workspace package web depends
+# on, transitively. apps/server is a devDep of web post-PR #277 so it
+# is now included, and so are its own deps (hono, supabase-js, etc.).
+# The runtime cost is zero: the standalone Next output copied into the
+# final runner stage already excludes anything Next did not bundle, so
+# server's runtime modules never ship in the image.
+RUN pnpm install --frozen-lockfile --filter ...web
 
 # ── Stage 2: build ──────────────────────────────────────────────
 FROM node:22-alpine AS builder
