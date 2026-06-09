@@ -70,6 +70,15 @@ ENV NODE_ENV=production
 
 COPY --from=deps /repo/node_modules ./node_modules
 COPY --from=deps /repo/apps/web/node_modules ./apps/web/node_modules
+# Sprint 7 R-20 (PR #277): apps/web/lib/api-client.ts does a type-only
+# `import type { AppType } from 'server/src/app'`. tsc reading that
+# server source needs the hono / @sentry/node / supabase-js etc. type
+# packages to resolve from apps/server/node_modules. Same reasoning
+# for packages/api-types — its dist/ is the runtime entry and tsc
+# walks its own node_modules. Without these COPY lines the build
+# fails with "Cannot find module 'hono'" inside server/src/app.ts.
+COPY --from=deps /repo/apps/server/node_modules ./apps/server/node_modules
+COPY --from=deps /repo/packages/api-types/node_modules ./packages/api-types/node_modules
 
 # Copy workspace manifests (needed for pnpm exec)
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
