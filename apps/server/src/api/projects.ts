@@ -4,6 +4,7 @@ import { requireRole } from '../middleware/requireRole.js'
 import { supabaseAdmin } from '../lib/db.js'
 import { checkProjectQuota } from '../lib/quota.js'
 import { recordAuditEvent } from '../lib/audit-log.js'
+import { ApiError } from '../lib/errors.js'
 
 export const projectsRouter = new Hono<JwtContext>()
 
@@ -15,7 +16,7 @@ const requireAdmin = requireRole('admin')
 // GET /api/v1/projects — list all projects for the user's org
 projectsRouter.get('/', async (c) => {
   const orgId = c.get('orgId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   const { data, error } = await supabaseAdmin
     .from('projects')
@@ -23,7 +24,7 @@ projectsRouter.get('/', async (c) => {
     .eq('organization_id', orgId)
     .order('created_at', { ascending: false })
 
-  if (error) return c.json({ error: 'Failed to fetch projects' }, 500)
+  if (error) throw new ApiError('INTERNAL_ERROR', 'Failed to fetch projects')
 
   return c.json({ success: true, data: data ?? [] })
 })
@@ -32,7 +33,7 @@ projectsRouter.get('/', async (c) => {
 projectsRouter.get('/:id', async (c) => {
   const projectId = c.req.param('id')
   const orgId = c.get('orgId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   const { data, error } = await supabaseAdmin
     .from('projects')
@@ -41,7 +42,7 @@ projectsRouter.get('/:id', async (c) => {
     .eq('organization_id', orgId)
     .single()
 
-  if (error || !data) return c.json({ error: 'Project not found' }, 404)
+  if (error || !data) throw new ApiError('NOT_FOUND', 'Project not found')
 
   return c.json({ success: true, data })
 })
@@ -49,17 +50,17 @@ projectsRouter.get('/:id', async (c) => {
 // POST /api/v1/projects
 projectsRouter.post('/', requireEdit, async (c) => {
   const orgId = c.get('orgId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   let body: { name?: unknown; description?: unknown }
   try {
     body = await c.req.json() as { name?: unknown; description?: unknown }
   } catch {
-    return c.json({ error: 'Invalid JSON body' }, 400)
+    throw new ApiError('INVALID_JSON_BODY', 'Invalid JSON body')
   }
 
   if (typeof body.name !== 'string' || body.name.trim().length === 0) {
-    return c.json({ error: 'name is required' }, 400)
+    throw new ApiError('VALIDATION_FAILED', 'name is required')
   }
 
   // Enforce per-plan project limit (Free 1 / Starter 5 / Team 20 / Enterprise ∞)
@@ -85,7 +86,7 @@ projectsRouter.post('/', requireEdit, async (c) => {
     .select('id, name, description, created_at, updated_at')
     .single()
 
-  if (error || !data) return c.json({ error: 'Failed to create project' }, 500)
+  if (error || !data) throw new ApiError('INTERNAL_ERROR', 'Failed to create project')
 
   void recordAuditEvent(c, {
     action: 'project.create',
@@ -101,13 +102,13 @@ projectsRouter.post('/', requireEdit, async (c) => {
 projectsRouter.patch('/:id', requireEdit, async (c) => {
   const projectId = c.req.param('id')
   const orgId = c.get('orgId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   let body: { name?: unknown; description?: unknown }
   try {
     body = await c.req.json() as { name?: unknown; description?: unknown }
   } catch {
-    return c.json({ error: 'Invalid JSON body' }, 400)
+    throw new ApiError('INVALID_JSON_BODY', 'Invalid JSON body')
   }
 
   const updates: Record<string, unknown> = {}
@@ -118,7 +119,7 @@ projectsRouter.patch('/:id', requireEdit, async (c) => {
     updates['description'] = body.description.trim()
   }
   if (Object.keys(updates).length === 0) {
-    return c.json({ error: 'No valid fields to update' }, 400)
+    throw new ApiError('BAD_REQUEST', 'No valid fields to update')
   }
 
   const { data, error } = await supabaseAdmin
@@ -129,7 +130,7 @@ projectsRouter.patch('/:id', requireEdit, async (c) => {
     .select('id, name, description, created_at, updated_at')
     .single()
 
-  if (error || !data) return c.json({ error: 'Project not found or access denied' }, 404)
+  if (error || !data) throw new ApiError('NOT_FOUND', 'Project not found or access denied')
 
   void recordAuditEvent(c, {
     action: 'project.update',
@@ -145,7 +146,7 @@ projectsRouter.patch('/:id', requireEdit, async (c) => {
 projectsRouter.delete('/:id', requireAdmin, async (c) => {
   const projectId = c.req.param('id')
   const orgId = c.get('orgId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   const { error } = await supabaseAdmin
     .from('projects')
@@ -153,7 +154,7 @@ projectsRouter.delete('/:id', requireAdmin, async (c) => {
     .eq('id', projectId)
     .eq('organization_id', orgId)
 
-  if (error) return c.json({ error: 'Failed to delete project' }, 500)
+  if (error) throw new ApiError('INTERNAL_ERROR', 'Failed to delete project')
 
   void recordAuditEvent(c, {
     action: 'project.delete',
