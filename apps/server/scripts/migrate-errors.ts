@@ -169,11 +169,39 @@ function relativeErrorsImport(filePath: string): string {
 }
 
 // ─── regexes ───────────────────────────────────────────────────
-// Match `return c.json({ error: 'msg' }, NNN)` on a single line.
-// Variant 1 (most common): `return c.json({ error: 'msg' }, 400)`
-// Variant 2 (with details): `return c.json({ error: 'msg', details: {...} }, 400)`
-// Variant 3 (non-literal):  `return c.json({ error: err.message }, 500)` (manual)
+// SIMPLE_PATTERN matches `return c.json({ error: 'literal' }, NNN)`
+// with a string-literal message. Status maps directly to a catalog
+// code via mapStatusAndMessage.
 const SIMPLE_PATTERN = /return\s+c\.json\(\s*\{\s*error:\s*('([^'\\]|\\.)*'|"([^"\\]|\\.)*")\s*\}\s*,\s*(\d{3})\s*\)/g
+
+// EXPRESSION_PATTERN matches `return c.json({ error: <expr> }, NNN)`
+// where `<expr>` is any single-line expression that does NOT contain
+// `{` or `}` — covers template literals, identifiers, member access,
+// and ?? fallbacks. Examples:
+//   return c.json({ error: msg }, 500)
+//   return c.json({ error: parsed.error }, 400)
+//   return c.json({ error: err.message }, 500)
+//   return c.json({ error: `Cannot cancel row in status=${row.status}` }, 409)
+//   return c.json({ error: enqueued.error ?? 'Failed to queue' }, 500)
+//
+// Bails out on:
+//   - Object expressions (would contain { })
+//   - Multi-line forms (regex is single-line by default)
+//   - Anything where the codemod cannot pick a sensible message string
+//
+// Status-driven mapping is used because the message is not inspectable
+// (it's a runtime value); 400 always becomes VALIDATION_FAILED for this
+// pattern since "variable 400 message" overwhelmingly comes from zod
+// or hand-rolled validators surfacing the failing field name. Callers
+// who actually want BAD_REQUEST can switch the code by hand later.
+// First-char rule excludes whitespace AND quotes so the regex cannot
+// backtrack out of `\s*` to swallow a leading space (which would have
+// let `error: 'literal', detail: x }` slip through with the comma in
+// the captured expression). Body rule forbids `,` and `{}` so multi-
+// field objects (`error: 'a', detail: b`) never match — those need
+// the codemod to emit `ApiError.from(code, { details: { ... } })` by
+// hand, not be auto-transformed.
+const EXPRESSION_PATTERN = /return\s+c\.json\(\s*\{\s*error:\s*([^\s,{}'"][^,{}]*?)\s*\}\s*,\s*(\d{3})\s*\)/g
 
 // ─── per-file transform ────────────────────────────────────────
 interface FileResult {
@@ -221,6 +249,41 @@ function transformFile(filePath: string): FileResult {
 
     result.transformed++
     return `throw new ApiError('${mapping.code}', ${jsString(decoded)})`
+  })
+
+  // Second pass: variable / template-literal message expressions.
+  // Status-driven mapping only (we can't inspect the runtime message),
+  // with 400 defaulting to VALIDATION_FAILED — see EXPRESSION_PATTERN
+  // comment. The replacement preserves the original expression verbatim
+  // so backticks, ??, optional chaining, etc. all carry through.
+  content = content.replace(EXPRESSION_PATTERN, (match, expr, statusStr) => {
+    const status = Number(statusStr)
+    const code = (() => {
+      switch (status) {
+        case 400: return 'VALIDATION_FAILED'
+        case 401: return 'UNAUTHORIZED'
+        case 403: return 'FORBIDDEN'
+        case 404: return 'NOT_FOUND'
+        case 409: return 'CONFLICT'
+        case 429: return 'RATE_LIMIT'
+        case 500: return 'INTERNAL_ERROR'
+        case 502: return 'UPSTREAM_FAILED'
+        case 503: return 'INTERNAL_ERROR'
+        case 504: return 'UPSTREAM_TIMEOUT'
+        default: return null
+      }
+    })()
+    if (!code) {
+      result.manual++
+      result.manualSites.push({
+        line: lineNumberOf(content, match),
+        reason: `unmapped status ${status}`,
+        snippet: match,
+      })
+      return `// TODO(sprint-8): manual migration (unmapped status ${status})\n    ${match}`
+    }
+    result.transformed++
+    return `throw new ApiError('${code}', ${expr.trim()})`
   })
 
   // Insert ApiError import if any throw was emitted and not already

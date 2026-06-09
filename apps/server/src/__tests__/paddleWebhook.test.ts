@@ -451,8 +451,8 @@ describe('paddleWebhook — subscription.* edge cases', () => {
     failNextWriteWith('connection refused')
     const { res, body } = await postWebhook(event('subscription.created', subPayload()))
     expect(res.status).toBe(500)
-    expect(body['error']).toContain('subscription upsert failed')
-    expect(body['error']).toContain('connection refused')
+    expect((body['error'] as { message: string }).message).toContain('subscription upsert failed')
+    expect((body['error'] as { message: string }).message).toContain('connection refused')
   })
 })
 

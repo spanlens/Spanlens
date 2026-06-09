@@ -119,7 +119,7 @@ adminModelRecommendationsRouter.post('/', async (c) => {
   const userId = c.get('userId')
   const body = await c.req.json().catch(() => null)
   const parsed = parseUpsert(body)
-  if (!parsed.ok) return c.json({ error: parsed.error }, 400)
+  if (!parsed.ok) throw new ApiError('VALIDATION_FAILED', parsed.error)
 
   const row = {
     ...parsed.data,

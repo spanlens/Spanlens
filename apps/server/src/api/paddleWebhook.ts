@@ -244,7 +244,7 @@ paddleWebhookRouter.post('/paddle', async (c) => {
       await upsertSubscription(event, sub, organizationId, plan, resolvedPriceId ?? 'unknown')
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'unknown error'
-      return c.json({ error: msg }, 500)
+      throw new ApiError('INTERNAL_ERROR', msg)
     }
 
     return c.json({ success: true, event_type: event.event_type })
@@ -306,7 +306,7 @@ paddleWebhookRouter.post('/paddle', async (c) => {
       await upsertSubscription(event, syntheticSub, organizationId, plan, priceId)
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'unknown error'
-      return c.json({ error: msg }, 500)
+      throw new ApiError('INTERNAL_ERROR', msg)
     }
 
     return c.json({ success: true, event_type: event.event_type })
