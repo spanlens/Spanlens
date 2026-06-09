@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+import type { ContentfulStatusCode } from 'hono/utils/http-status'
 import { supabaseAdmin } from '../lib/db.js'
 import {
   verifyPaddleSignature,
@@ -6,6 +7,7 @@ import {
   fetchPaddleSubscription,
   type PlanTier,
 } from '../lib/paddle.js'
+import { ApiError, serializeErrorEnvelope } from '../lib/errors.js'
 
 /**
  * Paddle webhook receiver. Paddle POSTs subscription lifecycle events here.
@@ -172,14 +174,14 @@ paddleWebhookRouter.post('/paddle', async (c) => {
   const valid = await verifyPaddleSignature(rawBody, c.req.header('Paddle-Signature'))
   if (!valid) {
     console.warn('[paddle-webhook] signature verification failed')
-    return c.json({ error: 'invalid signature' }, 401)
+    throw new ApiError('UNAUTHORIZED', 'invalid signature')
   }
 
   let event: PaddleEvent
   try {
     event = JSON.parse(rawBody) as PaddleEvent
   } catch {
-    return c.json({ error: 'invalid json body' }, 400)
+    throw new ApiError('INVALID_JSON_BODY', 'invalid json body')
   }
 
   const subscriptionEvents = new Set([
@@ -200,7 +202,7 @@ paddleWebhookRouter.post('/paddle', async (c) => {
     const organizationId = await resolveOrgId(sub.custom_data, sub.customer_id)
     if (!organizationId) {
       console.error('[paddle-webhook] could not resolve org for sub event', event.event_id, sub.customer_id)
-      return c.json({ error: 'organization not found' }, 400)
+      throw new ApiError('BAD_REQUEST', 'organization not found')
     }
 
     const priceId = extractPriceId(sub)
@@ -263,13 +265,13 @@ paddleWebhookRouter.post('/paddle', async (c) => {
     const organizationId = await resolveOrgId(tx.custom_data, tx.customer_id)
     if (!organizationId) {
       console.error('[paddle-webhook] could not resolve org for transaction', event.event_id, tx.customer_id)
-      return c.json({ error: 'organization not found' }, 400)
+      throw new ApiError('BAD_REQUEST', 'organization not found')
     }
 
     const priceId = extractPriceId(tx)
     if (!priceId) {
       console.error('[paddle-webhook] missing price id in transaction', event.event_id)
-      return c.json({ error: 'missing price id' }, 400)
+      throw new ApiError('BAD_REQUEST', 'missing price id')
     }
 
     const plan = planForPriceId(priceId)
@@ -323,7 +325,7 @@ paddleWebhookRouter.post('/paddle', async (c) => {
       const organizationId = await resolveOrgId(null, adj.customer_id)
       if (!organizationId) {
         console.error('[paddle-webhook] could not resolve org for adjustment', event.event_id, adj.customer_id)
-        return c.json({ error: 'organization not found' }, 400)
+        throw new ApiError('BAD_REQUEST', 'organization not found')
       }
 
       await supabaseAdmin
@@ -339,4 +341,18 @@ paddleWebhookRouter.post('/paddle', async (c) => {
 
   // All other event types — acknowledge without processing
   return c.json({ success: true, skipped: event.event_type })
+})
+
+// Standalone router onError handler. paddleWebhookRouter's unit tests
+// call .request() directly (no parent app), so the global app.onError
+// never fires for thrown ApiError. Without this local handler a thrown
+// auth error would surface as 500 plaintext and Paddle would retry the
+// webhook forever (and the contract tests would see the wrong status
+// code). Wire the shared serializeErrorEnvelope helper here so the
+// router emits the same envelope the rest of the app does.
+paddleWebhookRouter.onError((err, c) => {
+  const requestId =
+    ((c as unknown as { get: (k: string) => string | undefined }).get('requestId')) ?? null
+  const { status, body } = serializeErrorEnvelope(err, requestId)
+  return c.json(body, status as ContentfulStatusCode)
 })
