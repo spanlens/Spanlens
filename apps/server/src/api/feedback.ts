@@ -3,6 +3,7 @@ import { authJwt, type JwtContext } from '../middleware/authJwt.js'
 import { supabaseAdmin } from '../lib/db.js'
 import { sendEmail } from '../lib/resend.js'
 import { fireAndForget } from '../lib/wait-until.js'
+import { ApiError } from '../lib/errors.js'
 
 /** Spanlens internal operators (not org admins). Same allowlist env var as
  *  requireSystemAdmin. Returns [] when unset — the notification just no-ops. */
@@ -54,12 +55,12 @@ feedbackRouter.post('/', async (c) => {
   try {
     body = (await c.req.json()) as FeedbackBody
   } catch {
-    return c.json({ error: 'Invalid JSON body' }, 400)
+    throw new ApiError('INVALID_JSON_BODY', 'Invalid JSON body')
   }
 
   const message = typeof body.message === 'string' ? body.message.trim() : ''
   if (message.length < MIN_MESSAGE_LEN) {
-    return c.json({ error: 'Message is too short' }, 400)
+    throw new ApiError('VALIDATION_FAILED', 'Message is too short')
   }
   if (message.length > MAX_MESSAGE_LEN) {
     return c.json({ error: `Message must be ${MAX_MESSAGE_LEN} characters or fewer` }, 400)
@@ -82,7 +83,7 @@ feedbackRouter.post('/', async (c) => {
 
   if (error) {
     console.error('[feedback] insert failed:', error.message)
-    return c.json({ error: 'Failed to submit feedback' }, 500)
+    throw new ApiError('INTERNAL_ERROR', 'Failed to submit feedback')
   }
 
   // Best-effort ops notification. fireAndForget so the response isn't blocked
