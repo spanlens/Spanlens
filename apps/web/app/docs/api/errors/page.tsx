@@ -78,10 +78,22 @@ const ERROR_CATALOG_ROWS: CatalogRow[] = [
     description: 'Request body is not parseable JSON.',
   },
   {
+    code: 'BAD_REQUEST',
+    status: 400,
+    description:
+      'Generic 400 fallback for legacy handlers whose error message does not match a more specific shape. New handlers should prefer VALIDATION_FAILED with a details object instead.',
+  },
+  {
     code: 'NO_PROVIDER_KEY',
     status: 400,
     description:
       'The Spanlens key has no active provider key registered for this provider. Add one on the Projects & Keys page.',
+  },
+  {
+    code: 'RATE_LIMIT',
+    status: 429,
+    description:
+      'Per-key rate limit exceeded. The Retry-After header and X-RateLimit-* headers carry the remaining quota and reset time. Back off and retry.',
   },
   {
     code: 'UPSTREAM_TIMEOUT',

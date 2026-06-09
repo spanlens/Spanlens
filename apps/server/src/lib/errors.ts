@@ -42,10 +42,22 @@ export const ERROR_CODES = {
   // names that failed.
   VALIDATION_FAILED: { status: 400, message: 'Request validation failed' },
   INVALID_JSON_BODY: { status: 400, message: 'Invalid JSON body' },
+  // BAD_REQUEST is the generic 400 fallback the Sprint 8 codemod emits
+  // when the legacy `c.json({ error: '...' }, 400)` message doesn't
+  // match a more specific shape (VALIDATION_FAILED for "x is required"
+  // / "must be" / etc., INVALID_JSON_BODY for parse failures,
+  // NO_PROVIDER_KEY for the proxy misconfiguration). Prefer one of the
+  // specific codes when adding new throw sites by hand.
+  BAD_REQUEST: { status: 400, message: 'Bad request' },
 
   // Resource lifecycle.
   NOT_FOUND: { status: 404, message: 'Resource not found' },
   CONFLICT: { status: 409, message: 'Resource conflict' },
+
+  // Rate limiting. The legacy 429 paths in rateLimit.ts and quota.ts
+  // currently return their own envelope; Sprint 8 will route them through
+  // this code so the SDK can switch on err.code === 'RATE_LIMIT'.
+  RATE_LIMIT: { status: 429, message: 'Rate limit exceeded' },
 
   // Upstream / infrastructure failures.
   DECRYPT_FAILED: {
