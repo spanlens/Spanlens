@@ -208,6 +208,15 @@ app.route('/api/v1/recommendations', recommendationsRouter)
 app.route('/api/v1/pending-deletions', pendingDeletionsRouter)
 // scoreConfigs has the same wildcard-collision concern as the routes above.
 app.route('/api/v1/score-configs',  scoreConfigsRouter)
+// feedback must be mounted BEFORE evalsRouter/humanEvalsRouter for the same
+// reason as recommendations / pending-deletions / score-configs above.
+// `feedbackRouter`'s GET / is intentionally PUBLIC (anonymous roadmap list);
+// mounting after the `/api/v1` wildcard routers lets their `.use('*', authJwt)`
+// catch the request first and 401 every anonymous visitor with "Missing or
+// invalid Authorization header" — exactly what production dogfood after
+// PR #304 surfaced. Per-route authJwt inside feedbackRouter only fires for
+// requests that actually reach this router.
+app.route('/api/v1/feedback',       feedbackRouter)
 app.route('/api/v1',                evalsRouter)
 app.route('/api/v1/datasets',       datasetsRouter)
 app.route('/api/v1/experiments',    experimentsRouter)
@@ -225,7 +234,6 @@ app.route('/api/v1/models',         modelsRouter)    // JWT-auth — model catal
 app.route('/api/v1/webhooks',       webhooksRouter)
 app.route('/api/v1/exports',        exportsRouter)
 app.route('/api/v1/system',         systemRouter)
-app.route('/api/v1/feedback',       feedbackRouter)
 app.route('/api/v1/shares',         sharesRouter)   // PLG Loop ① — owner-side CRUD
 
 // ── Admin routes (authJwt + requireSystemAdmin via SPANLENS_ADMIN_EMAILS) ──
