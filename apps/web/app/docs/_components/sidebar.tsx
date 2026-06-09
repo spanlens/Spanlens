@@ -113,6 +113,7 @@ const NAV: NavGroup[] = [
     items: [
       { title: 'Direct proxy (any language)', href: '/docs/proxy' },
       { title: 'REST API reference', href: '/docs/api' },
+      { title: 'Error codes', href: '/docs/api/errors' },
     ],
   },
   {

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { Hono } from 'hono'
 import type { JwtContext } from '../middleware/authJwt.js'
+import { installOnError } from './helpers/install-on-error.js'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Tests for the JWT middleware that gates every /api/v1/* route. A regression
@@ -49,6 +50,7 @@ function makeApp() {
       role: c.get('role'),
     }),
   )
+  installOnError(app)
   return app
 }
 
@@ -56,7 +58,10 @@ describe('authJwt — auth header', () => {
   test('missing Authorization header → 401', async () => {
     const res = await makeApp().request('/probe')
     expect(res.status).toBe(401)
-    expect(await res.json()).toEqual({ error: 'Missing or invalid Authorization header' })
+    // Sprint 7 R-15: standard envelope.
+    expect(await res.json()).toEqual({
+      error: { code: 'UNAUTHORIZED', message: 'Missing or invalid Authorization header' },
+    })
     // Never reaches Supabase — fail fast
     expect(getUserMock).not.toHaveBeenCalled()
   })
@@ -78,7 +83,10 @@ describe('authJwt — auth header', () => {
       headers: { Authorization: 'Bearer ' },
     })
     expect(res.status).toBe(401)
-    expect(await res.json()).toEqual({ error: 'Missing or invalid Authorization header' })
+    // Sprint 7 R-15: standard envelope.
+    expect(await res.json()).toEqual({
+      error: { code: 'UNAUTHORIZED', message: 'Missing or invalid Authorization header' },
+    })
     expect(getUserMock).not.toHaveBeenCalled()
   })
 })
@@ -90,7 +98,9 @@ describe('authJwt — supabase auth result', () => {
       headers: { Authorization: 'Bearer expired_token' },
     })
     expect(res.status).toBe(401)
-    expect(await res.json()).toEqual({ error: 'Invalid or expired token' })
+    expect(await res.json()).toEqual({
+      error: { code: 'UNAUTHORIZED', message: 'Invalid or expired token' },
+    })
   })
 
   test('Supabase returns no user → 401', async () => {

@@ -13,6 +13,7 @@ import { scanAll } from '../lib/security-scan.js'
 import { getDecryptedProviderKey, buildUpstreamHeaders, buildDownstreamHeaders, isBlockingEnabled } from './utils.js'
 import { logOpenAIStream } from './stream-logger.js'
 import { cancelReaderSilently, makeStreamDeadline, readWithDeadline } from './stream-deadline.js'
+import { ApiError } from '../lib/errors.js'
 
 // Overridable so E2E (apps/web/__e2e__/smoke.spec.ts via docker-compose
 // dev mock-openai) can point this at http://localhost:4000 without hitting
@@ -47,7 +48,11 @@ openaiProxy.all('/*', async (c) => {
   // Path = "/proxy/openai/..." → resolve OpenAI key under apiKeyId.
   const providerKey = await getDecryptedProviderKey(apiKeyId, 'openai')
   if (!providerKey) {
-    return c.json({ error: 'No active OpenAI provider key registered for this Spanlens key' }, 400)
+    throw new ApiError(
+      'NO_PROVIDER_KEY',
+      'No active OpenAI provider key registered for this Spanlens key',
+      { provider: 'openai' },
+    )
   }
   const decryptedKey = providerKey.plaintext
 
@@ -104,10 +109,16 @@ openaiProxy.all('/*', async (c) => {
     clearTimeout(upstreamTimer)
     const msg = err instanceof Error ? err.message : 'Unknown error'
     if (err instanceof Error && err.name === 'AbortError') {
-      return c.json({ error: `Upstream request timed out after ${UPSTREAM_TIMEOUT_MS}ms` }, 504)
+      throw new ApiError(
+        'UPSTREAM_TIMEOUT',
+        `Upstream request timed out after ${UPSTREAM_TIMEOUT_MS}ms`,
+        { provider: 'openai', timeoutMs: UPSTREAM_TIMEOUT_MS },
+      )
     }
     console.error('[openai-proxy] upstream fetch error:', msg)
-    return c.json({ error: `Upstream request failed: ${msg}` }, 502)
+    throw new ApiError('UPSTREAM_FAILED', `Upstream request failed: ${msg}`, {
+      provider: 'openai',
+    })
   }
   clearTimeout(upstreamTimer)
   const latencyMs = Date.now() - startMs

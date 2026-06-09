@@ -53,6 +53,17 @@ export const ERROR_CODES = {
     message: 'Provider key decryption failed; check ENCRYPTION_KEY configuration',
   },
   INTERNAL_ERROR: { status: 500, message: 'Internal server error' },
+
+  // Proxy-specific. Sprint 7 PR 3 migration: proxy/* handlers throw these
+  // instead of returning ad-hoc { error: '...' } shapes. NO_PROVIDER_KEY
+  // is the most common operator misconfiguration so it gets its own code
+  // even though it overlaps with NOT_FOUND semantically.
+  NO_PROVIDER_KEY: {
+    status: 400,
+    message: 'No active provider key registered for this Spanlens key',
+  },
+  UPSTREAM_TIMEOUT: { status: 504, message: 'Upstream request timed out' },
+  UPSTREAM_FAILED: { status: 502, message: 'Upstream request failed' },
 } as const
 
 export type ErrorCode = keyof typeof ERROR_CODES

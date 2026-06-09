@@ -1,5 +1,6 @@
 import { createMiddleware } from 'hono/factory'
 import { supabaseAdmin, supabaseClient } from '../lib/db.js'
+import { ApiError } from '../lib/errors.js'
 
 export type OrgRole = 'admin' | 'editor' | 'viewer'
 
@@ -110,7 +111,7 @@ export function _clearAuthCacheForTests(): void {
 export const authJwt = createMiddleware<JwtContext>(async (c, next) => {
   const authHeader = c.req.header('Authorization')
   if (!authHeader?.startsWith('Bearer ')) {
-    return c.json({ error: 'Missing or invalid Authorization header' }, 401)
+    throw new ApiError('UNAUTHORIZED', 'Missing or invalid Authorization header')
   }
 
   const token = authHeader.slice(7)
@@ -131,7 +132,7 @@ export const authJwt = createMiddleware<JwtContext>(async (c, next) => {
   const { data, error } = await supabaseClient.auth.getUser(token)
 
   if (error || !data.user) {
-    return c.json({ error: 'Invalid or expired token' }, 401)
+    throw new ApiError('UNAUTHORIZED', 'Invalid or expired token')
   }
 
   const userId = data.user.id
