@@ -8,6 +8,7 @@ import {
   type PendingResourceType,
 } from '../lib/pending-deletions.js'
 import { recordAuditEvent } from '../lib/audit-log.js'
+import { ApiError } from '../lib/errors.js'
 
 /**
  * /api/v1/pending-deletions — list + restore the soft-delete queue.
@@ -72,7 +73,7 @@ function shape(row: {
 // GET /api/v1/pending-deletions — active queue (not yet executed or cancelled)
 pendingDeletionsRouter.get('/', async (c) => {
   const orgId = c.get('orgId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   const { data, error } = await supabaseAdmin
     .from('pending_deletions')
@@ -84,14 +85,14 @@ pendingDeletionsRouter.get('/', async (c) => {
     .is('executed_at', null)
     .order('scheduled_for', { ascending: true })
 
-  if (error) return c.json({ error: 'Failed to load pending deletions' }, 500)
+  if (error) throw new ApiError('INTERNAL_ERROR', 'Failed to load pending deletions')
   return c.json({ success: true, data: (data ?? []).map(shape) })
 })
 
 // GET /api/v1/pending-deletions/history — last 50 terminal rows for audit
 pendingDeletionsRouter.get('/history', async (c) => {
   const orgId = c.get('orgId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   const { data, error } = await supabaseAdmin
     .from('pending_deletions')
@@ -103,7 +104,7 @@ pendingDeletionsRouter.get('/history', async (c) => {
     .order('requested_at', { ascending: false })
     .limit(50)
 
-  if (error) return c.json({ error: 'Failed to load history' }, 500)
+  if (error) throw new ApiError('INTERNAL_ERROR', 'Failed to load history')
   return c.json({ success: true, data: (data ?? []).map(shape) })
 })
 
@@ -111,7 +112,7 @@ pendingDeletionsRouter.get('/history', async (c) => {
 pendingDeletionsRouter.post('/:id/restore', requireEdit, async (c) => {
   const orgId = c.get('orgId')
   const userId = c.get('userId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   const pendingId = c.req.param('id')
 
@@ -122,13 +123,14 @@ pendingDeletionsRouter.post('/:id/restore', requireEdit, async (c) => {
     .eq('id', pendingId)
     .maybeSingle()
 
-  if (!row) return c.json({ error: 'Pending deletion not found' }, 404)
-  if (row.organization_id !== orgId) return c.json({ error: 'Access denied' }, 403)
+  if (!row) throw new ApiError('NOT_FOUND', 'Pending deletion not found')
+  if (row.organization_id !== orgId) throw new ApiError('FORBIDDEN', 'Access denied')
   if (row.executed_at) {
+    // TODO(sprint-8): manual migration (unmapped status 410)
     return c.json({ error: 'Already hard-deleted; cannot restore' }, 410)
   }
   if (row.cancelled_at) {
-    return c.json({ error: 'Already restored' }, 409)
+    throw new ApiError('CONFLICT', 'Already restored')
   }
 
   const reactivation = await reactivateByType(
@@ -151,7 +153,7 @@ pendingDeletionsRouter.post('/:id/restore', requireEdit, async (c) => {
     .is('cancelled_at', null)
     .is('executed_at', null)
 
-  if (updateErr) return c.json({ error: 'Failed to mark restored' }, 500)
+  if (updateErr) throw new ApiError('INTERNAL_ERROR', 'Failed to mark restored')
 
   void recordAuditEvent(c, {
     action: 'pending_deletion.restore',
