@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { authJwt, type JwtContext } from '../middleware/authJwt.js'
 import { supabaseAdmin } from '../lib/db.js'
 import { parsePositiveInt } from '../lib/params.js'
+import { ApiError } from '../lib/errors.js'
 
 /**
  * Audit log endpoints. The `audit_logs` table is INSERT-by-service-role only
@@ -54,7 +55,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
 auditLogsRouter.get('/', async (c) => {
   const orgId = c.get('orgId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   const limit = Math.min(parsePositiveInt(c.req.query('limit'), 50), 200)
   const offset = parsePositiveInt(c.req.query('offset'), 0)
@@ -62,13 +63,13 @@ auditLogsRouter.get('/', async (c) => {
   const userIdFilter = c.req.query('user_id')?.trim() || null
 
   if (userIdFilter && !UUID_RE.test(userIdFilter)) {
-    return c.json({ error: 'user_id must be a UUID' }, 400)
+    throw new ApiError('VALIDATION_FAILED', 'user_id must be a UUID')
   }
 
   const fromIso = parseIsoBound(c.req.query('from'))
   const toIso = parseIsoBound(c.req.query('to'))
-  if (fromIso === 'invalid') return c.json({ error: 'invalid `from` timestamp' }, 400)
-  if (toIso === 'invalid') return c.json({ error: 'invalid `to` timestamp' }, 400)
+  if (fromIso === 'invalid') throw new ApiError('VALIDATION_FAILED', 'invalid `from` timestamp')
+  if (toIso === 'invalid') throw new ApiError('VALIDATION_FAILED', 'invalid `to` timestamp')
 
   let query = supabaseAdmin
     .from('audit_logs')
@@ -86,7 +87,7 @@ auditLogsRouter.get('/', async (c) => {
 
   const { data, error, count } = await query
 
-  if (error) return c.json({ error: 'Failed to fetch audit logs' }, 500)
+  if (error) throw new ApiError('INTERNAL_ERROR', 'Failed to fetch audit logs')
 
   return c.json({
     success: true,
@@ -105,7 +106,7 @@ auditLogsRouter.get('/', async (c) => {
  */
 auditLogsRouter.get('/actions', async (c) => {
   const orgId = c.get('orgId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   // Postgrest doesn't expose DISTINCT — we cap to last 1000 rows + dedupe
   // in JS. Beyond that the dropdown would be unusable anyway.
@@ -116,7 +117,7 @@ auditLogsRouter.get('/actions', async (c) => {
     .order('created_at', { ascending: false })
     .limit(1000)
 
-  if (error) return c.json({ error: 'Failed to fetch actions' }, 500)
+  if (error) throw new ApiError('INTERNAL_ERROR', 'Failed to fetch actions')
 
   const unique = Array.from(new Set((data ?? []).map((r) => r.action))).sort()
   return c.json({ success: true, data: unique })

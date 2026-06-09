@@ -9,6 +9,7 @@ import {
 } from '../lib/paddle.js'
 import { checkMonthlyQuota } from '../lib/quota.js'
 import { recordAuditEvent } from '../lib/audit-log.js'
+import { ApiError } from '../lib/errors.js'
 
 /**
  * Dashboard billing endpoints — JWT authenticated.
@@ -26,7 +27,7 @@ billingRouter.use('*', authJwt)
 // ── GET /api/v1/billing/subscription ────────────────────────────
 billingRouter.get('/subscription', async (c) => {
   const orgId = c.get('orgId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   const { data, error } = await supabaseAdmin
     .from('subscriptions')
@@ -39,7 +40,7 @@ billingRouter.get('/subscription', async (c) => {
     .limit(1)
     .maybeSingle()
 
-  if (error) return c.json({ error: 'Failed to fetch subscription' }, 500)
+  if (error) throw new ApiError('INTERNAL_ERROR', 'Failed to fetch subscription')
 
   return c.json({ success: true, data: data ?? null })
 })
@@ -47,7 +48,7 @@ billingRouter.get('/subscription', async (c) => {
 // ── GET /api/v1/billing/quota ───────────────────────────────────
 billingRouter.get('/quota', async (c) => {
   const orgId = c.get('orgId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   const quota = await checkMonthlyQuota(orgId)
   return c.json({ success: true, data: quota })
@@ -59,13 +60,13 @@ billingRouter.get('/quota', async (c) => {
 billingRouter.post('/checkout', async (c) => {
   const orgId = c.get('orgId')
   const userId = c.get('userId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   let body: { plan?: unknown }
   try {
     body = (await c.req.json()) as typeof body
   } catch {
-    return c.json({ error: 'Invalid JSON body' }, 400)
+    throw new ApiError('INVALID_JSON_BODY', 'Invalid JSON body')
   }
 
   const plan = typeof body.plan === 'string' ? body.plan : ''
@@ -82,14 +83,14 @@ billingRouter.post('/checkout', async (c) => {
   // Look up the user's email + org's paddle_customer_id
   const { data: authUser } = await supabaseAdmin.auth.admin.getUserById(userId)
   const email = authUser.user?.email
-  if (!email) return c.json({ error: 'User email not found' }, 400)
+  if (!email) throw new ApiError('BAD_REQUEST', 'User email not found')
 
   const { data: org } = await supabaseAdmin
     .from('organizations')
     .select('id, name, paddle_customer_id')
     .eq('id', orgId)
     .single()
-  if (!org) return c.json({ error: 'Organization not found' }, 404)
+  if (!org) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   // Resolve Paddle customer: use stored id, else look up by email, else create
   let paddleCustomerId = org.paddle_customer_id as string | null
@@ -122,7 +123,7 @@ billingRouter.post('/checkout', async (c) => {
       organizationId: orgId,
     })
     if (!tx.checkout?.url) {
-      return c.json({ error: 'Paddle did not return a checkout URL' }, 502)
+      throw new ApiError('UPSTREAM_FAILED', 'Paddle did not return a checkout URL')
     }
     void recordAuditEvent(c, {
       action: 'billing.checkout_create',
@@ -144,7 +145,7 @@ billingRouter.post('/checkout', async (c) => {
 // through the current billing period (matches Terms section 5).
 billingRouter.post('/cancel', async (c) => {
   const orgId = c.get('orgId')
-  if (!orgId) return c.json({ error: 'Organization not found' }, 404)
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   const { data: sub } = await supabaseAdmin
     .from('subscriptions')
@@ -155,8 +156,8 @@ billingRouter.post('/cancel', async (c) => {
     .limit(1)
     .maybeSingle()
 
-  if (!sub) return c.json({ error: 'No active subscription found' }, 404)
-  if (sub.cancel_at_period_end) return c.json({ error: 'Subscription is already scheduled for cancellation' }, 409)
+  if (!sub) throw new ApiError('NOT_FOUND', 'No active subscription found')
+  if (sub.cancel_at_period_end) throw new ApiError('CONFLICT', 'Subscription is already scheduled for cancellation')
 
   try {
     await cancelPaddleSubscription(sub.paddle_subscription_id)
