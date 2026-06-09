@@ -1,87 +1,138 @@
 name: Cron — server sub-daily
 
-# GitHub Actions cron for sub-daily Spanlens server jobs that Vercel's
-# scheduled crons keep not picking up. The history: project moved to
-# Vercel Pro in commit aeebecb (May 2026), so we consolidated GitHub
-# Actions cron workflows back into vercel.json. New crons added since
-# then have not been syncing to Vercel's scheduler, so a subset is
-# stale (only ~5 of the ~14 defined in vercel.json actually fire).
-# Rather than burn a support ticket waiting for Vercel to resync, run
-# the two highest-leverage sub-daily jobs from GitHub Actions as a
-# durable safety net. Vercel scheduled crons stay configured in
-# vercel.json so they fire too if/when Vercel resyncs — the GH runs
-# are idempotent.
+# GitHub Actions cron safety net for Spanlens server endpoints that
+# Vercel's scheduled crons keep silently dropping. As of 2026-06-09 the
+# live Vercel cron registry has 5 of the 14 entries declared in
+# vercel.json; the other 9 never fire. Project IS on Pro plan (40-cron
+# quota) so this is a sync gap, not a quota cap — likely fixed by a
+# Vercel-side resync we cannot trigger from the outside.
 #
-# Idempotency: every Spanlens cron handler treats double-firing as a
-# no-op or natural retry. Worst case both schedulers fire the same
-# minute and the second call sees state from the first.
+# Endpoints we re-fire from GitHub Actions, ordered by what breaks if
+# they stay silent:
 #
-# Required secrets:
-#   CRON_SECRET — same value the handlers compare against (Vercel env var
-#                 of the same name). Used as Bearer token below.
+#   /cron/replay-fallback           every 5 min
+#     ClickHouse outage fallback. Failed log inserts queue to Supabase
+#     `requests_fallback`; this job drains the queue back to CH. Silent
+#     = next CH outage's logs sit in the queue past their 7-day TTL =
+#     permanent data loss. Highest-leverage of the lot.
 #
-# Endpoints invoked here:
-#   /cron/run-background-migrations  every 5 min
-#     Picks one pending background_migrations row, runs it in chunks
-#     until done or near the function timeout. Without this fire, every
-#     background migration the operator schedules sits forever.
-#   /cron/keep-warm                  every 5 min
-#     Warms the serverless runtime + ClickHouse + Supabase pools so
-#     the first real request after an idle window does not eat the
-#     full cold-start latency.
+#   /cron/execute-pending-deletions every 6h
+#     Processes GDPR "right to be forgotten" requests sitting in
+#     `pending_deletions`. Silent = compliance violation. Legal /
+#     reputational risk.
+#
+#   /cron/self-monitor              hourly at :31
+#     Cron-failure watchdog. Scans `cron_job_runs` for failure rows
+#     and creates an internal_alert. Silent = the same class of bug
+#     that hit us (Vercel scheduler stops firing X) takes longer to
+#     notice next time. Meta-monitoring.
+#
+#   /cron/run-background-migrations every 5 min  (shipped earlier)
+#     Background migration queue runner. Silent = ops cannot kick off
+#     a new background migration without manually marking rows.
+#
+#   /cron/keep-warm                 every 5 min  (shipped earlier)
+#     Warms Lambda + Supabase + ClickHouse pools. Silent = first
+#     request after idle eats a cold start (~1s tax). Low priority.
+#
+# Vercel scheduler stays configured in vercel.json so it still fires
+# whichever endpoints it decides to honour. Both schedulers calling
+# the same endpoint is fine — every handler holds an advisory lock or
+# is naturally idempotent.
+#
+# Required secret: CRON_SECRET in Settings → Secrets, matching the
+# Vercel env var of the same name (the handler compares against it).
+#
+# Each scheduled trigger fires only the job whose `if:` matches the
+# triggering schedule, so cadences stay correct. workflow_dispatch
+# fires all jobs at once for ad-hoc operator testing.
 
 on:
   schedule:
-    # Both jobs run every 5 minutes. Offset by 2 minutes so they do
-    # not collide on the same runner queue and so the keep-warm finishes
-    # before run-background-migrations potentially keeps a function
-    # warm for its full chunk budget.
-    - cron: '*/5 * * * *'
+    # Cadence has to match what the handler expects. Listed here in the
+    # same order as the `if:` checks below for grepability.
+    - cron: '*/5 * * * *'      # every 5 min — replay-fallback, run-background-migrations, keep-warm
+    - cron: '0 */6 * * *'      # every 6h on the hour — execute-pending-deletions
+    - cron: '31 * * * *'       # hourly at :31 — self-monitor
   workflow_dispatch:
 
-# Concurrency: serialize so a slow run-background-migrations does not
-# overlap with the next tick (the chunk runner already takes an
-# advisory lock server-side, but the GH-side queue prevents wasted
-# runner minutes).
 concurrency:
   group: cron-server
   cancel-in-progress: false
 
 jobs:
-  run-background-migrations:
-    name: POST /cron/run-background-migrations
+  every-5min:
+    name: Every 5 min (replay-fallback + run-background-migrations + keep-warm)
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.schedule == '*/5 * * * *' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Invoke endpoint
+      - name: POST /cron/replay-fallback
         run: |
-          # Production base URL. Hardcoded because the GH runner has no
-          # other place to read it from. Update here AND in the Vercel
-          # project alias settings if the hostname ever changes.
+          BASE_URL='https://spanlens-server.vercel.app'
+          STATUS=$(curl -sS -o /tmp/body -w '%{http_code}' \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            "$BASE_URL/cron/replay-fallback")
+          echo "Status: $STATUS"
+          cat /tmp/body
+          if [ "$STATUS" -ge 400 ]; then exit 1; fi
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+
+      - name: POST /cron/run-background-migrations
+        run: |
           BASE_URL='https://spanlens-server.vercel.app'
           STATUS=$(curl -sS -o /tmp/body -w '%{http_code}' \
             -H "Authorization: Bearer $CRON_SECRET" \
             "$BASE_URL/cron/run-background-migrations")
           echo "Status: $STATUS"
           cat /tmp/body
-          # A 200 with body status='skipped' is fine (no pending job).
-          # Any 4xx/5xx fails the workflow so the operator sees it on
-          # the Actions dashboard.
           if [ "$STATUS" -ge 400 ]; then exit 1; fi
         env:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
 
-  keep-warm:
-    name: POST /cron/keep-warm
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - name: Invoke endpoint
+      - name: POST /cron/keep-warm
         run: |
           BASE_URL='https://spanlens-server.vercel.app'
           STATUS=$(curl -sS -o /tmp/body -w '%{http_code}' \
             -H "Authorization: Bearer $CRON_SECRET" \
             "$BASE_URL/cron/keep-warm")
+          echo "Status: $STATUS"
+          cat /tmp/body
+          if [ "$STATUS" -ge 400 ]; then exit 1; fi
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+
+  every-6h:
+    name: Every 6 hours (execute-pending-deletions)
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.schedule == '0 */6 * * *' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: POST /cron/execute-pending-deletions
+        run: |
+          BASE_URL='https://spanlens-server.vercel.app'
+          STATUS=$(curl -sS -o /tmp/body -w '%{http_code}' \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            "$BASE_URL/cron/execute-pending-deletions")
+          echo "Status: $STATUS"
+          cat /tmp/body
+          if [ "$STATUS" -ge 400 ]; then exit 1; fi
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+
+  hourly-31:
+    name: Hourly at :31 (self-monitor)
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.schedule == '31 * * * *' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: POST /cron/self-monitor
+        run: |
+          BASE_URL='https://spanlens-server.vercel.app'
+          STATUS=$(curl -sS -o /tmp/body -w '%{http_code}' \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            "$BASE_URL/cron/self-monitor")
           echo "Status: $STATUS"
           cat /tmp/body
           if [ "$STATUS" -ge 400 ]; then exit 1; fi
