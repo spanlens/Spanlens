@@ -1,6 +1,11 @@
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { logger } from 'hono/logger'
+import type { ContentfulStatusCode } from 'hono/utils/http-status'
+import { captureException } from '@sentry/node'
+
+import { requestId } from './middleware/requestId.js'
+import { ApiError, isApiError } from './lib/errors.js'
 
 import { openaiProxy }     from './proxy/openai.js'
 import { anthropicProxy }  from './proxy/anthropic.js'
@@ -82,6 +87,9 @@ app.use('*', cors({
   credentials: true,
   maxAge: 86400,
 }))
+// Sprint 7 R-15: requestId before logger so the access log line carries
+// the same id that the response header and the onError payload echo.
+app.use('*', requestId)
 app.use('*', logger())
 
 // Health check routes extracted to api/health.ts for unit-test isolation.
@@ -224,5 +232,56 @@ app.route('/api/v1/admin/model-prices', adminModelPricesRouter)
 app.route('/api/v1/admin/model-recommendations', adminModelRecommendationsRouter)
 app.route('/api/v1/admin/background-migrations', adminBackgroundMigrationsRouter)
 app.route('/api/v1/admin/alerts', adminAlertsRouter)
+
+// Sprint 7 R-15 + R-20: global error handler. Every router can now
+// `throw new ApiError('CODE', 'message?')` and rely on this handler to
+// serialise to the standard `{ error: { code, message, details?, requestId } }`
+// shape. Unknown errors fall through to a 500 with Sentry capture so the
+// client never sees a stack trace.
+app.onError((err, c) => {
+  // requestId middleware runs before any route handler, so this should
+  // always be present in production. Treat absent as null so a unit
+  // test that exercises onError without mounting requestId still works.
+  const requestId =
+    ((c as unknown as { get: (k: string) => string | undefined }).get('requestId')) ?? null
+
+  if (isApiError(err)) {
+    return c.json(
+      {
+        error: {
+          code: err.code,
+          message: err.message,
+          ...(err.details ? { details: err.details } : {}),
+          requestId,
+        },
+      },
+      err.status as ContentfulStatusCode,
+    )
+  }
+
+  // Unknown error. Capture to Sentry (no-op when SENTRY_DSN is unset) and
+  // return an opaque 500 so we never leak stack traces or internal state.
+  captureException(err, { tags: { request_id: requestId ?? 'unknown' } })
+  return c.json(
+    {
+      error: {
+        code: 'INTERNAL_ERROR',
+        message: 'Unexpected error',
+        requestId,
+      },
+    },
+    500,
+  )
+})
+
+// Sprint 7 R-20: expose the Hono app's type so downstream packages can
+// derive a typed client. apps/web/lib/api-client.ts does
+// `hc<AppType>(...)` for full end-to-end type safety on every fetch.
+// Type-only export (no runtime cost; tsc strips it from the build).
+export type AppType = typeof app
+// Reference ApiError so the import is not tree-shaken away even if no
+// route is yet using it; remove this line in Sprint 8 once at least one
+// handler in app.ts itself throws ApiError.
+export type _AppErrorMarker = ApiError
 
 export default app
