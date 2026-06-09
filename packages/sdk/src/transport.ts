@@ -74,11 +74,13 @@ function tryParseApiError(
   if (typeof env.error.code !== 'string' || typeof env.error.message !== 'string') {
     return null
   }
+  // Spread `details` conditionally so we do not pass `undefined` to the
+  // optional parameter (exactOptionalPropertyTypes rejects that).
   return new SpanlensApiError({
     code: env.error.code,
     message: env.error.message,
     status,
-    details: env.error.details,
+    ...(env.error.details ? { details: env.error.details } : {}),
     requestId: env.error.requestId ?? null,
   })
 }
