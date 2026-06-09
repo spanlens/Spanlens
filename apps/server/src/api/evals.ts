@@ -134,7 +134,7 @@ evalsRouter.post('/evaluators', async (c) => {
     .single()
 
   if (error || !data) {
-    return c.json({ error: error?.message ?? 'Failed to create evaluator' }, 500)
+    throw new ApiError('INTERNAL_ERROR', error?.message ?? 'Failed to create evaluator')
   }
   return c.json({ success: true, data }, 201)
 })
@@ -156,7 +156,7 @@ evalsRouter.get('/evaluators', async (c) => {
   if (promptName) query = query.eq('prompt_name', promptName)
 
   const { data, error } = await query
-  if (error) return c.json({ error: error.message }, 500)
+  if (error) throw new ApiError('INTERNAL_ERROR', error.message)
   return c.json({ success: true, data: data ?? [] })
 })
 
@@ -194,7 +194,7 @@ evalsRouter.delete('/evaluators/:id', async (c) => {
     .eq('id', id)
     .eq('organization_id', orgId)
 
-  if (error) return c.json({ error: error.message }, 500)
+  if (error) throw new ApiError('INTERNAL_ERROR', error.message)
   return c.json({ success: true })
 })
 
@@ -300,7 +300,7 @@ evalsRouter.post('/eval-runs', async (c) => {
     .single()
 
   if (runErr || !run) {
-    return c.json({ error: runErr?.message ?? 'Failed to create run' }, 500)
+    throw new ApiError('INTERNAL_ERROR', runErr?.message ?? 'Failed to create run')
   }
 
   // Kick off the worker in background. The HTTP caller polls GET /eval-runs/:id.
@@ -340,7 +340,7 @@ evalsRouter.get('/eval-runs', async (c) => {
   if (promptVersionId) query = query.eq('prompt_version_id', promptVersionId)
 
   const { data, error } = await query
-  if (error) return c.json({ error: error.message }, 500)
+  if (error) throw new ApiError('INTERNAL_ERROR', error.message)
   return c.json({ success: true, data: data ?? [] })
 })
 
@@ -383,7 +383,7 @@ evalsRouter.get('/eval-runs/:id/results', async (c) => {
     .eq('eval_run_id', runId)
     .order('score', { ascending: true })
 
-  if (error) return c.json({ error: error.message }, 500)
+  if (error) throw new ApiError('INTERNAL_ERROR', error.message)
   return c.json({ success: true, data: data ?? [] })
 })
 

@@ -42,7 +42,7 @@ datasetsRouter.post('/', async (c) => {
     if (error?.code === '23505') {
       throw new ApiError('CONFLICT', 'A dataset with this name already exists')
     }
-    return c.json({ error: error?.message ?? 'Failed to create dataset' }, 500)
+    throw new ApiError('INTERNAL_ERROR', error?.message ?? 'Failed to create dataset')
   }
   return c.json({ success: true, data }, 201)
 })
@@ -59,7 +59,7 @@ datasetsRouter.get('/', async (c) => {
     .is('archived_at', null)
     .order('created_at', { ascending: false })
 
-  if (error) return c.json({ error: error.message }, 500)
+  if (error) throw new ApiError('INTERNAL_ERROR', error.message)
 
   const datasetIds = (datasets ?? []).map((d) => d.id)
   if (datasetIds.length === 0) {
@@ -108,7 +108,7 @@ datasetsRouter.get('/:id', async (c) => {
     .eq('dataset_id', id)
     .order('created_at', { ascending: false })
 
-  if (itemsErr) return c.json({ error: itemsErr.message }, 500)
+  if (itemsErr) throw new ApiError('INTERNAL_ERROR', itemsErr.message)
 
   return c.json({ success: true, data: { ...dataset, items: items ?? [] } })
 })
@@ -125,7 +125,7 @@ datasetsRouter.delete('/:id', async (c) => {
     .eq('id', id)
     .eq('organization_id', orgId)
 
-  if (error) return c.json({ error: error.message }, 500)
+  if (error) throw new ApiError('INTERNAL_ERROR', error.message)
   return c.json({ success: true })
 })
 
@@ -181,7 +181,7 @@ datasetsRouter.post('/:id/items', async (c) => {
     .select()
     .single()
 
-  if (error || !data) return c.json({ error: error?.message ?? 'Failed to add item' }, 500)
+  if (error || !data) throw new ApiError('INTERNAL_ERROR', error?.message ?? 'Failed to add item')
   return c.json({ success: true, data }, 201)
 })
 
@@ -269,7 +269,7 @@ datasetsRouter.post('/:id/items/bulk', async (c) => {
   }
 
   const { error } = await supabaseAdmin.from('dataset_items').insert(rows)
-  if (error) return c.json({ error: error.message }, 500)
+  if (error) throw new ApiError('INTERNAL_ERROR', error.message)
 
   return c.json({ success: true, data: { inserted: rows.length, skipped } }, 201)
 })
@@ -320,7 +320,7 @@ datasetsRouter.post('/:id/items/import-requests', async (c) => {
       params: { ids },
     })
   } catch (err) {
-    return c.json({ error: err instanceof Error ? err.message : 'ClickHouse query failed' }, 500)
+    throw new ApiError('INTERNAL_ERROR', err instanceof Error ? err.message : 'ClickHouse query failed')
   }
   if (rawRequests.length === 0) {
     throw new ApiError('NOT_FOUND', 'No matching requests found')
@@ -378,7 +378,7 @@ datasetsRouter.post('/:id/items/import-requests', async (c) => {
     .insert(rows)
     .select()
 
-  if (error) return c.json({ error: error.message }, 500)
+  if (error) throw new ApiError('INTERNAL_ERROR', error.message)
   return c.json({ success: true, data: { imported: data?.length ?? 0 } }, 201)
 })
 
@@ -394,6 +394,6 @@ datasetsRouter.delete('/:id/items/:itemId', async (c) => {
     .eq('id', itemId)
     .eq('organization_id', orgId)
 
-  if (error) return c.json({ error: error.message }, 500)
+  if (error) throw new ApiError('INTERNAL_ERROR', error.message)
   return c.json({ success: true })
 })

@@ -107,7 +107,7 @@ humanEvalsRouter.get('/annotation/queue', async (c) => {
       params,
     })
   } catch (err) {
-    return c.json({ error: err instanceof Error ? err.message : 'ClickHouse query failed' }, 500)
+    throw new ApiError('INTERNAL_ERROR', err instanceof Error ? err.message : 'ClickHouse query failed')
   }
   if (rawRows.length === 0) {
     return c.json({ success: true, data: [] })
@@ -266,7 +266,7 @@ humanEvalsRouter.post('/human-evals', async (c) => {
   const rawValue = body.value !== undefined ? body.value : body.score
   const validation = validateScore(config, rawValue)
   if (!validation.ok) {
-    return c.json({ error: validation.message }, 400)
+    throw new ApiError('VALIDATION_FAILED', validation.message)
   }
 
   // Look up prompt_version_id for denormalized filter
@@ -282,7 +282,7 @@ humanEvalsRouter.post('/human-evals', async (c) => {
     })
     req = rows[0] ?? null
   } catch (err) {
-    return c.json({ error: err instanceof Error ? err.message : 'ClickHouse query failed' }, 500)
+    throw new ApiError('INTERNAL_ERROR', err instanceof Error ? err.message : 'ClickHouse query failed')
   }
   if (!req) throw new ApiError('NOT_FOUND', 'Request not found')
 
@@ -311,7 +311,7 @@ humanEvalsRouter.post('/human-evals', async (c) => {
     .single()
 
   if (error || !data) {
-    return c.json({ error: error?.message ?? 'Failed to save score' }, 500)
+    throw new ApiError('INTERNAL_ERROR', error?.message ?? 'Failed to save score')
   }
   return c.json({ success: true, data })
 })
@@ -332,7 +332,7 @@ humanEvalsRouter.get('/human-evals', async (c) => {
   if (promptVersionId) query = query.eq('prompt_version_id', promptVersionId)
 
   const { data, error } = await query
-  if (error) return c.json({ error: error.message }, 500)
+  if (error) throw new ApiError('INTERNAL_ERROR', error.message)
   return c.json({ success: true, data: data ?? [] })
 })
 
@@ -351,7 +351,7 @@ humanEvalsRouter.delete('/human-evals/:id', async (c) => {
     .eq('organization_id', orgId)
     .eq('reviewer_id', userId)
 
-  if (error) return c.json({ error: error.message }, 500)
+  if (error) throw new ApiError('INTERNAL_ERROR', error.message)
   return c.json({ success: true })
 })
 

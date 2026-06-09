@@ -297,7 +297,7 @@ apiKeysRouter.delete('/:id', requireEdit, async (c) => {
     if (enqueued.code === 'ALREADY_PENDING') {
       throw new ApiError('CONFLICT', 'Already queued for deletion')
     }
-    return c.json({ error: enqueued.error ?? 'Failed to queue deletion' }, 500)
+    throw new ApiError('INTERNAL_ERROR', enqueued.error ?? 'Failed to queue deletion')
   }
 
   // R-4/R-5: drop the auth cache entry for this key the instant the

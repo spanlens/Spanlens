@@ -123,7 +123,7 @@ scoreConfigsRouter.post('/', async (c) => {
     max_value,
     categories,
   })
-  if (shapeError) return c.json({ error: shapeError }, 400)
+  if (shapeError) throw new ApiError('VALIDATION_FAILED', shapeError)
 
   // For CATEGORICAL we store the cleaned list (deduped strings).
   const categoriesClean = data_type === 'CATEGORICAL' ? parseCategories(categories) : null
@@ -271,7 +271,7 @@ scoreConfigsRouter.patch('/:id', async (c) => {
     max_value: merged.max_value,
     categories: merged.categories,
   })
-  if (shapeError) return c.json({ error: shapeError }, 400)
+  if (shapeError) throw new ApiError('VALIDATION_FAILED', shapeError)
 
   if (body.archived === true && !existing.archived_at) {
     updates.archived_at = new Date().toISOString()
