@@ -127,6 +127,7 @@ pendingDeletionsRouter.post('/:id/restore', requireEdit, async (c) => {
   if (row.organization_id !== orgId) throw new ApiError('FORBIDDEN', 'Access denied')
   if (row.executed_at) {
     // TODO(sprint-8): manual migration (unmapped status 410)
+    // TODO(sprint-8): manual migration (unmapped status 410)
     return c.json({ error: 'Already hard-deleted; cannot restore' }, 410)
   }
   if (row.cancelled_at) {
@@ -140,7 +141,7 @@ pendingDeletionsRouter.post('/:id/restore', requireEdit, async (c) => {
     (row.resource_snapshot ?? {}) as Record<string, unknown>,
   )
   if (!reactivation.ok) {
-    return c.json({ error: reactivation.error }, 409)
+    throw new ApiError('CONFLICT', reactivation.error)
   }
 
   const { error: updateErr } = await supabaseAdmin

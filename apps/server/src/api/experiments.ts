@@ -100,7 +100,7 @@ experimentsRouter.post('/', async (c) => {
     .single()
 
   if (expErr || !exp) {
-    return c.json({ error: expErr?.message ?? 'Failed to create experiment' }, 500)
+    throw new ApiError('INTERNAL_ERROR', expErr?.message ?? 'Failed to create experiment')
   }
 
   fireAndForget(c, runExperiment({
@@ -134,7 +134,7 @@ experimentsRouter.get('/', async (c) => {
   if (promptName) query = query.eq('prompt_name', promptName)
 
   const { data, error } = await query
-  if (error) return c.json({ error: error.message }, 500)
+  if (error) throw new ApiError('INTERNAL_ERROR', error.message)
   return c.json({ success: true, data: data ?? [] })
 })
 
@@ -177,6 +177,6 @@ experimentsRouter.get('/:id/results', async (c) => {
     .eq('experiment_id', id)
     .order('created_at', { ascending: true })
 
-  if (error) return c.json({ error: error.message }, 500)
+  if (error) throw new ApiError('INTERNAL_ERROR', error.message)
   return c.json({ success: true, data: data ?? [] })
 })

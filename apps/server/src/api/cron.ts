@@ -437,7 +437,7 @@ cronRouter.get('/report-usage-overage', async (c) => {
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'unknown'
     logCronRun('report-usage-overage', 'error', Date.now() - start, msg).catch(console.error)
-    return c.json({ error: msg }, 500)
+    throw new ApiError('INTERNAL_ERROR', msg)
   }
 })
 
@@ -456,7 +456,7 @@ cronRouter.get('/check-quota-warnings', async (c) => {
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'unknown'
     logCronRun('check-quota-warnings', 'error', Date.now() - start, msg).catch(console.error)
-    return c.json({ error: msg }, 500)
+    throw new ApiError('INTERNAL_ERROR', msg)
   }
 })
 
@@ -476,7 +476,7 @@ cronRouter.get('/snapshot-anomalies', async (c) => {
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'unknown'
     logCronRun('snapshot-anomalies', 'error', Date.now() - start, msg).catch(console.error)
-    return c.json({ error: msg }, 500)
+    throw new ApiError('INTERNAL_ERROR', msg)
   }
 })
 
@@ -492,7 +492,7 @@ cronRouter.get('/prune-logs', async (c) => {
 
   if (logsResult.error) {
     logCronRun('prune-logs', 'error', Date.now() - start, logsResult.error.message).catch(console.error)
-    return c.json({ error: logsResult.error.message }, 500)
+    throw new ApiError('INTERNAL_ERROR', logsResult.error.message)
   }
 
   logCronRun('prune-logs', 'ok', Date.now() - start).catch(console.error)
@@ -519,7 +519,7 @@ cronRouter.get('/stale-key-reminders', async (c) => {
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'unknown'
     logCronRun('stale-key-reminders', 'error', Date.now() - start, msg).catch(console.error)
-    return c.json({ error: msg }, 500)
+    throw new ApiError('INTERNAL_ERROR', msg)
   }
 })
 
@@ -541,7 +541,7 @@ cronRouter.get('/recommend-savings-alerts', async (c) => {
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'unknown'
     logCronRun('recommend-savings-alerts', 'error', Date.now() - start, msg).catch(console.error)
-    return c.json({ error: msg }, 500)
+    throw new ApiError('INTERNAL_ERROR', msg)
   }
 })
 
@@ -559,7 +559,7 @@ cronRouter.get('/retry-webhooks', async (c) => {
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'unknown'
     logCronRun('retry-webhooks', 'error', Date.now() - start, msg).catch(console.error)
-    return c.json({ error: msg }, 500)
+    throw new ApiError('INTERNAL_ERROR', msg)
   }
 })
 
@@ -580,7 +580,7 @@ cronRouter.get('/leak-detect-keys', async (c) => {
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'unknown'
     logCronRun('leak-detect-keys', 'error', Date.now() - start, msg).catch(console.error)
-    return c.json({ error: msg }, 500)
+    throw new ApiError('INTERNAL_ERROR', msg)
   }
 })
 
@@ -614,7 +614,7 @@ cronRouter.get('/replay-fallback', async (c) => {
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'unknown'
     logCronRun('replay-fallback', 'error', Date.now() - start, msg).catch(console.error)
-    return c.json({ error: msg }, 500)
+    throw new ApiError('INTERNAL_ERROR', msg)
   }
 })
 
@@ -635,7 +635,7 @@ cronRouter.get('/check-past-due-downgrades', async (c) => {
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'unknown'
     logCronRun('check-past-due-downgrades', 'error', Date.now() - start, msg).catch(console.error)
-    return c.json({ error: msg }, 500)
+    throw new ApiError('INTERNAL_ERROR', msg)
   }
 })
 

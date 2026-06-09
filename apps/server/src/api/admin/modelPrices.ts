@@ -108,7 +108,7 @@ adminModelPricesRouter.post('/', async (c) => {
   const body = await c.req.json().catch(() => null)
   const parsed = parseUpsert(body)
   if (!parsed.ok) {
-    return c.json({ error: parsed.error }, 400)
+    throw new ApiError('VALIDATION_FAILED', parsed.error)
   }
 
   // Set actor for the history trigger via session GUC.

@@ -168,7 +168,7 @@ anomaliesRouter.post('/ack', requireEdit, async (c) => {
   if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   const parsed = await parseAckBody(c)
-  if ('error' in parsed) return c.json({ error: parsed.error }, 400)
+  if ('error' in parsed) throw new ApiError('VALIDATION_FAILED', parsed.error)
 
   if (parsed.projectId) {
     const { data: proj } = await supabaseAdmin

@@ -216,7 +216,7 @@ providerKeysRouter.post('/', requireEdit, async (c) => {
     }
     const result = normalizeAzureResourceUrl(meta.resource_url)
     if (!result.ok) {
-      return c.json({ error: result.error }, 400)
+      throw new ApiError('VALIDATION_FAILED', result.error)
     }
     providerMetadata = { resource_url: result.url }
   }
@@ -305,7 +305,7 @@ providerKeysRouter.delete('/:id', requireEdit, async (c) => {
     if (enqueued.code === 'ALREADY_PENDING') {
       throw new ApiError('CONFLICT', 'Already queued for deletion')
     }
-    return c.json({ error: enqueued.error ?? 'Failed to queue deletion' }, 500)
+    throw new ApiError('INTERNAL_ERROR', enqueued.error ?? 'Failed to queue deletion')
   }
 
   resetProviderKeyNamesCache()

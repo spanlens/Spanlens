@@ -119,7 +119,7 @@ recommendationsRouter.get('/percentiles', async (c) => {
     const rows = await res.json<PercentileRow>()
     row = rows[0] ?? null
   } catch (err) {
-    return c.json({ error: String(err) }, 500)
+    throw new ApiError('INTERNAL_ERROR', String(err))
   }
 
   const sampleCount = row ? Number(row.sample_count) : 0

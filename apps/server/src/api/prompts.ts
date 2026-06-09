@@ -427,7 +427,7 @@ promptsRouter.delete('/:name/:version', requireEdit, async (c) => {
     if (enqueued.code === 'ALREADY_PENDING') {
       throw new ApiError('CONFLICT', 'Already queued for deletion')
     }
-    return c.json({ error: enqueued.error ?? 'Failed to queue deletion' }, 500)
+    throw new ApiError('INTERNAL_ERROR', enqueued.error ?? 'Failed to queue deletion')
   }
 
   // Resolve cache must drop any "latest" entry that pointed here; if this
