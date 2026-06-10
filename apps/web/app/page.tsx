@@ -4,7 +4,6 @@ import { MarketingNav } from '@/components/layout/marketing-nav'
 import { CopyInstallButton } from '@/components/landing/copy-install-button'
 
 export const metadata = {
-  title: 'Spanlens · LLM Observability',
   alternates: { canonical: '/' },
 }
 
