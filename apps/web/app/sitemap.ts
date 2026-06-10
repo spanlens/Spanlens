@@ -5,6 +5,7 @@ const SITE_URL = 'https://www.spanlens.io'
 const MARKETING_ROUTES = [
   '',
   '/pricing',
+  '/self-hosting',
   '/alternatives',
   '/compare',
   '/compare/langfuse',

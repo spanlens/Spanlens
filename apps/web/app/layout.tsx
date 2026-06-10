@@ -8,15 +8,19 @@ import { ThemeProvider } from '@/components/providers/theme-provider'
 
 const SITE_URL = 'https://www.spanlens.io'
 const SITE_DESCRIPTION =
-  'Drop-in LLM observability for OpenAI, Anthropic, and Gemini. Request logging, cost tracking, and agent tracing in two lines of code. Open source, self-hostable.'
+  'Open source LLM observability and monitoring for OpenAI, Anthropic, and Gemini. Request logging, cost tracking, and agent tracing in two lines of code. Self-hostable, MIT licensed.'
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
-  title: { default: 'Spanlens · LLM Observability', template: '%s | Spanlens' },
+  title: { default: 'Spanlens · Open Source LLM Observability & Monitoring', template: '%s | Spanlens' },
   description: SITE_DESCRIPTION,
   applicationName: 'Spanlens',
   keywords: [
     'LLM observability',
+    'open source LLM observability',
+    'LLM monitoring',
+    'open source LLM monitoring',
+    'self-hosted LLM observability',
     'OpenAI logging',
     'Anthropic logging',
     'AI cost tracking',
@@ -36,7 +40,7 @@ export const metadata: Metadata = {
   openGraph: {
     type: 'website',
     siteName: 'Spanlens',
-    title: 'Spanlens · LLM Observability',
+    title: 'Spanlens · Open Source LLM Observability & Monitoring',
     description: SITE_DESCRIPTION,
     url: SITE_URL,
     locale: 'en_US',
@@ -51,7 +55,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Spanlens · LLM Observability',
+    title: 'Spanlens · Open Source LLM Observability & Monitoring',
     description: SITE_DESCRIPTION,
     images: ['/icon.png'],
   },
