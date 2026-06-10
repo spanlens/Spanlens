@@ -1528,6 +1528,7 @@ export type Database = {
           plan: string
           quota_warning_100_sent_at: string | null
           quota_warning_80_sent_at: string | null
+          read_from_events: boolean
           security_alert_enabled: boolean
           stale_key_alerts_enabled: boolean
           stale_key_threshold_days: number
@@ -1547,6 +1548,7 @@ export type Database = {
           plan?: string
           quota_warning_100_sent_at?: string | null
           quota_warning_80_sent_at?: string | null
+          read_from_events?: boolean
           security_alert_enabled?: boolean
           stale_key_alerts_enabled?: boolean
           stale_key_threshold_days?: number
@@ -1566,6 +1568,7 @@ export type Database = {
           plan?: string
           quota_warning_100_sent_at?: string | null
           quota_warning_80_sent_at?: string | null
+          read_from_events?: boolean
           security_alert_enabled?: boolean
           stale_key_alerts_enabled?: boolean
           stale_key_threshold_days?: number
