@@ -4,7 +4,7 @@ import { authJwtOrApiKey } from '../middleware/authJwtOrApiKey.js'
 import { supabaseAdmin } from '../lib/db.js'
 import { computeCriticalPath } from '../lib/critical-path.js'
 import { parsePageLimit } from '../lib/params.js'
-import { useEventsForRequests } from '../lib/feature-flags.js'
+import { useEventsForTraces } from '../lib/events-read-flag.js'
 import {
   listTracesFromEvents,
   getTraceWithSpansFromEvents,
@@ -36,7 +36,8 @@ tracesRouter.get('/', async (c) => {
   // table via traces_view/spans_view. Catch-and-fall-back to Postgres
   // so a regression on the events side degrades to "same behaviour as
   // before Stage 3" rather than 500.
-  if (useEventsForRequests) {
+  // R-12 Phase 3.2: resolved per-org (env gate OR organizations.read_from_events).
+  if (await useEventsForTraces(orgId)) {
     try {
       const result = await listTracesFromEvents({
         organizationId: orgId,
@@ -113,7 +114,7 @@ tracesRouter.get('/:id', async (c) => {
   const orgId = c.get('orgId')
   if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
-  if (useEventsForRequests) {
+  if (await useEventsForTraces(orgId)) {
     try {
       const { trace, spans } = await getTraceWithSpansFromEvents(traceId, orgId)
       if (!trace) throw new ApiError('NOT_FOUND', 'Trace not found')

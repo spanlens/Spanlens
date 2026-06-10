@@ -49,7 +49,10 @@ export async function getStatsOverview(
   organizationId: string,
   options: OverviewOptions = {},
 ): Promise<OverviewRow> {
-  const scope = await requestsScope(organizationId)
+  const [scope, source] = await Promise.all([
+    requestsScope(organizationId),
+    statsSource(organizationId),
+  ])
   const filters: string[] = []
   const params: Record<string, unknown> = { ...scope.scopeParams }
 
@@ -82,7 +85,7 @@ export async function getStatsOverview(
       sum(prompt_tokens)                     AS prompt_tokens,
       sum(completion_tokens)                 AS completion_tokens,
       avg(latency_ms)                        AS avg_latency_ms
-    FROM ${statsSource()}
+    FROM ${source}
     WHERE ${where}`
 
   const result = await unscopedClickhouse().query({
@@ -125,7 +128,10 @@ export async function getStatsModels(
   organizationId: string,
   options: ModelsOptions,
 ): Promise<ModelsRow[]> {
-  const scope = await requestsScope(organizationId)
+  const [scope, source] = await Promise.all([
+    requestsScope(organizationId),
+    statsSource(organizationId),
+  ])
   const filters: string[] = []
   const params: Record<string, unknown> = {
     ...scope.scopeParams,
@@ -145,7 +151,7 @@ export async function getStatsModels(
       sum(cost_usd)                                    AS total_cost_usd,
       avg(latency_ms)                                  AS avg_latency_ms,
       avg(if(status_code >= 400, 1.0, 0.0))            AS error_rate
-    FROM ${statsSource()}
+    FROM ${source}
     WHERE ${where}
     GROUP BY provider, model
     ORDER BY total_cost_usd DESC`
@@ -211,7 +217,10 @@ export async function getStatsTimeseries(
   const granularity = options.granularity ?? 'day'
   const bucket = granularity === 'hour' ? 'toStartOfHour' : 'toStartOfDay'
 
-  const scope = await requestsScope(organizationId)
+  const [scope, source] = await Promise.all([
+    requestsScope(organizationId),
+    statsSource(organizationId),
+  ])
   const filters: string[] = []
   const params: Record<string, unknown> = { ...scope.scopeParams }
   if (options.projectId) {
@@ -247,7 +256,7 @@ export async function getStatsTimeseries(
       countIf(status_code >= 500)                                AS errors_5xx,
       quantile(0.5)(latency_ms)                                  AS p50_latency_ms,
       quantile(0.95)(latency_ms)                                 AS p95_latency_ms
-    FROM ${statsSource()}
+    FROM ${source}
     WHERE ${where}
     GROUP BY day
     ORDER BY day ASC`
@@ -284,7 +293,10 @@ export async function getTimeseriesBreakdown(
   const granularity = options.granularity ?? 'day'
   const bucket = granularity === 'hour' ? 'toStartOfHour' : 'toStartOfDay'
 
-  const scope = await requestsScope(organizationId)
+  const [scope, source] = await Promise.all([
+    requestsScope(organizationId),
+    statsSource(organizationId),
+  ])
   const filters: string[] = []
   const params: Record<string, unknown> = { ...scope.scopeParams }
   if (options.projectId) {
@@ -313,7 +325,7 @@ export async function getTimeseriesBreakdown(
         'status' AS kind,
         toString(status_code) AS value,
         count() AS c
-      FROM ${statsSource()}
+      FROM ${source}
       WHERE ${where}
       GROUP BY day, value
       UNION ALL
@@ -322,7 +334,7 @@ export async function getTimeseriesBreakdown(
         'model' AS kind,
         concat(provider, ' / ', model) AS value,
         count() AS c
-      FROM ${statsSource()}
+      FROM ${source}
       WHERE ${where}
       GROUP BY day, value
     )
@@ -398,7 +410,10 @@ export async function getUserAnalytics(
   organizationId: string,
   options: UserAnalyticsOptions,
 ): Promise<UserAnalyticsRow[]> {
-  const scope = await requestsScope(organizationId)
+  const [scope, source] = await Promise.all([
+    requestsScope(organizationId),
+    statsSource(organizationId),
+  ])
 
   // Whitelist sort inputs — they're concatenated into SQL below.
   const sortCol = USER_SORT_COL[options.sortBy] ?? 'total_cost_usd'
@@ -440,7 +455,7 @@ export async function getUserAnalytics(
       countIf(status_code >= 400)                      AS error_requests,
       uniqExact(model)                                 AS distinct_models,
       count() OVER ()                                  AS total_count
-    FROM ${statsSource()}
+    FROM ${source}
     WHERE ${where}
     GROUP BY user_id
     ORDER BY ${sortCol} ${sortDir} NULLS LAST
@@ -515,7 +530,10 @@ export async function getSessionAnalytics(
   organizationId: string,
   options: SessionAnalyticsOptions,
 ): Promise<SessionAnalyticsRow[]> {
-  const scope = await requestsScope(organizationId)
+  const [scope, source] = await Promise.all([
+    requestsScope(organizationId),
+    statsSource(organizationId),
+  ])
 
   // Whitelist sort inputs — they're concatenated into SQL below.
   const sortCol = SESSION_SORT_COL[options.sortBy] ?? 'last_seen'
@@ -563,7 +581,7 @@ export async function getSessionAnalytics(
       countIf(status_code >= 400)                      AS error_requests,
       uniqExact(model)                                 AS distinct_models,
       count() OVER ()                                  AS total_count
-    FROM ${statsSource()}
+    FROM ${source}
     WHERE ${where}
     GROUP BY session_id
     ORDER BY ${sortCol} ${sortDir} NULLS LAST
@@ -609,13 +627,16 @@ export async function getSecuritySummary(
   organizationId: string,
   hours: number,
 ): Promise<SecuritySummaryRow[]> {
-  const scope = await requestsScope(organizationId, { ignoreRetention: true })
+  const [scope, source] = await Promise.all([
+    requestsScope(organizationId, { ignoreRetention: true }),
+    statsSource(organizationId),
+  ])
   const sql = `
     SELECT
       JSONExtractString(flag, 'type')    AS flag_type,
       JSONExtractString(flag, 'pattern') AS pattern,
       count()                            AS count
-    FROM ${statsSource()}
+    FROM ${source}
     ARRAY JOIN JSONExtractArrayRaw(flags) AS flag
     WHERE ${scope.whereScope}
       AND has_security_flags = 1
@@ -659,7 +680,10 @@ export async function getLatencyPercentiles(
   organizationId: string,
   hours: number,
 ): Promise<LatencyPercentilesRow> {
-  const scope = await requestsScope(organizationId)
+  const [scope, source] = await Promise.all([
+    requestsScope(organizationId),
+    statsSource(organizationId),
+  ])
   const sinceTs = fmt(new Date(Date.now() - hours * 3_600_000).toISOString())!
   const sql = `
     SELECT
@@ -673,7 +697,7 @@ export async function getLatencyPercentiles(
       quantileIf(0.95)(proxy_overhead_ms, isNotNull(proxy_overhead_ms))        AS p95_overhead,
       quantileIf(0.99)(proxy_overhead_ms, isNotNull(proxy_overhead_ms))        AS p99_overhead,
       avgIf(proxy_overhead_ms, isNotNull(proxy_overhead_ms))                   AS avg_overhead
-    FROM ${statsSource()}
+    FROM ${source}
     WHERE ${scope.whereScope}
       AND created_at >= parseDateTime64BestEffort({sinceTs:String})`
 

@@ -18,7 +18,7 @@ import {
   selectGenerationsAsRequests,
   countGenerations,
 } from '../lib/events-query.js'
-import { useEventsForRequests } from '../lib/feature-flags.js'
+import { useEventsForRequests } from '../lib/events-read-flag.js'
 import { fromClickhouseTimestamp } from '../lib/clickhouse.js'
 import { ApiError } from '../lib/errors.js'
 
@@ -123,8 +123,9 @@ requestsRouter.get('/', async (c) => {
     let rows: RequestRow[]
     let total: number
 
-    if (useEventsForRequests) {
+    if (await useEventsForRequests(orgId)) {
       // Phase 5.1 Stage 3 — read from the unified events table.
+      // R-12 Phase 3.2: resolved per-org (env gate OR organizations.read_from_events).
       //
       // Safety net: if the events path throws for ANY reason — schema
       // drift, missing column, retention edge case — fall back to the

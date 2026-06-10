@@ -157,6 +157,7 @@ export async function selectGenerationsAsRequests<T>(opts: {
   const query = `
     SELECT
       toString(event_id)                          AS id,
+      project_id,
       provider,
       model,
       toUInt32OrZero(toString(usage_details['prompt_tokens']))     AS prompt_tokens,
