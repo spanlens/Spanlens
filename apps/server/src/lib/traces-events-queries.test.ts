@@ -20,6 +20,10 @@ const { mockQuery } = vi.hoisted(() => ({
 
 vi.mock('./clickhouse.js', () => ({
   unscopedClickhouse: () => ({ query: mockQuery }),
+  // Real implementation is a pure string transform — inline it so the
+  // timestamp-conversion assertions test actual behaviour.
+  fromClickhouseTimestamp: (s: string | null | undefined) =>
+    s ? s.replace(' ', 'T') + 'Z' : null,
 }))
 
 import { listTracesFromEvents, getTraceWithSpansFromEvents } from './traces-events-queries.js'
@@ -70,6 +74,95 @@ describe('traces-events-queries dedupe', () => {
     // Display order is still chronological — the dedupe must not leak
     // its created_at ordering into the rendered span tree.
     expect(spansSql!.trim().endsWith('ORDER BY started_at ASC')).toBe(true)
+  })
+
+  it('converts ClickHouse timestamps to ISO UTC at the API boundary (gotcha #18)', async () => {
+    // ClickHouse DateTime64 has no T/Z — without conversion a KST browser
+    // parses it as local time and renders every trace "9 hours ago".
+    mockQuery.mockResolvedValueOnce({
+      json: async () => [
+        {
+          id: TRACE,
+          project_id: '00000000-0000-4000-8000-00000000000b',
+          name: 'agent_run',
+          status: 'completed',
+          started_at: '2026-06-10 12:36:41.452',
+          ended_at: '2026-06-10 12:37:01.465',
+          duration_ms: '20013',
+          span_count: '1',
+          total_tokens: '100',
+          total_cost_usd: '0.001',
+          error_message: null,
+          created_at: '2026-06-10 12:36:41.452',
+        },
+      ],
+    })
+    mockQuery.mockResolvedValueOnce({ json: async () => [{ c: '1' }] })
+
+    const result = await listTracesFromEvents({ organizationId: ORG, limit: 50, offset: 0 })
+    const row = result.rows[0]!
+    expect(row.started_at).toBe('2026-06-10T12:36:41.452Z')
+    expect(row.ended_at).toBe('2026-06-10T12:37:01.465Z')
+    expect(row.created_at).toBe('2026-06-10T12:36:41.452Z')
+    // null ended_at stays null, not the string 'null'
+    mockQuery.mockResolvedValueOnce({
+      json: async () => [
+        {
+          id: TRACE,
+          name: 'running_trace',
+          status: 'running',
+          started_at: '2026-06-10 12:36:41.452',
+          ended_at: null,
+          created_at: '2026-06-10 12:36:41.452',
+        },
+      ],
+    })
+    mockQuery.mockResolvedValueOnce({ json: async () => [{ c: '1' }] })
+    const running = await listTracesFromEvents({ organizationId: ORG, limit: 50, offset: 0 })
+    expect(running.rows[0]!.ended_at).toBeNull()
+  })
+
+  it('detail path converts trace and span timestamps too', async () => {
+    mockQuery.mockResolvedValueOnce({
+      json: async () => [
+        {
+          id: TRACE,
+          organization_id: ORG,
+          name: 'agent_run',
+          status: 'completed',
+          started_at: '2026-06-10 12:36:41.452',
+          ended_at: '2026-06-10 12:37:01.465',
+          created_at: '2026-06-10 12:36:41.452',
+          updated_at: '2026-06-10 12:37:01.465',
+          duration_ms: '20013',
+          span_count: '1',
+          total_tokens: '100',
+          total_cost_usd: '0.001',
+        },
+      ],
+    })
+    mockQuery.mockResolvedValueOnce({
+      json: async () => [
+        {
+          id: '00000000-0000-4000-8000-00000000000c',
+          name: 'llm_call',
+          started_at: '2026-06-10 12:36:42.000',
+          ended_at: null,
+          duration_ms: null,
+          prompt_tokens: '10',
+          completion_tokens: '5',
+          total_tokens: '15',
+          cost_usd: null,
+        },
+      ],
+    })
+
+    const { trace, spans } = await getTraceWithSpansFromEvents(TRACE, ORG)
+    expect(trace?.started_at).toBe('2026-06-10T12:36:41.452Z')
+    expect(trace?.ended_at).toBe('2026-06-10T12:37:01.465Z')
+    expect(trace?.updated_at).toBe('2026-06-10T12:37:01.465Z')
+    expect(spans[0]!.started_at).toBe('2026-06-10T12:36:42.000Z')
+    expect(spans[0]!.ended_at).toBeNull()
   })
 
   it('every subquery stays org-scoped (no RLS in ClickHouse)', async () => {
