@@ -184,10 +184,21 @@ export interface TraceEventInput {
   errorMessage?: string | null
   metadata?: Record<string, unknown> | null
   durationMs?: number | null
+  /**
+   * R-12 Phase 3.2 — when this write represents a lifecycle UPDATE (the
+   * ingest PATCH path appending a fresh snapshot row), pass the update
+   * time here. The events store is append-only, so readers pick the
+   * latest row per event_id ordered by `created_at` (`LIMIT 1 BY id` in
+   * traces-events-queries.ts) — an update event MUST carry a created_at
+   * later than the create event's (which uses startedAt) or it loses
+   * the tie-break and the dashboard keeps showing the stale state.
+   */
+  eventTime?: string | null
 }
 
 export async function writeTraceAsEvent(input: TraceEventInput): Promise<void> {
-  const created = toClickhouseTimestamp(new Date(input.startedAt))
+  const startTs = toClickhouseTimestamp(new Date(input.startedAt))
+  const created = input.eventTime ? toClickhouseTimestamp(new Date(input.eventTime)) : startTs
   const metadata: Record<string, string> = { source: 'ingest_trace' }
   if (input.status) metadata['status'] = input.status
   if (input.metadata) {
@@ -210,7 +221,7 @@ export async function writeTraceAsEvent(input: TraceEventInput): Promise<void> {
     name: input.name,
     provider: '',
     model: '',
-    start_time: created,
+    start_time: startTs,
     end_time: input.endedAt ? toClickhouseTimestamp(new Date(input.endedAt)) : null,
     duration_ms: input.durationMs ?? null,
     input: input.metadata ? JSON.stringify(input.metadata) : '',
@@ -253,10 +264,13 @@ export interface SpanEventInput {
   completionTokens?: number | null
   totalTokens?: number | null
   costUsd?: number | null
+  /** Same semantics as TraceEventInput.eventTime — see that doc comment. */
+  eventTime?: string | null
 }
 
 export async function writeSpanAsEvent(input: SpanEventInput): Promise<void> {
-  const created = toClickhouseTimestamp(new Date(input.startedAt))
+  const startTs = toClickhouseTimestamp(new Date(input.startedAt))
+  const created = input.eventTime ? toClickhouseTimestamp(new Date(input.eventTime)) : startTs
   const usageDetails: Record<string, number> = {}
   if (input.promptTokens != null) usageDetails['prompt_tokens'] = input.promptTokens
   if (input.completionTokens != null) usageDetails['completion_tokens'] = input.completionTokens
@@ -284,7 +298,7 @@ export async function writeSpanAsEvent(input: SpanEventInput): Promise<void> {
     name: input.name,
     provider: '',
     model: '',
-    start_time: created,
+    start_time: startTs,
     end_time: input.endedAt ? toClickhouseTimestamp(new Date(input.endedAt)) : null,
     duration_ms: input.durationMs ?? null,
     input: input.input != null ? JSON.stringify(input.input) : '',
