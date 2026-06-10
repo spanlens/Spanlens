@@ -19,7 +19,7 @@
  * doesn't carry them as first-class columns.
  */
 
-import { unscopedClickhouse } from './clickhouse.js'
+import { unscopedClickhouse, fromClickhouseTimestamp } from './clickhouse.js'
 
 export interface TraceListOptions {
   organizationId: string
@@ -178,10 +178,16 @@ export async function listTracesFromEvents(opts: TraceListOptions): Promise<Trac
   const total = Number(countRows[0]?.c ?? 0)
 
   // CH returns Decimal/UInt64 as strings on JSON output (gotcha #19);
-  // coerce here so the API contract stays numeric.
+  // coerce here so the API contract stays numeric. Timestamps come back
+  // as 'YYYY-MM-DD HH:MM:SS.fff' with no T/Z — JS new Date() parses that
+  // as LOCAL time, so a KST dashboard showed every trace "9 hours ago"
+  // (gotcha #18; the Postgres path returns timezone-aware ISO strings).
   return {
     rows: rows.map((r) => ({
       ...r,
+      started_at: fromClickhouseTimestamp(r.started_at) ?? r.started_at,
+      ended_at: r.ended_at == null ? null : fromClickhouseTimestamp(r.ended_at),
+      created_at: fromClickhouseTimestamp(r.created_at) ?? r.created_at,
       duration_ms: r.duration_ms == null ? null : Number(r.duration_ms),
       span_count: Number(r.span_count) || 0,
       total_tokens: Number(r.total_tokens) || 0,
@@ -319,9 +325,15 @@ export async function getTraceWithSpansFromEvents(
   const traceRows = (await traceRes.json()) as TraceDetailRow[]
   const spanRows = (await spansRes.json()) as SpanDetailRow[]
 
+  // Same ISO-UTC conversion rationale as the list path (gotcha #18).
   const trace = traceRows[0]
     ? {
         ...traceRows[0],
+        started_at: fromClickhouseTimestamp(traceRows[0].started_at) ?? traceRows[0].started_at,
+        ended_at:
+          traceRows[0].ended_at == null ? null : fromClickhouseTimestamp(traceRows[0].ended_at),
+        created_at: fromClickhouseTimestamp(traceRows[0].created_at) ?? traceRows[0].created_at,
+        updated_at: fromClickhouseTimestamp(traceRows[0].updated_at) ?? traceRows[0].updated_at,
         duration_ms:
           traceRows[0].duration_ms == null ? null : Number(traceRows[0].duration_ms),
         span_count: Number(traceRows[0].span_count) || 0,
@@ -332,6 +344,8 @@ export async function getTraceWithSpansFromEvents(
 
   const spans = spanRows.map((s) => ({
     ...s,
+    started_at: fromClickhouseTimestamp(s.started_at) ?? s.started_at,
+    ended_at: s.ended_at == null ? null : fromClickhouseTimestamp(s.ended_at),
     duration_ms: s.duration_ms == null ? null : Number(s.duration_ms),
     prompt_tokens: Number(s.prompt_tokens) || 0,
     completion_tokens: Number(s.completion_tokens) || 0,
