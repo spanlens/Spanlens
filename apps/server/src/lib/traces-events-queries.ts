@@ -100,6 +100,14 @@ export async function listTracesFromEvents(opts: TraceListOptions): Promise<Trac
   // Aggregate span totals per trace_id. LEFT JOIN so a trace with
   // zero recorded spans still appears (matches the Postgres view
   // where span_count starts at 0).
+  //
+  // DEDUPE (R-12 Phase 3.2): `events` is append-only — a trace accrues
+  // one row per lifecycle write (create, PATCH update, backfill re-insert),
+  // all sharing the same event_id. Without `LIMIT 1 BY id` the list shows
+  // the same trace once per lifecycle row (dogfood 2026-06-10 surfaced
+  // exactly this). `ORDER BY created_at DESC LIMIT 1 BY id` keeps the
+  // newest snapshot per trace; events-writer stamps update events with
+  // eventTime=now so they win this tie-break.
   const listQuery = `
     SELECT
       toString(t.id)                          AS id,
@@ -115,15 +123,24 @@ export async function listTracesFromEvents(opts: TraceListOptions): Promise<Trac
       toFloat64(coalesce(s.total_cost_usd, 0)) AS total_cost_usd,
       t.error_message,
       toString(t.created_at)                  AS created_at
-    FROM traces_view t
+    FROM (
+      SELECT * FROM traces_view
+      WHERE organization_id = {orgId:UUID}
+      ORDER BY created_at DESC
+      LIMIT 1 BY id
+    ) t
     LEFT JOIN (
       SELECT
         trace_id,
         count() AS span_count,
         sum(total_tokens) AS total_tokens,
         sum(coalesce(cost_usd, 0)) AS total_cost_usd
-      FROM spans_view
-      WHERE organization_id = {orgId:UUID}
+      FROM (
+        SELECT * FROM spans_view
+        WHERE organization_id = {orgId:UUID}
+        ORDER BY created_at DESC
+        LIMIT 1 BY id
+      )
       GROUP BY trace_id
     ) s ON s.trace_id = t.id
     WHERE ${where}
@@ -131,7 +148,16 @@ export async function listTracesFromEvents(opts: TraceListOptions): Promise<Trac
     LIMIT {lim:UInt32} OFFSET {off:UInt32}
   `.trim()
 
-  const countQuery = `SELECT count() AS c FROM traces_view t WHERE ${where}`
+  // Count over the deduped set — and the WHERE must apply AFTER the
+  // dedupe so a status filter sees each trace's latest snapshot only.
+  const countQuery = `
+    SELECT count() AS c FROM (
+      SELECT * FROM traces_view
+      WHERE organization_id = {orgId:UUID}
+      ORDER BY created_at DESC
+      LIMIT 1 BY id
+    ) t WHERE ${where}
+  `.trim()
 
   const ch = unscopedClickhouse()
   const [listRes, countRes] = await Promise.all([
@@ -231,18 +257,26 @@ export async function getTraceWithSpansFromEvents(
       toString(t.created_at)                               AS created_at,
       toString(t.updated_at)                               AS updated_at,
       t.external_trace_id                                  AS external_trace_id
-    FROM traces_view t
+    FROM (
+      SELECT * FROM traces_view
+      WHERE id = {traceId:UUID} AND organization_id = {orgId:UUID}
+      ORDER BY created_at DESC
+      LIMIT 1 BY id
+    ) t
     LEFT JOIN (
       SELECT
         trace_id,
         count() AS span_count,
         sum(total_tokens) AS total_tokens,
         sum(coalesce(cost_usd, 0)) AS total_cost_usd
-      FROM spans_view
-      WHERE organization_id = {orgId:UUID} AND trace_id = {traceId:UUID}
+      FROM (
+        SELECT * FROM spans_view
+        WHERE organization_id = {orgId:UUID} AND trace_id = {traceId:UUID}
+        ORDER BY created_at DESC
+        LIMIT 1 BY id
+      )
       GROUP BY trace_id
     ) s ON s.trace_id = t.id
-    WHERE t.id = {traceId:UUID} AND t.organization_id = {orgId:UUID}
     LIMIT 1
   `.trim()
 
@@ -268,8 +302,12 @@ export async function getTraceWithSpansFromEvents(
       completion_tokens,
       total_tokens,
       cost_usd
-    FROM spans_view
-    WHERE trace_id = {traceId:UUID} AND organization_id = {orgId:UUID}
+    FROM (
+      SELECT * FROM spans_view
+      WHERE trace_id = {traceId:UUID} AND organization_id = {orgId:UUID}
+      ORDER BY created_at DESC
+      LIMIT 1 BY id
+    )
     ORDER BY started_at ASC
   `.trim()
 
