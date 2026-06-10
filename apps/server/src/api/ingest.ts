@@ -183,16 +183,46 @@ ingestRouter.patch('/traces/:id', async (c) => {
     }
   }
 
+  // Select the full trace state, not just the patched fields — the events
+  // dual-write below appends a complete snapshot row (the events store is
+  // append-only; readers keep the latest row per id, so a partial snapshot
+  // would erase fields the create event carried).
   const { data, error } = await supabaseAdmin
     .from('traces')
     .update(updates)
     .eq('id', traceId)
     .eq('organization_id', organizationId)
-    .select('id, status, ended_at, duration_ms')
+    .select(
+      'id, project_id, api_key_id, name, status, started_at, ended_at, duration_ms, error_message, metadata',
+    )
     .single()
 
   if (error || !data) {
     throw new ApiError('NOT_FOUND', 'Trace not found or access denied')
+  }
+
+  // R-12 Phase 3.2 — dual-write the lifecycle update to events. Without
+  // this the events read path (organizations.read_from_events) shows every
+  // trace frozen in its create-time state: status 'running' forever,
+  // ended_at/duration_ms never filled. Same awaited best-effort contract
+  // as the POST path above (gotcha #8).
+  try {
+    await writeTraceAsEvent({
+      traceId: data.id,
+      organizationId,
+      projectId: data.project_id,
+      apiKeyId: data.api_key_id ?? null,
+      name: data.name,
+      startedAt: data.started_at,
+      endedAt: data.ended_at ?? null,
+      status: data.status ?? null,
+      errorMessage: data.error_message ?? null,
+      metadata: (data.metadata as Record<string, unknown> | null) ?? null,
+      durationMs: data.duration_ms ?? null,
+      eventTime: new Date().toISOString(),
+    })
+  } catch (err) {
+    console.error('[ingest] trace update events shadow INSERT failed:', err instanceof Error ? err.message : err)
   }
 
   // Outbound webhook: trace.completed. fireAndForget so the SDK's PATCH
@@ -241,10 +271,12 @@ ingestRouter.post('/traces/:id/spans', async (c) => {
     throw new ApiError('VALIDATION_FAILED', 'name is required')
   }
 
-  // trace 소유권 확인 — 다른 org의 trace에 span 추가 시도 차단
+  // trace 소유권 확인 — 다른 org의 trace에 span 추가 시도 차단.
+  // project_id도 함께 가져옴: spans 테이블에는 project_id 컬럼이 없어서
+  // events dual-write의 project_id(UUID NOT NULL)는 부모 trace에서 와야 함.
   const { data: trace } = await supabaseAdmin
     .from('traces')
-    .select('id')
+    .select('id, project_id')
     .eq('id', traceId)
     .eq('organization_id', organizationId)
     .single()
@@ -296,7 +328,11 @@ ingestRouter.post('/traces/:id/spans', async (c) => {
       traceId,
       parentSpanId: insert.parent_span_id ?? null,
       organizationId,
-      projectId: (insert as { project_id?: string }).project_id ?? '',
+      // R-12 Phase 3.2 fix: this used to read `insert.project_id`, which
+      // NEVER exists (spans carry no project_id) — every span event was
+      // written with projectId '' and rejected by ClickHouse's UUID
+      // column, silently losing the whole span events stream.
+      projectId: trace.project_id,
       apiKeyId: null,
       name: insert.name,
       spanType: insert.span_type ?? null,
@@ -388,16 +424,60 @@ ingestRouter.patch('/spans/:id', async (c) => {
     }
   }
 
+  // Full snapshot select — same append-only rationale as the trace PATCH.
   const { data, error } = await supabaseAdmin
     .from('spans')
     .update(updates)
     .eq('id', spanId)
     .eq('organization_id', organizationId)
-    .select('id, status, ended_at, duration_ms, total_tokens, cost_usd')
+    .select(
+      'id, trace_id, parent_span_id, name, span_type, status, started_at, ended_at, duration_ms, input, output, metadata, error_message, prompt_tokens, completion_tokens, total_tokens, cost_usd',
+    )
     .single()
 
   if (error || !data) {
     throw new ApiError('NOT_FOUND', 'Span not found or access denied')
+  }
+
+  // R-12 Phase 3.2 — dual-write the span lifecycle update to events.
+  // This PATCH is where usage/cost/output land (the SDK creates the span
+  // empty, then fills it at end()), so skipping it left every span event
+  // with zero tokens forever. project_id comes from the parent trace —
+  // spans don't carry one.
+  try {
+    const { data: parentTrace } = await supabaseAdmin
+      .from('traces')
+      .select('project_id')
+      .eq('id', data.trace_id)
+      .eq('organization_id', organizationId)
+      .single()
+    if (parentTrace?.project_id) {
+      await writeSpanAsEvent({
+        spanId: data.id,
+        traceId: data.trace_id,
+        parentSpanId: data.parent_span_id ?? null,
+        organizationId,
+        projectId: parentTrace.project_id,
+        apiKeyId: null,
+        name: data.name,
+        spanType: data.span_type ?? null,
+        startedAt: data.started_at,
+        endedAt: data.ended_at ?? null,
+        durationMs: data.duration_ms ?? null,
+        status: data.status ?? null,
+        errorMessage: data.error_message ?? null,
+        input: data.input ?? undefined,
+        output: data.output ?? undefined,
+        metadata: (data.metadata as Record<string, unknown> | null) ?? null,
+        promptTokens: data.prompt_tokens ?? null,
+        completionTokens: data.completion_tokens ?? null,
+        totalTokens: data.total_tokens ?? null,
+        costUsd: data.cost_usd ?? null,
+        eventTime: new Date().toISOString(),
+      })
+    }
+  } catch (err) {
+    console.error('[ingest] span update events shadow INSERT failed:', err instanceof Error ? err.message : err)
   }
 
   return c.json({ success: true, data })

@@ -133,7 +133,55 @@ describe('writeTraceAsEvent', () => {
   })
 })
 
+describe('writeTraceAsEvent — lifecycle update events (eventTime)', () => {
+  it('defaults created_at to start_time when no eventTime is given (create event)', async () => {
+    await writeTraceAsEvent({
+      traceId: 'trc-2',
+      organizationId: 'org-1',
+      projectId: 'prj-1',
+      name: 'agent_run',
+      startedAt: '2026-06-06T00:00:00.000Z',
+    })
+    const row = insertMock.mock.calls[0]?.[0].values[0]
+    expect(row.created_at).toBe(row.start_time)
+  })
+
+  it('stamps created_at with eventTime while start_time keeps startedAt (update event)', async () => {
+    await writeTraceAsEvent({
+      traceId: 'trc-2',
+      organizationId: 'org-1',
+      projectId: 'prj-1',
+      name: 'agent_run',
+      startedAt: '2026-06-06T00:00:00.000Z',
+      endedAt: '2026-06-06T00:00:05.000Z',
+      status: 'completed',
+      eventTime: '2026-06-06T00:00:05.100Z',
+    })
+    const row = insertMock.mock.calls[0]?.[0].values[0]
+    expect(row.start_time).toBe('2026-06-06 00:00:00.000')
+    // created_at later than start_time → the LIMIT 1 BY id dedupe in
+    // traces-events-queries picks this snapshot over the create event.
+    expect(row.created_at).toBe('2026-06-06 00:00:05.100')
+    expect(row.metadata['status']).toBe('completed')
+  })
+})
+
 describe('writeSpanAsEvent', () => {
+  it('stamps created_at with eventTime on update events (same contract as traces)', async () => {
+    await writeSpanAsEvent({
+      spanId: 'spn-2',
+      traceId: 'trc-1',
+      organizationId: 'org-1',
+      projectId: 'prj-1',
+      name: 'llm_call',
+      startedAt: '2026-06-06T00:00:00.000Z',
+      eventTime: '2026-06-06T00:00:09.000Z',
+    })
+    const row = insertMock.mock.calls[0]?.[0].values[0]
+    expect(row.start_time).toBe('2026-06-06 00:00:00.000')
+    expect(row.created_at).toBe('2026-06-06 00:00:09.000')
+  })
+
   it('writes a span row with parent_event_id pointing at the parent', async () => {
     await writeSpanAsEvent({
       spanId: 'spn-1',
