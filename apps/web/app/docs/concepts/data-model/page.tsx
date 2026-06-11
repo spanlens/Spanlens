@@ -3,7 +3,7 @@ import { CodeBlock } from '../../_components/code-block'
 export const metadata = {
   title: 'Data model · Spanlens Docs',
   description:
-    'Spanlens data model in one page. Request, Trace, Span, Prompt Version, Eval, Dataset, and how they relate so you can answer billing, debugging, and quality questions without crossing teams.',
+    'Spanlens data model in one page: Request, Trace, Span, Prompt Version, Eval, Dataset, and how they relate for billing, debugging, and quality questions.',
   alternates: { canonical: '/docs/concepts/data-model' },
 }
 

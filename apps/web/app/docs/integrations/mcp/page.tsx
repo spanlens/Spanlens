@@ -4,7 +4,7 @@ import { CodeBlock } from '../../_components/code-block'
 export const metadata = {
   title: 'MCP integration · Spanlens Docs',
   description:
-    'Query Spanlens LLM cost, traces, and anomalies directly from Cursor, Claude Desktop, or Continue via the Model Context Protocol. Public-scope keys keep the credential safe in plaintext IDE config files.',
+    'Query Spanlens LLM cost, traces, and anomalies from Cursor, Claude Desktop, or Continue via MCP. Public-scope keys stay safe in plaintext IDE config.',
   alternates: { canonical: '/docs/integrations/mcp' },
 }
 

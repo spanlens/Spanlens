@@ -10,16 +10,41 @@ export default function robots(): MetadataRoute.Robots {
         allow: '/',
         disallow: [
           '/api/',
-          '/dashboard/',
           '/onboarding/',
           '/login',
           '/signup',
           '/verify-email',
+          '/forgot-password',
+          '/reset-password',
           '/invite/',
+          '/auth/',
           // PLG Loop ① — share pages default to noindex via per-page Metadata.
           // Disallowed here as defence in depth; opt-in indexable shares rely
           // on the per-page robots meta and direct manual links still work.
           '/share/',
+          // Auth-gated dashboard routes live at the top level (route group
+          // `(dashboard)` doesn't add a URL segment), so each one needs its
+          // own disallow — crawlers were following these into 307 login
+          // redirects (ScreamingFrog 2026-06-11 audit: 19 internal 3xx).
+          '/admin',
+          '/alerts',
+          '/annotation',
+          '/anomalies',
+          '/billing',
+          '/dashboard',
+          '/datasets',
+          '/evals',
+          '/experiments',
+          '/projects',
+          '/prompts',
+          '/requests',
+          '/savings',
+          '/security',
+          '/sessions',
+          '/settings',
+          '/shares',
+          '/traces',
+          '/users',
         ],
       },
       { userAgent: 'GPTBot', allow: '/' },

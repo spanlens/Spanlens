@@ -7,7 +7,9 @@ export const metadata = {
   title: 'Docs · Spanlens',
   description:
     'Spanlens documentation: quick start, SDK reference, proxy API, OpenTelemetry, and self-hosting for drop-in LLM observability.',
-  alternates: { canonical: '/docs' },
+  // NOTE: no `alternates.canonical` here — it would be inherited by every
+  // docs page without its own `alternates`, canonicalising them all to
+  // /docs and de-indexing them. Each docs page declares its own canonical.
 }
 
 export default function DocsLayout({ children }: { children: React.ReactNode }) {

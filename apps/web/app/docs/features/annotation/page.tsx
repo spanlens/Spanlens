@@ -1,6 +1,7 @@
 import { CodeBlock } from '../../_components/code-block'
 
 export const metadata = {
+  alternates: { canonical: '/docs/features/annotation' },
   title: 'Annotation · Spanlens Docs',
   description:
     'Human star-rating for production responses. Pearson r correlation with LLM judge scores makes judge reliability visible at a glance.',

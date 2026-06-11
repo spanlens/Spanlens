@@ -1,6 +1,7 @@
 import { CodeBlock } from '../../_components/code-block'
 
 export const metadata = {
+  alternates: { canonical: '/docs/features/saved-filters' },
   title: 'Saved Filters · Spanlens Docs',
   description:
     'Save named filter combinations on the /requests page and restore them instantly from a dropdown on future visits.',

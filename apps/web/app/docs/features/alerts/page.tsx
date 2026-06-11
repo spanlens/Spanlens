@@ -2,6 +2,7 @@ import { CodeBlock } from '../../_components/code-block'
 import { AlertLoopDiagram } from '../../_components/diagrams'
 
 export const metadata = {
+  alternates: { canonical: '/docs/features/alerts' },
   title: 'Alerts · Spanlens Docs',
   description:
     'Threshold-based alert rules for budget, error rate, and p95 latency. Delivered via email (Resend), Slack, or Discord webhooks.',

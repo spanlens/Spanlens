@@ -2,6 +2,7 @@ import { CodeBlock } from '../../_components/code-block'
 import { AnomalyChart } from '../../_components/charts'
 
 export const metadata = {
+  alternates: { canonical: '/docs/features/anomalies' },
   title: 'Anomalies · Spanlens Docs',
   description:
     '3-sigma statistical anomaly detection on latency, cost, and error rate per (provider, model) bucket. No ML, no configuration.',
@@ -307,7 +308,7 @@ DELETE /api/v1/anomalies/ack?provider=openai&model=gpt-4o&kind=latency`}</CodeBl
         <a href="/docs/features/alerts">threshold-based alert rules</a> for finer-grained routing.
       </p>
       <p>
-        Configure channels in <a href="/settings/notifications">Settings → Notifications</a>.
+        Configure channels in <a href="/settings?tab=notifications">Settings → Notifications</a>.
       </p>
 
       <h3>Export</h3>

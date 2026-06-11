@@ -3,9 +3,10 @@ import { Footer } from '@/components/layout/footer'
 import { MarketingNav } from '@/components/layout/marketing-nav'
 
 export const metadata = {
+  alternates: { canonical: '/dpa' },
   title: 'Data Processing Addendum · Spanlens',
   description:
-    'Spanlens Data Processing Addendum (DPA) for B2B customers subject to GDPR, UK GDPR, or other data-protection laws. Incorporates EU Standard Contractual Clauses (Module 2).',
+    'Spanlens Data Processing Addendum (DPA) for customers subject to GDPR or UK GDPR. Incorporates the EU Standard Contractual Clauses (Module 2).',
 }
 
 const EFFECTIVE_DATE = '2026-05-18'

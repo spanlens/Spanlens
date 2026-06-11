@@ -1,9 +1,10 @@
 import { CodeBlock } from '../../_components/code-block'
 
 export const metadata = {
+  alternates: { canonical: '/docs/features/members-invitations' },
   title: 'Members & invitations · Spanlens Docs',
   description:
-    'Multi-user workspaces, roles (admin / editor / viewer), email invitations with auto-accept on the dashboard, and the audit log that records every membership event.',
+    'Multi-user workspaces with admin, editor, and viewer roles, email invitations with auto-accept, and an audit log of every membership event.',
 }
 
 export default function MembersInvitationsDocs() {

@@ -2,6 +2,7 @@ import { CodeBlock } from '../../_components/code-block'
 import { ModelPriceChart } from '../../_components/charts'
 
 export const metadata = {
+  alternates: { canonical: '/docs/features/cost-tracking' },
   title: 'Cost tracking · Spanlens Docs',
   description:
     'Accurate per-request USD cost computed from provider token prices. Handles dated model variants via longest-prefix matching.',
