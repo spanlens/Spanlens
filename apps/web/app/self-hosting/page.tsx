@@ -5,7 +5,7 @@ import { MarketingNav } from '@/components/layout/marketing-nav'
 export const metadata = {
   title: 'Self-Hosted LLM Observability · Open Source',
   description:
-    'Self-host Spanlens, an open source LLM observability and monitoring platform, with one Docker command. Request logging, cost tracking, and agent tracing on your own infrastructure. MIT licensed.',
+    'Self-host Spanlens, an open source LLM observability and monitoring platform, with one Docker command. Logging, cost tracking, and tracing on your infra.',
   alternates: { canonical: '/self-hosting' },
 }
 

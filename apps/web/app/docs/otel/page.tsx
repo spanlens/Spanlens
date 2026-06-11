@@ -2,6 +2,7 @@ import { CodeBlock } from '../_components/code-block'
 import { OtelMappingDiagram } from '../_components/diagrams'
 
 export const metadata = {
+  alternates: { canonical: '/docs/otel' },
   title: 'OpenTelemetry · Spanlens Docs',
   description:
     'Send traces to Spanlens via OTLP/HTTP using any OpenTelemetry SDK. Works with Python, Go, Java, and any gen_ai-instrumented framework.',

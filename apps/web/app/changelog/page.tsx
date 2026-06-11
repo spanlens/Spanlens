@@ -5,7 +5,7 @@ import { Footer } from '@/components/layout/footer'
 import { CHANGELOG_ENTRIES, type ChangelogEntry, type ChangelogTag } from '@/lib/changelog/entries'
 
 export const metadata = {
-  title: 'Changelog · Spanlens',
+  title: 'Changelog · Spanlens LLM Observability',
   description:
     'What is new in Spanlens. New features, improvements, infrastructure, and reliability work, in chronological order.',
   alternates: { canonical: '/changelog' },

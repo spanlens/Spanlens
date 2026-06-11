@@ -3,7 +3,7 @@ import { ArrowRight, Zap, Code, Globe, Server, Activity, Terminal } from 'lucide
 import { QuickTabs } from './_components/quick-tabs'
 
 export const metadata = {
-  title: 'Spanlens Docs',
+  title: 'Spanlens Docs · Open Source LLM Observability',
   description:
     'Integrate drop-in LLM observability for OpenAI, Anthropic, and Gemini in 30 seconds. SDK reference, proxy API, OpenTelemetry, and self-hosting guides.',
   alternates: { canonical: '/docs' },

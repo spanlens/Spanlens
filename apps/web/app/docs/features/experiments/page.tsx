@@ -1,6 +1,7 @@
 import { CodeBlock } from '../../_components/code-block'
 
 export const metadata = {
+  alternates: { canonical: '/docs/features/experiments' },
   title: 'Experiments · Spanlens Docs',
   description:
     'Offline side-by-side comparison, run a dataset against two prompt versions and compare outputs, scores, and cost without touching production traffic.',

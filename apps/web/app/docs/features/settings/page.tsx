@@ -2,6 +2,7 @@ import { CodeBlock } from '../../_components/code-block'
 import { EncryptionFlowDiagram } from '../../_components/diagrams'
 
 export const metadata = {
+  alternates: { canonical: '/docs/features/settings' },
   title: 'Keys & encryption · Spanlens Docs',
   description:
     'How Spanlens stores and protects your AI provider keys. AES-256-GCM encryption at rest, decrypted only in memory during proxy forwarding.',

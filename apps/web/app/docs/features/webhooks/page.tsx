@@ -1,6 +1,7 @@
 import { CodeBlock } from '../../_components/code-block'
 
 export const metadata = {
+  alternates: { canonical: '/docs/features/webhooks' },
   title: 'Webhooks · Spanlens Docs',
   description:
     'Receive Spanlens events (request created, trace completed, alert triggered) as real-time HTTP POST payloads on your own server.',

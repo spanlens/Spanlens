@@ -4,7 +4,10 @@ import { Footer } from '@/components/layout/footer'
 import { MarketingNav } from '@/components/layout/marketing-nav'
 import { cn } from '@/lib/utils'
 
-export const metadata = { title: 'Pricing · Spanlens' }
+export const metadata = {
+  alternates: { canonical: '/pricing' },
+  title: 'Pricing · Spanlens LLM Observability',
+}
 
 const PLANS = [
   {

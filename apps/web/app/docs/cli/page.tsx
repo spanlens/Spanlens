@@ -4,7 +4,7 @@ import { CodeBlock } from '../_components/code-block'
 export const metadata = {
   title: 'Spanlens CLI · Spanlens Docs',
   description:
-    'One-command setup wizard for Spanlens. Auto-detects OpenAI, Anthropic, and Gemini SDK calls in your codebase and rewrites them through the Spanlens proxy with a single command.',
+    'One-command setup wizard for Spanlens. Auto-detects OpenAI, Anthropic, and Gemini SDK calls in your codebase and routes them through the proxy.',
   alternates: { canonical: '/docs/cli' },
 }
 

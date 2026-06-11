@@ -45,6 +45,27 @@ const nextConfig = {
       { source: '/doc/:path*', destination: '/docs/:path*', permanent: true },
     ]
   },
+  // Security response headers (ScreamingFrog 2026-06-11 audit: all four were
+  // missing site-wide). CSP is intentionally limited to frame-ancestors —
+  // a full script-src policy would need to allowlist Paddle's checkout
+  // overlay, Vercel Analytics, Sentry, and Next.js inline bootstrap scripts,
+  // and a miss there silently breaks checkout. frame-ancestors alone blocks
+  // clickjacking (the actual attack the header exists for) with zero
+  // breakage risk. X-Frame-Options is the legacy equivalent for older
+  // browsers.
+  async headers() {
+    return [
+      {
+        source: '/:path*',
+        headers: [
+          { key: 'X-Frame-Options', value: 'SAMEORIGIN' },
+          { key: 'X-Content-Type-Options', value: 'nosniff' },
+          { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+          { key: 'Content-Security-Policy', value: "frame-ancestors 'self'" },
+        ],
+      },
+    ]
+  },
   async rewrites() {
     const apiUrl =
       process.env.API_URL ??

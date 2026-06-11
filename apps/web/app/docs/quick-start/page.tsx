@@ -2,9 +2,10 @@ import { CodeBlock } from '../_components/code-block'
 import { QuickStartFlowDiagram } from '../_components/diagrams'
 
 export const metadata = {
+  alternates: { canonical: '/docs/quick-start' },
   title: 'Quick start · Spanlens Docs',
   description:
-    'Get up and running with Spanlens in 30 seconds. Two paths: start from scratch (no CLI) or migrate existing OpenAI / Anthropic / Gemini code with one command.',
+    'Get up and running with Spanlens in 30 seconds. Start from scratch or migrate existing OpenAI, Anthropic, or Gemini code with one command.',
 }
 
 export default function QuickStart() {
@@ -172,8 +173,10 @@ const result = await model.generateContent('Hi')`}</CodeBlock>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src="/docs/verify-requests.png"
-          alt="Spanlens /requests dashboard showing logged LLM calls with model, provider, latency, tokens, cost, and status columns"
-          className="w-full rounded-lg border border-border shadow-sm"
+          alt="Spanlens requests dashboard listing logged LLM calls with model, latency, tokens, and cost"
+          width={1536}
+          height={758}
+          className="w-full h-auto rounded-lg border border-border shadow-sm"
           loading="lazy"
         />
         <figcaption className="mt-2 text-xs text-muted-foreground text-center">

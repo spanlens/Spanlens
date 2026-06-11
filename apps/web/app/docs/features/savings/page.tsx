@@ -1,9 +1,10 @@
 import { CodeBlock } from '../../_components/code-block'
 
 export const metadata = {
+  alternates: { canonical: '/docs/features/savings' },
   title: 'Savings · Spanlens Docs',
   description:
-    'Model recommendations based on your real token distribution. Suggests cheaper substitutes with estimated monthly savings, confidence tiers, achieved tracking, and email alerts.',
+    'Model recommendations based on your real token distribution. Cheaper substitutes with estimated monthly savings, confidence tiers, and email alerts.',
 }
 
 export default function SavingsDocs() {

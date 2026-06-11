@@ -1,6 +1,7 @@
 import { CodeBlock } from '../../_components/code-block'
 
 export const metadata = {
+  alternates: { canonical: '/docs/features/prompts-playground' },
   title: 'Prompts Playground · Spanlens Docs',
   description:
     'Interactive console inside the Prompts tab, select a version, set model, temperature, and variables, then run it immediately and see cost and token counts.',
@@ -201,7 +202,7 @@ export default function PromptsPlaygroundDocs() {
         </li>
         <li>
           If no provider key is registered, the run will fail. Go to{' '}
-          <a href="/settings/keys">Provider Keys</a> to add one first.
+          <a href="/settings?tab=api-keys">Provider Keys</a> to add one first.
         </li>
       </ul>
 

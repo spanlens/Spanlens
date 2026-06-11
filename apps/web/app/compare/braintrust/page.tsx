@@ -1,9 +1,10 @@
 import { CompareTemplate, type CompareGroup, type ComparePoint } from '@/components/marketing/compare-template'
 
 export const metadata = {
+  alternates: { canonical: '/compare/braintrust' },
   title: 'Spanlens vs Braintrust · 2026 Comparison',
   description:
-    'Braintrust is eval-first and closed-source SaaS. Spanlens bundles eval into a full observability platform with proxy-based logging, agent tracing, and cost optimization, and you can self-host it with one Docker command.',
+    'Braintrust is eval-first, closed-source SaaS. Spanlens bundles eval into a full observability platform with proxy logging and agent tracing. Self-hostable.',
 }
 
 const whySpanlens: ComparePoint[] = [

@@ -3,6 +3,7 @@ import { Footer } from '@/components/layout/footer'
 import { MarketingNav } from '@/components/layout/marketing-nav'
 
 export const metadata = {
+  alternates: { canonical: '/privacy' },
   title: 'Privacy Policy · Spanlens',
   description:
     'How Spanlens collects, uses, and protects your data. Covers PIPA (Korea) and GDPR (EU) disclosures and your rights as a data subject.',

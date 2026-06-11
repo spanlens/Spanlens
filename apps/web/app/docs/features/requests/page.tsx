@@ -1,6 +1,7 @@
 import { CodeBlock } from '../../_components/code-block'
 
 export const metadata = {
+  alternates: { canonical: '/docs/features/requests' },
   title: 'Requests · Spanlens Docs',
   description:
     'Complete log of every LLM call routed through Spanlens, model, tokens, cost, latency, full request/response bodies.',

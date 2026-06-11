@@ -3,7 +3,7 @@ import { CodeBlock } from '../../_components/code-block'
 export const metadata = {
   title: 'LlamaIndex integration · Spanlens Docs',
   description:
-    'Trace LlamaIndex query engines and agents with Spanlens. One callback handler maps every CBEventType (LLM, RETRIEVE, EMBEDDING, FUNCTION_CALL, QUERY) to a Spanlens span, so the dashboard tree mirrors your RAG pipeline 1:1.',
+    'Trace LlamaIndex query engines and agents with Spanlens. One callback handler maps every CBEventType to a span so the trace mirrors your RAG pipeline.',
   alternates: { canonical: '/docs/integrations/llamaindex' },
 }
 

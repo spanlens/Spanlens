@@ -8,11 +8,14 @@ import { ThemeProvider } from '@/components/providers/theme-provider'
 
 const SITE_URL = 'https://www.spanlens.io'
 const SITE_DESCRIPTION =
-  'Open source LLM observability and monitoring for OpenAI, Anthropic, and Gemini. Request logging, cost tracking, and agent tracing in two lines of code. Self-hostable, MIT licensed.'
+  'Open source LLM observability and monitoring for OpenAI, Anthropic, and Gemini. Request logging, cost tracking, agent tracing. Self-hostable, MIT licensed.'
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
-  title: { default: 'Spanlens · Open Source LLM Observability & Monitoring', template: '%s | Spanlens' },
+  // No title template: every page already self-brands ("Pricing · Spanlens",
+  // "Quick start · Spanlens Docs"), so a '%s | Spanlens' template rendered
+  // double-branded titles like "Pricing · Spanlens | Spanlens" in SERPs.
+  title: 'Spanlens · Open Source LLM Observability & Monitoring',
   description: SITE_DESCRIPTION,
   applicationName: 'Spanlens',
   keywords: [
@@ -34,9 +37,11 @@ export const metadata: Metadata = {
   authors: [{ name: 'Spanlens' }],
   creator: 'Spanlens',
   publisher: 'Spanlens',
-  alternates: {
-    canonical: '/',
-  },
+  // NOTE: no `alternates.canonical` here. Next.js metadata is inherited by
+  // every child page that doesn't declare its own `alternates`, so a root
+  // canonical of '/' silently canonicalises the whole site to the homepage
+  // (ScreamingFrog 2026-06-11 audit: 61 pages / 76% de-indexed). Each
+  // indexable page must declare its own canonical instead.
   openGraph: {
     type: 'website',
     siteName: 'Spanlens',

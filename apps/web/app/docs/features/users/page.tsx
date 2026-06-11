@@ -1,6 +1,7 @@
 import { CodeBlock } from '../../_components/code-block'
 
 export const metadata = {
+  alternates: { canonical: '/docs/features/users' },
   title: 'Users · Spanlens Docs',
   description:
     'End-user attribution and per-user analytics for LLM usage. Tag requests with x-spanlens-user and see who is spending what.',

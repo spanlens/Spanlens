@@ -3,6 +3,7 @@ import { Footer } from '@/components/layout/footer'
 import { MarketingNav } from '@/components/layout/marketing-nav'
 
 export const metadata = {
+  alternates: { canonical: '/refund' },
   title: 'Refund Policy · Spanlens',
   description:
     'Spanlens refund policy, 14-day money-back guarantee, EU statutory withdrawal rights, and how to request a refund.',

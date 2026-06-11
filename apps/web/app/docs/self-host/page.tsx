@@ -2,6 +2,7 @@ import { CodeBlock } from '../_components/code-block'
 import { SelfHostArchitectureDiagram } from '../_components/diagrams'
 
 export const metadata = {
+  alternates: { canonical: '/docs/self-host' },
   title: 'Self-hosting · Spanlens Docs',
   description:
     'Run the full Spanlens stack (dashboard + proxy) on your own infra with a Supabase project.',

@@ -3,7 +3,7 @@ import { CodeBlock } from '../../_components/code-block'
 export const metadata = {
   title: 'Nightly evals on production traffic · Spanlens Docs',
   description:
-    'Tutorial. Set up an LLM-as-judge evaluator and run it on a sample of production traffic every night. Catch prompt quality regressions before users complain.',
+    'Tutorial: set up an LLM-as-judge evaluator on a nightly sample of production traffic and catch prompt quality regressions before users complain.',
   alternates: { canonical: '/docs/tutorials/nightly-evals' },
 }
 

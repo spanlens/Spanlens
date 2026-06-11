@@ -4,6 +4,13 @@ import { SidebarProvider } from '@/lib/sidebar-context'
 import { CommandPaletteProvider } from '@/components/command-palette'
 import { DemoClientGuard } from './_client-guard'
 
+// Demo is a noindex subsystem (sample-data playground, no SEO value). Until
+// now these pages inherited the root layout's metadata and were served as
+// `index, follow` with a canonical of `/` — make the noindex policy explicit.
+export const metadata = {
+  robots: { index: false, follow: false },
+}
+
 export default function DemoLayout({ children }: { children: React.ReactNode }) {
   return (
     <CommandPaletteProvider>

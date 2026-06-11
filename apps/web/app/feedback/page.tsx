@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { MarketingNav } from '@/components/layout/marketing-nav'
 import { Footer } from '@/components/layout/footer'
 import { FeedbackRoadmapClient } from './feedback-roadmap-client'
@@ -22,7 +23,7 @@ import { FeedbackRoadmapClient } from './feedback-roadmap-client'
  * surface — the sidebar link still resolves to the same URL.
  */
 export const metadata = {
-  title: 'Feedback · Spanlens',
+  title: 'Feedback & Feature Requests · Spanlens',
   description:
     'Tell us what to build next. Vote on what others suggested. Track each item from new to shipped.',
   alternates: { canonical: '/feedback' },
@@ -41,6 +42,29 @@ export default function FeedbackPage() {
           </p>
         </header>
         <FeedbackRoadmapClient />
+
+        {/* Server-rendered copy: the board above is client-only, so without
+            this section the page ships almost no indexable text (flagged as
+            a low-content page in the 2026-06-11 crawl audit). */}
+        <section className="mt-16 border-t border-border pt-10 text-sm text-text-muted space-y-4">
+          <h2 className="text-base font-semibold text-text">How feedback works at Spanlens</h2>
+          <p>
+            Every suggestion on this board is public. Anyone can propose a feature, vote on
+            existing ideas, and follow an item as it moves from new to planned, in progress,
+            and shipped. Votes directly shape the roadmap: the team reviews the board weekly
+            and the most-requested items are prioritized for upcoming releases.
+          </p>
+          <p>
+            Spanlens is an open source LLM observability platform, so you can also open an
+            issue or a pull request on{' '}
+            <a href="https://github.com/spanlens" className="text-accent hover:opacity-80">
+              GitHub
+            </a>{' '}
+            if you prefer to discuss implementation details with the maintainers. Shipped
+            items are announced on the <Link href="/changelog" className="text-accent hover:opacity-80">changelog</Link>,
+            including the features that started as suggestions here.
+          </p>
+        </section>
       </main>
       <Footer />
     </div>

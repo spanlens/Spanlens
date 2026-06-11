@@ -2,6 +2,7 @@ import { CodeBlock } from '../../_components/code-block'
 import { PlanQuotaChart } from '../../_components/charts'
 
 export const metadata = {
+  alternates: { canonical: '/docs/features/billing' },
   title: 'Billing & quotas · Spanlens Docs',
   description:
     'How Spanlens charges you: plan quotas, overage billing, the hard cap, and what your invoice looks like.',

@@ -1,9 +1,10 @@
 import { CodeBlock } from '../../_components/code-block'
 
 export const metadata = {
+  alternates: { canonical: '/docs/features/export' },
   title: 'Data Export · Spanlens Docs',
   description:
-    'Download request logs, traces, anomalies, and security flags as CSV, JSONL, or JSON to feed into BI tools or data pipelines. Streamed for million-row exports.',
+    'Download request logs, traces, anomalies, and security flags as CSV, JSONL, or JSON. Streamed exports handle millions of rows.',
 }
 
 export default function ExportDocs() {

@@ -2,6 +2,7 @@ import { CodeBlock } from '../../_components/code-block'
 import { PromptAbChart } from '../../_components/charts'
 
 export const metadata = {
+  alternates: { canonical: '/docs/features/prompt-ab' },
   title: 'Prompt A/B · Spanlens Docs',
   description:
     'Route live production traffic across two prompt versions and measure latency, cost, and error rate with statistical significance.',

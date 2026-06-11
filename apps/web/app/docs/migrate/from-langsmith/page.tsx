@@ -4,7 +4,7 @@ import { LangTabs } from '../../_components/lang-tabs'
 export const metadata = {
   title: 'Migrate from LangSmith to Spanlens · 2026 Guide',
   description:
-    'Move from LangSmith to Spanlens in under 45 minutes. traceable decorator to observe() mapping, LangChain callback swap, and Run / Project / Dataset to Spanlens schema.',
+    'Move from LangSmith to Spanlens in under 45 minutes: traceable-to-observe() mapping, LangChain callback swap, and schema migration.',
   alternates: { canonical: '/docs/migrate/from-langsmith' },
 }
 

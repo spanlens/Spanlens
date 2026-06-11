@@ -3,6 +3,7 @@ import { Footer } from '@/components/layout/footer'
 import { MarketingNav } from '@/components/layout/marketing-nav'
 
 export const metadata = {
+  alternates: { canonical: '/terms' },
   title: 'Terms of Service · Spanlens',
   description:
     'The agreement governing your use of Spanlens. Covers accounts, billing, the 14-day refund policy, acceptable use, and liability.',

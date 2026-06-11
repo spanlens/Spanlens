@@ -5,7 +5,7 @@ import { MarketingNav } from '@/components/layout/marketing-nav'
 export const metadata = {
   title: 'Best LLM Observability Alternatives · 2026',
   description:
-    'Open-source and SaaS alternatives to Langfuse, Helicone, LangSmith, Braintrust, and Arize Phoenix in 2026. Honest tradeoffs, drop-in proxy install, MIT license, and self-host with one Docker command.',
+    'Open-source and SaaS alternatives to Langfuse, Helicone, LangSmith, Braintrust, and Arize Phoenix in 2026. Honest tradeoffs, MIT license, self-hostable.',
   alternates: { canonical: '/alternatives' },
 }
 

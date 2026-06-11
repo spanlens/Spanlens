@@ -1,9 +1,10 @@
 import { CodeBlock } from '../../_components/code-block'
 
 export const metadata = {
+  alternates: { canonical: '/docs/features/audit-logs' },
   title: 'Audit Logs · Spanlens Docs',
   description:
-    'Chronological record of every organization-level change, API key creation, provider key additions, member invitations, role changes, and billing plan switches.',
+    'Chronological record of every organization-level change: API keys, provider keys, member invitations, role changes, and billing plan switches.',
 }
 
 export default function AuditLogsDocs() {

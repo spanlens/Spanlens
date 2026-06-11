@@ -1,6 +1,7 @@
 import { CodeBlock } from '../../_components/code-block'
 
 export const metadata = {
+  alternates: { canonical: '/docs/features/evals' },
   title: 'Evals · Spanlens Docs',
   description:
     'LLM-as-judge evaluation, automatically score production responses on a 0..1 scale and quantify quality per prompt version.',
