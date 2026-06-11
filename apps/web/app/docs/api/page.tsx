@@ -1,4 +1,5 @@
 export const metadata = {
+  alternates: { canonical: '/docs/api' },
   title: 'REST API Reference · Spanlens Docs',
   description:
     'Interactive OpenAPI 3.0 reference for the Spanlens REST API. Authentication, requests, stats, traces, anomalies, members, and proxy endpoints.',

@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { FeatureCoverageRadar } from '../_components/charts'
 
 export const metadata = {
+  alternates: { canonical: '/docs/why' },
   title: 'Why Spanlens · Spanlens Docs',
   description:
     'Why pick Spanlens over Helicone, Langfuse, LangSmith, or Arize Phoenix. Honest comparison of the six things only Spanlens does end-to-end.',

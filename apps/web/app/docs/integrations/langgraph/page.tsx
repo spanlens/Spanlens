@@ -3,7 +3,7 @@ import { CodeBlock } from '../../_components/code-block'
 export const metadata = {
   title: 'LangGraph integration · Spanlens Docs',
   description:
-    'Trace LangGraph node and edge execution with Spanlens. One callback handler captures the full graph topology as a nested span tree, including parallel fan-out and tool calls.',
+    'Trace LangGraph node and edge execution with Spanlens. One callback handler captures the full graph topology, parallel fan-out, and tool calls.',
   alternates: { canonical: '/docs/integrations/langgraph' },
 }
 

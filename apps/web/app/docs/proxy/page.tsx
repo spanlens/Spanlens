@@ -1,6 +1,7 @@
 import { CodeBlock } from '../_components/code-block'
 
 export const metadata = {
+  alternates: { canonical: '/docs/proxy' },
   title: 'Direct proxy · Spanlens Docs',
   description: 'Use Spanlens from any language, Python, Ruby, Go, curl. Just swap the base URL.',
 }

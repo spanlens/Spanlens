@@ -3,7 +3,7 @@ import { CodeBlock } from '../../_components/code-block'
 export const metadata = {
   title: 'Multi-step agent tracing · Spanlens Docs',
   description:
-    'Tutorial. Trace an agent that classifies intent, fans out to parallel tools, then composes a final answer. See per-step cost and the critical path in one waterfall.',
+    'Tutorial: trace an agent that classifies intent, fans out to parallel tools, and composes an answer. Per-step cost and critical path in one waterfall.',
   alternates: { canonical: '/docs/tutorials/agent-tracing' },
 }
 

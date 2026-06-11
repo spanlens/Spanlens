@@ -3,6 +3,7 @@ import { Footer } from '@/components/layout/footer'
 import { MarketingNav } from '@/components/layout/marketing-nav'
 
 export const metadata = {
+  alternates: { canonical: '/compare' },
   title: 'Spanlens vs alternatives · Compare',
   description:
     'Honest comparisons of Spanlens against Langfuse, Helicone, LangSmith, Braintrust, and Arize Phoenix, feature by feature.',

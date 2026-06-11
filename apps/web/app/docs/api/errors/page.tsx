@@ -1,4 +1,5 @@
 export const metadata = {
+  alternates: { canonical: '/docs/api/errors' },
   title: 'API error codes · Spanlens Docs',
   description:
     'Stable error.code values returned by the Spanlens server for every 4xx/5xx response. Branch on the code in your client; treat the message as user-facing copy.',

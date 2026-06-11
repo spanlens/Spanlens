@@ -1,9 +1,10 @@
 import { CompareTemplate, type CompareGroup, type ComparePoint } from '@/components/marketing/compare-template'
 
 export const metadata = {
+  alternates: { canonical: '/compare/arize-phoenix' },
   title: 'Spanlens vs Arize Phoenix · 2026 Comparison',
   description:
-    'Arize Phoenix is open-source LLM observability with deep ML-engineer DNA. Spanlens is built for application developers shipping LLM features, with proxy-first install, 1-line setup, and JS/TS equal-class with Python.',
+    'Arize Phoenix has deep ML-engineer DNA. Spanlens is built for app developers shipping LLM features, with proxy-first install and first-class JS/TS.',
 }
 
 const whySpanlens: ComparePoint[] = [

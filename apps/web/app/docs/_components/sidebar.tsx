@@ -130,9 +130,13 @@ export function DocsSidebar() {
     <nav className="space-y-6 text-sm">
       {NAV.map((group) => (
         <div key={group.title}>
-          <h4 className="font-semibold text-xs uppercase tracking-wide text-text-faint mb-2">
+          {/* Not a heading element: these nav group labels render before the
+              page's <h1> in DOM order, which breaks the sequential heading
+              outline on every docs page (h4 → h1). A styled <div> keeps the
+              visual without polluting the document structure. */}
+          <div className="font-semibold text-xs uppercase tracking-wide text-text-faint mb-2">
             {group.title}
-          </h4>
+          </div>
           <ul className="space-y-1">
             {group.items.map((item) => {
               const active = pathname === item.href

@@ -2,6 +2,7 @@ import { CodeBlock } from '../_components/code-block'
 import { LangTabs } from '../_components/lang-tabs'
 
 export const metadata = {
+  alternates: { canonical: '/docs/sdk' },
   title: 'Spanlens SDK · Spanlens Docs',
   description:
     'Official SDK reference for TypeScript and Python, createOpenAI, createAnthropic, createGemini, observe(), and the trace / span API.',

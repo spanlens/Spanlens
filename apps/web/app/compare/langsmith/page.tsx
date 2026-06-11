@@ -1,9 +1,10 @@
 import { CompareTemplate, type CompareGroup, type ComparePoint } from '@/components/marketing/compare-template'
 
 export const metadata = {
+  alternates: { canonical: '/compare/langsmith' },
   title: 'Spanlens vs LangSmith · 2026 Comparison',
   description:
-    'LangSmith is excellent inside the LangChain ecosystem. Spanlens is framework-agnostic. A 1-line baseURL swap works with any HTTP client, no LangChain required. Self-hostable under MIT.',
+    'LangSmith is excellent inside the LangChain ecosystem. Spanlens is framework-agnostic: a 1-line baseURL swap works with any HTTP client. MIT licensed.',
 }
 
 const whySpanlens: ComparePoint[] = [

@@ -3,6 +3,7 @@ import { Footer } from '@/components/layout/footer'
 import { MarketingNav } from '@/components/layout/marketing-nav'
 
 export const metadata = {
+  alternates: { canonical: '/subprocessors' },
   title: 'Subprocessors · Spanlens',
   description:
     'The complete list of subprocessors Spanlens engages to operate the service, including data hosting locations and the purpose of each engagement.',

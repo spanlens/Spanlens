@@ -3,7 +3,7 @@ import { CodeBlock } from '../../_components/code-block'
 export const metadata = {
   title: 'Reliability · Spanlens Docs',
   description:
-    'How Spanlens degrades during a partial outage, what the fallback queue does, and how to monitor the proxy from your side. Designed so the proxy never silently drops logs.',
+    'How Spanlens degrades during a partial outage, what the fallback queue does, and how to monitor the proxy so it never silently drops logs.',
   alternates: { canonical: '/docs/production/reliability' },
 }
 

@@ -1,6 +1,7 @@
 import { CodeBlock } from '../../_components/code-block'
 
 export const metadata = {
+  alternates: { canonical: '/docs/features/prompts' },
   title: 'Prompts · Spanlens Docs',
   description:
     'Version-controlled prompt templates with real-data A/B comparison, latency, cost, and error rate per version.',
