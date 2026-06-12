@@ -41,16 +41,25 @@ export function parseIntMin(raw: string | undefined, fallback: number, min: numb
 
 /**
  * Parse the standard `page` + `limit` pagination params.
- * Returns `{ page, limit, offset }` with page ≥ 1 and limit clamped to
- * [1, maxLimit].
+ * Returns `{ page, limit, offset }` with `page` clamped to [1, maxPage] and
+ * `limit` clamped to [1, maxLimit].
+ *
+ * Why maxPage exists: ClickHouse OFFSET is O(offset) on sorted results, so a
+ * malicious `?page=99999999` would force ClickHouse to materialize-and-skip
+ * billions of rows per request. With maxPage=10000 and the default
+ * maxLimit=100 the worst case is 1M-row skip — still cheap on indexed scans
+ * and within the ClickHouse query budget. Callers needing deeper pagination
+ * must move to a cursor (`?after=<id>`) which is O(log n) instead of O(n).
  */
 export function parsePageLimit(
   pageRaw: string | undefined,
   limitRaw: string | undefined,
   defaultLimit = 50,
   maxLimit = 100,
+  maxPage = 10_000,
 ): { page: number; limit: number; offset: number } {
-  const page = Math.max(1, parseInt(pageRaw ?? '1', 10) || 1)
+  const rawPage = Math.max(1, parseInt(pageRaw ?? '1', 10) || 1)
+  const page = Math.min(maxPage, rawPage)
   const limit = Math.min(maxLimit, Math.max(1, parseInt(limitRaw ?? String(defaultLimit), 10) || defaultLimit))
   return { page, limit, offset: (page - 1) * limit }
 }
