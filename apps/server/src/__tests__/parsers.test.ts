@@ -23,6 +23,29 @@ describe('OpenAI parser', () => {
     })
   })
 
+  it('parses embeddings response (data array, prompt_tokens only)', () => {
+    // OpenAI's /v1/embeddings returns `data: [{embedding: [...]}]` instead of
+    // `choices`, and the usage shape carries only prompt_tokens (no completion
+    // side because embedding is input-only). The parser reads `usage` blindly
+    // so embeddings work without a separate code path — this test pins that
+    // contract so a future refactor that special-cases `choices` doesn't
+    // silently regress RAG cost tracking.
+    const body = {
+      object: 'list',
+      model: 'text-embedding-3-small',
+      data: [{ object: 'embedding', index: 0, embedding: [0.01, 0.02, 0.03] }],
+      usage: { prompt_tokens: 8, total_tokens: 8 },
+    }
+    expect(parseOpenAIResponse(body)).toEqual({
+      promptTokens: 8,
+      completionTokens: 0,
+      totalTokens: 8,
+      model: 'text-embedding-3-small',
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+    })
+  })
+
   it('extracts cached_tokens from prompt_tokens_details', () => {
     const body = {
       model: 'gpt-4o',

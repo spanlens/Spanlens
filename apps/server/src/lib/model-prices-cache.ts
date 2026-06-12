@@ -123,6 +123,13 @@ export const FALLBACK_PRICES: Record<string, ModelPrice> = {
   'gpt-3.5-turbo-16k-0613':       { prompt: 3.0,  completion: 4.0 },
   'davinci-002':                  { prompt: 2.0,  completion: 2.0 },
   'babbage-002':                  { prompt: 0.4,  completion: 0.4 },
+  // ── OpenAI: Embeddings (input-only — completion stays 0) ──────────────────
+  // Same rows live in supabase/seeds/model_prices.sql + the
+  // 20260612120000 migration; these fallbacks let cost still land non-NULL
+  // on a cold start before the cache fetches from Supabase.
+  'text-embedding-3-small':       { prompt: 0.02, completion: 0 },
+  'text-embedding-3-large':       { prompt: 0.13, completion: 0 },
+  'text-embedding-ada-002':       { prompt: 0.10, completion: 0 },
   // ── Anthropic: Claude 4.x (aliases + dated variants) ─────────────────────
   'claude-opus-4-7':              { prompt: 5,    completion: 25, cacheRead: 0.5,  cacheWrite: 6.25 },
   'claude-opus-4-6':              { prompt: 5,    completion: 25, cacheRead: 0.5,  cacheWrite: 6.25 }, // alias only; no dated form per docs

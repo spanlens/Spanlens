@@ -322,6 +322,55 @@ describe('openai proxy — logging + cost calculation', () => {
   })
 })
 
+describe('openai proxy — embeddings (RAG cost tracking)', () => {
+  test('embeddings response is tracked end-to-end (tokens parsed, cost calculated)', async () => {
+    // Embeddings have a different response shape than chat completions —
+    // `data: [{embedding}]` instead of `choices`, and `usage.completion_tokens`
+    // is absent because the model returns vectors, not generated text. The
+    // proxy + parser + cost calculator must all handle this without changes
+    // beyond the model_prices seed (added in the same PR). This test pins
+    // that contract — if a future refactor special-cases `choices`, embedding
+    // cost tracking regresses to NULL and RAG customers lose ~30-50% of
+    // their LLM spend from the dashboard.
+    const embeddingsResponse = new Response(
+      JSON.stringify({
+        object: 'list',
+        model: 'text-embedding-3-small',
+        data: [
+          { object: 'embedding', index: 0, embedding: [0.01, 0.02, 0.03] },
+          { object: 'embedding', index: 1, embedding: [0.04, 0.05, 0.06] },
+        ],
+        usage: { prompt_tokens: 1_000_000, total_tokens: 1_000_000 },
+      }),
+      { status: 200, headers: { 'content-type': 'application/json' } },
+    )
+    mockUpstream(embeddingsResponse)
+    const app = await buildApp()
+
+    const res = await app.request('/proxy/openai/v1/embeddings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'text-embedding-3-small',
+        input: ['hello', 'world'],
+      }),
+    })
+    await drainPendingTasks()
+
+    expect(res.status).toBe(200)
+    expect(proxyState.fetchCalls[0]!.url).toBe('https://api.openai.com/v1/embeddings')
+
+    expect(proxyState.loggerCalls).toHaveLength(1)
+    const row = proxyState.loggerCalls[0]!
+    expect(row['model']).toBe('text-embedding-3-small')
+    expect(row['promptTokens']).toBe(1_000_000)
+    expect(row['completionTokens']).toBe(0) // embeddings have no completion side
+    expect(row['totalTokens']).toBe(1_000_000)
+    // text-embedding-3-small priced at $0.02 / 1M (input-only).
+    expect(row['costUsd']).toBeCloseTo(0.02, 4)
+  })
+})
+
 describe('openai proxy — response passthrough', () => {
   test('response body bytes are returned verbatim to caller', async () => {
     const upstreamBody = JSON.stringify({
