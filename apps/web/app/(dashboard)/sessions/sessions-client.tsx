@@ -26,11 +26,7 @@ const PAGE_SIZE = 50
 const SLOW_LATENCY_MS = 2000
 const DEFAULT_RANGE: TimeRange = '30d'
 
-function fmtCost(n: number | null | undefined): string {
-  if (n == null) return '—'
-  if (n === 0) return '$0.00'
-  return n < 0.01 ? '< $0.01' : '$' + n.toFixed(2)
-}
+import { fmtCostSummary as fmtCost } from '@/lib/format'
 
 function fmtCount(n: number): string {
   if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M'

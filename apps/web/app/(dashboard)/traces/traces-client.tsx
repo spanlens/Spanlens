@@ -26,12 +26,7 @@ function fmtDuration(ms: number | null): string {
   return `${(ms / 1000).toFixed(2)}s`
 }
 
-// Cost rendered at fixed 5 fraction digits so the column aligns vertically.
-// Matches the convention used on /requests.
-function fmtCost(n: number): string {
-  if (n <= 0) return '—'
-  return `$${n.toFixed(5)}`
-}
+import { fmtCostDense as fmtCost } from '@/lib/format'
 
 function fmtAge(dateStr: string, now: number): string {
   const s = Math.floor((now - new Date(dateStr).getTime()) / 1000)
