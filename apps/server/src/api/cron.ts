@@ -805,7 +805,16 @@ cronRouter.get('/detect-missing-model-prices', async (c) => {
     })
 
     if (insertError) {
-      logCronRun(
+      // gotcha #8: await before returning. The ClickHouse query in this
+      // handler can take 30s on a cold-start ClickHouse Cloud instance,
+      // eating into the lambda's budget. An unawaited supabase INSERT
+      // racing the lambda shutdown loses the cron_job_runs row, which is
+      // exactly what self-monitor watches — silent failures slip past.
+      // The other cron handlers use the same .catch() pattern and got
+      // away with it because their happy paths are sub-second; this one
+      // can't. Inner .catch swallows logger failures so they don't mask
+      // the original error in the response.
+      await logCronRun(
         'detect-missing-model-prices',
         'error',
         Date.now() - start,
@@ -814,11 +823,11 @@ cronRouter.get('/detect-missing-model-prices', async (c) => {
       return c.json({ ok: false, error: 'failed to insert alert' }, 500)
     }
 
-    logCronRun('detect-missing-model-prices', 'ok', Date.now() - start).catch(console.error)
+    await logCronRun('detect-missing-model-prices', 'ok', Date.now() - start).catch(console.error)
     return c.json({ ok: true, missing: models.length, models })
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
-    logCronRun('detect-missing-model-prices', 'error', Date.now() - start, message).catch(console.error)
+    await logCronRun('detect-missing-model-prices', 'error', Date.now() - start, message).catch(console.error)
     return c.json({ ok: false, error: message }, 500)
   }
 })
