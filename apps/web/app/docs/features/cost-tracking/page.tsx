@@ -67,6 +67,26 @@ cacheWriteCost  = (cacheWriteTokens      / 1_000_000) * price.cacheWrite  // ≈
 completionCost  = (completionTokens      / 1_000_000) * price.completion
 totalCost       = promptCost + cacheReadCost + cacheWriteCost + completionCost`}</CodeBlock>
 
+      <h3>Embeddings (2026-06-12+)</h3>
+      <p>
+        OpenAI embedding calls land on <a href="/requests">/requests</a> with a real{' '}
+        <code>cost_usd</code>, not <code>NULL</code>. The proxy was always forwarding{' '}
+        <code>POST /v1/embeddings</code> and the parser was always extracting{' '}
+        <code>usage.prompt_tokens</code>; the only missing piece was a price row. The three
+        current models (<code>text-embedding-3-small</code> at $0.020 / 1M,{' '}
+        <code>text-embedding-3-large</code> at $0.130 / 1M,{' '}
+        <code>text-embedding-ada-002</code> at $0.100 / 1M) are now seeded in{' '}
+        <code>model_prices</code> and the in-memory fallback, so cold-start instances calculate
+        the right cost before the cache refreshes from Supabase.
+      </p>
+      <p>
+        Embeddings are input-only — the completion-side price stays 0 and the formula above
+        contributes nothing on that axis. For a RAG workload this can move the daily spend
+        figure by 30~50% once historical embedding traffic flows through the new pricing
+        rows on subsequent calls (existing pre-2026-06-12 rows keep their original
+        <code> NULL</code> cost).
+      </p>
+
       <h3>Prompt caching (2026-05-14+)</h3>
       <p>
         Anthropic <code>cache_read_input_tokens</code> / <code>cache_creation_input_tokens</code>{' '}

@@ -38,6 +38,7 @@ const DOCS_ROUTES = [
   '/docs/integrations/langgraph',
   '/docs/integrations/llamaindex',
   '/docs/integrations/mcp',
+  '/docs/integrations/vercel-ai',
   '/docs/production/reliability',
   '/docs/production/scaling',
   '/docs/tutorials/agent-tracing',
