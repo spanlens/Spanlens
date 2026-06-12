@@ -49,9 +49,7 @@ import {
 
 // ── Helpers ────────────────────────────────────────────────────
 
-function fmtCost(n: number): string {
-  return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-}
+import { fmtCostKpi as fmtCost } from '@/lib/format'
 
 function fmtDelta(delta: number | null | undefined): string | undefined {
   if (delta == null) return undefined

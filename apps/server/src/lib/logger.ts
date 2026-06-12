@@ -6,6 +6,7 @@ import { scanAll, type SecurityFlag } from './security-scan.js'
 import { sendEmail, renderSecurityAlertEmail } from './resend.js'
 import { emitWebhookEvent } from './webhook-emit.js'
 import { writeRequestAsEvent } from './events-writer.js'
+import { logError } from './structured-logger.js'
 
 /**
  * Customer-controlled body logging mode (sent via the `x-spanlens-log-body`
@@ -192,8 +193,8 @@ async function maybeSendSecurityAlert(params: {
 
   const result = await sendEmail({ to: ownerEmail, subject, html })
   if (!result.sent && result.error) {
-    // Log only error message, not ownerEmail, to avoid PII in logs
-    console.error('[security-alert] sendEmail failed:', result.error)
+    // ownerEmail is intentionally NOT in context — keep PII out of error logs.
+    logError('UNCATEGORIZED', { orgId: organizationId, projectId, kind: 'security_alert_email' }, result.error)
   }
 }
 
@@ -291,10 +292,11 @@ export async function logRequestAsync(data: RequestLogData): Promise<void> {
     try {
       await writeRequestAsEvent(data, clickhouseRow)
     } catch (err) {
-      console.error(
-        '[logger] events shadow INSERT failed:',
-        err instanceof Error ? err.message : err,
-      )
+      logError('CH_INSERT_FAILED', {
+        orgId: data.organizationId,
+        provider: data.provider,
+        kind: 'events_shadow_insert',
+      }, err)
     }
   } catch (err) {
     // ── ClickHouse fallback (P2.6) ─────────────────────────────────────────
@@ -303,7 +305,11 @@ export async function logRequestAsync(data: RequestLogData): Promise<void> {
     // it later. Without this backstop every CH outage silently loses customer
     // billing data and dashboard entries.
     const message = err instanceof Error ? err.message : String(err)
-    console.error('[logger] ClickHouse insert failed, queueing to fallback:', message)
+    logError('CH_INSERT_FAILED', {
+      orgId: data.organizationId,
+      provider: data.provider,
+      kind: 'requests_insert_falling_back_to_supabase',
+    }, err)
 
     try {
       await supabaseAdmin.from('requests_fallback').insert({
@@ -312,12 +318,13 @@ export async function logRequestAsync(data: RequestLogData): Promise<void> {
         last_error: message.slice(0, 500),
       })
     } catch (fallbackErr) {
-      // Both DBs are down. Nothing more we can do — surface loudly so
-      // observability picks it up. The original CH error message is
-      // preserved in the log line above for triage.
-      const fallbackMessage =
-        fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr)
-      console.error('[logger] Fallback INSERT also failed — row LOST:', fallbackMessage)
+      // Both DBs are down. Row is now lost — surface loudly. Original CH
+      // error is preserved in the previous log line for triage.
+      logError('FALLBACK_INSERT_FAILED', {
+        orgId: data.organizationId,
+        provider: data.provider,
+        kind: 'row_lost',
+      }, fallbackErr)
     }
   }
 
@@ -333,7 +340,11 @@ export async function logRequestAsync(data: RequestLogData): Promise<void> {
       requestFlags,
       responseFlags,
     }).catch((err) => {
-      console.error('[security-alert] failed:', err instanceof Error ? err.message : String(err))
+      logError('UNCATEGORIZED', {
+        orgId: data.organizationId,
+        projectId: data.projectId,
+        kind: 'security_alert_chain',
+      }, err)
     })
   }
 
@@ -358,6 +369,9 @@ export async function logRequestAsync(data: RequestLogData): Promise<void> {
       },
     })
   } catch (err) {
-    console.error('[logger] request.created webhook emit failed:', err instanceof Error ? err.message : err)
+    logError('WEBHOOK_DISPATCH_FAILED', {
+      orgId: data.organizationId,
+      eventType: 'request.created',
+    }, err)
   }
 }

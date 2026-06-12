@@ -40,9 +40,7 @@ function greeting() {
   return 'Evening'
 }
 
-function fmtCost(n: number) {
-  return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-}
+import { fmtCostKpi as fmtCost } from '@/lib/format'
 
 // `hasBaseline` lets us distinguish "no prior data" (suppress delta) from
 // a real -100% drop. When the previous period had zero traffic the API may

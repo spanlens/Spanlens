@@ -10,6 +10,7 @@
 
 import { supabaseAdmin } from './db.js'
 import { validateOutboundUrl } from './safe-url.js'
+import { logError } from './structured-logger.js'
 
 export interface WebhookRow {
   id: string
@@ -181,7 +182,7 @@ export async function retryFailedWebhooks(): Promise<{
     .limit(50)
 
   if (error || !pending) {
-    console.error('[retryFailedWebhooks] fetch error:', error?.message)
+    logError('WEBHOOK_FETCH_FAILED', { kind: 'retry_queue_fetch' }, error?.message ?? 'unknown')
     return { retried: 0, succeeded: 0, failed: 0, exhausted: 0 }
   }
 

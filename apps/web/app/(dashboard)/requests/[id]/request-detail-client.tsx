@@ -13,11 +13,7 @@ import { ShareDialog } from '@/components/share/share-dialog'
 // PostHog provider lands on main (separate PR). The event payload is fully
 // designed — see docs/launch/2026-05-14_cache-stream-users.md §3.
 
-function fmtCost(n: number | null | undefined): string {
-  if (n == null) return '—'
-  if (n === 0) return '$0.00'
-  return n < 0.01 ? '< $0.01' : '$' + n.toFixed(2)
-}
+import { fmtCostSummary as fmtCost } from '@/lib/format'
 
 type Tab = 'request' | 'response' | 'error'
 
