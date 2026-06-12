@@ -54,13 +54,11 @@ function relAge(dateStr: string): string {
   return `${Math.floor(s / 86400)}d`
 }
 
-// Cost is always rendered with 5 fraction digits so the column visually
-// aligns. Trailing zeros are kept on purpose — eyeballing whether a row is
-// $0.00020 vs $0.00200 should not require counting digits.
-function fmtCost(n: number | null): string {
-  if (n == null) return '—'
-  return '$' + n.toFixed(5)
-}
+// Cost rendering rationale documented at fmtCostDense in lib/format.ts.
+// Note: this site previously rendered `$0.00000` for zero cost; the
+// shared helper renders "—" so zero rows visually match the "no data"
+// path. Intentional unification.
+import { fmtCostDense as fmtCost } from '@/lib/format'
 
 // Provider colors — used as a small dot before the model name to make the
 // table scannable at a glance. Brand-leaning hues to match user mental model

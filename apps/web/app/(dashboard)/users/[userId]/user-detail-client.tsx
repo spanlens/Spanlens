@@ -11,11 +11,7 @@ import { Topbar } from '@/components/layout/topbar'
 // TODO: re-add `usePostHog()` + `user_detail_viewed` capture once the
 // PostHog provider lands on main (separate PR).
 
-function fmtCost(n: number | null | undefined): string {
-  if (n == null) return '—'
-  if (n === 0) return '$0.00'
-  return n < 0.01 ? '< $0.01' : '$' + Number(n).toFixed(2)
-}
+import { fmtCostSummary as fmtCost } from '@/lib/format'
 
 function fmtCount(n: number): string {
   return n.toLocaleString()

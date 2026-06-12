@@ -21,9 +21,7 @@ const C = {
   bgElev: 'var(--bg-elev)',
 } as const
 
-function fmtCost(n: number) {
-  return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-}
+import { fmtCostKpi as fmtCost } from '@/lib/format'
 
 interface SpendForecastCardProps {
   data: SpendForecast
