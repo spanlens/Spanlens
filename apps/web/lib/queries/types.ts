@@ -153,12 +153,19 @@ export interface TimeseriesPoint {
   date: string
   requests: number
   cost: number
+  /** Total tokens (prompt + completion). Kept for backward compat. */
   tokens: number
+  /** Prompt-side tokens. Optional so demo / older API responses still type-check. */
+  promptTokens?: number
+  /** Completion-side tokens. Optional for the same reason. */
+  completionTokens?: number
   errors: number
   /** 4xx error count (subset of `errors`). Optional for backward compat with the demo data shim. */
   errors4xx?: number
   /** 5xx error count (subset of `errors`). Optional for backward compat with the demo data shim. */
   errors5xx?: number
+  /** 429 rate-limit count (subset of `errors4xx`). Optional for backward compat. */
+  errors429?: number
   /** Median latency in ms for this bucket. Null when bucket is empty. */
   p50LatencyMs?: number | null
   /** 95th percentile latency in ms for this bucket. Null when bucket is empty. */
