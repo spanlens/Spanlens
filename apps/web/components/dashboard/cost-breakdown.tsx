@@ -29,6 +29,9 @@ interface CostBreakdownProps {
   /** Limit to the top-N highest-cost rows. Default 6 — beyond that the
    * vertical density gets uncomfortable on the standard tile width. */
   topN?: number
+  /** Range label shown in the card header (e.g. "24h", "7d") so this
+   * card matches the Token volume / Errors by class siblings. */
+  rangeLabel?: string
 }
 
 /**
@@ -42,7 +45,7 @@ interface CostBreakdownProps {
  * Tooltip carries the absolute USD; the bar length itself encodes the
  * share visually so we don't need to render percent text alongside.
  */
-export function CostBreakdownCard({ models, topN = 6 }: CostBreakdownProps) {
+export function CostBreakdownCard({ models, topN = 6, rangeLabel }: CostBreakdownProps) {
   const sorted = [...models]
     .filter((m) => m.totalCostUsd > 0)
     .sort((a, b) => b.totalCostUsd - a.totalCostUsd)
@@ -55,11 +58,13 @@ export function CostBreakdownCard({ models, topN = 6 }: CostBreakdownProps) {
       requests: m.requests,
     }))
 
+  const headerTitle = rangeLabel ? `Cost by model · ${rangeLabel}` : 'Cost by model'
+
   if (sorted.length === 0) {
     return (
       <div className="rounded-md border border-border bg-bg-elev p-4">
         <div className="flex items-center justify-between mb-2">
-          <h3 className="text-[14px] font-medium text-text">Cost by model</h3>
+          <h3 className="text-[14px] font-medium text-text">{headerTitle}</h3>
         </div>
         <p className="text-[13px] text-text-faint py-6">No spend recorded in this window.</p>
       </div>
@@ -69,7 +74,7 @@ export function CostBreakdownCard({ models, topN = 6 }: CostBreakdownProps) {
   return (
     <div className="rounded-md border border-border bg-bg-elev p-4">
       <div className="flex items-center justify-between mb-3">
-        <h3 className="text-[14px] font-medium text-text">Cost by model</h3>
+        <h3 className="text-[14px] font-medium text-text">{headerTitle}</h3>
         <span className="text-[11px] text-text-faint font-mono">top {sorted.length}</span>
       </div>
       <div className="h-[260px]">

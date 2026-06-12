@@ -859,7 +859,10 @@ export function DashboardClient() {
           {!mounted || modelsQuery.isLoading || !modelsQuery.data ? (
             <Skeleton className="h-[290px] w-full" />
           ) : (
-            <CostBreakdownCard models={modelsQuery.data} />
+            <CostBreakdownCard
+              models={modelsQuery.data}
+              rangeLabel={shortRangeLabel(timeRange, customRange)}
+            />
           )}
         </div>
 

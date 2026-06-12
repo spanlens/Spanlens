@@ -8,8 +8,13 @@ const C = {
   faint:  'var(--text-faint)',
   border: 'var(--border)',
   bgElev: 'var(--bg-elev)',
-  accent: 'var(--accent)',
-  accent2: 'var(--accent-2)',
+  // Prompt = accent (orange). Completion = good (green) — chosen because
+  // it contrasts cleanly with the prompt band in both themes and isn't
+  // already used by the Errors-by-class card sitting next to this one.
+  // An earlier draft used `var(--accent-2)` which doesn't exist in the
+  // current theme, so the completion band rendered near-invisible.
+  prompt:     'var(--accent)',
+  completion: 'var(--good)',
 } as const
 
 interface TokenTrendsProps {
@@ -81,11 +86,11 @@ export function TokenTrendsCard({ series, rangeLabel = '24h' }: TokenTrendsProps
         <h3 className="text-[14px] font-medium text-text">Token volume · {rangeLabel}</h3>
         <div className="flex items-center gap-3 text-[11px] text-text-faint font-mono">
           <span className="flex items-center gap-1">
-            <span className="inline-block w-2 h-2 rounded-sm" style={{ background: C.accent }} />
+            <span className="inline-block w-2 h-2 rounded-sm" style={{ background: C.prompt }} />
             prompt
           </span>
           <span className="flex items-center gap-1">
-            <span className="inline-block w-2 h-2 rounded-sm" style={{ background: C.accent2 }} />
+            <span className="inline-block w-2 h-2 rounded-sm" style={{ background: C.completion }} />
             completion
           </span>
         </div>
@@ -95,12 +100,12 @@ export function TokenTrendsCard({ series, rangeLabel = '24h' }: TokenTrendsProps
           <AreaChart data={data} margin={{ top: 4, right: 16, left: 0, bottom: 4 }}>
             <defs>
               <linearGradient id="gradPrompt" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor={C.accent} stopOpacity={0.55} />
-                <stop offset="100%" stopColor={C.accent} stopOpacity={0.05} />
+                <stop offset="0%" stopColor={C.prompt} stopOpacity={0.55} />
+                <stop offset="100%" stopColor={C.prompt} stopOpacity={0.05} />
               </linearGradient>
               <linearGradient id="gradCompletion" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor={C.accent2} stopOpacity={0.55} />
-                <stop offset="100%" stopColor={C.accent2} stopOpacity={0.05} />
+                <stop offset="0%" stopColor={C.completion} stopOpacity={0.55} />
+                <stop offset="100%" stopColor={C.completion} stopOpacity={0.05} />
               </linearGradient>
             </defs>
             <CartesianGrid stroke={C.border} strokeDasharray="2 4" vertical={false} />
@@ -130,7 +135,7 @@ export function TokenTrendsCard({ series, rangeLabel = '24h' }: TokenTrendsProps
               type="monotone"
               dataKey="promptTokens"
               stackId="t"
-              stroke={C.accent}
+              stroke={C.prompt}
               strokeWidth={1.5}
               fill="url(#gradPrompt)"
             />
@@ -138,7 +143,7 @@ export function TokenTrendsCard({ series, rangeLabel = '24h' }: TokenTrendsProps
               type="monotone"
               dataKey="completionTokens"
               stackId="t"
-              stroke={C.accent2}
+              stroke={C.completion}
               strokeWidth={1.5}
               fill="url(#gradCompletion)"
             />
