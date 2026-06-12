@@ -1,0 +1,48 @@
+/**
+ * Shared helpers used by both eval runner paths (LLM judge + deterministic).
+ *
+ * Extracted from lib/eval-runner.ts during the 1273-line split. Kept tiny
+ * on purpose — anything that grows here should probably be its own module.
+ */
+
+/** Cap on the response text fed into the judge prompt or a regex. */
+export const MAX_RESPONSE_CHARS = 4000
+
+/**
+ * Extract the assistant response text from a stored response_body. Handles
+ * the three provider shapes Spanlens proxies today: OpenAI chat.completion,
+ * Anthropic Messages, and Gemini generateContent. Returns null when nothing
+ * recognizable is present so callers can skip the sample.
+ */
+export function extractResponseText(body: unknown): string | null {
+  if (!body || typeof body !== 'object') return null
+  const obj = body as Record<string, unknown>
+
+  // OpenAI chat completion
+  const choices = obj['choices'] as Array<Record<string, unknown>> | undefined
+  if (Array.isArray(choices) && choices[0]) {
+    const msg = choices[0]['message'] as Record<string, unknown> | undefined
+    const content = typeof msg?.['content'] === 'string' ? msg['content'] : null
+    if (content) return content as string
+  }
+
+  // Anthropic messages
+  const content = obj['content'] as Array<Record<string, unknown>> | undefined
+  if (Array.isArray(content)) {
+    const textBlock = content.find((b) => b['type'] === 'text')
+    if (textBlock && typeof textBlock['text'] === 'string') return textBlock['text'] as string
+  }
+
+  // Gemini
+  const candidates = obj['candidates'] as Array<Record<string, unknown>> | undefined
+  if (Array.isArray(candidates) && candidates[0]) {
+    const candidate = candidates[0]
+    const cContent = candidate['content'] as Record<string, unknown> | undefined
+    const parts = cContent?.['parts'] as Array<Record<string, unknown>> | undefined
+    if (Array.isArray(parts) && parts[0] && typeof parts[0]['text'] === 'string') {
+      return parts[0]['text'] as string
+    }
+  }
+
+  return null
+}
