@@ -39,6 +39,49 @@ export type ChangelogTag =
 
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    date: '2026-06-12',
+    slug: 'dashboard-breakdown-charts',
+    title: 'Three new breakdown charts on the main dashboard',
+    tags: ['feature'],
+    body: [
+      'The dashboard now answers the obvious follow-up questions to the headline KPIs. Three new charts sit in a single block between Traffic & spend and Spend forecast: token volume split into prompt vs completion as a stacked area, errors broken out into 4xx / 429 / 5xx bands (429 is split out so quota issues read as a different escalation than schema regressions or upstream outages), and a cost-by-model horizontal bar that surfaces the top six (provider, model) pairs sorted by spend.',
+      'The token chart reuses the existing timeseries endpoint with two new fields (`promptTokens`, `completionTokens`); the error chart pulls 429 specifically via a new `errors429` field; the cost-by-model chart reads from the existing `useStatsModels` hook so no extra request is made. All three respect the dashboard time range selector and re-render in place when you switch 24h / 7d / 30d.',
+      'See your spend trend? Now you can see whether it was tokens or model mix, and what kind of errors are driving the noise — without opening Requests.',
+    ].join('\n\n'),
+  },
+  {
+    date: '2026-06-12',
+    slug: 'openai-embeddings-cost-tracking',
+    title: 'OpenAI embedding calls now show up with cost in /requests',
+    tags: ['improvement'],
+    body: [
+      'RAG workloads send a lot more embedding calls than chat completions (retrieval queries fire roughly 10× per user query versus one chat completion), so the previously missing embedding cost was a meaningful slice of the dashboard total — anywhere from 30% to 50% for a retrieval-heavy app. The proxy and parser already handled the traffic correctly; the gap was a missing pricing row.',
+      'The three OpenAI embedding models now have list prices in `model_prices` and the in-memory fallback: `text-embedding-3-small` ($0.020 / 1M tokens), `text-embedding-3-large` ($0.130 / 1M), and `text-embedding-ada-002` ($0.100 / 1M). Completion price stays at 0 — embeddings are input-only. New rows land with the correct `cost_usd` immediately; historical rows are unaffected.',
+      'See [Cost tracking](/docs/features/cost-tracking) for the formula and the model price table.',
+    ].join('\n\n'),
+  },
+  {
+    date: '2026-06-12',
+    slug: 'webhook-ssrf-hardening',
+    title: 'Webhook URLs are validated against private and cloud-metadata addresses',
+    tags: ['improvement'],
+    body: [
+      'The webhook target URL used to only require the `https://` scheme. That left the door open to register a URL resolving to a private IP, loopback, link-local, or a cloud-provider metadata endpoint (the AWS IMDS at 169.254.169.254 / GCP metadata.google.internal / Azure metadata.azure.internal). Spanlens would then dutifully POST your org events at that internal target on every event tick. The 2019 Capital One breach was the same class of bug.',
+      'Webhook create and update now resolve the hostname and reject any URL that lands on a blocked CIDR (the RFC 1918 ranges, 127.0.0.0/8 loopback, 169.254.0.0/16 link-local including IMDS, IPv6 loopback and unique-local, plus the IPv4-mapped form so `::ffff:169.254.169.254` cannot slip through). The same check runs again at every dispatch so a DNS rebinding mid-stream cannot bypass the registration-time check.',
+      'No customer-facing migration is needed — existing webhooks were re-validated and only addresses pointing at internal targets are rejected on the next save. If you see a `BLOCKED_IP` or `BLOCKED_HOSTNAME` error code on a previously-working webhook, the target was unsafe and should be moved to a public endpoint.',
+    ].join('\n\n'),
+  },
+  {
+    date: '2026-06-12',
+    slug: 'vercel-ai-integration-guide',
+    title: 'Dedicated Vercel AI SDK integration guide',
+    tags: ['docs'],
+    body: [
+      'The Vercel AI SDK adapter (`@spanlens/sdk/vercel-ai`) shipped with the SDK back in 0.3.0 but lived as a short section on the SDK page. The standalone guide at [/docs/integrations/vercel-ai](/docs/integrations/vercel-ai) now covers `generateText`, `streamText`, `generateObject`, `streamObject`, multi-step tool calls, attaching to a long-lived trace for chat sessions, pairing with the proxy for billing-grade cost, and a troubleshooting FAQ. Same shape as the LangGraph / LlamaIndex / MCP guides — the four major TypeScript integrations now read consistently.',
+      'No SDK change. If you already wired `createSpanlensTracker` into a project, nothing has to move.',
+    ].join('\n\n'),
+  },
+  {
     date: '2026-06-09',
     slug: 'feedback-public-roadmap',
     title: 'Public feedback page with voting and admin response',
