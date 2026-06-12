@@ -179,10 +179,19 @@ export interface TimeseriesRow {
   day: string
   requests: number
   cost: number
+  /** Total tokens (prompt + completion) — kept for backward compatibility. */
   tokens: number
+  /** Prompt-side tokens — input to the model. Powers the token-trends chart. */
+  prompt_tokens: number
+  /** Completion-side tokens — output from the model. Powers the token-trends chart. */
+  completion_tokens: number
   errors: number
   errors_4xx: number
   errors_5xx: number
+  /** 429 specifically — split out from 4xx so the dashboard can flag rate
+   * limiting as a distinct failure mode (an account-quota issue, not a
+   * client-error). countIf(status_code = 429). */
+  errors_429: number
   /** p50 latency in milliseconds. Null when the bucket has zero requests. */
   p50_latency_ms: number | null
   /** p95 latency in milliseconds. Null when the bucket has zero requests. */
@@ -251,9 +260,12 @@ export async function getStatsTimeseries(
       count()                                                    AS requests,
       sum(cost_usd)                                              AS cost,
       sum(total_tokens)                                          AS tokens,
+      sum(prompt_tokens)                                         AS prompt_tokens,
+      sum(completion_tokens)                                     AS completion_tokens,
       countIf(status_code >= 400)                                AS errors,
       countIf(status_code >= 400 AND status_code < 500)          AS errors_4xx,
       countIf(status_code >= 500)                                AS errors_5xx,
+      countIf(status_code = 429)                                 AS errors_429,
       quantile(0.5)(latency_ms)                                  AS p50_latency_ms,
       quantile(0.95)(latency_ms)                                 AS p95_latency_ms
     FROM ${source}
@@ -268,15 +280,18 @@ export async function getStatsTimeseries(
   })
   const rows = (await result.json()) as Array<Record<string, string | number | null>>
   return rows.map((r) => ({
-    day:            String(r['day'] ?? ''),
-    requests:       Number(r['requests'] ?? 0),
-    cost:           Number(r['cost'] ?? 0),
-    tokens:         Number(r['tokens'] ?? 0),
-    errors:         Number(r['errors'] ?? 0),
-    errors_4xx:     Number(r['errors_4xx'] ?? 0),
-    errors_5xx:     Number(r['errors_5xx'] ?? 0),
-    p50_latency_ms: r['p50_latency_ms'] == null ? null : Number(r['p50_latency_ms']),
-    p95_latency_ms: r['p95_latency_ms'] == null ? null : Number(r['p95_latency_ms']),
+    day:               String(r['day'] ?? ''),
+    requests:          Number(r['requests'] ?? 0),
+    cost:              Number(r['cost'] ?? 0),
+    tokens:            Number(r['tokens'] ?? 0),
+    prompt_tokens:     Number(r['prompt_tokens'] ?? 0),
+    completion_tokens: Number(r['completion_tokens'] ?? 0),
+    errors:            Number(r['errors'] ?? 0),
+    errors_4xx:        Number(r['errors_4xx'] ?? 0),
+    errors_5xx:        Number(r['errors_5xx'] ?? 0),
+    errors_429:        Number(r['errors_429'] ?? 0),
+    p50_latency_ms:    r['p50_latency_ms'] == null ? null : Number(r['p50_latency_ms']),
+    p95_latency_ms:    r['p95_latency_ms'] == null ? null : Number(r['p95_latency_ms']),
   }))
 }
 

@@ -30,6 +30,21 @@ const SpendForecastCard = dynamic(
   () => import('@/components/dashboard/spend-forecast').then((m) => m.SpendForecastCard),
   { ssr: false, loading: () => <Skeleton className="h-[320px] w-full" /> },
 )
+// New breakdown cards. Same SSR-off treatment as the existing charts —
+// recharts measures its own width via ResizeObserver, which isn't available
+// on the server (CLAUDE.md gotcha #22 D).
+const CostBreakdownCard = dynamic(
+  () => import('@/components/dashboard/cost-breakdown').then((m) => m.CostBreakdownCard),
+  { ssr: false, loading: () => <Skeleton className="h-[290px] w-full" /> },
+)
+const TokenTrendsCard = dynamic(
+  () => import('@/components/dashboard/token-trends').then((m) => m.TokenTrendsCard),
+  { ssr: false, loading: () => <Skeleton className="h-[260px] w-full" /> },
+)
+const ErrorDistributionCard = dynamic(
+  () => import('@/components/dashboard/error-distribution').then((m) => m.ErrorDistributionCard),
+  { ssr: false, loading: () => <Skeleton className="h-[260px] w-full" /> },
+)
 
 // ── Helpers ────────────────────────────────────────────────────
 
@@ -812,6 +827,42 @@ export function DashboardClient() {
             <Skeleton className="h-[220px] w-full" />
           ) : (
             <RequestChart data={timeseries.data} firedAt={alertFiredAt} isHourly={hours <= 48} />
+          )}
+        </div>
+
+        {/* Token volume + Error distribution row — answers the obvious
+            follow-up questions to the spend chart above ("was it tokens or
+            model mix?" and "what kind of errors?"). */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 px-[22px] py-5 border-b border-border">
+          {!mounted || isLoading || !timeseries.data ? (
+            <>
+              <Skeleton className="h-[260px] w-full" />
+              <Skeleton className="h-[260px] w-full" />
+            </>
+          ) : (
+            <>
+              <TokenTrendsCard
+                series={timeseries.data}
+                rangeLabel={shortRangeLabel(timeRange, customRange)}
+              />
+              <ErrorDistributionCard
+                series={timeseries.data}
+                rangeLabel={shortRangeLabel(timeRange, customRange)}
+              />
+            </>
+          )}
+        </div>
+
+        {/* Cost-by-model breakdown — full width so long provider/model labels
+            (anthropic / claude-sonnet-4-6) read comfortably. */}
+        <div className="px-[22px] py-5 border-b border-border">
+          {!mounted || modelsQuery.isLoading || !modelsQuery.data ? (
+            <Skeleton className="h-[290px] w-full" />
+          ) : (
+            <CostBreakdownCard
+              models={modelsQuery.data}
+              rangeLabel={shortRangeLabel(timeRange, customRange)}
+            />
           )}
         </div>
 

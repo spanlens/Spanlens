@@ -163,9 +163,12 @@ statsRouter.get('/timeseries', async (c) => {
       requests: r.requests,
       cost: parseFloat(r.cost.toFixed(6)),
       tokens: r.tokens,
+      promptTokens: r.prompt_tokens,
+      completionTokens: r.completion_tokens,
       errors: r.errors,
       errors4xx: r.errors_4xx,
       errors5xx: r.errors_5xx,
+      errors429: r.errors_429,
       p50LatencyMs: r.p50_latency_ms,
       p95LatencyMs: r.p95_latency_ms,
     }))
