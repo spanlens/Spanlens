@@ -1,19 +1,20 @@
 import { Hono } from 'hono'
-import { stream } from 'hono/streaming'
 import { authApiKey, type ApiKeyContext } from '../middleware/authApiKey.js'
 import { requireFullScope } from '../middleware/requireFullScope.js'
 import { enforceQuota } from '../middleware/quota.js'
 import { proxyRateLimit } from '../middleware/rateLimit.js'
 import { calculateCost } from '../lib/cost.js'
-import { logRequestAsync, parseLogBodyMode } from '../lib/logger.js'
-import { resolvePromptVersion } from '../lib/resolve-prompt-version.js'
+import { logRequestAsync } from '../lib/logger.js'
 import { fireAndForget } from '../lib/wait-until.js'
-import { parseOpenAIResponse } from '../parsers/openai.js'
-import { scanAll } from '../lib/security-scan.js'
-import { getDecryptedProviderKey, buildUpstreamHeaders, buildDownstreamHeaders, isBlockingEnabled } from './utils.js'
+import { parseOpenAIResponse, type ServiceTier } from '../parsers/openai.js'
+import { buildUpstreamHeaders, buildDownstreamHeaders } from './utils.js'
 import { logOpenAIStream } from './stream-logger.js'
-import { cancelReaderSilently, makeStreamDeadline, readWithDeadline } from './stream-deadline.js'
-import { ApiError } from '../lib/errors.js'
+import { assertProviderKey } from './shared/provider-key.js'
+import { parseProxyRequestBody, chooseFetchBody } from './shared/request-body.js'
+import { runSecurityGate } from './shared/security-gate.js'
+import { fetchUpstreamWithTimeout } from './shared/upstream-fetch.js'
+import { buildLogBase } from './shared/log-base.js'
+import { runLineBufferedStreamPump } from './shared/stream-pump.js'
 
 // Overridable so E2E (apps/web/__e2e__/smoke.spec.ts via docker-compose
 // dev mock-openai) can point this at http://localhost:4000 without hitting
@@ -24,7 +25,6 @@ import { ApiError } from '../lib/errors.js'
 const OPENAI_BASE = (
   process.env['OPENAI_API_BASE'] ?? 'https://api.openai.com'
 ).replace(/\/v1\/?$/, '')
-const UPSTREAM_TIMEOUT_MS = parseInt(process.env['UPSTREAM_TIMEOUT_MS'] ?? '35000', 10)
 
 export const openaiProxy = new Hono<ApiKeyContext>()
 
@@ -35,165 +35,49 @@ openaiProxy.use('*', enforceQuota)
 
 openaiProxy.all('/*', async (c) => {
   const handlerStartMs = Date.now()
-
   const organizationId = c.get('organizationId')
-  // projectId is guaranteed non-null on this path: requireFullScope rejects
-  // 'public' keys and the api_keys_scope_owner_consistency CHECK constraint
-  // forces 'full' keys to carry a project_id. Narrowing here is purely a
-  // TS aid since the dual-owner model made ApiKeyContext.projectId nullable.
+  // requireFullScope rejects 'public' keys and the DB CHECK constraint forces
+  // 'full' keys to carry a project_id, so this narrowing is safe.
   const projectId = c.get('projectId') as string
   const apiKeyId = c.get('apiKeyId')
 
-  // Nested-keys model: provider key pool is owned by this Spanlens key.
-  // Path = "/proxy/openai/..." → resolve OpenAI key under apiKeyId.
-  const providerKey = await getDecryptedProviderKey(apiKeyId, 'openai')
-  if (!providerKey) {
-    throw new ApiError(
-      'NO_PROVIDER_KEY',
-      'No active OpenAI provider key registered for this Spanlens key',
-      { provider: 'openai' },
-    )
-  }
-  const decryptedKey = providerKey.plaintext
+  const providerKey = await assertProviderKey(apiKeyId, 'openai')
+  const parsed = await parseProxyRequestBody(c, { injectOpenAIStreamOptions: true })
+  const requestFlags = await runSecurityGate(parsed.reqBodyJson, projectId)
 
-  const reqBodyText = await c.req.text()
-  let reqBodyJson: Record<string, unknown> | null = null
-  let isStreaming = false
-
-  try {
-    reqBodyJson = JSON.parse(reqBodyText) as Record<string, unknown>
-    isStreaming = reqBodyJson.stream === true
-
-    // Inject stream_options so the last chunk includes usage
-    if (isStreaming) {
-      reqBodyJson = {
-        ...reqBodyJson,
-        stream_options: { include_usage: true },
-      }
-    }
-  } catch { /* non-JSON body — pass through */ }
-
-  // ── Security scan + blocking ───────────────────────────────────────────────
-  // Scan request body BEFORE forwarding upstream. If injection is detected and
-  // blocking is enabled for this project, reject immediately (422).
-  // PII-only flags are never blocked — they may be legitimate user data.
-  const requestFlags = scanAll(reqBodyJson)
-  const hasInjection = requestFlags.some((f) => f.type === 'injection')
-  if (hasInjection && await isBlockingEnabled(projectId)) {
-    throw new ApiError(
-      'INJECTION_BLOCKED',
-      'Request blocked by Spanlens security policy: prompt injection detected.',
-    )
-  }
-
-  const path = c.req.path.replace(/^\/proxy\/openai/, '')
-  const upstreamUrl = `${OPENAI_BASE}${path}`
-
+  const upstreamUrl = `${OPENAI_BASE}${c.req.path.replace(/^\/proxy\/openai/, '')}`
   const headers = buildUpstreamHeaders(c.req.raw.headers, {
-    Authorization: `Bearer ${decryptedKey}`,
+    Authorization: `Bearer ${providerKey.plaintext}`,
     'Content-Type': 'application/json',
   })
 
-  const startMs = Date.now()
-  const fetchBody =
-    c.req.method !== 'GET' && c.req.method !== 'HEAD'
-      ? isStreaming && reqBodyJson ? JSON.stringify(reqBodyJson) : reqBodyText
-      : null
-
-  const upstreamAbort = new AbortController()
-  const upstreamTimer = setTimeout(() => upstreamAbort.abort(), UPSTREAM_TIMEOUT_MS)
-  let upstreamRes: Response
-  try {
-    upstreamRes = await fetch(upstreamUrl, { method: c.req.method, headers, body: fetchBody, signal: upstreamAbort.signal })
-  } catch (err) {
-    clearTimeout(upstreamTimer)
-    const msg = err instanceof Error ? err.message : 'Unknown error'
-    if (err instanceof Error && err.name === 'AbortError') {
-      throw new ApiError(
-        'UPSTREAM_TIMEOUT',
-        `Upstream request timed out after ${UPSTREAM_TIMEOUT_MS}ms`,
-        { provider: 'openai', timeoutMs: UPSTREAM_TIMEOUT_MS },
-      )
-    }
-    console.error('[openai-proxy] upstream fetch error:', msg)
-    throw new ApiError('UPSTREAM_FAILED', `Upstream request failed: ${msg}`, {
-      provider: 'openai',
-    })
-  }
-  clearTimeout(upstreamTimer)
-  const latencyMs = Date.now() - startMs
-  // Pre-fetch overhead: auth + key decryption + body parsing (our cost, not provider's)
-  const proxyOverheadMs = startMs - handlerStartMs
-
-  const model = (reqBodyJson?.model as string | undefined) ?? ''
-  const traceId = c.req.header('x-trace-id') ?? null
-  const resolved = await resolvePromptVersion(
-    organizationId,
-    c.req.header('x-spanlens-prompt-version') ?? null,
-    traceId,
-  )
-  const promptVersionId = resolved?.versionId ?? null
-  const logBase = {
-    organizationId, projectId, apiKeyId,
+  const { upstreamRes, latencyMs, proxyOverheadMs } = await fetchUpstreamWithTimeout({
+    url: upstreamUrl,
+    method: c.req.method,
+    headers,
+    body: chooseFetchBody(c, parsed, true),
     provider: 'openai',
-    latencyMs, proxyOverheadMs, statusCode: upstreamRes.status,
-    requestBody: reqBodyJson,
-    responseBody: null,
-    errorMessage: null,
-    traceId,
-    spanId: c.req.header('x-span-id') ?? null,
-    promptVersionId,
-    providerKeyId: providerKey.id,
-    userId: c.req.header('x-spanlens-user') ?? null,
-    sessionId: c.req.header('x-spanlens-session') ?? null,
-    logBodyMode: parseLogBodyMode(c.req.header('x-spanlens-log-body')),
-    preComputedRequestFlags: requestFlags,
-  }
+    handlerStartMs,
+  })
 
-  // ── Streaming path (Hono stream helper) ──────────────────────────────────
-  if (isStreaming && upstreamRes.body) {
-    const downstreamHeaders = buildDownstreamHeaders(upstreamRes.headers)
-    downstreamHeaders.forEach((value, key) => c.header(key, value))
-    c.status(upstreamRes.status as 200)
+  const logBase = await buildLogBase({
+    c, provider: 'openai',
+    organizationId, projectId, apiKeyId,
+    providerKey,
+    reqBodyJson: parsed.reqBodyJson,
+    requestFlags,
+    latencyMs, proxyOverheadMs,
+    statusCode: upstreamRes.status,
+  })
 
-    const upstreamBody = upstreamRes.body
+  const model = (parsed.reqBodyJson?.model as string | undefined) ?? ''
 
-    return stream(c, async (honoStream) => {
-      const reader = upstreamBody.getReader()
-      const decoder = new TextDecoder()
-      const deadline = makeStreamDeadline(handlerStartMs)
-      let buffer = ''
-      const lines: string[] = []
-      let truncated = false
-
-      pump: for (;;) {
-        const outcome = await readWithDeadline(reader, deadline)
-        switch (outcome.kind) {
-          case 'done':
-            break pump
-          case 'timeout':
-            truncated = true
-            console.warn('[openai-stream] deadline reached, closing gracefully')
-            await cancelReaderSilently(reader)
-            break pump
-          case 'error':
-            console.error('[openai-stream] reader error:', outcome.error)
-            break pump
-          case 'chunk': {
-            await honoStream.write(outcome.value)
-            buffer += decoder.decode(outcome.value, { stream: true })
-            const parts = buffer.split('\n')
-            buffer = parts.pop() ?? ''
-            lines.push(...parts)
-            break
-          }
-        }
-      }
-      if (buffer.length > 0) lines.push(buffer)
-
-      await logOpenAIStream(lines, { ...logBase, model }, { truncated }).catch((err) => {
-        console.error('[openai-stream] log error:', err)
-      })
+  // ── Streaming path ────────────────────────────────────────────────────────
+  if (parsed.isStreaming && upstreamRes.body) {
+    return runLineBufferedStreamPump({
+      c, upstreamRes, handlerStartMs, provider: 'openai',
+      onComplete: (lines, truncated) =>
+        logOpenAIStream(lines, { ...logBase, model }, { truncated }),
     })
   }
 
@@ -209,19 +93,19 @@ openaiProxy.all('/*', async (c) => {
   let cacheReadTokens = 0
   let cacheWriteTokens = 0
   let resolvedModel = model
-  let serviceTier: import('../parsers/openai.js').ServiceTier | undefined
+  let serviceTier: ServiceTier | undefined
 
   if (upstreamRes.ok && resBodyJson) {
     try {
-      const parsed = parseOpenAIResponse(resBodyJson as Record<string, unknown>)
-      if (parsed) {
-        resolvedModel = parsed.model || model
-        promptTokens = parsed.promptTokens
-        completionTokens = parsed.completionTokens
-        totalTokens = parsed.totalTokens
-        cacheReadTokens = parsed.cacheReadTokens ?? 0
-        cacheWriteTokens = parsed.cacheWriteTokens ?? 0
-        serviceTier = parsed.serviceTier
+      const p = parseOpenAIResponse(resBodyJson as Record<string, unknown>)
+      if (p) {
+        resolvedModel = p.model || model
+        promptTokens = p.promptTokens
+        completionTokens = p.completionTokens
+        totalTokens = p.totalTokens
+        cacheReadTokens = p.cacheReadTokens ?? 0
+        cacheWriteTokens = p.cacheWriteTokens ?? 0
+        serviceTier = p.serviceTier
       }
     } catch { /* ignore */ }
   }
