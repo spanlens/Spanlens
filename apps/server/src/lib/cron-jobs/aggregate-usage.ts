@@ -17,7 +17,10 @@
  * bypass via service-role is correct here.
  */
 
-// eslint-disable-next-line no-restricted-imports
+// no-restricted-imports rule is scoped to api/ handlers (the worry is
+// tenant-blind reads from request handlers). lib/cron-jobs/ is operator-
+// internal cron territory, so the lint rule doesn't fire here and the
+// inline disable was redundant.
 import { unscopedClickhouse } from '../clickhouse.js'
 import { supabaseAdmin } from '../db.js'
 

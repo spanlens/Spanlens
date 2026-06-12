@@ -8,7 +8,9 @@
  * already in internal_alerts deduplicates.
  */
 
-// eslint-disable-next-line no-restricted-imports
+// Cross-tenant scan by design — operator-internal cron. The
+// no-restricted-imports rule is scoped to api/ handlers and does not
+// fire here, so the inline disable was a no-op.
 import { unscopedClickhouse } from '../clickhouse.js'
 import { supabaseAdmin } from '../db.js'
 

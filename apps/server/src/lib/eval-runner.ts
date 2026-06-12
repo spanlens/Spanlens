@@ -30,7 +30,7 @@ import { buildOpenAIBody } from './playground-runner.js'
 import { startInternalTrace } from './internal-tracing.js'
 // Extracted sub-modules. Re-exported below so existing import sites
 // (`from '../lib/eval-runner.js'`) keep working unchanged.
-import { MAX_RESPONSE_CHARS, extractResponseText } from './eval-runners/shared.js'
+import { extractResponseText } from './eval-runners/shared.js'
 import {
   buildJudgePrompt,
   parseJudgeReply,

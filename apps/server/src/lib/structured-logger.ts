@@ -105,11 +105,13 @@ function emit(level: 'ERROR' | 'WARN', code: LogCode, context: LogContext, err?:
   }
   // Single line, prefixed for grep-ability.
   const line = `${level}[${code}] ${JSON.stringify(payload)}`
+  // The no-console rule is not active in this codebase (the lint config
+  // permits console.error/warn — only console.log is discouraged), so the
+  // earlier `// eslint-disable-next-line no-console` lines were no-ops
+  // and warned as unused directives.
   if (level === 'ERROR') {
-    // eslint-disable-next-line no-console
     console.error(line)
   } else {
-    // eslint-disable-next-line no-console
     console.warn(line)
   }
 }
