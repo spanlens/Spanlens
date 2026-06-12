@@ -22,46 +22,40 @@
  * so concurrency is not needed.
  */
 
-import Ajv, { type ErrorObject } from 'ajv'
-
 import { supabaseAdmin } from './db.js'
 import { requestsScope, selectRequests } from './requests-query.js'
 import { aes256Decrypt } from './crypto.js'
 import { calculateCost } from './cost.js'
 import { buildOpenAIBody } from './playground-runner.js'
 import { startInternalTrace } from './internal-tracing.js'
+// Extracted sub-modules. Re-exported below so existing import sites
+// (`from '../lib/eval-runner.js'`) keep working unchanged.
+import { MAX_RESPONSE_CHARS, extractResponseText } from './eval-runners/shared.js'
+import {
+  buildJudgePrompt,
+  parseJudgeReply,
+  type JudgeConfig,
+  type TypedScoreConfig,
+} from './eval-runners/judge-prompt.js'
+import {
+  runRegex,
+  runJsonSchema,
+  runSimpleEvalRun,
+  type RegexConfig,
+  type JsonSchemaConfig,
+  type SimpleEvalResult,
+} from './eval-runners/deterministic.js'
+
+export { buildJudgePrompt, parseJudgeReply, runRegex, runJsonSchema }
+export type {
+  JudgeConfig,
+  TypedScoreConfig,
+  RegexConfig,
+  JsonSchemaConfig,
+  SimpleEvalResult,
+}
 
 const JUDGE_CONCURRENCY = 5
-const MAX_RESPONSE_CHARS = 4000 // truncate long responses fed to judge
-
-interface JudgeConfig {
-  criterion: string
-  judge_provider: 'openai' | 'anthropic' | 'gemini'
-  judge_model: string
-  scale_min: number
-  scale_max: number
-  // 4B.1c — optional pointer at a workspace score_config. When NULL we
-  // preserve the legacy NUMERIC 0..1 behaviour exactly: the judge is
-  // asked for a number in [scale_min, scale_max], the result clamps and
-  // normalises to 0..1, and only the `score` column is filled. When
-  // non-NULL we route through the type-aware prompt + parser below.
-  score_config?: TypedScoreConfig | null
-}
-
-/**
- * Minimal projection of the score_configs row that the runner actually
- * needs. Mirrors the shape used by `lib/score-validation.ts` so we can
- * share the validator without re-fetching.
- */
-export interface TypedScoreConfig {
-  id: string
-  data_type: 'NUMERIC' | 'CATEGORICAL' | 'BOOLEAN' | 'TEXT'
-  min_value: number | null
-  max_value: number | null
-  categories: unknown
-  bool_true_label: string | null
-  bool_false_label: string | null
-}
 
 interface JudgeOutcome {
   // For NUMERIC configs (and the legacy NULL path) this stays the
@@ -78,39 +72,7 @@ interface JudgeOutcome {
   value_boolean: boolean | null
 }
 
-/** Extracts the assistant response text from a stored response_body. */
-function extractResponseText(body: unknown): string | null {
-  if (!body || typeof body !== 'object') return null
-  const obj = body as Record<string, unknown>
-
-  // OpenAI chat completion
-  const choices = obj.choices as Array<Record<string, unknown>> | undefined
-  if (Array.isArray(choices) && choices[0]) {
-    const msg = choices[0].message as Record<string, unknown> | undefined
-    const content = typeof msg?.content === 'string' ? msg.content : null
-    if (content) return content
-  }
-
-  // Anthropic messages
-  const content = obj.content as Array<Record<string, unknown>> | undefined
-  if (Array.isArray(content)) {
-    const textBlock = content.find((b) => b.type === 'text')
-    if (textBlock && typeof textBlock.text === 'string') return textBlock.text
-  }
-
-  // Gemini
-  const candidates = obj.candidates as Array<Record<string, unknown>> | undefined
-  if (Array.isArray(candidates) && candidates[0]) {
-    const candidate = candidates[0]
-    const cContent = candidate.content as Record<string, unknown> | undefined
-    const parts = cContent?.parts as Array<Record<string, unknown>> | undefined
-    if (Array.isArray(parts) && parts[0] && typeof parts[0].text === 'string') {
-      return parts[0].text
-    }
-  }
-
-  return null
-}
+// extractResponseText moved to ./eval-runners/shared.ts (imported above).
 
 /**
  * Generate a response for a dataset item by running the supplied prompt
@@ -213,167 +175,8 @@ async function generateForItem(
  * config type. The legacy numeric prompt is preserved exactly when
  * score_config is NULL so existing evaluators behave bit-identically.
  */
-export function buildJudgePrompt(
-  criterion: string,
-  responseText: string,
-  config: { scale_min: number; scale_max: number; score_config?: TypedScoreConfig | null },
-): string {
-  const truncated = responseText.length > MAX_RESPONSE_CHARS
-    ? responseText.slice(0, MAX_RESPONSE_CHARS) + '… [truncated]'
-    : responseText
-
-  const intro = `You are an evaluator. Score the assistant response below against this criterion.
-
-Criterion: ${criterion}
-
-Response to evaluate:
-"""
-${truncated}
-"""`
-
-  const sc = config.score_config
-
-  // Legacy NUMERIC path — unchanged from before 4B.1c.
-  if (!sc || sc.data_type === 'NUMERIC') {
-    const min = sc?.min_value ?? config.scale_min
-    const max = sc?.max_value ?? config.scale_max
-    return `${intro}
-
-Reply ONLY in JSON with this exact shape:
-{"score": <number between ${min} and ${max}>, "reasoning": "<one short sentence>"}
-
-No prose outside the JSON. No markdown fences.`
-  }
-
-  if (sc.data_type === 'BOOLEAN') {
-    const trueLabel = sc.bool_true_label ?? 'pass'
-    const falseLabel = sc.bool_false_label ?? 'fail'
-    return `${intro}
-
-Reply ONLY in JSON with this exact shape:
-{"value": <true or false>, "reasoning": "<one short sentence>"}
-
-\`true\` means "${trueLabel}", \`false\` means "${falseLabel}". No prose outside the JSON. No markdown fences.`
-  }
-
-  if (sc.data_type === 'CATEGORICAL') {
-    const cats = Array.isArray(sc.categories)
-      ? sc.categories.filter((c): c is string => typeof c === 'string')
-      : []
-    return `${intro}
-
-Reply ONLY in JSON with this exact shape:
-{"value": "<one of: ${cats.map((c) => JSON.stringify(c)).join(', ')}>", "reasoning": "<one short sentence>"}
-
-The \`value\` MUST be one of the categories above, exact case match. No prose outside the JSON. No markdown fences.`
-  }
-
-  // TEXT — judge writes a free-form short answer.
-  return `${intro}
-
-Reply ONLY in JSON with this exact shape:
-{"value": "<short answer>", "reasoning": "<one short sentence>"}
-
-Keep \`value\` under 200 characters. No prose outside the JSON. No markdown fences.`
-}
-
-/**
- * Parse the judge's JSON reply into the right typed column. Falls back
- * to NUMERIC parsing (clamp + normalise to 0..1) when score_config is
- * absent or NUMERIC, which preserves the legacy behaviour exactly.
- */
-export function parseJudgeReply(
-  text: string,
-  config: { scale_min: number; scale_max: number; score_config?: TypedScoreConfig | null },
-): {
-  score: number | null
-  value_number: number | null
-  value_string: string | null
-  value_boolean: boolean | null
-  reasoning: string
-} | null {
-  // Strip markdown fences if present.
-  let cleaned = text.trim()
-  if (cleaned.startsWith('```')) {
-    cleaned = cleaned.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim()
-  }
-
-  let parsed: { score?: unknown; value?: unknown; reasoning?: unknown }
-  try {
-    parsed = JSON.parse(cleaned) as typeof parsed
-  } catch {
-    return null
-  }
-  const reasoning = typeof parsed.reasoning === 'string' ? parsed.reasoning.trim() : ''
-  const sc = config.score_config
-
-  // Legacy / explicit NUMERIC path. Keep the prior clamp + normalise so
-  // result-table aggregations stay backwards compatible.
-  if (!sc || sc.data_type === 'NUMERIC') {
-    // Accept either {score: number} (legacy) or {value: number} (new),
-    // so an LLM that drifts between the two formats still works.
-    const raw = parsed.score ?? parsed.value
-    const numeric = typeof raw === 'number' ? raw : Number(raw)
-    if (!Number.isFinite(numeric)) return null
-    const min = sc?.min_value ?? config.scale_min
-    const max = sc?.max_value ?? config.scale_max
-    const clamped = Math.max(min, Math.min(max, numeric))
-    return {
-      score: clamped, // legacy column — same value as the new path filled below
-      value_number: clamped,
-      value_string: null,
-      value_boolean: null,
-      reasoning,
-    }
-  }
-
-  if (sc.data_type === 'BOOLEAN') {
-    const raw = parsed.value
-    let normalised: boolean | null = null
-    if (typeof raw === 'boolean') normalised = raw
-    else if (raw === 'true' || raw === 'pass' || raw === 'yes') normalised = true
-    else if (raw === 'false' || raw === 'fail' || raw === 'no') normalised = false
-    if (normalised === null) return null
-    return {
-      score: null,
-      value_number: null,
-      value_string: null,
-      value_boolean: normalised,
-      reasoning,
-    }
-  }
-
-  if (sc.data_type === 'CATEGORICAL') {
-    const raw = parsed.value
-    if (typeof raw !== 'string' || raw.length === 0) return null
-    const cats = Array.isArray(sc.categories)
-      ? sc.categories.filter((c): c is string => typeof c === 'string')
-      : []
-    if (!cats.includes(raw)) return null
-    return {
-      score: null,
-      value_number: null,
-      value_string: raw,
-      value_boolean: null,
-      reasoning,
-    }
-  }
-
-  // TEXT — accept any non-empty string, trim it. The judge has been
-  // told to keep it under 200 chars; we don't strictly enforce on read
-  // since human reviewers might prefer the long version.
-  const raw = parsed.value
-  if (typeof raw !== 'string') return null
-  const trimmed = raw.trim()
-  if (trimmed.length === 0) return null
-  return {
-    score: null,
-    value_number: null,
-    value_string: trimmed,
-    value_boolean: null,
-    reasoning,
-  }
-}
+// buildJudgePrompt + parseJudgeReply moved to ./eval-runners/judge-prompt.ts
+// (imported and re-exported above for backward compatibility).
 
 /** Calls the judge LLM once. Returns null on failure (caller skips the sample). */
 async function callJudge(
@@ -632,203 +435,9 @@ interface SampleOutcome extends JudgeOutcome {
 // eval_results INSERT + aggregate so the API surface stays the same as
 // the llm_judge path.
 
-export interface RegexConfig {
-  pattern: string
-  flags?: string
-}
-
-export interface JsonSchemaConfig {
-  // Ajv accepts plain JSON Schema objects. Keep this `unknown` at the
-  // boundary so we can hand the validation error back to the operator
-  // instead of throwing if they author a bad schema.
-  schema: unknown
-}
-
-/**
- * Deterministic 0/1 outcome shared by both code evaluator types. Matches
- * the JudgeOutcome shape on the columns the eval_results table actually
- * stores, so the existing INSERT path doesn't need a new branch.
- */
-export interface SimpleEvalResult {
-  score: 0 | 1
-  value_boolean: boolean
-  reasoning: string
-}
-
-/**
- * runRegex — pass iff the pattern matches the response text.
- *
- * Throws when the pattern itself is invalid (bad regex syntax, unknown
- * flag). The runEvalRun wrapper catches the throw and writes a 0 row
- * with the error message in reasoning, so a typo in a customer's
- * evaluator config produces failing samples rather than silently
- * skipping the whole run.
- */
-export function runRegex(config: RegexConfig, output: string): SimpleEvalResult {
-  // No defensive normalisation of flags. Ajv's "user-authored config"
-  // policy applies here too — surface the SyntaxError verbatim if they
-  // pass an unsupported flag like 'q'.
-  const re = new RegExp(config.pattern, config.flags ?? '')
-  const matched = re.test(output)
-  return {
-    score: matched ? 1 : 0,
-    value_boolean: matched,
-    reasoning: matched ? `regex matched: /${config.pattern}/${config.flags ?? ''}` : `no match for /${config.pattern}/${config.flags ?? ''}`,
-  }
-}
-
-/**
- * runJsonSchema — pass iff the response parses as JSON and validates
- * against the schema.
- *
- * Two failure modes share a single returned shape: parse error (invalid
- * JSON) and validation error (well-formed JSON that doesn't match the
- * schema). Operators reading /evals/runs/:id need to tell those apart,
- * so the reasoning field carries the actual Ajv error text or the
- * SyntaxError message — never a generic 'failed'.
- */
-export function runJsonSchema(
-  config: JsonSchemaConfig,
-  output: string,
-): SimpleEvalResult {
-  // Lazy Ajv instance — `new Ajv()` allocates its own validator cache.
-  // Per-call instantiation keeps the test surface tiny (no shared state
-  // between samples) and is cheap enough for the deterministic path.
-  const ajv = new Ajv({ allErrors: false })
-
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(output)
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err)
-    return {
-      score: 0,
-      value_boolean: false,
-      reasoning: `not JSON: ${message}`,
-    }
-  }
-
-  let validate: ReturnType<typeof ajv.compile>
-  try {
-    // Ajv requires the schema to be a plain object. A non-object schema
-    // is a config error, not a sample failure — surface it as a failing
-    // sample so the operator sees it on the first run.
-    validate = ajv.compile(config.schema as Parameters<typeof ajv.compile>[0])
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err)
-    return {
-      score: 0,
-      value_boolean: false,
-      reasoning: `schema compile error: ${message}`,
-    }
-  }
-
-  const valid = validate(parsed)
-  if (valid) {
-    return { score: 1, value_boolean: true, reasoning: 'valid' }
-  }
-
-  const errs = (validate.errors ?? []) as ErrorObject[]
-  const reasoning = errs.length > 0 ? ajv.errorsText(errs) : 'invalid (no error details)'
-  return { score: 0, value_boolean: false, reasoning }
-}
-
-/**
- * Run a deterministic eval against the production sample set. Mirrors
- * the sample-fetch step of runEvalRun (LLM-as-judge production path)
- * but skips provider-key resolution, the judge prompt, and concurrency
- * windowing. Used by runEvalRun when evaluator.type is regex or
- * json_schema.
- */
-async function runSimpleEvalRun(
-  evalRunId: string,
-  organizationId: string,
-  promptVersionId: string,
-  sampleSize: number,
-  sampleFrom: string | null | undefined,
-  sampleTo: string | null | undefined,
-  evaluatorType: 'regex' | 'json_schema',
-  config: RegexConfig | JsonSchemaConfig,
-): Promise<void> {
-  const sampleFilters: string[] = [
-    'prompt_version_id = {promptVersionId:UUID}',
-    "response_body != ''",
-  ]
-  const sampleParams: Record<string, unknown> = { promptVersionId }
-  if (sampleFrom) {
-    sampleFilters.push('created_at >= parseDateTime64BestEffort({sampleFrom:String})')
-    sampleParams['sampleFrom'] = sampleFrom
-  }
-  if (sampleTo) {
-    sampleFilters.push('created_at <= parseDateTime64BestEffort({sampleTo:String})')
-    sampleParams['sampleTo'] = sampleTo
-  }
-
-  interface SampleQueryRow {
-    id: string
-    response_body: string
-  }
-  const scope = await requestsScope(organizationId)
-  const samples = await selectRequests<SampleQueryRow>({
-    scope,
-    select: 'id, response_body',
-    filters: sampleFilters.join(' AND '),
-    orderBy: 'created_at DESC',
-    limit: sampleSize,
-    params: sampleParams,
-  })
-
-  // Score each sample synchronously — no I/O after the initial fetch.
-  const scored = samples
-    .map((s) => {
-      let parsed: unknown
-      try {
-        parsed = JSON.parse(s.response_body)
-      } catch {
-        parsed = s.response_body
-      }
-      const responseText = extractResponseText(parsed) ?? ''
-      if (!responseText) return null
-
-      const result: SimpleEvalResult =
-        evaluatorType === 'regex'
-          ? runRegex(config as RegexConfig, responseText)
-          : runJsonSchema(config as JsonSchemaConfig, responseText)
-
-      return {
-        eval_run_id: evalRunId,
-        request_id: s.id,
-        dataset_item_id: null,
-        score: result.score,
-        reasoning: result.reasoning,
-        value_number: null,
-        value_string: null,
-        value_boolean: result.value_boolean,
-        cost_usd: 0,
-        tokens: 0,
-      }
-    })
-    .filter((r): r is NonNullable<typeof r> => r !== null)
-
-  if (scored.length > 0) {
-    const { error: insErr } = await supabaseAdmin.from('eval_results').insert(scored)
-    if (insErr) throw new Error(`eval_results insert failed: ${insErr.message}`)
-  }
-
-  const totalScore = scored.reduce((acc, r) => acc + r.score, 0)
-  const aggregateScore = scored.length > 0 ? totalScore / scored.length : 0
-  await supabaseAdmin
-    .from('eval_runs')
-    .update({
-      status: 'completed',
-      sample_count: scored.length,
-      aggregate_score: aggregateScore,
-      total_cost_usd: 0,
-      total_tokens: 0,
-      completed_at: new Date().toISOString(),
-    })
-    .eq('id', evalRunId)
-}
+// Deterministic runners (regex/json_schema) + runSimpleEvalRun moved to
+// ./eval-runners/deterministic.ts (imported and re-exported above for
+// backward compatibility with existing test imports).
 
 /**
  * Main entry point. Executes the eval_run end-to-end and updates DB rows.
