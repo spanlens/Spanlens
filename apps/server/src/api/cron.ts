@@ -133,7 +133,6 @@ cronRouter.get('/aggregate-usage', async (c) => {
           AND created_at <  parseDateTime64BestEffort({dayEnd:String})
           AND status_code < 400
           AND model != ''
-          AND project_id != ''
         GROUP BY organization_id, project_id, provider, model
       `
       const dayStart = `${date} 00:00:00.000`
