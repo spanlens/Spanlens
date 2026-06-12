@@ -29,6 +29,30 @@ describe('calculateCost', () => {
     expect(result?.totalCost).toBe(18)
   })
 
+  it('calculates cost for OpenAI embeddings (input-only, completion is 0)', () => {
+    // Embeddings return prompt_tokens only; completion_tokens is always 0
+    // (the response carries vectors, not generated text). The calculator
+    // multiplies completion_tokens × completion_price so the completion side
+    // contributes 0 to the total regardless of the seed price. This test
+    // pins that RAG cost tracking lands non-zero for the prompt side.
+    const result = calculateCost('openai', 'text-embedding-3-small', {
+      promptTokens: 1_000_000,
+      completionTokens: 0,
+    })
+    expect(result).not.toBeNull()
+    expect(result?.promptCost).toBe(0.02)
+    expect(result?.completionCost).toBe(0)
+    expect(result?.totalCost).toBe(0.02)
+  })
+
+  it('calculates cost for text-embedding-3-large at $0.13 / 1M', () => {
+    const result = calculateCost('openai', 'text-embedding-3-large', {
+      promptTokens: 1_000_000,
+      completionTokens: 0,
+    })
+    expect(result?.totalCost).toBe(0.13)
+  })
+
   it('falls back to prefix match for dated model suffix (e.g. gpt-4o-mini-2024-07-18)', () => {
     const result = calculateCost('openai', 'gpt-4o-mini-2024-07-18', {
       promptTokens: 1_000_000,

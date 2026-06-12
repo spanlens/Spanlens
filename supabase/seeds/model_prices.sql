@@ -61,6 +61,12 @@ INSERT INTO model_prices (
   ('openai', 'gpt-3.5-turbo-16k-0613',           3.00,   4.00,   NULL,   NULL),
   ('openai', 'davinci-002',                      2.00,   2.00,   NULL,   NULL),
   ('openai', 'babbage-002',                      0.40,   0.40,   NULL,   NULL),
+  -- ── OpenAI: Embeddings (input-only — completion_price stays 0) ───────────
+  -- Source: openai.com/api/pricing as of 2026-06. No cache pricing exists
+  -- for embeddings on OpenAI as of this seed.
+  ('openai', 'text-embedding-3-small',           0.020,  0.000,  NULL,   NULL),
+  ('openai', 'text-embedding-3-large',           0.130,  0.000,  NULL,   NULL),
+  ('openai', 'text-embedding-ada-002',           0.100,  0.000,  NULL,   NULL),
   -- ── Anthropic: Claude 4.x (aliases + dated variants) ────────────────────
   ('anthropic', 'claude-opus-4-7',               5.00,  25.00,   0.50,   6.25),
   ('anthropic', 'claude-opus-4-6',               5.00,  25.00,   0.50,   6.25), -- alias only; no dated form per docs
