@@ -7,6 +7,7 @@ import { dispatchWebhookEvent } from '../lib/webhook-dispatch.js'
 import { invalidateWebhookCache } from '../lib/webhook-emit.js'
 import { recordAuditEvent } from '../lib/audit-log.js'
 import { ApiError } from '../lib/errors.js'
+import { validateOutboundUrl } from '../lib/safe-url.js'
 
 export const webhooksRouter = new Hono<JwtContext>()
 webhooksRouter.use('*', authJwt)
@@ -54,8 +55,15 @@ webhooksRouter.post('/', requireEdit, async (c) => {
   if (typeof body.name !== 'string' || body.name.trim().length === 0) {
     throw new ApiError('VALIDATION_FAILED', 'name is required')
   }
-  if (typeof body.url !== 'string' || !body.url.startsWith('https://')) {
-    throw new ApiError('BAD_REQUEST', 'url must start with https://')
+  if (typeof body.url !== 'string') {
+    throw new ApiError('BAD_REQUEST', 'url is required')
+  }
+  // SSRF defense — phase-2 (DNS-aware) validation at registration time.
+  // dispatch-time validation in lib/webhook-dispatch.ts catches DNS rebinding
+  // where the same hostname resolves to a private IP later.
+  const urlCheck = await validateOutboundUrl(body.url)
+  if (!urlCheck.ok) {
+    throw new ApiError('BAD_REQUEST', urlCheck.message, { reason: urlCheck.reason })
   }
 
   const events: string[] = Array.isArray(body.events)
@@ -119,7 +127,13 @@ webhooksRouter.patch('/:id', requireEdit, async (c) => {
   if (typeof body.name === 'string' && body.name.trim().length > 0) {
     updates['name'] = body.name.trim()
   }
-  if (typeof body.url === 'string' && body.url.startsWith('https://')) {
+  if (typeof body.url === 'string' && body.url.length > 0) {
+    // Same SSRF defense as POST — caller may be moving the webhook to a new
+    // target so the full DNS-aware check must run here too.
+    const urlCheck = await validateOutboundUrl(body.url)
+    if (!urlCheck.ok) {
+      throw new ApiError('BAD_REQUEST', urlCheck.message, { reason: urlCheck.reason })
+    }
     updates['url'] = body.url.trim()
   }
   if (Array.isArray(body.events)) {

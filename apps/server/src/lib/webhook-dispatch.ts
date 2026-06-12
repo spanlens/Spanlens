@@ -9,6 +9,7 @@
  */
 
 import { supabaseAdmin } from './db.js'
+import { validateOutboundUrl } from './safe-url.js'
 
 export interface WebhookRow {
   id: string
@@ -63,6 +64,22 @@ export async function sendWebhook(
   let httpStatus: number | null = null
   let errorMessage: string | null = null
   let ok = false
+
+  // SSRF defense — validate at dispatch time even though registration also
+  // validated. DNS rebinding: the hostname's A record may have flipped to a
+  // private IP since registration. webhook_deliveries records the rejection
+  // (ok:false, errorMessage) so the retry cron will exhaust attempts and
+  // stop, instead of hammering an internal target on every retry tick.
+  const urlCheck = await validateOutboundUrl(url)
+  if (!urlCheck.ok) {
+    return {
+      ok: false,
+      httpStatus: null,
+      errorMessage: `URL rejected by SSRF guard: ${urlCheck.message}`,
+      durationMs: Date.now() - startMs,
+      payloadStr,
+    }
+  }
 
   try {
     const res = await fetch(url, {
