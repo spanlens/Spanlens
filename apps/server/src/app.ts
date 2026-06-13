@@ -11,6 +11,7 @@ import { openaiProxy }     from './proxy/openai.js'
 import { anthropicProxy }  from './proxy/anthropic.js'
 import { geminiProxy }     from './proxy/gemini.js'
 import { azureProxy }      from './proxy/azure.js'
+import { mistralProxy }    from './proxy/mistral.js'
 
 import { organizationsRouter } from './api/organizations.js'
 import { projectsRouter }      from './api/projects.js'
@@ -139,6 +140,7 @@ app.route('/proxy/openai',    openaiProxy)
 app.route('/proxy/anthropic', anthropicProxy)
 app.route('/proxy/gemini',    geminiProxy)
 app.route('/proxy/azure',     azureProxy)
+app.route('/proxy/mistral',   mistralProxy)
 
 // ── SDK ingestion routes (authApiKey middleware) ──────────────
 app.route('/ingest',          ingestRouter)

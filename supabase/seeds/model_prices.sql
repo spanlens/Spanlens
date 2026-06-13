@@ -67,6 +67,20 @@ INSERT INTO model_prices (
   ('openai', 'text-embedding-3-small',           0.020,  0.000,  NULL,   NULL),
   ('openai', 'text-embedding-3-large',           0.130,  0.000,  NULL,   NULL),
   ('openai', 'text-embedding-ada-002',           0.100,  0.000,  NULL,   NULL),
+  -- ── Mistral: chat completion + multimodal + embeddings ───────────────────
+  -- Source: mistral.ai/technology pricing page, 2026-06. Cache pricing not
+  -- published (Mistral doesn't surface cache tokens in usage today).
+  ('mistral', 'mistral-large-latest',            2.00,   6.00,   NULL,   NULL),
+  ('mistral', 'mistral-medium-latest',           0.40,   2.00,   NULL,   NULL),
+  ('mistral', 'mistral-small-latest',            0.20,   0.60,   NULL,   NULL),
+  ('mistral', 'pixtral-large-latest',            2.00,   6.00,   NULL,   NULL),
+  ('mistral', 'pixtral-12b',                     0.15,   0.15,   NULL,   NULL),
+  ('mistral', 'codestral-latest',                0.20,   0.60,   NULL,   NULL),
+  ('mistral', 'ministral-3b-latest',             0.04,   0.04,   NULL,   NULL),
+  ('mistral', 'ministral-8b-latest',             0.10,   0.10,   NULL,   NULL),
+  ('mistral', 'open-mistral-nemo',               0.15,   0.15,   NULL,   NULL),
+  ('mistral', 'mixtral-8x22b',                   2.00,   6.00,   NULL,   NULL),
+  ('mistral', 'mistral-embed',                   0.10,   0.000,  NULL,   NULL),
   -- ── Anthropic: Claude 4.x (aliases + dated variants) ────────────────────
   ('anthropic', 'claude-opus-4-7',               5.00,  25.00,   0.50,   6.25),
   ('anthropic', 'claude-opus-4-6',               5.00,  25.00,   0.50,   6.25), -- alias only; no dated form per docs
