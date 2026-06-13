@@ -80,6 +80,12 @@ def configure_gemini(
     endpoint. After calling, all ``genai.GenerativeModel(...).generate_content(...)``
     calls flow through Spanlens.
 
+    ``transport="rest"`` is mandatory here, not optional. The default gRPC
+    transport ignores an ``api_endpoint`` that is a full ``https://`` URL, so
+    requests silently bypass the proxy and never get logged. REST transport
+    honours the URL (including the ``/proxy/gemini`` path) and sends the key as
+    the ``x-goog-api-key`` header that the proxy authenticates against.
+
     Note:
         ``google.generativeai`` configures the endpoint *globally* per
         process — use this in single-tenant scripts. For multi-tenant
@@ -108,8 +114,10 @@ def configure_gemini(
 
     # google.generativeai accepts api_endpoint via client_options. The path
     # prefix (e.g. /v1beta) is added by the SDK; we only configure the host.
+    # transport="rest" is required so the https api_endpoint is actually used
+    # (the default gRPC transport ignores it and bypasses the proxy).
     client_options: Any = {"api_endpoint": proxy}
-    genai.configure(api_key=resolved_key, client_options=client_options)
+    genai.configure(api_key=resolved_key, transport="rest", client_options=client_options)
 
 
 __all__ = [
