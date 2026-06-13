@@ -37,7 +37,8 @@ export default function ProxyDocs() {
 https://server.spanlens.io/proxy/anthropic
 https://server.spanlens.io/proxy/gemini/v1beta
 https://server.spanlens.io/proxy/azure
-https://server.spanlens.io/proxy/mistral/v1`}</CodeBlock>
+https://server.spanlens.io/proxy/mistral/v1
+https://server.spanlens.io/proxy/openrouter/v1`}</CodeBlock>
       <p>
         Send requests exactly as you would to the real provider, with two changes:
       </p>
@@ -183,6 +184,46 @@ res = client.chat.completions.create(
         (multimodal), <code>codestral-latest</code>, the <code>ministral-*</code>{' '}
         family, <code>open-mistral-nemo</code>, and <code>mistral-embed</code>{' '}
         for embeddings. Cost lands on every row.
+      </p>
+
+      <h2 id="python-openrouter">Python, OpenRouter</h2>
+      <p>
+        OpenRouter is a meta-provider: one API key, one base URL, 100+ models
+        from 30+ providers (OpenAI, Anthropic, Mistral, Meta, DeepSeek, Qwen,
+        Cohere, Perplexity, ...). The wire protocol is OpenAI-compatible, so
+        the same <code>openai</code> client works once the base URL is pointed
+        at <code>/proxy/openrouter/v1</code>. Switch models with a single
+        string change instead of swapping clients.
+      </p>
+      <CodeBlock language="python">{`from openai import OpenAI
+
+client = OpenAI(
+    api_key=os.environ["SPANLENS_API_KEY"],
+    base_url="https://server.spanlens.io/proxy/openrouter/v1",
+)
+
+# Model id carries a vendor prefix
+res = client.chat.completions.create(
+    model="anthropic/claude-3.5-sonnet",
+    messages=[{"role": "user", "content": "Hi"}],
+)
+
+# Same client, different model — no code changes
+res2 = client.chat.completions.create(
+    model="meta-llama/llama-3.1-70b-instruct",
+    messages=[{"role": "user", "content": "Hi"}],
+)`}</CodeBlock>
+      <p className="text-sm text-muted-foreground">
+        Cost preference: when OpenRouter reports{' '}
+        <code>usage.cost</code> on the response (authoritative, includes
+        their margin/discount) Spanlens logs that figure verbatim. When it
+        is absent, the proxy strips the vendor prefix (
+        <code>anthropic/claude-3-5-sonnet</code> →{' '}
+        <code>claude-3-5-sonnet</code>) and looks the model up in the same
+        <code> model_prices</code> table the other providers use. Unknown
+        model + no <code>usage.cost</code> → <code>cost_usd</code> lands
+        NULL (visible in <a href="/requests">/requests</a> so you know to
+        check OpenRouter&apos;s own dashboard for that row).
       </p>
 
       <h2 id="curl">curl, raw HTTP</h2>
