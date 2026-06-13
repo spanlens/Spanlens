@@ -8,7 +8,7 @@ import { logRequestAsync } from '../lib/logger.js'
 import { fireAndForget } from '../lib/wait-until.js'
 import { parseOpenAIResponse, type ServiceTier } from '../parsers/openai.js'
 import { buildUpstreamHeaders, buildDownstreamHeaders } from './utils.js'
-import { logOpenAIStream } from './stream-logger.js'
+import { logOpenRouterStream } from './stream-logger.js'
 import { assertProviderKey } from './shared/provider-key.js'
 import { parseProxyRequestBody, chooseFetchBody } from './shared/request-body.js'
 import { runSecurityGate } from './shared/security-gate.js'
@@ -101,7 +101,7 @@ openrouterProxy.all('/*', async (c) => {
     return runLineBufferedStreamPump({
       c, upstreamRes, handlerStartMs, provider: 'openrouter',
       onComplete: (lines, truncated) =>
-        logOpenAIStream(lines, { ...logBase, model }, { truncated }),
+        logOpenRouterStream(lines, { ...logBase, model }, { truncated }),
     })
   }
 

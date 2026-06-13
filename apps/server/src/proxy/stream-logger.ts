@@ -132,6 +132,125 @@ export async function logOpenAIStream(
   }
 }
 
+/**
+ * OpenRouter streams use the OpenAI SSE shape, but the final usage chunk
+ * also carries an authoritative `usage.cost` field (USD), which our local
+ * price table can't replicate because OpenRouter applies per-customer
+ * discounts and routes some traffic through cheaper inference providers
+ * we don't see. We pre-extract that value here and prefer it over the
+ * model-table lookup — same preference order as the non-streaming path
+ * in proxy/openrouter.ts. Without this, /requests rows for streamed
+ * OpenRouter calls show cost_usd = null.
+ */
+export async function logOpenRouterStream(
+  lines: string[],
+  base: StreamLogBase,
+  ctx: StreamLogContext = {},
+): Promise<void> {
+  let model = base.model
+  let promptTokens = 0
+  let completionTokens = 0
+  let totalTokens = 0
+  let cacheReadTokens = 0
+  let cacheWriteTokens = 0
+  let serviceTier: ServiceTier | undefined
+  let openrouterReportedCost: number | null = null
+
+  for (const line of lines) {
+    // Capture usage.cost before delegating to parseOpenAIStreamChunk, which
+    // collapses the chunk into a typed shape that drops unrecognized fields.
+    const dataMatch = line.match(/^data:\s*(.+)$/)
+    if (dataMatch && dataMatch[1] && dataMatch[1] !== '[DONE]') {
+      try {
+        const chunk = JSON.parse(dataMatch[1]) as Record<string, unknown>
+        const usage = chunk['usage'] as Record<string, unknown> | undefined
+        const rawCost = usage?.['cost']
+        if (typeof rawCost === 'number' && Number.isFinite(rawCost)) {
+          openrouterReportedCost = rawCost
+        }
+      } catch {
+        /* non-JSON line, ignore */
+      }
+    }
+    const parsed = parseOpenAIStreamChunk(line)
+    if (!parsed) continue
+    if (parsed.model) model = parsed.model
+    if (parsed.promptTokens) promptTokens = parsed.promptTokens
+    if (parsed.completionTokens) completionTokens = parsed.completionTokens
+    if (parsed.totalTokens) totalTokens = parsed.totalTokens
+    if (parsed.cacheReadTokens) cacheReadTokens = parsed.cacheReadTokens
+    if (parsed.cacheWriteTokens) cacheWriteTokens = parsed.cacheWriteTokens
+    if (parsed.serviceTier) serviceTier = parsed.serviceTier
+  }
+
+  // Cost preference order matches the non-streaming path in proxy/openrouter.ts:
+  //   1. usage.cost from the final SSE chunk (authoritative).
+  //   2. local calculator against the vendor-stripped model id.
+  //   3. NULL.
+  const strippedModel = (() => {
+    const idx = model.indexOf('/')
+    return idx === -1 ? model : model.slice(idx + 1)
+  })()
+  let finalCostUsd: number | null = null
+  if (openrouterReportedCost !== null) {
+    finalCostUsd = openrouterReportedCost
+  } else {
+    const lookup = calculateCost('openrouter' as Provider, strippedModel, {
+      promptTokens, completionTokens, cacheReadTokens, cacheWriteTokens, serviceTier,
+    })
+    finalCostUsd = lookup?.totalCost ?? null
+  }
+
+  const text = extractOpenAIStreamText(lines)
+  if (lines.length > 0 && text.length === 0) {
+    console.warn(
+      '[openrouter-stream] capture-empty: %d SSE lines, 0 chars extracted (parser drift?)',
+      lines.length,
+    )
+  }
+  const responseBody = text ? {
+    object: 'chat.completion',
+    model,
+    choices: [{ message: { role: 'assistant', content: text }, finish_reason: 'stop' }],
+    usage: {
+      prompt_tokens: promptTokens,
+      completion_tokens: completionTokens,
+      total_tokens: totalTokens,
+      ...(cacheReadTokens > 0 ? { prompt_tokens_details: { cached_tokens: cacheReadTokens } } : {}),
+      ...(openrouterReportedCost !== null ? { cost: openrouterReportedCost } : {}),
+    },
+  } : null
+
+  await logRequestAsync({
+    ...base,
+    model,
+    promptTokens,
+    completionTokens,
+    totalTokens,
+    cacheReadTokens,
+    cacheWriteTokens,
+    serviceTier: serviceTier ?? null,
+    costUsd: finalCostUsd,
+    responseBody,
+    truncated: ctx.truncated ?? false,
+  })
+
+  if (base.spanId) {
+    const reqBody = base.requestBody as Record<string, unknown> | null
+    const messages = reqBody?.messages
+    if (messages) {
+      await injectSpanInput(base.spanId, base.organizationId, { messages }).catch((err) => {
+        console.error('[span-input-inject:openrouter]', err)
+      })
+    }
+    if (text) {
+      await injectSpanOutput(base.spanId, base.organizationId, text).catch((err) => {
+        console.error('[span-output-inject:openrouter]', err)
+      })
+    }
+  }
+}
+
 export async function logAnthropicStream(
   lines: string[],
   base: StreamLogBase,
