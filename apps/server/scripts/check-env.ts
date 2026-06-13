@@ -26,6 +26,7 @@
  */
 
 import { exit } from 'node:process'
+import { fileURLToPath } from 'node:url'
 import 'dotenv/config'
 
 interface Check {
@@ -467,7 +468,20 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((err) => {
-  console.error(`${c.red}check-env crashed:${c.reset}`, err)
-  exit(2)
-})
+// Only run when invoked directly (e.g. `pnpm check:env`), not when this
+// module is imported by `check-env.test.ts` — otherwise vitest would
+// execute main() during the test discovery pass and pollute CI output.
+const isEntryPoint = (() => {
+  try {
+    return fileURLToPath(import.meta.url) === process.argv[1]
+  } catch {
+    return false
+  }
+})()
+
+if (isEntryPoint) {
+  main().catch((err) => {
+    console.error(`${c.red}check-env crashed:${c.reset}`, err)
+    exit(2)
+  })
+}
