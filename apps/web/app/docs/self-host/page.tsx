@@ -102,7 +102,27 @@ CLICKHOUSE_DB=spanlens
 # RESEND_API_KEY=re_...
 # RESEND_FROM=Spanlens <no-reply@your-domain.com>`}</CodeBlock>
 
-      <h4>3. Start</h4>
+      <h4>3. Verify your env file before starting</h4>
+      <p>
+        Bad <code>ENCRYPTION_KEY</code> length silently corrupts provider keys at decrypt time
+        (the failure surfaces hours later as &ldquo;wrong API key&rdquo; from the upstream
+        provider). A missing <code>WEB_URL</code> sends invite emails pointing at{' '}
+        <code>localhost</code>. Run <code>check:env</code> once before you start the stack and
+        get an actionable report instead of debugging at runtime:
+      </p>
+      <CodeBlock language="bash">{`# From a clone of the repo:
+pnpm install
+pnpm check:env
+
+# Or one-shot via npx, no clone:
+npx -y tsx https://raw.githubusercontent.com/spanlens/Spanlens/main/apps/server/scripts/check-env.ts`}</CodeBlock>
+      <p className="text-sm text-muted-foreground">
+        Exit 0 = all required vars present + valid + Supabase / ClickHouse reachable. Exit 1 =
+        something is wrong, with the exact fix command in the output. <code>--json</code> for
+        CI pipelines, <code>--quiet</code> to show only warnings and errors.
+      </p>
+
+      <h4>4. Start</h4>
       <CodeBlock language="bash">{`curl -o docker-compose.yml https://raw.githubusercontent.com/spanlens/Spanlens/main/docker-compose.yml
 docker compose up -d`}</CodeBlock>
       <ul>
@@ -117,7 +137,7 @@ docker compose up -d`}</CodeBlock>
         startup and patches them into the pre-built bundle automatically, no rebuild needed.
       </p>
 
-      <h4>4. Apply the ClickHouse schema</h4>
+      <h4>5. Apply the ClickHouse schema</h4>
       <p>
         The <code>requests</code> table needs to exist before the server can write logs. Run
         the migration script once after the ClickHouse container is healthy:
