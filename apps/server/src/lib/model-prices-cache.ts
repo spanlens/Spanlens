@@ -130,6 +130,20 @@ export const FALLBACK_PRICES: Record<string, ModelPrice> = {
   'text-embedding-3-small':       { prompt: 0.02, completion: 0 },
   'text-embedding-3-large':       { prompt: 0.13, completion: 0 },
   'text-embedding-ada-002':       { prompt: 0.10, completion: 0 },
+  // ── Mistral: chat completion + embeddings (OpenAI-compatible API) ────────
+  // Same rows live in supabase/seeds/model_prices.sql + the 20260612150000
+  // migration. cache pricing not published by Mistral.
+  'mistral-large-latest':         { prompt: 2.00, completion: 6.00 },
+  'mistral-medium-latest':        { prompt: 0.40, completion: 2.00 },
+  'mistral-small-latest':         { prompt: 0.20, completion: 0.60 },
+  'pixtral-large-latest':         { prompt: 2.00, completion: 6.00 },
+  'pixtral-12b':                  { prompt: 0.15, completion: 0.15 },
+  'codestral-latest':             { prompt: 0.20, completion: 0.60 },
+  'ministral-3b-latest':          { prompt: 0.04, completion: 0.04 },
+  'ministral-8b-latest':          { prompt: 0.10, completion: 0.10 },
+  'open-mistral-nemo':            { prompt: 0.15, completion: 0.15 },
+  'mixtral-8x22b':                { prompt: 2.00, completion: 6.00 },
+  'mistral-embed':                { prompt: 0.10, completion: 0 },
   // ── Anthropic: Claude 4.x (aliases + dated variants) ─────────────────────
   'claude-opus-4-7':              { prompt: 5,    completion: 25, cacheRead: 0.5,  cacheWrite: 6.25 },
   'claude-opus-4-6':              { prompt: 5,    completion: 25, cacheRead: 0.5,  cacheWrite: 6.25 }, // alias only; no dated form per docs

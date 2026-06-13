@@ -36,7 +36,8 @@ export default function ProxyDocs() {
       <CodeBlock>{`https://server.spanlens.io/proxy/openai/v1
 https://server.spanlens.io/proxy/anthropic
 https://server.spanlens.io/proxy/gemini/v1beta
-https://server.spanlens.io/proxy/azure`}</CodeBlock>
+https://server.spanlens.io/proxy/azure
+https://server.spanlens.io/proxy/mistral/v1`}</CodeBlock>
       <p>
         Send requests exactly as you would to the real provider, with two changes:
       </p>
@@ -153,6 +154,35 @@ res = client.chat.completions.create(
         <code>https://&lt;your-resource&gt;.openai.azure.com</code> + API key 1 from Azure
         portal. The proxy stores the URL on the key row and injects the right{' '}
         <code>api-key</code> header on every request.
+      </p>
+
+      <h2 id="python-mistral">Python, Mistral</h2>
+      <p>
+        Mistral&apos;s API is OpenAI-compatible end-to-end (request shape, SSE
+        chunk format, <code>usage</code> field), so the same{' '}
+        <code>openai</code> Python package works with the base URL pointed at{' '}
+        <code>/proxy/mistral/v1</code>. Useful when EU data residency matters
+        (Mistral hosts in France) or when you want to A/B against OpenAI without
+        rewriting your client.
+      </p>
+      <CodeBlock language="python">{`from openai import OpenAI
+
+client = OpenAI(
+    api_key=os.environ["SPANLENS_API_KEY"],
+    base_url="https://server.spanlens.io/proxy/mistral/v1",
+)
+
+res = client.chat.completions.create(
+    model="mistral-small-latest",
+    messages=[{"role": "user", "content": "Hi"}],
+)`}</CodeBlock>
+      <p className="text-sm text-muted-foreground">
+        Supported models include <code>mistral-large-latest</code>,{' '}
+        <code>mistral-medium-latest</code>, <code>mistral-small-latest</code>,{' '}
+        <code>pixtral-large-latest</code> / <code>pixtral-12b</code>{' '}
+        (multimodal), <code>codestral-latest</code>, the <code>ministral-*</code>{' '}
+        family, <code>open-mistral-nemo</code>, and <code>mistral-embed</code>{' '}
+        for embeddings. Cost lands on every row.
       </p>
 
       <h2 id="curl">curl, raw HTTP</h2>
