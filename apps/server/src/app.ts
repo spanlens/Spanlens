@@ -53,6 +53,7 @@ import { webhooksRouter }      from './api/webhooks.js'
 import { exportsRouter }       from './api/exports.js'
 import { openapiRouter }       from './api/openapi.js'
 import { providerKeysRouter }  from './api/providerKeys.js'
+import { frontendErrorsRouter } from './api/frontendErrors.js'
 import { meRouter }            from './api/me.js'
 import { meRoleRouter }        from './api/meRole.js'
 import { userNotificationPrefsRouter } from './api/userNotificationPrefs.js'
@@ -162,6 +163,7 @@ app.route('/api/v1/waitlist', waitlistRouter)
 app.route('/api/v1',          openapiRouter)   // GET /api/v1/openapi.json, GET /api/v1/docs
 app.route('/share',           publicShareRouter)  // PLG Loop ① — public share viewer, per-IP rate limited
 app.route('/badge',           badgeRouter)        // PLG Loop ③ — README badge SVG, per-IP rate limited
+app.route('/api/v1/frontend-errors', frontendErrorsRouter) // /app/{error,global-error}.tsx + <ErrorBoundary> sink
 
 // ── Dashboard API rate limit (120 req/min, all plans) ────────
 // Runs before authJwt using a token hash as the key — no extra
