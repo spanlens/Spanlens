@@ -12,6 +12,10 @@ Onboarding CLI release. `pip install spanlens` now also installs a `spanlens` co
 - Flags: `--dry-run`, `--yes` (non-interactive), `--api-key`, `--server-url` (self-hosting).
 - `[project.scripts]` entry point so the command is available immediately after install. Output forces UTF-8 so the wizard renders on legacy Windows code pages.
 
+### Fixed
+
+- `configure_gemini()` now passes `transport="rest"` to `genai.configure(...)`. The default gRPC transport ignores an `https://` `api_endpoint`, so Gemini calls silently bypassed the proxy and were never logged. REST transport honours the proxy URL and sends the key as `x-goog-api-key`, which the proxy authenticates. Found during the CLI end-to-end smoke; OpenAI and Anthropic were already routing correctly.
+
 ### Verified
 
 - 48 unit tests across env writing, project detection, install-target construction, the AST patcher (including Unicode-offset safety and validity of every emitted file), the key-info client (mocked with `respx`), and the end-to-end wizard in `--dry-run` / `--yes` modes.
