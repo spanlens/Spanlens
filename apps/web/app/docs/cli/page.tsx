@@ -4,7 +4,7 @@ import { CodeBlock } from '../_components/code-block'
 export const metadata = {
   title: 'Spanlens CLI · Spanlens Docs',
   description:
-    'One-command setup wizard for Spanlens. Auto-detects OpenAI, Anthropic, and Gemini SDK calls in your codebase and routes them through the proxy.',
+    'One-command setup wizard for Spanlens, in both Node (npx @spanlens/cli) and Python (spanlens init). Auto-detects OpenAI, Anthropic, and Gemini SDK calls and routes them through the proxy.',
   alternates: { canonical: '/docs/cli' },
 }
 
@@ -64,6 +64,55 @@ const GEMINI_DIFF = `- import { GoogleGenerativeAI } from '@google/generative-ai
 const DRY_RUN_CMD = `npx @spanlens/cli init --dry-run`
 const SELF_HOST_CMD = `npx @spanlens/cli init --server-url https://spanlens.yourcompany.com`
 
+const PY_INSTALL_CMD = `pip install spanlens
+spanlens init`
+
+const PY_WIZARD_OUTPUT = `🔭  Spanlens setup
+
+  Detected pip project · uses openai, anthropic
+
+  Before continuing, make sure you have:
+    1. A Spanlens account at https://www.spanlens.io
+    2. A Project at https://www.spanlens.io/projects
+    3. Provider keys (OpenAI / Anthropic / Gemini) added to that project
+    4. A Spanlens key issued for that project (sl_live_...)
+
+  ? Paste your Spanlens key > sl_live_*************
+
+  Key valid · project chatbot-prod · providers: openai, anthropic
+  Created .env with SPANLENS_API_KEY
+  Installed (pip install spanlens[anthropic,openai])
+
+  Found 2 patches to apply
+    • [openai] app/agent.py
+        → import: from openai → from spanlens.integrations.openai import create_openai
+        → 1 × constructor → create_openai(...)
+    • [anthropic] app/summarize.py
+        → 1 × constructor → create_anthropic(...)
+
+  ? Apply these changes? > yes
+  Patched 2 file(s)
+
+🎉 Spanlens setup complete`
+
+const PY_OPENAI_DIFF = `- from openai import OpenAI
+- client = OpenAI(api_key=os.environ["OPENAI_API_KEY"], timeout=30)
++ from spanlens.integrations.openai import create_openai
++ client = create_openai(timeout=30)`
+
+const PY_ANTHROPIC_DIFF = `- from anthropic import Anthropic
+- client = Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
++ from spanlens.integrations.anthropic import create_anthropic
++ client = create_anthropic()`
+
+const PY_GEMINI_DIFF = `  import google.generativeai as genai
+- genai.configure(api_key=os.environ["GEMINI_API_KEY"])
++ from spanlens.integrations.gemini import configure_gemini
++ configure_gemini()`
+
+const PY_DRY_RUN_CMD = `spanlens init --dry-run`
+const PY_TEST_CMD = `spanlens test`
+
 const MANUAL_SNIPPET = `import { createOpenAI }    from '@spanlens/sdk/openai'
 import { createAnthropic } from '@spanlens/sdk/anthropic'
 import { createGemini }    from '@spanlens/sdk/gemini'
@@ -91,6 +140,15 @@ export default function CliDocs() {
           If the wizard does not fit your stack, skip it and use the{' '}
           <Link href="/docs/sdk" className="underline">@spanlens/sdk</Link>{' '}
           factories directly. Same end result, same proxy, same dashboard.
+        </p>
+      </div>
+
+      <div className="my-6 rounded-lg border-l-4 border-accent bg-accent-bg p-4 text-sm">
+        <p className="m-0 font-semibold text-accent">Working in Python?</p>
+        <p className="mt-1 mb-0 text-accent">
+          The same wizard ships with the Python SDK. Run{' '}
+          <code>pip install spanlens &amp;&amp; spanlens init</code> and jump to the{' '}
+          <Link href="#python" className="underline">Python CLI</Link> section below.
         </p>
       </div>
 
@@ -133,6 +191,51 @@ export default function CliDocs() {
       <CodeBlock language="diff">{ANTHROPIC_DIFF}</CodeBlock>
       <h3>Gemini</h3>
       <CodeBlock language="diff">{GEMINI_DIFF}</CodeBlock>
+
+      <h2 id="python">Python CLI</h2>
+      <p>
+        The Python SDK ships the same wizard as a console command. There is no
+        separate package to install: <code>pip install spanlens</code> gives you
+        both the SDK and the <code>spanlens</code> command. It uses only the
+        standard library plus <code>httpx</code>, so it adds no weight to your
+        environment.
+      </p>
+      <CodeBlock language="bash">{PY_INSTALL_CMD}</CodeBlock>
+      <p>
+        It detects your package manager (<code>poetry</code>, <code>uv</code>,{' '}
+        <code>pipenv</code>, or <code>pip</code>), reads which provider libraries
+        you already declare, validates your key, writes <code>.env</code>, and
+        rewrites your client construction. A real run looks like this:
+      </p>
+      <CodeBlock language="bash">{PY_WIZARD_OUTPUT}</CodeBlock>
+      <p>
+        Every patched file is re-parsed before it is written, so the wizard never
+        leaves you with code that will not import. Here is what each provider
+        rewrite looks like:
+      </p>
+      <h3>OpenAI (Python)</h3>
+      <CodeBlock language="diff">{PY_OPENAI_DIFF}</CodeBlock>
+      <h3>Anthropic (Python)</h3>
+      <CodeBlock language="diff">{PY_ANTHROPIC_DIFF}</CodeBlock>
+      <h3>Gemini (Python)</h3>
+      <p>
+        Gemini uses module-level configuration in Python, so the wizard rewrites
+        the <code>genai.configure(...)</code> call and keeps your{' '}
+        <code>GenerativeModel</code> usage untouched:
+      </p>
+      <CodeBlock language="diff">{PY_GEMINI_DIFF}</CodeBlock>
+      <p>
+        Preview without writing anything, or check connectivity without running
+        the full wizard:
+      </p>
+      <CodeBlock language="bash">{PY_DRY_RUN_CMD}</CodeBlock>
+      <CodeBlock language="bash">{PY_TEST_CMD}</CodeBlock>
+      <p>
+        For CI or scripted setup, pass <code>--yes</code> to accept every prompt
+        and <code>--api-key sl_live_...</code> (or set <code>SPANLENS_API_KEY</code>)
+        to skip the interactive key entry. Self-hosting works the same way with{' '}
+        <code>--server-url</code>.
+      </p>
 
       <h2 id="supported">What is supported today</h2>
       <table>
