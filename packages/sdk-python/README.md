@@ -26,6 +26,31 @@ pip install "spanlens[langchain]"
 pip install "spanlens[all]"
 ```
 
+## Fastest start: the `spanlens` CLI
+
+Installing the package gives you a `spanlens` command. Run the wizard from your
+project root and it detects your package manager, validates your key, writes
+`.env`, and rewrites your `OpenAI(...)` / `Anthropic(...)` / `genai.configure(...)`
+calls to route through Spanlens.
+
+```bash
+pip install spanlens
+spanlens init
+```
+
+Useful flags:
+
+```bash
+spanlens init --dry-run                 # preview every change, write nothing
+spanlens init --yes --api-key sl_live_  # non-interactive (CI / scripts)
+spanlens init --server-url https://...  # self-hosted Spanlens
+spanlens test                           # just validate the key + connectivity
+```
+
+The wizard re-parses every file it touches before saving, so it never leaves
+you with code that will not import. Prefer to wire it up by hand? The two
+manual modes below are all it does under the covers.
+
 ## Two ways to use it
 
 | Mode | Best for | Setup |

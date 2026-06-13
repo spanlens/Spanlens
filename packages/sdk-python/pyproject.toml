@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "spanlens"
-version = "0.6.0"
+version = "0.7.0"
 description = "Spanlens SDK for Python. Agent tracing, LLM usage capture, and cost observability."
 readme = "README.md"
 license = { text = "MIT" }
@@ -80,6 +80,9 @@ dev = [
     "openai>=1.0.0",
     "anthropic>=0.18.0",
 ]
+
+[project.scripts]
+spanlens = "spanlens.cli:main"
 
 [project.urls]
 Homepage = "https://spanlens.io"

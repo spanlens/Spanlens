@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.7.0
+
+Onboarding CLI release. `pip install spanlens` now also installs a `spanlens` console command that connects a Python project to Spanlens in one step, the same wizard the Node `@spanlens/cli` ships. No extra dependency: it uses only the standard library plus `httpx` (already a runtime dependency).
+
+### Added
+
+- `spanlens init` interactive wizard: detects the package manager (`poetry` / `uv` / `pipenv` / `pip`) and which provider libraries are declared, validates the pasted `sl_live_*` key against `/api/v1/me/key-info`, writes `SPANLENS_API_KEY` into `.env` (idempotent, comment-preserving), installs the right `spanlens[...]` extras, and rewrites client construction to route through the proxy.
+- AST-based code patcher (`spanlens.cli.code_patcher`): rewrites `OpenAI(...)` / `AsyncOpenAI(...)` into `create_openai()` / `create_async_openai()`, `Anthropic(...)` / `AsyncAnthropic(...)` into `create_anthropic()` / `create_async_anthropic()`, and `genai.configure(...)` into `configure_gemini()`. It strips `api_key` / `base_url`, preserves every other argument, edits by byte offset so formatting and comments survive, and re-parses each file before writing so a patched file always imports.
+- `spanlens test` for a quick key + connectivity check, and `spanlens --version`.
+- Flags: `--dry-run`, `--yes` (non-interactive), `--api-key`, `--server-url` (self-hosting).
+- `[project.scripts]` entry point so the command is available immediately after install. Output forces UTF-8 so the wizard renders on legacy Windows code pages.
+
+### Verified
+
+- 48 unit tests across env writing, project detection, install-target construction, the AST patcher (including Unicode-offset safety and validity of every emitted file), the key-info client (mocked with `respx`), and the end-to-end wizard in `--dry-run` / `--yes` modes.
+- Production smoke: the full wizard ran against `www.spanlens.io`, validated a live key, and previewed then applied a real OpenAI patch.
+
+### Docs
+
+- The `/docs/cli` page now documents the Python CLI alongside the Node wizard, with install, walkthrough, before / after diffs for all three providers, and a flag reference.
+
 ## 0.6.0
 
 LlamaIndex integration release. Drop `SpanlensCallbackHandler` onto any LlamaIndex query engine, agent, or workflow and every `CBEventType` (LLM, RETRIEVE, EMBEDDING, FUNCTION_CALL, QUERY) becomes a typed Spanlens span with parent / child linkage matching the framework's per-event UUIDs.
