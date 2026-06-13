@@ -74,7 +74,7 @@ function CopyIdButton({ value, label = 'Copy ID' }: { value: string; label?: str
   )
 }
 
-const PROVIDERS = ['openai', 'anthropic', 'gemini', 'azure'] as const
+const PROVIDERS = ['openai', 'anthropic', 'gemini', 'azure', 'mistral', 'openrouter'] as const
 type ProviderName = typeof PROVIDERS[number]
 
 const PROVIDER_LABELS: Record<ProviderName, string> = {
@@ -82,6 +82,8 @@ const PROVIDER_LABELS: Record<ProviderName, string> = {
   anthropic: 'Anthropic',
   gemini: 'Gemini',
   azure: 'Azure OpenAI',
+  mistral: 'Mistral',
+  openrouter: 'OpenRouter',
 }
 
 const PROVIDER_PLACEHOLDERS: Record<ProviderName, string> = {
@@ -91,6 +93,8 @@ const PROVIDER_PLACEHOLDERS: Record<ProviderName, string> = {
   // Azure keys are 32-char hex strings with no prefix — show two groups so users
   // recognize the format.
   azure: '0123456789abcdef0123456789abcdef',
+  mistral: 'mistral-…',
+  openrouter: 'sk-or-v1-…',
 }
 
 /**
@@ -127,6 +131,24 @@ const azure = new OpenAI({
   apiKey: process.env.SPANLENS_API_KEY,
 })
 // await azure.chat.completions.create({ model: 'gpt-4o', messages: [...] })`,
+  mistral: `import OpenAI from 'openai'
+
+// Mistral exposes an OpenAI-compatible API — point the OpenAI SDK at the
+// Spanlens proxy and use any Mistral model id.
+const mistral = new OpenAI({
+  baseURL: 'https://api.spanlens.io/proxy/mistral/v1',
+  apiKey: process.env.SPANLENS_API_KEY,
+})
+// await mistral.chat.completions.create({ model: 'mistral-large-latest', messages: [...] })`,
+  openrouter: `import OpenAI from 'openai'
+
+// OpenRouter is OpenAI-compatible and gives you 100+ models behind one key.
+// Use the vendor-prefixed model id (e.g. 'openai/gpt-4o', 'anthropic/claude-sonnet-4').
+const openrouter = new OpenAI({
+  baseURL: 'https://api.spanlens.io/proxy/openrouter/v1',
+  apiKey: process.env.SPANLENS_API_KEY,
+})
+// await openrouter.chat.completions.create({ model: 'anthropic/claude-sonnet-4', messages: [...] })`,
 }
 
 export function ProjectsClient() {
