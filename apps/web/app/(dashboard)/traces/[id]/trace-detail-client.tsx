@@ -6,6 +6,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { TracePanel } from '@/components/traces/trace-panel'
 import { useTrace } from '@/lib/queries/use-traces'
 import { ShareDialog } from '@/components/share/share-dialog'
+import { ErrorBoundary } from '@/components/error-boundary'
 
 function loadNavIds(): string[] {
   if (typeof window === 'undefined') return []
@@ -115,7 +116,9 @@ export function TraceDetailClient({ id }: { id: string }) {
         }
       />
       <div className="flex-1 overflow-hidden">
-        <TracePanel traceId={id} />
+        <ErrorBoundary label="traces:waterfall">
+          <TracePanel traceId={id} />
+        </ErrorBoundary>
       </div>
     </div>
   )
