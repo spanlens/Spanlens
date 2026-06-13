@@ -239,6 +239,33 @@ sdk.start()
         </tbody>
       </table>
 
+      <h2 id="export-otlp">Export a trace as OTLP (the other direction)</h2>
+      <p>
+        Every trace detail page on the dashboard has a{' '}
+        <strong>↓ OTLP</strong> button next to the share button. Clicking it
+        downloads the trace + all its spans as a single OTLP HTTP/JSON
+        envelope you can re-upload to any OTLP-aware backend (Datadog,
+        Honeycomb, Jaeger, Tempo, Grafana, or your own OTel Collector).
+        Spans carry the gen_ai semantic-convention attributes (
+        <code>gen_ai.system</code>, <code>gen_ai.request.model</code>,{' '}
+        <code>gen_ai.usage.input_tokens</code> / <code>output_tokens</code> /
+        <code> total_tokens</code>) plus a private{' '}
+        <code>spanlens.cost_usd</code> field.
+      </p>
+      <CodeBlock language="bash">{`# Same file works as a POST body for any OTLP/HTTP collector
+curl -X POST https://<your-collector>/v1/traces \\
+  -H 'Content-Type: application/json' \\
+  --data-binary @spanlens-trace-<id>.otlp.json`}</CodeBlock>
+      <p className="text-sm text-muted-foreground">
+        The endpoint is also reachable directly:{' '}
+        <code>GET /api/v1/traces/&lt;id&gt;/otlp.json</code>{' '}
+        (Bearer JWT or <code>sl_live_*</code> key). Useful if you want to
+        script bulk export or wire up a CI test against a known-good trace.
+        A push-based auto-forward to a registered collector endpoint is a
+        future feature; this MVP is the smallest signal that Spanlens is
+        not a data silo.
+      </p>
+
       <h2>Notes</h2>
       <ul>
         <li>

@@ -10,6 +10,7 @@ import {
   getTraceWithSpansFromEvents,
 } from '../lib/traces-events-queries.js'
 import { ApiError } from '../lib/errors.js'
+import { traceToOtlp, type SpanlensTrace, type SpanlensSpan } from '../lib/otel-export.js'
 
 export const tracesRouter = new Hono<JwtContext>()
 
@@ -105,6 +106,69 @@ tracesRouter.get('/', async (c) => {
     success: true,
     data: data ?? [],
     meta: { total: count ?? 0, page, limit },
+  })
+})
+
+// GET /api/v1/traces/:id/otlp.json — trace + spans serialized as an OTLP
+// HTTP/JSON envelope. Customers download this file and re-upload to any
+// OTLP-aware backend (Datadog / Honeycomb / Jaeger / Tempo / Grafana) so
+// their LLM trace doesn't have to live in a silo. MVP: download only —
+// per-org collector endpoint + automatic forwarding is a later feature.
+//
+// Mounted BEFORE /:id because Hono's trie matches '/:id' against any
+// path segment, including 'otlp.json' if it were registered second.
+tracesRouter.get('/:id/otlp.json', async (c) => {
+  const traceId = c.req.param('id')
+  const orgId = c.get('orgId')
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
+
+  // Reuse the same fetch path as GET /:id so the export sees the exact
+  // same data the detail page shows. Try the events-read flag first, fall
+  // back to Postgres if it errors (same defensive pattern as below).
+  let trace: SpanlensTrace | null = null
+  let spans: SpanlensSpan[] = []
+
+  if (await useEventsForTraces(orgId)) {
+    try {
+      const result = await getTraceWithSpansFromEvents(traceId, orgId)
+      if (result.trace) {
+        trace = result.trace as SpanlensTrace
+        spans = result.spans as SpanlensSpan[]
+      }
+    } catch {
+      /* fall through to Postgres */
+    }
+  }
+
+  if (!trace) {
+    const { data: pgTrace, error: traceErr } = await supabaseAdmin
+      .from('traces')
+      .select('id, name, status, started_at, ended_at, metadata')
+      .eq('id', traceId)
+      .eq('organization_id', orgId)
+      .single()
+    if (traceErr || !pgTrace) throw new ApiError('NOT_FOUND', 'Trace not found')
+    trace = pgTrace as SpanlensTrace
+
+    const { data: pgSpans, error: spansErr } = await supabaseAdmin
+      .from('spans')
+      .select(
+        'id, parent_span_id, name, span_type, status, started_at, ended_at, error_message, metadata, prompt_tokens, completion_tokens, total_tokens, cost_usd',
+      )
+      .eq('trace_id', traceId)
+      .order('started_at', { ascending: true })
+    if (spansErr) throw new ApiError('INTERNAL_ERROR', 'Failed to fetch spans')
+    spans = (pgSpans ?? []) as SpanlensSpan[]
+  }
+
+  const envelope = traceToOtlp(trace, spans)
+  return new Response(JSON.stringify(envelope, null, 2), {
+    status: 200,
+    headers: {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Content-Disposition': `attachment; filename="spanlens-trace-${traceId}.otlp.json"`,
+      'Cache-Control': 'no-store',
+    },
   })
 })
 
