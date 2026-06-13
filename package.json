@@ -10,7 +10,8 @@
     "test": "pnpm --recursive test",
     "clean": "pnpm --recursive clean",
     "db:generate-init": "node scripts/generate-init-sql.mjs",
-    "ch:migrate": "pnpm --filter server exec tsx ../../clickhouse/apply.ts"
+    "ch:migrate": "pnpm --filter server exec tsx ../../clickhouse/apply.ts",
+    "check:env": "pnpm --filter server check:env"
   },
   "devDependencies": {
     "eslint": "^9",
