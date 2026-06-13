@@ -44,7 +44,21 @@ const JUDGE_MODELS_FALLBACK = {
   openai: ['gpt-4o-mini'],
   anthropic: ['claude-haiku-4-5'],
   gemini: ['gemini-2.5-flash-lite'],
+  azure: ['gpt-4o-mini'],
+  mistral: ['mistral-small-latest'],
+  openrouter: ['openai/gpt-4o-mini'],
 } as const
+
+type EvalProvider = 'openai' | 'anthropic' | 'gemini' | 'azure' | 'mistral' | 'openrouter'
+
+const PROVIDER_OPTIONS: Array<{ value: EvalProvider; label: string }> = [
+  { value: 'openai',     label: 'OpenAI' },
+  { value: 'anthropic',  label: 'Anthropic' },
+  { value: 'gemini',     label: 'Gemini' },
+  { value: 'azure',      label: 'Azure OpenAI' },
+  { value: 'mistral',    label: 'Mistral' },
+  { value: 'openrouter', label: 'OpenRouter' },
+]
 
 // Hydration-safe mounted gate, same pattern as the other overhauled pages.
 const subscribeNoop = () => () => {}
@@ -97,7 +111,7 @@ function StatusBadge({ status }: { status: EvalRunStatus }) {
 interface EvaluatorTemplate {
   name: string
   criterion: string
-  judgeProvider: 'openai' | 'anthropic' | 'gemini'
+  judgeProvider: EvalProvider
   judgeModel: string
 }
 
@@ -147,15 +161,18 @@ function NewEvaluatorDialog({
   //
   // Memoised so dependent effects (template sync below) don't re-run on
   // every render and cause loops.
-  const judgeModels = useMemo<{ openai: string[]; anthropic: string[]; gemini: string[] }>(() => {
-    const next = {
-      openai: (modelsCatalog?.openai ?? []).map((m) => m.model),
-      anthropic: (modelsCatalog?.anthropic ?? []).map((m) => m.model),
-      gemini: (modelsCatalog?.gemini ?? []).map((m) => m.model),
+  const judgeModels = useMemo<Record<EvalProvider, string[]>>(() => {
+    const next: Record<EvalProvider, string[]> = {
+      openai:     (modelsCatalog?.openai ?? []).map((m) => m.model),
+      anthropic:  (modelsCatalog?.anthropic ?? []).map((m) => m.model),
+      gemini:     (modelsCatalog?.gemini ?? []).map((m) => m.model),
+      azure:      (modelsCatalog?.azure ?? []).map((m) => m.model),
+      mistral:    (modelsCatalog?.mistral ?? []).map((m) => m.model),
+      openrouter: (modelsCatalog?.openrouter ?? []).map((m) => m.model),
     }
-    if (next.openai.length === 0) next.openai = [...JUDGE_MODELS_FALLBACK.openai]
-    if (next.anthropic.length === 0) next.anthropic = [...JUDGE_MODELS_FALLBACK.anthropic]
-    if (next.gemini.length === 0) next.gemini = [...JUDGE_MODELS_FALLBACK.gemini]
+    for (const p of Object.keys(JUDGE_MODELS_FALLBACK) as EvalProvider[]) {
+      if (next[p].length === 0) next[p] = [...JUDGE_MODELS_FALLBACK[p]]
+    }
     return next
   }, [modelsCatalog])
 
@@ -163,7 +180,7 @@ function NewEvaluatorDialog({
   // only have dated variants ('gpt-4o-mini-2024-07-18'). Resolve to the
   // first available dated variant under the same family, or fall back to
   // the catalog's first model for the provider.
-  function resolveJudgeModel(provider: 'openai' | 'anthropic' | 'gemini', preferred: string): string {
+  function resolveJudgeModel(provider: EvalProvider, preferred: string): string {
     const list = judgeModels[provider]
     if (list.includes(preferred)) return preferred
     const datedMatch = list.find((m) => m.startsWith(preferred + '-'))
@@ -178,7 +195,7 @@ function NewEvaluatorDialog({
   const [promptName, setPromptName] = useState('')
   const [name, setName] = useState(initialTemplate?.name ?? '')
   const [criterion, setCriterion] = useState(initialTemplate?.criterion ?? '')
-  const [judgeProvider, setJudgeProvider] = useState<'openai' | 'anthropic' | 'gemini'>(
+  const [judgeProvider, setJudgeProvider] = useState<EvalProvider>(
     initialTemplate?.judgeProvider ?? 'openai',
   )
   const [judgeModel, setJudgeModel] = useState(() =>
@@ -368,15 +385,15 @@ function NewEvaluatorDialog({
                     Judge provider
                   </label>
                   <Select value={judgeProvider || undefined} onValueChange={(v) => {
-                      const p = v as 'openai' | 'anthropic' | 'gemini'
+                      const p = v as EvalProvider
                       setJudgeProvider(p)
                       setJudgeModel(judgeModels[p][0] ?? '')
                     }}>
                     <SelectTrigger><SelectValue placeholder="Select provider…" /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="openai">OpenAI</SelectItem>
-                      <SelectItem value="anthropic">Anthropic</SelectItem>
-                      <SelectItem value="gemini">Gemini</SelectItem>
+                      {PROVIDER_OPTIONS.map((opt) => (
+                        <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
@@ -528,7 +545,7 @@ function RunEvaluatorDialog({
   const [error, setError] = useState('')
   // For dataset mode: which provider+model runs the prompt before judging.
   // Production mode doesn't need these — responses are already in CH.
-  const [runProvider, setRunProvider] = useState<'openai' | 'anthropic' | 'gemini'>('openai')
+  const [runProvider, setRunProvider] = useState<EvalProvider>('openai')
   const [runModel, setRunModel] = useState('gpt-4o-mini')
   const modelsCatalog = useModels()
   const runModelOptions = (modelsCatalog.data?.[runProvider] ?? []).map((m) => m.model)
@@ -711,16 +728,16 @@ function RunEvaluatorDialog({
                     Run provider
                   </label>
                   <Select value={runProvider || undefined} onValueChange={(v) => {
-                      const p = v as 'openai' | 'anthropic' | 'gemini'
+                      const p = v as EvalProvider
                       setRunProvider(p)
                       const opts = (modelsCatalog.data?.[p] ?? []).map((m) => m.model)
                       setRunModel(opts[0] ?? '')
                     }}>
                     <SelectTrigger><SelectValue placeholder="Select provider…" /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="openai">OpenAI</SelectItem>
-                      <SelectItem value="anthropic">Anthropic</SelectItem>
-                      <SelectItem value="gemini">Gemini</SelectItem>
+                      {PROVIDER_OPTIONS.map((opt) => (
+                        <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>

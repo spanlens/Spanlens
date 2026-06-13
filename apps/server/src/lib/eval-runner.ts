@@ -83,10 +83,12 @@ interface JudgeOutcome {
  * Returns the assistant text on success, null on any failure (network,
  * 4xx/5xx, empty output). Callers should filter nulls.
  */
+type EvalProvider = 'openai' | 'anthropic' | 'gemini' | 'azure' | 'mistral' | 'openrouter'
+
 async function generateForItem(
   promptContent: string,
   itemInput: Record<string, unknown>,
-  provider: 'openai' | 'anthropic' | 'gemini',
+  provider: EvalProvider,
   model: string,
   apiKey: string,
 ): Promise<string | null> {
@@ -112,6 +114,24 @@ async function generateForItem(
   try {
     if (provider === 'openai') {
       const res = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+        body: JSON.stringify(buildOpenAIBody(
+          model,
+          [{ role: 'system', content: promptContent }, { role: 'user', content: userContent }],
+          { temperature: 0.7, maxTokens: 1024 },
+        )),
+      })
+      if (!res.ok) return null
+      const json = await res.json() as { choices: Array<{ message: { content: string } }> }
+      return json.choices?.[0]?.message?.content ?? null
+    }
+
+    if (provider === 'mistral' || provider === 'openrouter') {
+      const url = provider === 'mistral'
+        ? 'https://api.mistral.ai/v1/chat/completions'
+        : 'https://openrouter.ai/api/v1/chat/completions'
+      const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
         body: JSON.stringify(buildOpenAIBody(
@@ -261,6 +281,53 @@ async function callJudge(
       promptTokens: json.usage?.prompt_tokens ?? 0,
       completionTokens: json.usage?.completion_tokens ?? 0,
     })?.totalCost ?? 0
+    return buildOutcome(parsed, cost, tokens)
+  }
+
+  // Mistral + OpenRouter are both OpenAI-compatible chat completion APIs,
+  // so the request shape is identical to the openai branch above. Only the
+  // base URL + cost provider tag differ.
+  if (config.judge_provider === 'mistral' || config.judge_provider === 'openrouter') {
+    const url = config.judge_provider === 'mistral'
+      ? 'https://api.mistral.ai/v1/chat/completions'
+      : 'https://openrouter.ai/api/v1/chat/completions'
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify(buildOpenAIBody(
+        config.judge_model,
+        [{ role: 'user', content: prompt }],
+        { temperature: 0, maxTokens: 200, responseFormat: { type: 'json_object' } },
+      )),
+    })
+    if (!res.ok) return null
+    const json = await res.json() as {
+      choices: Array<{ message: { content: string } }>
+      usage: { prompt_tokens: number; completion_tokens: number; cost?: number }
+      model: string
+    }
+    const text = json.choices?.[0]?.message?.content ?? ''
+    const parsed = parseJudgeReply(text, {
+      scale_min: config.scale_min,
+      scale_max: config.scale_max,
+      score_config: config.score_config ?? null,
+    })
+    if (!parsed) return null
+    const tokens = (json.usage?.prompt_tokens ?? 0) + (json.usage?.completion_tokens ?? 0)
+    // OpenRouter publishes the authoritative billed cost on usage.cost — prefer
+    // it over the local table lookup (same pattern as proxy/openrouter.ts).
+    let cost = 0
+    if (config.judge_provider === 'openrouter' && typeof json.usage?.cost === 'number') {
+      cost = json.usage.cost
+    } else {
+      cost = calculateCost(config.judge_provider, json.model ?? config.judge_model, {
+        promptTokens: json.usage?.prompt_tokens ?? 0,
+        completionTokens: json.usage?.completion_tokens ?? 0,
+      })?.totalCost ?? 0
+    }
     return buildOutcome(parsed, cost, tokens)
   }
 
@@ -418,7 +485,7 @@ interface RunInput {
    *  curated golden answer, not whatever the prompt actually generates.)
    * These fields are required for dataset runs; ignored for production.
    */
-  runProvider?: 'openai' | 'anthropic' | 'gemini' | null
+  runProvider?: EvalProvider | null
   runModel?: string | null
 }
 
