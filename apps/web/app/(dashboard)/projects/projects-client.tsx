@@ -127,7 +127,7 @@ const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' })
 // Azure resource URL is stored on the Spanlens provider key — your client
 // just talks to /proxy/azure and Spanlens forwards to the right Azure endpoint.
 const azure = new OpenAI({
-  baseURL: 'https://api.spanlens.io/proxy/azure',
+  baseURL: 'https://server.spanlens.io/proxy/azure',
   apiKey: process.env.SPANLENS_API_KEY,
 })
 // await azure.chat.completions.create({ model: 'gpt-4o', messages: [...] })`,
@@ -136,7 +136,7 @@ const azure = new OpenAI({
 // Mistral exposes an OpenAI-compatible API — point the OpenAI SDK at the
 // Spanlens proxy and use any Mistral model id.
 const mistral = new OpenAI({
-  baseURL: 'https://api.spanlens.io/proxy/mistral/v1',
+  baseURL: 'https://server.spanlens.io/proxy/mistral/v1',
   apiKey: process.env.SPANLENS_API_KEY,
 })
 // await mistral.chat.completions.create({ model: 'mistral-large-latest', messages: [...] })`,
@@ -145,7 +145,7 @@ const mistral = new OpenAI({
 // OpenRouter is OpenAI-compatible and gives you 100+ models behind one key.
 // Use the vendor-prefixed model id (e.g. 'openai/gpt-4o', 'anthropic/claude-sonnet-4').
 const openrouter = new OpenAI({
-  baseURL: 'https://api.spanlens.io/proxy/openrouter/v1',
+  baseURL: 'https://server.spanlens.io/proxy/openrouter/v1',
   apiKey: process.env.SPANLENS_API_KEY,
 })
 // await openrouter.chat.completions.create({ model: 'anthropic/claude-sonnet-4', messages: [...] })`,
