@@ -38,9 +38,10 @@ experimentsRouter.post('/', async (c) => {
   const datasetId = typeof body.datasetId === 'string' ? body.datasetId.trim() : ''
   const evaluatorId = typeof body.evaluatorId === 'string' && body.evaluatorId.trim()
     ? body.evaluatorId.trim() : null
-  const runProvider: 'openai' | 'anthropic' | 'gemini' =
-    body.runProvider === 'anthropic' ? 'anthropic'
-    : body.runProvider === 'gemini' ? 'gemini'
+  const RUN_PROVIDERS = ['openai', 'anthropic', 'gemini', 'azure', 'mistral', 'openrouter'] as const
+  type RunProvider = typeof RUN_PROVIDERS[number]
+  const runProvider: RunProvider = (RUN_PROVIDERS as readonly string[]).includes(body.runProvider as string)
+    ? (body.runProvider as RunProvider)
     : 'openai'
   const runModel = typeof body.runModel === 'string' ? body.runModel.trim() : ''
 

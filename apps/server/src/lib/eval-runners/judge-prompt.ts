@@ -31,7 +31,7 @@ export interface TypedScoreConfig {
 
 export interface JudgeConfig {
   criterion: string
-  judge_provider: 'openai' | 'anthropic' | 'gemini'
+  judge_provider: 'openai' | 'anthropic' | 'gemini' | 'azure' | 'mistral' | 'openrouter'
   judge_model: string
   scale_min: number
   scale_max: number

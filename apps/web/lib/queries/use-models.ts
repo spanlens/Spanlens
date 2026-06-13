@@ -24,13 +24,26 @@ export interface ModelEntry {
   longContextThresholdTokens: number | null
 }
 
-export interface ModelsByProvider {
-  openai: ModelEntry[]
-  anthropic: ModelEntry[]
-  gemini: ModelEntry[]
+export const MODEL_PROVIDERS = [
+  'openai', 'anthropic', 'gemini', 'azure', 'mistral', 'openrouter',
+] as const
+
+export type ModelProvider = typeof MODEL_PROVIDERS[number]
+
+export type ModelsByProvider = Record<ModelProvider, ModelEntry[]>
+
+const EMPTY: ModelsByProvider = {
+  openai: [], anthropic: [], gemini: [], azure: [], mistral: [], openrouter: [],
 }
 
-const EMPTY: ModelsByProvider = { openai: [], anthropic: [], gemini: [] }
+export const PROVIDER_LABEL: Record<ModelProvider, string> = {
+  openai: 'OpenAI',
+  anthropic: 'Anthropic',
+  gemini: 'Gemini',
+  azure: 'Azure OpenAI',
+  mistral: 'Mistral',
+  openrouter: 'OpenRouter',
+}
 
 export function useModels() {
   return useQuery({
