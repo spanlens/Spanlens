@@ -22,9 +22,11 @@ const MAX_TOKENS = 1024
 const TEMPERATURE = 0.7
 
 // JudgeConfig kept in sync with eval-runner.ts. Inlined to avoid circular imports.
+type EvalProvider = 'openai' | 'anthropic' | 'gemini' | 'azure' | 'mistral' | 'openrouter'
+
 interface JudgeConfig {
   criterion: string
-  judge_provider: 'openai' | 'anthropic' | 'gemini'
+  judge_provider: EvalProvider
   judge_model: string
   scale_min: number
   scale_max: number
@@ -59,7 +61,7 @@ interface PromptVersionRow {
 async function runPrompt(
   content: string,
   item: DatasetItemRow,
-  provider: 'openai' | 'anthropic' | 'gemini',
+  provider: EvalProvider,
   model: string,
   apiKey: string,
 ): Promise<RunResult | { error: string }> {
@@ -107,6 +109,46 @@ async function runPrompt(
       const promptTokens = json.usage?.prompt_tokens ?? 0
       const completionTokens = json.usage?.completion_tokens ?? 0
       const cost = calculateCost('openai', json.model ?? model, { promptTokens, completionTokens })?.totalCost ?? 0
+      return { output, cost, latencyMs, tokens: promptTokens + completionTokens }
+    }
+
+    // Mistral + OpenRouter — OpenAI-compatible chat completion shape.
+    if (provider === 'mistral' || provider === 'openrouter') {
+      const url = provider === 'mistral'
+        ? 'https://api.mistral.ai/v1/chat/completions'
+        : 'https://openrouter.ai/api/v1/chat/completions'
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify(buildOpenAIBody(
+          model,
+          [{ role: 'system', content }, { role: 'user', content: userContent }],
+          { temperature: TEMPERATURE, maxTokens: MAX_TOKENS },
+        )),
+      })
+      const latencyMs = Date.now() - startMs
+      if (!res.ok) {
+        const text = await res.text().catch(() => '')
+        return { error: `${provider} error (${res.status}): ${text.slice(0, 200)}` }
+      }
+      const json = await res.json() as {
+        choices: Array<{ message: { content: string } }>
+        usage: { prompt_tokens: number; completion_tokens: number; cost?: number }
+        model: string
+      }
+      const output = json.choices?.[0]?.message?.content ?? ''
+      const promptTokens = json.usage?.prompt_tokens ?? 0
+      const completionTokens = json.usage?.completion_tokens ?? 0
+      // OpenRouter: prefer upstream usage.cost (authoritative billed amount).
+      let cost = 0
+      if (provider === 'openrouter' && typeof json.usage?.cost === 'number') {
+        cost = json.usage.cost
+      } else {
+        cost = calculateCost(provider, json.model ?? model, { promptTokens, completionTokens })?.totalCost ?? 0
+      }
       return { output, cost, latencyMs, tokens: promptTokens + completionTokens }
     }
 
@@ -257,6 +299,48 @@ async function callJudge(
       tokens,
     }
   }
+  // Mistral + OpenRouter — OpenAI-compatible.
+  if (config.judge_provider === 'mistral' || config.judge_provider === 'openrouter') {
+    const url = config.judge_provider === 'mistral'
+      ? 'https://api.mistral.ai/v1/chat/completions'
+      : 'https://openrouter.ai/api/v1/chat/completions'
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+      body: JSON.stringify(buildOpenAIBody(
+        config.judge_model,
+        [{ role: 'user', content: prompt }],
+        { temperature: 0, maxTokens: 200, responseFormat: { type: 'json_object' } },
+      )),
+    })
+    if (!res.ok) return null
+    const json = await res.json() as {
+      choices: Array<{ message: { content: string } }>
+      usage: { prompt_tokens: number; completion_tokens: number; cost?: number }
+      model: string
+    }
+    const text = json.choices?.[0]?.message?.content ?? ''
+    const parsed = parseJudgeReply(text, config.scale_min, config.scale_max)
+    if (!parsed) return null
+    const tokens = (json.usage?.prompt_tokens ?? 0) + (json.usage?.completion_tokens ?? 0)
+    let cost = 0
+    if (config.judge_provider === 'openrouter' && typeof json.usage?.cost === 'number') {
+      cost = json.usage.cost
+    } else {
+      cost = calculateCost(config.judge_provider, json.model ?? config.judge_model, {
+        promptTokens: json.usage?.prompt_tokens ?? 0,
+        completionTokens: json.usage?.completion_tokens ?? 0,
+      })?.totalCost ?? 0
+    }
+    const range = config.scale_max - config.scale_min || 1
+    return {
+      score: (parsed.score - config.scale_min) / range,
+      reasoning: parsed.reasoning,
+      cost,
+      tokens,
+    }
+  }
+
   if (config.judge_provider === 'anthropic') {
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -375,7 +459,7 @@ interface RunInput {
   versionBId: string
   datasetId: string
   evaluatorId: string | null
-  runProvider: 'openai' | 'anthropic' | 'gemini'
+  runProvider: EvalProvider
   runModel: string
 }
 

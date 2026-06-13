@@ -27,12 +27,26 @@ function useMounted(): boolean {
   return useSyncExternalStore(subscribeNoop, getTrue, getFalse)
 }
 
+type ExpProvider = 'openai' | 'anthropic' | 'gemini' | 'azure' | 'mistral' | 'openrouter'
+
 // Fallback for the first paint before useModels() resolves.
 const RUN_MODELS_FALLBACK = {
   openai: ['gpt-4o-mini'],
   anthropic: ['claude-haiku-4-5'],
   gemini: ['gemini-2.5-flash-lite'],
+  azure: ['gpt-4o-mini'],
+  mistral: ['mistral-small-latest'],
+  openrouter: ['openai/gpt-4o-mini'],
 } as const
+
+const PROVIDER_OPTIONS: Array<{ value: ExpProvider; label: string }> = [
+  { value: 'openai',     label: 'OpenAI' },
+  { value: 'anthropic',  label: 'Anthropic' },
+  { value: 'gemini',     label: 'Gemini' },
+  { value: 'azure',      label: 'Azure OpenAI' },
+  { value: 'mistral',    label: 'Mistral' },
+  { value: 'openrouter', label: 'OpenRouter' },
+]
 
 function fmtUsd(n: number | null | undefined): string {
   if (n == null) return '—'
@@ -85,14 +99,17 @@ function NewExperimentDialog({ open, onClose }: { open: boolean; onClose: () => 
   const datasets = useDatasets()
   const create = useCreateExperiment()
   const { data: modelsCatalog } = useModels()
-  const runModels: { openai: string[]; anthropic: string[]; gemini: string[] } = {
-    openai: (modelsCatalog?.openai ?? []).map((m) => m.model),
-    anthropic: (modelsCatalog?.anthropic ?? []).map((m) => m.model),
-    gemini: (modelsCatalog?.gemini ?? []).map((m) => m.model),
+  const runModels: Record<ExpProvider, string[]> = {
+    openai:     (modelsCatalog?.openai ?? []).map((m) => m.model),
+    anthropic:  (modelsCatalog?.anthropic ?? []).map((m) => m.model),
+    gemini:     (modelsCatalog?.gemini ?? []).map((m) => m.model),
+    azure:      (modelsCatalog?.azure ?? []).map((m) => m.model),
+    mistral:    (modelsCatalog?.mistral ?? []).map((m) => m.model),
+    openrouter: (modelsCatalog?.openrouter ?? []).map((m) => m.model),
   }
-  if (runModels.openai.length === 0) runModels.openai = [...RUN_MODELS_FALLBACK.openai]
-  if (runModels.anthropic.length === 0) runModels.anthropic = [...RUN_MODELS_FALLBACK.anthropic]
-  if (runModels.gemini.length === 0) runModels.gemini = [...RUN_MODELS_FALLBACK.gemini]
+  for (const p of Object.keys(RUN_MODELS_FALLBACK) as ExpProvider[]) {
+    if (runModels[p].length === 0) runModels[p] = [...RUN_MODELS_FALLBACK[p]]
+  }
 
   const [name, setName] = useState('')
   const [promptName, setPromptName] = useState('')
@@ -102,7 +119,7 @@ function NewExperimentDialog({ open, onClose }: { open: boolean; onClose: () => 
   const [versionBId, setVersionBId] = useState('')
   const [datasetId, setDatasetId] = useState('')
   const [evaluatorId, setEvaluatorId] = useState('__none__')
-  const [runProvider, setRunProvider] = useState<'openai' | 'anthropic' | 'gemini'>('openai')
+  const [runProvider, setRunProvider] = useState<ExpProvider>('openai')
   const [runModel, setRunModel] = useState<string>('gpt-4o-mini')
   const [error, setError] = useState('')
 
@@ -241,12 +258,12 @@ function NewExperimentDialog({ open, onClose }: { open: boolean; onClose: () => 
               <label className="block font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint mb-1">
                 Run provider
               </label>
-              <Select value={runProvider} onValueChange={(v) => { const p = v as 'openai' | 'anthropic' | 'gemini'; setRunProvider(p); setRunModel(runModels[p][0] ?? '') }}>
+              <Select value={runProvider} onValueChange={(v) => { const p = v as ExpProvider; setRunProvider(p); setRunModel(runModels[p][0] ?? '') }}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="openai">OpenAI</SelectItem>
-                  <SelectItem value="anthropic">Anthropic</SelectItem>
-                  <SelectItem value="gemini">Gemini</SelectItem>
+                  {PROVIDER_OPTIONS.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>

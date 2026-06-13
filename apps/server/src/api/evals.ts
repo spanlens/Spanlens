@@ -60,8 +60,9 @@ evalsRouter.post('/evaluators', async (c) => {
     const scaleMax = typeof config.scale_max === 'number' ? config.scale_max : 1
 
     if (!criterion) throw new ApiError('VALIDATION_FAILED', 'config.criterion is required')
-    if (judgeProvider !== 'openai' && judgeProvider !== 'anthropic' && judgeProvider !== 'gemini') {
-      throw new ApiError('VALIDATION_FAILED', 'config.judge_provider must be "openai", "anthropic", or "gemini"')
+    const VALID_JUDGE_PROVIDERS = ['openai', 'anthropic', 'gemini', 'azure', 'mistral', 'openrouter']
+    if (!VALID_JUDGE_PROVIDERS.includes(judgeProvider)) {
+      throw new ApiError('VALIDATION_FAILED', `config.judge_provider must be one of: ${VALID_JUDGE_PROVIDERS.join(', ')}`)
     }
     if (!judgeModel) throw new ApiError('VALIDATION_FAILED', 'config.judge_model is required')
     if (!(scaleMax > scaleMin)) {
@@ -241,10 +242,11 @@ evalsRouter.post('/eval-runs', async (c) => {
   }
 
   // Dataset evals run the prompt against each item's input before judging.
-  // The picker can only emit our three supported provider strings.
-  const runProvider: 'openai' | 'anthropic' | 'gemini' | null =
-    body.runProvider === 'openai' || body.runProvider === 'anthropic' || body.runProvider === 'gemini'
-      ? body.runProvider
+  const RUN_PROVIDERS = ['openai', 'anthropic', 'gemini', 'azure', 'mistral', 'openrouter'] as const
+  type RunProvider = typeof RUN_PROVIDERS[number]
+  const runProvider: RunProvider | null =
+    typeof body.runProvider === 'string' && (RUN_PROVIDERS as readonly string[]).includes(body.runProvider)
+      ? (body.runProvider as RunProvider)
       : null
   const runModel = typeof body.runModel === 'string' ? body.runModel.trim() : null
   if (source === 'dataset') {

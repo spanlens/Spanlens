@@ -40,7 +40,16 @@ interface ModelsResponse {
   openai: ModelEntry[]
   anthropic: ModelEntry[]
   gemini: ModelEntry[]
+  azure: ModelEntry[]
+  mistral: ModelEntry[]
+  openrouter: ModelEntry[]
 }
+
+type ModelProvider = keyof ModelsResponse
+
+const KNOWN_PROVIDERS: ReadonlySet<ModelProvider> = new Set([
+  'openai', 'anthropic', 'gemini', 'azure', 'mistral', 'openrouter',
+])
 
 const DATED_SUFFIX = /-\d{8}$|-\d{4}-\d{2}-\d{2}$/
 
@@ -63,12 +72,14 @@ modelsRouter.get('/', async (c) => {
     throw new ApiError('INTERNAL_ERROR', 'Failed to load models', { detail: error.message })
   }
 
-  const groups: ModelsResponse = { openai: [], anthropic: [], gemini: [] }
+  const groups: ModelsResponse = {
+    openai: [], anthropic: [], gemini: [], azure: [], mistral: [], openrouter: [],
+  }
 
   for (const row of data ?? []) {
     const r = row as unknown as Record<string, unknown>
-    const provider = r['provider'] as 'openai' | 'anthropic' | 'gemini'
-    if (!groups[provider]) continue
+    const provider = r['provider'] as ModelProvider
+    if (!KNOWN_PROVIDERS.has(provider)) continue
     const model = r['model'] as string
     // Skip dated variants when an alias already exists — keeps the picker
     // readable while the row stays billable for direct API calls.

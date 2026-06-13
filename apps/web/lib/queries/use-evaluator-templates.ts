@@ -24,7 +24,7 @@ export interface EvaluatorTemplate {
   description: string
   category: EvaluatorTemplateCategory
   criterion: string
-  recommended_judge_provider: 'openai' | 'anthropic' | 'gemini'
+  recommended_judge_provider: 'openai' | 'anthropic' | 'gemini' | 'azure' | 'mistral' | 'openrouter'
   recommended_judge_model: string
   display_order: number
 }
