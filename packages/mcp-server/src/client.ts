@@ -13,7 +13,7 @@
  * proxy spend on the user's behalf.
  */
 
-const DEFAULT_BASE_URL = 'https://api.spanlens.io'
+const DEFAULT_BASE_URL = 'https://server.spanlens.io'
 
 export interface SpanlensClientOptions {
   apiKey: string

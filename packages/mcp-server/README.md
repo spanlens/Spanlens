@@ -101,7 +101,7 @@ This server is designed for the IDE-config use case, where the credential sits i
 | Environment variable | Default | Notes |
 |---|---|---|
 | `SPANLENS_API_KEY` | _required_ | A `sl_live_pub_*` key from the **Public Keys** card on `/projects`. The server refuses to start without one, and refuses to start with a `sl_live_*` (full) key. |
-| `SPANLENS_BASE_URL` | `https://api.spanlens.io` | Override for self-hosted Spanlens. Trailing slashes are normalised. |
+| `SPANLENS_BASE_URL` | `https://server.spanlens.io` | Override for self-hosted Spanlens. Trailing slashes are normalised. |
 
 ## Self-hosted Spanlens
 

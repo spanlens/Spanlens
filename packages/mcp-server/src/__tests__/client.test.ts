@@ -38,7 +38,7 @@ describe('SpanlensClient', () => {
     // Verify Authorization header + URL composition.
     const url = fetchMock.mock.calls[0]?.[0] as string
     const init = fetchMock.mock.calls[0]?.[1] as RequestInit
-    expect(url).toBe('https://api.spanlens.io/api/v1/stats/overview')
+    expect(url).toBe('https://server.spanlens.io/api/v1/stats/overview')
     expect(
       (init.headers as Record<string, string>)['Authorization'],
     ).toBe('Bearer sl_live_pub_test1234567890ab')
