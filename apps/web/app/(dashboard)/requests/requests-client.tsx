@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { ErrorBoundary } from '@/components/error-boundary'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ExportDropdown } from '@/components/ui/export-dropdown'
 import { cn, formatDateTime } from '@/lib/utils'
@@ -1610,17 +1611,19 @@ export function RequestsClient() {
 
       {/* Table + pagination */}
       <div className="flex flex-col flex-1">
-          <RequestsTable
-            rows={requests}
-            isLoading={isLoading}
-            selectedId={selectedId}
-            onSelect={handleSelect}
-            drawerOpen={drawerOpen}
-            sortField={sortField}
-            sortDir={sortDir}
-            onSort={handleSort}
-            hasActiveFilters={hasActiveFilters}
-          />
+          <ErrorBoundary label="requests:table">
+            <RequestsTable
+              rows={requests}
+              isLoading={isLoading}
+              selectedId={selectedId}
+              onSelect={handleSelect}
+              drawerOpen={drawerOpen}
+              sortField={sortField}
+              sortDir={sortDir}
+              onSort={handleSort}
+              hasActiveFilters={hasActiveFilters}
+            />
+          </ErrorBoundary>
 
           {/* Pagination — single source of truth for "where am I in the
               list", with First/Last jump for big result sets. */}

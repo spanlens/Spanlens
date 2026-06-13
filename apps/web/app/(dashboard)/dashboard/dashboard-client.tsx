@@ -18,6 +18,7 @@ import { cn, formatTime } from '@/lib/utils'
 import { linkPrefetchFor } from '@/lib/heavy-pages'
 import dynamic from 'next/dynamic'
 import { WelcomeBanner } from '@/components/dashboard/welcome-banner'
+import { ErrorBoundary } from '@/components/error-boundary'
 import { LIVE_REFETCH_MS_ACTIVE as LIVE_REFETCH_MS } from '@/lib/queries/live-polling'
 
 // Lazy-load recharts-heavy components. They render below the fold and are
@@ -841,14 +842,18 @@ export function DashboardClient() {
             </>
           ) : (
             <>
-              <TokenTrendsCard
-                series={timeseries.data}
-                rangeLabel={shortRangeLabel(timeRange, customRange)}
-              />
-              <ErrorDistributionCard
-                series={timeseries.data}
-                rangeLabel={shortRangeLabel(timeRange, customRange)}
-              />
+              <ErrorBoundary label="dashboard:token-trends">
+                <TokenTrendsCard
+                  series={timeseries.data}
+                  rangeLabel={shortRangeLabel(timeRange, customRange)}
+                />
+              </ErrorBoundary>
+              <ErrorBoundary label="dashboard:error-distribution">
+                <ErrorDistributionCard
+                  series={timeseries.data}
+                  rangeLabel={shortRangeLabel(timeRange, customRange)}
+                />
+              </ErrorBoundary>
             </>
           )}
         </div>
@@ -859,10 +864,12 @@ export function DashboardClient() {
           {!mounted || modelsQuery.isLoading || !modelsQuery.data ? (
             <Skeleton className="h-[290px] w-full" />
           ) : (
-            <CostBreakdownCard
-              models={modelsQuery.data}
-              rangeLabel={shortRangeLabel(timeRange, customRange)}
-            />
+            <ErrorBoundary label="dashboard:cost-breakdown">
+              <CostBreakdownCard
+                models={modelsQuery.data}
+                rangeLabel={shortRangeLabel(timeRange, customRange)}
+              />
+            </ErrorBoundary>
           )}
         </div>
 
