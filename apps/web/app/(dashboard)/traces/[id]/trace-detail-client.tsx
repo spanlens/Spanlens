@@ -91,6 +91,25 @@ export function TraceDetailClient({ id }: { id: string }) {
                 next →
               </button>
             )}
+            <button
+              type="button"
+              onClick={() => {
+                // OTLP export — server returns the file with a
+                // Content-Disposition: attachment header. We hit the URL via a
+                // hidden anchor click so the browser handles the download
+                // (works in every modern engine without extra blob plumbing).
+                const a = document.createElement('a')
+                a.href = `/api/v1/traces/${id}/otlp.json`
+                a.download = `spanlens-trace-${id}.otlp.json`
+                document.body.appendChild(a)
+                a.click()
+                a.remove()
+              }}
+              title="Download this trace as OTLP JSON. Upload to Datadog / Honeycomb / Jaeger / Tempo."
+              className="font-mono text-[11px] px-[9px] py-1 border border-border rounded-[5px] text-text-muted hover:border-border-strong transition-colors"
+            >
+              ↓ OTLP
+            </button>
             <ShareDialog scope="trace" targetId={id} variant="primary" />
           </div>
         }
