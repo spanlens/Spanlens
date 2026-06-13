@@ -13,6 +13,7 @@
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "test:watch": "vitest",
     "test:e2e": "tsx scripts/test-e2e.ts",
+    "check:env": "tsx scripts/check-env.ts",
     "clean": "rm -rf dist"
   },
   "dependencies": {
