@@ -153,3 +153,35 @@ def test_create_gemini_returns_httpx_client_with_auth(monkeypatch):
         assert client.headers["Authorization"] == "Bearer sl_test_gemini"
     finally:
         client.close()
+
+
+# ── configure_gemini (mocks google.generativeai so no optional dep needed) ──
+
+
+def test_configure_gemini_uses_rest_transport(monkeypatch):
+    """Regression guard: the default gRPC transport silently bypasses the
+    proxy (it ignores an https api_endpoint). configure_gemini() MUST pass
+    transport="rest" so calls are actually logged. See gemini.py."""
+    import sys
+    import types
+    from unittest.mock import MagicMock
+
+    fake = types.ModuleType("google.generativeai")
+    fake.configure = MagicMock()  # type: ignore[attr-defined]
+    google_pkg = sys.modules.get("google") or types.ModuleType("google")
+    monkeypatch.setitem(sys.modules, "google", google_pkg)
+    monkeypatch.setitem(sys.modules, "google.generativeai", fake)
+    monkeypatch.setenv("SPANLENS_API_KEY", "sl_test_gem")
+
+    from spanlens.integrations.gemini import (
+        DEFAULT_SPANLENS_GEMINI_PROXY,
+        configure_gemini,
+    )
+
+    configure_gemini()
+
+    fake.configure.assert_called_once()
+    kwargs = fake.configure.call_args.kwargs
+    assert kwargs["transport"] == "rest"
+    assert kwargs["api_key"] == "sl_test_gem"
+    assert kwargs["client_options"]["api_endpoint"] == DEFAULT_SPANLENS_GEMINI_PROXY
