@@ -1,18 +1,25 @@
 import { Hono } from 'hono'
-import { authJwt, type JwtContext } from '../middleware/authJwt.js'
+import { authJwtOrApiKey, type DualAuthContext } from '../middleware/authJwtOrApiKey.js'
+import { requireFullScope } from '../middleware/requireFullScope.js'
 import { supabaseAdmin } from '../lib/db.js'
 import { runEvalRun, estimateJudgeCostUsd } from '../lib/eval-runner.js'
 import { fireAndForget } from '../lib/wait-until.js'
 import { ApiError } from '../lib/errors.js'
 
-export const evalsRouter = new Hono<JwtContext>()
+// P2-8: evals are dual-auth so CI / SDK can run them with an sl_live_* key,
+// not just a dashboard JWT — this is the "prompt CI" enabler. Reads accept
+// full + public keys; routes that write evaluator config or spend the
+// provider key (evaluator CRUD, eval-run trigger) add requireFullScope so a
+// public (sl_live_pub_*) key stays read-only. requireFullScope is a no-op on
+// the JWT path (apiKeyScope is unset), so dashboard behaviour is unchanged.
+export const evalsRouter = new Hono<DualAuthContext>()
 
-evalsRouter.use('*', authJwt)
+evalsRouter.use('*', authJwtOrApiKey)
 
 // ── Evaluators (定義) ────────────────────────────────────────────────────────
 
 // POST /api/v1/evaluators — create a reusable evaluator
-evalsRouter.post('/evaluators', async (c) => {
+evalsRouter.post('/evaluators', requireFullScope, async (c) => {
   const orgId = c.get('orgId')
   const userId = c.get('userId')
   if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
@@ -184,7 +191,7 @@ evalsRouter.get('/evaluator-templates', async (c) => {
 })
 
 // DELETE /api/v1/evaluators/:id — soft delete (archive)
-evalsRouter.delete('/evaluators/:id', async (c) => {
+evalsRouter.delete('/evaluators/:id', requireFullScope, async (c) => {
   const orgId = c.get('orgId')
   if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
@@ -202,7 +209,7 @@ evalsRouter.delete('/evaluators/:id', async (c) => {
 // ── Eval runs (실행) ─────────────────────────────────────────────────────────
 
 // POST /api/v1/eval-runs — kick off a run (returns immediately, run executes in background)
-evalsRouter.post('/eval-runs', async (c) => {
+evalsRouter.post('/eval-runs', requireFullScope, async (c) => {
   const orgId = c.get('orgId')
   const userId = c.get('userId')
   if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')

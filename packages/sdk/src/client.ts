@@ -1,6 +1,7 @@
 import { createTransport, type Transport } from './transport.js'
 import { createTrace, TraceHandle } from './trace.js'
 import { makeBufferingTransport, shouldSample, validateSampleRate } from './sampler.js'
+import { createEvalsApi, type EvalsApi } from './evals.js'
 import type { SpanlensConfig, TraceOptions } from './types.js'
 
 /**
@@ -20,13 +21,34 @@ import type { SpanlensConfig, TraceOptions } from './types.js'
 export class SpanlensClient {
   private readonly transport: Transport
   private readonly sampleRate: number
+  private _evals: EvalsApi | undefined
+
+  /** Config kept so the lazily-built evals API can reuse apiKey + baseUrl. */
+  private readonly config: SpanlensConfig
 
   constructor(config: SpanlensConfig) {
     if (!config.apiKey || config.apiKey.trim().length === 0) {
       throw new Error('[spanlens] apiKey is required')
     }
+    this.config = config
     this.sampleRate = validateSampleRate(config.sampleRate)
     this.transport = createTransport(config)
+  }
+
+  /**
+   * Evals API — trigger prompt evaluations from CI / scripts and read back
+   * the score to gate on. Blocking and throws on failure (unlike tracing,
+   * which is fire-and-forget). Requires a full `sl_live_*` key — a public
+   * `sl_live_pub_*` key gets PUBLIC_KEY_WRITE_FORBIDDEN on run().
+   */
+  get evals(): EvalsApi {
+    if (!this._evals) {
+      this._evals = createEvalsApi({
+        apiKey: this.config.apiKey,
+        ...(this.config.baseUrl ? { baseUrl: this.config.baseUrl } : {}),
+      })
+    }
+    return this._evals
   }
 
   /**
