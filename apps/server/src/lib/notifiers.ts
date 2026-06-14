@@ -17,7 +17,7 @@ export interface NotificationChannelRow {
 
 export interface AlertNotification {
   alertName: string
-  alertType: 'budget' | 'error_rate' | 'latency_p95'
+  alertType: 'budget' | 'error_rate' | 'latency_p95' | 'eval_score'
   threshold: number
   currentValue: number
   windowMinutes: number
@@ -31,6 +31,8 @@ function formatAlertValue(
 ): string {
   if (type === 'budget') return `$${value.toFixed(4)}`
   if (type === 'error_rate') return `${(value * 100).toFixed(1)}%`
+  // eval_score is a normalized 0..1 quality score; show it as a percentage.
+  if (type === 'eval_score') return `${(value * 100).toFixed(1)}%`
   return `${Math.round(value)}ms`
 }
 
@@ -40,7 +42,9 @@ function buildSubject(n: AlertNotification): string {
       ? 'Budget threshold'
       : n.alertType === 'error_rate'
         ? 'Error rate'
-        : 'p95 latency'
+        : n.alertType === 'eval_score'
+          ? 'Eval score'
+          : 'p95 latency'
   return `[Spanlens] ${verb} alert: ${n.alertName}`
 }
 
@@ -101,7 +105,13 @@ export async function sendSlackAlert(
   n: AlertNotification,
 ): Promise<DeliveryResult> {
   const color =
-    n.alertType === 'budget' ? '#eab308' : n.alertType === 'error_rate' ? '#ef4444' : '#f97316'
+    n.alertType === 'budget'
+      ? '#eab308'
+      : n.alertType === 'error_rate'
+        ? '#ef4444'
+        : n.alertType === 'eval_score'
+          ? '#a855f7'
+          : '#f97316'
   try {
     const res = await fetch(webhookUrl, {
       method: 'POST',

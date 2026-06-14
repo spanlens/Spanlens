@@ -10,7 +10,10 @@ alertsRouter.use('*', authJwt)
 
 const requireEdit = requireRole('admin', 'editor')
 
-const VALID_ALERT_TYPES = new Set(['budget', 'error_rate', 'latency_p95'])
+// eval_score (P2-9) is a quality FLOOR: it fires when the average eval score
+// over the window drops to/below the threshold (the others are ceilings that
+// fire when the metric rises to/above). Its threshold is a 0..1 score.
+const VALID_ALERT_TYPES = new Set(['budget', 'error_rate', 'latency_p95', 'eval_score'])
 const VALID_CHANNEL_KINDS = new Set(['email', 'slack', 'discord'])
 
 // ── GET /api/v1/alerts ──────────────────────────────────────────
@@ -51,10 +54,15 @@ alertsRouter.post('/', requireEdit, async (c) => {
     throw new ApiError('VALIDATION_FAILED', 'name is required')
   }
   if (typeof body.type !== 'string' || !VALID_ALERT_TYPES.has(body.type)) {
-    throw new ApiError('VALIDATION_FAILED', 'type must be budget | error_rate | latency_p95')
+    throw new ApiError('VALIDATION_FAILED', 'type must be budget | error_rate | latency_p95 | eval_score')
   }
   if (typeof body.threshold !== 'number' || body.threshold <= 0) {
     throw new ApiError('VALIDATION_FAILED', 'threshold must be a positive number')
+  }
+  // eval_score thresholds are 0..1 (avg_score is normalized). Reject out-of-range
+  // values up front — a threshold > 1 would fire on every run (score can't exceed 1).
+  if (body.type === 'eval_score' && body.threshold > 1) {
+    throw new ApiError('VALIDATION_FAILED', 'eval_score threshold must be between 0 and 1')
   }
 
   const insert = {

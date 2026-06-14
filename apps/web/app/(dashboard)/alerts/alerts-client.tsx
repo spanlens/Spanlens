@@ -21,13 +21,28 @@ import { cn, formatDateTime } from '@/lib/utils'
 function fmtThreshold(type: AlertType, threshold: number): string {
   if (type === 'budget') return `$${threshold}`
   if (type === 'error_rate') return `${(threshold * 100).toFixed(1)}%`
+  if (type === 'eval_score') return `${(threshold * 100).toFixed(1)}%`
   return `${threshold}ms`
 }
 
 function kindLabel(type: AlertType): string {
   if (type === 'budget') return 'BUDGET'
   if (type === 'error_rate') return 'ERROR RATE'
+  if (type === 'eval_score') return 'EVAL SCORE'
   return 'P95 LATENCY'
+}
+
+// eval_score is a quality floor (fires when score drops BELOW). The others
+// are ceilings (fire when the metric rises ABOVE).
+function alertComparator(type: AlertType): '<' | '>' {
+  return type === 'eval_score' ? '<' : '>'
+}
+
+function alertMetricLabel(type: AlertType): string {
+  if (type === 'budget') return 'sum(cost)'
+  if (type === 'error_rate') return 'error_rate'
+  if (type === 'eval_score') return 'avg(eval_score)'
+  return 'p95(latency)'
 }
 
 function isRecentlyFired(lastTriggeredAt: string | null): boolean {
@@ -97,8 +112,8 @@ function AlertRuleRow({
         </div>
         <div className="font-mono text-[11px] text-text-muted">
           <span className="text-text-faint">trigger </span>
-          {a.type === 'budget' ? 'sum(cost)' : a.type === 'error_rate' ? 'error_rate' : 'p95(latency)'}{' '}
-          &gt; {fmtThreshold(a.type, a.threshold)}
+          {alertMetricLabel(a.type)}{' '}
+          {alertComparator(a.type)} {fmtThreshold(a.type, a.threshold)}
           <span className="text-text-faint"> for </span>{a.window_minutes}m
           {a.last_triggered_at && (
             <span className="text-text-faint ml-2">· last fired {formatDateTime(a.last_triggered_at)}</span>
@@ -727,12 +742,13 @@ export function AlertsClient() {
                   <SelectItem value="budget">Budget (USD)</SelectItem>
                   <SelectItem value="error_rate">Error rate (0–1)</SelectItem>
                   <SelectItem value="latency_p95">p95 latency (ms)</SelectItem>
+                  <SelectItem value="eval_score">Eval score (0–1, fires below)</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <div className="grid grid-cols-3 gap-3">
               {[
-                { label: 'Threshold', value: newThreshold, onChange: setNewThreshold, placeholder: newType === 'budget' ? '10' : newType === 'error_rate' ? '0.05' : '2000' },
+                { label: 'Threshold', value: newThreshold, onChange: setNewThreshold, placeholder: newType === 'budget' ? '10' : newType === 'error_rate' ? '0.05' : newType === 'eval_score' ? '0.8' : '2000' },
                 { label: 'Window (min)', value: newWindow, onChange: setNewWindow, placeholder: '60' },
                 { label: 'Cooldown (min)', value: newCooldown, onChange: setNewCooldown, placeholder: '60' },
               ].map((f) => (

@@ -365,7 +365,7 @@ export interface CheckoutResponse {
 
 // ── Alerts ─────────────────────────────────────────────────────
 
-export type AlertType = 'budget' | 'error_rate' | 'latency_p95'
+export type AlertType = 'budget' | 'error_rate' | 'latency_p95' | 'eval_score'
 export type ChannelKind = 'email' | 'slack' | 'discord'
 
 export interface AlertRow {
