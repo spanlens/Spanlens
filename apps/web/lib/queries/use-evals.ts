@@ -120,7 +120,16 @@ export interface EmbeddingConfig {
   threshold?: number
 }
 
-export type CreateEvaluatorInput =
+/** P2-10 — auto-run-on-version config, common to every evaluator type. */
+export interface AutoRunFields {
+  autoRunOnVersion?: boolean
+  autoRunDatasetId?: string
+  autoRunProvider?: string
+  autoRunModel?: string
+  autoRunSampleSize?: number
+}
+
+export type CreateEvaluatorInput = AutoRunFields & (
   | {
       promptName: string
       name: string
@@ -160,6 +169,7 @@ export type CreateEvaluatorInput =
       type: 'embedding'
       config: EmbeddingConfig
     }
+)
 
 export function useCreateEvaluator() {
   const qc = useQueryClient()
@@ -173,6 +183,14 @@ export function useCreateEvaluator() {
       }
       if (input.type === undefined || input.type === 'llm_judge') {
         if (input.scoreConfigId) body.scoreConfigId = input.scoreConfigId
+      }
+      // P2-10 auto-run config (common to all types).
+      if (input.autoRunOnVersion) {
+        body.autoRunOnVersion = true
+        body.autoRunDatasetId = input.autoRunDatasetId
+        body.autoRunProvider = input.autoRunProvider
+        body.autoRunModel = input.autoRunModel
+        if (input.autoRunSampleSize != null) body.autoRunSampleSize = input.autoRunSampleSize
       }
       const res = await apiPost<ApiEnvelope<Evaluator>>('/api/v1/evaluators', body)
       return res.data
