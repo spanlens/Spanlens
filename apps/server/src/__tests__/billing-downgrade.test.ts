@@ -89,23 +89,14 @@ function setupSupabaseMocks(opts: {
         select: vi.fn().mockReturnValue({
           eq: vi.fn().mockReturnValue({
             single: vi.fn().mockResolvedValue({
-              data: { name: opts.orgName ?? 'Acme' },
+              // fetchOwner now reads owner_id off organizations (the org_role
+              // enum has no 'owner' value). owner_id is null when the test
+              // wants the no-owner path.
+              data: {
+                name: opts.orgName ?? 'Acme',
+                owner_id: opts.ownerEmail ? 'usr_owner' : null,
+              },
               error: null,
-            }),
-          }),
-        }),
-      }
-    }
-
-    if (table === 'org_members') {
-      return {
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnValue({
-            eq: vi.fn().mockReturnValue({
-              limit: vi.fn().mockResolvedValue({
-                data: opts.ownerEmail ? [{ user_id: 'usr_owner' }] : [],
-                error: null,
-              }),
             }),
           }),
         }),
