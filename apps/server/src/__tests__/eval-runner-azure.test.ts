@@ -87,6 +87,7 @@ describe('generateForItem — azure', () => {
       'gpt-4o-mini',
       KEY,
       RESOURCE,
+      0,
     )
 
     expect(out).toBe('generated answer')
@@ -105,8 +106,43 @@ describe('generateForItem — azure', () => {
       'gpt-4o-mini',
       KEY,
       null,
+      0,
     )
     expect(out).toBeNull()
     expect(fetchMock).not.toHaveBeenCalled()
+  })
+})
+
+describe('callJudge — retry on transient errors (P1-3)', () => {
+  test('retries a 503 and succeeds on the next attempt', async () => {
+    const fn = vi.fn()
+      .mockResolvedValueOnce({ ok: false, status: 503, json: async () => ({}), text: async () => '' })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          choices: [{ message: { content: '{"score": 5, "reasoning": "great"}' } }],
+          usage: { prompt_tokens: 10, completion_tokens: 5 },
+          model: 'gpt-4o-mini',
+        }),
+        text: async () => '',
+      })
+    vi.stubGlobal('fetch', fn)
+
+    const outcome = await callJudge(baseConfig, 'resp', KEY, RESOURCE)
+
+    expect(fn).toHaveBeenCalledTimes(2)
+    // scale 1..5, score 5 → normalized 1.0
+    expect(outcome?.score).toBeCloseTo(1)
+  })
+
+  test('does NOT retry a 400 (non-retryable client error)', async () => {
+    const fn = vi.fn().mockResolvedValue({ ok: false, status: 400, json: async () => ({}), text: async () => '' })
+    vi.stubGlobal('fetch', fn)
+
+    const outcome = await callJudge(baseConfig, 'resp', KEY, RESOURCE)
+
+    expect(outcome).toBeNull()
+    expect(fn).toHaveBeenCalledTimes(1)
   })
 })

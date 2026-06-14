@@ -73,6 +73,10 @@ export interface RunEvalInput {
   sampleSize?: number
   sampleFrom?: string
   sampleTo?: string
+  /** Production sampling: 'recent' (default) or 'random' (representative). */
+  sampleStrategy?: 'recent' | 'random'
+  /** Dataset generation temperature, 0..2. Defaults to 0 (reproducible). */
+  generationTemperature?: number
   /** Required when source = 'dataset'. */
   runProvider?: string
   /** Required when source = 'dataset'. */
@@ -124,6 +128,8 @@ export class EvalsApi {
       sampleSize: input.sampleSize ?? 50,
       sampleFrom: input.sampleFrom,
       sampleTo: input.sampleTo,
+      sampleStrategy: input.sampleStrategy,
+      generationTemperature: input.generationTemperature,
       runProvider: input.runProvider,
       runModel: input.runModel,
     })

@@ -224,6 +224,8 @@ evalsRouter.post('/eval-runs', requireFullScope, async (c) => {
     sampleTo?: unknown
     runProvider?: unknown
     runModel?: unknown
+    sampleStrategy?: unknown
+    generationTemperature?: unknown
   }
   try {
     body = (await c.req.json()) as typeof body
@@ -238,11 +240,19 @@ evalsRouter.post('/eval-runs', requireFullScope, async (c) => {
   const sampleSize = typeof body.sampleSize === 'number' ? Math.round(body.sampleSize) : 50
   const sampleFrom = typeof body.sampleFrom === 'string' ? body.sampleFrom : null
   const sampleTo = typeof body.sampleTo === 'string' ? body.sampleTo : null
+  // P1-4 / P1-5: sampling strategy (default 'recent' = legacy) and generation
+  // temperature (default 0 = reproducible).
+  const sampleStrategy = body.sampleStrategy === 'random' ? 'random' : 'recent'
+  const generationTemperature =
+    typeof body.generationTemperature === 'number' ? body.generationTemperature : 0
 
   if (!evaluatorId) throw new ApiError('VALIDATION_FAILED', 'evaluatorId is required')
   if (!promptVersionId) throw new ApiError('VALIDATION_FAILED', 'promptVersionId is required')
   if (sampleSize < 1 || sampleSize > 1000) {
     throw new ApiError('VALIDATION_FAILED', 'sampleSize must be between 1 and 1000')
+  }
+  if (generationTemperature < 0 || generationTemperature > 2) {
+    throw new ApiError('VALIDATION_FAILED', 'generationTemperature must be between 0 and 2')
   }
   if (source === 'dataset' && !datasetId) {
     throw new ApiError('VALIDATION_FAILED', 'datasetId is required when source = dataset')
@@ -325,6 +335,8 @@ evalsRouter.post('/eval-runs', requireFullScope, async (c) => {
     sampleTo,
     runProvider,
     runModel,
+    sampleStrategy,
+    generationTemperature,
   }))
 
   return c.json({ success: true, data: run }, 202)
