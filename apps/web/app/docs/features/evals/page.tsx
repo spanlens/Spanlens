@@ -272,6 +272,16 @@ export default function EvalsDocs() {
         </tbody>
       </table>
 
+      <p>
+        These endpoints accept either a dashboard session (Supabase JWT) or a
+        full-access Spanlens API key (<code>sl_live_*</code>), so you can drive
+        evals from CI as well as the dashboard. Read endpoints also accept a
+        public key (<code>sl_live_pub_*</code>); the write endpoints (create
+        evaluator, start a run) require a full key and reject a public key with{' '}
+        <code>PUBLIC_KEY_WRITE_FORBIDDEN</code>, since a run spends your
+        provider key.
+      </p>
+
       <h2>Example, create and run an evaluator</h2>
       <CodeBlock language="bash">{`# 1. Define the evaluator
 curl https://server.spanlens.io/api/v1/evaluators \\
@@ -320,6 +330,39 @@ curl https://server.spanlens.io/api/v1/eval-runs \\
 # 3. Poll for results (status: pending → running → completed)
 curl https://server.spanlens.io/api/v1/eval-runs/<run-id> \\
   -H "Authorization: Bearer $SPANLENS_JWT"`}</CodeBlock>
+
+      <h2>Run from CI (prompt CI)</h2>
+      <p>
+        Gate a prompt change on its eval score. The SDK&apos;s{' '}
+        <code>client.evals.run()</code> triggers a run with a full{' '}
+        <code>sl_live_*</code> key, polls until it finishes, and returns the
+        scored run so the job can fail the build when quality regresses. Unlike
+        tracing (fire-and-forget), this call blocks and throws on failure.
+      </p>
+      <CodeBlock language="typescript">{`import { SpanlensClient } from '@spanlens/sdk'
+
+// Use a full-access key (sl_live_*), not a public key.
+const client = new SpanlensClient({ apiKey: process.env.SPANLENS_API_KEY! })
+
+const run = await client.evals.run({
+  evaluatorId: process.env.EVALUATOR_ID!,
+  promptVersionId: process.env.PROMPT_VERSION_ID!,
+  sampleSize: 50,
+})
+
+console.log(\`scored \${run.scored_count}/\${run.attempted_count}, avg \${run.avg_score}\`)
+
+// Quality gate: fail the build if the average drops below the bar.
+if (run.status !== 'completed' || (run.avg_score ?? 0) < 0.8) {
+  console.error('Eval gate failed')
+  process.exit(1)
+}`}</CodeBlock>
+      <p>
+        Pass <code>{`{ wait: false }`}</code> to return immediately after the run
+        is queued, or tune <code>pollIntervalMs</code> /{' '}
+        <code>timeoutMs</code>. Use <code>client.evals.getResults(run.id)</code>{' '}
+        to read the lowest-scoring samples for a CI log.
+      </p>
 
       <h2>Limitations</h2>
       <ul>
