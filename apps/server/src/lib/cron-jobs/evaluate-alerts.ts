@@ -21,16 +21,30 @@ import { deliverToChannel, type AlertNotification } from '../notifiers.js'
 import { emitWebhookEvent } from '../webhook-emit.js'
 import { logError } from '../structured-logger.js'
 
+export type AlertType = 'budget' | 'error_rate' | 'latency_p95' | 'eval_score'
+
 export interface AlertRow {
   id: string
   organization_id: string
   project_id: string | null
   name: string
-  type: 'budget' | 'error_rate' | 'latency_p95'
+  type: AlertType
   threshold: number
   window_minutes: number
   cooldown_minutes: number
   last_triggered_at: string | null
+}
+
+/**
+ * Whether `current` breaches the alert threshold. Direction depends on the
+ * metric: budget / error_rate / latency_p95 are CEILINGS (breach when the
+ * value rises to/above the threshold), while eval_score is a quality FLOOR
+ * (breach when the score drops to/below it). Exported + pure so the
+ * inverted eval_score direction is unit-testable without the full cron.
+ */
+export function isAlertBreached(type: AlertType, current: number, threshold: number): boolean {
+  if (type === 'eval_score') return current <= threshold
+  return current >= threshold
 }
 
 export interface ChannelRow {
@@ -46,6 +60,35 @@ export interface EvaluateAlertsJobResult {
 }
 
 async function computeMetric(alert: AlertRow): Promise<number | null> {
+  // eval_score reads from Supabase (eval_runs), not ClickHouse. It is the
+  // mean of completed runs' avg_score over the window. Returns null when no
+  // completed runs scored in the window (no data → don't fire). eval_runs has
+  // no project_id, so project-scoped eval_score alerts fall back to org-level.
+  if (alert.type === 'eval_score') {
+    const windowStartIso = new Date(Date.now() - alert.window_minutes * 60 * 1000).toISOString()
+    const { data, error } = await supabaseAdmin
+      .from('eval_runs')
+      .select('avg_score')
+      .eq('organization_id', alert.organization_id)
+      .eq('status', 'completed')
+      .gte('completed_at', windowStartIso)
+      .not('avg_score', 'is', null)
+    if (error) {
+      logError('CRON_JOB_FAILED', {
+        jobName: 'evaluate-alerts',
+        orgId: alert.organization_id,
+        alertId: alert.id,
+        kind: 'compute_metric_eval_score',
+      }, error)
+      return null
+    }
+    const scores = (data ?? [])
+      .map((r) => r.avg_score)
+      .filter((s): s is number => s != null)
+    if (scores.length === 0) return null
+    return scores.reduce((a, b) => a + b, 0) / scores.length
+  }
+
   const windowStart = new Date(Date.now() - alert.window_minutes * 60 * 1000)
     .toISOString()
     .replace('T', ' ')
@@ -131,7 +174,12 @@ export async function runEvaluateAlertsJob(): Promise<EvaluateAlertsJobResult> {
     }
 
     const current = await computeMetric(alert)
-    if (current == null || current < alert.threshold) {
+    if (current == null) {
+      // No data in the window (or a metric error) — can't assert a breach.
+      report.push({ alert_id: alert.id, fired: false, reason: 'no_data' })
+      continue
+    }
+    if (!isAlertBreached(alert.type, current, alert.threshold)) {
       report.push({ alert_id: alert.id, fired: false, reason: 'under_threshold' })
       continue
     }
