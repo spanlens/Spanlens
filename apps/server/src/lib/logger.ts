@@ -163,18 +163,21 @@ async function maybeSendSecurityAlert(params: {
   // If no row was returned, alert is disabled or still in cooldown — skip.
   if (!claimedOrg) return
 
-  // Fetch project name and owner in parallel to reduce sequential DB round-trips
+  // Fetch project name and owner in parallel to reduce sequential DB round-trips.
+  // The owner is organizations.owner_id — there is NO 'owner' value in the
+  // org_role enum (admin/editor/viewer only), so the previous
+  // org_members.eq('role','owner') matched zero rows and silently suppressed
+  // every security-alert email.
   const [projectResult, ownerResult] = await Promise.all([
     supabaseAdmin.from('projects').select('name').eq('id', projectId).single(),
     supabaseAdmin
-      .from('org_members')
-      .select('user_id')
-      .eq('organization_id', organizationId)
-      .eq('role', 'owner')
-      .limit(1),
+      .from('organizations')
+      .select('owner_id')
+      .eq('id', organizationId)
+      .single(),
   ])
 
-  const ownerId = ownerResult.data?.[0]?.user_id
+  const ownerId = ownerResult.data?.owner_id
   if (!ownerId) return
 
   const { data: { user } } = await supabaseAdmin.auth.admin.getUserById(ownerId)

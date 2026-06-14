@@ -25,6 +25,7 @@
 import { supabaseAdmin } from './db.js'
 import { requestsScope, selectRequests } from './requests-query.js'
 import { aes256Decrypt } from './crypto.js'
+import { validateOutboundUrlSync } from './safe-url.js'
 import { calculateCost } from './cost.js'
 import { buildOpenAIBody } from './playground-runner.js'
 import { startInternalTrace } from './internal-tracing.js'
@@ -85,12 +86,17 @@ interface JudgeOutcome {
  */
 type EvalProvider = 'openai' | 'anthropic' | 'gemini' | 'azure' | 'mistral' | 'openrouter'
 
-async function generateForItem(
+// Exported for unit tests (same convention as the deterministic runners).
+// Not part of the stable module API — callers should go through runEvalRun.
+export async function generateForItem(
   promptContent: string,
   itemInput: Record<string, unknown>,
   provider: EvalProvider,
   model: string,
   apiKey: string,
+  /** Azure resource origin (provider_keys.provider_metadata.resource_url).
+   * Required when provider === 'azure'; ignored otherwise. */
+  resourceUrl: string | null,
 ): Promise<string | null> {
   // The dataset-item shape allows either `variables` (template substitution)
   // or `messages` (already-formatted chat). Translate to a single user
@@ -166,6 +172,25 @@ async function generateForItem(
       return json.content?.find((b) => b.type === 'text')?.text ?? null
     }
 
+    if (provider === 'azure') {
+      // Azure OpenAI v1 endpoint (Aug 2025+) is OpenAI-compatible: same body
+      // shape, but the base URL is the per-key resource origin and auth uses
+      // the `api-key` header instead of Bearer. Mirrors proxy/azure.ts.
+      if (!resourceUrl) return null
+      const res = await fetch(`${resourceUrl}/openai/v1/chat/completions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'api-key': apiKey },
+        body: JSON.stringify(buildOpenAIBody(
+          model,
+          [{ role: 'system', content: promptContent }, { role: 'user', content: userContent }],
+          { temperature: 0.7, maxTokens: 1024 },
+        )),
+      })
+      if (!res.ok) return null
+      const json = await res.json() as { choices: Array<{ message: { content: string } }> }
+      return json.choices?.[0]?.message?.content ?? null
+    }
+
     // Gemini
     const res = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
@@ -198,11 +223,15 @@ async function generateForItem(
 // buildJudgePrompt + parseJudgeReply moved to ./eval-runners/judge-prompt.ts
 // (imported and re-exported above for backward compatibility).
 
-/** Calls the judge LLM once. Returns null on failure (caller skips the sample). */
-async function callJudge(
+/** Calls the judge LLM once. Returns null on failure (caller skips the sample).
+ * Exported for unit tests (see generateForItem note above). */
+export async function callJudge(
   config: JudgeConfig,
   responseText: string,
   apiKey: string,
+  /** Azure resource origin (provider_keys.provider_metadata.resource_url).
+   * Required when config.judge_provider === 'azure'; ignored otherwise. */
+  resourceUrl: string | null,
 ): Promise<JudgeOutcome | null> {
   const prompt = buildJudgePrompt(config.criterion, responseText, {
     scale_min: config.scale_min,
@@ -363,6 +392,47 @@ async function callJudge(
     const cost = calculateCost('anthropic', json.model ?? config.judge_model, {
       promptTokens: json.usage?.input_tokens ?? 0,
       completionTokens: json.usage?.output_tokens ?? 0,
+    })?.totalCost ?? 0
+    return buildOutcome(parsed, cost, tokens)
+  }
+
+  if (config.judge_provider === 'azure') {
+    // Azure OpenAI v1 endpoint is OpenAI-compatible (same request/response +
+    // json_object response_format). Differences vs. the openai branch: the
+    // base URL is the per-key Azure resource origin, auth is the `api-key`
+    // header, and Azure bills at OpenAI prices so cost uses the 'openai' table
+    // (mirrors proxy/azure.ts). Without resource_url we can't build the URL —
+    // fail the sample rather than hit a wrong endpoint.
+    if (!resourceUrl) return null
+    const res = await fetch(`${resourceUrl}/openai/v1/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'api-key': apiKey,
+      },
+      body: JSON.stringify(buildOpenAIBody(
+        config.judge_model,
+        [{ role: 'user', content: prompt }],
+        { temperature: 0, maxTokens: 200, responseFormat: { type: 'json_object' } },
+      )),
+    })
+    if (!res.ok) return null
+    const json = await res.json() as {
+      choices: Array<{ message: { content: string } }>
+      usage: { prompt_tokens: number; completion_tokens: number }
+      model: string
+    }
+    const text = json.choices?.[0]?.message?.content ?? ''
+    const parsed = parseJudgeReply(text, {
+      scale_min: config.scale_min,
+      scale_max: config.scale_max,
+      score_config: config.score_config ?? null,
+    })
+    if (!parsed) return null
+    const tokens = (json.usage?.prompt_tokens ?? 0) + (json.usage?.completion_tokens ?? 0)
+    const cost = calculateCost('openai', json.model ?? config.judge_model, {
+      promptTokens: json.usage?.prompt_tokens ?? 0,
+      completionTokens: json.usage?.completion_tokens ?? 0,
     })?.totalCost ?? 0
     return buildOutcome(parsed, cost, tokens)
   }
@@ -620,10 +690,11 @@ export async function runEvalRun(input: RunInput): Promise<void> {
       // "config archived" warnings.
     }
 
-    // Find an active provider key matching the judge provider
+    // Find an active provider key matching the judge provider. provider_metadata
+    // carries Azure's resource_url (NULL for other providers).
     const { data: pkRow, error: pkErr } = await supabaseAdmin
       .from('provider_keys')
-      .select('id, provider, encrypted_key')
+      .select('id, provider, encrypted_key, provider_metadata')
       .eq('organization_id', organizationId)
       .eq('provider', config.judge_provider)
       .eq('is_active', true)
@@ -636,6 +707,24 @@ export async function runEvalRun(input: RunInput): Promise<void> {
 
     const judgeKey = await aes256Decrypt(pkRow.encrypted_key as string)
     if (!judgeKey) throw new Error('Failed to decrypt judge provider key')
+
+    // Azure needs the resource origin to build the upstream URL. Fail the whole
+    // run with a clear message up front rather than letting every sample return
+    // null (which would surface as the misleading "All judge calls failed").
+    const judgeMeta = (pkRow.provider_metadata as Record<string, unknown> | null) ?? {}
+    const judgeResourceUrl = typeof judgeMeta['resource_url'] === 'string' ? judgeMeta['resource_url'] : null
+    if (config.judge_provider === 'azure') {
+      if (!judgeResourceUrl) {
+        throw new Error('Azure judge provider key is missing resource_url — re-register it')
+      }
+      // Defense-in-depth SSRF guard. resource_url is validated to an Azure
+      // domain at registration (providerKeys.ts), but a direct DB write could
+      // bypass that — re-check here before we send the decrypted key to it.
+      const safe = validateOutboundUrlSync(judgeResourceUrl)
+      if (!safe.ok) {
+        throw new Error(`Azure judge resource_url rejected: ${safe.message}`)
+      }
+    }
 
     // ── Gather samples (production requests OR dataset items) ──────────────
     type SampleRow = {
@@ -720,7 +809,7 @@ export async function runEvalRun(input: RunInput): Promise<void> {
 
       const { data: runKeyRow, error: runKeyErr } = await supabaseAdmin
         .from('provider_keys')
-        .select('encrypted_key')
+        .select('encrypted_key, provider_metadata')
         .eq('organization_id', organizationId)
         .eq('provider', runProvider)
         .eq('is_active', true)
@@ -731,6 +820,19 @@ export async function runEvalRun(input: RunInput): Promise<void> {
       }
       const runApiKey = await aes256Decrypt(runKeyRow.encrypted_key as string)
       if (!runApiKey) throw new Error('Failed to decrypt run provider key')
+
+      // Azure generation needs the resource origin (same as the judge path).
+      const runMeta = (runKeyRow.provider_metadata as Record<string, unknown> | null) ?? {}
+      const runResourceUrl = typeof runMeta['resource_url'] === 'string' ? runMeta['resource_url'] : null
+      if (runProvider === 'azure') {
+        if (!runResourceUrl) {
+          throw new Error('Azure run provider key is missing resource_url — re-register it')
+        }
+        const safe = validateOutboundUrlSync(runResourceUrl)
+        if (!safe.ok) {
+          throw new Error(`Azure run resource_url rejected: ${safe.message}`)
+        }
+      }
 
       // 2. Fetch all items in the dataset (no expected_output filter — we
       //    generate fresh responses, so items without a golden answer are
@@ -755,6 +857,7 @@ export async function runEvalRun(input: RunInput): Promise<void> {
             runProvider,
             runModel,
             runApiKey,
+            runResourceUrl,
           )
           return out ? { responseText: out, datasetItemId: i.id as string } : null
         }),
@@ -775,6 +878,8 @@ export async function runEvalRun(input: RunInput): Promise<void> {
         .update({
           status: 'completed',
           scored_count: 0,
+          attempted_count: 0,
+          failed_count: 0,
           avg_score: null,
           error: source === 'dataset'
             ? 'Dataset has no items with expected_output. Add items first.'
@@ -802,7 +907,7 @@ export async function runEvalRun(input: RunInput): Promise<void> {
         },
       })
       try {
-        const outcome = await callJudge(config, sample.responseText, judgeKey)
+        const outcome = await callJudge(config, sample.responseText, judgeKey, judgeResourceUrl)
         if (!outcome) {
           span.end({ status: 'error', errorMessage: 'callJudge returned null' })
           return null
@@ -840,6 +945,9 @@ export async function runEvalRun(input: RunInput): Promise<void> {
         .from('eval_runs')
         .update({
           status: 'failed',
+          scored_count: 0,
+          attempted_count: preparedSamples.length,
+          failed_count: preparedSamples.length,
           error: 'All judge calls failed. Check judge model name and provider key.',
           completed_at: new Date().toISOString(),
         })
@@ -908,6 +1016,8 @@ export async function runEvalRun(input: RunInput): Promise<void> {
       .update({
         status: 'completed',
         scored_count: scored.length,
+        attempted_count: preparedSamples.length,
+        failed_count: preparedSamples.length - scored.length,
         avg_score: avgScore,
         total_cost_usd: totalCost,
         completed_at: new Date().toISOString(),
@@ -917,6 +1027,8 @@ export async function runEvalRun(input: RunInput): Promise<void> {
       status: 'completed',
       metadata: {
         scored_count: scored.length,
+        attempted_count: preparedSamples.length,
+        failed_count: preparedSamples.length - scored.length,
         total_samples: preparedSamples.length,
         avg_score: avgScore,
         total_cost_usd: totalCost,

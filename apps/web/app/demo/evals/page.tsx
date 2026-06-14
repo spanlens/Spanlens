@@ -142,6 +142,19 @@ function RunDetailPanel({ runId, onClose }: { runId: string; onClose: () => void
             <p className="font-mono text-[16px] text-text font-medium">{fmtUsd(run.total_cost_usd)}</p>
           </div>
         </div>
+        {/* Scoring-rate transparency (P0-2): the average reflects only the
+            scored samples, so when some judge calls failed we say so. */}
+        {run.status === 'completed' && run.failed_count > 0 && run.attempted_count > 0 && (
+          <div className="flex items-start gap-2 p-3 bg-warn-bg border border-warn/30 rounded-[5px] font-mono text-[11.5px] text-warn">
+            <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+            <span>
+              Scored {run.scored_count} of {run.attempted_count} attempted
+              {' '}({Math.round((run.scored_count / run.attempted_count) * 100)}%).
+              {' '}{run.failed_count} judge {run.failed_count === 1 ? 'call' : 'calls'} failed
+              {' '}— the average reflects only the scored samples.
+            </span>
+          </div>
+        )}
         <div>
           <p className="font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint mb-2">Score distribution</p>
           <div className="flex items-end gap-1 h-20">

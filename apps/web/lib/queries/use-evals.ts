@@ -41,6 +41,11 @@ export interface EvalRun {
   sample_to: string | null
   status: EvalRunStatus
   scored_count: number
+  /** Samples sent to the judge after the empty-response filter. 0 on rows
+   * created before the P0-2 migration (treat as "rate unavailable"). */
+  attempted_count: number
+  /** Samples whose judge call failed (attempted - scored). */
+  failed_count: number
   avg_score: number | null
   total_cost_usd: number
   error: string | null
