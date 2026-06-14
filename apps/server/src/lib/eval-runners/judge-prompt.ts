@@ -50,11 +50,31 @@ export interface JudgeConfig {
 export function buildJudgePrompt(
   criterion: string,
   responseText: string,
-  config: { scale_min: number; scale_max: number; score_config?: TypedScoreConfig | null },
+  config: {
+    scale_min: number
+    scale_max: number
+    score_config?: TypedScoreConfig | null
+    /** P1-6: golden answer for golden-set comparison. Injected as a reference
+     * the judge compares against; omitted when null so criterion-only scoring
+     * is byte-identical to before. */
+    expected_output?: string | null
+  },
 ): string {
   const truncated = responseText.length > MAX_RESPONSE_CHARS
     ? responseText.slice(0, MAX_RESPONSE_CHARS) + '… [truncated]'
     : responseText
+
+  // Reference (expected) answer, also truncated to the same cap.
+  const expected = config.expected_output
+  const referenceBlock = expected
+    ? `
+
+Reference (expected) answer to compare against:
+"""
+${expected.length > MAX_RESPONSE_CHARS ? expected.slice(0, MAX_RESPONSE_CHARS) + '… [truncated]' : expected}
+"""
+Judge how well the response matches the reference while still satisfying the criterion.`
+    : ''
 
   const intro = `You are an evaluator. Score the assistant response below against this criterion.
 
@@ -63,7 +83,7 @@ Criterion: ${criterion}
 Response to evaluate:
 """
 ${truncated}
-"""`
+"""${referenceBlock}`
 
   const sc = config.score_config
 
