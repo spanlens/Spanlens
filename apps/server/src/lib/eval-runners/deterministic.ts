@@ -29,6 +29,25 @@ export interface JsonSchemaConfig {
   schema: unknown
 }
 
+export interface ExactMatchConfig {
+  /** The exact string the response must equal. */
+  value: string
+  /** Default false — comparison is case-insensitive unless set. */
+  caseSensitive?: boolean
+  /** Default true — both sides are trimmed before comparing. */
+  trim?: boolean
+}
+
+export interface ContainsConfig {
+  /** Substring the response must contain. */
+  substring: string
+  /** Default false — search is case-insensitive unless set. */
+  caseSensitive?: boolean
+}
+
+/** Evaluator types scored synchronously with no provider key / network. */
+export type DeterministicEvaluatorType = 'regex' | 'json_schema' | 'exact_match' | 'contains'
+
 /**
  * Deterministic 0/1 outcome shared by both code evaluator types. Matches
  * the JudgeOutcome shape on the columns the eval_results table actually
@@ -118,6 +137,58 @@ export function runJsonSchema(
   return { score: 0, value_boolean: false, reasoning }
 }
 
+/** Truncate a value for a readable reasoning line. */
+function snippet(s: string, max = 80): string {
+  return s.length > max ? s.slice(0, max) + '…' : s
+}
+
+/**
+ * runExactMatch — pass iff the response equals the configured value.
+ * Case-insensitive and trimmed by default (the common intent for a short
+ * canonical answer like "yes" / "approved").
+ */
+export function runExactMatch(config: ExactMatchConfig, output: string): SimpleEvalResult {
+  let a = output
+  let b = config.value
+  if (config.trim !== false) {
+    a = a.trim()
+    b = b.trim()
+  }
+  if (!config.caseSensitive) {
+    a = a.toLowerCase()
+    b = b.toLowerCase()
+  }
+  const matched = a === b
+  return {
+    score: matched ? 1 : 0,
+    value_boolean: matched,
+    reasoning: matched
+      ? `exact match: "${snippet(config.value)}"`
+      : `expected "${snippet(config.value)}" but got "${snippet(output)}"`,
+  }
+}
+
+/**
+ * runContains — pass iff the response contains the configured substring.
+ * Case-insensitive by default.
+ */
+export function runContains(config: ContainsConfig, output: string): SimpleEvalResult {
+  let haystack = output
+  let needle = config.substring
+  if (!config.caseSensitive) {
+    haystack = haystack.toLowerCase()
+    needle = needle.toLowerCase()
+  }
+  const matched = haystack.includes(needle)
+  return {
+    score: matched ? 1 : 0,
+    value_boolean: matched,
+    reasoning: matched
+      ? `contains "${snippet(config.substring)}"`
+      : `does not contain "${snippet(config.substring)}"`,
+  }
+}
+
 /**
  * Run a deterministic eval against the production sample set. Mirrors
  * the sample-fetch step of runEvalRun (LLM-as-judge production path)
@@ -132,8 +203,8 @@ export async function runSimpleEvalRun(
   sampleSize: number,
   sampleFrom: string | null | undefined,
   sampleTo: string | null | undefined,
-  evaluatorType: 'regex' | 'json_schema',
-  config: RegexConfig | JsonSchemaConfig,
+  evaluatorType: DeterministicEvaluatorType,
+  config: RegexConfig | JsonSchemaConfig | ExactMatchConfig | ContainsConfig,
 ): Promise<void> {
   const sampleFilters: string[] = [
     'prompt_version_id = {promptVersionId:UUID}',
@@ -178,7 +249,11 @@ export async function runSimpleEvalRun(
       const result: SimpleEvalResult =
         evaluatorType === 'regex'
           ? runRegex(config as RegexConfig, responseText)
-          : runJsonSchema(config as JsonSchemaConfig, responseText)
+          : evaluatorType === 'json_schema'
+            ? runJsonSchema(config as JsonSchemaConfig, responseText)
+            : evaluatorType === 'exact_match'
+              ? runExactMatch(config as ExactMatchConfig, responseText)
+              : runContains(config as ContainsConfig, responseText)
 
       return {
         // organization_id is NOT NULL on eval_results — omitting it (the prior
