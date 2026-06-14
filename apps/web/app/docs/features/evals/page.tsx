@@ -82,12 +82,17 @@ export default function EvalsDocs() {
         <li><code>prompt_name</code>, which prompt this evaluator targets</li>
         <li><code>name</code>, e.g. &quot;Helpfulness check&quot;</li>
         <li>
-          <code>type</code>, one of <code>llm_judge</code>, <code>regex</code>, or{' '}
-          <code>json_schema</code>. The <code>regex</code> type checks the response body
-          against a configured pattern and scores 1 on match (or 0 if you flag
-          {' '}<code>must_not_match</code>). The <code>json_schema</code> type validates the
+          <code>type</code>, one of <code>llm_judge</code>, <code>regex</code>,{' '}
+          <code>json_schema</code>, <code>exact_match</code>, or <code>contains</code>.
+          The <code>regex</code> type checks the response body against a configured
+          pattern and scores 1 on match. The <code>json_schema</code> type validates the
           response body against a JSON Schema document via Ajv and scores 1 on valid.
-          Both code evaluators are free of LLM cost since no judge model is called.
+          {' '}<code>exact_match</code> (config <code>value</code>, optional{' '}
+          <code>caseSensitive</code> / <code>trim</code>) scores 1 when the response
+          equals the value; <code>contains</code> (config <code>substring</code>,
+          optional <code>caseSensitive</code>) scores 1 when the substring is present.
+          The four deterministic evaluators are free of LLM cost since no judge model
+          is called.
         </li>
         <li>
           <code>config</code>:
@@ -395,10 +400,10 @@ if (run.status !== 'completed' || (run.avg_score ?? 0) < 0.8) {
       <h2>Limitations</h2>
       <ul>
         <li>
-          <strong>Three evaluator types ship today.</strong> <code>llm_judge</code> uses a
-          model to score, <code>regex</code> checks the response against a pattern with
-          configurable match expectation, and <code>json_schema</code> validates the
-          response body against a JSON Schema document. Length and embedding similarity
+          <strong>Five evaluator types ship today.</strong> <code>llm_judge</code> (model
+          scores 0–1), <code>regex</code>, <code>json_schema</code>,{' '}
+          <code>exact_match</code>, and <code>contains</code>. The four deterministic types
+          run on production samples with no LLM cost. Embedding-similarity and custom-code
           evaluators are planned for a later release.
         </li>
         <li>

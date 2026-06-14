@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { runJsonSchema, runRegex } from '../lib/eval-runner.js'
+import { runJsonSchema, runRegex, runExactMatch, runContains } from '../lib/eval-runner.js'
 
 /**
  * R-7 Phase 1: pure functions for the two deterministic evaluator types.
@@ -106,5 +106,52 @@ describe('runJsonSchema', () => {
     )
     expect(r.score).toBe(1)
     expect(r.value_boolean).toBe(true)
+  })
+})
+
+describe('runExactMatch', () => {
+  test('case-insensitive + trimmed by default', () => {
+    const r = runExactMatch({ value: 'Approved' }, '  approved \n')
+    expect(r.score).toBe(1)
+    expect(r.value_boolean).toBe(true)
+    expect(r.reasoning).toContain('exact match')
+  })
+
+  test('mismatch reports both expected and actual', () => {
+    const r = runExactMatch({ value: 'yes' }, 'no')
+    expect(r.score).toBe(0)
+    expect(r.reasoning).toContain('yes')
+    expect(r.reasoning).toContain('no')
+  })
+
+  test('caseSensitive: true distinguishes case', () => {
+    expect(runExactMatch({ value: 'OK', caseSensitive: true }, 'ok').score).toBe(0)
+    expect(runExactMatch({ value: 'OK', caseSensitive: true }, 'OK').score).toBe(1)
+  })
+
+  test('trim: false keeps surrounding whitespace significant', () => {
+    expect(runExactMatch({ value: 'hi', trim: false }, ' hi ').score).toBe(0)
+    expect(runExactMatch({ value: 'hi', trim: false }, 'hi').score).toBe(1)
+  })
+})
+
+describe('runContains', () => {
+  test('case-insensitive substring match by default', () => {
+    const r = runContains({ substring: 'ERROR' }, 'fatal error occurred')
+    expect(r.score).toBe(1)
+    expect(r.value_boolean).toBe(true)
+    expect(r.reasoning).toContain('contains')
+  })
+
+  test('absent substring fails with actionable reasoning', () => {
+    const r = runContains({ substring: 'success' }, 'request failed')
+    expect(r.score).toBe(0)
+    expect(r.reasoning).toContain('does not contain')
+    expect(r.reasoning).toContain('success')
+  })
+
+  test('caseSensitive: true respects case', () => {
+    expect(runContains({ substring: 'OK', caseSensitive: true }, 'status: ok').score).toBe(0)
+    expect(runContains({ substring: 'OK', caseSensitive: true }, 'status: OK').score).toBe(1)
   })
 })

@@ -45,8 +45,9 @@ evalsRouter.post('/evaluators', requireFullScope, async (c) => {
 
   if (!promptName) throw new ApiError('VALIDATION_FAILED', 'promptName is required')
   if (!name) throw new ApiError('VALIDATION_FAILED', 'name is required')
-  if (type !== 'llm_judge' && type !== 'regex' && type !== 'json_schema') {
-    throw new ApiError('VALIDATION_FAILED', 'type must be one of: llm_judge, regex, json_schema')
+  const VALID_EVALUATOR_TYPES = ['llm_judge', 'regex', 'json_schema', 'exact_match', 'contains']
+  if (!VALID_EVALUATOR_TYPES.includes(type)) {
+    throw new ApiError('VALIDATION_FAILED', `type must be one of: ${VALID_EVALUATOR_TYPES.join(', ')}`)
   }
 
   if (!body.config || typeof body.config !== 'object' || Array.isArray(body.config)) {
@@ -90,12 +91,27 @@ evalsRouter.post('/evaluators', requireFullScope, async (c) => {
       throw new ApiError('VALIDATION_FAILED', `invalid regex pattern: ${message}`)
     }
     validatedConfig = { pattern, flags }
-  } else {
-    // type === 'json_schema'
+  } else if (type === 'json_schema') {
     if (!config.schema || typeof config.schema !== 'object' || Array.isArray(config.schema)) {
       throw new ApiError('VALIDATION_FAILED', 'config.schema must be a JSON Schema object')
     }
     validatedConfig = { schema: config.schema }
+  } else if (type === 'exact_match') {
+    const value = typeof config.value === 'string' ? config.value : ''
+    if (!value) throw new ApiError('VALIDATION_FAILED', 'config.value is required')
+    validatedConfig = {
+      value,
+      caseSensitive: config.caseSensitive === true,
+      trim: config.trim !== false,
+    }
+  } else {
+    // type === 'contains'
+    const substring = typeof config.substring === 'string' ? config.substring : ''
+    if (!substring) throw new ApiError('VALIDATION_FAILED', 'config.substring is required')
+    validatedConfig = {
+      substring,
+      caseSensitive: config.caseSensitive === true,
+    }
   }
 
   // Verify prompt exists for this org

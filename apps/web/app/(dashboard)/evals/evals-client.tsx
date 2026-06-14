@@ -218,12 +218,17 @@ function NewEvaluatorDialog({
   // pattern field or a JSON Schema textarea. Templates always create
   // llm_judge evaluators today, so the selector defaults to that even
   // when initialTemplate is set.
-  const [evaluatorType, setEvaluatorType] = useState<'llm_judge' | 'regex' | 'json_schema'>(
-    'llm_judge',
-  )
+  const [evaluatorType, setEvaluatorType] = useState<
+    'llm_judge' | 'regex' | 'json_schema' | 'exact_match' | 'contains'
+  >('llm_judge')
   const [regexPattern, setRegexPattern] = useState('')
   const [regexFlags, setRegexFlags] = useState('')
   const [jsonSchemaText, setJsonSchemaText] = useState('{\n  "type": "object"\n}')
+  // exact_match / contains config (P2-12)
+  const [exactValue, setExactValue] = useState('')
+  const [exactCaseSensitive, setExactCaseSensitive] = useState(false)
+  const [containsSubstring, setContainsSubstring] = useState('')
+  const [containsCaseSensitive, setContainsCaseSensitive] = useState(false)
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -269,7 +274,7 @@ function NewEvaluatorDialog({
           type: 'regex',
           config: { pattern: regexPattern, flags: regexFlags },
         })
-      } else {
+      } else if (evaluatorType === 'json_schema') {
         let parsedSchema: unknown
         try {
           parsedSchema = JSON.parse(jsonSchemaText)
@@ -287,11 +292,35 @@ function NewEvaluatorDialog({
           type: 'json_schema',
           config: { schema: parsedSchema },
         })
+      } else if (evaluatorType === 'exact_match') {
+        if (!exactValue) {
+          setError('Expected value is required')
+          return
+        }
+        await createMutation.mutateAsync({
+          promptName,
+          name: name.trim(),
+          type: 'exact_match',
+          config: { value: exactValue, caseSensitive: exactCaseSensitive },
+        })
+      } else {
+        if (!containsSubstring) {
+          setError('Substring is required')
+          return
+        }
+        await createMutation.mutateAsync({
+          promptName,
+          name: name.trim(),
+          type: 'contains',
+          config: { substring: containsSubstring, caseSensitive: containsCaseSensitive },
+        })
       }
       onClose()
       setName(''); setCriterion(''); setPromptName('')
       setRegexPattern(''); setRegexFlags('')
       setJsonSchemaText('{\n  "type": "object"\n}')
+      setExactValue(''); setExactCaseSensitive(false)
+      setContainsSubstring(''); setContainsCaseSensitive(false)
       setEvaluatorType('llm_judge')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create')
@@ -342,13 +371,17 @@ function NewEvaluatorDialog({
             </label>
             <Select
               value={evaluatorType}
-              onValueChange={(v) => setEvaluatorType(v as 'llm_judge' | 'regex' | 'json_schema')}
+              onValueChange={(v) =>
+                setEvaluatorType(v as 'llm_judge' | 'regex' | 'json_schema' | 'exact_match' | 'contains')
+              }
             >
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="llm_judge">LLM as judge</SelectItem>
                 <SelectItem value="regex">Regex (pattern match)</SelectItem>
                 <SelectItem value="json_schema">JSON Schema (structure check)</SelectItem>
+                <SelectItem value="exact_match">Exact match (equals a value)</SelectItem>
+                <SelectItem value="contains">Contains (substring present)</SelectItem>
               </SelectContent>
             </Select>
             <p className="font-mono text-[10.5px] text-text-faint mt-1">
@@ -356,7 +389,11 @@ function NewEvaluatorDialog({
                 ? 'Judge model scores 0..1 against a free-form criterion.'
                 : evaluatorType === 'regex'
                   ? 'Deterministic 0/1 — passes when the pattern matches the response.'
-                  : 'Deterministic 0/1 — passes when the response parses as JSON and matches the schema.'}
+                  : evaluatorType === 'json_schema'
+                    ? 'Deterministic 0/1 — passes when the response parses as JSON and matches the schema.'
+                    : evaluatorType === 'exact_match'
+                      ? 'Deterministic 0/1 — passes when the response equals the expected value.'
+                      : 'Deterministic 0/1 — passes when the response contains the substring.'}
             </p>
           </div>
 
@@ -459,6 +496,60 @@ function NewEvaluatorDialog({
               />
               <p className="font-mono text-[10.5px] text-text-faint mt-1">
                 Standard JSON Schema (draft-07). Default accepts any object.
+              </p>
+            </div>
+          )}
+
+          {evaluatorType === 'exact_match' && (
+            <div>
+              <label className="block font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint mb-1">
+                Expected value
+              </label>
+              <input
+                type="text"
+                value={exactValue}
+                onChange={(e) => setExactValue(e.target.value)}
+                placeholder="e.g. approved"
+                required
+                className="w-full h-9 px-2 rounded-[5px] border border-border bg-bg font-mono text-[12px] text-text placeholder:text-text-faint focus:outline-none focus:border-border-strong"
+              />
+              <label className="flex items-center gap-2 mt-2 font-mono text-[11px] text-text-muted">
+                <input
+                  type="checkbox"
+                  checked={exactCaseSensitive}
+                  onChange={(e) => setExactCaseSensitive(e.target.checked)}
+                />
+                Case-sensitive
+              </label>
+              <p className="font-mono text-[10.5px] text-text-faint mt-1">
+                Trimmed before comparing. Case-insensitive unless checked.
+              </p>
+            </div>
+          )}
+
+          {evaluatorType === 'contains' && (
+            <div>
+              <label className="block font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint mb-1">
+                Substring
+              </label>
+              <input
+                type="text"
+                value={containsSubstring}
+                onChange={(e) => setContainsSubstring(e.target.value)}
+                placeholder="e.g. order confirmed"
+                required
+                className="w-full h-9 px-2 rounded-[5px] border border-border bg-bg font-mono text-[12px] text-text placeholder:text-text-faint focus:outline-none focus:border-border-strong"
+              />
+              <label className="flex items-center gap-2 mt-2 font-mono text-[11px] text-text-muted">
+                <input
+                  type="checkbox"
+                  checked={containsCaseSensitive}
+                  onChange={(e) => setContainsCaseSensitive(e.target.checked)}
+                />
+                Case-sensitive
+              </label>
+              <p className="font-mono text-[10.5px] text-text-faint mt-1">
+                Passes when the response contains this text. Case-insensitive unless checked.
               </p>
             </div>
           )}

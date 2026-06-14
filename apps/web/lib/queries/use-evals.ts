@@ -102,6 +102,17 @@ export interface JsonSchemaConfig {
   schema: unknown
 }
 
+export interface ExactMatchConfig {
+  value: string
+  caseSensitive?: boolean
+  trim?: boolean
+}
+
+export interface ContainsConfig {
+  substring: string
+  caseSensitive?: boolean
+}
+
 export type CreateEvaluatorInput =
   | {
       promptName: string
@@ -123,6 +134,18 @@ export type CreateEvaluatorInput =
       name: string
       type: 'json_schema'
       config: JsonSchemaConfig
+    }
+  | {
+      promptName: string
+      name: string
+      type: 'exact_match'
+      config: ExactMatchConfig
+    }
+  | {
+      promptName: string
+      name: string
+      type: 'contains'
+      config: ContainsConfig
     }
 
 export function useCreateEvaluator() {
