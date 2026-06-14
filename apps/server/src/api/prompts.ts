@@ -6,6 +6,7 @@ import { comparePromptVersions } from '../lib/prompt-compare.js'
 import { invalidatePromptName } from '../lib/prompt-cache.js'
 import { enqueueDeletion } from '../lib/pending-deletions.js'
 import { recordAuditEvent } from '../lib/audit-log.js'
+import { startEvalRun } from '../lib/eval-runner.js'
 import { requestsScope, selectRequests } from '../lib/requests-query.js'
 import { parsePositiveFloat } from '../lib/params.js'
 import { ApiError } from '../lib/errors.js'
@@ -318,6 +319,35 @@ promptsRouter.post('/', requireEdit, async (c) => {
       project_id: data.project_id,
     },
   })
+
+  // P2-10: auto-run evaluators flagged for version creation (golden regression
+  // suite). A new version has no production traffic yet, so each is a DATASET
+  // run that generates responses for the evaluator's golden dataset and scores
+  // them. Fire-and-forget — version creation must not wait on (or fail from)
+  // the eval runs. Only evaluators that opted in (auto_run_on_version=true)
+  // run; the DB CHECK guarantees the dataset/provider/model are set.
+  const { data: autoEvals } = await supabaseAdmin
+    .from('evaluators')
+    .select('id, auto_run_dataset_id, auto_run_provider, auto_run_model, auto_run_sample_size')
+    .eq('organization_id', orgId)
+    .eq('prompt_name', name)
+    .eq('auto_run_on_version', true)
+    .is('archived_at', null)
+
+  for (const ev of autoEvals ?? []) {
+    if (!ev.auto_run_dataset_id || !ev.auto_run_provider || !ev.auto_run_model) continue
+    await startEvalRun(c, {
+      organizationId: orgId,
+      evaluatorId: ev.id,
+      promptVersionId: data.id,
+      source: 'dataset',
+      datasetId: ev.auto_run_dataset_id,
+      sampleSize: ev.auto_run_sample_size ?? 50,
+      runProvider: ev.auto_run_provider,
+      runModel: ev.auto_run_model,
+      createdBy: userId,
+    })
+  }
 
   return c.json({ success: true, data }, 201)
 })

@@ -33,6 +33,12 @@ evalsRouter.post('/evaluators', requireFullScope, async (c) => {
     // 4B.1c — optional pointer at a typed score config. NULL preserves
     // the legacy NUMERIC 0..1 behaviour.
     scoreConfigId?: unknown
+    // P2-10 — auto-run on new prompt version (golden regression suite).
+    autoRunOnVersion?: unknown
+    autoRunDatasetId?: unknown
+    autoRunProvider?: unknown
+    autoRunModel?: unknown
+    autoRunSampleSize?: unknown
   }
   try {
     body = (await c.req.json()) as typeof body
@@ -162,6 +168,39 @@ evalsRouter.post('/evaluators', requireFullScope, async (c) => {
     scoreConfigId = sc.id
   }
 
+  // P2-10 — auto-run config (golden regression suite). When enabled, a new
+  // version of this evaluator's prompt auto-triggers a dataset eval run. New
+  // versions have no production traffic, so a dataset + run model are required.
+  const autoRunOnVersion = body.autoRunOnVersion === true
+  let autoRunDatasetId: string | null = null
+  let autoRunProvider: string | null = null
+  let autoRunModel: string | null = null
+  let autoRunSampleSize: number | null = null
+  if (autoRunOnVersion) {
+    autoRunDatasetId = typeof body.autoRunDatasetId === 'string' ? body.autoRunDatasetId.trim() : ''
+    autoRunProvider = typeof body.autoRunProvider === 'string' ? body.autoRunProvider : ''
+    autoRunModel = typeof body.autoRunModel === 'string' ? body.autoRunModel.trim() : ''
+    const RUN_PROVIDERS = ['openai', 'anthropic', 'gemini', 'azure', 'mistral', 'openrouter']
+    if (!autoRunDatasetId) throw new ApiError('VALIDATION_FAILED', 'autoRunDatasetId is required when autoRunOnVersion is true')
+    if (!RUN_PROVIDERS.includes(autoRunProvider)) {
+      throw new ApiError('VALIDATION_FAILED', `autoRunProvider must be one of: ${RUN_PROVIDERS.join(', ')}`)
+    }
+    if (!autoRunModel) throw new ApiError('VALIDATION_FAILED', 'autoRunModel is required when autoRunOnVersion is true')
+    autoRunSampleSize = typeof body.autoRunSampleSize === 'number' ? Math.round(body.autoRunSampleSize) : 50
+    if (autoRunSampleSize < 1 || autoRunSampleSize > 1000) {
+      throw new ApiError('VALIDATION_FAILED', 'autoRunSampleSize must be between 1 and 1000')
+    }
+    // Verify the dataset belongs to this org.
+    const { data: ds } = await supabaseAdmin
+      .from('datasets')
+      .select('id')
+      .eq('id', autoRunDatasetId)
+      .eq('organization_id', orgId)
+      .is('archived_at', null)
+      .maybeSingle()
+    if (!ds) throw new ApiError('NOT_FOUND', 'autoRunDatasetId not found')
+  }
+
   const { data, error } = await supabaseAdmin
     .from('evaluators')
     .insert({
@@ -172,6 +211,11 @@ evalsRouter.post('/evaluators', requireFullScope, async (c) => {
       config: validatedConfig,
       created_by: userId ?? null,
       score_config_id: scoreConfigId,
+      auto_run_on_version: autoRunOnVersion,
+      auto_run_dataset_id: autoRunDatasetId,
+      auto_run_provider: autoRunProvider,
+      auto_run_model: autoRunModel,
+      auto_run_sample_size: autoRunSampleSize,
     })
     .select()
     .single()

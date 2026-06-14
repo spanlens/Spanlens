@@ -793,6 +793,11 @@ export type Database = {
       evaluators: {
         Row: {
           archived_at: string | null
+          auto_run_dataset_id: string | null
+          auto_run_model: string | null
+          auto_run_on_version: boolean
+          auto_run_provider: string | null
+          auto_run_sample_size: number | null
           config: Json
           created_at: string
           created_by: string | null
@@ -805,6 +810,11 @@ export type Database = {
         }
         Insert: {
           archived_at?: string | null
+          auto_run_dataset_id?: string | null
+          auto_run_model?: string | null
+          auto_run_on_version?: boolean
+          auto_run_provider?: string | null
+          auto_run_sample_size?: number | null
           config: Json
           created_at?: string
           created_by?: string | null
@@ -817,6 +827,11 @@ export type Database = {
         }
         Update: {
           archived_at?: string | null
+          auto_run_dataset_id?: string | null
+          auto_run_model?: string | null
+          auto_run_on_version?: boolean
+          auto_run_provider?: string | null
+          auto_run_sample_size?: number | null
           config?: Json
           created_at?: string
           created_by?: string | null

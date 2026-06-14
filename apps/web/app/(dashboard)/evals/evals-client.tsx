@@ -18,6 +18,7 @@ import {
   useEstimateEvalCost,
   type Evaluator,
   type EvalRunStatus,
+  type CreateEvaluatorInput,
 } from '@/lib/queries/use-evals'
 import { usePrompts, usePromptVersions } from '@/lib/queries/use-prompts'
 import type { PromptVersion } from '@/lib/queries/use-prompts'
@@ -154,6 +155,7 @@ function NewEvaluatorDialog({
 }) {
   const prompts = usePrompts()
   const createMutation = useCreateEvaluator()
+  const datasets = useDatasets()
   const { data: modelsCatalog } = useModels()
   // Map the catalog's full shape down to the openai/anthropic strings that
   // this picker needs. Gemini is excluded — the eval API only supports
@@ -234,6 +236,24 @@ function NewEvaluatorDialog({
   const [embedModel, setEmbedModel] = useState('text-embedding-3-small')
   const [embedReferenceText, setEmbedReferenceText] = useState('')
   const [embedThreshold, setEmbedThreshold] = useState('')
+  // auto-run on new prompt version (P2-10)
+  const [autoRunOnVersion, setAutoRunOnVersion] = useState(false)
+  const [autoRunDatasetId, setAutoRunDatasetId] = useState('')
+  const [autoRunProvider, setAutoRunProvider] = useState<EvalProvider>('openai')
+  const [autoRunModel, setAutoRunModel] = useState('gpt-4o-mini')
+
+  // P2-10: auto-run config is common to all evaluator types, so wrap the
+  // mutation to fold it into every create call instead of repeating it.
+  const autoRunFields = autoRunOnVersion
+    ? {
+        autoRunOnVersion: true as const,
+        autoRunDatasetId,
+        autoRunProvider,
+        autoRunModel: autoRunModel.trim(),
+      }
+    : { autoRunOnVersion: false as const }
+  const submitEvaluator = (input: CreateEvaluatorInput) =>
+    createMutation.mutateAsync({ ...input, ...autoRunFields })
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -242,13 +262,17 @@ function NewEvaluatorDialog({
       setError('Prompt and name are required')
       return
     }
+    if (autoRunOnVersion && (!autoRunDatasetId || !autoRunModel.trim())) {
+      setError('Auto-run needs a dataset and a model')
+      return
+    }
     try {
       if (evaluatorType === 'llm_judge') {
         if (!criterion.trim()) {
           setError('Criterion is required for LLM-as-judge evaluators')
           return
         }
-        await createMutation.mutateAsync({
+        await submitEvaluator({
           promptName,
           name: name.trim(),
           config: {
@@ -273,7 +297,7 @@ function NewEvaluatorDialog({
           setError(err instanceof Error ? err.message : 'Invalid regex')
           return
         }
-        await createMutation.mutateAsync({
+        await submitEvaluator({
           promptName,
           name: name.trim(),
           type: 'regex',
@@ -291,7 +315,7 @@ function NewEvaluatorDialog({
           setError('Schema must be a JSON object')
           return
         }
-        await createMutation.mutateAsync({
+        await submitEvaluator({
           promptName,
           name: name.trim(),
           type: 'json_schema',
@@ -302,7 +326,7 @@ function NewEvaluatorDialog({
           setError('Expected value is required')
           return
         }
-        await createMutation.mutateAsync({
+        await submitEvaluator({
           promptName,
           name: name.trim(),
           type: 'exact_match',
@@ -313,7 +337,7 @@ function NewEvaluatorDialog({
           setError('Substring is required')
           return
         }
-        await createMutation.mutateAsync({
+        await submitEvaluator({
           promptName,
           name: name.trim(),
           type: 'contains',
@@ -329,7 +353,7 @@ function NewEvaluatorDialog({
           setError('Threshold must be between 0 and 1')
           return
         }
-        await createMutation.mutateAsync({
+        await submitEvaluator({
           promptName,
           name: name.trim(),
           type: 'embedding',
@@ -348,6 +372,7 @@ function NewEvaluatorDialog({
       setExactValue(''); setExactCaseSensitive(false)
       setContainsSubstring(''); setContainsCaseSensitive(false)
       setEmbedReferenceText(''); setEmbedThreshold('')
+      setAutoRunOnVersion(false); setAutoRunDatasetId(''); setAutoRunModel('gpt-4o-mini')
       setEvaluatorType('llm_judge')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create')
@@ -677,6 +702,70 @@ function NewEvaluatorDialog({
               </p>
             </div>
           )}
+
+          {/* P2-10: auto-run on new prompt version (golden regression suite). */}
+          <div className="border-t border-border pt-3">
+            <label className="flex items-center gap-2 font-mono text-[11.5px] text-text-muted">
+              <input
+                type="checkbox"
+                checked={autoRunOnVersion}
+                onChange={(e) => setAutoRunOnVersion(e.target.checked)}
+              />
+              Auto-run on each new version of this prompt
+            </label>
+            <p className="font-mono text-[10.5px] text-text-faint mt-1">
+              Runs this evaluator against a dataset whenever a new version is created. Spends your provider key.
+            </p>
+            {autoRunOnVersion && (
+              <div className="mt-2 space-y-2">
+                <div>
+                  <label className="block font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint mb-1">
+                    Dataset
+                  </label>
+                  <Select {...(autoRunDatasetId ? { value: autoRunDatasetId } : {})} onValueChange={setAutoRunDatasetId}>
+                    <SelectTrigger><SelectValue placeholder="Select dataset…" /></SelectTrigger>
+                    <SelectContent>
+                      {(datasets.data ?? []).map((d) => (
+                        <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint mb-1">
+                      Run provider
+                    </label>
+                    <Select value={autoRunProvider} onValueChange={(v) => {
+                        const p = v as EvalProvider
+                        setAutoRunProvider(p)
+                        setAutoRunModel(judgeModels[p][0] ?? '')
+                      }}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {PROVIDER_OPTIONS.map((opt) => (
+                          <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <label className="block font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint mb-1">
+                      Run model
+                    </label>
+                    <Select {...(autoRunModel ? { value: autoRunModel } : {})} onValueChange={setAutoRunModel}>
+                      <SelectTrigger><SelectValue placeholder="Select model…" /></SelectTrigger>
+                      <SelectContent>
+                        {judgeModels[autoRunProvider].map((m) => (
+                          <SelectItem key={m} value={m}>{m}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
 
           {error && (
             <p className="font-mono text-[11.5px] text-bad">{error}</p>

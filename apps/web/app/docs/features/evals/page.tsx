@@ -401,6 +401,26 @@ if (run.status !== 'completed' || (run.avg_score ?? 0) < 0.8) {
         </li>
       </ul>
 
+      <h2>Auto-run on a new version (golden regression suite)</h2>
+      <p>
+        Turn an evaluator into a regression gate: enable <strong>Auto-run on each
+        new version</strong> on the evaluator (or pass{' '}
+        <code>autoRunOnVersion</code> + <code>autoRunDatasetId</code> /{' '}
+        <code>autoRunProvider</code> / <code>autoRunModel</code> to{' '}
+        <code>POST /api/v1/evaluators</code>). Whenever a new version of that
+        evaluator&apos;s prompt is created, Spanlens automatically runs the
+        evaluator against the chosen dataset and scores it — no manual trigger.
+      </p>
+      <p>
+        It is a <strong>dataset</strong> run, not production: a brand-new version
+        has no traffic yet, so the run generates responses for the golden dataset
+        with the configured model and scores them. Pair it with an{' '}
+        <code>eval_score</code> <a href="/docs/features/alerts">alert</a> to be
+        notified when a version regresses, and with{' '}
+        <code>expected_output</code> on the dataset items for golden-set scoring.
+        Auto-runs spend your provider key, so they are opt-in per evaluator.
+      </p>
+
       <h2>Limitations</h2>
       <ul>
         <li>

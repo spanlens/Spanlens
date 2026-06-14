@@ -22,7 +22,9 @@
  * so concurrency is not needed.
  */
 
+import type { Context } from 'hono'
 import { supabaseAdmin } from './db.js'
+import { fireAndForget } from './wait-until.js'
 import { requestsScope, selectRequests } from './requests-query.js'
 import { aes256Decrypt } from './crypto.js'
 import { validateOutboundUrlSync } from './safe-url.js'
@@ -1155,6 +1157,67 @@ export async function runEvalRun(input: RunInput): Promise<void> {
       errorMessage: err instanceof Error ? err.message : 'Unknown error',
     })
   }
+}
+
+/** Input for startEvalRun — the subset POST /eval-runs and the auto-run hook share. */
+export interface StartEvalRunInput {
+  organizationId: string
+  evaluatorId: string
+  promptVersionId: string
+  source: 'production' | 'dataset'
+  datasetId?: string | null
+  sampleSize: number
+  sampleFrom?: string | null
+  sampleTo?: string | null
+  /** A provider string (validated upstream); cast to EvalProvider internally. */
+  runProvider?: string | null
+  runModel?: string | null
+  sampleStrategy?: 'recent' | 'random' | null
+  generationTemperature?: number | null
+  createdBy?: string | null
+}
+
+/**
+ * Insert an eval_runs row and kick the run off in the background via
+ * fireAndForget. Shared by the manual POST /eval-runs and the
+ * auto-run-on-version hook (P2-10). Returns the new run id, or null if the
+ * insert failed (caller decides whether that's fatal).
+ */
+export async function startEvalRun(c: Context, input: StartEvalRunInput): Promise<{ id: string } | null> {
+  const { data: run, error } = await supabaseAdmin
+    .from('eval_runs')
+    .insert({
+      organization_id: input.organizationId,
+      evaluator_id: input.evaluatorId,
+      prompt_version_id: input.promptVersionId,
+      source: input.source,
+      dataset_id: input.source === 'dataset' ? (input.datasetId ?? null) : null,
+      sample_size: input.sampleSize,
+      sample_from: input.source === 'production' ? (input.sampleFrom ?? null) : null,
+      sample_to: input.source === 'production' ? (input.sampleTo ?? null) : null,
+      status: 'pending',
+      created_by: input.createdBy ?? null,
+    })
+    .select('id')
+    .single()
+  if (error || !run) return null
+
+  fireAndForget(c, runEvalRun({
+    evalRunId: run.id,
+    organizationId: input.organizationId,
+    evaluatorId: input.evaluatorId,
+    promptVersionId: input.promptVersionId,
+    source: input.source,
+    datasetId: input.datasetId ?? null,
+    sampleSize: input.sampleSize,
+    sampleFrom: input.sampleFrom ?? null,
+    sampleTo: input.sampleTo ?? null,
+    runProvider: (input.runProvider ?? null) as EvalProvider | null,
+    runModel: input.runModel ?? null,
+    sampleStrategy: input.sampleStrategy ?? null,
+    generationTemperature: input.generationTemperature ?? null,
+  }))
+  return run
 }
 
 /** Convenience: estimate judge cost before running (rough heuristic). */
