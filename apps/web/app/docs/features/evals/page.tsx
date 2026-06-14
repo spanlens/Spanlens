@@ -364,6 +364,34 @@ if (run.status !== 'completed' || (run.avg_score ?? 0) < 0.8) {
         to read the lowest-scoring samples for a CI log.
       </p>
 
+      <h2>Reproducibility &amp; reliability options</h2>
+      <ul>
+        <li>
+          <strong><code>sampleStrategy</code></strong> (production source):{' '}
+          <code>recent</code> (default) scores the latest N requests;{' '}
+          <code>random</code> draws a representative sample (<code>ORDER BY rand()</code>)
+          without recency bias.
+        </li>
+        <li>
+          <strong><code>generationTemperature</code></strong> (dataset source): the
+          temperature used to generate each response before judging. Defaults to{' '}
+          <code>0</code> so a re-run produces the same answers; raise it to sample
+          variability on purpose.
+        </li>
+        <li>
+          <strong>Golden-set scoring.</strong> Dataset items with an{' '}
+          <code>expected_output</code> now have it injected into the judge prompt as a
+          reference, so the judge compares the response against the expected answer
+          instead of scoring on the criterion alone.
+        </li>
+        <li>
+          <strong>Retries.</strong> Judge and generation calls retry transient failures
+          (429 / 5xx / network) with exponential backoff. Concurrency and retry counts
+          are tunable via <code>EVAL_JUDGE_CONCURRENCY</code>,{' '}
+          <code>EVAL_GENERATION_CONCURRENCY</code>, and <code>EVAL_MAX_RETRIES</code>.
+        </li>
+      </ul>
+
       <h2>Limitations</h2>
       <ul>
         <li>

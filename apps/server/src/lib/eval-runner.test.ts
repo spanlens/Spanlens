@@ -25,6 +25,31 @@ describe('buildJudgePrompt — legacy NUMERIC path (score_config = null)', () =>
   })
 })
 
+// ── P1-6: expected_output (golden answer) injection ──────────────────────────
+describe('buildJudgePrompt — expected_output reference', () => {
+  it('injects the reference block when expected_output is present', () => {
+    const prompt = buildJudgePrompt('Is it correct?', 'Paris', {
+      scale_min: 0,
+      scale_max: 1,
+      expected_output: 'The capital of France is Paris.',
+    })
+    expect(prompt).toContain('Reference (expected) answer')
+    expect(prompt).toContain('The capital of France is Paris.')
+    expect(prompt).toContain('compare against')
+  })
+
+  it('omits the reference block when expected_output is null/absent (byte-identical to before)', () => {
+    const withNull = buildJudgePrompt('Is it correct?', 'Paris', {
+      scale_min: 0,
+      scale_max: 1,
+      expected_output: null,
+    })
+    const without = buildJudgePrompt('Is it correct?', 'Paris', { scale_min: 0, scale_max: 1 })
+    expect(withNull).not.toContain('Reference (expected) answer')
+    expect(withNull).toBe(without)
+  })
+})
+
 describe('buildJudgePrompt — NUMERIC score_config', () => {
   it('uses min/max from the score_config when present', () => {
     const sc: TypedScoreConfig = {

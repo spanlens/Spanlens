@@ -56,7 +56,46 @@ export type {
   SimpleEvalResult,
 }
 
-const JUDGE_CONCURRENCY = 5
+// P1-3: concurrency + retry are env-configurable (defaults preserve prior
+// behaviour). Generation gets its own pool so a large dataset can't fire all
+// items at once (the old uncapped Promise.all).
+const JUDGE_CONCURRENCY = Number(process.env['EVAL_JUDGE_CONCURRENCY']) || 5
+const GENERATION_CONCURRENCY = Number(process.env['EVAL_GENERATION_CONCURRENCY']) || 5
+const MAX_RETRIES = Number(process.env['EVAL_MAX_RETRIES']) || 3
+
+function evalSleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+/**
+ * fetch with exponential backoff on transient failures (429, 5xx, network
+ * error). Returns the final Response (which may still be non-ok) or null if
+ * every attempt threw. Callers already treat a non-ok / null result as a
+ * dropped sample, so this only adds resilience — it never changes the
+ * success contract. Back-off: 250ms, 500ms, 1000ms (× MAX_RETRIES).
+ */
+async function fetchWithRetry(
+  url: string,
+  init: RequestInit,
+  retries: number = MAX_RETRIES,
+): Promise<Response | null> {
+  let last: Response | null = null
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const res = await fetch(url, init)
+      // Success, or a non-retryable client error (4xx other than 429) — done.
+      if (res.ok || !(res.status === 429 || (res.status >= 500 && res.status < 600))) {
+        return res
+      }
+      last = res
+    } catch {
+      // Network error / abort — retry.
+      last = null
+    }
+    if (attempt < retries) await evalSleep(250 * Math.pow(2, attempt))
+  }
+  return last
+}
 
 interface JudgeOutcome {
   // For NUMERIC configs (and the legacy NULL path) this stays the
@@ -97,6 +136,9 @@ export async function generateForItem(
   /** Azure resource origin (provider_keys.provider_metadata.resource_url).
    * Required when provider === 'azure'; ignored otherwise. */
   resourceUrl: string | null,
+  /** Generation temperature (P1-5). Defaults to 0 at the run boundary for a
+   * reproducible eval; was a hardcoded 0.7 before. */
+  temperature: number,
 ): Promise<string | null> {
   // The dataset-item shape allows either `variables` (template substitution)
   // or `messages` (already-formatted chat). Translate to a single user
@@ -119,16 +161,16 @@ export async function generateForItem(
 
   try {
     if (provider === 'openai') {
-      const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      const res = await fetchWithRetry('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
         body: JSON.stringify(buildOpenAIBody(
           model,
           [{ role: 'system', content: promptContent }, { role: 'user', content: userContent }],
-          { temperature: 0.7, maxTokens: 1024 },
+          { temperature, maxTokens: 1024 },
         )),
       })
-      if (!res.ok) return null
+      if (!res || !res.ok) return null
       const json = await res.json() as { choices: Array<{ message: { content: string } }> }
       return json.choices?.[0]?.message?.content ?? null
     }
@@ -137,22 +179,22 @@ export async function generateForItem(
       const url = provider === 'mistral'
         ? 'https://api.mistral.ai/v1/chat/completions'
         : 'https://openrouter.ai/api/v1/chat/completions'
-      const res = await fetch(url, {
+      const res = await fetchWithRetry(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
         body: JSON.stringify(buildOpenAIBody(
           model,
           [{ role: 'system', content: promptContent }, { role: 'user', content: userContent }],
-          { temperature: 0.7, maxTokens: 1024 },
+          { temperature, maxTokens: 1024 },
         )),
       })
-      if (!res.ok) return null
+      if (!res || !res.ok) return null
       const json = await res.json() as { choices: Array<{ message: { content: string } }> }
       return json.choices?.[0]?.message?.content ?? null
     }
 
     if (provider === 'anthropic') {
-      const res = await fetch('https://api.anthropic.com/v1/messages', {
+      const res = await fetchWithRetry('https://api.anthropic.com/v1/messages', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -162,12 +204,12 @@ export async function generateForItem(
         body: JSON.stringify({
           model,
           max_tokens: 1024,
-          temperature: 0.7,
+          temperature,
           system: promptContent,
           messages: [{ role: 'user', content: userContent }],
         }),
       })
-      if (!res.ok) return null
+      if (!res || !res.ok) return null
       const json = await res.json() as { content: Array<{ type: string; text: string }> }
       return json.content?.find((b) => b.type === 'text')?.text ?? null
     }
@@ -177,22 +219,22 @@ export async function generateForItem(
       // shape, but the base URL is the per-key resource origin and auth uses
       // the `api-key` header instead of Bearer. Mirrors proxy/azure.ts.
       if (!resourceUrl) return null
-      const res = await fetch(`${resourceUrl}/openai/v1/chat/completions`, {
+      const res = await fetchWithRetry(`${resourceUrl}/openai/v1/chat/completions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'api-key': apiKey },
         body: JSON.stringify(buildOpenAIBody(
           model,
           [{ role: 'system', content: promptContent }, { role: 'user', content: userContent }],
-          { temperature: 0.7, maxTokens: 1024 },
+          { temperature, maxTokens: 1024 },
         )),
       })
-      if (!res.ok) return null
+      if (!res || !res.ok) return null
       const json = await res.json() as { choices: Array<{ message: { content: string } }> }
       return json.choices?.[0]?.message?.content ?? null
     }
 
     // Gemini
-    const res = await fetch(
+    const res = await fetchWithRetry(
       `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
       {
         method: 'POST',
@@ -200,11 +242,11 @@ export async function generateForItem(
         body: JSON.stringify({
           systemInstruction: { parts: [{ text: promptContent }] },
           contents: [{ role: 'user', parts: [{ text: userContent }] }],
-          generationConfig: { temperature: 0.7, maxOutputTokens: 1024 },
+          generationConfig: { temperature, maxOutputTokens: 1024 },
         }),
       },
     )
-    if (!res.ok) return null
+    if (!res || !res.ok) return null
     const json = await res.json() as {
       candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>
     }
@@ -232,11 +274,15 @@ export async function callJudge(
   /** Azure resource origin (provider_keys.provider_metadata.resource_url).
    * Required when config.judge_provider === 'azure'; ignored otherwise. */
   resourceUrl: string | null,
+  /** Golden answer (P1-6). When present (dataset items with expected_output)
+   * it is injected into the prompt as a reference for the judge. */
+  expectedOutput: string | null = null,
 ): Promise<JudgeOutcome | null> {
   const prompt = buildJudgePrompt(config.criterion, responseText, {
     scale_min: config.scale_min,
     scale_max: config.scale_max,
     score_config: config.score_config ?? null,
+    expected_output: expectedOutput,
   })
 
   // Helper that turns a parsed judge reply into the JudgeOutcome the
@@ -280,7 +326,7 @@ export async function callJudge(
   }
 
   if (config.judge_provider === 'openai') {
-    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+    const res = await fetchWithRetry('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -292,7 +338,7 @@ export async function callJudge(
         { temperature: 0, maxTokens: 200, responseFormat: { type: 'json_object' } },
       )),
     })
-    if (!res.ok) return null
+    if (!res || !res.ok) return null
     const json = await res.json() as {
       choices: Array<{ message: { content: string } }>
       usage: { prompt_tokens: number; completion_tokens: number }
@@ -320,7 +366,7 @@ export async function callJudge(
     const url = config.judge_provider === 'mistral'
       ? 'https://api.mistral.ai/v1/chat/completions'
       : 'https://openrouter.ai/api/v1/chat/completions'
-    const res = await fetch(url, {
+    const res = await fetchWithRetry(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -332,7 +378,7 @@ export async function callJudge(
         { temperature: 0, maxTokens: 200, responseFormat: { type: 'json_object' } },
       )),
     })
-    if (!res.ok) return null
+    if (!res || !res.ok) return null
     const json = await res.json() as {
       choices: Array<{ message: { content: string } }>
       usage: { prompt_tokens: number; completion_tokens: number; cost?: number }
@@ -361,7 +407,7 @@ export async function callJudge(
   }
 
   if (config.judge_provider === 'anthropic') {
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
+    const res = await fetchWithRetry('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -375,7 +421,7 @@ export async function callJudge(
         messages: [{ role: 'user', content: prompt }],
       }),
     })
-    if (!res.ok) return null
+    if (!res || !res.ok) return null
     const json = await res.json() as {
       content: Array<{ type: string; text: string }>
       usage: { input_tokens: number; output_tokens: number }
@@ -404,7 +450,7 @@ export async function callJudge(
     // (mirrors proxy/azure.ts). Without resource_url we can't build the URL —
     // fail the sample rather than hit a wrong endpoint.
     if (!resourceUrl) return null
-    const res = await fetch(`${resourceUrl}/openai/v1/chat/completions`, {
+    const res = await fetchWithRetry(`${resourceUrl}/openai/v1/chat/completions`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -416,7 +462,7 @@ export async function callJudge(
         { temperature: 0, maxTokens: 200, responseFormat: { type: 'json_object' } },
       )),
     })
-    if (!res.ok) return null
+    if (!res || !res.ok) return null
     const json = await res.json() as {
       choices: Array<{ message: { content: string } }>
       usage: { prompt_tokens: number; completion_tokens: number }
@@ -442,7 +488,7 @@ export async function callJudge(
   // reply is always parseable. We hit `generateContent` directly (not our
   // /proxy) because eval-runner runs on the server — calls to api.openai.com
   // and generativelanguage.googleapis.com bypass our own proxy on purpose.
-  const geminiRes = await fetch(
+  const geminiRes = await fetchWithRetry(
     `https://generativelanguage.googleapis.com/v1beta/models/${config.judge_model}:generateContent?key=${apiKey}`,
     {
       method: 'POST',
@@ -494,7 +540,7 @@ export async function callJudge(
       }),
     },
   )
-  if (!geminiRes.ok) return null
+  if (!geminiRes || !geminiRes.ok) return null
   const geminiJson = await geminiRes.json() as {
     candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>
     usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number }
@@ -548,6 +594,12 @@ interface RunInput {
   sampleSize: number
   sampleFrom?: string | null
   sampleTo?: string | null
+  /** P1-4: 'recent' (created_at DESC, default) keeps the legacy behaviour;
+   * 'random' (ORDER BY rand()) draws a representative, non-recency-biased
+   * sample. Production source only. */
+  sampleStrategy?: 'recent' | 'random' | null
+  /** P1-5: generation temperature for dataset runs. Defaults to 0 (reproducible). */
+  generationTemperature?: number | null
   /**
    * When source = 'dataset', the prompt content must be executed against each
    * item's input to produce a response — THEN that response is judged.
@@ -594,6 +646,8 @@ export async function runEvalRun(input: RunInput): Promise<void> {
     sampleTo,
     runProvider,
     runModel,
+    sampleStrategy,
+    generationTemperature,
   } = input
 
   // Mark running
@@ -731,6 +785,8 @@ export async function runEvalRun(input: RunInput): Promise<void> {
       responseText: string
       requestId: string | null
       datasetItemId: string | null
+      /** P1-6: golden answer for dataset items; null for production samples. */
+      expectedOutput: string | null
     }
     let preparedSamples: SampleRow[] = []
 
@@ -765,7 +821,9 @@ export async function runEvalRun(input: RunInput): Promise<void> {
           scope,
           select: 'id, response_body',
           filters: sampleFilters.join(' AND '),
-          orderBy: 'created_at DESC',
+          // P1-4: 'random' draws a representative sample (rand()); 'recent'
+          // (default) preserves the legacy latest-N behaviour.
+          orderBy: sampleStrategy === 'random' ? 'rand()' : 'created_at DESC',
           limit: sampleSize,
           params: sampleParams,
         })
@@ -785,6 +843,7 @@ export async function runEvalRun(input: RunInput): Promise<void> {
             responseText: extractResponseText(parsed) ?? '',
             requestId: s.id,
             datasetItemId: null,
+            expectedOutput: null,
           }
         })
         .filter((s) => s.responseText.length > 0)
@@ -834,41 +893,52 @@ export async function runEvalRun(input: RunInput): Promise<void> {
         }
       }
 
-      // 2. Fetch all items in the dataset (no expected_output filter — we
-      //    generate fresh responses, so items without a golden answer are
-      //    still scorable on the criterion alone)
+      // 2. Fetch all items in the dataset. expected_output (P1-6) is the golden
+      //    answer; items without one are still scorable on the criterion alone.
       const { data: items, error: itemsErr } = await supabaseAdmin
         .from('dataset_items')
-        .select('id, input')
+        .select('id, input, expected_output')
         .eq('dataset_id', datasetId)
         .eq('organization_id', organizationId)
         .order('created_at', { ascending: false })
         .limit(sampleSize)
       if (itemsErr) throw new Error(`Dataset items fetch failed: ${itemsErr.message}`)
 
-      // 3. Generate a response for each item by running the prompt against
-      //    its input. Failures (network, model rejection) are dropped — the
-      //    eval still completes with whatever scored.
-      const generated = await Promise.all(
-        (items ?? []).map(async (i) => {
-          const out = await generateForItem(
-            promptContent,
-            i.input as Record<string, unknown>,
-            runProvider,
-            runModel,
-            runApiKey,
-            runResourceUrl,
-          )
-          return out ? { responseText: out, datasetItemId: i.id as string } : null
-        }),
-      )
+      // 3. Generate a response for each item by running the prompt against its
+      //    input. P1-5: capped at GENERATION_CONCURRENCY (was an uncapped
+      //    Promise.all) and at temperature genTemp (default 0, reproducible).
+      //    Failures (network, model rejection) are dropped — the eval still
+      //    completes with whatever scored.
+      const genTemp = generationTemperature ?? 0
+      const generated = await pool(items ?? [], GENERATION_CONCURRENCY, async (i) => {
+        const out = await generateForItem(
+          promptContent,
+          i.input as Record<string, unknown>,
+          runProvider,
+          runModel,
+          runApiKey,
+          runResourceUrl,
+          genTemp,
+        )
+        return out
+          ? {
+              responseText: out,
+              datasetItemId: i.id as string,
+              expectedOutput: (i.expected_output as string | null) ?? null,
+            }
+          : null
+      })
 
       preparedSamples = generated
-        .filter((g): g is { responseText: string; datasetItemId: string } => g !== null && g.responseText.length > 0)
+        .filter(
+          (g): g is { responseText: string; datasetItemId: string; expectedOutput: string | null } =>
+            g !== null && g.responseText.length > 0,
+        )
         .map((g) => ({
           responseText: g.responseText,
           requestId: null,
           datasetItemId: g.datasetItemId,
+          expectedOutput: g.expectedOutput,
         }))
     }
 
@@ -907,7 +977,7 @@ export async function runEvalRun(input: RunInput): Promise<void> {
         },
       })
       try {
-        const outcome = await callJudge(config, sample.responseText, judgeKey, judgeResourceUrl)
+        const outcome = await callJudge(config, sample.responseText, judgeKey, judgeResourceUrl, sample.expectedOutput)
         if (!outcome) {
           span.end({ status: 'error', errorMessage: 'callJudge returned null' })
           return null
