@@ -3,6 +3,7 @@ import { authJwtOrApiKey, type DualAuthContext } from '../middleware/authJwtOrAp
 import { requireFullScope } from '../middleware/requireFullScope.js'
 import { supabaseAdmin } from '../lib/db.js'
 import { runEvalRun, estimateJudgeCostUsd } from '../lib/eval-runner.js'
+import { EMBEDDING_PROVIDERS } from '../lib/eval-runners/embedding.js'
 import { fireAndForget } from '../lib/wait-until.js'
 import { ApiError } from '../lib/errors.js'
 
@@ -45,7 +46,7 @@ evalsRouter.post('/evaluators', requireFullScope, async (c) => {
 
   if (!promptName) throw new ApiError('VALIDATION_FAILED', 'promptName is required')
   if (!name) throw new ApiError('VALIDATION_FAILED', 'name is required')
-  const VALID_EVALUATOR_TYPES = ['llm_judge', 'regex', 'json_schema', 'exact_match', 'contains']
+  const VALID_EVALUATOR_TYPES = ['llm_judge', 'regex', 'json_schema', 'exact_match', 'contains', 'embedding']
   if (!VALID_EVALUATOR_TYPES.includes(type)) {
     throw new ApiError('VALIDATION_FAILED', `type must be one of: ${VALID_EVALUATOR_TYPES.join(', ')}`)
   }
@@ -104,13 +105,31 @@ evalsRouter.post('/evaluators', requireFullScope, async (c) => {
       caseSensitive: config.caseSensitive === true,
       trim: config.trim !== false,
     }
-  } else {
-    // type === 'contains'
+  } else if (type === 'contains') {
     const substring = typeof config.substring === 'string' ? config.substring : ''
     if (!substring) throw new ApiError('VALIDATION_FAILED', 'config.substring is required')
     validatedConfig = {
       substring,
       caseSensitive: config.caseSensitive === true,
+    }
+  } else {
+    // type === 'embedding'
+    const provider = typeof config.provider === 'string' ? config.provider : ''
+    const model = typeof config.model === 'string' ? config.model.trim() : ''
+    if (!EMBEDDING_PROVIDERS.includes(provider as (typeof EMBEDDING_PROVIDERS)[number])) {
+      throw new ApiError('VALIDATION_FAILED', `config.provider must be one of: ${EMBEDDING_PROVIDERS.join(', ')}`)
+    }
+    if (!model) throw new ApiError('VALIDATION_FAILED', 'config.model is required')
+    const referenceText = typeof config.reference_text === 'string' ? config.reference_text : null
+    const threshold = typeof config.threshold === 'number' ? config.threshold : null
+    if (threshold != null && (threshold < 0 || threshold > 1)) {
+      throw new ApiError('VALIDATION_FAILED', 'config.threshold must be between 0 and 1')
+    }
+    validatedConfig = {
+      provider,
+      model,
+      ...(referenceText ? { reference_text: referenceText } : {}),
+      ...(threshold != null ? { threshold } : {}),
     }
   }
 
