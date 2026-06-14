@@ -7,6 +7,16 @@ export { parseOpenAIUsage, parseAnthropicUsage, parseGeminiUsage } from './parse
 // that follow the standard envelope. See transport.ts for the shape.
 export { SpanlensApiError } from './transport.js'
 
+// Evals API (CI / script-driven prompt evaluation — "prompt CI").
+export { EvalsApi } from './evals.js'
+export type {
+  EvalRun,
+  EvalResult,
+  EvalRunStatus,
+  RunEvalInput,
+  RunEvalOptions,
+} from './evals.js'
+
 export type {
   SpanlensConfig,
   TraceOptions,
