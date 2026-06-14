@@ -41,18 +41,25 @@ import {
 import {
   runRegex,
   runJsonSchema,
+  runExactMatch,
+  runContains,
   runSimpleEvalRun,
   type RegexConfig,
   type JsonSchemaConfig,
+  type ExactMatchConfig,
+  type ContainsConfig,
+  type DeterministicEvaluatorType,
   type SimpleEvalResult,
 } from './eval-runners/deterministic.js'
 
-export { buildJudgePrompt, parseJudgeReply, runRegex, runJsonSchema }
+export { buildJudgePrompt, parseJudgeReply, runRegex, runJsonSchema, runExactMatch, runContains }
 export type {
   JudgeConfig,
   TypedScoreConfig,
   RegexConfig,
   JsonSchemaConfig,
+  ExactMatchConfig,
+  ContainsConfig,
   SimpleEvalResult,
 }
 
@@ -687,14 +694,14 @@ export async function runEvalRun(input: RunInput): Promise<void> {
       throw new Error('Evaluator not found')
     }
 
-    // R-7 Phase 1: deterministic types short-circuit before the
-    // LLM-as-judge config validation + provider-key resolution. Dataset
-    // source is not yet supported for these types — Phase 2 will lift
-    // the runProvider/runModel pieces of the dataset path so they can
-    // share it.
-    if (evaluator.type === 'regex' || evaluator.type === 'json_schema') {
+    // Deterministic types (regex / json_schema / exact_match / contains)
+    // short-circuit before the LLM-as-judge config validation +
+    // provider-key resolution. Dataset source is not yet supported for
+    // these types — they score production responses synchronously.
+    const DETERMINISTIC_TYPES: DeterministicEvaluatorType[] = ['regex', 'json_schema', 'exact_match', 'contains']
+    if ((DETERMINISTIC_TYPES as string[]).includes(evaluator.type)) {
       if (source === 'dataset') {
-        throw new Error(`evaluator type '${evaluator.type}' currently only supports source='production' (dataset coming in R-7 Phase 2)`)
+        throw new Error(`evaluator type '${evaluator.type}' currently only supports source='production'`)
       }
       await runSimpleEvalRun(
         evalRunId,
@@ -703,8 +710,8 @@ export async function runEvalRun(input: RunInput): Promise<void> {
         sampleSize,
         sampleFrom,
         sampleTo,
-        evaluator.type,
-        evaluator.config as unknown as RegexConfig | JsonSchemaConfig,
+        evaluator.type as DeterministicEvaluatorType,
+        evaluator.config as unknown as RegexConfig | JsonSchemaConfig | ExactMatchConfig | ContainsConfig,
       )
       // Internal trace closes via the outer finally — note `samples` count
       // and aggregate the simple path produced via internalTrace.end below.
