@@ -8,6 +8,42 @@
 /** Cap on the response text fed into the judge prompt or a regex. */
 export const MAX_RESPONSE_CHARS = 4000
 
+/** Retry attempts for LLM / embedding calls (env-tunable). */
+export const EVAL_MAX_RETRIES = Number(process.env['EVAL_MAX_RETRIES']) || 3
+
+function evalSleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+/**
+ * fetch with exponential backoff on transient failures (429, 5xx, network
+ * error). Returns the final Response (which may still be non-ok) or null if
+ * every attempt threw. Callers treat a non-ok / null result as a dropped
+ * sample, so this only adds resilience — it never changes the success
+ * contract. Back-off: 250ms, 500ms, 1000ms (× EVAL_MAX_RETRIES). Shared by
+ * the judge path (eval-runner.ts) and the embedding path (embedding.ts).
+ */
+export async function fetchWithRetry(
+  url: string,
+  init: RequestInit,
+  retries: number = EVAL_MAX_RETRIES,
+): Promise<Response | null> {
+  let last: Response | null = null
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const res = await fetch(url, init)
+      if (res.ok || !(res.status === 429 || (res.status >= 500 && res.status < 600))) {
+        return res
+      }
+      last = res
+    } catch {
+      last = null
+    }
+    if (attempt < retries) await evalSleep(250 * Math.pow(2, attempt))
+  }
+  return last
+}
+
 /**
  * Extract the assistant response text from a stored response_body. Handles
  * the three provider shapes Spanlens proxies today: OpenAI chat.completion,

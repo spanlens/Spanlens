@@ -219,7 +219,7 @@ function NewEvaluatorDialog({
   // llm_judge evaluators today, so the selector defaults to that even
   // when initialTemplate is set.
   const [evaluatorType, setEvaluatorType] = useState<
-    'llm_judge' | 'regex' | 'json_schema' | 'exact_match' | 'contains'
+    'llm_judge' | 'regex' | 'json_schema' | 'exact_match' | 'contains' | 'embedding'
   >('llm_judge')
   const [regexPattern, setRegexPattern] = useState('')
   const [regexFlags, setRegexFlags] = useState('')
@@ -229,6 +229,11 @@ function NewEvaluatorDialog({
   const [exactCaseSensitive, setExactCaseSensitive] = useState(false)
   const [containsSubstring, setContainsSubstring] = useState('')
   const [containsCaseSensitive, setContainsCaseSensitive] = useState(false)
+  // embedding config (P2-12)
+  const [embedProvider, setEmbedProvider] = useState('openai')
+  const [embedModel, setEmbedModel] = useState('text-embedding-3-small')
+  const [embedReferenceText, setEmbedReferenceText] = useState('')
+  const [embedThreshold, setEmbedThreshold] = useState('')
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -303,7 +308,7 @@ function NewEvaluatorDialog({
           type: 'exact_match',
           config: { value: exactValue, caseSensitive: exactCaseSensitive },
         })
-      } else {
+      } else if (evaluatorType === 'contains') {
         if (!containsSubstring) {
           setError('Substring is required')
           return
@@ -314,6 +319,27 @@ function NewEvaluatorDialog({
           type: 'contains',
           config: { substring: containsSubstring, caseSensitive: containsCaseSensitive },
         })
+      } else {
+        if (!embedModel.trim()) {
+          setError('Embedding model is required')
+          return
+        }
+        const threshold = embedThreshold.trim() ? Number(embedThreshold) : undefined
+        if (threshold !== undefined && (!Number.isFinite(threshold) || threshold < 0 || threshold > 1)) {
+          setError('Threshold must be between 0 and 1')
+          return
+        }
+        await createMutation.mutateAsync({
+          promptName,
+          name: name.trim(),
+          type: 'embedding',
+          config: {
+            provider: embedProvider,
+            model: embedModel.trim(),
+            ...(embedReferenceText.trim() ? { reference_text: embedReferenceText.trim() } : {}),
+            ...(threshold !== undefined ? { threshold } : {}),
+          },
+        })
       }
       onClose()
       setName(''); setCriterion(''); setPromptName('')
@@ -321,6 +347,7 @@ function NewEvaluatorDialog({
       setJsonSchemaText('{\n  "type": "object"\n}')
       setExactValue(''); setExactCaseSensitive(false)
       setContainsSubstring(''); setContainsCaseSensitive(false)
+      setEmbedReferenceText(''); setEmbedThreshold('')
       setEvaluatorType('llm_judge')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create')
@@ -372,7 +399,9 @@ function NewEvaluatorDialog({
             <Select
               value={evaluatorType}
               onValueChange={(v) =>
-                setEvaluatorType(v as 'llm_judge' | 'regex' | 'json_schema' | 'exact_match' | 'contains')
+                setEvaluatorType(
+                  v as 'llm_judge' | 'regex' | 'json_schema' | 'exact_match' | 'contains' | 'embedding',
+                )
               }
             >
               <SelectTrigger><SelectValue /></SelectTrigger>
@@ -382,6 +411,7 @@ function NewEvaluatorDialog({
                 <SelectItem value="json_schema">JSON Schema (structure check)</SelectItem>
                 <SelectItem value="exact_match">Exact match (equals a value)</SelectItem>
                 <SelectItem value="contains">Contains (substring present)</SelectItem>
+                <SelectItem value="embedding">Embedding similarity (semantic)</SelectItem>
               </SelectContent>
             </Select>
             <p className="font-mono text-[10.5px] text-text-faint mt-1">
@@ -393,7 +423,9 @@ function NewEvaluatorDialog({
                     ? 'Deterministic 0/1 — passes when the response parses as JSON and matches the schema.'
                     : evaluatorType === 'exact_match'
                       ? 'Deterministic 0/1 — passes when the response equals the expected value.'
-                      : 'Deterministic 0/1 — passes when the response contains the substring.'}
+                      : evaluatorType === 'contains'
+                        ? 'Deterministic 0/1 — passes when the response contains the substring.'
+                        : 'Cosine similarity (0..1) of the response vs a reference answer. Uses your provider key.'}
             </p>
           </div>
 
@@ -552,6 +584,68 @@ function NewEvaluatorDialog({
                 Passes when the response contains this text. Case-insensitive unless checked.
               </p>
             </div>
+          )}
+
+          {evaluatorType === 'embedding' && (
+            <>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint mb-1">
+                    Embedding provider
+                  </label>
+                  <Select value={embedProvider} onValueChange={setEmbedProvider}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="openai">OpenAI</SelectItem>
+                      <SelectItem value="azure">Azure</SelectItem>
+                      <SelectItem value="mistral">Mistral</SelectItem>
+                      <SelectItem value="openrouter">OpenRouter</SelectItem>
+                      <SelectItem value="gemini">Gemini</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <label className="block font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint mb-1">
+                    Model
+                  </label>
+                  <input
+                    type="text"
+                    value={embedModel}
+                    onChange={(e) => setEmbedModel(e.target.value)}
+                    placeholder="text-embedding-3-small"
+                    required
+                    className="w-full h-9 px-2 rounded-[5px] border border-border bg-bg font-mono text-[12px] text-text placeholder:text-text-faint focus:outline-none focus:border-border-strong"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint mb-1">
+                  Reference text
+                </label>
+                <textarea
+                  value={embedReferenceText}
+                  onChange={(e) => setEmbedReferenceText(e.target.value)}
+                  rows={3}
+                  placeholder="The ideal answer to compare responses against…"
+                  className="w-full px-2 py-2 rounded-[5px] border border-border bg-bg font-mono text-[12px] text-text placeholder:text-text-faint focus:outline-none focus:border-border-strong resize-none"
+                />
+                <p className="font-mono text-[10.5px] text-text-faint mt-1">
+                  Used for production runs. Dataset items use their own expected_output when present.
+                </p>
+              </div>
+              <div>
+                <label className="block font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint mb-1">
+                  Pass threshold (optional, 0–1)
+                </label>
+                <input
+                  type="text"
+                  value={embedThreshold}
+                  onChange={(e) => setEmbedThreshold(e.target.value)}
+                  placeholder="e.g. 0.8"
+                  className="w-full h-9 px-2 rounded-[5px] border border-border bg-bg font-mono text-[12px] text-text placeholder:text-text-faint focus:outline-none focus:border-border-strong"
+                />
+              </div>
+            </>
           )}
 
           {/* Optional typed score config (LLM-as-judge only). When omitted

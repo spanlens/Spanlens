@@ -31,13 +31,18 @@ import { buildOpenAIBody } from './playground-runner.js'
 import { startInternalTrace } from './internal-tracing.js'
 // Extracted sub-modules. Re-exported below so existing import sites
 // (`from '../lib/eval-runner.js'`) keep working unchanged.
-import { extractResponseText } from './eval-runners/shared.js'
+import { extractResponseText, fetchWithRetry } from './eval-runners/shared.js'
 import {
   buildJudgePrompt,
   parseJudgeReply,
   type JudgeConfig,
   type TypedScoreConfig,
 } from './eval-runners/judge-prompt.js'
+import {
+  scoreEmbedding,
+  EMBEDDING_PROVIDERS,
+  type EmbeddingConfig,
+} from './eval-runners/embedding.js'
 import {
   runRegex,
   runJsonSchema,
@@ -66,43 +71,12 @@ export type {
 // P1-3: concurrency + retry are env-configurable (defaults preserve prior
 // behaviour). Generation gets its own pool so a large dataset can't fire all
 // items at once (the old uncapped Promise.all).
+// P1-3: concurrency is env-configurable (defaults preserve prior behaviour).
+// Generation gets its own pool so a large dataset can't fire all items at once.
+// fetchWithRetry / EVAL_MAX_RETRIES live in eval-runners/shared.ts (shared with
+// the embedding path).
 const JUDGE_CONCURRENCY = Number(process.env['EVAL_JUDGE_CONCURRENCY']) || 5
 const GENERATION_CONCURRENCY = Number(process.env['EVAL_GENERATION_CONCURRENCY']) || 5
-const MAX_RETRIES = Number(process.env['EVAL_MAX_RETRIES']) || 3
-
-function evalSleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms))
-}
-
-/**
- * fetch with exponential backoff on transient failures (429, 5xx, network
- * error). Returns the final Response (which may still be non-ok) or null if
- * every attempt threw. Callers already treat a non-ok / null result as a
- * dropped sample, so this only adds resilience — it never changes the
- * success contract. Back-off: 250ms, 500ms, 1000ms (× MAX_RETRIES).
- */
-async function fetchWithRetry(
-  url: string,
-  init: RequestInit,
-  retries: number = MAX_RETRIES,
-): Promise<Response | null> {
-  let last: Response | null = null
-  for (let attempt = 0; attempt <= retries; attempt++) {
-    try {
-      const res = await fetch(url, init)
-      // Success, or a non-retryable client error (4xx other than 429) — done.
-      if (res.ok || !(res.status === 429 || (res.status >= 500 && res.status < 600))) {
-        return res
-      }
-      last = res
-    } catch {
-      // Network error / abort — retry.
-      last = null
-    }
-    if (attempt < retries) await evalSleep(250 * Math.pow(2, attempt))
-  }
-  return last
-}
 
 interface JudgeOutcome {
   // For NUMERIC configs (and the legacy NULL path) this stays the
@@ -718,7 +692,49 @@ export async function runEvalRun(input: RunInput): Promise<void> {
       return
     }
 
-    const config = evaluator.config as unknown as JudgeConfig
+    // Judge and embedding both resolve a provider key (+ azure resource URL),
+    // then share the sample gathering + scoring loop below. `config` (judge)
+    // and `embedConfig` (embedding) are mutually exclusive; `scoringKey` /
+    // `scoringResourceUrl` carry whichever applies into the scoring loop.
+    const isEmbedding = evaluator.type === 'embedding'
+    let config: JudgeConfig = {} as JudgeConfig
+    let embedConfig: EmbeddingConfig | null = null
+    let scoringKey: string
+    let scoringResourceUrl: string | null = null
+
+    if (isEmbedding) {
+      embedConfig = evaluator.config as unknown as EmbeddingConfig
+      if (!embedConfig?.provider || !embedConfig?.model) {
+        throw new Error('Embedding evaluator config missing required fields (provider / model)')
+      }
+      if (!(EMBEDDING_PROVIDERS as string[]).includes(embedConfig.provider)) {
+        throw new Error(`Unsupported embedding provider: ${embedConfig.provider}`)
+      }
+      const { data: pkRow, error: pkErr } = await supabaseAdmin
+        .from('provider_keys')
+        .select('id, provider, encrypted_key, provider_metadata')
+        .eq('organization_id', organizationId)
+        .eq('provider', embedConfig.provider)
+        .eq('is_active', true)
+        .limit(1)
+        .maybeSingle()
+      if (pkErr || !pkRow) {
+        throw new Error(`No active ${embedConfig.provider} provider key found for embedding`)
+      }
+      const key = await aes256Decrypt(pkRow.encrypted_key as string)
+      if (!key) throw new Error('Failed to decrypt embedding provider key')
+      scoringKey = key
+      const meta = (pkRow.provider_metadata as Record<string, unknown> | null) ?? {}
+      scoringResourceUrl = typeof meta['resource_url'] === 'string' ? meta['resource_url'] : null
+      if (embedConfig.provider === 'azure') {
+        if (!scoringResourceUrl) {
+          throw new Error('Azure embedding provider key is missing resource_url — re-register it')
+        }
+        const safe = validateOutboundUrlSync(scoringResourceUrl)
+        if (!safe.ok) throw new Error(`Azure embedding resource_url rejected: ${safe.message}`)
+      }
+    } else {
+    config = evaluator.config as unknown as JudgeConfig
     if (!config?.criterion || !config?.judge_provider || !config?.judge_model) {
       throw new Error('Evaluator config missing required fields (criterion / judge_provider / judge_model)')
     }
@@ -785,6 +801,9 @@ export async function runEvalRun(input: RunInput): Promise<void> {
       if (!safe.ok) {
         throw new Error(`Azure judge resource_url rejected: ${safe.message}`)
       }
+    }
+      scoringKey = judgeKey
+      scoringResourceUrl = judgeResourceUrl
     }
 
     // ── Gather samples (production requests OR dataset items) ──────────────
@@ -974,19 +993,30 @@ export async function runEvalRun(input: RunInput): Promise<void> {
     // gets ended with status='error' instead of leaving a dangling
     // LIVE span.
     const outcomes = await pool(preparedSamples, JUDGE_CONCURRENCY, async (sample): Promise<SampleOutcome | null> => {
-      const span = internalTrace.startSpan('llm_judge', {
+      const span = internalTrace.startSpan(isEmbedding ? 'embedding' : 'llm_judge', {
         spanType: 'llm',
         metadata: {
-          judge_provider: config.judge_provider,
-          judge_model: config.judge_model,
+          judge_provider: isEmbedding ? embedConfig!.provider : config.judge_provider,
+          judge_model: isEmbedding ? embedConfig!.model : config.judge_model,
           request_id: sample.requestId,
           dataset_item_id: sample.datasetItemId,
         },
       })
       try {
-        const outcome = await callJudge(config, sample.responseText, judgeKey, judgeResourceUrl, sample.expectedOutput)
+        let outcome: JudgeOutcome | null
+        if (isEmbedding) {
+          // Reference: dataset golden answer wins, else the config default.
+          const reference = sample.expectedOutput ?? embedConfig!.reference_text ?? null
+          if (!reference) {
+            span.end({ status: 'error', errorMessage: 'no reference (expected_output / reference_text)' })
+            return null
+          }
+          outcome = await scoreEmbedding(embedConfig!, sample.responseText, reference, scoringKey, scoringResourceUrl)
+        } else {
+          outcome = await callJudge(config, sample.responseText, scoringKey, scoringResourceUrl, sample.expectedOutput)
+        }
         if (!outcome) {
-          span.end({ status: 'error', errorMessage: 'callJudge returned null' })
+          span.end({ status: 'error', errorMessage: isEmbedding ? 'scoreEmbedding returned null' : 'callJudge returned null' })
           return null
         }
         span.end({
