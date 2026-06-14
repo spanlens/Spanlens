@@ -53,6 +53,15 @@ export default function AlertsDocs() {
             <td>95th percentile response time</td>
             <td>&ldquo;Alert if p95 &gt; 5000ms in the last 15 minutes&rdquo;</td>
           </tr>
+          <tr>
+            <td><code>eval_score</code></td>
+            <td>
+              Mean of completed <a href="/docs/features/evals">eval</a> runs&apos; avg score
+              over the window (0&ndash;1). A quality <strong>floor</strong>: fires when the
+              score drops to/below the threshold, the opposite direction from the others.
+            </td>
+            <td>&ldquo;Alert if avg eval score &lt; 0.8 in the last 24 hours&rdquo;</td>
+          </tr>
         </tbody>
       </table>
 
@@ -175,8 +184,10 @@ Content-Type: application/json
           through those services if you need escalation, but we don&apos;t natively integrate.
         </li>
         <li>
-          <strong>Fixed metric set.</strong> Only budget / error_rate / latency_p95 today. Custom
-          SQL or anomaly-based rules are roadmap items.
+          <strong>Fixed metric set.</strong> Only budget / error_rate / latency_p95 / eval_score
+          today. Custom SQL or anomaly-based rules are roadmap items. Note that
+          <code>eval_score</code> is org-level: <code>eval_runs</code> has no project_id, so a
+          project filter on an eval_score rule is ignored.
         </li>
         <li>
           <strong>Quota-overage warning emails run on a separate cron</strong> (hourly). Org

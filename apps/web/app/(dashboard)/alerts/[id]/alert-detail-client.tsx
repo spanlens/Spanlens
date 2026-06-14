@@ -31,12 +31,14 @@ import { cn, formatDateTime } from '@/lib/utils'
 function fmtThreshold(type: AlertType, threshold: number): string {
   if (type === 'budget') return `$${threshold}`
   if (type === 'error_rate') return `${(threshold * 100).toFixed(1)}%`
+  if (type === 'eval_score') return `${(threshold * 100).toFixed(1)}%`
   return `${threshold}ms`
 }
 
 function kindLabel(type: AlertType): string {
   if (type === 'budget') return 'BUDGET'
   if (type === 'error_rate') return 'ERROR RATE'
+  if (type === 'eval_score') return 'EVAL SCORE'
   return 'P95 LATENCY'
 }
 
@@ -258,8 +260,14 @@ export function AlertDetailClient() {
           <div className="border border-border rounded-xl bg-bg-elev px-5 py-4 mb-5">
             <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-2">Trigger</div>
             <code className="font-mono text-[13px] text-text">
-              {alert.type === 'budget' ? 'sum(cost)' : alert.type === 'error_rate' ? 'error_rate' : 'p95(latency)'}
-              {' '}&gt; {fmtThreshold(alert.type, alert.threshold)}
+              {alert.type === 'budget'
+                ? 'sum(cost)'
+                : alert.type === 'error_rate'
+                  ? 'error_rate'
+                  : alert.type === 'eval_score'
+                    ? 'avg(eval_score)'
+                    : 'p95(latency)'}
+              {' '}{alert.type === 'eval_score' ? '<' : '>'} {fmtThreshold(alert.type, alert.threshold)}
               {' '}for {alert.window_minutes}m
             </code>
             <p className="text-[12px] text-text-muted mt-2 leading-relaxed">
