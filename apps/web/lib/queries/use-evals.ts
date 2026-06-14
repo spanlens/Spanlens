@@ -113,6 +113,13 @@ export interface ContainsConfig {
   caseSensitive?: boolean
 }
 
+export interface EmbeddingConfig {
+  provider: string
+  model: string
+  reference_text?: string
+  threshold?: number
+}
+
 export type CreateEvaluatorInput =
   | {
       promptName: string
@@ -146,6 +153,12 @@ export type CreateEvaluatorInput =
       name: string
       type: 'contains'
       config: ContainsConfig
+    }
+  | {
+      promptName: string
+      name: string
+      type: 'embedding'
+      config: EmbeddingConfig
     }
 
 export function useCreateEvaluator() {
