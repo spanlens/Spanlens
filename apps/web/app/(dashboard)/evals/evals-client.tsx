@@ -951,6 +951,21 @@ function RunDetailPanel({ runId, onClose }: { runId: string; onClose: () => void
           </div>
         </div>
 
+        {/* Scoring-rate warning (P0-2): when some judge calls failed, the avg
+            reflects only the scored samples — say so instead of passing a
+            partial average off as the full picture. */}
+        {r.status === 'completed' && r.failed_count > 0 && r.attempted_count > 0 && (
+          <div className="flex items-start gap-2 p-3 bg-warn-bg border border-warn/30 rounded-[5px] font-mono text-[11.5px] text-warn">
+            <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+            <span>
+              Scored {r.scored_count} of {r.attempted_count} attempted
+              {' '}({Math.round((r.scored_count / r.attempted_count) * 100)}%).
+              {' '}{r.failed_count} judge {r.failed_count === 1 ? 'call' : 'calls'} failed
+              {' '}— the average reflects only the scored samples.
+            </span>
+          </div>
+        )}
+
         {/* Running spinner */}
         {(r.status === 'pending' || r.status === 'running') && (
           <div className="flex items-center gap-2 p-3 bg-accent-bg border border-accent-border rounded-[5px] font-mono text-[11.5px] text-accent">

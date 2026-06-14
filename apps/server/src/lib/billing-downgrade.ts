@@ -211,20 +211,17 @@ async function fetchOwner(organizationId: string): Promise<{
   owner: string | null
   orgName: string
 }> {
+  // owner_id lives on organizations (NOT NULL). The org_role enum has no
+  // 'owner' value, so the previous org_members.eq('role','owner') matched
+  // nothing and this always returned owner: null. Fold owner_id into the
+  // single organizations fetch.
   const { data: org } = await supabaseAdmin
     .from('organizations')
-    .select('name')
+    .select('name, owner_id')
     .eq('id', organizationId)
     .single()
 
-  const { data: members } = await supabaseAdmin
-    .from('org_members')
-    .select('user_id')
-    .eq('organization_id', organizationId)
-    .eq('role', 'owner')
-    .limit(1)
-
-  const ownerId = members?.[0]?.user_id
+  const ownerId = (org as { owner_id?: string } | null)?.owner_id
   if (!ownerId) return { owner: null, orgName: (org?.name as string | undefined) ?? organizationId }
 
   const { data: { user } } = await supabaseAdmin.auth.admin.getUserById(ownerId)

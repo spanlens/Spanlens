@@ -655,12 +655,14 @@ export type Database = {
       }
       eval_runs: {
         Row: {
+          attempted_count: number
           avg_score: number | null
           completed_at: string | null
           created_by: string | null
           dataset_id: string | null
           error: string | null
           evaluator_id: string
+          failed_count: number
           id: string
           organization_id: string
           prompt_version_id: string
@@ -674,12 +676,14 @@ export type Database = {
           total_cost_usd: number
         }
         Insert: {
+          attempted_count?: number
           avg_score?: number | null
           completed_at?: string | null
           created_by?: string | null
           dataset_id?: string | null
           error?: string | null
           evaluator_id: string
+          failed_count?: number
           id?: string
           organization_id: string
           prompt_version_id: string
@@ -693,12 +697,14 @@ export type Database = {
           total_cost_usd?: number
         }
         Update: {
+          attempted_count?: number
           avg_score?: number | null
           completed_at?: string | null
           created_by?: string | null
           dataset_id?: string | null
           error?: string | null
           evaluator_id?: string
+          failed_count?: number
           id?: string
           organization_id?: string
           prompt_version_id?: string

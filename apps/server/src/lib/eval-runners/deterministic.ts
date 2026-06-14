@@ -181,6 +181,11 @@ export async function runSimpleEvalRun(
           : runJsonSchema(config as JsonSchemaConfig, responseText)
 
       return {
+        // organization_id is NOT NULL on eval_results — omitting it (the prior
+        // bug) made every deterministic INSERT fail at runtime. Column names
+        // must match the judge path: judge_cost_usd / judge_tokens (there are
+        // no cost_usd / tokens columns).
+        organization_id: organizationId,
         eval_run_id: evalRunId,
         request_id: s.id,
         dataset_item_id: null,
@@ -189,8 +194,8 @@ export async function runSimpleEvalRun(
         value_number: null,
         value_string: null,
         value_boolean: result.value_boolean,
-        cost_usd: 0,
-        tokens: 0,
+        judge_cost_usd: 0,
+        judge_tokens: 0,
       }
     })
     .filter((r): r is NonNullable<typeof r> => r !== null)
@@ -200,16 +205,28 @@ export async function runSimpleEvalRun(
     if (insErr) throw new Error(`eval_results insert failed: ${insErr.message}`)
   }
 
+  // Use the SAME eval_runs columns as the judge path (scored_count / avg_score).
+  // The previous code wrote sample_count / aggregate_score / total_tokens, none
+  // of which exist on eval_runs — supabaseAdmin is an untyped client so the bad
+  // keys compiled but PostgREST silently dropped them, leaving every
+  // deterministic run showing "0 scored / no average" in the dashboard.
+  //
+  // Deterministic scoring can't fail per-sample (runRegex/runJsonSchema always
+  // return 0|1; a bad evaluator config throws and fails the whole run), so the
+  // only drops are empty-response samples already excluded above. Mirroring the
+  // judge path's "attempted = post-empty-filter samples": attempted == scored
+  // and failed == 0 here.
   const totalScore = scored.reduce((acc, r) => acc + r.score, 0)
-  const aggregateScore = scored.length > 0 ? totalScore / scored.length : 0
+  const avgScore = scored.length > 0 ? totalScore / scored.length : null
   await supabaseAdmin
     .from('eval_runs')
     .update({
       status: 'completed',
-      sample_count: scored.length,
-      aggregate_score: aggregateScore,
+      scored_count: scored.length,
+      attempted_count: scored.length,
+      failed_count: 0,
+      avg_score: avgScore,
       total_cost_usd: 0,
-      total_tokens: 0,
       completed_at: new Date().toISOString(),
     })
     .eq('id', evalRunId)
