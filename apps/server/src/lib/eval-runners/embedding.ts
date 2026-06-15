@@ -43,6 +43,10 @@ export interface EmbeddingOutcome {
   reasoning: string
   cost: number
   tokens: number
+  /** P3-18 mirror — embedding scoring is deterministic and cheap so we don't
+   *  cache it. These stay false/0 to keep the SampleOutcome union uniform. */
+  cached: boolean
+  cached_savings_usd: number
 }
 
 /** Cosine similarity of two equal-length vectors; 0 for degenerate input. */
@@ -157,5 +161,7 @@ export async function scoreEmbedding(
     reasoning: `cosine similarity ${score.toFixed(4)}${threshold != null ? ` (threshold ${threshold})` : ''}`,
     cost,
     tokens: result.tokens,
+    cached: false,
+    cached_savings_usd: 0,
   }
 }
