@@ -70,7 +70,9 @@ function CorrelationCard({ promptName }: { promptName: string }) {
         <div className="flex-1 min-w-0 space-y-2">
           <div>
             <p className="font-mono text-[11px] text-text-faint mb-0.5 truncate">{promptName}</p>
-            <div className="flex items-baseline gap-2">
+            {/* flex-wrap so the "Pearson r · …" label drops below the big
+                number instead of overflowing the card on narrow (2-up) widths. */}
+            <div className="flex items-baseline flex-wrap gap-x-2 gap-y-0.5">
               <span className={cn('font-mono text-[22px] font-medium', rColor)}>
                 {r == null ? '—' : r.toFixed(2)}
               </span>
@@ -214,10 +216,20 @@ function EvaluatorRow({
 
   return (
     <div className="border-b border-border last:border-0">
-      <button
-        type="button"
+      {/* Outer container is a div, not a button: HTML forbids nested buttons,
+          and we need the Run/Delete buttons inside the same row. Keyboard
+          activation is preserved via role="button" + Enter/Space handlers. */}
+      <div
+        role="button"
+        tabIndex={0}
         onClick={() => setExpanded((v) => !v)}
-        className="w-full flex items-center px-[16px] py-[12px] hover:bg-bg-muted transition-colors text-left"
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault()
+            setExpanded((v) => !v)
+          }
+        }}
+        className="w-full flex items-center px-[16px] py-[12px] hover:bg-bg-muted transition-colors text-left cursor-pointer"
       >
         <div className="flex-1 min-w-0">
           <p className="font-mono text-[13px] text-text font-medium truncate">{evaluator.name}</p>
@@ -248,7 +260,7 @@ function EvaluatorRow({
             <Trash2 className="h-3.5 w-3.5" />
           </button>
         </div>
-      </button>
+      </div>
       {expanded && (
         <div className="bg-bg-muted/50 px-[16px] py-[10px] border-t border-border">
           <p className="font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint mb-1">
@@ -319,7 +331,9 @@ export default function DemoEvalsPage() {
             <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint mb-3">
               <span>LLM judge vs Human agreement</span>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {/* 2-up only at lg+ (1024px): below that the cards are too narrow
+                for the scatter plot + metrics side by side, so go full-width. */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
               {promptNames.map((name) => <CorrelationCard key={name} promptName={name} />)}
             </div>
           </div>
