@@ -210,6 +210,9 @@ export async function runSimpleEvalRun(
   const sampleFilters: string[] = [
     'prompt_version_id = {promptVersionId:UUID}',
     "response_body != ''",
+    // P3-20: exclude clear error responses so an error JSON body doesn't get
+    // scored. status_code DEFAULT 0 keeps legacy/un-instrumented rows in.
+    '(status_code = 0 OR (status_code >= 200 AND status_code < 300))',
   ]
   const sampleParams: Record<string, unknown> = { promptVersionId }
   if (sampleFrom) {

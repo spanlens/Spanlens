@@ -350,9 +350,19 @@ export function useCreateEvalRun() {
   })
 }
 
+/** P3-13: richer estimate inputs. judgeProvider replaces the old prefix-sniff;
+ *  criterionChars / avgResponseChars let callers refine token math when known. */
+export interface EstimateEvalCostInput {
+  sampleSize: number
+  judgeProvider: 'openai' | 'anthropic' | 'gemini' | 'azure' | 'mistral' | 'openrouter'
+  judgeModel: string
+  criterionChars?: number
+  avgResponseChars?: number
+}
+
 export function useEstimateEvalCost() {
   return useMutation({
-    mutationFn: async (input: { sampleSize: number; judgeModel: string }) => {
+    mutationFn: async (input: EstimateEvalCostInput) => {
       const res = await apiPost<ApiEnvelope<{ estimateUsd: number }>>(
         '/api/v1/eval-runs/estimate',
         input,

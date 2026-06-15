@@ -186,18 +186,32 @@ export class EvalsApi {
     return this.request<EvalRun>('GET', `/api/v1/eval-runs/${encodeURIComponent(id)}`)
   }
 
-  /** List recent runs, optionally filtered by evaluator / prompt version. */
-  listRuns(filter: { evaluatorId?: string; promptVersionId?: string } = {}): Promise<EvalRun[]> {
+  /** List recent runs, optionally filtered by evaluator / prompt version.
+   *  P3-17: accepts optional `page` / `limit` (1-based, defaults to 1 / 50,
+   *  max 100). Still returns just the data array; the server's `meta` envelope
+   *  is currently SDK-internal. */
+  listRuns(
+    filter: { evaluatorId?: string; promptVersionId?: string; page?: number; limit?: number } = {},
+  ): Promise<EvalRun[]> {
     const params = new URLSearchParams()
     if (filter.evaluatorId) params.set('evaluatorId', filter.evaluatorId)
     if (filter.promptVersionId) params.set('promptVersionId', filter.promptVersionId)
+    if (filter.page != null) params.set('page', String(filter.page))
+    if (filter.limit != null) params.set('limit', String(filter.limit))
     const qs = params.toString()
     return this.request<EvalRun[]>('GET', `/api/v1/eval-runs${qs ? `?${qs}` : ''}`)
   }
 
-  /** Fetch the per-sample results for a run. */
-  getResults(id: string): Promise<EvalResult[]> {
-    return this.request<EvalResult[]>('GET', `/api/v1/eval-runs/${encodeURIComponent(id)}/results`)
+  /** Fetch the per-sample results for a run. P3-17: optional `page` / `limit`. */
+  getResults(id: string, opts: { page?: number; limit?: number } = {}): Promise<EvalResult[]> {
+    const params = new URLSearchParams()
+    if (opts.page != null) params.set('page', String(opts.page))
+    if (opts.limit != null) params.set('limit', String(opts.limit))
+    const qs = params.toString()
+    return this.request<EvalResult[]>(
+      'GET',
+      `/api/v1/eval-runs/${encodeURIComponent(id)}/results${qs ? `?${qs}` : ''}`,
+    )
   }
 
   private async request<T>(method: 'GET' | 'POST', path: string, body?: unknown): Promise<T> {

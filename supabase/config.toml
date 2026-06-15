@@ -1,3 +1,7 @@
+# Required by Supabase CLI >= 1.200 (pinned in CI). Local-stack identifier; the
+# production project ref lives in the Supabase dashboard, not here.
+project_id = "spanlens"
+
 [api]
 enabled = true
 port = 54321
