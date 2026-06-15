@@ -39,6 +39,27 @@ export type ChangelogTag =
 
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    date: '2026-06-16',
+    slug: 'evals-methodology-rigor',
+    title: 'Evaluations get statistical rigor and agent trajectory scoring',
+    tags: ['feature'],
+    body: [
+      'LLM-as-judge evaluations get statistical rigor. Pass rates now carry confidence intervals, so a 87 percent versus 85 percent comparison can be read against its actual noise floor. Judge prompts include score anchors (explicit definitions of what counts as a 1 or a 5) so verdicts reproduce across runs. A new Pairwise mode compares two responses head-to-head instead of scoring each in isolation, which is the right primitive when the real question is whether the new version beats the last one.',
+      'Agent trajectory evaluation scores the full trace rather than only the final text. For evals on traces with tool calls or sub-agents, you can specify which steps to weight and the judge sees the full execution graph. Correctness in agent systems often depends on intermediate steps (did it call the right tool, did it route correctly), and trajectory mode catches the failures that final-text scoring misses.',
+      'Judge-human agreement is now computed automatically. When human labels exist on a sample, the run summary shows Pearson r for numeric scores and Cohen\'s kappa for categorical labels, so you can verify whether your judge model actually agrees with your reviewers before trusting it at scale. See [Evals docs](/docs/features/evals).',
+    ].join('\n\n'),
+  },
+  {
+    date: '2026-06-16',
+    slug: 'dashboard-navigation-non-blocking',
+    title: 'Dashboard navigation feels instant',
+    tags: ['improvement'],
+    body: [
+      'Clicking into the dashboard used to freeze the marketing page for 2 to 5 seconds. The layout was blocking on sidebar prefetch, the middleware ran 2 or 3 Supabase queries in series for workspace and onboarding lookups, and the destination page had no RSC tree ready. The whole chain ran sequentially before the first paint, so even warm transitions felt sluggish.',
+      'Three changes land together. The dashboard layout is now non-blocking. Shell and skeleton paint immediately while data hydrates in place via Suspense. The auth middleware runs its preferred-workspace, oldest-membership, and onboarded-status queries in parallel via Promise.all, dropping a round-trip per navigation. The "Go to dashboard" CTA prefetches the route on hover, focus, and touch so the heavy fetch starts on intent rather than click. Cold transitions go from 2 to 5 seconds of blank screen to roughly 100 milliseconds of shell with content filling as it arrives.',
+    ].join('\n\n'),
+  },
+  {
     date: '2026-06-13',
     slug: 'mistral-and-openrouter-providers',
     title: 'Mistral and OpenRouter are now first-class providers',
