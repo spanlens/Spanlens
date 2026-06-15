@@ -6,6 +6,7 @@ import { runEvalRun, estimateJudgeCostUsd } from '../lib/eval-runner.js'
 import { EMBEDDING_PROVIDERS } from '../lib/eval-runners/embedding.js'
 import { fireAndForget } from '../lib/wait-until.js'
 import { ApiError } from '../lib/errors.js'
+import { parsePageLimit } from '../lib/params.js'
 
 // P2-8: evals are dual-auth so CI / SDK can run them with an sl_live_* key,
 // not just a dashboard JWT — this is the "prompt CI" enabler. Reads accept
@@ -566,27 +567,32 @@ evalsRouter.post('/eval-runs', requireFullScope, async (c) => {
   return c.json({ success: true, data: run }, 202)
 })
 
-// GET /api/v1/eval-runs?evaluatorId=...&promptVersionId=...
+// GET /api/v1/eval-runs?evaluatorId=...&promptVersionId=...&page=1&limit=50
+//
+// P3-17: pagination. The previous hard `.limit(50)` silently dropped older runs
+// on busy workspaces. Returns { data, meta: { total, page, limit } } so the UI
+// can render a real paginator. Defaults preserve the prior 50-row first page.
 evalsRouter.get('/eval-runs', async (c) => {
   const orgId = c.get('orgId')
   if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   const evaluatorId = c.req.query('evaluatorId')
   const promptVersionId = c.req.query('promptVersionId')
+  const { page, limit, offset } = parsePageLimit(c.req.query('page'), c.req.query('limit'))
 
   let query = supabaseAdmin
     .from('eval_runs')
-    .select('*')
+    .select('*', { count: 'exact' })
     .eq('organization_id', orgId)
     .order('started_at', { ascending: false })
-    .limit(50)
+    .range(offset, offset + limit - 1)
 
   if (evaluatorId) query = query.eq('evaluator_id', evaluatorId)
   if (promptVersionId) query = query.eq('prompt_version_id', promptVersionId)
 
-  const { data, error } = await query
+  const { data, error, count } = await query
   if (error) throw new ApiError('INTERNAL_ERROR', error.message)
-  return c.json({ success: true, data: data ?? [] })
+  return c.json({ success: true, data: data ?? [], meta: { total: count ?? 0, page, limit } })
 })
 
 // GET /api/v1/eval-runs/:id
@@ -606,12 +612,17 @@ evalsRouter.get('/eval-runs/:id', async (c) => {
   return c.json({ success: true, data })
 })
 
-// GET /api/v1/eval-runs/:id/results
+// GET /api/v1/eval-runs/:id/results?page=1&limit=50
+//
+// P3-17: pagination. The previous handler returned the whole result set (could
+// be 1000 rows on a max-size run) — fine for the dashboard's "lowest 5" widget
+// but a real waste over the wire. Same envelope as /eval-runs above.
 evalsRouter.get('/eval-runs/:id/results', async (c) => {
   const orgId = c.get('orgId')
   if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   const runId = c.req.param('id')
+  const { page, limit, offset } = parsePageLimit(c.req.query('page'), c.req.query('limit'))
 
   // Verify run belongs to org first (extra safety on top of RLS)
   const { data: run } = await supabaseAdmin
@@ -622,19 +633,26 @@ evalsRouter.get('/eval-runs/:id/results', async (c) => {
     .maybeSingle()
   if (!run) throw new ApiError('NOT_FOUND', 'Eval run not found')
 
-  const { data, error } = await supabaseAdmin
+  const { data, error, count } = await supabaseAdmin
     .from('eval_results')
-    .select('*')
+    .select('*', { count: 'exact' })
     .eq('eval_run_id', runId)
     .order('score', { ascending: true })
+    .range(offset, offset + limit - 1)
 
   if (error) throw new ApiError('INTERNAL_ERROR', error.message)
-  return c.json({ success: true, data: data ?? [] })
+  return c.json({ success: true, data: data ?? [], meta: { total: count ?? 0, page, limit } })
 })
 
 // POST /api/v1/eval-runs/estimate — cost estimate for a planned run
 evalsRouter.post('/eval-runs/estimate', async (c) => {
-  let body: { sampleSize?: unknown; judgeModel?: unknown }
+  let body: {
+    sampleSize?: unknown
+    judgeProvider?: unknown
+    judgeModel?: unknown
+    criterionChars?: unknown
+    avgResponseChars?: unknown
+  }
   try {
     body = (await c.req.json()) as typeof body
   } catch {
@@ -642,6 +660,22 @@ evalsRouter.post('/eval-runs/estimate', async (c) => {
   }
   const sampleSize = typeof body.sampleSize === 'number' ? Math.round(body.sampleSize) : 50
   const judgeModel = typeof body.judgeModel === 'string' ? body.judgeModel : 'gpt-4o-mini'
-  const estimateUsd = estimateJudgeCostUsd(sampleSize, judgeModel)
+  // P3-13: take the real provider from the caller instead of sniffing prefixes.
+  // Default to 'openai' for back-compat with old callers that only sent judgeModel.
+  const VALID_JUDGE_PROVIDERS = ['openai', 'anthropic', 'gemini', 'azure', 'mistral', 'openrouter'] as const
+  type JudgeProvider = typeof VALID_JUDGE_PROVIDERS[number]
+  const judgeProvider: JudgeProvider =
+    typeof body.judgeProvider === 'string' && (VALID_JUDGE_PROVIDERS as readonly string[]).includes(body.judgeProvider)
+      ? (body.judgeProvider as JudgeProvider)
+      : 'openai'
+  const criterionChars = typeof body.criterionChars === 'number' && body.criterionChars >= 0 ? body.criterionChars : undefined
+  const avgResponseChars = typeof body.avgResponseChars === 'number' && body.avgResponseChars >= 0 ? body.avgResponseChars : undefined
+  const estimateUsd = estimateJudgeCostUsd({
+    sampleSize,
+    judgeProvider,
+    judgeModel,
+    ...(criterionChars != null ? { criterionChars } : {}),
+    ...(avgResponseChars != null ? { avgResponseChars } : {}),
+  })
   return c.json({ success: true, data: { estimateUsd } })
 })
