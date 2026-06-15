@@ -1,5 +1,14 @@
 # @spanlens/sdk changelog
 
+## 0.11.0
+
+Agent trajectory evaluation (P2-11) — score the whole trace, not just the final text.
+
+### Added
+
+- `RunEvalInput.promptVersionId` is now optional. A trajectory evaluator scores recent traces by name, so a run needs only `evaluatorId` (+ optional `sampleSize` / `sampleFrom`). Example: `client.evals.run({ evaluatorId, sampleSize: 50 })`.
+- `EvalRun.trace_name` — for trajectory runs, the trace name that was scored. `EvalRun.prompt_version_id` is `null` for these runs.
+
 ## 0.10.0
 
 Pairwise (A vs B) eval runs (P1-7) — compare two prompt versions head-to-head.

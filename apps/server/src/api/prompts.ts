@@ -332,6 +332,10 @@ promptsRouter.post('/', requireEdit, async (c) => {
     .eq('organization_id', orgId)
     .eq('prompt_name', name)
     .eq('auto_run_on_version', true)
+    // P2-11: trajectory evaluators score traces, not prompt versions — they
+    // must never be auto-run on a new prompt version (their prompt_name holds a
+    // trace name, so a name collision could otherwise match them here).
+    .neq('type', 'trajectory')
     .is('archived_at', null)
 
   for (const ev of autoEvals ?? []) {

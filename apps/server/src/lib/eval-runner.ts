@@ -35,6 +35,7 @@ import { startInternalTrace } from './internal-tracing.js'
 // (`from '../lib/eval-runner.js'`) keep working unchanged.
 import { extractResponseText, fetchWithRetry } from './eval-runners/shared.js'
 import { sampleStdDev } from './eval-runners/stats.js'
+import { serializeTrajectory, buildTrajectoryJudgePrompt, type TrajectorySpan } from './eval-runners/trajectory.js'
 import {
   buildJudgePrompt,
   parseJudgeReply,
@@ -513,6 +514,44 @@ export async function callPairwiseJudge(
   return { winner: parsed.winner, reasoning: parsed.reasoning, cost: res.cost, tokens: res.tokens }
 }
 
+/** Outcome of judging one agent trajectory (P2-11). `score` is normalised 0..1. */
+export interface TrajectoryOutcome {
+  score: number
+  reasoning: string
+  cost: number
+  tokens: number
+}
+
+/** Calls the judge once on a serialized agent trajectory. Returns null on failure. */
+export async function callTrajectoryJudge(
+  config: JudgeConfig,
+  trajectoryText: string,
+  apiKey: string,
+  resourceUrl: string | null,
+): Promise<TrajectoryOutcome | null> {
+  const prompt = buildTrajectoryJudgePrompt(config.criterion, trajectoryText, {
+    scale_min: config.scale_min,
+    scale_max: config.scale_max,
+    rubric: config.rubric ?? null,
+  })
+  const res = await judgeComplete(
+    config.judge_provider,
+    config.judge_model,
+    apiKey,
+    resourceUrl,
+    prompt,
+    geminiJudgeSchema(null),
+  )
+  if (!res) return null
+  const parsed = parseJudgeReply(res.text, { scale_min: config.scale_min, scale_max: config.scale_max })
+  if (!parsed) return null
+  // Normalise to 0..1 against the configured scale, same as the legacy path.
+  const range = config.scale_max - config.scale_min || 1
+  const raw = parsed.value_number ?? parsed.score ?? 0
+  const normalised = (raw - config.scale_min) / range
+  return { score: normalised, reasoning: parsed.reasoning, cost: res.cost, tokens: res.tokens }
+}
+
 /** Runs a small async pool with concurrency cap. */
 async function pool<T, R>(
   items: T[],
@@ -537,7 +576,8 @@ interface RunInput {
   evalRunId: string
   organizationId: string
   evaluatorId: string
-  promptVersionId: string
+  /** null for trajectory runs (P2-11), which score traces by name. */
+  promptVersionId: string | null
   source: 'production' | 'dataset'
   /** Required when source = 'dataset' */
   datasetId?: string | null
@@ -685,6 +725,7 @@ export async function runEvalRun(input: RunInput): Promise<void> {
       if (source === 'dataset') {
         throw new Error(`evaluator type '${evaluator.type}' currently only supports source='production'`)
       }
+      if (promptVersionId == null) throw new Error('promptVersionId is required for this evaluator type')
       await runSimpleEvalRun(
         evalRunId,
         organizationId,
@@ -699,6 +740,170 @@ export async function runEvalRun(input: RunInput): Promise<void> {
       // and aggregate the simple path produced via internalTrace.end below.
       return
     }
+
+    // ── P2-11: agent trajectory evaluation ────────────────────────────────
+    // Scores the whole agent trace (ordered spans) against a criterion, not a
+    // single response. Targets traces by name (config.trace_name); no prompt
+    // version. Numeric 0..1 score so avg_score + the 95% CI apply for free.
+    if (evaluator.type === 'trajectory') {
+      const trajConfig = evaluator.config as unknown as JudgeConfig & { trace_name?: string }
+      if (!trajConfig?.criterion || !trajConfig?.judge_provider || !trajConfig?.judge_model) {
+        throw new Error('Trajectory evaluator config missing required fields (criterion / judge_provider / judge_model)')
+      }
+      const traceName = typeof trajConfig.trace_name === 'string' ? trajConfig.trace_name.trim() : ''
+      if (!traceName) throw new Error('Trajectory evaluator config missing trace_name')
+
+      const judge = await resolveProviderKey(organizationId, trajConfig.judge_provider, 'judge')
+
+      // Record what this run is scoring so the dashboard can label it before
+      // the run finishes.
+      await supabaseAdmin.from('eval_runs').update({ trace_name: traceName }).eq('id', evalRunId)
+
+      // Sample the most recent N traces with this name (optional time window).
+      let traceQuery = supabaseAdmin
+        .from('traces')
+        .select('id, name, status, duration_ms')
+        .eq('organization_id', organizationId)
+        .eq('name', traceName)
+        .order('started_at', { ascending: false })
+        .limit(sampleSize)
+      if (sampleFrom) traceQuery = traceQuery.gte('started_at', sampleFrom)
+      if (sampleTo) traceQuery = traceQuery.lte('started_at', sampleTo)
+      const { data: traces, error: tracesErr } = await traceQuery
+      if (tracesErr) throw new Error(`Trace fetch failed: ${tracesErr.message}`)
+
+      if (!traces || traces.length === 0) {
+        await supabaseAdmin
+          .from('eval_runs')
+          .update({
+            status: 'completed',
+            scored_count: 0,
+            attempted_count: 0,
+            failed_count: 0,
+            avg_score: null,
+            error: `No traces named "${traceName}" found in the selected window.`,
+            completed_at: new Date().toISOString(),
+          })
+          .eq('id', evalRunId)
+        internalTrace.end({ status: 'completed', metadata: { scored_count: 0, mode: 'trajectory' } })
+        return
+      }
+
+      type TrajResult = { traceId: string; score: number; reasoning: string; cost: number; tokens: number }
+      const outcomes = await pool(traces, JUDGE_CONCURRENCY, async (tr): Promise<TrajResult | null> => {
+        const span = internalTrace.startSpan('trajectory_judge', {
+          spanType: 'llm',
+          metadata: { judge_provider: trajConfig.judge_provider, judge_model: trajConfig.judge_model, trace_id: tr.id },
+        })
+        try {
+          // Cap spans per trace so a runaway agent can't blow the prompt.
+          const { data: spanRows, error: spansErr } = await supabaseAdmin
+            .from('spans')
+            .select('name, span_type, status, input, output, error_message, started_at')
+            .eq('trace_id', tr.id)
+            .eq('organization_id', organizationId)
+            .order('started_at', { ascending: true })
+            .limit(200)
+          if (spansErr || !spanRows || spanRows.length === 0) {
+            span.end({ status: 'error', errorMessage: 'no spans for trace' })
+            return null
+          }
+          const trajSpans: TrajectorySpan[] = spanRows.map((s) => ({
+            name: s.name as string,
+            span_type: s.span_type as string,
+            status: s.status as string,
+            input: s.input,
+            output: s.output,
+            error_message: (s.error_message as string | null) ?? null,
+            started_at: s.started_at as string,
+          }))
+          const text = serializeTrajectory(
+            { name: tr.name as string, status: tr.status as string, duration_ms: (tr.duration_ms as number | null) ?? null },
+            trajSpans,
+          )
+          if (!text) {
+            span.end({ status: 'error', errorMessage: 'empty trajectory' })
+            return null
+          }
+          const out = await callTrajectoryJudge(trajConfig, text, judge.key, judge.resourceUrl)
+          if (!out) {
+            span.end({ status: 'error', errorMessage: 'callTrajectoryJudge returned null' })
+            return null
+          }
+          span.end({
+            status: 'completed',
+            output: { score: out.score, reasoning: out.reasoning },
+            costUsd: out.cost,
+            totalTokens: out.tokens,
+          })
+          return { traceId: tr.id as string, score: out.score, reasoning: out.reasoning, cost: out.cost, tokens: out.tokens }
+        } catch (err) {
+          span.end({ status: 'error', errorMessage: err instanceof Error ? err.message : 'trajectory judge threw' })
+          return null
+        }
+      })
+
+      const scoredTraj = outcomes.filter((o): o is TrajResult => o !== null)
+      if (scoredTraj.length === 0) {
+        await supabaseAdmin
+          .from('eval_runs')
+          .update({
+            status: 'failed',
+            scored_count: 0,
+            attempted_count: traces.length,
+            failed_count: traces.length,
+            error: 'All trajectory judge calls failed. Check judge model name and provider key.',
+            completed_at: new Date().toISOString(),
+          })
+          .eq('id', evalRunId)
+        internalTrace.end({ status: 'error', errorMessage: 'All trajectory judge calls failed', metadata: { mode: 'trajectory' } })
+        return
+      }
+
+      const trajScores = scoredTraj.map((s) => s.score)
+      const trajAvg = trajScores.reduce((a, b) => a + b, 0) / trajScores.length
+      const trajStddev = sampleStdDev(trajScores)
+      const trajCost = scoredTraj.reduce((sum, s) => sum + s.cost, 0)
+
+      const { error: insErr } = await supabaseAdmin.from('eval_results').insert(
+        scoredTraj.map((s) => ({
+          organization_id: organizationId,
+          eval_run_id: evalRunId,
+          request_id: null,
+          dataset_item_id: null,
+          trace_id: s.traceId,
+          score: s.score,
+          reasoning: s.reasoning,
+          judge_cost_usd: s.cost,
+          judge_tokens: s.tokens,
+        })),
+      )
+      if (insErr) throw new Error(`Result insert failed: ${insErr.message}`)
+
+      await supabaseAdmin
+        .from('eval_runs')
+        .update({
+          status: 'completed',
+          scored_count: scoredTraj.length,
+          attempted_count: traces.length,
+          failed_count: traces.length - scoredTraj.length,
+          avg_score: trajAvg,
+          score_stddev: trajStddev,
+          total_cost_usd: trajCost,
+          completed_at: new Date().toISOString(),
+        })
+        .eq('id', evalRunId)
+      internalTrace.end({
+        status: 'completed',
+        metadata: { scored_count: scoredTraj.length, attempted_count: traces.length, avg_score: trajAvg, mode: 'trajectory' },
+      })
+      return
+    }
+
+    // Past this point every path (pairwise / judge / embedding, production +
+    // dataset) needs a prompt version. Only trajectory runs are null, and they
+    // returned above — narrow the type for the rest of the function.
+    if (promptVersionId == null) throw new Error('promptVersionId is required for this run')
 
     // ── P1-7 (3/3): pairwise (A vs B) comparison run ──────────────────────
     // Compares two prompt versions head-to-head on the same dataset inputs.
@@ -1362,7 +1567,9 @@ export async function runEvalRun(input: RunInput): Promise<void> {
 export interface StartEvalRunInput {
   organizationId: string
   evaluatorId: string
-  promptVersionId: string
+  /** null for trajectory runs. The P2-10 auto-run hook never targets trajectory
+   *  evaluators (they aren't prompt-bound), but keep this nullable for safety. */
+  promptVersionId: string | null
   source: 'production' | 'dataset'
   datasetId?: string | null
   sampleSize: number
@@ -1393,7 +1600,7 @@ export async function startEvalRun(c: Context, input: StartEvalRunInput): Promis
     .insert({
       organization_id: input.organizationId,
       evaluator_id: input.evaluatorId,
-      prompt_version_id: input.promptVersionId,
+      prompt_version_id: input.promptVersionId ?? null,
       source: input.source,
       dataset_id: input.source === 'dataset' ? (input.datasetId ?? null) : null,
       sample_size: input.sampleSize,
