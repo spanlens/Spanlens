@@ -19,6 +19,7 @@ import {
   type Evaluator,
   type EvalRunStatus,
   type CreateEvaluatorInput,
+  type JudgeAnchor,
 } from '@/lib/queries/use-evals'
 import { usePrompts, usePromptVersions } from '@/lib/queries/use-prompts'
 import type { PromptVersion } from '@/lib/queries/use-prompts'
@@ -216,6 +217,10 @@ function NewEvaluatorDialog({
   )
   const [scaleMin] = useState(0)
   const [scaleMax] = useState(1)
+  // P1-7 — optional judge-prompt quality controls (llm_judge only). Rubric is
+  // free-form guidance; anchors are few-shot calibration examples.
+  const [rubric, setRubric] = useState('')
+  const [anchors, setAnchors] = useState<JudgeAnchor[]>([])
   // Optional pointer at a workspace score_config. Empty string = use the
   // legacy NUMERIC 0..1 path (omits scoreConfigId from the POST body so
   // the server keeps the historic behaviour for pre-4B.1c evaluators).
@@ -281,6 +286,11 @@ function NewEvaluatorDialog({
           setError('Criterion is required for LLM-as-judge evaluators')
           return
         }
+        // P1-7: keep only complete anchors (a response + a numeric score in range).
+        const cleanAnchors = anchors
+          .map((a) => ({ ...a, response: a.response.trim(), reasoning: a.reasoning?.trim() }))
+          .filter((a) => a.response && Number.isFinite(a.score) && a.score >= scaleMin && a.score <= scaleMax)
+          .map((a) => ({ response: a.response, score: a.score, ...(a.reasoning ? { reasoning: a.reasoning } : {}) }))
         await submitEvaluator({
           promptName,
           name: name.trim(),
@@ -290,6 +300,8 @@ function NewEvaluatorDialog({
             judge_model: judgeModel,
             scale_min: scaleMin,
             scale_max: scaleMax,
+            ...(rubric.trim() ? { rubric: rubric.trim() } : {}),
+            ...(cleanAnchors.length > 0 ? { anchors: cleanAnchors } : {}),
           },
           ...(scoreConfigId ? { scoreConfigId } : {}),
         })
@@ -514,6 +526,101 @@ function NewEvaluatorDialog({
                   </Select>
                 </div>
               </div>
+
+              {/* P1-7: optional rubric + few-shot calibration anchors. Collapsed
+                  by default so the common case stays a one-field form. */}
+              <details className="border border-border rounded-[5px] px-3 py-2">
+                <summary className="font-mono text-[11px] text-text-muted cursor-pointer select-none">
+                  Advanced: rubric &amp; calibration anchors (optional)
+                </summary>
+                <div className="mt-3 space-y-3">
+                  <div>
+                    <label className="block font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint mb-1">
+                      Scoring rubric
+                    </label>
+                    <textarea
+                      value={rubric}
+                      onChange={(e) => setRubric(e.target.value)}
+                      rows={3}
+                      placeholder="e.g. 1.0 = fully correct and complete · 0.5 = partially correct · 0 = wrong or off-topic"
+                      className="w-full px-2 py-2 rounded-[5px] border border-border bg-bg font-mono text-[11.5px] text-text placeholder:text-text-faint focus:outline-none focus:border-border-strong resize-y"
+                    />
+                    <p className="font-mono text-[10.5px] text-text-faint mt-1">
+                      Free-form guidance injected into the judge prompt for consistent scoring.
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="block font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint mb-1">
+                      Calibration anchors
+                    </label>
+                    <div className="space-y-2">
+                      {anchors.map((a, i) => (
+                        <div key={i} className="border border-border rounded-[5px] p-2 space-y-2">
+                          <div className="flex gap-2 items-start">
+                            <textarea
+                              value={a.response}
+                              onChange={(e) =>
+                                setAnchors((prev) => prev.map((x, j) => (j === i ? { ...x, response: e.target.value } : x)))
+                              }
+                              rows={2}
+                              placeholder="Example response…"
+                              className="flex-1 px-2 py-1.5 rounded-[4px] border border-border bg-bg font-mono text-[11.5px] text-text placeholder:text-text-faint focus:outline-none focus:border-border-strong resize-y"
+                            />
+                            <div className="flex flex-col gap-1 w-[64px] shrink-0">
+                              <input
+                                type="number"
+                                step={0.1}
+                                min={scaleMin}
+                                max={scaleMax}
+                                value={Number.isFinite(a.score) ? String(a.score) : ''}
+                                onChange={(e) =>
+                                  setAnchors((prev) =>
+                                    prev.map((x, j) =>
+                                      j === i ? { ...x, score: e.target.value === '' ? NaN : Number(e.target.value) } : x,
+                                    ),
+                                  )
+                                }
+                                placeholder="score"
+                                className="w-full h-8 px-2 rounded-[4px] border border-border bg-bg font-mono text-[11.5px] text-text text-center placeholder:text-text-faint focus:outline-none focus:border-border-strong"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => setAnchors((prev) => prev.filter((_, j) => j !== i))}
+                                className="h-7 flex items-center justify-center rounded-[4px] border border-border text-text-faint hover:text-bad hover:border-bad/40 transition-colors"
+                                aria-label="Remove anchor"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                          <input
+                            type="text"
+                            value={a.reasoning ?? ''}
+                            onChange={(e) =>
+                              setAnchors((prev) => prev.map((x, j) => (j === i ? { ...x, reasoning: e.target.value } : x)))
+                            }
+                            placeholder="why this score (optional)"
+                            className="w-full h-8 px-2 rounded-[4px] border border-border bg-bg font-mono text-[11px] text-text-muted placeholder:text-text-faint focus:outline-none focus:border-border-strong"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                    {anchors.length < 10 && (
+                      <button
+                        type="button"
+                        onClick={() => setAnchors((prev) => [...prev, { response: '', score: Number.NaN }])}
+                        className="mt-2 font-mono text-[11px] px-2 py-1 rounded-[4px] border border-border hover:bg-bg-elev flex items-center gap-1 transition-colors"
+                      >
+                        <Plus className="h-3 w-3" /> Add anchor
+                      </button>
+                    )}
+                    <p className="font-mono text-[10.5px] text-text-faint mt-1">
+                      Example response → score ({scaleMin}–{scaleMax}). Anchors the judge&apos;s scale. Up to 10.
+                    </p>
+                  </div>
+                </div>
+              </details>
             </>
           )}
 

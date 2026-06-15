@@ -407,6 +407,47 @@ if (run.status !== 'completed' || (ci?.high ?? run.avg_score ?? 0) < GATE) {
   process.exit(1)
 }`}</CodeBlock>
 
+      <h2>Tuning the judge: rubric &amp; calibration anchors</h2>
+      <p>
+        A bare criterion leaves the judge to invent its own scale, so scores
+        drift run to run. Two optional fields on an LLM-judge evaluator make
+        scoring consistent (set them under <em>Advanced</em> when creating the
+        evaluator, or pass them in <code>config</code> to{' '}
+        <code>POST /api/v1/evaluators</code>):
+      </p>
+      <ul>
+        <li>
+          <strong><code>rubric</code></strong> — free-form guidance injected into
+          the prompt, e.g. <code>1.0 = fully correct and complete · 0.5 =
+          partially correct · 0 = wrong</code>. Applies to every score type.
+        </li>
+        <li>
+          <strong><code>anchors</code></strong> — up to 10 few-shot calibration
+          examples, each an example <code>response</code> paired with the{' '}
+          <code>score</code> it should get (and an optional{' '}
+          <code>reasoning</code>). The judge anchors its scale to these. Numeric
+          judges only.
+        </li>
+      </ul>
+      <CodeBlock language="json">{`// POST /api/v1/evaluators  (config excerpt)
+{
+  "criterion": "Is the answer factually correct and complete?",
+  "judge_provider": "openai",
+  "judge_model": "gpt-4o-mini",
+  "scale_min": 0,
+  "scale_max": 1,
+  "rubric": "1.0 = correct and complete · 0.5 = correct but missing detail · 0 = wrong",
+  "anchors": [
+    { "response": "Paris is the capital of France.", "score": 1, "reasoning": "correct and complete" },
+    { "response": "I think it's somewhere in Europe.", "score": 0.3, "reasoning": "vague, no answer" }
+  ]
+}`}</CodeBlock>
+      <p>
+        Long responses are truncated to a character cap before judging, but{' '}
+        <strong>middle-out</strong>: the start and the end are both kept (the
+        actual answer often lives in the conclusion) with the middle elided.
+      </p>
+
       <h2>Reproducibility &amp; reliability options</h2>
       <ul>
         <li>

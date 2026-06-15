@@ -267,6 +267,9 @@ export async function callJudge(
     scale_max: config.scale_max,
     score_config: config.score_config ?? null,
     expected_output: expectedOutput,
+    // P1-7: rubric + few-shot anchors carried on the evaluator config.
+    rubric: config.rubric ?? null,
+    anchors: config.anchors ?? null,
   })
 
   // Helper that turns a parsed judge reply into the JudgeOutcome the

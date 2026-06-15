@@ -8,6 +8,27 @@
 /** Cap on the response text fed into the judge prompt or a regex. */
 export const MAX_RESPONSE_CHARS = 4000
 
+/**
+ * Truncate text to at most `max` characters while preserving BOTH ends (P1-7).
+ *
+ * A long LLM response often states its actual answer or conclusion at the very
+ * end, so head-only truncation (`slice(0, max)`) can hide the exact thing the
+ * judge is scoring. This keeps the first ~60% and last ~40% of the budget with
+ * an elision marker in the middle. Short text passes through unchanged so the
+ * common case is byte-identical to before.
+ */
+export function truncateMiddle(text: string, max: number = MAX_RESPONSE_CHARS): string {
+  if (text.length <= max) return text
+  const marker = '\n…[truncated middle]…\n'
+  // Degenerate case: budget too small to keep both ends meaningfully — fall
+  // back to a plain head slice so we never return more than `max` chars.
+  if (max <= marker.length + 2) return text.slice(0, max)
+  const budget = max - marker.length
+  const headLen = Math.ceil(budget * 0.6)
+  const tailLen = budget - headLen
+  return text.slice(0, headLen) + marker + text.slice(text.length - tailLen)
+}
+
 /** Retry attempts for LLM / embedding calls (env-tunable). */
 export const EVAL_MAX_RETRIES = Number(process.env['EVAL_MAX_RETRIES']) || 3
 
