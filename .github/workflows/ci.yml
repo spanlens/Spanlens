@@ -79,10 +79,11 @@ jobs:
         # 504s ("Failed to resolve latest Supabase CLI release: Gateway
         # Time-out") and blocks the migrations-validate step for ~all PRs
         # during the outage. Pinned versions skip that resolution entirely.
+        # 2.x required for Postgres 17 support (config.toml has db.major_version=17).
         # Bump when you need a newer CLI feature.
         uses: supabase/setup-cli@v1
         with:
-          version: 1.219.2
+          version: 2.106.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
