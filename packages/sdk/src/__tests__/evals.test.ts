@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { SpanlensClient } from '../client.js'
 import { SpanlensApiError } from '../transport.js'
-import type { EvalRun } from '../evals.js'
+import { scoreConfidenceInterval, type EvalRun } from '../evals.js'
 
 /**
  * P2-8 SDK contract: client.evals.run() triggers a run and (by default)
@@ -34,6 +34,7 @@ function makeRun(over: Partial<EvalRun>): EvalRun {
     attempted_count: 0,
     failed_count: 0,
     avg_score: null,
+    score_stddev: null,
     total_cost_usd: 0,
     error: null,
     started_at: '2026-06-14T00:00:00Z',
@@ -144,5 +145,35 @@ describe('client.evals', () => {
     expect(results[0]?.score).toBe(0.4)
     const [url] = fetchMock.mock.calls[0] as [string]
     expect(url).toBe('https://api.test/api/v1/eval-runs/run_1/results')
+  })
+})
+
+// ── P1-7: scoreConfidenceInterval ────────────────────────────────────────────
+
+describe('scoreConfidenceInterval', () => {
+  it('computes mean ± 1.96·stddev/√n for a scored run', () => {
+    const run = makeRun({ status: 'completed', scored_count: 100, avg_score: 0.8, score_stddev: 0.2 })
+    const ci = scoreConfidenceInterval(run)
+    expect(ci).not.toBeNull()
+    expect(ci!.mean).toBe(0.8)
+    expect(ci!.margin).toBeCloseTo(0.0392, 6) // 1.96 * 0.2 / 10
+    expect(ci!.low).toBeCloseTo(0.7608, 6)
+    expect(ci!.high).toBeCloseTo(0.8392, 6)
+  })
+
+  it('clamps the interval to [0, 1]', () => {
+    // mean 0.5, stddev 0.6, n 4 → margin = 1.96 * 0.6 / 2 = 0.588, so the raw
+    // interval [-0.088, 1.088] clamps to [0, 1].
+    const run = makeRun({ status: 'completed', scored_count: 4, avg_score: 0.5, score_stddev: 0.6 })
+    const ci = scoreConfidenceInterval(run)!
+    expect(ci.margin).toBeCloseTo(0.588, 6)
+    expect(ci.low).toBe(0)
+    expect(ci.high).toBe(1)
+  })
+
+  it('returns null when the run cannot support an interval', () => {
+    expect(scoreConfidenceInterval(makeRun({ avg_score: null, score_stddev: 0.2, scored_count: 50 }))).toBeNull()
+    expect(scoreConfidenceInterval(makeRun({ avg_score: 0.8, score_stddev: null, scored_count: 50 }))).toBeNull()
+    expect(scoreConfidenceInterval(makeRun({ avg_score: 0.8, score_stddev: 0.2, scored_count: 1 }))).toBeNull()
   })
 })

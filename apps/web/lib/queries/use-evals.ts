@@ -47,6 +47,10 @@ export interface EvalRun {
   /** Samples whose judge call failed (attempted - scored). */
   failed_count: number
   avg_score: number | null
+  /** P1-7: sample standard deviation of the scores behind avg_score. Backs the
+   * 95% CI shown next to the average. null for runs with <2 numeric samples or
+   * non-mean evaluator types (CATEGORICAL / TEXT), and for pre-migration rows. */
+  score_stddev: number | null
   total_cost_usd: number
   error: string | null
   created_by: string | null

@@ -132,6 +132,15 @@ function RunDetailPanel({ runId, onClose }: { runId: string; onClose: () => void
           <div className="bg-bg-muted border border-border rounded-[5px] px-3 py-2">
             <p className="font-mono text-[9.5px] uppercase tracking-[0.06em] text-text-faint">Avg score</p>
             <p className="font-mono text-[16px] text-text font-medium">{fmtScore(run.avg_score)}</p>
+            {(() => {
+              const m =
+                run.score_stddev != null && run.scored_count >= 2
+                  ? (1.96 * run.score_stddev) / Math.sqrt(run.scored_count)
+                  : null
+              return m != null && run.avg_score != null ? (
+                <p className="font-mono text-[9px] text-text-faint tabular-nums mt-0.5">±{(m * 100).toFixed(1)} · 95% CI</p>
+              ) : null
+            })()}
           </div>
           <div className="bg-bg-muted border border-border rounded-[5px] px-3 py-2">
             <p className="font-mono text-[9.5px] uppercase tracking-[0.06em] text-text-faint">Samples</p>

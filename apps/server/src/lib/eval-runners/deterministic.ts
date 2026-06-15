@@ -16,6 +16,7 @@ import Ajv, { type ErrorObject } from 'ajv'
 import { supabaseAdmin } from '../db.js'
 import { requestsScope, selectRequests } from '../requests-query.js'
 import { extractResponseText } from './shared.js'
+import { sampleStdDev } from './stats.js'
 
 export interface RegexConfig {
   pattern: string
@@ -293,6 +294,9 @@ export async function runSimpleEvalRun(
   // and failed == 0 here.
   const totalScore = scored.reduce((acc, r) => acc + r.score, 0)
   const avgScore = scored.length > 0 ? totalScore / scored.length : null
+  // P1-7: the 0/1 pass-rate is a mean, so it carries the same sampling error
+  // as the judge path — store the stddev so the dashboard renders a 95% CI.
+  const scoreStddev = sampleStdDev(scored.map((r) => r.score))
   await supabaseAdmin
     .from('eval_runs')
     .update({
@@ -301,6 +305,7 @@ export async function runSimpleEvalRun(
       attempted_count: scored.length,
       failed_count: 0,
       avg_score: avgScore,
+      score_stddev: scoreStddev,
       total_cost_usd: 0,
       completed_at: new Date().toISOString(),
     })

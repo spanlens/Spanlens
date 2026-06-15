@@ -44,6 +44,10 @@ export interface EvalRun {
   failed_count: number
   /** Mean score in 0..1 (NUMERIC) / pass-rate (BOOLEAN); null for other types or empty runs. */
   avg_score: number | null
+  /** P1-7: sample standard deviation of the scores behind avg_score. Backs the
+   * 95% confidence interval (see {@link scoreConfidenceInterval}). null when
+   * the run has <2 numeric samples or the evaluator has no mean. */
+  score_stddev: number | null
   total_cost_usd: number
   error: string | null
   started_at: string
@@ -228,4 +232,47 @@ function parseApiError(text: string, status: number): SpanlensApiError | null {
 
 export function createEvalsApi(config: { apiKey: string; baseUrl?: string }): EvalsApi {
   return new EvalsApi({ apiKey: config.apiKey, baseUrl: config.baseUrl ?? DEFAULT_BASE_URL })
+}
+
+/** The 95% confidence interval for a run's mean score (P1-7). */
+export interface ScoreInterval {
+  /** The point estimate — same as run.avg_score. */
+  mean: number
+  /** Half-width: the interval is `mean ± margin`. */
+  margin: number
+  /** Lower bound, clamped to 0. */
+  low: number
+  /** Upper bound, clamped to 1. */
+  high: number
+}
+
+/**
+ * Compute the 95% confidence interval for an eval run's mean score, using the
+ * normal approximation (z = 1.96): `margin = 1.96 * stddev / sqrt(n)`.
+ *
+ * Use this in CI to gate on a *meaningful* regression rather than noise: a new
+ * version that scores 0.78 ± 0.06 vs a baseline of 0.80 has not clearly
+ * regressed, so you can avoid failing the build on sampling jitter.
+ *
+ * Returns null when the run can't support an interval (no avg_score, no
+ * score_stddev, or fewer than 2 scored samples).
+ *
+ * @example
+ *   const run = await client.evals.run({ evaluatorId, promptVersionId, sampleSize: 100 })
+ *   const ci = scoreConfidenceInterval(run)
+ *   if (ci && ci.high < GATE) {        // even the optimistic bound is below gate
+ *     console.error(`score ${ci.mean.toFixed(2)} ±${ci.margin.toFixed(2)} below ${GATE}`)
+ *     process.exit(1)
+ *   }
+ */
+export function scoreConfidenceInterval(run: EvalRun): ScoreInterval | null {
+  const { avg_score: mean, score_stddev: stddev, scored_count: n } = run
+  if (mean == null || stddev == null || !Number.isFinite(stddev) || n < 2) return null
+  const margin = (1.96 * stddev) / Math.sqrt(n)
+  return {
+    mean,
+    margin,
+    low: Math.max(0, mean - margin),
+    high: Math.min(1, mean + margin),
+  }
 }
