@@ -74,9 +74,15 @@ jobs:
       # after merge. The setup-cli rate-limit pattern (gotcha #33) needs
       # GITHUB_TOKEN here too.
       - name: Install Supabase CLI
+        # Pin to a known-good version instead of `latest`. The `latest` resolver
+        # hits the GitHub release API for supabase/cli, which intermittently
+        # 504s ("Failed to resolve latest Supabase CLI release: Gateway
+        # Time-out") and blocks the migrations-validate step for ~all PRs
+        # during the outage. Pinned versions skip that resolution entirely.
+        # Bump when you need a newer CLI feature.
         uses: supabase/setup-cli@v1
         with:
-          version: latest
+          version: 1.219.2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
