@@ -34,6 +34,7 @@ import { startInternalTrace } from './internal-tracing.js'
 // Extracted sub-modules. Re-exported below so existing import sites
 // (`from '../lib/eval-runner.js'`) keep working unchanged.
 import { extractResponseText, fetchWithRetry } from './eval-runners/shared.js'
+import { sampleStdDev } from './eval-runners/stats.js'
 import {
   buildJudgePrompt,
   parseJudgeReply,
@@ -1095,30 +1096,34 @@ export async function runEvalRun(input: RunInput): Promise<void> {
     if (insertErr) throw new Error(`Result insert failed: ${insertErr.message}`)
 
     const totalCost = scored.reduce((sum, s) => sum + s.cost, 0)
-    // `eval_runs.avg_score` is a NUMERIC summary. For typed configs that
-    // don't aggregate as an average (CATEGORICAL, BOOLEAN, TEXT) we
-    // emit a derived 0..1 number where it has a natural meaning
-    // (BOOLEAN pass-rate) and NULL otherwise so the dashboard knows to
-    // render a different summary instead of a misleading 0.50.
-    const avgScore = (() => {
+    // The 0..1 values that back avg_score, also reused for the P1-7
+    // standard deviation / confidence interval. Empty for the typed configs
+    // that don't aggregate as a mean (CATEGORICAL, TEXT) so the dashboard
+    // renders a different summary instead of a misleading 0.50.
+    //   NUMERIC (+ embedding / legacy NULL): the normalised 0..1 score.
+    //   BOOLEAN: 1 for a pass, 0 for a fail → mean is the pass-rate, and the
+    //            stddev of the 0/1 set is the binomial spread used for the CI.
+    const scoreValues: number[] = (() => {
       const sc = config.score_config
       if (!sc || sc.data_type === 'NUMERIC') {
-        const numericValues = scored
+        return scored
           .map((s) => s.value_number ?? s.score)
           .filter((v): v is number => v != null)
-        if (numericValues.length === 0) return null
-        return numericValues.reduce((a, b) => a + b, 0) / numericValues.length
       }
       if (sc.data_type === 'BOOLEAN') {
-        const bools = scored
+        return scored
           .map((s) => s.value_boolean)
           .filter((v): v is boolean => v != null)
-        if (bools.length === 0) return null
-        const passes = bools.filter(Boolean).length
-        return passes / bools.length
+          .map((b) => (b ? 1 : 0))
       }
-      return null
+      return []
     })()
+    const avgScore = scoreValues.length > 0
+      ? scoreValues.reduce((a, b) => a + b, 0) / scoreValues.length
+      : null
+    // P1-7: sample stddev backs the 95% CI rendered next to avg_score. NULL
+    // when there are <2 numeric points or the type has no mean.
+    const scoreStddev = sampleStdDev(scoreValues)
 
     await supabaseAdmin
       .from('eval_runs')
@@ -1128,6 +1133,7 @@ export async function runEvalRun(input: RunInput): Promise<void> {
         attempted_count: preparedSamples.length,
         failed_count: preparedSamples.length - scored.length,
         avg_score: avgScore,
+        score_stddev: scoreStddev,
         total_cost_usd: totalCost,
         completed_at: new Date().toISOString(),
       })
@@ -1140,6 +1146,7 @@ export async function runEvalRun(input: RunInput): Promise<void> {
         failed_count: preparedSamples.length - scored.length,
         total_samples: preparedSamples.length,
         avg_score: avgScore,
+        score_stddev: scoreStddev,
         total_cost_usd: totalCost,
       },
     })

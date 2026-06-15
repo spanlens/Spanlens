@@ -373,6 +373,40 @@ if (run.status !== 'completed' || (run.avg_score ?? 0) < 0.8) {
         to read the lowest-scoring samples for a CI log.
       </p>
 
+      <h2>Confidence intervals</h2>
+      <p>
+        A score is only as trustworthy as its sample size: <code>0.82</code> from
+        8 samples and <code>0.82</code> from 200 are not the same evidence, and
+        &ldquo;version B scored 0.84 vs A&apos;s 0.81&rdquo; can be noise. Each
+        completed run stores <code>score_stddev</code> (the sample standard
+        deviation of the scores behind <code>avg_score</code>), and the dashboard
+        renders a 95% confidence interval (<code>avg ± 1.96·σ/√n</code>) next to
+        the average. It is populated for numeric and pass-rate (boolean)
+        evaluators; categorical and text types have no mean, so it stays empty.
+      </p>
+      <p>
+        In CI, gate on the interval instead of the point estimate so the build
+        fails only on a <em>meaningful</em> regression, not sampling jitter:
+      </p>
+      <CodeBlock language="typescript">{`import { SpanlensClient, scoreConfidenceInterval } from '@spanlens/sdk'
+
+const client = new SpanlensClient({ apiKey: process.env.SPANLENS_API_KEY! })
+const run = await client.evals.run({
+  evaluatorId: process.env.EVALUATOR_ID!,
+  promptVersionId: process.env.PROMPT_VERSION_ID!,
+  sampleSize: 100,
+})
+
+const ci = scoreConfidenceInterval(run) // { mean, margin, low, high } | null
+const GATE = 0.8
+
+// Fail only when even the optimistic bound is below the bar — a wide
+// interval (small / noisy sample) is told to collect more data instead.
+if (run.status !== 'completed' || (ci?.high ?? run.avg_score ?? 0) < GATE) {
+  console.error(\`gate failed: \${ci?.mean.toFixed(2)} ±\${ci?.margin.toFixed(2)}\`)
+  process.exit(1)
+}`}</CodeBlock>
+
       <h2>Reproducibility &amp; reliability options</h2>
       <ul>
         <li>

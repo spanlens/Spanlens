@@ -79,6 +79,15 @@ function fmtScore(n: number | null | undefined): string {
   return `${(n * 100).toFixed(1)}`
 }
 
+// P1-7: half-width of the 95% CI for the mean (normal approx, z=1.96):
+// margin = 1.96 * stddev / sqrt(n). Returned on the same 0..1 scale as the
+// score; callers render it ×100 to match fmtScore. null when the run can't
+// support an interval (no spread stored, or fewer than 2 scored samples).
+function ciMargin95(stddev: number | null | undefined, n: number): number | null {
+  if (stddev == null || !Number.isFinite(stddev) || n < 2) return null
+  return (1.96 * stddev) / Math.sqrt(n)
+}
+
 // Color tier for score 0..1 — matches the QualityBadge thresholds on the
 // prompts page so the visual language is consistent across the dashboard.
 // >= 0.80 good, >= 0.60 warn, otherwise bad. Null returns the muted token.
@@ -1214,6 +1223,17 @@ function RunDetailPanel({ runId, onClose }: { runId: string; onClose: () => void
           <div className="bg-bg-muted border border-border rounded-[5px] px-3 py-2">
             <p className="font-mono text-[9.5px] uppercase tracking-[0.06em] text-text-faint">Avg score</p>
             <p className={cn('font-mono text-[16px] font-medium tabular-nums', scoreColor(r.avg_score))}>{fmtScore(r.avg_score)}</p>
+            {/* P1-7: 95% CI half-width so a small-sample average reads as less
+                certain. Hidden when there's no interval (single sample / typed
+                config without a mean / pre-migration row). */}
+            {(() => {
+              const m = ciMargin95(r.score_stddev, r.scored_count)
+              return m != null && r.avg_score != null ? (
+                <p className="font-mono text-[9px] text-text-faint tabular-nums mt-0.5" title="95% confidence interval (±1.96·σ/√n)">
+                  ±{(m * 100).toFixed(1)} · 95% CI
+                </p>
+              ) : null
+            })()}
           </div>
           <div className="bg-bg-muted border border-border rounded-[5px] px-3 py-2">
             <p className="font-mono text-[9.5px] uppercase tracking-[0.06em] text-text-faint">Samples</p>
