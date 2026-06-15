@@ -1,11 +1,18 @@
 name: Cron — server sub-daily
 
 # GitHub Actions cron safety net for Spanlens server endpoints that
-# Vercel's scheduled crons keep silently dropping. As of 2026-06-09 the
-# live Vercel cron registry has 5 of the 14 entries declared in
-# vercel.json; the other 9 never fire. Project IS on Pro plan (40-cron
-# quota) so this is a sync gap, not a quota cap — likely fixed by a
-# Vercel-side resync we cannot trigger from the outside.
+# Vercel's scheduled crons keep silently dropping. As of 2026-06-15 the
+# production `cron_job_runs` table over 24h shows severe under-firing
+# of the */5 schedule (~10/288 runs = 3.5%) and partial drops on
+# hourly schedules (self-monitor 2/24, detect-orphan-spans 4/24,
+# detect-missing-model-prices 8/24). Project IS on Pro plan (40-cron
+# quota) so this is a sync gap, not a quota cap. GH Actions also
+# throttles short-cadence cron under load — neither scheduler alone
+# is enough at sub-15min cadence, but together they cover most
+# windows. For a hard guarantee on critical jobs (replay-fallback,
+# self-monitor) set up an external pinger (cron-job.org, Better Stack
+# heartbeat, EasyCron) hitting the same /cron/* URLs with the same
+# Authorization header.
 #
 # Endpoints we re-fire from GitHub Actions, ordered by what breaks if
 # they stay silent:
@@ -61,6 +68,7 @@ on:
     - cron: '0 2 * * *'        # daily 02:00 — events-reconciliation
     - cron: '0 9 * * *'        # daily 09:00 — recommend-savings-alerts
     - cron: '0 10 * * *'       # daily 10:00 — check-past-due-downgrades
+    - cron: '0 3 * * *'        # daily 03:00 — prune-judge-cache
     - cron: '0 9 * * 1'        # weekly Monday 09:00 — stale-key-reminders
   workflow_dispatch:
 
@@ -231,6 +239,24 @@ jobs:
           STATUS=$(curl -sS -o /tmp/body -w '%{http_code}' \
             -H "Authorization: Bearer $CRON_SECRET" \
             "$BASE_URL/cron/check-past-due-downgrades")
+          echo "Status: $STATUS"
+          cat /tmp/body
+          if [ "$STATUS" -ge 400 ]; then exit 1; fi
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+
+  daily-03:
+    name: Daily 03:00 UTC (prune-judge-cache)
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.schedule == '0 3 * * *' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: POST /cron/prune-judge-cache
+        run: |
+          BASE_URL='https://spanlens-server.vercel.app'
+          STATUS=$(curl -sS -o /tmp/body -w '%{http_code}' \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            "$BASE_URL/cron/prune-judge-cache")
           echo "Status: $STATUS"
           cat /tmp/body
           if [ "$STATUS" -ge 400 ]; then exit 1; fi
