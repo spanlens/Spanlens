@@ -50,6 +50,14 @@ export interface Evaluator {
 
 export type EvalRunStatus = 'pending' | 'running' | 'completed' | 'failed'
 
+/** P3-16 — distribution shape stored on eval_runs.distribution (jsonb). The
+ *  `type` field mirrors the score_config's data_type so the UI can switch
+ *  without looking the config up. */
+export type RunDistribution =
+  | { type: 'categorical'; counts: Record<string, number> }
+  | { type: 'boolean'; counts: { true: number; false: number } }
+  | { type: 'text'; count: number; samples: string[] }
+
 export interface EvalRun {
   id: string
   organization_id: string
@@ -84,6 +92,11 @@ export interface EvalRun {
    * 95% CI shown next to the average. null for runs with <2 numeric samples or
    * non-mean evaluator types (CATEGORICAL / TEXT), and for pre-migration rows. */
   score_stddev: number | null
+  /** P3-16: precomputed distribution / sample summary for typed configs whose
+   * avg_score is null. Lets the UI render a histogram in one read instead of
+   * pulling every per-sample row. NULL/absent for NUMERIC / legacy / embedding
+   * runs and for pre-migration rows. */
+  distribution?: RunDistribution | null
   total_cost_usd: number
   error: string | null
   created_by: string | null
@@ -103,6 +116,10 @@ export interface EvalResult {
   judge_cost_usd: number
   judge_tokens: number
   created_at: string
+  /** P3-15: the judge's raw answer before clamp/normalisation (NUMERIC path).
+   *  Lets the dashboard render "4 out of 5" instead of only the derived 0.8.
+   *  null for non-numeric typed configs and for pre-migration rows. */
+  value_raw_number?: number | null
   /** P1-7 (3/3): pairwise winner ('a' | 'b' | 'tie'); null for single-mode results. */
   winner?: 'a' | 'b' | 'tie' | null
   /** P2-11 — for trajectory results: the evaluated trace id. */

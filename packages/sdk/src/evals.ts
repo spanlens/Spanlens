@@ -26,6 +26,13 @@ const DEFAULT_TIMEOUT_MS = 300_000
 
 export type EvalRunStatus = 'pending' | 'running' | 'completed' | 'failed'
 
+/** P3-16 — server-precomputed distribution stored on EvalRun.distribution. The
+ *  `type` discriminant mirrors the score_config's data_type one-for-one. */
+export type RunDistribution =
+  | { type: 'categorical'; counts: Record<string, number> }
+  | { type: 'boolean'; counts: { true: number; false: number } }
+  | { type: 'text'; count: number; samples: string[] }
+
 /** An eval run as returned by the API (snake_case, 1:1 with the REST shape). */
 export interface EvalRun {
   id: string
@@ -60,6 +67,10 @@ export interface EvalRun {
    * 95% confidence interval (see {@link scoreConfidenceInterval}). null when
    * the run has <2 numeric samples or the evaluator has no mean. */
   score_stddev: number | null
+  /** P3-16: precomputed distribution / sample summary for typed configs whose
+   * avg_score is null. Lets clients render a histogram without fetching every
+   * per-sample row. NULL/absent for NUMERIC / legacy / embedding runs. */
+  distribution?: RunDistribution | null
   total_cost_usd: number
   error: string | null
   started_at: string
@@ -73,6 +84,9 @@ export interface EvalResult {
   dataset_item_id: string | null
   score: number | null
   reasoning: string | null
+  /** P3-15: judge's raw answer before clamp/normalisation (NUMERIC path).
+   *  Lets clients render the original scale. null for non-numeric / legacy. */
+  value_raw_number?: number | null
   value_number: number | null
   value_string: string | null
   value_boolean: boolean | null
