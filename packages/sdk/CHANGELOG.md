@@ -1,5 +1,15 @@
 # @spanlens/sdk changelog
 
+## 0.13.0
+
+Judge result caching (P3-18) — re-evaluations of the same sample with the same evaluator return $0.
+
+### Added
+
+- `EvalRun.cache_hits` — number of judge calls served from `judge_cache` instead of hitting the LLM. CI jobs can log "X cached, Y new" and reason about cost. 0 / absent on pre-migration rows.
+
+The cache is keyed by `(organization, evaluator_config_hash, response+expected_hash)`. Editing an evaluator (criterion, model, rubric, anchors) rotates the hash so old cache entries are naturally invalidated — no manual invalidation API needed. A daily TTL cron prunes rows older than 30 days.
+
 ## 0.12.0
 
 P3 score-model polish — raw judge scores + server-computed distributions.

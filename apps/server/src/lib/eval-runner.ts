@@ -36,6 +36,12 @@ import { startInternalTrace } from './internal-tracing.js'
 import { extractResponseText, fetchWithRetry } from './eval-runners/shared.js'
 import { sampleStdDev } from './eval-runners/stats.js'
 import { computeDistribution } from './eval-runners/distribution.js'
+import {
+  hashEvaluatorConfig,
+  hashSampleInputs,
+  lookupJudgeCache,
+  storeJudgeCache,
+} from './eval-runners/judge-cache.js'
 import { serializeTrajectory, buildTrajectoryJudgePrompt, type TrajectorySpan } from './eval-runners/trajectory.js'
 import {
   buildJudgePrompt,
@@ -104,6 +110,12 @@ interface JudgeOutcome {
   // Lets the dashboard render "4 out of 5" instead of only the derived 0.8.
   // null for non-numeric typed configs and for legacy rows.
   value_raw_number: number | null
+  // P3-18 — true when this outcome came from judge_cache. `cost` and `tokens`
+  // are 0 in that case; the original call's cost is in `cached_savings_usd`
+  // so the runner can report cumulative savings. Always false for embedding
+  // and trajectory outcomes.
+  cached: boolean
+  cached_savings_usd: number
 }
 
 // extractResponseText moved to ./eval-runners/shared.ts (imported above).
@@ -413,7 +425,14 @@ async function judgeComplete(
 }
 
 /** Calls the judge LLM once. Returns null on failure (caller skips the sample).
- * Exported for unit tests (see generateForItem note above). */
+ * Exported for unit tests (see generateForItem note above).
+ *
+ * P3-18: when `organizationId` is provided the result is memoised in
+ * judge_cache keyed by (org, config_hash, response+expected_hash). A second
+ * call with the same inputs returns the cached outcome at $0 and sets
+ * `cached: true`. Pass `organizationId: null` to bypass the cache (used by
+ * unit tests that don't want a DB round-trip).
+ */
 export async function callJudge(
   config: JudgeConfig,
   responseText: string,
@@ -424,7 +443,41 @@ export async function callJudge(
   /** Golden answer (P1-6). When present (dataset items with expected_output)
    * it is injected into the prompt as a reference for the judge. */
   expectedOutput: string | null = null,
+  /** P3-18: enables judge_cache lookup / store. Null disables caching. */
+  organizationId: string | null = null,
 ): Promise<JudgeOutcome | null> {
+  // P3-18: cache lookup. Compute both hashes up front; on hit, skip the LLM
+  // call entirely. On miss/failure, fall through to the real call. The cache
+  // helpers swallow errors so a flaky judge_cache never breaks scoring.
+  let configHash: string | null = null
+  let inputsHash: string | null = null
+  if (organizationId) {
+    try {
+      configHash = await hashEvaluatorConfig(config)
+      inputsHash = await hashSampleInputs(responseText, expectedOutput)
+      const hit = await lookupJudgeCache({ organizationId, configHash, responseHash: inputsHash })
+      if (hit) {
+        return {
+          score: hit.score,
+          value_number: hit.value_number,
+          value_string: hit.value_string,
+          value_boolean: hit.value_boolean,
+          value_raw_number: hit.value_raw_number,
+          reasoning: hit.reasoning,
+          cost: 0,
+          tokens: 0,
+          cached: true,
+          cached_savings_usd: hit.original_cost_usd,
+        }
+      }
+    } catch {
+      // Hash failures (Web Crypto unavailable in some test envs) bypass the
+      // cache silently — never block a real eval over caching plumbing.
+      configHash = null
+      inputsHash = null
+    }
+  }
+
   const prompt = buildJudgePrompt(config.criterion, responseText, {
     scale_min: config.scale_min,
     scale_max: config.scale_max,
@@ -458,13 +511,14 @@ export async function callJudge(
   // additionally preserves the clamped-but-not-normalised raw answer so the
   // dashboard can render the original scale ("4 out of 5", not only 0.8).
   const sc = config.score_config
+  let outcome: JudgeOutcome
   if (!sc || sc.data_type === 'NUMERIC') {
     const min = sc?.min_value ?? config.scale_min
     const max = sc?.max_value ?? config.scale_max
     const range = max - min || 1
     const raw = parsed.value_number ?? parsed.score ?? 0
     const normalised = (raw - min) / range
-    return {
+    outcome = {
       score: normalised,
       value_number: normalised,
       value_string: null,
@@ -473,18 +527,43 @@ export async function callJudge(
       reasoning: parsed.reasoning,
       cost: res.cost,
       tokens: res.tokens,
+      cached: false,
+      cached_savings_usd: 0,
+    }
+  } else {
+    outcome = {
+      score: null,
+      value_number: parsed.value_number,
+      value_string: parsed.value_string,
+      value_boolean: parsed.value_boolean,
+      value_raw_number: null,
+      reasoning: parsed.reasoning,
+      cost: res.cost,
+      tokens: res.tokens,
+      cached: false,
+      cached_savings_usd: 0,
     }
   }
-  return {
-    score: null,
-    value_number: parsed.value_number,
-    value_string: parsed.value_string,
-    value_boolean: parsed.value_boolean,
-    value_raw_number: null,
-    reasoning: parsed.reasoning,
-    cost: res.cost,
-    tokens: res.tokens,
+
+  // P3-18: store on cache miss (writes are best-effort, errors swallowed).
+  if (organizationId && configHash && inputsHash) {
+    void storeJudgeCache({
+      organizationId,
+      configHash,
+      responseHash: inputsHash,
+      outcome: {
+        score: outcome.score,
+        value_number: outcome.value_number,
+        value_string: outcome.value_string,
+        value_boolean: outcome.value_boolean,
+        value_raw_number: outcome.value_raw_number,
+        reasoning: outcome.reasoning,
+        original_cost_usd: outcome.cost,
+        original_tokens: outcome.tokens,
+      },
+    })
   }
+  return outcome
 }
 
 /** Outcome of one pairwise comparison (P1-7 3/3). `winner` is in PROMPT terms
@@ -1427,7 +1506,7 @@ export async function runEvalRun(input: RunInput): Promise<void> {
           }
           outcome = await scoreEmbedding(embedConfig!, sample.responseText, reference, scoringKey, scoringResourceUrl)
         } else {
-          outcome = await callJudge(config, sample.responseText, scoringKey, scoringResourceUrl, sample.expectedOutput)
+          outcome = await callJudge(config, sample.responseText, scoringKey, scoringResourceUrl, sample.expectedOutput, organizationId)
         }
         if (!outcome) {
           span.end({ status: 'error', errorMessage: isEmbedding ? 'scoreEmbedding returned null' : 'callJudge returned null' })
@@ -1509,6 +1588,11 @@ export async function runEvalRun(input: RunInput): Promise<void> {
     if (insertErr) throw new Error(`Result insert failed: ${insertErr.message}`)
 
     const totalCost = scored.reduce((sum, s) => sum + s.cost, 0)
+    // P3-18: tally cache hits + the original cost we would have paid if those
+    // hits were misses. Embedding outcomes have cached=false / savings=0 so
+    // they don't skew either count.
+    const cacheHits = scored.reduce((n, s) => n + (s.cached ? 1 : 0), 0)
+    const cacheSavingsUsd = scored.reduce((sum, s) => sum + (s.cached ? s.cached_savings_usd : 0), 0)
     // The 0..1 values that back avg_score, also reused for the P1-7
     // standard deviation / confidence interval. Empty for the typed configs
     // that don't aggregate as a mean (CATEGORICAL, TEXT) so the dashboard
@@ -1555,6 +1639,7 @@ export async function runEvalRun(input: RunInput): Promise<void> {
         score_stddev: scoreStddev,
         distribution,
         total_cost_usd: totalCost,
+        cache_hits: cacheHits,
         completed_at: new Date().toISOString(),
       })
       .eq('id', evalRunId)
@@ -1568,6 +1653,8 @@ export async function runEvalRun(input: RunInput): Promise<void> {
         avg_score: avgScore,
         score_stddev: scoreStddev,
         total_cost_usd: totalCost,
+        cache_hits: cacheHits,
+        cache_savings_usd: cacheSavingsUsd,
       },
     })
   } catch (err) {

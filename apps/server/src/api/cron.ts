@@ -24,6 +24,7 @@ import { runEvaluateAlertsJob } from '../lib/cron-jobs/evaluate-alerts.js'
 import { runDetectMissingModelPricesJob } from '../lib/cron-jobs/detect-missing-model-prices.js'
 import { runSelfMonitorJob } from '../lib/cron-jobs/self-monitor.js'
 import { runDetectOrphanSpansJob } from '../lib/cron-jobs/detect-orphan-spans.js'
+import { runPruneJudgeCacheJob } from '../lib/cron-jobs/prune-judge-cache.js'
 import { runKeepWarmJob } from '../lib/cron-jobs/keep-warm.js'
 
 /**
@@ -369,6 +370,20 @@ cronRouter.get('/detect-orphan-spans', async (c) => {
   const p = result.ok
     ? logCronRun('detect-orphan-spans', 'ok', dur)
     : logCronRun('detect-orphan-spans', 'error', dur, result.error)
+  p.catch(() => undefined)
+  return c.json(result, result.ok ? 200 : 500)
+})
+
+// ── /prune-judge-cache (P3-18) — TTL-delete stale judge_cache rows ─
+cronRouter.get('/prune-judge-cache', async (c) => {
+  assertCronAuth(c.req.header('Authorization'))
+
+  const start = Date.now()
+  const result = await runPruneJudgeCacheJob()
+  const dur = Date.now() - start
+  const p = result.ok
+    ? logCronRun('prune-judge-cache', 'ok', dur)
+    : logCronRun('prune-judge-cache', 'error', dur, result.error)
   p.catch(() => undefined)
   return c.json(result, result.ok ? 200 : 500)
 })

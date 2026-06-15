@@ -28,7 +28,7 @@ let runSimpleEvalRun: typeof import('../lib/eval-runners/deterministic.js').runS
 // The update must be a subset.
 const REAL_EVAL_RUNS_COLUMNS = new Set([
   'status', 'scored_count', 'attempted_count', 'failed_count',
-  'avg_score', 'score_stddev', 'distribution',
+  'avg_score', 'score_stddev', 'distribution', 'cache_hits',
   'total_cost_usd', 'error', 'completed_at',
 ])
 

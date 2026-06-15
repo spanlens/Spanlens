@@ -71,6 +71,9 @@ export interface EvalRun {
    * avg_score is null. Lets clients render a histogram without fetching every
    * per-sample row. NULL/absent for NUMERIC / legacy / embedding runs. */
   distribution?: RunDistribution | null
+  /** P3-18: judge calls served from cache instead of hitting the LLM. Let CI
+   * jobs log "X cached, $0 charge". 0 on pre-migration rows. */
+  cache_hits?: number
   total_cost_usd: number
   error: string | null
   started_at: string
