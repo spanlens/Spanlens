@@ -8,13 +8,14 @@ export { parseOpenAIUsage, parseAnthropicUsage, parseGeminiUsage } from './parse
 export { SpanlensApiError } from './transport.js'
 
 // Evals API (CI / script-driven prompt evaluation — "prompt CI").
-export { EvalsApi } from './evals.js'
+export { EvalsApi, scoreConfidenceInterval } from './evals.js'
 export type {
   EvalRun,
   EvalResult,
   EvalRunStatus,
   RunEvalInput,
   RunEvalOptions,
+  ScoreInterval,
 } from './evals.js'
 
 export type {

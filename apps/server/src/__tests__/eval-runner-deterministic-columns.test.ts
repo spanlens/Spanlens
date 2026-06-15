@@ -24,10 +24,11 @@ vi.mock('../lib/requests-query.js', () => ({
 let runSimpleEvalRun: typeof import('../lib/eval-runners/deterministic.js').runSimpleEvalRun
 
 // Real columns on eval_runs (supabase/migrations/20260513000000_evals.sql +
-// 20260614010000_eval_runs_scoring_counts.sql). The update must be a subset.
+// 20260614010000_eval_runs_scoring_counts.sql + 20260615030000_eval_run_score_stddev.sql).
+// The update must be a subset.
 const REAL_EVAL_RUNS_COLUMNS = new Set([
   'status', 'scored_count', 'attempted_count', 'failed_count',
-  'avg_score', 'total_cost_usd', 'error', 'completed_at',
+  'avg_score', 'score_stddev', 'total_cost_usd', 'error', 'completed_at',
 ])
 
 let lastUpdatePayload: Record<string, unknown> | null = null
@@ -137,6 +138,8 @@ describe('runSimpleEvalRun — eval_runs column contract', () => {
       avg_score: 0.5,
       total_cost_usd: 0,
     })
+    // P1-7: sample stddev of [1, 0] = sqrt(0.5) ≈ 0.7071 (n-1 corrected).
+    expect(lastUpdatePayload!['score_stddev']).toBeCloseTo(Math.sqrt(0.5), 6)
   })
 
   test('avg_score is null (not 0) when no samples were scored', async () => {

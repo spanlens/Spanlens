@@ -1,5 +1,15 @@
 # @spanlens/sdk changelog
 
+## 0.9.0
+
+Confidence intervals on eval scores (P1-7) — tell a real regression from sampling noise in CI.
+
+### Added
+
+- `EvalRun.score_stddev` — the sample standard deviation of the scores behind `avg_score`. `null` when the run has fewer than 2 numeric samples or the evaluator has no mean (CATEGORICAL / TEXT).
+- `scoreConfidenceInterval(run)` — computes the 95% confidence interval (`mean ± 1.96·stddev/√n`) for a run's mean score, returning `{ mean, margin, low, high }` (or `null`). Gate on `ci.high < threshold` to fail a build only when even the optimistic bound is below your bar, instead of reacting to noise.
+- `ScoreInterval` type export.
+
 ## 0.6.1
 
 Metadata + docs polish. No runtime API changes (already-shipped 0.6 features remain identical: `observeOllama`, LangGraph callback handler, `withLogBody`, etc.).
