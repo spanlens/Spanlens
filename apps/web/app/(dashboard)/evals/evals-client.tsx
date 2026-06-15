@@ -929,6 +929,10 @@ function RunEvaluatorDialog({
 
   const [versionIdRaw, setVersionId] = useState('')
   const [source, setSource] = useState<'production' | 'dataset'>('production')
+  // P1-7 (3/3): pairwise (A vs B) comparison. Pairwise is dataset-only, so
+  // switching to it forces the dataset source.
+  const [mode, setMode] = useState<'single' | 'pairwise'>('single')
+  const [versionBId, setVersionBId] = useState('')
   const [datasetId, setDatasetId] = useState('')
   const [sampleSize, setSampleSize] = useState(50)
   const [days, setDays] = useState(7)
@@ -998,20 +1002,28 @@ function RunEvaluatorDialog({
     void estimateMutate({ sampleSize, judgeModel }).catch(() => null)
   }, [sampleSize, judgeModel, estimateMutate])
 
+  // Pairwise is dataset-only; the single/pairwise toggle drives the source.
+  const effectiveSource = mode === 'pairwise' ? 'dataset' : source
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError('')
     if (!versionId) { setError('Select a version'); return }
-    if (source === 'dataset' && !datasetId) { setError('Select a dataset'); return }
-    if (source === 'dataset' && !runModel) { setError('Select a model to run the prompt'); return }
+    if (mode === 'pairwise') {
+      if (!versionBId) { setError('Select version B to compare against'); return }
+      if (versionBId === versionId) { setError('Version B must differ from version A'); return }
+    }
+    if (effectiveSource === 'dataset' && !datasetId) { setError('Select a dataset'); return }
+    if (effectiveSource === 'dataset' && !runModel) { setError('Select a model to run the prompt'); return }
     try {
       const run = await createRun.mutateAsync({
         evaluatorId: evaluator.id,
         promptVersionId: versionId,
-        source,
+        source: effectiveSource,
         sampleSize,
-        ...(source === 'dataset' && datasetId && { datasetId, runProvider, runModel }),
-        ...(source === 'production' && {
+        ...(mode === 'pairwise' && { mode: 'pairwise', promptVersionBId: versionBId }),
+        ...(effectiveSource === 'dataset' && datasetId && { datasetId, runProvider, runModel }),
+        ...(effectiveSource === 'production' && {
           sampleFrom: new Date(Date.now() - days * 86400_000).toISOString(),
         }),
       })
@@ -1028,9 +1040,37 @@ function RunEvaluatorDialog({
           <DialogTitle>Run evaluation · {evaluator.name}</DialogTitle>
         </DialogHeader>
         <form onSubmit={(e) => void handleSubmit(e)} className="space-y-3 mt-3">
+          {/* Mode toggle: single (absolute score) vs pairwise (A vs B). */}
           <div>
             <label className="block font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint mb-1">
-              Version
+              Comparison mode
+            </label>
+            <div className="flex gap-1 p-0.5 border border-border rounded-[5px] bg-bg-elev font-mono text-[11px]">
+              <button
+                type="button"
+                onClick={() => setMode('single')}
+                className={`flex-1 px-3 py-1 rounded-[3px] ${mode === 'single' ? 'bg-text text-bg' : 'text-text-muted'}`}
+              >
+                Single (score)
+              </button>
+              <button
+                type="button"
+                onClick={() => { setMode('pairwise'); setSource('dataset') }}
+                className={`flex-1 px-3 py-1 rounded-[3px] ${mode === 'pairwise' ? 'bg-text text-bg' : 'text-text-muted'}`}
+              >
+                Pairwise (A vs B)
+              </button>
+            </div>
+            {mode === 'pairwise' && (
+              <p className="font-mono text-[10px] text-text-faint mt-1">
+                Runs both versions on the same dataset and asks the judge which wins. Reports B&apos;s win-rate.
+              </p>
+            )}
+          </div>
+
+          <div>
+            <label className="block font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint mb-1">
+              {mode === 'pairwise' ? 'Version A (baseline)' : 'Version'}
             </label>
             <Select {...(versionId ? { value: versionId } : {})} onValueChange={setVersionId}>
               <SelectTrigger><SelectValue placeholder="Select version…" /></SelectTrigger>
@@ -1042,7 +1082,24 @@ function RunEvaluatorDialog({
             </Select>
           </div>
 
-          {/* Source toggle */}
+          {mode === 'pairwise' && (
+            <div>
+              <label className="block font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint mb-1">
+                Version B (candidate)
+              </label>
+              <Select {...(versionBId ? { value: versionBId } : {})} onValueChange={setVersionBId}>
+                <SelectTrigger><SelectValue placeholder="Select version to compare…" /></SelectTrigger>
+                <SelectContent>
+                  {(versions.data ?? []).map((v) => (
+                    <SelectItem key={v.id} value={v.id}>v{v.version}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
+          {/* Source toggle — hidden in pairwise mode (always dataset). */}
+          {mode === 'single' && (
           <div>
             <label className="block font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint mb-1">
               Sample source
@@ -1064,8 +1121,9 @@ function RunEvaluatorDialog({
               </button>
             </div>
           </div>
+          )}
 
-          {source === 'dataset' && (
+          {effectiveSource === 'dataset' && (
             <div>
               <label className="block font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint mb-1">
                 Dataset
@@ -1153,7 +1211,7 @@ function RunEvaluatorDialog({
           )}
 
           <div className="grid grid-cols-2 gap-3">
-            {source === 'production' && (
+            {effectiveSource === 'production' && (
               <div>
                 <label className="block font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint mb-1">
                   Last N days
@@ -1169,7 +1227,7 @@ function RunEvaluatorDialog({
                 </Select>
               </div>
             )}
-            <div className={source === 'dataset' ? 'col-span-2' : ''}>
+            <div className={effectiveSource === 'dataset' ? 'col-span-2' : ''}>
               <label className="block font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint mb-1">
                 Sample size
               </label>
@@ -1328,11 +1386,14 @@ function RunDetailPanel({ runId, onClose }: { runId: string; onClose: () => void
         {/* KPIs */}
         <div className="grid grid-cols-3 gap-2">
           <div className="bg-bg-muted border border-border rounded-[5px] px-3 py-2">
-            <p className="font-mono text-[9.5px] uppercase tracking-[0.06em] text-text-faint">Avg score</p>
+            <p className="font-mono text-[9.5px] uppercase tracking-[0.06em] text-text-faint">
+              {r.mode === 'pairwise' ? 'B win-rate' : 'Avg score'}
+            </p>
             <p className={cn('font-mono text-[16px] font-medium tabular-nums', scoreColor(r.avg_score))}>{fmtScore(r.avg_score)}</p>
             {/* P1-7: 95% CI half-width so a small-sample average reads as less
                 certain. Hidden when there's no interval (single sample / typed
-                config without a mean / pre-migration row). */}
+                config without a mean / pre-migration row). For pairwise this is
+                the CI on the win-rate. */}
             {(() => {
               const m = ciMargin95(r.score_stddev, r.scored_count)
               return m != null && r.avg_score != null ? (
@@ -1343,7 +1404,9 @@ function RunDetailPanel({ runId, onClose }: { runId: string; onClose: () => void
             })()}
           </div>
           <div className="bg-bg-muted border border-border rounded-[5px] px-3 py-2">
-            <p className="font-mono text-[9.5px] uppercase tracking-[0.06em] text-text-faint">Samples</p>
+            <p className="font-mono text-[9.5px] uppercase tracking-[0.06em] text-text-faint">
+              {r.mode === 'pairwise' ? 'Comparisons' : 'Samples'}
+            </p>
             <p className="font-mono text-[16px] text-text font-medium">{r.scored_count}</p>
           </div>
           <div className="bg-bg-muted border border-border rounded-[5px] px-3 py-2">
@@ -1351,6 +1414,15 @@ function RunDetailPanel({ runId, onClose }: { runId: string; onClose: () => void
             <p className="font-mono text-[16px] text-text font-medium">{fmtUsd(r.total_cost_usd)}</p>
           </div>
         </div>
+
+        {/* P1-7 (3/3): pairwise win/loss/tie breakdown. */}
+        {r.mode === 'pairwise' && (r.b_wins != null || r.a_wins != null || r.ties != null) && (
+          <div className="flex items-center gap-2 font-mono text-[11px]">
+            <span className="px-2 py-1 rounded-[4px] bg-good/10 text-good border border-good/30">B wins {r.b_wins ?? 0}</span>
+            <span className="px-2 py-1 rounded-[4px] bg-bad/10 text-bad border border-bad/30">A wins {r.a_wins ?? 0}</span>
+            <span className="px-2 py-1 rounded-[4px] bg-bg-elev text-text-faint border border-border">Ties {r.ties ?? 0}</span>
+          </div>
+        )}
 
         {/* Scoring-rate warning (P0-2): when some judge calls failed, the avg
             reflects only the scored samples — say so instead of passing a

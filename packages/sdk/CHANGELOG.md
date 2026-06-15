@@ -1,5 +1,15 @@
 # @spanlens/sdk changelog
 
+## 0.10.0
+
+Pairwise (A vs B) eval runs (P1-7) — compare two prompt versions head-to-head.
+
+### Added
+
+- `RunEvalInput.mode: 'single' | 'pairwise'` and `RunEvalInput.promptVersionBId`. With `mode: 'pairwise'`, the run generates a response from both `promptVersionId` (A) and `promptVersionBId` (B) for each dataset item and asks the judge which wins. Requires `source: 'dataset'` + `runProvider`/`runModel`.
+- `EvalRun.mode`, `EvalRun.prompt_version_b_id`, and the `a_wins` / `b_wins` / `ties` tally. The completed run's `avg_score` is B's win-rate (1 = B wins, 0 = A wins, 0.5 = tie), so `scoreConfidenceInterval(run)` gives a CI on the win-rate.
+- `EvalResult.winner: 'a' | 'b' | 'tie'` per comparison.
+
 ## 0.9.0
 
 Confidence intervals on eval scores (P1-7) — tell a real regression from sampling noise in CI.

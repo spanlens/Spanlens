@@ -358,6 +358,8 @@ evalsRouter.post('/eval-runs', requireFullScope, async (c) => {
     runModel?: unknown
     sampleStrategy?: unknown
     generationTemperature?: unknown
+    mode?: unknown
+    promptVersionBId?: unknown
   }
   try {
     body = (await c.req.json()) as typeof body
@@ -403,15 +405,45 @@ evalsRouter.post('/eval-runs', requireFullScope, async (c) => {
     if (!runModel) throw new ApiError('VALIDATION_FAILED', 'runModel is required when source = dataset')
   }
 
+  // P1-7 (3/3): pairwise (A vs B) mode. Requires a dataset source + a second
+  // prompt version. Generation (run provider/model) is required because both
+  // versions must be executed to produce the two responses being compared.
+  const mode = body.mode === 'pairwise' ? 'pairwise' : 'single'
+  const promptVersionBId = typeof body.promptVersionBId === 'string' ? body.promptVersionBId.trim() : null
+  if (mode === 'pairwise') {
+    if (source !== 'dataset') throw new ApiError('VALIDATION_FAILED', 'pairwise mode requires source = dataset')
+    if (!promptVersionBId) throw new ApiError('VALIDATION_FAILED', 'promptVersionBId is required for a pairwise run')
+    if (promptVersionBId === promptVersionId) {
+      throw new ApiError('VALIDATION_FAILED', 'promptVersionBId must differ from promptVersionId')
+    }
+    if (!runProvider || !runModel) {
+      throw new ApiError('VALIDATION_FAILED', 'runProvider and runModel are required for a pairwise run')
+    }
+  }
+
   // Verify both belong to org
   const { data: evaluator } = await supabaseAdmin
     .from('evaluators')
-    .select('id')
+    .select('id, type')
     .eq('id', evaluatorId)
     .eq('organization_id', orgId)
     .is('archived_at', null)
     .maybeSingle()
   if (!evaluator) throw new ApiError('NOT_FOUND', 'Evaluator not found')
+  if (mode === 'pairwise' && evaluator.type !== 'llm_judge') {
+    throw new ApiError('VALIDATION_FAILED', 'pairwise mode requires an llm_judge evaluator')
+  }
+
+  // Verify version B belongs to org (pairwise only).
+  if (mode === 'pairwise' && promptVersionBId) {
+    const { data: pvB } = await supabaseAdmin
+      .from('prompt_versions')
+      .select('id')
+      .eq('id', promptVersionBId)
+      .eq('organization_id', orgId)
+      .maybeSingle()
+    if (!pvB) throw new ApiError('NOT_FOUND', 'promptVersionBId not found')
+  }
 
   const { data: pv } = await supabaseAdmin
     .from('prompt_versions')
@@ -446,6 +478,8 @@ evalsRouter.post('/eval-runs', requireFullScope, async (c) => {
       sample_to: source === 'production' ? sampleTo : null,
       status: 'pending',
       created_by: userId ?? null,
+      mode,
+      prompt_version_b_id: mode === 'pairwise' ? promptVersionBId : null,
     })
     .select()
     .single()
@@ -469,6 +503,8 @@ evalsRouter.post('/eval-runs', requireFullScope, async (c) => {
     runModel,
     sampleStrategy,
     generationTemperature,
+    mode,
+    promptVersionBId,
   }))
 
   return c.json({ success: true, data: run }, 202)

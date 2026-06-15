@@ -274,3 +274,101 @@ export function parseJudgeReply(
     reasoning,
   }
 }
+
+// ─── P1-7 (3/3): pairwise (A vs B) judge ─────────────────────────────────────
+
+/** Which response won a pairwise comparison, as labelled IN THE PROMPT. */
+export type PairwiseWinner = 'A' | 'B' | 'tie'
+
+/**
+ * Build a pairwise comparison prompt: the judge is shown two responses to the
+ * same input and picks which better satisfies the criterion (or "tie"). This
+ * is a relative judgment, which is far more consistent than two independent
+ * absolute scores.
+ *
+ * Position bias (judges favour whichever response is shown first) is mitigated
+ * by the CALLER, which counterbalances the A/B presentation order across the
+ * sample and un-swaps the verdict — this function renders the two responses in
+ * whatever order it is handed.
+ */
+export function buildPairwiseJudgePrompt(
+  criterion: string,
+  responseA: string,
+  responseB: string,
+  config: {
+    /** P1-7: optional rubric, same as the single-judge path. */
+    rubric?: string | null
+    /** P1-6: optional golden reference both responses are compared against. */
+    expected_output?: string | null
+  } = {},
+): string {
+  const a = truncateMiddle(responseA, MAX_RESPONSE_CHARS)
+  const b = truncateMiddle(responseB, MAX_RESPONSE_CHARS)
+
+  const rubric = config.rubric?.trim()
+  const rubricBlock = rubric
+    ? `
+
+Scoring rubric (apply consistently):
+${rubric}`
+    : ''
+
+  const expected = config.expected_output
+  const referenceBlock = expected
+    ? `
+
+Reference (expected) answer both responses should match:
+"""
+${truncateMiddle(expected, MAX_RESPONSE_CHARS)}
+"""`
+    : ''
+
+  return `You are comparing two assistant responses to the SAME request to decide which one better satisfies the criterion.
+
+Criterion: ${criterion}${rubricBlock}${referenceBlock}
+
+Response A:
+"""
+${a}
+"""
+
+Response B:
+"""
+${b}
+"""
+
+Decide which response better satisfies the criterion. Judge only on the criterion, not on length or style. If they are genuinely equal, answer "tie".
+
+Reply ONLY in JSON with this exact shape:
+{"winner": "A" | "B" | "tie", "reasoning": "<one short sentence>"}
+
+No prose outside the JSON. No markdown fences.`
+}
+
+/**
+ * Parse a pairwise judge reply into a winner + reasoning. Tolerant of the
+ * usual model drift: case, markdown fences, and "neither/equal/same" synonyms
+ * for a tie. Returns null when no winner can be read (caller drops the sample).
+ */
+export function parsePairwiseReply(
+  text: string,
+): { winner: PairwiseWinner; reasoning: string } | null {
+  let cleaned = text.trim()
+  if (cleaned.startsWith('```')) {
+    cleaned = cleaned.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim()
+  }
+  let parsed: { winner?: unknown; reasoning?: unknown }
+  try {
+    parsed = JSON.parse(cleaned) as typeof parsed
+  } catch {
+    return null
+  }
+  const raw = typeof parsed.winner === 'string' ? parsed.winner.trim().toLowerCase() : ''
+  let winner: PairwiseWinner | null = null
+  if (raw === 'a') winner = 'A'
+  else if (raw === 'b') winner = 'B'
+  else if (raw === 'tie' || raw === 'neither' || raw === 'equal' || raw === 'same') winner = 'tie'
+  if (!winner) return null
+  const reasoning = typeof parsed.reasoning === 'string' ? parsed.reasoning.trim() : ''
+  return { winner, reasoning }
+}

@@ -448,6 +448,50 @@ if (run.status !== 'completed' || (ci?.high ?? run.avg_score ?? 0) < GATE) {
         actual answer often lives in the conclusion) with the middle elided.
       </p>
 
+      <h2>Pairwise comparison (A vs B)</h2>
+      <p>
+        Absolute scores drift, and a 0.84-vs-0.81 gap is often noise. A pairwise
+        run instead shows the judge BOTH versions&apos; responses to the same
+        input and asks which one wins. Relative judgments are far more
+        consistent, so a win-rate is a more trustworthy signal than two separate
+        averages. Pick <strong>Pairwise (A vs B)</strong> when running an
+        evaluator, choose a baseline (A) and a candidate (B), and a dataset.
+      </p>
+      <ul>
+        <li>Each item is run through both versions, then judged head-to-head.</li>
+        <li>
+          <strong>Position bias is counterbalanced</strong> — the judge favours
+          whichever response it sees first, so Spanlens alternates the A/B
+          presentation order across the sample and un-swaps the verdict.
+        </li>
+        <li>
+          The run reports <strong>B&apos;s win-rate</strong> as{' '}
+          <code>avg_score</code> (1 = B wins, 0 = A wins, 0.5 = tie) plus a{' '}
+          <code>b_wins</code> / <code>a_wins</code> / <code>ties</code> tally,
+          and the 95% confidence interval applies to the win-rate.
+        </li>
+      </ul>
+      <CodeBlock language="typescript">{`import { SpanlensClient, scoreConfidenceInterval } from '@spanlens/sdk'
+
+const client = new SpanlensClient({ apiKey: process.env.SPANLENS_API_KEY! })
+const run = await client.evals.run({
+  evaluatorId: process.env.EVALUATOR_ID!,
+  mode: 'pairwise',
+  promptVersionId: BASELINE_VERSION_ID,   // A
+  promptVersionBId: CANDIDATE_VERSION_ID, // B
+  source: 'dataset',
+  datasetId: process.env.DATASET_ID!,
+  runProvider: 'openai',
+  runModel: 'gpt-4o-mini',
+  sampleSize: 100,
+})
+
+const ci = scoreConfidenceInterval(run) // CI on B's win-rate
+// Ship B only if it beats A with the interval clearing 50%.
+if ((ci?.low ?? run.avg_score ?? 0) > 0.5) {
+  console.log(\`B wins \${run.b_wins}/\${run.scored_count} — promote it\`)
+}`}</CodeBlock>
+
       <h2>Reproducibility &amp; reliability options</h2>
       <ul>
         <li>

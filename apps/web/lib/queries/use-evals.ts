@@ -47,6 +47,15 @@ export interface EvalRun {
   /** Optional dataset link. Set when source is 'dataset'. */
   dataset_id?: string | null
   source: 'production' | 'dataset'
+  /** P1-7 (3/3): 'single' (absolute scoring) or 'pairwise' (A vs B). Older rows
+   * created before the migration have no value — treat undefined as 'single'. */
+  mode?: 'single' | 'pairwise'
+  /** The "B" prompt version for a pairwise run (compared against prompt_version_id = A). */
+  prompt_version_b_id?: string | null
+  /** Pairwise tally. Null/absent for single-mode runs. */
+  a_wins?: number | null
+  b_wins?: number | null
+  ties?: number | null
   sample_size: number
   sample_from: string | null
   sample_to: string | null
@@ -81,6 +90,8 @@ export interface EvalResult {
   judge_cost_usd: number
   judge_tokens: number
   created_at: string
+  /** P1-7 (3/3): pairwise winner ('a' | 'b' | 'tie'); null for single-mode results. */
+  winner?: 'a' | 'b' | 'tie' | null
 }
 
 // ── Evaluators ──────────────────────────────────────────────────────────────
@@ -292,6 +303,10 @@ export interface CreateEvalRunInput {
    *  then gets scored by the judge. */
   runProvider?: 'openai' | 'anthropic' | 'gemini' | 'azure' | 'mistral' | 'openrouter'
   runModel?: string
+  /** P1-7 (3/3): 'pairwise' compares promptVersionId (A) vs promptVersionBId (B).
+   *  Requires source = 'dataset' + runProvider/runModel. */
+  mode?: 'single' | 'pairwise'
+  promptVersionBId?: string
 }
 
 export function useCreateEvalRun() {

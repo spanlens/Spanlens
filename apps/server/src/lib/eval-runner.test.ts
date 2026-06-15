@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 import {
   buildJudgePrompt,
   parseJudgeReply,
+  buildPairwiseJudgePrompt,
+  parsePairwiseReply,
   type TypedScoreConfig,
 } from './eval-runner.js'
 
@@ -309,6 +311,56 @@ describe('parseJudgeReply — CATEGORICAL', () => {
     expect(parseJudgeReply('{"value": 1}', {
       scale_min: 0, scale_max: 1, score_config: sc,
     })).toBeNull()
+  })
+})
+
+// ── P1-7 (3/3): pairwise judge ──────────────────────────────────────────────
+describe('buildPairwiseJudgePrompt', () => {
+  it('renders both responses under A and B with the criterion', () => {
+    const prompt = buildPairwiseJudgePrompt('Which is more helpful?', 'Answer one', 'Answer two')
+    expect(prompt).toContain('Criterion: Which is more helpful?')
+    expect(prompt).toContain('Response A:')
+    expect(prompt).toContain('Answer one')
+    expect(prompt).toContain('Response B:')
+    expect(prompt).toContain('Answer two')
+    expect(prompt).toContain('"winner": "A" | "B" | "tie"')
+  })
+
+  it('injects the rubric when present', () => {
+    const prompt = buildPairwiseJudgePrompt('crit', 'a', 'b', { rubric: 'prefer concise answers' })
+    expect(prompt).toContain('Scoring rubric (apply consistently):')
+    expect(prompt).toContain('prefer concise answers')
+  })
+
+  it('injects the reference (expected) answer when present', () => {
+    const prompt = buildPairwiseJudgePrompt('crit', 'a', 'b', { expected_output: 'the gold answer' })
+    expect(prompt).toContain('Reference (expected) answer')
+    expect(prompt).toContain('the gold answer')
+  })
+})
+
+describe('parsePairwiseReply', () => {
+  it('parses a winner of A / B / tie', () => {
+    expect(parsePairwiseReply('{"winner":"A","reasoning":"clearer"}')?.winner).toBe('A')
+    expect(parsePairwiseReply('{"winner":"B","reasoning":"more complete"}')?.winner).toBe('B')
+    expect(parsePairwiseReply('{"winner":"tie","reasoning":"equal"}')?.winner).toBe('tie')
+  })
+
+  it('is case-insensitive and strips markdown fences', () => {
+    expect(parsePairwiseReply('```json\n{"winner":"b"}\n```')?.winner).toBe('B')
+    expect(parsePairwiseReply('{"winner":"  A  "}')?.winner).toBe('A')
+  })
+
+  it('treats neither / equal / same as a tie', () => {
+    expect(parsePairwiseReply('{"winner":"neither"}')?.winner).toBe('tie')
+    expect(parsePairwiseReply('{"winner":"equal"}')?.winner).toBe('tie')
+    expect(parsePairwiseReply('{"winner":"same"}')?.winner).toBe('tie')
+  })
+
+  it('returns null on an unreadable winner or invalid JSON', () => {
+    expect(parsePairwiseReply('{"winner":"maybe"}')).toBeNull()
+    expect(parsePairwiseReply('{"reasoning":"no winner"}')).toBeNull()
+    expect(parsePairwiseReply('garbage')).toBeNull()
   })
 })
 

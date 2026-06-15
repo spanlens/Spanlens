@@ -34,6 +34,15 @@ export interface EvalRun {
   prompt_version_id: string
   dataset_id: string | null
   source: 'production' | 'dataset'
+  /** P1-7 (3/3): 'single' (absolute scoring) or 'pairwise' (A vs B). Absent on
+   * rows created before the feature — treat undefined as 'single'. */
+  mode?: 'single' | 'pairwise'
+  /** The "B" prompt version for a pairwise run (vs prompt_version_id = A). */
+  prompt_version_b_id?: string | null
+  /** Pairwise tally (null/absent for single-mode runs). avg_score is B's win-rate. */
+  a_wins?: number | null
+  b_wins?: number | null
+  ties?: number | null
   sample_size: number
   status: EvalRunStatus
   /** Samples that were successfully scored. */
@@ -64,6 +73,8 @@ export interface EvalResult {
   value_number: number | null
   value_string: string | null
   value_boolean: boolean | null
+  /** P1-7 (3/3): pairwise winner ('a' | 'b' | 'tie'); null for single-mode results. */
+  winner?: 'a' | 'b' | 'tie' | null
 }
 
 export interface RunEvalInput {
@@ -85,6 +96,12 @@ export interface RunEvalInput {
   runProvider?: string
   /** Required when source = 'dataset'. */
   runModel?: string
+  /** P1-7 (3/3): 'pairwise' compares promptVersionId (A) against
+   * promptVersionBId (B) head-to-head. Requires source = 'dataset' +
+   * runProvider/runModel. The completed run's avg_score is B's win-rate. */
+  mode?: 'single' | 'pairwise'
+  /** The "B" prompt version for a pairwise run. Required when mode = 'pairwise'. */
+  promptVersionBId?: string
 }
 
 export interface RunEvalOptions {
@@ -136,6 +153,8 @@ export class EvalsApi {
       generationTemperature: input.generationTemperature,
       runProvider: input.runProvider,
       runModel: input.runModel,
+      mode: input.mode,
+      promptVersionBId: input.promptVersionBId,
     })
 
     if (options.wait === false) return created

@@ -38,8 +38,11 @@ import { sampleStdDev } from './eval-runners/stats.js'
 import {
   buildJudgePrompt,
   parseJudgeReply,
+  buildPairwiseJudgePrompt,
+  parsePairwiseReply,
   type JudgeConfig,
   type TypedScoreConfig,
+  type PairwiseWinner,
 } from './eval-runners/judge-prompt.js'
 import {
   scoreEmbedding,
@@ -60,10 +63,11 @@ import {
   type SimpleEvalResult,
 } from './eval-runners/deterministic.js'
 
-export { buildJudgePrompt, parseJudgeReply, runRegex, runJsonSchema, runExactMatch, runContains }
+export { buildJudgePrompt, parseJudgeReply, buildPairwiseJudgePrompt, parsePairwiseReply, runRegex, runJsonSchema, runExactMatch, runContains }
 export type {
   JudgeConfig,
   TypedScoreConfig,
+  PairwiseWinner,
   RegexConfig,
   JsonSchemaConfig,
   ExactMatchConfig,
@@ -249,6 +253,159 @@ export async function generateForItem(
 // buildJudgePrompt + parseJudgeReply moved to ./eval-runners/judge-prompt.ts
 // (imported and re-exported above for backward compatibility).
 
+/** Gemini responseSchema for the single-judge path, keyed off the score config.
+ * Must match the JSON shape the prompt asks for or Gemini errors. */
+function geminiJudgeSchema(sc: TypedScoreConfig | null | undefined): Record<string, unknown> {
+  if (!sc || sc.data_type === 'NUMERIC') {
+    return { type: 'object', properties: { score: { type: 'number' }, reasoning: { type: 'string' } }, required: ['score', 'reasoning'] }
+  }
+  if (sc.data_type === 'BOOLEAN') {
+    return { type: 'object', properties: { value: { type: 'boolean' }, reasoning: { type: 'string' } }, required: ['value', 'reasoning'] }
+  }
+  // CATEGORICAL + TEXT both emit a string `value`.
+  return { type: 'object', properties: { value: { type: 'string' }, reasoning: { type: 'string' } }, required: ['value', 'reasoning'] }
+}
+
+/** Gemini responseSchema for the pairwise path. */
+const GEMINI_PAIRWISE_SCHEMA: Record<string, unknown> = {
+  type: 'object',
+  properties: { winner: { type: 'string' }, reasoning: { type: 'string' } },
+  required: ['winner', 'reasoning'],
+}
+
+type JudgeProvider = JudgeConfig['judge_provider']
+
+/**
+ * Low-level judge call: send `prompt` to the judge model and return the raw
+ * reply text + cost + tokens WITHOUT interpreting it. Shared by the absolute
+ * (callJudge) and pairwise (callPairwiseJudge) paths so the five provider
+ * integrations live in exactly one place. Returns null on any transport
+ * failure (non-ok / network), which the callers treat as a dropped sample.
+ *
+ * We hit each vendor API directly (not our own /proxy) on purpose — eval-runner
+ * runs server-side and these calls bypass the customer-facing proxy.
+ */
+async function judgeComplete(
+  provider: JudgeProvider,
+  model: string,
+  apiKey: string,
+  resourceUrl: string | null,
+  prompt: string,
+  geminiResponseSchema: Record<string, unknown>,
+): Promise<{ text: string; cost: number; tokens: number } | null> {
+  // OpenAI, Azure, Mistral, OpenRouter are all OpenAI-compatible chat
+  // completions; only the URL, auth header, and cost-table provider differ.
+  if (provider === 'openai' || provider === 'azure' || provider === 'mistral' || provider === 'openrouter') {
+    let url: string
+    let headers: Record<string, string>
+    if (provider === 'openai') {
+      url = 'https://api.openai.com/v1/chat/completions'
+      headers = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` }
+    } else if (provider === 'mistral') {
+      url = 'https://api.mistral.ai/v1/chat/completions'
+      headers = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` }
+    } else if (provider === 'openrouter') {
+      url = 'https://openrouter.ai/api/v1/chat/completions'
+      headers = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` }
+    } else {
+      // Azure: per-key resource origin + api-key header. Without it we can't
+      // build the URL — fail rather than hit a wrong endpoint.
+      if (!resourceUrl) return null
+      url = `${resourceUrl}/openai/v1/chat/completions`
+      headers = { 'Content-Type': 'application/json', 'api-key': apiKey }
+    }
+    const res = await fetchWithRetry(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(buildOpenAIBody(
+        model,
+        [{ role: 'user', content: prompt }],
+        { temperature: 0, maxTokens: 200, responseFormat: { type: 'json_object' } },
+      )),
+    })
+    if (!res || !res.ok) return null
+    const json = await res.json() as {
+      choices: Array<{ message: { content: string } }>
+      usage: { prompt_tokens: number; completion_tokens: number; cost?: number }
+      model: string
+    }
+    const text = json.choices?.[0]?.message?.content ?? ''
+    const tokens = (json.usage?.prompt_tokens ?? 0) + (json.usage?.completion_tokens ?? 0)
+    // Azure bills at OpenAI prices; OpenRouter publishes the authoritative
+    // billed cost on usage.cost (same pattern as proxy/openrouter.ts).
+    let cost = 0
+    if (provider === 'openrouter' && typeof json.usage?.cost === 'number') {
+      cost = json.usage.cost
+    } else {
+      const costProvider = provider === 'azure' ? 'openai' : provider
+      cost = calculateCost(costProvider, json.model ?? model, {
+        promptTokens: json.usage?.prompt_tokens ?? 0,
+        completionTokens: json.usage?.completion_tokens ?? 0,
+      })?.totalCost ?? 0
+    }
+    return { text, cost, tokens }
+  }
+
+  if (provider === 'anthropic') {
+    const res = await fetchWithRetry('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({ model, max_tokens: 200, temperature: 0, messages: [{ role: 'user', content: prompt }] }),
+    })
+    if (!res || !res.ok) return null
+    const json = await res.json() as {
+      content: Array<{ type: string; text: string }>
+      usage: { input_tokens: number; output_tokens: number }
+      model: string
+    }
+    const text = json.content?.find((b) => b.type === 'text')?.text ?? ''
+    const tokens = (json.usage?.input_tokens ?? 0) + (json.usage?.output_tokens ?? 0)
+    const cost = calculateCost('anthropic', json.model ?? model, {
+      promptTokens: json.usage?.input_tokens ?? 0,
+      completionTokens: json.usage?.output_tokens ?? 0,
+    })?.totalCost ?? 0
+    return { text, cost, tokens }
+  }
+
+  // Gemini — JSON output enforced via responseMimeType + responseSchema so the
+  // reply is always parseable. The schema MUST match the prompt's JSON shape.
+  if (provider === 'gemini') {
+    const res = await fetchWithRetry(
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ role: 'user', parts: [{ text: prompt }] }],
+          generationConfig: {
+            temperature: 0,
+            maxOutputTokens: 200,
+            responseMimeType: 'application/json',
+            responseSchema: geminiResponseSchema,
+          },
+        }),
+      },
+    )
+    if (!res || !res.ok) return null
+    const json = await res.json() as {
+      candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>
+      usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number }
+      modelVersion?: string
+    }
+    const text = json.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
+    const tokens = (json.usageMetadata?.promptTokenCount ?? 0) + (json.usageMetadata?.candidatesTokenCount ?? 0)
+    const cost = calculateCost('gemini', json.modelVersion ?? model, {
+      promptTokens: json.usageMetadata?.promptTokenCount ?? 0,
+      completionTokens: json.usageMetadata?.candidatesTokenCount ?? 0,
+    })?.totalCost ?? 0
+    return { text, cost, tokens }
+  }
+
+  // Unknown provider — explicit escape hatch so a future addition to the
+  // JudgeProvider union can't silently fall through to Gemini.
+  return null
+}
+
 /** Calls the judge LLM once. Returns null on failure (caller skips the sample).
  * Exported for unit tests (see generateForItem note above). */
 export async function callJudge(
@@ -272,282 +429,88 @@ export async function callJudge(
     anchors: config.anchors ?? null,
   })
 
-  // Helper that turns a parsed judge reply into the JudgeOutcome the
-  // caller stores. NUMERIC and legacy paths normalise into 0..1 so the
-  // `score` column stays consistent with pre-4B.1c rows.
-  function buildOutcome(
-    parsed: NonNullable<ReturnType<typeof parseJudgeReply>>,
-    cost: number,
-    tokens: number,
-  ): JudgeOutcome {
-    const sc = config.score_config
-    if (!sc || sc.data_type === 'NUMERIC') {
-      // Legacy: clamp + normalise to 0..1 against scale_min / scale_max.
-      // parseJudgeReply already returned a clamped value, so we just
-      // shift + scale here.
-      const min = sc?.min_value ?? config.scale_min
-      const max = sc?.max_value ?? config.scale_max
-      const range = max - min || 1
-      const raw = parsed.value_number ?? parsed.score ?? 0
-      const normalised = (raw - min) / range
-      return {
-        score: normalised,
-        value_number: normalised,
-        value_string: null,
-        value_boolean: null,
-        reasoning: parsed.reasoning,
-        cost,
-        tokens,
-      }
-    }
-    // Typed paths — value columns are already populated by the parser.
-    return {
-      score: null,
-      value_number: parsed.value_number,
-      value_string: parsed.value_string,
-      value_boolean: parsed.value_boolean,
-      reasoning: parsed.reasoning,
-      cost,
-      tokens,
-    }
-  }
-
-  if (config.judge_provider === 'openai') {
-    const res = await fetchWithRetry('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify(buildOpenAIBody(
-        config.judge_model,
-        [{ role: 'user', content: prompt }],
-        { temperature: 0, maxTokens: 200, responseFormat: { type: 'json_object' } },
-      )),
-    })
-    if (!res || !res.ok) return null
-    const json = await res.json() as {
-      choices: Array<{ message: { content: string } }>
-      usage: { prompt_tokens: number; completion_tokens: number }
-      model: string
-    }
-    const text = json.choices?.[0]?.message?.content ?? ''
-    const parsed = parseJudgeReply(text, {
-      scale_min: config.scale_min,
-      scale_max: config.scale_max,
-      score_config: config.score_config ?? null,
-    })
-    if (!parsed) return null
-    const tokens = (json.usage?.prompt_tokens ?? 0) + (json.usage?.completion_tokens ?? 0)
-    const cost = calculateCost('openai', json.model ?? config.judge_model, {
-      promptTokens: json.usage?.prompt_tokens ?? 0,
-      completionTokens: json.usage?.completion_tokens ?? 0,
-    })?.totalCost ?? 0
-    return buildOutcome(parsed, cost, tokens)
-  }
-
-  // Mistral + OpenRouter are both OpenAI-compatible chat completion APIs,
-  // so the request shape is identical to the openai branch above. Only the
-  // base URL + cost provider tag differ.
-  if (config.judge_provider === 'mistral' || config.judge_provider === 'openrouter') {
-    const url = config.judge_provider === 'mistral'
-      ? 'https://api.mistral.ai/v1/chat/completions'
-      : 'https://openrouter.ai/api/v1/chat/completions'
-    const res = await fetchWithRetry(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify(buildOpenAIBody(
-        config.judge_model,
-        [{ role: 'user', content: prompt }],
-        { temperature: 0, maxTokens: 200, responseFormat: { type: 'json_object' } },
-      )),
-    })
-    if (!res || !res.ok) return null
-    const json = await res.json() as {
-      choices: Array<{ message: { content: string } }>
-      usage: { prompt_tokens: number; completion_tokens: number; cost?: number }
-      model: string
-    }
-    const text = json.choices?.[0]?.message?.content ?? ''
-    const parsed = parseJudgeReply(text, {
-      scale_min: config.scale_min,
-      scale_max: config.scale_max,
-      score_config: config.score_config ?? null,
-    })
-    if (!parsed) return null
-    const tokens = (json.usage?.prompt_tokens ?? 0) + (json.usage?.completion_tokens ?? 0)
-    // OpenRouter publishes the authoritative billed cost on usage.cost — prefer
-    // it over the local table lookup (same pattern as proxy/openrouter.ts).
-    let cost = 0
-    if (config.judge_provider === 'openrouter' && typeof json.usage?.cost === 'number') {
-      cost = json.usage.cost
-    } else {
-      cost = calculateCost(config.judge_provider, json.model ?? config.judge_model, {
-        promptTokens: json.usage?.prompt_tokens ?? 0,
-        completionTokens: json.usage?.completion_tokens ?? 0,
-      })?.totalCost ?? 0
-    }
-    return buildOutcome(parsed, cost, tokens)
-  }
-
-  if (config.judge_provider === 'anthropic') {
-    const res = await fetchWithRetry('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model: config.judge_model,
-        max_tokens: 200,
-        temperature: 0,
-        messages: [{ role: 'user', content: prompt }],
-      }),
-    })
-    if (!res || !res.ok) return null
-    const json = await res.json() as {
-      content: Array<{ type: string; text: string }>
-      usage: { input_tokens: number; output_tokens: number }
-      model: string
-    }
-    const text = json.content?.find((b) => b.type === 'text')?.text ?? ''
-    const parsed = parseJudgeReply(text, {
-      scale_min: config.scale_min,
-      scale_max: config.scale_max,
-      score_config: config.score_config ?? null,
-    })
-    if (!parsed) return null
-    const tokens = (json.usage?.input_tokens ?? 0) + (json.usage?.output_tokens ?? 0)
-    const cost = calculateCost('anthropic', json.model ?? config.judge_model, {
-      promptTokens: json.usage?.input_tokens ?? 0,
-      completionTokens: json.usage?.output_tokens ?? 0,
-    })?.totalCost ?? 0
-    return buildOutcome(parsed, cost, tokens)
-  }
-
-  if (config.judge_provider === 'azure') {
-    // Azure OpenAI v1 endpoint is OpenAI-compatible (same request/response +
-    // json_object response_format). Differences vs. the openai branch: the
-    // base URL is the per-key Azure resource origin, auth is the `api-key`
-    // header, and Azure bills at OpenAI prices so cost uses the 'openai' table
-    // (mirrors proxy/azure.ts). Without resource_url we can't build the URL —
-    // fail the sample rather than hit a wrong endpoint.
-    if (!resourceUrl) return null
-    const res = await fetchWithRetry(`${resourceUrl}/openai/v1/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'api-key': apiKey,
-      },
-      body: JSON.stringify(buildOpenAIBody(
-        config.judge_model,
-        [{ role: 'user', content: prompt }],
-        { temperature: 0, maxTokens: 200, responseFormat: { type: 'json_object' } },
-      )),
-    })
-    if (!res || !res.ok) return null
-    const json = await res.json() as {
-      choices: Array<{ message: { content: string } }>
-      usage: { prompt_tokens: number; completion_tokens: number }
-      model: string
-    }
-    const text = json.choices?.[0]?.message?.content ?? ''
-    const parsed = parseJudgeReply(text, {
-      scale_min: config.scale_min,
-      scale_max: config.scale_max,
-      score_config: config.score_config ?? null,
-    })
-    if (!parsed) return null
-    const tokens = (json.usage?.prompt_tokens ?? 0) + (json.usage?.completion_tokens ?? 0)
-    const cost = calculateCost('openai', json.model ?? config.judge_model, {
-      promptTokens: json.usage?.prompt_tokens ?? 0,
-      completionTokens: json.usage?.completion_tokens ?? 0,
-    })?.totalCost ?? 0
-    return buildOutcome(parsed, cost, tokens)
-  }
-
-  // Gemini — JSON output enforced via responseMimeType + responseSchema. This
-  // matches OpenAI's `response_format: json_object` strictness so the judge
-  // reply is always parseable. We hit `generateContent` directly (not our
-  // /proxy) because eval-runner runs on the server — calls to api.openai.com
-  // and generativelanguage.googleapis.com bypass our own proxy on purpose.
-  const geminiRes = await fetchWithRetry(
-    `https://generativelanguage.googleapis.com/v1beta/models/${config.judge_model}:generateContent?key=${apiKey}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ role: 'user', parts: [{ text: prompt }] }],
-        generationConfig: {
-          temperature: 0,
-          maxOutputTokens: 200,
-          responseMimeType: 'application/json',
-          // The Gemini responseSchema MUST match the prompt we ship for
-          // the active score config or the model returns a schema error.
-          // For BOOLEAN / CATEGORICAL / TEXT we ask for `value`; for
-          // legacy NUMERIC we keep `score` so old runs are byte-identical.
-          responseSchema: (() => {
-            const sc = config.score_config
-            if (!sc || sc.data_type === 'NUMERIC') {
-              return {
-                type: 'object',
-                properties: {
-                  score: { type: 'number' },
-                  reasoning: { type: 'string' },
-                },
-                required: ['score', 'reasoning'],
-              }
-            }
-            if (sc.data_type === 'BOOLEAN') {
-              return {
-                type: 'object',
-                properties: {
-                  value: { type: 'boolean' },
-                  reasoning: { type: 'string' },
-                },
-                required: ['value', 'reasoning'],
-              }
-            }
-            // CATEGORICAL + TEXT both emit strings; the parser validates
-            // CATEGORICAL against the allow-list afterwards.
-            return {
-              type: 'object',
-              properties: {
-                value: { type: 'string' },
-                reasoning: { type: 'string' },
-              },
-              required: ['value', 'reasoning'],
-            }
-          })(),
-        },
-      }),
-    },
+  const res = await judgeComplete(
+    config.judge_provider,
+    config.judge_model,
+    apiKey,
+    resourceUrl,
+    prompt,
+    geminiJudgeSchema(config.score_config),
   )
-  if (!geminiRes || !geminiRes.ok) return null
-  const geminiJson = await geminiRes.json() as {
-    candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>
-    usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number }
-    modelVersion?: string
-  }
-  const geminiText = geminiJson.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
-  const geminiParsed = parseJudgeReply(geminiText, {
+  if (!res) return null
+
+  const parsed = parseJudgeReply(res.text, {
     scale_min: config.scale_min,
     scale_max: config.scale_max,
     score_config: config.score_config ?? null,
   })
-  if (!geminiParsed) return null
-  const geminiTokens =
-    (geminiJson.usageMetadata?.promptTokenCount ?? 0) +
-    (geminiJson.usageMetadata?.candidatesTokenCount ?? 0)
-  const geminiCost = calculateCost('gemini', geminiJson.modelVersion ?? config.judge_model, {
-    promptTokens: geminiJson.usageMetadata?.promptTokenCount ?? 0,
-    completionTokens: geminiJson.usageMetadata?.candidatesTokenCount ?? 0,
-  })?.totalCost ?? 0
-  return buildOutcome(geminiParsed, geminiCost, geminiTokens)
+  if (!parsed) return null
+
+  // Turn the parsed reply into the stored JudgeOutcome. NUMERIC / legacy
+  // normalise into 0..1 so the `score` column stays consistent with pre-4B.1c
+  // rows; typed paths carry the value_* columns straight through.
+  const sc = config.score_config
+  if (!sc || sc.data_type === 'NUMERIC') {
+    const min = sc?.min_value ?? config.scale_min
+    const max = sc?.max_value ?? config.scale_max
+    const range = max - min || 1
+    const raw = parsed.value_number ?? parsed.score ?? 0
+    const normalised = (raw - min) / range
+    return {
+      score: normalised,
+      value_number: normalised,
+      value_string: null,
+      value_boolean: null,
+      reasoning: parsed.reasoning,
+      cost: res.cost,
+      tokens: res.tokens,
+    }
+  }
+  return {
+    score: null,
+    value_number: parsed.value_number,
+    value_string: parsed.value_string,
+    value_boolean: parsed.value_boolean,
+    reasoning: parsed.reasoning,
+    cost: res.cost,
+    tokens: res.tokens,
+  }
+}
+
+/** Outcome of one pairwise comparison (P1-7 3/3). `winner` is in PROMPT terms
+ * (A vs B as shown to the judge); the caller un-swaps it for counterbalancing. */
+export interface PairwiseOutcome {
+  winner: PairwiseWinner
+  reasoning: string
+  cost: number
+  tokens: number
+}
+
+/** Calls the judge once to compare two responses. Returns null on failure. */
+export async function callPairwiseJudge(
+  config: JudgeConfig,
+  responseA: string,
+  responseB: string,
+  apiKey: string,
+  resourceUrl: string | null,
+  expectedOutput: string | null = null,
+): Promise<PairwiseOutcome | null> {
+  const prompt = buildPairwiseJudgePrompt(config.criterion, responseA, responseB, {
+    rubric: config.rubric ?? null,
+    expected_output: expectedOutput,
+  })
+  const res = await judgeComplete(
+    config.judge_provider,
+    config.judge_model,
+    apiKey,
+    resourceUrl,
+    prompt,
+    GEMINI_PAIRWISE_SCHEMA,
+  )
+  if (!res) return null
+  const parsed = parsePairwiseReply(res.text)
+  if (!parsed) return null
+  return { winner: parsed.winner, reasoning: parsed.reasoning, cost: res.cost, tokens: res.tokens }
 }
 
 /** Runs a small async pool with concurrency cap. */
@@ -596,12 +559,49 @@ interface RunInput {
    */
   runProvider?: EvalProvider | null
   runModel?: string | null
+  /** P1-7 (3/3): 'single' (default, absolute scoring) or 'pairwise' (A vs B
+   * head-to-head). Pairwise requires source='dataset' + promptVersionBId. */
+  mode?: 'single' | 'pairwise' | null
+  /** The "B" prompt version compared against promptVersionId ("A"). Pairwise only. */
+  promptVersionBId?: string | null
 }
 
 /** Result of one sample's scoring, shared between production and dataset paths. */
 interface SampleOutcome extends JudgeOutcome {
   requestId: string | null
   datasetItemId: string | null
+}
+
+/**
+ * Resolve + decrypt an active provider key for an org, returning the plaintext
+ * key and (for Azure) its validated resource origin. Throws a clear message on
+ * a missing key or an Azure key without a usable resource_url. Used by the
+ * pairwise path (P1-7 3/3); the single path inlines equivalent logic.
+ */
+async function resolveProviderKey(
+  organizationId: string,
+  provider: EvalProvider,
+  label: string,
+): Promise<{ key: string; resourceUrl: string | null }> {
+  const { data: pkRow, error } = await supabaseAdmin
+    .from('provider_keys')
+    .select('encrypted_key, provider_metadata')
+    .eq('organization_id', organizationId)
+    .eq('provider', provider)
+    .eq('is_active', true)
+    .limit(1)
+    .maybeSingle()
+  if (error || !pkRow) throw new Error(`No active ${provider} provider key found for ${label}`)
+  const key = await aes256Decrypt(pkRow.encrypted_key as string)
+  if (!key) throw new Error(`Failed to decrypt ${label} provider key`)
+  const meta = (pkRow.provider_metadata as Record<string, unknown> | null) ?? {}
+  const resourceUrl = typeof meta['resource_url'] === 'string' ? meta['resource_url'] : null
+  if (provider === 'azure') {
+    if (!resourceUrl) throw new Error(`Azure ${label} provider key is missing resource_url — re-register it`)
+    const safe = validateOutboundUrlSync(resourceUrl)
+    if (!safe.ok) throw new Error(`Azure ${label} resource_url rejected: ${safe.message}`)
+  }
+  return { key, resourceUrl }
 }
 
 // ─── R-7 Phase 1: deterministic evaluator types ──────────────────────────
@@ -635,6 +635,8 @@ export async function runEvalRun(input: RunInput): Promise<void> {
     runModel,
     sampleStrategy,
     generationTemperature,
+    mode,
+    promptVersionBId,
   } = input
 
   // Mark running
@@ -695,6 +697,193 @@ export async function runEvalRun(input: RunInput): Promise<void> {
       )
       // Internal trace closes via the outer finally — note `samples` count
       // and aggregate the simple path produced via internalTrace.end below.
+      return
+    }
+
+    // ── P1-7 (3/3): pairwise (A vs B) comparison run ──────────────────────
+    // Compares two prompt versions head-to-head on the same dataset inputs.
+    // Each comparison stores score = 1 (B wins) / 0 (A wins) / 0.5 (tie), so
+    // avg_score is B's win-rate and the 95% CI machinery applies for free.
+    if (mode === 'pairwise') {
+      if (evaluator.type !== 'llm_judge') {
+        throw new Error(`pairwise mode requires an llm_judge evaluator, got '${evaluator.type}'`)
+      }
+      if (source !== 'dataset') throw new Error('pairwise mode requires source = dataset')
+      if (!datasetId) throw new Error('datasetId is required for a pairwise run')
+      if (!promptVersionBId) throw new Error('promptVersionBId is required for a pairwise run')
+      if (!runProvider || !runModel) {
+        throw new Error('runProvider and runModel are required for a pairwise run')
+      }
+
+      const pairConfig = evaluator.config as unknown as JudgeConfig
+      if (!pairConfig?.criterion || !pairConfig?.judge_provider || !pairConfig?.judge_model) {
+        throw new Error('Evaluator config missing required fields (criterion / judge_provider / judge_model)')
+      }
+
+      const judge = await resolveProviderKey(organizationId, pairConfig.judge_provider, 'judge')
+      const gen = await resolveProviderKey(organizationId, runProvider, 'prompt generation')
+
+      // Resolve both versions' content.
+      const loadContent = async (id: string): Promise<string> => {
+        const { data, error } = await supabaseAdmin
+          .from('prompt_versions')
+          .select('content')
+          .eq('id', id)
+          .eq('organization_id', organizationId)
+          .maybeSingle()
+        if (error || !data) throw new Error(`Prompt version not found: ${id}`)
+        return data.content as string
+      }
+      const contentA = await loadContent(promptVersionId)
+      const contentB = await loadContent(promptVersionBId)
+
+      const { data: items, error: itemsErr } = await supabaseAdmin
+        .from('dataset_items')
+        .select('id, input, expected_output')
+        .eq('dataset_id', datasetId)
+        .eq('organization_id', organizationId)
+        .order('created_at', { ascending: false })
+        .limit(sampleSize)
+      if (itemsErr) throw new Error(`Dataset items fetch failed: ${itemsErr.message}`)
+
+      // Generate a response from BOTH versions for each item (capped pool).
+      const genTemp = generationTemperature ?? 0
+      type PairSample = { datasetItemId: string; respA: string; respB: string; expectedOutput: string | null }
+      const generated = await pool(items ?? [], GENERATION_CONCURRENCY, async (i): Promise<PairSample | null> => {
+        const input2 = i.input as Record<string, unknown>
+        const [a, b] = await Promise.all([
+          generateForItem(contentA, input2, runProvider, runModel, gen.key, gen.resourceUrl, genTemp),
+          generateForItem(contentB, input2, runProvider, runModel, gen.key, gen.resourceUrl, genTemp),
+        ])
+        // Both must succeed — a comparison needs two responses.
+        if (!a || !b) return null
+        return { datasetItemId: i.id as string, respA: a, respB: b, expectedOutput: (i.expected_output as string | null) ?? null }
+      })
+      // Counterbalance position bias: alternate which response is shown first.
+      const preparedPairs = generated
+        .filter((g): g is PairSample => g !== null)
+        .map((p, idx) => ({ ...p, swap: idx % 2 === 1 }))
+
+      if (preparedPairs.length === 0) {
+        await supabaseAdmin
+          .from('eval_runs')
+          .update({
+            status: 'completed',
+            scored_count: 0,
+            attempted_count: 0,
+            failed_count: 0,
+            avg_score: null,
+            a_wins: 0,
+            b_wins: 0,
+            ties: 0,
+            error: 'No dataset items produced a response from both versions.',
+            completed_at: new Date().toISOString(),
+          })
+          .eq('id', evalRunId)
+        internalTrace.end({ status: 'completed', metadata: { scored_count: 0, mode: 'pairwise' } })
+        return
+      }
+
+      type Comparison = { datasetItemId: string; winner: 'a' | 'b' | 'tie'; score: number; reasoning: string; cost: number; tokens: number }
+      const comparisons = await pool(preparedPairs, JUDGE_CONCURRENCY, async (pair): Promise<Comparison | null> => {
+        const span = internalTrace.startSpan('llm_judge_pairwise', {
+          spanType: 'llm',
+          metadata: {
+            judge_provider: pairConfig.judge_provider,
+            judge_model: pairConfig.judge_model,
+            dataset_item_id: pair.datasetItemId,
+            swapped: pair.swap,
+          },
+        })
+        try {
+          // `first` is shown as "A" in the prompt, `second` as "B".
+          const first = pair.swap ? pair.respB : pair.respA
+          const second = pair.swap ? pair.respA : pair.respB
+          const out = await callPairwiseJudge(pairConfig, first, second, judge.key, judge.resourceUrl, pair.expectedOutput)
+          if (!out) {
+            span.end({ status: 'error', errorMessage: 'callPairwiseJudge returned null' })
+            return null
+          }
+          // Map the prompt-side winner (A/B/tie) back to the real version,
+          // undoing the swap.
+          let winner: 'a' | 'b' | 'tie'
+          if (out.winner === 'tie') winner = 'tie'
+          else if (out.winner === 'A') winner = pair.swap ? 'b' : 'a'
+          else winner = pair.swap ? 'a' : 'b'
+          const score = winner === 'b' ? 1 : winner === 'a' ? 0 : 0.5
+          span.end({
+            status: 'completed',
+            output: { winner, reasoning: out.reasoning },
+            costUsd: out.cost,
+            totalTokens: out.tokens,
+          })
+          return { datasetItemId: pair.datasetItemId, winner, score, reasoning: out.reasoning, cost: out.cost, tokens: out.tokens }
+        } catch (err) {
+          span.end({ status: 'error', errorMessage: err instanceof Error ? err.message : 'pairwise judge threw' })
+          return null
+        }
+      })
+
+      const scored = comparisons.filter((c): c is Comparison => c !== null)
+      if (scored.length === 0) {
+        await supabaseAdmin
+          .from('eval_runs')
+          .update({
+            status: 'failed',
+            scored_count: 0,
+            attempted_count: preparedPairs.length,
+            failed_count: preparedPairs.length,
+            error: 'All pairwise judge calls failed. Check judge model name and provider key.',
+            completed_at: new Date().toISOString(),
+          })
+          .eq('id', evalRunId)
+        internalTrace.end({ status: 'error', errorMessage: 'All pairwise judge calls failed', metadata: { mode: 'pairwise' } })
+        return
+      }
+
+      const aWins = scored.filter((s) => s.winner === 'a').length
+      const bWins = scored.filter((s) => s.winner === 'b').length
+      const ties = scored.filter((s) => s.winner === 'tie').length
+      const scoreValues = scored.map((s) => s.score)
+      const avgScore = scoreValues.reduce((a, b) => a + b, 0) / scoreValues.length
+      const scoreStddev = sampleStdDev(scoreValues)
+      const totalCost = scored.reduce((sum, s) => sum + s.cost, 0)
+
+      const { error: insErr } = await supabaseAdmin.from('eval_results').insert(
+        scored.map((s) => ({
+          organization_id: organizationId,
+          eval_run_id: evalRunId,
+          request_id: null,
+          dataset_item_id: s.datasetItemId,
+          score: s.score,
+          winner: s.winner,
+          reasoning: s.reasoning,
+          judge_cost_usd: s.cost,
+          judge_tokens: s.tokens,
+        })),
+      )
+      if (insErr) throw new Error(`Result insert failed: ${insErr.message}`)
+
+      await supabaseAdmin
+        .from('eval_runs')
+        .update({
+          status: 'completed',
+          scored_count: scored.length,
+          attempted_count: preparedPairs.length,
+          failed_count: preparedPairs.length - scored.length,
+          avg_score: avgScore,
+          score_stddev: scoreStddev,
+          a_wins: aWins,
+          b_wins: bWins,
+          ties,
+          total_cost_usd: totalCost,
+          completed_at: new Date().toISOString(),
+        })
+        .eq('id', evalRunId)
+      internalTrace.end({
+        status: 'completed',
+        metadata: { scored_count: scored.length, a_wins: aWins, b_wins: bWins, ties, avg_score: avgScore, mode: 'pairwise' },
+      })
       return
     }
 
@@ -1185,6 +1374,10 @@ export interface StartEvalRunInput {
   sampleStrategy?: 'recent' | 'random' | null
   generationTemperature?: number | null
   createdBy?: string | null
+  /** P1-7 (3/3): 'single' (default) or 'pairwise'. */
+  mode?: 'single' | 'pairwise' | null
+  /** The "B" prompt version for a pairwise run. */
+  promptVersionBId?: string | null
 }
 
 /**
@@ -1194,6 +1387,7 @@ export interface StartEvalRunInput {
  * insert failed (caller decides whether that's fatal).
  */
 export async function startEvalRun(c: Context, input: StartEvalRunInput): Promise<{ id: string } | null> {
+  const isPairwise = input.mode === 'pairwise'
   const { data: run, error } = await supabaseAdmin
     .from('eval_runs')
     .insert({
@@ -1207,6 +1401,9 @@ export async function startEvalRun(c: Context, input: StartEvalRunInput): Promis
       sample_to: input.source === 'production' ? (input.sampleTo ?? null) : null,
       status: 'pending',
       created_by: input.createdBy ?? null,
+      mode: isPairwise ? 'pairwise' : 'single',
+      // The DB CHECK forbids a pairwise row without its B version.
+      prompt_version_b_id: isPairwise ? (input.promptVersionBId ?? null) : null,
     })
     .select('id')
     .single()
@@ -1226,6 +1423,8 @@ export async function startEvalRun(c: Context, input: StartEvalRunInput): Promis
     runModel: input.runModel ?? null,
     sampleStrategy: input.sampleStrategy ?? null,
     generationTemperature: input.generationTemperature ?? null,
+    mode: isPairwise ? 'pairwise' : 'single',
+    promptVersionBId: input.promptVersionBId ?? null,
   }))
   return run
 }
