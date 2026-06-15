@@ -24,6 +24,7 @@
     { "path": "/cron/detect-missing-model-prices","schedule": "0 * * * *" },
     { "path": "/cron/self-monitor",               "schedule": "31 * * * *" },
     { "path": "/cron/detect-orphan-spans",        "schedule": "17 * * * *" },
-    { "path": "/cron/keep-warm",                  "schedule": "*/5 * * * *" }
+    { "path": "/cron/keep-warm",                  "schedule": "*/5 * * * *" },
+    { "path": "/cron/prune-judge-cache",          "schedule": "0 3 * * *" }
   ]
 }

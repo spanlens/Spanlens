@@ -97,6 +97,10 @@ export interface EvalRun {
    * pulling every per-sample row. NULL/absent for NUMERIC / legacy / embedding
    * runs and for pre-migration rows. */
   distribution?: RunDistribution | null
+  /** P3-18: number of judge calls served from judge_cache instead of hitting
+   * the LLM. avg_score / per-sample scores are unaffected — these are just hits
+   * that re-used a previously stored outcome at $0. 0 on pre-migration rows. */
+  cache_hits?: number
   total_cost_usd: number
   error: string | null
   created_by: string | null

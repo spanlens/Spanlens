@@ -1518,6 +1518,16 @@ function RunDetailPanel({ runId, onClose }: { runId: string; onClose: () => void
           <div className="bg-bg-muted border border-border rounded-[5px] px-3 py-2">
             <p className="font-mono text-[9.5px] uppercase tracking-[0.06em] text-text-faint">Cost</p>
             <p className="font-mono text-[16px] text-text font-medium">{fmtUsd(r.total_cost_usd)}</p>
+            {/* P3-18: when judge_cache returned outcomes for some samples,
+                show the hit count under the cost cell. We don't know the
+                exact saved dollar amount from this row (only the original
+                per-call cost was on the cache entry server-side), but the
+                hit count alone tells the user "this re-run was cheaper". */}
+            {r.cache_hits != null && r.cache_hits > 0 && (
+              <p className="font-mono text-[9px] text-text-faint tabular-nums mt-0.5" title="Judge calls served from cache instead of hitting the LLM">
+                {r.cache_hits} cached
+              </p>
+            )}
           </div>
         </div>
 
