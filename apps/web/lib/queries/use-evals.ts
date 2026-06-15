@@ -23,14 +23,25 @@ export interface JudgeConfig {
   rubric?: string
   /** P1-7 — optional few-shot calibration anchors (NUMERIC judges). */
   anchors?: JudgeAnchor[]
+  /** P2-11 — for trajectory evaluators: the trace name being scored. */
+  trace_name?: string
 }
+
+export type EvaluatorType =
+  | 'llm_judge'
+  | 'regex'
+  | 'json_schema'
+  | 'exact_match'
+  | 'contains'
+  | 'embedding'
+  | 'trajectory'
 
 export interface Evaluator {
   id: string
   organization_id: string
   prompt_name: string
   name: string
-  type: 'llm_judge'
+  type: EvaluatorType
   config: JudgeConfig
   created_by: string | null
   created_at: string
@@ -56,6 +67,8 @@ export interface EvalRun {
   a_wins?: number | null
   b_wins?: number | null
   ties?: number | null
+  /** P2-11 — for trajectory runs: the trace name that was scored (prompt_version_id is null). */
+  trace_name?: string | null
   sample_size: number
   sample_from: string | null
   sample_to: string | null
@@ -92,6 +105,8 @@ export interface EvalResult {
   created_at: string
   /** P1-7 (3/3): pairwise winner ('a' | 'b' | 'tie'); null for single-mode results. */
   winner?: 'a' | 'b' | 'tie' | null
+  /** P2-11 — for trajectory results: the evaluated trace id. */
+  trace_id?: string | null
 }
 
 // ── Evaluators ──────────────────────────────────────────────────────────────
@@ -195,6 +210,13 @@ export type CreateEvaluatorInput = AutoRunFields & (
       type: 'embedding'
       config: EmbeddingConfig
     }
+  | {
+      // P2-11 — trajectory evaluator binds to a TRACE name, not a prompt.
+      name: string
+      type: 'trajectory'
+      traceName: string
+      config: JudgeConfig
+    }
 )
 
 export function useCreateEvaluator() {
@@ -202,13 +224,17 @@ export function useCreateEvaluator() {
   return useMutation({
     mutationFn: async (input: CreateEvaluatorInput) => {
       const body: Record<string, unknown> = {
-        promptName: input.promptName,
         name: input.name,
         type: input.type ?? 'llm_judge',
         config: input.config,
       }
-      if (input.type === undefined || input.type === 'llm_judge') {
-        if (input.scoreConfigId) body.scoreConfigId = input.scoreConfigId
+      if (input.type === 'trajectory') {
+        body.traceName = input.traceName
+      } else {
+        body.promptName = input.promptName
+        if (input.type === undefined || input.type === 'llm_judge') {
+          if (input.scoreConfigId) body.scoreConfigId = input.scoreConfigId
+        }
       }
       // P2-10 auto-run config (common to all types).
       if (input.autoRunOnVersion) {
@@ -222,7 +248,8 @@ export function useCreateEvaluator() {
       return res.data
     },
     onSuccess: (_data, vars) => {
-      void qc.invalidateQueries({ queryKey: evaluatorsQueryKey(vars.promptName) })
+      const groupKey = vars.type === 'trajectory' ? vars.traceName : vars.promptName
+      void qc.invalidateQueries({ queryKey: evaluatorsQueryKey(groupKey) })
       void qc.invalidateQueries({ queryKey: evaluatorsQueryKey() })
     },
   })
@@ -293,7 +320,8 @@ export function useEvalResults(runId: string | null) {
 
 export interface CreateEvalRunInput {
   evaluatorId: string
-  promptVersionId: string
+  /** Required for all run types except trajectory (which targets traces by name). */
+  promptVersionId?: string
   source?: 'production' | 'dataset'
   datasetId?: string
   sampleSize: number

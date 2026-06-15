@@ -30,6 +30,8 @@ evalsRouter.post('/evaluators', requireFullScope, async (c) => {
     name?: unknown
     type?: unknown
     config?: unknown
+    // P2-11 — trajectory evaluators target traces by name, not a prompt.
+    traceName?: unknown
     // 4B.1c — optional pointer at a typed score config. NULL preserves
     // the legacy NUMERIC 0..1 behaviour.
     scoreConfigId?: unknown
@@ -46,13 +48,21 @@ evalsRouter.post('/evaluators', requireFullScope, async (c) => {
     throw new ApiError('INVALID_JSON_BODY', 'Invalid JSON body')
   }
 
-  const promptName = typeof body.promptName === 'string' ? body.promptName.trim() : ''
   const name = typeof body.name === 'string' ? body.name.trim() : ''
   const type = typeof body.type === 'string' ? body.type.trim() : 'llm_judge'
+  // P2-11: trajectory evaluators bind to a TRACE name, not a prompt. We reuse
+  // the prompt_name column to hold it (it's just the grouping label), so the
+  // existing list UI groups trajectory evaluators under their trace name.
+  const traceName = typeof body.traceName === 'string' ? body.traceName.trim() : ''
+  const promptName = type === 'trajectory'
+    ? traceName
+    : (typeof body.promptName === 'string' ? body.promptName.trim() : '')
 
-  if (!promptName) throw new ApiError('VALIDATION_FAILED', 'promptName is required')
+  if (!promptName) {
+    throw new ApiError('VALIDATION_FAILED', type === 'trajectory' ? 'traceName is required' : 'promptName is required')
+  }
   if (!name) throw new ApiError('VALIDATION_FAILED', 'name is required')
-  const VALID_EVALUATOR_TYPES = ['llm_judge', 'regex', 'json_schema', 'exact_match', 'contains', 'embedding']
+  const VALID_EVALUATOR_TYPES = ['llm_judge', 'regex', 'json_schema', 'exact_match', 'contains', 'embedding', 'trajectory']
   if (!VALID_EVALUATOR_TYPES.includes(type)) {
     throw new ApiError('VALIDATION_FAILED', `type must be one of: ${VALID_EVALUATOR_TYPES.join(', ')}`)
   }
@@ -171,8 +181,7 @@ evalsRouter.post('/evaluators', requireFullScope, async (c) => {
       substring,
       caseSensitive: config.caseSensitive === true,
     }
-  } else {
-    // type === 'embedding'
+  } else if (type === 'embedding') {
     const provider = typeof config.provider === 'string' ? config.provider : ''
     const model = typeof config.model === 'string' ? config.model.trim() : ''
     if (!EMBEDDING_PROVIDERS.includes(provider as (typeof EMBEDDING_PROVIDERS)[number])) {
@@ -190,15 +199,51 @@ evalsRouter.post('/evaluators', requireFullScope, async (c) => {
       ...(referenceText ? { reference_text: referenceText } : {}),
       ...(threshold != null ? { threshold } : {}),
     }
+  } else {
+    // type === 'trajectory' (P2-11). LLM-as-judge over an agent trace; binds to
+    // a trace name (carried in config.trace_name) instead of a prompt version.
+    const criterion = typeof config.criterion === 'string' ? config.criterion.trim() : ''
+    const judgeProvider = typeof config.judge_provider === 'string' ? config.judge_provider : ''
+    const judgeModel = typeof config.judge_model === 'string' ? config.judge_model.trim() : ''
+    const scaleMin = typeof config.scale_min === 'number' ? config.scale_min : 0
+    const scaleMax = typeof config.scale_max === 'number' ? config.scale_max : 1
+    const rubric = typeof config.rubric === 'string' ? config.rubric.trim() : ''
+    if (!criterion) throw new ApiError('VALIDATION_FAILED', 'config.criterion is required')
+    const VALID_JUDGE_PROVIDERS = ['openai', 'anthropic', 'gemini', 'azure', 'mistral', 'openrouter']
+    if (!VALID_JUDGE_PROVIDERS.includes(judgeProvider)) {
+      throw new ApiError('VALIDATION_FAILED', `config.judge_provider must be one of: ${VALID_JUDGE_PROVIDERS.join(', ')}`)
+    }
+    if (!judgeModel) throw new ApiError('VALIDATION_FAILED', 'config.judge_model is required')
+    if (!(scaleMax > scaleMin)) {
+      throw new ApiError('VALIDATION_FAILED', 'config.scale_max must be greater than scale_min')
+    }
+    if (rubric.length > 4000) {
+      throw new ApiError('VALIDATION_FAILED', 'config.rubric must be at most 4000 characters')
+    }
+    // trace_name carried in config (authoritative for the runner); we also
+    // stored it as prompt_name above for grouping.
+    validatedConfig = {
+      criterion,
+      judge_provider: judgeProvider,
+      judge_model: judgeModel,
+      scale_min: scaleMin,
+      scale_max: scaleMax,
+      trace_name: traceName,
+      ...(rubric ? { rubric } : {}),
+    }
   }
 
-  // Verify prompt exists for this org
-  const { count: promptCount } = await supabaseAdmin
-    .from('prompt_versions')
-    .select('id', { count: 'exact', head: true })
-    .eq('organization_id', orgId)
-    .eq('name', promptName)
-  if (!promptCount) throw new ApiError('NOT_FOUND', 'Prompt not found')
+  // Verify the prompt exists for this org — EXCEPT trajectory evaluators, whose
+  // prompt_name holds a trace name (not a prompt). Trace names are free-form
+  // (the customer's SDK chose them), so there's nothing to verify against.
+  if (type !== 'trajectory') {
+    const { count: promptCount } = await supabaseAdmin
+      .from('prompt_versions')
+      .select('id', { count: 'exact', head: true })
+      .eq('organization_id', orgId)
+      .eq('name', promptName)
+    if (!promptCount) throw new ApiError('NOT_FOUND', 'Prompt not found')
+  }
 
   // Optional score config — only meaningful for LLM-as-judge runs.
   // Verified to belong to the same org so a caller can't bind an
@@ -381,14 +426,27 @@ evalsRouter.post('/eval-runs', requireFullScope, async (c) => {
     typeof body.generationTemperature === 'number' ? body.generationTemperature : 0
 
   if (!evaluatorId) throw new ApiError('VALIDATION_FAILED', 'evaluatorId is required')
-  if (!promptVersionId) throw new ApiError('VALIDATION_FAILED', 'promptVersionId is required')
+
+  // Fetch the evaluator early — its type decides whether this is a trajectory
+  // run (P2-11), which targets traces by name and has NO prompt version.
+  const { data: evaluator } = await supabaseAdmin
+    .from('evaluators')
+    .select('id, type')
+    .eq('id', evaluatorId)
+    .eq('organization_id', orgId)
+    .is('archived_at', null)
+    .maybeSingle()
+  if (!evaluator) throw new ApiError('NOT_FOUND', 'Evaluator not found')
+  const isTrajectory = evaluator.type === 'trajectory'
+
+  if (!isTrajectory && !promptVersionId) throw new ApiError('VALIDATION_FAILED', 'promptVersionId is required')
   if (sampleSize < 1 || sampleSize > 1000) {
     throw new ApiError('VALIDATION_FAILED', 'sampleSize must be between 1 and 1000')
   }
   if (generationTemperature < 0 || generationTemperature > 2) {
     throw new ApiError('VALIDATION_FAILED', 'generationTemperature must be between 0 and 2')
   }
-  if (source === 'dataset' && !datasetId) {
+  if (!isTrajectory && source === 'dataset' && !datasetId) {
     throw new ApiError('VALIDATION_FAILED', 'datasetId is required when source = dataset')
   }
 
@@ -400,7 +458,7 @@ evalsRouter.post('/eval-runs', requireFullScope, async (c) => {
       ? (body.runProvider as RunProvider)
       : null
   const runModel = typeof body.runModel === 'string' ? body.runModel.trim() : null
-  if (source === 'dataset') {
+  if (!isTrajectory && source === 'dataset') {
     if (!runProvider) throw new ApiError('VALIDATION_FAILED', 'runProvider is required when source = dataset')
     if (!runModel) throw new ApiError('VALIDATION_FAILED', 'runModel is required when source = dataset')
   }
@@ -421,15 +479,6 @@ evalsRouter.post('/eval-runs', requireFullScope, async (c) => {
     }
   }
 
-  // Verify both belong to org
-  const { data: evaluator } = await supabaseAdmin
-    .from('evaluators')
-    .select('id, type')
-    .eq('id', evaluatorId)
-    .eq('organization_id', orgId)
-    .is('archived_at', null)
-    .maybeSingle()
-  if (!evaluator) throw new ApiError('NOT_FOUND', 'Evaluator not found')
   if (mode === 'pairwise' && evaluator.type !== 'llm_judge') {
     throw new ApiError('VALIDATION_FAILED', 'pairwise mode requires an llm_judge evaluator')
   }
@@ -445,16 +494,20 @@ evalsRouter.post('/eval-runs', requireFullScope, async (c) => {
     if (!pvB) throw new ApiError('NOT_FOUND', 'promptVersionBId not found')
   }
 
-  const { data: pv } = await supabaseAdmin
-    .from('prompt_versions')
-    .select('id')
-    .eq('id', promptVersionId)
-    .eq('organization_id', orgId)
-    .maybeSingle()
-  if (!pv) throw new ApiError('NOT_FOUND', 'Prompt version not found')
+  // Verify the prompt version belongs to org — skipped for trajectory runs,
+  // which have no prompt version (they target traces by name).
+  if (!isTrajectory) {
+    const { data: pv } = await supabaseAdmin
+      .from('prompt_versions')
+      .select('id')
+      .eq('id', promptVersionId)
+      .eq('organization_id', orgId)
+      .maybeSingle()
+    if (!pv) throw new ApiError('NOT_FOUND', 'Prompt version not found')
+  }
 
-  // Verify dataset belongs to org if requested
-  if (source === 'dataset' && datasetId) {
+  // Verify dataset belongs to org if requested (not for trajectory).
+  if (!isTrajectory && source === 'dataset' && datasetId) {
     const { data: ds } = await supabaseAdmin
       .from('datasets')
       .select('id')
@@ -470,9 +523,10 @@ evalsRouter.post('/eval-runs', requireFullScope, async (c) => {
     .insert({
       organization_id: orgId,
       evaluator_id: evaluatorId,
-      prompt_version_id: promptVersionId,
+      // Trajectory runs have no prompt version; the runner fills trace_name.
+      prompt_version_id: isTrajectory ? null : promptVersionId,
       source,
-      dataset_id: source === 'dataset' ? datasetId : null,
+      dataset_id: !isTrajectory && source === 'dataset' ? datasetId : null,
       sample_size: sampleSize,
       sample_from: source === 'production' ? sampleFrom : null,
       sample_to: source === 'production' ? sampleTo : null,
@@ -489,11 +543,13 @@ evalsRouter.post('/eval-runs', requireFullScope, async (c) => {
   }
 
   // Kick off the worker in background. The HTTP caller polls GET /eval-runs/:id.
+  // Trajectory runs have no prompt version (the runner reads the evaluator's
+  // config.trace_name); pass null.
   fireAndForget(c, runEvalRun({
     evalRunId: run.id,
     organizationId: orgId,
     evaluatorId,
-    promptVersionId,
+    promptVersionId: isTrajectory ? null : promptVersionId,
     source,
     datasetId,
     sampleSize,

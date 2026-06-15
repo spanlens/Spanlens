@@ -31,8 +31,11 @@ export interface EvalRun {
   id: string
   organization_id: string
   evaluator_id: string
-  prompt_version_id: string
+  /** null for trajectory runs (P2-11), which score traces by name. */
+  prompt_version_id: string | null
   dataset_id: string | null
+  /** P2-11 — for trajectory runs: the trace name that was scored. */
+  trace_name?: string | null
   source: 'production' | 'dataset'
   /** P1-7 (3/3): 'single' (absolute scoring) or 'pairwise' (A vs B). Absent on
    * rows created before the feature — treat undefined as 'single'. */
@@ -79,7 +82,9 @@ export interface EvalResult {
 
 export interface RunEvalInput {
   evaluatorId: string
-  promptVersionId: string
+  /** Required for all run types except trajectory evaluators (P2-11), which
+   * score traces by name and have no prompt version. */
+  promptVersionId?: string
   /** Defaults to 'production' (samples recent traffic for the prompt version). */
   source?: 'production' | 'dataset'
   /** Required when source = 'dataset'. */
