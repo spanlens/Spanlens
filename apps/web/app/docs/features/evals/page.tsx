@@ -492,6 +492,39 @@ if ((ci?.low ?? run.avg_score ?? 0) > 0.5) {
   console.log(\`B wins \${run.b_wins}/\${run.scored_count} — promote it\`)
 }`}</CodeBlock>
 
+      <h2>Agent trajectory evaluation</h2>
+      <p>
+        Every other evaluator scores a single response. A{' '}
+        <strong>trajectory</strong> evaluator scores the whole agent trace, the
+        ordered sequence of spans (LLM calls, tool calls, intermediate steps),
+        against a criterion. It reuses the tracing data you already send, so you
+        can judge <em>how</em> the agent worked, not just its final answer.
+      </p>
+      <ul>
+        <li>
+          A trajectory evaluator binds to a <strong>trace name</strong> (the name
+          your SDK passes to <code>createTrace()</code>), not a prompt. Create it
+          under <em>Type → Agent trajectory</em> and give it the trace name + a
+          criterion.
+        </li>
+        <li>
+          Running it samples the most recent N traces with that name, serializes
+          each one&apos;s steps in execution order, and the judge scores the
+          trajectory 0..1. The run reports the average + the same 95% confidence
+          interval.
+        </li>
+        <li>
+          From the SDK, a trajectory run needs only the evaluator id (no prompt
+          version): <code>client.evals.run({`{ evaluatorId, sampleSize: 50 }`})</code>.
+        </li>
+      </ul>
+      <p>
+        Write criteria about the <em>process</em>: &ldquo;did the agent call the
+        search tool before answering&rdquo;, &ldquo;were there redundant or
+        failed tool calls&rdquo;, &ldquo;did it follow the required steps in
+        order&rdquo;.
+      </p>
+
       <h2>Reproducibility &amp; reliability options</h2>
       <ul>
         <li>

@@ -235,8 +235,10 @@ function NewEvaluatorDialog({
   // llm_judge evaluators today, so the selector defaults to that even
   // when initialTemplate is set.
   const [evaluatorType, setEvaluatorType] = useState<
-    'llm_judge' | 'regex' | 'json_schema' | 'exact_match' | 'contains' | 'embedding'
+    'llm_judge' | 'regex' | 'json_schema' | 'exact_match' | 'contains' | 'embedding' | 'trajectory'
   >('llm_judge')
+  // P2-11 — trajectory evaluators target traces by name instead of a prompt.
+  const [traceName, setTraceName] = useState('')
   const [regexPattern, setRegexPattern] = useState('')
   const [regexFlags, setRegexFlags] = useState('')
   const [jsonSchemaText, setJsonSchemaText] = useState('{\n  "type": "object"\n}')
@@ -272,8 +274,14 @@ function NewEvaluatorDialog({
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError('')
-    if (!promptName || !name.trim()) {
-      setError('Prompt and name are required')
+    if (!name.trim()) {
+      setError('Name is required')
+      return
+    }
+    if (evaluatorType === 'trajectory') {
+      if (!traceName.trim()) { setError('Trace name is required for trajectory evaluators'); return }
+    } else if (!promptName) {
+      setError('Prompt is required')
       return
     }
     if (autoRunOnVersion && (!autoRunDatasetId || !autoRunModel.trim())) {
@@ -281,7 +289,26 @@ function NewEvaluatorDialog({
       return
     }
     try {
-      if (evaluatorType === 'llm_judge') {
+      if (evaluatorType === 'trajectory') {
+        if (!criterion.trim()) {
+          setError('Criterion is required for trajectory evaluators')
+          return
+        }
+        await submitEvaluator({
+          name: name.trim(),
+          type: 'trajectory',
+          traceName: traceName.trim(),
+          config: {
+            criterion: criterion.trim(),
+            judge_provider: judgeProvider,
+            judge_model: judgeModel,
+            scale_min: scaleMin,
+            scale_max: scaleMax,
+            trace_name: traceName.trim(),
+            ...(rubric.trim() ? { rubric: rubric.trim() } : {}),
+          },
+        })
+      } else if (evaluatorType === 'llm_judge') {
         if (!criterion.trim()) {
           setError('Criterion is required for LLM-as-judge evaluators')
           return
@@ -387,7 +414,7 @@ function NewEvaluatorDialog({
         })
       }
       onClose()
-      setName(''); setCriterion(''); setPromptName('')
+      setName(''); setCriterion(''); setPromptName(''); setTraceName('')
       setRegexPattern(''); setRegexFlags('')
       setJsonSchemaText('{\n  "type": "object"\n}')
       setExactValue(''); setExactCaseSensitive(false)
@@ -407,19 +434,37 @@ function NewEvaluatorDialog({
           <DialogTitle>New evaluator</DialogTitle>
         </DialogHeader>
         <form onSubmit={(e) => void handleSubmit(e)} className="space-y-3 mt-3">
-          <div>
-            <label className="block font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint mb-1">
-              Prompt
-            </label>
-            <Select {...(promptName ? { value: promptName } : {})} onValueChange={setPromptName}>
-              <SelectTrigger><SelectValue placeholder="Select prompt…" /></SelectTrigger>
-              <SelectContent>
-                {(prompts.data ?? []).map((p: PromptVersion) => (
-                  <SelectItem key={p.id} value={p.name}>{p.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          {evaluatorType === 'trajectory' ? (
+            <div>
+              <label className="block font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint mb-1">
+                Trace name
+              </label>
+              <input
+                type="text"
+                value={traceName}
+                onChange={(e) => setTraceName(e.target.value)}
+                placeholder="e.g. customer-support-agent"
+                className="w-full h-9 px-2 rounded-[5px] border border-border bg-bg font-mono text-[12px] text-text placeholder:text-text-faint focus:outline-none focus:border-border-strong"
+              />
+              <p className="font-mono text-[10.5px] text-text-faint mt-1">
+                The trace name your SDK sets (<code>createTrace(&quot;…&quot;)</code>). Recent traces with this name are scored.
+              </p>
+            </div>
+          ) : (
+            <div>
+              <label className="block font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint mb-1">
+                Prompt
+              </label>
+              <Select {...(promptName ? { value: promptName } : {})} onValueChange={setPromptName}>
+                <SelectTrigger><SelectValue placeholder="Select prompt…" /></SelectTrigger>
+                <SelectContent>
+                  {(prompts.data ?? []).map((p: PromptVersion) => (
+                    <SelectItem key={p.id} value={p.name}>{p.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
 
           <div>
             <label className="block font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint mb-1">
@@ -446,13 +491,14 @@ function NewEvaluatorDialog({
               value={evaluatorType}
               onValueChange={(v) =>
                 setEvaluatorType(
-                  v as 'llm_judge' | 'regex' | 'json_schema' | 'exact_match' | 'contains' | 'embedding',
+                  v as 'llm_judge' | 'regex' | 'json_schema' | 'exact_match' | 'contains' | 'embedding' | 'trajectory',
                 )
               }
             >
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="llm_judge">LLM as judge</SelectItem>
+                <SelectItem value="trajectory">Agent trajectory (judge the trace)</SelectItem>
                 <SelectItem value="regex">Regex (pattern match)</SelectItem>
                 <SelectItem value="json_schema">JSON Schema (structure check)</SelectItem>
                 <SelectItem value="exact_match">Exact match (equals a value)</SelectItem>
@@ -463,7 +509,9 @@ function NewEvaluatorDialog({
             <p className="font-mono text-[10.5px] text-text-faint mt-1">
               {evaluatorType === 'llm_judge'
                 ? 'Judge model scores 0..1 against a free-form criterion.'
-                : evaluatorType === 'regex'
+                : evaluatorType === 'trajectory'
+                  ? 'Judge model scores 0..1 over the whole agent trace (tool-call sequence), not just the final text.'
+                  : evaluatorType === 'regex'
                   ? 'Deterministic 0/1 — passes when the pattern matches the response.'
                   : evaluatorType === 'json_schema'
                     ? 'Deterministic 0/1 — passes when the response parses as JSON and matches the schema.'
@@ -475,7 +523,7 @@ function NewEvaluatorDialog({
             </p>
           </div>
 
-          {evaluatorType === 'llm_judge' && (
+          {(evaluatorType === 'llm_judge' || evaluatorType === 'trajectory') && (
             <>
               <div>
                 <label className="block font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint mb-1">
@@ -528,7 +576,10 @@ function NewEvaluatorDialog({
               </div>
 
               {/* P1-7: optional rubric + few-shot calibration anchors. Collapsed
-                  by default so the common case stays a one-field form. */}
+                  by default so the common case stays a one-field form. Anchors
+                  are response examples, which don't apply to a trajectory, so
+                  this whole block is llm_judge-only. */}
+              {evaluatorType === 'llm_judge' && (
               <details className="border border-border rounded-[5px] px-3 py-2">
                 <summary className="font-mono text-[11px] text-text-muted cursor-pointer select-none">
                   Advanced: rubric &amp; calibration anchors (optional)
@@ -621,6 +672,7 @@ function NewEvaluatorDialog({
                   </div>
                 </div>
               </details>
+              )}
             </>
           )}
 
@@ -1004,10 +1056,26 @@ function RunEvaluatorDialog({
 
   // Pairwise is dataset-only; the single/pairwise toggle drives the source.
   const effectiveSource = mode === 'pairwise' ? 'dataset' : source
+  // P2-11 — a trajectory evaluator scores traces (by name), so the run dialog
+  // collapses to just a sample size + time window; no version / source.
+  const isTrajectory = evaluator.type === 'trajectory'
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError('')
+    if (isTrajectory) {
+      try {
+        const run = await createRun.mutateAsync({
+          evaluatorId: evaluator.id,
+          sampleSize,
+          sampleFrom: new Date(Date.now() - days * 86400_000).toISOString(),
+        })
+        onRunCreated(run.id)
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to start')
+      }
+      return
+    }
     if (!versionId) { setError('Select a version'); return }
     if (mode === 'pairwise') {
       if (!versionBId) { setError('Select version B to compare against'); return }
@@ -1040,6 +1108,15 @@ function RunEvaluatorDialog({
           <DialogTitle>Run evaluation · {evaluator.name}</DialogTitle>
         </DialogHeader>
         <form onSubmit={(e) => void handleSubmit(e)} className="space-y-3 mt-3">
+          {isTrajectory && (
+            <p className="font-mono text-[11px] text-text-muted bg-bg-muted border border-border rounded-[5px] p-3">
+              Scores recent agent traces named{' '}
+              <span className="text-text">{evaluator.prompt_name}</span> against the criterion.
+              No prompt version needed.
+            </p>
+          )}
+          {!isTrajectory && (
+          <>
           {/* Mode toggle: single (absolute score) vs pairwise (A vs B). */}
           <div>
             <label className="block font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint mb-1">
@@ -1210,8 +1287,11 @@ function RunEvaluatorDialog({
             </div>
           )}
 
+          </>
+          )}
+
           <div className="grid grid-cols-2 gap-3">
-            {effectiveSource === 'production' && (
+            {(effectiveSource === 'production' || isTrajectory) && (
               <div>
                 <label className="block font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint mb-1">
                   Last N days
@@ -1266,7 +1346,7 @@ function RunEvaluatorDialog({
             </button>
             <button
               type="submit"
-              disabled={createRun.isPending || !versionId}
+              disabled={createRun.isPending || (!isTrajectory && !versionId)}
               className="font-mono text-[11.5px] px-3 py-[6px] rounded-[5px] bg-text text-bg font-medium hover:opacity-90 transition-opacity disabled:opacity-40 flex items-center gap-1.5"
             >
               {createRun.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />}
@@ -1383,6 +1463,12 @@ function RunDetailPanel({ runId, onClose }: { runId: string; onClose: () => void
       </div>
 
       <div className="p-4 space-y-4">
+        {/* P2-11: trajectory runs score traces, not a prompt version. */}
+        {r.trace_name && (
+          <p className="font-mono text-[11px] text-text-muted">
+            Trajectory · trace <span className="text-text">{r.trace_name}</span>
+          </p>
+        )}
         {/* KPIs */}
         <div className="grid grid-cols-3 gap-2">
           <div className="bg-bg-muted border border-border rounded-[5px] px-3 py-2">
