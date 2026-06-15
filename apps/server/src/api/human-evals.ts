@@ -3,6 +3,7 @@ import { authJwt, type JwtContext } from '../middleware/authJwt.js'
 import { supabaseAdmin } from '../lib/db.js'
 import { requestsScope, selectRequests } from '../lib/requests-query.js'
 import { validateScore, type ScoreConfig } from '../lib/score-validation.js'
+import { computeAgreement, type AgreementResult } from '../lib/eval-runners/agreement.js'
 import { ApiError } from '../lib/errors.js'
 
 /**
@@ -358,8 +359,13 @@ humanEvalsRouter.delete('/human-evals/:id', async (c) => {
 })
 
 // GET /api/v1/human-evals/correlation?promptName=...&promptVersionId=...
-// Returns per-request pairs (judge_score, human_score) for the matching scope.
-// Client computes Pearson r. Server just provides paired data.
+//
+// P3-19: returns paired (judge, human) data PLUS a server-computed agreement
+// statistic so dashboards / SDK consumers don't have to recompute it. Picks
+// Pearson r for numeric scores and Cohen's κ for typed-config labels
+// (CATEGORICAL / BOOLEAN). For backward compatibility the legacy `pairs`
+// array (numeric judgeScore/humanScore) remains in the response, so old
+// clients keep working unchanged.
 humanEvalsRouter.get('/human-evals/correlation', async (c) => {
   const orgId = c.get('orgId')
   if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
@@ -379,41 +385,92 @@ humanEvalsRouter.get('/human-evals/correlation', async (c) => {
       .eq('name', promptName)
     versionIds = (versions ?? []).map((v) => v.id)
   }
-  if (versionIds.length === 0) return c.json({ success: true, data: [] })
+  const emptyEnvelope = { pairs: [] as Array<{ requestId: string; judgeScore: number; humanScore: number }>, agreement: null as AgreementResult | null }
+  if (versionIds.length === 0) return c.json({ success: true, data: emptyEnvelope.pairs, pairs: emptyEnvelope.pairs, agreement: emptyEnvelope.agreement })
 
-  // Pull human evals for those versions
+  // Pull human evals — include the typed value columns so we can compute κ
+  // on CATEGORICAL / BOOLEAN configs, not just Pearson on numeric.
   const { data: humans } = await supabaseAdmin
     .from('human_evals')
-    .select('request_id, score')
+    .select('request_id, score, value_number, value_string, value_boolean')
     .in('prompt_version_id', versionIds)
-  const humanMap = new Map<string, number>()
-  for (const h of humans ?? []) {
-    if (h.request_id) humanMap.set(h.request_id, h.score)
-  }
-  if (humanMap.size === 0) return c.json({ success: true, data: [] })
 
-  // Most recent judge score per request
+  interface HumanRow { score: number | null; value_number: number | null; value_string: string | null; value_boolean: boolean | null }
+  const humanMap = new Map<string, HumanRow>()
+  for (const h of humans ?? []) {
+    if (h.request_id) {
+      humanMap.set(h.request_id, {
+        score: h.score as number | null,
+        value_number: h.value_number as number | null,
+        value_string: h.value_string as string | null,
+        value_boolean: h.value_boolean as boolean | null,
+      })
+    }
+  }
+  if (humanMap.size === 0) return c.json({ success: true, data: emptyEnvelope.pairs, pairs: emptyEnvelope.pairs, agreement: emptyEnvelope.agreement })
+
+  // Most recent judge result per request, with the same typed columns.
   const reqIds = [...humanMap.keys()]
   const { data: evalResults } = await supabaseAdmin
     .from('eval_results')
-    .select('request_id, score, created_at')
+    .select('request_id, score, value_number, value_string, value_boolean, created_at')
     .in('request_id', reqIds)
     .order('created_at', { ascending: false })
 
-  const judgeMap = new Map<string, number>()
+  interface JudgeRow { score: number | null; value_number: number | null; value_string: string | null; value_boolean: boolean | null }
+  const judgeMap = new Map<string, JudgeRow>()
   for (const e of evalResults ?? []) {
     if (e.request_id && !judgeMap.has(e.request_id)) {
-      judgeMap.set(e.request_id, e.score)
+      judgeMap.set(e.request_id, {
+        score: e.score as number | null,
+        value_number: e.value_number as number | null,
+        value_string: e.value_string as string | null,
+        value_boolean: e.value_boolean as boolean | null,
+      })
     }
   }
 
+  // Build the legacy numeric pairs (back-compat).
   const pairs: Array<{ requestId: string; judgeScore: number; humanScore: number }> = []
-  for (const [requestId, humanScore] of humanMap.entries()) {
-    const judgeScore = judgeMap.get(requestId)
-    if (judgeScore != null) {
-      pairs.push({ requestId, judgeScore, humanScore })
+  for (const [requestId, human] of humanMap.entries()) {
+    const judge = judgeMap.get(requestId)
+    if (!judge) continue
+    if (judge.score != null && human.score != null) {
+      pairs.push({ requestId, judgeScore: judge.score, humanScore: human.score })
     }
   }
 
-  return c.json({ success: true, data: pairs })
+  // P3-19: decide which metric applies. Inspect the first complete pair —
+  // CATEGORICAL when both raters supplied a label, BOOLEAN when both gave a
+  // boolean, otherwise NUMERIC.
+  const numericPairs: Array<{ judge: number; human: number }> = []
+  const labelPairs: Array<{ judge: string; human: string }> = []
+  let categoricalSeen = false
+  let booleanSeen = false
+  for (const [requestId, human] of humanMap.entries()) {
+    const judge = judgeMap.get(requestId)
+    if (!judge) continue
+    if (judge.value_string != null && human.value_string != null) {
+      labelPairs.push({ judge: judge.value_string, human: human.value_string })
+      categoricalSeen = true
+    } else if (judge.value_boolean != null && human.value_boolean != null) {
+      labelPairs.push({ judge: String(judge.value_boolean), human: String(human.value_boolean) })
+      booleanSeen = true
+    } else if (judge.score != null && human.score != null) {
+      numericPairs.push({ judge: judge.score, human: human.score })
+    }
+  }
+
+  let agreement: AgreementResult | null = null
+  if (categoricalSeen) {
+    agreement = computeAgreement({ type: 'categorical', labelPairs })
+  } else if (booleanSeen) {
+    agreement = computeAgreement({ type: 'boolean', labelPairs })
+  } else if (numericPairs.length > 0) {
+    agreement = computeAgreement({ type: 'numeric', numericPairs })
+  }
+
+  // `data` stays as the legacy pairs array so existing clients keep working;
+  // `pairs` mirrors it explicitly and `agreement` is the new field.
+  return c.json({ success: true, data: pairs, pairs, agreement })
 })
