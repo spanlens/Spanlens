@@ -1376,7 +1376,16 @@ function RunEvaluatorDialog({
 function LowestScoreRow({
   res,
 }: {
-  res: { id: string; score: number; reasoning: string | null; judge_cost_usd: number; request_id: string | null; dataset_item_id: string | null }
+  res: {
+    id: string
+    score: number
+    reasoning: string | null
+    judge_cost_usd: number
+    request_id: string | null
+    dataset_item_id: string | null
+    /** P3-15: judge's raw answer (NUMERIC path); null/undefined for non-numeric. */
+    value_raw_number?: number | null
+  }
 }) {
   const [open, setOpen] = useState(false)
   return (
@@ -1395,6 +1404,12 @@ function LowestScoreRow({
       <div className="flex justify-between items-center mb-1">
         <span className="font-mono text-[12px] text-text font-medium">
           {fmtScore(res.score)}
+          {/* P3-15: judge's raw answer ("4" out of 5, not just normalised 0.8). */}
+          {res.value_raw_number != null && (
+            <span className="ml-1.5 text-text-faint text-[10px] font-normal tabular-nums">
+              (raw {res.value_raw_number})
+            </span>
+          )}
         </span>
         <span className="font-mono text-[10px] text-text-faint">
           {fmtUsd(res.judge_cost_usd)}
@@ -1546,8 +1561,50 @@ function RunDetailPanel({ runId, onClose }: { runId: string; onClose: () => void
           </div>
         )}
 
-        {/* Histogram */}
-        {r.status === 'completed' && results.data && results.data.length > 0 && (
+        {/* P3-16: typed-config distribution summary. For CATEGORICAL / BOOLEAN
+            it shows the count bars; for TEXT it shows up to 10 sample answers.
+            Renders ONLY when the server precomputed the summary (typed configs);
+            NUMERIC / legacy runs still get the per-sample histogram below. */}
+        {r.status === 'completed' && r.distribution && (
+          <div>
+            <p className="font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint mb-2">
+              {r.distribution.type === 'text' ? 'Sample answers' : 'Distribution'}
+            </p>
+            {(r.distribution.type === 'categorical' || r.distribution.type === 'boolean') && (() => {
+              const counts: Record<string, number> = r.distribution.type === 'boolean'
+                ? { true: r.distribution.counts.true, false: r.distribution.counts.false }
+                : r.distribution.counts
+              const entries = Object.entries(counts)
+              const max = Math.max(1, ...entries.map(([, n]) => n))
+              return (
+                <div className="space-y-1">
+                  {entries.map(([k, n]) => (
+                    <div key={k} className="flex items-center gap-2 font-mono text-[11px]">
+                      <span className="w-[100px] truncate text-text-muted" title={k}>{k}</span>
+                      <div className="flex-1 h-4 bg-bg-elev rounded-[2px] overflow-hidden">
+                        <div className="h-full bg-text/70" style={{ width: `${(n / max) * 100}%` }} />
+                      </div>
+                      <span className="w-[40px] text-right tabular-nums text-text-faint">{n}</span>
+                    </div>
+                  ))}
+                </div>
+              )
+            })()}
+            {r.distribution.type === 'text' && (
+              <div className="space-y-1.5">
+                <p className="font-mono text-[10.5px] text-text-faint">
+                  Showing {r.distribution.samples.length} of {r.distribution.count} scored.
+                </p>
+                {r.distribution.samples.map((s, i) => (
+                  <div key={i} className="font-mono text-[11px] text-text-muted bg-bg-elev rounded-[3px] px-2 py-1.5 line-clamp-3">{s}</div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Histogram — NUMERIC / legacy path. distribution wins for typed configs. */}
+        {r.status === 'completed' && !r.distribution && results.data && results.data.length > 0 && (
           <>
             <div>
               <p className="font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint mb-2">

@@ -35,6 +35,7 @@ import { startInternalTrace } from './internal-tracing.js'
 // (`from '../lib/eval-runner.js'`) keep working unchanged.
 import { extractResponseText, fetchWithRetry } from './eval-runners/shared.js'
 import { sampleStdDev } from './eval-runners/stats.js'
+import { computeDistribution } from './eval-runners/distribution.js'
 import { serializeTrajectory, buildTrajectoryJudgePrompt, type TrajectorySpan } from './eval-runners/trajectory.js'
 import {
   buildJudgePrompt,
@@ -99,6 +100,10 @@ interface JudgeOutcome {
   value_number: number | null
   value_string: string | null
   value_boolean: boolean | null
+  // P3-15 — the judge's RAW numeric answer before clamp/normalisation.
+  // Lets the dashboard render "4 out of 5" instead of only the derived 0.8.
+  // null for non-numeric typed configs and for legacy rows.
+  value_raw_number: number | null
 }
 
 // extractResponseText moved to ./eval-runners/shared.ts (imported above).
@@ -449,7 +454,9 @@ export async function callJudge(
 
   // Turn the parsed reply into the stored JudgeOutcome. NUMERIC / legacy
   // normalise into 0..1 so the `score` column stays consistent with pre-4B.1c
-  // rows; typed paths carry the value_* columns straight through.
+  // rows; typed paths carry the value_* columns straight through. P3-15
+  // additionally preserves the clamped-but-not-normalised raw answer so the
+  // dashboard can render the original scale ("4 out of 5", not only 0.8).
   const sc = config.score_config
   if (!sc || sc.data_type === 'NUMERIC') {
     const min = sc?.min_value ?? config.scale_min
@@ -462,6 +469,7 @@ export async function callJudge(
       value_number: normalised,
       value_string: null,
       value_boolean: null,
+      value_raw_number: raw,
       reasoning: parsed.reasoning,
       cost: res.cost,
       tokens: res.tokens,
@@ -472,6 +480,7 @@ export async function callJudge(
     value_number: parsed.value_number,
     value_string: parsed.value_string,
     value_boolean: parsed.value_boolean,
+    value_raw_number: null,
     reasoning: parsed.reasoning,
     cost: res.cost,
     tokens: res.tokens,
@@ -1489,6 +1498,8 @@ export async function runEvalRun(input: RunInput): Promise<void> {
       value_number: s.value_number,
       value_string: s.value_string,
       value_boolean: s.value_boolean,
+      // P3-15: judge's raw answer pre-normalisation (NUMERIC path only).
+      value_raw_number: s.value_raw_number,
     }))
 
     const { error: insertErr } = await supabaseAdmin
@@ -1526,6 +1537,12 @@ export async function runEvalRun(input: RunInput): Promise<void> {
     // P1-7: sample stddev backs the 95% CI rendered next to avg_score. NULL
     // when there are <2 numeric points or the type has no mean.
     const scoreStddev = sampleStdDev(scoreValues)
+    // P3-16: precompute the distribution / sample summary for typed configs
+    // whose avg_score is null (CATEGORICAL, TEXT, BOOLEAN). The UI reads this
+    // jsonb in one shot instead of pulling every per-sample row to histogram
+    // client-side. Returns null for NUMERIC / legacy / embedding — their
+    // avg_score + score_stddev already say everything useful.
+    const distribution = computeDistribution(scored, config.score_config ?? null)
 
     await supabaseAdmin
       .from('eval_runs')
@@ -1536,6 +1553,7 @@ export async function runEvalRun(input: RunInput): Promise<void> {
         failed_count: preparedSamples.length - scored.length,
         avg_score: avgScore,
         score_stddev: scoreStddev,
+        distribution,
         total_cost_usd: totalCost,
         completed_at: new Date().toISOString(),
       })

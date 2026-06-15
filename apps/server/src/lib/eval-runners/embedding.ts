@@ -37,6 +37,9 @@ export interface EmbeddingOutcome {
   value_number: number
   value_string: null
   value_boolean: boolean | null
+  /** P3-15 mirror — embeddings have no separate "raw" scale (cosine similarity
+   *  is already in 0..1 and the same as `value_number`), so this stays null. */
+  value_raw_number: null
   reasoning: string
   cost: number
   tokens: number
@@ -150,6 +153,7 @@ export async function scoreEmbedding(
     value_number: score,
     value_string: null,
     value_boolean: threshold != null ? score >= threshold : null,
+    value_raw_number: null,
     reasoning: `cosine similarity ${score.toFixed(4)}${threshold != null ? ` (threshold ${threshold})` : ''}`,
     cost,
     tokens: result.tokens,

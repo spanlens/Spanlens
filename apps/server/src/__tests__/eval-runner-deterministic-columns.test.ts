@@ -28,7 +28,8 @@ let runSimpleEvalRun: typeof import('../lib/eval-runners/deterministic.js').runS
 // The update must be a subset.
 const REAL_EVAL_RUNS_COLUMNS = new Set([
   'status', 'scored_count', 'attempted_count', 'failed_count',
-  'avg_score', 'score_stddev', 'total_cost_usd', 'error', 'completed_at',
+  'avg_score', 'score_stddev', 'distribution',
+  'total_cost_usd', 'error', 'completed_at',
 ])
 
 let lastUpdatePayload: Record<string, unknown> | null = null
@@ -40,7 +41,7 @@ let lastEvalResultsRows: Array<Record<string, unknown>> | null = null
 const REAL_EVAL_RESULTS_COLUMNS = new Set([
   'organization_id', 'eval_run_id', 'request_id', 'dataset_item_id',
   'score', 'reasoning', 'judge_cost_usd', 'judge_tokens', 'score_config_id',
-  'value_number', 'value_string', 'value_boolean',
+  'value_number', 'value_string', 'value_boolean', 'value_raw_number',
 ])
 
 beforeEach(async () => {

@@ -1,5 +1,15 @@
 # @spanlens/sdk changelog
 
+## 0.12.0
+
+P3 score-model polish — raw judge scores + server-computed distributions.
+
+### Added
+
+- `EvalResult.value_raw_number` (P3-15) — the judge's raw answer before clamp/normalisation. The dashboard can render "4 out of 5" instead of only the derived 0.8. `null` for non-numeric typed configs and pre-migration rows.
+- `EvalRun.distribution` (P3-16) — a precomputed summary for typed configs whose `avg_score` is null. Discriminated union with `type: 'categorical' | 'boolean' | 'text'`. Lets clients render a histogram in one shot instead of pulling every per-sample row. `null`/absent for NUMERIC / legacy / embedding runs.
+- `RunDistribution` type export.
+
 ## 0.11.1
 
 P3 read-side polish — pagination on list endpoints, more accurate cost estimate.
