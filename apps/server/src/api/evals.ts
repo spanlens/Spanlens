@@ -83,7 +83,60 @@ evalsRouter.post('/evaluators', requireFullScope, async (c) => {
     if (!(scaleMax > scaleMin)) {
       throw new ApiError('VALIDATION_FAILED', 'config.scale_max must be greater than scale_min')
     }
-    validatedConfig = { criterion, judge_provider: judgeProvider, judge_model: judgeModel, scale_min: scaleMin, scale_max: scaleMax }
+
+    // P1-7 — optional rubric (free-form guidance) + few-shot calibration
+    // anchors. Both are stored verbatim on the config jsonb and injected into
+    // the judge prompt; absent fields keep the prompt byte-identical.
+    const RUBRIC_MAX = 4000
+    const ANCHORS_MAX = 10
+    const ANCHOR_RESPONSE_MAX = 4000
+    const ANCHOR_REASONING_MAX = 500
+    const rubric = typeof config.rubric === 'string' ? config.rubric.trim() : ''
+    if (rubric.length > RUBRIC_MAX) {
+      throw new ApiError('VALIDATION_FAILED', `config.rubric must be at most ${RUBRIC_MAX} characters`)
+    }
+    const anchors: Array<{ response: string; score: number; reasoning?: string }> = []
+    if (config.anchors !== undefined) {
+      if (!Array.isArray(config.anchors)) {
+        throw new ApiError('VALIDATION_FAILED', 'config.anchors must be an array')
+      }
+      if (config.anchors.length > ANCHORS_MAX) {
+        throw new ApiError('VALIDATION_FAILED', `config.anchors supports at most ${ANCHORS_MAX} examples`)
+      }
+      for (const raw of config.anchors) {
+        if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+          throw new ApiError('VALIDATION_FAILED', 'each anchor must be an object')
+        }
+        const a = raw as Record<string, unknown>
+        const response = typeof a.response === 'string' ? a.response.trim() : ''
+        const score = typeof a.score === 'number' ? a.score : NaN
+        if (!response) throw new ApiError('VALIDATION_FAILED', 'each anchor needs a non-empty response')
+        if (response.length > ANCHOR_RESPONSE_MAX) {
+          throw new ApiError('VALIDATION_FAILED', `anchor response must be at most ${ANCHOR_RESPONSE_MAX} characters`)
+        }
+        if (!Number.isFinite(score) || score < scaleMin || score > scaleMax) {
+          throw new ApiError('VALIDATION_FAILED', `anchor score must be a number between ${scaleMin} and ${scaleMax}`)
+        }
+        const reasoning = typeof a.reasoning === 'string' ? a.reasoning.trim() : ''
+        // Cap reasoning too: unlike `response` (truncated to 280 chars in the
+        // prompt) it is embedded verbatim into every judge call, so an
+        // oversized note would silently inflate token cost / blow the context.
+        if (reasoning.length > ANCHOR_REASONING_MAX) {
+          throw new ApiError('VALIDATION_FAILED', `anchor reasoning must be at most ${ANCHOR_REASONING_MAX} characters`)
+        }
+        anchors.push({ response, score, ...(reasoning ? { reasoning } : {}) })
+      }
+    }
+
+    validatedConfig = {
+      criterion,
+      judge_provider: judgeProvider,
+      judge_model: judgeModel,
+      scale_min: scaleMin,
+      scale_max: scaleMax,
+      ...(rubric ? { rubric } : {}),
+      ...(anchors.length > 0 ? { anchors } : {}),
+    }
   } else if (type === 'regex') {
     const pattern = typeof config.pattern === 'string' ? config.pattern : ''
     const flags = typeof config.flags === 'string' ? config.flags : ''

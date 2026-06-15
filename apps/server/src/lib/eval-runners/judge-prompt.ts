@@ -12,7 +12,7 @@
  * runner import a single module instead of two.
  */
 
-import { MAX_RESPONSE_CHARS } from './shared.js'
+import { MAX_RESPONSE_CHARS, truncateMiddle } from './shared.js'
 
 /**
  * Minimal projection of the score_configs row that the runner actually
@@ -29,6 +29,19 @@ export interface TypedScoreConfig {
   bool_false_label: string | null
 }
 
+/**
+ * P1-7 — a calibration anchor: an example response paired with the score it
+ * should receive. A few of these "anchor" the judge so its scale matches the
+ * operator's intent (the standard few-shot fix for judge drift). The score is
+ * on the evaluator's own [scale_min, scale_max] numeric scale, so anchors are
+ * only injected on the NUMERIC / legacy path.
+ */
+export interface JudgeAnchor {
+  response: string
+  score: number
+  reasoning?: string
+}
+
 export interface JudgeConfig {
   criterion: string
   judge_provider: 'openai' | 'anthropic' | 'gemini' | 'azure' | 'mistral' | 'openrouter'
@@ -41,6 +54,12 @@ export interface JudgeConfig {
   // normalises to 0..1, and only the `score` column is filled. When
   // non-NULL we route through the type-aware prompt + parser below.
   score_config?: TypedScoreConfig | null
+  // P1-7 — optional free-form scoring rubric, injected for every type. Helps
+  // the judge apply consistent standards. Omitted from the prompt when absent
+  // so existing evaluators are byte-identical.
+  rubric?: string
+  // P1-7 — optional few-shot calibration anchors (NUMERIC / legacy path only).
+  anchors?: JudgeAnchor[]
 }
 
 /**
@@ -58,27 +77,40 @@ export function buildJudgePrompt(
      * the judge compares against; omitted when null so criterion-only scoring
      * is byte-identical to before. */
     expected_output?: string | null
+    /** P1-7: free-form scoring rubric, injected for every type when present. */
+    rubric?: string | null
+    /** P1-7: few-shot calibration anchors (NUMERIC / legacy path only). */
+    anchors?: JudgeAnchor[] | null
   },
 ): string {
-  const truncated = responseText.length > MAX_RESPONSE_CHARS
-    ? responseText.slice(0, MAX_RESPONSE_CHARS) + '… [truncated]'
-    : responseText
+  // P1-7: middle-out truncation keeps the start AND the end of a long response
+  // (the conclusion is often where the answer lives) instead of head-only.
+  const truncated = truncateMiddle(responseText, MAX_RESPONSE_CHARS)
 
-  // Reference (expected) answer, also truncated to the same cap.
+  // Reference (expected) answer, also truncated middle-out to the same cap.
   const expected = config.expected_output
   const referenceBlock = expected
     ? `
 
 Reference (expected) answer to compare against:
 """
-${expected.length > MAX_RESPONSE_CHARS ? expected.slice(0, MAX_RESPONSE_CHARS) + '… [truncated]' : expected}
+${truncateMiddle(expected, MAX_RESPONSE_CHARS)}
 """
 Judge how well the response matches the reference while still satisfying the criterion.`
     : ''
 
+  // P1-7: optional rubric block, applied to every score type.
+  const rubric = config.rubric?.trim()
+  const rubricBlock = rubric
+    ? `
+
+Scoring rubric (apply consistently):
+${rubric}`
+    : ''
+
   const intro = `You are an evaluator. Score the assistant response below against this criterion.
 
-Criterion: ${criterion}
+Criterion: ${criterion}${rubricBlock}
 
 Response to evaluate:
 """
@@ -87,11 +119,25 @@ ${truncated}
 
   const sc = config.score_config
 
-  // Legacy NUMERIC path — unchanged from before 4B.1c.
+  // P1-7: few-shot calibration anchors. Only meaningful on the NUMERIC / legacy
+  // path (anchor.score is a number on [scale_min, scale_max]); typed configs
+  // still get the rubric above but not numeric anchors.
+  const anchors = config.anchors ?? []
+  const anchorsBlock = (!sc || sc.data_type === 'NUMERIC') && anchors.length > 0
+    ? `
+
+Calibration examples (anchor your scoring to these):
+${anchors
+  .map((a) => `- Response: "${truncateMiddle(a.response, 280).replace(/\n/g, ' ')}" → score ${a.score}${a.reasoning ? ` (${a.reasoning})` : ''}`)
+  .join('\n')}`
+    : ''
+
+  // Legacy NUMERIC path — unchanged from before 4B.1c except the optional
+  // rubric (intro) + anchors blocks, both of which collapse to '' when absent.
   if (!sc || sc.data_type === 'NUMERIC') {
     const min = sc?.min_value ?? config.scale_min
     const max = sc?.max_value ?? config.scale_max
-    return `${intro}
+    return `${intro}${anchorsBlock}
 
 Reply ONLY in JSON with this exact shape:
 {"score": <number between ${min} and ${max}>, "reasoning": "<one short sentence>"}

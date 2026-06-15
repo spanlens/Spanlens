@@ -6,12 +6,23 @@ import type { ApiEnvelope } from './types'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
+/** P1-7 — a few-shot calibration anchor (example response + the score it should get). */
+export interface JudgeAnchor {
+  response: string
+  score: number
+  reasoning?: string
+}
+
 export interface JudgeConfig {
   criterion: string
   judge_provider: 'openai' | 'anthropic' | 'gemini' | 'azure' | 'mistral' | 'openrouter'
   judge_model: string
   scale_min: number
   scale_max: number
+  /** P1-7 — optional free-form scoring rubric injected into the judge prompt. */
+  rubric?: string
+  /** P1-7 — optional few-shot calibration anchors (NUMERIC judges). */
+  anchors?: JudgeAnchor[]
 }
 
 export interface Evaluator {

@@ -50,6 +50,79 @@ describe('buildJudgePrompt — expected_output reference', () => {
   })
 })
 
+// ── P1-7: rubric + few-shot calibration anchors ─────────────────────────────
+describe('buildJudgePrompt — rubric', () => {
+  it('injects the rubric block when present', () => {
+    const prompt = buildJudgePrompt('Is it helpful?', 'Paris', {
+      scale_min: 0,
+      scale_max: 1,
+      rubric: '1.0 = fully correct; 0 = wrong',
+    })
+    expect(prompt).toContain('Scoring rubric (apply consistently):')
+    expect(prompt).toContain('1.0 = fully correct; 0 = wrong')
+  })
+
+  it('omits the rubric block when absent (byte-identical to before)', () => {
+    const withEmpty = buildJudgePrompt('Is it helpful?', 'Paris', {
+      scale_min: 0,
+      scale_max: 1,
+      rubric: '   ',
+    })
+    const without = buildJudgePrompt('Is it helpful?', 'Paris', { scale_min: 0, scale_max: 1 })
+    expect(withEmpty).not.toContain('Scoring rubric')
+    expect(withEmpty).toBe(without)
+  })
+})
+
+describe('buildJudgePrompt — calibration anchors', () => {
+  it('injects anchors on the NUMERIC / legacy path', () => {
+    const prompt = buildJudgePrompt('Is it helpful?', 'Paris', {
+      scale_min: 0,
+      scale_max: 1,
+      anchors: [
+        { response: 'A complete, correct answer', score: 1, reasoning: 'nailed it' },
+        { response: 'Totally wrong', score: 0 },
+      ],
+    })
+    expect(prompt).toContain('Calibration examples (anchor your scoring to these):')
+    expect(prompt).toContain('A complete, correct answer')
+    expect(prompt).toContain('→ score 1')
+    expect(prompt).toContain('(nailed it)')
+    expect(prompt).toContain('→ score 0')
+  })
+
+  it('flattens newlines inside an anchor response to keep one line per example', () => {
+    const prompt = buildJudgePrompt('crit', 'resp', {
+      scale_min: 0,
+      scale_max: 1,
+      anchors: [{ response: 'line one\nline two', score: 0.5 }],
+    })
+    expect(prompt).toContain('line one line two')
+    expect(prompt).not.toContain('line one\nline two')
+  })
+
+  it('does NOT inject numeric anchors on a typed (BOOLEAN) config', () => {
+    const sc: TypedScoreConfig = {
+      id: 'a', data_type: 'BOOLEAN',
+      min_value: null, max_value: null, categories: null,
+      bool_true_label: null, bool_false_label: null,
+    }
+    const prompt = buildJudgePrompt('crit', 'resp', {
+      scale_min: 0,
+      scale_max: 1,
+      score_config: sc,
+      anchors: [{ response: 'x', score: 1 }],
+    })
+    expect(prompt).not.toContain('Calibration examples')
+  })
+
+  it('omits the anchors block when empty (byte-identical to before)', () => {
+    const withEmpty = buildJudgePrompt('crit', 'resp', { scale_min: 0, scale_max: 1, anchors: [] })
+    const without = buildJudgePrompt('crit', 'resp', { scale_min: 0, scale_max: 1 })
+    expect(withEmpty).toBe(without)
+  })
+})
+
 describe('buildJudgePrompt — NUMERIC score_config', () => {
   it('uses min/max from the score_config when present', () => {
     const sc: TypedScoreConfig = {
