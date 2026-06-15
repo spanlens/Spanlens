@@ -1,9 +1,11 @@
+import { Suspense } from 'react'
 import { cookies, headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { HydrationBoundary } from '@tanstack/react-query'
 import { Sidebar } from '@/components/layout/sidebar'
 import { SidebarShowToggle } from '@/components/layout/sidebar-show-toggle'
 import { DashboardContent } from '@/components/layout/dashboard-content'
+import { DashboardShellSkeleton } from '@/components/layout/sidebar-skeleton'
 import { PendingInvitationsBanner } from '@/components/layout/pending-invitations-banner'
 import { WorkspaceSwitchOverlay } from '@/components/layout/workspace-switch-overlay'
 import { SidebarProvider } from '@/lib/sidebar-context'
@@ -55,7 +57,34 @@ import { sidebarSpecs } from '@/lib/server/queries/sidebar'
  * HydrationBoundary only scopes the page subtree — Sidebar lives in the
  * layout, OUTSIDE that boundary, so the prefetched cache was never visible
  * to the components that needed it. The boundary MUST wrap the consumers.
+ *
+ * PT-1 (2026-06-15): instead of blocking the whole layout on that prefetch,
+ * the prefetch + the HydrationBoundary now live in a `<PrefetchedShell>`
+ * sub-component wrapped in `<Suspense fallback={<DashboardShellSkeleton/>}>`.
+ * The auth headers + cookie reads (cheap) still run synchronously in the
+ * layout. Result: the browser sees the shell skeleton within ~50ms of the
+ * click instead of waiting for the 1-3s prefetch.
+ *
+ * Why this avoids the #425 race that killed 16d83e6's streaming attempt:
+ * that revert had TWO sibling HydrationBoundaries on the same QueryClient
+ * (one resolved synchronously, one streamed via Suspense). Here we have a
+ * single boundary inside the Suspended sub-component, with the page-level
+ * boundary nested below it. Nested boundaries hydrate in tree order within
+ * one reconciliation pass — no sibling race.
  */
+
+/** Async data layer: awaits sidebarSpecs, wraps the layout interior in a
+ *  HydrationBoundary so the Sidebar / PendingInvitationsBanner hooks find
+ *  their cache on mount. Streamed in via the layout's Suspense. */
+async function PrefetchedShell({ children }: { children: React.ReactNode }) {
+  const sidebarState = await prefetchAll(sidebarSpecs())
+  return (
+    <HydrationBoundary state={sidebarState}>
+      {children}
+    </HydrationBoundary>
+  )
+}
+
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const h = await headers()
   const userId = h.get('x-spanlens-user-id')
@@ -65,10 +94,8 @@ export default async function DashboardLayout({ children }: { children: React.Re
   if (!userId) redirect('/login')
   if (!orgId || !onboarded) redirect('/onboarding')
 
-  const sidebarState = await prefetchAll(sidebarSpecs())
-
-  // Seed the desktop collapse state from the cookie so SSR renders the right
-  // layout on first paint (no flash of the sidebar before hydration).
+  // Cheap synchronous read — seeds the SidebarProvider so SSR renders the
+  // right desktop collapse state on first paint (no flash before hydration).
   const cookieStore = await cookies()
   const initialCollapsed = cookieStore.get(SIDEBAR_COLLAPSED_COOKIE)?.value === '1'
 
@@ -80,36 +107,42 @@ export default async function DashboardLayout({ children }: { children: React.Re
     <OverlayContainerProvider>
       <CommandPaletteProvider>
         <SidebarProvider initialCollapsed={initialCollapsed}>
-          <HydrationBoundary state={sidebarState}>
-            {/* Dashboard renders at 125% scale (zoom) for a roomier default
-                view. Height is divided by the SAME factor so the zoomed
-                container still resolves to exactly one viewport height — without
-                the correction, 100vh * 1.25 would overflow and add a stray
-                scrollbar. The zoom factor and the height divisor must always
-                match. Scoped to the dashboard only; landing/docs/demo keep
-                their 100% scale. */}
-            <div className="flex h-[calc(100vh/1.25)] overflow-hidden bg-bg [zoom:1.25]">
-              <Sidebar />
-              {/* Brings the sidebar back when it's collapsed to zero width.
-                  Renders nothing while the sidebar is visible. */}
-              <SidebarShowToggle />
-              <main className="flex-1 overflow-y-auto min-w-0">
-                {/* Pending workspace invitations surface here: any dashboard
-                    page renders this banner at the top, so a user who never
-                    clicked the email link still sees the invite waiting for
-                    them. Self-hides when there are none / after dismissal. */}
-                <PendingInvitationsBanner />
-                <DashboardContent>{children}</DashboardContent>
-              </main>
-              {/* Portal target for dialogs / command palette — inside the zoom
-                  wrapper so overlays render at the same 125% scale. */}
-              <OverlayContainerTarget />
-              {/* Workspace-switch loading UI. Self-mounted because the sidebar
-                  uses hard reload; this listens on a window event and renders
-                  during the SSR round-trip. */}
-              <WorkspaceSwitchOverlay />
-            </div>
-          </HydrationBoundary>
+          {/* PT-1: shell + sidebar/page render inside Suspense so the layout
+              returns its HTML the moment the auth + cookie reads complete.
+              The skeleton is shape-matched to the real Sidebar geometry so
+              the swap is visually stable. */}
+          <Suspense fallback={<DashboardShellSkeleton initialCollapsed={initialCollapsed} />}>
+            <PrefetchedShell>
+              {/* Dashboard renders at 125% scale (zoom) for a roomier default
+                  view. Height is divided by the SAME factor so the zoomed
+                  container still resolves to exactly one viewport height — without
+                  the correction, 100vh * 1.25 would overflow and add a stray
+                  scrollbar. The zoom factor and the height divisor must always
+                  match. Scoped to the dashboard only; landing/docs/demo keep
+                  their 100% scale. */}
+              <div className="flex h-[calc(100vh/1.25)] overflow-hidden bg-bg [zoom:1.25]">
+                <Sidebar />
+                {/* Brings the sidebar back when it's collapsed to zero width.
+                    Renders nothing while the sidebar is visible. */}
+                <SidebarShowToggle />
+                <main className="flex-1 overflow-y-auto min-w-0">
+                  {/* Pending workspace invitations surface here: any dashboard
+                      page renders this banner at the top, so a user who never
+                      clicked the email link still sees the invite waiting for
+                      them. Self-hides when there are none / after dismissal. */}
+                  <PendingInvitationsBanner />
+                  <DashboardContent>{children}</DashboardContent>
+                </main>
+                {/* Portal target for dialogs / command palette — inside the zoom
+                    wrapper so overlays render at the same 125% scale. */}
+                <OverlayContainerTarget />
+                {/* Workspace-switch loading UI. Self-mounted because the sidebar
+                    uses hard reload; this listens on a window event and renders
+                    during the SSR round-trip. */}
+                <WorkspaceSwitchOverlay />
+              </div>
+            </PrefetchedShell>
+          </Suspense>
         </SidebarProvider>
       </CommandPaletteProvider>
     </OverlayContainerProvider>
