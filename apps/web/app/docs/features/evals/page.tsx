@@ -219,14 +219,43 @@ export default function EvalsDocs() {
       <h2>LLM judge reliability</h2>
       <p>
         A judge score is only meaningful if it correlates with human judgment. If a team member
-        scores responses manually via <a href="/docs/features/annotation">Annotation</a>, a{' '}
-        <strong>Pearson r correlation card</strong> appears automatically at the top of the Evals
-        page.
+        scores responses manually via <a href="/docs/features/annotation">Annotation</a>, the
+        Evals page shows a <strong>judge-human agreement card</strong> at the top of the run
+        summary with the right statistic for the evaluator type.
+      </p>
+      <p>
+        For numeric scores (judge returns a 0..1 or 1..5 scale) Spanlens computes{' '}
+        <strong>Pearson r</strong>. For categorical labels (PASS / FAIL, A / B / C) it computes{' '}
+        <strong>Cohen&apos;s kappa</strong> instead, which accounts for chance agreement and is
+        the right measure when r would treat label distance as numeric. Both surface the same
+        traffic-light bands so you can read them the same way.
       </p>
       <ul>
-        <li><strong>r ≥ 0.7</strong>, Strong (judge can be trusted)</li>
-        <li><strong>0.4 ≤ r &lt; 0.7</strong>, Moderate</li>
-        <li><strong>r &lt; 0.4</strong>, Revisit the criterion</li>
+        <li><strong>r ≥ 0.7</strong> or <strong>κ ≥ 0.6</strong>, Strong (judge can be trusted)</li>
+        <li><strong>0.4 ≤ r &lt; 0.7</strong> or <strong>0.4 ≤ κ &lt; 0.6</strong>, Moderate</li>
+        <li><strong>r &lt; 0.4</strong> or <strong>κ &lt; 0.4</strong>, Revisit the criterion</li>
+      </ul>
+
+      <h2>Judge result caching</h2>
+      <p>
+        Re-running an evaluator on the same prompt + sample set is common during prompt tuning,
+        and most of those re-runs ask the judge the exact same question twice. Spanlens caches
+        judge verdicts keyed by{' '}
+        <code>(evaluator_config_hash, response_hash)</code>, so identical (evaluator settings,
+        model output) pairs reuse the prior verdict instead of paying for another LLM call.
+      </p>
+      <ul>
+        <li>Cache hits skip the judge API call entirely. Latency drops, cost goes to zero on the hit.</li>
+        <li>
+          Editing the rubric, anchors, judge model, temperature, or prompt template changes the
+          config hash and invalidates the cache for that evaluator. New verdicts are computed
+          and stored.
+        </li>
+        <li>
+          Every run reports a <code>cache_hits</code> counter so you can see how much was reused
+          vs. paid for. Entries are pruned daily via <code>/cron/prune-judge-cache</code> after
+          30 days of no-hit.
+        </li>
       </ul>
 
       <h2>Cost</h2>
