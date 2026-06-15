@@ -1792,34 +1792,47 @@ function EvaluatorRow({
 
 function CorrelationCard({ promptName }: { promptName: string }) {
   const correlation = useCorrelation({ promptName })
-  const pairs = correlation.data ?? []
-  const r = pearsonR(pairs)
+  const pairs = correlation.data?.pairs ?? []
+  // P3-19: prefer the server's agreement statistic (handles Pearson r for
+  // numeric scores AND Cohen's κ for CATEGORICAL / BOOLEAN evaluators that
+  // the old client-side pearsonR couldn't measure). Falls back to client
+  // Pearson when the server didn't return one (e.g. pre-deploy old API).
+  const agreement = correlation.data?.agreement ?? null
+  const clientR = agreement == null ? pearsonR(pairs) : null
+  const metricValue = agreement != null ? agreement.value : clientR
+  const metricLabel = agreement?.metric === 'kappa' ? "Cohen's κ" : 'Pearson r'
 
-  if (pairs.length === 0) return null
+  if (pairs.length === 0 && agreement == null) return null
 
   // Scatter plot bounds: 0..1 × 0..1, padded to 120×120
   const W = 120, H = 120, PAD = 6
   const dotX = (judge: number) => PAD + judge * (W - 2 * PAD)
   const dotY = (human: number) => H - PAD - human * (H - 2 * PAD)
 
-  // Interpret r — same buckets as standard correlation rules of thumb.
-  const interpretation = r == null
-    ? '—'
-    : Math.abs(r) >= 0.7 ? 'Strong'
-    : Math.abs(r) >= 0.4 ? 'Moderate'
-    : Math.abs(r) >= 0.2 ? 'Weak'
-    : 'None'
+  // Capitalised first letter to match the prior 'Strong' / 'Moderate' display.
+  const interpretation = agreement
+    ? agreement.interpretation.charAt(0).toUpperCase() + agreement.interpretation.slice(1)
+    : metricValue == null
+      ? '—'
+      : Math.abs(metricValue) >= 0.7 ? 'Strong'
+      : Math.abs(metricValue) >= 0.4 ? 'Moderate'
+      : Math.abs(metricValue) >= 0.2 ? 'Weak'
+      : 'None'
 
-  const rColor = r == null
+  const rColor = metricValue == null
     ? 'text-text-faint'
-    : r >= 0.7 ? 'text-good'
-    : r >= 0.4 ? 'text-warn'
+    : metricValue >= 0.7 ? 'text-good'
+    : metricValue >= 0.4 ? 'text-warn'
     : 'text-bad'
+
+  // n for the displayed metric: agreement.n if server-computed, otherwise the
+  // numeric pairs count we already have.
+  const sampleCount = agreement?.n ?? pairs.length
 
   return (
     <div className="bg-bg-elev border border-border rounded-[6px] p-4">
       <div className="flex items-start gap-4">
-        {/* Scatter plot */}
+        {/* Scatter plot — only meaningful for numeric pairs. */}
         <svg width={W} height={H} className="shrink-0 bg-bg rounded-[4px] border border-border">
           {/* Diagonal reference line, perfect agreement */}
           <line
@@ -1845,26 +1858,26 @@ function CorrelationCard({ promptName }: { promptName: string }) {
             <p className="font-mono text-[11px] text-text-faint mb-0.5 truncate">
               {promptName}
             </p>
-            {/* flex-wrap so the "Pearson r · …" label drops below the big
-                number instead of overflowing the card on narrow (2-up) widths. */}
+            {/* flex-wrap so the metric label drops below the big number
+                instead of overflowing the card on narrow (2-up) widths. */}
             <div className="flex items-baseline flex-wrap gap-x-2 gap-y-0.5">
               <span className={cn('font-mono text-[22px] font-medium', rColor)}>
-                {r == null ? '—' : r.toFixed(2)}
+                {metricValue == null ? '—' : metricValue.toFixed(2)}
               </span>
               <span className="font-mono text-[10.5px] text-text-muted">
-                Pearson r · {interpretation}
+                {metricLabel} · {interpretation}
               </span>
             </div>
           </div>
           <div className="font-mono text-[10.5px] text-text-faint">
-            {pairs.length} paired sample{pairs.length === 1 ? '' : 's'}
-            {pairs.length < 10 && ' (more data → more reliable)'}
+            {sampleCount} paired sample{sampleCount === 1 ? '' : 's'}
+            {sampleCount < 10 && ' (more data → more reliable)'}
           </div>
         </div>
       </div>
       <p className="font-mono text-[10.5px] text-text-faint mt-3 leading-relaxed">
         Dot = one request judged by both. Dashed line = perfect agreement.
-        Low r means your LLM judge disagrees with humans → revise the criterion.
+        Low values mean your LLM judge disagrees with humans → revise the criterion.
       </p>
     </div>
   )

@@ -51,6 +51,23 @@ export interface CorrelationPair {
   humanScore: number
 }
 
+/** P3-19: server-computed agreement statistic. Pearson for numeric scores,
+ *  Cohen's κ for typed-config labels (CATEGORICAL / BOOLEAN). null when there's
+ *  not enough data or the label set is degenerate. */
+export interface CorrelationAgreement {
+  metric: 'pearson' | 'kappa'
+  value: number
+  n: number
+  interpretation: 'none' | 'weak' | 'moderate' | 'strong'
+}
+
+/** Full envelope from /human-evals/correlation. `pairs` is the numeric back-
+ *  compat array; `agreement` is the new server-side stat. */
+export interface CorrelationEnvelope {
+  pairs: CorrelationPair[]
+  agreement: CorrelationAgreement | null
+}
+
 // ── Queue filters ───────────────────────────────────────────────────────────
 
 export interface QueueFilters {
@@ -133,13 +150,21 @@ export function useDeleteHumanEval() {
 export function useCorrelation(scope: { promptName?: string; promptVersionId?: string }) {
   return useQuery({
     queryKey: ['correlation', scope] as const,
-    queryFn: async () => {
+    queryFn: async (): Promise<CorrelationEnvelope> => {
       const qs = new URLSearchParams()
       if (scope.promptName) qs.set('promptName', scope.promptName)
       if (scope.promptVersionId) qs.set('promptVersionId', scope.promptVersionId)
       const suffix = qs.size > 0 ? `?${qs}` : ''
-      const res = await apiGet<ApiEnvelope<CorrelationPair[]>>(`/api/v1/human-evals/correlation${suffix}`)
-      return res.data ?? []
+      // P3-19: response now carries `agreement` (Pearson r or Cohen's κ)
+      // alongside the legacy `pairs` array. The server keeps `data` as the
+      // pairs array for back-compat with old clients.
+      const res = await apiGet<ApiEnvelope<CorrelationPair[]> & { pairs?: CorrelationPair[]; agreement?: CorrelationAgreement | null }>(
+        `/api/v1/human-evals/correlation${suffix}`,
+      )
+      return {
+        pairs: res.pairs ?? res.data ?? [],
+        agreement: res.agreement ?? null,
+      }
     },
     enabled: !!(scope.promptName || scope.promptVersionId),
   })
