@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { ArrowRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { createClient } from '@/lib/supabase/server'
+import { DashboardCTALink } from '@/components/layout/dashboard-cta-link'
 
 interface AuthNavButtonsProps {
   /** Label for the signup CTA when logged out. Defaults to "Start free". */
@@ -45,12 +46,12 @@ export async function AuthNavButtons({ signupLabel = 'Start free' }: AuthNavButt
             Live demo
           </Button>
         </Link>
-        <Link href="/dashboard">
+        <DashboardCTALink>
           <Button size="sm" className="gap-1.5">
             Go to dashboard
             <ArrowRight className="h-3.5 w-3.5" />
           </Button>
-        </Link>
+        </DashboardCTALink>
       </>
     )
   }
