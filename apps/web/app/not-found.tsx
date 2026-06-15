@@ -1,5 +1,5 @@
-import Link from 'next/link'
 import { Button } from '@/components/ui/button'
+import { DashboardCTALink } from '@/components/layout/dashboard-cta-link'
 
 export default function NotFound() {
   return (
@@ -9,9 +9,9 @@ export default function NotFound() {
       <p className="text-muted-foreground mb-8">
         The page you&apos;re looking for doesn&apos;t exist.
       </p>
-      <Link href="/dashboard">
+      <DashboardCTALink>
         <Button>Go to dashboard</Button>
-      </Link>
+      </DashboardCTALink>
     </div>
   )
 }
