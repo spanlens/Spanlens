@@ -91,38 +91,49 @@ export async function middleware(request: NextRequest) {
           },
         )
 
-        if (preferredWs) {
-          const { data: preferred } = await admin
-            .from('org_members')
-            .select('organization_id')
-            .eq('user_id', user.id)
-            .eq('organization_id', preferredWs)
-            .maybeSingle()
-          if (preferred?.organization_id) orgId = preferred.organization_id
-        }
-
-        if (!orgId && appMetaOrg) orgId = appMetaOrg
-
-        if (!orgId) {
-          const { data: m } = await admin
+        // PT-2: every navigation used to serialise org resolution + onboarded
+        // lookup as 2-3 Supabase round-trips. The onboarded check (user_profiles
+        // PK lookup) is independent of the org pick, and the org pick's
+        // preferred-vs-fallback lookups are independent of each other — only
+        // their result-merge has a precedence rule. Fire all three in parallel
+        // and decide afterwards: total latency drops to the slowest single
+        // query (~50ms) instead of summing the chain.
+        const [preferredRow, oldestRow, profileRow] = await Promise.all([
+          preferredWs
+            ? admin
+                .from('org_members')
+                .select('organization_id')
+                .eq('user_id', user.id)
+                .eq('organization_id', preferredWs)
+                .maybeSingle()
+                .then((r) => r.data?.organization_id ?? null)
+            : Promise.resolve(null),
+          // Oldest-membership fallback. Fired unconditionally because we don't
+          // know in advance whether `preferredRow` or `appMetaOrg` will resolve
+          // first — paying one cheap PK-indexed query saves a serial RT on the
+          // no-preferred / no-appMeta path. The result is just dropped when
+          // higher-precedence sources win.
+          admin
             .from('org_members')
             .select('organization_id')
             .eq('user_id', user.id)
             .order('created_at', { ascending: true })
             .limit(1)
             .maybeSingle()
-          if (m?.organization_id) orgId = m.organization_id
-        }
+            .then((r) => r.data?.organization_id ?? null),
+          // Onboarding completion. Cheap (PK lookup on user_profiles) and
+          // unlocks the dashboard layout's `redirect('/onboarding')` guard.
+          admin
+            .from('user_profiles')
+            .select('onboarded_at')
+            .eq('user_id', user.id)
+            .maybeSingle()
+            .then((r) => !!r.data?.onboarded_at),
+        ])
 
-        // Onboarding completion. Cheap (PK lookup on user_profiles) and
-        // unlocks the dashboard layout's `redirect('/onboarding')` guard
-        // without round-tripping to the API on every page load.
-        const { data: profile } = await admin
-          .from('user_profiles')
-          .select('onboarded_at')
-          .eq('user_id', user.id)
-          .maybeSingle()
-        if (profile?.onboarded_at) onboarded = true
+        // Precedence: explicit cookie pick > legacy app_metadata > oldest.
+        orgId = preferredRow ?? appMetaOrg ?? oldestRow ?? undefined
+        onboarded = profileRow
       } catch {
         // Non-fatal — worst case the user sees /onboarding and can retry.
       }
