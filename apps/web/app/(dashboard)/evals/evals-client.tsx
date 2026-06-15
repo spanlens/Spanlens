@@ -1049,10 +1049,15 @@ function RunEvaluatorDialog({
   const versionId = versionIdRaw || versions.data?.[0]?.id || ''
 
   const judgeModel = evaluator.config.judge_model
+  const judgeProvider = evaluator.config.judge_provider
+  // P3-13: pass the real provider + criterion length so the estimate isn't a
+  // hard-coded gpt-fallback. avgResponseChars is unknown until the runner
+  // pulls samples, so the server's default kicks in for it.
+  const criterionChars = evaluator.config.criterion?.length ?? 0
   const estimateMutate = estimate.mutateAsync
   useEffect(() => {
-    void estimateMutate({ sampleSize, judgeModel }).catch(() => null)
-  }, [sampleSize, judgeModel, estimateMutate])
+    void estimateMutate({ sampleSize, judgeProvider, judgeModel, criterionChars }).catch(() => null)
+  }, [sampleSize, judgeProvider, judgeModel, criterionChars, estimateMutate])
 
   // Pairwise is dataset-only; the single/pairwise toggle drives the source.
   const effectiveSource = mode === 'pairwise' ? 'dataset' : source

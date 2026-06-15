@@ -1225,6 +1225,11 @@ export async function runEvalRun(input: RunInput): Promise<void> {
         // response_body in ClickHouse is a non-null String (default '' for
         // missing). Filter out empties at the DB instead of pulling them back.
         "response_body != ''",
+        // P3-20: exclude clear error responses (4xx/5xx) so an error JSON
+        // body doesn't get judged as a real answer. status_code DEFAULT 0
+        // means legacy / un-instrumented rows are still allowed (otherwise
+        // we'd lose all pre-instrumentation samples).
+        '(status_code = 0 OR (status_code >= 200 AND status_code < 300))',
       ]
       const sampleParams: Record<string, unknown> = { promptVersionId }
       if (sampleFrom) {
@@ -1636,12 +1641,51 @@ export async function startEvalRun(c: Context, input: StartEvalRunInput): Promis
   return run
 }
 
-/** Convenience: estimate judge cost before running (rough heuristic). */
-export function estimateJudgeCostUsd(sampleSize: number, judgeModel: string): number {
-  // Conservative: assume ~800 input + 100 output tokens per sample
-  const inputTokens = sampleSize * 800
+/**
+ * P3-13: rougher-but-actually-useful cost estimate. The previous version
+ * hard-coded 800 input + 100 output tokens and guessed the provider from a
+ * `gpt-` prefix (so every non-gpt model billed as Anthropic). Now:
+ *  - the caller passes the real judge_provider from the evaluator config; no
+ *    prefix sniffing.
+ *  - input tokens are derived from criterion + average response length when
+ *    known. Defaults preserve the prior 800-token estimate for callers that
+ *    don't pass lengths.
+ *  - chars→tokens uses the 4:1 industry rule.
+ */
+export interface EstimateJudgeCostInput {
+  sampleSize: number
+  judgeProvider: 'openai' | 'anthropic' | 'gemini' | 'azure' | 'mistral' | 'openrouter'
+  judgeModel: string
+  /** Length of the evaluator's criterion in characters. */
+  criterionChars?: number
+  /** Average response length in characters across the planned sample. */
+  avgResponseChars?: number
+}
+
+export function estimateJudgeCostUsd(input: EstimateJudgeCostInput): number {
+  const { sampleSize, judgeProvider, judgeModel, criterionChars, avgResponseChars } = input
+  // Roughly 4 chars per token. Add a 200-token prompt overhead (intro +
+  // JSON-only instructions) so a tiny criterion doesn't underestimate.
+  const FIXED_OVERHEAD_TOKENS = 200
+  const FALLBACK_INPUT_TOKENS_PER_SAMPLE = 800
+  let inputPerSample: number
+  if (criterionChars != null || avgResponseChars != null) {
+    inputPerSample =
+      FIXED_OVERHEAD_TOKENS +
+      Math.ceil((criterionChars ?? 0) / 4) +
+      Math.ceil((avgResponseChars ?? 0) / 4)
+  } else {
+    inputPerSample = FALLBACK_INPUT_TOKENS_PER_SAMPLE
+  }
+  const inputTokens = sampleSize * inputPerSample
+  // Output is the JSON `{"score": …, "reasoning": "<one sentence>"}` — small.
   const outputTokens = sampleSize * 100
-  const provider = judgeModel.startsWith('gpt-') ? 'openai' : 'anthropic'
-  const cost = calculateCost(provider, judgeModel, { promptTokens: inputTokens, completionTokens: outputTokens })
+  // Azure bills at OpenAI prices (mirrors callJudge); other providers use their
+  // own table.
+  const costProvider = judgeProvider === 'azure' ? 'openai' : judgeProvider
+  const cost = calculateCost(costProvider, judgeModel, {
+    promptTokens: inputTokens,
+    completionTokens: outputTokens,
+  })
   return cost?.totalCost ?? 0
 }

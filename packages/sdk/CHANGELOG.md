@@ -1,5 +1,13 @@
 # @spanlens/sdk changelog
 
+## 0.11.1
+
+P3 read-side polish — pagination on list endpoints, more accurate cost estimate.
+
+### Added
+
+- `listRuns({ page, limit })` and `getResults(id, { page, limit })` accept optional pagination params (1-based, max limit 100). The server now paginates instead of capping at 50 rows; the SDK keeps returning a plain `EvalRun[]` / `EvalResult[]` for back-compat.
+
 ## 0.11.0
 
 Agent trajectory evaluation (P2-11) — score the whole trace, not just the final text.

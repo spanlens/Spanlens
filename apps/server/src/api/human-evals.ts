@@ -69,6 +69,8 @@ humanEvalsRouter.get('/annotation/queue', async (c) => {
   const filters: string[] = [
     'isNotNull(prompt_version_id)',
     "response_body != ''",
+    // P3-20: don't queue clear error responses for human review either.
+    '(status_code = 0 OR (status_code >= 200 AND status_code < 300))',
   ]
   const params: Record<string, unknown> = {}
   if (promptVersionId) {
