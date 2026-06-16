@@ -179,9 +179,10 @@ export default function LandingPage() {
         </h1>
 
         <p className="text-[16px] sm:text-[18px] lg:text-[20px] leading-relaxed text-text-muted max-w-[640px] mb-10 [text-wrap:pretty]">
-          Record every OpenAI, Anthropic, and Gemini call: cost, latency, tokens, full
-          request and response. Then score quality, run experiments, catch anomalies and
-          PII, and ship cheaper models with proof.
+          Spanlens is an open-source (MIT) LLM observability platform that logs every
+          OpenAI, Anthropic, and Gemini request in one line of code. Track cost, latency,
+          and tokens; trace multi-step agent workflows; catch anomalies and PII; and
+          recommend cheaper models with dollar-figure savings.
         </p>
 
         {/* Install block: stacked on mobile, inline on sm+ */}

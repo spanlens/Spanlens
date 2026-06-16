@@ -1,3 +1,4 @@
+import type React from 'react'
 import Link from 'next/link'
 import { Check } from 'lucide-react'
 import { Footer } from '@/components/layout/footer'
@@ -25,6 +26,81 @@ export const metadata = {
     images: ['/icon.png'],
   },
 }
+
+// Plain-text FAQ versions used for JSON-LD FAQPage. Mirror the JSX answers
+// below but stripped of components so search engines extract clean facts.
+const PRICING_FAQS_TEXT: { q: string; a: string }[] = [
+  {
+    q: 'Is Spanlens cheaper than Langfuse Cloud or Helicone?',
+    a: 'Spanlens Pro is $29/mo with 100K requests included plus $8 per extra 100K. Langfuse Cloud Hobby starts at $59/mo for the same tier of usage and Helicone Pro starts at $50/mo. Spanlens Team at $149/mo includes 1M requests with the lowest overage rate ($5 per 100K).',
+  },
+  {
+    q: 'Can I self-host Spanlens for free?',
+    a: 'Yes. Spanlens is fully MIT licensed with no ee/ folder. Run docker compose up on your own infrastructure and you get every feature listed above with zero license fee, no seat limit, and no usage cap. Self-hosted instances ingest into your own ClickHouse and Postgres. The hosted plans pay for managed infrastructure, not features.',
+  },
+  {
+    q: 'What counts as a "request"?',
+    a: 'One outbound LLM call (an OpenAI/Anthropic/Gemini/Ollama completion or embedding) equals one request. Streaming responses count as one request regardless of how many chunks are produced. Failed upstream calls (4xx/5xx from the provider) are still logged and still count. Internal agent steps that do not call an LLM (tool runs, retries before any provider call, dashboard views) do not count.',
+  },
+  {
+    q: 'Do I need a credit card to start?',
+    a: 'No. The Free plan (50K requests/mo) requires only an email signup. You can upgrade to Pro or Team at any time without losing your historical data.',
+  },
+  {
+    q: 'Can I switch plans or cancel anytime?',
+    a: 'Yes. Plan changes are immediate and prorated. Cancellations take effect at the end of your current billing period. Your data stays accessible for your plan\'s retention window so you can export before downgrade.',
+  },
+]
+
+const PRICING_FAQS: { q: string; a: React.ReactNode }[] = [
+  {
+    q: 'Is Spanlens cheaper than Langfuse Cloud or Helicone?',
+    a: (
+      <>
+        Spanlens Pro is <span className="font-mono">$29/mo</span> with 100K requests included plus{' '}
+        <span className="font-mono">$8</span> per extra 100K. Langfuse Cloud Hobby starts at{' '}
+        <span className="font-mono">$59/mo</span> for the same tier of usage and Helicone Pro starts at{' '}
+        <span className="font-mono">$50/mo</span>. Spanlens Team at <span className="font-mono">$149/mo</span>{' '}
+        includes 1M requests with the lowest overage rate (<span className="font-mono">$5</span> per 100K). Compare side-by-side on{' '}
+        <Link href="/compare/langfuse" className="text-accent hover:opacity-80">Spanlens vs Langfuse</Link> and{' '}
+        <Link href="/compare/helicone" className="text-accent hover:opacity-80">Spanlens vs Helicone</Link>.
+      </>
+    ),
+  },
+  {
+    q: 'Can I self-host Spanlens for free?',
+    a: (
+      <>
+        Yes. Spanlens is fully MIT licensed with no <code className="font-mono text-xs">ee/</code> folder. Run{' '}
+        <code className="font-mono text-xs">docker compose up</code> on your own infrastructure and you get every
+        feature listed above with zero license fee, no seat limit, and no usage cap. Self-hosted instances
+        ingest into your own ClickHouse and Postgres. The hosted plans above pay for managed infrastructure,
+        not features. See the{' '}
+        <Link href="/docs/self-host" className="text-accent hover:opacity-80">self-hosting guide</Link>.
+      </>
+    ),
+  },
+  {
+    q: 'What counts as a "request"?',
+    a: (
+      <>
+        One outbound LLM call (an OpenAI/Anthropic/Gemini/Ollama completion or embedding) equals one request.
+        Streaming responses count as one request regardless of how many chunks are produced. Failed upstream
+        calls (4xx/5xx from the provider) are still logged and still count, because most of the cost of logging
+        is on ingest. Internal agent steps that don&apos;t call an LLM (tool runs, retries before any provider
+        call, dashboard views) do not count.
+      </>
+    ),
+  },
+  {
+    q: 'Do I need a credit card to start?',
+    a: 'No. The Free plan (50K requests/mo) requires only an email signup. You can upgrade to Pro or Team at any time without losing your historical data.',
+  },
+  {
+    q: 'Can I switch plans or cancel anytime?',
+    a: 'Yes. Plan changes are immediate and prorated. Cancellations take effect at the end of your current billing period — your data stays accessible for your plan\'s retention window so you can export before downgrade.',
+  },
+]
 
 const pricingJsonLd = {
   '@context': 'https://schema.org',
@@ -67,6 +143,17 @@ const pricingJsonLd = {
       description: 'Custom volume, SSO (SAML/Okta), dedicated SLA. Contact for pricing.',
     },
   ],
+}
+
+const pricingFaqJsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'FAQPage',
+  '@id': 'https://www.spanlens.io/pricing#faq',
+  mainEntity: PRICING_FAQS_TEXT.map((f) => ({
+    '@type': 'Question',
+    name: f.q,
+    acceptedAnswer: { '@type': 'Answer', text: f.a },
+  })),
 }
 
 const PLANS = [
@@ -165,14 +252,22 @@ export default function PricingPage() {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(pricingJsonLd) }}
       />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(pricingFaqJsonLd) }}
+      />
       {/* Nav */}
       <MarketingNav />
 
       <section className="max-w-7xl mx-auto px-6 py-24">
         <div className="text-center mb-10">
-          <h1 className="text-[36px] font-semibold tracking-[-0.6px] text-text mb-3">Simple, honest pricing</h1>
+          <h1 className="text-[36px] font-semibold tracking-[-0.6px] text-text mb-3">Spanlens Pricing — LLM Observability for Every Stage</h1>
           <p className="text-[16px] text-text-muted">
-            Start free. Scale as you grow. Cancel anytime.
+            Start free. Scale as you grow. Cancel anytime. Switching from{' '}
+            <Link href="/compare/langfuse" className="text-accent hover:opacity-80">Langfuse</Link>
+            {' '}or{' '}
+            <Link href="/compare/helicone" className="text-accent hover:opacity-80">Helicone</Link>?
+            See side-by-side comparisons.
           </p>
         </div>
 
@@ -266,34 +361,49 @@ export default function PricingPage() {
             Paid plans default to <strong className="text-text">overage billing</strong> so you&apos;re never
             surprise-blocked mid-month:
           </p>
-          <ul className="text-[13px] text-text-muted space-y-2 mb-4">
-            <li>
-              <strong className="text-text">Soft limit</strong>, your plan&apos;s included quota (100K on Pro,
-              1M on Team). Extra requests pass through and accumulate.
-            </li>
-            <li>
-              <strong className="text-text">Overage billing</strong>, Pro $8 / Team $5 per 100K extra
-              requests, charged immediately at the end of your billing period (not deferred to next month).
-            </li>
-            <li>
-              <strong className="text-text">Hard cap</strong>, default 5× the soft limit. Past this,
-              requests return 429 even with overage enabled. Adjustable 1–100× in settings.
-            </li>
-            <li>
-              <strong className="text-text">Cost certainty mode</strong>, flip overage off in settings to
-              hard-block at your quota instead.
-            </li>
-            <li>
-              <strong className="text-text">Free plan</strong>, proxy keeps working past 50K, but logging
-              pauses (we don&apos;t want to break your app). Upgrade to Pro to resume logging plus overage.
-            </li>
-          </ul>
+          <dl className="text-[13px] text-text-muted space-y-3 mb-4">
+            <div className="grid grid-cols-[140px_1fr] gap-x-4">
+              <dt className="font-semibold text-text">Soft limit</dt>
+              <dd>Your plan&apos;s included quota (100K on Pro, 1M on Team). Extra requests pass through and accumulate.</dd>
+            </div>
+            <div className="grid grid-cols-[140px_1fr] gap-x-4">
+              <dt className="font-semibold text-text">Overage billing</dt>
+              <dd>Pro <span className="font-mono">$8</span> / Team <span className="font-mono">$5</span> per 100K extra requests, charged immediately at the end of your billing period (not deferred to next month).</dd>
+            </div>
+            <div className="grid grid-cols-[140px_1fr] gap-x-4">
+              <dt className="font-semibold text-text">Hard cap</dt>
+              <dd>Default 5× the soft limit. Past this, requests return 429 even with overage enabled. Adjustable 1–100× in settings.</dd>
+            </div>
+            <div className="grid grid-cols-[140px_1fr] gap-x-4">
+              <dt className="font-semibold text-text">Cost certainty mode</dt>
+              <dd>Flip overage off in settings to hard-block at your quota instead.</dd>
+            </div>
+            <div className="grid grid-cols-[140px_1fr] gap-x-4">
+              <dt className="font-semibold text-text">Free plan</dt>
+              <dd>Proxy keeps working past 50K, but logging pauses (we don&apos;t want to break your app). Upgrade to Pro to resume logging plus overage.</dd>
+            </div>
+          </dl>
           <Link
             href="/docs/features/billing"
             className="text-[13px] text-accent hover:opacity-80 transition-opacity inline-flex items-center gap-1"
           >
             Full billing &amp; quota docs →
           </Link>
+        </div>
+
+        {/* Pricing FAQ — commercial-intent questions for AI search citation */}
+        <div className="mt-12 max-w-3xl mx-auto">
+          <h2 className="text-[20px] font-semibold tracking-[-0.4px] text-text mb-6">Pricing FAQ</h2>
+          <div className="space-y-3">
+            {PRICING_FAQS.map((f) => (
+              <details key={f.q} className="group rounded-xl border border-border bg-bg-elev p-5">
+                <summary className="cursor-pointer list-none text-[14px] font-medium text-text">
+                  {f.q}
+                </summary>
+                <div className="mt-3 text-[13px] text-text-muted leading-relaxed">{f.a}</div>
+              </details>
+            ))}
+          </div>
         </div>
       </section>
 
