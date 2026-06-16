@@ -5,7 +5,7 @@
 [![PyPI version](https://img.shields.io/pypi/v/spanlens.svg)](https://pypi.org/project/spanlens/)
 [![npm downloads](https://img.shields.io/npm/dm/@spanlens/sdk.svg)](https://www.npmjs.com/package/@spanlens/sdk)
 
-**Open-source LLM observability and monitoring.** Record every OpenAI / Anthropic / Gemini / Azure OpenAI / Ollama call with one line of code. Plugs into Vercel AI SDK, LangChain, and LlamaIndex too. Query the same data directly from Cursor, Claude Desktop, or Continue via the bundled [MCP server](https://www.npmjs.com/package/@spanlens/mcp-server). Get cost, latency, tokens, traces, anomalies, PII scan, and model-swap suggestions out of the box. Self-hostable. MIT.
+**Open-source LLM observability and monitoring.** Record every OpenAI / Anthropic / Gemini / Mistral / OpenRouter / Azure OpenAI / Ollama call with one line of code. Plugs into Vercel AI SDK, LangChain, and LlamaIndex too. Query the same data directly from Cursor, Claude Desktop, or Continue via the bundled [MCP server](https://www.npmjs.com/package/@spanlens/mcp-server). Get cost, latency, tokens, traces, anomalies, PII scan, and model-swap suggestions out of the box. Self-hostable. MIT.
 
 > **Hosted**: [spanlens.io](https://www.spanlens.io) · **npm**: [`@spanlens/sdk`](https://www.npmjs.com/package/@spanlens/sdk) · **PyPI**: [`spanlens`](https://pypi.org/project/spanlens/) · **CLI**: [`@spanlens/cli`](https://www.npmjs.com/package/@spanlens/cli) · **MCP**: [`@spanlens/mcp-server`](https://www.npmjs.com/package/@spanlens/mcp-server) · **Status**: [status.spanlens.io](https://status.spanlens.io) · **Changelog**: [spanlens.io/changelog](https://www.spanlens.io/changelog)
 
@@ -129,6 +129,8 @@ const unregister = registerSpanlensCallbacks(Settings, { client })
 
 **Python: LangChain** — `from spanlens.integrations.langchain import SpanlensCallbackHandler`. Same `BaseCallbackHandler` contract, works with chains, LCEL, and LangGraph.
 
+**More integrations**: AWS Bedrock, CrewAI, Flowise, Instructor, LlamaIndex, OpenAI Assistants, MCP server. Full setup walkthroughs at [spanlens.io/docs/integrations](https://www.spanlens.io/docs/integrations).
+
 **Ollama (local LLMs)** — Use the OpenAI-compatible client pointed at your local Ollama, then wrap with `observeOllama()` so the dashboard tags the call as Ollama instead of OpenAI.
 
 ```ts
@@ -220,7 +222,7 @@ Spanlens uses **two databases**, each for what it's good at.
 ### Projects, unified keys, and headers
 
 - A workspace can hold **multiple projects** (e.g. `dev` / `staging` / `prod`, or one per app). Each project gets its own quota slice, provider keys, and prompt namespace.
-- **Unified API keys** give you one `sl_live_*` key per project that is provider-agnostic. Spanlens infers the provider from the request path (`/proxy/openai/*`, `/proxy/anthropic/*`, `/proxy/gemini/*`, `/proxy/azure/*`), so you only need one Spanlens key even if you call multiple model vendors.
+- **Unified API keys** give you one `sl_live_*` key per project that is provider-agnostic. Spanlens infers the provider from the request path (`/proxy/openai/*`, `/proxy/anthropic/*`, `/proxy/gemini/*`, `/proxy/mistral/*`, `/proxy/openrouter/*`, `/proxy/azure/*`), so you only need one Spanlens key even if you call multiple model vendors.
 - **`X-Spanlens-*` headers** (set automatically by the SDK helpers `withUser()`, `withSession()`, `withPromptVersion()`, `withLogBody()`): tag a request with end-user / session IDs, link it to a prompt-version experiment, or limit how much body Spanlens stores. Full list in [`/docs/proxy`](https://www.spanlens.io/docs/proxy).
 - **Streaming safety** ensures proxy responses are gracefully closed at 290s with a `truncated=true` flag in the log, so long streams never silently disappear.
 
@@ -364,6 +366,13 @@ The hosted instance ships with the following cron tasks (see [`apps/server/verce
 | `/cron/leak-detect-keys` | daily 04:00 | GitGuardian scan of active provider keys |
 | `/cron/recommend-savings-alerts` | daily 09:00 | Email model-swap savings opportunities |
 | `/cron/check-past-due-downgrades` | daily 10:00 | D-3 / D-1 warnings + auto-downgrade past-due subs |
+| `/cron/execute-pending-deletions` | every 6h | Hard-delete accounts past their 30-day soft-delete grace |
+| `/cron/run-background-migrations` | every 5m | Drain background-migration queue (data backfills) |
+| `/cron/events-reconciliation` | daily 02:00 | Reconcile OTLP events dual-write between Supabase and ClickHouse |
+| `/cron/detect-missing-model-prices` | hourly | Catch new model IDs in the request log that have no row in `model_prices` |
+| `/cron/self-monitor` | hourly :31 | Spanlens dogfoods itself — heartbeat eval into the internal workspace |
+| `/cron/detect-orphan-spans` | hourly :17 | Flag spans whose parent trace never arrived |
+| `/cron/prune-judge-cache` | daily 03:00 | TTL-evict stale `(evaluator, response)` judge cache entries |
 | `/cron/keep-warm` | every 5m | Lightweight ping that keeps the Vercel function warm (skip on always-on platforms like Fly.io / Railway) |
 
 ---
