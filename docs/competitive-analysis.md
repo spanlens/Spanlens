@@ -3,6 +3,8 @@
 > **목적**: Spanlens의 전체 기능 인벤토리와 경쟁사 5종(Langfuse, Helicone, LangSmith, Braintrust, Arize Phoenix) 대비 차별점을 한 곳에 정리한 내부 분석 문서.
 > **기준일**: 2026-05-21 · **owner**: founder
 >
+> ⚠️ **STALE WARNING (2026-06-16 기준 26일 경과)**: 경쟁사 가격/포지셔닝은 빠르게 변동. 마케팅 `/compare/*` 페이지나 영업 자료 인용 전 각 경쟁사 사이트에서 가격/플랜 재확인 권장. 특히 Helicone(인수 후 로드맵 불확실), Langfuse Pro 가격, LangSmith 무료 티어 변경 가능성 체크.
+>
 > 이 문서는 Spanlens 마케팅(`/compare/*`) 페이지의 근거이자, 제품 결정과 로드맵 우선순위의 reference이다.
 > 경쟁사 항목은 마지막 검증 시점 기준 공개 정보를 토대로 하며, 사실 오류 발견 시 즉시 수정한다.
 

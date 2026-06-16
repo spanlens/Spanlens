@@ -45,7 +45,7 @@ Dependency direction (do not violate):
 
 ## Running locally
 
-You need Node ≥ 22, pnpm ≥ 10, and Docker (for the local Supabase + ClickHouse
+You need Node ≥ 20, pnpm ≥ 10, and Docker (for the local Supabase + ClickHouse
 stack). All three are installable via [`mise`](https://mise.jdx.dev/) or
 `brew`.
 

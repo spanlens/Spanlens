@@ -1,0 +1,47 @@
+Codemap generation report — 2026-06-16
+═══════════════════════════════════════════════════════════════
+
+Status: first generation (no prior codemaps)
+Files created:
+  docs/CODEMAPS/architecture.md   (~1.0k tokens)
+  docs/CODEMAPS/backend.md        (~1.2k tokens)
+  docs/CODEMAPS/frontend.md       (~0.9k tokens)
+  docs/CODEMAPS/data.md           (~0.9k tokens)
+  docs/CODEMAPS/dependencies.md   (~0.9k tokens)
+
+Source scan summary
+───────────────────
+  apps/server/src/api routers      55 files
+  apps/server/src/lib              ~70 files (cost, crypto, eval-runners/, cron-jobs/, ...)
+  apps/server/src/proxy            6 providers (openai, anthropic, gemini, mistral, openrouter, azure)
+  apps/server/src/middleware       8 files (authApiKey, authJwt, authJwtOrApiKey, requireFullScope, requireRole, requireSystemAdmin, quota, rateLimit)
+  apps/web/app                     54 route segments (App Router)
+  apps/web/components              13 top-level groups + ui/
+  supabase/migrations              122 files (since 20260420)
+  clickhouse/migrations            8 files
+  vercel.json cron jobs            15 (was 8 in README — now synced)
+
+Doc updates landed alongside codemap generation
+───────────────────────────────────────────────
+  README.md
+    + Mistral / OpenRouter added to provider list (PR #327/#328)
+    + Cron table expanded 8 → 15
+    + "More integrations" pointer to /docs/integrations
+  CONTRIBUTING.md
+    + Node ≥22 → ≥20 (matches package.json engines)
+  apps/server/.env.example
+    + Korean comments translated to English
+  docs/competitive-analysis.md
+    + Stale warning header (last-verified 2026-05-21, 26d old)
+  docs/plans/org_members.md
+    + Moved to docs/plans/archive/ (historical, implemented)
+
+Manual review queue (no auto-action taken)
+──────────────────────────────────────────
+  docs/competitive-analysis.md — re-verify Helicone/Langfuse/LangSmith pricing
+  docs/plans/dashboard-load-perf-2026-05.md — confirm completed before archiving
+  docs/plans/dashboard-ssr-suspense-stuck-2026-05.md — same
+  docs/plans/infrastructure-region-survey.md — same
+
+Re-run codemap generation after major feature additions:
+  pnpm exec claude /update-codemaps   (or invoke the skill in chat)
