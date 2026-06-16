@@ -303,6 +303,22 @@ export default function PricingPage() {
           </ul>
         </div>
 
+        {/* Self-host callout — separated from the paid grid so it's clear self-host is free, not a tier add-on */}
+        <div className="max-w-3xl mx-auto mb-10 rounded-xl border border-accent-border bg-accent-bg/40 px-6 py-4 text-[13px] flex flex-col sm:flex-row sm:items-center gap-3">
+          <div className="flex-1">
+            <strong className="text-text font-semibold">Or self-host for free.</strong>
+            {' '}Spanlens is fully MIT, no <code className="font-mono text-xs">ee/</code> folder. Run
+            {' '}<code className="font-mono text-xs">docker compose up</code> on your own infrastructure and
+            get every feature listed below at zero cost.
+          </div>
+          <Link
+            href="/self-hosting"
+            className="shrink-0 text-accent hover:opacity-80 font-medium font-mono text-[12px]"
+          >
+            Self-host guide →
+          </Link>
+        </div>
+
         {/* Plan cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
           {PLANS.map((plan) => (
