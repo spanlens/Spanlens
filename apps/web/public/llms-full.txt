@@ -1,8 +1,8 @@
-# Spanlens
-
-> Full version: https://www.spanlens.io/llms-full.txt
+# Spanlens (full)
 
 > Drop-in LLM observability for OpenAI, Anthropic, and Gemini. Spanlens is an open-source (MIT) request logging, cost tracking, and agent tracing platform. Swap one line, your `baseURL` or SDK import, and get full visibility into every LLM call your app makes. Available as a hosted SaaS at https://www.spanlens.io and as a self-hostable Docker image.
+
+This is the expanded version. The short index lives at https://www.spanlens.io/llms.txt.
 
 Spanlens is positioned as a lightweight, developer-first alternative to Helicone (acquired) and Langfuse (heavy). The stack is Next.js 14 + Hono + Supabase Postgres + ClickHouse, with first-class SDKs for TypeScript and Python and OpenTelemetry (OTLP/HTTP) ingest for everything else.
 
@@ -50,6 +50,17 @@ Or swap `baseURL` to the proxy and add a Spanlens API key (`sl_live_*`) in the A
 - Pro: $29/mo, 100K requests/mo, 90-day retention, 3 seats, 5 alerts, email notifications, +$8 per extra 100K.
 - Team: $149/mo, 1M requests/mo, 365-day retention, 10 seats, Slack and webhook integrations, unlimited alerts, +$5 per extra 100K.
 - Enterprise: custom volume, SSO (SAML/Okta), unlimited seats, dedicated support and SLA.
+
+## Frequently asked questions
+
+- How does instrumentation work? Swap the provider SDK for our drop-in. Same surface, same types. We record the full request and response on the wire, with no extra round-trip and no sampling by default.
+- What about latency overhead? p99 overhead is under 3ms. Ingestion happens async in a worker. If we ever fail, the original request completes anyway. Spanlens never sits on the critical path.
+- How do you handle PII? PII detectors (SSN, credit card, email, IBAN, passport) run at log time and flag matches for review in the Security dashboard, without blocking the request. API keys that slip into prompts are auto-masked before the row lands on disk. For workloads where prompt bodies must not be stored at all, opt out per-call with `X-Spanlens-Log-Body: meta`.
+- Do you support OpenTelemetry? Yes. OTLP/HTTP ingest and export. Your existing OTel tracing flows into the same span store; LLM spans get LLM-specific attributes on top.
+- What's the data retention? Free is 14 days. Pro is 90 days, Team is 365 days. Enterprise and self-hosted are configurable, including unlimited.
+- Can I export my data? Anytime. JSON, CSV, Parquet. Or pipe the raw stream to S3, BigQuery, or your warehouse via our sink connectors.
+- Can Spanlens tell me if a prompt actually got better? Yes. Evals scores responses with an LLM-as-judge on a 0 to 1 scale, per prompt version. Pair it with Experiments to replay a dataset across versions and models, so you compare quality, cost, and latency on the same inputs before you roll out.
+- Does Spanlens work for a whole team? Projects isolate workloads, roles and invitations manage access, and audit logs record every change. Team and Enterprise add Slack, webhooks, unlimited alerts, and SSO.
 
 ## Comparison summary (2026)
 
