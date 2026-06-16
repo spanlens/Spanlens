@@ -2,6 +2,76 @@ import type { MetadataRoute } from 'next'
 
 const SITE_URL = 'https://www.spanlens.io'
 
+// Per-route lastmod dates. Bump when the page content materially changes so
+// crawlers see real freshness signal instead of every URL sharing a single
+// `new Date()`. Format: 'YYYY-MM-DD' (UTC).
+const ROUTE_LASTMOD: Record<string, string> = {
+  '': '2026-06-16',
+  '/pricing': '2026-06-16',
+  '/self-hosting': '2026-05-20',
+  '/alternatives': '2026-06-01',
+  '/changelog': '2026-06-15',
+  '/feedback': '2026-04-10',
+  '/compare': '2026-06-01',
+  '/compare/langfuse': '2026-06-10',
+  '/compare/helicone': '2026-06-10',
+  '/compare/langsmith': '2026-06-10',
+  '/compare/braintrust': '2026-06-10',
+  '/compare/arize-phoenix': '2026-06-10',
+  '/docs/migrate/from-langfuse': '2026-05-25',
+  '/docs/migrate/from-helicone': '2026-05-25',
+  '/docs/migrate/from-langsmith': '2026-05-25',
+  '/docs': '2026-06-12',
+  '/docs/quick-start': '2026-06-12',
+  '/docs/cli': '2026-06-12',
+  '/docs/sdk': '2026-06-12',
+  '/docs/proxy': '2026-06-08',
+  '/docs/otel': '2026-06-08',
+  '/docs/self-host': '2026-05-20',
+  '/docs/why': '2026-06-01',
+  '/docs/api': '2026-06-08',
+  '/docs/api/errors': '2026-06-08',
+  '/docs/concepts/data-model': '2026-05-15',
+  '/docs/integrations/langgraph': '2026-06-12',
+  '/docs/integrations/llamaindex': '2026-06-05',
+  '/docs/integrations/mcp': '2026-06-04',
+  '/docs/integrations/vercel-ai': '2026-06-05',
+  '/docs/production/reliability': '2026-05-19',
+  '/docs/production/scaling': '2026-05-19',
+  '/docs/tutorials/agent-tracing': '2026-06-12',
+  '/docs/tutorials/nightly-evals': '2026-06-05',
+  '/docs/tutorials/rag-chatbot': '2026-06-05',
+  '/docs/features/requests': '2026-06-08',
+  '/docs/features/traces': '2026-06-12',
+  '/docs/features/prompts': '2026-06-08',
+  '/docs/features/prompts-playground': '2026-06-08',
+  '/docs/features/prompt-ab': '2026-06-08',
+  '/docs/features/cost-tracking': '2026-06-08',
+  '/docs/features/savings': '2026-06-08',
+  '/docs/features/anomalies': '2026-06-08',
+  '/docs/features/security': '2026-06-04',
+  '/docs/features/alerts': '2026-06-04',
+  '/docs/features/webhooks': '2026-06-04',
+  '/docs/features/datasets': '2026-06-04',
+  '/docs/features/evals': '2026-06-04',
+  '/docs/features/experiments': '2026-06-04',
+  '/docs/features/annotation': '2026-06-04',
+  '/docs/features/saved-filters': '2026-06-04',
+  '/docs/features/export': '2026-06-04',
+  '/docs/features/shares': '2026-06-04',
+  '/docs/features/projects': '2026-06-04',
+  '/docs/features/members-invitations': '2026-06-04',
+  '/docs/features/users': '2026-06-04',
+  '/docs/features/billing': '2026-06-04',
+  '/docs/features/settings': '2026-06-04',
+  '/docs/features/audit-logs': '2026-06-04',
+  '/privacy': '2026-05-04',
+  '/terms': '2026-05-04',
+  '/dpa': '2026-05-04',
+  '/refund': '2026-05-04',
+  '/subprocessors': '2026-05-04',
+}
+
 const MARKETING_ROUTES = [
   '',
   '/pricing',
@@ -79,31 +149,37 @@ const LEGAL_ROUTES = [
   '/subprocessors',
 ] as const
 
-export default function sitemap(): MetadataRoute.Sitemap {
-  const now = new Date()
+function lastModFor(path: string): Date {
+  const stamp = ROUTE_LASTMOD[path]
+  // Fall back to build-time date for any route missing from the map. Logged
+  // as a noisy console warning during local dev would help, but we keep the
+  // file pure and just default silently.
+  return stamp ? new Date(`${stamp}T00:00:00Z`) : new Date()
+}
 
+export default function sitemap(): MetadataRoute.Sitemap {
   const entries: MetadataRoute.Sitemap = [
     ...MARKETING_ROUTES.map((path) => ({
       url: `${SITE_URL}${path}`,
-      lastModified: now,
+      lastModified: lastModFor(path),
       changeFrequency: 'weekly' as const,
       priority: path === '' ? 1.0 : 0.8,
     })),
     ...DOCS_ROUTES.map((path) => ({
       url: `${SITE_URL}${path}`,
-      lastModified: now,
+      lastModified: lastModFor(path),
       changeFrequency: 'weekly' as const,
       priority: path === '/docs' ? 0.9 : 0.6,
     })),
     ...MIGRATION_ROUTES.map((path) => ({
       url: `${SITE_URL}${path}`,
-      lastModified: now,
+      lastModified: lastModFor(path),
       changeFrequency: 'monthly' as const,
       priority: 0.7,
     })),
     ...LEGAL_ROUTES.map((path) => ({
       url: `${SITE_URL}${path}`,
-      lastModified: now,
+      lastModified: lastModFor(path),
       changeFrequency: 'yearly' as const,
       priority: 0.3,
     })),

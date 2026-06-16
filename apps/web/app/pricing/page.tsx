@@ -4,9 +4,69 @@ import { Footer } from '@/components/layout/footer'
 import { MarketingNav } from '@/components/layout/marketing-nav'
 import { cn } from '@/lib/utils'
 
+const PRICING_DESCRIPTION =
+  'Spanlens pricing: Free (50K req/mo), Pro $29/mo (100K req, 90-day retention), Team $149/mo (1M req, 365-day retention). Open source LLM observability. Self-hostable under MIT.'
+
 export const metadata = {
   alternates: { canonical: '/pricing' },
   title: 'Pricing · Spanlens LLM Observability',
+  description: PRICING_DESCRIPTION,
+  openGraph: {
+    type: 'website',
+    title: 'Spanlens Pricing — Free, Pro $29, Team $149',
+    description: PRICING_DESCRIPTION,
+    url: '/pricing',
+    images: ['/icon.png'],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Spanlens Pricing — Free, Pro $29, Team $149',
+    description: PRICING_DESCRIPTION,
+    images: ['/icon.png'],
+  },
+}
+
+const pricingJsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'SoftwareApplication',
+  name: 'Spanlens',
+  applicationCategory: 'DeveloperApplication',
+  operatingSystem: 'Web, Linux, macOS, Windows (Docker)',
+  url: 'https://www.spanlens.io',
+  description:
+    'Open source LLM observability platform: request logging, cost tracking, agent tracing, prompt versioning. One line to integrate.',
+  offers: [
+    {
+      '@type': 'Offer',
+      name: 'Free',
+      price: '0',
+      priceCurrency: 'USD',
+      description: '50K requests/month, 1 seat, 14-day log retention, community support.',
+    },
+    {
+      '@type': 'Offer',
+      name: 'Pro',
+      price: '29',
+      priceCurrency: 'USD',
+      description:
+        '100K requests/month, 3 seats, 90-day log retention, email support. Overage $8 per 100K extra requests.',
+    },
+    {
+      '@type': 'Offer',
+      name: 'Team',
+      price: '149',
+      priceCurrency: 'USD',
+      description:
+        '1M requests/month, 10 seats, 365-day log retention, Slack + webhooks, priority support. Overage $5 per 100K extra requests.',
+    },
+    {
+      '@type': 'Offer',
+      name: 'Enterprise',
+      price: '0',
+      priceCurrency: 'USD',
+      description: 'Custom volume, SSO (SAML/Okta), dedicated SLA. Contact for pricing.',
+    },
+  ],
 }
 
 const PLANS = [
@@ -48,7 +108,7 @@ const PLANS = [
     ],
     overage: '$8 / 100K extra requests',
     cta: 'Start Pro',
-    href: '/signup?plan=starter',
+    href: '/signup?plan=pro',
     highlight: true,
   },
   {
@@ -101,6 +161,10 @@ const PLANS = [
 export default function PricingPage() {
   return (
     <div className="min-h-screen bg-bg">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(pricingJsonLd) }}
+      />
       {/* Nav */}
       <MarketingNav />
 
