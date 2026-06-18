@@ -9,7 +9,7 @@ export const metadata = {
     'Spanlens Data Processing Addendum (DPA) for customers subject to GDPR or UK GDPR. Incorporates the EU Standard Contractual Clauses (Module 2).',
 }
 
-const EFFECTIVE_DATE = '2026-05-18'
+const EFFECTIVE_DATE = '2026-06-15'
 
 export default function DPAPage() {
   return (
@@ -432,6 +432,108 @@ export default function DPAPage() {
             <strong>Competent supervisory authority (Annex I.C):</strong> the Irish
             Data Protection Commission (DPC), as the supervisory authority of the Member
             State chosen under Clause 13(a).
+          </li>
+        </ul>
+
+        <h2 id="annex-b">Annex B, Description of the Transfer (Annex I-B to the SCCs)</h2>
+        <p className="text-sm text-muted-foreground">
+          Applies where SCCs are incorporated under Section 14 of this DPA.
+        </p>
+        <ul>
+          <li>
+            <strong>Categories of data subjects:</strong> (i) the Customer&apos;s
+            personnel who hold Spanlens accounts; (ii) end users of the Customer&apos;s
+            applications whose personal data appears in LLM request bodies.
+          </li>
+          <li>
+            <strong>Categories of personal data transferred:</strong> account profile
+            (email, display name); LLM request and response bodies (which may contain
+            any personal data submitted by the Customer or its end users, truncated to
+            10 KB); telemetry (token counts, latency, cost, model identifiers);
+            security-scan match flags (masked 6-character samples only); billing
+            metadata (Paddle customer / subscription identifiers); technical logs
+            (IP address, user agent).
+          </li>
+          <li>
+            <strong>Sensitive data transferred:</strong> none requested by Spanlens.
+            If the Customer submits sensitive categories of personal data (GDPR Art. 9)
+            in LLM request bodies, the Customer is responsible for ensuring an
+            appropriate legal basis. Use the{' '}
+            <code>X-Spanlens-Log-Body: meta</code> header to suppress body storage for
+            such traffic.
+          </li>
+          <li>
+            <strong>Nature and purpose of the processing:</strong> hosting,
+            transmission, storage, and analytical processing of Customer Personal Data
+            to provide the LLM observability service; forwarding of LLM requests to
+            upstream providers designated by the Customer.
+          </li>
+          <li>
+            <strong>Duration of the transfer:</strong> ongoing for the term of the
+            Customer&apos;s account, including the post-termination retention windows
+            described in the Privacy Policy.
+          </li>
+          <li>
+            <strong>Frequency of the transfer:</strong> continuous; real-time with
+            each LLM request routed through the proxy.
+          </li>
+          <li>
+            <strong>Competent supervisory authority (Annex I.C):</strong> the Irish
+            Data Protection Commission (DPC), as set out in Annex A above.
+          </li>
+        </ul>
+
+        <h2 id="annex-c">Annex C, Technical and Organisational Measures (Annex II to the SCCs)</h2>
+        <p className="text-sm text-muted-foreground">
+          Applies where SCCs are incorporated under Section 14 of this DPA. These
+          measures supplement and are detailed in Section 7 of this DPA.
+        </p>
+        <ul>
+          <li>
+            <strong>Encryption in transit:</strong> TLS 1.2 or higher enforced on
+            all connections between clients, the Spanlens proxy / API, and all
+            subprocessors.
+          </li>
+          <li>
+            <strong>Encryption at rest:</strong> Customer-supplied LLM provider API
+            keys encrypted with AES-256-GCM; master key held in infrastructure-level
+            secret storage outside the application database. Supabase and ClickHouse
+            Cloud additionally encrypt all data at rest at the storage layer.
+          </li>
+          <li>
+            <strong>Access controls and authentication:</strong> dashboard access
+            requires an authenticated Supabase session; Row-Level Security policies
+            enforced at the database layer; service-role key restricted to server-side
+            operations only; all reads from the multi-tenant{' '}
+            <code>requests</code> table are filtered by{' '}
+            <code>organization_id</code> at the query layer, enforced by lint rules
+            and CODEOWNERS.
+          </li>
+          <li>
+            <strong>Data minimisation and pseudonymisation:</strong> upstream-provider
+            authorization headers stripped from stored request bodies; security
+            scan matches stored as 6-character masked samples only; API key hashes
+            (not raw keys) used for rate-limit counters.
+          </li>
+          <li>
+            <strong>Integrity and availability:</strong> regional redundancy and
+            automated backups via Supabase (point-in-time recovery) and ClickHouse
+            Cloud (automated snapshots).
+          </li>
+          <li>
+            <strong>Vulnerability and patch management:</strong> Dependabot monitors
+            dependency vulnerabilities; CodeQL runs static analysis on every pull
+            request; GitHub Push Protection blocks accidental secret commits.
+          </li>
+          <li>
+            <strong>Testing:</strong> automated unit test suite covering
+            multi-tenancy guarantees, webhook handlers, and billing idempotency runs
+            on every change.
+          </li>
+          <li>
+            <strong>Breach detection and response:</strong> breach notification to
+            the Customer within 72 hours of Spanlens becoming aware of a Personal
+            Data Breach, as set out in Section 11 of this DPA.
           </li>
         </ul>
 

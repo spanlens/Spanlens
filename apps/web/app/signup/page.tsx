@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { writeWorkspaceCookie } from '@/lib/workspace-cookie'
-import { TERMS_VERSION, PRIVACY_VERSION } from '@/lib/legal-versions'
+import { TERMS_VERSION, PRIVACY_VERSION, DPA_VERSION } from '@/lib/legal-versions'
 import { GithubIcon, GoogleIcon } from '@/components/ui/provider-icons'
 
 /**
@@ -30,6 +30,7 @@ async function recordSignupConsent(accessToken: string): Promise<void> {
         documents: [
           { document: 'terms', version: TERMS_VERSION },
           { document: 'privacy', version: PRIVACY_VERSION },
+          { document: 'dpa', version: DPA_VERSION },
         ],
       }),
     })
@@ -260,8 +261,10 @@ function SignupPageInner() {
               <p className="text-[11px] text-text-faint leading-snug mb-2">
                 By continuing with Google or GitHub, you agree to our{' '}
                 <Link href="/terms" target="_blank" className="text-text-muted hover:text-text transition-colors underline underline-offset-2">Terms</Link>
-                {' '}and{' '}
-                <Link href="/privacy" target="_blank" className="text-text-muted hover:text-text transition-colors underline underline-offset-2">Privacy Policy</Link>.
+                ,{' '}
+                <Link href="/privacy" target="_blank" className="text-text-muted hover:text-text transition-colors underline underline-offset-2">Privacy Policy</Link>
+                , and{' '}
+                <Link href="/dpa" target="_blank" className="text-text-muted hover:text-text transition-colors underline underline-offset-2">DPA</Link>.
               </p>
 
               {/* Divider */}
@@ -328,9 +331,11 @@ function SignupPageInner() {
                   />
                   <span className="text-[12px] text-text-muted leading-relaxed">
                     I agree to the{' '}
-                    <Link href="/terms" target="_blank" className="text-text hover:opacity-80 transition-opacity">Terms</Link>
-                    {' '}and{' '}
-                    <Link href="/privacy" target="_blank" className="text-text hover:opacity-80 transition-opacity">Privacy Policy</Link>.
+                    <Link href="/terms" target="_blank" className="text-text hover:opacity-80 transition-opacity">Terms of Service</Link>
+                    ,{' '}
+                    <Link href="/privacy" target="_blank" className="text-text hover:opacity-80 transition-opacity">Privacy Policy</Link>
+                    , and{' '}
+                    <Link href="/dpa" target="_blank" className="text-text hover:opacity-80 transition-opacity">Data Processing Addendum</Link>.
                   </span>
                 </label>
 

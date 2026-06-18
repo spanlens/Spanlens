@@ -9,7 +9,7 @@ export const metadata = {
     'The complete list of subprocessors Spanlens engages to operate the service, including data hosting locations and the purpose of each engagement.',
 }
 
-const EFFECTIVE_DATE = '2026-05-18'
+const EFFECTIVE_DATE = '2026-06-15'
 
 export default function SubprocessorsPage() {
   return (
@@ -229,6 +229,25 @@ export default function SubprocessorsPage() {
                 pre-transmission filters (<code>beforeSend</code>).
               </td>
               <td>USA (Sentry US tenant).</td>
+              <td>EU SCCs.</td>
+            </tr>
+            <tr>
+              <td>
+                <strong>Better Stack Inc.</strong>
+                <br />
+                <span className="text-xs text-muted-foreground">
+                  (San Francisco, CA, USA)
+                </span>
+              </td>
+              <td>
+                Uptime monitoring and on-call incident alerting for service
+                availability.
+              </td>
+              <td>
+                Endpoint URLs, HTTP status codes, and response times. No request
+                bodies or personal data in payloads.
+              </td>
+              <td>USA.</td>
               <td>EU SCCs.</td>
             </tr>
           </tbody>

@@ -9,7 +9,7 @@ export const metadata = {
     'How Spanlens collects, uses, and protects your data. Covers PIPA (Korea) and GDPR (EU) disclosures and your rights as a data subject.',
 }
 
-const EFFECTIVE_DATE = '2026-05-18'
+const EFFECTIVE_DATE = '2026-06-15'
 
 export default function PrivacyPage() {
   return (
@@ -40,8 +40,18 @@ export default function PrivacyPage() {
           <li><strong>E-commerce Registration Number:</strong> 2025-Gyeonggi-Gwangju-2133</li>
           <li><strong>Jurisdiction:</strong> Republic of Korea</li>
           <li>
-            <strong>Privacy Officer:</strong> Jeon Haesung ,{' '}
+            <strong>Privacy Officer:</strong> Jeon Haeseong,{' '}
             <a href="mailto:support@spanlens.io">support@spanlens.io</a>
+          </li>
+          <li>
+            <strong>EU/EEA Representative (GDPR Art. 27):</strong> Spanlens
+            processes personal data of EU/EEA residents from the Republic of
+            Korea. We are evaluating formal representative designation under
+            Art. 27 in proportion to our EU processing volume. In the interim,
+            EU/EEA residents may direct all GDPR-related inquiries directly to
+            our Privacy Officer at{' '}
+            <a href="mailto:support@spanlens.io">support@spanlens.io</a>; we
+            will respond within 30 days.
           </li>
         </ul>
 
@@ -102,7 +112,7 @@ export default function PrivacyPage() {
 
         <h3>Technical logs</h3>
         <ul>
-          <li>IP address (briefly, in network-layer logs)</li>
+          <li>IP address (retained in server logs for up to 30 days)</li>
           <li>User agent</li>
           <li>Session cookies set by our authentication provider</li>
           <li>Timestamps of login and usage</li>
@@ -237,7 +247,12 @@ export default function PrivacyPage() {
           <li>Rectification (Art. 16)</li>
           <li>Erasure / &ldquo;right to be forgotten&rdquo; (Art. 17)</li>
           <li>Restriction of processing (Art. 18)</li>
-          <li>Data portability, export in machine-readable format (Art. 20)</li>
+          <li>
+            Data portability (Art. 20) &mdash; export your request history and
+            traces from the Settings page in your dashboard, or email{' '}
+            <a href="mailto:support@spanlens.io">support@spanlens.io</a>{' '}
+            for a full account data export in JSON format.
+          </li>
           <li>Objection to processing based on legitimate interests (Art. 21)</li>
           <li>Lodging a complaint with your national Data Protection Authority</li>
         </ul>
@@ -248,12 +263,26 @@ export default function PrivacyPage() {
           to 60 days for complex requests, with notice).
         </p>
 
+        <h3>Under US state privacy laws</h3>
+        <p>
+          Spanlens does not sell your personal data or share it for cross-context
+          behavioral advertising. California residents and residents of other US states with
+          applicable privacy laws (Virginia, Colorado, Connecticut, etc.) may submit requests
+          to know, correct, delete, or opt out of any applicable data practices by emailing{' '}
+          <a href="mailto:support@spanlens.io">support@spanlens.io</a> from the address
+          associated with your account. We respond within <strong>45 days</strong>{' '}
+          (extendable by 45 days where reasonably necessary, with notice).
+        </p>
+
         <h2 id="children">9. Children&apos;s privacy</h2>
         <p>
-          Spanlens is not directed at children under 14. Korean law prohibits processing
-          personal data of children under 14 without explicit guardian consent. We do not
-          knowingly collect such data. If you believe a child has provided data to us, contact
-          us and we will delete it.
+          Spanlens is not directed at children under 14 (Korean PIPA minimum age) or under
+          16 years old &mdash; or the minimum age set by your EU Member State, which may be
+          no lower than 13 &mdash; (GDPR Art. 8). Korean law prohibits processing personal
+          data of children under 14 without explicit guardian consent; EU law requires
+          verifiable consent from a person holding parental responsibility for children below
+          the applicable national age threshold. We do not knowingly collect such data. If you
+          believe a child has provided data to us, contact us and we will delete it.
         </p>
 
         <h2 id="cookies">10. Cookies</h2>
