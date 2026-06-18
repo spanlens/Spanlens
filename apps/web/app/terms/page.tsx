@@ -9,7 +9,7 @@ export const metadata = {
     'The agreement governing your use of Spanlens. Covers accounts, billing, the 14-day refund policy, acceptable use, and liability.',
 }
 
-const EFFECTIVE_DATE = '2026-05-17'
+const EFFECTIVE_DATE = '2026-06-15'
 
 export default function TermsPage() {
   return (
@@ -192,9 +192,12 @@ export default function TermsPage() {
         <p>
           <strong>Our service remains ours.</strong> The Spanlens software, dashboard, SDK
           (<code>@spanlens/sdk</code>), CLI (<code>@spanlens/cli</code>), proxy infrastructure,
-          documentation, brand assets, and related materials are owned by Oceancode. The SDK
-          and CLI are distributed under the MIT license; the server and dashboard are
-          source-available under the terms stated in our GitHub repository.
+          documentation, brand assets, and related materials are owned by Oceancode. The
+          SDK, CLI, server, and dashboard are open-sourced under the{' '}
+          <a href="https://github.com/spanlens/Spanlens/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">MIT License</a>
+          {' '}(see{' '}
+          <a href="https://github.com/spanlens/Spanlens" target="_blank" rel="noopener noreferrer">github.com/spanlens/Spanlens</a>
+          {' '}for the full license text).
         </p>
 
         <h2 id="availability">9. Service availability</h2>

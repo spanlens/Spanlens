@@ -9,6 +9,8 @@
  * sign up will be recorded as accepting the new version.
  */
 
-export const TERMS_VERSION = '2026-05-17'
+export const TERMS_VERSION = '2026-06-15'
 
-export const PRIVACY_VERSION = '2026-05-18'
+export const PRIVACY_VERSION = '2026-06-15'
+
+export const DPA_VERSION = '2026-06-15'

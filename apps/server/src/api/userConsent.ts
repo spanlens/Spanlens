@@ -5,7 +5,7 @@ import { ApiError } from '../lib/errors.js'
 
 /**
  * /api/v1/me/consent — append-only record of the user's acceptance
- * of the Terms of Service and Privacy Policy at signup (and any
+ * of the Terms of Service, Privacy Policy, and DPA at signup (and any
  * subsequent re-acceptance prompts when those documents are revised).
  *
  *   POST /me/consent  body: { documents: [{ document, version }, ...] }
@@ -21,8 +21,8 @@ export const userConsentRouter = new Hono<JwtContext>()
 
 userConsentRouter.use('*', authJwt)
 
-type AllowedDocument = 'terms' | 'privacy'
-const ALLOWED_DOCUMENTS: readonly AllowedDocument[] = ['terms', 'privacy'] as const
+type AllowedDocument = 'terms' | 'privacy' | 'dpa'
+const ALLOWED_DOCUMENTS: readonly AllowedDocument[] = ['terms', 'privacy', 'dpa'] as const
 
 interface ConsentItem {
   document: AllowedDocument
@@ -85,7 +85,7 @@ userConsentRouter.post('/', async (c) => {
     return c.json(
       {
         error:
-          'documents must be a non-empty array of { document: "terms"|"privacy", version: string }',
+          'documents must be a non-empty array of { document: "terms"|"privacy"|"dpa", version: string }',
       },
       400,
     )
