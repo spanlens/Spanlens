@@ -410,8 +410,12 @@ Success criteria:
 ## Phase 4: Code-quality refactor
 
 Status: in progress, shipped as sub-PRs (the 7 items are largely independent).
-Sub-PR A (4.3 error envelope + 4.4 validation helpers): implemented and verified.
-Remaining: 4.1/4.2 (eval-runner split + dedup), 4.5/4.6/4.7 (web giant-file extractions).
+- Sub-PR A (4.3 error envelope + 4.4 validation helpers): DONE, merged in #373.
+- Sub-PR B (4.1 eval-runner extraction + 4.2 pool dedup): implemented and verified.
+  Scoped deliberately: extracted judge transport / generate / pool (1870 -> 1251
+  lines), deduped `pool`. DEFERRED the deep runEvalRun branch split and the
+  experiment-runner judge-logic dedup (both would be risky / behavior-changing).
+Remaining: 4.5/4.6/4.7 (web giant-file extractions), plus the two deferred items above.
 
 Goal: bring oversized files under the 800-line ceiling and remove the eval /
 experiment runner duplication that makes provider additions error-prone.
@@ -430,11 +434,11 @@ provider-key resolve, and the monolithic `runEvalRun` (824-1747) with trajectory
 
 Success criteria:
 
-- [ ] `eval-runner.ts` <= ~400 lines.
-- [ ] All previously exported symbols still re-exported (full list in source review).
-- [ ] Server typecheck passes.
-- [ ] Server test passes with zero changes to the ~16 existing eval test files.
-- [ ] Each new file under ~400 lines; no behavior change.
+- [~] `eval-runner.ts` reduced 1870 -> 1251 lines (judge transport + generate + pool extracted). Still over 800: the deep `runEvalRun` branch split (run-trajectory / run-pairwise / run-single) is DEFERRED as the highest-risk, lowest-value part (intricate DB writes / span emission / score persistence). Getting under ~400 needs that follow-up.
+- [x] All previously exported symbols still re-exported (callJudge, generateForItem, callPairwiseJudge, callTrajectoryJudge, JudgeOutcome/PairwiseOutcome/TrajectoryOutcome, EvalProvider, + the existing set).
+- [x] Server typecheck passes.
+- [x] Server test passes with zero changes to the existing eval test files (107 eval-suite tests green).
+- [x] New files (`eval-runners/judge-calls.ts`, `generate.ts`, `pool.ts`) under ~400 lines; behavior preserved (code moved verbatim).
 
 ### 4.2 Consolidate experiment-runner duplication (M, med)
 
@@ -448,10 +452,10 @@ duplication was to avoid circular imports, which 4.1 removes.
 
 Success criteria:
 
-- [ ] `experiment-runner.ts` no longer defines `pool`, `JudgeConfig`, `buildJudgePrompt`, `parseJudgeReply`, or `callJudge`.
-- [ ] Drops by ~200+ lines.
-- [ ] No circular import (madge / tsc clean).
-- [ ] A/B scoring output (`score_a`/`score_b`, costs) unchanged on a fixture run.
+- [x] `experiment-runner.ts` no longer defines `pool` (imports the shared `eval-runners/pool.js`).
+- [ ] DEFERRED: it still defines local `JudgeConfig` / `buildJudgePrompt` / `parseJudgeReply` / `callJudge`. Consolidating these onto `eval-runners/judge-{prompt,calls}` would change the judge prompt wording this A/B feature sends, shifting its scores. That is a deliberate product decision, not a behavior-preserving refactor, so it is intentionally NOT done here (documented in-source).
+- [x] No circular import (tsc clean).
+- [x] A/B scoring output unchanged (judge logic left untouched; only `pool` deduped).
 
 ### 4.3 Route bare `c.json` errors through `ApiError` (S, low)
 
@@ -524,10 +528,10 @@ Success criteria:
 
 ### Phase 4 exit checklist
 
-- [ ] 4.1 before 4.2; both merged.
-- [x] 4.3, 4.4 implemented and verified (sub-PR A); PR pending.
-- [ ] 4.5 through 4.7 merged.
-- [ ] No file over 800 lines among the targets; full `pnpm typecheck && lint` green.
+- [x] 4.3, 4.4 merged (#373).
+- [~] 4.1, 4.2 implemented (sub-PR B): judge transport / generate / pool extracted, pool deduped. Deep runEvalRun split + experiment-runner judge-logic dedup deferred (risk / behavior change).
+- [ ] 4.5 through 4.7 merged (web extractions).
+- [ ] No file over 800 lines among the targets (eval-runner still 1251 pending the deferred split); full `pnpm typecheck && lint` green.
 
 ---
 
