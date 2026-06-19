@@ -3,8 +3,8 @@
   "version": "0.0.0",
   "private": true,
   "scripts": {
-    "dev": "pnpm --parallel --filter './apps/*' dev",
-    "build": "pnpm --filter './apps/*' build",
+    "dev": "pnpm --parallel --filter \"./apps/*\" dev",
+    "build": "pnpm --filter \"./apps/*\" build",
     "typecheck": "pnpm --recursive typecheck",
     "lint": "pnpm --recursive lint",
     "test": "pnpm --recursive test",

@@ -1,4 +1,4 @@
-<!-- Generated: 2026-06-16 | Source: app.ts + vercel.json + monorepo layout -->
+<!-- Generated: 2026-06-19 | Source: app.ts + vercel.json + monorepo layout -->
 
 # Architecture Codemap
 

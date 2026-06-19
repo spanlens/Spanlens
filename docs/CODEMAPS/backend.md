@@ -1,4 +1,4 @@
-<!-- Generated: 2026-06-16 | Source: apps/server/src/{app.ts,api,lib,middleware,proxy} -->
+<!-- Generated: 2026-06-19 | Source: apps/server/src/{app.ts,api,lib,middleware,proxy} -->
 
 # Backend Codemap (apps/server)
 
@@ -27,6 +27,7 @@ Shared proxy middleware: `src/proxy/shared/` (extracted PR #320). Stream pump: `
 | Path | Router | Auth |
 |---|---|---|
 | `/me/key-info` | `api/me.ts` | authApiKey (CLI introspection) |
+| `/me/consent` | `api/userConsent.ts` | authJwt (ToS/Privacy/DPA acceptance log, IP+UA server-captured) |
 | `/organizations` | `api/organizations.ts` | authJwt |
 | `/projects` | `api/projects.ts` | authJwt |
 | `/api-keys`, `/provider-keys` | `api/{apiKeys,providerKeys}.ts` | authJwt |

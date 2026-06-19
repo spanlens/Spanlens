@@ -1,4 +1,4 @@
-<!-- Generated: 2026-06-16 | Source: supabase/{init.sql,migrations} + clickhouse/migrations -->
+<!-- Generated: 2026-06-19 | Source: supabase/{init.sql,migrations} + clickhouse/migrations -->
 
 # Data Codemap
 
@@ -42,6 +42,7 @@ Audit / housekeeping
   audit_logs, attn_dismissals, saved_filters, cron_job_runs
   pending_deletions, background_migrations, provider_key_leak_scans
   feedback, feedback_votes (R-32)
+  user_consents (append-only ToS/Privacy/DPA acceptance log — IP+UA from server)
   waitlist
 ```
 
