@@ -39,6 +39,16 @@ export type ChangelogTag =
 
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    date: '2026-06-19',
+    slug: 'customer-rate-limits',
+    title: 'Set your own rate limits, per key and per end-user',
+    tags: ['feature', 'improvement'],
+    body: [
+      'You can now set rate limits on your own Spanlens keys, projects, and end-users from the Projects page. Cap a key at N requests per minute, hour, or day, or cap an individual end-user (the value you pass via withUser or the x-spanlens-user header) so one customer cannot exhaust your budget. When a configured limit is hit the proxy returns a 429 to that caller, tagged with the scope that fired, while the rest of your traffic flows normally. It is the same per-key, per-end-user control you would otherwise build in front of a provider, available with one dashboard setting.',
+      'At the same time, our own platform throttle stopped getting in your way. The per-minute proxy ceiling is now a pure anti-runaway safeguard: going over it no longer rejects your production calls, it lets them through and flags the spike for us instead. Your plan is gated by its monthly request quota, not by a per-minute cap, so a burst of legitimate traffic will not start returning 429s. See [Proxy docs](/docs/proxy).',
+    ].join('\n\n'),
+  },
+  {
     date: '2026-06-16',
     slug: 'evals-methodology-rigor',
     title: 'Evaluations get statistical rigor and agent trajectory scoring',
