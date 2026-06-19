@@ -202,6 +202,12 @@ res = client.chat.completions.create(
         the <a href="/docs/features/requests">/requests</a> page via{' '}
         <code>?userId=</code> / <code>?sessionId=</code>.
       </p>
+      <p>
+        The same end-user ID is what{' '}
+        <a href="/docs/proxy">per-end-user rate limits</a> bucket on. Set a per-end-user
+        cap from the <a href="/projects">Projects</a> page and send{' '}
+        <code>withUser(id)</code> on each call for it to apply.
+      </p>
       <LangTabs
         ts={`import {
   createOpenAI,

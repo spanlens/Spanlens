@@ -12,6 +12,7 @@ import {
   Search,
   Trash2,
   Key as KeyIcon,
+  Gauge,
 } from 'lucide-react'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -43,6 +44,7 @@ import {
 import { cn } from '@/lib/utils'
 import { formatLastUsed } from '@/lib/api-key-staleness'
 import { StaleBadge } from '@/components/ui/stale-badge'
+import { RateLimitsDialog } from './_components/rate-limits-dialog'
 
 // Hydration-safe mounted gate, same pattern as the other overhauled pages.
 const subscribeNoop = () => () => {}
@@ -167,6 +169,8 @@ export function ProjectsClient() {
 
   // Banner shown once after a Spanlens key is created
   const [newKey, setNewKey] = useState<string | null>(null)
+  // Rate-limits dialog target (Spanlens key). null = closed.
+  const [rateLimitsKey, setRateLimitsKey] = useState<{ id: string; name: string } | null>(null)
   const [cmdCopied, setCmdCopied] = useState(false)
   const [keyCopied, setKeyCopied] = useState(false)
 
@@ -867,6 +871,13 @@ export function ProjectsClient() {
                                     </span>
                                   </div>
                                 </div>
+                                <GhostBtn
+                                  className="flex items-center gap-1.5 text-[12px] px-3 py-[5px] h-[28px] shrink-0"
+                                  onClick={() => setRateLimitsKey({ id: key.id, name: key.name })}
+                                  title="Configure rate limits for this key"
+                                >
+                                  <Gauge className="h-3.5 w-3.5" /> Rate limits
+                                </GhostBtn>
                                 <PermissionGate need="edit">
                                   <GhostBtn
                                     className="flex items-center gap-1.5 text-[12px] px-3 py-[5px] h-[28px] shrink-0"
@@ -1125,6 +1136,14 @@ export function ProjectsClient() {
           </form>
         </DialogContent>
       </Dialog>
+
+      {/* Rate limits dialog (per Spanlens key) */}
+      <RateLimitsDialog
+        apiKeyId={rateLimitsKey?.id ?? null}
+        apiKeyName={rateLimitsKey?.name ?? ''}
+        open={rateLimitsKey !== null}
+        onClose={() => setRateLimitsKey(null)}
+      />
 
       {/* Add provider key dialog */}
       <Dialog

@@ -88,6 +88,22 @@ export interface ProviderKey {
   last_scan_result?: 'clean' | 'leaked' | 'error' | null
 }
 
+/** Customer-configured rate limit (Phase 2). One per target. */
+export interface CustomerRateLimit {
+  id: string
+  target_type: 'api_key' | 'project' | 'end_user'
+  api_key_id: string | null
+  project_id: string | null
+  /** The x-spanlens-user value, for target_type='end_user'. */
+  end_user_id: string | null
+  max_requests: number
+  /** 60 (per minute), 3600 (per hour), or 86400 (per day). */
+  window_seconds: number
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
 export interface RequestRow {
   id: string
   provider: string

@@ -7,8 +7,9 @@ Scope: `apps/server`, `apps/web`, `supabase/`
 Progress:
 
 - Phase 0 (security hardening): DONE, merged in #369 (2026-06-19).
-- Phase 1 (proxy rate-limit relaxation): implemented and verified, PR pending.
-- Phases 2 through 5: not started.
+- Phase 1 (proxy rate-limit relaxation): DONE, merged in #370 (2026-06-19).
+- Phase 2 (customer-configurable rate limiting): implemented and verified, PR pending.
+- Phases 3 through 5: not started.
 
 ## Context
 
@@ -222,6 +223,9 @@ Success criteria:
 
 ## Phase 2: Customer-configurable rate limiting (new feature)
 
+Status: implemented and verified (server typecheck + lint + 1309 tests, web
+typecheck + lint + build). All six items (2.1 through 2.6) done; PR pending.
+
 Goal: let customers set rate limits on their own keys, projects, and end-users;
 enforce them in the proxy and return 429 to the customer's end-user when hit.
 This is the desired 429 (unlike our platform limit). Internal order is strict:
@@ -321,8 +325,8 @@ Success criteria:
 
 ### Phase 2 exit checklist
 
-- [ ] 2.1 through 2.6 merged in dependency order.
-- [ ] End-to-end: configure a per-key limit in the dashboard, exceed it via the proxy, observe 429 to the caller.
+- [x] 2.1 through 2.6 implemented and verified (server: typecheck + lint + 1309 tests; web: typecheck + lint + build). PR pending.
+- [ ] End-to-end against prod after merge: configure a per-key limit in the dashboard, exceed it via the proxy, observe 429 to the caller (needs the migration applied via deploy-server.yml).
 - [ ] Follow-ups filed: token/cost-based limits (needs a rolling-spend counter in the log path), per-end-user limit-hit events on the `/users` dashboard.
 
 ---
