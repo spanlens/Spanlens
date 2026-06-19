@@ -1,4 +1,4 @@
-<!-- Generated: 2026-06-16 | Source: apps/web/{app,components} -->
+<!-- Generated: 2026-06-19 | Source: apps/web/{app,components} -->
 
 # Frontend Codemap (apps/web)
 
@@ -93,6 +93,7 @@ Mutations: `useMutation` + invalidate `['key']`. Optimistic updates only on ligh
 
 - `lib/utils.ts` — `formatDate/formatDateTime/formatTime` (locale-explicit, gotcha #22-A)
 - `lib/hydration-safe-now.ts` — `useHydrationSafeNow()` (useSyncExternalStore + module cache, gotcha #22-B/C)
+- `lib/legal-versions.ts` — version constants for Privacy Policy, ToS, DPA (bumped whenever legal docs are revised; signup reads these to write `user_consents` rows)
 - `app/demo/_client-guard.tsx` — `DemoClientGuard` SSR-skip last-resort wrapper (gotcha #22-F, demo/* only — never SEO pages)
 
 ## Tests

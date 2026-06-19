@@ -14,7 +14,7 @@ keep the codebase navigable as it grows.
 3. Code comments are in **English** (legacy Korean comments are translated
    incrementally as files are touched — don't feel obligated to translate
    a whole file in a drive-by fix).
-4. Run `pnpm typecheck && pnpm lint && pnpm test` before pushing.
+4. Run `pnpm typecheck && pnpm lint && pnpm test && pnpm build` before pushing.
 5. Open a PR against `main` — the template asks for a short summary and a
    safety checklist.
 
@@ -30,6 +30,9 @@ packages/
   sdk/           TypeScript SDK (npm: @spanlens/sdk)
   sdk-python/    Python SDK (PyPI: spanlens)
   cli/           Setup wizard (npm: @spanlens/cli)
+  mcp-server/    MCP server (npm: @spanlens/mcp-server) — 7 tools for Cursor/Claude Desktop
+  api-types/     Shared types between web ↔ server (workspace internal)
+  eslint-plugin/ ESLint rules for error-envelope lint (workspace internal)
 supabase/        Migrations + seeds for the Postgres-side schema
 clickhouse/      Migrations for the request-log schema
 docs/            Architecture notes, runbooks, RFCs
@@ -168,7 +171,7 @@ The body explains **why**, not what. The diff already shows what.
 
 ### Before merging
 
-- All CI checks green.
+- All CI checks green (`pnpm typecheck && pnpm lint && pnpm test && pnpm build`).
 - Test plan filled in (the template has a "Test plan" section).
 - New environment variables documented in `.env.example` and, if needed, in
   `CLAUDE.md`.
