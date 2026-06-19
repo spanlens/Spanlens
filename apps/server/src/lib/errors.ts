@@ -54,6 +54,18 @@ export const ERROR_CODES = {
   NOT_FOUND: { status: 404, message: 'Resource not found' },
   CONFLICT: { status: 409, message: 'Resource conflict' },
 
+  // Plan / billing gate. The action is well-formed but the org's plan does not
+  // permit it (e.g. hiding the Spanlens badge, exceeding the owned-workspace
+  // limit). 402 surfaces the upgrade path more cleanly than 403 in clients
+  // that branch on status. `details` carries plan/upgrade context.
+  PAYMENT_REQUIRED: { status: 402, message: 'This action requires a higher plan' },
+
+  // A stored request body was truncated (stream deadline / size cap) and so
+  // cannot be replayed byte-for-byte. Distinct from VALIDATION_FAILED (400):
+  // the input was valid, the stored copy is just incomplete. 422 mirrors the
+  // legacy shape these replay endpoints returned.
+  BODY_NOT_REPLAYABLE: { status: 422, message: 'Stored request body was truncated and cannot be replayed' },
+
   // Rate limiting. The legacy 429 paths in rateLimit.ts and quota.ts
   // currently return their own envelope; Sprint 8 will route them through
   // this code so the SDK can switch on err.code === 'RATE_LIMIT'.

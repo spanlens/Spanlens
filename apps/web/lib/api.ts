@@ -27,6 +27,23 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * Extract a human message from a failed-response body. The server uses two
+ * shapes: the legacy `{ error: '<message>' }` (many handlers) and the unified
+ * ApiError envelope `{ error: { code, message, details, requestId } }` (the
+ * onError handler in apps/server). Handle both so an ApiError response shows
+ * its real message instead of "[object Object]".
+ */
+function extractErrorMessage(body: unknown, status: number): string {
+  const err = (body as { error?: unknown } | null | undefined)?.error
+  if (typeof err === 'string' && err.length > 0) return err
+  if (err && typeof err === 'object') {
+    const message = (err as { message?: unknown }).message
+    if (typeof message === 'string' && message.length > 0) return message
+  }
+  return `HTTP ${status}`
+}
+
 const SESSION_TTL_MS = 10_000 // 10s, well under the default 1h access-token lifetime
 
 interface CachedSession {
@@ -89,8 +106,8 @@ export async function apiGet<T>(path: string): Promise<T> {
     cache: 'no-store',
   })
   if (!res.ok) {
-    const err = (await res.json().catch(() => ({}))) as { error?: string }
-    throw new ApiError(err.error ?? `HTTP ${res.status}`, res.status)
+    const body = await res.json().catch(() => ({}))
+    throw new ApiError(extractErrorMessage(body, res.status), res.status)
   }
   return res.json() as Promise<T>
 }
@@ -102,8 +119,8 @@ export async function apiPost<T>(path: string, body?: unknown): Promise<T> {
     body: body !== undefined ? JSON.stringify(body) : null,
   })
   if (!res.ok) {
-    const err = (await res.json().catch(() => ({}))) as { error?: string }
-    throw new ApiError(err.error ?? `HTTP ${res.status}`, res.status)
+    const body = await res.json().catch(() => ({}))
+    throw new ApiError(extractErrorMessage(body, res.status), res.status)
   }
   return res.json() as Promise<T>
 }
@@ -115,8 +132,8 @@ export async function apiPatch<T>(path: string, body?: unknown): Promise<T> {
     body: body !== undefined ? JSON.stringify(body) : null,
   })
   if (!res.ok) {
-    const err = (await res.json().catch(() => ({}))) as { error?: string }
-    throw new ApiError(err.error ?? `HTTP ${res.status}`, res.status)
+    const body = await res.json().catch(() => ({}))
+    throw new ApiError(extractErrorMessage(body, res.status), res.status)
   }
   return res.json() as Promise<T>
 }
@@ -130,8 +147,8 @@ export async function apiDownload(path: string, filename: string): Promise<void>
     cache: 'no-store',
   })
   if (!res.ok) {
-    const err = (await res.json().catch(() => ({}))) as { error?: string }
-    throw new ApiError(err.error ?? `HTTP ${res.status}`, res.status)
+    const body = await res.json().catch(() => ({}))
+    throw new ApiError(extractErrorMessage(body, res.status), res.status)
   }
   const blob = await res.blob()
   const url = URL.createObjectURL(blob)
@@ -150,8 +167,8 @@ export async function apiDelete<T>(path: string): Promise<T> {
     headers: await buildHeaders(),
   })
   if (!res.ok) {
-    const err = (await res.json().catch(() => ({}))) as { error?: string }
-    throw new ApiError(err.error ?? `HTTP ${res.status}`, res.status)
+    const body = await res.json().catch(() => ({}))
+    throw new ApiError(extractErrorMessage(body, res.status), res.status)
   }
   return res.json() as Promise<T>
 }
