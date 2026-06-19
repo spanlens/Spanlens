@@ -3,6 +3,7 @@ import { authApiKey, type ApiKeyContext } from '../middleware/authApiKey.js'
 import { requireFullScope } from '../middleware/requireFullScope.js'
 import { enforceQuota } from '../middleware/quota.js'
 import { proxyRateLimit } from '../middleware/rateLimit.js'
+import { customerRateLimit } from '../middleware/customerRateLimit.js'
 import { calculateCost } from '../lib/cost.js'
 import { logRequestAsync } from '../lib/logger.js'
 import { fireAndForget } from '../lib/wait-until.js'
@@ -35,6 +36,7 @@ azureProxy.use('*', authApiKey)
 azureProxy.use('*', requireFullScope)
 azureProxy.use('*', proxyRateLimit)
 azureProxy.use('*', enforceQuota)
+azureProxy.use('*', customerRateLimit)
 
 azureProxy.all('/*', async (c) => {
   const handlerStartMs = Date.now()

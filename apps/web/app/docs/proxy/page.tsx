@@ -355,22 +355,24 @@ res, _ := client.CreateChatCompletion(ctx, openai.ChatCompletionRequest{
 
       <h2>Rate limits and response headers</h2>
       <p>
-        Every <code>/proxy/*</code> response, including the rare <code>429</code>, carries
-        four standard rate limit headers so your client can back off without guessing.
+        Spanlens applies a high per-organization per-minute ceiling on{' '}
+        <code>/proxy/*</code> purely to stop a runaway loop, not to throttle normal
+        production traffic. Going over it does <strong>not</strong> reject your request:
+        the call passes through to your provider and the response carries{' '}
+        <code>X-Spanlens-RateLimit-Overage: true</code> so you can spot the spike. Your
+        plan&apos;s monthly request quota is the limit that actually gates usage.
+      </p>
+      <p>
+        Every <code>/proxy/*</code> response carries the standard rate limit headers so a
+        client can read the current window without guessing.
       </p>
       <ul>
-        <li>
-          <code>X-RateLimit-Limit</code>, requests allowed in the current window. Default
-          is 120 per minute per Spanlens key; team and enterprise plans get higher caps.
-        </li>
-        <li>
-          <code>X-RateLimit-Remaining</code>, requests left in the current window. Drops to
-          0 right before the next 429.
-        </li>
+        <li><code>X-RateLimit-Limit</code>, requests allowed in the current window for your plan.</li>
+        <li><code>X-RateLimit-Remaining</code>, requests left in the current window.</li>
         <li>
           <code>X-RateLimit-Reset</code>, unix epoch second at which the window rolls over.
-          Use this directly in a sleep until the next minute boundary; do not parse the
-          server clock from <code>Date</code> since clock skew costs you retries.
+          Use this directly rather than parsing the server clock from <code>Date</code>,
+          since clock skew costs you retries.
         </li>
         <li>
           <code>X-RateLimit-Window</code>, the window length in seconds. Currently always{' '}
@@ -378,12 +380,36 @@ res, _ := client.CreateChatCompletion(ctx, openai.ChatCompletionRequest{
           clients that read it.
         </li>
       </ul>
+
+      <h3>Customer-configured rate limits</h3>
       <p>
-        On a <code>429</code> the response also includes <code>Retry-After: 60</code>,
-        matching the window length so a naive retry-after-sleep client still works
-        correctly. The same headers ship from <code>/api/v1/*</code> dashboard endpoints
-        with a higher per-token cap, so an SDK that mirrors the proxy logic against your
-        own API works without special casing.
+        You can set your own limits on a Spanlens key, a project, or an individual
+        end-user from the <a href="/projects">Projects</a> page. Unlike the platform
+        ceiling above, exceeding one of your own limits <strong>does</strong> return a{' '}
+        <code>429</code> to the caller, because you configured it precisely to throttle
+        that traffic. The error body identifies which limit fired:
+      </p>
+      <CodeBlock>{`{
+  "error": {
+    "code": "RATE_LIMIT",
+    "message": "Customer-configured rate limit exceeded (end_user): 60 requests per 60s.",
+    "details": {
+      "source": "customer_limit",
+      "scope": "end_user",
+      "limit": 60,
+      "window_seconds": 60,
+      "end_user_id": "user_123"
+    }
+  }
+}`}</CodeBlock>
+      <p>
+        The response also carries <code>Retry-After</code> (the window length in seconds)
+        and <code>X-Spanlens-RateLimit-Scope</code> (<code>api_key</code>,{' '}
+        <code>project</code>, or <code>end_user</code>). A <code>customer_limit</code> 429
+        never includes an upgrade link, which is how you tell it apart from a platform or
+        plan limit. Per-end-user limits bucket on the{' '}
+        <code>X-Spanlens-User</code> header, so send it (the SDK{' '}
+        <a href="/docs/sdk">withUser()</a> helper does this) for those limits to apply.
       </p>
 
       <h2>Self-hosting</h2>

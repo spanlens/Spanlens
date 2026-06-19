@@ -53,6 +53,7 @@ import { webhooksRouter }      from './api/webhooks.js'
 import { exportsRouter }       from './api/exports.js'
 import { openapiRouter }       from './api/openapi.js'
 import { providerKeysRouter }  from './api/providerKeys.js'
+import { rateLimitsRouter }    from './api/rateLimits.js'
 import { frontendErrorsRouter } from './api/frontendErrors.js'
 import { meRouter }            from './api/me.js'
 import { meRoleRouter }        from './api/meRole.js'
@@ -189,6 +190,7 @@ app.route('/api/v1/organizations',  organizationsRouter)
 app.route('/api/v1/projects',       projectsRouter)
 app.route('/api/v1/api-keys',       apiKeysRouter)
 app.route('/api/v1/provider-keys',  providerKeysRouter)
+app.route('/api/v1/rate-limits',    rateLimitsRouter)
 app.route('/api/v1/requests',       requestsRouter)
 app.route('/api/v1/users',          usersRouter)
 app.route('/api/v1/sessions',       sessionsRouter)
