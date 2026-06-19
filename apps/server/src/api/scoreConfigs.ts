@@ -6,6 +6,11 @@ import {
   parseCategories,
   validateScoreConfigShape,
 } from '../lib/score-validation.js'
+import {
+  normaliseString,
+  normaliseNullableString,
+  normaliseNullableNumber,
+} from '../lib/validation-helpers.js'
 import { ApiError } from '../lib/errors.js'
 
 /**
@@ -38,21 +43,6 @@ interface ScoreConfigBody {
 }
 
 const ALLOWED_TYPES = ['NUMERIC', 'CATEGORICAL', 'BOOLEAN', 'TEXT'] as const
-
-function normaliseString(value: unknown): string {
-  return typeof value === 'string' ? value.trim() : ''
-}
-
-function normaliseNullableString(value: unknown): string | null {
-  const s = normaliseString(value)
-  return s.length === 0 ? null : s
-}
-
-function normaliseNullableNumber(value: unknown): number | null {
-  if (value === null || value === undefined) return null
-  const n = typeof value === 'number' ? value : Number(value)
-  return Number.isFinite(n) ? n : null
-}
 
 // GET /api/v1/score-configs — active configs for the org, newest first
 scoreConfigsRouter.get('/', async (c) => {

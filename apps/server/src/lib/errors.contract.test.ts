@@ -49,6 +49,8 @@ describe('error contract: server ERROR_CODES ↔ @spanlens/api-types KnownApiErr
       'BAD_REQUEST',
       'NOT_FOUND',
       'CONFLICT',
+      'PAYMENT_REQUIRED',
+      'BODY_NOT_REPLAYABLE',
       'RATE_LIMIT',
       'INJECTION_BLOCKED',
       'DECRYPT_FAILED',

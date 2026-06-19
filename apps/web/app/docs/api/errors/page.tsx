@@ -94,7 +94,19 @@ const ERROR_CATALOG_ROWS: CatalogRow[] = [
     code: 'RATE_LIMIT',
     status: 429,
     description:
-      'Per-key rate limit exceeded. The Retry-After header and X-RateLimit-* headers carry the remaining quota and reset time. Back off and retry.',
+      'Per-key rate limit exceeded. The Retry-After header and X-RateLimit-* headers carry the remaining quota and reset time. Back off and retry. When details.source is "customer_limit" this is a limit you configured (see the proxy docs), not a Spanlens plan limit.',
+  },
+  {
+    code: 'PAYMENT_REQUIRED',
+    status: 402,
+    description:
+      'The action is well-formed but your plan does not permit it (for example hiding the Spanlens badge or exceeding the owned-workspace limit). The details object carries the plan and upgrade context.',
+  },
+  {
+    code: 'BODY_NOT_REPLAYABLE',
+    status: 422,
+    description:
+      'The stored request body was truncated (stream deadline or size cap) so it cannot be replayed byte-for-byte. The original input was valid; re-send the request manually from your application.',
   },
   {
     code: 'INJECTION_BLOCKED',
