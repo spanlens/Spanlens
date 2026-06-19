@@ -84,6 +84,8 @@ interface RequestRowLike {
   response_flags?: string
   has_security_flags?: boolean
   truncated?: number
+  /** Resolved in logger.ts (from promptVersionId or the raw header), threaded through. */
+  prompt_version_id?: string | null
 }
 
 /**
@@ -158,7 +160,7 @@ export async function writeRequestAsEvent(
     metadata,
     user_id: data.userId ?? null,
     session_id: data.sessionId ?? null,
-    prompt_version_id: data.promptVersionId ?? null,
+    prompt_version_id: requestRow.prompt_version_id ?? data.promptVersionId ?? null,
     provider_key_id: data.providerKeyId ?? null,
     flags: flagsValue,
     response_flags: responseFlagsValue,

@@ -48,10 +48,13 @@ mistralProxy.all('/*', async (c) => {
   const projectId = c.get('projectId') as string
   const apiKeyId = c.get('apiKeyId')
 
-  const providerKey = await assertProviderKey(apiKeyId, 'mistral')
-  // stream_options.include_usage is OpenAI-only — Mistral always emits usage
-  // in the final SSE chunk regardless of any flag, so no injection needed.
-  const parsed = await parseProxyRequestBody(c)
+  // Provider-key lookup and body parse are independent — run concurrently.
+  const [providerKey, parsed] = await Promise.all([
+    assertProviderKey(apiKeyId, 'mistral'),
+    // stream_options.include_usage is OpenAI-only — Mistral always emits usage
+    // in the final SSE chunk regardless of any flag, so no injection needed.
+    parseProxyRequestBody(c),
+  ])
   const requestFlags = await runSecurityGate(parsed.reqBodyJson, projectId)
 
   const upstreamUrl = `${MISTRAL_BASE}${c.req.path.replace(/^\/proxy\/mistral/, '')}`
@@ -69,7 +72,7 @@ mistralProxy.all('/*', async (c) => {
     handlerStartMs,
   })
 
-  const logBase = await buildLogBase({
+  const logBase = buildLogBase({
     c, provider: 'mistral',
     organizationId, projectId, apiKeyId,
     providerKey,

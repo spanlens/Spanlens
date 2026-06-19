@@ -1,5 +1,6 @@
 import { supabaseAdmin } from './db.js'
 import { unscopedClickhouse } from './clickhouse.js'
+import { evaluateQuotaPolicy } from './quota-policy.js'
 
 /**
  * Monthly request quota per plan tier. Checked in the proxy middleware
@@ -184,6 +185,102 @@ export interface QuotaCheckResult {
   capMultiplier: number
 }
 
+// ---------------------------------------------------------------------------
+// Hot-path caches (P3.1). enforceQuota runs checkMonthlyQuota on EVERY /proxy/*
+// request; uncached it cost one Supabase SELECT + one full-month ClickHouse
+// count() scan per request. Both are now cached per org with a short TTL +
+// in-flight coalescing (same pattern as getOrgPlan in requests-query.ts).
+//
+// Trade-off: the monthly count can lag real traffic by up to COUNT_TTL_MS. The
+// quota band tolerates this — the free-tier block is a soft monetization gate,
+// not a security boundary, and BYOK means overage past the boundary costs us
+// nothing. Billing/overage accounting uses countMonthlyRequests directly
+// (paddle-usage.ts, quota-warnings.ts), NOT this cache, so it is unaffected.
+// A future refinement (an in-memory counter incremented from logRequestAsync)
+// could make the cached count exact between refreshes; deferred as higher-risk.
+// ---------------------------------------------------------------------------
+
+interface CachedQuotaSettings {
+  plan: Plan
+  allowOverage: boolean
+  capMultiplier: number
+  expiresAt: number
+}
+const SETTINGS_TTL_MS = 30 * 1000
+const settingsCache = new Map<string, CachedQuotaSettings>()
+const settingsInflight = new Map<string, Promise<CachedQuotaSettings>>()
+
+async function getOrgQuotaSettings(organizationId: string): Promise<CachedQuotaSettings> {
+  const cached = settingsCache.get(organizationId)
+  if (cached && cached.expiresAt > Date.now()) return cached
+  const existing = settingsInflight.get(organizationId)
+  if (existing) return existing
+
+  const fetchPromise = (async (): Promise<CachedQuotaSettings> => {
+    try {
+      const { data: org } = await supabaseAdmin
+        .from('organizations')
+        .select('plan, allow_overage, overage_cap_multiplier')
+        .eq('id', organizationId)
+        .single()
+      const settings: CachedQuotaSettings = {
+        plan: ((org?.plan as Plan) ?? 'free') as Plan,
+        allowOverage: (org?.allow_overage as boolean | undefined) ?? true,
+        capMultiplier: (org?.overage_cap_multiplier as number | undefined) ?? 5,
+        expiresAt: Date.now() + SETTINGS_TTL_MS,
+      }
+      settingsCache.set(organizationId, settings)
+      return settings
+    } finally {
+      settingsInflight.delete(organizationId)
+    }
+  })()
+  settingsInflight.set(organizationId, fetchPromise)
+  return fetchPromise
+}
+
+interface CachedMonthCount {
+  count: number
+  monthKey: string
+  expiresAt: number
+}
+const COUNT_TTL_MS = 10 * 1000
+const countCache = new Map<string, CachedMonthCount>()
+const countInflight = new Map<string, Promise<number>>()
+
+async function getCachedMonthlyCount(
+  organizationId: string,
+  monthStart: Date,
+): Promise<number> {
+  const monthKey = monthStart.toISOString().slice(0, 7) // YYYY-MM
+  const cached = countCache.get(organizationId)
+  if (cached && cached.monthKey === monthKey && cached.expiresAt > Date.now()) {
+    return cached.count
+  }
+  const existing = countInflight.get(organizationId)
+  if (existing) return existing
+
+  const fetchPromise = (async (): Promise<number> => {
+    try {
+      const count = await countMonthlyRequests(organizationId, monthStart)
+      countCache.set(organizationId, { count, monthKey, expiresAt: Date.now() + COUNT_TTL_MS })
+      return count
+    } finally {
+      countInflight.delete(organizationId)
+    }
+  })()
+  countInflight.set(organizationId, fetchPromise)
+  return fetchPromise
+}
+
+/** Test/escape hatch — flush the quota hot-path caches. */
+export function resetQuotaCaches(): void {
+  settingsCache.clear()
+  settingsInflight.clear()
+  countCache.clear()
+  countInflight.clear()
+}
+
 /**
  * Counts this org's requests in the current UTC calendar month and applies
  * the Pattern C quota policy (see lib/quota-policy.ts).
@@ -193,20 +290,14 @@ export interface QuotaCheckResult {
  *   - api/billing.ts            — exposes current quota state to the dashboard
  *   - lib/quota-warnings.ts     — iterates active orgs to send 80/100% emails
  *
- * Falls back to 'free' + conservative defaults on any lookup failure.
+ * Org settings + the month count are cached per org (short TTL) so the proxy
+ * hot path does not hit Supabase + ClickHouse on every request. Falls back to
+ * 'free' + conservative defaults on any lookup failure.
  */
 export async function checkMonthlyQuota(
   organizationId: string,
 ): Promise<QuotaCheckResult> {
-  const { data: org } = await supabaseAdmin
-    .from('organizations')
-    .select('plan, allow_overage, overage_cap_multiplier')
-    .eq('id', organizationId)
-    .single()
-
-  const plan = ((org?.plan as Plan) ?? 'free') as Plan
-  const allowOverage = (org?.allow_overage as boolean | undefined) ?? true
-  const capMultiplier = (org?.overage_cap_multiplier as number | undefined) ?? 5
+  const { plan, allowOverage, capMultiplier } = await getOrgQuotaSettings(organizationId)
 
   const limit = MONTHLY_REQUEST_LIMITS[plan]
   if (limit === null) {
@@ -226,10 +317,9 @@ export async function checkMonthlyQuota(
 
   // Billing accuracy: count the full UTC month, bypassing plan retention.
   // Free's 14-day window would otherwise undercount usage past day 14.
-  const used = await countMonthlyRequests(organizationId, monthStart)
+  const used = await getCachedMonthlyCount(organizationId, monthStart)
 
   // Apply Pattern C policy
-  const { evaluateQuotaPolicy } = await import('./quota-policy.js')
   const decision = evaluateQuotaPolicy({
     used,
     limit,
