@@ -8,8 +8,9 @@ Progress:
 
 - Phase 0 (security hardening): DONE, merged in #369 (2026-06-19).
 - Phase 1 (proxy rate-limit relaxation): DONE, merged in #370 (2026-06-19).
-- Phase 2 (customer-configurable rate limiting): implemented and verified, PR pending.
-- Phases 3 through 5: not started.
+- Phase 2 (customer-configurable rate limiting): DONE, merged in #371 (2026-06-19); prod migration applied.
+- Phase 3 (proxy hot-path performance): implemented and verified, PR pending.
+- Phases 4 through 5: not started.
 
 ## Context
 
@@ -223,8 +224,8 @@ Success criteria:
 
 ## Phase 2: Customer-configurable rate limiting (new feature)
 
-Status: implemented and verified (server typecheck + lint + 1309 tests, web
-typecheck + lint + build). All six items (2.1 through 2.6) done; PR pending.
+Status: DONE, merged in #371 (2026-06-19). Prod migration applied via
+deploy-server.yml. All six items (2.1 through 2.6) shipped.
 
 Goal: let customers set rate limits on their own keys, projects, and end-users;
 enforce them in the proxy and return 429 to the customer's end-user when hit.
@@ -333,6 +334,11 @@ Success criteria:
 
 ## Phase 3: Proxy hot-path performance
 
+Status: implemented and verified (server typecheck + lint + 1314 tests). All
+three items done; PR pending. Deviation: 3.1 shipped the lower-risk variant
+(short-TTL count cache + coalescing, no logger.ts increment hook). The in-memory
+increment refinement is deferred as higher-risk and not needed for the core win.
+
 Goal: remove per-request blocking work from the proxy critical path. Sequence
 3.2 before 3.3 (same 6 files); 3.1 is independent.
 
@@ -392,8 +398,11 @@ Success criteria:
 
 ### Phase 3 exit checklist
 
-- [ ] 3.1 through 3.3 merged (3.2 first, then 3.3, 3.1 any time).
-- [ ] `proxy_overhead_ms` p95 measured before/after, improvement recorded.
+- [x] 3.1 through 3.3 implemented and verified (typecheck + lint + 1314 tests). PR pending.
+- [x] 3.2 (parallel pre-fetch) all 6 proxies use one `Promise.all` before `runSecurityGate`; azure resource_url guard relocated after it.
+- [x] 3.3 (prompt-version deferral) `buildLogBase` is sync; resolution moved into `logRequestAsync` (runs after response handoff). New test asserts the logged row still carries the resolved id.
+- [x] 3.1 (quota cache) warm-cache `/proxy/*` issues zero Supabase SELECT + zero ClickHouse count() from the quota path; dynamic import removed; `middleware-quota.test.ts` + `overage-charge-flow.test.ts` unchanged and green.
+- [ ] `proxy_overhead_ms` p95 measured before/after in prod, improvement recorded (post-merge).
 
 ---
 

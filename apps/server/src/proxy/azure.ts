@@ -44,7 +44,12 @@ azureProxy.all('/*', async (c) => {
   const projectId = c.get('projectId') as string
   const apiKeyId = c.get('apiKeyId')
 
-  const providerKey = await assertProviderKey(apiKeyId, 'azure')
+  // Provider-key lookup and body parse are independent — run concurrently.
+  // The resource_url guard reads providerKey.metadata, so it runs after.
+  const [providerKey, parsed] = await Promise.all([
+    assertProviderKey(apiKeyId, 'azure'),
+    parseProxyRequestBody(c, { injectOpenAIStreamOptions: true }),
+  ])
 
   // resource_url is enforced NOT NULL at the DB layer for 'azure' rows
   // (provider_keys_azure_requires_resource_url CHECK constraint).
@@ -57,7 +62,6 @@ azureProxy.all('/*', async (c) => {
     throw new ApiError('INTERNAL_ERROR', 'Azure provider key is missing resource_url — re-register it')
   }
 
-  const parsed = await parseProxyRequestBody(c, { injectOpenAIStreamOptions: true })
   const requestFlags = await runSecurityGate(parsed.reqBodyJson, projectId)
 
   const upstreamUrl = `${resourceUrl}/openai/v1${c.req.path.replace(/^\/proxy\/azure/, '')}`
@@ -78,7 +82,7 @@ azureProxy.all('/*', async (c) => {
     handlerStartMs,
   })
 
-  const logBase = await buildLogBase({
+  const logBase = buildLogBase({
     c, provider: 'azure',
     organizationId, projectId, apiKeyId,
     providerKey,

@@ -34,10 +34,13 @@ geminiProxy.all('/*', async (c) => {
   const projectId = c.get('projectId') as string
   const apiKeyId = c.get('apiKeyId')
 
-  const providerKey = await assertProviderKey(apiKeyId, 'gemini')
-  // Gemini's body stays untransformed; isStreaming is decided by the URL
-  // path (`:streamGenerateContent`), not the body's `stream` flag.
-  const parsed = await parseProxyRequestBody(c)
+  // Provider-key lookup and body parse are independent — run concurrently.
+  const [providerKey, parsed] = await Promise.all([
+    assertProviderKey(apiKeyId, 'gemini'),
+    // Gemini's body stays untransformed; isStreaming is decided by the URL
+    // path (`:streamGenerateContent`), not the body's `stream` flag.
+    parseProxyRequestBody(c),
+  ])
 
   // Build the upstream URL with our decrypted key in `?key=` (the caller's
   // ?key= is OVERWRITTEN — a customer can't smuggle their own credential).
@@ -72,7 +75,7 @@ geminiProxy.all('/*', async (c) => {
   const modelMatch = /\/models\/([^/:]+)/.exec(originalPath)
   const isStreaming = /:streamGenerateContent/.test(originalPath)
 
-  const logBase = await buildLogBase({
+  const logBase = buildLogBase({
     c, provider: 'gemini',
     organizationId, projectId, apiKeyId,
     providerKey,

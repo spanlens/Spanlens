@@ -34,9 +34,12 @@ anthropicProxy.all('/*', async (c) => {
   const projectId = c.get('projectId') as string
   const apiKeyId = c.get('apiKeyId')
 
-  const providerKey = await assertProviderKey(apiKeyId, 'anthropic')
-  // Anthropic stream usage is in message_delta — no stream_options injection needed.
-  const parsed = await parseProxyRequestBody(c)
+  // Provider-key lookup and body parse are independent — run concurrently.
+  const [providerKey, parsed] = await Promise.all([
+    assertProviderKey(apiKeyId, 'anthropic'),
+    // Anthropic stream usage is in message_delta — no stream_options injection needed.
+    parseProxyRequestBody(c),
+  ])
   const requestFlags = await runSecurityGate(parsed.reqBodyJson, projectId)
 
   const upstreamUrl = `${ANTHROPIC_BASE}${c.req.path.replace(/^\/proxy\/anthropic/, '')}`
@@ -58,7 +61,7 @@ anthropicProxy.all('/*', async (c) => {
     handlerStartMs,
   })
 
-  const logBase = await buildLogBase({
+  const logBase = buildLogBase({
     c, provider: 'anthropic',
     organizationId, projectId, apiKeyId,
     providerKey,
