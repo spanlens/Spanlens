@@ -1,4 +1,5 @@
 import { unscopedClickhouse } from './clickhouse.js'
+import { requestsScope } from './requests-query.js'
 
 /**
  * Anomaly detection over recent `requests` rows.
@@ -161,8 +162,13 @@ export async function detectAnomalies(
   const obsStart = fmtTs(new Date(now - observationHours * 3_600_000).toISOString())
   const refStart = fmtTs(new Date(now - referenceHours  * 3_600_000).toISOString())
 
+  // Org isolation + plan retention (free=14d / pro=90d / team=365d). The
+  // retention bound is enforced in addition to refStart, so a caller-supplied
+  // referenceHours larger than the org's retention can never read past it
+  // (gotcha #3 — every `requests` read must go through requestsScope).
+  const { whereScope, scopeParams } = await requestsScope(organizationId)
   const params: Record<string, unknown> = {
-    orgId: organizationId,
+    ...scopeParams,
     obsStart,
     refStart,
   }
@@ -196,7 +202,7 @@ export async function detectAnomalies(
       stddevSampIf(if(status_code >= 400, 1.0, 0.0),created_at <  parseDateTime64BestEffort({obsStart:String})) AS ref_error_stddev,
       countIf(                                       created_at <  parseDateTime64BestEffort({obsStart:String})) AS ref_all_count
     FROM requests
-    WHERE organization_id = {orgId:UUID}
+    WHERE ${whereScope}
       AND created_at >= parseDateTime64BestEffort({refStart:String})${projectClause}
     GROUP BY provider, model
     HAVING obs_all_count > 0 OR ref_all_count > 0`
@@ -353,8 +359,10 @@ export async function fetchContributingFactors(
 ): Promise<AnomalyContributingFactors | null> {
   const obsTs = fmtTs(obsStart)
   const refTs = fmtTs(refStart)
+  // Same org + retention scoping as detectAnomalies (gotcha #3).
+  const { whereScope, scopeParams } = await requestsScope(organizationId)
   const baseParams: Record<string, unknown> = {
-    orgId: organizationId,
+    ...scopeParams,
     provider,
     model,
     obsStart: obsTs,
@@ -375,7 +383,7 @@ export async function fetchContributingFactors(
       avgIf(total_tokens,      created_at >= parseDateTime64BestEffort({obsStart:String})) AS obs_total_tokens_mean,
       avgIf(total_tokens,      created_at <  parseDateTime64BestEffort({obsStart:String})) AS ref_total_tokens_mean
     FROM requests
-    WHERE organization_id = {orgId:UUID}
+    WHERE ${whereScope}
       AND provider = {provider:String}
       AND model    = {model:String}
       AND created_at >= parseDateTime64BestEffort({refStart:String})${projectClause}`
@@ -383,7 +391,7 @@ export async function fetchContributingFactors(
   const errorsSql = `
     SELECT status_code AS code, count() AS cnt
     FROM requests
-    WHERE organization_id = {orgId:UUID}
+    WHERE ${whereScope}
       AND provider = {provider:String}
       AND model    = {model:String}
       AND created_at >= parseDateTime64BestEffort({obsStart:String})

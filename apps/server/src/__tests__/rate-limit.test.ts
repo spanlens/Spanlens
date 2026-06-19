@@ -173,10 +173,27 @@ describe('checkRateLimit', () => {
       expect(await checkRateLimit('proxy:any', 60)).toBe(true)
       expect(slidingWindowCalls).toHaveLength(0)
     })
+
+    it('warns exactly once across many calls (no per-request spam)', async () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const { checkRateLimit } = await freshRateLimit({
+        KV_REST_API_URL: undefined,
+        KV_REST_API_TOKEN: undefined,
+      })
+
+      await checkRateLimit('proxy:a', 60)
+      await checkRateLimit('proxy:b', 60)
+      await checkRateLimit('proxy:c', 60)
+
+      const backendDownWarns = warnSpy.mock.calls.filter((args) =>
+        String(args[0]).includes('RATE_LIMIT_BACKEND_DOWN'),
+      )
+      expect(backendDownWarns).toHaveLength(1)
+    })
   })
 
   describe('Redis configured but throws at runtime (KV down)', () => {
-    it('fails open with a console.error and returns true', async () => {
+    it('fails open and emits the stable RATE_LIMIT_BACKEND_DOWN code', async () => {
       const errSpy = vi
         .spyOn(console, 'error')
         .mockImplementation(() => {})
@@ -190,10 +207,10 @@ describe('checkRateLimit', () => {
       const allowed = await checkRateLimit('proxy:org-1', 60)
 
       expect(allowed).toBe(true)
-      expect(errSpy).toHaveBeenCalledWith(
-        '[rate-limit] Redis error — failing open:',
-        expect.any(Error),
-      )
+      // logError emits one structured line prefixed with the stable code so
+      // Sentry / the log drain can alert on it (was a free-form string before).
+      expect(errSpy).toHaveBeenCalledTimes(1)
+      expect(String(errSpy.mock.calls[0]![0])).toContain('RATE_LIMIT_BACKEND_DOWN')
     })
 
     it('subsequent successful calls still work after a transient error', async () => {

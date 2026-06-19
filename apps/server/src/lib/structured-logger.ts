@@ -38,6 +38,8 @@ export type LogCode =
   | 'WEBHOOK_FETCH_FAILED'
   // proxy upstream
   | 'UPSTREAM_FETCH_FAILED'
+  // rate limiting backend (Redis/Upstash) unavailable — fail-open is in effect
+  | 'RATE_LIMIT_BACKEND_DOWN'
   // Paddle billing
   | 'PADDLE_WEBHOOK_FAILED'
   | 'PADDLE_API_FAILED'
