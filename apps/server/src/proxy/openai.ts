@@ -15,6 +15,7 @@ import { runSecurityGate } from './shared/security-gate.js'
 import { fetchUpstreamWithTimeout } from './shared/upstream-fetch.js'
 import { buildLogBase } from './shared/log-base.js'
 import { runLineBufferedStreamPump } from './shared/stream-pump.js'
+import { assertSafeProxyBase } from './shared/validate-base.js'
 
 // Overridable so E2E (apps/web/__e2e__/smoke.spec.ts via docker-compose
 // dev mock-openai) can point this at http://localhost:4000 without hitting
@@ -25,6 +26,7 @@ import { runLineBufferedStreamPump } from './shared/stream-pump.js'
 const OPENAI_BASE = (
   process.env['OPENAI_API_BASE'] ?? 'https://api.openai.com'
 ).replace(/\/v1\/?$/, '')
+assertSafeProxyBase('OPENAI_API_BASE', OPENAI_BASE)
 
 export const openaiProxy = new Hono<ApiKeyContext>()
 

@@ -15,6 +15,7 @@ import { runSecurityGate } from './shared/security-gate.js'
 import { fetchUpstreamWithTimeout } from './shared/upstream-fetch.js'
 import { buildLogBase } from './shared/log-base.js'
 import { runLineBufferedStreamPump } from './shared/stream-pump.js'
+import { assertSafeProxyBase } from './shared/validate-base.js'
 
 // Mistral's public API. Their chat completion endpoint is OpenAI-compatible
 // down to the request and response shape, the SSE chunk format, and the
@@ -28,6 +29,7 @@ import { runLineBufferedStreamPump } from './shared/stream-pump.js'
 const MISTRAL_BASE = (
   process.env['MISTRAL_API_BASE'] ?? 'https://api.mistral.ai'
 ).replace(/\/v1\/?$/, '')
+assertSafeProxyBase('MISTRAL_API_BASE', MISTRAL_BASE)
 
 export const mistralProxy = new Hono<ApiKeyContext>()
 

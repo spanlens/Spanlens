@@ -1,6 +1,7 @@
 import { Redis } from '@upstash/redis'
 import { Ratelimit } from '@upstash/ratelimit'
 import type { Plan } from './quota.js'
+import { logError, logWarn } from './structured-logger.js'
 
 /**
  * Per-minute proxy ingestion limits keyed by plan.
@@ -70,6 +71,11 @@ function getLimiter(limit: number): Ratelimit | null {
 // Public API
 // ---------------------------------------------------------------------------
 
+// Module-level guard so a misconfigured prod (missing KV env vars) warns ONCE
+// rather than on every request. Reset implicitly per process / per test
+// (vi.resetModules drops this module's state).
+let _unconfiguredWarned = false
+
 /**
  * Checks whether `key` is within the sliding-window rate limit.
  *
@@ -77,9 +83,15 @@ function getLimiter(limit: number): Ratelimit | null {
  *   - the request is within the limit
  *   - Redis is not configured (fails open — transient misconfiguration
  *     should never block legitimate traffic)
- *   - any Redis error occurs (fails open with a console warning)
+ *   - any Redis error occurs (fails open)
  *
  * Returns false (deny) only when the limit is positively exceeded.
+ *
+ * Fail-open is RETAINED on both backend-down paths (a Redis outage must never
+ * block legitimate traffic), but both are now emitted with the stable,
+ * alertable `RATE_LIMIT_BACKEND_DOWN` code so a silent outage is visible in
+ * the log drain / Sentry instead of disappearing. No in-process fallback
+ * counter is added here — see docs/plans/platform-review-roadmap-2026-06.md.
  */
 export async function checkRateLimit(
   key: string,
@@ -88,7 +100,13 @@ export async function checkRateLimit(
   const limiter = getLimiter(limit)
 
   if (!limiter) {
-    // Redis not configured — fail open (dev / misconfigured prod)
+    // Redis not configured — fail open (dev / misconfigured prod). Warn once
+    // so a prod deploy missing KV_REST_API_URL/TOKEN does not silently
+    // disable ALL rate limiting with zero signal.
+    if (!_unconfiguredWarned) {
+      _unconfiguredWarned = true
+      logWarn('RATE_LIMIT_BACKEND_DOWN', { kind: 'redis_unconfigured' })
+    }
     return true
   }
 
@@ -96,7 +114,9 @@ export async function checkRateLimit(
     const { success } = await limiter.limit(key)
     return success
   } catch (err) {
-    console.error('[rate-limit] Redis error — failing open:', err)
+    // Transient Redis error — fail open, but with a stable code (was a
+    // free-form console.error before, which Sentry could not alert on).
+    logError('RATE_LIMIT_BACKEND_DOWN', { kind: 'redis_error', key }, err)
     return true
   }
 }
