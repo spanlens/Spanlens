@@ -9,7 +9,6 @@
 
 import type { Context } from 'hono'
 import { parseLogBodyMode } from '../../lib/logger.js'
-import { resolvePromptVersion } from '../../lib/resolve-prompt-version.js'
 import type { SecurityFlag } from '../../lib/security-scan.js'
 import type { ResolvedProviderKey } from '../utils.js'
 import type { ProxyProvider } from './provider-key.js'
@@ -28,6 +27,14 @@ export interface ProxyLogBase {
   traceId: string | null
   spanId: string | null
   promptVersionId: string | null
+  /**
+   * Raw X-Spanlens-Prompt-Version header, resolved to promptVersionId later
+   * inside logRequestAsync (off the response-critical path). buildLogBase no
+   * longer resolves it: on a cold prompt cache the resolve does 1-2 Supabase
+   * queries, and doing that here delayed time-to-first-token on streaming
+   * requests even though the id is only needed for the deferred log write.
+   */
+  promptVersionHeader: string | null
   providerKeyId: string
   userId: string | null
   sessionId: string | null
@@ -49,13 +56,8 @@ export interface BuildLogBaseInput {
   statusCode: number
 }
 
-export async function buildLogBase(input: BuildLogBaseInput): Promise<ProxyLogBase> {
+export function buildLogBase(input: BuildLogBaseInput): ProxyLogBase {
   const traceId = input.c.req.header('x-trace-id') ?? null
-  const resolved = await resolvePromptVersion(
-    input.organizationId,
-    input.c.req.header('x-spanlens-prompt-version') ?? null,
-    traceId,
-  )
   return {
     organizationId: input.organizationId,
     projectId: input.projectId,
@@ -69,7 +71,8 @@ export async function buildLogBase(input: BuildLogBaseInput): Promise<ProxyLogBa
     errorMessage: null,
     traceId,
     spanId: input.c.req.header('x-span-id') ?? null,
-    promptVersionId: resolved?.versionId ?? null,
+    promptVersionId: null,
+    promptVersionHeader: input.c.req.header('x-spanlens-prompt-version') ?? null,
     providerKeyId: input.providerKey.id,
     userId: input.c.req.header('x-spanlens-user') ?? null,
     sessionId: input.c.req.header('x-spanlens-session') ?? null,

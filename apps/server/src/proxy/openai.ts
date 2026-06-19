@@ -45,8 +45,13 @@ openaiProxy.all('/*', async (c) => {
   const projectId = c.get('projectId') as string
   const apiKeyId = c.get('apiKeyId')
 
-  const providerKey = await assertProviderKey(apiKeyId, 'openai')
-  const parsed = await parseProxyRequestBody(c, { injectOpenAIStreamOptions: true })
+  // The provider-key lookup (DB + decrypt) and the body read/parse are
+  // independent — run them concurrently to shave one round-trip off the
+  // pre-fetch critical path. runSecurityGate depends on parsed, so it stays after.
+  const [providerKey, parsed] = await Promise.all([
+    assertProviderKey(apiKeyId, 'openai'),
+    parseProxyRequestBody(c, { injectOpenAIStreamOptions: true }),
+  ])
   const requestFlags = await runSecurityGate(parsed.reqBodyJson, projectId)
 
   const upstreamUrl = `${OPENAI_BASE}${c.req.path.replace(/^\/proxy\/openai/, '')}`
@@ -64,7 +69,7 @@ openaiProxy.all('/*', async (c) => {
     handlerStartMs,
   })
 
-  const logBase = await buildLogBase({
+  const logBase = buildLogBase({
     c, provider: 'openai',
     organizationId, projectId, apiKeyId,
     providerKey,

@@ -65,8 +65,11 @@ openrouterProxy.all('/*', async (c) => {
   const projectId = c.get('projectId') as string
   const apiKeyId = c.get('apiKeyId')
 
-  const providerKey = await assertProviderKey(apiKeyId, 'openrouter')
-  const parsed = await parseProxyRequestBody(c)
+  // Provider-key lookup and body parse are independent — run concurrently.
+  const [providerKey, parsed] = await Promise.all([
+    assertProviderKey(apiKeyId, 'openrouter'),
+    parseProxyRequestBody(c),
+  ])
   const requestFlags = await runSecurityGate(parsed.reqBodyJson, projectId)
 
   const upstreamUrl = `${OPENROUTER_BASE}${c.req.path.replace(/^\/proxy\/openrouter/, '')}`
@@ -88,7 +91,7 @@ openrouterProxy.all('/*', async (c) => {
     handlerStartMs,
   })
 
-  const logBase = await buildLogBase({
+  const logBase = buildLogBase({
     c, provider: 'openrouter',
     organizationId, projectId, apiKeyId,
     providerKey,

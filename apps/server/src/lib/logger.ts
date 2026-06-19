@@ -7,6 +7,7 @@ import { sendEmail, renderSecurityAlertEmail } from './resend.js'
 import { emitWebhookEvent } from './webhook-emit.js'
 import { writeRequestAsEvent } from './events-writer.js'
 import { logError } from './structured-logger.js'
+import { resolvePromptVersion } from './resolve-prompt-version.js'
 
 /**
  * Customer-controlled body logging mode (sent via the `x-spanlens-log-body`
@@ -50,6 +51,13 @@ export interface RequestLogData {
   traceId: string | null
   spanId: string | null
   promptVersionId?: string | null
+  /**
+   * Raw X-Spanlens-Prompt-Version header. When promptVersionId is not already
+   * set, logRequestAsync resolves this to an id here, off the response-critical
+   * path (the proxy hot path no longer resolves it before returning the
+   * response). Ignored when promptVersionId is provided directly.
+   */
+  promptVersionHeader?: string | null
   providerKeyId?: string | null
   /** Customer-supplied end-user ID (x-spanlens-user header). */
   userId?: string | null
@@ -238,6 +246,21 @@ export async function logRequestAsync(data: RequestLogData): Promise<void> {
   const userId = dropIdentifiers ? null : (data.userId ?? null)
   const sessionId = dropIdentifiers ? null : (data.sessionId ?? null)
 
+  // Resolve the prompt version here rather than in the proxy hot path: on a
+  // cold cache this is 1-2 Supabase queries, and logRequestAsync already runs
+  // after the response has been handed off (fireAndForget / stream onComplete),
+  // so it no longer delays time-to-first-token. Callers that pass a concrete
+  // promptVersionId (evals, replays) keep it as-is.
+  let promptVersionId = data.promptVersionId ?? null
+  if (promptVersionId == null && data.promptVersionHeader) {
+    const resolved = await resolvePromptVersion(
+      data.organizationId,
+      data.promptVersionHeader,
+      data.traceId,
+    )
+    promptVersionId = resolved?.versionId ?? null
+  }
+
   const clickhouseRow = {
     id: randomUUID(),
     organization_id: data.organizationId,
@@ -259,7 +282,7 @@ export async function logRequestAsync(data: RequestLogData): Promise<void> {
     error_message: errorMessage,
     trace_id: data.traceId,
     span_id: data.spanId,
-    prompt_version_id: data.promptVersionId ?? null,
+    prompt_version_id: promptVersionId,
     provider_key_id: data.providerKeyId ?? null,
     user_id: userId,
     session_id: sessionId,
