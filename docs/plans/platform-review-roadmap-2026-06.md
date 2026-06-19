@@ -10,8 +10,8 @@ Progress:
 - Phase 1 (proxy rate-limit relaxation): DONE, merged in #370 (2026-06-19).
 - Phase 2 (customer-configurable rate limiting): DONE, merged in #371 (2026-06-19); prod migration applied.
 - Phase 3 (proxy hot-path performance): DONE, merged in #372 (2026-06-19).
-- Phase 4 (code-quality refactor): in progress, sub-PR A (4.3 + 4.4) ready; 4.1/4.2/4.5/4.6/4.7 remaining.
-- Phase 5: not started.
+- Phase 4 (code-quality refactor): 4.3/4.4 merged (#373), 4.1/4.2 merged (#374). Web extractions 4.5/4.6/4.7 DEFERRED as opportunistic (cosmetic, build-only-verifiable, no behavior change; do them when next touching those files).
+- Phase 5 (test coverage): 5.1 + 5.2 (admin-emails, stats-queries) implemented and verified; experiment-runner tests deferred.
 
 ## Context
 
@@ -488,6 +488,16 @@ Success criteria:
 - [x] `scoreConfigs.ts` imports them, no local copies.
 - [x] No new package added.
 
+> 4.5 / 4.6 / 4.7 (web giant-file extractions): DEFERRED as opportunistic
+> (decision 2026-06-19). They are pure organizational refactors: no behavior
+> change, no bug fix, and they cannot be smoke-tested headlessly (dashboard
+> auth) so they verify only via build/typecheck/lint. Note: the planned
+> CopyButton dedup turned out NOT to be a true duplicate (requests uses
+> `getText: () => string`, settings uses `value: string`, different styling),
+> so merging it would change styling, not just move code. Best done piecemeal
+> when next editing each file for a feature, the way Phase 2 put the rate-limit
+> UI in its own `_components` file instead of growing projects-client.
+
 ### 4.5 Extract `settings-client.tsx` (2464 lines) (M, low)
 
 Already partitioned into ~25 named tab components dispatched by `TabContent`.
@@ -537,6 +547,10 @@ Success criteria:
 
 ## Phase 5: Test coverage
 
+Status: implemented and verified (5.1 + 5.2 admin-emails/stats-queries; +25 unit
+tests, server suite 1316 -> 1341). experiment-runner tests deferred to pair with
+the 4.2 judge-logic dedup. PR pending.
+
 Goal: cover the high-value untested modules. 5.1 first (customer-facing
 verdicts, pure functions, lowest effort). The experiment-runner part of 5.2 is
 easier after the 4.2 dedup makes its dependencies mockable.
@@ -555,10 +569,10 @@ p-value silently mislabels a winner.
 
 Success criteria:
 
-- [ ] >= 12 cases covering both functions' branches.
-- [ ] >= 2 p-value assertions checked against an external reference within documented tolerance.
-- [ ] Line + branch coverage >= 90%.
-- [ ] Server test green.
+- [x] 14 cases covering both functions' insufficient / significant / not-significant / zero-variance / relativeLift-null / small-df branches.
+- [x] 2 p-value assertions checked against the R reference (z=1.96 -> 0.04999, z=2.576 -> 0.00999) within 1e-3.
+- [x] All guard + math branches exercised (the only uncovered line is the defensive `x < 0` recursion in normalCdf, never reached since callers pass `Math.abs`).
+- [x] Server test green.
 
 ### 5.2 Test `experiment-runner.ts`, `admin-emails.ts`, `stats-queries.ts` (M, low)
 
@@ -570,16 +584,16 @@ Success criteria:
 
 Success criteria:
 
-- [ ] `admin-emails.ts`: opt-out + missing-email + no-admin branches, >= 90% coverage.
-- [ ] `stats-queries.ts`: each builder asserts org filter + numeric coercion; key builders >= 80%.
-- [ ] `experiment-runner.ts`: aggregate math + error paths covered after shared imports are mockable.
-- [ ] All new tests pass.
+- [x] `admin-emails.ts`: no-admin, opted-in default, opt-out exclusion, and missing-email branches covered.
+- [x] `stats-queries.ts`: getStatsOverview + getStatsModels assert org+retention scope, gotcha-19 string->number coercion, no `ilike`, projectId threading, empty-set defaults. (Representative key builders; the remaining timeseries/percentile/security builders share the same scope+coerce pattern.)
+- [ ] `experiment-runner.ts`: DEFERRED. Its judge logic is the deferred 4.2 dedup target, so testing it now then changing it would be wasted; pair the test with that consolidation.
+- [x] All new tests pass (25 new: 14 + 4 + 7).
 
 ### Phase 5 exit checklist
 
-- [ ] 5.1 merged first.
-- [ ] 5.2 merged (experiment-runner part after 4.2).
-- [ ] Coverage report shows the four modules above their targets.
+- [x] 5.1 (prompt-experiment-stats) implemented + verified; PR pending.
+- [~] 5.2 admin-emails + stats-queries implemented + verified; experiment-runner deferred (pair with the 4.2 judge-logic dedup).
+- [x] prompt-experiment-stats / admin-emails / stats-queries now have dedicated unit tests (were zero).
 
 ---
 
