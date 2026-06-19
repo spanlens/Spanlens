@@ -40,6 +40,8 @@ export type LogCode =
   | 'UPSTREAM_FETCH_FAILED'
   // rate limiting backend (Redis/Upstash) unavailable — fail-open is in effect
   | 'RATE_LIMIT_BACKEND_DOWN'
+  // per-minute proxy ceiling exceeded — pass-through anti-runaway signal (not a block)
+  | 'PROXY_RATE_LIMIT_OVERAGE'
   // Paddle billing
   | 'PADDLE_WEBHOOK_FAILED'
   | 'PADDLE_API_FAILED'

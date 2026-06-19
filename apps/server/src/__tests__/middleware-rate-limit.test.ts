@@ -55,7 +55,8 @@ function makeProxyApp(orgId: string | null, plan: string | null = null) {
   })
   app.use('*', proxyRateLimit as unknown as Parameters<typeof app.use>[1])
   app.get('/probe', (c) => c.json({ ok: true }))
-  // Sprint 8 hotfix — proxyRateLimit throws ApiError now.
+  // proxyRateLimit passes through on overage (no 429), but apiRateLimit still
+  // throws ApiError — installOnError keeps the shared helper consistent.
   installOnError(app)
   return app
 }
@@ -72,34 +73,40 @@ describe('proxyRateLimit', () => {
 
     const res = await makeProxyApp('org_1', 'free').request('/probe')
     expect(res.status).toBe(200)
-    expect(res.headers.get('X-RateLimit-Limit')).toBe('60')
+    expect(res.headers.get('X-RateLimit-Limit')).toBe('600')
     expect(res.headers.get('X-RateLimit-Window')).toBe('60s')
     expect(res.headers.get('X-RateLimit-Reset')).not.toBeNull()
-    expect(checkRateLimitMock).toHaveBeenCalledWith('proxy:org_1', 60)
+    expect(checkRateLimitMock).toHaveBeenCalledWith('proxy:org_1', 600)
     // R-5: no DB SELECT for plan anymore — authApiKey caches it
     expect(fromMock).not.toHaveBeenCalled()
   })
 
-  test('free plan over limit → 429 with structured error + Retry-After', async () => {
+  test('over the ceiling → pass-through (NOT 429) with overage header + warn', async () => {
     checkRateLimitMock.mockResolvedValue(false)
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
 
     const res = await makeProxyApp('org_1', 'free').request('/probe')
-    expect(res.status).toBe(429)
-    const body = await res.json() as Record<string, unknown>
-    expect((body['error'] as { details: { limit: number } }).details.limit).toBe(60)
-    expect((body['error'] as { details: Record<string, unknown> }).details['window']).toBe('60s')
-    expect((body['error'] as { details: Record<string, unknown> }).details['upgrade_url']).toBe('https://www.spanlens.io/pricing')
-    expect(res.headers.get('Retry-After')).toBe('60')
+
+    // Critical: the customer's LLM request still goes through.
+    expect(res.status).toBe(200)
+    expect(res.headers.get('X-Spanlens-RateLimit-Overage')).toBe('true')
     expect(res.headers.get('X-RateLimit-Remaining')).toBe('0')
+    // No 429 means no Retry-After and no upgrade_url leakage.
+    expect(res.headers.get('Retry-After')).toBeNull()
+    // Overage is surfaced for observability via the stable warn code.
+    const overageWarns = warnSpy.mock.calls.filter((args) =>
+      String(args[0]).includes('PROXY_RATE_LIMIT_OVERAGE'),
+    )
+    expect(overageWarns).toHaveLength(1)
   })
 
-  test('missing plan falls back to free (60 req/min)', async () => {
+  test('missing plan falls back to free (600 req/min)', async () => {
     // The cached lookup didn't set plan → middleware defaults to 'free'
     checkRateLimitMock.mockResolvedValue(true)
 
     const res = await makeProxyApp('org_1', null).request('/probe')
     expect(res.status).toBe(200)
-    expect(res.headers.get('X-RateLimit-Limit')).toBe('60')
+    expect(res.headers.get('X-RateLimit-Limit')).toBe('600')
   })
 
   test('enterprise plan (limit=null) → unlimited, no rate-limit headers set', async () => {
@@ -109,11 +116,11 @@ describe('proxyRateLimit', () => {
     expect(checkRateLimitMock).not.toHaveBeenCalled()
   })
 
-  test('team plan limit is 1500 req/min', async () => {
+  test('team plan ceiling is 15000 req/min', async () => {
     checkRateLimitMock.mockResolvedValue(true)
 
     await makeProxyApp('org_1', 'team').request('/probe')
-    expect(checkRateLimitMock).toHaveBeenCalledWith('proxy:org_1', 1500)
+    expect(checkRateLimitMock).toHaveBeenCalledWith('proxy:org_1', 15000)
   })
 })
 
