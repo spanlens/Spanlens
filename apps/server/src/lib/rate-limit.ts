@@ -58,28 +58,31 @@ function getRedis(): Redis | null {
 }
 
 // ---------------------------------------------------------------------------
-// Ratelimit instances — one per unique limit value (free/starter/team/api)
+// Ratelimit instances — one per unique (limit, windowSeconds) pair. Platform
+// limits all use the default 60s window; customer-configurable limits (Phase 2)
+// also use 3600s / 86400s, so the cache is keyed by both.
 // ---------------------------------------------------------------------------
 
-const _limiters = new Map<number, Ratelimit>()
+const _limiters = new Map<string, Ratelimit>()
 
-function getLimiter(limit: number): Ratelimit | null {
+function getLimiter(limit: number, windowSeconds = 60): Ratelimit | null {
   const redis = getRedis()
   if (!redis) return null
 
-  if (!_limiters.has(limit)) {
+  const cacheKey = `${limit}:${windowSeconds}`
+  if (!_limiters.has(cacheKey)) {
     _limiters.set(
-      limit,
+      cacheKey,
       new Ratelimit({
         redis,
-        limiter: Ratelimit.slidingWindow(limit, '60 s'),
+        limiter: Ratelimit.slidingWindow(limit, `${windowSeconds} s`),
         // Prefix all keys so they don't collide with other Redis data
         prefix: 'spanlens:rl',
       }),
     )
   }
 
-  return _limiters.get(limit)!
+  return _limiters.get(cacheKey)!
 }
 
 // ---------------------------------------------------------------------------
@@ -111,8 +114,9 @@ let _unconfiguredWarned = false
 export async function checkRateLimit(
   key: string,
   limit: number,
+  windowSeconds = 60,
 ): Promise<boolean> {
-  const limiter = getLimiter(limit)
+  const limiter = getLimiter(limit, windowSeconds)
 
   if (!limiter) {
     // Redis not configured — fail open (dev / misconfigured prod). Warn once
