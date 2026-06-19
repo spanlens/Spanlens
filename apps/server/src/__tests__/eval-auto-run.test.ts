@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { Hono } from 'hono'
-import type { JwtContext } from '../middleware/authJwt.js'
+import type { Context } from 'hono'
 import { isApiError } from '../lib/errors.js'
 import type { ContentfulStatusCode } from 'hono/utils/http-status'
 
@@ -87,7 +87,7 @@ vi.mock('../lib/eval-runner.js', () => ({
 }))
 
 vi.mock('../middleware/authJwt.js', () => ({
-  authJwt: async (c: JwtContext, next: () => Promise<void>) => {
+  authJwt: async (c: Context, next: () => Promise<void>) => {
     c.set('orgId', 'org-1')
     c.set('userId', 'user-1')
     await next()
