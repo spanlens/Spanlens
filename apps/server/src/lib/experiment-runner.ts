@@ -16,6 +16,7 @@ import { aes256Decrypt } from './crypto.js'
 import { calculateCost } from './cost.js'
 import { interpolate, buildOpenAIBody } from './playground-runner.js'
 import { startInternalTrace } from './internal-tracing.js'
+import { pool } from './eval-runners/pool.js'
 
 const ITEM_CONCURRENCY = 3
 const MAX_TOKENS = 1024
@@ -429,26 +430,13 @@ async function callJudge(
   }
 }
 
-// ── Concurrency pool ────────────────────────────────────────────────────────
-
-async function pool<T, R>(
-  items: T[],
-  concurrency: number,
-  worker: (item: T) => Promise<R>,
-): Promise<R[]> {
-  const results: R[] = new Array(items.length)
-  let next = 0
-  async function run(): Promise<void> {
-    for (;;) {
-      const idx = next++
-      if (idx >= items.length) return
-      results[idx] = await worker(items[idx]!)
-    }
-  }
-  const runners = Array.from({ length: Math.min(concurrency, items.length) }, () => run())
-  await Promise.all(runners)
-  return results
-}
+// `pool` is shared with the eval runner (./eval-runners/pool.js).
+//
+// NOTE: the local buildJudgePrompt / parseJudgeReply / callJudge below are
+// intentionally NOT yet consolidated onto ./eval-runners/judge-{prompt,calls}.
+// The shared judge prompt wording differs from this one, so swapping it would
+// change the judge scores this A/B feature produces. That consolidation is a
+// deliberate product decision (deferred), not a behavior-preserving refactor.
 
 // ── Main entry point ───────────────────────────────────────────────────────
 
