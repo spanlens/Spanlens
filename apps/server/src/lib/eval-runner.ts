@@ -45,6 +45,7 @@ import {
 import { serializeTrajectory, buildTrajectoryJudgePrompt, type TrajectorySpan } from './eval-runners/trajectory.js'
 import {
   buildJudgePrompt,
+  buildJudgeMessages,
   parseJudgeReply,
   buildPairwiseJudgePrompt,
   parsePairwiseReply,
@@ -308,9 +309,18 @@ async function judgeComplete(
   model: string,
   apiKey: string,
   resourceUrl: string | null,
-  prompt: string,
+  /**
+   * P4-1: the judge prompt split into a static `system` prefix and a per-row
+   * `user` part. When `system` is non-empty it is sent as a cacheable system
+   * prefix (Anthropic `cache_control`, OpenAI automatic prefix caching) so
+   * rows 2..N of a run reuse it at a fraction of the input price. When `system`
+   * is empty the call is byte-identical to the pre-caching single-message form,
+   * which keeps the pairwise and trajectory paths unchanged.
+   */
+  messages: { system: string; user: string },
   geminiResponseSchema: Record<string, unknown>,
 ): Promise<{ text: string; cost: number; tokens: number } | null> {
+  const { system, user } = messages
   // OpenAI, Azure, Mistral, OpenRouter are all OpenAI-compatible chat
   // completions; only the URL, auth header, and cost-table provider differ.
   if (provider === 'openai' || provider === 'azure' || provider === 'mistral' || provider === 'openrouter') {
@@ -332,19 +342,30 @@ async function judgeComplete(
       url = `${resourceUrl}/openai/v1/chat/completions`
       headers = { 'Content-Type': 'application/json', 'api-key': apiKey }
     }
+    // System as a separate role makes it the cacheable prefix. OpenAI caches
+    // prompts >1024 tokens automatically; no header or flag is needed.
+    const chatMessages = system
+      ? [{ role: 'system', content: system }, { role: 'user', content: user }]
+      : [{ role: 'user', content: user }]
     const res = await fetchWithRetry(url, {
       method: 'POST',
       headers,
       body: JSON.stringify(buildOpenAIBody(
         model,
-        [{ role: 'user', content: prompt }],
+        chatMessages,
         { temperature: 0, maxTokens: 200, responseFormat: { type: 'json_object' } },
       )),
     })
     if (!res || !res.ok) return null
     const json = await res.json() as {
       choices: Array<{ message: { content: string } }>
-      usage: { prompt_tokens: number; completion_tokens: number; cost?: number }
+      usage: {
+        prompt_tokens: number
+        completion_tokens: number
+        cost?: number
+        // OpenAI reports the auto-cached portion here (subset of prompt_tokens).
+        prompt_tokens_details?: { cached_tokens?: number }
+      }
       model: string
     }
     const text = json.choices?.[0]?.message?.content ?? ''
@@ -356,31 +377,64 @@ async function judgeComplete(
       cost = json.usage.cost
     } else {
       const costProvider = provider === 'azure' ? 'openai' : provider
+      const cachedTokens = json.usage?.prompt_tokens_details?.cached_tokens ?? 0
       cost = calculateCost(costProvider, json.model ?? model, {
         promptTokens: json.usage?.prompt_tokens ?? 0,
         completionTokens: json.usage?.completion_tokens ?? 0,
+        // OpenAI cache reads are billed at the reduced cacheRead rate; no
+        // separate write charge, so cacheWriteTokens stays 0.
+        cacheReadTokens: cachedTokens,
       })?.totalCost ?? 0
     }
     return { text, cost, tokens }
   }
 
   if (provider === 'anthropic') {
+    // P4-1: mark the static system prefix ephemeral so it is cached for the
+    // 5-minute TTL. Below the per-model minimum (1024 tokens for Sonnet/Opus,
+    // 2048 for Haiku) Anthropic silently ignores cache_control and bills
+    // normally, so always setting it is safe.
+    const body: Record<string, unknown> = {
+      model,
+      max_tokens: 200,
+      temperature: 0,
+      messages: [{ role: 'user', content: user }],
+    }
+    if (system) {
+      body['system'] = [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }]
+    }
     const res = await fetchWithRetry('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({ model, max_tokens: 200, temperature: 0, messages: [{ role: 'user', content: prompt }] }),
+      body: JSON.stringify(body),
     })
     if (!res || !res.ok) return null
     const json = await res.json() as {
       content: Array<{ type: string; text: string }>
-      usage: { input_tokens: number; output_tokens: number }
+      usage: {
+        input_tokens: number
+        output_tokens: number
+        // Present only when cache_control is honoured. input_tokens is the
+        // NON-cached remainder, so the true prompt total is the sum of all three.
+        cache_creation_input_tokens?: number
+        cache_read_input_tokens?: number
+      }
       model: string
     }
     const text = json.content?.find((b) => b.type === 'text')?.text ?? ''
-    const tokens = (json.usage?.input_tokens ?? 0) + (json.usage?.output_tokens ?? 0)
+    const u = json.usage
+    const cacheWrite = u?.cache_creation_input_tokens ?? 0
+    const cacheRead = u?.cache_read_input_tokens ?? 0
+    const inputTokens = u?.input_tokens ?? 0
+    // promptTokens must be the FULL input incl. cache for calculateCost, which
+    // subtracts the cache portions back out to bill each tier at its own rate.
+    const promptTokens = inputTokens + cacheWrite + cacheRead
+    const tokens = promptTokens + (u?.output_tokens ?? 0)
     const cost = calculateCost('anthropic', json.model ?? model, {
-      promptTokens: json.usage?.input_tokens ?? 0,
-      completionTokens: json.usage?.output_tokens ?? 0,
+      promptTokens,
+      completionTokens: u?.output_tokens ?? 0,
+      cacheReadTokens: cacheRead,
+      cacheWriteTokens: cacheWrite,
     })?.totalCost ?? 0
     return { text, cost, tokens }
   }
@@ -388,26 +442,36 @@ async function judgeComplete(
   // Gemini — JSON output enforced via responseMimeType + responseSchema so the
   // reply is always parseable. The schema MUST match the prompt's JSON shape.
   if (provider === 'gemini') {
+    const body: Record<string, unknown> = {
+      contents: [{ role: 'user', parts: [{ text: user }] }],
+      generationConfig: {
+        temperature: 0,
+        maxOutputTokens: 200,
+        responseMimeType: 'application/json',
+        responseSchema: geminiResponseSchema,
+      },
+    }
+    // Gemini 2.5 models apply implicit caching automatically; routing the
+    // static instructions through systemInstruction gives it a stable prefix.
+    if (system) {
+      body['systemInstruction'] = { parts: [{ text: system }] }
+    }
     const res = await fetchWithRetry(
       `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ role: 'user', parts: [{ text: prompt }] }],
-          generationConfig: {
-            temperature: 0,
-            maxOutputTokens: 200,
-            responseMimeType: 'application/json',
-            responseSchema: geminiResponseSchema,
-          },
-        }),
+        body: JSON.stringify(body),
       },
     )
     if (!res || !res.ok) return null
     const json = await res.json() as {
       candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>
-      usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number }
+      usageMetadata?: {
+        promptTokenCount?: number
+        candidatesTokenCount?: number
+        cachedContentTokenCount?: number
+      }
       modelVersion?: string
     }
     const text = json.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
@@ -415,6 +479,9 @@ async function judgeComplete(
     const cost = calculateCost('gemini', json.modelVersion ?? model, {
       promptTokens: json.usageMetadata?.promptTokenCount ?? 0,
       completionTokens: json.usageMetadata?.candidatesTokenCount ?? 0,
+      // promptTokenCount already includes cached tokens; bill that subset at
+      // the cacheRead rate when the model reports it.
+      cacheReadTokens: json.usageMetadata?.cachedContentTokenCount ?? 0,
     })?.totalCost ?? 0
     return { text, cost, tokens }
   }
@@ -478,7 +545,8 @@ export async function callJudge(
     }
   }
 
-  const prompt = buildJudgePrompt(config.criterion, responseText, {
+  // P4-1: split prompt so the static instructions become a cacheable prefix.
+  const judgeMessages = buildJudgeMessages(config.criterion, responseText, {
     scale_min: config.scale_min,
     scale_max: config.scale_max,
     score_config: config.score_config ?? null,
@@ -493,7 +561,7 @@ export async function callJudge(
     config.judge_model,
     apiKey,
     resourceUrl,
-    prompt,
+    judgeMessages,
     geminiJudgeSchema(config.score_config),
   )
   if (!res) return null
@@ -588,12 +656,15 @@ export async function callPairwiseJudge(
     rubric: config.rubric ?? null,
     expected_output: expectedOutput,
   })
+  // Pairwise is not split for caching (both responses vary per row, so the
+  // static prefix is just the criterion/rubric — rarely above the cache
+  // minimum). Empty system => byte-identical single-message call as before.
   const res = await judgeComplete(
     config.judge_provider,
     config.judge_model,
     apiKey,
     resourceUrl,
-    prompt,
+    { system: '', user: prompt },
     GEMINI_PAIRWISE_SCHEMA,
   )
   if (!res) return null
@@ -622,12 +693,14 @@ export async function callTrajectoryJudge(
     scale_max: config.scale_max,
     rubric: config.rubric ?? null,
   })
+  // Trajectory prompts embed the whole serialized trace inline (highly variable
+  // per row), so there is no useful static prefix. Empty system => unchanged call.
   const res = await judgeComplete(
     config.judge_provider,
     config.judge_model,
     apiKey,
     resourceUrl,
-    prompt,
+    { system: '', user: prompt },
     geminiJudgeSchema(null),
   )
   if (!res) return null

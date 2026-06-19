@@ -63,10 +63,33 @@ export interface JudgeConfig {
 }
 
 /**
- * Build the judge prompt text. Branches on the score_config data_type so
- * the judge gets a reply schema matching the column we'll write to.
+ * A judge prompt split into a STATIC system part and a VARIABLE user part.
+ *
+ * P4-1 (prompt caching): the system part holds everything that is identical
+ * across every sample in a run (criterion, rubric, anchors, reply schema) so
+ * it can be marked as a cacheable prefix. The user part holds only the
+ * per-row response (and its golden reference). Keeping the variable text OUT
+ * of the cached prefix is what lets Anthropic `cache_control` and OpenAI's
+ * automatic prefix caching actually hit on rows 2..N of a run.
  */
-export function buildJudgePrompt(
+export interface JudgeMessages {
+  /** Static across a run: instructions + criterion + rubric + anchors + schema. */
+  system: string
+  /** Per-row: the response under evaluation (+ optional golden reference). */
+  user: string
+}
+
+/**
+ * Build the judge prompt as a {system, user} split. Branches on the
+ * score_config data_type so the judge gets a reply schema matching the column
+ * we'll write to.
+ *
+ * The split is the cache boundary: `system` is byte-identical for every sample
+ * scored by the same evaluator in a run, `user` carries the row-specific
+ * response. `buildJudgePrompt` below joins the two for callers (and tests) that
+ * want the legacy single-string form.
+ */
+export function buildJudgeMessages(
   criterion: string,
   responseText: string,
   config: {
@@ -82,12 +105,13 @@ export function buildJudgePrompt(
     /** P1-7: few-shot calibration anchors (NUMERIC / legacy path only). */
     anchors?: JudgeAnchor[] | null
   },
-): string {
+): JudgeMessages {
   // P1-7: middle-out truncation keeps the start AND the end of a long response
   // (the conclusion is often where the answer lives) instead of head-only.
   const truncated = truncateMiddle(responseText, MAX_RESPONSE_CHARS)
 
   // Reference (expected) answer, also truncated middle-out to the same cap.
+  // Per-row (golden answers vary per dataset item) so it lives in the user part.
   const expected = config.expected_output
   const referenceBlock = expected
     ? `
@@ -108,15 +132,6 @@ Scoring rubric (apply consistently):
 ${rubric}`
     : ''
 
-  const intro = `You are an evaluator. Score the assistant response below against this criterion.
-
-Criterion: ${criterion}${rubricBlock}
-
-Response to evaluate:
-"""
-${truncated}
-"""${referenceBlock}`
-
   const sc = config.score_config
 
   // P1-7: few-shot calibration anchors. Only meaningful on the NUMERIC / legacy
@@ -132,49 +147,80 @@ ${anchors
   .join('\n')}`
     : ''
 
-  // Legacy NUMERIC path — unchanged from before 4B.1c except the optional
-  // rubric (intro) + anchors blocks, both of which collapse to '' when absent.
+  // Static instruction header: identical for every row scored by this
+  // evaluator. Criterion + rubric + anchors all belong here (they come from the
+  // evaluator config, not the sample) so the whole block can be cached.
+  const intro = `You are an evaluator. Score the assistant response in the user message against this criterion.
+
+Criterion: ${criterion}${rubricBlock}${anchorsBlock}`
+
+  // The user part is the same for every type: the response under evaluation,
+  // plus the optional golden reference. Both are per-row, never cached.
+  const user = `Response to evaluate:
+"""
+${truncated}
+"""${referenceBlock}`
+
+  // Reply schema instruction differs per data_type but is still static across a
+  // run, so it stays in the system part.
+  let schema: string
   if (!sc || sc.data_type === 'NUMERIC') {
     const min = sc?.min_value ?? config.scale_min
     const max = sc?.max_value ?? config.scale_max
-    return `${intro}${anchorsBlock}
-
-Reply ONLY in JSON with this exact shape:
+    schema = `Reply ONLY in JSON with this exact shape:
 {"score": <number between ${min} and ${max}>, "reasoning": "<one short sentence>"}
 
 No prose outside the JSON. No markdown fences.`
-  }
-
-  if (sc.data_type === 'BOOLEAN') {
+  } else if (sc.data_type === 'BOOLEAN') {
     const trueLabel = sc.bool_true_label ?? 'pass'
     const falseLabel = sc.bool_false_label ?? 'fail'
-    return `${intro}
-
-Reply ONLY in JSON with this exact shape:
+    schema = `Reply ONLY in JSON with this exact shape:
 {"value": <true or false>, "reasoning": "<one short sentence>"}
 
 \`true\` means "${trueLabel}", \`false\` means "${falseLabel}". No prose outside the JSON. No markdown fences.`
-  }
-
-  if (sc.data_type === 'CATEGORICAL') {
+  } else if (sc.data_type === 'CATEGORICAL') {
     const cats = Array.isArray(sc.categories)
       ? sc.categories.filter((c): c is string => typeof c === 'string')
       : []
-    return `${intro}
-
-Reply ONLY in JSON with this exact shape:
+    schema = `Reply ONLY in JSON with this exact shape:
 {"value": "<one of: ${cats.map((c) => JSON.stringify(c)).join(', ')}>", "reasoning": "<one short sentence>"}
 
 The \`value\` MUST be one of the categories above, exact case match. No prose outside the JSON. No markdown fences.`
-  }
-
-  // TEXT — judge writes a free-form short answer.
-  return `${intro}
-
-Reply ONLY in JSON with this exact shape:
+  } else {
+    // TEXT — judge writes a free-form short answer.
+    schema = `Reply ONLY in JSON with this exact shape:
 {"value": "<short answer>", "reasoning": "<one short sentence>"}
 
 Keep \`value\` under 200 characters. No prose outside the JSON. No markdown fences.`
+  }
+
+  return { system: `${intro}
+
+${schema}`, user }
+}
+
+/**
+ * Legacy single-string form of the judge prompt. Joins the {system, user}
+ * split so existing callers and tests keep working unchanged. New call sites
+ * that want prompt caching should use `buildJudgeMessages` and send the two
+ * parts as separate system/user content (see eval-runner.judgeComplete).
+ */
+export function buildJudgePrompt(
+  criterion: string,
+  responseText: string,
+  config: {
+    scale_min: number
+    scale_max: number
+    score_config?: TypedScoreConfig | null
+    expected_output?: string | null
+    rubric?: string | null
+    anchors?: JudgeAnchor[] | null
+  },
+): string {
+  const { system, user } = buildJudgeMessages(criterion, responseText, config)
+  return `${system}
+
+${user}`
 }
 
 /**
