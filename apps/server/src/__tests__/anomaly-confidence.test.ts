@@ -18,6 +18,18 @@ vi.mock('../lib/clickhouse.js', () => ({
   }),
 }))
 
+// detectAnomalies now resolves org + retention scope via requestsScope, which
+// internally reads the org plan from Supabase. Stub it so these unit tests
+// stay DB-free (the retention bound itself is exercised in anomaly-detect.test.ts).
+vi.mock('../lib/requests-query.js', () => ({
+  requestsScope: vi.fn(async (orgId: string) => ({
+    whereScope:
+      'organization_id = {orgId:UUID} AND created_at >= now() - INTERVAL {retentionDays:UInt32} DAY',
+    scopeParams: { orgId, retentionDays: 14 },
+    plan: 'free',
+  })),
+}))
+
 let classifyConfidence: typeof import('../lib/anomaly.js').classifyConfidence
 let detectAnomalies: typeof import('../lib/anomaly.js').detectAnomalies
 let ANOMALY_DEFAULTS: typeof import('../lib/anomaly.js').ANOMALY_DEFAULTS

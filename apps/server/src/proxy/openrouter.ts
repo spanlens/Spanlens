@@ -15,6 +15,7 @@ import { runSecurityGate } from './shared/security-gate.js'
 import { fetchUpstreamWithTimeout } from './shared/upstream-fetch.js'
 import { buildLogBase } from './shared/log-base.js'
 import { runLineBufferedStreamPump } from './shared/stream-pump.js'
+import { assertSafeProxyBase } from './shared/validate-base.js'
 
 // OpenRouter is a meta-provider — one API key, one base URL, 100+ models from
 // 30+ providers underneath (OpenAI, Anthropic, Mistral, Meta, DeepSeek,
@@ -41,6 +42,7 @@ import { runLineBufferedStreamPump } from './shared/stream-pump.js'
 const OPENROUTER_BASE = (
   process.env['OPENROUTER_API_BASE'] ?? 'https://openrouter.ai/api'
 ).replace(/\/v1\/?$/, '')
+assertSafeProxyBase('OPENROUTER_API_BASE', OPENROUTER_BASE)
 
 /** Strip the leading `vendor/` prefix from a model id (no-op when absent). */
 function stripVendorPrefix(modelId: string): string {

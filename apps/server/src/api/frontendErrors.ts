@@ -1,13 +1,17 @@
 import { Hono } from 'hono'
+import { createMiddleware } from 'hono/factory'
+import { checkRateLimit } from '../lib/rate-limit.js'
 
 /**
  * Frontend error sink.
  *
  * Public endpoint (no auth) — we want to capture errors from logged-out
  * pages too (the login screen, public share viewer, etc). Volume-controlled
- * via per-IP rate limit on the parent /api/v1 group + a tight per-IP cap
- * here, and by accepting only known scope strings so the table doesn't
- * become a spam dumping ground.
+ * by a tight per-IP rate limit applied inside this router (the parent
+ * /api/v1 apiRateLimit does NOT cover it: this router is mounted before
+ * apiRateLimit in app.ts, and apiRateLimit fails open for tokenless
+ * requests anyway), and by accepting only known scope strings so the log
+ * stream does not become a spam dumping ground.
  *
  * The body is parsed loosely on purpose — what we get from the
  * `<ErrorBoundary>` and `app/{error,global-error}.tsx` files is whatever
@@ -43,6 +47,23 @@ function pickString(v: unknown, max = 4000): string | null {
 }
 
 export const frontendErrorsRouter = new Hono()
+
+// Tight per-IP cap. Public, no auth — IP is the only stable key. 30 errors/min
+// is generous for a genuinely broken page (a render loop fires a handful, not
+// dozens) while blocking an anonymous log-flooding loop. On limit we return
+// 204 (not 429) so a throttled sink call does not itself escalate into a
+// second client error — same fail-soft contract as the success path below.
+const FRONTEND_ERROR_RATE_LIMIT = 30
+
+frontendErrorsRouter.use('*', createMiddleware(async (c, next) => {
+  const ip =
+    c.req.header('x-forwarded-for')?.split(',')[0]?.trim() ||
+    c.req.header('x-real-ip') ||
+    'unknown'
+  const allowed = await checkRateLimit(`fe-err:${ip}`, FRONTEND_ERROR_RATE_LIMIT)
+  if (!allowed) return c.body(null, 204)
+  return next()
+}))
 
 frontendErrorsRouter.post('/', async (c) => {
   let body: Body

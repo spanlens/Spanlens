@@ -9,6 +9,18 @@ vi.mock('../lib/clickhouse.js', () => ({
   unscopedClickhouse: () => ({ query: mockChQuery }),
 }))
 
+// detectAnomalies resolves org + retention scope via requestsScope (which reads
+// the org plan from Supabase). Stub it so the test stays DB-free and asserts on
+// the resulting WHERE clause / params shape.
+vi.mock('../lib/requests-query.js', () => ({
+  requestsScope: vi.fn(async (orgId: string) => ({
+    whereScope:
+      'organization_id = {orgId:UUID} AND created_at >= now() - INTERVAL {retentionDays:UInt32} DAY',
+    scopeParams: { orgId, retentionDays: 14 },
+    plan: 'free',
+  })),
+}))
+
 import { detectAnomalies } from '../lib/anomaly.js'
 
 function makeRpcReturn(rows: object[]) {
@@ -165,6 +177,21 @@ describe('detectAnomalies — custom options', () => {
       expect.objectContaining({
         query: expect.stringContaining('project_id = {projectId:UUID}'),
         query_params: expect.objectContaining({ projectId: 'proj-abc' }),
+      }),
+    )
+  })
+})
+
+describe('detectAnomalies — retention scoping (gotcha #3)', () => {
+  it('applies the requestsScope retention bound and merges scopeParams', async () => {
+    mockChQuery.mockReturnValue(makeRpcReturn([]))
+    // referenceHours 720 (30d) exceeds free retention (14d); the retention
+    // bound must still clip the window via requestsScope.
+    await detectAnomalies('org-1', { referenceHours: 720 })
+    expect(mockChQuery).toHaveBeenCalledWith(
+      expect.objectContaining({
+        query: expect.stringContaining('INTERVAL {retentionDays:UInt32} DAY'),
+        query_params: expect.objectContaining({ orgId: 'org-1', retentionDays: 14 }),
       }),
     )
   })
