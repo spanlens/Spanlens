@@ -241,13 +241,10 @@ organizationsRouter.patch('/me/branding', requireAdmin, async (c) => {
   const plan = (org?.plan as Plan | undefined) ?? 'free'
   const wantsHide = body.hide_powered_by_badge === true
   if (wantsHide && plan !== 'team' && plan !== 'enterprise') {
-    return c.json(
-      {
-        error: 'Removing the Spanlens badge requires the Team plan or above.',
-        plan,
-        upgrade_url: 'https://www.spanlens.io/pricing',
-      },
-      402,
+    throw new ApiError(
+      'PAYMENT_REQUIRED',
+      'Removing the Spanlens badge requires the Team plan or above.',
+      { plan, upgrade_url: 'https://www.spanlens.io/pricing' },
     )
   }
 
@@ -431,21 +428,13 @@ organizationsRouter.post('/', async (c) => {
   const effective = effectiveOwnedPlan(ownedPlans)
   const cap = OWNED_WORKSPACE_LIMITS[effective]
   if (cap !== null && ownedPlans.length >= cap) {
-    // `error` is the user-facing message because the shared client
-    // (`apps/web/lib/api.ts`) surfaces that field as the thrown Error
-    // message. `code` is the machine-readable slug for UI to key special
-    // rendering (e.g. an Upgrade CTA) off of.
-    return c.json(
-      {
-        error: `You already own ${ownedPlans.length} workspace${ownedPlans.length === 1 ? '' : 's'} on the ${effective === 'starter' ? 'Pro' : effective[0]!.toUpperCase() + effective.slice(1)} plan (limit ${cap}). Upgrade an existing workspace to create more.`,
-        code: 'workspace_limit_reached',
-        owned: ownedPlans.length,
-        limit: cap,
-        effectivePlan: effective,
-      },
-      // 402 Payment Required — surfaces the upgrade path more cleanly than
-      // 403 in client error handlers that key off status.
-      402,
+    // 402 Payment Required — surfaces the upgrade path more cleanly than 403
+    // in client error handlers that key off status. The machine-readable
+    // `reason` + plan context ride in `details` for an Upgrade CTA.
+    throw new ApiError(
+      'PAYMENT_REQUIRED',
+      `You already own ${ownedPlans.length} workspace${ownedPlans.length === 1 ? '' : 's'} on the ${effective === 'starter' ? 'Pro' : effective[0]!.toUpperCase() + effective.slice(1)} plan (limit ${cap}). Upgrade an existing workspace to create more.`,
+      { reason: 'workspace_limit_reached', owned: ownedPlans.length, limit: cap, effectivePlan: effective },
     )
   }
 

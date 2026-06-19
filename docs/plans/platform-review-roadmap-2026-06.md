@@ -9,8 +9,9 @@ Progress:
 - Phase 0 (security hardening): DONE, merged in #369 (2026-06-19).
 - Phase 1 (proxy rate-limit relaxation): DONE, merged in #370 (2026-06-19).
 - Phase 2 (customer-configurable rate limiting): DONE, merged in #371 (2026-06-19); prod migration applied.
-- Phase 3 (proxy hot-path performance): implemented and verified, PR pending.
-- Phases 4 through 5: not started.
+- Phase 3 (proxy hot-path performance): DONE, merged in #372 (2026-06-19).
+- Phase 4 (code-quality refactor): in progress, sub-PR A (4.3 + 4.4) ready; 4.1/4.2/4.5/4.6/4.7 remaining.
+- Phase 5: not started.
 
 ## Context
 
@@ -249,12 +250,12 @@ already sets it), so no new SDK header is needed.
 
 Success criteria:
 
-- [ ] `supabase db push` applies cleanly on a fresh throwaway DB (CI migrations step).
-- [ ] `supabase gen types` regenerates `types.ts` with the new row type (no hand edit).
-- [ ] `target_type='end_user'` with NULL `end_user_id` rejected by CHECK.
-- [ ] Second active `api_key`-level limit for the same key violates the partial UNIQUE index.
-- [ ] RLS enabled; anon/authenticated cannot write; `is_org_member` SELECT policy present.
-- [ ] Re-running the migration is a no-op.
+- [x] `supabase db push` applies cleanly on a fresh throwaway DB (CI migrations step passed; prod migration applied via deploy-server.yml).
+- [ ] `supabase gen types` regenerates `types.ts` with the new row type. NOT done: no local stack here; supabaseAdmin is untyped so it does not block compile. Regenerate when convenient.
+- [x] `target_type='end_user'` with NULL `end_user_id` rejected by CHECK.
+- [x] Second active `api_key`-level limit for the same key violates the partial UNIQUE index.
+- [x] RLS enabled; anon/authenticated cannot write; `is_org_member` SELECT policy present.
+- [x] Re-running the migration is a no-op.
 
 ### 2.2 Enforcement: `customerRateLimit` middleware (L, med)
 
@@ -266,12 +267,12 @@ Success criteria:
 
 Success criteria:
 
-- [ ] With an api_key limit of N/min, request N+1 in-window returns 429 (`RATE_LIMIT`); under N passes.
-- [ ] Two different `x-spanlens-user` values get independent buckets (distinct `custlimit:eu` keys).
-- [ ] A key/project with no configured limit incurs zero extra Redis and zero extra DB round-trips on cache hit.
-- [ ] When KV env vars unset, the middleware fails open (proxy still forwards).
-- [ ] A non-60s window (e.g. 3600) produces a separate cached limiter and a 1-hour sliding window.
-- [ ] Middleware added to all 6 proxies; unit test mirrors `middleware-rate-limit.test.ts`.
+- [x] With an api_key limit of N/min, request N+1 in-window returns 429 (`RATE_LIMIT`); under N passes.
+- [x] Two different `x-spanlens-user` values get independent buckets (distinct `custlimit:eu` keys).
+- [x] A key/project with no configured limit incurs zero extra Redis and zero extra DB round-trips on cache hit.
+- [x] When KV env vars unset, the middleware fails open (proxy still forwards).
+- [x] A non-60s window (e.g. 3600) produces a separate cached limiter and a 1-hour sliding window.
+- [x] Middleware added to all 6 proxies; unit test (`customer-rate-limit.test.ts`) mirrors `middleware-rate-limit.test.ts`.
 
 ### 2.3 API: CRUD endpoints (M, low)
 
@@ -280,12 +281,12 @@ Success criteria:
 
 Success criteria:
 
-- [ ] POST with a foreign `api_key_id` (different org) returns 403.
-- [ ] POST duplicate active limit for same target returns 409.
-- [ ] PATCH `is_active=false` stops enforcement within one cache TTL (<=30s) or immediately after invalidation.
-- [ ] All mutations appear in `audit_logs` with a `rate_limit.*` action.
-- [ ] Non-admin/editor and missing JWT rejected.
-- [ ] Reachable at `/api/v1/rate-limits`.
+- [x] POST with a foreign `api_key_id` (different org) returns 403.
+- [x] POST duplicate active limit for same target returns 409.
+- [x] PATCH `is_active=false` stops enforcement within one cache TTL (<=30s) or immediately after invalidation.
+- [x] All mutations appear in `audit_logs` with a `rate_limit.*` action.
+- [x] Non-admin/editor and missing JWT rejected.
+- [x] Reachable at `/api/v1/rate-limits`.
 
 ### 2.4 UI: rate-limit config on the Projects page (M, low)
 
@@ -294,11 +295,11 @@ Success criteria:
 
 Success criteria:
 
-- [ ] Admin can create/edit/delete a per-key limit from the Projects page and see it reflected after mutation.
-- [ ] Per-end-user limits can be added under a key and listed.
-- [ ] Viewer sees limits read-only.
-- [ ] All requests go through `/api/v1/rate-limits` (no direct Supabase from web).
-- [ ] No hydration warnings (time formatting via `apps/web/lib/utils.ts`, gotcha #22).
+- [x] Admin can create/edit/delete a per-key limit from the Projects page and see it reflected after mutation.
+- [x] Per-end-user limits can be added under a key and listed.
+- [x] Viewer sees limits read-only (PermissionGate need="edit").
+- [x] All requests go through `/api/v1/rate-limits` (no direct Supabase from web).
+- [x] No hydration warnings (no Date/time rendering in the dialog; build passed). Live dashboard smoke pending after deploy.
 
 ### 2.5 429 response behavior to the end-user (S, low)
 
@@ -307,10 +308,10 @@ Success criteria:
 
 Success criteria:
 
-- [ ] Exceeding a customer limit returns 429 with `code: RATE_LIMIT` and `details.source = 'customer_limit'`.
-- [ ] `Retry-After` equals `window_seconds`; `X-Spanlens-RateLimit-Scope` identifies which limit fired.
-- [ ] No Spanlens `upgrade_url` in the body (distinguishable from the platform 429).
-- [ ] The end-user receives the 429 body unmodified through the proxy.
+- [x] Exceeding a customer limit returns 429 with `code: RATE_LIMIT` and `details.source = 'customer_limit'`.
+- [x] `Retry-After` equals `window_seconds`; `X-Spanlens-RateLimit-Scope` identifies which limit fired.
+- [x] No Spanlens `upgrade_url` in the body (distinguishable from the platform 429).
+- [x] The end-user receives the 429 body unmodified through the proxy (ApiError → global onError envelope).
 
 ### 2.6 SDK + docs (S, low)
 
@@ -319,10 +320,10 @@ Success criteria:
 
 Success criteria:
 
-- [ ] `/docs/proxy` documents the 429 shape and the `X-Spanlens-RateLimit-*` headers.
-- [ ] `/docs/sdk` links `withUser()` to per-end-user limits with an example.
-- [ ] No new SDK header introduced; existing SDK tests unchanged.
-- [ ] `pnpm --filter web build` passes.
+- [x] `/docs/proxy` documents the 429 shape and the `X-Spanlens-RateLimit-*` headers.
+- [x] `/docs/sdk` links `withUser()` to per-end-user limits with an example.
+- [x] No new SDK header introduced; existing SDK tests unchanged.
+- [x] `pnpm --filter web build` passes.
 
 ### Phase 2 exit checklist
 
@@ -334,10 +335,10 @@ Success criteria:
 
 ## Phase 3: Proxy hot-path performance
 
-Status: implemented and verified (server typecheck + lint + 1314 tests). All
-three items done; PR pending. Deviation: 3.1 shipped the lower-risk variant
-(short-TTL count cache + coalescing, no logger.ts increment hook). The in-memory
-increment refinement is deferred as higher-risk and not needed for the core win.
+Status: DONE, merged in #372 (2026-06-19). Server-only, no migration.
+Deviation: 3.1 shipped the lower-risk variant (short-TTL count cache +
+coalescing, no logger.ts increment hook). The in-memory increment refinement is
+deferred as higher-risk and not needed for the core win.
 
 Goal: remove per-request blocking work from the proxy critical path. Sequence
 3.2 before 3.3 (same 6 files); 3.1 is independent.
@@ -353,12 +354,12 @@ scan that grows with volume, and a gratuitous dynamic `import('./quota-policy.js
 
 Success criteria:
 
-- [ ] A warm-cache `/proxy/*` request issues zero Supabase `organizations` SELECTs and zero ClickHouse `count()` from the quota path (verify with spies).
-- [ ] `await import('./quota-policy.js')` no longer appears in `quota.ts`.
-- [ ] `middleware-quota.test.ts` still passes (mocks `checkMonthlyQuota`).
-- [ ] New test: cold call hits CH once; N logged requests increment in-memory without further `count()`; after TTL re-syncs from CH; UTC month rollover resets.
-- [ ] Free org crossing 50,000 still blocked with `free_limit` within one TTL window.
-- [ ] `api/billing.ts` quota numbers stay correct (same cache or <=60s staleness).
+- [x] A warm-cache `/proxy/*` request issues zero Supabase `organizations` SELECTs and zero ClickHouse `count()` from the quota path (quota-cache.test.ts asserts with spies).
+- [x] `await import('./quota-policy.js')` no longer appears in `quota.ts` (now a static import).
+- [x] `middleware-quota.test.ts` still passes (mocks `checkMonthlyQuota`).
+- [ ] N/A for the shipped variant: the in-memory increment + logger hook was deferred, so there is no per-request increment test. Replaced by quota-cache.test.ts (cold→1 query, warm→cached, coalescing, reset, per-org isolation).
+- [x] Free org crossing 50,000 still blocked with `free_limit` within one TTL window (<=10s).
+- [x] `api/billing.ts` quota numbers stay correct (reads through the same cache; <=10s staleness tolerated).
 
 ### 3.2 Parallelize provider-key decrypt and body parse (S, low)
 
@@ -371,12 +372,12 @@ inputs. `runSecurityGate` consumes `parsed.reqBodyJson`, so it stays after.
 
 Success criteria:
 
-- [ ] All 6 proxies use a single `Promise.all` before `runSecurityGate`.
-- [ ] `runSecurityGate` still runs after the `Promise.all`.
-- [ ] Azure resource_url guard still throws `INTERNAL_ERROR` when empty.
-- [ ] Missing provider key still yields `NO_PROVIDER_KEY` (rejection propagates out of `Promise.all`).
-- [ ] `proxy_overhead_ms` observably drops by roughly the smaller await duration.
-- [ ] Existing proxy tests unchanged.
+- [x] All 6 proxies use a single `Promise.all` before `runSecurityGate`.
+- [x] `runSecurityGate` still runs after the `Promise.all`.
+- [x] Azure resource_url guard still throws `INTERNAL_ERROR` when empty (proxy-azure.test.ts green).
+- [x] Missing provider key still yields `NO_PROVIDER_KEY` (rejection propagates out of `Promise.all`).
+- [ ] `proxy_overhead_ms` observably drops by roughly the smaller await duration. Needs prod measurement (post-merge).
+- [x] Existing proxy tests unchanged (74 proxy + logger tests green).
 
 ### 3.3 Move prompt-version resolution off the streaming path (M, med)
 
@@ -390,15 +391,15 @@ resolved id only lands on the log row.
 
 Success criteria:
 
-- [ ] `buildLogBase` is no longer async and contains no `resolvePromptVersion` call; callers no longer await it.
-- [ ] On a streaming request with a cold prompt cache, the resolve queries run after the stream pump starts (assert ordering with spies).
-- [ ] The logged row still carries the correct `prompt_version_id`; A/B routing still works.
-- [ ] Non-streaming path resolves inside `fireAndForget`.
-- [ ] All 6 proxies updated consistently.
+- [x] `buildLogBase` is no longer async and contains no `resolvePromptVersion` call; callers no longer await it.
+- [x] Resolution moved into `logRequestAsync`, which runs after the response is handed off (fireAndForget / stream onComplete), so the resolve queries no longer block time-to-first-token.
+- [x] The logged row still carries the correct `prompt_version_id` (events-writer threads it through `requestRow`); A/B routing unchanged.
+- [x] Non-streaming path resolves inside `fireAndForget` → `logRequestAsync`.
+- [x] All 6 proxies updated consistently (drop `await` before `buildLogBase`).
 
 ### Phase 3 exit checklist
 
-- [x] 3.1 through 3.3 implemented and verified (typecheck + lint + 1314 tests). PR pending.
+- [x] 3.1 through 3.3 merged in #372 (2026-06-19); verified (typecheck + lint + 1314 tests).
 - [x] 3.2 (parallel pre-fetch) all 6 proxies use one `Promise.all` before `runSecurityGate`; azure resource_url guard relocated after it.
 - [x] 3.3 (prompt-version deferral) `buildLogBase` is sync; resolution moved into `logRequestAsync` (runs after response handoff). New test asserts the logged row still carries the resolved id.
 - [x] 3.1 (quota cache) warm-cache `/proxy/*` issues zero Supabase SELECT + zero ClickHouse count() from the quota path; dynamic import removed; `middleware-quota.test.ts` + `overage-charge-flow.test.ts` unchanged and green.
@@ -407,6 +408,10 @@ Success criteria:
 ---
 
 ## Phase 4: Code-quality refactor
+
+Status: in progress, shipped as sub-PRs (the 7 items are largely independent).
+Sub-PR A (4.3 error envelope + 4.4 validation helpers): implemented and verified.
+Remaining: 4.1/4.2 (eval-runner split + dedup), 4.5/4.6/4.7 (web giant-file extractions).
 
 Goal: bring oversized files under the 800-line ceiling and remove the eval /
 experiment runner duplication that makes provider additions error-prone.
@@ -460,10 +465,10 @@ Confirmed bare sites: `requests.ts:342,415,496`; `organizations.ts:244,438`
 
 Success criteria:
 
-- [ ] `ERROR_CODES` contains `PAYMENT_REQUIRED` (402) and an upstream-error code.
-- [ ] `organizations.ts` has zero bare `c.json({error})`; both 402 paths use `ApiError` and keep their details.
-- [ ] `requests.ts` truncated-body sites use `ApiError`; the 496 passthrough documented or wrapped.
-- [ ] ErrorCode union still compiles; existing envelope tests green.
+- [x] `ERROR_CODES` contains `PAYMENT_REQUIRED` (402) and `BODY_NOT_REPLAYABLE` (422); mirrored in `@spanlens/api-types` KnownApiErrorCode + the contract test + docs/api/errors page.
+- [x] `organizations.ts` has zero bare `c.json({error})`; both 402 paths use `ApiError('PAYMENT_REQUIRED', ...)` and keep their details (plan/upgrade_url, reason/owned/limit/effectivePlan).
+- [x] `requests.ts` truncated-body sites (342, 415) use `ApiError('BODY_NOT_REPLAYABLE')`; the 496 upstream passthrough left as-is (intentional legacy shape, documented in source).
+- [x] ErrorCode union compiles; errors.contract + errors-docs-sync tests green. Also hardened web `lib/api.ts` to read `error.message` from the ApiError envelope (was reading `error` as a string → would show "[object Object]"; latent bug for all ApiError endpoints).
 
 ### 4.4 Promote validation helpers to `lib/validation-helpers.ts` (S, low)
 
@@ -475,9 +480,9 @@ at any boundary. No Zod (a schema library is a separate, larger decision).
 
 Success criteria:
 
-- [ ] `lib/validation-helpers.ts` exports the 3 helpers with explicit return types.
-- [ ] `scoreConfigs.ts` imports them, no local copies.
-- [ ] No new package added.
+- [x] `lib/validation-helpers.ts` exports the 3 helpers with explicit return types.
+- [x] `scoreConfigs.ts` imports them, no local copies.
+- [x] No new package added.
 
 ### 4.5 Extract `settings-client.tsx` (2464 lines) (M, low)
 
@@ -520,7 +525,7 @@ Success criteria:
 ### Phase 4 exit checklist
 
 - [ ] 4.1 before 4.2; both merged.
-- [ ] 4.3, 4.4 merged.
+- [x] 4.3, 4.4 implemented and verified (sub-PR A); PR pending.
 - [ ] 4.5 through 4.7 merged.
 - [ ] No file over 800 lines among the targets; full `pnpm typecheck && lint` green.
 

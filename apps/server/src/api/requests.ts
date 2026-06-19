@@ -339,12 +339,9 @@ requestsRouter.post('/:id/replay', requireRole('admin', 'editor'), async (c) => 
     replayBody !== null &&
     '_truncated' in replayBody
   ) {
-    return c.json(
-      {
-        error:
-          'Original request body was truncated and cannot be replayed exactly. Re-send manually from your application.',
-      },
-      422,
+    throw new ApiError(
+      'BODY_NOT_REPLAYABLE',
+      'Original request body was truncated and cannot be replayed exactly. Re-send manually from your application.',
     )
   }
 
@@ -412,9 +409,9 @@ requestsRouter.post('/:id/replay/run', requireRole('admin', 'editor'), async (c)
 
   const original = (parseJsonColumn(data.request_body, {}) ?? {}) as Record<string, unknown>
   if ('_truncated' in original) {
-    return c.json(
-      { error: 'Original request body was truncated and cannot be replayed exactly.' },
-      422,
+    throw new ApiError(
+      'BODY_NOT_REPLAYABLE',
+      'Original request body was truncated and cannot be replayed exactly.',
     )
   }
 
