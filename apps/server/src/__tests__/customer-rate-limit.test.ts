@@ -20,7 +20,9 @@ const EMPTY = { keyLimit: null, projectLimit: null, endUserLimits: new Map(), em
 const limit = (scope: string, maxRequests: number, windowSeconds = 60) => ({ scope, maxRequests, windowSeconds })
 
 function makeApp(opts: { apiKeyId?: string | null; projectId?: string | null } = {}) {
-  const app = new Hono()
+  const app = new Hono<{
+    Variables: { apiKeyId: string | null; projectId: string | null; organizationId: string | null }
+  }>()
   app.use('*', async (c, next) => {
     c.set('apiKeyId', opts.apiKeyId === undefined ? 'key_1' : opts.apiKeyId)
     c.set('projectId', opts.projectId === undefined ? 'proj_1' : opts.projectId)
@@ -33,7 +35,7 @@ function makeApp(opts: { apiKeyId?: string | null; projectId?: string | null } =
   return app
 }
 
-const probe = (app: Hono, headers: Record<string, string> = {}) =>
+const probe = (app: ReturnType<typeof makeApp>, headers: Record<string, string> = {}) =>
   app.request('/probe', { headers })
 
 beforeEach(() => {
