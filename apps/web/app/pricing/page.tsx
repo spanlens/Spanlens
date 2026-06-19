@@ -163,7 +163,6 @@ const PLANS = [
     description: 'For personal projects and exploration',
     features: [
       '50K requests / month',
-      '60 req/min rate limit',
       '1 seat',
       '1 workspace',
       'Unlimited projects',
@@ -183,7 +182,6 @@ const PLANS = [
     description: 'For solo developers shipping to production',
     features: [
       '100K requests / month',
-      '300 req/min rate limit',
       '3 seats',
       '2 workspaces',
       'Unlimited projects',
@@ -204,7 +202,6 @@ const PLANS = [
     description: 'For teams that need full visibility',
     features: [
       '1M requests / month',
-      '1,500 req/min rate limit',
       '10 seats',
       '5 workspaces',
       'Unlimited projects',
@@ -226,7 +223,6 @@ const PLANS = [
     description: 'For large teams with advanced needs',
     features: [
       'Custom requests / month',
-      'Custom rate limit',
       'Unlimited seats',
       'Unlimited workspaces',
       'Unlimited projects',

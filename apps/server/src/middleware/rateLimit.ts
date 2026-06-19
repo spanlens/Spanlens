@@ -4,6 +4,7 @@ import { checkRateLimit, PROXY_RATE_LIMITS, API_RATE_LIMIT } from '../lib/rate-l
 import type { ApiKeyContext } from './authApiKey.js'
 import type { JwtContext } from './authJwt.js'
 import { ApiError } from '../lib/errors.js'
+import { logWarn } from '../lib/structured-logger.js'
 
 /**
  * Per-minute rate limit for proxy routes (plan-aware).
@@ -15,10 +16,19 @@ import { ApiError } from '../lib/errors.js'
  * Pre-R-5 every proxy request was 2 round-trips (api_keys + plan);
  * post-R-5 it's 1 round-trip (cached) or 0 (cache hit).
  *
- *   free       →    60 req/min
- *   starter    →   300 req/min
- *   team       → 1,500 req/min
+ * Default ceilings (env-overridable, see PROXY_RATE_LIMITS):
+ *   free       →    600 req/min
+ *   starter    →  3,000 req/min
+ *   team       → 15,000 req/min
  *   enterprise → unlimited
+ *
+ * These are pure anti-runaway ceilings, NOT a monetization lever. On overage
+ * we do NOT 429 the customer's LLM request — that would hard-reject production
+ * traffic on the critical path, and BYOK means we bear no LLM cost on overage.
+ * Instead we PASS THROUGH and emit a structured warn (PROXY_RATE_LIMIT_OVERAGE)
+ * plus an X-Spanlens-RateLimit-Overage response header for observability. The
+ * monthly quota (enforceQuota, mounted right after this) remains the real
+ * monetization / abuse gate.
  *
  * All API keys within the same organization share one bucket, so a team
  * that issues multiple keys cannot multiply its quota.
@@ -54,17 +64,15 @@ export const proxyRateLimit = createMiddleware<ApiKeyContext>(async (c, next) =>
   c.header('X-RateLimit-Reset', String(resetAt))
 
   if (!allowed) {
+    // Pass-through, NOT a 429. Over the per-minute ceiling is an anti-runaway
+    // signal only — surface it for observability and let the request proceed
+    // to enforceQuota (the monetization gate) and upstream. A Redis outage
+    // also lands here as allowed=true (fail-open), so this branch fires only
+    // on a genuine, positive overage.
+    logWarn('PROXY_RATE_LIMIT_OVERAGE', { organizationId, plan, limit, window: '60s' })
     c.header('X-RateLimit-Remaining', '0')
-    c.header('Retry-After', '60')
-    throw new ApiError(
-      'RATE_LIMIT',
-      `Rate limit exceeded: ${limit} requests/min on the ${plan} plan. Upgrade or retry after 60 seconds.`,
-      {
-        limit,
-        window: '60s',
-        upgrade_url: 'https://www.spanlens.io/pricing',
-      },
-    )
+    c.header('X-Spanlens-RateLimit-Overage', 'true')
+    return next()
   }
 
   // For successful requests we don't know the exact remaining count

@@ -4,15 +4,30 @@ import type { Plan } from './quota.js'
 import { logError, logWarn } from './structured-logger.js'
 
 /**
- * Per-minute proxy ingestion limits keyed by plan.
+ * Per-minute proxy ceilings keyed by plan.
  *
  * Applied per organization (all API keys in the same org share the bucket).
  * Enterprise is unlimited (null).
+ *
+ * These are pure anti-runaway ceilings, NOT a monetization lever — monetization
+ * lives entirely in the monthly quota (enforceQuota, which runs right after
+ * proxyRateLimit on every proxy request). BYOK means we bear no LLM cost on
+ * overage, and the proxy is the customer's critical path, so the ceilings are
+ * set ~10x a realistic sustained rate and overage no longer hard-rejects
+ * (see proxyRateLimit in middleware/rateLimit.ts). Each is env-overridable so
+ * the ceiling can be tuned without a deploy.
  */
+function ceilingFromEnv(envVar: string, fallback: number): number {
+  const raw = process.env[envVar]
+  if (raw == null || raw === '') return fallback
+  const n = Number(raw)
+  return Number.isFinite(n) && n > 0 ? n : fallback
+}
+
 export const PROXY_RATE_LIMITS: Record<Plan, number | null> = {
-  free:       60,
-  starter:    300,
-  team:       1_500,
+  free:       ceilingFromEnv('PROXY_RATE_LIMIT_FREE',    600),
+  starter:    ceilingFromEnv('PROXY_RATE_LIMIT_STARTER', 3_000),
+  team:       ceilingFromEnv('PROXY_RATE_LIMIT_TEAM',    15_000),
   enterprise: null,
 }
 

