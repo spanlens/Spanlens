@@ -76,9 +76,19 @@ export async function logOpenAIStream(
     if (parsed.serviceTier) serviceTier = parsed.serviceTier
   }
 
-  const cost = calculateCost('openai' as Provider, model, {
-    promptTokens, completionTokens, cacheReadTokens, cacheWriteTokens, serviceTier,
-  })
+  // When the stream is cut before the final usage chunk (deadline at 290s or a
+  // client disconnect), OpenAI never sends usage and we capture 0 tokens.
+  // calculateCost(0 tokens) returns { totalCost: 0 }, which would persist a
+  // misleading cost_usd = $0 that looks like a real zero-cost call. Record null
+  // ("unknown") instead — the truncated flag + partial responseBody already
+  // mark the row incomplete. Billing is unaffected: quota/overage meter request
+  // COUNT, not cost_usd.
+  const hasUsage = promptTokens > 0 || completionTokens > 0
+  const cost = hasUsage
+    ? calculateCost('openai' as Provider, model, {
+        promptTokens, completionTokens, cacheReadTokens, cacheWriteTokens, serviceTier,
+      })
+    : null
 
   const text = extractOpenAIStreamText(lines)
   // Capture-rate signal: stream completed but no assistant text recovered
@@ -194,12 +204,14 @@ export async function logOpenRouterStream(
   let finalCostUsd: number | null = null
   if (openrouterReportedCost !== null) {
     finalCostUsd = openrouterReportedCost
-  } else {
+  } else if (promptTokens > 0 || completionTokens > 0) {
     const lookup = calculateCost('openrouter' as Provider, strippedModel, {
       promptTokens, completionTokens, cacheReadTokens, cacheWriteTokens, serviceTier,
     })
     finalCostUsd = lookup?.totalCost ?? null
   }
+  // else: no authoritative usage.cost AND no token usage captured (truncated
+  // stream) → leave null rather than a misleading $0. See logOpenAIStream.
 
   const text = extractOpenAIStreamText(lines)
   if (lines.length > 0 && text.length === 0) {
@@ -278,9 +290,16 @@ export async function logAnthropicStream(
   }
 
   const totalTokens = promptTokens + completionTokens
-  const cost = calculateCost('anthropic' as Provider, model, {
-    promptTokens, completionTokens, cacheReadTokens, cacheWriteTokens, serviceTier,
-  })
+  // Anthropic accumulates completion tokens per-delta and reads prompt tokens at
+  // message_start, so it usually has usage even when truncated. Guard anyway for
+  // consistency: no usage captured → null cost, not a misleading $0. See
+  // logOpenAIStream.
+  const hasUsage = promptTokens > 0 || completionTokens > 0
+  const cost = hasUsage
+    ? calculateCost('anthropic' as Provider, model, {
+        promptTokens, completionTokens, cacheReadTokens, cacheWriteTokens, serviceTier,
+      })
+    : null
 
   // Reconstruct upstream-shape usage so the dashboard preserves the raw
   // breakdown. Note: promptTokens already includes cache portions, so the raw
