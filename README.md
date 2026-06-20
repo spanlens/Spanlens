@@ -1,5 +1,6 @@
 # Spanlens
 
+[![GitHub stars](https://img.shields.io/github/stars/spanlens/Spanlens?style=social)](https://github.com/spanlens/Spanlens/stargazers)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 [![npm version](https://img.shields.io/npm/v/@spanlens/sdk.svg)](https://www.npmjs.com/package/@spanlens/sdk)
 [![PyPI version](https://img.shields.io/pypi/v/spanlens.svg)](https://pypi.org/project/spanlens/)
@@ -7,9 +8,15 @@
 
 **Open-source LLM observability and monitoring.** Record every OpenAI / Anthropic / Gemini / Mistral / OpenRouter / Azure OpenAI / Ollama call with one line of code. Plugs into Vercel AI SDK, LangChain, and LlamaIndex too. Query the same data directly from Cursor, Claude Desktop, or Continue via the bundled [MCP server](https://www.npmjs.com/package/@spanlens/mcp-server). Get cost, latency, tokens, traces, anomalies, PII scan, and model-swap suggestions out of the box. Self-hostable. MIT.
 
+> ⭐ **If Spanlens is useful to you, please [star the repo](https://github.com/spanlens/Spanlens). It takes a second and helps other developers find it.**
+
 > **Hosted**: [spanlens.io](https://www.spanlens.io) · **npm**: [`@spanlens/sdk`](https://www.npmjs.com/package/@spanlens/sdk) · **PyPI**: [`spanlens`](https://pypi.org/project/spanlens/) · **CLI**: [`@spanlens/cli`](https://www.npmjs.com/package/@spanlens/cli) · **MCP**: [`@spanlens/mcp-server`](https://www.npmjs.com/package/@spanlens/mcp-server) · **Status**: [status.spanlens.io](https://status.spanlens.io) · **Changelog**: [spanlens.io/changelog](https://www.spanlens.io/changelog)
 
 ---
+
+![Spanlens request log: filter every LLM call, then drill into the full prompt, response, cost, latency, and tokens](.github/assets/demo.gif)
+
+> Live demo (no signup): [spanlens.io/demo/requests](https://www.spanlens.io/demo/requests)
 
 ![One key swap. Every LLM call, observed.](.github/assets/code-swap.png)
 
