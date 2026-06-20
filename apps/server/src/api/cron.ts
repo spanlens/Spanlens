@@ -12,7 +12,7 @@ import { runReconciliationCron } from '../lib/events-reconciliation.js'
 import { runLeakDetectionJob } from '../lib/leak-detection.js'
 import { sendHighConfidenceRecommendationAlerts } from '../lib/recommendation-notify.js'
 import { logCronRun } from '../lib/cron-logger.js'
-import { replayFallbackQueue, replayEventsFallbackQueue } from '../lib/fallback-replay.js'
+import { replayFallbackQueue, replayEventsFallbackQueue, alertOnFallbackBacklog } from '../lib/fallback-replay.js'
 import { runDowngradeCheck } from '../lib/billing-downgrade.js'
 import { executePendingDeletions } from './pendingDeletions.js'
 // Inline cron job bodies were extracted to lib/cron-jobs/ in the 2026-06-12
@@ -233,6 +233,10 @@ cronRouter.get('/replay-fallback', async (c) => {
       replayFallbackQueue(),
       replayEventsFallbackQueue(),
     ])
+    // Post-drain backlog check: if the queue is still four-figures after
+    // replaying a batch, ClickHouse is likely down and rows are accumulating
+    // toward the 7-day TTL — raise an operator alert (deduped, never throws).
+    const backlog = await alertOnFallbackBacklog()
     const topErr = requestsResult.error ?? eventsResult.error
     const status = topErr ? 'error' : 'ok'
     logCronRun('replay-fallback', status, Date.now() - start, topErr).catch(console.error)
@@ -240,6 +244,7 @@ cronRouter.get('/replay-fallback', async (c) => {
       success: !topErr,
       requests: requestsResult,
       events: eventsResult,
+      backlog,
     })
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'unknown'
