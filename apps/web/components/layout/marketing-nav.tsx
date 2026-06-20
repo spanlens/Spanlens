@@ -34,6 +34,7 @@ export function MarketingNav({ signupLabel = 'Start free →', subtitle }: Marke
           <Link href="/docs" className="hover:text-text transition-colors">Docs</Link>
           <Link href="/pricing" className="hover:text-text transition-colors">Pricing</Link>
           <Link href="/changelog" className="hover:text-text transition-colors">Changelog</Link>
+          <a href="https://blog.spanlens.io" className="hover:text-text transition-colors">Blog</a>
           <a
             href="https://github.com/spanlens/Spanlens"
             target="_blank"
