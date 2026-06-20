@@ -45,6 +45,7 @@ export function Footer() {
               <Link href="/pricing" className="hover:text-text transition-colors">Pricing</Link>
               <Link href="/docs/quick-start" className="hover:text-text transition-colors">Quick start</Link>
               <Link href="/changelog" className="hover:text-text transition-colors">Changelog</Link>
+              <a href="https://blog.spanlens.io" className="hover:text-text transition-colors">Blog</a>
               <a href="https://status.spanlens.io" target="_blank" rel="noopener noreferrer" className="hover:text-text transition-colors">Status</a>
             </div>
           </div>
