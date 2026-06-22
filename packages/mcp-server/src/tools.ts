@@ -6,8 +6,8 @@
  * they hit the network. Output is always returned as a single text block —
  * MCP clients render JSON well enough that structured output isn't needed yet.
  *
- * Why all 6 in one file: they're each ~20 lines and they all share the same
- * `SpanlensClient` + `formatJson` helper. Splitting into 6 files would just
+ * Why all 7 in one file: they're each ~20 lines and they all share the same
+ * `SpanlensClient` + `formatJson` helper. Splitting into 7 files would just
  * add noise without making any single tool easier to find. Revisit if the
  * surface grows past ~10 tools.
  */
@@ -188,7 +188,7 @@ export function registerTools(server: McpServer, client: SpanlensClient): void {
     },
   )
 
-  // ── 4. get_anomalies ────────────────────────────────────────────────────
+  // ── 5. get_anomalies ────────────────────────────────────────────────────
   server.tool(
     'get_anomalies',
     'List unacknowledged cost / latency / error-rate anomalies the platform has detected. Use when the user asks "anything weird going on?", "any spikes?", or wants a quick health check.',
@@ -212,7 +212,7 @@ export function registerTools(server: McpServer, client: SpanlensClient): void {
     },
   )
 
-  // ── 5. get_savings ──────────────────────────────────────────────────────
+  // ── 6. get_savings ──────────────────────────────────────────────────────
   server.tool(
     'get_savings',
     'List model-swap recommendations the platform thinks would save money without losing quality. Each item carries projected monthly savings, prior-window cost, and an `achieved` flag if the swap has already been adopted.',
@@ -242,7 +242,7 @@ export function registerTools(server: McpServer, client: SpanlensClient): void {
     },
   )
 
-  // ── 6. get_user_analytics ──────────────────────────────────────────────
+  // ── 7. get_user_analytics ──────────────────────────────────────────────
   server.tool(
     'get_user_analytics',
     "Get per-end-user usage breakdown — total requests, cost, latency, models used, recent calls. The 'user' here is the customer's end-user, identified by the `x-spanlens-user` header the SDK attaches.",
