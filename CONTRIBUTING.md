@@ -181,7 +181,7 @@ The body explains **why**, not what. The diff already shows what.
 ## Security disclosures
 
 Found a vulnerability? **Please don't open a public issue.** Email
-`support@spanlens.io` (or `haeseong050321@gmail.com`) with the details. We
+`support@spanlens.io` with the details. We
 respond within one business day. See [SECURITY.md](./SECURITY.md) for the
 full policy.
 

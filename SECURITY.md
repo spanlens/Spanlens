@@ -13,7 +13,7 @@ Only the latest release of Spanlens receives security updates.
 
 **Please do not open a public GitHub issue for security vulnerabilities.**
 
-To report a security issue, email **haeseong050321@gmail.com** with:
+To report a security issue, email **support@spanlens.io** with:
 
 - A description of the vulnerability and its potential impact
 - Steps to reproduce or a proof-of-concept (if available)
