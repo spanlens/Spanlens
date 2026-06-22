@@ -205,11 +205,12 @@ Spanlens is multi-user out of the box. Invite teammates, hand out roles, and spi
 Spanlens/
 ├── apps/
 │   ├── web/             — Next.js 14 dashboard (www.spanlens.io)
-│   └── server/          — Hono LLM proxy + REST API (spanlens-server.vercel.app)
+│   └── server/          — Hono LLM proxy + REST API (server.spanlens.io)
 ├── packages/
 │   ├── sdk/             — @spanlens/sdk:  TypeScript / JavaScript SDK
 │   ├── sdk-python/      — spanlens (PyPI): Python SDK
-│   └── cli/             — @spanlens/cli:  npx wizard for 1-command setup
+│   ├── cli/             — @spanlens/cli:  npx wizard for 1-command setup
+│   └── mcp-server/      — @spanlens/mcp-server: MCP server for Cursor / Claude Desktop / Continue
 ├── clickhouse/
 │   ├── migrations/      — ClickHouse schema for the `requests` log table
 │   └── apply.ts         — `pnpm ch:migrate` runner (idempotent)
