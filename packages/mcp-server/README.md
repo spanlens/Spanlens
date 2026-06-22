@@ -64,7 +64,7 @@ mcpServers:
 
 ### 3. Reload your IDE and start asking
 
-The agent will discover six tools and use them automatically when relevant.
+The agent will discover seven tools and use them automatically when relevant.
 
 ## What you can ask
 
@@ -74,6 +74,7 @@ The agent will discover six tools and use them automatically when relevant.
 | "Break down cost by model for the last 30 days" | `get_stats(groupBy=model)` |
 | "Any cost or latency anomalies?" | `get_anomalies` |
 | "Show me the 10 most recent error calls on gpt-4o" | `query_requests` |
+| "List my recent agent runs" | `list_traces` |
 | "Walk me through trace `abc123…`" | `get_trace` |
 | "What models could we swap to save money?" | `get_savings` |
 | "Which end-user is driving the most spend?" | `get_user_analytics` |
@@ -84,6 +85,7 @@ The agent will discover six tools and use them automatically when relevant.
 |---|---|
 | `get_stats` | Aggregate cost, request count, token usage, latency, error rate. Optional `groupBy` for per-model or per-provider breakdown. |
 | `query_requests` | Individual LLM requests with cost, latency, model, error message. Filter by `model`, `provider`, `status`, `userId`, `since`, `limit`. |
+| `list_traces` | Agent trace summaries (name, status, duration, span count, total tokens, total cost) for discovering trace IDs. Filter by `limit`, `status`, `since`, `query`. Pair with `get_trace` for the full span tree. |
 | `get_trace` | Full agent span tree for a trace ID — every LLM/tool/retrieval span with timing, tokens, cost. |
 | `get_anomalies` | Cost / latency / error-rate anomalies the platform has detected. Optional `severity`. |
 | `get_savings` | Model-swap recommendations with projected monthly savings and adoption status. |
