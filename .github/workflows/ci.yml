@@ -11,7 +11,7 @@ jobs:
     name: Typecheck / Lint / Test / Build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - uses: pnpm/action-setup@v6
         with:
@@ -81,7 +81,7 @@ jobs:
         # during the outage. Pinned versions skip that resolution entirely.
         # 2.x required for Postgres 17 support (config.toml has db.major_version=17).
         # Bump when you need a newer CLI feature.
-        uses: supabase/setup-cli@v1
+        uses: supabase/setup-cli@v2
         with:
           version: 2.106.0
         env:
@@ -110,10 +110,10 @@ jobs:
       # every main push for 2 PRs. Run the same docker build in CI so
       # the failure surfaces on the PR.
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Build apps/web Docker image (regression guard, no push)
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: apps/web/Dockerfile
