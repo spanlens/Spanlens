@@ -13,6 +13,10 @@ import { geminiProxy }     from './proxy/gemini.js'
 import { azureProxy }      from './proxy/azure.js'
 import { mistralProxy }    from './proxy/mistral.js'
 import { openrouterProxy } from './proxy/openrouter.js'
+import { groqProxy }       from './proxy/groq.js'
+import { deepseekProxy }   from './proxy/deepseek.js'
+import { xaiProxy }        from './proxy/xai.js'
+import { cohereProxy }     from './proxy/cohere.js'
 
 import { organizationsRouter } from './api/organizations.js'
 import { projectsRouter }      from './api/projects.js'
@@ -145,6 +149,10 @@ app.route('/proxy/gemini',    geminiProxy)
 app.route('/proxy/azure',     azureProxy)
 app.route('/proxy/mistral',   mistralProxy)
 app.route('/proxy/openrouter', openrouterProxy)
+app.route('/proxy/groq',      groqProxy)
+app.route('/proxy/deepseek',  deepseekProxy)
+app.route('/proxy/xai',       xaiProxy)
+app.route('/proxy/cohere',    cohereProxy)
 
 // ── SDK ingestion routes (authApiKey middleware) ──────────────
 app.route('/ingest',          ingestRouter)

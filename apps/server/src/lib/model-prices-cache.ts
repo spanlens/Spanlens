@@ -144,6 +144,23 @@ export const FALLBACK_PRICES: Record<string, ModelPrice> = {
   'open-mistral-nemo':            { prompt: 0.15, completion: 0.15 },
   'mixtral-8x22b':                { prompt: 2.00, completion: 6.00 },
   'mistral-embed':                { prompt: 0.10, completion: 0 },
+  // ── Groq / DeepSeek / xAI / Cohere (OpenAI-compatible) ───────────────────
+  // Representative production models; full set lives in the seed +
+  // 20260701120100 migration. Cold-start fallback so cost lands non-NULL.
+  'llama-3.3-70b-versatile':      { prompt: 0.59,  completion: 0.79 },
+  'llama-3.1-8b-instant':         { prompt: 0.05,  completion: 0.08 },
+  'openai/gpt-oss-120b':          { prompt: 0.15,  completion: 0.60, cacheRead: 0.075 },
+  'openai/gpt-oss-20b':           { prompt: 0.075, completion: 0.30, cacheRead: 0.0375 },
+  'deepseek-chat':                { prompt: 0.14,  completion: 0.28, cacheRead: 0.0028 },
+  'deepseek-reasoner':            { prompt: 0.14,  completion: 0.28, cacheRead: 0.0028 },
+  'deepseek-v4-flash':            { prompt: 0.14,  completion: 0.28, cacheRead: 0.0028 },
+  'deepseek-v4-pro':              { prompt: 0.435, completion: 0.87, cacheRead: 0.003625 },
+  'grok-4.3':                     { prompt: 1.25,  completion: 2.50 },
+  'grok-build-0.1':               { prompt: 1.00,  completion: 2.00 },
+  'command-a-03-2025':            { prompt: 2.50,  completion: 10.00 },
+  'command-r-plus-08-2024':       { prompt: 2.50,  completion: 10.00 },
+  'command-r-08-2024':            { prompt: 0.15,  completion: 0.60 },
+  'command-r7b-12-2024':          { prompt: 0.0375, completion: 0.15 },
   // ── Anthropic: Claude 4.x (aliases + dated variants) ─────────────────────
   'claude-opus-4-7':              { prompt: 5,    completion: 25, cacheRead: 0.5,  cacheWrite: 6.25 },
   'claude-opus-4-6':              { prompt: 5,    completion: 25, cacheRead: 0.5,  cacheWrite: 6.25 }, // alias only; no dated form per docs
