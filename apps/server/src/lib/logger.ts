@@ -8,6 +8,7 @@ import { emitWebhookEvent } from './webhook-emit.js'
 import { writeRequestAsEvent } from './events-writer.js'
 import { logError } from './structured-logger.js'
 import { resolvePromptVersion } from './resolve-prompt-version.js'
+import { getOrgBodySampleRate, shouldStoreBody } from './org-log-config.js'
 
 /**
  * Customer-controlled body logging mode (sent via the `x-spanlens-log-body`
@@ -237,7 +238,14 @@ export async function logRequestAsync(data: RequestLogData): Promise<void> {
   // The error_message column passes through API-key masking in case an
   // upstream 401 echoed back a key fragment.
   const logBodyMode = data.logBodyMode ?? 'full'
-  const storeBody = logBodyMode === 'full'
+  // Body-level sampling (org-configurable via organizations.body_sample_rate):
+  // keep the row + all metadata (tokens, cost, counts) so quota/billing stay
+  // exact — we NEVER drop a whole row — but drop the heavy body text for
+  // (1 - body_sample_rate) of requests to cut ClickHouse storage. Default 1.0 =
+  // store all bodies (unchanged). The security scan above still ran on the full
+  // body, so injection/PII flags are recorded even when the body isn't stored.
+  const bodySampleRate = await getOrgBodySampleRate(data.organizationId)
+  const storeBody = shouldStoreBody(logBodyMode === 'full', bodySampleRate, Math.random())
   const requestBody = storeBody ? maskApiKeysInBody(maybeTruncateBody(data.requestBody)) : ''
   const responseBody = storeBody ? maskApiKeysInBody(maybeTruncateBody(data.responseBody)) : ''
   const errorMessage = data.errorMessage ? maskApiKeys(data.errorMessage) : null

@@ -85,6 +85,32 @@ export function useUpdateBrandingSettings() {
   })
 }
 
+export interface LoggingSettingsUpdate {
+  /** Fraction [0,1] of requests whose bodies are stored. 1 = all (default). */
+  body_sample_rate: number
+}
+
+/**
+ * PATCH /api/v1/organizations/me/logging — request-body sampling rate. Body
+ * sampling only: every request still writes a row (billing stays exact), only
+ * the stored prompt/response text is dropped for the sampled-out fraction.
+ */
+export function useUpdateLoggingSettings() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (update: LoggingSettingsUpdate) => {
+      const res = await apiPatch<ApiEnvelope<Organization>>(
+        '/api/v1/organizations/me/logging',
+        update,
+      )
+      return res.data
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: organizationQueryKey })
+    },
+  })
+}
+
 /**
  * PATCH /api/v1/organizations/me/security — notification-only key security
  * settings (stale-key digest, GitGuardian leak detection). Neither auto-revokes
