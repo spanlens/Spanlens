@@ -199,10 +199,16 @@ export async function retryFailedWebhooks(): Promise<{
   }>) {
     const webhook = delivery.webhooks
     if (!webhook?.is_active || !delivery.payload) {
-      // Mark exhausted if webhook was deleted/disabled or payload missing
+      // Dead-letter: the webhook was deleted/disabled or the payload row is
+      // gone, so no retry can ever succeed. Mark it terminally.
       await supabaseAdmin
         .from('webhook_deliveries')
-        .update({ next_retry_at: null, attempt_count: MAX_ATTEMPTS })
+        .update({
+          next_retry_at: null,
+          attempt_count: MAX_ATTEMPTS,
+          dlq_at: new Date().toISOString(),
+          dlq_reason: !delivery.payload ? 'payload_missing' : 'webhook_deleted',
+        })
         .eq('id', delivery.id)
       continue
     }
@@ -228,7 +234,11 @@ export async function retryFailedWebhooks(): Promise<{
         .eq('id', delivery.id)
       succeeded++
     } else {
-      const nextRetryAt = attempt >= MAX_ATTEMPTS
+      // When this attempt was the last one, dead-letter it: stop retrying and
+      // stamp dlq_at so it's counted + surfaced instead of silently rotting in
+      // the failed pile.
+      const exhaustedNow = attempt >= MAX_ATTEMPTS
+      const nextRetryAt = exhaustedNow
         ? null
         : new Date(Date.now() + nextRetryDelayMs(attempt)).toISOString()
 
@@ -240,15 +250,84 @@ export async function retryFailedWebhooks(): Promise<{
           duration_ms: durationMs,
           attempt_count: attempt,
           next_retry_at: nextRetryAt,
+          ...(exhaustedNow
+            ? { dlq_at: new Date().toISOString(), dlq_reason: 'exhausted' }
+            : {}),
         })
         .eq('id', delivery.id)
       failed++
     }
   }
 
+  // Page operators if too many deliveries have permanently dead-lettered (an
+  // endpoint down long enough to burn through all retries). Best-effort — a
+  // failure here must never break the retry cron.
+  await alertOnWebhookDlq().catch(() => undefined)
+
   const exhausted = pending.filter(
     (d) => (d as { attempt_count: number }).attempt_count + 1 >= MAX_ATTEMPTS && failed > 0
   ).length
 
   return { retried: pending.length, succeeded, failed, exhausted }
+}
+
+/**
+ * Count of dead-lettered webhook deliveries (permanently given up on). Returns
+ * `null` when the count query itself fails, so callers can distinguish "zero
+ * dead" from "couldn't check" (same convention as /health/deep metrics).
+ */
+export async function webhookDlqSize(): Promise<number | null> {
+  const { count, error } = await supabaseAdmin
+    .from('webhook_deliveries')
+    .select('id', { count: 'exact', head: true })
+    .not('dlq_at', 'is', null)
+  if (error) return null
+  return count ?? 0
+}
+
+/** Dead-letter queue size above which an operator alert is raised. */
+export const WEBHOOK_DLQ_ALERT_THRESHOLD = 100
+
+/**
+ * Raise an `internal_alerts` row (kind `webhook_backlog`, already declared in
+ * 20260609110000_internal_alerts.sql) when the dead-letter queue exceeds
+ * `threshold`. Surfaced to operators at /admin/alerts.
+ *
+ * Deduplicated: if an unresolved `webhook_backlog` alert is already open, this
+ * is a no-op — a persistently-down endpoint pages once, not every cron tick.
+ * Mirrors `alertOnFallbackBacklog` in lib/fallback-replay.ts.
+ */
+export async function alertOnWebhookDlq(
+  threshold: number = WEBHOOK_DLQ_ALERT_THRESHOLD,
+): Promise<{ dlqSize: number | null; alerted: boolean }> {
+  const dlqSize = await webhookDlqSize()
+  if (dlqSize === null || dlqSize <= threshold) return { dlqSize, alerted: false }
+
+  try {
+    const { data: existing } = await supabaseAdmin
+      .from('internal_alerts')
+      .select('id')
+      .eq('kind', 'webhook_backlog')
+      .is('resolved_at', null)
+      .limit(1)
+      .maybeSingle()
+    if (existing) return { dlqSize, alerted: false }
+
+    await supabaseAdmin.from('internal_alerts').insert({
+      kind: 'webhook_backlog',
+      severity: 'error',
+      message:
+        `Webhook dead-letter queue over ${threshold} ` +
+        `(${dlqSize} deliveries permanently failed). An endpoint is likely down or misconfigured.`,
+      details: { dlq_size: dlqSize, threshold },
+    })
+    return { dlqSize, alerted: true }
+  } catch (err) {
+    logError(
+      'WEBHOOK_DLQ_ALERT_FAILED',
+      { kind: 'webhook_dlq_alert' },
+      err instanceof Error ? err.message : 'unknown',
+    )
+    return { dlqSize, alerted: false }
+  }
 }
