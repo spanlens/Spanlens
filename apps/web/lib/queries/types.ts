@@ -30,6 +30,8 @@ export interface Organization {
   leak_detection_enabled: boolean
   /** PLG Loop ② — Team+ may hide the "Observed by Spanlens" share footer. */
   hide_powered_by_badge: boolean
+  /** Fraction [0,1] of requests whose bodies are stored (row + metadata always stored). */
+  body_sample_rate: number
   created_at: string
   updated_at: string
 }
