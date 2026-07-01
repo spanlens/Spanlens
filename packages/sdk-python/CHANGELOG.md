@@ -10,9 +10,14 @@ FastAPI / ASGI auto-instrumentation — one line traces every HTTP request.
 - Sampling and tail-based error capture come from the underlying client, so sampled-out successful requests do zero network I/O while errors are always recorded. Health / metrics / docs routes are skipped by default (`skip_paths=` to override).
 - The middleware is pure ASGI (it does not import FastAPI), so it also works with Starlette, Litestar, Quart, and any ASGI app. New `spanlens[fastapi]` optional extra.
 
+### Security
+
+- Query strings are **not** captured into trace metadata by default (they routinely carry secrets/PII: OAuth `code`/`state`, reset tokens, signed-URL signatures). Opt in with `capture_query_string=True`.
+- The exception re-raise path uses a `_safe_str` helper so a handler exception whose `__str__` itself raises can never replace the original exception on its way back up.
+
 ### Verified
 
-- 5 new tests (success trace + `request.state` injection, default-path skipping, error capture + re-raise, build-from-`api_key`, and the missing-credentials guard). Full suite: 161 passing. `ruff` clean; `mypy --strict` clean on the new module.
+- 8 tests (success trace + `request.state` injection, default-path skipping, error capture + re-raise, build-from-`api_key`, missing-credentials guard, query-string off-by-default + opt-in, and broken-`__str__` re-raise). `ruff` clean; `mypy --strict` clean on the new module.
 
 ## 0.7.0
 

@@ -295,6 +295,9 @@ async def chat(body: dict, request: Request):
   one connection pool across your app.
 * Health, metrics, and docs routes are skipped by default. Override with
   `skip_paths=[...]`.
+* Query strings are **not** captured into trace metadata by default, because
+  they often carry secrets or PII (OAuth `code`/`state`, reset tokens,
+  signed-URL signatures). Opt in with `capture_query_string=True`.
 * It is pure ASGI (it does not import FastAPI), so it also works with
   Starlette, Litestar, Quart, and any other ASGI app. `pip install
   spanlens[fastapi]` pulls FastAPI in if you do not already have it.

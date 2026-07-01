@@ -65,6 +65,16 @@ def _default_name(scope: dict[str, Any]) -> str:
     return f"{method} {path}"
 
 
+def _safe_str(exc: BaseException) -> str:
+    """str(exc) that can never raise — a broken __str__/__repr__ on a handler's
+    exception must not replace the original exception on its way back up (the
+    middleware's re-raise-untouched invariant)."""
+    try:
+        return str(exc)
+    except Exception:
+        return repr(type(exc))
+
+
 class SpanlensMiddleware:
     """ASGI middleware that records one trace + root span per HTTP request.
 
@@ -81,6 +91,11 @@ class SpanlensMiddleware:
         span_type: Span type for the root span (default ``"custom"``).
         name_factory: ``scope -> str`` to customise the trace/span name.
             Defaults to ``"<METHOD> <path>"``.
+        capture_query_string: When True, store the raw request query string in
+            the trace metadata. OFF by default because query strings routinely
+            carry secrets/PII (OAuth ``code``/``state``, password-reset or
+            magic-link ``token``, signed-URL signatures). Mirrors the
+            ``x-spanlens-log-body`` opt-out precedent for proxy bodies.
     """
 
     def __init__(
@@ -94,6 +109,7 @@ class SpanlensMiddleware:
         skip_paths: Optional[Sequence[str]] = None,
         span_type: SpanType = "custom",
         name_factory: Optional[NameFactory] = None,
+        capture_query_string: bool = False,
     ) -> None:
         self.app = app
 
@@ -114,6 +130,7 @@ class SpanlensMiddleware:
         )
         self._span_type: SpanType = span_type
         self._name_factory: NameFactory = name_factory or _default_name
+        self._capture_query: bool = capture_query_string
 
     def _should_skip(self, path: str) -> bool:
         for skip in self._skip_paths:
@@ -141,10 +158,13 @@ class SpanlensMiddleware:
             method = scope.get("method", "GET")
             path = scope.get("path", "") or "/"
             name = self._name_factory(scope)
-            query = scope.get("query_string", b"")
             metadata: dict[str, Any] = {"method": method, "path": path}
-            if query:
-                metadata["query"] = query.decode("latin-1")
+            # Query strings often carry secrets/PII, so they are NOT captured
+            # unless the caller opts in with capture_query_string=True.
+            if self._capture_query:
+                query = scope.get("query_string", b"")
+                if query:
+                    metadata["query"] = query.decode("latin-1")
 
             trace = self._client.start_trace(name, metadata=metadata)
             span = trace.span(
@@ -178,8 +198,9 @@ class SpanlensMiddleware:
             await self.app(scope, receive, send_wrapper)
         except Exception as exc:
             # Unhandled exception in the handler — record error, then re-raise
-            # so the framework's own error handling still runs.
-            self._safe_end(span, trace, status="error", error_message=str(exc))
+            # so the framework's own error handling still runs. _safe_str keeps a
+            # broken __str__ from replacing the original exception on re-raise.
+            self._safe_end(span, trace, status="error", error_message=_safe_str(exc))
             raise
 
         # A 5xx status without an exception (e.g. a returned error response) is

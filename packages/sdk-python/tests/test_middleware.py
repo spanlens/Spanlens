@@ -176,6 +176,82 @@ async def test_middleware_builds_client_from_api_key() -> None:
     assert resp.json() == {"pong": "1"}
 
 
+@respx.mock
+async def test_middleware_does_not_capture_query_string_by_default() -> None:
+    routes = _mock_ingest()
+    client = _make_client()
+
+    app = FastAPI()
+    app.add_middleware(SpanlensMiddleware, client=client)
+
+    @app.get("/callback")
+    async def cb() -> dict[str, str]:
+        return {"ok": "1"}
+
+    async with httpx.AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://testserver",
+    ) as http:
+        resp = await http.get("/callback?token=supersecret&code=abc123")
+
+    assert resp.status_code == 200
+    client.close()
+
+    # Secrets in the query string must NOT be shipped by default.
+    trace_body = _bodies(routes["trace_post"])[0]
+    assert "query" not in trace_body["metadata"]
+
+
+@respx.mock
+async def test_middleware_captures_query_string_when_opted_in() -> None:
+    routes = _mock_ingest()
+    client = _make_client()
+
+    app = FastAPI()
+    app.add_middleware(SpanlensMiddleware, client=client, capture_query_string=True)
+
+    @app.get("/search")
+    async def search() -> dict[str, str]:
+        return {"ok": "1"}
+
+    async with httpx.AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://testserver",
+    ) as http:
+        await http.get("/search?q=ramen")
+
+    client.close()
+
+    trace_body = _bodies(routes["trace_post"])[0]
+    assert trace_body["metadata"]["query"] == "q=ramen"
+
+
+@respx.mock
+async def test_middleware_reraises_original_exception_even_with_broken_str() -> None:
+    """A handler exception whose __str__ itself raises must still propagate AS
+    ITSELF — the middleware's error-message capture must never replace it."""
+    _mock_ingest()
+    client = _make_client()
+
+    app = FastAPI()
+    app.add_middleware(SpanlensMiddleware, client=client)
+
+    class BrokenStrError(Exception):
+        def __str__(self) -> str:
+            raise RuntimeError("str is broken")
+
+    @app.get("/broken")
+    async def broken() -> dict[str, Any]:
+        raise BrokenStrError()
+
+    async with httpx.AsyncClient(
+        transport=ASGITransport(app=app, raise_app_exceptions=True),
+        base_url="http://testserver",
+    ) as http:
+        with pytest.raises(BrokenStrError):
+            await http.get("/broken")
+
+    client.close()
+
+
 def test_middleware_requires_client_or_api_key() -> None:
     app = FastAPI()
     with pytest.raises(ValueError, match="client= or api_key="):
