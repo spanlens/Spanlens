@@ -38,7 +38,11 @@ https://server.spanlens.io/proxy/anthropic
 https://server.spanlens.io/proxy/gemini/v1beta
 https://server.spanlens.io/proxy/azure
 https://server.spanlens.io/proxy/mistral/v1
-https://server.spanlens.io/proxy/openrouter/v1`}</CodeBlock>
+https://server.spanlens.io/proxy/openrouter/v1
+https://server.spanlens.io/proxy/groq/v1
+https://server.spanlens.io/proxy/deepseek/v1
+https://server.spanlens.io/proxy/xai/v1
+https://server.spanlens.io/proxy/cohere/v1`}</CodeBlock>
       <p>
         Send requests exactly as you would to the real provider, with two changes:
       </p>
@@ -224,6 +228,37 @@ res2 = client.chat.completions.create(
         model + no <code>usage.cost</code> → <code>cost_usd</code> lands
         NULL (visible in <a href="/requests">/requests</a> so you know to
         check OpenRouter&apos;s own dashboard for that row).
+      </p>
+
+      <h2 id="openai-compat-providers">Groq, DeepSeek, xAI, Cohere</h2>
+      <p>
+        Four more OpenAI-compatible providers route through Spanlens with the
+        same base-URL swap. Register the provider key on{' '}
+        <a href="/projects">/projects</a>, then point the OpenAI SDK (or the
+        matching <code>@spanlens/sdk</code> helper) at the proxy route:
+      </p>
+      <CodeBlock>{`import { createGroq }     from '@spanlens/sdk/groq'
+import { createDeepSeek } from '@spanlens/sdk/deepseek'
+import { createXai }      from '@spanlens/sdk/xai'
+import { createCohere }   from '@spanlens/sdk/cohere'
+
+const groq     = createGroq()      // model: 'llama-3.3-70b-versatile'
+const deepseek = createDeepSeek()  // model: 'deepseek-chat'
+const xai      = createXai()       // model: 'grok-4.3'
+const cohere   = createCohere()    // model: 'command-a-03-2025' (Cohere ids, not gpt-*)
+
+// Each behaves like a normal OpenAI client:
+// await groq.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages: [...] })`}</CodeBlock>
+      <p className="text-sm text-muted-foreground">
+        All four speak the OpenAI Chat Completions protocol, so tokens, latency,
+        and cost land on every <a href="/requests">/requests</a> row. Groq,
+        DeepSeek, and xAI stream usage on the final chunk (Spanlens injects{' '}
+        <code>stream_options.include_usage</code> automatically). Cohere&apos;s
+        compatibility layer does not accept that flag, so a streamed Cohere call
+        may log <code>cost_usd</code> as null; non-streaming Cohere calls are
+        costed normally. Seeded prices cover the current production models on
+        each provider; an unpriced model logs <code>cost_usd</code> null rather
+        than a wrong number.
       </p>
 
       <h2 id="curl">curl, raw HTTP</h2>

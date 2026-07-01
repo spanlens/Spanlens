@@ -81,6 +81,30 @@ INSERT INTO model_prices (
   ('mistral', 'open-mistral-nemo',               0.15,   0.15,   NULL,   NULL),
   ('mistral', 'mixtral-8x22b',                   2.00,   6.00,   NULL,   NULL),
   ('mistral', 'mistral-embed',                   0.10,   0.000,  NULL,   NULL),
+  -- ── Groq (OpenAI-compatible, api.groq.com/openai/v1) ─────────────────────
+  ('groq', 'llama-3.3-70b-versatile',                    0.59,  0.79,    NULL,     NULL),
+  ('groq', 'llama-3.1-8b-instant',                       0.05,  0.08,    NULL,     NULL),
+  ('groq', 'openai/gpt-oss-120b',                        0.15,  0.60,    0.075,    NULL),
+  ('groq', 'openai/gpt-oss-20b',                         0.075, 0.30,    0.0375,   NULL),
+  ('groq', 'meta-llama/llama-4-scout-17b-16e-instruct',  0.11,  0.34,    NULL,     NULL),
+  ('groq', 'qwen/qwen3-32b',                             0.29,  0.59,    NULL,     NULL),
+  ('groq', 'moonshotai/kimi-k2-instruct-0905',           1.00,  3.00,    0.50,     NULL),
+  -- ── DeepSeek (OpenAI-compatible, api.deepseek.com/v1) ────────────────────
+  ('deepseek', 'deepseek-chat',                          0.14,  0.28,    0.0028,   NULL),
+  ('deepseek', 'deepseek-reasoner',                      0.14,  0.28,    0.0028,   NULL),
+  ('deepseek', 'deepseek-v4-flash',                      0.14,  0.28,    0.0028,   NULL),
+  ('deepseek', 'deepseek-v4-pro',                        0.435, 0.87,    0.003625, NULL),
+  -- ── xAI / Grok (OpenAI-compatible, api.x.ai/v1) ──────────────────────────
+  ('xai', 'grok-4.3',                                    1.25,  2.50,    NULL,     NULL),
+  ('xai', 'grok-4.20-0309-reasoning',                    1.25,  2.50,    NULL,     NULL),
+  ('xai', 'grok-4.20-0309-non-reasoning',                1.25,  2.50,    NULL,     NULL),
+  ('xai', 'grok-4.20-multi-agent-0309',                  1.25,  2.50,    NULL,     NULL),
+  ('xai', 'grok-build-0.1',                              1.00,  2.00,    NULL,     NULL),
+  -- ── Cohere (OpenAI-compatible, api.cohere.ai/compatibility/v1) ───────────
+  ('cohere', 'command-a-03-2025',                        2.50,  10.00,   NULL,     NULL),
+  ('cohere', 'command-r-plus-08-2024',                   2.50,  10.00,   NULL,     NULL),
+  ('cohere', 'command-r-08-2024',                        0.15,  0.60,    NULL,     NULL),
+  ('cohere', 'command-r7b-12-2024',                      0.0375, 0.15,   NULL,     NULL),
   -- ── Anthropic: Claude 4.x (aliases + dated variants) ────────────────────
   ('anthropic', 'claude-opus-4-7',               5.00,  25.00,   0.50,   6.25),
   ('anthropic', 'claude-opus-4-6',               5.00,  25.00,   0.50,   6.25), -- alias only; no dated form per docs

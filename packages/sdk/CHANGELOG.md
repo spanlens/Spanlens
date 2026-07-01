@@ -1,5 +1,16 @@
 # @spanlens/sdk changelog
 
+## 0.15.0
+
+Four more OpenAI-compatible providers: Groq, DeepSeek, xAI (Grok), and Cohere.
+
+### Added
+
+- `@spanlens/sdk/groq`, `@spanlens/sdk/deepseek`, `@spanlens/sdk/xai`, and `@spanlens/sdk/cohere` subpaths, each exporting a `createX(options?)` factory that returns an OpenAI-compatible client already pointed at the matching hosted Spanlens proxy route, plus its `observeX` tracer. `DEFAULT_SPANLENS_<PROVIDER>_PROXY` is exported for self-hosted overrides.
+- `observeGroq`, `observeDeepSeek`, `observeXai`, and `observeCohere` are also exported from the package root. All four parse the standard OpenAI `usage` shape and tag the span with the right provider.
+
+Register the provider key on your Spanlens project, set `SPANLENS_API_KEY`, and the client works like a normal OpenAI client. Streamed Groq / DeepSeek / xAI calls capture usage automatically; Cohere's compatibility layer does not accept the usage-on-stream flag, so streamed Cohere calls may log cost as null (non-streaming Cohere is costed normally).
+
 ## 0.14.0
 
 Dedicated Ollama subpath — a one-line client factory for local models.

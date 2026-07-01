@@ -33,7 +33,9 @@ export function useAddProviderKey() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (input: {
-      provider: 'openai' | 'anthropic' | 'gemini' | 'azure' | 'mistral' | 'openrouter'
+      provider:
+        | 'openai' | 'anthropic' | 'gemini' | 'azure' | 'mistral' | 'openrouter'
+        | 'groq' | 'deepseek' | 'xai' | 'cohere'
       key: string
       name: string
       api_key_id: string

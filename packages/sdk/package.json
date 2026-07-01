@@ -1,6 +1,6 @@
 {
   "name": "@spanlens/sdk",
-  "version": "0.14.0",
+  "version": "0.15.0",
   "description": "Spanlens SDK — agent tracing, LLM usage capture, and cost observability for TypeScript.",
   "type": "module",
   "main": "./dist/index.js",
@@ -26,6 +26,22 @@
     "./ollama": {
       "import": "./dist/integrations/ollama.js",
       "types": "./dist/integrations/ollama.d.ts"
+    },
+    "./groq": {
+      "import": "./dist/integrations/groq.js",
+      "types": "./dist/integrations/groq.d.ts"
+    },
+    "./deepseek": {
+      "import": "./dist/integrations/deepseek.js",
+      "types": "./dist/integrations/deepseek.d.ts"
+    },
+    "./xai": {
+      "import": "./dist/integrations/xai.js",
+      "types": "./dist/integrations/xai.d.ts"
+    },
+    "./cohere": {
+      "import": "./dist/integrations/cohere.js",
+      "types": "./dist/integrations/cohere.d.ts"
     },
     "./langchain": {
       "import": "./dist/integrations/langchain.js",
@@ -94,6 +110,11 @@
     "vercel-ai",
     "ai-sdk",
     "ollama",
+    "groq",
+    "deepseek",
+    "grok",
+    "xai",
+    "cohere",
     "next.js",
     "nextjs",
     "typescript",

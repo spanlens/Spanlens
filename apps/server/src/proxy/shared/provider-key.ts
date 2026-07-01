@@ -16,7 +16,17 @@ import { getDecryptedProviderKey, type ResolvedProviderKey } from '../utils.js'
 
 /** Provider tag used in `NO_PROVIDER_KEY` error details and the user-visible
  * message. Matches the keys in provider_keys.provider. */
-export type ProxyProvider = 'openai' | 'anthropic' | 'gemini' | 'azure' | 'mistral' | 'openrouter'
+export type ProxyProvider =
+  | 'openai'
+  | 'anthropic'
+  | 'gemini'
+  | 'azure'
+  | 'mistral'
+  | 'openrouter'
+  | 'groq'
+  | 'deepseek'
+  | 'xai'
+  | 'cohere'
 
 const PROVIDER_LABEL: Record<ProxyProvider, string> = {
   openai: 'OpenAI',
@@ -25,6 +35,10 @@ const PROVIDER_LABEL: Record<ProxyProvider, string> = {
   azure: 'Azure',
   mistral: 'Mistral',
   openrouter: 'OpenRouter',
+  groq: 'Groq',
+  deepseek: 'DeepSeek',
+  xai: 'xAI',
+  cohere: 'Cohere',
 }
 
 /**

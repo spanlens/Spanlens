@@ -76,7 +76,10 @@ function CopyIdButton({ value, label = 'Copy ID' }: { value: string; label?: str
   )
 }
 
-const PROVIDERS = ['openai', 'anthropic', 'gemini', 'azure', 'mistral', 'openrouter'] as const
+const PROVIDERS = [
+  'openai', 'anthropic', 'gemini', 'azure', 'mistral', 'openrouter',
+  'groq', 'deepseek', 'xai', 'cohere',
+] as const
 type ProviderName = typeof PROVIDERS[number]
 
 const PROVIDER_LABELS: Record<ProviderName, string> = {
@@ -86,6 +89,10 @@ const PROVIDER_LABELS: Record<ProviderName, string> = {
   azure: 'Azure OpenAI',
   mistral: 'Mistral',
   openrouter: 'OpenRouter',
+  groq: 'Groq',
+  deepseek: 'DeepSeek',
+  xai: 'xAI (Grok)',
+  cohere: 'Cohere',
 }
 
 const PROVIDER_PLACEHOLDERS: Record<ProviderName, string> = {
@@ -97,6 +104,10 @@ const PROVIDER_PLACEHOLDERS: Record<ProviderName, string> = {
   azure: '0123456789abcdef0123456789abcdef',
   mistral: 'mistral-…',
   openrouter: 'sk-or-v1-…',
+  groq: 'gsk_…',
+  deepseek: 'sk-…',
+  xai: 'xai-…',
+  cohere: 'Cohere API key',
 }
 
 /**
@@ -151,6 +162,27 @@ const openrouter = new OpenAI({
   apiKey: process.env.SPANLENS_API_KEY,
 })
 // await openrouter.chat.completions.create({ model: 'anthropic/claude-sonnet-4', messages: [...] })`,
+  groq: `import { createGroq } from '@spanlens/sdk/groq'
+
+// Groq is OpenAI-compatible — createGroq() points the OpenAI SDK at the
+// Spanlens proxy. Use any Groq model id.
+const groq = createGroq()
+// await groq.chat.completions.create({ model: 'llama-3.3-70b-versatile', messages: [...] })`,
+  deepseek: `import { createDeepSeek } from '@spanlens/sdk/deepseek'
+
+// DeepSeek is OpenAI-compatible — createDeepSeek() routes through Spanlens.
+const deepseek = createDeepSeek()
+// await deepseek.chat.completions.create({ model: 'deepseek-chat', messages: [...] })`,
+  xai: `import { createXai } from '@spanlens/sdk/xai'
+
+// xAI (Grok) is OpenAI-compatible — createXai() routes through Spanlens.
+const xai = createXai()
+// await xai.chat.completions.create({ model: 'grok-4.3', messages: [...] })`,
+  cohere: `import { createCohere } from '@spanlens/sdk/cohere'
+
+// Cohere's OpenAI-compat layer routes through Spanlens. Use Cohere model ids.
+const cohere = createCohere()
+// await cohere.chat.completions.create({ model: 'command-a-03-2025', messages: [...] })`,
 }
 
 export function ProjectsClient() {
