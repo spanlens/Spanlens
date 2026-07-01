@@ -299,6 +299,35 @@ For short-lived scripts, call `client.close()` before exit (or use
 
 ---
 
+## SDK versions & feature parity
+
+> **On version numbers.** The Python (`spanlens`) and TypeScript (`@spanlens/sdk`) SDKs are versioned **completely independently**. A version number in one says nothing about the other, and the gap between them is not a signal of maturity or maintenance. Both are pre-1.0 and both are actively maintained; features land in each on its own release cadence.
+
+The table below is the honest, file-level comparison of what each package ships today. Use it to check whether a capability you rely on exists in the SDK for your language before you build on it.
+
+| Capability | Python (`spanlens`) | TypeScript (`@spanlens/sdk`) |
+| --- | :---: | :---: |
+| Core tracing (client / trace / span / `observe`) | ✓ | ✓ |
+| Sampling (head-based, configurable rate) | ✓ | ✓ |
+| OpenAI auto-instrument helper | ✓ `observe_openai` | ✓ `observeOpenAI` |
+| Anthropic auto-instrument helper | ✓ `observe_anthropic` | ✓ `observeAnthropic` |
+| Gemini auto-instrument helper | ✓ `observe_gemini` | ✓ `observeGemini` |
+| Ollama auto-instrument helper (local LLMs) | ✓ `observe_ollama` | ✓ `observeOllama` |
+| Proxy client factory (OpenAI) | ✓ `create_openai` | ✓ `createOpenAI` |
+| Proxy client factory (Anthropic) | ✓ `create_anthropic` | ✓ `createAnthropic` |
+| Proxy client factory (Gemini) | ✓ `create_gemini` | ✓ `createGemini` |
+| Proxy client factory (Ollama) | ✗ (use a raw OpenAI client at `localhost:11434`) | ✓ `createOllama` (`@spanlens/sdk/ollama`) |
+| LangChain integration | ✓ | ✓ |
+| LangGraph integration | ✓ (via the LangChain handler) | ✓ (via the LangChain handler) |
+| LlamaIndex integration | ✓ | ✓ |
+| Vercel AI SDK integration | ✗ (Vercel AI is JS-only) | ✓ |
+| Evals API (script-driven prompt CI) | ✗ (not yet) | ✓ `EvalsApi` |
+| CLI (`init` wizard) | ✓ (bundled `spanlens` command) | ✓ (separate [`@spanlens/cli`](https://www.npmjs.com/package/@spanlens/cli) package) |
+
+`partial` is not used above because every current capability is either fully present or absent in a given SDK. If you need a capability marked ✗ in your language, open an issue. Parity gaps are tracked and prioritized.
+
+---
+
 ## Self-hosting
 
 Point the SDK and proxy helpers at your own deployment:
