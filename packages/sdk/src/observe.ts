@@ -58,7 +58,21 @@ export async function observe<T>(
 //     openai.chat.completions.create({ ... }, { headers })
 //   )
 
-type Usage = 'openai' | 'anthropic' | 'gemini' | 'ollama'
+type Usage =
+  | 'openai'
+  | 'anthropic'
+  | 'gemini'
+  | 'ollama'
+  | 'groq'
+  | 'deepseek'
+  | 'xai'
+  | 'cohere'
+
+// OpenAI-compatible providers whose responses carry the standard OpenAI
+// `usage` shape (prompt_tokens / completion_tokens) — parsed by parseOpenAIUsage.
+const OPENAI_SHAPED = new Set<Usage>([
+  'openai', 'ollama', 'groq', 'deepseek', 'xai', 'cohere',
+])
 
 const PROMPT_VERSION_HEADER = 'x-spanlens-prompt-version'
 const LOG_BODY_HEADER = 'x-spanlens-log-body'
@@ -131,10 +145,11 @@ async function observeProvider<T>(
     const result = await fn(headers)
 
     // Auto-parse usage from the provider response shape.
-    // Ollama uses OpenAI's response schema (it exposes an /v1 OpenAI-compat
-    // surface) so the OpenAI parser works as-is — only the provider tag differs.
+    // OpenAI-compatible providers (Ollama, Groq, DeepSeek, xAI, Cohere) expose
+    // an OpenAI-shaped `usage` field, so the OpenAI parser works as-is — only
+    // the provider tag differs.
     const parsed =
-      provider === 'openai' || provider === 'ollama'
+      OPENAI_SHAPED.has(provider)
         ? parseOpenAIUsage(result)
         : provider === 'anthropic'
           ? parseAnthropicUsage(result)
@@ -236,4 +251,44 @@ export function observeOllama<T>(
   fn: (headers: Record<string, string>) => Promise<T>,
 ): Promise<T> {
   return observeProvider('ollama', parent, nameOrOptions, fn)
+}
+
+/**
+ * Groq variant — Groq's API is OpenAI-compatible, so `usage` is parsed with
+ * the OpenAI parser and the span is tagged `provider: 'groq'`. Prefer the
+ * dedicated `createGroq()` client from `@spanlens/sdk/groq`.
+ */
+export function observeGroq<T>(
+  parent: TraceHandle | SpanHandle,
+  nameOrOptions: string | ProviderObserveOptions,
+  fn: (headers: Record<string, string>) => Promise<T>,
+): Promise<T> {
+  return observeProvider('groq', parent, nameOrOptions, fn)
+}
+
+/** DeepSeek variant — OpenAI-compatible `usage`, span tagged `provider: 'deepseek'`. */
+export function observeDeepSeek<T>(
+  parent: TraceHandle | SpanHandle,
+  nameOrOptions: string | ProviderObserveOptions,
+  fn: (headers: Record<string, string>) => Promise<T>,
+): Promise<T> {
+  return observeProvider('deepseek', parent, nameOrOptions, fn)
+}
+
+/** xAI (Grok) variant — OpenAI-compatible `usage`, span tagged `provider: 'xai'`. */
+export function observeXai<T>(
+  parent: TraceHandle | SpanHandle,
+  nameOrOptions: string | ProviderObserveOptions,
+  fn: (headers: Record<string, string>) => Promise<T>,
+): Promise<T> {
+  return observeProvider('xai', parent, nameOrOptions, fn)
+}
+
+/** Cohere variant — OpenAI-compatible `usage`, span tagged `provider: 'cohere'`. */
+export function observeCohere<T>(
+  parent: TraceHandle | SpanHandle,
+  nameOrOptions: string | ProviderObserveOptions,
+  fn: (headers: Record<string, string>) => Promise<T>,
+): Promise<T> {
+  return observeProvider('cohere', parent, nameOrOptions, fn)
 }

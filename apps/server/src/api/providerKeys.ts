@@ -22,7 +22,10 @@ providerKeysRouter.use('*', authJwt)
 
 const requireEdit = requireRole('admin', 'editor')
 
-const VALID_PROVIDERS = new Set(['openai', 'anthropic', 'gemini', 'azure', 'mistral', 'openrouter'])
+const VALID_PROVIDERS = new Set([
+  'openai', 'anthropic', 'gemini', 'azure', 'mistral', 'openrouter',
+  'groq', 'deepseek', 'xai', 'cohere',
+])
 
 const SELECT_COLUMNS =
   'id, provider, name, is_active, api_key_id, provider_metadata, created_at, updated_at'
@@ -187,7 +190,7 @@ providerKeysRouter.post('/', requireEdit, async (c) => {
   }
 
   if (typeof body.provider !== 'string' || !VALID_PROVIDERS.has(body.provider)) {
-    throw new ApiError('VALIDATION_FAILED', 'provider must be one of: openai, anthropic, gemini, azure, mistral, openrouter')
+    throw new ApiError('VALIDATION_FAILED', 'provider must be one of: openai, anthropic, gemini, azure, mistral, openrouter, groq, deepseek, xai, cohere')
   }
   if (typeof body.key !== 'string' || body.key.trim().length === 0) {
     throw new ApiError('VALIDATION_FAILED', 'key is required')
