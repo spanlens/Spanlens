@@ -354,12 +354,134 @@ process.exit(0)
 
 `flush()` resolves even if some requests failed. It uses `Promise.allSettled` internally so a network error won't hang the process.
 
+## Error handling
+
+Instrumentation is fire-and-forget by design, so **tracing never crashes your app**. Every ingest call is governed by two `SpanlensConfig` options:
+
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `silent` | `boolean` | `true` | When `true`, ingest failures are swallowed (the call resolves to `null`) so your hot path is never interrupted. When `false`, the failure is **re-thrown** so you can surface it in tests or fail-fast environments. |
+| `onError` | `(err, context) => void` | (none) | Called on **every** ingest failure, regardless of `silent`. `context` is the failing route, e.g. `"POST /ingest/traces"`. Use it to forward errors to your monitoring stack. |
+
+Even with the default `silent: true`, `onError` still fires, so you get full visibility without the risk of an unhandled rejection taking down a request.
+
+### `SpanlensApiError`
+
+When the Spanlens server rejects a call with its standard error envelope (a `4xx`), the SDK surfaces a typed `SpanlensApiError` instead of a bare `Error`. This lets you branch on a stable `code` rather than string-matching a message. It reaches you either through `onError` (always) or as a thrown value (when `silent: false`).
+
+```ts
+import { SpanlensApiError } from '@spanlens/sdk'
+
+class SpanlensApiError extends Error {
+  code: string                              // stable machine code, e.g. 'PUBLIC_KEY_WRITE_FORBIDDEN'
+  status: number                            // HTTP status (4xx)
+  details?: Record<string, unknown>         // optional structured context
+  requestId: string | null                  // server request id for support
+}
+```
+
+### Automatic retries
+
+The transport retries **transient** failures on its own, so a brief network blip or a `429` doesn't lose a span:
+
+- **Retried** (up to `3` attempts total) with exponential back-off `200 ms → 400 ms → 800 ms`: network errors, request timeouts (default `3000 ms`), `429`, and `5xx`.
+- **Not retried**: `4xx` client errors. These are your bug (bad key, missing scope, malformed body), so retrying wastes time. They go straight to `onError` (and throw when `silent: false`).
+
+Because every trace and span carries a **client-generated UUID**, retries are idempotent: the same UUID delivered twice is a no-op on the server.
+
+### Forwarding to Sentry
+
+```ts
+import * as Sentry from '@sentry/node'
+import { SpanlensClient, SpanlensApiError } from '@spanlens/sdk'
+
+const client = new SpanlensClient({
+  apiKey: process.env.SPANLENS_API_KEY!,
+  // Keep silent:true so a Spanlens outage never breaks your app,
+  // but still capture the failure for later.
+  onError: (err, context) => {
+    if (err instanceof SpanlensApiError) {
+      Sentry.captureException(err, {
+        tags: { spanlens_code: err.code, spanlens_context: context },
+        extra: { requestId: err.requestId, status: err.status },
+      })
+    } else {
+      Sentry.captureException(err, { tags: { spanlens_context: context } })
+    }
+  },
+})
+```
+
+Set `silent: false` only in test suites or CI, where you *want* a broken ingest call to fail loudly.
+
+## Sampling
+
+High-volume agents can generate a lot of trace ingest traffic. `sampleRate` lets you record a representative fraction of traces while keeping cost and volume under control.
+
+```ts
+const client = new SpanlensClient({
+  apiKey: process.env.SPANLENS_API_KEY!,
+  sampleRate: 0.1,   // ingest ~10% of traces
+})
+```
+
+- **`sampleRate`** is a number in `[0.0, 1.0]`. Default `1.0` (record everything). A malformed value (out of range, `NaN`, or a string) throws at `SpanlensClient` construction rather than silently dropping traces.
+- **Per-trace and sticky**: the keep/drop decision is made **once**, at `client.startTrace()`, and applies to every span under that trace. Sampling whole traces (never individual spans) keeps each surviving trace a fully coherent tree in the dashboard.
+- **Proxy logs are unaffected**: `sampleRate` only controls the agent-tracing layer (`/ingest/traces`, `/ingest/spans`). Your `/proxy/*` LLM request logs (cost, tokens, quota, anomalies) are **always** recorded at 100%.
+
+### Tail-based error capture
+
+Error traces are the traces you most want to keep. So even when a trace loses the sampling coin-flip, the SDK **buffers** its spans in memory instead of sending them, then:
+
+- if the trace ends with `status: 'error'`, the buffered spans are replayed to the server, so the trace is recorded in full;
+- otherwise the buffer is discarded.
+
+The result: at `sampleRate: 0.1` you still capture **100% of error traces** plus a 10% sample of successful ones. (Errors are detected either from an explicit `status: 'error'` or from passing `errorMessage` to `trace.end()`.)
+
+### Recommended: sample in prod, keep everything in staging
+
+```ts
+const client = new SpanlensClient({
+  apiKey: process.env.SPANLENS_API_KEY!,
+  sampleRate: process.env.NODE_ENV === 'production' ? 0.1 : 1.0,
+})
+```
+
+Staging traffic is low, so record everything for debugging. Production is high-volume, so sample the happy path (`0.1`) while tail-based capture guarantees every error still lands.
+
 ## Design notes
 
 - **Fire-and-forget ingest**: `startTrace()` and `trace.span()` return synchronously. Network writes run in the background so your hot path never waits on observability.
 - **Retry with back-off**: transient failures (network error, 429, 5xx) are retried up to 3 times with exponential back-off (200 ms → 400 ms → 800 ms). 4xx errors are not retried.
 - **Client-side UUIDs**: idempotent retries are safe, since the same UUID twice is a no-op on the server.
 - **No unhandled rejections**: background POST failures are silently swallowed; use the `onError` hook for visibility.
+
+## SDK versions & feature parity
+
+> **On version numbers.** The TypeScript (`@spanlens/sdk`) and Python (`spanlens`) SDKs are versioned **completely independently**. A version number in one says nothing about the other, and the gap between them is not a signal of maturity or maintenance. Both are pre-1.0 and both are actively maintained; features land in each on its own release cadence.
+
+The table below is the honest, file-level comparison of what each package ships today. Use it to check whether a capability you rely on exists in the SDK for your language before you build on it.
+
+| Capability | TypeScript (`@spanlens/sdk`) | Python (`spanlens`) |
+| --- | :---: | :---: |
+| Core tracing (client / trace / span / `observe`) | ✓ | ✓ |
+| Sampling (head-based, configurable rate) | ✓ | ✓ |
+| OpenAI auto-instrument helper | ✓ `observeOpenAI` | ✓ `observe_openai` |
+| Anthropic auto-instrument helper | ✓ `observeAnthropic` | ✓ `observe_anthropic` |
+| Gemini auto-instrument helper | ✓ `observeGemini` | ✓ `observe_gemini` |
+| Ollama auto-instrument helper (local LLMs) | ✓ `observeOllama` | ✓ `observe_ollama` |
+| Proxy client factory (OpenAI) | ✓ `createOpenAI` | ✓ `create_openai` |
+| Proxy client factory (Anthropic) | ✓ `createAnthropic` | ✓ `create_anthropic` |
+| Proxy client factory (Gemini) | ✓ `createGemini` | ✓ `create_gemini` |
+| Proxy client factory (Ollama) | ✓ `createOllama` (`@spanlens/sdk/ollama`) | ✗ (use a raw OpenAI client at `localhost:11434`) |
+| LangChain integration | ✓ | ✓ |
+| LangGraph integration | ✓ (via the LangChain handler) | ✓ (via the LangChain handler) |
+| LlamaIndex integration | ✓ | ✓ |
+| Vercel AI SDK integration | ✓ | ✗ (Vercel AI is JS-only) |
+| Evals API (script-driven prompt CI) | ✓ `EvalsApi` | ✗ (not yet) |
+| CLI (`init` wizard) | ✓ (separate [`@spanlens/cli`](https://www.npmjs.com/package/@spanlens/cli) package) | ✓ (bundled `spanlens` command) |
+
+`partial` is not used above because every current capability is either fully present or absent in a given SDK. If you need a capability marked ✗ in your language, open an issue. Parity gaps are tracked and prioritized.
 
 ## License
 

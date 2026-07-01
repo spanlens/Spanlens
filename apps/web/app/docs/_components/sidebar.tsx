@@ -128,12 +128,14 @@ const NAV: NavGroup[] = [
       { title: 'Direct proxy (any language)', href: '/docs/proxy' },
       { title: 'REST API reference', href: '/docs/api' },
       { title: 'Error codes', href: '/docs/api/errors' },
+      { title: 'Troubleshooting', href: '/docs/troubleshooting' },
     ],
   },
   {
     title: 'Self-hosting',
     items: [
       { title: 'Docker', href: '/docs/self-host' },
+      { title: 'Backup & restore', href: '/docs/self-host/backup' },
     ],
   },
 ]

@@ -162,7 +162,7 @@ const PLANS = [
     price: '$0',
     description: 'For personal projects and exploration',
     features: [
-      '50K requests / month',
+      '50K requests / month, then a hard 429',
       '1 seat',
       '1 workspace',
       'Unlimited projects',
@@ -235,8 +235,8 @@ const PLANS = [
       'Dedicated support + SLA',
     ],
     overage: null,
-    cta: 'Contact us',
-    href: 'mailto:hi@spanlens.io',
+    cta: 'Talk to sales',
+    href: 'mailto:hi@spanlens.io?subject=Spanlens%20Enterprise%20inquiry&body=Hi%20Spanlens%20team%2C%0A%0AWe%27re%20interested%20in%20the%20Enterprise%20plan.%0A%0ACompany%3A%20%0AExpected%20monthly%20request%20volume%3A%20%0AWhat%20we%20need%20(SSO%2C%20on-prem%2C%20custom%20SLA%2C%20etc.)%3A%20%0A',
     highlight: false,
   },
 ]
@@ -366,6 +366,11 @@ export default function PricingPage() {
           ))}
         </div>
 
+        {/* Tax note — Paddle is merchant of record and adds VAT/GST at checkout */}
+        <p className="mt-6 text-center text-[12px] text-text-faint">
+          Prices in USD, exclusive of applicable taxes. VAT/GST is added at checkout by Paddle.
+        </p>
+
         {/* Overage policy */}
         <div className="mt-16 rounded-xl border border-border bg-bg-elev p-6 max-w-3xl mx-auto">
           <h3 className="font-semibold text-[15px] text-text mb-3">What happens if I go over my quota?</h3>
@@ -392,7 +397,7 @@ export default function PricingPage() {
             </div>
             <div className="grid grid-cols-[140px_1fr] gap-x-4">
               <dt className="font-semibold text-text">Free plan</dt>
-              <dd>Proxy keeps working past 50K, but logging pauses (we don&apos;t want to break your app). Upgrade to Pro to resume logging plus overage.</dd>
+              <dd>No overage. At <span className="font-mono">50K</span> requests/month the proxy returns a hard <span className="font-mono">429</span> so a runaway dev loop can&apos;t quietly cost you money. Upgrade to Pro for a soft limit with authorized overage.</dd>
             </div>
           </dl>
           <Link
