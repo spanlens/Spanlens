@@ -137,10 +137,19 @@ export function useRunReplay() {
 
 // ── Saved filters ───────────────────────────────────────────────────────
 
+/**
+ * A saved filter stores the requests-page URL query params verbatim
+ * (provider, status, model, timeRange, sortBy, …) as a plain string map, so
+ * applying one is just "replace the URL with these params". This is a
+ * superset of {@link RequestsFilters} — it also carries UI-only params like
+ * `timeRange` that the page maps to `from` at query time.
+ */
+export type SavedFilterParams = Record<string, string>
+
 export interface SavedFilter {
   id: string
   name: string
-  filters: Partial<RequestsFilters>
+  filters: SavedFilterParams
   created_at: string
 }
 
@@ -160,7 +169,7 @@ export function useSavedFilters() {
 export function useCreateSavedFilter() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: async (input: { name: string; filters: Partial<RequestsFilters> }) => {
+    mutationFn: async (input: { name: string; filters: SavedFilterParams }) => {
       const res = await apiPost<ApiEnvelope<SavedFilter>>('/api/v1/saved-filters', input)
       return res.data
     },

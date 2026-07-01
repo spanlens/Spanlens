@@ -138,16 +138,23 @@ const unregister = registerSpanlensCallbacks(Settings, { client })
 
 **More integrations**: AWS Bedrock, CrewAI, Flowise, Instructor, LlamaIndex, OpenAI Assistants, MCP server. Full setup walkthroughs at [spanlens.io/docs/integrations](https://www.spanlens.io/docs/integrations).
 
-**Ollama (local LLMs)** — Use the OpenAI-compatible client pointed at your local Ollama, then wrap with `observeOllama()` so the dashboard tags the call as Ollama instead of OpenAI.
+**Ollama (local LLMs)** — Ollama runs on your machine, so it does not go through the hosted proxy. Get a ready client with `createOllama()` and wrap each call with `observeOllama()` so the span is logged and tagged as Ollama.
 
 ```ts
-import OpenAI from 'openai'
-import { observeOllama } from '@spanlens/sdk'
+import { SpanlensClient } from '@spanlens/sdk'
+import { createOllama, observeOllama } from '@spanlens/sdk/ollama'
 
-const ollama = new OpenAI({ baseURL: 'http://localhost:11434/v1', apiKey: 'ollama' })
-await observeOllama('chat', () => ollama.chat.completions.create({
-  model: 'llama3.1', messages: [...]
-}))
+const spanlens = new SpanlensClient({ apiKey: process.env.SPANLENS_API_KEY! })
+const ollama = createOllama() // points at http://localhost:11434/v1
+
+const trace = spanlens.startTrace({ name: 'chat' })
+const res = await observeOllama(trace, 'chat', (headers) =>
+  ollama.chat.completions.create(
+    { model: 'llama3.1', messages: [{ role: 'user', content: 'Hello' }] },
+    { headers },
+  ),
+)
+await trace.end({ status: 'completed' })
 ```
 
 ---
