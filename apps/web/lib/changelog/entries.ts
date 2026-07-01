@@ -39,6 +39,46 @@ export type ChangelogTag =
 
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    date: '2026-07-01',
+    slug: 'groq-deepseek-xai-cohere-providers',
+    title: 'Four more providers: Groq, DeepSeek, xAI, and Cohere',
+    tags: ['feature'],
+    body: [
+      'Four OpenAI-compatible providers join OpenAI, Anthropic, Gemini, Azure, Mistral, and OpenRouter. Register a provider key on /projects, then point the OpenAI SDK (or the matching @spanlens/sdk helper) at `/proxy/groq/v1`, `/proxy/deepseek/v1`, `/proxy/xai/v1`, or `/proxy/cohere/v1` with your Spanlens key. Cost, latency, and token counts land on every row in /requests. Use each provider\'s own model ids, for example `llama-3.3-70b-versatile`, `deepseek-chat`, `grok-4.3`, and `command-a-03-2025`.',
+      'The TypeScript SDK adds `createGroq()`, `createDeepSeek()`, `createXai()`, and `createCohere()` factories, imported from `@spanlens/sdk/<provider>`, each with a matching observe helper. Groq, DeepSeek, and xAI capture streaming token usage automatically. Cohere\'s compatibility layer does not expose usage on streamed calls, so those rows may show cost as null while non-streaming Cohere calls are costed normally. See [the proxy guide](/docs/proxy).',
+    ].join('\n\n'),
+  },
+  {
+    date: '2026-07-01',
+    slug: 'python-fastapi-middleware',
+    title: 'One-line request tracing for FastAPI (Python SDK)',
+    tags: ['feature'],
+    body: [
+      'The Python SDK (`spanlens` 0.8.0) adds `SpanlensMiddleware`. Add it with `app.add_middleware(SpanlensMiddleware, api_key=...)` and every HTTP request becomes a trace with a root span named by method and path. LLM calls made inside the handler link to that trace automatically through `request.state.spanlens`. A clean response ends the trace as completed; a 5xx or an unhandled exception ends it as error and the exception is re-raised untouched.',
+      'It is pure ASGI, so it also works with Starlette, Litestar, Quart, and any ASGI app. Sampling and tail-based error capture are inherited from the client, so sampled-out successful requests do zero network work while errors are always recorded. Query strings are not captured by default because they often carry secrets or PII. See the [SDK docs](/docs/sdk).',
+    ].join('\n\n'),
+  },
+  {
+    date: '2026-07-01',
+    slug: 'request-body-log-sampling',
+    title: 'Control storage cost with request-body sampling',
+    tags: ['feature', 'infrastructure'],
+    body: [
+      'High-volume workspaces can now store request and response bodies for only a fraction of requests, from Settings. Pick 100, 50, 10, or 1 percent. This is body sampling, not row sampling: every request still records its tokens, cost, latency, and model, so your usage totals and billing stay exact. Only the stored prompt and response text is sampled, which is where most of the log storage cost lives.',
+      'Sampled-out requests show empty bodies in /requests, the same as the `x-spanlens-log-body=meta` mode, applied automatically at your chosen rate. Security scanning still runs on the full body first, so injection and PII flags are recorded regardless of whether the body is kept. The default is 100 percent, so nothing changes until you turn it down.',
+    ].join('\n\n'),
+  },
+  {
+    date: '2026-07-01',
+    slug: 'disaster-recovery-runbook',
+    title: 'Disaster recovery runbook and webhook dead-letter visibility',
+    tags: ['reliability', 'docs'],
+    body: [
+      'A new [disaster recovery runbook](/docs/production/disaster-recovery) documents, per failure mode (ClickHouse down, Supabase down, scheduled-job dropout, a stalled background migration, webhook backlog), what data is at risk, what protects it automatically, and the exact recovery steps to run. It pairs with the existing [Reliability](/docs/production/reliability) and [Backup and restore](/docs/self-host/backup) pages.',
+      'Webhook deliveries that exhaust their retries are now dead-lettered explicitly instead of sitting indistinguishable from deliveries that are merely between retries. The dead-letter count is exposed on `/health/deep`, so an external monitor can page you when a webhook endpoint has been down long enough to drop events.',
+    ].join('\n\n'),
+  },
+  {
     date: '2026-06-19',
     slug: 'customer-rate-limits',
     title: 'Set your own rate limits, per key and per end-user',
