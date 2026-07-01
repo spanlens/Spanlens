@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.8.0
+
+FastAPI / ASGI auto-instrumentation — one line traces every HTTP request.
+
+### Added
+
+- `SpanlensMiddleware` (and `install_spanlens_middleware(app, ...)`): add it with `app.add_middleware(SpanlensMiddleware, api_key=...)` (or `client=`) and every request opens a trace + a root span named `"<METHOD> <path>"`. Clean responses end `completed`; a 5xx or unhandled exception ends `error` and the exception is re-raised untouched. The trace is exposed to handlers as `request.state.spanlens` (`{trace, span, headers, trace_id, span_id}`) so nested `observe_*` LLM calls link automatically.
+- Sampling and tail-based error capture come from the underlying client, so sampled-out successful requests do zero network I/O while errors are always recorded. Health / metrics / docs routes are skipped by default (`skip_paths=` to override).
+- The middleware is pure ASGI (it does not import FastAPI), so it also works with Starlette, Litestar, Quart, and any ASGI app. New `spanlens[fastapi]` optional extra.
+
+### Verified
+
+- 5 new tests (success trace + `request.state` injection, default-path skipping, error capture + re-raise, build-from-`api_key`, and the missing-credentials guard). Full suite: 161 passing. `ruff` clean; `mypy --strict` clean on the new module.
+
 ## 0.7.0
 
 Onboarding CLI release. `pip install spanlens` now also installs a `spanlens` console command that connects a Python project to Spanlens in one step, the same wizard the Node `@spanlens/cli` ships. No extra dependency: it uses only the standard library plus `httpx` (already a runtime dependency).
