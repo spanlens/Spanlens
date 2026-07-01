@@ -36,6 +36,7 @@ export type LogCode =
   // webhook delivery
   | 'WEBHOOK_DISPATCH_FAILED'
   | 'WEBHOOK_FETCH_FAILED'
+  | 'WEBHOOK_DLQ_ALERT_FAILED'
   // proxy upstream
   | 'UPSTREAM_FETCH_FAILED'
   // rate limiting backend (Redis/Upstash) unavailable — fail-open is in effect

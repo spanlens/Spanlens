@@ -132,7 +132,12 @@ function pgDeepCronChainError() {
   }
 }
 
-function pgDeepWebhookChain(backlog: number) {
+// /health/deep queries webhook_deliveries TWICE:
+//   backlog: .select().eq().not().lt()   (deliveries past their retry window)
+//   dlq:     .select().not()             (permanently dead-lettered)
+// The single mock object must satisfy both — .select() exposes `eq` (backlog)
+// and `not` (dlq).
+function pgDeepWebhookChain(backlog: number, dlq = 0) {
   return {
     select: () => ({
       eq: () => ({
@@ -140,6 +145,7 @@ function pgDeepWebhookChain(backlog: number) {
           lt: () => Promise.resolve({ count: backlog, error: null }),
         }),
       }),
+      not: () => Promise.resolve({ count: dlq, error: null }),
     }),
   }
 }
@@ -152,6 +158,22 @@ function pgDeepWebhookChainError() {
           lt: () => Promise.reject(new Error('webhook query failed')),
         }),
       }),
+      not: () => Promise.reject(new Error('webhook dlq query failed')),
+    }),
+  }
+}
+
+// Backlog resolves, but the dlq count query itself fails → dlq_count must be
+// null (not a fake 0), same null-vs-0 convention as the other deep metrics.
+function pgDeepWebhookChainDlqError(backlog: number) {
+  return {
+    select: () => ({
+      eq: () => ({
+        not: () => ({
+          lt: () => Promise.resolve({ count: backlog, error: null }),
+        }),
+      }),
+      not: () => Promise.reject(new Error('webhook dlq query failed')),
     }),
   }
 }
@@ -259,7 +281,7 @@ describe('GET /health/deep', () => {
 
   test('200 with new R-11 metrics surfaced', async () => {
     pingClickhouseMock.mockResolvedValue(true)
-    wireDeepFroms(pgDeepCronChain(1234), pgDeepWebhookChain(5))
+    wireDeepFroms(pgDeepCronChain(1234), pgDeepWebhookChain(5, 3))
 
     const res = await healthRouter.request('/health/deep')
     expect(res.status).toBe(200)
@@ -267,7 +289,7 @@ describe('GET /health/deep', () => {
       status: string
       version: string | null
       crons: { max_runtime_ms: number | null }
-      webhooks: { backlog_count: number | null }
+      webhooks: { backlog_count: number | null; dlq_count: number | null }
       clickhouse: { ok: boolean; latencyMs: number }
       fallback: { queue: number | null; eventsQueue: number | null }
     }
@@ -275,8 +297,22 @@ describe('GET /health/deep', () => {
     expect(body.version).toBeNull()
     expect(body.crons.max_runtime_ms).toBe(1234)
     expect(body.webhooks.backlog_count).toBe(5)
+    expect(body.webhooks.dlq_count).toBe(3)
     expect(body.clickhouse.ok).toBe(true)
     expect(body.fallback.queue).toBe(0)
+  })
+
+  test('webhooks.dlq_count = null when the dlq count query fails', async () => {
+    pingClickhouseMock.mockResolvedValue(true)
+    wireDeepFroms(pgDeepCronChain(500), pgDeepWebhookChainDlqError(2))
+
+    const res = await healthRouter.request('/health/deep')
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as {
+      webhooks: { backlog_count: number | null; dlq_count: number | null }
+    }
+    expect(body.webhooks.backlog_count).toBe(2)
+    expect(body.webhooks.dlq_count).toBeNull()
   })
 
   test('crons.max_runtime_ms = null when cron query fails (degrades, does not 503)', async () => {

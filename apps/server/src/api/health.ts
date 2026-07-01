@@ -131,7 +131,7 @@ healthRouter.get('/health/deep', async (c) => {
   // R-22 added two new aggregate queries here. Run them inside the same
   // Promise.all the ping/queue lookups already use — p95 stays bounded by
   // the slowest dependency, not the sum.
-  const [chOk, fallbackQueue, eventsFallback, cronMaxRuntime, webhookBacklog] =
+  const [chOk, fallbackQueue, eventsFallback, cronMaxRuntime, webhookBacklog, webhookDlq] =
     await Promise.all([
       pingClickhouse().catch(() => false),
       fallbackQueueSize().catch(() => null),
@@ -163,6 +163,18 @@ healthRouter.get('/health/deep', async (c) => {
           (res) => (res.error ? null : res.count ?? 0),
           () => null,
         ),
+      // webhooks.dlq_count: deliveries permanently dead-lettered (gave up after
+      // MAX_ATTEMPTS, or the webhook was deleted). Covered by the dlq partial
+      // index from migration 20260701130000. A rising dlq_count = an endpoint
+      // down long enough to burn through every retry — page on it.
+      supabaseAdmin
+        .from('webhook_deliveries')
+        .select('id', { count: 'exact', head: true })
+        .not('dlq_at', 'is', null)
+        .then(
+          (res) => (res.error ? null : res.count ?? 0),
+          () => null,
+        ),
     ])
   const chLatency = Date.now() - start
 
@@ -188,7 +200,7 @@ healthRouter.get('/health/deep', async (c) => {
       // `crons.max_runtime_ms` null = either no cron ran in 24h (cold env)
       // OR the Supabase query failed — both are actionable.
       crons: { max_runtime_ms: cronMaxRuntime },
-      webhooks: { backlog_count: webhookBacklog },
+      webhooks: { backlog_count: webhookBacklog, dlq_count: webhookDlq },
     },
     overallOk ? 200 : 503,
   )

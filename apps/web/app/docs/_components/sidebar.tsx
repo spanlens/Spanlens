@@ -119,6 +119,7 @@ const NAV: NavGroup[] = [
     title: 'Production',
     items: [
       { title: 'Reliability', href: '/docs/production/reliability' },
+      { title: 'Disaster recovery', href: '/docs/production/disaster-recovery' },
       { title: 'Scaling', href: '/docs/production/scaling' },
     ],
   },
