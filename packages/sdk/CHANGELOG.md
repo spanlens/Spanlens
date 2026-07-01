@@ -1,5 +1,17 @@
 # @spanlens/sdk changelog
 
+## 0.14.0
+
+Dedicated Ollama subpath — a one-line client factory for local models.
+
+### Added
+
+- `@spanlens/sdk/ollama` subpath exporting `createOllama(options?)`, which returns an OpenAI-compatible client already pointed at the local Ollama endpoint (`http://localhost:11434/v1`), and re-exports `observeOllama` so a single import gives you both the client and the tracer. `DEFAULT_OLLAMA_BASE_URL` is exported for self-hosted overrides.
+
+### Fixed
+
+- The README Ollama example used the wrong `observeOllama` signature (missing the trace argument and the `headers` callback), so copy-pasting it did not compile or trace. It now shows the correct `observeOllama(trace, name, (headers) => ...)` usage built on `createOllama()`.
+
 ## 0.13.0
 
 Judge result caching (P3-18) — re-evaluations of the same sample with the same evaluator return $0.

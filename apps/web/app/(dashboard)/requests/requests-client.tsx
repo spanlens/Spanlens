@@ -11,7 +11,10 @@ import { Topbar } from '@/components/layout/topbar'
 import {
   useRequests,
   useRequest,
+  type SavedFilterParams,
 } from '@/lib/queries/use-requests'
+import { SavedViewsBar } from './saved-views-bar'
+import { EmptyRequestsHint } from './empty-requests-hint'
 import { useProviderKeys } from '@/lib/queries/use-provider-keys'
 import { useTrace } from '@/lib/queries/use-traces'
 import { useStatsOverview, useStatsTimeseries, useTimeseriesBreakdown } from '@/lib/queries/use-stats'
@@ -1176,23 +1179,7 @@ function RequestsTable({
               {hasActiveFilters ? (
                 <span>No requests match the current filters.</span>
               ) : (
-                <>
-                  <span className="text-[13px] text-text-muted">No requests yet — make your first API call through the proxy.</span>
-                  <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1">
-                    <Link
-                      href="/projects"
-                      className="font-mono text-[11.5px] text-accent hover:opacity-80 transition-opacity"
-                    >
-                      Add provider key →
-                    </Link>
-                    <Link
-                      href="/docs/quick-start"
-                      className="font-mono text-[11.5px] text-text-muted hover:text-text transition-colors"
-                    >
-                      Quick start →
-                    </Link>
-                  </div>
-                </>
+                <EmptyRequestsHint />
               )}
             </div>
           )
@@ -1418,6 +1405,33 @@ export function RequestsClient() {
     filters.providerKeyId !== 'all' ||
     timeRange !== 'all'
 
+  // The current filter set as bare URL params — what a "saved view" stores.
+  // Only non-default values are included so equality with a saved view is exact.
+  const currentSaveParams = useMemo<SavedFilterParams>(() => {
+    const p: SavedFilterParams = {}
+    if (provider !== 'all') p.provider = provider
+    if (status !== 'all') p.status = status
+    if (filters.model.trim()) p.model = filters.model.trim()
+    if (providerKeyId !== 'all') p.providerKeyId = providerKeyId
+    if (timeRange !== 'all') p.timeRange = timeRange
+    if (sortField !== 'created_at') p.sortBy = sortField
+    if (sortDir !== 'desc') p.sortDir = sortDir
+    if (promptVersionId) p.promptVersionId = promptVersionId
+    if (userIdFilter) p.userId = userIdFilter
+    if (sessionIdFilter) p.sessionId = sessionIdFilter
+    return p
+  }, [provider, status, filters.model, providerKeyId, timeRange, sortField, sortDir, promptVersionId, userIdFilter, sessionIdFilter])
+
+  // Apply a saved view: replace the URL with exactly its params (dropping
+  // pagination + any stale filter), and re-sync the debounced model input.
+  const applySavedView = useCallback((params: SavedFilterParams) => {
+    const sp = new URLSearchParams(params)
+    router.replace(`/requests?${sp.toString()}`, { scroll: false })
+    setModelInput(params.model ?? '')
+    setPage(1)
+    setSelectedId(null)
+  }, [router])
+
   function handleSort(field: SortField) {
     const newDir = sortField === field ? (sortDir === 'desc' ? 'asc' : 'desc') : 'desc'
     applyFilter({
@@ -1608,6 +1622,13 @@ export function RequestsClient() {
           }}
         />
       </div>
+
+      {/* Saved views — name the current filter combo, one-click back into it. */}
+      <SavedViewsBar
+        current={currentSaveParams}
+        onApply={applySavedView}
+        canSave={Object.keys(currentSaveParams).length > 0}
+      />
 
       {/* Table + pagination */}
       <div className="flex flex-col flex-1">

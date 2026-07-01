@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { Skeleton } from '@/components/ui/skeleton'
 import { KpiCard } from '@/components/dashboard/kpi-card'
 import { QuotaBanner } from '@/components/dashboard/quota-banner'
+import { UpsellModal } from '@/components/dashboard/upsell-modal'
 import { Topbar, TimeRangeSelector, type CustomRange } from '@/components/layout/topbar'
 import { useStatsOverview, useStatsTimeseries, useStatsModels, useSpendForecast } from '@/lib/queries/use-stats'
 import { useAnomalies } from '@/lib/queries/use-anomalies'
@@ -690,6 +691,7 @@ export function DashboardClient() {
         <WelcomeBanner />
 
         <QuotaBanner />
+        <UpsellModal />
 
         {isError && (
           <div className="mx-[22px] mt-4 rounded-md border border-bad/30 bg-bad-bg px-4 py-3 flex items-center justify-between">

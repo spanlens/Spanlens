@@ -21,6 +21,9 @@ export function BillingClient() {
   const params = useSearchParams()
   const justReturnedFromCheckout = params.get('checkout') === 'success'
   const autoOpenPtxn = params.get('_ptxn')
+  // Set by the quota upsell modal (?plan=starter|team) so the recommended
+  // card is highlighted when the user lands here from the nudge.
+  const highlightPlan = params.get('plan')
 
   const { data: subscription, isLoading } = useSubscription()
   const createCheckout = useCreateCheckout()
@@ -243,6 +246,7 @@ export function BillingClient() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
             {PLANS.map((plan) => {
               const isCurrent = currentPlan === plan.id
+              const isRecommended = !isCurrent && plan.id === highlightPlan
               const isUpgradeInFlight =
                 createCheckout.isPending && createCheckout.variables?.plan === plan.id
 
@@ -252,15 +256,20 @@ export function BillingClient() {
                   className={cn(
                     'rounded-xl border p-5 flex flex-col min-h-[280px]',
                     isCurrent ? 'border-accent bg-accent-bg' : 'border-border bg-bg-elev',
+                    isRecommended && 'ring-2 ring-accent ring-offset-2 ring-offset-bg',
                   )}
                 >
                   <div className="flex items-start justify-between mb-3">
                     <span className="text-[15px] font-medium text-text">{plan.name}</span>
-                    {isCurrent && (
+                    {isCurrent ? (
                       <span className="font-mono text-[10px] uppercase tracking-[0.04em] px-1.5 py-0.5 rounded-full border border-accent-border bg-accent-bg text-accent">
                         Current
                       </span>
-                    )}
+                    ) : isRecommended ? (
+                      <span className="font-mono text-[10px] uppercase tracking-[0.04em] px-1.5 py-0.5 rounded-full border border-accent bg-accent text-accent-fg">
+                        Recommended
+                      </span>
+                    ) : null}
                   </div>
 
                   <div className="mb-3">

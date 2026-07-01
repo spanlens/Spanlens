@@ -1,6 +1,6 @@
 {
   "name": "@spanlens/sdk",
-  "version": "0.13.0",
+  "version": "0.14.0",
   "description": "Spanlens SDK — agent tracing, LLM usage capture, and cost observability for TypeScript.",
   "type": "module",
   "main": "./dist/index.js",
@@ -22,6 +22,10 @@
     "./gemini": {
       "import": "./dist/integrations/gemini.js",
       "types": "./dist/integrations/gemini.d.ts"
+    },
+    "./ollama": {
+      "import": "./dist/integrations/ollama.js",
+      "types": "./dist/integrations/ollama.d.ts"
     },
     "./langchain": {
       "import": "./dist/integrations/langchain.js",
