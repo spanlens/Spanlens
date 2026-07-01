@@ -255,6 +255,55 @@ will bring it in.
 
 ---
 
+## FastAPI (auto-instrumentation)
+
+One line traces every request. Each HTTP request becomes a Spanlens trace with
+a root span, and LLM calls made inside the handler link to it automatically.
+
+```python
+import os
+from fastapi import FastAPI, Request
+from spanlens import SpanlensMiddleware
+from spanlens.observe import observe_openai
+from spanlens.integrations.openai import create_async_openai
+
+app = FastAPI()
+app.add_middleware(SpanlensMiddleware, api_key=os.environ["SPANLENS_API_KEY"])
+
+
+@app.post("/chat")
+async def chat(body: dict, request: Request):
+    sl = request.state.spanlens          # {trace, span, headers, trace_id, span_id}
+    openai = create_async_openai()
+    reply = await observe_openai(
+        sl["trace"],
+        "answer",
+        lambda headers: openai.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": body["q"]}],
+            extra_headers=headers,
+        ),
+    )
+    return {"reply": reply.choices[0].message.content}
+```
+
+* On a clean response the span/trace end `completed`; a 5xx or an unhandled
+  exception ends them `error` and the exception is re-raised untouched.
+* Sampling and tail-based error capture are inherited from the client, so
+  sampled-out successful requests produce zero network overhead while errors
+  are always captured. Pass `sample_rate=0.1`, or a shared `client=` to reuse
+  one connection pool across your app.
+* Health, metrics, and docs routes are skipped by default. Override with
+  `skip_paths=[...]`.
+* Query strings are **not** captured into trace metadata by default, because
+  they often carry secrets or PII (OAuth `code`/`state`, reset tokens,
+  signed-URL signatures). Opt in with `capture_query_string=True`.
+* It is pure ASGI (it does not import FastAPI), so it also works with
+  Starlette, Litestar, Quart, and any other ASGI app. `pip install
+  spanlens[fastapi]` pulls FastAPI in if you do not already have it.
+
+---
+
 ## Configuration reference
 
 ```python
@@ -320,6 +369,7 @@ The table below is the honest, file-level comparison of what each package ships 
 | LangChain integration | ✓ | ✓ |
 | LangGraph integration | ✓ (via the LangChain handler) | ✓ (via the LangChain handler) |
 | LlamaIndex integration | ✓ | ✓ |
+| FastAPI / ASGI middleware (per-request auto-instrument) | ✓ `SpanlensMiddleware` | ✗ (not yet) |
 | Vercel AI SDK integration | ✗ (Vercel AI is JS-only) | ✓ |
 | Evals API (script-driven prompt CI) | ✗ (not yet) | ✓ `EvalsApi` |
 | CLI (`init` wizard) | ✓ (bundled `spanlens` command) | ✓ (separate [`@spanlens/cli`](https://www.npmjs.com/package/@spanlens/cli) package) |
