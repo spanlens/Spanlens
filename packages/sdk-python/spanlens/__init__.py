@@ -26,6 +26,7 @@ For proxy-mode (zero-code) instrumentation, see
 """
 
 from .client import SpanlensClient
+from .middleware import SpanlensMiddleware, install_spanlens_middleware
 from .observe import (
     observe,
     observe_anthropic,
@@ -37,13 +38,15 @@ from .parsers import parse_anthropic_usage, parse_gemini_usage, parse_openai_usa
 from .span import SpanHandle
 from .trace import TraceHandle
 
-__version__ = "0.7.0"
+__version__ = "0.8.0"
 
 __all__ = [
     "SpanHandle",
     "SpanlensClient",
+    "SpanlensMiddleware",
     "TraceHandle",
     "__version__",
+    "install_spanlens_middleware",
     "observe",
     "observe_anthropic",
     "observe_gemini",

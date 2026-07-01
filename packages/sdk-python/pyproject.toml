@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "spanlens"
-version = "0.7.0"
+version = "0.8.0"
 description = "Spanlens SDK for Python. Agent tracing, LLM usage capture, and cost observability."
 readme = "README.md"
 license = { text = "MIT" }
@@ -29,6 +29,9 @@ keywords = [
     "langgraph",
     "llamaindex",
     "llama-index",
+    "fastapi",
+    "asgi",
+    "middleware",
     "ollama",
     "helicone-alternative",
     "langfuse-alternative",
@@ -62,12 +65,14 @@ anthropic = ["anthropic>=0.18.0"]
 gemini = ["google-generativeai>=0.5.0"]
 langchain = ["langchain-core>=0.1.0"]
 llama-index = ["llama-index-core>=0.10.0"]
+fastapi = ["fastapi>=0.110.0"]
 all = [
     "openai>=1.0.0",
     "anthropic>=0.18.0",
     "google-generativeai>=0.5.0",
     "langchain-core>=0.1.0",
     "llama-index-core>=0.10.0",
+    "fastapi>=0.110.0",
 ]
 dev = [
     "pytest>=7.4.0",
