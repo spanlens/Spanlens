@@ -6,6 +6,7 @@ import { randomHex, sha256Hex } from '../lib/crypto.js'
 import { OWNED_WORKSPACE_LIMITS, effectiveOwnedPlan, type Plan } from '../lib/quota.js'
 import { recordAuditEvent } from '../lib/audit-log.js'
 import { ApiError } from '../lib/errors.js'
+import { resetOrgLogConfigCache } from '../lib/org-log-config.js'
 
 export const organizationsRouter = new Hono<JwtContext>()
 
@@ -66,7 +67,7 @@ organizationsRouter.get('/me', async (c) => {
 
   const { data, error } = await supabaseAdmin
     .from('organizations')
-    .select('id, name, plan, allow_overage, overage_cap_multiplier, stale_key_alerts_enabled, stale_key_threshold_days, leak_detection_enabled, hide_powered_by_badge, created_at, updated_at')
+    .select('id, name, plan, allow_overage, overage_cap_multiplier, stale_key_alerts_enabled, stale_key_threshold_days, leak_detection_enabled, hide_powered_by_badge, body_sample_rate, created_at, updated_at')
     .eq('id', orgId)
     .single()
 
@@ -137,7 +138,7 @@ organizationsRouter.patch('/me/security', requireAdmin, async (c) => {
     .from('organizations')
     .update(patch)
     .eq('id', orgId)
-    .select('id, name, plan, allow_overage, overage_cap_multiplier, stale_key_alerts_enabled, stale_key_threshold_days, leak_detection_enabled, hide_powered_by_badge, created_at, updated_at')
+    .select('id, name, plan, allow_overage, overage_cap_multiplier, stale_key_alerts_enabled, stale_key_threshold_days, leak_detection_enabled, hide_powered_by_badge, body_sample_rate, created_at, updated_at')
     .single()
 
   if (error || !data) {
@@ -262,6 +263,53 @@ organizationsRouter.patch('/me/branding', requireAdmin, async (c) => {
     resourceType: 'organizations',
     resourceId: orgId,
     metadata: { hide_powered_by_badge: wantsHide },
+  })
+
+  return c.json({ success: true, data })
+})
+
+// PATCH /api/v1/organizations/me/logging — set the request-body sampling rate.
+//
+// Body: { body_sample_rate: number in [0, 1] }
+//
+// This is BODY sampling, not row sampling: every request still writes a row
+// (tokens/cost/counts stay exact for billing), only the stored prompt/response
+// body text is dropped for (1 - rate) of requests to cut ClickHouse storage.
+// See lib/logger.ts + lib/org-log-config.ts.
+organizationsRouter.patch('/me/logging', requireAdmin, async (c) => {
+  const orgId = c.get('orgId')
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
+
+  let body: { body_sample_rate?: unknown }
+  try {
+    body = (await c.req.json()) as typeof body
+  } catch {
+    throw new ApiError('INVALID_JSON_BODY', 'Invalid JSON body')
+  }
+
+  const rate = body.body_sample_rate
+  if (typeof rate !== 'number' || !Number.isFinite(rate) || rate < 0 || rate > 1) {
+    throw new ApiError('VALIDATION_FAILED', 'body_sample_rate must be a number between 0 and 1')
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from('organizations')
+    .update({ body_sample_rate: rate })
+    .eq('id', orgId)
+    .select('id, body_sample_rate')
+    .single()
+
+  if (error || !data) throw new ApiError('INTERNAL_ERROR', 'Update failed')
+
+  // Drop the cached rate so the new value takes effect immediately instead of
+  // waiting out the 60s logger cache TTL.
+  resetOrgLogConfigCache(orgId)
+
+  void recordAuditEvent(c, {
+    action: 'workspace.logging_update',
+    resourceType: 'organizations',
+    resourceId: orgId,
+    metadata: { body_sample_rate: rate },
   })
 
   return c.json({ success: true, data })
