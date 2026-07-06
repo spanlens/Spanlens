@@ -7,30 +7,10 @@ export type Json =
   | Json[]
 
 export type Database = {
-  graphql_public: {
-    Tables: {
-      [_ in never]: never
-    }
-    Views: {
-      [_ in never]: never
-    }
-    Functions: {
-      graphql: {
-        Args: {
-          extensions?: Json
-          operationName?: string
-          query?: string
-          variables?: Json
-        }
-        Returns: Json
-      }
-    }
-    Enums: {
-      [_ in never]: never
-    }
-    CompositeTypes: {
-      [_ in never]: never
-    }
+  // Allows to automatically instantiate createClient with right options
+  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
+  __InternalSupabase: {
+    PostgrestVersion: "14.5"
   }
   public: {
     Tables: {
@@ -490,6 +470,111 @@ export type Database = {
         }
         Relationships: []
       }
+      customer_rate_limits: {
+        Row: {
+          api_key_id: string | null
+          created_at: string
+          end_user_id: string | null
+          id: string
+          is_active: boolean
+          max_requests: number
+          organization_id: string
+          project_id: string | null
+          target_type: string
+          updated_at: string
+          window_seconds: number
+        }
+        Insert: {
+          api_key_id?: string | null
+          created_at?: string
+          end_user_id?: string | null
+          id?: string
+          is_active?: boolean
+          max_requests: number
+          organization_id: string
+          project_id?: string | null
+          target_type: string
+          updated_at?: string
+          window_seconds?: number
+        }
+        Update: {
+          api_key_id?: string | null
+          created_at?: string
+          end_user_id?: string | null
+          id?: string
+          is_active?: boolean
+          max_requests?: number
+          organization_id?: string
+          project_id?: string | null
+          target_type?: string
+          updated_at?: string
+          window_seconds?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "customer_rate_limits_api_key_id_fkey"
+            columns: ["api_key_id"]
+            isOneToOne: false
+            referencedRelation: "api_keys"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_rate_limits_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_rate_limits_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      data_silence_alerts: {
+        Row: {
+          created_at: string
+          detected_at: string
+          email_sent: boolean
+          id: string
+          last_request_at: string | null
+          organization_id: string
+          prior_week_requests: number
+          resolved_at: string | null
+        }
+        Insert: {
+          created_at?: string
+          detected_at?: string
+          email_sent?: boolean
+          id?: string
+          last_request_at?: string | null
+          organization_id: string
+          prior_week_requests?: number
+          resolved_at?: string | null
+        }
+        Update: {
+          created_at?: string
+          detected_at?: string
+          email_sent?: boolean
+          id?: string
+          last_request_at?: string | null
+          organization_id?: string
+          prior_week_requests?: number
+          resolved_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "data_silence_alerts_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       dataset_items: {
         Row: {
           created_at: string
@@ -586,9 +671,12 @@ export type Database = {
           request_id: string | null
           score: number | null
           score_config_id: string | null
+          trace_id: string | null
           value_boolean: boolean | null
           value_number: number | null
+          value_raw_number: number | null
           value_string: string | null
+          winner: string | null
         }
         Insert: {
           created_at?: string
@@ -602,9 +690,12 @@ export type Database = {
           request_id?: string | null
           score?: number | null
           score_config_id?: string | null
+          trace_id?: string | null
           value_boolean?: boolean | null
           value_number?: number | null
+          value_raw_number?: number | null
           value_string?: string | null
+          winner?: string | null
         }
         Update: {
           created_at?: string
@@ -618,9 +709,12 @@ export type Database = {
           request_id?: string | null
           score?: number | null
           score_config_id?: string | null
+          trace_id?: string | null
           value_boolean?: boolean | null
           value_number?: number | null
+          value_raw_number?: number | null
           value_string?: string | null
+          winner?: string | null
         }
         Relationships: [
           {
@@ -655,67 +749,94 @@ export type Database = {
       }
       eval_runs: {
         Row: {
+          a_wins: number | null
           attempted_count: number
           avg_score: number | null
+          b_wins: number | null
+          cache_hits: number
           completed_at: string | null
           created_by: string | null
           dataset_id: string | null
+          distribution: Json | null
           error: string | null
           evaluator_id: string
           failed_count: number
           id: string
+          mode: string
           organization_id: string
-          prompt_version_id: string
+          prompt_version_b_id: string | null
+          prompt_version_id: string | null
           sample_from: string | null
           sample_size: number
           sample_to: string | null
+          score_stddev: number | null
           scored_count: number
           source: string
           started_at: string
           status: string
+          ties: number | null
           total_cost_usd: number
+          trace_name: string | null
         }
         Insert: {
+          a_wins?: number | null
           attempted_count?: number
           avg_score?: number | null
+          b_wins?: number | null
+          cache_hits?: number
           completed_at?: string | null
           created_by?: string | null
           dataset_id?: string | null
+          distribution?: Json | null
           error?: string | null
           evaluator_id: string
           failed_count?: number
           id?: string
+          mode?: string
           organization_id: string
-          prompt_version_id: string
+          prompt_version_b_id?: string | null
+          prompt_version_id?: string | null
           sample_from?: string | null
           sample_size: number
           sample_to?: string | null
+          score_stddev?: number | null
           scored_count?: number
           source?: string
           started_at?: string
           status?: string
+          ties?: number | null
           total_cost_usd?: number
+          trace_name?: string | null
         }
         Update: {
+          a_wins?: number | null
           attempted_count?: number
           avg_score?: number | null
+          b_wins?: number | null
+          cache_hits?: number
           completed_at?: string | null
           created_by?: string | null
           dataset_id?: string | null
+          distribution?: Json | null
           error?: string | null
           evaluator_id?: string
           failed_count?: number
           id?: string
+          mode?: string
           organization_id?: string
-          prompt_version_id?: string
+          prompt_version_b_id?: string | null
+          prompt_version_id?: string | null
           sample_from?: string | null
           sample_size?: number
           sample_to?: string | null
+          score_stddev?: number | null
           scored_count?: number
           source?: string
           started_at?: string
           status?: string
+          ties?: number | null
           total_cost_usd?: number
+          trace_name?: string | null
         }
         Relationships: [
           {
@@ -737,6 +858,13 @@ export type Database = {
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "eval_runs_prompt_version_b_id_fkey"
+            columns: ["prompt_version_b_id"]
+            isOneToOne: false
+            referencedRelation: "prompt_versions"
             referencedColumns: ["id"]
           },
           {
@@ -843,6 +971,13 @@ export type Database = {
           type?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "evaluators_auto_run_dataset_id_fkey"
+            columns: ["auto_run_dataset_id"]
+            isOneToOne: false
+            referencedRelation: "datasets"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "evaluators_organization_id_fkey"
             columns: ["organization_id"]
@@ -1273,6 +1408,62 @@ export type Database = {
         }
         Relationships: []
       }
+      judge_cache: {
+        Row: {
+          created_at: string
+          evaluator_config_hash: string
+          id: string
+          organization_id: string
+          original_cost_usd: number
+          original_tokens: number
+          reasoning: string | null
+          response_hash: string
+          score: number | null
+          value_boolean: boolean | null
+          value_number: number | null
+          value_raw_number: number | null
+          value_string: string | null
+        }
+        Insert: {
+          created_at?: string
+          evaluator_config_hash: string
+          id?: string
+          organization_id: string
+          original_cost_usd?: number
+          original_tokens?: number
+          reasoning?: string | null
+          response_hash: string
+          score?: number | null
+          value_boolean?: boolean | null
+          value_number?: number | null
+          value_raw_number?: number | null
+          value_string?: string | null
+        }
+        Update: {
+          created_at?: string
+          evaluator_config_hash?: string
+          id?: string
+          organization_id?: string
+          original_cost_usd?: number
+          original_tokens?: number
+          reasoning?: string | null
+          response_hash?: string
+          score?: number | null
+          value_boolean?: boolean | null
+          value_number?: number | null
+          value_raw_number?: number | null
+          value_string?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "judge_cache_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       model_price_history: {
         Row: {
           cache_read_price_per_1m: number | null
@@ -1537,6 +1728,7 @@ export type Database = {
       organizations: {
         Row: {
           allow_overage: boolean
+          body_sample_rate: number
           created_at: string
           hide_powered_by_badge: boolean
           id: string
@@ -1557,6 +1749,7 @@ export type Database = {
         }
         Insert: {
           allow_overage?: boolean
+          body_sample_rate?: number
           created_at?: string
           hide_powered_by_badge?: boolean
           id?: string
@@ -1577,6 +1770,7 @@ export type Database = {
         }
         Update: {
           allow_overage?: boolean
+          body_sample_rate?: number
           created_at?: string
           hide_powered_by_badge?: boolean
           id?: string
@@ -1921,6 +2115,50 @@ export type Database = {
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      proxy_response_cache: {
+        Row: {
+          api_key_id: string
+          created_at: string | null
+          expires_at: string
+          key_hash: string
+          model: string | null
+          provider: string
+          response_body: string | null
+          response_status: number | null
+          usage: Json | null
+        }
+        Insert: {
+          api_key_id: string
+          created_at?: string | null
+          expires_at: string
+          key_hash: string
+          model?: string | null
+          provider: string
+          response_body?: string | null
+          response_status?: number | null
+          usage?: Json | null
+        }
+        Update: {
+          api_key_id?: string
+          created_at?: string | null
+          expires_at?: string
+          key_hash?: string
+          model?: string | null
+          provider?: string
+          response_body?: string | null
+          response_status?: number | null
+          usage?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "proxy_response_cache_api_key_id_fkey"
+            columns: ["api_key_id"]
+            isOneToOne: false
+            referencedRelation: "api_keys"
             referencedColumns: ["id"]
           },
         ]
@@ -2596,6 +2834,7 @@ export type Database = {
           security_alert_emails: boolean
           updated_at: string
           user_id: string
+          weekly_digest_emails: boolean
         }
         Insert: {
           created_at?: string
@@ -2604,6 +2843,7 @@ export type Database = {
           security_alert_emails?: boolean
           updated_at?: string
           user_id: string
+          weekly_digest_emails?: boolean
         }
         Update: {
           created_at?: string
@@ -2612,6 +2852,7 @@ export type Database = {
           security_alert_emails?: boolean
           updated_at?: string
           user_id?: string
+          weekly_digest_emails?: boolean
         }
         Relationships: []
       }
@@ -2676,6 +2917,8 @@ export type Database = {
         Row: {
           attempt_count: number
           delivered_at: string
+          dlq_at: string | null
+          dlq_reason: string | null
           duration_ms: number | null
           error_message: string | null
           event_type: string
@@ -2689,6 +2932,8 @@ export type Database = {
         Insert: {
           attempt_count?: number
           delivered_at?: string
+          dlq_at?: string | null
+          dlq_reason?: string | null
           duration_ms?: number | null
           error_message?: string | null
           event_type: string
@@ -2702,6 +2947,8 @@ export type Database = {
         Update: {
           attempt_count?: number
           delivered_at?: string
+          dlq_at?: string | null
+          dlq_reason?: string | null
           duration_ms?: number | null
           error_message?: string | null
           event_type?: string
@@ -2762,6 +3009,21 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      weekly_digest_runs: {
+        Row: {
+          claimed_at: string
+          week_start: string
+        }
+        Insert: {
+          claimed_at?: string
+          week_start: string
+        }
+        Update: {
+          claimed_at?: string
+          week_start?: string
+        }
+        Relationships: []
       }
     }
     Views: {
@@ -2828,6 +3090,10 @@ export type Database = {
           prompt_name: string
           quality_score: number
         }[]
+      }
+      increment_share_view_count: {
+        Args: { p_token: string }
+        Returns: undefined
       }
       is_org_member: { Args: { org_id: string }; Returns: boolean }
       link_otlp_span_parents: {
@@ -2974,13 +3240,9 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
-  graphql_public: {
-    Enums: {},
-  },
   public: {
     Enums: {
       org_role: ["admin", "editor", "viewer"],
     },
   },
 } as const
-
