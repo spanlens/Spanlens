@@ -31,15 +31,13 @@ const aboutJsonLd = {
   url: 'https://www.spanlens.io/about',
   name: 'About Spanlens',
   description: ABOUT_DESCRIPTION,
+  // Reference the canonical Organization node (declared once in the root
+  // layout with @id) instead of re-declaring a second Organization here —
+  // duplicate nodes with divergent sameAs/foundingDate broke entity
+  // reconciliation (2026-07-06 schema audit). foundingDate/founder/sameAs
+  // now live on the canonical node in app/layout.tsx.
   mainEntity: {
-    '@type': 'Organization',
-    name: 'Spanlens',
-    url: 'https://www.spanlens.io',
-    logo: 'https://www.spanlens.io/icon.png',
-    email: 'hi@spanlens.io',
-    foundingDate: '2026-04',
-    sameAs: ['https://github.com/spanlens/Spanlens'],
-    description: ABOUT_DESCRIPTION,
+    '@id': 'https://www.spanlens.io/#organization',
   },
 }
 
@@ -106,7 +104,7 @@ export default function AboutPage() {
             <h2 className="text-[22px] font-semibold text-text mb-3">Who is building this</h2>
             <p className="text-[15px] leading-relaxed">
               Spanlens is built by a small team led by{' '}
-              <strong className="text-text">Haeseong Kim</strong> (founder, engineering).
+              <strong className="text-text">Haeseong Jeon</strong> (founder, engineering).
               Background in production LLM application development and full-stack engineering.
               The team has shipped agent systems, RAG pipelines, and proxy infrastructure at
               scale before starting Spanlens in early 2026.
