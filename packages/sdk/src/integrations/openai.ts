@@ -31,6 +31,12 @@ export const PROMPT_VERSION_HEADER = 'x-spanlens-prompt-version'
 export const USER_HEADER = 'x-spanlens-user'
 export const SESSION_HEADER = 'x-spanlens-session'
 export const LOG_BODY_HEADER = 'x-spanlens-log-body'
+export const CACHE_HEADER = 'x-spanlens-cache'
+
+/** Default TTL applied server-side when the cache header is `true`. */
+export const CACHE_DEFAULT_TTL_SECONDS = 3600
+/** Server caps any requested TTL at this many seconds (24h). */
+export const CACHE_MAX_TTL_SECONDS = 86400
 
 /**
  * Build an OpenAI client whose requests flow through the Spanlens proxy.
@@ -151,4 +157,63 @@ export function withSession(sessionId: string): { headers: Record<string, string
  */
 export function withLogBody(mode: LogBodyMode): { headers: Record<string, string> } {
   return { headers: { [LOG_BODY_HEADER]: mode } }
+}
+
+/**
+ * Serialize a `withCache` argument into the `x-spanlens-cache` header value,
+ * or `null` when the input is not a valid cache directive.
+ *
+ * Semantics mirror the server (`apps/server/src/lib/proxy-cache.ts`):
+ *   - `true` (or omitted) → `'true'` (server applies the default 3600s TTL).
+ *   - a positive integer  → the integer as a string, clamped to
+ *     CACHE_MAX_TTL_SECONDS (86400) so the emitted value is never rejected.
+ *   - anything else (non-integer, zero, negative, NaN) → `null`. The helper
+ *     emits no header, matching how the server treats a malformed value as
+ *     "no caching" rather than throwing.
+ */
+export function cacheHeaderValue(ttl?: number | true): string | null {
+  if (ttl === undefined || ttl === true) return 'true'
+  if (typeof ttl !== 'number' || !Number.isInteger(ttl) || ttl <= 0) return null
+  return String(Math.min(ttl, CACHE_MAX_TTL_SECONDS))
+}
+
+/**
+ * Opt a single request into the Spanlens proxy response cache — repeated,
+ * byte-identical requests are served from the cache instead of calling the
+ * provider again, so they cost nothing and return in milliseconds.
+ *
+ * Caching is off by default and only applies to non-streaming requests whose
+ * upstream response is a 200 JSON body under 256 KB. Entries are scoped to your
+ * Spanlens API key, so they are never shared across keys, projects, or orgs.
+ * See the {@link https://spanlens.io/docs/proxy#response-caching proxy caching docs}
+ * for the full rules.
+ *
+ * @param ttl `true` (or omitted) caches with the default TTL
+ *   ({@link CACHE_DEFAULT_TTL_SECONDS}, 1 hour). A positive integer sets the TTL
+ *   in seconds; the server caps it at {@link CACHE_MAX_TTL_SECONDS} (24h) and
+ *   this helper clamps to the same ceiling. Invalid values (non-integer, zero,
+ *   negative) emit no header, matching the server's fail-safe.
+ *
+ * @example
+ *   import { createOpenAI, withCache } from '@spanlens/sdk/openai'
+ *   const openai = createOpenAI()
+ *
+ *   // Default TTL (1 hour)
+ *   const res = await openai.chat.completions.create(
+ *     { model: 'gpt-4o-mini', messages: [...] },
+ *     withCache(),
+ *   )
+ *
+ *   // Custom TTL (10 minutes)
+ *   const res2 = await openai.chat.completions.create(
+ *     { model: 'gpt-4o-mini', messages: [...] },
+ *     withCache(600),
+ *   )
+ *
+ * Combine with other helpers by merging headers:
+ *   { headers: { ...withCache(600).headers, ...withUser(u).headers } }
+ */
+export function withCache(ttl?: number | true): { headers: Record<string, string> } {
+  const value = cacheHeaderValue(ttl)
+  return { headers: value == null ? {} : { [CACHE_HEADER]: value } }
 }
