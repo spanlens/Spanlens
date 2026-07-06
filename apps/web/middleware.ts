@@ -12,7 +12,45 @@ import { NextResponse, type NextRequest } from 'next/server'
  * instead of two.
  */
 
-const PUBLIC_PATHS = ['/', '/pricing', '/login', '/signup', '/auth/', '/terms', '/privacy', '/invite', '/demo', '/forgot-password', '/reset-password', '/verify-email']
+/**
+ * Auth-gated route prefixes. Everything else is public by default.
+ *
+ * WHY a protected list instead of a public list: the site is overwhelmingly
+ * public (marketing, docs, changelog, compare, share viewer, SEO tool pages —
+ * and new ones ship weekly), while the protected surface is the stable
+ * (dashboard) route group + /onboarding. An allow-list of public paths rots:
+ * the moment the isPublic boundary check was fixed (#388), every public page
+ * missing from the list started 307-ing anonymous visitors to /login
+ * (docs, changelog, share links, all comparison pages — live P0).
+ *
+ * Defense in depth: (dashboard)/layout.tsx independently redirects to /login
+ * when the x-spanlens-user-id header is absent, so a new dashboard route
+ * forgotten here still cannot render for an anonymous user.
+ *
+ * Keep in sync with apps/web/app/(dashboard)/* directories + /onboarding.
+ */
+const PROTECTED_PATHS = [
+  '/admin',
+  '/alerts',
+  '/annotation',
+  '/anomalies',
+  '/billing',
+  '/dashboard',
+  '/datasets',
+  '/evals',
+  '/experiments',
+  '/onboarding',
+  '/projects',
+  '/prompts',
+  '/requests',
+  '/savings',
+  '/security',
+  '/sessions',
+  '/settings',
+  '/shares',
+  '/traces',
+  '/users',
+]
 
 export async function middleware(request: NextRequest) {
   // Skip auth middleware when Supabase env vars are absent (local preview without .env.local)
@@ -51,29 +89,36 @@ export async function middleware(request: NextRequest) {
   } = await supabase.auth.getUser()
 
   const path = request.nextUrl.pathname
-  // Root ('/') must match EXACTLY — `path.startsWith('/')` is true for every
-  // URL, so treating it as a prefix would make isPublic always true and defeat
-  // the auth guard below. Every other entry matches as a true path-segment
-  // prefix (boundary-aware): `/pricing` covers `/pricing/x` but `/privacy`
-  // never accidentally matches an unrelated path that merely shares the string.
-  // Trailing slashes on entries (e.g. `/auth/`) are normalized first so the
-  // boundary check stays correct.
-  const isPublic = PUBLIC_PATHS.some((p) => {
-    if (p === '/') return path === '/'
-    const base = p.endsWith('/') ? p.slice(0, -1) : p
-    return path === base || path.startsWith(base + '/')
-  })
+  // Boundary-aware path-segment prefix match: `/settings` covers `/settings/x`
+  // but `/shares` (protected dashboard page) never accidentally captures the
+  // public `/share/<token>` viewer that merely shares the string prefix.
+  const isProtected = PROTECTED_PATHS.some(
+    (base) => path === base || path.startsWith(base + '/'),
+  )
 
-  if (!user && !isPublic) {
+  // getUser() may have rotated the Supabase session mid-request. The rotated
+  // cookies were written onto `supabaseResponse` — EVERY response object this
+  // middleware returns (redirects included) must carry them, or the browser
+  // keeps replaying the stale refresh token, trips Supabase reuse detection,
+  // and the user gets randomly logged out. #388 fixed this for the final
+  // pass-through response only; the redirect branches had the same bug.
+  const withRotatedCookies = (res: NextResponse): NextResponse => {
+    for (const cookie of supabaseResponse.cookies.getAll()) {
+      res.cookies.set(cookie)
+    }
+    return res
+  }
+
+  if (!user && isProtected) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
-    return NextResponse.redirect(url)
+    return withRotatedCookies(NextResponse.redirect(url))
   }
 
   if (user && (path === '/login' || path === '/signup')) {
     const url = request.nextUrl.clone()
     url.pathname = '/dashboard'
-    return NextResponse.redirect(url)
+    return withRotatedCookies(NextResponse.redirect(url))
   }
 
   // Forward auth metadata downstream so the dashboard layout can skip its

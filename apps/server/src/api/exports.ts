@@ -453,12 +453,15 @@ exportsRouter.get('/security', async (c) => {
   // Both formats get a canonical ISO UTC `created_at` (with `Z` suffix) so
   // downstream consumers don't have to guess the timezone of ClickHouse's
   // 'YYYY-MM-DD HH:MM:SS.fff' format. Excel still parses ISO datetime fine.
+  // JSON additionally coerces ClickHouse string-encoded numerics (cost_usd,
+  // latency_ms, status_code) to numbers — gotcha #19, same treatment as the
+  // /exports/requests JSON path — so pandas/BigQuery get numeric columns.
   const rows: Record<string, unknown>[] = data.map((row) => {
     const isoCreated = fromClickhouseTimestamp(row.created_at) ?? row.created_at
     if (format === 'csv') return { ...row, created_at: isoCreated }
     let parsedFlags: unknown = []
     try { parsedFlags = JSON.parse(row.flags) } catch { parsedFlags = row.flags }
-    return { ...row, flags: parsedFlags, created_at: isoCreated }
+    return { ...coerceNumericColumns(row), flags: parsedFlags, created_at: isoCreated }
   })
 
   const dateStr = new Date().toISOString().slice(0, 10)

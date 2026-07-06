@@ -40,6 +40,16 @@ export type ChangelogTag =
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
     date: '2026-07-06',
+    slug: 'public-pages-and-checkout-fixes',
+    title: 'Public pages, share links, and checkout retry fixes',
+    tags: ['fix'],
+    body: [
+      'Docs, changelog, comparison pages, and shared trace links briefly required a login after a security hardening release tightened the route guard. They are public again, and the guard now works from an explicit list of dashboard routes so new public pages can never regress behind a login wall.',
+      'Two smaller fixes: closing the payment overlay without completing checkout no longer leaves the upgrade button stuck until a page reload, and aborting a streaming request now releases the upstream provider connection immediately instead of holding it until the stream deadline.',
+    ].join('\n\n'),
+  },
+  {
+    date: '2026-07-06',
     slug: 'pre-launch-reliability-and-cost-accuracy',
     title: 'More accurate Gemini cost and steadier streaming',
     tags: ['fix', 'reliability'],

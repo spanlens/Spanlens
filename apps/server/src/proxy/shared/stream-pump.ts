@@ -58,8 +58,24 @@ export function runLineBufferedStreamPump(input: StreamPumpInput): Response {
     const lines: string[] = []
     let truncated = false
 
+    // Client disconnect: honoStream.write() NEVER rejects — hono's
+    // StreamingApi.write() swallows writer errors internally — so a try/catch
+    // around the write cannot observe the client leaving (that was the #388
+    // approach; it was dead code). What DOES fire: when api/index.ts cancels
+    // the downstream response stream (Node socket 'close'), hono's
+    // responseReadable cancel handler calls stream.abort(). Subscribe to that
+    // and cancel the UPSTREAM reader so the pending read resolves, the pump
+    // exits, and the partial row is still logged (truncated).
+    honoStream.onAbort(() => {
+      void cancelReaderSilently(reader)
+    })
+
     pump: for (;;) {
       const outcome = await readWithDeadline(reader, deadline)
+      if (honoStream.aborted) {
+        truncated = true
+        break pump
+      }
       switch (outcome.kind) {
         case 'done':
           break pump
@@ -71,17 +87,7 @@ export function runLineBufferedStreamPump(input: StreamPumpInput): Response {
           logError('UPSTREAM_FETCH_FAILED', { provider: input.provider, phase: 'stream' }, outcome.error)
           break pump
         case 'chunk': {
-          try {
-            await honoStream.write(outcome.value)
-          } catch {
-            // Client disconnected — the downstream response stream was canceled
-            // (api/index.ts cancels it when the Node socket closes). Stop pumping
-            // and fall through to onComplete so the partial row is still logged
-            // (truncated) instead of the write hanging or the log being skipped.
-            truncated = true
-            await cancelReaderSilently(reader)
-            break pump
-          }
+          await honoStream.write(outcome.value)
           buffer += decoder.decode(outcome.value, { stream: true })
           const parts = buffer.split('\n')
           buffer = parts.pop() ?? ''
@@ -131,8 +137,18 @@ export function runChunkAccumulatedStreamPump(input: ChunkAccumulatedStreamPumpI
     const chunks: string[] = []
     let truncated = false
 
+    // Client disconnect — see runLineBufferedStreamPump for the full rationale
+    // (write() never rejects; abort is the only observable signal).
+    honoStream.onAbort(() => {
+      void cancelReaderSilently(reader)
+    })
+
     pump: for (;;) {
       const outcome = await readWithDeadline(reader, deadline)
+      if (honoStream.aborted) {
+        truncated = true
+        break pump
+      }
       switch (outcome.kind) {
         case 'done':
           break pump
@@ -144,14 +160,7 @@ export function runChunkAccumulatedStreamPump(input: ChunkAccumulatedStreamPumpI
           logError('UPSTREAM_FETCH_FAILED', { provider: input.provider, phase: 'stream' }, outcome.error)
           break pump
         case 'chunk':
-          try {
-            await honoStream.write(outcome.value)
-          } catch {
-            // Client disconnected — see runLineBufferedStreamPump for rationale.
-            truncated = true
-            await cancelReaderSilently(reader)
-            break pump
-          }
+          await honoStream.write(outcome.value)
           chunks.push(decoder.decode(outcome.value, { stream: true }))
           break
       }
