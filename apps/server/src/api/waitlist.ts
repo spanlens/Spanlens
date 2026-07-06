@@ -1,7 +1,9 @@
 import { Hono } from 'hono'
+import { createMiddleware } from 'hono/factory'
 import { supabaseAdmin } from '../lib/db.js'
 import { sendEmail, renderWaitlistConfirmationEmail } from '../lib/resend.js'
 import { fireAndForget } from '../lib/wait-until.js'
+import { checkRateLimit } from '../lib/rate-limit.js'
 import { ApiError } from '../lib/errors.js'
 
 /**
@@ -16,7 +18,26 @@ import { ApiError } from '../lib/errors.js'
 
 export const waitlistRouter = new Hono()
 
-waitlistRouter.post('/', async (c) => {
+// Per-IP cap on this unauthenticated endpoint. Without it the POST has no rate
+// limiting at all (it is mounted before the global apiRateLimit, which also
+// fails open for tokenless requests) and could be abused to amplify
+// confirmation emails / flood the waitlist table.
+const WAITLIST_RATE_LIMIT = 10 // per IP per minute
+
+const waitlistRateLimit = createMiddleware(async (c, next) => {
+  const ip =
+    c.req.header('x-forwarded-for')?.split(',')[0]?.trim() ||
+    c.req.header('x-real-ip') ||
+    'unknown'
+  const allowed = await checkRateLimit(`waitlist:${ip}`, WAITLIST_RATE_LIMIT)
+  if (!allowed) {
+    c.header('Retry-After', '60')
+    return c.text('Too many requests', 429)
+  }
+  return next()
+})
+
+waitlistRouter.post('/', waitlistRateLimit, async (c) => {
   let body: Record<string, unknown>
   try {
     body = await c.req.json() as Record<string, unknown>

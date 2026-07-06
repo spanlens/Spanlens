@@ -301,12 +301,16 @@ describe('openai proxy — logging + cost calculation', () => {
     mockUpstream(openAIChatResponse())
     const app = await buildApp()
 
+    // The SDK generates trace/span ids with crypto.randomUUID(); requests.trace_id
+    // and span_id are ClickHouse Nullable(UUID), so valid UUIDs flow through.
+    const traceId = '11111111-1111-4111-8111-111111111111'
+    const spanId = '22222222-2222-4222-8222-222222222222'
     await app.request('/proxy/openai/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-trace-id': 'trace_test_123',
-        'x-span-id': 'span_test_456',
+        'x-trace-id': traceId,
+        'x-span-id': spanId,
         'x-spanlens-user': 'usr_end_customer',
         'x-spanlens-session': 'sess_abc',
       },
@@ -315,10 +319,35 @@ describe('openai proxy — logging + cost calculation', () => {
     await drainPendingTasks()
 
     const row = proxyState.loggerCalls[0]!
-    expect(row['traceId']).toBe('trace_test_123')
-    expect(row['spanId']).toBe('span_test_456')
+    expect(row['traceId']).toBe(traceId)
+    expect(row['spanId']).toBe(spanId)
     expect(row['userId']).toBe('usr_end_customer')
     expect(row['sessionId']).toBe('sess_abc')
+  })
+
+  test('non-UUID trace/span ids are nulled so the Nullable(UUID) insert never drops the row', async () => {
+    mockUpstream(openAIChatResponse())
+    const app = await buildApp()
+
+    await app.request('/proxy/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-trace-id': 'trace_test_123',
+        'x-span-id': 'span_test_456',
+        'x-spanlens-user': 'usr_end_customer',
+      },
+      body: JSON.stringify({ model: 'gpt-4o-mini', messages: [] }),
+    })
+    await drainPendingTasks()
+
+    const row = proxyState.loggerCalls[0]!
+    // Invalid UUIDs must coerce to null — otherwise they poison the ClickHouse
+    // Nullable(UUID) column and the whole row is silently dropped at flush time.
+    expect(row['traceId']).toBeNull()
+    expect(row['spanId']).toBeNull()
+    // Customer identifiers are Strings, so non-UUID values still flow.
+    expect(row['userId']).toBe('usr_end_customer')
   })
 })
 

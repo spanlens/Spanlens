@@ -82,20 +82,49 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     // 6. Stream response body (works for both streaming SSE and plain JSON)
     if (webRes.body) {
       const reader = webRes.body.getReader()
+      // Detect client disconnect. Without this, a client that aborts mid-stream
+      // leaves res.write() returning false with no subsequent 'drain' — the loop
+      // below would await 'drain' forever, the upstream proxy pump would block on
+      // its downstream write, the 290s stream deadline (which only races
+      // reader.read(), not the write) would never fire, and the function would
+      // hang until Vercel's 300s ceiling: the row is never logged and a
+      // full-duration invocation is billed. On 'close' we stop and cancel the
+      // upstream stream so the proxy pump unblocks and logs the partial row.
+      let clientGone = false
+      const onClose = () => {
+        clientGone = true
+      }
+      res.on('close', onClose)
       try {
         for (;;) {
+          if (clientGone || res.writableEnded) break
           const { done, value } = await reader.read()
           if (done) break
           if (!res.write(value)) {
-            // Backpressure: wait for drain before writing more
-            await new Promise<void>(resolve => res.once('drain', resolve))
+            if (clientGone || res.writableEnded) break
+            // Backpressure: resume on 'drain', or bail out if the client left.
+            await new Promise<void>((resolve) => {
+              const finish = () => {
+                res.off('drain', onDrain)
+                res.off('close', onDisc)
+                resolve()
+              }
+              const onDrain = () => finish()
+              const onDisc = () => finish()
+              res.once('drain', onDrain)
+              res.once('close', onDisc)
+            })
           }
         }
       } finally {
+        res.off('close', onClose)
+        // If the client aborted, cancel the upstream/proxy stream so its pump
+        // stops waiting on our (dead) socket and runs its ClickHouse logging.
+        if (clientGone) await reader.cancel().catch(() => {})
         reader.releaseLock()
       }
     }
-    res.end()
+    if (!res.writableEnded) res.end()
   } catch (err) {
     console.error('[handler] unhandled error:', err)
     captureError(err, { url: req.url, method: req.method })

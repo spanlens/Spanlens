@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import { authJwt, type JwtContext } from '../middleware/authJwt.js'
+import { requireRole } from '../middleware/requireRole.js'
 import { supabaseAdmin } from '../lib/db.js'
 import { requestsScope, selectRequests } from '../lib/requests-query.js'
 import { ApiError } from '../lib/errors.js'
@@ -8,10 +9,12 @@ export const datasetsRouter = new Hono<JwtContext>()
 
 datasetsRouter.use('*', authJwt)
 
+const requireEdit = requireRole('admin', 'editor')
+
 // ── Datasets ────────────────────────────────────────────────────────────────
 
 // POST /api/v1/datasets — create
-datasetsRouter.post('/', async (c) => {
+datasetsRouter.post('/', requireEdit, async (c) => {
   const orgId = c.get('orgId')
   const userId = c.get('userId')
   if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
@@ -114,7 +117,7 @@ datasetsRouter.get('/:id', async (c) => {
 })
 
 // DELETE /api/v1/datasets/:id — soft delete (archive)
-datasetsRouter.delete('/:id', async (c) => {
+datasetsRouter.delete('/:id', requireEdit, async (c) => {
   const orgId = c.get('orgId')
   if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
@@ -132,7 +135,7 @@ datasetsRouter.delete('/:id', async (c) => {
 // ── Dataset items ──────────────────────────────────────────────────────────
 
 // POST /api/v1/datasets/:id/items — add a single item
-datasetsRouter.post('/:id/items', async (c) => {
+datasetsRouter.post('/:id/items', requireEdit, async (c) => {
   const orgId = c.get('orgId')
   if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
@@ -189,7 +192,7 @@ datasetsRouter.post('/:id/items', async (c) => {
 // from a client-side parsed file (JSON / CSV). Treats each row as an
 // independent item; partial-failure surfaced with per-row status so the UI
 // can show "8/10 inserted, 2 skipped (missing input)".
-datasetsRouter.post('/:id/items/bulk', async (c) => {
+datasetsRouter.post('/:id/items/bulk', requireEdit, async (c) => {
   const orgId = c.get('orgId')
   if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
@@ -275,7 +278,7 @@ datasetsRouter.post('/:id/items/bulk', async (c) => {
 })
 
 // POST /api/v1/datasets/:id/items/import-requests — bulk import from production
-datasetsRouter.post('/:id/items/import-requests', async (c) => {
+datasetsRouter.post('/:id/items/import-requests', requireEdit, async (c) => {
   const orgId = c.get('orgId')
   if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
@@ -383,7 +386,7 @@ datasetsRouter.post('/:id/items/import-requests', async (c) => {
 })
 
 // DELETE /api/v1/datasets/:id/items/:itemId
-datasetsRouter.delete('/:id/items/:itemId', async (c) => {
+datasetsRouter.delete('/:id/items/:itemId', requireEdit, async (c) => {
   const orgId = c.get('orgId')
   if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 

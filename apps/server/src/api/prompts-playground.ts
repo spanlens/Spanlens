@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import { authJwt, type JwtContext } from '../middleware/authJwt.js'
+import { requireRole } from '../middleware/requireRole.js'
 import { supabaseAdmin } from '../lib/db.js'
 import { aes256Decrypt } from '../lib/crypto.js'
 import { calculateCost } from '../lib/cost.js'
@@ -10,6 +11,12 @@ import { ApiError } from '../lib/errors.js'
 export const promptsPlaygroundRouter = new Hono<JwtContext>()
 
 promptsPlaygroundRouter.use('*', authJwt)
+
+// /run decrypts a provider key and makes a real billable upstream LLM call, so
+// it must not be reachable by a viewer-role member (per-user in-memory rate
+// limiting alone doesn't gate role). authJwt is JWT-only, so a plain requireRole
+// gate is correct here.
+const requireEdit = requireRole('admin', 'editor')
 
 // Simple in-memory rate limit: 20 req per user per 60s
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>()
@@ -28,7 +35,7 @@ function checkRateLimit(userId: string): boolean {
   return true
 }
 
-promptsPlaygroundRouter.post('/run', async (c) => {
+promptsPlaygroundRouter.post('/run', requireEdit, async (c) => {
   const orgId = c.get('orgId')
   const userId = c.get('userId')
   if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')

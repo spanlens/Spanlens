@@ -7,6 +7,7 @@ import { useTheme } from '@/components/providers/theme-provider'
 import { Sun, Moon, Monitor, X, MessageSquarePlus, PanelLeftClose } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
+import { clearQueryClient } from '@/lib/query-client'
 import { useStatsOverview } from '@/lib/queries/use-stats'
 import { useQuota } from '@/lib/queries/use-billing'
 import { formatPlanLabel } from '@/lib/billing-plans'
@@ -372,8 +373,14 @@ export function Sidebar() {
     clearWelcomeStash()
     const supabase = createClient()
     await supabase.auth.signOut()
-    router.push('/login')
-    router.refresh()
+    // Drop the previous account's TanStack cache. The browser QueryClient is a
+    // singleton that survives navigation and query keys don't include orgId, so
+    // without this the next account to sign in on this tab would render account
+    // A's cached stats / quota / org name until staleTime elapses.
+    clearQueryClient()
+    // Hard nav (not router.push) so the next session boots in a fresh JS
+    // context with fully re-evaluated middleware. See CLAUDE.md gotcha #15.
+    window.location.href = '/login'
   }
 
   return (

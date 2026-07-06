@@ -286,7 +286,11 @@ export async function logAnthropicStream(
       continue
     }
     const delta = parseAnthropicStreamChunk(line)
-    if (delta?.completionTokens) completionTokens += delta.completionTokens
+    // Anthropic's message_delta.usage.output_tokens is CUMULATIVE (the running
+    // total so far), not a per-delta increment. Assign the latest value rather
+    // than summing — today exactly one message_delta arrives, but a future
+    // multi-delta stream would double-count with `+=`.
+    if (delta?.completionTokens) completionTokens = delta.completionTokens
   }
 
   const totalTokens = promptTokens + completionTokens

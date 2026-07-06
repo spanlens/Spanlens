@@ -7,6 +7,7 @@ import { aes256Encrypt } from '../lib/crypto.js'
 import { enqueueDeletion } from '../lib/pending-deletions.js'
 import { recordAuditEvent } from '../lib/audit-log.js'
 import { resetProviderKeyNamesCache } from '../lib/requests-query.js'
+import { validateOptionalUuid } from '../lib/params.js'
 import { ApiError } from '../lib/errors.js'
 
 /**
@@ -92,7 +93,10 @@ providerKeysRouter.get('/', async (c) => {
   const orgId = c.get('orgId')
   if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
-  const apiKeyIdFilter = c.req.query('apiKeyId')
+  // apiKeyId is bound into a Postgres UUID column filter — a malformed value
+  // (e.g. ?apiKeyId=abc) fails UUID parsing and throws a raw 500. Validate so
+  // this dual-auth read surface (MCP/BI tools) gets a clean 400 instead.
+  const apiKeyIdFilter = validateOptionalUuid(c.req.query('apiKeyId'), 'apiKeyId')
 
   let query = supabaseAdmin
     .from('provider_keys')

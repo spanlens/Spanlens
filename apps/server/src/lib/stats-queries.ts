@@ -642,8 +642,11 @@ export async function getSecuritySummary(
   organizationId: string,
   hours: number,
 ): Promise<SecuritySummaryRow[]> {
+  // User-facing security dashboard read: respect plan retention like other
+  // dashboard reads. Do NOT bypass retention here — a Free org (14d) must not
+  // aggregate flags up to the 720h (30d) query window.
   const [scope, source] = await Promise.all([
-    requestsScope(organizationId, { ignoreRetention: true }),
+    requestsScope(organizationId),
     statsSource(organizationId),
   ])
   const sql = `

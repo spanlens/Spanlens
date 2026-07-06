@@ -32,20 +32,40 @@ export async function observe<T>(
 
   try {
     const result = await fn(span)
-    // Auto-capture return value as output unless it's a stream (not serialisable).
-    // If the user already called span.end() manually inside fn (e.g. streaming),
-    // SpanHandle.end() will send a supplementary output-only PATCH.
-    const isStream =
-      result != null &&
-      typeof result === 'object' &&
-      (Symbol.asyncIterator in (result as object) || Symbol.iterator in (result as object))
+    // Auto-capture return value as output unless it's a genuine stream (not
+    // serialisable). If the user already called span.end() manually inside fn
+    // (e.g. streaming), SpanHandle.end() will send a supplementary output-only PATCH.
+    const isStream = isStreamLike(result)
     await span.end({ status: 'completed', output: isStream ? undefined : result })
     return result
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : String(err)
-    await span.end({ status: 'error', errorMessage })
+    // Do not let a failing span.end() mask the user's original error — swallow
+    // the end() rejection so `throw err` always runs and propagates unchanged.
+    await span.end({ status: 'error', errorMessage }).catch(() => {})
     throw err
   }
+}
+
+/**
+ * True only for genuine streams whose contents are NOT safely serialisable as
+ * span output: async iterables (async generators) and ReadableStream-likes.
+ *
+ * Plain sync-iterable containers (arrays, Map, Set, etc.) are explicitly
+ * EXCLUDED — they are serialisable return values (e.g. a retrieval result
+ * array) and must be captured as output, not silently dropped as "a stream".
+ */
+function isStreamLike(result: unknown): boolean {
+  if (result == null || typeof result !== 'object') return false
+  // Arrays and other plain sync-iterable containers are serialisable output.
+  if (Array.isArray(result)) return false
+  const obj = result as Record<PropertyKey, unknown>
+  // Async iterables (async generators) are real streams.
+  if (Symbol.asyncIterator in obj) return true
+  // ReadableStream (Web Streams) — direct instance or duck-typed.
+  if (typeof ReadableStream !== 'undefined' && result instanceof ReadableStream) return true
+  if (typeof obj['getReader'] === 'function' || typeof obj['tee'] === 'function') return true
+  return false
 }
 
 // ── Provider-specific auto-instrumentation helpers ─────────────
@@ -165,17 +185,16 @@ async function observeProvider<T>(
     }
     const enriched = { ...parsed, metadata: metadataWithProvider }
 
-    // Capture the full response as output unless it's a stream (not serializable)
-    const isStream = result != null &&
-      typeof result === 'object' &&
-      (Symbol.asyncIterator in (result as object) || Symbol.iterator in (result as object))
-    const output = isStream ? undefined : result
+    // Capture the full response as output unless it's a genuine stream (not serializable)
+    const output = isStreamLike(result) ? undefined : result
 
     await span.end({ status: 'completed', output, ...enriched })
     return result
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : String(err)
-    await span.end({ status: 'error', errorMessage })
+    // Do not let a failing span.end() mask the user's original error — swallow
+    // the end() rejection so `throw err` always runs and propagates unchanged.
+    await span.end({ status: 'error', errorMessage }).catch(() => {})
     throw err
   }
 }

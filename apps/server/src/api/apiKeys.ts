@@ -243,11 +243,29 @@ apiKeysRouter.patch('/:id', requireEdit, async (c) => {
   if (!ownership) throw new ApiError('NOT_FOUND', 'API key not found')
   if (ownership.orgId !== orgId) throw new ApiError('FORBIDDEN', 'Access denied')
 
+  // When disabling a key we need its key_hash to evict the auth cache below.
+  // Load it before the update so the row is guaranteed to still exist.
+  let keyHash: string | null = null
+  if (body.is_active === false) {
+    const { data: keyRow } = await supabaseAdmin
+      .from('api_keys')
+      .select('key_hash')
+      .eq('id', keyId)
+      .maybeSingle()
+    keyHash = (keyRow as { key_hash?: string } | null)?.key_hash ?? null
+  }
+
   const { error } = await supabaseAdmin
     .from('api_keys')
     .update({ is_active: body.is_active })
     .eq('id', keyId)
   if (error) throw new ApiError('INTERNAL_ERROR', 'Failed to update API key')
+
+  // R-4/R-5: mirror the DELETE handler — drop the cached auth entry the instant
+  // a key is disabled. Without this, the 30-60s cache TTL would keep a disabled
+  // sl_live_* key authenticating proxy/ingest traffic. Only evict on disable so
+  // an unrelated PATCH (e.g. a future rename) doesn't over-invalidate.
+  if (body.is_active === false && keyHash) invalidateApiKeyCache(keyHash)
 
   void recordAuditEvent(c, {
     action: body.is_active ? 'api_key.enable' : 'api_key.disable',

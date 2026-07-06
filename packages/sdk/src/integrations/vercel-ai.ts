@@ -17,6 +17,7 @@
  *     messages: [...],
  *     onStepFinish: tracker.onStepFinish,
  *     onFinish: tracker.onFinish,
+ *     onError: tracker.onError, // ends the span on failure (streamText/streamObject)
  *   })
  *
  * @example Attach to an existing trace
@@ -92,6 +93,12 @@ export interface SpanlensVercelAITracker {
   onStepFinish: (event: VercelAIStepFinishEvent) => Promise<void>
   /** Pass to `onFinish` — closes the span with final total usage. */
   onFinish: (event: VercelAIFinishEvent) => Promise<void>
+  /**
+   * Pass to `onError` (streamText/streamObject) — closes the span/trace with
+   * `status: 'error'` when the underlying call fails. Without this the span
+   * stays 'running' forever in the dashboard because `onFinish` never fires.
+   */
+  onError: (event: { error?: unknown } | unknown) => Promise<void>
 }
 
 /**
@@ -114,6 +121,7 @@ export function createSpanlensTracker(
   })
 
   let stepCount = 0
+  let settled = false
 
   return {
     async onStepFinish(_event: VercelAIStepFinishEvent): Promise<void> {
@@ -124,6 +132,8 @@ export function createSpanlensTracker(
     },
 
     async onFinish(event: VercelAIFinishEvent): Promise<void> {
+      if (settled) return
+      settled = true
       const { usage, finishReason, text, response } = event
       const resolvedModel =
         response?.modelId ?? response?.model ?? modelName ?? 'unknown'
@@ -147,6 +157,29 @@ export function createSpanlensTracker(
 
       if (isLocalTrace) {
         await trace.end({ status: isError ? 'error' : 'completed' })
+      }
+    },
+
+    async onError(event: { error?: unknown } | unknown): Promise<void> {
+      // The underlying call errored — end the span/trace so it does not stay
+      // 'running' forever. Guarded by `settled` so a later onFinish (or vice
+      // versa) does not double-end.
+      if (settled) return
+      settled = true
+      const raw =
+        event != null && typeof event === 'object' && 'error' in event
+          ? (event as { error?: unknown }).error
+          : event
+      const errorMessage = raw instanceof Error ? raw.message : String(raw)
+
+      await span.end({
+        status: 'error',
+        errorMessage,
+        metadata: { model: modelName ?? 'unknown' },
+      })
+
+      if (isLocalTrace) {
+        await trace.end({ status: 'error' })
       }
     },
   }

@@ -137,12 +137,41 @@ export function registerSpanlensCallbacks(
     }
   }
 
+  // Error path: LlamaIndex emits an error event when an LLM call throws. Without
+  // handling it the span never ends (stays 'running' in the dashboard forever)
+  // and its `runs` Map entry leaks. End the span/trace with error status and
+  // delete the entry, mirroring onEnd's cleanup.
+  function onError(event: unknown): void {
+    const detail = (event as { detail?: { id?: string; error?: unknown } }).detail
+    const id = detail?.id
+    if (!id) return
+    const run = runs.get(id)
+    if (!run) return
+    runs.delete(id)
+
+    const rawError = detail?.error
+    const errorMessage =
+      rawError instanceof Error ? rawError.message : rawError != null ? String(rawError) : 'LLM error'
+
+    run.span.end({ status: 'error', errorMessage }).catch(() => undefined)
+
+    if (run.isLocalTrace) {
+      run.trace.end({ status: 'error' }).catch(() => undefined)
+    }
+  }
+
   settings.callbackManager.on('llm-start', onStart)
   settings.callbackManager.on('llm-end', onEnd)
+  // Event name varies by LlamaIndex version; register the known variants so the
+  // error path is covered regardless. Unused registrations are harmless.
+  settings.callbackManager.on('llm-error', onError)
+  settings.callbackManager.on('llm-stream-error', onError)
 
   return function unregister(): void {
     settings.callbackManager.off('llm-start', onStart)
     settings.callbackManager.off('llm-end', onEnd)
+    settings.callbackManager.off('llm-error', onError)
+    settings.callbackManager.off('llm-stream-error', onError)
     runs.clear()
   }
 }

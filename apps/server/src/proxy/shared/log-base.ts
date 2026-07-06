@@ -56,8 +56,22 @@ export interface BuildLogBaseInput {
   statusCode: number
 }
 
+// requests.trace_id / span_id are ClickHouse Nullable(UUID). A non-UUID header
+// value fails JSONEachRow parsing at async flush time (after insert() already
+// ACKed), losing the whole row with NO requests_fallback entry. Validate and
+// coerce invalid values to null so the row still logs (minus trace grouping).
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+function isUuid(value: string): boolean {
+  return UUID_RE.test(value)
+}
+
+function uuidHeaderOrNull(value: string | undefined): string | null {
+  return value && isUuid(value) ? value : null
+}
+
 export function buildLogBase(input: BuildLogBaseInput): ProxyLogBase {
-  const traceId = input.c.req.header('x-trace-id') ?? null
+  const traceId = uuidHeaderOrNull(input.c.req.header('x-trace-id'))
   return {
     organizationId: input.organizationId,
     projectId: input.projectId,
@@ -70,7 +84,7 @@ export function buildLogBase(input: BuildLogBaseInput): ProxyLogBase {
     responseBody: null,
     errorMessage: null,
     traceId,
-    spanId: input.c.req.header('x-span-id') ?? null,
+    spanId: uuidHeaderOrNull(input.c.req.header('x-span-id')),
     promptVersionId: null,
     promptVersionHeader: input.c.req.header('x-spanlens-prompt-version') ?? null,
     providerKeyId: input.providerKey.id,

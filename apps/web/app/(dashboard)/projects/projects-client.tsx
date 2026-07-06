@@ -209,6 +209,7 @@ export function ProjectsClient() {
   // Create project dialog
   const [projDialogOpen, setProjDialogOpen] = useState(false)
   const [projName, setProjName] = useState('')
+  const [projError, setProjError] = useState<string | null>(null)
 
   // Add provider key dialog (now scoped to a Spanlens key)
   const [addProvDialogOpen, setAddProvDialogOpen] = useState(false)
@@ -244,6 +245,11 @@ export function ProjectsClient() {
   // Delete confirms
   const [deleteApiKeyId, setDeleteApiKeyId] = useState<string | null>(null)
   const [deleteProvKeyId, setDeleteProvKeyId] = useState<string | null>(null)
+  // Public-key revoke confirm — mirrors the Spanlens-key delete flow so a
+  // single misclick can't revoke a workspace credential. Separate state from
+  // deleteApiKeyId because the two dialogs describe different consequences.
+  const [revokePublicKeyId, setRevokePublicKeyId] = useState<string | null>(null)
+  const [revokePublicError, setRevokePublicError] = useState<string | null>(null)
   // Project delete requires typing the project name as confirmation —
   // deleting a project cascades through every Spanlens key, provider key,
   // and (in ClickHouse) every request row's project_id reference.
@@ -268,9 +274,14 @@ export function ProjectsClient() {
   }
 
   async function handleCreateProject() {
-    await createProject.mutateAsync({ name: projName })
-    setProjName('')
-    setProjDialogOpen(false)
+    setProjError(null)
+    try {
+      await createProject.mutateAsync({ name: projName.trim() })
+      setProjName('')
+      setProjDialogOpen(false)
+    } catch (err) {
+      setProjError(err instanceof Error ? err.message : 'Failed to create project')
+    }
   }
 
   function openAddProvDialog(apiKeyId: string) {
@@ -378,6 +389,17 @@ export function ProjectsClient() {
     setDeleteApiKeyId(null)
   }
 
+  async function handleRevokePublicKey() {
+    if (!revokePublicKeyId) return
+    setRevokePublicError(null)
+    try {
+      await deleteApiKey.mutateAsync(revokePublicKeyId)
+      setRevokePublicKeyId(null)
+    } catch (err) {
+      setRevokePublicError(err instanceof Error ? err.message : 'Failed to revoke key')
+    }
+  }
+
   async function handleDeleteProviderKey() {
     if (!deleteProvKeyId) return
     await deleteProviderKey.mutateAsync(deleteProvKeyId)
@@ -428,6 +450,13 @@ export function ProjectsClient() {
     projectsQuery.isFetching ||
     apiKeysQuery.isFetching ||
     providerKeysQuery.isFetching
+  // List-load failure (distinct from the create-dialog's projError). Without
+  // this, a 500 falls through to the "No projects yet" onboarding CTA even for
+  // a workspace that has projects. Show an error + retry instead.
+  const listError =
+    projectsQuery.isError ||
+    apiKeysQuery.isError ||
+    providerKeysQuery.isError
   const allProjects = useMemo(() => projectsQuery.data ?? [], [projectsQuery.data])
   const allApiKeys = useMemo(() => apiKeysQuery.data ?? [], [apiKeysQuery.data])
   const allProviderKeys = useMemo(() => providerKeysQuery.data ?? [], [providerKeysQuery.data])
@@ -729,7 +758,7 @@ export function ProjectsClient() {
                     <PermissionGate need="edit">
                       <button
                         type="button"
-                        onClick={() => deleteApiKey.mutate(key.id)}
+                        onClick={() => { setRevokePublicError(null); setRevokePublicKeyId(key.id) }}
                         className="text-text-faint hover:text-bad transition-colors p-1"
                         title="Revoke"
                         aria-label="Revoke public key"
@@ -781,6 +810,24 @@ export function ProjectsClient() {
                   <Skeleton className="h-3 w-64" />
                 </div>
               ))}
+            </div>
+          ) : listError ? (
+            <div className="rounded-xl border border-dashed border-border p-10 text-center">
+              <h2 className="text-[14px] font-semibold text-text mb-1.5">Couldn&apos;t load projects</h2>
+              <p className="text-[12.5px] text-text-muted max-w-md mx-auto mb-4">
+                We couldn&apos;t reach the server just now. Your projects and keys are safe.
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  void projectsQuery.refetch()
+                  void apiKeysQuery.refetch()
+                  void providerKeysQuery.refetch()
+                }}
+                className="font-mono text-[11.5px] px-2.5 py-1 rounded border border-border text-text-muted hover:text-text hover:border-border-strong transition-colors inline-block"
+              >
+                Retry
+              </button>
             </div>
           ) : allProjects.length === 0 ? (
             <div className="rounded-xl border border-dashed border-border p-10 text-center">
@@ -1037,7 +1084,13 @@ export function ProjectsClient() {
       </div>
 
       {/* Create project dialog */}
-      <Dialog open={projDialogOpen} onOpenChange={setProjDialogOpen}>
+      <Dialog
+        open={projDialogOpen}
+        onOpenChange={(open) => {
+          setProjDialogOpen(open)
+          if (!open) setProjError(null)
+        }}
+      >
         <DialogContent aria-describedby={undefined}>
           <DialogHeader>
             <DialogTitle>Create project</DialogTitle>
@@ -1048,11 +1101,16 @@ export function ProjectsClient() {
               <input
                 value={projName}
                 onChange={(e) => setProjName(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter' && projName.trim()) void handleCreateProject() }}
+                onKeyDown={(e) => { if (e.key === 'Enter' && projName.trim() && !createProject.isPending) void handleCreateProject() }}
                 placeholder="e.g. Production"
                 className="w-full h-9 px-3 rounded-[6px] border border-border bg-bg text-[13px] text-text placeholder:text-text-faint focus:outline-none focus:border-border-strong transition-colors"
               />
             </div>
+            {projError && (
+              <div className="rounded-md border border-bad/30 bg-bad/10 px-3 py-2 text-[12px] text-bad">
+                {projError}
+              </div>
+            )}
             <PrimaryBtn
               onClick={() => void handleCreateProject()}
               disabled={!projName.trim() || createProject.isPending}
@@ -1402,6 +1460,43 @@ export function ProjectsClient() {
                 className="flex-1 h-9 rounded-[6px] bg-bad text-white font-medium text-[13px] hover:opacity-90 transition-opacity disabled:opacity-40"
               >
                 {deleteApiKey.isPending ? 'Deleting…' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Revoke public key confirm */}
+      <Dialog
+        open={revokePublicKeyId !== null}
+        onOpenChange={(open) => { if (!open) { setRevokePublicKeyId(null); setRevokePublicError(null) } }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Revoke public key</DialogTitle>
+          </DialogHeader>
+          <DialogDescription className="text-[12.5px] text-text-muted mt-1">
+            This permanently revokes the public key. Any MCP server, BI tool, or
+            embed using it will stop reading your workspace data immediately.
+          </DialogDescription>
+
+          <div className="space-y-4 mt-2">
+            {revokePublicError && (
+              <div className="rounded-md border border-bad/30 bg-bad/10 px-3 py-2 text-[12px] text-bad">
+                {revokePublicError}
+              </div>
+            )}
+            <div className="flex gap-3">
+              <GhostBtn className="flex-1" onClick={() => { setRevokePublicKeyId(null); setRevokePublicError(null) }}>
+                Cancel
+              </GhostBtn>
+              <button
+                type="button"
+                onClick={() => void handleRevokePublicKey()}
+                disabled={deleteApiKey.isPending}
+                className="flex-1 h-9 rounded-[6px] bg-bad text-white font-medium text-[13px] hover:opacity-90 transition-opacity disabled:opacity-40"
+              >
+                {deleteApiKey.isPending ? 'Revoking…' : 'Revoke'}
               </button>
             </div>
           </div>

@@ -10,6 +10,7 @@ import {
   recordAuditLog,
 } from '../lib/audit-log.js'
 import { ApiError } from '../lib/errors.js'
+import { isUuid } from '../lib/params.js'
 
 /**
  * Invitations — email-based org member onboarding.
@@ -92,16 +93,24 @@ orgInvitationsRouter.post('/', requireRole('admin'), async (c) => {
     }
   }
 
-  // Reject duplicate pending invite for the same email/org pair.
-  const { data: pending } = await supabaseAdmin
+  // Reject duplicate pending invite for the same email/org pair. Use limit(1)
+  // rather than maybeSingle(): there is no unique constraint on
+  // (organization_id, email, pending), so a double-click race can leave 2+
+  // pending rows. maybeSingle() returns { data: null, error } on a multi-row
+  // match, so the guard would fall through and EVERY later invite to that
+  // email would pass (duplicate emails sent). limit(1) treats "≥1 pending
+  // row exists" as the dedup hit. Same maybeSingle blind spot as the
+  // organizations.ts bootstrap membership check.
+  const { data: pendingRows, error: pendingErr } = await supabaseAdmin
     .from('org_invitations')
     .select('id')
     .eq('organization_id', orgId)
     .eq('email', email)
     .is('accepted_at', null)
     .gt('expires_at', new Date().toISOString())
-    .maybeSingle()
-  if (pending) {
+    .limit(1)
+  if (pendingErr) throw new ApiError('INTERNAL_ERROR', 'Failed to check pending invitations')
+  if (pendingRows && pendingRows.length > 0) {
     throw new ApiError('CONFLICT', 'A pending invitation for this email already exists')
   }
 
@@ -331,6 +340,9 @@ invitationsRouter.delete('/:id', authJwt, requireRole('admin'), async (c) => {
   if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   const id = c.req.param('id')
+  // Malformed id would hit Postgres as an invalid-uuid error → raw 500.
+  // Treat it like a nonexistent id (same 404 the count===0 path returns).
+  if (!isUuid(id)) throw new ApiError('NOT_FOUND', 'Invitation not found')
 
   // Scope the delete to the user's org so admins can't cancel invitations
   // belonging to other orgs.
@@ -478,10 +490,15 @@ meInvitationsRouter.delete('/:id', async (c) => {
   const email = c.get('email')
   if (!email) throw new ApiError('BAD_REQUEST', 'User has no email')
 
+  const id = c.req.param('id')
+  // Malformed id would hit Postgres as an invalid-uuid error → raw 500.
+  // Treat it like a nonexistent id (same 404 the count===0 path returns).
+  if (!isUuid(id)) throw new ApiError('NOT_FOUND', 'Invitation not found')
+
   const { error, count } = await supabaseAdmin
     .from('org_invitations')
     .delete({ count: 'exact' })
-    .eq('id', c.req.param('id'))
+    .eq('id', id)
     .ilike('email', email)
     .is('accepted_at', null)
 

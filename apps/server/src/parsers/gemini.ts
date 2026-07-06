@@ -22,9 +22,16 @@ function coerceGeminiTier(value: unknown): ServiceTier | undefined {
 export function parseGeminiResponse(body: Record<string, unknown>): ParsedUsage | null {
   const meta = body.usageMetadata as Record<string, unknown> | undefined
   if (!meta) return null
+  const candidatesTokens = (meta.candidatesTokenCount as number) ?? 0
+  // Gemini 2.5+/3 models (thinking on by default) report reasoning tokens in
+  // `thoughtsTokenCount`. Google bills these at the OUTPUT token rate and
+  // `candidatesTokenCount` EXCLUDES them, so fold them into completion tokens —
+  // otherwise cost is systematically under-reported. `totalTokenCount` already
+  // includes thoughts, so prompt + completion stays consistent with total.
+  const thoughtsTokens = (meta.thoughtsTokenCount as number) ?? 0
   return {
     promptTokens: (meta.promptTokenCount as number) ?? 0,
-    completionTokens: (meta.candidatesTokenCount as number) ?? 0,
+    completionTokens: candidatesTokens + thoughtsTokens,
     totalTokens: (meta.totalTokenCount as number) ?? 0,
     model: (body.modelVersion as string) ?? '',
     serviceTier: coerceGeminiTier(meta.serviceTier),

@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import { authJwt, type JwtContext } from '../middleware/authJwt.js'
+import { requireRole } from '../middleware/requireRole.js'
 import { supabaseAdmin } from '../lib/db.js'
 import {
   createPaddleCustomer,
@@ -57,10 +58,28 @@ billingRouter.get('/quota', async (c) => {
 // ── POST /api/v1/billing/checkout ───────────────────────────────
 // Body: { plan: 'starter' | 'team' | 'enterprise', successUrl?: string }
 // Returns: { url: 'https://...' } — browser redirects to Paddle-hosted checkout
-billingRouter.post('/checkout', async (c) => {
+billingRouter.post('/checkout', requireRole('admin'), async (c) => {
   const orgId = c.get('orgId')
   const userId = c.get('userId')
   if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
+
+  // Guard against double-billing. The Paddle webhook upserts subscriptions by
+  // paddle_subscription_id, so a second checkout completed against a live
+  // subscription persists a SECOND row and Paddle bills both. Reject up front
+  // and steer the caller to the plan-change flow instead.
+  const { data: existingSub } = await supabaseAdmin
+    .from('subscriptions')
+    .select('id')
+    .eq('organization_id', orgId)
+    .in('status', ['active', 'trialing', 'past_due', 'paused'])
+    .limit(1)
+    .maybeSingle()
+  if (existingSub) {
+    throw new ApiError(
+      'CONFLICT',
+      'This workspace already has an active subscription; use plan change instead',
+    )
+  }
 
   let body: { plan?: unknown }
   try {
@@ -143,7 +162,7 @@ billingRouter.post('/checkout', async (c) => {
 // ── POST /api/v1/billing/cancel ─────────────────────────────────
 // Cancels the active subscription at period end so the customer keeps access
 // through the current billing period (matches Terms section 5).
-billingRouter.post('/cancel', async (c) => {
+billingRouter.post('/cancel', requireRole('admin'), async (c) => {
   const orgId = c.get('orgId')
   if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 

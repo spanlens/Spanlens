@@ -25,6 +25,22 @@ import { recordOAuthConsentIfMissing } from '@/lib/oauth-consent'
  * server round-trip. Helper is idempotent so re-logins do nothing.
  */
 const OAUTH_RETURN_COOKIE = 'sl_oauth_return'
+const DEFAULT_NEXT = '/dashboard'
+
+/**
+ * Accept a post-callback destination only when it's a same-origin relative
+ * path. `next` is attacker-controllable (query param or cookie), and it gets
+ * concatenated as `${redirectBase}${next}`. A value like `//evil.com` or
+ * `@evil.com` would redirect off-origin — a phishing vector on a trusted
+ * domain. Require a single leading slash (relative path) and reject
+ * protocol-relative (`//`) URLs; everything else falls back to /dashboard.
+ */
+function sanitizeNext(candidate: string | null | undefined): string {
+  if (!candidate || !candidate.startsWith('/') || candidate.startsWith('//')) {
+    return DEFAULT_NEXT
+  }
+  return candidate
+}
 
 export async function GET(request: Request): Promise<NextResponse> {
   const { searchParams, origin } = new URL(request.url)
@@ -43,10 +59,15 @@ export async function GET(request: Request): Promise<NextResponse> {
   // so a stale value never persists into the next sign-in.
   const cookieStore = await cookies()
   const returnCookie = cookieStore.get(OAUTH_RETURN_COOKIE)?.value
-  const next =
+  // Both sources are attacker-controllable. Resolve the raw candidate with the
+  // existing precedence (query param, then cookie), then sanitize the result so
+  // an unsafe value from either source falls back to /dashboard rather than
+  // redirecting off-origin. `??` means the cookie is only read when the query
+  // param is absent, matching the original precedence.
+  const rawNext =
     searchParams.get('next') ??
-    (returnCookie ? decodeURIComponent(returnCookie) : null) ??
-    '/dashboard'
+    (returnCookie ? decodeURIComponent(returnCookie) : null)
+  const next = sanitizeNext(rawNext)
 
   if (!code) {
     const r = NextResponse.redirect(`${redirectBase}${next}`)

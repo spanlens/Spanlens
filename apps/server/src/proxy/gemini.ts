@@ -94,26 +94,50 @@ geminiProxy.all('/*', async (c) => {
       onComplete: async (buffer, truncated) => {
         const text = extractGeminiStreamText(buffer.split('\n'))
 
-        // Best-effort: recover usage + model from the last full JSON object
-        // in the array. usage may be missing on aborted streams — acceptable.
+        // Best-effort: recover usage + model from the LAST chunk that carries
+        // usageMetadata (Gemini emits it on the final chunk). The @google/
+        // generative-ai SDK requests `?alt=sse`, so the buffer is normally SSE
+        // `data: {...}` lines — walk those first, then fall back to the legacy
+        // JSON-array framing for non-SSE callers. usage may be missing on
+        // aborted streams — acceptable.
         let model = modelMatch?.[1] ?? ''
         let promptTokens = 0
         let completionTokens = 0
         let totalTokens = 0
         let serviceTier: ServiceTier | undefined
+        const applyUsage = (obj: Record<string, unknown>): void => {
+          if (!obj.usageMetadata) return
+          const p = parseGeminiResponse(obj)
+          if (!p) return
+          model = p.model || model
+          promptTokens = p.promptTokens
+          completionTokens = p.completionTokens
+          totalTokens = p.totalTokens
+          serviceTier = p.serviceTier
+        }
         try {
-          const lastChunkText = buffer.trim().replace(/^\[/, '').replace(/\]$/, '')
-          const candidates = lastChunkText.split(/(?<=})\s*,\s*(?=\{)/g)
-          const last = candidates[candidates.length - 1]
-          if (last) {
-            const p = parseGeminiResponse(JSON.parse(last) as Record<string, unknown>)
-            if (p) {
-              model = p.model || model
-              promptTokens = p.promptTokens
-              completionTokens = p.completionTokens
-              totalTokens = p.totalTokens
-              serviceTier = p.serviceTier
+          const lines = buffer.split('\n')
+          const sseChunks: Record<string, unknown>[] = []
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue
+            const data = line.slice(6).trim()
+            if (!data || data === '[DONE]') continue
+            try {
+              sseChunks.push(JSON.parse(data) as Record<string, unknown>)
+            } catch { /* partial/non-JSON chunk — skip */ }
+          }
+          if (sseChunks.length > 0) {
+            // Take usageMetadata from the last SSE chunk that carries it.
+            for (let i = sseChunks.length - 1; i >= 0; i--) {
+              const chunk = sseChunks[i]
+              if (chunk?.usageMetadata) { applyUsage(chunk); break }
             }
+          } else {
+            // Legacy JSON-array framing: recover the last full JSON object.
+            const lastChunkText = buffer.trim().replace(/^\[/, '').replace(/\]$/, '')
+            const candidates = lastChunkText.split(/(?<=})\s*,\s*(?=\{)/g)
+            const last = candidates[candidates.length - 1]
+            if (last) applyUsage(JSON.parse(last) as Record<string, unknown>)
           }
         } catch { /* parser drift on aborted streams — acceptable */ }
 
@@ -124,7 +148,13 @@ geminiProxy.all('/*', async (c) => {
           logWarn('UNCATEGORIZED', { provider: 'gemini', kind: 'capture_empty', bytes: buffer.length })
         }
 
-        const cost = calculateCost('gemini', model, { promptTokens, completionTokens, serviceTier })
+        // No usage captured (truncated/aborted stream before the final chunk)
+        // → record null cost, not a misleading $0. Mirrors the OpenAI/Anthropic
+        // stream loggers (proxy/stream-logger.ts `hasUsage` guard).
+        const hasUsage = promptTokens > 0 || completionTokens > 0
+        const cost = hasUsage
+          ? calculateCost('gemini', model, { promptTokens, completionTokens, serviceTier })
+          : null
         const responseBody = text ? {
           candidates: [{ content: { parts: [{ text }] } }],
           modelVersion: model,

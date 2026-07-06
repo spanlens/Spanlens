@@ -6,7 +6,7 @@ import { getDecryptedProviderKeyById, getDecryptedProviderKey } from '../proxy/u
 import { calculateCost } from '../lib/cost.js'
 import { logRequestAsync } from '../lib/logger.js'
 import { fireAndForget } from '../lib/wait-until.js'
-import { parsePageLimit } from '../lib/params.js'
+import { parsePageLimit, validateOptionalUuid, validateOptionalDate, isUuid } from '../lib/params.js'
 import {
   requestsScope,
   selectRequests,
@@ -64,13 +64,17 @@ requestsRouter.get('/', async (c) => {
   const orgId = c.get('orgId')
   if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
-  const projectId       = c.req.query('projectId')
+  // UUID + date params are bound into ClickHouse {x:UUID} / parseDateTime64
+  // placeholders. A malformed value (e.g. ?projectId=abc, ?from=garbage) fails
+  // the binding and throws a raw 500 — validate up front so these documented
+  // external surfaces (MCP/BI tools pass arbitrary filter args) get a clean 400.
+  const projectId       = validateOptionalUuid(c.req.query('projectId'), 'projectId')
   const provider        = c.req.query('provider')
   const model           = c.req.query('model')
-  const from            = c.req.query('from')
-  const to              = c.req.query('to')
-  const providerKeyId   = c.req.query('providerKeyId')
-  const promptVersionId = c.req.query('promptVersionId')
+  const from            = validateOptionalDate(c.req.query('from'), 'from')
+  const to              = validateOptionalDate(c.req.query('to'), 'to')
+  const providerKeyId   = validateOptionalUuid(c.req.query('providerKeyId'), 'providerKeyId')
+  const promptVersionId = validateOptionalUuid(c.req.query('promptVersionId'), 'promptVersionId')
   const userIdFilter    = c.req.query('userId')
   const sessionIdFilter = c.req.query('sessionId')
   const status          = c.req.query('status')
@@ -302,6 +306,9 @@ requestsRouter.post('/:id/replay', requireRole('admin', 'editor'), async (c) => 
   const requestId = c.req.param('id')
   const orgId = c.get('orgId')
   if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
+  // Malformed id would fail the ClickHouse {requestId:UUID} binding → raw 500.
+  // Treat it like a nonexistent id (same 404 as GET /:id).
+  if (!isUuid(requestId)) throw new ApiError('NOT_FOUND', 'Request not found')
 
   let body: { model?: unknown } = {}
   try {
@@ -382,6 +389,9 @@ requestsRouter.post('/:id/replay/run', requireRole('admin', 'editor'), async (c)
   const requestId = c.req.param('id')
   const orgId = c.get('orgId')
   if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
+  // Malformed id would fail the ClickHouse {requestId:UUID} binding → raw 500.
+  // Treat it like a nonexistent id (same 404 as GET /:id).
+  if (!isUuid(requestId)) throw new ApiError('NOT_FOUND', 'Request not found')
 
   let body: { model?: unknown } = {}
   try { body = (await c.req.json()) as { model?: unknown } } catch { body = {} }

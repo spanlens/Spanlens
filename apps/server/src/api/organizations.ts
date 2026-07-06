@@ -333,14 +333,39 @@ organizationsRouter.patch('/me/logging', requireAdmin, async (c) => {
 organizationsRouter.post('/bootstrap', async (c) => {
   const userId = c.get('userId')
 
-  // Reject if already onboarded.
-  const { data: existingMember } = await supabaseAdmin
+  // Reject if already onboarded. Use limit(1) rather than maybeSingle(): a
+  // user who belongs to 2+ orgs (their own + an accepted invite) makes
+  // maybeSingle() return { data: null } on the multi-row match, so the guard
+  // would fall through and re-bootstrap a whole new workspace on every call —
+  // bypassing the Free=1 owned-workspace limit. limit(1) returns the first
+  // membership and treats "has any membership" as already onboarded.
+  const { data: existingMembers, error: memberCheckErr } = await supabaseAdmin
     .from('org_members')
     .select('organization_id')
     .eq('user_id', userId)
-    .maybeSingle()
-  if (existingMember) {
-    throw new ApiError('CONFLICT', 'Already onboarded', { organizationId: existingMember.organization_id })
+    .limit(1)
+  if (memberCheckErr) throw new ApiError('INTERNAL_ERROR', 'Failed to check membership')
+  if (existingMembers && existingMembers.length > 0) {
+    throw new ApiError('CONFLICT', 'Already onboarded', { organizationId: existingMembers[0]!.organization_id })
+  }
+
+  // Owned-workspace cap — mirror the check POST /organizations enforces so
+  // bootstrap can't create a workspace beyond the plan limit. Free=1 / Pro=2 /
+  // Team=5 / Enterprise=unlimited, gated on the highest tier the user owns.
+  const { data: ownedRows, error: ownedErr } = await supabaseAdmin
+    .from('organizations')
+    .select('plan')
+    .eq('owner_id', userId)
+  if (ownedErr) throw new ApiError('INTERNAL_ERROR', 'Failed to check workspace count')
+  const ownedPlans = (ownedRows ?? []).map((r) => r.plan as Plan)
+  const effective = effectiveOwnedPlan(ownedPlans)
+  const cap = OWNED_WORKSPACE_LIMITS[effective]
+  if (cap !== null && ownedPlans.length >= cap) {
+    throw new ApiError(
+      'PAYMENT_REQUIRED',
+      `You already own ${ownedPlans.length} workspace${ownedPlans.length === 1 ? '' : 's'} on the ${effective === 'starter' ? 'Pro' : effective[0]!.toUpperCase() + effective.slice(1)} plan (limit ${cap}). Upgrade an existing workspace to create more.`,
+      { reason: 'workspace_limit_reached', owned: ownedPlans.length, limit: cap, effectivePlan: effective },
+    )
   }
 
   // Body parse — body is OPTIONAL on this endpoint (legacy clients send

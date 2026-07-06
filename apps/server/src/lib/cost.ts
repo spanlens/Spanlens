@@ -100,7 +100,11 @@ function lookupPrice(model: string): ModelPrice | null {
 
   let bestKey = ''
   for (const key of Object.keys(prices)) {
-    if (!model.startsWith(key)) continue
+    // Boundary-aware: only accept a prefix match when the next char after the
+    // key is a version boundary ('-'), so a shorter key (e.g. 'gpt-4') can't
+    // bleed across into a longer variant (e.g. 'gpt-4.5-preview'). Dated
+    // variants like 'gpt-4o-mini-2024-07-18' still match 'gpt-4o-mini'.
+    if (!(model === key || model.startsWith(key + '-'))) continue
     // longest prefix wins
     if (key.length > bestKey.length) bestKey = key
   }

@@ -113,14 +113,36 @@ async function upsertSubscription(
   //                            its own 7-day window from scratch.
   //   3. Any other status:     leave untouched (carry through canceled
   //                            for analytics).
+  // ── out-of-order guard ─────────────────────────────────────────────────
+  // Paddle does not guarantee delivery order: a delayed subscription.updated
+  // arriving AFTER a subscription.canceled would otherwise flip status/plan
+  // back to active. We stamp each applied event's occurred_at into
+  // metadata.occurred_at, and skip the write ONLY when we can positively
+  // determine the incoming event is strictly OLDER than the last applied one.
+  // If the comparison is ambiguous (no stored timestamp, missing/invalid
+  // occurred_at) we apply as before — never drop a valid update.
+  const { data: existingRow } = await supabaseAdmin
+    .from('subscriptions')
+    .select('past_due_since, metadata')
+    .eq('paddle_subscription_id', sub.id)
+    .maybeSingle()
+
+  const lastOccurredAtRaw = (existingRow as { metadata?: { occurred_at?: string } | null } | null)
+    ?.metadata?.occurred_at
+  const incomingTs = Date.parse(event.occurred_at)
+  const lastTs = lastOccurredAtRaw ? Date.parse(lastOccurredAtRaw) : NaN
+  if (!Number.isNaN(incomingTs) && !Number.isNaN(lastTs) && incomingTs < lastTs) {
+    console.warn(
+      '[paddle-webhook] skipping out-of-order event',
+      event.event_id, event.event_type,
+      'occurred_at', event.occurred_at, '<', lastOccurredAtRaw,
+    )
+    return
+  }
+
   let pastDueSinceUpdate: { past_due_since: string | null } | Record<string, never> = {}
   if (sub.status === 'past_due') {
-    const { data: existing } = await supabaseAdmin
-      .from('subscriptions')
-      .select('past_due_since')
-      .eq('paddle_subscription_id', sub.id)
-      .maybeSingle()
-    if (!(existing as { past_due_since?: string | null } | null)?.past_due_since) {
+    if (!(existingRow as { past_due_since?: string | null } | null)?.past_due_since) {
       pastDueSinceUpdate = { past_due_since: new Date().toISOString() }
     }
   } else if (sub.status === 'active' || sub.status === 'trialing') {

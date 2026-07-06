@@ -44,6 +44,27 @@ const EXPORT_COLUMNS = [
 type ExportColumn = (typeof EXPORT_COLUMNS)[number]
 type ExportRow = Record<ExportColumn, unknown>
 
+/**
+ * Numeric ClickHouse columns come back over JSONEachRow as strings (Decimal /
+ * UInt → string, gotcha #19). Coerce them to real numbers at the export
+ * boundary so downstream tooling (pandas, BigQuery) receives numbers, not
+ * strings like "0.00012345". `null` is preserved (cost can be unknown). CSV is
+ * unaffected — String(number) and String(numeric-string) render identically.
+ */
+const NUMERIC_EXPORT_COLUMNS: readonly ExportColumn[] = [
+  'prompt_tokens', 'completion_tokens', 'total_tokens',
+  'cost_usd', 'latency_ms', 'status_code',
+]
+
+function coerceNumericColumns<Row extends Record<string, unknown>>(row: Row): Row {
+  const out: Record<string, unknown> = { ...row }
+  for (const col of NUMERIC_EXPORT_COLUMNS) {
+    const v = out[col]
+    if (v !== null && v !== undefined && v !== '') out[col] = Number(v)
+  }
+  return out as Row
+}
+
 function escapeCsv(val: unknown): string {
   if (val === null || val === undefined) return ''
   const s = String(val)
@@ -79,11 +100,15 @@ export async function* withIsoCreatedAt<Row extends Record<string, unknown>>(
   rows: AsyncIterable<Row>,
 ): AsyncGenerator<Row, void, undefined> {
   for await (const row of rows) {
-    const raw = row['created_at']
+    // Coerce ClickHouse string-encoded numerics (cost_usd, tokens, etc.) to
+    // numbers so JSONL consumers get numbers, not strings (gotcha #19). CSV is
+    // unaffected. Then normalise created_at to ISO UTC.
+    const coerced = coerceNumericColumns(row)
+    const raw = coerced['created_at']
     if (typeof raw === 'string') {
-      yield { ...row, created_at: fromClickhouseTimestamp(raw) ?? raw }
+      yield { ...coerced, created_at: fromClickhouseTimestamp(raw) ?? raw }
     } else {
-      yield row
+      yield coerced
     }
   }
 }
@@ -205,12 +230,15 @@ exportsRouter.get('/requests', async (c) => {
       console.error('[exports:requests] ClickHouse query failed:', err instanceof Error ? err.message : err)
       throw new ApiError('INTERNAL_ERROR', 'Failed to export requests')
     }
-    // ClickHouse DateTime64 → ISO UTC (gotcha #18). Streaming CSV/JSONL paths
-    // below still emit raw format; they should be wrapped too in a follow-up.
-    const normalised = rows.map((r) => ({
-      ...r,
-      created_at: fromClickhouseTimestamp(typeof r.created_at === 'string' ? r.created_at : null) ?? r.created_at,
-    }))
+    // ClickHouse DateTime64 → ISO UTC (gotcha #18) + string-encoded numerics
+    // → numbers (gotcha #19) so pandas/BigQuery receive numbers, not strings.
+    const normalised = rows.map((r) => {
+      const coerced = coerceNumericColumns(r)
+      return {
+        ...coerced,
+        created_at: fromClickhouseTimestamp(typeof coerced.created_at === 'string' ? coerced.created_at : null) ?? coerced.created_at,
+      }
+    })
     const body = JSON.stringify(
       { exported_at: new Date().toISOString(), count: normalised.length, data: normalised },
       null,

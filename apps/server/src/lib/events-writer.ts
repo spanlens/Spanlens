@@ -130,6 +130,16 @@ export async function writeRequestAsEvent(
   const hasSecurityFlagsValue = requestRow.has_security_flags ?? false
   const truncatedValue = requestRow.truncated ?? (data.truncated ? 1 : 0)
 
+  // Honor the customer's x-spanlens-log-body opt-out for end-user identifiers,
+  // mirroring logger.ts's `dropIdentifiers` logic on the requests row. Under
+  // mode 'none' we must NOT persist user_id / session_id in events either —
+  // otherwise the strictest minimization tier leaks identifiers on every call.
+  // (Bodies are already scrubbed upstream via requestRow, so we only touch
+  // identifiers here.)
+  const dropIdentifiers = (data.logBodyMode ?? 'full') === 'none'
+  const userIdValue = dropIdentifiers ? null : (data.userId ?? null)
+  const sessionIdValue = dropIdentifiers ? null : (data.sessionId ?? null)
+
   const eventRow = {
     event_id: requestRow.id,
     // For an LLM call without an explicit trace we generate a
@@ -158,8 +168,8 @@ export async function writeRequestAsEvent(
     status_code: data.statusCode,
     error_message: requestRow.error_message,
     metadata,
-    user_id: data.userId ?? null,
-    session_id: data.sessionId ?? null,
+    user_id: userIdValue,
+    session_id: sessionIdValue,
     prompt_version_id: requestRow.prompt_version_id ?? data.promptVersionId ?? null,
     provider_key_id: data.providerKeyId ?? null,
     flags: flagsValue,
