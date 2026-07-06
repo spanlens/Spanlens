@@ -339,6 +339,90 @@ openai = OpenAI(
         the bodies.
       </p>
 
+      <h2 id="with-cache">withCache(), response caching</h2>
+      <p>
+        Opt a single request into the Spanlens proxy response cache. When the exact same request
+        repeats (same API key, provider, path, and byte-identical body), Spanlens serves the stored
+        response instead of calling the provider again, so the repeat returns in milliseconds and
+        costs nothing. Caching is off by default and only applies to non-streaming requests whose
+        upstream response is a 200 JSON body under 256 KB. See the{' '}
+        <a href="/docs/proxy#response-caching">proxy caching reference</a> for the full rules,
+        response headers, and how hits show up in <a href="/requests">/requests</a>.
+      </p>
+      <table>
+        <thead>
+          <tr>
+            <th>Argument</th>
+            <th>Header emitted</th>
+            <th>Effect</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>withCache()</code> or <code>withCache(true)</code></td>
+            <td><code>x-spanlens-cache: true</code></td>
+            <td>Cache with the default TTL (3600 seconds / 1 hour)</td>
+          </tr>
+          <tr>
+            <td><code>withCache(600)</code></td>
+            <td><code>x-spanlens-cache: 600</code></td>
+            <td>Cache for 600 seconds. The server caps TTL at 86400 (24h) and the helper clamps to the same ceiling</td>
+          </tr>
+          <tr>
+            <td>Invalid (zero, negative, non-integer)</td>
+            <td><em>none</em></td>
+            <td>No header is emitted, so the request is not cached (fail-safe, matches the server)</td>
+          </tr>
+        </tbody>
+      </table>
+      <LangTabs
+        ts={`import { createOpenAI, withCache, withUser } from '@spanlens/sdk/openai'
+
+const openai = createOpenAI()
+
+// Default TTL (1 hour)
+const res = await openai.chat.completions.create(
+  { model: 'gpt-4o-mini', messages: [{ role: 'user', content: 'Ping' }] },
+  withCache(),
+)
+
+// Custom TTL (10 minutes)
+const res2 = await openai.chat.completions.create(
+  { model: 'gpt-4o-mini', messages: [...] },
+  withCache(600),
+)
+
+// Combine with other helpers
+const res3 = await openai.chat.completions.create(
+  { model: 'gpt-4o-mini', messages: [...] },
+  {
+    headers: {
+      ...withCache(600).headers,
+      ...withUser(currentUser.id).headers,
+    },
+  },
+)`}
+        py={`# Python helper coming soon, set the header directly
+from openai import OpenAI
+
+openai = OpenAI(
+    api_key=os.environ['SPANLENS_API_KEY'],
+    base_url='https://server.spanlens.io/proxy/openai/v1',
+    default_headers={'x-spanlens-cache': '600'},
+)`}
+      />
+      <p>Raw curl:</p>
+      <CodeBlock>{`curl https://server.spanlens.io/proxy/openai/v1/chat/completions \\
+  -H "Authorization: Bearer $SPANLENS_API_KEY" \\
+  -H "x-spanlens-cache: true" \\
+  -H "Content-Type: application/json" \\
+  -d '{"model": "gpt-4o-mini", "messages": [...]}'`}</CodeBlock>
+      <p className="text-sm text-muted-foreground">
+        The same helper is exported from <code>@spanlens/sdk/anthropic</code> with identical
+        behavior. For agent tracing, pass <code>cache</code> on the{' '}
+        <a href="#observe-openai"><code>observeOpenAI()</code></a> options object instead.
+      </p>
+
       <h2 id="sample-rate">sampleRate, trace sampling (v0.3.x+)</h2>
       <p>
         Cap the volume of trace + span ingestion without changing your application code. The
@@ -544,10 +628,10 @@ const res = await observeOpenAI(trace, 'greeting', (headers) =>
   ),
 )
 
-// Options object — pass logBody to opt out of body storage per call
+// Options object — pass logBody / cache alongside promptVersion per call
 const res2 = await observeOpenAI(
   trace,
-  { name: 'pii-heavy-call', logBody: 'meta', promptVersion: 'greeter@latest' },
+  { name: 'pii-heavy-call', logBody: 'meta', cache: 600, promptVersion: 'greeter@latest' },
   (headers) => openai.chat.completions.create({ ... }, { headers }),
 )`}
         py={`from spanlens import observe_openai
@@ -564,7 +648,9 @@ res = observe_openai(trace, "greeting", lambda headers:
         Same pattern works with <code>observeAnthropic()</code> / <code>observe_anthropic()</code>{' '}
         and <code>observeGemini()</code> / <code>observe_gemini()</code>. The{' '}
         <code>logBody</code> option on the options form maps 1:1 to the{' '}
-        <a href="#with-log-body"><code>withLogBody()</code></a> helper.
+        <a href="#with-log-body"><code>withLogBody()</code></a> helper, and the{' '}
+        <code>cache</code> option maps 1:1 to{' '}
+        <a href="#with-cache"><code>withCache()</code></a>.
       </p>
 
       <h2 id="observe-ollama">observeOllama(), self-hosted LLMs (v0.5.0+ / 0.4.0+)</h2>

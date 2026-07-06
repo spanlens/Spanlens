@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { ArrowLeft, Check, Copy, Play, RotateCw } from 'lucide-react'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -260,6 +260,18 @@ function ReplayButton({ requestId, originalModel, provider }: ReplayButtonProps)
   const run = useRunReplay()
   const { data: modelsCatalog } = useModels()
 
+  // Scroll the result card into view once per completed replay. Keyed on the
+  // mutation result identity, which only changes when a new replay resolves,
+  // so unrelated re-renders (e.g. a useModels refetch on window focus) never
+  // re-trigger the scroll and yank the viewport. No setState here, so this
+  // stays clear of the react-hooks/set-state-in-effect rule.
+  const resultRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (run.data) {
+      resultRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    }
+  }, [run.data])
+
   // Model options: provider list from the live catalog + original if not
   // already included. Falls back to just the original while the catalog
   // is loading so the dropdown isn't empty.
@@ -381,11 +393,16 @@ function ReplayButton({ requestId, originalModel, provider }: ReplayButtonProps)
           </button>
         </div>
 
-        {/* Run result card */}
+        {/* Run result card. A mount-only effect above scrolls it into view
+            when a replay completes so the outcome is surfaced even on short
+            viewports. */}
         {run.data && (
-          <div className="rounded-[6px] border border-border bg-bg-elev px-4 py-3 space-y-3">
+          <div
+            ref={resultRef}
+            className="rounded-[6px] border border-border bg-bg-elev px-4 py-3 space-y-3"
+          >
             <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint">
-              Result · HTTP {run.data.statusCode}
+              {run.data.statusCode < 400 ? 'Replay complete' : 'Replay finished with errors'} · HTTP {run.data.statusCode}
             </div>
             <div className="grid grid-cols-2 gap-x-6 gap-y-2">
               {[

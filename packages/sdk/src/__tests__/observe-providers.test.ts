@@ -149,6 +149,85 @@ describe('observeOpenAI / observeAnthropic / observeGemini', () => {
     expect(receivedHeaders!['x-spanlens-log-body']).toBeUndefined()
   })
 
+  it('forwards cache: true option as x-spanlens-cache header', async () => {
+    const client = new SpanlensClient({ apiKey: 'k', baseUrl: 'http://x' })
+    const trace = client.startTrace({ name: 't' })
+
+    let receivedHeaders: Record<string, string> | null = null
+    await observeOpenAI(
+      trace,
+      { name: 'call', cache: true },
+      async (headers) => {
+        receivedHeaders = headers
+        return {
+          model: 'gpt-4o',
+          usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+        }
+      },
+    )
+
+    expect(receivedHeaders!['x-spanlens-cache']).toBe('true')
+  })
+
+  it('forwards an integer cache TTL and clamps it to the 86400 cap', async () => {
+    const client = new SpanlensClient({ apiKey: 'k', baseUrl: 'http://x' })
+    const trace = client.startTrace({ name: 't' })
+
+    let seconds: Record<string, string> | null = null
+    await observeAnthropic(
+      trace,
+      { name: 'call', cache: 600 },
+      async (headers) => {
+        seconds = headers
+        return { model: 'claude-3-5-sonnet-20241022', usage: { input_tokens: 1, output_tokens: 1 } }
+      },
+    )
+    expect(seconds!['x-spanlens-cache']).toBe('600')
+
+    let capped: Record<string, string> | null = null
+    await observeOpenAI(
+      trace,
+      { name: 'call', cache: 999999 },
+      async (headers) => {
+        capped = headers
+        return {
+          model: 'gpt-4o',
+          usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+        }
+      },
+    )
+    expect(capped!['x-spanlens-cache']).toBe('86400')
+  })
+
+  it('omits cache header for invalid or absent values', async () => {
+    const client = new SpanlensClient({ apiKey: 'k', baseUrl: 'http://x' })
+    const trace = client.startTrace({ name: 't' })
+
+    let absent: Record<string, string> | null = null
+    await observeOpenAI(trace, 'call', async (headers) => {
+      absent = headers
+      return {
+        model: 'gpt-4o',
+        usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+      }
+    })
+    expect(absent!['x-spanlens-cache']).toBeUndefined()
+
+    let invalid: Record<string, string> | null = null
+    await observeOpenAI(
+      trace,
+      { name: 'call', cache: 0 },
+      async (headers) => {
+        invalid = headers
+        return {
+          model: 'gpt-4o',
+          usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+        }
+      },
+    )
+    expect(invalid!['x-spanlens-cache']).toBeUndefined()
+  })
+
   it('observeOpenAI auto-parses usage into span.end', async () => {
     const client = new SpanlensClient({ apiKey: 'k', baseUrl: 'http://x' })
     const trace = client.startTrace({ name: 't' })

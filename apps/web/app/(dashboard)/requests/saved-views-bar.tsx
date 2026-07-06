@@ -45,9 +45,13 @@ export function SavedViewsBar({ current, onApply, canSave }: SavedViewsBarProps)
   const [error, setError] = useState<string | null>(null)
 
   const hasViews = (views?.length ?? 0) > 0
-  // Nothing to show: no saved views and nothing to save from. Keep the row
-  // out of the layout entirely so a fresh account isn't cluttered.
+  // Nothing to show and nothing to save: keep the row out of the layout
+  // entirely so a fresh account isn't cluttered. When the user has an active
+  // filter set but no saved views yet (canSave && !hasViews), we still render
+  // the bar so the "Save view" affordance is discoverable, with a one-line
+  // hint explaining what it does.
   if (!hasViews && !canSave) return null
+  const showDiscoveryHint = !hasViews && canSave && !naming
 
   async function save() {
     const trimmed = name.trim()
@@ -146,6 +150,14 @@ export function SavedViewsBar({ current, onApply, canSave }: SavedViewsBarProps)
             <Plus className="w-3 h-3" /> Save view
           </button>
         )
+      )}
+
+      {/* First-time hint: only when there are no saved views yet, so it
+          disappears once the user has bookmarked at least one combination. */}
+      {showDiscoveryHint && (
+        <span className="font-mono text-[10.5px] text-text-faint">
+          Save this filter combination to jump back into it later.
+        </span>
       )}
     </div>
   )

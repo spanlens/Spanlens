@@ -435,6 +435,14 @@ res, _ := client.CreateChatCompletion(ctx, openai.ChatCompletionRequest{
         <strong>zero</strong> (the provider billed nothing) plus a <code>cache_hit</code>{' '}
         flag, so you can compute exactly how much the cache saved you.
       </p>
+      <p>
+        From the SDK, use the <a href="/docs/sdk#with-cache"><code>withCache()</code></a> helper
+        instead of setting the header by hand: <code>withCache()</code> for the default TTL or{' '}
+        <code>withCache(seconds)</code> for a custom one. It is exported from{' '}
+        <code>@spanlens/sdk/openai</code> and <code>@spanlens/sdk/anthropic</code>, and the same
+        directive is available as the <code>cache</code> option on{' '}
+        <a href="/docs/sdk#observe-openai"><code>observeOpenAI()</code></a>.
+      </p>
 
       <h2>Rate limits and response headers</h2>
       <p>

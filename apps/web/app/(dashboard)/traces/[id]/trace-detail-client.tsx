@@ -21,6 +21,10 @@ export function TraceDetailClient({ id }: { id: string }) {
   const router = useRouter()
   // Lazy init reads sessionStorage on client mount (SSR-safe via typeof check).
   const [navIds] = useState<string[]>(loadNavIds)
+  // Transient acknowledgement for the OTLP download. The anchor click hands
+  // off to the browser silently, so we flip the button label to "Exported"
+  // for a moment. Same inline-feedback pattern as CopyPermalink (no toast lib).
+  const [otlpExported, setOtlpExported] = useState(false)
 
   const navIdx = navIds.indexOf(id)
   const prevId = navIdx > 0 ? navIds[navIdx - 1] : null
@@ -105,11 +109,13 @@ export function TraceDetailClient({ id }: { id: string }) {
                 document.body.appendChild(a)
                 a.click()
                 a.remove()
+                setOtlpExported(true)
+                setTimeout(() => setOtlpExported(false), 1800)
               }}
               title="Download this trace as OTLP JSON. Upload to Datadog / Honeycomb / Jaeger / Tempo."
               className="font-mono text-[11px] px-[9px] py-1 border border-border rounded-[5px] text-text-muted hover:border-border-strong transition-colors"
             >
-              ↓ OTLP
+              {otlpExported ? 'Exported' : '↓ OTLP'}
             </button>
             <ShareDialog scope="trace" targetId={id} variant="primary" />
           </div>

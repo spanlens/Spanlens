@@ -27,6 +27,7 @@
     { "path": "/cron/keep-warm",                  "schedule": "*/5 * * * *" },
     { "path": "/cron/prune-judge-cache",          "schedule": "0 3 * * *" },
     { "path": "/cron/detect-data-silence",        "schedule": "30 */6 * * *" },
-    { "path": "/cron/weekly-digest",              "schedule": "0 9 * * 1" }
+    { "path": "/cron/weekly-digest",              "schedule": "0 9 * * 1" },
+    { "path": "/cron/purge-proxy-cache",          "schedule": "15 3 * * *" }
   ]
 }

@@ -69,6 +69,7 @@ on:
     - cron: '0 9 * * *'        # daily 09:00 — recommend-savings-alerts
     - cron: '0 10 * * *'       # daily 10:00 — check-past-due-downgrades
     - cron: '0 3 * * *'        # daily 03:00 — prune-judge-cache
+    - cron: '15 3 * * *'       # daily 03:15 — purge-proxy-cache
     - cron: '0 9 * * 1'        # weekly Monday 09:00 — stale-key-reminders + weekly-digest
     - cron: '30 */6 * * *'     # every 6h at :30 — detect-data-silence
   workflow_dispatch:
@@ -258,6 +259,24 @@ jobs:
           STATUS=$(curl -sS -o /tmp/body -w '%{http_code}' \
             -H "Authorization: Bearer $CRON_SECRET" \
             "$BASE_URL/cron/prune-judge-cache")
+          echo "Status: $STATUS"
+          cat /tmp/body
+          if [ "$STATUS" -ge 400 ]; then exit 1; fi
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+
+  daily-03-15:
+    name: Daily 03:15 UTC (purge-proxy-cache)
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.schedule == '15 3 * * *' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: POST /cron/purge-proxy-cache
+        run: |
+          BASE_URL='https://spanlens-server.vercel.app'
+          STATUS=$(curl -sS -o /tmp/body -w '%{http_code}' \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            "$BASE_URL/cron/purge-proxy-cache")
           echo "Status: $STATUS"
           cat /tmp/body
           if [ "$STATUS" -ge 400 ]; then exit 1; fi

@@ -15,6 +15,12 @@ export const PROMPT_VERSION_HEADER = 'x-spanlens-prompt-version'
 export const USER_HEADER = 'x-spanlens-user'
 export const SESSION_HEADER = 'x-spanlens-session'
 export const LOG_BODY_HEADER = 'x-spanlens-log-body'
+export const CACHE_HEADER = 'x-spanlens-cache'
+
+/** Default TTL applied server-side when the cache header is `true`. */
+export const CACHE_DEFAULT_TTL_SECONDS = 3600
+/** Server caps any requested TTL at this many seconds (24h). */
+export const CACHE_MAX_TTL_SECONDS = 86400
 
 export const DEFAULT_SPANLENS_ANTHROPIC_PROXY =
   'https://spanlens-server.vercel.app/proxy/anthropic'
@@ -87,4 +93,37 @@ export function withSession(sessionId: string): { headers: Record<string, string
  */
 export function withLogBody(mode: LogBodyMode): { headers: Record<string, string> } {
   return { headers: { [LOG_BODY_HEADER]: mode } }
+}
+
+/**
+ * Serialize a `withCache` argument into the `x-spanlens-cache` header value,
+ * or `null` when the input is not a valid cache directive. Same semantics as
+ * the OpenAI helper.
+ */
+export function cacheHeaderValue(ttl?: number | true): string | null {
+  if (ttl === undefined || ttl === true) return 'true'
+  if (typeof ttl !== 'number' || !Number.isInteger(ttl) || ttl <= 0) return null
+  return String(Math.min(ttl, CACHE_MAX_TTL_SECONDS))
+}
+
+/**
+ * Opt a single Anthropic request into the Spanlens proxy response cache. See
+ * the OpenAI helper for full semantics — behavior is identical.
+ *
+ * @param ttl `true` (or omitted) uses the default TTL
+ *   ({@link CACHE_DEFAULT_TTL_SECONDS}, 1 hour); a positive integer sets seconds,
+ *   clamped to {@link CACHE_MAX_TTL_SECONDS} (24h). Invalid values emit no header.
+ *
+ * @example
+ *   import { createAnthropic, withCache } from '@spanlens/sdk/anthropic'
+ *   const anthropic = createAnthropic()
+ *
+ *   const msg = await anthropic.messages.create(
+ *     { model: 'claude-3-5-sonnet-20241022', max_tokens: 1024, messages },
+ *     withCache(600),
+ *   )
+ */
+export function withCache(ttl?: number | true): { headers: Record<string, string> } {
+  const value = cacheHeaderValue(ttl)
+  return { headers: value == null ? {} : { [CACHE_HEADER]: value } }
 }
