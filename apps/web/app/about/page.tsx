@@ -131,7 +131,7 @@ export default function AboutPage() {
               >
                 MIT license
               </a>
-              . The stack is Next.js 14 + Hono + Supabase Postgres + ClickHouse, with
+              . The stack is Next.js 16 + Hono + Supabase Postgres + ClickHouse, with
               TypeScript and Python SDKs. The full stack runs from one Docker compose file
               on your own infrastructure if you prefer not to use the hosted plan.
             </p>

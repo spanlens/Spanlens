@@ -17,7 +17,7 @@ Provider (OpenAI / Anthropic / Gemini / Mistral / OpenRouter / Azure)
                                                                   ↑ fallback queue (Supabase) if CH down
                                                                     drained by /cron/replay-fallback (every 5m)
 
-apps/web (Next.js 14, App Router)
+apps/web (Next.js 16, App Router)
    │ fetch('/api/v1/*')  (Supabase JWT or sl_live_*)
    ▼
 apps/server REST API → Supabase (orgs/keys/prompts/billing) + ClickHouse (read via lib/requests-query)
@@ -27,7 +27,7 @@ apps/server REST API → Supabase (orgs/keys/prompts/billing) + ClickHouse (read
 
 | Service | Runtime | Storage | Auth |
 |---|---|---|---|
-| `apps/web` | Next.js 14 / Vercel | none (proxies to server) | Supabase JWT cookies |
+| `apps/web` | Next.js 16 / Vercel | none (proxies to server) | Supabase JWT cookies |
 | `apps/server` | Hono / Vercel Node | Supabase + ClickHouse + Upstash KV | JWT (read) / sl_live_* (write) / dual-auth (`/api/v1/*` read) |
 | `packages/sdk` | npm `@spanlens/sdk` | — | issues sl_live_* requests |
 | `packages/sdk-python` | PyPI `spanlens` | — | issues sl_live_* requests |

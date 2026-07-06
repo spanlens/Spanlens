@@ -85,7 +85,7 @@ cp .env.example .env
 docker compose up
 ```
 
-Stack: Next.js 14 + Hono + Supabase Postgres + ClickHouse. Full guide: [/docs/self-host](https://www.spanlens.io/docs/self-host).
+Stack: Next.js 16 + Hono + Supabase Postgres + ClickHouse. Full guide: [/docs/self-host](https://www.spanlens.io/docs/self-host).
 
 ## License
 

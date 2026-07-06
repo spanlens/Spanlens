@@ -30,7 +30,7 @@ What we track: Pearson correlation between judge score and human annotation scor
 
 Saw this drift firsthand in a few customer instances where the judge model was unchanged but the input distribution shifted. The judge happily kept assigning high scores while human raters thought outputs got worse. Surfacing the correlation makes that visible.
 
-**Stack**: Next.js 14 + Hono + Postgres + ClickHouse. Fully MIT (no ee/ folder). Drop-in for OpenAI/Anthropic/Gemini SDKs, OTLP/HTTP for OTel, or raw proxy for any language.
+**Stack**: Next.js 16 + Hono + Postgres + ClickHouse. Fully MIT (no ee/ folder). Drop-in for OpenAI/Anthropic/Gemini SDKs, OTLP/HTTP for OTel, or raw proxy for any language.
 
 Happy to discuss the stats setup, the trace-tree data model (parent_span_id without FK because out-of-order ingestion is normal), or how we compute critical path on non-deterministic agent traces.
 

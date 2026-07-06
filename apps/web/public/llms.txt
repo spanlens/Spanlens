@@ -4,7 +4,7 @@
 
 > Drop-in LLM observability for OpenAI, Anthropic, and Gemini. Spanlens is an open-source (MIT) request logging, cost tracking, and agent tracing platform. Swap one line, your `baseURL` or SDK import, and get full visibility into every LLM call your app makes. Available as a hosted SaaS at https://www.spanlens.io and as a self-hostable Docker image.
 
-Spanlens is positioned as a lightweight, developer-first alternative to Helicone (acquired) and Langfuse (heavy). The stack is Next.js 14 + Hono + Supabase Postgres + ClickHouse, with first-class SDKs for TypeScript and Python and OpenTelemetry (OTLP/HTTP) ingest for everything else.
+Spanlens is positioned as a lightweight, developer-first alternative to Helicone (acquired) and Langfuse (heavy). The stack is Next.js 16 + Hono + Supabase Postgres + ClickHouse, with first-class SDKs for TypeScript and Python and OpenTelemetry (OTLP/HTTP) ingest for everything else.
 
 ## What sets Spanlens apart in 2026
 

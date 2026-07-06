@@ -8,9 +8,9 @@ LLM 개발자를 위한 AI 관측 플랫폼 (오픈소스 SaaS · MIT · GitHub 
 baseURL을 1줄 교체해 요청 로깅, 비용 추적, 에이전트 트레이싱 제공.
 타깃: 기존 LLM observability 도구들(인수·복잡함)의 가벼운 대안. Docker 이미지로 셀프호스팅 지원.
 라이선스 전략: 전체 레포 MIT (OSS dev-tool 표준 모델). 해자는 SaaS 운영·brand·support이며 코드 공개 자체는 신뢰 시그널. 장래 복제 위협 커지면 Sentry 방식(BSL 전환) 옵션 열려 있음.
-스택: Next.js 14 + Hono + Supabase PostgreSQL + TypeScript + pnpm monorepo
+스택: Next.js 16 + Hono + Supabase PostgreSQL + TypeScript + pnpm monorepo
 ## 구조
-apps/web/ — Next.js 14 대시보드 (App Router)
+apps/web/ — Next.js 16 대시보드 (App Router)
 apps/server/ — Hono 서버 (LLM 프록시 + REST API 통합)
 packages/sdk/ — JS/TS SDK (npm 배포용)
 supabase/ — DB 마이그레이션(migrations/) + 시드(seeds/)

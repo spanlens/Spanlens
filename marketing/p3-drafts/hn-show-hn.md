@@ -22,7 +22,7 @@ What it does:
 
 Free plan is 50K requests/mo with all features. Pro at $29/mo, Team at $149/mo. Self-hosting is free with one `docker compose up`.
 
-Stack is Next.js 14 + Hono + Supabase Postgres + ClickHouse. TypeScript and Python SDKs. OTLP/HTTP for everything else.
+Stack is Next.js 16 + Hono + Supabase Postgres + ClickHouse. TypeScript and Python SDKs. OTLP/HTTP for everything else.
 
 Limitations I want to be upfront about:
 - Younger than Langfuse — fewer pre-built evaluators in the marketplace.
