@@ -1,13 +1,17 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
-// Programmable supabaseAdmin stub — the cache module only ever touches the
-// `proxy_response_cache` table via three chains:
-//   .select(...).eq('key_hash', x).maybeSingle()
-//   .upsert(row, { onConflict: 'key_hash' })
-//   .delete().eq('key_hash', x).lt('expires_at', now)
+// Programmable supabaseAdmin stub — the cache module touches the
+// `proxy_response_cache` table via these chains:
+//   .select(...).eq('key_hash', x).maybeSingle()             (lookup)
+//   .upsert(row, { onConflict: 'key_hash' })                 (store)
+//   .delete().eq('key_hash', x).lt('expires_at', now)        (opportunistic)
+//   .select('key_hash').lt('expires_at', now).limit(n)       (purge page)
+//   .delete().in('key_hash', [...]).lt('expires_at', now)    (purge delete)
 const maybeSingleMock = vi.fn()
 const upsertMock = vi.fn()
 const deleteMock = vi.fn()
+const purgeSelectMock = vi.fn()
+const purgeDeleteMock = vi.fn()
 
 vi.mock('./db.js', () => ({
   supabaseAdmin: {
@@ -16,12 +20,20 @@ vi.mock('./db.js', () => ({
         eq: (col: string, val: string) => ({
           maybeSingle: () => maybeSingleMock(table, cols, col, val),
         }),
+        // Purge page: .select('key_hash').lt('expires_at', now).limit(n)
+        lt: (ltCol: string, ltVal: string) => ({
+          limit: (n: number) => purgeSelectMock(table, cols, ltCol, ltVal, n),
+        }),
       }),
       upsert: (row: Record<string, unknown>, opts: Record<string, unknown>) =>
         upsertMock(table, row, opts),
       delete: () => ({
         eq: (col: string, val: string) => ({
           lt: (ltCol: string, ltVal: string) => deleteMock(table, col, val, ltCol, ltVal),
+        }),
+        // Purge delete: .delete().in('key_hash', [...]).lt('expires_at', now)
+        in: (col: string, vals: string[]) => ({
+          lt: (ltCol: string, ltVal: string) => purgeDeleteMock(table, col, vals, ltCol, ltVal),
         }),
       }),
     }),
@@ -39,9 +51,11 @@ import {
   PROXY_CACHE_DEFAULT_TTL_SECONDS,
   PROXY_CACHE_MAX_BODY_BYTES,
   PROXY_CACHE_MAX_TTL_SECONDS,
+  PROXY_CACHE_PURGE_BATCH_SIZE,
   computeCacheKeyHash,
   deleteExpiredCacheEntry,
   parseCacheTtlSeconds,
+  purgeExpiredProxyCache,
   resolveProxyCache,
   storeCachedProxyResponse,
 } from './proxy-cache.js'
@@ -74,6 +88,8 @@ beforeEach(() => {
   maybeSingleMock.mockReset()
   upsertMock.mockReset()
   deleteMock.mockReset()
+  purgeSelectMock.mockReset()
+  purgeDeleteMock.mockReset()
 })
 
 afterEach(() => {
@@ -349,5 +365,104 @@ describe('deleteExpiredCacheEntry — opportunistic cleanup', () => {
 
     deleteMock.mockRejectedValueOnce(new Error('network blip'))
     await expect(deleteExpiredCacheEntry('hash-1')).resolves.toBeUndefined()
+  })
+})
+
+describe('purgeExpiredProxyCache — periodic sweep', () => {
+  function keyRows(n: number): Array<{ key_hash: string }> {
+    return Array.from({ length: n }, (_, i) => ({ key_hash: `k${i}` }))
+  }
+
+  test('deletes only expired rows and returns the count (single short batch)', async () => {
+    purgeSelectMock.mockResolvedValueOnce({ data: keyRows(3), error: null })
+    purgeDeleteMock.mockResolvedValueOnce({ error: null })
+
+    const now = new Date('2026-07-06T03:15:00Z')
+    const deleted = await purgeExpiredProxyCache(now)
+
+    expect(deleted).toBe(3)
+    // Select pages expired rows on the cache table with the now cutoff + batch limit.
+    expect(purgeSelectMock).toHaveBeenCalledTimes(1)
+    const [table, cols, ltCol, ltVal, limit] = purgeSelectMock.mock.calls[0] ?? []
+    expect(table).toBe('proxy_response_cache')
+    expect(cols).toBe('key_hash')
+    expect(ltCol).toBe('expires_at')
+    expect(ltVal).toBe(now.toISOString())
+    expect(limit).toBe(PROXY_CACHE_PURGE_BATCH_SIZE)
+
+    // Delete targets exactly the selected key hashes, still guarded by expires_at < now
+    // so a row refreshed concurrently between select and delete is left alone.
+    expect(purgeDeleteMock).toHaveBeenCalledTimes(1)
+    const [dTable, dCol, dVals, dLtCol, dLtVal] = purgeDeleteMock.mock.calls[0] ?? []
+    expect(dTable).toBe('proxy_response_cache')
+    expect(dCol).toBe('key_hash')
+    expect(dVals).toEqual(['k0', 'k1', 'k2'])
+    expect(dLtCol).toBe('expires_at')
+    expect(dLtVal).toBe(now.toISOString())
+  })
+
+  test('empty result → no delete, returns 0', async () => {
+    purgeSelectMock.mockResolvedValueOnce({ data: [], error: null })
+
+    const deleted = await purgeExpiredProxyCache(new Date())
+
+    expect(deleted).toBe(0)
+    expect(purgeSelectMock).toHaveBeenCalledTimes(1)
+    expect(purgeDeleteMock).not.toHaveBeenCalled()
+  })
+
+  test('batches: a full page loops for another, stops on the short page', async () => {
+    // First page is exactly a full batch → loop; second page is short → stop.
+    purgeSelectMock
+      .mockResolvedValueOnce({ data: keyRows(PROXY_CACHE_PURGE_BATCH_SIZE), error: null })
+      .mockResolvedValueOnce({ data: keyRows(2), error: null })
+    purgeDeleteMock.mockResolvedValue({ error: null })
+
+    const deleted = await purgeExpiredProxyCache(new Date())
+
+    expect(deleted).toBe(PROXY_CACHE_PURGE_BATCH_SIZE + 2)
+    expect(purgeSelectMock).toHaveBeenCalledTimes(2)
+    expect(purgeDeleteMock).toHaveBeenCalledTimes(2)
+  })
+
+  test('rows with null/blank key_hash are skipped', async () => {
+    purgeSelectMock.mockResolvedValueOnce({
+      data: [{ key_hash: 'k0' }, { key_hash: null }, { key_hash: '' }, { key_hash: 'k1' }],
+      error: null,
+    })
+    purgeDeleteMock.mockResolvedValueOnce({ error: null })
+
+    const deleted = await purgeExpiredProxyCache(new Date())
+
+    expect(deleted).toBe(2)
+    const [, , dVals] = purgeDeleteMock.mock.calls[0] ?? []
+    expect(dVals).toEqual(['k0', 'k1'])
+  })
+
+  test('select error fails OPEN — returns count so far, never throws', async () => {
+    purgeSelectMock
+      .mockResolvedValueOnce({ data: keyRows(PROXY_CACHE_PURGE_BATCH_SIZE), error: null })
+      .mockResolvedValueOnce({ data: null, error: { message: 'db down' } })
+    purgeDeleteMock.mockResolvedValueOnce({ error: null })
+
+    const deleted = await purgeExpiredProxyCache(new Date())
+
+    // First batch deleted, second select failed → returns the first batch count.
+    expect(deleted).toBe(PROXY_CACHE_PURGE_BATCH_SIZE)
+    expect(purgeDeleteMock).toHaveBeenCalledTimes(1)
+  })
+
+  test('delete error fails OPEN — returns count so far, never throws', async () => {
+    purgeSelectMock.mockResolvedValueOnce({ data: keyRows(3), error: null })
+    purgeDeleteMock.mockResolvedValueOnce({ error: { message: 'db down' } })
+
+    const deleted = await purgeExpiredProxyCache(new Date())
+
+    expect(deleted).toBe(0)
+  })
+
+  test('select throw fails OPEN — resolves, never throws', async () => {
+    purgeSelectMock.mockRejectedValueOnce(new Error('network blip'))
+    await expect(purgeExpiredProxyCache(new Date())).resolves.toBe(0)
   })
 })
