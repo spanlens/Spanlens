@@ -415,6 +415,7 @@ export interface UserNotificationPrefs {
   security_alert_emails: boolean
   marketing_emails: boolean
   product_update_emails: boolean
+  weekly_digest_emails: boolean
 }
 
 export interface AlertDeliveryRow {

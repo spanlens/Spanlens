@@ -8,6 +8,7 @@ import { runQuotaWarningsJob } from '../lib/quota-warnings.js'
 import { snapshotAnomaliesForAllOrgs } from '../lib/anomaly-snapshot.js'
 import { runStaleKeyDigestJob } from '../lib/stale-key-digest.js'
 import { runDataSilenceJob } from '../lib/data-silence.js'
+import { runWeeklyDigestJob } from '../lib/weekly-digest.js'
 import { runDueMigrations } from '../lib/background-migrations/runner.js'
 import { runReconciliationCron } from '../lib/events-reconciliation.js'
 import { runLeakDetectionJob } from '../lib/leak-detection.js'
@@ -187,6 +188,27 @@ cronRouter.get('/detect-data-silence', async (c) => {
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'unknown'
     logCronRun('detect-data-silence', 'error', Date.now() - start, msg).catch(console.error)
+    throw new ApiError('INTERNAL_ERROR', msg)
+  }
+})
+
+// ── Weekly usage digest (Monday 09 UTC) ─────────────────────────
+cronRouter.get('/weekly-digest', async (c) => {
+  assertCronAuth(c.req.header('Authorization'))
+
+  const start = Date.now()
+  try {
+    const result = await runWeeklyDigestJob()
+    // `completed` = the aggregation phase ran; per-org email errors don't
+    // flip the status because the ISO-week dedup keys off an 'ok' row and a
+    // retry would double-send to every org that already succeeded.
+    const status = result.completed ? 'ok' : 'error'
+    const errSummary = result.errors.length > 0 ? result.errors.join('; ').slice(0, 500) : undefined
+    logCronRun('weekly-digest', status, Date.now() - start, errSummary).catch(console.error)
+    return c.json({ success: result.completed, ...result })
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'unknown'
+    logCronRun('weekly-digest', 'error', Date.now() - start, msg).catch(console.error)
     throw new ApiError('INTERNAL_ERROR', msg)
   }
 })
