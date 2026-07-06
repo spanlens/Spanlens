@@ -211,7 +211,7 @@ Spanlens is multi-user out of the box. Invite teammates, hand out roles, and spi
 ```
 Spanlens/
 ├── apps/
-│   ├── web/             — Next.js 14 dashboard (www.spanlens.io)
+│   ├── web/             — Next.js 16 dashboard (www.spanlens.io)
 │   └── server/          — Hono LLM proxy + REST API (server.spanlens.io)
 ├── packages/
 │   ├── sdk/             — @spanlens/sdk:  TypeScript / JavaScript SDK

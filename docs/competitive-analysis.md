@@ -35,7 +35,7 @@ Spanlens는 **proxy-first LLM observability 플랫폼**이다. 다른 도구들�
 
 | Layer | Technology |
 |------|-----------|
-| Web app | Next.js 14 (App Router) on Vercel |
+| Web app | Next.js 16 (App Router) on Vercel |
 | API server | Hono on Vercel (Node runtime, maxDuration 300s) |
 | Auth / OLTP | Supabase PostgreSQL (RLS-enabled) |
 | Analytics OLAP | ClickHouse Cloud Development tier |
