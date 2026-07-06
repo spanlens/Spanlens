@@ -176,7 +176,7 @@ export default function VsLangfusePage() {
     <CompareTemplate
       competitor="Langfuse"
       tagline="Proxy-first instead of SDK-first. Fully MIT instead of OSS plus EE. Statistical A/B testing and savings recommendations built in."
-      tldr="Langfuse is the most mature OSS option and the safest pick if community size is the deciding factor. Spanlens wins on integration speed (1-line baseURL swap), license clarity (no EE folder), and built-in features like Prompt A/B with t-tests, judge to human correlation, and model-swap savings recommendations."
+      tldr="Langfuse is the most mature open-source option and the safest pick if community size is the deciding factor. It instruments through SDK wrappers and callback handlers, which gives deep control but means touching every chain you want traced, and while its core is MIT, an ee/ folder gates enterprise capabilities such as SCIM, audit logs, RBAC, and data masking under a commercial license. Spanlens takes the opposite approach. Integration is a one-line baseURL swap that captures every OpenAI, Anthropic, or Gemini call without per-chain changes, and the entire repository ships under MIT with no enterprise folder. Statistical rigor is built in rather than assembled. Prompt A/B experiments report Welch t-test significance on latency and cost, judge-to-human correlation warns when your LLM judge drifts from human raters, and the savings recommender turns usage data into concrete swaps like moving classifier calls to gpt-4o-mini with the monthly dollar figure attached."
       whySpanlens={whySpanlens}
       whyCompetitor={whyCompetitor}
       groups={groups}

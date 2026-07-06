@@ -145,7 +145,7 @@ export default function VsBraintrustPage() {
     <CompareTemplate
       competitor="Braintrust"
       tagline="A full observability platform with eval inside, not an eval product asking you to bring observability."
-      tldr="Braintrust has the most polished eval UX in the market and is the right tool if evals are your gate and you're fine with closed-source SaaS. Spanlens bundles eval into a complete observability stack with logging, tracing, anomaly detection, and cost optimization, and ships under MIT so you can self-host it."
+      tldr="Braintrust has the most polished eval UX in the market. Side-by-side output diffing, scoring rubrics, and regression detection are the product's core, and if evals are your release gate and closed-source SaaS fits your data classification, it is the specialist tool. The limits sit at the edges of that specialty. Capture runs through their SDK, so every call site gets touched, the backend is managed-only with no self-host option, and cost dashboards and security scanning are lighter surfaces. Spanlens bundles eval into a complete observability stack. A one-line baseURL swap captures every request, the same traffic feeds datasets and experiments, prompt A/B reports Welch t-test significance, judge-to-human correlation tracks when your LLM judge drifts from human raters, and anomaly detection plus the model-swap savings recommender run on the same data. The whole codebase ships under MIT, so the stack you evaluate with is also the stack you can self-host."
       whySpanlens={whySpanlens}
       whyCompetitor={whyCompetitor}
       groups={groups}

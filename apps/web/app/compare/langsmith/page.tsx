@@ -165,7 +165,7 @@ export default function VsLangSmithPage() {
     <CompareTemplate
       competitor="LangSmith"
       tagline="A 1-line proxy that works with any stack, no SDK wrapping required. MIT and self-hostable today, not a sales call away."
-      tldr="LangSmith is the right call if you're committed to LangChain or LangGraph. The integration depth is unmatched. Spanlens is the right call if you want a tool that works with anything, installs with a 1-line baseURL swap, ships fully under MIT, and bundles Prompt A/B with statistical testing."
+      tldr="LangSmith is the right call if you are committed to LangChain or LangGraph. The integration depth is unmatched there. Chains, graphs, and tools auto-instrument, and LangGraph state transitions render natively. The tradeoff is coupling. Its deepest features assume the LangChain ecosystem, so plain SDK calls or custom orchestration take extra wiring, and while enterprise self-hosting exists, it sits behind enterprise sales rather than a public download. Spanlens is the right call if you want a tool that works with anything. The proxy instruments any language or framework through a one-line baseURL swap, keeping your raw OpenAI, Anthropic, or Gemini calls exactly as they are, and OpenTelemetry ingest covers whatever cannot route through a proxy. The entire codebase ships under MIT with a docker-compose self-host, and Prompt A/B testing with Welch t-test significance on latency and cost comes built in rather than assembled from experiments."
       whySpanlens={whySpanlens}
       whyCompetitor={whyCompetitor}
       groups={groups}
