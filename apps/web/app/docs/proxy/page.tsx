@@ -390,6 +390,52 @@ res, _ := client.CreateChatCompletion(ctx, openai.ChatCompletionRequest{
         See <a href="/docs/features/cost-tracking">cost tracking</a> for the full formula.
       </p>
 
+      <h2 id="response-caching">Response caching</h2>
+      <p>
+        Spanlens can serve repeated identical requests from a cache instead of calling the
+        provider again. Caching is <strong>off by default</strong> and opt-in per request with
+        the <code>X-Spanlens-Cache</code> header:
+      </p>
+      <CodeBlock>{`-H "X-Spanlens-Cache: true"    # cache with the default TTL (3600 seconds)
+-H "X-Spanlens-Cache: 600"     # cache for 600 seconds (max 86400 = 24h)`}</CodeBlock>
+      <p>
+        Accepted values are <code>true</code> (one hour TTL) or an integer number of seconds,
+        capped at <code>86400</code>. Any other value disables caching for that request, so a
+        malformed header never caches by accident. The header is internal Spanlens metadata
+        and is stripped before the request reaches the provider.
+      </p>
+      <p>
+        A cache entry matches only when the <strong>exact same request</strong> repeats: same
+        Spanlens API key, same provider, same path, and byte-identical request body. Entries
+        are scoped to your API key, so they are never shared across keys, projects, or
+        organizations.
+      </p>
+      <p>Rules and limits:</p>
+      <ul>
+        <li>
+          <strong>Non-streaming only.</strong> Requests with <code>stream: true</code> (or
+          Gemini&apos;s <code>:streamGenerateContent</code> endpoint) always go to the provider.
+        </li>
+        <li>Only successful (HTTP 200) JSON responses are stored.</li>
+        <li>Response bodies larger than 256 KB are not stored.</li>
+        <li>Expired entries are cleaned up automatically on the next miss for the same request.</li>
+      </ul>
+      <p>
+        Every response to a request that carried the header includes an{' '}
+        <code>x-spanlens-cache</code> response header telling you what happened:
+      </p>
+      <ul>
+        <li><code>hit</code>, served from the cache; the provider was not called.</li>
+        <li><code>miss</code>, the provider was called and a 200 JSON response was stored for next time.</li>
+        <li><code>bypass</code>, caching was requested but the request was streaming.</li>
+      </ul>
+      <p>
+        Cached hits still appear in <a href="/requests">/requests</a>: the row keeps the
+        original model and token counts but records <code>cost_usd</code> as{' '}
+        <strong>zero</strong> (the provider billed nothing) plus a <code>cache_hit</code>{' '}
+        flag, so you can compute exactly how much the cache saved you.
+      </p>
+
       <h2>Rate limits and response headers</h2>
       <p>
         Spanlens applies a high per-organization per-minute ceiling on{' '}

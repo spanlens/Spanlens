@@ -367,6 +367,139 @@ export function renderLeakAlertEmail(params: {
  *
  * Tone: calm reminder, not dunning. Most past_due is an expired card.
  */
+/** "$12.34" under $100, "$1,234" above — keeps subjects short and scannable. */
+function formatUsd(n: number): string {
+  if (n >= 100) return `$${Math.round(n).toLocaleString('en-US')}`
+  return `$${n.toFixed(2)}`
+}
+
+/**
+ * Weekly usage digest. Sent Monday 09:00 UTC by lib/weekly-digest.ts to org
+ * admins who keep the `weekly_digest_emails` preference on. Copy avoids em
+ * dashes entirely (external-text policy).
+ */
+export function renderWeeklyDigestEmail(params: {
+  orgName: string
+  /** Human window label, e.g. "Jun 29 to Jul 5". */
+  periodLabel: string
+  requestCount: number
+  totalCostUsd: number
+  /** Week-over-week cost change in percent; null = no prior week to compare. */
+  costChangePct: number | null
+  errorCount: number
+  errorRatePct: number
+  topModels: Array<{ provider: string; model: string; costUsd: number; requestCount: number }>
+  /** Anomalies persisted this week; null = lookup unavailable, omit the line. */
+  anomalyCount: number | null
+  recommendation: {
+    currentModel: string
+    suggestedModel: string
+    estimatedMonthlySavingsUsd: number
+  } | null
+  dashboardUrl: string
+}): { subject: string; html: string } {
+  const {
+    orgName, periodLabel, requestCount, totalCostUsd, costChangePct,
+    errorCount, errorRatePct, topModels, anomalyCount, recommendation, dashboardUrl,
+  } = params
+
+  const subject = `Your Spanlens week: ${requestCount.toLocaleString('en-US')} requests, ${formatUsd(totalCostUsd)}`
+
+  let trendLine: string
+  let trendColor = '#555'
+  if (costChangePct === null) {
+    trendLine = 'There is no prior week to compare against yet.'
+  } else if (Math.abs(costChangePct) < 5) {
+    trendLine = 'Spend is about the same as the week before.'
+  } else if (costChangePct > 0) {
+    trendLine = `Spend is up ${Math.round(costChangePct)}% from the week before.`
+    trendColor = '#9a3412'
+  } else {
+    trendLine = `Spend is down ${Math.abs(Math.round(costChangePct))}% from the week before.`
+    trendColor = '#166534'
+  }
+
+  const errorLine = errorCount === 0
+    ? 'No failed requests this week.'
+    : `${errorCount.toLocaleString('en-US')} failed request${errorCount === 1 ? '' : 's'} (${errorRatePct.toFixed(1)}% error rate).`
+
+  const modelRows = topModels
+    .map((m) => `
+      <tr>
+        <td style="padding: 8px 12px; border-bottom: 1px solid #eee; font-family: ui-monospace, monospace; font-size: 12.5px;">${escapeHtml(m.model)}</td>
+        <td style="padding: 8px 12px; border-bottom: 1px solid #eee; font-family: ui-monospace, monospace; font-size: 12px; color: #666;">${escapeHtml(m.provider)}</td>
+        <td style="padding: 8px 12px; border-bottom: 1px solid #eee; font-size: 12px; color: #666; text-align: right;">${m.requestCount.toLocaleString('en-US')}</td>
+        <td style="padding: 8px 12px; border-bottom: 1px solid #eee; font-size: 12px; color: #111; text-align: right;">${escapeHtml(formatUsd(m.costUsd))}</td>
+      </tr>`)
+    .join('')
+
+  const modelsTable = topModels.length === 0 ? '' : `
+      <p style="margin: 22px 0 8px; font-size: 13px; font-weight: 600; color: #111;">Top models by cost</p>
+      <table style="width: 100%; border-collapse: collapse; border: 1px solid #eee; border-radius: 6px; overflow: hidden;">
+        <thead>
+          <tr style="background: #fafafa;">
+            <th style="padding: 8px 12px; text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: #888; border-bottom: 1px solid #eee;">Model</th>
+            <th style="padding: 8px 12px; text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: #888; border-bottom: 1px solid #eee;">Provider</th>
+            <th style="padding: 8px 12px; text-align: right; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: #888; border-bottom: 1px solid #eee;">Requests</th>
+            <th style="padding: 8px 12px; text-align: right; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: #888; border-bottom: 1px solid #eee;">Cost</th>
+          </tr>
+        </thead>
+        <tbody>${modelRows}</tbody>
+      </table>`
+
+  const anomalyBlock = anomalyCount !== null && anomalyCount > 0 ? `
+      <p style="margin: 16px 0 0; font-size: 13px; color: #9a3412;">
+        ${anomalyCount.toLocaleString('en-US')} anomal${anomalyCount === 1 ? 'y was' : 'ies were'} detected this week. Details are on the anomalies page in your dashboard.
+      </p>` : ''
+
+  const recommendationBlock = recommendation ? `
+      <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 14px 16px; margin: 20px 0 0;">
+        <div style="font-weight: 600; font-size: 13px; color: #166534; margin-bottom: 4px;">Savings tip</div>
+        <div style="font-size: 13px; color: #14532d; line-height: 1.55;">
+          Moving eligible traffic from <span style="font-family: ui-monospace, monospace;">${escapeHtml(recommendation.currentModel)}</span>
+          to <span style="font-family: ui-monospace, monospace;">${escapeHtml(recommendation.suggestedModel)}</span>
+          could save about <strong>${escapeHtml(formatUsd(recommendation.estimatedMonthlySavingsUsd))} per month</strong>.
+          See the savings page in your dashboard for details.
+        </div>
+      </div>` : ''
+
+  const html = `
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 620px; margin: 0 auto; padding: 24px; color: #111;">
+      <h2 style="margin: 0 0 4px; font-size: 19px;">Your week on Spanlens</h2>
+      <p style="margin: 0 0 18px; color: #888; font-size: 13px;">${escapeHtml(orgName)} · ${escapeHtml(periodLabel)}</p>
+
+      <table style="width: 100%; border-collapse: separate; border-spacing: 8px 0; margin: 0 -8px 4px;">
+        <tr>
+          <td style="width: 50%; background: #fafafa; border: 1px solid #eee; border-radius: 8px; padding: 14px 16px;">
+            <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: #888;">Requests</div>
+            <div style="font-size: 22px; font-weight: 600; margin-top: 2px;">${requestCount.toLocaleString('en-US')}</div>
+          </td>
+          <td style="width: 50%; background: #fafafa; border: 1px solid #eee; border-radius: 8px; padding: 14px 16px;">
+            <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: #888;">Total cost</div>
+            <div style="font-size: 22px; font-weight: 600; margin-top: 2px;">${escapeHtml(formatUsd(totalCostUsd))}</div>
+          </td>
+        </tr>
+      </table>
+
+      <p style="margin: 12px 0 0; font-size: 13px; color: ${trendColor};">${escapeHtml(trendLine)}</p>
+      <p style="margin: 6px 0 0; font-size: 13px; color: #555;">${escapeHtml(errorLine)}</p>
+      ${anomalyBlock}
+      ${modelsTable}
+      ${recommendationBlock}
+
+      <p style="margin: 24px 0;">
+        <a href="${dashboardUrl}" style="display: inline-block; padding: 10px 18px; background: #111; color: #fff; text-decoration: none; border-radius: 6px; font-weight: 500; font-size: 13px;">Open your dashboard</a>
+      </p>
+      <p style="margin: 18px 0 0; color: #aaa; font-size: 11.5px;">
+        You receive this weekly summary because you admin this workspace.
+        To stop it, turn off Weekly digest under Settings, Notifications.
+      </p>
+    </div>
+  `.trim()
+
+  return { subject, html }
+}
+
 export function renderPastDueEmail(params: {
   orgName: string
   stage: 'warning-d3' | 'warning-d1' | 'downgraded'

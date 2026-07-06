@@ -1760,7 +1760,7 @@ function SignInMethodsTab() {
 // ─── NOTIFICATIONS tab ────────────────────────────────────────────────────────
 
 interface NotificationPrefDef {
-  key: 'security_alert_emails' | 'marketing_emails' | 'product_update_emails'
+  key: 'security_alert_emails' | 'marketing_emails' | 'product_update_emails' | 'weekly_digest_emails'
   label: string
   hint: string
 }
@@ -1770,6 +1770,11 @@ const NOTIFICATION_PREFS: NotificationPrefDef[] = [
     key: 'security_alert_emails',
     label: 'Security alerts',
     hint: 'Stale-key reminders and leaked-key detection alerts for workspaces you admin.',
+  },
+  {
+    key: 'weekly_digest_emails',
+    label: 'Weekly digest',
+    hint: 'A Monday summary of last week’s requests, spend, and top models for workspaces you admin.',
   },
   {
     key: 'product_update_emails',

@@ -355,38 +355,75 @@ process.exit(0)
 
 `flush()` resolves even if some requests failed. It uses `Promise.allSettled` internally so a network error won't hang the process.
 
-## Error handling
+## Troubleshooting and error handling
 
-Instrumentation is fire-and-forget by design, so **tracing never crashes your app**. Every ingest call is governed by two `SpanlensConfig` options:
+Instrumentation is fire-and-forget by design, so **observability never crashes your app**. Every ingest call is governed by two `SpanlensConfig` options:
 
 | Option | Type | Default | Description |
 |---|---|---|---|
 | `silent` | `boolean` | `true` | When `true`, ingest failures are swallowed (the call resolves to `null`) so your hot path is never interrupted. When `false`, the failure is **re-thrown** so you can surface it in tests or fail-fast environments. |
-| `onError` | `(err, context) => void` | (none) | Called on **every** ingest failure, regardless of `silent`. `context` is the failing route, e.g. `"POST /ingest/traces"`. Use it to forward errors to your monitoring stack. |
+| `onError` | `(err, context) => void` | (none) | Called on **every** dropped or failed delivery, regardless of `silent`. `context` is the failing route, e.g. `"POST /ingest/traces"`. Use it to forward errors to your monitoring stack. |
 
 Even with the default `silent: true`, `onError` still fires, so you get full visibility without the risk of an unhandled rejection taking down a request.
 
-### `SpanlensApiError`
+```ts
+const client = new SpanlensClient({
+  apiKey: process.env.SPANLENS_API_KEY!,
+  onError: (err, context) => {
+    // err is a SpanlensTransportError for HTTP failures (status, code, endpoint)
+    // and the raw underlying error for network or timeout failures.
+    myLogger.warn('spanlens delivery dropped', { context, err })
+  },
+})
+```
+
+### Common failures and what to do
+
+For the misconfigurations customers hit most, the SDK also prints a single actionable `console.warn` prefixed with `[spanlens]` (deduped, one warning per failure kind), so a silently dropping integration is visible in your logs:
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| `401 UNAUTHORIZED` | Key not accepted | Check the three usual suspects: (1) the `SPANLENS_API_KEY` env var is actually loaded in the running process, (2) the key was not revoked in the dashboard, (3) no whitespace or quotes were pasted around the key. See the [quick start](https://www.spanlens.io/docs/quick-start). |
+| `403 PUBLIC_KEY_WRITE_FORBIDDEN` | A public key (`sl_live_pub_*`) was used for ingest or proxy | Public keys are read-only. Create a full `sl_live_` key on the Projects & Keys page for tracing. |
+| `429 RATE_LIMIT` | Monthly quota or rate limit hit | Review usage and upgrade at [spanlens.io/pricing](https://www.spanlens.io/pricing) or manage your plan on the billing page. |
+
+The SDK also warns once at `SpanlensClient` construction when the configured `apiKey` does not start with `sl_live_` (probably not a Spanlens key) or starts with `sl_live_pub_` (read-only, ingest will be rejected). The key itself is never printed.
+
+### Tuning `timeoutMs`
+
+Each ingest call has a `timeoutMs` deadline (default `3000` ms) covering the whole request, headers and body. The default is deliberately short: observability should not hold up user code. Raise it if you run in a region far from the ingest endpoint or behind a slow egress proxy; lower it (e.g. `1000`) in latency-critical paths where you would rather drop a span than wait. Timed-out calls are retried automatically (see below), then reported to `onError`.
+
+### Flush before process exit
+
+Ingest is fire-and-forget, so short-lived processes (scripts, CI jobs, serverless handlers) can exit before deliveries settle. Call `await client.flush()` before exit; see [Graceful shutdown with `client.flush()`](#graceful-shutdown-with-clientflush) above.
+
+### `SpanlensApiError` and `SpanlensTransportError`
 
 When the Spanlens server rejects a call with its standard error envelope (a `4xx`), the SDK surfaces a typed `SpanlensApiError` instead of a bare `Error`. This lets you branch on a stable `code` rather than string-matching a message. It reaches you either through `onError` (always) or as a thrown value (when `silent: false`).
 
 ```ts
-import { SpanlensApiError } from '@spanlens/sdk'
+import { SpanlensApiError, SpanlensTransportError } from '@spanlens/sdk'
 
-class SpanlensApiError extends Error {
-  code: string                              // stable machine code, e.g. 'PUBLIC_KEY_WRITE_FORBIDDEN'
-  status: number                            // HTTP status (4xx)
+class SpanlensTransportError extends Error {
+  code: string                              // stable machine code, or 'HTTP_<status>' when no envelope
+  status: number                            // HTTP status
+  endpoint: string                          // failing route, e.g. 'POST /ingest/traces'
+}
+
+class SpanlensApiError extends SpanlensTransportError {
   details?: Record<string, unknown>         // optional structured context
   requestId: string | null                  // server request id for support
 }
 ```
 
+`SpanlensTransportError` is the base class for every classified HTTP failure, including responses that do not carry the standard envelope (a CDN error page, for example). `instanceof SpanlensApiError` checks keep working unchanged.
+
 ### Automatic retries
 
-The transport retries **transient** failures on its own, so a brief network blip or a `429` doesn't lose a span:
+The transport retries **transient** failures on its own, so a brief network blip doesn't lose a span:
 
-- **Retried** (up to `3` attempts total) with exponential back-off `200 ms → 400 ms → 800 ms`: network errors, request timeouts (default `3000 ms`), `429`, and `5xx`.
-- **Not retried**: `4xx` client errors. These are your bug (bad key, missing scope, malformed body), so retrying wastes time. They go straight to `onError` (and throw when `silent: false`).
+- **Retried** (up to `3` attempts total) with exponential back-off `200 ms → 400 ms → 800 ms`: network errors, request timeouts (default `3000 ms`), and `5xx`.
+- **Not retried**: `4xx` client errors, including `429`. These indicate a configuration or quota problem (bad key, missing scope, malformed body, exhausted plan), so retrying wastes time. They go straight to `onError` (and throw when `silent: false`).
 
 Because every trace and span carries a **client-generated UUID**, retries are idempotent: the same UUID delivered twice is a no-op on the server.
 
