@@ -245,6 +245,11 @@ export function ProjectsClient() {
   // Delete confirms
   const [deleteApiKeyId, setDeleteApiKeyId] = useState<string | null>(null)
   const [deleteProvKeyId, setDeleteProvKeyId] = useState<string | null>(null)
+  // Public-key revoke confirm — mirrors the Spanlens-key delete flow so a
+  // single misclick can't revoke a workspace credential. Separate state from
+  // deleteApiKeyId because the two dialogs describe different consequences.
+  const [revokePublicKeyId, setRevokePublicKeyId] = useState<string | null>(null)
+  const [revokePublicError, setRevokePublicError] = useState<string | null>(null)
   // Project delete requires typing the project name as confirmation —
   // deleting a project cascades through every Spanlens key, provider key,
   // and (in ClickHouse) every request row's project_id reference.
@@ -382,6 +387,17 @@ export function ProjectsClient() {
     if (!deleteApiKeyId) return
     await deleteApiKey.mutateAsync(deleteApiKeyId)
     setDeleteApiKeyId(null)
+  }
+
+  async function handleRevokePublicKey() {
+    if (!revokePublicKeyId) return
+    setRevokePublicError(null)
+    try {
+      await deleteApiKey.mutateAsync(revokePublicKeyId)
+      setRevokePublicKeyId(null)
+    } catch (err) {
+      setRevokePublicError(err instanceof Error ? err.message : 'Failed to revoke key')
+    }
   }
 
   async function handleDeleteProviderKey() {
@@ -742,7 +758,7 @@ export function ProjectsClient() {
                     <PermissionGate need="edit">
                       <button
                         type="button"
-                        onClick={() => deleteApiKey.mutate(key.id)}
+                        onClick={() => { setRevokePublicError(null); setRevokePublicKeyId(key.id) }}
                         className="text-text-faint hover:text-bad transition-colors p-1"
                         title="Revoke"
                         aria-label="Revoke public key"
@@ -1444,6 +1460,43 @@ export function ProjectsClient() {
                 className="flex-1 h-9 rounded-[6px] bg-bad text-white font-medium text-[13px] hover:opacity-90 transition-opacity disabled:opacity-40"
               >
                 {deleteApiKey.isPending ? 'Deleting…' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Revoke public key confirm */}
+      <Dialog
+        open={revokePublicKeyId !== null}
+        onOpenChange={(open) => { if (!open) { setRevokePublicKeyId(null); setRevokePublicError(null) } }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Revoke public key</DialogTitle>
+          </DialogHeader>
+          <DialogDescription className="text-[12.5px] text-text-muted mt-1">
+            This permanently revokes the public key. Any MCP server, BI tool, or
+            embed using it will stop reading your workspace data immediately.
+          </DialogDescription>
+
+          <div className="space-y-4 mt-2">
+            {revokePublicError && (
+              <div className="rounded-md border border-bad/30 bg-bad/10 px-3 py-2 text-[12px] text-bad">
+                {revokePublicError}
+              </div>
+            )}
+            <div className="flex gap-3">
+              <GhostBtn className="flex-1" onClick={() => { setRevokePublicKeyId(null); setRevokePublicError(null) }}>
+                Cancel
+              </GhostBtn>
+              <button
+                type="button"
+                onClick={() => void handleRevokePublicKey()}
+                disabled={deleteApiKey.isPending}
+                className="flex-1 h-9 rounded-[6px] bg-bad text-white font-medium text-[13px] hover:opacity-90 transition-opacity disabled:opacity-40"
+              >
+                {deleteApiKey.isPending ? 'Revoking…' : 'Revoke'}
               </button>
             </div>
           </div>

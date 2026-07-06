@@ -139,6 +139,25 @@ export function createTransport(config: SpanlensConfig): Transport {
   ): Promise<unknown> {
     let lastErr: unknown
 
+    // Serialize once, before the retry loop. A circular reference (or any
+    // non-serializable value) in user-supplied metadata makes JSON.stringify
+    // throw a TypeError. That failure is deterministic — the payload can never
+    // serialize — so retrying it is pointless: it would burn all MAX_RETRIES
+    // attempts and then silently drop the event. Classify it as non-retryable
+    // and fail fast with a clear onError, mirroring the 4xx no-retry path.
+    let serializedBody: string
+    try {
+      serializedBody = JSON.stringify(body)
+    } catch (err) {
+      safeOnError(
+        onError,
+        err,
+        `${method} ${path}: failed to serialize payload (circular reference in metadata?)`,
+      )
+      if (!silent) throw err
+      return null
+    }
+
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
       const controller = new AbortController()
       const timer = setTimeout(() => controller.abort(), timeoutMs)
@@ -150,7 +169,7 @@ export function createTransport(config: SpanlensConfig): Transport {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${config.apiKey}`,
           },
-          body: JSON.stringify(body),
+          body: serializedBody,
           signal: controller.signal,
         })
         // NOTE: the abort timer stays armed through the body read below. A

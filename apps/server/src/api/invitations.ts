@@ -10,6 +10,7 @@ import {
   recordAuditLog,
 } from '../lib/audit-log.js'
 import { ApiError } from '../lib/errors.js'
+import { isUuid } from '../lib/params.js'
 
 /**
  * Invitations — email-based org member onboarding.
@@ -339,6 +340,9 @@ invitationsRouter.delete('/:id', authJwt, requireRole('admin'), async (c) => {
   if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   const id = c.req.param('id')
+  // Malformed id would hit Postgres as an invalid-uuid error → raw 500.
+  // Treat it like a nonexistent id (same 404 the count===0 path returns).
+  if (!isUuid(id)) throw new ApiError('NOT_FOUND', 'Invitation not found')
 
   // Scope the delete to the user's org so admins can't cancel invitations
   // belonging to other orgs.
@@ -486,10 +490,15 @@ meInvitationsRouter.delete('/:id', async (c) => {
   const email = c.get('email')
   if (!email) throw new ApiError('BAD_REQUEST', 'User has no email')
 
+  const id = c.req.param('id')
+  // Malformed id would hit Postgres as an invalid-uuid error → raw 500.
+  // Treat it like a nonexistent id (same 404 the count===0 path returns).
+  if (!isUuid(id)) throw new ApiError('NOT_FOUND', 'Invitation not found')
+
   const { error, count } = await supabaseAdmin
     .from('org_invitations')
     .delete({ count: 'exact' })
-    .eq('id', c.req.param('id'))
+    .eq('id', id)
     .ilike('email', email)
     .is('accepted_at', null)
 

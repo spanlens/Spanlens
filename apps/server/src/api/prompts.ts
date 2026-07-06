@@ -277,6 +277,18 @@ promptsRouter.post('/', requireEdit, async (c) => {
     typeof body.metadata === 'object' && body.metadata !== null ? body.metadata : {}
   const projectId = typeof body.projectId === 'string' ? body.projectId : null
 
+  // Verify the project belongs to this org so a caller can't attach a prompt
+  // to another org's project UUID (cross-project filter pollution).
+  if (projectId) {
+    const { data: proj } = await supabaseAdmin
+      .from('projects')
+      .select('id')
+      .eq('id', projectId)
+      .eq('organization_id', orgId)
+      .maybeSingle()
+    if (!proj) throw new ApiError('NOT_FOUND', 'Project not found')
+  }
+
   // Find the latest version for this name and increment
   const { data: latest } = await supabaseAdmin
     .from('prompt_versions')

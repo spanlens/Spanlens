@@ -5,6 +5,7 @@ import { supabaseAdmin } from '../lib/db.js'
 import { checkProjectQuota } from '../lib/quota.js'
 import { recordAuditEvent } from '../lib/audit-log.js'
 import { ApiError } from '../lib/errors.js'
+import { isUuid } from '../lib/params.js'
 
 export const projectsRouter = new Hono<JwtContext>()
 
@@ -147,6 +148,9 @@ projectsRouter.delete('/:id', requireAdmin, async (c) => {
   const projectId = c.req.param('id')
   const orgId = c.get('orgId')
   if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
+  // Malformed id would hit Postgres as an invalid-uuid error → raw 500.
+  // Treat it like a well-formed-but-nonexistent id (same 404 as GET/PATCH).
+  if (!isUuid(projectId)) throw new ApiError('NOT_FOUND', 'Project not found')
 
   const { error } = await supabaseAdmin
     .from('projects')

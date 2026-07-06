@@ -11,6 +11,17 @@ import { ApiError } from './errors.js'
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 /**
+ * Predicate for a well-formed UUID. Use for REQUIRED path params (`:id`) where
+ * a malformed value should behave like a well-formed-but-nonexistent id — i.e.
+ * the handler throws its own not-found `ApiError` (404) rather than letting the
+ * malformed value reach the DB and surface as a raw 500. Keeps the 404 behavior
+ * consistent with the file's GET/PATCH siblings.
+ */
+export function isUuid(raw: string | undefined | null): boolean {
+  return typeof raw === 'string' && UUID_RE.test(raw)
+}
+
+/**
  * Validate an optional UUID-typed query param before it reaches a bound
  * ClickHouse `{x:UUID}` placeholder. A malformed value (e.g. `?projectId=abc`)
  * otherwise fails inside ClickHouse and surfaces as a raw 500. These read APIs
