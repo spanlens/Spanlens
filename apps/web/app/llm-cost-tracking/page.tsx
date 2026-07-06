@@ -14,13 +14,11 @@ export const metadata = {
     title: 'LLM Cost Tracking — Monitor and Reduce Your AI API Spend',
     description: DESCRIPTION,
     url: '/llm-cost-tracking',
-    images: ['/icon.png'],
   },
   twitter: {
     card: 'summary_large_image',
     title: 'LLM Cost Tracking — Monitor and Reduce Your AI API Spend',
     description: DESCRIPTION,
-    images: ['/icon.png'],
   },
 }
 

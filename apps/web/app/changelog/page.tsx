@@ -29,12 +29,47 @@ const TAG_STYLE: Record<ChangelogTag, string> = {
   reliability: 'bg-bg-elev text-text-muted border-border',
 }
 
+const SITE_URL = 'https://www.spanlens.io'
+
+/**
+ * ItemList of BlogPosting nodes projected from CHANGELOG_ENTRIES so search
+ * and LLM crawlers get machine-readable dates for every release note (the
+ * page previously carried no date signals in structured data at all).
+ * Dates are YYYY-MM-DD in entries.ts; the feed renders them as 00:00 UTC,
+ * so the same instant is used here for consistency.
+ */
+function buildChangelogJsonLd(entries: ChangelogEntry[]) {
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'ItemList',
+    '@id': `${SITE_URL}/changelog#list`,
+    name: 'Spanlens Changelog',
+    url: `${SITE_URL}/changelog`,
+    itemListElement: entries.map((entry, i) => ({
+      '@type': 'ListItem',
+      position: i + 1,
+      item: {
+        '@type': 'BlogPosting',
+        '@id': `${SITE_URL}/changelog#${entry.slug}`,
+        headline: entry.title,
+        datePublished: `${entry.date}T00:00:00Z`,
+        url: `${SITE_URL}/changelog#${entry.slug}`,
+        author: { '@id': `${SITE_URL}/#organization` },
+      },
+    })),
+  }
+}
+
 export default function ChangelogPage() {
   // Defensive sort, newest first, in case entries.ts gets reordered manually.
   const entries = [...CHANGELOG_ENTRIES].sort((a, b) => b.date.localeCompare(a.date))
 
   return (
     <div className="min-h-screen bg-bg">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(buildChangelogJsonLd(entries)) }}
+      />
       <MarketingNav subtitle="Changelog" />
 
       <main className="max-w-3xl mx-auto px-6 py-12">

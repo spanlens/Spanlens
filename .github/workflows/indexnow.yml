@@ -1,0 +1,34 @@
+# Pings the IndexNow API with every sitemap URL after web content changes
+# land on main, so Bing / Naver / Yandex re-crawl within minutes. The 90s
+# sleep gives the Vercel git-integration deploy time to go live first —
+# IndexNow validates the key file against the live site, and pinging URLs
+# that still serve the previous deploy would be pointless.
+#
+# The IndexNow key is intentionally public (protocol requirement: the key
+# file at https://www.spanlens.io/<key>.txt must be world-readable), so no
+# secrets are involved here.
+name: IndexNow ping
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/web/**'
+
+concurrency:
+  group: indexnow
+  cancel-in-progress: true
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Wait for Vercel deploy to go live
+        run: sleep 90
+      - name: Submit sitemap URLs to IndexNow
+        run: node apps/web/scripts/indexnow-ping.mjs

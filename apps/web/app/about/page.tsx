@@ -13,15 +13,11 @@ export const metadata = {
     type: 'website',
     title: 'About Spanlens — Open Source LLM Observability',
     description: ABOUT_DESCRIPTION,
-    url: '/about',
-    images: ['/icon.png'],
-  },
+    url: '/about',  },
   twitter: {
     card: 'summary_large_image',
     title: 'About Spanlens — Open Source LLM Observability',
-    description: ABOUT_DESCRIPTION,
-    images: ['/icon.png'],
-  },
+    description: ABOUT_DESCRIPTION,  },
 }
 
 const aboutJsonLd = {

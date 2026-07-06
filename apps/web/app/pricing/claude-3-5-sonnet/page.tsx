@@ -12,13 +12,11 @@ export const metadata = {
     title: 'Claude 3.5 Sonnet Pricing 2026 — Cost Per Token, Monthly Estimates',
     description: DESCRIPTION,
     url: '/pricing/claude-3-5-sonnet',
-    images: ['/icon.png'],
   },
   twitter: {
     card: 'summary_large_image',
     title: 'Claude 3.5 Sonnet Pricing 2026 — Cost Per Token, Monthly Estimates',
     description: DESCRIPTION,
-    images: ['/icon.png'],
   },
 }
 

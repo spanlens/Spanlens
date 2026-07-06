@@ -12,13 +12,11 @@ export const metadata = {
     title: 'OpenAI Observability — Log every API call with Spanlens',
     description: DESCRIPTION,
     url: '/integrations/openai',
-    images: ['/icon.png'],
   },
   twitter: {
     card: 'summary_large_image',
     title: 'OpenAI Observability — Log every API call with Spanlens',
     description: DESCRIPTION,
-    images: ['/icon.png'],
   },
 }
 

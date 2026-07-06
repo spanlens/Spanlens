@@ -14,13 +14,11 @@ export const metadata = {
     title: 'LLM Observability — A 2026 Guide for Production AI Apps',
     description: DESCRIPTION,
     url: '/llm-observability',
-    images: ['/icon.png'],
   },
   twitter: {
     card: 'summary_large_image',
     title: 'LLM Observability — A 2026 Guide for Production AI Apps',
     description: DESCRIPTION,
-    images: ['/icon.png'],
   },
 }
 

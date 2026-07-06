@@ -17,13 +17,11 @@ export const metadata = {
     title: 'Spanlens Pricing — Free, Pro $29, Team $149',
     description: PRICING_DESCRIPTION,
     url: '/pricing',
-    images: ['/icon.png'],
   },
   twitter: {
     card: 'summary_large_image',
     title: 'Spanlens Pricing — Free, Pro $29, Team $149',
     description: PRICING_DESCRIPTION,
-    images: ['/icon.png'],
   },
 }
 

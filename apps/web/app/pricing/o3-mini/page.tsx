@@ -12,13 +12,11 @@ export const metadata = {
     title: 'o3-mini Pricing 2026 — Cost Per Token, Monthly Estimates',
     description: DESCRIPTION,
     url: '/pricing/o3-mini',
-    images: ['/icon.png'],
   },
   twitter: {
     card: 'summary_large_image',
     title: 'o3-mini Pricing 2026 — Cost Per Token, Monthly Estimates',
     description: DESCRIPTION,
-    images: ['/icon.png'],
   },
 }
 

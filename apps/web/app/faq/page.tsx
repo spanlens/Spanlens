@@ -14,13 +14,11 @@ export const metadata = {
     title: 'Spanlens FAQ — Open Source LLM Observability',
     description: FAQ_DESCRIPTION,
     url: '/faq',
-    images: ['/icon.png'],
   },
   twitter: {
     card: 'summary_large_image',
     title: 'Spanlens FAQ — Open Source LLM Observability',
     description: FAQ_DESCRIPTION,
-    images: ['/icon.png'],
   },
 }
 
