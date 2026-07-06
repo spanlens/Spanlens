@@ -105,6 +105,7 @@ const organizationJsonLd = {
   sameAs: [
     'https://github.com/spanlens/Spanlens',
     'https://www.npmjs.com/package/@spanlens/sdk',
+    'https://x.com/spanlens',
   ],
 }
 
