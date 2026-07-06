@@ -237,18 +237,34 @@ function WelcomeBannerInner({ apiKey, onDismiss }: { apiKey: string; onDismiss: 
               Provider key registered. Spanlens stores it encrypted and uses it on your behalf.
             </p>
           ) : (
-            <p className="text-[11.5px] text-text-muted leading-relaxed">
-              Open{' '}
-              <Link
-                href="/projects"
-                className="text-accent hover:opacity-80 transition-opacity underline underline-offset-2"
-              >
-                /projects
-              </Link>
-              , find your Spanlens key, click <em>+ Add provider key</em>, and paste your AI
-              provider&apos;s API key. Spanlens stores it encrypted and uses it on your
-              behalf, your app never sees it again.
-            </p>
+            <>
+              <p className="text-[11.5px] text-text-muted leading-relaxed">
+                Open{' '}
+                <Link
+                  href="/projects"
+                  className="text-accent hover:opacity-80 transition-opacity underline underline-offset-2"
+                >
+                  /projects
+                </Link>
+                , find your Spanlens key, click <em>+ Add provider key</em>, and paste your AI
+                provider&apos;s API key. Spanlens stores it encrypted and uses it on your
+                behalf, your app never sees it again.
+              </p>
+              {/* Immediate refetch so the checkmark flips right after the user
+                  adds a key at /projects, rather than waiting on the ~30s
+                  provider-keys poll. Mirrors step 4's "Check now" button. */}
+              <div className="flex items-center gap-2 mt-2">
+                <button
+                  type="button"
+                  onClick={() => void providerKeys.refetch()}
+                  disabled={providerKeys.isFetching}
+                  className="font-mono text-[10.5px] px-[8px] py-[3px] border border-border rounded-[5px] text-text-muted hover:text-text hover:border-border-strong disabled:opacity-40 transition-colors inline-flex items-center gap-1"
+                >
+                  <RefreshCw className={providerKeys.isFetching ? 'w-3 h-3 animate-spin' : 'w-3 h-3'} />
+                  Check now
+                </button>
+              </div>
+            </>
           )}
         </div>
 
@@ -370,6 +386,19 @@ function WelcomeBannerInner({ apiKey, onDismiss }: { apiKey: string; onDismiss: 
             </>
           )}
         </div>
+
+        {/* Free-tier footnote — sets expectations on the monthly allowance so
+            new users aren't surprised by the quota. Kept muted, not a callout. */}
+        <p className="text-[11px] text-text-faint mt-4 leading-relaxed">
+          Free tier includes 50,000 requests per month. You can upgrade anytime from{' '}
+          <Link
+            href="/billing"
+            className="text-accent hover:opacity-80 transition-opacity underline underline-offset-2"
+          >
+            Billing
+          </Link>
+          .
+        </p>
       </div>
     </div>
   )

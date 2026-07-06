@@ -96,6 +96,23 @@ const OPENAI_SHAPED = new Set<Usage>([
 
 const PROMPT_VERSION_HEADER = 'x-spanlens-prompt-version'
 const LOG_BODY_HEADER = 'x-spanlens-log-body'
+const CACHE_HEADER = 'x-spanlens-cache'
+/** Server caps any requested cache TTL at this many seconds (24h). */
+const CACHE_MAX_TTL_SECONDS = 86400
+
+/**
+ * Serialize the `cache` observe option into the `x-spanlens-cache` header
+ * value, or `null` when it is not a valid directive. Mirrors the `withCache`
+ * helpers and the server (`apps/server/src/lib/proxy-cache.ts`): `true` maps to
+ * `'true'`, a positive integer is clamped to CACHE_MAX_TTL_SECONDS, and any
+ * other value emits no header.
+ */
+function cacheHeaderValue(ttl: number | true | undefined): string | null {
+  if (ttl === undefined) return null
+  if (ttl === true) return 'true'
+  if (typeof ttl !== 'number' || !Number.isInteger(ttl) || ttl <= 0) return null
+  return String(Math.min(ttl, CACHE_MAX_TTL_SECONDS))
+}
 
 /** Provider-observe options — narrower than SpanOptions; adds optional promptVersion + logBody. */
 export type ProviderObserveOptions = Omit<SpanOptions, 'spanType'> & {
@@ -107,6 +124,13 @@ export type ProviderObserveOptions = Omit<SpanOptions, 'spanType'> & {
    * Override to `'meta'` or `'none'` for stricter data minimization — see LogBodyMode docs.
    */
   logBody?: LogBodyMode
+  /**
+   * Opt this single call into the Spanlens proxy response cache. `true` uses the
+   * default TTL (1 hour); a positive integer sets the TTL in seconds, capped at
+   * 86400 (24h) server-side. Non-streaming 200 JSON responses only. Maps 1:1 to
+   * the `withCache()` helper. See the proxy caching docs for the full rules.
+   */
+  cache?: number | true
   /**
    * Override the provider tag on this span's metadata. Useful when calling an
    * OpenAI-compatible endpoint that isn't actually OpenAI (Ollama, vLLM,
@@ -125,6 +149,7 @@ function splitArgs(
   spanOptions: SpanOptions
   promptVersion: string | undefined
   logBody: LogBodyMode | undefined
+  cache: number | true | undefined
   providerOverride: string | undefined
 } {
   if (typeof nameOrOptions === 'string') {
@@ -132,14 +157,16 @@ function splitArgs(
       spanOptions: { name: nameOrOptions, spanType: 'llm' },
       promptVersion: undefined,
       logBody: undefined,
+      cache: undefined,
       providerOverride: undefined,
     }
   }
-  const { promptVersion, logBody, provider: providerOverride, ...rest } = nameOrOptions
+  const { promptVersion, logBody, cache, provider: providerOverride, ...rest } = nameOrOptions
   return {
     spanOptions: { ...rest, spanType: 'llm' },
     promptVersion,
     logBody,
+    cache,
     providerOverride,
   }
 }
@@ -150,7 +177,7 @@ async function observeProvider<T>(
   nameOrOptions: string | ProviderObserveOptions,
   fn: (headers: Record<string, string>) => Promise<T>,
 ): Promise<T> {
-  const { spanOptions, promptVersion, logBody, providerOverride } = splitArgs(nameOrOptions)
+  const { spanOptions, promptVersion, logBody, cache, providerOverride } = splitArgs(nameOrOptions)
 
   const span =
     'span' in parent && typeof parent.span === 'function'
@@ -160,6 +187,8 @@ async function observeProvider<T>(
   const headers: Record<string, string> = { ...span.traceHeaders() }
   if (promptVersion) headers[PROMPT_VERSION_HEADER] = promptVersion
   if (logBody) headers[LOG_BODY_HEADER] = logBody
+  const cacheValue = cacheHeaderValue(cache)
+  if (cacheValue != null) headers[CACHE_HEADER] = cacheValue
 
   try {
     const result = await fn(headers)

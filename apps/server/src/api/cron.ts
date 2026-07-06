@@ -14,6 +14,7 @@ import { runReconciliationCron } from '../lib/events-reconciliation.js'
 import { runLeakDetectionJob } from '../lib/leak-detection.js'
 import { sendHighConfidenceRecommendationAlerts } from '../lib/recommendation-notify.js'
 import { logCronRun } from '../lib/cron-logger.js'
+import { purgeExpiredProxyCache } from '../lib/proxy-cache.js'
 import { replayFallbackQueue, replayEventsFallbackQueue, alertOnFallbackBacklog } from '../lib/fallback-replay.js'
 import { runDowngradeCheck } from '../lib/billing-downgrade.js'
 import { executePendingDeletions } from './pendingDeletions.js'
@@ -440,4 +441,19 @@ cronRouter.get('/keep-warm', async (c) => {
   assertCronAuth(c.req.header('Authorization'))
   const result = await runKeepWarmJob()
   return c.json(result)
+})
+
+// ── /purge-proxy-cache (daily 03:15 UTC) — reclaim expired opt-in
+// proxy_response_cache rows. The opportunistic miss-path cleanup only
+// reclaims rows for keys that are still being hit; keys that go quiet
+// leave their expired rows behind, so this sweep collects the rest.
+cronRouter.get('/purge-proxy-cache', async (c) => {
+  assertCronAuth(c.req.header('Authorization'))
+
+  const start = Date.now()
+  // purgeExpiredProxyCache is fail-open: it never throws and returns the
+  // count deleted so far, so this handler always logs 'ok'.
+  const deleted = await purgeExpiredProxyCache()
+  logCronRun('purge-proxy-cache', 'ok', Date.now() - start).catch(console.error)
+  return c.json({ deleted })
 })

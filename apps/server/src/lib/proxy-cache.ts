@@ -213,6 +213,99 @@ export async function resolveProxyCache(
 }
 
 /**
+ * Batch size for the periodic sweep. Each pass selects up to this many expired
+ * key hashes, deletes exactly those, and loops until a short page is returned.
+ * Keeps every statement bounded so the sweep can never run away on a table that
+ * has accumulated a large backlog of expired rows.
+ */
+export const PROXY_CACHE_PURGE_BATCH_SIZE = 500
+
+/**
+ * Hard cap on the number of batches a single sweep run will process, so one
+ * cron invocation can never loop unbounded (e.g. against a clock skew or a
+ * pathological backlog). 200 batches * 500 rows = up to 100k rows per run,
+ * which the next daily run picks up if any remain.
+ */
+const PROXY_CACHE_PURGE_MAX_BATCHES = 200
+
+interface ExpiredKeyRow {
+  key_hash: string | null
+}
+
+/**
+ * Periodic sweep that reclaims every `proxy_response_cache` row whose
+ * `expires_at` is in the past. Complements the opportunistic miss-path cleanup:
+ * rows for API keys that go quiet are never revisited on a miss, so without this
+ * they would linger until manually purged.
+ *
+ * Bounded by design — instead of one unbounded `DELETE ... WHERE expires_at <
+ * now()`, it pages the expired key hashes in batches of
+ * PROXY_CACHE_PURGE_BATCH_SIZE and deletes exactly those keys per pass. Every
+ * delete carries the same `.lt('expires_at', now)` guard as the opportunistic
+ * path, so a row refreshed by a concurrent request between the select and the
+ * delete is left alone.
+ *
+ * Fail-open: never throws. On any Supabase error it stops and returns the count
+ * deleted so far, so the cron handler always gets a summary.
+ */
+export async function purgeExpiredProxyCache(
+  now: Date = new Date(),
+): Promise<number> {
+  const cutoff = now.toISOString()
+  let deleted = 0
+
+  try {
+    for (let batch = 0; batch < PROXY_CACHE_PURGE_MAX_BATCHES; batch++) {
+      const { data, error } = await supabaseAdmin
+        .from(CACHE_TABLE)
+        .select('key_hash')
+        .lt('expires_at', cutoff)
+        .limit(PROXY_CACHE_PURGE_BATCH_SIZE)
+
+      if (error) {
+        logError('UNCATEGORIZED', { kind: 'proxy_cache_purge_failed' }, error)
+        return deleted
+      }
+
+      const rows = (data ?? []) as unknown as ExpiredKeyRow[]
+      const keyHashes = rows
+        .map((r) => r.key_hash)
+        .filter((k): k is string => typeof k === 'string' && k.length > 0)
+
+      if (keyHashes.length === 0) return deleted
+
+      const { error: deleteError } = await supabaseAdmin
+        .from(CACHE_TABLE)
+        .delete()
+        .in('key_hash', keyHashes)
+        .lt('expires_at', cutoff)
+
+      if (deleteError) {
+        logError('UNCATEGORIZED', { kind: 'proxy_cache_purge_failed' }, deleteError)
+        return deleted
+      }
+
+      deleted += keyHashes.length
+
+      // Short page → the table is drained; stop before an empty round-trip.
+      if (rows.length < PROXY_CACHE_PURGE_BATCH_SIZE) return deleted
+
+      // Full page but some rows had no deletable key_hash (null/blank). Those
+      // rows still match the select and would be re-returned on every pass,
+      // so we cannot make progress on this page. Stop rather than spin the
+      // remaining batches. Today `key_hash` is the table PRIMARY KEY so this
+      // is unreachable, but the guard keeps termination correct independent of
+      // the schema (finding from the batch-3 review).
+      if (keyHashes.length < rows.length) return deleted
+    }
+    return deleted
+  } catch (err) {
+    logError('UNCATEGORIZED', { kind: 'proxy_cache_purge_failed' }, err)
+    return deleted
+  }
+}
+
+/**
  * Opportunistic cleanup for an expired row discovered on the miss path.
  * The `.lt('expires_at', now)` guard means a fresh row written by a
  * concurrent request between our lookup and this delete is left alone.

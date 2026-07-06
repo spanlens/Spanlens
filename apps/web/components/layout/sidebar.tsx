@@ -137,6 +137,9 @@ function WorkspaceSwitcher() {
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label="Switch workspace"
         className="w-full flex items-center justify-between px-[10px] py-[7px] rounded-[5px] border border-border bg-bg-muted text-[12px] font-mono text-text-muted hover:bg-bg-muted/80 transition-colors"
       >
         <span className="truncate text-text">{orgName}</span>
@@ -488,6 +491,7 @@ export function Sidebar() {
                 <Link
                   key={href}
                   href={href}
+                  aria-current={active ? 'page' : undefined}
                   // All sidebar links skip prefetch entirely. Production
                   // measurement showed 18 sibling-page RSC requests firing on
                   // every dashboard mount, each costing ~327ms middleware
@@ -574,6 +578,9 @@ export function Sidebar() {
         <Link
           href="/feedback"
           prefetch={false}
+          aria-current={
+            pathname === '/feedback' || pathname.startsWith('/feedback/') ? 'page' : undefined
+          }
           className={cn(
             'flex w-full items-center gap-2 px-[10px] py-[6px] rounded-[5px] text-[13px] transition-colors',
             pathname === '/feedback' || pathname.startsWith('/feedback/')
