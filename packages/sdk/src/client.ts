@@ -5,6 +5,52 @@ import { createEvalsApi, type EvalsApi } from './evals.js'
 import type { SpanlensConfig, TraceOptions } from './types.js'
 
 /**
+ * Key-format warnings fire at most once per process per category so a
+ * client constructed in a hot path (per-request factories are common in
+ * serverless code) cannot flood the console. Module-level on purpose:
+ * the misconfiguration is process-wide, not per-client.
+ */
+const warnedKeyFormats = new Set<'public' | 'format'>()
+
+/** Test-only helper. Production never calls this. */
+export function _resetKeyFormatWarningsForTests(): void {
+  warnedKeyFormats.clear()
+}
+
+/**
+ * Warn (once) when the configured apiKey cannot work for ingest:
+ * - `sl_live_pub_*` keys are read-only, so every ingest/proxy call will be
+ *   rejected with 403 PUBLIC_KEY_WRITE_FORBIDDEN.
+ * - Anything without the `sl_live_` prefix is not a Spanlens key at all
+ *   (a pasted provider key like `sk-...` is the classic mixup).
+ * Never prints the key itself; only a short masked prefix.
+ */
+function warnOnKeyFormat(apiKey: string): void {
+  if (apiKey.startsWith('sl_live_pub_')) {
+    if (warnedKeyFormats.has('public')) return
+    warnedKeyFormats.add('public')
+    console.warn(
+      '[spanlens] apiKey is a public key (sl_live_pub_*). Public keys are read-only: ' +
+        'ingest and proxy calls will be rejected with 403 PUBLIC_KEY_WRITE_FORBIDDEN. ' +
+        'Create a full sl_live_ key on the Projects & Keys page for tracing. ' +
+        'Docs: https://www.spanlens.io/docs/quick-start',
+    )
+    return
+  }
+  if (!apiKey.startsWith('sl_live_')) {
+    if (warnedKeyFormats.has('format')) return
+    warnedKeyFormats.add('format')
+    // Mask everything except a short prefix; never log the key itself.
+    const masked = apiKey.length > 8 ? `${apiKey.slice(0, 5)}...` : '***'
+    console.warn(
+      `[spanlens] apiKey "${masked}" does not look like a Spanlens key (expected sl_live_ prefix). ` +
+        'Check that SPANLENS_API_KEY holds the key from your Spanlens dashboard. ' +
+        'Docs: https://www.spanlens.io/docs/quick-start',
+    )
+  }
+}
+
+/**
  * Spanlens SDK client — single entry point.
  *
  * @example
@@ -30,6 +76,7 @@ export class SpanlensClient {
     if (!config.apiKey || config.apiKey.trim().length === 0) {
       throw new Error('[spanlens] apiKey is required')
     }
+    warnOnKeyFormat(config.apiKey)
     this.config = config
     this.sampleRate = validateSampleRate(config.sampleRate)
     this.transport = createTransport(config)

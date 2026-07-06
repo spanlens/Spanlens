@@ -15,7 +15,9 @@ export {
 export { parseOpenAIUsage, parseAnthropicUsage, parseGeminiUsage } from './parsers.js'
 // Sprint 7 R-15 + R-20: typed exception thrown on Spanlens server errors
 // that follow the standard envelope. See transport.ts for the shape.
-export { SpanlensApiError } from './transport.js'
+// SpanlensTransportError is the base class covering every classified HTTP
+// failure (status, code, message, endpoint) handed to onError.
+export { SpanlensApiError, SpanlensTransportError } from './transport.js'
 
 // Evals API (CI / script-driven prompt evaluation — "prompt CI").
 export { EvalsApi, scoreConfidenceInterval } from './evals.js'

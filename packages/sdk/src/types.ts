@@ -24,7 +24,11 @@ export type Status = 'running' | 'completed' | 'error'
 export type LogBodyMode = 'full' | 'meta' | 'none'
 
 export interface SpanlensConfig {
-  /** Spanlens API key created in the dashboard (sl_live_... or sl_test_...). */
+  /**
+   * Spanlens API key created in the dashboard (`sl_live_...`). Public keys
+   * (`sl_live_pub_...`) are read-only and cannot ingest; the client warns
+   * at construction if one is configured.
+   */
   apiKey: string
   /** API base URL — default https://spanlens-server.vercel.app. */
   baseUrl?: string
@@ -35,7 +39,15 @@ export interface SpanlensConfig {
   timeoutMs?: number
   /** Swallow all errors so instrumentation never crashes user code. Default true. */
   silent?: boolean
-  /** Custom error hook — called when an ingest call fails. */
+  /**
+   * Custom error hook — called on every dropped or failed delivery, even
+   * under the default `silent: true`. For HTTP failures `err` is a
+   * `SpanlensTransportError` (or its `SpanlensApiError` subclass when the
+   * server returned its standard envelope) carrying `status`, `code`,
+   * `message`, and `endpoint`. Network and timeout failures pass the raw
+   * underlying error unchanged. `context` is the failing endpoint, e.g.
+   * `"POST /ingest/traces"`.
+   */
   onError?: (err: unknown, context: string) => void
   /**
    * Fraction of traces to ingest, in `[0.0, 1.0]`. Default `1.0` (no sampling).
