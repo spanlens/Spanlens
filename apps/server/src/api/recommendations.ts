@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import type { JwtContext } from '../middleware/authJwt.js'
 import { authJwtOrApiKey } from '../middleware/authJwtOrApiKey.js'
 import { recommendModelSwaps } from '../lib/model-recommend.js'
+import { getCacheSavings } from '../lib/cache-savings.js'
 import { getOrgClickhouse, toClickhouseTimestamp } from '../lib/clickhouse.js'
 import { requestsScope } from '../lib/requests-query.js'
 import { parsePositiveFloat } from '../lib/params.js'
@@ -64,6 +65,26 @@ recommendationsRouter.get('/', async (c) => {
       count: recommendations.length,
     },
   })
+})
+
+/**
+ * GET /api/v1/recommendations/cache-savings
+ *
+ * Month-to-date USD saved by prompt caching (cached input tokens billed at
+ * the provider's discounted cache-read rate instead of the full input rate).
+ * Powers the "Prompt caching saved you $X this month" card on /savings.
+ */
+recommendationsRouter.get('/cache-savings', async (c) => {
+  const orgId = c.get('orgId')
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
+
+  try {
+    const summary = await getCacheSavings(orgId)
+    return c.json({ success: true, data: summary })
+  } catch (err) {
+    console.error('cache-savings failed', err)
+    throw new ApiError('INTERNAL_ERROR', 'Failed to compute cache savings')
+  }
 })
 
 recommendationsRouter.get('/percentiles', async (c) => {
