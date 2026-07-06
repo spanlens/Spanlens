@@ -66,18 +66,33 @@ describe('selectGenerationsAsRequests — read-side shim for /api/v1/requests', 
     expect(call.query).toMatch(/parent_event_id\s+AS span_id/)
   })
 
-  it("substitutes neutral defaults for columns that don't exist on events yet", async () => {
+  it('projects the real security / truncation columns (migration 006)', async () => {
     queryMock.mockResolvedValueOnce(jsonRes([]))
     const scope = await eventsScope('org-1')
     await selectGenerationsAsRequests({ scope })
 
     const call = queryMock.mock.calls[0]?.[0] as { query: string }
-    // flags / response_flags / has_security_flags / truncated are
-    // surfaced as empty / 0 so the dashboard's badges stay quiet.
-    expect(call.query).toMatch(/'' +AS flags/)
-    expect(call.query).toMatch(/'{}' +AS response_flags/)
-    expect(call.query).toMatch(/0 +AS has_security_flags/)
-    expect(call.query).toMatch(/0 +AS truncated/)
+    // flags / response_flags / has_security_flags / truncated are real
+    // columns since migration 006, so the dashboard's badges work under the
+    // events read path (matching the 007 events_as_requests view). The old
+    // placeholder projections must be gone.
+    expect(call.query).toMatch(/\bflags\b/)
+    expect(call.query).toMatch(/\bresponse_flags\b/)
+    expect(call.query).toMatch(/\bhas_security_flags\b/)
+    expect(call.query).toMatch(/\btruncated\b/)
+    expect(call.query).not.toMatch(/'' +AS flags/)
+    expect(call.query).not.toMatch(/0 +AS has_security_flags/)
+  })
+
+  it('dedups duplicate rows per event_id with LIMIT 1 BY id', async () => {
+    queryMock.mockResolvedValueOnce(jsonRes([]))
+    const scope = await eventsScope('org-1')
+    await selectGenerationsAsRequests({ scope, orderBy: 'created_at DESC', limit: 50 })
+
+    const call = queryMock.mock.calls[0]?.[0] as { query: string }
+    // LIMIT 1 BY id must sit AFTER ORDER BY and BEFORE the pagination LIMIT.
+    expect(call.query).toContain('LIMIT 1 BY id')
+    expect(call.query).toMatch(/ORDER BY created_at DESC\s+LIMIT 1 BY id\s+LIMIT 50/)
   })
 
   it('passes caller filters / orderBy / limit / offset through', async () => {
@@ -115,5 +130,9 @@ describe('countGenerations', () => {
     expect(total).toBe(42)
     const call = queryMock.mock.calls[0]?.[0] as { query: string }
     expect(call.query).toContain("event_type = 'generation'")
+    // Exact distinct count, not count() — duplicate event_id rows (dual-write
+    // + backfill) would otherwise double the total.
+    expect(call.query).toContain('uniqExact(event_id)')
+    expect(call.query).not.toMatch(/\bcount\(\)/)
   })
 })

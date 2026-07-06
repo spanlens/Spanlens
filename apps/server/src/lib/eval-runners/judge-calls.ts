@@ -188,14 +188,19 @@ async function judgeComplete(
     if (!res || !res.ok) return null
     const json = await res.json() as {
       candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>
-      usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number }
+      usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; thoughtsTokenCount?: number }
       modelVersion?: string
     }
     const text = json.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
-    const tokens = (json.usageMetadata?.promptTokenCount ?? 0) + (json.usageMetadata?.candidatesTokenCount ?? 0)
+    // Fold Gemini reasoning tokens (thoughtsTokenCount) into completion tokens —
+    // Google bills them at the output rate and candidatesTokenCount excludes
+    // them (see parsers/gemini.ts).
+    const completionTokens =
+      (json.usageMetadata?.candidatesTokenCount ?? 0) + (json.usageMetadata?.thoughtsTokenCount ?? 0)
+    const tokens = (json.usageMetadata?.promptTokenCount ?? 0) + completionTokens
     const cost = calculateCost('gemini', json.modelVersion ?? model, {
       promptTokens: json.usageMetadata?.promptTokenCount ?? 0,
-      completionTokens: json.usageMetadata?.candidatesTokenCount ?? 0,
+      completionTokens,
     })?.totalCost ?? 0
     return { text, cost, tokens }
   }
