@@ -211,12 +211,16 @@ async function runPrompt(
     }
     const json = await res.json() as {
       candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>
-      usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number }
+      usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; thoughtsTokenCount?: number }
       modelVersion?: string
     }
     const output = json.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
     const promptTokens = json.usageMetadata?.promptTokenCount ?? 0
-    const completionTokens = json.usageMetadata?.candidatesTokenCount ?? 0
+    // Fold Gemini reasoning tokens (thoughtsTokenCount) into completion tokens —
+    // Google bills them at the output rate and candidatesTokenCount excludes
+    // them (see parsers/gemini.ts).
+    const completionTokens =
+      (json.usageMetadata?.candidatesTokenCount ?? 0) + (json.usageMetadata?.thoughtsTokenCount ?? 0)
     const cost = calculateCost('gemini', json.modelVersion ?? model, { promptTokens, completionTokens })?.totalCost ?? 0
     return { output, cost, latencyMs, tokens: promptTokens + completionTokens }
   } catch (err) {
@@ -408,18 +412,22 @@ async function callJudge(
   if (!geminiRes.ok) return null
   const geminiJson = await geminiRes.json() as {
     candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>
-    usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number }
+    usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; thoughtsTokenCount?: number }
     modelVersion?: string
   }
   const geminiText = geminiJson.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
   const geminiParsed = parseJudgeReply(geminiText, config.scale_min, config.scale_max)
   if (!geminiParsed) return null
+  // Fold Gemini reasoning tokens (thoughtsTokenCount) into completion tokens —
+  // Google bills them at the output rate and candidatesTokenCount excludes
+  // them (see parsers/gemini.ts).
+  const geminiCompletionTokens =
+    (geminiJson.usageMetadata?.candidatesTokenCount ?? 0) + (geminiJson.usageMetadata?.thoughtsTokenCount ?? 0)
   const geminiTokens =
-    (geminiJson.usageMetadata?.promptTokenCount ?? 0) +
-    (geminiJson.usageMetadata?.candidatesTokenCount ?? 0)
+    (geminiJson.usageMetadata?.promptTokenCount ?? 0) + geminiCompletionTokens
   const geminiCost = calculateCost('gemini', geminiJson.modelVersion ?? config.judge_model, {
     promptTokens: geminiJson.usageMetadata?.promptTokenCount ?? 0,
-    completionTokens: geminiJson.usageMetadata?.candidatesTokenCount ?? 0,
+    completionTokens: geminiCompletionTokens,
   })?.totalCost ?? 0
   const geminiRange = config.scale_max - config.scale_min || 1
   return {

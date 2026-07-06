@@ -519,7 +519,12 @@ requestsRouter.post('/:id/replay/run', requireRole('admin', 'editor'), async (c)
   } else if (provider === 'gemini') {
     const u = resBody.usageMetadata as Record<string, number> | undefined
     promptTokens    = u?.promptTokenCount     ?? 0
-    completionTokens = u?.candidatesTokenCount ?? 0
+    // Gemini 2.5+/3 thinking models report reasoning tokens in
+    // thoughtsTokenCount, which Google bills at the OUTPUT rate and which
+    // candidatesTokenCount excludes — fold them into completion tokens so cost
+    // isn't under-reported (see parsers/gemini.ts). totalTokenCount already
+    // includes thoughts, so prompt + completion stays consistent with total.
+    completionTokens = (u?.candidatesTokenCount ?? 0) + (u?.thoughtsTokenCount ?? 0)
     totalTokens     = u?.totalTokenCount      ?? promptTokens + completionTokens
   }
 
