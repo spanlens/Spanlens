@@ -136,7 +136,7 @@ export function renderWaitlistConfirmationEmail(): { subject: string; html: stri
   return { subject, html }
 }
 
-function escapeHtml(s: string): string {
+export function escapeHtml(s: string): string {
   return s
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
@@ -193,6 +193,63 @@ export function renderStaleKeyDigestEmail(params: {
       <p style="margin: 18px 0 0; color: #aaa; font-size: 11.5px;">
         Notification-only — Spanlens never auto-revokes keys.
         To stop these reminders: Settings → Provider keys → Stale key reminders.
+      </p>
+    </div>
+  `.trim()
+
+  return { subject, html }
+}
+
+/**
+ * "Data went silent" retention alert. Sent once per silence episode by
+ * lib/data-silence.ts when an org with steady prior traffic stops sending
+ * requests entirely. Copy is intentionally diagnostic: the most common
+ * cause is a broken integration the customer has not noticed yet.
+ */
+export function renderDataSilenceEmail(params: {
+  orgName: string
+  /** ISO-8601 UTC timestamp of the last request we received, or null. */
+  lastRequestAt: string | null
+  priorWeekRequests: number
+  silenceWindowHours: number
+  dashboardUrl: string
+  quickStartUrl: string
+}): { subject: string; html: string } {
+  const { orgName, lastRequestAt, priorWeekRequests, silenceWindowHours, dashboardUrl, quickStartUrl } = params
+  const subject = `Spanlens has not received data from ${orgName} in ${silenceWindowHours} hours`
+
+  const lastSeenLabel = lastRequestAt
+    ? new Date(lastRequestAt).toLocaleString('en-US', {
+        year: 'numeric', month: 'short', day: 'numeric',
+        hour: '2-digit', minute: '2-digit', timeZone: 'UTC', timeZoneName: 'short',
+      })
+    : 'unknown'
+
+  const html = `
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 580px; margin: 0 auto; padding: 24px; color: #111;">
+      <div style="background: #fff7ed; border: 1px solid #fed7aa; border-radius: 8px; padding: 14px 16px; margin-bottom: 18px;">
+        <div style="font-weight: 600; font-size: 14px; color: #9a3412; margin-bottom: 4px;">No data received in the last ${silenceWindowHours} hours</div>
+        <div style="font-size: 13px; color: #7c2d12;">Spanlens stopped receiving requests from <strong>${escapeHtml(orgName)}</strong>.</div>
+      </div>
+      <p style="margin: 0 0 14px; color: #333; font-size: 13.5px; line-height: 1.55;">
+        Your workspace logged <strong>${priorWeekRequests.toLocaleString('en-US')} requests</strong> over the previous 7 days,
+        but nothing has arrived in the last ${silenceWindowHours} hours.
+        The last request we received was at <strong>${escapeHtml(lastSeenLabel)}</strong>.
+      </p>
+      <p style="margin: 0 0 8px; color: #333; font-size: 13.5px;">If this drop is unexpected, the usual causes are:</p>
+      <ul style="margin: 0 0 16px; padding-left: 20px; color: #444; font-size: 13.5px; line-height: 1.7;">
+        <li>Your Spanlens API key was rotated or removed, so requests are being rejected.</li>
+        <li>A recent deploy dropped the baseURL override or the environment variable that points traffic at Spanlens.</li>
+        <li>Your provider key (OpenAI, Anthropic, or Gemini) was revoked, so calls fail before they reach us.</li>
+      </ul>
+      <p style="margin: 22px 0;">
+        <a href="${dashboardUrl}" style="display: inline-block; padding: 10px 18px; background: #111; color: #fff; text-decoration: none; border-radius: 6px; font-weight: 500; font-size: 13px;">Open the requests dashboard</a>
+      </p>
+      <p style="margin: 0 0 14px; color: #555; font-size: 13px;">
+        Need to re-check your setup? The <a href="${quickStartUrl}" style="color: #111;">quick-start guide</a> walks through the baseURL change and key configuration in a couple of minutes.
+      </p>
+      <p style="margin: 18px 0 0; color: #aaa; font-size: 11.5px;">
+        You will not receive another email for this incident. If traffic resumes and stops again later, we will let you know.
       </p>
     </div>
   `.trim()

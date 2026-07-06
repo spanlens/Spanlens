@@ -25,6 +25,7 @@
     { "path": "/cron/self-monitor",               "schedule": "31 * * * *" },
     { "path": "/cron/detect-orphan-spans",        "schedule": "17 * * * *" },
     { "path": "/cron/keep-warm",                  "schedule": "*/5 * * * *" },
-    { "path": "/cron/prune-judge-cache",          "schedule": "0 3 * * *" }
+    { "path": "/cron/prune-judge-cache",          "schedule": "0 3 * * *" },
+    { "path": "/cron/detect-data-silence",        "schedule": "30 */6 * * *" }
   ]
 }

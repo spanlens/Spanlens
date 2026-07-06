@@ -1,12 +1,12 @@
 'use client'
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
-import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useTraces } from '@/lib/queries/use-traces'
 import { LIVE_REFETCH_MS_SECONDARY } from '@/lib/queries/live-polling'
 import type { TraceRow, TraceStatus } from '@/lib/queries/types'
 import { Topbar } from '@/components/layout/topbar'
 import { ExportDropdown } from '@/components/ui/export-dropdown'
+import { EmptyTracesHint } from './empty-traces-hint'
 import { cn, formatDateTime } from '@/lib/utils'
 
 // Hydration-safe "is this the client?" gate — same pattern as the dashboard
@@ -464,23 +464,7 @@ export function TracesClient() {
                 </button>
               </>
             ) : (
-              <>
-                <p className="text-[13px] text-text-muted">No traces yet — wire up agent tracing to start collecting them.</p>
-                <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1">
-                  <Link
-                    href="/projects"
-                    className="font-mono text-[11.5px] text-accent hover:opacity-80 transition-opacity"
-                  >
-                    Add provider key →
-                  </Link>
-                  <Link
-                    href="/docs/quick-start#tracing"
-                    className="font-mono text-[11.5px] text-text-muted hover:text-text transition-colors"
-                  >
-                    Tracing quick start →
-                  </Link>
-                </div>
-              </>
+              <EmptyTracesHint />
             )}
           </div>
         ) : (

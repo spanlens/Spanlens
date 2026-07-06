@@ -158,4 +158,97 @@ describe('quota warning email templates', () => {
     expect(body).toContain('50,000')
     expect(body).not.toMatch(/will receive 429/i)
   })
+
+  it('100 body carries an explicit upgrade CTA with the billing URL', () => {
+    for (const overageActive of [false, true]) {
+      const body = __testing.buildQuotaBody({
+        ...baseNotification,
+        threshold: 100,
+        overageActive,
+        used: 10_042,
+      })
+      expect(body).toContain('Upgrade your plan')
+      expect(body).toContain('https://www.spanlens.io/billing')
+    }
+  })
+
+  it('100 body (overage disabled) truthfully states requests are rejected and not logged', () => {
+    const body = __testing.buildQuotaBody({
+      ...baseNotification,
+      threshold: 100,
+      overageActive: false,
+      used: 10_042,
+    })
+    expect(body.toLowerCase()).toContain('rejected with 429')
+    expect(body.toLowerCase()).toContain('not logged')
+  })
+
+  it('80 body includes the softer "raise your limit anytime" line with the billing link', () => {
+    for (const overageActive of [false, true]) {
+      const body = __testing.buildQuotaBody({
+        ...baseNotification,
+        threshold: 80,
+        overageActive,
+      })
+      expect(body).toContain('You can raise your limit anytime')
+      expect(body).toContain('https://www.spanlens.io/billing')
+    }
+  })
+
+  it('email copy contains no em dashes', () => {
+    for (const threshold of [80, 100] as const) {
+      for (const overageActive of [false, true]) {
+        const n = { ...baseNotification, threshold, overageActive }
+        expect(__testing.buildQuotaBody(n)).not.toContain('—')
+        expect(__testing.buildQuotaHtml(n)).not.toContain('—')
+      }
+    }
+  })
+})
+
+describe('quota warning HTML template', () => {
+  const baseNotification = {
+    organizationName: 'Acme <Inc>',
+    used: 10_042,
+    limit: 10_000,
+    plan: 'starter',
+    billingUrl: 'https://www.spanlens.io/billing',
+    overageActive: false,
+    hardCap: 50_000,
+  }
+
+  it('100 html renders a prominent upgrade button linking to /billing', () => {
+    const html = __testing.buildQuotaHtml({ ...baseNotification, threshold: 100 })
+    expect(html).toContain('href="https://www.spanlens.io/billing"')
+    expect(html).toContain('Upgrade your plan')
+  })
+
+  it('100 html (overage disabled) states rejection behavior', () => {
+    const html = __testing.buildQuotaHtml({ ...baseNotification, threshold: 100 })
+    expect(html).toContain('rejected with 429')
+    expect(html).toContain('not logged')
+  })
+
+  it('100 html (overage active) states overage billing and the hard cap', () => {
+    const html = __testing.buildQuotaHtml({
+      ...baseNotification,
+      threshold: 100,
+      overageActive: true,
+    })
+    expect(html.toLowerCase()).toContain('overage')
+    expect(html).toContain('50,000')
+    expect(html).toContain('href="https://www.spanlens.io/billing"')
+  })
+
+  it('80 html keeps the same billing link with softer copy', () => {
+    const html = __testing.buildQuotaHtml({ ...baseNotification, threshold: 80 })
+    expect(html).toContain('href="https://www.spanlens.io/billing"')
+    expect(html).toContain('raise your limit anytime')
+  })
+
+  it('escapes the organization name', () => {
+    const html = __testing.buildQuotaHtml({ ...baseNotification, threshold: 100 })
+    expect(html).not.toContain('Acme <Inc>')
+    expect(html).toContain('Acme &lt;Inc&gt;')
+  })
 })

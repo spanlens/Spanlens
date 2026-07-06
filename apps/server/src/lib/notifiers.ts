@@ -5,6 +5,8 @@
  * result into `alert_deliveries`.
  */
 
+import { escapeHtml } from './resend.js'
+
 interface DeliveryResult {
   ok: boolean
   error?: string
@@ -62,7 +64,7 @@ function buildPlainBody(n: AlertNotification): string {
     .join('\n')
 }
 
-// ── Email via Resend ───────────────────────────────────────────
+// ── Email via Resend ───────────────────────────────────
 
 export async function sendEmailAlert(
   toAddress: string,
@@ -197,8 +199,8 @@ export interface QuotaWarningNotification {
   billingUrl: string
   /**
    * Pattern C: at 100%, is overage billing authorized on this org?
-   * - true  → requests keep flowing, they'll be billed for overage
-   * - false → requests are being rejected with 429 (free or user-disabled)
+   * - true  — requests keep flowing, they'll be billed for overage
+   * - false — requests are being rejected with 429 (free or user-disabled)
    */
   overageActive: boolean
   /** Hard cap = limit × overage_cap_multiplier. */
@@ -220,34 +222,39 @@ function buildQuotaBody(n: QuotaWarningNotification): string {
   if (n.threshold === 100) {
     if (n.overageActive) {
       return [
-        `${n.organizationName} has passed its monthly request quota — overage billing is now active.`,
+        `${n.organizationName} has passed its monthly request quota and overage billing is now active.`,
         ``,
         `Usage:     ${n.used.toLocaleString()} / ${n.limit.toLocaleString()} requests (${pct}%)`,
         `Plan:      ${n.plan}`,
         `Hard cap:  ${n.hardCap.toLocaleString()} requests (requests above this return 429)`,
         ``,
-        `Additional requests beyond your included quota will be billed on your next invoice`,
-        `at the overage rate for your plan. You can disable overage or adjust the cap in`,
-        `${n.billingUrl}.`,
+        `What happens now: your requests keep flowing. Additional requests beyond your`,
+        `included quota will be billed on your next invoice at the overage rate for your`,
+        `plan. Once usage reaches the hard cap, further requests are rejected with 429.`,
+        ``,
+        `Upgrade your plan to raise your included quota, or adjust overage settings:`,
+        `${n.billingUrl}`,
       ].join('\n')
     }
     return [
-      `Heads up — ${n.organizationName} has hit its monthly request quota.`,
+      `${n.organizationName} has reached its monthly request quota.`,
       ``,
       `Usage:  ${n.used.toLocaleString()} / ${n.limit.toLocaleString()} requests (${pct}%)`,
       `Plan:   ${n.plan}`,
       ``,
-      `Additional requests through the Spanlens proxy will receive 429 (Too Many Requests)`,
-      `until your billing period renews, or until you upgrade / enable overage billing.`,
+      `What happens now: new requests through the Spanlens proxy are rejected with 429`,
+      `(Too Many Requests) before they reach your provider, and they are not logged.`,
+      `This continues until your quota resets next month, or until you upgrade your`,
+      `plan or enable overage billing.`,
       ``,
-      `Settings: ${n.billingUrl}`,
+      `Upgrade your plan: ${n.billingUrl}`,
     ].join('\n')
   }
 
   // 80% — include a note about whether overage will kick in at 100
   const tail = n.overageActive
-    ? `Overage billing is enabled — once you hit 100%, extra requests will be billed on\nyour next invoice instead of being rejected. You can adjust this in ${n.billingUrl}.`
-    : `Overage billing is disabled — requests past 100% will be rejected with 429.\nUpgrade or enable overage: ${n.billingUrl}`
+    ? `Overage billing is enabled, so once you hit 100% extra requests will be billed on\nyour next invoice instead of being rejected. You can adjust this in ${n.billingUrl}.`
+    : `Overage billing is disabled, so requests past 100% will be rejected with 429.`
 
   return [
     `${n.organizationName} has used 80% of this month's request quota.`,
@@ -256,7 +263,88 @@ function buildQuotaBody(n: QuotaWarningNotification): string {
     `Plan:   ${n.plan}`,
     ``,
     tail,
+    ``,
+    `You can raise your limit anytime: ${n.billingUrl}`,
   ].join('\n')
+}
+
+/**
+ * HTML version of the quota warning, styled like the other resend.ts emails.
+ * The 100% email carries a prominent "Upgrade your plan" button pointing at
+ * the billing page; the 80% email uses the same link with softer copy.
+ */
+function buildQuotaHtml(n: QuotaWarningNotification): string {
+  const pct = Math.floor((n.used / n.limit) * 100)
+  const orgName = escapeHtml(n.organizationName)
+  const usage = `${n.used.toLocaleString()} / ${n.limit.toLocaleString()} requests (${pct}%)`
+
+  let headerBg: string
+  let headerBorder: string
+  let headerColor: string
+  let headerTitle: string
+  let body: string
+  let ctaLabel: string
+
+  if (n.threshold === 100) {
+    headerBg = '#fef2f2'
+    headerBorder = '#fecaca'
+    headerColor = '#991b1b'
+    if (n.overageActive) {
+      headerTitle = 'Overage billing is now active'
+      body = `
+        <strong>${orgName}</strong> has passed its monthly request quota.
+        Your requests keep flowing, and usage beyond the included quota will be billed
+        on your next invoice at the overage rate for your plan. Once usage reaches the
+        hard cap of ${n.hardCap.toLocaleString()} requests, further requests are rejected with 429.
+      `
+      ctaLabel = 'Upgrade your plan'
+    } else {
+      headerTitle = 'Monthly request quota reached'
+      body = `
+        <strong>${orgName}</strong> has reached its monthly request quota.
+        New requests through the Spanlens proxy are rejected with 429 before they reach
+        your provider, and they are not logged. This continues until your quota resets
+        next month, or until you upgrade your plan or enable overage billing.
+      `
+      ctaLabel = 'Upgrade your plan'
+    }
+  } else {
+    headerBg = '#fff7ed'
+    headerBorder = '#fed7aa'
+    headerColor = '#9a3412'
+    headerTitle = "80% of this month's quota used"
+    body = n.overageActive
+      ? `
+        <strong>${orgName}</strong> has used 80% of this month's request quota.
+        Overage billing is enabled, so once you hit 100% extra requests will be billed
+        on your next invoice instead of being rejected. You can raise your limit anytime.
+      `
+      : `
+        <strong>${orgName}</strong> has used 80% of this month's request quota.
+        Overage billing is disabled, so requests past 100% will be rejected with 429.
+        You can raise your limit anytime.
+      `
+    ctaLabel = 'Review plans and usage'
+  }
+
+  return `
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 580px; margin: 0 auto; padding: 24px; color: #111;">
+      <div style="background: ${headerBg}; border: 1px solid ${headerBorder}; border-radius: 8px; padding: 14px 16px; margin-bottom: 18px;">
+        <div style="font-weight: 600; font-size: 14px; color: ${headerColor};">${headerTitle}</div>
+      </div>
+      <p style="margin: 0 0 14px; color: #333; font-size: 13.5px; line-height: 1.55;">${body.trim()}</p>
+      <table style="width: 100%; font-size: 13px; margin-bottom: 16px;">
+        <tr><td style="padding: 4px 0; color: #888; width: 90px;">Usage</td><td style="font-family: ui-monospace, monospace;">${escapeHtml(usage)}</td></tr>
+        <tr><td style="padding: 4px 0; color: #888;">Plan</td><td style="font-family: ui-monospace, monospace;">${escapeHtml(n.plan)}</td></tr>
+      </table>
+      <p style="margin: 22px 0;">
+        <a href="${n.billingUrl}" style="display: inline-block; padding: 11px 20px; background: #111; color: #fff; text-decoration: none; border-radius: 6px; font-weight: 500; font-size: 13px;">${ctaLabel}</a>
+      </p>
+      <p style="margin: 18px 0 0; color: #aaa; font-size: 11.5px;">
+        Questions about quotas or billing? Reply to this email and it goes straight to the team.
+      </p>
+    </div>
+  `.trim()
 }
 
 export async function sendQuotaWarningEmail(
@@ -280,6 +368,7 @@ export async function sendQuotaWarningEmail(
         to: [toAddress],
         subject: buildQuotaSubject(notification),
         text: buildQuotaBody(notification),
+        html: buildQuotaHtml(notification),
       }),
       signal: AbortSignal.timeout(5000),
     })
@@ -294,7 +383,7 @@ export async function sendQuotaWarningEmail(
 }
 
 // Exported for testing (no network side effects)
-export const __testing = { buildQuotaSubject, buildQuotaBody }
+export const __testing = { buildQuotaSubject, buildQuotaBody, buildQuotaHtml }
 
 export async function deliverToChannel(
   kind: 'email' | 'slack' | 'discord',

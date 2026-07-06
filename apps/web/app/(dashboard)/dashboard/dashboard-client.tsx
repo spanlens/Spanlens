@@ -15,6 +15,7 @@ import { useAuditLogs } from '@/lib/queries/use-audit-logs'
 import { usePrompts } from '@/lib/queries/use-prompts'
 import { useSecuritySummary } from '@/lib/queries/use-security'
 import { useDismissals, useDismissCard } from '@/lib/queries/use-dismissals'
+import { buildInvestigateHref, investigateRangeForObservationHours } from '@/lib/anomaly-investigate'
 import { cn, formatTime } from '@/lib/utils'
 import { linkPrefetchFor } from '@/lib/heavy-pages'
 import dynamic from 'next/dynamic'
@@ -506,7 +507,14 @@ export function DashboardClient() {
         meta: `${topAnomaly.deviations.toFixed(1)}σ · ${topAnomaly.provider}`,
         hint: `Current ${topAnomaly.currentValue.toFixed(0)} vs baseline ${topAnomaly.baselineMean.toFixed(0)}`,
         cta: 'Investigate requests →',
-        href: `/requests?${qs}`,
+        // Same prefilled /requests filters as the "Investigate" link on
+        // /anomalies — the dashboard anomalies query observes `hours`, so
+        // the drill-down time range is derived from the same window.
+        href: buildInvestigateHref(
+          topAnomaly.provider,
+          topAnomaly.model,
+          investigateRangeForObservationHours(hours),
+        ),
         secondary: { label: 'View anomaly →', href: `/anomalies?${qs}` },
       })
     }
@@ -570,7 +578,7 @@ export function DashboardClient() {
     }
 
     return cards
-  }, [anomalies.data, firingAlerts, recommendations.data, securitySummary.data, staleKeys.revoke, staleKeys.sampleName, timeRange, customRange, mountNow])
+  }, [anomalies.data, firingAlerts, recommendations.data, securitySummary.data, staleKeys.revoke, staleKeys.sampleName, timeRange, customRange, mountNow, hours])
 
   // Border classes for KPI cells — responsive 2-col (mobile) / 4-col (lg)
   const kpiCellClasses: [string, string, string, string] = [

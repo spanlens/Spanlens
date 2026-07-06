@@ -71,6 +71,10 @@ export async function runQuotaWarningsJob(): Promise<QuotaWarningRunResult> {
 
   const result: QuotaWarningRunResult = { checked: 0, sent80: 0, sent100: 0, errors: 0 }
 
+  // Same env-driven base the other lifecycle emails use (stale-key-digest,
+  // data-silence) so the upgrade CTA lands on the right host in every env.
+  const billingUrl = `${process.env['WEB_URL'] ?? 'https://www.spanlens.io'}/billing`
+
   for (const org of orgs) {
     result.checked++
     const limit = MONTHLY_REQUEST_LIMITS[org.plan]
@@ -125,7 +129,7 @@ export async function runQuotaWarningsJob(): Promise<QuotaWarningRunResult> {
       used,
       limit,
       plan: org.plan,
-      billingUrl: 'https://www.spanlens.io/billing',
+      billingUrl,
       overageActive,
       hardCap: limit * org.overage_cap_multiplier,
     })
