@@ -178,7 +178,9 @@ Every request logged with model, provider, latency, tokens, cost, and full promp
 | **Anomaly detection** | 3σ deviations in latency, cost, or error rate vs. your 7-day baseline, with root-cause hints (token delta, HTTP status breakdown) |
 | **Alerts** | Threshold rules on budget, error rate, and p95 latency. Delivered via Email (Resend), Slack, or Discord webhooks. Evaluated on a 15-minute cron with at-least-once delivery |
 | **PII + prompt-injection scan** | Regex-based detection on request **and response** bodies; optional per-project blocking (422) for injections; instant alert emails to workspace owner |
-| **Savings (model recommendations)** | The `/savings` dashboard surfaces calls that match a cheaper model's profile ("Your gpt-4o calls look like classification. Try gpt-4o-mini") with estimated monthly savings |
+| **Savings (model recommendations)** | The `/savings` dashboard surfaces calls that match a cheaper model's profile ("Your gpt-4o calls look like classification. Try gpt-4o-mini") with estimated monthly savings. A month-to-date **prompt-caching savings** card shows the USD you did not pay thanks to discounted cache-read tokens |
+| **Response caching** | Opt in per request with `x-spanlens-cache: true` (or a TTL in seconds, capped at 24h; SDK: `withCache()`). An exact-match hit on the same request body returns the stored response without calling the provider, logs the row at zero cost, and is scoped per API key so nothing leaks across keys. Non-streaming, 200-only |
+| **Email digests & health alerts** | A **weekly workspace digest** (requests, cost with week-over-week change, top models, anomalies) lands every Monday, and a **data-silence alert** emails admins when a workspace that was sending traffic suddenly goes quiet for 24 hours, so a broken key or dropped env var is caught before it becomes silent churn |
 | **Prompt versioning + A/B** | Register prompt templates, run traffic-split experiments, compare versions side by side on latency / cost / error rate — reported with **Welch's t-test** on latency and cost plus a z-test on error rate, so you get statistical significance rather than just averages |
 | **Prompts Playground** | Execute any prompt version with variable injection directly in the dashboard to see real cost and response before shipping |
 | **Datasets** | Reusable (input, expected_output) test sets you can rerun against any prompt version or model. Upload CSV / JSONL files directly from the dashboard or POST programmatically. Powers offline evals and regression checks |
@@ -388,6 +390,9 @@ The hosted instance ships with the following cron tasks (see [`apps/server/verce
 | `/cron/self-monitor` | hourly :31 | Spanlens dogfoods itself — heartbeat eval into the internal workspace |
 | `/cron/detect-orphan-spans` | hourly :17 | Flag spans whose parent trace never arrived |
 | `/cron/prune-judge-cache` | daily 03:00 | TTL-evict stale `(evaluator, response)` judge cache entries |
+| `/cron/purge-proxy-cache` | daily 03:15 | Reclaim expired `proxy_response_cache` rows for keys that went quiet |
+| `/cron/weekly-digest` | weekly Mon 09:00 | Email each workspace a weekly summary (requests, cost trend, top models, anomalies) |
+| `/cron/detect-data-silence` | every 6h | Alert admins when a previously-active workspace stops sending data for 24h |
 | `/cron/keep-warm` | every 5m | Lightweight ping that keeps the Vercel function warm (skip on always-on platforms like Fly.io / Railway) |
 
 ---

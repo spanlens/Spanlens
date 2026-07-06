@@ -39,6 +39,28 @@ export type ChangelogTag =
 
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    date: '2026-07-07',
+    slug: 'response-caching-weekly-digests-data-silence-alerts',
+    title: 'Response caching, weekly digests, and data-silence alerts',
+    tags: ['feature'],
+    body: [
+      'You can now cache proxy responses. Add the `x-spanlens-cache` header (or call `withCache()` in the SDK) and an exact-match repeat of the same request body returns the stored response without calling the provider, logged at zero cost. Caching is opt-in per request, isolated to the API key that created the entry, and applies to non-streaming successful responses with a time-to-live you choose up to 24 hours. See [the proxy guide](/docs/proxy).',
+      'Every workspace now gets a weekly digest email each Monday with request volume, cost trend, top models, and any anomalies from the past week, so you see how usage is moving without opening the dashboard.',
+      'Data-silence alerts watch for workspaces that were sending traffic and then go quiet for 24 hours. When that happens the admins get an email, which catches a broken key or a missing environment variable early instead of after a day of lost logs.',
+    ].join('\n\n'),
+  },
+  {
+    date: '2026-07-07',
+    slug: 'faster-onboarding-clearer-sdk-errors-accessibility',
+    title: 'Faster onboarding, clearer SDK errors, and accessibility',
+    tags: ['improvement'],
+    body: [
+      'Onboarding is quicker to get through. The quick-start now leads with the CLI, the workspace banner has a button to verify your key on the spot, and the requests and traces pages explain what to do next when they are still empty instead of showing a blank screen.',
+      'The SDK now tells you what went wrong. A 401, 403, or 429 comes back with a message you can act on, such as a rejected key or a hit rate limit, rather than a bare status code. The new `withCache()` helper turns on response caching for a request.',
+      'Accessibility got a pass across the dashboard. Status badges carry text and icons alongside color and meet WCAG AA contrast, the sidebar has proper aria labels, and the prompt-caching savings card on /savings, which was returning a server error in production, is fixed.',
+    ].join('\n\n'),
+  },
+  {
     date: '2026-07-06',
     slug: 'public-pages-and-checkout-fixes',
     title: 'Public pages, share links, and checkout retry fixes',

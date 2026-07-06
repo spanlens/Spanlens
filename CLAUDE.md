@@ -121,6 +121,9 @@ parsers/openai.ts — OpenAI 스트림 파서 (마지막 chunk에 usage)
 parsers/anthropic.ts — Anthropic 파서 (message_delta에 usage, OpenAI와 다름!)
 parsers/gemini.ts — Gemini 파서
 proxy/stream-deadline.ts — `readWithDeadline()` / `makeStreamDeadline()` / `STREAM_DEADLINE_MS=290000`. 3개 proxy의 pump 루프에서 사용. gotcha #11 참고
+lib/proxy-cache.ts — opt-in 응답 캐싱(`x-spanlens-cache`). `resolveProxyCache` / `storeCachedProxyResponse` / `purgeExpiredProxyCache`. key=sha256(api_key_id+provider+path+raw body), row도 api_key_id scope라 키 간 유출 불가. hit은 upstream 스킵 + `cost_usd=0` + `cache_hit=1` 로깅. fail-open. CH `cache_hit` 컬럼=migration 010, 새 테이블 `proxy_response_cache`(RLS on).
+lib/cache-savings.ts — `/savings` 프롬프트-캐싱 절감 카드. 월누적 `cache_read_tokens × (input−cacheRead 단가)`, `requestsScope` 경유. `GET /api/v1/recommendations/cache-savings`(dual-auth). 집계 alias 컬럼명 겹침 금지(gotcha #37).
+lib/weekly-digest.ts / lib/data-silence.ts — 주간 다이제스트(cron `/cron/weekly-digest` 월 09:00, `weekly_digest_runs` PK로 이중발송 방지) + 데이터 끊김 알림(cron `/cron/detect-data-silence` 6h). 수신자: `weekly_digest_emails` pref / `getAdminEmails`.
 apps/web/lib/utils.ts — `formatDate()` / `formatDateTime()` / `formatTime()`. SSR-rendered Date format은 모두 이 헬퍼 경유 (locale 명시 + hydration-safe). gotcha #22 참고
 apps/web/lib/hydration-safe-now.ts — `useHydrationSafeNow()`. `useState(() => Date.now())` 대체 — useSyncExternalStore + 모듈-level cache. demo/* 페이지나 "X mins ago" 같은 client mount-time 기준 시간 필요한 곳 전용 (live dashboard는 주기적 갱신 필요해 다른 패턴). gotcha #22 참고
 apps/web/app/demo/_client-guard.tsx — `DemoClientGuard`. demo subsystem 전용 SSR skip wrapper — children을 mount 후에만 render. SEO 안 중요한 noindex 영역의 hydration mismatch 최후의 수단. gotcha #22 (F) 참고
@@ -132,6 +135,7 @@ apps/web/app/demo/_client-guard.tsx — `DemoClientGuard`. demo subsystem 전용
 - `x-spanlens-prompt-version` — Prompts A/B 링크 (SDK `withPromptVersion()` 헬퍼 또는 `observeOpenAI({ promptVersion })`로 자동 세팅)
 - `x-spanlens-user`, `x-spanlens-session` — 고객 측 end-user / session 식별자 (SDK `withUser()` / `withSession()`)
 - `x-spanlens-log-body` — `full | meta | none`. 고객이 body 저장 수준 제어. `meta`는 request_body/response_body만 빈 문자열, `none`은 거기에 더해 `user_id`/`session_id`까지 null로 저장. SDK `withLogBody()` 또는 `observeOpenAI({ logBody })`. 서버는 `logger.ts`의 `parseLogBodyMode`로 파싱 — 알 수 없는 값은 보수적으로 `full`로 폴백 (기존 동작 유지). 자동 PII 마스킹은 의도적으로 안 함 — 고객이 끄는 게 가장 안전.
+- `x-spanlens-cache` — `true`(기본 3600s TTL) 또는 정수 초(최대 86400). 동일 request body의 exact-match hit이면 upstream 안 부르고 저장된 응답 반환(`cost_usd=0`, `cache_hit=1`). 비스트리밍·200·256KB 이하만. SDK `withCache()` 또는 `observeOpenAI({ cache })`. 응답 헤더 `x-spanlens-cache: hit|miss|bypass`.
 
 새 X-Spanlens-* 헤더 추가 시: (1) 서버에서 header→DB 매핑 (2) SDK에서 헬퍼 제공 (3) `/docs/proxy`에 문서화 (4) `/docs/sdk`에 SDK 사용법 문서화 — 네 곳 다 빠뜨리지 말 것.
 ## 코드 스타일
@@ -238,6 +242,8 @@ PORT=3001 (server), 3000 (web)
 35. **🔥 hono `StreamingApi.write()`는 절대 reject 안 함 — write try/catch로 클라 disconnect 감지 불가**: hono 내부(`utils/stream.js`)가 `try { await writer.write() } catch {}`로 모든 write 에러를 삼킴. 클라 disconnect 감지는 `honoStream.onAbort(listener)` + `honoStream.aborted` 플래그 사용 — `api/index.ts`가 Node socket 'close'에서 response body reader를 cancel하면 hono `responseReadable`의 cancel 핸들러가 `stream.abort()`를 발화함. `proxy/shared/stream-pump.ts` 패턴: onAbort에서 upstream reader cancel → pending read 즉시 resolve → truncated 로깅. 이 경로 테스트는 mock 금지 — 실제 `Hono` 앱 + `app.request()` + body reader cancel로 검증 (`stream-pump.test.ts`). 사고 이력: 2026-07-06 #388이 write try/catch로 구현 → dead code, 회귀 리뷰서 발견.
 
 36. **middleware.ts 라우트 가드는 PROTECTED_PATHS (protected-list) 방식 — public-list로 되돌리지 말 것**: 사이트는 마케팅/docs/share 등 public 페이지가 대부분이고 매주 늘어남. public allow-list는 새 페이지 추가 시 등록 누락 → 익명 방문자 `/login` 307 (2026-07-06 실사고: #388이 isPublic 경계 버그를 고치자 리스트에 없던 /docs /changelog /share/* /compare 등 public 면 전체가 로그인월에 갇힘). 새 dashboard 라우트 추가 시 `PROTECTED_PATHS` 등록 (누락해도 `(dashboard)/layout.tsx`의 `!userId → redirect('/login')` 이중 방어가 잡음). middleware의 **모든** return 경로(redirect 포함)는 `withRotatedCookies()`로 회전된 세션 쿠키 carry 필수 — 누락 시 refresh-token 재사용 감지로 랜덤 로그아웃.
+
+37. **🔥 ClickHouse 집계 alias가 컬럼명을 shadow하면 WHERE에서 `ILLEGAL_AGGREGATION`(code 184)**: `sum(cache_read_tokens) AS cache_read_tokens`처럼 집계 결과에 원본 컬럼과 같은 이름 alias를 붙이면, WHERE의 `cache_read_tokens > 0`가 그 alias(집계)를 가리켜 CH가 전체 쿼리를 거부(500). alias는 항상 컬럼명과 다르게(`cache_read_tokens_sum`). 2026-07-06 cache-savings 엔드포인트가 프로덕션에서 항상 500이던 원인(PR #404). **단위 테스트가 ClickHouse client를 모킹하면 SQL 문자열이 실제 실행 안 돼서 이런 SQL 버그가 전부 통과함** — 새 CH 쿼리는 반드시 프로덕션/로컬 실 CH에서 한 번 돌려보거나 SQL 문자열 회귀 가드 테스트 추가.
 
 ## CI/CD Gotchas — GitHub Actions + npm + Docker
 1. **setup-node@v4 + registry-url → NPM_CONFIG_USERCONFIG shadow**: setup-node가 `NPM_CONFIG_USERCONFIG` env var를 자체 `.npmrc`로 설정. 패키지 디렉토리에 쓴 `.npmrc`가 무시됨. 해결: workflow에서 `unset NPM_CONFIG_USERCONFIG && npm publish --userconfig "$PWD/.npmrc"` + setup-node에서 `registry-url` 제거.
