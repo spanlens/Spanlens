@@ -71,7 +71,17 @@ export function runLineBufferedStreamPump(input: StreamPumpInput): Response {
           logError('UPSTREAM_FETCH_FAILED', { provider: input.provider, phase: 'stream' }, outcome.error)
           break pump
         case 'chunk': {
-          await honoStream.write(outcome.value)
+          try {
+            await honoStream.write(outcome.value)
+          } catch {
+            // Client disconnected — the downstream response stream was canceled
+            // (api/index.ts cancels it when the Node socket closes). Stop pumping
+            // and fall through to onComplete so the partial row is still logged
+            // (truncated) instead of the write hanging or the log being skipped.
+            truncated = true
+            await cancelReaderSilently(reader)
+            break pump
+          }
           buffer += decoder.decode(outcome.value, { stream: true })
           const parts = buffer.split('\n')
           buffer = parts.pop() ?? ''
@@ -134,7 +144,14 @@ export function runChunkAccumulatedStreamPump(input: ChunkAccumulatedStreamPumpI
           logError('UPSTREAM_FETCH_FAILED', { provider: input.provider, phase: 'stream' }, outcome.error)
           break pump
         case 'chunk':
-          await honoStream.write(outcome.value)
+          try {
+            await honoStream.write(outcome.value)
+          } catch {
+            // Client disconnected — see runLineBufferedStreamPump for rationale.
+            truncated = true
+            await cancelReaderSilently(reader)
+            break pump
+          }
           chunks.push(decoder.decode(outcome.value, { stream: true }))
           break
       }

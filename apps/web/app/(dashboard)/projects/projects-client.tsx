@@ -209,6 +209,7 @@ export function ProjectsClient() {
   // Create project dialog
   const [projDialogOpen, setProjDialogOpen] = useState(false)
   const [projName, setProjName] = useState('')
+  const [projError, setProjError] = useState<string | null>(null)
 
   // Add provider key dialog (now scoped to a Spanlens key)
   const [addProvDialogOpen, setAddProvDialogOpen] = useState(false)
@@ -268,9 +269,14 @@ export function ProjectsClient() {
   }
 
   async function handleCreateProject() {
-    await createProject.mutateAsync({ name: projName })
-    setProjName('')
-    setProjDialogOpen(false)
+    setProjError(null)
+    try {
+      await createProject.mutateAsync({ name: projName.trim() })
+      setProjName('')
+      setProjDialogOpen(false)
+    } catch (err) {
+      setProjError(err instanceof Error ? err.message : 'Failed to create project')
+    }
   }
 
   function openAddProvDialog(apiKeyId: string) {
@@ -428,6 +434,13 @@ export function ProjectsClient() {
     projectsQuery.isFetching ||
     apiKeysQuery.isFetching ||
     providerKeysQuery.isFetching
+  // List-load failure (distinct from the create-dialog's projError). Without
+  // this, a 500 falls through to the "No projects yet" onboarding CTA even for
+  // a workspace that has projects. Show an error + retry instead.
+  const listError =
+    projectsQuery.isError ||
+    apiKeysQuery.isError ||
+    providerKeysQuery.isError
   const allProjects = useMemo(() => projectsQuery.data ?? [], [projectsQuery.data])
   const allApiKeys = useMemo(() => apiKeysQuery.data ?? [], [apiKeysQuery.data])
   const allProviderKeys = useMemo(() => providerKeysQuery.data ?? [], [providerKeysQuery.data])
@@ -782,6 +795,24 @@ export function ProjectsClient() {
                 </div>
               ))}
             </div>
+          ) : listError ? (
+            <div className="rounded-xl border border-dashed border-border p-10 text-center">
+              <h2 className="text-[14px] font-semibold text-text mb-1.5">Couldn&apos;t load projects</h2>
+              <p className="text-[12.5px] text-text-muted max-w-md mx-auto mb-4">
+                We couldn&apos;t reach the server just now. Your projects and keys are safe.
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  void projectsQuery.refetch()
+                  void apiKeysQuery.refetch()
+                  void providerKeysQuery.refetch()
+                }}
+                className="font-mono text-[11.5px] px-2.5 py-1 rounded border border-border text-text-muted hover:text-text hover:border-border-strong transition-colors inline-block"
+              >
+                Retry
+              </button>
+            </div>
           ) : allProjects.length === 0 ? (
             <div className="rounded-xl border border-dashed border-border p-10 text-center">
               <h2 className="text-[14px] font-semibold text-text mb-1.5">No projects yet</h2>
@@ -1037,7 +1068,13 @@ export function ProjectsClient() {
       </div>
 
       {/* Create project dialog */}
-      <Dialog open={projDialogOpen} onOpenChange={setProjDialogOpen}>
+      <Dialog
+        open={projDialogOpen}
+        onOpenChange={(open) => {
+          setProjDialogOpen(open)
+          if (!open) setProjError(null)
+        }}
+      >
         <DialogContent aria-describedby={undefined}>
           <DialogHeader>
             <DialogTitle>Create project</DialogTitle>
@@ -1048,11 +1085,16 @@ export function ProjectsClient() {
               <input
                 value={projName}
                 onChange={(e) => setProjName(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter' && projName.trim()) void handleCreateProject() }}
+                onKeyDown={(e) => { if (e.key === 'Enter' && projName.trim() && !createProject.isPending) void handleCreateProject() }}
                 placeholder="e.g. Production"
                 className="w-full h-9 px-3 rounded-[6px] border border-border bg-bg text-[13px] text-text placeholder:text-text-faint focus:outline-none focus:border-border-strong transition-colors"
               />
             </div>
+            {projError && (
+              <div className="rounded-md border border-bad/30 bg-bad/10 px-3 py-2 text-[12px] text-bad">
+                {projError}
+              </div>
+            )}
             <PrimaryBtn
               onClick={() => void handleCreateProject()}
               disabled={!projName.trim() || createProject.isPending}

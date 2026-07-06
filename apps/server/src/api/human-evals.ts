@@ -376,7 +376,18 @@ humanEvalsRouter.get('/human-evals/correlation', async (c) => {
   // Resolve scope to prompt_version_ids
   let versionIds: string[] = []
   if (promptVersionId) {
-    versionIds = [promptVersionId]
+    // IDOR guard: a raw prompt_version_id from the query string MUST be verified
+    // to belong to the caller's org before it scopes any downstream query.
+    // Without this, org A could pass org B's version id and read B's paired
+    // judge/human scores (the human_evals / eval_results reads below filter
+    // only by prompt_version_id / request_id, so ownership must be pinned here).
+    const { data: ownedVersion } = await supabaseAdmin
+      .from('prompt_versions')
+      .select('id')
+      .eq('id', promptVersionId)
+      .eq('organization_id', orgId)
+      .maybeSingle()
+    versionIds = ownedVersion ? [ownedVersion.id] : []
   } else if (promptName) {
     const { data: versions } = await supabaseAdmin
       .from('prompt_versions')

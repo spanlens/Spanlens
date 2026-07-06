@@ -304,7 +304,15 @@ promptsRouter.post('/', requireEdit, async (c) => {
     .select('id, name, version, content, variables, metadata, project_id, created_at, created_by')
     .single()
 
-  if (error || !data) throw new ApiError('INTERNAL_ERROR', 'Failed to create version')
+  if (error || !data) {
+    // UNIQUE(organization_id, name, version) — a concurrent save that computed
+    // the same nextVersion loses the insert race. Surface a clean 409 (the
+    // caller can retry and get the next number) instead of a raw 500.
+    if (error?.code === '23505') {
+      throw new ApiError('CONFLICT', 'This prompt version already exists. Retry to create the next version.')
+    }
+    throw new ApiError('INTERNAL_ERROR', 'Failed to create version')
+  }
   // Invalidate resolve-prompt-version cache for this prompt name so the new
   // latest version is served immediately on the next proxy call.
   await invalidatePromptName(orgId, name)
@@ -405,7 +413,14 @@ promptsRouter.post('/:name/:version/rollback', requireEdit, async (c) => {
     .select('id, name, version, content, variables, metadata, project_id, created_at, created_by')
     .single()
 
-  if (error || !data) throw new ApiError('INTERNAL_ERROR', 'Failed to create rollback version')
+  if (error || !data) {
+    // Same UNIQUE(organization_id, name, version) race as POST / — a
+    // concurrent rollback/save that grabbed the same nextVersion loses.
+    if (error?.code === '23505') {
+      throw new ApiError('CONFLICT', 'This prompt version already exists. Retry to create the next version.')
+    }
+    throw new ApiError('INTERNAL_ERROR', 'Failed to create rollback version')
+  }
   await invalidatePromptName(orgId, name)
 
   void recordAuditEvent(c, {

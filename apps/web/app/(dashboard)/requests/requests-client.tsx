@@ -1087,6 +1087,8 @@ function SortBtn({ field, label, sortField, sortDir, onSort }: {
 function RequestsTable({
   rows,
   isLoading,
+  isError,
+  onRetry,
   selectedId,
   onSelect,
   drawerOpen,
@@ -1097,6 +1099,8 @@ function RequestsTable({
 }: {
   rows: RequestRow[]
   isLoading: boolean
+  isError: boolean
+  onRetry: () => void
   selectedId: string | null
   onSelect: (id: string) => void
   drawerOpen: boolean
@@ -1173,6 +1177,22 @@ function RequestsTable({
               <Skeleton className="h-4 w-8 ml-auto" />
             </div>
           ))
+        : isError
+          ? (
+            // Don't render the "add a provider key" onboarding hint on a load
+            // failure — a customer with millions of rows would see a new-user
+            // empty state. Show the error + a retry instead.
+            <div className="py-12 font-mono text-[12.5px] text-text-faint flex flex-col items-center gap-3 text-center px-4">
+              <span className="text-accent">Couldn&apos;t load requests.</span>
+              <button
+                type="button"
+                onClick={onRetry}
+                className="px-2.5 py-1 border border-border rounded text-text-muted hover:text-text hover:border-border-strong transition-colors"
+              >
+                Retry
+              </button>
+            </div>
+          )
         : rows.length === 0
           ? (
             <div className="py-12 font-mono text-[12.5px] text-text-faint flex flex-col items-center gap-3 text-center px-4">
@@ -1359,7 +1379,7 @@ export function RequestsClient() {
     [page, filters.provider, filters.model, filters.providerKeyId, filters.status, fromIso, sortField, sortDir, promptVersionId, userIdFilter, sessionIdFilter],
   )
 
-  const { data, isLoading, isFetching, refetch } = useRequests(serverFilters)
+  const { data, isLoading, isError, isFetching, refetch } = useRequests(serverFilters)
   const providerKeysQuery = useProviderKeys()
 
   // Filter dropdown: lets the user narrow requests to a specific provider key.
@@ -1636,6 +1656,8 @@ export function RequestsClient() {
             <RequestsTable
               rows={requests}
               isLoading={isLoading}
+              isError={isError}
+              onRetry={() => void refetch()}
               selectedId={selectedId}
               onSelect={handleSelect}
               drawerOpen={drawerOpen}

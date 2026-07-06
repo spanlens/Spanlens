@@ -191,7 +191,7 @@ export function TracesClient() {
     }
   }, [debouncedSearch])
 
-  const { data, isLoading, isFetching, refetch } = useTraces(
+  const { data, isLoading, isError, isFetching, refetch } = useTraces(
     {
       page,
       limit: 50,
@@ -435,6 +435,20 @@ export function TracesClient() {
             {[1, 2, 3, 4, 5].map((i) => (
               <div key={i} className="h-10 bg-bg-elev rounded animate-pulse" />
             ))}
+          </div>
+        ) : isError ? (
+          // Don't fall through to the "wire up agent tracing" onboarding hint
+          // on a load failure — a workspace with existing traces would look
+          // brand-new. Show the error + a retry instead.
+          <div className="flex flex-col items-center gap-3 text-text-muted py-20 px-6 text-center">
+            <p className="text-[13px] text-accent">Couldn&apos;t load traces.</p>
+            <button
+              type="button"
+              onClick={() => void refetch()}
+              className="font-mono text-[11.5px] px-2.5 py-1 border border-border rounded text-text-muted hover:text-text hover:border-border-strong transition-colors"
+            >
+              Retry
+            </button>
           </div>
         ) : traces.length === 0 ? (
           <div className="flex flex-col items-center gap-3 text-text-muted py-20 px-6 text-center">

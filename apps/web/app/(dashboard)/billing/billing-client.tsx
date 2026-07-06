@@ -25,7 +25,7 @@ export function BillingClient() {
   // card is highlighted when the user lands here from the nudge.
   const highlightPlan = params.get('plan')
 
-  const { data: subscription, isLoading } = useSubscription()
+  const { data: subscription, isLoading, isError: subscriptionError } = useSubscription()
   const createCheckout = useCreateCheckout()
   const cancelSubscription = useCancelSubscription()
   const refreshSubscription = useRefreshSubscription()
@@ -34,7 +34,18 @@ export function BillingClient() {
   // effect needed for that branch.
   const [runtimeError, setRuntimeError] = useState<string | null>(null)
   const [paddle, setPaddle] = useState<Paddle | null>(null)
+  // initializePaddle can reject (ad-block, network) with no way to recover in
+  // this session. Without tracking that, `paddle` stays null forever and the
+  // Upgrade button is stuck on "Loading…" with no explanation. This flag flips
+  // the error banner to an actionable message instead.
+  const [paddleLoadFailed, setPaddleLoadFailed] = useState(false)
   const [checkoutCompleted, setCheckoutCompleted] = useState(false)
+  // Sticky "an upgrade is being processed in this session" lock. currentPlan
+  // stays 'free' until the webhook upserts the subscription, so without this
+  // flag the Upgrade button re-enables the moment the overlay closes and the
+  // user can start a SECOND checkout → double billing. Set when a checkout is
+  // initiated or completed; only cleared by a real subscription refresh.
+  const [upgradeInProgress, setUpgradeInProgress] = useState(false)
   const [showCancelConfirm, setShowCancelConfirm] = useState(false)
   const [cancelDone, setCancelDone] = useState(false)
 
@@ -45,7 +56,9 @@ export function BillingClient() {
 
   const errorMessage = runtimeError
     ?? (clientToken
-      ? null
+      ? paddleLoadFailed
+        ? 'Payment system failed to load. Please disable ad-blockers and retry.'
+        : null
       : 'Paddle client token not configured. Set NEXT_PUBLIC_PADDLE_CLIENT_TOKEN.')
 
   useEffect(() => {
@@ -58,12 +71,17 @@ export function BillingClient() {
       eventCallback: (event) => {
         if (event.name === 'checkout.completed') {
           setCheckoutCompleted(true)
+          setUpgradeInProgress(true)
           setTimeout(() => refreshSubscription(), 1500)
         }
       },
-    }).then((instance) => {
-      if (!cancelled && instance) setPaddle(instance)
     })
+      .then((instance) => {
+        if (!cancelled && instance) setPaddle(instance)
+      })
+      .catch(() => {
+        if (!cancelled) setPaddleLoadFailed(true)
+      })
 
     return () => {
       cancelled = true
@@ -91,6 +109,11 @@ export function BillingClient() {
       try {
         const res = await createCheckout.mutateAsync({ plan })
         paddle.Checkout.open({ transactionId: res.transactionId })
+        // Lock the upgrade action for the rest of this session. The overlay is
+        // now open; even after the user closes it the plan won't flip to paid
+        // until the webhook lands, so re-enabling the button here would let a
+        // second checkout start against the same upgrade.
+        setUpgradeInProgress(true)
       } catch (err) {
         setRuntimeError(
           err instanceof Error ? err.message : 'Failed to start checkout',
@@ -113,6 +136,12 @@ export function BillingClient() {
   }, [cancelSubscription])
 
   const currentPlan: BillingPlan = subscription?.plan ?? 'free'
+
+  // Sticky upgrade lock releases automatically once a real (paid) subscription
+  // lands — `subscription` is only truthy after the webhook upserts it. Derived
+  // instead of cleared in an effect (React 19 forbids setState-in-effect, and
+  // `subscription.plan` is never 'free', so an equality check wouldn't type).
+  const upgradeLocked = upgradeInProgress && !subscription
 
   return (
     <div className="-mx-4 -my-4 md:-mx-8 md:-my-7 flex flex-col h-screen overflow-hidden">
@@ -211,6 +240,28 @@ export function BillingClient() {
                     </button>
                   )}
                 </div>
+              </div>
+            ) : subscriptionError ? (
+              // Don't fall through to the "Free plan" default on error — a paid
+              // user hitting a transient failure would otherwise see a Free card
+              // plus an Upgrade button and could be pushed into a duplicate
+              // checkout. Show the load failure and let them retry instead.
+              <div className="flex items-start justify-between gap-3 flex-wrap">
+                <div>
+                  <h2 className="text-[15px] font-semibold text-text mb-1">
+                    Couldn&apos;t load your subscription
+                  </h2>
+                  <p className="text-[13px] text-text-muted">
+                    We couldn&apos;t reach billing just now. Your current plan is unchanged.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => refreshSubscription()}
+                  className="font-mono text-[12px] text-accent hover:opacity-80 transition-opacity shrink-0"
+                >
+                  Retry
+                </button>
               </div>
             ) : (
               <div className="flex items-start justify-between gap-3 flex-wrap">
@@ -319,17 +370,24 @@ export function BillingClient() {
                     ) : (
                       <button
                         type="button"
-                        disabled={isCurrent || createCheckout.isPending || !paddle}
+                        disabled={
+                          isCurrent ||
+                          createCheckout.isPending ||
+                          !paddle ||
+                          upgradeLocked
+                        }
                         onClick={() => void handleUpgrade(plan.id as 'starter' | 'team')}
                         className="w-full h-8 rounded-[6px] bg-text text-bg text-[12.5px] font-medium hover:opacity-90 transition-opacity disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed"
                       >
                         {isCurrent
                           ? 'Current plan'
-                          : isUpgradeInFlight
-                            ? 'Opening checkout…'
-                            : !paddle
-                              ? 'Loading…'
-                              : `Upgrade to ${plan.name}`}
+                          : upgradeLocked
+                            ? 'Plan updating…'
+                            : isUpgradeInFlight
+                              ? 'Opening checkout…'
+                              : !paddle
+                                ? 'Loading…'
+                                : `Upgrade to ${plan.name}`}
                       </button>
                     )}
                   </div>

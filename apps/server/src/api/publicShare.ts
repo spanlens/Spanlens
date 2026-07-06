@@ -10,6 +10,7 @@ import {
 } from '../lib/requests-query.js'
 import { fromClickhouseTimestamp } from '../lib/clickhouse.js'
 import { checkRateLimit } from '../lib/rate-limit.js'
+import { fireAndForget } from '../lib/wait-until.js'
 import { ApiError } from '../lib/errors.js'
 
 /**
@@ -111,14 +112,23 @@ publicShareRouter.get('/:token', async (c) => {
   const hidePoweredBy = await shouldHidePoweredBy(share.organization_id)
 
   // Bump view_count. Fire-and-forget — a viewer should never see a 500 because
-  // the counter update failed. The next page load will sync.
-  supabaseAdmin
-    .from('shared_links')
-    .update({ view_count: share.view_count + 1 })
-    .eq('token', token)
-    .then(({ error }) => {
-      if (error) console.error('[share:get] view_count bump failed:', error.message)
-    })
+  // the counter update failed. Wrapped in fireAndForget so the pending promise
+  // survives on Vercel (a bare .then() is dropped on Edge/serverless — gotcha
+  // #8). Atomic increment via RPC avoids the read-modify-write lost-update race
+  // under concurrent viewers (supabase-js .update() cannot express
+  // `view_count = view_count + 1`).
+  fireAndForget(
+    c,
+    // Promise.resolve() because supabase-js returns a thenable PostgrestBuilder
+    // (PromiseLike), not a real Promise, and fireAndForget expects a Promise.
+    Promise.resolve(
+      supabaseAdmin
+        .rpc('increment_share_view_count', { p_token: token })
+        .then(({ error }) => {
+          if (error) console.error('[share:get] view_count bump failed:', error.message)
+        }),
+    ),
+  )
 
   return c.json({
     success: true,

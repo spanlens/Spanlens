@@ -571,6 +571,19 @@ function MembersTab() {
             client renders the loaded list, triggering React #418. */}
         {!mounted || members.isLoading ? (
           <div className="px-6 py-4 text-[12.5px] text-text-faint">Loading…</div>
+        ) : members.isError ? (
+          // Don't fall through to "No members yet" on a load failure — a
+          // populated workspace would look empty. Show the error + a retry.
+          <div className="px-6 py-4 flex items-center justify-between gap-3 flex-wrap">
+            <span className="text-[12.5px] text-bad">Couldn&apos;t load members.</span>
+            <button
+              type="button"
+              onClick={() => void members.refetch()}
+              className="font-mono text-[11.5px] px-2.5 py-1 border border-border rounded text-text-muted hover:text-text hover:border-border-strong transition-colors"
+            >
+              Retry
+            </button>
+          </div>
         ) : (members.data ?? []).length === 0 ? (
           <div className="px-6 py-4 text-[12.5px] text-text-faint">No members yet.</div>
         ) : (
@@ -1000,7 +1013,7 @@ function SystemTab() {
 // ─── BILLING tab ──────────────────────────────────────────────────────────────
 
 function BillingTab() {
-  const { data: subscription, isLoading } = useSubscription()
+  const { data: subscription, isLoading, isError, refetch } = useSubscription()
   const { data: quota } = useQuota()
 
   const planName = subscription?.plan ?? 'free'
@@ -1022,6 +1035,23 @@ function BillingTab() {
           <div className="font-mono text-[10px] text-text-faint uppercase tracking-[0.05em] mb-3">Current plan</div>
           {isLoading ? (
             <div className="h-8 w-32 bg-bg-muted rounded animate-pulse mb-4" />
+          ) : isError ? (
+            // Don't render the Free-plan default on error — a paying user
+            // hitting a transient failure would otherwise see "Free", which is
+            // wrong and alarming. Show the load failure and a retry instead.
+            <div className="mb-4">
+              <div className="text-[15px] font-medium text-text mb-1">Couldn&apos;t load your plan</div>
+              <p className="text-[12.5px] text-text-muted mb-2">
+                We couldn&apos;t reach billing just now. Your current plan is unchanged.
+              </p>
+              <button
+                type="button"
+                onClick={() => refetch()}
+                className="font-mono text-[12px] text-accent hover:opacity-80 transition-opacity"
+              >
+                Retry
+              </button>
+            </div>
           ) : (
             <>
               <div className="flex items-center gap-3 mb-1">
@@ -1110,7 +1140,7 @@ function BillingTab() {
 
 function PlanLimitsTab() {
   const { data: org } = useOrganization()
-  const { data: subscription, isLoading: subLoading } = useSubscription()
+  const { data: subscription, isLoading: subLoading, isError: subError } = useSubscription()
   const { data: quota } = useQuota()
   const createCheckout = useCreateCheckout()
   const refreshSubscription = useRefreshSubscription()
@@ -1120,6 +1150,10 @@ function PlanLimitsTab() {
   const [multiplierDraft, setMultiplierDraft] = useState(String(org?.overage_cap_multiplier ?? 2))
   const [paddle, setPaddle] = useState<Paddle | null>(null)
   const [checkoutError, setCheckoutError] = useState<string | null>(null)
+  // initializePaddle can reject (ad-block, network). Without catching it,
+  // `paddle` stays null forever and every Upgrade button is stuck on
+  // "Loading…" with no explanation. Surface an actionable error instead.
+  const [paddleLoadFailed, setPaddleLoadFailed] = useState(false)
 
   const clientToken = process.env['NEXT_PUBLIC_PADDLE_CLIENT_TOKEN']
   const paddleEnv = (process.env['NEXT_PUBLIC_PADDLE_ENVIRONMENT'] ?? 'sandbox') as 'sandbox' | 'production'
@@ -1135,9 +1169,13 @@ function PlanLimitsTab() {
           setTimeout(() => refreshSubscription(), 1500)
         }
       },
-    }).then((instance) => {
-      if (!cancelled && instance) setPaddle(instance)
     })
+      .then((instance) => {
+        if (!cancelled && instance) setPaddle(instance)
+      })
+      .catch(() => {
+        if (!cancelled) setPaddleLoadFailed(true)
+      })
     return () => { cancelled = true }
   }, [clientToken, paddleEnv, refreshSubscription])
 
@@ -1176,12 +1214,37 @@ function PlanLimitsTab() {
     <div className="max-w-[1040px]">
       <TabHeader title="Plan & limits" description="Compare plans. Hard limits apply per-workspace; can be lifted on Enterprise." />
 
-      {checkoutError && (
+      {(checkoutError || paddleLoadFailed) && (
         <div className="rounded-lg border border-accent-border bg-accent-bg px-4 py-3 mb-5 text-[13px] text-accent">
-          {checkoutError}
+          {checkoutError
+            ?? 'Payment system failed to load. Please disable ad-blockers and retry.'}
         </div>
       )}
 
+      {/* Subscription load failure — don't fall through to the Free-plan
+          default below. A paying user hitting a transient 500 would otherwise
+          see Free + Upgrade buttons and could start a duplicate checkout.
+          Show the failure and a retry instead. */}
+      {subError ? (
+        <div className="rounded-lg border border-border bg-bg-elev px-4 py-3 mb-6 flex items-center justify-between gap-3 flex-wrap">
+          <div>
+            <div className="text-[13px] font-medium text-text mb-0.5">
+              Couldn&apos;t load your plan
+            </div>
+            <p className="text-[12.5px] text-text-muted">
+              We couldn&apos;t reach billing just now. Your current plan is unchanged.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => refreshSubscription()}
+            className="font-mono text-[12px] text-accent hover:opacity-80 transition-opacity shrink-0"
+          >
+            Retry
+          </button>
+        </div>
+      ) : (
+      <>
       {/* Plan cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 mb-6">
         {PLANS.map((plan) => {
@@ -1360,6 +1423,8 @@ function PlanLimitsTab() {
             </>
           )}
         </Section>
+      )}
+      </>
       )}
     </div>
   )

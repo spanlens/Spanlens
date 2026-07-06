@@ -1,4 +1,29 @@
-import { QueryClient } from '@tanstack/react-query'
+import { QueryClient, QueryCache, MutationCache } from '@tanstack/react-query'
+import { ApiError } from './api'
+
+/**
+ * Global 401 handler.
+ *
+ * When any query or mutation fails with a 401 (expired / blank session), the
+ * cached data on screen is stale and every poll silently errors. Redirect the
+ * user to /login via a HARD navigation (`window.location.href`) — a soft
+ * `router.push` would keep the RSC tree + middleware state (see CLAUDE.md
+ * gotcha #15), so the fresh middleware pass that clears the session never runs.
+ *
+ * Guarded so it fires only in the browser, only once (a module-level flag), and
+ * never while already on /login — otherwise a 401 from a login-page query would
+ * loop the redirect.
+ */
+let redirectingToLogin = false
+
+function handleGlobalError(error: unknown): void {
+  if (typeof window === 'undefined') return
+  if (!(error instanceof ApiError) || error.status !== 401) return
+  if (redirectingToLogin) return
+  if (window.location.pathname === '/login') return
+  redirectingToLogin = true
+  window.location.href = '/login'
+}
 
 /**
  * Create a fresh QueryClient for every React tree.
@@ -32,6 +57,10 @@ import { QueryClient } from '@tanstack/react-query'
  */
 export function makeQueryClient(): QueryClient {
   return new QueryClient({
+    // A single onError on both caches catches every query AND mutation failure,
+    // so the 401 redirect is wired in exactly one place.
+    queryCache: new QueryCache({ onError: handleGlobalError }),
+    mutationCache: new MutationCache({ onError: handleGlobalError }),
     defaultOptions: {
       queries: {
         // staleTime: how long a query is considered fresh. Within this window,
@@ -60,4 +89,17 @@ export function getQueryClient(): QueryClient {
   // Client: reuse the same instance across HMR reloads.
   if (!browserQueryClient) browserQueryClient = makeQueryClient()
   return browserQueryClient
+}
+
+/**
+ * Wipe every cached query on the browser client.
+ *
+ * Call this on sign-out: the `browserQueryClient` singleton persists across a
+ * soft navigation, and query keys don't include the orgId, so without an
+ * explicit clear the next account that signs in on the same tab would mount
+ * against the previous account's cached stats / quota / org name until
+ * staleTime elapses. Pair with a hard nav for a fully fresh context.
+ */
+export function clearQueryClient(): void {
+  browserQueryClient?.clear()
 }

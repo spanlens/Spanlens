@@ -12,7 +12,7 @@ import { NextResponse, type NextRequest } from 'next/server'
  * instead of two.
  */
 
-const PUBLIC_PATHS = ['/', '/pricing', '/login', '/signup', '/auth/', '/terms', '/privacy', '/invite', '/demo', '/forgot-password', '/reset-password']
+const PUBLIC_PATHS = ['/', '/pricing', '/login', '/signup', '/auth/', '/terms', '/privacy', '/invite', '/demo', '/forgot-password', '/reset-password', '/verify-email']
 
 export async function middleware(request: NextRequest) {
   // Skip auth middleware when Supabase env vars are absent (local preview without .env.local)
@@ -51,7 +51,18 @@ export async function middleware(request: NextRequest) {
   } = await supabase.auth.getUser()
 
   const path = request.nextUrl.pathname
-  const isPublic = PUBLIC_PATHS.some((p) => path === p || path.startsWith(p))
+  // Root ('/') must match EXACTLY — `path.startsWith('/')` is true for every
+  // URL, so treating it as a prefix would make isPublic always true and defeat
+  // the auth guard below. Every other entry matches as a true path-segment
+  // prefix (boundary-aware): `/pricing` covers `/pricing/x` but `/privacy`
+  // never accidentally matches an unrelated path that merely shares the string.
+  // Trailing slashes on entries (e.g. `/auth/`) are normalized first so the
+  // boundary check stays correct.
+  const isPublic = PUBLIC_PATHS.some((p) => {
+    if (p === '/') return path === '/'
+    const base = p.endsWith('/') ? p.slice(0, -1) : p
+    return path === base || path.startsWith(base + '/')
+  })
 
   if (!user && !isPublic) {
     const url = request.nextUrl.clone()
@@ -144,11 +155,26 @@ export async function middleware(request: NextRequest) {
     if (orgId) requestHeaders.set('x-spanlens-org-id', orgId)
     if (onboarded) requestHeaders.set('x-spanlens-onboarded', '1')
 
+    // getUser() may have rotated the Supabase session; setAll() wrote the fresh
+    // cookies onto request.cookies (for THIS request's SSR) and onto the old
+    // supabaseResponse (for the browser). Sync the rotated cookies into the
+    // downstream request header so RSC forwards the fresh token to the API.
+    requestHeaders.set('cookie', request.cookies.toString())
+
     // Re-materialize the response with the updated headers so downstream RSC
     // (notably (dashboard)/layout.tsx) sees them via next/headers.
-    supabaseResponse = NextResponse.next({
+    const finalResponse = NextResponse.next({
       request: { headers: requestHeaders },
     })
+    // CRITICAL: carry over any auth cookies the Supabase client rotated during
+    // getUser(). Creating a fresh NextResponse here would otherwise DROP the
+    // refreshed session cookies set on supabaseResponse — the browser would
+    // then keep replaying the old refresh token, tripping Supabase reuse
+    // detection and randomly logging the user out.
+    for (const cookie of supabaseResponse.cookies.getAll()) {
+      finalResponse.cookies.set(cookie)
+    }
+    supabaseResponse = finalResponse
   }
 
   return supabaseResponse

@@ -103,6 +103,26 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
+/**
+ * Invoke the user-supplied onError callback without ever letting it throw.
+ * These transport calls run fire-and-forget from span.end(); if a user's
+ * callback threw here the promise would reject even under `silent: true`,
+ * surfacing as an unhandled rejection that can crash the host process. The
+ * SDK's "never crash user code" guarantee means a user callback must never
+ * escape.
+ */
+function safeOnError(
+  cb: SpanlensConfig['onError'],
+  err: unknown,
+  meta: string,
+): void {
+  try {
+    cb?.(err, meta)
+  } catch {
+    /* user callback must never crash the SDK */
+  }
+}
+
 export function createTransport(config: SpanlensConfig): Transport {
   const baseUrl = (config.baseUrl ?? 'https://spanlens-server.vercel.app').replace(/\/$/, '')
   const timeoutMs = config.timeoutMs ?? 3000
@@ -133,11 +153,17 @@ export function createTransport(config: SpanlensConfig): Transport {
           body: JSON.stringify(body),
           signal: controller.signal,
         })
-        clearTimeout(timer)
+        // NOTE: the abort timer stays armed through the body read below. A
+        // server that returns headers then stalls the body would otherwise
+        // hang flush()/beforeExit forever. controller.abort() rejects the
+        // pending res.text() so the deadline covers the whole request. The
+        // timer is cleared only after the body is fully consumed (on every
+        // return path) or in the catch block.
 
         // 4xx = client error, don't retry
         if (res.status >= 400 && res.status < 500) {
           const text = await res.text().catch(() => '')
+          clearTimeout(timer)
           // If the server speaks the standard error envelope (post Sprint 7
           // R-15), give callers the typed exception so they can branch on
           // error.code without string-comparing the message.
@@ -145,24 +171,28 @@ export function createTransport(config: SpanlensConfig): Transport {
           const err = apiError
             ? apiError
             : new Error(`[spanlens] ${method} ${path} -> ${res.status} ${text.slice(0, 200)}`)
-          onError?.(err, `${method} ${path}`)
+          safeOnError(onError, err, `${method} ${path}`)
           if (!silent) throw err
           return null
         }
 
         // 5xx / 429 — retryable
         if (!res.ok) {
+          clearTimeout(timer)
           lastErr = new Error(`[spanlens] ${method} ${path} → ${res.status}`)
           if (attempt < MAX_RETRIES) {
             await sleep(retryDelayMs(attempt))
             continue
           }
-          onError?.(lastErr, `${method} ${path}`)
+          safeOnError(onError, lastErr, `${method} ${path}`)
           if (!silent) throw lastErr
           return null
         }
 
+        // Body read is still covered by the abort timer (armed above); it is
+        // cleared only once the full body has been consumed.
         const text = await res.text()
+        clearTimeout(timer)
         if (!text) return null
         try { return JSON.parse(text) } catch { return null }
       } catch (err) {
@@ -190,7 +220,7 @@ export function createTransport(config: SpanlensConfig): Transport {
         // Call onError on every occurrence so callers receive the notification
         // promptly rather than only after all retries are exhausted.
         lastErr = err
-        onError?.(err, `${method} ${path}`)
+        safeOnError(onError, err, `${method} ${path}`)
         if (attempt < MAX_RETRIES) {
           await sleep(retryDelayMs(attempt))
           continue

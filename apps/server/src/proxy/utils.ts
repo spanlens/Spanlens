@@ -93,8 +93,17 @@ export async function isBlockingEnabled(projectId: string): Promise<boolean> {
 // (e.g. inject stream_options) so the original length is wrong.
 // Node.js undici (unlike Cloudflare Workers fetch) throws on mismatch.
 // Let fetch recalculate content-length from the actual body.
+//
+// authorization / x-api-key / x-goog-api-key are ALL Spanlens key transports
+// accepted by authApiKey (Bearer, OpenAI-style, Gemini-style). They carry the
+// caller's sl_live_* key and must never reach the upstream provider — each
+// proxy re-adds the real provider credential via `overrides`, which is applied
+// after this strip. Missing x-api-key/x-goog-api-key here leaks the Spanlens
+// key to OpenAI/Google on every request that authenticates via those headers.
 const STRIP_HEADERS = new Set([
   'authorization',
+  'x-api-key',
+  'x-goog-api-key',
   'host',
   'connection',
   'keep-alive',
@@ -127,12 +136,19 @@ export function buildUpstreamHeaders(
   return out
 }
 
-// Strip hop-by-hop headers from the upstream response before sending to client
+// Strip hop-by-hop headers from the upstream response before sending to client.
+// content-length is stripped alongside content-encoding: undici transparently
+// decompresses gzip/br responses but leaves the ORIGINAL (compressed)
+// content-length on the headers. Forwarding that stale length makes Node
+// truncate the (larger) decoded body to the compressed byte count, so the
+// client receives a cut-off JSON payload. Let the runtime recompute the length
+// from the actual body we send.
 const STRIP_RESPONSE_HEADERS = new Set([
   'connection',
   'keep-alive',
   'transfer-encoding',
   'content-encoding', // body already decoded by fetch
+  'content-length', // stale (compressed) length after fetch decodes the body
   'te',
 ])
 

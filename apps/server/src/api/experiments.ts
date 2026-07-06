@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import { authJwt, type JwtContext } from '../middleware/authJwt.js'
+import { requireRole } from '../middleware/requireRole.js'
 import { supabaseAdmin } from '../lib/db.js'
 import { runExperiment } from '../lib/experiment-runner.js'
 import { fireAndForget } from '../lib/wait-until.js'
@@ -9,8 +10,10 @@ export const experimentsRouter = new Hono<JwtContext>()
 
 experimentsRouter.use('*', authJwt)
 
+const requireEdit = requireRole('admin', 'editor')
+
 // POST /api/v1/experiments — create + kick off
-experimentsRouter.post('/', async (c) => {
+experimentsRouter.post('/', requireEdit, async (c) => {
   const orgId = c.get('orgId')
   const userId = c.get('userId')
   if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')

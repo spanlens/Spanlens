@@ -92,16 +92,24 @@ orgInvitationsRouter.post('/', requireRole('admin'), async (c) => {
     }
   }
 
-  // Reject duplicate pending invite for the same email/org pair.
-  const { data: pending } = await supabaseAdmin
+  // Reject duplicate pending invite for the same email/org pair. Use limit(1)
+  // rather than maybeSingle(): there is no unique constraint on
+  // (organization_id, email, pending), so a double-click race can leave 2+
+  // pending rows. maybeSingle() returns { data: null, error } on a multi-row
+  // match, so the guard would fall through and EVERY later invite to that
+  // email would pass (duplicate emails sent). limit(1) treats "≥1 pending
+  // row exists" as the dedup hit. Same maybeSingle blind spot as the
+  // organizations.ts bootstrap membership check.
+  const { data: pendingRows, error: pendingErr } = await supabaseAdmin
     .from('org_invitations')
     .select('id')
     .eq('organization_id', orgId)
     .eq('email', email)
     .is('accepted_at', null)
     .gt('expires_at', new Date().toISOString())
-    .maybeSingle()
-  if (pending) {
+    .limit(1)
+  if (pendingErr) throw new ApiError('INTERNAL_ERROR', 'Failed to check pending invitations')
+  if (pendingRows && pendingRows.length > 0) {
     throw new ApiError('CONFLICT', 'A pending invitation for this email already exists')
   }
 
