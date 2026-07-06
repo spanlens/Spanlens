@@ -245,24 +245,25 @@ describe('SpanlensClient: apiKey format warnings at construction', () => {
     expect(warnSpy).toHaveBeenCalledTimes(1)
   })
 
-  it('warns once when the key does not look like a Spanlens key, masking the value', () => {
+  it('warns once when the key does not look like a Spanlens key, without echoing the value', () => {
     new SpanlensClient({ apiKey: 'sk-proj-supersecretvalue' })
     expect(warnSpy).toHaveBeenCalledTimes(1)
     const msg = warnSpy.mock.calls[0]?.[0] as string
     expect(msg).toContain('does not look like a Spanlens key')
     expect(msg).toContain('sl_live_')
-    // Masked: short prefix only, never the secret part.
-    expect(msg).toContain('sk-pr')
+    // Nothing derived from the key value appears in the log, not even a
+    // masked prefix (CodeQL js/clear-text-logging flags any tainted substring).
+    expect(msg).not.toContain('sk-pr')
     expect(msg).not.toContain('supersecretvalue')
 
     new SpanlensClient({ apiKey: 'sk-proj-supersecretvalue' })
     expect(warnSpy).toHaveBeenCalledTimes(1)
   })
 
-  it('fully masks very short keys', () => {
+  it('never echoes short keys either', () => {
     new SpanlensClient({ apiKey: 'abcdefg' })
     const msg = warnSpy.mock.calls[0]?.[0] as string
-    expect(msg).toContain('***')
+    expect(msg).toContain('does not look like a Spanlens key')
     expect(msg).not.toContain('abcdefg')
   })
 

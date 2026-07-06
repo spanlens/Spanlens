@@ -40,10 +40,11 @@ function warnOnKeyFormat(apiKey: string): void {
   if (!apiKey.startsWith('sl_live_')) {
     if (warnedKeyFormats.has('format')) return
     warnedKeyFormats.add('format')
-    // Mask everything except a short prefix; never log the key itself.
-    const masked = apiKey.length > 8 ? `${apiKey.slice(0, 5)}...` : '***'
+    // Deliberately logs nothing derived from the key value, not even a
+    // masked prefix (js/clear-text-logging flags any tainted substring).
     console.warn(
-      `[spanlens] apiKey "${masked}" does not look like a Spanlens key (expected sl_live_ prefix). ` +
+      '[spanlens] apiKey does not look like a Spanlens key (expected sl_live_ prefix). ' +
+        'A pasted provider key (sk-...) is the usual mixup. ' +
         'Check that SPANLENS_API_KEY holds the key from your Spanlens dashboard. ' +
         'Docs: https://www.spanlens.io/docs/quick-start',
     )
