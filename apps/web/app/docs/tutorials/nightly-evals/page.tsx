@@ -1,4 +1,5 @@
 import { CodeBlock } from '../../_components/code-block'
+import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
 export const metadata = {
   title: 'Nightly evals on production traffic · Spanlens Docs',
@@ -10,6 +11,7 @@ export const metadata = {
 export default function NightlyEvalsTutorial() {
   return (
     <div>
+      <DocsJsonLd meta={metadata} />
       <h1>Tutorial: nightly evals on production traffic</h1>
       <p className="lead">
         Forty-five minutes. We create an LLM-as-judge evaluator, run it once by hand on a

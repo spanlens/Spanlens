@@ -1,4 +1,5 @@
 import { CodeBlock } from '../../_components/code-block'
+import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
 export const metadata = {
   title: 'LlamaIndex integration · Spanlens Docs',
@@ -10,6 +11,7 @@ export const metadata = {
 export default function LlamaIndexIntegration() {
   return (
     <div>
+      <DocsJsonLd meta={metadata} />
       <h1>LlamaIndex integration</h1>
       <p className="lead">
         LlamaIndex funnels every framework event through a single{' '}

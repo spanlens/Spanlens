@@ -1,4 +1,5 @@
 import { CodeBlock } from '../../_components/code-block'
+import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
 export const metadata = {
   title: 'Agent tracing · Spanlens Docs',
@@ -10,6 +11,7 @@ export const metadata = {
 export default function AgentTracingConcept() {
   return (
     <div>
+      <DocsJsonLd meta={metadata} />
       <h1>Agent tracing</h1>
       <p className="lead">
         An agent is a workflow where a language model decides what to do next.

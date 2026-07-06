@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { CodeBlock } from '../_components/code-block'
+import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
 export const metadata = {
   title: 'Spanlens CLI · Spanlens Docs',
@@ -124,6 +125,7 @@ import { createGemini }    from '@spanlens/sdk/gemini'
 export default function CliDocs() {
   return (
     <div>
+      <DocsJsonLd meta={metadata} />
       <h1>Spanlens CLI</h1>
       <p className="lead">
         One command rewrites every <code>new OpenAI(...)</code>,{' '}

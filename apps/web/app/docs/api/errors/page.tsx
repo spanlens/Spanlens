@@ -1,3 +1,5 @@
+import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
+
 export const metadata = {
   alternates: { canonical: '/docs/api/errors' },
   title: 'API error codes · Spanlens Docs',
@@ -142,6 +144,7 @@ const ERROR_CATALOG_ROWS: CatalogRow[] = [
 export default function ApiErrorsPage() {
   return (
     <div>
+      <DocsJsonLd meta={metadata} />
       <h1>API error codes</h1>
       <p className="lead">
         Every 4xx and 5xx response from the Spanlens server uses one stable shape. Branch

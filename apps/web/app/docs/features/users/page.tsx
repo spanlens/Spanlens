@@ -1,4 +1,5 @@
 import { CodeBlock } from '../../_components/code-block'
+import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
 export const metadata = {
   alternates: { canonical: '/docs/features/users' },
@@ -10,6 +11,7 @@ export const metadata = {
 export default function UsersDocs() {
   return (
     <div>
+      <DocsJsonLd meta={metadata} />
       <h1>Users</h1>
       <p className="lead">
         Tag every LLM call with the end-user it originated from, and Spanlens aggregates per-user

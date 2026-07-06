@@ -1,4 +1,5 @@
 import { CodeBlock } from '../../_components/code-block'
+import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
 export const metadata = {
   alternates: { canonical: '/docs/features/savings' },
@@ -10,6 +11,7 @@ export const metadata = {
 export default function SavingsDocs() {
   return (
     <div>
+      <DocsJsonLd meta={metadata} />
       <h1>Savings</h1>
       <p className="lead">
         Spanlens analyzes your LLM traffic over a configurable window (7 / 14 / 30 days) and

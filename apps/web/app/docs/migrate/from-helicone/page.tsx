@@ -1,5 +1,6 @@
 import { CodeBlock } from '../../_components/code-block'
 import { LangTabs } from '../../_components/lang-tabs'
+import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
 export const metadata = {
   title: 'Migrate from Helicone to Spanlens · 2026 Guide',
@@ -11,6 +12,7 @@ export const metadata = {
 export default function MigrateFromHelicone() {
   return (
     <div>
+      <DocsJsonLd meta={metadata} />
       <h1>Migrate from Helicone · 2026</h1>
       <p className="lead">
         Helicone and Spanlens share the same fundamental shape: a proxy that you point your

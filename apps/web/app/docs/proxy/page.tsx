@@ -1,4 +1,5 @@
 import { CodeBlock } from '../_components/code-block'
+import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
 export const metadata = {
   alternates: { canonical: '/docs/proxy' },
@@ -9,6 +10,7 @@ export const metadata = {
 export default function ProxyDocs() {
   return (
     <div>
+      <DocsJsonLd meta={metadata} />
       <h1>Direct proxy (any language)</h1>
       <p className="lead">
         If you&apos;re not using the TypeScript SDK, you can still use Spanlens by pointing any OpenAI /

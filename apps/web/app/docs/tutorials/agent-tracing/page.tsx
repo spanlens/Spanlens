@@ -1,4 +1,5 @@
 import { CodeBlock } from '../../_components/code-block'
+import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
 export const metadata = {
   title: 'Multi-step agent tracing · Spanlens Docs',
@@ -10,6 +11,7 @@ export const metadata = {
 export default function AgentTracingTutorial() {
   return (
     <div>
+      <DocsJsonLd meta={metadata} />
       <h1>Tutorial: trace a multi-step agent</h1>
       <p className="lead">
         Thirty minutes. We trace an agent that classifies a user message, dispatches to

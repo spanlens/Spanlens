@@ -1,4 +1,5 @@
 import { CodeBlock } from '../../_components/code-block'
+import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
 export const metadata = {
   alternates: { canonical: '/docs/features/experiments' },
@@ -10,6 +11,7 @@ export const metadata = {
 export default function ExperimentsDocs() {
   return (
     <div>
+      <DocsJsonLd meta={metadata} />
       <h1>Experiments</h1>
       <p className="lead">
         Run each input in a dataset through <strong>two prompt versions</strong>, compare outputs

@@ -1,4 +1,5 @@
 import { CodeBlock } from '../../_components/code-block'
+import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
 export const metadata = {
   alternates: { canonical: '/docs/features/prompts-playground' },
@@ -10,6 +11,7 @@ export const metadata = {
 export default function PromptsPlaygroundDocs() {
   return (
     <div>
+      <DocsJsonLd meta={metadata} />
       <h1>Prompts Playground</h1>
       <p className="lead">
         Like a SQL query console for prompts, select a version, adjust model, temperature, and

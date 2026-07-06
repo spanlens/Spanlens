@@ -1,4 +1,5 @@
 import { CodeBlock } from '../../_components/code-block'
+import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
 export const metadata = {
   title: 'LangGraph integration · Spanlens Docs',
@@ -10,6 +11,7 @@ export const metadata = {
 export default function LangGraphIntegration() {
   return (
     <div>
+      <DocsJsonLd meta={metadata} />
       <h1>LangGraph integration</h1>
       <p className="lead">
         LangGraph reuses LangChain&apos;s callback contract, so the same Spanlens handler

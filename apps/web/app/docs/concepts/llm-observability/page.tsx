@@ -1,4 +1,5 @@
 import { CodeBlock } from '../../_components/code-block'
+import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
 export const metadata = {
   title: 'LLM observability · Spanlens Docs',
@@ -10,6 +11,7 @@ export const metadata = {
 export default function LlmObservabilityConcept() {
   return (
     <div>
+      <DocsJsonLd meta={metadata} />
       <h1>LLM observability</h1>
       <p className="lead">
         LLM observability is the practice of capturing every call your application
