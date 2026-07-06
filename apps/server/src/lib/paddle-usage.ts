@@ -16,9 +16,10 @@
  *      because the pending row blocks future re-runs (safe fail direction:
  *      we under-bill rather than double-bill).
  *   5. Charge via POST /subscriptions/{id}/charge with
- *      effective_from: next_billing_period. This bundles the overage into
- *      the NEXT invoice (no separate charge to the customer, one invoice
- *      per month with a visible overage line item).
+ *      effective_from: immediately. The charge settles in real time during the
+ *      48-hour charging window, before the user can cancel and escape the
+ *      overage revenue (see the note at the charge call site for why we do not
+ *      use next_billing_period here).
  *
  * Prerequisites (Paddle dashboard):
  *   - Create non-recurring prices for Starter and Team overage units.

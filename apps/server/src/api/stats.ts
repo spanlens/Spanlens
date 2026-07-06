@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import type { JwtContext } from '../middleware/authJwt.js'
 import { authJwtOrApiKey } from '../middleware/authJwtOrApiKey.js'
-import { parseClampedFloat } from '../lib/params.js'
+import { parseClampedFloat, validateOptionalDate } from '../lib/params.js'
 import {
   getStatsOverview,
   getStatsModels,
@@ -60,8 +60,11 @@ statsRouter.get('/overview', async (c) => {
   if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   const projectId = c.req.query('projectId')
-  const from = c.req.query('from')
-  const to = c.req.query('to')
+  // Garbage dates (?to=garbage) otherwise reach `new Date(x).toISOString()` in
+  // the compare branch and throw a RangeError → raw 500. Validate up front so
+  // this documented external surface (MCP/BI tools) gets a clean 400 instead.
+  const from = validateOptionalDate(c.req.query('from'), 'from')
+  const to = validateOptionalDate(c.req.query('to'), 'to')
   const compare = c.req.query('compare') === 'true'
 
   try {

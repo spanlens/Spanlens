@@ -227,8 +227,19 @@ function GeneralTab() {
   const { data: org } = useOrganization()
   const updateOrg = useUpdateOrganization()
   const [name, setName] = useState(org?.name ?? '')
+  const [nameError, setNameError] = useState<string | null>(null)
   const currentMember = useCurrentMember()
   const isAdmin = currentMember?.role === 'admin'
+
+  async function handleSaveName() {
+    if (!org) return
+    setNameError(null)
+    try {
+      await updateOrg.mutateAsync({ id: org.id, name })
+    } catch (err) {
+      setNameError(err instanceof Error ? err.message : 'Update failed')
+    }
+  }
   // useSyncExternalStore returns false on the server and true on the client
   // without needing useEffect + setState (avoids react-hooks/set-state-in-effect).
   const mounted = useSyncExternalStore(
@@ -253,20 +264,25 @@ function GeneralTab() {
 
       <Section title="Identity" description="Visible within your workspace" className="mb-5">
         <FormRow label="Workspace name" hint="Shown in the app header and on shared traces.">
-          <div className="flex items-center gap-3 w-full max-w-[460px]">
-            <NativeInput
-              value={name || (org?.name ?? '')}
-              onChange={(e) => setName(e.target.value)}
-              className="flex-1 font-mono text-[12.5px]"
-              disabled={!isAdmin}
-            />
-            {isAdmin && (
-              <GhostBtn
-                disabled={updateOrg.isPending || !name.trim() || name === org?.name}
-                onClick={() => org && void updateOrg.mutateAsync({ id: org.id, name })}
-              >
-                {updateOrg.isPending ? 'Saving…' : 'Save'}
-              </GhostBtn>
+          <div className="flex flex-col gap-2 w-full max-w-[460px]">
+            <div className="flex items-center gap-3">
+              <NativeInput
+                value={name || (org?.name ?? '')}
+                onChange={(e) => setName(e.target.value)}
+                className="flex-1 font-mono text-[12.5px]"
+                disabled={!isAdmin}
+              />
+              {isAdmin && (
+                <GhostBtn
+                  disabled={updateOrg.isPending || !name.trim() || name === org?.name}
+                  onClick={() => void handleSaveName()}
+                >
+                  {updateOrg.isPending ? 'Saving…' : 'Save'}
+                </GhostBtn>
+              )}
+            </div>
+            {nameError && (
+              <span className="font-mono text-[11.5px] text-status-error">{nameError}</span>
             )}
           </div>
         </FormRow>
@@ -571,6 +587,19 @@ function MembersTab() {
             client renders the loaded list, triggering React #418. */}
         {!mounted || members.isLoading ? (
           <div className="px-6 py-4 text-[12.5px] text-text-faint">Loading…</div>
+        ) : members.isError ? (
+          // Don't fall through to "No members yet" on a load failure — a
+          // populated workspace would look empty. Show the error + a retry.
+          <div className="px-6 py-4 flex items-center justify-between gap-3 flex-wrap">
+            <span className="text-[12.5px] text-bad">Couldn&apos;t load members.</span>
+            <button
+              type="button"
+              onClick={() => void members.refetch()}
+              className="font-mono text-[11.5px] px-2.5 py-1 border border-border rounded text-text-muted hover:text-text hover:border-border-strong transition-colors"
+            >
+              Retry
+            </button>
+          </div>
         ) : (members.data ?? []).length === 0 ? (
           <div className="px-6 py-4 text-[12.5px] text-text-faint">No members yet.</div>
         ) : (
@@ -738,17 +767,41 @@ function SecurityTabInner() {
   const [thresholdDays, setThresholdDays] = useState<string>(
     org ? String(org.stale_key_threshold_days) : '90',
   )
+  const [error, setError] = useState<string | null>(null)
   const staleAlertsEnabled = org?.stale_key_alerts_enabled ?? true
   const leakDetectionEnabled = org?.leak_detection_enabled ?? false
 
-  function commitThreshold() {
+  async function commitThreshold() {
     const n = Number(thresholdDays)
     if (!Number.isInteger(n) || n < 30 || n > 365) {
       if (org) setThresholdDays(String(org.stale_key_threshold_days))
       return
     }
     if (org && n === org.stale_key_threshold_days) return
-    void updateSecurity.mutateAsync({ stale_key_threshold_days: n })
+    setError(null)
+    try {
+      await updateSecurity.mutateAsync({ stale_key_threshold_days: n })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Update failed')
+    }
+  }
+
+  async function toggleStaleAlerts() {
+    setError(null)
+    try {
+      await updateSecurity.mutateAsync({ stale_key_alerts_enabled: !staleAlertsEnabled })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Update failed')
+    }
+  }
+
+  async function toggleLeakDetection() {
+    setError(null)
+    try {
+      await updateSecurity.mutateAsync({ leak_detection_enabled: !leakDetectionEnabled })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Update failed')
+    }
   }
 
   return (
@@ -766,7 +819,7 @@ function SecurityTabInner() {
               max={365}
               value={thresholdDays}
               onChange={(e) => setThresholdDays(e.target.value)}
-              onBlur={commitThreshold}
+              onBlur={() => void commitThreshold()}
               disabled={!staleAlertsEnabled || updateSecurity.isPending}
               className="w-20 font-mono text-[12.5px]"
             />
@@ -774,7 +827,7 @@ function SecurityTabInner() {
             <Toggle
               on={staleAlertsEnabled}
               disabled={updateSecurity.isPending}
-              onToggle={() => void updateSecurity.mutateAsync({ stale_key_alerts_enabled: !staleAlertsEnabled })}
+              onToggle={() => void toggleStaleAlerts()}
             />
           </div>
         </FormRow>
@@ -782,9 +835,14 @@ function SecurityTabInner() {
           <Toggle
             on={leakDetectionEnabled}
             disabled={updateSecurity.isPending}
-            onToggle={() => void updateSecurity.mutateAsync({ leak_detection_enabled: !leakDetectionEnabled })}
+            onToggle={() => void toggleLeakDetection()}
           />
         </FormRow>
+        {error && (
+          <div className="px-6 pb-4 -mt-2 font-mono text-[11.5px] text-status-error">
+            {error}
+          </div>
+        )}
       </Section>
     </div>
   )
@@ -1000,7 +1058,7 @@ function SystemTab() {
 // ─── BILLING tab ──────────────────────────────────────────────────────────────
 
 function BillingTab() {
-  const { data: subscription, isLoading } = useSubscription()
+  const { data: subscription, isLoading, isError, refetch } = useSubscription()
   const { data: quota } = useQuota()
 
   const planName = subscription?.plan ?? 'free'
@@ -1022,6 +1080,23 @@ function BillingTab() {
           <div className="font-mono text-[10px] text-text-faint uppercase tracking-[0.05em] mb-3">Current plan</div>
           {isLoading ? (
             <div className="h-8 w-32 bg-bg-muted rounded animate-pulse mb-4" />
+          ) : isError ? (
+            // Don't render the Free-plan default on error — a paying user
+            // hitting a transient failure would otherwise see "Free", which is
+            // wrong and alarming. Show the load failure and a retry instead.
+            <div className="mb-4">
+              <div className="text-[15px] font-medium text-text mb-1">Couldn&apos;t load your plan</div>
+              <p className="text-[12.5px] text-text-muted mb-2">
+                We couldn&apos;t reach billing just now. Your current plan is unchanged.
+              </p>
+              <button
+                type="button"
+                onClick={() => refetch()}
+                className="font-mono text-[12px] text-accent hover:opacity-80 transition-opacity"
+              >
+                Retry
+              </button>
+            </div>
           ) : (
             <>
               <div className="flex items-center gap-3 mb-1">
@@ -1110,7 +1185,7 @@ function BillingTab() {
 
 function PlanLimitsTab() {
   const { data: org } = useOrganization()
-  const { data: subscription, isLoading: subLoading } = useSubscription()
+  const { data: subscription, isLoading: subLoading, isError: subError } = useSubscription()
   const { data: quota } = useQuota()
   const createCheckout = useCreateCheckout()
   const refreshSubscription = useRefreshSubscription()
@@ -1118,8 +1193,13 @@ function PlanLimitsTab() {
   const currentMember = useCurrentMember()
   const isAdmin = currentMember?.role === 'admin'
   const [multiplierDraft, setMultiplierDraft] = useState(String(org?.overage_cap_multiplier ?? 2))
+  const [overageError, setOverageError] = useState<string | null>(null)
   const [paddle, setPaddle] = useState<Paddle | null>(null)
   const [checkoutError, setCheckoutError] = useState<string | null>(null)
+  // initializePaddle can reject (ad-block, network). Without catching it,
+  // `paddle` stays null forever and every Upgrade button is stuck on
+  // "Loading…" with no explanation. Surface an actionable error instead.
+  const [paddleLoadFailed, setPaddleLoadFailed] = useState(false)
 
   const clientToken = process.env['NEXT_PUBLIC_PADDLE_CLIENT_TOKEN']
   const paddleEnv = (process.env['NEXT_PUBLIC_PADDLE_ENVIRONMENT'] ?? 'sandbox') as 'sandbox' | 'production'
@@ -1135,9 +1215,13 @@ function PlanLimitsTab() {
           setTimeout(() => refreshSubscription(), 1500)
         }
       },
-    }).then((instance) => {
-      if (!cancelled && instance) setPaddle(instance)
     })
+      .then((instance) => {
+        if (!cancelled && instance) setPaddle(instance)
+      })
+      .catch(() => {
+        if (!cancelled) setPaddleLoadFailed(true)
+      })
     return () => { cancelled = true }
   }, [clientToken, paddleEnv, refreshSubscription])
 
@@ -1154,6 +1238,24 @@ function PlanLimitsTab() {
       setCheckoutError(err instanceof Error ? err.message : 'Failed to start checkout')
     }
   }, [paddle, createCheckout])
+
+  async function toggleOverage() {
+    setOverageError(null)
+    try {
+      await update.mutateAsync({ allow_overage: !(org?.allow_overage ?? false) })
+    } catch (err) {
+      setOverageError(err instanceof Error ? err.message : 'Update failed')
+    }
+  }
+
+  async function saveMultiplier() {
+    setOverageError(null)
+    try {
+      await update.mutateAsync({ overage_cap_multiplier: Number(multiplierDraft) })
+    } catch (err) {
+      setOverageError(err instanceof Error ? err.message : 'Update failed')
+    }
+  }
 
   const currentPlan: BillingPlan = subscription?.plan ?? 'free'
   const isFree = currentPlan === 'free'
@@ -1176,12 +1278,37 @@ function PlanLimitsTab() {
     <div className="max-w-[1040px]">
       <TabHeader title="Plan & limits" description="Compare plans. Hard limits apply per-workspace; can be lifted on Enterprise." />
 
-      {checkoutError && (
+      {(checkoutError || paddleLoadFailed) && (
         <div className="rounded-lg border border-accent-border bg-accent-bg px-4 py-3 mb-5 text-[13px] text-accent">
-          {checkoutError}
+          {checkoutError
+            ?? 'Payment system failed to load. Please disable ad-blockers and retry.'}
         </div>
       )}
 
+      {/* Subscription load failure — don't fall through to the Free-plan
+          default below. A paying user hitting a transient 500 would otherwise
+          see Free + Upgrade buttons and could start a duplicate checkout.
+          Show the failure and a retry instead. */}
+      {subError ? (
+        <div className="rounded-lg border border-border bg-bg-elev px-4 py-3 mb-6 flex items-center justify-between gap-3 flex-wrap">
+          <div>
+            <div className="text-[13px] font-medium text-text mb-0.5">
+              Couldn&apos;t load your plan
+            </div>
+            <p className="text-[12.5px] text-text-muted">
+              We couldn&apos;t reach billing just now. Your current plan is unchanged.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => refreshSubscription()}
+            className="font-mono text-[12px] text-accent hover:opacity-80 transition-opacity shrink-0"
+          >
+            Retry
+          </button>
+        </div>
+      ) : (
+      <>
       {/* Plan cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 mb-6">
         {PLANS.map((plan) => {
@@ -1322,7 +1449,7 @@ function PlanLimitsTab() {
                 <Toggle
                   on={org?.allow_overage ?? false}
                   disabled={update.isPending || !isAdmin}
-                  onToggle={() => void update.mutateAsync({ allow_overage: !(org?.allow_overage ?? false) })}
+                  onToggle={() => void toggleOverage()}
                 />
               </FormRow>
               <FormRow label="Max overage multiplier" hint="Hard cap = monthly limit × this value. Requests past the cap return 429.">
@@ -1347,19 +1474,26 @@ function PlanLimitsTab() {
                         Number(multiplierDraft) < 1 ||
                         Number(multiplierDraft) > 100
                       }
-                      onClick={() => void update.mutateAsync({ overage_cap_multiplier: Number(multiplierDraft) })}
+                      onClick={() => void saveMultiplier()}
                     >
                       {update.isPending ? 'Saving…' : 'Save'}
                     </GhostBtn>
                   )}
                 </div>
               </FormRow>
+              {overageError && (
+                <div className="px-6 pb-4 -mt-2 font-mono text-[11.5px] text-status-error">
+                  {overageError}
+                </div>
+              )}
               {!isAdmin && (
                 <div className="px-6 pb-4 text-[11.5px] text-text-faint">Only admins can change overage settings.</div>
               )}
             </>
           )}
         </Section>
+      )}
+      </>
       )}
     </div>
   )
@@ -1652,6 +1786,16 @@ const NOTIFICATION_PREFS: NotificationPrefDef[] = [
 function NotificationsTab() {
   const { data: prefs, isLoading } = useNotificationPrefs()
   const update = useUpdateNotificationPrefs()
+  const [error, setError] = useState<string | null>(null)
+
+  async function togglePref(key: NotificationPrefDef['key']) {
+    setError(null)
+    try {
+      await update.mutateAsync({ [key]: !(prefs?.[key] ?? true) })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Update failed')
+    }
+  }
 
   return (
     <div className="max-w-[980px]">
@@ -1666,12 +1810,15 @@ function NotificationsTab() {
             <Toggle
               on={prefs?.[pref.key] ?? true}
               disabled={isLoading || update.isPending}
-              onToggle={() =>
-                void update.mutateAsync({ [pref.key]: !(prefs?.[pref.key] ?? true) })
-              }
+              onToggle={() => void togglePref(pref.key)}
             />
           </FormRow>
         ))}
+        {error && (
+          <div className="px-6 pb-4 -mt-2 font-mono text-[11.5px] text-status-error">
+            {error}
+          </div>
+        )}
       </Section>
 
       <Section title="Alert routing" className="mb-5">
@@ -1842,9 +1989,19 @@ function WebhooksTab() {
 
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [testResult, setTestResult] = useState<Record<string, string>>({})
+  const [toggleError, setToggleError] = useState<string | null>(null)
 
   const currentMember = useCurrentMember()
   const canEdit = currentMember?.role === 'admin' || currentMember?.role === 'editor'
+
+  async function handleToggleActive(webhook: WebhookRow) {
+    setToggleError(null)
+    try {
+      await updateWebhook.mutateAsync({ id: webhook.id, is_active: !webhook.is_active })
+    } catch (err) {
+      setToggleError(err instanceof Error ? err.message : 'Failed to update webhook')
+    }
+  }
 
   function toggleEvent(ev: WebhookEvent) {
     setNewEvents((prev) =>
@@ -1906,6 +2063,11 @@ function WebhooksTab() {
       />
 
       <Section title="Webhook endpoints" className="mb-5">
+        {toggleError && (
+          <div className="px-6 pt-4 font-mono text-[11.5px] text-status-error">
+            {toggleError}
+          </div>
+        )}
         {isLoading ? (
           <div className="px-6 py-8 text-center font-mono text-[12.5px] text-text-faint">Loading…</div>
         ) : (webhooks ?? []).length === 0 ? (
@@ -1939,7 +2101,7 @@ function WebhooksTab() {
                   <Toggle
                     on={wh.is_active}
                     disabled={!canEdit || updateWebhook.isPending}
-                    onToggle={() => void updateWebhook.mutateAsync({ id: wh.id, is_active: !wh.is_active })}
+                    onToggle={() => void handleToggleActive(wh)}
                   />
                   <MonoPill variant={wh.is_active ? 'good' : 'faint'} dot>
                     {wh.is_active ? 'active' : 'off'}

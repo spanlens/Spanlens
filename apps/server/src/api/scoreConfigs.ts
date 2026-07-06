@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import { authJwt, type JwtContext } from '../middleware/authJwt.js'
+import { requireRole } from '../middleware/requireRole.js'
 import { supabaseAdmin } from '../lib/db.js'
 import { recordAuditEvent } from '../lib/audit-log.js'
 import {
@@ -28,6 +29,8 @@ import { ApiError } from '../lib/errors.js'
 export const scoreConfigsRouter = new Hono<JwtContext>()
 
 scoreConfigsRouter.use('*', authJwt)
+
+const requireEdit = requireRole('admin', 'editor')
 
 interface ScoreConfigBody {
   name?: unknown
@@ -82,7 +85,7 @@ scoreConfigsRouter.get('/:id', async (c) => {
 })
 
 // POST /api/v1/score-configs — create a new config
-scoreConfigsRouter.post('/', async (c) => {
+scoreConfigsRouter.post('/', requireEdit, async (c) => {
   const orgId = c.get('orgId')
   const userId = c.get('userId')
   if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
@@ -185,7 +188,7 @@ scoreConfigsRouter.post('/', async (c) => {
 })
 
 // PATCH /api/v1/score-configs/:id — update mutable fields
-scoreConfigsRouter.patch('/:id', async (c) => {
+scoreConfigsRouter.patch('/:id', requireEdit, async (c) => {
   const orgId = c.get('orgId')
   if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
   const id = c.req.param('id')
@@ -318,7 +321,7 @@ scoreConfigsRouter.patch('/:id', async (c) => {
 // reference this config and a hard delete would silently break the
 // dashboard charts that group by score_config_id. The unused-config
 // cleanup is a separate concern handled by a future cron.
-scoreConfigsRouter.delete('/:id', async (c) => {
+scoreConfigsRouter.delete('/:id', requireEdit, async (c) => {
   const orgId = c.get('orgId')
   if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
   const id = c.req.param('id')

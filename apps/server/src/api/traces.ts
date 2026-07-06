@@ -3,7 +3,7 @@ import type { JwtContext } from '../middleware/authJwt.js'
 import { authJwtOrApiKey } from '../middleware/authJwtOrApiKey.js'
 import { supabaseAdmin } from '../lib/db.js'
 import { computeCriticalPath } from '../lib/critical-path.js'
-import { parsePageLimit } from '../lib/params.js'
+import { parsePageLimit, validateOptionalUuid, validateOptionalDate } from '../lib/params.js'
 import { useEventsForTraces } from '../lib/events-read-flag.js'
 import {
   listTracesFromEvents,
@@ -23,10 +23,14 @@ tracesRouter.get('/', async (c) => {
   const orgId = c.get('orgId')
   if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
-  const projectId = c.req.query('projectId')
+  // projectId reaches a ClickHouse UUID binding (events path) / Postgres eq;
+  // from/to feed date comparisons on both paths. Validate up front so a
+  // malformed value (e.g. ?projectId=abc, ?from=garbage) returns a clean 400
+  // instead of a raw 500 — these are documented external (MCP/BI) surfaces.
+  const projectId = validateOptionalUuid(c.req.query('projectId'), 'projectId')
   const status = c.req.query('status')
-  const from = c.req.query('from')
-  const to = c.req.query('to')
+  const from = validateOptionalDate(c.req.query('from'), 'from')
+  const to = validateOptionalDate(c.req.query('to'), 'to')
   // `q` does a case-insensitive substring search over both `name` and `id`.
   // Without this the /traces page filtered client-side over the current 50-row
   // page only, which silently dropped matches living on other pages.

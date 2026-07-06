@@ -2,7 +2,6 @@
 import { useEffect, useState } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { GithubIcon, GoogleIcon } from '@/components/ui/provider-icons'
 
@@ -44,7 +43,6 @@ function ProofRow({ k, v }: { k: string; v: string }) {
 }
 
 export default function LoginPage() {
-  const router = useRouter()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
@@ -82,8 +80,11 @@ export default function LoginPage() {
       setLoading(false)
       return
     }
-    router.push('/dashboard')
-    router.refresh()
+    // Hard nav (not router.push) so the dashboard boots in a fresh JS context
+    // with a re-evaluated middleware pass and an empty TanStack cache. This
+    // guarantees the incoming account never renders against a previous
+    // account's cached queries. See CLAUDE.md gotcha #15.
+    window.location.href = '/dashboard'
   }
 
   async function handleOAuth(provider: 'google' | 'github') {

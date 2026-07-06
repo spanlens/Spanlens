@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import type { JwtContext } from '../middleware/authJwt.js'
 import { authJwtOrApiKey } from '../middleware/authJwtOrApiKey.js'
-import { parsePageLimit } from '../lib/params.js'
+import { parsePageLimit, validateOptionalUuid, validateOptionalDate } from '../lib/params.js'
 import { getUserAnalytics, type UserAnalyticsRow } from '../lib/stats-queries.js'
 import { requestsScope, selectRequests } from '../lib/requests-query.js'
 import { ApiError } from '../lib/errors.js'
@@ -29,10 +29,12 @@ usersRouter.get('/', async (c) => {
   const orgId = c.get('orgId')
   if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
-  const projectId = c.req.query('projectId') ?? null
+  // projectId is bound as a ClickHouse UUID and from/to feed date parsing
+  // downstream; validate up front so a malformed value returns 400 not 500.
+  const projectId = validateOptionalUuid(c.req.query('projectId'), 'projectId') ?? null
   const search    = c.req.query('search') ?? null
-  const from      = c.req.query('from') ?? null
-  const to        = c.req.query('to') ?? null
+  const from      = validateOptionalDate(c.req.query('from'), 'from') ?? null
+  const to        = validateOptionalDate(c.req.query('to'), 'to') ?? null
   const sortByRaw = c.req.query('sortBy') ?? 'cost'
   const sortDirRaw = c.req.query('sortDir') ?? 'desc'
   const sortBy: 'cost' | 'requests' | 'tokens' | 'last_seen' | 'latency' =
@@ -72,9 +74,12 @@ usersRouter.get('/:userId', async (c) => {
   if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
   const userId = c.req.param('userId')
 
-  const projectId = c.req.query('projectId') ?? null
-  const from      = c.req.query('from') ?? null
-  const to        = c.req.query('to') ?? null
+  // userId is a customer-supplied string identifier (x-spanlens-user), not a
+  // UUID — do not UUID-validate it. projectId is a ClickHouse UUID and from/to
+  // feed date parsing, so validate those to return 400 rather than a raw 500.
+  const projectId = validateOptionalUuid(c.req.query('projectId'), 'projectId') ?? null
+  const from      = validateOptionalDate(c.req.query('from'), 'from') ?? null
+  const to        = validateOptionalDate(c.req.query('to'), 'to') ?? null
 
   // Aggregate query reuses the same helper with a pre-narrowed search.
   let aggRows: UserAnalyticsRow[]

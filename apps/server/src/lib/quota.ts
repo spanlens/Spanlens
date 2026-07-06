@@ -317,7 +317,27 @@ export async function checkMonthlyQuota(
 
   // Billing accuracy: count the full UTC month, bypassing plan retention.
   // Free's 14-day window would otherwise undercount usage past day 14.
-  const used = await getCachedMonthlyCount(organizationId, monthStart)
+  let used: number
+  try {
+    used = await getCachedMonthlyCount(organizationId, monthStart)
+  } catch (err) {
+    // ClickHouse unreachable — FAIL OPEN. This runs on every /proxy/* request;
+    // if the count lookup throws, letting it propagate would 500 the whole
+    // proxy on a CH outage (the exact scenario the requests_fallback queue,
+    // gotcha #23, was built to survive). The quota band is a soft monetization
+    // gate, not a security boundary, and BYOK means traffic past the limit
+    // costs us nothing — so allowing the request through is the safe direction.
+    console.error('[quota] monthly count lookup failed, failing open:', err)
+    return {
+      allowed: true,
+      usedThisMonth: 0,
+      limit,
+      plan,
+      overageActive: false,
+      allowOverage,
+      capMultiplier,
+    }
+  }
 
   // Apply Pattern C policy
   const decision = evaluateQuotaPolicy({

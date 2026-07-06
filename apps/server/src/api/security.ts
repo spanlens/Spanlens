@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import { authJwt, type JwtContext } from '../middleware/authJwt.js'
+import { requireRole } from '../middleware/requireRole.js'
 import { supabaseAdmin } from '../lib/db.js'
 import { requestsScope, selectRequests, countRequests } from '../lib/requests-query.js'
 import { fromClickhouseTimestamp } from '../lib/clickhouse.js'
@@ -20,6 +21,10 @@ import { ApiError } from '../lib/errors.js'
 export const securityRouter = new Hono<JwtContext>()
 
 securityRouter.use('*', authJwt)
+
+// Org-wide security toggles are admin-only (matches organizations.ts
+// branding/security PATCH gating). Reads stay open to viewers.
+const requireAdmin = requireRole('admin')
 
 // GET /api/v1/security/flagged?limit=50&offset=0
 securityRouter.get('/flagged', async (c) => {
@@ -140,7 +145,7 @@ securityRouter.get('/settings', async (c) => {
 
 // PATCH /api/v1/security/alert
 // Body: { enabled: boolean }
-securityRouter.patch('/alert', async (c) => {
+securityRouter.patch('/alert', requireAdmin, async (c) => {
   const orgId = c.get('orgId')
   if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
@@ -167,7 +172,7 @@ securityRouter.patch('/alert', async (c) => {
 
 // PATCH /api/v1/security/projects/:projectId/block
 // Body: { enabled: boolean }
-securityRouter.patch('/projects/:projectId/block', async (c) => {
+securityRouter.patch('/projects/:projectId/block', requireAdmin, async (c) => {
   const orgId = c.get('orgId')
   if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 

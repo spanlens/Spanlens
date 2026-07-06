@@ -8,6 +8,7 @@ import { invalidateWebhookCache } from '../lib/webhook-emit.js'
 import { recordAuditEvent } from '../lib/audit-log.js'
 import { ApiError } from '../lib/errors.js'
 import { validateOutboundUrl } from '../lib/safe-url.js'
+import { isUuid } from '../lib/params.js'
 
 export const webhooksRouter = new Hono<JwtContext>()
 webhooksRouter.use('*', authJwt)
@@ -176,6 +177,9 @@ webhooksRouter.delete('/:id', requireEdit, async (c) => {
   const orgId = c.get('orgId')
   const id = c.req.param('id')
   if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
+  // Malformed id would hit Postgres as an invalid-uuid error → raw 500.
+  // Treat it like a nonexistent id (same 404 as GET/PATCH siblings).
+  if (!isUuid(id)) throw new ApiError('NOT_FOUND', 'Webhook not found')
 
   const { error } = await supabaseAdmin
     .from('webhooks')
