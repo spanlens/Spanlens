@@ -50,6 +50,8 @@ supabase db reset # 로컬 DB 초기화 (주의: 전체 삭제)
 /api/v1/{stats, requests, users, traces, anomalies, recommendations} → **authJwtOrApiKey** (Supabase JWT 또는 sl_live_* — full/public 둘 다 통과)
 /api/v1/me/key-info → authApiKey (CLI introspection — JWT 없이 sl_live_* 만 검증, scope 응답에 포함)
 /api/* 그 외 → authJwt (Supabase JWT)
+- `/api/v1/*` **write** 라우터 (scoreConfigs, experiments, datasets, security, prompts-playground `/run`, billing checkout/cancel 등) → authJwt(OrApiKey) 다음에 **`requireRole(...roles)`** 추가. `c.get('role')` 기반 org-role 게이트 (`security.ts`는 `admin`만, 나머지는 `admin`+`editor`). viewer JWT는 read만, write는 403 `FORBIDDEN`. GET엔 불필요.
+- **evals.ts는 dual-auth라 plain `requireRole` 금지**: API-key path는 `role`이 null이라 `requireRole('admin','editor')`가 CI(`sl_live_*` eval 실행)를 깨뜨림. evals.ts의 `requireEdit` 미들웨어처럼 **role이 non-null일 때만** 체크 + write 라우트엔 `requireFullScope`로 public 키를 read-only 처리 (evals.ts:30 참고).
 DB 쓰기(로깅) → supabaseAdmin (service_role, RLS bypass)
 DB 읽기(조회) → supabaseClient (anon key, RLS 적용)
 미들웨어 혼용 금지. dual-auth가 필요한 read API는 `authJwtOrApiKey` 한 곳만 사용.
@@ -75,7 +77,7 @@ DB 읽기(조회) → supabaseClient (anon key, RLS 적용)
 1. Provider Key(실제 OpenAI/Anthropic key) 절대 로그 출력 금지
 2. Provider Key 복호화: apps/server/src/lib/crypto.ts의 aes256Decrypt()만 사용
 3. 복호화 key는 fetch() Authorization 헤더에만 즉시 사용, 변수 저장 최소화
-4. DB 저장 전 request_body에서 Authorization 헤더 제거 필수
+4. DB 저장 전 request_body에서 Authorization 헤더 제거 필수. provider-auth 헤더(`x-api-key`, `x-goog-api-key`)도 upstream 전 strip 필수 — 이전엔 sl_live_ 키가 OpenAI/Google로 유출됐음 (STRIP_HEADERS).
 5. 스트리밍: body.tee()로 복사, 원본 스트림 즉시 클라이언트 반환
 ## DB 작업 규칙
 **Supabase (Postgres) — 트랜잭션 / Auth / 관계형 데이터:**
@@ -96,6 +98,7 @@ DB 읽기(조회) → supabaseClient (anon key, RLS 적용)
 - 로컬: `docker compose up clickhouse` 후 `pnpm ch:migrate`. 환경변수: `CLICKHOUSE_URL/USER/PASSWORD/DB`
 - 프로덕션: ClickHouse Cloud Development tier 시작 ($50/월). Plan은 [docs/plans/clickhouse-migration.md](docs/plans/clickhouse-migration.md) 참고
 - RLS 없음 → `apps/server/src/lib/requests-query.ts`의 `requestsScope` 헬퍼로 `organization_id` + retention 필터 자동 주입. 직접 `getClickhouse().query()` 호출은 lib 파일 한정, org 필터 직접 명시
+- **⚠️ ClickHouse 마이그레이션은 deploy 파이프라인에 없음 — production 수동 적용**: `deploy-server.yml`은 Supabase만 `db push`. CH 마이그레이션(`clickhouse/migrations/NNN`)은 **ClickHouse Cloud SQL 콘솔에서 수동 실행** (009_dedup_events_as_requests_view가 그렇게 적용됨). gotcha #21 순서(migration 먼저 → INSERT 코드) 지키려면 PR 머지 **전에** 손으로 적용. Postgres(gotcha #25)와 달리 자동화 안 됨.
 ## 핵심 모듈 — 중복 구현 금지
 lib/crypto.ts — AES-256-GCM 암/복호화 (Provider Key 전용)
 lib/cost.ts — 비용 계산 calculateCost(provider, model, usage). 동기 함수 — DB 가격은 lib/model-prices-cache.ts가 백그라운드로 stale-while-revalidate 갱신 (5분 TTL)
@@ -109,9 +112,11 @@ lib/stats-queries.ts — getStatsOverview / getStatsModels / getStatsTimeseries 
 lib/anomaly.ts — detectAnomalies / fetchContributingFactors (구 detect_anomaly_stats / get_anomaly_factors RPC 대체, 인라인 ClickHouse SQL)
 lib/pii-mask.ts — maskApiKeys / maskApiKeysInBody (sk-, sk-ant-, sk-proj-, AIza, sl_live_ 패턴 마스킹 — `sl_live_pub_*` 까지 자동 커버)
 lib/resolve-prompt-version.ts — X-Spanlens-Prompt-Version 헤더 파싱 (name@version / name@latest / UUID)
+lib/params.ts — `isUuid` / `validateOptionalUuid` / `validateOptionalDate` + `parsePageLimit` 등. 쿼리 파라미터·path `:id` 검증 표준 헬퍼. malformed UUID는 404, bad date는 400. 새 read/DELETE 핸들러에서 손 파싱 말고 재사용.
 middleware/authApiKey.ts — sl_live_* 키 검증 + scope 추출 + organizationId/projectId set (full은 projects join, public은 organization_id 직접). 모든 proxy/ingest/OTLP의 첫 게이트.
 middleware/requireFullScope.ts — scope=public이면 403 + `PUBLIC_KEY_WRITE_FORBIDDEN`. authApiKey 다음에 mount해서 write 라우터에만 적용 (proxy/* + ingest/* + OTLP /v1/traces).
 middleware/authJwtOrApiKey.ts — `/api/v1/*` read 라우터용 dual-auth. Authorization 헤더가 `Bearer sl_live_*`면 authApiKey + orgId bridge, 그 외엔 authJwt. 기존 read 핸들러는 `c.get('orgId')`만 읽으면 둘 다 호환.
+middleware/requireRole.ts — `requireRole(...allowed: OrgRole[])`. authJwt 뒤에서 `c.get('role')` 검사, 불일치 시 403 `FORBIDDEN`. write 라우터 전용. dual-auth 라우터(evals)엔 그대로 쓰지 말 것 — null role(API-key path) reject해 CI 깨짐.
 parsers/openai.ts — OpenAI 스트림 파서 (마지막 chunk에 usage)
 parsers/anthropic.ts — Anthropic 파서 (message_delta에 usage, OpenAI와 다름!)
 parsers/gemini.ts — Gemini 파서
@@ -142,6 +147,7 @@ apps/web/app/demo/_client-guard.tsx — `DemoClientGuard`. demo subsystem 전용
    - read API (`/api/v1/*`)이고 외부 도구(MCP/BI/embed)에서도 호출 → `authJwtOrApiKey`
    - read API인데 user identity 필요 (audit, members 등) → `authJwt`만
    - write API (`/proxy/*`, `/ingest/*`, OTLP) → `authApiKey` + `requireFullScope`
+   - write API가 org-role 제약 필요 (viewer 차단) → authJwt 뒤에 `requireRole('admin','editor')`. dual-auth write면 evals.ts의 `requireEdit` + `requireFullScope` 조합 재사용.
    - app.ts에서 mount 순서 주의: `/api/v1` wildcard 라우터(evalsRouter/humanEvalsRouter) **뒤**에 mount하면 wildcard authJwt가 먼저 잡아 dual-auth 무력화 (recommendations 사고 패턴, 2026-06-04 발견)
 4. UI → apps/web에서 fetch('/api/v1/...') 또는 TanStack Query
 5. 검증 → pnpm typecheck && lint && test
@@ -162,8 +168,8 @@ PORT=3001 (server), 3000 (web)
 
 새 도메인(예: 별칭 `api.spanlens.io`, 파트너 제공 서브도메인) 추가 시 **CORS allowlist도 동시 수정** → 서버 재배포 필요.
 ## Known Gotchas — AgentOps 특유의 함정
-1. 스트리밍 토큰 0: Anthropic usage는 message_delta에 있음 (OpenAI는 마지막 chunk). parsers/anthropic.ts 확인.
-2. 비용 null: model_prices에 모델 없으면 calculateCost()가 null 반환. 새 모델 추가 시 seeds/model_prices.sql 업데이트. **OpenAI는 응답 body의 `model` 필드를 dated variant(`gpt-4o-mini-2024-07-18`)로 돌려주고 그게 `requests.model`에 저장됨** — 따라서 모델 키로 매칭하는 모든 서버 로직(`lib/cost.ts`, `lib/model-recommend-rules.ts`)은 **exact match + longest boundary-aware prefix** fallback을 써야 함. 새 기능 추가 시 이 패턴 재사용 필수.
+1. 스트리밍 토큰 0: Anthropic usage는 message_delta에 있음 (OpenAI는 마지막 chunk). parsers/anthropic.ts 확인. Gemini streaming usage는 `?alt=sse` 버퍼가 JSON 배열 아닌 `data:` 라인이라 SSE-aware 파싱 + `hasUsage` 가드(cost 0 아닌 null). Gemini `thoughtsTokenCount`(reasoning, output rate 청구)는 completion tokens에 합산 — parsers/gemini.ts + recompute/experiment-runner/judge-calls 4곳.
+2. 비용 null: model_prices에 모델 없으면 calculateCost()가 null 반환. 새 모델 추가 시 seeds/model_prices.sql 업데이트. **OpenAI는 응답 body의 `model` 필드를 dated variant(`gpt-4o-mini-2024-07-18`)로 돌려주고 그게 `requests.model`에 저장됨** — 따라서 모델 키로 매칭하는 모든 서버 로직(`lib/cost.ts`, `lib/model-recommend-rules.ts`)은 **exact match + longest boundary-aware prefix** fallback을 써야 함. 새 기능 추가 시 이 패턴 재사용 필수. (2026-07: `lib/cost.ts` `lookupPrice`도 boundary-aware prefix 적용 — `model-recommend-rules.ts`와 동일. 두 곳 모두 준수.)
 3. **🔥 `requests` 테이블은 Supabase에 없음 — ClickHouse 전용 (2026-05-16 Phase 1 완료)**: `supabaseAdmin.from('requests')` 호출 시 컴파일 에러 (types.ts에 더 이상 없음). 모든 읽기는 `apps/server/src/lib/requests-query.ts`의 `selectRequests` / `countRequests` 헬퍼 경유 — 헬퍼가 `organization_id` 격리 + plan retention 필터(`free=14d / pro=90d / team=365d`)를 자동 주입함. 빌링/관리 쿼리(`quota.ts`, `paddle-usage.ts`)는 `requestsScope(orgId, { ignoreRetention: true })`로 retention 우회. 쓰기는 `logger.ts`의 `logRequestAsync` 경유. RLS는 없으므로 헬퍼 안 거치고 직접 `getClickhouse().query()` 쓰면 멀티테넌트 데이터 유출 위험 — 직접 호출은 lib 파일에서만, 항상 `organization_id` 필터 명시.
 4. spans FK 없음: spans.parent_span_id는 FK 제약 없음 (의도적). 에이전트 병렬 span 지원. 직접 FK 추가 금지.
 5. 복호화 빈 문자열: ENCRYPTION_KEY 불일치 시 에러 대신 빈 문자열 반환 가능. 복호화 결과 항상 length 체크.
@@ -207,7 +213,7 @@ PORT=3001 (server), 3000 (web)
     **(F) 식별 안 되는 잔존 mismatch — 최후의 수단**: minified stack이 component 위치 안 알려주고, chunk source 검색에도 후보가 안 잡힐 때. `apps/web/app/demo/_client-guard.tsx`의 `DemoClientGuard` 패턴 — useSyncExternalStore로 server snapshot `false` / client snapshot `true` 반환, mount 전엔 `null` render. SSR HTML이 empty라 diff할 게 없어 mismatch 자체 불가능. **단, SEO/first-paint 중요한 페이지엔 쓰면 안 됨** — demo/* 같은 noindex 영역 전용. PR #258.
 
     **공통 도구**: `apps/web/lib/hydration-safe-now.ts` (useHydrationSafeNow), `apps/web/lib/utils.ts` (formatDate/formatDateTime/formatTime), `apps/web/app/demo/_client-guard.tsx` (DemoClientGuard). 새 SSR-rendered 컴포넌트 작성 시 이 helpers부터 검토.
-23. **ClickHouse INSERT 실패는 더 이상 silent loss 아님 — `requests_fallback` 큐로 자동 보존 (P2.6, 2026-05-19)**: `lib/logger.ts`가 CH `insert()` throw 시 Supabase `requests_fallback` 테이블에 INSERT(payload jsonb + retry_count + last_error). cron `/cron/replay-fallback`이 5분마다 batch 50개씩 CH로 이관. 7일 또는 100회 retry 후 만료. **새 ClickHouse 컬럼 추가 시 logger.ts와 동시 업데이트 필수** — payload 필드 누락은 fallback에서 CH 이관 시 silent skip (gotcha #21의 `input_format_skip_unknown_fields=1` 때문). 운영 시 `/health/deep` 응답의 `fallback.queue` 값이 비정상 (>1000) 모니터링 권장 — 추가로 `/cron/replay-fallback`이 드레인 후 큐가 `BACKLOG_ALERT_THRESHOLD`(1000)를 넘으면 `alertOnFallbackBacklog()`가 `internal_alerts`(kind `fallback_queue_high`)에 자동 알림(미해결 알림 dedup)을 남겨 `/admin/alerts`에 노출. `requests`/`events` 테이블에 UNIQUE 제약은 여전히 없지만, replay 경로는 멱등 — INSERT 전 `fetchExistingIds()`로 이미 CH에 있는 id를 제외해서 "CH INSERT 성공 + Supabase DELETE 실패" race의 중복 INSERT를 차단함 (`lib/fallback-replay.ts`). 대량/지속 중복이 다른 경로에서 관측되면 그때 outbox 또는 ReplacingMergeTree 재설계.
+23. **ClickHouse INSERT 실패는 더 이상 silent loss 아님 — `requests_fallback` 큐로 자동 보존 (P2.6, 2026-05-19)**: `lib/logger.ts`가 CH `insert()` throw 시 Supabase `requests_fallback` 테이블에 INSERT(payload jsonb + retry_count + last_error). cron `/cron/replay-fallback`이 5분마다 batch 50개씩 CH로 이관. 7일 또는 100회 retry 후 만료. **새 ClickHouse 컬럼 추가 시 logger.ts와 동시 업데이트 필수** — payload 필드 누락은 fallback에서 CH 이관 시 silent skip (gotcha #21의 `input_format_skip_unknown_fields=1` 때문). 운영 시 `/health/deep` 응답의 `fallback.queue` 값이 비정상 (>1000) 모니터링 권장 — 추가로 `/cron/replay-fallback`이 드레인 후 큐가 `BACKLOG_ALERT_THRESHOLD`(1000)를 넘으면 `alertOnFallbackBacklog()`가 `internal_alerts`(kind `fallback_queue_high`)에 자동 알림(미해결 알림 dedup)을 남겨 `/admin/alerts`에 노출. `requests`/`events` 테이블에 UNIQUE 제약은 여전히 없지만, replay 경로는 멱등 — INSERT 전 `fetchExistingIds()`로 이미 CH에 있는 id를 제외해서 "CH INSERT 성공 + Supabase DELETE 실패" race의 중복 INSERT를 차단함 (`lib/fallback-replay.ts`). 대량/지속 중복이 다른 경로에서 관측되면 그때 outbox 또는 ReplacingMergeTree 재설계. quota lookup은 CH 장애 시 fail-OPEN: `checkMonthlyQuota`가 ClickHouse count throw 시 500 대신 통과 (gotcha #23 fallback과 짝 — 관측 실패로 고객 요청 차단 금지).
 24. **🔥 Vercel KV(Upstash Free 티어)에서 raw `redis.set()`은 silent reject — Lua script만 persist**: 2026-05-19 Step #4 SWR 캐시 시도 중 발견. `@upstash/redis`로 `redis.set(key, value, { ex: N })` 호출 시 (1) Upstash MONITOR에 SET 명령 도달, (2) SDK는 "OK" 응답을 받음, (3) 그러나 Data Browser에 키가 존재하지 않고 후속 `redis.get(key)`는 즉시 `null` 반환. **같은 인스턴스, 같은 토큰, 같은 코드 경로**에서 `@upstash/ratelimit` (내부적으로 Lua `EVAL` 사용)은 정상 작동 — 차이는 raw 명령 vs Lua script. 라벨 Free / AWS us-east-1 / Global mode에서 재현. 추정 원인: Upstash Free 티어가 Lua가 아닌 직접 write 명령에 대해 silent acceptance만 하고 persist는 안 함 (또는 Vercel KV 통합의 미documented 동작). **새 캐시 도입 시**: (a) Pay-as-you-go 티어 사용 ($0.20/100만 cmd), 또는 (b) helper를 `redis.eval(luaScript, ...)`로 작성해 Lua 경유. PR #106~#110 revert 됨. 향후 캐시 재도입 시 Lua 패턴 채택 또는 Redis provider 교체 검토.
 25. **🔥 Postgres 마이그레이션은 코드 deploy 전에 production에 적용되어야 함 — `deploy-server.yml` 워크플로가 migrate → deploy 순서 강제**: 2026-06-04 PLG Loop ② 머지 후 `/api/v1/organizations/me` 가 prod에서 500/404 반환. 원인: 코드가 새 컬럼(`hide_powered_by_badge`)을 SELECT 하는데 production DB에 컬럼이 없었음. Vercel git integration 으로 서버 코드는 자동 배포되지만 `supabase db push --linked` 는 수동이었음 → 코드만 갔고 스키마는 안 따라감. ClickHouse gotcha #21 과 정확히 같은 패턴(스키마 먼저 → 코드 다음). 해결: `.github/workflows/deploy-server.yml` 을 단일 통합 워크플로로 재작성 — Job 1 `migrate` (`supabase db push --linked --include-all`, 멱등) 가 성공해야 Job 2 `deploy` (Vercel) 가 실행. 깨진 마이그레이션은 deploy 자체를 막아서 stale-but-running 상태 유지. 필요 시크릿: `SUPABASE_ACCESS_TOKEN` (account/tokens 페이지), `SUPABASE_DB_PASSWORD` (Project Settings → Database). Web (Vercel git integration) 은 이 순서 밖이라 web → server 간 race는 별도. 다행히 추가성(additive) 마이그레이션만 작성하는 컨벤션 덕분에 web 이 옛 server API 응답을 잠시 받아도 새 필드 undefined 로 graceful degrade. **새 컬럼/테이블 추가 PR 작성 시**: (a) 마이그레이션은 IF NOT EXISTS/ADD COLUMN IF NOT EXISTS 같이 멱등 작성 (b) 컬럼을 NOT NULL + DEFAULT 로 추가해 backfill 자동화 (c) `concurrency: prod-deploy` 그룹 덕분에 빠른 연속 push 도 race 없이 직렬화.
 
@@ -224,6 +230,10 @@ PORT=3001 (server), 3000 (web)
 31. **MCP Registry description 100자 제한**: server.json의 `description`이 100자를 초과하면 publish 시 `422 expected length <= 100`. npm package.json은 길어도 OK이지만 registry는 stricter. 발견 시점에는 description 137자였음. 짧고 핵심만 — 사용자가 registry 검색 결과에서 바로 use case 인지하도록 작성.
 
 32. **🔥 Vercel cron jobs는 vercel.json 변경을 즉시 sync하지 않음 — 새 cron이 며칠씩 안 firing할 수 있음** (2026-06-09 발견, 2026-06-16 업데이트): production 프로젝트가 Pro 플랜이라 40 crons까지 가능하지만, vercel.json `crons` 배열에 새 entry를 추가해도 Vercel 스케줄러가 등록하지 않는 경우 존재. Vercel 측 캐싱 또는 스케줄러 버그로 추정 (support ticket 필요). **증상**: cron_job_runs 테이블에 특정 cron이 한 번도 안 보임. `runtime_logs`에 GET /cron/x 진입 흔적 0. **확인 방법**: supabase MCP로 `SELECT job_name, count(*), max(ran_at) FROM cron_job_runs WHERE ran_at > now() - interval '24 hours' GROUP BY job_name` → vercel.json 정의보다 적게 나오면 sync 깨진 것. **회피 패턴 — 3중 스케줄러**: ① `.github/workflows/cron-server.yml`에 GH Actions cron으로도 등록. 단, GH Actions도 `*/5` 같은 짧은 cadence에선 throttle해서 단독으론 100% 안 됨 (2026-06-15 production `cron_job_runs` 24h 조회 시 `*/5` 스케줄 3.5%, self-monitor 8%, hourly job들 16~33% 발사). ② critical 엔드포인트(`replay-fallback`, `self-monitor`)는 **Better Stack Uptime monitor** 추가로 등록 (Settings → Monitors → Create monitor). URL + `Authorization: Bearer $CRON_SECRET` 헤더 + 3분 / 30분 간격. Better Stack은 외부 인프라라 Vercel/GH 갭에 영향 안 받음 → 사실상 100% 발사. ③ CRON_SECRET은 **Vercel env에서 Sensitive 플래그 해제**해두기 (회수 가능). rotation 필요 시 GH Actions secret + Better Stack header 세 군데 동기화. 사고 사례: `/cron/run-background-migrations` 며칠 firing 안 함 → background_migrations 큐 적체. `/cron/replay-fallback` Vercel + GH 둘 다 throttle → Better Stack monitor 추가로 해결 (PR #365).
+
+33. **🔥 프록시 응답 `content-length` strip 필수 — undici가 gzip 해제하지만 압축 length 유지 → body 잘림**: `proxy/utils.ts`의 `STRIP_RESPONSE_HEADERS`에 `content-length` 포함(`content-encoding`과 함께). undici/fetch는 gzip·br을 투명 해제하지만 원본(압축) `content-length`는 그대로 둠 → 클라이언트로 forward 시 Node가 해제된 body를 압축 바이트 수로 truncate → 잘린 JSON. 런타임이 실제 길이 재계산하도록 반드시 strip.
+
+34. **🔥 `x-trace-id`/`x-span-id`는 CH flush 전 UUID 검증 필수 — 비-UUID면 row 통째 소실**: `requests.trace_id`/`span_id`는 `Nullable(UUID)`. non-UUID를 그대로 INSERT하면 CH가 전체 row reject (fallback 엔트리도 없음 — silent loss). `proxy/shared/log-base.ts`가 UUID validate 후 아니면 null. 새 UUID 컬럼 로깅 시 동일 검증.
 
 ## CI/CD Gotchas — GitHub Actions + npm + Docker
 1. **setup-node@v4 + registry-url → NPM_CONFIG_USERCONFIG shadow**: setup-node가 `NPM_CONFIG_USERCONFIG` env var를 자체 `.npmrc`로 설정. 패키지 디렉토리에 쓴 `.npmrc`가 무시됨. 해결: workflow에서 `unset NPM_CONFIG_USERCONFIG && npm publish --userconfig "$PWD/.npmrc"` + setup-node에서 `registry-url` 제거.
@@ -255,6 +265,7 @@ PORT=3001 (server), 3000 (web)
 - `.github/dependabot.yml`에 npm sub-directory entry 추가 금지 — pnpm-lock 갱신 못 함 (gotcha #26)
 - `apps/server/tsconfig.json`의 `compilerOptions.types: ["node"]` 제거 금지 — Docker build 깨짐 (gotcha #28)
 - `requireFullScope` 미들웨어를 read 라우터에 mount 금지 — public 키 사용자 차단
+- requireRole를 evals 같은 dual-auth 라우터에 mount 금지 — null-role API-key path reject해 CI 깨짐.
 ## 커밋 규칙
 Conventional Commits: type(scope): description
 type: feat | fix | refactor | perf | test | docs | chore

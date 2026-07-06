@@ -1,5 +1,22 @@
 # @spanlens/sdk changelog
 
+## 0.15.1
+
+Reliability fixes for observe(), the transport, and the framework trackers. No API changes beyond a new optional onError handler on the Vercel AI tracker.
+
+### Fixed
+
+- `observe()` no longer misclassifies arrays, `Map`, or `Set` as streams. Stream detection previously keyed on `Symbol.iterator`, which those containers have, so their return value was silently dropped instead of captured as span output. Only async-iterables and `ReadableStream`-likes are treated as streams now.
+- `observe()` error path no longer masks the caller's original error. A failure inside the automatic `span.end()` is swallowed so the user's thrown error always propagates unchanged.
+- Transport: a user `onError` callback that throws can no longer crash the host process.
+- Transport: the response body read is now bounded by a timeout, so a server that accepts the request but stalls the body no longer hangs `flush()` or process exit.
+- Transport: payload serialization failures (for example, circular references in `metadata`) are non-retryable. They fail fast with a clear `onError` message instead of exhausting the retry budget and then dropping the span silently.
+- Vercel AI and LlamaIndex integrations: when the instrumented call throws, the span and trace are ended with `status: 'error'` instead of leaking a perpetual `running` trace. LlamaIndex also clears its internal runs map.
+
+### Added
+
+- `createSpanlensTracker()` (Vercel AI) now returns an `onError` handler. Wire it into `streamText` / `streamObject` as `onError: tracker.onError` so a streaming failure ends the span, since `onFinish` never fires on error.
+
 ## 0.15.0
 
 Four more OpenAI-compatible providers: Groq, DeepSeek, xAI (Grok), and Cohere.

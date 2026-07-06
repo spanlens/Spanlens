@@ -784,6 +784,7 @@ const result = await generateText({
   messages: [{ role: 'user', content: 'Hello' }],
   onStepFinish: tracker.onStepFinish,  // records intermediate tool steps
   onFinish: tracker.onFinish,          // closes span with final token counts
+  onError: tracker.onError,            // closes span if a streaming call fails
 })`}
         py={`# Vercel AI SDK is TypeScript-only`}
       />
