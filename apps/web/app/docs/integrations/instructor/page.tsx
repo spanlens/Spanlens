@@ -1,4 +1,5 @@
 import { CodeBlock } from '../../_components/code-block'
+import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
 export const metadata = {
   title: 'Instructor integration · Spanlens Docs',
@@ -10,6 +11,7 @@ export const metadata = {
 export default function InstructorIntegration() {
   return (
     <div>
+      <DocsJsonLd meta={metadata} />
       <h1>Instructor integration</h1>
       <p className="lead">
         Instructor wraps OpenAI / Anthropic clients to enforce structured output

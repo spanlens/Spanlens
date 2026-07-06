@@ -1,4 +1,5 @@
 import { CodeBlock } from '../../_components/code-block'
+import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
 export const metadata = {
   alternates: { canonical: '/docs/features/shares' },
@@ -10,6 +11,7 @@ export const metadata = {
 export default function SharesDocs() {
   return (
     <div>
+      <DocsJsonLd meta={metadata} />
       <h1>Shared links</h1>
       <p className="lead">
         Anyone you give a Spanlens share link to can read the trace or request without

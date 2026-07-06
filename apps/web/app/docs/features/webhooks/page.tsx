@@ -1,4 +1,5 @@
 import { CodeBlock } from '../../_components/code-block'
+import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
 export const metadata = {
   alternates: { canonical: '/docs/features/webhooks' },
@@ -10,6 +11,7 @@ export const metadata = {
 export default function WebhooksDocs() {
   return (
     <div>
+      <DocsJsonLd meta={metadata} />
       <h1>Webhooks</h1>
       <p className="lead">
         Deliver Spanlens events to your own server as HTTP POST payloads in real time. Three event

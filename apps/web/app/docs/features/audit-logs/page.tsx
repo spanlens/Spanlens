@@ -1,4 +1,5 @@
 import { CodeBlock } from '../../_components/code-block'
+import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
 export const metadata = {
   alternates: { canonical: '/docs/features/audit-logs' },
@@ -10,6 +11,7 @@ export const metadata = {
 export default function AuditLogsDocs() {
   return (
     <div>
+      <DocsJsonLd meta={metadata} />
       <h1>Audit Logs</h1>
       <p className="lead">
         Spanlens records every significant action within your organization. Track who changed what

@@ -1,4 +1,5 @@
 import { CodeBlock } from '../../_components/code-block'
+import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
 export const metadata = {
   title: 'Reliability · Spanlens Docs',
@@ -10,6 +11,7 @@ export const metadata = {
 export default function ReliabilityDocs() {
   return (
     <div>
+      <DocsJsonLd meta={metadata} />
       <h1>Reliability</h1>
       <p className="lead">
         The Spanlens proxy sits in the critical path of your LLM calls. This page covers

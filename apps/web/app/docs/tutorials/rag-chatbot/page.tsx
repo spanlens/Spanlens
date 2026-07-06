@@ -1,4 +1,5 @@
 import { CodeBlock } from '../../_components/code-block'
+import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
 export const metadata = {
   title: 'Add observability to a RAG chatbot · Spanlens Docs',
@@ -10,6 +11,7 @@ export const metadata = {
 export default function RagChatbotTutorial() {
   return (
     <div>
+      <DocsJsonLd meta={metadata} />
       <h1>Tutorial: add observability to a RAG chatbot</h1>
       <p className="lead">
         Forty minutes. We start with a minimal RAG chatbot (Pinecone + OpenAI), add

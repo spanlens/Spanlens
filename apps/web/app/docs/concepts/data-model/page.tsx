@@ -1,4 +1,5 @@
 import { CodeBlock } from '../../_components/code-block'
+import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
 export const metadata = {
   title: 'Data model · Spanlens Docs',
@@ -10,6 +11,7 @@ export const metadata = {
 export default function DataModelDocs() {
   return (
     <div>
+      <DocsJsonLd meta={metadata} />
       <h1>Data model</h1>
       <p className="lead">
         Spanlens stores everything in eight core entities. Most of what you do in the

@@ -1,5 +1,6 @@
 import { CodeBlock } from '../../_components/code-block'
 import { ModelPriceChart } from '../../_components/charts'
+import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
 export const metadata = {
   alternates: { canonical: '/docs/features/cost-tracking' },
@@ -11,6 +12,7 @@ export const metadata = {
 export default function CostTrackingDocs() {
   return (
     <div>
+      <DocsJsonLd meta={metadata} />
       <h1>Cost tracking</h1>
       <p className="lead">
         Every request row carries a <code>cost_usd</code> field computed at ingest time from your

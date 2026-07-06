@@ -1,4 +1,5 @@
 import { CodeBlock } from '../../_components/code-block'
+import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
 export const metadata = {
   alternates: { canonical: '/docs/features/security' },
@@ -10,6 +11,7 @@ export const metadata = {
 export default function SecurityDocs() {
   return (
     <div>
+      <DocsJsonLd meta={metadata} />
       <h1>Security scan</h1>
       <p className="lead">
         Every LLM request and response body passes through Spanlens&apos; scan pipeline.

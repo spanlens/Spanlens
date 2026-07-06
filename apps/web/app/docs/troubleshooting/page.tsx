@@ -1,3 +1,5 @@
+import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
+
 export const metadata = {
   alternates: { canonical: '/docs/troubleshooting' },
   title: 'Troubleshooting · Spanlens Docs',
@@ -73,6 +75,7 @@ const STATUS_ROWS: SymptomRow[] = [
 export default function TroubleshootingPage() {
   return (
     <div>
+      <DocsJsonLd meta={metadata} />
       <h1>Troubleshooting</h1>
       <p className="lead">
         Start from the symptom you are seeing. Each section gives the likely cause and the

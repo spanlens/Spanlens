@@ -1,5 +1,6 @@
 import { CodeBlock } from '../../_components/code-block'
 import { AlertLoopDiagram } from '../../_components/diagrams'
+import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
 export const metadata = {
   alternates: { canonical: '/docs/features/alerts' },
@@ -11,6 +12,7 @@ export const metadata = {
 export default function AlertsDocs() {
   return (
     <div>
+      <DocsJsonLd meta={metadata} />
       <h1>Alerts</h1>
       <p className="lead">
         Define simple threshold rules on your LLM traffic. When a rule fires, Spanlens sends a
