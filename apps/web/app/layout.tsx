@@ -64,12 +64,18 @@ export const metadata: Metadata = {
     description: SITE_DESCRIPTION,
     images: ['/icon.png'],
   },
+  // NOTE: no top-level `index`/`follow` here. Explicit `index, follow` is the
+  // crawler default (zero SEO value), and on dynamic routes with an async
+  // `generateMetadata` (e.g. /share/[token]) Next.js streams the page-level
+  // metadata separately from the shell head — so the root's
+  // `<meta name="robots" content="index, follow">` and the page's `noindex`
+  // both ended up in the same document (2026-07-06 audit: duplicate robots
+  // tags on every /share URL, defeating the noindex). Omitting the directive
+  // at the root leaves page-level `robots` overrides as the only
+  // `name="robots"` tag. googleBot preview prefs carry no index directive,
+  // so they can't conflict with a page-level noindex.
   robots: {
-    index: true,
-    follow: true,
     googleBot: {
-      index: true,
-      follow: true,
       'max-image-preview': 'large',
       'max-snippet': -1,
       'max-video-preview': -1,
@@ -82,15 +88,29 @@ export const metadata: Metadata = {
   },
 }
 
+// Canonical Organization entity for the whole site. Every other JSON-LD block
+// that needs the org (e.g. /about's AboutPage.mainEntity) must reference it by
+// `@id` instead of declaring a second Organization node — two divergent nodes
+// (different sameAs / foundingDate) break entity reconciliation in Google and
+// LLM crawlers (2026-07-06 schema audit).
 const organizationJsonLd = {
   '@context': 'https://schema.org',
   '@type': 'Organization',
+  '@id': `${SITE_URL}/#organization`,
   name: 'Spanlens',
   url: SITE_URL,
   logo: `${SITE_URL}/icon.png`,
   description: SITE_DESCRIPTION,
   email: 'hi@spanlens.io',
-  sameAs: ['https://github.com/spanlens'],
+  foundingDate: '2026-04',
+  founder: {
+    '@type': 'Person',
+    name: 'Haeseong Jeon',
+  },
+  sameAs: [
+    'https://github.com/spanlens/Spanlens',
+    'https://www.npmjs.com/package/@spanlens/sdk',
+  ],
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

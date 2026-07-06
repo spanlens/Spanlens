@@ -59,6 +59,19 @@ export function Footer() {
               <Link href="/compare/arize-phoenix" className="hover:text-text transition-colors">Arize Phoenix</Link>
             </div>
           </div>
+          {/* Guides — the keyword landing pages had zero internal inbound
+              links (sitemap-only orphans, 2026-07-06 SEO audit). Footer links
+              from every marketing/docs page restore internal link equity. */}
+          <div>
+            <div className="text-text-faint mb-2 tracking-[0.05em] uppercase text-[10px]">Guides</div>
+            <div className="flex flex-col gap-1.5">
+              <Link href="/llm-observability" className="hover:text-text transition-colors">LLM Observability</Link>
+              <Link href="/agent-tracing" className="hover:text-text transition-colors">Agent Tracing</Link>
+              <Link href="/llm-cost-tracking" className="hover:text-text transition-colors">LLM Cost Tracking</Link>
+              <Link href="/alternatives" className="hover:text-text transition-colors">Alternatives</Link>
+              <Link href="/tools/llm-cost-calculator" className="hover:text-text transition-colors">Cost Calculator</Link>
+            </div>
+          </div>
           <div>
             <div className="text-text-faint mb-2 tracking-[0.05em] uppercase text-[10px]">Open Source</div>
             <div className="flex flex-col gap-1.5">
@@ -70,6 +83,7 @@ export function Footer() {
           <div>
             <div className="text-text-faint mb-2 tracking-[0.05em] uppercase text-[10px]">Company</div>
             <div className="flex flex-col gap-1.5">
+              <Link href="/about" className="hover:text-text transition-colors">About</Link>
               <Link href="/privacy" className="hover:text-text transition-colors">Privacy</Link>
               <Link href="/terms" className="hover:text-text transition-colors">Terms</Link>
               <Link href="/dpa" className="hover:text-text transition-colors">DPA</Link>
