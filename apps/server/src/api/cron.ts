@@ -7,6 +7,7 @@ import { computeAndReportOverages } from '../lib/paddle-usage.js'
 import { runQuotaWarningsJob } from '../lib/quota-warnings.js'
 import { snapshotAnomaliesForAllOrgs } from '../lib/anomaly-snapshot.js'
 import { runStaleKeyDigestJob } from '../lib/stale-key-digest.js'
+import { runDataSilenceJob } from '../lib/data-silence.js'
 import { runDueMigrations } from '../lib/background-migrations/runner.js'
 import { runReconciliationCron } from '../lib/events-reconciliation.js'
 import { runLeakDetectionJob } from '../lib/leak-detection.js'
@@ -168,6 +169,24 @@ cronRouter.get('/stale-key-reminders', async (c) => {
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'unknown'
     logCronRun('stale-key-reminders', 'error', Date.now() - start, msg).catch(console.error)
+    throw new ApiError('INTERNAL_ERROR', msg)
+  }
+})
+
+// ── Data silence detection (every 6h) ───────────────────────────
+cronRouter.get('/detect-data-silence', async (c) => {
+  assertCronAuth(c.req.header('Authorization'))
+
+  const start = Date.now()
+  try {
+    const result = await runDataSilenceJob()
+    const status = result.errors.length > 0 ? 'error' : 'ok'
+    const errSummary = result.errors.length > 0 ? result.errors.join('; ').slice(0, 500) : undefined
+    logCronRun('detect-data-silence', status, Date.now() - start, errSummary).catch(console.error)
+    return c.json({ success: result.errors.length === 0, ...result })
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'unknown'
+    logCronRun('detect-data-silence', 'error', Date.now() - start, msg).catch(console.error)
     throw new ApiError('INTERNAL_ERROR', msg)
   }
 })

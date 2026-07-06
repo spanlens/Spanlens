@@ -10,6 +10,12 @@ import { supabaseAdmin } from './db.js'
  * `security_alert_emails` preference (default true; only users who
  * explicitly turned it off are excluded). Quota-warning emails use a
  * separate owner-only lookup in logger.ts.
+ *
+ * NOTE: data-silence.ts (integration-broken retention alert) also reuses
+ * this lookup, so opting out of security alerts currently opts admins out
+ * of data-silence alerts too. Deliberate for now (one admin-alert switch,
+ * no extra pref migration); if alert volume grows, split into a distinct
+ * preference column instead of forking this helper.
  */
 export async function getAdminEmails(orgId: string): Promise<string[]> {
   const { data: members } = await supabaseAdmin
