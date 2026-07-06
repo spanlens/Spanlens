@@ -167,7 +167,7 @@ export default function VsHeliconePage() {
     <CompareTemplate
       competitor="Helicone"
       tagline="Same proxy-first architecture, with more observability depth: Critical Path tracing, statistical A/B testing, and a fallback-replay durability layer."
-      tldr="Helicone proved the proxy-based LLM observability model and ships a polished, focused product, though it entered maintenance mode after its 2026 Mintlify acquisition. Spanlens uses the same architecture, is actively developed, and adds Critical Path tracing on agent runs, Welch t-test on A/B prompt experiments, judge to human correlation tracking, and a ClickHouse fallback-replay queue so logs are not silently dropped on infra hiccups."
+      tldr="Helicone proved the proxy-based model for LLM observability and ships a polished, focused product, but it entered maintenance mode after the 2026 Mintlify acquisition. Security patches and new-model support continue, while active feature development has ended and the founders have moved on. Choosing it today means betting on a tool that will not grow. Spanlens uses the same one-line baseURL architecture, so migrating is mostly changing an endpoint, and it is actively developed, fully MIT, and self-hostable with one Docker command. Beyond parity on request logging and cost dashboards, it adds Critical Path highlighting that shows which span actually gates an agent run's latency, Welch t-test significance on prompt A/B experiments, judge-to-human correlation for catching eval drift, and a ClickHouse fallback-replay queue that parks logs in Postgres during an analytics outage and replays them within minutes instead of dropping them silently."
       whySpanlens={whySpanlens}
       whyCompetitor={whyCompetitor}
       groups={groups}
