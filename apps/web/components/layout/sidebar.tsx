@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useTheme } from '@/components/providers/theme-provider'
-import { Sun, Moon, Monitor, X, MessageSquarePlus, PanelLeftClose } from 'lucide-react'
+import { Sun, Moon, Monitor, X, MessageSquarePlus, PanelLeftClose, TriangleAlert } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
 import { clearQueryClient } from '@/lib/query-client'
@@ -350,17 +350,37 @@ export function Sidebar() {
   ).length
   const savingsTotal = (recommendations.data ?? []).reduce((s, r) => s + r.estimatedMonthlySavingsUsd, 0)
 
-  const BADGES: Record<string, { label?: string; warn?: boolean }> = {
-    '/requests':   reqCount != null ? { label: reqCount > 999 ? (reqCount / 1000).toFixed(0) + 'k' : String(reqCount) } : {},
-    '/anomalies':  anomalyCount > 0 ? { label: String(anomalyCount), warn: true } : {},
+  // `aria` spells out what the badge means so screen-reader users are not
+  // left decoding a bare number whose severity is otherwise carried by hue.
+  const BADGES: Record<string, { label?: string; warn?: boolean; aria?: string }> = {
+    '/requests':   reqCount != null ? {
+      label: reqCount > 999 ? (reqCount / 1000).toFixed(0) + 'k' : String(reqCount),
+      aria: `${reqCount} requests in the last 24 hours`,
+    } : {},
+    '/anomalies':  anomalyCount > 0 ? {
+      label: String(anomalyCount),
+      warn: true,
+      aria: `${anomalyCount} active ${anomalyCount === 1 ? 'anomaly' : 'anomalies'}`,
+    } : {},
     '/security':   {},
-    '/savings': savingsTotal > 0 ? { label: '$' + (savingsTotal >= 1000 ? (savingsTotal / 1000).toFixed(0) + 'k' : savingsTotal.toFixed(0)) } : {},
-    '/alerts':     firingCount > 0 ? { label: String(firingCount), warn: true } : {},
+    '/savings': savingsTotal > 0 ? {
+      label: '$' + (savingsTotal >= 1000 ? (savingsTotal / 1000).toFixed(0) + 'k' : savingsTotal.toFixed(0)),
+      aria: `estimated savings of $${savingsTotal.toFixed(0)} per month available`,
+    } : {},
+    '/alerts':     firingCount > 0 ? {
+      label: String(firingCount),
+      warn: true,
+      aria: `${firingCount} firing ${firingCount === 1 ? 'alert' : 'alerts'}`,
+    } : {},
     // Sum stale + revoke so the badge surfaces both tiers in one glance.
     // We don't separate them here — the dashboard "Needs Attention" card
     // and the in-row badges on /projects already split them.
     '/projects':   staleKeys.revoke + staleKeys.stale > 0
-      ? { label: String(staleKeys.revoke + staleKeys.stale), warn: staleKeys.revoke > 0 }
+      ? {
+          label: String(staleKeys.revoke + staleKeys.stale),
+          warn: staleKeys.revoke > 0,
+          aria: `${staleKeys.revoke + staleKeys.stale} API ${staleKeys.revoke + staleKeys.stale === 1 ? 'key needs' : 'keys need'} attention`,
+        }
       : {},
   }
 
@@ -489,12 +509,20 @@ export function Sidebar() {
                 >
                   <span>{label}</span>
                   {badge?.label && (
-                    <span className={cn(
-                      'font-mono text-[10px] px-[6px] py-[1px] rounded-[3px] border',
-                      badge.warn
-                        ? 'bg-accent-bg text-accent border-accent-border'
-                        : 'bg-bg text-text-faint border-border',
-                    )}>
+                    <span
+                      className={cn(
+                        'inline-flex items-center gap-[3px] font-mono text-[10px] px-[6px] py-[1px] rounded-[3px] border',
+                        badge.warn
+                          ? 'bg-accent-bg text-accent border-accent-border'
+                          : 'bg-bg text-text-faint border-border',
+                      )}
+                      aria-label={badge.aria ?? badge.label}
+                    >
+                      {/* Warn badges carry a small icon so severity is not
+                          conveyed by color alone (WCAG 1.4.1). */}
+                      {badge.warn && (
+                        <TriangleAlert aria-hidden="true" className="h-[9px] w-[9px] shrink-0" />
+                      )}
                       {badge.label}
                     </span>
                   )}

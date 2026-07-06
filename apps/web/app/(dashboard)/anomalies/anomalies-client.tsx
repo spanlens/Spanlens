@@ -16,6 +16,11 @@ import {
 import { Topbar, LiveDot } from '@/components/layout/topbar'
 import { PermissionGate } from '@/components/permission-gate'
 import { ExportDropdown } from '@/components/ui/export-dropdown'
+import {
+  buildInvestigateHref,
+  investigateRangeForObservationHours,
+  type InvestigateRange,
+} from '@/lib/anomaly-investigate'
 import { cn } from '@/lib/utils'
 
 type KindFilter = 'all' | AnomalyKind
@@ -159,7 +164,7 @@ interface AnomRowProps {
   ackPending: boolean
   dimmed?: boolean
   /** Investigate link maps the observation window to /requests `timeRange`. */
-  investigateRange: 'today' | '7d' | '30d'
+  investigateRange: InvestigateRange
 }
 
 function AnomRow({ a, last, onAck, onUnack, ackPending, dimmed, investigateRange }: AnomRowProps) {
@@ -169,8 +174,7 @@ function AnomRow({ a, last, onAck, onUnack, ackPending, dimmed, investigateRange
   const dotBg = isHigh ? 'bg-bad' : 'bg-accent'
   const anomId = anomDisplayId(a.provider, a.model, a.kind)
 
-  const investigateHref =
-    `/requests?provider=${encodeURIComponent(a.provider)}&model=${encodeURIComponent(a.model)}&timeRange=${investigateRange}`
+  const investigateHref = buildInvestigateHref(a.provider, a.model, investigateRange)
 
   return (
     <div
@@ -337,12 +341,6 @@ function confidenceRank(c: AnomalyConfidence | undefined | null): number {
   return 0
 }
 
-function investigateRangeForWindow(w: WindowPreset): 'today' | '7d' | '30d' {
-  // 1h / 24h obs both fit inside `today` (24h). 7d obs maps to 7d range.
-  if (w === '7d-30d') return '7d'
-  return 'today'
-}
-
 export function AnomaliesClient() {
   const router = useRouter()
   const sp = useSearchParams()
@@ -368,7 +366,8 @@ export function AnomaliesClient() {
   }
 
   const win = WINDOW_PRESETS[windowPreset]
-  const investigateRange = investigateRangeForWindow(windowPreset)
+  // 1h / 24h obs both fit inside `today` (24h). 7d obs maps to 7d range.
+  const investigateRange = investigateRangeForObservationHours(win.obs)
 
   const {
     data: anomalyResult,
