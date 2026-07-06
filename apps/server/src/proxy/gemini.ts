@@ -17,6 +17,12 @@ import { runSecurityGate } from './shared/security-gate.js'
 import { fetchUpstreamWithTimeout } from './shared/upstream-fetch.js'
 import { buildLogBase } from './shared/log-base.js'
 import { runChunkAccumulatedStreamPump } from './shared/stream-pump.js'
+import {
+  PROXY_CACHE_HEADER,
+  resolveProxyCache,
+  deleteExpiredCacheEntry,
+  storeCachedProxyResponse,
+} from '../lib/proxy-cache.js'
 
 const GEMINI_BASE = 'https://generativelanguage.googleapis.com'
 
@@ -45,6 +51,10 @@ geminiProxy.all('/*', async (c) => {
   // Build the upstream URL with our decrypted key in `?key=` (the caller's
   // ?key= is OVERWRITTEN — a customer can't smuggle their own credential).
   const originalPath = c.req.path.replace(/^\/proxy\/gemini/, '')
+  // Gemini streams are URL-selected (`:streamGenerateContent`), not body-flag
+  // selected like OpenAI/Anthropic — decide once, up front, so the cache
+  // bypass and the stream pump agree.
+  const isStreaming = /:streamGenerateContent/.test(originalPath)
   const upstreamUrlObj = new URL(`${GEMINI_BASE}${originalPath}`)
   const clientUrl = new URL(c.req.raw.url)
   clientUrl.searchParams.forEach((v, k) => {
@@ -61,6 +71,55 @@ geminiProxy.all('/*', async (c) => {
 
   const requestFlags = await runSecurityGate(parsed.reqBodyJson, projectId)
 
+  // Extract model name from the URL path (e.g.
+  // /v1/models/gemini-1.5-pro:streamGenerateContent).
+  const modelMatch = /\/models\/([^/:]+)/.exec(originalPath)
+
+  // ── Opt-in response cache (x-spanlens-cache header) ────────────────────────
+  // Same wiring as proxy/openai.ts — see lib/proxy-cache.ts for semantics.
+  const cache = await resolveProxyCache({
+    cacheHeader: c.req.header(PROXY_CACHE_HEADER),
+    isStreaming,
+    apiKeyId,
+    provider: 'gemini',
+    path: c.req.path,
+    rawBody: parsed.reqBodyText,
+  })
+  if (cache.expiredKeyHash) fireAndForget(c, deleteExpiredCacheEntry(cache.expiredKeyHash))
+  if (cache.state.mode === 'hit') {
+    const hit = cache.state.entry
+    const hitLatencyMs = Date.now() - handlerStartMs
+    const hitLogBase = buildLogBase({
+      c, provider: 'gemini',
+      organizationId, projectId, apiKeyId,
+      providerKey,
+      reqBodyJson: parsed.reqBodyJson,
+      requestFlags,
+      latencyMs: hitLatencyMs, proxyOverheadMs: hitLatencyMs,
+      statusCode: hit.responseStatus,
+    })
+    let cachedBodyJson: unknown = null
+    try { cachedBodyJson = JSON.parse(hit.responseBody) } catch { /* stored body is JSON by construction */ }
+    fireAndForget(c, logRequestAsync({
+      ...hitLogBase,
+      model: hit.model,
+      promptTokens: hit.usage.prompt_tokens,
+      completionTokens: hit.usage.completion_tokens,
+      totalTokens: hit.usage.total_tokens,
+      cacheReadTokens: hit.usage.cache_read_tokens,
+      cacheWriteTokens: hit.usage.cache_write_tokens,
+      serviceTier: null,
+      costUsd: 0,
+      cacheHit: true,
+      responseBody: cachedBodyJson,
+      errorMessage: null,
+    }))
+    return new Response(hit.responseBody, {
+      status: hit.responseStatus,
+      headers: { 'content-type': 'application/json', [PROXY_CACHE_HEADER]: 'hit' },
+    })
+  }
+
   const { upstreamRes, latencyMs, proxyOverheadMs } = await fetchUpstreamWithTimeout({
     url: upstreamUrlObj.toString(),
     method: c.req.method,
@@ -69,11 +128,6 @@ geminiProxy.all('/*', async (c) => {
     provider: 'gemini',
     handlerStartMs,
   })
-
-  // Extract model name from the URL path (e.g.
-  // /v1/models/gemini-1.5-pro:streamGenerateContent).
-  const modelMatch = /\/models\/([^/:]+)/.exec(originalPath)
-  const isStreaming = /:streamGenerateContent/.test(originalPath)
 
   const logBase = buildLogBase({
     c, provider: 'gemini',
@@ -89,6 +143,8 @@ geminiProxy.all('/*', async (c) => {
   // Gemini sends a JSON array (not line-delimited SSE), so the pump
   // accumulates raw chunks and the parser walks the full buffer.
   if (isStreaming && upstreamRes.body) {
+    // Caching was requested but streaming responses are never cached.
+    if (cache.state.mode === 'bypass') c.header(PROXY_CACHE_HEADER, 'bypass')
     return runChunkAccumulatedStreamPump({
       c, upstreamRes, handlerStartMs, provider: 'gemini',
       onComplete: async (buffer, truncated) => {
@@ -204,6 +260,33 @@ geminiProxy.all('/*', async (c) => {
 
   const cost = calculateCost('gemini', model, { promptTokens, completionTokens, serviceTier })
 
+  const downstreamHeaders = buildDownstreamHeaders(upstreamRes.headers)
+
+  // Cache MISS: store the successful JSON response off the response-critical
+  // path (fireAndForget — gotcha #8). storeCachedProxyResponse re-checks the
+  // 200 + size guards internally.
+  if (cache.state.mode === 'miss') {
+    downstreamHeaders.set(PROXY_CACHE_HEADER, 'miss')
+    if (upstreamRes.status === 200 && resBodyJson !== null) {
+      fireAndForget(c, storeCachedProxyResponse({
+        keyHash: cache.state.keyHash,
+        apiKeyId,
+        provider: 'gemini',
+        ttlSeconds: cache.state.ttlSeconds,
+        responseStatus: upstreamRes.status,
+        responseBody: resBodyText,
+        usage: {
+          prompt_tokens: promptTokens,
+          completion_tokens: completionTokens,
+          total_tokens: totalTokens,
+          cache_read_tokens: 0,
+          cache_write_tokens: 0,
+        },
+        model,
+      }))
+    }
+  }
+
   fireAndForget(c, logRequestAsync({
     ...logBase,
     model,
@@ -216,6 +299,6 @@ geminiProxy.all('/*', async (c) => {
 
   return new Response(resBodyText, {
     status: upstreamRes.status,
-    headers: buildDownstreamHeaders(upstreamRes.headers),
+    headers: downstreamHeaders,
   })
 })
