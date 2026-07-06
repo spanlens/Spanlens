@@ -27,7 +27,13 @@ import { lookupPrice } from './cost.js'
 /** Shape returned by the ClickHouse aggregate (JSONEachRow → numerics as strings). */
 export interface CacheSavingsRow {
   model: string
-  cache_read_tokens: string
+  /**
+   * Aliased `cache_read_tokens_sum`, NOT `cache_read_tokens`. Aliasing the
+   * aggregate with the raw column name makes ClickHouse resolve the WHERE
+   * predicate `cache_read_tokens > 0` to the aggregate and reject the query
+   * with ILLEGAL_AGGREGATION (code 184). Keep the alias distinct.
+   */
+  cache_read_tokens_sum: string
   cache_hit_requests: string
 }
 
@@ -61,7 +67,7 @@ export function computeCacheSavings(rows: CacheSavingsRow[]): CacheSavingsTotals
 
   for (const row of rows) {
     // JSONEachRow returns UInt64/sum columns as strings — coerce defensively.
-    const tokens = Number(row.cache_read_tokens ?? 0)
+    const tokens = Number(row.cache_read_tokens_sum ?? 0)
     const hits = Number(row.cache_hit_requests ?? 0)
     if (!Number.isFinite(tokens) || tokens <= 0) continue
 
@@ -94,7 +100,7 @@ export async function getCacheSavings(organizationId: string): Promise<CacheSavi
     query: `
       SELECT
         model,
-        sum(cache_read_tokens) AS cache_read_tokens,
+        sum(cache_read_tokens) AS cache_read_tokens_sum,
         count()                AS cache_hit_requests
       FROM requests
       WHERE ${scope.whereScope}

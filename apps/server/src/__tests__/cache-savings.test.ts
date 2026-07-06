@@ -36,7 +36,7 @@ function chReturn(rows: object[]) {
 function row(overrides: Partial<CacheSavingsRow> = {}): CacheSavingsRow {
   return {
     model: 'gpt-4o-mini',
-    cache_read_tokens: '0',
+    cache_read_tokens_sum: '0',
     cache_hit_requests: '0',
     ...overrides,
   }
@@ -49,7 +49,7 @@ describe('computeCacheSavings — pricing math', () => {
     // FALLBACK_PRICES: gpt-4o-mini → prompt 0.15, cacheRead 0.075.
     // 1M cached tokens → saving = (0.15 − 0.075) = $0.075.
     const totals = computeCacheSavings([
-      row({ model: 'gpt-4o-mini', cache_read_tokens: '1000000', cache_hit_requests: '10' }),
+      row({ model: 'gpt-4o-mini', cache_read_tokens_sum: '1000000', cache_hit_requests: '10' }),
     ])
     expect(totals.savingsUsd).toBeCloseTo(0.075, 10)
     expect(totals.cacheReadTokens).toBe(1_000_000)
@@ -59,8 +59,8 @@ describe('computeCacheSavings — pricing math', () => {
   it('sums savings across models with different discount rates', () => {
     // claude-haiku-4.5 → prompt 1, cacheRead 0.1 → $0.90 saved per 1M cached.
     const totals = computeCacheSavings([
-      row({ model: 'gpt-4o-mini',      cache_read_tokens: '2000000', cache_hit_requests: '20' }),
-      row({ model: 'claude-haiku-4.5', cache_read_tokens: '500000',  cache_hit_requests: '5' }),
+      row({ model: 'gpt-4o-mini',      cache_read_tokens_sum: '2000000', cache_hit_requests: '20' }),
+      row({ model: 'claude-haiku-4.5', cache_read_tokens_sum: '500000',  cache_hit_requests: '5' }),
     ])
     // 2 × 0.075 + 0.5 × 0.9 = 0.15 + 0.45 = 0.60
     expect(totals.savingsUsd).toBeCloseTo(0.6, 10)
@@ -71,14 +71,14 @@ describe('computeCacheSavings — pricing math', () => {
   it('resolves dated model variants via the boundary-aware prefix lookup', () => {
     // gpt-4o-mini-2024-07-18 must resolve to the gpt-4o-mini price row.
     const totals = computeCacheSavings([
-      row({ model: 'gpt-4o-mini-2024-07-18', cache_read_tokens: '1000000', cache_hit_requests: '3' }),
+      row({ model: 'gpt-4o-mini-2024-07-18', cache_read_tokens_sum: '1000000', cache_hit_requests: '3' }),
     ])
     expect(totals.savingsUsd).toBeCloseTo(0.075, 10)
   })
 
   it('claims zero savings for unknown models but still counts their tokens', () => {
     const totals = computeCacheSavings([
-      row({ model: 'future-model-9000', cache_read_tokens: '9000000', cache_hit_requests: '90' }),
+      row({ model: 'future-model-9000', cache_read_tokens_sum: '9000000', cache_hit_requests: '90' }),
     ])
     expect(totals.savingsUsd).toBe(0)
     expect(totals.cacheReadTokens).toBe(9_000_000)
@@ -89,7 +89,7 @@ describe('computeCacheSavings — pricing math', () => {
     // gpt-5.5-pro has no cacheRead in FALLBACK_PRICES → billed at full input
     // rate → discount is zero.
     const totals = computeCacheSavings([
-      row({ model: 'gpt-5.5-pro', cache_read_tokens: '1000000', cache_hit_requests: '4' }),
+      row({ model: 'gpt-5.5-pro', cache_read_tokens_sum: '1000000', cache_hit_requests: '4' }),
     ])
     expect(totals.savingsUsd).toBe(0)
     expect(totals.cacheReadTokens).toBe(1_000_000)
@@ -97,8 +97,8 @@ describe('computeCacheSavings — pricing math', () => {
 
   it('ignores zero-token and malformed rows', () => {
     const totals = computeCacheSavings([
-      row({ model: 'gpt-4o-mini', cache_read_tokens: '0',            cache_hit_requests: '2' }),
-      row({ model: 'gpt-4o-mini', cache_read_tokens: 'not-a-number', cache_hit_requests: '2' }),
+      row({ model: 'gpt-4o-mini', cache_read_tokens_sum: '0',            cache_hit_requests: '2' }),
+      row({ model: 'gpt-4o-mini', cache_read_tokens_sum: 'not-a-number', cache_hit_requests: '2' }),
     ])
     expect(totals).toEqual({ savingsUsd: 0, cacheReadTokens: 0, cacheHitRequests: 0 })
   })
@@ -127,7 +127,7 @@ describe('currentMonthStartUtc', () => {
 describe('getCacheSavings — ClickHouse plumbing', () => {
   it('aggregates rows returned by ClickHouse and reports the month start', async () => {
     mockChQuery.mockReturnValue(chReturn([
-      row({ model: 'gpt-4o-mini', cache_read_tokens: '1000000', cache_hit_requests: '10' }),
+      row({ model: 'gpt-4o-mini', cache_read_tokens_sum: '1000000', cache_hit_requests: '10' }),
     ]))
     const summary = await getCacheSavings('org-1')
     expect(summary.savingsUsd).toBeCloseTo(0.075, 10)
@@ -148,6 +148,18 @@ describe('getCacheSavings — ClickHouse plumbing', () => {
     expect(call.query).toContain('cache_read_tokens > 0')
     expect(call.query_params['orgId']).toBe('org-9')
     expect(call.query_params['monthStart']).toBeDefined()
+  })
+
+  // Regression: aliasing the aggregate as the raw column name made ClickHouse
+  // bind the WHERE predicate to the aggregate and reject the query with
+  // ILLEGAL_AGGREGATION (code 184), 500ing the whole feature. The aggregate
+  // must use a distinct alias while the WHERE keeps filtering the raw column.
+  it('does not alias the sum with the raw column name (ILLEGAL_AGGREGATION guard)', async () => {
+    mockChQuery.mockReturnValue(chReturn([]))
+    await getCacheSavings('org-9')
+    const call = mockChQuery.mock.calls[0]![0] as { query: string }
+    expect(call.query).toContain('sum(cache_read_tokens) AS cache_read_tokens_sum')
+    expect(call.query).not.toMatch(/sum\(cache_read_tokens\)\s+AS\s+cache_read_tokens\b(?!_)/)
   })
 
   it('propagates ClickHouse failures to the caller', async () => {
