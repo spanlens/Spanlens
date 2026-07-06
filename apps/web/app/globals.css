@@ -11,7 +11,9 @@
     --border-strong: #d4d1ca;
     --text: #18181b;
     --text-muted: #5c5b57;
-    --text-faint: #94928c;
+    /* WCAG AA: previous #94928c was 2.98:1 on --bg. #706e68 is 4.88:1 on
+       --bg, 5.10:1 on --bg-elev, 4.59:1 on --bg-muted (same warm hue). */
+    --text-faint: #706e68;
     --accent: #b45309;
     --accent-bg: #fdf1df;
     --accent-border: #eccc99;
@@ -52,7 +54,9 @@
     --border-strong: #3a3a3f;
     --text: #fafaf9;
     --text-muted: #a1a1aa;
-    --text-faint: #61615f;
+    /* WCAG AA: previous #61615f was 3.15:1 on --bg. #8a8a86 is 5.64:1 on
+       --bg, 5.31:1 on --bg-elev, 5.11:1 on --bg-muted (same warm hue). */
+    --text-faint: #8a8a86;
     --accent: #f2a855;
     --accent-bg: #2a1c0a;
     --accent-border: #4a3010;

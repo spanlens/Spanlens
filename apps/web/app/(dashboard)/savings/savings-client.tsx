@@ -3,6 +3,7 @@ import { useState, useEffect, useMemo, useRef, useSyncExternalStore } from 'reac
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useRecommendations, type ModelRecommendation } from '@/lib/queries/use-recommendations'
+import { useCacheSavings } from '@/lib/queries/use-cache-savings'
 import { usePercentiles } from '@/lib/queries/use-recommendation-percentiles'
 import { usePrompts, usePlaygroundRun, type PlaygroundResult } from '@/lib/queries/use-prompts'
 import { useProviderKeys } from '@/lib/queries/use-provider-keys'
@@ -63,6 +64,53 @@ function ConfidenceBar({ level }: { level: 'high' | 'medium' | 'low' }) {
       <span className={cn('font-mono text-[11px] capitalize', level === 'high' ? 'text-good' : level === 'medium' ? 'text-text' : 'text-text-faint')}>
         {level}
       </span>
+    </div>
+  )
+}
+
+// ── Prompt caching savings card ───────────────────────────────────────────────
+
+function fmtTokenCount(n: number): string {
+  if (n >= 1_000_000_000) return `${(n / 1_000_000_000).toFixed(1)}B`
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`
+  return n.toLocaleString()
+}
+
+function CacheSavingsCard() {
+  const { data, isLoading, error } = useCacheSavings()
+
+  // Supplementary card: stay quiet while loading or on failure. The
+  // recommendations list below has its own loading and error surfaces, and a
+  // second error banner for the same backend would double up on this page.
+  if (isLoading || error || !data) return null
+
+  if (data.cacheHitRequests === 0) {
+    return (
+      <div className="border-b border-border px-[22px] py-[12px]">
+        <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-1">
+          Prompt caching
+        </div>
+        <p className="text-[12.5px] text-text-muted">
+          No cache hits yet this month. Prompt caching savings will show up here automatically.
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="border-b border-border bg-good/5 px-[22px] py-[12px]">
+      <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-good mb-1">
+        Prompt caching
+      </div>
+      <p className="text-[14px] font-medium text-text">
+        Prompt caching saved you <span className="text-good">{fmtUsd(data.savingsUsd)}</span> this month
+      </p>
+      <p className="text-[12px] text-text-faint mt-1 leading-relaxed">
+        Estimated from {fmtTokenCount(data.cacheReadTokens)} cached input tokens across{' '}
+        {data.cacheHitRequests.toLocaleString()} requests. Cached tokens are billed at a
+        discounted rate instead of the full input price.
+      </p>
     </div>
   )
 }
@@ -993,6 +1041,10 @@ export function SavingsClient() {
         />
         <h1 className="sr-only">Savings</h1>
       </div>
+
+      {/* Prompt caching savings — passive savings already earned this month,
+          shown above the actionable model-swap recommendations. */}
+      <CacheSavingsCard />
 
       {/* Hero strip — Open / Achieved cards are buttons that scroll to the
           matching section when populated. Same pattern as anomalies / security. */}

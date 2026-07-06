@@ -299,7 +299,11 @@ function WelcomeBannerInner({ apiKey, onDismiss }: { apiKey: string; onDismiss: 
                   {buildTestCurl(apiKey)}
                 </pre>
               </div>
-              <div className="flex items-center gap-2 mt-2">
+              <p className="text-[11px] text-text-faint mt-2 leading-relaxed">
+                Requests usually show up within a few seconds of the call completing, and this
+                dashboard refreshes on its own.
+              </p>
+              <div className="flex items-center gap-2 mt-1.5">
                 <span className="inline-flex items-center gap-1.5 font-mono text-[11px] text-text-faint">
                   <Loader2 className="w-3.5 h-3.5 animate-spin" />
                   Waiting for your first request…

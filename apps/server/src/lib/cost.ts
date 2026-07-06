@@ -92,8 +92,11 @@ export interface CostResult {
  * OpenAI는 종종 dated suffix를 포함해 모델명을 반환합니다 (예: gpt-4o-mini-2024-07-18).
  * 정확 매칭이 실패하면 등록된 키들 중 가장 긴 prefix를 찾아 fallback 매칭합니다.
  * (boundary-aware: 다음 글자가 단어 경계가 되도록 — 'gpt-4'가 'gpt-4o' prefix로 잘못 잡히는 일 방지)
+ *
+ * Exported so other cost math (e.g. lib/cache-savings.ts) reuses this exact
+ * matching algorithm instead of re-implementing it. Do NOT copy this logic.
  */
-function lookupPrice(model: string): ModelPrice | null {
+export function lookupPrice(model: string): ModelPrice | null {
   const prices = getCachedPrices()
   const exact = prices[model]
   if (exact) return exact

@@ -100,6 +100,15 @@ function statusPillClass(code: number): string {
   return 'border-border bg-bg text-text-muted'
 }
 
+// Accessible label for the status pill — screen readers get the error class
+// spelled out instead of relying on the pill hue.
+function statusPillAria(code: number): string {
+  if (code >= 500) return `HTTP ${code} server error`
+  if (code >= 400) return `HTTP ${code} client error`
+  if (code >= 200 && code < 300) return `HTTP ${code} success`
+  return `HTTP ${code}`
+}
+
 // Maps the URL `timeRange` enum to a human label used in stat-strip and
 // any "Last X" copy that the page renders.
 function timeRangeLabel(r: 'all' | 'today' | '7d' | '30d'): string {
@@ -1254,10 +1263,16 @@ function RequestsTable({
                   <span>
                     <span
                       className={cn(
-                        'inline-flex items-center justify-center font-mono text-[10.5px] px-1.5 py-px rounded-[3px] border tabular-nums',
+                        'inline-flex items-center justify-center gap-0.5 font-mono text-[10.5px] px-1.5 py-px rounded-[3px] border tabular-nums',
                         statusPillClass(req.status_code),
                       )}
+                      aria-label={statusPillAria(req.status_code)}
                     >
+                      {/* 5xx gets a small glyph so severity is not carried by
+                          color alone (WCAG 1.4.1 use of color). */}
+                      {req.status_code >= 500 && (
+                        <span aria-hidden="true" className="text-[8px] leading-none">▲</span>
+                      )}
                       {req.status_code}
                     </span>
                   </span>
