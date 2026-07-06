@@ -1,4 +1,5 @@
 import { CodeBlock } from '../../_components/code-block'
+import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
 export const metadata = {
   title: 'LangChain integration · Spanlens Docs',
@@ -10,6 +11,7 @@ export const metadata = {
 export default function LangChainIntegration() {
   return (
     <div>
+      <DocsJsonLd meta={metadata} />
       <h1>LangChain integration</h1>
       <p className="lead">
         LangChain (JS and Python) exposes a callback contract that fires for every

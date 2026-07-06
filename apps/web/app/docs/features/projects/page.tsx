@@ -1,5 +1,6 @@
 import { CodeBlock } from '../../_components/code-block'
 import { ProjectsHierarchyDiagram } from '../../_components/diagrams'
+import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
 export const metadata = {
   alternates: { canonical: '/docs/features/projects' },
@@ -11,6 +12,7 @@ export const metadata = {
 export default function ProjectsDocs() {
   return (
     <div>
+      <DocsJsonLd meta={metadata} />
       <h1>Projects, Spanlens keys &amp; provider keys</h1>
       <p className="lead">
         A Spanlens organization contains one or more <strong>projects</strong>. Each project

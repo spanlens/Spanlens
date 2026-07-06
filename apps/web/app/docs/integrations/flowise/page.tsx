@@ -1,4 +1,5 @@
 import { CodeBlock } from '../../_components/code-block'
+import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
 export const metadata = {
   title: 'Flowise integration · Spanlens Docs',
@@ -10,6 +11,7 @@ export const metadata = {
 export default function FlowiseIntegration() {
   return (
     <div>
+      <DocsJsonLd meta={metadata} />
       <h1>Flowise integration</h1>
       <p className="lead">
         Flowise is a visual LangChain builder. Spanlens captures Flowise flows two

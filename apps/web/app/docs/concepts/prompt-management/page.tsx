@@ -1,4 +1,5 @@
 import { CodeBlock } from '../../_components/code-block'
+import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
 export const metadata = {
   title: 'Prompt management · Spanlens Docs',
@@ -10,6 +11,7 @@ export const metadata = {
 export default function PromptManagementConcept() {
   return (
     <div>
+      <DocsJsonLd meta={metadata} />
       <h1>Prompt management</h1>
       <p className="lead">
         Prompt management treats prompts as deployable artifacts with versions,

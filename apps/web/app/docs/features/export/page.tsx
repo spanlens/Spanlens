@@ -1,4 +1,5 @@
 import { CodeBlock } from '../../_components/code-block'
+import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
 export const metadata = {
   alternates: { canonical: '/docs/features/export' },
@@ -10,6 +11,7 @@ export const metadata = {
 export default function ExportDocs() {
   return (
     <div>
+      <DocsJsonLd meta={metadata} />
       <h1>Data Export</h1>
       <p className="lead">
         Download request logs, traces, anomaly snapshots, and security flags as CSV, JSONL, or JSON

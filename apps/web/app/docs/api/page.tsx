@@ -1,3 +1,5 @@
+import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
+
 export const metadata = {
   alternates: { canonical: '/docs/api' },
   title: 'REST API Reference · Spanlens Docs',
@@ -13,6 +15,7 @@ export default function ApiReferencePage() {
 
   return (
     <div>
+      <DocsJsonLd meta={metadata} />
       <h1>REST API Reference</h1>
       <p className="lead">
         The Spanlens REST API backs the dashboard and is stable for direct

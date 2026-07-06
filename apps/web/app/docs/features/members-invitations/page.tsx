@@ -1,4 +1,5 @@
 import { CodeBlock } from '../../_components/code-block'
+import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
 export const metadata = {
   alternates: { canonical: '/docs/features/members-invitations' },
@@ -10,6 +11,7 @@ export const metadata = {
 export default function MembersInvitationsDocs() {
   return (
     <div>
+      <DocsJsonLd meta={metadata} />
       <h1>Members &amp; invitations</h1>
       <p className="lead">
         Spanlens is multi-user out of the box. Invite teammates by email,

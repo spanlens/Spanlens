@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { FeatureCoverageRadar } from '../_components/charts'
+import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
 export const metadata = {
   alternates: { canonical: '/docs/why' },
@@ -11,6 +12,7 @@ export const metadata = {
 export default function WhySpanlens() {
   return (
     <div>
+      <DocsJsonLd meta={metadata} />
       <h1>Why Spanlens</h1>
       <p className="lead">
         There are good LLM observability tools out there. We&apos;ve used them, learned from them,

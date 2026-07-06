@@ -1,5 +1,6 @@
 import { CodeBlock } from '../../_components/code-block'
 import { PromptAbChart } from '../../_components/charts'
+import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
 export const metadata = {
   alternates: { canonical: '/docs/features/prompt-ab' },
@@ -11,6 +12,7 @@ export const metadata = {
 export default function PromptAbDocs() {
   return (
     <div>
+      <DocsJsonLd meta={metadata} />
       <h1>Prompt A/B</h1>
       <p className="lead">
         Split real production traffic across two prompt versions and compare latency, cost, and error

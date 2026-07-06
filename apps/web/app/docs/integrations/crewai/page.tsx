@@ -1,4 +1,5 @@
 import { CodeBlock } from '../../_components/code-block'
+import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
 export const metadata = {
   title: 'CrewAI integration · Spanlens Docs',
@@ -10,6 +11,7 @@ export const metadata = {
 export default function CrewAIIntegration() {
   return (
     <div>
+      <DocsJsonLd meta={metadata} />
       <h1>CrewAI integration</h1>
       <p className="lead">
         CrewAI orchestrates multiple agents that each have their own role, goal,

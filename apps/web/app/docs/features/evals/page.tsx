@@ -1,4 +1,5 @@
 import { CodeBlock } from '../../_components/code-block'
+import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
 export const metadata = {
   alternates: { canonical: '/docs/features/evals' },
@@ -10,6 +11,7 @@ export const metadata = {
 export default function EvalsDocs() {
   return (
     <div>
+      <DocsJsonLd meta={metadata} />
       <h1>Evals</h1>
       <p className="lead">
         Automatically score production response quality using an LLM-as-judge. Cost and latency

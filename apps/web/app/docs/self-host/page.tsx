@@ -1,5 +1,6 @@
 import { CodeBlock } from '../_components/code-block'
 import { SelfHostArchitectureDiagram } from '../_components/diagrams'
+import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
 export const metadata = {
   alternates: { canonical: '/docs/self-host' },
@@ -11,6 +12,7 @@ export const metadata = {
 export default function SelfHostDocs() {
   return (
     <div>
+      <DocsJsonLd meta={metadata} />
       <h1>Self-hosting</h1>
       <p className="lead">
         Run the Spanlens proxy, API, and dashboard on your own infra. Keeps all request bodies,

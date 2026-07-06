@@ -1,5 +1,6 @@
 import { CodeBlock } from '../_components/code-block'
 import { LangTabs } from '../_components/lang-tabs'
+import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
 export const metadata = {
   alternates: { canonical: '/docs/sdk' },
@@ -11,6 +12,7 @@ export const metadata = {
 export default function SdkReference() {
   return (
     <div>
+      <DocsJsonLd meta={metadata} />
       <h1>Spanlens SDK</h1>
       <p className="lead">
         Thin wrappers around the official OpenAI / Anthropic / Gemini SDKs that route traffic through

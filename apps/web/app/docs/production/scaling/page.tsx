@@ -1,4 +1,5 @@
 import { CodeBlock } from '../../_components/code-block'
+import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
 export const metadata = {
   title: 'Scaling · Spanlens Docs',
@@ -10,6 +11,7 @@ export const metadata = {
 export default function ScalingDocs() {
   return (
     <div>
+      <DocsJsonLd meta={metadata} />
       <h1>Scaling</h1>
       <p className="lead">
         At small volume Spanlens runs at default settings without thought. Past a few

@@ -1,4 +1,5 @@
 import { CodeBlock } from '../../_components/code-block'
+import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
 export const metadata = {
   title: 'Evals · Spanlens Docs',
@@ -10,6 +11,7 @@ export const metadata = {
 export default function EvalsConcept() {
   return (
     <div>
+      <DocsJsonLd meta={metadata} />
       <h1>Evals</h1>
       <p className="lead">
         Evals score LLM responses on a 0 to 1 scale per prompt version, so you can

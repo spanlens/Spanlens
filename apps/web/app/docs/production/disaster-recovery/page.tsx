@@ -1,4 +1,5 @@
 import { CodeBlock } from '../../_components/code-block'
+import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
 export const metadata = {
   title: 'Disaster recovery · Spanlens Docs',
@@ -10,6 +11,7 @@ export const metadata = {
 export default function DisasterRecoveryDocs() {
   return (
     <div>
+      <DocsJsonLd meta={metadata} />
       <h1>Disaster recovery</h1>
       <p className="lead">
         A runbook for the person on call. Each failure mode below lists what data is at

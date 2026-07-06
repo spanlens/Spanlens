@@ -1,5 +1,6 @@
 import { CodeBlock } from '../../_components/code-block'
 import { LangTabs } from '../../_components/lang-tabs'
+import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
 export const metadata = {
   title: 'Migrate from LangSmith to Spanlens · 2026 Guide',
@@ -11,6 +12,7 @@ export const metadata = {
 export default function MigrateFromLangsmith() {
   return (
     <div>
+      <DocsJsonLd meta={metadata} />
       <h1>Migrate from LangSmith · 2026</h1>
       <p className="lead">
         LangSmith is tightly bound to the LangChain ecosystem. Spanlens speaks the same

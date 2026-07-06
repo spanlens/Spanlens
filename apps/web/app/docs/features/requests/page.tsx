@@ -1,4 +1,5 @@
 import { CodeBlock } from '../../_components/code-block'
+import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
 export const metadata = {
   alternates: { canonical: '/docs/features/requests' },
@@ -10,6 +11,7 @@ export const metadata = {
 export default function RequestsDocs() {
   return (
     <div>
+      <DocsJsonLd meta={metadata} />
       <h1>Requests</h1>
       <p className="lead">
         Every LLM call that flows through the Spanlens proxy produces one row in the{' '}

@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { CodeBlock } from '../../_components/code-block'
+import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
 export const metadata = {
   title: 'MCP integration · Spanlens Docs',
@@ -11,6 +12,7 @@ export const metadata = {
 export default function MCPIntegration() {
   return (
     <div>
+      <DocsJsonLd meta={metadata} />
       <h1>MCP integration</h1>
       <p className="lead">
         Spanlens ships an{' '}

@@ -1,5 +1,6 @@
 import { CodeBlock } from '../_components/code-block'
 import { QuickStartFlowDiagram } from '../_components/diagrams'
+import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
 export const metadata = {
   alternates: { canonical: '/docs/quick-start' },
@@ -11,6 +12,7 @@ export const metadata = {
 export default function QuickStart() {
   return (
     <div>
+      <DocsJsonLd meta={metadata} />
       <h1>Quick start</h1>
       <p className="lead">
         Pick the path that matches your starting point. Both end with your LLM calls flowing through

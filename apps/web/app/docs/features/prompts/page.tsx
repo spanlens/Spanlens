@@ -1,4 +1,5 @@
 import { CodeBlock } from '../../_components/code-block'
+import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
 export const metadata = {
   alternates: { canonical: '/docs/features/prompts' },
@@ -10,6 +11,7 @@ export const metadata = {
 export default function PromptsDocs() {
   return (
     <div>
+      <DocsJsonLd meta={metadata} />
       <h1>Prompts</h1>
       <p className="lead">
         Store your prompt templates as named, versioned assets. Every time you tweak a prompt, Spanlens

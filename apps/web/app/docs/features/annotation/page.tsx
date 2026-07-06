@@ -1,4 +1,5 @@
 import { CodeBlock } from '../../_components/code-block'
+import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
 export const metadata = {
   alternates: { canonical: '/docs/features/annotation' },
@@ -10,6 +11,7 @@ export const metadata = {
 export default function AnnotationDocs() {
   return (
     <div>
+      <DocsJsonLd meta={metadata} />
       <h1>Annotation</h1>
       <p className="lead">
         Team members rate production responses with 1–5 stars. Comparing those ratings to LLM

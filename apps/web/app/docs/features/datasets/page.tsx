@@ -1,5 +1,6 @@
 import { CodeBlock } from '../../_components/code-block'
 import { DatasetSchemaDiagram } from '../../_components/diagrams'
+import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
 export const metadata = {
   alternates: { canonical: '/docs/features/datasets' },
@@ -11,6 +12,7 @@ export const metadata = {
 export default function DatasetsDocs() {
   return (
     <div>
+      <DocsJsonLd meta={metadata} />
       <h1>Datasets</h1>
       <p className="lead">
         Named collections of <code>(input, expected_output?)</code> pairs.{' '}

@@ -1,5 +1,6 @@
 import { CodeBlock } from '../../_components/code-block'
 import { TraceWaterfallDiagram } from '../../_components/diagrams'
+import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
 export const metadata = {
   alternates: { canonical: '/docs/features/traces' },
@@ -11,6 +12,7 @@ export const metadata = {
 export default function TracesDocs() {
   return (
     <div>
+      <DocsJsonLd meta={metadata} />
       <h1>Traces</h1>
       <p className="lead">
         When your code makes one LLM call, a flat request log is enough. When it makes ten calls

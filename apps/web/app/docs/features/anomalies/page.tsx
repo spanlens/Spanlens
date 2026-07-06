@@ -1,5 +1,6 @@
 import { CodeBlock } from '../../_components/code-block'
 import { AnomalyChart } from '../../_components/charts'
+import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
 export const metadata = {
   alternates: { canonical: '/docs/features/anomalies' },
@@ -11,6 +12,7 @@ export const metadata = {
 export default function AnomaliesDocs() {
   return (
     <div>
+      <DocsJsonLd meta={metadata} />
       <h1>Anomalies</h1>
       <p className="lead">
         Spanlens continuously watches your request stream for latency spikes, cost spikes, and error

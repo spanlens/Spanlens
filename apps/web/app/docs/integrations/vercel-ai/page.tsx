@@ -1,4 +1,5 @@
 import { CodeBlock } from '../../_components/code-block'
+import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
 export const metadata = {
   title: 'Vercel AI SDK integration · Spanlens Docs',
@@ -10,6 +11,7 @@ export const metadata = {
 export default function VercelAiIntegration() {
   return (
     <div>
+      <DocsJsonLd meta={metadata} />
       <h1>Vercel AI SDK integration</h1>
       <p className="lead">
         Vercel AI SDK exposes <code>onStepFinish</code> and <code>onFinish</code>{' '}

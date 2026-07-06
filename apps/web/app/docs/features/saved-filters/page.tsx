@@ -1,4 +1,5 @@
 import { CodeBlock } from '../../_components/code-block'
+import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
 export const metadata = {
   alternates: { canonical: '/docs/features/saved-filters' },
@@ -10,6 +11,7 @@ export const metadata = {
 export default function SavedFiltersDocs() {
   return (
     <div>
+      <DocsJsonLd meta={metadata} />
       <h1>Saved Filters</h1>
       <p className="lead">
         Save any filter combination set on the <a href="/requests">/requests</a> page, provider,

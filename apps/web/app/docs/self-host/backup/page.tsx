@@ -1,3 +1,5 @@
+import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
+
 export const metadata = {
   alternates: { canonical: '/docs/self-host/backup' },
   title: 'Backup & restore · Spanlens Docs',
@@ -8,6 +10,7 @@ export const metadata = {
 export default function SelfHostBackupPage() {
   return (
     <div>
+      <DocsJsonLd meta={metadata} />
       <h1>Backup &amp; restore</h1>
       <p className="lead">
         A self-hosted Spanlens deployment keeps its data in two places. This page is the

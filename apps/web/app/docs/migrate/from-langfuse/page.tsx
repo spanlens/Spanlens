@@ -1,5 +1,6 @@
 import { CodeBlock } from '../../_components/code-block'
 import { LangTabs } from '../../_components/lang-tabs'
+import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
 export const metadata = {
   title: 'Migrate from Langfuse to Spanlens · 2026 Guide',
@@ -11,6 +12,7 @@ export const metadata = {
 export default function MigrateFromLangfuse() {
   return (
     <div>
+      <DocsJsonLd meta={metadata} />
       <h1>Migrate from Langfuse · 2026</h1>
       <p className="lead">
         Spanlens covers the same observability surface as Langfuse: traces, generations,

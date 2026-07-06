@@ -1,4 +1,5 @@
 import { CodeBlock } from '../../_components/code-block'
+import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
 export const metadata = {
   title: 'AWS Bedrock integration · Spanlens Docs',
@@ -10,6 +11,7 @@ export const metadata = {
 export default function BedrockIntegration() {
   return (
     <div>
+      <DocsJsonLd meta={metadata} />
       <h1>AWS Bedrock integration</h1>
       <p className="lead">
         Bedrock hosts Anthropic Claude, Meta Llama, Mistral, Cohere Command, and

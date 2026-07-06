@@ -1,5 +1,6 @@
 import { CodeBlock } from '../../_components/code-block'
 import { EncryptionFlowDiagram } from '../../_components/diagrams'
+import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
 export const metadata = {
   alternates: { canonical: '/docs/features/settings' },
@@ -11,6 +12,7 @@ export const metadata = {
 export default function SettingsDocs() {
   return (
     <div>
+      <DocsJsonLd meta={metadata} />
       <h1>Keys &amp; encryption</h1>
       <p className="lead">
         Spanlens uses two kinds of keys. Your <strong>Spanlens key</strong> (
