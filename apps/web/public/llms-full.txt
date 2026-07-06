@@ -4,7 +4,7 @@
 
 This is the expanded version. The short index lives at https://www.spanlens.io/llms.txt.
 
-Spanlens is positioned as a lightweight, developer-first alternative to Helicone (acquired) and Langfuse (heavy). The stack is Next.js 14 + Hono + Supabase Postgres + ClickHouse, with first-class SDKs for TypeScript and Python and OpenTelemetry (OTLP/HTTP) ingest for everything else.
+Spanlens is positioned as a lightweight, developer-first alternative to Helicone (acquired) and Langfuse (heavy). The stack is Next.js 16 + Hono + Supabase Postgres + ClickHouse, with first-class SDKs for TypeScript and Python and OpenTelemetry (OTLP/HTTP) ingest for everything else.
 
 ## What sets Spanlens apart in 2026
 
