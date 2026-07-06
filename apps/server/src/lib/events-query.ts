@@ -147,6 +147,11 @@ export async function selectGenerationsAsRequests<T>(opts: {
 
   const tail: string[] = []
   if (orderBy) tail.push(`ORDER BY ${orderBy}`)
+  // Dedup: the dual-write + the requests→events backfill can leave two
+  // identical rows per event_id (events is a plain MergeTree — no
+  // ReplacingMergeTree collapse). Keep one row per id so the list isn't
+  // doubled. LIMIT BY must precede the pagination LIMIT/OFFSET.
+  tail.push('LIMIT 1 BY id')
   if (typeof limit === 'number') tail.push(`LIMIT ${Math.max(0, Math.floor(limit))}`)
   if (typeof offset === 'number') tail.push(`OFFSET ${Math.max(0, Math.floor(offset))}`)
 
@@ -176,13 +181,14 @@ export async function selectGenerationsAsRequests<T>(opts: {
       provider_key_id,
       user_id,
       session_id,
-      -- Security flags and truncation live only in \`requests\`; surface
-      -- empty defaults so dashboard badges (no flag → no badge) stay
-      -- consistent until those columns land on \`events\`.
-      ''                                          AS flags,
-      '{}'                                        AS response_flags,
-      0                                           AS has_security_flags,
-      0                                           AS truncated,
+      -- Security flags + truncation marker: real columns since migration 006
+      -- (populated by writeRequestAsEvent). The 007 events_as_requests view
+      -- already projects these; this shim now matches so the dashboard's
+      -- security / truncated badges work under the events read path.
+      flags,
+      response_flags,
+      has_security_flags,
+      truncated,
       toString(created_at)                        AS created_at
     FROM events
     WHERE ${where}
@@ -225,7 +231,11 @@ export async function countGenerations(opts: {
   const whereParts = [scope.whereScope, "event_type = 'generation'"]
   if (filters && filters.length > 0) whereParts.push(filters)
   const where = whereParts.join(' AND ')
-  const query = `SELECT count() AS c FROM events WHERE ${where}`
+  // uniqExact(event_id) — NOT count() — because dual-write + backfill can
+  // leave duplicate rows per event_id (plain MergeTree, no collapse). count()
+  // would double the total; the exact distinct id count matches the deduped
+  // list from selectGenerationsAsRequests (LIMIT 1 BY id).
+  const query = `SELECT uniqExact(event_id) AS c FROM events WHERE ${where}`
   try {
     const res = await unscopedClickhouse().query({
       query,
