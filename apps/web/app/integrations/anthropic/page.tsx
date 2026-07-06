@@ -12,13 +12,11 @@ export const metadata = {
     title: 'Anthropic Claude Observability — Log every API call with Spanlens',
     description: DESCRIPTION,
     url: '/integrations/anthropic',
-    images: ['/icon.png'],
   },
   twitter: {
     card: 'summary_large_image',
     title: 'Anthropic Claude Observability — Log every API call with Spanlens',
     description: DESCRIPTION,
-    images: ['/icon.png'],
   },
 }
 

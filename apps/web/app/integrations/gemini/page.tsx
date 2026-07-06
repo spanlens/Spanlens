@@ -12,13 +12,11 @@ export const metadata = {
     title: 'Google Gemini Observability — Log every API call with Spanlens',
     description: DESCRIPTION,
     url: '/integrations/gemini',
-    images: ['/icon.png'],
   },
   twitter: {
     card: 'summary_large_image',
     title: 'Google Gemini Observability — Log every API call with Spanlens',
     description: DESCRIPTION,
-    images: ['/icon.png'],
   },
 }
 

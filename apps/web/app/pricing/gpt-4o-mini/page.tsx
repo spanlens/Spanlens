@@ -12,13 +12,11 @@ export const metadata = {
     title: 'GPT-4o-mini Pricing 2026 — Cost Per Token, Monthly Estimates',
     description: DESCRIPTION,
     url: '/pricing/gpt-4o-mini',
-    images: ['/icon.png'],
   },
   twitter: {
     card: 'summary_large_image',
     title: 'GPT-4o-mini Pricing 2026 — Cost Per Token, Monthly Estimates',
     description: DESCRIPTION,
-    images: ['/icon.png'],
   },
 }
 
