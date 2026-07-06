@@ -10,8 +10,10 @@ import { writeWorkspaceCookie } from '@/lib/workspace-cookie'
 /**
  * /invite?token=xxx — invitation acceptance landing page.
  *
- * This route is public (see middleware.ts PUBLIC_PATHS) so an invitee who
- * doesn't have an account yet can see what they're joining before signing up.
+ * This route is public (middleware.ts uses a PROTECTED_PATHS deny-list and
+ * this route is not on it) so an invitee who doesn't have an account yet can
+ * see what they're joining before signing up. It is noindexed via the
+ * colocated layout.tsx — public for humans, hidden from crawlers.
  *
  * States:
  *  - loading       — verifying token

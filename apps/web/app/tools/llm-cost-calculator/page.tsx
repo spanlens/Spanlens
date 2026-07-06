@@ -14,13 +14,11 @@ export const metadata = {
     title: 'LLM Cost Calculator — Free Tool by Spanlens',
     description: DESCRIPTION,
     url: '/tools/llm-cost-calculator',
-    images: ['/icon.png'],
   },
   twitter: {
     card: 'summary_large_image',
     title: 'LLM Cost Calculator — Free Tool by Spanlens',
     description: DESCRIPTION,
-    images: ['/icon.png'],
   },
 }
 

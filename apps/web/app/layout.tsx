@@ -49,20 +49,15 @@ export const metadata: Metadata = {
     description: SITE_DESCRIPTION,
     url: SITE_URL,
     locale: 'en_US',
-    images: [
-      {
-        url: '/icon.png',
-        width: 512,
-        height: 512,
-        alt: 'Spanlens',
-      },
-    ],
+    // No explicit `images`: the generated 1200×630 card from
+    // app/opengraph-image.tsx (file convention) applies site-wide. The old
+    // 512×512 /icon.png reference letterboxed on X/LinkedIn/Slack unfurls.
   },
   twitter: {
     card: 'summary_large_image',
     title: 'Spanlens · Open Source LLM Observability & Monitoring',
     description: SITE_DESCRIPTION,
-    images: ['/icon.png'],
+    // images inherited from app/twitter-image.tsx (file convention).
   },
   // NOTE: no top-level `index`/`follow` here. Explicit `index, follow` is the
   // crawler default (zero SEO value), and on dynamic routes with an async
