@@ -1,5 +1,5 @@
 'use client'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { Check } from 'lucide-react'
 import { initializePaddle, type Paddle } from '@paddle/paddle-js'
@@ -40,6 +40,9 @@ export function BillingClient() {
   // the error banner to an actionable message instead.
   const [paddleLoadFailed, setPaddleLoadFailed] = useState(false)
   const [checkoutCompleted, setCheckoutCompleted] = useState(false)
+  // Mirror of checkoutCompleted for the Paddle eventCallback, which is
+  // registered once at init and would otherwise close over a stale `false`.
+  const checkoutCompletedRef = useRef(false)
   // Sticky "an upgrade is being processed in this session" lock. currentPlan
   // stays 'free' until the webhook upserts the subscription, so without this
   // flag the Upgrade button re-enables the moment the overlay closes and the
@@ -70,9 +73,20 @@ export function BillingClient() {
       token: clientToken,
       eventCallback: (event) => {
         if (event.name === 'checkout.completed') {
+          checkoutCompletedRef.current = true
           setCheckoutCompleted(true)
           setUpgradeInProgress(true)
           setTimeout(() => refreshSubscription(), 1500)
+        } else if (event.name === 'checkout.closed') {
+          // Overlay dismissed without paying (price check, changed mind,
+          // declined card). Release the upgrade lock so the button doesn't
+          // stay stuck on "Plan updating…" for the rest of the session.
+          // checkout.closed ALSO fires after a successful checkout when the
+          // user closes the confirmation view — the ref guard keeps the lock
+          // held in that case until the webhook lands (double-billing guard).
+          if (!checkoutCompletedRef.current) {
+            setUpgradeInProgress(false)
+          }
         }
       },
     })
@@ -102,6 +116,7 @@ export function BillingClient() {
     async (plan: 'starter' | 'team') => {
       setRuntimeError(null)
       setCheckoutCompleted(false)
+      checkoutCompletedRef.current = false
       if (!paddle) {
         setRuntimeError('Paddle.js is not ready yet. Please try again in a moment.')
         return
