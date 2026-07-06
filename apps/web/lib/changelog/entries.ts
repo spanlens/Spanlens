@@ -39,6 +39,17 @@ export type ChangelogTag =
 
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    date: '2026-07-06',
+    slug: 'pre-launch-reliability-and-cost-accuracy',
+    title: 'More accurate Gemini cost and steadier streaming',
+    tags: ['fix', 'reliability'],
+    body: [
+      'Gemini cost is now correct on more calls. Streaming Gemini requests used to log zero tokens and zero cost because usage arrives on the final SSE event, and Gemini 2.5 and newer under-counted reasoning (thinking) tokens. Both are fixed, so the cost you see in /requests for Gemini now matches what Google bills, streaming or not.',
+      'Streaming got steadier too. If a client disconnects mid-stream the proxy now cancels the upstream call right away instead of hanging, and the log row for that request is still recorded rather than lost. During a brief ClickHouse outage the proxy keeps serving your calls instead of failing every request.',
+      'The dashboard now tells the truth when something goes wrong. The requests, traces, projects, and settings lists show an error with a retry instead of a misleading empty state, billing shows an error instead of a wrong Free plan when the subscription lookup fails, and an expired session sends you to the login page instead of showing stale data.',
+    ].join('\n\n'),
+  },
+  {
     date: '2026-07-01',
     slug: 'groq-deepseek-xai-cohere-providers',
     title: 'Four more providers: Groq, DeepSeek, xAI, and Cohere',

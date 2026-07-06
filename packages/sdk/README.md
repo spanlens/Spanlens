@@ -268,6 +268,7 @@ const result = await generateText({
   messages: [{ role: 'user', content: 'Hello!' }],
   onStepFinish: tracker.onStepFinish,  // optional (captures multi-step tool calls)
   onFinish: tracker.onFinish,          // required (records final usage)
+  onError: tracker.onError,            // recommended (ends the span if a streaming call fails)
 })
 ```
 

@@ -47,16 +47,22 @@ export default function MembersInvitationsDocs() {
             <td><strong>editor</strong></td>
             <td>✓</td>
             <td>✓</td>
-            <td>,</td>
+            <td>✗</td>
           </tr>
           <tr>
             <td><strong>viewer</strong></td>
             <td>✓</td>
-            <td>,</td>
-            <td>,</td>
+            <td>✗</td>
+            <td>✗</td>
           </tr>
         </tbody>
       </table>
+      <p>
+        Viewers are strictly read-only. They cannot start anything billable
+        such as evaluation runs, experiments, or a playground run, and they
+        cannot change security or billing settings. Those actions require the
+        editor or admin role.
+      </p>
       <p>
         The <strong>last admin</strong> in a workspace is protected, the
         API rejects any attempt to demote or remove them. Promote a second
