@@ -178,7 +178,7 @@ export default function VsArizePhoenixPage() {
     <CompareTemplate
       competitor="Arize Phoenix"
       tagline="Built for the production app developer, not the ML engineer in a notebook. JS/TS gets equal billing with Python."
-      tldr="Phoenix has serious ML-observability DNA from Arize and is excellent if you're an ML engineer who lives in Python notebooks. Spanlens is built for the app developer who shipped an LLM feature last week, with proxy-first install, JS/TS equal-class with Python, statistical A/B testing, and a fully MIT-licensed codebase (Phoenix is source-available under ELv2)."
+      tldr="Phoenix has serious ML-observability DNA from Arize and is excellent if you are an ML engineer who lives in Python notebooks. Embedding drift, UMAP projections of your prompt space, and notebook-launched trace exploration are first-class, and it is the reference implementation of the OpenInference spec. The friction appears when a product team is shipping features. JS/TS support is lighter than the Python experience, instrumentation goes through OpenInference SDK wrappers that touch every call site, and the license is Elastic License 2.0, source-available rather than OSI-approved. Spanlens is built for the app developer who shipped an LLM feature last week. Install is a one-line baseURL swap, TypeScript is equal-class with Python across the SDKs so Next.js and edge runtimes are first-class targets, prompt A/B experiments report Welch t-test significance built in, and the entire codebase is MIT, so you can fork, embed, or run it as a service without a license review."
       whySpanlens={whySpanlens}
       whyCompetitor={whyCompetitor}
       groups={groups}
