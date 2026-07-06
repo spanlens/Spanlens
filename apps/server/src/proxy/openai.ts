@@ -17,6 +17,12 @@ import { fetchUpstreamWithTimeout } from './shared/upstream-fetch.js'
 import { buildLogBase } from './shared/log-base.js'
 import { runLineBufferedStreamPump } from './shared/stream-pump.js'
 import { assertSafeProxyBase } from './shared/validate-base.js'
+import {
+  PROXY_CACHE_HEADER,
+  resolveProxyCache,
+  deleteExpiredCacheEntry,
+  storeCachedProxyResponse,
+} from '../lib/proxy-cache.js'
 
 // Overridable so E2E (apps/web/__e2e__/smoke.spec.ts via docker-compose
 // dev mock-openai) can point this at http://localhost:4000 without hitting
@@ -54,6 +60,53 @@ openaiProxy.all('/*', async (c) => {
   ])
   const requestFlags = await runSecurityGate(parsed.reqBodyJson, projectId)
 
+  // ── Opt-in response cache (x-spanlens-cache header) ────────────────────────
+  // Exact-match on (api key, provider, path, raw body). HIT skips upstream
+  // entirely; the row still logs with the cached tokens/model, cost_usd 0,
+  // and cache_hit 1. See lib/proxy-cache.ts.
+  const cache = await resolveProxyCache({
+    cacheHeader: c.req.header(PROXY_CACHE_HEADER),
+    isStreaming: parsed.isStreaming,
+    apiKeyId,
+    provider: 'openai',
+    path: c.req.path,
+    rawBody: parsed.reqBodyText,
+  })
+  if (cache.expiredKeyHash) fireAndForget(c, deleteExpiredCacheEntry(cache.expiredKeyHash))
+  if (cache.state.mode === 'hit') {
+    const hit = cache.state.entry
+    const latencyMs = Date.now() - handlerStartMs
+    const hitLogBase = buildLogBase({
+      c, provider: 'openai',
+      organizationId, projectId, apiKeyId,
+      providerKey,
+      reqBodyJson: parsed.reqBodyJson,
+      requestFlags,
+      latencyMs, proxyOverheadMs: latencyMs,
+      statusCode: hit.responseStatus,
+    })
+    let cachedBodyJson: unknown = null
+    try { cachedBodyJson = JSON.parse(hit.responseBody) } catch { /* stored body is JSON by construction */ }
+    fireAndForget(c, logRequestAsync({
+      ...hitLogBase,
+      model: hit.model,
+      promptTokens: hit.usage.prompt_tokens,
+      completionTokens: hit.usage.completion_tokens,
+      totalTokens: hit.usage.total_tokens,
+      cacheReadTokens: hit.usage.cache_read_tokens,
+      cacheWriteTokens: hit.usage.cache_write_tokens,
+      serviceTier: null,
+      costUsd: 0,
+      cacheHit: true,
+      responseBody: cachedBodyJson,
+      errorMessage: null,
+    }))
+    return new Response(hit.responseBody, {
+      status: hit.responseStatus,
+      headers: { 'content-type': 'application/json', [PROXY_CACHE_HEADER]: 'hit' },
+    })
+  }
+
   const upstreamUrl = `${OPENAI_BASE}${c.req.path.replace(/^\/proxy\/openai/, '')}`
   const headers = buildUpstreamHeaders(c.req.raw.headers, {
     Authorization: `Bearer ${providerKey.plaintext}`,
@@ -83,6 +136,8 @@ openaiProxy.all('/*', async (c) => {
 
   // ── Streaming path ────────────────────────────────────────────────────────
   if (parsed.isStreaming && upstreamRes.body) {
+    // Caching was requested but streaming responses are never cached.
+    if (cache.state.mode === 'bypass') c.header(PROXY_CACHE_HEADER, 'bypass')
     return runLineBufferedStreamPump({
       c, upstreamRes, handlerStartMs, provider: 'openai',
       onComplete: (lines, truncated) =>
@@ -122,6 +177,31 @@ openaiProxy.all('/*', async (c) => {
   const cost = calculateCost('openai', resolvedModel, {
     promptTokens, completionTokens, cacheReadTokens, cacheWriteTokens, serviceTier,
   })
+
+  // Cache MISS: store the successful JSON response off the response-critical
+  // path (fireAndForget — gotcha #8). storeCachedProxyResponse re-checks the
+  // 200 + size guards internally.
+  if (cache.state.mode === 'miss') {
+    downstreamHeaders.set(PROXY_CACHE_HEADER, 'miss')
+    if (upstreamRes.status === 200 && resBodyJson !== null) {
+      fireAndForget(c, storeCachedProxyResponse({
+        keyHash: cache.state.keyHash,
+        apiKeyId,
+        provider: 'openai',
+        ttlSeconds: cache.state.ttlSeconds,
+        responseStatus: upstreamRes.status,
+        responseBody: resBodyText,
+        usage: {
+          prompt_tokens: promptTokens,
+          completion_tokens: completionTokens,
+          total_tokens: totalTokens,
+          cache_read_tokens: cacheReadTokens,
+          cache_write_tokens: cacheWriteTokens,
+        },
+        model: resolvedModel,
+      }))
+    }
+  }
 
   fireAndForget(c, logRequestAsync({
     ...logBase,

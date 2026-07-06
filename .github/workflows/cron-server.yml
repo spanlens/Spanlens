@@ -69,7 +69,7 @@ on:
     - cron: '0 9 * * *'        # daily 09:00 — recommend-savings-alerts
     - cron: '0 10 * * *'       # daily 10:00 — check-past-due-downgrades
     - cron: '0 3 * * *'        # daily 03:00 — prune-judge-cache
-    - cron: '0 9 * * 1'        # weekly Monday 09:00 — stale-key-reminders
+    - cron: '0 9 * * 1'        # weekly Monday 09:00 — stale-key-reminders + weekly-digest
     - cron: '30 */6 * * *'     # every 6h at :30 — detect-data-silence
   workflow_dispatch:
 
@@ -283,7 +283,7 @@ jobs:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
 
   weekly-mon-09:
-    name: Weekly Monday 09:00 UTC (stale-key-reminders)
+    name: Weekly Monday 09:00 UTC (stale-key-reminders + weekly-digest)
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.schedule == '0 9 * * 1' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -294,6 +294,21 @@ jobs:
           STATUS=$(curl -sS -o /tmp/body -w '%{http_code}' \
             -H "Authorization: Bearer $CRON_SECRET" \
             "$BASE_URL/cron/stale-key-reminders")
+          echo "Status: $STATUS"
+          cat /tmp/body
+          if [ "$STATUS" -ge 400 ]; then exit 1; fi
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+
+      # Weekly usage digest. Safe to double-fire alongside the Vercel cron:
+      # the handler checks cron_job_runs for a successful run in the same
+      # ISO week and no-ops when one exists.
+      - name: POST /cron/weekly-digest
+        run: |
+          BASE_URL='https://spanlens-server.vercel.app'
+          STATUS=$(curl -sS -o /tmp/body -w '%{http_code}' \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            "$BASE_URL/cron/weekly-digest")
           echo "Status: $STATUS"
           cat /tmp/body
           if [ "$STATUS" -ge 400 ]; then exit 1; fi

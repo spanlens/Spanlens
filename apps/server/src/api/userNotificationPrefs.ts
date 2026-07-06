@@ -25,12 +25,14 @@ interface NotificationPrefs {
   security_alert_emails: boolean
   marketing_emails: boolean
   product_update_emails: boolean
+  weekly_digest_emails: boolean
 }
 
 const DEFAULT_PREFS: NotificationPrefs = {
   security_alert_emails: true,
   marketing_emails: true,
   product_update_emails: true,
+  weekly_digest_emails: true,
 }
 
 const PREF_KEYS = Object.keys(DEFAULT_PREFS) as (keyof NotificationPrefs)[]
@@ -40,7 +42,7 @@ userNotificationPrefsRouter.get('/', async (c) => {
 
   const { data, error } = await supabaseAdmin
     .from('user_notification_prefs')
-    .select('security_alert_emails, marketing_emails, product_update_emails')
+    .select('security_alert_emails, marketing_emails, product_update_emails, weekly_digest_emails')
     .eq('user_id', userId)
     .maybeSingle()
 
@@ -71,7 +73,7 @@ userNotificationPrefsRouter.patch('/', async (c) => {
   const { data, error } = await supabaseAdmin
     .from('user_notification_prefs')
     .upsert({ user_id: userId, ...updates }, { onConflict: 'user_id' })
-    .select('security_alert_emails, marketing_emails, product_update_emails')
+    .select('security_alert_emails, marketing_emails, product_update_emails, weekly_digest_emails')
     .single()
 
   if (error || !data) throw new ApiError('INTERNAL_ERROR', 'Failed to save notification preferences')

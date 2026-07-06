@@ -93,6 +93,15 @@ export interface RequestLogData {
    * Empty string written to CH when unknown / unsupported (Anthropic).
    */
   serviceTier?: string | null | undefined
+  /**
+   * True when the response was served from the opt-in proxy response cache
+   * (x-spanlens-cache header) WITHOUT calling the upstream provider. The row
+   * keeps the original token counts and model but records cost_usd = 0 and
+   * cache_hit = 1 so cache savings are computable later.
+   *
+   * See lib/proxy-cache.ts for the cache semantics.
+   */
+  cacheHit?: boolean
 }
 
 /**
@@ -300,6 +309,12 @@ export async function logRequestAsync(data: RequestLogData): Promise<void> {
     // 0/1 because ClickHouse UInt8; never null even if the field was
     // never set (older rows backfill via DEFAULT 0 on the column).
     truncated: data.truncated ? 1 : 0,
+    // 0/1 UInt8, same convention as `truncated`. Served-from-cache rows carry
+    // cost_usd 0 — this flag is what separates them from genuinely-free rows.
+    // Column added by clickhouse/migrations/010_add_cache_hit.sql. The field
+    // rides inside `payload` on the requests_fallback path automatically
+    // (fallback-replay.ts re-inserts the payload verbatim — gotcha #23).
+    cache_hit: data.cacheHit ? 1 : 0,
     // Empty string when unknown — matches the column DEFAULT '' from migration
     // 003_add_service_tier.sql and keeps CH LowCardinality dictionary tight.
     service_tier: data.serviceTier ?? '',

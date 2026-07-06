@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { Copy, Check, X, Terminal, CheckCircle2, Loader2, RefreshCw } from 'lucide-react'
+import { Copy, Check, X, Terminal, CheckCircle2, Loader2, RefreshCw, ShieldCheck } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { consumeWelcomeStash, clearWelcomeStash } from '@/lib/welcome-stash'
 import { useProviderKeys } from '@/lib/queries/use-provider-keys'
@@ -96,10 +96,34 @@ export function WelcomeBanner() {
   )
 }
 
+type KeyCheckState = 'idle' | 'checking' | 'ok' | 'failed'
+
 function WelcomeBannerInner({ apiKey, onDismiss }: { apiKey: string; onDismiss: () => void }) {
   const [copiedKey, setCopiedKey] = useState(false)
   const [copiedSnippet, setCopiedSnippet] = useState(false)
   const [copiedCurl, setCopiedCurl] = useState(false)
+
+  // Step 1 verification — introspects the freshly issued key against the
+  // server's key-info endpoint. Same-origin path: the Next.js rewrite in
+  // next.config.mjs forwards /api/* to spanlens-server, exactly like the
+  // banner's other queries (useProviderKeys / useRequests via lib/api.ts),
+  // so no CORS preflight and no hardcoded server host. Auth here is the
+  // sl_live_* key itself (authApiKey on the server), not the user JWT.
+  const [keyCheck, setKeyCheck] = useState<KeyCheckState>('idle')
+
+  async function verifyKey() {
+    if (keyCheck === 'checking') return
+    setKeyCheck('checking')
+    try {
+      const res = await fetch('/api/v1/me/key-info', {
+        headers: { Authorization: `Bearer ${apiKey}` },
+        cache: 'no-store',
+      })
+      setKeyCheck(res.ok ? 'ok' : 'failed')
+    } catch {
+      setKeyCheck('failed')
+    }
+  }
 
   // Step 2 status — flips to a checkmark once any provider key exists.
   const providerKeys = useProviderKeys()
@@ -170,6 +194,31 @@ function WelcomeBannerInner({ apiKey, onDismiss }: { apiKey: string; onDismiss: 
             </code>{' '}
             (or your deployment&apos;s env settings, Vercel, Railway, etc.).
           </p>
+          <div className="flex items-center gap-2 mt-2">
+            <button
+              type="button"
+              onClick={() => void verifyKey()}
+              disabled={keyCheck === 'checking'}
+              className="font-mono text-[10.5px] px-[8px] py-[3px] border border-border rounded-[5px] text-text-muted hover:text-text hover:border-border-strong disabled:opacity-40 transition-colors inline-flex items-center gap-1"
+            >
+              {keyCheck === 'checking' ? (
+                <Loader2 className="w-3 h-3 animate-spin" />
+              ) : (
+                <ShieldCheck className="w-3 h-3" />
+              )}
+              Verify key
+            </button>
+            {keyCheck === 'ok' && (
+              <span className="inline-flex items-center gap-1 text-good font-mono text-[10.5px]">
+                <CheckCircle2 className="w-3.5 h-3.5" /> Key is active
+              </span>
+            )}
+            {keyCheck === 'failed' && (
+              <span className="font-mono text-[10.5px] text-bad">
+                Key check failed. Check the env var name and restart your dev server.
+              </span>
+            )}
+          </div>
         </div>
 
         {/* Step 2, register a provider key — checkmark once one exists */}

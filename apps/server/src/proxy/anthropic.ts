@@ -17,6 +17,12 @@ import { runSecurityGate } from './shared/security-gate.js'
 import { fetchUpstreamWithTimeout } from './shared/upstream-fetch.js'
 import { buildLogBase } from './shared/log-base.js'
 import { runLineBufferedStreamPump } from './shared/stream-pump.js'
+import {
+  PROXY_CACHE_HEADER,
+  resolveProxyCache,
+  deleteExpiredCacheEntry,
+  storeCachedProxyResponse,
+} from '../lib/proxy-cache.js'
 
 const ANTHROPIC_BASE = 'https://api.anthropic.com'
 
@@ -41,6 +47,51 @@ anthropicProxy.all('/*', async (c) => {
     parseProxyRequestBody(c),
   ])
   const requestFlags = await runSecurityGate(parsed.reqBodyJson, projectId)
+
+  // ── Opt-in response cache (x-spanlens-cache header) ────────────────────────
+  // Same wiring as proxy/openai.ts — see lib/proxy-cache.ts for semantics.
+  const cache = await resolveProxyCache({
+    cacheHeader: c.req.header(PROXY_CACHE_HEADER),
+    isStreaming: parsed.isStreaming,
+    apiKeyId,
+    provider: 'anthropic',
+    path: c.req.path,
+    rawBody: parsed.reqBodyText,
+  })
+  if (cache.expiredKeyHash) fireAndForget(c, deleteExpiredCacheEntry(cache.expiredKeyHash))
+  if (cache.state.mode === 'hit') {
+    const hit = cache.state.entry
+    const latencyMs = Date.now() - handlerStartMs
+    const hitLogBase = buildLogBase({
+      c, provider: 'anthropic',
+      organizationId, projectId, apiKeyId,
+      providerKey,
+      reqBodyJson: parsed.reqBodyJson,
+      requestFlags,
+      latencyMs, proxyOverheadMs: latencyMs,
+      statusCode: hit.responseStatus,
+    })
+    let cachedBodyJson: unknown = null
+    try { cachedBodyJson = JSON.parse(hit.responseBody) } catch { /* stored body is JSON by construction */ }
+    fireAndForget(c, logRequestAsync({
+      ...hitLogBase,
+      model: hit.model,
+      promptTokens: hit.usage.prompt_tokens,
+      completionTokens: hit.usage.completion_tokens,
+      totalTokens: hit.usage.total_tokens,
+      cacheReadTokens: hit.usage.cache_read_tokens,
+      cacheWriteTokens: hit.usage.cache_write_tokens,
+      serviceTier: null,
+      costUsd: 0,
+      cacheHit: true,
+      responseBody: cachedBodyJson,
+      errorMessage: null,
+    }))
+    return new Response(hit.responseBody, {
+      status: hit.responseStatus,
+      headers: { 'content-type': 'application/json', [PROXY_CACHE_HEADER]: 'hit' },
+    })
+  }
 
   const upstreamUrl = `${ANTHROPIC_BASE}${c.req.path.replace(/^\/proxy\/anthropic/, '')}`
   // Anthropic uses `x-api-key` (NOT Authorization Bearer) + anthropic-version.
@@ -75,6 +126,8 @@ anthropicProxy.all('/*', async (c) => {
 
   // ── Streaming path ────────────────────────────────────────────────────────
   if (parsed.isStreaming && upstreamRes.body) {
+    // Caching was requested but streaming responses are never cached.
+    if (cache.state.mode === 'bypass') c.header(PROXY_CACHE_HEADER, 'bypass')
     return runLineBufferedStreamPump({
       c, upstreamRes, handlerStartMs, provider: 'anthropic',
       onComplete: (lines, truncated) =>
@@ -114,6 +167,31 @@ anthropicProxy.all('/*', async (c) => {
   const cost = calculateCost('anthropic', resolvedModel, {
     promptTokens, completionTokens, cacheReadTokens, cacheWriteTokens, serviceTier,
   })
+
+  // Cache MISS: store the successful JSON response off the response-critical
+  // path (fireAndForget — gotcha #8). storeCachedProxyResponse re-checks the
+  // 200 + size guards internally.
+  if (cache.state.mode === 'miss') {
+    downstreamHeaders.set(PROXY_CACHE_HEADER, 'miss')
+    if (upstreamRes.status === 200 && resBodyJson !== null) {
+      fireAndForget(c, storeCachedProxyResponse({
+        keyHash: cache.state.keyHash,
+        apiKeyId,
+        provider: 'anthropic',
+        ttlSeconds: cache.state.ttlSeconds,
+        responseStatus: upstreamRes.status,
+        responseBody: resBodyText,
+        usage: {
+          prompt_tokens: promptTokens,
+          completion_tokens: completionTokens,
+          total_tokens: totalTokens,
+          cache_read_tokens: cacheReadTokens,
+          cache_write_tokens: cacheWriteTokens,
+        },
+        model: resolvedModel,
+      }))
+    }
+  }
 
   fireAndForget(c, logRequestAsync({
     ...logBase,

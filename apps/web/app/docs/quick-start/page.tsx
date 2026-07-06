@@ -6,7 +6,7 @@ export const metadata = {
   alternates: { canonical: '/docs/quick-start' },
   title: 'Quick start · Spanlens Docs',
   description:
-    'Get up and running with Spanlens in 30 seconds. Start from scratch or migrate existing OpenAI, Anthropic, or Gemini code with one command.',
+    'Get up and running with Spanlens in 30 seconds. Migrate existing OpenAI, Anthropic, or Gemini code with one command, or set up manually in four steps.',
 }
 
 export default function QuickStart() {
@@ -15,44 +15,99 @@ export default function QuickStart() {
       <DocsJsonLd meta={metadata} />
       <h1>Quick start</h1>
       <p className="lead">
-        Pick the path that matches your starting point. Both end with your LLM calls flowing through
-        Spanlens and showing up in <a href="/requests">your dashboard</a>.
+        Two ways to get your LLM calls flowing through Spanlens and showing up in{' '}
+        <a href="/requests">your dashboard</a>. If your code already calls OpenAI, Anthropic, or
+        Gemini directly, the CLI wires everything up in one command. Otherwise the manual path
+        takes four steps.
       </p>
 
-      <details className="not-prose my-6 rounded-lg border border-border/60 bg-bg-elev p-4 text-sm">
-        <summary className="cursor-pointer font-medium">
-          Need an account first? (signup → project → Spanlens key → provider key)
-        </summary>
-        <ol className="mt-3 ml-5 list-decimal space-y-1 text-muted-foreground">
-          <li><a className="underline" href="/signup">Sign up</a> and create a project at <a className="underline" href="/projects">/projects</a>.</li>
-          <li>Click <em>+ New Spanlens key</em> on the project card. You&apos;ll get a <code>sl_live_…</code> shown once — save it.</li>
-          <li>Click <em>+ Add provider key</em> next to the Spanlens key and paste your real OpenAI / Anthropic / Gemini key.</li>
-        </ol>
-        <p className="mt-2 text-muted-foreground">
-          One Spanlens key covers every provider key you register under it. You don&apos;t need separate keys per provider.
-        </p>
-      </details>
-
-      <h2 id="path-a">Path A — Starting from scratch (no CLI)</h2>
+      <h2 id="path-b">One command setup for existing code (CLI)</h2>
       <p>
-        If your code doesn&apos;t already call OpenAI / Anthropic / Gemini directly, this is the
-        simpler path. Three steps, never run the CLI.
+        If your codebase already has direct calls like{' '}
+        <code>new OpenAI(&#123; apiKey: ... &#125;)</code>, the CLI rewrites them in place in one
+        pass. Run it from your app root:
+      </p>
+      <CodeBlock language="bash">{`npx @spanlens/cli@latest init`}</CodeBlock>
+      <p>
+        Before you run it, set up three things at <a href="/projects">/projects</a>: a project, a
+        Spanlens key (<em>+ New Spanlens key</em>, the <code>sl_live_…</code> value is shown once,
+        so save it), and at least one provider key registered under that Spanlens key. The wizard
+        prompts you to paste the Spanlens key and automates the rest.
       </p>
 
-      <h3>Step 1: Install the SDK</h3>
-      <CodeBlock language="bash">{`pnpm add @spanlens/sdk
-# or: npm install @spanlens/sdk
-# or: yarn add @spanlens/sdk`}</CodeBlock>
+      <p>Here is exactly what it does to your project:</p>
+      <ol>
+        <li>Detects your framework (Next.js for now)</li>
+        <li>Validates your Spanlens key against the API and lists which providers you have keys registered for</li>
+        <li>
+          Writes <code>SPANLENS_API_KEY</code> to <code>.env.local</code> (asks before overwriting an existing value)
+        </li>
+        <li>Installs <code>@spanlens/sdk</code> with your package manager</li>
+        <li>
+          Patches every <code>new OpenAI(...)</code> / <code>new Anthropic(...)</code> /{' '}
+          <code>new GoogleGenerativeAI(...)</code> call to the matching{' '}
+          <code>createXxx()</code> helper, only for providers you have keys for
+        </li>
+        <li>Runs <code>tsc --noEmit</code> to verify the patch compiles</li>
+      </ol>
+      <p className="text-sm text-muted-foreground">
+        Want to see the changes before anything is written? Run{' '}
+        <code>npx @spanlens/cli init --dry-run</code>. Self-hosting? Add{' '}
+        <code>--server-url https://spanlens.yourcompany.com</code> to point the wizard at your own
+        instance instead of spanlens.io.
+      </p>
+
+      <p>Then deploy:</p>
+      <ol>
+        <li>Add <code>SPANLENS_API_KEY</code> to your production env (Vercel / Railway / Fly)</li>
+        <li>Redeploy, because new env values don&apos;t apply to existing deployments</li>
+      </ol>
+
+      <h3>When does the CLI need to run again?</h3>
+      <p>
+        Almost never. Once a file is patched it stays patched. Rotating, adding, or deactivating
+        provider keys in the dashboard doesn&apos;t require a re-run. The only time you re-run is
+        when:
+      </p>
+      <ul>
+        <li>
+          You add a <em>new provider type</em> (e.g. you had OpenAI before, now you&apos;re
+          adding Anthropic) <strong>and</strong> your codebase still has direct{' '}
+          <code>new Anthropic(...)</code> calls. Otherwise just write the helper directly
+          using the snippet from the manual path below.
+        </li>
+      </ul>
+
+      <h2 id="path-a">Manual setup in four steps</h2>
+      <p>
+        Starting from scratch, or your code doesn&apos;t call a provider directly yet? Four steps,
+        never run the CLI.
+      </p>
+
+      <h3>Step 1: Create your keys at /projects</h3>
+      <ol>
+        <li><a className="underline" href="/signup">Sign up</a> and create a project at <a className="underline" href="/projects">/projects</a>.</li>
+        <li>Click <em>+ New Spanlens key</em> on the project card. You&apos;ll get a <code>sl_live_…</code> value shown once, so save it now.</li>
+        <li>Click <em>+ Add provider key</em> next to the Spanlens key and paste your real OpenAI / Anthropic / Gemini key.</li>
+      </ol>
+      <p>
+        One Spanlens key covers every provider key you register under it. You don&apos;t need
+        separate keys per provider.
+      </p>
 
       <h3>Step 2: Add the env variable</h3>
       <p>
-        Copy the <code>sl_live_…</code> value shown when you issued the Spanlens key
-        (it&apos;s only displayed once) and put it in your env file:
+        Put the <code>sl_live_…</code> value you saved in Step 1 into your env file:
       </p>
       <CodeBlock language="env">{`# .env.local
 SPANLENS_API_KEY=sl_live_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx`}</CodeBlock>
 
-      <h3>Step 3: Use the helper for each provider you registered</h3>
+      <h3>Step 3: Install the SDK</h3>
+      <CodeBlock language="bash">{`pnpm add @spanlens/sdk
+# or: npm install @spanlens/sdk
+# or: yarn add @spanlens/sdk`}</CodeBlock>
+
+      <h3>Step 4: Use the helper for each provider you registered</h3>
       <p>
         Each helper is a drop-in replacement for the provider&apos;s normal client: same methods,
         same return types. <code>SPANLENS_API_KEY</code> is read automatically.
@@ -97,9 +152,10 @@ const result = await model.generateContent('Hi')`}</CodeBlock>
         for the per-framework snippet.
       </p>
 
-      <h3>Adding new providers later — no CLI needed</h3>
+      <h3>Adding new providers later (no CLI needed)</h3>
       <p>
-        Once Steps 1 and 2 are done, adding a second or third provider is just:
+        Once Steps 2 and 3 are done (env variable set, SDK installed), adding a second or third
+        provider is just:
       </p>
       <ol>
         <li>Dashboard: <em>+ Add provider key</em> for the new provider</li>
@@ -110,59 +166,6 @@ const result = await model.generateContent('Hi')`}</CodeBlock>
         copy-paste straight into your project. Your <code>SPANLENS_API_KEY</code> already covers the
         new provider.
       </p>
-
-      <h2 id="path-b">Path B — Migrating existing OpenAI / Anthropic / Gemini code (CLI)</h2>
-      <p>
-        If your codebase already has direct calls like{' '}
-        <code>new OpenAI(&#123; apiKey: ... &#125;)</code>, the CLI rewrites them in place in one pass.
-      </p>
-      <CodeBlock language="bash">{`npx @spanlens/cli@latest init`}</CodeBlock>
-      <p className="text-sm text-muted-foreground">
-        Self-hosting? Add <code>--server-url https://spanlens.yourcompany.com</code> to point the
-        wizard at your own instance instead of spanlens.io.
-      </p>
-
-      <p>The wizard:</p>
-      <ol>
-        <li>Detects your framework (Next.js for now)</li>
-        <li>Validates your Spanlens key against the API and lists which providers you have keys registered for</li>
-        <li>
-          Writes <code>SPANLENS_API_KEY</code> to <code>.env.local</code> (asks before overwriting an existing value)
-        </li>
-        <li>Installs <code>@spanlens/sdk</code> with your package manager</li>
-        <li>
-          Patches every <code>new OpenAI(...)</code> / <code>new Anthropic(...)</code> /{' '}
-          <code>new GoogleGenerativeAI(...)</code> call to the matching{' '}
-          <code>createXxx()</code> helper, only for providers you have keys for
-        </li>
-        <li>Runs <code>tsc --noEmit</code> to verify the patch compiles</li>
-      </ol>
-
-      <p>Then deploy:</p>
-      <ol>
-        <li>Add <code>SPANLENS_API_KEY</code> to your production env (Vercel / Railway / Fly)</li>
-        <li>Redeploy — new env values don&apos;t apply to existing deployments</li>
-      </ol>
-
-      <p className="text-sm text-muted-foreground">
-        Preview the changes before applying:{' '}
-        <code>npx @spanlens/cli init --dry-run</code>
-      </p>
-
-      <h3>When does the CLI need to run again?</h3>
-      <p>
-        Almost never. Once a file is patched it stays patched. Rotating, adding, or deactivating
-        provider keys in the dashboard doesn&apos;t require a re-run. The only time you re-run is
-        when:
-      </p>
-      <ul>
-        <li>
-          You add a <em>new provider type</em> (e.g. you had OpenAI before, now you&apos;re
-          adding Anthropic) <strong>and</strong> your codebase still has direct{' '}
-          <code>new Anthropic(...)</code> calls. Otherwise just write the helper directly
-          using the snippet from Path A.
-        </li>
-      </ul>
 
       <h2 id="verify">Verify it works</h2>
       <p>
@@ -186,9 +189,9 @@ const result = await model.generateContent('Hi')`}</CodeBlock>
         </figcaption>
       </figure>
 
-      <h2>What about /traces?</h2>
+      <h2 id="tracing">What about /traces?</h2>
       <p>
-        The proxy setup above populates <a href="/requests">/requests</a> only —{' '}
+        The proxy setup above populates <a href="/requests">/requests</a> only, so{' '}
         <a href="/traces">/traces</a> will be empty. That&apos;s expected.
       </p>
       <p>
@@ -210,9 +213,9 @@ const result = await model.generateContent('Hi')`}</CodeBlock>
           Confirm <code>SPANLENS_API_KEY</code> is set in <em>both</em>{' '}
           <code>.env.local</code> AND your deployment environment
         </li>
-        <li>After adding env vars in Vercel, <strong>redeploy</strong> — new values don&apos;t apply retroactively</li>
+        <li>After adding env vars in Vercel, <strong>redeploy</strong>, because new values don&apos;t apply retroactively</li>
         <li>
-          Check the Network tab — your request should hit{' '}
+          Check the Network tab. Your request should hit{' '}
           <code>server.spanlens.io/proxy/*</code>, not <code>api.openai.com</code> directly
         </li>
       </ol>
@@ -221,7 +224,7 @@ const result = await model.generateContent('Hi')`}</CodeBlock>
       <p>
         You called a provider you haven&apos;t registered yet. Open{' '}
         <a href="/projects">/projects</a>, find the Spanlens key, and click{' '}
-        <em>+ Add provider key</em> — pick the matching provider (OpenAI / Anthropic / Gemini) and
+        <em>+ Add provider key</em>. Pick the matching provider (OpenAI / Anthropic / Gemini) and
         paste your AI key.
       </p>
 
