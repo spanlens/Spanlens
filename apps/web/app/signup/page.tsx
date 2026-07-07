@@ -216,11 +216,12 @@ function SignupPageInner() {
         <div className="w-[360px] max-w-full">
           {sent ? (
             <div className="text-center">
-              <div className="w-9 h-9 rounded-full bg-accent-bg border border-accent-border flex items-center justify-center mx-auto mb-3 font-mono text-[14px] text-accent">✉</div>
-              <div className="text-[16px] font-medium tracking-[-0.2px] mb-1.5">Check your inbox.</div>
-              <div className="text-[12.5px] text-text-muted leading-[1.55]">
-                We sent a sign-in link to{' '}
-                <span className="font-mono text-text">{email}</span>. It expires in 10 minutes.
+              <div className="w-14 h-14 rounded-full bg-accent-bg border border-accent-border flex items-center justify-center mx-auto mb-4 font-mono text-[24px] text-accent">✉</div>
+              <div className="text-[24px] font-medium tracking-[-0.2px] mb-2">Check your inbox.</div>
+              <div className="text-[18px] text-text-muted leading-[1.55]">
+                We sent a confirmation link to{' '}
+                <span className="font-mono text-text">{email}</span>. Click it to activate your
+                account and finish setting up your workspace.
               </div>
             </div>
           ) : (
