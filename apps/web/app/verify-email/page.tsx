@@ -55,12 +55,21 @@ function VerifyEmailInner() {
     setSent(false)
 
     const supabase = createClient()
-    const { error: otpError } = await supabase.auth.signInWithOtp({ email })
+    // Resend the signup confirmation email (not a fresh magic link). The
+    // user already created an account with a password; `resend` reissues
+    // the original confirmation link, which lands on /auth/callback and
+    // completes sign-in. `emailRedirectTo` must match the signup call so
+    // the callback receives the code on the same route.
+    const { error: resendError } = await supabase.auth.resend({
+      type: 'signup',
+      email,
+      options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
+    })
 
     setSending(false)
 
-    if (otpError) {
-      setError(otpError.message)
+    if (resendError) {
+      setError(resendError.message)
       return
     }
 
@@ -87,12 +96,13 @@ function VerifyEmailInner() {
 
         <h1 className="text-[20px] font-medium tracking-[-0.3px] mb-2">Check your inbox</h1>
         <p className="text-[13px] text-text-muted leading-relaxed mb-6">
-          We sent a magic link to{' '}
-          <span className="font-mono text-text">{displayEmail}</span>. It expires in 10 minutes.
+          We sent a confirmation link to{' '}
+          <span className="font-mono text-text">{displayEmail}</span>. Click it to activate your
+          account. The link expires after a while, so use it soon.
         </p>
 
         {sent && (
-          <p className="text-[12.5px] text-accent mb-3">Magic link resent successfully.</p>
+          <p className="text-[12.5px] text-accent mb-3">Confirmation email resent successfully.</p>
         )}
         {error && <p className="text-[12.5px] text-bad mb-3">{error}</p>}
 
