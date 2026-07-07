@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { DemoSidebar } from '@/components/layout/demo-sidebar'
 import { SidebarProvider } from '@/lib/sidebar-context'
 import { CommandPaletteProvider } from '@/components/command-palette'
+import { TrackOnce } from '@/components/track-once'
 import { DemoClientGuard } from './_client-guard'
 
 // Demo is a noindex subsystem (sample-data playground, no SEO value). Until
@@ -15,6 +16,9 @@ export default function DemoLayout({ children }: { children: React.ReactNode }) 
   return (
     <CommandPaletteProvider>
     <SidebarProvider>
+    {/* Funnel event: visitor reached the no-signup demo. Once per tab
+        session so in-demo navigation doesn't inflate the count. */}
+    <TrackOnce event="demo_entered" />
     {/* Mirrors the live (dashboard) layout: 125% zoom for a roomier default
         view, with height divided by the same factor so the zoomed container
         still resolves to exactly one viewport height. Without the height

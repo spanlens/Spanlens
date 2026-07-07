@@ -11,6 +11,7 @@ import {
 } from '@/lib/queries/use-pending-invitations'
 import { writeWorkspaceCookie } from '@/lib/workspace-cookie'
 import { writeWelcomeStash } from '@/lib/welcome-stash'
+import { TrackOnce } from '@/components/track-once'
 import { cn } from '@/lib/utils'
 
 /**
@@ -162,6 +163,10 @@ export default function OnboardingPage() {
 
   return (
     <div className="min-h-screen bg-bg-elev flex flex-col items-center px-6 py-10">
+      {/* Funnel event: account exists and the user reached onboarding —
+          the single point every signup path (email, email-confirm, OAuth)
+          converges on. Once per browser so revisits don't recount. */}
+      <TrackOnce event="signup_completed" scope="local" />
       {/* Header */}
       <Link href="/" className="flex items-center gap-2 mb-7 hover:opacity-80 transition-opacity">
         <Image src="/icon.png" alt="Spanlens" width={22} height={22} className="shrink-0 rounded-[5px]" priority />
