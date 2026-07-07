@@ -1,17 +1,23 @@
-import { TERMS_VERSION, PRIVACY_VERSION } from './legal-versions'
+import { TERMS_VERSION, PRIVACY_VERSION, DPA_VERSION } from './legal-versions'
 
 /**
  * Server-side helper invoked from the OAuth callback route handler.
  *
- * The email signup flow records Terms + Privacy consent client-side
- * (signup/page.tsx:19-37) before calling signUp. The OAuth flow skips
- * that step — the user clicks "Continue with Google/GitHub" and bounces
- * straight to the provider. By the time we see them again in the
- * callback we've already implicitly accepted their consent.
+ * The email signup flow records Terms + Privacy + DPA consent client-side
+ * (signup/page.tsx:21-40) before calling signUp — but only when signUp
+ * returns a session inline. When email confirmation is enabled the session
+ * is null until the user clicks the confirmation link, which lands on
+ * /auth/callback (emailRedirectTo). So both the OAuth flow AND the
+ * email-confirmation flow reach this helper without consent recorded yet.
  *
- * This helper closes the gap: after exchangeCodeForSession succeeds we
+ * The OAuth flow skips the client-side step entirely — the user clicks
+ * "Continue with Google/GitHub" and bounces straight to the provider.
+ * By the time we see them again in the callback we've already implicitly
+ * accepted their consent (the notice next to the SSO buttons covers it).
+ *
+ * This helper closes both gaps: after exchangeCodeForSession succeeds we
  * check whether this user has already accepted the current TERMS /
- * PRIVACY versions, and POST any missing rows to /api/v1/me/consent.
+ * PRIVACY / DPA versions, and POST any missing rows to /api/v1/me/consent.
  * Idempotent — safe to call on every callback (including OAuth
  * re-logins for users who accepted long ago).
  *
@@ -35,7 +41,7 @@ import { TERMS_VERSION, PRIVACY_VERSION } from './legal-versions'
  */
 
 interface ConsentRow {
-  document: 'terms' | 'privacy'
+  document: 'terms' | 'privacy' | 'dpa'
   version: string
 }
 
@@ -77,6 +83,7 @@ export async function recordOAuthConsentIfMissing(
   const required: ConsentRow[] = [
     { document: 'terms', version: TERMS_VERSION },
     { document: 'privacy', version: PRIVACY_VERSION },
+    { document: 'dpa', version: DPA_VERSION },
   ]
 
   const missing = required.filter(

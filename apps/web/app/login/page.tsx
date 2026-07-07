@@ -76,6 +76,16 @@ export default function LoginPage() {
     const supabase = createClient()
     const { error: authError } = await supabase.auth.signInWithPassword({ email, password })
     if (authError) {
+      // A user who signed up but never clicked the confirmation link gets
+      // "Email not confirmed" from GoTrue. Raw wording is a dead end — route
+      // them to /verify-email where they can resend the link. Match on the
+      // stable `code` first (SDK ≥ 2.x) with a message fallback for older
+      // error shapes. Carry the email so the page can prefill the resend.
+      const code = (authError as { code?: string }).code
+      if (code === 'email_not_confirmed' || /email not confirmed/i.test(authError.message)) {
+        window.location.href = `/verify-email?email=${encodeURIComponent(email)}`
+        return
+      }
       setError(authError.message)
       setLoading(false)
       return
