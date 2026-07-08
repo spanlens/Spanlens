@@ -252,7 +252,13 @@ const openai = new OpenAI({ baseURL, apiKey })`}</CodeBlock>
       <hr />
       <p className="text-sm text-muted-foreground">
         Next: <a href="/docs/proxy">Direct proxy reference</a> for headers and auth, or{' '}
-        <a href="/docs/concepts/data-model">data model</a> for the full schema.
+        <a href="/docs/concepts/data-model">data model</a> for the full schema. For the
+        background on why teams are moving and what to check before picking any
+        replacement, see{' '}
+        <a href="https://blog.spanlens.io/helicone-mintlify-migration-checklist/">
+          Helicone was acquired by Mintlify: a migration checklist
+        </a>
+        .
       </p>
     </div>
   )
