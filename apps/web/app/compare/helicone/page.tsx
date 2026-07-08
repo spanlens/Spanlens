@@ -172,6 +172,18 @@ export default function VsHeliconePage() {
       whyCompetitor={whyCompetitor}
       groups={groups}
       closing="If you want a battle-tested proxy with a focused feature set, Helicone is a strong choice. If you want the same proxy ergonomics plus deeper agent analytics, statistical A/B, and log durability, try Spanlens."
+      relatedNote={
+        <>
+          Deciding whether to move at all?{' '}
+          <a
+            href="https://blog.spanlens.io/helicone-mintlify-migration-checklist/"
+            className="underline hover:text-text-muted"
+          >
+            Helicone was acquired by Mintlify: a migration checklist
+          </a>{' '}
+          walks through what changed and what to check before picking any replacement.
+        </>
+      }
     />
   )
 }
