@@ -38,6 +38,8 @@ export interface CompareTemplateProps {
   groups: CompareGroup[]
   /** Short closing line above the CTA */
   closing?: string
+  /** Optional related-reading node rendered under the closing line (e.g. a link to a deeper blog post). */
+  relatedNote?: React.ReactNode
   /** Year shown next to the H1 and used in the FAQ canonical URL. Defaults to the current year. */
   year?: number
 }
@@ -152,6 +154,7 @@ export function CompareTemplate({
   whyCompetitor,
   groups,
   closing,
+  relatedNote,
   year,
 }: CompareTemplateProps) {
   const resolvedYear = year ?? new Date().getUTCFullYear()
@@ -379,6 +382,9 @@ export function CompareTemplate({
         <div className="rounded-xl border border-border bg-bg-elev p-8 text-center">
           {closing && (
             <p className="text-[15px] text-text-muted mb-5 max-w-[640px] mx-auto leading-relaxed">{closing}</p>
+          )}
+          {relatedNote && (
+            <p className="text-[13px] text-text-faint mb-5 max-w-[640px] mx-auto leading-relaxed">{relatedNote}</p>
           )}
           <div className="flex flex-col sm:flex-row gap-3 justify-center items-center">
             <Link
