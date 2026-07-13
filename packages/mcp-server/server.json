@@ -7,12 +7,12 @@
     "source": "github",
     "subfolder": "packages/mcp-server"
   },
-  "version": "0.1.4",
+  "version": "0.2.0",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "@spanlens/mcp-server",
-      "version": "0.1.4",
+      "version": "0.2.0",
       "transport": {
         "type": "stdio"
       },
@@ -26,10 +26,10 @@
         },
         {
           "name": "SPANLENS_BASE_URL",
-          "description": "Override the API endpoint for self-hosted Spanlens. Default: https://server.spanlens.io",
+          "description": "Override the API endpoint for self-hosted Spanlens. Default: https://api.spanlens.io",
           "isRequired": false,
           "format": "string",
-          "default": "https://server.spanlens.io"
+          "default": "https://api.spanlens.io"
         }
       ]
     }
