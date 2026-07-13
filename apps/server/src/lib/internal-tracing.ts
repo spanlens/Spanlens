@@ -32,7 +32,7 @@
  *
  * Env vars (read once at module load):
  *
- *   SPANLENS_INTERNAL_BASE_URL  https://server.spanlens.io  (or local)
+ *   SPANLENS_INTERNAL_BASE_URL  https://api.spanlens.io  (or local)
  *   SPANLENS_INTERNAL_API_KEY   sl_live_<hex>               (full-scope key
  *                                                            of the
  *                                                            spanlens-team

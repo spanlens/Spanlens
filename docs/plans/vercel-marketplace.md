@@ -116,7 +116,7 @@ Fields verified from
 | Overview | 768 chars, markdown | (draft below) |
 | Additional info | 1024 chars | Self-host with Docker, SaaS at spanlens.io. SDKs for JS / Python. OpenTelemetry + MCP supported. |
 | Website / Docs / EULA / Privacy / Support URLs | — | spanlens.io, /docs, /eula, /privacy, mailto:hi@spanlens.io |
-| Redirect URL | OAuth callback | `https://server.spanlens.io/oauth/callback/vercel` |
+| Redirect URL | OAuth callback | `https://api.spanlens.io/oauth/callback/vercel` |
 | Logo / Feature media | — | (Phase 1.C) |
 
 Overview draft (under 768 chars):
