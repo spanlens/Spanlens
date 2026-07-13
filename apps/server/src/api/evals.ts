@@ -8,6 +8,11 @@ import { EMBEDDING_PROVIDERS } from '../lib/eval-runners/embedding.js'
 import { fireAndForget } from '../lib/wait-until.js'
 import { ApiError } from '../lib/errors.js'
 import { parsePageLimit } from '../lib/params.js'
+import {
+  VALID_JUDGE_PROVIDERS,
+  isValidJudgeProvider,
+  type JudgeProvider,
+} from '../lib/judge-providers.js'
 
 // P2-8: evals are dual-auth so CI / SDK can run them with an sl_live_* key,
 // not just a dashboard JWT — this is the "prompt CI" enabler. Reads accept
@@ -97,8 +102,7 @@ evalsRouter.post('/evaluators', requireFullScope, requireEdit, async (c) => {
     const scaleMax = typeof config.scale_max === 'number' ? config.scale_max : 1
 
     if (!criterion) throw new ApiError('VALIDATION_FAILED', 'config.criterion is required')
-    const VALID_JUDGE_PROVIDERS = ['openai', 'anthropic', 'gemini', 'azure', 'mistral', 'openrouter']
-    if (!VALID_JUDGE_PROVIDERS.includes(judgeProvider)) {
+    if (!isValidJudgeProvider(judgeProvider)) {
       throw new ApiError('VALIDATION_FAILED', `config.judge_provider must be one of: ${VALID_JUDGE_PROVIDERS.join(', ')}`)
     }
     if (!judgeModel) throw new ApiError('VALIDATION_FAILED', 'config.judge_model is required')
@@ -221,8 +225,7 @@ evalsRouter.post('/evaluators', requireFullScope, requireEdit, async (c) => {
     const scaleMax = typeof config.scale_max === 'number' ? config.scale_max : 1
     const rubric = typeof config.rubric === 'string' ? config.rubric.trim() : ''
     if (!criterion) throw new ApiError('VALIDATION_FAILED', 'config.criterion is required')
-    const VALID_JUDGE_PROVIDERS = ['openai', 'anthropic', 'gemini', 'azure', 'mistral', 'openrouter']
-    if (!VALID_JUDGE_PROVIDERS.includes(judgeProvider)) {
+    if (!isValidJudgeProvider(judgeProvider)) {
       throw new ApiError('VALIDATION_FAILED', `config.judge_provider must be one of: ${VALID_JUDGE_PROVIDERS.join(', ')}`)
     }
     if (!judgeModel) throw new ApiError('VALIDATION_FAILED', 'config.judge_model is required')
@@ -673,11 +676,9 @@ evalsRouter.post('/eval-runs/estimate', async (c) => {
   const judgeModel = typeof body.judgeModel === 'string' ? body.judgeModel : 'gpt-4o-mini'
   // P3-13: take the real provider from the caller instead of sniffing prefixes.
   // Default to 'openai' for back-compat with old callers that only sent judgeModel.
-  const VALID_JUDGE_PROVIDERS = ['openai', 'anthropic', 'gemini', 'azure', 'mistral', 'openrouter'] as const
-  type JudgeProvider = typeof VALID_JUDGE_PROVIDERS[number]
   const judgeProvider: JudgeProvider =
-    typeof body.judgeProvider === 'string' && (VALID_JUDGE_PROVIDERS as readonly string[]).includes(body.judgeProvider)
-      ? (body.judgeProvider as JudgeProvider)
+    typeof body.judgeProvider === 'string' && isValidJudgeProvider(body.judgeProvider)
+      ? body.judgeProvider
       : 'openai'
   const criterionChars = typeof body.criterionChars === 'number' && body.criterionChars >= 0 ? body.criterionChars : undefined
   const avgResponseChars = typeof body.avgResponseChars === 'number' && body.avgResponseChars >= 0 ? body.avgResponseChars : undefined
