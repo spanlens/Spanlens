@@ -65,9 +65,26 @@ function coerceNumericColumns<Row extends Record<string, unknown>>(row: Row): Ro
   return out as Row
 }
 
+/**
+ * Leading characters Excel / Google Sheets interpret as a formula trigger
+ * (`=SUM(...)`, `+cmd|...`, `@HYPERLINK(...)`), including the tab / CR
+ * variants some spreadsheet importers also honour. Exported cells such as
+ * `error_message` carry end-user-controlled LLM text, so an attacker can plant
+ * `=HYPERLINK(...)` in a prompt and have it execute when the victim opens the
+ * export. OWASP mitigation: prefix the cell with a single quote so the
+ * spreadsheet renders it as literal text.
+ */
+const CSV_FORMULA_TRIGGER = /^[=+\-@\t\r]/
+
 function escapeCsv(val: unknown): string {
   if (val === null || val === undefined) return ''
-  const s = String(val)
+  let s = String(val)
+  // Formula-injection guard — string cells only. Numeric columns are coerced
+  // to real numbers before reaching this encoder (coerceNumericColumns), so
+  // legitimate negative numbers are `typeof 'number'` and stay untouched.
+  if (typeof val === 'string' && CSV_FORMULA_TRIGGER.test(s)) {
+    s = "'" + s
+  }
   if (s.includes(',') || s.includes('"') || s.includes('\n') || s.includes('\r')) {
     return '"' + s.replace(/"/g, '""') + '"'
   }
@@ -458,7 +475,10 @@ exportsRouter.get('/security', async (c) => {
   // /exports/requests JSON path — so pandas/BigQuery get numeric columns.
   const rows: Record<string, unknown>[] = data.map((row) => {
     const isoCreated = fromClickhouseTimestamp(row.created_at) ?? row.created_at
-    if (format === 'csv') return { ...row, created_at: isoCreated }
+    // CSV also coerces ClickHouse string-encoded numerics so the formula-
+    // injection guard in escapeCsv (string cells only) can never prefix a
+    // legitimate negative number rendered as a numeric string.
+    if (format === 'csv') return { ...coerceNumericColumns(row), created_at: isoCreated }
     let parsedFlags: unknown = []
     try { parsedFlags = JSON.parse(row.flags) } catch { parsedFlags = row.flags }
     return { ...coerceNumericColumns(row), flags: parsedFlags, created_at: isoCreated }
