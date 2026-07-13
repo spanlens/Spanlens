@@ -572,6 +572,9 @@ function NewEvaluatorDialog({
                       ))}
                     </SelectContent>
                   </Select>
+                  <p className="font-mono text-[10.5px] text-text-faint mt-1">
+                    Pass/fail and classification checks usually score just as well on a smaller, cheaper model like Haiku or gpt-4o-mini. Save the larger judges for nuanced 0–1 scoring.
+                  </p>
                 </div>
               </div>
 
