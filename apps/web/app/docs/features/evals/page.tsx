@@ -260,11 +260,40 @@ export default function EvalsDocs() {
         </li>
       </ul>
 
+      <h2>Prompt caching</h2>
+      <p>
+        Within a single run every sample is scored against the same criterion, rubric, and
+        calibration anchors. Spanlens sends that static block as a cached prefix and the per-sample
+        response as the only varying part, so the judge instructions are charged at full price once
+        and reused at the reduced cache rate for the rest of the run.
+      </p>
+      <ul>
+        <li>
+          Anthropic judges use an ephemeral <code>cache_control</code> prefix (cache reads bill at
+          roughly one tenth of the input price). The bigger the rubric and anchor set, the larger
+          the saving.
+        </li>
+        <li>
+          OpenAI and Gemini judges get the same benefit automatically once the static prefix is
+          large enough, because the instructions are sent as a stable system prefix.
+        </li>
+        <li>
+          Reported eval cost already reflects the cached and full-price token split, so the number
+          you see is what your provider actually billed.
+        </li>
+      </ul>
+
       <h2>Cost</h2>
       <p>
         Judge calls are <strong>billed to your provider key</strong> (Spanlens does not cover
         them). Approximate cost with gpt-4o-mini: ~<code>$0.0005</code> per evaluation.
         50 samples ≈ <code>$0.025</code>.
+      </p>
+      <p>
+        Pick the judge model to match the job. Pass/fail (<code>BOOLEAN</code>) and classification
+        (<code>CATEGORICAL</code>) checks usually score just as well on a small, fast model like
+        Haiku or gpt-4o-mini, which costs a fraction of a frontier model. Reserve the larger judges
+        for nuanced 0–1 scoring where the extra reasoning earns its price.
       </p>
       <p>Guardrails:</p>
       <ul>
