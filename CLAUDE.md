@@ -259,10 +259,9 @@ PORT=3001 (server), 3000 (web)
 ## @spanlens/mcp-server — 외부 IDE 통합 (2026-06-04부터)
 - 위치: `packages/mcp-server/`. 패키지명 `@spanlens/mcp-server`, bin `spanlens-mcp`. Public scope 키(`sl_live_pub_*`)만 받음 (full 키 부팅 시 거부).
 - 7개 tools: `get_stats`, `query_requests`, `list_traces`, `get_trace`, `get_anomalies`, `get_savings`, `get_user_analytics`. 모두 `/api/v1/*`의 dual-auth read API를 호출.
-- 발행:
-  - npm: `git tag mcp-server-v<X.Y.Z> && git push --tags` → `.github/workflows/publish-mcp-server.yml`이 자동 publish.
-  - MCP Registry: `cd packages/mcp-server && mcp-publisher login github && mcp-publisher publish` (수동, OAuth 필요). `mcpName: io.github.spanlens/mcp-server`로 등재됨.
-- `server.json` (registry metadata) + `package.json`의 `mcpName` 필드를 동시에 유지. 미스매치면 registry verifier가 reject.
+- 발행 (npm + MCP Registry 모두 자동, 2026-07 확인): `git tag mcp-server-v<X.Y.Z> && git push --tags` 하나로 `.github/workflows/publish-mcp-server.yml`이 ① npm publish → ② `mcp-publisher login github-oidc` (GitHub Actions OIDC — 수동 OAuth 불필요) → ③ MCP Registry publish (npm 전파 대기 15s×5 retry)까지 수행. 로컬 `mcp-publisher` 수동 실행은 workflow가 죽었을 때 fallback으로만.
+- `server.json`의 `version`/`packages[0].version`은 workflow가 publish 직전 package.json 값으로 auto-sync — 손으로 맞출 필요 없음. 단 `mcpName`(`io.github.spanlens/mcp-server`)은 auto-sync 대상 아님: `server.json` + `package.json` 양쪽에서 동시에 유지, 미스매치면 registry verifier가 reject.
+- 버전 bump는 **3곳**: `package.json`, `server.json`(2곳 — auto-sync가 있으니 커밋 diff 일관성용), `src/version.ts`의 `SERVER_VERSION`.
 - 새 tool 추가 시: (1) `packages/mcp-server/src/tools.ts`에 zod 스키마 + 핸들러 (2) README의 "Available tools" 표 갱신 (3) version bump + tag.
 
 ## 금지 사항
