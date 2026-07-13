@@ -69,7 +69,7 @@ tailwindcss 4 + @tailwindcss/typography
 apps/web → @spanlens/api-types, server (devDep, for E2E)
 apps/server → @spanlens/api-types
 packages/cli → @spanlens/sdk
-packages/mcp-server → (none — talks to server.spanlens.io REST API)
+packages/mcp-server → (none — talks to api.spanlens.io REST API)
 ```
 
 ## Build / CI
