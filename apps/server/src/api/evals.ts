@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
-import { createMiddleware } from 'hono/factory'
 import { authJwtOrApiKey, type DualAuthContext } from '../middleware/authJwtOrApiKey.js'
 import { requireFullScope } from '../middleware/requireFullScope.js'
+import { requireEditDualAuth } from '../middleware/requireEditDualAuth.js'
 import { supabaseAdmin } from '../lib/db.js'
 import { runEvalRun, estimateJudgeCostUsd } from '../lib/eval-runner.js'
 import { EMBEDDING_PROVIDERS } from '../lib/eval-runners/embedding.js'
@@ -25,15 +25,9 @@ evalsRouter.use('*', authJwtOrApiKey)
 //     sl_live_* key" flow (see header comment), so allow it through.
 //   - JWT (dashboard) path: require admin/editor so a viewer-role member can't
 //     create evaluators or trigger billable eval runs.
-// Plain requireRole('admin','editor') would reject the null-role API-key path
-// and break CI, so this variant only enforces the role check when a role is set.
-const requireEdit = createMiddleware<DualAuthContext>(async (c, next) => {
-  const role = c.get('role')
-  if (role != null && role !== 'admin' && role !== 'editor') {
-    throw ApiError.from('FORBIDDEN', { required: ['admin', 'editor'], actual: role })
-  }
-  return next()
-})
+// Extracted to middleware/requireEditDualAuth.ts so anomalies.ts (and future
+// dual-auth writers) share the exact same gate.
+const requireEdit = requireEditDualAuth
 
 // ── Evaluators (定義) ────────────────────────────────────────────────────────
 
@@ -386,7 +380,7 @@ evalsRouter.get('/evaluator-templates', async (c) => {
 })
 
 // DELETE /api/v1/evaluators/:id — soft delete (archive)
-evalsRouter.delete('/evaluators/:id', requireFullScope, async (c) => {
+evalsRouter.delete('/evaluators/:id', requireFullScope, requireEdit, async (c) => {
   const orgId = c.get('orgId')
   if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
