@@ -166,6 +166,7 @@ PORT=3001 (server), 3000 (web)
 현재 등록된 origins:
 - `https://spanlens.io` (apex, canonical로 리다이렉트됨)
 - `https://www.spanlens.io` (primary canonical)
+- `https://api.spanlens.io` (server 프로젝트 alias — 프록시/REST 공식 주소, 2026-07-13 등록)
 - `https://spanlens-web.vercel.app` (Vercel default)
 - `http://localhost:3000` (local dev)
 - `https://spanlens-*-sunes26s-projects.vercel.app` (preview — 정규식 매치)

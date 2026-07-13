@@ -82,6 +82,7 @@ app.use('*', cors({
     const allowed = [
       'https://spanlens.io',
       'https://www.spanlens.io',
+      'https://api.spanlens.io',
       'https://spanlens-web.vercel.app',
       'http://localhost:3000',
     ]
