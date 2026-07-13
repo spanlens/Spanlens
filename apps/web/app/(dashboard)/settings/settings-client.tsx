@@ -1964,7 +1964,7 @@ function DeliveryHistory({ webhookId }: { webhookId: string }) {
       {deliveries.map((d) => (
         <div key={d.id} className="grid grid-cols-[140px_80px_80px_1fr] gap-4 px-6 py-2 items-center">
           <span className="font-mono text-[11px] text-text-muted">
-            {new Date(d.delivered_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}
+            {new Date(d.delivered_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}
           </span>
           <MonoPill variant={d.status === 'success' ? 'good' : 'faint'} dot>
             {d.status}
