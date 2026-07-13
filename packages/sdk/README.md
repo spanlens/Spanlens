@@ -31,7 +31,7 @@ import { createOpenAI } from '@spanlens/sdk/openai'
 const openai = createOpenAI()  // reads SPANLENS_API_KEY + baseURL automatically
 ```
 
-All three providers supported:
+All providers supported:
 
 ```ts
 import { createOpenAI } from '@spanlens/sdk/openai'
@@ -42,6 +42,22 @@ const openai    = createOpenAI()
 const anthropic = createAnthropic()
 const gemini    = createGemini()
 // gemini.getGenerativeModel() auto-routes through Spanlens proxy
+```
+
+Every OpenAI-compatible provider that Spanlens proxies has its own subpath with the same factory shape (v0.15.0+; Mistral and OpenRouter in v0.17.0+):
+
+```ts
+import { createGroq } from '@spanlens/sdk/groq'
+import { createDeepSeek } from '@spanlens/sdk/deepseek'
+import { createXai } from '@spanlens/sdk/xai'
+import { createCohere } from '@spanlens/sdk/cohere'
+import { createMistral } from '@spanlens/sdk/mistral'
+import { createOpenRouter } from '@spanlens/sdk/openrouter'
+
+const mistral    = createMistral()     // -> /proxy/mistral/v1
+const openrouter = createOpenRouter()  // -> /proxy/openrouter/v1
+// Each returns a regular OpenAI client pointed at the matching proxy route.
+// Register the provider key in Spanlens; SPANLENS_API_KEY is the only key in your app.
 ```
 
 The returned clients are **identical** to `new OpenAI(...)` etc, so all options (timeout, headers, organization, etc.) forward through. Peer dependencies (`openai`, `@anthropic-ai/sdk`, `@google/generative-ai`) are optional. Install only the ones you use.
@@ -60,11 +76,11 @@ const res = await openai.chat.completions.create(
 )
 ```
 
-Same helper on `@spanlens/sdk/anthropic`. For `observeOpenAI/Anthropic/Gemini`, pass `promptVersion` in options.
+The same helper is exported from every provider subpath (`anthropic`, `gemini`, `groq`, `deepseek`, `xai`, `cohere`, `ollama`, `mistral`, `openrouter`). For `observeOpenAI/Anthropic/Gemini/...`, pass `promptVersion` in options.
 
 ### Per-user, per-session, and body-redaction tagging
 
-The same `headers`-style helpers cover the other `X-Spanlens-*` headers. Available on both `@spanlens/sdk/openai` and `@spanlens/sdk/anthropic`.
+The same `headers`-style helpers cover the other `X-Spanlens-*` headers. Available on every provider subpath (`@spanlens/sdk/openai`, `/anthropic`, `/gemini`, `/groq`, `/deepseek`, `/xai`, `/cohere`, `/ollama`, `/mistral`, `/openrouter`).
 
 ```ts
 import { createOpenAI, withUser, withSession, withLogBody } from '@spanlens/sdk/openai'
@@ -512,6 +528,7 @@ The table below is the honest, file-level comparison of what each package ships 
 | Proxy client factory (Anthropic) | ✓ `createAnthropic` | ✓ `create_anthropic` |
 | Proxy client factory (Gemini) | ✓ `createGemini` | ✓ `create_gemini` |
 | Proxy client factory (Ollama) | ✓ `createOllama` (`@spanlens/sdk/ollama`) | ✗ (use a raw OpenAI client at `localhost:11434`) |
+| Proxy client factories (OpenAI-compatible: Groq, DeepSeek, xAI, Cohere, Mistral, OpenRouter) | ✓ (`@spanlens/sdk/<provider>` subpaths) | ✗ (point `base_url` at the proxy route manually) |
 | LangChain integration | ✓ | ✓ |
 | LangGraph integration | ✓ (via the LangChain handler) | ✓ (via the LangChain handler) |
 | LlamaIndex integration | ✓ | ✓ |

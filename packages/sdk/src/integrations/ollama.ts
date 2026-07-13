@@ -70,3 +70,23 @@ export function createOllama(options: ClientOptions = {}): OpenAI {
 // both the client factory and the matching `observe` helper — mirrors how
 // `@spanlens/sdk/openai` co-locates `createOpenAI` with its header helpers.
 export { observeOllama } from '../observe.js'
+
+// X-Spanlens-* request-header helpers (withUser / withSession / withLogBody /
+// withCache / withPromptVersion) — canonical implementations live in
+// ./_headers.ts. Re-exported so every proxy subpath has the same single-import
+// ergonomics as `@spanlens/sdk/openai`.
+export {
+  PROMPT_VERSION_HEADER,
+  USER_HEADER,
+  SESSION_HEADER,
+  LOG_BODY_HEADER,
+  CACHE_HEADER,
+  CACHE_DEFAULT_TTL_SECONDS,
+  CACHE_MAX_TTL_SECONDS,
+  withPromptVersion,
+  withUser,
+  withSession,
+  withLogBody,
+  withCache,
+  cacheHeaderValue,
+} from './_headers.js'

@@ -1,5 +1,19 @@
 # @spanlens/sdk changelog
 
+## 0.17.0
+
+Mistral and OpenRouter integrations, plus header-helper parity across every proxy subpath.
+
+### Added
+
+- `@spanlens/sdk/mistral` and `@spanlens/sdk/openrouter` subpaths. Both providers are OpenAI-compatible, so `createMistral(options?)` and `createOpenRouter(options?)` return an OpenAI client already pointed at the matching hosted Spanlens proxy route (`/proxy/mistral/v1`, `/proxy/openrouter/v1`). `DEFAULT_SPANLENS_MISTRAL_PROXY` and `DEFAULT_SPANLENS_OPENROUTER_PROXY` are exported for self-hosted overrides.
+- `observeMistral` and `observeOpenRouter` tracers, exported from the package root and from their subpaths. Both parse the standard OpenAI `usage` shape and tag the span with the right provider.
+- The X-Spanlens-* header helpers, `withUser`, `withSession`, `withLogBody`, `withCache`, and `withPromptVersion` (plus `cacheHeaderValue` and the header-name constants), are now exported from every proxy integration subpath: `gemini`, `groq`, `deepseek`, `xai`, `cohere`, `ollama`, `mistral`, and `openrouter`. Previously they were only available from `@spanlens/sdk/openai` and `@spanlens/sdk/anthropic`, which forced a second import to tag, for example, a Groq request with a user ID.
+
+### Changed
+
+- The header helpers now live in one shared internal module and are re-exported by each integration, so behavior is guaranteed identical across subpaths. No public API changes: existing imports from `@spanlens/sdk/openai` and `@spanlens/sdk/anthropic` keep working unchanged.
+
 ## 0.16.0
 
 Default API host moved to the official `api.spanlens.io` domain.
