@@ -152,7 +152,7 @@ apps/web/app/demo/_client-guard.tsx — `DemoClientGuard`. demo subsystem 전용
    - read API인데 user identity 필요 (audit, members 등) → `authJwt`만
    - write API (`/proxy/*`, `/ingest/*`, OTLP) → `authApiKey` + `requireFullScope`
    - write API가 org-role 제약 필요 (viewer 차단) → authJwt 뒤에 `requireRole('admin','editor')`. dual-auth write면 evals.ts의 `requireEdit` + `requireFullScope` 조합 재사용.
-   - app.ts에서 mount 순서 주의: `/api/v1` wildcard 라우터(evalsRouter/humanEvalsRouter) **뒤**에 mount하면 wildcard authJwt가 먼저 잡아 dual-auth 무력화 (recommendations 사고 패턴, 2026-06-04 발견)
+   - app.ts mount 순서 invariant (2026-07-13 reorder): `/api/v1` wildcard 라우터(evalsRouter/humanEvalsRouter)는 **/api/v1 섹션 맨 마지막**에 mount됨. 새 specific 라우터는 "Wildcard /api/v1 routers — MUST STAY LAST" 주석 블록 **위**에 추가 — wildcard 뒤에 mount하면 wildcard authJwt가 먼저 잡아 dual-auth/public 라우트 무력화 (recommendations 2026-06-04 + feedback PR #304, 두 번 실사고). `src/__tests__/api-v1-mount-order.test.ts` source-guard가 순서 위반을 CI에서 잡음.
 4. UI → apps/web에서 fetch('/api/v1/...') 또는 TanStack Query
 5. 검증 → pnpm typecheck && lint && test
 ## 환경변수 (필수)
