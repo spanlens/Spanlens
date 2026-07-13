@@ -87,7 +87,7 @@ The agent will discover seven tools and use them automatically when relevant.
 | `query_requests` | Individual LLM requests with cost, latency, model, error message. Filter by `model`, `provider`, `status`, `userId`, `since`, `limit`. |
 | `list_traces` | Agent trace summaries (name, status, duration, span count, total tokens, total cost) for discovering trace IDs. Filter by `limit`, `status`, `since`, `query`. Pair with `get_trace` for the full span tree. |
 | `get_trace` | Full agent span tree for a trace ID — every LLM/tool/retrieval span with timing, tokens, cost. |
-| `get_anomalies` | Cost / latency / error-rate anomalies the platform has detected. Optional `severity`. |
+| `get_anomalies` | Cost / latency / error-rate anomalies the platform has detected. Optional `since` (observation window) and `sigma` (sensitivity). |
 | `get_savings` | Model-swap recommendations with projected monthly savings and adoption status. |
 | `get_user_analytics` | Per-end-user usage breakdown — total cost, request count, models touched, recent calls. |
 
