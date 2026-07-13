@@ -9,7 +9,7 @@
  * No logCronRun call: every-5-min cadence would flood cron_job_runs.
  */
 
-import { pingClickhouse } from '../clickhouse.js'
+import { warmClickhouse } from '../clickhouse.js'
 import { supabaseAdmin } from '../db.js'
 
 export interface KeepWarmResult {
@@ -23,11 +23,15 @@ export async function runKeepWarmJob(): Promise<KeepWarmResult> {
   const started = Date.now()
   const results = await Promise.allSettled([
     supabaseAdmin.from('organizations').select('id', { count: 'exact', head: true }).limit(1),
-    pingClickhouse(),
+    // Real `SELECT 1`, not HTTP /ping: ClickHouse Cloud only resets its
+    // idle-suspend timer on query activity, so a ping-only warmup let the
+    // Development tier suspend anyway. Generous timeout rides out a cold
+    // wake (minutes) — this runs as a cron, nobody is waiting on it.
+    warmClickhouse(30_000),
   ])
 
   const supabaseOk = results[0].status === 'fulfilled'
-  // pingClickhouse swallows its own errors and resolves to false — read
+  // warmClickhouse swallows its own errors and resolves to false — read
   // the value, not the settled status.
   const clickhouseOk =
     results[1].status === 'fulfilled' && results[1].value === true
