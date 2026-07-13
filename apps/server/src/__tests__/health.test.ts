@@ -44,6 +44,11 @@ vi.mock('../lib/db.js', () => ({
 
 vi.mock('../lib/clickhouse.js', () => ({
   pingClickhouse: () => pingClickhouseMock(),
+  // health.ts moved to the SELECT-1-based probe (keeps ClickHouse Cloud's
+  // idle timer reset). Retry semantics are covered by clickhouse-warm.test.ts;
+  // here it drives the same mock so every existing scenario still applies.
+  warmClickhouse: () => pingClickhouseMock(),
+  warmClickhouseWithRetry: () => pingClickhouseMock(),
   getClickhouse: () => ({}),
   unscopedClickhouse: () => ({}),
   getOrgClickhouse: () => ({}),
