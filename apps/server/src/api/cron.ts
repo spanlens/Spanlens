@@ -38,6 +38,15 @@ import { runKeepWarmJob } from '../lib/cron-jobs/keep-warm.js'
  * `CRON_SECRET` env var so external callers cannot trigger these endpoints.
  *
  * If `CRON_SECRET` is unset, the endpoints refuse to run (fail-closed).
+ *
+ * Logging convention: every handler MUST `await logCronRun(...)` before
+ * returning. A naked fire-and-forget (`logCronRun(...).catch(...)`) is
+ * dropped by Vercel once the response returns (CLAUDE.md gotcha #8), which
+ * silently loses the `cron_job_runs` row and makes the cron-health
+ * monitoring (gotcha #32) misread "cron never fired". Cron endpoints are
+ * scheduler-invoked and not latency-sensitive, so awaiting the single
+ * INSERT is free; `logCronRun` never throws, so awaiting cannot flip a
+ * successful run into a 500.
  */
 
 export const cronRouter = new Hono()
@@ -72,7 +81,7 @@ cronRouter.get('/aggregate-usage', async (c) => {
   const start = Date.now()
   const result = await runAggregateUsageJob()
   const errorMsg = result.success ? undefined : result.results.find((r) => r.error)?.error
-  logCronRun('aggregate-usage', result.success ? 'ok' : 'error', Date.now() - start, errorMsg).catch(() => undefined)
+  await logCronRun('aggregate-usage', result.success ? 'ok' : 'error', Date.now() - start, errorMsg)
   return c.json(result)
 })
 
@@ -82,7 +91,7 @@ cronRouter.get('/evaluate-alerts', async (c) => {
 
   const start = Date.now()
   const result = await runEvaluateAlertsJob()
-  logCronRun('evaluate-alerts', 'ok', Date.now() - start).catch(() => undefined)
+  await logCronRun('evaluate-alerts', 'ok', Date.now() - start)
   return c.json(result)
 })
 
@@ -93,11 +102,11 @@ cronRouter.get('/report-usage-overage', async (c) => {
   const start = Date.now()
   try {
     const reports = await computeAndReportOverages()
-    logCronRun('report-usage-overage', 'ok', Date.now() - start).catch(console.error)
+    await logCronRun('report-usage-overage', 'ok', Date.now() - start)
     return c.json({ success: true, count: reports.length, reports })
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'unknown'
-    logCronRun('report-usage-overage', 'error', Date.now() - start, msg).catch(console.error)
+    await logCronRun('report-usage-overage', 'error', Date.now() - start, msg)
     throw new ApiError('INTERNAL_ERROR', msg)
   }
 })
@@ -109,11 +118,11 @@ cronRouter.get('/check-quota-warnings', async (c) => {
   const start = Date.now()
   try {
     const result = await runQuotaWarningsJob()
-    logCronRun('check-quota-warnings', 'ok', Date.now() - start).catch(console.error)
+    await logCronRun('check-quota-warnings', 'ok', Date.now() - start)
     return c.json({ success: true, ...result })
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'unknown'
-    logCronRun('check-quota-warnings', 'error', Date.now() - start, msg).catch(console.error)
+    await logCronRun('check-quota-warnings', 'error', Date.now() - start, msg)
     throw new ApiError('INTERNAL_ERROR', msg)
   }
 })
@@ -127,11 +136,11 @@ cronRouter.get('/snapshot-anomalies', async (c) => {
     const results = await snapshotAnomaliesForAllOrgs()
     const total = results.reduce((s, r) => s + r.detected, 0)
     const errored = results.filter((r) => r.errors.length > 0).length
-    logCronRun('snapshot-anomalies', 'ok', Date.now() - start).catch(console.error)
+    await logCronRun('snapshot-anomalies', 'ok', Date.now() - start)
     return c.json({ success: true, orgs: results.length, anomalies: total, errors: errored, results })
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'unknown'
-    logCronRun('snapshot-anomalies', 'error', Date.now() - start, msg).catch(console.error)
+    await logCronRun('snapshot-anomalies', 'error', Date.now() - start, msg)
     throw new ApiError('INTERNAL_ERROR', msg)
   }
 })
@@ -147,11 +156,11 @@ cronRouter.get('/prune-logs', async (c) => {
   ])
 
   if (logsResult.error) {
-    logCronRun('prune-logs', 'error', Date.now() - start, logsResult.error.message).catch(console.error)
+    await logCronRun('prune-logs', 'error', Date.now() - start, logsResult.error.message)
     throw new ApiError('INTERNAL_ERROR', logsResult.error.message)
   }
 
-  logCronRun('prune-logs', 'ok', Date.now() - start).catch(console.error)
+  await logCronRun('prune-logs', 'ok', Date.now() - start)
   return c.json({
     success: true,
     logs: logsResult.data,
@@ -166,11 +175,11 @@ cronRouter.get('/stale-key-reminders', async (c) => {
   const start = Date.now()
   try {
     const result = await runStaleKeyDigestJob()
-    logCronRun('stale-key-reminders', 'ok', Date.now() - start).catch(console.error)
+    await logCronRun('stale-key-reminders', 'ok', Date.now() - start)
     return c.json({ success: true, ...result })
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'unknown'
-    logCronRun('stale-key-reminders', 'error', Date.now() - start, msg).catch(console.error)
+    await logCronRun('stale-key-reminders', 'error', Date.now() - start, msg)
     throw new ApiError('INTERNAL_ERROR', msg)
   }
 })
@@ -184,11 +193,11 @@ cronRouter.get('/detect-data-silence', async (c) => {
     const result = await runDataSilenceJob()
     const status = result.errors.length > 0 ? 'error' : 'ok'
     const errSummary = result.errors.length > 0 ? result.errors.join('; ').slice(0, 500) : undefined
-    logCronRun('detect-data-silence', status, Date.now() - start, errSummary).catch(console.error)
+    await logCronRun('detect-data-silence', status, Date.now() - start, errSummary)
     return c.json({ success: result.errors.length === 0, ...result })
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'unknown'
-    logCronRun('detect-data-silence', 'error', Date.now() - start, msg).catch(console.error)
+    await logCronRun('detect-data-silence', 'error', Date.now() - start, msg)
     throw new ApiError('INTERNAL_ERROR', msg)
   }
 })
@@ -205,11 +214,11 @@ cronRouter.get('/weekly-digest', async (c) => {
     // retry would double-send to every org that already succeeded.
     const status = result.completed ? 'ok' : 'error'
     const errSummary = result.errors.length > 0 ? result.errors.join('; ').slice(0, 500) : undefined
-    logCronRun('weekly-digest', status, Date.now() - start, errSummary).catch(console.error)
+    await logCronRun('weekly-digest', status, Date.now() - start, errSummary)
     return c.json({ success: result.completed, ...result })
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'unknown'
-    logCronRun('weekly-digest', 'error', Date.now() - start, msg).catch(console.error)
+    await logCronRun('weekly-digest', 'error', Date.now() - start, msg)
     throw new ApiError('INTERNAL_ERROR', msg)
   }
 })
@@ -224,11 +233,11 @@ cronRouter.get('/recommend-savings-alerts', async (c) => {
     const totalSent    = results.reduce((s, r) => s + r.sent, 0)
     const totalSkipped = results.reduce((s, r) => s + r.skipped, 0)
     const totalErrors  = results.reduce((s, r) => s + r.errors.length, 0)
-    logCronRun('recommend-savings-alerts', 'ok', Date.now() - start).catch(console.error)
+    await logCronRun('recommend-savings-alerts', 'ok', Date.now() - start)
     return c.json({ success: true, orgs: results.length, sent: totalSent, skipped: totalSkipped, errors: totalErrors, results })
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'unknown'
-    logCronRun('recommend-savings-alerts', 'error', Date.now() - start, msg).catch(console.error)
+    await logCronRun('recommend-savings-alerts', 'error', Date.now() - start, msg)
     throw new ApiError('INTERNAL_ERROR', msg)
   }
 })
@@ -240,11 +249,11 @@ cronRouter.get('/retry-webhooks', async (c) => {
   const start = Date.now()
   try {
     const result = await retryFailedWebhooks()
-    logCronRun('retry-webhooks', 'ok', Date.now() - start).catch(console.error)
+    await logCronRun('retry-webhooks', 'ok', Date.now() - start)
     return c.json({ success: true, ...result })
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'unknown'
-    logCronRun('retry-webhooks', 'error', Date.now() - start, msg).catch(console.error)
+    await logCronRun('retry-webhooks', 'error', Date.now() - start, msg)
     throw new ApiError('INTERNAL_ERROR', msg)
   }
 })
@@ -256,11 +265,11 @@ cronRouter.get('/leak-detect-keys', async (c) => {
   const start = Date.now()
   try {
     const result = await runLeakDetectionJob()
-    logCronRun('leak-detect-keys', 'ok', Date.now() - start).catch(console.error)
+    await logCronRun('leak-detect-keys', 'ok', Date.now() - start)
     return c.json({ success: true, ...result })
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'unknown'
-    logCronRun('leak-detect-keys', 'error', Date.now() - start, msg).catch(console.error)
+    await logCronRun('leak-detect-keys', 'error', Date.now() - start, msg)
     throw new ApiError('INTERNAL_ERROR', msg)
   }
 })
@@ -281,7 +290,7 @@ cronRouter.get('/replay-fallback', async (c) => {
     const backlog = await alertOnFallbackBacklog()
     const topErr = requestsResult.error ?? eventsResult.error
     const status = topErr ? 'error' : 'ok'
-    logCronRun('replay-fallback', status, Date.now() - start, topErr).catch(console.error)
+    await logCronRun('replay-fallback', status, Date.now() - start, topErr)
     return c.json({
       success: !topErr,
       requests: requestsResult,
@@ -290,7 +299,7 @@ cronRouter.get('/replay-fallback', async (c) => {
     })
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'unknown'
-    logCronRun('replay-fallback', 'error', Date.now() - start, msg).catch(console.error)
+    await logCronRun('replay-fallback', 'error', Date.now() - start, msg)
     throw new ApiError('INTERNAL_ERROR', msg)
   }
 })
@@ -304,11 +313,11 @@ cronRouter.get('/check-past-due-downgrades', async (c) => {
     const result = await runDowngradeCheck()
     const status = result.errors.length > 0 ? 'error' : 'ok'
     const errSummary = result.errors.length > 0 ? result.errors.join('; ').slice(0, 500) : undefined
-    logCronRun('check-past-due-downgrades', status, Date.now() - start, errSummary).catch(console.error)
+    await logCronRun('check-past-due-downgrades', status, Date.now() - start, errSummary)
     return c.json({ success: result.errors.length === 0, ...result })
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'unknown'
-    logCronRun('check-past-due-downgrades', 'error', Date.now() - start, msg).catch(console.error)
+    await logCronRun('check-past-due-downgrades', 'error', Date.now() - start, msg)
     throw new ApiError('INTERNAL_ERROR', msg)
   }
 })
@@ -386,10 +395,9 @@ cronRouter.get('/detect-missing-model-prices', async (c) => {
   // Match the legacy call shape: only pass `errorMessage` when there IS one
   // (test spies use `toHaveBeenCalledWith` which rejects an undefined 4th arg).
   const dur = Date.now() - start
-  const p = result.ok
+  await (result.ok
     ? logCronRun('detect-missing-model-prices', 'ok', dur)
-    : logCronRun('detect-missing-model-prices', 'error', dur, result.error)
-  await p.catch(() => undefined)
+    : logCronRun('detect-missing-model-prices', 'error', dur, result.error))
   return c.json(result, result.ok ? 200 : 500)
 })
 
@@ -400,10 +408,9 @@ cronRouter.get('/self-monitor', async (c) => {
   const start = Date.now()
   const result = await runSelfMonitorJob()
   const dur = Date.now() - start
-  const p = result.ok
+  await (result.ok
     ? logCronRun('self-monitor', 'ok', dur)
-    : logCronRun('self-monitor', 'error', dur, result.error)
-  p.catch(() => undefined)
+    : logCronRun('self-monitor', 'error', dur, result.error))
   return c.json(result, result.ok ? 200 : 500)
 })
 
@@ -414,10 +421,9 @@ cronRouter.get('/detect-orphan-spans', async (c) => {
   const start = Date.now()
   const result = await runDetectOrphanSpansJob()
   const dur = Date.now() - start
-  const p = result.ok
+  await (result.ok
     ? logCronRun('detect-orphan-spans', 'ok', dur)
-    : logCronRun('detect-orphan-spans', 'error', dur, result.error)
-  p.catch(() => undefined)
+    : logCronRun('detect-orphan-spans', 'error', dur, result.error))
   return c.json(result, result.ok ? 200 : 500)
 })
 
@@ -428,10 +434,9 @@ cronRouter.get('/prune-judge-cache', async (c) => {
   const start = Date.now()
   const result = await runPruneJudgeCacheJob()
   const dur = Date.now() - start
-  const p = result.ok
+  await (result.ok
     ? logCronRun('prune-judge-cache', 'ok', dur)
-    : logCronRun('prune-judge-cache', 'error', dur, result.error)
-  p.catch(() => undefined)
+    : logCronRun('prune-judge-cache', 'error', dur, result.error))
   return c.json(result, result.ok ? 200 : 500)
 })
 
@@ -454,6 +459,6 @@ cronRouter.get('/purge-proxy-cache', async (c) => {
   // purgeExpiredProxyCache is fail-open: it never throws and returns the
   // count deleted so far, so this handler always logs 'ok'.
   const deleted = await purgeExpiredProxyCache()
-  logCronRun('purge-proxy-cache', 'ok', Date.now() - start).catch(console.error)
+  await logCronRun('purge-proxy-cache', 'ok', Date.now() - start)
   return c.json({ deleted })
 })
