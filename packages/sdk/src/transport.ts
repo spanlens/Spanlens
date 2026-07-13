@@ -193,7 +193,7 @@ function safeOnError(
 }
 
 export function createTransport(config: SpanlensConfig): Transport {
-  const baseUrl = (config.baseUrl ?? 'https://spanlens-server.vercel.app').replace(/\/$/, '')
+  const baseUrl = (config.baseUrl ?? 'https://api.spanlens.io').replace(/\/$/, '')
   const timeoutMs = config.timeoutMs ?? 3000
   const silent = config.silent ?? true
   const onError = config.onError

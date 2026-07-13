@@ -153,7 +153,7 @@ trace.end(status="completed")   # caller owns lifecycle when trace is passed in`
 
 llm = OpenAI(
     model="gpt-4o-mini",
-    api_base="https://server.spanlens.io/proxy/openai/v1",
+    api_base="https://api.spanlens.io/proxy/openai/v1",
     api_key=os.environ["SPANLENS_API_KEY"],
 )
 
@@ -173,7 +173,7 @@ Settings.llm = llm`}</CodeBlock>
 
 llm = OpenAI(
     model="gpt-4o-mini",
-    api_base="https://server.spanlens.io/proxy/openai/v1",
+    api_base="https://api.spanlens.io/proxy/openai/v1",
     api_key=os.environ["SPANLENS_API_KEY"],
     default_headers={"x-spanlens-prompt-version": "rag-system@7"},
 )`}</CodeBlock>

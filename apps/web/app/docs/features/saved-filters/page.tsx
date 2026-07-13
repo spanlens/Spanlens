@@ -154,17 +154,17 @@ Content-Type: application/json
 
       <h2>curl examples</h2>
       <CodeBlock language="bash">{`# List saved filters
-curl https://server.spanlens.io/api/v1/saved-filters \\
+curl https://api.spanlens.io/api/v1/saved-filters \\
   -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN"
 
 # Save a filter
-curl -X POST https://server.spanlens.io/api/v1/saved-filters \\
+curl -X POST https://api.spanlens.io/api/v1/saved-filters \\
   -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \\
   -H "Content-Type: application/json" \\
   -d '{"name":"Anthropic 429 errors","filters":{"provider":"anthropic","status":"4xx"}}'
 
 # Delete a filter
-curl -X DELETE https://server.spanlens.io/api/v1/saved-filters/sf_xxxxxxxx \\
+curl -X DELETE https://api.spanlens.io/api/v1/saved-filters/sf_xxxxxxxx \\
   -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN"`}</CodeBlock>
 
       <h2>Limitations</h2>

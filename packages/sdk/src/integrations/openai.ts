@@ -4,7 +4,7 @@
  * Replaces:
  *   const openai = new OpenAI({
  *     apiKey: process.env.SPANLENS_API_KEY,
- *     baseURL: 'https://spanlens-server.vercel.app/proxy/openai/v1',
+ *     baseURL: 'https://api.spanlens.io/proxy/openai/v1',
  *   })
  *
  * With:
@@ -25,7 +25,7 @@ import type { LogBodyMode } from '../types.js'
 
 /** Default Spanlens proxy URL. Override for self-hosted deployments. */
 export const DEFAULT_SPANLENS_OPENAI_PROXY =
-  'https://spanlens-server.vercel.app/proxy/openai/v1'
+  'https://api.spanlens.io/proxy/openai/v1'
 
 export const PROMPT_VERSION_HEADER = 'x-spanlens-prompt-version'
 export const USER_HEADER = 'x-spanlens-user'

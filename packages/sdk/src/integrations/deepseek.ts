@@ -34,7 +34,7 @@ import { makeSpanlensProxyClient } from './_proxy-client.js'
 
 /** Default Spanlens DeepSeek proxy URL. Override for self-hosted deployments. */
 export const DEFAULT_SPANLENS_DEEPSEEK_PROXY =
-  'https://spanlens-server.vercel.app/proxy/deepseek/v1'
+  'https://api.spanlens.io/proxy/deepseek/v1'
 
 /** Build an OpenAI-compatible client whose requests flow through the Spanlens DeepSeek proxy. */
 export function createDeepSeek(options: ClientOptions = {}): OpenAI {

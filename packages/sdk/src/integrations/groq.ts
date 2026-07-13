@@ -34,7 +34,7 @@ import { makeSpanlensProxyClient } from './_proxy-client.js'
 
 /** Default Spanlens Groq proxy URL. Override for self-hosted deployments. */
 export const DEFAULT_SPANLENS_GROQ_PROXY =
-  'https://spanlens-server.vercel.app/proxy/groq/v1'
+  'https://api.spanlens.io/proxy/groq/v1'
 
 /** Build an OpenAI-compatible client whose requests flow through the Spanlens Groq proxy. */
 export function createGroq(options: ClientOptions = {}): OpenAI {

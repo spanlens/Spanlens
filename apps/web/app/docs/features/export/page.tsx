@@ -331,28 +331,28 @@ export default function ExportDocs() {
 
       <h3>CSV download</h3>
       <CodeBlock language="bash">{`# Request logs, specific date range, GPT-4o only, CSV
-curl "https://server.spanlens.io/api/v1/exports/requests?from=2026-05-01T00:00:00Z&to=2026-05-15T23:59:59Z&provider=openai&model=gpt-4o&format=csv" \\
+curl "https://api.spanlens.io/api/v1/exports/requests?from=2026-05-01T00:00:00Z&to=2026-05-15T23:59:59Z&provider=openai&model=gpt-4o&format=csv" \\
   -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \\
   -o spanlens-requests.csv
 
 # Traces, last 7 days, JSON
-curl "https://server.spanlens.io/api/v1/exports/traces?from=2026-05-08T00:00:00Z&format=json" \\
+curl "https://api.spanlens.io/api/v1/exports/traces?from=2026-05-08T00:00:00Z&format=json" \\
   -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \\
   -o spanlens-traces.json
 
 # Anomaly history, defaults (30 days, CSV)
-curl "https://server.spanlens.io/api/v1/exports/anomalies" \\
+curl "https://api.spanlens.io/api/v1/exports/anomalies" \\
   -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \\
   -o spanlens-anomalies.csv
 
 # Security flags, from a specific date
-curl "https://server.spanlens.io/api/v1/exports/security?from=2026-05-01T00:00:00Z" \\
+curl "https://api.spanlens.io/api/v1/exports/security?from=2026-05-01T00:00:00Z" \\
   -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \\
   -o spanlens-security.csv`}</CodeBlock>
 
       <h3>JSONL download (large exports)</h3>
       <CodeBlock language="bash">{`# One million rows, streamed. Pipe straight into jq for filtering.
-curl "https://server.spanlens.io/api/v1/exports/requests?format=jsonl&from=2026-01-01T00:00:00Z&limit=1000000" \\
+curl "https://api.spanlens.io/api/v1/exports/requests?format=jsonl&from=2026-01-01T00:00:00Z&limit=1000000" \\
   -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \\
   | jq -c 'select(.cost_usd != null and (.cost_usd | tonumber) > 0.01)' \\
   > expensive-requests.jsonl
@@ -362,7 +362,7 @@ curl "https://server.spanlens.io/api/v1/exports/requests?format=jsonl&from=2026-
 # {"id":"req_yyy","provider":"anthropic","model":"claude-sonnet-4-5",...}`}</CodeBlock>
 
       <h3>JSON download (small, wrapped)</h3>
-      <CodeBlock language="bash">{`curl "https://server.spanlens.io/api/v1/exports/requests?format=json&limit=1000" \\
+      <CodeBlock language="bash">{`curl "https://api.spanlens.io/api/v1/exports/requests?format=json&limit=1000" \\
   -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN"
 
 # Response shape (buffered, capped at 10,000 rows):
@@ -397,12 +397,12 @@ curl "https://server.spanlens.io/api/v1/exports/requests?format=jsonl&from=2026-
 token = "YOUR_SUPABASE_ACCESS_TOKEN"
 
 # Small / medium, CSV, single response.
-url = "https://server.spanlens.io/api/v1/exports/requests?from=2026-05-01T00:00:00Z&format=csv"
+url = "https://api.spanlens.io/api/v1/exports/requests?from=2026-05-01T00:00:00Z&format=csv"
 df = pd.read_csv(url, storage_options={"Authorization": f"Bearer {token}"})
 
 # Million-row pipeline, JSONL, streamed line-by-line. Pandas reads it in
 # chunks so peak memory stays bounded.
-url = "https://server.spanlens.io/api/v1/exports/requests?format=jsonl&limit=1000000"
+url = "https://api.spanlens.io/api/v1/exports/requests?format=jsonl&limit=1000000"
 chunks = pd.read_json(url, lines=True, chunksize=50_000,
                       storage_options={"Authorization": f"Bearer {token}"})
 totals = pd.concat(chunk.groupby("model")["cost_usd"].sum() for chunk in chunks).groupby(level=0).sum()

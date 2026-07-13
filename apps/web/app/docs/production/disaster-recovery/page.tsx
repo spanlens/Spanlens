@@ -92,7 +92,7 @@ export default function DisasterRecoveryDocs() {
         </li>
         <li>
           Trigger a drain by hand:
-          <CodeBlock language="bash">{`curl -X GET https://server.spanlens.io/cron/replay-fallback \\
+          <CodeBlock language="bash">{`curl -X GET https://api.spanlens.io/cron/replay-fallback \\
   -H "Authorization: Bearer $CRON_SECRET"`}</CodeBlock>
         </li>
         <li>
@@ -209,7 +209,7 @@ ORDER BY created_at;`}</CodeBlock>
           to make the cron fire again.
         </li>
         <li>Trigger one run by hand to resume:
-          <CodeBlock language="bash">{`curl -X GET https://server.spanlens.io/cron/run-background-migrations \\
+          <CodeBlock language="bash">{`curl -X GET https://api.spanlens.io/cron/run-background-migrations \\
   -H "Authorization: Bearer $CRON_SECRET"`}</CodeBlock>
         </li>
       </ol>

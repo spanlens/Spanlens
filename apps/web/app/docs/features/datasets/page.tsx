@@ -81,7 +81,7 @@ export default function DatasetsDocs() {
       </ul>
 
       <h3>2. Import from production requests (API)</h3>
-      <CodeBlock language="bash">{`curl https://server.spanlens.io/api/v1/datasets/<dataset-id>/items/import-requests \\
+      <CodeBlock language="bash">{`curl https://api.spanlens.io/api/v1/datasets/<dataset-id>/items/import-requests \\
   -H "Authorization: Bearer $SPANLENS_JWT" \\
   -H "Content-Type: application/json" \\
   -d '{ "requestIds": ["uuid-1", "uuid-2", ...] }'`}</CodeBlock>
@@ -91,7 +91,7 @@ export default function DatasetsDocs() {
       </p>
 
       <h3>3. Single item (API)</h3>
-      <CodeBlock language="bash">{`curl https://server.spanlens.io/api/v1/datasets/<dataset-id>/items \\
+      <CodeBlock language="bash">{`curl https://api.spanlens.io/api/v1/datasets/<dataset-id>/items \\
   -H "Authorization: Bearer $SPANLENS_JWT" \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -139,7 +139,7 @@ What is the capital of France?,Paris
         </li>
       </ul>
       <p>Behind the scenes the upload calls:</p>
-      <CodeBlock language="bash">{`curl https://server.spanlens.io/api/v1/datasets/<dataset-id>/items/bulk \\
+      <CodeBlock language="bash">{`curl https://api.spanlens.io/api/v1/datasets/<dataset-id>/items/bulk \\
   -H "Authorization: Bearer $SPANLENS_JWT" \\
   -H "Content-Type: application/json" \\
   -d '{ "items": [ { "input": { "messages": [...] } }, ... ] }'`}</CodeBlock>

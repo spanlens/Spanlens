@@ -113,7 +113,7 @@ export default function PromptsDocs() {
       </ol>
 
       <h3>Creating via API</h3>
-      <CodeBlock language="bash">{`curl https://server.spanlens.io/api/v1/prompts \\
+      <CodeBlock language="bash">{`curl https://api.spanlens.io/api/v1/prompts \\
   -H "Authorization: Bearer $SPANLENS_JWT" \\
   -H "Content-Type: application/json" \\
   -d '{

@@ -20,7 +20,7 @@
 
 import { SpanlensApiError } from './transport.js'
 
-const DEFAULT_BASE_URL = 'https://spanlens-server.vercel.app'
+const DEFAULT_BASE_URL = 'https://api.spanlens.io'
 const DEFAULT_POLL_INTERVAL_MS = 2000
 const DEFAULT_TIMEOUT_MS = 300_000
 

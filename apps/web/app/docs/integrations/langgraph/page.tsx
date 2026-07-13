@@ -164,7 +164,7 @@ await trace.end()   // caller owns lifecycle when trace is passed in`}</CodeBloc
 const llm = new ChatOpenAI({
   model: 'gpt-4o-mini',
   configuration: {
-    baseURL: 'https://server.spanlens.io/proxy/openai/v1',
+    baseURL: 'https://api.spanlens.io/proxy/openai/v1',
     apiKey: process.env.SPANLENS_API_KEY,
   },
 })`}</CodeBlock>
@@ -184,7 +184,7 @@ const llm = new ChatOpenAI({
       <CodeBlock language="ts">{`const llm = new ChatOpenAI({
   model: 'gpt-4o-mini',
   configuration: {
-    baseURL: 'https://server.spanlens.io/proxy/openai/v1',
+    baseURL: 'https://api.spanlens.io/proxy/openai/v1',
     apiKey: process.env.SPANLENS_API_KEY,
     defaultHeaders: {
       'x-spanlens-prompt-version': 'agent-system@7',

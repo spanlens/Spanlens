@@ -23,7 +23,7 @@ For the common case where you **just want to route your LLM calls through Spanle
 import OpenAI from 'openai'
 const openai = new OpenAI({
   apiKey: process.env.SPANLENS_API_KEY,
-  baseURL: 'https://spanlens-server.vercel.app/proxy/openai/v1',
+  baseURL: 'https://api.spanlens.io/proxy/openai/v1',
 })
 
 // After ⚡
@@ -130,7 +130,7 @@ try {
 | Option | Type | Default | Description |
 |---|---|---|---|
 | `apiKey` | `string` | (required) | Spanlens API key (`sl_live_...`). |
-| `baseUrl` | `string` | `https://spanlens-server.vercel.app` | API base URL. |
+| `baseUrl` | `string` | `https://api.spanlens.io` | API base URL. |
 | `timeoutMs` | `number` | `3000` | Request timeout for ingest calls. |
 | `silent` | `boolean` | `true` | Swallow network errors so instrumentation never crashes user code. |
 | `onError` | `(err, ctx) => void` | (none) | Called on every ingest failure (even when `silent`). |
@@ -181,7 +181,7 @@ const spanlens = new SpanlensClient({ apiKey: process.env.SPANLENS_API_KEY! })
 // back to your spans.
 const openai = new OpenAI({
   apiKey: process.env.SPANLENS_API_KEY!,
-  baseURL: 'https://spanlens-server.vercel.app/proxy/openai/v1',
+  baseURL: 'https://api.spanlens.io/proxy/openai/v1',
 })
 
 const trace = spanlens.startTrace({ name: 'support_chat' })
@@ -205,7 +205,7 @@ import { SpanlensClient, observeAnthropic } from '@spanlens/sdk'
 const spanlens = new SpanlensClient({ apiKey: process.env.SPANLENS_API_KEY! })
 const anthropic = new Anthropic({
   apiKey: process.env.SPANLENS_API_KEY!,
-  baseURL: 'https://spanlens-server.vercel.app/proxy/anthropic',
+  baseURL: 'https://api.spanlens.io/proxy/anthropic',
 })
 
 const trace = spanlens.startTrace({ name: 'agent_run' })

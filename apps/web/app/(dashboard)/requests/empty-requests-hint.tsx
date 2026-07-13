@@ -11,7 +11,7 @@ import { Copy, Check, Terminal } from 'lucide-react'
  * the request list polls on its own, so the row appears here automatically
  * once the call lands.
  */
-const TEST_CURL = `curl https://server.spanlens.io/proxy/openai/v1/chat/completions \\
+const TEST_CURL = `curl https://api.spanlens.io/proxy/openai/v1/chat/completions \\
   -H "Authorization: Bearer $SPANLENS_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{"model":"gpt-4o-mini","messages":[{"role":"user","content":"Hello from Spanlens"}]}'`

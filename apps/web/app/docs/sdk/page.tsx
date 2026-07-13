@@ -235,7 +235,7 @@ import openai
 
 client = openai.OpenAI(
     api_key=os.environ["SPANLENS_API_KEY"],
-    base_url="https://server.spanlens.io/proxy/openai/v1",
+    base_url="https://api.spanlens.io/proxy/openai/v1",
     default_headers={
         "x-spanlens-user": current_user_id,
         "x-spanlens-session": session_id,
@@ -323,12 +323,12 @@ from openai import OpenAI
 
 openai = OpenAI(
     api_key=os.environ['SPANLENS_API_KEY'],
-    base_url='https://server.spanlens.io/proxy/openai/v1',
+    base_url='https://api.spanlens.io/proxy/openai/v1',
     default_headers={'x-spanlens-log-body': 'meta'},
 )`}
       />
       <p>Raw curl:</p>
-      <CodeBlock>{`curl https://server.spanlens.io/proxy/openai/v1/chat/completions \\
+      <CodeBlock>{`curl https://api.spanlens.io/proxy/openai/v1/chat/completions \\
   -H "Authorization: Bearer $SPANLENS_API_KEY" \\
   -H "x-spanlens-log-body: meta" \\
   -H "Content-Type: application/json" \\
@@ -407,12 +407,12 @@ from openai import OpenAI
 
 openai = OpenAI(
     api_key=os.environ['SPANLENS_API_KEY'],
-    base_url='https://server.spanlens.io/proxy/openai/v1',
+    base_url='https://api.spanlens.io/proxy/openai/v1',
     default_headers={'x-spanlens-cache': '600'},
 )`}
       />
       <p>Raw curl:</p>
-      <CodeBlock>{`curl https://server.spanlens.io/proxy/openai/v1/chat/completions \\
+      <CodeBlock>{`curl https://api.spanlens.io/proxy/openai/v1/chat/completions \\
   -H "Authorization: Bearer $SPANLENS_API_KEY" \\
   -H "x-spanlens-cache: true" \\
   -H "Content-Type: application/json" \\

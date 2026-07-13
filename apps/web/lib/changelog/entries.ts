@@ -158,7 +158,7 @@ export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
     title: 'Mistral and OpenRouter are now first-class providers',
     tags: ['feature'],
     body: [
-      'Two new proxies join OpenAI, Anthropic, Gemini, and Azure. Point the OpenAI SDK at `https://server.spanlens.io/proxy/mistral/v1` or `/proxy/openrouter/v1` with your Spanlens key and Mistral chat completions or any of OpenRouter\'s 100+ models route through Spanlens with cost, latency, and token counts on every row in /requests. Both APIs are OpenAI-compatible, so existing client code only needs a baseURL swap.',
+      'Two new proxies join OpenAI, Anthropic, Gemini, and Azure. Point the OpenAI SDK at `https://api.spanlens.io/proxy/mistral/v1` or `/proxy/openrouter/v1` with your Spanlens key and Mistral chat completions or any of OpenRouter\'s 100+ models route through Spanlens with cost, latency, and token counts on every row in /requests. Both APIs are OpenAI-compatible, so existing client code only needs a baseURL swap.',
       'OpenRouter is a meta-provider that fronts models from 30+ vendors behind one key — `openai/gpt-4o-mini`, `anthropic/claude-sonnet-4-5`, `meta-llama/llama-3.3-70b-instruct`, `deepseek/deepseek-r1`, and so on. For these calls Spanlens prefers the `usage.cost` field on OpenRouter\'s response (the authoritative billed amount, which captures any volume discount or upstream-provider margin we don\'t see) over our local price-table lookup. Streaming responses get the same treatment via the final SSE chunk.',
       'Register a provider key from /projects and the dropdown now lists both. Evaluators and experiments can also use Mistral or OpenRouter as the judge or run model — the New Evaluator dialog reads the live model catalog, so any new model in `model_prices` shows up automatically. See [the proxy guide](/docs/proxy) for code samples in TypeScript, Python, and curl.',
     ].join('\n\n'),
@@ -489,7 +489,7 @@ export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
     tags: ['reliability'],
     body: [
       'When the ClickHouse insert fails, the request row is queued in a Supabase fallback table instead of dropped. A cron drains the queue every 5 minutes once ClickHouse recovers.',
-      'You can monitor the queue depth from [GET /health/deep](https://server.spanlens.io/health/deep) as `fallback.queue`.',
+      'You can monitor the queue depth from [GET /health/deep](https://api.spanlens.io/health/deep) as `fallback.queue`.',
     ].join('\n\n'),
   },
   {
