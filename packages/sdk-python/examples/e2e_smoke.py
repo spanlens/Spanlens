@@ -12,7 +12,7 @@ Usage::
     export SPANLENS_API_KEY="sl_live_..."   # from your /projects page
     export OPENAI_API_KEY="sk-..."          # your real OpenAI key
     # Optional — only needed when using a non-default Spanlens deployment.
-    # export SPANLENS_BASE_URL="https://spanlens-server.vercel.app"
+    # export SPANLENS_BASE_URL="https://api.spanlens.io"
 
     python examples/e2e_smoke.py
 

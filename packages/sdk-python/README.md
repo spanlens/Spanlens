@@ -309,7 +309,7 @@ async def chat(body: dict, request: Request):
 ```python
 SpanlensClient(
     api_key="sl_live_...",        # required
-    base_url=None,                 # default: https://spanlens-server.vercel.app
+    base_url=None,                 # default: https://api.spanlens.io
     timeout_ms=3000,               # ingest timeout per call
     silent=True,                   # swallow errors so observability never crashes user code
     on_error=None,                 # callback (err, context) for non-silent monitoring

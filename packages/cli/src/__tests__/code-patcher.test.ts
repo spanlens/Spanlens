@@ -56,7 +56,7 @@ describe('planPatches / applyPatches end-to-end', () => {
         ``,
         `const openai = new OpenAI({`,
         `  apiKey: process.env.SPANLENS_API_KEY,`,
-        `  baseURL: 'https://spanlens-server.vercel.app/proxy/openai/v1',`,
+        `  baseURL: 'https://api.spanlens.io/proxy/openai/v1',`,
         `  timeout: 30_000,`,
         `})`,
         ``,
