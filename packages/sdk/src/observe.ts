@@ -87,11 +87,13 @@ type Usage =
   | 'deepseek'
   | 'xai'
   | 'cohere'
+  | 'mistral'
+  | 'openrouter'
 
 // OpenAI-compatible providers whose responses carry the standard OpenAI
 // `usage` shape (prompt_tokens / completion_tokens) — parsed by parseOpenAIUsage.
 const OPENAI_SHAPED = new Set<Usage>([
-  'openai', 'ollama', 'groq', 'deepseek', 'xai', 'cohere',
+  'openai', 'ollama', 'groq', 'deepseek', 'xai', 'cohere', 'mistral', 'openrouter',
 ])
 
 const PROMPT_VERSION_HEADER = 'x-spanlens-prompt-version'
@@ -339,4 +341,31 @@ export function observeCohere<T>(
   fn: (headers: Record<string, string>) => Promise<T>,
 ): Promise<T> {
   return observeProvider('cohere', parent, nameOrOptions, fn)
+}
+
+/**
+ * Mistral variant — Mistral's API is OpenAI-compatible, so `usage` is parsed
+ * with the OpenAI parser and the span is tagged `provider: 'mistral'`. Prefer
+ * the dedicated `createMistral()` client from `@spanlens/sdk/mistral`.
+ */
+export function observeMistral<T>(
+  parent: TraceHandle | SpanHandle,
+  nameOrOptions: string | ProviderObserveOptions,
+  fn: (headers: Record<string, string>) => Promise<T>,
+): Promise<T> {
+  return observeProvider('mistral', parent, nameOrOptions, fn)
+}
+
+/**
+ * OpenRouter variant — OpenRouter speaks the OpenAI wire protocol, so `usage`
+ * is parsed with the OpenAI parser and the span is tagged
+ * `provider: 'openrouter'`. Prefer the dedicated `createOpenRouter()` client
+ * from `@spanlens/sdk/openrouter`.
+ */
+export function observeOpenRouter<T>(
+  parent: TraceHandle | SpanHandle,
+  nameOrOptions: string | ProviderObserveOptions,
+  fn: (headers: Record<string, string>) => Promise<T>,
+): Promise<T> {
+  return observeProvider('openrouter', parent, nameOrOptions, fn)
 }

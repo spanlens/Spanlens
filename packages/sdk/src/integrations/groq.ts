@@ -44,3 +44,23 @@ export function createGroq(options: ClientOptions = {}): OpenAI {
 // Re-export the tracer so a single `@spanlens/sdk/groq` import gives both the
 // client factory and the matching `observe` helper.
 export { observeGroq } from '../observe.js'
+
+// X-Spanlens-* request-header helpers (withUser / withSession / withLogBody /
+// withCache / withPromptVersion) — canonical implementations live in
+// ./_headers.ts. Re-exported so every proxy subpath has the same single-import
+// ergonomics as `@spanlens/sdk/openai`.
+export {
+  PROMPT_VERSION_HEADER,
+  USER_HEADER,
+  SESSION_HEADER,
+  LOG_BODY_HEADER,
+  CACHE_HEADER,
+  CACHE_DEFAULT_TTL_SECONDS,
+  CACHE_MAX_TTL_SECONDS,
+  withPromptVersion,
+  withUser,
+  withSession,
+  withLogBody,
+  withCache,
+  cacheHeaderValue,
+} from './_headers.js'

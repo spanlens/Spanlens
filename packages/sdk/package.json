@@ -1,6 +1,6 @@
 {
   "name": "@spanlens/sdk",
-  "version": "0.16.0",
+  "version": "0.17.0",
   "description": "Spanlens SDK — agent tracing, LLM usage capture, and cost observability for TypeScript.",
   "type": "module",
   "main": "./dist/index.js",
@@ -42,6 +42,14 @@
     "./cohere": {
       "import": "./dist/integrations/cohere.js",
       "types": "./dist/integrations/cohere.d.ts"
+    },
+    "./mistral": {
+      "types": "./dist/integrations/mistral.d.ts",
+      "import": "./dist/integrations/mistral.js"
+    },
+    "./openrouter": {
+      "types": "./dist/integrations/openrouter.d.ts",
+      "import": "./dist/integrations/openrouter.js"
     },
     "./langchain": {
       "import": "./dist/integrations/langchain.js",
@@ -115,6 +123,8 @@
     "grok",
     "xai",
     "cohere",
+    "mistral",
+    "openrouter",
     "next.js",
     "nextjs",
     "typescript",
