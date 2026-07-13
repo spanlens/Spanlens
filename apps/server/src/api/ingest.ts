@@ -5,6 +5,7 @@ import { supabaseAdmin } from '../lib/db.js'
 import { fireAndForget } from '../lib/wait-until.js'
 import { emitWebhookEvent } from '../lib/webhook-emit.js'
 import { ApiError } from '../lib/errors.js'
+import { validateOptionalDate, validateOptionalUuid } from '../lib/params.js'
 
 /**
  * SDK용 ingestion 라우터 — authApiKey 미들웨어로 SHA-256 해시 API 키 검증.
@@ -81,8 +82,18 @@ ingestRouter.post('/traces', async (c) => {
     api_key_id: apiKeyId,
     name: body.name.trim(),
   }
-  if (typeof body.id === 'string') insert.id = body.id
-  if (typeof body.started_at === 'string') insert.started_at = body.started_at
+  // Client-supplied fields are validated before they reach Postgres — a
+  // malformed UUID / date otherwise fails inside PG and used to surface as a
+  // raw 500 with the PG error message leaked. Body fields → 400 (these are
+  // not path params, so VALIDATION_FAILED rather than 404).
+  if (typeof body.id === 'string') {
+    const id = validateOptionalUuid(body.id, 'id')
+    if (id) insert.id = id
+  }
+  if (typeof body.started_at === 'string') {
+    const startedAt = validateOptionalDate(body.started_at, 'started_at')
+    if (startedAt) insert.started_at = startedAt
+  }
   if (body.metadata && typeof body.metadata === 'object') {
     insert.metadata = body.metadata as Record<string, unknown>
   }
@@ -94,7 +105,21 @@ ingestRouter.post('/traces', async (c) => {
     .single()
 
   if (error || !data) {
-    throw new ApiError('INTERNAL_ERROR', 'Failed to create trace', { detail: error?.message })
+    // Idempotent replay — the file header promises client-generated UUIDs make
+    // re-POSTs safe, so a unique violation (PG 23505) on a client-supplied id
+    // returns the existing row instead of a 500.
+    if (error?.code === '23505' && insert.id) {
+      const { data: existing } = await supabaseAdmin
+        .from('traces')
+        .select('id, started_at')
+        .eq('id', insert.id)
+        .eq('organization_id', organizationId)
+        .single()
+      if (existing) return c.json({ success: true, data: existing }, 200)
+    }
+    // Never leak the raw PG error message to the client — log it server-side.
+    console.error('[ingest] trace INSERT failed:', error?.message ?? 'no row returned')
+    throw new ApiError('INTERNAL_ERROR', 'Failed to create trace')
   }
 
   // Phase 5.1 dual-write to events. Best-effort — events is the shadow
@@ -156,7 +181,8 @@ ingestRouter.patch('/traces/:id', async (c) => {
     updates['status'] = body.status
   }
   if (typeof body.ended_at === 'string') {
-    updates['ended_at'] = body.ended_at
+    const endedAt = validateOptionalDate(body.ended_at, 'ended_at')
+    if (endedAt) updates['ended_at'] = endedAt
   }
   if (typeof body.error_message === 'string') {
     updates['error_message'] = body.error_message
@@ -298,17 +324,31 @@ ingestRouter.post('/traces/:id/spans', async (c) => {
     organization_id: organizationId,
     name: body.name.trim(),
   }
-  if (typeof body.id === 'string') insert.id = body.id
-  if (typeof body.parent_span_id === 'string') insert.parent_span_id = body.parent_span_id
+  // Same boundary validation as the trace POST — malformed client UUIDs /
+  // dates become a clean 400 instead of a PG error surfaced as a 500.
+  if (typeof body.id === 'string') {
+    const id = validateOptionalUuid(body.id, 'id')
+    if (id) insert.id = id
+  }
+  if (typeof body.parent_span_id === 'string') {
+    const parentSpanId = validateOptionalUuid(body.parent_span_id, 'parent_span_id')
+    if (parentSpanId) insert.parent_span_id = parentSpanId
+  }
   if (typeof body.span_type === 'string' && VALID_SPAN_TYPE.has(body.span_type as SpanType)) {
     insert.span_type = body.span_type
   }
-  if (typeof body.started_at === 'string') insert.started_at = body.started_at
+  if (typeof body.started_at === 'string') {
+    const startedAt = validateOptionalDate(body.started_at, 'started_at')
+    if (startedAt) insert.started_at = startedAt
+  }
   if (body.input !== undefined) insert.input = body.input
   if (body.metadata && typeof body.metadata === 'object') {
     insert.metadata = body.metadata as Record<string, unknown>
   }
-  if (typeof body.request_id === 'string') insert.request_id = body.request_id
+  if (typeof body.request_id === 'string') {
+    const requestId = validateOptionalUuid(body.request_id, 'request_id')
+    if (requestId) insert.request_id = requestId
+  }
 
   const { data, error } = await supabaseAdmin
     .from('spans')
@@ -317,7 +357,20 @@ ingestRouter.post('/traces/:id/spans', async (c) => {
     .single()
 
   if (error || !data) {
-    throw new ApiError('INTERNAL_ERROR', 'Failed to create span', { detail: error?.message })
+    // Idempotent replay on client-supplied UUID re-POSTs — same contract as
+    // the trace POST above (PG unique violation 23505 → 200 with existing id).
+    if (error?.code === '23505' && insert.id) {
+      const { data: existing } = await supabaseAdmin
+        .from('spans')
+        .select('id, started_at')
+        .eq('id', insert.id)
+        .eq('organization_id', organizationId)
+        .single()
+      if (existing) return c.json({ success: true, data: existing }, 200)
+    }
+    // Never leak the raw PG error message to the client — log it server-side.
+    console.error('[ingest] span INSERT failed:', error?.message ?? 'no row returned')
+    throw new ApiError('INTERNAL_ERROR', 'Failed to create span')
   }
 
   // Phase 5.1 dual-write to events — awaited for the same reason as the
@@ -390,7 +443,8 @@ ingestRouter.patch('/spans/:id', async (c) => {
     updates['status'] = body.status
   }
   if (typeof body.ended_at === 'string') {
-    updates['ended_at'] = body.ended_at
+    const endedAt = validateOptionalDate(body.ended_at, 'ended_at')
+    if (endedAt) updates['ended_at'] = endedAt
   }
   if (body.output !== undefined) {
     updates['output'] = body.output
@@ -405,7 +459,10 @@ ingestRouter.patch('/spans/:id', async (c) => {
   if (typeof body.completion_tokens === 'number') updates['completion_tokens'] = body.completion_tokens
   if (typeof body.total_tokens === 'number') updates['total_tokens'] = body.total_tokens
   if (typeof body.cost_usd === 'number') updates['cost_usd'] = body.cost_usd
-  if (typeof body.request_id === 'string') updates['request_id'] = body.request_id
+  if (typeof body.request_id === 'string') {
+    const requestId = validateOptionalUuid(body.request_id, 'request_id')
+    if (requestId) updates['request_id'] = requestId
+  }
 
   if (Object.keys(updates).length === 0) {
     throw new ApiError('BAD_REQUEST', 'No valid fields to update')
