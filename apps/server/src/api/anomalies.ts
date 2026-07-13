@@ -1,14 +1,18 @@
 import { Hono, type Context } from 'hono'
-import type { JwtContext } from '../middleware/authJwt.js'
-import { authJwtOrApiKey } from '../middleware/authJwtOrApiKey.js'
-import { requireRole } from '../middleware/requireRole.js'
+import { authJwtOrApiKey, type DualAuthContext } from '../middleware/authJwtOrApiKey.js'
+import { requireFullScope } from '../middleware/requireFullScope.js'
+import { requireEditDualAuth } from '../middleware/requireEditDualAuth.js'
 import { detectAnomalies, fetchContributingFactors } from '../lib/anomaly.js'
 import { getAnomalyHistory } from '../lib/anomaly-snapshot.js'
 import { supabaseAdmin } from '../lib/db.js'
 import { parsePositiveFloat, parseClampedFloat } from '../lib/params.js'
 import { ApiError } from '../lib/errors.js'
 
-const requireEdit = requireRole('admin', 'editor')
+// Dual-auth write gate for ack/un-ack: plain requireRole('admin','editor')
+// would reject the null-role API-key path, which the handlers deliberately
+// support (`acknowledged_by: userId ?? null`). requireFullScope keeps public
+// (sl_live_pub_*) keys read-only.
+const requireEdit = requireEditDualAuth
 
 /**
  * Anomaly endpoints.
@@ -19,7 +23,7 @@ const requireEdit = requireRole('admin', 'editor')
  *   DELETE /api/v1/anomalies/ack          un-acknowledge
  */
 
-export const anomaliesRouter = new Hono<JwtContext>()
+export const anomaliesRouter = new Hono<DualAuthContext>()
 
 anomaliesRouter.use('*', authJwtOrApiKey)
 
@@ -133,7 +137,7 @@ anomaliesRouter.get('/history', async (c) => {
 })
 
 async function parseAckBody(
-  c: Context<JwtContext>,
+  c: Context<DualAuthContext>,
 ): Promise<{ error: string } | { provider: string; model: string; kind: string; projectId?: string }> {
   let body: { provider?: unknown; model?: unknown; kind?: unknown; projectId?: unknown }
   try {
@@ -162,7 +166,7 @@ async function parseAckBody(
 }
 
 // POST /api/v1/anomalies/ack — acknowledge (upsert)
-anomaliesRouter.post('/ack', requireEdit, async (c) => {
+anomaliesRouter.post('/ack', requireFullScope, requireEdit, async (c) => {
   const orgId = c.get('orgId')
   const userId = c.get('userId')
   if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
@@ -198,7 +202,7 @@ anomaliesRouter.post('/ack', requireEdit, async (c) => {
 })
 
 // DELETE /api/v1/anomalies/ack?provider=X&model=Y&kind=Z[&projectId=P] — un-acknowledge
-anomaliesRouter.delete('/ack', requireEdit, async (c) => {
+anomaliesRouter.delete('/ack', requireFullScope, requireEdit, async (c) => {
   const orgId = c.get('orgId')
   if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
