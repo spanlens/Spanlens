@@ -30,7 +30,7 @@ export interface SpanlensConfig {
    * at construction if one is configured.
    */
   apiKey: string
-  /** API base URL — default https://spanlens-server.vercel.app. */
+  /** API base URL — default https://api.spanlens.io. */
   baseUrl?: string
   /**
    * Request timeout in ms for ingest calls. Default 3000ms.

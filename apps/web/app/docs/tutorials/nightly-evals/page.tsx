@@ -92,10 +92,10 @@ Reply with: {"score": <1-5>, "reasoning": "<one sentence>"}`}</CodeBlock>
       </p>
       <CodeBlock language="bash">{`# Look up the evaluator id once
 curl -H "Authorization: Bearer $SPANLENS_API_KEY" \\
-  https://server.spanlens.io/api/v1/evaluators
+  https://api.spanlens.io/api/v1/evaluators
 
 # Trigger a new run
-curl -X POST https://server.spanlens.io/api/v1/eval-runs \\
+curl -X POST https://api.spanlens.io/api/v1/eval-runs \\
   -H "Authorization: Bearer $SPANLENS_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -143,7 +143,7 @@ export async function GET(req: Request) {
   const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000)
   const isoDay = (d: Date) => d.toISOString()
 
-  const res = await fetch('https://server.spanlens.io/api/v1/eval-runs', {
+  const res = await fetch('https://api.spanlens.io/api/v1/eval-runs', {
     method: 'POST',
     headers: {
       'Authorization': \`Bearer \${process.env.SPANLENS_API_KEY}\`,
@@ -182,7 +182,7 @@ jobs:
         run: |
           NOW=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
           FROM=$(date -u -d '1 day ago' +"%Y-%m-%dT%H:%M:%SZ")
-          curl -sf -X POST https://server.spanlens.io/api/v1/eval-runs \\
+          curl -sf -X POST https://api.spanlens.io/api/v1/eval-runs \\
             -H "Authorization: Bearer $SPANLENS_API_KEY" \\
             -H "Content-Type: application/json" \\
             -d "{

@@ -516,7 +516,7 @@ function OtelTab() {
       <TabHeader title="OpenTelemetry" description="Export Spanlens traces to your existing OTel collector." />
       <Section title="OTLP endpoint">
         <FormRow label="Endpoint">
-          <DemoInput value="https://server.spanlens.io/v1/traces" mono />
+          <DemoInput value="https://api.spanlens.io/v1/traces" mono />
         </FormRow>
         <FormRow label="Headers">
           <DemoInput value="Authorization: Bearer sl_live_…" mono />

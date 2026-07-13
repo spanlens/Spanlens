@@ -35,7 +35,7 @@ import { makeSpanlensProxyClient } from './_proxy-client.js'
 
 /** Default Spanlens Cohere proxy URL. Override for self-hosted deployments. */
 export const DEFAULT_SPANLENS_COHERE_PROXY =
-  'https://spanlens-server.vercel.app/proxy/cohere/v1'
+  'https://api.spanlens.io/proxy/cohere/v1'
 
 /** Build an OpenAI-compatible client whose requests flow through the Spanlens Cohere proxy. */
 export function createCohere(options: ClientOptions = {}): OpenAI {

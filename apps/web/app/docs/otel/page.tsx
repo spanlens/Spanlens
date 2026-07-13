@@ -29,7 +29,7 @@ export default function OtelDocs() {
       </p>
 
       <h2>Endpoint</h2>
-      <CodeBlock language="text">{`POST https://server.spanlens.io/v1/traces
+      <CodeBlock language="text">{`POST https://api.spanlens.io/v1/traces
 Content-Type: application/json
 Authorization: Bearer sl_live_<your-key>`}</CodeBlock>
       <p>
@@ -46,7 +46,7 @@ Authorization: Bearer sl_live_<your-key>`}</CodeBlock>
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 
 exporter = OTLPSpanExporter(
-    endpoint="https://server.spanlens.io",
+    endpoint="https://api.spanlens.io",
     headers={"Authorization": "Bearer sl_live_YOUR_KEY"},
 )
 `}</CodeBlock>
@@ -145,7 +145,7 @@ from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExport
 
 # Configure the OTLP exporter
 exporter = OTLPSpanExporter(
-    endpoint="https://server.spanlens.io",
+    endpoint="https://api.spanlens.io",
     headers={"Authorization": "Bearer sl_live_YOUR_KEY"},
 )
 
@@ -183,7 +183,7 @@ from agents.tracing.otlp import OTLPTraceProcessor
 
 set_trace_processor(
     OTLPTraceProcessor(
-        endpoint="https://server.spanlens.io/v1/traces",
+        endpoint="https://api.spanlens.io/v1/traces",
         headers={"Authorization": "Bearer sl_live_YOUR_KEY"},
     )
 )
@@ -195,7 +195,7 @@ import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http'
 
 const sdk = new NodeSDK({
   traceExporter: new OTLPTraceExporter({
-    url: 'https://server.spanlens.io/v1/traces',
+    url: 'https://api.spanlens.io/v1/traces',
     headers: { Authorization: 'Bearer sl_live_YOUR_KEY' },
   }),
 })
