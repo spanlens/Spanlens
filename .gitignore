@@ -41,6 +41,15 @@ npm-debug.log*
 *.pdf
 *.pptx
 spanlens-remaining-work.md
+/marketing/
+/ir/
+
+# npm lockfiles — pnpm-only repo (pnpm-lock.yaml is the single source of truth)
+package-lock.json
+yarn.lock
+
+# Test coverage output
+coverage/
 
 # Claude Code local tooling (per-machine, not shared)
 .claude/worktrees/
@@ -50,3 +59,7 @@ apps/web/.claude/
 apps/web/tc-result.txt
 paddle_compare_*.png
 twitter_guide.txt
+tmp/
+demo-output/
+sample-dataset.*
+/*.html
