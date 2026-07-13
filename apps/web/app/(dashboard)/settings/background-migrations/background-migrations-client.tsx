@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { useState } from 'react'
 import { Play, Square, RotateCcw, AlertTriangle, CheckCircle, Loader2 } from 'lucide-react'
 import { Topbar } from '@/components/layout/topbar'
-import { cn } from '@/lib/utils'
+import { cn, formatDateTime } from '@/lib/utils'
 import {
   useBackgroundMigrations,
   useCancelBackgroundMigration,
@@ -186,7 +186,7 @@ export function BackgroundMigrationsClient() {
                   <Field label="attempts" value={String(row.attempts)} />
                   <Field
                     label="started"
-                    value={row.started_at ? new Date(row.started_at).toLocaleString() : '—'}
+                    value={formatDateTime(row.started_at)}
                   />
                 </div>
 

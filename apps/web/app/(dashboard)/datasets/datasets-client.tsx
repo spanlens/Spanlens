@@ -732,6 +732,19 @@ export function DatasetsClient() {
           <div className="p-[22px] space-y-2">
             {[1, 2].map((i) => <div key={i} className="h-14 bg-bg-elev rounded animate-pulse" />)}
           </div>
+        ) : datasets.isError ? (
+          // Don't fall through to the "create your first dataset" empty state on
+          // a load failure — a workspace with existing datasets would look brand-new.
+          <div className="flex flex-col items-center gap-3 text-text-muted py-20 px-6 text-center">
+            <p className="text-[13px] text-accent">Couldn&apos;t load datasets.</p>
+            <button
+              type="button"
+              onClick={() => void datasets.refetch()}
+              className="font-mono text-[11.5px] px-2.5 py-1 border border-border rounded text-text-muted hover:text-text hover:border-border-strong transition-colors"
+            >
+              Retry
+            </button>
+          </div>
         ) : list.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-64 gap-3 text-text-muted">
             <FileText className="h-10 w-10 text-text-faint" />
