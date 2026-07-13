@@ -143,7 +143,7 @@ await trace.end({ status: 'completed' })`}</CodeBlock>
 
 const openai = createOpenAI({
   apiKey: process.env.SPANLENS_API_KEY!,
-  baseURL: 'https://server.spanlens.io/proxy/openai/v1',
+  baseURL: 'https://api.spanlens.io/proxy/openai/v1',
 })
 
 const result = await generateText({
@@ -167,7 +167,7 @@ const result = await generateText({
       </p>
       <CodeBlock language="ts">{`const openai = createOpenAI({
   apiKey: process.env.SPANLENS_API_KEY!,
-  baseURL: 'https://server.spanlens.io/proxy/openai/v1',
+  baseURL: 'https://api.spanlens.io/proxy/openai/v1',
   headers: { 'x-spanlens-prompt-version': 'chatbot-system@3' },
 })`}</CodeBlock>
 

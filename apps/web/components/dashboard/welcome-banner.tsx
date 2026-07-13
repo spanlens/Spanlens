@@ -42,7 +42,7 @@ const openai = createOpenAI()
 
 /** Copy-paste test call through the Spanlens proxy, pre-filled with the key. */
 function buildTestCurl(apiKey: string): string {
-  return `curl https://server.spanlens.io/proxy/openai/v1/chat/completions \\
+  return `curl https://api.spanlens.io/proxy/openai/v1/chat/completions \\
   -H "Authorization: Bearer ${apiKey}" \\
   -H "Content-Type: application/json" \\
   -d '{"model":"gpt-4o-mini","messages":[{"role":"user","content":"Hello from Spanlens"}]}'`

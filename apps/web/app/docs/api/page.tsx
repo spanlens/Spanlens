@@ -7,7 +7,7 @@ export const metadata = {
     'Interactive OpenAPI 3.0 reference for the Spanlens REST API. Authentication, requests, stats, traces, anomalies, members, and proxy endpoints.',
 }
 
-const SERVER_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://server.spanlens.io'
+const SERVER_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.spanlens.io'
 
 export default function ApiReferencePage() {
   const swaggerUiUrl = `${SERVER_URL}/api/v1/docs`
@@ -87,7 +87,7 @@ export default function ApiReferencePage() {
         <tbody>
           <tr>
             <td>Production (hosted)</td>
-            <td><code>https://server.spanlens.io</code></td>
+            <td><code>https://api.spanlens.io</code></td>
           </tr>
           <tr>
             <td>Local dev</td>

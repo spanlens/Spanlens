@@ -206,12 +206,12 @@ export default function ReliabilityDocs() {
       <ol>
         <li>Check <a href="https://status.spanlens.io" rel="noopener noreferrer" target="_blank">status.spanlens.io</a>.</li>
         <li>
-          <code>curl https://server.spanlens.io/health/deep</code>. If <code>fallback.queue &gt; 0</code>,
+          <code>curl https://api.spanlens.io/health/deep</code>. If <code>fallback.queue &gt; 0</code>,
           the rows are queued and will replay automatically; no action needed.
         </li>
         <li>
           Verify your application is hitting the proxy (Network tab in the browser, or
-          your APM trace). If requests are not reaching <code>server.spanlens.io</code>,
+          your APM trace). If requests are not reaching <code>api.spanlens.io</code>,
           the gap is on your side.
         </li>
         <li>

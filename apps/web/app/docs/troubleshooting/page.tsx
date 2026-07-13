@@ -255,7 +255,7 @@ Gemini           x-goog-api-key: sl_live_...`}</pre>
         <li>
           <strong>The request is still going to the provider directly.</strong> In your
           Network tab the call should hit{' '}
-          <code>server.spanlens.io/proxy/*</code>, not <code>api.openai.com</code> (or the
+          <code>api.spanlens.io/proxy/*</code>, not <code>api.openai.com</code> (or the
           equivalent). If it is not, the client is constructed with the upstream{' '}
           <code>baseURL</code>; use the SDK helper or set <code>base_url</code> to the proxy.
         </li>
@@ -278,7 +278,7 @@ Gemini           x-goog-api-key: sl_live_...`}</pre>
         entirely and hit the proxy directly. A row should appear in{' '}
         <a href="/requests">/requests</a> within a few seconds:
       </p>
-      <pre>{`curl https://server.spanlens.io/proxy/openai/v1/chat/completions \\
+      <pre>{`curl https://api.spanlens.io/proxy/openai/v1/chat/completions \\
   -H "Authorization: Bearer $SPANLENS_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{

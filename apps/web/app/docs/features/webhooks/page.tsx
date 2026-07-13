@@ -98,7 +98,7 @@ GET    /api/v1/webhooks/:id/deliveries    # Last 10 delivery records`}</CodeBloc
         </tbody>
       </table>
 
-      <CodeBlock language="bash">{`curl -X POST https://server.spanlens.io/api/v1/webhooks \\
+      <CodeBlock language="bash">{`curl -X POST https://api.spanlens.io/api/v1/webhooks \\
   -H "Authorization: Bearer <JWT>" \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -199,7 +199,7 @@ app.post('/hooks/spanlens', express.raw({ type: 'application/json' }), (req, res
         and the delivery timestamp. If you see repeated 4xx or 5xx responses, check your server
         logs alongside the delivery history.
       </p>
-      <CodeBlock language="bash">{`curl https://server.spanlens.io/api/v1/webhooks/wh_01j9abc.../deliveries \\
+      <CodeBlock language="bash">{`curl https://api.spanlens.io/api/v1/webhooks/wh_01j9abc.../deliveries \\
   -H "Authorization: Bearer <JWT>"`}</CodeBlock>
       <CodeBlock language="json">{`[
   {
@@ -217,7 +217,7 @@ app.post('/hooks/spanlens', express.raw({ type: 'application/json' }), (req, res
         Use this to verify your endpoint URL and signature verification logic without waiting for
         a real event.
       </p>
-      <CodeBlock language="bash">{`curl -X POST https://server.spanlens.io/api/v1/webhooks/wh_01j9abc.../test \\
+      <CodeBlock language="bash">{`curl -X POST https://api.spanlens.io/api/v1/webhooks/wh_01j9abc.../test \\
   -H "Authorization: Bearer <JWT>"`}</CodeBlock>
 
       <h2>Permissions</h2>

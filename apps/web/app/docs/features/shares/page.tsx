@@ -152,11 +152,11 @@ export default function SharesDocs() {
         grab from your browser session.
       </p>
       <CodeBlock language="bash">{`# List every active share in the workspace, sorted by view count
-curl 'https://server.spanlens.io/api/v1/shares?scope=org&sort=views' \\
+curl 'https://api.spanlens.io/api/v1/shares?scope=org&sort=views' \\
   -H "Authorization: Bearer $SPANLENS_JWT"
 
 # Create a share with the Marketing redaction preset
-curl -X POST https://server.spanlens.io/api/v1/shares \\
+curl -X POST https://api.spanlens.io/api/v1/shares \\
   -H "Authorization: Bearer $SPANLENS_JWT" \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -169,7 +169,7 @@ curl -X POST https://server.spanlens.io/api/v1/shares \\
   }'
 
 # Revoke a share immediately (soft delete, view_count preserved)
-curl -X DELETE https://server.spanlens.io/api/v1/shares/<token> \\
+curl -X DELETE https://api.spanlens.io/api/v1/shares/<token> \\
   -H "Authorization: Bearer $SPANLENS_JWT"`}</CodeBlock>
 
       <h2>Security model</h2>

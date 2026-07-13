@@ -153,7 +153,7 @@ export default function AnnotationDocs() {
 
       <h3>Example, save a rating</h3>
       <CodeBlock language="bash">{`# 4 stars + comment
-curl https://server.spanlens.io/api/v1/human-evals \\
+curl https://api.spanlens.io/api/v1/human-evals \\
   -H "Authorization: Bearer $SPANLENS_JWT" \\
   -H "Content-Type: application/json" \\
   -d '{

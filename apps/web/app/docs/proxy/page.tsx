@@ -35,16 +35,16 @@ export default function ProxyDocs() {
       <p>
         Spanlens exposes a 1:1 compatible proxy at:
       </p>
-      <CodeBlock>{`https://server.spanlens.io/proxy/openai/v1
-https://server.spanlens.io/proxy/anthropic
-https://server.spanlens.io/proxy/gemini/v1beta
-https://server.spanlens.io/proxy/azure
-https://server.spanlens.io/proxy/mistral/v1
-https://server.spanlens.io/proxy/openrouter/v1
-https://server.spanlens.io/proxy/groq/v1
-https://server.spanlens.io/proxy/deepseek/v1
-https://server.spanlens.io/proxy/xai/v1
-https://server.spanlens.io/proxy/cohere/v1`}</CodeBlock>
+      <CodeBlock>{`https://api.spanlens.io/proxy/openai/v1
+https://api.spanlens.io/proxy/anthropic
+https://api.spanlens.io/proxy/gemini/v1beta
+https://api.spanlens.io/proxy/azure
+https://api.spanlens.io/proxy/mistral/v1
+https://api.spanlens.io/proxy/openrouter/v1
+https://api.spanlens.io/proxy/groq/v1
+https://api.spanlens.io/proxy/deepseek/v1
+https://api.spanlens.io/proxy/xai/v1
+https://api.spanlens.io/proxy/cohere/v1`}</CodeBlock>
       <p>
         Send requests exactly as you would to the real provider, with two changes:
       </p>
@@ -113,7 +113,7 @@ https://server.spanlens.io/proxy/cohere/v1`}</CodeBlock>
 
 client = OpenAI(
     api_key=os.environ["SPANLENS_API_KEY"],
-    base_url="https://server.spanlens.io/proxy/openai/v1",
+    base_url="https://api.spanlens.io/proxy/openai/v1",
 )
 
 res = client.chat.completions.create(
@@ -126,7 +126,7 @@ res = client.chat.completions.create(
 
 client = Anthropic(
     api_key=os.environ["SPANLENS_API_KEY"],
-    base_url="https://server.spanlens.io/proxy/anthropic",
+    base_url="https://api.spanlens.io/proxy/anthropic",
 )
 
 msg = client.messages.create(
@@ -147,7 +147,7 @@ msg = client.messages.create(
 
 client = OpenAI(
     api_key=os.environ["SPANLENS_API_KEY"],
-    base_url="https://server.spanlens.io/proxy/azure",
+    base_url="https://api.spanlens.io/proxy/azure",
 )
 
 # 'model' is your Azure deployment name, not the underlying model id.
@@ -176,7 +176,7 @@ res = client.chat.completions.create(
 
 client = OpenAI(
     api_key=os.environ["SPANLENS_API_KEY"],
-    base_url="https://server.spanlens.io/proxy/mistral/v1",
+    base_url="https://api.spanlens.io/proxy/mistral/v1",
 )
 
 res = client.chat.completions.create(
@@ -205,7 +205,7 @@ res = client.chat.completions.create(
 
 client = OpenAI(
     api_key=os.environ["SPANLENS_API_KEY"],
-    base_url="https://server.spanlens.io/proxy/openrouter/v1",
+    base_url="https://api.spanlens.io/proxy/openrouter/v1",
 )
 
 # Model id carries a vendor prefix
@@ -264,7 +264,7 @@ const cohere   = createCohere()    // model: 'command-a-03-2025' (Cohere ids, no
       </p>
 
       <h2 id="curl">curl, raw HTTP</h2>
-      <CodeBlock language="bash">{`curl https://server.spanlens.io/proxy/openai/v1/chat/completions \\
+      <CodeBlock language="bash">{`curl https://api.spanlens.io/proxy/openai/v1/chat/completions \\
   -H "Authorization: Bearer $SPANLENS_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -277,7 +277,7 @@ const cohere   = createCohere()    // model: 'command-a-03-2025' (Cohere ids, no
 
 client = OpenAI::Client.new(
   access_token: ENV["SPANLENS_API_KEY"],
-  uri_base: "https://server.spanlens.io/proxy/openai",
+  uri_base: "https://api.spanlens.io/proxy/openai",
 )
 
 res = client.chat(parameters: {
@@ -289,7 +289,7 @@ res = client.chat(parameters: {
       <CodeBlock language="go">{`import "github.com/sashabaranov/go-openai"
 
 config := openai.DefaultConfig(os.Getenv("SPANLENS_API_KEY"))
-config.BaseURL = "https://server.spanlens.io/proxy/openai/v1"
+config.BaseURL = "https://api.spanlens.io/proxy/openai/v1"
 
 client := openai.NewClientWithConfig(config)
 
