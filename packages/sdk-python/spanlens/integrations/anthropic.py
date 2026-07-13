@@ -5,7 +5,7 @@ Replaces::
     from anthropic import Anthropic
     client = Anthropic(
         api_key=os.environ["SPANLENS_API_KEY"],
-        base_url="https://spanlens-server.vercel.app/proxy/anthropic",
+        base_url="https://api.spanlens.io/proxy/anthropic",
     )
 
 With::
@@ -22,7 +22,7 @@ from __future__ import annotations
 import os
 from typing import Any, Optional
 
-DEFAULT_SPANLENS_ANTHROPIC_PROXY = "https://spanlens-server.vercel.app/proxy/anthropic"
+DEFAULT_SPANLENS_ANTHROPIC_PROXY = "https://api.spanlens.io/proxy/anthropic"
 PROMPT_VERSION_HEADER = "x-spanlens-prompt-version"
 
 
