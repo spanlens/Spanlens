@@ -211,7 +211,7 @@ export function PromptsClient() {
   }, [callsMenuOpen, dateMenuOpen, exportOpen])
 
   const hours = DATE_RANGE_HOURS[dateRange]
-  const { data: prompts, isLoading, isFetching, refetch } = usePrompts(undefined, hours)
+  const { data: prompts, isLoading, isError, isFetching, refetch } = usePrompts(undefined, hours)
   const createMutation = useCreatePromptVersion()
 
   const all = prompts ?? []
@@ -633,6 +633,19 @@ export function PromptsClient() {
         {isLoading ? (
           <div className="p-6 space-y-2">
             {[1, 2, 3].map((i) => <div key={i} className="h-10 bg-bg-elev rounded animate-pulse" />)}
+          </div>
+        ) : isError ? (
+          // Don't fall through to the "register first prompt" empty state on a
+          // load failure — a workspace with existing prompts would look brand-new.
+          <div className="flex flex-col items-center gap-3 text-text-muted py-20 px-6 text-center">
+            <p className="text-[13px] text-accent">Couldn&apos;t load prompts.</p>
+            <button
+              type="button"
+              onClick={() => void refetch()}
+              className="font-mono text-[11.5px] px-2.5 py-1 border border-border rounded text-text-muted hover:text-text hover:border-border-strong transition-colors"
+            >
+              Retry
+            </button>
           </div>
         ) : filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 gap-3 text-text-muted">

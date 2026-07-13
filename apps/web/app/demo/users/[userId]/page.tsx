@@ -101,7 +101,7 @@ export default async function DemoUserDetailPage({ params }: { params: Promise<{
                   className="grid grid-cols-[1fr,1fr,1fr,1fr,1fr] gap-3 items-center px-4 py-2.5 font-mono text-[12px] text-text hover:bg-bg-elev transition-colors"
                 >
                   <span className="text-text-muted">
-                    {new Date(r.created_at).toLocaleString(undefined, {
+                    {new Date(r.created_at).toLocaleString('en-US', {
                       month: 'short',
                       day: 'numeric',
                       hour: '2-digit',
