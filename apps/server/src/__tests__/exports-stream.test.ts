@@ -98,6 +98,62 @@ describe('buildCsvStream', () => {
   })
 })
 
+// ── CSV formula-injection guard (OWASP CSV injection) ────────────────────────
+//
+// Exported cells like error_message carry end-user-controlled LLM text. A cell
+// starting with = + - @ (or the tab / CR variants) executes as a formula when
+// the export is opened in Excel / Google Sheets. escapeCsv must prefix such
+// string cells with a single quote, while numeric cells (formatted by our own
+// code, e.g. negative deltas) must pass through untouched.
+
+describe('buildCsvStream formula-injection guard', () => {
+  test.each([
+    ['=SUM(A1:A9)', "'=SUM(A1:A9)"],
+    ['+1+2', "'+1+2"],
+    ['-2+3+cmd', "'-2+3+cmd"],
+    ['@HYPERLINK("x")', '"\'@HYPERLINK(""x"")"'],
+  ])('prefixes string cell %s with a single quote', async (input, expected) => {
+    const rows = fromArray<Record<string, unknown>>([{ v: input }])
+    const out = await readToString(buildCsvStream(['v'], rows))
+    expect(out).toBe(`v\n${expected}\n`)
+  })
+
+  test('guards tab / CR leading variants too', async () => {
+    const rows = fromArray<Record<string, unknown>>([
+      { v: '\t=1+1' },
+      { v: '\r=2+2' },
+    ])
+    const out = await readToString(buildCsvStream(['v'], rows))
+    // Tab variant has no chars needing RFC 4180 quoting; CR variant does.
+    expect(out).toBe('v\n' + "'\t=1+1\n" + '"\'\r=2+2"\n')
+  })
+
+  test('formula trigger combined with quotes/commas is quote-escaped after prefixing', async () => {
+    const rows = fromArray<Record<string, unknown>>([
+      { v: '=HYPERLINK("http://evil.example","click")' },
+    ])
+    const out = await readToString(buildCsvStream(['v'], rows))
+    expect(out).toBe('v\n' + '"\'=HYPERLINK(""http://evil.example"",""click"")"\n')
+  })
+
+  test('does not mangle legitimate negative numbers (typeof number)', async () => {
+    const rows = fromArray<Record<string, unknown>>([
+      { cost: -0.0042, latency: -5, note: 'ok' },
+    ])
+    const out = await readToString(buildCsvStream(['cost', 'latency', 'note'], rows))
+    expect(out).toBe('cost,latency,note\n-0.0042,-5,ok\n')
+  })
+
+  test('leaves benign strings untouched', async () => {
+    const rows = fromArray<Record<string, unknown>>([
+      { v: 'hello world' },
+      { v: 'a=b inside is fine' },
+    ])
+    const out = await readToString(buildCsvStream(['v'], rows))
+    expect(out).toBe('v\nhello world\na=b inside is fine\n')
+  })
+})
+
 // ── JSONL encoder ────────────────────────────────────────────────────────────
 
 describe('buildJsonlStream', () => {
