@@ -1,5 +1,13 @@
 # @spanlens/sdk changelog
 
+## 0.16.0
+
+Default API host moved to the official `api.spanlens.io` domain.
+
+### Changed
+
+- All default base URLs now point at `https://api.spanlens.io` instead of `https://spanlens-server.vercel.app`: the transport (`baseUrl`), `runEvals`, and every provider proxy default (`openai`, `anthropic`, `gemini`, `groq`, `deepseek`, `xai`, `cohere`). Both hosts serve the same deployment, so previously released SDK versions keep working unchanged. Explicit `baseUrl` / `baseURL` overrides are unaffected.
+
 ## 0.15.1
 
 Reliability fixes for observe(), the transport, and the framework trackers. No API changes beyond a new optional onError handler on the Vercel AI tracker.

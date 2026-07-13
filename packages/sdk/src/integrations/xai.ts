@@ -34,7 +34,7 @@ import { makeSpanlensProxyClient } from './_proxy-client.js'
 
 /** Default Spanlens xAI proxy URL. Override for self-hosted deployments. */
 export const DEFAULT_SPANLENS_XAI_PROXY =
-  'https://spanlens-server.vercel.app/proxy/xai/v1'
+  'https://api.spanlens.io/proxy/xai/v1'
 
 /** Build an OpenAI-compatible client whose requests flow through the Spanlens xAI proxy. */
 export function createXai(options: ClientOptions = {}): OpenAI {
