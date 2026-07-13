@@ -19,9 +19,11 @@ export default function ApiReferencePage() {
       <h1>REST API Reference</h1>
       <p className="lead">
         The Spanlens REST API backs the dashboard and is stable for direct
-        use. All authenticated endpoints require a Supabase JWT in{' '}
-        <code>Authorization: Bearer …</code>. Proxy endpoints use a Spanlens
-        API key.
+        use. Dashboard endpoints accept a Supabase JWT in{' '}
+        <code>Authorization: Bearer …</code>; the read endpoints (requests,
+        stats, traces, anomalies, recommendations, users, evals) also accept
+        a Spanlens API key, which is how the MCP server and BI integrations
+        query your data. Proxy and ingest endpoints use a Spanlens API key.
       </p>
 
       <div className="flex flex-wrap gap-3 my-5 not-prose">
@@ -63,6 +65,14 @@ export default function ApiReferencePage() {
             <td><strong>ApiKey</strong></td>
             <td><code>Authorization: Bearer sl_live_…</code></td>
             <td>Proxy endpoints (<code>/proxy/*</code>) and SDK ingest (<code>/ingest/*</code>)</td>
+          </tr>
+          <tr>
+            <td><strong>Either</strong></td>
+            <td><code>Authorization: Bearer &lt;jwt | sl_live_… | sl_live_pub_…&gt;</code></td>
+            <td>
+              Dual-auth read endpoints, marked &quot;JWT or API key&quot; below. Public-scope
+              keys (<code>sl_live_pub_…</code>) work here and are read-only everywhere else.
+            </td>
           </tr>
         </tbody>
       </table>
@@ -115,32 +125,46 @@ export default function ApiReferencePage() {
           <tr><td>Projects</td><td><code>/api/v1/projects</code></td><td>JWT</td></tr>
           <tr><td>API keys</td><td><code>/api/v1/api-keys</code></td><td>JWT</td></tr>
           <tr><td>Provider keys</td><td><code>/api/v1/provider-keys</code></td><td>JWT</td></tr>
-          <tr><td>Requests</td><td><code>/api/v1/requests</code></td><td>JWT</td></tr>
-          <tr><td>Stats</td><td><code>/api/v1/stats</code></td><td>JWT</td></tr>
-          <tr><td>Traces</td><td><code>/api/v1/traces</code></td><td>JWT</td></tr>
+          <tr><td>Key introspection</td><td><code>/api/v1/me/key-info</code></td><td>API key</td></tr>
+          <tr><td>Requests</td><td><code>/api/v1/requests</code></td><td>JWT or API key</td></tr>
+          <tr><td>Stats</td><td><code>/api/v1/stats</code></td><td>JWT or API key</td></tr>
+          <tr><td>Traces</td><td><code>/api/v1/traces</code></td><td>JWT or API key</td></tr>
+          <tr><td>Users (end-user analytics)</td><td><code>/api/v1/users</code></td><td>JWT or API key</td></tr>
+          <tr><td>Sessions</td><td><code>/api/v1/sessions</code></td><td>JWT</td></tr>
           <tr><td>Prompts</td><td><code>/api/v1/prompts</code></td><td>JWT</td></tr>
-          <tr><td>Anomalies</td><td><code>/api/v1/anomalies</code></td><td>JWT</td></tr>
+          <tr><td>Anomalies</td><td><code>/api/v1/anomalies</code></td><td>JWT or API key</td></tr>
           <tr><td>Security</td><td><code>/api/v1/security</code></td><td>JWT</td></tr>
           <tr><td>Alerts</td><td><code>/api/v1/alerts</code></td><td>JWT</td></tr>
-          <tr><td>Recommendations</td><td><code>/api/v1/recommendations</code></td><td>JWT</td></tr>
-          <tr><td>Evals</td><td><code>/api/v1/evaluators</code></td><td>JWT</td></tr>
+          <tr><td>Recommendations</td><td><code>/api/v1/recommendations</code></td><td>JWT or API key</td></tr>
+          <tr><td>Evals</td><td><code>/api/v1/evaluators</code>, <code>/api/v1/eval-runs</code></td><td>JWT or API key (writes need a full key or admin/editor)</td></tr>
           <tr><td>Datasets</td><td><code>/api/v1/datasets</code></td><td>JWT</td></tr>
           <tr><td>Experiments</td><td><code>/api/v1/experiments</code></td><td>JWT</td></tr>
           <tr><td>Prompt experiments (A/B)</td><td><code>/api/v1/prompt-experiments</code></td><td>JWT</td></tr>
-          <tr><td>Prompt playground</td><td><code>/api/v1/prompts-playground/run</code></td><td>JWT</td></tr>
+          <tr><td>Prompt playground</td><td><code>/api/v1/prompts/playground/run</code></td><td>JWT</td></tr>
           <tr><td>Human evals</td><td><code>/api/v1/human-evals</code></td><td>JWT</td></tr>
           <tr><td>Annotation queue</td><td><code>/api/v1/annotation/queue</code></td><td>JWT</td></tr>
+          <tr><td>Score configs</td><td><code>/api/v1/score-configs</code></td><td>JWT (admin/editor for writes)</td></tr>
           <tr><td>Webhooks</td><td><code>/api/v1/webhooks</code></td><td>JWT (admin/editor for writes)</td></tr>
           <tr><td>Audit logs</td><td><code>/api/v1/audit-logs</code></td><td>JWT</td></tr>
           <tr><td>Saved filters</td><td><code>/api/v1/saved-filters</code></td><td>JWT</td></tr>
           <tr><td>Exports</td><td><code>/api/v1/exports/*</code></td><td>JWT</td></tr>
+          <tr><td>Rate limits</td><td><code>/api/v1/rate-limits</code></td><td>JWT</td></tr>
+          <tr><td>Billing</td><td><code>/api/v1/billing</code></td><td>JWT</td></tr>
+          <tr><td>Shares</td><td><code>/api/v1/shares</code></td><td>JWT</td></tr>
           <tr><td>Members</td><td><code>/api/v1/organizations/:orgId/members</code></td><td>JWT (admin for writes)</td></tr>
           <tr><td>Invitations</td><td><code>/api/v1/organizations/:orgId/invitations</code></td><td>JWT (admin)</td></tr>
-          <tr><td>Proxy, OpenAI</td><td><code>/proxy/openai/v1/*</code></td><td>API key</td></tr>
-          <tr><td>Proxy, Anthropic</td><td><code>/proxy/anthropic/v1/*</code></td><td>API key</td></tr>
-          <tr><td>Proxy, Gemini</td><td><code>/proxy/gemini/v1/*</code></td><td>API key</td></tr>
-          <tr><td>Proxy, Azure OpenAI</td><td><code>/proxy/azure/*</code></td><td>API key</td></tr>
-          <tr><td>SDK Ingest</td><td><code>/ingest/*</code></td><td>API key</td></tr>
+          <tr><td>Proxy, OpenAI</td><td><code>/proxy/openai/v1/*</code></td><td>API key (full)</td></tr>
+          <tr><td>Proxy, Anthropic</td><td><code>/proxy/anthropic/v1/*</code></td><td>API key (full)</td></tr>
+          <tr><td>Proxy, Gemini</td><td><code>/proxy/gemini/v1/*</code></td><td>API key (full)</td></tr>
+          <tr><td>Proxy, Azure OpenAI</td><td><code>/proxy/azure/*</code></td><td>API key (full)</td></tr>
+          <tr><td>Proxy, Mistral</td><td><code>/proxy/mistral/*</code></td><td>API key (full)</td></tr>
+          <tr><td>Proxy, OpenRouter</td><td><code>/proxy/openrouter/*</code></td><td>API key (full)</td></tr>
+          <tr><td>Proxy, Groq</td><td><code>/proxy/groq/*</code></td><td>API key (full)</td></tr>
+          <tr><td>Proxy, DeepSeek</td><td><code>/proxy/deepseek/*</code></td><td>API key (full)</td></tr>
+          <tr><td>Proxy, xAI</td><td><code>/proxy/xai/*</code></td><td>API key (full)</td></tr>
+          <tr><td>Proxy, Cohere</td><td><code>/proxy/cohere/*</code></td><td>API key (full)</td></tr>
+          <tr><td>SDK Ingest</td><td><code>/ingest/*</code></td><td>API key (full)</td></tr>
+          <tr><td>OTLP traces</td><td><code>POST /v1/traces</code></td><td>API key (full)</td></tr>
         </tbody>
       </table>
 

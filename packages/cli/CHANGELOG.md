@@ -1,5 +1,11 @@
 # @spanlens/cli changelog
 
+## 0.3.3
+
+### Added
+
+- Post-init welcome message with a GitHub star CTA and a docs link, shown once after a successful `spanlens init`.
+
 ## 0.3.2
 
 Metadata + dependency refresh. No CLI behavior changes; same wizard flow, same prompts, same code patches.

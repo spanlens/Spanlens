@@ -307,11 +307,20 @@ res, _ := client.CreateChatCompletion(ctx, openai.ChatCompletionRequest{
         is negligible (10–50ms).
       </p>
 
-      <h2>Passing project / metadata</h2>
+      <h2>Passing metadata</h2>
       <p>
-        Add an <code>X-Spanlens-Project</code> header to tag requests with a project scope:
+        Project scoping needs no header. Every <code>sl_live_*</code> key is issued for a single
+        project, so requests are attributed to that project automatically.
       </p>
-      <CodeBlock>{`-H "X-Spanlens-Project: my-backend-service"`}</CodeBlock>
+      <p>
+        Add <code>X-Trace-Id</code> and <code>X-Span-Id</code> headers (UUIDs) to link a proxy call
+        to an <a href="/docs/agents">agent trace</a> so it appears inside the span tree with its
+        cost and tokens. The SDK sets these for you via{' '}
+        <code>trace.headers()</code> / <code>span.headers()</code>; raw HTTP callers can pass them
+        directly. Non-UUID values are ignored rather than rejected:
+      </p>
+      <CodeBlock>{`-H "X-Trace-Id: 7f0d2ab8-6a3e-4d0f-9c1b-2e8a51f0c123"
+-H "X-Span-Id: 1b9c4e02-3f7d-4a58-8e21-6c0d9b7a4f56"`}</CodeBlock>
 
       <p>
         Add an <code>X-Spanlens-Prompt-Version</code> header to link the request to a specific{' '}

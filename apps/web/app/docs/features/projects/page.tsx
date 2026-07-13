@@ -229,16 +229,11 @@ GET    /api/v1/pending-deletions             # active queue
 GET    /api/v1/pending-deletions/history     # terminal rows (executed or cancelled)
 POST   /api/v1/pending-deletions/:id/restore # cancel + flip is_active back to true`}</CodeBlock>
 
-      <h3>Tagging requests with a project from client code</h3>
+      <h3>How requests get their project</h3>
       <p>
-        By default, a request&apos;s project is determined by <strong>which Spanlens key</strong>{' '}
-        was used. One key = one project. If you want to override per-request, pass:
-      </p>
-      <CodeBlock language="bash">{`X-Spanlens-Project: my-project-slug`}</CodeBlock>
-      <p>
-        … in the proxy request headers. The SDK also accepts a <code>project</code> option on{' '}
-        <code>createOpenAI()</code> / <code>createAnthropic()</code> /{' '}
-        <code>createGemini()</code>.
+        A request&apos;s project is determined by <strong>which Spanlens key</strong> was used.
+        One key = one project. To send traffic to a different project, issue a key under that
+        project and use it for those calls. There is no per-request project override header.
       </p>
 
       <h2>Security design</h2>
