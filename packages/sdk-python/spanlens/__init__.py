@@ -38,7 +38,7 @@ from .parsers import parse_anthropic_usage, parse_gemini_usage, parse_openai_usa
 from .span import SpanHandle
 from .trace import TraceHandle
 
-__version__ = "0.8.0"
+__version__ = "0.8.1"
 
 __all__ = [
     "SpanHandle",

@@ -32,7 +32,7 @@ from .types import SpanlensConfig
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_BASE_URL = "https://spanlens-server.vercel.app"
+DEFAULT_BASE_URL = "https://api.spanlens.io"
 DEFAULT_TIMEOUT_MS = 3000
 # Small pool — one trace might fan out to a handful of concurrent spans, but
 # we never need many workers: each task is a short-lived HTTP call.

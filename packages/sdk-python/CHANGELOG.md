@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.1
+
+### Changed
+
+- Default API host is now `https://api.spanlens.io` (was the legacy `https://spanlens-server.vercel.app`, which continues to work). Affects `DEFAULT_BASE_URL` and the `observe_openai` / `observe_anthropic` / `observe_gemini` default proxy URLs. Set `SPANLENS_BASE_URL` or pass `base_url=` to override either way.
+
 ## 0.8.0
 
 FastAPI / ASGI auto-instrumentation — one line traces every HTTP request.

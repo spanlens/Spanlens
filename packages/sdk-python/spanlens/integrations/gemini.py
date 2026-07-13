@@ -26,7 +26,7 @@ from typing import Any, Optional
 
 import httpx
 
-DEFAULT_SPANLENS_GEMINI_PROXY = "https://spanlens-server.vercel.app/proxy/gemini"
+DEFAULT_SPANLENS_GEMINI_PROXY = "https://api.spanlens.io/proxy/gemini"
 
 
 def create_gemini(

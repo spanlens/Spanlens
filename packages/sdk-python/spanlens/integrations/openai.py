@@ -5,7 +5,7 @@ Replaces::
     from openai import OpenAI
     client = OpenAI(
         api_key=os.environ["SPANLENS_API_KEY"],
-        base_url="https://spanlens-server.vercel.app/proxy/openai/v1",
+        base_url="https://api.spanlens.io/proxy/openai/v1",
     )
 
 With::
@@ -27,7 +27,7 @@ from __future__ import annotations
 import os
 from typing import Any, Optional
 
-DEFAULT_SPANLENS_OPENAI_PROXY = "https://spanlens-server.vercel.app/proxy/openai/v1"
+DEFAULT_SPANLENS_OPENAI_PROXY = "https://api.spanlens.io/proxy/openai/v1"
 PROMPT_VERSION_HEADER = "x-spanlens-prompt-version"
 
 
