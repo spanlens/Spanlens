@@ -213,31 +213,23 @@ app.route('/api/v1/security',       securityRouter)
 app.route('/api/v1/prompts/playground', promptsPlaygroundRouter)
 app.route('/api/v1/prompts',        promptsRouter)
 app.route('/api/v1/prompt-experiments', promptExperimentsRouter)
-app.route('/api/v1/invitations', invitationsRouter)           // public GET /accept — must be before evalsRouter/humanEvalsRouter
-// Must be mounted BEFORE evalsRouter/humanEvalsRouter for the same reason
-// meRouter is: those two mount at the broad `/api/v1` prefix with
-// `.use('*', authJwt)`, so any route registered after them and matching
-// their wildcard gets the misleading "Invalid or expired token" 401
-// instead of running its own (here: dual JWT / sl_live_*) auth.
+app.route('/api/v1/invitations', invitationsRouter)           // public GET /accept — safe because wildcard routers mount last (see below)
+// recommendations uses dual auth (JWT or sl_live_*). It broke in production
+// on 2026-06-04 when it was mounted AFTER the `/api/v1` wildcard routers:
+// their `.use('*', authJwt)` caught the request first and 401'd every
+// API-key caller. The wildcard routers now mount LAST (see bottom of the
+// /api/v1 section) so this whole class of bug is structurally impossible.
 app.route('/api/v1/recommendations', recommendationsRouter)
-// pendingDeletions must be mounted BEFORE evalsRouter/humanEvalsRouter for
-// the same wildcard-collision reason as recommendations (gotcha #3).
 app.route('/api/v1/pending-deletions', pendingDeletionsRouter)
-// scoreConfigs has the same wildcard-collision concern as the routes above.
 app.route('/api/v1/score-configs',  scoreConfigsRouter)
-// feedback must be mounted BEFORE evalsRouter/humanEvalsRouter for the same
-// reason as recommendations / pending-deletions / score-configs above.
-// `feedbackRouter`'s GET / is intentionally PUBLIC (anonymous roadmap list);
-// mounting after the `/api/v1` wildcard routers lets their `.use('*', authJwt)`
-// catch the request first and 401 every anonymous visitor with "Missing or
-// invalid Authorization header" — exactly what production dogfood after
-// PR #304 surfaced. Per-route authJwt inside feedbackRouter only fires for
-// requests that actually reach this router.
+// `feedbackRouter`'s GET / is intentionally PUBLIC (anonymous roadmap list).
+// This was the second wildcard-shadowing incident (PR #304 dogfood): mounted
+// after the `/api/v1` wildcard routers, their `.use('*', authJwt)` 401'd
+// every anonymous visitor. Per-route authJwt inside feedbackRouter only
+// fires for requests that actually reach this router.
 app.route('/api/v1/feedback',       feedbackRouter)
-app.route('/api/v1',                evalsRouter)
 app.route('/api/v1/datasets',       datasetsRouter)
 app.route('/api/v1/experiments',    experimentsRouter)
-app.route('/api/v1',                humanEvalsRouter)
 app.route('/api/v1/audit-logs',     auditLogsRouter)
 app.route('/api/v1/organizations/:orgId/members', membersRouter)
 app.route('/api/v1/organizations/:orgId/invitations', orgInvitationsRouter)
@@ -259,6 +251,23 @@ app.route('/api/v1/admin/model-recommendations', adminModelRecommendationsRouter
 app.route('/api/v1/admin/background-migrations', adminBackgroundMigrationsRouter)
 app.route('/api/v1/admin/alerts', adminAlertsRouter)
 app.route('/api/v1/admin/feedback', adminFeedbackRouter)
+
+// ── Wildcard /api/v1 routers — MUST STAY LAST ─────────────────
+// evalsRouter and humanEvalsRouter mount at the broad `/api/v1` prefix and
+// register `.use('*', ...)` auth middleware (authJwtOrApiKey / authJwt).
+// Hono matches in registration order, so ANY /api/v1 route registered after
+// these wildcards first passes through their auth middleware — which either
+// wastes a duplicate Supabase auth round-trip (routes with their own auth)
+// or breaks the route outright (dual-auth and public routes get a misleading
+// 401 before their own middleware ever runs). This exact incident shipped
+// twice: recommendations (2026-06-04) and public feedback (PR #304).
+// Keeping the wildcards last makes the failure mode structurally impossible.
+//
+// INVARIANT (guarded by src/__tests__/api-v1-mount-order.test.ts):
+//   Add new specific /api/v1 routers ABOVE this comment block.
+//   Never mount anything at `/api/v1` after these two lines.
+app.route('/api/v1',                evalsRouter)
+app.route('/api/v1',                humanEvalsRouter)
 
 // Sprint 7 R-15 + R-20: global error handler. Every router can now
 // `throw new ApiError('CODE', 'message?')` and rely on this handler to
