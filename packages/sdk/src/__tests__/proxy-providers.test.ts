@@ -3,9 +3,11 @@ import { createGroq, DEFAULT_SPANLENS_GROQ_PROXY, observeGroq } from '../integra
 import { createDeepSeek, DEFAULT_SPANLENS_DEEPSEEK_PROXY, observeDeepSeek } from '../integrations/deepseek.js'
 import { createXai, DEFAULT_SPANLENS_XAI_PROXY, observeXai } from '../integrations/xai.js'
 import { createCohere, DEFAULT_SPANLENS_COHERE_PROXY, observeCohere } from '../integrations/cohere.js'
+import { createMistral, DEFAULT_SPANLENS_MISTRAL_PROXY, observeMistral } from '../integrations/mistral.js'
+import { createOpenRouter, DEFAULT_SPANLENS_OPENROUTER_PROXY, observeOpenRouter } from '../integrations/openrouter.js'
 
 /**
- * The four OpenAI-compatible provider factories all route through the hosted
+ * The OpenAI-compatible provider factories all route through the hosted
  * Spanlens proxy (unlike createOllama, which is local). They share the
  * makeSpanlensProxyClient helper, so these tests pin the per-provider default
  * URL, the SPANLENS_API_KEY requirement, and the observe re-export.
@@ -16,6 +18,8 @@ const CASES = [
   { name: 'DeepSeek', create: createDeepSeek, url: DEFAULT_SPANLENS_DEEPSEEK_PROXY, observe: observeDeepSeek, slug: 'deepseek' },
   { name: 'xAI', create: createXai, url: DEFAULT_SPANLENS_XAI_PROXY, observe: observeXai, slug: 'xai' },
   { name: 'Cohere', create: createCohere, url: DEFAULT_SPANLENS_COHERE_PROXY, observe: observeCohere, slug: 'cohere' },
+  { name: 'Mistral', create: createMistral, url: DEFAULT_SPANLENS_MISTRAL_PROXY, observe: observeMistral, slug: 'mistral' },
+  { name: 'OpenRouter', create: createOpenRouter, url: DEFAULT_SPANLENS_OPENROUTER_PROXY, observe: observeOpenRouter, slug: 'openrouter' },
 ] as const
 
 describe('OpenAI-compatible proxy client factories', () => {

@@ -11,6 +11,8 @@ export {
   observeDeepSeek,
   observeXai,
   observeCohere,
+  observeMistral,
+  observeOpenRouter,
 } from './observe.js'
 export type { ProviderObserveOptions } from './observe.js'
 export { parseOpenAIUsage, parseAnthropicUsage, parseGeminiUsage } from './parsers.js'
