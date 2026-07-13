@@ -26,19 +26,42 @@ const formatError = (
   return { content: [{ type: 'text', text: `Error: ${msg}` }], isError: true }
 }
 
-/** Translate the MCP-friendly enum into the REST API's window param shape. */
-function timeframeToWindow(tf?: string): string {
+/**
+ * Translate the MCP-friendly timeframe enum into hours.
+ *
+ * The REST API has no `window` param: /stats/overview takes `from`/`to`
+ * ISO dates and /stats/models takes `hours`. (v0.2.0 sent `window`, which
+ * the server silently ignored — stats came back for the wrong period.)
+ */
+export function timeframeToHours(tf?: string): number {
   switch (tf) {
     case '1h':
-      return '1h'
+      return 1
     case '24h':
-      return '24h'
+      return 24
     case '30d':
-      return '30d'
+      return 30 * 24
     case '7d':
     default:
-      return '7d'
+      return 7 * 24
   }
+}
+
+/** ISO timestamp `hours` ago — the `from` bound for /stats/overview. */
+export function hoursAgoIso(hours: number): string {
+  return new Date(Date.now() - hours * 3_600_000).toISOString()
+}
+
+/**
+ * Map an ISO `since` bound onto /api/v1/anomalies' `observationHours`
+ * param (the server compares the last N hours against a reference window;
+ * it has no `from` param). Clamped to the server's accepted 0.25–72 range.
+ */
+export function sinceToObservationHours(since: string): number | undefined {
+  const t = Date.parse(since)
+  if (Number.isNaN(t)) return undefined
+  const hours = (Date.now() - t) / 3_600_000
+  return Math.min(72, Math.max(0.25, hours))
 }
 
 export function registerTools(server: McpServer, client: SpanlensClient): void {
@@ -60,14 +83,13 @@ export function registerTools(server: McpServer, client: SpanlensClient): void {
     },
     async ({ timeframe, groupBy }) => {
       try {
+        const hours = timeframeToHours(timeframe)
         if (groupBy === 'model' || groupBy === 'provider') {
-          const data = await client.get('/api/v1/stats/models', {
-            window: timeframeToWindow(timeframe),
-          })
+          const data = await client.get('/api/v1/stats/models', { hours })
           return formatJson(data)
         }
         const data = await client.get('/api/v1/stats/overview', {
-          window: timeframeToWindow(timeframe),
+          from: hoursAgoIso(hours),
         })
         return formatJson(data)
       } catch (err) {
@@ -90,7 +112,18 @@ export function registerTools(server: McpServer, client: SpanlensClient): void {
         .describe('Max rows to return. Default 20, max 100.'),
       model: z.string().optional().describe('Filter to a specific model substring.'),
       provider: z
-        .enum(['openai', 'anthropic', 'gemini', 'azure'])
+        .enum([
+          'openai',
+          'anthropic',
+          'gemini',
+          'azure',
+          'mistral',
+          'openrouter',
+          'groq',
+          'deepseek',
+          'xai',
+          'cohere',
+        ])
         .optional()
         .describe('Filter to a specific provider.'),
       status: z
@@ -191,20 +224,27 @@ export function registerTools(server: McpServer, client: SpanlensClient): void {
   // ── 5. get_anomalies ────────────────────────────────────────────────────
   server.tool(
     'get_anomalies',
-    'List unacknowledged cost / latency / error-rate anomalies the platform has detected. Use when the user asks "anything weird going on?", "any spikes?", or wants a quick health check.',
+    'List unacknowledged cost / latency / error-rate anomalies the platform has detected. Each anomaly carries a `deviations` field (how many sigmas off baseline). Use when the user asks "anything weird going on?", "any spikes?", or wants a quick health check.',
     {
-      severity: z
-        .enum(['low', 'medium', 'high'])
-        .optional()
-        .describe('Filter to anomalies at or above this severity.'),
       since: z
         .string()
         .optional()
-        .describe('ISO 8601 timestamp lower bound. Only return anomalies first seen at or after this time.'),
+        .describe(
+          'ISO 8601 timestamp. Sets the observation window: behaviour since this time is compared against the preceding baseline. Clamped to the last 15 minutes – 72 hours; default is the last hour.',
+        ),
+      sigma: z
+        .number()
+        .min(1)
+        .max(10)
+        .optional()
+        .describe('Minimum deviations (in sigmas) to flag. Default 3. Lower = more sensitive.'),
     },
-    async ({ severity, since }) => {
+    async ({ since, sigma }) => {
       try {
-        const data = await client.get('/api/v1/anomalies', { severity, from: since })
+        const data = await client.get('/api/v1/anomalies', {
+          observationHours: since ? sinceToObservationHours(since) : undefined,
+          sigma,
+        })
         return formatJson(data)
       } catch (err) {
         return formatError(err)
