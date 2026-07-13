@@ -213,7 +213,7 @@ export default function PromptsPlaygroundDocs() {
       <p>Auth: JWT (<code>Authorization: Bearer $SPANLENS_JWT</code>)</p>
 
       <h3>Request example</h3>
-      <CodeBlock language="bash">{`curl https://server.spanlens.io/api/v1/prompts-playground/run \\
+      <CodeBlock language="bash">{`curl https://api.spanlens.io/api/v1/prompts-playground/run \\
   -H "Authorization: Bearer $SPANLENS_JWT" \\
   -H "Content-Type: application/json" \\
   -d '{

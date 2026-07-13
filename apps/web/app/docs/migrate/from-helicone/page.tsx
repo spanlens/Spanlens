@@ -61,7 +61,7 @@ export default function MigrateFromHelicone() {
       <p>
         Helicone routes through <code>https://ai-gateway.helicone.ai</code> (or the older
         <code>https://oai.helicone.ai/v1</code>). Spanlens routes through{' '}
-        <code>https://server.spanlens.io/proxy/&lt;provider&gt;</code>. The auth header
+        <code>https://api.spanlens.io/proxy/&lt;provider&gt;</code>. The auth header
         stays the same shape; only the key value changes.
       </p>
 
@@ -79,7 +79,7 @@ const openai = new OpenAI({
       <CodeBlock language="ts">{`import OpenAI from 'openai'
 
 const openai = new OpenAI({
-  baseURL: 'https://server.spanlens.io/proxy/openai/v1',
+  baseURL: 'https://api.spanlens.io/proxy/openai/v1',
   apiKey: process.env.SPANLENS_API_KEY,
 })`}</CodeBlock>
       <p className="text-sm text-muted-foreground">After (Spanlens, SDK helper):</p>
@@ -89,10 +89,10 @@ const openai = createOpenAI() // reads SPANLENS_API_KEY from env`}</CodeBlock>
 
       <h3>Anthropic, Gemini, Azure OpenAI</h3>
       <p>Different base path per provider. The dashboard shows the exact URL after you register a provider key.</p>
-      <CodeBlock language="text">{`OpenAI    : https://server.spanlens.io/proxy/openai/v1
-Anthropic : https://server.spanlens.io/proxy/anthropic
-Gemini    : https://server.spanlens.io/proxy/gemini/v1beta
-Azure     : https://server.spanlens.io/proxy/azure`}</CodeBlock>
+      <CodeBlock language="text">{`OpenAI    : https://api.spanlens.io/proxy/openai/v1
+Anthropic : https://api.spanlens.io/proxy/anthropic
+Gemini    : https://api.spanlens.io/proxy/gemini/v1beta
+Azure     : https://api.spanlens.io/proxy/azure`}</CodeBlock>
 
       <h2>Step 3. Replace Helicone headers with Spanlens equivalents</h2>
       <p>
@@ -226,7 +226,7 @@ const res = await openai.chat.completions.create(
       </p>
       <CodeBlock language="ts">{`// Read from env so you can flip per environment
 const baseURL = process.env.LLM_PROXY === 'spanlens'
-  ? 'https://server.spanlens.io/proxy/openai/v1'
+  ? 'https://api.spanlens.io/proxy/openai/v1'
   : 'https://ai-gateway.helicone.ai'
 
 const apiKey = process.env.LLM_PROXY === 'spanlens'

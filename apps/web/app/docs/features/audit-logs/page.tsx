@@ -296,15 +296,15 @@ GET /api/v1/audit-logs/actions`}</CodeBlock>
 
       <h2>curl examples</h2>
       <CodeBlock language="bash">{`# Fetch the 20 most recent entries
-curl "https://server.spanlens.io/api/v1/audit-logs?limit=20" \\
+curl "https://api.spanlens.io/api/v1/audit-logs?limit=20" \\
   -H "Authorization: Bearer <JWT>"
 
 # Filter to provider key events only
-curl "https://server.spanlens.io/api/v1/audit-logs?action=provider_key.add&limit=50" \\
+curl "https://api.spanlens.io/api/v1/audit-logs?action=provider_key.add&limit=50" \\
   -H "Authorization: Bearer <JWT>"
 
 # Second page (entries 51–100)
-curl "https://server.spanlens.io/api/v1/audit-logs?limit=50&offset=50" \\
+curl "https://api.spanlens.io/api/v1/audit-logs?limit=50&offset=50" \\
   -H "Authorization: Bearer <JWT>"`}</CodeBlock>
 
       <h2>Limitations</h2>

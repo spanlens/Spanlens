@@ -246,7 +246,7 @@ try {
 }`}</pre>
 
       <h3>Raw fetch</h3>
-      <pre>{`const res = await fetch('https://server.spanlens.io/api/v1/foo', {
+      <pre>{`const res = await fetch('https://api.spanlens.io/api/v1/foo', {
   headers: { Authorization: 'Bearer ' + apiKey }
 })
 if (!res.ok) {

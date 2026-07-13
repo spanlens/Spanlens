@@ -216,7 +216,7 @@ const result = await model.generateContent('Hi')`}</CodeBlock>
         <li>After adding env vars in Vercel, <strong>redeploy</strong>, because new values don&apos;t apply retroactively</li>
         <li>
           Check the Network tab. Your request should hit{' '}
-          <code>server.spanlens.io/proxy/*</code>, not <code>api.openai.com</code> directly
+          <code>api.spanlens.io/proxy/*</code>, not <code>api.openai.com</code> directly
         </li>
       </ol>
 

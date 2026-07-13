@@ -27,7 +27,7 @@ res = client.chat.completions.create(
     messages=[{"role": "user", "content": "Hi"}],
 )`
 
-const CURL_SNIPPET = `curl https://server.spanlens.io/proxy/openai/v1/chat/completions \\
+const CURL_SNIPPET = `curl https://api.spanlens.io/proxy/openai/v1/chat/completions \\
   -H "Authorization: Bearer $SPANLENS_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
