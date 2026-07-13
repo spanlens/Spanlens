@@ -6,7 +6,7 @@
 [![PyPI version](https://img.shields.io/pypi/v/spanlens.svg)](https://pypi.org/project/spanlens/)
 [![npm downloads](https://img.shields.io/npm/dm/@spanlens/sdk.svg)](https://www.npmjs.com/package/@spanlens/sdk)
 
-**Open-source LLM observability and monitoring.** Record every OpenAI / Anthropic / Gemini / Mistral / OpenRouter / Azure OpenAI / Ollama call with one line of code. Plugs into Vercel AI SDK, LangChain, and LlamaIndex too. Query the same data directly from Cursor, Claude Desktop, or Continue via the bundled [MCP server](https://www.npmjs.com/package/@spanlens/mcp-server). Get cost, latency, tokens, traces, anomalies, PII scan, and model-swap suggestions out of the box. Self-hostable. MIT.
+**Open-source LLM observability and monitoring.** Record every OpenAI / Anthropic / Gemini / Mistral / OpenRouter / Groq / DeepSeek / xAI / Cohere / Azure OpenAI / Ollama call with one line of code. Plugs into Vercel AI SDK, LangChain, and LlamaIndex too. Query the same data directly from Cursor, Claude Desktop, or Continue via the bundled [MCP server](https://www.npmjs.com/package/@spanlens/mcp-server). Get cost, latency, tokens, traces, anomalies, PII scan, and model-swap suggestions out of the box. Self-hostable. MIT.
 
 > ⭐ **If Spanlens is useful to you, please [star the repo](https://github.com/spanlens/Spanlens). It takes a second and helps other developers find it.**
 
@@ -239,7 +239,7 @@ Spanlens uses **two databases**, each for what it's good at.
 ### Projects, unified keys, and headers
 
 - A workspace can hold **multiple projects** (e.g. `dev` / `staging` / `prod`, or one per app). Each project gets its own quota slice, provider keys, and prompt namespace.
-- **Unified API keys** give you one `sl_live_*` key per project that is provider-agnostic. Spanlens infers the provider from the request path (`/proxy/openai/*`, `/proxy/anthropic/*`, `/proxy/gemini/*`, `/proxy/mistral/*`, `/proxy/openrouter/*`, `/proxy/azure/*`), so you only need one Spanlens key even if you call multiple model vendors.
+- **Unified API keys** give you one `sl_live_*` key per project that is provider-agnostic. Spanlens infers the provider from the request path (`/proxy/openai/*`, `/proxy/anthropic/*`, `/proxy/gemini/*`, `/proxy/mistral/*`, `/proxy/openrouter/*`, `/proxy/groq/*`, `/proxy/deepseek/*`, `/proxy/xai/*`, `/proxy/cohere/*`, `/proxy/azure/*`), so you only need one Spanlens key even if you call multiple model vendors.
 - **`X-Spanlens-*` headers** (set automatically by the SDK helpers `withUser()`, `withSession()`, `withPromptVersion()`, `withLogBody()`): tag a request with end-user / session IDs, link it to a prompt-version experiment, or limit how much body Spanlens stores. Full list in [`/docs/proxy`](https://www.spanlens.io/docs/proxy).
 - **Streaming safety** ensures proxy responses are gracefully closed at 290s with a `truncated=true` flag in the log, so long streams never silently disappear.
 

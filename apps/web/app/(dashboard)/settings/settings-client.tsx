@@ -2436,7 +2436,7 @@ function DestinationsTab() {
 
 // ─── OPENTELEMETRY tab ────────────────────────────────────────────────────────
 
-const OTEL_ENDPOINT = 'https://spanlens-server.vercel.app/ingest/traces'
+const OTEL_ENDPOINT = 'https://api.spanlens.io/v1/traces'
 
 const OTEL_CODE_EXAMPLE = `import { NodeSDK } from '@opentelemetry/sdk-node'
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http'
