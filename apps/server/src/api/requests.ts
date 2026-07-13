@@ -3,7 +3,13 @@ import type { JwtContext } from '../middleware/authJwt.js'
 import { authJwtOrApiKey } from '../middleware/authJwtOrApiKey.js'
 import { requireRole } from '../middleware/requireRole.js'
 import { getDecryptedProviderKeyById, getDecryptedProviderKey } from '../proxy/utils.js'
-import { calculateCost } from '../lib/cost.js'
+import { calculateCost, type Provider } from '../lib/cost.js'
+import {
+  REPLAY_RUN_SUPPORTED_PROVIDERS,
+  buildReplayProxyPath,
+  buildReplayUpstream,
+  parseReplayUsage,
+} from '../lib/replay-providers.js'
 import { logRequestAsync } from '../lib/logger.js'
 import { fireAndForget } from '../lib/wait-until.js'
 import { parsePageLimit, validateOptionalUuid, validateOptionalDate, isUuid } from '../lib/params.js'
@@ -352,20 +358,12 @@ requestsRouter.post('/:id/replay', requireRole('admin', 'editor'), async (c) => 
     )
   }
 
-  // Build provider-specific proxy path for the curl snippet.
-  // Gemini encodes the model in the URL: /v1beta/models/{model}:generateContent
+  // Build provider-specific proxy path for the curl snippet. The mapping
+  // covers all 10 proxied providers (OpenAI-compatible ones mount at
+  // /proxy/<p>/v1, azure at /proxy/azure, gemini encodes the model in the
+  // URL) — see lib/replay-providers.ts.
   const model = (overrideModel ?? data.model ?? '') as string
-  let proxyPath: string
-  if (data.provider === 'openai') {
-    proxyPath = '/proxy/openai/v1/chat/completions'
-  } else if (data.provider === 'anthropic') {
-    proxyPath = '/proxy/anthropic/v1/messages'
-  } else if (data.provider === 'gemini') {
-    const geminiModel = model.startsWith('models/') ? model : `models/${model}`
-    proxyPath = `/proxy/gemini/v1beta/${geminiModel}:generateContent`
-  } else {
-    proxyPath = `/proxy/${data.provider as string}`
-  }
+  const proxyPath = buildReplayProxyPath(data.provider, model)
 
   return c.json({
     success: true,
@@ -452,27 +450,21 @@ requestsRouter.post('/:id/replay/run', requireRole('admin', 'editor'), async (c)
   const model = (replayBody.model ?? data.model ?? '') as string
 
   // ── Resolve upstream endpoint + headers ───────────────────────────────────
+  // OpenAI-compatible providers (mistral, openrouter, groq, deepseek, xai,
+  // cohere) reuse the OpenAI chat-completions replay shape against their own
+  // upstream base. Azure stays unsupported: its base URL is per-key
+  // (provider_metadata.resource_url), so the error names what IS supported.
   const provider = data.provider
-  let upstreamUrl: string
-  let upstreamHeaders: Record<string, string>
-
-  if (provider === 'openai') {
-    upstreamUrl = 'https://api.openai.com/v1/chat/completions'
-    upstreamHeaders = { Authorization: `Bearer ${providerKey.plaintext}`, 'Content-Type': 'application/json' }
-  } else if (provider === 'anthropic') {
-    upstreamUrl = 'https://api.anthropic.com/v1/messages'
-    upstreamHeaders = {
-      'x-api-key': providerKey.plaintext,
-      'anthropic-version': '2023-06-01',
-      'Content-Type': 'application/json',
-    }
-  } else if (provider === 'gemini') {
-    const geminiModel = model.startsWith('models/') ? model : `models/${model}`
-    upstreamUrl = `https://generativelanguage.googleapis.com/v1beta/${geminiModel}:generateContent?key=${providerKey.plaintext}`
-    upstreamHeaders = { 'Content-Type': 'application/json' }
-  } else {
-    throw new ApiError('VALIDATION_FAILED', `Unsupported provider for run: ${provider}`)
+  const upstream = buildReplayUpstream(provider, model, providerKey.plaintext)
+  if (!upstream) {
+    throw new ApiError(
+      'VALIDATION_FAILED',
+      `Replay run is not supported for provider "${provider}". ` +
+        `Supported providers: ${REPLAY_RUN_SUPPORTED_PROVIDERS.join(', ')}. ` +
+        'Use POST /:id/replay to get a curl snippet instead.',
+    )
   }
+  const { url: upstreamUrl, headers: upstreamHeaders } = upstream
 
   // ── Call upstream ─────────────────────────────────────────────────────────
   const startMs = Date.now()
@@ -504,31 +496,11 @@ requestsRouter.post('/:id/replay/run', requireRole('admin', 'editor'), async (c)
   }
 
   // ── Parse token usage ─────────────────────────────────────────────────────
-  let promptTokens = 0, completionTokens = 0, totalTokens = 0
+  // Per-provider usage shapes live in lib/replay-providers.ts (OpenAI-compat
+  // `usage`, Anthropic input/output, Gemini usageMetadata incl. thoughts).
+  const { promptTokens, completionTokens, totalTokens } = parseReplayUsage(provider, resBody)
 
-  if (provider === 'openai') {
-    const u = resBody.usage as Record<string, number> | undefined
-    promptTokens    = u?.prompt_tokens    ?? 0
-    completionTokens = u?.completion_tokens ?? 0
-    totalTokens     = u?.total_tokens     ?? 0
-  } else if (provider === 'anthropic') {
-    const u = resBody.usage as Record<string, number> | undefined
-    promptTokens    = u?.input_tokens  ?? 0
-    completionTokens = u?.output_tokens ?? 0
-    totalTokens     = promptTokens + completionTokens
-  } else if (provider === 'gemini') {
-    const u = resBody.usageMetadata as Record<string, number> | undefined
-    promptTokens    = u?.promptTokenCount     ?? 0
-    // Gemini 2.5+/3 thinking models report reasoning tokens in
-    // thoughtsTokenCount, which Google bills at the OUTPUT rate and which
-    // candidatesTokenCount excludes — fold them into completion tokens so cost
-    // isn't under-reported (see parsers/gemini.ts). totalTokenCount already
-    // includes thoughts, so prompt + completion stays consistent with total.
-    completionTokens = (u?.candidatesTokenCount ?? 0) + (u?.thoughtsTokenCount ?? 0)
-    totalTokens     = u?.totalTokenCount      ?? promptTokens + completionTokens
-  }
-
-  const costResult = calculateCost(provider as 'openai', model, { promptTokens, completionTokens })
+  const costResult = calculateCost(provider as Provider, model, { promptTokens, completionTokens })
   const costUsd = costResult?.totalCost ?? null
 
   // ── Log async (fire-and-forget) ───────────────────────────────────────────

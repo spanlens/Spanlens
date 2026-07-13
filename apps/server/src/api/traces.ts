@@ -9,7 +9,8 @@ import {
   listTracesFromEvents,
   getTraceWithSpansFromEvents,
 } from '../lib/traces-events-queries.js'
-import { ApiError } from '../lib/errors.js'
+import { ApiError, isApiError } from '../lib/errors.js'
+import { ilikeOrPattern } from '../lib/postgrest-search.js'
 import { traceToOtlp, type SpanlensTrace, type SpanlensSpan } from '../lib/otel-export.js'
 
 export const tracesRouter = new Hono<JwtContext>()
@@ -93,11 +94,14 @@ tracesRouter.get('/', async (c) => {
     // and only fall back to `id.eq` when the query looks like a full UUID.
     // Short UUID-prefix searches aren't supported here; the user can paste
     // a full ID or jump in via /traces/<id> directly.
-    const escaped = q.replace(/[%,]/g, '\\$&')
+    // ilikeOrPattern quotes the term for PostgREST's or() parser (bare `(`,
+    // `)` or `,` in a search made the whole filter unparseable → 500) and
+    // escapes the LIKE wildcards `%`/`_` so they match literally.
+    const pattern = ilikeOrPattern(q)
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(q)
     const clauses = [
-      `name.ilike.%${escaped}%`,
-      `external_trace_id.ilike.%${escaped}%`,
+      `name.ilike.${pattern}`,
+      `external_trace_id.ilike.${pattern}`,
       ...(isUuid ? [`id.eq.${q}`] : []),
     ]
     query = query.or(clauses.join(','))
@@ -192,6 +196,11 @@ tracesRouter.get('/:id', async (c) => {
         data: { ...trace, spans, critical_span_ids: criticalSpanIds },
       })
     } catch (eventsErr) {
+      // A NOT_FOUND thrown above is a legitimate answer ("this trace does not
+      // exist"), not an events-path failure — rethrow it instead of logging a
+      // fake "events path failed" line and re-querying Postgres for a row we
+      // already know is absent. Only unexpected errors trigger the fallback.
+      if (isApiError(eventsErr) && eventsErr.code === 'NOT_FOUND') throw eventsErr
       console.error('[traces:detail] events path failed, falling back to Postgres:', {
         message: eventsErr instanceof Error ? eventsErr.message : String(eventsErr),
         traceId,
