@@ -23,7 +23,7 @@ export const CACHE_DEFAULT_TTL_SECONDS = 3600
 export const CACHE_MAX_TTL_SECONDS = 86400
 
 export const DEFAULT_SPANLENS_ANTHROPIC_PROXY =
-  'https://spanlens-server.vercel.app/proxy/anthropic'
+  'https://api.spanlens.io/proxy/anthropic'
 
 export function createAnthropic(options: ClientOptions = {}): Anthropic {
   const apiKey = options.apiKey ?? readEnv('SPANLENS_API_KEY')

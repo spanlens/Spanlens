@@ -18,7 +18,7 @@
 import { GoogleGenerativeAI, type GenerativeModel } from '@google/generative-ai'
 
 export const DEFAULT_SPANLENS_GEMINI_PROXY =
-  'https://spanlens-server.vercel.app/proxy/gemini'
+  'https://api.spanlens.io/proxy/gemini'
 
 export interface CreateGeminiOptions {
   /** Spanlens API key. Defaults to `process.env.SPANLENS_API_KEY`. */
