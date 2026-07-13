@@ -92,7 +92,7 @@ export default function RequestsDocs() {
           </tr>
           <tr>
             <td><code>project_id</code></td>
-            <td>Scoped to the API key used (or <code>X-Spanlens-Project</code> header)</td>
+            <td>Scoped to the API key used (one key = one project)</td>
           </tr>
           <tr>
             <td><code>provider_key_id</code></td>

@@ -1,36 +1,36 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# apps/web — Spanlens dashboard
 
-## Getting Started
+Next.js 16 (App Router) frontend for [Spanlens](https://spanlens.io): the dashboard at `www.spanlens.io`, the marketing pages, and the docs at `/docs`.
 
-First, run the development server:
+This package never talks to Supabase for data — all reads and writes go through the Hono server (`apps/server`) via `fetch('/api/v1/...')`. The only Supabase usage here is auth/session plumbing (middleware, login callback).
+
+## Develop
+
+From the **repo root** (pnpm workspace — do not use npm or yarn):
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+cp apps/server/.env.example apps/server/.env   # server env (see root README)
+cp apps/web/.env.example apps/web/.env.local   # web env
+pnpm install
+pnpm dev        # web on :3000, server on :3001
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+The dashboard is useless without the server running; `pnpm dev` at the root starts both.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Verify changes
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+pnpm --filter web typecheck
+pnpm --filter web lint
+```
 
-## Learn More
+## Conventions
 
-To learn more about Next.js, take a look at the following resources:
+- Tailwind only — no inline styles.
+- Server components fetch data; client components own interaction (`useState`, `onClick`).
+- SSR-rendered dates go through `lib/utils.ts` (`formatDate` / `formatDateTime` / `formatTime`) — locale-free `toLocaleString()` causes hydration mismatches.
+- See the root [CLAUDE.md](../../CLAUDE.md) for the full convention list and known gotchas.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Deploy
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Deployed to Vercel via git integration on pushes to `main` (project `spanlens-web`). No manual step.
