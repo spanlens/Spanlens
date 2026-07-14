@@ -45,6 +45,7 @@ export function Footer() {
               <Link href="/pricing" className="hover:text-text transition-colors">Pricing</Link>
               <Link href="/docs/quick-start" className="hover:text-text transition-colors">Quick start</Link>
               <Link href="/changelog" className="hover:text-text transition-colors">Changelog</Link>
+              <Link href="/benchmarks" className="hover:text-text transition-colors">Benchmarks</Link>
               <a href="https://blog.spanlens.io" className="hover:text-text transition-colors">Blog</a>
               <a href="https://status.spanlens.io" target="_blank" rel="noopener noreferrer" className="hover:text-text transition-colors">Status</a>
             </div>
@@ -89,6 +90,7 @@ export function Footer() {
               <Link href="/dpa" className="hover:text-text transition-colors">DPA</Link>
               <Link href="/subprocessors" className="hover:text-text transition-colors">Subprocessors</Link>
               <Link href="/refund" className="hover:text-text transition-colors">Refund policy</Link>
+              <Link href="/accessibility" className="hover:text-text transition-colors">Accessibility</Link>
               <a href="mailto:support@spanlens.io" className="hover:text-text transition-colors">Contact</a>
             </div>
           </div>

@@ -26,6 +26,7 @@ const ROUTE_LASTMOD: Record<string, string> = {
   '/pricing/gemini-2-0-flash': '2026-06-16',
   '/pricing/o3-mini': '2026-06-16',
   '/tools/llm-cost-calculator': '2026-06-16',
+  '/benchmarks': '2026-07-14',
   '/compare': '2026-06-01',
   '/compare/langfuse': '2026-06-10',
   '/compare/helicone': '2026-06-10',
@@ -97,6 +98,7 @@ const ROUTE_LASTMOD: Record<string, string> = {
   '/dpa': '2026-05-04',
   '/refund': '2026-05-04',
   '/subprocessors': '2026-05-04',
+  '/accessibility': '2026-07-14',
 }
 
 const MARKETING_ROUTES = [
@@ -120,6 +122,7 @@ const MARKETING_ROUTES = [
   '/pricing/gemini-2-0-flash',
   '/pricing/o3-mini',
   '/tools/llm-cost-calculator',
+  '/benchmarks',
   '/compare',
   '/compare/langfuse',
   '/compare/helicone',
@@ -201,6 +204,7 @@ const LEGAL_ROUTES = [
   '/dpa',
   '/refund',
   '/subprocessors',
+  '/accessibility',
 ] as const
 
 function lastModFor(path: string): Date {

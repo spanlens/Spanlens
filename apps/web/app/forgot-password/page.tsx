@@ -84,7 +84,7 @@ export default function ForgotPasswordPage() {
         </div>
         <div className="flex flex-col gap-0 max-w-[420px] mt-9">
           <ProofRow k="ingested this month" v="412,881,204 calls" />
-          <ProofRow k="p99 logging overhead" v="2.8ms" />
+          <ProofRow k="p99 proxy overhead" v="0.015 ms" />
           <ProofRow k="teams saving money" v="$7.2M / mo · aggregate" />
           <ProofRow k="self-hostable" v="Helm · Docker · binary" />
         </div>
