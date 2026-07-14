@@ -65,7 +65,7 @@ const faqs = [
   },
   {
     q: 'How much overhead does agent tracing add?',
-    a: 'For Spanlens, p99 ingestion overhead is under 3ms because logging happens async in a worker after the LLM response has already been streamed to the client. Tracing does not sit on the critical path. Span emission is fire-and-forget with a fallback queue if the ingest endpoint is briefly unreachable.',
+    a: 'Effectively none on the caller path. Logging happens asynchronously in a worker after the LLM response has already been streamed to the client, so tracing never sits on the critical path. The proxy itself adds only microseconds of synchronous overhead, which we publish as a reproducible benchmark at /benchmarks. Span emission is fire-and-forget with a fallback queue if the ingest endpoint is briefly unreachable.',
   },
 ]
 
