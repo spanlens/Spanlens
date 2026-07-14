@@ -6,9 +6,11 @@
 [![PyPI version](https://img.shields.io/pypi/v/spanlens.svg)](https://pypi.org/project/spanlens/)
 [![npm downloads](https://img.shields.io/npm/dm/@spanlens/sdk.svg)](https://www.npmjs.com/package/@spanlens/sdk)
 
-**Open-source LLM observability and monitoring.** Record every OpenAI / Anthropic / Gemini / Mistral / OpenRouter / Groq / DeepSeek / xAI / Cohere / Azure OpenAI / Ollama call with one line of code. Plugs into Vercel AI SDK, LangChain, and LlamaIndex too. Query the same data directly from Cursor, Claude Desktop, or Continue via the bundled [MCP server](https://www.npmjs.com/package/@spanlens/mcp-server). Get cost, latency, tokens, traces, anomalies, PII scan, and model-swap suggestions out of the box. Self-hostable. MIT.
+**Open-source LLM observability you can turn on in one line.** Point your OpenAI, Anthropic, or Gemini client at Spanlens and every call is logged with cost, tokens, latency, and full agent traces. No SDK rewrite, no platform migration. Eleven providers supported, plus native Vercel AI SDK, LangChain, and LlamaIndex integrations, and you can query it all from Cursor or Claude Desktop through the bundled [MCP server](https://www.npmjs.com/package/@spanlens/mcp-server). Self-hostable in one Docker command. MIT.
 
-> ⭐ **If Spanlens is useful to you, please [star the repo](https://github.com/spanlens/Spanlens). It takes a second and helps other developers find it.**
+**Why it exists.** I shipped an LLM app on OpenAI and Gemini and hit a wall. The provider dashboards showed total spend and nothing else. I could not tell which feature burned the most tokens, which model was cheapest per task, or what each endpoint actually cost. Spanlens is the layer I wanted. It turns on in one line, stays off the critical path, and is open source so you can self-host the exact code we run.
+
+> ⭐ **If Spanlens is useful to you, please [star the repo](https://github.com/spanlens/Spanlens). It takes a second, and it is the single biggest thing that helps other developers find the project.**
 
 > **Hosted**: [spanlens.io](https://www.spanlens.io) · **npm**: [`@spanlens/sdk`](https://www.npmjs.com/package/@spanlens/sdk) · **PyPI**: [`spanlens`](https://pypi.org/project/spanlens/) · **CLI**: [`@spanlens/cli`](https://www.npmjs.com/package/@spanlens/cli) · **MCP**: [`@spanlens/mcp-server`](https://www.npmjs.com/package/@spanlens/mcp-server) · **Status**: [status.spanlens.io](https://status.spanlens.io) · **Changelog**: [spanlens.io/changelog](https://www.spanlens.io/changelog)
 
@@ -47,6 +49,8 @@
 **Predictable bills, no quota cliff.** Free hits a hard `429` at 50K requests so a runaway loop in dev can't cost you money. Paid plans use a soft limit with authorized overage (Pro: +$8 / 100K, Team: +$5 / 100K) up to a hard cap you control, so a traffic spike charges you fairly instead of dropping requests.
 
 **Seats**: Free 1 · Pro 3 · Team 10 · Enterprise unlimited. Unlimited projects on every paid tier.
+
+> ⭐ Like where this is going? A [star](https://github.com/spanlens/Spanlens/stargazers) helps more developers find a lightweight, open alternative in a space full of heavy, acquired tools.
 
 ---
 
