@@ -80,8 +80,11 @@ export default function AboutPage() {
                 Spanlens on by changing one line, we have failed.
               </li>
               <li>
-                <strong className="text-text">Never on the critical path.</strong> p99 ingestion
-                overhead is under 3ms. If Spanlens fails, your request still completes.
+                <strong className="text-text">Never on the critical path.</strong> Logging runs
+                asynchronously after your response returns, so the proxy itself adds only
+                microseconds of synchronous overhead (
+                <Link href="/benchmarks" className="text-accent hover:opacity-80">see the benchmark</Link>
+                ). If Spanlens fails, your request still completes.
               </li>
               <li>
                 <strong className="text-text">All features, all plans, all builds.</strong> No
