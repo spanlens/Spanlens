@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { Check } from 'lucide-react'
 import { Footer } from '@/components/layout/footer'
 import { MarketingNav } from '@/components/layout/marketing-nav'
+import { BreadcrumbJsonLd } from '@/components/marketing/breadcrumb-jsonld'
 import { cn } from '@/lib/utils'
 
 const PRICING_DESCRIPTION =
@@ -252,6 +253,7 @@ export default function PricingPage() {
       />
       {/* Nav */}
       <MarketingNav />
+      <BreadcrumbJsonLd trail={[{ name: 'Pricing', path: '/pricing' }]} />
 
       <section className="max-w-7xl mx-auto px-6 py-24">
         <div className="text-center mb-10">
