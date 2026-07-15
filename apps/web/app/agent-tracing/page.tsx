@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { Footer } from '@/components/layout/footer'
 import { MarketingNav } from '@/components/layout/marketing-nav'
+import { BreadcrumbJsonLd } from '@/components/marketing/breadcrumb-jsonld'
 
 const DESCRIPTION =
   'AI agent tracing captures multi-step LLM workflows as waterfall span trees with critical path highlighting. Learn how to instrument LangChain, LangGraph, CrewAI, and the Vercel AI SDK with one line of code.'
@@ -92,6 +93,7 @@ export default function AgentTracingHub() {
         dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd) }}
       />
       <MarketingNav />
+      <BreadcrumbJsonLd trail={[{ name: 'Agent Tracing', path: '/agent-tracing' }]} />
 
       <article className="max-w-3xl mx-auto px-6 py-20">
         <h1 className="text-[40px] sm:text-[48px] font-semibold tracking-[-0.8px] text-text mb-3 leading-[1.05]">

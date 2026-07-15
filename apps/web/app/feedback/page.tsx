@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { MarketingNav } from '@/components/layout/marketing-nav'
+import { BreadcrumbJsonLd } from '@/components/marketing/breadcrumb-jsonld'
 import { Footer } from '@/components/layout/footer'
 import { FeedbackRoadmapClient } from './feedback-roadmap-client'
 
@@ -33,6 +34,7 @@ export default function FeedbackPage() {
   return (
     <div className="min-h-screen bg-bg">
       <MarketingNav subtitle="Feedback" />
+      <BreadcrumbJsonLd trail={[{ name: 'Feedback', path: '/feedback' }]} />
       <main className="max-w-3xl mx-auto px-6 py-12">
         <header className="mb-10">
           <h1 className="text-4xl font-bold tracking-tight mb-3">Feedback</h1>

@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { Footer } from '@/components/layout/footer'
 import { MarketingNav } from '@/components/layout/marketing-nav'
+import { BreadcrumbJsonLd } from '@/components/marketing/breadcrumb-jsonld'
 
 const DESCRIPTION =
   'LLM observability is the practice of logging, tracing, and analyzing every call your application makes to a large language model. This guide covers what to monitor, how to instrument, and how Spanlens compares to Langfuse, Helicone, and LangSmith.'
@@ -92,6 +93,7 @@ export default function LlmObservabilityHub() {
         dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd) }}
       />
       <MarketingNav />
+      <BreadcrumbJsonLd trail={[{ name: 'LLM Observability', path: '/llm-observability' }]} />
 
       <article className="max-w-3xl mx-auto px-6 py-20">
         <h1 className="text-[40px] sm:text-[48px] font-semibold tracking-[-0.8px] text-text mb-3 leading-[1.05]">

@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { Rss } from 'lucide-react'
 import { MarketingNav } from '@/components/layout/marketing-nav'
+import { BreadcrumbJsonLd } from '@/components/marketing/breadcrumb-jsonld'
 import { Footer } from '@/components/layout/footer'
 import { CHANGELOG_ENTRIES, type ChangelogEntry, type ChangelogTag } from '@/lib/changelog/entries'
 
@@ -71,6 +72,7 @@ export default function ChangelogPage() {
         dangerouslySetInnerHTML={{ __html: JSON.stringify(buildChangelogJsonLd(entries)) }}
       />
       <MarketingNav subtitle="Changelog" />
+      <BreadcrumbJsonLd trail={[{ name: 'Changelog', path: '/changelog' }]} />
 
       <main className="max-w-3xl mx-auto px-6 py-12">
         <header className="mb-12">

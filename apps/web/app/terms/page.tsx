@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { Footer } from '@/components/layout/footer'
 import { MarketingNav } from '@/components/layout/marketing-nav'
+import { BreadcrumbJsonLd } from '@/components/marketing/breadcrumb-jsonld'
 
 export const metadata = {
   alternates: { canonical: '/terms' },
@@ -15,6 +16,7 @@ export default function TermsPage() {
   return (
     <div className="min-h-screen bg-bg flex flex-col">
       <MarketingNav />
+      <BreadcrumbJsonLd trail={[{ name: 'Terms of Service', path: '/terms' }]} />
 
       <main className="flex-1 max-w-3xl mx-auto px-6 py-12 prose prose-stone
         prose-headings:scroll-mt-20

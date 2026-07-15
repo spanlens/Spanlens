@@ -109,6 +109,23 @@ const organizationJsonLd = {
   ],
 }
 
+// Canonical WebSite entity for the whole site. Sitewide top-level node so
+// crawlers and LLMs have a single WebSite to reconcile every page against —
+// other blocks only ever nest WebSite via `isPartOf`, which does not
+// establish a site-level entity on its own (2026-07-15 schema follow-up).
+// No `potentialAction`/SearchAction: the site has no /search route, and a
+// SearchAction pointing at a 404 target is worse than none.
+const websiteJsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'WebSite',
+  '@id': `${SITE_URL}/#website`,
+  name: 'Spanlens',
+  url: SITE_URL,
+  description: SITE_DESCRIPTION,
+  publisher: { '@id': `${SITE_URL}/#organization` },
+  inLanguage: 'en',
+}
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   // suppressHydrationWarning on the <html> tag silences hydration mismatch
   // warnings that come from third-party browser extensions injecting their
@@ -125,6 +142,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(organizationJsonLd) }}
+        />
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(websiteJsonLd) }}
         />
         {/* Pre-paint theme application — prevents a flash of the wrong theme.
             Emitted from the server <head> (real HTML), NOT from a client

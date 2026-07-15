@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { Footer } from '@/components/layout/footer'
 import { MarketingNav } from '@/components/layout/marketing-nav'
+import { BreadcrumbJsonLd } from '@/components/marketing/breadcrumb-jsonld'
 
 export const metadata = {
   alternates: { canonical: '/compare' },
@@ -58,6 +59,7 @@ export default function ComparePage() {
   return (
     <div className="min-h-screen bg-bg">
       <MarketingNav />
+      <BreadcrumbJsonLd trail={[{ name: 'Compare', path: '/compare' }]} />
 
       <section className="max-w-[1000px] mx-auto px-6 pt-20 pb-12">
         <h1 className="text-[40px] sm:text-[48px] font-semibold tracking-[-0.8px] text-text leading-[1.05]">
