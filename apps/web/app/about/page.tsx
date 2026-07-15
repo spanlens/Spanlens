@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { Footer } from '@/components/layout/footer'
 import { MarketingNav } from '@/components/layout/marketing-nav'
+import { BreadcrumbJsonLd } from '@/components/marketing/breadcrumb-jsonld'
 
 const ABOUT_DESCRIPTION =
   'Spanlens is an open-source LLM observability platform built by developers who shipped LLM apps to production and got tired of debugging cost spikes from a spreadsheet. MIT licensed, self-hostable.'
@@ -45,6 +46,7 @@ export default function AboutPage() {
         dangerouslySetInnerHTML={{ __html: JSON.stringify(aboutJsonLd) }}
       />
       <MarketingNav />
+      <BreadcrumbJsonLd trail={[{ name: 'About', path: '/about' }]} />
 
       <section className="max-w-3xl mx-auto px-6 py-20">
         <h1 className="text-[40px] sm:text-[48px] font-semibold tracking-[-0.8px] text-text mb-3 leading-[1.05]">
