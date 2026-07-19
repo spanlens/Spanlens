@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { ArrowRight, Check, Copy } from 'lucide-react'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -8,9 +8,8 @@ import { cn, formatDate } from '@/lib/utils'
 import { useUserDetail } from '@/lib/queries/use-users'
 import { Topbar } from '@/components/layout/topbar'
 
-// TODO: re-add `usePostHog()` + `user_detail_viewed` capture once the
-// PostHog provider lands on main (separate PR).
-
+// Payload design: docs/launch/2026-05-14_cache-stream-users.md §3.
+import { capture, hashUserId } from '@/lib/posthog'
 import { fmtCostSummary as fmtCost } from '@/lib/format'
 
 function fmtCount(n: number): string {
@@ -38,6 +37,10 @@ function CopyButton({ value }: { value: string }) {
 
 export function UserDetailClient({ userId }: { userId: string }) {
   const { data, isLoading, isError } = useUserDetail(userId)
+
+  useEffect(() => {
+    capture({ event: 'user_detail_viewed', properties: { user_id_hashed: hashUserId(userId) } })
+  }, [userId])
 
   const crumbs = [
     { label: 'Users', href: '/users' },
