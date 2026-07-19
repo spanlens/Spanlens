@@ -1,4 +1,5 @@
 import { supabaseAdmin } from './db.js'
+import { pingHeartbeat } from './cron-heartbeat.js'
 
 /**
  * Record one cron job execution. Never throws — a failed log write must not
@@ -30,6 +31,13 @@ export async function logCronRun(
     }
   } catch (err) {
     console.error(`[cron-logger] failed to record run for ${jobName}:`, err)
+  }
+  // External heartbeat on success — fires even if the log INSERT failed
+  // (the job itself succeeded; the heartbeat reports job health, not DB
+  // health). Single choke point: every cron routes through logCronRun,
+  // so no per-handler wiring is needed. No-op unless HEARTBEAT_<JOB> is set.
+  if (status === 'ok') {
+    await pingHeartbeat(jobName)
   }
 }
 
