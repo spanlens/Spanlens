@@ -17,6 +17,13 @@
 
 const CONSENT_KEY = 'spanlens.cookie-consent.v1'
 
+/**
+ * Fired on `window` whenever the user records a consent decision, so
+ * already-mounted integrations (e.g. the PostHog provider) can react
+ * without a page reload.
+ */
+export const CONSENT_CHANGED_EVENT = 'spanlens:consent-changed'
+
 export type ConsentCategory = 'analytics' | 'marketing'
 
 export interface ConsentState {
@@ -77,6 +84,7 @@ export function writeConsent(granted: Record<ConsentCategory, boolean>): Consent
     } catch {
       // localStorage disabled — the in-memory state below is the best we can do
     }
+    window.dispatchEvent(new CustomEvent(CONSENT_CHANGED_EVENT))
   }
   return state
 }
@@ -105,13 +113,15 @@ export function isMarketingAllowed(): boolean {
 }
 
 /**
- * Whether the consent banner should be visible to the user. Currently
- * returns `false` unconditionally because Spanlens does not use any
- * non-essential cookies — showing a banner for cookies that don't exist
- * would be misleading. Flip this to `!readConsent().decided` (or some
- * environment-flag-gated equivalent) at the same time you wire up the
- * first analytics integration.
+ * Whether the consent banner should be visible to the user.
+ *
+ * Gated on the PostHog key being configured: with no analytics SDK able
+ * to load, showing a banner for cookies that don't exist would be
+ * misleading (the pre-2026-07 state of this function). Client-only —
+ * callers must invoke from an effect to stay hydration-safe.
  */
 export function shouldShowBanner(): boolean {
-  return false
+  if (typeof window === 'undefined') return false
+  if (!process.env.NEXT_PUBLIC_POSTHOG_KEY) return false
+  return !readConsent().decided
 }

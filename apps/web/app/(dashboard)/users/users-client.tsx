@@ -5,9 +5,8 @@ import Link from 'next/link'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { ArrowDown, ArrowUp, ArrowUpDown, Check, Copy, Search, Users as UsersIcon } from 'lucide-react'
 
-// TODO: re-add `usePostHog()` + `users_page_viewed` / `users_row_clicked`
-// capture once PostHog provider lands on main. Event payloads designed
-// in docs/launch/2026-05-14_cache-stream-users.md §3.
+// Payload design: docs/launch/2026-05-14_cache-stream-users.md §3.
+import { capture, hashUserId } from '@/lib/posthog'
 import { Skeleton } from '@/components/ui/skeleton'
 import { cn, formatDate } from '@/lib/utils'
 import { useUsers } from '@/lib/queries/use-users'
@@ -208,6 +207,14 @@ export function UsersClient() {
     if (toIso) base.to = toIso
     return base
   }, [page, search, sortBy, sortDir, fromIso, toIso])
+
+  // Analytics: one event per distinct view state (sort / search / page).
+  useEffect(() => {
+    capture({
+      event: 'users_page_viewed',
+      properties: { sort_by: sortBy, sort_dir: sortDir, has_search: !!search, page },
+    })
+  }, [sortBy, sortDir, search, page])
   const { data, isLoading, isError } = useUsers(filters)
 
   const updateQuery = useCallback(function updateQuery(updates: Record<string, string | null>) {
@@ -253,7 +260,10 @@ export function UsersClient() {
       setFocusedIdx((i) => Math.max(0, i - 1))
     } else if (e.key === 'Enter' && focusedIdx >= 0 && focusedIdx < rows.length) {
       const row = rows[focusedIdx]
-      if (row) router.push(`/users/${encodeURIComponent(row.user_id)}`)
+      if (row) {
+        capture({ event: 'users_row_clicked', properties: { user_id_hashed: hashUserId(row.user_id) } })
+        router.push(`/users/${encodeURIComponent(row.user_id)}`)
+      }
     }
   }
 
@@ -483,6 +493,9 @@ export function UsersClient() {
                       href={`/users/${encodeURIComponent(u.user_id)}`}
                       aria-label={`Open user ${u.user_id}`}
                       className="absolute inset-0 z-[1]"
+                      onClick={() =>
+                        capture({ event: 'users_row_clicked', properties: { user_id_hashed: hashUserId(u.user_id) } })
+                      }
                     />
                     <span className="flex items-center gap-1.5 min-w-0">
                       <span className="truncate">{u.user_id}</span>

@@ -5,6 +5,8 @@ import './globals.css'
 import { Analytics } from '@vercel/analytics/next'
 import { QueryProvider } from '@/components/providers/query-provider'
 import { ThemeProvider } from '@/components/providers/theme-provider'
+import { PostHogProvider } from '@/components/providers/posthog-provider'
+import { CookieConsentBanner } from '@/components/cookie-consent-banner'
 
 const SITE_URL = 'https://www.spanlens.io'
 const SITE_DESCRIPTION =
@@ -160,9 +162,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className={`${GeistSans.variable} ${GeistMono.variable} antialiased`}>
         <QueryProvider>
           <ThemeProvider>
-            {children}
+            {/* PostHogProvider must sit inside QueryProvider —
+                PostHogIdentify uses useCurrentUser() (TanStack Query). */}
+            <PostHogProvider>
+              {children}
+            </PostHogProvider>
           </ThemeProvider>
         </QueryProvider>
+        <CookieConsentBanner />
         <Analytics />
       </body>
     </html>
