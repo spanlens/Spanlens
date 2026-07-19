@@ -1,5 +1,10 @@
 # Spanlens (AgentOps) ROADMAP
 
+> ⚠️ **이 문서는 2026-06-07 이후 동결 상태.** 이후 201커밋(PR #239→#427)이 미반영.
+> **현행 로드맵**: `docs/plans/platform-review-roadmap-2026-06.md` + `spanlens-remaining-work.md`
+> **현재 상태 스냅샷**: `docs/STATE-OF-REPO.md` (2026-07-19 통분석)
+> 아래 가격/한도 표기는 구버전임 — 현행: Free 50K / Pro $29 100K / Team $149 1M (`apps/web/lib/billing-plans.ts` 참조)
+
 > LLM 관찰성 SaaS · 100일 MVP · 런치 목표 2026.08.03 (Phase 4)
 > 수익 모델: Free / Starter $19 / Team $49 / Enterprise $99
 > 100일 현실 목표: 가입 500명, 유료 200명, MRR $3,800
@@ -101,7 +106,7 @@
 - [x] P11 알림 설정 UI (`/alerts` 페이지) — alert CRUD + 채널 CRUD + 최근 delivery audit.
 - [x] Resend/Slack/Discord notifier (`lib/notifiers.ts`) + `/cron/evaluate-alerts` (15분 주기 GHA) — threshold 넘으면 cooldown 체크 후 모든 활성 채널에 전달 + `alert_deliveries` 기록.
 - [x] **P15 In-app Billing/Upgrade 페이지** (`/billing`) — 현재 구독 요약 + 4-plan 카드 + Upgrade → Paddle hosted checkout URL redirect.
-- [ ] Paddle 프로덕션 KYC 신청 — Sandbox end-to-end 검증 후 사업자등록증 + 대표 신분증 + 웹사이트 URL + 이용약관 제출.
+- [x] Paddle 프로덕션 KYC 신청 — 완료. 2026-05-18 프로덕션 빌링 컷오버 (ir/04 참조).
 - [x] Paddle 사용량 기반 overage 인프라 — `lib/paddle-usage.ts` `computeAndReportOverages()` + `/cron/report-usage-overage` (매일 03:30 UTC). Starter/Team 별 overage price ID 환경변수로 주입. 프로덕션 전환은 KYC 통과 후.
 - [x] 무료 플랜 리밋 (10K req/mo) + Starter 100K + Team 500K — `/proxy/*`에 `enforceQuota` 미들웨어 + 429 응답 + `X-RateLimit-*` 헤더 + 대시보드 `QuotaBanner` (80% 경고, 100% 차단).
 - [x] 로그 보존 정책 (Free 7일 / Starter 30일 / Team 90일 / Enterprise 365일) — `prune_logs_by_retention()` PLPGSQL RPC + `/cron/prune-logs` (매일 03:00 UTC) — requests/traces/alert_deliveries 삭제.
@@ -109,7 +114,7 @@
 ### 2C. Phase 2 완성도 기준 (Week 8, 런치 전 내부 검증)
 > 런치 전에 반드시 걸려야 하는 품질 게이트. 런치 자체는 Phase 4.
 - [x] Paddle Sandbox end-to-end 검증 (signup → upgrade → Paddle.js 오버레이 → webhook → plan=starter, status=active) — 테스트 카드 `4242 4242 4242 4242` 로 전체 플로우 성공. `transaction.completed` 핸들러가 `fetchPaddleSubscription` 으로 billing period 보강하도록 수정 완료.
-- [ ] **Paddle 프로덕션 KYC 통과** + Production price ID 환경변수 전환 — **외부 의존, 유저 작업**. 사업자등록증 + 신분증 + 웹사이트 URL + 이용약관 제출 → 심사 1~2주.
+- [x] **Paddle 프로덕션 KYC 통과** + Production price ID 환경변수 전환 — 완료. 2026-05-18 프로덕션 빌링 라이브.
 - [ ] 에이전트 트레이싱 **내부 dogfood** 프로젝트 3개+ (본인 프로젝트들을 Spanlens로 관측) — **점진적**. SDK 배포 완료됐으므로 실제 서비스에 연결만 하면 됨. 현재 `projects=1, traces=0`.
 - [x] **셀프호스팅 공식 Docker 이미지** `docker pull ghcr.io/spanlens/spanlens-server:latest` 배포 — multi-stage node:22-alpine, non-root user, HEALTHCHECK 포함. `.github/workflows/docker-publish.yml` 로 amd64+arm64 자동 빌드. 3m 43s 소요. (※ GHCR 패키지 public 전환은 유저 수동 작업.)
 - [x] 스트리밍/논스트리밍 토큰·비용 ±1% 오차 유지 — server 39 + sdk 28 = 총 67 테스트 그린. OpenAI 프로덕션 streaming e2e 검증 완료.
@@ -148,7 +153,7 @@
 - [ ] 조직 단위 예산/쿼터 — Phase 2B `enforceQuota` 미들웨어로 org 레벨 request 한도는 충족됨. 멤버별 fine-grained 쿼터는 수요 검증 후 Phase 5+로 보류
 
 ### 3C. 고도화 (Week 12)
-- [ ] Postgres → ClickHouse 이관 옵션 검토 (>10M rows 시)
+- [x] Postgres → ClickHouse 이관 — **검토를 넘어 완전 이관 완료** (2026-05월). `requests` 테이블 ClickHouse 전용, CH 마이그레이션 8개. `docs/plans/clickhouse-migration.md` 참조.
 - [x] **Public API + OpenAPI 문서 공개** — **완료 (2026-04-27)**: 정적 OpenAPI 3.0 스펙 (20+ 엔드포인트) + `GET /api/v1/openapi.json` + `GET /api/v1/docs` Swagger UI (CDN) + `/docs/api` 문서 페이지 + docs 사이드바 링크
 - [x] 데이터 export (CSV/JSON) — `GET /api/v1/exports/requests?format=csv|json` + project/provider/model/status 필터 지원 (`apps/server/src/api/exports.ts`)
 - [ ] BigQuery 커넥터 베타 — Connect → Destinations UI placeholder 존재, 실제 커넥터 미구현

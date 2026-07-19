@@ -128,7 +128,7 @@ Overview draft (under 768 chars):
 > waterfalls, prompt A/B testing, and cost anomaly alerts with zero
 > code changes.
 >
-> Free tier covers 100k requests per month with 14-day retention. Pro
+> Free tier covers 50K requests per month with 14-day retention. Pro
 > raises the cap and adds 90-day retention, savings recommendations,
 > and team workspace features. Everything is MIT licensed and
 > self-hostable via Docker if you prefer to own the data plane.

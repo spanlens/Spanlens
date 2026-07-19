@@ -9,10 +9,8 @@ import { useModels, type ModelsByProvider } from '@/lib/queries/use-models'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ShareDialog } from '@/components/share/share-dialog'
 
-// TODO: re-add `usePostHog()` + `cache_breakdown_viewed` capture once the
-// PostHog provider lands on main (separate PR). The event payload is fully
-// designed — see docs/launch/2026-05-14_cache-stream-users.md §3.
-
+// Payload design: docs/launch/2026-05-14_cache-stream-users.md §3.
+import { capture } from '@/lib/posthog'
 import { fmtCostSummary as fmtCost } from '@/lib/format'
 
 type Tab = 'request' | 'response' | 'error'
@@ -22,6 +20,28 @@ export function RequestDetailClient({ id }: { id: string }) {
   // Parent passes `key={id}` so this component remounts on id change —
   // no setState-in-effect needed to reset the active tab.
   const [tab, setTab] = useState<Tab>('request')
+
+  // Analytics: fire once per request when the cache breakdown card renders
+  // (same condition as the card itself). Ref dedupes across refetches.
+  const cacheCapturedRef = useRef(false)
+  useEffect(() => {
+    if (!req || cacheCapturedRef.current) return
+    const cacheRead = req.cache_read_tokens ?? 0
+    const cacheWrite = req.cache_write_tokens ?? 0
+    if (cacheRead === 0 && cacheWrite === 0) return
+    cacheCapturedRef.current = true
+    capture({
+      event: 'cache_breakdown_viewed',
+      properties: {
+        provider: req.provider,
+        model: req.model,
+        cache_hit_rate: req.prompt_tokens
+          ? Number(((cacheRead / req.prompt_tokens) * 100).toFixed(1))
+          : 0,
+        cost_usd: req.cost_usd ?? 0,
+      },
+    })
+  }, [req])
 
   if (isLoading) {
     return (
