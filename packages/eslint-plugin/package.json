@@ -24,14 +24,14 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@typescript-eslint/utils": "^8.60.1"
+    "@typescript-eslint/utils": "^8.64.0"
   },
   "devDependencies": {
-    "@types/node": "^22.9.0",
-    "@typescript-eslint/rule-tester": "^8.60.1",
+    "@types/node": "^22.20.1",
+    "@typescript-eslint/rule-tester": "^8.64.0",
     "tsup": "^8.3.5",
     "typescript": "^6.0.3",
-    "vitest": "^3.2.4"
+    "vitest": "^3.2.7"
   },
   "peerDependencies": {
     "eslint": ">=9.0.0"
