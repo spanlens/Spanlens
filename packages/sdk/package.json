@@ -88,12 +88,12 @@
     "@google/generative-ai": { "optional": true }
   },
   "devDependencies": {
-    "@anthropic-ai/sdk": "^0.100.1",
+    "@anthropic-ai/sdk": "^0.112.3",
     "@google/generative-ai": "^0.24.1",
-    "@types/node": "^25.8.0",
-    "openai": "^6.42.0",
+    "@types/node": "^22.20.1",
+    "openai": "^6.48.0",
     "typescript": "^6.0.3",
-    "vitest": "^3.2.6"
+    "vitest": "^3.2.7"
   },
   "keywords": [
     "llm",
