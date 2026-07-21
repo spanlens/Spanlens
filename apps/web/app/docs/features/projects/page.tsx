@@ -168,28 +168,21 @@ export default function ProjectsDocs() {
           changes.
         </li>
         <li>
-          <strong>Deleted with a 72-hour grace period.</strong> The trash icon on a
-          Spanlens key or a provider key flips <code>is_active = false</code> right away
-          so the proxy stops accepting it, then queues a hard delete that runs every six
-          hours. While the row is in the queue you can restore it from{' '}
-          <a href="/settings">Settings</a> → <strong>Pending deletions</strong>. After the
-          grace window the hard delete runs and the row is gone for good.
+          <strong>Deleted immediately and permanently.</strong> The trash icon on a
+          Spanlens key or a provider key hard-deletes the row right away, the same way
+          key deletion works at OpenAI, Anthropic, or Stripe. The proxy stops accepting
+          the key within seconds (the auth cache is evicted on delete), and deleting a
+          Spanlens key also deletes every provider key nested under it. Deletion cannot
+          be undone; if it was a mistake, issue a fresh key and re-add the provider
+          credential from the provider&apos;s dashboard.
         </li>
       </ul>
 
-      <h3>Restoring an accidental deletion</h3>
       <p>
-        Misclicked the trash icon? Open <a href="/settings">Settings</a> →{' '}
-        <strong>Pending deletions</strong>. Every soft-deleted key, provider key, and
-        prompt version shows up there with a timer; click <em>Restore</em> to reactivate
-        the row. After the timer expires the row is hard-deleted and restore is no longer
-        possible — you&apos;d have to issue a fresh key (the SHA-256 hash is irreversible).
-      </p>
-      <p>
-        Audit events are recorded both for the original delete request
-        (<code>api_key.delete</code> / <code>provider_key.delete</code>) and for the
-        restore (<code>pending_deletion.restore</code>), so the trail stays intact even
-        when the action is reversed.
+        Every delete is recorded as an audit event (<code>api_key.delete</code> /{' '}
+        <code>provider_key.delete</code>) with the key&apos;s name and prefix, so the
+        trail of who deleted what stays intact. Existing request logs also stay intact —
+        rows from a deleted key render its name as <em>(deleted)</em>.
       </p>
 
       <p>
@@ -212,7 +205,7 @@ POST   /api/v1/api-keys/issue                { "name": "prod-backend",
                                                "projectId": "<uuid>" }
 # → { "id": "...", "key": "sl_live_..." }   ← shown ONCE
 PATCH  /api/v1/api-keys/:id                  { "is_active": false }    # toggle
-DELETE /api/v1/api-keys/:id                  # is_active=false + 72h delete queue
+DELETE /api/v1/api-keys/:id                  # immediate, permanent (cascades to provider keys)
 
 # ── Provider keys (under a specific Spanlens key) ─────────────
 GET    /api/v1/provider-keys?apiKeyId=<spanlens-key-uuid>
@@ -222,12 +215,7 @@ POST   /api/v1/provider-keys                 { "api_key_id": "<uuid>",
                                                "name": "prod-openai" }
 PATCH  /api/v1/provider-keys/:id             { "key": "sk-rotated..." }   # rotate
 PATCH  /api/v1/provider-keys/:id             { "name": "renamed" }        # rename
-DELETE /api/v1/provider-keys/:id             # is_active=false + 72h delete queue
-
-# ── Pending deletions queue (restore within 72h) ──────────────
-GET    /api/v1/pending-deletions             # active queue
-GET    /api/v1/pending-deletions/history     # terminal rows (executed or cancelled)
-POST   /api/v1/pending-deletions/:id/restore # cancel + flip is_active back to true`}</CodeBlock>
+DELETE /api/v1/provider-keys/:id             # immediate, permanent`}</CodeBlock>
 
       <h3>How requests get their project</h3>
       <p>

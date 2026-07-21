@@ -12,6 +12,12 @@ import { invalidatePromptName } from './prompt-cache.js'
  *      `hardDeleteByType()` for each due row, then stamps `executed_at`.
  *
  * The restore path lives in apps/server/src/api/pendingDeletions.ts.
+ *
+ * NOTE (2026-07-21): api_key and provider_key deletes are now immediate hard
+ * deletes (see apiKeys.ts / providerKeys.ts) — new enqueues only come from
+ * prompt_version. The api_key / provider_key branches below stay so the cron
+ * can drain rows queued before the switch and the restore path keeps working
+ * for them during their remaining grace window.
  */
 
 export type PendingResourceType = 'api_key' | 'provider_key' | 'prompt_version'

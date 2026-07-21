@@ -3,9 +3,9 @@ import { authJwt, type JwtContext } from '../middleware/authJwt.js'
 import { requireRole } from '../middleware/requireRole.js'
 import { supabaseAdmin } from '../lib/db.js'
 import { randomHex, sha256Hex } from '../lib/crypto.js'
-import { enqueueDeletion } from '../lib/pending-deletions.js'
 import { recordAuditEvent } from '../lib/audit-log.js'
 import { invalidateApiKeyCache } from '../middleware/authApiKey.js'
+import { resetProviderKeyNamesCache } from '../lib/requests-query.js'
 import { ApiError } from '../lib/errors.js'
 
 /**
@@ -277,55 +277,47 @@ apiKeysRouter.patch('/:id', requireEdit, async (c) => {
   return c.json({ success: true })
 })
 
-// DELETE /api/v1/api-keys/:id — soft delete via pending_deletions queue.
+// DELETE /api/v1/api-keys/:id — immediate hard delete.
 //
-// The key is immediately deactivated (is_active=false) so proxy traffic
-// stops within the next authApiKey check, but the row stays around for
-// ~72 hours so an accidental deletion can be undone from
-// /settings/pending-deletions. Cron in apps/server/api/cron.ts walks the
-// queue and hard-deletes due rows.
+// Key deletion is instant and permanent, matching how every major provider
+// (OpenAI, Anthropic, Stripe, GitHub) treats API keys: a deleted key is
+// cheap to reissue, so a grace window buys little and costs a lot in UI
+// ambiguity (a queued-for-deletion key could be silently resurrected via
+// the is_active toggle while cron still hard-deleted it later). Nested
+// provider keys go with it via provider_keys.api_key_id ON DELETE CASCADE.
 apiKeysRouter.delete('/:id', requireEdit, async (c) => {
   const keyId = c.req.param('id')
   const orgId = c.get('orgId')
-  const userId = c.get('userId')
   if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   const ownership = await loadKeyOwnership(keyId)
   if (!ownership) throw new ApiError('NOT_FOUND', 'API key not found')
   if (ownership.orgId !== orgId) throw new ApiError('FORBIDDEN', 'Access denied')
 
-  // Snapshot the row before deactivation so the audit log and any restore
-  // attempt have the full original state to work with.
+  // Snapshot before the delete: the audit log wants the original state and
+  // the auth cache is indexed by key_hash, which is gone after the delete.
   const { data: snapshot } = await supabaseAdmin
     .from('api_keys')
-    .select('*')
+    .select('id, name, scope, key_prefix, key_hash, project_id, organization_id')
     .eq('id', keyId)
     .maybeSingle()
   if (!snapshot) throw new ApiError('NOT_FOUND', 'API key not found')
 
-  const enqueued = await enqueueDeletion({
-    organizationId: orgId,
-    resourceType: 'api_key',
-    resourceId: keyId,
-    resourceSnapshot: snapshot as Record<string, unknown>,
-    requestedBy: userId ?? null,
-  })
+  const { error } = await supabaseAdmin
+    .from('api_keys')
+    .delete()
+    .eq('id', keyId)
+  if (error) throw new ApiError('INTERNAL_ERROR', 'Failed to delete API key')
 
-  if (!enqueued.ok) {
-    if (enqueued.code === 'ALREADY_PENDING') {
-      throw new ApiError('CONFLICT', 'Already queued for deletion')
-    }
-    throw new ApiError('INTERNAL_ERROR', enqueued.error ?? 'Failed to queue deletion')
-  }
-
-  // R-4/R-5: drop the auth cache entry for this key the instant the
-  // soft-delete is queued. Without this, the cached lookup could keep
-  // authenticating proxy traffic for up to 30s after the operator
-  // pressed delete — the exact incident the cache TTL choice tried to
-  // bound. The snapshot row carries `key_hash` (sha256 of the raw key),
-  // which is what the cache is indexed by.
+  // R-4/R-5: drop the auth cache entry immediately. Without this, the
+  // cached lookup could keep authenticating proxy traffic for up to 30s
+  // after the operator pressed delete.
   const snapshotKeyHash = (snapshot as { key_hash?: string }).key_hash
   if (snapshotKeyHash) invalidateApiKeyCache(snapshotKeyHash)
+
+  // The cascade removed this key's provider keys — reset the name cache so
+  // /requests renders "(deleted)" instead of stale names.
+  resetProviderKeyNamesCache()
 
   void recordAuditEvent(c, {
     action: 'api_key.delete',
@@ -334,14 +326,9 @@ apiKeysRouter.delete('/:id', requireEdit, async (c) => {
     metadata: {
       name: (snapshot as { name?: string }).name,
       scope: (snapshot as { scope?: string }).scope,
-      pending_deletion_id: enqueued.pendingId,
-      scheduled_for: enqueued.scheduledFor,
+      key_prefix: (snapshot as { key_prefix?: string }).key_prefix,
     },
   })
 
-  return c.json({
-    success: true,
-    pendingDeletionId: enqueued.pendingId,
-    scheduledFor: enqueued.scheduledFor,
-  })
+  return c.json({ success: true })
 })
