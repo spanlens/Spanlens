@@ -89,7 +89,9 @@ export function PendingDeletionsClient() {
           <div className="px-5 py-8 text-sm text-red-600">Failed to load.</div>
         ) : !active.data || active.data.length === 0 ? (
           <div className="px-5 py-8 text-sm text-[var(--text-muted)]">
-            Nothing pending. Deletions appear here for 72 hours before becoming permanent.
+            Nothing pending. Prompt version deletions appear here for 72 hours before
+            becoming permanent. API keys and provider keys are deleted immediately and
+            never appear in this queue.
           </div>
         ) : (
           <ul className="divide-y divide-[var(--border-strong)]">
