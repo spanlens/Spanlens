@@ -244,7 +244,9 @@ export function ProjectsClient() {
 
   // Delete confirms
   const [deleteApiKeyId, setDeleteApiKeyId] = useState<string | null>(null)
+  const [deleteApiKeyError, setDeleteApiKeyError] = useState<string | null>(null)
   const [deleteProvKeyId, setDeleteProvKeyId] = useState<string | null>(null)
+  const [deleteProvKeyError, setDeleteProvKeyError] = useState<string | null>(null)
   // Public-key revoke confirm — mirrors the Spanlens-key delete flow so a
   // single misclick can't revoke a workspace credential. Separate state from
   // deleteApiKeyId because the two dialogs describe different consequences.
@@ -385,8 +387,13 @@ export function ProjectsClient() {
 
   async function handleDeleteApiKey() {
     if (!deleteApiKeyId) return
-    await deleteApiKey.mutateAsync(deleteApiKeyId)
-    setDeleteApiKeyId(null)
+    setDeleteApiKeyError(null)
+    try {
+      await deleteApiKey.mutateAsync(deleteApiKeyId)
+      setDeleteApiKeyId(null)
+    } catch (err) {
+      setDeleteApiKeyError(err instanceof Error ? err.message : 'Failed to delete key')
+    }
   }
 
   async function handleRevokePublicKey() {
@@ -402,8 +409,13 @@ export function ProjectsClient() {
 
   async function handleDeleteProviderKey() {
     if (!deleteProvKeyId) return
-    await deleteProviderKey.mutateAsync(deleteProvKeyId)
-    setDeleteProvKeyId(null)
+    setDeleteProvKeyError(null)
+    try {
+      await deleteProviderKey.mutateAsync(deleteProvKeyId)
+      setDeleteProvKeyId(null)
+    } catch (err) {
+      setDeleteProvKeyError(err instanceof Error ? err.message : 'Failed to delete key')
+    }
   }
 
   function openDeleteProjectDialog(id: string, name: string) {
@@ -1437,20 +1449,26 @@ export function ProjectsClient() {
       {/* Delete Spanlens key confirm */}
       <Dialog
         open={deleteApiKeyId !== null}
-        onOpenChange={(open) => { if (!open) setDeleteApiKeyId(null) }}
+        onOpenChange={(open) => { if (!open) { setDeleteApiKeyId(null); setDeleteApiKeyError(null) } }}
       >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Delete Spanlens key</DialogTitle>
           </DialogHeader>
           <DialogDescription className="text-[12.5px] text-text-muted mt-1">
-            All provider keys under this Spanlens key will also be deleted (CASCADE). Apps using
-            this key will stop working immediately.
+            This permanently deletes the key right away and cannot be undone. All
+            provider keys under this Spanlens key are deleted with it, and apps
+            using this key stop working immediately.
           </DialogDescription>
 
           <div className="space-y-4 mt-2">
+            {deleteApiKeyError && (
+              <div className="rounded-md border border-bad/30 bg-bad/10 px-3 py-2 text-[12px] text-bad">
+                {deleteApiKeyError}
+              </div>
+            )}
             <div className="flex gap-3">
-              <GhostBtn className="flex-1" onClick={() => setDeleteApiKeyId(null)}>
+              <GhostBtn className="flex-1" onClick={() => { setDeleteApiKeyId(null); setDeleteApiKeyError(null) }}>
                 Cancel
               </GhostBtn>
               <button
@@ -1506,21 +1524,26 @@ export function ProjectsClient() {
       {/* Delete provider key confirm */}
       <Dialog
         open={deleteProvKeyId !== null}
-        onOpenChange={(open) => { if (!open) setDeleteProvKeyId(null) }}
+        onOpenChange={(open) => { if (!open) { setDeleteProvKeyId(null); setDeleteProvKeyError(null) } }}
       >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Delete provider key</DialogTitle>
           </DialogHeader>
           <DialogDescription className="text-[12.5px] text-text-muted mt-1">
-            This provider key will be permanently removed. The parent Spanlens
-            key will fail when calling this provider until you add a new one.
-            Existing request logs stay intact.
+            This provider key is permanently removed right away and cannot be
+            undone. The parent Spanlens key will fail when calling this provider
+            until you add a new one. Existing request logs stay intact.
           </DialogDescription>
 
           <div className="space-y-4 mt-2">
+            {deleteProvKeyError && (
+              <div className="rounded-md border border-bad/30 bg-bad/10 px-3 py-2 text-[12px] text-bad">
+                {deleteProvKeyError}
+              </div>
+            )}
             <div className="flex gap-3">
-              <GhostBtn className="flex-1" onClick={() => setDeleteProvKeyId(null)}>
+              <GhostBtn className="flex-1" onClick={() => { setDeleteProvKeyId(null); setDeleteProvKeyError(null) }}>
                 Cancel
               </GhostBtn>
               <button

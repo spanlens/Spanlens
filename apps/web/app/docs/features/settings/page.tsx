@@ -199,22 +199,21 @@ export default function SettingsDocs() {
         silently swaps the underlying credential on the next request.
       </p>
 
-      <h3>Deactivating a provider key</h3>
+      <h3>Deleting a provider key</h3>
       <p>
-        The trash icon next to a provider key flips <code>is_active = false</code> right
-        away and queues a hard delete for 72 hours later. Subsequent requests for that
-        provider on that Spanlens key return <code>400 No active provider key</code>{' '}
-        until you add a new one. Restore the row from <strong>Pending deletions</strong>{' '}
-        if you mis-clicked — see <a href="/docs/features/projects#restoring-an-accidental-deletion">Restoring an accidental deletion</a>.
+        The trash icon next to a provider key deletes it immediately and permanently.
+        Subsequent requests for that provider on that Spanlens key return{' '}
+        <code>400 No active provider key</code> until you add a new one. If the delete
+        was a mistake, re-add the credential from the provider&apos;s dashboard — the
+        encrypted key is not recoverable.
       </p>
 
       <h3>Deleting a Spanlens key</h3>
       <p>
-        The trash icon next to a Spanlens key flips <code>is_active = false</code>{' '}
-        immediately (so apps using that key start failing with 401 right away) and queues
-        the hard delete for 72 hours later. Provider keys attached to the key stay around
-        for that window too. Cron runs every six hours and finalises any expired rows;
-        restore is possible until then.
+        The trash icon next to a Spanlens key deletes it immediately and permanently
+        (apps using that key start failing with 401 within seconds). Provider keys
+        attached to the key are deleted with it. Deletion cannot be undone; issue a
+        fresh key if you need to replace it.
       </p>
 
       <h3>API</h3>
@@ -223,7 +222,7 @@ GET    /api/v1/api-keys?projectId=<uuid>
 POST   /api/v1/api-keys/issue           { "name": "prod-backend", "projectId": "<uuid>" }
 # → { "id": ..., "key": "sl_live_..." }   ← shown ONCE
 PATCH  /api/v1/api-keys/:id             { "is_active": false }    # toggle
-DELETE /api/v1/api-keys/:id             # is_active=false + 72h delete queue
+DELETE /api/v1/api-keys/:id             # immediate, permanent (cascades to provider keys)
 
 # ── Provider keys (under a specific Spanlens key) ──────────────
 GET    /api/v1/provider-keys?apiKeyId=<spanlens-key-uuid>
@@ -231,12 +230,7 @@ POST   /api/v1/provider-keys            { "api_key_id": "<uuid>", "provider": "o
                                           "key": "sk-...", "name": "prod-openai" }
 PATCH  /api/v1/provider-keys/:id        { "key": "sk-rotated..." }   # rotate
 PATCH  /api/v1/provider-keys/:id        { "name": "renamed" }        # rename
-DELETE /api/v1/provider-keys/:id        # is_active=false + 72h delete queue
-
-# ── Pending deletions queue (restore within 72h) ───────────────
-GET    /api/v1/pending-deletions             # active queue
-GET    /api/v1/pending-deletions/history     # terminal rows
-POST   /api/v1/pending-deletions/:id/restore # cancel + reactivate`}</CodeBlock>
+DELETE /api/v1/provider-keys/:id        # immediate, permanent`}</CodeBlock>
 
       <h2>Security guarantees</h2>
       <ul>

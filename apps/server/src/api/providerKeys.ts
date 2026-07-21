@@ -4,7 +4,6 @@ import { requireRole } from '../middleware/requireRole.js'
 import { supabaseAdmin } from '../lib/db.js'
 import { getOrgClickhouse } from '../lib/clickhouse.js'
 import { aes256Encrypt } from '../lib/crypto.js'
-import { enqueueDeletion } from '../lib/pending-deletions.js'
 import { recordAuditEvent } from '../lib/audit-log.js'
 import { resetProviderKeyNamesCache } from '../lib/requests-query.js'
 import { validateOptionalUuid } from '../lib/params.js'
@@ -275,13 +274,13 @@ providerKeysRouter.post('/', requireEdit, async (c) => {
   return c.json({ success: true, data }, 201)
 })
 
-// DELETE /api/v1/provider-keys/:id — soft delete via pending_deletions queue.
+// DELETE /api/v1/provider-keys/:id — immediate hard delete.
 //
-// Provider keys cost real money when leaked, and accidental deletion is the
-// #1 inbound support ticket pattern. We trade the previous "delete means
-// delete" simplicity for a 72-hour grace window: the row is flipped
-// is_active=false right away so proxy calls fail immediately, and a cron
-// performs the hard delete unless the user restores it first.
+// Matches the api_keys DELETE contract: deletion is instant and permanent
+// (the 72-hour pending_deletions grace window was dropped — see apiKeys.ts
+// for the rationale). The encrypted provider key is unrecoverable after
+// this; if the delete was a mistake the user re-adds the key from the
+// provider's dashboard.
 //
 // The "(deleted)" rendering for orphaned ClickHouse rows still works after
 // hard delete — the fetchProviderKeyNames helper in lib/requests-query.ts
@@ -289,31 +288,22 @@ providerKeysRouter.post('/', requireEdit, async (c) => {
 providerKeysRouter.delete('/:id', requireEdit, async (c) => {
   const keyId = c.req.param('id')
   const orgId = c.get('orgId')
-  const userId = c.get('userId')
   if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
   const { data: snapshot } = await supabaseAdmin
     .from('provider_keys')
-    .select('*')
+    .select('id, provider, name')
     .eq('id', keyId)
     .eq('organization_id', orgId)
     .maybeSingle()
   if (!snapshot) throw new ApiError('NOT_FOUND', 'Provider key not found')
 
-  const enqueued = await enqueueDeletion({
-    organizationId: orgId,
-    resourceType: 'provider_key',
-    resourceId: keyId,
-    resourceSnapshot: snapshot as Record<string, unknown>,
-    requestedBy: userId ?? null,
-  })
-
-  if (!enqueued.ok) {
-    if (enqueued.code === 'ALREADY_PENDING') {
-      throw new ApiError('CONFLICT', 'Already queued for deletion')
-    }
-    throw new ApiError('INTERNAL_ERROR', enqueued.error ?? 'Failed to queue deletion')
-  }
+  const { error } = await supabaseAdmin
+    .from('provider_keys')
+    .delete()
+    .eq('id', keyId)
+    .eq('organization_id', orgId)
+  if (error) throw new ApiError('INTERNAL_ERROR', 'Failed to delete provider key')
 
   resetProviderKeyNamesCache()
 
@@ -324,16 +314,10 @@ providerKeysRouter.delete('/:id', requireEdit, async (c) => {
     metadata: {
       provider: (snapshot as { provider?: string }).provider,
       name: (snapshot as { name?: string }).name,
-      pending_deletion_id: enqueued.pendingId,
-      scheduled_for: enqueued.scheduledFor,
     },
   })
 
-  return c.json({
-    success: true,
-    pendingDeletionId: enqueued.pendingId,
-    scheduledFor: enqueued.scheduledFor,
-  })
+  return c.json({ success: true })
 })
 
 // PATCH /api/v1/provider-keys/:id — rotate (replace encrypted_key) and/or rename.
