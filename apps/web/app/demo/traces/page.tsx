@@ -49,10 +49,23 @@ function TraceDurationBar({
 // ── Filter / Sort types ────────────────────────────────────────
 
 type StatusFilter = 'all' | 'ok' | 'error' | 'running'
+type TimeRange = '1h' | '24h' | '7d' | '30d' | 'all'
 type SortField = 'started_at' | 'duration_ms' | 'total_cost_usd' | 'span_count'
 type SortDir = 'asc' | 'desc'
 
 const GRID = '20px 1.4fr 1.2fr 0.6fr 0.8fr 0.8fr 0.9fr 1.2fr 1.2fr 0.5fr'
+
+// Rows shown per page. The static fixture is small, so 10 keeps the demo to a
+// couple of pages, enough to exercise the First / Prev / Next / Last controls.
+const PAGE_SIZE = 10
+
+// Millisecond span for each selectable time range. 'all' has no lower bound.
+const RANGE_MS: Record<Exclude<TimeRange, 'all'>, number> = {
+  '1h': 3_600_000,
+  '24h': 86_400_000,
+  '7d': 7 * 86_400_000,
+  '30d': 30 * 86_400_000,
+}
 
 function SortHeader({
   label, field, sortBy, sortDir, onSort,
@@ -81,9 +94,20 @@ function SortHeader({
 export default function DemoTracesPage() {
   const router = useRouter()
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
+  const [timeRange, setTimeRange] = useState<TimeRange>('all')
   const [nameSearch, setNameSearch] = useState('')
   const [sortBy, setSortBy] = useState<SortField>('started_at')
   const [sortDir, setSortDir] = useState<SortDir>('desc')
+  const [page, setPage] = useState(1)
+
+  // Stable mount-time snapshot for the time-range lower bound. Date.now() in a
+  // lazy useState initializer runs once (on mount) and is never used on the
+  // default 'all' path, so SSR and first client paint render identical rows.
+  const [now] = useState(() => Date.now())
+  const fromMs = useMemo(
+    () => (timeRange === 'all' ? null : now - RANGE_MS[timeRange]),
+    [timeRange, now],
+  )
 
   const traces = useMemo(() => {
     let list = DEMO_TRACES as TraceRow[]
@@ -95,6 +119,11 @@ export default function DemoTracesPage() {
       list = list.filter((t) => t.status === 'error')
     } else if (statusFilter === 'running') {
       list = list.filter((t) => t.status === 'running')
+    }
+
+    // Time range filter (static rows filtered by their own timestamp)
+    if (fromMs != null) {
+      list = list.filter((t) => new Date(t.started_at).getTime() >= fromMs)
     }
 
     // Search
@@ -119,7 +148,16 @@ export default function DemoTracesPage() {
       }
       return sortDir === 'desc' ? bv - av : av - bv
     })
-  }, [statusFilter, nameSearch, sortBy, sortDir])
+  }, [statusFilter, fromMs, nameSearch, sortBy, sortDir])
+
+  // Pagination derived values. currentPage is clamped so a filter that shrinks
+  // the result set never strands the user on an out-of-range page.
+  const totalPages = Math.max(1, Math.ceil(traces.length / PAGE_SIZE))
+  const currentPage = Math.min(Math.max(1, page), totalPages)
+  const pageRows = useMemo(
+    () => traces.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE),
+    [traces, currentPage],
+  )
 
   // Stat strip computations
   const withDuration = traces.filter((t) => t.duration_ms != null).map((t) => t.duration_ms!)
@@ -130,7 +168,7 @@ export default function DemoTracesPage() {
   const avgSpans = traces.length ? traces.reduce((s, t) => s + t.span_count, 0) / traces.length : null
   const errors = traces.filter((t) => t.status === 'error').length
 
-  const hasActiveFilters = statusFilter !== 'all' || nameSearch.trim() !== ''
+  const hasActiveFilters = statusFilter !== 'all' || timeRange !== 'all' || nameSearch.trim() !== ''
 
   function handleSort(field: SortField) {
     if (sortBy === field) {
@@ -143,7 +181,9 @@ export default function DemoTracesPage() {
 
   function handleClearFilters() {
     setStatusFilter('all')
+    setTimeRange('all')
     setNameSearch('')
+    setPage(1)
   }
 
   function handleRowClick(t: TraceRow) {
@@ -200,7 +240,7 @@ export default function DemoTracesPage() {
             <button
               key={v}
               type="button"
-              onClick={() => setStatusFilter(v)}
+              onClick={() => { setStatusFilter(v); setPage(1) }}
               className={cn(
                 'px-[10px] py-[3px] rounded-[3px] transition-colors',
                 statusFilter === v ? 'bg-text text-bg' : 'text-text-muted hover:text-text',
@@ -209,18 +249,32 @@ export default function DemoTracesPage() {
           ))}
         </div>
 
+        <div className="flex p-0.5 border border-border rounded-[5px] bg-bg-elev font-mono text-[10.5px] tracking-[0.03em]">
+          {(['1h', '24h', '7d', '30d', 'all'] as TimeRange[]).map((v) => (
+            <button
+              key={v}
+              type="button"
+              onClick={() => { setTimeRange(v); setPage(1) }}
+              className={cn(
+                'px-[10px] py-[3px] rounded-[3px] transition-colors',
+                timeRange === v ? 'bg-text text-bg' : 'text-text-muted hover:text-text',
+              )}
+            >{v === 'all' ? 'All time' : v}</button>
+          ))}
+        </div>
+
         <div className="inline-flex items-center gap-2 px-[10px] py-[5px] border border-border rounded-[5px] bg-bg-elev font-mono text-[11px] text-text-muted">
           <span className="text-text-faint text-[12px]">⌕</span>
           <input
             value={nameSearch}
-            onChange={(e) => setNameSearch(e.target.value)}
+            onChange={(e) => { setNameSearch(e.target.value); setPage(1) }}
             placeholder="Search agent or trace ID…"
             className="w-44 bg-transparent outline-none placeholder:text-text-faint text-[11px]"
           />
           {nameSearch && (
             <button
               type="button"
-              onClick={() => setNameSearch('')}
+              onClick={() => { setNameSearch(''); setPage(1) }}
               className="text-text-faint hover:text-text transition-colors text-[12px] leading-none"
             >×</button>
           )}
@@ -274,7 +328,7 @@ export default function DemoTracesPage() {
               <SortHeader label="Age"      field="started_at"     sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
             </div>
 
-            {traces.map((t) => {
+            {pageRows.map((t) => {
               const isErr = t.status === 'error'
               const isRunning = t.status === 'running'
               return (
@@ -328,6 +382,53 @@ export default function DemoTracesPage() {
           </div>
         )}
       </div>
+
+      {/* Pagination footer — pages the static rows client-side. First / Last
+          let the user jump across the (small) result set, Prev / Next step by
+          one. currentPage is the clamped source of truth. */}
+      {traces.length > 0 && (
+        <div className="flex items-center justify-between px-[22px] py-3 border-t border-border shrink-0 gap-3 flex-wrap">
+          <span className="font-mono text-[11.5px] text-text-muted">
+            Page {currentPage} of {totalPages.toLocaleString('en-US')} · {pageRows.length} / {traces.length.toLocaleString('en-US')} total
+          </span>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setPage(1)}
+              disabled={currentPage <= 1}
+              aria-label="First page"
+              className="font-mono text-[11.5px] px-3 py-[5px] border border-border rounded-[5px] text-text-muted hover:text-text disabled:opacity-40 transition-colors"
+            >
+              « First
+            </button>
+            <button
+              type="button"
+              onClick={() => setPage(Math.max(1, currentPage - 1))}
+              disabled={currentPage <= 1}
+              className="font-mono text-[11.5px] px-3 py-[5px] border border-border rounded-[5px] text-text-muted hover:text-text disabled:opacity-40 transition-colors"
+            >
+              Previous
+            </button>
+            <button
+              type="button"
+              onClick={() => setPage(Math.min(totalPages, currentPage + 1))}
+              disabled={currentPage >= totalPages}
+              className="font-mono text-[11.5px] px-3 py-[5px] border border-border rounded-[5px] text-text-muted hover:text-text disabled:opacity-40 transition-colors"
+            >
+              Next
+            </button>
+            <button
+              type="button"
+              onClick={() => setPage(totalPages)}
+              disabled={currentPage >= totalPages}
+              aria-label="Last page"
+              className="font-mono text-[11.5px] px-3 py-[5px] border border-border rounded-[5px] text-text-muted hover:text-text disabled:opacity-40 transition-colors"
+            >
+              Last »
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
