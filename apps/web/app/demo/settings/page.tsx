@@ -9,7 +9,7 @@ import { cn } from '@/lib/utils'
 type TabId =
   | 'general' | 'members' | 'security' | 'audit-log' | 'system'
   | 'billing' | 'plan' | 'invoices'
-  | 'profile' | 'notifications' | 'preferences'
+  | 'profile' | 'auth-methods' | 'notifications' | 'preferences'
   | 'integrations' | 'webhooks' | 'opentelemetry'
 
 type NavItem = { id: TabId; label: string; crumbs: { label: string }[] }
@@ -37,6 +37,7 @@ const NAV: { group: string; items: NavItem[] }[] = [
     group: 'Account',
     items: [
       { id: 'profile', label: 'Profile', crumbs: [{ label: 'Demo' }, { label: 'Settings' }, { label: 'Profile' }] },
+      { id: 'auth-methods', label: 'Sign-in methods', crumbs: [{ label: 'Demo' }, { label: 'Settings' }, { label: 'Sign-in methods' }] },
       { id: 'notifications', label: 'Notifications', crumbs: [{ label: 'Demo' }, { label: 'Settings' }, { label: 'Notifications' }] },
       { id: 'preferences', label: 'Preferences', crumbs: [{ label: 'Demo' }, { label: 'Settings' }, { label: 'Preferences' }] },
     ],
@@ -405,6 +406,69 @@ function ProfileTab() {
   )
 }
 
+function SignInMethodsTab() {
+  const providers = [
+    { label: 'Google', glyph: 'G', connected: true, lastUsed: 'May 21, 2026' },
+    { label: 'GitHub', glyph: '⌥', connected: false, lastUsed: null as string | null },
+  ]
+  return (
+    <div className="max-w-[920px]">
+      <TabHeader
+        title="Sign-in methods"
+        description="Manage how you sign in to Spanlens. Connect multiple providers to the same account, then sign in with any of them."
+      />
+      <Section title="Linked providers">
+        <FormRow label="Email">
+          <div className="flex items-center justify-between gap-3 max-w-[460px]">
+            <div className="font-mono text-[12.5px] text-text">haeseong@acme.com</div>
+            <span className="font-mono text-[10px] uppercase tracking-[0.04em] px-2 py-0.5 rounded-full border border-accent-border bg-accent-bg text-accent">Primary</span>
+          </div>
+        </FormRow>
+        {providers.map((p) => (
+          <FormRow key={p.label} label={p.label}>
+            <div className="flex items-center justify-between gap-3 max-w-[460px]">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <span className="w-[18px] h-[18px] rounded-[4px] bg-bg-muted flex items-center justify-center font-mono text-[10px] text-text-muted font-bold shrink-0">
+                  {p.glyph}
+                </span>
+                {p.connected ? (
+                  <span className="font-mono text-[10px] uppercase tracking-[0.04em] px-2 py-0.5 rounded-full border border-good/20 bg-good-bg text-good">
+                    Connected{p.lastUsed ? ` · last used ${p.lastUsed}` : ''}
+                  </span>
+                ) : (
+                  <span className="font-mono text-[10px] uppercase tracking-[0.04em] px-2 py-0.5 rounded-full border border-border text-text-faint">
+                    Not connected
+                  </span>
+                )}
+              </div>
+              <button
+                disabled
+                title="Disabled in demo"
+                className="h-9 px-4 rounded-[6px] border border-border bg-bg-elev text-[13px] text-text-muted opacity-60 cursor-not-allowed"
+              >
+                {p.connected ? 'Disconnect' : 'Connect'}
+              </button>
+            </div>
+          </FormRow>
+        ))}
+      </Section>
+      <Section title="Why connect multiple providers?">
+        <div className="text-[13px] text-text-muted leading-relaxed space-y-2">
+          <p>
+            One account, multiple ways in. Connect Google or GitHub to sign in faster the
+            next time and keep email as a fallback if a provider is unavailable.
+          </p>
+          <p>
+            Spanlens never receives your provider password. Disconnecting a provider
+            removes its OAuth token from this account immediately and cannot be undone
+            from the provider&apos;s side.
+          </p>
+        </div>
+      </Section>
+    </div>
+  )
+}
+
 function NotificationsTab() {
   return (
     <div className="max-w-[920px]">
@@ -537,6 +601,7 @@ function TabContent({ tab }: { tab: TabId }) {
     case 'plan': return <PlanTab />
     case 'invoices': return <InvoicesTab />
     case 'profile': return <ProfileTab />
+    case 'auth-methods': return <SignInMethodsTab />
     case 'notifications': return <NotificationsTab />
     case 'preferences': return <PreferencesTab />
     case 'integrations': return <IntegrationsTab />

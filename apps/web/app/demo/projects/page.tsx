@@ -1,9 +1,10 @@
 'use client'
 import Link from 'next/link'
 import { useMemo, useState } from 'react'
-import { Plus, Terminal, ExternalLink, Pencil, Trash2, Key as KeyIcon, Search, Check, Copy } from 'lucide-react'
+import { Plus, Terminal, ExternalLink, Pencil, Trash2, Key as KeyIcon, Search, Check, Copy, Gauge } from 'lucide-react'
 import { Topbar } from '@/components/layout/topbar'
 import { DemoExportButton } from '@/components/ui/demo-export-button'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
 
 type DemoProvKey = {
@@ -80,6 +81,69 @@ const DEMO_PROJECTS: DemoProject[] = [
   },
 ]
 
+// Workspace-scoped public keys (sl_live_pub_*). Read-only credentials safe for
+// MCP servers, BI tools, and read embeds. Values are masked the same way the
+// real product masks them (prefix … suffix), never the full secret.
+type DemoPublicKey = {
+  id: string
+  name: string
+  masked_value: string
+  is_active: boolean
+  last_used_label: string
+}
+
+const DEMO_PUBLIC_KEYS: DemoPublicKey[] = [
+  {
+    id: 'pub_01HZXC7Q2R8K3M5N6P7S8T9U0V',
+    name: 'Cursor MCP',
+    masked_value: 'sl_live_pub_9c2a…7f4e',
+    is_active: true,
+    last_used_label: 'last used today',
+  },
+  {
+    id: 'pub_01HZXD1W4S9L4N6P7Q8T9U0V1X',
+    name: 'Grafana embed',
+    masked_value: 'sl_live_pub_3b8d…2a1c',
+    is_active: true,
+    last_used_label: 'last used 3d ago',
+  },
+]
+
+// Static rate-limit config per Spanlens key, keyed by api key id. Mirrors the
+// real RateLimitsDialog: one optional key-level cap plus per-end-user caps.
+type DemoRateLimit = {
+  id: string
+  label: string
+  is_active: boolean
+}
+
+type DemoRateLimitConfig = {
+  keyLimit: DemoRateLimit | null
+  endUserLimits: DemoRateLimit[]
+}
+
+const DEMO_RATE_LIMITS: Record<string, DemoRateLimitConfig> = {
+  apk_01HZX9N8K3F2T7V6Q5R4S3D2W1: {
+    keyLimit: { id: 'rl-1', label: '600 requests per minute', is_active: true },
+    endUserLimits: [
+      { id: 'rl-2', label: 'free-tier: 20 requests per minute', is_active: true },
+      { id: 'rl-3', label: 'trial: 100 requests per day', is_active: false },
+    ],
+  },
+  apk_01HZX9P2L4G3U8W7R6S5T4E3X2: {
+    keyLimit: { id: 'rl-4', label: '120 requests per minute', is_active: true },
+    endUserLimits: [],
+  },
+  apk_01HZXA1Z9M5H4V8X7S6T5F4G3Y3: {
+    keyLimit: null,
+    endUserLimits: [],
+  },
+}
+
+function rateLimitConfigFor(apiKeyId: string): DemoRateLimitConfig {
+  return DEMO_RATE_LIMITS[apiKeyId] ?? { keyLimit: null, endUserLimits: [] }
+}
+
 function CopyIdButton({ value }: { value: string }) {
   const [copied, setCopied] = useState(false)
   return (
@@ -113,8 +177,93 @@ function projectMatches(p: DemoProject, q: string): boolean {
   )
 }
 
+/** Read-only limit row for the demo rate-limits dialog. */
+function DemoLimitRow({ label, isActive }: { label: string; isActive: boolean }) {
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-[6px] border border-border bg-bg-elev px-3 py-2">
+      <span className={cn('text-[12.5px]', isActive ? 'text-text' : 'text-text-faint line-through')}>
+        {label}
+      </span>
+      <span className="font-mono text-[10px] uppercase tracking-[0.04em] text-text-faint shrink-0">
+        {isActive ? 'active' : 'disabled'}
+      </span>
+    </div>
+  )
+}
+
+/**
+ * Static, read-only mirror of the real per-key RateLimitsDialog. Opening it is
+ * a safe read interaction, but every mutation control is disabled with the same
+ * "Disabled in demo" affordance used elsewhere on this page.
+ */
+function DemoRateLimitsDialog({
+  apiKey,
+  open,
+  onClose,
+}: {
+  apiKey: { id: string; name: string } | null
+  open: boolean
+  onClose: () => void
+}) {
+  const config = apiKey ? rateLimitConfigFor(apiKey.id) : { keyLimit: null, endUserLimits: [] }
+  return (
+    <Dialog open={open} onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Rate limits</DialogTitle>
+        </DialogHeader>
+        <DialogDescription className="text-[12.5px] text-text-muted mt-1">
+          Throttle traffic through <span className="font-mono">{apiKey?.name}</span>. A request over
+          a configured limit gets a 429. Per-end-user limits bucket on the{' '}
+          <code>x-spanlens-user</code> header.
+        </DialogDescription>
+
+        <div className="mt-3 space-y-6">
+          {/* Key-level limit */}
+          <section className="space-y-2">
+            <h3 className="text-[12.5px] font-medium text-text">Key limit</h3>
+            {config.keyLimit ? (
+              <DemoLimitRow label={config.keyLimit.label} isActive={config.keyLimit.is_active} />
+            ) : (
+              <p className="text-[11.5px] text-text-faint">No key-level limit set.</p>
+            )}
+          </section>
+
+          {/* Per-end-user limits */}
+          <section className="space-y-2">
+            <h3 className="text-[12.5px] font-medium text-text">Per end-user limits</h3>
+            {config.endUserLimits.length === 0 ? (
+              <p className="text-[11.5px] text-text-faint">
+                None yet. Add a cap for a specific end-user identifier.
+              </p>
+            ) : (
+              config.endUserLimits.map((l) => (
+                <DemoLimitRow key={l.id} label={l.label} isActive={l.is_active} />
+              ))
+            )}
+          </section>
+
+          <div className="flex items-center justify-between gap-3 border-t border-border pt-4">
+            <p className="text-[11.5px] text-text-faint">Sign up to configure rate limits for your keys.</p>
+            <button
+              type="button"
+              disabled
+              title="Disabled in demo"
+              className="text-[12px] px-3 py-[5px] h-[28px] rounded-[5px] bg-text text-bg font-medium opacity-60 cursor-not-allowed shrink-0"
+            >
+              Save
+            </button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 export default function DemoProjectsPage() {
   const [query, setQuery] = useState('')
+  // Rate-limits dialog target (Spanlens key). null = closed.
+  const [rateLimitsKey, setRateLimitsKey] = useState<{ id: string; name: string } | null>(null)
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -206,6 +355,64 @@ export default function DemoProjectsPage() {
 
       <div className="flex-1">
         <div className="px-7 py-6 max-w-4xl">
+          {/* Public Keys card — workspace-level credentials for MCP servers,
+              BI tools, and read embeds. Sits above the project list so it reads
+              as a distinct workspace-scope concept. */}
+          <div className="rounded-xl border border-border bg-bg-elev px-5 py-4 mb-6">
+            <div className="flex items-start justify-between gap-4 mb-3">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 mb-0.5">
+                  <h2 className="text-[14px] font-semibold text-text">Public keys</h2>
+                  <span className="font-mono text-[9.5px] uppercase tracking-[0.05em] px-1.5 py-0.5 rounded border border-border text-text-faint">
+                    workspace
+                  </span>
+                </div>
+                <p className="text-[12px] text-text-muted">
+                  Read-only credentials safe for MCP servers, BI tools, and embeds. Cannot make LLM calls or ingest traces.
+                </p>
+              </div>
+              <button
+                type="button"
+                disabled
+                title="Disabled in demo"
+                className="shrink-0 flex items-center gap-1.5 text-[12px] px-3 py-[5px] h-[28px] rounded-[5px] bg-text text-bg font-medium opacity-60 cursor-not-allowed"
+              >
+                <Plus className="h-3.5 w-3.5" /> New public key
+              </button>
+            </div>
+
+            <ul className="divide-y divide-border rounded-md border border-border bg-bg/40">
+              {DEMO_PUBLIC_KEYS.map((key) => (
+                <li key={key.id} className="flex items-center gap-3 px-3 py-2.5">
+                  <KeyIcon className="h-3.5 w-3.5 text-text-faint shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <div
+                      className={cn(
+                        'text-[13px] font-medium truncate',
+                        !key.is_active && 'line-through text-text-faint',
+                      )}
+                    >
+                      {key.name}
+                    </div>
+                    <div className="font-mono text-[10.5px] text-text-faint mt-0.5">
+                      {key.masked_value}
+                      <span className="ml-2">· {key.last_used_label}</span>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    disabled
+                    title="Disabled in demo"
+                    aria-label="Revoke public key"
+                    className="text-text-faint opacity-60 cursor-not-allowed p-1"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+
           <div className="mb-5">
             <h1 className="text-[22px] font-semibold text-text tracking-[-0.4px] mb-1">Projects &amp; Keys</h1>
             <p className="text-[13px] text-text-muted">
@@ -334,6 +541,14 @@ export default function DemoProjectsPage() {
                             </div>
                             <button
                               type="button"
+                              onClick={() => setRateLimitsKey({ id: key.id, name: key.name })}
+                              className="flex items-center gap-1.5 text-[12px] px-3 py-[5px] h-[28px] shrink-0 rounded-[5px] border border-border bg-bg-elev text-text-muted hover:text-text transition-colors"
+                              title="Configure rate limits for this key"
+                            >
+                              <Gauge className="h-3.5 w-3.5" /> Rate limits
+                            </button>
+                            <button
+                              type="button"
                               disabled
                               className="hidden sm:flex items-center gap-1.5 text-[12px] px-3 py-[5px] h-[28px] shrink-0 rounded-[5px] border border-border bg-bg-elev text-text-muted opacity-60 cursor-not-allowed"
                               title="Disabled in demo"
@@ -417,6 +632,13 @@ export default function DemoProjectsPage() {
           )}
         </div>
       </div>
+
+      {/* Rate limits dialog (per Spanlens key) — read-only static view */}
+      <DemoRateLimitsDialog
+        apiKey={rateLimitsKey}
+        open={rateLimitsKey !== null}
+        onClose={() => setRateLimitsKey(null)}
+      />
     </div>
   )
 }
