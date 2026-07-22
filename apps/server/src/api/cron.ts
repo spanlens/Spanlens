@@ -242,7 +242,14 @@ cronRouter.get('/recommend-savings-alerts', async (c) => {
   }
 })
 
-// ── Webhook retry (every 5 minutes) ────────────────────────────
+// ── Webhook retry (every 5 minutes when scheduled) ─────────────
+// INTENTIONALLY UNSCHEDULED as of 2026-07-22: no scheduler (vercel.json,
+// cron-server.yml, or Better Stack) fires this, and cron_job_runs shows
+// zero executions. Safe because the outbound-webhooks feature has zero
+// production usage (0 configured, 0 deliveries). When webhooks ship to
+// customers, add a `*/5 * * * *` job for /cron/retry-webhooks to
+// .github/workflows/cron-server.yml (and/or Better Stack) so failed
+// deliveries actually retry — otherwise a failed delivery never retries.
 cronRouter.get('/retry-webhooks', async (c) => {
   assertCronAuth(c.req.header('Authorization'))
 
