@@ -47,6 +47,25 @@ name: Cron — server sub-daily
 # the same endpoint is fine — every handler holds an advisory lock or
 # is naturally idempotent.
 #
+# Usage / billing crons reclaimed into IaC (2026-07-22): these four were
+# firing in production via an external Better Stack monitor but were
+# declared in NEITHER vercel.json NOR this file, so their schedule lived
+# only in Better Stack's dashboard. If that monitor is ever deleted they
+# stop silently. Adding them here makes the schedule version-controlled
+# and gives defense-in-depth; Better Stack stays as the primary/backup.
+# Cadences match the observed production runs in cron_job_runs.
+#
+#   /cron/aggregate-usage           hourly at :00
+#     Rolls raw usage into usage_daily. Silent = usage rollups stall.
+#   /cron/check-quota-warnings      hourly at :15
+#     80/100% quota warning emails + dashboard banner. Silent = users
+#     hit their cap with no warning.
+#   /cron/prune-logs                daily 03:00
+#     Retention pruning + rate-limit bucket cleanup. Silent = tables grow.
+#   /cron/report-usage-overage      daily 03:30
+#     Paddle usage-based overage reporting. Silent = overage revenue is
+#     never billed. Highest-stakes of the four.
+#
 # Required secret: CRON_SECRET in Settings → Secrets, matching the
 # Vercel env var of the same name (the handler compares against it).
 #
@@ -72,6 +91,8 @@ on:
     - cron: '15 3 * * *'       # daily 03:15 — purge-proxy-cache
     - cron: '0 9 * * 1'        # weekly Monday 09:00 — stale-key-reminders + weekly-digest
     - cron: '30 */6 * * *'     # every 6h at :30 — detect-data-silence
+    - cron: '15 * * * *'       # hourly :15 — check-quota-warnings
+    - cron: '30 3 * * *'       # daily 03:30 — report-usage-overage
   workflow_dispatch:
 
 concurrency:
@@ -328,6 +349,79 @@ jobs:
           STATUS=$(curl -sS -o /tmp/body -w '%{http_code}' \
             -H "Authorization: Bearer $CRON_SECRET" \
             "$BASE_URL/cron/weekly-digest")
+          echo "Status: $STATUS"
+          cat /tmp/body
+          if [ "$STATUS" -ge 400 ]; then exit 1; fi
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+
+  # ── Usage / billing crons reclaimed into IaC (see header note) ───────
+  hourly-00-aggregate-usage:
+    name: Hourly at :00 (aggregate-usage)
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.schedule == '0 * * * *' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: POST /cron/aggregate-usage
+        run: |
+          BASE_URL='https://spanlens-server.vercel.app'
+          STATUS=$(curl -sS -o /tmp/body -w '%{http_code}' \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            "$BASE_URL/cron/aggregate-usage")
+          echo "Status: $STATUS"
+          cat /tmp/body
+          if [ "$STATUS" -ge 400 ]; then exit 1; fi
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+
+  hourly-15-check-quota-warnings:
+    name: Hourly at :15 (check-quota-warnings)
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.schedule == '15 * * * *' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: POST /cron/check-quota-warnings
+        run: |
+          BASE_URL='https://spanlens-server.vercel.app'
+          STATUS=$(curl -sS -o /tmp/body -w '%{http_code}' \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            "$BASE_URL/cron/check-quota-warnings")
+          echo "Status: $STATUS"
+          cat /tmp/body
+          if [ "$STATUS" -ge 400 ]; then exit 1; fi
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+
+  daily-03-prune-logs:
+    name: Daily 03:00 UTC (prune-logs)
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.schedule == '0 3 * * *' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: POST /cron/prune-logs
+        run: |
+          BASE_URL='https://spanlens-server.vercel.app'
+          STATUS=$(curl -sS -o /tmp/body -w '%{http_code}' \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            "$BASE_URL/cron/prune-logs")
+          echo "Status: $STATUS"
+          cat /tmp/body
+          if [ "$STATUS" -ge 400 ]; then exit 1; fi
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+
+  daily-03-30-report-usage-overage:
+    name: Daily 03:30 UTC (report-usage-overage)
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.schedule == '30 3 * * *' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: POST /cron/report-usage-overage
+        run: |
+          BASE_URL='https://spanlens-server.vercel.app'
+          STATUS=$(curl -sS -o /tmp/body -w '%{http_code}' \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            "$BASE_URL/cron/report-usage-overage")
           echo "Status: $STATUS"
           cat /tmp/body
           if [ "$STATUS" -ge 400 ]; then exit 1; fi
