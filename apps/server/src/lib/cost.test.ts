@@ -28,6 +28,41 @@ describe('calculateCost — basic (no cache)', () => {
     expect(cost).not.toBeNull()
     expect(cost!.totalCost).toBeCloseTo(0.00015, 8)
   })
+
+  // Negative regression guards for the boundary check in lookupPrice
+  // (CLAUDE.md gotcha #2). A naive `model.startsWith(key)` would let a
+  // shorter key bleed into a longer, unrelated model and mis-bill it; the
+  // boundary check (`model === key || model.startsWith(key + '-')`) must
+  // reject any prefix that is not followed by a version boundary.
+  test('no bleed: "gpt-5.55" does not inherit the "gpt-5.5" price', () => {
+    // FALLBACK_PRICES has "gpt-5.5" but no "gpt-5.55". Naive startsWith would
+    // match "gpt-5.5" and bill at 5.0/1M; the boundary check rejects it
+    // (next char is "5", not "-"), and no other key is a boundary prefix, so
+    // the result must be null rather than a silently wrong cost.
+    expect(
+      calculateCost('openai', 'gpt-5.55', { promptTokens: 1000, completionTokens: 0 }),
+    ).toBeNull()
+  })
+
+  test('no bleed: "gpt-4o" resolves to gpt-4o, not the shorter "gpt-4" key', () => {
+    // Both "gpt-4" (30/1M) and "gpt-4o" (2.5/1M) exist. Exact match must win;
+    // a bleed to "gpt-4" would bill 12x too high.
+    const cost = calculateCost('openai', 'gpt-4o', { promptTokens: 1000, completionTokens: 0 })
+    expect(cost).not.toBeNull()
+    expect(cost!.totalCost).toBeCloseTo(0.0025, 8) // 1000/1M x 2.5, not x 30
+  })
+
+  test('longest boundary prefix wins: dated "gpt-4-turbo" variant is not billed as bare "gpt-4"', () => {
+    // "gpt-4-turbo-2099-01-01" is a boundary prefix of both "gpt-4" (30/1M)
+    // and "gpt-4-turbo" (10/1M). The longest boundary prefix ("gpt-4-turbo")
+    // must win.
+    const cost = calculateCost('openai', 'gpt-4-turbo-2099-01-01', {
+      promptTokens: 1000,
+      completionTokens: 0,
+    })
+    expect(cost).not.toBeNull()
+    expect(cost!.totalCost).toBeCloseTo(0.01, 8) // 1000/1M x 10, not x 30
+  })
 })
 
 describe('calculateCost — cache breakdown', () => {
