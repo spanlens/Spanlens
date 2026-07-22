@@ -36,7 +36,28 @@ const RequestChart = dynamic(
     import('@/components/dashboard/request-chart').then((m) => m.RequestChart),
   { ssr: false, loading: () => <div className="h-[220px]" /> },
 )
+// recharts-heavy breakdown cards — same ssr:false treatment as RequestChart
+// (ResizeObserver isn't available during SSR, so a server render produces a
+// 0-width SVG that mismatches the client paint — CLAUDE.md gotcha #22 D).
+const SpendForecastCard = dynamic(
+  () => import('@/components/dashboard/spend-forecast').then((m) => m.SpendForecastCard),
+  { ssr: false, loading: () => <div className="h-[320px]" /> },
+)
+const CostBreakdownCard = dynamic(
+  () => import('@/components/dashboard/cost-breakdown').then((m) => m.CostBreakdownCard),
+  { ssr: false, loading: () => <div className="h-[290px]" /> },
+)
+const TokenTrendsCard = dynamic(
+  () => import('@/components/dashboard/token-trends').then((m) => m.TokenTrendsCard),
+  { ssr: false, loading: () => <div className="h-[260px]" /> },
+)
+const ErrorDistributionCard = dynamic(
+  () => import('@/components/dashboard/error-distribution').then((m) => m.ErrorDistributionCard),
+  { ssr: false, loading: () => <div className="h-[260px]" /> },
+)
 import { cn } from '@/lib/utils'
+import { TimeRangeSelector, type CustomRange } from '@/components/layout/topbar'
+import type { ModelStat } from '@/lib/queries/use-stats'
 import {
   DEMO_STATS_OVERVIEW,
   DEMO_TIMESERIES,
@@ -45,7 +66,23 @@ import {
   DEMO_ANOMALIES,
   DEMO_ALERTS,
   DEMO_RECOMMENDATIONS,
+  DEMO_SPEND_FORECAST,
+  DEMO_PROMPTS,
+  DEMO_SECURITY_SUMMARY,
 } from '@/lib/demo-data'
+
+// ── Local fixture ──────────────────────────────────────────────
+// CostBreakdownCard consumes the ModelStat shape (requests / avgLatencyMs /
+// errorRate), which the shared DEMO_MODELS export doesn't carry. Derive a
+// static ModelStat[] here rather than editing the shared fixture file.
+// Module-level const so the reference stays stable across renders.
+const DEMO_MODEL_STATS: ModelStat[] = [
+  { provider: 'openai', model: 'gpt-4o', requests: 842, totalCostUsd: 38.24, avgLatencyMs: 4600, errorRate: 0.021 },
+  { provider: 'anthropic', model: 'claude-sonnet-4-5', requests: 624, totalCostUsd: 29.84, avgLatencyMs: 5200, errorRate: 0.014 },
+  { provider: 'openai', model: 'gpt-4o-mini', requests: 748, totalCostUsd: 8.42, avgLatencyMs: 520, errorRate: 0.008 },
+  { provider: 'anthropic', model: 'claude-haiku-4-5', requests: 182, totalCostUsd: 4.21, avgLatencyMs: 1840, errorRate: 0.011 },
+  { provider: 'google', model: 'gemini-2.0-flash', requests: 85, totalCostUsd: 0.98, avgLatencyMs: 860, errorRate: 0.005 },
+]
 
 // ── Helpers ────────────────────────────────────────────────────
 
@@ -161,6 +198,28 @@ export default function DemoDashboardPage() {
   const firingAlert = DEMO_ALERTS.find((a) => a.is_active && a.last_triggered_at)!
   const topRec = DEMO_RECOMMENDATIONS[0]!
 
+  // Cosmetic-only time range control — the demo serves static fixtures, so
+  // changing the range doesn't refetch. It exists to mirror the real
+  // dashboard's affordance. Default '24h' matches the greeting copy below.
+  const [timeRange, setTimeRange] = useState('24h')
+  const [customRange, setCustomRange] = useState<CustomRange | null>(null)
+  // Export dropdown — writes are disabled in the demo (same convention as the
+  // other /demo pages: an alert that points visitors to signup).
+  const [exportOpen, setExportOpen] = useState(false)
+
+  // PII-leak attention card sources its count from the shared security
+  // fixture so the number stays consistent with /demo/security.
+  const piiHits = DEMO_SECURITY_SUMMARY
+    .filter((r) => r.type === 'pii')
+    .reduce((sum, r) => sum + r.count, 0)
+
+  // Top prompts by spend (mirrors the real dashboard's "Top prompts · spend").
+  const activePrompts = DEMO_PROMPTS
+    .filter((p) => (p.stats?.calls ?? 0) > 0)
+    .sort((a, b) => (b.stats?.totalCostUsd ?? 0) - (a.stats?.totalCostUsd ?? 0))
+    .slice(0, 5)
+  const topPromptMax = activePrompts[0]?.stats?.totalCostUsd ?? 0
+
   // Module-level demo data — React Compiler auto-memoizes; manual useMemo would
   // block compilation since the input array reference is module-stable.
   const sparkRequests = DEMO_TIMESERIES.slice(-10).map((d) => d.requests)
@@ -231,6 +290,44 @@ export default function DemoDashboardPage() {
             <span className="text-accent font-medium">
               {DEMO_ANOMALIES.filter((a) => !a.acknowledgedAt).length} anomalies
             </span>
+            <div className="ml-auto flex items-center gap-2 shrink-0">
+              <TimeRangeSelector
+                value={timeRange}
+                onChange={(v) => { setTimeRange(v); if (v !== 'custom') setCustomRange(null) }}
+                customRange={customRange}
+                onCustomRange={(r) => { setCustomRange(r); setTimeRange('custom') }}
+              />
+              <div className="relative shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setExportOpen((v) => !v)}
+                  className="font-mono text-[11px] text-text-muted hover:text-text border border-border rounded px-2.5 py-1 transition-colors"
+                >
+                  Export ↓
+                </button>
+                {exportOpen && (
+                  <>
+                    <div className="fixed inset-0 z-10" onClick={() => setExportOpen(false)} />
+                    <div className="absolute right-0 top-full mt-1 z-20 bg-bg-elev border border-border rounded shadow-sm min-w-[100px]">
+                      <button
+                        type="button"
+                        onClick={() => { setExportOpen(false); alert('Sign up to export data') }}
+                        className="w-full text-left px-3 py-2 font-mono text-[11px] text-text-muted hover:text-text hover:bg-bg transition-colors"
+                      >
+                        CSV
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setExportOpen(false); alert('Sign up to export data') }}
+                        className="w-full text-left px-3 py-2 font-mono text-[11px] text-text-muted hover:text-text hover:bg-bg transition-colors"
+                      >
+                        JSON
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
           </div>
         </div>
 
@@ -242,11 +339,27 @@ export default function DemoDashboardPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
             <AttnCard
               kind="critical"
+              title={`PII leak · ${piiHits} match${piiHits === 1 ? '' : 'es'} in last 24h`}
+              meta="email · phone · card · ssn · passport"
+              hint="Review flagged requests to identify the source prompt."
+              cta="Open security →"
+              href="/demo/security"
+            />
+            <AttnCard
+              kind="critical"
               title={`${topAnomaly.kind.replaceAll('_', ' ')} anomaly on ${topAnomaly.model}`}
               meta={`${topAnomaly.deviations.toFixed(1)}σ · ${topAnomaly.provider}`}
               hint={`Current ${topAnomaly.currentValue.toFixed(0)} vs baseline ${topAnomaly.baselineMean.toFixed(0)}`}
               cta="Investigate requests →"
               href="/demo/requests"
+            />
+            <AttnCard
+              kind="warning"
+              title="2 API keys idle 90+ days"
+              meta="ci-legacy-key · +1 more"
+              hint="Long-idle keys are usually forgotten. Revoke them before a leak happens."
+              cta="Review keys →"
+              href="/demo/settings"
             />
             <AttnCard
               kind="warning"
@@ -319,36 +432,85 @@ export default function DemoDashboardPage() {
           <RequestChart data={DEMO_TIMESERIES} firedAt={alertFiredAt} />
         </div>
 
-        {/* Models in use */}
-        <div className="px-[22px] py-[18px] border-b border-border">
-          <div className="flex items-center mb-3">
-            <span className="text-[14px] font-medium">Models in use · 24h</span>
-            <span className="flex-1" />
-            <Link href="/demo/requests" className="font-mono text-[10.5px] text-text-muted tracking-[0.03em] hover:text-text transition-colors">
-              All requests →
-            </Link>
+        {/* Token volume + Error distribution row */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 px-[22px] py-5 border-b border-border">
+          <TokenTrendsCard series={DEMO_TIMESERIES} rangeLabel="24h" />
+          <ErrorDistributionCard series={DEMO_TIMESERIES} rangeLabel="24h" />
+        </div>
+
+        {/* Cost-by-model breakdown */}
+        <div className="px-[22px] py-5 border-b border-border">
+          <CostBreakdownCard models={DEMO_MODEL_STATS} rangeLabel="24h" />
+        </div>
+
+        {/* Spend forecast — always monthly, independent of the range selector */}
+        <SpendForecastCard data={DEMO_SPEND_FORECAST} />
+
+        {/* 2-col: Top prompts + Models in use */}
+        <div className="grid grid-cols-1 md:grid-cols-2 border-b border-border">
+          {/* Top prompts by spend */}
+          <div className="px-[22px] py-[18px] border-b border-border md:border-b-0 md:border-r">
+            <div className="flex items-center mb-3">
+              <span className="text-[14px] font-medium">Top prompts · spend</span>
+              <span className="flex-1" />
+              <Link href="/demo/prompts" className="font-mono text-[10.5px] text-text-muted tracking-[0.03em] hover:text-text transition-colors">
+                All prompts →
+              </Link>
+            </div>
+            <div className="space-y-0">
+              {activePrompts.map((p, i) => {
+                const cost = p.stats?.totalCostUsd ?? 0
+                const pct = topPromptMax > 0 ? (cost / topPromptMax) * 100 : 0
+                return (
+                  <div key={p.id} className="flex items-center gap-3 py-2.5 border-b border-border last:border-0">
+                    <span className="font-mono text-[10.5px] text-text-faint w-4">#{i + 1}</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[12.5px] text-text truncate">{p.name}</div>
+                      <div className="h-1 bg-bg-muted rounded-full overflow-hidden mt-1">
+                        <div className="h-full bg-text rounded-full" style={{ width: `${pct}%` }} />
+                      </div>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <div className="font-mono text-[12px] text-text font-medium">{fmtCost(cost)}</div>
+                      <div className="font-mono text-[10px] text-text-faint">{(p.stats?.calls ?? 0).toLocaleString('en-US')} calls</div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
           </div>
-          <div className="overflow-x-auto">
-            <div style={{ minWidth: 300 }}>
-              <div className="grid font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint pb-2 border-b border-border" style={{ gridTemplateColumns: '1fr 80px 90px', gap: 10 }}>
-                <span>Model</span>
-                <span className="text-right">Reqs</span>
-                <span className="text-right">Cost</span>
-              </div>
-              {topModels.map((m) => (
-                <div
-                  key={`${m.provider}/${m.model}`}
-                  className="py-2 border-b border-border last:border-0 grid items-center font-mono"
-                  style={{ gridTemplateColumns: '1fr 80px 90px', gap: 10 }}
-                >
-                  <span className="text-[12.5px] text-text truncate">
-                    <span className="text-text-faint text-[10.5px] uppercase tracking-[0.04em] mr-1.5">{m.provider}</span>
-                    {m.model}
-                  </span>
-                  <span className="text-[12px] text-text-muted text-right">{m.requestCount.toLocaleString('en-US')}</span>
-                  <span className="text-[12px] text-text font-medium text-right">{fmtCost(m.totalCostUsd)}</span>
+
+          {/* Models in use */}
+          <div className="px-[22px] py-[18px]">
+            <div className="flex items-center mb-3">
+              <span className="text-[14px] font-medium">Models in use · 24h</span>
+              <span className="flex-1" />
+              <Link href="/demo/requests" className="font-mono text-[10.5px] text-text-muted tracking-[0.03em] hover:text-text transition-colors">
+                All requests →
+              </Link>
+            </div>
+            <div className="overflow-x-auto">
+              <div style={{ minWidth: 300 }}>
+                <div className="grid font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint pb-2 border-b border-border" style={{ gridTemplateColumns: '1fr 80px 90px', gap: 10 }}>
+                  <span>Model</span>
+                  <span className="text-right">Reqs</span>
+                  <span className="text-right">Cost</span>
                 </div>
-              ))}
+                {topModels.map((m) => (
+                  <div
+                    key={`${m.provider}/${m.model}`}
+                    className="py-2 border-b border-border last:border-0 grid items-center font-mono"
+                    style={{ gridTemplateColumns: '1fr 80px 90px', gap: 10 }}
+                  >
+                    <span className="text-[12.5px] text-text truncate">
+                      <span className="text-text-faint text-[10.5px] uppercase tracking-[0.04em] mr-1.5">{m.provider}</span>
+                      {m.model}
+                    </span>
+                    <span className="text-[12px] text-text-muted text-right">{m.requestCount.toLocaleString('en-US')}</span>
+                    <span className="text-[12px] text-text font-medium text-right">{fmtCost(m.totalCostUsd)}</span>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         </div>
