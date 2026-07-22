@@ -15,7 +15,7 @@ import {
   investigateRangeForObservationHours,
   type InvestigateRange,
 } from '@/lib/anomaly-investigate'
-import { cn } from '@/lib/utils'
+import { cn, formatDate } from '@/lib/utils'
 
 type KindFilter = 'all' | AnomalyKind
 type ConfidenceFilter = 'all' | 'high' | 'medium_plus'
@@ -325,7 +325,7 @@ function HistoryRow({ e, last }: { e: AnomalyHistoryEntry; last: boolean }) {
       </div>
       <div className="font-mono text-[11px] text-text-faint">{e.sampleCount} req</div>
       <div className="text-right">
-        <div className="font-mono text-[11px] text-text-muted">{e.detectedOn}</div>
+        <div className="font-mono text-[11px] text-text-muted">{formatDate(e.detectedOn)}</div>
         <div className="font-mono text-[10.5px] text-text-faint mt-0.5">
           {e.deviations.toFixed(1)}σ
         </div>
