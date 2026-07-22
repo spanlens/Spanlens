@@ -19,6 +19,46 @@ function fmtPct(v: number): string {
   return `${Math.round(v * 100)}%`
 }
 
+function fmtTokenCount(n: number): string {
+  if (n >= 1_000_000_000) return `${(n / 1_000_000_000).toFixed(1)}B`
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`
+  return n.toLocaleString('en-US')
+}
+
+// ── Prompt caching savings (static demo figures) ──────────────────────────────
+
+/**
+ * Passive savings already earned this month from prompt caching. Static demo
+ * numbers only — the real page derives these from ClickHouse cache-hit logs via
+ * useCacheSavings(). Module-level const so there is no runtime clock/random and
+ * no hydration mismatch (gotcha #22).
+ */
+const DEMO_CACHE_SAVINGS = {
+  savingsUsd: 46.18,
+  cacheReadTokens: 8_420_000,
+  cacheHitRequests: 3124,
+} as const
+
+function DemoCacheSavingsCard() {
+  const data = DEMO_CACHE_SAVINGS
+  return (
+    <div className="border-b border-border bg-good/5 px-[22px] py-[12px] shrink-0">
+      <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-good mb-1">
+        Prompt caching
+      </div>
+      <p className="text-[14px] font-medium text-text">
+        Prompt caching saved you <span className="text-good">{fmtUsd(data.savingsUsd)}</span> this month
+      </p>
+      <p className="text-[12px] text-text-faint mt-1 leading-relaxed">
+        Estimated from {fmtTokenCount(data.cacheReadTokens)} cached input tokens across{' '}
+        {data.cacheHitRequests.toLocaleString('en-US')} requests. Cached tokens are billed at a
+        discounted rate instead of the full input price.
+      </p>
+    </div>
+  )
+}
+
 // ── Confidence helpers ────────────────────────────────────────────────────────
 
 function getConfidence(r: ModelRecommendation): 'high' | 'medium' | 'low' {
@@ -261,6 +301,143 @@ function DemoPercentileGrid({
   )
 }
 
+// ── Compare-in-playground dialog (static demo) ────────────────────────────────
+
+/**
+ * Static replica of the real ComparePlaygroundDialog. The live version wires up
+ * prompt-version / API-key selectors and runs both models side by side; in the
+ * demo everything is read-only and the run button is disabled behind a sign-up
+ * notice. No data fetching, no mutations.
+ */
+function DemoComparePlaygroundDialog({
+  rec,
+  onClose,
+}: {
+  rec: ModelRecommendation
+  onClose: () => void
+}) {
+  const dynamicSavings = rec.estimatedMonthlySavingsUsd
+  const savingsPositive = dynamicSavings > 0
+
+  const selectClass =
+    'w-full font-mono text-[11.5px] text-text-faint px-3 py-2 border border-border rounded-[5px] bg-bg-elev appearance-none cursor-not-allowed opacity-60'
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Compare in playground</DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-5 mt-1">
+          {/* Context strip */}
+          <div className={cn(
+            'flex items-center gap-3 rounded-lg border px-4 py-3',
+            savingsPositive ? 'border-good/25 bg-good/5' : 'border-bad/25 bg-bad/5',
+          )}>
+            <span className={cn('text-base leading-none', savingsPositive ? 'text-good' : 'text-bad')}>
+              {savingsPositive ? '↓' : '↑'}
+            </span>
+            <div className="font-mono text-[12px] text-text leading-snug">
+              Switching{' '}
+              <span className="text-text-muted">{rec.currentModel}</span>
+              {' → '}
+              <span className="font-medium text-text">{rec.suggestedModel}</span>
+              {' '}
+              {savingsPositive
+                ? <>could save <span className="font-medium text-good">${dynamicSavings.toFixed(0)}/mo</span></>
+                : <>would cost <span className="font-medium text-bad">${Math.abs(dynamicSavings).toFixed(0)}/mo more</span></>
+              }
+            </div>
+          </div>
+
+          {/* Prompt version — shared, full-width (read-only in demo) */}
+          <div>
+            <label className="font-mono text-[10px] text-text-faint uppercase tracking-[0.05em] mb-1.5 block">
+              Prompt version
+            </label>
+            <div className={selectClass} aria-disabled>
+              Sign up to select a prompt version
+            </div>
+          </div>
+
+          {/* Two-column model cards */}
+          <div className="grid grid-cols-2 gap-3">
+            {/* Current model card */}
+            <div className="rounded-lg border border-border bg-bg-elev p-4 space-y-3">
+              <div>
+                <div className="font-mono text-[10px] uppercase tracking-[0.05em] font-medium text-text-faint mb-1">
+                  Current
+                </div>
+                <div className="font-mono text-[12px] text-text leading-tight">{rec.currentModel}</div>
+                <div className="font-mono text-[10.5px] text-text-muted mt-0.5">{rec.currentProvider}</div>
+              </div>
+              <div>
+                <label className="font-mono text-[10px] text-text-faint uppercase tracking-[0.05em] mb-1.5 block">
+                  API Key
+                </label>
+                <div className={selectClass} aria-disabled>Connect a key</div>
+              </div>
+            </div>
+
+            {/* Suggested model card */}
+            <div className={cn(
+              'rounded-lg border p-4 space-y-3',
+              savingsPositive ? 'border-good/30 bg-good/[0.03]' : 'border-bad/30 bg-bad/[0.03]',
+            )}>
+              <div className="flex items-start justify-between gap-2">
+                <div className={cn(
+                  'font-mono text-[10px] uppercase tracking-[0.05em] font-medium',
+                  savingsPositive ? 'text-good' : 'text-bad',
+                )}>
+                  Suggested
+                </div>
+                <span className={cn(
+                  'font-mono text-[10px] border px-1.5 py-0.5 rounded-[4px] whitespace-nowrap',
+                  savingsPositive
+                    ? 'text-good border-good/30 bg-good/10'
+                    : 'text-bad border-bad/30 bg-bad/10',
+                )}>
+                  {savingsPositive ? `$${dynamicSavings.toFixed(0)}/mo saved` : `$${Math.abs(dynamicSavings).toFixed(0)}/mo more`}
+                </span>
+              </div>
+              <div>
+                <div className="font-mono text-[12px] text-text leading-tight">{rec.suggestedModel}</div>
+                <div className="font-mono text-[10.5px] text-text-muted mt-0.5">{rec.suggestedProvider}</div>
+              </div>
+              <div>
+                <label className="font-mono text-[10px] text-text-faint uppercase tracking-[0.05em] mb-1.5 block">
+                  API Key
+                </label>
+                <div className={selectClass} aria-disabled>Connect a key</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Run button — disabled in demo */}
+          <button
+            type="button"
+            disabled
+            className="w-full font-mono text-[12.5px] px-4 py-3 rounded-[6px] bg-border text-text-faint cursor-not-allowed opacity-60 font-medium"
+          >
+            Run comparison
+          </button>
+
+          {/* Sign-up CTA */}
+          <div className="pt-1 border-t border-border text-center">
+            <a
+              href="/signup"
+              className="font-mono text-[11.5px] text-accent hover:underline underline-offset-2"
+            >
+              Sign up free to run side-by-side model comparisons →
+            </a>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 // ── Row renderer ─────────────────────────────────────────────────────────────
 
 interface RecRowProps {
@@ -269,6 +446,7 @@ interface RecRowProps {
   isAchieved?: boolean
   windowLabel: string
   onSimulate: (r: ModelRecommendation) => void
+  onCompare: (r: ModelRecommendation) => void
   onDismiss: (r: ModelRecommendation) => void
   onUnhide: (r: ModelRecommendation) => void
 }
@@ -279,6 +457,7 @@ function RecRow({
   isAchieved = false,
   windowLabel,
   onSimulate,
+  onCompare,
   onDismiss,
   onUnhide,
 }: RecRowProps) {
@@ -377,13 +556,22 @@ function RecRow({
       {/* Actions */}
       <div className="flex justify-end gap-1.5 flex-wrap">
         {!isAchieved && (
-          <button
-            type="button"
-            onClick={() => onSimulate(r)}
-            className="font-mono text-[10.5px] text-text-muted px-[10px] py-[4px] border border-border rounded-[5px] hover:text-text transition-colors"
-          >
-            Simulate
-          </button>
+          <>
+            <button
+              type="button"
+              onClick={() => onCompare(r)}
+              className="font-mono text-[10.5px] text-text-muted px-[10px] py-[4px] border border-border rounded-[5px] hover:text-text transition-colors"
+            >
+              Compare
+            </button>
+            <button
+              type="button"
+              onClick={() => onSimulate(r)}
+              className="font-mono text-[10.5px] text-text-muted px-[10px] py-[4px] border border-border rounded-[5px] hover:text-text transition-colors"
+            >
+              Simulate
+            </button>
+          </>
         )}
         {isHidden ? (
           <button
@@ -416,6 +604,7 @@ export default function DemoSavingsPage() {
   const [showHidden,   setShowHidden]  = useState(false)
   const [showAchieved, setShowAchieved] = useState(false)
   const [simRec,       setSimRec]      = useState<ModelRecommendation | null>(null)
+  const [compareRec,   setCompareRec]  = useState<ModelRecommendation | null>(null)
 
   function dismiss(r: ModelRecommendation) {
     setDismissed((prev) => new Set([...prev, dismissKey(r)]))
@@ -521,6 +710,10 @@ export default function DemoSavingsPage() {
           </div>
         }
       />
+
+      {/* Prompt caching savings — passive savings already earned this month,
+          shown above the actionable model-swap recommendations. */}
+      <DemoCacheSavingsCard />
 
       {/* Hero strip */}
       <div className="overflow-x-auto shrink-0 border-b border-border">
@@ -660,6 +853,7 @@ export default function DemoSavingsPage() {
             r={r}
             windowLabel={windowLabel}
             onSimulate={setSimRec}
+            onCompare={setCompareRec}
             onDismiss={dismiss}
             onUnhide={unhide}
           />
@@ -685,6 +879,7 @@ export default function DemoSavingsPage() {
                 isAchieved
                 windowLabel={windowLabel}
                 onSimulate={setSimRec}
+                onCompare={setCompareRec}
                 onDismiss={dismiss}
                 onUnhide={unhide}
               />
@@ -709,6 +904,7 @@ export default function DemoSavingsPage() {
                   isHidden
                   windowLabel={windowLabel}
                   onSimulate={setSimRec}
+                  onCompare={setCompareRec}
                   onDismiss={dismiss}
                   onUnhide={unhide}
                 />
@@ -783,6 +979,14 @@ export default function DemoSavingsPage() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Compare-in-playground dialog (static demo) */}
+      {compareRec && (
+        <DemoComparePlaygroundDialog
+          rec={compareRec}
+          onClose={() => setCompareRec(null)}
+        />
+      )}
     </div>
   )
 }
