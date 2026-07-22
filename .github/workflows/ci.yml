@@ -50,7 +50,11 @@ jobs:
         run: pnpm --filter server lint
 
       - name: Test (server)
-        run: pnpm --filter server test
+        # --coverage activates the lines:35 floor in vitest.config.ts so a
+        # PR that drops server coverage below the ratchet fails CI. Bump the
+        # floor in vitest.config.ts as coverage rises (P2.3 target: 80% on
+        # Tier 1 modules).
+        run: pnpm --filter server test -- --coverage
         env:
           ENCRYPTION_KEY: ${{ secrets.CI_ENCRYPTION_KEY || 'YWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWE=' }}
 
