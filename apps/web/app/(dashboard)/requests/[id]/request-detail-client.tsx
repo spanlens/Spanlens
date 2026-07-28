@@ -9,7 +9,7 @@ import { useModels, type ModelsByProvider } from '@/lib/queries/use-models'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ShareDialog } from '@/components/share/share-dialog'
 
-// Payload design: docs/launch/2026-05-14_cache-stream-users.md §3.
+// Payload design: see the typed event catalog in @/lib/posthog.
 import { capture } from '@/lib/posthog'
 import { fmtCostSummary as fmtCost } from '@/lib/format'
 

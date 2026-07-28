@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { ArrowDown, ArrowUp, ArrowUpDown, Check, Copy, Search, Users as UsersIcon } from 'lucide-react'
 
-// Payload design: docs/launch/2026-05-14_cache-stream-users.md §3.
+// Payload design: see the typed event catalog in @/lib/posthog.
 import { capture, hashUserId } from '@/lib/posthog'
 import { Skeleton } from '@/components/ui/skeleton'
 import { cn, formatDate } from '@/lib/utils'

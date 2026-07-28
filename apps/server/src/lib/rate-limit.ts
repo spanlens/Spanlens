@@ -109,7 +109,8 @@ let _unconfiguredWarned = false
  * block legitimate traffic), but both are now emitted with the stable,
  * alertable `RATE_LIMIT_BACKEND_DOWN` code so a silent outage is visible in
  * the log drain / Sentry instead of disappearing. No in-process fallback
- * counter is added here — see docs/plans/platform-review-roadmap-2026-06.md.
+ * counter is added here: a per-instance counter cannot enforce a global limit
+ * on serverless, so it would trade a visible outage for a wrong number.
  */
 export async function checkRateLimit(
   key: string,

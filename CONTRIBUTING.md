@@ -189,15 +189,16 @@ full policy.
 
 ## Project decisions
 
-Major design choices live in `docs/plans/` (e.g. `clickhouse-migration.md`,
-`launch-readiness-master-plan.md`). Read these before proposing a structural
-change so we don't talk past each other.
+Published design docs live in `docs/plans/` (currently
+`clickhouse-migration.md`, which explains why the request log moved off
+Postgres). Read it before proposing a structural change to the data layer so
+we don't talk past each other. Roadmap and launch planning are kept private;
+open an issue if a decision is unclear and we'll explain the reasoning there.
 
 Operational gotchas — the surprises someone hit in production that future
 contributors should know about — live in `CLAUDE.md` (the file is named for
 the maintainer's AI assistant but the content is useful to any contributor
-who can read Korean; English summaries land in `docs/plans/` as the topic
-warrants).
+who can read Korean).
 
 ---
 
