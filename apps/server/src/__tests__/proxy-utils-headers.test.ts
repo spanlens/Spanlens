@@ -68,6 +68,21 @@ describe('buildUpstreamHeaders — sensitive header stripping', () => {
     }
   })
 
+  test('strips Expect: 100-continue (undici rejects it and the request fails with a bare "fetch failed")', () => {
+    // Clients that default to Expect: 100-continue — PowerShell's
+    // Invoke-WebRequest, .NET HttpClient, Apache HttpClient — used to get an
+    // unexplained 502. The header is hop-by-hop: the expectation is negotiated
+    // with US, not with OpenAI, so forwarding it makes undici throw
+    // `TypeError: fetch failed` before a single byte reaches the provider.
+    const incoming = headersFromObject({
+      expect: '100-continue',
+      'Content-Type': 'application/json',
+    })
+    const out = buildUpstreamHeaders(incoming, {})
+    expect(out.get('expect')).toBeNull()
+    expect(out.get('content-type')).toBe('application/json')
+  })
+
   test('strips every x-spanlens-* header (internal metadata never reaches upstream)', () => {
     const incoming = headersFromObject({
       'x-spanlens-project': 'proj_123',
