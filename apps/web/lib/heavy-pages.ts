@@ -8,8 +8,7 @@
  * mounts. The page still prefetches on hover, so the UX cost of the first
  * click is minimal.
  *
- * Keep this list in sync with the actual prefetch weight in each page.tsx —
- * see docs/plans/dashboard-load-perf-2026-05.md §5.
+ * Keep this list in sync with the actual prefetch weight in each page.tsx.
  */
 const HEAVY_PAGES = new Set<string>([
   '/dashboard',

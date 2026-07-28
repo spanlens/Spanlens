@@ -22,8 +22,8 @@ export const POSTHOG_KEY = process.env.NEXT_PUBLIC_POSTHOG_KEY ?? ''
 export const POSTHOG_HOST = process.env.NEXT_PUBLIC_POSTHOG_HOST ?? 'https://us.i.posthog.com'
 
 // ── Typed event catalog ───────────────────────────────────────────────────────
-// Payloads for the users/cache events were designed in
-// docs/launch/2026-05-14_cache-stream-users.md §3.
+// Every event carries only non-identifying properties: the user id is hashed
+// before capture and no request/response body ever reaches this layer.
 
 export type AnalyticsEvent =
   // Evals

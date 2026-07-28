@@ -1,9 +1,9 @@
 # Spanlens (AgentOps) ROADMAP
 
 > ⚠️ **이 문서는 2026-06-07 이후 동결 상태.** 이후 201커밋(PR #239→#427)이 미반영.
-> **현행 로드맵**: `docs/plans/platform-review-roadmap-2026-06.md` + `spanlens-remaining-work.md`
-> **현재 상태 스냅샷**: `docs/STATE-OF-REPO.md` (2026-07-19 통분석)
-> 아래 가격/한도 표기는 구버전임 — 현행: Free 50K / Pro $29 100K / Team $149 1M (`apps/web/lib/billing-plans.ts` 참조)
+> 아래 가격/한도/일정 표기는 전부 구버전임. 현행 가격은 `apps/web/lib/billing-plans.ts`
+> (Free 50K / Pro $29 100K / Team $149 1M), 현행 우선순위는 `/roadmap` 공개 페이지 참조.
+> 이 파일은 초기 MVP 계획의 기록으로만 남겨둠.
 
 > LLM 관찰성 SaaS · 100일 MVP · 런치 목표 2026.08.03 (Phase 4)
 > 수익 모델: Free / Starter $19 / Team $49 / Enterprise $99

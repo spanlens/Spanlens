@@ -73,7 +73,7 @@ tracesRouter.get('/', async (c) => {
   // of forcing a COUNT(*) scan. Saves -200~500ms per request on the traces
   // table, which is fine here because the dashboard only renders the total as
   // a display number ("N of M traces") — there's no pagination logic that
-  // gates "Next" on the exact total. Plan: docs/plans/dashboard-load-perf-2026-05.md §7.1.
+  // gates "Next" on the exact total.
   let query = supabaseAdmin
     .from('traces')
     .select(

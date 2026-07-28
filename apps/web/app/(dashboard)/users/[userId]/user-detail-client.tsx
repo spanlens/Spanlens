@@ -8,7 +8,7 @@ import { cn, formatDate } from '@/lib/utils'
 import { useUserDetail } from '@/lib/queries/use-users'
 import { Topbar } from '@/components/layout/topbar'
 
-// Payload design: docs/launch/2026-05-14_cache-stream-users.md §3.
+// Payload design: see the typed event catalog in @/lib/posthog.
 import { capture, hashUserId } from '@/lib/posthog'
 import { fmtCostSummary as fmtCost } from '@/lib/format'
 
