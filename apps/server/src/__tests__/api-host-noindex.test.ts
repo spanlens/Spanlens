@@ -17,9 +17,13 @@ import { fileURLToPath } from 'node:url'
  *     which leaves the URL indexable by reference and unable to see the
  *     directive. Setting it in vercel.json did not work — that `headers`
  *     block never reached responses from this function.
- *  2. No `public/index.html`. Vercel serves `public/` ahead of the catch-all
- *     rewrite, so re-adding that file would route `/` around this app and
- *     drop the header again, which is precisely how the Soft 404 happened.
+ *  2. A `public/` directory that exists but holds no `index.html`. Vercel
+ *     serves `public/` ahead of the catch-all rewrite, so re-adding that file
+ *     would route `/` around this app and drop the header again, which is
+ *     precisely how the Soft 404 happened. Deleting the directory outright
+ *     is not the answer either: this project builds with `framework: null`,
+ *     and a missing `public/` fails the deploy with "No Output Directory
+ *     named public found" (2026-07-29). Hence the `.gitkeep`.
  *
  * Behaviour can't be asserted cheaply here: importing app.ts pulls in the
  * Supabase and ClickHouse clients, so this pins the source instead — the same
@@ -47,5 +51,13 @@ describe('API host is not indexable', () => {
       access(publicIndex),
       'public/index.html is back: Vercel serves it ahead of the rewrite, so `/` would bypass the app and lose X-Robots-Tag',
     ).rejects.toThrow()
+  })
+
+  test('keeps the public/ directory itself', async () => {
+    // Empty, but it has to exist: with `framework: null` and no
+    // `outputDirectory`, Vercel fails the build with "No Output Directory
+    // named public found".
+    const publicDir = fileURLToPath(new URL('../../public', import.meta.url))
+    await expect(access(publicDir)).resolves.toBeUndefined()
   })
 })
