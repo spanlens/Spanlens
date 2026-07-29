@@ -114,10 +114,11 @@ async function main(): Promise<void> {
 
   log('\n[3] Issuing a full-access Spanlens key (ingest requires full)...')
   const apiKey = await issueFullKey(jwt, projectId)
-  // Never print key material, not even a truncated prefix: `sl_live_` is a
-  // fixed 8 chars, so a 18-char prefix leaks 10 hex chars of the secret.
-  // The scope is the only part worth confirming here.
-  log(`    key issued (scope: full, ${apiKey.length} chars)`)
+  // Nothing derived from the key goes to stdout, not a truncated prefix and
+  // not its length: `sl_live_` is a fixed 8 chars, so an 18-char prefix leaked
+  // 10 hex chars of the secret, and CodeQL treats any read off `apiKey` as a
+  // clear-text-logging sink. The call below either works or throws.
+  log('    key issued (scope: full)')
 
   log('\n[4] Setting up SpanlensClient + createSpanlensTracker...')
   const client = new SpanlensClient({ apiKey, baseUrl: SERVER_URL })
