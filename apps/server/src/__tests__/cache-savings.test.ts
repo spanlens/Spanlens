@@ -35,6 +35,7 @@ function chReturn(rows: object[]) {
 
 function row(overrides: Partial<CacheSavingsRow> = {}): CacheSavingsRow {
   return {
+    provider: 'openai',
     model: 'gpt-4o-mini',
     cache_read_tokens_sum: '0',
     cache_hit_requests: '0',

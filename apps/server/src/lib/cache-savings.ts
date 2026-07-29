@@ -1,6 +1,6 @@
 import { unscopedClickhouse, toClickhouseTimestamp } from './clickhouse.js'
 import { requestsScope } from './requests-query.js'
-import { lookupPrice } from './cost.js'
+import { lookupPrice, type Provider } from './cost.js'
 
 /**
  * Prompt-cache savings estimator.
@@ -26,6 +26,11 @@ import { lookupPrice } from './cost.js'
 
 /** Shape returned by the ClickHouse aggregate (JSONEachRow → numerics as strings). */
 export interface CacheSavingsRow {
+  /**
+   * Required for pricing: model names are not unique across providers, so
+   * `lookupPrice` needs the owning provider to pick the right row.
+   */
+  provider: string
   model: string
   /**
    * Aliased `cache_read_tokens_sum`, NOT `cache_read_tokens`. Aliasing the
@@ -74,7 +79,7 @@ export function computeCacheSavings(rows: CacheSavingsRow[]): CacheSavingsTotals
     cacheReadTokens += tokens
     cacheHitRequests += Number.isFinite(hits) ? hits : 0
 
-    const price = lookupPrice(row.model)
+    const price = lookupPrice(row.provider as Provider, row.model)
     if (!price) continue // unknown model — no price data, no savings claim
 
     // No explicit cacheRead price means the provider bills cache reads at the
@@ -99,6 +104,7 @@ export async function getCacheSavings(organizationId: string): Promise<CacheSavi
   const res = await unscopedClickhouse().query({
     query: `
       SELECT
+        provider,
         model,
         sum(cache_read_tokens) AS cache_read_tokens_sum,
         count()                AS cache_hit_requests
@@ -107,7 +113,7 @@ export async function getCacheSavings(organizationId: string): Promise<CacheSavi
         AND created_at >= parseDateTime64BestEffort({monthStart:String})
         AND status_code IN (200, 201, 202, 204)
         AND cache_read_tokens > 0
-      GROUP BY model
+      GROUP BY provider, model
     `,
     query_params: {
       ...scope.scopeParams,
