@@ -47,9 +47,6 @@ export const metadata: Metadata = {
   openGraph: {
     type: 'website',
     siteName: 'Spanlens',
-    title: 'Spanlens · Open Source LLM Observability & Monitoring',
-    description: SITE_DESCRIPTION,
-    url: SITE_URL,
     locale: 'en_US',
     // No explicit `images`: the generated 1200×630 card from
     // app/opengraph-image.tsx (file convention) applies site-wide. The old
@@ -57,8 +54,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Spanlens · Open Source LLM Observability & Monitoring',
-    description: SITE_DESCRIPTION,
+    // No `title`/`description` here for the same reason as `openGraph` above.
     // images inherited from app/twitter-image.tsx (file convention).
   },
   // NOTE: no top-level `index`/`follow` here. Explicit `index, follow` is the
