@@ -1,3 +1,4 @@
+import { OG_IMAGE } from '@/lib/page-metadata'
 import Link from 'next/link'
 import { Footer } from '@/components/layout/footer'
 import { MarketingNav } from '@/components/layout/marketing-nav'
@@ -17,6 +18,7 @@ export const metadata = {
     description: FAQ_DESCRIPTION,
     url: '/faq',
     locale: 'en_US',
+    images: OG_IMAGE,
   },
   twitter: {
     card: 'summary_large_image',

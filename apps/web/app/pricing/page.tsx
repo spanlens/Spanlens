@@ -1,3 +1,4 @@
+import { OG_IMAGE } from '@/lib/page-metadata'
 import type React from 'react'
 import Link from 'next/link'
 import { Check } from 'lucide-react'
@@ -20,6 +21,7 @@ export const metadata = {
     description: PRICING_DESCRIPTION,
     url: '/pricing',
     locale: 'en_US',
+    images: OG_IMAGE,
   },
   twitter: {
     card: 'summary_large_image',

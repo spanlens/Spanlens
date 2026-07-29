@@ -1,3 +1,4 @@
+import { OG_IMAGE } from '@/lib/page-metadata'
 import Link from 'next/link'
 import { Footer } from '@/components/layout/footer'
 import { MarketingNav } from '@/components/layout/marketing-nav'
@@ -38,6 +39,9 @@ const aboutJsonLd = {
     '@id': 'https://www.spanlens.io/#organization',
 
     locale: 'en_US',
+
+
+    images: OG_IMAGE,
 
   },
 }

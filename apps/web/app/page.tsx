@@ -1,3 +1,4 @@
+import { OG_IMAGE } from '@/lib/page-metadata'
 import Link from 'next/link'
 import { Footer } from '@/components/layout/footer'
 import { MarketingNav } from '@/components/layout/marketing-nav'
@@ -15,6 +16,7 @@ export const metadata = {
     siteName: 'Spanlens',
     locale: 'en_US',
     url: '/',
+    images: OG_IMAGE,
   },
 }
 
