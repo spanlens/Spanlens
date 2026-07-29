@@ -18,8 +18,15 @@ import { describe, expect, it } from 'vitest'
 
 const QUERIES_DIR = join(__dirname)
 
-/** Matches `queryKey: ['a', 'b']`, allowing a trailing `as const`. */
-const STATIC_KEY = /queryKey:\s*\[((?:\s*'[^']*'\s*,?)+)\]/
+/**
+ * Captures the contents of a single-line `queryKey: [...]`. Deliberately one
+ * flat character class rather than a repeated group of segments: a nested
+ * quantifier here is an ReDoS shape (CodeQL js/redos) even though this only
+ * ever reads our own source.
+ */
+const KEY_ARRAY = /queryKey:\s*\[([^\]\n]*)\]/
+/** A key segment that is a plain string literal, e.g. `'current-user'`. */
+const STRING_SEGMENT = /^'[^']*'$/
 
 /**
  * Cache-management calls (`invalidateQueries`, `cancelQueries`,
@@ -35,13 +42,14 @@ function collectStaticKeys(): Map<string, string[]> {
     const lines = readFileSync(join(QUERIES_DIR, file), 'utf8').split('\n')
     lines.forEach((line, i) => {
       if (CACHE_CALL.test(line)) return
-      const match = STATIC_KEY.exec(line)
+      const match = KEY_ARRAY.exec(line)
       if (!match) return
-      const key = match[1]!
-        .split(',')
-        .map((s) => s.trim().replace(/^'|'$/g, ''))
-        .filter(Boolean)
-        .join(' > ')
+      const segments = match[1]!.split(',').map((s) => s.trim()).filter(Boolean)
+      // A spread, helper call or variable segment means the key is scoped by
+      // that value and may legitimately repeat, so it is not a static key.
+      if (segments.length === 0) return
+      if (!segments.every((s) => STRING_SEGMENT.test(s))) return
+      const key = segments.map((s) => s.slice(1, -1)).join(' > ')
       const sites = found.get(key) ?? []
       sites.push(`${file}:${i + 1}`)
       found.set(key, sites)
