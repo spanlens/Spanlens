@@ -3,8 +3,19 @@ import { Footer } from '@/components/layout/footer'
 import { MarketingNav } from '@/components/layout/marketing-nav'
 import { CopyInstallButton } from '@/components/landing/copy-install-button'
 
+// The root layout deliberately omits `openGraph.url` so child pages don't
+// inherit the homepage URL (see app/layout.tsx). The homepage is the one page
+// where that URL is correct, so it declares the block itself. Declaring
+// `openGraph` replaces the layout's copy wholesale rather than merging, so
+// `type`/`siteName`/`locale` are repeated here on purpose.
 export const metadata = {
   alternates: { canonical: '/' },
+  openGraph: {
+    type: 'website',
+    siteName: 'Spanlens',
+    locale: 'en_US',
+    url: '/',
+  },
 }
 
 const SITE_URL = 'https://www.spanlens.io'
