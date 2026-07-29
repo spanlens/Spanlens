@@ -101,8 +101,8 @@ DB 읽기(조회) → supabaseClient (anon key, RLS 적용)
 - **⚠️ ClickHouse 마이그레이션은 deploy 파이프라인에 없음 — production 수동 적용**: `deploy-server.yml`은 Supabase만 `db push`. CH 마이그레이션(`clickhouse/migrations/NNN`)은 **ClickHouse Cloud SQL 콘솔에서 수동 실행** (009_dedup_events_as_requests_view가 그렇게 적용됨). gotcha #21 순서(migration 먼저 → INSERT 코드) 지키려면 PR 머지 **전에** 손으로 적용. Postgres(gotcha #25)와 달리 자동화 안 됨.
 ## 핵심 모듈 — 중복 구현 금지
 lib/crypto.ts — AES-256-GCM 암/복호화 (Provider Key 전용)
-lib/cost.ts — 비용 계산 calculateCost(provider, model, usage). 동기 함수 — DB 가격은 lib/model-prices-cache.ts가 백그라운드로 stale-while-revalidate 갱신 (5분 TTL)
-lib/model-prices-cache.ts — getCachedPrices() 동기 lookup + refreshPricesNow() 강제 갱신. FALLBACK_PRICES 콜드스타트 안전망. 핫 패스에서 await 금지
+lib/cost.ts — 비용 계산 calculateCost(provider, model, usage). 동기 함수 — DB 가격은 lib/model-prices-cache.ts가 백그라운드로 stale-while-revalidate 갱신 (5분 TTL). **provider 인자는 실제로 조회에 쓰임** — 모델명은 프로바이더 간 유일하지 않음(`qwen/qwen3-32b`가 groq $0.29 / openrouter $0.08). `azure`는 rows가 없어 `PRICE_TABLE_PROVIDER`가 `openai`로 리라이트. 조회 순서: exact `provider:model` → exact FALLBACK → provider-scoped 최장 prefix → FALLBACK 최장 prefix (exact가 언제나 prefix보다 우선)
+lib/model-prices-cache.ts — getCachedPrices() 동기 lookup + refreshPricesNow() 강제 갱신. **캐시 키는 `"<provider>:<model>"`** (priceKey 헬퍼). FALLBACK_PRICES는 model-only 유지 — direct provider 모델만 담아 중복 이름이 없어야 함(openrouter id 넣지 말 것, 테스트가 가드). 핫 패스에서 await 금지
 lib/logger.ts — 비동기 로깅 logRequestAsync(data) + parseLogBodyMode(header). CH INSERT 실패 시 Supabase `requests_fallback` 큐에 자동 보관 (P2.6)
 lib/fallback-replay.ts — `replayFallbackQueue()` / `fallbackQueueSize()`. CH 복구 후 `requests_fallback` → ClickHouse 이관. cron `/replay-fallback` 5분 간격
 lib/db.ts — supabaseAdmin / supabaseClient 인스턴스

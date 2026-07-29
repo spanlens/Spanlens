@@ -195,8 +195,10 @@ export async function logOpenRouterStream(
 
   // Cost preference order matches the non-streaming path in proxy/openrouter.ts:
   //   1. usage.cost from the final SSE chunk (authoritative).
-  //   2. local calculator against the vendor-stripped model id.
-  //   3. NULL.
+  //   2. local calculator against the FULL model id (our OpenRouter price rows
+  //      keep the vendor prefix).
+  //   3. the vendor-stripped id, as a last resort.
+  //   4. NULL.
   const strippedModel = (() => {
     const idx = model.indexOf('/')
     return idx === -1 ? model : model.slice(idx + 1)
@@ -205,9 +207,10 @@ export async function logOpenRouterStream(
   if (openrouterReportedCost !== null) {
     finalCostUsd = openrouterReportedCost
   } else if (promptTokens > 0 || completionTokens > 0) {
-    const lookup = calculateCost('openrouter' as Provider, strippedModel, {
-      promptTokens, completionTokens, cacheReadTokens, cacheWriteTokens, serviceTier,
-    })
+    const usage = { promptTokens, completionTokens, cacheReadTokens, cacheWriteTokens, serviceTier }
+    const lookup =
+      calculateCost('openrouter' as Provider, model, usage) ??
+      calculateCost('openrouter' as Provider, strippedModel, usage)
     finalCostUsd = lookup?.totalCost ?? null
   }
   // else: no authoritative usage.cost AND no token usage captured (truncated

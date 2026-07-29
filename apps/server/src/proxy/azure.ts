@@ -134,9 +134,11 @@ azureProxy.all('/*', async (c) => {
     } catch { /* ignore */ }
   }
 
-  // Azure exposes OpenAI models at OpenAI prices — reuse the OpenAI price
-  // table rather than maintaining a parallel one.
-  const cost = calculateCost('openai', resolvedModel, {
+  // Azure exposes OpenAI models at OpenAI prices and has no rows of its own in
+  // model_prices. Pass the real provider tag — lookupPrice() rewrites 'azure'
+  // to 'openai' via PRICE_TABLE_PROVIDER, so the mapping lives in one place
+  // instead of being re-derived at each call site.
+  const cost = calculateCost('azure', resolvedModel, {
     promptTokens, completionTokens, cacheReadTokens, cacheWriteTokens, serviceTier,
   })
 

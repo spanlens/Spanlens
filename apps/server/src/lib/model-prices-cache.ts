@@ -24,6 +24,14 @@
 // fleet, expect ≤2× TTL worst-case (5–10 min) for full propagation. This is
 // acceptable for prices that change quarterly at most.
 //
+// KEYING: the DB-backed cache is keyed `"<provider>:<model>"`, because model
+// names are NOT unique across providers — `qwen/qwen3-32b` costs $0.29/1M on
+// Groq and $0.08/1M on OpenRouter. A model-only key let whichever row the DB
+// returned last silently win. FALLBACK_PRICES stays model-only on purpose: it
+// contains direct-provider models exclusively (no OpenRouter rows), so it has
+// no ambiguous names, and it is only consulted when the provider-scoped
+// lookup misses. See lookupPrice() in cost.ts for the full resolution order.
+//
 // IMPORTANT: never await on this module from the proxy hot path. The whole
 // point is that `getCachedPrices()` is synchronous and returns immediately.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -258,14 +266,24 @@ export const FALLBACK_PRICES: Record<string, ModelPrice> = {
 const CACHE_TTL_MS = 5 * 60 * 1000  // 5 minutes
 const ERROR_LOG_THROTTLE_MS = 60 * 1000  // log refresh failures at most once / min
 
-let cache: Record<string, ModelPrice> = { ...FALLBACK_PRICES }
+/** Cache key for the provider-scoped map. Keep in sync with lookupPrice(). */
+export function priceKey(provider: string, model: string): string {
+  return `${provider}:${model}`
+}
+
+// Empty until the first refresh lands. Callers fall back to FALLBACK_PRICES —
+// see lookupPrice(). Seeding this from FALLBACK_PRICES is not possible any
+// more: those keys carry no provider, so they cannot be placed in a
+// provider-scoped map without inventing an owner for each one.
+let cache: Record<string, ModelPrice> = {}
 let lastRefreshedAt = 0
 let refreshInFlight: Promise<void> | null = null
 let lastErrorLoggedAt = 0
 
 /**
- * Synchronous price lookup map. Always returns a non-empty record (worst case:
- * the FALLBACK_PRICES). Triggers an async refresh if the cache is stale.
+ * Synchronous price map keyed `"<provider>:<model>"`. Empty until the first
+ * successful refresh — callers must fall back to FALLBACK_PRICES on a miss.
+ * Triggers an async refresh if the cache is stale.
  *
  * Safe to call on every request — never throws, never awaits.
  */
@@ -297,9 +315,15 @@ export async function refreshPricesNow(): Promise<boolean> {
  * never needs to reset because the cache self-refreshes.
  */
 export function _resetCacheForTests(): void {
-  cache = { ...FALLBACK_PRICES }
+  cache = {}
   lastRefreshedAt = 0
   refreshInFlight = null
+}
+
+/** Test helper: seed the provider-scoped cache without touching Supabase. */
+export function _setCacheForTests(next: Record<string, ModelPrice>): void {
+  cache = { ...next }
+  lastRefreshedAt = Date.now()
 }
 
 // ── Internals ─────────────────────────────────────────────────────────────────
@@ -328,7 +352,7 @@ async function doRefresh(): Promise<void> {
   const { data, error } = await supabaseAdmin
     .from('model_prices')
     .select(
-      'model, prompt_price_per_1m, completion_price_per_1m, cache_read_price_per_1m, cache_write_price_per_1m,' +
+      'provider, model, prompt_price_per_1m, completion_price_per_1m, cache_read_price_per_1m, cache_write_price_per_1m,' +
       ' long_context_threshold_tokens, long_prompt_price_per_1m, long_completion_price_per_1m,' +
       ' long_cache_read_price_per_1m, long_cache_write_price_per_1m',
     )
@@ -351,8 +375,9 @@ async function doRefresh(): Promise<void> {
     // the values defensively.
     const r = row as unknown as Record<string, unknown>
     const model = r['model'] as string
-    if (!model) continue
-    next[model] = {
+    const provider = r['provider'] as string
+    if (!model || !provider) continue
+    next[priceKey(provider, model)] = {
       prompt: Number(r['prompt_price_per_1m']),
       completion: Number(r['completion_price_per_1m']),
       ...(r['cache_read_price_per_1m'] != null && { cacheRead: Number(r['cache_read_price_per_1m']) }),
@@ -374,9 +399,11 @@ async function doRefresh(): Promise<void> {
       }),
     }
   }
-  // Merge with fallback so any model present in fallback but missing from DB
-  // still resolves (avoids regression if an admin accidentally deletes a row).
-  cache = { ...FALLBACK_PRICES, ...next }
+  // Straight replace, no merge with FALLBACK_PRICES: those keys have no
+  // provider and merging them in would resurrect the cross-provider collisions
+  // this map exists to prevent. A model deleted from the DB still resolves,
+  // because lookupPrice() consults FALLBACK_PRICES after this map misses.
+  cache = next
   lastRefreshedAt = Date.now()
 }
 

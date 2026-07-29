@@ -67,8 +67,8 @@ Per-job code in `src/lib/cron-jobs/`:
 ## Core libs (do not reimplement)
 
 - `lib/crypto.ts` — AES-256-GCM, all async (gotcha #12 — never skip `await`)
-- `lib/cost.ts` — `calculateCost(provider, model, usage)` sync, exact + longest-prefix model match
-- `lib/model-prices-cache.ts` — SWR price cache (5m TTL, FALLBACK_PRICES cold-start safety)
+- `lib/cost.ts` — `calculateCost(provider, model, usage)` sync, provider-scoped exact + longest-prefix match (`azure` → `openai` via `PRICE_TABLE_PROVIDER`)
+- `lib/model-prices-cache.ts` — SWR price cache keyed `"<provider>:<model>"` (5m TTL, FALLBACK_PRICES cold-start safety)
 - `lib/logger.ts` — `logRequestAsync` + `parseLogBodyMode`
 - `lib/wait-until.ts` — `fireAndForget(c, promise)` — Vercel Edge/Node-safe (gotcha #8)
 - `lib/clickhouse.ts` — singleton + `toClickhouseTimestamp()` (gotcha #18)
