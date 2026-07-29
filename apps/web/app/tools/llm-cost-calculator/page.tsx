@@ -10,10 +10,12 @@ export const metadata = {
   title: 'LLM Cost Calculator for OpenAI, Anthropic, and Gemini',
   description: DESCRIPTION,
   openGraph: {
+    siteName: 'Spanlens',
     type: 'website',
     title: 'LLM Cost Calculator — Free Tool by Spanlens',
     description: DESCRIPTION,
     url: '/tools/llm-cost-calculator',
+    locale: 'en_US',
   },
   twitter: {
     card: 'summary_large_image',

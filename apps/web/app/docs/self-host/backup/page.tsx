@@ -1,7 +1,9 @@
+import { openGraphFor } from '@/lib/page-metadata'
 import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
 export const metadata = {
   alternates: { canonical: '/docs/self-host/backup' },
+  openGraph: openGraphFor('/docs/self-host/backup'),
   title: 'Backup & restore · Spanlens Docs',
   description:
     'Backup and restore runbook for self-hosted Spanlens: dump Supabase Postgres and ClickHouse log, snapshot Docker volumes, and back up ENCRYPTION_KEY separately.',

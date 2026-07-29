@@ -11,6 +11,7 @@ export const metadata = {
   title: 'About · Spanlens',
   description: ABOUT_DESCRIPTION,
   openGraph: {
+    siteName: 'Spanlens',
     type: 'website',
     title: 'About Spanlens — Open Source LLM Observability',
     description: ABOUT_DESCRIPTION,
@@ -35,6 +36,9 @@ const aboutJsonLd = {
   // now live on the canonical node in app/layout.tsx.
   mainEntity: {
     '@id': 'https://www.spanlens.io/#organization',
+
+    locale: 'en_US',
+
   },
 }
 

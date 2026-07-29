@@ -127,19 +127,12 @@ function buildSoftwareCompareJsonLd(
       name: 'Spanlens',
       url: SITE_URL,
     },
-    about: {
-      '@type': 'SoftwareApplication',
-      name: 'Spanlens',
-      applicationCategory: 'DeveloperApplication',
-      operatingSystem: 'Web, Docker',
-      url: SITE_URL,
-      offers: {
-        '@type': 'Offer',
-        price: '0',
-        priceCurrency: 'USD',
-        description: 'Free plan with 50K requests/mo',
-      },
-    },
+    // Reference the product entity declared on the homepage rather than
+    // re-declaring a partial copy. Two divergent SoftwareApplication nodes for
+    // the same product break entity reconciliation, and the partial copy also
+    // failed Google's Software App rich-result check on every comparison page
+    // (Ahrefs 2026-07-29: "Missing required aggregateRating or review").
+    about: { '@id': `${SITE_URL}/#software` },
     mentions: {
       '@type': 'Thing',
       name: competitor,

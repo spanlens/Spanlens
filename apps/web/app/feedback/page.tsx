@@ -1,3 +1,4 @@
+import { openGraphFor } from '@/lib/page-metadata'
 import Link from 'next/link'
 import { MarketingNav } from '@/components/layout/marketing-nav'
 import { BreadcrumbJsonLd } from '@/components/marketing/breadcrumb-jsonld'
@@ -28,6 +29,7 @@ export const metadata = {
   description:
     'Tell us what to build next. Vote on what others suggested. Track each item from new to shipped.',
   alternates: { canonical: '/feedback' },
+  openGraph: openGraphFor('/feedback'),
 }
 
 export default function FeedbackPage() {

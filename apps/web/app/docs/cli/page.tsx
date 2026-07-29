@@ -1,3 +1,4 @@
+import { openGraphFor } from '@/lib/page-metadata'
 import Link from 'next/link'
 import { CodeBlock } from '../_components/code-block'
 import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
@@ -7,6 +8,7 @@ export const metadata = {
   description:
     'One-command setup wizard for Spanlens in Node and Python. Auto-detects OpenAI, Anthropic, and Gemini SDK calls and routes them through the proxy.',
   alternates: { canonical: '/docs/cli' },
+  openGraph: openGraphFor('/docs/cli'),
 }
 
 const INSTALL_CMD = `npx @spanlens/cli init`

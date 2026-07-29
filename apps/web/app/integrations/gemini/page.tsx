@@ -8,10 +8,12 @@ export const metadata = {
   title: 'Gemini Observability — Spanlens Integration',
   description: DESCRIPTION,
   openGraph: {
+    siteName: 'Spanlens',
     type: 'website',
     title: 'Google Gemini Observability — Log every API call with Spanlens',
     description: DESCRIPTION,
     url: '/integrations/gemini',
+    locale: 'en_US',
   },
   twitter: {
     card: 'summary_large_image',

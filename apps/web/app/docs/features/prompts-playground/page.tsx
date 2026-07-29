@@ -1,8 +1,10 @@
+import { openGraphFor } from '@/lib/page-metadata'
 import { CodeBlock } from '../../_components/code-block'
 import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
 export const metadata = {
   alternates: { canonical: '/docs/features/prompts-playground' },
+  openGraph: openGraphFor('/docs/features/prompts-playground'),
   title: 'Prompts Playground · Spanlens Docs',
   description:
     'Interactive console inside the Prompts tab, select a version, set model, temperature, and variables, then run it immediately and see cost and token counts.',

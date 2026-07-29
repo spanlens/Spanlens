@@ -1,3 +1,4 @@
+import { openGraphFor } from '@/lib/page-metadata'
 import Link from 'next/link'
 import { Footer } from '@/components/layout/footer'
 import { MarketingNav } from '@/components/layout/marketing-nav'
@@ -5,6 +6,7 @@ import { BreadcrumbJsonLd } from '@/components/marketing/breadcrumb-jsonld'
 
 export const metadata = {
   alternates: { canonical: '/terms' },
+  openGraph: openGraphFor('/terms'),
   title: 'Terms of Service · Spanlens',
   description:
     'The agreement governing your use of Spanlens. Covers accounts, billing, the 14-day refund policy, acceptable use, and liability.',

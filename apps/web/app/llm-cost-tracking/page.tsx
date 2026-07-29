@@ -11,10 +11,12 @@ export const metadata = {
   title: 'LLM Cost Tracking: Monitor and Reduce Your AI API Spend',
   description: DESCRIPTION,
   openGraph: {
+    siteName: 'Spanlens',
     type: 'article',
     title: 'LLM Cost Tracking: Monitor and Reduce Your AI API Spend',
     description: DESCRIPTION,
     url: '/llm-cost-tracking',
+    locale: 'en_US',
   },
   twitter: {
     card: 'summary_large_image',

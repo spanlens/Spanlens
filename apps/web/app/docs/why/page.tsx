@@ -1,9 +1,11 @@
+import { openGraphFor } from '@/lib/page-metadata'
 import Link from 'next/link'
 import { FeatureCoverageRadar } from '../_components/charts'
 import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
 export const metadata = {
   alternates: { canonical: '/docs/why' },
+  openGraph: openGraphFor('/docs/why'),
   title: 'Why Spanlens · Spanlens Docs',
   description:
     'Why pick Spanlens over Helicone, Langfuse, LangSmith, or Arize Phoenix. Honest comparison of the six things only Spanlens does end-to-end.',

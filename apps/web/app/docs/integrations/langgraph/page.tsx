@@ -1,3 +1,4 @@
+import { openGraphFor } from '@/lib/page-metadata'
 import { CodeBlock } from '../../_components/code-block'
 import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
@@ -6,6 +7,7 @@ export const metadata = {
   description:
     'Trace LangGraph node and edge execution with Spanlens. One callback handler captures the full graph topology, parallel fan-out, and tool calls.',
   alternates: { canonical: '/docs/integrations/langgraph' },
+  openGraph: openGraphFor('/docs/integrations/langgraph'),
 }
 
 export default function LangGraphIntegration() {

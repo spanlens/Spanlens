@@ -11,10 +11,12 @@ export const metadata = {
   title: 'FAQ · Spanlens LLM Observability',
   description: FAQ_DESCRIPTION,
   openGraph: {
+    siteName: 'Spanlens',
     type: 'website',
     title: 'Spanlens FAQ — Open Source LLM Observability',
     description: FAQ_DESCRIPTION,
     url: '/faq',
+    locale: 'en_US',
   },
   twitter: {
     card: 'summary_large_image',

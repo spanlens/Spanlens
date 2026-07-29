@@ -11,10 +11,12 @@ export const metadata = {
   title: 'LLM Observability: The 2026 Guide for Production AI Apps',
   description: DESCRIPTION,
   openGraph: {
+    siteName: 'Spanlens',
     type: 'article',
     title: 'LLM Observability — A 2026 Guide for Production AI Apps',
     description: DESCRIPTION,
     url: '/llm-observability',
+    locale: 'en_US',
   },
   twitter: {
     card: 'summary_large_image',

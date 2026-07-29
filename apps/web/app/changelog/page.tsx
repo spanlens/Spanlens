@@ -1,3 +1,4 @@
+import { openGraphFor } from '@/lib/page-metadata'
 import Link from 'next/link'
 import { Rss } from 'lucide-react'
 import { MarketingNav } from '@/components/layout/marketing-nav'
@@ -10,6 +11,7 @@ export const metadata = {
   description:
     'What is new in Spanlens. New features, improvements, infrastructure, and reliability work, in chronological order.',
   alternates: { canonical: '/changelog' },
+  openGraph: openGraphFor('/changelog'),
 }
 
 const TAG_LABEL: Record<ChangelogTag, string> = {

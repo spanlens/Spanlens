@@ -1,3 +1,4 @@
+import { openGraphFor } from '@/lib/page-metadata'
 import { CodeBlock } from '../../_components/code-block'
 import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
@@ -6,6 +7,7 @@ export const metadata = {
   description:
     'Trace CrewAI crews, agents, and tasks with Spanlens. One install captures the full crew execution tree with per-agent cost and latency.',
   alternates: { canonical: '/docs/integrations/crewai' },
+  openGraph: openGraphFor('/docs/integrations/crewai'),
 }
 
 export default function CrewAIIntegration() {

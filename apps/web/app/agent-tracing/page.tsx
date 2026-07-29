@@ -11,10 +11,12 @@ export const metadata = {
   title: 'AI Agent Tracing: Debug Multi-Agent LLM Workflows',
   description: DESCRIPTION,
   openGraph: {
+    siteName: 'Spanlens',
     type: 'article',
     title: 'AI Agent Tracing — Debug Multi-Agent LLM Workflows',
     description: DESCRIPTION,
     url: '/agent-tracing',
+    locale: 'en_US',
   },
   twitter: {
     card: 'summary_large_image',

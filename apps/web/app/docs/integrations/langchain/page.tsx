@@ -1,3 +1,4 @@
+import { openGraphFor } from '@/lib/page-metadata'
 import { CodeBlock } from '../../_components/code-block'
 import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
@@ -6,6 +7,7 @@ export const metadata = {
   description:
     'Trace LangChain (JS and Python) chains, agents, and tools with one callback handler. Every chain run, LLM call, and tool invocation becomes a Spanlens span.',
   alternates: { canonical: '/docs/integrations/langchain' },
+  openGraph: openGraphFor('/docs/integrations/langchain'),
 }
 
 export default function LangChainIntegration() {

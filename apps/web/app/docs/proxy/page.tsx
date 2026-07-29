@@ -1,8 +1,10 @@
+import { openGraphFor } from '@/lib/page-metadata'
 import { CodeBlock } from '../_components/code-block'
 import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
 export const metadata = {
   alternates: { canonical: '/docs/proxy' },
+  openGraph: openGraphFor('/docs/proxy'),
   title: 'Direct proxy · Spanlens Docs',
   description: 'Use Spanlens from any language, Python, Ruby, Go, curl. Just swap the base URL.',
 }
@@ -314,7 +316,7 @@ res, _ := client.CreateChatCompletion(ctx, openai.ChatCompletionRequest{
       </p>
       <p>
         Add <code>X-Trace-Id</code> and <code>X-Span-Id</code> headers (UUIDs) to link a proxy call
-        to an <a href="/docs/agents">agent trace</a> so it appears inside the span tree with its
+        to an <a href="/docs/concepts/agent-tracing">agent trace</a> so it appears inside the span tree with its
         cost and tokens. The SDK sets these for you via{' '}
         <code>trace.headers()</code> / <code>span.headers()</code>; raw HTTP callers can pass them
         directly. Non-UUID values are ignored rather than rejected:

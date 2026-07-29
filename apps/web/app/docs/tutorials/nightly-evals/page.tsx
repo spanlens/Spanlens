@@ -1,3 +1,4 @@
+import { openGraphFor } from '@/lib/page-metadata'
 import { CodeBlock } from '../../_components/code-block'
 import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
@@ -6,6 +7,7 @@ export const metadata = {
   description:
     'Tutorial: set up an LLM-as-judge evaluator on a nightly sample of production traffic and catch prompt quality regressions before users complain.',
   alternates: { canonical: '/docs/tutorials/nightly-evals' },
+  openGraph: openGraphFor('/docs/tutorials/nightly-evals'),
 }
 
 export default function NightlyEvalsTutorial() {

@@ -1,3 +1,4 @@
+import { openGraphFor } from '@/lib/page-metadata'
 import { CodeBlock } from '../../_components/code-block'
 import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
@@ -6,6 +7,7 @@ export const metadata = {
   description:
     'Capture AWS Bedrock model invocations (Claude, Llama, Mistral, Titan) with Spanlens. SigV4 auth handled by your SDK; Spanlens proxies the wire.',
   alternates: { canonical: '/docs/integrations/bedrock' },
+  openGraph: openGraphFor('/docs/integrations/bedrock'),
 }
 
 export default function BedrockIntegration() {

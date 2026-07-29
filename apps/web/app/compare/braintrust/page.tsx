@@ -1,7 +1,9 @@
+import { openGraphFor } from '@/lib/page-metadata'
 import { CompareTemplate, type CompareGroup, type ComparePoint } from '@/components/marketing/compare-template'
 
 export const metadata = {
   alternates: { canonical: '/compare/braintrust' },
+  openGraph: openGraphFor('/compare/braintrust'),
   title: 'Spanlens vs Braintrust · 2026 Comparison',
   description:
     'Braintrust is eval-first, closed-source SaaS. Spanlens bundles eval into a full observability platform with proxy logging and agent tracing. Self-hostable.',

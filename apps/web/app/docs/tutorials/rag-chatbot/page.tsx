@@ -1,3 +1,4 @@
+import { openGraphFor } from '@/lib/page-metadata'
 import { CodeBlock } from '../../_components/code-block'
 import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
@@ -6,6 +7,7 @@ export const metadata = {
   description:
     'End-to-end tutorial. Take a basic RAG chatbot, add Spanlens, and see retrieval + generation as one trace with token cost and per-step latency.',
   alternates: { canonical: '/docs/tutorials/rag-chatbot' },
+  openGraph: openGraphFor('/docs/tutorials/rag-chatbot'),
 }
 
 export default function RagChatbotTutorial() {

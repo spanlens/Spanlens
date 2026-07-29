@@ -8,10 +8,12 @@ export const metadata = {
   title: 'Anthropic Observability — Spanlens Integration',
   description: DESCRIPTION,
   openGraph: {
+    siteName: 'Spanlens',
     type: 'website',
     title: 'Anthropic Claude Observability — Log every API call with Spanlens',
     description: DESCRIPTION,
     url: '/integrations/anthropic',
+    locale: 'en_US',
   },
   twitter: {
     card: 'summary_large_image',

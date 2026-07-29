@@ -1,3 +1,4 @@
+import { openGraphFor } from '@/lib/page-metadata'
 import { CodeBlock } from '../../_components/code-block'
 import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
@@ -6,6 +7,7 @@ export const metadata = {
   description:
     'Trace generateText, streamText, generateObject, and streamObject with Spanlens. Two callbacks spread into the AI SDK options log every call automatically.',
   alternates: { canonical: '/docs/integrations/vercel-ai' },
+  openGraph: openGraphFor('/docs/integrations/vercel-ai'),
 }
 
 export default function VercelAiIntegration() {

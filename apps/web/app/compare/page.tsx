@@ -1,3 +1,4 @@
+import { openGraphFor } from '@/lib/page-metadata'
 import Link from 'next/link'
 import { Footer } from '@/components/layout/footer'
 import { MarketingNav } from '@/components/layout/marketing-nav'
@@ -5,6 +6,7 @@ import { BreadcrumbJsonLd } from '@/components/marketing/breadcrumb-jsonld'
 
 export const metadata = {
   alternates: { canonical: '/compare' },
+  openGraph: openGraphFor('/compare'),
   title: 'Spanlens vs alternatives · Compare',
   description:
     'Honest comparisons of Spanlens against Langfuse, Helicone, LangSmith, Braintrust, and Arize Phoenix, feature by feature.',

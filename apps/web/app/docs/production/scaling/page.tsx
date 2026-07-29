@@ -1,3 +1,4 @@
+import { openGraphFor } from '@/lib/page-metadata'
 import { CodeBlock } from '../../_components/code-block'
 import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
@@ -6,6 +7,7 @@ export const metadata = {
   description:
     'Latency budget, log body trade-offs, sampling, and self-hosting tuning for high-throughput LLM workloads on Spanlens.',
   alternates: { canonical: '/docs/production/scaling' },
+  openGraph: openGraphFor('/docs/production/scaling'),
 }
 
 export default function ScalingDocs() {
