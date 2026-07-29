@@ -1,3 +1,4 @@
+import { OG_IMAGE } from '@/lib/page-metadata'
 import { ModelPricingTemplate } from '@/components/marketing/model-pricing-template'
 
 const DESCRIPTION =
@@ -14,6 +15,7 @@ export const metadata = {
     description: DESCRIPTION,
     url: '/pricing/gpt-4o',
     locale: 'en_US',
+    images: OG_IMAGE,
   },
   twitter: {
     card: 'summary_large_image',

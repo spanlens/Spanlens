@@ -4,6 +4,19 @@ const SITE_NAME = 'Spanlens'
 const LOCALE = 'en_US'
 
 /**
+ * The card from app/opengraph-image.tsx, referenced explicitly.
+ *
+ * That file convention only reaches pages that inherit the root layout's
+ * `openGraph` block. The moment a page declares its own, the generated image
+ * goes with the rest of the inherited block, and the page ships without an
+ * `og:image` — which is what Ahrefs reports as "Open Graph tags incomplete".
+ * `twitter:image` is unaffected because no page overrides `twitter`.
+ */
+export const OG_IMAGE = [
+  { url: '/opengraph-image', width: 1200, height: 630, alt: SITE_NAME },
+]
+
+/**
  * Open Graph block for a page, keyed on the same path as its canonical.
  *
  * Two constraints make this a helper rather than a literal on each page:
@@ -33,5 +46,6 @@ export function openGraphFor(
     siteName: SITE_NAME,
     locale: LOCALE,
     url: path,
+    images: OG_IMAGE,
   }
 }

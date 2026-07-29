@@ -1,3 +1,4 @@
+import { OG_IMAGE } from '@/lib/page-metadata'
 import { Footer } from '@/components/layout/footer'
 import { MarketingNav } from '@/components/layout/marketing-nav'
 import { CostCalculator } from './_calculator'
@@ -16,6 +17,7 @@ export const metadata = {
     description: DESCRIPTION,
     url: '/tools/llm-cost-calculator',
     locale: 'en_US',
+    images: OG_IMAGE,
   },
   twitter: {
     card: 'summary_large_image',

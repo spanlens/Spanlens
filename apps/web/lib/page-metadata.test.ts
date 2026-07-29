@@ -69,6 +69,9 @@ describe('page metadata', () => {
       // A hand-written block replaces the root's, so it has to repeat these.
       expect(body, `${page.name} openGraph is missing siteName`).toMatch(/siteName:/)
       expect(body, `${page.name} openGraph is missing locale`).toMatch(/locale:/)
+      // Including the card: app/opengraph-image.tsx only reaches pages that
+      // inherit the root block, so declaring one drops og:image with it.
+      expect(body, `${page.name} openGraph is missing images`).toMatch(/images:/)
     },
   )
 })
