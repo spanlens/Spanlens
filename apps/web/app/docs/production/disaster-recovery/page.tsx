@@ -1,3 +1,4 @@
+import { openGraphFor } from '@/lib/page-metadata'
 import { CodeBlock } from '../../_components/code-block'
 import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
@@ -6,6 +7,7 @@ export const metadata = {
   description:
     'Operator runbook for Spanlens outages: what data is at risk per failure mode, how fallback queues protect it, and recovery steps for ClickHouse and Supabase.',
   alternates: { canonical: '/docs/production/disaster-recovery' },
+  openGraph: openGraphFor('/docs/production/disaster-recovery'),
 }
 
 export default function DisasterRecoveryDocs() {

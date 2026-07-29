@@ -1,3 +1,4 @@
+import { openGraphFor } from '@/lib/page-metadata'
 import Link from 'next/link'
 import { Footer } from '@/components/layout/footer'
 import { MarketingNav } from '@/components/layout/marketing-nav'
@@ -5,6 +6,7 @@ import { BreadcrumbJsonLd } from '@/components/marketing/breadcrumb-jsonld'
 
 export const metadata = {
   alternates: { canonical: '/refund' },
+  openGraph: openGraphFor('/refund'),
   title: 'Refund Policy · Spanlens',
   description:
     'Spanlens refund policy, 14-day money-back guarantee, EU statutory withdrawal rights, and how to request a refund.',

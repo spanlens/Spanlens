@@ -1,3 +1,4 @@
+import { openGraphFor } from '@/lib/page-metadata'
 import Link from 'next/link'
 import { Footer } from '@/components/layout/footer'
 import { MarketingNav } from '@/components/layout/marketing-nav'
@@ -5,6 +6,7 @@ import { BreadcrumbJsonLd } from '@/components/marketing/breadcrumb-jsonld'
 
 export const metadata = {
   alternates: { canonical: '/dpa' },
+  openGraph: openGraphFor('/dpa'),
   title: 'Data Processing Addendum · Spanlens',
   description:
     'Spanlens Data Processing Addendum (DPA) for customers subject to GDPR or UK GDPR. Incorporates the EU Standard Contractual Clauses (Module 2).',

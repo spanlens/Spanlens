@@ -1,3 +1,4 @@
+import { openGraphFor } from '@/lib/page-metadata'
 import Link from 'next/link'
 import { Footer } from '@/components/layout/footer'
 import { MarketingNav } from '@/components/layout/marketing-nav'
@@ -5,6 +6,7 @@ import { BreadcrumbJsonLd } from '@/components/marketing/breadcrumb-jsonld'
 
 export const metadata = {
   alternates: { canonical: '/benchmarks' },
+  openGraph: openGraphFor('/benchmarks'),
   title: 'Proxy Overhead Benchmark · Spanlens',
   description:
     'How much latency does the Spanlens proxy add? A reproducible benchmark of synchronous per-request overhead, with the methodology and a command to run it yourself.',

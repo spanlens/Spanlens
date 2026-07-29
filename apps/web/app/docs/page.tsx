@@ -1,3 +1,4 @@
+import { openGraphFor } from '@/lib/page-metadata'
 import Link from 'next/link'
 import { ArrowRight, Zap, Code, Globe, Server, Activity, Terminal } from 'lucide-react'
 import { QuickTabs } from './_components/quick-tabs'
@@ -7,6 +8,7 @@ export const metadata = {
   description:
     'Integrate drop-in LLM observability for OpenAI, Anthropic, and Gemini in 30 seconds. SDK reference, proxy API, OpenTelemetry, and self-hosting guides.',
   alternates: { canonical: '/docs' },
+  openGraph: openGraphFor('/docs'),
 }
 
 const TS_SNIPPET = `import { createOpenAI } from '@spanlens/sdk/openai'

@@ -1,7 +1,9 @@
+import { openGraphFor } from '@/lib/page-metadata'
 import { CompareTemplate, type CompareGroup, type ComparePoint } from '@/components/marketing/compare-template'
 
 export const metadata = {
   alternates: { canonical: '/compare/helicone' },
+  openGraph: openGraphFor('/compare/helicone'),
   title: 'Helicone Alternative After the Mintlify Acquisition',
   description:
     'Helicone entered maintenance mode after Mintlify acquired it in March 2026. Spanlens is MIT, still shipping, and swaps in with the same one-line baseURL.',

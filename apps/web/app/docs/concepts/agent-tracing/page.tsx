@@ -1,3 +1,4 @@
+import { openGraphFor } from '@/lib/page-metadata'
 import { CodeBlock } from '../../_components/code-block'
 import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
@@ -6,6 +7,7 @@ export const metadata = {
   description:
     'How Spanlens models agent traces: trace root, agent steps, LLM calls, tool calls, parent/child links, and critical path computation.',
   alternates: { canonical: '/docs/concepts/agent-tracing' },
+  openGraph: openGraphFor('/docs/concepts/agent-tracing'),
 }
 
 export default function AgentTracingConcept() {

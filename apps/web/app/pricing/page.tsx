@@ -14,10 +14,12 @@ export const metadata = {
   title: 'Pricing · Spanlens LLM Observability',
   description: PRICING_DESCRIPTION,
   openGraph: {
+    siteName: 'Spanlens',
     type: 'website',
     title: 'Spanlens Pricing — Free, Pro $29, Team $149',
     description: PRICING_DESCRIPTION,
     url: '/pricing',
+    locale: 'en_US',
   },
   twitter: {
     card: 'summary_large_image',
@@ -101,9 +103,12 @@ const PRICING_FAQS: { q: string; a: React.ReactNode }[] = [
   },
 ]
 
+// Same `@id` as the homepage node: one product entity, described twice.
+// See app/page.tsx for why there is no aggregateRating.
 const pricingJsonLd = {
   '@context': 'https://schema.org',
   '@type': 'SoftwareApplication',
+  '@id': 'https://www.spanlens.io/#software',
   name: 'Spanlens',
   applicationCategory: 'DeveloperApplication',
   operatingSystem: 'Web, Linux, macOS, Windows (Docker)',
@@ -134,17 +139,11 @@ const pricingJsonLd = {
       description:
         '1M requests/month, 10 seats, 365-day log retention, Slack + webhooks, priority support. Overage $5 per 100K extra requests.',
     },
-    {
-      '@type': 'Offer',
-      name: 'Enterprise',
-      priceSpecification: {
-        '@type': 'PriceSpecification',
-        price: 'Custom',
-        priceCurrency: 'USD',
-      },
-      availability: 'https://schema.org/InStock',
-      description: 'Custom volume, SSO (SAML/Okta), dedicated SLA. Contact for pricing.',
-    },
+    // No Enterprise Offer. `price` is required and "contact for pricing" has
+    // no number; the earlier `price: '0'` read as free, and the
+    // priceSpecification that replaced it still failed validation ("Missing
+    // required price property for Software App"). The plan stays in the
+    // visible table, which is where a buyer looks for it anyway.
   ],
 }
 

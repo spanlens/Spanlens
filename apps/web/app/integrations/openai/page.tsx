@@ -8,10 +8,12 @@ export const metadata = {
   title: 'OpenAI Observability — Spanlens Integration',
   description: DESCRIPTION,
   openGraph: {
+    siteName: 'Spanlens',
     type: 'website',
     title: 'OpenAI Observability — Log every API call with Spanlens',
     description: DESCRIPTION,
     url: '/integrations/openai',
+    locale: 'en_US',
   },
   twitter: {
     card: 'summary_large_image',

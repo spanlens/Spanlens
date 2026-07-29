@@ -1,3 +1,4 @@
+import { openGraphFor } from '@/lib/page-metadata'
 import { CodeBlock } from '../../_components/code-block'
 import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
@@ -6,6 +7,7 @@ export const metadata = {
   description:
     'How Spanlens degrades during a partial outage, what the fallback queue does, and how to monitor the proxy so it never silently drops logs.',
   alternates: { canonical: '/docs/production/reliability' },
+  openGraph: openGraphFor('/docs/production/reliability'),
 }
 
 export default function ReliabilityDocs() {

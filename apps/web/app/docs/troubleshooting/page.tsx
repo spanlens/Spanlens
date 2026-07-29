@@ -1,7 +1,9 @@
+import { openGraphFor } from '@/lib/page-metadata'
 import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
 export const metadata = {
   alternates: { canonical: '/docs/troubleshooting' },
+  openGraph: openGraphFor('/docs/troubleshooting'),
   title: 'Troubleshooting · Spanlens Docs',
   description:
     'Symptom-first fixes for common Spanlens problems: 401/403 auth, 429 rate limits, 502/503/504 upstream errors, missing requests, and empty or truncated traces.',

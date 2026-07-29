@@ -1,8 +1,10 @@
+import { openGraphFor } from '@/lib/page-metadata'
 import { CodeBlock } from '../../_components/code-block'
 import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
 export const metadata = {
   alternates: { canonical: '/docs/features/saved-filters' },
+  openGraph: openGraphFor('/docs/features/saved-filters'),
   title: 'Saved Filters · Spanlens Docs',
   description:
     'Save named filter combinations on the /requests page and restore them instantly from a dropdown on future visits.',

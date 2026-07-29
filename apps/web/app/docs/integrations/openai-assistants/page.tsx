@@ -1,3 +1,4 @@
+import { openGraphFor } from '@/lib/page-metadata'
 import { CodeBlock } from '../../_components/code-block'
 import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
@@ -6,6 +7,7 @@ export const metadata = {
   description:
     'Trace OpenAI Assistants API threads, runs, and steps with Spanlens. Tool calls and code-interpreter steps render as a span tree per run.',
   alternates: { canonical: '/docs/integrations/openai-assistants' },
+  openGraph: openGraphFor('/docs/integrations/openai-assistants'),
 }
 
 export default function OpenAIAssistantsIntegration() {

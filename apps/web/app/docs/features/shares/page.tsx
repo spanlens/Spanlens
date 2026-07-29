@@ -1,8 +1,10 @@
+import { openGraphFor } from '@/lib/page-metadata'
 import { CodeBlock } from '../../_components/code-block'
 import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
 export const metadata = {
   alternates: { canonical: '/docs/features/shares' },
+  openGraph: openGraphFor('/docs/features/shares'),
   title: 'Shared links · Spanlens Docs',
   description:
     'Publish a public read-only render of any trace or request via a share link, with redaction presets, view counts, and one-click revoke.',

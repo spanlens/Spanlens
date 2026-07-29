@@ -1,3 +1,4 @@
+import { openGraphFor } from '@/lib/page-metadata'
 import { CodeBlock } from '../../_components/code-block'
 import { LangTabs } from '../../_components/lang-tabs'
 import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
@@ -7,6 +8,7 @@ export const metadata = {
   description:
     'Move from Helicone to Spanlens in under 15 minutes. Base URL swap, properties to user / session mapping, and what to do about the AI Gateway features.',
   alternates: { canonical: '/docs/migrate/from-helicone' },
+  openGraph: openGraphFor('/docs/migrate/from-helicone'),
 }
 
 export default function MigrateFromHelicone() {

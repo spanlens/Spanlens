@@ -1,3 +1,4 @@
+import { openGraphFor } from '@/lib/page-metadata'
 import Link from 'next/link'
 import { Footer } from '@/components/layout/footer'
 import { MarketingNav } from '@/components/layout/marketing-nav'
@@ -7,6 +8,7 @@ export const metadata = {
   description:
     'Self-host Spanlens, an open source LLM observability and monitoring platform, with one Docker command. Logging, cost tracking, and tracing on your infra.',
   alternates: { canonical: '/self-hosting' },
+  openGraph: openGraphFor('/self-hosting'),
 }
 
 const SITE_URL = 'https://www.spanlens.io'

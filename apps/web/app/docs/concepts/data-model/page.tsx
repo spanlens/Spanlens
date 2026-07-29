@@ -1,3 +1,4 @@
+import { openGraphFor } from '@/lib/page-metadata'
 import { CodeBlock } from '../../_components/code-block'
 import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
@@ -6,6 +7,7 @@ export const metadata = {
   description:
     'Spanlens data model in one page: Request, Trace, Span, Prompt Version, Eval, Dataset, and how they relate for billing, debugging, and quality questions.',
   alternates: { canonical: '/docs/concepts/data-model' },
+  openGraph: openGraphFor('/docs/concepts/data-model'),
 }
 
 export default function DataModelDocs() {

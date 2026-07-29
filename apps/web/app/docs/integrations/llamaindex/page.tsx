@@ -1,3 +1,4 @@
+import { openGraphFor } from '@/lib/page-metadata'
 import { CodeBlock } from '../../_components/code-block'
 import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
@@ -6,6 +7,7 @@ export const metadata = {
   description:
     'Trace LlamaIndex query engines and agents with Spanlens. One callback handler maps every CBEventType to a span so the trace mirrors your RAG pipeline.',
   alternates: { canonical: '/docs/integrations/llamaindex' },
+  openGraph: openGraphFor('/docs/integrations/llamaindex'),
 }
 
 export default function LlamaIndexIntegration() {

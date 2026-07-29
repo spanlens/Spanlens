@@ -1,3 +1,4 @@
+import { openGraphFor } from '@/lib/page-metadata'
 import { CodeBlock } from '../../_components/code-block'
 import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
@@ -6,6 +7,7 @@ export const metadata = {
   description:
     'How Spanlens models evals: LLM-as-judge scoring, human annotation, judge-to-human correlation as a metric, and drift detection across prompt versions.',
   alternates: { canonical: '/docs/concepts/evals' },
+  openGraph: openGraphFor('/docs/concepts/evals'),
 }
 
 export default function EvalsConcept() {

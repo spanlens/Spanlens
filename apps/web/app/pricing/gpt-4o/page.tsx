@@ -5,17 +5,19 @@ const DESCRIPTION =
 
 export const metadata = {
   alternates: { canonical: '/pricing/gpt-4o' },
-  title: 'GPT-4o Pricing 2026 — Cost Per Token, Monthly Estimates',
+  title: 'GPT-4o Pricing 2026: Cost Per Token, Monthly Estimates',
   description: DESCRIPTION,
   openGraph: {
+    siteName: 'Spanlens',
     type: 'article',
-    title: 'GPT-4o Pricing 2026 — Cost Per Token, Monthly Estimates',
+    title: 'GPT-4o Pricing 2026: Cost Per Token, Monthly Estimates',
     description: DESCRIPTION,
     url: '/pricing/gpt-4o',
+    locale: 'en_US',
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'GPT-4o Pricing 2026 — Cost Per Token, Monthly Estimates',
+    title: 'GPT-4o Pricing 2026: Cost Per Token, Monthly Estimates',
     description: DESCRIPTION,
   },
 }

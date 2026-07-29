@@ -1,7 +1,9 @@
+import { openGraphFor } from '@/lib/page-metadata'
 import { CompareTemplate, type CompareGroup, type ComparePoint } from '@/components/marketing/compare-template'
 
 export const metadata = {
   alternates: { canonical: '/compare/arize-phoenix' },
+  openGraph: openGraphFor('/compare/arize-phoenix'),
   title: 'Arize Phoenix Is ELv2, Not OSI Open Source',
   description:
     'Phoenix ships under Elastic License 2.0, which restricts hosted resale. Spanlens is MIT with no EE folder and self-hosts with one Docker command.',

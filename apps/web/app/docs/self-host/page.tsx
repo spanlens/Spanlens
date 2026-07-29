@@ -1,9 +1,11 @@
+import { openGraphFor } from '@/lib/page-metadata'
 import { CodeBlock } from '../_components/code-block'
 import { SelfHostArchitectureDiagram } from '../_components/diagrams'
 import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
 export const metadata = {
   alternates: { canonical: '/docs/self-host' },
+  openGraph: openGraphFor('/docs/self-host'),
   title: 'Self-hosting · Spanlens Docs',
   description:
     'Run the full Spanlens stack (dashboard + proxy) on your own infra with a Supabase project.',

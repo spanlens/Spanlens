@@ -1,7 +1,9 @@
+import { openGraphFor } from '@/lib/page-metadata'
 import { CompareTemplate, type CompareGroup, type ComparePoint } from '@/components/marketing/compare-template'
 
 export const metadata = {
   alternates: { canonical: '/compare/langsmith' },
+  openGraph: openGraphFor('/compare/langsmith'),
   title: 'Spanlens vs LangSmith · 2026 Comparison',
   description:
     'LangSmith is excellent inside the LangChain ecosystem. Spanlens is framework-agnostic: a 1-line baseURL swap works with any HTTP client. MIT licensed.',

@@ -1,7 +1,9 @@
+import { openGraphFor } from '@/lib/page-metadata'
 import { CompareTemplate, type CompareGroup, type ComparePoint } from '@/components/marketing/compare-template'
 
 export const metadata = {
   alternates: { canonical: '/compare/langfuse' },
+  openGraph: openGraphFor('/compare/langfuse'),
   title: 'Spanlens vs Langfuse · 2026 Comparison',
   description:
     'Spanlens is a drop-in proxy with evals, agent tracing, and Prompt A/B built in, fully MIT. Langfuse uses an SDK + OTel model with a commercial EE folder.',

@@ -1,8 +1,10 @@
+import { openGraphFor } from '@/lib/page-metadata'
 import { CodeBlock } from '../../_components/code-block'
 import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
 export const metadata = {
   alternates: { canonical: '/docs/features/security' },
+  openGraph: openGraphFor('/docs/features/security'),
   title: 'Security (PII + prompt injection) · Spanlens Docs',
   description:
     'Automatic PII detection and prompt-injection scanning on every LLM request and response, with optional blocking mode and real-time alert emails.',

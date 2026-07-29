@@ -1,8 +1,10 @@
+import { openGraphFor } from '@/lib/page-metadata'
 import { CodeBlock } from '../../_components/code-block'
 import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
 export const metadata = {
   alternates: { canonical: '/docs/features/audit-logs' },
+  openGraph: openGraphFor('/docs/features/audit-logs'),
   title: 'Audit Logs · Spanlens Docs',
   description:
     'Chronological record of every organization-level change: API keys, provider keys, member invitations, role changes, and billing plan switches.',

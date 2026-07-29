@@ -1,9 +1,11 @@
+import { openGraphFor } from '@/lib/page-metadata'
 import { CodeBlock } from '../../_components/code-block'
 import { TraceWaterfallDiagram } from '../../_components/diagrams'
 import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
 export const metadata = {
   alternates: { canonical: '/docs/features/traces' },
+  openGraph: openGraphFor('/docs/features/traces'),
   title: 'Traces · Spanlens Docs',
   description:
     'Agent tracing with nested span trees. See exactly where time goes when your LLM agent calls five tools in sequence.',

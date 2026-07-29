@@ -1,3 +1,4 @@
+import { openGraphFor } from '@/lib/page-metadata'
 import Link from 'next/link'
 import { Footer } from '@/components/layout/footer'
 import { MarketingNav } from '@/components/layout/marketing-nav'
@@ -7,6 +8,7 @@ export const metadata = {
   description:
     'Open-source and SaaS alternatives to Langfuse, Helicone, LangSmith, Braintrust, and Arize Phoenix in 2026. Honest tradeoffs, MIT license, self-hostable.',
   alternates: { canonical: '/alternatives' },
+  openGraph: openGraphFor('/alternatives'),
 }
 
 const SITE_URL = 'https://www.spanlens.io'

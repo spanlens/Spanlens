@@ -5,6 +5,19 @@ import { BreadcrumbJsonLd } from '@/components/marketing/breadcrumb-jsonld'
 
 const SITE_URL = 'https://www.spanlens.io'
 
+/**
+ * Provider display name to its /integrations page. This used to be
+ * `provider.toLowerCase()`, which works for OpenAI and Anthropic and produces
+ * /integrations/google for Gemini — a 404 linked from every Gemini pricing
+ * page. A provider with no integration page renders no link rather than a
+ * broken one.
+ */
+const INTEGRATION_SLUG: Record<string, string> = {
+  OpenAI: 'openai',
+  Anthropic: 'anthropic',
+  Google: 'gemini',
+}
+
 export interface UsageScenario {
   label: string
   inputTokens: number
@@ -301,12 +314,14 @@ export function ModelPricingTemplate({
             >
               Start free →
             </Link>
-            <Link
-              href={`/integrations/${provider.toLowerCase()}`}
-              className="h-10 px-5 rounded-[6px] border border-border text-text text-[14px] font-medium leading-10 hover:bg-bg-elev transition-colors text-center"
-            >
-              {provider} integration guide
-            </Link>
+            {INTEGRATION_SLUG[provider] ? (
+              <Link
+                href={`/integrations/${INTEGRATION_SLUG[provider]}`}
+                className="h-10 px-5 rounded-[6px] border border-border text-text text-[14px] font-medium leading-10 hover:bg-bg-elev transition-colors text-center"
+              >
+                {provider} integration guide
+              </Link>
+            ) : null}
             <a
               href={providerUrl}
               target="_blank"

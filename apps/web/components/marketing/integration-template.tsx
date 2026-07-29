@@ -55,12 +55,9 @@ export function IntegrationTemplate({
     url: `${SITE_URL}/integrations/${slug}`,
     headline: `${provider} observability with Spanlens`,
     description,
-    about: {
-      '@type': 'SoftwareApplication',
-      name: 'Spanlens',
-      applicationCategory: 'DeveloperApplication',
-      url: SITE_URL,
-    },
+    // See compare-template.tsx: reference the homepage's product entity by
+    // @id instead of re-declaring a partial SoftwareApplication here.
+    about: { '@id': `${SITE_URL}/#software` },
     mentions: { '@type': 'Thing', name: provider },
     isPartOf: { '@type': 'WebSite', name: 'Spanlens', url: SITE_URL },
   }

@@ -1,3 +1,4 @@
+import { openGraphFor } from '@/lib/page-metadata'
 import Link from 'next/link'
 import { Footer } from '@/components/layout/footer'
 import { MarketingNav } from '@/components/layout/marketing-nav'
@@ -5,6 +6,7 @@ import { BreadcrumbJsonLd } from '@/components/marketing/breadcrumb-jsonld'
 
 export const metadata = {
   alternates: { canonical: '/subprocessors' },
+  openGraph: openGraphFor('/subprocessors'),
   title: 'Subprocessors · Spanlens',
   description:
     'The complete list of subprocessors Spanlens engages to operate the service, including data hosting locations and the purpose of each engagement.',

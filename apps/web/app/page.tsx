@@ -116,9 +116,17 @@ const TRACE_SPANS = [
   { name: 'format_reply',           depth: 1, start: 90, width: 6,   critical: false, label: '480ms' },
 ]
 
+// Canonical product entity for the whole site. Comparison and integration
+// pages reference it by `@id` rather than declaring their own partial copy.
+//
+// No `aggregateRating` / `review`: Google wants one of them for the Software
+// App rich result, and Ahrefs reports the absence as an error, but there are
+// no genuine ratings to publish and inventing them would be worse than
+// forgoing the rich result. Add real ones here if that ever changes.
 const softwareApplicationJsonLd = {
   '@context': 'https://schema.org',
   '@type': 'SoftwareApplication',
+  '@id': `${SITE_URL}/#software`,
   name: 'Spanlens',
   applicationCategory: 'DeveloperApplication',
   applicationSubCategory: 'LLM Observability',
@@ -126,11 +134,15 @@ const softwareApplicationJsonLd = {
   url: SITE_URL,
   description:
     'Drop-in LLM observability for OpenAI, Anthropic, and Gemini. Logging, cost tracking, agent tracing, evals, anomaly detection, and PII scanning. Open source.',
-  offers: PLANS.map((p) => ({
+  // Enterprise is excluded on purpose. `price` is required on an Offer, and
+  // "contact us" has no number to put there; emitting the Offer without one
+  // fails validation ("Missing required price property"), and inventing a
+  // figure would be worse. The three priced plans carry the pricing signal.
+  offers: PLANS.filter((p) => p.price !== 'Custom').map((p) => ({
     '@type': 'Offer',
     name: p.name,
-    price: p.price === 'Custom' ? undefined : p.price.replace('$', ''),
-    priceCurrency: p.price === 'Custom' ? undefined : 'USD',
+    price: p.price.replace('$', ''),
+    priceCurrency: 'USD',
     category: p.unit ? `subscription${p.unit}` : 'custom',
   })),
   featureList: FEATURES.map((f) => `${f.title}: ${f.body}`),

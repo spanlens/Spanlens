@@ -1,3 +1,4 @@
+import { openGraphFor } from '@/lib/page-metadata'
 import { CodeBlock } from '../../_components/code-block'
 import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
@@ -6,6 +7,7 @@ export const metadata = {
   description:
     'What LLM observability is, the five signal categories worth capturing, and how Spanlens maps each one to a concrete entity in the data model.',
   alternates: { canonical: '/docs/concepts/llm-observability' },
+  openGraph: openGraphFor('/docs/concepts/llm-observability'),
 }
 
 export default function LlmObservabilityConcept() {

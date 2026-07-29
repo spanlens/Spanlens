@@ -5,17 +5,19 @@ const DESCRIPTION =
 
 export const metadata = {
   alternates: { canonical: '/pricing/o3-mini' },
-  title: 'o3-mini Pricing 2026 — Cost Per Token, Monthly Estimates',
+  title: 'o3-mini Pricing 2026: Cost Per Token, Monthly Estimates',
   description: DESCRIPTION,
   openGraph: {
+    siteName: 'Spanlens',
     type: 'article',
-    title: 'o3-mini Pricing 2026 — Cost Per Token, Monthly Estimates',
+    title: 'o3-mini Pricing 2026: Cost Per Token, Monthly Estimates',
     description: DESCRIPTION,
     url: '/pricing/o3-mini',
+    locale: 'en_US',
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'o3-mini Pricing 2026 — Cost Per Token, Monthly Estimates',
+    title: 'o3-mini Pricing 2026: Cost Per Token, Monthly Estimates',
     description: DESCRIPTION,
   },
 }

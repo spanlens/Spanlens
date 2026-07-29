@@ -1,8 +1,10 @@
+import { openGraphFor } from '@/lib/page-metadata'
 import { CodeBlock } from '../../_components/code-block'
 import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
 export const metadata = {
   alternates: { canonical: '/docs/features/requests' },
+  openGraph: openGraphFor('/docs/features/requests'),
   title: 'Requests · Spanlens Docs',
   description:
     'Complete log of every LLM call routed through Spanlens, model, tokens, cost, latency, full request/response bodies.',

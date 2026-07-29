@@ -1,3 +1,4 @@
+import { openGraphFor } from '@/lib/page-metadata'
 import { CodeBlock } from '../../_components/code-block'
 import { LangTabs } from '../../_components/lang-tabs'
 import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
@@ -7,6 +8,7 @@ export const metadata = {
   description:
     'Move from Langfuse to Spanlens in under 30 minutes. Code diffs, data model mapping, and dual-running steps so you can switch without losing history.',
   alternates: { canonical: '/docs/migrate/from-langfuse' },
+  openGraph: openGraphFor('/docs/migrate/from-langfuse'),
 }
 
 export default function MigrateFromLangfuse() {

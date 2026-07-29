@@ -1,9 +1,11 @@
+import { openGraphFor } from '@/lib/page-metadata'
 import { CodeBlock } from '../_components/code-block'
 import { LangTabs } from '../_components/lang-tabs'
 import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
 export const metadata = {
   alternates: { canonical: '/docs/sdk' },
+  openGraph: openGraphFor('/docs/sdk'),
   title: 'Spanlens SDK · Spanlens Docs',
   description:
     'Official SDK reference for TypeScript and Python, createOpenAI, createAnthropic, createGemini, observe(), and the trace / span API.',
