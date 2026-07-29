@@ -2,9 +2,9 @@ import { CompareTemplate, type CompareGroup, type ComparePoint } from '@/compone
 
 export const metadata = {
   alternates: { canonical: '/compare/arize-phoenix' },
-  title: 'Spanlens vs Arize Phoenix · 2026 Comparison',
+  title: 'Arize Phoenix Is ELv2, Not OSI Open Source',
   description:
-    'Arize Phoenix has deep ML-engineer DNA. Spanlens is built for app developers shipping LLM features, with proxy-first install and first-class JS/TS.',
+    'Phoenix ships under Elastic License 2.0, which restricts hosted resale. Spanlens is MIT with no EE folder and self-hosts with one Docker command.',
 }
 
 const whySpanlens: ComparePoint[] = [

@@ -2,9 +2,9 @@ import { CompareTemplate, type CompareGroup, type ComparePoint } from '@/compone
 
 export const metadata = {
   alternates: { canonical: '/compare/helicone' },
-  title: 'Spanlens vs Helicone · 2026 Comparison',
+  title: 'Helicone Alternative After the Mintlify Acquisition',
   description:
-    'Spanlens and Helicone are both proxy-based LLM observability tools. Spanlens adds Critical Path agent tracing, Prompt A/B testing, and durable logging.',
+    'Helicone entered maintenance mode after Mintlify acquired it in March 2026. Spanlens is MIT, still shipping, and swaps in with the same one-line baseURL.',
 }
 
 const whySpanlens: ComparePoint[] = [
