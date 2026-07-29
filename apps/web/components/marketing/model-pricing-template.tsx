@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { Footer } from '@/components/layout/footer'
 import { MarketingNav } from '@/components/layout/marketing-nav'
+import { BreadcrumbJsonLd } from '@/components/marketing/breadcrumb-jsonld'
 
 const SITE_URL = 'https://www.spanlens.io'
 
@@ -86,12 +87,8 @@ export function ModelPricingTemplate({
     description: `${model} costs ${formatUsd(inputPricePer1M)} per 1M input tokens and ${formatUsd(outputPricePer1M)} per 1M output tokens. Real-world monthly cost scenarios and alternatives.`,
     datePublished: '2026-06-16',
     dateModified: '2026-06-16',
-    author: { '@type': 'Organization', name: 'Spanlens', url: SITE_URL },
-    publisher: {
-      '@type': 'Organization',
-      name: 'Spanlens',
-      logo: { '@type': 'ImageObject', url: `${SITE_URL}/icon.png` },
-    },
+    author: { '@id': `${SITE_URL}/#organization` },
+    publisher: { '@id': `${SITE_URL}/#organization` },
     about: { '@type': 'Thing', name: model },
     mentions: { '@type': 'Organization', name: provider },
   }
@@ -118,6 +115,12 @@ export function ModelPricingTemplate({
         dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd) }}
       />
       <MarketingNav />
+      <BreadcrumbJsonLd
+        trail={[
+          { name: 'Pricing', path: '/pricing' },
+          { name: `${model} pricing`, path: `/pricing/${slug}` },
+        ]}
+      />
 
       <article className="max-w-3xl mx-auto px-6 py-20">
         <Link

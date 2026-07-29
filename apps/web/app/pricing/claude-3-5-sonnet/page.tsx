@@ -5,7 +5,7 @@ const DESCRIPTION =
 
 export const metadata = {
   alternates: { canonical: '/pricing/claude-3-5-sonnet' },
-  title: 'Claude 3.5 Sonnet Pricing 2026 — Cost Per Token, Monthly Estimates',
+  title: 'Claude 3.5 Sonnet Pricing 2026 · Spanlens',
   description: DESCRIPTION,
   openGraph: {
     type: 'article',

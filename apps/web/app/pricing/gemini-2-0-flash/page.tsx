@@ -1,11 +1,11 @@
 import { ModelPricingTemplate } from '@/components/marketing/model-pricing-template'
 
 const DESCRIPTION =
-  'Gemini 2.0 Flash pricing: $0.10 per 1M input tokens, $0.40 per 1M output. Significantly cheaper than GPT-4o-mini with full multimodal support. Monthly cost estimates and alternatives.'
+  'Gemini 2.0 Flash pricing: $0.10 per 1M input, $0.40 per 1M output. Cheaper than GPT-4o-mini with full multimodal support. Monthly estimates and alternatives.'
 
 export const metadata = {
   alternates: { canonical: '/pricing/gemini-2-0-flash' },
-  title: 'Gemini 2.0 Flash Pricing 2026 — Cost Per Token, Monthly Estimates',
+  title: 'Gemini 2.0 Flash Pricing 2026 · Spanlens',
   description: DESCRIPTION,
   openGraph: {
     type: 'article',

@@ -4,7 +4,7 @@ import { MarketingNav } from '@/components/layout/marketing-nav'
 import { BreadcrumbJsonLd } from '@/components/marketing/breadcrumb-jsonld'
 
 const DESCRIPTION =
-  'LLM observability is the practice of logging, tracing, and analyzing every call your application makes to a large language model. This guide covers what to monitor, how to instrument, and how Spanlens compares to Langfuse, Helicone, and LangSmith.'
+  'LLM observability means logging, tracing, and analyzing every LLM call your app makes. Learn what to monitor, how to instrument, and how Spanlens compares.'
 
 export const metadata = {
   alternates: { canonical: '/llm-observability' },

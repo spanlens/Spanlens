@@ -4,7 +4,7 @@ import { MarketingNav } from '@/components/layout/marketing-nav'
 import { BreadcrumbJsonLd } from '@/components/marketing/breadcrumb-jsonld'
 
 const DESCRIPTION =
-  'LLM cost tracking captures per-request USD spend by model, prompt version, and customer. Learn how to monitor OpenAI, Anthropic, and Gemini bills, set budget alerts, and reduce spend with model swaps.'
+  'LLM cost tracking records per-request spend by model, prompt version, and customer. Monitor OpenAI, Anthropic, and Gemini bills, set budget alerts, and cut costs.'
 
 export const metadata = {
   alternates: { canonical: '/llm-cost-tracking' },
@@ -12,13 +12,13 @@ export const metadata = {
   description: DESCRIPTION,
   openGraph: {
     type: 'article',
-    title: 'LLM Cost Tracking — Monitor and Reduce Your AI API Spend',
+    title: 'LLM Cost Tracking: Monitor and Reduce Your AI API Spend',
     description: DESCRIPTION,
     url: '/llm-cost-tracking',
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'LLM Cost Tracking — Monitor and Reduce Your AI API Spend',
+    title: 'LLM Cost Tracking: Monitor and Reduce Your AI API Spend',
     description: DESCRIPTION,
   },
 }
@@ -127,9 +127,17 @@ export default function LlmCostTrackingHub() {
             <Link href="/pricing/claude-3-5-sonnet" className="text-accent hover:opacity-80">
               /pricing/claude-3-5-sonnet
             </Link>
-            , and{' '}
+            ,{' '}
             <Link href="/pricing/gemini-2-0-flash" className="text-accent hover:opacity-80">
               /pricing/gemini-2-0-flash
+            </Link>
+            ,{' '}
+            <Link href="/pricing/gpt-4o-mini" className="text-accent hover:opacity-80">
+              /pricing/gpt-4o-mini
+            </Link>
+            , and{' '}
+            <Link href="/pricing/o3-mini" className="text-accent hover:opacity-80">
+              /pricing/o3-mini
             </Link>
             .
           </p>
@@ -207,7 +215,7 @@ export default function LlmCostTrackingHub() {
                 {[
                   ['GPT-4o', '$2.50', '$10.00', '/pricing/gpt-4o'],
                   ['GPT-4o-mini', '$0.15', '$0.60', '/pricing/gpt-4o-mini'],
-                  ['o3-mini', '$1.10', '$4.40', null],
+                  ['o3-mini', '$1.10', '$4.40', '/pricing/o3-mini'],
                   ['Claude 3.5 Sonnet', '$3.00', '$15.00', '/pricing/claude-3-5-sonnet'],
                   ['Claude 3.5 Haiku', '$0.80', '$4.00', null],
                   ['Gemini 2.0 Flash', '$0.10', '$0.40', '/pricing/gemini-2-0-flash'],

@@ -1,7 +1,7 @@
 import { IntegrationTemplate } from '@/components/marketing/integration-template'
 
 const DESCRIPTION =
-  'Log every Google Gemini API call with Spanlens. Track cost, latency, tokens, streaming, function calling, and full request and response bodies. One-line integration, MIT licensed, self-hostable.'
+  'Log every Google Gemini API call with Spanlens. Track cost, latency, tokens, streaming, and function calls. One-line integration, MIT licensed, self-hostable.'
 
 export const metadata = {
   alternates: { canonical: '/integrations/gemini' },

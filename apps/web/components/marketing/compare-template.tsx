@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { Check, Minus, X } from 'lucide-react'
 import { Footer } from '@/components/layout/footer'
 import { MarketingNav } from '@/components/layout/marketing-nav'
+import { BreadcrumbJsonLd } from '@/components/marketing/breadcrumb-jsonld'
 import { cn } from '@/lib/utils'
 
 export type Verdict = 'yes' | 'no' | 'partial'
@@ -42,6 +43,8 @@ export interface CompareTemplateProps {
   relatedNote?: React.ReactNode
   /** Year shown next to the H1 and used in the FAQ canonical URL. Defaults to the current year. */
   year?: number
+  /** Content-authored last-updated date (ISO 'YYYY-MM-DD'). Drives the visible "Updated" text and JSON-LD dateModified so they reflect the true content date, not the deploy date. */
+  lastUpdated?: string
 }
 
 const SITE_URL = 'https://www.spanlens.io'
@@ -105,7 +108,12 @@ function buildFaqJsonLd(competitor: string, faqs: FaqEntry[], slug: string): str
   return JSON.stringify(payload)
 }
 
-function buildSoftwareCompareJsonLd(competitor: string, slug: string, year: number): string {
+function buildSoftwareCompareJsonLd(
+  competitor: string,
+  slug: string,
+  year: number,
+  lastUpdated?: string,
+): string {
   const payload = {
     '@context': 'https://schema.org',
     '@type': 'WebPage',
@@ -113,6 +121,7 @@ function buildSoftwareCompareJsonLd(competitor: string, slug: string, year: numb
     url: `${SITE_URL}/compare/${slug}`,
     name: `Spanlens vs ${competitor} · ${year}`,
     inLanguage: 'en',
+    ...(lastUpdated ? { dateModified: lastUpdated } : {}),
     isPartOf: {
       '@type': 'WebSite',
       name: 'Spanlens',
@@ -156,12 +165,13 @@ export function CompareTemplate({
   closing,
   relatedNote,
   year,
+  lastUpdated,
 }: CompareTemplateProps) {
   const resolvedYear = year ?? new Date().getUTCFullYear()
   const slug = slugFromCompetitor(competitor)
   const faqs = buildFaqEntries(competitor, whySpanlens, whyCompetitor)
   const faqJsonLd = buildFaqJsonLd(competitor, faqs, slug)
-  const pageJsonLd = buildSoftwareCompareJsonLd(competitor, slug, resolvedYear)
+  const pageJsonLd = buildSoftwareCompareJsonLd(competitor, slug, resolvedYear, lastUpdated)
   const allRows = groups.flatMap((g) =>
     g.rows.map((r) => ({ ...r, groupTitle: g.title })),
   )
@@ -169,6 +179,12 @@ export function CompareTemplate({
   return (
     <div className="min-h-screen bg-bg">
       <MarketingNav />
+      <BreadcrumbJsonLd
+        trail={[
+          { name: 'Compare', path: '/compare' },
+          { name: `Spanlens vs ${competitor}`, path: `/compare/${slug}` },
+        ]}
+      />
 
       {/* Structured data for SEO/AEO. Inline <script> ships JSON-LD in the SSR HTML so
           search and LLM crawlers (many of which don't execute JS) can read it. The React
@@ -255,7 +271,7 @@ export function CompareTemplate({
           </table>
         </div>
         <p className="mt-2 font-mono text-[11px] text-text-faint">
-          Updated {new Date().toISOString().slice(0, 10)}. Scroll for the grouped view with notes below.
+          Updated {lastUpdated ?? new Date().toISOString().slice(0, 10)}. Scroll for the grouped view with notes below.
         </p>
       </section>
 
@@ -331,7 +347,7 @@ export function CompareTemplate({
           ))}
         </div>
         <p className="mt-3 font-mono text-[11px] text-text-faint">
-          Last updated {new Date().toISOString().slice(0, 10)} · Spot something inaccurate?{' '}
+          Last updated {lastUpdated ?? new Date().toISOString().slice(0, 10)} · Spot something inaccurate?{' '}
           <a href="mailto:support@spanlens.io" className="underline hover:text-text-muted">
             Let us know
           </a>

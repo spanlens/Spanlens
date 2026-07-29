@@ -1,7 +1,7 @@
 import { IntegrationTemplate } from '@/components/marketing/integration-template'
 
 const DESCRIPTION =
-  'Log every OpenAI API call with Spanlens. Track cost, latency, tokens, streaming, tool use, and full request and response bodies. One-line integration, MIT licensed, self-hostable.'
+  'Log every OpenAI API call with Spanlens. Track cost, latency, tokens, streaming, and tool use. One-line integration, MIT licensed and self-hostable.'
 
 export const metadata = {
   alternates: { canonical: '/integrations/openai' },

@@ -4,7 +4,7 @@ import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 export const metadata = {
   title: 'Evals · Spanlens Docs',
   description:
-    'How Spanlens models evals: LLM-as-judge scoring, human annotation, judge-to-human correlation as a first-class metric, and drift detection across prompt versions.',
+    'How Spanlens models evals: LLM-as-judge scoring, human annotation, judge-to-human correlation as a metric, and drift detection across prompt versions.',
   alternates: { canonical: '/docs/concepts/evals' },
 }
 

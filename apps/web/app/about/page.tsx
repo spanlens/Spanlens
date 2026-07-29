@@ -4,7 +4,7 @@ import { MarketingNav } from '@/components/layout/marketing-nav'
 import { BreadcrumbJsonLd } from '@/components/marketing/breadcrumb-jsonld'
 
 const ABOUT_DESCRIPTION =
-  'Spanlens is an open-source LLM observability platform built by developers who shipped LLM apps to production and got tired of debugging cost spikes from a spreadsheet. MIT licensed, self-hostable.'
+  'Spanlens is an open-source LLM observability platform built by developers tired of debugging LLM cost spikes from a spreadsheet. MIT licensed, self-hostable.'
 
 export const metadata = {
   alternates: { canonical: '/about' },

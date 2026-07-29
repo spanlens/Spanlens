@@ -73,6 +73,18 @@ export function Footer() {
               <Link href="/tools/llm-cost-calculator" className="hover:text-text transition-colors">Cost Calculator</Link>
             </div>
           </div>
+          {/* Integrations — provider landing pages were under-linked relative
+              to sibling marketing pages (only reachable via in-content links).
+              Footer links restore consistent internal link equity (2026-07-24
+              SEO audit). */}
+          <div>
+            <div className="text-text-faint mb-2 tracking-[0.05em] uppercase text-[10px]">Integrations</div>
+            <div className="flex flex-col gap-1.5">
+              <Link href="/integrations/openai" className="hover:text-text transition-colors">OpenAI</Link>
+              <Link href="/integrations/anthropic" className="hover:text-text transition-colors">Anthropic</Link>
+              <Link href="/integrations/gemini" className="hover:text-text transition-colors">Gemini</Link>
+            </div>
+          </div>
           <div>
             <div className="text-text-faint mb-2 tracking-[0.05em] uppercase text-[10px]">Open Source</div>
             <div className="flex flex-col gap-1.5">
@@ -85,6 +97,7 @@ export function Footer() {
             <div className="text-text-faint mb-2 tracking-[0.05em] uppercase text-[10px]">Company</div>
             <div className="flex flex-col gap-1.5">
               <Link href="/about" className="hover:text-text transition-colors">About</Link>
+              <Link href="/faq" className="hover:text-text transition-colors">FAQ</Link>
               <Link href="/privacy" className="hover:text-text transition-colors">Privacy</Link>
               <Link href="/terms" className="hover:text-text transition-colors">Terms</Link>
               <Link href="/dpa" className="hover:text-text transition-colors">DPA</Link>

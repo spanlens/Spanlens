@@ -1,11 +1,11 @@
 import { ModelPricingTemplate } from '@/components/marketing/model-pricing-template'
 
 const DESCRIPTION =
-  'GPT-4o-mini pricing: $0.15 per 1M input tokens, $0.60 per 1M output. About 15x cheaper than GPT-4o. Monthly cost estimates, when to use it vs GPT-4o, and how to track with Spanlens.'
+  'GPT-4o-mini pricing: $0.15 per 1M input, $0.60 per 1M output. 15x cheaper than GPT-4o. Monthly cost estimates, when to use it, and how to track with Spanlens.'
 
 export const metadata = {
   alternates: { canonical: '/pricing/gpt-4o-mini' },
-  title: 'GPT-4o-mini Pricing 2026 — Cost Per Token, Monthly Estimates',
+  title: 'GPT-4o-mini Pricing 2026 · Spanlens',
   description: DESCRIPTION,
   openGraph: {
     type: 'article',

@@ -4,7 +4,7 @@ import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 export const metadata = {
   title: 'Disaster recovery · Spanlens Docs',
   description:
-    'Operator runbook for Spanlens outages: what data is at risk in each failure mode, how the fallback queues protect it, and the exact recovery steps for ClickHouse, Supabase, cron, and webhook incidents.',
+    'Operator runbook for Spanlens outages: what data is at risk per failure mode, how fallback queues protect it, and recovery steps for ClickHouse and Supabase.',
   alternates: { canonical: '/docs/production/disaster-recovery' },
 }
 

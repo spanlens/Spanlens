@@ -170,6 +170,7 @@ export default function VsLangSmithPage() {
       whyCompetitor={whyCompetitor}
       groups={groups}
       closing="If your codebase already breathes LangChain, LangSmith is the safe pick. If you want zero lock-in and a 60-second install, try Spanlens."
+      lastUpdated="2026-06-10"
     />
   )
 }

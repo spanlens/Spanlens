@@ -4,11 +4,11 @@ import { MarketingNav } from '@/components/layout/marketing-nav'
 import { BreadcrumbJsonLd } from '@/components/marketing/breadcrumb-jsonld'
 
 const DESCRIPTION =
-  'AI agent tracing captures multi-step LLM workflows as waterfall span trees with critical path highlighting. Learn how to instrument LangChain, LangGraph, CrewAI, and the Vercel AI SDK with one line of code.'
+  'AI agent tracing captures multi-step LLM workflows as waterfall span trees. Instrument LangChain, LangGraph, CrewAI, and the Vercel AI SDK in one line.'
 
 export const metadata = {
   alternates: { canonical: '/agent-tracing' },
-  title: 'AI Agent Tracing: Debug Multi-Agent LLM Workflows in Production',
+  title: 'AI Agent Tracing: Debug Multi-Agent LLM Workflows',
   description: DESCRIPTION,
   openGraph: {
     type: 'article',

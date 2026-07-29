@@ -1,7 +1,7 @@
 import { ModelPricingTemplate } from '@/components/marketing/model-pricing-template'
 
 const DESCRIPTION =
-  'o3-mini pricing: $1.10 per 1M input tokens, $4.40 per 1M output. OpenAI reasoning model with deep chain-of-thought. Monthly cost scenarios and when to use it instead of GPT-4o.'
+  'o3-mini pricing: $1.10 per 1M input, $4.40 per 1M output. OpenAI reasoning model with deep chain-of-thought. Monthly scenarios and when to use it vs GPT-4o.'
 
 export const metadata = {
   alternates: { canonical: '/pricing/o3-mini' },

@@ -150,6 +150,7 @@ export default function VsBraintrustPage() {
       whyCompetitor={whyCompetitor}
       groups={groups}
       closing="If your release gate is evals and you don't care about self-hosting, Braintrust is excellent. If you want the same kind of eval quality plus observability, tracing, and the option to run it on your own infra, try Spanlens."
+      lastUpdated="2026-06-10"
     />
   )
 }

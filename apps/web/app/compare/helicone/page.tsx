@@ -171,6 +171,7 @@ export default function VsHeliconePage() {
       whySpanlens={whySpanlens}
       whyCompetitor={whyCompetitor}
       groups={groups}
+      lastUpdated="2026-06-10"
       closing="If you want a battle-tested proxy with a focused feature set, Helicone is a strong choice. If you want the same proxy ergonomics plus deeper agent analytics, statistical A/B, and log durability, try Spanlens."
       relatedNote={
         <>
