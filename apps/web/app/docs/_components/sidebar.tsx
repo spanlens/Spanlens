@@ -22,6 +22,23 @@ const NAV: NavGroup[] = [
       { title: 'Why Spanlens', href: '/docs/why' },
     ],
   },
+  // Section hubs. Added 2026-07-30: the six pages shipped in #449 were in the
+  // sitemap but nothing linked to them, so Ahrefs filed all six as orphans.
+  // Listing them here gives each one an inbound link from every docs page.
+  // Hardcoded rather than imported from _lib/sections.ts so the section
+  // descriptions stay out of the client bundle; sections.test.ts checks this
+  // list against the sections themselves.
+  {
+    title: 'Sections',
+    items: [
+      { title: 'Concepts', href: '/docs/concepts' },
+      { title: 'Features', href: '/docs/features' },
+      { title: 'Integrations', href: '/docs/integrations' },
+      { title: 'Tutorials', href: '/docs/tutorials' },
+      { title: 'Production', href: '/docs/production' },
+      { title: 'Migrate to Spanlens', href: '/docs/migrate' },
+    ],
+  },
   {
     title: 'Concepts',
     items: [
