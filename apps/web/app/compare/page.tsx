@@ -55,11 +55,27 @@ const ENTRIES: CompareEntry[] = [
   },
 ]
 
+const compareListJsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'ItemList',
+  '@id': 'https://www.spanlens.io/compare#list',
+  itemListElement: ENTRIES.map((e, i) => ({
+    '@type': 'ListItem',
+    position: i + 1,
+    url: `https://www.spanlens.io/compare/${e.slug}`,
+    name: `Spanlens vs ${e.competitor}`,
+  })),
+}
+
 export default function ComparePage() {
   return (
     <div className="min-h-screen bg-bg">
       <MarketingNav />
       <BreadcrumbJsonLd trail={[{ name: 'Compare', path: '/compare' }]} />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(compareListJsonLd) }}
+      />
 
       <section className="max-w-[1000px] mx-auto px-6 pt-20 pb-12">
         <h1 className="text-[40px] sm:text-[48px] font-semibold tracking-[-0.8px] text-text leading-[1.05]">

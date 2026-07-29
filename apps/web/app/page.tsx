@@ -109,7 +109,7 @@ const softwareApplicationJsonLd = {
   operatingSystem: 'Web, Linux, macOS, Windows (Docker)',
   url: SITE_URL,
   description:
-    'Drop-in LLM observability for OpenAI, Anthropic, and Gemini. Request logging, cost tracking, agent tracing, evals, experiments, anomaly detection, and PII scanning. Open source, self-hostable.',
+    'Drop-in LLM observability for OpenAI, Anthropic, and Gemini. Logging, cost tracking, agent tracing, evals, anomaly detection, and PII scanning. Open source.',
   offers: PLANS.map((p) => ({
     '@type': 'Offer',
     name: p.name,

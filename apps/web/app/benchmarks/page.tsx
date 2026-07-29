@@ -7,7 +7,7 @@ export const metadata = {
   alternates: { canonical: '/benchmarks' },
   title: 'Proxy Overhead Benchmark · Spanlens',
   description:
-    'How much latency does the Spanlens proxy add? A reproducible benchmark of the synchronous per-request overhead, the methodology behind it, and the command to run it yourself.',
+    'How much latency does the Spanlens proxy add? A reproducible benchmark of synchronous per-request overhead, with the methodology and a command to run it yourself.',
 }
 
 const MEASURED_DATE = '2026-07-14'

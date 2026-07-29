@@ -3,11 +3,11 @@ import { MarketingNav } from '@/components/layout/marketing-nav'
 import { CostCalculator } from './_calculator'
 
 const DESCRIPTION =
-  'Free LLM cost calculator. Estimate monthly OpenAI, Anthropic, and Gemini bills by model, input/output tokens, and request volume. Compare GPT-4o, Claude 3.5 Sonnet, Gemini 2.0 Flash side by side.'
+  'Free LLM cost calculator. Estimate monthly OpenAI, Anthropic, and Gemini bills by model, tokens, and requests. Compare GPT-4o, Claude, and Gemini side by side.'
 
 export const metadata = {
   alternates: { canonical: '/tools/llm-cost-calculator' },
-  title: 'LLM Cost Calculator — Estimate OpenAI, Anthropic, Gemini Spend',
+  title: 'LLM Cost Calculator for OpenAI, Anthropic, and Gemini',
   description: DESCRIPTION,
   openGraph: {
     type: 'website',

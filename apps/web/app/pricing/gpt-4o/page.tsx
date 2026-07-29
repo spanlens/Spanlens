@@ -1,7 +1,7 @@
 import { ModelPricingTemplate } from '@/components/marketing/model-pricing-template'
 
 const DESCRIPTION =
-  'GPT-4o pricing: $2.50 per 1M input tokens, $10 per 1M output tokens, $1.25 cached input. Monthly cost scenarios, alternatives (GPT-4o-mini, Claude 3.5 Sonnet), and how to track usage with Spanlens.'
+  'GPT-4o pricing: $2.50 per 1M input tokens, $10 per 1M output, $1.25 cached input. Monthly cost scenarios, alternatives, and how to track usage with Spanlens.'
 
 export const metadata = {
   alternates: { canonical: '/pricing/gpt-4o' },

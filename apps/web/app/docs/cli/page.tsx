@@ -5,7 +5,7 @@ import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 export const metadata = {
   title: 'Spanlens CLI · Spanlens Docs',
   description:
-    'One-command setup wizard for Spanlens, in both Node (npx @spanlens/cli) and Python (spanlens init). Auto-detects OpenAI, Anthropic, and Gemini SDK calls and routes them through the proxy.',
+    'One-command setup wizard for Spanlens in Node and Python. Auto-detects OpenAI, Anthropic, and Gemini SDK calls and routes them through the proxy.',
   alternates: { canonical: '/docs/cli' },
 }
 

@@ -49,6 +49,8 @@ export function DocsJsonLd({ meta }: { meta: DocsPageMeta }) {
     '@type': 'TechArticle',
     '@id': `${url}#article`,
     headline: meta.title,
+    datePublished: '2026-06-16',
+    dateModified: '2026-07-24',
     url,
     ...(meta.description ? { description: meta.description } : {}),
     inLanguage: 'en',

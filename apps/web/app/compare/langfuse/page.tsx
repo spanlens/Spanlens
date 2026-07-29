@@ -181,6 +181,7 @@ export default function VsLangfusePage() {
       whyCompetitor={whyCompetitor}
       groups={groups}
       closing="Both tools are good. Pick Spanlens if you want to be running in 60 seconds and want statistical rigor built in. Pick Langfuse if community size and OTel-native is non-negotiable."
+      lastUpdated="2026-06-10"
     />
   )
 }

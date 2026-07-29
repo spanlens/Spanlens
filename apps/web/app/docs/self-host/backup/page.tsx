@@ -4,7 +4,7 @@ export const metadata = {
   alternates: { canonical: '/docs/self-host/backup' },
   title: 'Backup & restore · Spanlens Docs',
   description:
-    'Backup and restore runbook for self-hosted Spanlens: pg_dump the Supabase Postgres, dump the ClickHouse requests log, snapshot the Docker volumes, and back up ENCRYPTION_KEY separately.',
+    'Backup and restore runbook for self-hosted Spanlens: dump Supabase Postgres and ClickHouse log, snapshot Docker volumes, and back up ENCRYPTION_KEY separately.',
 }
 
 export default function SelfHostBackupPage() {

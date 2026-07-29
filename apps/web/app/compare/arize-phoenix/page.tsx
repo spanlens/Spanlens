@@ -183,6 +183,7 @@ export default function VsArizePhoenixPage() {
       whyCompetitor={whyCompetitor}
       groups={groups}
       closing="If you're an ML engineer with a Python-first workflow, Phoenix fits your hands. If you're shipping LLM features in a Next.js, FastAPI, or Hono app and want zero-friction install, try Spanlens."
+      lastUpdated="2026-06-10"
     />
   )
 }

@@ -137,8 +137,12 @@ const pricingJsonLd = {
     {
       '@type': 'Offer',
       name: 'Enterprise',
-      price: '0',
-      priceCurrency: 'USD',
+      priceSpecification: {
+        '@type': 'PriceSpecification',
+        price: 'Custom',
+        priceCurrency: 'USD',
+      },
+      availability: 'https://schema.org/InStock',
       description: 'Custom volume, SSO (SAML/Okta), dedicated SLA. Contact for pricing.',
     },
   ],

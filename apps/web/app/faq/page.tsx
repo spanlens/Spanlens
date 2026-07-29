@@ -4,7 +4,7 @@ import { MarketingNav } from '@/components/layout/marketing-nav'
 import { BreadcrumbJsonLd } from '@/components/marketing/breadcrumb-jsonld'
 
 const FAQ_DESCRIPTION =
-  'Frequently asked questions about Spanlens — open-source LLM observability for OpenAI, Anthropic, and Gemini. Pricing, self-hosting, integration, comparisons, and security.'
+  'Frequently asked questions about Spanlens, the open-source LLM observability platform for OpenAI, Anthropic, and Gemini. Pricing, self-hosting, and security.'
 
 export const metadata = {
   alternates: { canonical: '/faq' },

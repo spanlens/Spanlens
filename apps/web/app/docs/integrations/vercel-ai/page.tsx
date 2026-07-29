@@ -4,7 +4,7 @@ import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 export const metadata = {
   title: 'Vercel AI SDK integration · Spanlens Docs',
   description:
-    'Trace generateText, streamText, generateObject, and streamObject calls with Spanlens. Spread two callbacks into the AI SDK options and every LLM call, multi-step tool run, and structured output is recorded automatically.',
+    'Trace generateText, streamText, generateObject, and streamObject with Spanlens. Two callbacks spread into the AI SDK options log every call automatically.',
   alternates: { canonical: '/docs/integrations/vercel-ai' },
 }
 

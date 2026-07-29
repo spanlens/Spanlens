@@ -81,6 +81,8 @@ Each row links to a full feature-by-feature comparison.
 
 - Landing: https://www.spanlens.io
 - Pricing: https://www.spanlens.io/pricing
+- Pricing (machine-readable): https://www.spanlens.io/pricing.md
+- Benchmarks (proxy overhead ~0.015 ms p99): https://www.spanlens.io/benchmarks
 - Docs: https://www.spanlens.io/docs
 - Alternatives hub: https://www.spanlens.io/alternatives
 - Comparison index: https://www.spanlens.io/compare
