@@ -218,9 +218,9 @@ describe('mistral proxy — logging + cost', () => {
     expect(row['model']).toBe('mistral-large-latest')
     expect(row['promptTokens']).toBe(1_000_000)
     expect(row['completionTokens']).toBe(500_000)
-    // mistral-large-latest: $2.00 / 1M prompt + $6.00 / 1M completion
-    // 1M * 2.00 + 0.5M * 6.00 = 2 + 3 = 5
-    expect(row['costUsd']).toBeCloseTo(5.0, 4)
+    // mistral-large-latest (Mistral Large 3): $0.50 / 1M prompt + $1.50 / 1M completion
+    // 1M * 0.50 + 0.5M * 1.50 = 0.5 + 0.75 = 1.25
+    expect(row['costUsd']).toBeCloseTo(1.25, 4)
   })
 
   test('upstream non-2xx is passed through and recorded with errorMessage', async () => {

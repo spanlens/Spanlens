@@ -55,7 +55,7 @@ export interface ModelPrice {
   longCacheWrite?: number | undefined
 }
 
-// Prices in USD per 1M tokens (verified against provider pricing pages 2026-05-22).
+// Prices in USD per 1M tokens (verified against provider pricing pages 2026-07-29).
 // This map is the COLD-START FALLBACK — used when the DB cache is empty
 // (first request after deploy / DB unreachable). The DB is the source of truth
 // once loaded; this constant exists to guarantee `calculateCost()` always has
@@ -63,10 +63,22 @@ export interface ModelPrice {
 //
 // Cache rates:
 //   • Anthropic — cache_read = 0.1 × input, cache_write (5min) = 1.25 × input
-//   • OpenAI    — cached input ≈ 0.5 × input (gpt-4o / gpt-4.1 families; explicit per-model in GPT-5.x)
-//   • Gemini    — caching priced but our integration doesn't surface it yet
+//   • OpenAI    — cached input ≈ 0.5 × input (gpt-4o / gpt-4.1 families; explicit per-model in GPT-5.x).
+//                 GPT-5.6 is the first OpenAI family with a published cache_write rate (1.25 × input)
+//   • Gemini    — cacheRead is the published text/image/video context-caching rate (audio caches higher)
+//   • xAI       — every Grok model has a cached-input rate and a ≥200k tier that re-rates the whole request
 //   • Tiered Gemini models use the ≤200k token band
 export const FALLBACK_PRICES: Record<string, ModelPrice> = {
+  // ── OpenAI: GPT-5.6 flagship (long-context tier at ≥272k tokens) ─────────
+  'gpt-5.6-sol':       { prompt: 5.0,  completion: 30,  cacheRead: 0.5,  cacheWrite: 6.25,
+                         longThreshold: 272000, longPrompt: 10, longCompletion: 45,
+                         longCacheRead: 1.0, longCacheWrite: 12.5 },
+  'gpt-5.6-terra':     { prompt: 2.5,  completion: 15,  cacheRead: 0.25, cacheWrite: 3.125,
+                         longThreshold: 272000, longPrompt: 5, longCompletion: 22.5,
+                         longCacheRead: 0.5, longCacheWrite: 6.25 },
+  'gpt-5.6-luna':      { prompt: 1.0,  completion: 6,   cacheRead: 0.1,  cacheWrite: 1.25,
+                         longThreshold: 272000, longPrompt: 2, longCompletion: 9,
+                         longCacheRead: 0.2, longCacheWrite: 2.5 },
   // ── OpenAI: GPT-5.x flagship ─────────────────────────────────────────────
   // gpt-5.5 / 5.5-pro / 5.4 / 5.4-pro have a long-context tier at ≥272k tokens.
   'gpt-5.5':           { prompt: 5.0,  completion: 30,  cacheRead: 0.5,
@@ -133,17 +145,25 @@ export const FALLBACK_PRICES: Record<string, ModelPrice> = {
   // ── Mistral: chat completion + embeddings (OpenAI-compatible API) ────────
   // Same rows live in supabase/seeds/model_prices.sql + the 20260612150000
   // migration. cache pricing not published by Mistral.
-  'mistral-large-latest':         { prompt: 2.00, completion: 6.00 },
-  'mistral-medium-latest':        { prompt: 0.40, completion: 2.00 },
-  'mistral-small-latest':         { prompt: 0.20, completion: 0.60 },
+  'mistral-large-latest':         { prompt: 0.50, completion: 1.50 },
+  'mistral-medium-latest':        { prompt: 1.50, completion: 7.50 },
+  'mistral-small-latest':         { prompt: 0.15, completion: 0.60 },
+  'magistral-medium-latest':      { prompt: 2.00, completion: 5.00 },
+  'magistral-small-latest':       { prompt: 0.50, completion: 1.50 },
+  'devstral-medium-latest':       { prompt: 0.40, completion: 2.00 },
+  'devstral-small-latest':        { prompt: 0.10, completion: 0.30 },
   'pixtral-large-latest':         { prompt: 2.00, completion: 6.00 },
   'pixtral-12b':                  { prompt: 0.15, completion: 0.15 },
-  'codestral-latest':             { prompt: 0.20, completion: 0.60 },
-  'ministral-3b-latest':          { prompt: 0.04, completion: 0.04 },
-  'ministral-8b-latest':          { prompt: 0.10, completion: 0.10 },
+  'codestral-latest':             { prompt: 0.30, completion: 0.90 },
+  'ministral-3b-latest':          { prompt: 0.10, completion: 0.10 },
+  'ministral-8b-latest':          { prompt: 0.15, completion: 0.15 },
+  'ministral-14b-latest':         { prompt: 0.20, completion: 0.20 },
   'open-mistral-nemo':            { prompt: 0.15, completion: 0.15 },
-  'mixtral-8x22b':                { prompt: 2.00, completion: 6.00 },
+  'open-mixtral-8x7b':            { prompt: 0.70, completion: 0.70 },
+  'open-mixtral-8x22b':           { prompt: 2.00, completion: 6.00 },
+  'mixtral-8x22b':                { prompt: 2.00, completion: 6.00 }, // legacy alias
   'mistral-embed':                { prompt: 0.10, completion: 0 },
+  'codestral-embed':              { prompt: 0.15, completion: 0 },
   // ── Groq / DeepSeek / xAI / Cohere (OpenAI-compatible) ───────────────────
   // Representative production models; full set lives in the seed +
   // 20260701120100 migration. Cold-start fallback so cost lands non-NULL.
@@ -155,13 +175,28 @@ export const FALLBACK_PRICES: Record<string, ModelPrice> = {
   'deepseek-reasoner':            { prompt: 0.14,  completion: 0.28, cacheRead: 0.0028 },
   'deepseek-v4-flash':            { prompt: 0.14,  completion: 0.28, cacheRead: 0.0028 },
   'deepseek-v4-pro':              { prompt: 0.435, completion: 0.87, cacheRead: 0.003625 },
-  'grok-4.3':                     { prompt: 1.25,  completion: 2.50 },
-  'grok-build-0.1':               { prompt: 1.00,  completion: 2.00 },
+  'qwen/qwen3.6-27b':             { prompt: 0.60,  completion: 3.00 },
+  // Grok re-rates the WHOLE request at 2x once the prompt reaches 200k.
+  'grok-4.5':                     { prompt: 2.00,  completion: 6.00, cacheRead: 0.30,
+                                    longThreshold: 200000, longPrompt: 4, longCompletion: 12, longCacheRead: 0.6 },
+  'grok-4.3':                     { prompt: 1.25,  completion: 2.50, cacheRead: 0.20,
+                                    longThreshold: 200000, longPrompt: 2.5, longCompletion: 5, longCacheRead: 0.4 },
+  'grok-build-0.1':               { prompt: 1.00,  completion: 2.00, cacheRead: 0.20,
+                                    longThreshold: 200000, longPrompt: 2, longCompletion: 4, longCacheRead: 0.4 },
   'command-a-03-2025':            { prompt: 2.50,  completion: 10.00 },
   'command-r-plus-08-2024':       { prompt: 2.50,  completion: 10.00 },
   'command-r-08-2024':            { prompt: 0.15,  completion: 0.60 },
   'command-r7b-12-2024':          { prompt: 0.0375, completion: 0.15 },
+  // ── Anthropic: Claude 5 ──────────────────────────────────────────────────
+  'claude-fable-5':               { prompt: 10,   completion: 50, cacheRead: 1.0,  cacheWrite: 12.5 },
+  'claude-mythos-5':              { prompt: 10,   completion: 50, cacheRead: 1.0,  cacheWrite: 12.5 }, // invite-only
+  'claude-mythos-preview':        { prompt: 10,   completion: 50, cacheRead: 1.0,  cacheWrite: 12.5 }, // invite-only
+  'claude-opus-5':                { prompt: 5,    completion: 25, cacheRead: 0.5,  cacheWrite: 6.25 },
+  // ⚠ INTRODUCTORY pricing through 2026-08-31. From 2026-09-01 Sonnet 5 is
+  // 3 / 15 / 0.30 / 3.75 — update here AND in a follow-up migration.
+  'claude-sonnet-5':              { prompt: 2,    completion: 10, cacheRead: 0.2,  cacheWrite: 2.5 },
   // ── Anthropic: Claude 4.x (aliases + dated variants) ─────────────────────
+  'claude-opus-4-8':              { prompt: 5,    completion: 25, cacheRead: 0.5,  cacheWrite: 6.25 },
   'claude-opus-4-7':              { prompt: 5,    completion: 25, cacheRead: 0.5,  cacheWrite: 6.25 },
   'claude-opus-4-6':              { prompt: 5,    completion: 25, cacheRead: 0.5,  cacheWrite: 6.25 }, // alias only; no dated form per docs
   'claude-opus-4-5':              { prompt: 5,    completion: 25, cacheRead: 0.5,  cacheWrite: 6.25 },
@@ -186,27 +221,36 @@ export const FALLBACK_PRICES: Record<string, ModelPrice> = {
   'claude-3-opus-20240229':       { prompt: 15,   completion: 75, cacheRead: 1.5,  cacheWrite: 18.75 },
   'claude-3-haiku-20240307':      { prompt: 0.25, completion: 1.25 }, // retired 2026-04-19, no cache
   // ── Gemini 3.x (Pro family has >200k tier) ───────────────────────────────
-  'gemini-3.5-flash':                       { prompt: 1.5,  completion: 9 },
-  'gemini-3.1-pro-preview':                 { prompt: 2.0,  completion: 12,
-                                              longThreshold: 200000, longPrompt: 4, longCompletion: 18 },
-  'gemini-3.1-pro-preview-customtools':     { prompt: 2.0,  completion: 12,
-                                              longThreshold: 200000, longPrompt: 4, longCompletion: 18 },
-  'gemini-3.1-flash-lite':                  { prompt: 0.25, completion: 1.5 },
-  'gemini-3.1-flash-lite-preview':          { prompt: 0.25, completion: 1.5 },
-  'gemini-3-flash-preview':                 { prompt: 0.5,  completion: 3 },
+  'gemini-3.6-flash':                       { prompt: 1.5,  completion: 7.5, cacheRead: 0.15 },
+  'gemini-3.5-flash':                       { prompt: 1.5,  completion: 9,   cacheRead: 0.15 },
+  'gemini-3.5-flash-lite':                  { prompt: 0.3,  completion: 2.5, cacheRead: 0.03 },
+  'gemini-3.1-pro-preview':                 { prompt: 2.0,  completion: 12,  cacheRead: 0.2,
+                                              longThreshold: 200000, longPrompt: 4, longCompletion: 18,
+                                              longCacheRead: 0.4 },
+  'gemini-3.1-pro-preview-customtools':     { prompt: 2.0,  completion: 12,  cacheRead: 0.2,
+                                              longThreshold: 200000, longPrompt: 4, longCompletion: 18,
+                                              longCacheRead: 0.4 },
+  'gemini-3.1-flash-lite':                  { prompt: 0.25, completion: 1.5, cacheRead: 0.025 },
+  'gemini-3.1-flash-lite-preview':          { prompt: 0.25, completion: 1.5, cacheRead: 0.025 },
+  'gemini-3-flash-preview':                 { prompt: 0.5,  completion: 3,   cacheRead: 0.05 },
   // ── Gemini 2.5 (Pro + Computer Use have >200k tier) ──────────────────────
-  'gemini-2.5-pro':                         { prompt: 1.25, completion: 10,
-                                              longThreshold: 200000, longPrompt: 2.5, longCompletion: 15 },
-  'gemini-2.5-flash':                       { prompt: 0.3,  completion: 2.5 },
-  'gemini-2.5-flash-lite':                  { prompt: 0.1,  completion: 0.4 },
-  'gemini-2.5-flash-lite-preview-09-2025':  { prompt: 0.1,  completion: 0.4 },
+  'gemini-2.5-pro':                         { prompt: 1.25, completion: 10,  cacheRead: 0.125,
+                                              longThreshold: 200000, longPrompt: 2.5, longCompletion: 15,
+                                              longCacheRead: 0.25 },
+  'gemini-2.5-flash':                       { prompt: 0.3,  completion: 2.5, cacheRead: 0.03 },
+  'gemini-2.5-flash-lite':                  { prompt: 0.1,  completion: 0.4, cacheRead: 0.01 },
+  'gemini-2.5-flash-lite-preview-09-2025':  { prompt: 0.1,  completion: 0.4, cacheRead: 0.01 },
   'gemini-2.5-computer-use-preview-10-2025': { prompt: 1.25, completion: 10,
                                               longThreshold: 200000, longPrompt: 2.5, longCompletion: 15 },
   // ── Gemini 2.0 / 1.5 ─────────────────────────────────────────────────────
-  'gemini-2.0-flash':      { prompt: 0.1,   completion: 0.4 },
+  'gemini-2.0-flash':      { prompt: 0.1,   completion: 0.4, cacheRead: 0.025 },
   'gemini-2.0-flash-lite': { prompt: 0.075, completion: 0.3 },
   'gemini-1.5-pro':        { prompt: 1.25,  completion: 5 },
   'gemini-1.5-flash':      { prompt: 0.075, completion: 0.3 },
+  // ── Gemini: specialized (embeddings are input-only) ──────────────────────
+  'gemini-robotics-er-1.6-preview': { prompt: 1.0,  completion: 5 },
+  'gemini-embedding-2':             { prompt: 0.2,  completion: 0 },
+  'gemini-embedding-001':           { prompt: 0.15, completion: 0 },
 }
 
 // ── Cache state ───────────────────────────────────────────────────────────────
