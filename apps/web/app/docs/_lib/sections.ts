@@ -118,7 +118,7 @@ export const DOCS_SECTIONS: DocsSection[] = [
             title: 'Prompts',
             href: '/docs/features/prompts',
             description:
-              'Version-controlled prompt templates with real-data A/B comparison, latency, cost, and error rate per version.',
+              'Version-controlled prompt templates with typed variables and real-data A/B comparison. See latency, cost, and error rate for every version you ship.',
           },
           {
             title: 'Prompts Playground',
@@ -206,7 +206,7 @@ export const DOCS_SECTIONS: DocsSection[] = [
             title: 'Billing & quotas',
             href: '/docs/features/billing',
             description:
-              'How Spanlens charges you: plan quotas, overage billing, the hard cap, and what your invoice looks like.',
+              'How Spanlens charges you. Plan quotas, overage rates per 100K requests, the hard cap that stops runaway spend, and what an invoice looks like.',
           },
         ],
       },

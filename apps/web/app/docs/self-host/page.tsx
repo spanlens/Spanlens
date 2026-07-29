@@ -8,7 +8,7 @@ export const metadata = {
   openGraph: openGraphFor('/docs/self-host'),
   title: 'Self-hosting · Spanlens Docs',
   description:
-    'Run the full Spanlens stack (dashboard + proxy) on your own infra with a Supabase project.',
+    'Run the full Spanlens stack, dashboard and proxy, on your own infrastructure with one Docker command and a Supabase project. Your request data stays put.',
 }
 
 export default function SelfHostDocs() {

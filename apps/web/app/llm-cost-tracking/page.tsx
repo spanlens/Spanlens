@@ -5,7 +5,7 @@ import { MarketingNav } from '@/components/layout/marketing-nav'
 import { BreadcrumbJsonLd } from '@/components/marketing/breadcrumb-jsonld'
 
 const DESCRIPTION =
-  'LLM cost tracking records per-request spend by model, prompt version, and customer. Monitor OpenAI, Anthropic, and Gemini bills, set budget alerts, and cut costs.'
+  'Record per-request LLM spend by model, prompt version, and customer. Monitor OpenAI, Anthropic, and Gemini bills, set budget alerts, and cut costs.'
 
 export const metadata = {
   alternates: { canonical: '/llm-cost-tracking' },
