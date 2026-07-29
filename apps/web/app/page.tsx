@@ -93,13 +93,18 @@ const FAQS: [string, string][] = [
   ['Does Spanlens work for a whole team?', 'Projects isolate workloads, roles and invitations manage access, and audit logs record every change. Team and Enterprise add Slack, webhooks, unlimited alerts, and SSO.'],
 ]
 
+// Sample rows for the dashboard preview. The endpoint column is `/api/…`
+// rather than a bare `/chat`: Google read the old bare paths as URLs on this
+// origin and crawled them, so `/extract` showed up in Search Console as a 404.
+// Anything under `/api/` is disallowed in robots.txt, so these can't be
+// mistaken for real pages again.
 const PREVIEW_ROWS = [
-  { m: 'claude-sonnet-4.5', ep: '/chat',      lat: 1240, tok: '2,104', cost: '$0.0312', st: 200, age: '2s',  anom: false },
-  { m: 'gpt-4o-mini',       ep: '/extract',   lat: 410,  tok: '612',   cost: '$0.0009', st: 200, age: '5s',  anom: false },
-  { m: 'gpt-4o',            ep: '/summarize', lat: 3440, tok: '3,218', cost: '$0.0482', st: 200, age: '7s',  anom: true  },
-  { m: 'gemini-2.0-flash',  ep: '/rerank',    lat: 180,  tok: '240',   cost: '$0.0001', st: 200, age: '9s',  anom: false },
-  { m: 'claude-haiku-4.5',  ep: '/chat',      lat: 680,  tok: '984',   cost: '$0.0018', st: 200, age: '11s', anom: false },
-  { m: 'gpt-4o',            ep: '/classify',  lat: 2120, tok: '1,840', cost: '$0.0276', st: 429, age: '14s', anom: false },
+  { m: 'claude-sonnet-4.5', ep: '/api/chat',      lat: 1240, tok: '2,104', cost: '$0.0312', st: 200, age: '2s',  anom: false },
+  { m: 'gpt-4o-mini',       ep: '/api/extract',   lat: 410,  tok: '612',   cost: '$0.0009', st: 200, age: '5s',  anom: false },
+  { m: 'gpt-4o',            ep: '/api/summarize', lat: 3440, tok: '3,218', cost: '$0.0482', st: 200, age: '7s',  anom: true  },
+  { m: 'gemini-2.0-flash',  ep: '/api/rerank',    lat: 180,  tok: '240',   cost: '$0.0001', st: 200, age: '9s',  anom: false },
+  { m: 'claude-haiku-4.5',  ep: '/api/chat',      lat: 680,  tok: '984',   cost: '$0.0018', st: 200, age: '11s', anom: false },
+  { m: 'gpt-4o',            ep: '/api/classify',  lat: 2120, tok: '1,840', cost: '$0.0276', st: 429, age: '14s', anom: false },
 ]
 
 const TRACE_SPANS = [

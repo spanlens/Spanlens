@@ -1,1 +1,26 @@
-<h1>Spanlens API Server</h1>
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!-- This host serves the API and the LLM proxy, not pages. It was a bare
+         one-line 200 until 2026-07-29, which Google Search Console classified
+         as a Soft 404. The X-Robots-Tag header in vercel.json is what actually
+         keeps the host out of the index; this tag is the belt-and-braces copy
+         for anything that reads the document instead of the headers. -->
+    <meta name="robots" content="noindex, nofollow" />
+    <title>Spanlens API</title>
+  </head>
+  <body>
+    <h1>Spanlens API</h1>
+    <p>
+      This host serves the Spanlens REST API and the LLM proxy. There is nothing
+      to browse here.
+    </p>
+    <ul>
+      <li><a href="https://www.spanlens.io/docs/api">REST API reference</a></li>
+      <li><a href="https://www.spanlens.io/docs/proxy">Proxy quick start</a></li>
+      <li><a href="https://www.spanlens.io">spanlens.io</a></li>
+    </ul>
+  </body>
+</html>
