@@ -60,6 +60,18 @@ function pageFiles(dir: string, out: string[] = []): string[] {
   return out
 }
 
+const DESCRIPTION_RE = /description:\s*\n?\s*'((?:[^'\\]|\\.)*)'/
+const DESCRIPTION_REF_RE = /description:\s*([A-Z_][A-Z0-9_]*),/
+
+/** The page's own meta description, following a `const` reference if used. */
+function description(source: string): string | null {
+  const literal = source.match(DESCRIPTION_RE)?.[1]
+  if (literal) return literal
+  const ref = source.match(DESCRIPTION_REF_RE)?.[1]
+  if (!ref) return null
+  return new RegExp(`const ${ref}\\s*=\\s*\\n?\\s*'((?:[^'\\\\]|\\\\.)*)'`).exec(source)?.[1] ?? null
+}
+
 const pages = pageFiles(APP_DIR)
   .map((file) => ({ file, source: readFileSync(file, 'utf-8') }))
   .map((p) => ({ ...p, canonical: p.source.match(CANONICAL_RE)?.[1] }))
@@ -97,4 +109,36 @@ describe('page metadata', () => {
       expect(body, `${page.name} openGraph is missing images`).toMatch(/images:/)
     },
   )
+})
+
+/**
+ * Meta description length.
+ *
+ * Google truncates a description somewhere past 160 characters and tends to
+ * substitute its own snippet when one is too thin to be useful. Ahrefs flags
+ * both ends, and seven pages were outside the range on 2026-07-30.
+ */
+describe('meta description length', () => {
+  const withText = pages
+    .map((p) => ({ ...p, text: description(p.source) }))
+    .filter((p): p is typeof p & { text: string } => p.text !== null)
+
+  it.each(withText.map((p) => [p.name, p] as const))('%s is 110-160 characters', (_name, page) => {
+    expect(page.text.length, `"${page.text}"`).toBeGreaterThanOrEqual(110)
+    expect(page.text.length, `"${page.text}"`).toBeLessThanOrEqual(160)
+  })
+
+  it('only the section hubs build their description from a variable', () => {
+    // Those six read `SECTION.description`, which sections.test.ts bounds.
+    // Anything else unresolvable here would be skipped silently above.
+    const unresolved = pages.filter((p) => description(p.source) === null).map((p) => p.name).sort()
+    expect(unresolved).toEqual([
+      'docs/concepts/page.tsx',
+      'docs/features/page.tsx',
+      'docs/integrations/page.tsx',
+      'docs/migrate/page.tsx',
+      'docs/production/page.tsx',
+      'docs/tutorials/page.tsx',
+    ])
+  })
 })

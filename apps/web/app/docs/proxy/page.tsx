@@ -6,7 +6,8 @@ export const metadata = {
   alternates: { canonical: '/docs/proxy' },
   openGraph: openGraphFor('/docs/proxy'),
   title: 'Direct proxy · Spanlens Docs',
-  description: 'Use Spanlens from any language, Python, Ruby, Go, curl. Just swap the base URL.',
+  description:
+    'Use Spanlens from any language. Point your OpenAI, Anthropic, or Gemini client at the proxy base URL and every call is logged. Python, Ruby, Go, and curl.',
 }
 
 export default function ProxyDocs() {
