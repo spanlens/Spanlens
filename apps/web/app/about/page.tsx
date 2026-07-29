@@ -14,13 +14,17 @@ export const metadata = {
   openGraph: {
     siteName: 'Spanlens',
     type: 'website',
-    title: 'About Spanlens — Open Source LLM Observability',
+    locale: 'en_US',
+    title: 'About Spanlens: Open Source LLM Observability',
     description: ABOUT_DESCRIPTION,
-    url: '/about',  },
+    url: '/about',
+    images: OG_IMAGE,
+  },
   twitter: {
     card: 'summary_large_image',
-    title: 'About Spanlens — Open Source LLM Observability',
-    description: ABOUT_DESCRIPTION,  },
+    title: 'About Spanlens: Open Source LLM Observability',
+    description: ABOUT_DESCRIPTION,
+  },
 }
 
 const aboutJsonLd = {

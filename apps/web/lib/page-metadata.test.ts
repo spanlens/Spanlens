@@ -26,7 +26,30 @@ const APP_DIR = join(__dirname, '..', 'app')
 
 const CANONICAL_RE = /alternates:\s*\{\s*canonical:\s*'([^']+)'\s*\}/
 const OG_HELPER_RE = /openGraph:\s*openGraphFor\(\s*'([^']+)'/
-const OG_LITERAL_RE = /openGraph:\s*\{([\s\S]*?)\n\s*\},/
+
+/**
+ * Body of the `openGraph: { … }` literal, by brace matching.
+ *
+ * Not a regex: the first version of this test ended the block at the first
+ * `\n  },`, and /about had lost the newline before its closing brace
+ * (`url: '/about',  },`). The match ran past the real end into the next
+ * property, picked up its keys, and the page passed while shipping without
+ * og:image or og:locale.
+ */
+function openGraphBody(source: string): string | null {
+  const start = source.indexOf('openGraph: {')
+  if (start === -1) return null
+  const open = source.indexOf('{', start)
+  let depth = 0
+  for (let i = open; i < source.length; i++) {
+    if (source[i] === '{') depth++
+    else if (source[i] === '}') {
+      depth--
+      if (depth === 0) return source.slice(open + 1, i)
+    }
+  }
+  return null
+}
 
 function pageFiles(dir: string, out: string[] = []): string[] {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -58,13 +81,13 @@ describe('page metadata', () => {
         return
       }
 
-      const literal = page.source.match(OG_LITERAL_RE)
+      const literal = openGraphBody(page.source)
       expect(
         literal,
         `${page.name} declares a canonical but no openGraph block. Add openGraph: openGraphFor('${page.canonical}').`,
       ).toBeTruthy()
 
-      const body = literal?.[1] ?? ''
+      const body = literal ?? ''
       expect(body.match(/url:\s*'([^']+)'/)?.[1]).toBe(page.canonical)
       // A hand-written block replaces the root's, so it has to repeat these.
       expect(body, `${page.name} openGraph is missing siteName`).toMatch(/siteName:/)
