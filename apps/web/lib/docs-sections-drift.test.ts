@@ -83,3 +83,18 @@ describe('sitemap', () => {
     expect(source).toContain(`'/docs/${slug}',`)
   })
 })
+
+describe('docs sidebar', () => {
+  // The hubs shipped without a single inbound link and Ahrefs filed all six as
+  // orphan pages. The sidebar renders on every docs page, so a link here is
+  // what keeps them reachable.
+  const source = readFileSync(join(DOCS_DIR, '_components', 'sidebar.tsx'), 'utf-8')
+
+  it.each(DOCS_SECTIONS.map((s) => [s.slug, s.title] as const))(
+    'links to /docs/%s',
+    (slug, title) => {
+      expect(source).toContain(`href: '/docs/${slug}'`)
+      expect(source).toContain(`title: '${title}'`)
+    },
+  )
+})

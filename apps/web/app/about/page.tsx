@@ -39,15 +39,7 @@ const aboutJsonLd = {
   // duplicate nodes with divergent sameAs/foundingDate broke entity
   // reconciliation (2026-07-06 schema audit). foundingDate/founder/sameAs
   // now live on the canonical node in app/layout.tsx.
-  mainEntity: {
-    '@id': 'https://www.spanlens.io/#organization',
-
-    locale: 'en_US',
-
-
-    images: OG_IMAGE,
-
-  },
+  mainEntity: { '@id': 'https://www.spanlens.io/#organization' },
 }
 
 export default function AboutPage() {
