@@ -38,7 +38,9 @@ const ch = createClickHouseClient({
 
 const uuid = () => crypto.randomUUID()
 const rand = (min: number, max: number) => Math.floor(Math.random() * (max - min + 1)) + min
-const pick = <T>(arr: T[]): T => arr[Math.floor(Math.random() * arr.length)]!
+// crypto.randomInt rather than Math.random: see the same helper in
+// seed-demo-data.ts (CodeQL js/insecure-randomness on seeded identifiers).
+const pick = <T>(arr: T[]): T => arr[crypto.randomInt(arr.length)]!
 // ClickHouse DateTime64 rejects the ISO `T` separator and `Z` suffix.
 const toChTs = (d: Date) => d.toISOString().replace('T', ' ').replace('Z', '').slice(0, 23)
 

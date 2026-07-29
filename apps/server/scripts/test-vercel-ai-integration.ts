@@ -114,7 +114,10 @@ async function main(): Promise<void> {
 
   log('\n[3] Issuing a full-access Spanlens key (ingest requires full)...')
   const apiKey = await issueFullKey(jwt, projectId)
-  log(`    key: ${apiKey.slice(0, 18)}...${apiKey.slice(-6)}`)
+  // Never print key material, not even a truncated prefix: `sl_live_` is a
+  // fixed 8 chars, so a 18-char prefix leaks 10 hex chars of the secret.
+  // The scope is the only part worth confirming here.
+  log(`    key issued (scope: full, ${apiKey.length} chars)`)
 
   log('\n[4] Setting up SpanlensClient + createSpanlensTracker...')
   const client = new SpanlensClient({ apiKey, baseUrl: SERVER_URL })

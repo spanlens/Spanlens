@@ -38,7 +38,11 @@ const ch = createClickHouseClient({
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 const uuid = () => crypto.randomUUID()
 const rand = (min: number, max: number) => Math.floor(Math.random() * (max - min + 1)) + min
-const pick = <T>(arr: T[]): T => arr[Math.floor(Math.random() * arr.length)]
+// crypto.randomInt rather than Math.random: `pick` also chooses the seeded
+// user_id / session_id values, and CodeQL (js/insecure-randomness) treats any
+// Math.random feeding an identifier as a finding. Seed data doesn't need
+// unpredictability, but a CSPRNG costs nothing here and keeps the scan clean.
+const pick = <T>(arr: T[]): T => arr[crypto.randomInt(arr.length)]
 const toChTs = (d: Date) => d.toISOString().replace('T', ' ').replace('Z', '').slice(0, 23)
 const daysAgo = (n: number): Date => {
   const d = new Date()
