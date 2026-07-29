@@ -37,6 +37,12 @@ const ROUTE_LASTMOD: Record<string, string> = {
   '/docs/migrate/from-helicone': '2026-05-25',
   '/docs/migrate/from-langsmith': '2026-05-25',
   '/docs': '2026-06-12',
+  '/docs/concepts': '2026-07-29',
+  '/docs/features': '2026-07-29',
+  '/docs/integrations': '2026-07-29',
+  '/docs/production': '2026-07-29',
+  '/docs/tutorials': '2026-07-29',
+  '/docs/migrate': '2026-07-29',
   '/docs/quick-start': '2026-06-12',
   '/docs/cli': '2026-06-12',
   '/docs/sdk': '2026-06-12',
@@ -139,6 +145,15 @@ const MIGRATION_ROUTES = [
 
 const DOCS_ROUTES = [
   '/docs',
+  // Section hub pages. These six paths used to 404 (Search Console logged
+  // /docs/features as "Not found" on 2026-06-23) because every docs page sits
+  // one level deeper and no section had an index.
+  '/docs/concepts',
+  '/docs/features',
+  '/docs/integrations',
+  '/docs/production',
+  '/docs/tutorials',
+  '/docs/migrate',
   '/docs/quick-start',
   '/docs/cli',
   '/docs/sdk',
@@ -171,7 +186,6 @@ const DOCS_ROUTES = [
   '/docs/tutorials/agent-tracing',
   '/docs/tutorials/nightly-evals',
   '/docs/tutorials/rag-chatbot',
-  // NOTE: no bare '/docs/features' entry — that route does not exist (404).
   '/docs/features/requests',
   '/docs/features/traces',
   '/docs/features/prompts',
