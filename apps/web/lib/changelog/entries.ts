@@ -39,6 +39,17 @@ export type ChangelogTag =
 
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    date: '2026-07-30',
+    slug: 'docs-section-pages-and-link-previews',
+    title: 'Docs section pages and correct link previews',
+    tags: ['docs', 'fix'],
+    body: [
+      'The docs now have a page for each section. [Concepts](/docs/concepts), [Features](/docs/features), [Integrations](/docs/integrations), [Tutorials](/docs/tutorials), [Production](/docs/production), and [Migrate](/docs/migrate) each list what is inside with a short description per page, and a Sections group at the top of the sidebar reaches all six from anywhere in the docs. Those six paths used to return a 404.',
+      'Sharing a link now shows the right preview. Every page except the homepage was serving the homepage title, description, and URL in its Open Graph card, so a docs or comparison page pasted into Slack or X unfurled as the front page. Each page carries its own card now.',
+      'Two broken links are fixed. The Gemini pricing page pointed at an integration guide that does not exist, and the proxy docs linked to an agent-tracing page that had moved.',
+    ].join('\n\n'),
+  },
+  {
     date: '2026-07-07',
     slug: 'response-caching-weekly-digests-data-silence-alerts',
     title: 'Response caching, weekly digests, and data-silence alerts',
