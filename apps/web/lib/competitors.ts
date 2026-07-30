@@ -70,6 +70,7 @@ export const COMPETITORS: Competitor[] = [
   },
   {
     name: 'Comet Opik',
+    compareSlug: 'opik',
     repo: 'comet-ml/opik',
     stars: 20966,
     license: 'Apache 2.0, no gated folder',
@@ -97,6 +98,7 @@ export const COMPETITORS: Competitor[] = [
   },
   {
     name: 'LiteLLM',
+    compareSlug: 'litellm',
     repo: 'BerriAI/litellm',
     stars: 55038,
     license: 'Custom licence, not a standard OSI template',
@@ -110,6 +112,7 @@ export const COMPETITORS: Competitor[] = [
   },
   {
     name: 'Portkey',
+    compareSlug: 'portkey',
     repo: 'Portkey-AI/gateway',
     stars: 12593,
     license: 'MIT for the gateway; the observability platform is commercial',
