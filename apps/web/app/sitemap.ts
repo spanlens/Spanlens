@@ -10,6 +10,8 @@ const ROUTE_LASTMOD: Record<string, string> = {
   '/pricing': '2026-06-16',
   '/self-hosting': '2026-05-20',
   '/alternatives': '2026-06-01',
+  // Bump alongside VERIFIED_ON in lib/competitors.ts.
+  '/best-llm-observability-tools': '2026-07-30',
   // Bump whenever an entry lands in lib/changelog/entries.ts. It had been
   // stuck at 2026-06-15 through four rounds of entries.
   '/changelog': '2026-07-30',
@@ -114,6 +116,7 @@ const MARKETING_ROUTES = [
   '/pricing',
   '/self-hosting',
   '/alternatives',
+  '/best-llm-observability-tools',
   '/changelog',
   '/feedback',
   '/faq',

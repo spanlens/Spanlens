@@ -58,6 +58,7 @@ export function Footer() {
               <Link href="/compare/langsmith" className="hover:text-text transition-colors">LangSmith</Link>
               <Link href="/compare/braintrust" className="hover:text-text transition-colors">Braintrust</Link>
               <Link href="/compare/arize-phoenix" className="hover:text-text transition-colors">Arize Phoenix</Link>
+              <Link href="/best-llm-observability-tools" className="hover:text-text transition-colors">All tools</Link>
             </div>
           </div>
           {/* Guides — the keyword landing pages had zero internal inbound
