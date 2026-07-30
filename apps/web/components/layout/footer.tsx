@@ -58,6 +58,9 @@ export function Footer() {
               <Link href="/compare/langsmith" className="hover:text-text transition-colors">LangSmith</Link>
               <Link href="/compare/braintrust" className="hover:text-text transition-colors">Braintrust</Link>
               <Link href="/compare/arize-phoenix" className="hover:text-text transition-colors">Arize Phoenix</Link>
+              <Link href="/compare/opik" className="hover:text-text transition-colors">Comet Opik</Link>
+              <Link href="/compare/litellm" className="hover:text-text transition-colors">LiteLLM</Link>
+              <Link href="/compare/portkey" className="hover:text-text transition-colors">Portkey</Link>
               <Link href="/best-llm-observability-tools" className="hover:text-text transition-colors">All tools</Link>
             </div>
           </div>

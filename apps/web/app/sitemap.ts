@@ -37,6 +37,9 @@ const ROUTE_LASTMOD: Record<string, string> = {
   '/compare/langsmith': '2026-06-10',
   '/compare/braintrust': '2026-06-10',
   '/compare/arize-phoenix': '2026-06-10',
+  '/compare/opik': '2026-07-30',
+  '/compare/portkey': '2026-07-30',
+  '/compare/litellm': '2026-07-30',
   '/docs/migrate/from-langfuse': '2026-05-25',
   '/docs/migrate/from-helicone': '2026-05-25',
   '/docs/migrate/from-langsmith': '2026-05-25',
@@ -140,6 +143,9 @@ const MARKETING_ROUTES = [
   '/compare/langsmith',
   '/compare/braintrust',
   '/compare/arize-phoenix',
+  '/compare/opik',
+  '/compare/portkey',
+  '/compare/litellm',
 ] as const
 
 const MIGRATION_ROUTES = [

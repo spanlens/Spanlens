@@ -9,7 +9,7 @@ export const metadata = {
   openGraph: openGraphFor('/compare'),
   title: 'Spanlens vs alternatives · Compare',
   description:
-    'Honest comparisons of Spanlens against Langfuse, Helicone, LangSmith, Braintrust, and Arize Phoenix, feature by feature.',
+    'Honest comparisons of Spanlens against Langfuse, Helicone, Comet Opik, LiteLLM, Portkey, LangSmith, Braintrust, and Arize Phoenix, feature by feature.',
 }
 
 interface CompareEntry {
@@ -54,6 +54,27 @@ const ENTRIES: CompareEntry[] = [
     blurb:
       'Source-available (ELv2) observability from Arize. Python-first, ML-engineer-leaning. Spanlens is built for the application developer running LLM calls in production.',
     tag: 'Source-available · Python-first',
+  },
+  {
+    slug: 'opik',
+    competitor: 'Comet Opik',
+    blurb:
+      'Apache 2.0 with nothing held back, so the licence argument does not apply. Opik organises around evaluation and instruments through the SDK. Spanlens organises around cost and captures existing calls through the proxy.',
+    tag: 'OSS · eval-first',
+  },
+  {
+    slug: 'portkey',
+    competitor: 'Portkey',
+    blurb:
+      'The closest architecture after Helicone: both sit in front of the provider. Portkey open-sources the gateway and sells the observability, while Spanlens ships both halves under MIT.',
+    tag: 'Gateway · open-core',
+  },
+  {
+    slug: 'litellm',
+    competitor: 'LiteLLM',
+    blurb:
+      'Different jobs rather than rivals. LiteLLM routes across a hundred providers and hands logging to a backend; Spanlens is a backend of that kind. Many teams run both.',
+    tag: 'Gateway · routing-first',
   },
 ]
 
