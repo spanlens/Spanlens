@@ -87,6 +87,13 @@ export default function ComparePage() {
           Honest, side-by-side comparisons. We show where each alternative wins and where
           Spanlens does. Real tradeoffs without marketing fog.
         </p>
+        <p className="mt-4 text-[15px] text-text-muted leading-relaxed max-w-[680px]">
+          Want the whole field first?{' '}
+          <Link href="/best-llm-observability-tools" className="text-accent hover:underline">
+            Twelve tools with stars, licence, and development activity
+          </Link>
+          .
+        </p>
       </section>
 
       <section className="max-w-[1000px] mx-auto px-6 pb-24">

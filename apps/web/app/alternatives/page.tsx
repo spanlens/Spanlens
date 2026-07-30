@@ -154,6 +154,13 @@ export default function AlternativesHub() {
           cloud-only. Below are the five most common alternatives teams compare Spanlens to,
           plus migration guides if you already have data in one of them.
         </p>
+        <p className="mt-4 text-[15px] text-text-muted leading-relaxed max-w-[760px]">
+          For a wider field, see{' '}
+          <Link href="/best-llm-observability-tools" className="text-accent hover:underline">
+            all twelve tools with stars, licence, and development activity
+          </Link>
+          .
+        </p>
       </section>
 
       <section className="max-w-[1000px] mx-auto px-6 pb-10">
