@@ -39,6 +39,17 @@ export type ChangelogTag =
 
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    date: '2026-08-11',
+    slug: 'model-price-refresh-2026-08',
+    title: 'Corrected model prices and six newly priced models',
+    tags: ['fix'],
+    body: [
+      'Two OpenAI models were costed too high. OpenAI cut the price of `gpt-5.6-terra` and `gpt-5.6-luna` without changing `gpt-5.6-sol`, so requests to those two were reported above what you were actually billed: about 25 percent high for terra and 5 times high for luna. Both are corrected on the standard and long-context tiers. Mistral made `mistral-moderation-2603` free, and it now costs nothing instead of $0.10 per million input tokens.',
+      'Six models that had no price now have one. Requests to `gpt-5.6-cyber`, the two Gemini Robotics ER 2 previews, the two Groq Prompt Guard classifiers, and Leanstral used to log a blank cost, which showed up as a gap in your dashboard. They are priced from each provider\'s published rates as of August 11.',
+      'Costs are recomputed at request time, so this changes what new requests report. Requests already logged keep the cost that was recorded when they ran.',
+    ].join('\n\n'),
+  },
+  {
     date: '2026-07-30',
     slug: 'docs-section-pages-and-link-previews',
     title: 'Docs section pages and correct link previews',

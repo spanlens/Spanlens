@@ -115,6 +115,10 @@ header until there's a modality-aware column.
 Same for models with no published per-token price (Cohere's `command-a-plus`
 and the specialized `command-a-*` variants are sales-quoted).
 
+A model the provider lists as **free** is the opposite case: seed it at `0`,
+don't leave it out. Zero is the true cost, and a missing row renders as a gap
+in the dashboard rather than as $0.00.
+
 ### 6. Write the migration
 
 New file, `supabase/migrations/YYYYMMDDHHMMSS_seed_models_YYYY_MM.sql`. Never

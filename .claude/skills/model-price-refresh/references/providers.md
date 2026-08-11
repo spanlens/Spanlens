@@ -69,6 +69,13 @@ The flagship table shows only the newest family; the "All models" table has the
 long tail. The `.md` version contains both, which is why it's preferred.
 
 Traps:
+- **A family does not move together.** In 2026-08 OpenAI cut `gpt-5.6-terra`
+  and `gpt-5.6-luna` (luna by 5x) while leaving `gpt-5.6-sol` alone. Checking
+  the flagship and assuming its siblings followed would have missed both.
+  Diff every member, on both context tiers.
+- The flagship table is a tab group: **Standard / Batch / Flex / Fast mode**,
+  and "Fast mode" is what used to be called Priority (renamed 2026-07-30).
+  Only Standard belongs in the table.
 - Response bodies return **dated** ids (`gpt-4o-mini-2024-07-18`) and that's
   what lands in `requests.model`. Seed the base id and let the boundary-aware
   prefix match in `lookupPrice()` handle the variants.
@@ -147,10 +154,16 @@ Traps:
 
 ## Groq
 
-- <https://groq.com/pricing>
-- `WebFetch` works.
+- <https://console.groq.com/docs/models> — the live catalogue with prices
+- `WebFetch` on the console docs works; the page is plain enough to read
+  straight out of `document.body.innerText` in the browser too.
 
 Traps:
+- **`groq.com/pricing` is gone.** It 302s to the marketing homepage, and
+  because that returns 200 with plenty of prose, `WebFetch` reports success and
+  hands back a page with no prices in it rather than an error. If a Groq pass
+  comes back with "no pricing found", check the URL before concluding the
+  models were delisted (verified 2026-08-11).
 - Catalogue turns over fast; models disappear without deprecation notices.
 - Ids are namespaced (`openai/gpt-oss-120b`, `qwen/qwen3.6-27b`), which is
   exactly where collisions with OpenRouter come from. Run the collision query.
