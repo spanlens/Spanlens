@@ -40,6 +40,17 @@ export type ChangelogTag =
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
     date: '2026-08-11',
+    slug: 'dashboard-latency-and-idle-key-count-fix',
+    title: 'Much faster dashboard and API responses, plus an idle-key count fix',
+    tags: ['improvement', 'fix', 'infrastructure'],
+    body: [
+      'The API now runs in the same region as its databases. Our server functions were executing in Washington DC while both databases sit in Seoul, so every query that was not already cached crossed the Pacific and back before you saw anything. They now run in Seoul alongside the data. Measured against production: a request that does no database work at all went from about 240 ms to 65 ms, and a database round trip went from roughly 640 ms to between 55 and 114 ms. Every dashboard page, every API read, and every proxied request that has to look something up benefits from this.',
+      'The dashboard also asks for less. It used to fire seven separate requests as it loaded; the six that do not need live polling are now served by a single call, so it makes four. Settings and Evals were each shipping as one large bundle, and now load only the tab you actually open. Documentation pages with charts no longer download the charting library until you scroll near the figure, which takes roughly 116 KB of compressed JavaScript off the initial load of those pages. None of this changes what any page shows.',
+      'One number on screen was wrong. The "API keys idle" count on the dashboard and the matching badge in the sidebar were counting workspace-level public keys twice, so any workspace that had issued a public key saw an inflated figure. The count is correct now. If the number looked higher than the number of keys you recognised, that is why.',
+    ].join('\n\n'),
+  },
+  {
+    date: '2026-08-11',
     slug: 'faster-pages-and-lower-proxy-latency',
     title: 'Faster pages, lower proxy latency, and a robots.txt fix',
     tags: ['improvement', 'fix', 'infrastructure'],
