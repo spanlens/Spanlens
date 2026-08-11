@@ -68,7 +68,7 @@ healthRouter.get('/health', (c) =>
 
 healthRouter.get('/health/ready', async (c) => {
   const { supabaseAdmin } = await import('../lib/db.js')
-  const { warmClickhouseWithRetry } = await import('../lib/clickhouse.js')
+  const { pingClickhouse } = await import('../lib/clickhouse.js')
   // Lazy import keeps the cold-start cheap when the Redis singleton hasn't
   // been touched yet. getRedis() falls through to null when env is missing,
   // which is the local-dev / preview-without-KV path — reported as
@@ -81,18 +81,17 @@ healthRouter.get('/health/ready', async (c) => {
     // Cheapest indexed read against an existing table — same pattern as
     // /cron/keep-warm step 1.
     supabaseAdmin.from('organizations').select('id', { count: 'exact', head: true }).limit(1),
-    // Real SELECT 1 with 5s fast-fail + one retry (not HTTP /ping): resets
-    // ClickHouse Cloud's idle timer on every probe and stops a transient
-    // blip from 503ing the monitor. See warmClickhouse docs.
-    warmClickhouseWithRetry(),
+    // HTTP /ping, not a query — see pingClickhouse's docs for why a
+    // real SELECT here was a $232/mo mistake on ClickHouse Cloud's
+    // Development tier.
+    pingClickhouse(),
     redis ? redis.ping?.() ?? Promise.resolve('OK') : Promise.resolve('skipped'),
   ])
   const totalMs = Date.now() - start
 
   const pgOk = pgResult.status === 'fulfilled' && !pgResult.value.error
-  // warmClickhouseWithRetry swallows errors and resolves to false — same
-  // pitfall as gotcha #14, fixed in R-Q6 keep-warm. Check the resolved
-  // value, not the settled status.
+  // pingClickhouse swallows errors and resolves to false — check the
+  // resolved value, not the settled status.
   const chOk = chResult.status === 'fulfilled' && chResult.value === true
 
   let redisStatus: 'ok' | 'skipped' | 'fail'
@@ -125,7 +124,7 @@ healthRouter.get('/health/ready', async (c) => {
 
 healthRouter.get('/health/deep', async (c) => {
   const { supabaseAdmin } = await import('../lib/db.js')
-  const { warmClickhouseWithRetry } = await import('../lib/clickhouse.js')
+  const { pingClickhouse } = await import('../lib/clickhouse.js')
   const { fallbackQueueSize, eventsFallbackQueueSize } = await import(
     '../lib/fallback-replay.js'
   )
@@ -136,10 +135,14 @@ healthRouter.get('/health/deep', async (c) => {
   // the slowest dependency, not the sum.
   const [chOk, fallbackQueue, eventsFallback, cronMaxRuntime, webhookBacklog, webhookDlq] =
     await Promise.all([
-      // Real SELECT 1 + retry: Better Stack hits this every 3 minutes, so
-      // the probe itself keeps the ClickHouse Development tier from idle-
-      // suspending — the very thing that was flapping this monitor.
-      warmClickhouseWithRetry().catch(() => false),
+      // HTTP /ping, not a query. Better Stack hits this every 3 minutes;
+      // a real SELECT here kept resetting ClickHouse Cloud's idle-suspend
+      // timer, so the "keep-warm" side effect of this probe alone was
+      // paying for 24/7 compute on a Development-tier instance serving a
+      // couple hundred requests a month. See pingClickhouse's docs for
+      // the full history and why an occasional wake-cycle false-negative
+      // here is an accepted trade rather than a regression.
+      pingClickhouse().catch(() => false),
       fallbackQueueSize().catch(() => null),
       eventsFallbackQueueSize().catch(() => null),
       // crons.max_runtime_ms: MAX(duration_ms) over last 24h. R-11 trigger

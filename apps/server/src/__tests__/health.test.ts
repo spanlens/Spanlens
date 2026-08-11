@@ -28,6 +28,12 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
  *     - 503 when ClickHouse is unreachable. The Supabase failures for the
  *       new metrics do NOT 503 — they degrade to null so a single bad
  *       aggregate query doesn't take the whole monitor down.
+ *
+ * ClickHouse is probed via `pingClickhouse()` (HTTP /ping), not a real
+ * query — see the docstring on `pingClickhouse` in lib/clickhouse.ts for
+ * why a `SELECT 1`-based probe here was a $232/mo mistake on ClickHouse
+ * Cloud's Development tier. `pingClickhouseMock` below drives every
+ * scenario the same way regardless of which probe function is mocked.
  */
 
 const supabaseAdminMock = {
@@ -44,11 +50,6 @@ vi.mock('../lib/db.js', () => ({
 
 vi.mock('../lib/clickhouse.js', () => ({
   pingClickhouse: () => pingClickhouseMock(),
-  // health.ts moved to the SELECT-1-based probe (keeps ClickHouse Cloud's
-  // idle timer reset). Retry semantics are covered by clickhouse-warm.test.ts;
-  // here it drives the same mock so every existing scenario still applies.
-  warmClickhouse: () => pingClickhouseMock(),
-  warmClickhouseWithRetry: () => pingClickhouseMock(),
   getClickhouse: () => ({}),
   unscopedClickhouse: () => ({}),
   getOrgClickhouse: () => ({}),
