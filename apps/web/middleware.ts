@@ -228,7 +228,16 @@ export async function middleware(request: NextRequest) {
 export const config = {
   // Skip static assets + the `/api/*` proxy (handled by next.config rewrites
   // to the upstream server, which enforces its own JWT).
+  //
+  // The extension list also covers the machine-readable surface that AI
+  // crawlers poll: `/llms.txt`, `/llms-full.txt`, `/AGENTS.md`, `/pricing.md`
+  // (files in `public/`) plus the `/robots.txt` and `/sitemap.xml` metadata
+  // routes. None of them are auth-gated, so running the Supabase session
+  // middleware on them only burned an Edge invocation per crawler fetch and
+  // put an Edge hop in front of a response the CDN should be serving on its
+  // own. Every extension here must stay unauthenticated — do NOT add `.json`
+  // or any pattern a future protected route could match.
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|api/|monitoring|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    '/((?!_next/static|_next/image|favicon.ico|api/|monitoring|.*\\.(?:svg|png|jpg|jpeg|gif|webp|avif|ico|woff2?|txt|md|xml|webmanifest)$).*)',
   ],
 }

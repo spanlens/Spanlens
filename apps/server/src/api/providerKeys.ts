@@ -6,6 +6,7 @@ import { getOrgClickhouse } from '../lib/clickhouse.js'
 import { aes256Encrypt } from '../lib/crypto.js'
 import { recordAuditEvent } from '../lib/audit-log.js'
 import { resetProviderKeyNamesCache } from '../lib/requests-query.js'
+import { invalidateProviderKeyCache } from '../lib/provider-key-cache.js'
 import { validateOptionalUuid } from '../lib/params.js'
 import { ApiError } from '../lib/errors.js'
 
@@ -260,6 +261,12 @@ providerKeysRouter.post('/', requireEdit, async (c) => {
   // immediately on /requests instead of waiting for the 5-min TTL.
   resetProviderKeyNamesCache()
 
+  // Drop the proxy's cached row for this (Spanlens key, provider). On a
+  // fresh registration the cached entry is a *miss* — a customer who
+  // fired a proxy call before adding the key would otherwise keep getting
+  // NO_PROVIDER_KEY for the negative TTL after the key exists.
+  invalidateProviderKeyCache(apiKeyId, body.provider)
+
   void recordAuditEvent(c, {
     action: 'provider_key.add',
     resourceType: 'provider_keys',
@@ -290,9 +297,12 @@ providerKeysRouter.delete('/:id', requireEdit, async (c) => {
   const orgId = c.get('orgId')
   if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
+  // api_key_id rides along in the snapshot purely so we can address the
+  // proxy's row cache after the delete — the cache is keyed by
+  // (api_key_id, provider), and both are gone once the row is.
   const { data: snapshot } = await supabaseAdmin
     .from('provider_keys')
-    .select('id, provider, name')
+    .select('id, provider, name, api_key_id')
     .eq('id', keyId)
     .eq('organization_id', orgId)
     .maybeSingle()
@@ -306,6 +316,12 @@ providerKeysRouter.delete('/:id', requireEdit, async (c) => {
   if (error) throw new ApiError('INTERNAL_ERROR', 'Failed to delete provider key')
 
   resetProviderKeyNamesCache()
+
+  // Hard delete is immediate and permanent — the proxy must stop presenting
+  // this credential upstream immediately too, not 30s from now.
+  const deletedApiKeyId = (snapshot as { api_key_id?: string }).api_key_id
+  const deletedProvider = (snapshot as { provider?: string }).provider
+  if (deletedApiKeyId) invalidateProviderKeyCache(deletedApiKeyId, deletedProvider)
 
   void recordAuditEvent(c, {
     action: 'provider_key.delete',
@@ -355,6 +371,17 @@ providerKeysRouter.patch('/:id', requireEdit, async (c) => {
   if (error || !data) throw new ApiError('NOT_FOUND', 'Provider key not found or access denied')
 
   resetProviderKeyNamesCache()
+
+  // A rotation replaced encrypted_key: the proxy's cached ciphertext is now
+  // the OLD credential and would keep being decrypted and sent upstream for
+  // the rest of the TTL. Invalidate unconditionally — a rename is a no-op
+  // for the cache but costs one Map delete on a cold path, which is cheaper
+  // than a branch that could get the rotation case wrong later.
+  // SELECT_COLUMNS already returns api_key_id + provider, so no extra query.
+  const cachedApiKeyId = (data as { api_key_id?: string }).api_key_id
+  if (cachedApiKeyId) {
+    invalidateProviderKeyCache(cachedApiKeyId, data.provider as string)
+  }
 
   // Rotate vs rename are operationally different — rotating exposes a fresh
   // secret to upstream providers, renaming is cosmetic. Surface both action

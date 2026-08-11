@@ -1,3 +1,7 @@
+// Loaded explicitly by `register()` in instrumentation.ts when
+// NEXT_RUNTIME === 'edge'. @sentry/nextjs 10.x does not discover this
+// filename on its own (it appears nowhere in the SDK's build output), so
+// nothing here runs unless instrumentation.ts imports it.
 import * as Sentry from '@sentry/nextjs'
 
 Sentry.init({

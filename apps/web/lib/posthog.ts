@@ -9,11 +9,16 @@
  *     the user has opted into analytics cookies (lib/cookie-consent.ts).
  *
  * The SDK itself is initialized in
- * `components/providers/posthog-provider.tsx`, which is the only file
+ * `components/providers/posthog-bridge.tsx`, which is the only file
  * allowed to import `posthog-js` (see the no-restricted-imports rule in
- * eslint.config.mjs). This module deliberately reaches for
+ * eslint.config.mjs). That bridge is reached exclusively through a
+ * `next/dynamic({ ssr: false })` call in
+ * `components/providers/posthog-provider.tsx`, and only once the visitor
+ * has opted into analytics cookies — so the SDK bytes are never downloaded
+ * by a non-consenting visitor. This module deliberately reaches for
  * `window.posthog` instead of importing the SDK so the restriction stays
- * meaningful.
+ * meaningful (and so importing it can never pull posthog-js back into the
+ * shared client chunk).
  */
 
 import { isAnalyticsAllowed } from '@/lib/cookie-consent'

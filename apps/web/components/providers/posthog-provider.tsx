@@ -1,107 +1,52 @@
 'use client'
 
-/* eslint-disable no-restricted-imports --
- * This is the single file allowed to import posthog-js: initialisation is
- * gated behind isAnalyticsAllowed() (lib/cookie-consent.ts) and the consent
- * banner (components/cookie-consent-banner.tsx) is mounted in app/layout.tsx.
- * Everything else must go through the typed capture() helper in lib/posthog.ts.
- */
-import posthog from 'posthog-js'
-import { PostHogProvider as PHProvider, usePostHog } from 'posthog-js/react'
-import { Suspense, useEffect, useRef, useState } from 'react'
-import { usePathname, useSearchParams } from 'next/navigation'
-import { POSTHOG_KEY, POSTHOG_HOST } from '@/lib/posthog'
+import dynamic from 'next/dynamic'
+import { useEffect, useState } from 'react'
+import { POSTHOG_KEY } from '@/lib/posthog'
 import { CONSENT_CHANGED_EVENT, isAnalyticsAllowed } from '@/lib/cookie-consent'
-import { useCurrentUser } from '@/lib/queries/use-current-user'
 
-// ── Pageview tracker (App Router — no built-in pageview events) ──────────────
-// useSearchParams() requires a <Suspense> boundary in the App Router; without
-// one, prerendering fails for every page that includes the root layout.
-
-function PageviewTracker() {
-  const pathname = usePathname()
-  const searchParams = useSearchParams()
-  const ph = usePostHog()
-
-  useEffect(() => {
-    if (!pathname) return
-    const url = searchParams.size > 0 ? `${pathname}?${searchParams}` : pathname
-    ph.capture('$pageview', { $current_url: url })
-  }, [pathname, searchParams, ph])
-
-  return null
-}
-
-// ── User identify (runs inside PHProvider so usePostHog() is available) ──────
-
-function PostHogIdentify() {
-  const { data: user } = useCurrentUser()
-  const ph = usePostHog()
-  const identifiedRef = useRef<string | null>(null)
-
-  useEffect(() => {
-    if (!user || identifiedRef.current === user.id) return
-    identifiedRef.current = user.id
-    ph.identify(user.id, {
-      email: user.email ?? undefined,
-      created_at: user.created_at,
-    })
-  }, [user, ph])
-
-  return null
-}
-
-// ── Provider ─────────────────────────────────────────────────────────────────
-// The SDK is initialised lazily and ONLY after the user opts into analytics
-// cookies. `CONSENT_CHANGED_EVENT` lets a mid-session Accept start capture
-// without a reload, and a mid-session revoke stops it via opt_out_capturing().
+// posthog-js + posthog-js/react are ~76 KB gzip and used to sit in the shared
+// client chunk that EVERY page downloads — marketing, docs, /privacy, the lot —
+// even though posthog.init() was already correctly gated behind cookie consent.
+// The gate stopped the SDK from running; it did not stop it from being
+// downloaded.
+//
+// Loading the bridge through next/dynamic({ ssr: false }) moves posthog-js into
+// its own lazy chunk that is fetched only after the visitor opts into analytics
+// cookies. This file keeps the consent state machine and must NOT import
+// posthog-js — see components/providers/posthog-bridge.tsx for everything that
+// touches the SDK.
+const PostHogBridge = dynamic(
+  () => import('./posthog-bridge').then((m) => m.PostHogBridge),
+  { ssr: false },
+)
 
 export function PostHogProvider({ children }: { children: React.ReactNode }) {
-  const initedRef = useRef(false)
-  const [enabled, setEnabled] = useState(false)
+  const [consented, setConsented] = useState(false)
 
   useEffect(() => {
     if (!POSTHOG_KEY) return // skip in test / CI environments without the key
 
-    const sync = () => {
-      if (isAnalyticsAllowed()) {
-        if (!initedRef.current) {
-          initedRef.current = true
-          posthog.init(POSTHOG_KEY, {
-            api_host: POSTHOG_HOST,
-            ui_host: 'https://us.posthog.com',
-            // App Router doesn't emit history events, so we track manually via
-            // PageviewTracker above. Disable automatic pageview capture here.
-            capture_pageview: false,
-            capture_pageleave: true,
-            // Only create profiles for identified (logged-in) users — avoids
-            // inflating MAU counts with anonymous visitors.
-            person_profiles: 'identified_only',
-          })
-        } else {
-          posthog.opt_in_capturing()
-        }
-        setEnabled(true)
-      } else if (initedRef.current) {
-        posthog.opt_out_capturing()
-        setEnabled(false)
-      }
-    }
+    // `CONSENT_CHANGED_EVENT` lets a mid-session Accept mount the bridge (which
+    // downloads + initialises the SDK) and a mid-session revoke unmount it —
+    // both without a page reload. The bridge's own unmount cleanup is what
+    // calls opt_out_capturing().
+    const sync = () => setConsented(isAnalyticsAllowed())
 
     sync()
     window.addEventListener(CONSENT_CHANGED_EVENT, sync)
     return () => window.removeEventListener(CONSENT_CHANGED_EVENT, sync)
   }, [])
 
+  // `children` sits at a fixed position in both states, and the bridge is a
+  // sibling rather than a wrapper. That matters: the previous version wrapped
+  // children in PostHogProvider-from-the-SDK, so toggling consent would have
+  // re-parented and remounted the entire app tree (blowing away dashboard
+  // state). Rendering `{children}` unchanged in both branches avoids that.
   return (
-    <PHProvider client={posthog}>
-      {enabled ? (
-        <Suspense fallback={null}>
-          <PageviewTracker />
-          <PostHogIdentify />
-        </Suspense>
-      ) : null}
+    <>
+      {consented ? <PostHogBridge /> : null}
       {children}
-    </PHProvider>
+    </>
   )
 }

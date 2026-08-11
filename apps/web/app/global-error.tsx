@@ -13,6 +13,7 @@
  * import is what broke the layout, we still want to render readable text.
  */
 
+import * as Sentry from '@sentry/nextjs'
 import { useEffect } from 'react'
 
 export default function GlobalError({
@@ -24,9 +25,19 @@ export default function GlobalError({
 }) {
   useEffect(() => {
     console.error('[global-error]', error)
+    // Sentry does NOT capture root-layout crashes on its own — App Router
+    // routes them here instead of through the SDK's error hooks, so without
+    // this call a layout crash is invisible in Sentry even though the SDK is
+    // initialised (instrumentation-client.ts). Wrapped in its own try/catch:
+    // this file is the last line of defence and must never throw.
+    try {
+      Sentry.captureException(error)
+    } catch { /* silent */ }
     // Best-effort sink to our backend so we hear about layout crashes
-    // without waiting on a customer report. Fire-and-forget — if the
-    // endpoint itself is the thing that crashed, we just swallow.
+    // without waiting on a customer report. Kept alongside Sentry rather than
+    // replaced by it: this one survives an ad blocker eating the Sentry
+    // request. Fire-and-forget — if the endpoint itself is the thing that
+    // crashed, we just swallow.
     try {
       fetch('/api/v1/frontend-errors', {
         method: 'POST',

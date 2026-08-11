@@ -54,6 +54,7 @@ vi.mock('../lib/clickhouse.js', () => ({
 
 // mock 선언 이후에 import
 import { getDecryptedProviderKey } from '../proxy/utils.js'
+import { _clearProviderKeyCacheForTests } from '../lib/provider-key-cache.js'
 import { supabaseAdmin } from '../lib/db.js'
 
 const CORRECT_KEY_ENV = Buffer.from('a'.repeat(32)).toString('base64')
@@ -65,11 +66,18 @@ describe('getDecryptedProviderKey — Gotcha #5 (decryption empty string → nul
   beforeEach(() => {
     process.env.ENCRYPTION_KEY = CORRECT_KEY_ENV
     vi.clearAllMocks()
+    // P3.2: the provider_keys row lookup is cached in-process now, and every
+    // case below reuses the same ('api-key-789', 'openai') pair with a
+    // different mocked DB result. Without this reset the second test would
+    // be served the first test's ciphertext from cache and never reach the
+    // decrypt path it is asserting on.
+    _clearProviderKeyCacheForTests()
   })
 
   afterEach(() => {
     // 테스트 격리: 환경변수 복원
     process.env.ENCRYPTION_KEY = CORRECT_KEY_ENV
+    _clearProviderKeyCacheForTests()
   })
 
   // Mock helper — matches the query chain used by getDecryptedProviderKey

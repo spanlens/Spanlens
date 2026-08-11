@@ -6,6 +6,7 @@ import { randomHex, sha256Hex } from '../lib/crypto.js'
 import { recordAuditEvent } from '../lib/audit-log.js'
 import { invalidateApiKeyCache } from '../middleware/authApiKey.js'
 import { resetProviderKeyNamesCache } from '../lib/requests-query.js'
+import { invalidateProviderKeyCache } from '../lib/provider-key-cache.js'
 import { ApiError } from '../lib/errors.js'
 
 /**
@@ -316,8 +317,14 @@ apiKeysRouter.delete('/:id', requireEdit, async (c) => {
   if (snapshotKeyHash) invalidateApiKeyCache(snapshotKeyHash)
 
   // The cascade removed this key's provider keys — reset the name cache so
-  // /requests renders "(deleted)" instead of stale names.
+  // /requests renders "(deleted)" instead of stale names, and drop every
+  // cached provider-key row hanging off this Spanlens key. The provider list
+  // isn't known here (the rows are already gone), hence the no-provider form
+  // that clears the whole `${apiKeyId}:` prefix. Belt-and-braces with the
+  // invalidateApiKeyCache above: auth would fail first anyway, but only on
+  // instances that observed that invalidation.
   resetProviderKeyNamesCache()
+  invalidateProviderKeyCache(keyId)
 
   void recordAuditEvent(c, {
     action: 'api_key.delete',
