@@ -109,7 +109,30 @@ export function resetClickhouseClient(): void {
 
 /**
  * Health probe — returns true if ClickHouse is reachable and responding.
- * Used by /health endpoint and migration scripts.
+ * Used by /health/ready, /health/deep, and migration scripts.
+ *
+ * Deliberately the HTTP /ping endpoint, not a `SELECT 1` query. A prior
+ * version of this codebase used `SELECT 1` here specifically because
+ * ClickHouse Cloud only resets its idle-suspend timer on query activity —
+ * /ping wakes a suspended instance but does not count as activity, so a
+ * ping-only probe let the Development tier suspend again right after.
+ * That was treated as a bug (98.2% uptime on the status page, 2026-07-13,
+ * from the /health/deep 503 → self-heal → 503 cycle while it woke back
+ * up) and "fixed" by switching to `SELECT 1`, which keeps resetting the
+ * idle timer on every probe — so an instance hit every 3-5 minutes by
+ * cron + external monitors never gets to suspend at all. Measured cost
+ * of that "fix": $232/mo for a service handling ~250 requests/month
+ * (2026-08-11), i.e. paying for 24/7 compute to serve a few requests a
+ * day.
+ *
+ * Reverted back to /ping on purpose. The trade-off this accepts: a probe
+ * that lands mid-wake can still read as unreachable, same as before the
+ * SELECT-1 change. That's fine here because nothing customer-facing
+ * depends on this signal — proxy logging fire-and-forgets to a Supabase
+ * fallback queue on ClickHouse failure (`lib/fallback-replay.ts`) and
+ * quota checks fail OPEN on ClickHouse errors (CLAUDE.md gotcha #23) — so
+ * an occasional false-negative status-page blip costs nothing real,
+ * unlike the always-on compute the SELECT-1 version was paying for.
  */
 export async function pingClickhouse(): Promise<boolean> {
   try {
@@ -118,44 +141,6 @@ export async function pingClickhouse(): Promise<boolean> {
   } catch {
     return false
   }
-}
-
-/**
- * Warm probe — runs a real `SELECT 1` so ClickHouse Cloud's idle timer
- * resets. The HTTP /ping behind pingClickhouse() wakes a suspended
- * service but does NOT count as query activity, so a ping-only probe
- * lets the Development tier auto-suspend between checks. Observed as
- * the /health/deep 503 → self-heal → 503 cycle on the status page
- * (98.2% uptime, 2026-07-13) while liveness sat at 99.98%.
- *
- * Aborts after timeoutMs: a cold instance can take minutes to wake and
- * the caller shouldn't hang for that. The aborted request still
- * triggers the wake server-side, so a follow-up probe succeeds.
- */
-export async function warmClickhouse(timeoutMs = 5_000): Promise<boolean> {
-  try {
-    const result = await unscopedClickhouse().query({
-      query: 'SELECT 1',
-      format: 'JSONEachRow',
-      abort_signal: AbortSignal.timeout(timeoutMs),
-    })
-    await result.json()
-    return true
-  } catch {
-    return false
-  }
-}
-
-/**
- * warmClickhouse with one retry — health probes use this so a single
- * transient blip (or an in-flight cold wake) doesn't 503 the monitor.
- * A real outage fails both attempts and still surfaces as 503. Worst
- * case adds 2 × timeoutMs to the probe, which is fine for the 3-minute
- * Better Stack cadence and the 30s docker healthcheck loop alike.
- */
-export async function warmClickhouseWithRetry(timeoutMs = 5_000): Promise<boolean> {
-  if (await warmClickhouse(timeoutMs)) return true
-  return warmClickhouse(timeoutMs)
 }
 
 /**

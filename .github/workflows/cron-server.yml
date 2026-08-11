@@ -39,7 +39,12 @@ name: Cron — server sub-daily
 #     a new background migration without manually marking rows.
 #
 #   /cron/keep-warm                 every 5 min  (shipped earlier)
-#     Warms Lambda + Supabase + ClickHouse pools. Silent = first
+#     Warms the Supabase connection pool. Used to also warm ClickHouse,
+#     dropped 2026-08-11: that query was exactly the "activity" that
+#     resets ClickHouse Cloud's idle-suspend timer, so a 5-min cron
+#     hitting it 24/7 kept the Development tier billed as continuously
+#     running for a service handling ~250 requests/month ($232/mo — see
+#     lib/clickhouse.ts pingClickhouse docs). Silent = first Supabase
 #     request after idle eats a cold start (~1s tax). Low priority.
 #
 # Vercel scheduler stays configured in vercel.json so it still fires
