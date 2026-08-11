@@ -5,11 +5,16 @@ import { statsOverviewSpec, statsTimeseriesSpec } from '@/lib/server/queries/sta
 import { DashboardClient } from './dashboard-client'
 
 /**
- * Above-the-fold critical path only. The other 7 queries (models, forecast,
- * anomalies, alerts, recommendations, security, audit logs) mount as client
- * useQuery() hooks inside DashboardClient — each section already renders a
- * Skeleton while loading. Cuts TTFB by removing 7 awaits from the page
- * render's critical path while keeping the KPI row + traffic chart instant.
+ * Above-the-fold critical path only. Everything below the fold mounts as a
+ * client useQuery() hook inside DashboardClient — each section renders its
+ * own Skeleton while loading. Cuts TTFB by keeping those awaits off the page
+ * render's critical path while the KPI row + traffic chart stay instant.
+ *
+ * Below the fold there are now three hooks rather than nine: alerts,
+ * recommendations, audit logs, prompts, security summary and spend forecast
+ * are served together by `useDashboardSummary` (GET /api/v1/dashboard/summary),
+ * leaving `useStatsModels` and `useAnomalies` on their own because both poll
+ * on a 30s refetchInterval and must not drag the rest onto that cadence.
  *
  * Sidebar / banner data is NOT prefetched here. The components that read it
  * live in the (dashboard) layout — outside this page's HydrationBoundary

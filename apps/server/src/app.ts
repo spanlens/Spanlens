@@ -46,6 +46,7 @@ import { humanEvalsRouter } from './api/human-evals.js'
 import { scoreConfigsRouter } from './api/scoreConfigs.js'
 import { recommendationsRouter } from './api/recommendations.js'
 import { auditLogsRouter }     from './api/auditLogs.js'
+import { dashboardRouter }     from './api/dashboard.js'
 import { healthRouter }        from './api/health.js'
 import { membersRouter }       from './api/members.js'
 import { orgInvitationsRouter, invitationsRouter, meInvitationsRouter } from './api/invitations.js'
@@ -268,6 +269,11 @@ app.route('/api/v1/feedback',       feedbackRouter)
 app.route('/api/v1/datasets',       datasetsRouter)
 app.route('/api/v1/experiments',    experimentsRouter)
 app.route('/api/v1/audit-logs',     auditLogsRouter)
+// Composite read for the dashboard's below-the-fold panels. Dual auth
+// (authJwtOrApiKey), so it MUST be mounted above the `/api/v1` wildcard
+// routers below — their `.use('*', authJwt)` would otherwise 401 every
+// sl_live_* caller before this router's own middleware ran.
+app.route('/api/v1/dashboard',      dashboardRouter)
 app.route('/api/v1/organizations/:orgId/members', membersRouter)
 app.route('/api/v1/organizations/:orgId/invitations', orgInvitationsRouter)
 app.route('/api/v1/me/pending-invitations', meInvitationsRouter)

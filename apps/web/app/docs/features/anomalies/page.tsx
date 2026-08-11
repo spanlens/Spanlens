@@ -1,6 +1,6 @@
 import { openGraphFor } from '@/lib/page-metadata'
 import { CodeBlock } from '../../_components/code-block'
-import { AnomalyChart } from '../../_components/charts'
+import { AnomalyChart } from '../../_components/figures'
 import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
 export const metadata = {

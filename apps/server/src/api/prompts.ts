@@ -51,12 +51,27 @@ const EMPTY_STATS: PromptStats = {
   errorRate: null,
 }
 
-// GET /  — latest version of every named prompt, with 24h usage stats inline
-promptsRouter.get('/', async (c) => {
-  const orgId = c.get('orgId')
-  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
+export interface PromptListOptions {
+  projectId?: string | undefined
+  /** Window for the inline request aggregates. Defaults to 24h. */
+  sinceHours?: number | undefined
+}
 
-  const projectId = c.req.query('projectId')
+/**
+ * Latest version of every named prompt, enriched with request aggregates,
+ * quality score and any running A/B experiment.
+ *
+ * Extracted from the GET / handler so `GET /api/v1/dashboard/summary` can
+ * build the dashboard's "Top prompts · spend" panel from the same rows the
+ * /prompts page lists. Reimplementing even the roll-up half of this would
+ * put two different definitions of "prompt spend" in front of the user.
+ */
+export async function fetchPromptsWithStats(
+  orgId: string,
+  options: PromptListOptions = {},
+) {
+  const projectId = options.projectId
+  const sinceHours = options.sinceHours ?? 24
 
   let query = supabaseAdmin
     .from('prompt_versions')
@@ -94,7 +109,6 @@ promptsRouter.get('/', async (c) => {
 
   // Aggregate request metrics per prompt_version_id, then roll up per name.
   // sinceHours defaults to 24h; the UI passes the selected date range.
-  const sinceHours = parsePositiveFloat(c.req.query('sinceHours'), 24)
   const sinceIso = new Date(Date.now() - sinceHours * 3_600_000).toISOString()
   const allVersionIds = allRows.map((r) => r.id as string)
   const statsByName = new Map<string, PromptStats>()
@@ -181,13 +195,24 @@ promptsRouter.get('/', async (c) => {
     }
   }
 
-  const enriched = latest.map((row) => ({
+  return latest.map((row) => ({
     ...row,
     versionCount: versionCountByName.get(row.name) ?? 1,
     stats: statsByName.get(row.name) ?? EMPTY_STATS,
     qualityScore: qualityByName.get(row.name) ?? null,
     activeExperiment: activeExpByName.get(row.name) ?? null,
   }))
+}
+
+// GET /  — latest version of every named prompt, with 24h usage stats inline
+promptsRouter.get('/', async (c) => {
+  const orgId = c.get('orgId')
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
+
+  const enriched = await fetchPromptsWithStats(orgId, {
+    projectId: c.req.query('projectId'),
+    sinceHours: parsePositiveFloat(c.req.query('sinceHours'), 24),
+  })
 
   return c.json({ success: true, data: enriched })
 })

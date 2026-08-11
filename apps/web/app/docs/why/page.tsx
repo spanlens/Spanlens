@@ -1,6 +1,6 @@
 import { openGraphFor } from '@/lib/page-metadata'
 import Link from 'next/link'
-import { FeatureCoverageRadar } from '../_components/charts'
+import { FeatureCoverageRadar } from '../_components/figures'
 import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
 export const metadata = {

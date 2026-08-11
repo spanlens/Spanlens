@@ -82,13 +82,25 @@ securityRouter.get('/flagged', async (c) => {
   }
 })
 
-// GET /api/v1/security/summary?hours=24
-securityRouter.get('/summary', async (c) => {
-  const orgId = c.get('orgId')
-  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
+export interface SecuritySummaryItem {
+  type: string
+  pattern: string
+  count: number
+}
 
-  const hours = Math.min(parsePositiveInt(c.req.query('hours'), 24), 720)
-
+/**
+ * Flag counts by (type, pattern) over the last `hours`.
+ *
+ * Extracted from the GET /summary handler so `GET /api/v1/dashboard/summary`
+ * builds the "PII leak" attention card from the same numbers the /security
+ * page shows. The ClickHouse SQL itself lives in `lib/stats-queries.ts`
+ * (`getSecuritySummary`) and is untouched — this wrapper only owns the
+ * response projection, which is the part the dashboard depends on.
+ */
+export async function fetchSecuritySummary(
+  orgId: string,
+  hours: number,
+): Promise<{ summary: SecuritySummaryItem[]; totalFlags: number }> {
   try {
     const rows = await getSecuritySummary(orgId, hours)
     const summary = rows.map((r) => ({
@@ -96,16 +108,26 @@ securityRouter.get('/summary', async (c) => {
       pattern: r.pattern,
       count: r.count,
     }))
-    const totalFlags = summary.reduce((s, r) => s + r.count, 0)
-    return c.json({
-      success: true,
-      data: summary,
-      meta: { hours, totalFlags },
-    })
+    return { summary, totalFlags: summary.reduce((s, r) => s + r.count, 0) }
   } catch (err) {
     console.error('[security:summary] ClickHouse query failed:', err instanceof Error ? err.message : err)
     throw new ApiError('INTERNAL_ERROR', 'Failed to compute summary')
   }
+}
+
+// GET /api/v1/security/summary?hours=24
+securityRouter.get('/summary', async (c) => {
+  const orgId = c.get('orgId')
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
+
+  const hours = Math.min(parsePositiveInt(c.req.query('hours'), 24), 720)
+
+  const { summary, totalFlags } = await fetchSecuritySummary(orgId, hours)
+  return c.json({
+    success: true,
+    data: summary,
+    meta: { hours, totalFlags },
+  })
 })
 
 // GET /api/v1/security/settings

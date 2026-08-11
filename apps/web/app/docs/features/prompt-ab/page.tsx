@@ -1,6 +1,6 @@
 import { openGraphFor } from '@/lib/page-metadata'
 import { CodeBlock } from '../../_components/code-block'
-import { PromptAbChart } from '../../_components/charts'
+import { PromptAbChart } from '../../_components/figures'
 import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
 export const metadata = {
