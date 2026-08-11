@@ -1,4 +1,4 @@
--- Seed: Model pricing table (USD per 1M tokens, verified against provider pricing 2026-07-29)
+-- Seed: Model pricing table (USD per 1M tokens, verified against provider pricing 2026-08-11)
 --
 -- SCOPE: direct providers only. The 170 `openrouter` rows live exclusively in
 -- migration 20260613060000 — OpenRouter is a meta-provider whose catalogue
@@ -25,8 +25,9 @@ INSERT INTO model_prices (
 ) VALUES
   -- ── OpenAI: GPT-5.x flagship family ───────────────────────────────────────
   ('openai', 'gpt-5.6-sol',                      5.00,  30.00,   0.50,   6.250),
-  ('openai', 'gpt-5.6-terra',                    2.50,  15.00,   0.25,   3.125),
-  ('openai', 'gpt-5.6-luna',                     1.00,   6.00,   0.10,   1.250),
+  ('openai', 'gpt-5.6-terra',                    2.00,  12.00,   0.20,   2.500),
+  ('openai', 'gpt-5.6-luna',                     0.20,   1.20,   0.02,   0.250),
+  ('openai', 'gpt-5.6-cyber',                   12.50,  75.00,   1.25,  15.625), -- Cyber (Daybreak); no long-context tier
   ('openai', 'gpt-5.5',                          5.00,  30.00,   0.50,   NULL),
   ('openai', 'gpt-5.5-pro',                     30.00, 180.00,   NULL,   NULL),
   ('openai', 'gpt-5.4',                          2.50,  15.00,   0.25,   NULL),
@@ -104,7 +105,10 @@ INSERT INTO model_prices (
   ('mistral', 'pixtral-large-latest',            2.00,   6.00,   NULL,   NULL), -- off the current pricing page
   ('mistral', 'pixtral-12b',                     0.15,   0.15,   NULL,   NULL), -- off the current pricing page
   ('mistral', 'voxtral-small-latest',            0.10,   0.40,   NULL,   NULL),
-  ('mistral', 'mistral-moderation-2603',         0.10,   0.000,  NULL,   NULL),
+  -- Listed as "Free" on the pricing page — 0, not NULL, so cost renders as $0
+  -- rather than as missing data.
+  ('mistral', 'mistral-moderation-2603',         0.00,   0.000,  NULL,   NULL),
+  ('mistral', 'labs-leanstral-2603',             0.00,   0.000,  NULL,   NULL),
   ('mistral', 'mistral-embed',                   0.10,   0.000,  NULL,   NULL),
   ('mistral', 'codestral-embed',                 0.15,   0.000,  NULL,   NULL),
   -- ── Groq (OpenAI-compatible, api.groq.com/openai/v1) ─────────────────────
@@ -115,7 +119,9 @@ INSERT INTO model_prices (
   ('groq', 'openai/gpt-oss-safeguard-20b',               0.075, 0.30,    NULL,     NULL),
   ('groq', 'qwen/qwen3.6-27b',                           0.60,  3.00,    NULL,     NULL),
   ('groq', 'moonshotai/kimi-k2-instruct-0905',           1.00,  3.00,    0.50,     NULL),
-  -- Off the current Groq pricing page (2026-07-29) — kept so historical rows
+  ('groq', 'meta-llama/llama-prompt-guard-2-22m',        0.03,  0.03,    NULL,     NULL),
+  ('groq', 'meta-llama/llama-prompt-guard-2-86m',        0.04,  0.04,    NULL,     NULL),
+  -- Off the current Groq catalogue (2026-08-11) — kept so historical rows
   -- still price correctly, but Groq appears to have stopped serving them.
   ('groq', 'meta-llama/llama-4-scout-17b-16e-instruct',  0.11,  0.34,    NULL,     NULL),
   ('groq', 'qwen/qwen3-32b',                             0.29,  0.59,    NULL,     NULL),
@@ -192,6 +198,8 @@ INSERT INTO model_prices (
   ('gemini', 'gemini-1.5-pro',                         1.25,   5.00,   NULL,  NULL), -- retired, off the pricing page
   ('gemini', 'gemini-1.5-flash',                       0.075,  0.30,   NULL,  NULL), -- retired, off the pricing page
   -- ── Gemini: specialized ──────────────────────────────────────────────────
+  ('gemini', 'gemini-robotics-er-2-preview',           2.00,  10.00,   0.20,  NULL),
+  ('gemini', 'gemini-robotics-er-2-streaming-preview', 2.00,  10.00,   NULL,  NULL),
   ('gemini', 'gemini-robotics-er-1.6-preview',         1.00,   5.00,   NULL,  NULL),
   -- Embeddings are input-only (completion stays 0). gemini-embedding-2 is
   -- multimodal; the seeded rate is TEXT input — image (0.45) / audio (6.50) /
@@ -255,18 +263,18 @@ UPDATE model_prices
 
 UPDATE model_prices
    SET long_context_threshold_tokens = 272000,
-       long_prompt_price_per_1m      =  5.00,
-       long_completion_price_per_1m  = 22.50,
-       long_cache_read_price_per_1m  =  0.50,
-       long_cache_write_price_per_1m =  6.25
+       long_prompt_price_per_1m      =  4.00,
+       long_completion_price_per_1m  = 18.00,
+       long_cache_read_price_per_1m  =  0.40,
+       long_cache_write_price_per_1m =  5.00
  WHERE provider = 'openai' AND model = 'gpt-5.6-terra';
 
 UPDATE model_prices
    SET long_context_threshold_tokens = 272000,
-       long_prompt_price_per_1m      =  2.00,
-       long_completion_price_per_1m  =  9.00,
-       long_cache_read_price_per_1m  =  0.20,
-       long_cache_write_price_per_1m =  2.50
+       long_prompt_price_per_1m      =  0.40,
+       long_completion_price_per_1m  =  1.80,
+       long_cache_read_price_per_1m  =  0.04,
+       long_cache_write_price_per_1m =  0.50
  WHERE provider = 'openai' AND model = 'gpt-5.6-luna';
 
 UPDATE model_prices

@@ -143,6 +143,35 @@ describe('model-prices-cache', () => {
     }
   })
 
+  test('GPT-5.6 fallback rates match the published table on BOTH tiers', () => {
+    // OpenAI cut terra and luna on 2026-08 but left sol untouched, so a spot
+    // check of "the flagship" would have passed while every terra request was
+    // over-reported by 25% and every luna request by 5x. Pin the whole family,
+    // both tiers, so a partial move fails here instead of on a customer bill.
+    // Source: developers.openai.com/api/docs/pricing (verified 2026-08-11).
+    const expected = {
+      'gpt-5.6-sol':   { prompt: 5.0,  completion: 30,   cacheRead: 0.5,  cacheWrite: 6.25,
+                         longPrompt: 10,  longCompletion: 45,  longCacheRead: 1.0,  longCacheWrite: 12.5 },
+      'gpt-5.6-terra': { prompt: 2.0,  completion: 12,   cacheRead: 0.2,  cacheWrite: 2.5,
+                         longPrompt: 4,   longCompletion: 18,  longCacheRead: 0.4,  longCacheWrite: 5.0 },
+      'gpt-5.6-luna':  { prompt: 0.2,  completion: 1.2,  cacheRead: 0.02, cacheWrite: 0.25,
+                         longPrompt: 0.4, longCompletion: 1.8, longCacheRead: 0.04, longCacheWrite: 0.5 },
+    } as const
+
+    for (const [model, rates] of Object.entries(expected)) {
+      const actual = cache.FALLBACK_PRICES[model]
+      expect(actual, `missing fallback for ${model}`).toBeDefined()
+      expect({ ...actual, longThreshold: undefined }, model).toEqual({ ...rates, longThreshold: undefined })
+      expect(actual?.longThreshold, `${model} long-context threshold`).toBe(272000)
+    }
+
+    // Cyber publishes no long-context tier — pin that absence too, so adding
+    // one silently (or copying sol's by mistake) fails.
+    const cyber = cache.FALLBACK_PRICES['gpt-5.6-cyber']
+    expect(cyber).toEqual({ prompt: 12.5, completion: 75, cacheRead: 1.25, cacheWrite: 15.625 })
+    expect(cyber?.longThreshold).toBeUndefined()
+  })
+
   test('FALLBACK_PRICES stays provider-unambiguous', () => {
     // lookupPrice() consults FALLBACK_PRICES without a provider, which is only
     // safe while it holds direct-provider models exclusively. OpenRouter ids

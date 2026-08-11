@@ -63,7 +63,7 @@ export interface ModelPrice {
   longCacheWrite?: number | undefined
 }
 
-// Prices in USD per 1M tokens (verified against provider pricing pages 2026-07-29).
+// Prices in USD per 1M tokens (verified against provider pricing pages 2026-08-11).
 // This map is the COLD-START FALLBACK — used when the DB cache is empty
 // (first request after deploy / DB unreachable). The DB is the source of truth
 // once loaded; this constant exists to guarantee `calculateCost()` always has
@@ -81,12 +81,14 @@ export const FALLBACK_PRICES: Record<string, ModelPrice> = {
   'gpt-5.6-sol':       { prompt: 5.0,  completion: 30,  cacheRead: 0.5,  cacheWrite: 6.25,
                          longThreshold: 272000, longPrompt: 10, longCompletion: 45,
                          longCacheRead: 1.0, longCacheWrite: 12.5 },
-  'gpt-5.6-terra':     { prompt: 2.5,  completion: 15,  cacheRead: 0.25, cacheWrite: 3.125,
-                         longThreshold: 272000, longPrompt: 5, longCompletion: 22.5,
-                         longCacheRead: 0.5, longCacheWrite: 6.25 },
-  'gpt-5.6-luna':      { prompt: 1.0,  completion: 6,   cacheRead: 0.1,  cacheWrite: 1.25,
-                         longThreshold: 272000, longPrompt: 2, longCompletion: 9,
-                         longCacheRead: 0.2, longCacheWrite: 2.5 },
+  'gpt-5.6-terra':     { prompt: 2.0,  completion: 12,  cacheRead: 0.2,  cacheWrite: 2.5,
+                         longThreshold: 272000, longPrompt: 4, longCompletion: 18,
+                         longCacheRead: 0.4, longCacheWrite: 5.0 },
+  'gpt-5.6-luna':      { prompt: 0.2,  completion: 1.2, cacheRead: 0.02, cacheWrite: 0.25,
+                         longThreshold: 272000, longPrompt: 0.4, longCompletion: 1.8,
+                         longCacheRead: 0.04, longCacheWrite: 0.5 },
+  // Cyber (Daybreak) family — no long-context tier published.
+  'gpt-5.6-cyber':     { prompt: 12.5, completion: 75,  cacheRead: 1.25, cacheWrite: 15.625 },
   // ── OpenAI: GPT-5.x flagship ─────────────────────────────────────────────
   // gpt-5.5 / 5.5-pro / 5.4 / 5.4-pro have a long-context tier at ≥272k tokens.
   'gpt-5.5':           { prompt: 5.0,  completion: 30,  cacheRead: 0.5,
@@ -256,6 +258,8 @@ export const FALLBACK_PRICES: Record<string, ModelPrice> = {
   'gemini-1.5-pro':        { prompt: 1.25,  completion: 5 },
   'gemini-1.5-flash':      { prompt: 0.075, completion: 0.3 },
   // ── Gemini: specialized (embeddings are input-only) ──────────────────────
+  'gemini-robotics-er-2-preview':           { prompt: 2.0, completion: 10, cacheRead: 0.2 },
+  'gemini-robotics-er-2-streaming-preview': { prompt: 2.0, completion: 10 },
   'gemini-robotics-er-1.6-preview': { prompt: 1.0,  completion: 5 },
   'gemini-embedding-2':             { prompt: 0.2,  completion: 0 },
   'gemini-embedding-001':           { prompt: 0.15, completion: 0 },
