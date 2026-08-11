@@ -4,12 +4,12 @@ import { NextResponse, type NextRequest } from 'next/server'
 /**
  * Session validation + auth redirects.
  *
- * Called on every navigation request (except static assets and `/api/*`
- * which is the same-origin proxy — see matcher). Validates the Supabase
- * session via `getUser()`, then forwards `x-spanlens-user-id` /
- * `x-spanlens-org-id` request headers downstream so the dashboard layout
- * does NOT need to re-call `getUser()` — one round-trip per navigation
- * instead of two.
+ * Runs only on the auth-relevant surface — the `(dashboard)` route group,
+ * `/onboarding`, `/login` and `/signup` (see `config.matcher` at the bottom
+ * of this file). Validates the Supabase session via `getUser()`, then
+ * forwards `x-spanlens-user-id` / `x-spanlens-org-id` request headers
+ * downstream so the dashboard layout does NOT need to re-call `getUser()` —
+ * one round-trip per navigation instead of two.
  */
 
 /**
@@ -27,7 +27,10 @@ import { NextResponse, type NextRequest } from 'next/server'
  * when the x-spanlens-user-id header is absent, so a new dashboard route
  * forgotten here still cannot render for an anonymous user.
  *
- * Keep in sync with apps/web/app/(dashboard)/* directories + /onboarding.
+ * Keep in sync with apps/web/app/(dashboard)/* directories + /onboarding,
+ * AND with `config.matcher` at the bottom of this file — the matcher is an
+ * include-list built from these same prefixes, and Next needs it spelled out
+ * as a literal. `lib/middleware-matcher.test.ts` enforces both directions.
  */
 const PROTECTED_PATHS = [
   '/admin',
@@ -225,19 +228,57 @@ export async function middleware(request: NextRequest) {
   return supabaseResponse
 }
 
+/**
+ * INCLUDE-list matcher: the middleware runs ONLY on the paths enumerated
+ * below. Contents = every entry in PROTECTED_PATHS, plus `/login` and
+ * `/signup`.
+ *
+ * Why it flipped from an exclude-list. The previous matcher was a negative
+ * lookahead that only skipped static-asset extensions, so it matched every
+ * marketing and docs URL. Since #462 those ~139 routes are statically
+ * prerendered and served from the CDN with `X-Vercel-Cache: HIT` — but the
+ * matcher still put an Edge invocation plus a `supabase.auth.getUser()`
+ * round-trip in front of each one, for a response the CDN already had and a
+ * session no anonymous marketing reader has. None of those pages read an
+ * `x-spanlens-*` header or sit behind `isProtected`, so the work was pure
+ * overhead on the hottest paths on the site.
+ *
+ * Why this is NOT a rerun of the #388 P0 (see the PROTECTED_PATHS comment).
+ * That incident was a *public* allow-list consulted INSIDE the middleware
+ * body: a public page missing from it fell into the protected branch and
+ * 307'd anonymous visitors to /login. This list instead decides whether the
+ * middleware runs at all, so the failure mode inverts:
+ *   • forgotten PUBLIC page  → never matched → served straight from the CDN.
+ *     That is the intended outcome, not a lockout.
+ *   • forgotten DASHBOARD route → no `x-spanlens-*` headers → (dashboard)/
+ *     layout.tsx's `!userId → redirect('/login')` fires. Fail-closed, and
+ *     `lib/middleware-matcher.test.ts` fails CI first (see below).
+ *
+ * Why each group is here:
+ *   • PROTECTED_PATHS entries — the `!user && isProtected → /login` redirect
+ *     and the `x-spanlens-user-id` / `-org-id` / `-onboarded` header
+ *     forwarding both live behind them.
+ *   • `/login`, `/signup` — the `user && (path === '/login' || path ===
+ *     '/signup') → /dashboard` branch. Without a match an already-signed-in
+ *     user would land on the login form instead of the dashboard.
+ *
+ * Why nothing else is here. `/auth/callback` is a route handler that builds
+ * its own `createServerClient` and calls `exchangeCodeForSession`, writing
+ * the session cookies onto its own response — a middleware `getUser()` in
+ * front of it finds no session yet, triggers no branch, and is discarded.
+ * `/auth/device`, `/auth/mfa`, `/auth/locked`, `/invite`, `/verify-email`,
+ * `/reset-password` and `/forgot-password` are all `'use client'` pages that
+ * talk to Supabase from the browser. None read an `x-spanlens-*` header and
+ * none appear in a branch above.
+ *
+ * MUST stay in sync with PROTECTED_PATHS. Next requires matcher values to be
+ * statically analyzable literals, so this cannot be derived from the array at
+ * build time — `lib/middleware-matcher.test.ts` is the enforcement. It parses
+ * both out of this file and fails when they diverge, and separately fails
+ * when a directory under `app/(dashboard)/` is missing from PROTECTED_PATHS.
+ */
 export const config = {
-  // Skip static assets + the `/api/*` proxy (handled by next.config rewrites
-  // to the upstream server, which enforces its own JWT).
-  //
-  // The extension list also covers the machine-readable surface that AI
-  // crawlers poll: `/llms.txt`, `/llms-full.txt`, `/AGENTS.md`, `/pricing.md`
-  // (files in `public/`) plus the `/robots.txt` and `/sitemap.xml` metadata
-  // routes. None of them are auth-gated, so running the Supabase session
-  // middleware on them only burned an Edge invocation per crawler fetch and
-  // put an Edge hop in front of a response the CDN should be serving on its
-  // own. Every extension here must stay unauthenticated — do NOT add `.json`
-  // or any pattern a future protected route could match.
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|api/|monitoring|.*\\.(?:svg|png|jpg|jpeg|gif|webp|avif|ico|woff2?|txt|md|xml|webmanifest)$).*)',
+    '/((?:admin|alerts|annotation|anomalies|billing|dashboard|datasets|evals|experiments|login|onboarding|projects|prompts|requests|savings|security|sessions|settings|shares|signup|traces|users)(?:/.*)?)',
   ],
 }

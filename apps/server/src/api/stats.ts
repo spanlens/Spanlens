@@ -231,13 +231,31 @@ function olsRegression(ys: number[]): { slope: number; intercept: number } {
   return { slope, intercept }
 }
 
-// GET /api/v1/stats/spend-forecast — monthly spend forecast via linear regression
-statsRouter.get('/spend-forecast', async (c) => {
-  const orgId = c.get('orgId')
-  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
+export interface SpendForecast {
+  monthToDate: number
+  dayOfMonth: number
+  daysInMonth: number
+  dailyAvgUsd: number
+  projectedMonthEndUsd: number
+  weeklyDeltaPct: number | null
+  /** Regression slope: positive = spend trending up $/day. */
+  dailyTrendUsd: number
+  timeseries: { date: string; actual: number | null; projected: number | null }[]
+}
 
-  const projectId = c.req.query('projectId')
-
+/**
+ * Month-to-date spend plus a month-end projection from an OLS fit over the
+ * daily series.
+ *
+ * Extracted from the GET /spend-forecast handler so
+ * `GET /api/v1/dashboard/summary` returns the identical forecast card data.
+ * The regression is the product's headline cost number — two copies of this
+ * arithmetic would eventually disagree with each other on the same screen.
+ */
+export async function computeSpendForecast(
+  orgId: string,
+  projectId?: string | undefined,
+): Promise<SpendForecast> {
   const now = new Date()
   const year = now.getUTCFullYear()
   const month = now.getUTCMonth()
@@ -306,21 +324,28 @@ statsRouter.get('/spend-forecast', async (c) => {
     })
   }
 
+  return {
+    monthToDate: parseFloat(monthToDate.toFixed(4)),
+    dayOfMonth,
+    daysInMonth,
+    dailyAvgUsd: parseFloat(dailyAvgUsd.toFixed(4)),
+    projectedMonthEndUsd: parseFloat(projectedMonthEnd.toFixed(4)),
+    weeklyDeltaPct,
+    // Positive = spend trending up $/day, negative = trending down
+    dailyTrendUsd: parseFloat(slope.toFixed(4)),
+    timeseries,
+  }
+}
+
+// GET /api/v1/stats/spend-forecast — monthly spend forecast via linear regression
+statsRouter.get('/spend-forecast', async (c) => {
+  const orgId = c.get('orgId')
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
+
+  const data = await computeSpendForecast(orgId, c.req.query('projectId'))
+
   c.header('Cache-Control', CACHE_STATS_FORECAST)
-  return c.json({
-    success: true,
-    data: {
-      monthToDate: parseFloat(monthToDate.toFixed(4)),
-      dayOfMonth,
-      daysInMonth,
-      dailyAvgUsd: parseFloat(dailyAvgUsd.toFixed(4)),
-      projectedMonthEndUsd: parseFloat(projectedMonthEnd.toFixed(4)),
-      weeklyDeltaPct,
-      // Positive = spend trending up $/day, negative = trending down
-      dailyTrendUsd: parseFloat(slope.toFixed(4)),
-      timeseries,
-    },
-  })
+  return c.json({ success: true, data })
 })
 
 /**

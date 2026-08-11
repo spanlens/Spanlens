@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import { classifyStaleness } from '@/lib/api-key-staleness'
-import { useApiKeys, usePublicKeys } from './use-api-keys'
+import { useApiKeys } from './use-api-keys'
 
 /**
  * Aggregate `api_keys` staleness across all visible keys (full + public).
@@ -14,10 +14,18 @@ import { useApiKeys, usePublicKeys } from './use-api-keys'
  *     count and a sample key name so the prompt is more concrete than a
  *     bare integer.
  *
- * Re-uses the existing `useApiKeys()` + `usePublicKeys()` cache entries —
- * TanStack Query dedupes the network request against whatever the
- * /projects page already requested. Counting is cheap pure JS in a
- * useMemo so the hook is safe to call from anywhere.
+ * Re-uses the existing `useApiKeys()` cache entry — TanStack Query dedupes
+ * the network request against whatever the /projects page already requested.
+ * Counting is cheap pure JS in a useMemo so the hook is safe to call from
+ * anywhere.
+ *
+ * `useApiKeys()` alone is the COMPLETE set. Do NOT add `usePublicKeys()` back
+ * in: `GET /api/v1/api-keys` with no `scope` filter already returns
+ * workspace-level public keys alongside project keys — the handler unions the
+ * two ownership columns with `.or(project_id.in(...), organization_id.eq...)`
+ * (apps/server/src/api/apiKeys.ts). Spreading `usePublicKeys()` on top counted
+ * every public key twice, inflating both the sidebar badge and the dashboard
+ * "N keys idle" card for any workspace that had issued one.
  *
  * Deactivated keys (is_active=false) are intentionally excluded: once a
  * key has been revoked it can't be re-used, so flagging it as "stale" is
@@ -39,7 +47,6 @@ export interface StaleKeyCounts {
 
 export function useStaleKeyCounts(): StaleKeyCounts {
   const apiKeys = useApiKeys()
-  const publicKeys = usePublicKeys()
   // Capture "now" once at mount. Staleness boundaries are 30 / 90 days,
   // so the user crossing a tier on a long-lived dashboard tab without a
   // refresh is well within the noise floor. Reading Date.now() inside
@@ -47,8 +54,7 @@ export function useStaleKeyCounts(): StaleKeyCounts {
   const [mountNow] = useState(() => Date.now())
 
   return useMemo(() => {
-    const all = [...(apiKeys.data ?? []), ...(publicKeys.data ?? [])]
-    const active = all.filter((k) => k.is_active)
+    const active = (apiKeys.data ?? []).filter((k) => k.is_active)
     const now = mountNow
 
     let stale = 0
@@ -78,9 +84,9 @@ export function useStaleKeyCounts(): StaleKeyCounts {
       stale,
       revoke,
       totalActive: active.length,
-      isLoading: apiKeys.isLoading || publicKeys.isLoading,
+      isLoading: apiKeys.isLoading,
     }
     if (sample) result.sampleName = sample
     return result
-  }, [apiKeys.data, publicKeys.data, apiKeys.isLoading, publicKeys.isLoading, mountNow])
+  }, [apiKeys.data, apiKeys.isLoading, mountNow])
 }

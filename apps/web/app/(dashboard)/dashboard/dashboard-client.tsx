@@ -6,14 +6,11 @@ import { KpiCard } from '@/components/dashboard/kpi-card'
 import { QuotaBanner } from '@/components/dashboard/quota-banner'
 import { UpsellModal } from '@/components/dashboard/upsell-modal'
 import { Topbar, TimeRangeSelector, type CustomRange } from '@/components/layout/topbar'
-import { useStatsOverview, useStatsTimeseries, useStatsModels, useSpendForecast } from '@/lib/queries/use-stats'
+import { useStatsOverview, useStatsTimeseries, useStatsModels } from '@/lib/queries/use-stats'
 import { useAnomalies } from '@/lib/queries/use-anomalies'
-import { useAlerts } from '@/lib/queries/use-alerts'
-import { useRecommendations, type ModelRecommendation } from '@/lib/queries/use-recommendations'
+import { useDashboardSummary } from '@/lib/queries/use-dashboard-summary'
+import { type ModelRecommendation } from '@/lib/queries/use-recommendations'
 import { useStaleKeyCounts } from '@/lib/queries/use-stale-keys'
-import { useAuditLogs } from '@/lib/queries/use-audit-logs'
-import { usePrompts } from '@/lib/queries/use-prompts'
-import { useSecuritySummary } from '@/lib/queries/use-security'
 import { useDismissals, useDismissCard } from '@/lib/queries/use-dismissals'
 import { buildInvestigateHref, investigateRangeForObservationHours } from '@/lib/anomaly-investigate'
 import { cn, formatTime } from '@/lib/utils'
@@ -306,14 +303,26 @@ export function DashboardClient() {
     { refetchInterval: LIVE_REFETCH_MS },
   )
   const anomalies = useAnomalies({ observationHours: hours })
-  const alerts = useAlerts()
-  const recommendations = useRecommendations({ hours })
-  const staleKeys = useStaleKeyCounts()
-  const auditLogs = useAuditLogs({ limit: 6 })
-  const promptsQuery = usePrompts()
   const modelsQuery = useStatsModels(hours, undefined, { refetchInterval: LIVE_REFETCH_MS })
-  const spendForecast = useSpendForecast()
-  const securitySummary = useSecuritySummary(hours)
+
+  // One request for the six panels that don't poll: alerts, recommendations,
+  // audit logs, prompts, security summary, spend forecast. Anomalies and
+  // models above stay separate because both carry a live refetchInterval —
+  // folding a polling query into the composite would put all six on the
+  // 30s cadence and increase load rather than reduce it.
+  //
+  // `useStaleKeyCounts` also stays separate, but for a different reason: the
+  // Sidebar in the (dashboard) layout mounts it too, and its two underlying
+  // queries (`useApiKeys` / `usePublicKeys`) are NOT server-prefetched. Both
+  // components observe the same cache entries, so TanStack issues one fetch
+  // each no matter how many consumers there are. Serving those keys from the
+  // composite would not remove a single client request — the Sidebar would
+  // still fetch them — and would add two Supabase round-trips to this
+  // endpoint's critical path.
+  const summary = useDashboardSummary({ hours, auditLimit: 6 })
+  const summaryData = summary.data
+  const summaryLoading = summary.isLoading
+  const staleKeys = useStaleKeyCounts()
 
   const o = overview.data
   const isLoading = overview.isLoading || timeseries.isLoading
@@ -455,22 +464,28 @@ export function DashboardClient() {
     triggerDownload(JSON.stringify(d, null, 2), 'application/json', 'json')
   }
 
+  // A composite dataset is null when the server's lookup for it failed and []
+  // when it succeeded with nothing to show. Both collapse to the same empty
+  // render here, which matches what these sections did before when their own
+  // query errored and `data` was undefined.
+  const alertRows = summaryData?.alerts
+
   // ISO timestamps of alerts that fired within the current time range — for chart markers
   const alertFiredAt = useMemo(
     () =>
-      (alerts.data ?? [])
+      (alertRows ?? [])
         .filter((a) => {
           if (!a.last_triggered_at) return false
           return mountNow - new Date(a.last_triggered_at).getTime() < hours * 60 * 60 * 1000
         })
         .map((a) => a.last_triggered_at as string),
-    [alerts.data, hours, mountNow],
+    [alertRows, hours, mountNow],
   )
 
   // Active alert rules vs recently fired (within the selected time window)
   const activeAlertRules = useMemo(
-    () => (alerts.data ?? []).filter((a) => a.is_active),
-    [alerts.data],
+    () => (alertRows ?? []).filter((a) => a.is_active),
+    [alertRows],
   )
   const firingAlerts = useMemo(
     () =>
@@ -486,7 +501,7 @@ export function DashboardClient() {
   const attnCards = useMemo(() => {
     const cards: AttnCardProps[] = []
 
-    const piiHits = (securitySummary.data ?? [])
+    const piiHits = (summaryData?.securitySummary ?? [])
       .filter((r) => r.type === 'pii')
       .reduce((sum, r) => sum + r.count, 0)
     if (piiHits > 0) {
@@ -571,7 +586,7 @@ export function DashboardClient() {
       })
     }
 
-    const topRec = (recommendations.data ?? [])[0] as (ModelRecommendation & { id?: string }) | undefined
+    const topRec = (summaryData?.recommendations ?? [])[0] as (ModelRecommendation & { id?: string }) | undefined
     if (topRec) {
       cards.push({
         kind: 'savings',
@@ -585,7 +600,7 @@ export function DashboardClient() {
     }
 
     return cards
-  }, [anomalies.data, firingAlerts, recommendations.data, securitySummary.data, staleKeys.revoke, staleKeys.sampleName, timeRange, customRange, mountNow, hours])
+  }, [anomalies.data, firingAlerts, summaryData?.recommendations, summaryData?.securitySummary, staleKeys.revoke, staleKeys.sampleName, timeRange, customRange, mountNow, hours])
 
   // Border classes for KPI cells — responsive 2-col (mobile) / 4-col (lg)
   const kpiCellClasses: [string, string, string, string] = [
@@ -891,12 +906,12 @@ export function DashboardClient() {
         </div>
 
         {/* Spend forecast, always monthly, independent of time range selector */}
-        {!mounted || spendForecast.isLoading ? (
+        {!mounted || summaryLoading ? (
           <div className="px-[22px] py-5 border-b border-border">
             <Skeleton className="h-[320px] w-full" />
           </div>
-        ) : spendForecast.data ? (
-          <SpendForecastCard data={spendForecast.data} />
+        ) : summaryData?.spendForecast ? (
+          <SpendForecastCard data={summaryData.spendForecast} />
         ) : null}
 
         {/* 2-col: Top prompts + Models in use */}
@@ -910,13 +925,13 @@ export function DashboardClient() {
               </Link>
             </div>
             {(() => {
-              const active = (promptsQuery.data ?? [])
+              const active = (summaryData?.prompts ?? [])
                 .filter((p) => (p.stats?.calls ?? 0) > 0)
                 .sort((a, b) => (b.stats?.totalCostUsd ?? 0) - (a.stats?.totalCostUsd ?? 0))
                 .slice(0, 5)
               const topMax = active[0]?.stats?.totalCostUsd ?? 0
 
-              if (!mounted || promptsQuery.isLoading) {
+              if (!mounted || summaryLoading) {
                 return (
                   <div className="space-y-2.5">
                     {Array.from({ length: 3 }).map((_, i) => (
@@ -1089,11 +1104,11 @@ export function DashboardClient() {
             </div>
             {!mounted ? (
               <p className="text-[13px] text-text-faint">&nbsp;</p>
-            ) : (recommendations.data ?? []).length === 0 ? (
+            ) : (summaryData?.recommendations ?? []).length === 0 ? (
               <p className="text-[13px] text-text-faint">No recommendations yet.</p>
             ) : (
               <div className="flex flex-col gap-2">
-                {(recommendations.data ?? []).slice(0, 3).map((r) => (
+                {(summaryData?.recommendations ?? []).slice(0, 3).map((r) => (
                   <div
                     key={`${r.currentModel}->${r.suggestedModel}`}
                     className="flex items-center gap-3 px-3 py-2.5 rounded-[5px] bg-bg-elev border border-border"
@@ -1128,16 +1143,16 @@ export function DashboardClient() {
               Audit log →
             </Link>
           </div>
-          {!mounted || auditLogs.isLoading ? (
+          {!mounted || summaryLoading ? (
             <div className="space-y-2 py-2">
               {[1, 2, 3].map((i) => <Skeleton key={i} className="h-8 w-full" />)}
             </div>
-          ) : (auditLogs.data ?? []).length === 0 ? (
+          ) : (summaryData?.auditLogs ?? []).length === 0 ? (
             <div className="py-4 text-[12.5px] text-text-faint">
               No recent activity. Audit events appear when you create keys, deploy prompts, change billing, etc.
             </div>
           ) : (
-            (auditLogs.data ?? []).map((e, i, arr) => {
+            (summaryData?.auditLogs ?? []).map((e, i, arr) => {
               const kind = e.action.split('.')[0] ?? 'event'
               const isAccent = kind === 'alert' || kind === 'anomaly' || kind === 'billing'
               return (
