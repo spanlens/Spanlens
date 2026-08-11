@@ -23,29 +23,36 @@ import { WelcomeBanner } from '@/components/dashboard/welcome-banner'
 import { ErrorBoundary } from '@/components/error-boundary'
 import { LIVE_REFETCH_MS_ACTIVE as LIVE_REFETCH_MS } from '@/lib/queries/live-polling'
 
-// Lazy-load recharts-heavy components. They render below the fold and are
-// not needed for the initial KPI row / greeting paint.
+// Lazy-load the recharts-heavy cards. They render below the fold and are not
+// needed for the initial KPI row / greeting paint.
+//
+// All five MUST name the same `@/components/dashboard/charts` specifier.
+// Turbopack groups async chunks by `import()` site, so five different
+// specifiers produced three separate copies of the recharts vendor graph on a
+// single page load (~1,190 KB of chart chunks, three of them byte-identical at
+// 361,565 B). One shared specifier collapses that to one copy. See the header
+// comment in components/dashboard/charts.tsx before changing any of these.
+//
+// ssr:false is load-bearing, not incidental: recharts measures its own width
+// via ResizeObserver, which does not exist on the server (CLAUDE.md gotcha #22 D).
 const RequestChart = dynamic(
-  () => import('@/components/dashboard/request-chart').then((m) => m.RequestChart),
+  () => import('@/components/dashboard/charts').then((m) => m.RequestChart),
   { ssr: false, loading: () => <Skeleton className="h-[220px] w-full" /> },
 )
 const SpendForecastCard = dynamic(
-  () => import('@/components/dashboard/spend-forecast').then((m) => m.SpendForecastCard),
+  () => import('@/components/dashboard/charts').then((m) => m.SpendForecastCard),
   { ssr: false, loading: () => <Skeleton className="h-[320px] w-full" /> },
 )
-// New breakdown cards. Same SSR-off treatment as the existing charts —
-// recharts measures its own width via ResizeObserver, which isn't available
-// on the server (CLAUDE.md gotcha #22 D).
 const CostBreakdownCard = dynamic(
-  () => import('@/components/dashboard/cost-breakdown').then((m) => m.CostBreakdownCard),
+  () => import('@/components/dashboard/charts').then((m) => m.CostBreakdownCard),
   { ssr: false, loading: () => <Skeleton className="h-[290px] w-full" /> },
 )
 const TokenTrendsCard = dynamic(
-  () => import('@/components/dashboard/token-trends').then((m) => m.TokenTrendsCard),
+  () => import('@/components/dashboard/charts').then((m) => m.TokenTrendsCard),
   { ssr: false, loading: () => <Skeleton className="h-[260px] w-full" /> },
 )
 const ErrorDistributionCard = dynamic(
-  () => import('@/components/dashboard/error-distribution').then((m) => m.ErrorDistributionCard),
+  () => import('@/components/dashboard/charts').then((m) => m.ErrorDistributionCard),
   { ssr: false, loading: () => <Skeleton className="h-[260px] w-full" /> },
 )
 

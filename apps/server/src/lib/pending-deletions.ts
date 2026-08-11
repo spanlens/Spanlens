@@ -1,5 +1,9 @@
 import { supabaseAdmin } from './db.js'
 import { invalidatePromptName } from './prompt-cache.js'
+import {
+  invalidateProviderKeyCache,
+  invalidateProviderKeyCacheByRowId,
+} from './provider-key-cache.js'
 
 /**
  * Shared helpers for the soft-delete queue.
@@ -41,6 +45,10 @@ export async function hardDeleteByType(
         .from('api_keys')
         .delete()
         .eq('id', resourceId)
+      // provider_keys.api_key_id is ON DELETE CASCADE, so this took the
+      // key's nested provider keys with it — drop their cached ciphertext
+      // rows too (resourceId is the api_key id, which is the cache prefix).
+      if (!error) invalidateProviderKeyCache(resourceId)
       return error ? { ok: false, error: error.message } : { ok: true }
     }
 
@@ -50,6 +58,9 @@ export async function hardDeleteByType(
         .delete()
         .eq('id', resourceId)
         .eq('organization_id', organizationId)
+      // Only the row UUID is available here, so use the by-id form. The
+      // row is gone; the proxy must not keep decrypting a copy of it.
+      if (!error) invalidateProviderKeyCacheByRowId(resourceId)
       return error ? { ok: false, error: error.message } : { ok: true }
     }
 
@@ -120,9 +131,14 @@ export async function reactivateByType(
     }
 
     case 'provider_key': {
+      // api_key_id + provider come along so the reactivation can address
+      // the proxy's row cache precisely. That matters here specifically:
+      // while the key was deactivated the cache will have stored a *miss*
+      // for this (api_key_id, provider) pair, and a negative entry has no
+      // row id — the by-id form could not clear it.
       const { data: existing } = await supabaseAdmin
         .from('provider_keys')
-        .select('id')
+        .select('id, api_key_id, provider')
         .eq('id', resourceId)
         .eq('organization_id', organizationId)
         .maybeSingle()
@@ -137,9 +153,14 @@ export async function reactivateByType(
         .update({ is_active: true })
         .eq('id', resourceId)
         .eq('organization_id', organizationId)
-      return error
-        ? { ok: false, error: error.message }
-        : { ok: true, restored: 'reactivated' }
+      if (error) return { ok: false, error: error.message }
+
+      const restoredApiKeyId = (existing as { api_key_id?: string }).api_key_id
+      const restoredProvider = (existing as { provider?: string }).provider
+      if (restoredApiKeyId) {
+        invalidateProviderKeyCache(restoredApiKeyId, restoredProvider)
+      }
+      return { ok: true, restored: 'reactivated' }
     }
 
     case 'prompt_version': {
@@ -267,6 +288,9 @@ async function deactivateSource(
         .update({ is_active: false })
         .eq('id', resourceId)
         .eq('organization_id', organizationId)
+      // The whole point of deactivating first is that proxy traffic stops
+      // immediately — a cached ciphertext row would undo that for 30s.
+      if (!error) invalidateProviderKeyCacheByRowId(resourceId)
       return error ? { ok: false, error: error.message } : { ok: true }
     }
     case 'prompt_version': {

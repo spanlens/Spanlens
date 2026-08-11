@@ -31,28 +31,30 @@ import { KpiCard } from '@/components/dashboard/kpi-card'
 // the broken-then-redrawn chart they got before, which is an
 // improvement on every measurable axis. SEO is a non-goal for
 // /demo/dashboard so the lost SSR pass costs nothing.
+//
+// All five name the same `@/components/dashboard/charts` specifier on purpose.
+// Turbopack groups async chunks by `import()` site, so the five separate
+// specifiers this used to have emitted three copies of the recharts vendor
+// graph per page load. See the header comment in
+// components/dashboard/charts.tsx before changing any of these.
 const RequestChart = dynamic(
-  () =>
-    import('@/components/dashboard/request-chart').then((m) => m.RequestChart),
+  () => import('@/components/dashboard/charts').then((m) => m.RequestChart),
   { ssr: false, loading: () => <div className="h-[220px]" /> },
 )
-// recharts-heavy breakdown cards — same ssr:false treatment as RequestChart
-// (ResizeObserver isn't available during SSR, so a server render produces a
-// 0-width SVG that mismatches the client paint — CLAUDE.md gotcha #22 D).
 const SpendForecastCard = dynamic(
-  () => import('@/components/dashboard/spend-forecast').then((m) => m.SpendForecastCard),
+  () => import('@/components/dashboard/charts').then((m) => m.SpendForecastCard),
   { ssr: false, loading: () => <div className="h-[320px]" /> },
 )
 const CostBreakdownCard = dynamic(
-  () => import('@/components/dashboard/cost-breakdown').then((m) => m.CostBreakdownCard),
+  () => import('@/components/dashboard/charts').then((m) => m.CostBreakdownCard),
   { ssr: false, loading: () => <div className="h-[290px]" /> },
 )
 const TokenTrendsCard = dynamic(
-  () => import('@/components/dashboard/token-trends').then((m) => m.TokenTrendsCard),
+  () => import('@/components/dashboard/charts').then((m) => m.TokenTrendsCard),
   { ssr: false, loading: () => <div className="h-[260px]" /> },
 )
 const ErrorDistributionCard = dynamic(
-  () => import('@/components/dashboard/error-distribution').then((m) => m.ErrorDistributionCard),
+  () => import('@/components/dashboard/charts').then((m) => m.ErrorDistributionCard),
   { ssr: false, loading: () => <div className="h-[260px]" /> },
 )
 import { cn } from '@/lib/utils'

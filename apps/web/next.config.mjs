@@ -54,6 +54,41 @@ const nextConfig = {
   // breakage risk. X-Frame-Options is the legacy equivalent for older
   // browsers.
   async headers() {
+    // Machine-readable files consumed by crawlers and LLM agents. Their
+    // contents only change on deploy, but all six shipped with
+    // `Cache-Control: public, max-age=0, must-revalidate`, so the Vercel edge
+    // revalidated against the origin on every single hit — no CDN caching at
+    // all. `s-maxage=3600` lets the edge serve them for an hour and
+    // `stale-while-revalidate=86400` keeps crawlers served from cache while a
+    // stale copy refreshes in the background, so an origin blip never turns
+    // into a failed crawl. `max-age=0` is kept deliberately: browsers still
+    // revalidate, because a robots.txt pinned in a user's disk cache is never
+    // acceptable. A new deployment purges the edge cache, so an hour of
+    // s-maxage never delays a content change going live.
+    const MACHINE_READABLE_CACHE_CONTROL =
+      'public, max-age=0, s-maxage=3600, stale-while-revalidate=86400'
+
+    // First four are real files in public/; last two are Next metadata routes
+    // (app/robots.ts, app/sitemap.ts) prerendered to static build output.
+    //
+    // Why these are set here rather than on the routes themselves: `export
+    // const revalidate` does NOT influence the response header for metadata
+    // routes. Next's metadata-route loader hardcodes
+    // `Cache-Control: public, max-age=0, must-revalidate` into the generated
+    // handler (next/dist/build/webpack/loaders/next-metadata-route-loader.js,
+    // CACHE_HEADERS.REVALIDATE), and next/dist/build/templates/app-route.js
+    // only applies the revalidate-derived `s-maxage` when the response carries
+    // no Cache-Control of its own. Confirmed in this repo's build output:
+    // .next/server/app/robots.txt.meta pins that exact value.
+    const MACHINE_READABLE_PATHS = [
+      '/llms.txt',
+      '/llms-full.txt',
+      '/AGENTS.md',
+      '/pricing.md',
+      '/robots.txt',
+      '/sitemap.xml',
+    ]
+
     return [
       {
         source: '/:path*',
@@ -64,6 +99,10 @@ const nextConfig = {
           { key: 'Content-Security-Policy', value: "frame-ancestors 'self'" },
         ],
       },
+      ...MACHINE_READABLE_PATHS.map((source) => ({
+        source,
+        headers: [{ key: 'Cache-Control', value: MACHINE_READABLE_CACHE_CONTROL }],
+      })),
     ]
   },
   async rewrites() {

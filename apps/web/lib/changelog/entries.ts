@@ -40,6 +40,17 @@ export type ChangelogTag =
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
     date: '2026-08-11',
+    slug: 'faster-pages-and-lower-proxy-latency',
+    title: 'Faster pages, lower proxy latency, and a robots.txt fix',
+    tags: ['improvement', 'fix', 'infrastructure'],
+    body: [
+      'Marketing and documentation pages are served from the CDN again. Every page outside the dashboard was being rendered on demand, because the navigation bar read your session on the server and that stopped any of those pages from being cached at the edge. The navigation now resolves your session in the browser instead, which put 103 pages back to being prerendered static files. On top of that, the PostHog analytics SDK is no longer downloaded unless you accept analytics cookies. It was always gated so it never ran without consent, but the code still shipped with every page. Together that removes about 74 KB of compressed JavaScript from the first load of every page, and the pages themselves now come from the nearest edge location rather than from our server.',
+      'The dashboard downloads about two thirds less chart code, and proxied requests are faster. Each of the five chart cards used to pull in its own copy of the charting library, so one dashboard visit fetched it three times over. It is fetched once now, taking the chart payload from 1,190 KB down to 452 KB. On the proxy side, looking up your encrypted provider key used to hit the database on every single call. That lookup is cached for 30 seconds per key now, which takes roughly 30 to 80 ms off each proxied request. Only the encrypted key is held in memory and it is still decrypted on every request, so nothing has changed about how provider keys are stored or handled.',
+      'A robots.txt rule was not doing what it appeared to do. Crawlers only obey the single most specific user-agent group that matches them, and named groups do not inherit anything from the wildcard group. The AI crawlers we list by name, including GPTBot, ClaudeBot and PerplexityBot, therefore had no restrictions at all, so `/api/`, the dashboard routes and share links stayed open to them even though those paths are closed to every other crawler. All named groups now carry the same rules as the wildcard group. If you have published a share link, it was reachable by those crawlers until this change. Two rules were also written with a trailing slash that stopped them matching the pages they were meant to cover, `/onboarding` and `/invite`, and both are corrected.',
+    ].join('\n\n'),
+  },
+  {
+    date: '2026-08-11',
     slug: 'model-price-refresh-2026-08',
     title: 'Corrected model prices and six newly priced models',
     tags: ['fix'],
