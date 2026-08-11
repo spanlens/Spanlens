@@ -37,8 +37,10 @@
  * pages already carry — is rendered by ./chart-shell on the server.
  */
 
+import type { ComponentType } from 'react'
 import dynamic from 'next/dynamic'
 import { ChartPlaceholder } from './chart-shell'
+import { useInViewport } from './use-in-viewport'
 
 // Each `loading` placeholder is rendered inside a shell box that is already the
 // chart's final height (280px, or 360px for the radar — see ./chart-shell), so
@@ -50,27 +52,68 @@ import { ChartPlaceholder } from './chart-shell'
 // options *literal* to decide how to treat the import, and passing the object
 // by reference is not a shape it is documented to handle. Every other
 // `dynamic()` in this repo inlines it too.
-export const LazyPromptAbChart = dynamic(
+const PromptAbChartBody = dynamic(
   () => import('./charts').then((m) => m.PromptAbChartBody),
   { ssr: false, loading: () => <ChartPlaceholder /> },
 )
 
-export const LazyAnomalyChart = dynamic(
+const AnomalyChartBody = dynamic(
   () => import('./charts').then((m) => m.AnomalyChartBody),
   { ssr: false, loading: () => <ChartPlaceholder /> },
 )
 
-export const LazyModelPriceChart = dynamic(
+const ModelPriceChartBody = dynamic(
   () => import('./charts').then((m) => m.ModelPriceChartBody),
   { ssr: false, loading: () => <ChartPlaceholder /> },
 )
 
-export const LazyPlanQuotaChart = dynamic(
+const PlanQuotaChartBody = dynamic(
   () => import('./charts').then((m) => m.PlanQuotaChartBody),
   { ssr: false, loading: () => <ChartPlaceholder /> },
 )
 
-export const LazyFeatureCoverageRadar = dynamic(
+const FeatureCoverageRadarBody = dynamic(
   () => import('./charts').then((m) => m.FeatureCoverageRadarBody),
   { ssr: false, loading: () => <ChartPlaceholder /> },
 )
+
+/**
+ * WHY THE VIEWPORT GATE (measured, not theoretical):
+ *
+ * `ssr: false` alone does not defer the network fetch. It moves recharts into
+ * its own chunk, but Next requests that chunk as soon as the wrapper *renders*,
+ * and these figures render on the initial pass even though they sit below the
+ * fold. Production /docs/why after the split: the 136 KB chart chunk still
+ * started at 54 ms against a 658 ms DOMContentLoaded, with the figure off
+ * screen. Build-level "recharts is no longer a first-load chunk" was true and
+ * the network timeline was unchanged.
+ *
+ * Wrapping the dynamic component in an intersection gate is what actually
+ * defers it: the `import()` lives inside the wrapper, so not rendering the
+ * wrapper means not fetching the chunk.
+ *
+ * `withViewportGate` keeps that logic in one place instead of five. Each
+ * returned component renders the placeholder — the same one `loading` uses —
+ * until the box nears the viewport, so the swap path is identical to before
+ * and the box height still comes from the server-rendered shell. No CLS.
+ */
+function withViewportGate(Body: ComponentType): ComponentType {
+  return function ViewportGatedChart() {
+    const { ref, inViewport } = useInViewport<HTMLDivElement>()
+    // The ref has to sit on a real element that occupies the shell box, so the
+    // observer has something with non-zero height to watch. ChartPlaceholder is
+    // exactly that, and rendering it here (rather than `null`) also keeps the
+    // pre-visible markup identical to the `loading` state.
+    return (
+      <div ref={ref} className="h-full w-full">
+        {inViewport ? <Body /> : <ChartPlaceholder />}
+      </div>
+    )
+  }
+}
+
+export const LazyPromptAbChart = withViewportGate(PromptAbChartBody)
+export const LazyAnomalyChart = withViewportGate(AnomalyChartBody)
+export const LazyModelPriceChart = withViewportGate(ModelPriceChartBody)
+export const LazyPlanQuotaChart = withViewportGate(PlanQuotaChartBody)
+export const LazyFeatureCoverageRadar = withViewportGate(FeatureCoverageRadarBody)
