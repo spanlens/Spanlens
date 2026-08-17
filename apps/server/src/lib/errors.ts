@@ -100,6 +100,18 @@ export const ERROR_CODES = {
   },
   UPSTREAM_TIMEOUT: { status: 504, message: 'Upstream request timed out' },
   UPSTREAM_FAILED: { status: 502, message: 'Upstream request failed' },
+
+  // Billing is wired wrong on our side: the payment provider rejected our
+  // credentials, or rejected the specific call because of stored state only we
+  // can correct. Distinct from UPSTREAM_FAILED (502) because retrying will not
+  // help, and distinct from a 5xx crash because nothing is broken — the request
+  // was understood and refused. The customer is told it is on us; the cause
+  // goes to the logs, never into the response, since it describes our keys and
+  // configuration.
+  BILLING_NOT_CONFIGURED: {
+    status: 503,
+    message: 'Checkout is unavailable because of a billing configuration problem on our side',
+  },
 } as const
 
 export type ErrorCode = keyof typeof ERROR_CODES

@@ -101,6 +101,7 @@ export type KnownApiErrorCode =
   | 'NO_PROVIDER_KEY'
   | 'UPSTREAM_TIMEOUT'
   | 'UPSTREAM_FAILED'
+  | 'BILLING_NOT_CONFIGURED'
 
 /**
  * Branded string type: a code is known if it matches the literal union,

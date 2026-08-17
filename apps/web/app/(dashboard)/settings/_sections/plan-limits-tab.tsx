@@ -21,6 +21,7 @@ import {
   PLAN_WORKSPACE_LIMITS,
 } from '@/lib/billing-plans'
 import type { BillingPlan } from '@/lib/queries/types'
+import { describeBillingFailure, type BillingFailure } from '@/lib/billing-errors'
 import { NativeInput, MonoPill, Hint, Toggle, TabHeader, PILL_SECONDARY } from '../_shared/ui'
 
 // ─── PLAN & LIMITS tab ────────────────────────────────────────────────────────
@@ -37,7 +38,7 @@ export function PlanLimitsTab() {
   const [multiplierDraft, setMultiplierDraft] = useState(String(org?.overage_cap_multiplier ?? 2))
   const [overageError, setOverageError] = useState<string | null>(null)
   const [paddle, setPaddle] = useState<Paddle | null>(null)
-  const [checkoutError, setCheckoutError] = useState<string | null>(null)
+  const [checkoutError, setCheckoutError] = useState<BillingFailure | null>(null)
   // initializePaddle can reject (ad-block, network). Without catching it,
   // `paddle` stays null forever and every Upgrade button is stuck on
   // "Loading…" with no explanation. Surface an actionable error instead.
@@ -70,14 +71,17 @@ export function PlanLimitsTab() {
   const handleUpgrade = useCallback(async (plan: 'starter' | 'team') => {
     setCheckoutError(null)
     if (!paddle) {
-      setCheckoutError('Paddle.js is not ready yet. Please try again in a moment.')
+      setCheckoutError({
+        message: 'Paddle.js is not ready yet. Please try again in a moment.',
+        retryable: true,
+      })
       return
     }
     try {
       const res = await createCheckout.mutateAsync({ plan })
       paddle.Checkout.open({ transactionId: res.transactionId })
     } catch (err) {
-      setCheckoutError(err instanceof Error ? err.message : 'Failed to start checkout')
+      setCheckoutError(describeBillingFailure(err, 'Failed to start checkout'))
     }
   }, [paddle, createCheckout])
 
@@ -120,12 +124,42 @@ export function PlanLimitsTab() {
     <div>
       <TabHeader title="Plan & limits" description="Compare plans. Hard limits apply per-workspace; can be lifted on Enterprise." />
 
-      {(checkoutError || paddleLoadFailed) && (
-        <div className="rounded-card border border-accent-border bg-accent-bg px-4 py-3 mb-4 text-[12.5px] text-accent">
-          {checkoutError
-            ?? 'Payment system failed to load. Please disable ad-blockers and retry.'}
-        </div>
-      )}
+      {/* Retryable problems are warned, problems that need us are flagged, so
+          "wait a minute" and "we broke it" no longer look the same.
+
+          The no-client-token case is listed here as well as on /billing. Without
+          it this tab said nothing at all: the effect that sets `paddleLoadFailed`
+          returns early when the token is missing, so the Upgrade buttons sat on
+          "Loading…" indefinitely with no explanation anywhere on the page. */}
+      {(() => {
+        const failure: BillingFailure | null = checkoutError
+          ?? (!clientToken
+            ? {
+                message:
+                  'Checkout is unavailable because of a billing problem on our side. ' +
+                  'We have been notified. Please contact support@spanlens.io if it persists.',
+                retryable: false,
+              }
+            : paddleLoadFailed
+              ? {
+                  message: 'Payment system failed to load. Please disable ad-blockers and retry.',
+                  retryable: true,
+                }
+              : null)
+        if (!failure) return null
+        return (
+          <div
+            role="alert"
+            className={`mb-4 rounded-card border px-4 py-3 text-[12.5px] ${
+              failure.retryable
+                ? 'border-warn/30 bg-warn-bg text-warn'
+                : 'border-bad/30 bg-bad-bg text-bad'
+            }`}
+          >
+            {failure.message}
+          </div>
+        )
+      })()}
 
       {/* Subscription load failure — don't fall through to the Free-plan
           default below. A paying user hitting a transient 500 would otherwise

@@ -130,6 +130,12 @@ const ERROR_CATALOG_ROWS: CatalogRow[] = [
     description: 'Upstream provider returned an error or the network failed. The details object carries the provider name.',
   },
   {
+    code: 'BILLING_NOT_CONFIGURED',
+    status: 503,
+    description:
+      'A billing call was refused for a reason only Spanlens can fix: rejected credentials, or stored payment state that needs correcting. Retrying will not help, and the cause is deliberately kept out of the response. Contact support if it persists.',
+  },
+  {
     code: 'DECRYPT_FAILED',
     status: 503,
     description:
