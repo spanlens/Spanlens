@@ -152,7 +152,7 @@ export default function FaqPage() {
       <BreadcrumbJsonLd trail={[{ name: 'FAQ', path: '/faq' }]} />
 
       <section className="max-w-3xl mx-auto px-6 py-20">
-        <h1 className="text-[40px] sm:text-[48px] font-semibold tracking-[-0.8px] text-text mb-3 leading-[1.05]">
+        <h1 className="font-display track-h2 text-[40px] sm:text-[48px] text-text mb-3 leading-[1.12]">
           Frequently asked questions
         </h1>
         <p className="text-[16px] text-text-muted mb-12">
@@ -165,14 +165,14 @@ export default function FaqPage() {
 
         {FAQ_GROUPS.map((group) => (
           <div key={group.title} className="mb-12">
-            <h2 className="text-[20px] font-semibold tracking-[-0.4px] text-text mb-5">
+            <h2 className="font-display track-quote text-[20px] text-text mb-5">
               {group.title}
             </h2>
             <div className="space-y-3">
               {group.items.map((item) => (
                 <details
                   key={item.q}
-                  className="group rounded-xl border border-border bg-bg-elev p-5"
+                  className="group rounded-card border border-border bg-bg-elev p-5"
                 >
                   <summary className="cursor-pointer list-none text-[14px] font-medium text-text">
                     {item.q}
@@ -186,7 +186,7 @@ export default function FaqPage() {
           </div>
         ))}
 
-        <div className="mt-16 rounded-xl border border-border bg-bg-elev p-6 text-center">
+        <div className="mt-16 rounded-card border border-border bg-bg-elev p-6 text-center">
           <p className="text-[14px] text-text-muted mb-4">
             Still have questions? We respond to every email.
           </p>
@@ -199,7 +199,7 @@ export default function FaqPage() {
             </a>
             <Link
               href="/docs/quick-start"
-              className="h-10 px-5 rounded-[6px] border border-border text-text text-[14px] font-medium leading-10 hover:bg-bg-elev transition-colors"
+              className="h-10 px-5 rounded-[6px] border border-border text-text text-[14px] font-medium leading-10 hover:bg-bg-muted transition-colors"
             >
               Read the docs
             </Link>

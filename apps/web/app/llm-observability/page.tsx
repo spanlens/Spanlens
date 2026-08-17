@@ -100,7 +100,7 @@ export default function LlmObservabilityHub() {
       <BreadcrumbJsonLd trail={[{ name: 'LLM Observability', path: '/llm-observability' }]} />
 
       <article className="max-w-3xl mx-auto px-6 py-20">
-        <h1 className="text-[40px] sm:text-[48px] font-semibold tracking-[-0.8px] text-text mb-3 leading-[1.05]">
+        <h1 className="font-display track-h2 text-[40px] sm:text-[48px] text-text mb-3 leading-[1.12]">
           LLM Observability: The 2026 Guide for Production AI Apps
         </h1>
         <p className="text-[18px] text-text-muted mb-12 leading-relaxed">
@@ -147,7 +147,7 @@ export default function LlmObservabilityHub() {
         </section>
 
         <section className="mt-12">
-          <h2 className="text-[24px] font-semibold tracking-[-0.4px] text-text mb-4">
+          <h2 className="font-display track-h3 text-[24px] text-text mb-4">
             What to monitor
           </h2>
           <p className="text-[15px] text-text-muted leading-relaxed mb-5">
@@ -178,7 +178,7 @@ export default function LlmObservabilityHub() {
                 body: 'Scan request bodies for SSN/credit card/email/IBAN/passport, prompt-injection patterns, and stray API keys. Flag for review without blocking the request, since blocking the LLM call to the user is usually worse than the security issue.',
               },
             ].map((item) => (
-              <div key={item.title} className="rounded-xl border border-border bg-bg-elev p-5">
+              <div key={item.title} className="rounded-card border border-border bg-bg-elev p-5">
                 <h3 className="text-[16px] font-semibold text-text mb-2">{item.title}</h3>
                 <p className="text-[14px] text-text-muted leading-relaxed">{item.body}</p>
               </div>
@@ -187,14 +187,14 @@ export default function LlmObservabilityHub() {
         </section>
 
         <section className="mt-12">
-          <h2 className="text-[24px] font-semibold tracking-[-0.4px] text-text mb-4">
+          <h2 className="font-display track-h3 text-[24px] text-text mb-4">
             How to instrument
           </h2>
           <p className="text-[15px] text-text-muted leading-relaxed mb-5">
             Three patterns dominate. Pick based on your stack rather than ideology.
           </p>
           <div className="space-y-4">
-            <div className="rounded-xl border border-border bg-bg-elev p-5">
+            <div className="rounded-card border border-border bg-bg-elev p-5">
               <h3 className="text-[16px] font-semibold text-text mb-2">
                 1. Drop-in SDK
               </h3>
@@ -204,7 +204,7 @@ export default function LlmObservabilityHub() {
                 Langfuse, and LangSmith all ship drop-in wrappers for OpenAI and Anthropic.
               </p>
             </div>
-            <div className="rounded-xl border border-border bg-bg-elev p-5">
+            <div className="rounded-card border border-border bg-bg-elev p-5">
               <h3 className="text-[16px] font-semibold text-text mb-2">2. Proxy</h3>
               <p className="text-[14px] text-text-muted leading-relaxed">
                 Point the LLM baseURL at a logging endpoint and put your observability
@@ -213,7 +213,7 @@ export default function LlmObservabilityHub() {
                 proxy via its gateway but it is not the default mode.
               </p>
             </div>
-            <div className="rounded-xl border border-border bg-bg-elev p-5">
+            <div className="rounded-card border border-border bg-bg-elev p-5">
               <h3 className="text-[16px] font-semibold text-text mb-2">
                 3. OpenTelemetry
               </h3>
@@ -231,27 +231,27 @@ export default function LlmObservabilityHub() {
         </section>
 
         <section className="mt-12">
-          <h2 className="text-[24px] font-semibold tracking-[-0.4px] text-text mb-4">
+          <h2 className="font-display track-h3 text-[24px] text-text mb-4">
             Tool landscape (2026)
           </h2>
           <p className="text-[15px] text-text-muted leading-relaxed mb-5">
             The space has consolidated around five tools. Each compares head-to-head
             with Spanlens on a dedicated page.
           </p>
-          <div className="rounded-xl border border-border bg-bg-elev overflow-x-auto">
+          <div className="rounded-card border border-border bg-bg-elev overflow-x-auto">
             <table className="w-full text-[13px]">
               <thead>
                 <tr className="border-b border-border">
-                  <th className="text-left px-4 py-2.5 font-mono text-[11px] uppercase tracking-[0.06em] text-text-faint">
+                  <th className="text-left px-4 py-2.5 eyebrow">
                     Tool
                   </th>
-                  <th className="text-left px-4 py-2.5 font-mono text-[11px] uppercase tracking-[0.06em] text-text-faint">
+                  <th className="text-left px-4 py-2.5 eyebrow">
                     Model
                   </th>
-                  <th className="text-left px-4 py-2.5 font-mono text-[11px] uppercase tracking-[0.06em] text-text-faint">
+                  <th className="text-left px-4 py-2.5 eyebrow">
                     License
                   </th>
-                  <th className="text-left px-4 py-2.5 font-mono text-[11px] uppercase tracking-[0.06em] text-text-faint">
+                  <th className="text-left px-4 py-2.5 eyebrow">
                     Compare
                   </th>
                 </tr>
@@ -289,7 +289,7 @@ export default function LlmObservabilityHub() {
         </section>
 
         <section className="mt-12">
-          <h2 className="text-[24px] font-semibold tracking-[-0.4px] text-text mb-4">
+          <h2 className="font-display track-h3 text-[24px] text-text mb-4">
             Related guides
           </h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -306,7 +306,7 @@ export default function LlmObservabilityHub() {
               <Link
                 key={g.href}
                 href={g.href}
-                className="rounded-xl border border-border bg-bg-elev p-4 hover:border-border-strong transition-colors"
+                className="rounded-card border border-border bg-bg-elev p-4 hover:border-border-strong transition-colors"
               >
                 <div className="text-[14px] font-semibold text-text mb-1">{g.title}</div>
                 <div className="text-[12px] text-text-muted leading-relaxed">{g.body}</div>
@@ -316,12 +316,12 @@ export default function LlmObservabilityHub() {
         </section>
 
         <section className="mt-12">
-          <h2 className="text-[24px] font-semibold tracking-[-0.4px] text-text mb-6">
+          <h2 className="font-display track-h3 text-[24px] text-text mb-6">
             Frequently asked questions
           </h2>
           <div className="space-y-3">
             {faqs.map((f) => (
-              <details key={f.q} className="group rounded-xl border border-border bg-bg-elev p-5">
+              <details key={f.q} className="group rounded-card border border-border bg-bg-elev p-5">
                 <summary className="cursor-pointer list-none text-[14px] font-medium text-text">
                   {f.q}
                 </summary>
@@ -332,7 +332,7 @@ export default function LlmObservabilityHub() {
         </section>
 
         <section className="mt-16">
-          <div className="rounded-xl border border-border bg-bg-elev p-6 text-center">
+          <div className="rounded-card border border-border bg-bg-elev p-6 text-center">
             <p className="text-[14px] text-text-muted mb-4">
               Add LLM observability in one line. Free tier, no credit card.
             </p>
@@ -345,7 +345,7 @@ export default function LlmObservabilityHub() {
               </Link>
               <Link
                 href="/docs/quick-start"
-                className="h-10 px-5 rounded-[6px] border border-border text-text text-[14px] font-medium leading-10 hover:bg-bg-elev transition-colors"
+                className="h-10 px-5 rounded-[6px] border border-border text-text text-[14px] font-medium leading-10 hover:bg-bg-muted transition-colors"
               >
                 Read the docs
               </Link>

@@ -78,7 +78,7 @@ export function AuditLogTab() {
 
   if (roleLoading) {
     return (
-      <div className="max-w-[980px]">
+      <div>
         <TabHeader title="Audit log" description="Checking permissions…" />
       </div>
     )
@@ -86,14 +86,14 @@ export function AuditLogTab() {
 
   if (!isAdmin) {
     return (
-      <div className="max-w-[980px]">
+      <div>
         <TabHeader
           title="Audit log"
           description="Every state change in the workspace. Immutable · service-role writes only."
         />
-        <div className="rounded-lg border border-border bg-bg-elev p-6">
-          <div className="font-mono text-[12.5px] text-text mb-2">Admin only</div>
-          <div className="font-mono text-[11.5px] text-text-muted">
+        <div className="rounded-card border border-border bg-bg-elev p-6 shadow-card">
+          <div className="text-[13.5px] font-semibold text-text mb-2">Admin only</div>
+          <div className="text-[11.5px] text-text-muted leading-relaxed">
             The full audit log viewer is restricted to workspace admins. Audit rows
             surface actor IDs and IP addresses across every member — only admins
             can see them. Editors and viewers don&apos;t lose the ability to act;
@@ -105,24 +105,30 @@ export function AuditLogTab() {
   }
 
   return (
-    <div className="max-w-[980px]">
+    <div>
       <TabHeader
         title="Audit log"
         description="Every state change in the workspace. Immutable · service-role writes only."
       />
 
-      <div className="grid grid-cols-3 gap-3 mb-5">
+      <div className="grid grid-cols-3 gap-3 mb-4">
         {[
           { k: 'HIGH', n: bySev.high, sub: 'billing · auth · destructive', accent: true },
           { k: 'MED',  n: bySev.med,  sub: 'create · update · invite',     accent: false },
           { k: 'LOW',  n: bySev.low,  sub: 'other events',                 accent: false },
         ].map((s) => (
-          <div key={s.k} className={cn('border rounded-lg p-3', s.accent ? 'border-accent-border bg-accent-bg' : 'border-border bg-bg-elev')}>
+          <div
+            key={s.k}
+            className={cn(
+              'rounded-card border p-4 shadow-card',
+              s.accent ? 'border-accent-border bg-accent-bg' : 'border-border bg-bg-elev',
+            )}
+          >
             <div className="flex items-baseline justify-between">
-              <span className={cn('font-mono text-[10px] tracking-[0.05em]', s.accent ? 'text-accent' : 'text-text-faint')}>{s.k}</span>
+              <span className={cn('font-mono text-[10px] uppercase tracking-[0.12em]', s.accent ? 'text-accent' : 'text-text-faint')}>{s.k}</span>
               <span className="font-mono text-[22px] font-medium text-text">{s.n}</span>
             </div>
-            <div className="font-mono text-[10.5px] text-text-muted mt-1">{s.sub}</div>
+            <div className="font-mono text-[11px] text-text-faint mt-1">{s.sub}</div>
           </div>
         ))}
       </div>
@@ -134,7 +140,7 @@ export function AuditLogTab() {
             <select
               value={timeWindow}
               onChange={(e) => { setTimeWindow(e.target.value as AuditTimeWindow); setPage(0) }}
-              className="bg-bg-elev border border-border rounded-[5px] px-2 py-1 font-mono text-[11px] text-text"
+              className="rounded-md border border-border bg-bg-elev px-3 py-2 text-[12.5px] font-medium text-text"
             >
               {AUDIT_TIME_WINDOWS.map((w) => (
                 <option key={w.value} value={w.value}>{w.label}</option>
@@ -143,7 +149,7 @@ export function AuditLogTab() {
             <select
               value={actionFilter}
               onChange={(e) => { setActionFilter(e.target.value); setPage(0) }}
-              className="bg-bg-elev border border-border rounded-[5px] px-2 py-1 font-mono text-[11px] text-text min-w-[180px]"
+              className="min-w-[180px] rounded-md border border-border bg-bg-elev px-3 py-2 text-[12.5px] font-medium text-text"
             >
               <option value="">All actions</option>
               {(actionsQuery.data ?? []).map((action) => (
@@ -152,7 +158,7 @@ export function AuditLogTab() {
             </select>
           </div>
         )}
-        className="mb-5"
+        className="mb-4"
       >
         <AuditLogsTable
           rows={rows}
@@ -175,7 +181,7 @@ export function AuditLogTab() {
                 disabled={page === 0}
                 onClick={() => setPage((p) => Math.max(0, p - 1))}
                 className={cn(
-                  'rounded-[5px] border border-border px-2 py-1 text-[11px]',
+                  'rounded-full border border-border bg-bg-elev px-3 py-1 text-[11px] transition-colors',
                   page === 0 ? 'opacity-40 cursor-not-allowed' : 'hover:bg-bg-muted',
                 )}
               >
@@ -189,7 +195,7 @@ export function AuditLogTab() {
                 disabled={page + 1 >= pageCount}
                 onClick={() => setPage((p) => p + 1)}
                 className={cn(
-                  'rounded-[5px] border border-border px-2 py-1 text-[11px]',
+                  'rounded-full border border-border bg-bg-elev px-3 py-1 text-[11px] transition-colors',
                   page + 1 >= pageCount ? 'opacity-40 cursor-not-allowed' : 'hover:bg-bg-muted',
                 )}
               >

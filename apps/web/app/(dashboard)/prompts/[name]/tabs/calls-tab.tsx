@@ -3,6 +3,16 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { usePromptCompare } from '@/lib/queries/use-prompts'
 import { cn } from '@/lib/utils'
+import {
+  FilterBar,
+  Segment,
+  SegmentItem,
+  StatCard,
+  TableCard,
+  TableHead,
+  Th,
+  ROW,
+} from '../../../_board/surfaces'
 
 interface Props {
   name: string
@@ -10,6 +20,12 @@ interface Props {
 
 type DateRange = '7d' | '30d' | '90d'
 const HOURS: Record<DateRange, number> = { '7d': 24 * 7, '30d': 24 * 30, '90d': 24 * 90 }
+
+// Eight numeric columns need more room than a narrow viewport has, so the card
+// scrolls its own table sideways rather than the page.
+const CALLS_GRID: React.CSSProperties = {
+  gridTemplateColumns: '90px 90px 110px 100px 90px 110px 120px 120px',
+}
 
 function fmtMs(v: number): string {
   if (v === 0) return '—'
@@ -27,127 +43,118 @@ export function CallsTab({ name }: Props) {
   const totalCalls = metrics?.reduce((s, m) => s + m.sampleCount, 0) ?? 0
   const totalCost = metrics?.reduce((s, m) => s + m.totalCostUsd, 0) ?? 0
   const totalErrors = metrics?.reduce((s, m) => s + Math.round(m.errorRate * m.sampleCount), 0) ?? 0
+  const avgTokens = (() => {
+    if (!metrics) return '—'
+    const wt = metrics.reduce((s, m) => s + m.sampleCount, 0)
+    if (wt === 0) return '—'
+    const avg = metrics.reduce((s, m) => s + (m.avgPromptTokens + m.avgCompletionTokens) * m.sampleCount, 0) / wt
+    return Math.round(avg).toLocaleString()
+  })()
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Controls */}
-      <div className="flex items-center gap-3 px-[22px] py-[12px] border-b border-border shrink-0 bg-bg-muted">
-        <span className="font-mono text-[11.5px] text-text font-medium">Aggregated calls</span>
-        <span className="flex-1" />
-        <div className="flex p-0.5 border border-border rounded-[5px] bg-bg-elev font-mono text-[10.5px]">
+    <div className="flex flex-col gap-4">
+      <FilterBar>
+        <span className="text-[12.5px] font-medium leading-[18px] text-text">Aggregated calls</span>
+        <Segment className="ml-auto">
           {(['7d', '30d', '90d'] as const).map((r) => (
-            <button
-              key={r}
-              type="button"
-              onClick={() => setRange(r)}
-              className={cn(
-                'px-[10px] py-[3px] rounded-[3px] transition-colors',
-                range === r ? 'bg-text text-bg' : 'text-text-muted hover:text-text',
-              )}
-            >
+            <SegmentItem key={r} active={range === r} onClick={() => setRange(r)}>
               {r}
-            </button>
+            </SegmentItem>
           ))}
+        </Segment>
+      </FilterBar>
+
+      {isLoading ? (
+        <div className="space-y-3">
+          {[1, 2, 3].map((i) => <div key={i} className="h-16 animate-pulse rounded-card bg-bg-chip" />)}
         </div>
-      </div>
-
-      <div className="flex-1 overflow-auto p-[22px]">
-        {isLoading ? (
-          <div className="space-y-3">
-            {[1, 2, 3].map((i) => <div key={i} className="h-16 bg-bg-elev rounded animate-pulse" />)}
+      ) : !metrics || metrics.length === 0 ? (
+        <div className="card-surface rounded-card flex h-48 flex-col items-center justify-center gap-2 text-text-muted">
+          <p className="text-[12.5px]">No calls recorded for this prompt in the last {range}.</p>
+          <p className="font-mono text-[11px] text-text-faint">
+            Tag requests with{' '}
+            <code className="rounded border border-border bg-bg-sunk px-1 text-text">{name}@latest</code>
+          </p>
+        </div>
+      ) : (
+        <>
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <StatCard label="Total calls" value={totalCalls.toLocaleString()} foot={`last ${range}`} />
+            <StatCard label="Total spend" value={fmtUsd(totalCost)} foot={`last ${range}`} />
+            <StatCard
+              label="Total errors"
+              value={totalErrors.toLocaleString()}
+              foot={totalErrors > 0 ? 'non-200 responses' : 'all responses succeeded'}
+              {...(totalErrors > 0 ? { footClass: 'text-bad' } : {})}
+            />
+            <StatCard label="Avg tokens" value={avgTokens} foot="prompt plus completion" />
           </div>
-        ) : !metrics || metrics.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-48 gap-2 text-text-muted">
-            <p className="text-[13px]">No calls recorded for this prompt in the last {range}.</p>
-            <p className="font-mono text-[11px] text-text-faint">
-              Tag requests with{' '}
-              <code className="bg-bg-elev px-1 rounded">{name}@latest</code>
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {/* KPI row */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              {[
-                { label: 'Total calls',  value: totalCalls.toLocaleString() },
-                { label: 'Total spend',  value: fmtUsd(totalCost) },
-                { label: 'Total errors', value: String(totalErrors), bad: totalErrors > 0 },
-                { label: 'Avg tokens',   value: (() => {
-                  const wt = metrics.reduce((s, m) => s + m.sampleCount, 0)
-                  if (wt === 0) return '—'
-                  const avg = metrics.reduce((s, m) => s + (m.avgPromptTokens + m.avgCompletionTokens) * m.sampleCount, 0) / wt
-                  return Math.round(avg).toLocaleString()
-                })() },
-              ].map((s, i) => (
-                <div key={i} className="bg-bg-elev border border-border rounded-[6px] px-[16px] py-[12px]">
-                  <div className="font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint mb-1.5">{s.label}</div>
-                  <div className={cn(
-                    'font-mono text-[20px] font-medium',
-                    s.bad ? 'text-bad' : 'text-text',
-                  )}>{s.value}</div>
-                </div>
-              ))}
-            </div>
 
-            {/* Per-version table */}
-            <div className="bg-bg-elev border border-border rounded-[6px] overflow-x-auto">
-              <div
-                className="grid font-mono text-[10px] text-text-faint uppercase tracking-[0.05em] px-[16px] py-[9px] bg-bg-muted border-b border-border min-w-[720px]"
-                style={{ gridTemplateColumns: '80px 70px 100px 100px 80px 100px 110px 100px' }}
-              >
-                <span>Version</span>
-                <span className="text-right">Calls</span>
-                <span className="text-right">Avg latency</span>
-                <span className="text-right">Error rate</span>
-                <span className="text-right">Quality</span>
-                <span className="text-right">Avg cost</span>
-                <span className="text-right">Prompt tokens</span>
-                <span className="text-right">Compl. tokens</span>
-              </div>
-              {metrics.map((m) => (
-                <Link
-                  key={m.promptVersionId}
-                  href={`/requests?promptVersionId=${m.promptVersionId}`}
-                  className="grid items-center px-[16px] py-[11px] border-b border-border last:border-0 min-w-[720px] hover:bg-bg-muted transition-colors cursor-pointer"
-                  style={{ gridTemplateColumns: '80px 70px 100px 100px 80px 100px 110px 100px' }}
-                >
-                  <span className="font-mono text-[11px] text-text-muted">v{m.version}</span>
-                  <span className="text-right font-mono text-[12px] text-text-muted">{m.sampleCount.toLocaleString()}</span>
-                  <span className="text-right font-mono text-[12px] text-text-muted">{fmtMs(m.avgLatencyMs)}</span>
-                  <span className={cn(
-                    'text-right font-mono text-[12px]',
-                    m.errorRate === 0 ? 'text-good' : m.errorRate < 0.05 ? 'text-warn' : 'text-bad',
-                  )}>
-                    {(m.errorRate * 100).toFixed(1)}%
-                  </span>
-                  <span
+          <TableCard>
+            <div className="overflow-x-auto">
+              <div className="min-w-[900px]">
+                <TableHead>
+                  <div className="grid items-center gap-3" style={CALLS_GRID}>
+                    <Th>Version</Th>
+                    <Th className="block text-right">Calls</Th>
+                    <Th className="block text-right">Avg latency</Th>
+                    <Th className="block text-right">Error rate</Th>
+                    <Th className="block text-right">Quality</Th>
+                    <Th className="block text-right">Avg cost</Th>
+                    <Th className="block text-right">Prompt tokens</Th>
+                    <Th className="block text-right">Compl. tokens</Th>
+                  </div>
+                </TableHead>
+                {metrics.map((m) => (
+                  <Link
+                    key={m.promptVersionId}
+                    href={`/requests?promptVersionId=${m.promptVersionId}`}
                     className={cn(
-                      'text-right font-mono text-[12px]',
-                      m.avgQualityScore == null
-                        ? 'text-text-faint'
-                        : m.avgQualityScore >= 0.7
-                          ? 'text-good'
-                          : m.avgQualityScore >= 0.4
-                            ? 'text-warn'
-                            : 'text-bad',
+                      ROW,
+                      'grid items-center gap-3 font-mono text-[12px] transition-colors hover:bg-bg-muted',
                     )}
-                    title={m.qualitySampleCount > 0 ? `${m.qualitySampleCount} eval samples` : 'No evals run'}
+                    style={CALLS_GRID}
                   >
-                    {m.avgQualityScore == null ? '—' : (m.avgQualityScore * 100).toFixed(0)}
-                  </span>
-                  <span className="text-right font-mono text-[12px] text-text-muted">{fmtUsd(m.avgCostUsd)}</span>
-                  <span className="text-right font-mono text-[12px] text-text-muted">
-                    {m.avgPromptTokens > 0 ? Math.round(m.avgPromptTokens).toLocaleString() : '—'}
-                  </span>
-                  <span className="text-right font-mono text-[12px] text-text-muted">
-                    {m.avgCompletionTokens > 0 ? Math.round(m.avgCompletionTokens).toLocaleString() : '—'}
-                  </span>
-                </Link>
-              ))}
+                    <span className="text-text">v{m.version}</span>
+                    <span className="text-right tabular-nums text-text-muted">
+                      {m.sampleCount.toLocaleString()}
+                    </span>
+                    <span className="text-right tabular-nums text-text-muted">{fmtMs(m.avgLatencyMs)}</span>
+                    <span className={cn(
+                      'text-right tabular-nums',
+                      m.errorRate === 0 ? 'text-good' : m.errorRate < 0.05 ? 'text-warn' : 'text-bad',
+                    )}>
+                      {(m.errorRate * 100).toFixed(1)}%
+                    </span>
+                    <span
+                      className={cn(
+                        'text-right tabular-nums',
+                        m.avgQualityScore == null
+                          ? 'text-text-faint'
+                          : m.avgQualityScore >= 0.7
+                            ? 'text-good'
+                            : m.avgQualityScore >= 0.4
+                              ? 'text-warn'
+                              : 'text-bad',
+                      )}
+                      title={m.qualitySampleCount > 0 ? `${m.qualitySampleCount} eval samples` : 'No evals run'}
+                    >
+                      {m.avgQualityScore == null ? '—' : (m.avgQualityScore * 100).toFixed(0)}
+                    </span>
+                    <span className="text-right tabular-nums text-text-muted">{fmtUsd(m.avgCostUsd)}</span>
+                    <span className="text-right tabular-nums text-text-muted">
+                      {m.avgPromptTokens > 0 ? Math.round(m.avgPromptTokens).toLocaleString() : '—'}
+                    </span>
+                    <span className="text-right tabular-nums text-text-muted">
+                      {m.avgCompletionTokens > 0 ? Math.round(m.avgCompletionTokens).toLocaleString() : '—'}
+                    </span>
+                  </Link>
+                ))}
+              </div>
             </div>
-          </div>
-        )}
-      </div>
+          </TableCard>
+        </>
+      )}
     </div>
   )
 }

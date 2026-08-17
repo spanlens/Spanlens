@@ -32,9 +32,26 @@ const C = {
   text:      'var(--text)',
   accent:    'var(--accent)',
   border:    'var(--border)',
+  rule:      'var(--border-strong)',
+  grid:      'var(--grid)',
   faint:     'var(--text-faint)',
   bg:        'var(--bg)',
   bgElev:    'var(--bg-elev)',
+  mono:      'var(--font-geist-mono), ui-monospace, monospace',
+} as const
+
+// Shared axis tick style. 10px mono in the faint ink is the dashboard's
+// smallest legible step; anything below it stops being readable on a laptop
+// panel at arm's length.
+const TICK = { fontSize: 10, fontFamily: C.mono, fill: C.faint } as const
+
+// Tooltip chrome, matched to the card radius ladder (10 = `rounded-md`).
+const TOOLTIP_STYLE = {
+  background: C.bgElev,
+  border: `1px solid ${C.border}`,
+  borderRadius: '10px',
+  fontSize: 10,
+  fontFamily: C.mono,
 } as const
 
 export function RequestChart({ data, firedAt = [], isHourly = true }: RequestChartProps) {
@@ -61,22 +78,23 @@ export function RequestChart({ data, firedAt = [], isHourly = true }: RequestCha
 
   return (
     <div>
-      {/* Legend */}
-      <div className="flex justify-end items-center gap-5 mb-3">
-        <span className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint">
+      {/* Legend. 11px mono in faint ink, set flat rather than tracked-out caps
+          so it reads as a key and not as a section heading. */}
+      <div className="flex justify-end items-center gap-5 mb-[14px]">
+        <span className="flex items-center gap-1.5 font-mono text-[11px] leading-[1.4] text-text-faint">
           <svg width="18" height="8" aria-hidden>
             <line x1="0" y1="4" x2="18" y2="4" stroke={C.text} strokeWidth="1.5" />
           </svg>
           Requests
         </span>
-        <span className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint">
+        <span className="flex items-center gap-1.5 font-mono text-[11px] leading-[1.4] text-text-faint">
           <svg width="18" height="8" aria-hidden>
             <line x1="0" y1="4" x2="18" y2="4" stroke={C.accent} strokeWidth="1.5" strokeDasharray="4 3" />
           </svg>
           Spend
         </span>
         {hasAlerts && (
-          <span className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint">
+          <span className="flex items-center gap-1.5 font-mono text-[11px] leading-[1.4] text-text-faint">
             <span className="inline-block w-2 h-2 rounded-full bg-accent" />
             Alert fired
           </span>
@@ -87,18 +105,22 @@ export function RequestChart({ data, firedAt = [], isHourly = true }: RequestCha
           right: $cost) inside the chart bounds. */}
       <ResponsiveContainer width="100%" height={220}>
         <ComposedChart data={formatted} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke={C.border} vertical={false} />
+          {/* Solid hairlines. Dashes are reserved for reference lines so the
+              two never compete for the same meaning. */}
+          <CartesianGrid stroke={C.grid} vertical={false} />
 
+          {/* The x axis line is the chart's baseline, so it is drawn a step
+              darker than the gridlines it sits under. */}
           <XAxis
             dataKey="label"
-            tick={{ fontSize: 10, fontFamily: 'monospace', fill: C.faint }}
+            tick={TICK}
             tickLine={false}
-            axisLine={false}
+            axisLine={{ stroke: C.rule }}
             interval={tickInterval}
           />
           <YAxis
             yAxisId="req"
-            tick={{ fontSize: 10, fontFamily: 'monospace', fill: C.faint }}
+            tick={TICK}
             tickLine={false}
             axisLine={false}
             width={38}
@@ -107,7 +129,7 @@ export function RequestChart({ data, firedAt = [], isHourly = true }: RequestCha
           <YAxis
             yAxisId="cost"
             orientation="right"
-            tick={{ fontSize: 10, fontFamily: 'monospace', fill: C.faint }}
+            tick={TICK}
             tickLine={false}
             axisLine={false}
             width={38}
@@ -115,13 +137,8 @@ export function RequestChart({ data, firedAt = [], isHourly = true }: RequestCha
           />
 
           <Tooltip
-            contentStyle={{
-              background: C.bgElev,
-              border: `1px solid ${C.border}`,
-              borderRadius: '6px',
-              fontSize: 11,
-              fontFamily: 'monospace',
-            }}
+            contentStyle={TOOLTIP_STYLE}
+            cursor={{ stroke: C.rule, strokeWidth: 1 }}
             labelFormatter={(label) => {
               if (typeof label !== 'string' || !isHourly) return String(label ?? '')
               const pt = formatted.find((d) => d.label === label)

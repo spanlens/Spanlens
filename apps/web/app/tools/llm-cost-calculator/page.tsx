@@ -50,7 +50,7 @@ export default function LlmCostCalculatorPage() {
       <MarketingNav />
 
       <section className="max-w-4xl mx-auto px-6 py-16">
-        <h1 className="text-[36px] sm:text-[44px] font-semibold tracking-[-0.6px] text-text mb-3 leading-[1.05]">
+        <h1 className="font-display track-h2 text-[36px] sm:text-[44px] text-text mb-3 leading-[1.12]">
           LLM Cost Calculator
         </h1>
         <p className="text-[17px] text-text-muted mb-10 leading-relaxed">
@@ -69,7 +69,7 @@ export default function LlmCostCalculatorPage() {
             and you have a monthly estimate. The calculator hardcodes the latest published
             standard-tier prices (2026-06-16) for ten common models. For per-model
             breakdowns including cache discounts and batch tier pricing, see the dedicated
-            pages under <code className="font-mono text-xs bg-bg-elev px-1.5 py-0.5 rounded">/pricing/&lt;model&gt;</code>.
+            pages under <code className="font-mono text-xs bg-bg-sunk px-1.5 py-0.5 rounded">/pricing/&lt;model&gt;</code>.
           </p>
           <p>
             For real spend rather than estimates, instrument your app with{' '}

@@ -80,37 +80,35 @@ function fmtTokenCount(n: number): string {
 function CacheSavingsCard() {
   const { data, isLoading, error } = useCacheSavings()
 
-  // Supplementary card: stay quiet while loading or on failure. The
-  // recommendations list below has its own loading and error surfaces, and a
-  // second error banner for the same backend would double up on this page.
-  if (isLoading || error || !data) return null
-
-  if (data.cacheHitRequests === 0) {
-    return (
-      <div className="border-b border-border px-[22px] py-[12px]">
-        <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-1">
-          Prompt caching
-        </div>
-        <p className="text-[12.5px] text-text-muted">
-          No cache hits yet this month. Prompt caching savings will show up here automatically.
-        </p>
-      </div>
-    )
-  }
+  // Occupies a fixed slot in the stat row, so it renders the tile shell even
+  // while loading or after a failure rather than punching a hole in the grid.
+  // The recommendations list below owns the loud error surface for this page.
+  const ready = !isLoading && !error && !!data
+  const hasHits = ready && data.cacheHitRequests > 0
 
   return (
-    <div className="border-b border-border bg-good/5 px-[22px] py-[12px]">
-      <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-good mb-1">
-        Prompt caching
+    <div className="rounded-card border border-border bg-bg-elev shadow-card px-5 py-[18px]">
+      <div className="font-mono text-[10.5px] uppercase tracking-[0.1em] text-text-faint">
+        Cache savings
       </div>
-      <p className="text-[14px] font-medium text-text">
-        Prompt caching saved you <span className="text-good">{fmtUsd(data.savingsUsd)}</span> this month
-      </p>
-      <p className="text-[12px] text-text-faint mt-1 leading-relaxed">
-        Estimated from {fmtTokenCount(data.cacheReadTokens)} cached input tokens across{' '}
-        {data.cacheHitRequests.toLocaleString()} requests. Cached tokens are billed at a
-        discounted rate instead of the full input price.
-      </p>
+      <div
+        className={cn(
+          'font-display text-[22px] track-h3 leading-[1.05] mt-[7px]',
+          hasHits ? 'text-text' : 'text-text-faint',
+        )}
+      >
+        {hasHits ? fmtUsd(data.savingsUsd) : '—'}
+      </div>
+      <div
+        className={cn('text-[11.5px] font-medium mt-[7px]', hasHits ? 'text-good' : 'text-text-faint')}
+        title={
+          hasHits
+            ? `Estimated from ${fmtTokenCount(data.cacheReadTokens)} cached input tokens across ${data.cacheHitRequests.toLocaleString()} requests. Cached tokens are billed at a discounted rate instead of the full input price.`
+            : undefined
+        }
+      >
+        {hasHits ? 'already realised this month' : 'no cache hits yet this month'}
+      </div>
     </div>
   )
 }
@@ -231,7 +229,7 @@ function PercentileGrid({
 
   if (isLoading) {
     return (
-      <div className="rounded-lg border border-border bg-bg-elev p-4 space-y-2 animate-pulse">
+      <div className="rounded-lg border border-border bg-bg-chip p-4 space-y-2 animate-pulse">
         <div className="h-3 w-32 bg-border rounded" />
         <div className="h-16 bg-border rounded" />
       </div>
@@ -891,137 +889,148 @@ export function SavingsClient() {
       : null
 
     return (
-      <div
+      <article
         className={cn(
-          'border-b border-border hover:bg-bg-elev transition-colors',
-          // Low-confidence rows get a faint left rule so the visual signal
+          'rounded-card border bg-bg-elev shadow-card px-5 py-[18px] transition-colors',
+          // Low-confidence rows keep the faint left rule so the visual signal
           // matches the badge state without yelling at the user.
-          !isAchieved && conf === 'low' && 'border-l-2 border-l-text-faint/40',
+          !isAchieved && conf === 'low' ? 'border-l-2 border-l-track border-border' : 'border-border',
+          isHidden && 'opacity-70',
         )}
-        style={{
-          display: 'grid',
-          gridTemplateColumns: '1.7fr 170px 130px 150px 120px',
-          gap: 16,
-          alignItems: 'center',
-          padding: '14px 22px',
-          minWidth: '700px',
-        }}
       >
-        <div className="min-w-0">
-          <div className="flex items-center gap-2 mb-1 flex-wrap">
+        <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
+              <span className={cn('text-[13.5px] font-semibold truncate', isHidden ? 'text-text-muted' : 'text-text')}>
+                {r.suggestedProvider} / {r.suggestedModel}
+              </span>
+              <span
+                className={cn(
+                  'inline-flex items-center rounded-full px-2 py-[3px] font-mono text-[10.5px]',
+                  isAchieved
+                    ? 'bg-good-bg text-good'
+                    : conf === 'high'
+                      ? 'bg-good-bg text-good'
+                      : conf === 'medium'
+                        ? 'bg-bg-chip text-text-muted'
+                        : 'bg-bg-chip text-text-faint',
+                )}
+                title={CONFIDENCE_CRITERIA[conf]}
+              >
+                {isAchieved ? 'achieved' : `${conf} confidence`}
+              </span>
+              {isHidden && (
+                <span className="inline-flex items-center rounded-full bg-bg-chip px-2 py-[3px] font-mono text-[10.5px] text-text-faint">
+                  hidden
+                </span>
+              )}
+            </div>
+            <div className="font-mono text-[12px] text-text-faint flex flex-wrap items-center gap-2 mt-1.5">
+              <span className="line-through">{r.currentProvider} / {r.currentModel}</span>
+              <span>→</span>
+              <span className={cn(isHidden ? 'text-text-faint' : 'text-text-muted')}>
+                {r.suggestedProvider} / {r.suggestedModel}
+              </span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3 shrink-0">
             {isAchieved ? (
-              <span className="font-mono text-[9px] px-[6px] py-[1px] rounded-[3px] border uppercase tracking-[0.04em] border-good/40 bg-good/10 text-good">
-                ACHIEVED
-              </span>
+              <div className="text-right">
+                <div className="font-display text-[20px] track-h3 leading-[1.05] text-good">
+                  {r.actualMonthlySavingsUsd != null ? fmtUsd(r.actualMonthlySavingsUsd) : '—'} / month
+                </div>
+                <div className="font-mono text-[11px] text-text-faint mt-1">
+                  est. {fmtUsd(r.estimatedMonthlySavingsUsd)} projected
+                </div>
+              </div>
             ) : (
-              <span className={cn(
-                'font-mono text-[9px] px-[6px] py-[1px] rounded-[3px] border uppercase tracking-[0.04em]',
-                isHidden
-                  ? 'border-border bg-bg text-text-faint'
-                  : 'border-accent-border bg-accent-bg text-accent',
-              )}>
-                SWAP
-              </span>
+              <div className="text-right">
+                <div className={cn('font-display text-[20px] track-h3 leading-[1.05]', isHidden ? 'text-text-muted' : 'text-good')}>
+                  {fmtUsd(r.estimatedMonthlySavingsUsd)} / month
+                </div>
+                <div className="font-mono text-[11px] text-text-faint mt-1">
+                  was {fmtUsd(r.totalCostUsdLastNDays)} /{windowLabel}
+                </div>
+              </div>
             )}
-            <span className={cn('text-[13.5px] font-medium truncate', isHidden ? 'text-text-muted' : 'text-text')}>
-              {r.currentProvider} / {r.currentModel} → {r.suggestedProvider} / {r.suggestedModel}
-            </span>
-          </div>
-          <div className="font-mono text-[11.5px] text-text-muted flex items-center gap-2 flex-wrap">
-            <span className="text-text-faint line-through">{r.currentProvider} / {r.currentModel}</span>
-            <span className="text-text-faint">→</span>
-            <span className={cn(isHidden ? 'text-text-faint' : 'text-text')}>{r.suggestedProvider} / {r.suggestedModel}</span>
-          </div>
-          <p className="text-[12px] text-text-faint mt-1 leading-relaxed">{r.reason}</p>
-          {isAchieved && dropPct !== null && (
-            <p className="font-mono text-[10.5px] text-good mt-1">
-              usage dropped {fmtPct(dropPct)} vs prior {windowLabel}
-            </p>
-          )}
-        </div>
 
-        <div>
-          {isAchieved ? (
-            <>
-              <div className="font-mono text-[10px] text-text-faint uppercase tracking-[0.03em] mb-[3px]">ACTUAL / MO</div>
-              <div className="font-mono text-[18px] font-medium tracking-[-0.3px] text-good">
-                {r.actualMonthlySavingsUsd != null ? fmtUsd(r.actualMonthlySavingsUsd) : '—'}
-              </div>
-              <div className="font-mono text-[10.5px] text-text-faint mt-0.5">
-                est. {fmtUsd(r.estimatedMonthlySavingsUsd)} projected
-              </div>
-            </>
-          ) : (
-            <>
-              <div className="font-mono text-[10px] text-text-faint uppercase tracking-[0.03em] mb-[3px]">SAVE / MO</div>
-              <div className={cn('font-mono text-[18px] font-medium tracking-[-0.3px]', isHidden ? 'text-text-muted' : 'text-accent')}>
-                {fmtUsd(r.estimatedMonthlySavingsUsd)}
-              </div>
-              <div className="font-mono text-[10.5px] text-text-faint mt-0.5">
-                was {fmtUsd(r.totalCostUsdLastNDays)} /{windowLabel}
-              </div>
-            </>
-          )}
-        </div>
-
-        <div>
-          <div className="font-mono text-[10px] text-text-faint uppercase tracking-[0.03em] mb-[3px]">SAMPLES</div>
-          <div className={cn('text-[12.5px]', isHidden ? 'text-text-muted' : 'text-text')}>{r.sampleCount.toLocaleString()}</div>
-          <div className="font-mono text-[10.5px] text-text-faint mt-0.5">~{Math.round(r.avgCompletionTokens)} output tk</div>
-        </div>
-
-        <div>
-          <div className="font-mono text-[10px] text-text-faint uppercase tracking-[0.03em] mb-[5px]">CONFIDENCE</div>
-          <ConfidenceBar level={conf} />
-          <div className="font-mono text-[10.5px] text-text-faint mt-1" title={CONFIDENCE_CRITERIA[conf]}>
-            {conf === 'high' ? '≥$40/mo · ≥100 req' : conf === 'medium' ? '≥$10/mo · ≥30 req' : `${r.sampleCount} req · <30 or <$10/mo`}
+            <div className="flex items-center gap-2 flex-wrap justify-end">
+              {!isAchieved && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setCompareRec(r)}
+                    className="rounded-full border border-border bg-bg-elev px-3.5 py-2 text-[12px] font-medium text-text hover:bg-bg-muted transition-colors"
+                  >
+                    Compare
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSimRec(r)}
+                    className="rounded-full bg-text px-3.5 py-2 text-[12px] font-medium text-bg hover:opacity-90 transition-opacity"
+                  >
+                    Simulate
+                  </button>
+                </>
+              )}
+              {isHidden ? (
+                <button
+                  type="button"
+                  onClick={() => unhide(r)}
+                  className="rounded-full border border-border bg-bg-elev px-3.5 py-2 text-[12px] font-medium text-text hover:bg-bg-muted transition-colors"
+                >
+                  Unhide
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => dismiss(r)}
+                  className="rounded-full border border-border bg-bg-elev px-3.5 py-2 text-[12px] font-medium text-text hover:bg-bg-muted transition-colors"
+                >
+                  Hide
+                </button>
+              )}
+            </div>
           </div>
         </div>
 
-        <div className="flex justify-end gap-1.5 flex-wrap">
-          {!isAchieved && (
-            <>
-              <button
-                type="button"
-                onClick={() => setCompareRec(r)}
-                className="font-mono text-[10.5px] text-text-muted px-[10px] py-[4px] border border-border rounded-[5px] hover:text-text transition-colors"
-              >
-                Compare
-              </button>
-              <button
-                type="button"
-                onClick={() => setSimRec(r)}
-                className="font-mono text-[10.5px] text-text-muted px-[10px] py-[4px] border border-border rounded-[5px] hover:text-text transition-colors"
-              >
-                Simulate
-              </button>
-            </>
-          )}
-          {isHidden ? (
-            <button
-              type="button"
-              onClick={() => unhide(r)}
-              className="font-mono text-[10.5px] text-text-muted px-[10px] py-[4px] border border-border rounded-[5px] hover:text-text transition-colors"
-            >
-              Unhide
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={() => dismiss(r)}
-              className="font-mono text-[10.5px] text-text-muted px-[10px] py-[4px] border border-border rounded-[5px] hover:text-text transition-colors"
-            >
-              Hide
-            </button>
-          )}
+        <p className="text-[12.5px] text-text-muted leading-relaxed mt-2.5">{r.reason}</p>
+        {isAchieved && dropPct !== null && (
+          <p className="font-mono text-[11.5px] text-good mt-1.5">
+            usage dropped {fmtPct(dropPct)} vs prior {windowLabel}
+          </p>
+        )}
+
+        <div className="flex flex-wrap items-end gap-x-10 gap-y-3 mt-4 pt-4 border-t border-border">
+          <div>
+            <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-text-faint mb-1.5">Samples</div>
+            <div className="font-mono text-[12px] text-text">
+              {r.sampleCount.toLocaleString()}
+              <span className="text-text-faint"> · ~{Math.round(r.avgCompletionTokens)} output tk</span>
+            </div>
+          </div>
+          <div>
+            <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-text-faint mb-1.5">Confidence</div>
+            <ConfidenceBar level={conf} />
+          </div>
+          <div>
+            <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-text-faint mb-1.5">Threshold</div>
+            <div className="font-mono text-[12px] text-text-muted" title={CONFIDENCE_CRITERIA[conf]}>
+              {conf === 'high' ? '≥$40/mo · ≥100 req' : conf === 'medium' ? '≥$10/mo · ≥30 req' : `${r.sampleCount} req · <30 or <$10/mo`}
+            </div>
+          </div>
         </div>
-      </div>
+      </article>
     )
   }
 
   return (
-    <div className="-mx-4 -my-4 md:-mx-8 md:-my-7 flex flex-col min-h-screen">
-      <div className="sticky top-0 z-20 bg-bg">
+    <>
+      {/* The topbar is the only full-bleed row: it cancels the padding
+          `DashboardContent` applies so its hairline spans the whole main
+          column. Everything below sits flush inside that padding. */}
+      <div className="sticky top-0 z-20 -mx-4 -mt-4 md:-mx-7 md:-mt-5 bg-bg">
         <Topbar
           crumbs={[{ label: 'Savings' }]}
           right={
@@ -1034,7 +1043,7 @@ export function SavingsClient() {
                 title="Refresh now"
                 className="font-mono text-[11px] text-text-muted hover:text-text border border-border rounded px-2 py-1 transition-colors disabled:opacity-40"
               >
-                <span className={cn('inline-block', isFetching && 'animate-spin')}>↻</span>
+                <span className={cn('inline-block', isFetching && 'animate-spin')}>&#8631;</span>
               </button>
             </div>
           }
@@ -1042,237 +1051,219 @@ export function SavingsClient() {
         <h1 className="sr-only">Savings</h1>
       </div>
 
-      {/* Prompt caching savings — passive savings already earned this month,
-          shown above the actionable model-swap recommendations. */}
-      <CacheSavingsCard />
-
-      {/* Hero strip — Open / Achieved cards are buttons that scroll to the
-          matching section when populated. Same pattern as anomalies / security. */}
-      <div className="overflow-x-auto shrink-0 border-b border-border">
-        <div className="grid min-w-[700px]" style={{ gridTemplateColumns: '1.25fr 1fr 1fr 1fr' }}>
-          <div className="px-[16px] py-[16px] bg-bg-elev border-r border-border">
-            <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-2">
-              Potential savings · next 30d
-            </div>
-            <div className="flex items-baseline gap-2 mb-1.5">
-              <span className={cn('font-medium leading-none tracking-[-1.6px]', totalOpen > 0 ? 'text-[40px] text-accent' : 'text-[30px] text-text-faint')}>
-                {totalOpen > 0 ? fmtUsd(totalOpen) : '—'}
-              </span>
-              <span className="font-mono text-[10px] text-text-muted">/ mo</span>
-            </div>
-            <div className="font-mono text-[10px] text-text-muted mb-1.5">
-              across <span className="text-text">{openAll.length}</span> recommendations
-              {bestConfLevel !== null && (
-                <>
-                  {' '}·{' '}
-                  <span className={cn(bestConfLevel === 'high' ? 'text-good' : bestConfLevel === 'medium' ? 'text-text' : 'text-text-faint')}>
-                    {bestConfCount}
-                  </span>{' '}
-                  <span className="text-text-faint">{bestConfLevel}-confidence</span>
-                </>
-              )}
-            </div>
-            {highConf.length > 0 && (
-              <div className="font-mono text-[10px] text-good mb-0.5">
-                {fmtUsd(highConf.reduce((s, r) => s + r.estimatedMonthlySavingsUsd, 0))} / mo high-conf
-              </div>
-            )}
-            {totalAchieved > 0 && (
-              <div className="font-mono text-[10px] text-good">
-                {fmtUsd(totalAchieved)} / mo achieved ✓
-              </div>
-            )}
+      {/* 20px above the first row, 16px between rows, per the Figma content
+          frame. Side and bottom gutters come from `DashboardContent`. */}
+      <div className="pt-4 md:pt-5 space-y-4">
+        {/* Filter bar: analysis window as a segmented control, then the sort
+            and filter selects, matching D9. */}
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="inline-flex items-center gap-0.5 rounded-full bg-bg-chip p-[3px]">
+            {WINDOW_OPTIONS.map((opt) => (
+              <button
+                key={opt.hours}
+                type="button"
+                aria-pressed={hours === opt.hours}
+                title={`Analysis window: last ${opt.label}`}
+                onClick={() => setHoursUrl(opt.hours)}
+                className={cn(
+                  'rounded-full px-[11px] py-[5px] text-[12px] font-medium transition-colors',
+                  hours === opt.hours ? 'bg-bg-elev text-text shadow-card' : 'text-text-faint hover:text-text',
+                )}
+              >
+                {opt.label}
+              </button>
+            ))}
           </div>
 
+          <SelectControl<SortKey>
+            value={sortFilter.sortKey}
+            onChange={updateSort}
+            options={[
+              { value: 'savings',    label: 'Sort: Savings' },
+              { value: 'confidence', label: 'Sort: Confidence' },
+              { value: 'name',       label: 'Sort: Name' },
+            ]}
+          />
+          <SelectControl<ProviderFilter>
+            value={sortFilter.filterProvider}
+            onChange={updateFilterProvider}
+            options={[
+              { value: 'all',       label: 'Provider: All' },
+              { value: 'openai',    label: 'OpenAI' },
+              { value: 'anthropic', label: 'Anthropic' },
+              { value: 'gemini',    label: 'Gemini' },
+            ]}
+          />
+          <SelectControl<ConfFilter>
+            value={sortFilter.filterConf}
+            onChange={updateFilterConf}
+            options={[
+              { value: 'all',    label: 'Conf: All' },
+              { value: 'high',   label: 'High' },
+              { value: 'medium', label: 'Medium' },
+              { value: 'low',    label: 'Low' },
+            ]}
+          />
+
+          {dismissed.size > 0 && (
+            <button
+              type="button"
+              aria-pressed={showHidden}
+              onClick={() => setShowHidden((v) => !v)}
+              className={cn(
+                'rounded-full border px-3.5 py-2 text-[12px] font-medium transition-colors',
+                showHidden
+                  ? 'border-border-strong bg-bg-muted text-text'
+                  : 'border-border bg-bg-elev text-text hover:bg-bg-muted',
+              )}
+            >
+              {showHidden ? 'Hide hidden' : `Show hidden · ${dismissed.size}`}
+            </button>
+          )}
+
+          <div className="ml-auto flex items-center gap-3">
+            <span className="hidden sm:inline font-mono text-[11px] text-text-faint whitespace-nowrap">
+              {sortLabel}
+            </span>
+            <div ref={exportRef} className="relative">
+              <button
+                type="button"
+                onClick={() => setExportOpen((v) => !v)}
+                disabled={openSorted.length === 0 && achieved.length === 0}
+                className="rounded-md border border-border bg-bg-elev px-3 py-2 text-[12.5px] font-medium text-text hover:bg-bg-muted transition-colors disabled:opacity-40"
+              >
+                Export &#9662;
+              </button>
+              {exportOpen && (
+                <div className="absolute right-0 top-full mt-1 z-30 bg-bg-elev border border-border rounded-md shadow-card py-1 min-w-[110px]">
+                  <button
+                    type="button"
+                    onClick={() => { setExportOpen(false); exportCsv() }}
+                    className="block w-full px-3 py-1.5 text-left font-mono text-[11px] uppercase tracking-[0.1em] text-text-muted hover:text-text hover:bg-bg-muted transition-colors"
+                  >CSV</button>
+                  <button
+                    type="button"
+                    onClick={() => { setExportOpen(false); exportJson() }}
+                    className="block w-full px-3 py-1.5 text-left font-mono text-[11px] uppercase tracking-[0.1em] text-text-muted hover:text-text hover:bg-bg-muted transition-colors"
+                  >JSON</button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Stat cards. Open and Applied double as jump links into the matching
+            section when they are populated. */}
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+          <div className="rounded-card border border-border bg-bg-elev shadow-card px-5 py-[18px]">
+            <div className="font-mono text-[10.5px] uppercase tracking-[0.1em] text-text-faint">
+              Monthly savings found
+            </div>
+            <div className={cn('font-display text-[22px] track-h3 leading-[1.05] mt-[7px]', totalOpen > 0 ? 'text-text' : 'text-text-faint')}>
+              {totalOpen > 0 ? fmtUsd(totalOpen) : '—'}
+            </div>
+            <div className={cn('text-[11.5px] font-medium mt-[7px]', totalOpen > 0 ? 'text-accent' : 'text-text-faint')}>
+              across {openAll.length} open recommendation{openAll.length === 1 ? '' : 's'}
+              {highConf.length > 0 && ` · ${fmtUsd(highConf.reduce((sum, r) => sum + r.estimatedMonthlySavingsUsd, 0))} high confidence`}
+            </div>
+          </div>
+
+          <CacheSavingsCard />
+
+          <div className="rounded-card border border-border bg-bg-elev shadow-card px-5 py-[18px]">
+            <div className="font-mono text-[10.5px] uppercase tracking-[0.1em] text-text-faint">
+              Spend &#183; {windowLabel}
+            </div>
+            <div className="font-display text-[22px] track-h3 leading-[1.05] text-text mt-[7px]">
+              {totalSpend > 0 ? fmtUsd(totalSpend) : '—'}
+            </div>
+            <div className="text-[11.5px] font-medium text-text-faint mt-[7px]">analysed models</div>
+          </div>
+
+          {/* The jump target is carried as data and only turned into a handler
+              inside the map, so the refs are never threaded through render. */}
           {[
-            {
-              label: `Spend · ${windowLabel}`,
-              value: totalSpend > 0 ? fmtUsd(totalSpend) : '—',
-              delta: 'analyzed models',
-              good: false,
-              ref: null,
-              onClick: null,
-            },
             {
               label: 'Open',
               value: String(openAll.length),
-              delta: 'model swaps',
+              note: 'model swaps',
               good: false,
-              ref: openRef,
-              onClick: openAll.length > 0 ? () => scrollTo(openRef) : null,
+              jump: openAll.length > 0 ? ('open' as const) : null,
             },
             {
-              label: achieved.length > 0 ? 'Achieved' : (bestConfLevel ? `${bestConfLevel.charAt(0).toUpperCase() + bestConfLevel.slice(1)} conf.` : 'Confidence'),
+              label: achieved.length > 0 ? 'Applied' : (bestConfLevel ? `${bestConfLevel.charAt(0).toUpperCase() + bestConfLevel.slice(1)} conf.` : 'Confidence'),
               value: achieved.length > 0 ? fmtUsd(totalAchieved) : (bestConfLevel !== null ? String(bestConfCount) : '—'),
-              delta: achieved.length > 0 ? `${achieved.length} swap${achieved.length > 1 ? 's' : ''} adopted` : (bestConfLevel ? bestConfLabel[bestConfLevel] : 'no recommendations yet'),
+              note: achieved.length > 0 ? `${achieved.length} swap${achieved.length > 1 ? 's' : ''} adopted` : (bestConfLevel ? bestConfLabel[bestConfLevel] : 'no recommendations yet'),
               good: achieved.length > 0 || bestConfLevel === 'high',
-              ref: achievedRef,
-              onClick: achieved.length > 0 ? () => { setShowAchieved(true); setTimeout(() => scrollTo(achievedRef), 60) } : null,
+              jump: achieved.length > 0 ? ('applied' as const) : null,
             },
-          ].map((s, i) => {
-            const Wrap: React.ElementType = s.onClick ? 'button' : 'div'
+          ].map((s) => {
+            const Wrap: React.ElementType = s.jump ? 'button' : 'div'
+            const onClick =
+              s.jump === 'applied'
+                ? () => { setShowAchieved(true); setTimeout(() => scrollTo(achievedRef), 60) }
+                : () => scrollTo(openRef)
             return (
               <Wrap
-                key={i}
-                {...(s.onClick ? { type: 'button', onClick: s.onClick } : {})}
+                key={s.label}
+                {...(s.jump ? { type: 'button', onClick } : {})}
                 className={cn(
-                  'px-[16px] py-[16px] text-left',
-                  i < 2 && 'border-r border-border',
-                  s.onClick && 'hover:bg-bg-elev transition-colors cursor-pointer',
+                  'rounded-card border border-border bg-bg-elev shadow-card px-5 py-[18px] text-left',
+                  s.jump && 'hover:bg-bg-muted transition-colors cursor-pointer',
                 )}
               >
-                <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-2">{s.label}</div>
-                <div className={cn('text-[28px] font-medium leading-none tracking-[-0.8px]', s.good ? 'text-good' : 'text-text')}>
+                <div className="font-mono text-[10.5px] uppercase tracking-[0.1em] text-text-faint">{s.label}</div>
+                <div className={cn('font-display text-[22px] track-h3 leading-[1.05] mt-[7px]', s.good ? 'text-good' : 'text-text')}>
                   {s.value}
                 </div>
-                <div className="font-mono text-[10px] text-text-muted mt-1.5 whitespace-nowrap">{s.delta}</div>
+                <div className={cn('text-[11.5px] font-medium mt-[7px]', s.good ? 'text-good' : 'text-text-faint')}>
+                  {s.note}
+                </div>
               </Wrap>
             )
           })}
         </div>
-      </div>
 
-      {/* Filter row — "Type · model swap" chip dropped (single value, no filter
-          purpose). Open count moves into the section header below. */}
-      <div className="flex items-center gap-2 px-[22px] py-[10px] border-b border-border shrink-0 flex-wrap">
-        <SelectControl<SortKey>
-          value={sortFilter.sortKey}
-          onChange={updateSort}
-          options={[
-            { value: 'savings',    label: 'Sort: Savings' },
-            { value: 'confidence', label: 'Sort: Confidence' },
-            { value: 'name',       label: 'Sort: Name' },
-          ]}
-        />
-        <SelectControl<ProviderFilter>
-          value={sortFilter.filterProvider}
-          onChange={updateFilterProvider}
-          options={[
-            { value: 'all',       label: 'Provider: All' },
-            { value: 'openai',    label: 'OpenAI' },
-            { value: 'anthropic', label: 'Anthropic' },
-            { value: 'gemini',    label: 'Gemini' },
-          ]}
-        />
-        <SelectControl<ConfFilter>
-          value={sortFilter.filterConf}
-          onChange={updateFilterConf}
-          options={[
-            { value: 'all',    label: 'Conf: All' },
-            { value: 'high',   label: 'High' },
-            { value: 'medium', label: 'Medium' },
-            { value: 'low',    label: 'Low' },
-          ]}
-        />
-
-        {dismissed.size > 0 && (
-          <button
-            type="button"
-            onClick={() => setShowHidden((v) => !v)}
-            className={cn(
-              'font-mono text-[11px] px-[9px] py-[3px] border rounded-[4px] transition-colors',
-              showHidden
-                ? 'border-border-strong bg-bg-elev text-text'
-                : 'border-border text-text-faint hover:text-text hover:border-border-strong',
-            )}
-          >
-            {showHidden ? 'Hide hidden' : `Show hidden · ${dismissed.size}`}
-          </button>
-        )}
-        <span className="flex-1" />
-
-        {/* Analysis window — relocated from the topbar to sit left of Export. */}
-        <div className="flex items-center gap-1">
-          {WINDOW_OPTIONS.map((opt) => (
+        {/* Inline undo affordance for the most recent Hide. Auto-clears in 5s. */}
+        {mounted && lastDismissed && (
+          <div className="flex items-center gap-3 rounded-card border border-border bg-bg-muted px-5 py-3 font-mono text-[12px]">
+            <span className="text-text-faint">
+              Hidden <span className="text-text">{lastDismissed.currentProvider} / {lastDismissed.currentModel}</span>.
+            </span>
             <button
-              key={opt.hours}
               type="button"
-              onClick={() => setHoursUrl(opt.hours)}
-              className={cn(
-                'font-mono text-[11px] px-[8px] py-[3px] rounded-[4px] transition-colors',
-                hours === opt.hours
-                  ? 'bg-bg-elev text-text border border-border-strong'
-                  : 'text-text-faint hover:text-text',
-              )}
+              onClick={() => { unhide(lastDismissed); }}
+              className="text-accent hover:underline"
             >
-              {opt.label}
+              Undo
             </button>
-          ))}
-          <span className="hidden sm:inline font-mono text-[11px] text-text-muted ml-1.5">Analysis window</span>
-        </div>
+            <span className="flex-1" />
+            <button
+              type="button"
+              onClick={() => setLastDismissed(null)}
+              className="text-text-faint hover:text-text-muted"
+              aria-label="Dismiss undo"
+            >
+              &#10005;
+            </button>
+          </div>
+        )}
 
-        <div ref={exportRef} className="relative">
-          <button
-            type="button"
-            onClick={() => setExportOpen((v) => !v)}
-            disabled={openSorted.length === 0 && achieved.length === 0}
-            className="font-mono text-[11px] text-text-muted hover:text-text border border-border rounded px-2.5 py-1 transition-colors disabled:opacity-40"
-          >
-            Export ▾
-          </button>
-          {exportOpen && (
-            <div className="absolute right-0 top-full mt-1 z-30 bg-bg-elev border border-border rounded-md shadow-lg py-1 min-w-[110px]">
-              <button
-                type="button"
-                onClick={() => { setExportOpen(false); exportCsv() }}
-                className="block w-full px-3 py-1.5 text-left font-mono text-[11px] uppercase tracking-[0.04em] text-text-muted hover:text-text hover:bg-bg transition-colors"
-              >CSV</button>
-              <button
-                type="button"
-                onClick={() => { setExportOpen(false); exportJson() }}
-                className="block w-full px-3 py-1.5 text-left font-mono text-[11px] uppercase tracking-[0.04em] text-text-muted hover:text-text hover:bg-bg transition-colors"
-              >JSON</button>
-            </div>
-          )}
-        </div>
-
-        <span className="hidden sm:inline font-mono text-[10px] text-text-faint whitespace-nowrap shrink-0">
-          {sortLabel}
-        </span>
-      </div>
-
-      {/* Inline undo affordance for the most recent Hide. Auto-clears in 5s. */}
-      {mounted && lastDismissed && (
-        <div className="flex items-center gap-3 px-[22px] py-[8px] bg-bg-muted border-b border-border font-mono text-[11px]">
-          <span className="text-text-faint">
-            Hidden <span className="text-text">{lastDismissed.currentProvider} / {lastDismissed.currentModel}</span>.
-          </span>
-          <button
-            type="button"
-            onClick={() => { unhide(lastDismissed); }}
-            className="text-accent hover:underline"
-          >
-            Undo
-          </button>
-          <span className="flex-1" />
-          <button
-            type="button"
-            onClick={() => setLastDismissed(null)}
-            className="text-text-faint hover:text-text-muted"
-            aria-label="Dismiss undo"
-          >
-            ✕
-          </button>
-        </div>
-      )}
-
-      {/* Content */}
-      <div>
         {isLoading ? (
-          <div className="p-6 space-y-3">
+          <div className="space-y-3">
             {[1, 2, 3].map((i) => (
-              <div key={i} className="h-20 bg-bg-elev rounded animate-pulse" />
+              <div key={i} className="h-[148px] rounded-card bg-bg-muted animate-pulse" />
             ))}
           </div>
         ) : error ? (
-          <div className="m-6 p-4 rounded border border-border bg-bg-elev text-[13px] text-bad">
+          <div className="rounded-card border border-border bg-bg-elev shadow-card px-5 py-[18px] text-[13px] text-bad">
             Failed to load recommendations.
           </div>
         ) : (
           <>
             {openAll.length === 0 && achieved.length === 0 && (
               dismissed.size > 0 ? (
-                <div className="flex flex-col items-center justify-center py-20 gap-3 text-text-muted">
+                <div className="rounded-card border border-border bg-bg-elev shadow-card flex flex-col items-center justify-center py-20 gap-3 text-text-muted">
                   <p className="text-[13px]">All recommendations are hidden.</p>
                   <p className="font-mono text-[12px]">
                     Use{' '}
@@ -1283,7 +1274,7 @@ export function SavingsClient() {
                   </p>
                 </div>
               ) : (
-                <div className="flex flex-col items-center py-14 gap-5 text-text-muted">
+                <div className="rounded-card border border-border bg-bg-elev shadow-card flex flex-col items-center py-14 gap-5 text-text-muted">
                   <div className="flex flex-col items-center gap-2 text-center">
                     <p className="text-[13px]">No cost-saving opportunities right now.</p>
                     <p className="font-mono text-[12px]">
@@ -1300,84 +1291,54 @@ export function SavingsClient() {
                     )}
                   </div>
 
-                  {/* Example card: shows users what a real recommendation looks like.
-                      Mock data, non-interactive, visually muted with EXAMPLE badge. */}
-                  <div className="w-full max-w-[920px] px-6">
-                    <div className="font-mono text-[10.5px] uppercase tracking-[0.06em] text-text-faint mb-2 text-center">
+                  {/* Example card: shows users what a real recommendation looks
+                      like. Mock data, non-interactive, dashed and muted. */}
+                  <div className="w-full max-w-[920px] px-5">
+                    <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-text-faint mb-2 text-center">
                       Sample of what a recommendation looks like
                     </div>
                     <div
-                      className="border border-dashed border-border rounded-[6px] bg-bg-elev/40 opacity-75 select-none"
-                      style={{
-                        display: 'grid',
-                        gridTemplateColumns: '1.7fr 170px 130px 150px 120px',
-                        gap: 16,
-                        alignItems: 'center',
-                        padding: '14px 22px',
-                        minWidth: '700px',
-                      }}
+                      className="rounded-card border border-dashed border-border bg-bg-muted px-5 py-[18px] opacity-75 select-none"
                       aria-hidden="true"
                     >
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2 mb-1 flex-wrap">
-                          <span className="font-mono text-[9px] px-[6px] py-[1px] rounded-[3px] border uppercase tracking-[0.04em] border-border bg-bg text-text-faint">
-                            EXAMPLE
-                          </span>
-                          <span className="text-[13.5px] font-medium truncate text-text-muted">
-                            openai / gpt-4o → openai / gpt-4o-mini
-                          </span>
+                      <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
+                            <span className="text-[13.5px] font-semibold text-text-muted">openai / gpt-4o-mini</span>
+                            <span className="inline-flex items-center rounded-full bg-bg-chip px-2 py-[3px] font-mono text-[10.5px] text-text-faint">
+                              example
+                            </span>
+                          </div>
+                          <div className="font-mono text-[12px] text-text-faint flex flex-wrap items-center gap-2 mt-1.5">
+                            <span className="line-through">openai / gpt-4o</span>
+                            <span>&#8594;</span>
+                            <span>openai / gpt-4o-mini</span>
+                          </div>
                         </div>
-                        <div className="font-mono text-[11.5px] text-text-faint flex items-center gap-2 flex-wrap">
-                          <span className="line-through">openai / gpt-4o</span>
-                          <span>→</span>
-                          <span>openai / gpt-4o-mini</span>
+                        <div className="text-right">
+                          <div className="font-display text-[20px] track-h3 leading-[1.05] text-text-muted">$412.00 / month</div>
+                          <div className="font-mono text-[11px] text-text-faint mt-1">was $96.13 /7d</div>
                         </div>
-                        <p className="text-[12px] text-text-faint mt-1 leading-relaxed">
-                          Short inputs/outputs fit the gpt-4o-mini envelope — ~17x cheaper with comparable accuracy on classification and short-form generation.
-                        </p>
                       </div>
-
-                      <div>
-                        <div className="font-mono text-[10px] text-text-faint uppercase tracking-[0.03em] mb-[3px]">SAVE / MO</div>
-                        <div className="font-mono text-[18px] font-medium tracking-[-0.3px] text-text-muted">$412.00</div>
-                        <div className="font-mono text-[10.5px] text-text-faint mt-0.5">was $96.13 /7d</div>
-                      </div>
-
-                      <div>
-                        <div className="font-mono text-[10px] text-text-faint uppercase tracking-[0.03em] mb-[3px]">SAMPLES</div>
-                        <div className="text-[12.5px] text-text-muted">1,840</div>
-                        <div className="font-mono text-[10.5px] text-text-faint mt-0.5">~92 output tk</div>
-                      </div>
-
-                      <div>
-                        <div className="font-mono text-[10px] text-text-faint uppercase tracking-[0.03em] mb-[5px]">CONFIDENCE</div>
-                        <ConfidenceBar level="high" />
-                        <div className="font-mono text-[10.5px] text-text-faint mt-1">≥$40/mo · ≥100 req</div>
-                      </div>
-
-                      <div className="flex justify-end gap-1.5 flex-wrap">
-                        <span className="font-mono text-[10.5px] text-text-faint px-[10px] py-[4px] border border-border rounded-[5px]">
-                          Compare
-                        </span>
-                        <span className="font-mono text-[10.5px] text-text-faint px-[10px] py-[4px] border border-border rounded-[5px]">
-                          Simulate
-                        </span>
-                      </div>
+                      <p className="text-[12.5px] text-text-faint leading-relaxed mt-2.5">
+                        Short inputs and outputs fit the gpt-4o-mini envelope, around 17x cheaper with
+                        comparable accuracy on classification and short-form generation.
+                      </p>
                     </div>
                   </div>
 
                   <Link
                     href="/docs/features/savings"
-                    className="font-mono text-[11px] px-2.5 py-1 rounded border border-border text-text-muted hover:text-text hover:border-border-strong transition-colors"
+                    className="rounded-full border border-border bg-bg-elev px-3.5 py-2 text-[12px] font-medium text-text hover:bg-bg-muted transition-colors"
                   >
-                    How recommendations work →
+                    How recommendations work &#8594;
                   </Link>
                 </div>
               )
             )}
 
             {openAll.length > 0 && openSorted.length === 0 && (
-              <div className="flex flex-col items-center justify-center py-16 gap-3 text-text-muted">
+              <div className="rounded-card border border-border bg-bg-elev shadow-card flex flex-col items-center justify-center py-16 gap-3 text-text-muted">
                 <p className="text-[13px]">No recommendations match the current filters.</p>
                 <button
                   type="button"
@@ -1390,28 +1351,27 @@ export function SavingsClient() {
             )}
 
             {openSorted.length > 0 && (
-              <div ref={openRef} className="flex items-center gap-2.5 px-[22px] py-[10px] bg-bg-muted border-b border-border border-t border-t-border">
-                <span className="font-mono text-[10px] uppercase tracking-[0.06em] text-accent">
-                  Open · {openSorted.length}{filterActive && openSorted.length < openAll.length ? ` (${openAll.length} total)` : ''} · {fmtUsd(totalOpen)} / mo
-                </span>
+              <div ref={openRef} className="space-y-3">
+                <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-accent pt-1">
+                  Open &#183; {openSorted.length}{filterActive && openSorted.length < openAll.length ? ` (${openAll.length} total)` : ''} &#183; {fmtUsd(totalOpen)} / mo
+                </div>
+                {openSorted.map((r, i) => (
+                  <RecRow key={`${r.currentProvider}-${r.currentModel}-${i}`} r={r} />
+                ))}
               </div>
             )}
-            {openSorted.map((r, i) => (
-              <RecRow key={`${r.currentProvider}-${r.currentModel}-${i}`} r={r} />
-            ))}
 
             {achieved.length > 0 && (
-              <>
-                <div ref={achievedRef} className="flex items-center gap-2.5 px-[22px] py-[10px] bg-bg-muted border-b border-border border-t border-t-border">
-                  <button
-                    type="button"
-                    onClick={() => setShowAchieved((v) => !v)}
-                    className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.06em] text-good hover:opacity-80 transition-opacity"
-                  >
-                    <span>Achieved · {achieved.length} · {fmtUsd(totalAchieved)} / mo</span>
-                    <span>{showAchieved ? '▲' : '▼'}</span>
-                  </button>
-                </div>
+              <div ref={achievedRef} className="space-y-3">
+                <button
+                  type="button"
+                  onClick={() => setShowAchieved((v) => !v)}
+                  aria-expanded={showAchieved}
+                  className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.12em] text-good hover:opacity-80 transition-opacity pt-1"
+                >
+                  <span>Applied &#183; {achieved.length} &#183; {fmtUsd(totalAchieved)} / mo</span>
+                  <span>{showAchieved ? '▲' : '▼'}</span>
+                </button>
                 {showAchieved && achieved.map((r) => (
                   <RecRow
                     key={`${r.currentProvider}-${r.currentModel}-achieved`}
@@ -1419,15 +1379,13 @@ export function SavingsClient() {
                     isAchieved
                   />
                 ))}
-              </>
+              </div>
             )}
 
             {showHidden && dismissed.size > 0 && (
-              <>
-                <div ref={hiddenRef} className="flex items-center gap-2.5 px-[22px] py-[10px] bg-bg-muted border-b border-border border-t border-t-border">
-                  <span className="font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint">
-                    Hidden · {dismissed.size}
-                  </span>
+              <div ref={hiddenRef} className="space-y-3">
+                <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-text-faint pt-1">
+                  Hidden &#183; {dismissed.size}
                 </div>
                 {all
                   .filter((r) => dismissed.has(dismissKey(r)))
@@ -1438,7 +1396,7 @@ export function SavingsClient() {
                       isHidden
                     />
                   ))}
-              </>
+              </div>
             )}
           </>
         )}
@@ -1492,7 +1450,7 @@ export function SavingsClient() {
               </div>
 
               {percentiles.isLoading ? (
-                <div className="rounded-lg border border-border bg-bg-elev p-4 space-y-2 animate-pulse">
+                <div className="rounded-lg border border-border bg-bg-chip p-4 space-y-2 animate-pulse">
                   <div className="h-3 w-36 bg-border rounded" />
                   <div className="h-16 bg-border rounded" />
                 </div>
@@ -1515,6 +1473,6 @@ export function SavingsClient() {
           )}
         </DialogContent>
       </Dialog>
-    </div>
+    </>
   )
 }

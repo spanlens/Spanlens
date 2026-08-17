@@ -57,7 +57,7 @@ function CopyButton({ getText, label = 'Copy' }: { getText: () => string; label?
         setCopied(true)
         setTimeout(() => setCopied(false), 1500)
       }}
-      className="font-mono text-[10px] px-1.5 py-0.5 border border-border rounded text-text-faint hover:text-text hover:border-border-strong transition-colors shrink-0"
+      className="font-mono text-[10px] px-2 py-0.5 border border-border rounded-full text-text-faint hover:text-text hover:border-border-strong transition-colors shrink-0"
     >
       {copied ? 'Copied' : label}
     </button>
@@ -85,11 +85,11 @@ function CostAttribution({ spans, total }: { spans: SpanRow[]; total: number }) 
 
   if (buckets.length === 0) return null
   return (
-    <div className="px-[22px] py-[14px] border-b border-border shrink-0">
-      <span className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint">
+    <div className="px-5 py-3.5 border-b border-border shrink-0">
+      <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-faint">
         Cost attribution · {fmtCost(total)}
       </span>
-      <div className="flex h-[14px] rounded-[3px] overflow-hidden border border-border mt-2">
+      <div className="flex h-[14px] rounded-full overflow-hidden border border-border mt-2">
         {buckets.map((b, i) => (
           <div
             key={b.name}
@@ -175,8 +175,8 @@ function LlmMessageView({ input }: { input: unknown }) {
   return (
     <div className="space-y-2">
       {systemText && (
-        <div className="rounded-[5px] border border-border bg-bg-muted p-3">
-          <div className="font-mono text-[9.5px] uppercase tracking-[0.06em] text-text-faint mb-1.5">System</div>
+        <div className="rounded-lg border border-border bg-bg-sunk p-3.5">
+          <div className="font-mono text-[10.5px] tracking-[0.02em] text-text-faint mb-1.5">System</div>
           <p className="font-mono text-[11.5px] text-text-muted leading-relaxed whitespace-pre-wrap">{systemText}</p>
         </div>
       )}
@@ -184,8 +184,8 @@ function LlmMessageView({ input }: { input: unknown }) {
         const isUser = m.role === 'user'
         const text = extractText(m.content)
         return (
-          <div key={i} className={cn('rounded-[5px] p-3 border', isUser ? 'bg-bg-elev border-border' : 'bg-accent-bg border-accent-border')}>
-            <div className={cn('font-mono text-[9.5px] uppercase tracking-[0.06em] mb-1.5', isUser ? 'text-text-faint' : 'text-accent')}>{m.role}</div>
+          <div key={i} className={cn('rounded-lg p-3.5 border', isUser ? 'bg-bg-elev border-border' : 'bg-accent-bg border-accent-border')}>
+            <div className={cn('font-mono text-[10.5px] tracking-[0.02em] mb-1.5', isUser ? 'text-text-faint' : 'text-accent')}>{m.role}</div>
             <p className="font-mono text-[11.5px] text-text-muted leading-relaxed whitespace-pre-wrap break-words">
               {text || <span className="italic text-text-faint">empty</span>}
             </p>
@@ -200,8 +200,8 @@ function LlmOutputView({ output }: { output: unknown }) {
   // Plain string — proxy auto-injection stores accumulated stream text as a string
   if (typeof output === 'string') {
     return (
-      <div className="rounded-[5px] p-3 border bg-accent-bg border-accent-border">
-        <div className="font-mono text-[9.5px] uppercase tracking-[0.06em] mb-1.5 text-accent">assistant</div>
+      <div className="rounded-lg p-3.5 border bg-accent-bg border-accent-border">
+        <div className="font-mono text-[10.5px] tracking-[0.02em] mb-1.5 text-accent">assistant</div>
         <p className="font-mono text-[11.5px] text-text-muted leading-relaxed whitespace-pre-wrap break-words">{output}</p>
       </div>
     )
@@ -232,8 +232,8 @@ function LlmOutputView({ output }: { output: unknown }) {
       return (
         <div className="space-y-2">
           {messages.map((m, i) => (
-            <div key={i} className={cn('rounded-[5px] p-3 border', m.isAssistant ? 'bg-accent-bg border-accent-border' : 'bg-bg-elev border-border')}>
-              <div className={cn('font-mono text-[9.5px] uppercase tracking-[0.06em] mb-1.5', m.isAssistant ? 'text-accent' : 'text-text-faint')}>{m.role}</div>
+            <div key={i} className={cn('rounded-lg p-3.5 border', m.isAssistant ? 'bg-accent-bg border-accent-border' : 'bg-bg-elev border-border')}>
+              <div className={cn('font-mono text-[10.5px] tracking-[0.02em] mb-1.5', m.isAssistant ? 'text-accent' : 'text-text-faint')}>{m.role}</div>
               <p className="font-mono text-[11.5px] text-text-muted leading-relaxed whitespace-pre-wrap break-words">
                 {extractText(m.content) || <span className="italic text-text-faint">empty</span>}
               </p>
@@ -256,8 +256,8 @@ function LlmOutputView({ output }: { output: unknown }) {
     }).filter(Boolean).join('\n')
     if (text) {
       return (
-        <div className="rounded-[5px] p-3 border bg-accent-bg border-accent-border">
-          <div className="font-mono text-[9.5px] uppercase tracking-[0.06em] mb-1.5 text-accent">{role}</div>
+        <div className="rounded-lg p-3.5 border bg-accent-bg border-accent-border">
+          <div className="font-mono text-[10.5px] tracking-[0.02em] mb-1.5 text-accent">{role}</div>
           <p className="font-mono text-[11.5px] text-text-muted leading-relaxed whitespace-pre-wrap break-words">{text}</p>
         </div>
       )
@@ -289,8 +289,8 @@ function LlmOutputView({ output }: { output: unknown }) {
       return (
         <div className="space-y-2">
           {messages.map((m, i) => (
-            <div key={i} className="rounded-[5px] p-3 border bg-accent-bg border-accent-border">
-              <div className="font-mono text-[9.5px] uppercase tracking-[0.06em] mb-1.5 text-accent">{m.role}</div>
+            <div key={i} className="rounded-lg p-3.5 border bg-accent-bg border-accent-border">
+              <div className="font-mono text-[10.5px] tracking-[0.02em] mb-1.5 text-accent">{m.role}</div>
               <p className="font-mono text-[11.5px] text-text-muted leading-relaxed whitespace-pre-wrap break-words">{m.text}</p>
             </div>
           ))}
@@ -344,11 +344,11 @@ function SpanDrawer({ span, onClose, onPrev, onNext, hasPrev, hasNext, position,
   }
 
   return (
-    <aside className="w-[440px] shrink-0 border-l border-border bg-bg-elev overflow-auto flex flex-col">
+    <aside className="w-[436px] shrink-0 card-surface rounded-card overflow-auto flex flex-col">
       {/* Header */}
-      <div className="px-5 py-4 border-b border-border">
+      <div className="px-5 pt-[18px] pb-4 border-b border-border">
         <div className="flex items-center gap-2 mb-2.5">
-          <span className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint">Span</span>
+          <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-faint">Span</span>
           <TypeGlyph type={span.span_type} />
           {position > 0 && (
             <span className="font-mono text-[10px] text-text-faint">{position} / {total}</span>
@@ -357,7 +357,7 @@ function SpanDrawer({ span, onClose, onPrev, onNext, hasPrev, hasNext, position,
           {span.request_id && (
             <Link
               href={`/requests/${span.request_id}`}
-              className="font-mono text-[10px] px-1.5 py-0.5 border border-border rounded text-accent tracking-[0.04em] uppercase hover:border-accent-border transition-colors"
+              className="font-mono text-[10px] px-2 py-0.5 border border-border rounded-full text-accent tracking-[0.08em] uppercase hover:border-accent-border transition-colors"
             >
               Open request →
             </Link>
@@ -371,7 +371,7 @@ function SpanDrawer({ span, onClose, onPrev, onNext, hasPrev, hasNext, position,
               type="button"
               onClick={onClick}
               disabled={disabled}
-              className="font-mono text-[10px] px-1.5 py-0.5 border border-border rounded text-text-muted tracking-[0.04em] uppercase disabled:opacity-30 hover:border-border-strong transition-colors"
+              className="font-mono text-[10px] px-2 py-0.5 border border-border rounded-full text-text-muted tracking-[0.08em] uppercase disabled:opacity-30 hover:border-border-strong transition-colors"
             >
               {label}
             </button>
@@ -379,7 +379,7 @@ function SpanDrawer({ span, onClose, onPrev, onNext, hasPrev, hasNext, position,
           <button
             type="button"
             onClick={onClose}
-            className="font-mono text-[10px] px-1.5 py-0.5 border border-border rounded text-text-muted tracking-[0.04em] uppercase hover:border-border-strong transition-colors"
+            className="font-mono text-[10px] px-2 py-0.5 border border-border rounded-full text-text-muted tracking-[0.08em] uppercase hover:border-border-strong transition-colors"
           >
             Close
           </button>
@@ -394,7 +394,7 @@ function SpanDrawer({ span, onClose, onPrev, onNext, hasPrev, hasNext, position,
           {span.status === 'error' && (
             <>
               <span className="flex-1" />
-              <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-bad-bg text-bad border border-bad/20 uppercase tracking-[0.04em]">
+              <span className="text-[11px] font-semibold px-2 py-[3px] rounded-full bg-bad-bg text-bad">
                 Error
               </span>
             </>
@@ -403,7 +403,7 @@ function SpanDrawer({ span, onClose, onPrev, onNext, hasPrev, hasNext, position,
       </div>
 
       {/* Metrics */}
-      <div className="px-5 py-3.5 border-b border-border grid grid-cols-3">
+      <div className="px-5 py-4 border-b border-border grid grid-cols-3">
         {[
           { label: 'Latency', value: fmtMs(span.duration_ms) },
           { label: 'Cost', value: fmtCost(span.cost_usd) },
@@ -414,30 +414,31 @@ function SpanDrawer({ span, onClose, onPrev, onNext, hasPrev, hasNext, position,
           },
         ].map((s, i) => (
           <div key={s.label} className={cn('pr-3 pl-3', i === 0 && 'pl-0', i === 2 && 'pr-0', i < 2 && 'border-r border-border')}>
-            <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-1.5">{s.label}</div>
-            <div className="text-[20px] font-medium tracking-[-0.3px] leading-none text-text">{s.value}</div>
+            <div className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-faint mb-1.5">{s.label}</div>
+            <div className="font-display text-[22px] track-kpi leading-[1.05] text-text">{s.value}</div>
             {'sub' in s && s.sub && <div className="font-mono text-[10px] text-text-faint mt-1 tracking-[0.03em]">{s.sub}</div>}
           </div>
         ))}
       </div>
 
       {span.error_message && (
-        <div className="mx-5 mt-3.5 px-3 py-2.5 rounded-[5px] border border-bad/20 bg-bad-bg">
-          <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-bad mb-1">Error</div>
+        <div className="mx-5 mt-3.5 px-3.5 py-3 rounded-lg border border-bad/25 bg-bad-bg">
+          <div className="font-mono text-[10px] uppercase tracking-[0.1em] text-bad mb-1">Error</div>
           <p className="font-mono text-[11.5px] text-bad leading-relaxed">{span.error_message}</p>
         </div>
       )}
 
       {/* Tabs */}
-      <div className="flex px-5 border-b border-border gap-5 shrink-0 mt-1">
+      <div className="flex px-5 pt-3 gap-1 shrink-0 flex-wrap">
         {(['input', 'output', 'attrs', 'raw'] as SpanTab[]).map((t) => (
           <button
             key={t}
             type="button"
             onClick={() => setTab(t)}
+            aria-pressed={tab === t}
             className={cn(
-              'py-2.5 font-mono text-[11px] uppercase tracking-[0.04em] border-b-[1.5px] -mb-px transition-colors',
-              tab === t ? 'text-text border-accent' : 'text-text-muted border-transparent hover:text-text',
+              'px-3 py-[7px] rounded-full text-[12px] capitalize transition-colors',
+              tab === t ? 'bg-text text-bg font-semibold' : 'text-text-faint font-medium hover:text-text',
             )}
           >
             {t}
@@ -448,7 +449,7 @@ function SpanDrawer({ span, onClose, onPrev, onNext, hasPrev, hasNext, position,
       {/* BOTTLENECK section, sticky at bottom when this span is the critical path */}
       {isCritical && (
         <div className="px-5 py-4 border-t border-accent-border bg-accent-bg shrink-0">
-          <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-accent mb-2">
+          <div className="font-mono text-[10px] uppercase tracking-[0.1em] text-accent mb-2">
             Longest Span · Recommendation
           </div>
           <p className="text-[12px] text-text-muted leading-relaxed">
@@ -598,27 +599,28 @@ function TracePanelInner({ traceId }: TracePanelProps) {
     : 0
 
   const statusBadge = trace.status === 'error'
-    ? <span className="font-mono text-[9.5px] px-[6px] py-[2px] rounded-[3px] bg-bad-bg text-bad border border-bad/20 uppercase tracking-[0.04em]">error</span>
+    ? <span className="text-[11px] font-semibold px-2 py-[3px] rounded-full bg-bad-bg text-bad">error</span>
     : trace.status === 'running'
-    ? <span className="font-mono text-[9.5px] px-[6px] py-[2px] rounded-[3px] bg-accent-bg text-accent border border-accent-border uppercase tracking-[0.04em] animate-pulse">running</span>
+    ? <span className="text-[11px] font-semibold px-2 py-[3px] rounded-full bg-accent-bg text-accent animate-pulse">running</span>
     : null
 
   return (
-    <div className="flex h-full overflow-hidden border-l border-border bg-bg">
-      <div className="flex flex-col flex-1 overflow-hidden">
+    // Content canvas: a summary card, then the waterfall and the span
+    // inspector side by side on the board's 16px rhythm.
+    <div className="flex flex-col h-full overflow-hidden bg-bg gap-4 px-4 md:px-7 pt-5 pb-7">
 
-        {/* Live indicator, only when trace is still running */}
-        {trace.status === 'running' && (
-          <div className="flex items-center gap-2 px-[22px] py-[5px] border-b border-accent-border/50 bg-accent-bg shrink-0">
-            <span className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse inline-block shrink-0" />
-            <span className="font-mono text-[10px] text-accent tracking-[0.03em]">Live · refreshing every 3s</span>
-          </div>
-        )}
+      {/* Live indicator, only when trace is still running */}
+      {trace.status === 'running' && (
+        <div className="flex items-center gap-2 rounded-lg px-3.5 py-2 border border-accent-border bg-accent-bg shrink-0">
+          <span className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse inline-block shrink-0" />
+          <span className="font-mono text-[11px] text-accent">Live · refreshing every 3s</span>
+        </div>
+      )}
 
-        {/* Trace header */}
-        <div className="px-[22px] pt-4 pb-[14px] border-b border-border shrink-0">
+      {/* Trace summary */}
+      <div className="card-surface rounded-card px-5 py-[18px] shrink-0">
           <div className="flex items-baseline gap-3 mb-3.5">
-            <span className="text-[20px] font-medium tracking-[-0.5px] text-text truncate">{trace.name}</span>
+            <span className="font-display text-[22px] track-kpi leading-[1.1] text-text truncate">{trace.name}</span>
             {statusBadge}
             <span className="font-mono text-[11px] text-text-faint tracking-[0.03em] shrink-0">
               {fmtTimestamp(trace.started_at)}
@@ -628,7 +630,7 @@ function TracePanelInner({ traceId }: TracePanelProps) {
               <button
                 type="button"
                 onClick={handleErrorJump}
-                className="font-mono text-[10.5px] px-2 py-[3px] rounded-[3px] bg-bad-bg text-bad border border-bad/20 tracking-[0.04em] uppercase hover:opacity-80 transition-opacity shrink-0"
+                className="text-[11px] font-semibold px-2.5 py-[3px] rounded-full bg-bad-bg text-bad hover:opacity-80 transition-opacity shrink-0"
               >
                 {errorSpans.length} error{errorSpans.length !== 1 ? 's' : ''}
                 {errorSpans.length > 1 ? ` · ${(errorJumpIdx % errorSpans.length) + 1}/${errorSpans.length}` : ''} →
@@ -636,7 +638,7 @@ function TracePanelInner({ traceId }: TracePanelProps) {
             )}
           </div>
 
-          <div className="grid grid-cols-5 gap-4">
+          <div className="grid grid-cols-5">
             {[
               { label: 'Duration', value: fmtMs(trace.duration_ms) },
               { label: 'Spans', value: trace.span_count.toString() },
@@ -648,9 +650,9 @@ function TracePanelInner({ traceId }: TracePanelProps) {
                 accent: !!bottleneck,
               },
             ].map((s) => (
-              <div key={s.label}>
-                <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-1.5">{s.label}</div>
-                <div className={cn('text-[16px] font-medium tracking-[-0.3px] truncate', 'accent' in s && s.accent ? 'text-accent' : 'text-text')}>
+              <div key={s.label} className={cn('px-6 first:pl-0', 'border-l border-track first:border-l-0')}>
+                <div className="font-mono text-[10.5px] uppercase tracking-[0.1em] text-text-faint mb-1.5">{s.label}</div>
+                <div className={cn('font-mono text-[16px] truncate', 'accent' in s && s.accent ? 'text-accent' : 'text-text')}>
                   {s.value}
                 </div>
               </div>
@@ -659,7 +661,7 @@ function TracePanelInner({ traceId }: TracePanelProps) {
 
           {trace.metadata && Object.keys(trace.metadata).length > 0 && (
             <div className="mt-3.5 pt-3.5 border-t border-border">
-              <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-2">Metadata</div>
+              <div className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-faint mb-2">Metadata</div>
               <div className="flex flex-wrap gap-x-5 gap-y-1.5">
                 {Object.entries(trace.metadata).map(([k, v]) => (
                   <span key={k} className="font-mono text-[11px] text-text-muted">
@@ -670,19 +672,23 @@ function TracePanelInner({ traceId }: TracePanelProps) {
               </div>
             </div>
           )}
-        </div>
+      </div>{/* end trace summary */}
+
+      {/* Split: waterfall on the left, span inspector on the right. */}
+      <div className="flex flex-1 min-h-0 gap-4">
+        <div className="flex flex-col flex-1 min-w-0 card-surface rounded-card overflow-hidden">
 
         <CostAttribution spans={trace.spans} total={trace.total_cost_usd} />
 
         {/* Span filter toolbar */}
-        <div className="flex items-center gap-2 px-[22px] py-[10px] border-b border-border shrink-0 flex-wrap">
-          <div className="inline-flex items-center gap-2 px-[10px] py-[5px] border border-border rounded-[5px] bg-bg-elev font-mono text-[11.5px] text-text-muted w-56">
+        <div className="flex items-center gap-2 px-5 py-3 border-b border-border shrink-0 flex-wrap">
+          <div className="inline-flex items-center gap-2 h-[31px] px-3 border border-border rounded-md bg-bg-elev text-[12.5px] text-text w-56">
             <span className="text-text-faint">⌕</span>
             <input
               value={spanSearch}
               onChange={(e) => setSpanSearch(e.target.value)}
               placeholder="Search span…"
-              className="flex-1 bg-transparent outline-none placeholder:text-text-faint text-[11px]"
+              className="flex-1 bg-transparent outline-none placeholder:text-text-faint text-[12.5px]"
             />
             {spanSearch && (
               <button type="button" onClick={() => setSpanSearch('')}
@@ -690,7 +696,7 @@ function TracePanelInner({ traceId }: TracePanelProps) {
             )}
           </div>
 
-          <div className="flex border border-border rounded-[5px] overflow-hidden bg-bg-elev font-mono text-[10px] tracking-[0.03em]">
+          <div className="inline-flex items-center gap-[2px] rounded-full bg-secondary p-[3px]">
             {([
               ['all', 'All'], ['llm', 'LLM'], ['tool', 'Tool'],
               ['retrieval', 'Ret'], ['embedding', 'Embd'], ['custom', 'Custom'],
@@ -700,13 +706,13 @@ function TracePanelInner({ traceId }: TracePanelProps) {
                 type="button"
                 onClick={() => setTypeFilter(v)}
                 className={cn(
-                  'px-[8px] py-[4px] inline-flex items-center gap-1',
-                  typeFilter === v ? 'bg-text text-bg' : 'text-text-muted hover:text-text transition-colors',
+                  'font-mono text-[11.5px] leading-[16px] px-2.5 py-[5px] rounded-full inline-flex items-center gap-1 transition-colors',
+                  typeFilter === v ? 'bg-bg-elev text-text' : 'text-text-faint hover:text-text',
                   !(typeCounts[v] ?? 0) && v !== 'all' && 'opacity-40',
                 )}
               >
                 {label}
-                <span className={typeFilter === v ? 'opacity-60 text-bg' : 'text-text-faint'}>
+                <span className="text-text-faint">
                   {typeCounts[v] ?? 0}
                 </span>
               </button>
@@ -717,8 +723,8 @@ function TracePanelInner({ traceId }: TracePanelProps) {
             type="button"
             onClick={() => setErrorsOnly((v) => !v)}
             className={cn(
-              'inline-flex items-center gap-1.5 px-[10px] py-[4px] rounded-[5px] font-mono text-[10px] border transition-colors',
-              errorsOnly ? 'bg-bad-bg border-bad/20 text-bad' : 'border-border text-text-muted hover:border-border-strong hover:text-text',
+              'inline-flex items-center gap-1.5 px-3 py-[6px] rounded-full font-mono text-[11.5px] border transition-colors',
+              errorsOnly ? 'bg-bad-bg border-bad/25 text-bad' : 'border-border text-text-muted hover:border-border-strong hover:text-text',
             )}
           >
             <span className={cn('w-2 h-2 rounded-[2px] border inline-block', errorsOnly ? 'border-bad bg-bad/20' : 'border-border')} />
@@ -726,7 +732,7 @@ function TracePanelInner({ traceId }: TracePanelProps) {
           </button>
 
           <span className="flex-1" />
-          <span className="font-mono text-[10.5px] text-text-faint">
+          <span className="font-mono text-[11px] text-text-faint">
             {hasFilter
               ? <>{filteredSpans.length} matching / {trace.span_count} total</>
               : <>{trace.span_count} total</>
@@ -734,7 +740,7 @@ function TracePanelInner({ traceId }: TracePanelProps) {
           </span>
 
           <div
-            className="flex border border-border rounded-[5px] overflow-hidden bg-bg-elev font-mono text-[10px] tracking-[0.03em]"
+            className="inline-flex items-center gap-[2px] rounded-full bg-secondary p-[3px]"
             title={graphAvailable ? undefined : 'Graph view requires LangChain / LangGraph callback spans'}
           >
             {([
@@ -750,9 +756,9 @@ function TracePanelInner({ traceId }: TracePanelProps) {
                   disabled={disabled}
                   onClick={() => !disabled && setView(v)}
                   className={cn(
-                    'px-[8px] py-[4px] inline-flex items-center',
-                    view === v ? 'bg-text text-bg' : 'text-text-muted hover:text-text transition-colors',
-                    disabled && 'opacity-40 cursor-not-allowed hover:text-text-muted',
+                    'font-mono text-[11.5px] leading-[16px] px-3 py-[5px] rounded-full inline-flex items-center transition-colors',
+                    view === v ? 'bg-bg-elev text-text' : 'text-text-faint hover:text-text',
+                    disabled && 'opacity-40 cursor-not-allowed hover:text-text-faint',
                   )}
                 >
                   {label}
@@ -774,7 +780,7 @@ function TracePanelInner({ traceId }: TracePanelProps) {
           </div>
         ) : (
         <div className="overflow-auto flex-1 min-h-0">
-          <div className="p-[22px]">
+          <div className="p-5">
             <Gantt
               traceStartedAt={trace.started_at}
               traceEndedAt={trace.ended_at}
@@ -794,12 +800,12 @@ function TracePanelInner({ traceId }: TracePanelProps) {
                 .sort((a, b) => new Date(a.started_at).getTime() - new Date(b.started_at).getTime())
                 .map((s) => s.name)
               return (
-                <div className="mt-4 px-4 py-3.5 rounded-md border border-accent-border bg-accent-bg flex items-start gap-3.5">
+                <div className="mt-4 px-4 py-3.5 rounded-lg border border-accent-border bg-accent-bg flex items-start gap-3.5">
                   <div className="w-8 h-8 rounded-full border-[1.5px] border-accent flex items-center justify-center font-mono text-[11px] text-accent font-medium shrink-0 mt-0.5">
                     CP
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-accent mb-1">Critical path</div>
+                    <div className="font-mono text-[10px] uppercase tracking-[0.1em] text-accent mb-1">Critical path</div>
                     <div className="text-[12.5px] text-text leading-relaxed">
                       <strong>{criticalPct}%</strong> of wall-clock in{' '}
                       <strong>{criticalSpans.length}</strong> span{criticalSpans.length !== 1 ? 's' : ''}
@@ -814,12 +820,12 @@ function TracePanelInner({ traceId }: TracePanelProps) {
             })()}
             {/* Longest single span (bottleneck) */}
             {bottleneck && trace.duration_ms && (
-              <div className="mt-3 px-4 py-3.5 rounded-md border border-border bg-bg-muted flex items-center gap-3.5">
+              <div className="mt-3 px-4 py-3.5 rounded-lg border border-border bg-bg-sunk flex items-center gap-3.5">
                 <div className="w-8 h-8 rounded-full border-[1.5px] border-border flex items-center justify-center font-mono text-[11px] text-text-faint font-medium shrink-0">
                   LS
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-1">Longest span</div>
+                  <div className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-faint mb-1">Longest span</div>
                   <div className="text-[12.5px] text-text leading-relaxed">
                     <strong>{bottleneckPct}%</strong> of {fmtMs(trace.duration_ms)} in{' '}
                     <strong>{bottleneck.name}</strong> ({fmtMs(bottleneck.duration_ms)})
@@ -828,7 +834,7 @@ function TracePanelInner({ traceId }: TracePanelProps) {
                 <button
                   type="button"
                   onClick={() => setSelectedSpan(bottleneck)}
-                  className="font-mono text-[10.5px] px-3 py-[5px] rounded-[4px] bg-text text-bg uppercase tracking-[0.04em] shrink-0 hover:opacity-90 transition-opacity"
+                  className="text-[12px] font-semibold px-3 py-[6px] rounded-full bg-text text-bg shrink-0 hover:opacity-90 transition-opacity"
                 >
                   Open →
                 </button>
@@ -837,7 +843,7 @@ function TracePanelInner({ traceId }: TracePanelProps) {
           </div>
         </div>
         )}
-      </div>
+        </div>{/* end waterfall card */}
 
       {selectedSpan && (
         <SpanDrawer
@@ -857,6 +863,7 @@ function TracePanelInner({ traceId }: TracePanelProps) {
           isCritical={(trace.critical_span_ids ?? []).includes(selectedSpan.id)}
         />
       )}
+      </div>{/* end split */}
     </div>
   )
 }

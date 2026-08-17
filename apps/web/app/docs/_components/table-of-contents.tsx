@@ -106,10 +106,8 @@ function TableOfContentsInner() {
 
   return (
     <nav>
-      <p className="font-semibold text-[11px] uppercase tracking-[0.06em] text-text-faint mb-3">
-        On this page
-      </p>
-      <ul className="space-y-1">
+      <p className="micro-label mb-2.5 tracking-[0.1em]">On this page</p>
+      <ul>
         {headings.map((h) => (
           <li key={h.id}>
             <a
@@ -123,11 +121,14 @@ function TableOfContentsInner() {
                 }
               }}
               className={cn(
-                'block text-[12.5px] leading-snug py-[3px] transition-colors',
-                h.level === 3 ? 'pl-3' : '',
+                // The accent lives in a 2px left rule rather than in the label
+                // colour, so the active row is findable at a glance while the
+                // list still reads as plain text.
+                'block border-l-2 py-[5px] pl-2.5 text-[12px] leading-snug transition-colors',
+                h.level === 3 ? 'pl-5' : '',
                 activeId === h.id
-                  ? 'text-accent font-medium'
-                  : 'text-text-faint hover:text-text-muted',
+                  ? 'border-accent font-semibold text-text'
+                  : 'border-transparent text-text-faint hover:text-text-muted',
               )}
             >
               {h.text}

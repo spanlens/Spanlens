@@ -62,13 +62,13 @@ export function DemoExportButton<T>({ rows, columns, base, className }: DemoExpo
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full mt-1 z-50 bg-bg border border-border rounded-[6px] shadow-lg py-1 min-w-[90px]">
+        <div className="absolute right-0 top-full mt-1 z-50 bg-bg-elev border border-border rounded-chip shadow-card py-1 min-w-[90px]">
           {(['csv', 'json'] as const).map((fmt) => (
             <button
               key={fmt}
               type="button"
               onClick={() => handleExport(fmt)}
-              className="w-full text-left px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.04em] text-text-muted hover:text-text hover:bg-bg-elev transition-colors"
+              className="w-full text-left px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.04em] text-text-muted hover:text-text hover:bg-bg-muted transition-colors"
             >
               {fmt}
             </button>

@@ -5,13 +5,8 @@
  * <figure> with caption — drop into a docs page wherever conceptual
  * visualization helps.
  *
- * Color tokens mirror the docs prose theme:
- *   accent           : #c2410c (orange-700)  — primary edges + labels
- *   accent-bg        : #fef2e8                — accent highlight blocks
- *   border           : #e7e2da                — neutral box outlines
- *   text             : #1c1a17                — body text
- *   text-muted       : #6b6056                — secondary labels
- *   text-faint       : #9a9189                — captions
+ * Colors come from the design tokens as `var()` references (see COLORS below),
+ * so the diagrams repaint with the theme instead of staying light-mode-only.
  */
 
 interface FigureProps {
@@ -32,14 +27,19 @@ function Figure({ caption, children }: FigureProps) {
   )
 }
 
+/**
+ * SVG paint accepts custom properties, so handing these straight to `fill` and
+ * `stroke` keeps the diagrams on the token palette and theme-aware. Keep every
+ * entry a `var()` reference.
+ */
 const COLORS = {
-  accent: '#c2410c',
-  accentBg: '#fef2e8',
-  border: '#d6cfc4',
-  borderStrong: '#a89c8d',
-  text: '#1c1a17',
-  textMuted: '#6b6056',
-  bg: '#fbfaf7',
+  accent: 'var(--accent)',
+  accentBg: 'var(--accent-bg)',
+  border: 'var(--border)',
+  borderStrong: 'var(--border-strong)',
+  text: 'var(--text)',
+  textMuted: 'var(--text-muted)',
+  bg: 'var(--bg-elev)',
 }
 
 function Box({

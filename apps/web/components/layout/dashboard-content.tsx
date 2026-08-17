@@ -15,8 +15,10 @@ export function DashboardContent({ children }: { children: React.ReactNode }) {
   return (
     <div
       className={cn(
-        'px-4 py-4 md:py-7 md:pr-8',
-        isCollapsed ? 'md:pl-16' : 'md:pl-8',
+        // 20px above the first row, 28px on the sides and below, per the
+        // Figma content frame.
+        'px-4 py-4 md:pt-5 md:pb-7 md:pr-7',
+        isCollapsed ? 'md:pl-16' : 'md:pl-7',
       )}
     >
       {children}

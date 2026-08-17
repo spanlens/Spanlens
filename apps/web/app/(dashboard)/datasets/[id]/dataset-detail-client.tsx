@@ -2,9 +2,23 @@
 
 import { useRef, useState } from 'react'
 import Link from 'next/link'
-import { Plus, Trash2, ExternalLink, AlertTriangle, Upload } from 'lucide-react'
+import { Plus, Trash2, ExternalLink, Upload } from 'lucide-react'
 import { Topbar } from '@/components/layout/topbar'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { cn, formatDate } from '@/lib/utils'
+import {
+  Board,
+  TOPBAR_BLEED,
+  SummaryStrip,
+  SummaryCell,
+  TableCard,
+  TableHead,
+  Th,
+  ROW,
+  Well,
+  tabClass,
+} from '../../_board/surfaces'
+import { StatusPill } from '@/components/ui/primitives'
 import {
   useDataset,
   useAddDatasetItem,
@@ -12,6 +26,15 @@ import {
   useBulkAddDatasetItems,
   type DatasetItem,
 } from '@/lib/queries/use-datasets'
+
+/*
+ * Column template for the items table on `D22 · Dataset detail`. Header band
+ * and rows both read it so the two stay locked; Tailwind's JIT is unreliable
+ * with arbitrary multi-column `grid-cols-[…]`, so it is applied as a style.
+ */
+const ITEM_GRID: React.CSSProperties = {
+  gridTemplateColumns: '52px minmax(180px,1.3fr) minmax(180px,1.3fr) 104px 52px',
+}
 
 // ── File parser ───────────────────────────────────────────────────────────────
 
@@ -137,66 +160,54 @@ function AddItemDialog({
           <DialogTitle>Add dataset item</DialogTitle>
         </DialogHeader>
         <form onSubmit={(e) => void handleSubmit(e)} className="space-y-3 mt-3">
-          <div className="flex gap-1 p-0.5 border border-border rounded-[5px] bg-bg-elev font-mono text-[11px] w-fit">
-            <button
-              type="button"
-              onClick={() => setMode('messages')}
-              className={`px-3 py-1 rounded-[3px] ${mode === 'messages' ? 'bg-text text-bg' : 'text-text-muted'}`}
-            >
+          {/* Input-shape toggle — same pill tabs the boards use, so the dialog
+              reads as part of the same system as the page behind it. */}
+          <div className="flex items-center gap-1">
+            <button type="button" onClick={() => setMode('messages')} aria-pressed={mode === 'messages'} className={tabClass(mode === 'messages')}>
               User message
             </button>
-            <button
-              type="button"
-              onClick={() => setMode('variables')}
-              className={`px-3 py-1 rounded-[3px] ${mode === 'variables' ? 'bg-text text-bg' : 'text-text-muted'}`}
-            >
+            <button type="button" onClick={() => setMode('variables')} aria-pressed={mode === 'variables'} className={tabClass(mode === 'variables')}>
               Variables JSON
             </button>
           </div>
 
           {mode === 'messages' ? (
             <div>
-              <label className="block font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint mb-1">
-                User message
-              </label>
+              <label className="micro-label mb-1 block">User message</label>
               <textarea
                 value={userMessage}
                 onChange={(e) => setUserMessage(e.target.value)}
                 rows={3}
                 placeholder="Enter the user's input…"
                 required
-                className="w-full px-2 py-2 rounded-[5px] border border-border bg-bg font-mono text-[12px] text-text resize-none"
+                className="w-full resize-none rounded-md border border-border bg-bg-elev px-3 py-2 font-mono text-[12px] text-text placeholder:text-text-faint focus:border-border-strong focus:outline-none"
               />
             </div>
           ) : (
             <div>
-              <label className="block font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint mb-1">
-                Variables (JSON object)
-              </label>
+              <label className="micro-label mb-1 block">Variables (JSON object)</label>
               <textarea
                 value={variablesJson}
                 onChange={(e) => setVariablesJson(e.target.value)}
                 rows={5}
-                className="w-full px-2 py-2 rounded-[5px] border border-border bg-bg font-mono text-[12px] text-text resize-none"
+                className="w-full resize-none rounded-md border border-border bg-bg-elev px-3 py-2 font-mono text-[12px] text-text focus:border-border-strong focus:outline-none"
               />
-              <p className="font-mono text-[10px] text-text-faint mt-1">
+              <p className="mt-1 font-mono text-[10.5px] text-text-faint">
                 For prompts with {`{{var}}`} placeholders.
               </p>
             </div>
           )}
 
           <div>
-            <label className="block font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint mb-1">
-              Expected output (optional)
-            </label>
+            <label className="micro-label mb-1 block">Expected output (optional)</label>
             <textarea
               value={expectedOutput}
               onChange={(e) => setExpectedOutput(e.target.value)}
               rows={3}
               placeholder="The response the prompt should produce…"
-              className="w-full px-2 py-2 rounded-[5px] border border-border bg-bg font-mono text-[12px] text-text resize-none"
+              className="w-full resize-none rounded-md border border-border bg-bg-elev px-3 py-2 font-mono text-[12px] text-text placeholder:text-text-faint focus:border-border-strong focus:outline-none"
             />
-            <p className="font-mono text-[10px] text-text-faint mt-1">
+            <p className="mt-1 font-mono text-[10.5px] text-text-faint">
               Required for Evals dataset source, judge scores this text against your criterion.
             </p>
           </div>
@@ -207,14 +218,14 @@ function AddItemDialog({
             <button
               type="button"
               onClick={onClose}
-              className="font-mono text-[11.5px] px-3 py-[6px] border border-border rounded-[5px] text-text-muted hover:text-text"
+              className="rounded-full border border-border px-3.5 py-2 text-[12.5px] font-medium text-text-muted transition-colors hover:bg-bg-muted hover:text-text"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={add.isPending}
-              className="font-mono text-[11.5px] px-3 py-[6px] rounded-[5px] bg-text text-bg font-medium hover:opacity-90 disabled:opacity-40"
+              className="rounded-full bg-accent px-3.5 py-2 text-[12.5px] font-semibold text-accent-fg transition-colors hover:bg-accent-strong disabled:opacity-40"
             >
               {add.isPending ? 'Adding…' : 'Add'}
             </button>
@@ -227,7 +238,7 @@ function AddItemDialog({
 
 // ── Item row ─────────────────────────────────────────────────────────────────
 
-function ItemRow({ item, datasetId }: { item: DatasetItem; datasetId: string }) {
+function ItemRow({ item, datasetId, index }: { item: DatasetItem; datasetId: string; index: number }) {
   const del = useDeleteDatasetItem()
   const [expanded, setExpanded] = useState(false)
 
@@ -242,13 +253,14 @@ function ItemRow({ item, datasetId }: { item: DatasetItem; datasetId: string }) 
   const hasExpected = !!item.expected_output
 
   return (
-    <div className="border-b border-border last:border-0">
+    <div className="border-b border-border last:border-b-0">
       {/* Outer container is a div (not <button>) so the inner Delete <button>
           and source-request <Link> don't violate HTML's "no nested buttons"
           rule. Keyboard activation preserved via role + Enter/Space. */}
       <div
         role="button"
         tabIndex={0}
+        aria-expanded={expanded}
         onClick={() => setExpanded((v) => !v)}
         onKeyDown={(e) => {
           if (e.key === 'Enter' || e.key === ' ') {
@@ -256,28 +268,36 @@ function ItemRow({ item, datasetId }: { item: DatasetItem; datasetId: string }) 
             setExpanded((v) => !v)
           }
         }}
-        className="w-full flex items-start gap-3 px-[16px] py-[11px] hover:bg-bg-muted transition-colors text-left cursor-pointer"
+        className={cn(
+          ROW,
+          'grid cursor-pointer items-center gap-3 border-b-0 text-left transition-colors hover:bg-bg-muted',
+        )}
+        style={ITEM_GRID}
       >
-        <div className="flex-1 min-w-0">
-          <p className="font-mono text-[12px] text-text truncate">{inputPreview}</p>
-          {item.expected_output && (
-            <p className="font-mono text-[11px] text-text-faint truncate mt-0.5">
-              → {item.expected_output}
-            </p>
-          )}
-        </div>
-        <div className="flex items-center gap-2 shrink-0">
-          {!hasExpected && (
-            <span className="font-mono text-[10px] text-warn flex items-center gap-1" title="No expected output, won't be evaluated">
-              <AlertTriangle className="h-3 w-3" />
-              no output
+        <span className="font-mono text-[12px] tabular-nums text-text-muted">
+          {String(index + 1).padStart(3, '0')}
+        </span>
+        <span className="truncate font-mono text-[12px] text-text">{inputPreview}</span>
+        <span className="truncate font-mono text-[12px] text-text-muted">
+          {item.expected_output ?? ''}
+        </span>
+        <span>
+          {/* The board's RESULT lozenge slot. An item with no expected output
+              is skipped by the judge, so that is the state worth flagging. */}
+          {hasExpected ? (
+            <StatusPill variant="good">scorable</StatusPill>
+          ) : (
+            <span title="No expected output, won't be evaluated">
+              <StatusPill variant="warn">no output</StatusPill>
             </span>
           )}
+        </span>
+        <span className="flex items-center justify-end gap-1.5">
           {item.source_request_id && (
             <Link
               href={`/requests/${item.source_request_id}`}
               onClick={(e) => e.stopPropagation()}
-              className="text-text-faint hover:text-text"
+              className="text-text-faint transition-colors hover:text-text"
               aria-label="View source request"
             >
               <ExternalLink className="h-3.5 w-3.5" />
@@ -286,25 +306,31 @@ function ItemRow({ item, datasetId }: { item: DatasetItem; datasetId: string }) 
           <button
             type="button"
             onClick={handleDelete}
-            className="text-text-faint hover:text-bad transition-colors"
+            className="p-1 text-text-faint transition-colors hover:text-bad"
             aria-label="Delete item"
           >
             <Trash2 className="h-3.5 w-3.5" />
           </button>
-        </div>
+        </span>
       </div>
       {expanded && (
-        <div className="bg-bg-muted/50 px-[16px] py-[10px] border-t border-border space-y-2 font-mono text-[11.5px]">
+        <div className="space-y-2 border-t border-border bg-bg-muted px-[18px] py-3">
           <div>
-            <p className="text-[10px] uppercase tracking-[0.05em] text-text-faint mb-1">Input</p>
-            <pre className="text-text-muted whitespace-pre-wrap break-all">
-              {JSON.stringify(item.input, null, 2)}
-            </pre>
+            <p className="micro-label mb-1">Input</p>
+            <Well>
+              <pre className="whitespace-pre-wrap break-all font-mono text-[11.5px] text-text-muted">
+                {JSON.stringify(item.input, null, 2)}
+              </pre>
+            </Well>
           </div>
           {item.expected_output && (
             <div>
-              <p className="text-[10px] uppercase tracking-[0.05em] text-text-faint mb-1">Expected output</p>
-              <pre className="text-text-muted whitespace-pre-wrap">{item.expected_output}</pre>
+              <p className="micro-label mb-1">Expected output</p>
+              <Well>
+                <pre className="whitespace-pre-wrap font-mono text-[11.5px] text-text-muted">
+                  {item.expected_output}
+                </pre>
+              </Well>
             </div>
           )}
         </div>
@@ -347,26 +373,29 @@ export function DatasetDetailClient({ datasetId }: { datasetId: string }) {
 
   if (ds.isLoading) {
     return (
-      <div className="-mx-4 -my-4 md:-mx-8 md:-my-7 flex flex-col min-h-screen">
-        <div className="sticky top-0 z-20 bg-bg">
+      <div>
+        <div className={TOPBAR_BLEED}>
           <Topbar crumbs={[{ label: 'Datasets', href: '/datasets' }, { label: '...' }]} />
         </div>
-        <div className="p-[22px] space-y-2">
-          <div className="h-12 bg-bg-elev rounded animate-pulse" />
-        </div>
+        <Board>
+          <div className="h-[74px] animate-pulse rounded-card bg-bg-chip" />
+          <div className="h-64 animate-pulse rounded-card bg-bg-chip" />
+        </Board>
       </div>
     )
   }
 
   if (!ds.data) {
     return (
-      <div className="-mx-4 -my-4 md:-mx-8 md:-my-7 flex flex-col min-h-screen">
-        <div className="sticky top-0 z-20 bg-bg">
+      <div>
+        <div className={TOPBAR_BLEED}>
           <Topbar crumbs={[{ label: 'Datasets', href: '/datasets' }, { label: 'Not found' }]} />
         </div>
-        <div className="flex items-center justify-center h-64 text-text-muted font-mono text-[13px]">
-          Dataset not found.
-        </div>
+        <Board>
+          <div className="card-surface rounded-card flex h-64 items-center justify-center text-[13px] text-text-muted">
+            Dataset not found.
+          </div>
+        </Board>
       </div>
     )
   }
@@ -376,8 +405,8 @@ export function DatasetDetailClient({ datasetId }: { datasetId: string }) {
   const itemsWithOutput = items.filter((i) => !!i.expected_output).length
 
   return (
-    <div className="-mx-4 -my-4 md:-mx-8 md:-my-7 flex flex-col min-h-screen">
-      <div className="sticky top-0 z-20 bg-bg">
+    <div>
+      <div className={TOPBAR_BLEED}>
         <Topbar
           crumbs={[
             { label: 'Datasets', href: '/datasets' },
@@ -409,7 +438,7 @@ export function DatasetDetailClient({ datasetId }: { datasetId: string }) {
                 disabled={bulkAdd.isPending}
                 title={bulkAdd.isPending ? 'Importing…' : 'Import items'}
                 aria-label={bulkAdd.isPending ? 'Importing items' : 'Import items'}
-                className="font-mono text-[11.5px] px-2 sm:px-3 py-[6px] rounded-[5px] border border-border text-text-muted hover:text-text flex items-center gap-1.5 disabled:opacity-40 whitespace-nowrap shrink-0"
+                className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-border px-2.5 py-2 text-[12.5px] font-medium text-text-muted transition-colors hover:bg-bg-muted hover:text-text disabled:opacity-40 sm:px-3.5"
               >
                 <Upload className="h-3.5 w-3.5 shrink-0" />
                 <span className="hidden sm:inline">
@@ -421,7 +450,7 @@ export function DatasetDetailClient({ datasetId }: { datasetId: string }) {
                 onClick={() => setAddOpen(true)}
                 title="Add item"
                 aria-label="Add item"
-                className="font-mono text-[11.5px] px-2 sm:px-3 py-[6px] rounded-[5px] bg-text text-bg font-medium hover:opacity-90 flex items-center gap-1.5 whitespace-nowrap shrink-0"
+                className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full bg-accent px-2.5 py-2 text-[12.5px] font-semibold text-accent-fg transition-colors hover:bg-accent-strong sm:px-3.5"
               >
                 <Plus className="h-3.5 w-3.5 shrink-0" />
                 <span className="hidden sm:inline">Add item</span>
@@ -431,39 +460,74 @@ export function DatasetDetailClient({ datasetId }: { datasetId: string }) {
         />
       </div>
 
-      <div>
-        {/* Header info — dataset.name is the page's h1 now. */}
-        <div className="px-[22px] py-[14px] border-b border-border space-y-1">
-          <h1 className="font-mono text-[15px] text-text font-medium break-all">{dataset.name}</h1>
-          {dataset.description && (
-            <p className="font-mono text-[12px] text-text-muted">{dataset.description}</p>
-          )}
-          <div className="flex items-center gap-4 font-mono text-[11px] text-text-faint pt-1">
-            <span className="tabular-nums">{items.length.toLocaleString()} items</span>
-            <span className="tabular-nums">{itemsWithOutput.toLocaleString()} with expected output</span>
+      {/* The breadcrumb already carries the dataset name at the top of the
+          board, so the visible header the old layout drew would repeat it.
+          The h1 stays for the document outline and screen readers. */}
+      <h1 className="sr-only">{dataset.name}</h1>
+
+      <Board>
+        {/* Summary strip — one card, cells divided by hairlines. Only figures
+            the dataset payload already carries; producer, judged score and
+            linked-eval counts are not on this endpoint. */}
+        {/* `flex-1` spreads the cells across the card the way the frame
+            distributes its six, so the hairlines land on even intervals
+            instead of bunching at the left edge. */}
+        <SummaryStrip>
+          <SummaryCell label="Items" className="flex-1 basis-[140px]">
+            {items.length.toLocaleString('en-US')}
+          </SummaryCell>
+          <SummaryCell label="With expected output" className="flex-1 basis-[140px]">
+            {itemsWithOutput.toLocaleString('en-US')}
+          </SummaryCell>
+          <SummaryCell label="Created" className="flex-1 basis-[140px]">
+            {formatDate(dataset.created_at)}
+          </SummaryCell>
+        </SummaryStrip>
+
+        {dataset.description && (
+          <div className="card-surface rounded-card px-5 py-3.5 text-[12.5px] leading-[1.6] text-text-muted">
+            {dataset.description}
           </div>
-        </div>
+        )}
 
         {items.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-64 gap-3 text-text-muted">
-            <p className="font-mono text-[13px]">Empty dataset.</p>
+          <div className="card-surface rounded-card flex flex-col items-center justify-center gap-3 px-6 py-16 text-text-muted">
+            <p className="text-[13.5px] font-semibold leading-[1.45] text-text">Empty dataset.</p>
             <button
               type="button"
               onClick={() => setAddOpen(true)}
-              className="font-mono text-[11.5px] px-3 py-[6px] rounded-[5px] bg-text text-bg font-medium hover:opacity-90 flex items-center gap-1.5"
+              className="inline-flex items-center gap-1.5 rounded-full bg-accent px-3.5 py-2 text-[12.5px] font-semibold text-accent-fg transition-colors hover:bg-accent-strong"
             >
               <Plus className="h-3.5 w-3.5" />
               Add first item
             </button>
-            <p className="font-mono text-[10.5px] text-text-faint text-center max-w-md">
-              You can also bulk import from the Requests page (multi-select → &quot;Add to dataset&quot;).
-              Coming next round.
+            <p className="max-w-md text-center text-[12.5px] leading-[1.6] text-text-muted">
+              Import a .json, .jsonl or .csv file with the button above, or add items one at a time.
             </p>
           </div>
         ) : (
-          items.map((item) => <ItemRow key={item.id} item={item} datasetId={datasetId} />)
+          /* The row grid is wider than a narrow viewport, so the card scrolls
+             its own table sideways rather than the page. */
+          <TableCard>
+            <div className="overflow-x-auto">
+              <div className="min-w-[720px]">
+                <TableHead>
+                  <div className="grid items-center gap-3" style={ITEM_GRID}>
+                    <Th>#</Th>
+                    <Th>Input</Th>
+                    <Th>Expected</Th>
+                    <Th>Result</Th>
+                    <Th><span className="sr-only">Actions</span></Th>
+                  </div>
+                </TableHead>
+                {items.map((item, i) => (
+                  <ItemRow key={item.id} item={item} datasetId={datasetId} index={i} />
+                ))}
+              </div>
+            </div>
+          </TableCard>
         )}
-      </div>
+      </Board>
 
       {addOpen && (
         <AddItemDialog datasetId={datasetId} onClose={() => setAddOpen(false)} />

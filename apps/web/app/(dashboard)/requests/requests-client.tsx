@@ -94,10 +94,10 @@ function latencyClass(latencyMs: number, isError: boolean): string {
 // Status code pill — same shape across 2xx/4xx/5xx so column width stays
 // stable, color tells the story.
 function statusPillClass(code: number): string {
-  if (code >= 500) return 'border-bad/30 bg-bad/10 text-bad'
-  if (code >= 400) return 'border-warn/30 bg-warn/10 text-warn'
-  if (code >= 200 && code < 300) return 'border-good/30 bg-good/10 text-good'
-  return 'border-border bg-bg text-text-muted'
+  if (code >= 500) return 'bg-bad-bg text-bad'
+  if (code >= 400) return 'bg-warn-bg text-warn'
+  if (code >= 200 && code < 300) return 'bg-good-bg text-good'
+  return 'bg-secondary text-text-muted'
 }
 
 // Accessible label for the status pill — screen readers get the error class
@@ -195,26 +195,24 @@ function StatStrip({ timeRange, fromIso }: StatStripProps) {
   ]
 
   return (
-    <div className="overflow-x-auto shrink-0 border-b border-border">
-      <div className="grid grid-cols-5 min-w-[480px]">
-        {stats.map((s, i) => (
-          <div key={i} className={cn('px-[18px] py-[14px]', i < 4 && 'border-r border-border')}>
-            <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-2">{s.label}</div>
-            <div
-              className={cn('text-[24px] font-medium tracking-[-0.6px] leading-none mb-1.5', s.warn ? 'text-accent' : 'text-text')}
-            >
+    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+      {stats.map((s, i) => (
+        <div key={i} className="card-surface rounded-card px-5 py-[18px]">
+          <div className="font-mono text-[10.5px] uppercase tracking-[0.1em] text-text-faint mb-2">{s.label}</div>
+          <div
+            className={cn('font-display text-[28px] track-kpi leading-[1.05] mb-1.5', s.warn ? 'text-accent' : 'text-text')}
+          >
               {/* Render an em-dash until the client hydrates so SSR and the
                   first client paint produce identical text — eliminates the
                   prior `suppressHydrationWarning`. */}
-              {mounted ? s.value : '—'}
-            </div>
-            <InlineSpark
-              values={mounted ? s.spark : []}
-              stroke={s.warn ? 'var(--accent)' : s.good ? 'var(--good)' : 'var(--border-strong)'}
-            />
+            {mounted ? s.value : '—'}
           </div>
-        ))}
-      </div>
+          <InlineSpark
+            values={mounted ? s.spark : []}
+            stroke={s.warn ? 'var(--accent)' : s.good ? 'var(--good)' : 'var(--border-strong)'}
+          />
+        </div>
+      ))}
     </div>
   )
 }
@@ -347,11 +345,11 @@ function TrafficBars({ timeRange, fromIso }: TrafficBarsProps) {
       : new Date(s).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 
   return (
-    <div className="px-[22px] py-[14px] border-b border-border shrink-0">
-      <div className="flex items-center justify-between mb-3">
+    <div className="card-surface rounded-card px-5 py-[18px] shrink-0">
+      <div className="flex items-center justify-between mb-[14px]">
         <div className="flex items-center gap-3 flex-wrap">
-          <h2 className="text-[13.5px] font-medium">Traffic</h2>
-          <div className="flex gap-3 font-mono text-[10.5px] text-text-muted tracking-[0.03em]">
+          <h2 className="text-[13.5px] font-semibold leading-[1.4] text-text">Traffic</h2>
+          <div className="flex gap-3 font-mono text-[11px] text-text-faint">
             <span className="inline-flex items-center gap-1.5">
               <span className="w-1.5 h-1.5 rounded-[1px] bg-border-strong inline-block" /> OK
             </span>
@@ -375,7 +373,7 @@ function TrafficBars({ timeRange, fromIso }: TrafficBarsProps) {
             </button>
           </div>
         </div>
-        <div className="font-mono text-[10.5px] text-text-faint tracking-[0.03em]">{trailingLabel}</div>
+        <div className="font-mono text-[11px] text-text-faint">{trailingLabel}</div>
       </div>
 
       <div
@@ -459,7 +457,7 @@ function TrafficBars({ timeRange, fromIso }: TrafficBarsProps) {
 
       {/* Tooltip */}
       {hoverIdx != null && hoverBar && hoverDate && (
-        <div className="mt-3 rounded-[5px] border border-border bg-bg-elev px-3 py-2 font-mono text-[11px]">
+        <div className="mt-3 rounded-md border border-border bg-bg-sunk px-3 py-2 font-mono text-[11px]">
           <div className="flex items-baseline justify-between gap-3 mb-1.5">
             <span className="text-text">{fmtTooltipDate(hoverDate)}</span>
             <span className="text-text-faint text-[10.5px]">
@@ -491,7 +489,7 @@ function TrafficBars({ timeRange, fromIso }: TrafficBarsProps) {
           {hoverBreakdown && (hoverBreakdown.topStatus.length > 0 || hoverBreakdown.topModels.length > 0) && (
             <div className="mt-2 pt-2 border-t border-border grid grid-cols-2 gap-x-6 gap-y-0.5 text-[10.5px]">
               <div>
-                <div className="text-text-faint uppercase tracking-[0.05em] text-[9.5px] mb-1">Top status</div>
+                <div className="text-text-faint uppercase tracking-[0.1em] text-[9.5px] mb-1">Top status</div>
                 {hoverBreakdown.topStatus.slice(0, 3).map((s) => (
                   <div key={s.value} className="flex justify-between text-text-muted">
                     <span className={cn(
@@ -503,7 +501,7 @@ function TrafficBars({ timeRange, fromIso }: TrafficBarsProps) {
                 ))}
               </div>
               <div>
-                <div className="text-text-faint uppercase tracking-[0.05em] text-[9.5px] mb-1">Top models</div>
+                <div className="text-text-faint uppercase tracking-[0.1em] text-[9.5px] mb-1">Top models</div>
                 {hoverBreakdown.topModels.slice(0, 3).map((m) => (
                   <div key={m.value} className="flex justify-between text-text-muted gap-2">
                     <span className="truncate">{m.value.split(' / ').pop()}</span>
@@ -543,7 +541,7 @@ function CopyButton({ getText }: { getText: () => string }) {
         setCopied(true)
         setTimeout(() => setCopied(false), 1500)
       }}
-      className="font-mono text-[10px] px-1.5 py-0.5 border border-border rounded text-text-faint hover:text-text hover:border-border-strong transition-colors shrink-0"
+      className="font-mono text-[10px] px-2 py-0.5 border border-border rounded-full text-text-faint hover:text-text hover:border-border-strong transition-colors shrink-0"
     >
       {copied ? 'Copied' : 'Copy'}
     </button>
@@ -625,9 +623,9 @@ function RequestDrawer({ requestId, visible, onClose, onPrev, onNext, hasPrev, h
       'transition-[width] duration-200 ease-out',
     )}>
       {/* Header */}
-      <div className="px-5 py-4 border-b border-border">
+      <div className="px-6 pt-[18px] pb-4 border-b border-border">
         <div className="flex items-center gap-2 mb-2.5">
-          <span className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint">Request</span>
+          <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-faint">Request</span>
           {position > 0 && (
             <span className="font-mono text-[10px] text-text-faint">{position} / {total}</span>
           )}
@@ -635,7 +633,7 @@ function RequestDrawer({ requestId, visible, onClose, onPrev, onNext, hasPrev, h
           {requestId && (
             <Link
               href={`/requests/${requestId}`}
-              className="font-mono text-[10px] px-1.5 py-0.5 border border-border rounded text-text-muted tracking-[0.04em] uppercase hover:border-border-strong transition-colors"
+              className="font-mono text-[10px] px-2 py-0.5 border border-border rounded-full text-text-muted tracking-[0.08em] uppercase hover:border-border-strong transition-colors"
             >
               Open →
             </Link>
@@ -646,7 +644,7 @@ function RequestDrawer({ requestId, visible, onClose, onPrev, onNext, hasPrev, h
             aria-pressed={maskPiiOn}
             title="Mask emails, phone numbers, card numbers, and API keys in the displayed body"
             className={cn(
-              'font-mono text-[10px] px-1.5 py-0.5 border rounded tracking-[0.04em] uppercase transition-colors',
+              'font-mono text-[10px] px-2 py-0.5 border rounded-full tracking-[0.08em] uppercase transition-colors',
               maskPiiOn
                 ? 'border-accent text-accent bg-accent-bg'
                 : 'border-border text-text-muted hover:border-border-strong',
@@ -662,14 +660,14 @@ function RequestDrawer({ requestId, visible, onClose, onPrev, onNext, hasPrev, h
               key={label}
               onClick={onClick}
               disabled={disabled}
-              className="font-mono text-[10px] px-1.5 py-0.5 border border-border rounded text-text-muted tracking-[0.04em] uppercase disabled:opacity-30 hover:border-border-strong transition-colors"
+              className="font-mono text-[10px] px-2 py-0.5 border border-border rounded-full text-text-muted tracking-[0.08em] uppercase disabled:opacity-30 hover:border-border-strong transition-colors"
             >
               {label}
             </button>
           ))}
           <button
             onClick={onClose}
-            className="font-mono text-[10px] px-1.5 py-0.5 border border-border rounded text-text-muted tracking-[0.04em] uppercase hover:border-border-strong transition-colors"
+            className="font-mono text-[10px] px-2 py-0.5 border border-border rounded-full text-text-muted tracking-[0.08em] uppercase hover:border-border-strong transition-colors"
           >
             Close
           </button>
@@ -683,13 +681,13 @@ function RequestDrawer({ requestId, visible, onClose, onPrev, onNext, hasPrev, h
           <p className="font-mono text-[12px] text-bad">Failed to load request.</p>
         ) : req ? (
           <>
-            <div className="font-mono text-[13px] text-text mb-1 truncate">{req.id}</div>
+            <div className="font-mono text-[14px] text-text mb-1 truncate">{req.id}</div>
             <div className="flex items-center gap-2 text-[12px] text-text-muted">
               <span>{formatDateTime(req.created_at)}</span>
               {req.status_code >= 400 && (
                 <>
                   <span className="text-text-faint">·</span>
-                  <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-accent-bg text-accent border border-accent-border uppercase tracking-[0.04em]">
+                  <span className="text-[11px] font-semibold px-2 py-[3px] rounded-full bg-bad-bg text-bad">
                     Error {req.status_code}
                   </span>
                 </>
@@ -701,7 +699,7 @@ function RequestDrawer({ requestId, visible, onClose, onPrev, onNext, hasPrev, h
 
       {/* KV grid */}
       {req && (
-        <div className="px-5 py-3.5 border-b border-border grid grid-cols-2 gap-x-3.5 gap-y-3">
+        <div className="px-6 py-3.5 border-b border-border grid grid-cols-2 gap-x-3.5 gap-y-3">
           {([
             ['Model', req.model],
             ['Key', req.provider_key_name ?? req.provider],
@@ -710,7 +708,7 @@ function RequestDrawer({ requestId, visible, onClose, onPrev, onNext, hasPrev, h
             ['Completion', req.completion_tokens.toLocaleString()],
           ] as [string, string][]).map(([k, v]) => (
             <div key={k}>
-              <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-0.5">{k}</div>
+              <div className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-faint mb-0.5">{k}</div>
               <div className="font-mono text-[12.5px] text-text truncate">{v}</div>
             </div>
           ))}
@@ -718,7 +716,7 @@ function RequestDrawer({ requestId, visible, onClose, onPrev, onNext, hasPrev, h
           {/* User, clickable analytics + filter link */}
           {req.user_id && (
             <div>
-              <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-0.5">User</div>
+              <div className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-faint mb-0.5">User</div>
               <div className="flex items-baseline gap-2">
                 <Link
                   href={`/users/${encodeURIComponent(req.user_id)}`}
@@ -741,7 +739,7 @@ function RequestDrawer({ requestId, visible, onClose, onPrev, onNext, hasPrev, h
           {/* Session, clickable filter link */}
           {req.session_id && (
             <div>
-              <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-0.5">Session</div>
+              <div className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-faint mb-0.5">Session</div>
               <Link
                 href={`/requests?sessionId=${encodeURIComponent(req.session_id)}`}
                 className="font-mono text-[12.5px] text-text hover:underline truncate block"
@@ -754,7 +752,7 @@ function RequestDrawer({ requestId, visible, onClose, onPrev, onNext, hasPrev, h
 
           {/* Trace, link to trace page + copy full ID */}
           <div>
-            <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-0.5">Trace</div>
+            <div className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-faint mb-0.5">Trace</div>
             {req.trace_id ? (
               <div className="flex items-center gap-1 min-w-0">
                 <Link
@@ -772,7 +770,7 @@ function RequestDrawer({ requestId, visible, onClose, onPrev, onNext, hasPrev, h
 
           {/* Span, copy full ID */}
           <div>
-            <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-0.5">Span</div>
+            <div className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-faint mb-0.5">Span</div>
             {req.span_id ? (
               <div className="flex items-center gap-1 min-w-0">
                 <span className="font-mono text-[12.5px] text-text truncate min-w-0">{req.span_id.slice(0, 12)}…</span>
@@ -787,7 +785,7 @@ function RequestDrawer({ requestId, visible, onClose, onPrev, onNext, hasPrev, h
 
       {/* Metrics row */}
       {req && (
-        <div className="px-5 py-3.5 border-b border-border grid grid-cols-3">
+        <div className="px-6 py-4 border-b border-border grid grid-cols-3">
           {[
             { label: 'Latency', value: `${req.latency_ms}ms`, sub: '', warn: req.latency_ms > 2000 },
             { label: 'Cost', value: fmtCost(req.cost_usd), sub: '' },
@@ -800,8 +798,8 @@ function RequestDrawer({ requestId, visible, onClose, onPrev, onNext, hasPrev, h
             },
           ].map((s, i) => (
             <div key={s.label} className={cn('pr-3 pl-3', i === 0 && 'pl-0', i === 2 && 'pr-0', i < 2 && 'border-r border-border')}>
-              <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-1.5">{s.label}</div>
-              <div className={cn('text-[20px] font-medium tracking-[-0.3px] leading-none', s.warn ? 'text-accent' : 'text-text')}>
+              <div className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-faint mb-1.5">{s.label}</div>
+              <div className={cn('font-display text-[22px] track-kpi leading-[1.05]', s.warn ? 'text-accent' : 'text-text')}>
                 {s.value}
               </div>
               {s.sub && <div className="font-mono text-[10px] text-text-faint mt-1 tracking-[0.03em]">{s.sub}</div>}
@@ -814,14 +812,17 @@ function RequestDrawer({ requestId, visible, onClose, onPrev, onNext, hasPrev, h
       {req && (() => {
         const tabs: DrawerTab[] = ['request', 'response', 'trace', 'raw', ...(req.error_message ? ['error' as DrawerTab] : [])]
         return (
-          <div className="flex px-5 border-b border-border gap-5 shrink-0">
+          <div className="flex px-6 pt-3 gap-1 shrink-0 flex-wrap">
             {tabs.map((t) => (
               <button
                 key={t}
                 onClick={() => setTab(t)}
+                aria-pressed={tab === t}
                 className={cn(
-                  'py-2.5 font-mono text-[11px] uppercase tracking-[0.04em] border-b-[1.5px] -mb-px transition-colors',
-                  tab === t ? 'text-text border-accent' : 'text-text-muted border-transparent hover:text-text',
+                  'px-3 py-[7px] rounded-full text-[12px] capitalize transition-colors',
+                  tab === t
+                    ? 'bg-text text-bg font-semibold'
+                    : 'text-text-faint font-medium hover:text-text',
                   t === 'error' && tab !== 'error' && 'text-bad',
                 )}
               >
@@ -833,7 +834,7 @@ function RequestDrawer({ requestId, visible, onClose, onPrev, onNext, hasPrev, h
       })()}
 
       {/* Tab content */}
-      <div className="px-5 py-4 flex-1 overflow-auto">
+      <div className="px-6 py-4 flex-1 overflow-auto">
         {isLoading ? (
           <div className="space-y-3">
             <Skeleton className="h-3 w-12 mb-1" />
@@ -904,7 +905,7 @@ function TraceTab({ traceId }: { traceId: string | null }) {
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <div className="font-mono text-[10.5px] text-text-faint uppercase tracking-[0.05em]">
+        <div className="font-mono text-[10.5px] text-text-faint uppercase tracking-[0.1em]">
           Trace · {trace.span_count} span{trace.span_count === 1 ? '' : 's'}
         </div>
         <Link
@@ -914,11 +915,11 @@ function TraceTab({ traceId }: { traceId: string | null }) {
           Open full trace →
         </Link>
       </div>
-      <div className="rounded border border-border divide-y divide-border bg-bg-elev">
+      <div className="rounded-lg border border-border divide-y divide-border bg-bg-elev overflow-hidden">
         {trace.spans.slice(0, 8).map((s) => (
           <div key={s.id} className="px-3 py-2 flex items-center gap-3">
             <span className={cn(
-              'font-mono text-[9px] px-1.5 py-0.5 rounded border uppercase tracking-[0.04em] shrink-0',
+              'font-mono text-[9px] px-2 py-0.5 rounded-full border uppercase tracking-[0.08em] shrink-0',
               s.span_type === 'llm' ? 'text-accent border-accent-border bg-accent-bg'
                 : s.span_type === 'tool' ? 'text-text border-border'
                 : 'text-text-muted border-border',
@@ -963,7 +964,7 @@ function RawTab({
     <div className="space-y-5">
       <section>
         <div className="flex items-center justify-between mb-2">
-          <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint">Request body</div>
+          <div className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-faint">Request body</div>
           {req.request_body != null && (
             <CopyButton getText={() => JSON.stringify(req.request_body, null, 2)} />
           )}
@@ -971,14 +972,14 @@ function RawTab({
         {req.request_body == null ? (
           <p className="font-mono text-[11.5px] text-text-faint">Not captured.</p>
         ) : (
-          <pre className="font-mono text-[11.5px] text-text leading-relaxed whitespace-pre-wrap break-all bg-bg-elev border border-border rounded p-3">
+          <pre className="font-mono text-[11.5px] text-text leading-relaxed whitespace-pre-wrap break-all bg-bg-sunk border border-border rounded-lg p-3.5">
             {JSON.stringify(displayRequestBody, null, 2)}
           </pre>
         )}
       </section>
       <section>
         <div className="flex items-center justify-between mb-2">
-          <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint">Response body</div>
+          <div className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-faint">Response body</div>
           {req.response_body != null && (
             <CopyButton getText={() => JSON.stringify(req.response_body, null, 2)} />
           )}
@@ -986,7 +987,7 @@ function RawTab({
         {req.response_body == null ? (
           <p className="font-mono text-[11.5px] text-text-faint">Not captured.</p>
         ) : (
-          <pre className="font-mono text-[11.5px] text-text leading-relaxed whitespace-pre-wrap break-all bg-bg-elev border border-border rounded p-3">
+          <pre className="font-mono text-[11.5px] text-text leading-relaxed whitespace-pre-wrap break-all bg-bg-sunk border border-border rounded-lg p-3.5">
             {JSON.stringify(displayResponseBody, null, 2)}
           </pre>
         )}
@@ -1040,24 +1041,25 @@ function MessageDisplay({ messages, body }: { messages: { role: string; content:
   if (messages) {
     return (
       <div className="space-y-3">
-        <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-2">Messages</div>
+        <div className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-faint mb-2">Messages</div>
         {systemText && (
-          <div>
-            <div className="font-mono text-[10px] text-text-faint tracking-[0.04em] mb-1">system</div>
-            <div className="px-3 py-2.5 rounded-[5px] border font-mono text-[11.5px] leading-relaxed whitespace-pre-wrap bg-bg-muted border-border text-text-faint">
+          <div className="rounded-lg border border-border bg-bg-sunk px-3.5 py-3">
+            <div className="font-mono text-[10.5px] text-text-faint mb-2">system</div>
+            <div className="text-[12.5px] leading-relaxed whitespace-pre-wrap text-text-muted">
               {systemText}
             </div>
           </div>
         )}
         {messages.map((m, i) => (
-          <div key={i}>
-            <div className="font-mono text-[10px] text-text-faint tracking-[0.04em] mb-1">{m.role}</div>
-            <div className={cn(
-              'px-3 py-2.5 rounded-[5px] border font-mono text-[11.5px] leading-relaxed whitespace-pre-wrap',
-              m.role === 'assistant'
-                ? 'bg-bg-elev border-border-strong text-text'
-                : 'bg-bg-muted border-border text-text-muted',
-            )}>
+          <div
+            key={i}
+            className={cn(
+              'rounded-lg border border-border px-3.5 py-3',
+              m.role === 'assistant' ? 'bg-accent-bg/40' : 'bg-bg-elev',
+            )}
+          >
+            <div className="font-mono text-[10.5px] text-text-faint mb-2">{m.role}</div>
+            <div className="text-[12.5px] leading-relaxed whitespace-pre-wrap text-text-muted">
               {extractMessageText(m.content)}
             </div>
           </div>
@@ -1147,7 +1149,7 @@ function RequestsTable({
 
   return (
     <div
-      className="overflow-auto flex-1 min-h-0 focus:outline-none"
+      className="overflow-auto flex-1 min-h-0 focus:outline-none rounded-t-card"
       tabIndex={0}
       onKeyDown={handleKey}
       // Visually hide the focus ring on the scroller — keyboard nav is
@@ -1158,7 +1160,7 @@ function RequestsTable({
       <div className="min-w-[700px]">
       {/* Header */}
       <div
-        className="grid px-[22px] py-2.5 font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint border-b border-border bg-bg-muted sticky top-0 z-10"
+        className="grid px-[18px] py-2.5 font-mono text-[10px] uppercase tracking-[0.1em] text-text-faint border-b border-border bg-bg-muted sticky top-0 z-10"
         style={{ gridTemplateColumns: cols }}
       >
         <span />
@@ -1175,7 +1177,7 @@ function RequestsTable({
 
       {isLoading
         ? Array.from({ length: 8 }).map((_, i) => (
-            <div key={i} className="grid px-[22px] py-2.5 border-b border-border" style={{ gridTemplateColumns: cols }}>
+            <div key={i} className="grid px-[18px] py-[11px] border-b border-border" style={{ gridTemplateColumns: cols }}>
               <span />
               <Skeleton className="h-4 w-32" />
               {!drawerOpen && <Skeleton className="h-4 w-20" />}
@@ -1225,14 +1227,14 @@ function RequestsTable({
                   key={req.id}
                   onClick={() => onSelect(req.id)}
                   className={cn(
-                    'grid px-[22px] py-2.5 border-b border-border font-mono text-[12.5px] items-center cursor-pointer transition-colors border-l-2',
+                    'grid px-[18px] py-[11px] border-b border-border font-mono text-[12px] items-center cursor-pointer transition-colors border-l-2',
                     isSelected
-                      ? 'bg-bg-muted border-l-accent'
+                      ? 'bg-accent-bg/60 border-l-accent'
                       : isErr
-                        ? 'bg-accent-bg border-l-transparent hover:bg-accent-bg/80'
+                        ? 'bg-accent-bg/40 border-l-transparent hover:bg-accent-bg/60'
                         : 'border-l-transparent hover:bg-bg-muted',
                   )}
-                  style={{ gridTemplateColumns: cols, paddingLeft: isSelected ? 20 : 22 }}
+                  style={{ gridTemplateColumns: cols, paddingLeft: isSelected ? 16 : 18 }}
                 >
                   <span className="flex items-center">
                     <span
@@ -1263,7 +1265,7 @@ function RequestsTable({
                   <span>
                     <span
                       className={cn(
-                        'inline-flex items-center justify-center gap-0.5 font-mono text-[10.5px] px-1.5 py-px rounded-[3px] border tabular-nums',
+                        'inline-flex items-center justify-center gap-0.5 text-[11px] font-semibold px-2 py-[3px] rounded-full tabular-nums',
                         statusPillClass(req.status_code),
                       )}
                       aria-label={statusPillAria(req.status_code)}
@@ -1487,10 +1489,11 @@ export function RequestsClient() {
   }
 
   return (
-    <div className="-mx-4 -my-4 md:-mx-8 md:-my-7 flex flex-col md:flex-row min-h-screen">
+    <div className="-mx-4 -my-4 md:-mx-7 md:-mt-5 md:-mb-7 flex flex-col md:flex-row min-h-screen">
       <div className="flex flex-col flex-1 min-w-0">
       {/* Sticky topbar — same pattern as the dashboard. Body scrolls
-          natively while the page header and crumb stay visible. */}
+          natively while the page header and crumb stay visible. The topbar is
+          the one full-bleed row; the content below takes the 28px gutters. */}
       <div className="sticky top-0 z-20 bg-bg flex items-center justify-between">
         <Topbar
           crumbs={[{ label: 'Requests' }]}
@@ -1501,26 +1504,27 @@ export function RequestsClient() {
         <h1 className="sr-only">Requests</h1>
       </div>
 
-      <StatStrip timeRange={timeRange} fromIso={fromIso} />
-      <TrafficBars timeRange={timeRange} fromIso={fromIso} />
+      {/* Content canvas — controls first, then the read-outs, then the table,
+          on the board's 16px rhythm. */}
+      <div className="flex flex-col gap-4 min-w-0 px-4 md:px-7 pt-5 pb-7">
 
       {/* Active URL filter banner, shown when ?promptVersionId / ?userId / ?sessionId
          is present in the URL. Click × to clear and return to unfiltered view. */}
       {(promptVersionId || userIdFilter || sessionIdFilter) && (
-        <div className="flex items-center gap-2 px-[22px] py-[8px] bg-accent-bg border-b border-accent-border font-mono text-[11px] flex-wrap">
-          <span className="text-text-faint uppercase tracking-[0.05em] text-[10px]">Filter:</span>
+        <div className="flex items-center gap-2 rounded-lg px-3.5 py-2.5 bg-accent-bg border border-accent-border font-mono text-[11px] flex-wrap">
+          <span className="text-text-faint uppercase tracking-[0.1em] text-[10px]">Filter:</span>
           {promptVersionId && (
-            <span className="px-2 py-[2px] bg-bg border border-border rounded-[3px] text-text">
+            <span className="px-2 py-[2px] bg-bg-elev border border-border rounded-full text-text">
               prompt version {promptVersionId.slice(0, 8)}…
             </span>
           )}
           {userIdFilter && (
-            <span className="px-2 py-[2px] bg-bg border border-border rounded-[3px] text-text">
+            <span className="px-2 py-[2px] bg-bg-elev border border-border rounded-full text-text">
               user: {userIdFilter}
             </span>
           )}
           {sessionIdFilter && (
-            <span className="px-2 py-[2px] bg-bg border border-border rounded-[3px] text-text">
+            <span className="px-2 py-[2px] bg-bg-elev border border-border rounded-full text-text">
               session: {sessionIdFilter}
             </span>
           )}
@@ -1535,16 +1539,17 @@ export function RequestsClient() {
       )}
 
       {/* Filter row */}
-      <div className="flex items-center gap-1.5 px-[22px] py-[10px] border-b border-border shrink-0 flex-wrap">
-        {/* Time range */}
-        <div className="flex border border-border rounded-[5px] overflow-hidden bg-bg-elev font-mono text-[10.5px] tracking-[0.03em] shrink-0">
+      <div className="flex items-center gap-2 shrink-0 flex-wrap">
+        {/* Time range — a chip trough with a lifted lozenge on the selection,
+            matching the board's topbar control. */}
+        <div className="inline-flex items-center gap-[2px] rounded-full bg-secondary p-[3px] shrink-0">
           {(['all', 'today', '7d', '30d'] as TimeRange[]).map((r) => (
             <button
               key={r}
               onClick={() => applyFilter({ timeRange: r === 'all' ? null : r })}
               className={cn(
-                'px-[10px] py-[5px]',
-                timeRange === r ? 'bg-text text-bg' : 'text-text-muted hover:text-text transition-colors',
+                'font-mono text-[12px] leading-[17px] px-3 py-[5px] rounded-full transition-colors',
+                timeRange === r ? 'bg-bg-elev text-text' : 'text-text-faint hover:text-text',
               )}
             >
               {r === 'all' ? 'All time' : r === 'today' ? 'Today' : r}
@@ -1553,19 +1558,19 @@ export function RequestsClient() {
         </div>
 
         {/* Segmented status */}
-        <div className="flex border border-border rounded-[5px] overflow-hidden bg-bg-elev font-mono text-[10.5px] tracking-[0.03em] shrink-0">
+        <div className="inline-flex items-center gap-[2px] rounded-full bg-secondary p-[3px] shrink-0">
           {(['all', 'ok', '4xx', '5xx'] as StatusFilter[]).map((v) => (
             <button
               key={v}
               onClick={() => applyFilter({ status: v === 'all' ? null : v })}
               className={cn(
-                'px-[10px] py-[5px] inline-flex items-center gap-1.5',
-                filters.status === v ? 'bg-text text-bg' : 'text-text-muted hover:text-text transition-colors',
+                'font-mono text-[12px] leading-[17px] px-3 py-[5px] rounded-full transition-colors inline-flex items-center gap-1.5',
+                filters.status === v ? 'bg-bg-elev text-text' : 'text-text-faint hover:text-text',
               )}
             >
               {STATUS_LABELS[v]}
               {filters.status === v && (
-                <span className="opacity-60 text-bg">{meta.total.toLocaleString()}</span>
+                <span className="text-text-faint">{meta.total.toLocaleString()}</span>
               )}
             </button>
           ))}
@@ -1577,7 +1582,7 @@ export function RequestsClient() {
             --radix-select-trigger-width var) wide enough for "All providers"
             to render on a single line regardless of the current value. */}
         <Select value={filters.provider} onValueChange={(v) => applyFilter({ provider: v === 'all' ? null : v, providerKeyId: null })}>
-          <SelectTrigger className="w-auto min-w-[150px] h-auto py-[5px] text-[11px] text-text-muted rounded-[5px] hover:border-border-strong transition-colors">
+          <SelectTrigger className="w-auto min-w-[150px] h-[33px] text-[12.5px] font-medium text-text rounded-md hover:border-border-strong transition-colors">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -1599,7 +1604,7 @@ export function RequestsClient() {
           onKeyDown={(e) => {
             if (e.key === 'Escape') { setModelInput('') }
           }}
-          className="font-mono text-[11px] border border-border rounded-[5px] px-2 py-[5px] bg-bg text-text-muted hover:border-border-strong focus:border-border-strong transition-colors outline-none w-44 placeholder:text-text-faint"
+          className="text-[12.5px] border border-border rounded-md px-3 py-[7px] bg-bg-elev text-text hover:border-border-strong focus:border-border-strong transition-colors outline-none w-44 placeholder:text-text-faint"
         />
 
         {/* Key select — same min-width treatment as the provider select so
@@ -1608,7 +1613,7 @@ export function RequestsClient() {
         {visibleKeys.length > 0 && (
           <div className="max-w-[180px]">
             <Select value={filters.providerKeyId} onValueChange={(v) => applyFilter({ providerKeyId: v === 'all' ? null : v })}>
-              <SelectTrigger className="w-auto min-w-[110px] h-auto py-[5px] text-[11px] text-text-muted rounded-[5px] hover:border-border-strong transition-colors">
+              <SelectTrigger className="w-auto min-w-[110px] h-[33px] text-[12.5px] font-medium text-text rounded-md hover:border-border-strong transition-colors">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -1627,7 +1632,7 @@ export function RequestsClient() {
               setModelInput('')
               applyFilter({ provider: null, status: null, model: null, providerKeyId: null, timeRange: null, sortBy: null, sortDir: null })
             }}
-            className="font-mono text-[10.5px] px-[9px] py-[5px] border border-border rounded-[5px] text-text-faint hover:text-text hover:border-border-strong transition-colors shrink-0"
+            className="text-[12.5px] font-medium px-3 py-[7px] border border-border rounded-md bg-bg-elev text-text-muted hover:text-text hover:border-border-strong transition-colors shrink-0"
           >
             Clear filters
           </button>
@@ -1640,7 +1645,7 @@ export function RequestsClient() {
           onClick={() => { void refetch() }}
           disabled={isFetching}
           aria-label="Refetch requests"
-          className="font-mono text-[10.5px] px-[9px] py-[4px] border border-border rounded-[5px] text-text-muted hover:text-text hover:border-border-strong disabled:opacity-40 transition-colors inline-flex items-center"
+          className="text-[12.5px] px-3 py-[7px] border border-border rounded-md bg-bg-elev text-text-muted hover:text-text hover:border-border-strong disabled:opacity-40 transition-colors inline-flex items-center"
         >
           <span className={cn('inline-block', isFetching && 'animate-spin')}>↻</span>
         </button>
@@ -1665,8 +1670,12 @@ export function RequestsClient() {
         canSave={Object.keys(currentSaveParams).length > 0}
       />
 
-      {/* Table + pagination */}
-      <div className="flex flex-col flex-1">
+      <StatStrip timeRange={timeRange} fromIso={fromIso} />
+      <TrafficBars timeRange={timeRange} fromIso={fromIso} />
+
+      {/* Table + pagination — one card, header band and pager footer inside
+          it, so the list reads as a single object on the canvas. */}
+      <div className="flex flex-col flex-1 card-surface rounded-card overflow-hidden">
           <ErrorBoundary label="requests:table">
             <RequestsTable
               rows={requests}
@@ -1685,8 +1694,8 @@ export function RequestsClient() {
 
           {/* Pagination — single source of truth for "where am I in the
               list", with First/Last jump for big result sets. */}
-          <div className="flex items-center justify-between px-[22px] py-3 border-t border-border shrink-0 gap-3 flex-wrap">
-            <span className="font-mono text-[11px] text-text-faint">
+          <div className="flex items-center justify-between px-[18px] py-3 border-t border-border bg-bg-muted shrink-0 gap-3 flex-wrap">
+            <span className="font-mono text-[11.5px] text-text-faint">
               {isFetching
                 ? 'Loading…'
                 : `Page ${currentPage} of ${totalPages.toLocaleString()} · ${requests.length} / ${meta.total.toLocaleString()} total`}
@@ -1695,7 +1704,7 @@ export function RequestsClient() {
               <button
                 disabled={currentPage <= 1 || isFetching}
                 onClick={() => { setPage(1); setSelectedId(null) }}
-                className="font-mono text-[11px] px-2.5 py-1 border border-border rounded text-text-muted disabled:opacity-30 hover:border-border-strong transition-colors"
+                className="text-[12px] font-medium px-3 py-[6px] border border-border rounded-full bg-bg-elev text-text disabled:opacity-30 hover:border-border-strong transition-colors"
                 aria-label="First page"
               >
                 « First
@@ -1703,21 +1712,21 @@ export function RequestsClient() {
               <button
                 disabled={page <= 1 || isFetching}
                 onClick={() => { setPage((p) => Math.max(1, p - 1)); setSelectedId(null) }}
-                className="font-mono text-[11px] px-2.5 py-1 border border-border rounded text-text-muted disabled:opacity-30 hover:border-border-strong transition-colors"
+                className="text-[12px] font-medium px-3 py-[6px] border border-border rounded-full bg-bg-elev text-text disabled:opacity-30 hover:border-border-strong transition-colors"
               >
                 ← Prev
               </button>
               <button
                 disabled={page * meta.limit >= meta.total || isFetching}
                 onClick={() => { setPage((p) => p + 1); setSelectedId(null) }}
-                className="font-mono text-[11px] px-2.5 py-1 border border-border rounded text-text-muted disabled:opacity-30 hover:border-border-strong transition-colors"
+                className="text-[12px] font-medium px-3 py-[6px] border border-border rounded-full bg-bg-elev text-text disabled:opacity-30 hover:border-border-strong transition-colors"
               >
                 Next →
               </button>
               <button
                 disabled={currentPage >= totalPages || isFetching}
                 onClick={() => { setPage(totalPages); setSelectedId(null) }}
-                className="font-mono text-[11px] px-2.5 py-1 border border-border rounded text-text-muted disabled:opacity-30 hover:border-border-strong transition-colors"
+                className="text-[12px] font-medium px-3 py-[6px] border border-border rounded-full bg-bg-elev text-text disabled:opacity-30 hover:border-border-strong transition-colors"
                 aria-label="Last page"
               >
                 Last »
@@ -1725,6 +1734,7 @@ export function RequestsClient() {
             </div>
           </div>
         </div>
+      </div>{/* end content canvas */}
       </div>{/* end left column */}
 
       <RequestDrawer

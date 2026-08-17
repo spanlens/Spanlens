@@ -57,12 +57,12 @@ function SecurityTabInner() {
   }
 
   return (
-    <div className="max-w-[980px]">
+    <div>
       <TabHeader
         title="Security"
         description="Notification settings for key health monitoring. Neither setting auto-revokes keys."
       />
-      <Section title="Key monitoring" className="mb-5">
+      <Section title="Key monitoring" className="mb-4">
         <FormRow label="Stale key reminders" hint="Email admins a weekly digest of keys idle this long.">
           <div className="flex items-center gap-3">
             <NativeInput
@@ -91,7 +91,7 @@ function SecurityTabInner() {
           />
         </FormRow>
         {error && (
-          <div className="px-6 pb-4 -mt-2 font-mono text-[11.5px] text-status-error">
+          <div className="px-6 pb-4 -mt-2 font-mono text-[11.5px] text-bad">
             {error}
           </div>
         )}

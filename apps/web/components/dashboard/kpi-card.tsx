@@ -41,8 +41,12 @@ export function KpiCard({
   linkHref,
   className,
 }: KpiCardProps) {
+  // The delta variant drives the sparkline too, so the tile reads as one
+  // statement. `warn` means the number moved the wrong way, which is a status,
+  // not an accent event — the accent belongs to the mark a reader is asked to
+  // track, and every KPI tile lighting up orange would spend it on nothing.
   const strokeColor =
-    deltaVariant === 'warn' ? 'var(--accent)'
+    deltaVariant === 'warn' ? 'var(--bad)'
     : deltaVariant === 'good' ? 'var(--good)'
     : 'var(--text-faint)'
 
@@ -50,19 +54,23 @@ export function KpiCard({
 
   return (
     <div className={cn('flex flex-col p-[18px]', className)}>
-      <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-2.5">
+      <div className="font-mono text-[10.5px] uppercase tracking-[0.1em] text-text-faint mb-2.5">
         {label}
       </div>
 
       <div className="flex items-baseline gap-2.5 mb-3">
-        <span className="text-[30px] font-medium tracking-[-0.8px] text-text leading-none">
+        {/* Display face for the figure. It is the one number on the tile, and
+            the tight KPI tracking is what separates it from body copy. */}
+        {/* `leading` is forced because the `.font-display` utility carries the
+            112% display line height, which is too airy for a one-line figure. */}
+        <span className="font-display text-[28px] track-kpi leading-[1.05]! text-text">
           {value}
         </span>
         {delta && (
           <span
             className={cn(
-              'font-mono text-[11.5px]',
-              deltaVariant === 'warn' && 'text-accent',
+              'text-[11.5px] font-medium',
+              deltaVariant === 'warn' && 'text-bad',
               deltaVariant === 'good' && 'text-good',
               deltaVariant === 'neutral' && 'text-text-faint',
             )}

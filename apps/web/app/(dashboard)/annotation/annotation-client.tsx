@@ -7,6 +7,7 @@ import { Filter, MessageSquare, Star, Check, X, Type as TypeIcon } from 'lucide-
 import { Topbar, LiveDot } from '@/components/layout/topbar'
 import { cn, formatDateTime } from '@/lib/utils'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { StatusPill } from '@/components/ui/primitives'
 import {
   useAnnotationQueue,
   useSaveHumanEval,
@@ -19,6 +20,15 @@ import {
   BoolPassRate,
   NumericHistogram,
 } from '@/components/charts/score-distribution'
+import {
+  Board,
+  TOPBAR_BLEED,
+  FilterBar,
+  StatCard,
+  Well,
+  CONTROL,
+  CONTROL_TEXT,
+} from '../_board/surfaces'
 
 /**
  * Truncate a long label so the per-item "You" badge doesn't blow up
@@ -159,11 +169,12 @@ function CategoricalRating({
             key={c}
             type="button"
             onClick={() => onChange(c)}
+            aria-pressed={selected}
             className={cn(
-              'rounded-[5px] border px-2 py-1 font-mono text-[11.5px] transition-colors',
+              'rounded-full border px-3 py-1.5 font-mono text-[12px] transition-colors',
               selected
-                ? 'border-accent bg-accent-bg/40 text-text'
-                : 'border-border bg-bg text-text-muted hover:border-border-strong',
+                ? 'border-text bg-text text-bg'
+                : 'border-border bg-bg-elev text-text-muted hover:border-border-strong hover:text-text',
             )}
           >
             {c}
@@ -190,11 +201,12 @@ function BooleanRating({
       <button
         type="button"
         onClick={() => onChange(true)}
+        aria-pressed={value === true}
         className={cn(
-          'flex items-center gap-1 rounded-[5px] border px-2.5 py-1 font-mono text-[11.5px] transition-colors',
+          'flex items-center gap-1.5 rounded-full border px-3 py-1.5 font-mono text-[12px] transition-colors',
           value === true
-            ? 'border-good bg-good/15 text-good'
-            : 'border-border bg-bg text-text-muted hover:border-border-strong',
+            ? 'border-good bg-good-bg text-good'
+            : 'border-border bg-bg-elev text-text-muted hover:border-border-strong hover:text-text',
         )}
       >
         <Check className="h-3.5 w-3.5" />
@@ -203,11 +215,12 @@ function BooleanRating({
       <button
         type="button"
         onClick={() => onChange(false)}
+        aria-pressed={value === false}
         className={cn(
-          'flex items-center gap-1 rounded-[5px] border px-2.5 py-1 font-mono text-[11.5px] transition-colors',
+          'flex items-center gap-1.5 rounded-full border px-3 py-1.5 font-mono text-[12px] transition-colors',
           value === false
-            ? 'border-bad bg-bad/15 text-bad'
-            : 'border-border bg-bg text-text-muted hover:border-border-strong',
+            ? 'border-bad bg-bad-bg text-bad'
+            : 'border-border bg-bg-elev text-text-muted hover:border-border-strong hover:text-text',
         )}
       >
         <X className="h-3.5 w-3.5" />
@@ -229,8 +242,8 @@ function TextRating({
       value={value}
       onChange={(e) => onChange(e.target.value)}
       rows={3}
-      placeholder="Your label / score / note for this response…"
-      className="w-full rounded-[5px] border border-border bg-bg px-2 py-2 font-mono text-[12px] text-text placeholder:text-text-faint focus:outline-none focus:border-border-strong resize-none"
+      placeholder="Your label, score or note for this response"
+      className="w-full resize-none rounded-md border border-border bg-bg-elev px-3 py-2 font-mono text-[12px] text-text placeholder:text-text-faint focus:border-border-strong focus:outline-none"
     />
   )
 }
@@ -266,7 +279,7 @@ function ScoringPanel({ item, config, onSaved }: ScoringPanelProps) {
 
   if (!config) {
     return (
-      <div className="border-t border-border p-4 bg-bg-elev font-mono text-[11.5px] text-text-faint">
+      <div className="border-t border-border bg-bg-muted px-5 py-4 font-mono text-[11.5px] text-text-faint">
         Workspace has no score config. Create one under{' '}
         <Link href="/settings/score-configs" className="text-accent underline">
           Settings → Score configs
@@ -363,9 +376,9 @@ function ScoringPanel({ item, config, onSaved }: ScoringPanelProps) {
     && (config.max_value ?? 1) === 1
 
   return (
-    <div className="border-t border-border p-4 bg-bg-elev space-y-3">
-      <div className="flex items-center gap-3 flex-wrap">
-        <span className="font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint">
+    <div className="space-y-3 border-t border-border bg-bg-muted px-5 py-4">
+      <div className="flex flex-wrap items-center gap-3">
+        <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-faint">
           {config.name}
         </span>
 
@@ -415,7 +428,7 @@ function ScoringPanel({ item, config, onSaved }: ScoringPanelProps) {
       )}
 
       <div>
-        <label className="block font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint mb-1">
+        <label className="mb-1.5 block font-mono text-[10px] uppercase tracking-[0.1em] text-text-faint">
           Comment (optional)
         </label>
         <textarea
@@ -423,13 +436,13 @@ function ScoringPanel({ item, config, onSaved }: ScoringPanelProps) {
           onChange={(e) => setComment(e.target.value)}
           rows={2}
           placeholder="Why this rating?"
-          className="w-full px-2 py-2 rounded-[5px] border border-border bg-bg font-mono text-[12px] text-text placeholder:text-text-faint focus:outline-none focus:border-border-strong resize-none"
+          className="w-full resize-none rounded-md border border-border bg-bg-elev px-3 py-2 font-mono text-[12px] text-text placeholder:text-text-faint focus:border-border-strong focus:outline-none"
         />
       </div>
 
       {error && <p className="font-mono text-[11.5px] text-bad">{error}</p>}
 
-      <div className="flex items-center justify-between gap-2 flex-wrap">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="font-mono text-[10.5px] text-text-faint">
           {isUpdate ? 'You previously rated this. Save to overwrite.' : 'Not yet rated by you.'}
         </p>
@@ -437,7 +450,7 @@ function ScoringPanel({ item, config, onSaved }: ScoringPanelProps) {
           type="button"
           onClick={() => void handleSave()}
           disabled={save.isPending}
-          className="font-mono text-[11.5px] px-3 py-[6px] rounded-[5px] bg-text text-bg font-medium hover:opacity-90 disabled:opacity-40"
+          className="rounded-full bg-text px-3.5 py-2 text-[12.5px] font-semibold text-bg transition-opacity hover:opacity-90 disabled:opacity-40"
         >
           {save.isPending ? 'Saving…' : isUpdate ? 'Update' : 'Save rating'}
         </button>
@@ -496,26 +509,26 @@ function ItemCard({
     <div
       onClick={onFocus}
       className={cn(
-        'border rounded-[6px] bg-bg overflow-hidden transition-colors',
-        focused ? 'border-accent-border ring-1 ring-accent-border/30' : 'border-border',
+        'card-surface rounded-card overflow-hidden transition-colors',
+        focused && 'border-accent-border ring-1 ring-accent-border/30',
       )}
     >
       {/* Header */}
-      <div className="flex items-center px-[14px] py-[10px] bg-bg-muted border-b border-border gap-2 flex-wrap">
+      <div className="flex flex-wrap items-center gap-2 border-b border-border bg-bg-muted px-5 py-3">
         <div className="flex-1 min-w-0">
-          <p className="font-mono text-[12px] text-text font-medium truncate">
+          <p className="truncate font-mono text-[12px] text-text">
             {item.prompt_name ?? '—'}{item.prompt_version != null ? ` · v${item.prompt_version}` : ''}
           </p>
-          <p className="font-mono text-[10px] text-text-faint truncate">
+          <p className="truncate font-mono text-[10.5px] text-text-faint">
             {item.model} · {formatDateTime(item.created_at)}
           </p>
         </div>
-        <div className="flex items-center gap-3 shrink-0">
+        <div className="flex shrink-0 items-center gap-3">
           {item.llm_judge_score != null && (
             <div className="flex items-center gap-1 font-mono text-[10.5px] text-text-muted">
               <span className="text-text-faint">Judge:</span>
               <span className={cn(
-                'font-medium',
+                'font-medium tabular-nums',
                 item.llm_judge_score < 0.4 ? 'text-bad' : item.llm_judge_score < 0.7 ? 'text-warn' : 'text-good',
               )}>
                 {fmtScore(item.llm_judge_score)}
@@ -523,45 +536,49 @@ function ItemCard({
             </div>
           )}
           {item.human_eval && (
-            <div className="flex items-center gap-1 font-mono text-[10.5px] text-good">
-              <span>You: {existingScoreLabel(item.human_eval, activeConfig)}</span>
-            </div>
+            <StatusPill variant="good">You: {existingScoreLabel(item.human_eval, activeConfig)}</StatusPill>
           )}
         </div>
       </div>
 
-      {/* Body — single column on mobile, side-by-side from sm. */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3">
+      {/* Body — input and response sit in sunk wells, single column on mobile
+          and side by side from sm, matching the item pane on the board. */}
+      <div className="grid grid-cols-1 gap-3 p-5 sm:grid-cols-2">
         <div className="min-w-0">
-          <p className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-1">
+          <p className="mb-1.5 font-mono text-[10px] uppercase tracking-[0.1em] text-text-faint">
             User input
           </p>
-          <p className={cn(
-            'font-mono text-[11.5px] text-text-muted leading-relaxed whitespace-pre-wrap',
-            !expanded && 'line-clamp-3',
-          )}>
-            {userMsg || '—'}
-          </p>
+          <Well>
+            <p className={cn(
+              'whitespace-pre-wrap font-mono text-[12px] leading-[1.65] text-text-muted',
+              !expanded && 'line-clamp-3',
+            )}>
+              {userMsg || '—'}
+            </p>
+          </Well>
         </div>
         <div className="min-w-0">
-          <div className="flex items-center justify-between mb-1">
-            <p className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint">
+          <div className="mb-1.5 flex items-center justify-between">
+            <p className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-faint">
               Response
             </p>
             <button
               type="button"
               onClick={(e) => { e.stopPropagation(); setExpanded((v) => !v) }}
-              className="font-mono text-[10px] text-text-faint hover:text-text"
+              aria-expanded={expanded}
+              className="font-mono text-[10.5px] text-text-faint transition-colors hover:text-text"
             >
               {expanded ? 'collapse' : 'expand'}
             </button>
           </div>
-          <p className={cn(
-            'font-mono text-[12px] text-text leading-relaxed whitespace-pre-wrap',
-            !expanded && 'line-clamp-5',
-          )}>
-            {responseText || '—'}
-          </p>
+          <Well>
+            <p className={cn(
+              'whitespace-pre-wrap font-mono text-[12px] leading-[1.65] text-text',
+              !expanded && 'line-clamp-5',
+            )}>
+              {responseText || '—'}
+            </p>
+          </Well>
         </div>
       </div>
 
@@ -771,8 +788,8 @@ export function AnnotationClient() {
   }, [focusedIdx])
 
   return (
-    <div className="-mx-4 -my-4 md:-mx-8 md:-my-7 flex flex-col min-h-screen">
-      <div className="sticky top-0 z-20 bg-bg">
+    <div>
+      <div className={TOPBAR_BLEED}>
         <Topbar
           crumbs={[{ label: 'Annotation' }]}
           right={
@@ -793,42 +810,36 @@ export function AnnotationClient() {
         <h1 className="sr-only">Annotation</h1>
       </div>
 
+      <Board>
       {/* Stat strip — Queue / Rated / Type-aware aggregate / Judge coverage.
           Aggregate label & value switch with the active config so a
           BOOLEAN workspace sees pass rate instead of a meaningless avg. */}
-      <div className="shrink-0 border-b border-border">
-        <div className="grid grid-cols-2 md:grid-cols-4">
-          {[
-            { label: 'In queue',       value: String(items.length) },
-            { label: 'Rated by you',   value: String(scoredCount) },
-            { label: aggregate.label,  value: aggregate.value },
-            { label: 'Judge coverage', value: items.length > 0 ? `${Math.round((judgeCount / items.length) * 100)}%` : '—' },
-          ].map((s, i) => (
-            <div
-              key={s.label}
-              className={cn(
-                'px-[18px] py-[14px] border-border',
-                i % 2 === 0 && 'border-r',
-                i === 1 && 'border-b md:border-b-0 md:border-r',
-                i === 0 && 'border-b md:border-b-0',
-                i === 2 && 'md:border-r',
-              )}
-            >
-              <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-2">{s.label}</div>
-              <span className="text-[22px] sm:text-[24px] font-medium leading-none tracking-[-0.6px] tabular-nums text-text">
-                {mounted ? s.value : ' '}
-              </span>
-            </div>
-          ))}
-        </div>
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        {[
+          { label: 'In queue',       value: String(items.length),  foot: 'sampled from live traffic' },
+          { label: 'Rated by you',   value: String(scoredCount),   foot: `${items.length - scoredCount} still to rate` },
+          { label: aggregate.label,  value: aggregate.value,       foot: 'across rated items' },
+          {
+            label: 'Judge coverage',
+            value: items.length > 0 ? `${Math.round((judgeCount / items.length) * 100)}%` : '—',
+            foot: `${judgeCount} of ${items.length} sampled`,
+          },
+        ].map((s) => (
+          <StatCard
+            key={s.label}
+            label={s.label}
+            value={mounted ? s.value : ' '}
+            foot={mounted ? s.foot : ' '}
+          />
+        ))}
       </div>
 
       {/* Type-aware distribution panel — hides when there are no
           captured ratings yet so the empty workspace doesn't carry
           extra vertical chrome. */}
       {activeConfig && scoredCount > 0 && (
-        <div className="border-b border-border px-[22px] py-[14px] bg-bg">
-          <div className="font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint mb-2">
+        <div className="card-surface rounded-card px-5 py-[18px]">
+          <div className="mb-3 font-mono text-[10px] uppercase tracking-[0.12em] text-text-faint">
             {activeConfig.data_type === 'CATEGORICAL' && 'Category distribution'}
             {activeConfig.data_type === 'BOOLEAN' && 'Pass rate'}
             {activeConfig.data_type === 'NUMERIC' && 'Score histogram'}
@@ -880,13 +891,13 @@ export function AnnotationClient() {
       )}
 
       {/* Filter bar */}
-      <div className="flex items-center gap-3 px-[22px] py-[12px] border-b border-border bg-bg-muted flex-wrap">
+      <FilterBar>
         <Filter className="h-3.5 w-3.5 text-text-faint" />
         <Select
           {...(promptName ? { value: promptName } : {})}
           onValueChange={(v) => updateQuery({ prompt: v || null, page: null })}
         >
-          <SelectTrigger className="w-auto h-7 rounded-[4px] text-[11.5px]">
+          <SelectTrigger className={cn(CONTROL, CONTROL_TEXT, 'w-auto gap-2')}>
             <SelectValue placeholder="All prompts" />
           </SelectTrigger>
           <SelectContent>
@@ -904,62 +915,79 @@ export function AnnotationClient() {
             clear prompt
           </button>
         )}
-        <label className="flex items-center gap-1.5 font-mono text-[11.5px] text-text-muted cursor-pointer">
+        {activeConfigList.length > 0 && (
+          <Select
+            value={activeConfig?.id ?? ''}
+            onValueChange={(v) => updateQuery({ config: v || null })}
+          >
+            <SelectTrigger
+              aria-label="Score config"
+              className={cn(CONTROL, CONTROL_TEXT, 'w-auto gap-2')}
+            >
+              <span className="text-text-faint">Score config:</span>
+              <SelectValue placeholder="Default" />
+            </SelectTrigger>
+            <SelectContent>
+              {activeConfigList.map((c) => (
+                <SelectItem key={c.id} value={c.id}>
+                  {c.name} · {c.data_type.toLowerCase()}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+        {/* Kept as real checkboxes rather than the boards' segmented pills:
+            these two filters combine, so a pressed/unpressed pair would read
+            as mutually exclusive when it is not. */}
+        <label
+          className={cn(
+            CONTROL,
+            CONTROL_TEXT,
+            'inline-flex cursor-pointer items-center gap-2 px-3.5 font-normal text-text-muted',
+          )}
+        >
           <input
             type="checkbox"
             checked={unscoredOnly}
             onChange={(e) => updateQuery({ unscored: e.target.checked ? '1' : null, page: null })}
+            className="accent-accent"
           />
           Unscored only
         </label>
-        <label className="flex items-center gap-1.5 font-mono text-[11.5px] text-text-muted cursor-pointer">
+        <label
+          className={cn(
+            CONTROL,
+            CONTROL_TEXT,
+            'inline-flex cursor-pointer items-center gap-2 px-3.5 font-normal text-text-muted',
+          )}
+        >
           <input
             type="checkbox"
             checked={lowJudgeScoreOnly}
             onChange={(e) => updateQuery({ lowjudge: e.target.checked ? '1' : null, page: null })}
+            className="accent-accent"
           />
           Low judge score (&lt;50)
         </label>
         {activeConfigList.length > 0 && (
-          <div className="flex items-center gap-1.5">
-            <span className="font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint">
-              Score config
-            </span>
-            <Select
-              value={activeConfig?.id ?? ''}
-              onValueChange={(v) => updateQuery({ config: v || null })}
-            >
-              <SelectTrigger className="w-auto h-7 rounded-[4px] text-[11.5px]">
-                <SelectValue placeholder="Default" />
-              </SelectTrigger>
-              <SelectContent>
-                {activeConfigList.map((c) => (
-                  <SelectItem key={c.id} value={c.id}>
-                    {c.name} · {c.data_type.toLowerCase()}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Link
-              href="/settings/score-configs"
-              className="font-mono text-[10.5px] text-text-faint hover:text-text-muted"
-              title="Manage score configs"
-            >
-              ⚙
-            </Link>
-          </div>
+          <Link
+            href="/settings/score-configs"
+            className={cn(CONTROL, CONTROL_TEXT, 'inline-flex items-center px-3.5 hover:bg-bg-muted')}
+          >
+            Manage score configs
+          </Link>
         )}
         <span className="flex-1" />
         <span className="font-mono text-[11px] text-text-faint">
           {mounted ? `${items.length} requests · ${scoredCount} rated by you` : ' '}
         </span>
-      </div>
+      </FilterBar>
 
       {/* Intro banner with docs link + keyboard hint */}
-      <div className="px-[22px] py-[10px] border-b border-border flex items-center gap-2 font-mono text-[11px] text-text-muted flex-wrap">
+      <div className="card-surface rounded-card flex flex-wrap items-center gap-2 px-5 py-3.5 font-mono text-[11px] text-text-muted">
         <MessageSquare className="h-3.5 w-3.5 shrink-0" />
         <span>
-          Manually score responses. Your ratings calibrate the LLM judge — low correlation
+          Manually score responses. Your ratings calibrate the LLM judge, so low correlation
           signals the judge needs work.
         </span>
         <span className="hidden md:inline text-text-faint">·</span>
@@ -976,19 +1004,19 @@ export function AnnotationClient() {
         </Link>
       </div>
 
-      <div className="px-[22px] py-[14px] space-y-3">
+      <div className="flex flex-col gap-3">
         {!mounted || queue.isLoading ? (
-          [1, 2, 3].map((i) => <div key={i} className="h-40 bg-bg-elev rounded animate-pulse" />)
+          [1, 2, 3].map((i) => <div key={i} className="h-40 bg-bg-chip rounded-card animate-pulse" />)
         ) : items.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-64 gap-2 text-text-muted">
+          <div className="card-surface rounded-card flex h-64 flex-col items-center justify-center gap-2 text-text-muted">
             <MessageSquare className="h-10 w-10 text-text-faint" />
-            <p className="font-mono text-[13px]">No requests match these filters.</p>
-            <p className="font-mono text-[11px] text-text-faint">
+            <p className="text-[13.5px] font-semibold text-text">No requests match these filters.</p>
+            <p className="text-[12.5px] leading-[1.6] text-text-muted">
               Loosen filters or send some requests tagged with a prompt version first.
             </p>
             <Link
               href="/docs/features/annotation"
-              className="font-mono text-[11.5px] mt-1 px-2.5 py-1 rounded border border-border text-text-muted hover:text-text hover:border-border-strong transition-colors"
+              className="mt-1 rounded-full border border-border px-3.5 py-2 text-[12.5px] font-medium text-text-muted transition-colors hover:border-border-strong hover:text-text"
             >
               How annotation works →
             </Link>
@@ -1009,45 +1037,34 @@ export function AnnotationClient() {
             {/* Pagination — First / Prev / Next / Last + caption. Hidden when
                 everything fits on one page. */}
             {items.length > PAGE_SIZE && (
-              <div className="flex items-center justify-between mt-2 font-mono text-[11px] flex-wrap gap-3">
-                <div className="text-text-faint">
+              <div className="mt-2 flex flex-wrap items-center justify-between gap-3 font-mono text-[11px]">
+                <div className="text-text-faint tabular-nums">
                   Page {page} of {totalPages} · {pageItems.length} / {items.length}
                 </div>
                 <div className="flex gap-2">
-                  <button
-                    disabled={page <= 1}
-                    onClick={() => updateQuery({ page: null })}
-                    className="px-2.5 py-1.5 border border-border rounded-[6px] text-text hover:bg-bg-elev disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                  >
-                    First
-                  </button>
-                  <button
-                    disabled={page <= 1}
-                    onClick={() => updateQuery({ page: String(page - 1) })}
-                    className="px-3 py-1.5 border border-border rounded-[6px] text-text hover:bg-bg-elev disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                  >
-                    Prev
-                  </button>
-                  <button
-                    disabled={page >= totalPages}
-                    onClick={() => updateQuery({ page: String(page + 1) })}
-                    className="px-3 py-1.5 border border-border rounded-[6px] text-text hover:bg-bg-elev disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                  >
-                    Next
-                  </button>
-                  <button
-                    disabled={page >= totalPages}
-                    onClick={() => updateQuery({ page: String(totalPages) })}
-                    className="px-2.5 py-1.5 border border-border rounded-[6px] text-text hover:bg-bg-elev disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                  >
-                    Last
-                  </button>
+                  {[
+                    { label: 'First', disabled: page <= 1, go: () => updateQuery({ page: null }) },
+                    { label: 'Prev',  disabled: page <= 1, go: () => updateQuery({ page: String(page - 1) }) },
+                    { label: 'Next',  disabled: page >= totalPages, go: () => updateQuery({ page: String(page + 1) }) },
+                    { label: 'Last',  disabled: page >= totalPages, go: () => updateQuery({ page: String(totalPages) }) },
+                  ].map((b) => (
+                    <button
+                      key={b.label}
+                      type="button"
+                      disabled={b.disabled}
+                      onClick={b.go}
+                      className="rounded-full border border-border px-3 py-1.5 text-text transition-colors hover:bg-bg-muted disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      {b.label}
+                    </button>
+                  ))}
                 </div>
               </div>
             )}
           </>
         )}
       </div>
+      </Board>
     </div>
   )
 }

@@ -46,10 +46,10 @@ function CorrelationCard({ promptName }: { promptName: string }) {
   const sampleCount = agreement?.n ?? pairs.length
 
   return (
-    <div className="bg-bg-elev border border-border rounded-[6px] p-4">
+    <div className="rounded-lg border border-border bg-bg-sunk p-4">
       <div className="flex items-start gap-4">
         {/* Scatter plot — only meaningful for numeric pairs. */}
-        <svg width={W} height={H} className="shrink-0 bg-bg rounded-[4px] border border-border">
+        <svg width={W} height={H} className="shrink-0 rounded border border-border bg-bg-elev">
           {/* Diagonal reference line, perfect agreement */}
           <line
             x1={PAD} y1={H - PAD} x2={W - PAD} y2={PAD}
@@ -110,8 +110,8 @@ export function CorrelationRow({ evaluators }: { evaluators: Evaluator[] }) {
   if (promptNames.length === 0) return null
 
   return (
-    <div className="px-[22px] py-[14px] border-b border-border">
-      <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint mb-3">
+    <div className="card-surface rounded-card px-5 py-[18px]">
+      <div className="mb-3.5 flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.12em] text-text-faint">
         <span>LLM judge vs Human agreement</span>
       </div>
       {/* 2-up only at lg+ (1024px): below that the cards are too narrow for

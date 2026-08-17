@@ -58,10 +58,13 @@ export function CategoricalDistribution({
         const pct = total > 0 ? (count / total) * 100 : 0
         return (
           <div key={cat} className="grid grid-cols-[120px_1fr_64px] items-center gap-2">
-            <div className="font-mono text-[11.5px] text-text-muted truncate">{cat}</div>
-            <div className="h-2 rounded-[3px] bg-bg-elev overflow-hidden">
+            <div className="text-[12px] font-medium text-text-muted truncate">{cat}</div>
+            {/* The slot is the plan ceiling: it has to be a step darker than
+                the card, and `bg-elev` is the card, so in light mode the old
+                track was pure white on white and simply did not exist. */}
+            <div className="h-2 rounded-full bg-track overflow-hidden">
               <div
-                className="h-full bg-accent transition-all"
+                className="h-full bg-accent rounded-full transition-all"
                 style={{ width: `${pct}%` }}
                 aria-label={`${count} ratings, ${pct.toFixed(0)}%`}
               />
@@ -114,7 +117,7 @@ export function BoolPassRate({
       </div>
       {/* Single horizontal bar split between the two outcomes. The split
           point itself is the readout. */}
-      <div className="h-2 rounded-[3px] bg-bg-elev overflow-hidden flex">
+      <div className="h-2 rounded-full bg-track overflow-hidden flex">
         <div className="h-full bg-good" style={{ width: `${passPct}%` }} />
         <div className="h-full bg-bad" style={{ width: `${100 - passPct}%` }} />
       </div>
@@ -175,11 +178,11 @@ export function NumericHistogram({
         const sharePct = total > 0 ? (c / total) * 100 : 0
         return (
           <div key={i} className="grid grid-cols-[120px_1fr_64px] items-center gap-2">
-            <div className="font-mono text-[11.5px] text-text-muted truncate">
+            <div className="font-mono text-[12px] text-text-muted truncate">
               {lo.toFixed(2)} – {hi.toFixed(2)}
             </div>
-            <div className="h-2 rounded-[3px] bg-bg-elev overflow-hidden">
-              <div className="h-full bg-accent" style={{ width: `${pct}%` }} />
+            <div className="h-2 rounded-full bg-track overflow-hidden">
+              <div className="h-full bg-accent rounded-full" style={{ width: `${pct}%` }} />
             </div>
             <div className="font-mono text-[10.5px] text-text-faint text-right tabular-nums">
               {c} · {sharePct.toFixed(0)}%

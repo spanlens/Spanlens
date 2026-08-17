@@ -11,8 +11,10 @@ const badgeVariants = cva(
         secondary: 'border-transparent bg-secondary text-secondary-foreground',
         destructive: 'border-transparent bg-destructive text-destructive-foreground',
         outline: 'text-foreground',
-        success: 'border-transparent bg-emerald-100 text-emerald-800',
-        warning: 'border-transparent bg-amber-100 text-amber-800',
+        /* Status tints from the Foundations board, so the badge tracks the
+           theme instead of pinning itself to a fixed emerald/amber. */
+        success: 'border-transparent bg-good-bg text-good',
+        warning: 'border-transparent bg-warn-bg text-warn',
       },
     },
     defaultVariants: { variant: 'default' },

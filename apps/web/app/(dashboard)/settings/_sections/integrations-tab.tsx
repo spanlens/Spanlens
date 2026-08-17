@@ -6,7 +6,8 @@ import { useNotificationChannels, useDeleteChannel } from '@/lib/queries/use-ale
 import type { ChannelKind, NotificationChannelRow } from '@/lib/queries/types'
 import { AddChannelDialog } from '@/components/channels/add-channel-dialog'
 import { PermissionGate } from '@/components/permission-gate'
-import { MonoPill, TabHeader } from '../_shared/ui'
+import { cn } from '@/lib/utils'
+import { MonoPill, TabHeader, PILL_SECONDARY } from '../_shared/ui'
 
 // ─── INTEGRATIONS tab ─────────────────────────────────────────────────────────
 
@@ -49,11 +50,11 @@ function ProviderChannelCard({
 }) {
   const mine = channels.filter((ch) => ch.kind === provider.kind)
   return (
-    <div className="rounded-[8px] border border-border bg-bg-elev p-5 flex flex-col gap-3">
+    <div className="rounded-card border border-border bg-bg-elev shadow-card p-5 flex flex-col gap-3">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <div className="text-[15px] font-medium text-text mb-1">{provider.name}</div>
-          <div className="text-[12.5px] text-text-muted leading-relaxed">{provider.description}</div>
+          <div className="text-[13.5px] font-semibold text-text mb-1">{provider.name}</div>
+          <div className="text-[11.5px] text-text-muted leading-relaxed">{provider.description}</div>
         </div>
         {mine.length > 0
           ? <MonoPill variant="good" dot>{mine.length} connected</MonoPill>
@@ -61,7 +62,7 @@ function ProviderChannelCard({
       </div>
 
       {mine.length > 0 && (
-        <div className="rounded-[6px] border border-border overflow-hidden">
+        <div className="rounded-md border border-border overflow-hidden">
           {mine.map((ch) => (
             <div
               key={ch.id}
@@ -91,7 +92,7 @@ function ProviderChannelCard({
 
       <PermissionGate need="edit">
         <div className="mt-auto">
-          <GhostBtn className="text-[12px]" onClick={onAdd}>
+          <GhostBtn className={cn(PILL_SECONDARY, 'gap-1.5')} onClick={onAdd}>
             <Plus className="w-3.5 h-3.5" /> Add {provider.name} channel
           </GhostBtn>
         </div>
@@ -108,7 +109,7 @@ export function IntegrationsTab() {
   const allChannels = channels ?? []
 
   return (
-    <div className="max-w-[980px]">
+    <div>
       <TabHeader
         title="Integrations"
         description="Connect Spanlens with the tools your team already uses. Channels here receive every alert you configure on the Alerts page."
@@ -116,7 +117,7 @@ export function IntegrationsTab() {
 
       {isLoading ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {[1, 2].map((i) => <div key={i} className="h-40 bg-bg-elev rounded-[8px] animate-pulse" />)}
+          {[1, 2].map((i) => <div key={i} className="h-40 bg-bg-muted rounded-card animate-pulse" />)}
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -134,12 +135,12 @@ export function IntegrationsTab() {
           {COMING_SOON.map((integration) => (
             <div
               key={integration.id}
-              className="rounded-[8px] border border-border bg-bg-elev p-5 flex flex-col gap-3 opacity-75"
+              className="rounded-card border border-border bg-bg-elev shadow-card p-5 flex flex-col gap-3 opacity-75"
             >
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <div className="text-[15px] font-medium text-text mb-1">{integration.name}</div>
-                  <div className="text-[12.5px] text-text-muted leading-relaxed">{integration.description}</div>
+                  <div className="text-[13.5px] font-semibold text-text mb-1">{integration.name}</div>
+                  <div className="text-[11.5px] text-text-muted leading-relaxed">{integration.description}</div>
                 </div>
                 <MonoPill variant="faint">coming soon</MonoPill>
               </div>

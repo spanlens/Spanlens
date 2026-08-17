@@ -11,7 +11,6 @@ import {
   Pencil,
   Search,
   Trash2,
-  Key as KeyIcon,
   Gauge,
 } from 'lucide-react'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -41,9 +40,10 @@ import {
   useRotateProviderKey,
   useDeleteProviderKey,
 } from '@/lib/queries/use-provider-keys'
-import { cn } from '@/lib/utils'
-import { formatLastUsed } from '@/lib/api-key-staleness'
+import { cn, formatDate } from '@/lib/utils'
+import { classifyStaleness, formatLastUsed } from '@/lib/api-key-staleness'
 import { StaleBadge } from '@/components/ui/stale-badge'
+import type { ApiKey, ProviderKey } from '@/lib/queries/types'
 import { RateLimitsDialog } from './_components/rate-limits-dialog'
 
 // Hydration-safe mounted gate, same pattern as the other overhauled pages.
@@ -185,6 +185,49 @@ const cohere = createCohere()
 // await cohere.chat.completions.create({ model: 'command-a-03-2025', messages: [...] })`,
 }
 
+// ── Shared surface classes ───────────────────────────────────────────────────
+// Repeated verbatim across three tables; kept as constants so the row and head
+// grids can never drift out of alignment.
+const PILL_SECONDARY =
+  'rounded-full border border-border bg-bg-elev px-3.5 py-2 text-[12px] font-medium text-text hover:bg-bg-muted transition-colors disabled:opacity-40'
+const PILL_ACCENT =
+  'rounded-full bg-accent px-3.5 py-2 text-[12px] font-medium text-accent-fg hover:bg-accent-strong transition-colors disabled:opacity-40'
+const PILL_DESTRUCTIVE =
+  'rounded-full border border-accent-border bg-accent-bg px-3.5 py-2 text-[12px] font-medium text-accent hover:bg-accent-bg/70 transition-colors disabled:opacity-40'
+const TABLE_CARD = 'rounded-card border border-border bg-bg-elev shadow-card overflow-hidden'
+const TABLE_HEAD_CELL = 'font-mono text-[10px] uppercase tracking-[0.1em] text-text-faint'
+const SECTION_EYEBROW = 'font-mono text-[10px] uppercase tracking-[0.12em] text-text-faint'
+const STATUS_PILL =
+  'inline-flex w-fit items-center rounded-full px-2 py-[3px] font-mono text-[10.5px]'
+
+const PROJECT_COLS =
+  'grid grid-cols-[minmax(180px,1.2fr)_minmax(230px,1.4fr)_110px_minmax(230px,auto)] gap-3'
+const KEY_COLS =
+  'grid grid-cols-[minmax(210px,1.5fr)_84px_minmax(130px,1fr)_120px_minmax(140px,1fr)_minmax(330px,auto)] gap-3'
+const PROVIDER_COLS =
+  'grid grid-cols-[110px_minmax(150px,1.2fr)_minmax(160px,1fr)_120px_minmax(140px,1fr)_86px_minmax(190px,auto)] gap-3'
+
+/**
+ * Status pill copy for a provider key. `mounted` gates the staleness read
+ * because it compares against `Date.now()` — before mount we render the
+ * server-safe "active" so SSR and the hydration pass agree.
+ */
+function providerKeyStatus(
+  pk: ProviderKey,
+  mounted: boolean,
+): { label: string; className: string } {
+  if (!pk.is_active) return { label: 'inactive', className: 'bg-bg-chip text-text-muted' }
+  if (!mounted) return { label: 'active', className: 'bg-good-bg text-good' }
+  const { bucket } = classifyStaleness({
+    lastUsedAt: pk.last_used_at ?? null,
+    createdAt: pk.created_at,
+  })
+  if (bucket === 'stale' || bucket === 'consider_revoking') {
+    return { label: 'stale', className: 'bg-warn-bg text-warn' }
+  }
+  return { label: 'active', className: 'bg-good-bg text-good' }
+}
+
 export function ProjectsClient() {
   const projectsQuery = useProjects()
   const apiKeysQuery = useApiKeys()
@@ -235,7 +278,9 @@ export function ProjectsClient() {
   const [issuePublicName, setIssuePublicName] = useState('')
   const [issuePublicError, setIssuePublicError] = useState<string | null>(null)
   const publicKeysQuery = usePublicKeys()
-  const publicKeys = publicKeysQuery.data ?? []
+  // Memoised because the `?? []` fallback would otherwise hand a fresh array to
+  // the key-table useMemos below on every render, defeating them.
+  const publicKeys = useMemo(() => publicKeysQuery.data ?? [], [publicKeysQuery.data])
 
   // Rotate provider key dialog
   const [rotateProvKeyId, setRotateProvKeyId] = useState<string | null>(null)
@@ -522,9 +567,77 @@ export function ProjectsClient() {
     return { projects: projHit, apiKeys: visibleApiKeys, providerKeys: visibleProviderKeys }
   }, [allProjects, allApiKeys, allProviderKeys, search])
 
-  // Stat strip totals — always from the unfiltered list so the strip is a
-  // consistent overview, not a reflection of the current search.
-  const activeApiKeys = allApiKeys.filter((k) => k.is_active).length
+  // Public keys have their own query (workspace scope) but now share the
+  // Spanlens-keys table with the project-scoped full keys, told apart by the
+  // SCOPE pill. De-dupe by id in case /api/v1/api-keys already returned the
+  // workspace rows too.
+  const fullApiKeys = useMemo(() => allApiKeys.filter((k) => k.scope !== 'public'), [allApiKeys])
+  const allKeys = useMemo<ApiKey[]>(() => {
+    const seen = new Set(fullApiKeys.map((k) => k.id))
+    return [...fullApiKeys, ...publicKeys.filter((k) => !seen.has(k.id))]
+  }, [fullApiKeys, publicKeys])
+
+  // Rows for the Spanlens-keys table: the search-narrowed project keys plus
+  // public keys matched on their own name (they have no project to narrow by).
+  const keyRows = useMemo<ApiKey[]>(() => {
+    const visiblePublic = search
+      ? publicKeys.filter((k) => k.name.toLowerCase().includes(search.toLowerCase()))
+      : publicKeys
+    const seen = new Set(apiKeys.map((k) => k.id))
+    return [...apiKeys, ...visiblePublic.filter((k) => !seen.has(k.id))]
+  }, [apiKeys, publicKeys, search])
+
+  const projectNameById = useMemo(
+    () => new Map(allProjects.map((p) => [p.id, p.name])),
+    [allProjects],
+  )
+  const keyNameById = useMemo(
+    () => new Map(allKeys.map((k) => [k.id, k.name])),
+    [allKeys],
+  )
+
+  // Stat row totals — always from the unfiltered lists so the row is a
+  // consistent overview, not a reflection of the current search. Anything
+  // derived from `Date.now()` is read behind the `mounted` gate at render.
+  const staleKeyCount = useMemo(() => {
+    if (!mounted) return 0
+    return allKeys.filter((k) => {
+      const { bucket } = classifyStaleness({ lastUsedAt: k.last_used_at, createdAt: k.created_at })
+      return bucket === 'stale' || bucket === 'consider_revoking'
+    }).length
+  }, [allKeys, mounted])
+
+  const statCards = useMemo(() => {
+    const providerCount = new Set(allProviderKeys.map((pk) => pk.provider)).size
+    const publicCount = allKeys.filter((k) => k.scope === 'public').length
+    const projectNames = allProjects.slice(0, 3).map((p) => p.name).join(', ')
+    return [
+      {
+        label: 'Projects',
+        value: String(allProjects.length),
+        note: projectNames || 'none yet',
+        tone: 'text-text-faint',
+      },
+      {
+        label: 'Spanlens keys',
+        value: String(allKeys.length),
+        note: `${publicCount} public, ${allKeys.length - publicCount} full`,
+        tone: 'text-text-faint',
+      },
+      {
+        label: 'Provider keys',
+        value: String(allProviderKeys.length),
+        note: `across ${providerCount} provider${providerCount === 1 ? '' : 's'}`,
+        tone: 'text-text-faint',
+      },
+      {
+        label: 'Stale keys',
+        value: String(staleKeyCount),
+        note: staleKeyCount > 0 ? 'no traffic in 30 days' : 'all keys used recently',
+        tone: staleKeyCount > 0 ? 'text-accent' : 'text-text-faint',
+      },
+    ]
+  }, [allProjects, allKeys, allProviderKeys, staleKeyCount])
 
   function refreshAll() {
     void projectsQuery.refetch()
@@ -533,10 +646,13 @@ export function ProjectsClient() {
   }
 
   return (
-    <div className="-mx-4 -my-4 md:-mx-8 md:-my-7 flex flex-col min-h-screen">
-      <div className="sticky top-0 z-20 bg-bg">
+    <>
+      {/* The topbar is the only full-bleed row: it cancels the padding
+          `DashboardContent` applies so its hairline spans the whole main
+          column. Everything below sits flush inside that padding. */}
+      <div className="sticky top-0 z-20 -mx-4 -mt-4 md:-mx-7 md:-mt-5 bg-bg">
         <Topbar
-          crumbs={[{ label: 'Projects' }]}
+          crumbs={[{ label: 'Projects & Keys' }]}
           right={
             <div className="flex items-center gap-3">
               <LiveDot refetching={mounted && isFetching} />
@@ -545,439 +661,422 @@ export function ProjectsClient() {
                 onClick={refreshAll}
                 disabled={mounted && isFetching}
                 title="Refresh now"
-                className="font-mono text-[11px] text-text-muted hover:text-text border border-border rounded px-2 py-1 transition-colors disabled:opacity-40"
+                aria-label="Refresh now"
+                className="rounded-md border border-border bg-bg-elev px-2.5 py-1.5 font-mono text-[11px] text-text-muted hover:text-text transition-colors disabled:opacity-40"
               >
                 <span className={cn('inline-block', mounted && isFetching && 'animate-spin')}>↻</span>
               </button>
               <PermissionGate need="edit">
-                <GhostBtn
+                <button
+                  type="button"
                   onClick={() => setProjDialogOpen(true)}
                   title="New project"
                   aria-label="New project"
-                  className="flex items-center gap-1.5 text-[12.5px] px-2 sm:px-3 py-[5px] whitespace-nowrap shrink-0"
+                  className={cn(PILL_ACCENT, 'flex items-center gap-1.5 whitespace-nowrap shrink-0')}
                 >
                   <Plus className="h-3.5 w-3.5 shrink-0" />
                   <span className="hidden sm:inline">New project</span>
-                </GhostBtn>
+                </button>
               </PermissionGate>
             </div>
           }
         />
       </div>
 
-      {/* Stat strip — unfiltered overview. 2 cols on mobile, 4 on md+. */}
-      <div className="shrink-0 border-b border-border">
-        <div className="grid grid-cols-2 md:grid-cols-4">
-          {[
-            { label: 'Projects',       value: String(allProjects.length) },
-            { label: 'Spanlens keys',  value: String(allApiKeys.length) },
-            { label: 'Active keys',    value: String(activeApiKeys),    warn: false },
-            { label: 'Provider keys',  value: String(allProviderKeys.length) },
-          ].map((s, i) => (
+      <div className="pt-4 md:pt-5 space-y-4">
+        {/* The breadcrumb carries the visible page title, so the document
+            heading is screen-reader only. */}
+        <h1 className="sr-only">Projects &amp; Keys</h1>
+
+        {/* New key banner — surfaces freshly minted keys (full OR public) at
+            the very top of the canvas. The user just clicked "Create", so the
+            plaintext value should be the first thing they see. */}
+        {newKey && (
+          <div className="rounded-card border border-good/30 bg-good-bg px-5 py-[18px]">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-[13px] font-medium text-good">
+                Spanlens key created, copy now (won&apos;t be shown again)
+              </p>
+              <button
+                type="button"
+                onClick={() => setNewKey(null)}
+                className="font-mono text-[11px] text-good/60 hover:text-good transition-colors"
+              >
+                Dismiss
+              </button>
+            </div>
+
+            <div className="rounded-lg border border-good/20 bg-bg-sunk px-4 py-3 mb-3">
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="font-mono text-[10.5px] uppercase tracking-[0.1em] text-text-faint">
+                  SPANLENS_API_KEY
+                </span>
+                <button
+                  type="button"
+                  onClick={copyNewKey}
+                  className="font-mono text-[11px] text-accent hover:opacity-80 transition-opacity flex items-center gap-1"
+                >
+                  {keyCopied ? (
+                    <><Check className="h-3 w-3" /> Copied!</>
+                  ) : (
+                    <><Copy className="h-3 w-3" /> Copy</>
+                  )}
+                </button>
+              </div>
+              <code className="font-mono text-[12.5px] text-good break-all leading-relaxed">
+                {newKey}
+              </code>
+            </div>
+
+            <div className="rounded-lg border border-good/20 bg-bg-sunk px-4 py-3">
+              <div className="flex items-center gap-2 mb-2">
+                <Terminal className="h-3.5 w-3.5 text-text-faint" />
+                <span className="font-mono text-[10.5px] text-text-faint uppercase tracking-[0.1em]">
+                  Next: add provider keys to this Spanlens key, then run the CLI
+                </span>
+              </div>
+              <div className="flex items-center gap-2 mb-1.5">
+                <pre className="flex-1 font-mono text-[12.5px] text-good">
+                  npx @spanlens/cli init
+                </pre>
+                <button
+                  type="button"
+                  onClick={copyWizardCmd}
+                  className="font-mono text-[11px] text-accent hover:opacity-80 transition-opacity flex items-center gap-1 shrink-0"
+                >
+                  {cmdCopied ? (
+                    <><Check className="h-3 w-3" /> Copied</>
+                  ) : (
+                    <><Copy className="h-3 w-3" /> Copy</>
+                  )}
+                </button>
+              </div>
+              <p className="font-mono text-[10.5px] text-text-faint">
+                The CLI auto-patches every provider you registered under this key.{' '}
+                <Link
+                  href="/docs/quick-start"
+                  className="text-accent hover:opacity-80 transition-opacity underline inline-flex items-center gap-0.5"
+                >
+                  Manual setup <ExternalLink className="h-2.5 w-2.5" />
+                </Link>
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Stat row — always over the unfiltered lists so it reads as a
+            workspace overview, not a reflection of the current search. */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          {statCards.map((s) => (
             <div
               key={s.label}
-              className={cn(
-                'px-[18px] py-[14px] border-border',
-                i % 2 === 0 && 'border-r',
-                i === 1 && 'border-b md:border-b-0 md:border-r',
-                i === 0 && 'border-b md:border-b-0',
-                i === 2 && 'md:border-r',
-              )}
+              className="rounded-card border border-border bg-bg-elev shadow-card px-5 py-[18px]"
             >
-              <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-2">{s.label}</div>
-              <span className="text-[22px] sm:text-[24px] font-medium leading-none tracking-[-0.6px] tabular-nums text-text">
+              <div className="font-mono text-[10.5px] uppercase tracking-[0.1em] text-text-faint">
+                {s.label}
+              </div>
+              <div className="font-display text-[22px] track-h3 leading-[1.05] text-text mt-[7px] tabular-nums">
                 {mounted ? s.value : ' '}
-              </span>
+              </div>
+              <div className={cn('text-[11.5px] font-medium mt-[7px] truncate', s.tone)}>
+                {mounted ? s.note : ' '}
+              </div>
             </div>
           ))}
         </div>
-      </div>
 
-      {/* Search bar */}
-      <div className="px-[22px] py-[10px] border-b border-border flex items-center gap-2 flex-wrap shrink-0">
-        <div className="relative max-w-md flex-1 min-w-[180px]">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-text-faint" />
-          <input
-            value={searchInput}
-            onChange={(e) => setSearchInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Escape') {
-                setSearchInput('')
-                updateQuery({ q: null })
-              }
-            }}
-            placeholder="Search project, Spanlens key, or provider key…"
-            className="w-full pl-8 pr-3 py-1.5 font-mono text-[12px] bg-bg-elev border border-border rounded-[6px] text-text placeholder:text-text-faint focus:outline-none focus:border-accent"
-          />
-        </div>
-        {search && (
-          <button
-            type="button"
-            onClick={() => { setSearchInput(''); updateQuery({ q: null }) }}
-            className="font-mono text-[11px] text-text-faint hover:text-text transition-colors"
-          >
-            Clear
-          </button>
-        )}
-        <span className="flex-1" />
-        <span className="font-mono text-[11px] text-text-faint">
-          {mounted ? (projects.length === allProjects.length ? `${allProjects.length} projects` : `${projects.length} of ${allProjects.length}`) : ' '}
-        </span>
-      </div>
-
-      <div>
-        <div className="px-7 py-6 max-w-4xl">
-          {/* New key banner — surfaces freshly minted keys (full OR public)
-              at the very top of the content, between the search bar and the
-              Public Keys card. The user just clicked "Create", so the
-              plaintext value should be the first thing they see. */}
-          {newKey && (
-            <div className="rounded-xl border border-good/30 bg-good-bg px-5 py-4 mb-6">
-              <div className="flex items-center justify-between mb-3">
-                <p className="text-[13px] font-medium text-good">
-                  Spanlens key created, copy now (won&apos;t be shown again)
-                </p>
-                <button
-                  type="button"
-                  onClick={() => setNewKey(null)}
-                  className="font-mono text-[11px] text-good/60 hover:text-good transition-colors"
-                >
-                  Dismiss
-                </button>
-              </div>
-
-              <div className="rounded-lg border border-good/20 bg-[#1a1816] px-4 py-3 mb-3">
-                <div className="flex items-center justify-between mb-1.5">
-                  <span className="font-mono text-[10.5px] uppercase tracking-[0.05em] text-[#7c7770]">
-                    SPANLENS_API_KEY
-                  </span>
-                  <button
-                    type="button"
-                    onClick={copyNewKey}
-                    className="font-mono text-[11px] text-accent hover:opacity-80 transition-opacity flex items-center gap-1"
-                  >
-                    {keyCopied ? (
-                      <><Check className="h-3 w-3" /> Copied!</>
-                    ) : (
-                      <><Copy className="h-3 w-3" /> Copy</>
-                    )}
-                  </button>
-                </div>
-                <code className="font-mono text-[12.5px] text-good break-all leading-relaxed">
-                  {newKey}
-                </code>
-              </div>
-
-              <div className="rounded-lg border border-good/20 bg-[#1a1816] px-4 py-3">
-                <div className="flex items-center gap-2 mb-2">
-                  <Terminal className="h-3.5 w-3.5 text-[#7c7770]" />
-                  <span className="font-mono text-[10.5px] text-[#7c7770] uppercase tracking-[0.05em]">
-                    Next: add provider keys to this Spanlens key, then run the CLI
-                  </span>
-                </div>
-                <div className="flex items-center gap-2 mb-1.5">
-                  <pre className="flex-1 font-mono text-[12.5px] text-good">
-                    npx @spanlens/cli init
-                  </pre>
-                  <button
-                    type="button"
-                    onClick={copyWizardCmd}
-                    className="font-mono text-[11px] text-accent hover:opacity-80 transition-opacity flex items-center gap-1 shrink-0"
-                  >
-                    {cmdCopied ? (
-                      <><Check className="h-3 w-3" /> Copied</>
-                    ) : (
-                      <><Copy className="h-3 w-3" /> Copy</>
-                    )}
-                  </button>
-                </div>
-                <p className="font-mono text-[10.5px] text-[#5c5752]">
-                  The CLI auto-patches every provider you registered under this key.{' '}
-                  <Link
-                    href="/docs/quick-start"
-                    className="text-accent hover:opacity-80 transition-opacity underline inline-flex items-center gap-0.5"
-                  >
-                    Manual setup <ExternalLink className="h-2.5 w-2.5" />
-                  </Link>
-                </p>
-              </div>
-            </div>
+        {/* Search — URL-backed, matches project, Spanlens key, and provider
+            key names. */}
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="relative flex-1 min-w-[200px]">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-text-faint" />
+            <input
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') {
+                  setSearchInput('')
+                  updateQuery({ q: null })
+                }
+              }}
+              placeholder="Search project, Spanlens key, or provider key…"
+              className="w-full rounded-md border border-border bg-bg-elev pl-9 pr-3 py-2 text-[12.5px] text-text placeholder:text-text-faint focus:outline-none focus:border-accent transition-colors"
+            />
+          </div>
+          {search && (
+            <button
+              type="button"
+              onClick={() => { setSearchInput(''); updateQuery({ q: null }) }}
+              className={PILL_SECONDARY}
+            >
+              Clear
+            </button>
           )}
+          <span className="font-mono text-[11px] text-text-faint whitespace-nowrap">
+            {mounted
+              ? (projects.length === allProjects.length
+                ? `${allProjects.length} projects`
+                : `${projects.length} of ${allProjects.length}`)
+              : ' '}
+          </span>
+        </div>
 
-          {/* Public Keys card — workspace-level credentials for MCP servers,
-              BI tools, and read embeds. Placed above the page title so it
-              reads as a distinct workspace-scope concept, separate from the
-              per-project key list below. */}
-          <div className="rounded-xl border border-border bg-bg-elev px-5 py-4 mb-6">
-            <div className="flex items-start justify-between gap-4 mb-3">
-              <div className="min-w-0">
-                <div className="flex items-center gap-2 mb-0.5">
-                  <h2 className="text-[14px] font-semibold text-text">Public keys</h2>
-                  <span className="font-mono text-[9.5px] uppercase tracking-[0.05em] px-1.5 py-0.5 rounded border border-border text-text-faint">
-                    workspace
-                  </span>
-                </div>
-                <p className="text-[12px] text-text-muted">
-                  Read-only credentials safe for MCP servers, BI tools, and embeds. Cannot make LLM calls or ingest traces.
-                </p>
-              </div>
-              <PermissionGate need="edit">
-                <PrimaryBtn
-                  onClick={openIssuePublicDialog}
-                  className="shrink-0 flex items-center gap-1.5 text-[12px] px-3 py-[5px] h-[28px]"
-                >
-                  <Plus className="h-3.5 w-3.5" /> New public key
-                </PrimaryBtn>
-              </PermissionGate>
+        {/* Integration hint */}
+        {!newKey && allProjects.length > 0 && (
+          <div className="rounded-card border border-border bg-bg-elev shadow-card px-5 py-3.5 flex items-center justify-between gap-4 flex-wrap">
+            <div className="flex items-center gap-3 text-[13px] text-text-muted">
+              <Terminal className="h-4 w-4 shrink-0 text-text-faint" />
+              <span>
+                Quick integrate:{' '}
+                <code className="font-mono text-[12px] bg-bg-sunk border border-border px-1.5 py-0.5 rounded">
+                  npx @spanlens/cli init
+                </code>
+              </span>
             </div>
+            <Link
+              href="/docs/quick-start"
+              className="text-[12.5px] text-accent hover:opacity-80 transition-opacity shrink-0 inline-flex items-center gap-0.5"
+            >
+              Full guide <ExternalLink className="h-3 w-3" />
+            </Link>
+          </div>
+        )}
 
-            {publicKeys.length === 0 ? (
-              <div className="rounded-md border border-dashed border-border px-4 py-3 text-[12px] text-text-faint">
-                No public keys yet. Generate one to read your workspace&apos;s stats from outside Spanlens.
+        {loading ? (
+          <div className="space-y-4">
+            {[1, 2].map((i) => (
+              <div key={i} className={cn(TABLE_CARD, 'p-5 space-y-3')}>
+                <Skeleton className="h-4 w-40" />
+                <Skeleton className="h-9 w-full" />
+                <Skeleton className="h-9 w-full" />
+                <Skeleton className="h-9 w-full" />
               </div>
-            ) : (
-              <ul className="divide-y divide-border rounded-md border border-border bg-bg/40">
-                {publicKeys.map((key) => (
-                  <li key={key.id} className="flex items-center gap-3 px-3 py-2.5">
-                    <KeyIcon className="h-3.5 w-3.5 text-text-faint shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <div
-                        className={cn(
-                          'flex items-center gap-2 text-[13px] font-medium',
-                          !key.is_active && 'line-through text-text-faint',
-                        )}
-                      >
-                        <span className="truncate">{key.name}</span>
-                        {/* Stale indicator only meaningful after client mount,
-                            otherwise SSR may render a different badge than the
-                            client computes against `Date.now()`. */}
-                        {mounted && key.is_active && (
-                          <StaleBadge
-                            lastUsedAt={key.last_used_at}
-                            createdAt={key.created_at}
-                          />
-                        )}
-                      </div>
-                      <div className="font-mono text-[10.5px] text-text-faint mt-0.5">
-                        {key.key_prefix}…
-                        <span className="ml-2">
-                          {!mounted
-                            ? '· …'
-                            : `· ${formatLastUsed({ lastUsedAt: key.last_used_at, createdAt: key.created_at })}`}
-                        </span>
-                      </div>
-                    </div>
+            ))}
+          </div>
+        ) : listError ? (
+          <div className={cn(TABLE_CARD, 'px-6 py-10 text-center')}>
+            <h2 className="text-[13.5px] font-semibold text-text mb-1.5">Couldn&apos;t load projects</h2>
+            <p className="text-[12.5px] text-text-muted max-w-md mx-auto mb-4">
+              We couldn&apos;t reach the server just now. Your projects and keys are safe.
+            </p>
+            <button type="button" onClick={refreshAll} className={PILL_SECONDARY}>
+              Retry
+            </button>
+          </div>
+        ) : (
+          <>
+            {/* ── Projects ─────────────────────────────────────────────────
+                Not in the Figma board, but project create / delete and the
+                per-project "New Spanlens key" flow have to live somewhere
+                now that the key list is flat. Same table language as the
+                two boards below. */}
+            <section className="space-y-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className={SECTION_EYEBROW}>Projects</span>
+              </div>
+              {allProjects.length === 0 ? (
+                <div className={cn(TABLE_CARD, 'px-6 py-10 text-center')}>
+                  <h2 className="text-[13.5px] font-semibold text-text mb-1.5">No projects yet</h2>
+                  <p className="text-[12.5px] text-text-muted max-w-md mx-auto mb-4">
+                    Create a project to start grouping Spanlens keys and the provider keys they call.
+                  </p>
+                  <div className="flex items-center justify-center gap-2 flex-wrap">
                     <PermissionGate need="edit">
                       <button
                         type="button"
-                        onClick={() => { setRevokePublicError(null); setRevokePublicKeyId(key.id) }}
-                        className="text-text-faint hover:text-bad transition-colors p-1"
-                        title="Revoke"
-                        aria-label="Revoke public key"
+                        onClick={() => setProjDialogOpen(true)}
+                        className={cn(PILL_ACCENT, 'inline-flex items-center gap-1.5')}
                       >
-                        <Trash2 className="h-3.5 w-3.5" />
+                        <Plus className="h-3.5 w-3.5" /> Create first project
                       </button>
                     </PermissionGate>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-
-          <div className="mb-6">
-            <h1 className="text-[22px] font-semibold text-text tracking-[-0.4px] mb-1">
-              Projects & Keys
-            </h1>
-            <p className="text-[13px] text-text-muted">
-              Each Spanlens key holds its own AI provider keys. Expand a key to see and add OpenAI / Anthropic / Gemini keys it can call.
-            </p>
-          </div>
-
-          {/* Integration hint */}
-          {!newKey && projects.length > 0 && (
-            <div className="rounded-lg border border-border bg-bg-elev px-4 py-3 mb-6 flex items-center justify-between gap-4">
-              <div className="flex items-center gap-3 text-[13px] text-text-muted">
-                <Terminal className="h-4 w-4 shrink-0 text-text-faint" />
-                <span>
-                  Quick integrate:{' '}
-                  <code className="font-mono text-[12px] bg-bg border border-border px-1.5 py-0.5 rounded-[4px]">
-                    npx @spanlens/cli init
-                  </code>
-                </span>
-              </div>
-              <Link
-                href="/docs/quick-start"
-                className="text-[12.5px] text-accent hover:opacity-80 transition-opacity shrink-0 inline-flex items-center gap-0.5"
-              >
-                Full guide <ExternalLink className="h-3 w-3" />
-              </Link>
-            </div>
-          )}
-
-          {loading ? (
-            <div className="space-y-4">
-              {[1, 2].map((i) => (
-                <div key={i} className="rounded-xl border border-border bg-bg-elev p-6">
-                  <Skeleton className="h-5 w-40 mb-2" />
-                  <Skeleton className="h-3 w-64" />
+                    <Link href="/docs/features/projects" className={PILL_SECONDARY}>
+                      How projects work →
+                    </Link>
+                  </div>
                 </div>
-              ))}
-            </div>
-          ) : listError ? (
-            <div className="rounded-xl border border-dashed border-border p-10 text-center">
-              <h2 className="text-[14px] font-semibold text-text mb-1.5">Couldn&apos;t load projects</h2>
-              <p className="text-[12.5px] text-text-muted max-w-md mx-auto mb-4">
-                We couldn&apos;t reach the server just now. Your projects and keys are safe.
-              </p>
-              <button
-                type="button"
-                onClick={() => {
-                  void projectsQuery.refetch()
-                  void apiKeysQuery.refetch()
-                  void providerKeysQuery.refetch()
-                }}
-                className="font-mono text-[11.5px] px-2.5 py-1 rounded border border-border text-text-muted hover:text-text hover:border-border-strong transition-colors inline-block"
-              >
-                Retry
-              </button>
-            </div>
-          ) : allProjects.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-border p-10 text-center">
-              <h2 className="text-[14px] font-semibold text-text mb-1.5">No projects yet</h2>
-              <p className="text-[12.5px] text-text-muted max-w-md mx-auto mb-4">
-                Create a project to start grouping Spanlens keys and the provider keys they call.
-              </p>
-              <PermissionGate need="edit">
-                <PrimaryBtn
-                  onClick={() => setProjDialogOpen(true)}
-                  className="inline-flex items-center gap-1.5 text-[12.5px] px-3 py-[6px]"
-                >
-                  <Plus className="h-3.5 w-3.5" /> Create first project
-                </PrimaryBtn>
-              </PermissionGate>
-              <div className="mt-3">
-                <Link
-                  href="/docs/features/projects"
-                  className="font-mono text-[11.5px] px-2.5 py-1 rounded border border-border text-text-muted hover:text-text hover:border-border-strong transition-colors inline-block"
-                >
-                  How projects work →
-                </Link>
-              </div>
-            </div>
-          ) : projects.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-border p-10 text-center">
-              <p className="text-[12.5px] text-text-muted">No projects match the current search.</p>
-              <button
-                type="button"
-                onClick={() => { setSearchInput(''); updateQuery({ q: null }) }}
-                className="font-mono text-[11.5px] mt-3 px-2.5 py-1 rounded border border-border text-text-muted hover:text-text hover:border-border-strong transition-colors"
-              >
-                Clear search
-              </button>
-            </div>
-          ) : (
-            <div className="space-y-6">
-              {projects.map((proj) => {
-                const projApiKeys = apiKeys.filter((k) => k.project_id === proj.id)
-                return (
-                  <div
-                    key={proj.id}
-                    className="rounded-xl border border-border bg-bg-elev overflow-hidden"
+              ) : projects.length === 0 ? (
+                <div className={cn(TABLE_CARD, 'px-6 py-10 text-center')}>
+                  <p className="text-[12.5px] text-text-muted mb-3">No projects match the current search.</p>
+                  <button
+                    type="button"
+                    onClick={() => { setSearchInput(''); updateQuery({ q: null }) }}
+                    className={PILL_SECONDARY}
                   >
-                    {/* Project header — buttons collapse to icon on mobile so
-                        the action row never wraps under the project name. */}
-                    <div className="flex items-center justify-between gap-2 px-6 py-4 border-b border-border bg-bg flex-wrap">
-                      <div className="min-w-0 flex-1">
-                        <h2 className="text-[14px] font-semibold text-text break-all">{proj.name}</h2>
-                        <div className="group flex items-center gap-1 mt-0.5">
-                          <p className="font-mono text-[10.5px] text-text-faint truncate">{proj.id}</p>
-                          <CopyIdButton value={proj.id} label="Copy project ID" />
-                        </div>
+                    Clear search
+                  </button>
+                </div>
+              ) : (
+                <div className={TABLE_CARD}>
+                  <div className="overflow-x-auto">
+                    <div className="min-w-[840px]">
+                      <div className={cn(PROJECT_COLS, 'bg-bg-muted border-b border-border px-[18px] py-2.5')}>
+                        <span className={TABLE_HEAD_CELL}>Project</span>
+                        <span className={TABLE_HEAD_CELL}>Project ID</span>
+                        <span className={TABLE_HEAD_CELL}>Spanlens keys</span>
+                        <span className={cn(TABLE_HEAD_CELL, 'text-right')}>Actions</span>
                       </div>
-                      <div className="flex items-center gap-2 shrink-0">
-                        <PermissionGate need="edit">
-                          <PrimaryBtn
-                            className="flex items-center gap-1.5 text-[12px] px-2 sm:px-3 py-[5px] h-[28px] whitespace-nowrap"
-                            onClick={() => openIssueDialog(proj.id)}
-                            title="New Spanlens key"
-                            aria-label="New Spanlens key"
+                      {projects.map((proj) => {
+                        const projKeyCount = apiKeys.filter((k) => k.project_id === proj.id).length
+                        return (
+                          <div
+                            key={proj.id}
+                            className={cn(
+                              PROJECT_COLS,
+                              'group items-center px-[18px] py-3 border-b border-border last:border-b-0',
+                            )}
                           >
-                            <Plus className="h-3.5 w-3.5" />
-                            <span className="hidden sm:inline">New Spanlens key</span>
-                          </PrimaryBtn>
-                        </PermissionGate>
-                        <PermissionGate need="edit">
-                          <button
-                            type="button"
-                            onClick={() => openDeleteProjectDialog(proj.id, proj.name)}
-                            title="Delete project"
-                            aria-label="Delete project"
-                            className="p-1.5 rounded hover:bg-bad/10 text-text-faint hover:text-bad transition-colors"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
-                        </PermissionGate>
-                      </div>
-                    </div>
-
-                    {/* Spanlens key sections, each is a self-contained group:
-                        the key name acts as the header and "+ Add provider key"
-                        sits next to it. Provider keys stay always-visible. */}
-                    {projApiKeys.length === 0 ? (
-                      <p className="px-6 py-5 text-[13px] text-text-faint">
-                        No Spanlens keys yet. Create one to start.
-                      </p>
-                    ) : (
-                      <div className="divide-y divide-border">
-                        {projApiKeys.map((key) => {
-                          const keyProvKeys = providerKeys.filter(
-                            (pk) => pk.api_key_id === key.id,
-                          )
-                          return (
-                            <div key={key.id}>
-                              {/* Spanlens key header, name + meta + add button + actions */}
-                              <div className="flex items-center gap-3 px-6 py-3 bg-bg/30">
-                                <KeyIcon className="h-3.5 w-3.5 text-text-faint shrink-0" />
-                                <div className="flex-1 min-w-0">
-                                  <div
-                                    className={cn(
-                                      'flex items-center gap-2 text-[13.5px] font-semibold',
-                                      !key.is_active && 'line-through text-text-faint',
-                                    )}
-                                  >
-                                    <span className="truncate">{key.name}</span>
-                                    {mounted && key.is_active && (
-                                      <StaleBadge
-                                        lastUsedAt={key.last_used_at}
-                                        createdAt={key.created_at}
-                                      />
-                                    )}
-                                  </div>
-                                  <div className="font-mono text-[10.5px] text-text-faint mt-0.5">
-                                    {key.key_prefix}…
-                                    <span className="ml-2">
-                                      {!mounted
-                                        ? '· …'
-                                        : `· ${formatLastUsed({ lastUsedAt: key.last_used_at, createdAt: key.created_at })}`}
-                                    </span>
-                                  </div>
-                                </div>
-                                <GhostBtn
-                                  className="flex items-center gap-1.5 text-[12px] px-3 py-[5px] h-[28px] shrink-0"
-                                  onClick={() => setRateLimitsKey({ id: key.id, name: key.name })}
-                                  title="Configure rate limits for this key"
+                            <span className="font-mono text-[12px] text-text truncate" title={proj.name}>
+                              {proj.name}
+                            </span>
+                            <span className="flex items-center gap-1 min-w-0">
+                              <span className="font-mono text-[12px] text-text-muted truncate">{proj.id}</span>
+                              <CopyIdButton value={proj.id} label="Copy project ID" />
+                            </span>
+                            <span className="font-mono text-[12px] text-text-muted tabular-nums">
+                              {projKeyCount}
+                            </span>
+                            <span className="flex items-center justify-end gap-2">
+                              <PermissionGate need="edit">
+                                <button
+                                  type="button"
+                                  className={cn(PILL_SECONDARY, 'inline-flex items-center gap-1.5 whitespace-nowrap')}
+                                  onClick={() => openIssueDialog(proj.id)}
+                                  title="New Spanlens key"
+                                  aria-label="New Spanlens key"
                                 >
-                                  <Gauge className="h-3.5 w-3.5" /> Rate limits
-                                </GhostBtn>
-                                <PermissionGate need="edit">
-                                  <GhostBtn
-                                    className="flex items-center gap-1.5 text-[12px] px-3 py-[5px] h-[28px] shrink-0"
-                                    onClick={() => openAddProvDialog(key.id)}
+                                  <Plus className="h-3.5 w-3.5" /> New key
+                                </button>
+                              </PermissionGate>
+                              <PermissionGate need="edit">
+                                <button
+                                  type="button"
+                                  onClick={() => openDeleteProjectDialog(proj.id, proj.name)}
+                                  title="Delete project"
+                                  aria-label="Delete project"
+                                  className={cn(PILL_DESTRUCTIVE, 'inline-flex items-center gap-1.5')}
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" /> Delete
+                                </button>
+                              </PermissionGate>
+                            </span>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </section>
+
+            {/* ── Spanlens keys ────────────────────────────────────────────
+                Full (project-scoped) and public (workspace-scoped) keys share
+                one table, told apart by the SCOPE pill, exactly as in the
+                Figma board. */}
+            <section className="space-y-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <span className={SECTION_EYEBROW}>Spanlens keys</span>
+                  <p className="text-[11.5px] text-text-faint mt-1">
+                    Public keys are read-only credentials safe for MCP servers, BI tools, and embeds. They cannot make LLM calls or ingest traces.
+                  </p>
+                </div>
+                <PermissionGate need="edit">
+                  <button
+                    type="button"
+                    onClick={openIssuePublicDialog}
+                    className={cn(PILL_SECONDARY, 'inline-flex items-center gap-1.5 shrink-0')}
+                  >
+                    <Plus className="h-3.5 w-3.5" /> New public key
+                  </button>
+                </PermissionGate>
+              </div>
+
+              {keyRows.length === 0 ? (
+                <div className={cn(TABLE_CARD, 'px-6 py-8 text-center text-[12.5px] text-text-muted')}>
+                  {search
+                    ? 'No Spanlens keys match the current search.'
+                    : 'No Spanlens keys yet. Create one on a project to start.'}
+                </div>
+              ) : (
+                <div className={TABLE_CARD}>
+                  <div className="overflow-x-auto">
+                    <div className="min-w-[1120px]">
+                      <div className={cn(KEY_COLS, 'bg-bg-muted border-b border-border px-[18px] py-2.5')}>
+                        <span className={TABLE_HEAD_CELL}>Spanlens key</span>
+                        <span className={TABLE_HEAD_CELL}>Scope</span>
+                        <span className={TABLE_HEAD_CELL}>Project</span>
+                        <span className={TABLE_HEAD_CELL}>Created</span>
+                        <span className={TABLE_HEAD_CELL}>Last used</span>
+                        <span className={cn(TABLE_HEAD_CELL, 'text-right')}>Actions</span>
+                      </div>
+                      {keyRows.map((key) => {
+                        const isPublic = key.scope === 'public'
+                        return (
+                          <div
+                            key={key.id}
+                            className={cn(
+                              KEY_COLS,
+                              'items-center px-[18px] py-3 border-b border-border last:border-b-0',
+                            )}
+                          >
+                            <span className="min-w-0">
+                              <span
+                                className={cn(
+                                  'flex items-center gap-2 font-mono text-[12px] text-text',
+                                  !key.is_active && 'line-through text-text-faint',
+                                )}
+                              >
+                                <span className="truncate">{key.name}</span>
+                                {/* Stale indicator only after client mount — it is
+                                    computed against `Date.now()`. */}
+                                {mounted && key.is_active && (
+                                  <StaleBadge lastUsedAt={key.last_used_at} createdAt={key.created_at} />
+                                )}
+                              </span>
+                              <span className="block font-mono text-[10.5px] text-text-faint mt-0.5 truncate">
+                                {key.key_prefix}…
+                              </span>
+                            </span>
+                            <span
+                              className={cn(
+                                STATUS_PILL,
+                                isPublic ? 'bg-accent-bg text-accent' : 'bg-bg-chip text-text-muted',
+                              )}
+                            >
+                              {key.scope}
+                            </span>
+                            <span className="font-mono text-[12px] text-text-muted truncate">
+                              {isPublic ? 'workspace wide' : (projectNameById.get(key.project_id ?? '') ?? '—')}
+                            </span>
+                            <span className="font-mono text-[12px] text-text-muted whitespace-nowrap">
+                              {formatDate(key.created_at)}
+                            </span>
+                            <span className="font-mono text-[12px] text-text-muted truncate">
+                              {mounted
+                                ? formatLastUsed({ lastUsedAt: key.last_used_at, createdAt: key.created_at })
+                                : '…'}
+                            </span>
+                            <span className="flex items-center justify-end gap-2">
+                              {!isPublic && (
+                                <>
+                                  <button
+                                    type="button"
+                                    className={cn(PILL_SECONDARY, 'inline-flex items-center gap-1.5 whitespace-nowrap')}
+                                    onClick={() => setRateLimitsKey({ id: key.id, name: key.name })}
+                                    title="Configure rate limits for this key"
                                   >
-                                    <Plus className="h-3.5 w-3.5" /> Add provider key
-                                  </GhostBtn>
-                                </PermissionGate>
-                                <div className="flex items-center gap-1 shrink-0">
+                                    <Gauge className="h-3.5 w-3.5" /> Rate limits
+                                  </button>
+                                  <PermissionGate need="edit">
+                                    <button
+                                      type="button"
+                                      className={cn(PILL_SECONDARY, 'inline-flex items-center gap-1.5 whitespace-nowrap')}
+                                      onClick={() => openAddProvDialog(key.id)}
+                                    >
+                                      <Plus className="h-3.5 w-3.5" /> Provider key
+                                    </button>
+                                  </PermissionGate>
                                   <PermissionGate need="edit">
                                     <button
                                       type="button"
@@ -994,105 +1093,138 @@ export function ProjectsClient() {
                                       }}
                                       title={key.is_active ? 'Deactivate' : 'Activate'}
                                       className={cn(
-                                        'relative inline-flex h-5 w-9 items-center rounded-full transition-colors disabled:opacity-40',
+                                        'relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors disabled:opacity-40',
                                         key.is_active ? 'bg-good' : 'bg-border-strong',
                                       )}
                                     >
                                       <span
                                         className={cn(
-                                          'inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform',
+                                          'inline-block h-3.5 w-3.5 rounded-full bg-bg-elev shadow transition-transform',
                                           key.is_active ? 'translate-x-[18px]' : 'translate-x-[3px]',
                                         )}
                                       />
                                     </button>
                                   </PermissionGate>
-                                  <PermissionGate need="edit">
-                                    <button
-                                      type="button"
-                                      onClick={() => setDeleteApiKeyId(key.id)}
-                                      title="Delete Spanlens key"
-                                      className="p-1.5 rounded hover:bg-bad/10 text-text-faint hover:text-bad transition-colors"
-                                    >
-                                      <Trash2 className="h-3.5 w-3.5" />
-                                    </button>
-                                  </PermissionGate>
-                                </div>
-                              </div>
-
-                              {/* Provider keys under this Spanlens key, always visible */}
-                              {keyProvKeys.length === 0 ? (
-                                <p className="px-12 py-2.5 text-[12px] text-text-faint">
-                                  No provider keys yet. Add OpenAI / Anthropic / Gemini to enable calls through this Spanlens key.
-                                </p>
-                              ) : (
-                                <div>
-                                  {keyProvKeys.map((pk) => (
-                                    <div
-                                      key={pk.id}
-                                      className="grid grid-cols-[1fr_100px_60px] gap-4 px-12 py-2 items-center"
-                                    >
-                                      <span
-                                        className={cn(
-                                          'text-[12.5px] truncate',
-                                          !pk.is_active && 'line-through text-text-faint',
-                                        )}
-                                      >
-                                        {pk.name}
-                                      </span>
-                                      <span className="font-mono text-[10px] uppercase tracking-[0.04em] px-1.5 py-0.5 rounded-full border border-border text-text-muted w-fit">
-                                        {pk.provider}
-                                      </span>
-                                      <div className="flex items-center gap-1 justify-end">
-                                        <PermissionGate need="edit">
-                                          <button
-                                            type="button"
-                                            onClick={() => openRotateProvDialog(pk.id)}
-                                            title="Rotate provider key"
-                                            className="p-1 rounded hover:bg-bg text-text-faint hover:text-text transition-colors"
-                                          >
-                                            <Pencil className="h-3 w-3" />
-                                          </button>
-                                        </PermissionGate>
-                                        <PermissionGate need="edit">
-                                          <button
-                                            type="button"
-                                            onClick={() => setDeleteProvKeyId(pk.id)}
-                                            title="Deactivate"
-                                            className="p-1 rounded hover:bg-bad/10 text-text-faint hover:text-bad transition-colors"
-                                          >
-                                            <Trash2 className="h-3 w-3" />
-                                          </button>
-                                        </PermissionGate>
-                                      </div>
-                                    </div>
-                                  ))}
-                                </div>
+                                </>
                               )}
-                            </div>
-                          )
-                        })}
-                      </div>
-                    )}
+                              <PermissionGate need="edit">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (isPublic) {
+                                      setRevokePublicError(null)
+                                      setRevokePublicKeyId(key.id)
+                                    } else {
+                                      setDeleteApiKeyId(key.id)
+                                    }
+                                  }}
+                                  title={isPublic ? 'Revoke public key' : 'Delete Spanlens key'}
+                                  aria-label={isPublic ? 'Revoke public key' : 'Delete Spanlens key'}
+                                  className={cn(PILL_DESTRUCTIVE, 'whitespace-nowrap')}
+                                >
+                                  {isPublic ? 'Revoke' : 'Delete'}
+                                </button>
+                              </PermissionGate>
+                            </span>
+                          </div>
+                        )
+                      })}
+                    </div>
                   </div>
-                )
-              })}
-
-              {projects.length === 0 && (
-                <div className="rounded-xl border border-border bg-bg-elev px-6 py-12 text-center">
-                  <p className="text-[13px] text-text-faint mb-4">No projects yet.</p>
-                  <PermissionGate need="edit">
-                    <GhostBtn
-                      onClick={() => setProjDialogOpen(true)}
-                      className="inline-flex items-center gap-2"
-                    >
-                      <Plus className="h-4 w-4" /> Create your first project
-                    </GhostBtn>
-                  </PermissionGate>
                 </div>
               )}
-            </div>
-          )}
-        </div>
+            </section>
+
+            {/* ── Provider keys ────────────────────────────────────────────
+                Flat list across the workspace, each row naming the Spanlens
+                key it is nested under. */}
+            <section className="space-y-2">
+              <span className={SECTION_EYEBROW}>Provider keys</span>
+              {providerKeys.length === 0 ? (
+                <div className={cn(TABLE_CARD, 'px-6 py-8 text-center text-[12.5px] text-text-muted')}>
+                  {search
+                    ? 'No provider keys match the current search.'
+                    : 'No provider keys yet. Add OpenAI / Anthropic / Gemini under a Spanlens key to enable calls through it.'}
+                </div>
+              ) : (
+                <div className={TABLE_CARD}>
+                  <div className="overflow-x-auto">
+                    <div className="min-w-[1080px]">
+                      <div className={cn(PROVIDER_COLS, 'bg-bg-muted border-b border-border px-[18px] py-2.5')}>
+                        <span className={TABLE_HEAD_CELL}>Provider</span>
+                        <span className={TABLE_HEAD_CELL}>Key name</span>
+                        <span className={TABLE_HEAD_CELL}>Nested under</span>
+                        <span className={TABLE_HEAD_CELL}>Added</span>
+                        <span className={TABLE_HEAD_CELL}>Last used</span>
+                        <span className={TABLE_HEAD_CELL}>Status</span>
+                        <span className={cn(TABLE_HEAD_CELL, 'text-right')}>Actions</span>
+                      </div>
+                      {providerKeys.map((pk) => {
+                        const status = providerKeyStatus(pk, mounted)
+                        return (
+                          <div
+                            key={pk.id}
+                            className={cn(
+                              PROVIDER_COLS,
+                              'items-center px-[18px] py-3 border-b border-border last:border-b-0',
+                            )}
+                          >
+                            <span className="font-mono text-[12px] text-text truncate">{pk.provider}</span>
+                            <span
+                              className={cn(
+                                'font-mono text-[12px] text-text-muted truncate',
+                                !pk.is_active && 'line-through text-text-faint',
+                              )}
+                              title={pk.name}
+                            >
+                              {pk.name}
+                            </span>
+                            <span className="font-mono text-[12px] text-text-muted truncate">
+                              {keyNameById.get(pk.api_key_id) ?? '—'}
+                            </span>
+                            <span className="font-mono text-[12px] text-text-muted whitespace-nowrap">
+                              {formatDate(pk.created_at)}
+                            </span>
+                            <span className="font-mono text-[12px] text-text-muted truncate">
+                              {mounted
+                                ? formatLastUsed({ lastUsedAt: pk.last_used_at ?? null, createdAt: pk.created_at })
+                                : '…'}
+                            </span>
+                            <span className={cn(STATUS_PILL, status.className)}>{status.label}</span>
+                            <span className="flex items-center justify-end gap-2">
+                              <PermissionGate need="edit">
+                                <button
+                                  type="button"
+                                  onClick={() => openRotateProvDialog(pk.id)}
+                                  title="Rotate provider key"
+                                  aria-label="Rotate provider key"
+                                  className={cn(PILL_SECONDARY, 'inline-flex items-center gap-1.5')}
+                                >
+                                  <Pencil className="h-3 w-3" /> Rotate
+                                </button>
+                              </PermissionGate>
+                              <PermissionGate need="edit">
+                                <button
+                                  type="button"
+                                  onClick={() => setDeleteProvKeyId(pk.id)}
+                                  title="Delete provider key"
+                                  aria-label="Delete provider key"
+                                  className={cn(PILL_DESTRUCTIVE, 'whitespace-nowrap')}
+                                >
+                                  Delete
+                                </button>
+                              </PermissionGate>
+                            </span>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </section>
+          </>
+        )}
       </div>
 
       {/* Create project dialog */}
@@ -1115,11 +1247,11 @@ export function ProjectsClient() {
                 onChange={(e) => setProjName(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter' && projName.trim() && !createProject.isPending) void handleCreateProject() }}
                 placeholder="e.g. Production"
-                className="w-full h-9 px-3 rounded-[6px] border border-border bg-bg text-[13px] text-text placeholder:text-text-faint focus:outline-none focus:border-border-strong transition-colors"
+                className="w-full h-9 px-3 rounded-md border border-border bg-bg text-[13px] text-text placeholder:text-text-faint focus:outline-none focus:border-border-strong transition-colors"
               />
             </div>
             {projError && (
-              <div className="rounded-md border border-bad/30 bg-bad/10 px-3 py-2 text-[12px] text-bad">
+              <div className="rounded-md border border-bad/30 bg-bad-bg px-3 py-2 text-[12px] text-bad">
                 {projError}
               </div>
             )}
@@ -1147,7 +1279,7 @@ export function ProjectsClient() {
           </DialogHeader>
           <DialogDescription className="text-[12.5px] text-text-muted mt-1">
             Issue a{' '}
-            <code className="font-mono bg-bg-elev border border-border px-1 rounded text-[11px]">sl_live_…</code>{' '}
+            <code className="font-mono bg-bg-sunk border border-border px-1 rounded text-[11px]">sl_live_…</code>{' '}
             key. After creating, expand it to add provider AI keys it can call.
           </DialogDescription>
 
@@ -1162,12 +1294,12 @@ export function ProjectsClient() {
                 onChange={(e) => setIssueName(e.target.value)}
                 placeholder="e.g. Production"
                 autoFocus
-                className="w-full h-9 px-3 rounded-[6px] border border-border bg-bg text-[13px] text-text placeholder:text-text-faint focus:outline-none focus:border-border-strong transition-colors"
+                className="w-full h-9 px-3 rounded-md border border-border bg-bg text-[13px] text-text placeholder:text-text-faint focus:outline-none focus:border-border-strong transition-colors"
               />
             </div>
 
             {issueError && (
-              <div className="rounded-md border border-bad/30 bg-bad/10 px-3 py-2 text-[12px] text-bad">
+              <div className="rounded-md border border-bad/30 bg-bad-bg px-3 py-2 text-[12px] text-bad">
                 {issueError}
               </div>
             )}
@@ -1199,7 +1331,7 @@ export function ProjectsClient() {
           </DialogHeader>
           <DialogDescription className="text-[12.5px] text-text-muted mt-1">
             Issues a{' '}
-            <code className="font-mono bg-bg-elev border border-border px-1 rounded text-[11px]">
+            <code className="font-mono bg-bg-sunk border border-border px-1 rounded text-[11px]">
               sl_live_pub_…
             </code>{' '}
             key scoped to this workspace. Safe to paste into MCP servers, BI tools, or read-only embeds — it can only read dashboard data, never trigger LLM spend.
@@ -1219,12 +1351,12 @@ export function ProjectsClient() {
                 onChange={(e) => setIssuePublicName(e.target.value)}
                 placeholder="e.g. Cursor MCP"
                 autoFocus
-                className="w-full h-9 px-3 rounded-[6px] border border-border bg-bg text-[13px] text-text placeholder:text-text-faint focus:outline-none focus:border-border-strong transition-colors"
+                className="w-full h-9 px-3 rounded-md border border-border bg-bg text-[13px] text-text placeholder:text-text-faint focus:outline-none focus:border-border-strong transition-colors"
               />
             </div>
 
             {issuePublicError && (
-              <div className="rounded-md border border-bad/30 bg-bad/10 px-3 py-2 text-[12px] text-bad">
+              <div className="rounded-md border border-bad/30 bg-bad-bg px-3 py-2 text-[12px] text-bad">
                 {issuePublicError}
               </div>
             )}
@@ -1274,9 +1406,9 @@ export function ProjectsClient() {
               </DialogDescription>
 
               <div className="space-y-4 mt-3">
-                <div className="rounded-lg border border-border bg-[#1a1816] px-4 py-3">
+                <div className="rounded-lg border border-border bg-bg-sunk px-4 py-3">
                   <div className="flex items-center justify-between mb-2">
-                    <span className="font-mono text-[10.5px] uppercase tracking-[0.05em] text-[#7c7770]">
+                    <span className="font-mono text-[10.5px] uppercase tracking-[0.05em] text-text-faint">
                       Integration snippet
                     </span>
                     <button
@@ -1344,7 +1476,7 @@ export function ProjectsClient() {
                       onChange={(e) => setAddProvAzureUrl(e.target.value)}
                       placeholder="https://my-resource.openai.azure.com"
                       autoComplete="off"
-                      className="w-full h-9 px-3 rounded-[6px] border border-border bg-bg text-[13px] font-mono text-text placeholder:text-text-faint focus:outline-none focus:border-border-strong transition-colors"
+                      className="w-full h-9 px-3 rounded-md border border-border bg-bg text-[13px] font-mono text-text placeholder:text-text-faint focus:outline-none focus:border-border-strong transition-colors"
                     />
                     <p className="text-[10.5px] text-text-faint">
                       Copy from your Azure portal, the endpoint shown on your OpenAI resource overview. Must end in <code>.openai.azure.com</code> or <code>.services.ai.azure.com</code>.
@@ -1362,7 +1494,7 @@ export function ProjectsClient() {
                     placeholder={PROVIDER_PLACEHOLDERS[addProvProvider]}
                     type="password"
                     autoComplete="off"
-                    className="w-full h-9 px-3 rounded-[6px] border border-border bg-bg text-[13px] font-mono text-text placeholder:text-text-faint focus:outline-none focus:border-border-strong transition-colors"
+                    className="w-full h-9 px-3 rounded-md border border-border bg-bg text-[13px] font-mono text-text placeholder:text-text-faint focus:outline-none focus:border-border-strong transition-colors"
                   />
                   <p className="font-mono text-[10.5px] text-text-faint">
                     Encrypted with AES-256-GCM. Never logged or exposed after this point.
@@ -1375,12 +1507,12 @@ export function ProjectsClient() {
                     value={addProvName}
                     onChange={(e) => setAddProvName(e.target.value)}
                     placeholder="e.g. Production OpenAI"
-                    className="w-full h-9 px-3 rounded-[6px] border border-border bg-bg text-[13px] text-text placeholder:text-text-faint focus:outline-none focus:border-border-strong transition-colors"
+                    className="w-full h-9 px-3 rounded-md border border-border bg-bg text-[13px] text-text placeholder:text-text-faint focus:outline-none focus:border-border-strong transition-colors"
                   />
                 </div>
 
                 {addProvError && (
-                  <div className="rounded-md border border-bad/30 bg-bad/10 px-3 py-2 text-[12px] text-bad">
+                  <div className="rounded-md border border-bad/30 bg-bad-bg px-3 py-2 text-[12px] text-bad">
                     {addProvError}
                   </div>
                 )}
@@ -1428,11 +1560,11 @@ export function ProjectsClient() {
                 placeholder="sk-… / sk-ant-… / AIza…"
                 type="password"
                 autoComplete="off"
-                className="w-full h-9 px-3 rounded-[6px] border border-border bg-bg text-[13px] font-mono text-text placeholder:text-text-faint focus:outline-none focus:border-border-strong transition-colors"
+                className="w-full h-9 px-3 rounded-md border border-border bg-bg text-[13px] font-mono text-text placeholder:text-text-faint focus:outline-none focus:border-border-strong transition-colors"
               />
             </div>
             {rotateProvError && (
-              <div className="rounded-md border border-bad/30 bg-bad/10 px-3 py-2 text-[12px] text-bad">
+              <div className="rounded-md border border-bad/30 bg-bad-bg px-3 py-2 text-[12px] text-bad">
                 {rotateProvError}
               </div>
             )}
@@ -1463,7 +1595,7 @@ export function ProjectsClient() {
 
           <div className="space-y-4 mt-2">
             {deleteApiKeyError && (
-              <div className="rounded-md border border-bad/30 bg-bad/10 px-3 py-2 text-[12px] text-bad">
+              <div className="rounded-md border border-bad/30 bg-bad-bg px-3 py-2 text-[12px] text-bad">
                 {deleteApiKeyError}
               </div>
             )}
@@ -1475,7 +1607,7 @@ export function ProjectsClient() {
                 type="button"
                 onClick={() => void handleDeleteApiKey()}
                 disabled={deleteApiKey.isPending}
-                className="flex-1 h-9 rounded-[6px] bg-bad text-white font-medium text-[13px] hover:opacity-90 transition-opacity disabled:opacity-40"
+                className="flex-1 h-9 rounded-md bg-bad text-bg font-medium text-[13px] hover:opacity-90 transition-opacity disabled:opacity-40"
               >
                 {deleteApiKey.isPending ? 'Deleting…' : 'Delete'}
               </button>
@@ -1500,7 +1632,7 @@ export function ProjectsClient() {
 
           <div className="space-y-4 mt-2">
             {revokePublicError && (
-              <div className="rounded-md border border-bad/30 bg-bad/10 px-3 py-2 text-[12px] text-bad">
+              <div className="rounded-md border border-bad/30 bg-bad-bg px-3 py-2 text-[12px] text-bad">
                 {revokePublicError}
               </div>
             )}
@@ -1512,7 +1644,7 @@ export function ProjectsClient() {
                 type="button"
                 onClick={() => void handleRevokePublicKey()}
                 disabled={deleteApiKey.isPending}
-                className="flex-1 h-9 rounded-[6px] bg-bad text-white font-medium text-[13px] hover:opacity-90 transition-opacity disabled:opacity-40"
+                className="flex-1 h-9 rounded-md bg-bad text-bg font-medium text-[13px] hover:opacity-90 transition-opacity disabled:opacity-40"
               >
                 {deleteApiKey.isPending ? 'Revoking…' : 'Revoke'}
               </button>
@@ -1538,7 +1670,7 @@ export function ProjectsClient() {
 
           <div className="space-y-4 mt-2">
             {deleteProvKeyError && (
-              <div className="rounded-md border border-bad/30 bg-bad/10 px-3 py-2 text-[12px] text-bad">
+              <div className="rounded-md border border-bad/30 bg-bad-bg px-3 py-2 text-[12px] text-bad">
                 {deleteProvKeyError}
               </div>
             )}
@@ -1550,7 +1682,7 @@ export function ProjectsClient() {
                 type="button"
                 onClick={() => void handleDeleteProviderKey()}
                 disabled={deleteProviderKey.isPending}
-                className="flex-1 h-9 rounded-[6px] bg-bad text-white font-medium text-[13px] hover:opacity-90 transition-opacity disabled:opacity-40"
+                className="flex-1 h-9 rounded-md bg-bad text-bg font-medium text-[13px] hover:opacity-90 transition-opacity disabled:opacity-40"
               >
                 {deleteProviderKey.isPending ? 'Deleting…' : 'Delete'}
               </button>
@@ -1583,7 +1715,7 @@ export function ProjectsClient() {
               <div className="space-y-1.5">
                 <label className="text-[12.5px] text-text-muted">
                   Type{' '}
-                  <code className="font-mono text-[12px] bg-bg-elev border border-border px-1.5 py-0.5 rounded-[4px] text-text">
+                  <code className="font-mono text-[12px] bg-bg-sunk border border-border px-1.5 py-0.5 rounded-[4px] text-text">
                     {deleteProject_target.name}
                   </code>
                   {' '}to confirm.
@@ -1593,12 +1725,12 @@ export function ProjectsClient() {
                   onChange={(e) => { setDeleteProject_input(e.target.value); setDeleteProject_error(null) }}
                   placeholder={deleteProject_target.name}
                   autoFocus
-                  className="w-full h-9 px-3 rounded-[6px] border border-border bg-bg text-[13px] font-mono text-text placeholder:text-text-faint focus:outline-none focus:border-border-strong transition-colors"
+                  className="w-full h-9 px-3 rounded-md border border-border bg-bg text-[13px] font-mono text-text placeholder:text-text-faint focus:outline-none focus:border-border-strong transition-colors"
                 />
               </div>
 
               {deleteProject_error && (
-                <div className="rounded-md border border-bad/30 bg-bad/10 px-3 py-2 text-[12px] text-bad">
+                <div className="rounded-md border border-bad/30 bg-bad-bg px-3 py-2 text-[12px] text-bad">
                   {deleteProject_error}
                 </div>
               )}
@@ -1610,7 +1742,7 @@ export function ProjectsClient() {
                 <button
                   type="submit"
                   disabled={deleteProject_input !== deleteProject_target.name || deleteProject.isPending}
-                  className="flex-1 h-9 rounded-[6px] bg-bad text-white font-medium text-[13px] hover:opacity-90 transition-opacity disabled:opacity-40"
+                  className="flex-1 h-9 rounded-md bg-bad text-bg font-medium text-[13px] hover:opacity-90 transition-opacity disabled:opacity-40"
                 >
                   {deleteProject.isPending ? 'Deleting…' : 'Delete project'}
                 </button>
@@ -1619,6 +1751,6 @@ export function ProjectsClient() {
           )}
         </DialogContent>
       </Dialog>
-    </div>
+    </>
   )
 }

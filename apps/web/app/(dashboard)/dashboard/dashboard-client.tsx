@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import Link from 'next/link'
+import { Card } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { KpiCard } from '@/components/dashboard/kpi-card'
 import { QuotaBanner } from '@/components/dashboard/quota-banner'
@@ -185,63 +186,44 @@ interface AttnCardProps {
   onDismiss?: () => void
 }
 
+// Attention tiles carry their status in the fill and in the title ink, not in
+// a coloured dot plus a repeated "CRITICAL" label — the Figma board spends one
+// signal per tile so a row of three still reads as a row, not three alarms.
+const ATTN_TONE: Record<AttnCardProps['kind'], { shell: string; title: string; cta: string }> = {
+  critical: { shell: 'bg-accent-bg border-accent-border', title: 'text-bad', cta: 'text-bad' },
+  warning:  { shell: 'bg-warn-bg border-warn/25',         title: 'text-warn', cta: 'text-warn' },
+  savings:  { shell: 'bg-good-bg border-good/25',         title: 'text-good', cta: 'text-good' },
+}
+
 function AttnCard({ kind, title, meta, hint, cta, href, secondary, onDismiss }: AttnCardProps) {
-  const isCritical = kind === 'critical'
-  const isSavings = kind === 'savings'
+  const tone = ATTN_TONE[kind]
   return (
-    <div
-      className={cn(
-        'flex flex-col gap-1.5 p-[14px] rounded-md border',
-        isCritical
-          ? 'bg-accent-bg border-accent-border'
-          : isSavings
-            ? 'bg-good-bg border-good/20'
-            : 'bg-bg-elev border-border',
-      )}
-    >
-      <div className="flex items-center gap-2">
-        <span
-          className={cn(
-            'inline-block w-[7px] h-[7px] rounded-full shrink-0',
-            isCritical ? 'bg-accent' : isSavings ? 'bg-good' : 'bg-text',
-          )}
-        />
-        <span
-          className={cn(
-            'font-mono text-[9.5px] uppercase tracking-[0.05em] font-semibold',
-            isCritical ? 'text-accent' : isSavings ? 'text-good' : 'text-text',
-          )}
-        >
-          {kind}
-        </span>
+    <div className={cn('flex flex-col gap-1 rounded-lg border px-[14px] py-[11px]', tone.shell)}>
+      <div className="flex items-start gap-2">
+        <div className={cn('flex-1 min-w-0 text-[12.5px] font-semibold leading-[1.4]', tone.title)}>{title}</div>
         <button
           type="button"
           onClick={onDismiss}
-          className="ml-auto text-text-faint hover:text-text-muted transition-colors leading-none"
+          className="shrink-0 text-text-faint hover:text-text-muted transition-colors leading-none"
           aria-label="Dismiss"
         >
           ✕
         </button>
       </div>
-      <div className="text-[14.5px] font-medium text-text leading-snug">{title}</div>
-      <div className="font-mono text-[11px] text-text-muted tracking-[0.02em]">{meta}</div>
-      <div suppressHydrationWarning className="text-[12.5px] text-text-muted leading-relaxed">{hint}</div>
+      <div className="font-mono text-[11px] leading-[1.4] text-text-faint truncate">{meta}</div>
+      <div suppressHydrationWarning className="text-[11.5px] leading-[1.4] text-text-faint">{hint}</div>
       <div className="flex-1" />
       <div className="flex items-center gap-3 mt-1 flex-wrap">
         <Link
           href={href}
-          className={cn(
-            'font-mono text-[11.5px] font-medium tracking-[0.02em]',
-            isCritical ? 'text-accent' : isSavings ? 'text-good' : 'text-text-muted',
-            'hover:opacity-80 transition-opacity',
-          )}
+          className={cn('font-mono text-[11px] font-medium tracking-[0.02em] hover:opacity-80 transition-opacity', tone.cta)}
         >
           {cta}
         </Link>
         {secondary && (
           <Link
             href={secondary.href}
-            className="font-mono text-[11.5px] text-text-faint tracking-[0.02em] hover:text-text-muted transition-colors"
+            className="font-mono text-[11px] text-text-faint tracking-[0.02em] hover:text-text-muted transition-colors"
           >
             {secondary.label}
           </Link>
@@ -602,13 +584,9 @@ export function DashboardClient() {
     return cards
   }, [anomalies.data, firingAlerts, summaryData?.recommendations, summaryData?.securitySummary, staleKeys.revoke, staleKeys.sampleName, timeRange, customRange, mountNow, hours])
 
-  // Border classes for KPI cells — responsive 2-col (mobile) / 4-col (lg)
-  const kpiCellClasses: [string, string, string, string] = [
-    'border-r border-b border-border lg:border-b-0',       // 1st: right + bottom-on-mobile
-    'border-b border-border lg:border-r lg:border-b-0',    // 2nd: no right on mobile, restore lg
-    'border-r border-border',                               // 3rd: right, no bottom
-    'border-border',                                        // 4th: no right, no bottom
-  ]
+  // Every KPI is its own card on the canvas, so the tiles share one surface
+  // class instead of the per-cell border matrix the joined grid needed.
+  const kpiCellClass = 'card-surface rounded-card px-5'
 
   // Same `mounted` guard as the data branches — SSR shouldn't reveal the
   // empty-state CTA unless the client has confirmed the data is genuinely
@@ -617,16 +595,21 @@ export function DashboardClient() {
   const isEmptyWorkspace = mounted && !isLoading && !!o && o.totalRequests === 0
 
   return (
-    <div className="-m-4 md:-m-7">
-      {/* Sticky topbar — keeps the time range + crumbs in view while the
-          page scrolls natively (no inner overflow container). */}
-      <div className="sticky top-0 z-20 bg-bg">
+    <div>
+      {/* Sticky topbar — keeps the time range + crumbs in view while the page
+          scrolls natively (no inner overflow container). It is the one
+          full-bleed row on the board, so it cancels the shell's gutters;
+          everything below sits flush inside them. */}
+      <div className="sticky top-0 z-20 bg-bg -mx-4 -mt-4 md:-mx-7 md:-mt-5 mb-4 md:mb-5">
         <Topbar crumbs={[{ label: 'Dashboard' }]} />
       </div>
 
-      <div>
+      {/* Content canvas — 16px rhythm between rows, per the Figma content
+          frame. Everything below sits on the canvas as its own card rather
+          than as a full-bleed band. */}
+      <div className="flex flex-col gap-4">
         {/* Greeting */}
-        <div className="px-[22px] py-[22px] border-b border-border">
+        <div>
           <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 mb-1">
             {/* Defer locale-sensitive header to client paint — server UTC ≠
                 client local time. The whole wrapper is gated on `mounted`
@@ -688,25 +671,25 @@ export function DashboardClient() {
                 <button
                   type="button"
                   onClick={() => setExportOpen((v) => !v)}
-                  className="font-mono text-[11px] text-text-muted hover:text-text border border-border rounded px-2.5 py-1 transition-colors"
+                  className="text-[12.5px] font-medium text-text bg-bg-elev border border-border rounded px-3 py-[7px] hover:border-border-strong transition-colors"
                 >
                   Export ↓
                 </button>
                 {exportOpen && (
                   <>
                     <div className="fixed inset-0 z-10" onClick={() => setExportOpen(false)} />
-                    <div className="absolute right-0 top-full mt-1 z-20 bg-bg-elev border border-border rounded shadow-sm min-w-[100px]">
+                    <div className="absolute right-0 top-full mt-1 z-20 bg-bg-elev border border-border rounded-md shadow-card min-w-[100px] p-1">
                       <button
                         type="button"
                         onClick={exportCsv}
-                        className="w-full text-left px-3 py-2 font-mono text-[11px] text-text-muted hover:text-text hover:bg-bg transition-colors"
+                        className="w-full text-left px-2.5 py-1.5 rounded text-[12.5px] text-text-muted hover:text-text hover:bg-bg-sunk transition-colors"
                       >
                         CSV
                       </button>
                       <button
                         type="button"
                         onClick={exportJson}
-                        className="w-full text-left px-3 py-2 font-mono text-[11px] text-text-muted hover:text-text hover:bg-bg transition-colors"
+                        className="w-full text-left px-2.5 py-1.5 rounded text-[12.5px] text-text-muted hover:text-text hover:bg-bg-sunk transition-colors"
                       >
                         JSON
                       </button>
@@ -724,7 +707,7 @@ export function DashboardClient() {
         <UpsellModal />
 
         {isError && (
-          <div className="mx-[22px] mt-4 rounded-md border border-bad/30 bg-bad-bg px-4 py-3 flex items-center justify-between">
+          <div className="rounded-lg border border-bad/30 bg-bad-bg px-4 py-3 flex items-center justify-between">
             <p className="text-[13px] text-bad">Failed to load dashboard data.</p>
             <button
               type="button"
@@ -740,8 +723,8 @@ export function DashboardClient() {
             doesn't toggle between SSR (no cards, query data empty) and
             first client paint (cards from hydrated cache). */}
         {mounted && attnCards.filter((c) => !dismissedCards.has(c.cardKey)).length > 0 && (
-          <div className="px-[22px] pt-[18px] pb-1">
-            <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-2.5">
+          <div>
+            <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-text-faint mb-2.5">
               Needs attention
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -759,7 +742,7 @@ export function DashboardClient() {
         )}
 
         {/* KPI row */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 border-y border-border mt-[18px]">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           {/* `!mounted` gate forces SSR + first client paint to both render
               the skeleton branch — TanStack's HydrationBoundary populates
               the client cache during hydration but the corresponding SSR
@@ -767,7 +750,7 @@ export function DashboardClient() {
               sides diverge without this guard. */}
           {!mounted || isLoading || !o ? (
             Array.from({ length: 4 }).map((_, i) => (
-              <div key={i} className={cn('p-[18px]', kpiCellClasses[i])}>
+              <div key={i} className={cn('py-[18px]', kpiCellClass)}>
                 <Skeleton className="h-3 w-3/4 mb-3" />
                 <Skeleton className="h-8 w-full mb-3" />
                 <Skeleton className="h-5 w-full" />
@@ -776,7 +759,7 @@ export function DashboardClient() {
           ) : (
             <>
               <KpiCard
-                className={kpiCellClasses[0]}
+                className={kpiCellClass}
                 label={`Requests · ${shortRangeLabel(timeRange, customRange)}`}
                 value={o.totalRequests.toLocaleString()}
                 delta={fmtDelta(o.requestsDelta, hasBaseline)}
@@ -786,7 +769,7 @@ export function DashboardClient() {
                 linkHref="/requests"
               />
               <KpiCard
-                className={kpiCellClasses[1]}
+                className={kpiCellClass}
                 label={`Spend · ${shortRangeLabel(timeRange, customRange)}`}
                 value={fmtCost(o.totalCostUsd)}
                 delta={fmtDelta(o.costDelta, hasBaseline)}
@@ -796,7 +779,7 @@ export function DashboardClient() {
                 linkHref="/savings"
               />
               <KpiCard
-                className={kpiCellClasses[2]}
+                className={kpiCellClass}
                 label={`Avg latency · ${shortRangeLabel(timeRange, customRange)}`}
                 value={`${o.avgLatencyMs}ms`}
                 delta={fmtDelta(o.latencyDelta, hasBaseline)}
@@ -806,7 +789,7 @@ export function DashboardClient() {
                 linkHref="/traces"
               />
               <KpiCard
-                className={kpiCellClasses[3]}
+                className={kpiCellClass}
                 label="Error rate"
                 value={errorRate}
                 delta={fmtDelta(o.errorRateDelta, hasBaseline)}
@@ -825,8 +808,8 @@ export function DashboardClient() {
             Mobile: text on top, CTAs as a row below — keeps the text column
             full-width instead of getting squeezed next to the links. */}
         {isEmptyWorkspace && (
-          <div className="px-[22px] py-5 border-b border-border">
-            <div className="rounded-md border border-border bg-bg-elev px-5 py-4 flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">
+          <div>
+            <div className="card-surface rounded-card px-5 py-4 flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">
               <div className="min-w-0 flex-1">
                 <div className="text-[14px] font-medium text-text">No traffic in this window.</div>
                 <div className="text-[12.5px] text-text-muted leading-relaxed mt-0.5">
@@ -852,21 +835,25 @@ export function DashboardClient() {
         )}
 
         {/* Traffic chart */}
-        <div className="px-[22px] py-5 border-b border-border">
-          <div className="flex items-center mb-3">
-            <h2 className="text-[15px] font-medium">Traffic &amp; spend · last {shortRangeLabel(timeRange, customRange)}</h2>
+        <Card className="px-5 py-[18px]">
+          <div className="flex items-baseline gap-2.5 mb-[14px]">
+            <h2 className="text-[13.5px] font-semibold leading-[1.4] text-text">Traffic &amp; spend</h2>
+            <span className="font-mono text-[11px] leading-[1.4] text-text-faint">
+              last {shortRangeLabel(timeRange, customRange)}
+            </span>
           </div>
           {!mounted || isLoading || !timeseries.data ? (
             <Skeleton className="h-[220px] w-full" />
           ) : (
             <RequestChart data={timeseries.data} firedAt={alertFiredAt} isHourly={hours <= 48} />
           )}
-        </div>
+        </Card>
 
         {/* Token volume + Error distribution row — answers the obvious
             follow-up questions to the spend chart above ("was it tokens or
-            model mix?" and "what kind of errors?"). */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 px-[22px] py-5 border-b border-border">
+            model mix?" and "what kind of errors?"). Both children bring their
+            own card chrome, so this row only supplies the 16px rhythm. */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {!mounted || isLoading || !timeseries.data ? (
             <>
               <Skeleton className="h-[260px] w-full" />
@@ -892,35 +879,31 @@ export function DashboardClient() {
 
         {/* Cost-by-model breakdown — full width so long provider/model labels
             (anthropic / claude-sonnet-4-6) read comfortably. */}
-        <div className="px-[22px] py-5 border-b border-border">
-          {!mounted || modelsQuery.isLoading || !modelsQuery.data ? (
-            <Skeleton className="h-[290px] w-full" />
-          ) : (
-            <ErrorBoundary label="dashboard:cost-breakdown">
-              <CostBreakdownCard
-                models={modelsQuery.data}
-                rangeLabel={shortRangeLabel(timeRange, customRange)}
-              />
-            </ErrorBoundary>
-          )}
-        </div>
+        {!mounted || modelsQuery.isLoading || !modelsQuery.data ? (
+          <Skeleton className="h-[290px] w-full rounded-card" />
+        ) : (
+          <ErrorBoundary label="dashboard:cost-breakdown">
+            <CostBreakdownCard
+              models={modelsQuery.data}
+              rangeLabel={shortRangeLabel(timeRange, customRange)}
+            />
+          </ErrorBoundary>
+        )}
 
         {/* Spend forecast, always monthly, independent of time range selector */}
         {!mounted || summaryLoading ? (
-          <div className="px-[22px] py-5 border-b border-border">
-            <Skeleton className="h-[320px] w-full" />
-          </div>
+          <Skeleton className="h-[320px] w-full rounded-card" />
         ) : summaryData?.spendForecast ? (
           <SpendForecastCard data={summaryData.spendForecast} />
         ) : null}
 
         {/* 2-col: Top prompts + Models in use */}
-        <div className="grid grid-cols-1 md:grid-cols-2 border-b border-border">
-          <div className="px-[22px] py-[18px] border-b border-border md:border-b-0 md:border-r">
-            <div className="flex items-center mb-3">
-              <h2 className="text-[14px] font-medium">Top prompts · spend</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Card className="px-5 py-[18px]">
+            <div className="flex items-baseline mb-[14px]">
+              <h2 className="text-[13.5px] font-semibold leading-[1.4] text-text">Top prompts · spend</h2>
               <span className="flex-1" />
-              <Link href="/prompts" className="font-mono text-[10.5px] text-text-muted tracking-[0.03em] hover:text-text transition-colors">
+              <Link href="/prompts" className="font-mono text-[11px] text-text-faint hover:text-text transition-colors">
                 All prompts →
               </Link>
             </div>
@@ -980,12 +963,15 @@ export function DashboardClient() {
                 </div>
               )
             })()}
-          </div>
-          <div className="px-[22px] py-[18px]">
-            <div className="flex items-center mb-3">
-              <h2 className="text-[14px] font-medium">Models in use · {shortRangeLabel(timeRange, customRange)}</h2>
+          </Card>
+          <Card className="px-5 py-[18px]">
+            <div className="flex items-baseline mb-[14px]">
+              <h2 className="text-[13.5px] font-semibold leading-[1.4] text-text">Models in use</h2>
+              <span className="font-mono text-[11px] leading-[1.4] text-text-faint ml-2.5">
+                {shortRangeLabel(timeRange, customRange)}
+              </span>
               <span className="flex-1" />
-              <Link href="/requests" prefetch={linkPrefetchFor('/requests')} className="font-mono text-[10.5px] text-text-muted tracking-[0.03em] hover:text-text transition-colors">
+              <Link href="/requests" prefetch={linkPrefetchFor('/requests')} className="font-mono text-[11px] text-text-faint hover:text-text transition-colors">
                 All requests →
               </Link>
             </div>
@@ -1005,7 +991,7 @@ export function DashboardClient() {
             ) : (
               <div className="overflow-x-auto">
                 <div style={{ minWidth: 300 }}>
-                  <div className="grid font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint pb-2 border-b border-border" style={{ gridTemplateColumns: '1fr 70px 80px 60px', gap: 10 }}>
+                  <div className="grid font-mono text-[10px] uppercase tracking-[0.1em] text-text-faint pb-2 border-b border-border" style={{ gridTemplateColumns: '1fr 70px 80px 60px', gap: 10 }}>
                     <span>Model</span>
                     <span className="text-right">Reqs</span>
                     <span className="text-right">Cost</span>
@@ -1031,22 +1017,22 @@ export function DashboardClient() {
                 </div>
               </div>
             )}
-          </div>
+          </Card>
         </div>
 
         {/* Bottom 2-col: Alerts + Recommendations */}
-        <div className="grid grid-cols-1 md:grid-cols-2 border-b border-border">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {/* Active alert rules */}
-          <div className="px-[22px] py-[18px] border-b border-border md:border-b-0 md:border-r">
-            <div className="flex items-center mb-3">
-              <h2 className="text-[14px] font-medium">Active alerts</h2>
+          <Card className="px-5 py-[18px]">
+            <div className="flex items-baseline mb-[14px]">
+              <h2 className="text-[13.5px] font-semibold leading-[1.4] text-text">Active alerts</h2>
               <span className="flex-1" />
               <Link
                 href="/alerts"
                 prefetch={linkPrefetchFor('/alerts')}
                 className={cn(
-                  'font-mono text-[10.5px] tracking-[0.03em]',
-                  mounted && firingAlerts.length > 0 ? 'text-accent' : 'text-text-muted',
+                  'font-mono text-[11px] hover:opacity-80 transition-opacity',
+                  mounted && firingAlerts.length > 0 ? 'text-accent' : 'text-text-faint',
                 )}
               >
                 {!mounted
@@ -1073,10 +1059,10 @@ export function DashboardClient() {
                     <div
                       key={a.id}
                       className={cn(
-                        'flex items-center gap-2.5 px-3 py-2.5 rounded-[5px] border',
+                        'flex items-center gap-2.5 px-3 py-2.5 rounded-md border',
                         fired
                           ? 'bg-accent-bg border-accent-border'
-                          : 'bg-bg-elev border-border',
+                          : 'bg-bg-sunk border-border',
                       )}
                     >
                       <span className={cn('w-2 h-2 rounded-full shrink-0', fired ? 'bg-accent' : 'bg-text-faint')} />
@@ -1091,14 +1077,14 @@ export function DashboardClient() {
                 })}
               </div>
             )}
-          </div>
+          </Card>
 
           {/* Recommendations */}
-          <div className="px-[22px] py-[18px]">
-            <div className="flex items-center mb-3">
-              <h2 className="text-[14px] font-medium">Savings queued</h2>
+          <Card className="px-5 py-[18px]">
+            <div className="flex items-baseline mb-[14px]">
+              <h2 className="text-[13.5px] font-semibold leading-[1.4] text-text">Savings queued</h2>
               <span className="flex-1" />
-              <Link href="/savings" prefetch={linkPrefetchFor('/savings')} className="font-mono text-[10.5px] text-good tracking-[0.03em]">
+              <Link href="/savings" prefetch={linkPrefetchFor('/savings')} className="font-mono text-[11px] text-good hover:opacity-80 transition-opacity">
                 View all →
               </Link>
             </div>
@@ -1111,7 +1097,7 @@ export function DashboardClient() {
                 {(summaryData?.recommendations ?? []).slice(0, 3).map((r) => (
                   <div
                     key={`${r.currentModel}->${r.suggestedModel}`}
-                    className="flex items-center gap-3 px-3 py-2.5 rounded-[5px] bg-bg-elev border border-border"
+                    className="flex items-center gap-3 px-3 py-2.5 rounded-md bg-bg-sunk border border-border"
                   >
                     <div className="flex-1 min-w-0">
                       <div className="font-mono text-[12px] text-text font-medium truncate">
@@ -1128,17 +1114,17 @@ export function DashboardClient() {
                 ))}
               </div>
             )}
-          </div>
+          </Card>
         </div>
 
         {/* Activity feed */}
-        <div className="px-[22px] py-[18px]">
-          <div className="flex items-center mb-3">
-            <h2 className="text-[14px] font-medium">Recent activity</h2>
+        <Card className="px-5 py-[18px]">
+          <div className="flex items-baseline mb-[14px]">
+            <h2 className="text-[13.5px] font-semibold leading-[1.4] text-text">Recent activity</h2>
             <span className="flex-1" />
             <Link
               href="/settings?tab=audit-log"
-              className="font-mono text-[10.5px] text-text-muted tracking-[0.03em] hover:text-text transition-colors"
+              className="font-mono text-[11px] text-text-faint hover:text-text transition-colors"
             >
               Audit log →
             </Link>
@@ -1166,7 +1152,7 @@ export function DashboardClient() {
                       {formatTime(e.created_at)}
                     </span>
                     <span className={cn(
-                      'font-mono text-[9px] uppercase tracking-[0.04em] px-[5px] py-[1px] rounded-[3px] border self-center shrink-0',
+                      'font-mono text-[9px] uppercase tracking-[0.1em] px-[6px] py-[1px] rounded-full border self-center shrink-0',
                       isAccent ? 'text-accent border-accent-border' : 'text-text-faint border-border',
                     )}>{kind}</span>
                     <div className="text-[12.5px] text-text leading-snug w-full sm:w-auto">
@@ -1182,7 +1168,7 @@ export function DashboardClient() {
               )
             })
           )}
-        </div>
+        </Card>
       </div>
     </div>
   )

@@ -4,16 +4,22 @@ import { Copy, Check } from 'lucide-react'
 
 interface CodeBlockProps {
   children: string
-  /** Optional language hint — shown as a subtle label in the top-left. */
+  /** Optional language hint — shown as the label in the header bar. */
   language?: string
 }
 
 /**
- * Code block with a copy-to-clipboard button.
+ * Code block with a persistent header bar (language label + copy button).
  *
  * Usage:
  *   <CodeBlock>{`npx @spanlens/cli init`}</CodeBlock>
  *   <CodeBlock language="ts">{`import { createOpenAI } from '@spanlens/sdk/openai'`}</CodeBlock>
+ *
+ * Colours come from the dedicated `code-*` tokens, which are declared once with
+ * no dark override because a code block stays dark in both themes the way a
+ * terminal does. Do not reach for the ordinary surface tokens here, and do not
+ * scope `.dark` to this subtree: that flips *every* token inside it, so a
+ * status colour in a nested code sample would change meaning with the theme.
  *
  * Designed to live inside a `.prose` article. We apply `!my-0` on the pre so
  * the wrapping div owns vertical spacing, and reset inline-code styles that
@@ -33,35 +39,34 @@ export function CodeBlock({ children, language }: CodeBlockProps) {
   }
 
   return (
-    <div className="relative group my-6 not-prose">
-      <pre className={`overflow-x-auto rounded-lg border border-border/40 bg-[#1a1816] px-4 text-sm leading-6 text-[#d4cfc8] shadow-sm ${language ? 'pt-9 pb-4' : 'py-4'}`}>
+    <div className="my-6 not-prose overflow-hidden rounded-lg bg-code-bg">
+      <div className="flex items-center justify-between gap-3 border-b border-code-line bg-code-head px-4 py-2.5">
+        <span className="select-none font-mono text-[11.5px] text-code-faint">
+          {language ?? 'code'}
+        </span>
+        <button
+          type="button"
+          onClick={() => void handleCopy()}
+          className="inline-flex items-center gap-1.5 rounded font-mono text-[11px] text-code-faint transition-colors hover:text-code-fg"
+          aria-label={copied ? 'Copied to clipboard' : 'Copy code to clipboard'}
+        >
+          {copied ? (
+            <>
+              <Check className="h-3 w-3" />
+              copied
+            </>
+          ) : (
+            <>
+              <Copy className="h-3 w-3" />
+              copy
+            </>
+          )}
+        </button>
+      </div>
+
+      <pre className="overflow-x-auto px-4 pb-4 pt-3.5 text-[12.5px] leading-6 text-code-fg">
         <code className="font-mono">{children}</code>
       </pre>
-
-      {language && (
-        <span className="absolute top-2.5 left-4 text-[10px] uppercase tracking-wider font-semibold text-[#7c7770] select-none">
-          {language}
-        </span>
-      )}
-
-      <button
-        type="button"
-        onClick={() => void handleCopy()}
-        className="absolute top-2 right-2 inline-flex items-center gap-1 rounded-md border border-border/60 bg-[#2a2826]/70 px-2 py-1 text-[11px] text-[#7c7770] opacity-0 transition-opacity hover:bg-[#2a2826] hover:text-[#d4cfc8] group-hover:opacity-100 focus:opacity-100"
-        aria-label={copied ? 'Copied to clipboard' : 'Copy code to clipboard'}
-      >
-        {copied ? (
-          <>
-            <Check className="h-3 w-3" />
-            Copied
-          </>
-        ) : (
-          <>
-            <Copy className="h-3 w-3" />
-            Copy
-          </>
-        )}
-      </button>
     </div>
   )
 }

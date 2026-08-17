@@ -28,36 +28,49 @@ const HAS_SUPABASE_ENV = Boolean(
  * Width reserved for the button group so the nav does not jump when the
  * signed-in variant replaces the signed-out one after hydration.
  *
- * Measured against the widest variant at each breakpoint (Geist Sans, `size="sm"`
- * buttons = text-xs + px-3, gap-2 between them):
- *   - below sm ("Live demo" is hidden): signed out [Sign in][Start free →] ≈ 162px,
- *     signed in [Go to dashboard →] ≈ 138px  →  reserve 168px
- *   - sm and up: signed out [Live demo][Sign in][Start free →] ≈ 254px,
- *     signed in [Live demo][Go to dashboard →] ≈ 229px  →  reserve 264px
+ * Measured against the widest variant at each breakpoint (Geist Sans, 13.5px
+ * labels, quiet actions as bare text and the primary as a 38px pill with
+ * px-[18px], gap-2 between them):
+ *   - below sm ("Live demo" is hidden): signed out [Sign in][Start free →] ≈ 178px,
+ *     signed in [Go to dashboard →] ≈ 152px  →  reserve 184px
+ *   - sm and up: signed out [Live demo][Sign in][Start free →] ≈ 266px,
+ *     signed in [Live demo][Go to dashboard →] ≈ 240px  →  reserve 276px
  * Both values sit a few px above the widest variant so small font-metric
  * differences (fallback font before Geist loads) still cannot make the group
  * outgrow its reservation and shift the nav. `justify-end` keeps the buttons
  * pinned to the right edge, so the slack shows up as whitespace on their left
  * rather than as a visible offset.
  */
-const BUTTON_GROUP_CLASS = 'flex items-center justify-end gap-2 min-w-[168px] sm:min-w-[264px]'
+// The reserved width keeps the capsule from resizing when auth state resolves.
+// It only steps up at lg, where the nav links join the row; reserving the full
+// 276px earlier overflowed a tablet viewport.
+const BUTTON_GROUP_CLASS = 'flex items-center justify-end gap-2 min-w-[184px] lg:min-w-[276px]'
+
+/**
+ * The nav spends its single accent on the primary action only, so the quiet
+ * actions beside it are bare text rather than outlined buttons.
+ */
+const QUIET_CLASS = 'h-[38px] px-2 text-[13.5px] font-medium'
+const PILL_CLASS = 'h-[38px] rounded-full px-[18px] text-[13.5px] font-semibold'
 
 /** Signed-out CTAs: browse the demo, sign in, or sign up. */
 function SignedOutButtons({ signupLabel }: { signupLabel: string }) {
   return (
     <>
       <Link href="/demo/dashboard" className="hidden sm:inline-flex">
-        <Button variant="outline" size="sm">
+        <Button variant="ghost" className={QUIET_CLASS}>
           Live demo
         </Button>
       </Link>
       <Link href="/login">
-        <Button variant="outline" size="sm">
+        <Button variant="ghost" className={QUIET_CLASS}>
           Sign in
         </Button>
       </Link>
       <Link href="/signup">
-        <Button size="sm">{signupLabel}</Button>
+        <Button variant="signal" className={PILL_CLASS}>
+          {signupLabel}
+        </Button>
       </Link>
     </>
   )
@@ -94,12 +107,12 @@ function SessionAwareNavButtons({ signupLabel }: { signupLabel: string }) {
   return (
     <div className={BUTTON_GROUP_CLASS}>
       <Link href="/demo/dashboard" className="hidden sm:inline-flex">
-        <Button variant="outline" size="sm">
+        <Button variant="ghost" className={QUIET_CLASS}>
           Live demo
         </Button>
       </Link>
       <DashboardCTALink>
-        <Button size="sm" className="gap-1.5">
+        <Button variant="signal" className={`${PILL_CLASS} gap-1.5`}>
           Go to dashboard
           <ArrowRight className="h-3.5 w-3.5" />
         </Button>
@@ -134,10 +147,14 @@ export function AuthNavButtons({ signupLabel = 'Start free' }: AuthNavButtonsPro
     return (
       <div className={BUTTON_GROUP_CLASS}>
         <Link href="/login">
-          <Button variant="outline" size="sm">Sign in</Button>
+          <Button variant="ghost" className={QUIET_CLASS}>
+            Sign in
+          </Button>
         </Link>
         <Link href="/signup">
-          <Button size="sm">{signupLabel}</Button>
+          <Button variant="signal" className={PILL_CLASS}>
+            {signupLabel}
+          </Button>
         </Link>
       </div>
     )

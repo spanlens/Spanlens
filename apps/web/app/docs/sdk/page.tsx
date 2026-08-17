@@ -22,7 +22,7 @@ export default function SdkReference() {
         match the upstream SDKs 1:1. Available for TypeScript and Python.
       </p>
 
-      <div className="my-6 rounded-lg border-l-4 border-accent bg-accent-bg p-4 text-sm">
+      <div className="my-6 rounded-lg border border-accent-border bg-accent-bg p-4 text-sm">
         <p className="m-0 font-semibold text-accent">Tip: use streaming for long responses</p>
         <p className="mt-1 mb-0 text-accent">
           For requests with large <code>max_tokens</code>, slower models, or big JSON outputs, enable
@@ -545,9 +545,9 @@ with client.start_trace("answer-question") as trace:
         to <code>span.end()</code> once the stream is exhausted. The accumulated text you{' '}
         <code>return</code> is auto-captured as output.
       </p>
-      <div className="my-4 rounded-lg border-l-4 border-green-500 bg-green-50 dark:bg-green-950 p-4 text-sm">
-        <p className="m-0 font-semibold text-green-700 dark:text-green-400">Proxy users: output is automatic</p>
-        <p className="mt-1 mb-0 text-green-700 dark:text-green-400">
+      <div className="my-4 rounded-lg border border-good/30 bg-good-bg p-4 text-sm">
+        <p className="m-0 font-semibold text-good">Proxy users: output is automatic</p>
+        <p className="mt-1 mb-0 text-good">
           If you route through the Spanlens proxy via <code>createOpenAI()</code>,{' '}
           <code>createAnthropic()</code>, or <code>createGemini()</code>, the proxy captures the
           completed response server-side and writes it to your span automatically, no extra code

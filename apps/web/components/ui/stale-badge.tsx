@@ -36,7 +36,7 @@ export function StaleBadge(props: StaleBadgeProps): React.ReactElement | null {
         'inline-flex items-center gap-1 rounded-chip px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.04em] shrink-0',
         isRevokeTier
           ? 'border border-accent-border bg-accent-bg text-accent'
-          : 'border border-border bg-bg-elev text-text-faint',
+          : 'border border-border bg-bg-chip text-text-faint',
         className,
       )}
       title={`Idle ${daysIdle} day${daysIdle === 1 ? '' : 's'}`}

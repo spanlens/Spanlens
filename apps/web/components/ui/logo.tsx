@@ -6,10 +6,7 @@ interface LogoMarkProps {
   className?: string
 }
 
-/**
- * Spanlens 앱 아이콘 마크.
- * 텍스트 없이 아이콘만 표시합니다.
- */
+/** Spanlens app icon on its own, without the wordmark. */
 export function LogoMark({ size = 20, className }: LogoMarkProps) {
   return (
     <Image

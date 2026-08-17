@@ -9,13 +9,31 @@ import {
   type PromptExperiment,
 } from '@/lib/queries/use-prompts'
 import { PermissionGate } from '@/components/permission-gate'
+import { Card } from '@/components/ui/card'
 import { cn, formatDate } from '@/lib/utils'
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '@/components/ui/select'
+import { StatusPill } from '@/components/ui/primitives'
+import { TableCard, TableHead, Th, ROW } from '../../../_board/surfaces'
+
+/* Experiment lifecycle to pill colour: an in-flight run reads as caution, a
+   settled one as resolved, and a stopped one as inert. */
+function statusTone(status: string): 'good' | 'warn' | 'neutral' {
+  if (status === 'running') return 'warn'
+  if (status === 'concluded') return 'good'
+  return 'neutral'
+}
 
 interface Props {
   name: string
   versions: PromptVersion[]
   experiments: PromptExperiment[]
+}
+
+// D4's A-B card is a four-column ledger: metric name, challenger value,
+// control value, delta. The challenger leads because the head reads
+// "v4 against v3" — the version under test first, the incumbent behind it.
+const AB_GRID: React.CSSProperties = {
+  gridTemplateColumns: '120px minmax(0,1fr) minmax(0,1fr) 80px',
 }
 
 function fmtMs(v: number): string {
@@ -35,16 +53,41 @@ function fmtLift(lift: number | null): string {
   return `${sign}${(lift * 100).toFixed(1)}%`
 }
 
-function PValueBadge({ p, significant }: { p: number; significant: boolean }) {
+/* Lower is better for every metric the experiment tracks, so a negative lift
+   reads good and a positive one reads bad. */
+function liftTone(lift: number | null | undefined): string {
+  if (lift == null) return 'text-text-faint'
+  if (lift < -0.01) return 'text-good'
+  if (lift > 0.01) return 'text-bad'
+  return 'text-text-faint'
+}
+
+/** One line of the A-B ledger. */
+function MetricRow({
+  label,
+  challenger,
+  control,
+  delta,
+  deltaClass,
+}: {
+  label: string
+  challenger: string
+  control: string
+  delta?: string
+  deltaClass?: string
+}) {
   return (
-    <span className={cn(
-      'font-mono text-[10px] px-[5px] py-[1px] rounded-[3px]',
-      significant
-        ? 'bg-good/10 border border-good/30 text-good'
-        : 'bg-bg-muted border border-border text-text-faint',
-    )}>
-      p={p.toFixed(3)} {significant ? '✓' : ''}
-    </span>
+    <div
+      className="grid items-center gap-3 border-b border-border py-[9px] last:border-b-0"
+      style={AB_GRID}
+    >
+      <span className="text-[12px] font-medium leading-[1.45] text-text-muted">{label}</span>
+      <span className="font-mono text-[12.5px] leading-[1.45] tabular-nums text-text">{challenger}</span>
+      <span className="font-mono text-[12.5px] leading-[1.45] tabular-nums text-text-muted">{control}</span>
+      <span className={cn('text-right text-[12px] font-semibold leading-[1.45] tabular-nums', deltaClass ?? 'text-text-faint')}>
+        {delta ?? ''}
+      </span>
+    </div>
   )
 }
 
@@ -86,26 +129,26 @@ function CreateExperimentForm({ name, versions, onDone }: CreateFormProps) {
     `v${v.version}, ${formatDate(v.created_at)}`
 
   return (
-    <div className="bg-bg-elev border border-border rounded-[8px] p-[18px] space-y-4">
+    <Card className="flex flex-col gap-3.5 px-5 py-[18px]">
       <div className="flex items-center gap-2">
         <FlaskConical className="h-4 w-4 text-accent" />
-        <span className="font-mono text-[12.5px] font-medium text-text">New A/B experiment</span>
+        <span className="text-[13.5px] font-semibold leading-[1.4] text-text">New A/B experiment</span>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-1.5">
-          <label className="font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint">Version A (control)</label>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div className="flex flex-col gap-1.5">
+          <label className="micro-label tracking-[0.1em]">Version A (control)</label>
           <Select {...(vA ? { value: vA } : {})} onValueChange={setVA}>
-            <SelectTrigger className="h-8 rounded-[4px]"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="h-[34px] rounded-md"><SelectValue /></SelectTrigger>
             <SelectContent>
               {sorted.map((v) => <SelectItem key={v.id} value={v.id}>{versionLabel(v)}</SelectItem>)}
             </SelectContent>
           </Select>
         </div>
-        <div className="space-y-1.5">
-          <label className="font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint">Version B (challenger)</label>
+        <div className="flex flex-col gap-1.5">
+          <label className="micro-label tracking-[0.1em]">Version B (challenger)</label>
           <Select {...(vB ? { value: vB } : {})} onValueChange={setVB}>
-            <SelectTrigger className="h-8 rounded-[4px]"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="h-[34px] rounded-md"><SelectValue /></SelectTrigger>
             <SelectContent>
               {sorted.map((v) => <SelectItem key={v.id} value={v.id}>{versionLabel(v)}</SelectItem>)}
             </SelectContent>
@@ -113,12 +156,13 @@ function CreateExperimentForm({ name, versions, onDone }: CreateFormProps) {
         </div>
       </div>
 
-      <div className="space-y-2">
+      <div className="flex flex-col gap-2">
         <div className="flex items-center justify-between">
-          <label className="font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint">Traffic split (A / B)</label>
-          <span className="font-mono text-[11px] text-text">{split}% / {100 - split}%</span>
+          <label className="micro-label tracking-[0.1em]" htmlFor="ab-split">Traffic split (A / B)</label>
+          <span className="font-mono text-[11px] tabular-nums text-text">{split}% / {100 - split}%</span>
         </div>
         <input
+          id="ab-split"
           type="range"
           min={10}
           max={90}
@@ -134,20 +178,20 @@ function CreateExperimentForm({ name, versions, onDone }: CreateFormProps) {
         </div>
       </div>
 
-      <div className="bg-bg rounded-[5px] border border-border p-3 font-mono text-[11px] text-text-muted">
-        <span className="text-accent">@latest</span> requests will be routed deterministically:{' '}
-        <span className="text-text">{split}%</span> → version A,{' '}
-        <span className="text-text">{100 - split}%</span> → version B.
+      <div className="rounded-lg border border-border bg-bg-sunk px-3.5 py-3 font-mono text-[11px] leading-[1.65] text-text-muted">
+        <span className="text-accent">@latest</span> requests are routed deterministically:{' '}
+        <span className="text-text">{split}%</span> to version A and{' '}
+        <span className="text-text">{100 - split}%</span> to version B.
         Explicit version pins bypass the experiment.
       </div>
 
-      {error && <p className="font-mono text-[11px] text-bad">{error}</p>}
+      {error && <p className="font-mono text-[11.5px] text-bad">{error}</p>}
 
       <div className="flex justify-end gap-2">
         <button
           type="button"
           onClick={onDone}
-          className="font-mono text-[11.5px] px-[12px] py-[5px] border border-border rounded-[4px] text-text-muted hover:text-text transition-colors"
+          className="rounded-full border border-border px-3 py-1.5 text-[11.5px] font-medium text-text-muted transition-colors hover:text-text"
         >
           Cancel
         </button>
@@ -155,12 +199,12 @@ function CreateExperimentForm({ name, versions, onDone }: CreateFormProps) {
           type="button"
           onClick={() => void handleSubmit()}
           disabled={createMutation.isPending}
-          className="font-mono text-[11.5px] px-[12px] py-[5px] rounded-[4px] bg-text text-bg font-medium hover:opacity-90 transition-opacity disabled:opacity-40"
+          className="rounded-full bg-accent px-3.5 py-1.5 text-[11.5px] font-semibold text-accent-fg transition-colors hover:bg-accent-strong disabled:opacity-40"
         >
           {createMutation.isPending ? 'Starting…' : 'Start experiment'}
         </button>
       </div>
-    </div>
+    </Card>
   )
 }
 
@@ -180,8 +224,8 @@ function ExperimentResults({ experimentId, versions }: ResultsProps) {
 
   if (isLoading || !data) {
     return (
-      <div className="space-y-2 p-4">
-        {[1, 2, 3].map((i) => <div key={i} className="h-10 bg-bg-elev rounded animate-pulse" />)}
+      <div className="space-y-2">
+        {[1, 2, 3].map((i) => <div key={i} className="h-14 animate-pulse rounded-card bg-bg-chip" />)}
       </div>
     )
   }
@@ -189,6 +233,9 @@ function ExperimentResults({ experimentId, versions }: ResultsProps) {
   const { experiment: exp, stats } = data
   const vA = versionMap.get(exp.version_a_id)
   const vB = versionMap.get(exp.version_b_id)
+  const labelA = vA ? `v${vA.version}` : 'A'
+  const labelB = vB ? `v${vB.version}` : 'B'
+  const totalSamples = stats.armA.samples + stats.armB.samples
 
   async function handleStop() {
     if (!confirm('Stop this experiment?')) return
@@ -205,159 +252,138 @@ function ExperimentResults({ experimentId, versions }: ResultsProps) {
   }
 
   const canConclude = exp.status === 'running'
+  const sig = stats.significance
 
   return (
-    <div className="space-y-4">
-      {/* Experiment header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2.5">
-          <span className={cn(
-            'inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.05em] px-[7px] py-[2px] rounded-[3px]',
-            exp.status === 'running'   && 'bg-good/10 border border-good/30 text-good',
-            exp.status === 'concluded' && 'bg-accent-bg border border-accent-border text-accent',
-            exp.status === 'stopped'   && 'bg-bg-muted border border-border text-text-faint',
-          )}>
-            {exp.status === 'running' && <span className="w-1.5 h-1.5 rounded-full bg-good animate-pulse" />}
-            {exp.status}
-          </span>
-          <span className="font-mono text-[11px] text-text-faint">
-            Started {formatDate(exp.started_at)}
-          </span>
-          {exp.concluded_at && (
-            <span className="font-mono text-[11px] text-text-faint">
-              · Concluded {formatDate(exp.concluded_at)}
-            </span>
-          )}
-        </div>
+    <Card className="flex flex-col gap-3.5 px-5 py-[18px]">
+      {/* Head: title on the left, run meta pushed right, per D4. */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <span className="text-[13.5px] font-semibold leading-[1.45] text-text">
+          {labelB} against {labelA}
+        </span>
+        <StatusPill variant={statusTone(exp.status)}>{exp.status}</StatusPill>
+        <span className="ml-auto font-mono text-[11px] leading-[1.45] text-text-faint">
+          started {formatDate(exp.started_at)} · {totalSamples.toLocaleString()} requests
+          {exp.concluded_at ? ` · concluded ${formatDate(exp.concluded_at)}` : ''}
+        </span>
         {exp.status === 'running' && (
           <PermissionGate need="edit">
             <button
               type="button"
               onClick={() => void handleStop()}
               disabled={updateMutation.isPending}
-              className="flex items-center gap-1.5 font-mono text-[11px] px-[9px] py-[4px] rounded-[4px] border border-border text-text-muted hover:text-text transition-colors"
+              className="inline-flex items-center gap-1.5 rounded-full border border-border px-2.5 py-1 text-[11.5px] font-medium text-text-muted transition-colors hover:text-text disabled:opacity-40"
             >
               <StopCircle className="h-3.5 w-3.5" />
-              Stop experiment
+              Stop
             </button>
           </PermissionGate>
         )}
       </div>
 
-      {/* Winner banner */}
       {exp.winner_version_id && (
-        <div className="flex items-center gap-2 bg-good/8 border border-good/30 rounded-[6px] px-[14px] py-[10px]">
+        <div className="flex items-center gap-2 rounded-lg bg-good-bg px-3.5 py-2.5">
           <Trophy className="h-4 w-4 text-good" />
           <span className="font-mono text-[12px] text-good">
-            Winner: <strong>v{versionMap.get(exp.winner_version_id)?.version ?? '?'}</strong>
+            Winner: v{versionMap.get(exp.winner_version_id)?.version ?? '?'}
           </span>
         </div>
       )}
 
-      {/* Arm comparison */}
-      <div className="grid grid-cols-2 gap-3">
-        {[
-          { label: 'Version A (control)',    arm: stats.armA, vid: exp.version_a_id,  version: vA },
-          { label: 'Version B (challenger)', arm: stats.armB, vid: exp.version_b_id, version: vB },
-        ].map(({ label, arm, vid, version }) => {
-          const isWinner = exp.winner_version_id === vid
-          return (
-            <div
-              key={vid}
-              className={cn(
-                'bg-bg-elev border rounded-[8px] p-[16px] space-y-3',
-                isWinner ? 'border-good/40' : 'border-border',
-              )}
-            >
-              <div className="flex items-center justify-between">
-                <span className="font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint">{label}</span>
-                {version && (
-                  <span className="font-mono text-[10px] px-[5px] py-[1px] rounded-[3px] bg-bg border border-border text-text-muted">
-                    v{version.version}
-                  </span>
-                )}
-              </div>
+      {/* Column key. D4 leaves the two value columns unlabelled because its
+          head names them; two bare number columns need naming here since the
+          control and challenger versions are not otherwise distinguishable. */}
+      <div className="grid items-center gap-3 border-b border-border pb-2" style={AB_GRID}>
+        <Th />
+        <Th>{labelB} · challenger</Th>
+        <Th>{labelA} · control</Th>
+        <Th className="block text-right">Delta</Th>
+      </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                {[
-                  { label: 'Samples',    value: arm.samples.toLocaleString() },
-                  { label: 'Error rate', value: fmtPct(arm.errorRate),
-                    color: arm.errorRate === 0 ? 'text-good' : arm.errorRate < 0.05 ? 'text-warn' : 'text-bad' },
-                  { label: 'Avg latency', value: fmtMs(arm.avgLatencyMs) },
-                  { label: 'Avg cost',    value: arm.avgCostUsd > 0 ? fmtUsd(arm.avgCostUsd) : '—' },
-                ].map((m, i) => (
-                  <div key={i}>
-                    <div className="font-mono text-[10px] text-text-faint mb-0.5">{m.label}</div>
-                    <div className={cn('font-mono text-[14px] font-medium', m.color ?? 'text-text')}>
-                      {m.value}
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              {canConclude && !exp.winner_version_id && (
-                <PermissionGate need="edit">
-                  <button
-                    type="button"
-                    onClick={() => void handleConclude(vid)}
-                    disabled={concluding}
-                    className="w-full flex items-center justify-center gap-1.5 font-mono text-[10.5px] px-[8px] py-[5px] rounded-[4px] border border-border text-text-muted hover:text-text hover:border-border-strong transition-colors disabled:opacity-40"
-                  >
-                    <Trophy className="h-3 w-3" />
-                    Declare winner
-                  </button>
-                </PermissionGate>
-              )}
-            </div>
-          )
-        })}
+      <div className="flex flex-col">
+        <MetricRow
+          label="samples"
+          challenger={stats.armB.samples.toLocaleString()}
+          control={stats.armA.samples.toLocaleString()}
+        />
+        <MetricRow
+          label="error rate"
+          challenger={fmtPct(stats.armB.errorRate)}
+          control={fmtPct(stats.armA.errorRate)}
+          delta={fmtLift(sig.errorRate.relativeLift)}
+          deltaClass={liftTone(sig.errorRate.relativeLift)}
+        />
+        <MetricRow
+          label="avg latency"
+          challenger={fmtMs(stats.armB.avgLatencyMs)}
+          control={fmtMs(stats.armA.avgLatencyMs)}
+          delta={fmtLift(sig.latency.relativeLift)}
+          deltaClass={liftTone(sig.latency.relativeLift)}
+        />
+        <MetricRow
+          label="avg cost"
+          challenger={stats.armB.avgCostUsd > 0 ? fmtUsd(stats.armB.avgCostUsd) : '—'}
+          control={stats.armA.avgCostUsd > 0 ? fmtUsd(stats.armA.avgCostUsd) : '—'}
+          delta={fmtLift(sig.cost.relativeLift)}
+          deltaClass={liftTone(sig.cost.relativeLift)}
+        />
       </div>
 
       {/* Statistical significance */}
-      <div className="bg-bg-elev border border-border rounded-[8px] p-[16px]">
-        <p className="font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint mb-3">Statistical significance</p>
-        <div className="grid grid-cols-3 gap-4">
+      <div className="flex flex-col gap-2.5 rounded-lg border border-border bg-bg-sunk px-3.5 py-3">
+        <p className="micro-label tracking-[0.1em]">Statistical significance</p>
+        <div className="flex flex-wrap gap-x-6 gap-y-2">
           {[
-            {
-              label: 'Error rate',
-              stat: stats.significance.errorRate,
-            },
-            {
-              label: 'Latency',
-              stat: stats.significance.latency,
-            },
-            {
-              label: 'Cost',
-              stat: stats.significance.cost,
-            },
+            { label: 'Error rate', stat: sig.errorRate },
+            { label: 'Latency',    stat: sig.latency   },
+            { label: 'Cost',       stat: sig.cost      },
           ].map(({ label, stat }) => (
-            <div key={label} className="space-y-1.5">
-              <div className="font-mono text-[11px] text-text-muted">{label}</div>
-              <PValueBadge p={stat.pValue} significant={stat.significant} />
-              {stat.relativeLift != null && (
-                <div className={cn(
-                  'font-mono text-[11px]',
-                  stat.relativeLift < -0.01 ? 'text-good' :
-                  stat.relativeLift > 0.01 ? 'text-bad' :
-                  'text-text-faint',
-                )}>
-                  {fmtLift(stat.relativeLift)} lift
-                </div>
-              )}
+            <div key={label} className="flex items-center gap-2">
+              <span className="text-[12px] font-medium text-text-muted">{label}</span>
+              <StatusPill variant={stat.significant ? 'good' : 'neutral'}>
+                p={stat.pValue.toFixed(3)}{stat.significant ? ' ✓' : ''}
+              </StatusPill>
             </div>
           ))}
         </div>
         {(stats.armA.samples < 30 || stats.armB.samples < 30) && (
-          <p className="font-mono text-[10.5px] text-text-faint mt-3">
-            ⚠ Need ≥30 samples per arm for significance testing. Currently A={stats.armA.samples}, B={stats.armB.samples}.
+          <p className="font-mono text-[10.5px] text-text-faint">
+            Significance testing needs at least 30 samples per arm. Currently A={stats.armA.samples},
+            B={stats.armB.samples}.
           </p>
         )}
       </div>
-    </div>
+
+      {canConclude && !exp.winner_version_id && (
+        <PermissionGate need="edit">
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            {[
+              { vid: exp.version_b_id, label: labelB },
+              { vid: exp.version_a_id, label: labelA },
+            ].map(({ vid, label }) => (
+              <button
+                key={vid}
+                type="button"
+                onClick={() => void handleConclude(vid)}
+                disabled={concluding}
+                className="inline-flex items-center gap-1.5 rounded-full border border-border px-2.5 py-1 text-[11.5px] font-medium text-text-muted transition-colors hover:border-border-strong hover:text-text disabled:opacity-40"
+              >
+                <Trophy className="h-3 w-3" />
+                Declare {label} winner
+              </button>
+            ))}
+          </div>
+        </PermissionGate>
+      )}
+    </Card>
   )
 }
 
 // ── Main A/B tab ──────────────────────────────────────────────────────────────
+
+const PAST_GRID: React.CSSProperties = {
+  gridTemplateColumns: '110px minmax(0,1fr) 140px',
+}
 
 export function AbTab({ name, versions, experiments }: Props) {
   const [showCreate, setShowCreate] = useState(false)
@@ -367,38 +393,33 @@ export function AbTab({ name, versions, experiments }: Props) {
 
   if (versions.length < 2 && !runningExp) {
     return (
-      <div className="flex flex-col items-center justify-center h-48 gap-3 text-text-muted">
+      <div className="card-surface rounded-card flex h-48 flex-col items-center justify-center gap-3 text-text-muted">
         <FlaskConical className="h-8 w-8 text-text-faint" />
-        <p className="text-[13px]">Need at least 2 versions to run an A/B experiment.</p>
+        <p className="text-[12.5px]">Two versions are needed before an A/B experiment can run.</p>
       </div>
     )
   }
 
   return (
-    <div className="p-[22px] space-y-6 max-w-3xl">
+    <div className="flex flex-col gap-4">
       {/* Running experiment */}
       {runningExp ? (
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <p className="font-mono text-[11.5px] font-medium text-text">Running experiment</p>
-          </div>
-          <ExperimentResults experimentId={runningExp.id} versions={versions} />
-        </div>
+        <ExperimentResults experimentId={runningExp.id} versions={versions} />
       ) : !showCreate ? (
         <PermissionGate
           need="edit"
           fallback={
-            <div className="flex flex-col items-center justify-center h-32 gap-2 text-text-muted">
-              <p className="text-[13px]">No active experiment. Ask an editor to start one.</p>
+            <div className="card-surface rounded-card flex h-32 flex-col items-center justify-center gap-2 text-text-muted">
+              <p className="text-[12.5px]">No active experiment. Ask an editor to start one.</p>
             </div>
           }
         >
-          <div className="flex flex-col items-center justify-center h-32 gap-3">
-            <p className="font-mono text-[12px] text-text-muted">No active experiment for this prompt.</p>
+          <div className="card-surface rounded-card flex h-32 flex-col items-center justify-center gap-3">
+            <p className="text-[12.5px] text-text-muted">No active experiment for this prompt.</p>
             <button
               type="button"
               onClick={() => setShowCreate(true)}
-              className="flex items-center gap-1.5 font-mono text-[11.5px] px-[12px] py-[6px] rounded-[5px] bg-text text-bg font-medium hover:opacity-90 transition-opacity"
+              className="inline-flex items-center gap-1.5 rounded-full bg-accent px-3.5 py-2 text-[12.5px] font-semibold text-accent-fg transition-colors hover:bg-accent-strong"
             >
               <FlaskConical className="h-3.5 w-3.5" />
               Start A/B experiment
@@ -415,35 +436,36 @@ export function AbTab({ name, versions, experiments }: Props) {
 
       {/* Past experiments */}
       {pastExps.length > 0 && (
-        <div className="space-y-3">
-          <p className="font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint">Past experiments</p>
-          <div className="space-y-2">
-            {pastExps.map((exp) => (
-              <div
-                key={exp.id}
-                className="flex items-center gap-3 px-[14px] py-[10px] bg-bg-elev border border-border rounded-[6px]"
-              >
-                <span className={cn(
-                  'font-mono text-[9px] uppercase tracking-[0.05em] px-[5px] py-[1px] rounded-[3px]',
-                  exp.status === 'concluded' ? 'bg-accent-bg border border-accent-border text-accent' :
-                  'bg-bg-muted border border-border text-text-faint',
-                )}>
-                  {exp.status}
-                </span>
-                <span className="font-mono text-[11px] text-text-muted">
-                  Started {formatDate(exp.started_at)}
-                  {exp.concluded_at && ` · Concluded ${formatDate(exp.concluded_at)}`}
-                </span>
-                {exp.winner_version_id && (
-                  <span className="flex items-center gap-1 font-mono text-[11px] text-good ml-auto">
-                    <Trophy className="h-3 w-3" />
-                    Winner decided
-                  </span>
+        <TableCard>
+          <TableHead>
+            <div className="grid items-center gap-3" style={PAST_GRID}>
+              <Th>Status</Th>
+              <Th>Run</Th>
+              <Th className="block text-right">Outcome</Th>
+            </div>
+          </TableHead>
+          {pastExps.map((exp) => (
+            <div key={exp.id} className={cn(ROW, 'grid items-center gap-3')} style={PAST_GRID}>
+              <span>
+                <StatusPill variant={statusTone(exp.status)}>{exp.status}</StatusPill>
+              </span>
+              <span className="font-mono text-[12px] text-text-muted">
+                started {formatDate(exp.started_at)}
+                {exp.concluded_at && ` · concluded ${formatDate(exp.concluded_at)}`}
+              </span>
+              <span className="flex items-center justify-end gap-1 font-mono text-[12px]">
+                {exp.winner_version_id ? (
+                  <>
+                    <Trophy className="h-3 w-3 text-good" />
+                    <span className="text-good">winner decided</span>
+                  </>
+                ) : (
+                  <span className="text-text-faint">no winner</span>
                 )}
-              </div>
-            ))}
-          </div>
-        </div>
+              </span>
+            </div>
+          ))}
+        </TableCard>
       )}
     </div>
   )
