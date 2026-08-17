@@ -2,7 +2,7 @@
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import dynamic from 'next/dynamic'
-import { useSearchParams } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import { Topbar } from '@/components/layout/topbar'
 import {
@@ -115,10 +115,30 @@ function TabContent({ tab }: { tab: TabId }) {
 
 export function SettingsClient() {
   const searchParams = useSearchParams()
-  const initialTab = (searchParams.get('tab') as TabId | null) ?? 'general'
-  const [tab, setTab] = useState<TabId>(
-    ALL_ITEMS.some((i) => i.id === initialTab) ? initialTab : 'general',
-  )
+  const router = useRouter()
+
+  /*
+   * `?tab=` is the single source of truth for which section is open.
+   *
+   * It used to seed a `useState` instead, which meant the param was read once
+   * at mount and never again. Anything that linked into a section from inside
+   * settings — the sidebar's Upgrade button pointing at Plan & limits, say —
+   * changed the URL without changing the panel, because a same-route push does
+   * not remount the component. Deriving the tab makes those links work, and
+   * makes the URL shareable and reload-stable.
+   */
+  const tab = useMemo<TabId>(() => {
+    const requested = searchParams.get('tab')
+    return ALL_ITEMS.some((i) => i.id === requested) ? (requested as TabId) : 'general'
+  }, [searchParams])
+
+  // `replace`, not `push`: stepping through five sections should not put five
+  // entries between the reader and the page they arrived from. `scroll: false`
+  // keeps the section swap feeling like a tab rather than a navigation.
+  const setTab = (next: TabId) => {
+    router.replace(next === 'general' ? '/settings' : `/settings?tab=${next}`, { scroll: false })
+  }
+
   const active = ALL_ITEMS.find((i) => i.id === tab) ?? ALL_ITEMS[0]!
 
   // Inner-nav search/filter. Empty input shows the full grouped nav.
