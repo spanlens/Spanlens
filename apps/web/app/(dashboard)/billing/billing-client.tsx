@@ -14,6 +14,7 @@ import {
 } from '@/lib/queries/use-billing'
 import { QuotaBanner } from '@/components/dashboard/quota-banner'
 import { PLANS } from '@/lib/billing-plans'
+import { describeBillingFailure, type BillingFailure } from '@/lib/billing-errors'
 import type { BillingPlan } from '@/lib/queries/types'
 
 /** Pill recipe shared by the chips in the current-plan card header. */
@@ -34,7 +35,7 @@ export function BillingClient() {
   // Local error state for runtime errors (checkout, cancel). The
   // "missing client token" case is derived directly from env below — no
   // effect needed for that branch.
-  const [runtimeError, setRuntimeError] = useState<string | null>(null)
+  const [runtimeError, setRuntimeError] = useState<BillingFailure | null>(null)
   const [paddle, setPaddle] = useState<Paddle | null>(null)
   // initializePaddle can reject (ad-block, network) with no way to recover in
   // this session. Without tracking that, `paddle` stays null forever and the
@@ -59,12 +60,26 @@ export function BillingClient() {
     | 'sandbox'
     | 'production'
 
-  const errorMessage = runtimeError
+  /*
+   * One banner, three sources: a failed call, a blocked Paddle.js, and a
+   * missing client token. `retryable` decides the tone — a problem the reader
+   * can outlast is warned, a problem that needs us is flagged — so the two are
+   * not dressed identically the way they were when everything was a 502.
+   */
+  const failure: BillingFailure | null = runtimeError
     ?? (clientToken
       ? paddleLoadFailed
-        ? 'Payment system failed to load. Please disable ad-blockers and retry.'
+        ? {
+            message: 'Payment system failed to load. Please disable ad-blockers and retry.',
+            retryable: true,
+          }
         : null
-      : 'Paddle client token not configured. Set NEXT_PUBLIC_PADDLE_CLIENT_TOKEN.')
+      : {
+          message:
+            'Checkout is unavailable because of a billing problem on our side. ' +
+            'We have been notified. Please contact support@spanlens.io if it persists.',
+          retryable: false,
+        })
 
   useEffect(() => {
     if (!clientToken) return
@@ -120,7 +135,10 @@ export function BillingClient() {
       setCheckoutCompleted(false)
       checkoutCompletedRef.current = false
       if (!paddle) {
-        setRuntimeError('Paddle.js is not ready yet. Please try again in a moment.')
+        setRuntimeError({
+          message: 'Paddle.js is not ready yet. Please try again in a moment.',
+          retryable: true,
+        })
         return
       }
       try {
@@ -132,9 +150,7 @@ export function BillingClient() {
         // second checkout start against the same upgrade.
         setUpgradeInProgress(true)
       } catch (err) {
-        setRuntimeError(
-          err instanceof Error ? err.message : 'Failed to start checkout',
-        )
+        setRuntimeError(describeBillingFailure(err, 'Failed to start checkout'))
       }
     },
     [paddle, createCheckout],
@@ -147,7 +163,7 @@ export function BillingClient() {
       setShowCancelConfirm(false)
       setCancelDone(true)
     } catch (err) {
-      setRuntimeError(err instanceof Error ? err.message : 'Failed to cancel subscription')
+      setRuntimeError(describeBillingFailure(err, 'Failed to cancel subscription'))
       setShowCancelConfirm(false)
     }
   }, [cancelSubscription])
@@ -194,9 +210,14 @@ export function BillingClient() {
           </div>
         )}
 
-        {errorMessage && (
-          <div className="rounded-lg bg-accent-bg px-4 py-3 text-[12.5px] text-accent">
-            {errorMessage}
+        {failure && (
+          <div
+            role="alert"
+            className={`rounded-lg px-4 py-3 text-[12.5px] ${
+              failure.retryable ? 'bg-warn-bg text-warn' : 'bg-bad-bg text-bad'
+            }`}
+          >
+            {failure.message}
           </div>
         )}
 
