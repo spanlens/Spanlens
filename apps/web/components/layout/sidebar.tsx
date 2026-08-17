@@ -612,7 +612,10 @@ export function Sidebar() {
         </div>
         {isAdmin && (
           <button
-            onClick={() => router.push('/settings')}
+            /* Straight to Plan & limits, not the Settings landing page: the
+               reader clicked this because of the usage bar above it, and
+               General has nothing to say about their quota. */
+            onClick={() => router.push('/settings?tab=plan')}
             className="mt-2.5 text-[12px] font-medium text-accent hover:text-accent-strong transition-colors"
           >
             {/* Upgrade only makes sense below Team. On Team/Enterprise the
