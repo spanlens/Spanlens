@@ -91,7 +91,7 @@ function TopologyNodeView({ data }: NodeProps<Node<TopologyNodeData>>) {
       {/* Top row: name + critical badge */}
       <div className="flex items-center gap-1.5 min-w-0">
         {node.isRoot && (
-          <span className="font-mono text-[8.5px] uppercase tracking-[0.06em] text-text-faint shrink-0">
+          <span className="font-mono text-[8.5px] uppercase tracking-[0.1em] text-text-faint shrink-0">
             graph
           </span>
         )}
@@ -105,19 +105,19 @@ function TopologyNodeView({ data }: NodeProps<Node<TopologyNodeData>>) {
         </span>
         {node.isCritical && (
           <span
-            className="font-mono text-[8.5px] uppercase tracking-[0.06em] text-accent shrink-0"
+            className="font-mono text-[8.5px] uppercase tracking-[0.1em] text-accent shrink-0"
             title="On critical path"
           >
             CP
           </span>
         )}
         {errored && (
-          <span className="font-mono text-[8.5px] uppercase tracking-[0.06em] text-bad shrink-0">
+          <span className="font-mono text-[8.5px] uppercase tracking-[0.1em] text-bad shrink-0">
             ERR
           </span>
         )}
         {running && (
-          <span className="font-mono text-[8.5px] uppercase tracking-[0.06em] text-accent animate-pulse shrink-0">
+          <span className="font-mono text-[8.5px] uppercase tracking-[0.1em] text-accent animate-pulse shrink-0">
             ●
           </span>
         )}
@@ -142,7 +142,7 @@ function TopologyNodeView({ data }: NodeProps<Node<TopologyNodeData>>) {
           {childChips.map((c) => (
             <span
               key={c.type}
-              className="inline-flex items-center gap-0.5 font-mono text-[9.5px] text-text-faint px-1 py-[1px] rounded-[3px] border border-border bg-bg"
+              className="inline-flex items-center gap-0.5 font-mono text-[9.5px] text-text-faint px-2 py-[1px] rounded-full border border-border bg-bg-elev"
             >
               <span>{CHILD_GLYPH[c.type]}</span>
               <span>{c.count}</span>
@@ -328,7 +328,7 @@ function TopologyGraphInner({
     return (
       <div className="flex h-full items-center justify-center text-center px-8">
         <div className="max-w-md">
-          <div className="font-mono text-[10.5px] uppercase tracking-[0.06em] text-text-faint mb-2">
+          <div className="font-mono text-[10.5px] uppercase tracking-[0.1em] text-text-faint mb-2">
             No graph topology
           </div>
           <p className="text-[13px] text-text-muted leading-relaxed">

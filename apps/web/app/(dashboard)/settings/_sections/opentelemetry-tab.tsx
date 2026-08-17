@@ -1,7 +1,7 @@
 'use client'
 import { useState } from 'react'
 import { Section, FormRow, GhostBtn } from '@/components/ui/primitives'
-import { MonoPill, TabHeader } from '../_shared/ui'
+import { MonoPill, TabHeader, PILL_SECONDARY } from '../_shared/ui'
 
 // ─── OPENTELEMETRY tab ────────────────────────────────────────────────────────
 
@@ -54,16 +54,16 @@ export function OpenTelemetryTab() {
   }
 
   return (
-    <div className="max-w-[920px]">
+    <div>
       <TabHeader
         title="OpenTelemetry"
         description="Ingest OTLP traces directly from any OpenTelemetry-compatible SDK."
       />
 
-      <Section title="OTLP endpoint" className="mb-5">
+      <Section title="OTLP endpoint" className="mb-4">
         <FormRow label="Endpoint URL" hint="Use this as the OTLP HTTP exporter endpoint.">
           <div className="flex items-center gap-3 w-full max-w-[560px]">
-            <div className="flex-1 font-mono text-[12px] text-text bg-bg-muted px-3 py-2 rounded border border-border truncate">
+            <div className="flex-1 font-mono text-[12px] text-text bg-bg-sunk px-3 py-2 rounded-md border border-border truncate">
               {OTEL_ENDPOINT}
             </div>
             <CopyButton value={OTEL_ENDPOINT} />
@@ -76,10 +76,10 @@ export function OpenTelemetryTab() {
         </FormRow>
       </Section>
 
-      <Section title="SDK setup example" className="mb-5">
+      <Section title="SDK setup example" className="mb-4">
         <div className="px-6 pb-5">
           <div className="relative">
-            <pre className="rounded-[6px] bg-bg-muted border border-border px-4 py-4 font-mono text-[11.5px] text-text-muted overflow-x-auto leading-relaxed whitespace-pre">
+            <pre className="rounded-md bg-bg-sunk border border-border px-4 py-4 font-mono text-[11.5px] text-text-muted overflow-x-auto leading-relaxed whitespace-pre">
               {OTEL_CODE_EXAMPLE}
             </pre>
             <div className="absolute top-3 right-3">
@@ -89,9 +89,9 @@ export function OpenTelemetryTab() {
         </div>
       </Section>
 
-      <Section title="Connection" className="mb-5">
+      <Section title="Connection" className="mb-4">
         <div className="px-6 py-4 flex items-center gap-4">
-          <GhostBtn onClick={() => void handleTestConnection()}>
+          <GhostBtn className={PILL_SECONDARY} onClick={() => void handleTestConnection()}>
             Test connection
           </GhostBtn>
           {healthStatus === 'ok' && (

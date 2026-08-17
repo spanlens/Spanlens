@@ -10,14 +10,14 @@ export function InvoicesTab() {
   const { data: subscription } = useSubscription()
 
   return (
-    <div className="max-w-[980px]">
+    <div>
       <TabHeader
         title="Invoices"
         description="Invoices are issued and delivered by Paddle, our payment processor."
       />
 
-      <Section title="Where to find your invoices" className="mb-5">
-        <div className="px-6 py-5 space-y-4 text-[13px] text-text-muted leading-relaxed">
+      <Section title="Where to find your invoices" className="mb-4">
+        <div className="px-6 py-5 space-y-4 text-[12.5px] text-text-muted leading-relaxed">
           <p>
             Every invoice lands in your inbox from <span className="font-mono text-text">noreply@paddle.com</span> as
             a PDF attachment, usually within minutes of each renewal or top-up charge.

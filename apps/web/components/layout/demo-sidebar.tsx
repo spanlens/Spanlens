@@ -4,7 +4,13 @@ import Link from 'next/link'
 import { useEffect, useRef, useState } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import { useTheme } from '@/components/providers/theme-provider'
-import { Sun, Moon, Monitor, X, MessageSquarePlus } from 'lucide-react'
+import {
+  Sun, Moon, Monitor, X, MessageSquarePlus, LogOut, ChevronDown,
+  LayoutDashboard, ArrowLeftRight, Waypoints, Users, Activity, ShieldCheck,
+  PiggyBank, FileText, ClipboardCheck, Database, FlaskConical, Bell,
+  Highlighter, KeyRound, Settings, BookOpen,
+  type LucideIcon,
+} from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useSidebar } from '@/lib/sidebar-context'
 
@@ -14,10 +20,10 @@ function LogoMark() {
     <Link
       href="/"
       aria-label="Spanlens home"
-      className="flex items-center gap-2 px-1 py-1 hover:opacity-80 transition-opacity"
+      className="flex items-center gap-2 pl-1.5 hover:opacity-80 transition-opacity"
     >
-      <Image src="/icon.png" alt="Spanlens" width={20} height={20} className="shrink-0 rounded-[5px]" priority />
-      <span className="font-semibold text-[15px] tracking-[-0.3px] text-text">spanlens</span>
+      <Image src="/icon.png" alt="Spanlens" width={20} height={20} className="shrink-0 rounded-md" priority />
+      <span className="font-display text-[15px] tracking-[-0.02em] text-text">spanlens</span>
     </Link>
   )
 }
@@ -47,11 +53,17 @@ function DemoWorkspaceSwitcher() {
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="w-full flex items-center justify-between px-[10px] py-[7px] rounded-[5px] border border-border bg-bg-muted text-[12px] font-mono text-text-muted hover:bg-bg-muted/80 transition-colors"
+        className="w-full h-9 flex items-center gap-2 px-[10px] rounded-md border border-border bg-bg-elev hover:border-border-strong transition-colors"
       >
-        <span className="truncate text-text">Acme Corp</span>
-        <span className="ml-1.5 font-mono text-[9px] uppercase tracking-[0.05em] px-[5px] py-[2px] rounded-[3px] bg-accent/10 text-accent border border-accent/20">demo</span>
-        <span className="text-text-faint text-[10px] shrink-0 ml-auto pl-2">⌄</span>
+        <span
+          aria-hidden="true"
+          className="flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-chip bg-text text-[10px] font-semibold text-bg"
+        >
+          A
+        </span>
+        <span className="truncate text-[13px] font-medium text-text">Acme Corp</span>
+        <span className="shrink-0 font-mono text-[9px] uppercase tracking-[0.1em] px-[5px] py-[2px] rounded-full bg-accent-bg text-accent">demo</span>
+        <ChevronDown className="h-3.5 w-3.5 shrink-0 text-text-faint ml-auto" aria-hidden="true" />
       </button>
       {open && (
         <div
@@ -93,75 +105,97 @@ function DemoWorkspaceSwitcher() {
 }
 
 /* ── Nav groups (mirrors live sidebar) ── */
-type NavItem = { href: string; label: string; badge?: string; badgeWarn?: boolean; badgeGood?: boolean }
+type NavItem = {
+  href: string
+  label: string
+  icon: LucideIcon
+  badge?: string
+  badgeWarn?: boolean
+  badgeGood?: boolean
+}
 
 const DEMO_NAV: { label: string | null; items: NavItem[] }[] = [
   {
     label: null,
     items: [
-      { href: '/demo/dashboard', label: 'Dashboard' },
-      { href: '/demo/requests', label: 'Requests', badge: '2.4k' },
-      { href: '/demo/traces', label: 'Traces' },
-      { href: '/demo/users', label: 'Users', badge: '4' },
+      { href: '/demo/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+      { href: '/demo/requests', label: 'Requests', icon: ArrowLeftRight, badge: '2.4k' },
+      { href: '/demo/traces', label: 'Traces', icon: Waypoints },
+      { href: '/demo/users', label: 'Users', icon: Users, badge: '4' },
     ],
   },
   {
     label: 'Observe',
     items: [
-      { href: '/demo/anomalies', label: 'Anomalies', badge: '2', badgeWarn: true },
-      { href: '/demo/security', label: 'Security' },
-      { href: '/demo/savings', label: 'Savings', badge: '$412', badgeGood: true },
+      { href: '/demo/anomalies', label: 'Anomalies', icon: Activity, badge: '2', badgeWarn: true },
+      { href: '/demo/security', label: 'Security', icon: ShieldCheck },
+      { href: '/demo/savings', label: 'Savings', icon: PiggyBank, badge: '$412', badgeGood: true },
     ],
   },
   {
     label: 'Build',
     items: [
-      { href: '/demo/prompts', label: 'Prompts' },
-      { href: '/demo/evals', label: 'Evals', badge: '4' },
-      { href: '/demo/datasets', label: 'Datasets', badge: '3' },
-      { href: '/demo/experiments', label: 'Experiments' },
-      { href: '/demo/alerts', label: 'Alerts', badge: '1', badgeWarn: true },
+      { href: '/demo/prompts', label: 'Prompts', icon: FileText },
+      { href: '/demo/evals', label: 'Evals', icon: ClipboardCheck, badge: '4' },
+      { href: '/demo/datasets', label: 'Datasets', icon: Database, badge: '3' },
+      { href: '/demo/experiments', label: 'Experiments', icon: FlaskConical },
+      { href: '/demo/alerts', label: 'Alerts', icon: Bell, badge: '1', badgeWarn: true },
     ],
   },
   {
     label: 'Review',
-    items: [{ href: '/demo/annotation', label: 'Annotation', badge: '2', badgeWarn: true }],
+    items: [{ href: '/demo/annotation', label: 'Annotation', icon: Highlighter, badge: '2', badgeWarn: true }],
   },
   {
     label: 'Admin',
     items: [
-      { href: '/demo/projects', label: 'Projects & Keys' },
-      { href: '/demo/settings', label: 'Settings' },
-      { href: '/docs', label: 'Docs' },
+      { href: '/demo/projects', label: 'Projects & Keys', icon: KeyRound },
+      { href: '/demo/settings', label: 'Settings', icon: Settings },
+      { href: '/docs', label: 'Docs', icon: BookOpen },
     ],
   },
 ]
 
-/* ── Theme toggle (matches live: icon + "Theme · system" label) ── */
+/* ── Theme toggle (mirrors the live sidebar's segmented pill) ── */
 type ThemeOption = 'system' | 'light' | 'dark'
-const THEME_CYCLE: ThemeOption[] = ['system', 'light', 'dark']
+
+const THEME_OPTIONS: { value: ThemeOption; label: string; Icon: LucideIcon }[] = [
+  { value: 'light', label: 'Light theme', Icon: Sun },
+  { value: 'dark', label: 'Dark theme', Icon: Moon },
+  { value: 'system', label: 'Match system theme', Icon: Monitor },
+]
 
 function ThemeToggleButton() {
   const { theme, setTheme } = useTheme()
-
-  function cycleTheme() {
-    const current = (theme ?? 'system') as ThemeOption
-    const idx = THEME_CYCLE.indexOf(current)
-    const next = THEME_CYCLE[(idx + 1) % THEME_CYCLE.length] ?? 'system'
-    setTheme(next)
-  }
-
   const current = (theme ?? 'system') as ThemeOption
-  const Icon = current === 'light' ? Sun : current === 'dark' ? Moon : Monitor
 
   return (
-    <button
-      onClick={cycleTheme}
-      className="flex w-full items-center gap-2 px-[10px] py-[6px] rounded-[5px] text-[13px] text-text-muted hover:bg-bg-muted hover:text-text transition-colors"
+    <div
+      role="radiogroup"
+      aria-label="Theme"
+      className="inline-flex items-center gap-[2px] rounded-full bg-bg-chip p-[3px]"
     >
-      <Icon className="h-3.5 w-3.5 shrink-0" />
-      <span>Theme · {current}</span>
-    </button>
+      {THEME_OPTIONS.map(({ value, label, Icon }) => {
+        const selected = current === value
+        return (
+          <button
+            key={value}
+            type="button"
+            role="radio"
+            aria-checked={selected}
+            aria-label={label}
+            title={label}
+            onClick={() => setTheme(value)}
+            className={cn(
+              'flex h-5 w-5 items-center justify-center rounded-full transition-colors',
+              selected ? 'bg-bg-elev text-text shadow-card' : 'text-text-faint hover:text-text-muted',
+            )}
+          >
+            <Icon className="h-3 w-3" aria-hidden="true" />
+          </button>
+        )
+      })}
+    </div>
   )
 }
 
@@ -177,12 +211,12 @@ function SidebarContent() {
   return (
     <>
       {/* Logo */}
-      <div className="px-[18px] pt-[18px] pb-3">
+      <div className="px-[14px] pt-4 pb-3.5">
         <LogoMark />
       </div>
 
       {/* Workspace switcher */}
-      <div className="mx-[14px] mb-3">
+      <div className="mx-[14px] mb-3.5">
         <DemoWorkspaceSwitcher />
       </div>
 
@@ -191,11 +225,11 @@ function SidebarContent() {
         {DEMO_NAV.map((group, gi) => (
           <div key={gi}>
             {group.label && (
-              <div className="font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint px-[10px] pt-3 pb-1">
+              <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-text-faint px-[10px] pt-4 pb-2">
                 {group.label}
               </div>
             )}
-            {group.items.map(({ href, label, badge, badgeWarn, badgeGood }) => {
+            {group.items.map(({ href, label, icon: Icon, badge, badgeWarn, badgeGood }) => {
               const active =
                 pathname === href ||
                 (href !== '/demo/dashboard' && pathname.startsWith(href + '/')) ||
@@ -206,23 +240,28 @@ function SidebarContent() {
                   href={href}
                   prefetch={false}
                   className={cn(
-                    'flex items-center justify-between px-[10px] py-[6px] rounded-[5px] text-[13px] transition-colors',
-                    'border-l-2',
+                    'flex items-center justify-between gap-[10px] pl-[10px] pr-2 py-[6px] rounded text-[13px] leading-[18px] border transition-colors',
                     active
-                      ? 'bg-bg-muted text-text font-medium border-accent'
-                      : 'text-text-muted hover:bg-bg-muted hover:text-text border-transparent',
+                      ? 'bg-bg-elev text-text font-semibold border-border'
+                      : 'text-text-muted border-transparent hover:bg-bg-muted/60 hover:text-text',
                   )}
                 >
-                  <span>{label}</span>
+                  <span className="flex min-w-0 items-center gap-[10px]">
+                    <Icon
+                      aria-hidden="true"
+                      className={cn('h-[13px] w-[13px] shrink-0', active ? 'text-text' : 'text-text-faint')}
+                    />
+                    <span className="truncate">{label}</span>
+                  </span>
                   {badge && (
                     <span
                       className={cn(
-                        'font-mono text-[10px] px-[6px] py-[1px] rounded-[3px] border',
+                        'shrink-0 font-mono text-[11px] leading-[15px] px-[7px] py-[2px] rounded-full',
                         badgeWarn
-                          ? 'bg-accent-bg text-accent border-accent-border'
+                          ? 'bg-accent-bg text-bad'
                           : badgeGood
-                            ? 'bg-good/10 text-good border-good/20'
-                            : 'bg-bg text-text-faint border-border',
+                            ? 'bg-good-bg text-good'
+                            : 'bg-bg-chip text-text-faint',
                       )}
                     >
                       {badge}
@@ -236,44 +275,47 @@ function SidebarContent() {
       </nav>
 
       {/* Plan / usage widget (static demo values) */}
-      <div className="mx-[18px] mb-[14px] mt-2 p-3 rounded-md border border-border bg-bg-muted">
-        <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-1.5">
-          Plan · Free
+      <div className="mx-[14px] mb-2.5 mt-2 p-3 rounded-lg border border-border bg-bg-elev">
+        <div className="flex items-baseline justify-between gap-2">
+          <span className="text-[13px] font-medium text-text">Free</span>
+          <span className="font-mono text-[11.5px] text-text-faint">2.4k / 50k</span>
         </div>
-        <div className="text-[13px] text-text mb-1.5">2,400 / 50k requests</div>
-        <div className="h-1 rounded-full bg-bg overflow-hidden">
-          <div className="h-full rounded-full bg-text transition-all" style={{ width: '4.8%' }} />
+        <div className="mt-2 h-[5px] rounded-full bg-track overflow-hidden">
+          <div className="h-full rounded-full bg-accent transition-all" style={{ width: '4.8%' }} />
         </div>
         <Link
           href="/demo/billing"
-          className="mt-2.5 inline-block text-[12px] font-medium text-accent hover:opacity-80 transition-opacity"
+          className="mt-2.5 inline-block text-[12px] font-medium text-accent hover:text-accent-strong transition-colors"
         >
           Upgrade →
         </Link>
       </div>
 
-      {/* Feedback + Theme + Sign out */}
-      <div className="px-[14px] pb-[14px] space-y-0.5">
+      {/* Footer strip: Feedback, sign out, theme (mirrors the live sidebar) */}
+      <div className="flex items-center gap-2 px-[14px] pb-[14px] pl-[18px]">
         <Link
           href="/demo/feedback"
           prefetch={false}
           className={cn(
-            'flex w-full items-center gap-2 px-[10px] py-[6px] rounded-[5px] text-[13px] transition-colors',
+            'inline-flex items-center gap-1.5 text-[12px] font-medium transition-colors',
             pathname === '/demo/feedback' || pathname.startsWith('/demo/feedback/')
-              ? 'bg-bg-muted text-text font-medium'
-              : 'text-text-muted hover:bg-bg-muted hover:text-text',
+              ? 'text-text'
+              : 'text-text-faint hover:text-text',
           )}
         >
-          <MessageSquarePlus className="h-3.5 w-3.5 shrink-0" />
+          <MessageSquarePlus className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
           <span>Feedback</span>
         </Link>
-        <ThemeToggleButton />
+        <div className="flex-1" />
         <button
           onClick={handleSignOut}
-          className="flex w-full items-center px-[10px] py-[6px] rounded-[5px] text-[13px] text-text-muted hover:bg-bg-muted hover:text-text transition-colors"
+          aria-label="Sign out"
+          title="Sign out"
+          className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-text-faint hover:bg-bg-chip hover:text-text transition-colors"
         >
-          Sign out
+          <LogOut className="h-3.5 w-3.5" aria-hidden="true" />
         </button>
+        <ThemeToggleButton />
       </div>
     </>
   )
@@ -294,21 +336,14 @@ export function DemoSidebar() {
 
       <aside
         className={cn(
-          'flex flex-col bg-bg-elev border-r border-border',
+          // Band surface, matching the live sidebar. Keep these two in sync.
+          'flex flex-col bg-bg-muted border-r border-border',
           // Mobile: fixed overlay drawer. `inset-y-0` already pins to the full
-          // viewport height — no `h-screen` needed. On desktop the sidebar
-          // lives inside the demo layout's `[zoom:1.25]` wrapper whose height
-          // is `100vh/1.25`; an explicit `h-screen` would overflow that parent
-          // by 25% and hide the Plan widget / Feedback / Theme / Sign out.
+          // viewport height — no `h-screen` needed.
           'fixed inset-y-0 left-0 z-50 w-[272px]',
           'transition-transform duration-200 ease-in-out',
           isOpen ? 'translate-x-0' : '-translate-x-full',
-          // `md:[zoom:0.8]` cancels the demo layout's `[zoom:1.25]` (1.25 * 0.8
-          // = 1.0) so the sidebar renders at its original 100% size while the
-          // demo main content stays at 125%. Mirrors the live sidebar — keep
-          // these two in sync. Scoped to md+ because mobile uses `fixed`,
-          // which interacts poorly with CSS zoom.
-          'md:relative md:w-56 md:shrink-0 md:translate-x-0 md:transition-none md:[zoom:0.8]',
+          'md:relative md:w-[232px] md:shrink-0 md:translate-x-0 md:transition-none',
         )}
       >
         {/* Mobile close */}

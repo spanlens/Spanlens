@@ -14,7 +14,7 @@
  */
 
 import { useEffect } from 'react'
-import { Button } from '@/components/ui/button'
+import { stateActionPrimary, stateActionSecondary, stateCard } from '@/components/ui/empty-state'
 
 type ErrorKind = 'auth' | 'not-found' | 'network' | 'permission' | 'other'
 
@@ -113,38 +113,49 @@ export default function RouteError({
   }
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center px-6 bg-bg text-text">
-      <div className="max-w-md w-full">
-        <p className="text-6xl font-bold text-text-faint mb-3 leading-none">{copy.code}</p>
-        <h1 className="text-xl font-bold mb-2">{copy.title}</h1>
-        <p className="text-text-muted mb-6 text-sm leading-relaxed">{copy.description}</p>
+    <div className="flex min-h-screen items-center justify-center bg-bg px-6 py-16">
+      <div className={`w-full max-w-[560px] ${stateCard}`}>
+        <div className="flex flex-col items-center gap-3 px-10 pb-[30px] pt-[52px] text-center">
+          {/* The code carries the failure colour so the card reads as an error
+              before any of the copy is parsed. 404 is a routing miss, not a
+              fault, so it stays in ink. */}
+          <p
+            className={`font-display track-h2 text-[46px] leading-none ${
+              kind === 'not-found' ? 'text-text' : 'text-bad'
+            }`}
+          >
+            {copy.code}
+          </p>
+          <h1 className="font-display track-quote text-[16px] leading-[1.5] text-text">{copy.title}</h1>
+          <p className="max-w-[380px] text-[12.5px] leading-[1.6] text-text-faint">{copy.description}</p>
 
-        {error.digest && (
-          <div className="mb-6">
+          {error.digest && (
             <button
               type="button"
               onClick={copyDigest}
-              className="font-mono text-[11px] text-text-faint hover:text-text-muted transition-colors break-all"
               title="Click to copy"
+              className="max-w-full break-all rounded-sm bg-bg-sunk px-3 py-[7px] font-mono text-[11px] leading-[1.5] text-text-faint transition-colors hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-bg-elev"
             >
-              digest: {error.digest}
+              digest {error.digest}
             </button>
-          </div>
-        )}
+          )}
 
-        <div className="flex gap-3">
-          {copy.primaryAction.href ? (
-            <Button asChild>
-              <a href={copy.primaryAction.href}>{copy.primaryAction.label}</a>
-            </Button>
-          ) : (
-            <Button onClick={copy.primaryAction.onClick}>{copy.primaryAction.label}</Button>
-          )}
-          {kind !== 'auth' && copy.primaryAction.href !== '/' && (
-            <Button variant="outline" asChild>
-              <a href="/">Go home</a>
-            </Button>
-          )}
+          <div className="mt-1 flex flex-wrap justify-center gap-2">
+            {copy.primaryAction.href ? (
+              <a href={copy.primaryAction.href} className={stateActionPrimary}>
+                {copy.primaryAction.label}
+              </a>
+            ) : (
+              <button type="button" onClick={copy.primaryAction.onClick} className={stateActionPrimary}>
+                {copy.primaryAction.label}
+              </button>
+            )}
+            {kind !== 'auth' && copy.primaryAction.href !== '/' && (
+              <a href="/" className={stateActionSecondary}>
+                Go home
+              </a>
+            )}
+          </div>
         </div>
       </div>
     </div>

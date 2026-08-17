@@ -92,7 +92,7 @@ export function IntegrationTemplate({
         >
           ← Docs
         </Link>
-        <h1 className="mt-4 text-[40px] sm:text-[48px] font-semibold tracking-[-0.8px] text-text leading-[1.05]">
+        <h1 className="mt-4 font-display track-h2 text-[40px] sm:text-[48px] text-text leading-[1.12]">
           {provider} observability with Spanlens
         </h1>
         <p className="mt-4 text-[18px] text-text-muted leading-relaxed">{tagline}</p>
@@ -109,7 +109,7 @@ export function IntegrationTemplate({
             href={providerUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="h-9 px-4 rounded-[6px] border border-border text-text font-medium leading-9 hover:bg-bg-elev transition-colors"
+            className="h-9 px-4 rounded-[6px] border border-border text-text font-medium leading-9 hover:bg-bg-muted transition-colors"
           >
             {provider} docs ↗
           </a>
@@ -117,7 +117,7 @@ export function IntegrationTemplate({
       </section>
 
       <section className="max-w-3xl mx-auto px-6 py-8">
-        <h2 className="text-[22px] font-semibold tracking-[-0.4px] text-text mb-4">
+        <h2 className="font-display track-h3 text-[22px] text-text mb-4">
           What Spanlens captures for {provider}
         </h2>
         <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[14px] text-text-muted">
@@ -131,17 +131,20 @@ export function IntegrationTemplate({
       </section>
 
       <section className="max-w-3xl mx-auto px-6 py-8">
-        <h2 className="text-[22px] font-semibold tracking-[-0.4px] text-text mb-6">
+        <h2 className="font-display track-h3 text-[22px] text-text mb-6">
           Integration steps
         </h2>
         <ol className="space-y-6">
           {steps.map((step, i) => (
-            <li key={step.title} className="rounded-xl border border-border bg-bg-elev p-5">
+            <li key={step.title} className="rounded-card border border-border bg-bg-elev p-5">
               <div className="flex items-start gap-3">
                 <span className="shrink-0 h-7 w-7 rounded-full bg-accent text-bg font-mono text-[12px] font-semibold flex items-center justify-center">
                   {i + 1}
                 </span>
-                <div className="flex-1">
+                {/* min-w-0: without it this flex item sizes to the min-content
+                    width of the code sample, which is wider than a phone, and
+                    the page scrolls sideways instead of the snippet. */}
+                <div className="min-w-0 flex-1">
                   <h3 className="text-[16px] font-semibold text-text mb-2">{step.title}</h3>
                   <p className="text-[14px] text-text-muted leading-relaxed">{step.body}</p>
                   {step.code && (
@@ -157,12 +160,12 @@ export function IntegrationTemplate({
       </section>
 
       <section className="max-w-3xl mx-auto px-6 py-12">
-        <h2 className="text-[22px] font-semibold tracking-[-0.4px] text-text mb-6">
+        <h2 className="font-display track-h3 text-[22px] text-text mb-6">
           {provider} integration FAQ
         </h2>
         <div className="space-y-3">
           {faqs.map((f) => (
-            <details key={f.q} className="group rounded-xl border border-border bg-bg-elev p-5">
+            <details key={f.q} className="group rounded-card border border-border bg-bg-elev p-5">
               <summary className="cursor-pointer list-none text-[14px] font-medium text-text">
                 {f.q}
               </summary>
@@ -173,7 +176,7 @@ export function IntegrationTemplate({
       </section>
 
       <section className="max-w-3xl mx-auto px-6 py-12">
-        <div className="rounded-xl border border-border bg-bg-elev p-6 text-center">
+        <div className="rounded-card border border-border bg-bg-elev p-6 text-center">
           <p className="text-[14px] text-text-muted mb-4">
             See every {provider} call in your dashboard within 60 seconds.
           </p>
@@ -186,7 +189,7 @@ export function IntegrationTemplate({
             </Link>
             <Link
               href="/docs/quick-start"
-              className="h-10 px-5 rounded-[6px] border border-border text-text text-[14px] font-medium leading-10 hover:bg-bg-elev transition-colors"
+              className="h-10 px-5 rounded-[6px] border border-border text-text text-[14px] font-medium leading-10 hover:bg-bg-muted transition-colors"
             >
               Read the docs
             </Link>

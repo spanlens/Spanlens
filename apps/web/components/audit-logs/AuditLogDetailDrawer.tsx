@@ -42,7 +42,7 @@ export function AuditLogDetailDrawer({ row, open, onOpenChange }: Props) {
           </DialogTitle>
         </DialogHeader>
 
-        <dl className="grid grid-cols-[140px_1fr] gap-x-4 gap-y-2 font-mono text-[11.5px] mt-4">
+        <dl className="grid grid-cols-[140px_1fr] gap-x-4 gap-y-2 font-mono text-[12px] mt-4">
           <Field label="Time" value={formatAuditTimestamp(row.created_at)} />
           <Field label="Severity" value={sev.toUpperCase()} valueClass={sevColor} />
           <Field label="Resource type" value={row.resource_type} />
@@ -53,11 +53,11 @@ export function AuditLogDetailDrawer({ row, open, onOpenChange }: Props) {
         </dl>
 
         <section className="mt-5">
-          <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-2">
+          <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-text-faint mb-2">
             Metadata
           </div>
           {row.metadata && Object.keys(row.metadata).length > 0 ? (
-            <pre className="font-mono text-[11px] leading-relaxed bg-bg-muted/40 border border-border rounded-md p-3 overflow-x-auto">
+            <pre className="font-mono text-[11px] leading-relaxed text-text-muted bg-bg-sunk border border-border rounded-md p-3 overflow-x-auto">
               {JSON.stringify(row.metadata, null, 2)}
             </pre>
           ) : (

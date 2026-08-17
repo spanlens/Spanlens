@@ -100,7 +100,7 @@ export default function LlmCostTrackingHub() {
       <BreadcrumbJsonLd trail={[{ name: 'LLM Cost Tracking', path: '/llm-cost-tracking' }]} />
 
       <article className="max-w-3xl mx-auto px-6 py-20">
-        <h1 className="text-[40px] sm:text-[48px] font-semibold tracking-[-0.8px] text-text mb-3 leading-[1.05]">
+        <h1 className="font-display track-h2 text-[40px] sm:text-[48px] text-text mb-3 leading-[1.12]">
           LLM Cost Tracking: Monitor and Reduce Your AI API Spend
         </h1>
         <p className="text-[18px] text-text-muted mb-12 leading-relaxed">
@@ -148,7 +148,7 @@ export default function LlmCostTrackingHub() {
         </section>
 
         <section className="mt-12">
-          <h2 className="text-[24px] font-semibold tracking-[-0.4px] text-text mb-4">
+          <h2 className="font-display track-h3 text-[24px] text-text mb-4">
             What to capture per request
           </h2>
           <div className="space-y-3">
@@ -160,7 +160,7 @@ export default function LlmCostTrackingHub() {
               ['Latency split (TTFT and total)', 'For cost-vs-quality decisions, time-to-first-token often matters more than total time. Streaming captures both.'],
               ['Customer / session / endpoint tags', 'Three dimensions almost everyone wants to slice by. Tag at request time with X-Spanlens-User, X-Spanlens-Session, and a custom tag header.'],
             ].map(([title, body]) => (
-              <div key={title} className="rounded-xl border border-border bg-bg-elev p-5">
+              <div key={title} className="rounded-card border border-border bg-bg-elev p-5">
                 <h3 className="text-[15px] font-semibold text-text mb-1">{title}</h3>
                 <p className="text-[13px] text-text-muted leading-relaxed">{body}</p>
               </div>
@@ -169,7 +169,7 @@ export default function LlmCostTrackingHub() {
         </section>
 
         <section className="mt-12">
-          <h2 className="text-[24px] font-semibold tracking-[-0.4px] text-text mb-4">
+          <h2 className="font-display track-h3 text-[24px] text-text mb-4">
             Five swaps that cut bills 30 to 60 percent
           </h2>
           <ol className="space-y-4">
@@ -180,7 +180,7 @@ export default function LlmCostTrackingHub() {
               ['Pre-summarize long context once', 'For an agent with a growing conversation history, summarize the older turns once and replace them with the summary. A 10-turn conversation that sends the full history every turn costs O(n²) — summarizing makes it O(n).'],
               ['Switch reasoning models for the right tasks only', 'o1 and o3-mini are 6x to 60x more expensive than GPT-4o on output. Use them for hard reasoning steps only, not as a default. Most agent workflows have at most one or two reasoning-heavy steps.'],
             ].map(([title, body], i) => (
-              <li key={title} className="flex gap-3 rounded-xl border border-border bg-bg-elev p-5">
+              <li key={title} className="flex gap-3 rounded-card border border-border bg-bg-elev p-5">
                 <span className="shrink-0 h-7 w-7 rounded-full bg-accent text-bg font-mono text-[12px] font-semibold flex items-center justify-center">
                   {i + 1}
                 </span>
@@ -194,23 +194,23 @@ export default function LlmCostTrackingHub() {
         </section>
 
         <section className="mt-12">
-          <h2 className="text-[24px] font-semibold tracking-[-0.4px] text-text mb-4">
+          <h2 className="font-display track-h3 text-[24px] text-text mb-4">
             Model price quick reference
           </h2>
-          <div className="rounded-xl border border-border bg-bg-elev overflow-x-auto">
+          <div className="rounded-card border border-border bg-bg-elev overflow-x-auto">
             <table className="w-full text-[13px]">
               <thead>
                 <tr className="border-b border-border">
-                  <th className="text-left px-4 py-2.5 font-mono text-[11px] uppercase tracking-[0.06em] text-text-faint">
+                  <th className="text-left px-4 py-2.5 eyebrow">
                     Model
                   </th>
-                  <th className="text-right px-4 py-2.5 font-mono text-[11px] uppercase tracking-[0.06em] text-text-faint">
+                  <th className="text-right px-4 py-2.5 eyebrow">
                     Input / 1M
                   </th>
-                  <th className="text-right px-4 py-2.5 font-mono text-[11px] uppercase tracking-[0.06em] text-text-faint">
+                  <th className="text-right px-4 py-2.5 eyebrow">
                     Output / 1M
                   </th>
-                  <th className="text-left px-4 py-2.5 font-mono text-[11px] uppercase tracking-[0.06em] text-text-faint">
+                  <th className="text-left px-4 py-2.5 eyebrow">
                     Detail
                   </th>
                 </tr>
@@ -249,7 +249,7 @@ export default function LlmCostTrackingHub() {
         </section>
 
         <section className="mt-12">
-          <h2 className="text-[24px] font-semibold tracking-[-0.4px] text-text mb-4">
+          <h2 className="font-display track-h3 text-[24px] text-text mb-4">
             Related
           </h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -262,7 +262,7 @@ export default function LlmCostTrackingHub() {
               <Link
                 key={g.href}
                 href={g.href}
-                className="rounded-xl border border-border bg-bg-elev p-4 hover:border-border-strong transition-colors"
+                className="rounded-card border border-border bg-bg-elev p-4 hover:border-border-strong transition-colors"
               >
                 <div className="text-[14px] font-semibold text-text mb-1">{g.title}</div>
                 <div className="text-[12px] text-text-muted leading-relaxed">{g.body}</div>
@@ -272,12 +272,12 @@ export default function LlmCostTrackingHub() {
         </section>
 
         <section className="mt-12">
-          <h2 className="text-[24px] font-semibold tracking-[-0.4px] text-text mb-6">
+          <h2 className="font-display track-h3 text-[24px] text-text mb-6">
             FAQ
           </h2>
           <div className="space-y-3">
             {faqs.map((f) => (
-              <details key={f.q} className="group rounded-xl border border-border bg-bg-elev p-5">
+              <details key={f.q} className="group rounded-card border border-border bg-bg-elev p-5">
                 <summary className="cursor-pointer list-none text-[14px] font-medium text-text">
                   {f.q}
                 </summary>
@@ -288,7 +288,7 @@ export default function LlmCostTrackingHub() {
         </section>
 
         <section className="mt-16">
-          <div className="rounded-xl border border-border bg-bg-elev p-6 text-center">
+          <div className="rounded-card border border-border bg-bg-elev p-6 text-center">
             <p className="text-[14px] text-text-muted mb-4">
               See your real cost per request, per model, per customer.
             </p>
@@ -301,7 +301,7 @@ export default function LlmCostTrackingHub() {
               </Link>
               <Link
                 href="/tools/llm-cost-calculator"
-                className="h-10 px-5 rounded-[6px] border border-border text-text text-[14px] font-medium leading-10 hover:bg-bg-elev transition-colors"
+                className="h-10 px-5 rounded-[6px] border border-border text-text text-[14px] font-medium leading-10 hover:bg-bg-muted transition-colors"
               >
                 Try the calculator
               </Link>

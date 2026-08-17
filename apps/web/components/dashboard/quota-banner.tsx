@@ -27,18 +27,19 @@ export function QuotaBanner() {
   const hardCap = quota.limit * quota.capMultiplier
   const formattedCap = hardCap.toLocaleString()
 
-  // Choose tone
+  // Choose tone. Overage-active is not a failure (requests are still being
+  // served), so it reads as a neutral notice rather than a warning.
   const tone = hardBlocked
-    ? 'border-red-200 bg-red-50 text-red-900'
+    ? 'border-bad/30 bg-bad-bg text-bad'
     : overageActive
-    ? 'border-blue-200 bg-blue-50 text-blue-900'
-    : 'border-amber-200 bg-amber-50 text-amber-900'
-  const iconTone = hardBlocked ? 'text-red-600' : overageActive ? 'text-blue-600' : 'text-amber-600'
+    ? 'border-border bg-bg-muted text-text'
+    : 'border-warn/30 bg-warn-bg text-warn'
+  const iconTone = hardBlocked ? 'text-bad' : overageActive ? 'text-text-muted' : 'text-warn'
   const linkTone = hardBlocked
-    ? 'text-red-900 hover:text-red-700'
+    ? 'text-bad hover:opacity-80'
     : overageActive
-    ? 'text-blue-900 hover:text-blue-700'
-    : 'text-amber-900 hover:text-amber-700'
+    ? 'text-text hover:text-text-muted'
+    : 'text-warn hover:opacity-80'
 
   let title: string
   let detail: string

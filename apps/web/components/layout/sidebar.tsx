@@ -4,7 +4,14 @@ import { useState, useRef, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useTheme } from '@/components/providers/theme-provider'
-import { Sun, Moon, Monitor, X, MessageSquarePlus, PanelLeftClose, TriangleAlert } from 'lucide-react'
+import {
+  Sun, Moon, Monitor, X, PanelLeftClose, TriangleAlert, LogOut,
+  LayoutDashboard, ArrowLeftRight, Waypoints, MessagesSquare, Users,
+  Activity, ShieldCheck, PiggyBank, FileText, ClipboardCheck, Database,
+  FlaskConical, Bell, Highlighter, KeyRound, Link2, Settings, BookOpen,
+  ChevronDown, MessageSquarePlus,
+  type LucideIcon,
+} from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
 import { clearQueryClient } from '@/lib/query-client'
@@ -45,10 +52,10 @@ function LogoMark() {
     <Link
       href="/"
       aria-label="Spanlens home"
-      className="flex items-center gap-2 px-1 py-1 hover:opacity-80 transition-opacity"
+      className="flex items-center gap-2 pl-1.5 hover:opacity-80 transition-opacity"
     >
-      <Image src="/icon.png" alt="Spanlens" width={20} height={20} className="shrink-0 rounded-[5px]" priority />
-      <span className="font-semibold text-[15px] tracking-[-0.3px] text-text">
+      <Image src="/icon.png" alt="Spanlens" width={20} height={20} className="shrink-0 rounded-md" priority />
+      <span className="font-display text-[15px] tracking-[-0.02em] text-text">
         spanlens
       </span>
     </Link>
@@ -140,10 +147,20 @@ function WorkspaceSwitcher() {
         aria-haspopup="menu"
         aria-expanded={open}
         aria-label="Switch workspace"
-        className="w-full flex items-center justify-between px-[10px] py-[7px] rounded-[5px] border border-border bg-bg-muted text-[12px] font-mono text-text-muted hover:bg-bg-muted/80 transition-colors"
+        className="w-full h-9 flex items-center justify-between gap-2 px-[10px] rounded-md border border-border bg-bg-elev hover:border-border-strong transition-colors"
       >
-        <span className="truncate text-text">{orgName}</span>
-        <span className="text-text-faint text-[10px] shrink-0 ml-2">⌄</span>
+        <span className="flex min-w-0 items-center gap-2">
+          {/* Initial-only avatar: the workspace name is right next to it, so the
+              tile is decorative and carries no accessible text of its own. */}
+          <span
+            aria-hidden="true"
+            className="flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-chip bg-text text-[10px] font-semibold text-bg"
+          >
+            {orgName.charAt(0).toUpperCase()}
+          </span>
+          <span className="truncate text-[13px] font-medium text-text">{orgName}</span>
+        </span>
+        <ChevronDown className="h-3.5 w-3.5 shrink-0 text-text-faint" aria-hidden="true" />
       </button>
       {open && (
         <div
@@ -235,86 +252,113 @@ function WorkspaceSwitcher() {
   )
 }
 
-/* ── Nav groups ── */
-type NavItem = { href: string; label: string }
+/* ── Nav groups ──
+ *
+ * The Figma sidebar carries a 13px glyph in front of every label, which is
+ * what makes the collapsed groups readable at a glance. The icon is decorative
+ * (the label is always visible next to it), so each one is aria-hidden.
+ */
+type NavItem = { href: string; label: string; icon: LucideIcon }
 
 const NAV_GROUPS: { label: string | null; items: NavItem[] }[] = [
   {
     label: null,
     items: [
-      { href: '/dashboard',  label: 'Dashboard' },
-      { href: '/requests',   label: 'Requests' },
-      { href: '/traces',     label: 'Traces' },
-      { href: '/sessions',   label: 'Sessions' },
-      { href: '/users',      label: 'Users' },
+      { href: '/dashboard',  label: 'Dashboard', icon: LayoutDashboard },
+      { href: '/requests',   label: 'Requests',  icon: ArrowLeftRight },
+      { href: '/traces',     label: 'Traces',    icon: Waypoints },
+      { href: '/sessions',   label: 'Sessions',  icon: MessagesSquare },
+      { href: '/users',      label: 'Users',     icon: Users },
     ],
   },
   {
     label: 'Observe',
     items: [
-      { href: '/anomalies',  label: 'Anomalies' },
-      { href: '/security',   label: 'Security' },
-      { href: '/savings',    label: 'Savings' },
+      { href: '/anomalies',  label: 'Anomalies', icon: Activity },
+      { href: '/security',   label: 'Security',  icon: ShieldCheck },
+      { href: '/savings',    label: 'Savings',   icon: PiggyBank },
     ],
   },
   {
     label: 'Build',
     items: [
-      { href: '/prompts',     label: 'Prompts' },
-      { href: '/evals',       label: 'Evals' },
-      { href: '/datasets',    label: 'Datasets' },
-      { href: '/experiments', label: 'Experiments' },
-      { href: '/alerts',      label: 'Alerts' },
+      { href: '/prompts',     label: 'Prompts',     icon: FileText },
+      { href: '/evals',       label: 'Evals',       icon: ClipboardCheck },
+      { href: '/datasets',    label: 'Datasets',    icon: Database },
+      { href: '/experiments', label: 'Experiments', icon: FlaskConical },
+      { href: '/alerts',      label: 'Alerts',      icon: Bell },
     ],
   },
   {
     label: 'Review',
     items: [
-      { href: '/annotation', label: 'Annotation' },
+      { href: '/annotation', label: 'Annotation', icon: Highlighter },
     ],
   },
   {
     label: 'Admin',
     items: [
-      { href: '/projects',  label: 'Projects & Keys' },
+      { href: '/projects',  label: 'Projects & Keys', icon: KeyRound },
       // Public share tokens live in the same Admin section as API keys —
       // both are externally-issued credentials with the same operator
       // workflow (list / inspect / revoke). Sitting them next to each
       // other keeps the leak-audit flow ("rotate the key, revoke the
       // share") one cursor move apart.
-      { href: '/shares',    label: 'Shared links' },
-      { href: '/settings',  label: 'Settings' },
-      { href: '/docs',      label: 'Docs' },
+      { href: '/shares',    label: 'Shared links', icon: Link2 },
+      { href: '/settings',  label: 'Settings',     icon: Settings },
+      { href: '/docs',      label: 'Docs',         icon: BookOpen },
     ],
   },
 ]
 
-/* ── Theme toggle ── */
+/* ── Theme toggle ──
+ *
+ * A three-way segmented pill, matching the sidebar footer in Figma. It
+ * replaces the old cycling button: the same three values are still written
+ * through `setTheme`, but each one is now reachable in a single click and the
+ * current value is visible without reading a label.
+ */
 type ThemeOption = 'system' | 'light' | 'dark'
 
-const THEME_CYCLE: ThemeOption[] = ['system', 'light', 'dark']
+const THEME_OPTIONS: { value: ThemeOption; label: string; Icon: LucideIcon }[] = [
+  { value: 'light', label: 'Light theme', Icon: Sun },
+  { value: 'dark', label: 'Dark theme', Icon: Moon },
+  { value: 'system', label: 'Match system theme', Icon: Monitor },
+]
 
 function ThemeToggleButton() {
   const { theme, setTheme } = useTheme()
-
-  function cycleTheme() {
-    const current = (theme ?? 'system') as ThemeOption
-    const idx = THEME_CYCLE.indexOf(current)
-    const next = THEME_CYCLE[(idx + 1) % THEME_CYCLE.length] ?? 'system'
-    setTheme(next)
-  }
-
   const current = (theme ?? 'system') as ThemeOption
-  const Icon = current === 'light' ? Sun : current === 'dark' ? Moon : Monitor
 
   return (
-    <button
-      onClick={cycleTheme}
-      className="flex w-full items-center gap-2 px-[10px] py-[6px] rounded-[5px] text-[13px] text-text-muted hover:bg-bg-muted hover:text-text transition-colors"
+    <div
+      role="radiogroup"
+      aria-label="Theme"
+      className="inline-flex items-center gap-[2px] rounded-full bg-bg-chip p-[3px]"
     >
-      <Icon className="h-3.5 w-3.5 shrink-0" />
-      <span>Theme · {current}</span>
-    </button>
+      {THEME_OPTIONS.map(({ value, label, Icon }) => {
+        const selected = current === value
+        return (
+          <button
+            key={value}
+            type="button"
+            role="radio"
+            aria-checked={selected}
+            aria-label={label}
+            title={label}
+            onClick={() => setTheme(value)}
+            className={cn(
+              'flex h-5 w-5 items-center justify-center rounded-full transition-colors',
+              selected
+                ? 'bg-bg-elev text-text shadow-card'
+                : 'text-text-faint hover:text-text-muted',
+            )}
+          >
+            <Icon className="h-3 w-3" aria-hidden="true" />
+          </button>
+        )
+      })}
+    </div>
   )
 }
 
@@ -419,8 +463,9 @@ export function Sidebar() {
 
       <aside
         className={cn(
-          // Base
-          'flex flex-col bg-bg-elev border-r border-border',
+          // Base. The sidebar is the one band surface in the dashboard: the
+          // page and every card are white, so the band is what reads as chrome.
+          'flex flex-col bg-bg-muted border-r border-border',
           // Mobile: fixed overlay drawer. `inset-y-0` already pins to the
           // full viewport height, so no `h-screen` here — on desktop the
           // sidebar lives inside the dashboard's `[zoom:1.25]` wrapper whose
@@ -430,18 +475,13 @@ export function Sidebar() {
           'fixed inset-y-0 left-0 z-50 w-[272px]',
           'transition-transform duration-200 ease-in-out',
           isOpen ? 'translate-x-0' : '-translate-x-full',
-          // Desktop: back in flow. Width animates between full (w-56) and
-          // hidden (w-0) so the "hide sidebar" toggle collapses it smoothly;
-          // overflow-hidden clips the content while it's at zero width.
-          // `md:[zoom:0.8]` cancels the dashboard wrapper's `[zoom:1.25]`
-          // (1.25 * 0.8 = 1.0) so the sidebar renders at its original 100%
-          // size while the main content stays at 125%. Without this, 17 nav
-          // items + plan widget + footer overflow on smaller laptop screens
-          // and need to be scrolled. Scoped to md+ because mobile uses
-          // `fixed` positioning, which interacts poorly with CSS `zoom`.
-          'md:relative md:shrink-0 md:translate-x-0 md:[zoom:0.8]',
+          // Desktop: back in flow at the 232px the Figma board specifies.
+          // Width animates between full and hidden (w-0) so the "hide sidebar"
+          // toggle collapses it smoothly; overflow-hidden clips the content
+          // while it's at zero width.
+          'md:relative md:shrink-0 md:translate-x-0',
           'md:transition-[width] md:duration-200 md:ease-in-out',
-          isCollapsed ? 'md:w-0 md:overflow-hidden md:border-r-0' : 'md:w-56',
+          isCollapsed ? 'md:w-0 md:overflow-hidden md:border-r-0' : 'md:w-[232px]',
         )}
       >
       {/* Mobile close button */}
@@ -457,12 +497,12 @@ export function Sidebar() {
       {/* Logo + desktop hide toggle. The hide button is desktop-only
           (md:inline-flex) because mobile already closes via the drawer X
           above; on desktop it collapses the sidebar to zero width. */}
-      <div className="px-[18px] pt-[18px] pb-3 flex items-center justify-between gap-2">
+      <div className="px-[14px] pt-4 pb-3.5 flex items-center justify-between gap-2">
         <LogoMark />
         <button
           type="button"
           onClick={toggleCollapsed}
-          className="hidden md:inline-flex shrink-0 p-1 rounded-[5px] text-text-faint hover:text-text hover:bg-bg-muted transition-colors"
+          className="hidden md:inline-flex shrink-0 p-1 rounded-chip text-text-faint hover:text-text hover:bg-bg-chip transition-colors"
           aria-label="Hide sidebar"
           title="Hide sidebar"
         >
@@ -471,7 +511,7 @@ export function Sidebar() {
       </div>
 
       {/* Workspace / project switcher */}
-      <div className="mx-[14px] mb-3">
+      <div className="mx-[14px] mb-3.5">
         <WorkspaceSwitcher />
       </div>
 
@@ -480,11 +520,11 @@ export function Sidebar() {
         {NAV_GROUPS.map((group, gi) => (
           <div key={gi}>
             {group.label && (
-              <div className="font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint px-[10px] pt-3 pb-1">
+              <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-text-faint px-[10px] pt-4 pb-2">
                 {group.label}
               </div>
             )}
-            {group.items.map(({ href, label }) => {
+            {group.items.map(({ href, label, icon: Icon }) => {
               const active = pathname === href || pathname.startsWith(href + '/')
               const badge = BADGES[href]
               return (
@@ -504,21 +544,30 @@ export function Sidebar() {
                   // for heavy-page filtering.
                   prefetch={false}
                   className={cn(
-                    'flex items-center justify-between px-[10px] py-[6px] rounded-[5px] text-[13px] transition-colors',
-                    'border-l-2',
+                    // The transparent border on the resting state keeps every
+                    // row the same height as the active one, which draws a real
+                    // 1px hairline.
+                    'flex items-center justify-between gap-[10px] pl-[10px] pr-2 py-[6px] rounded text-[13px] leading-[18px] border transition-colors',
                     active
-                      ? 'bg-bg-muted text-text font-medium border-accent'
-                      : 'text-text-muted hover:bg-bg-muted hover:text-text border-transparent',
+                      ? 'bg-bg-elev text-text font-semibold border-border'
+                      : 'text-text-muted border-transparent hover:bg-bg-muted/60 hover:text-text',
                   )}
                 >
-                  <span>{label}</span>
+                  <span className="flex min-w-0 items-center gap-[10px]">
+                    <Icon
+                      aria-hidden="true"
+                      className={cn(
+                        'h-[13px] w-[13px] shrink-0',
+                        active ? 'text-text' : 'text-text-faint',
+                      )}
+                    />
+                    <span className="truncate">{label}</span>
+                  </span>
                   {badge?.label && (
                     <span
                       className={cn(
-                        'inline-flex items-center gap-[3px] font-mono text-[10px] px-[6px] py-[1px] rounded-[3px] border',
-                        badge.warn
-                          ? 'bg-accent-bg text-accent border-accent-border'
-                          : 'bg-bg text-text-faint border-border',
+                        'inline-flex shrink-0 items-center gap-[3px] font-mono text-[11px] leading-[15px] px-[7px] py-[2px] rounded-full',
+                        badge.warn ? 'bg-accent-bg text-bad' : 'bg-bg-chip text-text-faint',
                       )}
                       aria-label={badge.aria ?? badge.label}
                     >
@@ -538,20 +587,22 @@ export function Sidebar() {
       </nav>
 
       {/* Usage + upgrade widget */}
-      <div className="mx-[18px] mb-[14px] mt-2 p-3 rounded-md border border-border bg-bg-muted">
-        <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-1.5">
-          Plan · {formatPlanLabel(quota.data?.plan)}
+      <div className="mx-[14px] mb-2.5 mt-2 p-3 rounded-lg border border-border bg-bg-elev">
+        <div className="flex items-baseline justify-between gap-2">
+          <span className="text-[13px] font-medium text-text">
+            {formatPlanLabel(quota.data?.plan)}
+          </span>
+          <span className="font-mono text-[11.5px] text-text-faint">
+            {quota.data
+              ? `${formatRequestCount(quota.data.usedThisMonth)} / ${
+                  quota.data.limit != null ? formatRequestCount(quota.data.limit) : '∞'
+                }`
+              : '— / —'}
+          </span>
         </div>
-        <div className="text-[13px] text-text mb-1.5">
-          {quota.data
-            ? `${formatRequestCount(quota.data.usedThisMonth)} / ${
-                quota.data.limit != null ? formatRequestCount(quota.data.limit) : '∞'
-              } requests`
-            : '— / — requests'}
-        </div>
-        <div className="h-1 rounded-full bg-bg overflow-hidden">
+        <div className="mt-2 h-[5px] rounded-full bg-track overflow-hidden">
           <div
-            className="h-full rounded-full bg-text transition-all"
+            className="h-full rounded-full bg-accent transition-all"
             style={{
               width: quota.data?.limit != null && quota.data.limit > 0
                 ? `${Math.min(100, (quota.data.usedThisMonth / quota.data.limit) * 100).toFixed(1)}%`
@@ -562,7 +613,7 @@ export function Sidebar() {
         {isAdmin && (
           <button
             onClick={() => router.push('/settings')}
-            className="mt-2.5 text-[12px] font-medium text-accent hover:opacity-80 transition-opacity"
+            className="mt-2.5 text-[12px] font-medium text-accent hover:text-accent-strong transition-colors"
           >
             {/* Upgrade only makes sense below Team. On Team/Enterprise the
                 same widget links to plan management instead. */}
@@ -573,8 +624,10 @@ export function Sidebar() {
         )}
       </div>
 
-      {/* Feedback + Theme toggle + Sign out */}
-      <div className="px-[14px] pb-[14px] space-y-0.5">
+      {/* Footer strip: Feedback, sign out, theme. The Figma board puts these on
+          one 26px row, which is why sign out is an icon here rather than a
+          labelled row of its own. */}
+      <div className="flex items-center gap-2 px-[14px] pb-[14px] pl-[18px]">
         <Link
           href="/feedback"
           prefetch={false}
@@ -582,22 +635,25 @@ export function Sidebar() {
             pathname === '/feedback' || pathname.startsWith('/feedback/') ? 'page' : undefined
           }
           className={cn(
-            'flex w-full items-center gap-2 px-[10px] py-[6px] rounded-[5px] text-[13px] transition-colors',
+            'inline-flex items-center gap-1.5 text-[12px] font-medium transition-colors',
             pathname === '/feedback' || pathname.startsWith('/feedback/')
-              ? 'bg-bg-muted text-text font-medium'
-              : 'text-text-muted hover:bg-bg-muted hover:text-text',
+              ? 'text-text'
+              : 'text-text-faint hover:text-text',
           )}
         >
-          <MessageSquarePlus className="h-3.5 w-3.5 shrink-0" />
+          <MessageSquarePlus className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
           <span>Feedback</span>
         </Link>
-        <ThemeToggleButton />
+        <div className="flex-1" />
         <button
           onClick={handleSignOut}
-          className="flex w-full items-center px-[10px] py-[6px] rounded-[5px] text-[13px] text-text-muted hover:bg-bg-muted hover:text-text transition-colors"
+          aria-label="Sign out"
+          title="Sign out"
+          className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-text-faint hover:bg-bg-chip hover:text-text transition-colors"
         >
-          Sign out
+          <LogOut className="h-3.5 w-3.5" aria-hidden="true" />
         </button>
+        <ThemeToggleButton />
       </div>
     </aside>
     </>

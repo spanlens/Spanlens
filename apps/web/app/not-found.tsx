@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
-import { Button } from '@/components/ui/button'
+import Link from 'next/link'
 import { DashboardCTALink } from '@/components/layout/dashboard-cta-link'
+import { stateActionPrimary, stateActionSecondary, stateCard } from '@/components/ui/empty-state'
 
 // Without this, 404 pages inherited the homepage title and were indexable —
 // any externally-linked broken URL could enter the index as a duplicate of
@@ -13,15 +14,24 @@ export const metadata: Metadata = {
 
 export default function NotFound() {
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 px-6">
-      <p className="text-6xl font-bold text-gray-200 mb-4">404</p>
-      <h1 className="text-2xl font-bold mb-2">Page not found</h1>
-      <p className="text-muted-foreground mb-8">
-        The page you&apos;re looking for doesn&apos;t exist.
-      </p>
-      <DashboardCTALink>
-        <Button>Go to dashboard</Button>
-      </DashboardCTALink>
+    <div className="flex min-h-screen items-center justify-center bg-bg px-6 py-16">
+      <div className={`w-full max-w-[560px] ${stateCard}`}>
+        <div className="flex flex-col items-center gap-3 px-10 pb-[30px] pt-[52px] text-center">
+          <p className="font-display track-h2 text-[46px] leading-none text-text">404</p>
+          <h1 className="font-display track-quote text-[16px] leading-[1.5] text-text">
+            That page moved or never existed
+          </h1>
+          <p className="max-w-[380px] text-[12.5px] leading-[1.6] text-text-faint">
+            If you followed a link from a trace or a share, the resource may have aged out of retention.
+          </p>
+          <div className="mt-1 flex flex-wrap justify-center gap-2">
+            <DashboardCTALink className={stateActionPrimary}>Back to dashboard</DashboardCTALink>
+            <Link href="/docs" className={stateActionSecondary}>
+              Search the docs
+            </Link>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }

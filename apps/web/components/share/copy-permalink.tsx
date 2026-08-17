@@ -36,7 +36,7 @@ export function CopyPermalink({ url }: { url: string }) {
       <button
         type="button"
         onClick={handleCopy}
-        className="px-2 py-1 rounded text-[11px] font-mono border border-border hover:bg-bg-elevated transition-colors"
+        className="inline-flex h-9 items-center rounded-full border border-border bg-bg-elev px-4 font-mono text-[11.5px] text-text transition-colors hover:border-border-strong hover:bg-bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-bg-elev"
         aria-label="Copy permalink to this shared view"
       >
         {state === 'copied' ? 'Copied' : 'Copy link'}
@@ -46,7 +46,7 @@ export function CopyPermalink({ url }: { url: string }) {
           readOnly
           value={url}
           onFocus={(e) => e.currentTarget.select()}
-          className="text-[10.5px] font-mono px-1 py-0.5 border border-border rounded bg-bg-elevated max-w-[200px]"
+          className="max-w-[200px] rounded border border-border bg-bg-sunk px-2 py-1 font-mono text-[10.5px] text-text"
         />
       ) : null}
     </div>

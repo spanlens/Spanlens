@@ -1,6 +1,6 @@
 'use client'
 import { Section, FormRow, GhostBtn } from '@/components/ui/primitives'
-import { NativeInput, TabHeader } from '../_shared/ui'
+import { NativeInput, TabHeader, PILL_SECONDARY } from '../_shared/ui'
 
 // ─── DESTINATIONS tab ─────────────────────────────────────────────────────────
 
@@ -30,7 +30,7 @@ export function DestinationsTab() {
   ]
 
   return (
-    <div className="max-w-[980px]">
+    <div>
       <TabHeader
         title="Destinations"
         description="Export data to external data warehouses and storage systems."
@@ -46,7 +46,7 @@ export function DestinationsTab() {
                     placeholder={dest.placeholder}
                     className="flex-1 font-mono text-[12px]"
                   />
-                  <GhostBtn>Save configuration</GhostBtn>
+                  <GhostBtn className={PILL_SECONDARY}>Save configuration</GhostBtn>
                 </div>
               </FormRow>
             </div>

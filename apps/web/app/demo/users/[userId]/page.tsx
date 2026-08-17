@@ -62,7 +62,7 @@ export default async function DemoUserDetailPage({ params }: { params: Promise<{
         <h1 className="font-mono text-[18px] tracking-[-0.2px] text-text break-all">{decoded}</h1>
         <p className="font-mono text-[11px] text-text-faint mt-1.5">
           End-user analytics · all requests tagged with this{' '}
-          <code className="bg-bg-elev px-1 py-px rounded">x-spanlens-user</code> value
+          <code className="bg-bg-sunk px-1 py-px rounded">x-spanlens-user</code> value
         </p>
       </div>
 
@@ -98,7 +98,7 @@ export default async function DemoUserDetailPage({ params }: { params: Promise<{
                 <Link
                   key={r.id}
                   href={`/demo/requests/${r.id}`}
-                  className="grid grid-cols-[1fr,1fr,1fr,1fr,1fr] gap-3 items-center px-4 py-2.5 font-mono text-[12px] text-text hover:bg-bg-elev transition-colors"
+                  className="grid grid-cols-[1fr,1fr,1fr,1fr,1fr] gap-3 items-center px-4 py-2.5 font-mono text-[12px] text-text hover:bg-bg-muted transition-colors"
                 >
                   <span className="text-text-muted">
                     {new Date(r.created_at).toLocaleString('en-US', {

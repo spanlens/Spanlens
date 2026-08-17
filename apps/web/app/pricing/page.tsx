@@ -2,6 +2,7 @@ import { OG_IMAGE } from '@/lib/page-metadata'
 import type React from 'react'
 import Link from 'next/link'
 import { Check } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import { Footer } from '@/components/layout/footer'
 import { MarketingNav } from '@/components/layout/marketing-nav'
 import { BreadcrumbJsonLd } from '@/components/marketing/breadcrumb-jsonld'
@@ -261,9 +262,11 @@ export default function PricingPage() {
       <BreadcrumbJsonLd trail={[{ name: 'Pricing', path: '/pricing' }]} />
 
       <section className="max-w-7xl mx-auto px-6 py-24">
-        <div className="text-center mb-10">
-          <h1 className="text-[36px] font-semibold tracking-[-0.6px] text-text mb-3">Spanlens Pricing — LLM Observability for Every Stage</h1>
-          <p className="text-[16px] text-text-muted">
+        <div className="mx-auto mb-12 max-w-[760px] text-center">
+          <h1 className="font-display track-h2 mb-4 text-[40px] leading-[1.12] text-text sm:text-[46px]">
+            Spanlens Pricing — LLM Observability for Every Stage
+          </h1>
+          <p className="text-[16.5px] leading-[1.6] text-text-muted">
             Start free. Scale as you grow. Cancel anytime. Switching from{' '}
             <Link href="/compare/langfuse" className="text-accent hover:opacity-80">Langfuse</Link>
             {' '}or{' '}
@@ -273,7 +276,7 @@ export default function PricingPage() {
         </div>
 
         {/* Common features */}
-        <div className="max-w-3xl mx-auto mb-14 rounded-xl border border-border bg-bg-elev px-6 py-5 text-sm">
+        <div className="max-w-3xl mx-auto mb-14 rounded-card border border-border bg-bg-elev px-6 py-5 text-sm">
           <p className="font-semibold text-text mb-2.5">Every plan includes</p>
           <ul className="grid grid-cols-1 md:grid-cols-2 gap-y-1.5 gap-x-6 text-text-muted">
             <li className="flex items-center gap-2">
@@ -305,7 +308,7 @@ export default function PricingPage() {
         </div>
 
         {/* Self-host callout — separated from the paid grid so it's clear self-host is free, not a tier add-on */}
-        <div className="max-w-3xl mx-auto mb-10 rounded-xl border border-accent-border bg-accent-bg/40 px-6 py-4 text-[13px] flex flex-col sm:flex-row sm:items-center gap-3">
+        <div className="max-w-3xl mx-auto mb-10 rounded-card border border-accent-border bg-accent-bg/40 px-6 py-4 text-[13px] flex flex-col sm:flex-row sm:items-center gap-3">
           <div className="flex-1">
             <strong className="text-text font-semibold">Or self-host for free.</strong>
             {' '}Spanlens is fully MIT, no <code className="font-mono text-xs">ee/</code> folder. Run
@@ -320,53 +323,67 @@ export default function PricingPage() {
           </Link>
         </div>
 
-        {/* Plan cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+        {/* Plan cards. The highlighted plan is marked by an accent hairline, a
+            tinted ground and a badge; everything else stays neutral so the one
+            recommendation is unambiguous. */}
+        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
           {PLANS.map((plan) => (
             <div
               key={plan.name}
               className={cn(
-                'rounded-xl border flex flex-col overflow-hidden',
-                plan.highlight ? 'border-accent' : 'border-border',
+                'flex flex-col rounded-card border p-6',
+                plan.highlight ? 'border-accent bg-accent-bg' : 'border-border bg-bg-elev',
               )}
             >
-              {plan.highlight && (
-                <div className="text-center py-1.5 bg-accent text-bg text-[11px] font-semibold tracking-wide uppercase">
-                  Most popular
-                </div>
-              )}
-              <div className={cn('flex-1 p-6', plan.highlight ? 'bg-accent-bg' : 'bg-bg-elev')}>
-                <h2 className="text-[18px] font-semibold text-text mb-1">{plan.name}</h2>
-                <p className="text-[13px] text-text-muted mb-4">{plan.description}</p>
-                <div className="mb-1">
-                  <span className="font-mono text-[32px] font-medium tracking-[-0.5px] text-text">{plan.price}</span>
-                  <span className="font-mono text-[12px] text-text-muted">/mo</span>
-                </div>
-                {plan.overage ? (
-                  <p className="font-mono text-[11px] text-text-faint mb-5">+ {plan.overage}</p>
-                ) : (
-                  <div className="mb-5" />
+              <div className="mb-1 flex items-center justify-between gap-2">
+                <h2 className="text-[16px] font-semibold text-text">{plan.name}</h2>
+                {plan.highlight && (
+                  <span className="rounded-full bg-accent px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.06em] text-accent-fg">
+                    Most popular
+                  </span>
                 )}
-                <ul className="space-y-2 mb-6">
-                  {plan.features.map((f) => (
-                    <li key={f} className="flex items-center gap-2 text-[13px] text-text-muted">
-                      <Check className="h-3.5 w-3.5 text-good shrink-0" />
-                      {f}
-                    </li>
-                  ))}
-                </ul>
-                <Link
-                  href={plan.href}
-                  className={cn(
-                    'block w-full h-9 rounded-[6px] text-[13px] font-medium text-center leading-9 transition-opacity hover:opacity-90',
-                    plan.highlight
-                      ? 'bg-accent text-bg'
-                      : 'border border-border bg-bg text-text',
-                  )}
-                >
-                  {plan.cta}
-                </Link>
               </div>
+              {/* Fixed height keeps the four price rows on one baseline even
+                  when a description wraps to two lines. */}
+              <p className="mb-5 min-h-[38px] text-[13px] leading-[1.45] text-text-muted">
+                {plan.description}
+              </p>
+              <div className="mb-1 flex items-baseline gap-1.5">
+                <span className="font-display track-h2 text-[40px] leading-none text-text">
+                  {plan.price}
+                </span>
+                {/* "Custom / month" is nonsense, so the cadence suffix only
+                    rides along with an actual figure. */}
+                {plan.price.startsWith('$') && (
+                  <span className="text-[13.5px] text-text-faint">/ month</span>
+                )}
+              </div>
+              {plan.overage ? (
+                <p className="mb-6 font-mono text-[11px] text-text-faint">+ {plan.overage}</p>
+              ) : (
+                <div className="mb-6" />
+              )}
+              <Button
+                asChild
+                variant={plan.highlight ? 'signal' : 'outline'}
+                className="w-full rounded-full"
+              >
+                <Link href={plan.href}>{plan.cta}</Link>
+              </Button>
+              <ul className="mt-6 space-y-2.5">
+                {plan.features.map((f) => (
+                  <li key={f} className="flex items-start gap-2.5 text-[13.5px] text-text-muted">
+                    <span
+                      aria-hidden
+                      className={cn(
+                        'mt-[7px] h-1 w-1 shrink-0 rounded-full',
+                        plan.highlight ? 'bg-accent' : 'bg-text-faint',
+                      )}
+                    />
+                    {f}
+                  </li>
+                ))}
+              </ul>
             </div>
           ))}
         </div>
@@ -377,8 +394,8 @@ export default function PricingPage() {
         </p>
 
         {/* Overage policy */}
-        <div className="mt-16 rounded-xl border border-border bg-bg-elev p-6 max-w-3xl mx-auto">
-          <h3 className="font-semibold text-[15px] text-text mb-3">What happens if I go over my quota?</h3>
+        <div className="mx-auto mt-16 max-w-3xl rounded-card border border-border bg-bg-elev p-6">
+          <h3 className="mb-3 text-[15px] font-semibold text-text">What happens if I go over my quota?</h3>
           <p className="text-[13px] text-text-muted mb-4">
             Paid plans default to <strong className="text-text">overage billing</strong> so you&apos;re never
             surprise-blocked mid-month:
@@ -414,15 +431,18 @@ export default function PricingPage() {
         </div>
 
         {/* Pricing FAQ — commercial-intent questions for AI search citation */}
-        <div className="mt-12 max-w-3xl mx-auto">
-          <h2 className="text-[20px] font-semibold tracking-[-0.4px] text-text mb-6">Pricing FAQ</h2>
-          <div className="space-y-3">
+        <div className="mx-auto mt-16 max-w-3xl">
+          <h2 className="font-display track-h3 mb-6 text-[24px] text-text">Pricing FAQ</h2>
+          {/* One panel with hairline-divided rows rather than a stack of cards:
+              the questions read as a single list, and the page already carries
+              four plan cards competing for attention. */}
+          <div className="divide-y divide-border overflow-hidden rounded-card border border-border bg-bg-elev">
             {PRICING_FAQS.map((f) => (
-              <details key={f.q} className="group rounded-xl border border-border bg-bg-elev p-5">
-                <summary className="cursor-pointer list-none text-[14px] font-medium text-text">
+              <details key={f.q} className="group px-6 py-5">
+                <summary className="cursor-pointer list-none text-[14.5px] font-semibold text-text">
                   {f.q}
                 </summary>
-                <div className="mt-3 text-[13px] text-text-muted leading-relaxed">{f.a}</div>
+                <div className="mt-2.5 text-[13.5px] leading-relaxed text-text-muted">{f.a}</div>
               </details>
             ))}
           </div>

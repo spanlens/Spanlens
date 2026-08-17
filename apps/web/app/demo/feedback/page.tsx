@@ -3,9 +3,12 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { Lightbulb, Bug, MessageSquarePlus } from 'lucide-react'
 import { Topbar } from '@/components/layout/topbar'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
 
 const MAX_LEN = 4000
+
+const FIELD_LABEL = 'font-mono text-[10px] uppercase tracking-[0.1em] text-text-faint'
 
 const CATEGORIES: { value: string; label: string; icon: typeof Lightbulb }[] = [
   { value: 'feature', label: 'Feature idea', icon: Lightbulb },
@@ -20,77 +23,80 @@ export default function DemoFeedbackPage() {
   const [category, setCategory] = useState('feature')
 
   return (
-    <div className="-mx-4 -my-4 md:-mx-8 md:-my-7 flex flex-col min-h-screen">
-      <div className="sticky top-0 z-20 bg-bg">
+    <>
+      {/* The topbar is the only full-bleed row: it cancels the padding the
+          demo layout applies so its hairline spans the whole main column. */}
+      <div className="sticky top-0 z-20 -mx-4 -mt-4 md:-mx-7 md:-mt-5 bg-bg">
         <Topbar crumbs={[{ label: 'Demo' }, { label: 'Feedback' }]} />
-        <h1 className="sr-only">Feedback</h1>
       </div>
+      <h1 className="sr-only">Feedback</h1>
 
-      <div className="flex flex-col gap-6 px-[22px] py-[22px] max-w-2xl w-full">
-        <div>
-          <h2 className="font-medium text-[20px] tracking-[-0.3px] text-text">Feedback</h2>
-          <p className="font-mono text-[11.5px] text-text-faint mt-1.5">
-            Tell us what would make Spanlens better. Feature ideas, bugs, anything. It goes straight to the team.
-          </p>
-        </div>
+      <div className="pt-4 md:pt-5">
+        <Card className="max-w-2xl">
+          <CardHeader>
+            <CardTitle>Feedback</CardTitle>
+            <CardDescription>
+              Tell us what would make Spanlens better. Feature ideas, bugs, anything. It goes
+              straight to the team.
+            </CardDescription>
+          </CardHeader>
 
-        <div className="flex flex-col gap-5">
-          {/* Category */}
-          <div className="flex flex-col gap-2">
-            <label className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint">
-              Category
-            </label>
-            <div className="flex gap-2 flex-wrap">
-              {CATEGORIES.map(({ value, label, icon: Icon }) => (
-                <button
-                  key={value}
-                  type="button"
-                  onClick={() => setCategory(value)}
-                  className={cn(
-                    'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[6px] border font-mono text-[11.5px] transition-colors',
-                    category === value
-                      ? 'border-accent text-accent bg-accent-bg'
-                      : 'border-border text-text-muted hover:text-text hover:border-border-strong',
-                  )}
-                >
-                  <Icon className="h-3.5 w-3.5" />
-                  {label}
-                </button>
-              ))}
+          <CardContent className="flex flex-col gap-5">
+            {/* Category */}
+            <div className="flex flex-col gap-2">
+              <label className={FIELD_LABEL}>Category</label>
+              <div className="flex flex-wrap gap-2">
+                {CATEGORIES.map(({ value, label, icon: Icon }) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setCategory(value)}
+                    className={cn(
+                      'inline-flex items-center gap-1.5 rounded-full border px-3.5 py-2 text-[12px] font-medium transition-colors',
+                      category === value
+                        ? 'border-accent-border bg-accent-bg text-accent'
+                        : 'border-border bg-bg-elev text-text-muted hover:bg-bg-muted hover:text-text',
+                    )}
+                  >
+                    <Icon className="h-3.5 w-3.5" />
+                    {label}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
 
-          {/* Message */}
-          <div className="flex flex-col gap-2">
-            <label htmlFor="feedback-message" className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint">
-              Your message
-            </label>
-            <textarea
-              id="feedback-message"
-              disabled
-              readOnly
-              rows={8}
-              placeholder="I'd love it if Spanlens could…"
-              className="w-full resize-y rounded-[6px] border border-border bg-bg px-3 py-2.5 font-mono text-[12.5px] text-text-muted placeholder:text-text-faint focus:outline-none cursor-not-allowed leading-relaxed"
-            />
-            <div className="flex items-center justify-end">
-              <span className="font-mono text-[10.5px] text-text-faint">0 / {MAX_LEN}</span>
+            {/* Message */}
+            <div className="flex flex-col gap-2">
+              <label htmlFor="feedback-message" className={FIELD_LABEL}>
+                Your message
+              </label>
+              <textarea
+                id="feedback-message"
+                disabled
+                readOnly
+                rows={8}
+                placeholder="I'd love it if Spanlens could…"
+                className="w-full cursor-not-allowed resize-y rounded-md border border-border bg-bg-sunk px-3 py-2.5 text-[12.5px] leading-relaxed text-text-muted placeholder:text-text-faint focus:outline-none"
+              />
+              <div className="flex items-center justify-end">
+                <span className="font-mono text-[11px] text-text-faint">0 / {MAX_LEN}</span>
+              </div>
             </div>
-          </div>
 
-          <div className="flex flex-wrap items-center gap-3">
-            <Link
-              href="/signup"
-              className="font-mono text-[12px] px-4 py-2 rounded-[6px] bg-text text-bg hover:opacity-90 transition-opacity"
-            >
-              Sign up to send feedback →
-            </Link>
-            <span className="font-mono text-[10.5px] text-text-faint">
-              Feedback is submitted as your account, so we can follow up.
-            </span>
-          </div>
-        </div>
+            <div className="flex flex-wrap items-center gap-3">
+              <Link
+                href="/signup"
+                className="rounded-full bg-text px-3.5 py-2 text-[12px] font-medium text-bg transition-opacity hover:opacity-90"
+              >
+                Sign up to send feedback →
+              </Link>
+              <span className="font-mono text-[11px] text-text-faint">
+                Feedback is submitted as your account, so we can follow up.
+              </span>
+            </div>
+          </CardContent>
+        </Card>
       </div>
-    </div>
+    </>
   )
 }

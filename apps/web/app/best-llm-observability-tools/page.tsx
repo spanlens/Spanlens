@@ -143,7 +143,7 @@ export default function BestLlmObservabilityToolsPage() {
       ))}
 
       <section className="max-w-[1000px] mx-auto px-6 pt-20 pb-10">
-        <h1 className="text-[40px] sm:text-[48px] font-semibold tracking-[-0.8px] text-text leading-[1.05]">
+        <h1 className="font-display track-h2 text-[40px] sm:text-[48px] text-text leading-[1.12]">
           Best LLM observability tools in 2026
         </h1>
         <p className="mt-5 text-[17px] text-text-muted leading-relaxed max-w-[70ch]">
@@ -163,10 +163,10 @@ export default function BestLlmObservabilityToolsPage() {
       </section>
 
       <section className="max-w-[1000px] mx-auto px-6 pb-14">
-        <h2 className="text-[24px] font-semibold tracking-[-0.4px] text-text mb-5">
+        <h2 className="font-display track-h3 text-[24px] text-text mb-5">
           Open-source tools by GitHub stars
         </h2>
-        <div className="overflow-x-auto rounded-xl border border-border">
+        <div className="overflow-x-auto rounded-card border border-border">
           <table className="w-full border-collapse text-left">
             <caption className="sr-only">
               Open-source LLM observability tools with stars, licence, install shape and self-hosting
@@ -222,12 +222,12 @@ export default function BestLlmObservabilityToolsPage() {
       </section>
 
       <section className="max-w-[1000px] mx-auto px-6 pb-14">
-        <h2 className="text-[24px] font-semibold tracking-[-0.4px] text-text mb-6">
+        <h2 className="font-display track-h3 text-[24px] text-text mb-6">
           Which tool fits which situation
         </h2>
         <div className="space-y-6">
           {SITUATIONS.map((s) => (
-            <article key={s.question} className="rounded-xl border border-border bg-bg-elev p-6">
+            <article key={s.question} className="rounded-card border border-border bg-bg-elev p-6">
               <h3 className="text-[17px] font-semibold text-text">{s.question}</h3>
               <p className="mt-2 text-[14px] text-text-muted leading-relaxed max-w-[75ch]">{s.answer}</p>
               <p className="mt-3 font-mono text-[12px] text-text-faint">
@@ -239,10 +239,10 @@ export default function BestLlmObservabilityToolsPage() {
       </section>
 
       <section className="max-w-[1000px] mx-auto px-6 pb-14">
-        <h2 className="text-[24px] font-semibold tracking-[-0.4px] text-text mb-6">Tool by tool</h2>
+        <h2 className="font-display track-h3 text-[24px] text-text mb-6">Tool by tool</h2>
         <div className="space-y-5">
           {COMPETITORS.map((c) => (
-            <article key={c.name} className="rounded-xl border border-border bg-bg-elev p-6">
+            <article key={c.name} className="rounded-card border border-border bg-bg-elev p-6">
               <header className="flex flex-wrap items-baseline gap-x-3 gap-y-1 mb-3">
                 <h3 className="text-[18px] font-semibold text-text">{c.name}</h3>
                 {c.stars !== undefined ? (
@@ -282,7 +282,7 @@ export default function BestLlmObservabilityToolsPage() {
       </section>
 
       <section className="max-w-[1000px] mx-auto px-6 pb-14">
-        <h2 className="text-[24px] font-semibold tracking-[-0.4px] text-text mb-4">
+        <h2 className="font-display track-h3 text-[24px] text-text mb-4">
           How these figures were gathered
         </h2>
         <div className="text-[14px] text-text-muted leading-relaxed max-w-[75ch] space-y-3">
@@ -315,12 +315,12 @@ export default function BestLlmObservabilityToolsPage() {
       </section>
 
       <section className="max-w-[1000px] mx-auto px-6 pb-16">
-        <h2 className="text-[24px] font-semibold tracking-[-0.4px] text-text mb-6">
+        <h2 className="font-display track-h3 text-[24px] text-text mb-6">
           Frequently asked
         </h2>
         <div className="space-y-4">
           {FAQS.map(([q, a]) => (
-            <details key={q} className="rounded-xl border border-border bg-bg-elev p-5">
+            <details key={q} className="rounded-card border border-border bg-bg-elev p-5">
               <summary className="cursor-pointer text-[15px] font-medium text-text">{q}</summary>
               <p className="mt-3 text-[14px] text-text-muted leading-relaxed max-w-[75ch]">{a}</p>
             </details>
@@ -329,7 +329,7 @@ export default function BestLlmObservabilityToolsPage() {
       </section>
 
       <section className="max-w-[1000px] mx-auto px-6 pb-20">
-        <div className="rounded-xl border border-border bg-bg-elev p-8">
+        <div className="rounded-card border border-border bg-bg-elev p-8">
           <h2 className="text-[20px] font-semibold text-text">Keep reading</h2>
           <p className="mt-2 text-[14px] text-text-muted leading-relaxed max-w-[70ch]">
             Head-to-head pages go deeper than the notes above, feature by feature.

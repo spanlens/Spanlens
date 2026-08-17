@@ -26,16 +26,16 @@ function ThemeToggle() {
   const current = (theme ?? 'system') as ThemeOption
 
   return (
-    <div className="flex items-center gap-1 rounded-[6px] border border-border bg-bg-muted p-1">
+    <div className="flex items-center gap-1 rounded-full border border-border bg-bg-chip p-1">
       {THEME_OPTIONS.map(({ value, label, Icon }) => (
         <button
           key={value}
           type="button"
           onClick={() => setTheme(value)}
           className={cn(
-            'flex items-center gap-1.5 px-3 py-[5px] rounded-[4px] text-[12.5px] transition-colors',
+            'flex items-center gap-1.5 px-3 py-[5px] rounded-full text-[12.5px] transition-colors',
             current === value
-              ? 'bg-bg text-text font-medium shadow-sm'
+              ? 'bg-bg-elev text-text font-medium'
               : 'text-text-muted hover:text-text',
           )}
         >
@@ -49,13 +49,13 @@ function ThemeToggle() {
 
 export function PreferencesTab() {
   return (
-    <div className="max-w-[920px]">
+    <div>
       <TabHeader
         title="Preferences"
         description="Personal UI preferences stored in your browser."
       />
 
-      <Section title="Theme" className="mb-5">
+      <Section title="Theme" className="mb-4">
         <FormRow label="Color theme" hint="Override your system preference. Stored locally in your browser.">
           <ThemeToggle />
         </FormRow>

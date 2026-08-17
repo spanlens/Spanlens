@@ -38,7 +38,7 @@ function JobRow({ job }: { job: CronJobSummary }) {
   const schedule = CRON_SCHEDULES[job.jobName] ?? '—'
 
   return (
-    <div className="flex items-center gap-3 px-[22px] py-[11px] border-b border-border last:border-0">
+    <div className="flex items-center gap-3 px-[18px] py-3 border-b border-border last:border-0">
       <StatusDot status={job.lastStatus} />
       <span className="font-mono text-[12px] text-text flex-1 min-w-0 truncate">
         {job.jobName}
@@ -75,7 +75,7 @@ export function CronJobsPanel() {
     return (
       <div className="space-y-2 p-6">
         {[1, 2, 3, 4, 5].map((i) => (
-          <div key={i} className="h-8 bg-bg-elev rounded animate-pulse" />
+          <div key={i} className="h-8 bg-bg-chip rounded animate-pulse" />
         ))}
       </div>
     )
@@ -84,7 +84,7 @@ export function CronJobsPanel() {
   if (!jobs || jobs.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center h-48 gap-2 text-text-faint">
-        <p className="font-mono text-[13px]">No cron runs recorded yet.</p>
+        <p className="text-[12.5px] font-medium text-text-muted">No cron runs recorded yet.</p>
         <p className="font-mono text-[11px]">Runs are logged after the first execution.</p>
       </div>
     )
@@ -95,12 +95,12 @@ export function CronJobsPanel() {
   return (
     <div>
       {/* Header */}
-      <div className="flex items-center gap-3 px-[22px] py-[8px] border-b border-border bg-bg-elev">
+      <div className="flex items-center gap-3 px-[18px] py-2.5 border-b border-border bg-bg-muted">
         <span className="w-3 shrink-0" />
-        <span className="font-mono text-[10px] uppercase tracking-[0.07em] text-text-faint flex-1">Job</span>
-        <span className="font-mono text-[10px] uppercase tracking-[0.07em] text-text-faint shrink-0 hidden sm:block w-36">Schedule</span>
-        <span className="font-mono text-[10px] uppercase tracking-[0.07em] text-text-faint shrink-0 w-24 text-right">Last run</span>
-        <span className="font-mono text-[10px] uppercase tracking-[0.07em] text-text-faint shrink-0 w-16 text-right">Duration</span>
+        <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-faint flex-1">Job</span>
+        <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-faint shrink-0 hidden sm:block w-36">Schedule</span>
+        <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-faint shrink-0 w-24 text-right">Last run</span>
+        <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-faint shrink-0 w-16 text-right">Duration</span>
       </div>
       {sorted.map((job) => (
         <JobRow key={job.jobName} job={job} />

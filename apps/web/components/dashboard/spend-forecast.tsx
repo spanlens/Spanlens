@@ -16,10 +16,15 @@ import type { SpendForecast } from '@/lib/queries/types'
 const C = {
   text:   'var(--text)',
   border: 'var(--border)',
+  rule:   'var(--border-strong)',
+  grid:   'var(--grid)',
   faint:  'var(--text-faint)',
   bg:     'var(--bg)',
   bgElev: 'var(--bg-elev)',
+  mono:   'var(--font-geist-mono), ui-monospace, monospace',
 } as const
+
+const TICK = { fontSize: 10, fontFamily: C.mono, fill: C.faint } as const
 
 import { fmtCostKpi as fmtCost } from '@/lib/format'
 
@@ -48,18 +53,23 @@ export function SpendForecastCard({ data }: SpendForecastCardProps) {
   const tickInterval = Math.max(1, Math.floor(formatted.length / 5))
 
   return (
-    <div className="px-[22px] py-5 border-b border-border">
+    // Carries its own card chrome. It used to render as a bare section with a
+    // bottom hairline, which read as a naked block once the dashboard moved to
+    // a card canvas and both call sites had to wrap it to compensate.
+    <div className="card-surface rounded-card px-5 py-[18px]">
       {/* Header */}
       <div className="flex items-center mb-4">
-        <span className="text-[15px] font-medium">This month · spend forecast</span>
+        <span className="text-[13.5px] font-semibold leading-[1.4] text-text">
+          This month · spend forecast
+        </span>
         <div className="ml-auto flex items-center gap-5">
-          <span className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint">
+          <span className="flex items-center gap-1.5 font-mono text-[11px] leading-[1.4] text-text-faint">
             <svg width="18" height="8" aria-hidden>
               <line x1="0" y1="4" x2="18" y2="4" stroke={C.text} strokeWidth="1.5" />
             </svg>
             Actual
           </span>
-          <span className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint">
+          <span className="flex items-center gap-1.5 font-mono text-[11px] leading-[1.4] text-text-faint">
             <svg width="18" height="8" aria-hidden>
               <line x1="0" y1="4" x2="18" y2="4" stroke={C.faint} strokeWidth="1.5" strokeDasharray="4 3" />
             </svg>
@@ -68,42 +78,45 @@ export function SpendForecastCard({ data }: SpendForecastCardProps) {
         </div>
       </div>
 
-      {/* Stat cards */}
-      <div className="grid grid-cols-2 border border-border rounded-md mb-4 overflow-hidden">
-        <div className="p-4 border-r border-border">
-          <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-2">
+      {/* Stat cards. Same figure ramp as the KPI row above them: display face,
+          28px, KPI tracking, so the two read as one family. */}
+      <div className="grid grid-cols-2 border border-border rounded-lg mb-4 overflow-hidden">
+        <div className="p-[18px] border-r border-border">
+          <div className="font-mono text-[10.5px] uppercase tracking-[0.1em] text-text-faint mb-2.5">
             Month to date
           </div>
-          <div className="text-[28px] font-medium tracking-[-0.6px] text-text leading-none mb-1.5">
+          <div className="font-display text-[28px] track-kpi leading-[1.05]! text-text mb-1.5">
             {fmtCost(monthToDate)}
           </div>
-          <div className="font-mono text-[11px] text-text-muted">
+          <div className="font-mono text-[11px] leading-[1.4] text-text-muted">
             Day {dayOfMonth} of {daysInMonth} · {fmtCost(dailyAvgUsd)} / day avg
           </div>
         </div>
 
-        <div className="p-4">
-          <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-2">
+        <div className="p-[18px]">
+          <div className="font-mono text-[10.5px] uppercase tracking-[0.1em] text-text-faint mb-2.5">
             Projected · month end
           </div>
           <div className="flex items-baseline gap-2.5 mb-1.5">
-            <span className="text-[28px] font-medium tracking-[-0.6px] text-text leading-none">
+            <span className="font-display text-[28px] track-kpi leading-[1.05]! text-text">
               ~{fmtCost(projectedMonthEndUsd)}
             </span>
             {weeklyDeltaPct != null && (
+              // Rising spend is a bad delta, not an accent event. The accent is
+              // reserved for the data mark the reader is meant to track.
               <span
                 className={cn(
-                  'font-mono text-[11.5px]',
-                  weeklyDeltaPct > 0 ? 'text-accent' : 'text-good',
+                  'text-[11.5px] font-medium',
+                  weeklyDeltaPct > 0 ? 'text-bad' : 'text-good',
                 )}
               >
                 {weeklyDeltaPct > 0 ? '+' : ''}{weeklyDeltaPct.toFixed(1)}% wk
               </span>
             )}
           </div>
-          <div className="font-mono text-[11px] text-text-muted">
+          <div className="font-mono text-[11px] leading-[1.4] text-text-muted">
             Linear regression ·{' '}
-            <span className={dailyTrendUsd > 0.0001 ? 'text-accent' : dailyTrendUsd < -0.0001 ? 'text-good' : ''}>
+            <span className={dailyTrendUsd > 0.0001 ? 'text-bad' : dailyTrendUsd < -0.0001 ? 'text-good' : ''}>
               {dailyTrendUsd > 0.0001 ? '↑' : dailyTrendUsd < -0.0001 ? '↓' : '→'}{' '}
               ${Math.abs(dailyTrendUsd).toFixed(4)}/day
             </span>
@@ -116,16 +129,19 @@ export function SpendForecastCard({ data }: SpendForecastCardProps) {
           the dollar sign and the values read as dimensionless. */}
       <ResponsiveContainer width="100%" height={200}>
         <ComposedChart data={formatted} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke={C.border} vertical={false} />
+          {/* Hairline grid, ruled baseline. The only dashes in this plot are
+              the `today` marker and the projected series, both of which mean
+              "not a measurement". */}
+          <CartesianGrid stroke={C.grid} vertical={false} />
           <XAxis
             dataKey="label"
-            tick={{ fontSize: 10, fontFamily: 'monospace', fill: C.faint }}
+            tick={TICK}
             tickLine={false}
-            axisLine={false}
+            axisLine={{ stroke: C.rule }}
             interval={tickInterval}
           />
           <YAxis
-            tick={{ fontSize: 10, fontFamily: 'monospace', fill: C.faint }}
+            tick={TICK}
             tickLine={false}
             axisLine={false}
             width={56}
@@ -135,10 +151,11 @@ export function SpendForecastCard({ data }: SpendForecastCardProps) {
             contentStyle={{
               background: C.bgElev,
               border: `1px solid ${C.border}`,
-              borderRadius: '6px',
-              fontSize: 11,
-              fontFamily: 'monospace',
+              borderRadius: '10px',
+              fontSize: 10,
+              fontFamily: C.mono,
             }}
+            cursor={{ stroke: C.rule, strokeWidth: 1 }}
             formatter={(value: unknown, name) => {
               const num = typeof value === 'number' ? value : 0
               const label = name === 'actual' ? 'Actual' : 'Projected'
@@ -151,7 +168,7 @@ export function SpendForecastCard({ data }: SpendForecastCardProps) {
               x={todayLabel}
               stroke={C.faint}
               strokeDasharray="3 3"
-              label={{ value: 'today', position: 'insideTopRight', fontSize: 10, fontFamily: 'monospace', fill: C.faint }}
+              label={{ value: 'today', position: 'insideTopRight', fontSize: 10, fontFamily: C.mono, fill: C.faint }}
             />
           )}
           <Line

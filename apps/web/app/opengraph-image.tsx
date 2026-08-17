@@ -6,7 +6,9 @@ import { ImageResponse } from 'next/og'
  * X / LinkedIn / Slack unfurls (2026-07-06 SEO audit). Rendered at build
  * time via next/og, so there is no binary asset to maintain.
  *
- * Colors mirror the light theme in globals.css (--accent: #b45309).
+ * Colors mirror the light theme in globals.css. They are written as literals
+ * because next/og rasterises this outside the document, where the CSS custom
+ * properties do not exist. Keep them in step with the `:root` block there.
  * Pages inherit this card automatically; a route can override it by
  * shipping its own opengraph-image.tsx in its segment.
  */
@@ -25,7 +27,7 @@ export default function OpenGraphImage() {
           display: 'flex',
           flexDirection: 'column',
           justifyContent: 'space-between',
-          backgroundColor: '#fcfbf9',
+          backgroundColor: '#ffffff',
           padding: '72px 80px',
           fontFamily: 'sans-serif',
         }}
@@ -37,11 +39,11 @@ export default function OpenGraphImage() {
                 width: 64,
                 height: 64,
                 borderRadius: 14,
-                backgroundColor: '#b45309',
+                backgroundColor: '#d0350f',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                color: '#fcfbf9',
+                color: '#ffffff',
                 fontSize: 40,
                 fontWeight: 700,
               }}
@@ -53,7 +55,7 @@ export default function OpenGraphImage() {
                 fontSize: 72,
                 fontWeight: 700,
                 letterSpacing: '-0.03em',
-                color: '#1a1611',
+                color: '#101114',
               }}
             >
               spanlens
@@ -64,7 +66,7 @@ export default function OpenGraphImage() {
               marginTop: 48,
               fontSize: 44,
               lineHeight: 1.25,
-              color: '#57534e',
+              color: '#5a6068',
               maxWidth: 900,
             }}
           >
@@ -77,12 +79,12 @@ export default function OpenGraphImage() {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            borderTop: '2px solid #e7e2da',
+            borderTop: '2px solid #e2e2e8',
             paddingTop: 32,
           }}
         >
-          <div style={{ fontSize: 28, color: '#78716c' }}>www.spanlens.io</div>
-          <div style={{ fontSize: 28, color: '#b45309' }}>
+          <div style={{ fontSize: 28, color: '#6b7078' }}>www.spanlens.io</div>
+          <div style={{ fontSize: 28, color: '#d0350f' }}>
             MIT licensed · self-hostable
           </div>
         </div>

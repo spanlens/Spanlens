@@ -53,13 +53,13 @@ export function NotificationsTab() {
   }
 
   return (
-    <div className="max-w-[980px]">
+    <div>
       <TabHeader
         title="Notifications"
         description="Which emails Spanlens sends you. These are personal to your account."
       />
 
-      <Section title="Email preferences" className="mb-5">
+      <Section title="Email preferences" className="mb-4">
         {NOTIFICATION_PREFS.map((pref) => (
           <FormRow key={pref.key} label={pref.label} hint={pref.hint}>
             <Toggle
@@ -70,14 +70,14 @@ export function NotificationsTab() {
           </FormRow>
         ))}
         {error && (
-          <div className="px-6 pb-4 -mt-2 font-mono text-[11.5px] text-status-error">
+          <div className="px-6 pb-4 -mt-2 font-mono text-[11.5px] text-bad">
             {error}
           </div>
         )}
       </Section>
 
-      <Section title="Alert routing" className="mb-5">
-        <div className="px-6 py-4 text-[13px] text-text-muted leading-relaxed">
+      <Section title="Alert routing" className="mb-4">
+        <div className="px-6 py-4 text-[12.5px] text-text-muted leading-relaxed">
           Where alerts are delivered (Slack, Discord, or email channels) is a workspace-level
           setting. Manage destinations in{' '}
           <a href="/settings?tab=integrations" className="text-accent hover:opacity-80 transition-opacity">

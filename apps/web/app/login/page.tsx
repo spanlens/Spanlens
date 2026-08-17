@@ -1,9 +1,19 @@
 'use client'
 import { useEffect, useState } from 'react'
-import Image from 'next/image'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { GithubIcon, GoogleIcon } from '@/components/ui/provider-icons'
+import {
+  AuthField,
+  AuthFootnote,
+  AuthHeading,
+  AuthLayout,
+  AuthNote,
+  authInput,
+  authLink,
+  authPrimaryButton,
+  authSecondaryButton,
+} from '../auth/_components/auth-shell'
 
 /**
  * Maps the `?error=<code>` query (set by /auth/callback when OAuth
@@ -22,24 +32,6 @@ const OAUTH_ERROR_MESSAGES: Record<string, string> = {
   provider_disabled:
     'This sign-in method is currently unavailable. Please use another provider or email.',
   oauth_callback_failed: 'Sign-in failed. Please try again.',
-}
-
-function LogoMark() {
-  return (
-    <Link href="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
-      <Image src="/icon.png" alt="Spanlens" width={20} height={20} className="shrink-0 rounded-[5px]" priority />
-      <span className="font-semibold text-[15px] tracking-[-0.3px] text-text">spanlens</span>
-    </Link>
-  )
-}
-
-function ProofRow({ k, v }: { k: string; v: string }) {
-  return (
-    <div className="flex justify-between py-[7px] border-b border-dashed border-border">
-      <span className="font-mono text-[11px] text-text-faint tracking-[0.03em]">{k}</span>
-      <span className="font-mono text-[11.5px] text-text">{v}</span>
-    </div>
-  )
 }
 
 export default function LoginPage() {
@@ -115,125 +107,91 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-bg-elev grid grid-cols-2">
+    <AuthLayout
+      pitch={{
+        title: 'Every model call, on the record.',
+        body: 'Sign in to the workspace that already has your traces, costs and prompt versions.',
+      }}
+    >
+      <AuthHeading title="Welcome back" subtitle="Sign in to Spanlens" />
 
-      {/* ── Left pane, product proof ─────────────────────────────── */}
-      <div className="bg-bg border-r border-border p-10 flex flex-col justify-between">
-        <div>
-          <LogoMark />
-          <div className="mt-12 max-w-[400px]">
-            <h2 className="text-[34px] font-medium tracking-[-1px] leading-[1.1] [text-wrap:balance]">
-              Every LLM call.<br />
-              <span className="text-text-muted">Observed.</span>
-            </h2>
-            <p className="text-[14px] text-text-muted leading-[1.55] mt-4">
-              Sign in to your workspace. SSO is the default; email is a fallback.
-            </p>
-          </div>
-        </div>
-        <div className="flex flex-col gap-0 max-w-[420px] mt-9">
-          <ProofRow k="ingested this month" v="412,881,204 calls" />
-          <ProofRow k="p99 logging overhead" v="2.8ms" />
-          <ProofRow k="teams saving money" v="$7.2M / mo · aggregate" />
-          <ProofRow k="self-hostable" v="Helm · Docker · binary" />
-        </div>
+      {/* SSO first, matching the board: the password form is the fallback. */}
+      <div className="flex flex-col gap-2.5">
+        <button
+          type="button"
+          onClick={() => void handleOAuth('github')}
+          disabled={loading}
+          className={authSecondaryButton}
+        >
+          <GithubIcon className="size-[18px] shrink-0" />
+          <span>Continue with GitHub</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => void handleOAuth('google')}
+          disabled={loading}
+          className={authSecondaryButton}
+        >
+          <GoogleIcon className="size-[18px] shrink-0" />
+          <span>Continue with Google</span>
+        </button>
       </div>
 
-      {/* ── Right pane, form ────────────────────────────────────────── */}
-      <div className="flex items-center justify-center p-10">
-        <div className="w-[360px] max-w-full">
-          <div className="mb-[22px]">
-            <div className="font-mono text-[10.5px] text-accent tracking-[0.06em] uppercase mb-2">Welcome back</div>
-            <h3 className="text-[26px] font-medium tracking-[-0.7px]">Sign in to Spanlens</h3>
-            <div className="text-[13px] text-text-muted mt-1.5">
-              No account?{' '}
-              <Link href="/signup" className="text-text font-medium hover:opacity-80 transition-opacity">
-                Create workspace →
-              </Link>
-            </div>
-          </div>
-
-          {/* SSO buttons */}
-          <div className="flex flex-col gap-2 mb-2">
-            <button
-              type="button"
-              onClick={() => void handleOAuth('google')}
-              disabled={loading}
-              className="flex items-center justify-center gap-2.5 px-[14px] py-[10px] border border-border-strong rounded-[7px] bg-white text-[13px] font-medium text-[#111] hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              <GoogleIcon className="w-[18px] h-[18px] shrink-0" />
-              <span>Continue with Google</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => void handleOAuth('github')}
-              disabled={loading}
-              className="flex items-center justify-center gap-2.5 px-[14px] py-[10px] rounded-[7px] bg-black text-[13px] font-medium text-white hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              <GithubIcon className="w-[18px] h-[18px] shrink-0" />
-              <span>Continue with GitHub</span>
-            </button>
-          </div>
-
-          {/* Divider */}
-          <div className="flex items-center gap-2.5 my-4">
-            <span className="flex-1 h-px bg-border" />
-            <span className="font-mono text-[10px] text-text-faint tracking-[0.05em] uppercase">or with email</span>
-            <span className="flex-1 h-px bg-border" />
-          </div>
-
-          <form onSubmit={(e) => void handleSubmit(e)}>
-            {/* Email field */}
-            <div className="mb-[14px]">
-              <div className="flex justify-between mb-1.5">
-                <label htmlFor="email" className="font-mono text-[12px] text-text-muted tracking-[0.02em]">Email</label>
-              </div>
-              <div className="flex items-center gap-2 px-3 py-[10px] border border-border-strong rounded-[7px] bg-bg-elev">
-                <span className="font-mono text-[11px] text-text-faint">›</span>
-                <input
-                  id="email"
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="you@company.com"
-                  required
-                  className="flex-1 font-mono text-[13px] text-text bg-transparent outline-none placeholder:text-text-faint tracking-[0.01em]"
-                />
-              </div>
-            </div>
-
-            {/* Password field */}
-            <div className="mb-[14px]">
-              <div className="flex justify-between mb-1.5">
-                <label htmlFor="password" className="font-mono text-[12px] text-text-muted tracking-[0.02em]">Password</label>
-                <Link href="/forgot-password" className="font-mono text-[10.5px] text-accent hover:opacity-80 transition-opacity">Forgot?</Link>
-              </div>
-              <div className="flex items-center gap-2 px-3 py-[10px] border border-border-strong rounded-[7px] bg-bg-elev">
-                <span className="font-mono text-[11px] text-text-faint">◉</span>
-                <input
-                  id="password"
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  className="flex-1 font-mono text-[13px] text-text bg-transparent outline-none placeholder:text-text-faint"
-                />
-              </div>
-            </div>
-
-            {error && <p className="text-[12.5px] text-bad mb-3">{error}</p>}
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full bg-text text-bg py-[11px] px-[14px] rounded-[7px] text-[13px] font-medium flex items-center justify-center gap-2 hover:opacity-90 transition-opacity disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed"
-            >
-              {loading ? 'Signing in…' : 'Sign in'}
-              {!loading && <span className="font-mono text-[11px] opacity-70">↵</span>}
-            </button>
-          </form>
-        </div>
+      <div className="my-5 flex items-center gap-3" aria-hidden="true">
+        <span className="h-px flex-1 bg-track" />
+        <span className="font-mono text-[11.5px] leading-[1.48] text-text-faint">or</span>
+        <span className="h-px flex-1 bg-track" />
       </div>
-    </div>
+
+      <form onSubmit={(e) => void handleSubmit(e)} className="flex flex-col gap-4">
+        <AuthField id="email" label="Work email">
+          <input
+            id="email"
+            type="email"
+            autoComplete="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="you@company.com"
+            required
+            aria-invalid={error ? true : undefined}
+            className={authInput}
+          />
+        </AuthField>
+
+        <AuthField
+          id="password"
+          label="Password"
+          action={
+            <Link href="/forgot-password" className={`text-[12px] font-medium ${authLink}`}>
+              Forgot?
+            </Link>
+          }
+        >
+          <input
+            id="password"
+            type="password"
+            autoComplete="current-password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+            aria-invalid={error ? true : undefined}
+            className={authInput}
+          />
+        </AuthField>
+
+        {error && <AuthNote tone="bad" live="assertive">{error}</AuthNote>}
+
+        <button type="submit" disabled={loading} className={`${authPrimaryButton} mt-1.5`}>
+          {loading ? 'Signing in…' : 'Sign in'}
+        </button>
+      </form>
+
+      <AuthFootnote className="mt-[18px]">
+        New here?{' '}
+        <Link href="/signup" className={authLink}>
+          Create an account
+        </Link>
+      </AuthFootnote>
+    </AuthLayout>
   )
 }

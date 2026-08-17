@@ -29,15 +29,23 @@
 
 import type { ReactNode } from 'react'
 
+/**
+ * Chart palette, handed to recharts as SVG `fill`/`stroke` values.
+ *
+ * These are `var()` references rather than literals so the figures follow the
+ * theme: recharts passes the string straight through to an SVG attribute, and
+ * SVG paint accepts custom properties, so a dark-mode toggle repaints the
+ * charts with no JS. Anything added here must be a token, not a hex.
+ */
 export const COLORS = {
-  accent: '#c2410c',
-  accentLight: '#fb923c',
-  muted: '#a89c8d',
-  mutedLight: '#d6cfc4',
-  bg: '#fbfaf7',
-  text: '#1c1a17',
-  textMuted: '#6b6056',
-  good: '#15803d',
+  accent: 'var(--accent)',
+  accentLight: 'var(--accent-bright)',
+  muted: 'var(--text-faint)',
+  mutedLight: 'var(--track)',
+  bg: 'var(--bg-elev)',
+  text: 'var(--text)',
+  textMuted: 'var(--text-muted)',
+  good: 'var(--good)',
 }
 
 /** Every shell takes the chart body (or its placeholder) as children. */
@@ -138,8 +146,11 @@ export interface RadarSeries {
 export const RADAR_SERIES: RadarSeries[] = [
   { name: 'Spanlens', key: 'Spanlens', color: COLORS.accent },
   { name: 'Helicone', key: 'Helicone', color: COLORS.muted },
-  { name: 'Langfuse', key: 'Langfuse', color: '#0891b2' },
-  { name: 'LangSmith', key: 'LangSmith', color: '#7c3aed' },
+  // The palette carries one accent and no categorical ramp, so the remaining
+  // two series borrow the status hues. They only need to be told apart from
+  // each other and from the accent, which green and amber manage.
+  { name: 'Langfuse', key: 'Langfuse', color: 'var(--good)' },
+  { name: 'LangSmith', key: 'LangSmith', color: 'var(--warn)' },
 ]
 
 /**
@@ -159,8 +170,8 @@ export function FeatureCoverageFigure({ children }: ChartShellProps) {
         <div className="h-[360px]">{children}</div>
         {/* The two `style` props below are the one place inline styles are
             unavoidable: the swatch and label colors come from RADAR_SERIES at
-            runtime, so there is no class name to reach for. Everything else
-            here is Tailwind. */}
+            runtime, so there is no class name to reach for. The values are
+            still `var()` token references, so they follow the theme. */}
         <div className="mt-3 flex flex-wrap justify-center gap-x-5 gap-y-2 text-[11px]">
           {RADAR_SERIES.map((s) => (
             <span key={s.key} className="inline-flex items-center gap-1.5">

@@ -58,12 +58,11 @@ describe('EmptyState — base shell', () => {
 })
 
 describe('FilterEmptyState — filter-specific variant', () => {
-  test('uses the "No results" copy with a filter-clear hint', () => {
+  // Copy tracks the `NO DATA IN RANGE` board on the Figma `States` page.
+  test('names the filters as the cause and says how to widen them', () => {
     render(<FilterEmptyState onClear={() => undefined} />)
-    expect(screen.getByText('No results')).toBeInTheDocument()
-    expect(
-      screen.getByText(/no results\. try adjusting your filters/i),
-    ).toBeInTheDocument()
+    expect(screen.getByText('Nothing matches these filters')).toBeInTheDocument()
+    expect(screen.getByText(/widen the window or drop a filter/i)).toBeInTheDocument()
   })
 
   test('fires onClear when the clear-filters button is clicked', async () => {
@@ -71,7 +70,7 @@ describe('FilterEmptyState — filter-specific variant', () => {
     const user = userEvent.setup()
     render(<FilterEmptyState onClear={onClear} />)
 
-    await user.click(screen.getByRole('button', { name: /clear filters/i }))
+    await user.click(screen.getByRole('button', { name: /clear all filters/i }))
     expect(onClear).toHaveBeenCalledTimes(1)
   })
 })

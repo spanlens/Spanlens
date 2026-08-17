@@ -1,13 +1,15 @@
 'use client'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { ArrowLeft, FlaskConical, GitCommit, ArrowLeftRight, BarChart2, Phone, Terminal } from 'lucide-react'
+import { ArrowLeft, FlaskConical } from 'lucide-react'
 import {
   usePromptVersions,
   usePromptExperiments,
 } from '@/lib/queries/use-prompts'
 import { Topbar } from '@/components/layout/topbar'
 import { PermissionGate } from '@/components/permission-gate'
-import { cn } from '@/lib/utils'
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
+import { StatusPill } from '@/components/ui/primitives'
+import { Board, TOPBAR_BLEED } from '../../_board/surfaces'
 import { VersionsTab } from './tabs/versions-tab'
 import { DiffTab } from './tabs/diff-tab'
 import { TrafficTab } from './tabs/traffic-tab'
@@ -19,13 +21,15 @@ type Tab = 'versions' | 'diff' | 'traffic' | 'calls' | 'ab' | 'playground'
 
 const VALID_TABS: readonly Tab[] = ['versions', 'diff', 'traffic', 'calls', 'ab', 'playground']
 
-const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
-  { id: 'versions',   label: 'Versions',   icon: <GitCommit className="h-3.5 w-3.5" /> },
-  { id: 'diff',       label: 'Diff',       icon: <ArrowLeftRight className="h-3.5 w-3.5" /> },
-  { id: 'traffic',    label: 'Traffic',    icon: <BarChart2 className="h-3.5 w-3.5" /> },
-  { id: 'calls',      label: 'Calls',      icon: <Phone className="h-3.5 w-3.5" /> },
-  { id: 'ab',         label: 'A/B',        icon: <FlaskConical className="h-3.5 w-3.5" /> },
-  { id: 'playground', label: 'Playground', icon: <Terminal className="h-3.5 w-3.5" /> },
+// D4 draws the tab row as label-only pills, so the icons the old underline bar
+// carried are gone; the labels are what the design leans on.
+const TABS: { id: Tab; label: string }[] = [
+  { id: 'versions',   label: 'Versions'   },
+  { id: 'diff',       label: 'Diff'       },
+  { id: 'traffic',    label: 'Traffic'    },
+  { id: 'calls',      label: 'Calls'      },
+  { id: 'ab',         label: 'A/B'        },
+  { id: 'playground', label: 'Playground' },
 ]
 
 interface Props {
@@ -55,88 +59,92 @@ export function PromptDetailClient({ params }: Props) {
   const hasRunning = experiments?.some((e) => e.status === 'running') ?? false
 
   return (
-    <div className="-mx-4 -my-4 md:-mx-8 md:-my-7 flex flex-col min-h-screen">
-      <div className="sticky top-0 z-20 bg-bg">
+    <div>
+      {/* The topbar is the one full-bleed row: it cancels the shell inset so
+          its hairline spans the whole main column. */}
+      <div className={TOPBAR_BLEED}>
         <Topbar
           crumbs={[
             { label: 'Prompts', href: '/prompts' },
             { label: name },
           ]}
           right={
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-3">
               <button
                 type="button"
                 onClick={() => router.back()}
-                className="font-mono text-[11px] text-text-muted hover:text-text flex items-center gap-1 transition-colors"
+                className="flex items-center gap-1 font-mono text-[11px] text-text-muted transition-colors hover:text-text"
               >
                 <ArrowLeft className="h-3.5 w-3.5" />
                 Back
               </button>
+              <PermissionGate need="edit">
+                <button
+                  type="button"
+                  onClick={() => setTab('ab')}
+                  className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full bg-accent px-3.5 py-2 text-[12.5px] font-semibold leading-[18px] text-accent-fg transition-colors hover:bg-accent-strong"
+                >
+                  <FlaskConical className="h-3.5 w-3.5" />
+                  {hasRunning ? 'Manage A/B' : 'New A/B test'}
+                </button>
+              </PermissionGate>
             </div>
           }
         />
+        {/* The breadcrumb already names the prompt, which is why D4 has no
+            second header row; the accessible heading stays for readers. */}
+        <h1 className="sr-only">{name}</h1>
       </div>
 
-      {/* Header row */}
-      <div className="flex items-center gap-3 px-[22px] py-[14px] border-b border-border shrink-0">
-        <div className="flex-1 min-w-0">
-          <h1 className="font-mono text-[15px] font-semibold text-text truncate">{name}</h1>
-          <p className="font-mono text-[11px] text-text-faint mt-0.5">
-            {isLoading
-              ? 'Loading…'
-              : `${versions?.length ?? 0} version${versions?.length === 1 ? '' : 's'}`}
-          </p>
-        </div>
-        {hasRunning && (
-          <span className="inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.05em] px-[8px] py-[3px] rounded-[4px] bg-accent-bg border border-accent-border text-accent animate-pulse">
-            <FlaskConical className="h-3 w-3" />
-            A/B running
-          </span>
-        )}
-        <PermissionGate need="edit">
-          <button
-            type="button"
-            onClick={() => setTab('ab')}
-            className="font-mono text-[11px] text-text px-[10px] py-[5px] border border-border-strong rounded-[5px] bg-bg-elev hover:bg-bg-muted flex items-center gap-1.5 transition-colors"
-          >
-            <FlaskConical className="h-3.5 w-3.5" />
-            {hasRunning ? 'Manage A/B' : 'New A/B test'}
-          </button>
-        </PermissionGate>
-      </div>
-
-      {/* Tab bar */}
-      <div className="flex items-center gap-0 px-[22px] border-b border-border shrink-0 bg-bg-muted overflow-x-auto">
-        {TABS.map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            onClick={() => setTab(t.id)}
-            className={cn(
-              'flex items-center gap-1.5 px-[14px] py-[10px] font-mono text-[11.5px] tracking-[0.02em] border-b-2 transition-colors',
-              tab === t.id
-                ? 'border-text text-text'
-                : 'border-transparent text-text-faint hover:text-text-muted',
+      <Board>
+        <Tabs
+          value={tab}
+          onValueChange={(v) => setTab(v as Tab)}
+          className="flex flex-col gap-4"
+        >
+          {/* Tab row with the version count and A/B state pushed right, the
+              way D4 parks card meta at the end of a head row. */}
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+            <TabsList className="flex-wrap">
+              {TABS.map((t) => (
+                <TabsTrigger key={t.id} value={t.id}>
+                  {t.label}
+                  {t.id === 'ab' && hasRunning && (
+                    <span className="ml-1.5 block h-1.5 w-1.5 rounded-full bg-accent" />
+                  )}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+            <span className="ml-auto font-mono text-[11px] leading-[1.45] text-text-faint">
+              {isLoading
+                ? 'Loading…'
+                : `${versions?.length ?? 0} version${versions?.length === 1 ? '' : 's'}`}
+            </span>
+            {hasRunning && (
+              <StatusPill variant="warn" className="animate-pulse">A/B running</StatusPill>
             )}
-          >
-            {t.icon}
-            {t.label}
-            {t.id === 'ab' && hasRunning && (
-              <span className="w-1.5 h-1.5 rounded-full bg-accent block" />
-            )}
-          </button>
-        ))}
-      </div>
+          </div>
 
-      {/* Tab content */}
-      <div>
-        {tab === 'versions' && <VersionsTab name={name} versions={versions} isLoading={isLoading} />}
-        {tab === 'diff'     && <DiffTab versions={versions ?? []} />}
-        {tab === 'traffic'  && <TrafficTab name={name} />}
-        {tab === 'calls'    && <CallsTab name={name} />}
-        {tab === 'ab'         && <AbTab name={name} versions={versions ?? []} experiments={experiments ?? []} />}
-        {tab === 'playground' && <PlaygroundTab versions={versions ?? []} />}
-      </div>
+          <TabsContent value="versions" className="mt-0">
+            <VersionsTab name={name} versions={versions} isLoading={isLoading} />
+          </TabsContent>
+          <TabsContent value="diff" className="mt-0">
+            <DiffTab versions={versions ?? []} />
+          </TabsContent>
+          <TabsContent value="traffic" className="mt-0">
+            <TrafficTab name={name} />
+          </TabsContent>
+          <TabsContent value="calls" className="mt-0">
+            <CallsTab name={name} />
+          </TabsContent>
+          <TabsContent value="ab" className="mt-0">
+            <AbTab name={name} versions={versions ?? []} experiments={experiments ?? []} />
+          </TabsContent>
+          <TabsContent value="playground" className="mt-0">
+            <PlaygroundTab versions={versions ?? []} />
+          </TabsContent>
+        </Tabs>
+      </Board>
     </div>
   )
 }

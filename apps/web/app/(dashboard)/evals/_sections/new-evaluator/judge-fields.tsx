@@ -183,7 +183,7 @@ export function JudgeFields({
               <button
                 type="button"
                 onClick={() => setAnchors((prev) => [...prev, { response: '', score: Number.NaN }])}
-                className="mt-2 font-mono text-[11px] px-2 py-1 rounded-[4px] border border-border hover:bg-bg-elev flex items-center gap-1 transition-colors"
+                className="mt-2 font-mono text-[11px] px-2 py-1 rounded-[4px] border border-border hover:bg-bg-muted flex items-center gap-1 transition-colors"
               >
                 <Plus className="h-3 w-3" /> Add anchor
               </button>

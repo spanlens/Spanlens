@@ -291,19 +291,22 @@ export function TracesClient() {
   const currentPage = meta.page
 
   return (
-    <div className="-mx-4 -my-4 md:-mx-8 md:-my-7 bg-bg">
-      {/* Sticky topbar — body scrolls natively, header stays visible. */}
+    <div className="-mx-4 -my-4 md:-mx-7 md:-mt-5 md:-mb-7 bg-bg">
+      {/* Sticky topbar — body scrolls natively, header stays visible. It is
+          the one full-bleed row; the canvas below takes the 28px gutters. */}
       <div className="sticky top-0 z-20 bg-bg">
         <Topbar crumbs={[{ label: 'Traces' }]} />
         <h1 className="sr-only">Traces</h1>
       </div>
 
+      {/* Content canvas — 16px rhythm between rows, per the Figma board. */}
+      <div className="flex flex-col gap-4 px-4 md:px-7 pt-5 pb-7">
+
       {/* Stat strip. p50/p95/avg are computed from the rows currently on
           screen ("this page" suffix makes that explicit), while Traces and
           Errors come from the server response and reflect the full filtered
           set. */}
-      <div className="overflow-x-auto shrink-0 border-b border-border">
-      <div className="grid grid-cols-5 min-w-[480px]">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
         {[
           { label: 'Traces',                value: mounted ? meta.total.toLocaleString() : '—',                   warn: false },
           { label: 'p50 duration · page',   value: mounted ? fmtDuration(p50)  : '—',                              warn: false },
@@ -311,50 +314,47 @@ export function TracesClient() {
           { label: 'Avg spans · page',      value: mounted && avgSpans != null ? avgSpans.toFixed(1) : '—',        warn: false },
           { label: 'Errors · page',         value: mounted ? String(errors) : '—',                                 warn: mounted && errors > 0 },
         ].map((s, i) => (
-          <div
-            key={i}
-            className={cn('px-[18px] py-[14px]', i < 4 && 'border-r border-border')}
-          >
-            <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-2">{s.label}</div>
-            <span className={cn('text-[24px] font-medium leading-none tracking-[-0.6px]', s.warn ? 'text-accent' : 'text-text')}>
+          <div key={i} className="card-surface rounded-card px-5 py-[18px]">
+            <div className="font-mono text-[10.5px] uppercase tracking-[0.1em] text-text-faint mb-2">{s.label}</div>
+            <span className={cn('font-display text-[28px] track-kpi leading-[1.05] block', s.warn ? 'text-accent' : 'text-text')}>
               {s.value}
             </span>
           </div>
         ))}
       </div>
-      </div>
 
-        {/* Filter toolbar */}
-        <div className="flex items-center gap-[6px] px-[22px] py-[10px] border-b border-border shrink-0 flex-wrap">
-          <div className="flex p-0.5 border border-border rounded-[5px] bg-bg-elev font-mono text-[10.5px] tracking-[0.03em]">
+        {/* Filter toolbar — segmented controls on a chip trough with a lifted
+            lozenge on the selection, matching the board's topbar control. */}
+        <div className="flex items-center gap-2 shrink-0 flex-wrap">
+          <div className="inline-flex items-center gap-[2px] rounded-full bg-secondary p-[3px]">
             {([['all', 'All'], ['ok', 'OK'], ['error', 'Error'], ['running', 'Live']] as [StatusFilter, string][]).map(([v, l]) => (
               <button
                 key={v}
                 type="button"
                 onClick={() => { setStatusFilter(v); setPage(1) }}
                 className={cn(
-                  'px-[10px] py-[3px] rounded-[3px] transition-colors',
-                  statusFilter === v ? 'bg-text text-bg' : 'text-text-muted hover:text-text',
+                  'font-mono text-[12px] leading-[17px] px-3 py-[5px] rounded-full transition-colors',
+                  statusFilter === v ? 'bg-bg-elev text-text' : 'text-text-faint hover:text-text',
                 )}
               >{l}</button>
             ))}
           </div>
 
-          <div className="flex p-0.5 border border-border rounded-[5px] bg-bg-elev font-mono text-[10.5px] tracking-[0.03em]">
+          <div className="inline-flex items-center gap-[2px] rounded-full bg-secondary p-[3px]">
             {(['1h', '24h', '7d', '30d', 'all'] as TimeRange[]).map((v) => (
               <button
                 key={v}
                 type="button"
                 onClick={() => { setTimeRange(v); setPage(1) }}
                 className={cn(
-                  'px-[10px] py-[3px] rounded-[3px] transition-colors',
-                  timeRange === v ? 'bg-text text-bg' : 'text-text-muted hover:text-text',
+                  'font-mono text-[12px] leading-[17px] px-3 py-[5px] rounded-full transition-colors',
+                  timeRange === v ? 'bg-bg-elev text-text' : 'text-text-faint hover:text-text',
                 )}
               >{v === 'all' ? 'All time' : v}</button>
             ))}
           </div>
 
-          <div className="inline-flex items-center gap-2 px-[10px] py-[5px] border border-border rounded-[5px] bg-bg-elev font-mono text-[11px] text-text-muted">
+          <div className="inline-flex items-center gap-2 h-[33px] px-3 border border-border rounded-md bg-bg-elev text-[12.5px] text-text">
             <span className="text-text-faint text-[12px]">⌕</span>
             <input
               value={nameSearch}
@@ -371,7 +371,7 @@ export function TracesClient() {
               // trace ID accept substring matches, but Spanlens UUIDs need
               // the full 36-char form (PostgreSQL refuses LIKE on uuid).
               placeholder="Search agent name or full trace ID…"
-              className="w-60 bg-transparent outline-none placeholder:text-text-faint text-[11px]"
+              className="w-60 bg-transparent outline-none placeholder:text-text-faint text-[12.5px]"
             />
             {nameSearch && (
               <button
@@ -387,7 +387,7 @@ export function TracesClient() {
             <button
               type="button"
               onClick={handleClearFilters}
-              className="font-mono text-[10.5px] px-[9px] py-[4px] border border-border rounded-[5px] text-text-muted hover:text-text hover:border-border-strong transition-colors"
+              className="text-[12.5px] font-medium px-3 py-[7px] border border-border rounded-md bg-bg-elev text-text-muted hover:text-text hover:border-border-strong transition-colors"
             >
               Clear
             </button>
@@ -401,7 +401,7 @@ export function TracesClient() {
             onClick={() => { void refetch() }}
             disabled={isFetching}
             aria-label="Refetch traces"
-            className="font-mono text-[10.5px] px-[9px] py-[4px] border border-border rounded-[5px] text-text-muted hover:text-text hover:border-border-strong disabled:opacity-40 transition-colors inline-flex items-center"
+            className="text-[12.5px] px-3 py-[7px] border border-border rounded-md bg-bg-elev text-text-muted hover:text-text hover:border-border-strong disabled:opacity-40 transition-colors inline-flex items-center"
           >
             <span className={cn('inline-block', isFetching && 'animate-spin')}>↻</span>
           </button>
@@ -423,6 +423,7 @@ export function TracesClient() {
           is in sync. Arrow keys highlight a row; Enter / Space opens the
           trace detail.  tabIndex makes the table focusable as a single
           grid; row buttons inside keep their own click target. */}
+      <div className="card-surface rounded-card overflow-hidden">
       <div
         className="overflow-auto focus:outline-none"
         tabIndex={0}
@@ -433,7 +434,7 @@ export function TracesClient() {
         {isLoading ? (
           <div className="p-6 space-y-2">
             {[1, 2, 3, 4, 5].map((i) => (
-              <div key={i} className="h-10 bg-bg-elev rounded animate-pulse" />
+              <div key={i} className="h-10 bg-bg-chip rounded animate-pulse" />
             ))}
           </div>
         ) : isError ? (
@@ -471,18 +472,18 @@ export function TracesClient() {
           <div className="min-w-[700px]">
           {/* Column header */}
           <div
-            className="grid px-[22px] py-[9px] border-b border-border bg-bg-muted sticky top-0 z-10"
+            className="grid px-[18px] py-2.5 border-b border-border bg-bg-muted sticky top-0 z-10"
             style={{ gridTemplateColumns: GRID }}
           >
             <span />
-            <span className="font-mono text-[10px] text-text-faint uppercase tracking-[0.05em]">Agent</span>
-            <span className="font-mono text-[10px] text-text-faint uppercase tracking-[0.05em]">Trace id</span>
+            <span className="font-mono text-[10px] text-text-faint uppercase tracking-[0.1em]">Agent</span>
+            <span className="font-mono text-[10px] text-text-faint uppercase tracking-[0.1em]">Trace id</span>
             <SortHeader label="Spans"    field="span_count"     sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
             <SortHeader label="Duration" field="duration_ms"    sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
             <SortHeader label="Cost"     field="total_cost_usd" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
-            <span className="font-mono text-[10px] text-text-faint uppercase tracking-[0.05em]">Tokens</span>
-            <span className="font-mono text-[10px] text-text-faint uppercase tracking-[0.05em]">Timeline</span>
-            <span className="font-mono text-[10px] text-text-faint uppercase tracking-[0.05em]">Status</span>
+            <span className="font-mono text-[10px] text-text-faint uppercase tracking-[0.1em]">Tokens</span>
+            <span className="font-mono text-[10px] text-text-faint uppercase tracking-[0.1em]">Timeline</span>
+            <span className="font-mono text-[10px] text-text-faint uppercase tracking-[0.1em]">Status</span>
             <SortHeader label="Age"      field="started_at"     sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
           </div>
           {traces.map((t, idx) => {
@@ -499,9 +500,9 @@ export function TracesClient() {
                 onClick={() => { setFocusedIdx(idx); handleRowClick(t) }}
                 title={isErr && t.error_message ? t.error_message : undefined}
                 className={cn(
-                  'grid items-center w-full text-left px-[22px] py-[11px] border-b border-border font-mono text-[12.5px] hover:bg-bg-elev transition-colors cursor-pointer border-l-2',
-                  isErr ? 'bg-bad-bg' : '',
-                  isFocused ? 'border-l-accent bg-bg-muted' : 'border-l-transparent',
+                  'grid items-center w-full text-left px-[18px] py-[11px] border-b border-border last:border-b-0 font-mono text-[12px] hover:bg-bg-muted transition-colors cursor-pointer border-l-2',
+                  isErr ? 'bg-bad-bg/50' : '',
+                  isFocused ? 'border-l-accent bg-accent-bg/60' : 'border-l-transparent',
                 )}
                 style={{ gridTemplateColumns: GRID }}
               >
@@ -535,12 +536,12 @@ export function TracesClient() {
                   {isErr ? (
                     <span
                       title={t.error_message ?? undefined}
-                      className="font-mono text-[9.5px] px-[5px] py-[2px] rounded-[3px] bg-bad-bg text-bad border border-bad/20 uppercase tracking-[0.04em]"
+                      className="text-[11px] font-semibold px-2 py-[3px] rounded-full bg-bad-bg text-bad"
                     >error</span>
                   ) : isRunning ? (
-                    <span className="font-mono text-[9.5px] px-[5px] py-[2px] rounded-[3px] bg-accent-bg text-accent border border-accent-border uppercase tracking-[0.04em] animate-pulse">live</span>
+                    <span className="text-[11px] font-semibold px-2 py-[3px] rounded-full bg-accent-bg text-accent animate-pulse">live</span>
                   ) : (
-                    <span className="font-mono text-[9.5px] px-[5px] py-[2px] rounded-[3px] bg-bg-muted text-text-faint border border-border uppercase tracking-[0.04em]">ok</span>
+                    <span className="text-[11px] font-semibold px-2 py-[3px] rounded-full bg-good-bg text-good">ok</span>
                   )}
                 </span>
                 {/* Age cell uses the mounted gate so SSR and client first
@@ -561,8 +562,8 @@ export function TracesClient() {
           remaining rows instead of "this page happens to be full".
           First/Last let users jump in big result sets. */}
       {!isLoading && rawTraces.length > 0 && (
-        <div className="flex items-center justify-between px-[22px] py-3 border-t border-border shrink-0 gap-3 flex-wrap">
-          <span className="font-mono text-[11.5px] text-text-muted">
+        <div className="flex items-center justify-between px-[18px] py-3 border-t border-border bg-bg-muted shrink-0 gap-3 flex-wrap">
+          <span className="font-mono text-[11.5px] text-text-faint">
             {isFetching
               ? 'Loading…'
               : `Page ${currentPage} of ${totalPages.toLocaleString()} · ${rawTraces.length} / ${meta.total.toLocaleString()} total`}
@@ -573,7 +574,7 @@ export function TracesClient() {
               onClick={() => setPage(1)}
               disabled={currentPage <= 1 || isFetching}
               aria-label="First page"
-              className="font-mono text-[11.5px] px-3 py-[5px] border border-border rounded-[5px] text-text-muted hover:text-text disabled:opacity-40 transition-colors"
+              className="text-[12px] font-medium px-3 py-[6px] border border-border rounded-full bg-bg-elev text-text hover:border-border-strong disabled:opacity-30 transition-colors"
             >
               « First
             </button>
@@ -581,7 +582,7 @@ export function TracesClient() {
               type="button"
               onClick={() => setPage((p) => Math.max(1, p - 1))}
               disabled={page <= 1 || isFetching}
-              className="font-mono text-[11.5px] px-3 py-[5px] border border-border rounded-[5px] text-text-muted hover:text-text disabled:opacity-40 transition-colors"
+              className="text-[12px] font-medium px-3 py-[6px] border border-border rounded-full bg-bg-elev text-text hover:border-border-strong disabled:opacity-30 transition-colors"
             >
               Previous
             </button>
@@ -589,7 +590,7 @@ export function TracesClient() {
               type="button"
               onClick={() => setPage((p) => p + 1)}
               disabled={currentPage * meta.limit >= meta.total || isFetching}
-              className="font-mono text-[11.5px] px-3 py-[5px] border border-border rounded-[5px] text-text-muted hover:text-text disabled:opacity-40 transition-colors"
+              className="text-[12px] font-medium px-3 py-[6px] border border-border rounded-full bg-bg-elev text-text hover:border-border-strong disabled:opacity-30 transition-colors"
             >
               Next
             </button>
@@ -598,13 +599,15 @@ export function TracesClient() {
               onClick={() => setPage(totalPages)}
               disabled={currentPage >= totalPages || isFetching}
               aria-label="Last page"
-              className="font-mono text-[11.5px] px-3 py-[5px] border border-border rounded-[5px] text-text-muted hover:text-text disabled:opacity-40 transition-colors"
+              className="text-[12px] font-medium px-3 py-[6px] border border-border rounded-full bg-bg-elev text-text hover:border-border-strong disabled:opacity-30 transition-colors"
             >
               Last »
             </button>
           </div>
         </div>
       )}
+      </div>{/* end table card */}
+      </div>{/* end content canvas */}
     </div>
   )
 }
