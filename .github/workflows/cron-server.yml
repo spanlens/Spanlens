@@ -52,6 +52,17 @@ name: Cron — server sub-daily
 # the same endpoint is fine — every handler holds an advisory lock or
 # is naturally idempotent.
 #
+# Cron TIMING is also a cost decision, for the same reason. ClickHouse
+# suspends only after 15 quiet minutes, so an isolated daily job costs a
+# quarter hour of billed compute no matter how little it reads. The daily
+# jobs that query ClickHouse are therefore clustered at 03:00 in
+# vercel.json — snapshot-anomalies, events-reconciliation and
+# check-past-due-downgrades share one wake-up instead of taking three.
+# Put new daily ClickHouse-reading crons in that slot. Two deliberate
+# exceptions: recommend-savings-alerts stays at 09:00 because it sends
+# customer email and the delivery hour matters, and the weekly pair
+# (stale-key-reminders, weekly-digest) already shares Monday 09:00.
+#
 # One exception, added 2026-08-18: the four endpoints that read
 # ClickHouse (/cron/evaluate-alerts, /cron/check-quota-warnings,
 # /cron/aggregate-usage, /cron/detect-missing-model-prices) are

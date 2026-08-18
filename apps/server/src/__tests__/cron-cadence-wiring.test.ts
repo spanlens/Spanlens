@@ -41,6 +41,7 @@ const WATERMARK_GATED_JOB_SOURCES = [
   ['lib/quota-warnings.ts', 'orgActiveSince'],
   ['lib/cron-jobs/aggregate-usage.ts', 'anyActivitySince'],
   ['lib/cron-jobs/detect-missing-model-prices.ts', 'anyActivitySince'],
+  ['lib/data-silence.ts', 'shouldScanClickhouse'],
 ] as const
 
 const cronSource = readFileSync(
