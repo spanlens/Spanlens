@@ -16,6 +16,37 @@ import { createClient, type ClickHouseClient } from '@clickhouse/client'
 
 let _client: ClickHouseClient | null = null
 
+/**
+ * How long a ClickHouse request may take before the client gives up.
+ *
+ * The library default is 30s, which was invisible while the service was
+ * awake around the clock. Once the cron fleet stopped waking it
+ * (lib/org-activity.ts), ClickHouse Cloud started actually suspending, and
+ * a suspended service takes tens of seconds to come back. The first cron to
+ * hit a sleeping service after that change died at exactly 30014ms —
+ * the default timeout, not a real fault.
+ *
+ * 60s clears a normal cold start with room to spare and still sits well
+ * under the 300s maxDuration on the cron function, so a genuinely stuck
+ * query still fails inside the request rather than hanging the platform.
+ * Overridable for ops without a deploy.
+ */
+const DEFAULT_REQUEST_TIMEOUT_MS = 60_000
+
+/**
+ * Deadline for the health-check ping specifically — see `pingClickhouse`.
+ * A probe wants a fast honest answer, not a patient one.
+ */
+const PING_TIMEOUT_MS = 5_000
+
+function readRequestTimeoutMs(): number {
+  const raw = process.env['CLICKHOUSE_REQUEST_TIMEOUT_MS']
+  if (!raw) return DEFAULT_REQUEST_TIMEOUT_MS
+  const parsed = Number(raw)
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_REQUEST_TIMEOUT_MS
+}
+
+
 interface ClickhouseEnv {
   url: string
   username: string
@@ -75,6 +106,7 @@ export function unscopedClickhouse(): ClickHouseClient {
     password: env.password,
     database: env.database,
     compression: { request: true, response: true },
+    request_timeout: readRequestTimeoutMs(),
     clickhouse_settings: {
       // async_insert lets the server batch INSERTs server-side, which is the
       // recommended pattern for high-volume log ingestion. wait_for_async_insert=0
@@ -136,7 +168,16 @@ export function resetClickhouseClient(): void {
  */
 export async function pingClickhouse(): Promise<boolean> {
   try {
-    const result = await unscopedClickhouse().ping()
+    // Short, explicit deadline instead of the client-wide request_timeout.
+    // The wide one exists so cron queries survive a cold start; a health
+    // probe wants the opposite. Better Stack polls /health/deep every three
+    // minutes, so inheriting a 60s timeout would turn one sleeping service
+    // into a minute-long hanging health check and a worse status page than
+    // the honest fast "not ready".
+    const result = await unscopedClickhouse().ping({
+      select: false,
+      abort_signal: AbortSignal.timeout(PING_TIMEOUT_MS),
+    })
     return result.success
   } catch {
     return false
