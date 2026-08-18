@@ -24,6 +24,7 @@ const alertsResultMock = vi.fn()
 const chQueryMock = vi.fn()
 const getOrgActivitySinceMock = vi.fn()
 const deliverToChannelMock = vi.fn()
+const lastSuccessfulRunAtMock = vi.fn()
 
 /**
  * PostgREST chains are fluent and end wherever the caller stops, so the mock
@@ -72,6 +73,8 @@ vi.mock('../lib/org-activity.js', async () => {
   return { ...actual, getOrgActivitySince: getOrgActivitySinceMock }
 })
 
+vi.mock('../lib/cron-cadence.js', () => ({ lastSuccessfulRunAt: lastSuccessfulRunAtMock }))
+
 const ORG = '00000000-0000-4000-8000-000000000001'
 
 function budgetAlert(overrides: Record<string, unknown> = {}) {
@@ -97,6 +100,8 @@ beforeEach(async () => {
   chQueryMock.mockReset()
   getOrgActivitySinceMock.mockReset()
   deliverToChannelMock.mockReset()
+  lastSuccessfulRunAtMock.mockReset()
+  lastSuccessfulRunAtMock.mockResolvedValue(null)
   ;({ runEvaluateAlertsJob } = await import('../lib/cron-jobs/evaluate-alerts.js'))
 })
 
@@ -161,6 +166,16 @@ describe('runEvaluateAlertsJob with the activity watermark', () => {
     expect(result.evaluated).toBe(0)
   })
 
+  test('reports a metric failure so the caller can withhold the success stamp', async () => {
+    alertsResultMock.mockReturnValue({ data: [budgetAlert()], error: null })
+    getOrgActivitySinceMock.mockResolvedValue(new Map([[ORG, Date.now() - 60_000]]))
+    chQueryMock.mockRejectedValue(new Error('ClickHouse timeout'))
+
+    const result = await runEvaluateAlertsJob()
+
+    expect(result.metric_errors).toBe(1)
+  })
+
   test('eval_score alerts are unaffected — they never read ClickHouse', async () => {
     alertsResultMock.mockReturnValue({
       data: [budgetAlert({ id: 'alert-2', type: 'eval_score', threshold: 0.8 })],
@@ -172,4 +187,86 @@ describe('runEvaluateAlertsJob with the activity watermark', () => {
 
     expect(chQueryMock).not.toHaveBeenCalled()
   })
+})
+
+/**
+ * Long-window budget alerts.
+ *
+ * A monthly spend cap runs a 30-day window, so any org that sent one request
+ * in the last month sits inside it and the window gate never bites. This was
+ * the last query still firing every 15 minutes in production after the
+ * watermark shipped, and one query every 15 minutes is all it takes to hold
+ * ClickHouse Cloud awake — the same bill as before.
+ *
+ * The extra gate only applies to budget, because `sum(cost_usd)` over a
+ * sliding window cannot rise without new rows. error_rate and p95 can, so
+ * they must keep evaluating; those cases are pinned here too.
+ */
+describe('budget alerts with a window longer than the cron interval', () => {
+  const THIRTY_DAYS_MIN = 43_200
+
+  test('skips ClickHouse when nothing arrived since the last successful run', async () => {
+    alertsResultMock.mockReturnValue({
+      data: [budgetAlert({ type: 'budget', window_minutes: THIRTY_DAYS_MIN })],
+      error: null,
+    })
+    lastSuccessfulRunAtMock.mockResolvedValue(new Date(Date.now() - 15 * 60 * 1000))
+    // Active three weeks ago: inside the 30-day window, before the last run.
+    getOrgActivitySinceMock.mockResolvedValue(
+      new Map([[ORG, Date.now() - 21 * 24 * 60 * 60 * 1000]]),
+    )
+
+    await runEvaluateAlertsJob()
+
+    expect(chQueryMock).not.toHaveBeenCalled()
+  })
+
+  test('still queries when traffic arrived after the last successful run', async () => {
+    alertsResultMock.mockReturnValue({
+      data: [budgetAlert({ type: 'budget', window_minutes: THIRTY_DAYS_MIN })],
+      error: null,
+    })
+    lastSuccessfulRunAtMock.mockResolvedValue(new Date(Date.now() - 15 * 60 * 1000))
+    getOrgActivitySinceMock.mockResolvedValue(new Map([[ORG, Date.now() - 60_000]]))
+    chQueryMock.mockResolvedValue({ json: async () => [{ total: '1' }] })
+
+    await runEvaluateAlertsJob()
+
+    expect(chQueryMock).toHaveBeenCalledTimes(1)
+  })
+
+  test('falls back to the window when there is no successful run to gate on', async () => {
+    alertsResultMock.mockReturnValue({
+      data: [budgetAlert({ type: 'budget', window_minutes: THIRTY_DAYS_MIN })],
+      error: null,
+    })
+    lastSuccessfulRunAtMock.mockResolvedValue(null)
+    getOrgActivitySinceMock.mockResolvedValue(
+      new Map([[ORG, Date.now() - 21 * 24 * 60 * 60 * 1000]]),
+    )
+    chQueryMock.mockResolvedValue({ json: async () => [{ total: '1' }] })
+
+    await runEvaluateAlertsJob()
+
+    expect(chQueryMock).toHaveBeenCalledTimes(1)
+  })
+
+  test.each(['error_rate', 'latency_p95'])(
+    '%s keeps the window as its gate — it can rise without new traffic',
+    async (type) => {
+      alertsResultMock.mockReturnValue({
+        data: [budgetAlert({ type, window_minutes: THIRTY_DAYS_MIN })],
+        error: null,
+      })
+      lastSuccessfulRunAtMock.mockResolvedValue(new Date(Date.now() - 15 * 60 * 1000))
+      getOrgActivitySinceMock.mockResolvedValue(
+        new Map([[ORG, Date.now() - 21 * 24 * 60 * 60 * 1000]]),
+      )
+      chQueryMock.mockResolvedValue({ json: async () => [{ total: '1', errors: '0', p95: '1' }] })
+
+      await runEvaluateAlertsJob()
+
+      expect(chQueryMock).toHaveBeenCalledTimes(1)
+    },
+  )
 })
