@@ -2,6 +2,7 @@ import { supabaseAdmin } from './db.js'
 import { MONTHLY_REQUEST_LIMITS, countMonthlyRequests, type Plan } from './quota.js'
 import { sendQuotaWarningEmail } from './notifiers.js'
 import { decideQuotaWarning, currentMonthStartMs } from './quota-warnings-stats.js'
+import { getOrgActivitySince, orgActiveSince } from './org-activity.js'
 
 /**
  * Quota warning emails at 80% / 100% of the monthly request limit.
@@ -71,6 +72,14 @@ export async function runQuotaWarningsJob(): Promise<QuotaWarningRunResult> {
 
   const result: QuotaWarningRunResult = { checked: 0, sent80: 0, sent100: 0, errors: 0 }
 
+  // Which of these orgs sent anything this month. Orgs that sent nothing are
+  // at 0% of their quota by definition, so counting them in ClickHouse can
+  // only ever return zero — and doing it anyway, once an hour, for every org
+  // on the platform, is a large part of what kept ClickHouse Cloud from ever
+  // suspending (lib/org-activity.ts). A null map means the watermark was
+  // unreadable, and every org falls back to the ClickHouse count.
+  const activity = await getOrgActivitySince(new Date(monthStartMs))
+
   // Same env-driven base the other lifecycle emails use (stale-key-digest,
   // data-silence) so the upgrade CTA lands on the right host in every env.
   const billingUrl = `${process.env['WEB_URL'] ?? 'https://www.spanlens.io'}/billing`
@@ -81,17 +90,23 @@ export async function runQuotaWarningsJob(): Promise<QuotaWarningRunResult> {
     if (limit === null) continue // defensive: enterprise slipped past the filter
 
     // Count this org's requests this month — same source of truth the
-    // proxy middleware uses for 429 enforcement.
+    // proxy middleware uses for 429 enforcement. Skipped entirely when the
+    // watermark says the org has been silent all month: the count would be
+    // 0, and `decideQuotaWarning(0, …)` never sends.
     let used: number
-    try {
-      used = await countMonthlyRequests(org.id, new Date(monthStartMs))
-    } catch (err) {
-      console.error(
-        `[quota-warnings] count failed for org ${org.id}:`,
-        err instanceof Error ? err.message : err,
-      )
-      result.errors++
-      continue
+    if (!orgActiveSince(activity, org.id, new Date(monthStartMs))) {
+      used = 0
+    } else {
+      try {
+        used = await countMonthlyRequests(org.id, new Date(monthStartMs))
+      } catch (err) {
+        console.error(
+          `[quota-warnings] count failed for org ${org.id}:`,
+          err instanceof Error ? err.message : err,
+        )
+        result.errors++
+        continue
+      }
     }
 
     const ratio = used / limit

@@ -9,6 +9,7 @@ import { writeRequestAsEvent } from './events-writer.js'
 import { logError } from './structured-logger.js'
 import { resolvePromptVersion } from './resolve-prompt-version.js'
 import { getOrgBodySampleRate, shouldStoreBody } from './org-log-config.js'
+import { recordOrgActivity } from './org-activity.js'
 
 /**
  * Customer-controlled body logging mode (sent via the `x-spanlens-log-body`
@@ -346,6 +347,24 @@ export async function logRequestAsync(data: RequestLogData): Promise<void> {
         provider: data.provider,
         kind: 'events_shadow_insert',
       }, err)
+    }
+    // ── Activity watermark ───────────────────────────────────────────────────
+    // Tells the cron fleet this org has something new, so the jobs that read
+    // ClickHouse can answer "anything to look at?" from Postgres and stay off
+    // ClickHouse on a quiet system — the difference between a service that
+    // suspends and one billed 24/7 (lib/org-activity.ts). Throttled to one
+    // write per org per minute per instance and never throws, so it cannot
+    // affect a request whose row already landed. Awaited for the same reason
+    // the events write is: gotcha #8 drops unawaited promises here.
+    //
+    // Wrapped even though recordOrgActivity swallows its own failures: this
+    // sits inside the try whose catch queues the row to requests_fallback,
+    // so a future refactor that let something escape here would replay a row
+    // ClickHouse already accepted.
+    try {
+      await recordOrgActivity(data.organizationId)
+    } catch (err) {
+      logError('UNCATEGORIZED', { orgId: data.organizationId, kind: 'org_activity_watermark' }, err)
     }
   } catch (err) {
     // ── ClickHouse fallback (P2.6) ─────────────────────────────────────────

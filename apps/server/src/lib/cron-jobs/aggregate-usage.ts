@@ -23,6 +23,8 @@
 // inline disable was redundant.
 import { unscopedClickhouse } from '../clickhouse.js'
 import { supabaseAdmin } from '../db.js'
+import { anyActivitySince } from '../org-activity.js'
+import { lastSuccessfulRunAt } from '../cron-cadence.js'
 
 export interface AggregateUsageDayResult {
   date: string
@@ -34,6 +36,8 @@ export interface AggregateUsageJobResult {
   success: boolean
   ran_at: string
   results: AggregateUsageDayResult[]
+  /** Set when the activity watermark showed nothing new to roll up. */
+  skipped?: 'no_new_activity'
 }
 
 async function aggregateOneDay(date: string): Promise<AggregateUsageDayResult> {
@@ -107,10 +111,26 @@ async function aggregateOneDay(date: string): Promise<AggregateUsageDayResult> {
   }
 }
 
-export async function runAggregateUsageJob(): Promise<AggregateUsageJobResult> {
+export async function runAggregateUsageJob(
+  options: { force?: boolean } = {},
+): Promise<AggregateUsageJobResult> {
   const now = new Date()
   const today = now.toISOString().slice(0, 10)
   const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+
+  // The rollup is a pure function of the `requests` rows it reads, so if no
+  // request has been logged since the last successful run there is nothing to
+  // recompute — and running anyway would wake ClickHouse Cloud out of its
+  // idle window for no result (lib/org-activity.ts). Both lookups fail open,
+  // so an unreadable watermark or missing run history still aggregates.
+  // `force` is the operator escape hatch for re-running after usage_daily
+  // rows are edited or deleted by hand.
+  if (!options.force) {
+    const lastRun = await lastSuccessfulRunAt('aggregate-usage')
+    if (lastRun && !(await anyActivitySince(lastRun))) {
+      return { success: true, ran_at: now.toISOString(), skipped: 'no_new_activity', results: [] }
+    }
+  }
 
   const results: AggregateUsageDayResult[] = []
   for (const date of [yesterday, today]) {

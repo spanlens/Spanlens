@@ -63,6 +63,38 @@ export async function ranSuccessfullyWithin(jobName: string, minutes: number): P
   }
 }
 
+/**
+ * When `jobName` last completed successfully, or `null` if it never has (or
+ * the lookup failed). Callers use it as the lower bound for "has anything
+ * changed since we last did this work".
+ *
+ * Same fail-open contract as `ranSuccessfullyWithin`: `null` should lead the
+ * caller to do the work, not to skip it.
+ */
+export async function lastSuccessfulRunAt(jobName: string): Promise<Date | null> {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('cron_job_runs')
+      .select('ran_at')
+      .eq('job_name', jobName)
+      .eq('status', 'ok')
+      .order('ran_at', { ascending: false })
+      .limit(1)
+
+    if (error) {
+      console.error(`[cron-cadence] last-run lookup failed for ${jobName}: ${error.message}`)
+      return null
+    }
+    const raw = (data ?? [])[0] as { ran_at?: string } | undefined
+    if (!raw?.ran_at) return null
+    const ms = Date.parse(raw.ran_at)
+    return Number.isNaN(ms) ? null : new Date(ms)
+  } catch (err) {
+    console.error(`[cron-cadence] last-run lookup failed for ${jobName}:`, err)
+    return null
+  }
+}
+
 export interface CadenceSkip {
   success: true
   skipped: 'cadence'
