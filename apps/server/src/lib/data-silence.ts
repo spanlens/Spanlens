@@ -16,12 +16,22 @@
  * Structure mirrors stale-key-digest.ts: global ClickHouse aggregation is
  * allowed here (lib file) because organization_id is part of the GROUP BY
  * and every downstream write/emails are keyed per org.
+ *
+ * That aggregation is now conditional. Only one decision in this job needs a
+ * real count — whether an org's prior week clears the threshold to OPEN an
+ * episode. Resolving and retrying both reduce to "does this org have traffic
+ * in the last 24h", which the Postgres activity watermark answers exactly.
+ * So the ClickHouse scan runs only when there is a candidate to open; see
+ * `shouldScanClickhouse`. On a quiet platform that is never, which matters
+ * because ClickHouse Cloud bills by uptime and a six-hourly scan is four
+ * wake-ups a day regardless of how little it reads (lib/org-activity.ts).
  */
 
 import { supabaseAdmin } from './db.js'
 import { unscopedClickhouse, fromClickhouseTimestamp } from './clickhouse.js'
 import { sendEmail, renderDataSilenceEmail } from './resend.js'
 import { getAdminEmails } from './admin-emails.js'
+import { getOrgActivitySince, type OrgActivityMap } from './org-activity.js'
 
 /** Minimum prior-week volume before silence is considered meaningful. */
 export const DATA_SILENCE_MIN_PRIOR_REQUESTS = 50
@@ -135,6 +145,71 @@ async function fetchOrgTraffic(): Promise<OrgTrafficRow[]> {
   }))
 }
 
+/**
+ * Traffic rows derived from the Postgres activity watermark instead of a
+ * ClickHouse scan, for runs where ClickHouse cannot change the outcome.
+ *
+ * The watermark stores each org's most recent request, which answers
+ * `recent_count > 0` exactly — that is all `toResolve` and `toRetryEmail`
+ * need. It cannot answer `prior_count`, so this is only usable on runs with
+ * no episode to open; `shouldScanClickhouse` decides that.
+ *
+ * `recent_count` here is a presence flag (1 = the org has traffic inside the
+ * silence window), never a real count. Nothing downstream compares it to
+ * anything but zero.
+ */
+function synthesizeRowsFromWatermark(
+  openEpisodes: OpenEpisode[],
+  activity: OrgActivityMap,
+  silenceCutoffMs: number,
+): OrgTrafficRow[] {
+  return openEpisodes.map((e) => {
+    const lastMs = activity.get(e.organization_id)
+    return {
+      organization_id: e.organization_id,
+      prior_count: 0,
+      recent_count: lastMs != null && lastMs >= silenceCutoffMs ? 1 : 0,
+      last_request_at: lastMs != null ? new Date(lastMs).toISOString() : null,
+    }
+  })
+}
+
+/**
+ * Whether this run needs the ClickHouse scan at all.
+ *
+ * Only one decision needs `prior_count`: opening a new episode. An org can
+ * only be that candidate if it is silent inside the window AND has no open
+ * episode already AND sent something within the baseline lookback — an org
+ * that has been silent longer than the whole lookback has `prior_count = 0`
+ * by definition and can never cross the threshold, so it is not a candidate
+ * no matter how long it stays quiet.
+ *
+ * That last clause is what stops this from degrading back into a scan every
+ * six hours: a long-dormant org drops out of the candidate set permanently
+ * rather than being re-examined forever.
+ *
+ * Returns true (scan) whenever the watermark is unreadable, so a missing or
+ * broken watermark degrades to the previous behaviour rather than to missed
+ * alerts.
+ */
+export function shouldScanClickhouse(
+  activity: OrgActivityMap | null,
+  openEpisodes: OpenEpisode[],
+  nowMs: number,
+): boolean {
+  if (activity === null) return true
+
+  const silenceCutoffMs = nowMs - DATA_SILENCE_WINDOW_HOURS * 60 * 60 * 1000
+  const openOrgIds = new Set(openEpisodes.map((e) => e.organization_id))
+
+  for (const [orgId, lastMs] of activity) {
+    if (lastMs >= silenceCutoffMs) continue // not silent
+    if (openOrgIds.has(orgId)) continue // already alerted
+    return true // silent, unalerted, and inside the lookback → needs prior_count
+  }
+  return false
+}
+
 async function fetchOpenEpisodes(): Promise<OpenEpisode[]> {
   const { data, error } = await supabaseAdmin
     .from('data_silence_alerts')
@@ -221,10 +296,27 @@ export async function runDataSilenceJob(): Promise<DataSilenceRunResult> {
     errors: [],
   }
 
+  const nowMs = Date.now()
+  const lookbackMs = (DATA_SILENCE_PRIOR_WINDOW_DAYS + 1) * 24 * 60 * 60 * 1000
+  const silenceCutoffMs = nowMs - DATA_SILENCE_WINDOW_HOURS * 60 * 60 * 1000
+
   let rows: OrgTrafficRow[]
   let openEpisodes: OpenEpisode[]
   try {
-    ;[rows, openEpisodes] = await Promise.all([fetchOrgTraffic(), fetchOpenEpisodes()])
+    // The watermark and the open-episode list together decide whether the
+    // ClickHouse scan can change anything this run. Running it regardless,
+    // every six hours, was four wake-ups a day on a service billed by uptime
+    // (lib/org-activity.ts) for a job that on a quiet platform has nothing to
+    // report.
+    const [activity, episodes] = await Promise.all([
+      getOrgActivitySince(new Date(nowMs - lookbackMs)),
+      fetchOpenEpisodes(),
+    ])
+    openEpisodes = episodes
+    rows =
+      activity === null || shouldScanClickhouse(activity, openEpisodes, nowMs)
+        ? await fetchOrgTraffic()
+        : synthesizeRowsFromWatermark(openEpisodes, activity, silenceCutoffMs)
   } catch (err) {
     result.errors.push(err instanceof Error ? err.message : 'unknown')
     return result
