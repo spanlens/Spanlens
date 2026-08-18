@@ -52,6 +52,18 @@ name: Cron — server sub-daily
 # the same endpoint is fine — every handler holds an advisory lock or
 # is naturally idempotent.
 #
+# One exception, added 2026-08-18: the four endpoints that read
+# ClickHouse (/cron/evaluate-alerts, /cron/check-quota-warnings,
+# /cron/aggregate-usage, /cron/detect-missing-model-prices) are
+# idempotent but not free. ClickHouse Cloud bills compute by uptime and
+# only suspends after 15 quiet minutes, so three schedulers firing the
+# same endpoint at different minutes kept the service awake around the
+# clock — $8.80/day for ~8 real customer requests/day. Those four now
+# debounce themselves in the handler via lib/cron-cadence.ts, so the
+# duplicate firings here stay harmless: whichever scheduler wins does
+# the work and the others get a 200 with {"skipped":"cadence"}.
+# Nothing in this workflow needs changing when that interval is tuned.
+#
 # Usage / billing crons reclaimed into IaC (2026-07-22): these four were
 # firing in production via an external Better Stack monitor but were
 # declared in NEITHER vercel.json NOR this file, so their schedule lived
