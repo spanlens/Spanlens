@@ -86,29 +86,30 @@ function assertCronAuth(authHeader: string | undefined): void {
 cronRouter.get('/aggregate-usage', async (c) => {
   assertCronAuth(c.req.header('Authorization'))
 
-  if (await ranSuccessfullyWithin('aggregate-usage', CH_CRON_MIN_INTERVAL_MINUTES)) {
+  // `?force=1` re-runs the rollup even when the debounce or the activity
+  // watermark would skip it — the operator path for rebuilding usage_daily
+  // after rows are edited by hand.
+  const force = c.req.query('force') === '1'
+
+  if (!force && (await ranSuccessfullyWithin('aggregate-usage', CH_CRON_MIN_INTERVAL_MINUTES))) {
     return c.json(cadenceSkipResponse('aggregate-usage', CH_CRON_MIN_INTERVAL_MINUTES))
   }
 
   const start = Date.now()
-  const result = await runAggregateUsageJob()
+  const result = await runAggregateUsageJob({ force })
   const errorMsg = result.success ? undefined : result.results.find((r) => r.error)?.error
   await logCronRun('aggregate-usage', result.success ? 'ok' : 'error', Date.now() - start, errorMsg)
   return c.json(result)
 })
 
 // ── /evaluate-alerts — body in lib/cron-jobs/evaluate-alerts.ts ──
-// Debounced to hourly even though vercel.json still schedules it every 15
-// minutes: each run queries ClickHouse per active alert, which on its own
-// resets the 15-minute idle timer forever. The finer cadence comes back
-// once ClickHouse reads are gated behind the Postgres activity watermark
-// (then a quiet window costs nothing and there is no reason to throttle).
+// Runs at the full every-15-minutes cadence and is deliberately NOT
+// debounced. The job now checks the Postgres activity watermark before
+// touching ClickHouse, so a quiet window costs one small Postgres query and
+// there is nothing to throttle. When there IS traffic, ClickHouse is awake
+// because of that traffic, so the queries are no longer what holds it open.
 cronRouter.get('/evaluate-alerts', async (c) => {
   assertCronAuth(c.req.header('Authorization'))
-
-  if (await ranSuccessfullyWithin('evaluate-alerts', CH_CRON_MIN_INTERVAL_MINUTES)) {
-    return c.json(cadenceSkipResponse('evaluate-alerts', CH_CRON_MIN_INTERVAL_MINUTES))
-  }
 
   const start = Date.now()
   const result = await runEvaluateAlertsJob()

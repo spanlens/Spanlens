@@ -16,6 +16,7 @@
  */
 
 import { getOrgClickhouse } from '../clickhouse.js'
+import { getOrgActivitySince, orgActiveSince, type OrgActivityMap } from '../org-activity.js'
 import { supabaseAdmin } from '../db.js'
 import { deliverToChannel, type AlertNotification } from '../notifiers.js'
 import { emitWebhookEvent } from '../webhook-emit.js'
@@ -59,7 +60,10 @@ export interface EvaluateAlertsJobResult {
   report: Array<{ alert_id: string; fired: boolean; reason?: string }>
 }
 
-async function computeMetric(alert: AlertRow): Promise<number | null> {
+async function computeMetric(
+  alert: AlertRow,
+  activity: OrgActivityMap | null,
+): Promise<number | null> {
   // eval_score reads from Supabase (eval_runs), not ClickHouse. It is the
   // mean of completed runs' avg_score over the window. Returns null when no
   // completed runs scored in the window (no data → don't fire). eval_runs has
@@ -89,7 +93,20 @@ async function computeMetric(alert: AlertRow): Promise<number | null> {
     return scores.reduce((a, b) => a + b, 0) / scores.length
   }
 
-  const windowStart = new Date(Date.now() - alert.window_minutes * 60 * 1000)
+  const windowStartDate = new Date(Date.now() - alert.window_minutes * 60 * 1000)
+
+  // Nothing was logged for this org inside the window, so ClickHouse would
+  // return an empty aggregate. Short-circuiting to the empty-result value
+  // is not just an optimisation: querying anyway resets ClickHouse Cloud's
+  // 15-minute idle timer and is what used to keep the service billed around
+  // the clock (lib/org-activity.ts). The three ClickHouse-backed metrics all
+  // collapse to 0 on no rows — budget sums nothing, error_rate divides by a
+  // zero total and returns 0, p95 of an empty set reads as 0 — so this is
+  // the same number the query would have produced, and the threshold
+  // comparison below stays untouched.
+  if (!orgActiveSince(activity, alert.organization_id, windowStartDate)) return 0
+
+  const windowStart = windowStartDate
     .toISOString()
     .replace('T', ' ')
     .replace('Z', '')
@@ -163,8 +180,20 @@ export async function runEvaluateAlertsJob(): Promise<EvaluateAlertsJobResult> {
   const report: Array<{ alert_id: string; fired: boolean; reason?: string }> = []
   const firingAlerts: { alert: AlertRow; current: number }[] = []
 
+  const alertRows = (alerts ?? []) as AlertRow[]
+
+  // One activity lookup for the whole run, using the widest alert window so a
+  // single query serves every per-alert check. `computeMetric` narrows from
+  // here; a null map means the watermark was unreadable and every org is
+  // treated as active, which is exactly the pre-watermark behaviour.
+  const widestWindowMinutes = alertRows.reduce((max, a) => Math.max(max, a.window_minutes), 0)
+  const activity =
+    widestWindowMinutes > 0
+      ? await getOrgActivitySince(new Date(Date.now() - widestWindowMinutes * 60 * 1000))
+      : null
+
   // Phase 1: evaluate metrics
-  for (const alert of (alerts ?? []) as AlertRow[]) {
+  for (const alert of alertRows) {
     if (alert.last_triggered_at) {
       const elapsedMin = (Date.now() - new Date(alert.last_triggered_at).getTime()) / 60_000
       if (elapsedMin < alert.cooldown_minutes) {
@@ -173,7 +202,7 @@ export async function runEvaluateAlertsJob(): Promise<EvaluateAlertsJobResult> {
       }
     }
 
-    const current = await computeMetric(alert)
+    const current = await computeMetric(alert, activity)
     if (current == null) {
       // No data in the window (or a metric error) — can't assert a breach.
       report.push({ alert_id: alert.id, fired: false, reason: 'no_data' })

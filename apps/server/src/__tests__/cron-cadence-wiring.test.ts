@@ -26,9 +26,21 @@ import { describe, expect, test } from 'vitest'
 
 const CH_READING_CRONS = [
   'aggregate-usage',
-  'evaluate-alerts',
   'check-quota-warnings',
   'detect-missing-model-prices',
+] as const
+
+/**
+ * evaluate-alerts is deliberately absent from that list. It runs at its full
+ * every-15-minutes cadence and relies on the activity watermark instead, so
+ * a quiet window costs a Postgres query and nothing more. Its own guard is
+ * asserted separately below.
+ */
+const WATERMARK_GATED_JOB_SOURCES = [
+  ['lib/cron-jobs/evaluate-alerts.ts', 'orgActiveSince'],
+  ['lib/quota-warnings.ts', 'orgActiveSince'],
+  ['lib/cron-jobs/aggregate-usage.ts', 'anyActivitySince'],
+  ['lib/cron-jobs/detect-missing-model-prices.ts', 'anyActivitySince'],
 ] as const
 
 const cronSource = readFileSync(
@@ -57,4 +69,26 @@ describe('ClickHouse-reading cron routes', () => {
   test('the guard helpers are imported from lib/cron-cadence', () => {
     expect(cronSource).toContain("from '../lib/cron-cadence.js'")
   })
+
+  test('evaluate-alerts keeps its full cadence and is not debounced', () => {
+    const routeStart = cronSource.indexOf("cronRouter.get('/evaluate-alerts'")
+    const nextRoute = cronSource.indexOf('cronRouter.get(', routeStart + 1)
+    const body = cronSource.slice(routeStart, nextRoute === -1 ? undefined : nextRoute)
+    expect(body).not.toContain('ranSuccessfullyWithin')
+  })
+})
+
+describe('watermark-gated ClickHouse jobs', () => {
+  test.each(WATERMARK_GATED_JOB_SOURCES)(
+    '%s checks the activity watermark before querying ClickHouse',
+    (relPath, guard) => {
+      const src = readFileSync(
+        join(dirname(fileURLToPath(import.meta.url)), '..', ...relPath.split('/')),
+        'utf8',
+      )
+      // Relative depth differs between lib/ and lib/cron-jobs/.
+      expect(src).toMatch(/from '\.\.?\/(\.\.\/)?org-activity\.js'/)
+      expect(src).toContain(guard)
+    },
+  )
 })

@@ -13,6 +13,7 @@
 // fire here, so the inline disable was a no-op.
 import { unscopedClickhouse } from '../clickhouse.js'
 import { supabaseAdmin } from '../db.js'
+import { anyActivitySince } from '../org-activity.js'
 
 export interface DetectMissingModelPricesResult {
   ok: boolean
@@ -25,6 +26,13 @@ const THRESHOLD = 100
 
 export async function runDetectMissingModelPricesJob(): Promise<DetectMissingModelPricesResult> {
   try {
+    // Nothing was logged anywhere in the last hour, so the scan below has no
+    // rows to find and would only serve to reset ClickHouse Cloud's idle
+    // timer (lib/org-activity.ts). `anyActivitySince` fails open, so an
+    // unreadable watermark still runs the scan.
+    const windowStart = new Date(Date.now() - 60 * 60 * 1000)
+    if (!(await anyActivitySince(windowStart))) return { ok: true, missing: 0 }
+
     const rs = await unscopedClickhouse().query({
       query: `
         SELECT model, count() AS missing_count
