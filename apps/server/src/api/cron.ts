@@ -144,8 +144,20 @@ cronRouter.get('/check-quota-warnings', async (c) => {
   const start = Date.now()
   try {
     const result = await runQuotaWarningsJob()
-    await logCronRun('check-quota-warnings', 'ok', Date.now() - start)
-    return c.json({ success: true, ...result })
+    // A run that could not count every org is NOT a success. The job gates
+    // its ClickHouse reads on "anything new since the last successful run"
+    // (lib/quota-warnings.ts), so recording a partial run as ok would move
+    // that gate past orgs it never actually checked — one transient failure
+    // could then park an org just under its cap until its next request.
+    // Logging the error keeps the gate where it was and re-checks everyone.
+    const failed = result.errors > 0
+    await logCronRun(
+      'check-quota-warnings',
+      failed ? 'error' : 'ok',
+      Date.now() - start,
+      failed ? `${result.errors} org(s) failed to check` : undefined,
+    )
+    return c.json({ success: !failed, ...result })
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'unknown'
     await logCronRun('check-quota-warnings', 'error', Date.now() - start, msg)
