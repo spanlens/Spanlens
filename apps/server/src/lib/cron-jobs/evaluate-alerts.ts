@@ -17,6 +17,7 @@
 
 import { getOrgClickhouse } from '../clickhouse.js'
 import { getOrgActivitySince, orgActiveSince, type OrgActivityMap } from '../org-activity.js'
+import { lastSuccessfulRunAt } from '../cron-cadence.js'
 import { supabaseAdmin } from '../db.js'
 import { deliverToChannel, type AlertNotification } from '../notifiers.js'
 import { emitWebhookEvent } from '../webhook-emit.js'
@@ -58,11 +59,52 @@ export interface EvaluateAlertsJobResult {
   success: boolean
   evaluated: number
   report: Array<{ alert_id: string; fired: boolean; reason?: string }>
+  /**
+   * Metrics that could not be computed (ClickHouse or Supabase error), as
+   * opposed to metrics that legitimately found no data. The caller logs the
+   * run as failed when this is non-zero so `lastSuccessfulRunAt` does not
+   * advance — budget alerts gate on it, and moving it past a run that never
+   * actually evaluated them would silence them until new traffic arrived.
+   */
+  metric_errors: number
+}
+
+/** Mutable per-run counters threaded through computeMetric. */
+interface RunStats {
+  metricErrors: number
+}
+
+/**
+ * Earliest moment new traffic could change this alert's verdict.
+ *
+ * For most metrics that is simply the start of the alert's window. `budget`
+ * is the exception, and it matters because budget alerts are the ones with
+ * long windows — a monthly spend cap runs a 30-day window, which any org
+ * that sent a single request in the last month falls inside. Gating on the
+ * window alone leaves those alerts querying ClickHouse every 15 minutes
+ * forever, which is the whole cost problem (lib/org-activity.ts).
+ *
+ * A budget metric is `sum(cost_usd)` over a sliding window, so with no new
+ * rows it can only fall as old rows age out. If the previous run did not
+ * breach, neither can this one. So for budget the gate moves forward to the
+ * last successful run.
+ *
+ * error_rate and latency_p95 deliberately keep the window as their gate:
+ * both are ratios or quantiles that CAN rise as old rows leave, so "no new
+ * traffic" does not imply "no new breach". Their natural windows are short
+ * anyway (an hour), which the watermark already handles well.
+ */
+function gateStartFor(alert: AlertRow, windowStart: Date, lastRun: Date | null): Date {
+  if (alert.type !== 'budget') return windowStart
+  if (!lastRun || lastRun.getTime() <= windowStart.getTime()) return windowStart
+  return lastRun
 }
 
 async function computeMetric(
   alert: AlertRow,
   activity: OrgActivityMap | null,
+  lastRun: Date | null,
+  stats: RunStats,
 ): Promise<number | null> {
   // eval_score reads from Supabase (eval_runs), not ClickHouse. It is the
   // mean of completed runs' avg_score over the window. Returns null when no
@@ -84,6 +126,7 @@ async function computeMetric(
         alertId: alert.id,
         kind: 'compute_metric_eval_score',
       }, error)
+      stats.metricErrors++
       return null
     }
     const scores = (data ?? [])
@@ -95,16 +138,21 @@ async function computeMetric(
 
   const windowStartDate = new Date(Date.now() - alert.window_minutes * 60 * 1000)
 
-  // Nothing was logged for this org inside the window, so ClickHouse would
-  // return an empty aggregate. Short-circuiting to the empty-result value
-  // is not just an optimisation: querying anyway resets ClickHouse Cloud's
-  // 15-minute idle timer and is what used to keep the service billed around
-  // the clock (lib/org-activity.ts). The three ClickHouse-backed metrics all
-  // collapse to 0 on no rows — budget sums nothing, error_rate divides by a
-  // zero total and returns 0, p95 of an empty set reads as 0 — so this is
-  // the same number the query would have produced, and the threshold
-  // comparison below stays untouched.
-  if (!orgActiveSince(activity, alert.organization_id, windowStartDate)) return 0
+  // No new traffic since the gate, so this alert cannot newly breach and the
+  // ClickHouse query is skipped. That is not just an optimisation: querying
+  // anyway resets ClickHouse Cloud's 15-minute idle timer, which is what kept
+  // the service billed around the clock (lib/org-activity.ts).
+  //
+  // 0 is the right stand-in for two different reasons depending on the gate.
+  // When the gate is the window start, it is literally what ClickHouse would
+  // have returned: budget sums nothing, error_rate divides by a zero total,
+  // p95 of an empty set reads as 0. When the gate is the last run (budget
+  // only — see gateStartFor), the true sum may still be non-zero, but it is
+  // no higher than it was on the run that already decided not to fire, so 0
+  // reaches the same verdict. The value is not surfaced on a non-firing
+  // alert, so nothing downstream reads it.
+  if (!orgActiveSince(activity, alert.organization_id, gateStartFor(alert, windowStartDate, lastRun)))
+    return 0
 
   const windowStart = windowStartDate
     .toISOString()
@@ -165,6 +213,7 @@ async function computeMetric(
       alertId: alert.id,
       kind: 'compute_metric',
     }, err)
+    stats.metricErrors++
     return null
   }
 }
@@ -192,6 +241,11 @@ export async function runEvaluateAlertsJob(): Promise<EvaluateAlertsJobResult> {
       ? await getOrgActivitySince(new Date(Date.now() - widestWindowMinutes * 60 * 1000))
       : null
 
+  // Budget alerts gate on the later of their window and this — see
+  // gateStartFor. Only fetched when there is something to evaluate.
+  const lastRun = alertRows.length > 0 ? await lastSuccessfulRunAt('evaluate-alerts') : null
+  const stats: RunStats = { metricErrors: 0 }
+
   // Phase 1: evaluate metrics
   for (const alert of alertRows) {
     if (alert.last_triggered_at) {
@@ -202,7 +256,7 @@ export async function runEvaluateAlertsJob(): Promise<EvaluateAlertsJobResult> {
       }
     }
 
-    const current = await computeMetric(alert, activity)
+    const current = await computeMetric(alert, activity, lastRun, stats)
     if (current == null) {
       // No data in the window (or a metric error) — can't assert a breach.
       report.push({ alert_id: alert.id, fired: false, reason: 'no_data' })
@@ -217,7 +271,7 @@ export async function runEvaluateAlertsJob(): Promise<EvaluateAlertsJobResult> {
   }
 
   if (firingAlerts.length === 0) {
-    return { success: true, evaluated: report.length, report }
+    return { success: true, evaluated: report.length, report, metric_errors: stats.metricErrors }
   }
 
   // Phase 2: batch-fetch channels + org names
@@ -298,5 +352,5 @@ export async function runEvaluateAlertsJob(): Promise<EvaluateAlertsJobResult> {
     report.push({ alert_id: alert.id, fired: true })
   }
 
-  return { success: true, evaluated: report.length, report }
+  return { success: true, evaluated: report.length, report, metric_errors: stats.metricErrors }
 }

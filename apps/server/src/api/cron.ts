@@ -113,8 +113,19 @@ cronRouter.get('/evaluate-alerts', async (c) => {
 
   const start = Date.now()
   const result = await runEvaluateAlertsJob()
-  await logCronRun('evaluate-alerts', 'ok', Date.now() - start)
-  return c.json(result)
+  // A run where a metric could not be computed is not a success. Budget
+  // alerts gate their ClickHouse read on "anything new since the last
+  // successful run" (lib/cron-jobs/evaluate-alerts.ts gateStartFor), so
+  // stamping a partial run as ok would move that gate past alerts this run
+  // never actually evaluated, silencing them until new traffic arrived.
+  const failed = result.metric_errors > 0
+  await logCronRun(
+    'evaluate-alerts',
+    failed ? 'error' : 'ok',
+    Date.now() - start,
+    failed ? `${result.metric_errors} metric(s) failed to compute` : undefined,
+  )
+  return c.json({ ...result, success: !failed })
 })
 
 // ── Paddle usage overage reporting (daily) ──────────────────────
