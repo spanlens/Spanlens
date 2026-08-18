@@ -14,6 +14,14 @@ import { runReconciliationCron } from '../lib/events-reconciliation.js'
 import { runLeakDetectionJob } from '../lib/leak-detection.js'
 import { sendHighConfidenceRecommendationAlerts } from '../lib/recommendation-notify.js'
 import { logCronRun } from '../lib/cron-logger.js'
+// Cadence guard for the four ClickHouse-reading crons. Three schedulers fire
+// every endpoint (gotcha #32); for these four that redundancy used to keep
+// ClickHouse Cloud awake around the clock. See lib/cron-cadence.ts.
+import {
+  ranSuccessfullyWithin,
+  cadenceSkipResponse,
+  CH_CRON_MIN_INTERVAL_MINUTES,
+} from '../lib/cron-cadence.js'
 import { purgeExpiredProxyCache } from '../lib/proxy-cache.js'
 import { replayFallbackQueue, replayEventsFallbackQueue, alertOnFallbackBacklog } from '../lib/fallback-replay.js'
 import { runDowngradeCheck } from '../lib/billing-downgrade.js'
@@ -78,6 +86,10 @@ function assertCronAuth(authHeader: string | undefined): void {
 cronRouter.get('/aggregate-usage', async (c) => {
   assertCronAuth(c.req.header('Authorization'))
 
+  if (await ranSuccessfullyWithin('aggregate-usage', CH_CRON_MIN_INTERVAL_MINUTES)) {
+    return c.json(cadenceSkipResponse('aggregate-usage', CH_CRON_MIN_INTERVAL_MINUTES))
+  }
+
   const start = Date.now()
   const result = await runAggregateUsageJob()
   const errorMsg = result.success ? undefined : result.results.find((r) => r.error)?.error
@@ -86,8 +98,17 @@ cronRouter.get('/aggregate-usage', async (c) => {
 })
 
 // ── /evaluate-alerts — body in lib/cron-jobs/evaluate-alerts.ts ──
+// Debounced to hourly even though vercel.json still schedules it every 15
+// minutes: each run queries ClickHouse per active alert, which on its own
+// resets the 15-minute idle timer forever. The finer cadence comes back
+// once ClickHouse reads are gated behind the Postgres activity watermark
+// (then a quiet window costs nothing and there is no reason to throttle).
 cronRouter.get('/evaluate-alerts', async (c) => {
   assertCronAuth(c.req.header('Authorization'))
+
+  if (await ranSuccessfullyWithin('evaluate-alerts', CH_CRON_MIN_INTERVAL_MINUTES)) {
+    return c.json(cadenceSkipResponse('evaluate-alerts', CH_CRON_MIN_INTERVAL_MINUTES))
+  }
 
   const start = Date.now()
   const result = await runEvaluateAlertsJob()
@@ -114,6 +135,10 @@ cronRouter.get('/report-usage-overage', async (c) => {
 // ── Quota warnings (hourly) ─────────────────────────────────────
 cronRouter.get('/check-quota-warnings', async (c) => {
   assertCronAuth(c.req.header('Authorization'))
+
+  if (await ranSuccessfullyWithin('check-quota-warnings', CH_CRON_MIN_INTERVAL_MINUTES)) {
+    return c.json(cadenceSkipResponse('check-quota-warnings', CH_CRON_MIN_INTERVAL_MINUTES))
+  }
 
   const start = Date.now()
   try {
@@ -396,6 +421,10 @@ cronRouter.get('/events-reconciliation', async (c) => {
 // ── /detect-missing-model-prices — body in lib/cron-jobs ────────
 cronRouter.get('/detect-missing-model-prices', async (c) => {
   assertCronAuth(c.req.header('Authorization'))
+
+  if (await ranSuccessfullyWithin('detect-missing-model-prices', CH_CRON_MIN_INTERVAL_MINUTES)) {
+    return c.json(cadenceSkipResponse('detect-missing-model-prices', CH_CRON_MIN_INTERVAL_MINUTES))
+  }
 
   const start = Date.now()
   const result = await runDetectMissingModelPricesJob()
