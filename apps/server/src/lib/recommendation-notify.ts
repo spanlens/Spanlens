@@ -1,5 +1,6 @@
 import { supabaseAdmin } from './db.js'
 import { recommendModelSwaps } from './model-recommend.js'
+import { getOrgActivitySince } from './org-activity.js'
 
 /**
  * High-confidence recommendation email alerts.
@@ -121,9 +122,25 @@ export async function sendHighConfidenceRecommendationAlerts(): Promise<Recommen
     return []
   }
 
+  // `recommendModelSwaps` runs a ClickHouse aggregation per org, so this loop
+  // used to wake a suspended service once for every organization on the
+  // platform — daily, whether or not any of them had sent a request. A
+  // recommendation needs HIGH_CONFIDENCE_MIN_SAMPLES calls inside the window
+  // to qualify, so an org with no traffic at all in that window cannot
+  // produce one. The watermark answers that from Postgres
+  // (lib/org-activity.ts); a null map means it was unreadable and every org
+  // is analysed exactly as before.
+  //
+  // Orgs skipped this way are omitted from the returned report rather than
+  // listed with zeroes: the report exists to show what the job did, and it
+  // did nothing for them.
+  const activity = await getOrgActivitySince(new Date(Date.now() - ANALYSIS_HOURS * 3_600_000))
+
   const results: RecommendNotifyResult[] = []
 
   for (const org of orgs) {
+    if (activity !== null && !activity.has(org.id)) continue
+
     const result: RecommendNotifyResult = { orgId: org.id, sent: 0, skipped: 0, errors: [] }
 
     try {
