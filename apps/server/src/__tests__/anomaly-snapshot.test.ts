@@ -5,14 +5,23 @@ vi.mock('../lib/db.js', () => ({
   supabaseAdmin: { from: mockFrom },
 }))
 
-// snapshotAnomaliesForAllOrgs now queries ClickHouse for active orgs instead
-// of Supabase. Tests control which orgs come back via setActiveOrgsForCH.
+// The active-org list comes from the Postgres activity watermark
+// (lib/org-activity.ts). It used to be a `SELECT DISTINCT organization_id`
+// against ClickHouse, which stayed as the fallback for when the watermark
+// cannot be read — see anomaly-snapshot-gate.test.ts for both paths.
+// setActiveOrgs feeds whichever one the case under test exercises.
 const mockChQuery = vi.hoisted(() => vi.fn())
 vi.mock('../lib/clickhouse.js', () => ({
   unscopedClickhouse: () => ({ query: mockChQuery }),
 }))
 
-function setActiveOrgsForCH(orgIds: string[]): void {
+const mockGetOrgActivitySince = vi.hoisted(() => vi.fn())
+vi.mock('../lib/org-activity.js', () => ({
+  getOrgActivitySince: mockGetOrgActivitySince,
+}))
+
+function setActiveOrgs(orgIds: string[]): void {
+  mockGetOrgActivitySince.mockResolvedValue(new Map(orgIds.map((id) => [id, Date.now()])))
   mockChQuery.mockResolvedValue({
     json: () => Promise.resolve(orgIds.map((id) => ({ organization_id: id }))),
   })
@@ -73,8 +82,7 @@ function setupFrom({
   channels = [] as { kind: string; target: string }[],
   orgName = 'Test Org',
 } = {}) {
-  // Active-orgs discovery moved to ClickHouse — provide that response here too.
-  setActiveOrgsForCH(orgIds)
+  setActiveOrgs(orgIds)
   mockFrom.mockImplementation((table: string) => {
     if (table === 'anomaly_events') {
       return { upsert: () => Promise.resolve({ error: upsertError }) }
@@ -92,6 +100,7 @@ function setupFrom({
 beforeEach(() => {
   mockFrom.mockReset()
   mockChQuery.mockReset()
+  mockGetOrgActivitySince.mockReset()
   mockDetectAnomalies.mockReset()
   mockDeliverToChannel.mockReset()
 })

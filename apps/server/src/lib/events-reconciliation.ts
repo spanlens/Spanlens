@@ -22,6 +22,7 @@
  */
 
 import { unscopedClickhouse } from './clickhouse.js'
+import { anyActivitySince } from './org-activity.js'
 
 const RECON_WINDOW_HOURS = 24
 const RECON_END_LAG_HOURS = 1
@@ -67,6 +68,25 @@ export async function computeReconciliation(): Promise<ReconciliationResult> {
   const params = {
     from_ts: fmt(windowFromUtc),
     to_ts: fmt(windowToUtc),
+  }
+
+  // Nothing was logged anywhere in the window, so both counts are zero and
+  // the comparison is already decided. Asking ClickHouse anyway wakes a
+  // suspended service for an answer we hold in Postgres — the activity
+  // watermark records every successful `requests` insert (lib/org-activity.ts),
+  // and a row is written to `events` on the same path, so "no activity" means
+  // neither table gained rows. `anyActivitySince` fails open, so an unreadable
+  // watermark still runs the real comparison.
+  if (!(await anyActivitySince(windowFromUtc))) {
+    return {
+      windowFromUtc: windowFromUtc.toISOString(),
+      windowToUtc: windowToUtc.toISOString(),
+      requestsCount: 0,
+      eventsCount: 0,
+      absDiff: 0,
+      ratio: 0,
+      withinTolerance: true,
+    }
   }
 
   const [requestsCount, eventsCount] = await Promise.all([
