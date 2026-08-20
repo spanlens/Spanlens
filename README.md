@@ -312,10 +312,13 @@ ENCRYPTION_KEY=<32-byte base64>
 CRON_SECRET=<random string>
 
 # Pooled Postgres connection for the `requests` table (required).
-# Supabase Dashboard: Connect > Direct > Transaction pooler. Use port 6543,
-# not 5432, and copy the host from that dialog rather than assembling it:
-# the shared pooler hostname carries a numbered prefix that the region does
-# not tell you. This is a full database credential, so keep it out of logs.
+# Supabase Dashboard: Connect > Direct > Transaction pooler, with
+# "Use IPv4 connection" switched on. Port 6543, not 5432.
+# The dedicated pooler shown by default is IPv6-only, so anything without
+# outbound IPv6 (Vercel functions included) fails at DNS. Copy the host from
+# that dialog rather than assembling it: the shared pooler hostname carries a
+# numbered prefix that the region does not tell you.
+# This is a full database credential, so keep it out of logs.
 SUPABASE_DB_POOLER_URL=postgresql://postgres.<ref>:<password>@<pooler-host>:6543/postgres
 
 # Optional (for invite emails)
