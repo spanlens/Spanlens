@@ -85,6 +85,24 @@ name: Cron — server sub-daily
 #     Paddle usage-based overage reporting. Silent = overage revenue is
 #     never billed. Highest-stakes of the four.
 #
+# Partition upkeep backed up here (2026-08-20): /cron/maintain-request-partitions
+# was added with the move of `requests` back to Postgres and was declared only
+# in vercel.json. It is the one cron whose silence is not recoverable by simply
+# running it later. `requests` is RANGE-partitioned by month, and a row that
+# arrives for a month with no partition lands in the DEFAULT partition. From
+# that moment creating the real partition for that range FAILS, because
+# Postgres scans DEFAULT under ACCESS EXCLUSIVE to prove nothing conflicts and
+# finds something, and that scan blocks the proxy's writes while it runs.
+# Recovery means detaching DEFAULT, moving rows, and reattaching, on a table
+# holding customer prompts.
+#
+# Given gotcha #32, a single scheduler is the wrong bet for that. The job runs
+# at 03:20 in vercel.json and 03:50 here, offset rather than matched: the
+# create half is idempotent either way, but two runs landing together could
+# both try to DROP the same stale partition and one would lose the race. The
+# handler tolerates that (a failed drop is reported, not fatal) and the offset
+# means it does not come up.
+#
 # Required secret: CRON_SECRET in Settings → Secrets, matching the
 # Vercel env var of the same name (the handler compares against it).
 #
@@ -111,6 +129,7 @@ on:
     - cron: '30 */6 * * *'     # every 6h at :30 — detect-data-silence
     - cron: '15 * * * *'       # hourly :15 — check-quota-warnings
     - cron: '30 3 * * *'       # daily 03:30 — report-usage-overage
+    - cron: '50 3 * * *'       # daily 03:50 — maintain-request-partitions
   workflow_dispatch:
 
 concurrency:
@@ -423,6 +442,22 @@ jobs:
           STATUS=$(curl -sS -o /tmp/body -w '%{http_code}' \
             -H "Authorization: Bearer $CRON_SECRET" \
             "$BASE_URL/cron/report-usage-overage")
+          echo "Status: $STATUS"
+          cat /tmp/body
+          if [ "$STATUS" -ge 400 ]; then exit 1; fi
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+
+  daily-03-50-maintain-request-partitions:
+    name: Daily 03:50 UTC (maintain-request-partitions)
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.schedule == '50 3 * * *' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: POST /cron/maintain-request-partitions
+        run: |
+          BASE_URL='https://spanlens-server.vercel.app'
+          STATUS=$(curl -sS -o /tmp/body -w '%{http_code}'             -H "Authorization: Bearer $CRON_SECRET"             "$BASE_URL/cron/maintain-request-partitions")
           echo "Status: $STATUS"
           cat /tmp/body
           if [ "$STATUS" -ge 400 ]; then exit 1; fi
