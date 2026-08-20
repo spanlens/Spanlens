@@ -66,16 +66,16 @@ humanEvalsRouter.get('/annotation/queue', async (c) => {
   // Scope to requests that have a prompt_version_id (i.e. were tagged with a
   // prompt) and a non-empty response_body (otherwise there's nothing to
   // score). prompt_versions metadata is hydrated in a second Supabase query
-  // below — that table stays in Postgres.
+  // below — that table lives in the same database but is read via PostgREST.
   const filters: string[] = [
-    'isNotNull(prompt_version_id)',
+    'prompt_version_id IS NOT NULL',
     "response_body != ''",
     // P3-20: don't queue clear error responses for human review either.
     '(status_code = 0 OR (status_code >= 200 AND status_code < 300))',
   ]
   const params: Record<string, unknown> = {}
   if (promptVersionId) {
-    filters.push('prompt_version_id = {promptVersionId:UUID}')
+    filters.push('prompt_version_id = {promptVersionId}')
     params['promptVersionId'] = promptVersionId
   }
   if (promptName) {
@@ -86,7 +86,7 @@ humanEvalsRouter.get('/annotation/queue', async (c) => {
       .eq('name', promptName)
     const vids = (versions ?? []).map((v) => v.id)
     if (vids.length === 0) return c.json({ success: true, data: [] })
-    filters.push('prompt_version_id IN {vids:Array(UUID)}')
+    filters.push('prompt_version_id = ANY({vids}::uuid[])')
     params['vids'] = vids
   }
 
@@ -110,7 +110,7 @@ humanEvalsRouter.get('/annotation/queue', async (c) => {
       params,
     })
   } catch (err) {
-    throw new ApiError('INTERNAL_ERROR', err instanceof Error ? err.message : 'ClickHouse query failed')
+    throw new ApiError('INTERNAL_ERROR', err instanceof Error ? err.message : 'Request query failed')
   }
   if (rawRows.length === 0) {
     return c.json({ success: true, data: [] })
@@ -279,13 +279,13 @@ humanEvalsRouter.post('/human-evals', async (c) => {
     const rows = await selectRequests<{ id: string; prompt_version_id: string | null }>({
       scope,
       select: 'id, prompt_version_id',
-      filters: 'id = {requestId:UUID}',
+      filters: 'id = {requestId}',
       params: { requestId },
       limit: 1,
     })
     req = rows[0] ?? null
   } catch (err) {
-    throw new ApiError('INTERNAL_ERROR', err instanceof Error ? err.message : 'ClickHouse query failed')
+    throw new ApiError('INTERNAL_ERROR', err instanceof Error ? err.message : 'Request query failed')
   }
   if (!req) throw new ApiError('NOT_FOUND', 'Request not found')
 

@@ -1,25 +1,25 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Tests for the logger fallback branch (P2.6). When ClickHouse INSERT fails,
-// the row MUST land in `requests_fallback` instead of being silently dropped.
-// A regression here means CH outages eat customer billing data.
+// Tests for the logger fallback branch (P2.6). When the INSERT into `requests`
+// fails, the row MUST land in `requests_fallback` instead of being silently
+// dropped. A regression here means a database outage eats customer billing
+// data.
 // ─────────────────────────────────────────────────────────────────────────────
 
-const clickhouseInsertMock = vi.fn()
+const pgExecuteMock = vi.fn()
 const fallbackInsertMock = vi.fn()
 const fallbackUpdateMock = vi.fn().mockResolvedValue({ data: null })
 const supabaseFromMock = vi.fn()
 
-vi.mock('../lib/clickhouse.js', async () => {
-  const actual = await vi.importActual<typeof import('../lib/clickhouse.js')>(
-    '../lib/clickhouse.js',
-  )
+vi.mock('../lib/postgres.js', async (importOriginal) => {
+  // Partial mock: only the write entry point is stubbed, so the parameter
+  // shim the INSERT goes through stays the production one.
+  const actual = await importOriginal<typeof import('../lib/postgres.js')>()
   return {
     ...actual,
-    unscopedClickhouse: () => ({
-      insert: (opts: unknown) => clickhouseInsertMock(opts),
-    }),
+    pgExecute: (opts: unknown) => pgExecuteMock(opts),
+    pgQuery: vi.fn(async () => []),
   }
 })
 
@@ -38,7 +38,7 @@ let logRequestAsync: typeof import('../lib/logger.js').logRequestAsync
 
 beforeEach(async () => {
   vi.resetModules()
-  clickhouseInsertMock.mockReset()
+  pgExecuteMock.mockReset()
   fallbackInsertMock.mockReset()
   fallbackUpdateMock.mockReset()
   fallbackUpdateMock.mockResolvedValue({ data: null })
@@ -91,20 +91,22 @@ const baseLog = {
 }
 
 describe('logRequestAsync — happy path', () => {
-  test('CH INSERT succeeds → no fallback INSERT', async () => {
-    clickhouseInsertMock.mockResolvedValue(undefined)
+  test('requests INSERT succeeds → no fallback INSERT', async () => {
+    pgExecuteMock.mockResolvedValue(1)
 
     await logRequestAsync(baseLog)
 
-    // Phase 5.1 dual-write: requests + events shadow insert = 2 calls.
-    expect(clickhouseInsertMock).toHaveBeenCalledTimes(2)
+    // One statement per logged request: a single INSERT INTO requests.
+    expect(pgExecuteMock).toHaveBeenCalledOnce()
+    const call = pgExecuteMock.mock.calls[0]?.[0] as { query: string }
+    expect(call.query).toContain('INSERT INTO requests')
     expect(fallbackInsertMock).not.toHaveBeenCalled()
   })
 })
 
 describe('logRequestAsync — fallback branch (P2.6)', () => {
-  test('CH INSERT throws → row preserved in requests_fallback', async () => {
-    clickhouseInsertMock.mockRejectedValue(new Error('CH unreachable: ECONNREFUSED'))
+  test('requests INSERT throws → row preserved in requests_fallback', async () => {
+    pgExecuteMock.mockRejectedValue(new Error('pooler unreachable: ECONNREFUSED'))
 
     await logRequestAsync(baseLog)
 
@@ -115,7 +117,7 @@ describe('logRequestAsync — fallback branch (P2.6)', () => {
       last_error: string
     }
     expect(args.organization_id).toBe('org_1')
-    // The payload mirrors the CH row shape — verify a few key fields
+    // The payload mirrors the `requests` row shape — verify a few key fields
     expect(args.payload['provider']).toBe('openai')
     expect(args.payload['model']).toBe('gpt-4o-mini')
     expect(args.payload['organization_id']).toBe('org_1')
@@ -125,8 +127,8 @@ describe('logRequestAsync — fallback branch (P2.6)', () => {
     expect(args.last_error.length).toBeLessThanOrEqual(500)
   })
 
-  test('Both CH AND fallback fail → no throw (observability never crashes user)', async () => {
-    clickhouseInsertMock.mockRejectedValue(new Error('CH down'))
+  test('Both Postgres AND the fallback queue fail → no throw (observability never crashes user)', async () => {
+    pgExecuteMock.mockRejectedValue(new Error('requests table unreachable'))
     fallbackInsertMock.mockRejectedValue(new Error('Supabase also down'))
 
     // Should not throw — logger is fire-and-forget and must absorb every error
@@ -134,7 +136,7 @@ describe('logRequestAsync — fallback branch (P2.6)', () => {
   })
 
   test('fallback payload omits sensitive identifiers when logBodyMode=none', async () => {
-    clickhouseInsertMock.mockRejectedValue(new Error('CH down'))
+    pgExecuteMock.mockRejectedValue(new Error('requests table unreachable'))
 
     await logRequestAsync({
       ...baseLog,
@@ -153,7 +155,7 @@ describe('logRequestAsync — fallback branch (P2.6)', () => {
 
   test('fallback last_error is truncated to 500 chars', async () => {
     const longMsg = 'x'.repeat(2000)
-    clickhouseInsertMock.mockRejectedValue(new Error(longMsg))
+    pgExecuteMock.mockRejectedValue(new Error(longMsg))
 
     await logRequestAsync(baseLog)
 

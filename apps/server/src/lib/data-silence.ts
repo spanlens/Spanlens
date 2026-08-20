@@ -13,7 +13,7 @@
  * episode (`email_sent = false`), the next run retries delivery without
  * opening a second episode.
  *
- * Structure mirrors stale-key-digest.ts: global ClickHouse aggregation is
+ * Structure mirrors stale-key-digest.ts: a global cross-tenant aggregation is
  * allowed here (lib file) because organization_id is part of the GROUP BY
  * and every downstream write/emails are keyed per org.
  *
@@ -21,14 +21,15 @@
  * real count — whether an org's prior week clears the threshold to OPEN an
  * episode. Resolving and retrying both reduce to "does this org have traffic
  * in the last 24h", which the Postgres activity watermark answers exactly.
- * So the ClickHouse scan runs only when there is a candidate to open; see
- * `shouldScanClickhouse`. On a quiet platform that is never, which matters
- * because ClickHouse Cloud bills by uptime and a six-hourly scan is four
- * wake-ups a day regardless of how little it reads (lib/org-activity.ts).
+ * So the scan runs only when there is a candidate to open; see
+ * `shouldScanRequests`. On a quiet platform that is never — and the gate
+ * still earns its place, because the alternative is four cross-tenant passes
+ * a day over the largest table in the database, every day, to discover that
+ * nothing changed (lib/org-activity.ts).
  */
 
 import { supabaseAdmin } from './db.js'
-import { unscopedClickhouse, fromClickhouseTimestamp } from './clickhouse.js'
+import { pgQuery } from './postgres.js'
 import { sendEmail, renderDataSilenceEmail } from './resend.js'
 import { getAdminEmails } from './admin-emails.js'
 import { getOrgActivitySince, type OrgActivityMap } from './org-activity.js'
@@ -106,53 +107,54 @@ export function planSilenceActions(
 }
 
 /**
- * One global ClickHouse round-trip: per-org counts for the baseline window
+ * One global Postgres round-trip: per-org counts for the baseline window
  * and the silence window, plus the most recent request timestamp.
  * organization_id is in the GROUP BY so every row is org-scoped.
  */
 async function fetchOrgTraffic(): Promise<OrgTrafficRow[]> {
   const totalDays = DATA_SILENCE_PRIOR_WINDOW_DAYS + 1 // baseline + silence window
-  const result = await unscopedClickhouse().query({
-    query:
-      'SELECT organization_id, ' +
-      `  countIf(created_at < now() - INTERVAL {windowHours:UInt32} HOUR) AS prior_count, ` +
-      `  countIf(created_at >= now() - INTERVAL {windowHours:UInt32} HOUR) AS recent_count, ` +
-      '  max(created_at) AS last_request_at ' +
-      'FROM requests ' +
-      `WHERE created_at >= now() - INTERVAL {totalDays:UInt32} DAY ` +
-      'GROUP BY organization_id',
-    query_params: {
-      windowHours: DATA_SILENCE_WINDOW_HOURS,
-      totalDays,
-    },
-    format: 'JSONEachRow',
-  })
-
-  // JSONEachRow returns UInt64 counts as strings and DateTime64 without the
-  // trailing 'Z' — normalize both at the boundary (gotchas #18/#19).
-  const raw = (await result.json()) as Array<{
+  // `INTERVAL {n} HOUR` cannot be parameterised in Postgres — the unit is
+  // syntax, not a value. make_interval() takes the count as a named argument,
+  // which keeps it bound rather than interpolated.
+  const raw = await pgQuery<{
     organization_id: string
     prior_count: string | number
     recent_count: string | number
     last_request_at: string | null
-  }>
+  }>({
+    query:
+      'SELECT organization_id, ' +
+      `  count(*) FILTER (WHERE created_at < now() - make_interval(hours => {windowHours})) AS prior_count, ` +
+      `  count(*) FILTER (WHERE created_at >= now() - make_interval(hours => {windowHours})) AS recent_count, ` +
+      '  max(created_at) AS last_request_at ' +
+      'FROM requests ' +
+      `WHERE created_at >= now() - make_interval(days => {totalDays}) ` +
+      'GROUP BY organization_id',
+    params: {
+      windowHours: DATA_SILENCE_WINDOW_HOURS,
+      totalDays,
+    },
+  })
 
+  // `count(*)` (int8) arrives as a string — coerce at the boundary (gotcha
+  // #19). `max(created_at)` is already an ISO-8601 'Z' string: the pg client
+  // parses timestamptz for us, so no rewrite is needed here.
   return raw.map((r) => ({
     organization_id: r.organization_id,
     prior_count: Number(r.prior_count ?? 0),
     recent_count: Number(r.recent_count ?? 0),
-    last_request_at: fromClickhouseTimestamp(r.last_request_at),
+    last_request_at: r.last_request_at ?? null,
   }))
 }
 
 /**
  * Traffic rows derived from the Postgres activity watermark instead of a
- * ClickHouse scan, for runs where ClickHouse cannot change the outcome.
+ * scan, for runs where it cannot change the outcome.
  *
  * The watermark stores each org's most recent request, which answers
  * `recent_count > 0` exactly — that is all `toResolve` and `toRetryEmail`
  * need. It cannot answer `prior_count`, so this is only usable on runs with
- * no episode to open; `shouldScanClickhouse` decides that.
+ * no episode to open; `shouldScanRequests` decides that.
  *
  * `recent_count` here is a presence flag (1 = the org has traffic inside the
  * silence window), never a real count. Nothing downstream compares it to
@@ -175,7 +177,7 @@ function synthesizeRowsFromWatermark(
 }
 
 /**
- * Whether this run needs the ClickHouse scan at all.
+ * Whether this run needs the requests scan at all.
  *
  * Only one decision needs `prior_count`: opening a new episode. An org can
  * only be that candidate if it is silent inside the window AND has no open
@@ -192,7 +194,7 @@ function synthesizeRowsFromWatermark(
  * broken watermark degrades to the previous behaviour rather than to missed
  * alerts.
  */
-export function shouldScanClickhouse(
+export function shouldScanRequests(
   activity: OrgActivityMap | null,
   openEpisodes: OpenEpisode[],
   nowMs: number,
@@ -304,7 +306,7 @@ export async function runDataSilenceJob(): Promise<DataSilenceRunResult> {
   let openEpisodes: OpenEpisode[]
   try {
     // The watermark and the open-episode list together decide whether the
-    // ClickHouse scan can change anything this run. Running it regardless,
+    // scan can change anything this run. Running it regardless,
     // every six hours, was four wake-ups a day on a service billed by uptime
     // (lib/org-activity.ts) for a job that on a quiet platform has nothing to
     // report.
@@ -314,7 +316,7 @@ export async function runDataSilenceJob(): Promise<DataSilenceRunResult> {
     ])
     openEpisodes = episodes
     rows =
-      activity === null || shouldScanClickhouse(activity, openEpisodes, nowMs)
+      activity === null || shouldScanRequests(activity, openEpisodes, nowMs)
         ? await fetchOrgTraffic()
         : synthesizeRowsFromWatermark(openEpisodes, activity, silenceCutoffMs)
   } catch (err) {

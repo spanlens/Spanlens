@@ -18,13 +18,13 @@
  * in the same second could both pass the check, which is acceptable for a
  * summary email (same trade-off as stale-key-digest.ts documents).
  *
- * Structure mirrors data-silence.ts / stale-key-digest.ts: global ClickHouse
+ * Structure mirrors data-silence.ts / stale-key-digest.ts: global cross-org
  * aggregation is allowed here (lib file) because organization_id is part of
  * the GROUP BY and every downstream write/email is keyed per org.
  */
 
 import { supabaseAdmin } from './db.js'
-import { unscopedClickhouse, toClickhouseTimestamp } from './clickhouse.js'
+import { pgQuery } from './postgres.js'
 import { sendEmail, renderWeeklyDigestEmail } from './resend.js'
 import { getWeeklyDigestRecipients } from './digest-recipients.js'
 import { recommendModelSwaps, type ModelRecommendation } from './model-recommend.js'
@@ -144,42 +144,42 @@ export function topModelsByOrg(
 }
 
 /**
- * One global ClickHouse round-trip covering both weeks: per-org request
+ * One global Postgres round-trip covering both weeks: per-org request
  * count, cost, and error count for the digest week plus the prior week's
  * count and cost. organization_id is in the GROUP BY so every row is
  * org-scoped.
  */
 async function fetchOrgWeekStats(window: DigestWindow): Promise<OrgWeekStats[]> {
-  const result = await unscopedClickhouse().query({
-    query:
-      'SELECT organization_id, ' +
-      '  countIf(created_at >= parseDateTime64BestEffort({weekStart:String})) AS request_count, ' +
-      '  sumIf(cost_usd, created_at >= parseDateTime64BestEffort({weekStart:String})) AS total_cost_usd, ' +
-      '  countIf(created_at >= parseDateTime64BestEffort({weekStart:String}) AND status_code >= 400) AS error_count, ' +
-      '  countIf(created_at < parseDateTime64BestEffort({weekStart:String})) AS prior_request_count, ' +
-      '  sumIf(cost_usd, created_at < parseDateTime64BestEffort({weekStart:String})) AS prior_cost_usd ' +
-      'FROM requests ' +
-      'WHERE created_at >= parseDateTime64BestEffort({priorStart:String}) ' +
-      '  AND created_at < parseDateTime64BestEffort({weekEnd:String}) ' +
-      'GROUP BY organization_id',
-    query_params: {
-      weekStart: toClickhouseTimestamp(window.weekStart),
-      weekEnd: toClickhouseTimestamp(window.weekEnd),
-      priorStart: toClickhouseTimestamp(window.priorStart),
-    },
-    format: 'JSONEachRow',
-  })
-
-  // JSONEachRow returns UInt64 counts and Decimal sums as strings — coerce
-  // every numeric at the boundary (gotcha #19).
-  const raw = (await result.json()) as Array<{
+  // `count(*) FILTER (WHERE …)` splits the two-week window per column, so
+  // both weeks come out of one scan instead of a query each.
+  const raw = await pgQuery<{
     organization_id: string
     request_count: string | number
     total_cost_usd: string | number | null
     error_count: string | number
     prior_request_count: string | number
     prior_cost_usd: string | number | null
-  }>
+  }>({
+    query:
+      'SELECT organization_id, ' +
+      '  count(*) FILTER (WHERE created_at >= {weekStart}::timestamptz) AS request_count, ' +
+      '  sum(cost_usd) FILTER (WHERE created_at >= {weekStart}::timestamptz) AS total_cost_usd, ' +
+      '  count(*) FILTER (WHERE created_at >= {weekStart}::timestamptz AND status_code >= 400) AS error_count, ' +
+      '  count(*) FILTER (WHERE created_at < {weekStart}::timestamptz) AS prior_request_count, ' +
+      '  sum(cost_usd) FILTER (WHERE created_at < {weekStart}::timestamptz) AS prior_cost_usd ' +
+      'FROM requests ' +
+      'WHERE created_at >= {priorStart}::timestamptz ' +
+      '  AND created_at < {weekEnd}::timestamptz ' +
+      'GROUP BY organization_id',
+    params: {
+      weekStart: window.weekStart.toISOString(),
+      weekEnd: window.weekEnd.toISOString(),
+      priorStart: window.priorStart.toISOString(),
+    },
+  })
+
+  // `count(*)` (int8) and `sum(numeric)` both arrive as strings — coerce
+  // every numeric at the boundary (gotcha #19 applies to Postgres too).
 
   return raw.map((r) => ({
     organization_id: r.organization_id,
@@ -196,30 +196,27 @@ async function fetchOrgWeekStats(window: DigestWindow): Promise<OrgWeekStats[]> 
  * Grouped/trimmed to the top 3 per org in JS via topModelsByOrg.
  */
 async function fetchTopModels(window: DigestWindow): Promise<Map<string, TopModel[]>> {
-  const result = await unscopedClickhouse().query({
-    query:
-      'SELECT organization_id, provider, model, ' +
-      '  sum(cost_usd) AS cost_usd, ' +
-      '  count() AS request_count ' +
-      'FROM requests ' +
-      'WHERE created_at >= parseDateTime64BestEffort({weekStart:String}) ' +
-      '  AND created_at < parseDateTime64BestEffort({weekEnd:String}) ' +
-      "  AND model != '' " +
-      'GROUP BY organization_id, provider, model',
-    query_params: {
-      weekStart: toClickhouseTimestamp(window.weekStart),
-      weekEnd: toClickhouseTimestamp(window.weekEnd),
-    },
-    format: 'JSONEachRow',
-  })
-
-  const raw = (await result.json()) as Array<{
+  const raw = await pgQuery<{
     organization_id: string
     provider: string
     model: string
     cost_usd: string | number | null
     request_count: string | number
-  }>
+  }>({
+    query:
+      'SELECT organization_id, provider, model, ' +
+      '  sum(cost_usd) AS cost_usd, ' +
+      '  count(*) AS request_count ' +
+      'FROM requests ' +
+      'WHERE created_at >= {weekStart}::timestamptz ' +
+      '  AND created_at < {weekEnd}::timestamptz ' +
+      "  AND model != '' " +
+      'GROUP BY organization_id, provider, model',
+    params: {
+      weekStart: window.weekStart.toISOString(),
+      weekEnd: window.weekEnd.toISOString(),
+    },
+  })
 
   return topModelsByOrg(
     raw.map((r) => ({

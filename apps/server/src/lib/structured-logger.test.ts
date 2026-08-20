@@ -37,8 +37,8 @@ function lastErrorPayload(): Record<string, unknown> {
 
 describe('logError — output shape', () => {
   test('starts with ERROR[CODE] prefix for grep', () => {
-    logError('CH_INSERT_FAILED', { orgId: 'org_1' })
-    expect(lastErrorLine()).toMatch(/^ERROR\[CH_INSERT_FAILED\] \{/)
+    logError('REQUEST_LOG_INSERT_FAILED', { orgId: 'org_1' })
+    expect(lastErrorLine()).toMatch(/^ERROR\[REQUEST_LOG_INSERT_FAILED\] \{/)
   })
 
   test('payload contains level + code + ts + context fields', () => {

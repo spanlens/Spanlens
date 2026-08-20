@@ -10,25 +10,25 @@ import { runStaleKeyDigestJob } from '../lib/stale-key-digest.js'
 import { runDataSilenceJob } from '../lib/data-silence.js'
 import { runWeeklyDigestJob } from '../lib/weekly-digest.js'
 import { runDueMigrations } from '../lib/background-migrations/runner.js'
-import { runReconciliationCron } from '../lib/events-reconciliation.js'
 import { runLeakDetectionJob } from '../lib/leak-detection.js'
 import { sendHighConfidenceRecommendationAlerts } from '../lib/recommendation-notify.js'
 import { logCronRun } from '../lib/cron-logger.js'
-// Cadence guard for the four ClickHouse-reading crons. Three schedulers fire
-// every endpoint (gotcha #32); for these four that redundancy used to keep
-// ClickHouse Cloud awake around the clock. See lib/cron-cadence.ts.
+// Cadence guard for the four crons that aggregate `requests`. Three schedulers
+// fire every endpoint (gotcha #32), and for these four each extra firing
+// repeats a full scan of the log. See lib/cron-cadence.ts.
 import {
   ranSuccessfullyWithin,
   cadenceSkipResponse,
-  CH_CRON_MIN_INTERVAL_MINUTES,
+  SCAN_CRON_MIN_INTERVAL_MINUTES,
 } from '../lib/cron-cadence.js'
+import { maintainRequestPartitions } from '../lib/cron-jobs/maintain-request-partitions.js'
 import { purgeExpiredProxyCache } from '../lib/proxy-cache.js'
-import { replayFallbackQueue, replayEventsFallbackQueue, alertOnFallbackBacklog } from '../lib/fallback-replay.js'
+import { replayFallbackQueue, alertOnFallbackBacklog } from '../lib/fallback-replay.js'
 import { runDowngradeCheck } from '../lib/billing-downgrade.js'
 import { executePendingDeletions } from './pendingDeletions.js'
 // Inline cron job bodies were extracted to lib/cron-jobs/ in the 2026-06-12
-// tech-debt pass. The 6 jobs below carried non-trivial logic (CH queries,
-// multi-phase delivery, batched DB writes); the remaining 13 jobs were already
+// tech-debt pass. The 6 jobs below carried non-trivial logic (aggregate
+// queries, multi-phase delivery, batched DB writes); the remaining 13 were
 // lib-function-call thin and stay inline.
 import { runAggregateUsageJob } from '../lib/cron-jobs/aggregate-usage.js'
 import { runEvaluateAlertsJob } from '../lib/cron-jobs/evaluate-alerts.js'
@@ -91,8 +91,8 @@ cronRouter.get('/aggregate-usage', async (c) => {
   // after rows are edited by hand.
   const force = c.req.query('force') === '1'
 
-  if (!force && (await ranSuccessfullyWithin('aggregate-usage', CH_CRON_MIN_INTERVAL_MINUTES))) {
-    return c.json(cadenceSkipResponse('aggregate-usage', CH_CRON_MIN_INTERVAL_MINUTES))
+  if (!force && (await ranSuccessfullyWithin('aggregate-usage', SCAN_CRON_MIN_INTERVAL_MINUTES))) {
+    return c.json(cadenceSkipResponse('aggregate-usage', SCAN_CRON_MIN_INTERVAL_MINUTES))
   }
 
   const start = Date.now()
@@ -104,18 +104,18 @@ cronRouter.get('/aggregate-usage', async (c) => {
 
 // ── /evaluate-alerts — body in lib/cron-jobs/evaluate-alerts.ts ──
 // Runs at the full every-15-minutes cadence and is deliberately NOT
-// debounced. The job now checks the Postgres activity watermark before
-// touching ClickHouse, so a quiet window costs one small Postgres query and
-// there is nothing to throttle. When there IS traffic, ClickHouse is awake
-// because of that traffic, so the queries are no longer what holds it open.
+// debounced. The job checks the activity watermark before it scans
+// `requests`, so a quiet window costs one indexed lookup and there is nothing
+// worth throttling. When there IS traffic the alerts should fire promptly,
+// which is the whole point of the 15-minute cadence.
 cronRouter.get('/evaluate-alerts', async (c) => {
   assertCronAuth(c.req.header('Authorization'))
 
   const start = Date.now()
   const result = await runEvaluateAlertsJob()
   // A run where a metric could not be computed is not a success. Budget
-  // alerts gate their ClickHouse read on "anything new since the last
-  // successful run" (lib/cron-jobs/evaluate-alerts.ts gateStartFor), so
+  // alerts gate their scan on "anything new since the last successful run"
+  // (lib/cron-jobs/evaluate-alerts.ts gateStartFor), so
   // stamping a partial run as ok would move that gate past alerts this run
   // never actually evaluated, silencing them until new traffic arrived.
   const failed = result.metric_errors > 0
@@ -148,18 +148,18 @@ cronRouter.get('/report-usage-overage', async (c) => {
 cronRouter.get('/check-quota-warnings', async (c) => {
   assertCronAuth(c.req.header('Authorization'))
 
-  if (await ranSuccessfullyWithin('check-quota-warnings', CH_CRON_MIN_INTERVAL_MINUTES)) {
-    return c.json(cadenceSkipResponse('check-quota-warnings', CH_CRON_MIN_INTERVAL_MINUTES))
+  if (await ranSuccessfullyWithin('check-quota-warnings', SCAN_CRON_MIN_INTERVAL_MINUTES)) {
+    return c.json(cadenceSkipResponse('check-quota-warnings', SCAN_CRON_MIN_INTERVAL_MINUTES))
   }
 
   const start = Date.now()
   try {
     const result = await runQuotaWarningsJob()
     // A run that could not count every org is NOT a success. The job gates
-    // its ClickHouse reads on "anything new since the last successful run"
+    // its counting on "anything new since the last successful run"
     // (lib/quota-warnings.ts), so recording a partial run as ok would move
-    // that gate past orgs it never actually checked — one transient failure
-    // could then park an org just under its cap until its next request.
+    // that gate past orgs it never actually checked, and one transient
+    // failure could park an org just under its cap until its next request.
     // Logging the error keeps the gate where it was and re-checks everyone.
     const failed = result.errors > 0
     await logCronRun(
@@ -330,27 +330,24 @@ cronRouter.get('/leak-detect-keys', async (c) => {
   }
 })
 
-// ── ClickHouse fallback replay (every 5 minutes) ────────────────
+// ── Request-log fallback replay (every 5 minutes) ───────────────
 cronRouter.get('/replay-fallback', async (c) => {
   assertCronAuth(c.req.header('Authorization'))
 
   const start = Date.now()
   try {
-    const [requestsResult, eventsResult] = await Promise.all([
-      replayFallbackQueue(),
-      replayEventsFallbackQueue(),
-    ])
+    const requestsResult = await replayFallbackQueue()
     // Post-drain backlog check: if the queue is still four-figures after
-    // replaying a batch, ClickHouse is likely down and rows are accumulating
-    // toward the 7-day TTL — raise an operator alert (deduped, never throws).
+    // replaying a batch, the `requests` INSERT keeps failing and queued rows
+    // are heading for the 7-day expiry — raise an operator alert (deduped,
+    // never throws).
     const backlog = await alertOnFallbackBacklog()
-    const topErr = requestsResult.error ?? eventsResult.error
+    const topErr = requestsResult.error
     const status = topErr ? 'error' : 'ok'
     await logCronRun('replay-fallback', status, Date.now() - start, topErr)
     return c.json({
       success: !topErr,
       requests: requestsResult,
-      events: eventsResult,
       backlog,
     })
   } catch (err) {
@@ -425,29 +422,12 @@ cronRouter.get('/run-background-migrations', async (c) => {
     ...result,
   })
 })
-
-// ── Events ↔ requests reconciliation (daily 02 UTC) ─────────────
-cronRouter.get('/events-reconciliation', async (c) => {
-  assertCronAuth(c.req.header('Authorization'))
-
-  const started = Date.now()
-  try {
-    const result = await runReconciliationCron()
-    await logCronRun('events-reconciliation', 'ok', Date.now() - started)
-    return c.json({ ok: true, ts: new Date().toISOString(), ...result })
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'unknown error'
-    await logCronRun('events-reconciliation', 'error', Date.now() - started, message)
-    return c.json({ ok: false, ts: new Date().toISOString(), error: message }, 200)
-  }
-})
-
 // ── /detect-missing-model-prices — body in lib/cron-jobs ────────
 cronRouter.get('/detect-missing-model-prices', async (c) => {
   assertCronAuth(c.req.header('Authorization'))
 
-  if (await ranSuccessfullyWithin('detect-missing-model-prices', CH_CRON_MIN_INTERVAL_MINUTES)) {
-    return c.json(cadenceSkipResponse('detect-missing-model-prices', CH_CRON_MIN_INTERVAL_MINUTES))
+  if (await ranSuccessfullyWithin('detect-missing-model-prices', SCAN_CRON_MIN_INTERVAL_MINUTES)) {
+    return c.json(cadenceSkipResponse('detect-missing-model-prices', SCAN_CRON_MIN_INTERVAL_MINUTES))
   }
 
   const start = Date.now()
@@ -505,6 +485,25 @@ cronRouter.get('/prune-judge-cache', async (c) => {
 cronRouter.get('/keep-warm', async (c) => {
   assertCronAuth(c.req.header('Authorization'))
   const result = await runKeepWarmJob()
+  return c.json(result)
+})
+
+// ── /maintain-request-partitions (daily 03:20 UTC) ──────────────────
+// Creates the next few months of `requests` partitions and drops the ones
+// past retention. Daily rather than monthly on purpose: the work is a no-op
+// on all but a couple of days a month, and a monthly schedule would mean one
+// missed firing (gotcha #32) puts rows in the catch-all partition, which then
+// blocks creating the real one behind an exclusive lock.
+cronRouter.get('/maintain-request-partitions', async (c) => {
+  assertCronAuth(c.req.header('Authorization'))
+
+  const start = Date.now()
+  const result = await maintainRequestPartitions()
+  // Creation failing is the serious half: next month's rows have nowhere to
+  // go. A failed drop only means old data lingers, so it does not mark the
+  // run as failed and page anyone.
+  const status = result.createError ? 'error' : 'ok'
+  await logCronRun('maintain-request-partitions', status, Date.now() - start, result.createError)
   return c.json(result)
 })
 

@@ -33,7 +33,7 @@ const whySpanlens: ComparePoint[] = [
   {
     title: 'Anomaly detection and log durability',
     body:
-      'Spanlens flags 3-sigma deviations in latency, cost, and error rate against a rolling 7-day baseline per provider and model, and queues log writes to Postgres if ClickHouse is unavailable so rows are not silently dropped. These are operations concerns rather than evaluation concerns.',
+      'Spanlens flags 3-sigma deviations in latency, cost, and error rate against a rolling 7-day baseline per provider and model. A log write that fails is queued and replayed a few minutes later instead of vanishing. These are operations concerns rather than evaluation concerns.',
   },
 ]
 

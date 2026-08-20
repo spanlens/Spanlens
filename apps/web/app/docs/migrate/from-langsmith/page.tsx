@@ -42,7 +42,7 @@ export default function MigrateFromLangsmith() {
           downstream aggregation step needed.
         </li>
         <li>
-          <strong>MIT self-host.</strong> One Docker compose, your Supabase + ClickHouse.
+          <strong>MIT self-host.</strong> One Docker compose, one Postgres database.
         </li>
       </ul>
 

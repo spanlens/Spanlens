@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { supabaseAdmin } from '../../lib/db.js'
-import { unscopedClickhouse } from '../../lib/clickhouse.js'
+import { pgExecute } from '../../lib/postgres.js'
 
 export interface InsertRequestsArgs {
   orgId: string
@@ -17,16 +17,21 @@ export interface InsertRequestsArgs {
 }
 
 /**
- * Seed the `requests` ClickHouse table for integration tests. After the
- * ClickHouse migration the table lives there, not in Supabase. The shape
- * mirrors what logger.ts writes — body columns default to empty strings
- * and flags columns to '[]' so the row is valid even for synthetic tests.
+ * Seed the `requests` table for integration tests.
+ *
+ * The row shape mirrors what logger.ts writes: body columns default to empty
+ * strings and the flag columns to an empty array, so a synthetic row is still
+ * a valid one. Values are bound, never interpolated, for the same reason the
+ * production insert binds them.
+ *
+ * The column list is the full one from `REQUEST_COLUMNS`, including the three
+ * a fixture never varies (`truncated`, `cache_hit`, `service_tier`). Leaning
+ * on their defaults would work today and stop working the moment one of them
+ * loses its default, and a fixture that writes a different row than production
+ * does is worth less than one that writes the same row.
  */
 export async function insertRequests(args: InsertRequestsArgs): Promise<void> {
-  const createdAt = new Date(Date.now() - args.createdAtMsAgo)
-    .toISOString()
-    .replace('T', ' ')
-    .replace('Z', '')
+  const createdAt = new Date(Date.now() - args.createdAtMsAgo).toISOString()
   const rows = Array.from({ length: args.count }, () => ({
     id: randomUUID(),
     organization_id: args.orgId,
@@ -55,17 +60,64 @@ export async function insertRequests(args: InsertRequestsArgs): Promise<void> {
     flags: '[]',
     response_flags: '[]',
     has_security_flags: false,
+    truncated: false,
+    cache_hit: false,
+    service_tier: '',
     created_at: createdAt,
   }))
-  await unscopedClickhouse().insert({ table: 'requests', format: 'JSONEachRow', values: rows })
+
+  const columns = Object.keys(rows[0]!)
+  const jsonb = new Set(['flags', 'response_flags'])
+  const values: string[] = []
+  const params: Record<string, unknown> = {}
+  rows.forEach((row, i) => {
+    const placeholders = columns.map((col) => {
+      const name = `v${i}_${col}`
+      params[name] = (row as Record<string, unknown>)[col]
+      return jsonb.has(col) ? `{${name}}::jsonb` : `{${name}}`
+    })
+    values.push(`(${placeholders.join(', ')})`)
+  })
+
+  await pgExecute({
+    query: `INSERT INTO requests (${columns.join(', ')}) VALUES ${values.join(', ')}`,
+    params,
+  })
+
+  // Logging a request writes two things, not one: the row, and the org's
+  // activity watermark. The cron jobs that scan this table check the
+  // watermark first and skip the scan entirely when an org has nothing new,
+  // so a fixture that seeded only rows would leave those jobs correctly
+  // deciding there was no work to do, and the test would be asserting
+  // against a code path it never reached.
+  //
+  // The watermark carries the newest row's timestamp, matching what the
+  // logger records, so a fixture that backdates rows stays invisible to a
+  // 24-hour scan exactly as real old traffic would.
+  await pgExecute({
+    query: `
+      INSERT INTO org_activity (organization_id, last_request_at, updated_at)
+      VALUES ({orgId}, {lastRequestAt}, now())
+      ON CONFLICT (organization_id) DO UPDATE
+        SET last_request_at = GREATEST(org_activity.last_request_at, EXCLUDED.last_request_at),
+            updated_at      = now()
+    `,
+    params: { orgId: args.orgId, lastRequestAt: createdAt },
+  })
 }
 
 export async function cleanupRequests(orgId: string): Promise<void> {
-  // ClickHouse mutations (ALTER ... DELETE) are async on disk but synchronous
-  // from the client's perspective for our test sizes — safe to await.
-  await unscopedClickhouse().command({
-    query: 'ALTER TABLE requests DELETE WHERE organization_id = {orgId:UUID}',
-    query_params: { orgId },
+  await pgExecute({
+    query: 'DELETE FROM requests WHERE organization_id = {orgId}',
+    params: { orgId },
+  })
+  // The watermark has to go too. Leaving it behind would let the next test
+  // in the file look like it had recent traffic before inserting anything,
+  // which is the difference between a test that passes and a test that
+  // means something.
+  await pgExecute({
+    query: 'DELETE FROM org_activity WHERE organization_id = {orgId}',
+    params: { orgId },
   })
 }
 

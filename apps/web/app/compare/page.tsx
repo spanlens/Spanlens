@@ -31,7 +31,7 @@ const ENTRIES: CompareEntry[] = [
     slug: 'helicone',
     competitor: 'Helicone',
     blurb:
-      'The closest architectural match. Both are proxy-based, though Helicone entered maintenance mode after its 2026 Mintlify acquisition. We add Critical Path agent tracing, Prompt A/B with Welch t-test, and tighter logging durability with ClickHouse fallback.',
+      'The closest architectural match. Both are proxy-based, though Helicone entered maintenance mode after its 2026 Mintlify acquisition. We add Critical Path agent tracing, Prompt A/B with Welch t-test, and a log queue that replays failed writes.',
     tag: 'Proxy-based',
   },
   {

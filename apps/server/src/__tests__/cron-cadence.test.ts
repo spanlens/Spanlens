@@ -4,14 +4,13 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
  * cron-cadence tests.
  *
  * The guard exists to stop three schedulers (vercel.json, the GitHub
- * Actions safety net, Better Stack monitors) from each waking ClickHouse
- * Cloud inside its 15-minute idle window — see the module docstring for
- * the billing arithmetic. Two properties matter and both are covered:
+ * Actions safety net, Better Stack monitors) from each running the same
+ * scan over `requests`. Two properties matter and both are covered:
  *
  *   1. A recent successful run debounces the next firing.
  *   2. Any failure to answer that question runs the job anyway
  *      (fail-open). Skipping real work on a Postgres hiccup is worse
- *      than one extra ClickHouse wake-up.
+ *      than one redundant scan.
  */
 
 const queryMock = vi.fn()
@@ -41,7 +40,7 @@ vi.mock('../lib/db.js', () => ({
 
 let ranSuccessfullyWithin: typeof import('../lib/cron-cadence.js').ranSuccessfullyWithin
 let cadenceSkipResponse: typeof import('../lib/cron-cadence.js').cadenceSkipResponse
-let CH_CRON_MIN_INTERVAL_MINUTES: number
+let SCAN_CRON_MIN_INTERVAL_MINUTES: number
 
 beforeEach(async () => {
   vi.resetModules()
@@ -51,7 +50,7 @@ beforeEach(async () => {
   const mod = await import('../lib/cron-cadence.js')
   ranSuccessfullyWithin = mod.ranSuccessfullyWithin
   cadenceSkipResponse = mod.cadenceSkipResponse
-  CH_CRON_MIN_INTERVAL_MINUTES = mod.CH_CRON_MIN_INTERVAL_MINUTES
+  SCAN_CRON_MIN_INTERVAL_MINUTES = mod.SCAN_CRON_MIN_INTERVAL_MINUTES
   vi.spyOn(console, 'error').mockImplementation(() => {})
 })
 
@@ -105,7 +104,7 @@ describe('ranSuccessfullyWithin', () => {
 
 describe('cadenceSkipResponse', () => {
   test('reports success so the calling scheduler stays green', () => {
-    const body = cadenceSkipResponse('aggregate-usage', CH_CRON_MIN_INTERVAL_MINUTES)
+    const body = cadenceSkipResponse('aggregate-usage', SCAN_CRON_MIN_INTERVAL_MINUTES)
     expect(body).toEqual({
       success: true,
       skipped: 'cadence',

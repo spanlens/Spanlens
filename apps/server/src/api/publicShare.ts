@@ -8,7 +8,6 @@ import {
   selectRequests,
   fetchProviderKeyNames,
 } from '../lib/requests-query.js'
-import { fromClickhouseTimestamp } from '../lib/clickhouse.js'
 import { checkRateLimit } from '../lib/rate-limit.js'
 import { fireAndForget } from '../lib/wait-until.js'
 import { ApiError } from '../lib/errors.js'
@@ -254,7 +253,7 @@ function sanitizeJson(value: unknown, redactPii: boolean): unknown {
   }
 }
 
-// ── Request loader (ClickHouse) ─────────────────────────────────────────────
+// ── Request loader (Postgres `requests`) ────────────────────────────────────
 
 interface RequestDetailRow {
   id: string
@@ -272,7 +271,8 @@ interface RequestDetailRow {
   trace_id: string | null
   span_id: string | null
   provider_key_id: string | null
-  truncated: number | boolean
+  /** Real boolean column. */
+  truncated: boolean
   created_at: string
 }
 
@@ -283,12 +283,12 @@ const REQUEST_SHARE_COLUMNS =
 
 async function loadRequestForShare(share: SharedLink): Promise<unknown> {
   // ignoreRetention so a share that outlives the org's retention window keeps
-  // working until the underlying ClickHouse TTL (365 days) drops the row.
+  // working until the monthly partition holding the row is dropped (365 days).
   const scope = await requestsScope(share.organization_id, { ignoreRetention: true })
   const rows = await selectRequests<RequestDetailRow>({
     scope,
     select: REQUEST_SHARE_COLUMNS,
-    filters: 'id = {requestId:UUID}',
+    filters: 'id = {requestId}',
     params: { requestId: share.target_id },
     limit: 1,
   })
@@ -310,8 +310,8 @@ async function loadRequestForShare(share: SharedLink): Promise<unknown> {
     trace_id: data.trace_id,
     span_id: data.span_id,
     provider_key_name: data.provider_key_id ? (keyMap.get(data.provider_key_id) ?? null) : null,
-    truncated: Boolean(Number(data.truncated)),
-    created_at: fromClickhouseTimestamp(data.created_at) ?? data.created_at,
+    truncated: data.truncated,
+    created_at: data.created_at,
     cost_usd: share.redact_cost
       ? null
       : data.cost_usd == null

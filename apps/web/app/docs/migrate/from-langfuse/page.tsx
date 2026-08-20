@@ -190,7 +190,7 @@ await chain.invoke({ input }, { callbacks: [handler] })`}</CodeBlock>
           <tr>
             <td>Observation type Generation</td>
             <td>Request (LLM call) + Span (link)</td>
-            <td>LLM calls live in their own column store (ClickHouse) for fast aggregation. Spans link via <code>request_id</code>.</td>
+            <td>LLM calls get their own table, partitioned by month so cost roll-ups stay fast. Spans link via <code>request_id</code>.</td>
           </tr>
           <tr>
             <td>Score</td>

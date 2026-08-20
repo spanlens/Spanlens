@@ -184,9 +184,9 @@ curl -X DELETE https://api.spanlens.io/api/v1/shares/<token> \\
       </p>
       <p>
         Server-side enforcement runs through the service role client and reads the
-        underlying Postgres or ClickHouse row directly. The retention bypass keeps a
-        long-lived share resolvable past your plan&apos;s normal retention window, up to the
-        365 day ceiling on the analytics table.
+        underlying Postgres row directly. The retention bypass keeps a long-lived share
+        resolvable past your plan&apos;s normal retention window, up to the 365 day ceiling
+        on the request log.
       </p>
 
       <hr />

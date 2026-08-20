@@ -16,8 +16,8 @@ import { installOnError } from './helpers/install-on-error.js'
  *   5. Upstream non-2xx is passed through, error truncated for the log row.
  *
  * Mocking strategy: middleware are no-op'd / replaced (auth, scope, quota,
- * rate-limit) so the test exercises ONLY the handler body. supabase/clickhouse
- * are mocked via getDecryptedProviderKey + logRequestAsync. Global fetch is
+ * rate-limit) so the test exercises ONLY the handler body. Database access is
+ * mocked via getDecryptedProviderKey + logRequestAsync. Global fetch is
  * spied. fireAndForget queues into proxyState.pendingTasks so the test can
  * await background log writes before asserting.
  */
@@ -301,8 +301,8 @@ describe('openai proxy — logging + cost calculation', () => {
     mockUpstream(openAIChatResponse())
     const app = await buildApp()
 
-    // The SDK generates trace/span ids with crypto.randomUUID(); requests.trace_id
-    // and span_id are ClickHouse Nullable(UUID), so valid UUIDs flow through.
+    // The SDK generates trace/span ids with crypto.randomUUID(), and a UUID is
+    // exactly what joins against traces.id, so these flow through untouched.
     const traceId = '11111111-1111-4111-8111-111111111111'
     const spanId = '22222222-2222-4222-8222-222222222222'
     await app.request('/proxy/openai/v1/chat/completions', {
@@ -342,11 +342,11 @@ describe('openai proxy — logging + cost calculation', () => {
     await drainPendingTasks()
 
     const row = proxyState.loggerCalls[0]!
-    // Invalid UUIDs must coerce to null — otherwise they poison the ClickHouse
-    // Nullable(UUID) column and the whole row is silently dropped at flush time.
+    // Invalid UUIDs must coerce to null. Stored as-is they would look like a
+    // trace link that can never resolve, since traces.id is a uuid.
     expect(row['traceId']).toBeNull()
     expect(row['spanId']).toBeNull()
-    // Customer identifiers are Strings, so non-UUID values still flow.
+    // Customer identifiers are free-form text, so non-UUID values still flow.
     expect(row['userId']).toBe('usr_end_customer')
   })
 })

@@ -114,7 +114,7 @@ export function GeneralTab() {
   )
 }
 
-// ─── Log body sampling (ClickHouse storage control) ──────────────────────────
+// ─── Log body sampling (log storage control) ─────────────────────────────────
 
 function LoggingSection({ currentRate }: { currentRate: number }) {
   const update = useUpdateLoggingSettings()
@@ -139,7 +139,7 @@ function LoggingSection({ currentRate }: { currentRate: number }) {
   return (
     <Section
       title="Log body sampling"
-      description="Cut ClickHouse storage by keeping prompt and response bodies for only a fraction of requests. Token counts, cost, and billing are always recorded in full."
+      description="Cut log storage by keeping prompt and response bodies for only a fraction of requests. Token counts, cost, and billing are always recorded in full."
       className="mb-4"
     >
       <FormRow

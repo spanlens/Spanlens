@@ -36,13 +36,10 @@ export async function comparePromptVersions(
   if (typedVersions.length === 0) return []
 
   const versionIds = typedVersions.map((v) => v.id)
-  const windowStart = new Date(Date.now() - sinceHours * 3_600_000)
-    .toISOString()
-    .replace('T', ' ')
-    .replace('Z', '')
+  const windowStart = new Date(Date.now() - sinceHours * 3_600_000).toISOString()
 
   // User-facing analytical query — plan retention applies. cost_usd arrives as
-  // a string from ClickHouse (Decimal); aggregator coerces it.
+  // a string (numeric column); aggregator coerces it.
   interface PromptCompareRow {
     prompt_version_id: string | null
     latency_ms: number
@@ -57,8 +54,8 @@ export async function comparePromptVersions(
     select:
       'prompt_version_id, latency_ms, cost_usd, status_code, prompt_tokens, completion_tokens',
     filters:
-      'prompt_version_id IN {versionIds:Array(UUID)} ' +
-      'AND created_at >= parseDateTime64BestEffort({windowStart:String})',
+      'prompt_version_id = ANY({versionIds}::uuid[]) ' +
+      'AND created_at >= {windowStart}::timestamptz',
     params: { versionIds, windowStart },
   })
 

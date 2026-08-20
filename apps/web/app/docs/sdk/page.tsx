@@ -52,7 +52,7 @@ pip install "spanlens[all]"`}
         Python, use the matching extras shown above.
       </p>
 
-      <h2 id="create-openai">createOpenAI() — proxy mode</h2>
+      <h2 id="create-openai">createOpenAI() in proxy mode</h2>
       <p>
         Constructs the official provider client with <code>base_url</code> pointed at the Spanlens proxy
         and <code>api_key</code> set to your Spanlens key. Your real OpenAI key never leaves the
@@ -482,7 +482,7 @@ client = SpanlensClient(
             <td><strong>Yes</strong>, this is the OTLP-equivalent agent-tracing layer</td>
           </tr>
           <tr>
-            <td>Proxy request logs (<code>/proxy/*</code> → ClickHouse <code>requests</code>)</td>
+            <td>Proxy request logs (<code>/proxy/*</code> → the <code>requests</code> table)</td>
             <td>
               <strong>No</strong>, every LLM call is still recorded for cost / quota / anomaly
               tracking. Billing does not depend on the SDK&apos;s sampling decision.
@@ -579,7 +579,7 @@ with client.start_trace("answer-question") as trace:
       if (chunk.usage) usage = chunk.usage
     }
 
-    // Pass token counts manually — the SDK can't read streaming chunks
+    // Pass token counts manually. The SDK can't read streaming chunks
     if (usage) {
       await span.end({
         status: 'completed',
@@ -622,7 +622,7 @@ async def streaming_span(trace):
       <LangTabs
         ts={`import { observeOpenAI } from '@spanlens/sdk'
 
-// String form — just give it a span name
+// String form. Just give it a span name
 const res = await observeOpenAI(trace, 'greeting', (headers) =>
   openai.chat.completions.create(
     { model: 'gpt-4o-mini', messages: [{ role: 'user', content: 'Hi' }] },
@@ -630,7 +630,7 @@ const res = await observeOpenAI(trace, 'greeting', (headers) =>
   ),
 )
 
-// Options object — pass logBody / cache alongside promptVersion per call
+// Options object. Pass logBody / cache alongside promptVersion per call
 const res2 = await observeOpenAI(
   trace,
   { name: 'pii-heavy-call', logBody: 'meta', cache: 600, promptVersion: 'greeter@latest' },
@@ -674,7 +674,7 @@ import { SpanlensClient, observeOllama } from '@spanlens/sdk'
 
 const client = new SpanlensClient({ apiKey: process.env.SPANLENS_API_KEY! })
 
-// Point the OpenAI SDK at your local Ollama — apiKey is required by the
+// Point the OpenAI SDK at your local Ollama. apiKey is required by the
 // SDK but ignored by Ollama itself when running locally.
 const ollama = new OpenAI({
   baseURL: 'http://localhost:11434/v1',
@@ -753,10 +753,10 @@ import { createSpanlensCallbackHandler } from '@spanlens/sdk/langchain'
 const client = new SpanlensClient({ apiKey: process.env.SPANLENS_API_KEY! })
 const handler = createSpanlensCallbackHandler({ client })
 
-// Plain LangChain — chain, LLM, agent, retriever — all work the same way:
+// Plain LangChain. Chain, LLM, agent, and retriever all work the same way:
 await chain.invoke({ input: '...' }, { callbacks: [handler] })
 
-// LangGraph — pass the same handler to the compiled graph:
+// LangGraph. Pass the same handler to the compiled graph:
 const graph = workflow.compile()
 const result = await graph.invoke(
   { input: 'plan a trip to Tokyo' },

@@ -4,12 +4,7 @@ import { authJwtOrApiKey } from '../middleware/authJwtOrApiKey.js'
 import { supabaseAdmin } from '../lib/db.js'
 import { computeCriticalPath } from '../lib/critical-path.js'
 import { parsePageLimit, validateOptionalUuid, validateOptionalDate } from '../lib/params.js'
-import { useEventsForTraces } from '../lib/events-read-flag.js'
-import {
-  listTracesFromEvents,
-  getTraceWithSpansFromEvents,
-} from '../lib/traces-events-queries.js'
-import { ApiError, isApiError } from '../lib/errors.js'
+import { ApiError } from '../lib/errors.js'
 import { ilikeOrPattern } from '../lib/postgrest-search.js'
 import { traceToOtlp, type SpanlensTrace, type SpanlensSpan } from '../lib/otel-export.js'
 
@@ -24,10 +19,10 @@ tracesRouter.get('/', async (c) => {
   const orgId = c.get('orgId')
   if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
-  // projectId reaches a ClickHouse UUID binding (events path) / Postgres eq;
-  // from/to feed date comparisons on both paths. Validate up front so a
-  // malformed value (e.g. ?projectId=abc, ?from=garbage) returns a clean 400
-  // instead of a raw 500 — these are documented external (MCP/BI) surfaces.
+  // projectId reaches a `uuid` equality filter and from/to feed timestamp
+  // comparisons. Validate up front so a malformed value (e.g. ?projectId=abc,
+  // ?from=garbage) returns a clean 400 instead of a raw 500. These are
+  // documented external (MCP/BI) surfaces.
   const projectId = validateOptionalUuid(c.req.query('projectId'), 'projectId')
   const status = c.req.query('status')
   const from = validateOptionalDate(c.req.query('from'), 'from')
@@ -37,37 +32,6 @@ tracesRouter.get('/', async (c) => {
   // page only, which silently dropped matches living on other pages.
   const q = c.req.query('q')?.trim()
   const { page, limit, offset } = parsePageLimit(c.req.query('page'), c.req.query('limit'))
-
-  // Phase 5.1 PR-7b — when the read switch is on, read from the events
-  // table via traces_view/spans_view. Catch-and-fall-back to Postgres
-  // so a regression on the events side degrades to "same behaviour as
-  // before Stage 3" rather than 500.
-  // R-12 Phase 3.2: resolved per-org (env gate OR organizations.read_from_events).
-  if (await useEventsForTraces(orgId)) {
-    try {
-      const result = await listTracesFromEvents({
-        organizationId: orgId,
-        projectId,
-        status,
-        from,
-        to,
-        q,
-        limit,
-        offset,
-      })
-      return c.json({
-        success: true,
-        data: result.rows,
-        meta: { total: result.total, page, limit },
-      })
-    } catch (eventsErr) {
-      console.error('[traces:list] events path failed, falling back to Postgres:', {
-        message: eventsErr instanceof Error ? eventsErr.message : String(eventsErr),
-        orgId,
-      })
-      // fall through to the Postgres path below
-    }
-  }
 
   // `count: 'planned'` uses the Postgres query planner's row estimate instead
   // of forcing a COUNT(*) scan. Saves -200~500ms per request on the traces
@@ -136,18 +100,6 @@ tracesRouter.get('/:id/otlp.json', async (c) => {
   let trace: SpanlensTrace | null = null
   let spans: SpanlensSpan[] = []
 
-  if (await useEventsForTraces(orgId)) {
-    try {
-      const result = await getTraceWithSpansFromEvents(traceId, orgId)
-      if (result.trace) {
-        trace = result.trace as SpanlensTrace
-        spans = result.spans as SpanlensSpan[]
-      }
-    } catch {
-      /* fall through to Postgres */
-    }
-  }
-
   if (!trace) {
     const { data: pgTrace, error: traceErr } = await supabaseAdmin
       .from('traces')
@@ -185,30 +137,6 @@ tracesRouter.get('/:id', async (c) => {
   const traceId = c.req.param('id')
   const orgId = c.get('orgId')
   if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
-
-  if (await useEventsForTraces(orgId)) {
-    try {
-      const { trace, spans } = await getTraceWithSpansFromEvents(traceId, orgId)
-      if (!trace) throw new ApiError('NOT_FOUND', 'Trace not found')
-      const criticalSpanIds = computeCriticalPath(spans)
-      return c.json({
-        success: true,
-        data: { ...trace, spans, critical_span_ids: criticalSpanIds },
-      })
-    } catch (eventsErr) {
-      // A NOT_FOUND thrown above is a legitimate answer ("this trace does not
-      // exist"), not an events-path failure — rethrow it instead of logging a
-      // fake "events path failed" line and re-querying Postgres for a row we
-      // already know is absent. Only unexpected errors trigger the fallback.
-      if (isApiError(eventsErr) && eventsErr.code === 'NOT_FOUND') throw eventsErr
-      console.error('[traces:detail] events path failed, falling back to Postgres:', {
-        message: eventsErr instanceof Error ? eventsErr.message : String(eventsErr),
-        traceId,
-        orgId,
-      })
-      // fall through to the Postgres path below
-    }
-  }
 
   const { data: trace, error: traceErr } = await supabaseAdmin
     .from('traces')

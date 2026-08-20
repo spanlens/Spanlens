@@ -31,9 +31,9 @@ We follow responsible disclosure. Please allow us reasonable time to investigate
 
 The following are in scope:
 
-- `apps/server` — Hono proxy and REST API
-- `apps/web` — Next.js dashboard
-- `packages/sdk` — JS/TS SDK published to npm
+- `apps/server`: Hono proxy and REST API
+- `apps/web`: Next.js dashboard
+- `packages/sdk`: JS/TS SDK published to npm
 
 The following are **out of scope**:
 
@@ -48,6 +48,6 @@ Spanlens implements the following controls:
 - Provider API keys encrypted at rest with AES-256-GCM
 - API key transport via `Authorization` header only (no query-parameter transport)
 - Row-Level Security (RLS) on all Supabase tables
-- `organization_id` isolation enforced on every ClickHouse query
+- `organization_id` isolation enforced on every request-log query, with a restrictive deny-all RLS policy behind it
 - Automated SAST via GitHub CodeQL (weekly schedule + every PR)
 - Automated dependency vulnerability scanning via GitHub Dependabot

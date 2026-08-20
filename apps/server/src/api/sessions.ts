@@ -3,7 +3,6 @@ import { authJwt, type JwtContext } from '../middleware/authJwt.js'
 import { parsePageLimit } from '../lib/params.js'
 import { getSessionAnalytics, type SessionAnalyticsRow } from '../lib/stats-queries.js'
 import { requestsScope, selectRequests } from '../lib/requests-query.js'
-import { fromClickhouseTimestamp } from '../lib/clickhouse.js'
 import { ApiError } from '../lib/errors.js'
 
 export const sessionsRouter = new Hono<JwtContext>()
@@ -15,6 +14,14 @@ sessionsRouter.use('*', authJwt)
 // flag so the UI can tell the user some turns are hidden.
 const MAX_TURNS = 200
 
+/**
+ * `request_body` / `response_body` are stored as `text`, not `jsonb`: a
+ * provider response is not guaranteed to be valid JSON, and jsonb would
+ * normalise key order and whitespace so the stored bytes stop matching what
+ * was sent. Parse opportunistically here and fall back to the raw string.
+ *
+ * Not for `flags` / `response_flags` — those are real jsonb and arrive parsed.
+ */
 function parseJsonColumn(value: string | null | undefined, fallback: unknown): unknown {
   if (value == null || value === '') return fallback
   try {
@@ -64,7 +71,7 @@ sessionsRouter.get('/', async (c) => {
       projectId, userId, search, from, to, sortBy, sortDir, limit, offset,
     })
   } catch (err) {
-    console.error('[sessions] ClickHouse query failed:', err instanceof Error ? err.message : err)
+    console.error('[sessions] query failed:', err instanceof Error ? err.message : err)
     throw new ApiError('INTERNAL_ERROR', 'Failed to fetch session analytics')
   }
 
@@ -72,13 +79,10 @@ sessionsRouter.get('/', async (c) => {
 
   return c.json({
     success: true,
-    // Convert ClickHouse DateTime64 → ISO UTC so the client's relative-time
-    // formatting is correct for non-UTC users (gotcha #18).
-    data: rows.map(({ total_count: _omit, first_seen, last_seen, ...rest }) => ({
-      ...rest,
-      first_seen: fromClickhouseTimestamp(first_seen) ?? first_seen,
-      last_seen: fromClickhouseTimestamp(last_seen) ?? last_seen,
-    })),
+    // `first_seen` / `last_seen` are timestamptz aggregates and already arrive
+    // as canonical ISO UTC, so the client's relative-time formatting is
+    // correct for non-UTC users without any rewriting here.
+    data: rows.map(({ total_count: _omit, ...rest }) => rest),
     meta: { total: totalCount, page, limit },
   })
 })
@@ -109,7 +113,7 @@ sessionsRouter.get('/:sessionId', async (c) => {
       limit: 50, offset: 0,
     })
   } catch (err) {
-    console.error('[sessions:detail] ClickHouse query failed:', err instanceof Error ? err.message : err)
+    console.error('[sessions:detail] query failed:', err instanceof Error ? err.message : err)
     throw new ApiError('INTERNAL_ERROR', 'Failed to fetch session analytics')
   }
   const agg = aggRows.find((r) => r.session_id === sessionId) ?? null
@@ -151,19 +155,22 @@ sessionsRouter.get('/:sessionId', async (c) => {
     response_body: string
     created_at: string
   }
-  const turnFilters: string[] = ['session_id = {sessionId:String}']
+  const turnFilters: string[] = ['session_id = {sessionId}']
   const turnParams: Record<string, unknown> = { sessionId }
   if (projectId) {
-    turnFilters.push('project_id = {projectId:UUID}')
+    turnFilters.push('project_id = {projectId}')
     turnParams['projectId'] = projectId
   }
+  // The ISO string is bound as-is and cast in SQL. `timestamptz` wants the
+  // offset, so keep the `Z`: stripping it makes Postgres read the instant in
+  // the session timezone instead of UTC, silently shifting the window.
   if (from) {
-    turnFilters.push('created_at >= parseDateTime64BestEffort({fromTs:String})')
-    turnParams['fromTs'] = from.replace('T', ' ').replace('Z', '')
+    turnFilters.push('created_at >= {fromTs}::timestamptz')
+    turnParams['fromTs'] = from
   }
   if (to) {
-    turnFilters.push('created_at <= parseDateTime64BestEffort({toTs:String})')
-    turnParams['toTs'] = to.replace('T', ' ').replace('Z', '')
+    turnFilters.push('created_at <= {toTs}::timestamptz')
+    turnParams['toTs'] = to
   }
 
   let turns: Array<Record<string, unknown>>
@@ -195,7 +202,7 @@ sessionsRouter.get('/:sessionId', async (c) => {
       error_message: r.error_message,
       trace_id: r.trace_id,
       user_id: r.user_id,
-      created_at: fromClickhouseTimestamp(r.created_at) ?? r.created_at,
+      created_at: r.created_at,
       request_body: parseJsonColumn(r.request_body, null),
       response_body: parseJsonColumn(r.response_body, null),
     }))
@@ -209,8 +216,8 @@ sessionsRouter.get('/:sessionId', async (c) => {
         total_tokens: agg.total_tokens,
         total_cost_usd: agg.total_cost_usd,
         avg_latency_ms: agg.avg_latency_ms,
-        first_seen: fromClickhouseTimestamp(agg.first_seen) ?? agg.first_seen,
-        last_seen: fromClickhouseTimestamp(agg.last_seen) ?? agg.last_seen,
+        first_seen: agg.first_seen,
+        last_seen: agg.last_seen,
         error_requests: agg.error_requests,
         distinct_models: agg.distinct_models,
         turns,

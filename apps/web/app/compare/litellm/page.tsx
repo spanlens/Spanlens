@@ -36,9 +36,9 @@ const whySpanlens: ComparePoint[] = [
       'LLM-as-judge scoring, human annotation with judge-to-human correlation, and traffic-split prompt A/B with a Welch t-test all sit next to the requests they describe. With LiteLLM these are separate tools you wire together.',
   },
   {
-    title: 'Logs survive the analytics store going down',
+    title: 'Logs survive a database outage',
     body:
-      'Spanlens writes request logs to ClickHouse and, if that write fails, queues the row in Postgres and replays it when ClickHouse recovers. Silent log loss during an outage is the failure mode that makes observability untrustworthy.',
+      'When a request log fails to write, Spanlens keeps the row in a fallback queue and a cron replays it once the database answers again. Replay skips rows that already landed, so nothing is counted twice. Silent log loss during an outage is the failure mode that makes observability untrustworthy.',
   },
 ]
 

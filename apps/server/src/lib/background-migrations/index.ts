@@ -6,7 +6,7 @@
  * SQL migration step because:
  *
  *   • It would block a request: rewriting hundreds of millions of
- *     ClickHouse rows holds locks long enough to spike p99.
+ *     `requests` rows holds locks long enough to spike p99.
  *   • It wouldn't finish in 5 minutes: Vercel's serverless functions
  *     get killed at the 5-min mark, taking a half-done backfill with
  *     them.

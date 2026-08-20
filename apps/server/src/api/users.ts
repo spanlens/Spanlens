@@ -29,7 +29,7 @@ usersRouter.get('/', async (c) => {
   const orgId = c.get('orgId')
   if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
-  // projectId is bound as a ClickHouse UUID and from/to feed date parsing
+  // projectId is bound against a uuid column and from/to feed date parsing
   // downstream; validate up front so a malformed value returns 400 not 500.
   const projectId = validateOptionalUuid(c.req.query('projectId'), 'projectId') ?? null
   const search    = c.req.query('search') ?? null
@@ -50,7 +50,7 @@ usersRouter.get('/', async (c) => {
       projectId, search, from, to, sortBy, sortDir, limit, offset,
     })
   } catch (err) {
-    console.error('[users] ClickHouse query failed:', err instanceof Error ? err.message : err)
+    console.error('[users] query failed:', err instanceof Error ? err.message : err)
     throw new ApiError('INTERNAL_ERROR', 'Failed to fetch user analytics')
   }
 
@@ -75,8 +75,9 @@ usersRouter.get('/:userId', async (c) => {
   const userId = c.req.param('userId')
 
   // userId is a customer-supplied string identifier (x-spanlens-user), not a
-  // UUID — do not UUID-validate it. projectId is a ClickHouse UUID and from/to
-  // feed date parsing, so validate those to return 400 rather than a raw 500.
+  // UUID — do not UUID-validate it. projectId is bound against a uuid column
+  // and from/to feed date parsing, so validate those to return 400 rather
+  // than a raw 500.
   const projectId = validateOptionalUuid(c.req.query('projectId'), 'projectId') ?? null
   const from      = validateOptionalDate(c.req.query('from'), 'from') ?? null
   const to        = validateOptionalDate(c.req.query('to'), 'to') ?? null
@@ -90,7 +91,7 @@ usersRouter.get('/:userId', async (c) => {
       limit: 50, offset: 0,
     })
   } catch (err) {
-    console.error('[users:detail] ClickHouse query failed:', err instanceof Error ? err.message : err)
+    console.error('[users:detail] query failed:', err instanceof Error ? err.message : err)
     throw new ApiError('INTERNAL_ERROR', 'Failed to fetch user analytics')
   }
   const agg = aggRows.find((r) => r.user_id === userId) ?? null
@@ -112,7 +113,7 @@ usersRouter.get('/:userId', async (c) => {
     })
   }
 
-  // Recent 50 requests for this user — ClickHouse via selectRequests.
+  // Recent 50 requests for this user — Postgres via selectRequests.
   interface RecentRow {
     id: string
     provider: string
@@ -129,19 +130,22 @@ usersRouter.get('/:userId', async (c) => {
     session_id: string | null
     created_at: string
   }
-  const recentFilters: string[] = ['user_id = {userId:String}']
+  const recentFilters: string[] = ['user_id = {userId}']
   const recentParams: Record<string, unknown> = { userId }
   if (projectId) {
-    recentFilters.push('project_id = {projectId:UUID}')
+    recentFilters.push('project_id = {projectId}')
     recentParams['projectId'] = projectId
   }
+  // The ISO string is bound as-is and cast in SQL. `timestamptz` wants the
+  // offset, so keep the `Z`: stripping it makes Postgres read the instant in
+  // the session timezone instead of UTC, silently shifting the window.
   if (from) {
-    recentFilters.push('created_at >= parseDateTime64BestEffort({fromTs:String})')
-    recentParams['fromTs'] = from.replace('T', ' ').replace('Z', '')
+    recentFilters.push('created_at >= {fromTs}::timestamptz')
+    recentParams['fromTs'] = from
   }
   if (to) {
-    recentFilters.push('created_at <= parseDateTime64BestEffort({toTs:String})')
-    recentParams['toTs'] = to.replace('T', ' ').replace('Z', '')
+    recentFilters.push('created_at <= {toTs}::timestamptz')
+    recentParams['toTs'] = to
   }
 
   let recent: Array<Omit<RecentRow, 'cost_usd'> & { cost_usd: number | null }>

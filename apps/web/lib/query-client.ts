@@ -48,12 +48,13 @@ function handleGlobalError(error: unknown): void {
  *   3. `staleTime: 60_000` — within a minute of a successful fetch a
  *      remounted component reuses the cache. Page navigation stays snappy.
  *
- * A previous attempt used Supabase Realtime on `public.requests`; that table
- * moved to ClickHouse in the P1.5 migration and the realtime hook (now
- * deleted) silently delivered zero events for months. The polling-based
- * approach above is the deliberate replacement — simpler, observable, and
- * sufficient for current traffic. Reassess if dashboard latency becomes
- * customer-visible at scale.
+ * A previous attempt used Supabase Realtime on `public.requests`. The hook
+ * outlived the table it subscribed to and delivered zero events for months
+ * before anyone noticed, which is the argument against putting it back
+ * without a test that would catch the same silence. The polling above is
+ * the deliberate replacement: simpler, observable, and sufficient for
+ * current traffic. Reassess if dashboard latency becomes customer-visible
+ * at scale.
  */
 export function makeQueryClient(): QueryClient {
   return new QueryClient({

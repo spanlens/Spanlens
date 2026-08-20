@@ -81,7 +81,7 @@ describe('model-prices-cache', () => {
     expect(cache.getCachedPrices()).toEqual({})
   })
 
-  test('numeric string columns are coerced to Number (ClickHouse-style strings)', async () => {
+  test('numeric columns arriving as strings are coerced to Number', async () => {
     mockSelect([dbRow({
       prompt_price_per_1m: '0.0001',
       completion_price_per_1m: '0.0002',

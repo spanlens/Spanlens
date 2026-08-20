@@ -126,7 +126,7 @@ app.use('*', async (c, next) => {
 //                    (Vercel commit SHA) so we can correlate dashboards with
 //                    the deployed build at a glance.
 //
-//   /health/ready  — readiness. Pings Postgres + ClickHouse + Upstash in
+//   /health/ready  — readiness. Pings Postgres (both routes) + Upstash in
 //                    parallel. Returns 503 if any dependency is unreachable
 //                    so the load balancer / docker healthcheck can route
 //                    around a half-broken instance. Cheap enough to run on

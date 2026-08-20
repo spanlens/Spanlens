@@ -25,9 +25,9 @@ import { fileURLToPath } from 'node:url'
  *     and a missing `public/` fails the deploy with "No Output Directory
  *     named public found" (2026-07-29). Hence the `.gitkeep`.
  *
- * Behaviour can't be asserted cheaply here: importing app.ts pulls in the
- * Supabase and ClickHouse clients, so this pins the source instead — the same
- * pattern as api-v1-mount-order.test.ts.
+ * Behaviour can't be asserted cheaply here: importing app.ts pulls in every
+ * database client, so this pins the source instead, the same pattern as
+ * api-v1-mount-order.test.ts.
  */
 
 async function readAppSource(): Promise<string> {

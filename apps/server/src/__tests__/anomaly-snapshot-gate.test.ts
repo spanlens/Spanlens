@@ -9,20 +9,26 @@ import { beforeEach, describe, expect, test, vi } from 'vitest'
  * failed ("Failed to fetch active orgs: Timeout error."), having paid for the
  * wake-up regardless.
  *
- * The watermark holds that exact answer in Postgres. What is pinned here:
+ * The log table has since moved to Postgres, but the shape of the hazard is
+ * identical: a DISTINCT over every logged request is the most expensive way to
+ * learn which handful of orgs had traffic. The watermark holds that exact
+ * answer in a small indexed table. What is pinned here:
  *
- *   - no active orgs → ClickHouse is never touched
+ *   - no active orgs → the `requests` table is never queried
  *   - active orgs → they are still analysed
  *   - unreadable watermark → the original scan still runs, because skipping a
- *     day of anomaly detection is worse than one wake-up
+ *     day of anomaly detection is worse than one expensive query
  */
 
-const chQueryMock = vi.fn()
+const pgQueryMock = vi.fn()
 const getOrgActivitySinceMock = vi.fn()
 const detectAnomaliesMock = vi.fn()
 
-vi.mock('../lib/clickhouse.js', () => ({
-  unscopedClickhouse: () => ({ query: chQueryMock }),
+vi.mock('../lib/postgres.js', () => ({
+  pgQuery: pgQueryMock,
+  pgQueryOne: vi.fn(),
+  pgExecute: vi.fn(),
+  pgStream: vi.fn(),
 }))
 
 vi.mock('../lib/db.js', () => ({
@@ -52,7 +58,7 @@ let snapshotAnomaliesForAllOrgs:
 
 beforeEach(async () => {
   vi.resetModules()
-  chQueryMock.mockReset()
+  pgQueryMock.mockReset()
   getOrgActivitySinceMock.mockReset()
   detectAnomaliesMock.mockReset()
   detectAnomaliesMock.mockResolvedValue([])
@@ -60,12 +66,12 @@ beforeEach(async () => {
 })
 
 describe('snapshotAnomaliesForAllOrgs', () => {
-  test('never touches ClickHouse when no org has recent traffic', async () => {
+  test('never scans the requests table when no org has recent traffic', async () => {
     getOrgActivitySinceMock.mockResolvedValue(new Map())
 
     await expect(snapshotAnomaliesForAllOrgs()).resolves.toEqual([])
 
-    expect(chQueryMock).not.toHaveBeenCalled()
+    expect(pgQueryMock).not.toHaveBeenCalled()
     expect(detectAnomaliesMock).not.toHaveBeenCalled()
   })
 
@@ -74,20 +80,27 @@ describe('snapshotAnomaliesForAllOrgs', () => {
 
     const results = await snapshotAnomaliesForAllOrgs()
 
-    // The org list came from Postgres, so the DISTINCT scan is gone entirely.
-    expect(chQueryMock).not.toHaveBeenCalled()
+    // The org list came from the watermark, so the DISTINCT scan is gone entirely.
+    expect(pgQueryMock).not.toHaveBeenCalled()
     expect(detectAnomaliesMock).toHaveBeenCalledWith(ORG)
     expect(results).toHaveLength(1)
     expect(results[0]?.orgId).toBe(ORG)
   })
 
-  test('falls back to the ClickHouse scan when the watermark is unreadable', async () => {
+  test('falls back to the DISTINCT scan when the watermark is unreadable', async () => {
     getOrgActivitySinceMock.mockResolvedValue(null)
-    chQueryMock.mockResolvedValue({ json: async () => [{ organization_id: ORG }] })
+    pgQueryMock.mockResolvedValue([{ organization_id: ORG }])
 
     const results = await snapshotAnomaliesForAllOrgs()
 
-    expect(chQueryMock).toHaveBeenCalledTimes(1)
+    expect(pgQueryMock).toHaveBeenCalledTimes(1)
+    // The fallback is a bounded window, not the whole table.
+    const { query, params } = pgQueryMock.mock.calls[0]![0] as {
+      query: string
+      params: Record<string, unknown>
+    }
+    expect(query).toContain('created_at >= {since}::timestamptz')
+    expect(params['since']).toBeDefined()
     expect(detectAnomaliesMock).toHaveBeenCalledWith(ORG)
     expect(results).toHaveLength(1)
   })

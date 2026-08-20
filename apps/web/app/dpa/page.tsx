@@ -182,8 +182,8 @@ export default function DPAPage() {
             <strong>Encryption at rest:</strong> customer-supplied LLM provider API keys
             are encrypted with AES-256-GCM using a master key held in
             infrastructure-level secret storage outside the application database; the
-            ClickHouse Cloud and Supabase data stores additionally encrypt all data at
-            rest at the storage layer.
+            Supabase data store additionally encrypts all data at rest at the
+            storage layer.
           </li>
           <li>
             <strong>Authentication and access control:</strong> dashboard access requires
@@ -204,8 +204,7 @@ export default function DPAPage() {
           </li>
           <li>
             <strong>Resilience:</strong> our infrastructure providers offer regional
-            redundancy and automated backups (Supabase point-in-time recovery, ClickHouse
-            Cloud automated snapshots).
+            redundancy and automated backups (Supabase point-in-time recovery).
           </li>
           <li>
             <strong>Vulnerability management:</strong> Dependabot tracks dependency
@@ -324,8 +323,8 @@ export default function DPAPage() {
           </li>
           <li>
             third-party audit reports, certifications, or attestations from
-            subprocessors (e.g. Supabase SOC 2, Vercel SOC 2, ClickHouse Cloud SOC 2)
-            made available on request.
+            subprocessors (e.g. Supabase SOC 2, Vercel SOC 2) made available on
+            request.
           </li>
         </ul>
         <p>
@@ -508,8 +507,8 @@ export default function DPAPage() {
           <li>
             <strong>Encryption at rest:</strong> Customer-supplied LLM provider API
             keys encrypted with AES-256-GCM; master key held in infrastructure-level
-            secret storage outside the application database. Supabase and ClickHouse
-            Cloud additionally encrypt all data at rest at the storage layer.
+            secret storage outside the application database. Supabase additionally
+            encrypts all data at rest at the storage layer.
           </li>
           <li>
             <strong>Access controls and authentication:</strong> dashboard access
@@ -528,8 +527,7 @@ export default function DPAPage() {
           </li>
           <li>
             <strong>Integrity and availability:</strong> regional redundancy and
-            automated backups via Supabase (point-in-time recovery) and ClickHouse
-            Cloud (automated snapshots).
+            automated backups via Supabase (point-in-time recovery).
           </li>
           <li>
             <strong>Vulnerability and patch management:</strong> Dependabot monitors

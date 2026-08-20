@@ -7,15 +7,15 @@
  * had before R-A8), (3) deliver + stamp last_triggered_at + emit
  * webhook event.
  *
- * The ClickHouse aggregation here is per-org (uses getOrgClickhouse) so
- * one tenant's noisy window cannot starve others. computeMetric inlines
+ * The aggregation here is always org-scoped — every WHERE opens with
+ * `organization_id = {orgId}`. computeMetric inlines
  * the three alert types (budget / error_rate / latency_p95) into a single
  * function instead of a strategy class — the three are stable, the type
  * union is tiny, and the strategy boilerplate would add more lines than
  * it saves.
  */
 
-import { getOrgClickhouse } from '../clickhouse.js'
+import { pgQuery } from '../postgres.js'
 import { getOrgActivitySince, orgActiveSince, type OrgActivityMap } from '../org-activity.js'
 import { lastSuccessfulRunAt } from '../cron-cadence.js'
 import { supabaseAdmin } from '../db.js'
@@ -60,7 +60,7 @@ export interface EvaluateAlertsJobResult {
   evaluated: number
   report: Array<{ alert_id: string; fired: boolean; reason?: string }>
   /**
-   * Metrics that could not be computed (ClickHouse or Supabase error), as
+   * Metrics that could not be computed (a database error), as
    * opposed to metrics that legitimately found no data. The caller logs the
    * run as failed when this is non-zero so `lastSuccessfulRunAt` does not
    * advance — budget alerts gate on it, and moving it past a run that never
@@ -81,8 +81,8 @@ interface RunStats {
  * is the exception, and it matters because budget alerts are the ones with
  * long windows — a monthly spend cap runs a 30-day window, which any org
  * that sent a single request in the last month falls inside. Gating on the
- * window alone leaves those alerts querying ClickHouse every 15 minutes
- * forever, which is the whole cost problem (lib/org-activity.ts).
+ * window alone leaves those alerts re-running a 30-day aggregate every 15
+ * minutes forever for an answer that cannot have moved (lib/org-activity.ts).
  *
  * A budget metric is `sum(cost_usd)` over a sliding window, so with no new
  * rows it can only fall as old rows age out. If the previous run did not
@@ -106,7 +106,8 @@ async function computeMetric(
   lastRun: Date | null,
   stats: RunStats,
 ): Promise<number | null> {
-  // eval_score reads from Supabase (eval_runs), not ClickHouse. It is the
+  // eval_score reads `eval_runs` through PostgREST, not the `requests`
+  // table. It is the
   // mean of completed runs' avg_score over the window. Returns null when no
   // completed runs scored in the window (no data → don't fire). eval_runs has
   // no project_id, so project-scoped eval_score alerts fall back to org-level.
@@ -139,12 +140,13 @@ async function computeMetric(
   const windowStartDate = new Date(Date.now() - alert.window_minutes * 60 * 1000)
 
   // No new traffic since the gate, so this alert cannot newly breach and the
-  // ClickHouse query is skipped. That is not just an optimisation: querying
-  // anyway resets ClickHouse Cloud's 15-minute idle timer, which is what kept
-  // the service billed around the clock (lib/org-activity.ts).
+  // aggregate is skipped. The watermark lives in Postgres alongside the data
+  // now, but the gate still earns its keep: it turns most runs of this cron
+  // into a single indexed lookup instead of one scan per active alert
+  // (lib/org-activity.ts).
   //
   // 0 is the right stand-in for two different reasons depending on the gate.
-  // When the gate is the window start, it is literally what ClickHouse would
+  // When the gate is the window start, it is literally what the query would
   // have returned: budget sums nothing, error_rate divides by a zero total,
   // p95 of an empty set reads as 0. When the gate is the last run (budget
   // only — see gateStartFor), the true sum may still be non-zero, but it is
@@ -154,57 +156,54 @@ async function computeMetric(
   if (!orgActiveSince(activity, alert.organization_id, gateStartFor(alert, windowStartDate, lastRun)))
     return 0
 
-  const windowStart = windowStartDate
-    .toISOString()
-    .replace('T', ' ')
-    .replace('Z', '')
   const params: Record<string, unknown> = {
     orgId: alert.organization_id,
-    windowStart,
+    windowStart: windowStartDate.toISOString(),
   }
   let projectClause = ''
   if (alert.project_id) {
-    projectClause = ' AND project_id = {projectId:UUID}'
+    projectClause = ' AND project_id = {projectId}'
     params['projectId'] = alert.project_id
   }
+  // Tenant isolation: this fragment is the only WHERE any of the three
+  // aggregates below uses, and it always leads with organization_id.
   const where =
-    'organization_id = {orgId:UUID} ' +
-    'AND created_at >= parseDateTime64BestEffort({windowStart:String})' +
+    'organization_id = {orgId} ' +
+    'AND created_at >= {windowStart}::timestamptz' +
     projectClause
 
-  const { client: ch } = getOrgClickhouse(alert.organization_id)
   try {
     if (alert.type === 'budget') {
-      const result = await ch.query({
+      const rows = await pgQuery<{ total: string | number | null }>({
         query: `SELECT sum(cost_usd) AS total FROM requests WHERE ${where}`,
-        query_params: params,
-        format: 'JSONEachRow',
+        params,
       })
-      const rows = (await result.json()) as Array<{ total: string | number | null }>
+      // numeric comes back as a string — coerce, never do arithmetic on it raw.
       return Number(rows[0]?.total ?? 0)
     }
 
     if (alert.type === 'error_rate') {
-      const result = await ch.query({
+      const rows = await pgQuery<{ total: string | number; errors: string | number }>({
         query: `
-          SELECT count() AS total, countIf(status_code >= 400) AS errors
+          SELECT count(*) AS total, count(*) FILTER (WHERE status_code >= 400) AS errors
           FROM requests WHERE ${where}`,
-        query_params: params,
-        format: 'JSONEachRow',
+        params,
       })
-      const rows = (await result.json()) as Array<{ total: string | number; errors: string | number }>
       const total = Number(rows[0]?.total ?? 0)
       if (total === 0) return 0
       return Number(rows[0]?.errors ?? 0) / total
     }
 
-    // latency_p95 — ClickHouse's quantile() computes in-DB.
-    const result = await ch.query({
-      query: `SELECT quantileIf(0.95)(latency_ms, latency_ms > 0) AS p95 FROM requests WHERE ${where}`,
-      query_params: params,
-      format: 'JSONEachRow',
+    // latency_p95: percentile_cont computes in-DB. The FILTER keeps the
+    // zero-latency rows out of the ordered set; with no qualifying rows it
+    // yields NULL, which the `?? 0` below reads as 0, so an alert on an
+    // empty window never fires.
+    const rows = await pgQuery<{ p95: string | number | null }>({
+      query:
+        'SELECT percentile_cont(0.95) WITHIN GROUP (ORDER BY latency_ms) ' +
+        `FILTER (WHERE latency_ms > 0) AS p95 FROM requests WHERE ${where}`,
+      params,
     })
-    const rows = (await result.json()) as Array<{ p95: string | number | null }>
     return Number(rows[0]?.p95 ?? 0)
   } catch (err) {
     logError('CRON_JOB_FAILED', {

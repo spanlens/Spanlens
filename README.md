@@ -138,11 +138,11 @@ const unregister = registerSpanlensCallbacks(Settings, { client })
 // ... run queries ... unregister() on shutdown
 ```
 
-**Python: LangChain** — `from spanlens.integrations.langchain import SpanlensCallbackHandler`. Same `BaseCallbackHandler` contract, works with chains, LCEL, and LangGraph.
+**Python: LangChain**: `from spanlens.integrations.langchain import SpanlensCallbackHandler`. Same `BaseCallbackHandler` contract, works with chains, LCEL, and LangGraph.
 
 **More integrations**: AWS Bedrock, CrewAI, Flowise, Instructor, LlamaIndex, OpenAI Assistants, MCP server. Full setup walkthroughs at [spanlens.io/docs/integrations](https://www.spanlens.io/docs/integrations).
 
-**Ollama (local LLMs)** — Ollama runs on your machine, so it does not go through the hosted proxy. Get a ready client with `createOllama()` and wrap each call with `observeOllama()` so the span is logged and tagged as Ollama.
+**Ollama (local LLMs)**: Ollama runs on your machine, so it does not go through the hosted proxy. Get a ready client with `createOllama()` and wrap each call with `observeOllama()` so the span is logged and tagged as Ollama.
 
 ```ts
 import { SpanlensClient } from '@spanlens/sdk'
@@ -185,10 +185,10 @@ Every request logged with model, provider, latency, tokens, cost, and full promp
 | **Savings (model recommendations)** | The `/savings` dashboard surfaces calls that match a cheaper model's profile ("Your gpt-4o calls look like classification. Try gpt-4o-mini") with estimated monthly savings. A month-to-date **prompt-caching savings** card shows the USD you did not pay thanks to discounted cache-read tokens |
 | **Response caching** | Opt in per request with `x-spanlens-cache: true` (or a TTL in seconds, capped at 24h; SDK: `withCache()`). An exact-match hit on the same request body returns the stored response without calling the provider, logs the row at zero cost, and is scoped per API key so nothing leaks across keys. Non-streaming, 200-only |
 | **Email digests & health alerts** | A **weekly workspace digest** (requests, cost with week-over-week change, top models, anomalies) lands every Monday, and a **data-silence alert** emails admins when a workspace that was sending traffic suddenly goes quiet for 24 hours, so a broken key or dropped env var is caught before it becomes silent churn |
-| **Prompt versioning + A/B** | Register prompt templates, run traffic-split experiments, compare versions side by side on latency / cost / error rate — reported with **Welch's t-test** on latency and cost plus a z-test on error rate, so you get statistical significance rather than just averages |
+| **Prompt versioning + A/B** | Register prompt templates, run traffic-split experiments, compare versions side by side on latency / cost / error rate, reported with **Welch's t-test** on latency and cost plus a z-test on error rate, so you get statistical significance rather than just averages |
 | **Prompts Playground** | Execute any prompt version with variable injection directly in the dashboard to see real cost and response before shipping |
 | **Datasets** | Reusable (input, expected_output) test sets you can rerun against any prompt version or model. Upload CSV / JSONL files directly from the dashboard or POST programmatically. Powers offline evals and regression checks |
-| **Evals & Experiments** | Build LLM-as-judge evaluators (judge with OpenAI, Anthropic, **or Gemini** — pick the cheapest/best for the criterion) with rubric anchors and confidence intervals on pass rates. Supports pairwise A vs B mode for head-to-head prompt comparison, agent trajectory mode for scoring whole traces (not just final text), and judge-result caching keyed by `(evaluator, response)` to skip duplicate LLM calls on re-runs. Human annotation is queued for sampling, with **Pearson r** (numeric) or **Cohen's κ** (categorical) measuring judge-human agreement |
+| **Evals & Experiments** | Build LLM-as-judge evaluators (judge with OpenAI, Anthropic, **or Gemini**, whichever is cheapest or best for the criterion) with rubric anchors and confidence intervals on pass rates. Supports pairwise A vs B mode for head-to-head prompt comparison, agent trajectory mode for scoring whole traces (not just final text), and judge-result caching keyed by `(evaluator, response)` to skip duplicate LLM calls on re-runs. Human annotation is queued for sampling, with **Pearson r** (numeric) or **Cohen's κ** (categorical) measuring judge-human agreement |
 | **OpenAPI 3.0 spec + Swagger UI** | Machine-readable spec at `GET /api/v1/openapi.json` and interactive explorer at `GET /api/v1/docs`. A drift test enforces that every router stays documented |
 | **Saved filters** | Pin frequently used request-log queries (model, status, cost range, tags) and share them across the workspace |
 | **Outbound webhooks** | Subscribe to `request.created` / `trace.completed` / `alert.triggered` events. Payloads are HMAC-signed via `X-Spanlens-Signature: sha256=…` so receivers can verify origin |
@@ -217,28 +217,23 @@ Spanlens is multi-user out of the box. Invite teammates, hand out roles, and spi
 ```
 Spanlens/
 ├── apps/
-│   ├── web/             — Next.js 16 dashboard (www.spanlens.io)
-│   └── server/          — Hono LLM proxy + REST API (api.spanlens.io)
+│   ├── web/             Next.js 16 dashboard (www.spanlens.io)
+│   └── server/          Hono LLM proxy + REST API (api.spanlens.io)
 ├── packages/
-│   ├── sdk/             — @spanlens/sdk:  TypeScript / JavaScript SDK
-│   ├── sdk-python/      — spanlens (PyPI): Python SDK
-│   ├── cli/             — @spanlens/cli:  npx wizard for 1-command setup
-│   └── mcp-server/      — @spanlens/mcp-server: MCP server for Cursor / Claude Desktop / Continue
-├── clickhouse/
-│   ├── migrations/      — ClickHouse schema for the `requests` log table
-│   └── apply.ts         — `pnpm ch:migrate` runner (idempotent)
+│   ├── sdk/             @spanlens/sdk:  TypeScript / JavaScript SDK
+│   ├── sdk-python/      spanlens (PyPI): Python SDK
+│   ├── cli/             @spanlens/cli:  npx wizard for 1-command setup
+│   └── mcp-server/      @spanlens/mcp-server: MCP server for Cursor / Claude Desktop / Continue
 └── supabase/
-    ├── migrations/      — Postgres schema (orgs, projects, keys, prompts, … — RLS-gated)
-    └── seeds/           — model_prices.sql etc.
+    ├── migrations/      Postgres schema (orgs, projects, keys, prompts, requests; RLS-gated)
+    └── seeds/           model_prices.sql etc.
 ```
 
-### Storage split
+### Where the data lives
 
-Spanlens uses **two databases**, each for what it's good at.
+Everything is in Supabase Postgres. Organizations, projects, members, API and provider keys, prompts, datasets, alerts, billing, and the audit log are ordinary RLS-gated tables.
 
-**Supabase (Postgres)** handles transactional, relational, RLS-gated data: organizations, projects, members, API + provider keys, prompts, datasets, alerts, billing, audit log.
-
-**ClickHouse** handles the high-volume append-only `requests` table (every LLM call). All reads go through [`apps/server/src/lib/requests-query.ts`](./apps/server/src/lib/requests-query.ts), which auto-injects the `organization_id` filter and the per-plan retention window (free=14d / pro=90d / team=365d). If ClickHouse is briefly unreachable, the proxy falls back to a Supabase queue (`requests_fallback`) that a cron replays every 5 minutes with no log loss.
+The `requests` table (one row per LLM call) is partitioned by month on `created_at`, so expiring old logs drops a partition instead of running a bulk `DELETE`. Reads go through [`apps/server/src/lib/requests-query.ts`](./apps/server/src/lib/requests-query.ts), which injects the `organization_id` filter and the per-plan retention window (free=14d / pro=90d / team=365d). If a log write fails, the row is parked as JSON in a `requests_fallback` queue and a cron replays it every 5 minutes. Replay is idempotent (`ON CONFLICT (created_at, id) DO NOTHING`), so a retry cannot double-count a request against your quota.
 
 ### Projects, unified keys, and headers
 
@@ -259,13 +254,10 @@ git clone https://github.com/spanlens/Spanlens.git
 cd Spanlens
 pnpm install
 
-# 2. Start local Supabase + ClickHouse (both require Docker)
+# 2. Start local Supabase (requires Docker)
 supabase start
 supabase db push        # apply Postgres migrations
 supabase gen types --lang typescript --local > supabase/types.ts
-
-docker compose up -d clickhouse   # start ClickHouse only (web/server run from pnpm dev)
-pnpm ch:migrate                   # apply ClickHouse migrations
 
 # 3. Env vars (see apps/server/.env.example)
 cp apps/server/.env.example apps/server/.env
@@ -279,7 +271,7 @@ pnpm dev
 ```bash
 pnpm typecheck          # TS across all packages
 pnpm lint               # ESLint
-pnpm test               # Vitest — server + sdk + cli suites
+pnpm test               # Vitest: server + sdk + cli suites
 pnpm build              # production build smoke test
 ```
 
@@ -289,7 +281,7 @@ See [CLAUDE.md](./CLAUDE.md) for architecture rules and Known Gotchas (streaming
 
 ## Self-hosting
 
-The easiest way to self-host is with the included `docker-compose.yml`. It runs the **dashboard (web)**, the **proxy/API server**, and a local **ClickHouse** instance together using pre-built images from GHCR.
+The easiest way to self-host is with the included `docker-compose.yml`. Two containers, the **dashboard (web)** and the **proxy/API server**, both pulled pre-built from GHCR. Your Supabase project is the only other piece, and it can be Supabase Cloud or your own self-hosted Supabase.
 
 ![Run Spanlens in your own VPC with one Docker command](.github/assets/self-host.png)
 
@@ -319,11 +311,12 @@ ENCRYPTION_KEY=<32-byte base64>
 # Random secret for cron endpoint
 CRON_SECRET=<random string>
 
-# ClickHouse (request logs, required)
-CLICKHOUSE_URL=http://clickhouse:8123        # the in-network service from docker-compose
-CLICKHOUSE_USER=spanlens
-CLICKHOUSE_PASSWORD=<choose a strong password>
-CLICKHOUSE_DB=spanlens
+# Pooled Postgres connection for the `requests` table (required).
+# Supabase Dashboard: Connect > Direct > Transaction pooler. Use port 6543,
+# not 5432, and copy the host from that dialog rather than assembling it:
+# the shared pooler hostname carries a numbered prefix that the region does
+# not tell you. This is a full database credential, so keep it out of logs.
+SUPABASE_DB_POOLER_URL=postgresql://postgres.<ref>:<password>@<pooler-host>:6543/postgres
 
 # Optional (for invite emails)
 # WEB_URL=https://your-domain.com
@@ -340,13 +333,13 @@ CLICKHOUSE_DB=spanlens
 
 ```bash
 docker compose up -d
-pnpm ch:migrate                # one-time: apply ClickHouse schema (requests table)
 ```
 
 - Dashboard: `http://localhost:3000`
 - API / proxy: `http://localhost:3001`
-- ClickHouse HTTP: `http://localhost:8123`
-- Health: `GET /health` (liveness) and `GET /health/deep` (ClickHouse + fallback queue depth)
+- Health: `GET /health` (liveness) and `GET /health/deep` (database pool, fallback queue depth, cron freshness)
+
+> **Upgrading from an older release?** Request logs live in Postgres now. Re-apply [`supabase/init.sql`](./supabase/init.sql) so the `requests` table exists, add `SUPABASE_DB_POOLER_URL` to your `.env`, then drop the ClickHouse container and its four `CLICKHOUSE_*` variables. Rows already in ClickHouse are not copied across, so export anything you still need before tearing it down.
 
 The web container passes `NEXT_PUBLIC_*` vars as **build arguments** (Next.js bakes them into the client bundle), so they must be present before `docker compose build`.
 
@@ -360,6 +353,7 @@ docker run -p 3001:3001 \
   -e SUPABASE_URL=... \
   -e SUPABASE_ANON_KEY=... \
   -e SUPABASE_SERVICE_ROLE_KEY=... \
+  -e SUPABASE_DB_POOLER_URL=... \
   -e ENCRYPTION_KEY=... \
   ghcr.io/spanlens/spanlens-server:latest
 ```
@@ -372,7 +366,7 @@ const openai = createOpenAI({
 })
 ```
 
-Your Spanlens instance talks to your Supabase + ClickHouse. We never see your data.
+Your Spanlens instance talks to your Supabase. We never see your data.
 
 ### Background jobs (Vercel Cron / your scheduler)
 
@@ -382,16 +376,15 @@ The hosted instance ships with the following cron tasks (see [`apps/server/verce
 |---|---|---|
 | `/cron/evaluate-alerts` | every 15m | Evaluate threshold + anomaly alerts, fire notifications |
 | `/cron/snapshot-anomalies` | daily 01:00 | Materialize daily anomaly baselines |
-| `/cron/replay-fallback` | every 5m | Replay `requests_fallback` queue into ClickHouse |
+| `/cron/replay-fallback` | every 5m | Replay the `requests_fallback` queue into the `requests` table |
 | `/cron/stale-key-reminders` | weekly Mon 09:00 | Email digest of idle provider keys |
 | `/cron/leak-detect-keys` | daily 04:00 | GitGuardian scan of active provider keys |
 | `/cron/recommend-savings-alerts` | daily 09:00 | Email model-swap savings opportunities |
 | `/cron/check-past-due-downgrades` | daily 10:00 | D-3 / D-1 warnings + auto-downgrade past-due subs |
 | `/cron/execute-pending-deletions` | every 6h | Hard-delete accounts past their 30-day soft-delete grace |
 | `/cron/run-background-migrations` | every 5m | Drain background-migration queue (data backfills) |
-| `/cron/events-reconciliation` | daily 02:00 | Reconcile OTLP events dual-write between Supabase and ClickHouse |
 | `/cron/detect-missing-model-prices` | hourly | Catch new model IDs in the request log that have no row in `model_prices` |
-| `/cron/self-monitor` | hourly :31 | Spanlens dogfoods itself — heartbeat eval into the internal workspace |
+| `/cron/self-monitor` | hourly :31 | Spanlens dogfoods itself: heartbeat eval into the internal workspace |
 | `/cron/detect-orphan-spans` | hourly :17 | Flag spans whose parent trace never arrived |
 | `/cron/prune-judge-cache` | daily 03:00 | TTL-evict stale `(evaluator, response)` judge cache entries |
 | `/cron/purge-proxy-cache` | daily 03:15 | Reclaim expired `proxy_response_cache` rows for keys that went quiet |

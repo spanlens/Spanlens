@@ -5,7 +5,7 @@ import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 export const metadata = {
   title: 'Disaster recovery · Spanlens Docs',
   description:
-    'Operator runbook for Spanlens outages: what data is at risk per failure mode, how fallback queues protect it, and recovery steps for ClickHouse and Supabase.',
+    'Operator runbook for Spanlens outages: what data is at risk per failure mode, how the fallback queue protects it, and how to recover the Postgres database.',
   alternates: { canonical: '/docs/production/disaster-recovery' },
   openGraph: openGraphFor('/docs/production/disaster-recovery'),
 }
@@ -27,70 +27,76 @@ export default function DisasterRecoveryDocs() {
         Spanlens is designed so a dependency outage never fails your end users&apos; LLM
         calls: the proxy returns the provider response before any logging happens. The
         risk in an outage is <strong>observability data</strong> (request logs, traces,
-        usage), not your application traffic. The targets below are what the queues and
-        backups are sized for.
+        usage), not your application traffic. Everything Spanlens stores is in one Postgres
+        database, so the recovery story is short, and one restore covers all of it.
       </p>
       <table>
         <thead>
           <tr>
             <th>Data</th>
-            <th>Store</th>
             <th>Protection</th>
             <th>Recovery point</th>
           </tr>
         </thead>
         <tbody>
           <tr>
-            <td>Request logs</td>
-            <td>ClickHouse</td>
-            <td><code>requests_fallback</code> queue in Supabase (7 day TTL)</td>
+            <td>Request logs (<code>requests</code>)</td>
+            <td>
+              <code>requests_fallback</code> queue for a failed insert (7 day TTL), plus the
+              database backup
+            </td>
             <td>0 while the queue holds</td>
           </tr>
           <tr>
-            <td>Trace events</td>
-            <td>ClickHouse</td>
-            <td><code>events_fallback</code> queue in Supabase (7 day TTL)</td>
-            <td>0 while the queue holds</td>
+            <td>Traces and spans</td>
+            <td>Managed daily backups + PITR</td>
+            <td>Provider backup cadence</td>
           </tr>
           <tr>
             <td>Accounts, keys, billing</td>
-            <td>Supabase Postgres</td>
             <td>Managed daily backups + PITR</td>
             <td>Provider backup cadence</td>
           </tr>
           <tr>
             <td>Outbound webhooks</td>
-            <td>Supabase Postgres</td>
             <td>5 retries with backoff, then dead-lettered</td>
             <td>At-least-once while the endpoint is up</td>
           </tr>
         </tbody>
       </table>
+      <p className="text-sm text-muted-foreground">
+        The <code>ENCRYPTION_KEY</code> is not in any of those backups by design. A restore is
+        only usable when it is paired with the key the data was encrypted under. See{' '}
+        <a href="/docs/self-host/backup#encryption-key">the backup runbook</a>.
+      </p>
 
-      <h2 id="clickhouse-down">ClickHouse is down or paused</h2>
+      <h2 id="log-insert-failing">The request log stops filling</h2>
       <p>
-        This is the most common incident on the ClickHouse Cloud Development tier, which
-        auto-pauses when idle. The proxy keeps serving traffic. Log inserts that fail are
-        written to the <code>requests_fallback</code> / <code>events_fallback</code> tables
-        in Supabase instead of being lost.
+        Request rows are written over a pooled connection, separately from the PostgREST calls
+        the rest of the server makes. That insert can fail on its own while the database is
+        otherwise fine: the pooler is saturated, a statement hit the timeout, or a deploy is
+        writing a column the schema does not have yet. The proxy keeps serving traffic
+        throughout, because the row is written after the response has left.
       </p>
       <p>
-        <strong>Automatic recovery:</strong> the <code>/cron/replay-fallback</code> job
-        drains those queues back into ClickHouse every 5 minutes, in batches, skipping any
-        row already present (idempotent). Once ClickHouse is reachable the backlog clears
-        on its own.
+        <strong>Automatic recovery:</strong> a failed insert is queued into{' '}
+        <code>requests_fallback</code> over PostgREST rather than dropped, and{' '}
+        <code>/cron/replay-fallback</code> drains the queue back into <code>requests</code>{' '}
+        every 5 minutes. The replay insert ends in{' '}
+        <code>ON CONFLICT (created_at, id) DO NOTHING</code>, so replaying a batch that
+        partially landed cannot duplicate a row or inflate anyone&apos;s cost.
       </p>
       <p><strong>Manual steps if the backlog is not draining:</strong></p>
       <ol>
         <li>
-          Confirm ClickHouse is reachable and un-paused (ClickHouse Cloud console, or{' '}
-          <code>GET /health/ready</code> which pings it).
+          Check <code>GET /health/ready</code>. It probes the database twice, once over
+          PostgREST and once over the pooled connection, so it tells you which of the two is
+          broken.
         </li>
         <li>
-          Check the queue depth in <code>GET /health/deep</code> under{' '}
-          <code>fallback.queue</code> and <code>fallback.eventsQueue</code>. A rising number
-          means the replay cron is not firing (see{' '}
-          <a href="#cron-dropout">cron dropout</a> below).
+          Read the queue depth from <code>GET /health/deep</code> under{' '}
+          <code>fallback.queue</code>. A number that climbs and never falls means the replay
+          cron is not firing (see <a href="#cron-dropout">cron dropout</a> below).
         </li>
         <li>
           Trigger a drain by hand:
@@ -98,10 +104,16 @@ export default function DisasterRecoveryDocs() {
   -H "Authorization: Bearer $CRON_SECRET"`}</CodeBlock>
         </li>
         <li>
-          If the outage exceeds the <strong>7 day</strong> queue TTL, rows past the TTL are
-          expired to bound Supabase storage. That is the only window in which request-log
-          data is permanently lost. Upgrade the ClickHouse tier off Development so it does
-          not auto-pause, which removes this class of incident entirely.
+          If the drain still fails, read <code>last_error</code> on the queued rows. It is the
+          insert error verbatim, and it usually names the problem outright.
+          <CodeBlock language="sql">{`SELECT left(last_error, 200) AS err, count(*), min(created_at) AS oldest
+FROM requests_fallback
+GROUP BY 1
+ORDER BY 2 DESC;`}</CodeBlock>
+        </li>
+        <li>
+          Rows are expired after <strong>7 days</strong> or 100 retries to bound queue size.
+          That is the only window in which request-log data is permanently lost.
         </li>
       </ol>
       <p>
@@ -109,47 +121,68 @@ export default function DisasterRecoveryDocs() {
         <code>fallback_queue_high</code>) is raised and shown at <code>/admin/alerts</code>.
       </p>
 
-      <h2 id="supabase-down">Supabase is down</h2>
+      <h2 id="missing-partition">Rows land in requests_default</h2>
       <p>
-        Supabase holds accounts, API keys, provider keys, billing, and the fallback queues
-        themselves. While it is down:
+        <code>requests</code> is partitioned by month. A partition for the current month is
+        normally created several months ahead of time. If that ever stops happening, inserts
+        do not fail: rows fall into the <code>requests_default</code> catch-all partition
+        instead. Nothing is lost, and dashboards still read the rows, so this can run unnoticed
+        for weeks. The cost comes later, because the real partition for that month can no
+        longer be created while conflicting rows sit in the default table.
+      </p>
+      <ol>
+        <li>
+          Check for occupants. An empty default partition is the healthy state.
+          <CodeBlock language="sql">{`SELECT count(*) FROM requests_default;`}</CodeBlock>
+        </li>
+        <li>
+          Create the missing partitions. The function is idempotent and returns which months it
+          had to create.
+          <CodeBlock language="sql">{`SELECT * FROM ensure_requests_partitions(3);`}</CodeBlock>
+        </li>
+        <li>
+          If step 1 found rows, move them out during a quiet window:{' '}
+          <code>DETACH</code> the default partition, insert its rows back into{' '}
+          <code>requests</code>, then re-attach the emptied table. Detaching takes a lock, so
+          do it deliberately rather than in the middle of an incident.
+        </li>
+      </ol>
+
+      <h2 id="postgres-down">Postgres is down</h2>
+      <p>
+        One database holds accounts, API keys, provider keys, billing, traces, the request log,
+        and the fallback queue itself. While it is unreachable:
       </p>
       <ul>
         <li>
-          The dashboard and REST API are unavailable. Proxy auth uses a short in-memory
-          cache, so in-flight keys keep working briefly, but new key lookups fail closed.
+          The dashboard and REST API are unavailable. Proxy auth caches each key in process for
+          30 seconds, so a warm instance keeps serving briefly, then new lookups fail closed.
         </li>
         <li>
-          The fallback queues cannot absorb ClickHouse failures, because they live in
-          Supabase. A <em>simultaneous</em> ClickHouse + Supabase outage is the one case
-          where new request logs can be lost (see below).
+          A failed request-log insert has nowhere to queue, because the queue lives in the same
+          database. This is the total-loss window for new log rows. Traffic itself is
+          unaffected: the proxy still returns provider responses.
         </li>
       </ul>
       <p><strong>Recovery:</strong></p>
       <ol>
-        <li>Restore Supabase from the managed backup or point-in-time recovery. See{' '}
-          <a href="/docs/self-host/backup#restore-postgres">Restore Postgres</a>.</li>
         <li>
-          Because migrations are additive and the deploy pipeline runs{' '}
-          <code>migrate</code> before <code>deploy</code>, the server code tolerates a
-          schema that is briefly behind. Verify the schema version after restore and
-          re-run <code>supabase db push --linked</code> if needed.
+          Restore from the managed backup or point-in-time recovery. See{' '}
+          <a href="/docs/self-host/backup#restore-postgres">Restore</a>.
         </li>
         <li>
-          After restore, watch <code>/health/deep</code> for the fallback queues to begin
-          draining again.
+          Migrations are additive and <code>supabase db push</code> runs on every push to main,
+          so the server tolerates a schema that is briefly behind. Verify the schema version
+          after the restore and re-run <code>supabase db push --linked</code> if it is not
+          current.
         </li>
+        <li>
+          Confirm the current month has a partition:{' '}
+          <code>SELECT * FROM ensure_requests_partitions(3);</code>. A restore from an older
+          backup carries only the partitions that existed when it was taken.
+        </li>
+        <li>Watch <code>/health/deep</code> until <code>fallback.queue</code> reaches 0.</li>
       </ol>
-
-      <h2 id="both-down">ClickHouse and Supabase both down</h2>
-      <p>
-        This is the only total-loss window for new request logs: there is nowhere to queue
-        a failed insert. Your application traffic is unaffected because the proxy still
-        returns provider responses. The mitigation is to keep the two on independent
-        providers (they already are) so a correlated outage is unlikely, and to run
-        managed backups on both. There is no in-app queue that survives losing both stores
-        at once; do not design new write paths that assume one is always available.
-      </p>
 
       <h2 id="cron-dropout">Scheduled jobs stop firing</h2>
       <p>
@@ -248,10 +281,11 @@ ORDER BY count DESC;`}</CodeBlock>
       <h2 id="drills">Restore drills</h2>
       <p>
         Backups are only real if a restore has been tested. On a schedule (quarterly is a
-        reasonable default), restore the latest Supabase backup and a ClickHouse backup
-        into a throwaway environment and confirm the dashboard renders, using the exact
-        commands in <a href="/docs/self-host/backup">Backup and restore</a>. Record how
-        long the restore took; that is your real recovery time, not an estimate.
+        reasonable default), restore the latest backup into a throwaway project, pair it with
+        the matching <code>ENCRYPTION_KEY</code>, and confirm the dashboard renders and a
+        stored provider key still decrypts. Use the exact commands in{' '}
+        <a href="/docs/self-host/backup">Backup and restore</a>. Record how long the restore
+        took; that is your real recovery time, not an estimate.
       </p>
     </div>
   )

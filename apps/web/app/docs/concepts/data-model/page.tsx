@@ -35,7 +35,7 @@ export default function DataModelDocs() {
         <tbody>
           <tr>
             <td><a href="#request"><code>Request</code></a></td>
-            <td>ClickHouse</td>
+            <td>Supabase</td>
             <td>One LLM call. Cost, latency, tokens, full body.</td>
           </tr>
           <tr>
@@ -76,19 +76,20 @@ export default function DataModelDocs() {
         </tbody>
       </table>
 
-      <h3>Storage split: why two databases?</h3>
+      <h3>Storage: one database</h3>
       <p>
-        High-cardinality append-only data (Requests) lives in ClickHouse for columnar
-        compression and fast time-range aggregation. Relational data with frequent updates
-        (Traces, Prompts, Evals, billing, RLS) lives in Supabase Postgres. They are joined
-        at the application layer via shared UUIDs.
+        All eight entities live in Supabase Postgres. Requests are the high-volume table
+        and get monthly range partitions on <code>created_at</code>; everything else is an
+        ordinary relational table. Because a Span and the Request it links to sit in the
+        same database, the two can be read in one query instead of stitched together in
+        application code.
       </p>
       <ul>
-        <li><strong>ClickHouse</strong>: <code>requests</code> (the only table)</li>
-        <li><strong>Supabase</strong>: everything else, including the <code>organization_id</code> tenant boundary enforced by Row Level Security</li>
+        <li><code>requests</code>: one row per LLM call, partitioned by month</li>
+        <li>Everything else: plain tables, with the <code>organization_id</code> tenant boundary enforced by Row Level Security</li>
       </ul>
       <p className="text-sm text-muted-foreground">
-        Self-hosting? Both stores are part of the bundled docker-compose. See{' '}
+        Self-hosting? Postgres ships in the bundled docker-compose. See{' '}
         <a href="/docs/self-host">Self-hosting</a>.
       </p>
 
@@ -97,10 +98,10 @@ export default function DataModelDocs() {
         A Request is one LLM call. Created by the proxy automatically; you never create one
         from the SDK directly.
       </p>
-      <CodeBlock language="text">{`Table: requests (ClickHouse)
-Order key: (organization_id, project_id, created_at, id)
-Partition: monthly by created_at
-TTL: 365 days, plan-based filtering at query time`}</CodeBlock>
+      <CodeBlock language="text">{`Table: requests (Postgres)
+Primary key: (created_at, id)
+Partition: monthly RANGE on created_at
+Retention: the month's partition is dropped at 365 days; plan window applied at query time`}</CodeBlock>
       <table>
         <thead>
           <tr>
@@ -110,20 +111,20 @@ TTL: 365 days, plan-based filtering at query time`}</CodeBlock>
           </tr>
         </thead>
         <tbody>
-          <tr><td><code>id</code></td><td>UUID</td><td>Stable id, surfaced in <a href="/requests">/requests</a> URL.</td></tr>
-          <tr><td><code>organization_id</code> / <code>project_id</code></td><td>UUID</td><td>Tenant scope. Always filter on these.</td></tr>
-          <tr><td><code>provider</code> / <code>model</code></td><td>LowCardinality(String)</td><td>Compressed for fast group-by queries.</td></tr>
-          <tr><td><code>prompt_tokens</code> / <code>completion_tokens</code> / <code>total_tokens</code></td><td>UInt32</td><td>Parsed from provider response.</td></tr>
-          <tr><td><code>cache_read_tokens</code> / <code>cache_write_tokens</code></td><td>UInt32</td><td>From OpenAI prompt cache, Anthropic cache control.</td></tr>
-          <tr><td><code>cost_usd</code></td><td>Decimal(18, 8)</td><td>Computed from <code>model_prices</code> at log time. Null if model is unseeded.</td></tr>
-          <tr><td><code>latency_ms</code> / <code>proxy_overhead_ms</code></td><td>UInt32</td><td>End-to-end and our share.</td></tr>
-          <tr><td><code>status_code</code></td><td>UInt16</td><td>HTTP status from upstream.</td></tr>
-          <tr><td><code>request_body</code> / <code>response_body</code></td><td>String, ZSTD(3)</td><td>Full bodies. Can be empty if <code>x-spanlens-log-body=meta|none</code>.</td></tr>
-          <tr><td><code>trace_id</code> / <code>span_id</code></td><td>Nullable(UUID)</td><td>Set when the call ran inside a Spanlens trace.</td></tr>
-          <tr><td><code>prompt_version_id</code></td><td>Nullable(UUID)</td><td>Set via <code>x-spanlens-prompt-version</code>.</td></tr>
-          <tr><td><code>user_id</code> / <code>session_id</code></td><td>Nullable(String)</td><td>Set via <code>x-spanlens-user</code> / <code>x-spanlens-session</code>.</td></tr>
-          <tr><td><code>flags</code> / <code>response_flags</code></td><td>String (JSON)</td><td>Security findings (PII, jailbreak). See <a href="/docs/features/security">Security</a>.</td></tr>
-          <tr><td><code>truncated</code></td><td>Bool</td><td>True if the stream was cut at the 290s deadline.</td></tr>
+          <tr><td><code>id</code></td><td>uuid</td><td>Stable id, surfaced in <a href="/requests">/requests</a> URL.</td></tr>
+          <tr><td><code>organization_id</code> / <code>project_id</code></td><td>uuid</td><td>Tenant scope. Always filter on these.</td></tr>
+          <tr><td><code>provider</code> / <code>model</code></td><td>text</td><td>Model is stored exactly as the provider echoed it back, dated variants included.</td></tr>
+          <tr><td><code>prompt_tokens</code> / <code>completion_tokens</code> / <code>total_tokens</code></td><td>integer</td><td>Parsed from provider response.</td></tr>
+          <tr><td><code>cache_read_tokens</code> / <code>cache_write_tokens</code></td><td>integer</td><td>From OpenAI prompt cache, Anthropic cache control.</td></tr>
+          <tr><td><code>cost_usd</code></td><td>numeric(18, 8)</td><td>Computed from <code>model_prices</code> at log time. Null if model is unseeded.</td></tr>
+          <tr><td><code>latency_ms</code> / <code>proxy_overhead_ms</code></td><td>integer</td><td>End-to-end and our share.</td></tr>
+          <tr><td><code>status_code</code></td><td>integer</td><td>HTTP status from upstream.</td></tr>
+          <tr><td><code>request_body</code> / <code>response_body</code></td><td>text, lz4 compressed</td><td>Full bodies. Can be empty if <code>x-spanlens-log-body=meta|none</code>. Stored as text, since a provider response is not guaranteed to be valid JSON.</td></tr>
+          <tr><td><code>trace_id</code> / <code>span_id</code></td><td>text</td><td>Set when the call ran inside a Spanlens trace. Free-form, so an id that is not a UUID still logs.</td></tr>
+          <tr><td><code>prompt_version_id</code></td><td>uuid</td><td>Set via <code>x-spanlens-prompt-version</code>.</td></tr>
+          <tr><td><code>user_id</code> / <code>session_id</code></td><td>text</td><td>Set via <code>x-spanlens-user</code> / <code>x-spanlens-session</code>.</td></tr>
+          <tr><td><code>flags</code> / <code>response_flags</code></td><td>jsonb</td><td>Security findings (PII, jailbreak), always JSON arrays. See <a href="/docs/features/security">Security</a>.</td></tr>
+          <tr><td><code>truncated</code></td><td>boolean</td><td>True if the stream was cut at the 290s deadline.</td></tr>
         </tbody>
       </table>
 
@@ -171,7 +172,8 @@ parent_span_id: UUID, NO FK constraint (intentional)`}</CodeBlock>
       <p>
         LLM spans optionally link to the underlying Request via <code>request_id</code>{' '}
         when the call went through the Spanlens proxy. This is how the trace waterfall
-        shows token counts and cost on LLM nodes without re-querying ClickHouse.
+        shows token counts and cost on LLM nodes: the numbers come from the Request row,
+        which is where the proxy wrote the cost it computed.
       </p>
 
       <h2 id="prompt">Prompt and Prompt Version</h2>
@@ -303,23 +305,26 @@ source_request_id: links back to the production request it was imported from`}</
     │   └── Span              │
     │       └── (optional) request_id ──┐
     │                                   │
-    └── Request (ClickHouse) ───────────┤
+    └── Request ────────────────────────┤
         ├── user_id (header column)     │
         ├── session_id (header column)  │
         └── prompt_version_id ──────────┘`}</CodeBlock>
 
       <h2>Tenant boundary</h2>
       <p>
-        Every table carries <code>organization_id</code>. On Supabase, Row Level Security
-        forces every read and write to match the caller&apos;s organization. On ClickHouse,
-        we enforce the same via the <code>requestsScope</code> helper in{' '}
-        <code>apps/server/src/lib/requests-query.ts</code>; bypassing it is treated as a
-        security bug.
+        Every table carries <code>organization_id</code>. Row Level Security forces every
+        read and write to match the caller&apos;s organization. The <code>requests</code>{' '}
+        table is the exception: the server reads it over a pooled connection that bypasses
+        RLS, so its tenant filter comes from the <code>requestsScope</code> helper in{' '}
+        <code>apps/server/src/lib/requests-query.ts</code>. Bypassing that helper is treated
+        as a security bug.
       </p>
       <p className="text-sm text-muted-foreground">
-        Plan retention (Free 14 days, Pro 90 days, Team 365 days) is layered on top of the
-        365-day ClickHouse TTL: queries auto-filter by <code>created_at &gt;= now() - plan_retention</code>{' '}
-        unless the call is a billing read with <code>ignoreRetention: true</code>.
+        Rows are deleted for good at 365 days, when the month&apos;s partition is dropped.
+        Plan retention (Free 14 days, Pro 90 days, Team 365 days) is applied at query time
+        on top of that: queries filter by <code>created_at &gt;= now() - plan_retention</code>{' '}
+        unless the call is a billing read with <code>ignoreRetention: true</code>. Upgrading
+        a plan widens the window, so rows the old plan hid become readable again.
       </p>
 
       <hr />

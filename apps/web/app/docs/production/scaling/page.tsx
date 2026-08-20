@@ -130,9 +130,9 @@ const res = await openai.chat.completions.create(
 
 await observeOpenAI(openai, { logBody: 'meta' }, async () => { ... })`}</CodeBlock>
       <p className="text-sm text-muted-foreground">
-        Storage impact: <code>full</code> mode adds ~2 KB per call (ZSTD compressed).
-        <code>meta</code> mode is ~150 bytes per call. At 10M calls/month the difference
-        is roughly 20 GB vs 1.5 GB of column-store space.
+        Storage impact: <code>full</code> mode adds ~2 KB per call once the bodies are
+        compressed. <code>meta</code> mode is ~150 bytes per call. At 10M calls/month the
+        difference is roughly 20 GB against 1.5 GB of table space.
       </p>
 
       <h2>Lever 2: sampling</h2>
@@ -156,7 +156,7 @@ const openai = createOpenAI({
       </p>
       <p className="text-sm text-muted-foreground">
         Sampling is a per-call decision made before the request is sent. Use{' '}
-        <code>alwaysLogErrors: true</code> to ensure you never miss a 5xx.
+        <code>alwaysLogErrors: true</code> so you never miss a 5xx.
       </p>
 
       <h2>Lever 3: trace sampling</h2>
@@ -216,23 +216,68 @@ const trace = shouldTrace
 
       <h2>Self-host tuning</h2>
       <p>
-        When you self-host, the bottlenecks shift to your Postgres + ClickHouse setup.
-        Defaults work for thousands of req/s on a single ClickHouse node; past that:
+        When you self-host, the bottleneck is your Postgres project. Defaults carry a
+        deployment a long way. Past that, the levers below are the ones that matter, roughly
+        in the order you will reach for them.
       </p>
 
-      <h3>ClickHouse</h3>
+      <h3>The request log</h3>
+      <p>
+        <code>requests</code> is the only table that grows with traffic. It is partitioned by
+        month on <code>created_at</code>, with a primary key of{' '}
+        <code>(created_at, id)</code>.
+      </p>
       <ul>
-        <li><strong>Partition by month is plenty</strong> up to ~100M rows per month per project.</li>
-        <li><strong>ORDER BY (organization_id, project_id, created_at, id)</strong> is tuned for tenant-scoped time queries. Do not change without re-bench.</li>
-        <li><strong>ZSTD(3)</strong> on bodies is the sweet spot. ZSTD(9) buys ~15% more compression at 2x more CPU.</li>
-        <li><strong>Asynchronous inserts</strong> with <code>async_insert=1</code> reduces write amplification on bursty workloads. Trade-off: up to 1s additional log latency, no data loss.</li>
+        <li>
+          <strong>Keep partitions ahead of the clock.</strong> Call{' '}
+          <code>SELECT ensure_requests_partitions(3);</code> monthly. Miss it and rows land in
+          the <code>requests_default</code> catch-all, which is recoverable but tedious.
+        </li>
+        <li>
+          <strong>Monthly granularity is right</strong> for anything up to a few hundred
+          million rows a month. Weekly partitions make the planner do more work on every
+          dashboard query and buy nothing until the monthly tables get unwieldy.
+        </li>
+        <li>
+          <strong>Bodies use lz4 compression</strong>, which only applies once a value crosses
+          the TOAST threshold. That is the right trade for a table read by dashboards: worse
+          ratio than zstd, noticeably faster to decompress.
+        </li>
+        <li>
+          <strong>Every index is on <code>(organization_id, created_at DESC)</code> or a
+          narrower version of it.</strong> Tenant-scoped time ranges are the only shape the
+          dashboard queries in. If you add an index, keep <code>organization_id</code> first.
+        </li>
+        <li>
+          <strong>Dropping a partition is how retention happens.</strong>{' '}
+          <code>DROP TABLE requests_2025_08</code> is instant and leaves no bloat, unlike a
+          bulk <code>DELETE</code> that would leave the table needing a vacuum.
+        </li>
       </ul>
 
-      <h3>Supabase Postgres</h3>
+      <h3>The connection pool</h3>
       <p>
-        Postgres handles traces, spans, prompts, evals. None are append-only at the
-        request volume; even at 1M traces/month one Supabase project handles it
-        comfortably.
+        Request-log reads go through the transaction pooler on port 6543, not PostgREST. Two
+        environment variables govern it.
+      </p>
+      <ul>
+        <li>
+          <code>PG_POOL_MAX</code> (default 2) is connections <em>per server instance</em>.
+          Serverless platforms scale out, so raising this multiplies across instances and
+          exhausts the pooler rather than adding throughput. Raise it only when you run one
+          server of a fixed size.
+        </li>
+        <li>
+          <code>PG_STATEMENT_TIMEOUT_MS</code> (default 60000) bounds a runaway dashboard
+          query. Worth keeping low, because the proxy&apos;s auth path shares this database and
+          a query with no ceiling can starve it.
+        </li>
+      </ul>
+
+      <h3>Traces, prompts, evals</h3>
+      <p>
+        These tables are not append-only at request volume. Even at 1M traces/month one
+        Supabase project handles them comfortably.
       </p>
       <ul>
         <li>RLS adds ~2 ms per query. Worth it for the multi-tenant isolation.</li>

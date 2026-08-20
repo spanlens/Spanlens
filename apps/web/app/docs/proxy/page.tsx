@@ -217,7 +217,7 @@ res = client.chat.completions.create(
     messages=[{"role": "user", "content": "Hi"}],
 )
 
-# Same client, different model — no code changes
+# Same client, different model, no code changes
 res2 = client.chat.completions.create(
     model="meta-llama/llama-3.1-70b-instruct",
     messages=[{"role": "user", "content": "Hi"}],
@@ -307,7 +307,7 @@ res, _ := client.CreateChatCompletion(ctx, openai.ChatCompletionRequest{
       <p>
         Server-Sent Events streaming works transparently. Spanlens tees the stream, one copy flows to
         you in real time, the other is parsed asynchronously to extract token usage. Latency overhead
-        is negligible (10–50ms).
+        is negligible (10 to 50ms).
       </p>
 
       <h2>Passing metadata</h2>
@@ -374,8 +374,8 @@ res, _ := client.CreateChatCompletion(ctx, openai.ChatCompletionRequest{
       <p>
         Even in <code>full</code> mode, the server scans <code>request_body</code>,{' '}
         <code>response_body</code>, and <code>error_message</code> for API key patterns before
-        the row is written to ClickHouse. Anything matching one of the patterns below (≥12
-        characters after the prefix) is replaced with <code>&lt;prefix&gt;***</code>:
+        the row is written. Anything matching one of the patterns below (≥12 characters
+        after the prefix) is replaced with <code>&lt;prefix&gt;***</code>:
       </p>
       <ul>
         <li>Spanlens: <code>sl_live_*</code></li>

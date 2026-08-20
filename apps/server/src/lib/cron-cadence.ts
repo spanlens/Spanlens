@@ -1,40 +1,37 @@
 import { supabaseAdmin } from './db.js'
 
 /**
- * Debounce for the cron jobs that read ClickHouse.
+ * Debounce for the cron jobs that aggregate the `requests` log.
  *
  * Three independent schedulers fire the same `/cron/*` endpoints: the
  * `crons` array in `apps/server/vercel.json`, the safety-net workflow in
  * `.github/workflows/cron-server.yml`, and a handful of Better Stack
- * monitors. That redundancy is deliberate — Vercel silently drops
+ * monitors. That redundancy is deliberate, because Vercel silently drops
  * scheduled runs and GitHub Actions throttles short cadences (CLAUDE.md
  * gotcha #32), so no single scheduler is trustworthy on its own.
  *
  * For jobs whose only cost is a Postgres write the duplication is free.
- * For the four jobs that query ClickHouse it is not. ClickHouse Cloud
- * bills compute by wall-clock uptime and suspends the service only after
- * 15 minutes with no queries, so three firings scattered across an hour
- * reset the idle timer often enough that the service never sleeps.
- * Measured on 2026-08-18: 1152 ClickHouse queries in 24h against ~8 real
- * customer requests/day, only 10 gaps longer than 15 minutes, and a flat
- * $8.80/day compute bill for a service holding a few hundred rows.
+ * For the four jobs that aggregate `requests` it is not: every firing
+ * repeats a full scan over the log window, so the second and third run of
+ * the hour spend real database time recomputing the first run's answer.
  *
- * This guard moves the *effective* cadence into the handler, so cost no
- * longer depends on retiming a monitor in someone's dashboard. Whichever
- * scheduler wins the race does the work; the rest get a cheap no-op.
+ * This guard moves the *effective* cadence into the handler, so how often
+ * the work really happens no longer depends on retiming a monitor in
+ * someone's dashboard. Whichever scheduler wins the race does the work;
+ * the rest get a cheap no-op.
  *
  * Deliberately fail-open: if the `cron_job_runs` lookup errors we run the
  * job. Skipping real work because Postgres hiccuped is a worse failure
- * than one extra ClickHouse wake-up.
+ * than one redundant scan.
  */
 
 /**
- * Minutes a ClickHouse-reading cron must wait before it is allowed to run
+ * Minutes a `requests`-aggregating cron must wait before it is allowed to run
  * again, regardless of how many schedulers fire it. Slightly under an hour
  * so an hourly schedule that drifts a few minutes late still runs instead
  * of being skipped into the next hour.
  */
-export const CH_CRON_MIN_INTERVAL_MINUTES = 55
+export const SCAN_CRON_MIN_INTERVAL_MINUTES = 55
 
 /**
  * Whether `jobName` already completed successfully within the last

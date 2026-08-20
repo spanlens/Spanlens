@@ -5,12 +5,9 @@ vi.mock('../lib/db.js', () => ({
   supabaseAdmin: { from: mockFrom },
 }))
 
-const mockChQuery = vi.hoisted(() => vi.fn())
-vi.mock('../lib/clickhouse.js', () => ({
-  unscopedClickhouse: () => ({ query: mockChQuery }),
-  // Real implementation is trivial — inline it so the module under test
-  // still produces ClickHouse-shaped timestamps (gotcha #18).
-  toClickhouseTimestamp: (d: Date) => d.toISOString().replace('T', ' ').replace('Z', ''),
+const mockPgQuery = vi.hoisted(() => vi.fn())
+vi.mock('../lib/postgres.js', () => ({
+  pgQuery: mockPgQuery,
 }))
 
 const mockSendEmail = vi.hoisted(() => vi.fn())
@@ -201,11 +198,10 @@ function setupMocks(): void {
     throw new Error(`unexpected table ${table}`)
   })
 
-  mockChQuery.mockImplementation((args: { query: string }) => {
+  // `pgQuery` resolves the row array directly — there is no `.json()` step.
+  mockPgQuery.mockImplementation((args: { query: string }) => {
     const isTopModels = args.query.includes('GROUP BY organization_id, provider, model')
-    return Promise.resolve({
-      json: () => Promise.resolve(isTopModels ? state.modelRows : state.statsRows),
-    })
+    return Promise.resolve(isTopModels ? state.modelRows : state.statsRows)
   })
 }
 
@@ -213,8 +209,9 @@ beforeEach(() => {
   state = {
     claimError: null,
     claimInserts: [],
-    // JSONEachRow returns counts and Decimal sums as strings — the job must
-    // coerce every numeric at the boundary (gotcha #19).
+    // node-postgres hands back `int8` counts and `numeric` sums as strings
+    // (neither fits a JS number safely) — the job must coerce every numeric
+    // at the boundary, same rule as the JSONEachRow era (gotcha #19).
     statsRows: [
       {
         organization_id: 'org-1',
@@ -235,7 +232,7 @@ beforeEach(() => {
     auditInserts: [],
   }
   mockFrom.mockReset()
-  mockChQuery.mockReset()
+  mockPgQuery.mockReset()
   mockSendEmail.mockReset()
   mockRenderEmail.mockClear()
   mockGetRecipients.mockReset()
@@ -280,7 +277,7 @@ describe('runWeeklyDigestJob — happy path', () => {
       }),
     )
 
-    // Top models are cost-sorted numbers, not JSONEachRow strings.
+    // Top models are cost-sorted numbers, not the driver's raw strings.
     const renderCalls = mockRenderEmail.mock.calls as unknown as Array<
       [{ topModels: Array<{ model: string; costUsd: number }>; dashboardUrl: string }]
     >
@@ -322,7 +319,7 @@ describe('runWeeklyDigestJob — skip logic', () => {
     const result = await runWeeklyDigestJob(MONDAY)
     expect(result.skipped).toBe(true)
     expect(result.completed).toBe(true)
-    expect(mockChQuery).not.toHaveBeenCalled()
+    expect(mockPgQuery).not.toHaveBeenCalled()
     expect(mockSendEmail).not.toHaveBeenCalled()
   })
 
@@ -367,7 +364,7 @@ describe('runWeeklyDigestJob — skip logic', () => {
 
 describe('runWeeklyDigestJob — degraded enrichments', () => {
   it('still sends when the recommendation engine throws (recommendation null)', async () => {
-    mockRecommend.mockRejectedValue(new Error('CH busy'))
+    mockRecommend.mockRejectedValue(new Error('recommendation engine busy'))
 
     const result = await runWeeklyDigestJob(MONDAY)
     expect(result.digests_sent).toBe(1)
@@ -404,12 +401,12 @@ describe('runWeeklyDigestJob — degraded enrichments', () => {
 })
 
 describe('runWeeklyDigestJob — error handling', () => {
-  it('returns completed=false when ClickHouse is unreachable', async () => {
-    mockChQuery.mockRejectedValue(new Error('CH down'))
+  it('returns completed=false when the requests query fails', async () => {
+    mockPgQuery.mockRejectedValue(new Error('requests query failed'))
 
     const result = await runWeeklyDigestJob(MONDAY)
     expect(result.completed).toBe(false)
-    expect(result.errors).toContain('CH down')
+    expect(result.errors).toContain('requests query failed')
     expect(mockSendEmail).not.toHaveBeenCalled()
   })
 
