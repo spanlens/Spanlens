@@ -245,7 +245,9 @@ const openai = createOpenAI({
               Pooled connection string for the <code>requests</code> table. Use the transaction
               pooler on port <strong>6543</strong>, not the direct port 5432. Session mode pins
               one backend per client, and a horizontally scaled server runs out of those
-              quickly. Treat the string as a full database credential.
+              quickly. Treat the string as a full database credential. See{' '}
+              <a href="#pooler-string">picking the right pooler string</a> if it will not
+              connect.
             </td>
           </tr>
           <tr>
@@ -314,6 +316,78 @@ const openai = createOpenAI({
           </tr>
         </tbody>
       </table>
+
+      <h3 id="pooler-string">Picking the right pooler string</h3>
+      <p>
+        Supabase offers three connection strings and only one of them suits a serverless or
+        containerised deployment. The Connect dialog shows the others first, so this is worth
+        getting right before you debug anything else.
+      </p>
+      <p>
+        Open <strong>Connect</strong>, choose <strong>Direct</strong>, select{' '}
+        <strong>Transaction pooler</strong>, and switch on <strong>Use IPv4 connection</strong>.
+        The result looks like this:
+      </p>
+      <CodeBlock language="bash">{`postgresql://postgres.<project-ref>:<password>@aws-<n>-<region>.pooler.supabase.com:6543/postgres`}</CodeBlock>
+      <p>
+        Two details are easy to lose. The <strong>dedicated</strong> pooler that the dialog shows
+        by default resolves to an AAAA record and nothing else, so any host without outbound IPv6
+        fails at DNS. Vercel functions are in that category. And the numbered prefix on the shared
+        pooler hostname is not derived from the region, so it has to be copied rather than
+        guessed.
+      </p>
+      <p>
+        The username and the host also travel together: the shared pooler expects{' '}
+        <code>postgres.&lt;project-ref&gt;</code>, while the dedicated one expects a bare{' '}
+        <code>postgres</code>. Taking one from each is rejected on sight.
+      </p>
+      <p>
+        When it does not connect, <code>GET /health/deep</code> reports{' '}
+        <code>postgresPool.latencyMs</code>, and that number identifies the cause on its own. A
+        rejection that takes hundreds of milliseconds reached the database and was turned away, so
+        the problem is the credential or the tenant. One that returns in a few milliseconds never
+        left the machine, so the problem is the hostname.
+      </p>
+      <table>
+        <thead>
+          <tr>
+            <th>Latency</th>
+            <th>Meaning</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Under ~20ms</td>
+            <td>
+              DNS did not resolve. Either the hostname is mistyped, or it is the IPv6-only
+              dedicated pooler on a host without IPv6.
+            </td>
+          </tr>
+          <tr>
+            <td>~10ms, with a tenant error</td>
+            <td>
+              Host is right but the username lost its <code>.&lt;project-ref&gt;</code> suffix, so
+              the pooler cannot tell which project you want.
+            </td>
+          </tr>
+          <tr>
+            <td>~500ms, tenant not found</td>
+            <td>Wrong numbered prefix in the hostname. The request arrived at a real pooler that has no such tenant.</td>
+          </tr>
+          <tr>
+            <td>~500ms, password authentication failed</td>
+            <td>Host and username are right; the password is wrong or was rotated.</td>
+          </tr>
+          <tr>
+            <td>Steady, matching your region round trip</td>
+            <td>Working.</td>
+          </tr>
+        </tbody>
+      </table>
+      <p>
+        On a managed platform, remember that changing an environment variable does not affect
+        deployments already running. Redeploy, then re-check.
+      </p>
 
       <h2 id="upgrading">Upgrading</h2>
       <CodeBlock language="bash">{`# Pull the latest images and restart
