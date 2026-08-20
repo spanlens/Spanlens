@@ -16,7 +16,7 @@ import { defineConfig, devices } from '@playwright/test'
  * starting before Postgres is ready).
  *
  * Retries: 1 on CI to absorb the occasional flake from the Vercel deploy
- * + ClickHouse insert eventual-consistency window. 0 locally so a
+ * + the fire-and-forget log write landing. 0 locally so a
  * regression doesn't get masked.
  */
 export default defineConfig({
@@ -38,9 +38,9 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'] },
     },
   ],
-  // Generous overall timeout — the smoke flow waits for ClickHouse
-  // insert propagation (a few seconds in dev, can be ~10s on a cold CI
-  // ClickHouse container).
+  // Generous overall timeout. The smoke flow waits for the proxy's log row
+  // to land, and that write is fire-and-forget, so it trails the response by
+  // a few seconds.
   timeout: 60_000,
   expect: {
     timeout: 15_000,

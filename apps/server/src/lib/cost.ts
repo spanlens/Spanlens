@@ -10,13 +10,12 @@
 // all DB I/O in the background.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { getCachedPrices, type ModelPrice } from './model-prices-cache.js'
+import { getCachedPrices, priceKey, FALLBACK_PRICES, type ModelPrice } from './model-prices-cache.js'
 import type { ServiceTier } from '../parsers/openai.js'
 
-// 'azure' shares the OpenAI price table (Azure OpenAI exposes OpenAI models
-// at OpenAI prices). The proxy in proxy/azure.ts calls calculateCost('openai', ...)
-// directly, but the type is included here so type-safe call sites that pass
-// `requests.provider` through don't have to special-case it.
+// 'azure' shares the OpenAI price table (Azure OpenAI exposes OpenAI models at
+// OpenAI prices) — there are no `provider = 'azure'` rows in model_prices, so
+// PRICE_TABLE_PROVIDER below rewrites it to 'openai' before every lookup.
 export type Provider =
   | 'openai'
   | 'anthropic'
@@ -89,37 +88,82 @@ export interface CostResult {
 }
 
 /**
+ * Providers that do not own rows in `model_prices` and borrow another
+ * provider's table. Azure OpenAI serves OpenAI models at OpenAI list prices,
+ * and the deployment name customers pick is usually the OpenAI model id.
+ */
+const PRICE_TABLE_PROVIDER: Partial<Record<Provider, Provider>> = {
+  azure: 'openai',
+}
+
+/**
  * OpenAI는 종종 dated suffix를 포함해 모델명을 반환합니다 (예: gpt-4o-mini-2024-07-18).
  * 정확 매칭이 실패하면 등록된 키들 중 가장 긴 prefix를 찾아 fallback 매칭합니다.
  * (boundary-aware: 다음 글자가 단어 경계가 되도록 — 'gpt-4'가 'gpt-4o' prefix로 잘못 잡히는 일 방지)
  *
+ * Resolution order — every exact match is tried before any prefix match,
+ * because a prefix hit on a sibling model is far more wrong than a slightly
+ * stale exact price (`gpt-4o-mini` prefix-matching `gpt-4o` would be 16x):
+ *   1. exact `provider:model` in the DB-backed cache
+ *   2. exact `model` in FALLBACK_PRICES
+ *   3. longest boundary-aware prefix WITHIN that provider's cache keys
+ *   4. longest boundary-aware prefix in FALLBACK_PRICES
+ *
+ * Steps 2/4 are the cold-start net: the DB cache is empty until the first
+ * refresh lands. Ignoring the provider there is safe because FALLBACK_PRICES
+ * carries direct-provider models exclusively and has no duplicated names
+ * (guarded by a test in model-prices-cache.test.ts). Steps 1/3 are what keep
+ * `qwen/qwen3-32b` on Groq from being priced with OpenRouter's cheaper row
+ * once the real table is loaded.
+ *
  * Exported so other cost math (e.g. lib/cache-savings.ts) reuses this exact
  * matching algorithm instead of re-implementing it. Do NOT copy this logic.
  */
-export function lookupPrice(model: string): ModelPrice | null {
+export function lookupPrice(provider: Provider, model: string): ModelPrice | null {
+  const table = PRICE_TABLE_PROVIDER[provider] ?? provider
   const prices = getCachedPrices()
-  const exact = prices[model]
-  if (exact) return exact
 
+  return prices[priceKey(table, model)]
+    ?? FALLBACK_PRICES[model]
+    ?? longestPrefixMatch(prices, model, `${table}:`)
+    ?? longestPrefixMatch(FALLBACK_PRICES, model, '')
+}
+
+/**
+ * Longest boundary-aware prefix match over `prices`, considering only keys
+ * that start with `keyPrefix` (use '' to search the whole map).
+ *
+ * Boundary-aware: a prefix only matches when the next char after it is a
+ * version boundary ('-'), so a shorter key (e.g. 'gpt-4') can't bleed into a
+ * longer variant (e.g. 'gpt-4.5-preview'). Dated variants like
+ * 'gpt-4o-mini-2024-07-18' still match 'gpt-4o-mini'.
+ */
+function longestPrefixMatch(
+  prices: Record<string, ModelPrice>,
+  model: string,
+  keyPrefix: string,
+): ModelPrice | null {
   let bestKey = ''
+  let bestName = ''
   for (const key of Object.keys(prices)) {
-    // Boundary-aware: only accept a prefix match when the next char after the
-    // key is a version boundary ('-'), so a shorter key (e.g. 'gpt-4') can't
-    // bleed across into a longer variant (e.g. 'gpt-4.5-preview'). Dated
-    // variants like 'gpt-4o-mini-2024-07-18' still match 'gpt-4o-mini'.
-    if (!(model === key || model.startsWith(key + '-'))) continue
+    if (keyPrefix && !key.startsWith(keyPrefix)) continue
+    const name = key.slice(keyPrefix.length)
+    if (!(model === name || model.startsWith(name + '-'))) continue
     // longest prefix wins
-    if (key.length > bestKey.length) bestKey = key
+    if (name.length > bestName.length) {
+      bestName = name
+      bestKey = key
+    }
   }
   return bestKey ? prices[bestKey] ?? null : null
 }
 
 export function calculateCost(
-  _provider: Provider,
+  provider: Provider,
   model: string,
   usage: Usage,
 ): CostResult | null {
-  const prices = lookupPrice(model)
+  const prices = lookupPrice(provider, model)
   if (!prices) return null
 
   const cacheRead = usage.cacheReadTokens ?? 0

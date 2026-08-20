@@ -57,14 +57,14 @@ async function targetExists(
       .maybeSingle()
     return !!data
   }
-  // scope === 'request' — ClickHouse. Use ignoreRetention so an owner can still
-  // share a request near the retention boundary.
+  // scope === 'request' — the requests log table. Use ignoreRetention so an
+  // owner can still share a request near the retention boundary.
   try {
     const requestScope = await requestsScope(orgId, { ignoreRetention: true })
     const rows = await selectRequests<{ id: string }>({
       scope: requestScope,
       select: 'id',
-      filters: 'id = {requestId:UUID}',
+      filters: 'id = {requestId}',
       params: { requestId: targetId },
       limit: 1,
     })
@@ -139,8 +139,8 @@ sharesRouter.post('/', async (c) => {
 //
 // Trace name enrichment: for scope='trace' rows we batch-fetch traces.name in a
 // single follow-up query. Request scope rows leave a `target_label` of
-// '<scope> <short_id>' since the names would require a separate ClickHouse round
-// trip (deferred to Sprint 7 if the UX warrants it).
+// '<scope> <short_id>' since the names would require a separate round trip to
+// the requests table (deferred to Sprint 7 if the UX warrants it).
 sharesRouter.get('/', async (c) => {
   const orgId = c.get('orgId')
   const userId = c.get('userId')

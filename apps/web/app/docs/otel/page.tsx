@@ -1,9 +1,11 @@
+import { openGraphFor } from '@/lib/page-metadata'
 import { CodeBlock } from '../_components/code-block'
 import { OtelMappingDiagram } from '../_components/diagrams'
 import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
 export const metadata = {
   alternates: { canonical: '/docs/otel' },
+  openGraph: openGraphFor('/docs/otel'),
   title: 'OpenTelemetry · Spanlens Docs',
   description:
     'Send traces to Spanlens via OTLP/HTTP using any OpenTelemetry SDK. Works with Python, Go, Java, and any gen_ai-instrumented framework.',

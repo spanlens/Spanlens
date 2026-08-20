@@ -1,5 +1,6 @@
-import { describe, expect, test } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test } from 'vitest'
 import { calculateCost } from './cost.js'
+import { _resetCacheForTests, _setCacheForTests } from './model-prices-cache.js'
 
 describe('calculateCost — basic (no cache)', () => {
   test('gpt-4o-mini: 1k prompt + 500 completion', () => {
@@ -324,5 +325,79 @@ describe('calculateCost — regression vs. old behavior', () => {
     expect(cost!.totalCost).toBeCloseTo(0.057, 6)
     const oldCostEstimate = 100_000 / 1_000_000 * 3
     expect(oldCostEstimate / cost!.totalCost).toBeGreaterThan(5)
+  })
+})
+
+describe('lookupPrice — provider scoping', () => {
+  // These exercise the DB-backed cache, which is empty under plain unit tests,
+  // so seed it directly. Prices are the real 2026-07 values.
+  const GROQ_QWEN = { prompt: 0.29, completion: 0.59 }
+  const OPENROUTER_QWEN = { prompt: 0.08, completion: 0.28 }
+
+  beforeEach(() => {
+    _setCacheForTests({
+      'groq:qwen/qwen3-32b': GROQ_QWEN,
+      'openrouter:qwen/qwen3-32b': OPENROUTER_QWEN,
+      'openai:gpt-4o': { prompt: 2.5, completion: 10, cacheRead: 1.25 },
+      'openrouter:anthropic/claude-opus-4.7': { prompt: 5, completion: 25 },
+    })
+  })
+
+  afterEach(() => {
+    _resetCacheForTests()
+  })
+
+  test('same model name resolves to the calling provider’s price', () => {
+    const groq = calculateCost('groq', 'qwen/qwen3-32b', {
+      promptTokens: 1_000_000, completionTokens: 0,
+    })
+    const openrouter = calculateCost('openrouter', 'qwen/qwen3-32b', {
+      promptTokens: 1_000_000, completionTokens: 0,
+    })
+
+    expect(groq!.totalCost).toBeCloseTo(0.29, 8)
+    expect(openrouter!.totalCost).toBeCloseTo(0.08, 8)
+  })
+
+  test('azure borrows the OpenAI table (it owns no rows of its own)', () => {
+    const azure = calculateCost('azure', 'gpt-4o', { promptTokens: 1_000_000, completionTokens: 0 })
+    const openai = calculateCost('openai', 'gpt-4o', { promptTokens: 1_000_000, completionTokens: 0 })
+
+    expect(azure).not.toBeNull()
+    expect(azure!.totalCost).toBe(openai!.totalCost)
+  })
+
+  test('a prefix match cannot cross provider boundaries', () => {
+    // 'qwen/qwen3-32b' is a boundary-aware prefix of this dated variant, but
+    // only the calling provider's row may supply it.
+    const dated = calculateCost('groq', 'qwen/qwen3-32b-2026-01-01', {
+      promptTokens: 1_000_000, completionTokens: 0,
+    })
+    expect(dated!.totalCost).toBeCloseTo(0.29, 8)
+
+    // cohere has no qwen rows at all and no fallback entry → null, rather than
+    // silently borrowing Groq's or OpenRouter's price.
+    expect(
+      calculateCost('cohere', 'qwen/qwen3-32b', { promptTokens: 1000, completionTokens: 0 }),
+    ).toBeNull()
+  })
+
+  test('OpenRouter ids keep their vendor prefix for lookup', () => {
+    // Our openrouter rows store the full id. Stripping it first (the old
+    // behaviour) matched nothing: the stripped name uses dots
+    // ('claude-opus-4.7') while our Anthropic rows use dashes.
+    const cost = calculateCost('openrouter', 'anthropic/claude-opus-4.7', {
+      promptTokens: 1_000_000, completionTokens: 0,
+    })
+    expect(cost!.totalCost).toBeCloseTo(5, 8)
+  })
+
+  test('falls back to FALLBACK_PRICES when the DB cache has no row', () => {
+    // gpt-4o-mini is absent from the seeded cache above but present in the
+    // cold-start map — this is the path that runs before the first refresh.
+    const cost = calculateCost('openai', 'gpt-4o-mini', {
+      promptTokens: 1_000_000, completionTokens: 0,
+    })
+    expect(cost!.totalCost).toBeCloseTo(0.15, 8)
   })
 })

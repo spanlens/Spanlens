@@ -1,19 +1,23 @@
+import { OG_IMAGE } from '@/lib/page-metadata'
 import { Footer } from '@/components/layout/footer'
 import { MarketingNav } from '@/components/layout/marketing-nav'
 import { CostCalculator } from './_calculator'
 
 const DESCRIPTION =
-  'Free LLM cost calculator. Estimate monthly OpenAI, Anthropic, and Gemini bills by model, input/output tokens, and request volume. Compare GPT-4o, Claude 3.5 Sonnet, Gemini 2.0 Flash side by side.'
+  'Free LLM cost calculator. Estimate monthly OpenAI, Anthropic, and Gemini bills by model, tokens, and requests. Compare GPT-4o, Claude, and Gemini side by side.'
 
 export const metadata = {
   alternates: { canonical: '/tools/llm-cost-calculator' },
-  title: 'LLM Cost Calculator — Estimate OpenAI, Anthropic, Gemini Spend',
+  title: 'LLM Cost Calculator for OpenAI, Anthropic, and Gemini',
   description: DESCRIPTION,
   openGraph: {
+    siteName: 'Spanlens',
     type: 'website',
     title: 'LLM Cost Calculator — Free Tool by Spanlens',
     description: DESCRIPTION,
     url: '/tools/llm-cost-calculator',
+    locale: 'en_US',
+    images: OG_IMAGE,
   },
   twitter: {
     card: 'summary_large_image',
@@ -46,7 +50,7 @@ export default function LlmCostCalculatorPage() {
       <MarketingNav />
 
       <section className="max-w-4xl mx-auto px-6 py-16">
-        <h1 className="text-[36px] sm:text-[44px] font-semibold tracking-[-0.6px] text-text mb-3 leading-[1.05]">
+        <h1 className="font-display track-h2 text-[36px] sm:text-[44px] text-text mb-3 leading-[1.12]">
           LLM Cost Calculator
         </h1>
         <p className="text-[17px] text-text-muted mb-10 leading-relaxed">
@@ -65,7 +69,7 @@ export default function LlmCostCalculatorPage() {
             and you have a monthly estimate. The calculator hardcodes the latest published
             standard-tier prices (2026-06-16) for ten common models. For per-model
             breakdowns including cache discounts and batch tier pricing, see the dedicated
-            pages under <code className="font-mono text-xs bg-bg-elev px-1.5 py-0.5 rounded">/pricing/&lt;model&gt;</code>.
+            pages under <code className="font-mono text-xs bg-bg-sunk px-1.5 py-0.5 rounded">/pricing/&lt;model&gt;</code>.
           </p>
           <p>
             For real spend rather than estimates, instrument your app with{' '}

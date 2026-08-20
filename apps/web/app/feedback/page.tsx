@@ -1,3 +1,4 @@
+import { openGraphFor } from '@/lib/page-metadata'
 import Link from 'next/link'
 import { MarketingNav } from '@/components/layout/marketing-nav'
 import { BreadcrumbJsonLd } from '@/components/marketing/breadcrumb-jsonld'
@@ -26,8 +27,9 @@ import { FeedbackRoadmapClient } from './feedback-roadmap-client'
 export const metadata = {
   title: 'Feedback & Feature Requests · Spanlens',
   description:
-    'Tell us what to build next. Vote on what others suggested. Track each item from new to shipped.',
+    'Tell us what to build next in Spanlens. Vote on what others suggested, and track every request from new through planned to shipped on the public board.',
   alternates: { canonical: '/feedback' },
+  openGraph: openGraphFor('/feedback'),
 }
 
 export default function FeedbackPage() {

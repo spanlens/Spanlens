@@ -138,7 +138,7 @@ function CopyIdButton({ value }: { value: string }) {
         setTimeout(() => setCopied(false), 1200)
       }}
       aria-label="Copy session ID"
-      className="p-1 rounded hover:bg-bg-elev text-text-faint hover:text-text transition-colors"
+      className="p-1 rounded hover:bg-bg-muted text-text-faint hover:text-text transition-colors"
     >
       {copied ? <Check className="h-3.5 w-3.5 text-good" /> : <Copy className="h-3.5 w-3.5" />}
     </button>
@@ -152,7 +152,7 @@ function MessageBubble({ role, content }: ChatMessage) {
     <div>
       <div className="font-mono text-[10px] text-text-faint tracking-[0.04em] mb-1">{role}</div>
       <div className={cn(
-        'px-3 py-2.5 rounded-[5px] border font-mono text-[11.5px] leading-relaxed whitespace-pre-wrap break-words',
+        'rounded-lg border px-3.5 py-3 text-[12.5px] leading-relaxed whitespace-pre-wrap break-words',
         isSystem ? 'bg-bg-muted border-border text-text-faint'
           : isAssistant ? 'bg-bg-elev border-border-strong text-text'
           : 'bg-bg-muted border-border text-text-muted',
@@ -187,7 +187,7 @@ function TurnCard({ turn, index }: { turn: SessionTurn; index: number }) {
       <button
         type="button"
         onClick={() => setExpanded((v) => !v)}
-        className="w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-bg-elev transition-colors"
+        className="w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-bg-muted transition-colors"
       >
         <span className="font-mono text-[10px] text-text-faint w-7 shrink-0">#{index + 1}</span>
         {expanded ? <ChevronDown className="h-3.5 w-3.5 text-text-faint shrink-0" /> : <ChevronRight className="h-3.5 w-3.5 text-text-faint shrink-0" />}
@@ -288,12 +288,12 @@ export function SessionDetailClient() {
   }, [s])
 
   return (
-    <div className="-mx-4 -my-4 md:-mx-8 md:-my-7 flex flex-col min-h-screen">
+    <div className="-mx-4 -my-4 md:-mx-7 md:-mt-5 md:-mb-7 flex flex-col min-h-screen">
       <div className="sticky top-0 z-20 bg-bg">
         <Topbar crumbs={[{ label: 'Sessions', href: '/sessions' }, { label: sessionId }]} />
       </div>
 
-      <div className="flex flex-col gap-6 px-[22px] py-[22px] max-w-4xl w-full">
+      <div className="flex flex-col gap-4 px-4 md:px-7 pt-5 pb-7 max-w-4xl w-full">
         {/* Back + title */}
         <div className="flex items-center gap-3 flex-wrap">
           <Link
@@ -322,10 +322,10 @@ export function SessionDetailClient() {
         </div>
 
         {/* Stat grid */}
-        <div className="grid grid-cols-3 sm:grid-cols-6 border border-border rounded-[6px] overflow-hidden">
+        <div className="grid grid-cols-3 sm:grid-cols-6 card-surface rounded-card overflow-hidden">
           {(!mounted || isLoading ? Array.from({ length: 6 }).map((_, i) => ({ label: '', value: '', _i: i })) : stats).map((st, i) => (
             <div key={i} className={cn('px-3.5 py-3', i < 5 && 'border-r border-border', 'border-b sm:border-b-0 border-border')}>
-              <div className="font-mono text-[9.5px] uppercase tracking-[0.05em] text-text-faint mb-1.5">
+              <div className="font-mono text-[9.5px] uppercase tracking-[0.1em] text-text-faint mb-1.5">
                 {(!mounted || isLoading) ? <Skeleton className="h-2.5 w-12" /> : st.label}
               </div>
               <div className="text-[18px] font-medium tracking-[-0.3px] leading-none text-text">
@@ -337,7 +337,7 @@ export function SessionDetailClient() {
 
         {/* Conversation timeline */}
         <div>
-          <h2 className="font-mono text-[11px] uppercase tracking-[0.05em] text-text-faint mb-3">Conversation</h2>
+          <h2 className="font-mono text-[11px] uppercase tracking-[0.1em] text-text-faint mb-3">Conversation</h2>
 
           {mounted && !isLoading && isError && (
             <p className="font-mono text-[12px] text-text-muted py-8 text-center">Failed to load session.</p>

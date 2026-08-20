@@ -174,48 +174,58 @@ function Toggle({
       onClick={() => onChange(!checked)}
       title="Sign up to configure"
       className={cn(
-        'relative inline-flex h-[18px] w-[32px] shrink-0 rounded-full border transition-colors duration-150 focus-visible:outline-none',
-        checked ? 'bg-accent border-accent' : 'bg-bg-elev border-border',
+        // Track and knob both run on tokens so the switch inverts correctly in
+        // dark mode; a literal white knob used to read as a hole on dark.
+        'relative inline-flex h-[18px] w-[32px] shrink-0 rounded-full transition-colors duration-150 focus-visible:outline-none',
+        checked ? 'bg-accent' : 'bg-track',
         disabled && 'opacity-50 cursor-not-allowed',
         !disabled && 'cursor-pointer',
       )}
     >
       <span
         className={cn(
-          'pointer-events-none inline-block h-[12px] w-[12px] rounded-full bg-white shadow-sm transition-transform duration-150 mt-[2px]',
-          checked ? 'translate-x-[16px]' : 'translate-x-[2px]',
+          'pointer-events-none inline-block h-[12px] w-[12px] rounded-full shadow-sm transition-transform duration-150 mt-[3px]',
+          checked ? 'translate-x-[17px] bg-accent-fg' : 'translate-x-[3px] bg-bg-elev',
         )}
       />
     </button>
   )
 }
 
+/* Column templates are shared by each table's head and body so they cannot drift. */
+const DETECTOR_GRID = 'grid gap-3 grid-cols-[minmax(104px,1fr)_92px_minmax(104px,1.1fr)_70px_66px]'
+const FLAGGED_GRID = 'grid gap-3 grid-cols-[92px_minmax(108px,1fr)_minmax(108px,1fr)_70px]'
+const PAGER_BTN =
+  'px-3 py-1.5 rounded-full border border-border text-text hover:bg-bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition-colors'
+
 // ── DemoSignupTooltip ─────────────────────────────────────────────────────────
 
 function DemoConfigNotice({ onClose }: { onClose: () => void }) {
+  // Scrim matches components/ui/dialog.tsx so this hand-rolled notice reads as
+  // the same overlay layer as the real dialogs.
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-[2px]"
       onClick={onClose}
     >
       <div
-        className="w-[400px] bg-bg border border-border rounded-[8px] shadow-xl p-6 space-y-4"
+        className="w-[400px] rounded-card border border-border bg-bg-elev shadow-card px-5 py-[18px] space-y-3"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 className="font-mono text-[14px] font-medium text-text">Demo mode</h2>
-        <p className="text-[13px] text-text-muted leading-relaxed">
+        <h2 className="text-[13.5px] font-semibold text-text">Demo mode</h2>
+        <p className="text-[12.5px] text-text-muted leading-relaxed">
           Sign up to configure alert emails and injection blocking for your projects.
         </p>
         <div className="flex gap-2">
           <a
             href="/signup"
-            className="flex-1 text-center font-mono text-[12px] py-2 rounded-[5px] bg-text text-bg hover:opacity-90 transition-opacity"
+            className="flex-1 text-center rounded-full bg-text px-3.5 py-2 text-[12px] font-medium text-bg hover:opacity-90 transition-opacity"
           >
             Start free →
           </a>
           <button
             onClick={onClose}
-            className="font-mono text-[12px] px-4 py-2 border border-border rounded-[5px] text-text-muted hover:border-border-strong hover:text-text transition-colors"
+            className="rounded-full border border-border bg-bg-elev px-3.5 py-2 text-[12px] font-medium text-text hover:bg-bg-muted transition-colors"
           >
             Close
           </button>
@@ -315,23 +325,27 @@ export default function DemoSecurityPage() {
   const stats: Array<{
     label: string
     value: string
+    note: string
     warn: boolean
     enabled: boolean
     ref: React.RefObject<HTMLDivElement | null>
     onClick?: () => void
   }> = [
-    { label: 'Events · 24h', value: String(totalHits), warn: totalHits > 0, enabled: totalHits > 0, ref: detectorsRef },
-    { label: 'PII hits', value: String(piiHits), warn: piiHits > 0, enabled: piiHits > 0, ref: flaggedRef, onClick: () => filterAndScroll('pii') },
-    { label: 'Injection attempts', value: String(injHits), warn: injHits > 0, enabled: injHits > 0, ref: flaggedRef, onClick: () => filterAndScroll('injection') },
-    { label: 'Recent flagged', value: String(flaggedAll.length), warn: flaggedAll.length > 0, enabled: flaggedAll.length > 0, ref: flaggedRef, onClick: () => filterAndScroll('all') },
-    { label: 'Detectors', value: String(detectors.length), warn: false, enabled: true, ref: detectorsRef },
+    { label: 'Events · 24h', value: String(totalHits), note: 'across all detectors', warn: totalHits > 0, enabled: totalHits > 0, ref: detectorsRef },
+    { label: 'PII hits', value: String(piiHits), note: 'redacted at rest', warn: piiHits > 0, enabled: piiHits > 0, ref: flaggedRef, onClick: () => filterAndScroll('pii') },
+    { label: 'Injection attempts', value: String(injHits), note: 'flagged in the window', warn: injHits > 0, enabled: injHits > 0, ref: flaggedRef, onClick: () => filterAndScroll('injection') },
+    { label: 'Recent flagged', value: String(flaggedAll.length), note: 'requests on record', warn: flaggedAll.length > 0, enabled: flaggedAll.length > 0, ref: flaggedRef, onClick: () => filterAndScroll('all') },
+    { label: 'Detectors', value: String(detectors.length), note: 'workspace default', warn: false, enabled: true, ref: detectorsRef },
   ]
 
   return (
-    <div className="-mx-4 -my-4 md:-mx-8 md:-my-7 flex flex-col min-h-screen">
+    <>
       {showConfigNotice && <DemoConfigNotice onClose={() => setShowConfigNotice(false)} />}
 
-      <div className="sticky top-0 z-20 bg-bg">
+      {/* The topbar is the only full-bleed row: it cancels the padding the
+          demo layout applies so its hairline spans the whole main column.
+          Everything below sits flush inside that padding. */}
+      <div className="sticky top-0 z-20 -mx-4 -mt-4 md:-mx-7 md:-mt-5 bg-bg">
         <Topbar
           crumbs={[{ label: 'Demo', href: '/demo/dashboard' }, { label: 'Security' }]}
           right={
@@ -352,12 +366,22 @@ export default function DemoSecurityPage() {
             ) : null
           }
         />
+        <h1 className="sr-only">Security</h1>
       </div>
 
-      {/* Stat strip — non-zero tiles become buttons that filter + scroll. */}
-      <div className="overflow-x-auto shrink-0 border-b border-border">
-        <div className="grid grid-cols-5 min-w-[480px]">
-          {stats.map((s, i) => {
+      {/* 20px above the first row, 16px between rows, per the Figma content
+          frame. Side and bottom gutters come from the demo layout. */}
+      <div className="pt-4 md:pt-5 space-y-4">
+        <div className="flex flex-wrap items-center gap-3">
+          <span className="font-mono text-[11px] text-text-faint">
+            Detectors flag only, unless project blocking is on
+          </span>
+        </div>
+
+        {/* Stat cards double as jump links: clicking a non-zero stat scrolls to
+            the matching section, and the two flag stats also set the filter. */}
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+          {stats.map((s) => {
             const onClick = s.onClick ?? (() => scrollTo(s.ref))
             const Wrap: React.ElementType = s.enabled ? 'button' : 'div'
             return (
@@ -365,295 +389,222 @@ export default function DemoSecurityPage() {
                 key={s.label}
                 {...(s.enabled ? { type: 'button', onClick } : {})}
                 className={cn(
-                  'px-[18px] py-[14px] text-left',
-                  i < 4 && 'border-r border-border',
-                  s.enabled && 'hover:bg-bg-elev transition-colors cursor-pointer',
+                  'rounded-card border border-border bg-bg-elev shadow-card px-5 py-[18px] text-left',
+                  s.enabled && 'hover:bg-bg-muted transition-colors cursor-pointer',
                 )}
               >
-                <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-2">
-                  {s.label}
-                </div>
-                <span
-                  className={cn(
-                    'text-[24px] font-medium leading-none tracking-[-0.6px]',
-                    s.warn ? 'text-accent' : 'text-text',
-                  )}
-                >
+                <div className="font-mono text-[10.5px] uppercase tracking-[0.1em] text-text-faint">{s.label}</div>
+                <div className={cn('font-display text-[22px] track-h3 leading-[1.05] mt-[7px]', s.warn ? 'text-accent' : 'text-text')}>
                   {s.value}
-                </span>
+                </div>
+                <div className={cn('text-[11.5px] font-medium mt-[7px]', s.warn ? 'text-accent' : 'text-text-faint')}>
+                  {s.note}
+                </div>
               </Wrap>
             )
           })}
         </div>
-      </div>
 
-      <div className="flex-1 overflow-auto">
-        {/* Alert + Blocking settings */}
-        <div className="px-[22px] pt-[18px] pb-0">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {/* Alert emails */}
-            <div className="border border-border rounded-[6px] px-[16px] py-[14px]">
-              <div className="flex items-center justify-between mb-[6px]">
-                <span className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint">
-                  Alert emails
-                </span>
-                <Toggle
-                  checked={alertEnabled}
-                  onChange={(v) => handleToggle('alert', v)}
-                />
-              </div>
-              <p className="text-[11.5px] text-text-faint leading-relaxed">
-                Email workspace owner when security flags are detected. Rate-limited to one
-                email per 5 minutes.
-              </p>
-              <p className="text-[10.5px] text-text-faint mt-2 font-mono">
-                Sign up to configure →
-              </p>
+        {/* Workspace-level controls. In the demo they are read-only: flipping a
+            switch opens the sign-up notice instead of persisting anything. */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
+          <div className="rounded-card border border-border bg-bg-elev shadow-card px-5 py-[18px]">
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="text-[13.5px] font-semibold text-text">Alert emails</h2>
+              <Toggle checked={alertEnabled} onChange={(v) => handleToggle('alert', v)} />
             </div>
+            <p className="text-[11.5px] text-text-muted leading-relaxed mt-2">
+              Email workspace owner when security flags are detected.
+              Rate-limited to one email per 5 minutes.
+            </p>
+            <p className="font-mono text-[10.5px] text-text-faint mt-2">Sign up to configure →</p>
+          </div>
 
-            {/* Injection blocking */}
-            <div className="border border-border rounded-[6px] px-[16px] py-[14px]">
-              <div className="mb-[8px]">
-                <span className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint">
-                  Injection blocking, per project
-                </span>
-              </div>
-              <div className="space-y-[6px]">
-                <div className="flex items-center justify-between">
-                  <span className="font-mono text-[11.5px] text-text truncate pr-3">
-                    Demo Project
-                  </span>
+          <div className="rounded-card border border-border bg-bg-elev shadow-card px-5 py-[18px]">
+            <h2 className="text-[13.5px] font-semibold text-text">Injection blocking, per project</h2>
+            <div className="mt-3">
+              <div className="divide-y divide-border">
+                <div className="flex items-center justify-between py-2 first:pt-0 last:pb-0">
+                  <span className="font-mono text-[12px] text-text truncate pr-3">Demo Project</span>
                   <div className="flex items-center gap-2 shrink-0">
-                    <Toggle
-                      checked={blockEnabled}
-                      onChange={(v) => handleToggle('block', v)}
-                    />
+                    {blockEnabled && (
+                      <span className="inline-flex items-center rounded-full bg-accent-bg px-2 py-[3px] font-mono text-[10.5px] text-accent">
+                        blocking
+                      </span>
+                    )}
+                    <Toggle checked={blockEnabled} onChange={(v) => handleToggle('block', v)} />
                   </div>
                 </div>
               </div>
-              <p className="text-[11px] text-text-faint mt-[8px] leading-relaxed">
-                When ON, injection attempts return 422, request never reaches the LLM.
-              </p>
-              <p className="text-[10.5px] text-text-faint mt-2 font-mono">
-                Sign up to configure →
-              </p>
             </div>
+            <p className="text-[11.5px] text-text-muted mt-3 leading-relaxed">
+              When ON, injection attempts return 422 and the request never reaches the LLM.
+            </p>
+            <p className="font-mono text-[10.5px] text-text-faint mt-2">Sign up to configure →</p>
           </div>
         </div>
 
-        {/* Detector table */}
-        <div ref={detectorsRef} className="px-[22px] pt-[14px] pb-0">
-          <div className="flex items-center justify-between mb-3">
-            <span className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint">
-              Detectors, {detectors.length} active · flag-only (no blocking unless enabled
-              above)
-            </span>
-          </div>
-
-          <div className="overflow-x-auto">
-            {/* Column headers */}
-            <div
-              className="grid font-mono text-[10px] text-text-faint uppercase tracking-[0.05em] px-[14px] py-[8px] bg-bg-muted border border-border rounded-t-[6px] border-b-0 min-w-[420px]"
-              style={{ gridTemplateColumns: '1fr 1.6fr 100px 90px' }}
-            >
-              <span>Detector</span>
-              <span>Description</span>
-              <span>Type</span>
-              <span className="text-right">Hits · 24h</span>
+        {/* Detectors on the left, recent flagged on the right, per D8. Each
+            table keeps its own horizontal scroller so the page never does. */}
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
+          <div ref={detectorsRef} className="rounded-card border border-border bg-bg-elev shadow-card overflow-hidden">
+            <div className="flex items-baseline justify-between gap-3 px-5 pt-[18px] pb-3.5">
+              <h2 className="text-[13.5px] font-semibold text-text">Detectors</h2>
+              <span className="font-mono text-[11px] text-text-faint">{detectors.length} active</span>
             </div>
-
-            <div className="border border-border rounded-b-[6px] overflow-hidden min-w-[420px]">
-              {detectors.map((d, i) => (
-                <div
-                  key={d.id}
-                  className={cn(
-                    'grid items-center px-[14px] py-[11px] font-mono text-[12px] min-w-[420px]',
-                    i < detectors.length - 1 && 'border-b border-border',
-                  )}
-                  style={{ gridTemplateColumns: '1fr 1.6fr 100px 90px' }}
-                >
-                  <span className="text-text text-[12.5px]">{d.name}</span>
-                  <span className="text-text-faint text-[11px] truncate pr-4">
-                    {d.description}
-                  </span>
-                  <span>
-                    <span
-                      className={cn(
-                        'font-mono text-[10px] px-[6px] py-[1px] rounded-[3px] border uppercase tracking-[0.04em]',
-                        d.type === 'injection'
-                          ? 'text-accent border-accent-border bg-accent-bg'
-                          : 'text-text-muted border-border',
-                      )}
-                    >
-                      {d.type}
-                    </span>
-                  </span>
-                  <span
-                    className={cn(
-                      'text-right',
-                      d.hits24h > 0 ? 'text-accent font-medium' : 'text-text-faint',
-                    )}
-                  >
-                    {d.hits24h}
+            <div className="overflow-x-auto">
+              <div className="min-w-[520px]">
+                <div className={cn(DETECTOR_GRID, 'bg-bg-muted border-y border-border px-5 py-2.5')}>
+                  <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-faint">Detector</span>
+                  <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-faint">ID</span>
+                  <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-faint">Description</span>
+                  <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-faint">Type</span>
+                  <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-faint text-right">
+                    Hits · 24h
                   </span>
                 </div>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {/* Recent flagged requests */}
-        <div ref={flaggedRef} className="px-[22px] py-[18px]">
-          <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-            <span className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint">
-              Recent flagged requests
-            </span>
-            <div className="flex items-center gap-2">
-              {(['all', 'pii', 'injection'] as FlagFilter[]).map((v) => (
-                <button
-                  key={v}
-                  type="button"
-                  onClick={() => applyFilter(v)}
-                  className={cn(
-                    'font-mono text-[11px] px-[9px] py-[3px] rounded-[4px] border transition-colors',
-                    flagFilter === v
-                      ? 'border-border-strong bg-bg-elev text-text'
-                      : 'border-border text-text-muted hover:text-text',
-                  )}
-                >
-                  {v}
-                </button>
-              ))}
+                {detectors.map((d) => (
+                  <div
+                    key={d.id}
+                    className={cn(DETECTOR_GRID, 'items-center px-5 py-3 border-b border-border last:border-b-0 hover:bg-bg-muted transition-colors')}
+                  >
+                    <span className="text-[12.5px] text-text truncate">{d.name}</span>
+                    <span className="font-mono text-[11px] text-text-muted truncate" title={`SDK detector ID: ${d.id}`}>{d.id}</span>
+                    <span className="text-[11.5px] text-text-faint truncate pr-3">{d.description}</span>
+                    <span>
+                      <span
+                        className={cn(
+                          'inline-flex items-center rounded-full px-2 py-[3px] font-mono text-[10.5px]',
+                          d.type === 'injection' ? 'bg-accent-bg text-accent' : 'bg-bg-chip text-text-muted',
+                        )}
+                      >
+                        {d.type}
+                      </span>
+                    </span>
+                    <span className={cn('font-mono text-[12px] text-right', d.hits24h > 0 ? 'text-accent font-medium' : 'text-text-faint')}>
+                      {d.hits24h}
+                    </span>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
 
-          {flaggedData.length === 0 ? (
-            <div className="rounded-md border border-border bg-bg-elev px-[14px] py-[18px] text-center">
-              <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-good mb-1.5">
-                All clear
+          <div ref={flaggedRef} className="rounded-card border border-border bg-bg-elev shadow-card overflow-hidden">
+            <div className="flex flex-wrap items-center justify-between gap-3 px-5 pt-[18px] pb-3.5">
+              <h2 className="text-[13.5px] font-semibold text-text">Recent flagged</h2>
+              <div className="inline-flex items-center gap-0.5 rounded-full bg-bg-chip p-[3px]">
+                {(['all', 'pii', 'injection'] as FlagFilter[]).map((v) => (
+                  <button
+                    key={v}
+                    type="button"
+                    aria-pressed={flagFilter === v}
+                    onClick={() => applyFilter(v)}
+                    className={cn(
+                      'rounded-full px-[11px] py-[5px] text-[12px] font-medium transition-colors',
+                      flagFilter === v ? 'bg-bg-elev text-text shadow-card' : 'text-text-faint hover:text-text',
+                    )}
+                  >
+                    {v}
+                  </button>
+                ))}
               </div>
-              <p className="text-[12.5px] text-text-faint">
-                No {flagFilter === 'all' ? '' : `${flagFilter} `}flagged requests found.
-              </p>
             </div>
-          ) : (
-            <div className="overflow-x-auto">
-              {/* Header row */}
-              <div
-                className="grid font-mono text-[10px] text-text-faint uppercase tracking-[0.05em] px-[14px] py-[8px] bg-bg-muted border border-border rounded-t-[6px] border-b-0 min-w-[420px]"
-                style={{ gridTemplateColumns: '110px 1fr 1fr 80px' }}
-              >
-                <span>When</span>
-                <span>Model</span>
-                <span>Flags</span>
-                <span className="text-right">→</span>
-              </div>
 
-              <div className="border border-border rounded-b-[6px] overflow-hidden min-w-[420px]">
-                {flaggedData.map((r, i) => {
-                  const reqFlags = r.flags ?? []
-                  const resFlags = r.response_flags ?? []
-                  return (
-                    <div
-                      key={r.id}
-                      className={cn(
-                        'grid items-center px-[14px] py-[10px] min-w-[420px] hover:bg-bg-elev transition-colors',
-                        i < flaggedData.length - 1 && 'border-b border-border',
-                      )}
-                      style={{ gridTemplateColumns: '110px 1fr 1fr 80px' }}
-                    >
-                      <span className="font-mono text-[11.5px] text-text-muted">
-                        {mounted ? formatRelative(r.created_at, now) : '—'}
-                      </span>
-                      <span className="font-mono text-[12px] text-text">
-                        {r.provider} / {r.model}
-                      </span>
-                      <div className="flex flex-wrap gap-1">
-                        {reqFlags.map((f, fi) => (
-                          <span
-                            key={`req:${f.type}:${f.pattern}:${fi}`}
-                            title={f.sample}
-                            className={cn(
-                              'font-mono text-[10px] uppercase tracking-[0.04em] px-[5px] py-[1px] rounded-[3px] border',
-                              f.type === 'injection'
-                                ? 'border-accent-border bg-accent-bg text-accent'
-                                : 'border-border text-text-muted',
-                            )}
-                          >
-                            {f.pattern}
-                          </span>
-                        ))}
-                        {resFlags.map((f, fi) => (
-                          <span
-                            key={`res:${f.type}:${f.pattern}:${fi}`}
-                            title="Detected in LLM response"
-                            className={cn(
-                              'font-mono text-[10px] uppercase tracking-[0.04em] px-[5px] py-[1px] rounded-[3px] border opacity-70',
-                              f.type === 'injection'
-                                ? 'border-accent-border bg-accent-bg text-accent'
-                                : 'border-border text-text-muted',
-                            )}
-                          >
-                            ↩ {f.pattern}
-                          </span>
-                        ))}
-                      </div>
-                      <div className="text-right">
-                        <span className="font-mono text-[11.5px] text-text-muted">
-                          {r.status_code >= 400 ? (
-                            <span className="text-bad">{r.status_code}</span>
-                          ) : (
-                            <span className="text-good">{r.status_code}</span>
-                          )}
+            {flaggedData.length === 0 ? (
+              <div className="mx-5 mb-[18px] rounded-lg border border-border bg-bg-muted px-4 py-[18px] text-center">
+                <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-good mb-1.5">All clear</div>
+                <p className="text-[12.5px] text-text-muted">
+                  No {flagFilter === 'all' ? '' : `${flagFilter} `}flagged requests found.
+                </p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <div className="min-w-[432px]">
+                  <div className={cn(FLAGGED_GRID, 'bg-bg-muted border-y border-border px-5 py-2.5')}>
+                    <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-faint">When</span>
+                    <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-faint">Model</span>
+                    <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-faint">Flags</span>
+                    <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-faint text-right">Status</span>
+                  </div>
+                  {flaggedData.map((r) => {
+                    const reqFlags = r.flags ?? []
+                    const resFlags = r.response_flags ?? []
+                    return (
+                      <div
+                        key={r.id}
+                        className={cn(FLAGGED_GRID, 'items-center px-5 py-3 border-b border-border last:border-b-0 hover:bg-bg-muted transition-colors')}
+                      >
+                        <span className="font-mono text-[12px] text-text-muted">
+                          {mounted ? formatRelative(r.created_at, now) : '—'}
                         </span>
+                        <span className="font-mono text-[12px] text-text truncate">
+                          {r.provider} / {r.model}
+                        </span>
+                        <div className="flex flex-wrap gap-1">
+                          {reqFlags.map((f, fi) => (
+                            <span
+                              key={`req:${f.type}:${f.pattern}:${fi}`}
+                              title={f.sample}
+                              className={cn(
+                                'inline-flex items-center rounded-full px-2 py-[3px] font-mono text-[10.5px]',
+                                f.type === 'injection' ? 'bg-accent-bg text-accent' : 'bg-bg-chip text-text-muted',
+                              )}
+                            >
+                              {f.pattern}
+                            </span>
+                          ))}
+                          {resFlags.map((f, fi) => (
+                            <span
+                              key={`res:${f.type}:${f.pattern}:${fi}`}
+                              title="Detected in LLM response"
+                              className={cn(
+                                'inline-flex items-center rounded-full px-2 py-[3px] font-mono text-[10.5px]',
+                                f.type === 'injection' ? 'bg-accent-bg text-accent' : 'bg-bg-chip text-text-muted',
+                                'opacity-70',
+                              )}
+                            >
+                              ↩ {f.pattern}
+                            </span>
+                          ))}
+                        </div>
+                        <div className="text-right font-mono text-[12px]">
+                          <span className={r.status_code >= 400 ? 'text-bad' : 'text-good'}>
+                            {r.status_code}
+                          </span>
+                        </div>
                       </div>
-                    </div>
-                  )
-                })}
+                    )
+                  })}
+                </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {/* Pagination — Page X of N · shown / total. Same shape as the real client. */}
-          {filteredTotal > 0 && (
-            <div className="flex items-center justify-between mt-3 font-mono text-[11px] flex-wrap gap-3">
-              <div className="text-text-faint">
-                Page {safePage} of {lastPage} · {flaggedData.length} / {filteredTotal.toLocaleString('en-US')}
+            {/* Pagination: Page X of N. Same shape as the real client. */}
+            {filteredTotal > 0 && (
+              <div className="flex items-center justify-between px-5 py-3.5 border-t border-border font-mono text-[11px] flex-wrap gap-3">
+                <div className="text-text-faint">
+                  Page {safePage} of {lastPage} · {flaggedData.length} / {filteredTotal.toLocaleString('en-US')}
+                </div>
+                <div className="flex gap-2">
+                  <button disabled={safePage <= 1} onClick={() => setPage(1)} className={PAGER_BTN}>
+                    First
+                  </button>
+                  <button disabled={safePage <= 1} onClick={() => setPage(safePage - 1)} className={PAGER_BTN}>
+                    Prev
+                  </button>
+                  <button disabled={safePage >= lastPage} onClick={() => setPage(safePage + 1)} className={PAGER_BTN}>
+                    Next
+                  </button>
+                  <button disabled={safePage >= lastPage} onClick={() => setPage(lastPage)} className={PAGER_BTN}>
+                    Last
+                  </button>
+                </div>
               </div>
-              <div className="flex gap-2">
-                <button
-                  disabled={safePage <= 1}
-                  onClick={() => setPage(1)}
-                  className="px-2.5 py-1.5 border border-border rounded-[6px] text-text hover:bg-bg-elev disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                >
-                  First
-                </button>
-                <button
-                  disabled={safePage <= 1}
-                  onClick={() => setPage(safePage - 1)}
-                  className="px-3 py-1.5 border border-border rounded-[6px] text-text hover:bg-bg-elev disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                >
-                  Prev
-                </button>
-                <button
-                  disabled={safePage >= lastPage}
-                  onClick={() => setPage(safePage + 1)}
-                  className="px-3 py-1.5 border border-border rounded-[6px] text-text hover:bg-bg-elev disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                >
-                  Next
-                </button>
-                <button
-                  disabled={safePage >= lastPage}
-                  onClick={() => setPage(lastPage)}
-                  className="px-2.5 py-1.5 border border-border rounded-[6px] text-text hover:bg-bg-elev disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                >
-                  Last
-                </button>
-              </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </div>
-    </div>
+    </>
   )
 }

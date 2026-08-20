@@ -1,24 +1,30 @@
+import { OG_IMAGE } from '@/lib/page-metadata'
 import Link from 'next/link'
 import { Footer } from '@/components/layout/footer'
 import { MarketingNav } from '@/components/layout/marketing-nav'
 import { BreadcrumbJsonLd } from '@/components/marketing/breadcrumb-jsonld'
 
 const ABOUT_DESCRIPTION =
-  'Spanlens is an open-source LLM observability platform built by developers who shipped LLM apps to production and got tired of debugging cost spikes from a spreadsheet. MIT licensed, self-hostable.'
+  'Spanlens is an open-source LLM observability platform built by developers tired of debugging LLM cost spikes from a spreadsheet. MIT licensed, self-hostable.'
 
 export const metadata = {
   alternates: { canonical: '/about' },
   title: 'About · Spanlens',
   description: ABOUT_DESCRIPTION,
   openGraph: {
+    siteName: 'Spanlens',
     type: 'website',
-    title: 'About Spanlens — Open Source LLM Observability',
+    locale: 'en_US',
+    title: 'About Spanlens: Open Source LLM Observability',
     description: ABOUT_DESCRIPTION,
-    url: '/about',  },
+    url: '/about',
+    images: OG_IMAGE,
+  },
   twitter: {
     card: 'summary_large_image',
-    title: 'About Spanlens — Open Source LLM Observability',
-    description: ABOUT_DESCRIPTION,  },
+    title: 'About Spanlens: Open Source LLM Observability',
+    description: ABOUT_DESCRIPTION,
+  },
 }
 
 const aboutJsonLd = {
@@ -29,13 +35,11 @@ const aboutJsonLd = {
   name: 'About Spanlens',
   description: ABOUT_DESCRIPTION,
   // Reference the canonical Organization node (declared once in the root
-  // layout with @id) instead of re-declaring a second Organization here —
-  // duplicate nodes with divergent sameAs/foundingDate broke entity
+  // layout with @id) instead of re-declaring a second Organization here.
+  // Duplicate nodes with divergent sameAs/foundingDate broke entity
   // reconciliation (2026-07-06 schema audit). foundingDate/founder/sameAs
   // now live on the canonical node in app/layout.tsx.
-  mainEntity: {
-    '@id': 'https://www.spanlens.io/#organization',
-  },
+  mainEntity: { '@id': 'https://www.spanlens.io/#organization' },
 }
 
 export default function AboutPage() {
@@ -136,9 +140,9 @@ export default function AboutPage() {
               >
                 MIT license
               </a>
-              . The stack is Next.js 16 + Hono + Supabase Postgres + ClickHouse, with
-              TypeScript and Python SDKs. The full stack runs from one Docker compose file
-              on your own infrastructure if you prefer not to use the hosted plan.
+              . The stack is Next.js 16 + Hono + Supabase Postgres, with TypeScript and
+              Python SDKs. The full stack runs from one Docker compose file on your own
+              infrastructure if you prefer not to use the hosted plan.
             </p>
           </section>
 
@@ -185,7 +189,7 @@ export default function AboutPage() {
             </Link>
             <Link
               href="/docs/quick-start"
-              className="h-10 px-5 rounded-[6px] border border-border text-text text-[14px] font-medium leading-10 hover:bg-bg-elev transition-colors"
+              className="h-10 px-5 rounded-[6px] border border-border text-text text-[14px] font-medium leading-10 hover:bg-bg-muted transition-colors"
             >
               Read the docs
             </Link>

@@ -1,6 +1,6 @@
 /**
  * Pages whose page.tsx runs a costly prefetchAll (multiple specs and/or single
- * spec hitting COUNT(*) or ClickHouse window functions).
+ * spec hitting COUNT(*) or window functions).
  *
  * Anywhere we render a `<Link>` to one of these paths from a high-fanout
  * surface (sidebar, KPI cards, drill-downs), we set `prefetch={false}` so the
@@ -8,8 +8,7 @@
  * mounts. The page still prefetches on hover, so the UX cost of the first
  * click is minimal.
  *
- * Keep this list in sync with the actual prefetch weight in each page.tsx —
- * see docs/plans/dashboard-load-perf-2026-05.md §5.
+ * Keep this list in sync with the actual prefetch weight in each page.tsx.
  */
 const HEAVY_PAGES = new Set<string>([
   '/dashboard',

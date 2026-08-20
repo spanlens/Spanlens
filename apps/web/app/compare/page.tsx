@@ -1,3 +1,4 @@
+import { openGraphFor } from '@/lib/page-metadata'
 import Link from 'next/link'
 import { Footer } from '@/components/layout/footer'
 import { MarketingNav } from '@/components/layout/marketing-nav'
@@ -5,9 +6,10 @@ import { BreadcrumbJsonLd } from '@/components/marketing/breadcrumb-jsonld'
 
 export const metadata = {
   alternates: { canonical: '/compare' },
+  openGraph: openGraphFor('/compare'),
   title: 'Spanlens vs alternatives · Compare',
   description:
-    'Honest comparisons of Spanlens against Langfuse, Helicone, LangSmith, Braintrust, and Arize Phoenix, feature by feature.',
+    'Honest comparisons of Spanlens against Langfuse, Helicone, Comet Opik, LiteLLM, Portkey, LangSmith, Braintrust, and Arize Phoenix, feature by feature.',
 }
 
 interface CompareEntry {
@@ -29,7 +31,7 @@ const ENTRIES: CompareEntry[] = [
     slug: 'helicone',
     competitor: 'Helicone',
     blurb:
-      'The closest architectural match. Both are proxy-based, though Helicone entered maintenance mode after its 2026 Mintlify acquisition. We add Critical Path agent tracing, Prompt A/B with Welch t-test, and tighter logging durability with ClickHouse fallback.',
+      'The closest architectural match. Both are proxy-based, though Helicone entered maintenance mode after its 2026 Mintlify acquisition. We add Critical Path agent tracing, Prompt A/B with Welch t-test, and a log queue that replays failed writes.',
     tag: 'Proxy-based',
   },
   {
@@ -53,21 +55,65 @@ const ENTRIES: CompareEntry[] = [
       'Source-available (ELv2) observability from Arize. Python-first, ML-engineer-leaning. Spanlens is built for the application developer running LLM calls in production.',
     tag: 'Source-available · Python-first',
   },
+  {
+    slug: 'opik',
+    competitor: 'Comet Opik',
+    blurb:
+      'Apache 2.0 with nothing held back, so the licence argument does not apply. Opik organises around evaluation and instruments through the SDK. Spanlens organises around cost and captures existing calls through the proxy.',
+    tag: 'OSS · eval-first',
+  },
+  {
+    slug: 'portkey',
+    competitor: 'Portkey',
+    blurb:
+      'The closest architecture after Helicone: both sit in front of the provider. Portkey open-sources the gateway and sells the observability, while Spanlens ships both halves under MIT.',
+    tag: 'Gateway · open-core',
+  },
+  {
+    slug: 'litellm',
+    competitor: 'LiteLLM',
+    blurb:
+      'Different jobs rather than rivals. LiteLLM routes across a hundred providers and hands logging to a backend; Spanlens is a backend of that kind. Many teams run both.',
+    tag: 'Gateway · routing-first',
+  },
 ]
+
+const compareListJsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'ItemList',
+  '@id': 'https://www.spanlens.io/compare#list',
+  itemListElement: ENTRIES.map((e, i) => ({
+    '@type': 'ListItem',
+    position: i + 1,
+    url: `https://www.spanlens.io/compare/${e.slug}`,
+    name: `Spanlens vs ${e.competitor}`,
+  })),
+}
 
 export default function ComparePage() {
   return (
     <div className="min-h-screen bg-bg">
       <MarketingNav />
       <BreadcrumbJsonLd trail={[{ name: 'Compare', path: '/compare' }]} />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(compareListJsonLd) }}
+      />
 
       <section className="max-w-[1000px] mx-auto px-6 pt-20 pb-12">
-        <h1 className="text-[40px] sm:text-[48px] font-semibold tracking-[-0.8px] text-text leading-[1.05]">
+        <h1 className="font-display track-h2 text-[40px] sm:text-[48px] text-text leading-[1.12]">
           How Spanlens compares
         </h1>
         <p className="mt-4 text-[18px] text-text-muted leading-relaxed max-w-[680px]">
           Honest, side-by-side comparisons. We show where each alternative wins and where
           Spanlens does. Real tradeoffs without marketing fog.
+        </p>
+        <p className="mt-4 text-[15px] text-text-muted leading-relaxed max-w-[680px]">
+          Want the whole field first?{' '}
+          <Link href="/best-llm-observability-tools" className="text-accent hover:underline">
+            Twelve tools with stars, licence, and development activity
+          </Link>
+          .
         </p>
       </section>
 
@@ -77,7 +123,7 @@ export default function ComparePage() {
             <Link
               key={entry.slug}
               href={`/compare/${entry.slug}`}
-              className="group rounded-xl border border-border bg-bg-elev p-6 hover:border-accent transition-colors"
+              className="group rounded-card border border-border bg-bg-elev p-6 hover:border-accent transition-colors"
             >
               <div className="flex items-baseline justify-between gap-3 mb-3">
                 <h2 className="text-[18px] font-semibold text-text group-hover:text-accent transition-colors">
@@ -95,7 +141,7 @@ export default function ComparePage() {
           ))}
         </div>
 
-        <div className="mt-12 rounded-xl border border-border bg-bg p-6">
+        <div className="mt-12 rounded-card border border-border bg-bg p-6">
           <h3 className="text-[15px] font-semibold text-text mb-2">Don&apos;t see your tool?</h3>
           <p className="text-[13px] text-text-muted leading-relaxed">
             We&apos;ll write a comparison for any LLM observability tool that has at least

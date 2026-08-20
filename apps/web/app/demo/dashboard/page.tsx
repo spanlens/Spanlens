@@ -23,6 +23,7 @@ function subscribeNow(): () => void {
 import Link from 'next/link'
 import { Topbar } from '@/components/layout/topbar'
 import { KpiCard } from '@/components/dashboard/kpi-card'
+import { Card } from '@/components/ui/card'
 // recharts' ResponsiveContainer reads element size via ResizeObserver,
 // which is unavailable during SSR. That produces a 0-width SVG on the
 // server render and a real-width SVG on the first client paint —
@@ -31,28 +32,30 @@ import { KpiCard } from '@/components/dashboard/kpi-card'
 // the broken-then-redrawn chart they got before, which is an
 // improvement on every measurable axis. SEO is a non-goal for
 // /demo/dashboard so the lost SSR pass costs nothing.
+//
+// All five name the same `@/components/dashboard/charts` specifier on purpose.
+// Turbopack groups async chunks by `import()` site, so the five separate
+// specifiers this used to have emitted three copies of the recharts vendor
+// graph per page load. See the header comment in
+// components/dashboard/charts.tsx before changing any of these.
 const RequestChart = dynamic(
-  () =>
-    import('@/components/dashboard/request-chart').then((m) => m.RequestChart),
+  () => import('@/components/dashboard/charts').then((m) => m.RequestChart),
   { ssr: false, loading: () => <div className="h-[220px]" /> },
 )
-// recharts-heavy breakdown cards — same ssr:false treatment as RequestChart
-// (ResizeObserver isn't available during SSR, so a server render produces a
-// 0-width SVG that mismatches the client paint — CLAUDE.md gotcha #22 D).
 const SpendForecastCard = dynamic(
-  () => import('@/components/dashboard/spend-forecast').then((m) => m.SpendForecastCard),
+  () => import('@/components/dashboard/charts').then((m) => m.SpendForecastCard),
   { ssr: false, loading: () => <div className="h-[320px]" /> },
 )
 const CostBreakdownCard = dynamic(
-  () => import('@/components/dashboard/cost-breakdown').then((m) => m.CostBreakdownCard),
+  () => import('@/components/dashboard/charts').then((m) => m.CostBreakdownCard),
   { ssr: false, loading: () => <div className="h-[290px]" /> },
 )
 const TokenTrendsCard = dynamic(
-  () => import('@/components/dashboard/token-trends').then((m) => m.TokenTrendsCard),
+  () => import('@/components/dashboard/charts').then((m) => m.TokenTrendsCard),
   { ssr: false, loading: () => <div className="h-[260px]" /> },
 )
 const ErrorDistributionCard = dynamic(
-  () => import('@/components/dashboard/error-distribution').then((m) => m.ErrorDistributionCard),
+  () => import('@/components/dashboard/charts').then((m) => m.ErrorDistributionCard),
   { ssr: false, loading: () => <div className="h-[260px]" /> },
 )
 import { cn } from '@/lib/utils'
@@ -132,57 +135,36 @@ interface AttnCardProps {
   href: string
 }
 
+// Mirrors the live dashboard tile: status lives in the fill and the title ink.
+const ATTN_TONE: Record<AttnCardProps['kind'], { shell: string; title: string; cta: string }> = {
+  critical: { shell: 'bg-accent-bg border-accent-border', title: 'text-bad', cta: 'text-bad' },
+  warning:  { shell: 'bg-warn-bg border-warn/25',         title: 'text-warn', cta: 'text-warn' },
+  savings:  { shell: 'bg-good-bg border-good/25',         title: 'text-good', cta: 'text-good' },
+}
+
 function AttnCard({ kind, title, meta, hint, cta, href }: AttnCardProps) {
-  const isCritical = kind === 'critical'
-  const isSavings = kind === 'savings'
+  const tone = ATTN_TONE[kind]
   const [dismissed, setDismissed] = useState(false)
   if (dismissed) return null
   return (
-    <div
-      className={cn(
-        'flex flex-col gap-1.5 p-[14px] rounded-md border',
-        isCritical
-          ? 'bg-accent-bg border-accent-border'
-          : isSavings
-            ? 'bg-good-bg border-good/20'
-            : 'bg-bg-elev border-border',
-      )}
-    >
-      <div className="flex items-center gap-2">
-        <span
-          className={cn(
-            'inline-block w-[7px] h-[7px] rounded-full shrink-0',
-            isCritical ? 'bg-accent' : isSavings ? 'bg-good' : 'bg-text',
-          )}
-        />
-        <span
-          className={cn(
-            'font-mono text-[9.5px] uppercase tracking-[0.05em] font-semibold',
-            isCritical ? 'text-accent' : isSavings ? 'text-good' : 'text-text',
-          )}
-        >
-          {kind}
-        </span>
+    <div className={cn('flex flex-col gap-1 rounded-lg border px-[14px] py-[11px]', tone.shell)}>
+      <div className="flex items-start gap-2">
+        <div className={cn('flex-1 min-w-0 text-[12.5px] font-semibold leading-[1.4]', tone.title)}>{title}</div>
         <button
           type="button"
           onClick={() => setDismissed(true)}
-          className="ml-auto text-text-faint hover:text-text-muted transition-colors leading-none"
+          className="shrink-0 text-text-faint hover:text-text-muted transition-colors leading-none"
           aria-label="Dismiss"
         >
           ✕
         </button>
       </div>
-      <div className="text-[14.5px] font-medium text-text leading-snug">{title}</div>
-      <div className="font-mono text-[11px] text-text-muted tracking-[0.02em]">{meta}</div>
-      <div className="text-[12.5px] text-text-muted leading-relaxed">{hint}</div>
+      <div className="font-mono text-[11px] leading-[1.4] text-text-faint truncate">{meta}</div>
+      <div className="text-[11.5px] leading-[1.4] text-text-faint">{hint}</div>
       <div className="flex-1" />
       <Link
         href={href}
-        className={cn(
-          'font-mono text-[11.5px] font-medium tracking-[0.02em] mt-1',
-          isCritical ? 'text-accent' : isSavings ? 'text-good' : 'text-text-muted',
-          'hover:opacity-80 transition-opacity',
-        )}
+        className={cn('font-mono text-[11px] font-medium tracking-[0.02em] mt-1 hover:opacity-80 transition-opacity', tone.cta)}
       >
         {cta}
       </Link>
@@ -226,12 +208,8 @@ export default function DemoDashboardPage() {
   const sparkCost = DEMO_TIMESERIES.slice(-10).map((d) => d.cost)
   const sparkErrors = DEMO_TIMESERIES.slice(-10).map((d) => d.errors)
 
-  const kpiCellClasses: [string, string, string, string] = [
-    'border-r border-b border-border lg:border-b-0',
-    'border-b border-border lg:border-r lg:border-b-0',
-    'border-r border-border',
-    'border-border',
-  ]
+  // Each KPI is its own card on the canvas, matching the live dashboard.
+  const kpiCellClass = 'card-surface rounded-card px-5'
 
   // SSR + first client paint return 0 so React hydrates from identical
   // HTML. The client snapshot returns a *cached* timestamp (captured on
@@ -263,16 +241,19 @@ export default function DemoDashboardPage() {
   const topModels = DEMO_MODELS.slice(0, 5)
 
   return (
-    <div className="-mx-4 -my-4 md:-mx-8 md:-my-7 flex flex-col min-h-screen">
-      <div className="sticky top-0 z-20 bg-bg">
+    <div className="flex flex-col">
+      {/* The topbar is the only full-bleed row on the board, so it cancels the
+          demo shell's gutters; everything below sits flush inside them. */}
+      <div className="sticky top-0 z-20 bg-bg -mx-4 -mt-4 md:-mx-7 md:-mt-5 mb-4 md:mb-5">
         <Topbar
           crumbs={[{ label: 'Demo', href: '/demo/dashboard' }, { label: 'Dashboard' }]}
         />
       </div>
 
-      <div>
+      {/* Content canvas — 16px rhythm between rows, per the Figma content frame. */}
+      <div className="flex flex-col gap-4">
         {/* Greeting */}
-        <div className="px-[22px] py-[22px] border-b border-border">
+        <div>
           <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 mb-1">
             <span className="text-[22px] sm:text-[26px] font-medium tracking-[-0.6px]">
               Afternoon.
@@ -301,25 +282,25 @@ export default function DemoDashboardPage() {
                 <button
                   type="button"
                   onClick={() => setExportOpen((v) => !v)}
-                  className="font-mono text-[11px] text-text-muted hover:text-text border border-border rounded px-2.5 py-1 transition-colors"
+                  className="text-[12.5px] font-medium text-text bg-bg-elev border border-border rounded px-3 py-[7px] hover:border-border-strong transition-colors"
                 >
                   Export ↓
                 </button>
                 {exportOpen && (
                   <>
                     <div className="fixed inset-0 z-10" onClick={() => setExportOpen(false)} />
-                    <div className="absolute right-0 top-full mt-1 z-20 bg-bg-elev border border-border rounded shadow-sm min-w-[100px]">
+                    <div className="absolute right-0 top-full mt-1 z-20 bg-bg-elev border border-border rounded-md shadow-card min-w-[100px] p-1">
                       <button
                         type="button"
                         onClick={() => { setExportOpen(false); alert('Sign up to export data') }}
-                        className="w-full text-left px-3 py-2 font-mono text-[11px] text-text-muted hover:text-text hover:bg-bg transition-colors"
+                        className="w-full text-left px-2.5 py-1.5 rounded text-[12.5px] text-text-muted hover:text-text hover:bg-bg-sunk transition-colors"
                       >
                         CSV
                       </button>
                       <button
                         type="button"
                         onClick={() => { setExportOpen(false); alert('Sign up to export data') }}
-                        className="w-full text-left px-3 py-2 font-mono text-[11px] text-text-muted hover:text-text hover:bg-bg transition-colors"
+                        className="w-full text-left px-2.5 py-1.5 rounded text-[12.5px] text-text-muted hover:text-text hover:bg-bg-sunk transition-colors"
                       >
                         JSON
                       </button>
@@ -332,8 +313,8 @@ export default function DemoDashboardPage() {
         </div>
 
         {/* Needs attention */}
-        <div className="px-[22px] pt-[18px] pb-1">
-          <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-2.5">
+        <div>
+          <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-text-faint mb-2.5">
             Needs attention
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -381,9 +362,9 @@ export default function DemoDashboardPage() {
         </div>
 
         {/* KPI row */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 border-y border-border mt-[18px]">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <KpiCard
-            className={kpiCellClasses[0]}
+            className={kpiCellClass}
             label="Requests · 24h"
             value={o.totalRequests.toLocaleString('en-US')}
             delta={fmtDelta(o.requestsDelta)}
@@ -393,7 +374,7 @@ export default function DemoDashboardPage() {
             linkHref="/demo/requests"
           />
           <KpiCard
-            className={kpiCellClasses[1]}
+            className={kpiCellClass}
             label="Spend · 24h"
             value={fmtCost(o.totalCostUsd)}
             delta={fmtDelta(o.costDelta)}
@@ -403,7 +384,7 @@ export default function DemoDashboardPage() {
             linkHref="/demo/savings"
           />
           <KpiCard
-            className={kpiCellClasses[2]}
+            className={kpiCellClass}
             label="Avg latency · 24h"
             value={`${o.avgLatencyMs}ms`}
             delta={fmtDelta(o.latencyDelta)}
@@ -413,7 +394,7 @@ export default function DemoDashboardPage() {
             linkHref="/demo/traces"
           />
           <KpiCard
-            className={kpiCellClasses[3]}
+            className={kpiCellClass}
             label="Error rate"
             value={`${o.errorRate.toFixed(2)}%`}
             delta={fmtDelta(o.errorRateDelta)}
@@ -425,35 +406,35 @@ export default function DemoDashboardPage() {
         </div>
 
         {/* Traffic chart */}
-        <div className="px-[22px] py-5 border-b border-border">
-          <div className="flex items-center mb-3">
-            <span className="text-[15px] font-medium">Traffic &amp; spend · last 24h</span>
+        <Card className="px-5 py-[18px]">
+          <div className="flex items-baseline gap-2.5 mb-[14px]">
+            <span className="text-[13.5px] font-semibold leading-[1.4] text-text">Traffic &amp; spend</span>
+            <span className="font-mono text-[11px] leading-[1.4] text-text-faint">last 24h</span>
           </div>
           <RequestChart data={DEMO_TIMESERIES} firedAt={alertFiredAt} />
-        </div>
+        </Card>
 
-        {/* Token volume + Error distribution row */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 px-[22px] py-5 border-b border-border">
+        {/* Token volume + Error distribution row — both children carry their
+            own card chrome, so the row only supplies the 16px rhythm. */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <TokenTrendsCard series={DEMO_TIMESERIES} rangeLabel="24h" />
           <ErrorDistributionCard series={DEMO_TIMESERIES} rangeLabel="24h" />
         </div>
 
         {/* Cost-by-model breakdown */}
-        <div className="px-[22px] py-5 border-b border-border">
-          <CostBreakdownCard models={DEMO_MODEL_STATS} rangeLabel="24h" />
-        </div>
+        <CostBreakdownCard models={DEMO_MODEL_STATS} rangeLabel="24h" />
 
-        {/* Spend forecast — always monthly, independent of the range selector */}
+        {/* Spend forecast, always monthly and independent of the range selector. */}
         <SpendForecastCard data={DEMO_SPEND_FORECAST} />
 
         {/* 2-col: Top prompts + Models in use */}
-        <div className="grid grid-cols-1 md:grid-cols-2 border-b border-border">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {/* Top prompts by spend */}
-          <div className="px-[22px] py-[18px] border-b border-border md:border-b-0 md:border-r">
-            <div className="flex items-center mb-3">
-              <span className="text-[14px] font-medium">Top prompts · spend</span>
+          <Card className="px-5 py-[18px]">
+            <div className="flex items-baseline mb-[14px]">
+              <span className="text-[13.5px] font-semibold leading-[1.4] text-text">Top prompts · spend</span>
               <span className="flex-1" />
-              <Link href="/demo/prompts" className="font-mono text-[10.5px] text-text-muted tracking-[0.03em] hover:text-text transition-colors">
+              <Link href="/demo/prompts" className="font-mono text-[11px] text-text-faint hover:text-text transition-colors">
                 All prompts →
               </Link>
             </div>
@@ -478,20 +459,21 @@ export default function DemoDashboardPage() {
                 )
               })}
             </div>
-          </div>
+          </Card>
 
           {/* Models in use */}
-          <div className="px-[22px] py-[18px]">
-            <div className="flex items-center mb-3">
-              <span className="text-[14px] font-medium">Models in use · 24h</span>
+          <Card className="px-5 py-[18px]">
+            <div className="flex items-baseline mb-[14px]">
+              <span className="text-[13.5px] font-semibold leading-[1.4] text-text">Models in use</span>
+              <span className="font-mono text-[11px] leading-[1.4] text-text-faint ml-2.5">24h</span>
               <span className="flex-1" />
-              <Link href="/demo/requests" className="font-mono text-[10.5px] text-text-muted tracking-[0.03em] hover:text-text transition-colors">
+              <Link href="/demo/requests" className="font-mono text-[11px] text-text-faint hover:text-text transition-colors">
                 All requests →
               </Link>
             </div>
             <div className="overflow-x-auto">
               <div style={{ minWidth: 300 }}>
-                <div className="grid font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint pb-2 border-b border-border" style={{ gridTemplateColumns: '1fr 80px 90px', gap: 10 }}>
+                <div className="grid font-mono text-[10px] uppercase tracking-[0.1em] text-text-faint pb-2 border-b border-border" style={{ gridTemplateColumns: '1fr 80px 90px', gap: 10 }}>
                   <span>Model</span>
                   <span className="text-right">Reqs</span>
                   <span className="text-right">Cost</span>
@@ -512,21 +494,21 @@ export default function DemoDashboardPage() {
                 ))}
               </div>
             </div>
-          </div>
+          </Card>
         </div>
 
         {/* Bottom 2-col: Alerts + Recommendations */}
-        <div className="grid grid-cols-1 md:grid-cols-2 border-b border-border">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {/* Active alert rules */}
-          <div className="px-[22px] py-[18px] border-b border-border md:border-b-0 md:border-r">
-            <div className="flex items-center mb-3">
-              <span className="text-[14px] font-medium">Active alerts</span>
+          <Card className="px-5 py-[18px]">
+            <div className="flex items-baseline mb-[14px]">
+              <span className="text-[13.5px] font-semibold leading-[1.4] text-text">Active alerts</span>
               <span className="flex-1" />
               <Link
                 href="/demo/alerts"
                 className={cn(
-                  'font-mono text-[10.5px] tracking-[0.03em]',
-                  firingAlerts.length > 0 ? 'text-accent' : 'text-text-muted',
+                  'font-mono text-[11px] hover:opacity-80 transition-opacity',
+                  firingAlerts.length > 0 ? 'text-accent' : 'text-text-faint',
                 )}
               >
                 {firingAlerts.length > 0
@@ -546,8 +528,8 @@ export default function DemoDashboardPage() {
                   <div
                     key={a.id}
                     className={cn(
-                      'flex items-center gap-2.5 px-3 py-2.5 rounded-[5px] border',
-                      fired ? 'bg-accent-bg border-accent-border' : 'bg-bg-elev border-border',
+                      'flex items-center gap-2.5 px-3 py-2.5 rounded-md border',
+                      fired ? 'bg-accent-bg border-accent-border' : 'bg-bg-sunk border-border',
                     )}
                   >
                     <span className={cn('w-2 h-2 rounded-full shrink-0', fired ? 'bg-accent' : 'bg-text-faint')} />
@@ -561,14 +543,14 @@ export default function DemoDashboardPage() {
                 )
               })}
             </div>
-          </div>
+          </Card>
 
           {/* Recommendations */}
-          <div className="px-[22px] py-[18px]">
-            <div className="flex items-center mb-3">
-              <span className="text-[14px] font-medium">Savings queued</span>
+          <Card className="px-5 py-[18px]">
+            <div className="flex items-baseline mb-[14px]">
+              <span className="text-[13.5px] font-semibold leading-[1.4] text-text">Savings queued</span>
               <span className="flex-1" />
-              <Link href="/demo/savings" className="font-mono text-[10.5px] text-good tracking-[0.03em]">
+              <Link href="/demo/savings" className="font-mono text-[11px] text-good hover:opacity-80 transition-opacity">
                 View all →
               </Link>
             </div>
@@ -581,7 +563,7 @@ export default function DemoDashboardPage() {
                   // composite key alone collides. Pre-fix this triggered React's
                   // "two children with the same key" warning on every render.
                   key={`${r.currentModel}->${r.suggestedModel}#${i}`}
-                  className="flex items-center gap-3 px-3 py-2.5 rounded-[5px] bg-bg-elev border border-border"
+                  className="flex items-center gap-3 px-3 py-2.5 rounded-md bg-bg-sunk border border-border"
                 >
                   <div className="flex-1 min-w-0">
                     <div className="font-mono text-[12px] text-text font-medium truncate">
@@ -597,17 +579,17 @@ export default function DemoDashboardPage() {
                 </div>
               ))}
             </div>
-          </div>
+          </Card>
         </div>
 
         {/* Activity feed */}
-        <div className="px-[22px] py-[18px]">
-          <div className="flex items-center mb-3">
-            <span className="text-[14px] font-medium">Recent activity</span>
+        <Card className="px-5 py-[18px]">
+          <div className="flex items-baseline mb-[14px]">
+            <span className="text-[13.5px] font-semibold leading-[1.4] text-text">Recent activity</span>
             <span className="flex-1" />
             <Link
               href="/demo/settings?tab=audit-log"
-              className="font-mono text-[10.5px] text-text-muted tracking-[0.03em] hover:text-text transition-colors"
+              className="font-mono text-[11px] text-text-faint hover:text-text transition-colors"
             >
               Audit log →
             </Link>
@@ -625,7 +607,7 @@ export default function DemoDashboardPage() {
                     {new Date(e.created_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })}
                   </span>
                   <span className={cn(
-                    'font-mono text-[9px] uppercase tracking-[0.04em] px-[5px] py-[1px] rounded-[3px] border self-center shrink-0',
+                    'font-mono text-[9px] uppercase tracking-[0.1em] px-[6px] py-[1px] rounded-full border self-center shrink-0',
                     isAccent ? 'text-accent border-accent-border' : 'text-text-faint border-border',
                   )}>{kind}</span>
                   <div className="text-[12.5px] text-text leading-snug w-full sm:w-auto">
@@ -640,7 +622,7 @@ export default function DemoDashboardPage() {
               </div>
             )
           })}
-        </div>
+        </Card>
       </div>
     </div>
   )

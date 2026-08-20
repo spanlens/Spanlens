@@ -1,12 +1,15 @@
-import path from 'node:path'
-import { fileURLToPath } from 'node:url'
 import bundleAnalyzer from '@next/bundle-analyzer'
 import { withSentryConfig } from '@sentry/nextjs'
 
-const __filename = fileURLToPath(import.meta.url)
-const __dirname = path.dirname(__filename)
-
-// Run `pnpm --filter web analyze` to emit a treemap report at .next/analyze/
+// NOTE: `pnpm --filter web analyze` is currently a no-op. @next/bundle-analyzer
+// early-returns with a warning whenever `process.env.TURBOPACK` is set, and
+// Next 16 sets it to 'auto' because our build script is a bare `next build`
+// with no bundler flag. It emits no treemap at .next/analyze/. Kept wired up so
+// the option is one flag away: run `next build --webpack` (or Next's
+// `experimental-analyze`) when a treemap is actually needed. Chunk composition
+// can also be inspected directly from .next/static/chunks + the per-route
+// build-manifest.json / react-loadable-manifest.json files, which is how the
+// recharts duplication was measured.
 const withBundleAnalyzer = bundleAnalyzer({ enabled: process.env.ANALYZE === 'true' })
 
 /** @type {import('next').NextConfig} */
@@ -54,6 +57,41 @@ const nextConfig = {
   // breakage risk. X-Frame-Options is the legacy equivalent for older
   // browsers.
   async headers() {
+    // Machine-readable files consumed by crawlers and LLM agents. Their
+    // contents only change on deploy, but all six shipped with
+    // `Cache-Control: public, max-age=0, must-revalidate`, so the Vercel edge
+    // revalidated against the origin on every single hit — no CDN caching at
+    // all. `s-maxage=3600` lets the edge serve them for an hour and
+    // `stale-while-revalidate=86400` keeps crawlers served from cache while a
+    // stale copy refreshes in the background, so an origin blip never turns
+    // into a failed crawl. `max-age=0` is kept deliberately: browsers still
+    // revalidate, because a robots.txt pinned in a user's disk cache is never
+    // acceptable. A new deployment purges the edge cache, so an hour of
+    // s-maxage never delays a content change going live.
+    const MACHINE_READABLE_CACHE_CONTROL =
+      'public, max-age=0, s-maxage=3600, stale-while-revalidate=86400'
+
+    // First four are real files in public/; last two are Next metadata routes
+    // (app/robots.ts, app/sitemap.ts) prerendered to static build output.
+    //
+    // Why these are set here rather than on the routes themselves: `export
+    // const revalidate` does NOT influence the response header for metadata
+    // routes. Next's metadata-route loader hardcodes
+    // `Cache-Control: public, max-age=0, must-revalidate` into the generated
+    // handler (next/dist/build/webpack/loaders/next-metadata-route-loader.js,
+    // CACHE_HEADERS.REVALIDATE), and next/dist/build/templates/app-route.js
+    // only applies the revalidate-derived `s-maxage` when the response carries
+    // no Cache-Control of its own. Confirmed in this repo's build output:
+    // .next/server/app/robots.txt.meta pins that exact value.
+    const MACHINE_READABLE_PATHS = [
+      '/llms.txt',
+      '/llms-full.txt',
+      '/AGENTS.md',
+      '/pricing.md',
+      '/robots.txt',
+      '/sitemap.xml',
+    ]
+
     return [
       {
         source: '/:path*',
@@ -64,6 +102,10 @@ const nextConfig = {
           { key: 'Content-Security-Policy', value: "frame-ancestors 'self'" },
         ],
       },
+      ...MACHINE_READABLE_PATHS.map((source) => ({
+        source,
+        headers: [{ key: 'Cache-Control', value: MACHINE_READABLE_CACHE_CONTROL }],
+      })),
     ]
   },
   async rewrites() {
@@ -93,39 +135,6 @@ const nextConfig = {
         destination: `${apiUrl}/badge/:path*`,
       },
     ]
-  },
-
-  // @supabase/realtime-js@2.104.0 depends on 'ws' which references __dirname
-  // at module initialisation time. __dirname is undefined in Next.js Edge
-  // Runtime (middleware), causing MIDDLEWARE_INVOCATION_FAILED on every request.
-  //
-  // Fix: for Edge builds, alias 'ws' → false (empty module) so the bundler
-  // drops it; Edge Runtime provides WebSocket natively as a global.
-  // DefinePlugin provides __dirname / __filename as a safety net for any
-  // remaining stray reference.
-  webpack(config, { nextRuntime, webpack: webpackInstance }) {
-    if (nextRuntime === 'edge') {
-      // @supabase/realtime-js@2.104.0 depends on the 'ws' package which
-      // references __dirname at module init → ReferenceError in Edge Runtime.
-      // Middleware never uses Realtime subscriptions, so we redirect the
-      // whole package to a local no-op stub. Aliasing to `false` (empty
-      // object) is wrong here because @supabase/supabase-js calls
-      // `new RealtimeClient()` unconditionally → "is not a constructor".
-      config.resolve.alias = {
-        ...config.resolve.alias,
-        '@supabase/realtime-js': path.resolve(__dirname, 'lib/realtime-stub.js'),
-        ws: false,
-      }
-      // Belt-and-suspenders: replace any residual __dirname / __filename
-      // identifier that slips through (e.g. from inlined polyfills).
-      config.plugins.push(
-        new webpackInstance.DefinePlugin({
-          __dirname: JSON.stringify('/'),
-          __filename: JSON.stringify(''),
-        }),
-      )
-    }
-    return config
   },
 }
 

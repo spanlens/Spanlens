@@ -1,3 +1,4 @@
+import { openGraphFor } from '@/lib/page-metadata'
 import Link from 'next/link'
 import { CodeBlock } from '../_components/code-block'
 import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
@@ -5,8 +6,9 @@ import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 export const metadata = {
   title: 'Spanlens CLI · Spanlens Docs',
   description:
-    'One-command setup wizard for Spanlens, in both Node (npx @spanlens/cli) and Python (spanlens init). Auto-detects OpenAI, Anthropic, and Gemini SDK calls and routes them through the proxy.',
+    'One-command setup wizard for Spanlens in Node and Python. Auto-detects OpenAI, Anthropic, and Gemini SDK calls and routes them through the proxy.',
   alternates: { canonical: '/docs/cli' },
+  openGraph: openGraphFor('/docs/cli'),
 }
 
 const INSTALL_CMD = `npx @spanlens/cli init`
@@ -136,7 +138,7 @@ export default function CliDocs() {
         committing so you do not ship a broken build.
       </p>
 
-      <div className="my-6 rounded-lg border-l-4 border-accent bg-accent-bg p-4 text-sm">
+      <div className="my-6 rounded-lg border border-accent-border bg-accent-bg p-4 text-sm">
         <p className="m-0 font-semibold text-accent">Two-line manual integration still works</p>
         <p className="mt-1 mb-0 text-accent">
           If the wizard does not fit your stack, skip it and use the{' '}
@@ -145,7 +147,7 @@ export default function CliDocs() {
         </p>
       </div>
 
-      <div className="my-6 rounded-lg border-l-4 border-accent bg-accent-bg p-4 text-sm">
+      <div className="my-6 rounded-lg border border-accent-border bg-accent-bg p-4 text-sm">
         <p className="m-0 font-semibold text-accent">Working in Python?</p>
         <p className="mt-1 mb-0 text-accent">
           The same wizard ships with the Python SDK. Run{' '}

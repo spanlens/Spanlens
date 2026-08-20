@@ -1,9 +1,11 @@
+import { openGraphFor } from '@/lib/page-metadata'
 import { CodeBlock } from '../../_components/code-block'
 import { DatasetSchemaDiagram } from '../../_components/diagrams'
 import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
 export const metadata = {
   alternates: { canonical: '/docs/features/datasets' },
+  openGraph: openGraphFor('/docs/features/datasets'),
   title: 'Datasets · Spanlens Docs',
   description:
     'Reusable (input, expected_output) test sets. Use in Evals and Experiments instead of pulling from live production traffic.',

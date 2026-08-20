@@ -10,7 +10,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
  *
  *   1. Auth gate (CRON_SECRET) — fail-closed. If a refactor accidentally
  *      removed the assertion, the endpoint becomes a tenant-blind
- *      ClickHouse query open to the public internet.
+ *      cross-tenant aggregate open to the public internet.
  *
  *   2. Empty result (zero models exceed the 100/hour threshold) — must
  *      NOT insert an internal_alerts row. Spurious alerts train the
@@ -23,7 +23,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
  */
 
 const supabaseInsertMock = vi.fn()
-const clickhouseQueryMock = vi.fn()
+const pgQueryMock = vi.fn()
 const logCronRunMock = vi.fn()
 
 vi.mock('../lib/db.js', () => ({
@@ -34,11 +34,11 @@ vi.mock('../lib/db.js', () => ({
   },
 }))
 
-vi.mock('../lib/clickhouse.js', () => ({
-  unscopedClickhouse: () => ({
-    query: (opts: unknown) => clickhouseQueryMock(opts),
-  }),
-  getOrgClickhouse: () => ({ query: () => Promise.resolve({ json: () => [] }) }),
+// `pgQuery` resolves the row array directly — no `.json()` step. This one
+// mock also covers the other cron jobs cron.ts pulls in, since every read of
+// `requests` goes through it.
+vi.mock('../lib/postgres.js', () => ({
+  pgQuery: (opts: unknown) => pgQueryMock(opts),
 }))
 
 vi.mock('../lib/cron-logger.js', () => ({
@@ -58,12 +58,10 @@ vi.mock('../lib/quota-warnings.js', () => ({ runQuotaWarningsJob: vi.fn() }))
 vi.mock('../lib/anomaly-snapshot.js', () => ({ snapshotAnomaliesForAllOrgs: vi.fn() }))
 vi.mock('../lib/stale-key-digest.js', () => ({ runStaleKeyDigestJob: vi.fn() }))
 vi.mock('../lib/background-migrations/runner.js', () => ({ runDueMigrations: vi.fn() }))
-vi.mock('../lib/events-reconciliation.js', () => ({ runReconciliationCron: vi.fn() }))
 vi.mock('../lib/leak-detection.js', () => ({ runLeakDetectionJob: vi.fn() }))
 vi.mock('../lib/recommendation-notify.js', () => ({ sendHighConfidenceRecommendationAlerts: vi.fn() }))
 vi.mock('../lib/fallback-replay.js', () => ({
   replayFallbackQueue: vi.fn(),
-  replayEventsFallbackQueue: vi.fn(),
 }))
 vi.mock('../lib/billing-downgrade.js', () => ({ runDowngradeCheck: vi.fn() }))
 vi.mock('../api/pendingDeletions.js', () => ({ executePendingDeletions: vi.fn() }))
@@ -74,7 +72,7 @@ const origSecret = process.env['CRON_SECRET']
 beforeEach(async () => {
   vi.resetModules()
   supabaseInsertMock.mockReset()
-  clickhouseQueryMock.mockReset()
+  pgQueryMock.mockReset()
   logCronRunMock.mockReset()
   process.env['CRON_SECRET'] = 'test-secret'
   ;({ cronRouter } = await import('../api/cron.js'))
@@ -97,13 +95,13 @@ describe('R-Q2 — /cron/detect-missing-model-prices', () => {
     const res = await request()
     expect(res.status).toBe(401)
     expect(supabaseInsertMock).not.toHaveBeenCalled()
-    expect(clickhouseQueryMock).not.toHaveBeenCalled()
+    expect(pgQueryMock).not.toHaveBeenCalled()
   })
 
   test('rejects request with wrong secret (401)', async () => {
     const res = await request('Bearer wrong')
     expect(res.status).toBe(401)
-    expect(clickhouseQueryMock).not.toHaveBeenCalled()
+    expect(pgQueryMock).not.toHaveBeenCalled()
   })
 
   test('fail-closed when CRON_SECRET unset', async () => {
@@ -116,7 +114,7 @@ describe('R-Q2 — /cron/detect-missing-model-prices', () => {
   })
 
   test('zero missing models → no internal_alerts insert + missing=0', async () => {
-    clickhouseQueryMock.mockResolvedValue({ json: async () => [] })
+    pgQueryMock.mockResolvedValue([])
 
     const res = await request('Bearer test-secret')
     expect(res.status).toBe(200)
@@ -132,14 +130,13 @@ describe('R-Q2 — /cron/detect-missing-model-prices', () => {
   })
 
   test('non-empty result → inserts exactly one internal_alerts row with details', async () => {
-    // ClickHouse JSONEachRow returns counts as STRINGS (gotcha #19).
-    // Use that exact shape in the fixture to lock the type conversion.
-    clickhouseQueryMock.mockResolvedValue({
-      json: async () => [
-        { model: 'gpt-4o-2026-11-01', missing_count: '512' },
-        { model: 'claude-sonnet-5', missing_count: '187' },
-      ],
-    })
+    // `count(*)` is int8, which node-postgres hands back as a STRING to
+    // avoid precision loss (gotcha #19). Use that exact shape in the fixture
+    // so the Number() coercion stays covered.
+    pgQueryMock.mockResolvedValue([
+      { model: 'gpt-4o-2026-11-01', missing_count: '512' },
+      { model: 'claude-sonnet-5', missing_count: '187' },
+    ])
     supabaseInsertMock.mockResolvedValue({ error: null })
 
     const res = await request('Bearer test-secret')
@@ -164,8 +161,8 @@ describe('R-Q2 — /cron/detect-missing-model-prices', () => {
     ])
   })
 
-  test('ClickHouse query throws → 500 + logCronRun error', async () => {
-    clickhouseQueryMock.mockRejectedValue(new Error('ClickHouse unreachable'))
+  test('the requests query throwing → 500 + logCronRun error', async () => {
+    pgQueryMock.mockRejectedValue(new Error('postgres unreachable'))
 
     const res = await request('Bearer test-secret')
     expect(res.status).toBe(500)
@@ -174,14 +171,12 @@ describe('R-Q2 — /cron/detect-missing-model-prices', () => {
       'detect-missing-model-prices',
       'error',
       expect.any(Number),
-      expect.stringContaining('ClickHouse unreachable'),
+      expect.stringContaining('postgres unreachable'),
     )
   })
 
   test('internal_alerts insert fails → 500 + logCronRun error', async () => {
-    clickhouseQueryMock.mockResolvedValue({
-      json: async () => [{ model: 'gpt-9', missing_count: '200' }],
-    })
+    pgQueryMock.mockResolvedValue([{ model: 'gpt-9', missing_count: '200' }])
     supabaseInsertMock.mockResolvedValue({
       error: { message: 'duplicate key value violates unique constraint' },
     })

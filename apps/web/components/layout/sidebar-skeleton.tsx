@@ -21,35 +21,36 @@ interface DashboardShellSkeletonProps {
 
 export function DashboardShellSkeleton({ initialCollapsed }: DashboardShellSkeletonProps) {
   return (
-    <div className="flex h-[calc(100vh/1.25)] overflow-hidden bg-bg [zoom:1.25]">
+    <div className="flex h-screen overflow-hidden bg-bg">
       {/* Sidebar skeleton — desktop only. Mobile renders a closed drawer so
           there's nothing to skeletonise; the real Sidebar will mount with
-          the topbar's menu button. */}
+          the topbar's menu button. Geometry tracks the real sidebar: 232px
+          wide, band surface, 14px gutters, 16px top. */}
       <aside
         className={cn(
-          'hidden md:flex flex-col shrink-0 border-r border-border bg-bg',
-          initialCollapsed ? 'w-0' : 'w-[272px]',
+          'hidden md:flex flex-col shrink-0 border-r border-border bg-bg-muted',
+          initialCollapsed ? 'w-0' : 'w-[232px]',
         )}
       >
         {!initialCollapsed && (
-          <div className="flex-1 flex flex-col gap-3 px-[14px] py-[16px]">
+          <div className="flex-1 flex flex-col gap-3.5 px-[14px] pt-4 pb-[14px]">
             {/* Logo / workspace switcher row */}
-            <div className="h-7 w-[180px] bg-bg-elev rounded-[5px] animate-pulse" />
-            <div className="h-7 w-full bg-bg-elev rounded-[5px] animate-pulse" />
-            {/* Nav block — match the real sidebar's group of ~6 items */}
-            <div className="mt-3 space-y-1.5">
-              {[0, 1, 2, 3, 4, 5].map((i) => (
-                <div key={i} className="h-6 w-full bg-bg-elev rounded-[4px] animate-pulse opacity-80" />
+            <div className="h-5 w-[100px] bg-bg-chip rounded-chip animate-pulse" />
+            <div className="h-9 w-full bg-bg-chip rounded-md animate-pulse" />
+            {/* Nav block — match the real sidebar's group of ~5 items */}
+            <div className="space-y-1">
+              {[0, 1, 2, 3, 4].map((i) => (
+                <div key={i} className="h-8 w-full bg-bg-chip rounded animate-pulse opacity-80" />
               ))}
             </div>
             {/* Second group */}
-            <div className="mt-3 space-y-1.5">
+            <div className="space-y-1">
               {[0, 1, 2].map((i) => (
-                <div key={i} className="h-6 w-full bg-bg-elev rounded-[4px] animate-pulse opacity-70" />
+                <div key={i} className="h-8 w-full bg-bg-chip rounded animate-pulse opacity-70" />
               ))}
             </div>
             {/* Bottom quota card */}
-            <div className="mt-auto h-[68px] w-full bg-bg-elev rounded-[6px] animate-pulse" />
+            <div className="mt-auto h-[62px] w-full bg-bg-chip rounded-lg animate-pulse" />
           </div>
         )}
       </aside>

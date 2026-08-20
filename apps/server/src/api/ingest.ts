@@ -42,7 +42,6 @@ function computeDurationMs(startedAt: string | null, endedAt: string | null): nu
   return end - start
 }
 
-import { writeTraceAsEvent, writeSpanAsEvent } from '../lib/events-writer.js'
 
 // ── POST /ingest/traces ──────────────────────────────────────
 ingestRouter.post('/traces', async (c) => {
@@ -121,25 +120,6 @@ ingestRouter.post('/traces', async (c) => {
     console.error('[ingest] trace INSERT failed:', error?.message ?? 'no row returned')
     throw new ApiError('INTERNAL_ERROR', 'Failed to create trace')
   }
-
-  // Phase 5.1 dual-write to events. Best-effort — events is the shadow
-  // store; reads still come from Postgres traces. Awaited rather than
-  // fire-and-forget: an unawaited promise on Vercel Node runtime is
-  // dropped at response time (CLAUDE.md gotcha #8). ~30ms CH round trip.
-  try {
-    await writeTraceAsEvent({
-      traceId: data.id as string,
-      organizationId,
-      projectId,
-      apiKeyId,
-      name: insert.name,
-      startedAt: (data.started_at as string) ?? new Date().toISOString(),
-      metadata: insert.metadata ?? null,
-    })
-  } catch (err) {
-    console.error('[ingest] trace events shadow INSERT failed:', err instanceof Error ? err.message : err)
-  }
-
   return c.json({ success: true, data }, 201)
 })
 
@@ -226,31 +206,6 @@ ingestRouter.patch('/traces/:id', async (c) => {
   if (error || !data) {
     throw new ApiError('NOT_FOUND', 'Trace not found or access denied')
   }
-
-  // R-12 Phase 3.2 — dual-write the lifecycle update to events. Without
-  // this the events read path (organizations.read_from_events) shows every
-  // trace frozen in its create-time state: status 'running' forever,
-  // ended_at/duration_ms never filled. Same awaited best-effort contract
-  // as the POST path above (gotcha #8).
-  try {
-    await writeTraceAsEvent({
-      traceId: data.id,
-      organizationId,
-      projectId: data.project_id,
-      apiKeyId: data.api_key_id ?? null,
-      name: data.name,
-      startedAt: data.started_at,
-      endedAt: data.ended_at ?? null,
-      status: data.status ?? null,
-      errorMessage: data.error_message ?? null,
-      metadata: (data.metadata as Record<string, unknown> | null) ?? null,
-      durationMs: data.duration_ms ?? null,
-      eventTime: new Date().toISOString(),
-    })
-  } catch (err) {
-    console.error('[ingest] trace update events shadow INSERT failed:', err instanceof Error ? err.message : err)
-  }
-
   // Outbound webhook: trace.completed. fireAndForget so the SDK's PATCH
   // response isn't blocked on customer-endpoint latency, and the promise is
   // drained on Vercel (gotcha #8). Best-effort — no-op for orgs without a
@@ -372,31 +327,6 @@ ingestRouter.post('/traces/:id/spans', async (c) => {
     console.error('[ingest] span INSERT failed:', error?.message ?? 'no row returned')
     throw new ApiError('INTERNAL_ERROR', 'Failed to create span')
   }
-
-  // Phase 5.1 dual-write to events — awaited for the same reason as the
-  // trace path above (CLAUDE.md gotcha #8).
-  try {
-    await writeSpanAsEvent({
-      spanId: data.id as string,
-      traceId,
-      parentSpanId: insert.parent_span_id ?? null,
-      organizationId,
-      // R-12 Phase 3.2 fix: this used to read `insert.project_id`, which
-      // NEVER exists (spans carry no project_id) — every span event was
-      // written with projectId '' and rejected by ClickHouse's UUID
-      // column, silently losing the whole span events stream.
-      projectId: trace.project_id,
-      apiKeyId: null,
-      name: insert.name,
-      spanType: insert.span_type ?? null,
-      startedAt: (data.started_at as string) ?? new Date().toISOString(),
-      input: insert.input,
-      metadata: insert.metadata ?? null,
-    })
-  } catch (err) {
-    console.error('[ingest] span events shadow INSERT failed:', err instanceof Error ? err.message : err)
-  }
-
   return c.json({ success: true, data }, 201)
 })
 
@@ -495,47 +425,5 @@ ingestRouter.patch('/spans/:id', async (c) => {
   if (error || !data) {
     throw new ApiError('NOT_FOUND', 'Span not found or access denied')
   }
-
-  // R-12 Phase 3.2 — dual-write the span lifecycle update to events.
-  // This PATCH is where usage/cost/output land (the SDK creates the span
-  // empty, then fills it at end()), so skipping it left every span event
-  // with zero tokens forever. project_id comes from the parent trace —
-  // spans don't carry one.
-  try {
-    const { data: parentTrace } = await supabaseAdmin
-      .from('traces')
-      .select('project_id')
-      .eq('id', data.trace_id)
-      .eq('organization_id', organizationId)
-      .single()
-    if (parentTrace?.project_id) {
-      await writeSpanAsEvent({
-        spanId: data.id,
-        traceId: data.trace_id,
-        parentSpanId: data.parent_span_id ?? null,
-        organizationId,
-        projectId: parentTrace.project_id,
-        apiKeyId: null,
-        name: data.name,
-        spanType: data.span_type ?? null,
-        startedAt: data.started_at,
-        endedAt: data.ended_at ?? null,
-        durationMs: data.duration_ms ?? null,
-        status: data.status ?? null,
-        errorMessage: data.error_message ?? null,
-        input: data.input ?? undefined,
-        output: data.output ?? undefined,
-        metadata: (data.metadata as Record<string, unknown> | null) ?? null,
-        promptTokens: data.prompt_tokens ?? null,
-        completionTokens: data.completion_tokens ?? null,
-        totalTokens: data.total_tokens ?? null,
-        costUsd: data.cost_usd ?? null,
-        eventTime: new Date().toISOString(),
-      })
-    }
-  } catch (err) {
-    console.error('[ingest] span update events shadow INSERT failed:', err instanceof Error ? err.message : err)
-  }
-
   return c.json({ success: true, data })
 })

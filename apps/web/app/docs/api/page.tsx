@@ -1,7 +1,9 @@
+import { openGraphFor } from '@/lib/page-metadata'
 import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
 export const metadata = {
   alternates: { canonical: '/docs/api' },
+  openGraph: openGraphFor('/docs/api'),
   title: 'REST API Reference · Spanlens Docs',
   description:
     'Interactive OpenAPI 3.0 reference for the Spanlens REST API. Authentication, requests, stats, traces, anomalies, members, and proxy endpoints.',

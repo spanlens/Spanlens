@@ -13,12 +13,12 @@ import { cn } from '@/lib/utils'
  */
 export function PageSkeleton() {
   return (
-    <div className="flex flex-col h-full -mx-4 -my-4 md:-mx-8 md:-my-7 overflow-hidden">
+    <div className="flex flex-col h-full -mx-4 -my-4 md:-mx-7 md:-mt-5 md:-mb-7 overflow-hidden">
       {/* Topbar */}
-      <div className="h-[52px] border-b border-border px-[22px] flex items-center gap-2 shrink-0">
-        <div className="h-2.5 w-20 bg-bg-elev rounded animate-pulse" />
+      <div className="h-[61px] border-b border-border px-7 flex items-center gap-2 shrink-0">
+        <div className="h-2.5 w-20 bg-bg-chip rounded animate-pulse" />
         <div className="h-2.5 w-1.5 bg-bg-elev rounded opacity-50" />
-        <div className="h-2.5 w-28 bg-bg-elev rounded animate-pulse" />
+        <div className="h-2.5 w-28 bg-bg-chip rounded animate-pulse" />
       </div>
 
       {/* KPI tiles */}
@@ -31,20 +31,20 @@ export function PageSkeleton() {
               i < 3 ? 'border-r border-border' : '',
             )}
           >
-            <div className="h-2.5 w-16 bg-bg-elev rounded animate-pulse mb-3" />
-            <div className="h-7 w-24 bg-bg-elev rounded animate-pulse mb-2" />
-            <div className="h-2 w-20 bg-bg-elev rounded animate-pulse" />
+            <div className="h-2.5 w-16 bg-bg-chip rounded animate-pulse mb-3" />
+            <div className="h-7 w-24 bg-bg-chip rounded animate-pulse mb-2" />
+            <div className="h-2 w-20 bg-bg-chip rounded animate-pulse" />
           </div>
         ))}
       </div>
 
       {/* Table rows */}
-      <div className="flex-1 px-[22px] py-5 space-y-2">
-        <div className="h-8 bg-bg-elev rounded animate-pulse opacity-60 mb-4" />
+      <div className="flex-1 px-7 py-5 space-y-2">
+        <div className="h-8 bg-bg-chip rounded animate-pulse opacity-60 mb-4" />
         {[1, 2, 3, 4, 5, 6, 7].map((i) => (
           <div
             key={i}
-            className="h-[52px] bg-bg-elev rounded animate-pulse"
+            className="h-[52px] bg-bg-chip rounded animate-pulse"
             style={{ opacity: 1 - i * 0.09 }}
           />
         ))}
@@ -63,24 +63,24 @@ export function PageSkeleton() {
  */
 export function PageDetailSkeleton() {
   return (
-    <div className="flex flex-col h-full -mx-4 -my-4 md:-mx-8 md:-my-7 overflow-hidden">
+    <div className="flex flex-col h-full -mx-4 -my-4 md:-mx-7 md:-mt-5 md:-mb-7 overflow-hidden">
       {/* Topbar */}
-      <div className="h-[52px] border-b border-border px-[22px] flex items-center gap-2 shrink-0">
-        <div className="h-2.5 w-20 bg-bg-elev rounded animate-pulse" />
+      <div className="h-[61px] border-b border-border px-7 flex items-center gap-2 shrink-0">
+        <div className="h-2.5 w-20 bg-bg-chip rounded animate-pulse" />
         <div className="h-2.5 w-1.5 bg-bg-elev rounded opacity-50" />
-        <div className="h-2.5 w-36 bg-bg-elev rounded animate-pulse" />
+        <div className="h-2.5 w-36 bg-bg-chip rounded animate-pulse" />
       </div>
 
-      <div className="flex-1 overflow-y-auto px-[22px] py-5 space-y-4">
+      <div className="flex-1 overflow-y-auto px-7 py-5 space-y-4">
         {/* Header card */}
-        <div className="border border-border rounded-md p-5 space-y-3">
-          <div className="h-3 w-20 bg-bg-elev rounded animate-pulse" />
-          <div className="h-5 w-48 bg-bg-elev rounded animate-pulse" />
+        <div className="border border-border rounded-card p-5 space-y-3">
+          <div className="h-3 w-20 bg-bg-chip rounded animate-pulse" />
+          <div className="h-5 w-48 bg-bg-chip rounded animate-pulse" />
           <div className="flex gap-6 pt-1">
             {[72, 56, 80, 48].map((w, i) => (
               <div key={i} className="space-y-1.5">
-                <div className="h-2 bg-bg-elev rounded animate-pulse" style={{ width: w }} />
-                <div className="h-3 bg-bg-elev rounded animate-pulse" style={{ width: w * 0.7 }} />
+                <div className="h-2 bg-bg-chip rounded animate-pulse" style={{ width: w }} />
+                <div className="h-3 bg-bg-chip rounded animate-pulse" style={{ width: w * 0.7 }} />
               </div>
             ))}
           </div>
@@ -88,10 +88,10 @@ export function PageDetailSkeleton() {
 
         {/* Body sections */}
         {[1, 2].map((section) => (
-          <div key={section} className="border border-border rounded-md p-5 space-y-3">
-            <div className="h-2.5 w-24 bg-bg-elev rounded animate-pulse" />
+          <div key={section} className="border border-border rounded-card p-5 space-y-3">
+            <div className="h-2.5 w-24 bg-bg-chip rounded animate-pulse" />
             {[1, 2, 3].map((row) => (
-              <div key={row} className="h-4 bg-bg-elev rounded animate-pulse" style={{ opacity: 1 - row * 0.2 }} />
+              <div key={row} className="h-4 bg-bg-chip rounded animate-pulse" style={{ opacity: 1 - row * 0.2 }} />
             ))}
           </div>
         ))}
@@ -107,17 +107,17 @@ export function PageDetailSkeleton() {
  */
 export function PageTabSkeleton() {
   return (
-    <div className="flex flex-col h-full -mx-4 -my-4 md:-mx-8 md:-my-7 overflow-hidden">
+    <div className="flex flex-col h-full -mx-4 -my-4 md:-mx-7 md:-mt-5 md:-mb-7 overflow-hidden">
       {/* Topbar */}
-      <div className="h-[52px] border-b border-border px-[22px] flex items-center gap-2 shrink-0">
-        <div className="h-2.5 w-20 bg-bg-elev rounded animate-pulse" />
+      <div className="h-[61px] border-b border-border px-7 flex items-center gap-2 shrink-0">
+        <div className="h-2.5 w-20 bg-bg-chip rounded animate-pulse" />
         <div className="h-2.5 w-1.5 bg-bg-elev rounded opacity-50" />
-        <div className="h-2.5 w-32 bg-bg-elev rounded animate-pulse" />
+        <div className="h-2.5 w-32 bg-bg-chip rounded animate-pulse" />
       </div>
 
-      <div className="flex-1 overflow-y-auto px-[22px] py-5">
+      <div className="flex-1 overflow-y-auto px-7 py-5">
         {/* Title */}
-        <div className="h-5 w-40 bg-bg-elev rounded animate-pulse mb-4" />
+        <div className="h-5 w-40 bg-bg-chip rounded animate-pulse mb-4" />
 
         {/* Tabs */}
         <div className="flex gap-1 border-b border-border mb-5 pb-0">
@@ -129,18 +129,18 @@ export function PageTabSkeleton() {
                 i === 0 ? 'border-b-2 border-text' : '',
               )}
             >
-              <div className="h-2.5 bg-bg-elev rounded animate-pulse" style={{ width: w }} />
+              <div className="h-2.5 bg-bg-chip rounded animate-pulse" style={{ width: w }} />
             </div>
           ))}
         </div>
 
         {/* Tab content */}
         <div className="space-y-3">
-          <div className="h-8 bg-bg-elev rounded animate-pulse opacity-60" />
+          <div className="h-8 bg-bg-chip rounded animate-pulse opacity-60" />
           {[1, 2, 3, 4, 5].map((i) => (
             <div
               key={i}
-              className="h-[52px] bg-bg-elev rounded animate-pulse"
+              className="h-[52px] bg-bg-chip rounded animate-pulse"
               style={{ opacity: 1 - i * 0.12 }}
             />
           ))}

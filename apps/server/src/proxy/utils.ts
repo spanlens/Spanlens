@@ -1,5 +1,6 @@
 import { supabaseAdmin } from '../lib/db.js'
 import { aes256Decrypt } from '../lib/crypto.js'
+import { loadProviderKeyRow } from '../lib/provider-key-cache.js'
 
 export interface ResolvedProviderKey {
   /** Decrypted plaintext key — never log or persist. */
@@ -26,32 +27,50 @@ export interface ResolvedProviderKey {
  * Returns plaintext (for upstream Authorization), the row id (for
  * requests.provider_key_id so the dashboard can show which key was used),
  * and provider_metadata (e.g. Azure resource_url).
+ *
+ * P3.2: the row lookup goes through lib/provider-key-cache.ts (30s TTL,
+ * in-flight coalescing) so this is no longer a Supabase round-trip on
+ * every proxied call. Only the **ciphertext** is cached — decryption
+ * still happens here, on every request, so no decrypted provider
+ * credential is ever held in process memory beyond the request that uses
+ * it (CLAUDE.md "보안 규칙" rule 3). Do not "optimise" that by caching
+ * the ResolvedProviderKey: aes256Decrypt is microseconds, the round-trip
+ * we removed was tens of milliseconds, and the plaintext is the only
+ * part an attacker could not already read out of the database.
+ *
+ * Note the empty-plaintext guard below (Known Gotcha #5) keeps working
+ * with the cache in place: a wrong ENCRYPTION_KEY makes the decrypt fail
+ * on every request rather than being remembered as a success.
  */
 export async function getDecryptedProviderKey(
   apiKeyId: string,
   provider: string,
 ): Promise<ResolvedProviderKey | null> {
-  const { data } = await supabaseAdmin
-    .from('provider_keys')
-    .select('id, encrypted_key, provider_metadata')
-    .eq('api_key_id', apiKeyId)
-    .eq('provider', provider)
-    .eq('is_active', true)
-    .maybeSingle()
+  const row = await loadProviderKeyRow(apiKeyId, provider)
 
-  if (!data) return null
-  const decrypted = await aes256Decrypt(data.encrypted_key as string)
+  if (!row) return null
+  const decrypted = await aes256Decrypt(row.encryptedKey)
   if (decrypted.length === 0) return null
   return {
     plaintext: decrypted,
-    id: data.id as string,
-    metadata: (data.provider_metadata as Record<string, unknown> | null) ?? {},
+    id: row.id,
+    metadata: row.metadata,
   }
 }
 
 /**
  * Look up + decrypt a specific provider key by ID (direct lookup — no fallback chain).
  * Used when api_keys.provider_key_id is set (unified key flow).
+ *
+ * Deliberately NOT cached, unlike getDecryptedProviderKey above. Its only
+ * caller is the replay-run handler in api/requests.ts (`POST
+ * /api/v1/requests/:id/replay/run`), which is a human clicking "replay" in
+ * the dashboard behind requireRole('admin','editor') — one lookup per
+ * click, against a *historical* provider_key_id read off an old request
+ * row. Caching it would add an invalidation surface (this lookup is keyed
+ * by row id + org, so it needs its own key space) to save a round-trip
+ * nobody is waiting on in a loop. If a future caller puts this on a hot
+ * path, cache it then — and wire it into the same invalidation sites.
  */
 export async function getDecryptedProviderKeyById(
   keyId: string,

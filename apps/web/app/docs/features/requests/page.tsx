@@ -1,8 +1,10 @@
+import { openGraphFor } from '@/lib/page-metadata'
 import { CodeBlock } from '../../_components/code-block'
 import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
 export const metadata = {
   alternates: { canonical: '/docs/features/requests' },
+  openGraph: openGraphFor('/docs/features/requests'),
   title: 'Requests · Spanlens Docs',
   description:
     'Complete log of every LLM call routed through Spanlens, model, tokens, cost, latency, full request/response bodies.',
@@ -15,7 +17,8 @@ export default function RequestsDocs() {
       <h1>Requests</h1>
       <p className="lead">
         Every LLM call that flows through the Spanlens proxy produces one row in the{' '}
-        <code>requests</code> table, backed by ClickHouse for fast analytical reads.{' '}
+        <code>requests</code> table, a Postgres table partitioned by month so time-range
+        queries only touch the months they need.{' '}
         <a href="/requests">/requests</a> is the viewer: filter, sort, drill down, and read the
         actual request and response bodies. This is the raw substrate every other feature
         (Traces, Anomalies, Savings, etc.) aggregates from.
@@ -376,15 +379,17 @@ POST /api/v1/requests/:id/replay/run
         </li>
         <li>
           <strong>Retention policy.</strong> Free plan: 14 days. Pro: 90 days. Team and
-          Enterprise: 365 days (Enterprise is extendable by contract). Enforced by the
-          table&apos;s TTL plus a per-plan query-time clip, older rows are dropped by
-          ClickHouse&apos;s background merge.
+          Enterprise: 365 days (Enterprise is extendable by contract). Rows are deleted at
+          365 days, when the month&apos;s partition is dropped. The shorter per-plan windows
+          are applied at query time, not at delete time, so upgrading a plan brings the
+          older rows back into view.
         </li>
         <li>
-          <strong>Tenant isolation.</strong> ClickHouse has no row-level security; every read
-          path goes through the <code>requestsScope()</code> helper which injects an{' '}
-          <code>organization_id = ?</code> filter on every query. Direct ClickHouse access is
-          server-only. The dashboard cannot bypass the filter.
+          <strong>Tenant isolation.</strong> The server reads <code>requests</code> over a
+          pooled connection that bypasses row-level security, so every read path goes through
+          the <code>requestsScope()</code> helper, which injects an{' '}
+          <code>organization_id = ?</code> filter on every query. Queries are server-side
+          only. The dashboard cannot bypass the filter.
         </li>
       </ul>
 
@@ -397,8 +402,8 @@ POST /api/v1/requests/:id/replay/run
         <li>
           <strong>No full-text body search in the UI yet.</strong> The model filter uses
           case-insensitive substring match; there is no free-text search over request/response
-          body content. ClickHouse can do it efficiently, the dashboard hasn&apos;t exposed it
-          yet.
+          body content. Postgres has the index types for it, the dashboard hasn&apos;t exposed
+          it yet.
         </li>
         <li>
           <strong>Streaming response bodies are reconstructed, not original.</strong> SSE chunks

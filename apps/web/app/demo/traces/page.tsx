@@ -79,7 +79,7 @@ function SortHeader({
       type="button"
       onClick={() => onSort(field)}
       className={cn(
-        'flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.05em] hover:text-text transition-colors',
+        'flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.1em] hover:text-text transition-colors',
         active ? 'text-text' : 'text-text-faint',
       )}
     >
@@ -191,7 +191,7 @@ export default function DemoTracesPage() {
   }
 
   return (
-    <div className="-mx-4 -my-4 md:-mx-8 md:-my-7 flex flex-col h-screen overflow-hidden bg-bg">
+    <div className="-mx-4 -my-4 md:-mx-7 md:-mt-5 md:-mb-7 flex flex-col h-screen overflow-hidden bg-bg">
       <Topbar
         crumbs={[{ label: 'Demo', href: '/demo/dashboard' }, { label: 'Traces' }]}
         right={
@@ -211,8 +211,11 @@ export default function DemoTracesPage() {
       />
 
       {/* Stat strip */}
-      <div className="overflow-x-auto shrink-0 border-b border-border">
-        <div className="grid grid-cols-5 min-w-[480px]">
+      {/* Content canvas — 16px rhythm between rows, per the Figma board. */}
+      <div className="flex flex-col gap-4 flex-1 min-h-0 px-4 md:px-8 pt-5 pb-7">
+
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+        <>
           {[
             { label: 'Traces',            value: DEMO_TRACES.length.toLocaleString('en-US'), warn: false },
             { label: 'p50 duration',      value: fmtDuration(p50),                   warn: false },
@@ -220,50 +223,47 @@ export default function DemoTracesPage() {
             { label: 'Avg spans / trace', value: avgSpans != null ? avgSpans.toFixed(1) : '—', warn: false },
             { label: 'Errors',            value: String(errors),                      warn: errors > 0 },
           ].map((s, i) => (
-            <div
-              key={i}
-              className={cn('px-[18px] py-[14px]', i < 4 && 'border-r border-border')}
-            >
-              <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-2">{s.label}</div>
-              <span className={cn('text-[24px] font-medium leading-none tracking-[-0.6px]', s.warn ? 'text-accent' : 'text-text')}>
+            <div key={i} className="card-surface rounded-card px-5 py-[18px]">
+              <div className="font-mono text-[10.5px] uppercase tracking-[0.1em] text-text-faint mb-2">{s.label}</div>
+              <span className={cn('font-display text-[28px] track-kpi leading-[1.05] block', s.warn ? 'text-accent' : 'text-text')}>
                 {s.value}
               </span>
             </div>
           ))}
-        </div>
+        </>
       </div>
 
       {/* Filter toolbar */}
-      <div className="flex items-center gap-[6px] px-[22px] py-[10px] border-b border-border shrink-0 flex-wrap">
-        <div className="flex p-0.5 border border-border rounded-[5px] bg-bg-elev font-mono text-[10.5px] tracking-[0.03em]">
+      <div className="flex items-center gap-2 shrink-0 flex-wrap">
+        <div className="inline-flex items-center gap-[2px] rounded-full bg-secondary p-[3px]">
           {([['all', 'All'], ['ok', 'OK'], ['error', 'Error'], ['running', 'Live']] as [StatusFilter, string][]).map(([v, l]) => (
             <button
               key={v}
               type="button"
               onClick={() => { setStatusFilter(v); setPage(1) }}
               className={cn(
-                'px-[10px] py-[3px] rounded-[3px] transition-colors',
-                statusFilter === v ? 'bg-text text-bg' : 'text-text-muted hover:text-text',
+                'font-mono text-[12px] leading-[17px] px-3 py-[5px] rounded-full transition-colors',
+                statusFilter === v ? 'bg-bg-elev text-text' : 'text-text-faint hover:text-text',
               )}
             >{l}</button>
           ))}
         </div>
 
-        <div className="flex p-0.5 border border-border rounded-[5px] bg-bg-elev font-mono text-[10.5px] tracking-[0.03em]">
+        <div className="inline-flex items-center gap-[2px] rounded-full bg-secondary p-[3px]">
           {(['1h', '24h', '7d', '30d', 'all'] as TimeRange[]).map((v) => (
             <button
               key={v}
               type="button"
               onClick={() => { setTimeRange(v); setPage(1) }}
               className={cn(
-                'px-[10px] py-[3px] rounded-[3px] transition-colors',
-                timeRange === v ? 'bg-text text-bg' : 'text-text-muted hover:text-text',
+                'font-mono text-[12px] leading-[17px] px-3 py-[5px] rounded-full transition-colors',
+                timeRange === v ? 'bg-bg-elev text-text' : 'text-text-faint hover:text-text',
               )}
             >{v === 'all' ? 'All time' : v}</button>
           ))}
         </div>
 
-        <div className="inline-flex items-center gap-2 px-[10px] py-[5px] border border-border rounded-[5px] bg-bg-elev font-mono text-[11px] text-text-muted">
+        <div className="inline-flex items-center gap-2 h-[33px] px-3 border border-border rounded-md bg-bg-elev text-[12.5px] text-text">
           <span className="text-text-faint text-[12px]">⌕</span>
           <input
             value={nameSearch}
@@ -284,7 +284,7 @@ export default function DemoTracesPage() {
           <button
             type="button"
             onClick={handleClearFilters}
-            className="font-mono text-[10.5px] px-[9px] py-[4px] border border-border rounded-[5px] text-text-muted hover:text-text hover:border-border-strong transition-colors"
+            className="text-[12.5px] font-medium px-3 py-[7px] border border-border rounded-md bg-bg-elev text-text-muted hover:text-text hover:border-border-strong transition-colors"
           >
             Clear
           </button>
@@ -296,7 +296,8 @@ export default function DemoTracesPage() {
         </span>
       </div>
 
-      {/* Table */}
+      {/* Table — one card, header band and pager footer inside it. */}
+      <div className="card-surface rounded-card flex flex-col flex-1 min-h-0 overflow-hidden">
       <div className="flex-1 overflow-auto">
         {traces.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full gap-3 text-text-muted py-20 px-6 text-center">
@@ -313,18 +314,18 @@ export default function DemoTracesPage() {
           <div className="min-w-[700px]">
             {/* Column header */}
             <div
-              className="grid px-[22px] py-[9px] border-b border-border bg-bg-muted sticky top-0 z-10"
+              className="grid px-[18px] py-2.5 border-b border-border bg-bg-muted sticky top-0 z-10"
               style={{ gridTemplateColumns: GRID }}
             >
               <span />
-              <span className="font-mono text-[10px] text-text-faint uppercase tracking-[0.05em]">Agent</span>
-              <span className="font-mono text-[10px] text-text-faint uppercase tracking-[0.05em]">Trace id</span>
+              <span className="font-mono text-[10px] text-text-faint uppercase tracking-[0.1em]">Agent</span>
+              <span className="font-mono text-[10px] text-text-faint uppercase tracking-[0.1em]">Trace id</span>
               <SortHeader label="Spans"    field="span_count"     sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
               <SortHeader label="Duration" field="duration_ms"    sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
               <SortHeader label="Cost"     field="total_cost_usd" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
-              <span className="font-mono text-[10px] text-text-faint uppercase tracking-[0.05em]">Tokens</span>
-              <span className="font-mono text-[10px] text-text-faint uppercase tracking-[0.05em]">Timeline</span>
-              <span className="font-mono text-[10px] text-text-faint uppercase tracking-[0.05em]">Status</span>
+              <span className="font-mono text-[10px] text-text-faint uppercase tracking-[0.1em]">Tokens</span>
+              <span className="font-mono text-[10px] text-text-faint uppercase tracking-[0.1em]">Timeline</span>
+              <span className="font-mono text-[10px] text-text-faint uppercase tracking-[0.1em]">Status</span>
               <SortHeader label="Age"      field="started_at"     sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
             </div>
 
@@ -338,8 +339,8 @@ export default function DemoTracesPage() {
                   onClick={() => handleRowClick(t)}
                   title={isErr && t.error_message ? t.error_message : undefined}
                   className={cn(
-                    'grid items-center w-full text-left px-[22px] py-[11px] border-b border-border font-mono text-[12.5px] hover:bg-bg-elev transition-colors',
-                    isErr && 'bg-bad-bg',
+                    'grid items-center w-full text-left px-[18px] py-[11px] border-b border-border last:border-b-0 font-mono text-[12px] hover:bg-bg-muted transition-colors',
+                    isErr && 'bg-bad-bg/50',
                   )}
                   style={{ gridTemplateColumns: GRID }}
                 >
@@ -366,11 +367,11 @@ export default function DemoTracesPage() {
                   </span>
                   <span>
                     {isErr ? (
-                      <span className="font-mono text-[9.5px] px-[5px] py-[2px] rounded-[3px] bg-bad-bg text-bad border border-bad/20 uppercase tracking-[0.04em]">error</span>
+                      <span className="text-[11px] font-semibold px-2 py-[3px] rounded-full bg-bad-bg text-bad">error</span>
                     ) : isRunning ? (
-                      <span className="font-mono text-[9.5px] px-[5px] py-[2px] rounded-[3px] bg-accent-bg text-accent border border-accent-border uppercase tracking-[0.04em] animate-pulse">live</span>
+                      <span className="text-[11px] font-semibold px-2 py-[3px] rounded-full bg-accent-bg text-accent animate-pulse">live</span>
                     ) : (
-                      <span className="font-mono text-[9.5px] px-[5px] py-[2px] rounded-[3px] bg-bg-muted text-text-faint border border-border uppercase tracking-[0.04em]">ok</span>
+                      <span className="text-[11px] font-semibold px-2 py-[3px] rounded-full bg-good-bg text-good">ok</span>
                     )}
                   </span>
                   <span className="text-text-faint text-right" title={new Date(t.started_at).toLocaleString('en-US')}>
@@ -387,8 +388,8 @@ export default function DemoTracesPage() {
           let the user jump across the (small) result set, Prev / Next step by
           one. currentPage is the clamped source of truth. */}
       {traces.length > 0 && (
-        <div className="flex items-center justify-between px-[22px] py-3 border-t border-border shrink-0 gap-3 flex-wrap">
-          <span className="font-mono text-[11.5px] text-text-muted">
+        <div className="flex items-center justify-between px-[18px] py-3 border-t border-border bg-bg-muted shrink-0 gap-3 flex-wrap">
+          <span className="font-mono text-[11.5px] text-text-faint">
             Page {currentPage} of {totalPages.toLocaleString('en-US')} · {pageRows.length} / {traces.length.toLocaleString('en-US')} total
           </span>
           <div className="flex items-center gap-2">
@@ -397,7 +398,7 @@ export default function DemoTracesPage() {
               onClick={() => setPage(1)}
               disabled={currentPage <= 1}
               aria-label="First page"
-              className="font-mono text-[11.5px] px-3 py-[5px] border border-border rounded-[5px] text-text-muted hover:text-text disabled:opacity-40 transition-colors"
+              className="text-[12px] font-medium px-3 py-[6px] border border-border rounded-full bg-bg-elev text-text hover:border-border-strong disabled:opacity-30 transition-colors"
             >
               « First
             </button>
@@ -405,7 +406,7 @@ export default function DemoTracesPage() {
               type="button"
               onClick={() => setPage(Math.max(1, currentPage - 1))}
               disabled={currentPage <= 1}
-              className="font-mono text-[11.5px] px-3 py-[5px] border border-border rounded-[5px] text-text-muted hover:text-text disabled:opacity-40 transition-colors"
+              className="text-[12px] font-medium px-3 py-[6px] border border-border rounded-full bg-bg-elev text-text hover:border-border-strong disabled:opacity-30 transition-colors"
             >
               Previous
             </button>
@@ -413,7 +414,7 @@ export default function DemoTracesPage() {
               type="button"
               onClick={() => setPage(Math.min(totalPages, currentPage + 1))}
               disabled={currentPage >= totalPages}
-              className="font-mono text-[11.5px] px-3 py-[5px] border border-border rounded-[5px] text-text-muted hover:text-text disabled:opacity-40 transition-colors"
+              className="text-[12px] font-medium px-3 py-[6px] border border-border rounded-full bg-bg-elev text-text hover:border-border-strong disabled:opacity-30 transition-colors"
             >
               Next
             </button>
@@ -422,13 +423,15 @@ export default function DemoTracesPage() {
               onClick={() => setPage(totalPages)}
               disabled={currentPage >= totalPages}
               aria-label="Last page"
-              className="font-mono text-[11.5px] px-3 py-[5px] border border-border rounded-[5px] text-text-muted hover:text-text disabled:opacity-40 transition-colors"
+              className="text-[12px] font-medium px-3 py-[6px] border border-border rounded-full bg-bg-elev text-text hover:border-border-strong disabled:opacity-30 transition-colors"
             >
               Last »
             </button>
           </div>
         </div>
       )}
+      </div>{/* end table card */}
+      </div>{/* end content canvas */}
     </div>
   )
 }

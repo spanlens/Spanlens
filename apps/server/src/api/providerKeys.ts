@@ -2,10 +2,10 @@ import { Hono } from 'hono'
 import { authJwt, type JwtContext } from '../middleware/authJwt.js'
 import { requireRole } from '../middleware/requireRole.js'
 import { supabaseAdmin } from '../lib/db.js'
-import { getOrgClickhouse } from '../lib/clickhouse.js'
 import { aes256Encrypt } from '../lib/crypto.js'
 import { recordAuditEvent } from '../lib/audit-log.js'
-import { resetProviderKeyNamesCache } from '../lib/requests-query.js'
+import { resetProviderKeyNamesCache, fetchProviderKeyLastUsed } from '../lib/requests-query.js'
+import { invalidateProviderKeyCache } from '../lib/provider-key-cache.js'
 import { validateOptionalUuid } from '../lib/params.js'
 import { ApiError } from '../lib/errors.js'
 
@@ -116,31 +116,11 @@ providerKeysRouter.get('/', async (c) => {
     return c.json({ success: true, data: [] })
   }
 
-  // Bulk-fetch last_used_at for every provider key in ONE ClickHouse query —
-  // was N+1 (one supabase round-trip per key) before the migration. Same fix
-  // pattern as lib/stale-key-digest.ts.
-  const keyIds = rows.map((k) => k.id as string)
-  const lastUsedMap = new Map<string, string>()
-  const { client: ch } = getOrgClickhouse(orgId)
-  try {
-    const result = await ch.query({
-      query:
-        'SELECT provider_key_id AS id, max(created_at) AS last_used_at ' +
-        'FROM requests ' +
-        'WHERE organization_id = {orgId:UUID} ' +
-        '  AND provider_key_id IN {keyIds:Array(UUID)} ' +
-        'GROUP BY provider_key_id',
-      query_params: { orgId, keyIds },
-      format: 'JSONEachRow',
-    })
-    const lastUsedRows = (await result.json()) as Array<{ id: string; last_used_at: string }>
-    for (const row of lastUsedRows) lastUsedMap.set(row.id, row.last_used_at)
-  } catch (err) {
-    console.error(
-      '[providerKeys] last-used lookup failed:',
-      err instanceof Error ? err.message : err,
-    )
-  }
+  // One query for the whole page, not one per key.
+  const lastUsedMap = await fetchProviderKeyLastUsed(
+    orgId,
+    rows.map((k) => k.id as string),
+  )
 
   // leak-scan lookup stays N+1 because the source table is still in Supabase
   // and is low-volume (~1 row per key per scan day). Could be batched too but
@@ -154,12 +134,10 @@ providerKeysRouter.get('/', async (c) => {
         .order('scanned_at', { ascending: false })
         .limit(1)
         .maybeSingle()
-      const rawLastUsed = lastUsedMap.get(k.id as string)
-      // ClickHouse DateTime64 prints as 'YYYY-MM-DD HH:MM:SS.fff' — rewrite to
-      // ISO with 'T'/'Z' so the dashboard (which Date.parse's it) keeps working.
-      const last_used_at = rawLastUsed
-        ? rawLastUsed.replace(' ', 'T') + 'Z'
-        : null
+      // `max(created_at)` is already an ISO-8601 'Z' string — the pg client
+      // parses timestamptz, so the dashboard (which Date.parse's it) keeps
+      // working without a rewrite here.
+      const last_used_at = lastUsedMap.get(k.id as string) ?? null
       return {
         ...k,
         last_used_at,
@@ -260,6 +238,12 @@ providerKeysRouter.post('/', requireEdit, async (c) => {
   // immediately on /requests instead of waiting for the 5-min TTL.
   resetProviderKeyNamesCache()
 
+  // Drop the proxy's cached row for this (Spanlens key, provider). On a
+  // fresh registration the cached entry is a *miss* — a customer who
+  // fired a proxy call before adding the key would otherwise keep getting
+  // NO_PROVIDER_KEY for the negative TTL after the key exists.
+  invalidateProviderKeyCache(apiKeyId, body.provider)
+
   void recordAuditEvent(c, {
     action: 'provider_key.add',
     resourceType: 'provider_keys',
@@ -282,17 +266,20 @@ providerKeysRouter.post('/', requireEdit, async (c) => {
 // this; if the delete was a mistake the user re-adds the key from the
 // provider's dashboard.
 //
-// The "(deleted)" rendering for orphaned ClickHouse rows still works after
-// hard delete — the fetchProviderKeyNames helper in lib/requests-query.ts
-// already null-coalesces missing keys.
+// Request rows keep the deleted key's id, and the dashboard renders those as
+// "(deleted)" rather than blank: fetchProviderKeyNames in
+// lib/requests-query.ts null-coalesces ids it can no longer resolve.
 providerKeysRouter.delete('/:id', requireEdit, async (c) => {
   const keyId = c.req.param('id')
   const orgId = c.get('orgId')
   if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
+  // api_key_id rides along in the snapshot purely so we can address the
+  // proxy's row cache after the delete — the cache is keyed by
+  // (api_key_id, provider), and both are gone once the row is.
   const { data: snapshot } = await supabaseAdmin
     .from('provider_keys')
-    .select('id, provider, name')
+    .select('id, provider, name, api_key_id')
     .eq('id', keyId)
     .eq('organization_id', orgId)
     .maybeSingle()
@@ -306,6 +293,12 @@ providerKeysRouter.delete('/:id', requireEdit, async (c) => {
   if (error) throw new ApiError('INTERNAL_ERROR', 'Failed to delete provider key')
 
   resetProviderKeyNamesCache()
+
+  // Hard delete is immediate and permanent — the proxy must stop presenting
+  // this credential upstream immediately too, not 30s from now.
+  const deletedApiKeyId = (snapshot as { api_key_id?: string }).api_key_id
+  const deletedProvider = (snapshot as { provider?: string }).provider
+  if (deletedApiKeyId) invalidateProviderKeyCache(deletedApiKeyId, deletedProvider)
 
   void recordAuditEvent(c, {
     action: 'provider_key.delete',
@@ -355,6 +348,17 @@ providerKeysRouter.patch('/:id', requireEdit, async (c) => {
   if (error || !data) throw new ApiError('NOT_FOUND', 'Provider key not found or access denied')
 
   resetProviderKeyNamesCache()
+
+  // A rotation replaced encrypted_key: the proxy's cached ciphertext is now
+  // the OLD credential and would keep being decrypted and sent upstream for
+  // the rest of the TTL. Invalidate unconditionally — a rename is a no-op
+  // for the cache but costs one Map delete on a cold path, which is cheaper
+  // than a branch that could get the rotation case wrong later.
+  // SELECT_COLUMNS already returns api_key_id + provider, so no extra query.
+  const cachedApiKeyId = (data as { api_key_id?: string }).api_key_id
+  if (cachedApiKeyId) {
+    invalidateProviderKeyCache(cachedApiKeyId, data.provider as string)
+  }
 
   // Rotate vs rename are operationally different — rotating exposes a fresh
   // secret to upstream providers, renaming is cosmetic. Surface both action

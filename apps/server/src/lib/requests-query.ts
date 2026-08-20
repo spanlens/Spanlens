@@ -1,23 +1,28 @@
-import { unscopedClickhouse } from './clickhouse.js'
+import { pgQuery, pgStream } from './postgres.js'
 import { supabaseAdmin } from './db.js'
 import { LOG_RETENTION_DAYS, type Plan } from './quota.js'
 
 /**
- * Query-layer plumbing for the ClickHouse `requests` table.
+ * Query-layer plumbing for the Postgres `requests` table.
  *
  * Two responsibilities, encapsulated here so every read path enforces them
  * uniformly:
  *
- *   1. **Tenant isolation** — ClickHouse has no RLS. Every WHERE must filter
+ *   1. **Tenant isolation**: the pooled application connection bypasses RLS,
+ *      as `supabaseAdmin` always did. Every WHERE must filter
  *      `organization_id`. Missing the filter would leak cross-org data.
+ *      History: this table spent a year in a store with no row security of
+ *      any kind, so isolation was built in this layer and there is still no
+ *      database-side policy underneath it to catch a query that forgets.
  *
- *   2. **Plan retention** — Free is 14 days, Pro 90, Team 365. The table
- *      itself is TTLed to 365 days (the longest non-Enterprise plan), so
- *      shorter retention is enforced at query time by clipping the WHERE
- *      window. Pre-launch this is a no-op (empty table), but the helper
- *      lands in place before any data flows.
+ *   2. **Plan retention**: Free is 14 days, Pro 90, Team 365. Rows are hard
+ *      deleted at 365 days by dropping the month's partition; shorter
+ *      per-plan retention is enforced at query time by clipping the WHERE
+ *      window. Keeping both layers means a plan upgrade makes older data
+ *      visible again rather than finding it already deleted.
  *
- * See docs/plans/clickhouse-migration.md §3.1 for the policy.
+ * The retention policy itself is recorded in
+ * docs/plans/clickhouse-migration.md §3.1.
  */
 
 interface CachedPlan {
@@ -109,10 +114,9 @@ export interface RequestsScopeOptions {
  *
  * Example:
  *   const { whereScope, scopeParams } = await requestsScope(orgId)
- *   const result = await unscopedClickhouse().query({
- *     query: `SELECT id FROM requests WHERE ${whereScope} AND provider = {provider:String}`,
- *     query_params: { ...scopeParams, provider: 'openai' },
- *     format: 'JSONEachRow',
+ *   const rows = await pgQuery<Row>({
+ *     query: `SELECT id FROM requests WHERE ${whereScope} AND provider = {provider}`,
+ *     params: { ...scopeParams, provider: 'openai' },
  *   })
  */
 export async function requestsScope(
@@ -121,10 +125,13 @@ export async function requestsScope(
 ): Promise<RequestsScope> {
   const plan = await getOrgPlan(organizationId)
   const retentionDays = LOG_RETENTION_DAYS[plan]
+  // `INTERVAL $1 DAY` is a syntax error in Postgres — the unit cannot be
+  // parameterised. make_interval() takes the count as a named argument
+  // instead, which keeps the value bound rather than interpolated.
   const whereScope = options.ignoreRetention
-    ? 'organization_id = {orgId:UUID}'
-    : 'organization_id = {orgId:UUID} ' +
-      'AND created_at >= now() - INTERVAL {retentionDays:UInt32} DAY'
+    ? 'organization_id = {orgId}'
+    : 'organization_id = {orgId} ' +
+      'AND created_at >= now() - make_interval(days => {retentionDays})'
   return {
     whereScope,
     scopeParams: { orgId: organizationId, retentionDays },
@@ -218,12 +225,58 @@ export function resetProviderKeyNamesCache(): void {
 }
 
 /**
- * Convenience runner: executes a parametrized ClickHouse query against the
- * `requests` table with the org-scope already injected. The caller still
- * writes their SELECT/ORDER/LIMIT — this just removes boilerplate around the
- * WHERE prefix and JSON parsing.
+ * Returns, for each of the given provider keys, the timestamp of the most
+ * recent request that used it.
  *
- * Returns the parsed rows (JSONEachRow format).
+ * One query rather than one per key: `/api/v1/provider-keys` renders this
+ * column for every key on the page, and the pre-migration version issued a
+ * round trip each time.
+ *
+ * `ignoreRetention` is deliberate. A key that has sat unused past the plan's
+ * retention window still needs to report when it was last used — that is
+ * precisely the case the column exists to surface. Tenant isolation still
+ * comes from `requestsScope`.
+ *
+ * Never throws: the last-used column is decoration on a page whose real
+ * content is the key list, so a failure here returns an empty map and the UI
+ * shows "never used" rather than an error.
+ */
+export async function fetchProviderKeyLastUsed(
+  organizationId: string,
+  keyIds: ReadonlyArray<string>,
+): Promise<Map<string, string>> {
+  const result = new Map<string, string>()
+  if (keyIds.length === 0) return result
+
+  try {
+    const scope = await requestsScope(organizationId, { ignoreRetention: true })
+    const rows = await pgQuery<{ id: string; last_used_at: string }>({
+      query:
+        'SELECT provider_key_id AS id, max(created_at) AS last_used_at ' +
+        'FROM requests ' +
+        `WHERE ${scope.whereScope} ` +
+        '  AND provider_key_id = ANY({keyIds}::uuid[]) ' +
+        'GROUP BY provider_key_id',
+      params: { ...scope.scopeParams, keyIds: [...keyIds] },
+    })
+    for (const row of rows) result.set(row.id, row.last_used_at)
+  } catch (err) {
+    console.error(
+      '[requests-query] provider-key last-used lookup failed:',
+      err instanceof Error ? err.message : err,
+    )
+  }
+  return result
+}
+
+/**
+ * Convenience runner: executes a parametrized query against the `requests`
+ * table with the org-scope already injected. The caller still writes their
+ * SELECT/ORDER/LIMIT — this just removes boilerplate around the WHERE prefix.
+ *
+ * `select`, `filters` and `orderBy` are SQL fragments and must never carry a
+ * caller-supplied value; bind those through `params` as `{name}` placeholders.
+ * `limit`/`offset` are coerced with `Number()` before interpolation.
  */
 export async function selectRequests<T>(opts: {
   scope: RequestsScope
@@ -241,12 +294,10 @@ export async function selectRequests<T>(opts: {
   if (limit != null) sql += ` LIMIT ${Number(limit)}`
   if (offset != null) sql += ` OFFSET ${Number(offset)}`
 
-  const result = await unscopedClickhouse().query({
+  return pgQuery<T & Record<string, unknown>>({
     query: sql,
-    query_params: { ...scope.scopeParams, ...params },
-    format: 'JSONEachRow',
-  })
-  return (await result.json()) as T[]
+    params: { ...scope.scopeParams, ...params },
+  }) as Promise<T[]>
 }
 
 /**
@@ -254,10 +305,14 @@ export async function selectRequests<T>(opts: {
  * buffering the full result set in memory.
  *
  * Used by `/api/v1/exports/requests?format=csv|jsonl` so 100k+ row exports do
- * not load every row into the Vercel function heap. The `@clickhouse/client`
- * driver delivers a Node Readable that emits batches of `Row` instances; each
- * batch is small (~64KB of network data per chunk) so peak memory stays bounded
- * regardless of total result size.
+ * not load every row into the Vercel function heap. Backed by a server-side
+ * cursor (`pg-query-stream`), which fetches a batch at a time and keeps peak
+ * memory bounded regardless of total result size.
+ *
+ * This is the single reason the server needed a real Postgres driver rather
+ * than going through PostgREST: there is no cursor over the REST API, so a
+ * large export would have to be either fully materialised or paginated across
+ * a thousand round trips.
  *
  * Memory contract: at most one batch of rows is materialised in JS at a time.
  * A 1M-row CSV export observed ~30MB heap delta in load tests vs. ~600MB for
@@ -266,8 +321,9 @@ export async function selectRequests<T>(opts: {
  * Consumer rules:
  *   - Iterate with `for await (const row of streamRequests(...))`.
  *   - Do NOT collect into an array (defeats the purpose).
- *   - The underlying ClickHouse query is cancelled on early-iterator-exit via
- *     `result.close()` in the `finally` block.
+ *   - Finish or abandon the iterator promptly — the cursor holds one pooled
+ *     connection for the life of the iteration. `pgStream` releases it in a
+ *     `finally`, so an early `break` or throw still returns the client.
  */
 export async function* streamRequests<T>(opts: {
   scope: RequestsScope
@@ -283,35 +339,18 @@ export async function* streamRequests<T>(opts: {
   if (orderBy) sql += ` ORDER BY ${orderBy}`
   if (limit != null) sql += ` LIMIT ${Number(limit)}`
 
-  const result = await unscopedClickhouse().query({
+  yield* pgStream<T & Record<string, unknown>>({
     query: sql,
-    query_params: { ...scope.scopeParams, ...params },
-    format: 'JSONEachRow',
-  })
-
-  try {
-    const stream = result.stream<T>()
-    for await (const batch of stream) {
-      for (const row of batch) {
-        yield row.json() as T
-      }
-    }
-  } finally {
-    // Defensive close — covers early generator exit (caller `break` or throw)
-    // and idempotent when the stream finished normally.
-    try {
-      result.close()
-    } catch {
-      // Ignored — close() on an already-drained ResultSet may throw on some
-      // driver versions; the underlying HTTP connection is already returned
-      // to the pool either way.
-    }
-  }
+    params: { ...scope.scopeParams, ...params },
+  }) as AsyncGenerator<T, void, undefined>
 }
 
 /**
  * Counts rows in `requests` matching the scope + optional extra filters.
- * Returns a number (parsed from ClickHouse's String representation of UInt64).
+ *
+ * `count(*)` comes back as `int8`, which the driver hands over as a string so
+ * that values past 2^53 do not silently lose precision. Coerced here so
+ * callers get a number.
  */
 export async function countRequests(opts: {
   scope: RequestsScope
@@ -320,11 +359,9 @@ export async function countRequests(opts: {
 }): Promise<number> {
   const { scope, filters, params = {} } = opts
   const where = filters ? `${scope.whereScope} AND ${filters}` : scope.whereScope
-  const result = await unscopedClickhouse().query({
-    query: `SELECT count() AS n FROM requests WHERE ${where}`,
-    query_params: { ...scope.scopeParams, ...params },
-    format: 'JSONEachRow',
+  const rows = await pgQuery<{ n: string | number }>({
+    query: `SELECT count(*) AS n FROM requests WHERE ${where}`,
+    params: { ...scope.scopeParams, ...params },
   })
-  const rows = (await result.json()) as Array<{ n: string | number }>
   return Number(rows[0]?.n ?? 0)
 }

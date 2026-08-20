@@ -1,8 +1,10 @@
+import { openGraphFor } from '@/lib/page-metadata'
 import { CodeBlock } from '../../_components/code-block'
 import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
 export const metadata = {
   alternates: { canonical: '/docs/features/users' },
+  openGraph: openGraphFor('/docs/features/users'),
   title: 'Users · Spanlens Docs',
   description:
     'End-user attribution and per-user analytics for LLM usage. Tag requests with x-spanlens-user and see who is spending what.',

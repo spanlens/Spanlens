@@ -1,17 +1,21 @@
+import { OG_IMAGE } from '@/lib/page-metadata'
 import { IntegrationTemplate } from '@/components/marketing/integration-template'
 
 const DESCRIPTION =
-  'Log every Anthropic Claude API call with Spanlens. Track cost, latency, tokens, streaming, tool use, and full request and response bodies. One-line integration, MIT licensed, self-hostable.'
+  'Log every Anthropic Claude API call with Spanlens. Track cost, latency, tokens, streaming, and tool use. One-line integration, MIT licensed and self-hostable.'
 
 export const metadata = {
   alternates: { canonical: '/integrations/anthropic' },
   title: 'Anthropic Observability — Spanlens Integration',
   description: DESCRIPTION,
   openGraph: {
+    siteName: 'Spanlens',
     type: 'website',
     title: 'Anthropic Claude Observability — Log every API call with Spanlens',
     description: DESCRIPTION,
     url: '/integrations/anthropic',
+    locale: 'en_US',
+    images: OG_IMAGE,
   },
   twitter: {
     card: 'summary_large_image',

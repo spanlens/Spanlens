@@ -1,3 +1,4 @@
+import { openGraphFor } from '@/lib/page-metadata'
 import { CodeBlock } from '../../_components/code-block'
 import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
@@ -6,6 +7,7 @@ export const metadata = {
   description:
     'Trace LlamaIndex query engines and agents with Spanlens. One callback handler maps every CBEventType to a span so the trace mirrors your RAG pipeline.',
   alternates: { canonical: '/docs/integrations/llamaindex' },
+  openGraph: openGraphFor('/docs/integrations/llamaindex'),
 }
 
 export default function LlamaIndexIntegration() {
@@ -37,7 +39,7 @@ from spanlens.integrations.llama_index import SpanlensCallbackHandler
 client = SpanlensClient(api_key=os.environ["SPANLENS_API_KEY"])
 handler = SpanlensCallbackHandler(client=client)
 
-# Register globally — every query engine / agent created after this
+# Register globally. Every query engine / agent created after this
 # will route callbacks through the handler.
 Settings.callback_manager.add_handler(handler)
 
@@ -47,7 +49,7 @@ query_engine = index.as_query_engine()
 
 response = query_engine.query("What is RAG?")`}</CodeBlock>
       <p>
-        The handler is safe to share across concurrent queries — LlamaIndex tags every event
+        The handler is safe to share across concurrent queries. LlamaIndex tags every event
         with a unique UUID, so one handler instance per process is fine for parallel work.
       </p>
 
@@ -110,7 +112,7 @@ response = query_engine.query("What is RAG?")`}</CodeBlock>
 
       <h2>Trace tree shape</h2>
       <p>
-        A typical query engine run produces a tree like this — <code>QUERY</code> wraps the
+        A typical query engine run produces a tree like this. <code>QUERY</code> wraps the
         whole call, <code>RETRIEVE</code> and the <code>LLM</code> call sit as siblings under
         it, and any embedding step lives as a child of the retrieval:
       </p>
@@ -125,8 +127,8 @@ response = query_engine.query("What is RAG?")`}</CodeBlock>
       <p>
         By default the handler opens a fresh trace on each top-level query and closes it when
         the run ends. To group multiple queries (every turn of a chat session, every step of
-        a long agent loop) under one trace, pass an existing trace at construction — the
-        handler will then leave its lifecycle entirely to the caller:
+        a long agent loop) under one trace, pass an existing trace at construction, and the
+        handler then leaves its lifecycle entirely to the caller:
       </p>
       <CodeBlock language="python">{`trace = client.start_trace(
     "chat-session",
@@ -159,8 +161,8 @@ llm = OpenAI(
 
 Settings.llm = llm`}</CodeBlock>
       <p>
-        Now every LLM call lands as a Request in ClickHouse with the canonical cost, and the
-        matching <code>llama_index.llm</code> span links to it via <code>request_id</code>.
+        Now every LLM call lands as a Request with the canonical cost, and the matching{' '}
+        <code>llama_index.llm</code> span links to it via <code>request_id</code>.
       </p>
 
       <h2>Linking spans to prompt versions</h2>
@@ -206,7 +208,7 @@ llm = OpenAI(
       <h3>No spans show up</h3>
       <p>
         Confirm the handler is registered on <code>Settings.callback_manager</code>{' '}
-        <em>before</em> you build the query engine or agent — LlamaIndex captures the
+        <em>before</em> you build the query engine or agent. LlamaIndex captures the
         callback list at construction time. If you build the engine first and add the handler
         later, that engine instance will not see it.
       </p>

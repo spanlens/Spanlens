@@ -165,11 +165,10 @@ promptExperimentsRouter.get('/:id', async (c) => {
 
   if (error || !exp) throw new ApiError('NOT_FOUND', 'Experiment not found')
 
-  // Fetch request metrics for both arms from ClickHouse.
-  const sinceTs = (exp.started_at as string).replace('T', ' ').replace('Z', '')
-  const untilTs = (exp.concluded_at as string | null ?? new Date().toISOString())
-    .replace('T', ' ')
-    .replace('Z', '')
+  // Fetch request metrics for both arms. The bounds go in as ISO-8601 and are
+  // cast to timestamptz in SQL, so they stay unambiguously UTC.
+  const sinceTs = exp.started_at as string
+  const untilTs = (exp.concluded_at as string | null) ?? new Date().toISOString()
 
   interface ArmMetricRow {
     prompt_version_id: string | null
@@ -184,9 +183,9 @@ promptExperimentsRouter.get('/:id', async (c) => {
       scope,
       select: 'prompt_version_id, latency_ms, cost_usd, status_code',
       filters:
-        'prompt_version_id IN {versionIds:Array(UUID)} ' +
-        'AND created_at >= parseDateTime64BestEffort({sinceTs:String}) ' +
-        'AND created_at <= parseDateTime64BestEffort({untilTs:String})',
+        'prompt_version_id = ANY({versionIds}::uuid[]) ' +
+        'AND created_at >= {sinceTs}::timestamptz ' +
+        'AND created_at <= {untilTs}::timestamptz',
       params: {
         versionIds: [exp.version_a_id, exp.version_b_id],
         sinceTs,
@@ -194,12 +193,12 @@ promptExperimentsRouter.get('/:id', async (c) => {
       },
     })
   } catch (err) {
-    console.error('[prompt-experiments] ClickHouse query failed:', err instanceof Error ? err.message : err)
+    console.error('[prompt-experiments] request query failed:', err instanceof Error ? err.message : err)
   }
   const rows = rawRows.map((r) => ({
     prompt_version_id: r.prompt_version_id,
     latency_ms: r.latency_ms,
-    // cost_usd arrives as a string for Decimal columns — coerce at the boundary.
+    // cost_usd arrives as a string for numeric columns — coerce at the boundary.
     cost_usd: r.cost_usd == null ? null : Number(r.cost_usd),
     status_code: r.status_code,
   }))

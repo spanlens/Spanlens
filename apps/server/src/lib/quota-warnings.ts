@@ -2,6 +2,8 @@ import { supabaseAdmin } from './db.js'
 import { MONTHLY_REQUEST_LIMITS, countMonthlyRequests, type Plan } from './quota.js'
 import { sendQuotaWarningEmail } from './notifiers.js'
 import { decideQuotaWarning, currentMonthStartMs } from './quota-warnings-stats.js'
+import { getOrgActivitySince, orgActiveSince } from './org-activity.js'
+import { lastSuccessfulRunAt } from './cron-cadence.js'
 
 /**
  * Quota warning emails at 80% / 100% of the monthly request limit.
@@ -41,6 +43,8 @@ export interface QuotaWarningRunResult {
   sent80: number
   sent100: number
   errors: number
+  /** Orgs with no new requests since the last successful run — see the gate below. */
+  skipped: number
 }
 
 /**
@@ -66,10 +70,37 @@ export async function runQuotaWarningsJob(): Promise<QuotaWarningRunResult> {
 
   if (error || !orgs) {
     console.error('[quota-warnings] failed to list orgs:', error?.message)
-    return { checked: 0, sent80: 0, sent100: 0, errors: 1 }
+    return { checked: 0, sent80: 0, sent100: 0, errors: 1, skipped: 0 }
   }
 
-  const result: QuotaWarningRunResult = { checked: 0, sent80: 0, sent100: 0, errors: 0 }
+  const result: QuotaWarningRunResult = { checked: 0, sent80: 0, sent100: 0, errors: 0, skipped: 0 }
+
+  // Which orgs have anything new worth counting.
+  //
+  // The obvious window is "this month": an org that sent nothing is at 0% of
+  // its quota and cannot need a warning. That alone is not enough, because an
+  // org with traffic anywhere in the month keeps passing a month-wide gate.
+  // One request on the 1st would buy that tenant a full month-long count on
+  // every hourly run.
+  //
+  // The tighter window is "since we last counted". This job's output is a
+  // function of the request count and the stored send timestamps, and neither
+  // moves without new requests: if the previous run decided not to send, and
+  // nothing has been logged since, this run reaches the same decision. So the
+  // gate is the later of the month start and the last successful run.
+  //
+  // What makes that safe is the error handling below: a run that failed to
+  // count any org is logged as an error, so `lastSuccessfulRunAt` does not
+  // advance past it and the next run re-checks everyone. Without that, one
+  // transient count failure could park an org just under its cap until its
+  // next request.
+  //
+  // Both lookups fail open: a null watermark or missing run history falls
+  // back to counting every org.
+  const lastRun = await lastSuccessfulRunAt('check-quota-warnings')
+  const gateSince =
+    lastRun && lastRun.getTime() > monthStartMs ? lastRun : new Date(monthStartMs)
+  const activity = await getOrgActivitySince(gateSince)
 
   // Same env-driven base the other lifecycle emails use (stale-key-digest,
   // data-silence) so the upgrade CTA lands on the right host in every env.
@@ -79,6 +110,15 @@ export async function runQuotaWarningsJob(): Promise<QuotaWarningRunResult> {
     result.checked++
     const limit = MONTHLY_REQUEST_LIMITS[org.plan]
     if (limit === null) continue // defensive: enterprise slipped past the filter
+
+    // Nothing new since the gate, so the previous run's decision still holds
+    // and it was "don't send". A run that sends stamps the timestamp, which
+    // makes a repeat impossible anyway. Skipping here is what keeps the job
+    // from counting every tenant on an idle platform.
+    if (!orgActiveSince(activity, org.id, gateSince)) {
+      result.skipped++
+      continue
+    }
 
     // Count this org's requests this month — same source of truth the
     // proxy middleware uses for 429 enforcement.

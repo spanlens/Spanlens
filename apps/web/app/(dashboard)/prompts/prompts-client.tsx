@@ -2,14 +2,37 @@
 import { useState, useRef, useEffect, useSyncExternalStore } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { X, FlaskConical } from 'lucide-react'
+import { FlaskConical, Plus, Search } from 'lucide-react'
 import {
   usePrompts,
   useCreatePromptVersion,
 } from '@/lib/queries/use-prompts'
 import { Topbar, LiveDot } from '@/components/layout/topbar'
 import { PermissionGate } from '@/components/permission-gate'
+import { Card } from '@/components/ui/card'
+import { StatusPill } from '@/components/ui/primitives'
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { cn, formatDate } from '@/lib/utils'
+import {
+  Board,
+  TOPBAR_BLEED,
+  FilterBar,
+  CONTROL,
+  CONTROL_TEXT,
+  Segment,
+  SegmentItem,
+  StatCard,
+  TableCard,
+  TableHead,
+  Th,
+  ROW,
+} from '../_board/surfaces'
+
+// D4 draws its accent lozenges (variable names, source badges) as a borderless
+// full-radius chip on the accent tint. `StatusPill` covers the status colours
+// only, so the accent case carries its own class list.
+const ACCENT_CHIP =
+  'inline-flex items-center whitespace-nowrap rounded-full bg-accent-bg px-2 py-[3px] text-[11px] font-semibold leading-[15px] text-accent'
 
 // Hydration-safe mounted gate, same pattern as the other overhauled pages.
 const subscribeNoop = () => () => {}
@@ -35,7 +58,7 @@ function QualityBadge({ score }: { score: number | null | undefined }) {
   // other "no data" cell on the page.
   if (score == null) return <span className="text-text-faint">—</span>
   const color = score >= 90 ? 'text-good' : score >= 70 ? 'text-warn' : 'text-bad'
-  return <span className={cn('font-mono tabular-nums', color)}>{score}</span>
+  return <span className={cn('tabular-nums', color)}>{score}</span>
 }
 
 type FilterType = 'all' | 'ab'
@@ -45,17 +68,16 @@ type ViewMode = 'all' | 'active'
 
 const DATE_RANGE_HOURS: Record<DateRange, number> = { '24h': 24, '7d': 24 * 7, '30d': 24 * 30 }
 
-// Responsive grid: mobile keeps just the at-a-glance columns (dot, name,
-// calls, A/B). Active version, version count, cost, latency, quality, and
-// updated are all accessible once the user taps into the detail page.
-// Earlier we tried to keep 6 cols on mobile but the header labels
-// ("ACTIVE", "VERSIONS", "CALLS · 24H") were wider than the columns and
-// crammed into an unreadable strip.
-// Tailwind needs these literals in source for JIT to pick them up — do
-// not refactor into a runtime-built string.
-const GRID_CLASS =
-  'grid-cols-[14px_minmax(0,1fr)_64px_44px] ' +
-  'sm:grid-cols-[20px_minmax(0,1.5fr)_0.55fr_0.55fr_0.8fr_0.8fr_0.8fr_0.7fr_0.5fr_0.5fr]'
+// D4 draws board tables as fixed-width columns inside a card that scrolls
+// sideways on its own, rather than dropping columns at narrow widths. Ten
+// columns at these widths need ~1040px, so the card scrolls, not the page.
+const LIST_GRID: React.CSSProperties = {
+  gridTemplateColumns: '14px minmax(180px,1fr) 70px 80px 110px 110px 100px 100px 78px 96px',
+}
+
+const USAGE_GRID: React.CSSProperties = {
+  gridTemplateColumns: 'minmax(200px,1.6fr) 110px 130px 130px',
+}
 
 // ── Usage tab: rolls up production calls per prompt version ──────────────────
 
@@ -71,35 +93,32 @@ function PromptsUsageView({ prompts, hours }: { prompts: PromptRowLike[]; hours:
 
   if (promptsWithCalls.length === 0) {
     return (
-      <div className="flex flex-col items-center py-14 gap-4 text-text-muted px-6">
-        <FlaskConical className="h-9 w-9 text-text-faint" />
-        <p className="text-[13px] text-text">No tagged production calls yet</p>
-        <p className="font-mono text-[11.5px] text-text-faint max-w-[520px] text-center leading-relaxed">
-          To see per-version usage, tag each proxy call with the{' '}
-          <code className="font-mono text-[11px] px-1 rounded border border-border bg-bg text-text">
-            X-Spanlens-Prompt-Version
-          </code>{' '}
-          header (or use{' '}
-          <code className="font-mono text-[11px] px-1 rounded border border-border bg-bg text-text">
-            withPromptVersion()
-          </code>{' '}
-          in the SDK). Once tagged, calls show up here grouped by version.
-        </p>
-        <Link
-          href="/docs/features/prompts"
-          className="font-mono text-[11px] mt-1 px-2.5 py-1 rounded border border-border text-text-muted hover:text-text hover:border-border-strong transition-colors"
-        >
-          Setup guide →
-        </Link>
-      </div>
+      <TableCard>
+        <div className="flex flex-col items-center gap-4 px-6 py-14 text-text-muted">
+          <FlaskConical className="h-9 w-9 text-text-faint" />
+          <p className="text-[13.5px] font-semibold leading-[1.45] text-text">
+            No tagged production calls yet
+          </p>
+          <p className="max-w-[520px] text-center font-mono text-[11.5px] leading-[1.65] text-text-faint">
+            To see per-version usage, tag each proxy call with the{' '}
+            <code className="rounded border border-border bg-bg-sunk px-1 font-mono text-[11px] text-text">
+              X-Spanlens-Prompt-Version
+            </code>{' '}
+            header (or use{' '}
+            <code className="rounded border border-border bg-bg-sunk px-1 font-mono text-[11px] text-text">
+              withPromptVersion()
+            </code>{' '}
+            in the SDK). Once tagged, calls show up here grouped by version.
+          </p>
+          <Link
+            href="/docs/features/prompts"
+            className="rounded-full border border-border px-3 py-1.5 font-mono text-[11px] text-text-muted transition-colors hover:border-border-strong hover:text-text"
+          >
+            Setup guide →
+          </Link>
+        </div>
+      </TableCard>
     )
-  }
-
-  const rowGridStyle: React.CSSProperties = {
-    display: 'grid',
-    gridTemplateColumns: '1.6fr 90px 110px 110px',
-    gap: 12,
-    alignItems: 'center',
   }
 
   function fmtUsdLocal(n: number): string {
@@ -108,39 +127,46 @@ function PromptsUsageView({ prompts, hours }: { prompts: PromptRowLike[]; hours:
   }
 
   return (
-    <div>
-      <div
-        className="px-[22px] py-[8px] bg-bg-muted border-b border-border font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint"
-        style={rowGridStyle}
-      >
-        <span>Prompt · version</span>
-        <span>Calls · {rangeLabel}</span>
-        <span>Spend · {rangeLabel}</span>
-        <span className="text-right">Cost / call</span>
-      </div>
-      {promptsWithCalls.map((p) => {
-        const calls = p.stats?.calls ?? 0
-        const spend = p.stats?.totalCostUsd ?? 0
-        const costPerCall = calls > 0 ? spend / calls : 0
-        return (
-          <div
-            key={`${p.name}-${p.version}`}
-            className="px-[22px] py-[10px] border-b border-border"
-            style={rowGridStyle}
-          >
-            <div className="min-w-0">
-              <div className="text-[12.5px] text-text truncate">{p.name}</div>
-              <div className="font-mono text-[10.5px] text-text-faint">v{p.version}</div>
+    <TableCard>
+      <div className="overflow-x-auto">
+        <div className="min-w-[600px]">
+          <TableHead>
+            <div className="grid items-center gap-3" style={USAGE_GRID}>
+              <Th>Prompt · version</Th>
+              <Th>Calls · {rangeLabel}</Th>
+              <Th>Spend · {rangeLabel}</Th>
+              <Th className="block text-right">Cost / call</Th>
             </div>
-            <span className="font-mono text-[12px] text-text tabular-nums">{calls.toLocaleString()}</span>
-            <span className="font-mono text-[12px] text-text tabular-nums">{fmtUsdLocal(spend)}</span>
-            <span className="font-mono text-[12px] text-text-muted tabular-nums text-right">
-              {fmtUsdLocal(costPerCall)}
-            </span>
-          </div>
-        )
-      })}
-    </div>
+          </TableHead>
+          {promptsWithCalls.map((p) => {
+            const calls = p.stats?.calls ?? 0
+            const spend = p.stats?.totalCostUsd ?? 0
+            const costPerCall = calls > 0 ? spend / calls : 0
+            return (
+              <div
+                key={`${p.name}-${p.version}`}
+                className={cn(ROW, 'grid items-center gap-3')}
+                style={USAGE_GRID}
+              >
+                <span className="min-w-0">
+                  <span className="block truncate font-mono text-[12px] text-text">{p.name}</span>
+                  <span className="block font-mono text-[10.5px] text-text-faint">v{p.version}</span>
+                </span>
+                <span className="font-mono text-[12px] tabular-nums text-text-muted">
+                  {calls.toLocaleString()}
+                </span>
+                <span className="font-mono text-[12px] tabular-nums text-text-muted">
+                  {fmtUsdLocal(spend)}
+                </span>
+                <span className="text-right font-mono text-[12px] tabular-nums text-text-muted">
+                  {fmtUsdLocal(costPerCall)}
+                </span>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    </TableCard>
   )
 }
 
@@ -288,17 +314,92 @@ export function PromptsClient() {
   }
 
   return (
-    <div className="-mx-4 -my-4 md:-mx-8 md:-my-7 flex flex-col min-h-screen">
-      <div className="sticky top-0 z-20 bg-bg">
+    <div>
+      {/* The topbar is the one full-bleed row: it cancels the shell inset so
+          its hairline spans the whole main column. Everything below sits
+          flush inside that inset. */}
+      <div className={TOPBAR_BLEED}>
         <Topbar
           crumbs={[{ label: 'Prompts' }]}
           right={
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-3">
               <LiveDot refetching={isFetching} />
-              {/* Search, desktop only; mobile search lives in the filter bar.
-                  Debounced 300ms to the URL `?q=` param. */}
-              <div className="hidden md:flex items-center gap-2 px-[10px] py-[5px] border border-border rounded-[6px] bg-bg-elev w-[240px]">
-                <span className="text-text-faint text-[14px] leading-none">⌕</span>
+              <button
+                type="button"
+                onClick={() => void refetch()}
+                disabled={isFetching}
+                title="Refresh now"
+                className="rounded border border-border px-2 py-1 font-mono text-[11px] text-text-muted transition-colors hover:text-text disabled:opacity-40"
+              >
+                <span className={cn('inline-block', isFetching && 'animate-spin')}>↻</span>
+              </button>
+              <PermissionGate need="edit">
+                <button
+                  type="button"
+                  onClick={() => setFormOpen((v) => !v)}
+                  aria-expanded={formOpen}
+                  className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full bg-accent px-3.5 py-2 text-[12.5px] font-semibold leading-[18px] text-accent-fg transition-colors hover:bg-accent-strong"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  New prompt
+                </button>
+              </PermissionGate>
+            </div>
+          }
+        />
+        <h1 className="sr-only">Prompts</h1>
+      </div>
+
+      <Board>
+        {/* Radix drives the tab row so the triggers carry real tab semantics
+            (`aria-selected` plus arrow-key roving). The value still lives in
+            the URL, so deep links and reloads keep landing on the right pane. */}
+        <Tabs
+          value={tab}
+          onValueChange={(v) => updateQuery({ tab: v === 'versions' ? null : v })}
+          className="flex flex-col gap-4"
+        >
+          <TabsList>
+            <TabsTrigger value="versions">Versions</TabsTrigger>
+            <TabsTrigger value="usage">Usage</TabsTrigger>
+          </TabsList>
+
+          {/* Stat strip — reads the same on both tabs, so it sits between the
+              tab row and the panels instead of being duplicated inside each. */}
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+            <StatCard
+              label="Prompts"
+              value={mounted ? all.length : ' '}
+              foot={abCount > 0 ? `${abCount} running an A/B test` : 'no A/B tests running'}
+            />
+            <StatCard label="Versions" value={mounted ? totalVersions : ' '} foot="across all prompts" />
+            <StatCard
+              label={`Calls · ${dateRange}`}
+              value={mounted ? (totalCalls > 0 ? totalCalls.toLocaleString() : '—') : ' '}
+              foot="tagged production calls"
+            />
+            <StatCard
+              label="Avg quality"
+              value={mounted ? (avgQuality != null ? avgQuality : '—') : ' '}
+              foot="mean eval score"
+            />
+            <StatCard
+              label={`Spend · ${dateRange}`}
+              value={mounted ? (totalSpend > 0 ? fmtUsd(totalSpend) : '—') : ' '}
+              foot="billed to your provider key"
+            />
+          </div>
+
+          <TabsContent value="usage" className="mt-0">
+            <PromptsUsageView prompts={all} hours={hours} />
+          </TabsContent>
+
+          <TabsContent value="versions" className="mt-0 flex flex-col gap-4">
+            {/* Filter bar — search runs the width of the row, with the filters
+                and the result count parked at the end. */}
+            <FilterBar>
+              <div className={cn(CONTROL, 'flex min-w-[220px] flex-1 items-center gap-2 px-3')}>
+                <Search className="h-[13px] w-[13px] shrink-0 text-text-faint" />
                 <input
                   key={search}
                   value={searchInput}
@@ -309,466 +410,367 @@ export function PromptsClient() {
                       updateQuery({ q: null })
                     }
                   }}
-                  placeholder="Search prompts…"
-                  className="flex-1 bg-transparent font-mono text-[12px] text-text-muted placeholder:text-text-faint focus:outline-none"
+                  placeholder="Search prompts"
+                  aria-label="Search prompts"
+                  className="w-full bg-transparent text-[12.5px] leading-[18px] text-text placeholder:text-text-faint focus:outline-none"
                 />
-                {searchInput && (
+                {search && (
                   <button
                     type="button"
                     onClick={() => { setSearchInput(''); updateQuery({ q: null }) }}
-                    className="text-text-faint hover:text-text transition-colors"
-                    aria-label="Clear search"
+                    className="shrink-0 font-mono text-[11px] text-text-faint transition-colors hover:text-text"
                   >
-                    <X className="h-3 w-3" />
+                    Clear
                   </button>
                 )}
               </div>
-              <button
-                type="button"
-                onClick={() => void refetch()}
-                disabled={isFetching}
-                title="Refresh now"
-                className="font-mono text-[11px] text-text-muted hover:text-text border border-border rounded px-2 py-1 transition-colors disabled:opacity-40"
-              >
-                <span className={cn('inline-block', isFetching && 'animate-spin')}>↻</span>
-              </button>
-              <PermissionGate need="edit">
-                <button
-                  type="button"
-                  onClick={() => setFormOpen((v) => !v)}
-                  className="font-mono text-[11px] text-text px-[10px] py-[5px] border border-border-strong rounded-[5px] bg-bg-elev hover:bg-bg-muted transition-colors whitespace-nowrap shrink-0"
-                >
-                  + register prompt
-                </button>
-              </PermissionGate>
-            </div>
-          }
-        />
-        <h1 className="sr-only">Prompts</h1>
-      </div>
 
-      {/* Info banner */}
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 px-[22px] py-[10px] bg-bg-muted border-b border-border text-[12px] text-text-muted shrink-0">
-        <span className="font-mono text-[10px] text-accent uppercase tracking-[0.04em] px-[7px] py-[2px] rounded-[3px] bg-accent-bg border border-accent-border shrink-0">
-          code = source
-        </span>
-        <span>
-          Prompts are defined in code. Versions tracked via{' '}
-          <code className="font-mono text-[11px] px-1 rounded border border-border bg-bg text-text">
-            X-Spanlens-Prompt-Version
-          </code>{' '}
-          header.
-        </span>
-        <Link
-          href="/docs/features/prompts"
-          className="font-mono text-[11px] text-text hover:opacity-80 transition-opacity ml-auto"
-        >
-          View setup guide →
-        </Link>
-      </div>
-
-      {/* Stat strip — on mobile, wrap to a 2-col grid so cards stay
-          readable without horizontal scroll. The 5th card lays out alone
-          on its own row, which is fine for a secondary stat. md+ keeps
-          the original 5-across single row. */}
-      <div className="shrink-0 border-b border-border">
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5">
-          {[
-            { label: 'Prompts',              value: String(all.length)                                         },
-            { label: 'Versions',             value: String(totalVersions)                                      },
-            { label: `Calls · ${dateRange}`, value: totalCalls > 0 ? totalCalls.toLocaleString() : '—'        },
-            { label: `Avg quality`,          value: avgQuality != null ? String(avgQuality) : '—'              },
-            { label: `Spend · ${dateRange}`, value: totalSpend > 0 ? fmtUsd(totalSpend) : '—'                 },
-          ].map((s, i) => (
-            <div
-              key={i}
-              className={cn(
-                'px-[18px] py-[14px] border-border',
-                // Bottom rule between rows on the wrapped layouts.
-                'border-b sm:border-b-0 md:border-b-0',
-                // Vertical rules — keep the original right rule on md+,
-                // and add a 2-col / 3-col rule for the wrapped layouts.
-                i % 2 === 0 && 'border-r sm:border-r-0',
-                'sm:[&:not(:nth-child(3n))]:border-r',
-                i < 4 && 'md:border-r',
-                'md:!border-b-0',
-              )}
-            >
-              <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-2">{s.label}</div>
-              <span className="text-[22px] sm:text-[24px] font-medium leading-none tracking-[-0.6px] text-text">{s.value}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Tab strip: Versions (definitions) vs Usage (production calls per version) */}
-      <div className="shrink-0 border-b border-border bg-bg flex items-center gap-1 px-[22px]">
-        {(['versions', 'usage'] as const).map((t) => (
-          <button
-            key={t}
-            type="button"
-            onClick={() => updateQuery({ tab: t === 'versions' ? null : t })}
-            className={cn(
-              'font-mono text-[11px] uppercase tracking-[0.06em] px-3 py-2.5 transition-colors relative',
-              tab === t ? 'text-text' : 'text-text-faint hover:text-text-muted',
-            )}
-          >
-            {t === 'versions' ? 'Versions' : 'Usage'}
-            {tab === t && (
-              <span className="absolute bottom-[-1px] left-3 right-3 h-[2px] bg-accent" />
-            )}
-          </button>
-        ))}
-      </div>
-
-      {tab === 'usage' ? (
-        <PromptsUsageView prompts={all} hours={hours} />
-      ) : (
-      <>
-      {/* Filter toolbar */}
-      <div className="flex flex-col gap-[6px] px-[22px] py-[10px] border-b border-border shrink-0">
-      {/* Mobile search, shown only on small screens */}
-      <div className="md:hidden flex items-center gap-2 px-[10px] py-[5px] border border-border rounded-[6px] bg-bg-elev">
-        <span className="text-text-faint text-[14px] leading-none">⌕</span>
-        <input
-          key={`mobile-${search}`}
-          value={searchInput}
-          onChange={(e) => setSearchInput(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Escape') {
-              setSearchInput('')
-              updateQuery({ q: null })
-            }
-          }}
-          placeholder="Search prompts…"
-          className="flex-1 bg-transparent font-mono text-[12px] text-text-muted placeholder:text-text-faint focus:outline-none"
-        />
-        {searchInput && (
-          <button type="button" onClick={() => { setSearchInput(''); updateQuery({ q: null }) }} className="text-text-faint hover:text-text transition-colors">
-            <X className="h-3.5 w-3.5" />
-          </button>
-        )}
-      </div>
-      <div className="flex items-center gap-[6px] flex-wrap">
-        <div className="flex p-0.5 border border-border rounded-[5px] bg-bg-elev font-mono text-[10.5px] tracking-[0.03em]">
-          {([['all', 'All', String(all.length)], ['ab', 'A/B', String(abCount)]] as [FilterType, string, string][]).map(([v, l, c]) => (
-            <button
-              key={v}
-              type="button"
-              onClick={() => updateQuery({ filter: v === 'all' ? null : v })}
-              className={cn(
-                'px-[10px] py-[3px] rounded-[3px] flex items-center gap-1.5 transition-colors',
-                filter === v ? 'bg-text text-bg' : 'text-text-muted hover:text-text',
-              )}
-            >
-              {l}
-              <span className={cn('text-[10px]', filter === v ? 'opacity-60' : 'text-text-faint')}>{c}</span>
-            </button>
-          ))}
-        </div>
-        <button
-          type="button"
-          onClick={() => updateQuery({ view: viewMode === 'all' ? 'active' : null })}
-          className={cn(
-            'flex items-center gap-1.5 px-[10px] py-[4px] rounded-[5px] border font-mono text-[11px] tracking-[0.03em] transition-colors',
-            viewMode === 'active'
-              ? 'border-border-strong bg-text text-bg'
-              : 'border-border-strong bg-bg-elev text-text',
-          )}
-        >
-          <span className={viewMode === 'active' ? 'opacity-60' : 'text-text-faint'}>☰</span>
-          {' '}views ·{' '}
-          <span className={viewMode === 'active' ? 'opacity-80' : 'text-text-muted'}>
-            {viewMode === 'active' ? 'active only' : 'all prompts'}
-          </span>
-        </button>
-
-        <div className="relative" ref={callsMenuRef}>
-          <button
-            type="button"
-            onClick={() => setCallsMenuOpen((v) => !v)}
-            className={cn(
-              'font-mono text-[11px] px-[9px] py-[4px] border rounded-[5px] transition-colors',
-              minCalls > 0
-                ? 'border-border-strong bg-text text-bg'
-                : 'border-border text-text-muted hover:text-text',
-            )}
-          >
-            calls ≥ {minCalls === 0 ? 'all' : minCalls} ⌄
-          </button>
-          {callsMenuOpen && (
-            <div className="absolute left-0 top-full mt-1 z-20 bg-bg-elev border border-border rounded-[6px] shadow-lg overflow-hidden py-1 w-28">
-              {([0, 1, 10, 100] as const).map((n) => (
-                <button
-                  key={n}
-                  type="button"
-                  onClick={() => { updateQuery({ minCalls: n === 0 ? null : String(n) }); setCallsMenuOpen(false) }}
-                  className={cn(
-                    'w-full text-left px-[10px] py-[5px] font-mono text-[11px] transition-colors',
-                    minCalls === n ? 'text-text bg-bg-muted' : 'text-text-muted hover:text-text hover:bg-bg-muted',
-                  )}
-                >
-                  {n === 0 ? 'All' : `≥ ${n}`}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-
-        <div className="relative" ref={dateMenuRef}>
-          <button
-            type="button"
-            onClick={() => setDateMenuOpen((v) => !v)}
-            className={cn(
-              'font-mono text-[11px] px-[9px] py-[4px] border rounded-[5px] transition-colors',
-              dateRange !== '24h'
-                ? 'border-border-strong bg-text text-bg'
-                : 'border-border text-text-muted hover:text-text',
-            )}
-          >
-            {dateRange} ⌄
-          </button>
-          {dateMenuOpen && (
-            <div className="absolute left-0 top-full mt-1 z-20 bg-bg-elev border border-border rounded-[6px] shadow-lg overflow-hidden py-1 w-20">
-              {(['24h', '7d', '30d'] as const).map((r) => (
-                <button
-                  key={r}
-                  type="button"
-                  onClick={() => { updateQuery({ range: r === '24h' ? null : r }); setDateMenuOpen(false) }}
-                  className={cn(
-                    'w-full text-left px-[10px] py-[5px] font-mono text-[11px] transition-colors',
-                    dateRange === r ? 'text-text bg-bg-muted' : 'text-text-muted hover:text-text hover:bg-bg-muted',
-                  )}
-                >
-                  {r}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-        <span className="flex-1" />
-
-        <div className="relative" ref={exportRef}>
-          <button
-            type="button"
-            onClick={() => setExportOpen((v) => !v)}
-            disabled={filtered.length === 0}
-            className="font-mono text-[11px] text-text-muted hover:text-text border border-border rounded-[5px] px-2.5 py-1 transition-colors disabled:opacity-40"
-          >
-            Export ▾
-          </button>
-          {exportOpen && (
-            <div className="absolute right-0 top-full mt-1 z-20 bg-bg-elev border border-border rounded-md shadow-lg py-1 min-w-[110px]">
-              <button
-                type="button"
-                onClick={() => { setExportOpen(false); exportCsv() }}
-                className="block w-full px-3 py-1.5 text-left font-mono text-[11px] uppercase tracking-[0.04em] text-text-muted hover:text-text hover:bg-bg transition-colors"
-              >CSV</button>
-              <button
-                type="button"
-                onClick={() => { setExportOpen(false); exportJson() }}
-                className="block w-full px-3 py-1.5 text-left font-mono text-[11px] uppercase tracking-[0.04em] text-text-muted hover:text-text hover:bg-bg transition-colors"
-              >JSON</button>
-            </div>
-          )}
-        </div>
-
-        <span className="font-mono text-[11px] text-text-faint">
-          {mounted ? (filtered.length === all.length ? `${all.length} prompts` : `${filtered.length} of ${all.length} prompts`) : ' '}
-        </span>
-      </div>
-      </div>
-
-      {/* Create form panel, outside scroll container so it stays pinned */}
-      {formOpen && (
-        <div className="px-[22px] py-[14px] bg-bg-elev border-b border-border-strong shrink-0 space-y-3">
-          <div className="flex items-center justify-between">
-            <span className="text-[13px] font-medium text-text">Register prompt / version</span>
-            <button type="button" onClick={() => setFormOpen(false)} className="text-text-faint hover:text-text transition-colors">
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1">
-              <label className="font-mono text-[11px] text-text-muted uppercase tracking-[0.04em]">Name</label>
-              <input
-                value={form.name}
-                onChange={(e) => setForm({ ...form, name: e.target.value })}
-                placeholder="chatbot-system"
-                className="w-full h-8 px-3 rounded-[4px] border border-border bg-bg font-mono text-[12.5px] text-text placeholder:text-text-faint focus:outline-none focus:border-border-strong"
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="font-mono text-[11px] text-text-muted uppercase tracking-[0.04em]">Content preview</label>
-              <input
-                value={form.content}
-                onChange={(e) => setForm({ ...form, content: e.target.value })}
-                placeholder="You are a helpful assistant…"
-                className="w-full h-8 px-3 rounded-[4px] border border-border bg-bg font-mono text-[12.5px] text-text placeholder:text-text-faint focus:outline-none focus:border-border-strong"
-              />
-            </div>
-          </div>
-          {formError && <p className="font-mono text-[11.5px] text-bad">{formError}</p>}
-          <div className="flex items-center justify-between">
-            <p className="font-mono text-[11px] text-text-faint">Existing name → new version. New name → starts at v1.</p>
-            <div className="flex items-center gap-2">
-              <button type="button" onClick={() => setFormOpen(false)} className="font-mono text-[11.5px] px-3 py-[5px] border border-border rounded-[4px] text-text-muted hover:text-text transition-colors">
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={() => void handleCreate()}
-                disabled={createMutation.isPending}
-                className="font-mono text-[11.5px] px-3 py-[5px] rounded-[4px] bg-text text-bg font-medium hover:opacity-90 transition-opacity disabled:opacity-40"
-              >
-                {createMutation.isPending ? 'Saving…' : 'Save version'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Table: header + rows */}
-      <div>
-        {isLoading ? (
-          <div className="p-6 space-y-2">
-            {[1, 2, 3].map((i) => <div key={i} className="h-10 bg-bg-elev rounded animate-pulse" />)}
-          </div>
-        ) : isError ? (
-          // Don't fall through to the "register first prompt" empty state on a
-          // load failure — a workspace with existing prompts would look brand-new.
-          <div className="flex flex-col items-center gap-3 text-text-muted py-20 px-6 text-center">
-            <p className="text-[13px] text-accent">Couldn&apos;t load prompts.</p>
-            <button
-              type="button"
-              onClick={() => void refetch()}
-              className="font-mono text-[11.5px] px-2.5 py-1 border border-border rounded text-text-muted hover:text-text hover:border-border-strong transition-colors"
-            >
-              Retry
-            </button>
-          </div>
-        ) : filtered.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-20 gap-3 text-text-muted">
-            <p className="text-[13px]">{search ? 'No prompts match your search.' : 'No prompts registered yet.'}</p>
-            {!search && (
-              <PermissionGate need="edit">
-                <button type="button" onClick={() => setFormOpen(true)} className="font-mono text-[11.5px] px-3 py-[5px] rounded-[4px] bg-text text-bg font-medium hover:opacity-90 transition-opacity">
-                  + Register first prompt
-                </button>
-              </PermissionGate>
-            )}
-          </div>
-        ) : (
-          <div>
-            {/* Column headers, sticky so they stay visible on vertical scroll.
-                Cols hidden on mobile: avg cost, avg lat, quality, updated. */}
-            <div
-              className={cn(
-                'grid sticky top-[52px] z-10 font-mono text-[10px] text-text-faint uppercase tracking-[0.05em] px-[16px] sm:px-[22px] py-[9px] bg-bg-muted border-b border-border gap-2 sm:gap-0',
-                GRID_CLASS,
-              )}
-            >
-              <span />
-              <span>Prompt</span>
-              <span className="hidden sm:block">Active</span>
-              <span className="hidden sm:block">Versions</span>
-              <span className="text-right sm:text-left">Calls · {dateRange}</span>
-              <span className="hidden sm:block">Avg cost</span>
-              <span className="hidden sm:block">Avg lat</span>
-              <span className="hidden sm:block">Quality · {dateRange}</span>
-              <span>A/B</span>
-              <span className="hidden sm:block text-right">Updated</span>
-            </div>
-            {filtered.map((p) => (
-            <div
-              key={p.id}
-              role="button"
-              tabIndex={0}
-              onClick={() => router.push(`/prompts/${encodeURIComponent(p.name)}`)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault()
-                  router.push(`/prompts/${encodeURIComponent(p.name)}`)
-                }
-              }}
-              className={cn(
-                'w-full grid items-center px-[16px] sm:px-[22px] py-[11px] border-b border-border font-mono text-[12.5px] text-left hover:bg-bg-elev transition-colors group cursor-pointer focus:outline-none focus:bg-bg-elev gap-2 sm:gap-0',
-                GRID_CLASS,
-              )}
-            >
-              {/* Status dot */}
-              <span>
-                <span className={cn(
-                  'w-1.5 h-1.5 rounded-full block',
-                  (p.stats?.calls ?? 0) > 0 ? 'bg-good' : 'bg-border',
-                )} />
-              </span>
-
-              {/* Name */}
-              <span className="flex items-center gap-2 min-w-0">
-                <span className="text-text font-sans text-[13px] font-medium truncate group-hover:text-accent transition-colors">
-                  {p.name}
-                </span>
-              </span>
-
-              {/* Active version — hidden on mobile */}
-              <span className="hidden sm:block text-text-muted">v{p.version}</span>
-
-              {/* Version count — deep-link to the Versions tab on detail page. Hidden on mobile. */}
-              <span className="hidden sm:block">
-                <Link
-                  href={`/prompts/${encodeURIComponent(p.name)}?tab=versions`}
-                  onClick={(e) => e.stopPropagation()}
-                  className="text-text-muted hover:text-accent transition-colors"
-                >
-                  {p.versionCount ?? p.version}
-                </Link>
-              </span>
-
-              {/* Calls — right-aligned on mobile to match the header */}
-              <span className={cn('text-right sm:text-left tabular-nums', p.stats && p.stats.calls > 0 ? 'text-text' : 'text-text-faint')}>
-                {p.stats?.calls ? p.stats.calls.toLocaleString() : '—'}
-              </span>
-
-              {/* Avg cost — hidden on mobile */}
-              <span className={cn('hidden sm:block', p.stats?.avgCostUsd != null ? 'text-text' : 'text-text-faint')}>
-                {p.stats?.avgCostUsd != null ? fmtUsd(p.stats.avgCostUsd) : '—'}
-              </span>
-
-              {/* Avg latency — hidden on mobile */}
-              <span className={cn('hidden sm:block', p.stats?.avgLatencyMs != null ? 'text-text' : 'text-text-faint')}>
-                {p.stats?.avgLatencyMs != null ? fmtMs(p.stats.avgLatencyMs) : '—'}
-              </span>
-
-              {/* Quality score — hidden on mobile */}
-              <span className="hidden sm:block">
-                <QualityBadge score={p.qualityScore} />
-              </span>
-
-              {/* A/B badge — pulses while a test is running so the eye lands
-                  on the active one in a list of many prompts. */}
-              <span>
-                {p.activeExperiment ? (
-                  <span className="inline-flex items-center gap-1 font-mono text-[9px] uppercase tracking-[0.05em] px-[5px] py-[2px] rounded-[3px] bg-accent-bg border border-accent-border text-accent animate-pulse">
-                    <FlaskConical className="h-2.5 w-2.5" />
-                    A/B
-                  </span>
-                ) : (
-                  <span className="text-text-faint">—</span>
+              <Segment>
+                {([['all', 'All', all.length], ['ab', 'A/B', abCount]] as [FilterType, string, number][]).map(
+                  ([v, l, c]) => (
+                    <SegmentItem
+                      key={v}
+                      active={filter === v}
+                      onClick={() => updateQuery({ filter: v === 'all' ? null : v })}
+                    >
+                      {l}
+                      <span
+                        className={cn(
+                          'ml-1.5 font-mono text-[10.5px]',
+                          filter === v ? 'text-text-muted' : 'text-text-faint',
+                        )}
+                      >
+                        {mounted ? c : ' '}
+                      </span>
+                    </SegmentItem>
+                  ),
                 )}
-              </span>
+              </Segment>
 
-              {/* Updated date — hidden on mobile */}
-              <span className="hidden sm:block text-text-faint text-right text-[11px]">
-                {formatDate(p.created_at)}
+              <Segment>
+                {([['all', 'All prompts'], ['active', 'Active only']] as [ViewMode, string][]).map(
+                  ([v, l]) => (
+                    <SegmentItem
+                      key={v}
+                      active={viewMode === v}
+                      onClick={() => updateQuery({ view: v === 'all' ? null : v })}
+                    >
+                      {l}
+                    </SegmentItem>
+                  ),
+                )}
+              </Segment>
+
+              <div className="relative" ref={callsMenuRef}>
+                <button
+                  type="button"
+                  onClick={() => setCallsMenuOpen((v) => !v)}
+                  aria-expanded={callsMenuOpen}
+                  className={cn(CONTROL, CONTROL_TEXT, 'px-3', minCalls > 0 && 'border-border-strong')}
+                >
+                  calls ≥ {minCalls === 0 ? 'all' : minCalls}
+                  <span className="ml-1.5 text-text-faint">⌄</span>
+                </button>
+                {callsMenuOpen && (
+                  <div className="absolute left-0 top-full z-20 mt-1 w-28 overflow-hidden rounded-md border border-border bg-bg-elev py-1 shadow-card">
+                    {([0, 1, 10, 100] as const).map((n) => (
+                      <button
+                        key={n}
+                        type="button"
+                        onClick={() => { updateQuery({ minCalls: n === 0 ? null : String(n) }); setCallsMenuOpen(false) }}
+                        className={cn(
+                          'w-full px-3 py-1.5 text-left font-mono text-[11.5px] transition-colors',
+                          minCalls === n ? 'bg-bg-muted text-text' : 'text-text-muted hover:bg-bg-muted hover:text-text',
+                        )}
+                      >
+                        {n === 0 ? 'All' : `≥ ${n}`}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="relative" ref={dateMenuRef}>
+                <button
+                  type="button"
+                  onClick={() => setDateMenuOpen((v) => !v)}
+                  aria-expanded={dateMenuOpen}
+                  className={cn(CONTROL, CONTROL_TEXT, 'px-3', dateRange !== '24h' && 'border-border-strong')}
+                >
+                  {dateRange}
+                  <span className="ml-1.5 text-text-faint">⌄</span>
+                </button>
+                {dateMenuOpen && (
+                  <div className="absolute left-0 top-full z-20 mt-1 w-24 overflow-hidden rounded-md border border-border bg-bg-elev py-1 shadow-card">
+                    {(['24h', '7d', '30d'] as const).map((r) => (
+                      <button
+                        key={r}
+                        type="button"
+                        onClick={() => { updateQuery({ range: r === '24h' ? null : r }); setDateMenuOpen(false) }}
+                        className={cn(
+                          'w-full px-3 py-1.5 text-left font-mono text-[11.5px] transition-colors',
+                          dateRange === r ? 'bg-bg-muted text-text' : 'text-text-muted hover:bg-bg-muted hover:text-text',
+                        )}
+                      >
+                        {r}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="relative ml-auto" ref={exportRef}>
+                <button
+                  type="button"
+                  onClick={() => setExportOpen((v) => !v)}
+                  disabled={filtered.length === 0}
+                  aria-expanded={exportOpen}
+                  className={cn(CONTROL, CONTROL_TEXT, 'px-3 disabled:opacity-40')}
+                >
+                  Export
+                  <span className="ml-1.5 text-text-faint">⌄</span>
+                </button>
+                {exportOpen && (
+                  <div className="absolute right-0 top-full z-20 mt-1 min-w-[110px] overflow-hidden rounded-md border border-border bg-bg-elev py-1 shadow-card">
+                    <button
+                      type="button"
+                      onClick={() => { setExportOpen(false); exportCsv() }}
+                      className="block w-full px-3 py-1.5 text-left font-mono text-[11px] uppercase tracking-[0.1em] text-text-muted transition-colors hover:bg-bg-muted hover:text-text"
+                    >CSV</button>
+                    <button
+                      type="button"
+                      onClick={() => { setExportOpen(false); exportJson() }}
+                      className="block w-full px-3 py-1.5 text-left font-mono text-[11px] uppercase tracking-[0.1em] text-text-muted transition-colors hover:bg-bg-muted hover:text-text"
+                    >JSON</button>
+                  </div>
+                )}
+              </div>
+
+              <span className="font-mono text-[11px] text-text-faint">
+                {mounted ? (filtered.length === all.length ? `${all.length} prompts` : `${filtered.length} of ${all.length}`) : ' '}
               </span>
+            </FilterBar>
+
+            {/* Explainer with docs link */}
+            <div className="card-surface rounded-card flex flex-wrap items-center gap-2 px-5 py-3.5 font-mono text-[11px] text-text-muted">
+              <span className={ACCENT_CHIP}>code = source</span>
+              <span>
+                Prompts are defined in code. Versions are tracked with the{' '}
+                <code className="rounded border border-border bg-bg-sunk px-1 font-mono text-[11px] text-text">
+                  X-Spanlens-Prompt-Version
+                </code>{' '}
+                header.
+              </span>
+              <Link
+                href="/docs/features/prompts"
+                className="ml-auto text-text transition-opacity hover:opacity-80"
+              >
+                View setup guide →
+              </Link>
             </div>
-          ))}
-          </div>
-        )}
-      </div>
-      </>
-      )}
+
+            {/* Create form panel */}
+            {formOpen && (
+              <Card className="flex flex-col gap-3.5 px-5 py-[18px]">
+                <div className="flex items-center justify-between">
+                  <span className="text-[13.5px] font-semibold leading-[1.4] text-text">
+                    Register prompt or version
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setFormOpen(false)}
+                    className="font-mono text-[11px] text-text-faint transition-colors hover:text-text"
+                  >
+                    Close
+                  </button>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="flex flex-col gap-1.5">
+                    <label className="micro-label tracking-[0.1em]" htmlFor="prompt-name">Name</label>
+                    <input
+                      id="prompt-name"
+                      value={form.name}
+                      onChange={(e) => setForm({ ...form, name: e.target.value })}
+                      placeholder="chatbot-system"
+                      className={cn(CONTROL, 'w-full px-3 font-mono text-[12.5px] text-text placeholder:text-text-faint focus:border-border-strong focus:outline-none')}
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <label className="micro-label tracking-[0.1em]" htmlFor="prompt-content">Content preview</label>
+                    <input
+                      id="prompt-content"
+                      value={form.content}
+                      onChange={(e) => setForm({ ...form, content: e.target.value })}
+                      placeholder="You are a helpful assistant…"
+                      className={cn(CONTROL, 'w-full px-3 font-mono text-[12.5px] text-text placeholder:text-text-faint focus:border-border-strong focus:outline-none')}
+                    />
+                  </div>
+                </div>
+                {formError && <p className="font-mono text-[11.5px] text-bad">{formError}</p>}
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <p className="font-mono text-[11px] text-text-faint">
+                    An existing name adds a version. A new name starts at v1.
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setFormOpen(false)}
+                      className="rounded-full border border-border px-3 py-1.5 text-[11.5px] font-medium text-text-muted transition-colors hover:text-text"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleCreate()}
+                      disabled={createMutation.isPending}
+                      className="rounded-full bg-accent px-3.5 py-1.5 text-[11.5px] font-semibold text-accent-fg transition-colors hover:bg-accent-strong disabled:opacity-40"
+                    >
+                      {createMutation.isPending ? 'Saving…' : 'Save version'}
+                    </button>
+                  </div>
+                </div>
+              </Card>
+            )}
+
+            {/* Table: header + rows */}
+            {isLoading ? (
+              <div className="space-y-2">
+                {[1, 2, 3].map((i) => <div key={i} className="h-14 animate-pulse rounded-card bg-bg-chip" />)}
+              </div>
+            ) : isError ? (
+              // Don't fall through to the "register first prompt" empty state on a
+              // load failure — a workspace with existing prompts would look brand-new.
+              <div className="card-surface rounded-card flex flex-col items-center gap-3 px-5 py-20 text-center text-text-muted">
+                <p className="text-[13px] text-bad">Couldn&apos;t load prompts.</p>
+                <button
+                  type="button"
+                  onClick={() => void refetch()}
+                  className="rounded-full border border-border px-3 py-1.5 text-[11.5px] font-medium text-text-muted transition-colors hover:border-border-strong hover:text-text"
+                >
+                  Retry
+                </button>
+              </div>
+            ) : filtered.length === 0 ? (
+              <div className="card-surface rounded-card flex flex-col items-center justify-center gap-3 px-5 py-20 text-text-muted">
+                <p className="text-[12.5px]">{search ? 'No prompts match your search.' : 'No prompts registered yet.'}</p>
+                {!search && (
+                  <PermissionGate need="edit">
+                    <button
+                      type="button"
+                      onClick={() => setFormOpen(true)}
+                      className="inline-flex items-center gap-1.5 rounded-full bg-accent px-3.5 py-2 text-[12.5px] font-semibold text-accent-fg transition-colors hover:bg-accent-strong"
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                      Register first prompt
+                    </button>
+                  </PermissionGate>
+                )}
+              </div>
+            ) : (
+              /* The row grid is wider than a narrow viewport, so the card
+                 scrolls its own table sideways rather than the page. */
+              <TableCard>
+                <div className="overflow-x-auto">
+                  <div className="min-w-[1040px]">
+                    <TableHead>
+                      <div className="grid items-center gap-3" style={LIST_GRID}>
+                        {/* The status dot's column still needs a grid cell, so
+                            the label hides inside the cell rather than on it —
+                            `sr-only` is absolutely positioned and would drop
+                            the cell out of the grid, shifting every header. */}
+                        <Th><span className="sr-only">Status</span></Th>
+                        <Th>Prompt</Th>
+                        <Th>Active</Th>
+                        <Th>Versions</Th>
+                        <Th>Calls · {dateRange}</Th>
+                        <Th>Avg cost</Th>
+                        <Th>Avg lat</Th>
+                        <Th>Quality</Th>
+                        <Th>A/B</Th>
+                        <Th className="block text-right">Updated</Th>
+                      </div>
+                    </TableHead>
+                    {filtered.map((p) => (
+                      <div
+                        key={p.id}
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => router.push(`/prompts/${encodeURIComponent(p.name)}`)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault()
+                            router.push(`/prompts/${encodeURIComponent(p.name)}`)
+                          }
+                        }}
+                        className={cn(
+                          ROW,
+                          'group grid cursor-pointer items-center gap-3 text-left font-mono text-[12px] transition-colors hover:bg-bg-muted focus:bg-bg-muted focus:outline-none',
+                        )}
+                        style={LIST_GRID}
+                      >
+                        {/* Status dot */}
+                        <span>
+                          <span className={cn(
+                            'block h-1.5 w-1.5 rounded-full',
+                            (p.stats?.calls ?? 0) > 0 ? 'bg-good' : 'bg-border-strong',
+                          )} />
+                        </span>
+
+                        {/* Name — the one cell in full ink, per D4. */}
+                        <span className="truncate text-text transition-colors group-hover:text-accent">
+                          {p.name}
+                        </span>
+
+                        <span className="text-text-muted">v{p.version}</span>
+
+                        {/* Version count — deep-links to the Versions tab on the
+                            detail page. */}
+                        <span>
+                          <Link
+                            href={`/prompts/${encodeURIComponent(p.name)}?tab=versions`}
+                            onClick={(e) => e.stopPropagation()}
+                            className="text-text-muted transition-colors hover:text-accent"
+                          >
+                            {p.versionCount ?? p.version}
+                          </Link>
+                        </span>
+
+                        <span className={cn('tabular-nums', p.stats && p.stats.calls > 0 ? 'text-text-muted' : 'text-text-faint')}>
+                          {p.stats?.calls ? p.stats.calls.toLocaleString() : '—'}
+                        </span>
+
+                        <span className={cn('tabular-nums', p.stats?.avgCostUsd != null ? 'text-text-muted' : 'text-text-faint')}>
+                          {p.stats?.avgCostUsd != null ? fmtUsd(p.stats.avgCostUsd) : '—'}
+                        </span>
+
+                        <span className={cn('tabular-nums', p.stats?.avgLatencyMs != null ? 'text-text-muted' : 'text-text-faint')}>
+                          {p.stats?.avgLatencyMs != null ? fmtMs(p.stats.avgLatencyMs) : '—'}
+                        </span>
+
+                        <span>
+                          <QualityBadge score={p.qualityScore} />
+                        </span>
+
+                        {/* A/B lozenge — pulses while a test is running so the eye
+                            lands on the active one in a list of many prompts. */}
+                        <span>
+                          {p.activeExperiment ? (
+                            <StatusPill variant="warn" className="animate-pulse">A/B</StatusPill>
+                          ) : (
+                            <span className="text-text-faint">—</span>
+                          )}
+                        </span>
+
+                        <span className="text-right text-text-faint">{formatDate(p.created_at)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </TableCard>
+            )}
+          </TabsContent>
+        </Tabs>
+      </Board>
     </div>
   )
 }

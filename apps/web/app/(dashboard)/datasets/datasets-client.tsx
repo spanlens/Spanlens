@@ -8,14 +8,40 @@ import { Topbar, LiveDot } from '@/components/layout/topbar'
 import { cn, formatDate } from '@/lib/utils'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import {
+  Board,
+  TOPBAR_BLEED,
+  FilterBar,
+  CONTROL,
+  CONTROL_TEXT,
+  StatCard,
+  TableCard,
+  TableHead,
+  Th,
+  ROW,
+  tabClass,
+} from '../_board/surfaces'
+import { StatusPill } from '@/components/ui/primitives'
+import {
   useDatasets,
   useCreateDataset,
   useDeleteDataset,
   useBulkAddDatasetItems,
   type Dataset,
 } from '@/lib/queries/use-datasets'
-import { useEvalRuns, type EvalRun } from '@/lib/queries/use-evals'
-import { useExperiments, type Experiment } from '@/lib/queries/use-experiments'
+import { useEvalRuns } from '@/lib/queries/use-evals'
+import { useExperiments } from '@/lib/queries/use-experiments'
+
+/*
+ * Column templates for the two board tables on `D11 · Datasets`. Header band
+ * and rows both read them so the two stay locked; Tailwind's JIT is unreliable
+ * with arbitrary multi-column `grid-cols-[…]`, so they're applied as styles.
+ */
+const DATASET_GRID: React.CSSProperties = {
+  gridTemplateColumns: 'minmax(220px,1fr) 88px 132px 48px',
+}
+const RUN_GRID: React.CSSProperties = {
+  gridTemplateColumns: '140px minmax(160px,1.4fr) minmax(160px,1.4fr) 104px 88px 92px',
+}
 
 // Hydration-safe mounted gate, same pattern as the other overhauled pages.
 const subscribeNoop = () => () => {}
@@ -164,20 +190,13 @@ function NewDatasetDialog({ open, onClose }: { open: boolean; onClose: () => voi
           <DialogTitle>New dataset</DialogTitle>
         </DialogHeader>
         <form onSubmit={(e) => void handleSubmit(e)} className="space-y-3 mt-3">
-          {/* Tab toggle */}
-          <div className="flex gap-1 p-0.5 border border-border rounded-[5px] bg-bg-elev font-mono text-[11px] w-fit">
-            <button
-              type="button"
-              onClick={() => setTab('empty')}
-              className={`px-3 py-1 rounded-[3px] ${tab === 'empty' ? 'bg-text text-bg' : 'text-text-muted'}`}
-            >
+          {/* Source toggle — same pill tabs the boards use, so the dialog
+              reads as part of the same system as the page behind it. */}
+          <div className="flex items-center gap-1">
+            <button type="button" onClick={() => setTab('empty')} aria-pressed={tab === 'empty'} className={tabClass(tab === 'empty')}>
               Empty
             </button>
-            <button
-              type="button"
-              onClick={() => setTab('upload')}
-              className={`px-3 py-1 rounded-[3px] ${tab === 'upload' ? 'bg-text text-bg' : 'text-text-muted'}`}
-            >
+            <button type="button" onClick={() => setTab('upload')} aria-pressed={tab === 'upload'} className={tabClass(tab === 'upload')}>
               Upload file
             </button>
           </div>
@@ -195,7 +214,7 @@ function NewDatasetDialog({ open, onClose }: { open: boolean; onClose: () => voi
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
-                className="w-full h-[68px] border border-dashed border-border rounded-[5px] flex flex-col items-center justify-center gap-1.5 hover:border-border-strong hover:bg-bg-muted transition-colors"
+                className="w-full h-[68px] border border-dashed border-border rounded-lg flex flex-col items-center justify-center gap-1.5 hover:border-border-strong hover:bg-bg-muted transition-colors"
               >
                 <Upload className="h-4 w-4 text-text-faint" />
                 <span className="font-mono text-[11px] text-text-faint">
@@ -214,28 +233,24 @@ function NewDatasetDialog({ open, onClose }: { open: boolean; onClose: () => voi
           )}
 
           <div>
-            <label className="block font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint mb-1">
-              Name
-            </label>
+            <label className="micro-label mb-1 block">Name</label>
             <input
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="e.g. Customer support golden set"
               required
-              className="w-full h-9 px-2 rounded-[5px] border border-border bg-bg font-mono text-[12px] text-text placeholder:text-text-faint focus:outline-none focus:border-border-strong"
+              className={cn(CONTROL, 'w-full px-3 text-[12.5px] text-text placeholder:text-text-faint focus:border-border-strong focus:outline-none')}
             />
           </div>
           <div>
-            <label className="block font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint mb-1">
-              Description (optional)
-            </label>
+            <label className="micro-label mb-1 block">Description (optional)</label>
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               rows={2}
               placeholder="What this dataset covers…"
-              className="w-full px-2 py-2 rounded-[5px] border border-border bg-bg font-mono text-[12px] text-text placeholder:text-text-faint focus:outline-none focus:border-border-strong resize-none"
+              className="w-full resize-none rounded-md border border-border bg-bg-elev px-3 py-2 text-[12.5px] text-text placeholder:text-text-faint focus:border-border-strong focus:outline-none"
             />
           </div>
           {error && <p className="font-mono text-[11.5px] text-bad">{error}</p>}
@@ -243,14 +258,14 @@ function NewDatasetDialog({ open, onClose }: { open: boolean; onClose: () => voi
             <button
               type="button"
               onClick={handleClose}
-              className="font-mono text-[11.5px] px-3 py-[6px] border border-border rounded-[5px] text-text-muted hover:text-text"
+              className="rounded-full border border-border px-3.5 py-2 text-[12.5px] font-medium text-text-muted transition-colors hover:bg-bg-muted hover:text-text"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={isPending || (tab === 'upload' && !parsedItems?.length)}
-              className="font-mono text-[11.5px] px-3 py-[6px] rounded-[5px] bg-text text-bg font-medium hover:opacity-90 disabled:opacity-40"
+              className="rounded-full bg-accent px-3.5 py-2 text-[12.5px] font-semibold text-accent-fg transition-colors hover:bg-accent-strong disabled:opacity-40"
             >
               {isPending ? 'Creating…' : 'Create'}
             </button>
@@ -276,32 +291,31 @@ function DatasetRow({ dataset }: { dataset: Dataset }) {
   return (
     <Link
       href={`/datasets/${dataset.id}`}
-      className="flex items-center px-[16px] py-[12px] border-b border-border last:border-0 hover:bg-bg-muted transition-colors"
+      className={cn(ROW, 'grid items-center gap-3 transition-colors hover:bg-bg-muted')}
+      style={DATASET_GRID}
     >
-      <div className="flex-1 min-w-0">
-        <p className="font-mono text-[13px] text-text font-medium truncate">{dataset.name}</p>
+      <div className="min-w-0">
+        <p className="truncate font-mono text-[12px] text-text">{dataset.name}</p>
         {dataset.description && (
-          <p className="font-mono text-[11px] text-text-faint truncate mt-0.5">
+          <p className="mt-0.5 truncate font-mono text-[11px] text-text-faint">
             {dataset.description}
           </p>
         )}
       </div>
-      <div className="font-mono text-[11.5px] text-text-muted w-[80px] text-right tabular-nums">
-        {dataset.item_count ?? 0} <span className="text-text-faint">items</span>
-      </div>
-      {/* Created column hidden on mobile to keep the row from going
-          horizontal on narrow viewports. */}
-      <div className="hidden sm:block font-mono text-[10.5px] text-text-faint w-[140px] text-right">
-        {formatDate(dataset.created_at)}
-      </div>
-      <button
-        type="button"
-        onClick={handleDelete}
-        className="ml-3 text-text-faint hover:text-bad transition-colors p-1"
-        aria-label="Delete dataset"
-      >
-        <Trash2 className="h-3.5 w-3.5" />
-      </button>
+      <span className="font-mono text-[12px] tabular-nums text-text-muted">
+        {(dataset.item_count ?? 0).toLocaleString('en-US')}
+      </span>
+      <span className="font-mono text-[12px] text-text-muted">{formatDate(dataset.created_at)}</span>
+      <span className="flex justify-end">
+        <button
+          type="button"
+          onClick={handleDelete}
+          className="p-1 text-text-faint transition-colors hover:text-bad"
+          aria-label={`Delete dataset ${dataset.name}`}
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </button>
+      </span>
     </Link>
   )
 }
@@ -328,11 +342,12 @@ interface CombinedRun {
   subName: string
 }
 
-function statusPill(status: string): { cls: string; label: string } {
-  if (status === 'completed') return { cls: 'border-good/30 bg-good/10 text-good', label: 'Completed' }
-  if (status === 'running')   return { cls: 'border-accent-border bg-accent-bg text-accent', label: 'Running' }
-  if (status === 'failed')    return { cls: 'border-bad/30 bg-bad/10 text-bad', label: 'Failed' }
-  return { cls: 'border-border bg-bg-elev text-text-muted', label: status }
+/** Run state → status tint. Mirrors the STATUS lozenge on `D11`. */
+function runTagVariant(status: string): 'good' | 'bad' | 'warn' | 'neutral' {
+  if (status === 'completed') return 'good'
+  if (status === 'running') return 'warn'
+  if (status === 'failed') return 'bad'
+  return 'neutral'
 }
 
 function DatasetRunsView({ datasetsById }: DatasetRunsViewProps) {
@@ -379,9 +394,9 @@ function DatasetRunsView({ datasetsById }: DatasetRunsViewProps) {
 
   if (isLoading) {
     return (
-      <div className="p-[22px] space-y-2">
+      <div className="space-y-2">
         {[1, 2, 3].map((i) => (
-          <div key={i} className="h-12 bg-bg-elev rounded animate-pulse" />
+          <div key={i} className="h-12 animate-pulse rounded-card bg-bg-chip" />
         ))}
       </div>
     )
@@ -389,21 +404,14 @@ function DatasetRunsView({ datasetsById }: DatasetRunsViewProps) {
 
   if (combined.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center h-64 gap-3 text-text-muted">
+      <div className="card-surface rounded-card flex h-64 flex-col items-center justify-center gap-3 text-text-muted">
         <FileText className="h-9 w-9 text-text-faint" />
-        <p className="font-mono text-[13px]">No dataset runs yet.</p>
-        <p className="font-mono text-[11.5px] text-text-faint max-w-[400px] text-center">
+        <p className="text-[13.5px] font-semibold leading-[1.45] text-text">No dataset runs yet.</p>
+        <p className="max-w-[420px] text-center text-[12.5px] leading-[1.6] text-text-muted">
           Every time an evaluator or experiment runs against one of your datasets, it shows up here as a row.
         </p>
       </div>
     )
-  }
-
-  const rowGridStyle: React.CSSProperties = {
-    display: 'grid',
-    gridTemplateColumns: '160px 1.6fr 1.2fr 110px 90px 90px',
-    gap: 12,
-    alignItems: 'center',
   }
 
   function fmtScore(s: number | null): string {
@@ -420,58 +428,62 @@ function DatasetRunsView({ datasetsById }: DatasetRunsViewProps) {
   }
 
   return (
-    <div>
-      <div
-        className="px-[22px] py-[8px] bg-bg-muted border-b border-border font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint"
-        style={rowGridStyle}
-      >
-        <span>Started</span>
-        <span>Dataset</span>
-        <span>Producer</span>
-        <span>Status</span>
-        <span>Avg score</span>
-        <span className="text-right">Cost</span>
-      </div>
-      {combined.map((r) => {
-        const ds = r.datasetId ? datasetsById.get(r.datasetId) : null
-        const pill = statusPill(r.status)
-        return (
-          <div
-            key={`${r.kind}-${r.id}`}
-            className="px-[22px] py-[10px] border-b border-border"
-            style={rowGridStyle}
-          >
-            <span className="font-mono text-[11px] text-text-muted tabular-nums">
-              {fmtDate(r.startedAt)}
-            </span>
-            <div className="min-w-0">
-              <div className="text-[12.5px] text-text truncate">{ds?.name ?? 'Unknown dataset'}</div>
-              <div className="font-mono text-[10.5px] text-text-faint">
-                {r.itemsCompleted}/{r.itemsTotal} items
-              </div>
+    /* The run grid is wider than a narrow viewport, so the card scrolls its
+       own table sideways rather than the page. */
+    <TableCard>
+      <div className="overflow-x-auto">
+        <div className="min-w-[840px]">
+          <TableHead>
+            <div className="grid items-center gap-3" style={RUN_GRID}>
+              <Th>Started</Th>
+              <Th>Dataset</Th>
+              <Th>Producer</Th>
+              <Th>Status</Th>
+              <Th>Avg score</Th>
+              <Th className="text-right">Cost</Th>
             </div>
-            <div className="min-w-0">
-              <div className="text-[12px] text-text-muted truncate">
-                <span className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mr-1.5">
-                  {r.kind === 'eval' ? 'EVAL' : 'EXPERIMENT'}
+          </TableHead>
+          {combined.map((r) => {
+            const ds = r.datasetId ? datasetsById.get(r.datasetId) : null
+            return (
+              <div
+                key={`${r.kind}-${r.id}`}
+                className={cn(ROW, 'grid items-center gap-3')}
+                style={RUN_GRID}
+              >
+                <span className="font-mono text-[12px] tabular-nums text-text-muted">
+                  {fmtDate(r.startedAt)}
                 </span>
-                {r.name}
+                <div className="min-w-0">
+                  <div className="truncate font-mono text-[12px] text-text">
+                    {ds?.name ?? 'Unknown dataset'}
+                  </div>
+                  <div className="font-mono text-[10.5px] text-text-faint">
+                    {r.itemsCompleted}/{r.itemsTotal} items
+                  </div>
+                </div>
+                <div className="min-w-0">
+                  <div className="truncate font-mono text-[12px] text-text-muted">
+                    <span className="mr-1.5 font-mono text-[10px] uppercase tracking-[0.1em] text-text-faint">
+                      {r.kind === 'eval' ? 'Eval' : 'Experiment'}
+                    </span>
+                    {r.name}
+                  </div>
+                  <div className="truncate font-mono text-[10.5px] text-text-faint">{r.subName}</div>
+                </div>
+                <span>
+                  <StatusPill variant={runTagVariant(r.status)}>{r.status}</StatusPill>
+                </span>
+                <span className="font-mono text-[12px] tabular-nums text-text">{fmtScore(r.score)}</span>
+                <span className="text-right font-mono text-[12px] tabular-nums text-text-muted">
+                  {fmtCost(r.costUsd)}
+                </span>
               </div>
-              <div className="font-mono text-[10.5px] text-text-faint truncate">{r.subName}</div>
-            </div>
-            <span>
-              <span className={cn('inline-flex font-mono text-[10px] px-[6px] py-[1.5px] rounded-[3px] border uppercase tracking-[0.04em]', pill.cls)}>
-                {pill.label}
-              </span>
-            </span>
-            <span className="font-mono text-[12px] text-text tabular-nums">{fmtScore(r.score)}</span>
-            <span className="font-mono text-[11px] text-text-muted text-right tabular-nums">
-              {fmtCost(r.costUsd)}
-            </span>
-          </div>
-        )
-      })}
-    </div>
+            )
+          })}
+        </div>
+      </div>
+    </TableCard>
   )
 }
 
@@ -576,8 +588,8 @@ export function DatasetsClient() {
   }, [exportOpen])
 
   return (
-    <div className="-mx-4 -my-4 md:-mx-8 md:-my-7 flex flex-col min-h-screen">
-      <div className="sticky top-0 z-20 bg-bg">
+    <div>
+      <div className={TOPBAR_BLEED}>
         <Topbar
           crumbs={[{ label: 'Datasets' }]}
           right={
@@ -595,7 +607,7 @@ export function DatasetsClient() {
               <button
                 type="button"
                 onClick={() => setNewOpen(true)}
-                className="font-mono text-[11.5px] px-3 py-[6px] rounded-[5px] bg-text text-bg font-medium hover:opacity-90 flex items-center gap-1.5"
+                className="inline-flex items-center gap-1.5 rounded-full bg-accent px-3.5 py-2 text-[12.5px] font-semibold text-accent-fg transition-colors hover:bg-accent-strong"
               >
                 <Plus className="h-3.5 w-3.5" />
                 New dataset
@@ -603,192 +615,217 @@ export function DatasetsClient() {
             </div>
           }
         />
-        <h1 className="sr-only">Datasets</h1>
       </div>
+      <h1 className="sr-only">Datasets</h1>
 
-      {/* Stat strip — counts derived from list. Wraps to 2-col on mobile. */}
-      <div className="shrink-0 border-b border-border">
-        <div className="grid grid-cols-2 md:grid-cols-3">
-          {[
-            { label: 'Datasets',     value: String(list.length) },
-            { label: 'Total items',  value: totalItems.toLocaleString() },
-            { label: 'Last created', value: lastCreatedDate ? formatDate(lastCreatedDate) : '—' },
-          ].map((s, i) => (
-            <div
-              key={s.label}
-              className={cn(
-                'px-[18px] py-[14px] border-border',
-                i === 0 && 'border-r',
-                i === 1 && 'border-b md:border-b-0 md:border-r',
-              )}
+      <Board>
+        {/* Tab strip: Datasets (definitions) vs Runs (eval+experiment timeline) */}
+        <div className="flex items-center gap-1">
+          {(['datasets', 'runs'] as const).map((t) => (
+            <button
+              key={t}
+              type="button"
+              onClick={() => setTab(t)}
+              aria-pressed={tab === t}
+              className={tabClass(tab === t)}
             >
-              <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-2">{s.label}</div>
-              <span className="text-[22px] sm:text-[24px] font-medium leading-none tracking-[-0.6px] text-text">
-                {mounted ? s.value : ' '}
-              </span>
-            </div>
+              {t === 'datasets' ? 'Datasets' : 'Runs'}
+            </button>
           ))}
         </div>
-      </div>
 
-      {/* Tab strip: Datasets (definitions) vs Runs (eval+experiment timeline) */}
-      <div className="shrink-0 border-b border-border bg-bg flex items-center gap-1 px-[22px]">
-        {(['datasets', 'runs'] as const).map((t) => (
-          <button
-            key={t}
-            type="button"
-            onClick={() => setTab(t)}
-            className={cn(
-              'font-mono text-[11px] uppercase tracking-[0.06em] px-3 py-2.5 transition-colors relative',
-              tab === t ? 'text-text' : 'text-text-faint hover:text-text-muted',
-            )}
-          >
-            {t === 'datasets' ? 'Datasets' : 'Runs'}
-            {tab === t && (
-              <span className="absolute bottom-[-1px] left-3 right-3 h-[2px] bg-accent" />
-            )}
-          </button>
-        ))}
-      </div>
-
-      {/* Info banner with docs link */}
-      <div className="px-[22px] py-[12px] bg-bg-muted border-b border-border flex items-center gap-2 font-mono text-[11px] text-text-muted flex-wrap">
-        <Database className="h-3.5 w-3.5 shrink-0" />
-        <span>
-          {tab === 'datasets'
-            ? 'Datasets are reusable test inputs for Evals. Import production requests or add items manually.'
-            : 'Every evaluator run and experiment that targeted one of your datasets, in one timeline.'}
-        </span>
-        <Link
-          href="/docs/features/datasets"
-          className="text-text hover:opacity-80 transition-opacity ml-auto"
-        >
-          How datasets work →
-        </Link>
-      </div>
-
-      {tab === 'runs' ? (
-        <DatasetRunsView datasetsById={datasetsById} />
-      ) : (
-      <>
-      {/* Search + Export bar */}
-      <div className="px-[22px] py-[10px] border-b border-border flex items-center gap-2 flex-wrap">
-        <div className="relative max-w-md flex-1 min-w-[180px]">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-text-faint" />
-          <input
-            value={searchInput}
-            onChange={(e) => setSearchInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Escape') {
-                setSearchInput('')
-                updateQuery({ q: null })
-              }
-            }}
-            placeholder="Search by name or description…"
-            className="w-full pl-8 pr-3 py-1.5 font-mono text-[12px] bg-bg-elev border border-border rounded-[6px] text-text placeholder:text-text-faint focus:outline-none focus:border-accent"
-          />
-        </div>
-        {search && (
-          <button
-            type="button"
-            onClick={() => { setSearchInput(''); updateQuery({ q: null }) }}
-            className="font-mono text-[11px] text-text-faint hover:text-text transition-colors"
-          >
-            Clear
-          </button>
-        )}
-        <span className="flex-1" />
-        <div ref={exportRef} className="relative">
-          <button
-            type="button"
-            onClick={() => setExportOpen((v) => !v)}
-            disabled={filtered.length === 0}
-            className="font-mono text-[11px] text-text-muted hover:text-text border border-border rounded px-2.5 py-1 transition-colors disabled:opacity-40"
-          >
-            Export ▾
-          </button>
-          {exportOpen && (
-            <div className="absolute right-0 top-full mt-1 z-20 bg-bg-elev border border-border rounded-md shadow-lg py-1 min-w-[110px]">
-              <button
-                type="button"
-                onClick={() => { setExportOpen(false); exportCsv() }}
-                className="block w-full px-3 py-1.5 text-left font-mono text-[11px] uppercase tracking-[0.04em] text-text-muted hover:text-text hover:bg-bg transition-colors"
-              >CSV</button>
-              <button
-                type="button"
-                onClick={() => { setExportOpen(false); exportJson() }}
-                className="block w-full px-3 py-1.5 text-left font-mono text-[11px] uppercase tracking-[0.04em] text-text-muted hover:text-text hover:bg-bg transition-colors"
-              >JSON</button>
+        {tab === 'runs' ? (
+          <>
+            <div className="card-surface rounded-card flex flex-wrap items-center gap-2 px-5 py-3.5 font-mono text-[11px] text-text-muted">
+              <Database className="h-3.5 w-3.5 shrink-0" />
+              <span>
+                Every evaluator run and experiment that targeted one of your datasets, in one timeline.
+              </span>
+              <Link
+                href="/docs/features/datasets"
+                className="ml-auto text-text transition-opacity hover:opacity-80"
+              >
+                How datasets work →
+              </Link>
             </div>
-          )}
-        </div>
-        <span className="font-mono text-[11px] text-text-faint">
-          {mounted ? (filtered.length === list.length ? `${list.length} datasets` : `${filtered.length} of ${list.length}`) : ' '}
-        </span>
-      </div>
-
-      <div>
-        {datasets.isLoading ? (
-          <div className="p-[22px] space-y-2">
-            {[1, 2].map((i) => <div key={i} className="h-14 bg-bg-elev rounded animate-pulse" />)}
-          </div>
-        ) : datasets.isError ? (
-          // Don't fall through to the "create your first dataset" empty state on
-          // a load failure — a workspace with existing datasets would look brand-new.
-          <div className="flex flex-col items-center gap-3 text-text-muted py-20 px-6 text-center">
-            <p className="text-[13px] text-accent">Couldn&apos;t load datasets.</p>
-            <button
-              type="button"
-              onClick={() => void datasets.refetch()}
-              className="font-mono text-[11.5px] px-2.5 py-1 border border-border rounded text-text-muted hover:text-text hover:border-border-strong transition-colors"
-            >
-              Retry
-            </button>
-          </div>
-        ) : list.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-64 gap-3 text-text-muted">
-            <FileText className="h-10 w-10 text-text-faint" />
-            <p className="font-mono text-[13px]">No datasets yet.</p>
-            <button
-              type="button"
-              onClick={() => setNewOpen(true)}
-              className="font-mono text-[11.5px] px-3 py-[6px] rounded-[5px] bg-text text-bg font-medium hover:opacity-90 flex items-center gap-1.5"
-            >
-              <Plus className="h-3.5 w-3.5" />
-              Create your first dataset
-            </button>
-            <Link
-              href="/docs/features/datasets"
-              className="font-mono text-[11.5px] mt-1 px-2.5 py-1 rounded border border-border text-text-muted hover:text-text hover:border-border-strong transition-colors"
-            >
-              How datasets work →
-            </Link>
-          </div>
-        ) : filtered.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-40 gap-3 text-text-muted">
-            <p className="font-mono text-[12.5px]">No datasets match the current search.</p>
-            <button
-              type="button"
-              onClick={() => { setSearchInput(''); updateQuery({ q: null }) }}
-              className="font-mono text-[11px] text-text underline underline-offset-2 hover:no-underline"
-            >
-              Clear search
-            </button>
-          </div>
+            <DatasetRunsView datasetsById={datasetsById} />
+          </>
         ) : (
           <>
-            <div className="flex items-center px-[16px] py-[8px] bg-bg-muted border-b border-border font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint">
-              <span className="flex-1">Name</span>
-              <span className="w-[80px] text-right">Items</span>
-              <span className="hidden sm:block w-[140px] text-right">Created</span>
-              <span className="w-[40px]" />
+            {/* Filter bar — the search field runs the width of the row, with
+                the export control and the result count parked at the end the
+                way the boards show it. */}
+            <FilterBar>
+              <div className={cn(CONTROL, 'flex min-w-[220px] flex-1 items-center gap-2 px-3')}>
+                <Search className="h-[13px] w-[13px] shrink-0 text-text-faint" />
+                <input
+                  value={searchInput}
+                  onChange={(e) => setSearchInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Escape') {
+                      setSearchInput('')
+                      updateQuery({ q: null })
+                    }
+                  }}
+                  placeholder="Search datasets"
+                  aria-label="Search datasets by name or description"
+                  className="w-full bg-transparent text-[12.5px] leading-[18px] text-text placeholder:text-text-faint focus:outline-none"
+                />
+                {search && (
+                  <button
+                    type="button"
+                    onClick={() => { setSearchInput(''); updateQuery({ q: null }) }}
+                    className="shrink-0 font-mono text-[11px] text-text-faint transition-colors hover:text-text"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+              <div ref={exportRef} className="relative">
+                <button
+                  type="button"
+                  onClick={() => setExportOpen((v) => !v)}
+                  disabled={filtered.length === 0}
+                  aria-expanded={exportOpen}
+                  className={cn(
+                    CONTROL,
+                    CONTROL_TEXT,
+                    'inline-flex items-center gap-1.5 pl-3 pr-2.5 text-text-muted transition-colors hover:text-text disabled:opacity-40',
+                  )}
+                >
+                  Export
+                  <span className="text-[10px] text-text-faint">▾</span>
+                </button>
+                {exportOpen && (
+                  <div className="card-surface absolute right-0 top-full z-20 mt-1 min-w-[120px] rounded-lg py-1">
+                    <button
+                      type="button"
+                      onClick={() => { setExportOpen(false); exportCsv() }}
+                      className="block w-full px-3 py-1.5 text-left font-mono text-[11px] uppercase tracking-[0.1em] text-text-muted transition-colors hover:bg-bg-muted hover:text-text"
+                    >CSV</button>
+                    <button
+                      type="button"
+                      onClick={() => { setExportOpen(false); exportJson() }}
+                      className="block w-full px-3 py-1.5 text-left font-mono text-[11px] uppercase tracking-[0.1em] text-text-muted transition-colors hover:bg-bg-muted hover:text-text"
+                    >JSON</button>
+                  </div>
+                )}
+              </div>
+              <span className="font-mono text-[11px] text-text-faint">
+                {mounted ? (filtered.length === list.length ? `${list.length} datasets` : `${filtered.length} of ${list.length}`) : ' '}
+              </span>
+            </FilterBar>
+
+            {/* Stat strip — every figure is derived from the dataset list the
+                page already holds, so the row costs no extra round trip. */}
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
+              <StatCard
+                label="Datasets"
+                value={mounted ? list.length : ' '}
+                foot="reusable test inputs"
+              />
+              <StatCard
+                label="Items"
+                value={mounted ? totalItems.toLocaleString('en-US') : ' '}
+                foot="across all datasets"
+              />
+              {/* The tile figure is normally a number, so `StatCard` sets
+                  tabular figures. A date is not, and the fixed advance stretches
+                  the space around its comma, so this one opts back out. */}
+              <StatCard
+                label="Last created"
+                value={
+                  <span className="[font-variant-numeric:normal]">
+                    {mounted ? (lastCreatedDate ? formatDate(lastCreatedDate) : '—') : ' '}
+                  </span>
+                }
+                foot={list.length > 0 ? 'newest in the workspace' : 'nothing yet'}
+              />
             </div>
-            {filtered.map((d) => <DatasetRow key={d.id} dataset={d} />)}
+
+            {/* Explainer with docs link */}
+            <div className="card-surface rounded-card flex flex-wrap items-center gap-2 px-5 py-3.5 font-mono text-[11px] text-text-muted">
+              <Database className="h-3.5 w-3.5 shrink-0" />
+              <span>
+                Datasets are reusable test inputs for Evals. Import production requests or add items manually.
+              </span>
+              <Link
+                href="/docs/features/datasets"
+                className="ml-auto text-text transition-opacity hover:opacity-80"
+              >
+                How datasets work →
+              </Link>
+            </div>
+
+            {datasets.isLoading ? (
+              <div className="space-y-2">
+                {[1, 2].map((i) => <div key={i} className="h-14 animate-pulse rounded-card bg-bg-chip" />)}
+              </div>
+            ) : datasets.isError ? (
+              // Don't fall through to the "create your first dataset" empty state on
+              // a load failure — a workspace with existing datasets would look brand-new.
+              <div className="card-surface rounded-card flex flex-col items-center gap-3 px-6 py-20 text-center text-text-muted">
+                <p className="text-[13px] text-accent">Couldn&apos;t load datasets.</p>
+                <button
+                  type="button"
+                  onClick={() => void datasets.refetch()}
+                  className="rounded-full border border-border px-3.5 py-2 text-[12.5px] font-medium text-text-muted transition-colors hover:bg-bg-muted hover:text-text"
+                >
+                  Retry
+                </button>
+              </div>
+            ) : list.length === 0 ? (
+              <div className="card-surface rounded-card flex flex-col items-center justify-center gap-3 px-6 py-16 text-text-muted">
+                <FileText className="h-9 w-9 text-text-faint" />
+                <p className="text-[13.5px] font-semibold leading-[1.45] text-text">No datasets yet.</p>
+                <button
+                  type="button"
+                  onClick={() => setNewOpen(true)}
+                  className="inline-flex items-center gap-1.5 rounded-full bg-accent px-3.5 py-2 text-[12.5px] font-semibold text-accent-fg transition-colors hover:bg-accent-strong"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  Create your first dataset
+                </button>
+                <Link
+                  href="/docs/features/datasets"
+                  className="mt-1 font-mono text-[11px] text-text-muted underline underline-offset-2 hover:text-text"
+                >
+                  How datasets work →
+                </Link>
+              </div>
+            ) : filtered.length === 0 ? (
+              <div className="card-surface rounded-card flex h-40 flex-col items-center justify-center gap-3 text-text-muted">
+                <p className="text-[12.5px]">No datasets match the current search.</p>
+                <button
+                  type="button"
+                  onClick={() => { setSearchInput(''); updateQuery({ q: null }) }}
+                  className="font-mono text-[11px] text-text underline underline-offset-2 hover:no-underline"
+                >
+                  Clear search
+                </button>
+              </div>
+            ) : (
+              /* The row grid is wider than a narrow viewport, so the card
+                 scrolls its own table sideways rather than the page. */
+              <TableCard>
+                <div className="overflow-x-auto">
+                  <div className="min-w-[620px]">
+                    <TableHead>
+                      <div className="grid items-center gap-3" style={DATASET_GRID}>
+                        <Th>Dataset</Th>
+                        <Th>Items</Th>
+                        <Th>Created</Th>
+                        <Th><span className="sr-only">Actions</span></Th>
+                      </div>
+                    </TableHead>
+                    {filtered.map((d) => <DatasetRow key={d.id} dataset={d} />)}
+                  </div>
+                </div>
+              </TableCard>
+            )}
           </>
         )}
-      </div>
-      </>
-      )}
+      </Board>
 
       <NewDatasetDialog open={newOpen} onClose={() => setNewOpen(false)} />
     </div>

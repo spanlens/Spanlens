@@ -1,12 +1,14 @@
+import { openGraphFor } from '@/lib/page-metadata'
 import { CodeBlock } from '../_components/code-block'
 import { SelfHostArchitectureDiagram } from '../_components/diagrams'
 import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
 export const metadata = {
   alternates: { canonical: '/docs/self-host' },
+  openGraph: openGraphFor('/docs/self-host'),
   title: 'Self-hosting · Spanlens Docs',
   description:
-    'Run the full Spanlens stack (dashboard + proxy) on your own infra with a Supabase project.',
+    'Run the full Spanlens stack, dashboard and proxy, on your own infrastructure with one Docker command and a Supabase project. Your request data stays put.',
 }
 
 export default function SelfHostDocs() {
@@ -34,7 +36,8 @@ export default function SelfHostDocs() {
             supabase.com
           </a>{' '}
           is enough to start. <strong>Plain Postgres is not supported</strong>, the server
-          uses <code>@supabase/supabase-js</code> directly.
+          uses <code>@supabase/supabase-js</code> directly. Everything Spanlens stores lives in
+          this one database, request logs included.
         </li>
         <li>
           <strong>A 32-byte encryption key.</strong> Used for AES-256-GCM encryption of provider
@@ -73,7 +76,8 @@ export default function SelfHostDocs() {
         >
           supabase/init.sql
         </a>
-        , and click <strong>Run</strong>. No CLI needed.
+        , and click <strong>Run</strong>. No CLI needed. It creates every table the stack uses,
+        the <code>requests</code> log included.
       </p>
       <p className="text-sm text-muted-foreground">
         Prefer the terminal? Use psql instead:
@@ -91,13 +95,12 @@ SUPABASE_SERVICE_ROLE_KEY=eyJ...          # keep server-side only
 ENCRYPTION_KEY=$(openssl rand -base64 32) # back this up, see below
 CRON_SECRET=$(openssl rand -hex 16)
 
-# ClickHouse, request logs are stored here, NOT Supabase
-# The bundled docker-compose ships a clickhouse container; these defaults
-# match it. Point at ClickHouse Cloud (or any managed ClickHouse) for prod.
-CLICKHOUSE_URL=http://clickhouse:8123
-CLICKHOUSE_USER=spanlens
-CLICKHOUSE_PASSWORD=$(openssl rand -hex 16)
-CLICKHOUSE_DB=spanlens
+# Pooled Postgres connection, used only for the requests log.
+# Connect > Direct > Transaction pooler. Port 6543, not 5432. Copy the host
+# from that dialog: the shared pooler hostname carries a numbered prefix
+# that the region does not tell you. It is a full database credential, so
+# never log it.
+SUPABASE_DB_POOLER_URL=postgresql://postgres.<ref>:<password>@<pooler-host>:6543/postgres
 
 # Optional, for invite emails
 # WEB_URL=https://your-domain.com
@@ -119,9 +122,10 @@ pnpm check:env
 # Or one-shot via npx, no clone:
 npx -y tsx https://raw.githubusercontent.com/spanlens/Spanlens/main/apps/server/scripts/check-env.ts`}</CodeBlock>
       <p className="text-sm text-muted-foreground">
-        Exit 0 = all required vars present + valid + Supabase / ClickHouse reachable. Exit 1 =
-        something is wrong, with the exact fix command in the output. <code>--json</code> for
-        CI pipelines, <code>--quiet</code> to show only warnings and errors.
+        Exit 0 means every required variable is present and valid, and that both the Supabase
+        HTTP API and the Postgres pooler answered. Exit 1 means something is wrong, with the
+        exact fix command in the output. <code>--json</code> for CI pipelines,{' '}
+        <code>--quiet</code> to show only warnings and errors.
       </p>
 
       <h4>4. Start</h4>
@@ -130,27 +134,14 @@ docker compose up -d`}</CodeBlock>
       <ul>
         <li>Dashboard: <code>http://localhost:3000</code></li>
         <li>API / proxy: <code>http://localhost:3001</code></li>
-        <li>ClickHouse (analytics, internal): <code>http://localhost:8123</code></li>
       </ul>
       <p className="text-sm text-muted-foreground">
-        Three containers come up: <code>web</code>, <code>server</code>, and{' '}
-        <code>clickhouse</code>. The server waits for ClickHouse&apos;s healthcheck before
-        accepting traffic. The web container reads <code>NEXT_PUBLIC_*</code> from env at
-        startup and patches them into the pre-built bundle automatically, no rebuild needed.
+        Two containers come up, <code>web</code> and <code>server</code>. There is no database
+        container. Postgres is your Supabase project, reached over the network, which is also
+        why the compose file declares no volumes. The web container waits for the
+        server&apos;s healthcheck, then reads <code>NEXT_PUBLIC_*</code> from env at startup and
+        patches them into the pre-built bundle, so no rebuild is needed.
       </p>
-
-      <h4>5. Apply the ClickHouse schema</h4>
-      <p>
-        The <code>requests</code> table needs to exist before the server can write logs. Run
-        the migration script once after the ClickHouse container is healthy:
-      </p>
-      <CodeBlock language="bash">{`# Clone or fetch the migrations folder
-curl -L https://github.com/spanlens/Spanlens/archive/main.tar.gz | tar xz --strip-components=1 spanlens-main/clickhouse
-
-# Apply (idempotent, re-running is safe)
-CLICKHOUSE_URL=http://localhost:8123 \\
-CLICKHOUSE_USER=spanlens CLICKHOUSE_PASSWORD=<password> CLICKHOUSE_DB=spanlens \\
-  npx -y tsx clickhouse/apply.ts`}</CodeBlock>
 
       <h3>Option B, server only</h3>
       <p>
@@ -170,6 +161,12 @@ CLICKHOUSE_USER=spanlens CLICKHOUSE_PASSWORD=<password> CLICKHOUSE_DB=spanlens \
         <li><strong>anon public key</strong> → <code>SUPABASE_ANON_KEY</code></li>
         <li><strong>service_role secret key</strong> → <code>SUPABASE_SERVICE_ROLE_KEY</code> (server-side only)</li>
       </ul>
+      <p>
+        Then open <strong>Project Settings → Database → Connection string</strong> and copy the{' '}
+        <strong>Transaction pooler</strong> string (port 6543) into{' '}
+        <code>SUPABASE_DB_POOLER_URL</code>. The server reads the request log over that
+        connection.
+      </p>
 
       <h4>2. Apply the schema</h4>
       <p>
@@ -184,41 +181,13 @@ CLICKHOUSE_USER=spanlens CLICKHOUSE_PASSWORD=<password> CLICKHOUSE_DB=spanlens \
         , run.
       </p>
 
-      <h4>3. Provision ClickHouse</h4>
-      <p>
-        Request logs live in ClickHouse, not Supabase. Two options:
-      </p>
-      <ul>
-        <li>
-          <strong>ClickHouse Cloud</strong> (recommended for production), sign up at{' '}
-          <a href="https://clickhouse.cloud" target="_blank" rel="noopener noreferrer">
-            clickhouse.cloud
-          </a>
-          , create a service, copy the HTTPS endpoint + credentials.
-        </li>
-        <li>
-          <strong>Self-hosted ClickHouse</strong>, run{' '}
-          <code>clickhouse/clickhouse-server:24.10-alpine</code> with persistent volumes (see
-          the bundled <code>docker-compose.yml</code> for the canonical setup).
-        </li>
-      </ul>
-      <p>Apply the schema before starting the server:</p>
-      <CodeBlock language="bash">{`curl -L https://github.com/spanlens/Spanlens/archive/main.tar.gz | tar xz --strip-components=1 spanlens-main/clickhouse
-
-CLICKHOUSE_URL=https://<host>:8443 \\
-CLICKHOUSE_USER=default CLICKHOUSE_PASSWORD=<password> CLICKHOUSE_DB=spanlens \\
-  npx -y tsx clickhouse/apply.ts`}</CodeBlock>
-
-      <h4>4. Run the server</h4>
+      <h4>3. Run the server</h4>
       <CodeBlock language="bash">{`docker run -d --name spanlens-server \\
   -p 3001:3001 \\
   -e SUPABASE_URL="https://<ref>.supabase.co" \\
   -e SUPABASE_ANON_KEY="eyJ..." \\
   -e SUPABASE_SERVICE_ROLE_KEY="eyJ..." \\
-  -e CLICKHOUSE_URL="https://<host>:8443" \\
-  -e CLICKHOUSE_USER="default" \\
-  -e CLICKHOUSE_PASSWORD="<password>" \\
-  -e CLICKHOUSE_DB="spanlens" \\
+  -e SUPABASE_DB_POOLER_URL="postgresql://postgres.<ref>:<password>@<pooler-host>:6543/postgres" \\
   -e ENCRYPTION_KEY="$(openssl rand -base64 32)" \\
   -e CRON_SECRET="$(openssl rand -hex 16)" \\
   ghcr.io/spanlens/spanlens-server:latest`}</CodeBlock>
@@ -227,7 +196,7 @@ CLICKHOUSE_USER=default CLICKHOUSE_PASSWORD=<password> CLICKHOUSE_DB=spanlens \\
 
       <h4>4. Point your SDK at the self-hosted proxy</h4>
       <p>
-        <strong>Option 1 — CLI wizard</strong> (automates the step below):
+        <strong>Option 1, the CLI wizard</strong> (automates the step below):
       </p>
       <CodeBlock language="bash">{`npx @spanlens/cli@latest init --server-url https://spanlens.yourcompany.com`}</CodeBlock>
       <p className="text-sm text-muted-foreground">
@@ -236,7 +205,7 @@ CLICKHOUSE_USER=default CLICKHOUSE_PASSWORD=<password> CLICKHOUSE_DB=spanlens \\
         <code>SPANLENS_BASE_URL</code> to <code>.env.local</code> automatically.
       </p>
       <p>
-        <strong>Option 2 — manual</strong>:
+        <strong>Option 2, by hand</strong>:
       </p>
       <CodeBlock language="ts">{`import { createOpenAI } from '@spanlens/sdk/openai'
 
@@ -270,28 +239,16 @@ const openai = createOpenAI({
             <td>Anon key, used for RLS-protected reads from dashboard queries</td>
           </tr>
           <tr>
-            <td><code>CLICKHOUSE_URL</code></td>
+            <td><code>SUPABASE_DB_POOLER_URL</code></td>
             <td>Yes</td>
             <td>
-              HTTPS endpoint of your ClickHouse cluster (e.g.{' '}
-              <code>https://&lt;host&gt;:8443</code> for Cloud, or{' '}
-              <code>http://clickhouse:8123</code> for the bundled container).
+              Pooled connection string for the <code>requests</code> table. Use the transaction
+              pooler on port <strong>6543</strong>, not the direct port 5432. Session mode pins
+              one backend per client, and a horizontally scaled server runs out of those
+              quickly. Treat the string as a full database credential. See{' '}
+              <a href="#pooler-string">picking the right pooler string</a> if it will not
+              connect.
             </td>
-          </tr>
-          <tr>
-            <td><code>CLICKHOUSE_USER</code></td>
-            <td>Yes</td>
-            <td>ClickHouse user (default <code>default</code> for Cloud, <code>spanlens</code> for the bundled container)</td>
-          </tr>
-          <tr>
-            <td><code>CLICKHOUSE_PASSWORD</code></td>
-            <td>Yes</td>
-            <td>ClickHouse password</td>
-          </tr>
-          <tr>
-            <td><code>CLICKHOUSE_DB</code></td>
-            <td>Yes</td>
-            <td>Database name. Default <code>spanlens</code>. The <code>requests</code> table lives here.</td>
           </tr>
           <tr>
             <td><code>ENCRYPTION_KEY</code></td>
@@ -319,6 +276,23 @@ const openai = createOpenAI({
             </td>
           </tr>
           <tr>
+            <td><code>PG_POOL_MAX</code></td>
+            <td>No</td>
+            <td>
+              Connections held per server instance, default 2. Raising it multiplies across
+              instances instead of adding throughput, so leave it alone unless you run one
+              server of a fixed size.
+            </td>
+          </tr>
+          <tr>
+            <td><code>PG_STATEMENT_TIMEOUT_MS</code></td>
+            <td>No</td>
+            <td>
+              Server-side statement timeout, default 60000. Caps a runaway dashboard query so
+              it cannot starve the proxy&apos;s auth path, which shares the database.
+            </td>
+          </tr>
+          <tr>
             <td><code>RESEND_API_KEY</code></td>
             <td>No</td>
             <td>
@@ -343,6 +317,78 @@ const openai = createOpenAI({
         </tbody>
       </table>
 
+      <h3 id="pooler-string">Picking the right pooler string</h3>
+      <p>
+        Supabase offers three connection strings and only one of them suits a serverless or
+        containerised deployment. The Connect dialog shows the others first, so this is worth
+        getting right before you debug anything else.
+      </p>
+      <p>
+        Open <strong>Connect</strong>, choose <strong>Direct</strong>, select{' '}
+        <strong>Transaction pooler</strong>, and switch on <strong>Use IPv4 connection</strong>.
+        The result looks like this:
+      </p>
+      <CodeBlock language="bash">{`postgresql://postgres.<project-ref>:<password>@aws-<n>-<region>.pooler.supabase.com:6543/postgres`}</CodeBlock>
+      <p>
+        Two details are easy to lose. The <strong>dedicated</strong> pooler that the dialog shows
+        by default resolves to an AAAA record and nothing else, so any host without outbound IPv6
+        fails at DNS. Vercel functions are in that category. And the numbered prefix on the shared
+        pooler hostname is not derived from the region, so it has to be copied rather than
+        guessed.
+      </p>
+      <p>
+        The username and the host also travel together: the shared pooler expects{' '}
+        <code>postgres.&lt;project-ref&gt;</code>, while the dedicated one expects a bare{' '}
+        <code>postgres</code>. Taking one from each is rejected on sight.
+      </p>
+      <p>
+        When it does not connect, <code>GET /health/deep</code> reports{' '}
+        <code>postgresPool.latencyMs</code>, and that number identifies the cause on its own. A
+        rejection that takes hundreds of milliseconds reached the database and was turned away, so
+        the problem is the credential or the tenant. One that returns in a few milliseconds never
+        left the machine, so the problem is the hostname.
+      </p>
+      <table>
+        <thead>
+          <tr>
+            <th>Latency</th>
+            <th>Meaning</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Under ~20ms</td>
+            <td>
+              DNS did not resolve. Either the hostname is mistyped, or it is the IPv6-only
+              dedicated pooler on a host without IPv6.
+            </td>
+          </tr>
+          <tr>
+            <td>~10ms, with a tenant error</td>
+            <td>
+              Host is right but the username lost its <code>.&lt;project-ref&gt;</code> suffix, so
+              the pooler cannot tell which project you want.
+            </td>
+          </tr>
+          <tr>
+            <td>~500ms, tenant not found</td>
+            <td>Wrong numbered prefix in the hostname. The request arrived at a real pooler that has no such tenant.</td>
+          </tr>
+          <tr>
+            <td>~500ms, password authentication failed</td>
+            <td>Host and username are right; the password is wrong or was rotated.</td>
+          </tr>
+          <tr>
+            <td>Steady, matching your region round trip</td>
+            <td>Working.</td>
+          </tr>
+        </tbody>
+      </table>
+      <p>
+        On a managed platform, remember that changing an environment variable does not affect
+        deployments already running. Redeploy, then re-check.
+      </p>
+
       <h2 id="upgrading">Upgrading</h2>
       <CodeBlock language="bash">{`# Pull the latest images and restart
 docker compose pull && docker compose up -d
@@ -356,11 +402,36 @@ docker compose pull && docker compose up -d
       </p>
       <p>
         <strong>Supported architectures.</strong> Both images are published as
-        multi-arch manifests for <code>linux/amd64</code> and <code>linux/arm64</code>{' '}
-       , Docker pulls the right variant for your host automatically. M1 / M2 / M3
+        multi-arch manifests for <code>linux/amd64</code> and <code>linux/arm64</code>, so
+        Docker pulls the right variant for your host automatically. M1 / M2 / M3
         Macs and AWS Graviton instances run the native ARM binary; x86 hosts run
         the amd64 binary. No platform flag needed.
       </p>
+
+      <h3 id="upgrade-from-clickhouse">Upgrading a stack that ran a ClickHouse container</h3>
+      <p>
+        Deployments pulled before August 2026 ran a third container and kept the request log
+        inside it. Current releases keep <code>requests</code> in the same Postgres database as
+        everything else. To move an existing stack across:
+      </p>
+      <ol>
+        <li>Re-run <code>init.sql</code> so the <code>requests</code> table exists in Postgres.</li>
+        <li>
+          Drop <code>CLICKHOUSE_URL</code>, <code>CLICKHOUSE_USER</code>,{' '}
+          <code>CLICKHOUSE_PASSWORD</code>, and <code>CLICKHOUSE_DB</code> from your{' '}
+          <code>.env</code>, and add <code>SUPABASE_DB_POOLER_URL</code>.
+        </li>
+        <li>
+          Fetch the current <code>docker-compose.yml</code> and run{' '}
+          <code>docker compose up -d --remove-orphans</code>. Nothing references the old
+          container any more, and that flag is what actually stops it.
+        </li>
+        <li>
+          Old rows are not copied for you. If you want the history, export it from ClickHouse
+          and insert it into <code>requests</code> before you delete the container and its
+          volumes. New calls land in Postgres from the moment the server restarts.
+        </li>
+      </ol>
 
       <h2 id="dashboard">Dashboard options</h2>
       <ul>
@@ -382,36 +453,21 @@ docker compose pull && docker compose up -d
 
       <h2 id="backups">Backups</h2>
       <p>
-        Two data stores, two backup strategies:
+        One database and one secret. Everything Spanlens writes, from organizations and
+        encrypted provider keys down to the last logged token count, is in your Supabase
+        project, so a single <code>pg_dump</code> covers all of it.
       </p>
       <ul>
         <li>
-          <strong>Supabase Postgres</strong>, holds the transactional crown jewels (orgs,
-          projects, provider keys, subscriptions, prompts, evals, traces). Standard{' '}
-          <code>pg_dump</code> against your Supabase DB covers you. Catastrophic if lost.
+          <strong>Supabase Postgres.</strong> Managed projects take their own daily backups
+          (Supabase Pro keeps 7 days of them). Add your own logical dumps on top so you hold a
+          copy outside the provider. The commands are on the{' '}
+          <a href="/docs/self-host/backup">backup and restore</a> page.
         </li>
         <li>
-          <strong>ClickHouse</strong>, holds request logs only. Append-only telemetry. Options
-          in order of effort:
-          <ol>
-            <li>
-              <strong>ClickHouse Cloud automatic backups</strong> (1-day RPO, same region), set
-              and forget.
-            </li>
-            <li>
-              <strong>BACKUP TO S3</strong> on a schedule, <code>BACKUP TABLE requests TO
-              S3(&apos;s3://bucket/path&apos;)</code>.
-            </li>
-            <li>
-              <strong>Accept the loss</strong>, historical logs are observability, not
-              source-of-truth. Loss costs you the past N days of dashboards, not customer trust.
-            </li>
-          </ol>
-        </li>
-        <li>
-          <strong>ENCRYPTION_KEY</strong> (outside any DB), back this up in your secret
-          manager (AWS Secrets Manager, GCP Secret Manager, HashiCorp Vault). Without it,
-          encrypted provider keys are unrecoverable.
+          <strong>ENCRYPTION_KEY</strong>, the one thing that lives outside every database.
+          Keep it in your secret manager (AWS Secrets Manager, GCP Secret Manager, HashiCorp
+          Vault). Without it the encrypted provider keys inside a dump are just noise.
         </li>
       </ul>
 
@@ -423,10 +479,17 @@ docker compose pull && docker compose up -d
           the roadmap but not a launch blocker.
         </li>
         <li>
-          <strong>ClickHouse is required.</strong> The server&apos;s logger and analytics
-          helpers all assume a reachable ClickHouse instance. A Postgres-only mode is not
-          provided, the dual-store architecture is intentional (OLAP workload, columnar
-          storage, faster aggregates).
+          <strong>The pooled connection is not optional.</strong> Request-log reads go through{' '}
+          <code>SUPABASE_DB_POOLER_URL</code> rather than PostgREST, because PostgREST cannot
+          express percentiles, <code>FILTER</code> clauses, or a cursor for large exports.
+          Leave the variable unset and the analytics pages fail.
+        </li>
+        <li>
+          <strong>Partitions need a nudge each month.</strong> <code>requests</code> is
+          partitioned by month. Call <code>SELECT ensure_requests_partitions(3);</code> on a
+          schedule so the next few months always exist. Nothing breaks if you forget, since
+          rows land in the <code>requests_default</code> catch-all partition, but moving them
+          back out later is a chore one cron line would have saved you.
         </li>
         <li>
           <strong>Operational tooling is minimal.</strong> No built-in monitoring, no migration

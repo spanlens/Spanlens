@@ -1,11 +1,13 @@
+import { openGraphFor } from '@/lib/page-metadata'
 import { CodeBlock } from '../../_components/code-block'
 import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
 export const metadata = {
   alternates: { canonical: '/docs/features/prompts' },
+  openGraph: openGraphFor('/docs/features/prompts'),
   title: 'Prompts · Spanlens Docs',
   description:
-    'Version-controlled prompt templates with real-data A/B comparison, latency, cost, and error rate per version.',
+    'Version-controlled prompt templates with typed variables and real-data A/B comparison. See latency, cost, and error rate for every version you ship.',
 }
 
 export default function PromptsDocs() {

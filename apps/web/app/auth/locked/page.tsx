@@ -1,18 +1,21 @@
 'use client'
 
-import Image from 'next/image'
 import { Suspense, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
-import { LockIcon } from 'lucide-react'
+import {
+  AuthFootnote,
+  AuthHeading,
+  AuthLayout,
+  AuthNote,
+  authLink,
+  authPrimaryButton,
+  authSecondaryButton,
+} from '../_components/auth-shell'
 
-function LogoMark() {
-  return (
-    <div className="flex items-center gap-2 mb-6">
-      <Image src="/icon.png" alt="Spanlens" width={20} height={20} className="shrink-0 rounded-[5px]" priority />
-      <span className="font-semibold text-[15px] tracking-[-0.3px] text-text">spanlens</span>
-    </div>
-  )
+const PITCH = {
+  title: 'Too many attempts.',
+  body: 'Repeated failures lock the account for 15 minutes. Sessions already signed in keep working.',
 }
 
 function formatMMSS(seconds: number): string {
@@ -51,72 +54,52 @@ function LockedPageInner() {
   const isUnlocked = remaining !== null && remaining === 0
 
   return (
-    <div className="min-h-screen bg-bg-elev flex items-center justify-center p-10">
-      <div className="w-[440px] max-w-full bg-bg border border-border rounded-lg p-8">
-        <LogoMark />
+    <AuthLayout pitch={PITCH}>
+      <AuthHeading
+        title="Account temporarily locked"
+        subtitle="Too many failed sign-in attempts in a row."
+      />
 
-        {/* Lock icon */}
-        <div className="flex justify-center mb-4">
-          <LockIcon className="w-10 h-10 text-text-muted" />
-        </div>
+      {isUnlocked ? (
+        <AuthNote tone="good" live="polite">
+          The lock has lifted. You can sign in again.
+        </AuthNote>
+      ) : remaining !== null ? (
+        <AuthNote tone="bad">
+          Unlocks automatically in <span className="font-mono tabular-nums">{formatMMSS(remaining)}</span>.
+        </AuthNote>
+      ) : (
+        <AuthNote tone="bad">Unlocks automatically after 15 minutes.</AuthNote>
+      )}
 
-        <h1 className="text-[20px] font-medium tracking-[-0.3px] mb-2 text-center">
-          Account temporarily locked
-        </h1>
-
-        <p className="text-[13px] text-text-muted leading-relaxed mb-5 text-center">
-          Too many failed sign-in attempts. Your account has been locked for 15 minutes.
-        </p>
-
-        {/* Countdown or static message */}
-        {remaining !== null ? (
-          <div className="bg-bg-elev border border-border rounded-[8px] px-5 py-4 mb-6 text-center">
-            {isUnlocked ? (
-              <p className="text-[13px] text-text-muted mb-3">Your account has been unlocked.</p>
-            ) : (
-              <>
-                <p className="font-mono text-[11px] text-text-faint mb-1 tracking-[0.04em] uppercase">
-                  Unlocks in
-                </p>
-                <span className="font-mono text-[32px] text-text tracking-[0.05em]">
-                  {formatMMSS(remaining)}
-                </span>
-              </>
-            )}
-          </div>
-        ) : (
-          <p className="text-[13px] text-text-muted mb-6 text-center">
-            Please try again in 15 minutes.
-          </p>
-        )}
-
+      <div className="mt-5 flex flex-col gap-2.5">
         {isUnlocked && (
-          <Link
-            href="/login"
-            className="block w-full bg-text text-bg py-[11px] px-[14px] rounded-[7px] text-[13px] font-medium text-center hover:opacity-90 transition-opacity mb-3"
-          >
-            Sign in now →
+          <Link href="/login" className={authPrimaryButton}>
+            Sign in now
           </Link>
         )}
-
-        <Link
-          href="/login"
-          className="block w-full border border-border-strong py-[11px] px-[14px] rounded-[7px] text-[13px] text-text-muted text-center hover:text-text transition-colors"
-        >
-          Get a magic link instead →
+        <Link href="/login" className={isUnlocked ? authSecondaryButton : authPrimaryButton}>
+          Back to sign in
         </Link>
       </div>
-    </div>
+
+      <AuthFootnote className="mt-[18px]">
+        Not sure it was you?{' '}
+        <Link href="/forgot-password" className={authLink}>
+          Reset your password
+        </Link>
+      </AuthFootnote>
+    </AuthLayout>
   )
 }
 
 function LockedFallback() {
   return (
-    <div className="min-h-screen bg-bg-elev flex items-center justify-center p-10">
-      <div className="w-[440px] max-w-full bg-bg border border-border rounded-lg p-8">
-        <div className="text-[13px] text-text-muted">Loading…</div>
-      </div>
-    </div>
+    <AuthLayout pitch={PITCH}>
+      <p className="text-[13.5px] leading-[1.6] text-text-faint" role="status">
+        Loading…
+      </p>
+    </AuthLayout>
   )
 }
 

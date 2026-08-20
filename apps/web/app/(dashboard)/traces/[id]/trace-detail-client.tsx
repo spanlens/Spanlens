@@ -37,7 +37,7 @@ export function TraceDetailClient({ id }: { id: string }) {
 
   if (isLoading) {
     return (
-      <div className="-mx-4 -my-4 md:-mx-8 md:-my-7 flex flex-col h-screen overflow-hidden">
+      <div className="-mx-4 -my-4 md:-mx-7 md:-mt-5 md:-mb-7 flex flex-col h-screen overflow-hidden">
         <Topbar crumbs={[{ label: 'Workspace' }, { label: 'Traces', href: '/traces' }, { label: '…' }]} />
         <div className="p-[22px] space-y-4">
           <Skeleton className="h-6 w-64" />
@@ -52,9 +52,9 @@ export function TraceDetailClient({ id }: { id: string }) {
 
   if (isError || (!isLoading && !trace)) {
     return (
-      <div className="-mx-4 -my-4 md:-mx-8 md:-my-7 flex flex-col h-screen overflow-hidden">
+      <div className="-mx-4 -my-4 md:-mx-7 md:-mt-5 md:-mb-7 flex flex-col h-screen overflow-hidden">
         <Topbar crumbs={[{ label: 'Workspace' }, { label: 'Traces', href: '/traces' }, { label: 'Not found' }]} />
-        <div className="m-[22px] p-8 rounded-md border border-border text-center">
+        <div className="m-4 md:m-7 card-surface rounded-card p-8 text-center">
           <p className="text-[13px] text-text-muted mb-3">Trace not found or no longer available.</p>
           <button
             type="button"
@@ -69,7 +69,7 @@ export function TraceDetailClient({ id }: { id: string }) {
   }
 
   return (
-    <div className="-mx-4 -my-4 md:-mx-8 md:-my-7 flex flex-col h-screen overflow-hidden">
+    <div className="-mx-4 -my-4 md:-mx-7 md:-mt-5 md:-mb-7 flex flex-col h-screen overflow-hidden">
       <Topbar
         crumbs={[
           { label: 'Workspace' },
@@ -82,7 +82,7 @@ export function TraceDetailClient({ id }: { id: string }) {
               <button
                 type="button"
                 onClick={() => router.push(`/traces/${prevId}`)}
-                className="font-mono text-[11px] px-[9px] py-1 border border-border rounded-[5px] text-text-muted hover:border-border-strong transition-colors"
+                className="text-[12.5px] font-medium px-3 py-[7px] border border-border rounded bg-bg-elev text-text-muted hover:text-text hover:border-border-strong transition-colors"
               >
                 ← prev
               </button>
@@ -91,7 +91,7 @@ export function TraceDetailClient({ id }: { id: string }) {
               <button
                 type="button"
                 onClick={() => router.push(`/traces/${nextId}`)}
-                className="font-mono text-[11px] px-[9px] py-1 border border-border rounded-[5px] text-text-muted hover:border-border-strong transition-colors"
+                className="text-[12.5px] font-medium px-3 py-[7px] border border-border rounded bg-bg-elev text-text-muted hover:text-text hover:border-border-strong transition-colors"
               >
                 next →
               </button>
@@ -113,7 +113,7 @@ export function TraceDetailClient({ id }: { id: string }) {
                 setTimeout(() => setOtlpExported(false), 1800)
               }}
               title="Download this trace as OTLP JSON. Upload to Datadog / Honeycomb / Jaeger / Tempo."
-              className="font-mono text-[11px] px-[9px] py-1 border border-border rounded-[5px] text-text-muted hover:border-border-strong transition-colors"
+              className="text-[12.5px] font-medium px-3 py-[7px] border border-border rounded bg-bg-elev text-text-muted hover:text-text hover:border-border-strong transition-colors"
             >
               {otlpExported ? 'Exported' : '↓ OTLP'}
             </button>

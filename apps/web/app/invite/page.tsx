@@ -1,11 +1,19 @@
 'use client'
 
-import Image from 'next/image'
 import { Suspense, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { writeWorkspaceCookie } from '@/lib/workspace-cookie'
+import {
+  AuthFootnote,
+  AuthHeading,
+  AuthLayout,
+  AuthNote,
+  authLink,
+  authPrimaryButton,
+  authSecondaryButton,
+} from '../auth/_components/auth-shell'
 
 /**
  * /invite?token=xxx — invitation acceptance landing page.
@@ -36,24 +44,44 @@ type Status =
   | { kind: 'accepting'; meta: InviteMeta }
   | { kind: 'done' }
 
+const INVITE_PITCH = {
+  title: 'Someone saved you a seat.',
+  body: 'Accepting adds you to their workspace. Your own workspaces stay exactly as they are.',
+}
+
+/** What each org role can and cannot do, shown in the callout under the title. */
+const ROLE_SUMMARY: Record<string, string> = {
+  admin: 'Admins manage keys, billing and members, and can delete the workspace.',
+  editor: 'Editors can run evals and edit prompts. They cannot change billing or delete the workspace.',
+  viewer: 'Viewers read everything. Prompts, keys and alerts stay read-only.',
+}
+
+/** Up to two letters for the workspace avatar, e.g. "Acme AI" becomes "AA". */
+function initials(name: string): string {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((word) => word[0]?.toUpperCase() ?? '')
+    .join('')
+}
+
 // Default export wraps the inner component in Suspense — Next.js requires
 // `useSearchParams()` to live under a Suspense boundary, otherwise the
 // static export step bails out (`missing-suspense-with-csr-bailout`).
 export default function InvitePage() {
   return (
-    <Suspense fallback={<InviteFallback />}>
+    <Suspense
+      fallback={
+        <AuthLayout pitch={INVITE_PITCH}>
+          <p className="text-[13.5px] leading-[1.6] text-text-faint" role="status">
+            Verifying invitation…
+          </p>
+        </AuthLayout>
+      }
+    >
       <InvitePageInner />
     </Suspense>
-  )
-}
-
-function InviteFallback() {
-  return (
-    <div className="min-h-screen bg-bg-elev flex items-center justify-center p-10">
-      <div className="w-[440px] max-w-full bg-bg border border-border rounded-lg p-8">
-        <div className="text-[13px] text-text-muted">Verifying invitation…</div>
-      </div>
-    </div>
   )
 }
 
@@ -207,148 +235,134 @@ function InvitePageInner() {
     window.location.reload()
   }
 
+  if (status.kind === 'loading') {
+    return (
+      <AuthLayout pitch={INVITE_PITCH}>
+        <p className="text-[13.5px] leading-[1.6] text-text-faint" role="status">
+          Verifying invitation…
+        </p>
+      </AuthLayout>
+    )
+  }
+
+  if (status.kind === 'invalid') {
+    return (
+      <AuthLayout pitch={INVITE_PITCH}>
+        <AuthHeading title="Invitation unavailable" subtitle={status.message} />
+        <AuthNote tone="bad">Ask whoever invited you to send a fresh link.</AuthNote>
+        <AuthFootnote className="mt-[18px]">
+          <Link href="/login" className={authLink}>
+            Go to sign in
+          </Link>
+        </AuthFootnote>
+      </AuthLayout>
+    )
+  }
+
+  if (status.kind === 'done') {
+    return (
+      <AuthLayout pitch={INVITE_PITCH}>
+        <AuthHeading title="Welcome aboard" subtitle="Redirecting to your dashboard…" />
+        <AuthNote tone="good" live="polite">
+          You are now a member of the workspace.
+        </AuthNote>
+      </AuthLayout>
+    )
+  }
+
+  if (status.kind === 'email_mismatch') {
+    return (
+      <AuthLayout pitch={INVITE_PITCH}>
+        <AuthHeading
+          title="Wrong account"
+          subtitle={
+            <>
+              This invitation was sent to <span className="font-mono text-text">{status.meta.email}</span>, but
+              you are signed in as <span className="font-mono text-text">{status.currentEmail}</span>.
+            </>
+          }
+        />
+        <AuthNote tone="warn">Sign out, then open the invitation link again.</AuthNote>
+        <button type="button" onClick={() => void handleSignOut()} className={`${authSecondaryButton} mt-5`}>
+          Sign out
+        </button>
+      </AuthLayout>
+    )
+  }
+
+  const { meta } = status
+  const busy = status.kind === 'accepting'
+
   return (
-    <div className="min-h-screen bg-bg-elev flex items-center justify-center p-10">
-      <div className="w-[440px] max-w-full bg-bg border border-border rounded-lg p-8">
-        <div className="flex items-center gap-2 mb-6">
-          <Image src="/icon.png" alt="Spanlens" width={20} height={20} className="shrink-0 rounded-[5px]" priority />
-          <span className="font-semibold text-[15px] tracking-[-0.3px] text-text">spanlens</span>
+    <AuthLayout pitch={INVITE_PITCH}>
+      <div className="mb-5 flex items-center gap-3">
+        <span
+          className="flex size-10 shrink-0 items-center justify-center rounded-full bg-accent-bg text-[14px] font-semibold text-accent"
+          aria-hidden="true"
+        >
+          {initials(meta.orgName)}
+        </span>
+        <span className="min-w-0">
+          <span className="block truncate text-[13.5px] font-semibold leading-[1.48] text-text">
+            {meta.orgName}
+          </span>
+          <span className="block truncate font-mono text-[12px] leading-[1.48] text-text-faint">{meta.email}</span>
+        </span>
+      </div>
+
+      <AuthHeading title={`Join ${meta.orgName} on Spanlens`} />
+
+      <div className="-mt-[16px] mb-5 flex items-center gap-2">
+        <span className="text-[13px] leading-[1.48] text-text-faint">You will join as</span>
+        <span className="rounded-full bg-bg-chip px-2.5 py-1 text-[11.5px] font-semibold leading-[1.48] text-text">
+          {meta.role}
+        </span>
+      </div>
+
+      <AuthNote>{ROLE_SUMMARY[meta.role] ?? 'Access is scoped to this workspace.'}</AuthNote>
+
+      {status.kind === 'needs_auth' ? (
+        <div className="mt-5 flex flex-col gap-2.5">
+          <Link
+            href={`/signup?invite=${encodeURIComponent(token)}&email=${encodeURIComponent(meta.email)}`}
+            className={authPrimaryButton}
+          >
+            Create account
+          </Link>
+          <Link
+            href={`/login?next=${encodeURIComponent(`/invite?token=${token}`)}`}
+            className={authSecondaryButton}
+          >
+            Sign in
+          </Link>
         </div>
-
-        {status.kind === 'loading' && (
-          <div className="text-[13px] text-text-muted">Verifying invitation…</div>
-        )}
-
-        {status.kind === 'invalid' && (
-          <>
-            <h1 className="text-[20px] font-medium tracking-[-0.3px] mb-2">Invitation unavailable</h1>
-            <p className="text-[13px] text-text-muted leading-relaxed mb-6">{status.message}</p>
-            <Link
-              href="/login"
-              className="inline-block font-mono text-[12px] text-accent hover:opacity-80 transition-opacity"
-            >
-              Go to sign in →
-            </Link>
-          </>
-        )}
-
-        {status.kind === 'needs_auth' && (
-          <>
-            <h1 className="text-[20px] font-medium tracking-[-0.3px] mb-1">
-              Join <span className="text-accent">{status.meta.orgName}</span>
-            </h1>
-            <p className="text-[13px] text-text-muted leading-relaxed mb-5">
-              You&apos;ve been invited as{' '}
-              <span className="font-mono text-text">{status.meta.role}</span>. Sign in or create an account
-              with <span className="font-mono text-text">{status.meta.email}</span> to accept.
-            </p>
-            <div className="flex flex-col gap-2">
-              <Link
-                href={`/signup?invite=${encodeURIComponent(token)}&email=${encodeURIComponent(status.meta.email)}`}
-                className="w-full bg-text text-bg py-[11px] px-[14px] rounded-[7px] text-[13px] font-medium text-center hover:opacity-90 transition-opacity"
-              >
-                Create account
-              </Link>
-              <Link
-                href={`/login?next=${encodeURIComponent(`/invite?token=${token}`)}`}
-                className="w-full border border-border-strong py-[11px] px-[14px] rounded-[7px] text-[13px] font-medium text-center text-text hover:bg-bg-elev transition-colors"
-              >
-                Sign in
-              </Link>
-            </div>
-          </>
-        )}
-
-        {(status.kind === 'email_match' || status.kind === 'accepting') && (
-          <>
-            {/* Org name card */}
-            <div className="bg-bg-elev border border-border rounded-[8px] px-5 py-4 mb-5">
-              <p className="font-mono text-[11px] text-text-faint tracking-[0.04em] uppercase mb-1">
-                You&apos;ve been invited to
-              </p>
-              <p className="text-[22px] font-medium tracking-[-0.4px] text-text mb-3">
-                {status.meta.orgName}
-              </p>
-              <div className="flex items-start gap-4 flex-wrap">
-                <div>
-                  <span className="font-mono text-[11px] text-text-faint tracking-[0.03em] uppercase block mb-1">
-                    Role
-                  </span>
-                  <span
-                    className={[
-                      'inline-block font-mono text-[11px] px-2 py-0.5 rounded-[4px]',
-                      status.meta.role === 'admin'
-                        ? 'bg-accent/10 text-accent'
-                        : status.meta.role === 'editor'
-                          ? 'bg-good/10 text-good'
-                          : 'bg-bg-muted text-text-muted',
-                    ].join(' ')}
-                  >
-                    {status.meta.role}
-                  </span>
-                </div>
-                <div>
-                  <span className="font-mono text-[11px] text-text-faint tracking-[0.03em] uppercase block mb-1">
-                    Permissions
-                  </span>
-                  <span className="font-mono text-[11px] text-text-muted">
-                    {status.meta.role === 'admin'
-                      ? 'Manage keys, billing, members'
-                      : status.meta.role === 'editor'
-                        ? 'Create projects, manage keys'
-                        : 'Read-only access'}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {acceptError && <p className="text-[12.5px] text-bad mb-3">{acceptError}</p>}
-            <div className="flex flex-col gap-2">
-              <button
-                type="button"
-                onClick={() => void handleAccept()}
-                disabled={status.kind === 'accepting'}
-                className="w-full bg-text text-bg py-[11px] px-[14px] rounded-[7px] text-[13px] font-medium hover:opacity-90 transition-opacity disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed"
-              >
-                {status.kind === 'accepting' ? 'Working…' : 'Accept invitation'}
-              </button>
-              <button
-                type="button"
-                onClick={() => void handleDecline()}
-                disabled={status.kind === 'accepting'}
-                className="w-full border border-border-strong py-[11px] px-[14px] rounded-[7px] text-[13px] font-medium text-text-muted hover:text-text transition-colors disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed"
-              >
-                Decline
-              </button>
-            </div>
-          </>
-        )}
-
-        {status.kind === 'email_mismatch' && (
-          <>
-            <h1 className="text-[20px] font-medium tracking-[-0.3px] mb-1">Wrong account</h1>
-            <p className="text-[13px] text-text-muted leading-relaxed mb-5">
-              This invitation was sent to{' '}
-              <span className="font-mono text-text">{status.meta.email}</span>, but you&apos;re signed in as{' '}
-              <span className="font-mono text-text">{status.currentEmail}</span>. Sign out and try again.
-            </p>
+      ) : (
+        <>
+          {acceptError && <AuthNote tone="bad" live="assertive" className="mt-2.5">{acceptError}</AuthNote>}
+          <div className="mt-5 flex flex-col gap-2.5">
             <button
               type="button"
-              onClick={() => void handleSignOut()}
-              className="w-full border border-border-strong py-[11px] px-[14px] rounded-[7px] text-[13px] font-medium text-text hover:bg-bg-elev transition-colors"
+              onClick={() => void handleAccept()}
+              disabled={busy}
+              className={authPrimaryButton}
             >
-              Sign out
+              {busy ? 'Working…' : 'Accept invitation'}
             </button>
-          </>
-        )}
+            <button
+              type="button"
+              onClick={() => void handleDecline()}
+              disabled={busy}
+              className={authSecondaryButton}
+            >
+              Decline
+            </button>
+          </div>
+        </>
+      )}
 
-        {status.kind === 'done' && (
-          <>
-            <h1 className="text-[20px] font-medium tracking-[-0.3px] mb-1">Welcome aboard</h1>
-            <p className="text-[13px] text-text-muted leading-relaxed">Redirecting to your dashboard…</p>
-          </>
-        )}
-      </div>
-    </div>
+      <AuthFootnote className="mt-4">
+        Accepting adds you to this workspace. Any workspace of your own stays as it is.
+      </AuthFootnote>
+    </AuthLayout>
   )
 }

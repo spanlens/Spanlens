@@ -1,9 +1,11 @@
+import { openGraphFor } from '@/lib/page-metadata'
 import { CodeBlock } from '../_components/code-block'
 import { QuickStartFlowDiagram } from '../_components/diagrams'
 import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
 export const metadata = {
   alternates: { canonical: '/docs/quick-start' },
+  openGraph: openGraphFor('/docs/quick-start'),
   title: 'Quick start · Spanlens Docs',
   description:
     'Get up and running with Spanlens in 30 seconds. Migrate existing OpenAI, Anthropic, or Gemini code with one command, or set up manually in four steps.',

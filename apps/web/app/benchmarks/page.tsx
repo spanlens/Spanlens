@@ -1,3 +1,4 @@
+import { openGraphFor } from '@/lib/page-metadata'
 import Link from 'next/link'
 import { Footer } from '@/components/layout/footer'
 import { MarketingNav } from '@/components/layout/marketing-nav'
@@ -5,9 +6,10 @@ import { BreadcrumbJsonLd } from '@/components/marketing/breadcrumb-jsonld'
 
 export const metadata = {
   alternates: { canonical: '/benchmarks' },
+  openGraph: openGraphFor('/benchmarks'),
   title: 'Proxy Overhead Benchmark · Spanlens',
   description:
-    'How much latency does the Spanlens proxy add? A reproducible benchmark of the synchronous per-request overhead, the methodology behind it, and the command to run it yourself.',
+    'How much latency does the Spanlens proxy add? A reproducible benchmark of per-request overhead, with the method and a command to run it yourself.',
 }
 
 const MEASURED_DATE = '2026-07-14'
@@ -27,7 +29,7 @@ export default function BenchmarksPage() {
       <MarketingNav />
       <BreadcrumbJsonLd trail={[{ name: 'Benchmarks', path: '/benchmarks' }]} />
 
-      <main className="flex-1 max-w-3xl mx-auto px-6 py-12 prose prose-stone
+      <main className="w-full min-w-0 flex-1 max-w-3xl mx-auto px-6 py-12 prose prose-stone
         prose-headings:scroll-mt-20
         prose-a:text-accent prose-a:no-underline hover:prose-a:opacity-80">
         <h1>Proxy Overhead Benchmark</h1>

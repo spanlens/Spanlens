@@ -11,8 +11,9 @@
 // Cross-tenant scan by design — operator-internal cron. The
 // no-restricted-imports rule is scoped to api/ handlers and does not
 // fire here, so the inline disable was a no-op.
-import { unscopedClickhouse } from '../clickhouse.js'
+import { pgQuery } from '../postgres.js'
 import { supabaseAdmin } from '../db.js'
+import { anyActivitySince } from '../org-activity.js'
 
 export interface DetectMissingModelPricesResult {
   ok: boolean
@@ -25,22 +26,31 @@ const THRESHOLD = 100
 
 export async function runDetectMissingModelPricesJob(): Promise<DetectMissingModelPricesResult> {
   try {
-    const rs = await unscopedClickhouse().query({
+    // Nothing was logged anywhere in the last hour, so the scan below has no
+    // rows to find; skip it rather than paying for a full-table aggregate
+    // that can only come back empty. `anyActivitySince` fails open, so an
+    // unreadable watermark still runs the scan.
+    const windowStart = new Date(Date.now() - 60 * 60 * 1000)
+    if (!(await anyActivitySince(windowStart))) return { ok: true, missing: 0 }
+
+    // HAVING cannot reference a SELECT alias in Postgres, so the aggregate is
+    // spelled out a second time rather than reusing `missing_count`.
+    const rs = await pgQuery<{ model: string; missing_count: string }>({
       query: `
-        SELECT model, count() AS missing_count
+        SELECT model, count(*) AS missing_count
         FROM requests
-        WHERE created_at >= now() - INTERVAL 1 HOUR
+        WHERE created_at >= now() - INTERVAL '1 hour'
           AND cost_usd IS NULL
-          AND model != ''
+          AND model <> ''
         GROUP BY model
-        HAVING missing_count > {threshold:UInt32}
+        HAVING count(*) > {threshold}
         ORDER BY missing_count DESC
       `,
-      query_params: { threshold: THRESHOLD },
-      format: 'JSONEachRow',
-    }).then((r) => r.json<{ model: string; missing_count: string }>())
+      params: { threshold: THRESHOLD },
+    })
 
-    // gotcha #19: ClickHouse JSONEachRow returns numbers as strings.
+    // `count(*)` is int8, which the driver hands back as a string to avoid
+    // silent precision loss, so coerce before comparing or summing.
     const models = rs.map((row) => ({
       model: row.model,
       count: Number(row.missing_count),

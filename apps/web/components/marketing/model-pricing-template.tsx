@@ -1,8 +1,22 @@
 import Link from 'next/link'
 import { Footer } from '@/components/layout/footer'
 import { MarketingNav } from '@/components/layout/marketing-nav'
+import { BreadcrumbJsonLd } from '@/components/marketing/breadcrumb-jsonld'
 
 const SITE_URL = 'https://www.spanlens.io'
+
+/**
+ * Provider display name to its /integrations page. This used to be
+ * `provider.toLowerCase()`, which works for OpenAI and Anthropic and produces
+ * /integrations/google for Gemini — a 404 linked from every Gemini pricing
+ * page. A provider with no integration page renders no link rather than a
+ * broken one.
+ */
+const INTEGRATION_SLUG: Record<string, string> = {
+  OpenAI: 'openai',
+  Anthropic: 'anthropic',
+  Google: 'gemini',
+}
 
 export interface UsageScenario {
   label: string
@@ -86,12 +100,8 @@ export function ModelPricingTemplate({
     description: `${model} costs ${formatUsd(inputPricePer1M)} per 1M input tokens and ${formatUsd(outputPricePer1M)} per 1M output tokens. Real-world monthly cost scenarios and alternatives.`,
     datePublished: '2026-06-16',
     dateModified: '2026-06-16',
-    author: { '@type': 'Organization', name: 'Spanlens', url: SITE_URL },
-    publisher: {
-      '@type': 'Organization',
-      name: 'Spanlens',
-      logo: { '@type': 'ImageObject', url: `${SITE_URL}/icon.png` },
-    },
+    author: { '@id': `${SITE_URL}/#organization` },
+    publisher: { '@id': `${SITE_URL}/#organization` },
     about: { '@type': 'Thing', name: model },
     mentions: { '@type': 'Organization', name: provider },
   }
@@ -118,6 +128,12 @@ export function ModelPricingTemplate({
         dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd) }}
       />
       <MarketingNav />
+      <BreadcrumbJsonLd
+        trail={[
+          { name: 'Pricing', path: '/pricing' },
+          { name: `${model} pricing`, path: `/pricing/${slug}` },
+        ]}
+      />
 
       <article className="max-w-3xl mx-auto px-6 py-20">
         <Link
@@ -126,14 +142,14 @@ export function ModelPricingTemplate({
         >
           ← LLM cost tracking
         </Link>
-        <h1 className="mt-4 text-[36px] sm:text-[44px] font-semibold tracking-[-0.6px] text-text leading-[1.05]">
+        <h1 className="mt-4 font-display track-h2 text-[36px] sm:text-[44px] text-text leading-[1.12]">
           {model} pricing
         </h1>
         <p className="mt-3 text-[17px] text-text-muted leading-relaxed">{tagline}</p>
 
         <section className="mt-8 grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div className="rounded-xl border border-border bg-bg-elev p-5">
-            <div className="font-mono text-[11px] uppercase tracking-[0.06em] text-text-faint mb-1">
+          <div className="rounded-card border border-border bg-bg-elev p-5">
+            <div className="eyebrow mb-1">
               Input
             </div>
             <div className="font-mono text-[28px] font-medium text-text">
@@ -151,8 +167,8 @@ export function ModelPricingTemplate({
               </div>
             )}
           </div>
-          <div className="rounded-xl border border-border bg-bg-elev p-5">
-            <div className="font-mono text-[11px] uppercase tracking-[0.06em] text-text-faint mb-1">
+          <div className="rounded-card border border-border bg-bg-elev p-5">
+            <div className="eyebrow mb-1">
               Output
             </div>
             <div className="font-mono text-[28px] font-medium text-text">
@@ -162,28 +178,28 @@ export function ModelPricingTemplate({
           </div>
         </section>
 
-        <section className="mt-6 rounded-xl border border-border bg-bg-elev p-5">
+        <section className="mt-6 rounded-card border border-border bg-bg-elev p-5">
           <dl className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-[13px]">
             <div>
-              <dt className="font-mono text-[11px] uppercase tracking-[0.06em] text-text-faint mb-1">
+              <dt className="eyebrow mb-1">
                 Provider
               </dt>
               <dd className="text-text">{provider}</dd>
             </div>
             <div>
-              <dt className="font-mono text-[11px] uppercase tracking-[0.06em] text-text-faint mb-1">
+              <dt className="eyebrow mb-1">
                 Context window
               </dt>
               <dd className="text-text font-mono">{contextWindow}</dd>
             </div>
             <div>
-              <dt className="font-mono text-[11px] uppercase tracking-[0.06em] text-text-faint mb-1">
+              <dt className="eyebrow mb-1">
                 Max output
               </dt>
               <dd className="text-text font-mono">{maxOutput}</dd>
             </div>
             <div className="sm:col-span-3">
-              <dt className="font-mono text-[11px] uppercase tracking-[0.06em] text-text-faint mb-1">
+              <dt className="eyebrow mb-1">
                 Released
               </dt>
               <dd className="text-text">{released}</dd>
@@ -192,7 +208,7 @@ export function ModelPricingTemplate({
         </section>
 
         <section className="mt-10">
-          <h2 className="text-[22px] font-semibold tracking-[-0.4px] text-text mb-3">
+          <h2 className="font-display track-h3 text-[22px] text-text mb-3">
             What {model} is best for
           </h2>
           <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[14px] text-text-muted">
@@ -206,30 +222,30 @@ export function ModelPricingTemplate({
         </section>
 
         <section className="mt-10">
-          <h2 className="text-[22px] font-semibold tracking-[-0.4px] text-text mb-3">
+          <h2 className="font-display track-h3 text-[22px] text-text mb-3">
             Monthly cost scenarios
           </h2>
           <p className="text-[14px] text-text-muted leading-relaxed mb-4">
             Real-world estimates at common usage levels. Numbers assume no caching, no
             batching, and the standard tier price.
           </p>
-          <div className="rounded-xl border border-border bg-bg-elev overflow-x-auto">
+          <div className="rounded-card border border-border bg-bg-elev overflow-x-auto">
             <table className="w-full text-[13px]">
               <thead>
                 <tr className="border-b border-border">
-                  <th className="text-left px-4 py-2.5 font-mono text-[11px] uppercase tracking-[0.06em] text-text-faint">
+                  <th className="text-left px-4 py-2.5 eyebrow">
                     Use case
                   </th>
-                  <th className="text-right px-4 py-2.5 font-mono text-[11px] uppercase tracking-[0.06em] text-text-faint">
+                  <th className="text-right px-4 py-2.5 eyebrow">
                     In / req
                   </th>
-                  <th className="text-right px-4 py-2.5 font-mono text-[11px] uppercase tracking-[0.06em] text-text-faint">
+                  <th className="text-right px-4 py-2.5 eyebrow">
                     Out / req
                   </th>
-                  <th className="text-right px-4 py-2.5 font-mono text-[11px] uppercase tracking-[0.06em] text-text-faint">
+                  <th className="text-right px-4 py-2.5 eyebrow">
                     Reqs / mo
                   </th>
-                  <th className="text-right px-4 py-2.5 font-mono text-[11px] uppercase tracking-[0.06em] text-text-faint">
+                  <th className="text-right px-4 py-2.5 eyebrow">
                     Monthly
                   </th>
                 </tr>
@@ -261,12 +277,12 @@ export function ModelPricingTemplate({
         </section>
 
         <section className="mt-10">
-          <h2 className="text-[22px] font-semibold tracking-[-0.4px] text-text mb-3">
+          <h2 className="font-display track-h3 text-[22px] text-text mb-3">
             Alternatives to {model}
           </h2>
           <div className="space-y-3">
             {alternatives.map((alt) => (
-              <div key={alt.name} className="rounded-xl border border-border bg-bg-elev p-5">
+              <div key={alt.name} className="rounded-card border border-border bg-bg-elev p-5">
                 <h3 className="text-[15px] font-semibold text-text mb-1">
                   {alt.href ? (
                     <Link href={alt.href} className="text-accent hover:opacity-80">
@@ -283,7 +299,7 @@ export function ModelPricingTemplate({
         </section>
 
         <section className="mt-10">
-          <h2 className="text-[22px] font-semibold tracking-[-0.4px] text-text mb-3">
+          <h2 className="font-display track-h3 text-[22px] text-text mb-3">
             Track {model} usage with Spanlens
           </h2>
           <p className="text-[14px] text-text-muted leading-relaxed mb-4">
@@ -298,17 +314,19 @@ export function ModelPricingTemplate({
             >
               Start free →
             </Link>
-            <Link
-              href={`/integrations/${provider.toLowerCase()}`}
-              className="h-10 px-5 rounded-[6px] border border-border text-text text-[14px] font-medium leading-10 hover:bg-bg-elev transition-colors text-center"
-            >
-              {provider} integration guide
-            </Link>
+            {INTEGRATION_SLUG[provider] ? (
+              <Link
+                href={`/integrations/${INTEGRATION_SLUG[provider]}`}
+                className="h-10 px-5 rounded-[6px] border border-border text-text text-[14px] font-medium leading-10 hover:bg-bg-muted transition-colors text-center"
+              >
+                {provider} integration guide
+              </Link>
+            ) : null}
             <a
               href={providerUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="h-10 px-5 rounded-[6px] border border-border text-text text-[14px] font-medium leading-10 hover:bg-bg-elev transition-colors text-center"
+              className="h-10 px-5 rounded-[6px] border border-border text-text text-[14px] font-medium leading-10 hover:bg-bg-muted transition-colors text-center"
             >
               Official pricing ↗
             </a>
@@ -316,12 +334,12 @@ export function ModelPricingTemplate({
         </section>
 
         <section className="mt-12">
-          <h2 className="text-[22px] font-semibold tracking-[-0.4px] text-text mb-4">
+          <h2 className="font-display track-h3 text-[22px] text-text mb-4">
             FAQ
           </h2>
           <div className="space-y-3">
             {faqs.map((f) => (
-              <details key={f.q} className="group rounded-xl border border-border bg-bg-elev p-5">
+              <details key={f.q} className="group rounded-card border border-border bg-bg-elev p-5">
                 <summary className="cursor-pointer list-none text-[14px] font-medium text-text">
                   {f.q}
                 </summary>

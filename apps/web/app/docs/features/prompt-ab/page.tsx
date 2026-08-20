@@ -1,9 +1,11 @@
+import { openGraphFor } from '@/lib/page-metadata'
 import { CodeBlock } from '../../_components/code-block'
-import { PromptAbChart } from '../../_components/charts'
+import { PromptAbChart } from '../../_components/figures'
 import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
 export const metadata = {
   alternates: { canonical: '/docs/features/prompt-ab' },
+  openGraph: openGraphFor('/docs/features/prompt-ab'),
   title: 'Prompt A/B · Spanlens Docs',
   description:
     'Route live production traffic across two prompt versions and measure latency, cost, and error rate with statistical significance.',

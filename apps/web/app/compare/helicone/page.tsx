@@ -1,10 +1,12 @@
+import { openGraphFor } from '@/lib/page-metadata'
 import { CompareTemplate, type CompareGroup, type ComparePoint } from '@/components/marketing/compare-template'
 
 export const metadata = {
   alternates: { canonical: '/compare/helicone' },
-  title: 'Spanlens vs Helicone · 2026 Comparison',
+  openGraph: openGraphFor('/compare/helicone'),
+  title: 'Helicone Alternative After the Mintlify Acquisition',
   description:
-    'Spanlens and Helicone are both proxy-based LLM observability tools. Spanlens adds Critical Path agent tracing, Prompt A/B testing, and durable logging.',
+    'Helicone entered maintenance mode after Mintlify acquired it in March 2026. Spanlens is MIT, still shipping, and swaps in with the same one-line baseURL.',
 }
 
 const whySpanlens: ComparePoint[] = [
@@ -34,9 +36,9 @@ const whySpanlens: ComparePoint[] = [
       'Spanlens proactively flags routes where a smaller model would match quality and quotes the monthly savings. Helicone has cost dashboards, and the swap recommendation is left as a manual exercise.',
   },
   {
-    title: 'ClickHouse fallback-replay safety net',
+    title: 'Durable logs with no extra service to run',
     body:
-      'Spanlens writes to ClickHouse for analytics. If ClickHouse hiccups, requests fall back to a Postgres queue and replay automatically when it recovers, so logs are not silently dropped. This durability layer is a Spanlens-specific design.',
+      'When a log write fails, Spanlens parks the row in a Postgres fallback table and a cron replays it every five minutes. Replay skips rows that already landed, so a retry cannot bill you twice for the same call. Helicone keeps logs through an outage too, with a Kafka queue in front of ingestion. That is one more moving part to operate if you self-host.',
   },
   {
     title: 'Critical Path plus anomaly detection together',
@@ -49,7 +51,7 @@ const whyCompetitor: ComparePoint[] = [
   {
     title: 'Longer track record and wider docs',
     body:
-      'Helicone has been public longer with extensive docs and case studies. If proven adoption is your top criterion, Helicone is ahead. Spanlens shipped in 2026 with Critical Path tracing, Welch t-test A/B, and the ClickHouse fallback queue already in v1.',
+      'Helicone has been public longer with extensive docs and case studies. If proven adoption is your top criterion, Helicone is ahead. Spanlens shipped in 2026 with Critical Path tracing, Welch t-test A/B, and the fallback-replay queue already in v1.',
   },
   {
     title: 'Wider integration list today',
@@ -144,10 +146,10 @@ const groups: CompareGroup[] = [
     title: 'Reliability',
     rows: [
       {
-        feature: 'ClickHouse fallback-replay queue',
+        feature: 'Log writes survive a database outage',
         spanlens: 'yes',
-        competitor: 'no',
-        note: 'Postgres fallback queue auto-replays on ClickHouse recovery.',
+        competitor: 'yes',
+        note: 'Both replay rather than drop. Helicone queues ingestion through Kafka; Spanlens parks the failed row in Postgres and a cron replays it, so self-hosting adds no broker.',
       },
       { feature: 'Stream deadline with truncation flag', spanlens: 'yes', competitor: 'partial' },
     ],
@@ -167,10 +169,11 @@ export default function VsHeliconePage() {
     <CompareTemplate
       competitor="Helicone"
       tagline="Same proxy-first architecture, with more observability depth: Critical Path tracing, statistical A/B testing, and a fallback-replay durability layer."
-      tldr="Helicone proved the proxy-based model for LLM observability and ships a polished, focused product, but it entered maintenance mode after the 2026 Mintlify acquisition. Security patches and new-model support continue, while active feature development has ended and the founders have moved on. Choosing it today means betting on a tool that will not grow. Spanlens uses the same one-line baseURL architecture, so migrating is mostly changing an endpoint, and it is actively developed, fully MIT, and self-hostable with one Docker command. Beyond parity on request logging and cost dashboards, it adds Critical Path highlighting that shows which span actually gates an agent run's latency, Welch t-test significance on prompt A/B experiments, judge-to-human correlation for catching eval drift, and a ClickHouse fallback-replay queue that parks logs in Postgres during an analytics outage and replays them within minutes instead of dropping them silently."
+      tldr="Helicone proved the proxy-based model for LLM observability and ships a polished, focused product, but it entered maintenance mode after the 2026 Mintlify acquisition. Security patches and new-model support continue, while active feature development has ended and the founders have moved on. Choosing it today means betting on a tool that will not grow. Spanlens uses the same one-line baseURL architecture, so migrating is mostly changing an endpoint, and it is actively developed, fully MIT, and self-hostable with one Docker command. Beyond parity on request logging and cost dashboards, it adds Critical Path highlighting that shows which span actually gates an agent run's latency, Welch t-test significance on prompt A/B experiments, judge-to-human correlation for catching eval drift, and a fallback queue that parks a failed log write in Postgres and replays it within minutes instead of dropping it."
       whySpanlens={whySpanlens}
       whyCompetitor={whyCompetitor}
       groups={groups}
+      lastUpdated="2026-06-10"
       closing="If you want a battle-tested proxy with a focused feature set, Helicone is a strong choice. If you want the same proxy ergonomics plus deeper agent analytics, statistical A/B, and log durability, try Spanlens."
       relatedNote={
         <>

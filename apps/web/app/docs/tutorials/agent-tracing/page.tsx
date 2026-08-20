@@ -1,3 +1,4 @@
+import { openGraphFor } from '@/lib/page-metadata'
 import { CodeBlock } from '../../_components/code-block'
 import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
@@ -6,6 +7,7 @@ export const metadata = {
   description:
     'Tutorial: trace an agent that classifies intent, fans out to parallel tools, and composes an answer. Per-step cost and critical path in one waterfall.',
   alternates: { canonical: '/docs/tutorials/agent-tracing' },
+  openGraph: openGraphFor('/docs/tutorials/agent-tracing'),
 }
 
 export default function AgentTracingTutorial() {

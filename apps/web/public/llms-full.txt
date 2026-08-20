@@ -4,7 +4,7 @@
 
 This is the expanded version. The short index lives at https://www.spanlens.io/llms.txt.
 
-Spanlens is positioned as a lightweight, developer-first alternative to Helicone (acquired) and Langfuse (heavy). The stack is Next.js 16 + Hono + Supabase Postgres + ClickHouse, with first-class SDKs for TypeScript and Python and OpenTelemetry (OTLP/HTTP) ingest for everything else.
+Spanlens is positioned as a lightweight, developer-first alternative to Helicone (acquired) and Langfuse (heavy). The stack is Next.js 16 + Hono + Supabase Postgres, with first-class SDKs for TypeScript and Python and OpenTelemetry (OTLP/HTTP) ingest for everything else.
 
 ## What sets Spanlens apart in 2026
 
@@ -14,7 +14,7 @@ Spanlens is positioned as a lightweight, developer-first alternative to Helicone
 - Critical Path on agent traces. Highlights the longest dependency chain, the real bottleneck, not just the longest span.
 - Model savings recommender. "Swap these gpt-4o classification calls to gpt-4o-mini, $412 a month saved" with the evidence.
 - Judge-to-human correlation. First-class metric that tells you when your LLM judge starts to drift from human raters.
-- ClickHouse fallback-replay safety net. If the analytics backend is briefly unreachable, logs queue in Postgres and replay within 5 minutes. No silent loss.
+- Fallback-replay safety net. A log write that fails is queued and replayed within 5 minutes, and replay skips rows that already landed. No silent loss.
 - Self-host with one Docker command. Same code we run, no separate enterprise build.
 
 ## Core capabilities
@@ -42,7 +42,7 @@ from spanlens.integrations.openai import create_openai
 client = create_openai()
 ```
 
-Or swap `baseURL` to the proxy and add a Spanlens API key (`sl_live_*`) in the Authorization header. Provider keys (your OpenAI/Anthropic key) are stored AES-256-GCM encrypted server-side and never logged. p99 ingestion overhead is under 3ms. Ingestion happens async, and if Spanlens ever fails, the original request still completes.
+Or swap `baseURL` to the proxy and add a Spanlens API key (`sl_live_*`) in the Authorization header. Provider keys (your OpenAI/Anthropic key) are stored AES-256-GCM encrypted server-side and never logged. Synchronous per-request proxy overhead is about 0.015 ms at p99, measured over 100,000 warm iterations (see the Benchmarks section below). Logging itself is async and off the critical path, so if Spanlens ever fails the original request still completes.
 
 ## Plans
 
@@ -54,7 +54,7 @@ Or swap `baseURL` to the proxy and add a Spanlens API key (`sl_live_*`) in the A
 ## Frequently asked questions
 
 - How does instrumentation work? Swap the provider SDK for our drop-in. Same surface, same types. We record the full request and response on the wire, with no extra round-trip and no sampling by default.
-- What about latency overhead? p99 overhead is under 3ms. Ingestion happens async in a worker. If we ever fail, the original request completes anyway. Spanlens never sits on the critical path.
+- What about latency overhead? Two distinct numbers, do not conflate them. Synchronous proxy overhead (the CPU cost added to your call in-line) is about 0.015 ms at p99. Actual log ingestion runs async in a worker, off the critical path, so it never delays your response. If ingestion ever fails, the original request completes anyway. Spanlens never sits on the critical path.
 - How do you handle PII? PII detectors (SSN, credit card, email, IBAN, passport) run at log time and flag matches for review in the Security dashboard, without blocking the request. API keys that slip into prompts are auto-masked before the row lands on disk. For workloads where prompt bodies must not be stored at all, opt out per-call with `X-Spanlens-Log-Body: meta`.
 - Do you support OpenTelemetry? Yes. OTLP/HTTP ingest and export. Your existing OTel tracing flows into the same span store; LLM spans get LLM-specific attributes on top.
 - What's the data retention? Free is 14 days. Pro is 90 days, Team is 365 days. Enterprise and self-hosted are configurable, including unlimited.
@@ -67,7 +67,7 @@ Or swap `baseURL` to the proxy and add a Spanlens API key (`sl_live_*`) in the A
 Each row links to a full feature-by-feature comparison.
 
 - [Spanlens vs Langfuse](https://www.spanlens.io/compare/langfuse): Langfuse is the most mature OSS option. Spanlens wins on 1-line proxy install, full MIT (no `ee/` folder), Prompt A/B with t-test, and judge-to-human correlation.
-- [Spanlens vs Helicone](https://www.spanlens.io/compare/helicone): Closest architectural match. Helicone entered maintenance after the 2026 Mintlify acquisition. Spanlens adds Critical Path tracing, statistical A/B, and ClickHouse fallback-replay.
+- [Spanlens vs Helicone](https://www.spanlens.io/compare/helicone): Closest architectural match. Helicone entered maintenance after the 2026 Mintlify acquisition. Spanlens adds Critical Path tracing and statistical A/B.
 - [Spanlens vs LangSmith](https://www.spanlens.io/compare/langsmith): LangSmith excels inside LangChain. Spanlens is framework-agnostic and self-hostable under MIT.
 - [Spanlens vs Braintrust](https://www.spanlens.io/compare/braintrust): Braintrust is eval-first closed-source. Spanlens bundles eval into a full observability platform you can self-host with one Docker command.
 - [Spanlens vs Arize Phoenix](https://www.spanlens.io/compare/arize-phoenix): Phoenix is ML-engineer-leaning under ELv2. Spanlens targets application developers with proxy-first install and equal-class JS/TS support under full MIT.
@@ -87,6 +87,50 @@ Each row links to a full feature-by-feature comparison.
 - [Self-hosting](https://www.spanlens.io/docs/self-host): run on your own infrastructure with one Docker command.
 - [Why Spanlens](https://www.spanlens.io/docs/why): comparison with Helicone, Langfuse, LangSmith, Braintrust, Arize Phoenix.
 - [API reference](https://www.spanlens.io/docs/api): REST endpoints for requests, traces, prompts, datasets, evals.
+
+## Benchmarks
+
+Reproducible proxy-overhead benchmark, measured over 100,000 warm iterations. Numbers are synchronous per-request CPU overhead added by the Spanlens proxy, not end-to-end network latency.
+
+- Median (p50): 0.008 ms (about 8 microseconds)
+- p99: 0.015 ms (about 15 microseconds)
+- Mean: 0.008 ms (about 8 microseconds)
+
+Every request Spanlens logs also carries a live `proxy_overhead_ms` value, so overhead is observed on real traffic, not only in the benchmark. Run it yourself: `pnpm --filter server exec tsx scripts/bench-proxy-overhead.ts`. Full methodology: https://www.spanlens.io/benchmarks
+
+## Framework integrations
+
+Spanlens traces agent and chain frameworks with no re-instrumentation. Each has a dedicated guide:
+
+- [LangChain](https://www.spanlens.io/docs/integrations/langchain)
+- [LangGraph](https://www.spanlens.io/docs/integrations/langgraph)
+- [LlamaIndex](https://www.spanlens.io/docs/integrations/llamaindex)
+- [CrewAI](https://www.spanlens.io/docs/integrations/crewai)
+- [Vercel AI SDK](https://www.spanlens.io/docs/integrations/vercel-ai)
+- [OpenAI Assistants](https://www.spanlens.io/docs/integrations/openai-assistants)
+- [AWS Bedrock](https://www.spanlens.io/docs/integrations/bedrock)
+- [Flowise](https://www.spanlens.io/docs/integrations/flowise)
+- [Instructor](https://www.spanlens.io/docs/integrations/instructor)
+- [MCP server](https://www.spanlens.io/docs/integrations/mcp)
+
+## Self-hosting operations
+
+Self-host the full stack (Next.js + Hono + Supabase Postgres) with one Docker compose file, under MIT, with no request cap or seat limit.
+
+- [Self-hosting guide](https://www.spanlens.io/docs/self-host): run on your own infrastructure with one Docker command.
+- [Backup and restore](https://www.spanlens.io/docs/self-host/backup): back up your Postgres data and restore it.
+- [Disaster recovery](https://www.spanlens.io/docs/production/disaster-recovery): recovery procedures and RPO/RTO guidance.
+- [Reliability](https://www.spanlens.io/docs/production/reliability): fallback-replay queue and failure modes.
+- [Scaling](https://www.spanlens.io/docs/production/scaling): capacity planning for high request volume.
+- [Troubleshooting](https://www.spanlens.io/docs/troubleshooting): common setup and ingestion issues.
+
+## Concepts
+
+- [Data model](https://www.spanlens.io/docs/concepts/data-model): requests, traces, spans, and how they relate.
+- [LLM observability](https://www.spanlens.io/docs/concepts/llm-observability): what to capture and why.
+- [Agent tracing](https://www.spanlens.io/docs/concepts/agent-tracing): spans, critical path, and waterfall traces.
+- [Evals](https://www.spanlens.io/docs/concepts/evals): LLM-as-judge scoring and judge-to-human correlation.
+- [Prompt management](https://www.spanlens.io/docs/concepts/prompt-management): versioning, diffing, and A/B rollout.
 
 ## Key pages
 

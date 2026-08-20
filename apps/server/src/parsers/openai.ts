@@ -1,6 +1,6 @@
 /**
  * Provider-reported service tier values we recognize. Stored verbatim in
- * ClickHouse `requests.service_tier` so the dashboard can group by it. The
+ * `requests.service_tier` so the dashboard can group by it. The
  * cost calculator maps these to multipliers (see lib/cost.ts).
  *
  *   OpenAI (`response.service_tier`): 'default' | 'auto' | 'flex' | 'priority' | 'scale'

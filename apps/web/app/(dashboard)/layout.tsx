@@ -102,8 +102,8 @@ export default async function DashboardLayout({ children }: { children: React.Re
   return (
     // OverlayContainerProvider must sit above CommandPaletteProvider so the
     // palette (and Radix dialogs) can read the portal target; the target node
-    // itself lives inside the zoom wrapper below, so overlays inherit the 125%
-    // scale instead of rendering at 100% off the document body.
+    // itself lives inside the shell below, so overlays are positioned against
+    // the shell rather than off the document body.
     <OverlayContainerProvider>
       <CommandPaletteProvider>
         <SidebarProvider initialCollapsed={initialCollapsed}>
@@ -113,14 +113,14 @@ export default async function DashboardLayout({ children }: { children: React.Re
               the swap is visually stable. */}
           <Suspense fallback={<DashboardShellSkeleton initialCollapsed={initialCollapsed} />}>
             <PrefetchedShell>
-              {/* Dashboard renders at 125% scale (zoom) for a roomier default
-                  view. Height is divided by the SAME factor so the zoomed
-                  container still resolves to exactly one viewport height — without
-                  the correction, 100vh * 1.25 would overflow and add a stray
-                  scrollbar. The zoom factor and the height divisor must always
-                  match. Scoped to the dashboard only; landing/docs/demo keep
-                  their 100% scale. */}
-              <div className="flex h-[calc(100vh/1.25)] overflow-hidden bg-bg [zoom:1.25]">
+              {/* The shell renders at 100%. It used to carry a `[zoom:1.25]`
+                  with a matching `100vh/1.25` height correction, and the
+                  sidebar carried a `[zoom:0.8]` to cancel it back out. The
+                  Figma boards now specify the dashboard's density directly
+                  (13px nav, 13.5px card titles, 232px sidebar, 61px topbar),
+                  so scaling the whole tree on top of that would land 25% off
+                  the design. */}
+              <div className="flex h-screen overflow-hidden bg-bg">
                 <Sidebar />
                 {/* Brings the sidebar back when it's collapsed to zero width.
                     Renders nothing while the sidebar is visible. */}

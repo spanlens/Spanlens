@@ -1,26 +1,26 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// Stream deadline helper — graceful timeout for proxy streaming responses.
+// Stream deadline helper: graceful timeout for proxy streaming responses.
 //
 // THE PROBLEM
 // -----------
 // Spanlens runs on Vercel Pro with a 300-second function ceiling. If a
 // streaming proxy request still hasn't drained the upstream body when we hit
-// that wall, Vercel kills the function — the client sees a connection reset,
-// the row never reaches ClickHouse, and the customer's bill silently absorbs
+// that wall, Vercel kills the function: the client sees a connection reset,
+// the row never reaches `requests`, and the customer's bill silently absorbs
 // the tokens without any UI evidence that anything went wrong.
 //
 // THE SOLUTION
 // ------------
-// We give the pump loop a deadline of `STREAM_DEADLINE_MS` (default 290 000ms
-// — 10s under the Vercel limit). When it fires, we:
+// We give the pump loop a deadline of `STREAM_DEADLINE_MS` (default 290 000ms,
+// 10s under the Vercel limit). When it fires, we:
 //   1. stop reading from the upstream (cancel the reader),
 //   2. fall out of the pump,
 //   3. let the proxy log the partial response with `truncated: true`.
 //
 // The 10-second buffer covers the fire-and-forget `logRequestAsync` chain
-// (ClickHouse insert + optional security alert email) drained through
-// `waitUntil` — it must finish before Vercel reaps the instance, or the row
-// gets dropped (CLAUDE.md gotcha #8).
+// (the `requests` insert plus an optional security alert email) drained
+// through `waitUntil`. It must finish before Vercel reaps the instance, or
+// the row gets dropped (CLAUDE.md gotcha #8).
 //
 // Tunable via the `STREAM_DEADLINE_MS` env var, mostly for tests and for
 // downstream operators on different Vercel plans (Hobby caps at 60s, in

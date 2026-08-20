@@ -1,8 +1,21 @@
 'use client'
 
+import Image from 'next/image'
 import Link from 'next/link'
 import { IOPreview } from '@/components/share/io-preview'
 import { CopyPermalink } from '@/components/share/copy-permalink'
+import { formatDate, formatDateTime } from '@/lib/utils'
+
+/*
+ * Public share viewer, ported from the `S1 · Public share / trace` and
+ * `S2 · Public share / dashboard` boards in Figma
+ * (file XCx3NR1is1GA3H6mVfLz7J).
+ *
+ * Composition: a 68px public bar, a link-scope banner, a divided summary
+ * strip, the span waterfall and an inverted footer call to action. The reader
+ * is usually not a Spanlens customer, so nothing here is interactive beyond
+ * expanding a span.
+ */
 
 interface ShareViewProps {
   share: {
@@ -73,236 +86,318 @@ interface SharedRequestPayload {
 
 export function ShareView({ share }: ShareViewProps) {
   return (
-    <div className="min-h-screen bg-bg text-text [zoom:1.25]">
+    <div className="min-h-screen bg-bg text-text">
       <ShareHeader share={share} />
-      <main className="max-w-5xl mx-auto px-6 py-8">
+      <main className="mx-auto flex max-w-[1440px] flex-col gap-4 px-6 pb-8 pt-6 lg:px-10">
+        <ScopeBanner share={share} />
         {share.scope === 'trace' ? (
           <TraceView payload={share.payload as SharedTracePayload} />
         ) : (
           <RequestView payload={share.payload as SharedRequestPayload} />
         )}
+        {!share.hidePoweredBy && <FooterCTA />}
       </main>
-      {!share.hidePoweredBy && <ShareFooter />}
     </div>
   )
 }
 
+/* ── Chrome ───────────────────────────────────────────────────────────── */
+
 function ShareHeader({ share }: ShareViewProps) {
-  const expiresLabel = share.expiresAt
-    ? new Date(share.expiresAt).toLocaleDateString('en-US', {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric',
-      })
-    : 'never'
   return (
-    <header className="border-b border-border bg-bg-elevated">
-      <div className="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between gap-4">
+    <header className="border-b border-border bg-bg-elev">
+      <div className="mx-auto flex max-w-[1440px] flex-wrap items-center justify-between gap-3 px-6 py-4 lg:px-10">
         <div className="flex items-center gap-3">
-          <Link href="/" className="font-mono text-[13px] font-semibold tracking-tight">
-            Spanlens
+          <Link href="/" className="flex items-center gap-3 transition-opacity hover:opacity-80">
+            <Image src="/icon.png" alt="" width={22} height={22} className="shrink-0 rounded-chip" />
+            <span className="text-[13.5px] font-semibold leading-[1.45] text-text">
+              Shared {share.scope}
+            </span>
           </Link>
-          <span className="font-mono text-[11px] text-text-muted uppercase tracking-wider">
-            Shared {share.scope}
+          <span className="inline-flex items-center gap-[7px] rounded-full bg-bg-chip px-2.5 py-1 font-mono text-[11px] leading-[1.45] text-text-faint">
+            <span className="h-[7px] w-2 rounded-[1.5px] bg-text-faint" aria-hidden="true" />
+            read only
           </span>
         </div>
-        <div className="flex items-center gap-3">
-          <div className="font-mono text-[11px] text-text-muted">
-            {share.viewCount} {share.viewCount === 1 ? 'view' : 'views'} · expires {expiresLabel}
-          </div>
+        <div className="flex items-center gap-2.5">
+          <span className="font-mono text-[11.5px] leading-[1.45] text-text-faint">
+            {share.viewCount} {share.viewCount === 1 ? 'view' : 'views'}
+            {share.expiresAt ? ` · expires ${formatDate(share.expiresAt)}` : ' · no expiry'}
+          </span>
           {share.permalink ? <CopyPermalink url={share.permalink} /> : null}
+          {!share.hidePoweredBy && (
+            <Link
+              href="/signup"
+              className="inline-flex h-9 items-center rounded-full bg-accent px-4 text-[12.5px] font-semibold text-accent-fg transition-colors hover:bg-accent-strong"
+            >
+              Start free
+            </Link>
+          )}
         </div>
       </div>
     </header>
   )
 }
 
-function ShareFooter() {
+/* States what the link is and how long it lasts, matching the board's banner. */
+function ScopeBanner({ share }: ShareViewProps) {
   return (
-    <footer className="border-t border-border mt-12 py-6">
-      <div className="max-w-5xl mx-auto px-6 flex items-center justify-between text-[11.5px] font-mono text-text-muted">
-        <div>
-          Observed by{' '}
-          <Link href="/" className="text-accent hover:opacity-80">
-            Spanlens
-          </Link>{' '}
-          — open-source LLM observability
-        </div>
-        <Link
-          href="/signup"
-          className="text-accent hover:opacity-80"
-        >
-          Try free →
-        </Link>
-      </div>
-    </footer>
-  )
-}
-
-// ── Trace view ──────────────────────────────────────────────────────────────
-
-function TraceView({ payload }: { payload: SharedTracePayload }) {
-  return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-[18px] font-semibold tracking-tight mb-1">
-          {payload.name ?? 'Untitled trace'}
-        </h1>
-        <div className="font-mono text-[11px] text-text-muted">
-          {payload.status} · started{' '}
-          {new Date(payload.started_at).toLocaleString('en-US')}
-        </div>
-      </div>
-
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Stat label="Duration" value={payload.duration_ms != null ? `${payload.duration_ms} ms` : '—'} />
-        <Stat label="Spans" value={payload.span_count != null ? String(payload.span_count) : String(payload.spans.length)} />
-        <Stat
-          label="Tokens"
-          value={
-            payload.total_tokens == null
-              ? '•••'
-              : Number(payload.total_tokens).toLocaleString('en-US')
-          }
-        />
-        <Stat
-          label="Cost"
-          value={
-            payload.total_cost_usd == null
-              ? '$•••'
-              : `$${Number(payload.total_cost_usd).toFixed(4)}`
-          }
-        />
-      </div>
-
-      {payload.error_message ? (
-        <div className="border border-status-error/40 bg-status-error/5 rounded-md p-4 font-mono text-[12px] text-status-error">
-          {payload.error_message}
-        </div>
-      ) : null}
-
-      <section>
-        <h2 className="text-[13px] font-semibold mb-3 uppercase tracking-wider text-text-muted">
-          Spans ({payload.spans.length})
-        </h2>
-        <div className="space-y-2">
-          {payload.spans.map((span) => (
-            <SpanRow
-              key={span.id}
-              span={span}
-              isCritical={payload.critical_span_ids.includes(span.id)}
-            />
-          ))}
-        </div>
-      </section>
+    <div className="flex items-center gap-2.5 rounded-lg border border-border bg-bg-sunk px-4 py-3">
+      <span className="size-[7px] shrink-0 rounded-full bg-text-faint" aria-hidden="true" />
+      <p className="text-[12.5px] leading-[1.45] text-text-muted">
+        This is a read-only snapshot. Anyone with the link can view it
+        {share.expiresAt ? ` until ${formatDate(share.expiresAt)}.` : ', and it does not expire.'}
+      </p>
     </div>
   )
 }
 
-function SpanRow({ span, isCritical }: { span: SharedSpan; isCritical: boolean }) {
+function FooterCTA() {
   return (
-    <details className="border border-border rounded-md bg-bg-elevated">
-      <summary className="cursor-pointer px-4 py-3 flex items-center justify-between gap-4 font-mono text-[12px]">
-        <div className="flex items-center gap-3 min-w-0">
+    <div className="flex flex-wrap items-center justify-between gap-4 rounded-card bg-text px-5 py-[18px]">
+      <div>
+        <p className="font-display text-[15px] leading-[1.45] tracking-[-0.015em] text-bg">
+          This trace came out of Spanlens
+        </p>
+        <p className="text-[12.5px] leading-[1.45] text-bg/70">
+          One line of config and your own runs look like this.
+        </p>
+      </div>
+      <Link
+        href="/signup"
+        className="inline-flex h-9 shrink-0 items-center rounded-full bg-accent px-4 text-[12.5px] font-semibold text-accent-fg transition-colors hover:bg-accent-strong"
+      >
+        Start free
+      </Link>
+    </div>
+  )
+}
+
+/* ── Summary strip ────────────────────────────────────────────────────── */
+
+interface SummaryItem {
+  label: string
+  value: string
+  /** Renders the value in the faint ink the board uses for withheld fields. */
+  muted?: boolean
+}
+
+/*
+ * One card holding the metrics side by side, split by hairlines rather than
+ * by gaps. Wraps to a grid on narrow viewports so the dividers never collapse
+ * into a single crowded row.
+ */
+function SummaryStrip({ items }: { items: SummaryItem[] }) {
+  return (
+    <dl className="grid grid-cols-2 rounded-card border border-border bg-bg-elev px-5 py-4 sm:grid-cols-3 lg:grid-cols-6">
+      {items.map((item, i) => (
+        <div
+          key={item.label}
+          className={`flex flex-col gap-[5px] px-6 py-2 ${
+            i === 0 ? 'pl-0' : 'border-l border-track'
+          }`}
+        >
+          <dt className="font-mono text-[10px] uppercase leading-[1.45] tracking-[0.1em] text-text-faint">
+            {item.label}
+          </dt>
+          <dd
+            className={`truncate font-mono text-[15px] leading-[1.45] ${
+              item.muted ? 'text-text-faint' : 'text-text'
+            }`}
+          >
+            {item.value}
+          </dd>
+        </div>
+      ))}
+    </dl>
+  )
+}
+
+function ErrorPanel({ message }: { message: string }) {
+  return (
+    <div className="rounded-lg border border-bad/40 bg-bad-bg px-4 py-3 font-mono text-[12px] leading-[1.5] text-bad">
+      {message}
+    </div>
+  )
+}
+
+/* ── Trace view ───────────────────────────────────────────────────────── */
+
+function TraceView({ payload }: { payload: SharedTracePayload }) {
+  const traceStart = new Date(payload.started_at).getTime()
+  // The waterfall is drawn against the trace's own duration; fall back to the
+  // longest span when the trace has no recorded duration so the bars still
+  // carry proportion instead of collapsing to full width.
+  const span = payload.duration_ms ?? Math.max(1, ...payload.spans.map((s) => s.duration_ms ?? 0))
+
+  const items: SummaryItem[] = [
+    { label: 'Name', value: payload.name ?? 'untitled' },
+    { label: 'Duration', value: payload.duration_ms != null ? `${payload.duration_ms} ms` : '—' },
+    { label: 'Spans', value: String(payload.span_count ?? payload.spans.length) },
+    {
+      label: 'Tokens',
+      value: payload.total_tokens == null ? 'hidden' : Number(payload.total_tokens).toLocaleString('en-US'),
+      ...(payload.total_tokens == null ? { muted: true } : {}),
+    },
+    {
+      label: 'Cost',
+      value: payload.total_cost_usd == null ? 'hidden' : `$${Number(payload.total_cost_usd).toFixed(4)}`,
+      ...(payload.total_cost_usd == null ? { muted: true } : {}),
+    },
+    { label: 'Status', value: payload.status },
+  ]
+
+  return (
+    <>
+      <SummaryStrip items={items} />
+      {payload.error_message ? <ErrorPanel message={payload.error_message} /> : null}
+
+      <section className="overflow-hidden rounded-card border border-border bg-bg-elev">
+        <h2 className="flex items-center gap-3 border-b border-track bg-bg-muted px-[18px] py-2.5 font-mono text-[10px] uppercase leading-[1.45] tracking-[0.1em] text-text-faint">
+          <span>Span</span>
+          <span className="ml-auto normal-case tracking-normal">
+            {payload.spans.length} total · started {formatDateTime(payload.started_at)}
+          </span>
+        </h2>
+        {payload.spans.map((s) => (
+          <SpanRow
+            key={s.id}
+            span={s}
+            isCritical={payload.critical_span_ids.includes(s.id)}
+            traceStart={traceStart}
+            traceDuration={span}
+          />
+        ))}
+      </section>
+    </>
+  )
+}
+
+interface SpanRowProps {
+  span: SharedSpan
+  isCritical: boolean
+  traceStart: number
+  traceDuration: number
+}
+
+function SpanRow({ span, isCritical, traceStart, traceDuration }: SpanRowProps) {
+  const offsetMs = Math.max(0, new Date(span.started_at).getTime() - traceStart)
+  const left = traceDuration > 0 ? Math.min(100, (offsetMs / traceDuration) * 100) : 0
+  // Floor the width so a sub-millisecond span is still a visible tick.
+  const width =
+    traceDuration > 0 ? Math.max(1.5, Math.min(100 - left, ((span.duration_ms ?? 0) / traceDuration) * 100)) : 0
+
+  return (
+    <details className="group border-b border-track last:border-b-0">
+      <summary className="flex cursor-pointer list-none items-center gap-3.5 px-[18px] py-[11px] transition-colors hover:bg-bg-muted">
+        <span className="flex min-w-0 flex-[0_0_260px] items-center gap-2">
           {isCritical && (
-            <span className="px-1.5 py-0.5 rounded text-[10px] bg-accent/15 text-accent">
+            <span className="rounded-chip bg-accent-bg px-1.5 py-0.5 font-mono text-[10px] leading-[1.45] text-accent">
               critical
             </span>
           )}
-          <span className="truncate">{span.name ?? '(unnamed)'}</span>
+          <span className="truncate font-mono text-[12px] leading-[1.45] text-text">
+            {span.name ?? '(unnamed)'}
+          </span>
           {span.span_type && (
-            <span className="text-[10px] text-text-muted uppercase tracking-wider">
-              {span.span_type}
+            <span className="shrink-0 font-mono text-[12px] leading-[1.45] text-text-muted">
+              · {span.span_type}
             </span>
           )}
-        </div>
-        <div className="text-[11px] text-text-muted flex items-center gap-3 shrink-0">
-          <span>{span.duration_ms != null ? `${span.duration_ms} ms` : '—'}</span>
-          {span.total_tokens != null && <span>{span.total_tokens} tok</span>}
-        </div>
+        </span>
+
+        {/* Waterfall track. Decorative: the duration to its right is the
+            accessible reading of the same number. */}
+        <span className="relative hidden h-2.5 flex-1 rounded-full bg-track md:block" aria-hidden="true">
+          <span
+            className={`absolute inset-y-0 rounded-full ${span.error_message ? 'bg-bad' : isCritical ? 'bg-accent' : 'bg-text-faint'}`}
+            style={{ left: `${left}%`, width: `${width}%` }}
+          />
+        </span>
+
+        <span className="ml-auto shrink-0 text-right font-mono text-[11.5px] leading-[1.45] text-text-faint md:ml-0 md:w-16">
+          {span.duration_ms != null ? `${span.duration_ms} ms` : '—'}
+        </span>
       </summary>
-      <div className="px-4 pb-4 border-t border-border space-y-3 pt-3">
+
+      <div className="flex flex-col gap-3 border-t border-track px-[18px] py-3.5">
         {span.error_message && (
-          <div className="font-mono text-[11.5px] text-status-error whitespace-pre-wrap">
+          <p className="whitespace-pre-wrap font-mono text-[11.5px] leading-[1.5] text-bad">
             {span.error_message}
-          </div>
+          </p>
         )}
-        {(span.input != null || span.output != null) && (
+        {span.input != null || span.output != null ? (
           <IOPreview input={span.input} output={span.output} />
+        ) : (
+          <HiddenBody />
         )}
       </div>
     </details>
   )
 }
 
-// ── Request view ────────────────────────────────────────────────────────────
+/* Placeholder the board shows when the link was created without bodies. */
+function HiddenBody() {
+  return (
+    <div className="flex flex-col gap-3.5">
+      <div>
+        <p className="text-[13.5px] font-semibold leading-[1.45] text-text">
+          Prompt and response are hidden
+        </p>
+        <p className="mt-1 max-w-[700px] text-[12.5px] leading-[1.6] text-text-faint">
+          The person who created this link chose to share timings and structure only. Ask them for a link
+          with bodies included if you need the text.
+        </p>
+      </div>
+      <div className="flex flex-col gap-2 rounded-lg border border-track bg-bg-sunk p-3.5" aria-hidden="true">
+        <span className="h-[9px] w-[280px] max-w-full rounded-[4px] bg-border" />
+        <span className="h-[9px] w-[420px] max-w-full rounded-[4px] bg-border" />
+        <span className="h-[9px] w-[200px] max-w-full rounded-[4px] bg-border" />
+      </div>
+    </div>
+  )
+}
+
+/* ── Request view ─────────────────────────────────────────────────────── */
 
 function RequestView({ payload }: { payload: SharedRequestPayload }) {
+  const items: SummaryItem[] = [
+    { label: 'Provider', value: payload.provider },
+    { label: 'Model', value: payload.model },
+    { label: 'Latency', value: `${payload.latency_ms} ms` },
+    {
+      label: 'Tokens',
+      value: payload.total_tokens == null ? 'hidden' : Number(payload.total_tokens).toLocaleString('en-US'),
+      ...(payload.total_tokens == null ? { muted: true } : {}),
+    },
+    {
+      label: 'Cost',
+      value: payload.cost_usd == null ? 'hidden' : `$${payload.cost_usd.toFixed(4)}`,
+      ...(payload.cost_usd == null ? { muted: true } : {}),
+    },
+    { label: 'Status', value: `${payload.status_code}${payload.truncated ? ' · truncated' : ''}` },
+  ]
+
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-[18px] font-semibold tracking-tight mb-1">
-          {payload.provider} · {payload.model}
-        </h1>
-        <div className="font-mono text-[11px] text-text-muted">
-          {payload.status_code} · {new Date(payload.created_at).toLocaleString('en-US')}
-          {payload.truncated && ' · truncated'}
-        </div>
+    <>
+      <SummaryStrip items={items} />
+      <p className="font-mono text-[11.5px] leading-[1.45] text-text-faint">
+        Recorded {formatDateTime(payload.created_at)}
+      </p>
+      {payload.error_message && <ErrorPanel message={payload.error_message} />}
+
+      <div className="rounded-card border border-border bg-bg-elev p-5">
+        {payload.request_body != null || payload.response_body != null ? (
+          <IOPreview
+            input={payload.request_body}
+            output={payload.response_body}
+            inputLabel="Request"
+            outputLabel="Response"
+          />
+        ) : (
+          <HiddenBody />
+        )}
       </div>
-
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Stat label="Latency" value={`${payload.latency_ms} ms`} />
-        <Stat
-          label="Tokens"
-          value={
-            payload.total_tokens == null
-              ? '•••'
-              : Number(payload.total_tokens).toLocaleString('en-US')
-          }
-        />
-        <Stat
-          label="Prompt"
-          value={payload.prompt_tokens == null ? '•••' : String(payload.prompt_tokens)}
-        />
-        <Stat
-          label="Cost"
-          value={
-            payload.cost_usd == null
-              ? '$•••'
-              : `$${payload.cost_usd.toFixed(4)}`
-          }
-        />
-      </div>
-
-      {payload.error_message && (
-        <div className="border border-status-error/40 bg-status-error/5 rounded-md p-4 font-mono text-[12px] text-status-error">
-          {payload.error_message}
-        </div>
-      )}
-
-      {(payload.request_body != null || payload.response_body != null) && (
-        <IOPreview
-          input={payload.request_body}
-          output={payload.response_body}
-          inputLabel="Request"
-          outputLabel="Response"
-        />
-      )}
-    </div>
+    </>
   )
 }
-
-// ── Primitives ──────────────────────────────────────────────────────────────
-
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="border border-border rounded-md bg-bg-elevated p-3">
-      <div className="text-[10px] uppercase tracking-wider text-text-muted mb-1">{label}</div>
-      <div className="font-mono text-[14px] font-semibold">{value}</div>
-    </div>
-  )
-}
-
-// JsonBlock was replaced by IOPreview (R-26 Sprint 5) — input/output now
-// render side-by-side on desktop. The legacy single-pane component had no
-// remaining call sites; removed to keep this file focused.

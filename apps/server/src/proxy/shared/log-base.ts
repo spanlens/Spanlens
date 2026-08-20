@@ -56,10 +56,12 @@ export interface BuildLogBaseInput {
   statusCode: number
 }
 
-// requests.trace_id / span_id are ClickHouse Nullable(UUID). A non-UUID header
-// value fails JSONEachRow parsing at async flush time (after insert() already
-// ACKed), losing the whole row with NO requests_fallback entry. Validate and
-// coerce invalid values to null so the row still logs (minus trace grouping).
+// `x-trace-id` / `x-span-id` are customer-supplied headers, and the columns
+// they land in are `text`, so anything at all would store. They are only
+// useful as a join key against `traces.id` / `spans.id`, which are `uuid`, so
+// a value that is not a UUID can never match a trace and would sit in the row
+// looking like a grouping key that simply never resolves. Coerce those to
+// null instead: "not traced" is a state the dashboard renders honestly.
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 function isUuid(value: string): boolean {

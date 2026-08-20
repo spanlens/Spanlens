@@ -196,13 +196,13 @@ export function Gantt({
     <div className="rounded-lg border bg-bg overflow-hidden">
       {/* Time ruler */}
       <div className="flex items-center border-b border-border bg-bg-muted px-4 py-2 text-text-faint">
-        <div className="shrink-0 font-mono text-[10px] uppercase tracking-[0.05em]" style={{ width: SPAN_W }}>
+        <div className="shrink-0 font-mono text-[10px] uppercase tracking-[0.1em]" style={{ width: SPAN_W }}>
           Span
         </div>
-        <div className="shrink-0 text-right font-mono text-[10px] uppercase tracking-[0.05em]" style={{ width: LAT_W }}>
+        <div className="shrink-0 text-right font-mono text-[10px] uppercase tracking-[0.1em]" style={{ width: LAT_W }}>
           Latency
         </div>
-        <div className="shrink-0 text-right font-mono text-[10px] uppercase tracking-[0.05em]" style={{ width: COST_W }}>
+        <div className="shrink-0 text-right font-mono text-[10px] uppercase tracking-[0.1em]" style={{ width: COST_W }}>
           Cost
         </div>
         <div className="flex-1 relative ml-3">
@@ -280,7 +280,7 @@ export function Gantt({
                     style={{ paddingLeft: `${s.depth * 12 + 14}px` }}
                   >
                     {isCritical && (
-                      <span className="font-mono text-[8.5px] px-[4px] py-[1px] rounded-[2px] bg-accent-bg text-accent border border-accent-border uppercase tracking-[0.04em]">
+                      <span className="font-mono text-[8.5px] px-[6px] py-[1px] rounded-full bg-accent-bg text-accent uppercase tracking-[0.08em]">
                         critical
                       </span>
                     )}

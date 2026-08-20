@@ -1,3 +1,4 @@
+import { openGraphFor } from '@/lib/page-metadata'
 import { CodeBlock } from '../../_components/code-block'
 import { LangTabs } from '../../_components/lang-tabs'
 import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
@@ -7,6 +8,7 @@ export const metadata = {
   description:
     'Move from LangSmith to Spanlens in under 45 minutes: traceable-to-observe() mapping, LangChain callback swap, and schema migration.',
   alternates: { canonical: '/docs/migrate/from-langsmith' },
+  openGraph: openGraphFor('/docs/migrate/from-langsmith'),
 }
 
 export default function MigrateFromLangsmith() {
@@ -40,7 +42,7 @@ export default function MigrateFromLangsmith() {
           downstream aggregation step needed.
         </li>
         <li>
-          <strong>MIT self-host.</strong> One Docker compose, your Supabase + ClickHouse.
+          <strong>MIT self-host.</strong> One Docker compose, one Postgres database.
         </li>
       </ul>
 

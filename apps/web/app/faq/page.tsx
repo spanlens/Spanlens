@@ -1,24 +1,28 @@
+import { OG_IMAGE } from '@/lib/page-metadata'
 import Link from 'next/link'
 import { Footer } from '@/components/layout/footer'
 import { MarketingNav } from '@/components/layout/marketing-nav'
 import { BreadcrumbJsonLd } from '@/components/marketing/breadcrumb-jsonld'
 
 const FAQ_DESCRIPTION =
-  'Frequently asked questions about Spanlens — open-source LLM observability for OpenAI, Anthropic, and Gemini. Pricing, self-hosting, integration, comparisons, and security.'
+  'Frequently asked questions about Spanlens, the open-source LLM observability platform for OpenAI, Anthropic, and Gemini. Pricing, self-hosting, and security.'
 
 export const metadata = {
   alternates: { canonical: '/faq' },
   title: 'FAQ · Spanlens LLM Observability',
   description: FAQ_DESCRIPTION,
   openGraph: {
+    siteName: 'Spanlens',
     type: 'website',
-    title: 'Spanlens FAQ — Open Source LLM Observability',
+    title: 'Spanlens FAQ (Open Source LLM Observability)',
     description: FAQ_DESCRIPTION,
     url: '/faq',
+    locale: 'en_US',
+    images: OG_IMAGE,
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Spanlens FAQ — Open Source LLM Observability',
+    title: 'Spanlens FAQ (Open Source LLM Observability)',
     description: FAQ_DESCRIPTION,
   },
 }
@@ -51,7 +55,7 @@ const FAQ_GROUPS: FaqGroup[] = [
     items: [
       {
         q: 'How do I integrate Spanlens?',
-        a: 'Three options. (1) Drop-in SDK: swap import { OpenAI } from "openai" with import { createOpenAI } from "@spanlens/sdk/openai" — same surface, every call captured. (2) Proxy: change your provider baseURL to https://api.spanlens.io/proxy/openai/v1 and put your Spanlens key in the Authorization header — works in any language. (3) OpenTelemetry: point your existing OTLP/HTTP exporter at Spanlens. p99 ingestion overhead is under 3ms.',
+        a: 'Three options. (1) Drop-in SDK: swap import { OpenAI } from "openai" with import { createOpenAI } from "@spanlens/sdk/openai". Same surface, every call captured. (2) Proxy: change your provider baseURL to https://api.spanlens.io/proxy/openai/v1 and put your Spanlens key in the Authorization header. Works in any language. (3) OpenTelemetry: point your existing OTLP/HTTP exporter at Spanlens. p99 ingestion overhead is under 3ms.',
       },
       {
         q: 'Does Spanlens support Anthropic and Gemini?',
@@ -80,7 +84,7 @@ const FAQ_GROUPS: FaqGroup[] = [
       },
       {
         q: 'Can I self-host Spanlens for free?',
-        a: 'Yes. docker compose up runs the full stack (web, server, Postgres, ClickHouse). No license fee, no seat cap, no feature gating. The hosted plans pay for managed infrastructure (uptime, backups, scaling), not features. Data stays in your own infrastructure when self-hosted.',
+        a: 'Yes. docker compose up runs the full stack (web, server, Postgres). No license fee, no seat cap, no feature gating. The hosted plans pay for managed infrastructure (uptime, backups, scaling), not features. Data stays in your own infrastructure when self-hosted.',
       },
       {
         q: 'What counts as a request?',
@@ -93,19 +97,19 @@ const FAQ_GROUPS: FaqGroup[] = [
     items: [
       {
         q: 'How does Spanlens handle PII?',
-        a: 'PII detectors (SSN, credit card, email, IBAN, passport) run at log time and flag matches in the Security dashboard without blocking the request. API keys that slip into prompts are auto-masked before any row is persisted. For workloads where prompt bodies must not be stored at all, opt out per-call with the X-Spanlens-Log-Body: meta header — metadata is kept, prompt and response bodies are dropped.',
+        a: 'PII detectors (SSN, credit card, email, IBAN, passport) run at log time and flag matches in the Security dashboard without blocking the request. API keys that slip into prompts are auto-masked before any row is persisted. For workloads where prompt bodies must not be stored at all, opt out per-call with the X-Spanlens-Log-Body: meta header. Metadata is kept, prompt and response bodies are dropped.',
       },
       {
         q: 'Where is provider API key (OpenAI/Anthropic key) storage handled?',
-        a: 'Provider keys are stored AES-256-GCM encrypted server-side and never logged. The decryption key is fetched only at proxy time to the upstream provider, then immediately discarded — it is never written to logs, never visible in the dashboard, and never returned to the client.',
+        a: 'Provider keys are stored AES-256-GCM encrypted server-side and never logged. The decryption key is fetched only at proxy time to the upstream provider, then immediately discarded. It is never written to logs, never visible in the dashboard, and never returned to the client.',
       },
       {
         q: 'What about latency overhead?',
-        a: 'p99 ingestion overhead is under 3ms. Logging happens async in a worker after the response is already streamed back to your client. If Spanlens itself ever fails, the original request still completes — the proxy passes through with no logging side effect. Spanlens never sits on the critical path.',
+        a: 'p99 ingestion overhead is under 3ms. Logging happens async in a worker after the response is already streamed back to your client. If Spanlens itself ever fails, the original request still completes. The proxy passes through with no logging side effect. Spanlens never sits on the critical path.',
       },
       {
         q: 'Does Spanlens have SOC 2 or ISO 27001?',
-        a: 'SOC 2 Type II is in progress (target Q3 2026). For now, hosted Spanlens runs on SOC 2-certified infrastructure (Vercel, Supabase) with AES-256 encryption at rest, TLS 1.2+ in transit, and a published DPA at spanlens.io/dpa. Self-hosting is the safest option for regulated workloads — your data never leaves your network.',
+        a: 'SOC 2 Type II is in progress (target Q3 2026). For now, hosted Spanlens runs on SOC 2-certified infrastructure (Vercel, Supabase) with AES-256 encryption at rest, TLS 1.2+ in transit, and a published DPA at spanlens.io/dpa. Self-hosting is the safest option for regulated workloads. Your data never leaves your network.',
       },
     ],
   },
@@ -118,7 +122,7 @@ const FAQ_GROUPS: FaqGroup[] = [
       },
       {
         q: 'How long is data retained?',
-        a: 'Free: 14 days. Pro: 90 days. Team: 365 days. Enterprise and self-hosted: configurable including unlimited. Retention is enforced at query time in ClickHouse — older rows are not deleted until the next compaction cycle, so a brief plan upgrade can recover slightly older data within the same billing window.',
+        a: 'Free: 14 days. Pro: 90 days. Team: 365 days. Enterprise and self-hosted: configurable including unlimited. Rows are deleted for good at 365 days, when the month partition is dropped. The shorter per-plan windows are applied at query time, so upgrading a plan brings older data back into view instead of finding it already deleted.',
       },
     ],
   },
@@ -148,12 +152,12 @@ export default function FaqPage() {
       <BreadcrumbJsonLd trail={[{ name: 'FAQ', path: '/faq' }]} />
 
       <section className="max-w-3xl mx-auto px-6 py-20">
-        <h1 className="text-[40px] sm:text-[48px] font-semibold tracking-[-0.8px] text-text mb-3 leading-[1.05]">
+        <h1 className="font-display track-h2 text-[40px] sm:text-[48px] text-text mb-3 leading-[1.12]">
           Frequently asked questions
         </h1>
         <p className="text-[16px] text-text-muted mb-12">
-          Everything we get asked about Spanlens — integration, pricing, self-hosting,
-          security, and how we compare to{' '}
+          Everything we get asked about Spanlens, from integration and pricing to
+          self-hosting, security, and how we compare to{' '}
           <Link href="/compare/langfuse" className="text-accent hover:opacity-80">Langfuse</Link>,{' '}
           <Link href="/compare/helicone" className="text-accent hover:opacity-80">Helicone</Link>, and{' '}
           <Link href="/compare/langsmith" className="text-accent hover:opacity-80">LangSmith</Link>.
@@ -161,14 +165,14 @@ export default function FaqPage() {
 
         {FAQ_GROUPS.map((group) => (
           <div key={group.title} className="mb-12">
-            <h2 className="text-[20px] font-semibold tracking-[-0.4px] text-text mb-5">
+            <h2 className="font-display track-quote text-[20px] text-text mb-5">
               {group.title}
             </h2>
             <div className="space-y-3">
               {group.items.map((item) => (
                 <details
                   key={item.q}
-                  className="group rounded-xl border border-border bg-bg-elev p-5"
+                  className="group rounded-card border border-border bg-bg-elev p-5"
                 >
                   <summary className="cursor-pointer list-none text-[14px] font-medium text-text">
                     {item.q}
@@ -182,7 +186,7 @@ export default function FaqPage() {
           </div>
         ))}
 
-        <div className="mt-16 rounded-xl border border-border bg-bg-elev p-6 text-center">
+        <div className="mt-16 rounded-card border border-border bg-bg-elev p-6 text-center">
           <p className="text-[14px] text-text-muted mb-4">
             Still have questions? We respond to every email.
           </p>
@@ -195,7 +199,7 @@ export default function FaqPage() {
             </a>
             <Link
               href="/docs/quick-start"
-              className="h-10 px-5 rounded-[6px] border border-border text-text text-[14px] font-medium leading-10 hover:bg-bg-elev transition-colors"
+              className="h-10 px-5 rounded-[6px] border border-border text-text text-[14px] font-medium leading-10 hover:bg-bg-muted transition-colors"
             >
               Read the docs
             </Link>

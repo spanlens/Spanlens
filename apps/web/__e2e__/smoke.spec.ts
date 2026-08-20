@@ -16,7 +16,7 @@ import { createClient } from '@supabase/supabase-js'
  *   We do NOT cover billing, invitations, or evaluator flows here —
  *   those have their own focused specs (R-3 Phase 2 / Phase 3).
  *   Keeping the smoke spec single-purpose means a red signal points at
- *   the proxy → ClickHouse → dashboard pipe directly, not at the
+ *   the proxy to log to dashboard pipe directly, not at the
  *   periphery.
  *
  * Required environment (CI's e2e workflow sets these)
@@ -214,41 +214,45 @@ test.describe('smoke: signup → api key → proxy → /requests', () => {
     })
     expect(proxyRes.status(), `proxy response: ${await proxyRes.text()}`).toBe(200)
 
-    // ── 6. ClickHouse INSERT verifies the proxy → log pipe ──────────────────
+    // ── 6. The request log row verifies the proxy → log pipe ───────────────
     //
-    // The proxy logs to ClickHouse fire-and-forget. Polling ClickHouse
-    // directly is the cleanest deterministic check that the end-to-end
-    // auth → proxy → upstream → log pipeline works. UI rendering
-    // (/requests page) has its own moving pieces (Next 16 RSC compile,
-    // auth cookie picked up by middleware, server-component cache) that
-    // produce flake here without exercising any of the proxy or log
-    // contracts — split into a dedicated UI spec down the line if we
-    // want that coverage.
-    const clickhouseUrl = process.env['CLICKHOUSE_URL'] ?? 'http://localhost:8123'
-    const clickhouseUser = process.env['CLICKHOUSE_USER'] ?? 'spanlens'
-    const clickhousePassword = process.env['CLICKHOUSE_PASSWORD'] ?? 'spanlens_ci_password'
-    const clickhouseDb = process.env['CLICKHOUSE_DB'] ?? 'spanlens'
-
-    const chPollDeadline = Date.now() + 30_000
-    let chRowCount = 0
-    while (Date.now() < chPollDeadline) {
-      const query = `SELECT count() FROM ${clickhouseDb}.requests WHERE organization_id = '${orgId}' FORMAT JSONEachRow`
-      const res = await fetch(`${clickhouseUrl}/?user=${clickhouseUser}&password=${clickhousePassword}`, {
-        method: 'POST',
-        body: query,
-      })
+    // The proxy writes its log row fire-and-forget, so polling the table is
+    // the cleanest deterministic check that auth → proxy → upstream → log
+    // works end to end. Checking the /requests page instead would drag in
+    // Next 16 RSC compilation, middleware cookie handling, and the
+    // server-component cache, none of which are part of the contract this
+    // spec is about. A dedicated UI spec can cover the rendering.
+    //
+    // Read through PostgREST with the service key: it bypasses RLS, which is
+    // what the server does too, and it avoids giving the browser test suite a
+    // Postgres driver of its own.
+    const logPollDeadline = Date.now() + 30_000
+    let loggedRowCount = 0
+    while (Date.now() < logPollDeadline) {
+      const res = await fetch(
+        `${supabaseUrl}/rest/v1/requests?organization_id=eq.${orgId}&select=id`,
+        {
+          headers: {
+            apikey: supabaseServiceKey,
+            Authorization: `Bearer ${supabaseServiceKey}`,
+            // Ask for the exact count in the Content-Range header instead of
+            // pulling the rows themselves.
+            Prefer: 'count=exact',
+            Range: '0-0',
+          },
+        },
+      )
       if (res.ok) {
-        const text = await res.text()
-        // Result: {"count()":"1"} per row (Number-as-string per gotcha #19)
-        const m = text.match(/"count\(\)":"?(\d+)"?/)
-        if (m && Number(m[1]) > 0) {
-          chRowCount = Number(m[1])
+        // Content-Range looks like "0-0/1"; the part after the slash is the count.
+        const total = Number(res.headers.get('content-range')?.split('/')[1] ?? 0)
+        if (total > 0) {
+          loggedRowCount = total
           break
         }
       }
       await new Promise((r) => setTimeout(r, 500))
     }
-    expect(chRowCount, 'ClickHouse never received the proxy request log').toBeGreaterThan(0)
+    expect(loggedRowCount, 'the proxy request was never logged to the requests table').toBeGreaterThan(0)
 
     // Final touch: confirm the user is still logged in after the proxy
     // round-trip and the route resolves to SOMETHING. Pattern is loose

@@ -1,21 +1,25 @@
+import { OG_IMAGE } from '@/lib/page-metadata'
 import { ModelPricingTemplate } from '@/components/marketing/model-pricing-template'
 
 const DESCRIPTION =
-  'GPT-4o pricing: $2.50 per 1M input tokens, $10 per 1M output tokens, $1.25 cached input. Monthly cost scenarios, alternatives (GPT-4o-mini, Claude 3.5 Sonnet), and how to track usage with Spanlens.'
+  'GPT-4o pricing: $2.50 per 1M input tokens, $10 per 1M output, $1.25 cached input. Monthly cost scenarios, alternatives, and how to track usage with Spanlens.'
 
 export const metadata = {
   alternates: { canonical: '/pricing/gpt-4o' },
-  title: 'GPT-4o Pricing 2026 — Cost Per Token, Monthly Estimates',
+  title: 'GPT-4o Pricing 2026: Cost Per Token, Monthly Estimates',
   description: DESCRIPTION,
   openGraph: {
+    siteName: 'Spanlens',
     type: 'article',
-    title: 'GPT-4o Pricing 2026 — Cost Per Token, Monthly Estimates',
+    title: 'GPT-4o Pricing 2026: Cost Per Token, Monthly Estimates',
     description: DESCRIPTION,
     url: '/pricing/gpt-4o',
+    locale: 'en_US',
+    images: OG_IMAGE,
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'GPT-4o Pricing 2026 — Cost Per Token, Monthly Estimates',
+    title: 'GPT-4o Pricing 2026: Cost Per Token, Monthly Estimates',
     description: DESCRIPTION,
   },
 }

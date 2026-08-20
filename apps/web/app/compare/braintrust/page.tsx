@@ -1,7 +1,9 @@
+import { openGraphFor } from '@/lib/page-metadata'
 import { CompareTemplate, type CompareGroup, type ComparePoint } from '@/components/marketing/compare-template'
 
 export const metadata = {
   alternates: { canonical: '/compare/braintrust' },
+  openGraph: openGraphFor('/compare/braintrust'),
   title: 'Spanlens vs Braintrust · 2026 Comparison',
   description:
     'Braintrust is eval-first, closed-source SaaS. Spanlens bundles eval into a full observability platform with proxy logging and agent tracing. Self-hostable.',
@@ -150,6 +152,7 @@ export default function VsBraintrustPage() {
       whyCompetitor={whyCompetitor}
       groups={groups}
       closing="If your release gate is evals and you don't care about self-hosting, Braintrust is excellent. If you want the same kind of eval quality plus observability, tracing, and the option to run it on your own infra, try Spanlens."
+      lastUpdated="2026-06-10"
     />
   )
 }

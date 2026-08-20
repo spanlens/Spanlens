@@ -11,7 +11,7 @@ const Command = React.forwardRef<
   <CmdkCommand
     ref={ref}
     className={cn(
-      'flex h-full w-full flex-col overflow-hidden rounded-[10px] bg-bg text-text',
+      'flex h-full w-full flex-col overflow-hidden rounded-card bg-bg-elev text-text',
       className,
     )}
     {...props}
@@ -94,7 +94,7 @@ const CommandItem = React.forwardRef<
   <CmdkCommand.Item
     ref={ref}
     className={cn(
-      'relative flex cursor-pointer select-none items-center gap-2.5 rounded-[5px] px-3 py-[7px] text-[13px] text-text-muted outline-none transition-colors',
+      'relative flex cursor-pointer select-none items-center gap-2.5 rounded-chip px-3 py-[7px] text-[13px] text-text-muted outline-none transition-colors',
       'data-[selected=true]:bg-bg-muted data-[selected=true]:text-text',
       'data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50',
       className,

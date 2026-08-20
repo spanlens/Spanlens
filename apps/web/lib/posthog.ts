@@ -9,11 +9,16 @@
  *     the user has opted into analytics cookies (lib/cookie-consent.ts).
  *
  * The SDK itself is initialized in
- * `components/providers/posthog-provider.tsx`, which is the only file
+ * `components/providers/posthog-bridge.tsx`, which is the only file
  * allowed to import `posthog-js` (see the no-restricted-imports rule in
- * eslint.config.mjs). This module deliberately reaches for
+ * eslint.config.mjs). That bridge is reached exclusively through a
+ * `next/dynamic({ ssr: false })` call in
+ * `components/providers/posthog-provider.tsx`, and only once the visitor
+ * has opted into analytics cookies — so the SDK bytes are never downloaded
+ * by a non-consenting visitor. This module deliberately reaches for
  * `window.posthog` instead of importing the SDK so the restriction stays
- * meaningful.
+ * meaningful (and so importing it can never pull posthog-js back into the
+ * shared client chunk).
  */
 
 import { isAnalyticsAllowed } from '@/lib/cookie-consent'
@@ -22,8 +27,8 @@ export const POSTHOG_KEY = process.env.NEXT_PUBLIC_POSTHOG_KEY ?? ''
 export const POSTHOG_HOST = process.env.NEXT_PUBLIC_POSTHOG_HOST ?? 'https://us.i.posthog.com'
 
 // ── Typed event catalog ───────────────────────────────────────────────────────
-// Payloads for the users/cache events were designed in
-// docs/launch/2026-05-14_cache-stream-users.md §3.
+// Every event carries only non-identifying properties: the user id is hashed
+// before capture and no request/response body ever reaches this layer.
 
 export type AnalyticsEvent =
   // Evals

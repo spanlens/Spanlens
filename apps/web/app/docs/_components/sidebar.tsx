@@ -22,6 +22,23 @@ const NAV: NavGroup[] = [
       { title: 'Why Spanlens', href: '/docs/why' },
     ],
   },
+  // Section hubs. Added 2026-07-30: the six pages shipped in #449 were in the
+  // sitemap but nothing linked to them, so Ahrefs filed all six as orphans.
+  // Listing them here gives each one an inbound link from every docs page.
+  // Hardcoded rather than imported from _lib/sections.ts so the section
+  // descriptions stay out of the client bundle; sections.test.ts checks this
+  // list against the sections themselves.
+  {
+    title: 'Sections',
+    items: [
+      { title: 'Concepts', href: '/docs/concepts' },
+      { title: 'Features', href: '/docs/features' },
+      { title: 'Integrations', href: '/docs/integrations' },
+      { title: 'Tutorials', href: '/docs/tutorials' },
+      { title: 'Production', href: '/docs/production' },
+      { title: 'Migrate to Spanlens', href: '/docs/migrate' },
+    ],
+  },
   {
     title: 'Concepts',
     items: [
@@ -144,17 +161,17 @@ const NAV: NavGroup[] = [
 export function DocsSidebar() {
   const pathname = usePathname()
   return (
-    <nav className="space-y-6 text-sm">
+    <nav>
       {NAV.map((group) => (
         <div key={group.title}>
           {/* Not a heading element: these nav group labels render before the
               page's <h1> in DOM order, which breaks the sequential heading
               outline on every docs page (h4 → h1). A styled <div> keeps the
               visual without polluting the document structure. */}
-          <div className="font-semibold text-xs uppercase tracking-wide text-text-faint mb-2">
+          <div className="micro-label px-2.5 pb-2 pt-3.5 tracking-[0.1em]">
             {group.title}
           </div>
-          <ul className="space-y-1">
+          <ul>
             {group.items.map((item) => {
               const active = pathname === item.href
               return (
@@ -162,10 +179,16 @@ export function DocsSidebar() {
                   <Link
                     href={item.href}
                     className={cn(
-                      'block rounded px-2.5 py-1.5 transition-colors',
+                      // Transparent border on the inactive state keeps every
+                      // row the same height, so the active chip does not shift
+                      // its neighbours by a pixel.
+                      'block rounded-sm border px-2.5 py-1.5 text-[12.5px] transition-colors',
+                      // Active reads as a lifted chip rather than an accent
+                      // wash: the accent is spent on the CTA, so the rail marks
+                      // position with surface and weight instead.
                       active
-                        ? 'bg-accent-bg text-accent font-medium'
-                        : 'text-text-muted hover:bg-bg-elev hover:text-text',
+                        ? 'border-border bg-bg-elev font-semibold text-text'
+                        : 'border-transparent font-medium text-text-muted hover:text-text',
                     )}
                   >
                     {item.title}

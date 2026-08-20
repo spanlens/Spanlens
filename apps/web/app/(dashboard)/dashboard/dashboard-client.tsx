@@ -1,19 +1,17 @@
 'use client'
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import Link from 'next/link'
+import { Card } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { KpiCard } from '@/components/dashboard/kpi-card'
 import { QuotaBanner } from '@/components/dashboard/quota-banner'
 import { UpsellModal } from '@/components/dashboard/upsell-modal'
 import { Topbar, TimeRangeSelector, type CustomRange } from '@/components/layout/topbar'
-import { useStatsOverview, useStatsTimeseries, useStatsModels, useSpendForecast } from '@/lib/queries/use-stats'
+import { useStatsOverview, useStatsTimeseries, useStatsModels } from '@/lib/queries/use-stats'
 import { useAnomalies } from '@/lib/queries/use-anomalies'
-import { useAlerts } from '@/lib/queries/use-alerts'
-import { useRecommendations, type ModelRecommendation } from '@/lib/queries/use-recommendations'
+import { useDashboardSummary } from '@/lib/queries/use-dashboard-summary'
+import { type ModelRecommendation } from '@/lib/queries/use-recommendations'
 import { useStaleKeyCounts } from '@/lib/queries/use-stale-keys'
-import { useAuditLogs } from '@/lib/queries/use-audit-logs'
-import { usePrompts } from '@/lib/queries/use-prompts'
-import { useSecuritySummary } from '@/lib/queries/use-security'
 import { useDismissals, useDismissCard } from '@/lib/queries/use-dismissals'
 import { buildInvestigateHref, investigateRangeForObservationHours } from '@/lib/anomaly-investigate'
 import { cn, formatTime } from '@/lib/utils'
@@ -23,29 +21,36 @@ import { WelcomeBanner } from '@/components/dashboard/welcome-banner'
 import { ErrorBoundary } from '@/components/error-boundary'
 import { LIVE_REFETCH_MS_ACTIVE as LIVE_REFETCH_MS } from '@/lib/queries/live-polling'
 
-// Lazy-load recharts-heavy components. They render below the fold and are
-// not needed for the initial KPI row / greeting paint.
+// Lazy-load the recharts-heavy cards. They render below the fold and are not
+// needed for the initial KPI row / greeting paint.
+//
+// All five MUST name the same `@/components/dashboard/charts` specifier.
+// Turbopack groups async chunks by `import()` site, so five different
+// specifiers produced three separate copies of the recharts vendor graph on a
+// single page load (~1,190 KB of chart chunks, three of them byte-identical at
+// 361,565 B). One shared specifier collapses that to one copy. See the header
+// comment in components/dashboard/charts.tsx before changing any of these.
+//
+// ssr:false is load-bearing, not incidental: recharts measures its own width
+// via ResizeObserver, which does not exist on the server (CLAUDE.md gotcha #22 D).
 const RequestChart = dynamic(
-  () => import('@/components/dashboard/request-chart').then((m) => m.RequestChart),
+  () => import('@/components/dashboard/charts').then((m) => m.RequestChart),
   { ssr: false, loading: () => <Skeleton className="h-[220px] w-full" /> },
 )
 const SpendForecastCard = dynamic(
-  () => import('@/components/dashboard/spend-forecast').then((m) => m.SpendForecastCard),
+  () => import('@/components/dashboard/charts').then((m) => m.SpendForecastCard),
   { ssr: false, loading: () => <Skeleton className="h-[320px] w-full" /> },
 )
-// New breakdown cards. Same SSR-off treatment as the existing charts —
-// recharts measures its own width via ResizeObserver, which isn't available
-// on the server (CLAUDE.md gotcha #22 D).
 const CostBreakdownCard = dynamic(
-  () => import('@/components/dashboard/cost-breakdown').then((m) => m.CostBreakdownCard),
+  () => import('@/components/dashboard/charts').then((m) => m.CostBreakdownCard),
   { ssr: false, loading: () => <Skeleton className="h-[290px] w-full" /> },
 )
 const TokenTrendsCard = dynamic(
-  () => import('@/components/dashboard/token-trends').then((m) => m.TokenTrendsCard),
+  () => import('@/components/dashboard/charts').then((m) => m.TokenTrendsCard),
   { ssr: false, loading: () => <Skeleton className="h-[260px] w-full" /> },
 )
 const ErrorDistributionCard = dynamic(
-  () => import('@/components/dashboard/error-distribution').then((m) => m.ErrorDistributionCard),
+  () => import('@/components/dashboard/charts').then((m) => m.ErrorDistributionCard),
   { ssr: false, loading: () => <Skeleton className="h-[260px] w-full" /> },
 )
 
@@ -181,63 +186,44 @@ interface AttnCardProps {
   onDismiss?: () => void
 }
 
+// Attention tiles carry their status in the fill and in the title ink, not in
+// a coloured dot plus a repeated "CRITICAL" label — the Figma board spends one
+// signal per tile so a row of three still reads as a row, not three alarms.
+const ATTN_TONE: Record<AttnCardProps['kind'], { shell: string; title: string; cta: string }> = {
+  critical: { shell: 'bg-accent-bg border-accent-border', title: 'text-bad', cta: 'text-bad' },
+  warning:  { shell: 'bg-warn-bg border-warn/25',         title: 'text-warn', cta: 'text-warn' },
+  savings:  { shell: 'bg-good-bg border-good/25',         title: 'text-good', cta: 'text-good' },
+}
+
 function AttnCard({ kind, title, meta, hint, cta, href, secondary, onDismiss }: AttnCardProps) {
-  const isCritical = kind === 'critical'
-  const isSavings = kind === 'savings'
+  const tone = ATTN_TONE[kind]
   return (
-    <div
-      className={cn(
-        'flex flex-col gap-1.5 p-[14px] rounded-md border',
-        isCritical
-          ? 'bg-accent-bg border-accent-border'
-          : isSavings
-            ? 'bg-good-bg border-good/20'
-            : 'bg-bg-elev border-border',
-      )}
-    >
-      <div className="flex items-center gap-2">
-        <span
-          className={cn(
-            'inline-block w-[7px] h-[7px] rounded-full shrink-0',
-            isCritical ? 'bg-accent' : isSavings ? 'bg-good' : 'bg-text',
-          )}
-        />
-        <span
-          className={cn(
-            'font-mono text-[9.5px] uppercase tracking-[0.05em] font-semibold',
-            isCritical ? 'text-accent' : isSavings ? 'text-good' : 'text-text',
-          )}
-        >
-          {kind}
-        </span>
+    <div className={cn('flex flex-col gap-1 rounded-lg border px-[14px] py-[11px]', tone.shell)}>
+      <div className="flex items-start gap-2">
+        <div className={cn('flex-1 min-w-0 text-[12.5px] font-semibold leading-[1.4]', tone.title)}>{title}</div>
         <button
           type="button"
           onClick={onDismiss}
-          className="ml-auto text-text-faint hover:text-text-muted transition-colors leading-none"
+          className="shrink-0 text-text-faint hover:text-text-muted transition-colors leading-none"
           aria-label="Dismiss"
         >
           ✕
         </button>
       </div>
-      <div className="text-[14.5px] font-medium text-text leading-snug">{title}</div>
-      <div className="font-mono text-[11px] text-text-muted tracking-[0.02em]">{meta}</div>
-      <div suppressHydrationWarning className="text-[12.5px] text-text-muted leading-relaxed">{hint}</div>
+      <div className="font-mono text-[11px] leading-[1.4] text-text-faint truncate">{meta}</div>
+      <div suppressHydrationWarning className="text-[11.5px] leading-[1.4] text-text-faint">{hint}</div>
       <div className="flex-1" />
       <div className="flex items-center gap-3 mt-1 flex-wrap">
         <Link
           href={href}
-          className={cn(
-            'font-mono text-[11.5px] font-medium tracking-[0.02em]',
-            isCritical ? 'text-accent' : isSavings ? 'text-good' : 'text-text-muted',
-            'hover:opacity-80 transition-opacity',
-          )}
+          className={cn('font-mono text-[11px] font-medium tracking-[0.02em] hover:opacity-80 transition-opacity', tone.cta)}
         >
           {cta}
         </Link>
         {secondary && (
           <Link
             href={secondary.href}
-            className="font-mono text-[11.5px] text-text-faint tracking-[0.02em] hover:text-text-muted transition-colors"
+            className="font-mono text-[11px] text-text-faint tracking-[0.02em] hover:text-text-muted transition-colors"
           >
             {secondary.label}
           </Link>
@@ -250,15 +236,11 @@ function AttnCard({ kind, title, meta, hint, cta, href, secondary, onDismiss }: 
 // ── Page ───────────────────────────────────────────────────────
 
 // P3.9 (2026-05-19): polling interval set to 30s (LIVE_REFETCH_MS_ACTIVE).
-// The previous comment claimed a realtime WebSocket handled instant
-// updates and polling was a "safety-net fallback" — but the realtime
-// subscription pointed at the Supabase `public.requests` table, which was
-// dropped in the ClickHouse migration (20260516000000). With the dead
-// subscription removed, the 30-second interval imported from
-// `lib/queries/live-polling` is now the primary freshness mechanism;
-// combined with the global `refetchOnWindowFocus` default it gives ~30s
-// while visible + instant on tab focus. The interval is paused when the
-// tab is hidden (TanStack default).
+// Nothing pushes to this page. The 30-second interval imported from
+// `lib/queries/live-polling` is the primary freshness mechanism; combined
+// with the global `refetchOnWindowFocus` default it gives ~30s while
+// visible plus instant refresh on tab focus. The interval is paused when
+// the tab is hidden (TanStack default).
 
 export function DashboardClient() {
   const [timeRange, setTimeRange] = useState('24h')
@@ -274,13 +256,11 @@ export function DashboardClient() {
   // Capture "now" once at mount — fresh data drives the dashboard via
   // react-query refetches, so a stable comparison anchor is correct.
   const [mountNow] = useState(() => Date.now())
-  // Note (P3.9, 2026-05-19): the previous Supabase Realtime subscription on
-  // `public.requests` was removed — that table was dropped in the ClickHouse
-  // migration (20260516000000), so the subscription had been silently
-  // delivering zero events. Live updates now come from polling intervals
-  // (`LIVE_REFETCH_MS` below) plus TanStack's `refetchOnWindowFocus: true`
-  // global default in `lib/query-client.ts`, which gives instant refresh
-  // whenever the user returns to the tab.
+  // Live updates come from the polling intervals (`LIVE_REFETCH_MS` below)
+  // plus TanStack's `refetchOnWindowFocus: true` global default in
+  // `lib/query-client.ts`, which refreshes whenever the user returns to the
+  // tab. There is deliberately no Supabase Realtime subscription here; the
+  // one that used to sit here was removed in P3.9 (2026-05-19).
   const dismissalsQuery = useDismissals()
   const dismissMutation = useDismissCard()
   const dismissedCards = useMemo(
@@ -299,14 +279,26 @@ export function DashboardClient() {
     { refetchInterval: LIVE_REFETCH_MS },
   )
   const anomalies = useAnomalies({ observationHours: hours })
-  const alerts = useAlerts()
-  const recommendations = useRecommendations({ hours })
-  const staleKeys = useStaleKeyCounts()
-  const auditLogs = useAuditLogs({ limit: 6 })
-  const promptsQuery = usePrompts()
   const modelsQuery = useStatsModels(hours, undefined, { refetchInterval: LIVE_REFETCH_MS })
-  const spendForecast = useSpendForecast()
-  const securitySummary = useSecuritySummary(hours)
+
+  // One request for the six panels that don't poll: alerts, recommendations,
+  // audit logs, prompts, security summary, spend forecast. Anomalies and
+  // models above stay separate because both carry a live refetchInterval —
+  // folding a polling query into the composite would put all six on the
+  // 30s cadence and increase load rather than reduce it.
+  //
+  // `useStaleKeyCounts` also stays separate, but for a different reason: the
+  // Sidebar in the (dashboard) layout mounts it too, and its two underlying
+  // queries (`useApiKeys` / `usePublicKeys`) are NOT server-prefetched. Both
+  // components observe the same cache entries, so TanStack issues one fetch
+  // each no matter how many consumers there are. Serving those keys from the
+  // composite would not remove a single client request — the Sidebar would
+  // still fetch them — and would add two Supabase round-trips to this
+  // endpoint's critical path.
+  const summary = useDashboardSummary({ hours, auditLimit: 6 })
+  const summaryData = summary.data
+  const summaryLoading = summary.isLoading
+  const staleKeys = useStaleKeyCounts()
 
   const o = overview.data
   const isLoading = overview.isLoading || timeseries.isLoading
@@ -448,22 +440,28 @@ export function DashboardClient() {
     triggerDownload(JSON.stringify(d, null, 2), 'application/json', 'json')
   }
 
+  // A composite dataset is null when the server's lookup for it failed and []
+  // when it succeeded with nothing to show. Both collapse to the same empty
+  // render here, which matches what these sections did before when their own
+  // query errored and `data` was undefined.
+  const alertRows = summaryData?.alerts
+
   // ISO timestamps of alerts that fired within the current time range — for chart markers
   const alertFiredAt = useMemo(
     () =>
-      (alerts.data ?? [])
+      (alertRows ?? [])
         .filter((a) => {
           if (!a.last_triggered_at) return false
           return mountNow - new Date(a.last_triggered_at).getTime() < hours * 60 * 60 * 1000
         })
         .map((a) => a.last_triggered_at as string),
-    [alerts.data, hours, mountNow],
+    [alertRows, hours, mountNow],
   )
 
   // Active alert rules vs recently fired (within the selected time window)
   const activeAlertRules = useMemo(
-    () => (alerts.data ?? []).filter((a) => a.is_active),
-    [alerts.data],
+    () => (alertRows ?? []).filter((a) => a.is_active),
+    [alertRows],
   )
   const firingAlerts = useMemo(
     () =>
@@ -479,7 +477,7 @@ export function DashboardClient() {
   const attnCards = useMemo(() => {
     const cards: AttnCardProps[] = []
 
-    const piiHits = (securitySummary.data ?? [])
+    const piiHits = (summaryData?.securitySummary ?? [])
       .filter((r) => r.type === 'pii')
       .reduce((sum, r) => sum + r.count, 0)
     if (piiHits > 0) {
@@ -564,7 +562,7 @@ export function DashboardClient() {
       })
     }
 
-    const topRec = (recommendations.data ?? [])[0] as (ModelRecommendation & { id?: string }) | undefined
+    const topRec = (summaryData?.recommendations ?? [])[0] as (ModelRecommendation & { id?: string }) | undefined
     if (topRec) {
       cards.push({
         kind: 'savings',
@@ -578,15 +576,11 @@ export function DashboardClient() {
     }
 
     return cards
-  }, [anomalies.data, firingAlerts, recommendations.data, securitySummary.data, staleKeys.revoke, staleKeys.sampleName, timeRange, customRange, mountNow, hours])
+  }, [anomalies.data, firingAlerts, summaryData?.recommendations, summaryData?.securitySummary, staleKeys.revoke, staleKeys.sampleName, timeRange, customRange, mountNow, hours])
 
-  // Border classes for KPI cells — responsive 2-col (mobile) / 4-col (lg)
-  const kpiCellClasses: [string, string, string, string] = [
-    'border-r border-b border-border lg:border-b-0',       // 1st: right + bottom-on-mobile
-    'border-b border-border lg:border-r lg:border-b-0',    // 2nd: no right on mobile, restore lg
-    'border-r border-border',                               // 3rd: right, no bottom
-    'border-border',                                        // 4th: no right, no bottom
-  ]
+  // Every KPI is its own card on the canvas, so the tiles share one surface
+  // class instead of the per-cell border matrix the joined grid needed.
+  const kpiCellClass = 'card-surface rounded-card px-5'
 
   // Same `mounted` guard as the data branches — SSR shouldn't reveal the
   // empty-state CTA unless the client has confirmed the data is genuinely
@@ -595,16 +589,21 @@ export function DashboardClient() {
   const isEmptyWorkspace = mounted && !isLoading && !!o && o.totalRequests === 0
 
   return (
-    <div className="-m-4 md:-m-7">
-      {/* Sticky topbar — keeps the time range + crumbs in view while the
-          page scrolls natively (no inner overflow container). */}
-      <div className="sticky top-0 z-20 bg-bg">
+    <div>
+      {/* Sticky topbar — keeps the time range + crumbs in view while the page
+          scrolls natively (no inner overflow container). It is the one
+          full-bleed row on the board, so it cancels the shell's gutters;
+          everything below sits flush inside them. */}
+      <div className="sticky top-0 z-20 bg-bg -mx-4 -mt-4 md:-mx-7 md:-mt-5 mb-4 md:mb-5">
         <Topbar crumbs={[{ label: 'Dashboard' }]} />
       </div>
 
-      <div>
+      {/* Content canvas — 16px rhythm between rows, per the Figma content
+          frame. Everything below sits on the canvas as its own card rather
+          than as a full-bleed band. */}
+      <div className="flex flex-col gap-4">
         {/* Greeting */}
-        <div className="px-[22px] py-[22px] border-b border-border">
+        <div>
           <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 mb-1">
             {/* Defer locale-sensitive header to client paint — server UTC ≠
                 client local time. The whole wrapper is gated on `mounted`
@@ -666,25 +665,25 @@ export function DashboardClient() {
                 <button
                   type="button"
                   onClick={() => setExportOpen((v) => !v)}
-                  className="font-mono text-[11px] text-text-muted hover:text-text border border-border rounded px-2.5 py-1 transition-colors"
+                  className="text-[12.5px] font-medium text-text bg-bg-elev border border-border rounded px-3 py-[7px] hover:border-border-strong transition-colors"
                 >
                   Export ↓
                 </button>
                 {exportOpen && (
                   <>
                     <div className="fixed inset-0 z-10" onClick={() => setExportOpen(false)} />
-                    <div className="absolute right-0 top-full mt-1 z-20 bg-bg-elev border border-border rounded shadow-sm min-w-[100px]">
+                    <div className="absolute right-0 top-full mt-1 z-20 bg-bg-elev border border-border rounded-md shadow-card min-w-[100px] p-1">
                       <button
                         type="button"
                         onClick={exportCsv}
-                        className="w-full text-left px-3 py-2 font-mono text-[11px] text-text-muted hover:text-text hover:bg-bg transition-colors"
+                        className="w-full text-left px-2.5 py-1.5 rounded text-[12.5px] text-text-muted hover:text-text hover:bg-bg-sunk transition-colors"
                       >
                         CSV
                       </button>
                       <button
                         type="button"
                         onClick={exportJson}
-                        className="w-full text-left px-3 py-2 font-mono text-[11px] text-text-muted hover:text-text hover:bg-bg transition-colors"
+                        className="w-full text-left px-2.5 py-1.5 rounded text-[12.5px] text-text-muted hover:text-text hover:bg-bg-sunk transition-colors"
                       >
                         JSON
                       </button>
@@ -702,7 +701,7 @@ export function DashboardClient() {
         <UpsellModal />
 
         {isError && (
-          <div className="mx-[22px] mt-4 rounded-md border border-bad/30 bg-bad-bg px-4 py-3 flex items-center justify-between">
+          <div className="rounded-lg border border-bad/30 bg-bad-bg px-4 py-3 flex items-center justify-between">
             <p className="text-[13px] text-bad">Failed to load dashboard data.</p>
             <button
               type="button"
@@ -718,8 +717,8 @@ export function DashboardClient() {
             doesn't toggle between SSR (no cards, query data empty) and
             first client paint (cards from hydrated cache). */}
         {mounted && attnCards.filter((c) => !dismissedCards.has(c.cardKey)).length > 0 && (
-          <div className="px-[22px] pt-[18px] pb-1">
-            <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-2.5">
+          <div>
+            <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-text-faint mb-2.5">
               Needs attention
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -737,7 +736,7 @@ export function DashboardClient() {
         )}
 
         {/* KPI row */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 border-y border-border mt-[18px]">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           {/* `!mounted` gate forces SSR + first client paint to both render
               the skeleton branch — TanStack's HydrationBoundary populates
               the client cache during hydration but the corresponding SSR
@@ -745,7 +744,7 @@ export function DashboardClient() {
               sides diverge without this guard. */}
           {!mounted || isLoading || !o ? (
             Array.from({ length: 4 }).map((_, i) => (
-              <div key={i} className={cn('p-[18px]', kpiCellClasses[i])}>
+              <div key={i} className={cn('py-[18px]', kpiCellClass)}>
                 <Skeleton className="h-3 w-3/4 mb-3" />
                 <Skeleton className="h-8 w-full mb-3" />
                 <Skeleton className="h-5 w-full" />
@@ -754,7 +753,7 @@ export function DashboardClient() {
           ) : (
             <>
               <KpiCard
-                className={kpiCellClasses[0]}
+                className={kpiCellClass}
                 label={`Requests · ${shortRangeLabel(timeRange, customRange)}`}
                 value={o.totalRequests.toLocaleString()}
                 delta={fmtDelta(o.requestsDelta, hasBaseline)}
@@ -764,7 +763,7 @@ export function DashboardClient() {
                 linkHref="/requests"
               />
               <KpiCard
-                className={kpiCellClasses[1]}
+                className={kpiCellClass}
                 label={`Spend · ${shortRangeLabel(timeRange, customRange)}`}
                 value={fmtCost(o.totalCostUsd)}
                 delta={fmtDelta(o.costDelta, hasBaseline)}
@@ -774,7 +773,7 @@ export function DashboardClient() {
                 linkHref="/savings"
               />
               <KpiCard
-                className={kpiCellClasses[2]}
+                className={kpiCellClass}
                 label={`Avg latency · ${shortRangeLabel(timeRange, customRange)}`}
                 value={`${o.avgLatencyMs}ms`}
                 delta={fmtDelta(o.latencyDelta, hasBaseline)}
@@ -784,7 +783,7 @@ export function DashboardClient() {
                 linkHref="/traces"
               />
               <KpiCard
-                className={kpiCellClasses[3]}
+                className={kpiCellClass}
                 label="Error rate"
                 value={errorRate}
                 delta={fmtDelta(o.errorRateDelta, hasBaseline)}
@@ -803,8 +802,8 @@ export function DashboardClient() {
             Mobile: text on top, CTAs as a row below — keeps the text column
             full-width instead of getting squeezed next to the links. */}
         {isEmptyWorkspace && (
-          <div className="px-[22px] py-5 border-b border-border">
-            <div className="rounded-md border border-border bg-bg-elev px-5 py-4 flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">
+          <div>
+            <div className="card-surface rounded-card px-5 py-4 flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">
               <div className="min-w-0 flex-1">
                 <div className="text-[14px] font-medium text-text">No traffic in this window.</div>
                 <div className="text-[12.5px] text-text-muted leading-relaxed mt-0.5">
@@ -830,21 +829,25 @@ export function DashboardClient() {
         )}
 
         {/* Traffic chart */}
-        <div className="px-[22px] py-5 border-b border-border">
-          <div className="flex items-center mb-3">
-            <h2 className="text-[15px] font-medium">Traffic &amp; spend · last {shortRangeLabel(timeRange, customRange)}</h2>
+        <Card className="px-5 py-[18px]">
+          <div className="flex items-baseline gap-2.5 mb-[14px]">
+            <h2 className="text-[13.5px] font-semibold leading-[1.4] text-text">Traffic &amp; spend</h2>
+            <span className="font-mono text-[11px] leading-[1.4] text-text-faint">
+              last {shortRangeLabel(timeRange, customRange)}
+            </span>
           </div>
           {!mounted || isLoading || !timeseries.data ? (
             <Skeleton className="h-[220px] w-full" />
           ) : (
             <RequestChart data={timeseries.data} firedAt={alertFiredAt} isHourly={hours <= 48} />
           )}
-        </div>
+        </Card>
 
         {/* Token volume + Error distribution row — answers the obvious
             follow-up questions to the spend chart above ("was it tokens or
-            model mix?" and "what kind of errors?"). */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 px-[22px] py-5 border-b border-border">
+            model mix?" and "what kind of errors?"). Both children bring their
+            own card chrome, so this row only supplies the 16px rhythm. */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {!mounted || isLoading || !timeseries.data ? (
             <>
               <Skeleton className="h-[260px] w-full" />
@@ -870,46 +873,42 @@ export function DashboardClient() {
 
         {/* Cost-by-model breakdown — full width so long provider/model labels
             (anthropic / claude-sonnet-4-6) read comfortably. */}
-        <div className="px-[22px] py-5 border-b border-border">
-          {!mounted || modelsQuery.isLoading || !modelsQuery.data ? (
-            <Skeleton className="h-[290px] w-full" />
-          ) : (
-            <ErrorBoundary label="dashboard:cost-breakdown">
-              <CostBreakdownCard
-                models={modelsQuery.data}
-                rangeLabel={shortRangeLabel(timeRange, customRange)}
-              />
-            </ErrorBoundary>
-          )}
-        </div>
+        {!mounted || modelsQuery.isLoading || !modelsQuery.data ? (
+          <Skeleton className="h-[290px] w-full rounded-card" />
+        ) : (
+          <ErrorBoundary label="dashboard:cost-breakdown">
+            <CostBreakdownCard
+              models={modelsQuery.data}
+              rangeLabel={shortRangeLabel(timeRange, customRange)}
+            />
+          </ErrorBoundary>
+        )}
 
         {/* Spend forecast, always monthly, independent of time range selector */}
-        {!mounted || spendForecast.isLoading ? (
-          <div className="px-[22px] py-5 border-b border-border">
-            <Skeleton className="h-[320px] w-full" />
-          </div>
-        ) : spendForecast.data ? (
-          <SpendForecastCard data={spendForecast.data} />
+        {!mounted || summaryLoading ? (
+          <Skeleton className="h-[320px] w-full rounded-card" />
+        ) : summaryData?.spendForecast ? (
+          <SpendForecastCard data={summaryData.spendForecast} />
         ) : null}
 
         {/* 2-col: Top prompts + Models in use */}
-        <div className="grid grid-cols-1 md:grid-cols-2 border-b border-border">
-          <div className="px-[22px] py-[18px] border-b border-border md:border-b-0 md:border-r">
-            <div className="flex items-center mb-3">
-              <h2 className="text-[14px] font-medium">Top prompts · spend</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Card className="px-5 py-[18px]">
+            <div className="flex items-baseline mb-[14px]">
+              <h2 className="text-[13.5px] font-semibold leading-[1.4] text-text">Top prompts · spend</h2>
               <span className="flex-1" />
-              <Link href="/prompts" className="font-mono text-[10.5px] text-text-muted tracking-[0.03em] hover:text-text transition-colors">
+              <Link href="/prompts" className="font-mono text-[11px] text-text-faint hover:text-text transition-colors">
                 All prompts →
               </Link>
             </div>
             {(() => {
-              const active = (promptsQuery.data ?? [])
+              const active = (summaryData?.prompts ?? [])
                 .filter((p) => (p.stats?.calls ?? 0) > 0)
                 .sort((a, b) => (b.stats?.totalCostUsd ?? 0) - (a.stats?.totalCostUsd ?? 0))
                 .slice(0, 5)
               const topMax = active[0]?.stats?.totalCostUsd ?? 0
 
-              if (!mounted || promptsQuery.isLoading) {
+              if (!mounted || summaryLoading) {
                 return (
                   <div className="space-y-2.5">
                     {Array.from({ length: 3 }).map((_, i) => (
@@ -958,12 +957,15 @@ export function DashboardClient() {
                 </div>
               )
             })()}
-          </div>
-          <div className="px-[22px] py-[18px]">
-            <div className="flex items-center mb-3">
-              <h2 className="text-[14px] font-medium">Models in use · {shortRangeLabel(timeRange, customRange)}</h2>
+          </Card>
+          <Card className="px-5 py-[18px]">
+            <div className="flex items-baseline mb-[14px]">
+              <h2 className="text-[13.5px] font-semibold leading-[1.4] text-text">Models in use</h2>
+              <span className="font-mono text-[11px] leading-[1.4] text-text-faint ml-2.5">
+                {shortRangeLabel(timeRange, customRange)}
+              </span>
               <span className="flex-1" />
-              <Link href="/requests" prefetch={linkPrefetchFor('/requests')} className="font-mono text-[10.5px] text-text-muted tracking-[0.03em] hover:text-text transition-colors">
+              <Link href="/requests" prefetch={linkPrefetchFor('/requests')} className="font-mono text-[11px] text-text-faint hover:text-text transition-colors">
                 All requests →
               </Link>
             </div>
@@ -983,7 +985,7 @@ export function DashboardClient() {
             ) : (
               <div className="overflow-x-auto">
                 <div style={{ minWidth: 300 }}>
-                  <div className="grid font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint pb-2 border-b border-border" style={{ gridTemplateColumns: '1fr 70px 80px 60px', gap: 10 }}>
+                  <div className="grid font-mono text-[10px] uppercase tracking-[0.1em] text-text-faint pb-2 border-b border-border" style={{ gridTemplateColumns: '1fr 70px 80px 60px', gap: 10 }}>
                     <span>Model</span>
                     <span className="text-right">Reqs</span>
                     <span className="text-right">Cost</span>
@@ -1009,22 +1011,22 @@ export function DashboardClient() {
                 </div>
               </div>
             )}
-          </div>
+          </Card>
         </div>
 
         {/* Bottom 2-col: Alerts + Recommendations */}
-        <div className="grid grid-cols-1 md:grid-cols-2 border-b border-border">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {/* Active alert rules */}
-          <div className="px-[22px] py-[18px] border-b border-border md:border-b-0 md:border-r">
-            <div className="flex items-center mb-3">
-              <h2 className="text-[14px] font-medium">Active alerts</h2>
+          <Card className="px-5 py-[18px]">
+            <div className="flex items-baseline mb-[14px]">
+              <h2 className="text-[13.5px] font-semibold leading-[1.4] text-text">Active alerts</h2>
               <span className="flex-1" />
               <Link
                 href="/alerts"
                 prefetch={linkPrefetchFor('/alerts')}
                 className={cn(
-                  'font-mono text-[10.5px] tracking-[0.03em]',
-                  mounted && firingAlerts.length > 0 ? 'text-accent' : 'text-text-muted',
+                  'font-mono text-[11px] hover:opacity-80 transition-opacity',
+                  mounted && firingAlerts.length > 0 ? 'text-accent' : 'text-text-faint',
                 )}
               >
                 {!mounted
@@ -1051,10 +1053,10 @@ export function DashboardClient() {
                     <div
                       key={a.id}
                       className={cn(
-                        'flex items-center gap-2.5 px-3 py-2.5 rounded-[5px] border',
+                        'flex items-center gap-2.5 px-3 py-2.5 rounded-md border',
                         fired
                           ? 'bg-accent-bg border-accent-border'
-                          : 'bg-bg-elev border-border',
+                          : 'bg-bg-sunk border-border',
                       )}
                     >
                       <span className={cn('w-2 h-2 rounded-full shrink-0', fired ? 'bg-accent' : 'bg-text-faint')} />
@@ -1069,27 +1071,27 @@ export function DashboardClient() {
                 })}
               </div>
             )}
-          </div>
+          </Card>
 
           {/* Recommendations */}
-          <div className="px-[22px] py-[18px]">
-            <div className="flex items-center mb-3">
-              <h2 className="text-[14px] font-medium">Savings queued</h2>
+          <Card className="px-5 py-[18px]">
+            <div className="flex items-baseline mb-[14px]">
+              <h2 className="text-[13.5px] font-semibold leading-[1.4] text-text">Savings queued</h2>
               <span className="flex-1" />
-              <Link href="/savings" prefetch={linkPrefetchFor('/savings')} className="font-mono text-[10.5px] text-good tracking-[0.03em]">
+              <Link href="/savings" prefetch={linkPrefetchFor('/savings')} className="font-mono text-[11px] text-good hover:opacity-80 transition-opacity">
                 View all →
               </Link>
             </div>
             {!mounted ? (
               <p className="text-[13px] text-text-faint">&nbsp;</p>
-            ) : (recommendations.data ?? []).length === 0 ? (
+            ) : (summaryData?.recommendations ?? []).length === 0 ? (
               <p className="text-[13px] text-text-faint">No recommendations yet.</p>
             ) : (
               <div className="flex flex-col gap-2">
-                {(recommendations.data ?? []).slice(0, 3).map((r) => (
+                {(summaryData?.recommendations ?? []).slice(0, 3).map((r) => (
                   <div
                     key={`${r.currentModel}->${r.suggestedModel}`}
-                    className="flex items-center gap-3 px-3 py-2.5 rounded-[5px] bg-bg-elev border border-border"
+                    className="flex items-center gap-3 px-3 py-2.5 rounded-md bg-bg-sunk border border-border"
                   >
                     <div className="flex-1 min-w-0">
                       <div className="font-mono text-[12px] text-text font-medium truncate">
@@ -1106,31 +1108,31 @@ export function DashboardClient() {
                 ))}
               </div>
             )}
-          </div>
+          </Card>
         </div>
 
         {/* Activity feed */}
-        <div className="px-[22px] py-[18px]">
-          <div className="flex items-center mb-3">
-            <h2 className="text-[14px] font-medium">Recent activity</h2>
+        <Card className="px-5 py-[18px]">
+          <div className="flex items-baseline mb-[14px]">
+            <h2 className="text-[13.5px] font-semibold leading-[1.4] text-text">Recent activity</h2>
             <span className="flex-1" />
             <Link
               href="/settings?tab=audit-log"
-              className="font-mono text-[10.5px] text-text-muted tracking-[0.03em] hover:text-text transition-colors"
+              className="font-mono text-[11px] text-text-faint hover:text-text transition-colors"
             >
               Audit log →
             </Link>
           </div>
-          {!mounted || auditLogs.isLoading ? (
+          {!mounted || summaryLoading ? (
             <div className="space-y-2 py-2">
               {[1, 2, 3].map((i) => <Skeleton key={i} className="h-8 w-full" />)}
             </div>
-          ) : (auditLogs.data ?? []).length === 0 ? (
+          ) : (summaryData?.auditLogs ?? []).length === 0 ? (
             <div className="py-4 text-[12.5px] text-text-faint">
               No recent activity. Audit events appear when you create keys, deploy prompts, change billing, etc.
             </div>
           ) : (
-            (auditLogs.data ?? []).map((e, i, arr) => {
+            (summaryData?.auditLogs ?? []).map((e, i, arr) => {
               const kind = e.action.split('.')[0] ?? 'event'
               const isAccent = kind === 'alert' || kind === 'anomaly' || kind === 'billing'
               return (
@@ -1144,7 +1146,7 @@ export function DashboardClient() {
                       {formatTime(e.created_at)}
                     </span>
                     <span className={cn(
-                      'font-mono text-[9px] uppercase tracking-[0.04em] px-[5px] py-[1px] rounded-[3px] border self-center shrink-0',
+                      'font-mono text-[9px] uppercase tracking-[0.1em] px-[6px] py-[1px] rounded-full border self-center shrink-0',
                       isAccent ? 'text-accent border-accent-border' : 'text-text-faint border-border',
                     )}>{kind}</span>
                     <div className="text-[12.5px] text-text leading-snug w-full sm:w-auto">
@@ -1160,7 +1162,7 @@ export function DashboardClient() {
               )
             })
           )}
-        </div>
+        </Card>
       </div>
     </div>
   )

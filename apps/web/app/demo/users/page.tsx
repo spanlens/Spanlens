@@ -202,7 +202,7 @@ export default function DemoUsersPage() {
   const isFiltered = query.trim().length > 0
 
   return (
-    <div className="-mx-4 -my-4 md:-mx-8 md:-my-7 flex flex-col min-h-screen">
+    <div className="-mx-4 -my-4 md:-mx-7 md:-mt-5 md:-mb-7 flex flex-col min-h-screen">
       <div className="sticky top-0 z-20 bg-bg">
         <Topbar
           crumbs={[{ label: 'Demo', href: '/demo/dashboard' }, { label: 'Users' }]}
@@ -219,7 +219,7 @@ export default function DemoUsersPage() {
         </div>
         <p className="font-mono text-[11.5px] text-text-faint mt-1.5">
           End-user attribution from{' '}
-          <code className="bg-bg-elev px-1 py-px rounded text-text">x-spanlens-user</code> header.
+          <code className="bg-bg-sunk px-1 py-px rounded text-text">x-spanlens-user</code> header.
         </p>
       </div>
 
@@ -303,7 +303,7 @@ export default function DemoUsersPage() {
                 <Link
                   key={u.user_id}
                   href={`/demo/users/${encodeURIComponent(u.user_id)}`}
-                  className="group grid grid-cols-[2fr,1fr,1fr,1fr] sm:grid-cols-[2fr,1fr,1fr,1fr,1fr,1fr] gap-3 items-center px-4 py-3 font-mono text-[12px] text-text hover:bg-bg-elev transition-colors"
+                  className="group grid grid-cols-[2fr,1fr,1fr,1fr] sm:grid-cols-[2fr,1fr,1fr,1fr,1fr,1fr] gap-3 items-center px-4 py-3 font-mono text-[12px] text-text hover:bg-bg-muted transition-colors"
                 >
                   <span className="flex items-center gap-1.5 min-w-0">
                     <span className="truncate text-text">{u.user_id}</span>
@@ -324,7 +324,7 @@ export default function DemoUsersPage() {
         </div>
 
         <p className={cn('font-mono text-[11px] text-text-faint mt-4')}>
-          Demo data · in production this view comes from <code className="bg-bg-elev px-1 py-px rounded">GET /api/v1/users</code> (RPC-backed aggregate).
+          Demo data · in production this view comes from <code className="bg-bg-sunk px-1 py-px rounded">GET /api/v1/users</code> (RPC-backed aggregate).
         </p>
       </div>
     </div>

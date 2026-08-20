@@ -1,3 +1,5 @@
+import { findDocsSection } from '@/app/docs/_lib/sections'
+
 const SITE_URL = 'https://www.spanlens.io'
 
 /**
@@ -18,9 +20,10 @@ interface DocsPageMeta {
  *
  *   <DocsJsonLd meta={metadata} />
  *
- * The breadcrumb is intentionally a uniform Home → Docs → page trail: most
- * docs sections (/docs/concepts, /docs/features, …) have no index page, so
- * deeper trails would point crawlers at 404s.
+ * The breadcrumb inserts a section crumb (Home → Docs → Features → page) when
+ * the page sits under one of the six sections that now have a hub page. It
+ * used to be a flat Home → Docs → page trail because those section paths
+ * returned 404 and a deeper trail would have pointed crawlers at them.
  *
  * Renders nothing if the page metadata is missing a canonical or title —
  * docs routes are server-rendered on demand, so throwing here would turn a
@@ -34,14 +37,28 @@ export function DocsJsonLd({ meta }: { meta: DocsPageMeta }) {
   // "Quick start · Spanlens Docs" → "Quick start" for the breadcrumb label.
   const shortTitle = meta.title.split('·')[0]?.trim() ?? meta.title
 
+  // '/docs/features/evals' → 'features'. Undefined for '/docs' itself and for
+  // pages that sit directly under /docs (e.g. '/docs/quick-start'), which have
+  // no section to insert.
+  const sectionSlug = canonical.split('/')[2]
+  const section = canonical.split('/').length > 3 && sectionSlug ? findDocsSection(sectionSlug) : undefined
+
+  const trail = [
+    { name: 'Home', item: SITE_URL },
+    { name: 'Docs', item: `${SITE_URL}/docs` },
+    ...(section ? [{ name: section.title, item: `${SITE_URL}/docs/${section.slug}` }] : []),
+    { name: shortTitle, item: url },
+  ]
+
   const breadcrumbJsonLd = {
     '@context': 'https://schema.org',
     '@type': 'BreadcrumbList',
-    itemListElement: [
-      { '@type': 'ListItem', position: 1, name: 'Home', item: SITE_URL },
-      { '@type': 'ListItem', position: 2, name: 'Docs', item: `${SITE_URL}/docs` },
-      { '@type': 'ListItem', position: 3, name: shortTitle, item: url },
-    ],
+    itemListElement: trail.map((crumb, i) => ({
+      '@type': 'ListItem',
+      position: i + 1,
+      name: crumb.name,
+      item: crumb.item,
+    })),
   }
 
   const articleJsonLd = {
@@ -49,6 +66,8 @@ export function DocsJsonLd({ meta }: { meta: DocsPageMeta }) {
     '@type': 'TechArticle',
     '@id': `${url}#article`,
     headline: meta.title,
+    datePublished: '2026-06-16',
+    dateModified: '2026-07-24',
     url,
     ...(meta.description ? { description: meta.description } : {}),
     inLanguage: 'en',

@@ -198,7 +198,7 @@ export function ShareDialog({ scope, targetId, variant = 'primary' }: ShareDialo
                 <input
                   readOnly
                   value={shareUrl}
-                  className="flex-1 px-3 py-2 border border-border rounded-md bg-bg-elevated font-mono text-[11.5px]"
+                  className="flex-1 rounded-md border border-border bg-bg-sunk px-3 py-2 font-mono text-[11.5px] text-text"
                   onFocus={(e) => e.currentTarget.select()}
                 />
                 <Button size="sm" variant="outline" onClick={handleCopy} className="gap-1.5">
@@ -300,7 +300,7 @@ export function ShareDialog({ scope, targetId, variant = 'primary' }: ShareDialo
             )}
 
             {error && (
-              <div className="text-[12px] text-status-error">{error}</div>
+              <div className="text-[12px] text-bad">{error}</div>
             )}
           </div>
         )}

@@ -1,19 +1,24 @@
 'use client'
 
-import Image from 'next/image'
 import { Suspense, useState } from 'react'
+import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
-
-function LogoMark() {
-  return (
-    <div className="flex items-center gap-2 mb-6">
-      <Image src="/icon.png" alt="Spanlens" width={20} height={20} className="shrink-0 rounded-[5px]" priority />
-      <span className="font-semibold text-[15px] tracking-[-0.3px] text-text">spanlens</span>
-    </div>
-  )
-}
+import {
+  AuthFootnote,
+  AuthHeading,
+  AuthLayout,
+  AuthNote,
+  authLink,
+  authPrimaryButton,
+  authSecondaryButton,
+} from '../_components/auth-shell'
 
 type DeviceState = 'idle' | 'authorizing' | 'authorized' | 'denied' | 'error'
+
+const PITCH = {
+  title: 'Approve the CLI once.',
+  body: 'The code below is tied to the terminal that asked for it. Nothing else can claim it.',
+}
 
 function DevicePageInner() {
   const params = useSearchParams()
@@ -56,111 +61,102 @@ function DevicePageInner() {
 
   if (!code) {
     return (
-      <div className="min-h-screen bg-bg-elev flex items-center justify-center p-10">
-        <div className="w-[440px] max-w-full bg-bg border border-border rounded-lg p-8">
-          <LogoMark />
-          <h1 className="text-[20px] font-medium tracking-[-0.3px] mb-2">No device code found</h1>
-          <p className="text-[13px] text-text-muted leading-relaxed">
-            Please run the CLI login command to generate a device code.
-          </p>
-        </div>
-      </div>
+      <AuthLayout pitch={PITCH}>
+        <AuthHeading
+          title="No device code found"
+          subtitle="Run the CLI login command to generate one, then open the link it prints."
+        />
+        <AuthNote tone="bad">This page needs a code in the URL to have anything to approve.</AuthNote>
+      </AuthLayout>
     )
   }
 
   if (state === 'authorized') {
     return (
-      <div className="min-h-screen bg-bg-elev flex items-center justify-center p-10">
-        <div className="w-[440px] max-w-full bg-bg border border-border rounded-lg p-8">
-          <LogoMark />
-          <h1 className="text-[20px] font-medium tracking-[-0.3px] mb-2">Device authorized</h1>
-          <p className="text-[13px] text-text-muted leading-relaxed">
-            You can close this window and return to your terminal.
-          </p>
-        </div>
-      </div>
+      <AuthLayout pitch={PITCH}>
+        <AuthHeading title="Device authorized" subtitle="You can close this window and return to your terminal." />
+        <AuthNote tone="good" live="polite">
+          The CLI has been granted access.
+        </AuthNote>
+      </AuthLayout>
     )
   }
 
   if (state === 'denied') {
     return (
-      <div className="min-h-screen bg-bg-elev flex items-center justify-center p-10">
-        <div className="w-[440px] max-w-full bg-bg border border-border rounded-lg p-8">
-          <LogoMark />
-          <h1 className="text-[20px] font-medium tracking-[-0.3px] mb-2">Access denied</h1>
-          <p className="text-[13px] text-text-muted leading-relaxed">
-            You have denied CLI access. You can close this window.
-          </p>
-        </div>
-      </div>
+      <AuthLayout pitch={PITCH}>
+        <AuthHeading title="Access denied" subtitle="Nothing was granted. You can close this window." />
+        <AuthNote live="polite">If that was a mistake, run the CLI login command again.</AuthNote>
+      </AuthLayout>
     )
   }
 
   return (
-    <div className="min-h-screen bg-bg-elev flex items-center justify-center p-10">
-      <div className="w-[440px] max-w-full bg-bg border border-border rounded-lg p-8">
-        <LogoMark />
+    <AuthLayout pitch={PITCH}>
+      <AuthHeading
+        title="Authorize this device"
+        subtitle={
+          tool || ip ? (
+            <>
+              {tool && <span className="font-mono text-text">{tool}</span>}
+              {tool && ip && ' from '}
+              {ip && <span className="font-mono text-text">{ip}</span>}
+              {' wants access to your workspace.'}
+            </>
+          ) : (
+            'A command line tool wants access to your workspace.'
+          )
+        }
+      />
 
-        <h1 className="text-[20px] font-medium tracking-[-0.3px] mb-5">Authorize CLI access</h1>
-
-        {/* Code display */}
-        <div className="mb-5">
-          <p className="font-mono text-[11px] text-text-faint mb-2 tracking-[0.04em] uppercase">
-            Your device code
-          </p>
-          <div className="bg-bg-muted rounded-[8px] px-6 py-4 inline-block">
-            <span className="font-mono text-[32px] tracking-[0.15em] text-text">{code}</span>
-          </div>
-        </div>
-
-        {/* Tool / IP metadata */}
-        {(tool || ip) && (
-          <div className="flex flex-col gap-1 mb-5">
-            {tool && (
-              <div className="font-mono text-[12px] text-text-faint">
-                <span className="text-text-muted">Tool:</span> {tool}
-              </div>
-            )}
-            {ip && (
-              <div className="font-mono text-[12px] text-text-faint">
-                <span className="text-text-muted">IP:</span> {ip}
-              </div>
-            )}
-          </div>
-        )}
-
-        {error && <p className="text-[12.5px] text-bad mb-3">{error}</p>}
-
-        <div className="flex flex-col gap-2">
-          <button
-            type="button"
-            onClick={() => void handleAuthorize()}
-            disabled={state === 'authorizing'}
-            className="w-full bg-text text-bg py-[11px] px-[14px] rounded-[7px] text-[13px] font-medium hover:opacity-90 transition-opacity disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed"
-          >
-            {state === 'authorizing' ? 'Authorizing…' : 'Authorize'}
-          </button>
-          <button
-            type="button"
-            onClick={handleDeny}
-            disabled={state === 'authorizing'}
-            className="w-full border border-border-strong py-[11px] px-[14px] rounded-[7px] text-[13px] text-text-muted hover:text-text transition-colors disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed"
-          >
-            Deny
-          </button>
-        </div>
+      {/* The code is the whole security story here, so it gets the display
+          treatment: sunk panel, wide tracking, nothing competing with it. */}
+      <div className="rounded-[14px] border border-border bg-bg-sunk px-6 py-[22px] text-center">
+        <span className="font-mono text-[26px] leading-[1.48] tracking-[0.06em] text-text">{code}</span>
       </div>
-    </div>
+
+      <AuthNote tone="warn" className="mt-3.5">
+        Only approve if this code matches the one printed in your terminal.
+      </AuthNote>
+
+      {error && <AuthNote tone="bad" live="assertive" className="mt-2.5">{error}</AuthNote>}
+
+      <div className="mt-5 flex flex-col gap-2.5">
+        <button
+          type="button"
+          onClick={() => void handleAuthorize()}
+          disabled={state === 'authorizing'}
+          className={authPrimaryButton}
+        >
+          {state === 'authorizing' ? 'Authorizing…' : 'Approve device'}
+        </button>
+        <button
+          type="button"
+          onClick={handleDeny}
+          disabled={state === 'authorizing'}
+          className={authSecondaryButton}
+        >
+          Reject
+        </button>
+      </div>
+
+      <AuthFootnote className="mt-[18px]">
+        Did not start this?{' '}
+        <Link href="/login" className={authLink}>
+          Sign in and review your sessions
+        </Link>
+      </AuthFootnote>
+    </AuthLayout>
   )
 }
 
 function DeviceFallback() {
   return (
-    <div className="min-h-screen bg-bg-elev flex items-center justify-center p-10">
-      <div className="w-[440px] max-w-full bg-bg border border-border rounded-lg p-8">
-        <div className="text-[13px] text-text-muted">Loading…</div>
-      </div>
-    </div>
+    <AuthLayout pitch={PITCH}>
+      <p className="text-[13.5px] leading-[1.6] text-text-faint" role="status">
+        Loading…
+      </p>
+    </AuthLayout>
   )
 }
 

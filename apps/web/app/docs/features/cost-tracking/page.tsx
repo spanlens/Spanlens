@@ -1,9 +1,11 @@
+import { openGraphFor } from '@/lib/page-metadata'
 import { CodeBlock } from '../../_components/code-block'
-import { ModelPriceChart } from '../../_components/charts'
+import { ModelPriceChart } from '../../_components/figures'
 import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
 export const metadata = {
   alternates: { canonical: '/docs/features/cost-tracking' },
+  openGraph: openGraphFor('/docs/features/cost-tracking'),
   title: 'Cost tracking · Spanlens Docs',
   description:
     'Accurate per-request USD cost computed from provider token prices. Handles dated model variants via longest-prefix matching.',

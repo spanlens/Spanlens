@@ -15,10 +15,12 @@ const SelectTrigger = React.forwardRef<
   <SelectPrimitive.Trigger
     ref={ref}
     className={cn(
-      'flex h-9 w-full items-center justify-between gap-1',
-      'rounded-[5px] border border-border bg-bg pl-2 pr-2',
-      'font-mono text-[12px] text-text',
-      'focus:outline-none focus:border-border-strong',
+      'flex h-9 w-full items-center justify-between gap-2',
+      'rounded border border-border bg-bg-elev pl-3 pr-2.5',
+      // Trigger labels are UI text ("All projects", "Export"), so they take the
+      // sans face; the option list stays mono because it usually holds ids.
+      'text-[12.5px] font-medium text-text-muted',
+      'focus:outline-none focus:border-border-strong hover:border-border-strong transition-colors',
       'disabled:opacity-40 disabled:cursor-not-allowed',
       'data-[placeholder]:text-text-faint',
       '[&>span]:truncate [&>span]:text-left',
@@ -43,7 +45,7 @@ const SelectContent = React.forwardRef<
       ref={ref}
       className={cn(
         'relative z-50 overflow-hidden',
-        'rounded-[5px] border border-border bg-bg shadow-lg',
+        'rounded-md border border-border bg-bg-elev shadow-card',
         'data-[state=open]:animate-in data-[state=closed]:animate-out',
         'data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
         'data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95',
@@ -77,7 +79,7 @@ const SelectLabel = React.forwardRef<
   <SelectPrimitive.Label
     ref={ref}
     className={cn(
-      'font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint px-2 py-1.5',
+      'font-mono text-[10px] uppercase tracking-[0.12em] text-text-faint px-2 py-1.5',
       className,
     )}
     {...props}
@@ -93,7 +95,7 @@ const SelectItem = React.forwardRef<
     ref={ref}
     className={cn(
       'relative flex w-full cursor-pointer select-none items-center',
-      'rounded-[3px] py-1.5 pl-2 pr-7',
+      'rounded-chip py-1.5 pl-2 pr-7',
       'font-mono text-[12px] text-text',
       'outline-none',
       'focus:bg-bg-muted focus:text-text',

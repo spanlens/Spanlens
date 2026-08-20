@@ -11,7 +11,12 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
  *       deployed commit. version=null in local/test (no VERCEL_GIT_COMMIT_SHA).
  *
  *   /health/ready
- *     - 200 only when Postgres + ClickHouse are both up.
+ *     - 200 only when BOTH routes to Postgres are up. The server reaches the
+ *       same database two ways: PostgREST over HTTPS for row-shaped CRUD,
+ *       and a pooled connection through Supavisor for the analytics on
+ *       `requests`. Either can fail on its own — an exhausted pooler, a bad
+ *       connection string, a network path that only affects port 6543 — so
+ *       probing one and calling it healthy would miss half the product.
  *     - 503 when either is down — so docker / load balancer routes around
  *       half-broken instances.
  *     - Upstash absent (KV_REST_API_URL unset) is *not* a failure — local
@@ -25,39 +30,33 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
  *       query succeeds, and `null` (not a fake 0) when the query itself
  *       failed. The null-vs-0 distinction is what lets operators tell
  *       "Supabase is broken" apart from "the queue is genuinely empty."
- *     - 503 when ClickHouse is unreachable. The Supabase failures for the
- *       new metrics do NOT 503 — they degrade to null so a single bad
- *       aggregate query doesn't take the whole monitor down.
+ *     - 503 when the pooled connection is unreachable. The Supabase failures
+ *       for the new metrics do NOT 503 — they degrade to null so a single
+ *       bad aggregate query doesn't take the whole monitor down.
+ *
+ * `pingPostgres()` reports failure in its return value rather than throwing,
+ * so the mock below resolves `{ ok, latencyMs }` shapes rather than booleans.
+ * A probe that threw instead would be indistinguishable from a bug in the
+ * handler, which is why the real one does not.
  */
 
 const supabaseAdminMock = {
   from: vi.fn(),
 }
-const pingClickhouseMock = vi.fn()
+const pingPostgresMock = vi.fn()
 const fallbackQueueSizeMock = vi.fn()
-const eventsFallbackQueueSizeMock = vi.fn()
 const getRedisMock = vi.fn()
 
 vi.mock('../lib/db.js', () => ({
   supabaseAdmin: supabaseAdminMock,
 }))
 
-vi.mock('../lib/clickhouse.js', () => ({
-  pingClickhouse: () => pingClickhouseMock(),
-  // health.ts moved to the SELECT-1-based probe (keeps ClickHouse Cloud's
-  // idle timer reset). Retry semantics are covered by clickhouse-warm.test.ts;
-  // here it drives the same mock so every existing scenario still applies.
-  warmClickhouse: () => pingClickhouseMock(),
-  warmClickhouseWithRetry: () => pingClickhouseMock(),
-  getClickhouse: () => ({}),
-  unscopedClickhouse: () => ({}),
-  getOrgClickhouse: () => ({}),
-  toClickhouseTimestamp: (d: Date) => d.toISOString(),
+vi.mock('../lib/postgres.js', () => ({
+  pingPostgres: () => pingPostgresMock(),
 }))
 
 vi.mock('../lib/fallback-replay.js', () => ({
   fallbackQueueSize: () => fallbackQueueSizeMock(),
-  eventsFallbackQueueSize: () => eventsFallbackQueueSizeMock(),
 }))
 
 vi.mock('../lib/prompt-cache.js', () => ({
@@ -70,9 +69,8 @@ const origVercelSha = process.env['VERCEL_GIT_COMMIT_SHA']
 beforeEach(async () => {
   vi.resetModules()
   supabaseAdminMock.from.mockReset()
-  pingClickhouseMock.mockReset()
+  pingPostgresMock.mockReset()
   fallbackQueueSizeMock.mockReset()
-  eventsFallbackQueueSizeMock.mockReset()
   getRedisMock.mockReset()
   delete process.env['VERCEL_GIT_COMMIT_SHA']
   ;({ healthRouter } = await import('../api/health.js'))
@@ -215,26 +213,26 @@ describe('GET /health', () => {
 })
 
 describe('GET /health/ready', () => {
-  test('200 when Postgres + ClickHouse OK + Upstash skipped (no env)', async () => {
+  test('200 when both Postgres routes are OK and Upstash is skipped (no env)', async () => {
     supabaseAdminMock.from.mockReturnValue(pgReadyOk())
-    pingClickhouseMock.mockResolvedValue(true)
+    pingPostgresMock.mockResolvedValue({ ok: true, latencyMs: 3 })
     getRedisMock.mockReturnValue(null)
 
     const res = await healthRouter.request('/health/ready')
     expect(res.status).toBe(200)
     const body = (await res.json()) as {
       status: string
-      checks: { postgres: { ok: boolean }; clickhouse: { ok: boolean }; redis: { status: string } }
+      checks: { postgres: { ok: boolean }; postgresPool: { ok: boolean }; redis: { status: string } }
     }
     expect(body.status).toBe('ok')
     expect(body.checks.postgres.ok).toBe(true)
-    expect(body.checks.clickhouse.ok).toBe(true)
+    expect(body.checks.postgresPool.ok).toBe(true)
     expect(body.checks.redis.status).toBe('skipped')
   })
 
   test('200 when Upstash configured + ping resolves', async () => {
     supabaseAdminMock.from.mockReturnValue(pgReadyOk())
-    pingClickhouseMock.mockResolvedValue(true)
+    pingPostgresMock.mockResolvedValue({ ok: true, latencyMs: 3 })
     getRedisMock.mockReturnValue({ ping: async () => 'PONG' })
 
     const res = await healthRouter.request('/health/ready')
@@ -245,7 +243,7 @@ describe('GET /health/ready', () => {
 
   test('503 when Postgres is down', async () => {
     supabaseAdminMock.from.mockReturnValue(pgReadyFail())
-    pingClickhouseMock.mockResolvedValue(true)
+    pingPostgresMock.mockResolvedValue({ ok: true, latencyMs: 3 })
     getRedisMock.mockReturnValue(null)
 
     const res = await healthRouter.request('/health/ready')
@@ -255,20 +253,20 @@ describe('GET /health/ready', () => {
     expect(body.checks.postgres.ok).toBe(false)
   })
 
-  test('503 when ClickHouse is down', async () => {
+  test('503 when the pooled Postgres connection is down', async () => {
     supabaseAdminMock.from.mockReturnValue(pgReadyOk())
-    pingClickhouseMock.mockResolvedValue(false)
+    pingPostgresMock.mockResolvedValue({ ok: false, latencyMs: 12, error: 'pooler unreachable' })
     getRedisMock.mockReturnValue(null)
 
     const res = await healthRouter.request('/health/ready')
     expect(res.status).toBe(503)
-    const body = (await res.json()) as { checks: { clickhouse: { ok: boolean } } }
-    expect(body.checks.clickhouse.ok).toBe(false)
+    const body = (await res.json()) as { checks: { postgresPool: { ok: boolean } } }
+    expect(body.checks.postgresPool.ok).toBe(false)
   })
 
   test('503 when Upstash configured but ping fails (cascading slowness risk)', async () => {
     supabaseAdminMock.from.mockReturnValue(pgReadyOk())
-    pingClickhouseMock.mockResolvedValue(true)
+    pingPostgresMock.mockResolvedValue({ ok: true, latencyMs: 3 })
     getRedisMock.mockReturnValue({ ping: async () => { throw new Error('redis down') } })
 
     const res = await healthRouter.request('/health/ready')
@@ -281,11 +279,10 @@ describe('GET /health/ready', () => {
 describe('GET /health/deep', () => {
   beforeEach(() => {
     fallbackQueueSizeMock.mockResolvedValue(0)
-    eventsFallbackQueueSizeMock.mockResolvedValue(0)
-  })
+    })
 
   test('200 with new R-11 metrics surfaced', async () => {
-    pingClickhouseMock.mockResolvedValue(true)
+    pingPostgresMock.mockResolvedValue({ ok: true, latencyMs: 3 })
     wireDeepFroms(pgDeepCronChain(1234), pgDeepWebhookChain(5, 3))
 
     const res = await healthRouter.request('/health/deep')
@@ -295,20 +292,20 @@ describe('GET /health/deep', () => {
       version: string | null
       crons: { max_runtime_ms: number | null }
       webhooks: { backlog_count: number | null; dlq_count: number | null }
-      clickhouse: { ok: boolean; latencyMs: number }
-      fallback: { queue: number | null; eventsQueue: number | null }
+      postgresPool: { ok: boolean; latencyMs: number }
+      fallback: { queue: number | null }
     }
     expect(body.status).toBe('ok')
     expect(body.version).toBeNull()
     expect(body.crons.max_runtime_ms).toBe(1234)
     expect(body.webhooks.backlog_count).toBe(5)
     expect(body.webhooks.dlq_count).toBe(3)
-    expect(body.clickhouse.ok).toBe(true)
+    expect(body.postgresPool.ok).toBe(true)
     expect(body.fallback.queue).toBe(0)
   })
 
   test('webhooks.dlq_count = null when the dlq count query fails', async () => {
-    pingClickhouseMock.mockResolvedValue(true)
+    pingPostgresMock.mockResolvedValue({ ok: true, latencyMs: 3 })
     wireDeepFroms(pgDeepCronChain(500), pgDeepWebhookChainDlqError(2))
 
     const res = await healthRouter.request('/health/deep')
@@ -321,7 +318,7 @@ describe('GET /health/deep', () => {
   })
 
   test('crons.max_runtime_ms = null when cron query fails (degrades, does not 503)', async () => {
-    pingClickhouseMock.mockResolvedValue(true)
+    pingPostgresMock.mockResolvedValue({ ok: true, latencyMs: 3 })
     wireDeepFroms(pgDeepCronChainError(), pgDeepWebhookChain(0))
 
     const res = await healthRouter.request('/health/deep')
@@ -331,7 +328,7 @@ describe('GET /health/deep', () => {
   })
 
   test('webhooks.backlog_count = null when webhook query fails', async () => {
-    pingClickhouseMock.mockResolvedValue(true)
+    pingPostgresMock.mockResolvedValue({ ok: true, latencyMs: 3 })
     wireDeepFroms(pgDeepCronChain(500), pgDeepWebhookChainError())
 
     const res = await healthRouter.request('/health/deep')
@@ -341,7 +338,7 @@ describe('GET /health/deep', () => {
   })
 
   test('crons.max_runtime_ms = null when no rows in last 24h (cold env)', async () => {
-    pingClickhouseMock.mockResolvedValue(true)
+    pingPostgresMock.mockResolvedValue({ ok: true, latencyMs: 3 })
     wireDeepFroms(pgDeepCronChain(null), pgDeepWebhookChain(0))
 
     const res = await healthRouter.request('/health/deep')
@@ -350,8 +347,8 @@ describe('GET /health/deep', () => {
     expect(body.crons.max_runtime_ms).toBeNull()
   })
 
-  test('503 when ClickHouse is down (overall degraded)', async () => {
-    pingClickhouseMock.mockResolvedValue(false)
+  test('503 when the pooled Postgres connection is down (overall degraded)', async () => {
+    pingPostgresMock.mockResolvedValue({ ok: false, latencyMs: 12, error: 'pooler unreachable' })
     wireDeepFroms(pgDeepCronChain(100), pgDeepWebhookChain(0))
 
     const res = await healthRouter.request('/health/deep')

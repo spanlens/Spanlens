@@ -5,26 +5,27 @@ import { beforeEach, describe, expect, test, vi } from 'vitest'
 //
 // Two layers tested:
 //   1. `classifyConfidence(refCount)` — pure function, exhaustive boundaries.
-//   2. `detectAnomalies(...)` — end-to-end via a mocked ClickHouse query,
+//   2. `detectAnomalies(...)` — end-to-end via a mocked Postgres query,
 //      verifying the right confidence tag travels through the detection
 //      pipeline AND that <10-sample buckets are still suppressed entirely.
 // ─────────────────────────────────────────────────────────────────────────────
 
-const clickhouseQueryMock = vi.fn()
+const pgQueryMock = vi.fn()
 
-vi.mock('../lib/clickhouse.js', () => ({
-  unscopedClickhouse: () => ({
-    query: (opts: unknown) => clickhouseQueryMock(opts),
-  }),
+vi.mock('../lib/postgres.js', () => ({
+  pgQuery: (opts: unknown) => pgQueryMock(opts),
+  pgQueryOne: vi.fn(),
+  pgExecute: vi.fn(),
+  pgStream: vi.fn(),
 }))
 
-// detectAnomalies now resolves org + retention scope via requestsScope, which
+// detectAnomalies resolves org + retention scope via requestsScope, which
 // internally reads the org plan from Supabase. Stub it so these unit tests
 // stay DB-free (the retention bound itself is exercised in anomaly-detect.test.ts).
 vi.mock('../lib/requests-query.js', () => ({
   requestsScope: vi.fn(async (orgId: string) => ({
     whereScope:
-      'organization_id = {orgId:UUID} AND created_at >= now() - INTERVAL {retentionDays:UInt32} DAY',
+      'organization_id = {orgId} AND created_at >= now() - make_interval(days => {retentionDays})',
     scopeParams: { orgId, retentionDays: 14 },
     plan: 'free',
   })),
@@ -36,41 +37,43 @@ let ANOMALY_DEFAULTS: typeof import('../lib/anomaly.js').ANOMALY_DEFAULTS
 
 beforeEach(async () => {
   vi.resetModules()
-  clickhouseQueryMock.mockReset()
+  pgQueryMock.mockReset()
   ;({ classifyConfidence, detectAnomalies, ANOMALY_DEFAULTS } = await import('../lib/anomaly.js'))
 })
 
 /** Build a query result with one anomalous bucket where reference_count is the
  *  variable being tested. All three signals (latency, cost, error_rate) carry
- *  the same refCount so a single ClickHouse mock covers the full code path. */
+ *  the same refCount so a single Postgres mock covers the full code path.
+ *
+ *  Values are strings because that is how node-postgres returns `numeric`
+ *  (avg / stddev_samp) and `int8` (count) — see lib/postgres.ts. */
 function singleBucketResult(refCount: number) {
-  return {
-    json: () => Promise.resolve([
-      {
-        provider: 'openai',
-        model: 'gpt-4o',
-        // Anomalous: obs mean is 1000ms, baseline 100ms with 10ms stddev → 90σ
-        obs_latency_mean: 1000,
-        obs_latency_count: refCount,
-        ref_latency_mean: 100,
-        ref_latency_stddev: 10,
-        ref_latency_count: refCount,
-        // Cost not anomalous (within 1σ) so this row exercises only the
-        // latency + error_rate branches.
-        obs_cost_mean: 0.5,
-        obs_cost_count: refCount,
-        ref_cost_mean: 0.5,
-        ref_cost_stddev: 0.1,
-        ref_cost_count: refCount,
-        // Error rate spike: 50% errors observed vs 1% baseline (huge σ)
-        obs_error_rate: 0.5,
-        obs_all_count: refCount,
-        ref_error_rate: 0.01,
-        ref_error_stddev: 0.05,
-        ref_all_count: refCount,
-      },
-    ]),
-  }
+  const n = String(refCount)
+  return [
+    {
+      provider: 'openai',
+      model: 'gpt-4o',
+      // Anomalous: obs mean is 1000ms, baseline 100ms with 10ms stddev → 90σ
+      obs_latency_mean: '1000',
+      obs_latency_count: n,
+      ref_latency_mean: '100',
+      ref_latency_stddev: '10',
+      ref_latency_count: n,
+      // Cost not anomalous (within 1σ) so this row exercises only the
+      // latency + error_rate branches.
+      obs_cost_mean: '0.5',
+      obs_cost_count: n,
+      ref_cost_mean: '0.5',
+      ref_cost_stddev: '0.1',
+      ref_cost_count: n,
+      // Error rate spike: 50% errors observed vs 1% baseline (huge σ)
+      obs_error_rate: '0.5',
+      obs_all_count: n,
+      ref_error_rate: '0.01',
+      ref_error_stddev: '0.05',
+      ref_all_count: n,
+    },
+  ]
 }
 
 // ── Pure function tests ──────────────────────────────────────────────────────
@@ -111,7 +114,7 @@ describe('classifyConfidence', () => {
 
 describe('detectAnomalies — confidence tier wiring', () => {
   test('refCount=15 surfaces anomalies tagged "low"', async () => {
-    clickhouseQueryMock.mockResolvedValue(singleBucketResult(15))
+    pgQueryMock.mockResolvedValue(singleBucketResult(15))
     const anomalies = await detectAnomalies('org_1')
     expect(anomalies.length).toBeGreaterThan(0)
     for (const a of anomalies) {
@@ -120,7 +123,7 @@ describe('detectAnomalies — confidence tier wiring', () => {
   })
 
   test('refCount=50 surfaces anomalies tagged "medium"', async () => {
-    clickhouseQueryMock.mockResolvedValue(singleBucketResult(50))
+    pgQueryMock.mockResolvedValue(singleBucketResult(50))
     const anomalies = await detectAnomalies('org_1')
     expect(anomalies.length).toBeGreaterThan(0)
     for (const a of anomalies) {
@@ -129,7 +132,7 @@ describe('detectAnomalies — confidence tier wiring', () => {
   })
 
   test('refCount=200 surfaces anomalies tagged "high"', async () => {
-    clickhouseQueryMock.mockResolvedValue(singleBucketResult(200))
+    pgQueryMock.mockResolvedValue(singleBucketResult(200))
     const anomalies = await detectAnomalies('org_1')
     expect(anomalies.length).toBeGreaterThan(0)
     for (const a of anomalies) {
@@ -138,29 +141,43 @@ describe('detectAnomalies — confidence tier wiring', () => {
   })
 
   test('refCount=5 (below low threshold) suppresses anomalies entirely', async () => {
-    clickhouseQueryMock.mockResolvedValue(singleBucketResult(5))
+    pgQueryMock.mockResolvedValue(singleBucketResult(5))
     const anomalies = await detectAnomalies('org_1')
     expect(anomalies).toEqual([])
   })
 
   test('regression: refCount=29 is "low" not "medium" (boundary)', async () => {
-    clickhouseQueryMock.mockResolvedValue(singleBucketResult(29))
+    pgQueryMock.mockResolvedValue(singleBucketResult(29))
     const anomalies = await detectAnomalies('org_1')
     expect(anomalies.length).toBeGreaterThan(0)
     expect(anomalies[0]?.confidence).toBe('low')
   })
 
   test('regression: refCount=30 is "medium" not "low" (boundary)', async () => {
-    clickhouseQueryMock.mockResolvedValue(singleBucketResult(30))
+    pgQueryMock.mockResolvedValue(singleBucketResult(30))
     const anomalies = await detectAnomalies('org_1')
     expect(anomalies.length).toBeGreaterThan(0)
     expect(anomalies[0]?.confidence).toBe('medium')
   })
 
   test('caller can override minSamples to suppress low-confidence findings', async () => {
-    clickhouseQueryMock.mockResolvedValue(singleBucketResult(15))
+    pgQueryMock.mockResolvedValue(singleBucketResult(15))
     // Cron that pages on-call passes minSamples=30 to gate at medium+ only.
     const anomalies = await detectAnomalies('org_1', { minSamples: 30 })
     expect(anomalies).toEqual([])
+  })
+
+  test('the scan these tiers are computed from is org-scoped', async () => {
+    // Confidence is a property of one org's reference window. If the scan
+    // ever lost its organization_id filter, every tier above would be
+    // computed from another tenant's traffic and still look correct.
+    pgQueryMock.mockResolvedValue(singleBucketResult(200))
+    await detectAnomalies('org_1')
+    const { query, params } = pgQueryMock.mock.calls[0]![0] as {
+      query: string
+      params: Record<string, unknown>
+    }
+    expect(query).toContain('organization_id = {orgId}')
+    expect(params['orgId']).toBe('org_1')
   })
 })

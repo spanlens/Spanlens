@@ -1,10 +1,13 @@
+import { openGraphFor } from '@/lib/page-metadata'
 import { CodeBlock } from '../_components/code-block'
 import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
 export const metadata = {
   alternates: { canonical: '/docs/proxy' },
+  openGraph: openGraphFor('/docs/proxy'),
   title: 'Direct proxy · Spanlens Docs',
-  description: 'Use Spanlens from any language, Python, Ruby, Go, curl. Just swap the base URL.',
+  description:
+    'Use Spanlens from any language. Point your OpenAI, Anthropic, or Gemini client at the proxy base URL and every call is logged. Python, Ruby, Go, and curl.',
 }
 
 export default function ProxyDocs() {
@@ -17,7 +20,7 @@ export default function ProxyDocs() {
         Anthropic / Gemini client at our proxy URL. Works with Python, Ruby, Go, Rust, Java, PHP, or raw HTTP.
       </p>
 
-      <div className="my-6 rounded-lg border-l-4 border-accent bg-accent-bg p-4 text-sm">
+      <div className="my-6 rounded-lg border border-accent-border bg-accent-bg p-4 text-sm">
         <p className="m-0 font-semibold text-accent">Use streaming for long requests</p>
         <p className="mt-1 mb-0 text-accent">
           The proxy runs on Vercel Pro with a <strong>300-second hard ceiling</strong>, and Spanlens
@@ -214,7 +217,7 @@ res = client.chat.completions.create(
     messages=[{"role": "user", "content": "Hi"}],
 )
 
-# Same client, different model — no code changes
+# Same client, different model, no code changes
 res2 = client.chat.completions.create(
     model="meta-llama/llama-3.1-70b-instruct",
     messages=[{"role": "user", "content": "Hi"}],
@@ -304,7 +307,7 @@ res, _ := client.CreateChatCompletion(ctx, openai.ChatCompletionRequest{
       <p>
         Server-Sent Events streaming works transparently. Spanlens tees the stream, one copy flows to
         you in real time, the other is parsed asynchronously to extract token usage. Latency overhead
-        is negligible (10–50ms).
+        is negligible (10 to 50ms).
       </p>
 
       <h2>Passing metadata</h2>
@@ -314,7 +317,7 @@ res, _ := client.CreateChatCompletion(ctx, openai.ChatCompletionRequest{
       </p>
       <p>
         Add <code>X-Trace-Id</code> and <code>X-Span-Id</code> headers (UUIDs) to link a proxy call
-        to an <a href="/docs/agents">agent trace</a> so it appears inside the span tree with its
+        to an <a href="/docs/concepts/agent-tracing">agent trace</a> so it appears inside the span tree with its
         cost and tokens. The SDK sets these for you via{' '}
         <code>trace.headers()</code> / <code>span.headers()</code>; raw HTTP callers can pass them
         directly. Non-UUID values are ignored rather than rejected:
@@ -371,8 +374,8 @@ res, _ := client.CreateChatCompletion(ctx, openai.ChatCompletionRequest{
       <p>
         Even in <code>full</code> mode, the server scans <code>request_body</code>,{' '}
         <code>response_body</code>, and <code>error_message</code> for API key patterns before
-        the row is written to ClickHouse. Anything matching one of the patterns below (≥12
-        characters after the prefix) is replaced with <code>&lt;prefix&gt;***</code>:
+        the row is written. Anything matching one of the patterns below (≥12 characters
+        after the prefix) is replaced with <code>&lt;prefix&gt;***</code>:
       </p>
       <ul>
         <li>Spanlens: <code>sl_live_*</code></li>

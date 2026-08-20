@@ -68,13 +68,16 @@ function IOPane({ label, value }: { label: string; value: unknown }) {
   const isEmpty = value == null
   return (
     <div>
-      <div className="text-[10px] uppercase tracking-wider text-text-muted mb-2">
+      {/* `bg-bg-muted` here was a typo for the `bg-elev` token and resolved
+          to nothing, leaving the pane transparent. The board draws it as a
+          sunk well, which is what the token below produces. */}
+      <div className="mb-2 font-mono text-[10px] uppercase leading-[1.45] tracking-[0.1em] text-text-faint">
         {label}
       </div>
       <pre
         className={
-          'bg-bg-elevated border border-border rounded-md p-3 font-mono text-[11.5px] overflow-x-auto whitespace-pre-wrap break-words max-h-[480px] overflow-y-auto ' +
-          (isEmpty ? 'text-text-muted italic' : '')
+          'max-h-[480px] overflow-x-auto overflow-y-auto whitespace-pre-wrap break-words rounded-md border border-track bg-bg-sunk p-3 font-mono text-[11.5px] leading-[1.5] text-text ' +
+          (isEmpty ? 'italic text-text-faint' : '')
         }
       >
         {text}

@@ -122,8 +122,11 @@ const CASES: ProviderCase[] = [
   { slug: 'groq', expectedUrl: 'https://api.groq.com/openai/v1/chat/completions', model: 'llama-3.3-70b-versatile', expectedCost: 0.985 },
   // deepseek-chat: $0.14/1M in + $0.28/1M out → 1*0.14 + 0.5*0.28
   { slug: 'deepseek', expectedUrl: 'https://api.deepseek.com/v1/chat/completions', model: 'deepseek-chat', expectedCost: 0.28 },
-  // grok-4.3: $1.25/1M in + $2.50/1M out → 1*1.25 + 0.5*2.50
-  { slug: 'xai', expectedUrl: 'https://api.x.ai/v1/chat/completions', model: 'grok-4.3', expectedCost: 2.5 },
+  // grok-4.3 at the LONG tier: the 1M-token prompt below crosses xAI's 200k
+  // threshold, which re-rates the whole request at 2x ($2.50/1M in +
+  // $5.00/1M out) → 1*2.50 + 0.5*5.00. Short-tier pricing is covered by the
+  // dedicated test after this block.
+  { slug: 'xai', expectedUrl: 'https://api.x.ai/v1/chat/completions', model: 'grok-4.3', expectedCost: 5.0 },
   // command-a-03-2025: $2.50/1M in + $10.00/1M out → 1*2.50 + 0.5*10.00
   { slug: 'cohere', expectedUrl: 'https://api.cohere.ai/compatibility/v1/chat/completions', model: 'command-a-03-2025', expectedCost: 7.5 },
 ]
@@ -225,3 +228,47 @@ for (const c of CASES) {
     })
   })
 }
+
+// xAI is the only provider whose long-context tier re-rates the ENTIRE request
+// (docs.x.ai: "requests whose prompt reaches the listed token threshold are
+// billed at the higher rate for all tokens"). Guard both sides of the 200k
+// boundary so a future price refresh can't silently drop the tier.
+describe('xai long-context tier boundary', () => {
+  test('prompt under 200k uses the short tier', async () => {
+    mockUpstream(openAIChatResponse({
+      model: 'grok-4.3',
+      promptTokens: 100_000,
+      completionTokens: 50_000,
+    }))
+    const app = await buildApp()
+
+    await app.request('/proxy/xai/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: 'grok-4.3', messages: [] }),
+    })
+    await drainPendingTasks()
+
+    // 0.1M * $1.25 + 0.05M * $2.50 = 0.125 + 0.125
+    expect(proxyState.loggerCalls[0]!['costUsd']).toBeCloseTo(0.25, 6)
+  })
+
+  test('prompt over 200k re-rates the whole request at 2x', async () => {
+    mockUpstream(openAIChatResponse({
+      model: 'grok-4.3',
+      promptTokens: 250_000,
+      completionTokens: 50_000,
+    }))
+    const app = await buildApp()
+
+    await app.request('/proxy/xai/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: 'grok-4.3', messages: [] }),
+    })
+    await drainPendingTasks()
+
+    // 0.25M * $2.50 + 0.05M * $5.00 = 0.625 + 0.25
+    expect(proxyState.loggerCalls[0]!['costUsd']).toBeCloseTo(0.875, 6)
+  })
+})
