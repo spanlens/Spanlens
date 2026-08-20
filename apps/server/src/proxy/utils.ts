@@ -119,6 +119,12 @@ export async function isBlockingEnabled(projectId: string): Promise<boolean> {
 // proxy re-adds the real provider credential via `overrides`, which is applied
 // after this strip. Missing x-api-key/x-goog-api-key here leaks the Spanlens
 // key to OpenAI/Google on every request that authenticates via those headers.
+// expect is hop-by-hop for the same reason content-length is unsafe: the
+// `100-continue` handshake is negotiated between the client and US, not
+// between us and the provider. Forwarding it makes undici throw a bare
+// `TypeError: fetch failed` before any byte reaches upstream, surfacing to the
+// caller as an unexplained 502. Clients that send it by default include
+// PowerShell's Invoke-WebRequest, .NET HttpClient and Apache HttpClient.
 const STRIP_HEADERS = new Set([
   'authorization',
   'x-api-key',
@@ -128,6 +134,7 @@ const STRIP_HEADERS = new Set([
   'keep-alive',
   'transfer-encoding',
   'content-length',
+  'expect',
   'te',
   'upgrade',
   'proxy-authorization',
