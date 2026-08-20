@@ -297,9 +297,9 @@ export function ProjectsClient() {
   // deleteApiKeyId because the two dialogs describe different consequences.
   const [revokePublicKeyId, setRevokePublicKeyId] = useState<string | null>(null)
   const [revokePublicError, setRevokePublicError] = useState<string | null>(null)
-  // Project delete requires typing the project name as confirmation —
-  // deleting a project cascades through every Spanlens key, provider key,
-  // and (in ClickHouse) every request row's project_id reference.
+  // Project delete requires typing the project name as confirmation.
+  // Deleting a project cascades through every Spanlens key and provider key,
+  // and leaves its request rows pointing at a project that no longer exists.
   const [deleteProject_target, setDeleteProject_target] = useState<{ id: string; name: string } | null>(null)
   const [deleteProject_input, setDeleteProject_input] = useState('')
   const [deleteProject_error, setDeleteProject_error] = useState<string | null>(null)

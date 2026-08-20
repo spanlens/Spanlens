@@ -10,7 +10,6 @@
  */
 
 import { createClient } from '@supabase/supabase-js'
-import { createClient as createClickHouseClient } from '@clickhouse/client'
 import crypto from 'node:crypto'
 
 function required(name: string, fallback: string): string {
@@ -29,20 +28,41 @@ const sb = createClient(
     'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU',
   ),
 )
-const ch = createClickHouseClient({
-  url: required('CLICKHOUSE_URL', 'http://localhost:8123'),
-  username: required('CLICKHOUSE_USER', 'spanlens'),
-  password: required('CLICKHOUSE_PASSWORD', 'spanlens'),
-  database: required('CLICKHOUSE_DB', 'spanlens'),
-})
+
+// `requests` is not reachable through PostgREST; the server reads and writes it
+// over the pooled connection in apps/server/src/lib/postgres.ts, which builds
+// its pool from this variable and refuses to run without one. Assigned before
+// that module is imported, so the ordering is a property of this file rather
+// than of whenever the pool first happens to be constructed.
+process.env['SUPABASE_DB_POOLER_URL'] = required(
+  'SUPABASE_DB_POOLER_URL',
+  'postgresql://postgres:postgres@127.0.0.1:54322/postgres',
+)
+
+// Through the lib rather than a local pg.Pool: its named-parameter shim is the
+// only sanctioned way to bind values into a `requests` statement, and a second
+// pool carrying its own timezone and timeout settings would drift from the one
+// the server actually uses.
+type PostgresLib = typeof import('../apps/server/src/lib/postgres.js')
+let pg: PostgresLib
 
 const uuid = () => crypto.randomUUID()
 const rand = (min: number, max: number) => Math.floor(Math.random() * (max - min + 1)) + min
 // crypto.randomInt rather than Math.random: see the same helper in
 // seed-demo-data.ts (CodeQL js/insecure-randomness on seeded identifiers).
 const pick = <T>(arr: T[]): T => arr[crypto.randomInt(arr.length)]!
-// ClickHouse DateTime64 rejects the ISO `T` separator and `Z` suffix.
-const toChTs = (d: Date) => d.toISOString().replace('T', ' ').replace('Z', '').slice(0, 23)
+
+/** Columns stored as jsonb, whose bound string needs an explicit cast. */
+const JSONB_COLUMNS = new Set(['flags', 'response_flags'])
+
+/**
+ * Rows per INSERT. Postgres binds at most 65535 parameters per statement and a
+ * `requests` row carries 31 columns, so the hard ceiling is around 2100 rows.
+ * 500 sits far enough under it that adding columns never has to be weighed
+ * against this number, and it keeps one statement's prompt and response bodies
+ * to a few hundred kilobytes rather than tens of megabytes.
+ */
+const BATCH_ROWS = 500
 
 const PROVIDERS = [
   { provider: 'openai', models: ['gpt-4o', 'gpt-4o-mini-2024-07-18', 'o1-mini'] },
@@ -77,9 +97,88 @@ function volumeForHoursAgo(hoursAgo: number): number {
   return hoursAgo === 0 ? Math.max(base, 18) : base
 }
 
+/**
+ * Makes sure a monthly partition exists for every row about to be written.
+ *
+ * A row whose month has no partition lands in `requests_default`, and from that
+ * point on creating the real partition for that range fails until someone
+ * detaches the catch-all and drains it, holding ACCESS EXCLUSIVE on the parent
+ * while the proxy is trying to write. Cheap to avoid, expensive to undo.
+ *
+ * The window here is 24 hours, which crosses a month boundary once a month, so
+ * the previous month has to exist too. The verification afterwards is not
+ * redundant with the call: it turns a partition the function somehow did not
+ * create into a refusal rather than a silent incident.
+ */
+async function ensurePartitionsFor(oldest: Date): Promise<void> {
+  await pg.pgQuery({
+    query: 'SELECT * FROM ensure_requests_partitions({ahead}, {back})',
+    params: { ahead: 3, back: 1 },
+  })
+
+  const rows = await pg.pgQuery<{ covered: boolean }>({
+    query: `
+      SELECT to_regclass(
+               'public.requests_' || to_char({oldest}::timestamptz AT TIME ZONE 'UTC', 'YYYY_MM')
+             ) IS NOT NULL AS covered
+    `,
+    params: { oldest: oldest.toISOString() },
+  })
+
+  if (!rows[0]?.covered) {
+    throw new Error(
+      `No partition covers ${oldest.toISOString()}; create the preceding month's partition before seeding.`,
+    )
+  }
+}
+
+/** One multi-row INSERT. Values are bound, never interpolated into the SQL. */
+async function insertRequestBatch(rows: Record<string, unknown>[]): Promise<void> {
+  const columns = Object.keys(rows[0]!)
+  const values: string[] = []
+  const params: Record<string, unknown> = {}
+
+  rows.forEach((row, i) => {
+    const placeholders = columns.map((col) => {
+      const name = `v${i}_${col}`
+      params[name] = row[col]
+      return JSONB_COLUMNS.has(col) ? `{${name}}::jsonb` : `{${name}}`
+    })
+    values.push(`(${placeholders.join(', ')})`)
+  })
+
+  await pg.pgExecute({
+    query: `INSERT INTO requests (${columns.join(', ')}) VALUES ${values.join(', ')}`,
+    params,
+  })
+}
+
+/**
+ * Records the org's activity watermark, the way logging a real request would.
+ *
+ * The crons that scan `requests` read this first and skip the scan when an org
+ * has nothing newer, so rows seeded without it stay invisible to the very jobs
+ * a "recent traffic" fixture exists to feed. It carries the newest row's
+ * timestamp, matching what lib/logger.ts writes.
+ */
+async function recordActivity(newest: Date): Promise<void> {
+  await pg.pgExecute({
+    query: `
+      INSERT INTO org_activity (organization_id, last_request_at, updated_at)
+      VALUES ({orgId}, {lastRequestAt}, now())
+      ON CONFLICT (organization_id) DO UPDATE
+        SET last_request_at = GREATEST(org_activity.last_request_at, EXCLUDED.last_request_at),
+            updated_at      = now()
+    `,
+    params: { orgId: ORG_ID, lastRequestAt: newest.toISOString() },
+  })
+}
+
 async function seedRequests(): Promise<number> {
   console.log('Seeding last-24h requests...')
   const rows: Record<string, unknown>[] = []
+  let oldest = new Date()
+  let newest = new Date(0)
 
   for (let hoursAgo = 0; hoursAgo < 24; hoursAgo++) {
     const count = volumeForHoursAgo(hoursAgo)
@@ -95,6 +194,8 @@ async function seedRequests(): Promise<number> {
       const ts = new Date(
         Date.now() - hoursAgo * 3_600_000 - rand(0, 59) * 60_000 - rand(0, 59) * 1000,
       )
+      if (ts < oldest) oldest = ts
+      if (ts > newest) newest = ts
 
       rows.push({
         id: uuid(),
@@ -145,17 +246,22 @@ async function seedRequests(): Promise<number> {
         flags: '[]',
         response_flags: '[]',
         has_security_flags: false,
-        created_at: toChTs(ts),
-        truncated: 0,
+        truncated: false,
+        cache_hit: false,
         service_tier: '',
+        created_at: ts.toISOString(),
       })
     }
   }
 
-  for (let i = 0; i < rows.length; i += 200) {
-    await ch.insert({ table: 'requests', values: rows.slice(i, i + 200), format: 'JSONEachRow' })
-    process.stdout.write(`  ${Math.min(i + 200, rows.length)}/${rows.length}\r`)
+  await ensurePartitionsFor(oldest)
+
+  for (let i = 0; i < rows.length; i += BATCH_ROWS) {
+    await insertRequestBatch(rows.slice(i, i + BATCH_ROWS))
+    process.stdout.write(`  ${Math.min(i + BATCH_ROWS, rows.length)}/${rows.length}\r`)
   }
+  await recordActivity(newest)
+
   console.log(`\n  Inserted ${rows.length} requests across the last 24h`)
   return rows.length
 }
@@ -263,15 +369,20 @@ async function seedTraces(): Promise<number> {
 
 async function main() {
   console.log('=== Seeding recent (last 24h) traffic ===\n')
+  pg = await import('../apps/server/src/lib/postgres.js')
   try {
     const requests = await seedRequests()
     const traces = await seedTraces()
     console.log('\nDone.')
     console.log(`  ${requests} requests, ${traces} traces added to the last 24 hours`)
-  } catch (err) {
-    console.error('\nFailed:', err)
-    process.exit(1)
+  } finally {
+    // Pooled connections hold the event loop open, so the process hangs after
+    // its work is done unless the pool is closed on both paths.
+    await pg.resetPostgresPool()
   }
 }
 
-main()
+main().catch((err) => {
+  console.error('\nFailed:', err)
+  process.exit(1)
+})

@@ -3,13 +3,15 @@ import { beforeEach, describe, expect, test, vi } from 'vitest'
 /**
  * evaluate-alerts × activity watermark.
  *
- * This is the behaviour the ClickHouse bill actually hinges on, so it gets a
- * real run of the job rather than a source check: when the watermark says an
- * org sent nothing inside an alert's window, the job must not issue the
- * ClickHouse query. Every 15 minutes, forever, that query was enough on its
- * own to hold ClickHouse Cloud out of its 15-minute idle window.
+ * The watermark gate outlived the store it was introduced for: `requests`
+ * now lives in Postgres, so there is no per-minute uptime bill to avoid, but
+ * the gate still turns most runs of this cron into a single indexed lookup
+ * instead of one aggregate scan per active alert. That is worth a real run
+ * of the job rather than a source check — when the watermark says an org
+ * sent nothing inside an alert's window, the job must not issue the query at
+ * all.
  *
- * Two things are pinned alongside it, because a cheaper bill is worthless if
+ * Two things are pinned alongside it, because a cheaper run is worthless if
  * it costs us a real alert:
  *
  *   - an active org is still queried and still fires
@@ -21,7 +23,7 @@ import { beforeEach, describe, expect, test, vi } from 'vitest'
  */
 
 const alertsResultMock = vi.fn()
-const chQueryMock = vi.fn()
+const pgQueryMock = vi.fn()
 const getOrgActivitySinceMock = vi.fn()
 const deliverToChannelMock = vi.fn()
 const lastSuccessfulRunAtMock = vi.fn()
@@ -58,8 +60,9 @@ vi.mock('../lib/db.js', () => ({
   supabaseAdmin: { from: (table: string) => chainFor(table) },
 }))
 
-vi.mock('../lib/clickhouse.js', () => ({
-  getOrgClickhouse: () => ({ client: { query: chQueryMock } }),
+// `pgQuery` resolves the row array directly — no `.json()` step.
+vi.mock('../lib/postgres.js', () => ({
+  pgQuery: pgQueryMock,
 }))
 
 vi.mock('../lib/notifiers.js', () => ({ deliverToChannel: deliverToChannelMock }))
@@ -97,7 +100,7 @@ let runEvaluateAlertsJob: typeof import('../lib/cron-jobs/evaluate-alerts.js').r
 beforeEach(async () => {
   vi.resetModules()
   alertsResultMock.mockReset()
-  chQueryMock.mockReset()
+  pgQueryMock.mockReset()
   getOrgActivitySinceMock.mockReset()
   deliverToChannelMock.mockReset()
   lastSuccessfulRunAtMock.mockReset()
@@ -106,7 +109,7 @@ beforeEach(async () => {
 })
 
 describe('runEvaluateAlertsJob with the activity watermark', () => {
-  test('does not touch ClickHouse when the org was silent through the window', async () => {
+  test('does not query the requests table when the org was silent through the window', async () => {
     alertsResultMock.mockReturnValue({ data: [budgetAlert()], error: null })
     // Last request two hours ago; the alert window is one hour.
     getOrgActivitySinceMock.mockResolvedValue(
@@ -115,29 +118,32 @@ describe('runEvaluateAlertsJob with the activity watermark', () => {
 
     const result = await runEvaluateAlertsJob()
 
-    expect(chQueryMock).not.toHaveBeenCalled()
+    expect(pgQueryMock).not.toHaveBeenCalled()
     expect(result.report).toEqual([
       { alert_id: 'alert-1', fired: false, reason: 'under_threshold' },
     ])
   })
 
-  test('does not touch ClickHouse when the org has never sent a request', async () => {
+  test('does not query the requests table when the org has never sent a request', async () => {
     alertsResultMock.mockReturnValue({ data: [budgetAlert()], error: null })
     getOrgActivitySinceMock.mockResolvedValue(new Map())
 
     await runEvaluateAlertsJob()
 
-    expect(chQueryMock).not.toHaveBeenCalled()
+    expect(pgQueryMock).not.toHaveBeenCalled()
   })
 
   test('still queries and fires for an org active inside the window', async () => {
     alertsResultMock.mockReturnValue({ data: [budgetAlert()], error: null })
     getOrgActivitySinceMock.mockResolvedValue(new Map([[ORG, Date.now() - 60_000]]))
-    chQueryMock.mockResolvedValue({ json: async () => [{ total: '42.5' }] })
+    pgQueryMock.mockResolvedValue([{ total: '42.5' }])
 
     const result = await runEvaluateAlertsJob()
 
-    expect(chQueryMock).toHaveBeenCalledTimes(1)
+    expect(pgQueryMock).toHaveBeenCalledTimes(1)
+    // Whatever the gate lets through is still tenant-scoped.
+    expect(pgQueryMock.mock.calls[0]?.[0]?.query).toContain('organization_id = {orgId}')
+    expect(pgQueryMock.mock.calls[0]?.[0]?.params).toMatchObject({ orgId: ORG })
     // The metric came back over threshold, so the alert reached the delivery
     // phase. Delivery itself is out of scope here — this fixture configures
     // no notification channels, which is why it stops at `no_channels`. What
@@ -149,11 +155,11 @@ describe('runEvaluateAlertsJob with the activity watermark', () => {
   test('queries anyway when the watermark cannot be read', async () => {
     alertsResultMock.mockReturnValue({ data: [budgetAlert()], error: null })
     getOrgActivitySinceMock.mockResolvedValue(null)
-    chQueryMock.mockResolvedValue({ json: async () => [{ total: '0' }] })
+    pgQueryMock.mockResolvedValue([{ total: '0' }])
 
     await runEvaluateAlertsJob()
 
-    expect(chQueryMock).toHaveBeenCalledTimes(1)
+    expect(pgQueryMock).toHaveBeenCalledTimes(1)
   })
 
   test('skips the watermark lookup entirely when no alerts are configured', async () => {
@@ -162,21 +168,21 @@ describe('runEvaluateAlertsJob with the activity watermark', () => {
     const result = await runEvaluateAlertsJob()
 
     expect(getOrgActivitySinceMock).not.toHaveBeenCalled()
-    expect(chQueryMock).not.toHaveBeenCalled()
+    expect(pgQueryMock).not.toHaveBeenCalled()
     expect(result.evaluated).toBe(0)
   })
 
   test('reports a metric failure so the caller can withhold the success stamp', async () => {
     alertsResultMock.mockReturnValue({ data: [budgetAlert()], error: null })
     getOrgActivitySinceMock.mockResolvedValue(new Map([[ORG, Date.now() - 60_000]]))
-    chQueryMock.mockRejectedValue(new Error('ClickHouse timeout'))
+    pgQueryMock.mockRejectedValue(new Error('requests query timeout'))
 
     const result = await runEvaluateAlertsJob()
 
     expect(result.metric_errors).toBe(1)
   })
 
-  test('eval_score alerts are unaffected — they never read ClickHouse', async () => {
+  test('eval_score alerts are unaffected — they never read the requests table', async () => {
     alertsResultMock.mockReturnValue({
       data: [budgetAlert({ id: 'alert-2', type: 'eval_score', threshold: 0.8 })],
       error: null,
@@ -185,7 +191,7 @@ describe('runEvaluateAlertsJob with the activity watermark', () => {
 
     await runEvaluateAlertsJob()
 
-    expect(chQueryMock).not.toHaveBeenCalled()
+    expect(pgQueryMock).not.toHaveBeenCalled()
   })
 })
 
@@ -193,10 +199,9 @@ describe('runEvaluateAlertsJob with the activity watermark', () => {
  * Long-window budget alerts.
  *
  * A monthly spend cap runs a 30-day window, so any org that sent one request
- * in the last month sits inside it and the window gate never bites. This was
- * the last query still firing every 15 minutes in production after the
- * watermark shipped, and one query every 15 minutes is all it takes to hold
- * ClickHouse Cloud awake — the same bill as before.
+ * in the last month sits inside it and the window gate never bites. That
+ * left a 30-day aggregate re-running every 15 minutes for an answer that
+ * cannot have moved — the one query the watermark did not eliminate.
  *
  * The extra gate only applies to budget, because `sum(cost_usd)` over a
  * sliding window cannot rise without new rows. error_rate and p95 can, so
@@ -205,7 +210,7 @@ describe('runEvaluateAlertsJob with the activity watermark', () => {
 describe('budget alerts with a window longer than the cron interval', () => {
   const THIRTY_DAYS_MIN = 43_200
 
-  test('skips ClickHouse when nothing arrived since the last successful run', async () => {
+  test('skips the aggregate when nothing arrived since the last successful run', async () => {
     alertsResultMock.mockReturnValue({
       data: [budgetAlert({ type: 'budget', window_minutes: THIRTY_DAYS_MIN })],
       error: null,
@@ -218,7 +223,7 @@ describe('budget alerts with a window longer than the cron interval', () => {
 
     await runEvaluateAlertsJob()
 
-    expect(chQueryMock).not.toHaveBeenCalled()
+    expect(pgQueryMock).not.toHaveBeenCalled()
   })
 
   test('still queries when traffic arrived after the last successful run', async () => {
@@ -228,11 +233,11 @@ describe('budget alerts with a window longer than the cron interval', () => {
     })
     lastSuccessfulRunAtMock.mockResolvedValue(new Date(Date.now() - 15 * 60 * 1000))
     getOrgActivitySinceMock.mockResolvedValue(new Map([[ORG, Date.now() - 60_000]]))
-    chQueryMock.mockResolvedValue({ json: async () => [{ total: '1' }] })
+    pgQueryMock.mockResolvedValue([{ total: '1' }])
 
     await runEvaluateAlertsJob()
 
-    expect(chQueryMock).toHaveBeenCalledTimes(1)
+    expect(pgQueryMock).toHaveBeenCalledTimes(1)
   })
 
   test('falls back to the window when there is no successful run to gate on', async () => {
@@ -244,11 +249,11 @@ describe('budget alerts with a window longer than the cron interval', () => {
     getOrgActivitySinceMock.mockResolvedValue(
       new Map([[ORG, Date.now() - 21 * 24 * 60 * 60 * 1000]]),
     )
-    chQueryMock.mockResolvedValue({ json: async () => [{ total: '1' }] })
+    pgQueryMock.mockResolvedValue([{ total: '1' }])
 
     await runEvaluateAlertsJob()
 
-    expect(chQueryMock).toHaveBeenCalledTimes(1)
+    expect(pgQueryMock).toHaveBeenCalledTimes(1)
   })
 
   test.each(['error_rate', 'latency_p95'])(
@@ -262,11 +267,11 @@ describe('budget alerts with a window longer than the cron interval', () => {
       getOrgActivitySinceMock.mockResolvedValue(
         new Map([[ORG, Date.now() - 21 * 24 * 60 * 60 * 1000]]),
       )
-      chQueryMock.mockResolvedValue({ json: async () => [{ total: '1', errors: '0', p95: '1' }] })
+      pgQueryMock.mockResolvedValue([{ total: '1', errors: '0', p95: '1' }])
 
       await runEvaluateAlertsJob()
 
-      expect(chQueryMock).toHaveBeenCalledTimes(1)
+      expect(pgQueryMock).toHaveBeenCalledTimes(1)
     },
   )
 })

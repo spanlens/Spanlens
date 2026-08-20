@@ -77,11 +77,11 @@ export async function runQuotaWarningsJob(): Promise<QuotaWarningRunResult> {
 
   // Which orgs have anything new worth counting.
   //
-  // The obvious window is "this month" — an org that sent nothing is at 0% of
-  // its quota and cannot need a warning. That alone was not enough: any org
-  // with traffic anywhere in the month keeps passing a month-wide gate, so a
-  // single active tenant still dragged ClickHouse awake once an hour, every
-  // hour, for the rest of the month.
+  // The obvious window is "this month": an org that sent nothing is at 0% of
+  // its quota and cannot need a warning. That alone is not enough, because an
+  // org with traffic anywhere in the month keeps passing a month-wide gate.
+  // One request on the 1st would buy that tenant a full month-long count on
+  // every hourly run.
   //
   // The tighter window is "since we last counted". This job's output is a
   // function of the request count and the stored send timestamps, and neither
@@ -89,14 +89,14 @@ export async function runQuotaWarningsJob(): Promise<QuotaWarningRunResult> {
   // nothing has been logged since, this run reaches the same decision. So the
   // gate is the later of the month start and the last successful run.
   //
-  // What makes that safe is the error handling below — a run that failed to
+  // What makes that safe is the error handling below: a run that failed to
   // count any org is logged as an error, so `lastSuccessfulRunAt` does not
   // advance past it and the next run re-checks everyone. Without that, one
-  // transient ClickHouse failure could park an org just under its cap until
-  // its next request.
+  // transient count failure could park an org just under its cap until its
+  // next request.
   //
   // Both lookups fail open: a null watermark or missing run history falls
-  // back to counting every org in ClickHouse, exactly as before.
+  // back to counting every org.
   const lastRun = await lastSuccessfulRunAt('check-quota-warnings')
   const gateSince =
     lastRun && lastRun.getTime() > monthStartMs ? lastRun : new Date(monthStartMs)
@@ -112,9 +112,9 @@ export async function runQuotaWarningsJob(): Promise<QuotaWarningRunResult> {
     if (limit === null) continue // defensive: enterprise slipped past the filter
 
     // Nothing new since the gate, so the previous run's decision still holds
-    // and it was "don't send" — a run that sends stamps the timestamp, which
+    // and it was "don't send". A run that sends stamps the timestamp, which
     // makes a repeat impossible anyway. Skipping here is what keeps the job
-    // off ClickHouse on an idle platform.
+    // from counting every tenant on an idle platform.
     if (!orgActiveSince(activity, org.id, gateSince)) {
       result.skipped++
       continue

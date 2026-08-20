@@ -22,7 +22,7 @@ import { installOnError } from './helpers/install-on-error.js'
  *
  * The per-dataset fetchers are mocked at the module boundary: their real
  * queries are covered by their own routes' tests, and mocking them keeps this
- * file focused on the composite's contract rather than on ClickHouse SQL.
+ * file focused on the composite's contract rather than on the SQL.
  */
 
 const FULL_KEY = 'sl_live_dashboardfullkey0123456789'

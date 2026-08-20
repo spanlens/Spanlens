@@ -35,8 +35,8 @@ const aboutJsonLd = {
   name: 'About Spanlens',
   description: ABOUT_DESCRIPTION,
   // Reference the canonical Organization node (declared once in the root
-  // layout with @id) instead of re-declaring a second Organization here —
-  // duplicate nodes with divergent sameAs/foundingDate broke entity
+  // layout with @id) instead of re-declaring a second Organization here.
+  // Duplicate nodes with divergent sameAs/foundingDate broke entity
   // reconciliation (2026-07-06 schema audit). foundingDate/founder/sameAs
   // now live on the canonical node in app/layout.tsx.
   mainEntity: { '@id': 'https://www.spanlens.io/#organization' },
@@ -140,9 +140,9 @@ export default function AboutPage() {
               >
                 MIT license
               </a>
-              . The stack is Next.js 16 + Hono + Supabase Postgres + ClickHouse, with
-              TypeScript and Python SDKs. The full stack runs from one Docker compose file
-              on your own infrastructure if you prefer not to use the hosted plan.
+              . The stack is Next.js 16 + Hono + Supabase Postgres, with TypeScript and
+              Python SDKs. The full stack runs from one Docker compose file on your own
+              infrastructure if you prefer not to use the hosted plan.
             </p>
           </section>
 

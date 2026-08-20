@@ -18,7 +18,7 @@ export const metadata = {
   openGraph: {
     siteName: 'Spanlens',
     type: 'website',
-    title: 'Spanlens Pricing — Free, Pro $29, Team $149',
+    title: 'Spanlens Pricing (Free, Pro $29, Team $149)',
     description: PRICING_DESCRIPTION,
     url: '/pricing',
     locale: 'en_US',
@@ -26,7 +26,7 @@ export const metadata = {
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Spanlens Pricing — Free, Pro $29, Team $149',
+    title: 'Spanlens Pricing (Free, Pro $29, Team $149)',
     description: PRICING_DESCRIPTION,
   },
 }
@@ -40,7 +40,7 @@ const PRICING_FAQS_TEXT: { q: string; a: string }[] = [
   },
   {
     q: 'Can I self-host Spanlens for free?',
-    a: 'Yes. Spanlens is fully MIT licensed with no ee/ folder. Run docker compose up on your own infrastructure and you get every feature listed above with zero license fee, no seat limit, and no usage cap. Self-hosted instances ingest into your own ClickHouse and Postgres. The hosted plans pay for managed infrastructure, not features.',
+    a: 'Yes. Spanlens is fully MIT licensed with no ee/ folder. Run docker compose up on your own infrastructure and you get every feature listed above with zero license fee, no seat limit, and no usage cap. Self-hosted instances ingest into your own Postgres. The hosted plans pay for managed infrastructure, not features.',
   },
   {
     q: 'What counts as a "request"?',
@@ -78,8 +78,8 @@ const PRICING_FAQS: { q: string; a: React.ReactNode }[] = [
         Yes. Spanlens is fully MIT licensed with no <code className="font-mono text-xs">ee/</code> folder. Run{' '}
         <code className="font-mono text-xs">docker compose up</code> on your own infrastructure and you get every
         feature listed above with zero license fee, no seat limit, and no usage cap. Self-hosted instances
-        ingest into your own ClickHouse and Postgres. The hosted plans above pay for managed infrastructure,
-        not features. See the{' '}
+        ingest into your own Postgres. The hosted plans above pay for managed infrastructure, not features.
+        See the{' '}
         <Link href="/docs/self-host" className="text-accent hover:opacity-80">self-hosting guide</Link>.
       </>
     ),
@@ -102,7 +102,7 @@ const PRICING_FAQS: { q: string; a: React.ReactNode }[] = [
   },
   {
     q: 'Can I switch plans or cancel anytime?',
-    a: 'Yes. Plan changes are immediate and prorated. Cancellations take effect at the end of your current billing period — your data stays accessible for your plan\'s retention window so you can export before downgrade.',
+    a: 'Yes. Plan changes are immediate and prorated. Cancellations take effect at the end of your current billing period. Your data stays accessible for your plan\'s retention window so you can export before downgrade.',
   },
 ]
 
@@ -264,7 +264,7 @@ export default function PricingPage() {
       <section className="max-w-7xl mx-auto px-6 py-24">
         <div className="mx-auto mb-12 max-w-[760px] text-center">
           <h1 className="font-display track-h2 mb-4 text-[40px] leading-[1.12] text-text sm:text-[46px]">
-            Spanlens Pricing — LLM Observability for Every Stage
+            Spanlens Pricing for LLM Observability at Every Stage
           </h1>
           <p className="text-[16.5px] leading-[1.6] text-text-muted">
             Start free. Scale as you grow. Cancel anytime. Switching from{' '}
@@ -307,7 +307,7 @@ export default function PricingPage() {
           </ul>
         </div>
 
-        {/* Self-host callout — separated from the paid grid so it's clear self-host is free, not a tier add-on */}
+        {/* Self-host callout, separated from the paid grid so it's clear self-host is free, not a tier add-on */}
         <div className="max-w-3xl mx-auto mb-10 rounded-card border border-accent-border bg-accent-bg/40 px-6 py-4 text-[13px] flex flex-col sm:flex-row sm:items-center gap-3">
           <div className="flex-1">
             <strong className="text-text font-semibold">Or self-host for free.</strong>
@@ -388,7 +388,7 @@ export default function PricingPage() {
           ))}
         </div>
 
-        {/* Tax note — Paddle is merchant of record and adds VAT/GST at checkout */}
+        {/* Tax note. Paddle is merchant of record and adds VAT/GST at checkout */}
         <p className="mt-6 text-center text-[12px] text-text-faint">
           Prices in USD, exclusive of applicable taxes. VAT/GST is added at checkout by Paddle.
         </p>
@@ -411,7 +411,7 @@ export default function PricingPage() {
             </div>
             <div className="grid grid-cols-[140px_1fr] gap-x-4">
               <dt className="font-semibold text-text">Hard cap</dt>
-              <dd>Default 5× the soft limit. Past this, requests return 429 even with overage enabled. Adjustable 1–100× in settings.</dd>
+              <dd>Default 5× the soft limit. Past this, requests return 429 even with overage enabled. Adjustable 1 to 100× in settings.</dd>
             </div>
             <div className="grid grid-cols-[140px_1fr] gap-x-4">
               <dt className="font-semibold text-text">Cost certainty mode</dt>
@@ -430,7 +430,7 @@ export default function PricingPage() {
           </Link>
         </div>
 
-        {/* Pricing FAQ — commercial-intent questions for AI search citation */}
+        {/* Pricing FAQ. Commercial-intent questions for AI search citation */}
         <div className="mx-auto mt-16 max-w-3xl">
           <h2 className="font-display track-h3 mb-6 text-[24px] text-text">Pricing FAQ</h2>
           {/* One panel with hairline-divided rows rather than a stack of cards:

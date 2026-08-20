@@ -120,7 +120,6 @@ export async function fetchPromptsWithStats(
       cost_usd: string | number | null
       status_code: number | null
     }
-    const sinceTs = sinceIso.replace('T', ' ').replace('Z', '')
     let reqs: PromptStatRow[] = []
     try {
       const scope = await requestsScope(orgId)
@@ -128,12 +127,12 @@ export async function fetchPromptsWithStats(
         scope,
         select: 'prompt_version_id, latency_ms, cost_usd, status_code',
         filters:
-          'prompt_version_id IN {versionIds:Array(UUID)} ' +
-          'AND created_at >= parseDateTime64BestEffort({sinceTs:String})',
-        params: { versionIds: allVersionIds, sinceTs },
+          'prompt_version_id = ANY({versionIds}::uuid[]) ' +
+          'AND created_at >= {sinceTs}::timestamptz',
+        params: { versionIds: allVersionIds, sinceTs: sinceIso },
       })
     } catch (err) {
-      console.error('[prompts:stats] ClickHouse query failed:', err instanceof Error ? err.message : err)
+      console.error('[prompts:stats] request query failed:', err instanceof Error ? err.message : err)
     }
 
     const versionIdToName = new Map<string, string>()

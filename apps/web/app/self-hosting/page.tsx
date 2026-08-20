@@ -27,7 +27,7 @@ const FAQS: SelfHostFaq[] = [
   {
     question: 'What infrastructure do I need to self-host?',
     answer:
-      'A Supabase project (the free tier works), a ClickHouse instance (the bundled docker-compose ships one), and anywhere that can run Docker. The full stack starts with one docker compose up command.',
+      'A Supabase project (the free tier works) and anywhere that can run Docker. Two containers, one database, and the full stack starts with one docker compose up command.',
   },
   {
     question: 'Does my LLM data leave my network when self-hosting?',
@@ -153,8 +153,9 @@ export default function SelfHostingLanding() {
         </h2>
         <p className="text-[14px] text-text-muted mb-5 max-w-[680px] leading-relaxed">
           Pre-built images are published to GHCR for amd64 and arm64. The bundled
-          docker-compose starts the dashboard, the proxy and API server, and ClickHouse
-          together. Bring a free Supabase project for auth and relational data.
+          docker-compose starts two containers, the dashboard and the proxy and API server.
+          Bring a free Supabase project and everything else, request logs included, lives
+          there.
         </p>
         <pre className="rounded-card border border-border bg-bg-sunk p-5 overflow-x-auto font-mono text-[13px] text-text leading-relaxed">
           <code>{COMPOSE_SNIPPET}</code>

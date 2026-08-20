@@ -105,40 +105,20 @@ export default function SubprocessorsPage() {
               </td>
               <td>
                 PostgreSQL database (auth, organizations, projects, encrypted provider keys,
-                subscription state). Authentication (sign-in, sessions).
+                subscription state, traces and spans, and the LLM <code>requests</code> log).
+                Authentication (sign-in, sessions).
               </td>
               <td>
                 Account profile, organization membership, encrypted (AES-256-GCM) provider
-                keys, billing state, authentication tokens.
+                keys, billing state, authentication tokens. Request and response bodies
+                (truncated to 10 KB), token counts, latency, cost, model identifiers,
+                security flags.
               </td>
               <td>
                 <code>ap-northeast-2</code> Seoul (AWS Asia Pacific).
               </td>
               <td>
                 EU SCCs; Korea has EU adequacy decision (2021/1772).
-              </td>
-            </tr>
-            <tr>
-              <td>
-                <strong>ClickHouse, Inc.</strong>
-                <br />
-                <span className="text-xs text-muted-foreground">
-                  (Portola Valley, CA, USA)
-                </span>
-              </td>
-              <td>
-                Columnar database for the LLM <code>requests</code> table (high-volume
-                proxy log storage), accessed via ClickHouse Cloud.
-              </td>
-              <td>
-                Request / response bodies (truncated to 10 KB), token counts, latency,
-                cost, model identifiers, security flags.
-              </td>
-              <td>
-                ClickHouse Cloud (US region).
-              </td>
-              <td>
-                EU SCCs, ClickHouse DPA.
               </td>
             </tr>
             <tr>
@@ -385,6 +365,19 @@ export default function SubprocessorsPage() {
             </tr>
           </thead>
           <tbody>
+            <tr>
+              <td>2026-08-20</td>
+              <td>
+                Removed ClickHouse, Inc. as a subprocessor. The LLM{' '}
+                <code>requests</code> log it held now lives in the Supabase database
+                alongside the rest of the application data, so the categories listed for
+                Supabase have been extended to cover request and response bodies. This
+                also moves that data from a United States region to{' '}
+                <code>ap-northeast-2</code> (Seoul), which is covered by the European
+                Commission&apos;s adequacy decision for Korea rather than by Standard
+                Contractual Clauses. No new subprocessor was engaged.
+              </td>
+            </tr>
             <tr>
               <td>{EFFECTIVE_DATE}</td>
               <td>

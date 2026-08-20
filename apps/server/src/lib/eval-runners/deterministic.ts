@@ -208,7 +208,7 @@ export async function runSimpleEvalRun(
   config: RegexConfig | JsonSchemaConfig | ExactMatchConfig | ContainsConfig,
 ): Promise<void> {
   const sampleFilters: string[] = [
-    'prompt_version_id = {promptVersionId:UUID}',
+    'prompt_version_id = {promptVersionId}',
     "response_body != ''",
     // P3-20: exclude clear error responses so an error JSON body doesn't get
     // scored. status_code DEFAULT 0 keeps legacy/un-instrumented rows in.
@@ -216,11 +216,11 @@ export async function runSimpleEvalRun(
   ]
   const sampleParams: Record<string, unknown> = { promptVersionId }
   if (sampleFrom) {
-    sampleFilters.push('created_at >= parseDateTime64BestEffort({sampleFrom:String})')
+    sampleFilters.push('created_at >= {sampleFrom}::timestamptz')
     sampleParams['sampleFrom'] = sampleFrom
   }
   if (sampleTo) {
-    sampleFilters.push('created_at <= parseDateTime64BestEffort({sampleTo:String})')
+    sampleFilters.push('created_at <= {sampleTo}::timestamptz')
     sampleParams['sampleTo'] = sampleTo
   }
 

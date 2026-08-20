@@ -3,11 +3,11 @@ import { beforeEach, describe, expect, test, vi } from 'vitest'
 /**
  * check-quota-warnings × activity watermark.
  *
- * The month-wide gate that shipped first was not enough: one tenant with
- * traffic anywhere in the month keeps passing it, so the job still dragged
- * ClickHouse awake every hour for the rest of the month. The gate here is the
- * later of the month start and the last successful run, which is safe because
- * this job's output moves only when new requests arrive.
+ * A month-wide gate is not enough: one tenant with traffic anywhere in the
+ * month keeps passing it, so the job would re-count that org every hour for
+ * the rest of the month. The gate here is the later of the month start and
+ * the last successful run, which is safe because this job's output moves only
+ * when new requests arrive.
  *
  * What these cases pin, in order of what would hurt most if it broke:
  *
@@ -131,7 +131,7 @@ describe('runQuotaWarningsJob gating', () => {
     expect(countMonthlyRequestsMock).toHaveBeenCalledTimes(1)
   })
 
-  test('skips ClickHouse for an org with nothing new since the last run', async () => {
+  test('skips the count for an org with nothing new since the last run', async () => {
     const lastRun = new Date(Date.now() - 60 * 60 * 1000)
     lastSuccessfulRunAtMock.mockResolvedValue(lastRun)
     // Active this month, but two hours ago — before the last run.

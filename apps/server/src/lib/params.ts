@@ -23,8 +23,9 @@ export function isUuid(raw: string | undefined | null): boolean {
 
 /**
  * Validate an optional UUID-typed query param before it reaches a bound
- * ClickHouse `{x:UUID}` placeholder. A malformed value (e.g. `?projectId=abc`)
- * otherwise fails inside ClickHouse and surfaces as a raw 500. These read APIs
+ * `uuid` parameter. A malformed value (e.g. `?projectId=abc`) otherwise fails
+ * in Postgres as `invalid input syntax for type uuid` and surfaces to the
+ * caller as a raw 500. These read APIs
  * are documented external surfaces (the MCP server passes arbitrary filter
  * args), so a malformed value should be a clean 400 instead.
  *
@@ -45,8 +46,8 @@ export function validateOptionalUuid(
 }
 
 /**
- * Validate an optional ISO date query param before it reaches a Postgres date
- * comparison or a ClickHouse `parseDateTime64BestEffort` binding. A garbage
+ * Validate an optional ISO date query param before it reaches a Postgres
+ * timestamp comparison. A garbage
  * value (e.g. `?from=garbage`) otherwise throws deep in the query layer as a
  * raw 500; convert it to a clean 400.
  *
@@ -103,12 +104,12 @@ export function parseIntMin(raw: string | undefined, fallback: number, min: numb
  * Returns `{ page, limit, offset }` with `page` clamped to [1, maxPage] and
  * `limit` clamped to [1, maxLimit].
  *
- * Why maxPage exists: ClickHouse OFFSET is O(offset) on sorted results, so a
- * malicious `?page=99999999` would force ClickHouse to materialize-and-skip
- * billions of rows per request. With maxPage=10000 and the default
- * maxLimit=100 the worst case is 1M-row skip — still cheap on indexed scans
- * and within the ClickHouse query budget. Callers needing deeper pagination
- * must move to a cursor (`?after=<id>`) which is O(log n) instead of O(n).
+ * Why maxPage exists: OFFSET is O(offset). Postgres still walks and discards
+ * every skipped row, so a malicious `?page=99999999` would make it read
+ * billions of rows to return one page. With maxPage=10000 and the default
+ * maxLimit=100 the worst case is a 1M-row skip, which stays cheap on an
+ * indexed scan and inside the statement timeout. Callers needing deeper
+ * pagination must move to a cursor (`?after=<id>`), which is O(log n).
  */
 export function parsePageLimit(
   pageRaw: string | undefined,

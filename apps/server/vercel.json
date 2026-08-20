@@ -3,31 +3,92 @@
   "framework": null,
   "outputDirectory": null,
   "installCommand": "npm install",
-  "regions": ["icn1"],
+  "regions": [
+    "icn1"
+  ],
   "functions": {
     "api/index.ts": {
       "maxDuration": 300
     }
   },
-  "rewrites": [{ "source": "/(.*)", "destination": "/api/index" }],
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/api/index"
+    }
+  ],
   "crons": [
-    { "path": "/cron/evaluate-alerts",      "schedule": "*/15 * * * *" },
-    { "path": "/cron/snapshot-anomalies",   "schedule": "0 3 * * *" },
-    { "path": "/cron/stale-key-reminders",  "schedule": "0 9 * * 1" },
-    { "path": "/cron/leak-detect-keys",          "schedule": "0 4 * * *" },
-    { "path": "/cron/recommend-savings-alerts",  "schedule": "0 9 * * *" },
-    { "path": "/cron/replay-fallback",            "schedule": "*/5 * * * *" },
-    { "path": "/cron/check-past-due-downgrades",  "schedule": "0 3 * * *" },
-    { "path": "/cron/execute-pending-deletions",  "schedule": "0 */6 * * *" },
-    { "path": "/cron/run-background-migrations",  "schedule": "*/5 * * * *" },
-    { "path": "/cron/events-reconciliation",      "schedule": "0 3 * * *" },
-    { "path": "/cron/detect-missing-model-prices","schedule": "0 * * * *" },
-    { "path": "/cron/self-monitor",               "schedule": "31 * * * *" },
-    { "path": "/cron/detect-orphan-spans",        "schedule": "17 * * * *" },
-    { "path": "/cron/keep-warm",                  "schedule": "*/5 * * * *" },
-    { "path": "/cron/prune-judge-cache",          "schedule": "0 3 * * *" },
-    { "path": "/cron/detect-data-silence",        "schedule": "30 */6 * * *" },
-    { "path": "/cron/weekly-digest",              "schedule": "0 9 * * 1" },
-    { "path": "/cron/purge-proxy-cache",          "schedule": "15 3 * * *" }
+    {
+      "path": "/cron/evaluate-alerts",
+      "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/cron/snapshot-anomalies",
+      "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/cron/stale-key-reminders",
+      "schedule": "0 9 * * 1"
+    },
+    {
+      "path": "/cron/leak-detect-keys",
+      "schedule": "0 4 * * *"
+    },
+    {
+      "path": "/cron/recommend-savings-alerts",
+      "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/cron/replay-fallback",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/cron/check-past-due-downgrades",
+      "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/cron/execute-pending-deletions",
+      "schedule": "0 */6 * * *"
+    },
+    {
+      "path": "/cron/run-background-migrations",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/cron/detect-missing-model-prices",
+      "schedule": "0 * * * *"
+    },
+    {
+      "path": "/cron/self-monitor",
+      "schedule": "31 * * * *"
+    },
+    {
+      "path": "/cron/detect-orphan-spans",
+      "schedule": "17 * * * *"
+    },
+    {
+      "path": "/cron/keep-warm",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/cron/prune-judge-cache",
+      "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/cron/detect-data-silence",
+      "schedule": "30 */6 * * *"
+    },
+    {
+      "path": "/cron/weekly-digest",
+      "schedule": "0 9 * * 1"
+    },
+    {
+      "path": "/cron/purge-proxy-cache",
+      "schedule": "15 3 * * *"
+    },
+    {
+      "path": "/cron/maintain-request-partitions",
+      "schedule": "20 3 * * *"
+    }
   ]
 }

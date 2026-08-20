@@ -172,9 +172,8 @@ export default function PrivacyPage() {
         <p>
           As of the effective date of this Policy, our infrastructure sub-processors are
           Vercel Inc. (USA, compute), Supabase Inc. (Republic of Korea, Postgres,
-          authentication), ClickHouse, Inc. (USA, LLM request log store), Upstash, Inc.
-          (USA, rate-limit counters), and Paddle.com Market Ltd. (Ireland, Merchant of
-          Record). Our communications sub-processors are Resend, Inc. (USA, transactional
+          authentication, and the LLM request log), Upstash, Inc. (USA, rate-limit
+          counters), and Paddle.com Market Ltd. (Ireland, Merchant of Record). Our communications sub-processors are Resend, Inc. (USA, transactional
           email) and Functional Software, Inc. / Sentry (USA, error monitoring). For B2B
           customers, the full set of contractual safeguards applicable to these sub-processors
           is set out in our <Link href="/dpa">Data Processing Addendum</Link>.

@@ -1,11 +1,10 @@
 import { randomUUID } from 'node:crypto'
 import { supabaseAdmin } from './db.js'
-import { unscopedClickhouse, toClickhouseTimestamp } from './clickhouse.js'
+import { pgExecute } from './postgres.js'
 import { maskApiKeysInBody, maskApiKeys } from './pii-mask.js'
 import { scanAll, type SecurityFlag } from './security-scan.js'
 import { sendEmail, renderSecurityAlertEmail } from './resend.js'
 import { emitWebhookEvent } from './webhook-emit.js'
-import { writeRequestAsEvent } from './events-writer.js'
 import { logError } from './structured-logger.js'
 import { resolvePromptVersion } from './resolve-prompt-version.js'
 import { getOrgBodySampleRate, shouldStoreBody } from './org-log-config.js'
@@ -91,14 +90,14 @@ export interface RequestLogData {
    * calculator to apply Flex/Priority multipliers and surfaced on the
    * dashboard for tier-distribution analytics.
    *
-   * Empty string written to CH when unknown / unsupported (Anthropic).
+   * Empty string when unknown or unsupported (Anthropic).
    */
   serviceTier?: string | null | undefined
   /**
    * True when the response was served from the opt-in proxy response cache
    * (x-spanlens-cache header) WITHOUT calling the upstream provider. The row
    * keeps the original token counts and model but records cost_usd = 0 and
-   * cache_hit = 1 so cache savings are computable later.
+   * cache_hit = true so cache savings are computable later.
    *
    * See lib/proxy-cache.ts for the cache semantics.
    */
@@ -106,9 +105,10 @@ export interface RequestLogData {
 }
 
 /**
- * Bodies above this size are truncated before ClickHouse insertion. ClickHouse
- * compresses well with ZSTD(3) so the inline cap is generous, but we still cap
- * to keep individual rows bounded for cheap scans.
+ * Bodies above this size are truncated before insertion. TOAST compresses the
+ * body columns well, so the inline cap is generous, but rows still stay
+ * bounded so a scan over a month of traffic does not drag whole prompts
+ * through memory.
  *
  * Larger bodies are replaced with a preview + size metadata. Phase 2 may move
  * full bodies to object storage and link by reference.
@@ -117,7 +117,7 @@ const MAX_BODY_INLINE_BYTES = 64 * 1024
 const PREVIEW_BYTES = 2 * 1024
 
 /**
- * Returns the body shape that will go into the ClickHouse `request_body` /
+ * Returns the body shape that will go into the `request_body` /
  * `response_body` column. Above the inline cap, replaces with a preview +
  * size envelope; otherwise returns the body as-is for downstream serialization.
  */
@@ -141,6 +141,81 @@ function maybeTruncateBody(body: unknown): unknown {
     _preview: preview,
     _note: `Body exceeded ${MAX_BODY_INLINE_BYTES} bytes and was truncated.`,
   }
+}
+
+/**
+ * The column list, in the order `insertRequestRow` binds them.
+ *
+ * Kept as an explicit array rather than derived from `Object.keys(row)` so the
+ * SQL is stable regardless of how the row literal is edited, and so adding a
+ * column is a visible two-line change here instead of an implicit one.
+ *
+ * A column that exists in this list but not in the table is a hard error on
+ * every insert. History: this table used to live in ClickHouse, which ran with
+ * `input_format_skip_unknown_fields` and silently dropped any field the
+ * deployed table did not have yet. Postgres has no equivalent, so that safety
+ * net is gone in both directions: nothing is lost silently any more, but the
+ * migration adding a column now has to reach production before the code that
+ * writes it. The `requests_fallback` queue below is the backstop if the two
+ * ever land out of order.
+ */
+const REQUEST_COLUMNS = [
+  'id',
+  'organization_id',
+  'project_id',
+  'api_key_id',
+  'provider',
+  'model',
+  'prompt_tokens',
+  'completion_tokens',
+  'total_tokens',
+  'cache_read_tokens',
+  'cache_write_tokens',
+  'cost_usd',
+  'latency_ms',
+  'proxy_overhead_ms',
+  'status_code',
+  'request_body',
+  'response_body',
+  'error_message',
+  'trace_id',
+  'span_id',
+  'prompt_version_id',
+  'provider_key_id',
+  'user_id',
+  'session_id',
+  'flags',
+  'response_flags',
+  'has_security_flags',
+  'truncated',
+  'cache_hit',
+  'service_tier',
+  'created_at',
+] as const
+
+/** Columns whose values arrive as JSON strings and need an explicit jsonb cast. */
+const JSONB_COLUMNS = new Set<string>(['flags', 'response_flags'])
+
+/**
+ * Inserts one row into `requests`.
+ *
+ * Every value is bound, never interpolated — the row carries customer prompt
+ * and response text, so the statement is assembled from the fixed column list
+ * above and nothing else.
+ */
+async function insertRequestRow(row: Record<string, unknown>): Promise<void> {
+  const placeholders = REQUEST_COLUMNS.map((col) =>
+    JSONB_COLUMNS.has(col) ? `{${col}}::jsonb` : `{${col}}`,
+  )
+  const params: Record<string, unknown> = {}
+  for (const col of REQUEST_COLUMNS) params[col] = row[col]
+
+  await pgExecute({
+    query:
+      `INSERT INTO requests (${REQUEST_COLUMNS.join(', ')}) ` +
+      `VALUES (${placeholders.join(', ')})`,
+    params,
+  })
 }
 
 /** Rate-limit: 5 minutes between security alert emails per org. */
@@ -238,7 +313,7 @@ export async function logRequestAsync(data: RequestLogData): Promise<void> {
     responseFlags = []
   }
 
-  // ── ClickHouse insertion ──────────────────────────────────────────────────
+  // ── Row assembly ──────────────────────────────────────────────────────────
   // Body columns + identifiers respect the customer's logBodyMode opt-out.
   //   - full: persist everything with API-key pattern masking (default)
   //   - meta: drop request/response bodies; keep token counts + identifiers
@@ -251,7 +326,7 @@ export async function logRequestAsync(data: RequestLogData): Promise<void> {
   // Body-level sampling (org-configurable via organizations.body_sample_rate):
   // keep the row + all metadata (tokens, cost, counts) so quota/billing stay
   // exact — we NEVER drop a whole row — but drop the heavy body text for
-  // (1 - body_sample_rate) of requests to cut ClickHouse storage. Default 1.0 =
+  // (1 - body_sample_rate) of requests to cut storage. Default 1.0 =
   // store all bodies (unchanged). The security scan above still ran on the full
   // body, so injection/PII flags are recorded even when the body isn't stored.
   const bodySampleRate = await getOrgBodySampleRate(data.organizationId)
@@ -279,7 +354,7 @@ export async function logRequestAsync(data: RequestLogData): Promise<void> {
     promptVersionId = resolved?.versionId ?? null
   }
 
-  const clickhouseRow = {
+  const row = {
     id: randomUUID(),
     organization_id: data.organizationId,
     project_id: data.projectId,
@@ -307,73 +382,49 @@ export async function logRequestAsync(data: RequestLogData): Promise<void> {
     flags: JSON.stringify(requestFlags),
     response_flags: JSON.stringify(responseFlags),
     has_security_flags: requestFlags.length > 0 || responseFlags.length > 0,
-    // 0/1 because ClickHouse UInt8; never null even if the field was
-    // never set (older rows backfill via DEFAULT 0 on the column).
-    truncated: data.truncated ? 1 : 0,
-    // 0/1 UInt8, same convention as `truncated`. Served-from-cache rows carry
-    // cost_usd 0 — this flag is what separates them from genuinely-free rows.
-    // Column added by clickhouse/migrations/010_add_cache_hit.sql. The field
-    // rides inside `payload` on the requests_fallback path automatically
-    // (fallback-replay.ts re-inserts the payload verbatim — gotcha #23).
-    cache_hit: data.cacheHit ? 1 : 0,
-    // Empty string when unknown — matches the column DEFAULT '' from migration
-    // 003_add_service_tier.sql and keeps CH LowCardinality dictionary tight.
+    truncated: data.truncated === true,
+    // Served-from-cache rows carry cost_usd 0, so this flag is the only thing
+    // separating them from genuinely free ones. It rides inside `payload` on
+    // the requests_fallback path automatically, since replay reinserts the
+    // stored object verbatim.
+    cache_hit: data.cacheHit === true,
+    // Empty string when unknown, matching the column default.
     service_tier: data.serviceTier ?? '',
-    // ClickHouse DateTime64 wants 'YYYY-MM-DD HH:MM:SS.fff' (no Z).
-    // Postgres's gen_random_uuid()/now() defaults moved to the
-    // application layer — no behavioral difference, just a different
-    // write boundary.
-    created_at: toClickhouseTimestamp(),
+    // Stamped in the application rather than left to the column default so the
+    // live insert and a fallback replay of the same row carry one instant.
+    created_at: new Date().toISOString(),
   }
 
   try {
-    await unscopedClickhouse().insert({
-      table: 'requests',
-      format: 'JSONEachRow',
-      values: [clickhouseRow],
-    })
-    // ── Phase 5.1 dual-write to events ───────────────────────────────────────
-    // Best-effort. A failure here MUST NOT roll back the requests INSERT.
-    // Awaited rather than fire-and-forget: on Vercel Node runtime an
-    // unawaited promise inside an already-fireAndForget-wrapped
-    // function is silently dropped at response time (CLAUDE.md gotcha #8).
-    // The events INSERT round-trip is ~30ms on ClickHouse Cloud — within
-    // the waitUntil budget logRequestAsync already runs under.
-    try {
-      await writeRequestAsEvent(data, clickhouseRow)
-    } catch (err) {
-      logError('CH_INSERT_FAILED', {
-        orgId: data.organizationId,
-        provider: data.provider,
-        kind: 'events_shadow_insert',
-      }, err)
-    }
+    await insertRequestRow(row)
     // ── Activity watermark ───────────────────────────────────────────────────
-    // Tells the cron fleet this org has something new, so the jobs that read
-    // ClickHouse can answer "anything to look at?" from Postgres and stay off
-    // ClickHouse on a quiet system — the difference between a service that
-    // suspends and one billed 24/7 (lib/org-activity.ts). Throttled to one
-    // write per org per minute per instance and never throws, so it cannot
-    // affect a request whose row already landed. Awaited for the same reason
-    // the events write is: gotcha #8 drops unawaited promises here.
+    // Tells the cron fleet this org has something new, so the jobs that
+    // aggregate `requests` can answer "anything to look at?" from one indexed
+    // row and skip the scan entirely for a tenant that has been quiet
+    // (lib/org-activity.ts). Throttled to one write per org per minute per
+    // instance and never throws, so it cannot affect a request whose row
+    // already landed. Awaited rather than detached because gotcha #8 drops
+    // unawaited promises on this path.
     //
     // Wrapped even though recordOrgActivity swallows its own failures: this
     // sits inside the try whose catch queues the row to requests_fallback,
     // so a future refactor that let something escape here would replay a row
-    // ClickHouse already accepted.
+    // the table already accepted.
     try {
       await recordOrgActivity(data.organizationId)
     } catch (err) {
       logError('UNCATEGORIZED', { orgId: data.organizationId, kind: 'org_activity_watermark' }, err)
     }
   } catch (err) {
-    // ── ClickHouse fallback (P2.6) ─────────────────────────────────────────
-    // CH outage / network blip / Development tier cold-start → preserve the
-    // row in Supabase `requests_fallback` so the cron replayer can ingest
-    // it later. Without this backstop every CH outage silently loses customer
-    // billing data and dashboard entries.
+    // ── Insert fallback (P2.6) ─────────────────────────────────────────────
+    // Pool exhaustion, a connection blip, a statement timeout: preserve the
+    // row in `requests_fallback` so the cron replayer can ingest it later.
+    // The queue is written through the Supabase REST client rather than the
+    // pooled connection this insert just failed on, so the two paths do not
+    // share a failure mode. Without this backstop a failed insert silently
+    // loses customer billing data and dashboard entries.
     const message = err instanceof Error ? err.message : String(err)
-    logError('CH_INSERT_FAILED', {
+    logError('REQUEST_LOG_INSERT_FAILED', {
       orgId: data.organizationId,
       provider: data.provider,
       kind: 'requests_insert_falling_back_to_supabase',
@@ -381,13 +432,13 @@ export async function logRequestAsync(data: RequestLogData): Promise<void> {
 
     try {
       await supabaseAdmin.from('requests_fallback').insert({
-        payload: clickhouseRow,
+        payload: row,
         organization_id: data.organizationId,
         last_error: message.slice(0, 500),
       })
     } catch (fallbackErr) {
-      // Both DBs are down. Row is now lost — surface loudly. Original CH
-      // error is preserved in the previous log line for triage.
+      // Both write paths failed, so the row is now lost. Surface loudly; the
+      // original insert error is in the previous log line for triage.
       logError('FALLBACK_INSERT_FAILED', {
         orgId: data.organizationId,
         provider: data.provider,
@@ -423,7 +474,7 @@ export async function logRequestAsync(data: RequestLogData): Promise<void> {
   try {
     await emitWebhookEvent(data.organizationId, 'request.created', {
       request: {
-        id: clickhouseRow.id,
+        id: row.id,
         provider: data.provider,
         model: data.model,
         prompt_tokens: data.promptTokens,
@@ -433,7 +484,7 @@ export async function logRequestAsync(data: RequestLogData): Promise<void> {
         latency_ms: data.latencyMs,
         status_code: data.statusCode,
         trace_id: data.traceId,
-        created_at: clickhouseRow.created_at,
+        created_at: row.created_at,
       },
     })
   } catch (err) {

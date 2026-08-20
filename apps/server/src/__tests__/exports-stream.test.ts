@@ -11,14 +11,10 @@ import { beforeEach, describe, expect, test, vi } from 'vitest'
 //      than a small constant number of rows are simultaneously alive. Proves
 //      the streams don't materialise the entire result set.
 //
-// The streamRequests() helper itself is exercised end-to-end via a mocked
-// ClickHouse client stream so we cover the Row.json() + AsyncGenerator path.
+// The streamRequests() helper itself is exercised against a mocked `pgStream`
+// async generator, so we cover the SQL assembly + delegation + early-exit
+// cleanup path without a live cursor.
 // ─────────────────────────────────────────────────────────────────────────────
-
-// Set up env vars before any module that reads them initialises.
-process.env['CLICKHOUSE_URL'] ??= 'http://localhost:8123'
-process.env['CLICKHOUSE_USER'] ??= 'default'
-process.env['CLICKHOUSE_PASSWORD'] ??= 'test'
 
 import { buildCsvStream, buildJsonlStream, withIsoCreatedAt } from '../api/exports.js'
 
@@ -250,20 +246,19 @@ describe('streaming-encoder memory bound', () => {
   })
 })
 
-// ── streamRequests (async generator over a mocked ClickHouse stream) ─────────
+// ── streamRequests (delegation to the mocked pgStream cursor) ────────────────
 
-const clickhouseQueryMock = vi.fn()
+const pgStreamMock = vi.fn()
 
-vi.mock('../lib/clickhouse.js', async (importOriginal) => {
-  // Partial mock: replace the client singleton with our mock query fn, but
-  // keep the real `fromClickhouseTimestamp` / `toClickhouseTimestamp` helpers
-  // intact so the streaming `withIsoCreatedAt` tests below exercise real logic.
-  const actual = await importOriginal<typeof import('../lib/clickhouse.js')>()
+vi.mock('../lib/postgres.js', async (importOriginal) => {
+  // Partial mock: only the driver entry points are stubbed. `toPositional`
+  // and the rest stay real so nothing here quietly diverges from production.
+  const actual = await importOriginal<typeof import('../lib/postgres.js')>()
   return {
     ...actual,
-    unscopedClickhouse: () => ({
-      query: (opts: unknown) => clickhouseQueryMock(opts),
-    }),
+    pgQuery: vi.fn(async () => []),
+    pgExecute: vi.fn(async () => 0),
+    pgStream: (opts: unknown) => pgStreamMock(opts),
   }
 })
 
@@ -271,44 +266,40 @@ let streamRequests: typeof import('../lib/requests-query.js').streamRequests
 
 beforeEach(async () => {
   vi.resetModules()
-  clickhouseQueryMock.mockReset()
+  pgStreamMock.mockReset()
   ;({ streamRequests } = await import('../lib/requests-query.js'))
 })
 
+const SCOPE_WHERE =
+  'organization_id = {orgId} AND created_at >= now() - make_interval(days => {retentionDays})'
+
 /**
- * Builds a fake ClickHouse ResultSet whose `stream()` returns an async
- * iterable yielding batches of Row instances. Each Row has the `.json()`
- * method the real driver provides.
+ * Stands in for `pgStream`: an async generator over a server-side cursor.
+ * `released` flips in the generator's `finally`, mirroring the `client.release()`
+ * the real helper runs there — that is what an early `break` has to trigger.
  */
-function fakeResultSet<T>(batches: T[][]) {
-  return {
-    stream<U>() {
-      async function* iter() {
-        for (const batch of batches) {
-          yield batch.map((row) => ({
-            text: JSON.stringify(row),
-            json: () => row as unknown as U,
-          }))
-        }
-      }
-      return iter()
-    },
-    close: vi.fn(),
+function fakeCursor<T>(rows: T[]) {
+  const state = { released: false }
+  async function* gen(): AsyncGenerator<T, void, undefined> {
+    try {
+      for (const row of rows) yield row
+    } finally {
+      state.released = true
+    }
   }
+  return { gen, state }
 }
 
 describe('streamRequests', () => {
-  test('yields rows one at a time across multiple batches', async () => {
-    clickhouseQueryMock.mockResolvedValue(
-      fakeResultSet([
-        [{ id: '1' }, { id: '2' }],
-        [{ id: '3' }],
-        [{ id: '4' }, { id: '5' }, { id: '6' }],
-      ]),
-    )
+  test('yields every row from the cursor in order', async () => {
+    const { gen } = fakeCursor([
+      { id: '1' }, { id: '2' }, { id: '3' }, { id: '4' }, { id: '5' }, { id: '6' },
+    ])
+    pgStreamMock.mockImplementation(() => gen())
+
     const iter = streamRequests<{ id: string }>({
       scope: {
-        whereScope: 'organization_id = {orgId:UUID}',
+        whereScope: SCOPE_WHERE,
         scopeParams: { orgId: 'org_1', retentionDays: 14 },
         plan: 'free',
       },
@@ -322,10 +313,12 @@ describe('streamRequests', () => {
   })
 
   test('appends LIMIT / ORDER BY clauses to SQL', async () => {
-    clickhouseQueryMock.mockResolvedValue(fakeResultSet<{ id: string }>([]))
+    const { gen } = fakeCursor<{ id: string }>([])
+    pgStreamMock.mockImplementation(() => gen())
+
     const iter = streamRequests<{ id: string }>({
       scope: {
-        whereScope: 'organization_id = {orgId:UUID}',
+        whereScope: SCOPE_WHERE,
         scopeParams: { orgId: 'org_1', retentionDays: 14 },
         plan: 'starter',
       },
@@ -335,56 +328,70 @@ describe('streamRequests', () => {
     })
     // Consume so the query is actually invoked.
     for await (const _ of iter) { void _ }
-    expect(clickhouseQueryMock).toHaveBeenCalledOnce()
-    const call = clickhouseQueryMock.mock.calls[0]?.[0] as { query: string }
+    expect(pgStreamMock).toHaveBeenCalledOnce()
+    const call = pgStreamMock.mock.calls[0]?.[0] as { query: string }
     expect(call.query).toContain('SELECT id FROM requests')
+    expect(call.query).toContain('WHERE organization_id = {orgId}')
     expect(call.query).toContain('ORDER BY created_at DESC')
     expect(call.query).toContain('LIMIT 250')
   })
 
   test('merges scope params with caller params', async () => {
-    clickhouseQueryMock.mockResolvedValue(fakeResultSet<{ id: string }>([]))
+    const { gen } = fakeCursor<{ id: string }>([])
+    pgStreamMock.mockImplementation(() => gen())
+
     const iter = streamRequests<{ id: string }>({
       scope: {
-        whereScope: 'organization_id = {orgId:UUID}',
+        whereScope: SCOPE_WHERE,
         scopeParams: { orgId: 'org_42', retentionDays: 90 },
         plan: 'starter',
       },
       select: 'id',
-      filters: 'provider = {provider:String}',
+      filters: 'provider = {provider}',
       params: { provider: 'openai' },
     })
     for await (const _ of iter) { void _ }
-    const call = clickhouseQueryMock.mock.calls[0]?.[0] as {
+    const call = pgStreamMock.mock.calls[0]?.[0] as {
       query: string
-      query_params: Record<string, unknown>
+      params: Record<string, unknown>
     }
-    expect(call.query_params).toEqual({
+    expect(call.params).toEqual({
       orgId: 'org_42',
       retentionDays: 90,
       provider: 'openai',
     })
-    expect(call.query).toContain('AND provider = {provider:String}')
+    expect(call.query).toContain('AND provider = {provider}')
   })
 
-  test('runs result.close() in finally (cancellation safety)', async () => {
-    const result = fakeResultSet<{ id: string }>([[{ id: '1' }], [{ id: '2' }]])
-    clickhouseQueryMock.mockResolvedValue(result)
+  test('an early break propagates into the cursor so its client is released', async () => {
+    // The cursor holds one pooled connection for the life of the iteration.
+    // `yield*` has to forward the consumer's `return()` to the inner generator,
+    // otherwise abandoning an export mid-stream leaks a connection per request.
+    const { gen, state } = fakeCursor([{ id: '1' }, { id: '2' }])
+    pgStreamMock.mockImplementation(() => gen())
+
     const iter = streamRequests<{ id: string }>({
       scope: {
-        whereScope: 'organization_id = {orgId:UUID}',
+        whereScope: SCOPE_WHERE,
         scopeParams: { orgId: 'org_1', retentionDays: 14 },
         plan: 'free',
       },
       select: 'id',
     })
-    // Pull one row then break — generator's finally should run.
+    // Pull one row then break — the cursor's finally should run.
     for await (const _ of iter) { void _; break }
-    expect(result.close).toHaveBeenCalled()
+    expect(state.released).toBe(true)
   })
 })
 
-// ── withIsoCreatedAt (PR #130 follow-up: streaming created_at conversion) ────
+// ── withIsoCreatedAt (row normalisation on the streaming export path) ────────
+//
+// The name is historical. The `created_at` rewrite it was built for is gone:
+// lib/postgres.ts installs a TIMESTAMPTZ parser that already returns canonical
+// ISO UTC, and re-converting a value that is already ISO appended a second `Z`
+// and produced an unparseable date. What remains, and what these tests pin,
+// is that created_at passes through byte-identical and that string-encoded
+// numerics become real numbers.
 
 describe('withIsoCreatedAt', () => {
   async function collect<T>(iter: AsyncIterable<T>): Promise<T[]> {
@@ -393,50 +400,92 @@ describe('withIsoCreatedAt', () => {
     return out
   }
 
-  test("converts ClickHouse 'YYYY-MM-DD HH:MM:SS.fff' to ISO UTC with Z", async () => {
+  test('passes an already-ISO created_at through untouched (no second Z)', async () => {
     const rows = await collect(withIsoCreatedAt(fromArray([
-      { id: '1', created_at: '2026-05-20 07:00:00.000' },
-      { id: '2', created_at: '2026-05-20 07:00:01.500' },
+      { id: '1', created_at: '2026-05-20T07:00:00.000Z' },
+      { id: '2', created_at: '2026-05-20T07:00:01.500Z' },
     ])))
     expect(rows).toEqual([
       { id: '1', created_at: '2026-05-20T07:00:00.000Z' },
       { id: '2', created_at: '2026-05-20T07:00:01.500Z' },
     ])
+    for (const row of rows) {
+      expect(row.created_at).not.toContain('ZZ')
+    }
+  })
+
+  test('coerces the driver string-encoded numerics to numbers', async () => {
+    // `numeric` (cost_usd) and `int8` (token counts, latency, status) arrive as
+    // strings from node-postgres — CLAUDE.md gotcha #19 in its Postgres form.
+    // JSONL consumers would otherwise get `"0.00012345"` and silently
+    // string-concatenate on it.
+    const rows = await collect(withIsoCreatedAt(fromArray<Record<string, unknown>>([
+      {
+        id: 'abc',
+        cost_usd: '0.00012345',
+        prompt_tokens: '10',
+        completion_tokens: '20',
+        total_tokens: '30',
+        latency_ms: '150',
+        status_code: '200',
+      },
+    ])))
+    expect(rows[0]).toEqual({
+      id: 'abc',
+      cost_usd: 0.00012345,
+      prompt_tokens: 10,
+      completion_tokens: 20,
+      total_tokens: 30,
+      latency_ms: 150,
+      status_code: 200,
+    })
+    expect(typeof rows[0]!['cost_usd']).toBe('number')
   })
 
   test('preserves other fields unchanged (immutable spread)', async () => {
-    const rows = await collect(withIsoCreatedAt(fromArray([
-      { id: 'abc', cost_usd: 0.0042, model: 'gpt-4o', created_at: '2026-05-20 07:00:00.000' },
-    ])))
+    const source = {
+      id: 'abc',
+      cost_usd: '0.0042',
+      model: 'gpt-4o',
+      created_at: '2026-05-20T07:00:00.000Z',
+    }
+    const rows = await collect(withIsoCreatedAt(fromArray([{ ...source }])))
     expect(rows[0]).toEqual({
       id: 'abc',
       cost_usd: 0.0042,
       model: 'gpt-4o',
       created_at: '2026-05-20T07:00:00.000Z',
     })
+    // Source row untouched — the helper copies rather than mutating the row
+    // the cursor handed it.
+    expect(source.cost_usd).toBe('0.0042')
   })
 
-  test('passes through rows whose created_at is not a string (null / missing)', async () => {
+  test('leaves null / missing numerics alone (unknown cost stays unknown)', async () => {
     const rows = await collect(withIsoCreatedAt(fromArray<Record<string, unknown>>([
-      { id: '1', created_at: null },
-      { id: '2' },
+      { id: '1', created_at: null, cost_usd: null },
+      { id: '2', cost_usd: '' },
     ])))
     expect(rows).toEqual([
-      { id: '1', created_at: null },
-      { id: '2' },
+      { id: '1', created_at: null, cost_usd: null },
+      { id: '2', cost_usd: '' },
     ])
+    // Number(null) is 0 and Number('') is 0 — coercing either would invent a
+    // $0.00 cost for a request whose price we never resolved.
+    expect(rows[0]!['cost_usd']).toBeNull()
   })
 
-  test('UTC parse round-trip — JS new Date() matches the original CH timestamp', async () => {
-    // This is the regression guard for the "9h ago" bug: without the Z suffix
-    // JS parses CH timestamps as local time. Confirm the converted string
-    // round-trips to the same UTC instant the CH row claimed.
+  test('UTC parse round-trip — new Date() matches the instant the row claimed', async () => {
+    // Regression guard for the double-`Z` bug the removed rewrite caused: an
+    // unparseable date shows up downstream as "Invalid Date", not as an error.
     const rows = await collect(withIsoCreatedAt(fromArray([
-      { created_at: '2026-05-20 07:00:00.000' },
+      { created_at: '2026-05-20T07:00:00.000Z' },
     ])))
     const iso = (rows[0]!['created_at'] as string)
-    expect(new Date(iso).getUTCHours()).toBe(7)
-    expect(new Date(iso).getUTCDate()).toBe(20)
-    expect(new Date(iso).getUTCMonth()).toBe(4) // May = 4
+    const parsed = new Date(iso)
+    expect(Number.isNaN(parsed.getTime())).toBe(false)
+    expect(parsed.getUTCHours()).toBe(7)
+    expect(parsed.getUTCDate()).toBe(20)
+    expect(parsed.getUTCMonth()).toBe(4) // May = 4
   })
 })

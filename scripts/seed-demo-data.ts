@@ -4,8 +4,13 @@
  */
 
 import { createClient } from '@supabase/supabase-js'
-import { createClient as createClickHouseClient } from '@clickhouse/client'
 import crypto from 'node:crypto'
+
+/**
+ * The `requests` writer. Imported dynamically from main() so the connection
+ * string below is in place before the module reads it.
+ */
+type Postgres = typeof import('../apps/server/src/lib/postgres.js')
 
 // ─── Config ─────────────────────────────────────────────────────────────────
 // Target workspace. Override per-environment via env vars so the script is not
@@ -28,12 +33,12 @@ const sb = createClient(
     'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU',
   ),
 )
-const ch = createClickHouseClient({
-  url: required('CLICKHOUSE_URL', 'http://localhost:8123'),
-  username: required('CLICKHOUSE_USER', 'spanlens'),
-  password: required('CLICKHOUSE_PASSWORD', 'spanlens'),
-  database: required('CLICKHOUSE_DB', 'spanlens'),
-})
+// lib/postgres.ts throws rather than guessing when this is missing, so give it
+// the local stack's pooler port alongside the other local defaults above.
+process.env['SUPABASE_DB_POOLER_URL'] = required(
+  'SUPABASE_DB_POOLER_URL',
+  'postgresql://postgres:postgres@127.0.0.1:54322/postgres',
+)
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 const uuid = () => crypto.randomUUID()
@@ -43,7 +48,6 @@ const rand = (min: number, max: number) => Math.floor(Math.random() * (max - min
 // Math.random feeding an identifier as a finding. Seed data doesn't need
 // unpredictability, but a CSPRNG costs nothing here and keeps the scan clean.
 const pick = <T>(arr: T[]): T => arr[crypto.randomInt(arr.length)]
-const toChTs = (d: Date) => d.toISOString().replace('T', ' ').replace('Z', '').slice(0, 23)
 const daysAgo = (n: number): Date => {
   const d = new Date()
   d.setDate(d.getDate() - n)
@@ -156,9 +160,99 @@ async function seedPrompts(): Promise<string[]> {
   return ids
 }
 
-// ─── 2. ClickHouse requests ───────────────────────────────────────────────────
-async function seedRequests(promptVersionIds: string[]) {
-  console.log('Seeding ClickHouse requests...')
+// ─── 2. Requests ──────────────────────────────────────────────────────────────
+/** How far back the generated traffic reaches. */
+const REQUEST_DAYS = 30
+
+/** Rows per INSERT. Keeps bound parameters per statement in the low thousands. */
+const REQUEST_BATCH = 100
+
+/**
+ * Columns of `requests`, in the order the INSERT binds them. Mirrors
+ * REQUEST_COLUMNS in apps/server/src/lib/logger.ts, because a seeded row
+ * should be indistinguishable from one the proxy wrote.
+ */
+const REQUEST_COLUMNS = [
+  'id',
+  'organization_id',
+  'project_id',
+  'api_key_id',
+  'provider',
+  'model',
+  'prompt_tokens',
+  'completion_tokens',
+  'total_tokens',
+  'cache_read_tokens',
+  'cache_write_tokens',
+  'cost_usd',
+  'latency_ms',
+  'proxy_overhead_ms',
+  'status_code',
+  'request_body',
+  'response_body',
+  'error_message',
+  'trace_id',
+  'span_id',
+  'prompt_version_id',
+  'provider_key_id',
+  'user_id',
+  'session_id',
+  'flags',
+  'response_flags',
+  'has_security_flags',
+  'truncated',
+  'cache_hit',
+  'service_tier',
+  'created_at',
+] as const
+
+/** Columns holding JSON text, which needs an explicit cast on the placeholder. */
+const JSONB_COLUMNS = new Set<string>(['flags', 'response_flags'])
+
+/** Spelled out so a forgotten column is a compile error rather than a failed run. */
+type RequestRow = Record<(typeof REQUEST_COLUMNS)[number], unknown> & { created_at: string }
+
+/**
+ * Creates the monthly partitions the backdated rows need.
+ *
+ * Backdating REQUEST_DAYS days reaches into the previous month for most of the
+ * calendar, and a row whose month has no partition lands in
+ * `requests_default`. That is not something to tidy up afterwards: creating
+ * the real partition for that range then fails until the rows are moved, and
+ * the attempt takes ACCESS EXCLUSIVE on the parent, which parks proxy writes
+ * behind it. See apps/server/src/lib/cron-jobs/maintain-request-partitions.ts.
+ *
+ * The months-back argument is rounded up from REQUEST_DAYS rather than fixed,
+ * so widening the seed window cannot silently outrun the partitions.
+ */
+async function ensureSeedPartitions(pg: Postgres): Promise<void> {
+  const monthsBack = Math.ceil(REQUEST_DAYS / 28) + 1
+  await pg.pgExecute({
+    query: 'SELECT * FROM ensure_requests_partitions({ahead}, {back})',
+    params: { ahead: 3, back: monthsBack },
+  })
+}
+
+/** One multi-row INSERT. Every value is bound; nothing is interpolated. */
+async function insertRequestRows(pg: Postgres, rows: RequestRow[]): Promise<void> {
+  const params: Record<string, unknown> = {}
+  const tuples = rows.map((row, i) => {
+    const placeholders = REQUEST_COLUMNS.map((col) => {
+      const name = `r${i}_${col}`
+      params[name] = row[col]
+      return JSONB_COLUMNS.has(col) ? `{${name}}::jsonb` : `{${name}}`
+    })
+    return `(${placeholders.join(', ')})`
+  })
+
+  await pg.pgExecute({
+    query: `INSERT INTO requests (${REQUEST_COLUMNS.join(', ')}) VALUES ${tuples.join(', ')}`,
+    params,
+  })
+}
+
+async function seedRequests(pg: Postgres, promptVersionIds: string[]) {
+  console.log('Seeding requests...')
 
   // SecurityFlag objects, not bare strings: the dashboard renders f.type and
   // f.pattern per badge, so a plain string array renders empty badges.
@@ -169,9 +263,9 @@ async function seedRequests(promptVersionIds: string[]) {
     '[{"type":"injection","pattern":"ignore-previous","sample":"***disregard the system prompt***"},{"type":"pii","pattern":"phone","sample":"+82-10-***-1234"}]',
   ]
 
-  const rows: Record<string, unknown>[] = []
+  const rows: RequestRow[] = []
 
-  for (let day = 0; day < 30; day++) {
+  for (let day = 0; day < REQUEST_DAYS; day++) {
     // Organic growth: fewer requests older days, more recent
     const count = Math.max(10, Math.floor(12 + day * 1.8 + rand(-3, 5)))
 
@@ -200,7 +294,9 @@ async function seedRequests(promptVersionIds: string[]) {
         total_tokens: promptTok + completionTok,
         cache_read_tokens: 0,
         cache_write_tokens: 0,
-        cost_usd: costUsd,
+        // Fixed scale rather than a raw float: the column is numeric(18, 8),
+        // and a value near 1e-7 would otherwise arrive in exponent form.
+        cost_usd: costUsd.toFixed(8),
         latency_ms: rand(250, 4800),
         proxy_overhead_ms: rand(5, 90),
         status_code: isError ? pick([400, 429, 500, 503]) : 200,
@@ -208,7 +304,7 @@ async function seedRequests(promptVersionIds: string[]) {
           model,
           messages: [
             { role: 'system', content: 'You are a helpful assistant.' },
-            { role: 'user', content: `Query #${i} on day -${30 - day}` },
+            { role: 'user', content: `Query #${i} on day -${REQUEST_DAYS - day}` },
           ],
         }),
         response_body: isError
@@ -236,23 +332,50 @@ async function seedRequests(promptVersionIds: string[]) {
         session_id: hasUser ? pick(SESSIONS) : null,
         // Both flag columns are JSON-encoded ARRAYS of SecurityFlag. Writing
         // `{}` here makes the security page throw `resFlags.map is not a
-        // function` for any row with has_security_flags = 1.
+        // function` for any row with has_security_flags set, and the
+        // requests_flags_is_array CHECK now rejects the row outright.
         flags: hasFlags ? pick(securityFlags) : '[]',
         response_flags: '[]',
         has_security_flags: hasFlags,
-        created_at: toChTs(daysAgo(30 - day)),
-        truncated: 0,
+        truncated: false,
+        cache_hit: false,
         service_tier: '',
+        created_at: daysAgo(REQUEST_DAYS - day).toISOString(),
       })
     }
   }
 
-  // Batch insert 100 at a time
-  for (let i = 0; i < rows.length; i += 100) {
-    await ch.insert({ table: 'requests', values: rows.slice(i, i + 100), format: 'JSONEachRow' })
-    process.stdout.write(`  ${Math.min(i + 100, rows.length)}/${rows.length} requests\r`)
+  await ensureSeedPartitions(pg)
+
+  for (let i = 0; i < rows.length; i += REQUEST_BATCH) {
+    await insertRequestRows(pg, rows.slice(i, i + REQUEST_BATCH))
+    process.stdout.write(`  ${Math.min(i + REQUEST_BATCH, rows.length)}/${rows.length} requests\r`)
   }
   console.log(`\n  Inserted ${rows.length} requests`)
+
+  // Logging a request writes two things, not one: the row, and the org's
+  // activity watermark. The cron jobs that aggregate this table read the
+  // watermark first and skip their scan when an org has nothing new, so a
+  // demo workspace seeded with rows alone would leave anomaly detection and
+  // the digests correctly concluding there was nothing to look at.
+  //
+  // It carries the newest seeded row's timestamp, matching what the logger
+  // records, so the backdated rows stay invisible to a short-window scan
+  // exactly as real old traffic would.
+  const newest = rows.reduce(
+    (max, row) => (row.created_at > max ? row.created_at : max),
+    rows[0]!.created_at,
+  )
+  await pg.pgExecute({
+    query: `
+      INSERT INTO org_activity (organization_id, last_request_at, updated_at)
+      VALUES ({orgId}, {lastRequestAt}, now())
+      ON CONFLICT (organization_id) DO UPDATE
+        SET last_request_at = GREATEST(org_activity.last_request_at, EXCLUDED.last_request_at),
+            updated_at      = now()
+    `,
+    params: { orgId: ORG_ID, lastRequestAt: newest },
+  })
 }
 
 // ─── 3. Traces + Spans ────────────────────────────────────────────────────────
@@ -578,9 +701,12 @@ async function seedWebhook() {
 // ─── Main ─────────────────────────────────────────────────────────────────────
 async function main() {
   console.log('=== Seeding demo@spanlens.io ===\n')
+  // Imported here rather than at the top so the connection string set above is
+  // already in place, and so the pool is only opened when the script runs.
+  const pg: Postgres = await import('../apps/server/src/lib/postgres.js')
   try {
     const pvIds = await seedPrompts()
-    await seedRequests(pvIds)
+    await seedRequests(pg, pvIds)
     await seedTraces()
     await seedAlerts()
     await seedAnomalyEvents()
@@ -596,6 +722,10 @@ async function main() {
   } catch (err) {
     console.error('\nFailed:', err)
     process.exit(1)
+  } finally {
+    // Idle pool clients keep the event loop alive, so the script would hang
+    // after printing its summary.
+    await pg.resetPostgresPool()
   }
 }
 

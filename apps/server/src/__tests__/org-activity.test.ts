@@ -3,12 +3,12 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 /**
  * org-activity tests.
  *
- * The watermark decides whether a cron is allowed to skip ClickHouse, so the
- * property that actually protects us is the direction of every failure: an
- * unreadable or missing watermark must produce "assume active" and let the
- * ClickHouse query happen. Getting that backwards would silently suppress
- * customer alerts and usage rollups — a far worse outcome than the $8.80/day
- * this module exists to stop. Most of the cases below pin that direction.
+ * The watermark decides whether a cron is allowed to skip its scan of
+ * `requests`, so the property that actually protects us is the direction of
+ * every failure: an unreadable or missing watermark must produce "assume
+ * active" and let the scan happen. Getting that backwards silently suppresses
+ * customer alerts and usage rollups, which is far worse than the wasted work
+ * this module exists to avoid. Most of the cases below pin that direction.
  *
  * The write path is also throttled, so the second property worth pinning is
  * that a burst of requests for one org does not turn into a burst of

@@ -1,4 +1,4 @@
-import { unscopedClickhouse, toClickhouseTimestamp } from './clickhouse.js'
+import { pgQuery } from './postgres.js'
 import { requestsScope } from './requests-query.js'
 // Import from the cache module directly — `model-recommend-rules.ts` no
 // longer re-exports `matchSubstitute` because doing so created a circular
@@ -17,9 +17,9 @@ import { matchSubstitute } from './model-recommendations-cache.js'
  * Substitutes (curated) + matching logic live in ./model-recommend-rules.ts
  * so unit tests can exercise them without pulling in the Supabase client.
  *
- * Aggregation is done in SQL via `get_model_aggregates()` RPC to avoid
- * Supabase's 1000-row default select limit — which would silently truncate
- * data for high-traffic orgs and produce wrong recommendations.
+ * Aggregation is done in SQL rather than by pulling rows through PostgREST,
+ * which would hit the 1000-row default select limit and silently truncate
+ * data for high-traffic orgs, producing wrong recommendations.
  *
  * Achieved tracking: each recommendation is enriched with prior-window
  * cost data (the equal-length window immediately before the current one).
@@ -49,7 +49,12 @@ export interface ModelRecommendation {
   actualMonthlySavingsUsd: number | null
 }
 
-/** Shape returned by the ClickHouse aggregates query (all numbers are strings in JSONEachRow) */
+/**
+ * Shape returned by the aggregates query. `count(*)` is `int8` and every
+ * `avg` / `sum` over a numeric column is `numeric`; the driver hands both back
+ * as strings to avoid precision loss, so each field is coerced at the point of
+ * use (postgres.ts documents the rule).
+ */
 interface AggregateRow {
   provider: string
   model: string
@@ -88,9 +93,11 @@ export async function recommendModelSwaps(
   const priorWindowEndDate   = windowStartDate
   const priorWindowStartDate = new Date(Date.now() - 2 * hours * 3_600_000)
 
-  const windowStartTs      = toClickhouseTimestamp(windowStartDate)
-  const priorWindowEndTs   = toClickhouseTimestamp(priorWindowEndDate)
-  const priorWindowStartTs = toClickhouseTimestamp(priorWindowStartDate)
+  // Bound as ISO-8601 (trailing `Z` kept) and cast with `::timestamptz`, so
+  // the comparison is UTC regardless of session timezone.
+  const windowStartTs      = windowStartDate.toISOString()
+  const priorWindowEndTs   = priorWindowEndDate.toISOString()
+  const priorWindowStartTs = priorWindowStartDate.toISOString()
 
   // Recommendations need to look back up to 2× the window, so skip plan
   // retention — otherwise a free user doing 30d analysis would lose the prior
@@ -100,27 +107,25 @@ export async function recommendModelSwaps(
   // ── Phase 1: current-window aggregates ───────────────────────────────────
   let data: AggregateRow[] = []
   try {
-    const res = await unscopedClickhouse().query({
+    data = await pgQuery<AggregateRow & Record<string, unknown>>({
       query: `
         SELECT
           provider,
           model,
-          count()                AS sample_count,
+          count(*)               AS sample_count,
           avg(prompt_tokens)     AS avg_prompt_tokens,
           avg(completion_tokens) AS avg_completion_tokens,
           sum(cost_usd)          AS total_cost_usd
         FROM requests
         WHERE ${scope.whereScope}
-          AND created_at >= parseDateTime64BestEffort({windowStart:String})
+          AND created_at >= {windowStart}::timestamptz
           AND status_code IN (200, 201, 202, 204)
           AND model    != ''
           AND provider != ''
         GROUP BY provider, model
       `,
-      query_params: { ...scope.scopeParams, windowStart: windowStartTs },
-      format: 'JSONEachRow',
+      params: { ...scope.scopeParams, windowStart: windowStartTs },
     })
-    data = await res.json<AggregateRow>()
   } catch {
     return []
   }
@@ -179,41 +184,70 @@ export async function recommendModelSwaps(
     })
   }
 
-  // ── Phase 3: prior-window cost (parallel) ────────────────────────────────
-  async function fetchPriorCost(provider: string, model: string): Promise<number> {
+  // ── Phase 3: prior-window cost (ONE grouped query) ───────────────────────
+  //
+  // Deliberately NOT one query per candidate inside a `Promise.all`. The pool
+  // is sized 1 to 2 connections per instance, so those "parallel" queries
+  // serialise on it and can exhaust it, starving every other request the
+  // instance is serving.
+  //
+  // So: a single grouped scan over the prior window, narrowed to the
+  // candidates' providers, with the boundary-aware model matching done in JS.
+  // Matching per candidate, rather than assigning each row to one bucket, is
+  // what keeps a dated variant such as `gpt-4o-mini-2024-07-18` counting
+  // toward BOTH a `gpt-4o-mini` and a `gpt-4o` candidate.
+  interface PriorCostRow {
+    provider: string
+    model: string
+    total_cost_usd: string | null
+  }
+
+  /** Same rule the per-candidate query used: exact match, or `<model>-` prefix. */
+  function matchesCandidateModel(rowModel: string, candidateModel: string): boolean {
+    return rowModel === candidateModel || rowModel.startsWith(candidateModel + '-')
+  }
+
+  async function fetchPriorCosts(): Promise<number[]> {
+    if (candidates.length === 0) return []
+
+    const providers = [...new Set(candidates.map((c) => c.currentProvider))]
+
+    let rows: PriorCostRow[]
     try {
-      interface CostRow { total_cost_usd: string | null }
-      const res = await unscopedClickhouse().query({
+      rows = await pgQuery<PriorCostRow & Record<string, unknown>>({
         query: `
-          SELECT sum(cost_usd) AS total_cost_usd
+          SELECT provider, model, sum(cost_usd) AS total_cost_usd
           FROM requests
           WHERE ${scope.whereScope}
-            AND provider = {provider:String}
-            AND (model = {model:String} OR startsWith(model, {modelPrefix:String}))
-            AND created_at >= parseDateTime64BestEffort({windowStart:String})
-            AND created_at <  parseDateTime64BestEffort({windowEnd:String})
+            AND provider = ANY({providers}::text[])
+            AND created_at >= {windowStart}::timestamptz
+            AND created_at <  {windowEnd}::timestamptz
             AND status_code IN (200, 201, 202, 204)
+          GROUP BY provider, model
         `,
-        query_params: {
+        params: {
           ...scope.scopeParams,
-          provider,
-          model,
-          modelPrefix: model + '-',
+          providers,
           windowStart: priorWindowStartTs,
           windowEnd: priorWindowEndTs,
         },
-        format: 'JSONEachRow',
       })
-      const rows = await res.json<CostRow>()
-      return Number(rows[0]?.total_cost_usd ?? 0)
     } catch {
-      return 0 // fail open — no prior data is not a blocker
+      return candidates.map(() => 0) // fail open — no prior data is not a blocker
     }
+
+    return candidates.map((c) => {
+      let total = 0
+      for (const row of rows) {
+        if (row.provider !== c.currentProvider) continue
+        if (!matchesCandidateModel(row.model, c.currentModel)) continue
+        total += Number(row.total_cost_usd ?? 0)
+      }
+      return total
+    })
   }
 
-  const priorCosts = await Promise.all(
-    candidates.map((c) => fetchPriorCost(c.currentProvider, c.currentModel)),
-  )
+  const priorCosts = await fetchPriorCosts()
 
   // ── Phase 4: enrich + filter ──────────────────────────────────────────────
   const recommendations: ModelRecommendation[] = []
@@ -259,4 +293,91 @@ export async function recommendModelSwaps(
   })
 
   return recommendations
+}
+
+/** Token-count percentiles for one provider/model over a recent window. */
+export interface TokenPercentiles {
+  p50PromptTokens: number
+  p95PromptTokens: number
+  p99PromptTokens: number
+  p50CompletionTokens: number
+  p95CompletionTokens: number
+  p99CompletionTokens: number
+  sampleCount: number
+}
+
+interface PercentileRow {
+  p50_prompt: string | number | null
+  p95_prompt: string | number | null
+  p99_prompt: string | number | null
+  p50_completion: string | number | null
+  p95_completion: string | number | null
+  p99_completion: string | number | null
+  sample_count: string | number
+}
+
+/**
+ * Prompt and completion token percentiles for a provider/model pair, used by
+ * `/api/v1/recommendations/percentiles` to show what a typical call to a model
+ * actually costs before someone swaps to a cheaper one.
+ *
+ * Returns null when the window holds no usable sample, so the caller can show
+ * "not enough data" rather than a row of zeroes.
+ *
+ * `starts_with(model, prefix)` widens the match to dated variants: OpenAI
+ * reports `gpt-4o-mini-2024-07-18` in the response body, and that is what gets
+ * stored, so an exact match on `gpt-4o-mini` alone would find nothing.
+ *
+ * `ignoreRetention` keeps the window the caller asked for rather than clipping
+ * it to the plan's retention — this is a sizing calculation, not a data view.
+ * Tenant isolation still comes from `requestsScope`.
+ */
+export async function getTokenPercentiles(
+  organizationId: string,
+  opts: { provider: string; model: string; hours: number },
+): Promise<TokenPercentiles | null> {
+  const windowStart = new Date(Date.now() - opts.hours * 3_600_000).toISOString()
+  const scope = await requestsScope(organizationId, { ignoreRetention: true })
+
+  const rows = await pgQuery<PercentileRow & Record<string, unknown>>({
+    query: `
+      SELECT
+        percentile_cont(0.50) WITHIN GROUP (ORDER BY prompt_tokens)     AS p50_prompt,
+        percentile_cont(0.95) WITHIN GROUP (ORDER BY prompt_tokens)     AS p95_prompt,
+        percentile_cont(0.99) WITHIN GROUP (ORDER BY prompt_tokens)     AS p99_prompt,
+        percentile_cont(0.50) WITHIN GROUP (ORDER BY completion_tokens) AS p50_completion,
+        percentile_cont(0.95) WITHIN GROUP (ORDER BY completion_tokens) AS p95_completion,
+        percentile_cont(0.99) WITHIN GROUP (ORDER BY completion_tokens) AS p99_completion,
+        count(*)                                                        AS sample_count
+      FROM requests
+      WHERE ${scope.whereScope}
+        AND provider = {provider}
+        AND (model = {model} OR starts_with(model, {modelPrefix}))
+        AND created_at >= {windowStart}::timestamptz
+        AND status_code IN (200, 201, 202, 204)
+        AND prompt_tokens     > 0
+        AND completion_tokens > 0
+    `,
+    params: {
+      ...scope.scopeParams,
+      provider: opts.provider,
+      model: opts.model,
+      modelPrefix: opts.model + '-',
+      windowStart,
+    },
+  })
+
+  const row = rows[0]
+  const sampleCount = row ? Number(row.sample_count) : 0
+  if (!row || sampleCount === 0) return null
+
+  return {
+    p50PromptTokens:     Math.round(Number(row.p50_prompt     ?? 0)),
+    p95PromptTokens:     Math.round(Number(row.p95_prompt     ?? 0)),
+    p99PromptTokens:     Math.round(Number(row.p99_prompt     ?? 0)),
+    p50CompletionTokens: Math.round(Number(row.p50_completion ?? 0)),
+    p95CompletionTokens: Math.round(Number(row.p95_completion ?? 0)),
+    p99CompletionTokens: Math.round(Number(row.p99_completion ?? 0)),
+    sampleCount,
+  }
 }

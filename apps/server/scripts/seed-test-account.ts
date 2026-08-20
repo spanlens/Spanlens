@@ -2,7 +2,7 @@
  * Seeds a local test account with dummy dashboard data.
  *
  * Creates: 1 auth user, 1 organization, 2 projects, ~6 agent traces with
- * 30+ spans, ~120 LLM requests in ClickHouse spread across the last 7 days.
+ * 30+ spans, ~120 LLM requests spread across the last 7 days.
  *
  * Intentionally does NOT create Spanlens (sl_live_*) API keys or provider
  * keys — per the seed request, the account starts "clean" so the user can
@@ -22,11 +22,6 @@ const SUPABASE_URL = process.env['SUPABASE_URL'] ?? 'http://127.0.0.1:54321'
 const SUPABASE_SERVICE_ROLE_KEY =
   process.env['SUPABASE_SERVICE_ROLE_KEY'] ??
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU'
-const CLICKHOUSE_URL = process.env['CLICKHOUSE_URL'] ?? 'http://localhost:8123'
-const CLICKHOUSE_USER = process.env['CLICKHOUSE_USER'] ?? 'spanlens'
-const CLICKHOUSE_PASSWORD = process.env['CLICKHOUSE_PASSWORD'] ?? 'spanlens'
-const CLICKHOUSE_DB = process.env['CLICKHOUSE_DB'] ?? 'spanlens'
-
 const TEST_EMAIL = 'testuser@spanlens.local'
 const TEST_PASSWORD = 'TestPass123!'
 const TEST_FULL_NAME = 'Test User'
@@ -36,13 +31,16 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
   auth: { autoRefreshToken: false, persistSession: false },
 })
 
-// ── Utility ───────────────────────────────────────────────────────────────────
-function ts(date: Date): string {
-  // ClickHouse DateTime64 doesn't accept the trailing 'Z' from .toISOString()
-  // (see CLAUDE.md gotcha #18). 'T' → ' ' too.
-  return date.toISOString().replace('T', ' ').replace('Z', '')
-}
+// `requests` is read and written through the pooled connection in
+// lib/postgres.ts, which resolves its connection string at module load and
+// throws when it is missing. Hence the assignment before the import: an
+// already-set value (a real .env) still wins, and a bare checkout falls back
+// to the local Supabase stack like every other default in this file.
+process.env['SUPABASE_DB_POOLER_URL'] ??= 'postgresql://postgres:postgres@127.0.0.1:54322/postgres'
 
+const { pgExecute, resetPostgresPool } = await import('../src/lib/postgres.js')
+
+// ── Utility ───────────────────────────────────────────────────────────────────
 function pick<T>(arr: readonly T[], i: number): T {
   return arr[i % arr.length] as T
 }
@@ -54,20 +52,6 @@ function jitter(i: number, scale: number): number {
   return ((x - Math.floor(x)) - 0.5) * 2 * scale
 }
 
-async function ch(query: string, body?: string): Promise<void> {
-  const url = `${CLICKHOUSE_URL}/?query=${encodeURIComponent(query)}&database=${CLICKHOUSE_DB}`
-  const auth = 'Basic ' + Buffer.from(`${CLICKHOUSE_USER}:${CLICKHOUSE_PASSWORD}`).toString('base64')
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { Authorization: auth, 'Content-Type': 'application/json' },
-    body: body ?? '',
-  })
-  if (!res.ok) {
-    const txt = await res.text()
-    throw new Error(`ClickHouse query failed (${res.status}): ${txt}\nQuery: ${query.slice(0, 200)}`)
-  }
-}
-
 // ── Cleanup any prior run ─────────────────────────────────────────────────────
 async function cleanup(): Promise<void> {
   console.log('🧹 cleaning up any previous test account...')
@@ -76,7 +60,7 @@ async function cleanup(): Promise<void> {
   const { data: users } = await supabase.auth.admin.listUsers({ page: 1, perPage: 200 })
   const existing = users?.users.find((u) => u.email === TEST_EMAIL)
   if (existing) {
-    // Find their orgs first so we can delete dependent ClickHouse rows
+    // Find their orgs so the delete below has something to aim at.
     const { data: memberships } = await supabase
       .from('org_members')
       .select('organization_id')
@@ -84,11 +68,11 @@ async function cleanup(): Promise<void> {
     const orgIds = (memberships ?? []).map((m) => m.organization_id as string)
 
     if (orgIds.length > 0) {
-      // Delete from ClickHouse first (no FK, no cascade — manual)
-      const inList = orgIds.map((id) => `'${id}'`).join(',')
-      await ch(`ALTER TABLE requests DELETE WHERE organization_id IN (${inList})`)
-
-      // Delete orgs — cascades to projects, org_members, traces, spans via FK
+      // One delete now covers the log rows too. `requests.organization_id`
+      // references organizations(id) ON DELETE CASCADE, as does the
+      // `org_activity` watermark seeded alongside them, so the separate pass
+      // that used to be needed while the logs lived outside Postgres is gone.
+      // Projects, members, traces and spans cascade the same way.
       await supabase.from('organizations').delete().in('id', orgIds)
     }
 
@@ -308,7 +292,7 @@ async function seedTraces(ctx: SeedContext): Promise<void> {
   console.log(`   ${tracesPayload.length} traces, ${spansPayload.length} spans`)
 }
 
-// ── Seed ClickHouse requests ──────────────────────────────────────────────────
+// ── Seed requests ─────────────────────────────────────────────────────────────
 //
 // Each model has its own token-shape so Savings recommendations actually fire:
 // gpt-4o lives in the gpt-4o-mini envelope (≤500 prompt, ≤150 completion),
@@ -335,13 +319,91 @@ const MODELS: readonly ModelSeed[] = [
   { provider: 'gemini',    model: 'gemini-1.5-pro',               pricePerK: 0.00125,  promptMean: 980,  completionMean: 290, samples: 1000 },
 ] as const
 
+/**
+ * Column list and order for the `requests` insert, mirroring REQUEST_COLUMNS in
+ * lib/logger.ts. `flags` / `response_flags` are jsonb and need the cast on the
+ * placeholder; everything else binds as-is.
+ */
+const REQUEST_COLUMNS = [
+  'id',
+  'organization_id',
+  'project_id',
+  'api_key_id',
+  'provider',
+  'model',
+  'prompt_tokens',
+  'completion_tokens',
+  'total_tokens',
+  'cache_read_tokens',
+  'cache_write_tokens',
+  'cost_usd',
+  'latency_ms',
+  'proxy_overhead_ms',
+  'status_code',
+  'request_body',
+  'response_body',
+  'error_message',
+  'trace_id',
+  'span_id',
+  'prompt_version_id',
+  'provider_key_id',
+  'user_id',
+  'session_id',
+  'flags',
+  'response_flags',
+  'has_security_flags',
+  'truncated',
+  'cache_hit',
+  'service_tier',
+  'created_at',
+] as const
+
+const JSONB_COLUMNS = new Set<string>(['flags', 'response_flags'])
+
+// Postgres refuses a statement carrying more than 65535 bind parameters, which
+// at 31 columns puts the ceiling near 2100 rows. Half of that keeps the margin
+// wide enough that adding a column never quietly walks into the limit.
+const INSERT_BATCH_ROWS = 1000
+
+/** Inserts seed rows in batches, binding every value. */
+async function insertRequestRows(rows: ReadonlyArray<Record<string, unknown>>): Promise<void> {
+  for (let offset = 0; offset < rows.length; offset += INSERT_BATCH_ROWS) {
+    const batch = rows.slice(offset, offset + INSERT_BATCH_ROWS)
+    const params: Record<string, unknown> = {}
+    const tuples = batch.map((row, i) => {
+      const placeholders = REQUEST_COLUMNS.map((col) => {
+        const name = `r${i}_${col}`
+        params[name] = row[col]
+        return JSONB_COLUMNS.has(col) ? `{${name}}::jsonb` : `{${name}}`
+      })
+      return `(${placeholders.join(', ')})`
+    })
+
+    await pgExecute({
+      query: `INSERT INTO requests (${REQUEST_COLUMNS.join(', ')}) VALUES ${tuples.join(', ')}`,
+      params,
+    })
+  }
+}
+
 async function seedRequests(ctx: SeedContext): Promise<void> {
   const totalCount = MODELS.reduce((s, m) => s + m.samples, 0)
-  console.log(`\n📊 seeding ClickHouse requests (~${totalCount} across 7 days)...`)
+  console.log(`\n📊 seeding requests (~${totalCount} across 7 days)...`)
+
+  // `requests` is RANGE-partitioned by month and a row whose month has no
+  // partition lands in `requests_default`, which the partition cron treats as
+  // an incident. The seven-day window straddles a month boundary for a week
+  // out of every month, so the previous month has to exist too, which is what
+  // the second argument covers.
+  await pgExecute({
+    query: 'SELECT * FROM ensure_requests_partitions({ahead}, {back})',
+    params: { ahead: 3, back: 1 },
+  })
 
   const rows: Array<Record<string, unknown>> = []
   const now = Date.now()
   let globalIdx = 0
+  let newestCreatedAt = 0
 
   for (let mIdx = 0; mIdx < MODELS.length; mIdx++) {
     const m = MODELS[mIdx]!
@@ -352,6 +414,7 @@ async function seedRequests(ctx: SeedContext): Promise<void> {
       const inWindow = s < Math.floor(m.samples * 0.35)
       const ageHours = inWindow ? Math.random() * 24 : 24 + Math.random() * 144
       const createdAt = new Date(now - ageHours * 3600_000)
+      if (createdAt.getTime() > newestCreatedAt) newestCreatedAt = createdAt.getTime()
 
       const promptT = Math.max(40, Math.round(m.promptMean + jitter(i, m.promptMean * 0.25)))
       const completionT = Math.max(15, Math.round(m.completionMean + jitter(i + 7, m.completionMean * 0.3)))
@@ -372,7 +435,7 @@ async function seedRequests(ctx: SeedContext): Promise<void> {
         total_tokens: totalT,
         cache_read_tokens: 0,
         cache_write_tokens: 0,
-        cost_usd: isError ? null : Number(costUsd.toFixed(8)),
+        cost_usd: isError ? null : costUsd.toFixed(8),
         latency_ms: latency,
         proxy_overhead_ms: Math.max(5, Math.round(18 + jitter(i + 21, 12))),
         status_code: isError ? 429 : 200,
@@ -385,17 +448,37 @@ async function seedRequests(ctx: SeedContext): Promise<void> {
         provider_key_id: null,
         user_id: `u_${(i % 14) + 1}`,
         session_id: `s_${(i % 28) + 1}`,
+        // Both columns carry a CHECK that the value is a JSON array, so an
+        // empty object here would reject the row.
         flags: '[]',
-        response_flags: '{}',
+        response_flags: '[]',
         has_security_flags: false,
-        created_at: ts(createdAt),
+        truncated: false,
+        cache_hit: false,
+        service_tier: '',
+        created_at: createdAt.toISOString(),
       })
     }
   }
 
-  // ClickHouse JSONEachRow — one JSON object per line
-  const body = rows.map((r) => JSON.stringify(r)).join('\n')
-  await ch('INSERT INTO requests FORMAT JSONEachRow', body)
+  await insertRequestRows(rows)
+
+  // Logging a request writes the row and bumps the org's activity watermark.
+  // The cron jobs that aggregate `requests` read that watermark first and skip
+  // their scan for an org with nothing new, so seeded traffic without it is
+  // traffic those jobs never see. Carries the newest row's timestamp, matching
+  // what the logger records.
+  await pgExecute({
+    query: `
+      INSERT INTO org_activity (organization_id, last_request_at, updated_at)
+      VALUES ({orgId}, {lastRequestAt}, now())
+      ON CONFLICT (organization_id) DO UPDATE
+        SET last_request_at = GREATEST(org_activity.last_request_at, EXCLUDED.last_request_at),
+            updated_at      = now()
+    `,
+    params: { orgId: ctx.orgId, lastRequestAt: new Date(newestCreatedAt).toISOString() },
+  })
+
   console.log(`   ${rows.length} requests inserted`)
 }
 
@@ -907,7 +990,10 @@ async function main(): Promise<void> {
   console.log('━'.repeat(64) + '\n')
 }
 
-main().catch((err) => {
-  console.error('\n❌ seed failed:', err)
-  process.exit(1)
-})
+main()
+  .catch((err) => {
+    console.error('\n❌ seed failed:', err)
+    // Set rather than exit, so the pool still gets a chance to close.
+    process.exitCode = 1
+  })
+  .finally(() => resetPostgresPool())

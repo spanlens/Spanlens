@@ -1,28 +1,23 @@
 import { supabaseAdmin } from './db.js'
 
 /**
- * Per-org "when did we last log a request" watermark, kept in Postgres so
- * crons can decide whether ClickHouse is worth waking.
+ * Per-org "when did we last log a request" watermark, so a cron can tell
+ * whether an organization has anything new before it queries `requests`.
  *
- * ClickHouse Cloud bills compute by wall-clock uptime and suspends the
- * service only after 15 minutes with no queries. That makes query *spacing*,
- * not query cost, the thing that shows up on the invoice: a cron asking a
- * cheap question every 15 minutes keeps the service billed around the clock.
- * Measured on 2026-08-18, our crons ran 1152 ClickHouse queries in 24h
- * against roughly 8 real customer requests/day, for a flat $8.805/day.
- *
- * Almost all of those queries were foregone conclusions — they asked about
- * organizations that had sent nothing. Postgres is already awake for every
- * request we serve, so asking it first is free, and the answer lets the
- * crons skip ClickHouse entirely on a quiet system.
+ * Most of what the cron fleet asks is a foregone conclusion: the question is
+ * about an organization that has sent nothing since the last run. This table
+ * answers that from one indexed row per org, where the same question put to
+ * `requests` is an aggregate over the log itself. With most tenants idle most
+ * of the time, that is the difference between a cron tick costing one small
+ * lookup and one costing a scan per tenant.
  *
  * Everything here fails OPEN. If the watermark cannot be read we report
- * "assume active" and the caller queries ClickHouse exactly as it did
- * before. A stale watermark must never be able to suppress a real alert or
- * a real usage rollup; the worst acceptable failure is an extra wake-up.
- * This also makes the deploy ordering safe: if the code ships ahead of the
- * migration (CLAUDE.md gotcha #25), the missing table degrades to today's
- * behaviour rather than to silence.
+ * "assume active" and the caller runs its full query exactly as it would
+ * without the gate. A stale watermark must never be able to suppress a real
+ * alert or a real usage rollup; the worst acceptable failure is one wasted
+ * scan. This also makes the deploy ordering safe: if the code ships ahead of
+ * the migration (CLAUDE.md gotcha #25), the missing table degrades to the
+ * ungated behaviour rather than to silence.
  */
 
 /**
@@ -50,7 +45,7 @@ export function resetOrgActivityThrottle(): void {
 
 /**
  * Stamp `organizationId` as active now. Called from the request logging
- * path after a successful ClickHouse insert. Never throws: losing a
+ * path after the `requests` row lands. Never throws: losing a
  * watermark write costs at most one skipped cron cycle for that org, and
  * must not be able to fail a request that already succeeded.
  */

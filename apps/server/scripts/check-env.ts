@@ -228,10 +228,61 @@ async function checkSupabaseReachable(): Promise<CheckResult> {
   return pingHttp(`${url.replace(/\/$/, '')}/auth/v1/health`)
 }
 
-async function checkClickhouseReachable(): Promise<CheckResult> {
-  const url = process.env['CLICKHOUSE_URL']
-  if (!url) return { status: 'skip', detail: 'CLICKHOUSE_URL not set, skipped' }
-  return pingHttp(`${url.replace(/\/$/, '')}/ping`)
+/**
+ * Opens a real connection and runs `SELECT 1`. Unlike the HTTP probes above,
+ * a bad password or an IP that the pooler refuses only shows up on connect,
+ * which is exactly the failure this script exists to catch before a deploy.
+ */
+async function checkPoolerReachable(): Promise<CheckResult> {
+  if (!process.env['SUPABASE_DB_POOLER_URL']) {
+    return { status: 'skip', detail: 'SUPABASE_DB_POOLER_URL not set, skipped' }
+  }
+  try {
+    const { pingPostgres, resetPostgresPool } = await import('../src/lib/postgres.js')
+    const result = await pingPostgres()
+    // Close the pool so the script can exit instead of idling on an open
+    // connection until the pooler times it out.
+    await resetPostgresPool()
+    return result.ok
+      ? { status: 'ok', detail: `${result.latencyMs}ms` }
+      : { status: 'fail', detail: result.error ?? 'connection failed' }
+  } catch (err) {
+    return { status: 'fail', detail: err instanceof Error ? err.message : 'connection failed' }
+  }
+}
+
+/**
+ * Validates the pooled Postgres connection string without printing any part
+ * of it — it is a full database credential, and an env checker that echoes
+ * one into a terminal or a CI log has done more harm than the missing
+ * variable would have.
+ *
+ * The port matters enough to check. Supavisor serves session mode on 5432
+ * and transaction mode on 6543; only the latter is safe for a function that
+ * scales horizontally, because session mode pins a backend per client and a
+ * few dozen cold starts exhaust the pool. Migrations are the exception and
+ * use the direct port, but they go through the Supabase CLI, not this.
+ */
+function validatePoolerUrl(value: string | undefined): CheckResult {
+  if (!value || value.trim() === '') {
+    return { status: 'fail', detail: 'not set' }
+  }
+  let parsed: URL
+  try {
+    parsed = new URL(value)
+  } catch {
+    return { status: 'fail', detail: 'not a valid connection URL' }
+  }
+  if (parsed.protocol !== 'postgres:' && parsed.protocol !== 'postgresql:') {
+    return { status: 'fail', detail: `expected a postgres:// URL, got ${parsed.protocol}//` }
+  }
+  if (parsed.port === '5432') {
+    return {
+      status: 'warn',
+      detail: 'port 5432 is session mode; use 6543 (transaction mode) for serverless',
+    }
+  }
+  return { status: 'ok', detail: `pooler on port ${parsed.port || '(default)'}` }
 }
 
 // ── Check list ──────────────────────────────────────────────────────────────
@@ -259,24 +310,10 @@ const CHECKS: Check[] = [
     run: () => validateBase64Bytes(process.env['ENCRYPTION_KEY'], 'ENCRYPTION_KEY', 32),
   },
   {
-    name: 'CLICKHOUSE_URL',
+    name: 'SUPABASE_DB_POOLER_URL',
     level: 'required',
-    run: () => validateUrl(process.env['CLICKHOUSE_URL'], 'CLICKHOUSE_URL'),
-  },
-  {
-    name: 'CLICKHOUSE_USER',
-    level: 'required',
-    run: () => validateRequiredString(process.env['CLICKHOUSE_USER'], 'CLICKHOUSE_USER'),
-  },
-  {
-    name: 'CLICKHOUSE_PASSWORD',
-    level: 'required',
-    run: () => validateRequiredString(process.env['CLICKHOUSE_PASSWORD'], 'CLICKHOUSE_PASSWORD'),
-  },
-  {
-    name: 'CLICKHOUSE_DB',
-    level: 'required',
-    run: () => validateRequiredString(process.env['CLICKHOUSE_DB'], 'CLICKHOUSE_DB'),
+    unlocks: 'request logs, dashboard analytics, exports',
+    run: () => validatePoolerUrl(process.env['SUPABASE_DB_POOLER_URL']),
   },
   {
     name: 'PORT',
@@ -297,9 +334,9 @@ const CHECKS: Check[] = [
     run: () => checkSupabaseReachable(),
   },
   {
-    name: 'ClickHouse HTTP',
+    name: 'Postgres pooler',
     level: 'connectivity',
-    run: () => checkClickhouseReachable(),
+    run: () => checkPoolerReachable(),
   },
 
   // Optional features

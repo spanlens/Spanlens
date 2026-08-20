@@ -16,7 +16,7 @@
  *   - `logWarn(code, context, err?)` — same shape for non-error severity.
  *
  * Output format is one line per call, prefixed with the level + code so
- * `grep -E "ERROR\\[CH_INSERT_FAILED\\]" server.log` works. JSON-encoded
+ * `grep -E "ERROR\\[REQUEST_LOG_INSERT_FAILED\\]" server.log` works. JSON-encoded
  * payload follows for parsability. Sentry's `captureException` is *not*
  * called here — that's the responsibility of the global onError handler
  * in app.ts so we don't double-capture.
@@ -31,8 +31,10 @@ import { maskApiKeys } from './pii-mask.js'
 /** Stable error codes — extend the union as call sites are migrated. */
 export type LogCode =
   // logger.ts hot path
-  | 'CH_INSERT_FAILED'
+  | 'REQUEST_LOG_INSERT_FAILED'
   | 'FALLBACK_INSERT_FAILED'
+  // requests table partition upkeep
+  | 'PARTITION_MAINTENANCE_FAILED'
   // webhook delivery
   | 'WEBHOOK_DISPATCH_FAILED'
   | 'WEBHOOK_FETCH_FAILED'

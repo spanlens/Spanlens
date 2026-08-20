@@ -10,6 +10,8 @@ build/
 .env.local
 .env.production
 .env.*.local
+# Backups taken before editing a .env hold the same live credentials it does.
+.env.bak*
 
 # supabase
 supabase/.branches/

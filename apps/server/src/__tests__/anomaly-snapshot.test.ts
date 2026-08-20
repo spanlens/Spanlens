@@ -5,15 +5,11 @@ vi.mock('../lib/db.js', () => ({
   supabaseAdmin: { from: mockFrom },
 }))
 
-// The active-org list comes from the Postgres activity watermark
-// (lib/org-activity.ts). It used to be a `SELECT DISTINCT organization_id`
-// against ClickHouse, which stayed as the fallback for when the watermark
-// cannot be read — see anomaly-snapshot-gate.test.ts for both paths.
-// setActiveOrgs feeds whichever one the case under test exercises.
-const mockChQuery = vi.hoisted(() => vi.fn())
-vi.mock('../lib/clickhouse.js', () => ({
-  unscopedClickhouse: () => ({ query: mockChQuery }),
-}))
+// The active-org list comes from the activity watermark (lib/org-activity.ts).
+// When the watermark cannot be read the job falls back to a
+// `SELECT DISTINCT organization_id` over `requests`; anomaly-snapshot-gate.test.ts
+// exercises both paths. The cases here run the watermark path, which
+// setActiveOrgs feeds.
 
 const mockGetOrgActivitySince = vi.hoisted(() => vi.fn())
 vi.mock('../lib/org-activity.js', () => ({
@@ -22,9 +18,6 @@ vi.mock('../lib/org-activity.js', () => ({
 
 function setActiveOrgs(orgIds: string[]): void {
   mockGetOrgActivitySince.mockResolvedValue(new Map(orgIds.map((id) => [id, Date.now()])))
-  mockChQuery.mockResolvedValue({
-    json: () => Promise.resolve(orgIds.map((id) => ({ organization_id: id }))),
-  })
 }
 
 const mockDetectAnomalies = vi.hoisted(() => vi.fn())
@@ -99,7 +92,6 @@ function setupFrom({
 
 beforeEach(() => {
   mockFrom.mockReset()
-  mockChQuery.mockReset()
   mockGetOrgActivitySince.mockReset()
   mockDetectAnomalies.mockReset()
   mockDeliverToChannel.mockReset()

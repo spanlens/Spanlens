@@ -274,7 +274,7 @@ organizationsRouter.patch('/me/branding', requireAdmin, async (c) => {
 //
 // This is BODY sampling, not row sampling: every request still writes a row
 // (tokens/cost/counts stay exact for billing), only the stored prompt/response
-// body text is dropped for (1 - rate) of requests to cut ClickHouse storage.
+// body text is dropped for (1 - rate) of requests to cut storage.
 // See lib/logger.ts + lib/org-log-config.ts.
 organizationsRouter.patch('/me/logging', requireAdmin, async (c) => {
   const orgId = c.get('orgId')

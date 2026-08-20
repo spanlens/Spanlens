@@ -3,11 +3,11 @@ import { parsePageLimit } from './params.js'
 
 /**
  * `parsePageLimit` is shared by every paginated read endpoint (requests,
- * traces, sessions, users). The clamps protect ClickHouse from
+ * traces, sessions, users). The clamps protect the database from
  * cost-multiplying inputs:
  *   - limit clamp prevents per-query result-set blowup
  *   - page clamp prevents O(offset) deep-pagination scans
- * A regression here lets an attacker burn ClickHouse seconds with a single
+ * A regression here lets an attacker burn database time with a single
  * crafted query string.
  */
 
@@ -55,8 +55,8 @@ describe('parsePageLimit — page clamping (SSRF/DoS defense)', () => {
   })
 
   test('page > maxPage (10000 default) is clamped to maxPage', () => {
-    // Regression for "ClickHouse OFFSET 9.99B" DoS — without the clamp,
-    // ?page=99999999 produces an unbounded offset.
+    // Regression for the deep-OFFSET DoS: without the clamp, ?page=99999999
+    // asks Postgres to walk and discard billions of rows for one page.
     const { page, offset } = parsePageLimit('99999999', '100')
     expect(page).toBe(10_000)
     expect(offset).toBe(999_900) // (10000 - 1) * 100

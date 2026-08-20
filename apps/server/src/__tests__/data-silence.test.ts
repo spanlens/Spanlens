@@ -5,13 +5,9 @@ vi.mock('../lib/db.js', () => ({
   supabaseAdmin: { from: mockFrom },
 }))
 
-const mockChQuery = vi.hoisted(() => vi.fn())
-vi.mock('../lib/clickhouse.js', () => ({
-  unscopedClickhouse: () => ({ query: mockChQuery }),
-  // Real implementation is trivial — inline it so the module under test
-  // still normalizes CH DateTime64 strings to ISO 'Z' form.
-  fromClickhouseTimestamp: (s: string | null | undefined) =>
-    s ? s.replace(' ', 'T') + 'Z' : null,
+const mockPgQuery = vi.hoisted(() => vi.fn())
+vi.mock('../lib/postgres.js', () => ({
+  pgQuery: mockPgQuery,
 }))
 
 const mockSendEmail = vi.hoisted(() => vi.fn())
@@ -146,8 +142,13 @@ interface MockState {
 
 let state: MockState
 
-function setChTraffic(rows: Array<Record<string, unknown>>): void {
-  mockChQuery.mockResolvedValue({ json: () => Promise.resolve(rows) })
+/**
+ * `pgQuery` resolves the row array directly. Timestamps arrive already
+ * normalised to ISO 'Z' — lib/postgres.ts installs a timestamptz parser, so
+ * the job never sees a local-time string.
+ */
+function setTraffic(rows: Array<Record<string, unknown>>): void {
+  mockPgQuery.mockResolvedValue(rows)
 }
 
 function setupFrom(): void {
@@ -214,7 +215,7 @@ beforeEach(() => {
     orgName: 'Acme Inc',
   }
   mockFrom.mockReset()
-  mockChQuery.mockReset()
+  mockPgQuery.mockReset()
   mockSendEmail.mockReset()
   mockRenderEmail.mockClear()
   mockGetAdminEmails.mockReset()
@@ -225,14 +226,15 @@ beforeEach(() => {
 
 describe('runDataSilenceJob — new silence episode', () => {
   it('opens an episode, emails admins, marks email_sent, and writes an audit row', async () => {
-    // JSONEachRow returns counts as strings and DateTime64 without Z — the
-    // job must survive both (gotchas #18/#19).
-    setChTraffic([
+    // `count(*)` is int8, which node-postgres hands back as a string — the
+    // job must coerce it at the boundary (gotcha #19 applies to Postgres
+    // too). `max(created_at)` arrives as an ISO 'Z' string.
+    setTraffic([
       {
         organization_id: 'org-1',
         prior_count: '120',
         recent_count: '0',
-        last_request_at: '2026-07-05 08:00:00.000',
+        last_request_at: '2026-07-05T08:00:00.000Z',
       },
     ])
 
@@ -263,9 +265,9 @@ describe('runDataSilenceJob — new silence episode', () => {
   })
 
   it('skips low-traffic orgs and orgs with recent activity', async () => {
-    setChTraffic([
+    setTraffic([
       { organization_id: 'org-low', prior_count: '10', recent_count: '0', last_request_at: null },
-      { organization_id: 'org-live', prior_count: '500', recent_count: '42', last_request_at: '2026-07-06 09:00:00.000' },
+      { organization_id: 'org-live', prior_count: '500', recent_count: '42', last_request_at: '2026-07-06T09:00:00.000Z' },
     ])
 
     const result = await runDataSilenceJob()
@@ -276,8 +278,8 @@ describe('runDataSilenceJob — new silence episode', () => {
 
   it('does not email again while an episode is open (one email per episode)', async () => {
     state.openEpisodes = [episode({ email_sent: true })]
-    setChTraffic([
-      { organization_id: 'org-1', prior_count: '120', recent_count: '0', last_request_at: '2026-07-05 08:00:00.000' },
+    setTraffic([
+      { organization_id: 'org-1', prior_count: '120', recent_count: '0', last_request_at: '2026-07-05T08:00:00.000Z' },
     ])
 
     const result = await runDataSilenceJob()
@@ -288,8 +290,8 @@ describe('runDataSilenceJob — new silence episode', () => {
 
   it('treats a 23505 insert conflict as an already-open episode (no email, no error)', async () => {
     state.insertError = { message: 'duplicate key value', code: '23505' }
-    setChTraffic([
-      { organization_id: 'org-1', prior_count: '120', recent_count: '0', last_request_at: '2026-07-05 08:00:00.000' },
+    setTraffic([
+      { organization_id: 'org-1', prior_count: '120', recent_count: '0', last_request_at: '2026-07-05T08:00:00.000Z' },
     ])
 
     const result = await runDataSilenceJob()
@@ -300,8 +302,8 @@ describe('runDataSilenceJob — new silence episode', () => {
 
   it('records an error and leaves email_sent false when no admin recipients exist', async () => {
     mockGetAdminEmails.mockResolvedValue([])
-    setChTraffic([
-      { organization_id: 'org-1', prior_count: '120', recent_count: '0', last_request_at: '2026-07-05 08:00:00.000' },
+    setTraffic([
+      { organization_id: 'org-1', prior_count: '120', recent_count: '0', last_request_at: '2026-07-05T08:00:00.000Z' },
     ])
 
     const result = await runDataSilenceJob()
@@ -315,8 +317,8 @@ describe('runDataSilenceJob — new silence episode', () => {
 describe('runDataSilenceJob — resolution and retry', () => {
   it('resolves an open episode when traffic resumes', async () => {
     state.openEpisodes = [episode()]
-    setChTraffic([
-      { organization_id: 'org-1', prior_count: '80', recent_count: '9', last_request_at: '2026-07-06 10:00:00.000' },
+    setTraffic([
+      { organization_id: 'org-1', prior_count: '80', recent_count: '9', last_request_at: '2026-07-06T10:00:00.000Z' },
     ])
 
     const result = await runDataSilenceJob()
@@ -328,7 +330,7 @@ describe('runDataSilenceJob — resolution and retry', () => {
   it('retries a failed send on the next run without opening a new episode', async () => {
     state.openEpisodes = [episode({ email_sent: false })]
     // Org fell out of the lookback window entirely — still silent.
-    setChTraffic([])
+    setTraffic([])
 
     const result = await runDataSilenceJob()
     expect(result.episodes_opened).toBe(0)
@@ -342,8 +344,8 @@ describe('runDataSilenceJob — resolution and retry', () => {
 
   it('counts a dev-fallback send (RESEND_API_KEY unset) as not sent so it retries later', async () => {
     mockSendEmail.mockResolvedValue({ sent: false })
-    setChTraffic([
-      { organization_id: 'org-1', prior_count: '120', recent_count: '0', last_request_at: '2026-07-05 08:00:00.000' },
+    setTraffic([
+      { organization_id: 'org-1', prior_count: '120', recent_count: '0', last_request_at: '2026-07-05T08:00:00.000Z' },
     ])
 
     const result = await runDataSilenceJob()
@@ -354,17 +356,17 @@ describe('runDataSilenceJob — resolution and retry', () => {
 })
 
 describe('runDataSilenceJob — error handling', () => {
-  it('returns an error result when ClickHouse is unreachable', async () => {
-    mockChQuery.mockRejectedValue(new Error('CH down'))
+  it('returns an error result when the requests query fails', async () => {
+    mockPgQuery.mockRejectedValue(new Error('requests query failed'))
     const result = await runDataSilenceJob()
-    expect(result.errors).toContain('CH down')
+    expect(result.errors).toContain('requests query failed')
     expect(result.episodes_opened).toBe(0)
   })
 
   it('continues processing other orgs when one org fails', async () => {
-    setChTraffic([
-      { organization_id: 'org-a', prior_count: '90', recent_count: '0', last_request_at: '2026-07-05 08:00:00.000' },
-      { organization_id: 'org-b', prior_count: '90', recent_count: '0', last_request_at: '2026-07-05 08:00:00.000' },
+    setTraffic([
+      { organization_id: 'org-a', prior_count: '90', recent_count: '0', last_request_at: '2026-07-05T08:00:00.000Z' },
+      { organization_id: 'org-b', prior_count: '90', recent_count: '0', last_request_at: '2026-07-05T08:00:00.000Z' },
     ])
     mockGetAdminEmails
       .mockRejectedValueOnce(new Error('auth API down'))

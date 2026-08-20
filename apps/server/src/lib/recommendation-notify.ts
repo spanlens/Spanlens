@@ -122,14 +122,14 @@ export async function sendHighConfidenceRecommendationAlerts(): Promise<Recommen
     return []
   }
 
-  // `recommendModelSwaps` runs a ClickHouse aggregation per org, so this loop
-  // used to wake a suspended service once for every organization on the
-  // platform — daily, whether or not any of them had sent a request. A
+  // `recommendModelSwaps` runs its own aggregation over `requests` per org, so
+  // an ungated loop would scan the log once for every organization on the
+  // platform, daily, whether or not any of them had sent a request. A
   // recommendation needs HIGH_CONFIDENCE_MIN_SAMPLES calls inside the window
   // to qualify, so an org with no traffic at all in that window cannot
-  // produce one. The watermark answers that from Postgres
+  // produce one. The watermark answers that from one indexed row
   // (lib/org-activity.ts); a null map means it was unreadable and every org
-  // is analysed exactly as before.
+  // is analysed ungated.
   //
   // Orgs skipped this way are omitted from the returned report rather than
   // listed with zeroes: the report exists to show what the job did, and it

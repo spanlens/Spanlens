@@ -18,10 +18,11 @@ name: Cron — server sub-daily
 # they stay silent:
 #
 #   /cron/replay-fallback           every 5 min
-#     ClickHouse outage fallback. Failed log inserts queue to Supabase
-#     `requests_fallback`; this job drains the queue back to CH. Silent
-#     = next CH outage's logs sit in the queue past their 7-day TTL =
-#     permanent data loss. Highest-leverage of the lot.
+#     Log-write fallback. When the INSERT into `requests` fails, the row
+#     is queued in `requests_fallback` as a jsonb payload; this job drains
+#     the queue back into the table. Silent = the next outage's logs sit
+#     in the queue past their 7-day expiry and are gone for good. Highest
+#     leverage of the lot.
 #
 #   /cron/execute-pending-deletions every 6h
 #     Processes GDPR "right to be forgotten" requests sitting in
@@ -39,40 +40,30 @@ name: Cron — server sub-daily
 #     a new background migration without manually marking rows.
 #
 #   /cron/keep-warm                 every 5 min  (shipped earlier)
-#     Warms the Supabase connection pool. Used to also warm ClickHouse,
-#     dropped 2026-08-11: that query was exactly the "activity" that
-#     resets ClickHouse Cloud's idle-suspend timer, so a 5-min cron
-#     hitting it 24/7 kept the Development tier billed as continuously
-#     running for a service handling ~250 requests/month ($232/mo — see
-#     lib/clickhouse.ts pingClickhouse docs). Silent = first Supabase
-#     request after idle eats a cold start (~1s tax). Low priority.
+#     Warms the Supabase connection pool. Silent = the first request
+#     after an idle period eats a cold start, roughly a one-second tax.
+#     Low priority.
 #
 # Vercel scheduler stays configured in vercel.json so it still fires
 # whichever endpoints it decides to honour. Both schedulers calling
 # the same endpoint is fine — every handler holds an advisory lock or
 # is naturally idempotent.
 #
-# Cron TIMING is also a cost decision, for the same reason. ClickHouse
-# suspends only after 15 quiet minutes, so an isolated daily job costs a
-# quarter hour of billed compute no matter how little it reads. The daily
-# jobs that query ClickHouse are therefore clustered at 03:00 in
-# vercel.json — snapshot-anomalies, events-reconciliation and
-# check-past-due-downgrades share one wake-up instead of taking three.
-# Put new daily ClickHouse-reading crons in that slot. Two deliberate
-# exceptions: recommend-savings-alerts stays at 09:00 because it sends
-# customer email and the delivery hour matters, and the weekly pair
-# (stale-key-reminders, weekly-digest) already shares Monday 09:00.
+# Cron TIMING still matters, though the reason has changed. The daily jobs
+# that scan `requests` are clustered at 03:00 in vercel.json so they share
+# one window rather than each waking the database on its own schedule. Put
+# new daily scanning crons in that slot. Two deliberate exceptions:
+# recommend-savings-alerts stays at 09:00 because it sends customer email
+# and the delivery hour matters, and the weekly pair (stale-key-reminders,
+# weekly-digest) already shares Monday 09:00.
 #
-# One exception, added 2026-08-18: the four endpoints that read
-# ClickHouse (/cron/evaluate-alerts, /cron/check-quota-warnings,
-# /cron/aggregate-usage, /cron/detect-missing-model-prices) are
-# idempotent but not free. ClickHouse Cloud bills compute by uptime and
-# only suspends after 15 quiet minutes, so three schedulers firing the
-# same endpoint at different minutes kept the service awake around the
-# clock — $8.80/day for ~8 real customer requests/day. Those four now
-# debounce themselves in the handler via lib/cron-cadence.ts, so the
-# duplicate firings here stay harmless: whichever scheduler wins does
-# the work and the others get a 200 with {"skipped":"cadence"}.
+# The endpoints that scan `requests` across every tenant are idempotent but
+# not free: the table grows with traffic, and the work lands on the same
+# database instance that serves the proxy auth path. Three schedulers firing
+# the same endpoint at different minutes used to mean three full scans. They
+# now debounce themselves in the handler via lib/cron-cadence.ts, so the
+# duplicate firings here stay harmless: whichever scheduler wins does the
+# work and the others get a 200 with {"skipped":"cadence"}.
 # Nothing in this workflow needs changing when that interval is tuned.
 #
 # Usage / billing crons reclaimed into IaC (2026-07-22): these four were
@@ -112,7 +103,6 @@ on:
     - cron: '31 * * * *'       # hourly :31 — self-monitor
     - cron: '17 * * * *'       # hourly :17 — detect-orphan-spans
     - cron: '0 * * * *'        # hourly :00 — detect-missing-model-prices
-    - cron: '0 2 * * *'        # daily 02:00 — events-reconciliation
     - cron: '0 9 * * *'        # daily 09:00 — recommend-savings-alerts
     - cron: '0 10 * * *'       # daily 10:00 — check-past-due-downgrades
     - cron: '0 3 * * *'        # daily 03:00 — prune-judge-cache
@@ -242,23 +232,6 @@ jobs:
         env:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
 
-  daily-02:
-    name: Daily 02:00 UTC (events-reconciliation)
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.schedule == '0 2 * * *' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - name: POST /cron/events-reconciliation
-        run: |
-          BASE_URL='https://spanlens-server.vercel.app'
-          STATUS=$(curl -sS -o /tmp/body -w '%{http_code}' \
-            -H "Authorization: Bearer $CRON_SECRET" \
-            "$BASE_URL/cron/events-reconciliation")
-          echo "Status: $STATUS"
-          cat /tmp/body
-          if [ "$STATUS" -ge 400 ]; then exit 1; fi
-        env:
-          CRON_SECRET: ${{ secrets.CRON_SECRET }}
 
   daily-09:
     name: Daily 09:00 UTC (recommend-savings-alerts)

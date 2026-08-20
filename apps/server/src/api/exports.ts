@@ -3,7 +3,6 @@ import { authJwt, type JwtContext } from '../middleware/authJwt.js'
 import { supabaseAdmin } from '../lib/db.js'
 import { detectAnomalies } from '../lib/anomaly.js'
 import { requestsScope, selectRequests, streamRequests } from '../lib/requests-query.js'
-import { fromClickhouseTimestamp } from '../lib/clickhouse.js'
 import { ApiError } from '../lib/errors.js'
 
 export const exportsRouter = new Hono<JwtContext>()
@@ -18,7 +17,7 @@ const MAX_EXPORT_ROWS = 10_000
 
 /**
  * Row cap for the streamed `/requests?format=csv|jsonl` endpoints. The
- * streaming path holds at most one ClickHouse batch (~64KB) in memory at a
+ * streaming path holds at most one cursor batch in memory at a
  * time, so a much larger cap is safe — enough for a year of Pro-plan data
  * (millions of rows).
  *
@@ -45,11 +44,12 @@ type ExportColumn = (typeof EXPORT_COLUMNS)[number]
 type ExportRow = Record<ExportColumn, unknown>
 
 /**
- * Numeric ClickHouse columns come back over JSONEachRow as strings (Decimal /
- * UInt → string, gotcha #19). Coerce them to real numbers at the export
- * boundary so downstream tooling (pandas, BigQuery) receives numbers, not
- * strings like "0.00012345". `null` is preserved (cost can be unknown). CSV is
- * unaffected — String(number) and String(numeric-string) render identically.
+ * `numeric` and `int8` columns arrive from the driver as strings, deliberately:
+ * neither fits in a JS number without risking precision loss (see
+ * lib/postgres.ts). Coerce them to real numbers at the export boundary so
+ * downstream tooling (pandas, BigQuery) receives numbers, not strings like
+ * "0.00012345". `null` is preserved (cost can be unknown). CSV is unaffected —
+ * String(number) and String(numeric-string) render identically.
  */
 const NUMERIC_EXPORT_COLUMNS: readonly ExportColumn[] = [
   'prompt_tokens', 'completion_tokens', 'total_tokens',
@@ -101,14 +101,14 @@ function parseFormat(raw: string | undefined): ExportFormat {
 }
 
 /**
- * Wrap a row stream so each row's `created_at` (ClickHouse's
- * `'YYYY-MM-DD HH:MM:SS.fff'`) is converted to canonical ISO UTC
- * (`'YYYY-MM-DD​T​HH:MM:SS.fff​Z'`) — same fix as the non-streaming endpoints
- * applied to streaming exports.
+ * Wrap a row stream so each row's string-encoded numerics (`cost_usd`, token
+ * counts, …) become real numbers before encoding.
+ *
+ * Named for what it used to do as well: rewrite `created_at`. That rewrite is
+ * gone — see the comment in the loop below.
  *
  * Returns an async generator so backpressure and `for-await` early-exit
- * cancellation propagate through to the underlying ClickHouse driver stream.
- * Rows without a string `created_at` are yielded unchanged.
+ * cancellation propagate through to the underlying cursor.
  *
  * Exported for unit tests; otherwise only used by the `/exports/requests`
  * streaming path below.
@@ -117,16 +117,14 @@ export async function* withIsoCreatedAt<Row extends Record<string, unknown>>(
   rows: AsyncIterable<Row>,
 ): AsyncGenerator<Row, void, undefined> {
   for await (const row of rows) {
-    // Coerce ClickHouse string-encoded numerics (cost_usd, tokens, etc.) to
-    // numbers so JSONL consumers get numbers, not strings (gotcha #19). CSV is
-    // unaffected. Then normalise created_at to ISO UTC.
-    const coerced = coerceNumericColumns(row)
-    const raw = coerced['created_at']
-    if (typeof raw === 'string') {
-      yield { ...coerced, created_at: fromClickhouseTimestamp(raw) ?? raw }
-    } else {
-      yield coerced
-    }
+    // Coerce string-encoded numerics (cost_usd, tokens, etc.) so JSONL
+    // consumers get numbers, not strings. CSV is unaffected.
+    //
+    // `created_at` is deliberately left alone: the driver's timestamptz parser
+    // (lib/postgres.ts) already returns canonical ISO UTC, so any reformatting
+    // here can only corrupt a value that is already in the shape every
+    // consumer expects.
+    yield coerceNumericColumns(row)
   }
 }
 
@@ -134,7 +132,7 @@ export async function* withIsoCreatedAt<Row extends Record<string, unknown>>(
  * Builds a streaming CSV response (header row + one line per source row).
  *
  * The async iterable is consumed lazily inside the ReadableStream `start`
- * callback — no buffering. Each ClickHouse batch is enqueued as a single
+ * callback — no buffering. Each row is enqueued as a single
  * Uint8Array chunk; the Node response handler in `api/index.ts` writes each
  * chunk to the socket with backpressure handling.
  */
@@ -186,7 +184,7 @@ export function buildJsonlStream<Row>(rows: AsyncIterable<Row>): ReadableStream<
 //        status (ok|4xx|5xx), from, to, limit
 //
 // Memory profile:
-//   - csv / jsonl: streamed. At most one ClickHouse batch (~64KB) in memory.
+//   - csv / jsonl: streamed. At most one cursor batch in memory.
 //                  Row cap: 1M (MAX_EXPORT_ROWS_STREAM).
 //   - json:        materialised wrapper object. Row cap: 10k (MAX_EXPORT_ROWS).
 //                  Use jsonl for larger JSON exports.
@@ -210,12 +208,12 @@ exportsRouter.get('/requests', async (c) => {
 
   const filters: string[] = []
   const params: Record<string, unknown> = {}
-  if (projectId)     { filters.push('project_id = {projectId:UUID}'); params['projectId'] = projectId }
-  if (provider)      { filters.push('provider = {provider:String}'); params['provider'] = provider }
-  if (model)         { filters.push('positionCaseInsensitive(model, {model:String}) > 0'); params['model'] = model }
-  if (providerKeyId) { filters.push('provider_key_id = {providerKeyId:UUID}'); params['providerKeyId'] = providerKeyId }
-  if (from)          { filters.push('created_at >= parseDateTime64BestEffort({from:String})'); params['from'] = from }
-  if (to)            { filters.push('created_at <= parseDateTime64BestEffort({to:String})'); params['to'] = to }
+  if (projectId)     { filters.push('project_id = {projectId}'); params['projectId'] = projectId }
+  if (provider)      { filters.push('provider = {provider}'); params['provider'] = provider }
+  if (model)         { filters.push('position(lower({model}) in lower(model)) > 0'); params['model'] = model }
+  if (providerKeyId) { filters.push('provider_key_id = {providerKeyId}'); params['providerKeyId'] = providerKeyId }
+  if (from)          { filters.push('created_at >= {from}::timestamptz'); params['from'] = from }
+  if (to)            { filters.push('created_at <= {to}::timestamptz'); params['to'] = to }
   if (status === 'ok')  filters.push('status_code < 400')
   if (status === '4xx') filters.push('status_code >= 400 AND status_code < 500')
   if (status === '5xx') filters.push('status_code >= 500')
@@ -244,18 +242,12 @@ exportsRouter.get('/requests', async (c) => {
         params,
       })
     } catch (err) {
-      console.error('[exports:requests] ClickHouse query failed:', err instanceof Error ? err.message : err)
+      console.error('[exports:requests] query failed:', err instanceof Error ? err.message : err)
       throw new ApiError('INTERNAL_ERROR', 'Failed to export requests')
     }
-    // ClickHouse DateTime64 → ISO UTC (gotcha #18) + string-encoded numerics
-    // → numbers (gotcha #19) so pandas/BigQuery receive numbers, not strings.
-    const normalised = rows.map((r) => {
-      const coerced = coerceNumericColumns(r)
-      return {
-        ...coerced,
-        created_at: fromClickhouseTimestamp(typeof coerced.created_at === 'string' ? coerced.created_at : null) ?? coerced.created_at,
-      }
-    })
+    // String-encoded numerics → numbers so pandas/BigQuery receive numbers,
+    // not strings. `created_at` already arrives as canonical ISO UTC.
+    const normalised = rows.map((r) => coerceNumericColumns(r))
     const body = JSON.stringify(
       { exported_at: new Date().toISOString(), count: normalised.length, data: normalised },
       null,
@@ -271,11 +263,11 @@ exportsRouter.get('/requests', async (c) => {
 
   // ── Streaming path: CSV or JSONL. ────────────────────────────────────────────
   //
-  // `streamRequests` is an async generator backed by the ClickHouse driver's
-  // batched Readable stream — peak memory is one batch (~64KB), independent
-  // of `limit`. The `buildCsvStream` / `buildJsonlStream` helpers transform
-  // rows on-the-fly inside the ReadableStream `start` callback, so backpressure
-  // propagates from the Node socket → Web stream controller → CH driver.
+  // `streamRequests` is an async generator backed by a server-side Postgres
+  // cursor — peak memory is one batch, independent of `limit`. The
+  // `buildCsvStream` / `buildJsonlStream` helpers transform rows on-the-fly
+  // inside the ReadableStream `start` callback, so backpressure propagates
+  // from the Node socket → Web stream controller → cursor.
   const rawRowsIter = streamRequests<ExportRow>({
     scope,
     select: EXPORT_COLUMNS.join(', '),
@@ -285,12 +277,9 @@ exportsRouter.get('/requests', async (c) => {
     params,
   })
 
-  // Transform `created_at` from ClickHouse's 'YYYY-MM-DD HH:MM:SS.fff' format
-  // (no T, no Z) into canonical ISO UTC. The non-streaming JSON path already
-  // does this — the streaming CSV/JSONL paths were missed in PR #130 because
-  // the row iterator is consumed inline by the stream builders. Wrapping with
-  // `withIsoCreatedAt` preserves backpressure and CH driver cancellation by
-  // re-yielding each row from the original iterator.
+  // Coerce string-encoded numerics on the way out. Wrapping rather than
+  // mapping inline preserves backpressure and cursor cancellation, because
+  // each row is re-yielded from the original iterator.
   const rowsIter = withIsoCreatedAt(rawRowsIter)
 
   if (format === 'jsonl') {
@@ -446,7 +435,8 @@ exportsRouter.get('/security', async (c) => {
     status_code: number
     latency_ms: number
     cost_usd: string | null
-    flags: string
+    // jsonb column — the driver hands this back already parsed.
+    flags: unknown
     created_at: string
   }>
   try {
@@ -455,34 +445,33 @@ exportsRouter.get('/security', async (c) => {
       scope,
       select: 'id, provider, model, status_code, latency_ms, cost_usd, flags, created_at',
       // has_security_flags is the boolean derived from flags+response_flags at
-      // insert time, indexed-friendly. Filtering on it beats string-comparing
-      // the JSON-encoded `flags` column.
-      filters: 'has_security_flags = 1',
+      // insert time, and carries a partial index. Filtering on it beats
+      // unrolling the `flags` jsonb array.
+      filters: 'has_security_flags',
       orderBy: 'created_at DESC',
       limit: MAX_EXPORT_ROWS,
     })
   } catch (err) {
-    console.error('[exports:security] ClickHouse query failed:', err instanceof Error ? err.message : err)
+    console.error('[exports:security] query failed:', err instanceof Error ? err.message : err)
     throw new ApiError('INTERNAL_ERROR', 'Failed to export security events')
   }
 
-  // CSV gets the flags column as a string literal; JSON parses it back to an array.
-  // Both formats get a canonical ISO UTC `created_at` (with `Z` suffix) so
-  // downstream consumers don't have to guess the timezone of ClickHouse's
-  // 'YYYY-MM-DD HH:MM:SS.fff' format. Excel still parses ISO datetime fine.
-  // JSON additionally coerces ClickHouse string-encoded numerics (cost_usd,
-  // latency_ms, status_code) to numbers — gotcha #19, same treatment as the
-  // /exports/requests JSON path — so pandas/BigQuery get numeric columns.
-  const rows: Record<string, unknown>[] = data.map((row) => {
-    const isoCreated = fromClickhouseTimestamp(row.created_at) ?? row.created_at
-    // CSV also coerces ClickHouse string-encoded numerics so the formula-
-    // injection guard in escapeCsv (string cells only) can never prefix a
-    // legitimate negative number rendered as a numeric string.
-    if (format === 'csv') return { ...coerceNumericColumns(row), created_at: isoCreated }
-    let parsedFlags: unknown = []
-    try { parsedFlags = JSON.parse(row.flags) } catch { parsedFlags = row.flags }
-    return { ...coerceNumericColumns(row), flags: parsedFlags, created_at: isoCreated }
-  })
+  // `flags` is jsonb, so the driver already hands back an array. JSON keeps it
+  // as one; CSV re-encodes it, because a CSV cell is a string and String() on
+  // an array of objects renders "[object Object]".
+  //
+  // `created_at` needs no conversion — the driver's timestamptz parser returns
+  // canonical ISO UTC, with the `Z` suffix Excel parses fine.
+  //
+  // Both formats coerce string-encoded numerics (cost_usd, latency_ms,
+  // status_code) to numbers, so pandas/BigQuery get numeric columns and the
+  // formula-injection guard in escapeCsv (string cells only) can never prefix
+  // a legitimate negative number rendered as a numeric string.
+  const rows: Record<string, unknown>[] = data.map((row) =>
+    format === 'csv'
+      ? { ...coerceNumericColumns(row), flags: JSON.stringify(row.flags ?? []) }
+      : { ...coerceNumericColumns(row), flags: row.flags ?? [] },
+  )
 
   const dateStr = new Date().toISOString().slice(0, 10)
 

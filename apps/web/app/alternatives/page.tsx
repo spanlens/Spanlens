@@ -42,7 +42,7 @@ const ENTRIES: AlternativeEntry[] = [
     oneLine:
       'The closest architectural match. Both are proxy-based, though Helicone entered maintenance mode after its 2026 Mintlify acquisition.',
     whySwitch:
-      'Spanlens adds Critical Path agent tracing, Prompt A/B with Welch t-test, judge-to-human correlation tracking, and a ClickHouse fallback-replay safety net that survives transient backend outages without losing rows.',
+      'Spanlens adds Critical Path agent tracing, Prompt A/B with Welch t-test, judge-to-human correlation tracking, and a log path that queues and replays failed writes instead of dropping rows.',
     installShape: '1-line baseURL swap',
     license: 'Apache 2.0',
     selfHost: 'Yes, Docker Compose',
