@@ -46,6 +46,7 @@ import { humanEvalsRouter } from './api/human-evals.js'
 import { scoreConfigsRouter } from './api/scoreConfigs.js'
 import { recommendationsRouter } from './api/recommendations.js'
 import { auditLogsRouter }     from './api/auditLogs.js'
+import { dashboardRouter }     from './api/dashboard.js'
 import { healthRouter }        from './api/health.js'
 import { membersRouter }       from './api/members.js'
 import { orgInvitationsRouter, invitationsRouter, meInvitationsRouter } from './api/invitations.js'
@@ -102,6 +103,18 @@ app.use('*', cors({
 app.use('*', requestId)
 app.use('*', logger())
 
+// This origin serves the REST API, the LLM proxy, and the cron routes. None
+// of it belongs in a search index. Google crawled the old one-line root
+// document and filed api.spanlens.io as a Soft 404 (2026-07-29); an explicit
+// noindex is the right signal for a host that serves no pages, and it beats a
+// robots.txt disallow, which would block the crawl and leave the URL
+// indexable by reference. Set here rather than in vercel.json because the
+// `headers` block there did not reach responses from this function.
+app.use('*', async (c, next) => {
+  await next()
+  c.header('X-Robots-Tag', 'noindex, nofollow')
+})
+
 // Health check routes extracted to api/health.ts for unit-test isolation.
 // See that file for the contract and the rationale behind each endpoint.
 //
@@ -113,7 +126,7 @@ app.use('*', logger())
 //                    (Vercel commit SHA) so we can correlate dashboards with
 //                    the deployed build at a glance.
 //
-//   /health/ready  — readiness. Pings Postgres + ClickHouse + Upstash in
+//   /health/ready  — readiness. Pings Postgres (both routes) + Upstash in
 //                    parallel. Returns 503 if any dependency is unreachable
 //                    so the load balancer / docker healthcheck can route
 //                    around a half-broken instance. Cheap enough to run on
@@ -141,6 +154,31 @@ app.use('*', logger())
 // every 30s on a tight container loop without melting Supabase. The deep
 // endpoint aggregates last-24h MAX(duration_ms) etc. which is fine to call
 // every 5 min but not every 30 sec.
+// Root document. Lived in public/index.html until 2026-07-29, but Vercel
+// serves public/ ahead of the catch-all rewrite, so that file bypassed this
+// app entirely and never picked up the X-Robots-Tag above.
+app.get('/', (c) =>
+  c.html(`<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>Spanlens API</title>
+  </head>
+  <body>
+    <h1>Spanlens API</h1>
+    <p>This host serves the Spanlens REST API and the LLM proxy. There is nothing to browse here.</p>
+    <ul>
+      <li><a href="https://www.spanlens.io/docs/api">REST API reference</a></li>
+      <li><a href="https://www.spanlens.io/docs/proxy">Proxy quick start</a></li>
+      <li><a href="https://www.spanlens.io">spanlens.io</a></li>
+    </ul>
+  </body>
+</html>
+`),
+)
+
 app.route('/', healthRouter)
 
 // ── Proxy routes (authApiKey middleware) ──────────────────────
@@ -231,6 +269,11 @@ app.route('/api/v1/feedback',       feedbackRouter)
 app.route('/api/v1/datasets',       datasetsRouter)
 app.route('/api/v1/experiments',    experimentsRouter)
 app.route('/api/v1/audit-logs',     auditLogsRouter)
+// Composite read for the dashboard's below-the-fold panels. Dual auth
+// (authJwtOrApiKey), so it MUST be mounted above the `/api/v1` wildcard
+// routers below — their `.use('*', authJwt)` would otherwise 401 every
+// sl_live_* caller before this router's own middleware ran.
+app.route('/api/v1/dashboard',      dashboardRouter)
 app.route('/api/v1/organizations/:orgId/members', membersRouter)
 app.route('/api/v1/organizations/:orgId/invitations', orgInvitationsRouter)
 app.route('/api/v1/me/pending-invitations', meInvitationsRouter)

@@ -1,8 +1,10 @@
+import { openGraphFor } from '@/lib/page-metadata'
 import { CodeBlock } from '../../_components/code-block'
 import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
 export const metadata = {
   alternates: { canonical: '/docs/features/savings' },
+  openGraph: openGraphFor('/docs/features/savings'),
   title: 'Savings · Spanlens Docs',
   description:
     'Model recommendations based on your real token distribution. Cheaper substitutes with estimated monthly savings, confidence tiers, and email alerts.',

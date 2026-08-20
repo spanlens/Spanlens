@@ -4,22 +4,24 @@ import { describe, expect, it } from 'vitest'
 import { PLANS, PLAN_REQUEST_LIMITS, PLAN_RETENTION_DAYS, PLAN_SEAT_LIMITS } from './billing-plans'
 
 /**
- * Drift guard for public/llms.txt and public/llms-full.txt.
+ * Drift guard for public/llms.txt, public/llms-full.txt, and public/pricing.md.
  *
- * Both files are hand-written static assets served to AI crawlers, but they
- * restate pricing facts whose source of truth is lib/billing-plans.ts. If a
- * plan's price, quota, retention, seats, or overage rate changes there and
- * the llms files are not updated, AI answer engines keep citing stale prices
- * silently (2026-07-06 GEO audit finding). This test derives the expected
- * strings from the constants so any billing change fails CI until the llms
- * files are re-synced.
+ * All three are hand-written static assets served to AI crawlers and buying
+ * agents, but they restate pricing facts whose source of truth is
+ * lib/billing-plans.ts. If a plan's price, quota, retention, seats, or overage
+ * rate changes there and these files are not updated, AI answer engines and
+ * shopping agents keep citing stale prices silently (2026-07-06 GEO audit
+ * finding; pricing.md added 2026-07-24). This test derives the expected
+ * strings from the constants so any billing change fails CI until the files
+ * are re-synced.
  *
  * If this test fails: update the "## Plans" section (and the FAQ in
- * llms-full.txt) to match lib/billing-plans.ts, then re-run.
+ * llms-full.txt, and the "## Plans" list in pricing.md) to match
+ * lib/billing-plans.ts, then re-run.
  */
 
 const PUBLIC_DIR = join(__dirname, '..', 'public')
-const LLMS_FILES = ['llms.txt', 'llms-full.txt'] as const
+const LLMS_FILES = ['llms.txt', 'llms-full.txt', 'pricing.md'] as const
 
 function compactCount(n: number): string {
   if (n >= 1_000_000) return `${n / 1_000_000}M`

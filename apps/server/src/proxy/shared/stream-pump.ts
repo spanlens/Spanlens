@@ -99,7 +99,7 @@ export function runLineBufferedStreamPump(input: StreamPumpInput): Response {
     if (buffer.length > 0) lines.push(buffer)
 
     await input.onComplete(lines, truncated).catch((err) => {
-      logError('CH_INSERT_FAILED', { provider: input.provider, phase: 'stream_log' }, err)
+      logError('REQUEST_LOG_INSERT_FAILED', { provider: input.provider, phase: 'stream_log' }, err)
     })
   })
 }
@@ -167,7 +167,7 @@ export function runChunkAccumulatedStreamPump(input: ChunkAccumulatedStreamPumpI
     }
 
     await input.onComplete(chunks.join(''), truncated).catch((err) => {
-      logError('CH_INSERT_FAILED', { provider: input.provider, phase: 'stream_log' }, err)
+      logError('REQUEST_LOG_INSERT_FAILED', { provider: input.provider, phase: 'stream_log' }, err)
     })
   })
 }

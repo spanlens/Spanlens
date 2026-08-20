@@ -1,5 +1,5 @@
 import { supabaseAdmin } from './db.js'
-import { unscopedClickhouse } from './clickhouse.js'
+import { pgQuery } from './postgres.js'
 import { evaluateQuotaPolicy } from './quota-policy.js'
 
 /**
@@ -108,33 +108,31 @@ export function effectiveOwnedPlan(plans: ReadonlyArray<Plan>): Plan {
  * retention window.
  *
  * Exposed at the top of the file so callers can reuse it without rebuilding
- * the same ClickHouse query.
+ * the same query.
  */
 export async function countMonthlyRequests(
   organizationId: string,
   since: Date,
   until?: Date,
 ): Promise<number> {
-  // ClickHouse DateTime64 won't accept the trailing 'Z' that Date.toISOString
-  // produces — same gotcha logger.ts hits when inserting. We strip it here too.
-  const sinceTs = since.toISOString().replace('T', ' ').replace('Z', '')
-  const untilTs = until ? until.toISOString().replace('T', ' ').replace('Z', '') : null
+  const sinceTs = since.toISOString()
+  const untilTs = until ? until.toISOString() : null
 
   const params: Record<string, unknown> = { orgId: organizationId, since: sinceTs }
   let where =
-    'organization_id = {orgId:UUID} ' +
-    'AND created_at >= parseDateTime64BestEffort({since:String})'
+    'organization_id = {orgId} ' +
+    'AND created_at >= {since}::timestamptz'
   if (untilTs) {
     params['until'] = untilTs
-    where += ' AND created_at < parseDateTime64BestEffort({until:String})'
+    where += ' AND created_at < {until}::timestamptz'
   }
 
-  const result = await unscopedClickhouse().query({
-    query: `SELECT count() AS n FROM requests WHERE ${where}`,
-    query_params: params,
-    format: 'JSONEachRow',
+  // `count(*)` is int8, which the driver hands back as a string to avoid
+  // precision loss — coerce at the boundary (gotcha #19).
+  const rows = await pgQuery<{ n: string | number }>({
+    query: `SELECT count(*) AS n FROM requests WHERE ${where}`,
+    params,
   })
-  const rows = (await result.json()) as Array<{ n: string | number }>
   return Number(rows[0]?.n ?? 0)
 }
 
@@ -187,12 +185,12 @@ export interface QuotaCheckResult {
 
 // ---------------------------------------------------------------------------
 // Hot-path caches (P3.1). enforceQuota runs checkMonthlyQuota on EVERY /proxy/*
-// request; uncached it cost one Supabase SELECT + one full-month ClickHouse
-// count() scan per request. Both are now cached per org with a short TTL +
+// request; uncached it cost one Supabase SELECT + one full-month count() over
+// `requests` per request. Both are now cached per org with a short TTL +
 // in-flight coalescing (same pattern as getOrgPlan in requests-query.ts).
 //
 // Trade-off: the monthly count can lag real traffic by up to COUNT_TTL_MS. The
-// quota band tolerates this — the free-tier block is a soft monetization gate,
+// quota band tolerates this: the free-tier block is a soft monetization gate,
 // not a security boundary, and BYOK means overage past the boundary costs us
 // nothing. Billing/overage accounting uses countMonthlyRequests directly
 // (paddle-usage.ts, quota-warnings.ts), NOT this cache, so it is unaffected.
@@ -291,7 +289,7 @@ export function resetQuotaCaches(): void {
  *   - lib/quota-warnings.ts     — iterates active orgs to send 80/100% emails
  *
  * Org settings + the month count are cached per org (short TTL) so the proxy
- * hot path does not hit Supabase + ClickHouse on every request. Falls back to
+ * hot path does not run both lookups on every request. Falls back to
  * 'free' + conservative defaults on any lookup failure.
  */
 export async function checkMonthlyQuota(
@@ -321,12 +319,12 @@ export async function checkMonthlyQuota(
   try {
     used = await getCachedMonthlyCount(organizationId, monthStart)
   } catch (err) {
-    // ClickHouse unreachable — FAIL OPEN. This runs on every /proxy/* request;
+    // Count unavailable, so FAIL OPEN. This runs on every /proxy/* request;
     // if the count lookup throws, letting it propagate would 500 the whole
-    // proxy on a CH outage (the exact scenario the requests_fallback queue,
-    // gotcha #23, was built to survive). The quota band is a soft monetization
+    // proxy over a reporting query (the same reasoning as the
+    // requests_fallback queue, gotcha #23). The quota band is a soft monetization
     // gate, not a security boundary, and BYOK means traffic past the limit
-    // costs us nothing — so allowing the request through is the safe direction.
+    // costs us nothing, so allowing the request through is the safe direction.
     console.error('[quota] monthly count lookup failed, failing open:', err)
     return {
       allowed: true,

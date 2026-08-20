@@ -1,8 +1,10 @@
+import { openGraphFor } from '@/lib/page-metadata'
 import { CodeBlock } from '../../_components/code-block'
 import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
 export const metadata = {
   alternates: { canonical: '/docs/features/shares' },
+  openGraph: openGraphFor('/docs/features/shares'),
   title: 'Shared links · Spanlens Docs',
   description:
     'Publish a public read-only render of any trace or request via a share link, with redaction presets, view counts, and one-click revoke.',
@@ -182,9 +184,9 @@ curl -X DELETE https://api.spanlens.io/api/v1/shares/<token> \\
       </p>
       <p>
         Server-side enforcement runs through the service role client and reads the
-        underlying Postgres or ClickHouse row directly. The retention bypass keeps a
-        long-lived share resolvable past your plan&apos;s normal retention window, up to the
-        365 day ceiling on the analytics table.
+        underlying Postgres row directly. The retention bypass keeps a long-lived share
+        resolvable past your plan&apos;s normal retention window, up to the 365 day ceiling
+        on the request log.
       </p>
 
       <hr />

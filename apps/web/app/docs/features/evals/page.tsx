@@ -1,8 +1,10 @@
+import { openGraphFor } from '@/lib/page-metadata'
 import { CodeBlock } from '../../_components/code-block'
 import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
 export const metadata = {
   alternates: { canonical: '/docs/features/evals' },
+  openGraph: openGraphFor('/docs/features/evals'),
   title: 'Evals · Spanlens Docs',
   description:
     'LLM-as-judge evaluation, automatically score production responses on a 0..1 scale and quantify quality per prompt version.',

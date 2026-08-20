@@ -4,6 +4,17 @@ import { useMemo, useState } from 'react'
 import { Beaker, Play, Trash2, Plus, AlertTriangle } from 'lucide-react'
 import { Topbar } from '@/components/layout/topbar'
 import { cn } from '@/lib/utils'
+import { StatusPill } from '@/components/ui/primitives'
+import {
+  Board,
+  TOPBAR_BLEED,
+  StatCard,
+  TableCard,
+  TableHead,
+  Th,
+  ROW,
+} from '../../(dashboard)/_board/surfaces'
+import { EVAL_GRID, relAge, runTagVariant } from '../../(dashboard)/evals/_shared/table'
 import {
   DEMO_EVALUATORS,
   DEMO_EVAL_RUNS,
@@ -26,17 +37,8 @@ function fmtScore(n: number | null | undefined): string {
 }
 
 function StatusBadge({ status }: { status: EvalRunStatus }) {
-  const config = {
-    pending:   { label: 'Pending',   cls: 'bg-bg-elev text-text-faint' },
-    running:   { label: 'Running',   cls: 'bg-accent-bg text-accent border border-accent-border' },
-    completed: { label: 'Completed', cls: 'bg-good/10 text-good border border-good/30' },
-    failed:    { label: 'Failed',    cls: 'bg-bad/10 text-bad border border-bad/30' },
-  }[status]
-  return (
-    <span className={cn('font-mono text-[10px] px-[6px] py-[1.5px] rounded-[3px]', config.cls)}>
-      {config.label}
-    </span>
-  )
+  const label = { pending: 'Pending', running: 'Running', completed: 'Completed', failed: 'Failed' }[status]
+  return <StatusPill variant={runTagVariant(status)}>{label}</StatusPill>
 }
 
 // ── Correlation card ────────────────────────────────────────────────────────
@@ -59,9 +61,9 @@ function CorrelationCard({ promptName }: { promptName: string }) {
   const rColor = r == null ? 'text-text-faint' : r >= 0.7 ? 'text-good' : r >= 0.4 ? 'text-warn' : 'text-bad'
 
   return (
-    <div className="bg-bg-elev border border-border rounded-[6px] p-4">
+    <div className="rounded-lg border border-border bg-bg-sunk p-4">
       <div className="flex items-start gap-4">
-        <svg width={W} height={H} className="shrink-0 bg-bg rounded-[4px] border border-border">
+        <svg width={W} height={H} className="shrink-0 rounded border border-border bg-bg-elev">
           <line x1={PAD} y1={H - PAD} x2={W - PAD} y2={PAD} stroke="currentColor" strokeOpacity={0.3} strokeDasharray="2 2" />
           {pairs.map((p) => (
             <circle key={p.requestId} cx={dotX(p.judgeScore)} cy={dotY(p.humanScore)} r={2.5} className="fill-text/70" />
@@ -73,7 +75,7 @@ function CorrelationCard({ promptName }: { promptName: string }) {
             {/* flex-wrap so the "Pearson r · …" label drops below the big
                 number instead of overflowing the card on narrow (2-up) widths. */}
             <div className="flex items-baseline flex-wrap gap-x-2 gap-y-0.5">
-              <span className={cn('font-mono text-[22px] font-medium', rColor)}>
+              <span className={cn('font-display text-[22px] tracking-[-0.02em] leading-[1.05]!', rColor)}>
                 {r == null ? '—' : r.toFixed(2)}
               </span>
               <span className="font-mono text-[10.5px] text-text-muted">
@@ -119,21 +121,29 @@ function RunDetailPanel({ runId, onClose }: { runId: string; onClose: () => void
   if (!run) return null
 
   return (
-    <div className="border-l border-border w-[420px] shrink-0 overflow-y-auto">
-      <div className="sticky top-0 bg-bg-elev border-b border-border px-4 py-3 flex items-center justify-between">
+    /* Full-screen sheet on mobile, a sticky card in the right column from md
+       up, where it holds position as the table scrolls past it. */
+    <div className="fixed inset-0 z-30 overflow-y-auto bg-bg md:sticky md:inset-x-auto md:bottom-auto md:top-[77px] md:z-auto md:max-h-[calc(100vh-93px)] md:w-[420px] md:shrink-0 md:rounded-card md:border md:border-border md:bg-bg-elev md:shadow-card">
+      <div className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-bg-elev px-5 py-3.5 md:rounded-t-card">
         <div className="flex items-center gap-2">
           <StatusBadge status={run.status} />
-          <span className="font-mono text-[11px] text-text-muted">
+          <span className="font-mono text-[11px] text-text-muted tabular-nums">
             {run.scored_count}/{run.sample_size} scored
           </span>
         </div>
-        <button onClick={onClose} className="text-text-faint hover:text-text text-xs">✕</button>
+        <button
+          onClick={onClose}
+          aria-label="Close run detail"
+          className="text-xs text-text-faint transition-colors hover:text-text"
+        >
+          ✕
+        </button>
       </div>
-      <div className="p-4 space-y-4">
+      <div className="space-y-4 p-5">
         <div className="grid grid-cols-3 gap-2">
-          <div className="bg-bg-muted border border-border rounded-[5px] px-3 py-2">
-            <p className="font-mono text-[9.5px] uppercase tracking-[0.06em] text-text-faint">Avg score</p>
-            <p className="font-mono text-[16px] text-text font-medium">{fmtScore(run.avg_score)}</p>
+          <div className="rounded-lg border border-border bg-bg-sunk px-3 py-2">
+            <p className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-faint">Avg score</p>
+            <p className="font-mono text-[16px] text-text tabular-nums">{fmtScore(run.avg_score)}</p>
             {(() => {
               const m =
                 run.score_stddev != null && run.scored_count >= 2
@@ -144,35 +154,37 @@ function RunDetailPanel({ runId, onClose }: { runId: string; onClose: () => void
               ) : null
             })()}
           </div>
-          <div className="bg-bg-muted border border-border rounded-[5px] px-3 py-2">
-            <p className="font-mono text-[9.5px] uppercase tracking-[0.06em] text-text-faint">Samples</p>
-            <p className="font-mono text-[16px] text-text font-medium">{run.scored_count}</p>
+          <div className="rounded-lg border border-border bg-bg-sunk px-3 py-2">
+            <p className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-faint">Samples</p>
+            <p className="font-mono text-[16px] text-text tabular-nums">{run.scored_count}</p>
           </div>
-          <div className="bg-bg-muted border border-border rounded-[5px] px-3 py-2">
-            <p className="font-mono text-[9.5px] uppercase tracking-[0.06em] text-text-faint">Cost</p>
-            <p className="font-mono text-[16px] text-text font-medium">{fmtUsd(run.total_cost_usd)}</p>
+          <div className="rounded-lg border border-border bg-bg-sunk px-3 py-2">
+            <p className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-faint">Cost</p>
+            <p className="font-mono text-[16px] text-text tabular-nums">{fmtUsd(run.total_cost_usd)}</p>
           </div>
         </div>
         {/* Scoring-rate transparency (P0-2): the average reflects only the
             scored samples, so when some judge calls failed we say so. */}
         {run.status === 'completed' && run.failed_count > 0 && run.attempted_count > 0 && (
-          <div className="flex items-start gap-2 p-3 bg-warn-bg border border-warn/30 rounded-[5px] font-mono text-[11.5px] text-warn">
+          <div className="flex items-start gap-2 rounded-lg border border-warn/30 bg-warn-bg p-3 font-mono text-[11.5px] text-warn">
             <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
             <span>
               Scored {run.scored_count} of {run.attempted_count} attempted
               {' '}({Math.round((run.scored_count / run.attempted_count) * 100)}%).
-              {' '}{run.failed_count} judge {run.failed_count === 1 ? 'call' : 'calls'} failed
-              {' '}— the average reflects only the scored samples.
+              {' '}{run.failed_count} judge {run.failed_count === 1 ? 'call' : 'calls'} failed,
+              {' '}so the average reflects only the scored samples.
             </span>
           </div>
         )}
         <div>
-          <p className="font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint mb-2">Score distribution</p>
+          <p className="font-mono text-[10px] uppercase tracking-[0.12em] text-text-faint mb-2">Score distribution</p>
           <div className="flex items-end gap-1 h-20">
             {histBuckets.map((c, i) => (
               <div key={i} className="flex-1 flex flex-col items-center gap-1">
-                <div className="w-full bg-text/70 rounded-[2px]" style={{ height: `${(c / maxBucket) * 60}px` }} />
-                <span className="font-mono text-[9px] text-text-faint">{c}</span>
+                {/* Data bars, not a track: they need to read as marks, so they
+                    stay on ink rather than the meter-track grey. */}
+                <div className="w-full rounded-[2px] bg-text/70" style={{ height: `${(c / maxBucket) * 60}px` }} />
+                <span className="font-mono text-[9px] text-text-faint tabular-nums">{c}</span>
               </div>
             ))}
           </div>
@@ -181,12 +193,12 @@ function RunDetailPanel({ runId, onClose }: { runId: string; onClose: () => void
           </div>
         </div>
         <div>
-          <p className="font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint mb-2">Lowest-scoring samples</p>
+          <p className="font-mono text-[10px] uppercase tracking-[0.12em] text-text-faint mb-2">Lowest-scoring samples</p>
           <div className="space-y-2">
             {lowest.map((res) => (
-              <div key={res.id} className="block p-2 rounded-[5px] border border-border bg-bg">
+              <div key={res.id} className="block rounded-lg border border-border bg-bg-sunk p-2">
                 <div className="flex justify-between items-center mb-1">
-                  <span className="font-mono text-[12px] text-text font-medium">{fmtScore(res.score)}</span>
+                  <span className="font-mono text-[12px] text-text tabular-nums">{fmtScore(res.score)}</span>
                   <span className="font-mono text-[10px] text-text-faint">{fmtUsd(res.judge_cost_usd)}</span>
                 </div>
                 {res.reasoning && (
@@ -213,15 +225,17 @@ function EvaluatorRow({
   const runs = DEMO_EVAL_RUNS.filter((r) => r.evaluator_id === evaluator.id)
   const [expanded, setExpanded] = useState(false)
   const latestCompleted = runs.find((r) => r.status === 'completed')
+  const latest = runs[0]
 
   return (
-    <div className="border-b border-border last:border-0">
+    <div className="border-b border-border last:border-b-0">
       {/* Outer container is a div, not a button: HTML forbids nested buttons,
           and we need the Run/Delete buttons inside the same row. Keyboard
           activation is preserved via role="button" + Enter/Space handlers. */}
       <div
         role="button"
         tabIndex={0}
+        aria-expanded={expanded}
         onClick={() => setExpanded((v) => !v)}
         onKeyDown={(e) => {
           if (e.key === 'Enter' || e.key === ' ') {
@@ -229,25 +243,34 @@ function EvaluatorRow({
             setExpanded((v) => !v)
           }
         }}
-        className="w-full flex items-center px-[16px] py-[12px] hover:bg-bg-muted transition-colors text-left cursor-pointer"
+        className={cn(
+          ROW,
+          'grid items-center gap-3 border-b-0 text-left transition-colors hover:bg-bg-muted cursor-pointer',
+        )}
+        style={EVAL_GRID}
       >
-        <div className="flex-1 min-w-0">
-          <p className="font-mono text-[13px] text-text font-medium truncate">{evaluator.name}</p>
-          <p className="font-mono text-[11px] text-text-faint truncate">
-            {evaluator.prompt_name} · judge: {evaluator.config.judge_model}
-          </p>
-        </div>
-        <div className="font-mono text-[12px] text-text-muted w-[100px] text-right">
+        <span className="font-mono text-[12px] text-text truncate">{evaluator.name}</span>
+        <span className="font-mono text-[12px] text-text-muted truncate">{evaluator.prompt_name}</span>
+        <span className="font-mono text-[12px] text-text-muted truncate">{evaluator.config.judge_model}</span>
+        <span className="font-mono text-[12px] text-text-muted tabular-nums">{runs.length}</span>
+        <span className="font-mono text-[12px] text-text-muted tabular-nums">
           {latestCompleted ? fmtScore(latestCompleted.avg_score) : '—'}
-        </div>
-        <div className="font-mono text-[11px] text-text-faint w-[80px] text-right">
-          {runs.length} runs
-        </div>
-        <div className="flex items-center gap-2 ml-3">
+        </span>
+        <span className="font-mono text-[12px] text-text-muted tabular-nums">
+          {latest ? relAge(latest.started_at) : '—'}
+        </span>
+        <span>
+          {latest ? (
+            <StatusPill variant={runTagVariant(latest.status)}>{latest.status}</StatusPill>
+          ) : (
+            <span className="font-mono text-[12px] text-text-faint">no runs</span>
+          )}
+        </span>
+        <span className="flex items-center justify-end gap-1.5">
           <button
             type="button"
             onClick={(e) => { e.stopPropagation(); demoNotice('Running evaluations')() }}
-            className="font-mono text-[11px] px-2 py-1 rounded-[4px] border border-border hover:bg-bg-elev flex items-center gap-1"
+            className="inline-flex items-center gap-1 rounded-full border border-border px-2.5 py-1 text-[11.5px] font-medium text-text-muted transition-colors hover:bg-bg-muted hover:text-text"
           >
             <Play className="h-3 w-3" />
             Run
@@ -255,33 +278,36 @@ function EvaluatorRow({
           <button
             type="button"
             onClick={(e) => { e.stopPropagation(); demoNotice('Deleting evaluators')() }}
-            className="text-text-faint hover:text-bad p-1"
+            aria-label={`Delete evaluator ${evaluator.name}`}
+            className="p-1 text-text-faint transition-colors hover:text-bad"
           >
             <Trash2 className="h-3.5 w-3.5" />
           </button>
-        </div>
+        </span>
       </div>
       {expanded && (
-        <div className="bg-bg-muted/50 px-[16px] py-[10px] border-t border-border">
-          <p className="font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint mb-1">
+        <div className="border-t border-border bg-bg-muted px-[18px] py-3">
+          <p className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-faint mb-1.5">
             Recent runs
           </p>
-          <div className="space-y-1.5">
+          <div className="space-y-1">
             {runs.map((r) => (
               <button
                 key={r.id}
                 type="button"
                 onClick={() => onSelectRun(r.id)}
-                className="w-full flex items-center gap-3 px-2 py-1.5 rounded-[4px] hover:bg-bg-elev text-left"
+                className="flex w-full items-center gap-3 rounded px-2 py-1.5 text-left transition-colors hover:bg-bg-elev"
               >
                 <StatusBadge status={r.status} />
                 <span className="font-mono text-[11.5px] text-text-muted">
                   {new Date(r.started_at).toLocaleString('en-US')}
                 </span>
-                <span className="font-mono text-[11.5px] text-text-faint">
+                <span className="font-mono text-[11.5px] text-text-faint tabular-nums">
                   {r.scored_count}/{r.sample_size}
                 </span>
-                <span className="font-mono text-[12px] text-text ml-auto">{fmtScore(r.avg_score)}</span>
+                <span className="ml-auto font-mono text-[12px] text-text tabular-nums">
+                  {fmtScore(r.avg_score)}
+                </span>
               </button>
             ))}
           </div>
@@ -300,61 +326,105 @@ export default function DemoEvalsPage() {
     for (const ev of DEMO_EVALUATORS) set.add(ev.prompt_name)
     return [...set]
   }, [])
+  const judgeModels = useMemo(
+    () => [...new Set(DEMO_EVALUATORS.map((ev) => ev.config.judge_model))],
+    [],
+  )
 
   return (
-    <div className="-mx-4 -my-4 md:-mx-8 md:-my-7 flex flex-col h-screen overflow-hidden bg-bg">
-      <Topbar
-        crumbs={[{ label: 'Demo', href: '/demo/dashboard' }, { label: 'Evals' }]}
-        right={
-          <button
-            type="button"
-            onClick={demoNotice('Creating evaluators')}
-            className="font-mono text-[11.5px] px-3 py-[6px] rounded-[5px] bg-text text-bg font-medium hover:opacity-90 flex items-center gap-1.5"
-          >
-            <Plus className="h-3.5 w-3.5" />
-            New evaluator
-          </button>
-        }
-      />
-      <div className="flex flex-1 min-h-0">
-        <div className="flex-1 overflow-y-auto">
-          <div className="px-[22px] py-[12px] bg-bg-muted border-b border-border flex items-center gap-2 font-mono text-[11px] text-text-muted">
-            <Beaker className="h-3.5 w-3.5" />
-            <span>
-              LLM-as-judge scores production responses against a criterion you define.
-              Cost is billed to your provider key.
-            </span>
-          </div>
+    <div>
+      <div className={TOPBAR_BLEED}>
+        <Topbar
+          crumbs={[{ label: 'Demo', href: '/demo/dashboard' }, { label: 'Evals' }]}
+          right={
+            <button
+              type="button"
+              onClick={demoNotice('Creating evaluators')}
+              className="inline-flex items-center gap-1.5 rounded-full bg-accent px-3.5 py-2 text-[12.5px] font-semibold text-accent-fg transition-colors hover:bg-accent-strong"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              New evaluator
+            </button>
+          }
+        />
+      </div>
 
-          {/* Correlation cards */}
-          <div className="px-[22px] py-[14px] border-b border-border">
-            <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint mb-3">
-              <span>LLM judge vs Human agreement</span>
+      <div className="flex flex-col items-start gap-4 md:flex-row">
+        <div className="min-w-0 flex-1">
+          <Board>
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+              <StatCard
+                label="Evaluators"
+                value={DEMO_EVALUATORS.length}
+                foot={`${DEMO_EVALUATORS.filter((e) => e.archived_at == null).length} active`}
+              />
+              <StatCard
+                label="Distinct prompts"
+                value={promptNames.length}
+                foot="covered by an eval"
+              />
+              <StatCard
+                label="Distinct judges"
+                value={judgeModels.length}
+                foot={judgeModels.slice(0, 2).join(', ')}
+              />
+              <StatCard
+                label="Runs"
+                value={DEMO_EVAL_RUNS.length}
+                foot={`${DEMO_EVAL_RUNS.filter((r) => r.status === 'completed').length} completed`}
+              />
             </div>
-            {/* 2-up only at lg+ (1024px): below that the cards are too narrow
-                for the scatter plot + metrics side by side, so go full-width. */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-              {promptNames.map((name) => <CorrelationCard key={name} promptName={name} />)}
+
+            <div className="card-surface rounded-card flex flex-wrap items-center gap-2 px-5 py-3.5 font-mono text-[11px] text-text-muted">
+              <Beaker className="h-3.5 w-3.5 shrink-0" />
+              <span>
+                LLM-as-judge scores production responses against a criterion you define.
+                Cost is billed to your provider key.
+              </span>
             </div>
-          </div>
 
-          {/* Evaluator list */}
-          <div className="flex items-center px-[16px] py-[8px] bg-bg-muted border-b border-border font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint">
-            <span className="flex-1">Evaluator</span>
-            <span className="w-[100px] text-right">Avg score</span>
-            <span className="w-[80px] text-right">Runs</span>
-            <span className="w-[150px]" />
-          </div>
-          {DEMO_EVALUATORS.map((ev) => (
-            <EvaluatorRow key={ev.id} evaluator={ev} onSelectRun={(rid) => setSelectedRunId(rid)} />
-          ))}
+            <div className="card-surface rounded-card px-5 py-[18px]">
+              <div className="mb-3.5 font-mono text-[10px] uppercase tracking-[0.12em] text-text-faint">
+                LLM judge vs Human agreement
+              </div>
+              {/* 2-up only at lg+ (1024px): below that the cards are too narrow
+                  for the scatter plot + metrics side by side, so go full-width. */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                {promptNames.map((name) => <CorrelationCard key={name} promptName={name} />)}
+              </div>
+            </div>
 
-          <div className="p-[22px] flex items-start gap-2 font-mono text-[11px] text-text-faint">
-            <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
-            <span>
-              This is sample data. Sign up free to run real evaluations against your production traffic.
-            </span>
-          </div>
+            {/* The row grid is wider than a narrow viewport, so the card scrolls
+                its own table sideways rather than the page. */}
+            <TableCard>
+              <div className="overflow-x-auto">
+                <div className="min-w-[1000px]">
+                  <TableHead>
+                    <div className="grid items-center gap-3" style={EVAL_GRID}>
+                      <Th>Evaluator</Th>
+                      <Th>Prompt</Th>
+                      <Th>Judge</Th>
+                      <Th>Runs</Th>
+                      <Th>Avg score</Th>
+                      <Th>Last run</Th>
+                      <Th>Status</Th>
+                      <Th><span className="sr-only">Actions</span></Th>
+                    </div>
+                  </TableHead>
+                  {DEMO_EVALUATORS.map((ev) => (
+                    <EvaluatorRow key={ev.id} evaluator={ev} onSelectRun={(rid) => setSelectedRunId(rid)} />
+                  ))}
+                </div>
+              </div>
+            </TableCard>
+
+            <div className="flex items-start gap-2 font-mono text-[11px] text-text-faint">
+              <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+              <span>
+                This is sample data. Sign up free to run real evaluations against your production traffic.
+              </span>
+            </div>
+          </Board>
         </div>
 
         {selectedRunId && (

@@ -154,16 +154,23 @@ openrouterProxy.all('/*', async (c) => {
   // Cost preference order:
   //   1. OpenRouter's own usage.cost field — authoritative, includes any
   //      per-customer discount / margin we don't see.
-  //   2. Our local calculator against the model id with the vendor prefix
-  //      stripped (`anthropic/claude-3-5-sonnet` → `claude-3-5-sonnet`).
-  //   3. NULL — unknown model, cost not surfaced by upstream.
+  //   2. Our local calculator against the FULL model id. `model_prices` stores
+  //      OpenRouter rows with the vendor prefix intact (`anthropic/claude-...`),
+  //      so the id goes in as-is. It used to be stripped first, which could
+  //      never match those rows — and the stripped name didn't match our
+  //      Anthropic rows either, since those use the dashed form
+  //      (`claude-opus-4-7`, not `claude-opus-4.7`).
+  //   3. The vendor-stripped name, as a last resort for models missing from
+  //      our OpenRouter rows (resolves against FALLBACK_PRICES).
+  //   4. NULL — unknown model, cost not surfaced by upstream.
   let finalCostUsd: number | null = null
   if (openrouterReportedCost !== null) {
     finalCostUsd = openrouterReportedCost
   } else {
-    const lookup = calculateCost('openrouter', stripVendorPrefix(resolvedModel), {
-      promptTokens, completionTokens, cacheReadTokens, cacheWriteTokens, serviceTier,
-    })
+    const usage = { promptTokens, completionTokens, cacheReadTokens, cacheWriteTokens, serviceTier }
+    const lookup =
+      calculateCost('openrouter', resolvedModel, usage) ??
+      calculateCost('openrouter', stripVendorPrefix(resolvedModel), usage)
     finalCostUsd = lookup?.totalCost ?? null
   }
 

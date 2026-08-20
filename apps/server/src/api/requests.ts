@@ -19,13 +19,6 @@ import {
   countRequests,
   fetchProviderKeyNames,
 } from '../lib/requests-query.js'
-import {
-  eventsScope,
-  selectGenerationsAsRequests,
-  countGenerations,
-} from '../lib/events-query.js'
-import { useEventsForRequests } from '../lib/events-read-flag.js'
-import { fromClickhouseTimestamp } from '../lib/clickhouse.js'
 import { ApiError } from '../lib/errors.js'
 
 export const requestsRouter = new Hono<JwtContext>()
@@ -59,7 +52,7 @@ interface RequestRow {
   provider_key_id: string | null
   user_id: string | null
   session_id: string | null
-  /** ClickHouse UInt8 → number on the wire; we coerce to boolean at the API boundary. */
+  /** Real boolean column. */
   truncated: number | boolean
   created_at: string
 }
@@ -70,7 +63,7 @@ requestsRouter.get('/', async (c) => {
   const orgId = c.get('orgId')
   if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
-  // UUID + date params are bound into ClickHouse {x:UUID} / parseDateTime64
+  // UUID + date params are bound as {name} placeholders and resolved to $n
   // placeholders. A malformed value (e.g. ?projectId=abc, ?from=garbage) fails
   // the binding and throws a raw 500 — validate up front so these documented
   // external surfaces (MCP/BI tools pass arbitrary filter args) get a clean 400.
@@ -94,23 +87,23 @@ requestsRouter.get('/', async (c) => {
     ? (sortByRaw as SortCol)
     : 'created_at'
   const orderDir = sortDirRaw === 'asc' ? 'ASC' : 'DESC'
-  // ClickHouse: NULLS LAST mimics Supabase's nullsFirst: false.
+  // NULLS LAST mimics Supabase's nullsFirst: false.
   const orderBy = `${sortCol} ${orderDir} NULLS LAST`
 
-  // Assemble the dynamic WHERE. Each fragment is a parametrized ClickHouse
+  // Assemble the dynamic WHERE. Each fragment is a parametrized
   // condition — never interpolate user input into the SQL string itself.
   const filters: string[] = []
   const params: Record<string, unknown> = {}
 
-  if (projectId)       { filters.push('project_id = {projectId:UUID}'); params['projectId'] = projectId }
-  if (provider)        { filters.push('provider = {provider:String}'); params['provider'] = provider }
-  if (model)           { filters.push('positionCaseInsensitive(model, {model:String}) > 0'); params['model'] = model }
-  if (providerKeyId)   { filters.push('provider_key_id = {providerKeyId:UUID}'); params['providerKeyId'] = providerKeyId }
-  if (promptVersionId) { filters.push('prompt_version_id = {promptVersionId:UUID}'); params['promptVersionId'] = promptVersionId }
-  if (userIdFilter)    { filters.push('user_id = {userId:String}'); params['userId'] = userIdFilter }
-  if (sessionIdFilter) { filters.push('session_id = {sessionId:String}'); params['sessionId'] = sessionIdFilter }
-  if (from)            { filters.push('created_at >= parseDateTime64BestEffort({from:String})'); params['from'] = from }
-  if (to)              { filters.push('created_at <= parseDateTime64BestEffort({to:String})'); params['to'] = to }
+  if (projectId)       { filters.push('project_id = {projectId}'); params['projectId'] = projectId }
+  if (provider)        { filters.push('provider = {provider}'); params['provider'] = provider }
+  if (model)           { filters.push('position(lower({model}) in lower(model)) > 0'); params['model'] = model }
+  if (providerKeyId)   { filters.push('provider_key_id = {providerKeyId}'); params['providerKeyId'] = providerKeyId }
+  if (promptVersionId) { filters.push('prompt_version_id = {promptVersionId}'); params['promptVersionId'] = promptVersionId }
+  if (userIdFilter)    { filters.push('user_id = {userId}'); params['userId'] = userIdFilter }
+  if (sessionIdFilter) { filters.push('session_id = {sessionId}'); params['sessionId'] = sessionIdFilter }
+  if (from)            { filters.push('created_at >= {from}::timestamptz'); params['from'] = from }
+  if (to)              { filters.push('created_at <= {to}::timestamptz'); params['to'] = to }
 
   // Accept friendly `success`/`error` synonyms alongside the original
   // `ok`/`4xx`/`5xx` enum so callers without HTTP intuition (MCP tools,
@@ -124,8 +117,8 @@ requestsRouter.get('/', async (c) => {
   // ?truncated=false → only rows that completed cleanly
   // (omit) → no filter
   const truncatedRaw = c.req.query('truncated')
-  if (truncatedRaw === 'true')  filters.push('truncated = 1')
-  else if (truncatedRaw === 'false') filters.push('truncated = 0')
+  if (truncatedRaw === 'true')  filters.push('truncated = true')
+  else if (truncatedRaw === 'false') filters.push('truncated = false')
 
   const combinedFilters = filters.length > 0 ? filters.join(' AND ') : undefined
 
@@ -133,85 +126,27 @@ requestsRouter.get('/', async (c) => {
     let rows: RequestRow[]
     let total: number
 
-    if (await useEventsForRequests(orgId)) {
-      // Phase 5.1 Stage 3 — read from the unified events table.
-      // R-12 Phase 3.2: resolved per-org (env gate OR organizations.read_from_events).
-      //
-      // Safety net: if the events path throws for ANY reason — schema
-      // drift, missing column, retention edge case — fall back to the
-      // requests path so the dashboard never shows an empty list due
-      // to an internal Stage 3 issue. The error is logged loudly so
-      // a sustained outage is visible in Vercel logs.
-      let usedFallback = false
-      try {
-        const eventsScopeResolved = await eventsScope(orgId)
-        ;[rows, total] = await Promise.all([
-          selectGenerationsAsRequests<RequestRow>({
-            scope: eventsScopeResolved,
-            filters: combinedFilters,
-            orderBy,
-            limit,
-            offset,
-            params,
-          }),
-          countGenerations({ scope: eventsScopeResolved, filters: combinedFilters, params }),
-        ])
-      } catch (eventsErr) {
-        // Phase 5.1 Stage 3 root-cause hunt — print everything so the
-        // Vercel log makes the failure debuggable from one record.
-        console.error('[requests:list] events path failed, falling back to requests table:', {
-          message: eventsErr instanceof Error ? eventsErr.message : String(eventsErr),
-          stack: eventsErr instanceof Error ? eventsErr.stack : undefined,
-          orgId,
-          combinedFilters,
-          orderBy,
-          limit,
-          offset,
-          params,
-        })
-        usedFallback = true
-        const scope = await requestsScope(orgId)
-        ;[rows, total] = await Promise.all([
-          selectRequests<RequestRow>({
-            scope,
-            select: LIST_COLUMNS,
-            filters: combinedFilters,
-            orderBy,
-            limit,
-            offset,
-            params,
-          }),
-          countRequests({ scope, filters: combinedFilters, params }),
-        ])
-      }
-      void usedFallback
-    } else {
-      const scope = await requestsScope(orgId)
-      ;[rows, total] = await Promise.all([
-        selectRequests<RequestRow>({
-          scope,
-          select: LIST_COLUMNS,
-          filters: combinedFilters,
-          orderBy,
-          limit,
-          offset,
-          params,
-        }),
-        countRequests({ scope, filters: combinedFilters, params }),
-      ])
-    }
+    const scope = await requestsScope(orgId)
+    ;[rows, total] = await Promise.all([
+      selectRequests<RequestRow>({
+        scope,
+        select: LIST_COLUMNS,
+        filters: combinedFilters,
+        orderBy,
+        limit,
+        offset,
+        params,
+      }),
+      countRequests({ scope, filters: combinedFilters, params }),
+    ])
 
     // App-layer replacement for Supabase's `provider_keys ( name )` nested select.
     const keyMap = await fetchProviderKeyNames(orgId, rows.map((r) => r.provider_key_id))
     const flat = rows.map((row) => ({
       ...row,
       cost_usd: row.cost_usd == null ? null : Number(row.cost_usd),
-      // ClickHouse returns UInt8 as a number ("0" / "1" depending on driver); normalize.
-      truncated: Boolean(Number(row.truncated)),
-      // ClickHouse DateTime64 format ('YYYY-MM-DD HH:MM:SS.fff') has no 'T'/'Z'
-      // so JS new Date() interprets as local time → "9h ago" bug for KST users.
-      // Convert to canonical ISO UTC at the API boundary. See gotcha #18.
-      created_at: fromClickhouseTimestamp(row.created_at) ?? row.created_at,
+      truncated: row.truncated,
+      created_at: row.created_at,
       provider_key_name: row.provider_key_id ? (keyMap.get(row.provider_key_id) ?? null) : null,
     }))
 
@@ -221,14 +156,13 @@ requestsRouter.get('/', async (c) => {
       meta: { total, page, limit },
     })
   } catch (err) {
-    console.error('[requests:list] ClickHouse query failed:', err instanceof Error ? err.message : err)
+    console.error('[requests:list] query failed:', err instanceof Error ? err.message : err)
     throw new ApiError('INTERNAL_ERROR', 'Failed to fetch requests')
   }
 })
 
-// Columns surfaced in the detail view. Bodies are stored as JSON strings in
-// ClickHouse (not JSONB); we parse them at the boundary so the dashboard
-// keeps receiving objects.
+// Columns surfaced in the detail view. Bodies are stored as text (not jsonb);
+// we parse them at the boundary so the dashboard keeps receiving objects.
 const DETAIL_COLUMNS =
   'id, organization_id, project_id, api_key_id, provider, model, ' +
   'prompt_tokens, completion_tokens, total_tokens, cache_read_tokens, cache_write_tokens, ' +
@@ -243,11 +177,18 @@ interface RequestDetailRow extends RequestRow {
   request_body: string
   response_body: string
   prompt_version_id: string | null
-  flags: string
-  response_flags: string
+  // jsonb columns: the driver hands these back already parsed.
+  flags: unknown
+  response_flags: unknown
   has_security_flags: boolean
 }
 
+/**
+ * request_body / response_body are stored as text, not jsonb: a provider
+ * response is not guaranteed to be valid JSON, and jsonb would normalise key
+ * order and whitespace so the stored bytes stop matching what was sent.
+ * Parse opportunistically at the API boundary and fall back to the raw string.
+ */
 function parseJsonColumn(value: string | null | undefined, fallback: unknown): unknown {
   if (value == null || value === '') return fallback
   try {
@@ -268,7 +209,7 @@ requestsRouter.get('/:id', async (c) => {
     const rows = await selectRequests<RequestDetailRow>({
       scope,
       select: DETAIL_COLUMNS,
-      filters: 'id = {requestId:UUID}',
+      filters: 'id = {requestId}',
       params: { requestId },
       limit: 1,
     })
@@ -279,18 +220,17 @@ requestsRouter.get('/:id', async (c) => {
     const flat = {
       ...data,
       cost_usd: data.cost_usd == null ? null : Number(data.cost_usd),
-      truncated: Boolean(Number(data.truncated)),
-      // ClickHouse timestamp → ISO UTC (see gotcha #18 / list endpoint).
-      created_at: fromClickhouseTimestamp(data.created_at) ?? data.created_at,
+      truncated: data.truncated,
+      created_at: data.created_at,
       request_body: parseJsonColumn(data.request_body, null),
       response_body: parseJsonColumn(data.response_body, null),
-      flags: parseJsonColumn(data.flags, []),
-      response_flags: parseJsonColumn(data.response_flags, []),
+      flags: data.flags ?? [],
+      response_flags: data.response_flags ?? [],
       provider_key_name: data.provider_key_id ? (keyMap.get(data.provider_key_id) ?? null) : null,
     }
     return c.json({ success: true, data: flat })
   } catch (err) {
-    console.error('[requests:detail] ClickHouse query failed:', err instanceof Error ? err.message : err)
+    console.error('[requests:detail] query failed:', err instanceof Error ? err.message : err)
     throw new ApiError('NOT_FOUND', 'Request not found')
   }
 })
@@ -312,7 +252,7 @@ requestsRouter.post('/:id/replay', requireRole('admin', 'editor'), async (c) => 
   const requestId = c.req.param('id')
   const orgId = c.get('orgId')
   if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
-  // Malformed id would fail the ClickHouse {requestId:UUID} binding → raw 500.
+  // Malformed id would fail the {requestId} binding → raw 500.
   // Treat it like a nonexistent id (same 404 as GET /:id).
   if (!isUuid(requestId)) throw new ApiError('NOT_FOUND', 'Request not found')
 
@@ -333,7 +273,7 @@ requestsRouter.post('/:id/replay', requireRole('admin', 'editor'), async (c) => 
   const rows = await selectRequests<ReplayRow>({
     scope,
     select: 'provider, model, request_body',
-    filters: 'id = {requestId:UUID}',
+    filters: 'id = {requestId}',
     params: { requestId },
     limit: 1,
   })
@@ -387,7 +327,7 @@ requestsRouter.post('/:id/replay/run', requireRole('admin', 'editor'), async (c)
   const requestId = c.req.param('id')
   const orgId = c.get('orgId')
   if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
-  // Malformed id would fail the ClickHouse {requestId:UUID} binding → raw 500.
+  // Malformed id would fail the {requestId} binding → raw 500.
   // Treat it like a nonexistent id (same 404 as GET /:id).
   if (!isUuid(requestId)) throw new ApiError('NOT_FOUND', 'Request not found')
 
@@ -408,7 +348,7 @@ requestsRouter.post('/:id/replay/run', requireRole('admin', 'editor'), async (c)
   const rows = await selectRequests<ReplayRunRow>({
     scope,
     select: 'project_id, provider, model, request_body, provider_key_id, api_key_id',
-    filters: 'id = {requestId:UUID}',
+    filters: 'id = {requestId}',
     params: { requestId },
     limit: 1,
   })

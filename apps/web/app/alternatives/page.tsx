@@ -1,3 +1,4 @@
+import { openGraphFor } from '@/lib/page-metadata'
 import Link from 'next/link'
 import { Footer } from '@/components/layout/footer'
 import { MarketingNav } from '@/components/layout/marketing-nav'
@@ -7,6 +8,7 @@ export const metadata = {
   description:
     'Open-source and SaaS alternatives to Langfuse, Helicone, LangSmith, Braintrust, and Arize Phoenix in 2026. Honest tradeoffs, MIT license, self-hostable.',
   alternates: { canonical: '/alternatives' },
+  openGraph: openGraphFor('/alternatives'),
 }
 
 const SITE_URL = 'https://www.spanlens.io'
@@ -40,7 +42,7 @@ const ENTRIES: AlternativeEntry[] = [
     oneLine:
       'The closest architectural match. Both are proxy-based, though Helicone entered maintenance mode after its 2026 Mintlify acquisition.',
     whySwitch:
-      'Spanlens adds Critical Path agent tracing, Prompt A/B with Welch t-test, judge-to-human correlation tracking, and a ClickHouse fallback-replay safety net that survives transient backend outages without losing rows.',
+      'Spanlens adds Critical Path agent tracing, Prompt A/B with Welch t-test, judge-to-human correlation tracking, and a log path that queues and replays failed writes instead of dropping rows.',
     installShape: '1-line baseURL swap',
     license: 'Apache 2.0',
     selfHost: 'Yes, Docker Compose',
@@ -143,7 +145,7 @@ export default function AlternativesHub() {
 
       <section className="max-w-[1000px] mx-auto px-6 pt-20 pb-10">
         <p className="font-mono text-[12px] text-text-faint">LLM observability · {YEAR}</p>
-        <h1 className="mt-3 text-[40px] sm:text-[48px] font-semibold tracking-[-0.8px] text-text leading-[1.05]">
+        <h1 className="mt-3 font-display track-h2 text-[40px] sm:text-[48px] text-text leading-[1.12]">
           Best LLM observability alternatives in {YEAR}
         </h1>
         <p className="mt-4 text-[18px] text-text-muted leading-relaxed max-w-[760px]">
@@ -152,10 +154,17 @@ export default function AlternativesHub() {
           cloud-only. Below are the five most common alternatives teams compare Spanlens to,
           plus migration guides if you already have data in one of them.
         </p>
+        <p className="mt-4 text-[15px] text-text-muted leading-relaxed max-w-[760px]">
+          For a wider field, see{' '}
+          <Link href="/best-llm-observability-tools" className="text-accent hover:underline">
+            all twelve tools with stars, licence, and development activity
+          </Link>
+          .
+        </p>
       </section>
 
       <section className="max-w-[1000px] mx-auto px-6 pb-10">
-        <div className="rounded-xl border border-border overflow-x-auto">
+        <div className="rounded-card border border-border overflow-x-auto">
           <table className="w-full text-[13px] border-collapse">
             <caption className="sr-only">
               Summary table of LLM observability tools compared to Spanlens in {YEAR}.
@@ -164,25 +173,25 @@ export default function AlternativesHub() {
               <tr className="bg-bg-elev">
                 <th
                   scope="col"
-                  className="text-left px-4 py-2.5 font-mono text-[11px] uppercase tracking-[0.06em] text-text-faint border-b border-border"
+                  className="text-left px-4 py-2.5 eyebrow border-b border-border"
                 >
                   Tool
                 </th>
                 <th
                   scope="col"
-                  className="text-left px-4 py-2.5 font-mono text-[11px] uppercase tracking-[0.06em] text-text-faint border-b border-border"
+                  className="text-left px-4 py-2.5 eyebrow border-b border-border"
                 >
                   Install
                 </th>
                 <th
                   scope="col"
-                  className="text-left px-4 py-2.5 font-mono text-[11px] uppercase tracking-[0.06em] text-text-faint border-b border-border"
+                  className="text-left px-4 py-2.5 eyebrow border-b border-border"
                 >
                   License
                 </th>
                 <th
                   scope="col"
-                  className="text-left px-4 py-2.5 font-mono text-[11px] uppercase tracking-[0.06em] text-text-faint border-b border-border"
+                  className="text-left px-4 py-2.5 eyebrow border-b border-border"
                 >
                   Self-host
                 </th>
@@ -238,14 +247,14 @@ export default function AlternativesHub() {
       </section>
 
       <section className="max-w-[1000px] mx-auto px-6 pb-16">
-        <h2 className="text-[24px] font-semibold tracking-[-0.4px] text-text mb-6">
+        <h2 className="font-display track-h3 text-[24px] text-text mb-6">
           Tool-by-tool
         </h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {ENTRIES.map((entry) => (
             <article
               key={entry.slug}
-              className="rounded-xl border border-border bg-bg-elev p-6 flex flex-col"
+              className="rounded-card border border-border bg-bg-elev p-6 flex flex-col"
             >
               <header className="flex items-baseline justify-between gap-3 mb-3">
                 <h3 className="text-[18px] font-semibold text-text">
@@ -271,7 +280,7 @@ export default function AlternativesHub() {
       </section>
 
       <section className="max-w-[1000px] mx-auto px-6 pb-16">
-        <h2 className="text-[24px] font-semibold tracking-[-0.4px] text-text mb-3">
+        <h2 className="font-display track-h3 text-[24px] text-text mb-3">
           Already on one of these? Migrate in under an hour.
         </h2>
         <p className="text-[14px] text-text-muted mb-6 max-w-[680px] leading-relaxed">
@@ -283,7 +292,7 @@ export default function AlternativesHub() {
             <li key={guide.slug}>
               <Link
                 href={`/docs/migrate/${guide.slug}`}
-                className="block rounded-xl border border-border bg-bg p-5 hover:border-accent transition-colors"
+                className="block rounded-card border border-border bg-bg p-5 hover:border-accent transition-colors"
               >
                 <div className="text-[15px] font-semibold text-text">{guide.label}</div>
                 <div className="mt-1 font-mono text-[11px] text-text-faint">
@@ -296,7 +305,7 @@ export default function AlternativesHub() {
       </section>
 
       <section className="max-w-[1000px] mx-auto px-6 pb-24">
-        <div className="rounded-xl border border-border bg-bg-elev p-8 text-center">
+        <div className="rounded-card border border-border bg-bg-elev p-8 text-center">
           <p className="text-[15px] text-text-muted mb-5 max-w-[640px] mx-auto leading-relaxed">
             Try Spanlens free for 50K requests a month. No credit card. Drop the SDK in, see
             every LLM call in your dashboard within 60 seconds.
@@ -310,7 +319,7 @@ export default function AlternativesHub() {
             </Link>
             <Link
               href="/docs/quick-start"
-              className="h-10 px-5 rounded-[6px] border border-border text-text text-[14px] font-medium leading-10 hover:bg-bg-elev transition-colors"
+              className="h-10 px-5 rounded-[6px] border border-border text-text text-[14px] font-medium leading-10 hover:bg-bg-muted transition-colors"
             >
               Read the docs
             </Link>

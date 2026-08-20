@@ -18,15 +18,16 @@ interface TopbarProps {
 }
 
 /**
- * MonoTopbar — "Workspace / Page / Sub-page" breadcrumb with optional right slot.
- * Sits at the top of every dashboard main area, 52px tall, border-bottom.
+ * Topbar — "Workspace / Page / Sub-page" breadcrumb with an optional right
+ * slot. Sits at the top of every dashboard main area: 61px tall, 28px side
+ * padding, hairline underneath, matching the Figma dashboard boards.
  */
 export function Topbar({ crumbs, right, className }: TopbarProps) {
   const { toggle } = useSidebar()
   return (
     <div
       className={cn(
-        'flex items-center gap-2 h-[52px] px-[22px] border-b border-border shrink-0',
+        'flex items-center gap-3 h-[61px] px-4 md:px-7 border-b border-border shrink-0',
         className,
       )}
     >
@@ -40,7 +41,7 @@ export function Topbar({ crumbs, right, className }: TopbarProps) {
         <Menu size={18} />
       </button>
 
-      <nav className="flex items-center gap-1.5 text-[13px] min-w-0 overflow-hidden">
+      <nav className="flex items-center gap-2 text-[15px] min-w-0 overflow-hidden">
         {crumbs.map((c, i) => (
           <span
             key={i}
@@ -57,7 +58,7 @@ export function Topbar({ crumbs, right, className }: TopbarProps) {
               </Link>
             ) : (
               <span className={cn(
-                i === crumbs.length - 1 ? 'text-text font-medium' : 'text-text-faint',
+                i === crumbs.length - 1 ? 'text-text font-semibold' : 'text-text-faint',
                 'truncate max-w-[140px] sm:max-w-none',
               )}>
                 {c.label}
@@ -83,7 +84,7 @@ function CmdKPill({ className }: { className?: string }) {
       onClick={toggle}
       aria-label="Open command palette"
       className={cn(
-        'inline-flex items-center gap-1.5 h-[30px] px-2.5 text-text-faint border border-border rounded-[6px] hover:text-text-muted hover:border-border-strong transition-colors font-mono text-[12px]',
+        'inline-flex items-center gap-2 h-[31px] pl-3 pr-2.5 text-text-muted bg-bg-elev border border-border rounded hover:text-text hover:border-border-strong transition-colors text-[12.5px] font-medium',
         className,
       )}
     >
@@ -185,17 +186,20 @@ export function TimeRangeSelector({
 
   return (
     <div className="relative" ref={popoverRef}>
-      <div className="flex border border-border rounded-md overflow-hidden">
+      {/* Segmented pill: a chip-coloured trough with a white lozenge marking
+          the selection, matching the topbar control in the Figma boards. */}
+      <div className="inline-flex items-center gap-[2px] rounded-full bg-secondary p-[3px]">
         {options.map((opt) => (
           <button
             key={opt}
             type="button"
             onClick={() => onChange(opt)}
+            aria-pressed={opt === value && !customSelected}
             className={cn(
-              'font-mono text-[11px] px-[10px] py-[5px] border-r border-border transition-colors',
+              'font-mono text-[12px] leading-[17px] px-3 py-[5px] rounded-full transition-colors',
               opt === value && !customSelected
-                ? 'bg-bg-elev text-text font-medium'
-                : 'bg-transparent text-text-muted hover:text-text',
+                ? 'bg-bg-elev text-text'
+                : 'text-text-faint hover:text-text',
             )}
           >
             {opt}
@@ -205,10 +209,8 @@ export function TimeRangeSelector({
           type="button"
           onClick={() => setOpen((v) => !v)}
           className={cn(
-            'font-mono text-[11px] px-[10px] py-[5px] transition-colors',
-            customSelected
-              ? 'bg-bg-elev text-text font-medium'
-              : 'bg-transparent text-text-muted hover:text-text',
+            'font-mono text-[12px] leading-[17px] px-3 py-[5px] rounded-full transition-colors',
+            customSelected ? 'bg-bg-elev text-text' : 'text-text-faint hover:text-text',
           )}
           aria-haspopup="dialog"
           aria-expanded={open}

@@ -1,7 +1,9 @@
 import Link from 'next/link'
 import { Check, Minus, X } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import { Footer } from '@/components/layout/footer'
 import { MarketingNav } from '@/components/layout/marketing-nav'
+import { BreadcrumbJsonLd } from '@/components/marketing/breadcrumb-jsonld'
 import { cn } from '@/lib/utils'
 
 export type Verdict = 'yes' | 'no' | 'partial'
@@ -42,6 +44,8 @@ export interface CompareTemplateProps {
   relatedNote?: React.ReactNode
   /** Year shown next to the H1 and used in the FAQ canonical URL. Defaults to the current year. */
   year?: number
+  /** Content-authored last-updated date (ISO 'YYYY-MM-DD'). Drives the visible "Updated" text and JSON-LD dateModified so they reflect the true content date, not the deploy date. */
+  lastUpdated?: string
 }
 
 const SITE_URL = 'https://www.spanlens.io'
@@ -105,7 +109,12 @@ function buildFaqJsonLd(competitor: string, faqs: FaqEntry[], slug: string): str
   return JSON.stringify(payload)
 }
 
-function buildSoftwareCompareJsonLd(competitor: string, slug: string, year: number): string {
+function buildSoftwareCompareJsonLd(
+  competitor: string,
+  slug: string,
+  year: number,
+  lastUpdated?: string,
+): string {
   const payload = {
     '@context': 'https://schema.org',
     '@type': 'WebPage',
@@ -113,24 +122,18 @@ function buildSoftwareCompareJsonLd(competitor: string, slug: string, year: numb
     url: `${SITE_URL}/compare/${slug}`,
     name: `Spanlens vs ${competitor} · ${year}`,
     inLanguage: 'en',
+    ...(lastUpdated ? { dateModified: lastUpdated } : {}),
     isPartOf: {
       '@type': 'WebSite',
       name: 'Spanlens',
       url: SITE_URL,
     },
-    about: {
-      '@type': 'SoftwareApplication',
-      name: 'Spanlens',
-      applicationCategory: 'DeveloperApplication',
-      operatingSystem: 'Web, Docker',
-      url: SITE_URL,
-      offers: {
-        '@type': 'Offer',
-        price: '0',
-        priceCurrency: 'USD',
-        description: 'Free plan with 50K requests/mo',
-      },
-    },
+    // Reference the product entity declared on the homepage rather than
+    // re-declaring a partial copy. Two divergent SoftwareApplication nodes for
+    // the same product break entity reconciliation, and the partial copy also
+    // failed Google's Software App rich-result check on every comparison page
+    // (Ahrefs 2026-07-29: "Missing required aggregateRating or review").
+    about: { '@id': `${SITE_URL}/#software` },
     mentions: {
       '@type': 'Thing',
       name: competitor,
@@ -156,12 +159,13 @@ export function CompareTemplate({
   closing,
   relatedNote,
   year,
+  lastUpdated,
 }: CompareTemplateProps) {
   const resolvedYear = year ?? new Date().getUTCFullYear()
   const slug = slugFromCompetitor(competitor)
   const faqs = buildFaqEntries(competitor, whySpanlens, whyCompetitor)
   const faqJsonLd = buildFaqJsonLd(competitor, faqs, slug)
-  const pageJsonLd = buildSoftwareCompareJsonLd(competitor, slug, resolvedYear)
+  const pageJsonLd = buildSoftwareCompareJsonLd(competitor, slug, resolvedYear, lastUpdated)
   const allRows = groups.flatMap((g) =>
     g.rows.map((r) => ({ ...r, groupTitle: g.title })),
   )
@@ -169,6 +173,12 @@ export function CompareTemplate({
   return (
     <div className="min-h-screen bg-bg">
       <MarketingNav />
+      <BreadcrumbJsonLd
+        trail={[
+          { name: 'Compare', path: '/compare' },
+          { name: `Spanlens vs ${competitor}`, path: `/compare/${slug}` },
+        ]}
+      />
 
       {/* Structured data for SEO/AEO. Inline <script> ships JSON-LD in the SSR HTML so
           search and LLM crawlers (many of which don't execute JS) can read it. The React
@@ -182,71 +192,81 @@ export function CompareTemplate({
         dangerouslySetInnerHTML={{ __html: pageJsonLd }}
       />
 
-      {/* Hero */}
-      <section className="max-w-[1000px] mx-auto px-6 pt-20 pb-12">
+      {/* Hero. Centred per M6: the comparison pages are entry points from
+          search, so the title carries the page rather than a left-aligned
+          article opener. */}
+      <section className="mx-auto max-w-[1000px] px-6 pb-12 pt-20 text-center">
         <Link
           href="/compare"
-          className="font-mono text-[12px] text-text-faint hover:text-text-muted transition-colors"
+          className="eyebrow inline-block transition-colors hover:text-text-muted"
         >
           ← All comparisons
         </Link>
-        <h1 className="mt-4 text-[40px] sm:text-[48px] font-semibold tracking-[-0.8px] text-text leading-[1.05]">
+        <h1 className="font-display track-h2 mt-4 text-[40px] leading-[1.12] text-text sm:text-[46px]">
           Spanlens <span className="text-text-faint">vs</span> {competitor}{' '}
           <span className="text-text-faint">· {resolvedYear}</span>
         </h1>
-        <p className="mt-4 text-[18px] text-text-muted leading-relaxed">{tagline}</p>
+        <p className="mx-auto mt-4 max-w-[640px] text-[16.5px] leading-[1.6] text-text-muted">
+          {tagline}
+        </p>
 
-        <div className="mt-8 rounded-xl border border-border bg-bg-elev p-6">
-          <div className="font-mono text-[11px] uppercase tracking-[0.06em] text-text-faint mb-2">Summary</div>
-          <p className="text-[14px] text-text-muted leading-relaxed">{tldr}</p>
+        <div className="mt-10 rounded-card border border-border bg-bg-elev p-6 text-left">
+          <div className="eyebrow mb-2">Summary</div>
+          <p className="text-[14px] leading-relaxed text-text-muted">{tldr}</p>
         </div>
       </section>
 
       {/* Machine-readable at-a-glance table. Semantic <table> so search engines and LLMs can parse it. */}
       <section className="max-w-[1000px] mx-auto px-6 pb-4">
-        <h2 className="text-[20px] font-semibold tracking-[-0.4px] text-text mb-4">
+        <h2 className="font-display track-h3 mb-4 text-[24px] text-text">
           At a glance: Spanlens vs {competitor} ({resolvedYear})
         </h2>
-        <div className="rounded-xl border border-border overflow-x-auto">
-          <table className="w-full text-[13px] border-collapse">
+        {/* The competitor column is deliberately one step quieter than ours.
+            This is our page; the honest data stays, the emphasis does not. */}
+        <div className="overflow-x-auto rounded-card border border-border">
+          <table className="w-full border-collapse text-[13.5px]">
             <caption className="sr-only">
               Side-by-side feature comparison of Spanlens and {competitor} in {resolvedYear}.
             </caption>
             <thead>
-              <tr className="bg-bg-elev">
-                <th
-                  scope="col"
-                  className="text-left px-4 py-2.5 font-mono text-[11px] uppercase tracking-[0.06em] text-text-faint border-b border-border"
-                >
+              <tr className="bg-bg-sunk">
+                <th scope="col" className="eyebrow border-b border-border px-5 py-3 text-left">
                   Feature
                 </th>
-                <th
-                  scope="col"
-                  className="text-left px-4 py-2.5 font-mono text-[11px] uppercase tracking-[0.06em] text-text-faint border-b border-border"
-                >
+                <th scope="col" className="eyebrow border-b border-border px-5 py-3 text-left">
                   Spanlens
                 </th>
-                <th
-                  scope="col"
-                  className="text-left px-4 py-2.5 font-mono text-[11px] uppercase tracking-[0.06em] text-text-faint border-b border-border"
-                >
+                <th scope="col" className="eyebrow border-b border-border px-5 py-3 text-left">
                   {competitor}
                 </th>
               </tr>
             </thead>
             <tbody>
               {allRows.map((row, i) => (
-                <tr key={`${row.groupTitle}-${row.feature}`} className={cn(i % 2 === 1 && 'bg-bg-elev/30')}>
+                <tr key={`${row.groupTitle}-${row.feature}`}>
                   <th
                     scope="row"
-                    className="text-left align-top px-4 py-2.5 font-normal text-text border-b border-border"
+                    className={cn(
+                      'px-5 py-3 text-left align-top font-medium text-text',
+                      i < allRows.length - 1 && 'border-b border-border',
+                    )}
                   >
                     {row.feature}
                   </th>
-                  <td className="align-top px-4 py-2.5 text-text-muted border-b border-border">
+                  <td
+                    className={cn(
+                      'px-5 py-3 align-top text-text',
+                      i < allRows.length - 1 && 'border-b border-border',
+                    )}
+                  >
                     {verdictLabel(row.spanlens)}
                   </td>
-                  <td className="align-top px-4 py-2.5 text-text-muted border-b border-border">
+                  <td
+                    className={cn(
+                      'px-5 py-3 align-top text-text-faint',
+                      i < allRows.length - 1 && 'border-b border-border',
+                    )}
+                  >
                     {verdictLabel(row.competitor)}
                   </td>
                 </tr>
@@ -254,20 +274,20 @@ export function CompareTemplate({
             </tbody>
           </table>
         </div>
-        <p className="mt-2 font-mono text-[11px] text-text-faint">
-          Updated {new Date().toISOString().slice(0, 10)}. Scroll for the grouped view with notes below.
+        <p className="mt-3 font-mono text-[11px] text-text-faint">
+          Updated {lastUpdated ?? new Date().toISOString().slice(0, 10)}. Scroll for the grouped view with notes below.
         </p>
       </section>
 
       {/* Why Spanlens */}
       <section className="max-w-[1000px] mx-auto px-6 py-12">
-        <h2 className="text-[24px] font-semibold tracking-[-0.4px] text-text mb-6">
+        <h2 className="font-display track-h3 mb-6 text-[24px] text-text">
           Why teams pick Spanlens over {competitor}
         </h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {whySpanlens.map((p) => (
-            <div key={p.title} className="rounded-xl border border-border bg-bg-elev p-5">
-              <h3 className="text-[15px] font-semibold text-text mb-2">{p.title}</h3>
+            <div key={p.title} className="rounded-card border border-border bg-bg-elev p-5">
+              <h3 className="mb-2 text-[15px] font-semibold text-text">{p.title}</h3>
               <p className="text-[13px] text-text-muted leading-relaxed">{p.body}</p>
             </div>
           ))}
@@ -276,23 +296,23 @@ export function CompareTemplate({
 
       {/* Feature comparison table (visual, grouped) */}
       <section className="max-w-[1000px] mx-auto px-6 py-12">
-        <h2 className="text-[24px] font-semibold tracking-[-0.4px] text-text mb-6">
+        <h2 className="font-display track-h3 mb-6 text-[24px] text-text">
           Feature-by-feature
         </h2>
-        <div className="rounded-xl border border-border overflow-hidden">
+        <div className="overflow-hidden rounded-card border border-border">
           {groups.map((group, gi) => (
             <div key={group.title} className={cn(gi > 0 && 'border-t border-border')}>
-              <div className="bg-bg-elev px-5 py-2.5 font-mono text-[11px] uppercase tracking-[0.06em] text-text-faint">
+              <div className="eyebrow bg-bg-sunk px-5 py-3">
                 {group.title}
               </div>
               <div className="grid grid-cols-[1fr_120px_120px] text-[13px]">
-                <div className="px-5 py-2.5 border-b border-border bg-bg font-mono text-[11px] uppercase tracking-[0.06em] text-text-faint">
+                <div className="eyebrow border-b border-border bg-bg px-5 py-3">
                   Feature
                 </div>
-                <div className="px-3 py-2.5 border-b border-border bg-bg font-mono text-[11px] uppercase tracking-[0.06em] text-text-faint text-center">
+                <div className="eyebrow border-b border-border bg-bg px-3 py-3 text-center">
                   Spanlens
                 </div>
-                <div className="px-3 py-2.5 border-b border-border bg-bg font-mono text-[11px] uppercase tracking-[0.06em] text-text-faint text-center">
+                <div className="eyebrow border-b border-border bg-bg px-3 py-3 text-center">
                   {competitor}
                 </div>
                 {group.rows.map((row, ri) => (
@@ -331,7 +351,7 @@ export function CompareTemplate({
           ))}
         </div>
         <p className="mt-3 font-mono text-[11px] text-text-faint">
-          Last updated {new Date().toISOString().slice(0, 10)} · Spot something inaccurate?{' '}
+          Last updated {lastUpdated ?? new Date().toISOString().slice(0, 10)} · Spot something inaccurate?{' '}
           <a href="mailto:support@spanlens.io" className="underline hover:text-text-muted">
             Let us know
           </a>
@@ -341,7 +361,7 @@ export function CompareTemplate({
 
       {/* When competitor is better */}
       <section className="max-w-[1000px] mx-auto px-6 py-12">
-        <h2 className="text-[24px] font-semibold tracking-[-0.4px] text-text mb-2">
+        <h2 className="font-display track-h3 mb-2 text-[24px] text-text">
           When {competitor} might be the better fit
         </h2>
         <p className="text-[13px] text-text-muted mb-6">
@@ -349,8 +369,8 @@ export function CompareTemplate({
         </p>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {whyCompetitor.map((p) => (
-            <div key={p.title} className="rounded-xl border border-border bg-bg p-5">
-              <h3 className="text-[15px] font-semibold text-text mb-2">{p.title}</h3>
+            <div key={p.title} className="rounded-card border border-border bg-bg p-5">
+              <h3 className="mb-2 text-[15px] font-semibold text-text">{p.title}</h3>
               <p className="text-[13px] text-text-muted leading-relaxed">{p.body}</p>
             </div>
           ))}
@@ -359,48 +379,47 @@ export function CompareTemplate({
 
       {/* FAQ rendered for users; FAQ JSON-LD above mirrors this content for search engines. */}
       <section className="max-w-[1000px] mx-auto px-6 py-12">
-        <h2 className="text-[24px] font-semibold tracking-[-0.4px] text-text mb-6">
+        <h2 className="font-display track-h3 mb-6 text-[24px] text-text">
           Frequently asked questions
         </h2>
-        <div className="space-y-3">
+        <div className="divide-y divide-border overflow-hidden rounded-card border border-border bg-bg-elev">
           {faqs.map((f) => (
-            <details
-              key={f.question}
-              className="group rounded-xl border border-border bg-bg-elev p-5"
-            >
-              <summary className="cursor-pointer list-none text-[14px] font-medium text-text">
+            <details key={f.question} className="group px-6 py-5">
+              <summary className="cursor-pointer list-none text-[14.5px] font-semibold text-text">
                 {f.question}
               </summary>
-              <p className="mt-3 text-[13px] text-text-muted leading-relaxed">{f.answer}</p>
+              <p className="mt-2.5 text-[13.5px] leading-relaxed text-text-muted">{f.answer}</p>
             </details>
           ))}
         </div>
       </section>
 
-      {/* CTA */}
-      <section className="max-w-[1000px] mx-auto px-6 py-16">
-        <div className="rounded-xl border border-border bg-bg-elev p-8 text-center">
-          {closing && (
-            <p className="text-[15px] text-text-muted mb-5 max-w-[640px] mx-auto leading-relaxed">{closing}</p>
-          )}
-          {relatedNote && (
-            <p className="text-[13px] text-text-faint mb-5 max-w-[640px] mx-auto leading-relaxed">{relatedNote}</p>
-          )}
-          <div className="flex flex-col sm:flex-row gap-3 justify-center items-center">
-            <Link
-              href="/signup"
-              className="h-10 px-5 rounded-[6px] bg-accent text-bg text-[14px] font-medium leading-10 hover:opacity-90 transition-opacity"
-            >
-              Start free →
-            </Link>
-            <Link
-              href="/docs/quick-start"
-              className="h-10 px-5 rounded-[6px] border border-border text-text text-[14px] font-medium leading-10 hover:bg-bg-elev transition-colors"
-            >
-              Read the docs
-            </Link>
+      {/* CTA. M6 puts this on the accent tint with the copy and the actions on
+          one line, so the page ends on the single warm surface it has. */}
+      <section className="mx-auto max-w-[1000px] px-6 py-16">
+        <div className="rounded-card border border-accent-border bg-accent-bg p-8">
+          <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+            <div className="max-w-[520px]">
+              <h2 className="font-display track-quote text-[20px] text-text">
+                Already on {competitor}?
+              </h2>
+              {closing && (
+                <p className="mt-2 text-[13.5px] leading-relaxed text-text-muted">{closing}</p>
+              )}
+              {relatedNote && (
+                <p className="mt-2 text-[13px] leading-relaxed text-text-faint">{relatedNote}</p>
+              )}
+            </div>
+            <div className="flex shrink-0 flex-col items-stretch gap-3 sm:flex-row sm:items-center">
+              <Button asChild variant="outline" className="rounded-full">
+                <Link href="/docs/quick-start">Read the docs</Link>
+              </Button>
+              <Button asChild variant="signal" className="rounded-full">
+                <Link href="/signup">Start free</Link>
+              </Button>
+            </div>
           </div>
-          <p className="mt-4 font-mono text-[11px] text-text-faint">
+          <p className="mt-6 font-mono text-[11px] text-text-faint">
             Free tier · No credit card · Self-host with Docker
           </p>
         </div>

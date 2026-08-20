@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiDelete, apiGet, apiPatch, apiPost } from '@/lib/api'
 import { useOrganization } from './use-organization'
+import { useCurrentUser } from './use-current-user'
 import type { ApiEnvelope } from './types'
 
 export type OrgRole = 'admin' | 'editor' | 'viewer'
@@ -132,46 +133,19 @@ export function useCancelInvitation() {
 }
 
 /**
- * The current user's role in their organization. Null while loading or when
- * the user has no org. Used by UI permission gates — ALWAYS paired with
- * server-side `requireRole` since the client can be tampered with.
- */
-export function useCurrentRole(): OrgRole | null {
-  const members = useMembers()
-  const userQuery = useQuery<{ userId: string | null }>({
-    queryKey: ['current-user', 'id'],
-    queryFn: async () => {
-      const res = await apiGet<ApiEnvelope<{ id: string }>>('/api/v1/organizations/me')
-      // The endpoint returns the org, not the user — we need a user-id source.
-      // Fall back to parsing the auth cookie via a small dedicated endpoint in future.
-      return { userId: res.data?.id ? null : null }
-    },
-    enabled: false, // we use members list + current user id via Supabase session
-  })
-  void userQuery
-  // Simpler path: use Supabase's session for user id.
-  // members hook already has the roster; match by email in the consuming component.
-  if (!members.data) return null
-  // Caller should prefer `useCurrentMember()` instead.
-  return null
-}
-
-/**
  * Find the current user's member row by matching email against the Supabase
  * session email. Returns null while loading.
+ *
+ * Reuses `useCurrentUser()` rather than declaring its own query: both once used
+ * the `['current-user']` key with different result shapes, so whichever queryFn
+ * resolved last won the shared cache entry and this hook could receive a
+ * `CurrentUser` object where it expected a string.
  */
 export function useCurrentMember(): Member | null {
   const members = useMembers()
-  const userQuery = useQuery({
-    queryKey: ['current-user'],
-    queryFn: async () => {
-      const { createClient } = await import('@/lib/supabase/client')
-      const supabase = createClient()
-      const { data } = await supabase.auth.getSession()
-      return data.session?.user.email ?? null
-    },
-  })
-  const email = userQuery.data
+  const user = useCurrentUser()
+  const email = user.data?.email
   if (!email || !members.data) return null
-  return members.data.find((m) => m.email.toLowerCase() === email.toLowerCase()) ?? null
+  const needle = email.toLowerCase()
+  return members.data.find((m) => m.email?.toLowerCase() === needle) ?? null
 }

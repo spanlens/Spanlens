@@ -1,9 +1,11 @@
+import { openGraphFor } from '@/lib/page-metadata'
 import { CodeBlock } from '../../_components/code-block'
 import { EncryptionFlowDiagram } from '../../_components/diagrams'
 import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
 export const metadata = {
   alternates: { canonical: '/docs/features/settings' },
+  openGraph: openGraphFor('/docs/features/settings'),
   title: 'Keys & encryption · Spanlens Docs',
   description:
     'How Spanlens stores and protects your AI provider keys. AES-256-GCM encryption at rest, decrypted only in memory during proxy forwarding.',

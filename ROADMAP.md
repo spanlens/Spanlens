@@ -1,9 +1,9 @@
 # Spanlens (AgentOps) ROADMAP
 
 > ⚠️ **이 문서는 2026-06-07 이후 동결 상태.** 이후 201커밋(PR #239→#427)이 미반영.
-> **현행 로드맵**: `docs/plans/platform-review-roadmap-2026-06.md` + `spanlens-remaining-work.md`
-> **현재 상태 스냅샷**: `docs/STATE-OF-REPO.md` (2026-07-19 통분석)
-> 아래 가격/한도 표기는 구버전임 — 현행: Free 50K / Pro $29 100K / Team $149 1M (`apps/web/lib/billing-plans.ts` 참조)
+> 아래 가격/한도/일정 표기는 전부 구버전임. 현행 가격은 `apps/web/lib/billing-plans.ts`
+> (Free 50K / Pro $29 100K / Team $149 1M), 현행 우선순위는 `/roadmap` 공개 페이지 참조.
+> 이 파일은 초기 MVP 계획의 기록으로만 남겨둠.
 
 > LLM 관찰성 SaaS · 100일 MVP · 런치 목표 2026.08.03 (Phase 4)
 > 수익 모델: Free / Starter $19 / Team $49 / Enterprise $99
@@ -153,7 +153,7 @@
 - [ ] 조직 단위 예산/쿼터 — Phase 2B `enforceQuota` 미들웨어로 org 레벨 request 한도는 충족됨. 멤버별 fine-grained 쿼터는 수요 검증 후 Phase 5+로 보류
 
 ### 3C. 고도화 (Week 12)
-- [x] Postgres → ClickHouse 이관 — **검토를 넘어 완전 이관 완료** (2026-05월). `requests` 테이블 ClickHouse 전용, CH 마이그레이션 8개. `docs/plans/clickhouse-migration.md` 참조.
+- [x] 로그 스토어 이관: 2026-05월 `requests` 테이블을 ClickHouse로 옮겼다가 2026-08월 Postgres로 되돌림. 현재는 `created_at` 기준 월 단위 RANGE 파티션 테이블 하나. 두 방향의 근거는 `docs/plans/clickhouse-migration.md`, `docs/plans/postgres-migration.md` 참조.
 - [x] **Public API + OpenAPI 문서 공개** — **완료 (2026-04-27)**: 정적 OpenAPI 3.0 스펙 (20+ 엔드포인트) + `GET /api/v1/openapi.json` + `GET /api/v1/docs` Swagger UI (CDN) + `/docs/api` 문서 페이지 + docs 사이드바 링크
 - [x] 데이터 export (CSV/JSON) — `GET /api/v1/exports/requests?format=csv|json` + project/provider/model/status 필터 지원 (`apps/server/src/api/exports.ts`)
 - [ ] BigQuery 커넥터 베타 — Connect → Destinations UI placeholder 존재, 실제 커넥터 미구현
@@ -558,7 +558,7 @@ Enterprise `$99+` 플랜은 이미 Pricing 페이지에 판매 중. **첫 Enterp
 | 리스크 | 완화책 |
 |---|---|
 | Provider API 스펙 변경 (특히 Anthropic 스트리밍) | 파서 계약 테스트 + weekly canary |
-| Supabase Postgres 쓰기 병목 (100K req/day↑) | `logRequestAsync` 큐잉 + ClickHouse 이관 플랜 |
+| Supabase Postgres 쓰기 병목 (100K req/day↑) | `logRequestAsync` 큐잉 + `requests` 월 단위 파티셔닝, 실패한 쓰기는 `requests_fallback` 큐로 보존 |
 | 경쟁사 재진입 / 신규 진입 | 독립성·셀프호스팅·단순함 메시지 강화 |
 | 결제/Paddle 장애 | Grace period 3일 + 알림 이중화, Paddle webhook 재시도 큐 모니터링 |
 | Paddle KYC 반려 또는 지연 | 사업자등록증·대표 신분증 미리 준비, 1차 반려 시 Week 8 안에 2차 제출 — 런치(Week 13~14) 전 승인 목표. Phase 2C에 KYC 통과 체크 있음. 최악의 경우 수동 인보이스(Toss/Stripe Atlas 대체안)로 첫 결제 1~2주 흡수 |

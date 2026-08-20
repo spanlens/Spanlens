@@ -36,6 +36,22 @@ const PROVIDER_KEY_OPTIONS: string[] = Array.from(
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+// Status pill — one shape across 2xx/4xx/5xx so the column width stays put
+// and only the fill carries the story. Mirrors the live /requests table.
+function statusPillClass(code: number): string {
+  if (code >= 500) return 'bg-bad-bg text-bad'
+  if (code >= 400) return 'bg-warn-bg text-warn'
+  if (code >= 200 && code < 300) return 'bg-good-bg text-good'
+  return 'bg-secondary text-text-muted'
+}
+
+function statusPillAria(code: number): string {
+  if (code >= 500) return `HTTP ${code} server error`
+  if (code >= 400) return `HTTP ${code} client error`
+  if (code >= 200 && code < 300) return `HTTP ${code} success`
+  return `HTTP ${code}`
+}
+
 function relAge(dateStr: string): string {
   const s = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000)
   if (s < 60) return `${s}s`
@@ -153,33 +169,28 @@ function StatStrip() {
   ]
 
   return (
-    <div className="overflow-x-auto shrink-0 border-b border-border">
-      <div className="grid grid-cols-5 min-w-[480px]">
-        {stats.map((s, i) => (
-          <div
-            key={i}
-            className={cn('px-[18px] py-[14px]', i < 4 && 'border-r border-border')}
-          >
-            <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-2">
-              {s.label}
-            </div>
-            <div
-              className={cn(
-                'text-[24px] font-medium tracking-[-0.6px] leading-none mb-1.5',
-                s.warn ? 'text-accent' : 'text-text',
-              )}
-            >
-              {s.value}
-            </div>
-            <InlineSpark
-              values={s.spark}
-              stroke={
-                s.warn ? 'var(--accent)' : s.good ? 'var(--good)' : 'var(--border-strong)'
-              }
-            />
+    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+      {stats.map((s, i) => (
+        <div key={i} className="card-surface rounded-card px-5 py-[18px]">
+          <div className="font-mono text-[10.5px] uppercase tracking-[0.1em] text-text-faint mb-2">
+            {s.label}
           </div>
-        ))}
-      </div>
+          <div
+            className={cn(
+              'font-display text-[28px] track-kpi leading-[1.05] mb-1.5',
+              s.warn ? 'text-accent' : 'text-text',
+            )}
+          >
+            {s.value}
+          </div>
+          <InlineSpark
+            values={s.spark}
+            stroke={
+              s.warn ? 'var(--accent)' : s.good ? 'var(--good)' : 'var(--border-strong)'
+            }
+          />
+        </div>
+      ))}
     </div>
   )
 }
@@ -317,7 +328,7 @@ function TrafficBars() {
   const hoverMs = hoverIdx != null ? dateFor(hoverIdx) : null
 
   return (
-    <div className="px-[22px] py-[14px] border-b border-border shrink-0">
+    <div className="card-surface rounded-card px-5 py-[18px] shrink-0">
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-3 flex-wrap">
           <h2 className="text-[13.5px] font-medium">Traffic</h2>
@@ -422,7 +433,7 @@ function TrafficBars() {
 
       {/* Tooltip */}
       {hoverIdx != null && hoverBar && (
-        <div className="mt-3 rounded-[5px] border border-border bg-bg-elev px-3 py-2 font-mono text-[11px]">
+        <div className="mt-3 rounded-md border border-border bg-bg-sunk px-3 py-2 font-mono text-[11px]">
           <div className="flex items-baseline justify-between gap-3 mb-1.5">
             <span className="text-text">
               {hoverMs
@@ -458,7 +469,7 @@ function TrafficBars() {
           {(hoverBar.topStatus.length > 0 || hoverBar.topModels.length > 0) && (
             <div className="mt-2 pt-2 border-t border-border grid grid-cols-2 gap-x-6 gap-y-0.5 text-[10.5px]">
               <div>
-                <div className="text-text-faint uppercase tracking-[0.05em] text-[9.5px] mb-1">
+                <div className="text-text-faint uppercase tracking-[0.1em] text-[9.5px] mb-1">
                   Top status
                 </div>
                 {hoverBar.topStatus.slice(0, 3).map((s) => (
@@ -479,7 +490,7 @@ function TrafficBars() {
                 ))}
               </div>
               <div>
-                <div className="text-text-faint uppercase tracking-[0.05em] text-[9.5px] mb-1">
+                <div className="text-text-faint uppercase tracking-[0.1em] text-[9.5px] mb-1">
                   Top models
                 </div>
                 {hoverBar.topModels.slice(0, 3).map((m) => (
@@ -543,7 +554,7 @@ function SavedViewsBar({ active, onApply }: SavedViewsBarProps) {
     v.sortDir === active.sortDir
 
   return (
-    <div className="flex items-center gap-1.5 px-[22px] py-[7px] border-b border-border shrink-0 flex-wrap">
+    <div className="flex items-center gap-1.5 shrink-0 flex-wrap">
       <span className="font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint inline-flex items-center gap-1 shrink-0">
         <Bookmark className="w-3 h-3" /> Views
       </span>
@@ -557,7 +568,7 @@ function SavedViewsBar({ active, onApply }: SavedViewsBarProps) {
             onClick={() => onApply(v)}
             title={`Apply "${v.name}"`}
             className={cn(
-              'inline-flex items-center gap-1 rounded-[5px] border font-mono text-[10.5px] px-[9px] py-[5px] transition-colors',
+              'inline-flex items-center gap-1 rounded-full border font-mono text-[11px] px-3 py-[5px] transition-colors',
               isActive
                 ? 'border-accent-border bg-accent-bg text-accent'
                 : 'border-border bg-bg-elev text-text-muted hover:border-border-strong',
@@ -571,7 +582,7 @@ function SavedViewsBar({ active, onApply }: SavedViewsBarProps) {
       <button
         type="button"
         onClick={() => setShowNotice((v) => !v)}
-        className="font-mono text-[10.5px] px-[9px] py-[5px] border border-dashed border-border rounded-[5px] text-text-faint hover:text-text hover:border-border-strong transition-colors inline-flex items-center gap-1 shrink-0"
+        className="text-[12px] font-medium px-3 py-[6px] border border-dashed border-border rounded-full text-text-faint hover:text-text hover:border-border-strong transition-colors inline-flex items-center gap-1 shrink-0"
       >
         <Plus className="w-3 h-3" /> Save view
       </button>
@@ -600,7 +611,7 @@ function CopyButton({ getText }: { getText: () => string }) {
         setCopied(true)
         setTimeout(() => setCopied(false), 1500)
       }}
-      className="font-mono text-[10px] px-1.5 py-0.5 border border-border rounded text-text-faint hover:text-text hover:border-border-strong transition-colors shrink-0"
+      className="font-mono text-[10px] px-2 py-0.5 border border-border rounded-full text-text-faint hover:text-text hover:border-border-strong transition-colors shrink-0"
     >
       {copied ? 'Copied' : 'Copy'}
     </button>
@@ -656,11 +667,11 @@ function MessageDisplay({
   if (messages) {
     return (
       <div className="space-y-3">
-        <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-2">Messages</div>
+        <div className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-faint mb-2">Messages</div>
         {systemText && (
           <div>
             <div className="font-mono text-[10px] text-text-faint tracking-[0.04em] mb-1">system</div>
-            <div className="px-3 py-2.5 rounded-[5px] border font-mono text-[11.5px] leading-relaxed whitespace-pre-wrap bg-bg-muted border-border text-text-faint">
+            <div className="rounded-lg border border-border bg-bg-sunk px-3.5 py-3 text-[12.5px] leading-relaxed whitespace-pre-wrap text-text-muted">
               {systemText}
             </div>
           </div>
@@ -670,10 +681,10 @@ function MessageDisplay({
             <div className="font-mono text-[10px] text-text-faint tracking-[0.04em] mb-1">{m.role}</div>
             <div
               className={cn(
-                'px-3 py-2.5 rounded-[5px] border font-mono text-[11.5px] leading-relaxed whitespace-pre-wrap',
+                'rounded-lg border border-border px-3.5 py-3 text-[12.5px] leading-relaxed whitespace-pre-wrap',
                 m.role === 'assistant'
-                  ? 'bg-bg-elev border-border-strong text-text'
-                  : 'bg-bg-muted border-border text-text-muted',
+                  ? 'bg-accent-bg/40 text-text-muted'
+                  : 'bg-bg-elev text-text-muted',
               )}
             >
               {extractMessageText(m.content)}
@@ -719,12 +730,12 @@ function TraceTab({ traceId }: { traceId: string | null }) {
           Open full trace →
         </Link>
       </div>
-      <div className="rounded border border-border divide-y divide-border bg-bg-elev">
+      <div className="rounded-lg border border-border divide-y divide-border bg-bg-elev overflow-hidden">
         {trace.spans.slice(0, 8).map((s) => (
           <div key={s.id} className="px-3 py-2 flex items-center gap-3">
             <span
               className={cn(
-                'font-mono text-[9px] px-1.5 py-0.5 rounded border uppercase tracking-[0.04em] shrink-0',
+                'font-mono text-[9px] px-2 py-0.5 rounded-full border uppercase tracking-[0.08em] shrink-0',
                 s.span_type === 'llm'
                   ? 'text-accent border-accent-border bg-accent-bg'
                   : s.span_type === 'tool'
@@ -768,7 +779,7 @@ function RawTab({
     <div className="space-y-5">
       <section>
         <div className="flex items-center justify-between mb-2">
-          <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint">Request body</div>
+          <div className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-faint">Request body</div>
           {req.request_body != null && (
             <CopyButton getText={() => JSON.stringify(req.request_body, null, 2)} />
           )}
@@ -776,14 +787,14 @@ function RawTab({
         {req.request_body == null ? (
           <p className="font-mono text-[11.5px] text-text-faint">Not captured.</p>
         ) : (
-          <pre className="font-mono text-[11.5px] text-text leading-relaxed whitespace-pre-wrap break-all bg-bg-elev border border-border rounded p-3">
+          <pre className="font-mono text-[11.5px] text-text leading-relaxed whitespace-pre-wrap break-all bg-bg-sunk border border-border rounded p-3">
             {JSON.stringify(displayRequestBody, null, 2)}
           </pre>
         )}
       </section>
       <section>
         <div className="flex items-center justify-between mb-2">
-          <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint">Response body</div>
+          <div className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-faint">Response body</div>
           {req.response_body != null && (
             <CopyButton getText={() => JSON.stringify(req.response_body, null, 2)} />
           )}
@@ -791,7 +802,7 @@ function RawTab({
         {req.response_body == null ? (
           <p className="font-mono text-[11.5px] text-text-faint">Not captured.</p>
         ) : (
-          <pre className="font-mono text-[11.5px] text-text leading-relaxed whitespace-pre-wrap break-all bg-bg-elev border border-border rounded p-3">
+          <pre className="font-mono text-[11.5px] text-text leading-relaxed whitespace-pre-wrap break-all bg-bg-sunk border border-border rounded p-3">
             {JSON.stringify(displayResponseBody, null, 2)}
           </pre>
         )}
@@ -886,7 +897,7 @@ function RequestDrawer({ req, visible, onClose, onPrev, onNext, hasPrev, hasNext
           {/* Header */}
           <div className="px-5 py-4 border-b border-border">
             <div className="flex items-center gap-2 mb-2.5">
-              <span className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint">Request</span>
+              <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-faint">Request</span>
               {position > 0 && (
                 <span className="font-mono text-[10px] text-text-faint">
                   {position} / {total}
@@ -895,7 +906,7 @@ function RequestDrawer({ req, visible, onClose, onPrev, onNext, hasPrev, hasNext
               <span className="flex-1" />
               <Link
                 href={`/demo/requests/${req.id}`}
-                className="font-mono text-[10px] px-1.5 py-0.5 border border-border rounded text-text-muted tracking-[0.04em] uppercase hover:border-border-strong transition-colors"
+                className="font-mono text-[10px] px-2 py-0.5 border border-border rounded-full text-text-muted tracking-[0.08em] uppercase hover:border-border-strong transition-colors"
               >
                 Open →
               </Link>
@@ -905,7 +916,7 @@ function RequestDrawer({ req, visible, onClose, onPrev, onNext, hasPrev, hasNext
                 aria-pressed={maskPiiOn}
                 title="Mask emails, phone numbers, card numbers, and API keys in the displayed body"
                 className={cn(
-                  'font-mono text-[10px] px-1.5 py-0.5 border rounded tracking-[0.04em] uppercase transition-colors',
+                  'font-mono text-[10px] px-2 py-0.5 border rounded-full tracking-[0.08em] uppercase transition-colors',
                   maskPiiOn
                     ? 'border-accent text-accent bg-accent-bg'
                     : 'border-border text-text-muted hover:border-border-strong',
@@ -921,14 +932,14 @@ function RequestDrawer({ req, visible, onClose, onPrev, onNext, hasPrev, hasNext
                   key={label}
                   onClick={onClick}
                   disabled={disabled}
-                  className="font-mono text-[10px] px-1.5 py-0.5 border border-border rounded text-text-muted tracking-[0.04em] uppercase disabled:opacity-30 hover:border-border-strong transition-colors"
+                  className="font-mono text-[10px] px-2 py-0.5 border border-border rounded-full text-text-muted tracking-[0.08em] uppercase disabled:opacity-30 hover:border-border-strong transition-colors"
                 >
                   {label}
                 </button>
               ))}
               <button
                 onClick={onClose}
-                className="font-mono text-[10px] px-1.5 py-0.5 border border-border rounded text-text-muted tracking-[0.04em] uppercase hover:border-border-strong transition-colors"
+                className="font-mono text-[10px] px-2 py-0.5 border border-border rounded-full text-text-muted tracking-[0.08em] uppercase hover:border-border-strong transition-colors"
               >
                 Close
               </button>
@@ -948,7 +959,7 @@ function RequestDrawer({ req, visible, onClose, onPrev, onNext, hasPrev, hasNext
           </div>
 
           {/* KV grid */}
-          <div className="px-5 py-3.5 border-b border-border grid grid-cols-2 gap-x-3.5 gap-y-3">
+          <div className="px-6 py-3.5 border-b border-border grid grid-cols-2 gap-x-3.5 gap-y-3">
             {(
               [
                 ['Model', req.model],
@@ -959,14 +970,14 @@ function RequestDrawer({ req, visible, onClose, onPrev, onNext, hasPrev, hasNext
               ] as [string, string][]
             ).map(([k, v]) => (
               <div key={k}>
-                <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-0.5">{k}</div>
+                <div className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-faint mb-0.5">{k}</div>
                 <div className="font-mono text-[12.5px] text-text truncate">{v}</div>
               </div>
             ))}
 
             {req.user_id && (
               <div>
-                <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-0.5">User</div>
+                <div className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-faint mb-0.5">User</div>
                 <div className="flex items-baseline gap-2">
                   <span className="font-mono text-[12.5px] text-text truncate">{req.user_id}</span>
                   <Link
@@ -982,7 +993,7 @@ function RequestDrawer({ req, visible, onClose, onPrev, onNext, hasPrev, hasNext
 
             {req.session_id && (
               <div>
-                <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-0.5">Session</div>
+                <div className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-faint mb-0.5">Session</div>
                 <Link
                   href={`/demo/requests?sessionId=${encodeURIComponent(req.session_id)}`}
                   className="font-mono text-[12.5px] text-text hover:underline truncate block"
@@ -994,7 +1005,7 @@ function RequestDrawer({ req, visible, onClose, onPrev, onNext, hasPrev, hasNext
             )}
 
             <div>
-              <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-0.5">Trace</div>
+              <div className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-faint mb-0.5">Trace</div>
               {req.trace_id ? (
                 <div className="flex items-center gap-1 min-w-0">
                   <Link
@@ -1011,7 +1022,7 @@ function RequestDrawer({ req, visible, onClose, onPrev, onNext, hasPrev, hasNext
             </div>
 
             <div>
-              <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-0.5">Span</div>
+              <div className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-faint mb-0.5">Span</div>
               {req.span_id ? (
                 <div className="flex items-center gap-1 min-w-0">
                   <span className="font-mono text-[12.5px] text-text truncate min-w-0">{req.span_id.slice(0, 12)}…</span>
@@ -1024,7 +1035,7 @@ function RequestDrawer({ req, visible, onClose, onPrev, onNext, hasPrev, hasNext
           </div>
 
           {/* Metrics row */}
-          <div className="px-5 py-3.5 border-b border-border grid grid-cols-3">
+          <div className="px-6 py-4 border-b border-border grid grid-cols-3">
             {[
               { label: 'Latency', value: `${req.latency_ms}ms`, sub: '', warn: req.latency_ms > 2000 },
               { label: 'Cost', value: fmtCost(req.cost_usd), sub: '', warn: false },
@@ -1039,10 +1050,10 @@ function RequestDrawer({ req, visible, onClose, onPrev, onNext, hasPrev, hasNext
                 key={s.label}
                 className={cn('pr-3 pl-3', i === 0 && 'pl-0', i === 2 && 'pr-0', i < 2 && 'border-r border-border')}
               >
-                <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-1.5">{s.label}</div>
+                <div className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-faint mb-1.5">{s.label}</div>
                 <div
                   className={cn(
-                    'text-[20px] font-medium tracking-[-0.3px] leading-none',
+                    'font-display text-[22px] track-kpi leading-[1.05]',
                     s.warn ? 'text-accent' : 'text-text',
                   )}
                 >
@@ -1065,14 +1076,15 @@ function RequestDrawer({ req, visible, onClose, onPrev, onNext, hasPrev, hasNext
               ...(req.error_message ? ['error' as DrawerTab] : []),
             ]
             return (
-              <div className="flex px-5 border-b border-border gap-5 shrink-0">
+              <div className="flex px-6 pt-3 gap-1 shrink-0 flex-wrap">
                 {tabs.map((t) => (
                   <button
                     key={t}
                     onClick={() => setTab(t)}
+                    aria-pressed={tab === t}
                     className={cn(
-                      'py-2.5 font-mono text-[11px] uppercase tracking-[0.04em] border-b-[1.5px] -mb-px transition-colors',
-                      tab === t ? 'text-text border-accent' : 'text-text-muted border-transparent hover:text-text',
+                      'px-3 py-[7px] rounded-full text-[12px] capitalize transition-colors',
+                      tab === t ? 'bg-text text-bg font-semibold' : 'text-text-faint font-medium hover:text-text',
                       t === 'error' && tab !== 'error' && 'text-bad',
                     )}
                   >
@@ -1084,7 +1096,7 @@ function RequestDrawer({ req, visible, onClose, onPrev, onNext, hasPrev, hasNext
           })()}
 
           {/* Tab content */}
-          <div className="px-5 py-4 flex-1 overflow-auto">
+          <div className="px-6 py-4 flex-1 overflow-auto">
             {tab === 'request' ? (
               <div className="space-y-2">
                 <div className="flex justify-end">
@@ -1189,7 +1201,7 @@ function RequestsTable({
       <div className="min-w-[640px]">
         {/* Header */}
         <div
-          className="grid px-[22px] py-2.5 font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint border-b border-border bg-bg-muted sticky top-0 z-10"
+          className="grid px-[18px] py-2.5 font-mono text-[10px] uppercase tracking-[0.1em] text-text-faint border-b border-border bg-bg-muted sticky top-0 z-10"
           style={{ gridTemplateColumns: cols }}
         >
           <span />
@@ -1243,7 +1255,7 @@ function RequestsTable({
                 key={req.id}
                 onClick={() => onSelect(req.id)}
                 className={cn(
-                  'grid px-[22px] py-2.5 border-b border-border font-mono text-[12.5px] items-center cursor-pointer transition-colors border-l-2',
+                  'grid px-[18px] py-[11px] border-b border-border font-mono text-[12px] items-center cursor-pointer transition-colors border-l-2',
                   isSelected
                     ? 'bg-bg-muted border-l-accent'
                     : isErr
@@ -1267,7 +1279,17 @@ function RequestsTable({
                 </span>
                 <span className="text-text-muted">{req.total_tokens.toLocaleString('en-US')}</span>
                 <span className="text-text">{fmtCost(req.cost_usd)}</span>
-                <span className={isErr ? 'text-bad' : 'text-good'}>{req.status_code}</span>
+                <span>
+                  <span
+                    className={cn(
+                      'inline-flex items-center justify-center text-[11px] font-semibold px-2 py-[3px] rounded-full tabular-nums',
+                      statusPillClass(req.status_code),
+                    )}
+                    aria-label={statusPillAria(req.status_code)}
+                  >
+                    {req.status_code}
+                  </span>
+                </span>
                 <span
                   className="text-text-faint text-right"
                   title={new Date(req.created_at).toLocaleString('en-US')}
@@ -1426,7 +1448,7 @@ function DemoRequestsContent() {
   }
 
   return (
-    <div className="-mx-4 -my-4 md:-mx-8 md:-my-7 flex flex-col md:flex-row h-screen overflow-hidden bg-bg">
+    <div className="-mx-4 -my-4 md:-mx-7 md:-mt-5 md:-mb-7 flex flex-col md:flex-row h-screen overflow-hidden bg-bg">
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
         <Topbar
           crumbs={[{ label: 'Demo', href: '/demo/dashboard' }, { label: 'Requests' }]}
@@ -1448,8 +1470,12 @@ function DemoRequestsContent() {
           }
         />
 
+        {/* Content canvas — controls, read-outs, then the table, on the
+            board's 16px rhythm. */}
+        <div className="flex flex-col gap-4 min-w-0 flex-1 overflow-hidden px-4 md:px-8 pt-5 pb-7">
+
         {(userIdFilter || sessionIdFilter) && (
-          <div className="shrink-0 flex items-center gap-2 px-[22px] py-[8px] border-b border-border bg-accent/5 font-mono text-[11.5px]">
+          <div className="shrink-0 flex items-center gap-2 rounded-lg px-3.5 py-2.5 border border-accent-border bg-accent-bg font-mono text-[11px]">
             <span className="text-text-faint">Filtering by</span>
             {userIdFilter && (
               <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-accent/10 border border-accent/20 text-accent">
@@ -1474,9 +1500,9 @@ function DemoRequestsContent() {
         <TrafficBars />
 
         {/* Filter row */}
-        <div className="flex items-center gap-1.5 px-[22px] py-[10px] border-b border-border shrink-0 flex-wrap">
+        <div className="flex items-center gap-2 shrink-0 flex-wrap">
           {/* Time range */}
-          <div className="flex border border-border rounded-[5px] overflow-hidden bg-bg-elev font-mono text-[10.5px] tracking-[0.03em] shrink-0">
+          <div className="inline-flex items-center gap-[2px] rounded-full bg-secondary p-[3px] shrink-0">
             {(['all', 'today', '7d', '30d'] as TimeRange[]).map((r) => (
               <button
                 key={r}
@@ -1485,10 +1511,8 @@ function DemoRequestsContent() {
                   setSelectedId(null)
                 }}
                 className={cn(
-                  'px-[10px] py-[5px]',
-                  timeRange === r
-                    ? 'bg-text text-bg'
-                    : 'text-text-muted hover:text-text transition-colors',
+                  'font-mono text-[12px] leading-[17px] px-3 py-[5px] rounded-full transition-colors',
+                  timeRange === r ? 'bg-bg-elev text-text' : 'text-text-faint hover:text-text',
                 )}
               >
                 {r === 'all' ? 'All time' : r === 'today' ? 'Today' : r}
@@ -1497,7 +1521,7 @@ function DemoRequestsContent() {
           </div>
 
           {/* Status segmented */}
-          <div className="flex border border-border rounded-[5px] overflow-hidden bg-bg-elev font-mono text-[10.5px] tracking-[0.03em] shrink-0">
+          <div className="inline-flex items-center gap-[2px] rounded-full bg-secondary p-[3px] shrink-0">
             {(['all', 'ok', '4xx', '5xx'] as StatusFilter[]).map((v) => (
               <button
                 key={v}
@@ -1506,15 +1530,13 @@ function DemoRequestsContent() {
                   setSelectedId(null)
                 }}
                 className={cn(
-                  'px-[10px] py-[5px] inline-flex items-center gap-1.5',
-                  statusFilter === v
-                    ? 'bg-text text-bg'
-                    : 'text-text-muted hover:text-text transition-colors',
+                  'font-mono text-[12px] leading-[17px] px-3 py-[5px] rounded-full inline-flex items-center gap-1.5 transition-colors',
+                  statusFilter === v ? 'bg-bg-elev text-text' : 'text-text-faint hover:text-text',
                 )}
               >
                 {STATUS_LABELS[v]}
                 {statusFilter === v && (
-                  <span className="opacity-60 text-bg">{filtered.length}</span>
+                  <span className="text-text-faint">{filtered.length}</span>
                 )}
               </button>
             ))}
@@ -1527,7 +1549,7 @@ function DemoRequestsContent() {
               setProviderFilter(e.target.value)
               setSelectedId(null)
             }}
-            className="font-mono text-[11px] border border-border rounded-[5px] px-2 py-[5px] bg-bg text-text-muted hover:border-border-strong transition-colors focus:outline-none appearance-none cursor-pointer"
+            className="text-[12.5px] font-medium border border-border rounded-md px-3 h-[33px] bg-bg-elev text-text hover:border-border-strong transition-colors focus:outline-none appearance-none cursor-pointer"
           >
             <option value="all">All providers</option>
             <option value="openai">openai</option>
@@ -1542,7 +1564,7 @@ function DemoRequestsContent() {
               setProviderKeyFilter(e.target.value)
               setSelectedId(null)
             }}
-            className="font-mono text-[11px] border border-border rounded-[5px] px-2 py-[5px] bg-bg text-text-muted hover:border-border-strong transition-colors focus:outline-none appearance-none cursor-pointer max-w-[190px]"
+            className="text-[12.5px] font-medium border border-border rounded-md px-3 h-[33px] bg-bg-elev text-text hover:border-border-strong transition-colors focus:outline-none appearance-none cursor-pointer max-w-[190px]"
           >
             <option value="all">All keys</option>
             {PROVIDER_KEY_OPTIONS.map((k) => (
@@ -1561,13 +1583,13 @@ function DemoRequestsContent() {
             onKeyDown={(e) => {
               if (e.key === 'Escape') setModelInput('')
             }}
-            className="font-mono text-[11px] border border-border rounded-[5px] px-2 py-[5px] bg-bg text-text-muted hover:border-border-strong focus:border-border-strong transition-colors outline-none w-28 placeholder:text-text-faint"
+            className="text-[12.5px] border border-border rounded-md px-3 h-[33px] bg-bg-elev text-text hover:border-border-strong focus:border-border-strong transition-colors outline-none w-28 placeholder:text-text-faint"
           />
 
           {hasActiveFilters && (
             <button
               onClick={clearFilters}
-              className="font-mono text-[10.5px] px-[9px] py-[5px] border border-border rounded-[5px] text-text-faint hover:text-text hover:border-border-strong transition-colors shrink-0"
+              className="text-[12.5px] font-medium px-3 py-[7px] border border-border rounded-md bg-bg-elev text-text-muted hover:text-text hover:border-border-strong transition-colors shrink-0"
             >
               Clear filters
             </button>
@@ -1581,7 +1603,7 @@ function DemoRequestsContent() {
             type="button"
             onClick={handleRefresh}
             disabled={refreshing}
-            className="font-mono text-[10.5px] px-[9px] py-[4px] border border-border rounded-[5px] text-text-muted hover:text-text hover:border-border-strong disabled:opacity-40 transition-colors"
+            className="text-[12.5px] px-3 py-[7px] border border-border rounded-md bg-bg-elev text-text-muted hover:text-text hover:border-border-strong disabled:opacity-40 transition-colors"
           >
             {refreshing ? '↻ …' : '↻'}
           </button>
@@ -1590,8 +1612,8 @@ function DemoRequestsContent() {
         {/* Saved views — static presets that set the local filters. */}
         <SavedViewsBar active={savedViewsActive} onApply={applyView} />
 
-        {/* Table */}
-        <div className="flex flex-col flex-1 overflow-hidden">
+        {/* Table — one card, header band and pager footer inside it. */}
+        <div className="flex flex-col flex-1 overflow-hidden card-surface rounded-card">
           <RequestsTable
             rows={filtered}
             selectedId={selectedId}
@@ -1604,26 +1626,27 @@ function DemoRequestsContent() {
           />
 
           {/* Pagination (demo: single page) */}
-          <div className="flex items-center justify-between px-[22px] py-3 border-t border-border shrink-0">
+          <div className="flex items-center justify-between px-[18px] py-3 border-t border-border bg-bg-muted shrink-0">
             <span className="font-mono text-[11px] text-text-faint">
               Page 1 · {filtered.length.toLocaleString('en-US')} total
             </span>
             <div className="flex gap-1.5">
               <button
                 disabled
-                className="font-mono text-[11px] px-2.5 py-1 border border-border rounded text-text-muted disabled:opacity-30"
+                className="text-[12px] font-medium px-3 py-[6px] border border-border rounded-full bg-bg-elev text-text disabled:opacity-30"
               >
                 ← Prev
               </button>
               <button
                 disabled
-                className="font-mono text-[11px] px-2.5 py-1 border border-border rounded text-text-muted disabled:opacity-30"
+                className="text-[12px] font-medium px-3 py-[6px] border border-border rounded-full bg-bg-elev text-text disabled:opacity-30"
               >
                 Next →
               </button>
             </div>
           </div>
         </div>
+        </div>{/* end content canvas */}
       </div>
 
       <RequestDrawer

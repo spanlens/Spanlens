@@ -1,3 +1,4 @@
+import { openGraphFor } from '@/lib/page-metadata'
 import Link from 'next/link'
 import { Rss } from 'lucide-react'
 import { MarketingNav } from '@/components/layout/marketing-nav'
@@ -10,6 +11,7 @@ export const metadata = {
   description:
     'What is new in Spanlens. New features, improvements, infrastructure, and reliability work, in chronological order.',
   alternates: { canonical: '/changelog' },
+  openGraph: openGraphFor('/changelog'),
 }
 
 const TAG_LABEL: Record<ChangelogTag, string> = {
@@ -21,13 +23,16 @@ const TAG_LABEL: Record<ChangelogTag, string> = {
   reliability: 'Reliability',
 }
 
+// Only `feature` earns the accent tint. Reliability work reads as a status
+// (green), and the remaining kinds stay on the neutral chip so a month of
+// housekeeping entries does not look like a month of launches.
 const TAG_STYLE: Record<ChangelogTag, string> = {
-  feature: 'bg-accent-bg text-accent border-accent/30',
-  improvement: 'bg-bg-elev text-text border-border',
-  fix: 'bg-bg-elev text-text border-border',
-  docs: 'bg-bg-elev text-text-muted border-border',
-  infrastructure: 'bg-bg-elev text-text-muted border-border',
-  reliability: 'bg-bg-elev text-text-muted border-border',
+  feature: 'bg-accent-bg text-accent',
+  improvement: 'bg-bg-chip text-text-muted',
+  fix: 'bg-bg-chip text-text-muted',
+  docs: 'bg-bg-chip text-text-muted',
+  infrastructure: 'bg-bg-chip text-text-muted',
+  reliability: 'bg-good-bg text-good',
 }
 
 const SITE_URL = 'https://www.spanlens.io'
@@ -74,24 +79,24 @@ export default function ChangelogPage() {
       <MarketingNav subtitle="Changelog" />
       <BreadcrumbJsonLd trail={[{ name: 'Changelog', path: '/changelog' }]} />
 
-      <main className="max-w-3xl mx-auto px-6 py-12">
-        <header className="mb-12">
-          <h1 className="text-4xl font-bold tracking-tight mb-3">Changelog</h1>
-          <p className="text-lg text-muted-foreground mb-4">
+      <main className="mx-auto max-w-3xl px-6 py-16">
+        <header className="mb-14 text-center">
+          <h1 className="font-display track-h2 mb-4 text-[46px] leading-[1.12] text-text">
+            Changelog
+          </h1>
+          <p className="mb-5 text-[16.5px] leading-[1.6] text-text-muted">
             What is new in Spanlens. Updated when something ships, not on a calendar.
           </p>
-          <div className="flex items-center gap-4 text-sm">
-            <Link
-              href="/changelog/feed.xml"
-              className="inline-flex items-center gap-1.5 text-accent hover:opacity-80"
-            >
-              <Rss className="h-4 w-4" />
-              RSS feed
-            </Link>
-          </div>
+          <Link
+            href="/changelog/feed.xml"
+            className="inline-flex items-center gap-1.5 font-mono text-[12px] text-text-faint transition-colors hover:text-accent"
+          >
+            <Rss className="h-3.5 w-3.5" />
+            RSS feed
+          </Link>
         </header>
 
-        <ol className="space-y-12">
+        <ol>
           {entries.map((entry) => (
             <ChangelogItem key={entry.slug} entry={entry} />
           ))}
@@ -109,37 +114,31 @@ interface ChangelogItemProps {
 
 function ChangelogItem({ entry }: ChangelogItemProps) {
   return (
-    <li id={entry.slug} className="scroll-mt-20 border-l-2 border-border pl-6 relative">
-      <span
-        aria-hidden
-        className="absolute -left-[5px] top-2 h-2 w-2 rounded-full bg-accent"
-      />
-      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 mb-2">
-        <time
-          dateTime={entry.date}
-          className="font-mono text-xs text-text-faint tracking-wide"
-        >
+    // Entries are separated by a hairline rather than strung on a timeline
+    // rail: the dates already order the list, and the rule keeps a long
+    // changelog scannable without a decorative spine down the page.
+    <li id={entry.slug} className="group scroll-mt-20 border-b border-border py-9 last:border-b-0">
+      <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1.5">
+        <time dateTime={entry.date} className="font-mono text-[12px] text-text-faint">
           {formatDate(entry.date)}
         </time>
-        <div className="flex flex-wrap gap-1.5">
-          {entry.tags.map((tag) => (
-            <span
-              key={tag}
-              className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium tracking-wide uppercase ${TAG_STYLE[tag]}`}
-            >
-              {TAG_LABEL[tag]}
-            </span>
-          ))}
-        </div>
+        {entry.tags.map((tag) => (
+          <span
+            key={tag}
+            className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-medium ${TAG_STYLE[tag]}`}
+          >
+            {TAG_LABEL[tag]}
+          </span>
+        ))}
         <a
           href={`#${entry.slug}`}
-          className="ml-auto font-mono text-[10px] text-text-faint hover:text-accent opacity-0 group-hover:opacity-100"
+          className="ml-auto font-mono text-[11px] text-text-faint opacity-0 transition-opacity hover:text-accent focus:opacity-100 group-hover:opacity-100"
           aria-label={`Permalink to ${entry.title}`}
         >
           #
         </a>
       </div>
-      <h2 className="text-xl font-semibold tracking-tight mb-3">
+      <h2 className="font-display track-quote mb-3 text-[20px] text-text">
         <a href={`#${entry.slug}`} className="hover:text-accent">
           {entry.title}
         </a>
@@ -161,7 +160,7 @@ interface ChangelogBodyProps {
 function ChangelogBody({ body }: ChangelogBodyProps) {
   const paragraphs = body.split(/\n{2,}/)
   return (
-    <div className="space-y-3 text-[15px] leading-relaxed text-text-muted">
+    <div className="space-y-3 text-[14px] leading-[1.7] text-text-muted">
       {paragraphs.map((p, i) => (
         <p key={i}>{renderInline(p)}</p>
       ))}

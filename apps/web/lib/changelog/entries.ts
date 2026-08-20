@@ -39,6 +39,61 @@ export type ChangelogTag =
 
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    date: '2026-08-17',
+    slug: 'new-design-across-the-app',
+    title: 'A new look across the whole app',
+    tags: ['improvement', 'fix'],
+    body: [
+      'Every screen has been rebuilt on a new design: the dashboard, the landing page, the documentation, the sign-in screens, the shared trace pages, and the notification emails. The layout and the information on each page are the same; the typography, spacing, colour and controls are not. Charts keep their existing palette rules, so a red bar still means what it meant last week.',
+      'The landing page now moves. Provider tiles drift, each integration lights up in turn along its wire into the mark, sections arrive as you scroll, and the integrations arc rotates on its own. All of it honours your reduced-motion setting: if your system asks for less movement, everything renders still.',
+      'Two long-standing layout bugs went with it. Tables and long inline code in the documentation used to push whole pages sideways on a phone, so you could scroll horizontally away from the text; tables now scroll inside their own box. And a hidden column label in the dashboard tables was escaping its container, which made several boards scroll sideways on narrow screens.',
+    ].join('\n\n'),
+  },
+  {
+    date: '2026-08-11',
+    slug: 'dashboard-latency-and-idle-key-count-fix',
+    title: 'Much faster dashboard and API responses, plus an idle-key count fix',
+    tags: ['improvement', 'fix', 'infrastructure'],
+    body: [
+      'The API now runs in the same region as its databases. Our server functions were executing in Washington DC while both databases sit in Seoul, so every query that was not already cached crossed the Pacific and back before you saw anything. They now run in Seoul alongside the data. Measured against production: a request that does no database work at all went from about 240 ms to 65 ms, and a database round trip went from roughly 640 ms to between 55 and 114 ms. Every dashboard page, every API read, and every proxied request that has to look something up benefits from this.',
+      'The dashboard also asks for less. It used to fire seven separate requests as it loaded; the six that do not need live polling are now served by a single call, so it makes four. Settings and Evals were each shipping as one large bundle, and now load only the tab you actually open. Documentation pages with charts no longer download the charting library until you scroll near the figure, which takes roughly 116 KB of compressed JavaScript off the initial load of those pages. None of this changes what any page shows.',
+      'One number on screen was wrong. The "API keys idle" count on the dashboard and the matching badge in the sidebar were counting workspace-level public keys twice, so any workspace that had issued a public key saw an inflated figure. The count is correct now. If the number looked higher than the number of keys you recognised, that is why.',
+    ].join('\n\n'),
+  },
+  {
+    date: '2026-08-11',
+    slug: 'faster-pages-and-lower-proxy-latency',
+    title: 'Faster pages, lower proxy latency, and a robots.txt fix',
+    tags: ['improvement', 'fix', 'infrastructure'],
+    body: [
+      'Marketing and documentation pages are served from the CDN again. Every page outside the dashboard was being rendered on demand, because the navigation bar read your session on the server and that stopped any of those pages from being cached at the edge. The navigation now resolves your session in the browser instead, which put 103 pages back to being prerendered static files. On top of that, the PostHog analytics SDK is no longer downloaded unless you accept analytics cookies. It was always gated so it never ran without consent, but the code still shipped with every page. Together that removes about 74 KB of compressed JavaScript from the first load of every page, and the pages themselves now come from the nearest edge location rather than from our server.',
+      'The dashboard downloads about two thirds less chart code, and proxied requests are faster. Each of the five chart cards used to pull in its own copy of the charting library, so one dashboard visit fetched it three times over. It is fetched once now, taking the chart payload from 1,190 KB down to 452 KB. On the proxy side, looking up your encrypted provider key used to hit the database on every single call. That lookup is cached for 30 seconds per key now, which takes roughly 30 to 80 ms off each proxied request. Only the encrypted key is held in memory and it is still decrypted on every request, so nothing has changed about how provider keys are stored or handled.',
+      'A robots.txt rule was not doing what it appeared to do. Crawlers only obey the single most specific user-agent group that matches them, and named groups do not inherit anything from the wildcard group. The AI crawlers we list by name, including GPTBot, ClaudeBot and PerplexityBot, therefore had no restrictions at all, so `/api/`, the dashboard routes and share links stayed open to them even though those paths are closed to every other crawler. All named groups now carry the same rules as the wildcard group. If you have published a share link, it was reachable by those crawlers until this change. Two rules were also written with a trailing slash that stopped them matching the pages they were meant to cover, `/onboarding` and `/invite`, and both are corrected.',
+    ].join('\n\n'),
+  },
+  {
+    date: '2026-08-11',
+    slug: 'model-price-refresh-2026-08',
+    title: 'Corrected model prices and six newly priced models',
+    tags: ['fix'],
+    body: [
+      'Two OpenAI models were costed too high. OpenAI cut the price of `gpt-5.6-terra` and `gpt-5.6-luna` without changing `gpt-5.6-sol`, so requests to those two were reported above what you were actually billed: about 25 percent high for terra and 5 times high for luna. Both are corrected on the standard and long-context tiers. Mistral made `mistral-moderation-2603` free, and it now costs nothing instead of $0.10 per million input tokens.',
+      'Six models that had no price now have one. Requests to `gpt-5.6-cyber`, the two Gemini Robotics ER 2 previews, the two Groq Prompt Guard classifiers, and Leanstral used to log a blank cost, which showed up as a gap in your dashboard. They are priced from each provider\'s published rates as of August 11.',
+      'Costs are recomputed at request time, so this changes what new requests report. Requests already logged keep the cost that was recorded when they ran.',
+    ].join('\n\n'),
+  },
+  {
+    date: '2026-07-30',
+    slug: 'docs-section-pages-and-link-previews',
+    title: 'Docs section pages and correct link previews',
+    tags: ['docs', 'fix'],
+    body: [
+      'The docs now have a page for each section. [Concepts](/docs/concepts), [Features](/docs/features), [Integrations](/docs/integrations), [Tutorials](/docs/tutorials), [Production](/docs/production), and [Migrate](/docs/migrate) each list what is inside with a short description per page, and a Sections group at the top of the sidebar reaches all six from anywhere in the docs. Those six paths used to return a 404.',
+      'Sharing a link now shows the right preview. Every page except the homepage was serving the homepage title, description, and URL in its Open Graph card, so a docs or comparison page pasted into Slack or X unfurled as the front page. Each page carries its own card now.',
+      'Two broken links are fixed. The Gemini pricing page pointed at an integration guide that does not exist, and the proxy docs linked to an agent-tracing page that had moved.',
+    ].join('\n\n'),
+  },
+  {
     date: '2026-07-07',
     slug: 'response-caching-weekly-digests-data-silence-alerts',
     title: 'Response caching, weekly digests, and data-silence alerts',

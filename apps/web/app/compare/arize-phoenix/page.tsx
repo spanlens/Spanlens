@@ -1,10 +1,12 @@
+import { openGraphFor } from '@/lib/page-metadata'
 import { CompareTemplate, type CompareGroup, type ComparePoint } from '@/components/marketing/compare-template'
 
 export const metadata = {
   alternates: { canonical: '/compare/arize-phoenix' },
-  title: 'Spanlens vs Arize Phoenix · 2026 Comparison',
+  openGraph: openGraphFor('/compare/arize-phoenix'),
+  title: 'Arize Phoenix Is ELv2, Not OSI Open Source',
   description:
-    'Arize Phoenix has deep ML-engineer DNA. Spanlens is built for app developers shipping LLM features, with proxy-first install and first-class JS/TS.',
+    'Phoenix ships under Elastic License 2.0, which restricts hosted resale. Spanlens is MIT with no EE folder and self-hosts with one Docker command.',
 }
 
 const whySpanlens: ComparePoint[] = [
@@ -183,6 +185,7 @@ export default function VsArizePhoenixPage() {
       whyCompetitor={whyCompetitor}
       groups={groups}
       closing="If you're an ML engineer with a Python-first workflow, Phoenix fits your hands. If you're shipping LLM features in a Next.js, FastAPI, or Hono app and want zero-friction install, try Spanlens."
+      lastUpdated="2026-06-10"
     />
   )
 }

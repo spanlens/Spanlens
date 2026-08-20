@@ -1,45 +1,42 @@
 /**
- * /cron/keep-warm — warm Supabase + ClickHouse pools so the next user
- * request doesn't pay cold-start latency. Runs every 5 min.
+ * /cron/keep-warm: one small query against Supabase every 5 minutes so the
+ * next user request doesn't pay cold-start latency.
  *
- * Extracted from api/cron.ts. Both warmups run via Promise.allSettled —
- * a slow dependency cannot block the other. Never throws (this fires
- * every 5 min and a transient warmup failure is not worth alerting on).
+ * The query is a head-only count against `organizations` through the Supabase
+ * REST client, which is the path auth, key lookup and billing all take. The
+ * pooled connection in lib/postgres.ts (what `requests` reads use) is per
+ * instance and is not shared with this cron, so it is not what gets warmed.
  *
- * No logCronRun call: every-5-min cadence would flood cron_job_runs.
+ * Supabase bills storage and egress rather than wall-clock uptime, so a query
+ * every 5 minutes has no cost consequence. That is a property of this backend,
+ * not of warmup crons: pointing one at a service billed by uptime keeps that
+ * service billed around the clock for as long as the cron runs.
+ *
+ * Never throws (this fires every 5 min and a transient warmup failure is
+ * not worth alerting on). No logCronRun call: every-5-min cadence would
+ * flood cron_job_runs.
  */
 
-import { warmClickhouse } from '../clickhouse.js'
 import { supabaseAdmin } from '../db.js'
 
 export interface KeepWarmResult {
   ok: boolean
   ts: string
   durationMs: number
-  warmed: { supabase: boolean; clickhouse: boolean }
+  warmed: { supabase: boolean }
 }
 
 export async function runKeepWarmJob(): Promise<KeepWarmResult> {
   const started = Date.now()
-  const results = await Promise.allSettled([
-    supabaseAdmin.from('organizations').select('id', { count: 'exact', head: true }).limit(1),
-    // Real `SELECT 1`, not HTTP /ping: ClickHouse Cloud only resets its
-    // idle-suspend timer on query activity, so a ping-only warmup let the
-    // Development tier suspend anyway. Generous timeout rides out a cold
-    // wake (minutes) — this runs as a cron, nobody is waiting on it.
-    warmClickhouse(30_000),
-  ])
-
-  const supabaseOk = results[0].status === 'fulfilled'
-  // warmClickhouse swallows its own errors and resolves to false — read
-  // the value, not the settled status.
-  const clickhouseOk =
-    results[1].status === 'fulfilled' && results[1].value === true
+  const result = await supabaseAdmin
+    .from('organizations')
+    .select('id', { count: 'exact', head: true })
+    .limit(1)
 
   return {
-    ok: supabaseOk && clickhouseOk,
+    ok: !result.error,
     ts: new Date().toISOString(),
     durationMs: Date.now() - started,
-    warmed: { supabase: supabaseOk, clickhouse: clickhouseOk },
+    warmed: { supabase: !result.error },
   }
 }

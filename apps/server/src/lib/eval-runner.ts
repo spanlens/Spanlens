@@ -121,7 +121,7 @@ interface RunInput {
   sampleFrom?: string | null
   sampleTo?: string | null
   /** P1-4: 'recent' (created_at DESC, default) keeps the legacy behaviour;
-   * 'random' (ORDER BY rand()) draws a representative, non-recency-biased
+   * 'random' (ORDER BY random()) draws a representative, non-recency-biased
    * sample. Production source only. */
   sampleStrategy?: 'recent' | 'random' | null
   /** P1-5: generation temperature for dataset runs. Defaults to 0 (reproducible). */
@@ -753,13 +753,13 @@ export async function runEvalRun(input: RunInput): Promise<void> {
     let preparedSamples: SampleRow[] = []
 
     if (source === 'production') {
-      // Sample production responses for LLM-as-judge. response_body is a JSON
-      // string in ClickHouse (vs JSONB in Supabase) — we parse it client-side
-      // before passing to extractResponseText, which already handles unknown.
+      // Sample production responses for LLM-as-judge. response_body is stored
+      // as text (not jsonb) — we parse it client-side before passing to
+      // extractResponseText, which already handles unknown.
       const sampleFilters: string[] = [
-        'prompt_version_id = {promptVersionId:UUID}',
-        // response_body in ClickHouse is a non-null String (default '' for
-        // missing). Filter out empties at the DB instead of pulling them back.
+        'prompt_version_id = {promptVersionId}',
+        // response_body is a non-null text column (default '' for missing).
+        // Filter out empties at the DB instead of pulling them back.
         "response_body != ''",
         // P3-20: exclude clear error responses (4xx/5xx) so an error JSON
         // body doesn't get judged as a real answer. status_code DEFAULT 0
@@ -769,11 +769,11 @@ export async function runEvalRun(input: RunInput): Promise<void> {
       ]
       const sampleParams: Record<string, unknown> = { promptVersionId }
       if (sampleFrom) {
-        sampleFilters.push('created_at >= parseDateTime64BestEffort({sampleFrom:String})')
+        sampleFilters.push('created_at >= {sampleFrom}::timestamptz')
         sampleParams['sampleFrom'] = sampleFrom
       }
       if (sampleTo) {
-        sampleFilters.push('created_at <= parseDateTime64BestEffort({sampleTo:String})')
+        sampleFilters.push('created_at <= {sampleTo}::timestamptz')
         sampleParams['sampleTo'] = sampleTo
       }
 
@@ -788,9 +788,9 @@ export async function runEvalRun(input: RunInput): Promise<void> {
           scope,
           select: 'id, response_body',
           filters: sampleFilters.join(' AND '),
-          // P1-4: 'random' draws a representative sample (rand()); 'recent'
+          // P1-4: 'random' draws a representative sample (random()); 'recent'
           // (default) preserves the legacy latest-N behaviour.
-          orderBy: sampleStrategy === 'random' ? 'rand()' : 'created_at DESC',
+          orderBy: sampleStrategy === 'random' ? 'random()' : 'created_at DESC',
           limit: sampleSize,
           params: sampleParams,
         })

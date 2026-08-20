@@ -1,12 +1,22 @@
 'use client'
 import { Suspense, useState } from 'react'
-import Image from 'next/image'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { writeWorkspaceCookie } from '@/lib/workspace-cookie'
 import { TERMS_VERSION, PRIVACY_VERSION, DPA_VERSION } from '@/lib/legal-versions'
 import { GithubIcon, GoogleIcon } from '@/components/ui/provider-icons'
+import {
+  AuthField,
+  AuthFootnote,
+  AuthHeading,
+  AuthLayout,
+  AuthNote,
+  authInput,
+  authLink,
+  authPrimaryButton,
+  authSecondaryButton,
+} from '../auth/_components/auth-shell'
 
 /**
  * Record the user's acceptance of Terms + Privacy on the new account.
@@ -39,21 +49,21 @@ async function recordSignupConsent(accessToken: string): Promise<void> {
   }
 }
 
-function LogoMark() {
-  return (
-    <Link href="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
-      <Image src="/icon.png" alt="Spanlens" width={20} height={20} className="shrink-0 rounded-[5px]" priority />
-      <span className="font-semibold text-[15px] tracking-[-0.3px] text-text">spanlens</span>
-    </Link>
-  )
+const SIGNUP_PITCH = {
+  title: 'Start with one line of config.',
+  body: 'Swap your baseURL and the first request shows up with cost, tokens and latency attached.',
 }
 
-function ProofRow({ k, v }: { k: string; v: string }) {
+/** Quiet underlined link used inside the two consent paragraphs. */
+function LegalLink({ href, children }: { href: string; children: React.ReactNode }) {
   return (
-    <div className="flex justify-between py-[7px] border-b border-dashed border-border">
-      <span className="font-mono text-[11px] text-text-faint tracking-[0.03em]">{k}</span>
-      <span className="font-mono text-[11.5px] text-text">{v}</span>
-    </div>
+    <Link
+      href={href}
+      target="_blank"
+      className="text-text-muted underline underline-offset-2 transition-colors hover:text-text"
+    >
+      {children}
+    </Link>
   )
 }
 
@@ -70,9 +80,11 @@ export default function SignupPage() {
 
 function SignupFallback() {
   return (
-    <main className="min-h-screen bg-bg flex items-center justify-center px-6 py-10">
-      <div className="text-[13px] text-text-muted">Loading…</div>
-    </main>
+    <AuthLayout pitch={SIGNUP_PITCH}>
+      <p className="text-[13.5px] leading-[1.6] text-text-faint" role="status">
+        Loading…
+      </p>
+    </AuthLayout>
   )
 }
 
@@ -185,175 +197,128 @@ function SignupPageInner() {
     setLoading(false)
   }
 
-  return (
-    <div className="min-h-screen bg-bg-elev grid grid-cols-2">
-
-      {/* ── Left pane, product proof ─────────────────────────────── */}
-      <div className="bg-bg border-r border-border p-10 flex flex-col justify-between">
-        <div>
-          <LogoMark />
-          <div className="mt-12 max-w-[400px]">
-            <h2 className="text-[34px] font-medium tracking-[-1px] leading-[1.1] [text-wrap:balance]">
-              Your first{' '}
-              <span className="text-text-muted">50,000 requests</span>{' '}
-              are on us.
-            </h2>
-            <p className="text-[14px] text-text-muted leading-[1.55] mt-4">
-              No credit card. Self-host forever-free. Cancel anytime, there is nothing to cancel.
-            </p>
-          </div>
-        </div>
-        <div className="flex flex-col gap-0 max-w-[420px] mt-9">
-          <ProofRow k="ingested this month" v="412,881,204 calls" />
-          <ProofRow k="p99 logging overhead" v="2.8ms" />
-          <ProofRow k="teams saving money" v="$7.2M / mo · aggregate" />
-          <ProofRow k="self-hostable" v="Helm · Docker · binary" />
-        </div>
-      </div>
-
-      {/* ── Right pane, form ────────────────────────────────────────── */}
-      <div className="flex items-center justify-center p-10">
-        <div className="w-[360px] max-w-full">
-          {sent ? (
-            <div className="text-center">
-              <div className="w-14 h-14 rounded-full bg-accent-bg border border-accent-border flex items-center justify-center mx-auto mb-4 font-mono text-[24px] text-accent">✉</div>
-              <div className="text-[24px] font-medium tracking-[-0.2px] mb-2">Check your inbox.</div>
-              <div className="text-[18px] text-text-muted leading-[1.55]">
-                We sent a confirmation link to{' '}
-                <span className="font-mono text-text">{email}</span>. Click it to activate your
-                account and finish setting up your workspace.
-              </div>
-            </div>
-          ) : (
+  if (sent) {
+    return (
+      <AuthLayout pitch={SIGNUP_PITCH}>
+        <AuthHeading
+          title="Check your inbox"
+          subtitle={
             <>
-              <div className="mb-[22px]">
-                <div className="font-mono text-[10.5px] text-accent tracking-[0.06em] uppercase mb-2">60 seconds</div>
-                <h3 className="text-[26px] font-medium tracking-[-0.7px]">Create your workspace</h3>
-                <div className="text-[13px] text-text-muted mt-1.5">
-                  Have an account?{' '}
-                  <Link href="/login" className="text-text font-medium hover:opacity-80 transition-opacity">
-                    Sign in →
-                  </Link>
-                </div>
-              </div>
-
-              {/* SSO buttons */}
-              <div className="flex flex-col gap-2 mb-2">
-                <button
-                  type="button"
-                  onClick={() => void handleOAuth('google')}
-                  disabled={loading}
-                  className="flex items-center justify-center gap-2.5 px-[14px] py-[10px] border border-border-strong rounded-[7px] bg-white text-[13px] font-medium text-[#111] hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  <GoogleIcon className="w-[18px] h-[18px] shrink-0" />
-                  <span>Continue with Google</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void handleOAuth('github')}
-                  disabled={loading}
-                  className="flex items-center justify-center gap-2.5 px-[14px] py-[10px] rounded-[7px] bg-black text-[13px] font-medium text-white hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  <GithubIcon className="w-[18px] h-[18px] shrink-0" />
-                  <span>Continue with GitHub</span>
-                </button>
-              </div>
-
-              <p className="text-[11px] text-text-faint leading-snug mb-2">
-                By continuing with Google or GitHub, you agree to our{' '}
-                <Link href="/terms" target="_blank" className="text-text-muted hover:text-text transition-colors underline underline-offset-2">Terms</Link>
-                ,{' '}
-                <Link href="/privacy" target="_blank" className="text-text-muted hover:text-text transition-colors underline underline-offset-2">Privacy Policy</Link>
-                , and{' '}
-                <Link href="/dpa" target="_blank" className="text-text-muted hover:text-text transition-colors underline underline-offset-2">DPA</Link>.
-              </p>
-
-              {/* Divider */}
-              <div className="flex items-center gap-2.5 my-4">
-                <span className="flex-1 h-px bg-border" />
-                <span className="font-mono text-[10px] text-text-faint tracking-[0.05em] uppercase">or with email</span>
-                <span className="flex-1 h-px bg-border" />
-              </div>
-
-              <form onSubmit={(e) => void handleSubmit(e)}>
-                {/* Email field */}
-                <div className="mb-[14px]">
-                  <label htmlFor="email" className="block font-mono text-[12px] text-text-muted tracking-[0.02em] mb-1.5">Work email</label>
-                  <div className="flex items-center gap-2 px-3 py-[10px] border border-border-strong rounded-[7px] bg-bg-elev">
-                    <span className="font-mono text-[11px] text-text-faint">›</span>
-                    <input
-                      id="email"
-                      type="email"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      placeholder="you@company.com"
-                      required
-                      className="flex-1 font-mono text-[13px] text-text bg-transparent outline-none placeholder:text-text-faint tracking-[0.01em]"
-                    />
-                  </div>
-                  <div className="font-mono text-[10.5px] text-text-faint mt-1.5 tracking-[0.02em]">We&apos;ll send a verification link.</div>
-                </div>
-
-                {/* Password field */}
-                <div className="mb-[14px]">
-                  <label htmlFor="password" className="block font-mono text-[12px] text-text-muted tracking-[0.02em] mb-1.5">Password</label>
-                  <div className="flex items-center gap-2 px-3 py-[10px] border border-border-strong rounded-[7px] bg-bg-elev">
-                    <span className="font-mono text-[11px] text-text-faint">◉</span>
-                    <input
-                      id="password"
-                      type="password"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      placeholder="At least 8 characters"
-                      minLength={8}
-                      required
-                      className="flex-1 font-mono text-[13px] text-text bg-transparent outline-none placeholder:text-text-faint"
-                    />
-                  </div>
-                </div>
-
-                {/* Terms checkbox */}
-                <label className="flex gap-2.5 mb-4 cursor-pointer items-start">
-                  <span
-                    className="w-[14px] h-[14px] rounded-[3px] border-[1.5px] shrink-0 mt-[2px] flex items-center justify-center font-mono text-[9px]"
-                    style={{
-                      borderColor: 'var(--border-strong)',
-                      background: consent ? 'var(--text)' : 'transparent',
-                      color: 'var(--bg)',
-                    }}
-                  >
-                    {consent ? '✓' : ''}
-                  </span>
-                  <input
-                    type="checkbox"
-                    checked={consent}
-                    onChange={(e) => setConsent(e.target.checked)}
-                    className="sr-only"
-                  />
-                  <span className="text-[12px] text-text-muted leading-relaxed">
-                    I agree to the{' '}
-                    <Link href="/terms" target="_blank" className="text-text hover:opacity-80 transition-opacity">Terms of Service</Link>
-                    ,{' '}
-                    <Link href="/privacy" target="_blank" className="text-text hover:opacity-80 transition-opacity">Privacy Policy</Link>
-                    , and{' '}
-                    <Link href="/dpa" target="_blank" className="text-text hover:opacity-80 transition-opacity">Data Processing Addendum</Link>.
-                  </span>
-                </label>
-
-                {error && <p className="text-[12.5px] text-bad mb-3">{error}</p>}
-
-                <button
-                  type="submit"
-                  disabled={loading || !consent}
-                  className="w-full bg-text text-bg py-[11px] px-[14px] rounded-[7px] text-[13px] font-medium hover:opacity-90 transition-opacity disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed"
-                >
-                  {loading ? 'Creating workspace…' : 'Create workspace →'}
-                </button>
-              </form>
+              We sent a confirmation link to <span className="font-mono text-text">{email}</span>. Open it to
+              activate your account and finish setting up your workspace.
             </>
-          )}
-        </div>
+          }
+        />
+        <AuthNote tone="good" live="polite">
+          Nothing yet? Check spam, the link can take a minute.
+        </AuthNote>
+        <AuthFootnote className="mt-[18px]">
+          <Link href="/login" className={authLink}>
+            Back to sign in
+          </Link>
+        </AuthFootnote>
+      </AuthLayout>
+    )
+  }
+
+  return (
+    <AuthLayout pitch={SIGNUP_PITCH}>
+      <AuthHeading title="Create your workspace" subtitle="Free plan, 50k requests a month, no card." />
+
+      <div className="flex flex-col gap-2.5">
+        <button
+          type="button"
+          onClick={() => void handleOAuth('github')}
+          disabled={loading}
+          className={authSecondaryButton}
+        >
+          <GithubIcon className="size-[18px] shrink-0" />
+          <span>Continue with GitHub</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => void handleOAuth('google')}
+          disabled={loading}
+          className={authSecondaryButton}
+        >
+          <GoogleIcon className="size-[18px] shrink-0" />
+          <span>Continue with Google</span>
+        </button>
       </div>
-    </div>
+
+      {/* SSO has no checkbox, so the acknowledgement has to be stated inline. */}
+      <p className="mt-3 text-[11.5px] leading-[1.6] text-text-faint">
+        Continuing with GitHub or Google means you agree to the <LegalLink href="/terms">Terms of Service</LegalLink>,
+        the <LegalLink href="/privacy">Privacy Policy</LegalLink> and the{' '}
+        <LegalLink href="/dpa">Data Processing Addendum</LegalLink>.
+      </p>
+
+      <div className="my-5 flex items-center gap-3" aria-hidden="true">
+        <span className="h-px flex-1 bg-track" />
+        <span className="font-mono text-[11.5px] leading-[1.48] text-text-faint">or</span>
+        <span className="h-px flex-1 bg-track" />
+      </div>
+
+      <form onSubmit={(e) => void handleSubmit(e)} className="flex flex-col gap-4">
+        <AuthField id="email" label="Work email">
+          <input
+            id="email"
+            type="email"
+            autoComplete="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="you@company.com"
+            required
+            aria-invalid={error ? true : undefined}
+            className={authInput}
+          />
+        </AuthField>
+
+        <AuthField id="password" label="Password">
+          <input
+            id="password"
+            type="password"
+            autoComplete="new-password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="At least 8 characters"
+            minLength={8}
+            required
+            aria-invalid={error ? true : undefined}
+            className={authInput}
+          />
+        </AuthField>
+
+        {/* Explicit opt-in, kept as a real checkbox rather than the board's
+            passive footer sentence: `handleSubmit` refuses to run without it
+            and the server records the acceptance against the new account. */}
+        <label className="flex cursor-pointer items-start gap-2.5">
+          <input
+            type="checkbox"
+            checked={consent}
+            onChange={(e) => setConsent(e.target.checked)}
+            className="mt-0.5 size-4 shrink-0 cursor-pointer accent-[var(--accent)]"
+          />
+          <span className="text-[11.5px] leading-[1.6] text-text-faint">
+            I agree to the <LegalLink href="/terms">Terms of Service</LegalLink>, the{' '}
+            <LegalLink href="/privacy">Privacy Policy</LegalLink> and the{' '}
+            <LegalLink href="/dpa">Data Processing Addendum</LegalLink>.
+          </span>
+        </label>
+
+        {error && <AuthNote tone="bad" live="assertive">{error}</AuthNote>}
+
+        <button type="submit" disabled={loading || !consent} className={`${authPrimaryButton} mt-1.5`}>
+          {loading ? 'Creating workspace…' : 'Create workspace'}
+        </button>
+      </form>
+
+      <AuthFootnote className="mt-[18px]">
+        Already have an account?{' '}
+        <Link href="/login" className={authLink}>
+          Sign in
+        </Link>
+      </AuthFootnote>
+    </AuthLayout>
   )
 }

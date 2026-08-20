@@ -1,8 +1,8 @@
 /**
  * Client-side PII masking for display. The server already strips Authorization
  * headers and (optionally) API-key patterns from logged request bodies via
- * `apps/server/src/lib/pii-mask.ts`, but request/response bodies stored in
- * ClickHouse can still contain user-supplied natural-language PII (emails,
+ * `apps/server/src/lib/pii-mask.ts`, but the request/response bodies stored
+ * in the request log can still contain user-supplied natural-language PII (emails,
  * phone numbers, card numbers) inside `messages[].content`. This helper lets
  * the /requests drawer mask those at view-time when the user enables the
  * "Mask PII" toggle.

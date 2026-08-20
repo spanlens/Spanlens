@@ -1,9 +1,11 @@
+import { openGraphFor } from '@/lib/page-metadata'
 import { CodeBlock } from '../../_components/code-block'
 import { ProjectsHierarchyDiagram } from '../../_components/diagrams'
 import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
 export const metadata = {
   alternates: { canonical: '/docs/features/projects' },
+  openGraph: openGraphFor('/docs/features/projects'),
   title: 'Projects, Spanlens keys & provider keys · Spanlens Docs',
   description:
     'Scope your traffic into projects (dev / staging / prod, per-service). Each Spanlens key (sl_live_…) carries its own pool of encrypted provider keys.',

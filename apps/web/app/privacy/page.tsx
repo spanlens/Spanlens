@@ -1,3 +1,4 @@
+import { openGraphFor } from '@/lib/page-metadata'
 import Link from 'next/link'
 import { Footer } from '@/components/layout/footer'
 import { MarketingNav } from '@/components/layout/marketing-nav'
@@ -5,6 +6,7 @@ import { BreadcrumbJsonLd } from '@/components/marketing/breadcrumb-jsonld'
 
 export const metadata = {
   alternates: { canonical: '/privacy' },
+  openGraph: openGraphFor('/privacy'),
   title: 'Privacy Policy · Spanlens',
   description:
     'How Spanlens collects, uses, and protects your data. Covers PIPA (Korea) and GDPR (EU) disclosures and your rights as a data subject.',
@@ -18,11 +20,18 @@ export default function PrivacyPage() {
       <MarketingNav />
       <BreadcrumbJsonLd trail={[{ name: 'Privacy Policy', path: '/privacy' }]} />
 
-      <main className="flex-1 max-w-3xl mx-auto px-6 py-12 prose prose-stone
-        prose-headings:scroll-mt-20
+      <main className="w-full min-w-0 flex-1 max-w-3xl mx-auto px-6 py-12 prose prose-stone
+        prose-headings:scroll-mt-20 prose-headings:font-display prose-headings:text-text
+        prose-h1:text-[40px] prose-h1:track-h2 prose-h1:leading-[1.12] prose-h1:mb-3
+        prose-h2:text-[20px] prose-h2:track-quote prose-h2:mt-10
+        prose-h3:text-[16px] prose-h3:track-quote
+        prose-p:text-[14.5px] prose-p:leading-[1.75] prose-p:text-text-muted
+        prose-li:text-[14.5px] prose-li:leading-[1.75] prose-li:text-text-muted
+        prose-strong:text-text prose-strong:font-semibold
+        prose-table:text-[13.5px]
         prose-a:text-accent prose-a:no-underline hover:prose-a:opacity-80">
         <h1>Privacy Policy</h1>
-        <p className="text-sm text-muted-foreground">
+        <p className="font-mono text-[11.5px] text-text-faint">
           <strong>Effective date:</strong> {EFFECTIVE_DATE}
         </p>
 
@@ -163,9 +172,8 @@ export default function PrivacyPage() {
         <p>
           As of the effective date of this Policy, our infrastructure sub-processors are
           Vercel Inc. (USA, compute), Supabase Inc. (Republic of Korea, Postgres,
-          authentication), ClickHouse, Inc. (USA, LLM request log store), Upstash, Inc.
-          (USA, rate-limit counters), and Paddle.com Market Ltd. (Ireland, Merchant of
-          Record). Our communications sub-processors are Resend, Inc. (USA, transactional
+          authentication, and the LLM request log), Upstash, Inc. (USA, rate-limit
+          counters), and Paddle.com Market Ltd. (Ireland, Merchant of Record). Our communications sub-processors are Resend, Inc. (USA, transactional
           email) and Functional Software, Inc. / Sentry (USA, error monitoring). For B2B
           customers, the full set of contractual safeguards applicable to these sub-processors
           is set out in our <Link href="/dpa">Data Processing Addendum</Link>.

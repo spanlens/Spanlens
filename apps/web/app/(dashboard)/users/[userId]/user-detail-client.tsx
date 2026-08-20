@@ -8,7 +8,7 @@ import { cn, formatDate } from '@/lib/utils'
 import { useUserDetail } from '@/lib/queries/use-users'
 import { Topbar } from '@/components/layout/topbar'
 
-// Payload design: docs/launch/2026-05-14_cache-stream-users.md §3.
+// Payload design: see the typed event catalog in @/lib/posthog.
 import { capture, hashUserId } from '@/lib/posthog'
 import { fmtCostSummary as fmtCost } from '@/lib/format'
 
@@ -28,7 +28,7 @@ function CopyButton({ value }: { value: string }) {
         })
       }}
       aria-label="Copy user ID"
-      className="p-1 rounded hover:bg-bg-elev text-text-faint hover:text-text transition-colors"
+      className="p-1 rounded hover:bg-bg-muted text-text-faint hover:text-text transition-colors"
     >
       {copied ? <Check className="h-3.5 w-3.5 text-good" /> : <Copy className="h-3.5 w-3.5" />}
     </button>
@@ -49,11 +49,11 @@ export function UserDetailClient({ userId }: { userId: string }) {
 
   if (isLoading) {
     return (
-      <div className="-mx-4 -my-4 md:-mx-8 md:-my-7 flex flex-col min-h-screen">
+      <div className="-mx-4 -my-4 md:-mx-7 md:-mt-5 md:-mb-7 flex flex-col min-h-screen">
         <div className="sticky top-0 z-20 bg-bg">
           <Topbar crumbs={crumbs} />
         </div>
-        <div className="flex flex-col gap-6 px-[22px] py-[22px]">
+        <div className="flex flex-col gap-4 px-4 md:px-7 pt-5 pb-7">
           <Skeleton className="h-8 w-64" />
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             {Array.from({ length: 8 }).map((_, i) => (
@@ -68,12 +68,12 @@ export function UserDetailClient({ userId }: { userId: string }) {
 
   if (isError || !data) {
     return (
-      <div className="-mx-4 -my-4 md:-mx-8 md:-my-7 flex flex-col min-h-screen">
+      <div className="-mx-4 -my-4 md:-mx-7 md:-mt-5 md:-mb-7 flex flex-col min-h-screen">
         <div className="sticky top-0 z-20 bg-bg">
           <Topbar crumbs={crumbs} />
         </div>
-        <div className="flex flex-col gap-6 px-[22px] py-[22px]">
-          <div className="border border-border rounded-[6px] p-8 text-center bg-bg-elev">
+        <div className="flex flex-col gap-4 px-4 md:px-7 pt-5 pb-7">
+          <div className="card-surface rounded-card p-8 text-center">
             <p className="font-mono text-[13px] text-text mb-1.5">User not found</p>
             <p className="font-mono text-[11.5px] text-text-faint">
               This user has no logged requests in your organization.
@@ -112,13 +112,13 @@ export function UserDetailClient({ userId }: { userId: string }) {
   const hasMore = data.total_requests > recentCount
 
   return (
-    <div className="-mx-4 -my-4 md:-mx-8 md:-my-7 flex flex-col min-h-screen">
+    <div className="-mx-4 -my-4 md:-mx-7 md:-mt-5 md:-mb-7 flex flex-col min-h-screen">
       <div className="sticky top-0 z-20 bg-bg">
         <Topbar crumbs={crumbs} />
         <h1 className="sr-only">{userId}</h1>
       </div>
 
-      <div className="flex flex-col gap-6 px-[22px] py-[22px]">
+      <div className="flex flex-col gap-4 px-4 md:px-7 pt-5 pb-7">
         {/* Header — user ID + copy + jump-to-requests CTA */}
         <div className="flex flex-col gap-2">
           <div className="flex items-center gap-2 flex-wrap">
@@ -129,7 +129,7 @@ export function UserDetailClient({ userId }: { userId: string }) {
           </div>
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <p className="font-mono text-[11px] text-text-faint">
-              End-user analytics · all requests tagged with this <code className="bg-bg-elev px-1 py-px rounded">x-spanlens-user</code> value
+              End-user analytics · all requests tagged with this <code className="bg-bg-sunk px-1 py-px rounded">x-spanlens-user</code> value
             </p>
             {data.total_requests > 0 && (
               <Link
@@ -146,8 +146,8 @@ export function UserDetailClient({ userId }: { userId: string }) {
         {/* Stats grid */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {stats.map(({ label, value, bad }) => (
-            <div key={label} className="border border-border rounded-[6px] px-4 py-3 bg-bg-elev">
-              <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-1.5">
+            <div key={label} className="card-surface rounded-card px-5 py-4">
+              <div className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-faint mb-1.5">
                 {label}
               </div>
               <div className={cn('font-mono text-[13px] font-medium truncate', bad ? 'text-bad' : 'text-text')}>
@@ -160,7 +160,7 @@ export function UserDetailClient({ userId }: { userId: string }) {
         {/* Recent requests */}
         <div>
           <div className="flex items-baseline justify-between mb-3 flex-wrap gap-2">
-            <h2 className="font-mono text-[11px] uppercase tracking-[0.05em] text-text-faint">
+            <h2 className="font-mono text-[11px] uppercase tracking-[0.1em] text-text-faint">
               Recent requests
             </h2>
             <span className="font-mono text-[10.5px] text-text-faint">
@@ -168,8 +168,8 @@ export function UserDetailClient({ userId }: { userId: string }) {
               {hasMore && ' · most recent first'}
             </span>
           </div>
-          <div className="border border-border rounded-[6px] overflow-hidden">
-            <div className="grid grid-cols-[1fr_1fr_1fr_1fr] sm:grid-cols-[1fr_1fr_1fr_1fr_1fr] gap-3 px-4 py-2.5 bg-bg-elev border-b border-border font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint">
+          <div className="card-surface rounded-card overflow-hidden">
+            <div className="grid grid-cols-[1fr_1fr_1fr_1fr] sm:grid-cols-[1fr_1fr_1fr_1fr_1fr] gap-3 px-[18px] py-2.5 bg-bg-muted border-b border-border font-mono text-[10px] uppercase tracking-[0.1em] text-text-faint">
               <span>Time</span>
               <span>Model</span>
               <span className="hidden sm:inline">Tokens</span>
@@ -189,7 +189,7 @@ export function UserDetailClient({ userId }: { userId: string }) {
                     <Link
                       key={r.id}
                       href={`/requests/${r.id}`}
-                      className="grid grid-cols-[1fr_1fr_1fr_1fr] sm:grid-cols-[1fr_1fr_1fr_1fr_1fr] gap-3 items-center px-4 py-2.5 font-mono text-[12px] text-text hover:bg-bg-elev transition-colors"
+                      className="grid grid-cols-[1fr_1fr_1fr_1fr] sm:grid-cols-[1fr_1fr_1fr_1fr_1fr] gap-3 items-center px-4 py-2.5 font-mono text-[12px] text-text hover:bg-bg-muted transition-colors"
                     >
                       <span className="text-text-muted" suppressHydrationWarning>
                         {new Date(r.created_at).toLocaleString('en-US', {

@@ -1,21 +1,25 @@
+import { OG_IMAGE } from '@/lib/page-metadata'
 import { ModelPricingTemplate } from '@/components/marketing/model-pricing-template'
 
 const DESCRIPTION =
-  'o3-mini pricing: $1.10 per 1M input tokens, $4.40 per 1M output. OpenAI reasoning model with deep chain-of-thought. Monthly cost scenarios and when to use it instead of GPT-4o.'
+  'o3-mini pricing: $1.10 per 1M input, $4.40 per 1M output. OpenAI reasoning model with deep chain-of-thought. Monthly scenarios and when to use it vs GPT-4o.'
 
 export const metadata = {
   alternates: { canonical: '/pricing/o3-mini' },
-  title: 'o3-mini Pricing 2026 — Cost Per Token, Monthly Estimates',
+  title: 'o3-mini Pricing 2026: Cost Per Token, Monthly Estimates',
   description: DESCRIPTION,
   openGraph: {
+    siteName: 'Spanlens',
     type: 'article',
-    title: 'o3-mini Pricing 2026 — Cost Per Token, Monthly Estimates',
+    title: 'o3-mini Pricing 2026: Cost Per Token, Monthly Estimates',
     description: DESCRIPTION,
     url: '/pricing/o3-mini',
+    locale: 'en_US',
+    images: OG_IMAGE,
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'o3-mini Pricing 2026 — Cost Per Token, Monthly Estimates',
+    title: 'o3-mini Pricing 2026: Cost Per Token, Monthly Estimates',
     description: DESCRIPTION,
   },
 }

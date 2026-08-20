@@ -1,31 +1,27 @@
-import { unscopedClickhouse } from './clickhouse.js'
+import { pgQuery } from './postgres.js'
 import { requestsScope } from './requests-query.js'
 
 /**
  * Anomaly detection over recent `requests` rows.
  *
- * Strategy: one ClickHouse GROUP BY scan over the requests table returns
- * pre-aggregated stats (mean, stddev, count) per (provider, model) for both
- * the observation and reference windows. The sigma threshold check runs here
- * in TypeScript so the policy stays in one place.
+ * Strategy: one GROUP BY scan over the requests table returns pre-aggregated
+ * stats (mean, stddev, count) per (provider, model) for both the observation
+ * and reference windows. The sigma threshold check runs here in TypeScript so
+ * the policy stays in one place.
  *
- * Uses stddevSamp (n-1, Bessel-corrected) — matches the previous Postgres
- * STDDEV_SAMP behavior exactly.
+ * Uses stddev_samp (n-1, Bessel-corrected).
  * Latency / cost are computed only over successful requests (status_code < 400).
  * Error rate uses ALL rows (Bernoulli proportion).
  * Error rate is one-sided: only upward spikes are flagged.
  *
- * Replaces the `detect_anomaly_stats` + `get_anomaly_factors` Postgres
- * functions that lived in Supabase before the ClickHouse migration.
+ * Window splitting is done with aggregate `FILTER (WHERE …)` clauses, so the
+ * observation and reference windows come out of a single pass over the rows
+ * rather than one query each.
+ *
+ * Timestamps are bound as ISO-8601 strings (with the trailing `Z`) and cast
+ * with `::timestamptz`, so the comparison is unambiguously UTC regardless of
+ * the session timezone.
  */
-
-/**
- * ClickHouse DateTime64 won't accept the trailing 'Z' in toISOString();
- * strip it for parseDateTime64BestEffort like every other call site.
- */
-function fmtTs(iso: string): string {
-  return iso.replace('T', ' ').replace('Z', '')
-}
 
 export type AnomalyKind = 'latency' | 'cost' | 'error_rate'
 
@@ -159,8 +155,8 @@ export async function detectAnomalies(
   const minSamples       = opts.minSamples       ?? ANOMALY_DEFAULTS.MIN_SAMPLES_LOW
 
   const now     = Date.now()
-  const obsStart = fmtTs(new Date(now - observationHours * 3_600_000).toISOString())
-  const refStart = fmtTs(new Date(now - referenceHours  * 3_600_000).toISOString())
+  const obsStart = new Date(now - observationHours * 3_600_000).toISOString()
+  const refStart = new Date(now - referenceHours  * 3_600_000).toISOString()
 
   // Org isolation + plan retention (free=14d / pro=90d / team=365d). The
   // retention bound is enforced in addition to refStart, so a caller-supplied
@@ -174,47 +170,59 @@ export async function detectAnomalies(
   }
   let projectClause = ''
   if (opts.projectId) {
-    projectClause = ' AND project_id = {projectId:UUID}'
+    projectClause = ' AND project_id = {projectId}'
     params['projectId'] = opts.projectId
   }
 
-  // One GROUP BY scan computes all 16 columns. The Postgres function used
-  // FILTER (WHERE …); ClickHouse's countIf/avgIf/stddevSampIf is the analog.
-  // success-only filters cover latency/cost (status_code < 400); error_rate
-  // averages a Bernoulli indicator across all rows.
+  // One GROUP BY scan computes all 16 columns, split into the observation and
+  // reference windows by per-aggregate FILTER clauses. Success-only filters
+  // cover latency/cost (status_code < 400); error_rate averages a Bernoulli
+  // indicator across all rows.
+  //
+  // `latency_ms > 0` (not `IS NOT NULL`) is deliberate and unchanged: the
+  // column is NOT NULL DEFAULT 0, so 0 is the "never measured" sentinel and
+  // `> 0` is what "has a real value" means here.
+  //
+  // The aggregate is wrapped in a subquery because the original HAVING
+  // referenced the SELECT aliases `obs_all_count` / `ref_all_count`, which
+  // Postgres does not allow in HAVING. Filtering in an outer WHERE keeps the
+  // predicate readable instead of repeating two long count(*) FILTER
+  // expressions.
   const sql = `
-    SELECT
-      provider,
-      model,
-      avgIf(latency_ms,        created_at >= parseDateTime64BestEffort({obsStart:String}) AND status_code < 400 AND latency_ms > 0) AS obs_latency_mean,
-      countIf(                  created_at >= parseDateTime64BestEffort({obsStart:String}) AND status_code < 400 AND latency_ms > 0) AS obs_latency_count,
-      avgIf(latency_ms,        created_at <  parseDateTime64BestEffort({obsStart:String}) AND status_code < 400 AND latency_ms > 0) AS ref_latency_mean,
-      stddevSampIf(latency_ms, created_at <  parseDateTime64BestEffort({obsStart:String}) AND status_code < 400 AND latency_ms > 0) AS ref_latency_stddev,
-      countIf(                  created_at <  parseDateTime64BestEffort({obsStart:String}) AND status_code < 400 AND latency_ms > 0) AS ref_latency_count,
-      avgIf(cost_usd,          created_at >= parseDateTime64BestEffort({obsStart:String}) AND status_code < 400 AND isNotNull(cost_usd)) AS obs_cost_mean,
-      countIf(                  created_at >= parseDateTime64BestEffort({obsStart:String}) AND status_code < 400 AND isNotNull(cost_usd)) AS obs_cost_count,
-      avgIf(cost_usd,          created_at <  parseDateTime64BestEffort({obsStart:String}) AND status_code < 400 AND isNotNull(cost_usd)) AS ref_cost_mean,
-      stddevSampIf(cost_usd,   created_at <  parseDateTime64BestEffort({obsStart:String}) AND status_code < 400 AND isNotNull(cost_usd)) AS ref_cost_stddev,
-      countIf(                  created_at <  parseDateTime64BestEffort({obsStart:String}) AND status_code < 400 AND isNotNull(cost_usd)) AS ref_cost_count,
-      avgIf(if(status_code >= 400, 1.0, 0.0),       created_at >= parseDateTime64BestEffort({obsStart:String})) AS obs_error_rate,
-      countIf(                                       created_at >= parseDateTime64BestEffort({obsStart:String})) AS obs_all_count,
-      avgIf(if(status_code >= 400, 1.0, 0.0),       created_at <  parseDateTime64BestEffort({obsStart:String})) AS ref_error_rate,
-      stddevSampIf(if(status_code >= 400, 1.0, 0.0),created_at <  parseDateTime64BestEffort({obsStart:String})) AS ref_error_stddev,
-      countIf(                                       created_at <  parseDateTime64BestEffort({obsStart:String})) AS ref_all_count
-    FROM requests
-    WHERE ${whereScope}
-      AND created_at >= parseDateTime64BestEffort({refStart:String})${projectClause}
-    GROUP BY provider, model
-    HAVING obs_all_count > 0 OR ref_all_count > 0`
+    SELECT * FROM (
+      SELECT
+        provider,
+        model,
+        avg(latency_ms)         FILTER (WHERE created_at >= {obsStart}::timestamptz AND status_code < 400 AND latency_ms > 0) AS obs_latency_mean,
+        count(*)                FILTER (WHERE created_at >= {obsStart}::timestamptz AND status_code < 400 AND latency_ms > 0) AS obs_latency_count,
+        avg(latency_ms)         FILTER (WHERE created_at <  {obsStart}::timestamptz AND status_code < 400 AND latency_ms > 0) AS ref_latency_mean,
+        stddev_samp(latency_ms) FILTER (WHERE created_at <  {obsStart}::timestamptz AND status_code < 400 AND latency_ms > 0) AS ref_latency_stddev,
+        count(*)                FILTER (WHERE created_at <  {obsStart}::timestamptz AND status_code < 400 AND latency_ms > 0) AS ref_latency_count,
+        avg(cost_usd)           FILTER (WHERE created_at >= {obsStart}::timestamptz AND status_code < 400 AND cost_usd IS NOT NULL) AS obs_cost_mean,
+        count(*)                FILTER (WHERE created_at >= {obsStart}::timestamptz AND status_code < 400 AND cost_usd IS NOT NULL) AS obs_cost_count,
+        avg(cost_usd)           FILTER (WHERE created_at <  {obsStart}::timestamptz AND status_code < 400 AND cost_usd IS NOT NULL) AS ref_cost_mean,
+        stddev_samp(cost_usd)   FILTER (WHERE created_at <  {obsStart}::timestamptz AND status_code < 400 AND cost_usd IS NOT NULL) AS ref_cost_stddev,
+        count(*)                FILTER (WHERE created_at <  {obsStart}::timestamptz AND status_code < 400 AND cost_usd IS NOT NULL) AS ref_cost_count,
+        avg(CASE WHEN status_code >= 400 THEN 1.0 ELSE 0.0 END)         FILTER (WHERE created_at >= {obsStart}::timestamptz) AS obs_error_rate,
+        count(*)                                                        FILTER (WHERE created_at >= {obsStart}::timestamptz) AS obs_all_count,
+        avg(CASE WHEN status_code >= 400 THEN 1.0 ELSE 0.0 END)         FILTER (WHERE created_at <  {obsStart}::timestamptz) AS ref_error_rate,
+        stddev_samp(CASE WHEN status_code >= 400 THEN 1.0 ELSE 0.0 END) FILTER (WHERE created_at <  {obsStart}::timestamptz) AS ref_error_stddev,
+        count(*)                                                        FILTER (WHERE created_at <  {obsStart}::timestamptz) AS ref_all_count
+      FROM requests
+      WHERE ${whereScope}
+        AND created_at >= {refStart}::timestamptz${projectClause}
+      GROUP BY provider, model
+    ) s
+    WHERE s.obs_all_count > 0 OR s.ref_all_count > 0`
 
   let data: AnomalyStatsRow[]
   try {
-    const result = await unscopedClickhouse().query({
+    // `numeric` / `int8` come back as strings (postgres.ts documents why) —
+    // every column is coerced here, at the boundary.
+    const rawRows = await pgQuery<Record<string, string | number | null>>({
       query: sql,
-      query_params: params,
-      format: 'JSONEachRow',
+      params,
     })
-    const rawRows = (await result.json()) as Array<Record<string, string | number | null>>
     data = rawRows.map((r) => ({
       provider: String(r['provider'] ?? ''),
       model: String(r['model'] ?? ''),
@@ -235,7 +243,7 @@ export async function detectAnomalies(
       ref_all_count:      Number(r['ref_all_count']      ?? 0),
     }))
   } catch (err) {
-    console.error('[detectAnomalies] ClickHouse query failed:', err instanceof Error ? err.message : err)
+    console.error('[detectAnomalies] Postgres query failed:', err instanceof Error ? err.message : err)
     return []
   }
   if (data.length === 0) return []
@@ -344,10 +352,9 @@ export async function detectAnomalies(
  * (obs vs reference window) and error status code distribution.
  * Called after anomaly detection to explain *why* the anomaly occurred.
  *
- * Replaces the old `get_anomaly_factors` Postgres function. We now run two
- * small ClickHouse queries (token CTE + status_code CTE) in parallel since
- * they shape into different output formats — simpler than the original
- * single-query approach and faster to add new factor columns later.
+ * Two small queries (token averages + status_code distribution) run in
+ * parallel since they shape into different output formats — simpler than a
+ * single combined query and faster to add new factor columns later.
  */
 export async function fetchContributingFactors(
   organizationId: string,
@@ -357,57 +364,55 @@ export async function fetchContributingFactors(
   refStart: string,
   projectId?: string,
 ): Promise<AnomalyContributingFactors | null> {
-  const obsTs = fmtTs(obsStart)
-  const refTs = fmtTs(refStart)
   // Same org + retention scoping as detectAnomalies (gotcha #3).
   const { whereScope, scopeParams } = await requestsScope(organizationId)
   const baseParams: Record<string, unknown> = {
     ...scopeParams,
     provider,
     model,
-    obsStart: obsTs,
-    refStart: refTs,
+    obsStart,
+    refStart,
   }
   let projectClause = ''
   if (projectId) {
-    projectClause = ' AND project_id = {projectId:UUID}'
+    projectClause = ' AND project_id = {projectId}'
     baseParams['projectId'] = projectId
   }
 
   const tokensSql = `
     SELECT
-      avgIf(prompt_tokens,     created_at >= parseDateTime64BestEffort({obsStart:String})) AS obs_prompt_tokens_mean,
-      avgIf(prompt_tokens,     created_at <  parseDateTime64BestEffort({obsStart:String})) AS ref_prompt_tokens_mean,
-      avgIf(completion_tokens, created_at >= parseDateTime64BestEffort({obsStart:String})) AS obs_completion_tokens_mean,
-      avgIf(completion_tokens, created_at <  parseDateTime64BestEffort({obsStart:String})) AS ref_completion_tokens_mean,
-      avgIf(total_tokens,      created_at >= parseDateTime64BestEffort({obsStart:String})) AS obs_total_tokens_mean,
-      avgIf(total_tokens,      created_at <  parseDateTime64BestEffort({obsStart:String})) AS ref_total_tokens_mean
+      avg(prompt_tokens)     FILTER (WHERE created_at >= {obsStart}::timestamptz) AS obs_prompt_tokens_mean,
+      avg(prompt_tokens)     FILTER (WHERE created_at <  {obsStart}::timestamptz) AS ref_prompt_tokens_mean,
+      avg(completion_tokens) FILTER (WHERE created_at >= {obsStart}::timestamptz) AS obs_completion_tokens_mean,
+      avg(completion_tokens) FILTER (WHERE created_at <  {obsStart}::timestamptz) AS ref_completion_tokens_mean,
+      avg(total_tokens)      FILTER (WHERE created_at >= {obsStart}::timestamptz) AS obs_total_tokens_mean,
+      avg(total_tokens)      FILTER (WHERE created_at <  {obsStart}::timestamptz) AS ref_total_tokens_mean
     FROM requests
     WHERE ${whereScope}
-      AND provider = {provider:String}
-      AND model    = {model:String}
-      AND created_at >= parseDateTime64BestEffort({refStart:String})${projectClause}`
+      AND provider = {provider}
+      AND model    = {model}
+      AND created_at >= {refStart}::timestamptz${projectClause}`
 
   const errorsSql = `
-    SELECT status_code AS code, count() AS cnt
+    SELECT status_code AS code, count(*) AS cnt
     FROM requests
     WHERE ${whereScope}
-      AND provider = {provider:String}
-      AND model    = {model:String}
-      AND created_at >= parseDateTime64BestEffort({obsStart:String})
+      AND provider = {provider}
+      AND model    = {model}
+      AND created_at >= {obsStart}::timestamptz
       AND status_code >= 400${projectClause}
     GROUP BY status_code
     ORDER BY cnt DESC
     LIMIT 5`
 
   try {
-    const ch = unscopedClickhouse()
-    const [tokensResult, errorsResult] = await Promise.all([
-      ch.query({ query: tokensSql, query_params: baseParams, format: 'JSONEachRow' }),
-      ch.query({ query: errorsSql, query_params: baseParams, format: 'JSONEachRow' }),
+    // `refStart` is only referenced by tokensSql and `obsStart` only partly by
+    // errorsSql, but both share `baseParams`; unused names are simply never
+    // bound, so the shared object is safe.
+    const [tokenRows, errorRows] = await Promise.all([
+      pgQuery<Record<string, string | number | null>>({ query: tokensSql, params: baseParams }),
+      pgQuery<{ code: string | number; cnt: string | number }>({ query: errorsSql, params: baseParams }),
     ])
-    const tokenRows = (await tokensResult.json()) as Array<Record<string, string | number | null>>
-    const errorRows = (await errorsResult.json()) as Array<{ code: string | number; cnt: string | number }>
 
     const tokenRow = tokenRows[0]
     if (!tokenRow) return null
@@ -422,7 +427,7 @@ export async function fetchContributingFactors(
       obsStatusDistribution:   errorRows.map((r) => ({ code: Number(r.code), count: Number(r.cnt) })),
     }
   } catch (err) {
-    console.error('[fetchContributingFactors] ClickHouse query failed:', err instanceof Error ? err.message : err)
+    console.error('[fetchContributingFactors] Postgres query failed:', err instanceof Error ? err.message : err)
     return null
   }
 }

@@ -35,7 +35,7 @@ const SPAN_TYPE_COLORS: Record<string, string> = {
 function SpanTypeBadge({ type }: { type: string }) {
   const cls = SPAN_TYPE_COLORS[type] ?? SPAN_TYPE_COLORS['custom']!
   return (
-    <span className={cn('font-mono text-[9px] uppercase tracking-[0.04em] px-[5px] py-[1px] rounded-[3px] border', cls)}>
+    <span className={cn('font-mono text-[9px] uppercase tracking-[0.08em] px-2 py-[1px] rounded-full border', cls)}>
       {type}
     </span>
   )
@@ -50,7 +50,7 @@ interface SpanDetailPanelProps {
 
 function SpanDetailPanel({ span, onClose }: SpanDetailPanelProps) {
   return (
-    <div className="w-full md:w-[380px] shrink-0 border-l border-border bg-bg flex flex-col h-full overflow-hidden">
+    <div className="w-full md:w-[436px] shrink-0 card-surface rounded-card flex flex-col h-full overflow-hidden">
       {/* Header */}
       <div className="flex items-center gap-2 px-4 py-3 border-b border-border shrink-0">
         <span className="text-[13px] font-medium text-text truncate flex-1">{span.name}</span>
@@ -74,8 +74,8 @@ function SpanDetailPanel({ span, onClose }: SpanDetailPanelProps) {
             { label: 'Tokens',   value: span.total_tokens > 0 ? span.total_tokens.toLocaleString('en-US') : '—' },
             { label: 'Cost',     value: fmtCost(span.cost_usd) },
           ].map((s) => (
-            <div key={s.label} className="rounded-[5px] border border-border bg-bg-elev px-3 py-2">
-              <div className="font-mono text-[9.5px] uppercase tracking-[0.05em] text-text-faint mb-1">{s.label}</div>
+            <div key={s.label} className="rounded-lg border border-border bg-bg-sunk px-3.5 py-2.5">
+              <div className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-faint mb-1">{s.label}</div>
               <div className={cn('text-[14px] font-medium', s.label === 'Status' && span.status === 'error' ? 'text-bad' : 'text-text')}>
                 {s.value}
               </div>
@@ -86,7 +86,7 @@ function SpanDetailPanel({ span, onClose }: SpanDetailPanelProps) {
         {/* Tokens breakdown */}
         {span.total_tokens > 0 && (
           <div>
-            <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-1.5">Tokens</div>
+            <div className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-faint mb-1.5">Tokens</div>
             <div className="flex gap-3 font-mono text-[12px] text-text-muted">
               <span>{span.prompt_tokens.toLocaleString('en-US')} prompt</span>
               <span className="text-text-faint">·</span>
@@ -108,7 +108,7 @@ function SpanDetailPanel({ span, onClose }: SpanDetailPanelProps) {
         {/* Input */}
         {span.input != null && (
           <div>
-            <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-1.5">Input</div>
+            <div className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-faint mb-1.5">Input</div>
             <pre className="rounded-[5px] border border-border bg-bg-muted px-3 py-2 font-mono text-[11px] text-text-muted overflow-auto max-h-48 whitespace-pre-wrap break-words">
               {JSON.stringify(span.input, null, 2)}
             </pre>
@@ -118,7 +118,7 @@ function SpanDetailPanel({ span, onClose }: SpanDetailPanelProps) {
         {/* Output */}
         {span.output != null && (
           <div>
-            <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-1.5">Output</div>
+            <div className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-faint mb-1.5">Output</div>
             <pre className="rounded-[5px] border border-border bg-bg-muted px-3 py-2 font-mono text-[11px] text-text-muted overflow-auto max-h-48 whitespace-pre-wrap break-words">
               {JSON.stringify(span.output, null, 2)}
             </pre>
@@ -128,7 +128,7 @@ function SpanDetailPanel({ span, onClose }: SpanDetailPanelProps) {
         {/* Metadata */}
         {span.metadata != null && Object.keys(span.metadata).length > 0 && (
           <div>
-            <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-1.5">Metadata</div>
+            <div className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-faint mb-1.5">Metadata</div>
             <pre className="rounded-[5px] border border-border bg-bg-muted px-3 py-2 font-mono text-[11px] text-text-muted overflow-auto max-h-32 whitespace-pre-wrap break-words">
               {JSON.stringify(span.metadata, null, 2)}
             </pre>
@@ -170,9 +170,9 @@ function SpanWaterfallRow({
       type="button"
       onClick={onClick}
       className={cn(
-        'w-full text-left flex items-center gap-2 px-4 py-2 border-b border-border transition-colors',
-        isSelected ? 'bg-bg-elev' : 'hover:bg-bg-muted',
-        isErr && !isSelected && 'bg-bad-bg',
+        'w-full text-left flex items-center gap-2 px-[18px] py-2.5 border-b border-border last:border-b-0 transition-colors',
+        isSelected ? 'bg-accent-bg/60' : 'hover:bg-bg-muted',
+        isErr && !isSelected && 'bg-bad-bg/50',
       )}
     >
       {/* Indent + name */}
@@ -257,14 +257,14 @@ export default function DemoTraceDetailPage({ params }: { params: Promise<{ id: 
 
   if (!traceDetail) {
     return (
-      <div className="-mx-4 -my-4 md:-mx-8 md:-my-7 flex flex-col h-screen overflow-hidden bg-bg">
+      <div className="-mx-4 -my-4 md:-mx-7 md:-mt-5 md:-mb-7 flex flex-col h-screen overflow-hidden bg-bg">
         <Topbar
           crumbs={[
             { label: 'Traces', href: '/demo/traces' },
             { label: 'Not found' },
           ]}
         />
-        <div className="m-[22px] p-8 rounded-md border border-border text-center">
+        <div className="m-4 md:m-7 card-surface rounded-card p-8 text-center">
           <p className="text-[13px] text-text-muted mb-3">Trace not found.</p>
           <button
             type="button"
@@ -294,7 +294,7 @@ export default function DemoTraceDetailPage({ params }: { params: Promise<{ id: 
   const isRunning = traceDetail.status === 'running'
 
   return (
-    <div className="-mx-4 -my-4 md:-mx-8 md:-my-7 flex flex-col h-screen overflow-hidden bg-bg">
+    <div className="-mx-4 -my-4 md:-mx-7 md:-mt-5 md:-mb-7 flex flex-col h-screen overflow-hidden bg-bg">
       <Topbar
         crumbs={[
           { label: 'Traces', href: '/demo/traces' },
@@ -307,7 +307,7 @@ export default function DemoTraceDetailPage({ params }: { params: Promise<{ id: 
                 <button
                   type="button"
                   onClick={() => router.push(`/demo/traces/${prevTrace.id}`)}
-                  className="font-mono text-[11px] px-[9px] py-1 border border-border rounded-[5px] text-text-muted hover:border-border-strong transition-colors"
+                  className="text-[12.5px] font-medium px-3 py-[7px] border border-border rounded bg-bg-elev text-text-muted hover:text-text hover:border-border-strong transition-colors"
                 >
                   ← prev
                 </button>
@@ -316,7 +316,7 @@ export default function DemoTraceDetailPage({ params }: { params: Promise<{ id: 
                 <button
                   type="button"
                   onClick={() => router.push(`/demo/traces/${nextTrace.id}`)}
-                  className="font-mono text-[11px] px-[9px] py-1 border border-border rounded-[5px] text-text-muted hover:border-border-strong transition-colors"
+                  className="text-[12.5px] font-medium px-3 py-[7px] border border-border rounded bg-bg-elev text-text-muted hover:text-text hover:border-border-strong transition-colors"
                 >
                   next →
                 </button>
@@ -326,9 +326,12 @@ export default function DemoTraceDetailPage({ params }: { params: Promise<{ id: 
         }
       />
 
-      {/* Stat strip */}
-      <div className="overflow-x-auto shrink-0 border-b border-border">
-        <div className="grid grid-cols-5 min-w-[480px]">
+      {/* Content canvas — 16px rhythm between rows, per the Figma board. */}
+      <div className="flex flex-col gap-4 flex-1 min-h-0 px-4 md:px-8 pt-5 pb-7">
+
+      {/* Trace summary — one card of divided cells, as on the D3 board. */}
+      <div className="card-surface rounded-card px-5 py-4 grid grid-cols-3 md:grid-cols-5 shrink-0">
+        <>
           {[
             {
               label: 'Duration',
@@ -356,34 +359,31 @@ export default function DemoTraceDetailPage({ params }: { params: Promise<{ id: 
               warn: isErr,
             },
           ].map((s, i) => (
-            <div
-              key={i}
-              className={cn('px-[18px] py-[14px]', i < 4 && 'border-r border-border')}
-            >
-              <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-2">{s.label}</div>
-              <span className={cn('text-[24px] font-medium leading-none tracking-[-0.6px]', s.warn ? 'text-bad' : 'text-text')}>
+            <div key={i} className={cn('px-6 first:pl-0', i > 0 && 'border-l border-track')}>
+              <div className="font-mono text-[10.5px] uppercase tracking-[0.1em] text-text-faint mb-1.5">{s.label}</div>
+              <span className={cn('font-mono text-[16px] block truncate', s.warn ? 'text-bad' : 'text-text')}>
                 {s.value}
               </span>
             </div>
           ))}
-        </div>
+        </>
       </div>
 
       {/* Error banner */}
       {isErr && traceDetail.error_message && (
-        <div className="shrink-0 mx-[22px] mt-3 px-3 py-2.5 rounded-[5px] border border-bad/20 bg-bad-bg">
+        <div className="shrink-0 px-3.5 py-3 rounded-lg border border-bad/25 bg-bad-bg">
           <span className="font-mono text-[11px] text-bad">{traceDetail.error_message}</span>
         </div>
       )}
 
       {/* Main area: waterfall or graph + optional detail panel */}
-      <div className="flex-1 flex overflow-hidden">
-        <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="flex-1 flex min-h-0 gap-4">
+        <div className="flex-1 flex flex-col min-w-0 card-surface rounded-card overflow-hidden">
           {/* View toggle */}
-          <div className="flex items-center gap-2 px-4 py-2 border-b border-border bg-bg-muted shrink-0">
-            <span className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint">View</span>
+          <div className="flex items-center gap-2 px-5 py-3 border-b border-border shrink-0">
+            <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-faint">View</span>
             <div
-              className="flex border border-border rounded-[5px] overflow-hidden bg-bg font-mono text-[10px] tracking-[0.03em]"
+              className="inline-flex items-center gap-[2px] rounded-full bg-secondary p-[3px]"
               title={graphAvailable ? undefined : 'Graph view requires LangChain / LangGraph callback spans'}
             >
               {([
@@ -399,9 +399,9 @@ export default function DemoTraceDetailPage({ params }: { params: Promise<{ id: 
                     disabled={disabled}
                     onClick={() => !disabled && setView(v)}
                     className={cn(
-                      'px-[10px] py-[4px] inline-flex items-center',
-                      view === v ? 'bg-text text-bg' : 'text-text-muted hover:text-text transition-colors',
-                      disabled && 'opacity-40 cursor-not-allowed hover:text-text-muted',
+                      'font-mono text-[11.5px] leading-[16px] px-3 py-[5px] rounded-full inline-flex items-center transition-colors',
+                      view === v ? 'bg-bg-elev text-text' : 'text-text-faint hover:text-text',
+                      disabled && 'opacity-40 cursor-not-allowed hover:text-text-faint',
                     )}
                   >
                     {label}
@@ -425,10 +425,10 @@ export default function DemoTraceDetailPage({ params }: { params: Promise<{ id: 
           ) : (
             <div className="flex-1 overflow-auto">
               {/* Waterfall column header */}
-              <div className="flex items-center gap-2 px-4 py-2 border-b border-border bg-bg-muted/60 sticky top-0 z-10">
-                <span className="shrink-0 w-[220px] font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint">Span</span>
-                <span className="flex-1 font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint">Timeline</span>
-                <span className="shrink-0 w-16 text-right font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint">Dur</span>
+              <div className="flex items-center gap-2 px-[18px] py-2.5 border-b border-border bg-bg-muted sticky top-0 z-10">
+                <span className="shrink-0 w-[220px] font-mono text-[10px] uppercase tracking-[0.1em] text-text-faint">Span</span>
+                <span className="flex-1 font-mono text-[10px] uppercase tracking-[0.1em] text-text-faint">Timeline</span>
+                <span className="shrink-0 w-16 text-right font-mono text-[10px] uppercase tracking-[0.1em] text-text-faint">Dur</span>
               </div>
 
               {flatSpans.map(({ span, depth }) => (
@@ -451,7 +451,7 @@ export default function DemoTraceDetailPage({ params }: { params: Promise<{ id: 
 
               {/* Trace metadata footer */}
               <div className="px-4 py-4 border-t border-border mt-2">
-                <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-2">Trace metadata</div>
+                <div className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-faint mb-2">Trace metadata</div>
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-2 font-mono text-[11px] text-text-muted">
                   <span><span className="text-text-faint">ID:</span> {traceDetail.id}</span>
                   <span><span className="text-text-faint">Started:</span> {new Date(traceDetail.started_at).toLocaleString('en-US')}</span>
@@ -471,7 +471,8 @@ export default function DemoTraceDetailPage({ params }: { params: Promise<{ id: 
         {selectedSpan && (
           <SpanDetailPanel span={selectedSpan} onClose={() => setSelectedSpanId(null)} />
         )}
-      </div>
+      </div>{/* end split */}
+      </div>{/* end content canvas */}
     </div>
   )
 }

@@ -1,9 +1,11 @@
+import { openGraphFor } from '@/lib/page-metadata'
 import { CodeBlock } from '../../_components/code-block'
 import { AlertLoopDiagram } from '../../_components/diagrams'
 import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
 export const metadata = {
   alternates: { canonical: '/docs/features/alerts' },
+  openGraph: openGraphFor('/docs/features/alerts'),
   title: 'Alerts · Spanlens Docs',
   description:
     'Threshold-based alert rules for budget, error rate, and p95 latency. Delivered via email (Resend), Slack, or Discord webhooks.',

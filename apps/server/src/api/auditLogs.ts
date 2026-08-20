@@ -53,6 +53,53 @@ function parseIsoBound(value: string | undefined): string | null | 'invalid' {
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
+export interface AuditLogQuery {
+  limit: number
+  offset: number
+  /** Exact match on the `action` column. */
+  action?: string | null
+  /** Exact match on the actor. Callers must validate the UUID shape first. */
+  userId?: string | null
+  /** Inclusive lower bound, already normalised to ISO by the caller. */
+  from?: string | null
+  /** Inclusive upper bound, already normalised to ISO by the caller. */
+  to?: string | null
+}
+
+/**
+ * Shared read for the org's audit trail.
+ *
+ * Extracted from the GET / handler so `GET /api/v1/dashboard/summary` can
+ * serve the dashboard's "Recent activity" strip from the same query. Input
+ * validation deliberately stays in the route handler: the composite endpoint
+ * builds its own (already-trusted) arguments and has no query string to
+ * reject, so it should not pay for — or depend on — HTTP-level parsing.
+ */
+export async function fetchAuditLogs(
+  orgId: string,
+  opts: AuditLogQuery,
+): Promise<{ rows: AuditLogRow[]; total: number }> {
+  let query = supabaseAdmin
+    .from('audit_logs')
+    .select('id, action, resource_type, resource_id, user_id, metadata, ip_address, created_at', {
+      count: 'exact',
+    })
+    .eq('organization_id', orgId)
+    .order('created_at', { ascending: false })
+    .range(opts.offset, opts.offset + opts.limit - 1)
+
+  if (opts.action) query = query.eq('action', opts.action)
+  if (opts.userId) query = query.eq('user_id', opts.userId)
+  if (opts.from) query = query.gte('created_at', opts.from)
+  if (opts.to) query = query.lte('created_at', opts.to)
+
+  const { data, error, count } = await query
+
+  if (error) throw new ApiError('INTERNAL_ERROR', 'Failed to fetch audit logs')
+
+  return { rows: (data ?? []) as AuditLogRow[], total: count ?? 0 }
+}
+
 auditLogsRouter.get('/', async (c) => {
   const orgId = c.get('orgId')
   if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
@@ -71,28 +118,19 @@ auditLogsRouter.get('/', async (c) => {
   if (fromIso === 'invalid') throw new ApiError('VALIDATION_FAILED', 'invalid `from` timestamp')
   if (toIso === 'invalid') throw new ApiError('VALIDATION_FAILED', 'invalid `to` timestamp')
 
-  let query = supabaseAdmin
-    .from('audit_logs')
-    .select('id, action, resource_type, resource_id, user_id, metadata, ip_address, created_at', {
-      count: 'exact',
-    })
-    .eq('organization_id', orgId)
-    .order('created_at', { ascending: false })
-    .range(offset, offset + limit - 1)
-
-  if (actionFilter) query = query.eq('action', actionFilter)
-  if (userIdFilter) query = query.eq('user_id', userIdFilter)
-  if (fromIso) query = query.gte('created_at', fromIso)
-  if (toIso) query = query.lte('created_at', toIso)
-
-  const { data, error, count } = await query
-
-  if (error) throw new ApiError('INTERNAL_ERROR', 'Failed to fetch audit logs')
+  const { rows, total } = await fetchAuditLogs(orgId, {
+    limit,
+    offset,
+    action: actionFilter,
+    userId: userIdFilter,
+    from: fromIso,
+    to: toIso,
+  })
 
   return c.json({
     success: true,
-    data: (data ?? []) as AuditLogRow[],
-    meta: { total: count ?? 0, limit, offset },
+    data: rows,
+    meta: { total, limit, offset },
   })
 })
 

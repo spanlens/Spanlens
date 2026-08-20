@@ -14,9 +14,8 @@ export default defineConfig({
       // any future PR that drops coverage fails locally with
       // `pnpm test --coverage`. CI runs `pnpm test` without the coverage
       // flag, so this only gates opt-in measurement. Bump the floor each
-      // PR that adds meaningful coverage; the master plan's P2.3 target
-      // is 80% on Tier 1 modules. See
-      // docs/plans/launch-readiness-master-plan.md.
+      // PR that adds meaningful coverage; the long-term target is 80% on
+      // Tier 1 modules (proxy, crypto, cost, auth middleware).
       thresholds: { lines: 35 },
     },
   },

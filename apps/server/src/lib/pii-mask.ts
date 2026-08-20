@@ -1,11 +1,12 @@
 /**
  * Auto-masks LLM provider API keys + Spanlens keys that may have leaked
- * into request/response bodies before they're persisted to ClickHouse.
+ * into request/response bodies before they're persisted to `requests`.
  *
  * Scope: pattern-based masking for keys with distinctive prefixes only.
  * Natural-language PII (names, emails, card numbers, etc.) is NOT handled
- * here — that's intentional. See docs/plans/clickhouse-migration.md §3.4
- * for the policy: customers control body logging via SDK `logBody` option,
+ * here, and that is intentional. The policy is recorded in
+ * docs/plans/clickhouse-migration.md §3.4: customers control body logging
+ * via the SDK `logBody` option,
  * and full PII redaction is deferred until enterprise demand arrives.
  *
  * Patterns covered (ordered most-specific first to avoid the generic
@@ -55,7 +56,7 @@ export function maskApiKeys(input: string): string {
 
 /**
  * Convenience wrapper for the logger: serializes an unknown body to JSON,
- * masks API keys, and returns the string ready for ClickHouse insertion.
+ * masks API keys, and returns the string ready for insertion.
  * Returns an empty string for null/undefined to keep the column non-nullable.
  */
 export function maskApiKeysInBody(body: unknown): string {

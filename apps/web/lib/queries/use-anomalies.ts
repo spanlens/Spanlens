@@ -100,7 +100,7 @@ export function useAnomalies(params: UseAnomaliesParams = {}) {
     staleTime: 60_000,
     // P3.9: secondary live page — anomalies surface on the scale of minutes,
     // not seconds. 30s is enough granularity for the on-call eye + cheap
-    // on the ClickHouse query budget. Pause when tab hidden; refresh on focus.
+    // on the database query budget. Pause when tab hidden; refresh on focus.
     refetchInterval: LIVE_REFETCH_MS_SECONDARY,
     refetchOnWindowFocus: true,
   })

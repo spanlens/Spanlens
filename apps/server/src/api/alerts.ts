@@ -16,11 +16,34 @@ const requireEdit = requireRole('admin', 'editor')
 const VALID_ALERT_TYPES = new Set(['budget', 'error_rate', 'latency_p95', 'eval_score'])
 const VALID_CHANNEL_KINDS = new Set(['email', 'slack', 'discord'])
 
-// ── GET /api/v1/alerts ──────────────────────────────────────────
-alertsRouter.get('/', async (c) => {
-  const orgId = c.get('orgId')
-  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
+/**
+ * Row shape of `public.alerts` as it leaves this router. Declared rather than
+ * inferred because `supabaseAdmin` carries no `Database` generic, so the
+ * query's `data` is `any` and TypeScript cannot derive the columns.
+ */
+export interface AlertRecord {
+  id: string
+  name: string
+  type: string
+  threshold: number
+  window_minutes: number
+  cooldown_minutes: number
+  is_active: boolean
+  last_triggered_at: string | null
+  project_id: string | null
+  created_at: string
+  updated_at: string
+}
 
+/**
+ * Shared read for the org's alert rules.
+ *
+ * Extracted from the GET / handler so `GET /api/v1/dashboard/summary` can
+ * serve the same rows without a second implementation of the query. The two
+ * call sites must never drift — the dashboard's "Active alerts" section and
+ * the /alerts page render from the same contract.
+ */
+export async function fetchAlerts(orgId: string): Promise<AlertRecord[]> {
   const { data, error } = await supabaseAdmin
     .from('alerts')
     .select('*')
@@ -28,7 +51,15 @@ alertsRouter.get('/', async (c) => {
     .order('created_at', { ascending: false })
 
   if (error) throw new ApiError('INTERNAL_ERROR', 'Failed to fetch alerts')
-  return c.json({ success: true, data: data ?? [] })
+  return (data ?? []) as AlertRecord[]
+}
+
+// ── GET /api/v1/alerts ──────────────────────────────────────────
+alertsRouter.get('/', async (c) => {
+  const orgId = c.get('orgId')
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
+
+  return c.json({ success: true, data: await fetchAlerts(orgId) })
 })
 
 // ── POST /api/v1/alerts ─────────────────────────────────────────

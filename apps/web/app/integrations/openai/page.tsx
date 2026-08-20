@@ -1,17 +1,21 @@
+import { OG_IMAGE } from '@/lib/page-metadata'
 import { IntegrationTemplate } from '@/components/marketing/integration-template'
 
 const DESCRIPTION =
-  'Log every OpenAI API call with Spanlens. Track cost, latency, tokens, streaming, tool use, and full request and response bodies. One-line integration, MIT licensed, self-hostable.'
+  'Log every OpenAI API call with Spanlens. Track cost, latency, tokens, streaming, and tool use. One-line integration, MIT licensed and self-hostable.'
 
 export const metadata = {
   alternates: { canonical: '/integrations/openai' },
   title: 'OpenAI Observability — Spanlens Integration',
   description: DESCRIPTION,
   openGraph: {
+    siteName: 'Spanlens',
     type: 'website',
     title: 'OpenAI Observability — Log every API call with Spanlens',
     description: DESCRIPTION,
     url: '/integrations/openai',
+    locale: 'en_US',
+    images: OG_IMAGE,
   },
   twitter: {
     card: 'summary_large_image',

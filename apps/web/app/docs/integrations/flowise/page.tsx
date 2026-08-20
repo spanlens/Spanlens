@@ -1,3 +1,4 @@
+import { openGraphFor } from '@/lib/page-metadata'
 import { CodeBlock } from '../../_components/code-block'
 import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
@@ -6,6 +7,7 @@ export const metadata = {
   description:
     'Connect Flowise visual flows to Spanlens. Flowise calls go through the Spanlens proxy and each node executions becomes a span.',
   alternates: { canonical: '/docs/integrations/flowise' },
+  openGraph: openGraphFor('/docs/integrations/flowise'),
 }
 
 export default function FlowiseIntegration() {

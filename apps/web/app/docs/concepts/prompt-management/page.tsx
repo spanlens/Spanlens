@@ -1,3 +1,4 @@
+import { openGraphFor } from '@/lib/page-metadata'
 import { CodeBlock } from '../../_components/code-block'
 import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
@@ -6,6 +7,7 @@ export const metadata = {
   description:
     'How Spanlens versions prompts, runs Prompt A/B with Welch t-test on latency and cost, computes z-test on error rate, and rolls back without deploys.',
   alternates: { canonical: '/docs/concepts/prompt-management' },
+  openGraph: openGraphFor('/docs/concepts/prompt-management'),
 }
 
 export default function PromptManagementConcept() {

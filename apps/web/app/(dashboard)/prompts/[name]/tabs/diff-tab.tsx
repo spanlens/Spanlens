@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { type PromptVersion } from '@/lib/queries/use-prompts'
 import { cn, formatDate } from '@/lib/utils'
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '@/components/ui/select'
+import { FilterBar, TableCard, TableHead, Th } from '../../../_board/surfaces'
 
 interface Props {
   versions: PromptVersion[]
@@ -74,21 +75,24 @@ export function DiffTab({ versions }: Props) {
 
   if (sorted.length < 2) {
     return (
-      <div className="flex flex-col items-center justify-center h-64 gap-2 text-text-muted">
-        <p className="text-[13px]">At least 2 versions needed for a diff.</p>
+      <div className="card-surface rounded-card flex h-56 flex-col items-center justify-center gap-2 text-text-muted">
+        <p className="text-[12.5px]">Two versions are needed before a diff can be drawn.</p>
       </div>
     )
   }
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Controls */}
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-2 px-[22px] py-[12px] border-b border-border shrink-0 bg-bg-muted">
-        <div className="flex items-center gap-2 flex-1 min-w-[150px]">
-          <span className="font-mono text-[11px] text-text-faint shrink-0">From</span>
-          <div className="flex-1 min-w-0">
+    <div className="flex flex-col gap-4">
+      {/* Version pickers sit on the filter row rather than inside the card, so
+          the diff card holds nothing but the diff itself. */}
+      <FilterBar>
+        <div className="flex min-w-[180px] flex-1 items-center gap-2">
+          <span className="shrink-0 font-mono text-[11px] text-text-faint">From</span>
+          <div className="min-w-0 flex-1">
             <Select {...(vA ? { value: vA } : {})} onValueChange={(v) => setVA(v || null)}>
-              <SelectTrigger className="h-7 rounded-[4px]"><SelectValue placeholder="Select version…" /></SelectTrigger>
+              <SelectTrigger className="h-[34px] rounded-md" aria-label="Diff from version">
+                <SelectValue placeholder="Select version…" />
+              </SelectTrigger>
               <SelectContent>
                 {sorted.map((v) => (
                   <SelectItem key={v.id} value={String(v.version)}>
@@ -99,12 +103,14 @@ export function DiffTab({ versions }: Props) {
             </Select>
           </div>
         </div>
-        <span className="font-mono text-[11px] text-text-faint shrink-0">→</span>
-        <div className="flex items-center gap-2 flex-1 min-w-[150px]">
-          <span className="font-mono text-[11px] text-text-faint shrink-0">To</span>
-          <div className="flex-1 min-w-0">
+        <span className="shrink-0 font-mono text-[11px] text-text-faint">→</span>
+        <div className="flex min-w-[180px] flex-1 items-center gap-2">
+          <span className="shrink-0 font-mono text-[11px] text-text-faint">To</span>
+          <div className="min-w-0 flex-1">
             <Select {...(vB ? { value: vB } : {})} onValueChange={(v) => setVB(v || null)}>
-              <SelectTrigger className="h-7 rounded-[4px]"><SelectValue placeholder="Select version…" /></SelectTrigger>
+              <SelectTrigger className="h-[34px] rounded-md" aria-label="Diff to version">
+                <SelectValue placeholder="Select version…" />
+              </SelectTrigger>
               <SelectContent>
                 {sorted.map((v) => (
                   <SelectItem key={v.id} value={String(v.version)}>
@@ -117,33 +123,37 @@ export function DiffTab({ versions }: Props) {
         </div>
 
         {diff && (
-          <div className="flex items-center gap-3">
-            <span className="font-mono text-[11px] text-good">+{addedCount}</span>
-            <span className="font-mono text-[11px] text-bad">−{removedCount}</span>
+          <div className="flex items-center gap-3 font-mono text-[11px] tabular-nums">
+            <span className="text-good">+{addedCount}</span>
+            <span className="text-bad">−{removedCount}</span>
           </div>
         )}
-      </div>
+      </FilterBar>
 
-      {/* Diff output */}
-      <div className="flex-1 overflow-auto">
-        {!diff ? (
-          <div className="flex flex-col items-center justify-center h-full gap-2 text-text-muted">
-            <p className="text-[13px]">Select two versions to compare.</p>
-          </div>
-        ) : (
-          <div className="font-mono text-[12px] leading-relaxed">
+      {!diff ? (
+        <div className="card-surface rounded-card flex h-56 flex-col items-center justify-center gap-2 text-text-muted">
+          <p className="text-[12.5px]">Select two versions to compare.</p>
+        </div>
+      ) : (
+        <TableCard>
+          <TableHead>
+            <Th>
+              v{selectedA?.version} → v{selectedB?.version}
+            </Th>
+          </TableHead>
+          <div className="overflow-x-auto py-1.5 font-mono text-[12px] leading-[1.65]">
             {diff.map((line, idx) => (
               <div
                 key={idx}
                 className={cn(
-                  'flex gap-4 px-[22px] py-[2px]',
-                  line.type === 'added'   && 'bg-good/8 border-l-2 border-good',
-                  line.type === 'removed' && 'bg-bad/8 border-l-2 border-bad',
-                  line.type === 'same'    && 'text-text-faint',
+                  'flex gap-4 border-l-2 px-[18px] py-[1px]',
+                  line.type === 'added'   && 'border-good bg-good-bg',
+                  line.type === 'removed' && 'border-bad bg-bad-bg',
+                  line.type === 'same'    && 'border-transparent text-text-faint',
                 )}
               >
                 <span className={cn(
-                  'select-none w-4 text-right shrink-0',
+                  'w-4 shrink-0 select-none text-right',
                   line.type === 'added'   && 'text-good',
                   line.type === 'removed' && 'text-bad',
                   line.type === 'same'    && 'text-transparent',
@@ -160,8 +170,8 @@ export function DiffTab({ versions }: Props) {
               </div>
             ))}
           </div>
-        )}
-      </div>
+        </TableCard>
+      )}
     </div>
   )
 }

@@ -1,8 +1,10 @@
+import { openGraphFor } from '@/lib/page-metadata'
 import { CodeBlock } from '../../_components/code-block'
 import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
 export const metadata = {
   alternates: { canonical: '/docs/features/export' },
+  openGraph: openGraphFor('/docs/features/export'),
   title: 'Data Export · Spanlens Docs',
   description:
     'Download request logs, traces, anomalies, and security flags as CSV, JSONL, or JSON. Streamed exports handle millions of rows.',
@@ -15,9 +17,9 @@ export default function ExportDocs() {
       <h1>Data Export</h1>
       <p className="lead">
         Download request logs, traces, anomaly snapshots, and security flags as CSV, JSONL, or JSON
-        in one shot. CSV and JSONL stream directly from ClickHouse, a million-row export runs in
-        ~30&nbsp;MB of memory and finishes inside the function-execution window. Connect to Pandas,
-        BigQuery, Redash, Metabase, or your own pipeline.
+        in one shot. CSV and JSONL stream out of a server-side database cursor, so a million-row
+        export runs in ~30&nbsp;MB of memory and finishes inside the function-execution window.
+        Connect to Pandas, BigQuery, Redash, Metabase, or your own pipeline.
       </p>
 
       <h2>Endpoints</h2>
@@ -87,7 +89,7 @@ export default function ExportDocs() {
             <td><code>limit</code></td>
             <td>format-dependent</td>
             <td>
-              CSV / JSONL: 1 – <strong>1,000,000</strong>. JSON: 1 – 10,000.
+              CSV / JSONL: 1 to <strong>1,000,000</strong>. JSON: 1 to 10,000.
               <code>/exports/requests</code> only, other endpoints stay at 10,000.
             </td>
           </tr>
@@ -133,8 +135,8 @@ export default function ExportDocs() {
       </table>
       <p>
         Streamed responses set <code>Cache-Control: no-store</code> so intermediaries don&apos;t
-        buffer the full body. Each ClickHouse batch (~64&nbsp;KB) is the only data held in memory at
-        any point, heap usage stays flat regardless of <code>limit</code>.
+        buffer the full body. One cursor batch (500 rows) is the only data held in memory at any
+        point, so heap usage stays flat regardless of <code>limit</code>.
       </p>
 
       <h2>Additional parameters for requests</h2>

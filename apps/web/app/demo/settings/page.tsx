@@ -54,38 +54,48 @@ const NAV: { group: string; items: NavItem[] }[] = [
 
 const ALL_ITEMS = NAV.flatMap((g) => g.items)
 
+// Mirrors the live settings page's v2 ramp: the breadcrumb names the page and
+// each section card carries its own title, so this dropped from a 26px page
+// heading to the card-title ramp.
+// Eyebrow ramp, not the card-title ramp: the section cards below already carry
+// 13.5px SemiBold titles, and on tabs whose first card shares this name the two
+// would read as one duplicated title.
 function TabHeader({ title, description }: { title: string; description: string }) {
   return (
-    <div className="mb-6">
-      <h1 className="text-[26px] font-medium tracking-[-0.6px] mb-1">{title}</h1>
-      <p className="text-[13px] text-text-muted">{description}</p>
+    <div className="mb-4">
+      <h1 className="font-mono text-[10px] uppercase tracking-[0.12em] text-text-faint">{title}</h1>
+      <p className="text-[12.5px] text-text-muted mt-1">{description}</p>
     </div>
   )
 }
 
 function Section({ title, description, children }: { title: string; description?: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-xl border border-border bg-bg-elev p-5 mb-5">
-      <div className="mb-4">
-        <h2 className="text-[14px] font-semibold text-text">{title}</h2>
-        {description && <p className="text-[12px] text-text-muted mt-0.5">{description}</p>}
+    <div className="rounded-card border border-border bg-bg-elev shadow-card overflow-hidden mb-4">
+      <div className="px-5 py-[18px] border-b border-border">
+        <h2 className="text-[13.5px] font-semibold text-text">{title}</h2>
+        {description && <p className="text-[11.5px] text-text-muted mt-0.5">{description}</p>}
       </div>
-      {children}
+      <div className="px-5">{children}</div>
     </div>
   )
 }
 
 function FormRow({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
-    <div className="grid grid-cols-1 md:grid-cols-[200px_1fr] gap-3 md:gap-6 py-3 border-t border-border first:border-t-0">
+    <div className="grid grid-cols-1 md:grid-cols-[200px_1fr] gap-3 md:gap-6 py-3.5 border-b border-border last:border-b-0 items-center">
       <div>
-        <div className="text-[13px] text-text font-medium">{label}</div>
-        {hint && <div className="text-[11.5px] text-text-faint mt-0.5">{hint}</div>}
+        <div className="text-[12.5px] text-text font-medium">{label}</div>
+        {hint && <div className="text-[11.5px] text-text-muted mt-0.5">{hint}</div>}
       </div>
       <div>{children}</div>
     </div>
   )
 }
+
+/** Pill ramps from the D17 board, matching the live settings page. */
+const PILL_SECONDARY = 'rounded-full border border-border bg-bg-elev px-3.5 py-2 text-[12px] font-medium text-text'
+const PILL_PRIMARY = 'rounded-full bg-text px-3.5 py-2 text-[12px] font-medium text-bg'
 
 function DemoInput({ value, mono }: { value: string; mono?: boolean }) {
   return (
@@ -94,8 +104,8 @@ function DemoInput({ value, mono }: { value: string; mono?: boolean }) {
       disabled
       readOnly
       className={cn(
-        'h-9 px-3 rounded-[6px] border border-border bg-bg text-[13px] text-text-muted w-full max-w-[460px] cursor-not-allowed',
-        mono && 'font-mono text-[12.5px]',
+        'rounded-md border border-border bg-bg-elev px-3 py-2 text-[12.5px] text-text-muted w-full max-w-[460px] cursor-not-allowed',
+        mono && 'font-mono text-[12px]',
       )}
     />
   )
@@ -109,12 +119,12 @@ function DemoToggle({ on }: { on: boolean }) {
       title="Disabled in demo"
       className={cn(
         'relative inline-flex h-5 w-9 items-center rounded-full transition-colors cursor-not-allowed opacity-80',
-        on ? 'bg-text' : 'bg-border-strong',
+        on ? 'bg-accent' : 'bg-track',
       )}
     >
       <span
         className={cn(
-          'inline-block h-3.5 w-3.5 rounded-full bg-bg transition-transform',
+          'inline-block h-3.5 w-3.5 rounded-full bg-bg-elev transition-transform',
           on ? 'translate-x-[18px]' : 'translate-x-[3px]',
         )}
       />
@@ -124,7 +134,7 @@ function DemoToggle({ on }: { on: boolean }) {
 
 function GeneralTab() {
   return (
-    <div className="max-w-[920px]">
+    <div>
       <TabHeader title="General" description="Workspace identity, storage region, and retention." />
       <Section title="Identity">
         <FormRow label="Workspace name" hint="Shown in the app header and on shared traces.">
@@ -154,13 +164,13 @@ function MembersTab() {
     { email: 'analyst@acme.com', role: 'viewer', joined: '2026-04-19' },
   ]
   return (
-    <div className="max-w-[920px]">
+    <div>
       <TabHeader title="Members" description="Invite teammates and manage roles." />
       <Section title="Invite member">
         <FormRow label="Email">
           <div className="flex gap-2 max-w-[460px]">
             <DemoInput value="teammate@example.com" />
-            <button disabled className="h-9 px-4 rounded-[6px] bg-text text-bg text-[13px] font-medium opacity-60 cursor-not-allowed">
+            <button disabled className={cn(PILL_PRIMARY, 'shrink-0 opacity-60 cursor-not-allowed')}>
               Send invite
             </button>
           </div>
@@ -171,11 +181,11 @@ function MembersTab() {
           {members.map((m) => (
             <div key={m.email} className="flex items-center justify-between py-3">
               <div>
-                <div className="text-[13px] text-text">{m.email}</div>
+                <div className="text-[12.5px] text-text">{m.email}</div>
                 <div className="text-[11px] text-text-faint mt-0.5">Joined {m.joined}</div>
               </div>
               <div className="flex items-center gap-3">
-                <span className="font-mono text-[10px] uppercase tracking-[0.04em] px-2 py-0.5 rounded-full border border-border text-text-muted">
+                <span className="inline-flex items-center rounded-full px-2 py-[3px] font-mono text-[10.5px] bg-bg-chip text-text-muted">
                   {m.role}
                 </span>
                 <button disabled className="text-[12px] text-text-faint opacity-60 cursor-not-allowed">Remove</button>
@@ -190,7 +200,7 @@ function MembersTab() {
 
 function SecurityTab() {
   return (
-    <div className="max-w-[920px]">
+    <div>
       <TabHeader title="Security" description="Workspace-wide security controls." />
       <Section title="API key rotation">
         <FormRow label="Stale key threshold" hint="Notify when keys haven't rotated in N days.">
@@ -203,9 +213,9 @@ function SecurityTab() {
       <Section title="Sign-in">
         <FormRow label="Allowed providers">
           <div className="flex gap-2">
-            <span className="font-mono text-[10px] uppercase tracking-[0.04em] px-2 py-0.5 rounded-full border border-good/20 bg-good-bg text-good">Email</span>
-            <span className="font-mono text-[10px] uppercase tracking-[0.04em] px-2 py-0.5 rounded-full border border-good/20 bg-good-bg text-good">Google</span>
-            <span className="font-mono text-[10px] uppercase tracking-[0.04em] px-2 py-0.5 rounded-full border border-border text-text-faint">GitHub</span>
+            <span className="inline-flex items-center rounded-full px-2 py-[3px] font-mono text-[10.5px] bg-good-bg text-good">Email</span>
+            <span className="inline-flex items-center rounded-full px-2 py-[3px] font-mono text-[10.5px] bg-good-bg text-good">Google</span>
+            <span className="inline-flex items-center rounded-full px-2 py-[3px] font-mono text-[10.5px] bg-bg-chip text-text-faint">GitHub</span>
           </div>
         </FormRow>
       </Section>
@@ -222,26 +232,26 @@ function AuditLogTab() {
     { time: '2026-05-20 14:01', actor: 'analyst@acme.com', action: 'dataset.create', sev: 'low' as const },
   ]
   return (
-    <div className="max-w-[920px]">
+    <div>
       <TabHeader title="Audit log" description="Workspace activity from the last 90 days." />
-      <div className="rounded-xl border border-border bg-bg-elev overflow-hidden">
-        <div className="grid grid-cols-[150px_1fr_180px_80px] gap-4 px-5 py-2.5 border-b border-border font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint">
+      <div className="rounded-card border border-border bg-bg-elev shadow-card overflow-hidden">
+        <div className="grid grid-cols-[150px_1fr_180px_80px] gap-4 bg-bg-muted px-[18px] py-2.5 border-b border-border font-mono text-[10px] uppercase tracking-[0.1em] text-text-faint">
           <span>Time</span>
           <span>Actor</span>
           <span>Action</span>
           <span>Severity</span>
         </div>
         {logs.map((l, i) => (
-          <div key={i} className="grid grid-cols-[150px_1fr_180px_80px] gap-4 px-5 py-2.5 border-b border-border last:border-b-0 items-center">
+          <div key={i} className="grid grid-cols-[150px_1fr_180px_80px] gap-4 px-[18px] py-3 border-b border-border last:border-b-0 items-center">
             <span className="font-mono text-[11.5px] text-text-muted">{l.time}</span>
             <span className="text-[12.5px] text-text truncate">{l.actor}</span>
             <span className="font-mono text-[11.5px] text-text-muted">{l.action}</span>
             <span
               className={cn(
-                'font-mono text-[10px] uppercase tracking-[0.04em] px-2 py-0.5 rounded-full border w-fit',
-                l.sev === 'high' && 'border-accent-border bg-accent-bg text-accent',
-                l.sev === 'med' && 'border-border bg-bg-elev text-text-muted',
-                l.sev === 'low' && 'border-border bg-transparent text-text-faint',
+                'inline-flex items-center rounded-full px-2 py-[3px] font-mono text-[10.5px] w-fit',
+                l.sev === 'high' && 'bg-accent-bg text-accent',
+                l.sev === 'med' && 'bg-bg-chip text-text-muted',
+                l.sev === 'low' && 'bg-bg-chip text-text-faint',
               )}
             >
               {l.sev}
@@ -255,7 +265,7 @@ function AuditLogTab() {
 
 function SystemTab() {
   return (
-    <div className="max-w-[920px]">
+    <div>
       <TabHeader title="System" description="Background jobs and infrastructure." />
       <Section title="Background jobs">
         <div className="divide-y divide-border -my-2">
@@ -267,12 +277,12 @@ function SystemTab() {
           ].map((j) => (
             <div key={j.name} className="flex items-center justify-between py-3">
               <div>
-                <div className="text-[13px] text-text">{j.name}</div>
+                <div className="text-[12.5px] text-text">{j.name}</div>
                 <div className="text-[11px] text-text-faint mt-0.5">Runs {j.cadence}</div>
               </div>
               <div className="flex items-center gap-3">
                 <span className="font-mono text-[11px] text-text-muted">last: {j.last}</span>
-                <span className="font-mono text-[10px] uppercase px-2 py-0.5 rounded-full border border-good/20 bg-good-bg text-good">healthy</span>
+                <span className="inline-flex items-center rounded-full px-2 py-[3px] font-mono text-[10.5px] bg-good-bg text-good">healthy</span>
               </div>
             </div>
           ))}
@@ -284,11 +294,11 @@ function SystemTab() {
 
 function BillingTab() {
   return (
-    <div className="max-w-[920px]">
+    <div>
       <TabHeader title="Billing" description="Payment method and billing contact." />
       <Section title="Payment method">
         <FormRow label="Card on file">
-          <div className="text-[13px] text-text-muted">No card on file (Free plan)</div>
+          <div className="text-[12.5px] text-text-muted">No card on file (Free plan)</div>
         </FormRow>
         <FormRow label="Billing email">
           <DemoInput value="billing@acme.com" />
@@ -297,10 +307,10 @@ function BillingTab() {
       <Section title="Plan">
         <div className="flex items-center justify-between">
           <div>
-            <div className="text-[14px] font-semibold text-text">Free</div>
-            <div className="text-[12px] text-text-muted mt-0.5">2,400 of 50,000 requests this month</div>
+            <div className="text-[13.5px] font-semibold text-text">Free</div>
+            <div className="text-[11.5px] text-text-muted mt-0.5">2,400 of 50,000 requests this month</div>
           </div>
-          <button disabled className="h-9 px-4 rounded-[6px] bg-accent text-bg text-[13px] font-medium opacity-60 cursor-not-allowed">
+          <button disabled className="rounded-full bg-accent px-3.5 py-2 text-[12px] font-medium text-accent-fg opacity-60 cursor-not-allowed">
             Upgrade to Pro
           </button>
         </div>
@@ -311,7 +321,7 @@ function BillingTab() {
 
 function PlanTab() {
   return (
-    <div className="max-w-[920px]">
+    <div>
       <TabHeader title="Plan & limits" description="Compare plans and configure overage behavior." />
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-5">
         {[
@@ -322,14 +332,14 @@ function PlanTab() {
           <div
             key={p.name}
             className={cn(
-              'rounded-xl border p-5',
-              p.cur ? 'border-accent bg-accent-bg/30' : 'border-border bg-bg-elev',
+              'rounded-card border p-5 shadow-card',
+              p.cur ? 'border-accent-border bg-accent-bg' : 'border-border bg-bg-elev',
             )}
           >
             <div className="flex items-center justify-between mb-2">
-              <h3 className="text-[15px] font-semibold text-text">{p.name}</h3>
+              <h3 className="text-[13.5px] font-semibold text-text">{p.name}</h3>
               {p.cur && (
-                <span className="font-mono text-[9px] uppercase tracking-[0.05em] px-1.5 py-0.5 rounded-full border border-accent-border bg-accent-bg text-accent">
+                <span className="inline-flex items-center rounded-full px-2 py-[3px] font-mono text-[10.5px] bg-accent-bg text-accent">
                   current
                 </span>
               )}
@@ -359,10 +369,10 @@ function PlanTab() {
 
 function InvoicesTab() {
   return (
-    <div className="max-w-[920px]">
+    <div>
       <TabHeader title="Invoices" description="Past invoices and download links." />
-      <div className="rounded-xl border border-border bg-bg-elev overflow-hidden">
-        <div className="grid grid-cols-[120px_1fr_120px_100px] gap-4 px-5 py-2.5 border-b border-border font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint">
+      <div className="rounded-card border border-border bg-bg-elev shadow-card overflow-hidden">
+        <div className="grid grid-cols-[120px_1fr_120px_100px] gap-4 bg-bg-muted px-[18px] py-2.5 border-b border-border font-mono text-[10px] uppercase tracking-[0.1em] text-text-faint">
           <span>Date</span>
           <span>Description</span>
           <span>Amount</span>
@@ -371,7 +381,7 @@ function InvoicesTab() {
         {[
           { date: '2026-05-01', desc: 'No invoices on Free plan', amount: '—', status: '—' },
         ].map((inv, i) => (
-          <div key={i} className="grid grid-cols-[120px_1fr_120px_100px] gap-4 px-5 py-3 items-center">
+          <div key={i} className="grid grid-cols-[120px_1fr_120px_100px] gap-4 px-[18px] py-3 items-center">
             <span className="font-mono text-[11.5px] text-text-faint">{inv.date}</span>
             <span className="text-[12.5px] text-text-faint">{inv.desc}</span>
             <span className="font-mono text-[12px] text-text-faint">{inv.amount}</span>
@@ -385,7 +395,7 @@ function InvoicesTab() {
 
 function ProfileTab() {
   return (
-    <div className="max-w-[920px]">
+    <div>
       <TabHeader title="Profile" description="Your personal account info." />
       <Section title="Identity">
         <FormRow label="Email">
@@ -397,7 +407,7 @@ function ProfileTab() {
       </Section>
       <Section title="Password">
         <FormRow label="Change password">
-          <button disabled className="h-9 px-4 rounded-[6px] border border-border bg-bg-elev text-[13px] text-text-muted opacity-60 cursor-not-allowed">
+          <button disabled className={cn(PILL_SECONDARY, 'opacity-60 cursor-not-allowed')}>
             Send reset email
           </button>
         </FormRow>
@@ -412,7 +422,7 @@ function SignInMethodsTab() {
     { label: 'GitHub', glyph: '⌥', connected: false, lastUsed: null as string | null },
   ]
   return (
-    <div className="max-w-[920px]">
+    <div>
       <TabHeader
         title="Sign-in methods"
         description="Manage how you sign in to Spanlens. Connect multiple providers to the same account, then sign in with any of them."
@@ -421,7 +431,7 @@ function SignInMethodsTab() {
         <FormRow label="Email">
           <div className="flex items-center justify-between gap-3 max-w-[460px]">
             <div className="font-mono text-[12.5px] text-text">haeseong@acme.com</div>
-            <span className="font-mono text-[10px] uppercase tracking-[0.04em] px-2 py-0.5 rounded-full border border-accent-border bg-accent-bg text-accent">Primary</span>
+            <span className="inline-flex items-center rounded-full px-2 py-[3px] font-mono text-[10.5px] bg-accent-bg text-accent">Primary</span>
           </div>
         </FormRow>
         {providers.map((p) => (
@@ -432,11 +442,11 @@ function SignInMethodsTab() {
                   {p.glyph}
                 </span>
                 {p.connected ? (
-                  <span className="font-mono text-[10px] uppercase tracking-[0.04em] px-2 py-0.5 rounded-full border border-good/20 bg-good-bg text-good">
+                  <span className="inline-flex items-center rounded-full px-2 py-[3px] font-mono text-[10.5px] bg-good-bg text-good">
                     Connected{p.lastUsed ? ` · last used ${p.lastUsed}` : ''}
                   </span>
                 ) : (
-                  <span className="font-mono text-[10px] uppercase tracking-[0.04em] px-2 py-0.5 rounded-full border border-border text-text-faint">
+                  <span className="inline-flex items-center rounded-full px-2 py-[3px] font-mono text-[10.5px] bg-bg-chip text-text-faint">
                     Not connected
                   </span>
                 )}
@@ -444,7 +454,7 @@ function SignInMethodsTab() {
               <button
                 disabled
                 title="Disabled in demo"
-                className="h-9 px-4 rounded-[6px] border border-border bg-bg-elev text-[13px] text-text-muted opacity-60 cursor-not-allowed"
+                className={cn(PILL_SECONDARY, 'shrink-0 opacity-60 cursor-not-allowed')}
               >
                 {p.connected ? 'Disconnect' : 'Connect'}
               </button>
@@ -453,7 +463,7 @@ function SignInMethodsTab() {
         ))}
       </Section>
       <Section title="Why connect multiple providers?">
-        <div className="text-[13px] text-text-muted leading-relaxed space-y-2">
+        <div className="text-[12.5px] text-text-muted leading-relaxed space-y-2">
           <p>
             One account, multiple ways in. Connect Google or GitHub to sign in faster the
             next time and keep email as a fallback if a provider is unavailable.
@@ -471,7 +481,7 @@ function SignInMethodsTab() {
 
 function NotificationsTab() {
   return (
-    <div className="max-w-[920px]">
+    <div>
       <TabHeader title="Notifications" description="Email me when…" />
       <Section title="Email notifications">
         {[
@@ -491,14 +501,14 @@ function NotificationsTab() {
 
 function PreferencesTab() {
   return (
-    <div className="max-w-[920px]">
+    <div>
       <TabHeader title="Preferences" description="Personal UI preferences." />
       <Section title="Appearance">
         <FormRow label="Theme">
           <div className="flex gap-2">
-            <span className="font-mono text-[10px] uppercase tracking-[0.04em] px-2 py-0.5 rounded-full border border-border text-text-muted">Light</span>
-            <span className="font-mono text-[10px] uppercase tracking-[0.04em] px-2 py-0.5 rounded-full border border-border text-text-muted">Dark</span>
-            <span className="font-mono text-[10px] uppercase tracking-[0.04em] px-2 py-0.5 rounded-full border border-accent-border bg-accent-bg text-accent">System</span>
+            <span className="inline-flex items-center rounded-full px-2 py-[3px] font-mono text-[10.5px] bg-bg-chip text-text-muted">Light</span>
+            <span className="inline-flex items-center rounded-full px-2 py-[3px] font-mono text-[10.5px] bg-bg-chip text-text-muted">Dark</span>
+            <span className="inline-flex items-center rounded-full px-2 py-[3px] font-mono text-[10.5px] bg-accent-bg text-accent">System</span>
           </div>
         </FormRow>
         <FormRow label="Compact tables" hint="Tighter row spacing in Requests, Traces, etc.">
@@ -517,17 +527,17 @@ function IntegrationsTab() {
     { name: 'Discord', desc: 'Send alerts via webhook.', connected: false },
   ]
   return (
-    <div className="max-w-[920px]">
+    <div>
       <TabHeader title="Integrations" description="Connect Spanlens to your existing stack." />
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {ints.map((it) => (
-          <div key={it.name} className="rounded-xl border border-border bg-bg-elev p-5">
+          <div key={it.name} className="rounded-card border border-border bg-bg-elev shadow-card p-5">
             <div className="flex items-center justify-between mb-2">
-              <h3 className="text-[14px] font-semibold text-text">{it.name}</h3>
+              <h3 className="text-[13.5px] font-semibold text-text">{it.name}</h3>
               {it.connected ? (
-                <span className="font-mono text-[10px] uppercase tracking-[0.04em] px-2 py-0.5 rounded-full border border-good/20 bg-good-bg text-good">connected</span>
+                <span className="inline-flex items-center rounded-full px-2 py-[3px] font-mono text-[10.5px] bg-good-bg text-good">connected</span>
               ) : (
-                <span className="font-mono text-[10px] uppercase tracking-[0.04em] px-2 py-0.5 rounded-full border border-border text-text-faint">not connected</span>
+                <span className="inline-flex items-center rounded-full px-2 py-[3px] font-mono text-[10.5px] bg-bg-chip text-text-faint">not connected</span>
               )}
             </div>
             <p className="text-[12.5px] text-text-muted mb-3">{it.desc}</p>
@@ -543,7 +553,7 @@ function IntegrationsTab() {
 
 function WebhooksTab() {
   return (
-    <div className="max-w-[920px]">
+    <div>
       <TabHeader title="Webhooks" description="Subscribe to workspace events." />
       <Section title="Endpoints">
         <div className="divide-y divide-border -my-2">
@@ -558,10 +568,10 @@ function WebhooksTab() {
               </div>
               <span
                 className={cn(
-                  'font-mono text-[10px] uppercase tracking-[0.04em] px-2 py-0.5 rounded-full border',
+                  'inline-flex items-center rounded-full px-2 py-[3px] font-mono text-[10.5px]',
                   w.status === 'active'
-                    ? 'border-good/20 bg-good-bg text-good'
-                    : 'border-border bg-bg text-text-faint',
+                    ? 'bg-good-bg text-good'
+                    : 'bg-bg-chip text-text-faint',
                 )}
               >
                 {w.status}
@@ -576,7 +586,7 @@ function WebhooksTab() {
 
 function OtelTab() {
   return (
-    <div className="max-w-[920px]">
+    <div>
       <TabHeader title="OpenTelemetry" description="Export Spanlens traces to your existing OTel collector." />
       <Section title="OTLP endpoint">
         <FormRow label="Endpoint">
@@ -633,9 +643,11 @@ function SettingsInner() {
   }, [navSearch])
 
   return (
-    <div className="-mx-4 -my-4 md:-mx-8 md:-my-7 flex flex-col min-h-screen">
-      {/* Topbar at true viewport top */}
-      <div className="sticky top-0 z-20 bg-bg">
+    <>
+      {/* The topbar is the only full-bleed row: it cancels the demo layout's
+          content padding so its hairline spans the whole main column.
+          Everything below sits flush inside that padding. */}
+      <div className="sticky top-0 z-20 -mx-4 -mt-4 md:-mx-7 md:-mt-5 bg-bg">
         <Topbar
           crumbs={active.crumbs}
           right={
@@ -643,7 +655,7 @@ function SettingsInner() {
               <select
                 value={tab}
                 onChange={(e) => setTab(e.target.value as TabId)}
-                className="h-8 px-2 rounded-[6px] border border-border bg-bg text-[12.5px] text-text focus:outline-none focus:border-border-strong"
+                className="rounded-md border border-border bg-bg-elev px-3 py-2 text-[12.5px] font-medium text-text focus:outline-none focus:border-border-strong"
                 aria-label="Select settings tab"
               >
                 {NAV.map((group) => (
@@ -659,21 +671,16 @@ function SettingsInner() {
         />
       </div>
 
-      <div className="flex flex-1 min-h-0">
-        <aside className="hidden md:flex md:flex-col w-[260px] shrink-0 border-r border-border bg-bg-elev sticky top-[52px] self-start max-h-[calc(100vh-52px)] overflow-y-auto">
-          {/* Nav header: search + docs */}
-          <div className="px-4 py-3 border-b border-border space-y-2.5">
-            <div className="flex items-center justify-between">
-              <span className="font-mono text-[10px] text-text-faint uppercase tracking-[0.05em]">Settings</span>
-              <Link
-                href="/docs"
-                className="font-mono text-[10.5px] text-text-muted hover:text-text transition-colors"
-              >
-                Docs →
-              </Link>
-            </div>
+      {/* Two cards side by side: the nav rail and the section stack, matching
+          the live /settings shell. */}
+      {/* 125% zoom, matching the real settings screen. The rail's sticky offset
+          and max height below are divided by the same factor because viewport
+          units resolve against the real viewport and are then scaled. */}
+      <div className="pt-4 md:pt-5 flex flex-col md:flex-row gap-4 items-start [zoom:1.25]">
+        <aside className="hidden md:flex md:flex-col w-full md:w-[230px] shrink-0 md:sticky md:top-[61.6px] rounded-card border border-border bg-bg-elev shadow-card overflow-hidden">
+          <div className="p-2.5 pb-1.5">
             <div className="relative">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-text-faint" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-text-faint" />
               <input
                 value={navSearch}
                 onChange={(e) => setNavSearch(e.target.value)}
@@ -681,18 +688,18 @@ function SettingsInner() {
                   if (e.key === 'Escape') setNavSearch('')
                 }}
                 placeholder="Filter settings…"
-                className="w-full pl-8 pr-3 py-1.5 font-mono text-[11.5px] bg-bg border border-border rounded-[6px] text-text placeholder:text-text-faint focus:outline-none focus:border-accent"
+                className="w-full rounded-md border border-border bg-bg-elev pl-8 pr-3 py-2 text-[12.5px] text-text placeholder:text-text-faint focus:outline-none focus:border-border-strong transition-colors"
               />
             </div>
           </div>
 
-          <div className="py-2">
+          <div className="px-2 pb-2 max-h-[calc((100vh-230px)/1.25)] overflow-y-auto">
             {filteredNav.length === 0 ? (
-              <div className="px-5 py-4 font-mono text-[11.5px] text-text-faint">No settings match</div>
+              <div className="px-2.5 py-2 text-[11.5px] text-text-faint">No settings match</div>
             ) : (
               filteredNav.map((group) => (
-                <div key={group.group} className="mb-4">
-                  <div className="px-5 py-1.5 font-mono text-[9.5px] text-text-faint uppercase tracking-[0.05em]">
+                <div key={group.group} className="mb-2 last:mb-0">
+                  <div className="px-2.5 pt-2.5 pb-1 font-mono text-[10px] uppercase tracking-[0.12em] text-text-faint">
                     {group.group}
                   </div>
                   {group.items.map((item) => {
@@ -703,10 +710,10 @@ function SettingsInner() {
                         type="button"
                         onClick={() => setTab(item.id)}
                         className={cn(
-                          'w-full text-left px-5 py-2 text-[13px] transition-colors border-l-2 -ml-px',
+                          'w-full text-left rounded-md px-2.5 py-2 text-[12.5px] transition-colors',
                           isActive
-                            ? 'border-accent bg-bg text-text font-medium'
-                            : 'border-transparent text-text-muted hover:text-text hover:bg-bg/50',
+                            ? 'bg-bg-muted text-text font-medium'
+                            : 'text-text-muted hover:text-text hover:bg-bg-muted',
                         )}
                       >
                         {item.label}
@@ -717,13 +724,24 @@ function SettingsInner() {
               ))
             )}
           </div>
+
+          <div className="border-t border-border px-3 py-2.5">
+            <Link
+              href="/docs"
+              className="font-mono text-[11px] text-text-faint hover:text-text-muted transition-colors"
+            >
+              Docs →
+            </Link>
+          </div>
         </aside>
 
-        <main className="flex-1 min-w-0 bg-bg px-4 py-4 md:px-8 md:py-6">
+        {/* A plain div, not <main>: the demo layout already renders the page's
+            single main landmark. */}
+        <div className="flex-1 min-w-0">
           <TabContent tab={tab} />
-        </main>
+        </div>
       </div>
-    </div>
+    </>
   )
 }
 

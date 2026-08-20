@@ -1,88 +1,152 @@
 @import "tailwindcss";
 @config "../tailwind.config.ts";
 
+/*
+ * Token layer — mirrors the "Spanlens v2 foundations" board in Figma
+ * (file XCx3NR1is1GA3H6mVfLz7J, page `Foundations`).
+ *
+ * The design is a white page with a single accent. Cards stay white and are
+ * separated from the canvas by a 1px hairline plus a soft shadow, rather than
+ * by a fill difference. Dark mode is not an inversion: the canvas drops to
+ * near-black while cards lift to a distinct grey, and the accent brightens so
+ * it keeps its weight against a dark ground.
+ */
 @layer base {
   :root {
-    /* ── Design tokens (warm monochrome) ── */
-    --bg: #fafaf9;
-    --bg-elev: #ffffff;
-    --bg-muted: #f4f3f0;
-    --border: #e7e5e0;
-    --border-strong: #d4d1ca;
-    --text: #18181b;
-    --text-muted: #5c5b57;
-    /* WCAG AA: previous #94928c was 2.98:1 on --bg. #706e68 is 4.88:1 on
-       --bg, 5.10:1 on --bg-elev, 4.59:1 on --bg-muted (same warm hue). */
-    --text-faint: #706e68;
-    --accent: #b45309;
-    --accent-bg: #fdf1df;
-    --accent-border: #eccc99;
-    --good: #2f7d4f;
-    --good-bg: #e8f4ec;
-    --bad: #b84545;
-    --bad-bg: #fbebea;
-    --warn: #c2780a;
-    --warn-bg: #fdf1df;
-    --grid: rgba(0, 0, 0, 0.04);
+    /* ── Surfaces ── */
+    --bg: #ffffff; /* paper/canvas */
+    --bg-elev: #ffffff; /* paper/card — same as canvas, separated by hairline */
+    --bg-muted: #f7f7f9; /* paper/band — sidebar, section bands */
+    --bg-sunk: #f3f3f6; /* paper/sunk — wells, code blocks, table heads */
+    --bg-chip: #ececf0; /* neutral chips, segmented control troughs */
+    --track: #e7e7ec; /* meter / progress track */
+    --border: #e2e2e8; /* line/hair */
+    --border-strong: #d8dce1;
+
+    /* ── Ink ── */
+    --text: #101114; /* ink/900 */
+    --text-muted: #5a6068; /* 6.4:1 on white */
+    --text-faint: #6b7078; /* ink/500, 5.2:1 on white */
+
+    /* ── Signal (single accent) ──
+       signal/500 #ff4a1c is the graphic orange; it only reaches 3.1:1 on
+       white, so anything carrying text or acting as a text colour uses
+       signal/700 #d0350f (5.0:1). --accent-bright is for large fills and
+       chart marks where contrast is not a legibility question. */
+    --accent: #d0350f;
+    --accent-bright: #ff4a1c;
+    --accent-strong: #e23a10; /* signal/600, hover */
+    --accent-bg: #ffe9e1; /* signal/tint */
+    --accent-border: #f3ddd2;
+
+    /* ── Status ── */
+    --good: #1f6e45;
+    --good-bg: #e7f5ec;
+    --bad: #b32c0a;
+    --bad-bg: #fdeae4;
+    --warn: #8a5a00;
+    --warn-bg: #fff3db;
+
+    --grid: rgba(16, 17, 20, 0.06);
+    --shadow-card: 0 1px 2px rgba(16, 17, 20, 0.04), 0 8px 24px -12px rgba(16, 17, 20, 0.1);
 
     /* ── shadcn/ui compatibility (mapped to design tokens) ── */
-    --background: #fafaf9;
-    --foreground: #18181b;
+    --background: #ffffff;
+    --foreground: #101114;
     --card: #ffffff;
-    --card-foreground: #18181b;
+    --card-foreground: #101114;
     --popover: #ffffff;
-    --popover-foreground: #18181b;
-    --primary: #18181b;
-    --primary-foreground: #fafaf9;
-    --secondary: #f4f3f0;
-    --secondary-foreground: #18181b;
-    --muted: #f4f3f0;
-    --muted-foreground: #5c5b57;
-    --destructive: #b84545;
-    --destructive-foreground: #fafaf9;
-    --input: #e7e5e0;
-    --ring: #b45309;
-    --radius: 7px;
+    --popover-foreground: #101114;
+    --primary: #101114;
+    --primary-foreground: #ffffff;
+    --secondary: #f0f0f3;
+    --secondary-foreground: #101114;
+    --muted: #f7f7f9;
+    --muted-foreground: #6b7078;
+    --destructive: #b32c0a;
+    --destructive-foreground: #ffffff;
+    --input: #e2e2e8;
+    --ring: #d0350f;
+    --radius: 10px;
   }
 
   .dark {
-    /* ── Design tokens (dark) ── */
-    --bg: #0c0c0d;
-    --bg-elev: #141416;
-    --bg-muted: #18181b;
-    --border: #27272a;
-    --border-strong: #3a3a3f;
-    --text: #fafaf9;
-    --text-muted: #a1a1aa;
-    /* WCAG AA: previous #61615f was 3.15:1 on --bg. #8a8a86 is 5.64:1 on
-       --bg, 5.31:1 on --bg-elev, 5.11:1 on --bg-muted (same warm hue). */
-    --text-faint: #8a8a86;
-    --accent: #f2a855;
-    --accent-bg: #2a1c0a;
-    --accent-border: #4a3010;
-    --good: #6cd99a;
-    --good-bg: #10281a;
-    --bad: #f08784;
-    --bad-bg: #2a1211;
-    --grid: rgba(255, 255, 255, 0.04);
+    /* ── Surfaces ── */
+    --bg: #0c0d10; /* paper/canvas */
+    --bg-elev: #141619; /* paper/card */
+    --bg-muted: #101216; /* paper/band */
+    --bg-sunk: #1b1e23; /* paper/sunk */
+    --bg-chip: #23262b;
+    --track: #2e333a;
+    --border: #272a30; /* line/hair */
+    --border-strong: #3a4149;
+
+    /* ── Ink ── */
+    --text: #f2f3f5; /* ink/900 */
+    --text-muted: #aeb4bd;
+    --text-faint: #9aa1aa; /* ink/500, 6.9:1 on canvas */
+
+    /* ── Signal ──
+       On a dark ground the orange carries ink-coloured labels rather than
+       white ones (white on #ff5a2b is 2.9:1); see --accent-foreground. */
+    --accent: #ff5a2b; /* signal/600 dark */
+    --accent-bright: #ff5a2b;
+    --accent-strong: #ff7448;
+    --accent-bg: #2a1712;
+    --accent-border: #3a2018;
+
+    /* ── Status ── */
+    --good: #62c08a;
+    --good-bg: #16281e;
+    --bad: #ff8a63;
+    --bad-bg: #2a1712;
+    --warn: #e8b44a;
+    --warn-bg: #2a2213;
+
+    --grid: rgba(242, 243, 245, 0.07);
+    --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.5), 0 8px 24px -12px rgba(0, 0, 0, 0.6);
 
     /* ── shadcn/ui compatibility (dark) ── */
-    --background: #0c0c0d;
-    --foreground: #fafaf9;
-    --card: #141416;
-    --card-foreground: #fafaf9;
-    --popover: #141416;
-    --popover-foreground: #fafaf9;
-    --primary: #fafaf9;
-    --primary-foreground: #0c0c0d;
-    --secondary: #18181b;
-    --secondary-foreground: #fafaf9;
-    --muted: #18181b;
-    --muted-foreground: #a1a1aa;
-    --destructive: #f08784;
-    --destructive-foreground: #0c0c0d;
-    --input: #27272a;
-    --ring: #f2a855;
+    --background: #0c0d10;
+    --foreground: #f2f3f5;
+    --card: #141619;
+    --card-foreground: #f2f3f5;
+    --popover: #141619;
+    --popover-foreground: #f2f3f5;
+    --primary: #f2f3f5;
+    --primary-foreground: #0c0d10;
+    --secondary: #1b1e23;
+    --secondary-foreground: #f2f3f5;
+    --muted: #101216;
+    --muted-foreground: #9aa1aa;
+    --destructive: #ff8a63;
+    --destructive-foreground: #0c0d10;
+    --input: #272a30;
+    --ring: #ff5a2b;
+  }
+
+  /* Label colour for anything filled with --accent. Light mode puts white on
+     the darker signal/700; dark mode puts ink on the brighter signal/600. */
+  :root {
+    --accent-foreground: #ffffff;
+  }
+  .dark {
+    --accent-foreground: #0c0d10;
+  }
+
+  /*
+   * Code surfaces are dark in both themes, the way a terminal is. They get
+   * their own tokens rather than borrowing the dark palette through a scoped
+   * `.dark` wrapper: that wrapper would also flip every other token inside the
+   * block, so a status colour nested in a code sample would silently change
+   * meaning with the theme.
+   */
+  :root {
+    --code-bg: #141619;
+    --code-head: #1b1e23;
+    --code-line: #272a30;
+    --code-fg: #f2f3f5;
+    --code-faint: #9aa1aa;
   }
 
   * {
@@ -98,18 +162,302 @@
   }
 }
 
-@layer utilities {
-  .text-balance {
-    text-wrap: balance;
-  }
+/*
+ * These are declared with `@utility` rather than as plain classes in
+ * `@layer utilities` so Tailwind can build variants from them. A plain class
+ * cannot: `prose-h1:track-h2` silently compiles to `letter-spacing: normal`,
+ * which cost us a debugging round on the docs templates.
+ */
+@utility text-balance {
+  text-wrap: balance;
+}
 
-  /* Mono micro-label: ALL CAPS, 10px Geist Mono, faint, tracked */
-  .micro-label {
-    font-family: var(--font-geist-mono), ui-monospace, monospace;
-    font-size: 10px;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: var(--text-faint);
+/* Mono micro-label: ALL CAPS, 10px Geist Mono, faint, tracked. */
+@utility micro-label {
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-faint);
+}
+
+/* Section eyebrow from the Figma boards: 11.5px Geist Mono, +10% tracking. */
+@utility eyebrow {
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 11.5px;
+  line-height: 1.45;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-faint);
+}
+
+/*
+ * Display type. Schibsted Grotesk ExtraBold, paired with the tracking step
+ * that matches its size on the Foundations ramp. Figma reports those steps as
+ * percentages: Display 92 / -4%, H2 56 / -3%, H3 24 / -2%, Quote 20 / -1.5%.
+ */
+@utility font-display {
+  font-family: var(--font-display), var(--font-geist-sans), system-ui, sans-serif;
+  font-weight: 800;
+  line-height: 1.12;
+}
+@utility track-display {
+  letter-spacing: -0.04em;
+}
+@utility track-h2 {
+  letter-spacing: -0.03em;
+}
+@utility track-h3 {
+  letter-spacing: -0.02em;
+}
+@utility track-quote {
+  letter-spacing: -0.015em;
+}
+/* KPI figures sit between H3 and H2 on the ramp at -2.5%. */
+@utility track-kpi {
+  letter-spacing: -0.025em;
+}
+
+/* Card surface: white on white, held apart by a hairline and a soft shadow. */
+@utility card-surface {
+  background-color: var(--bg-elev);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-card);
+}
+
+/*
+ * Scrollable prose tables.
+ *
+ * Docs and the long-form marketing pages author tables directly in the article
+ * body, and several are far wider than a phone. A table's min-content width is
+ * not something `max-width` can hold back, and the article sits in a flex
+ * column whose `min-width` therefore resolves to that intrinsic width, so the
+ * table used to push the whole document sideways. Turning the table into its
+ * own scroll container keeps the overflow local: the table scrolls, the page
+ * does not.
+ *
+ * `display: block` is what makes the element scrollable at all; the browser
+ * still lays the rows out as a table through the anonymous table box it
+ * generates for the row groups, so columns stay aligned. Do not add
+ * `width: max-content` here: it feeds the table's full width back into the
+ * article's intrinsic size, which puts the sideways scroll straight back on
+ * the document.
+ */
+.prose table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+/*
+ * Inline code in prose.
+ *
+ * A command like `pnpm --filter server exec tsx scripts/bench-proxy-overhead.ts`
+ * has no break opportunity, so on a phone it sets the article's minimum width
+ * and pushes the page sideways. `anywhere` (not `break-word`) is the one that
+ * also lowers the intrinsic min-content width, which is what the layout above
+ * is measured against. Block code keeps its own horizontal scroll and is left
+ * alone.
+ */
+.prose :not(pre) > code {
+  overflow-wrap: anywhere;
+}
+
+/* ── Landing motion ───────────────────────────────────────────────────────────
+ *
+ * Seven animations, ported from the Figma v2 motion board: hero entry, hero
+ * drift (tiles + wire pulses), section reveal, the cost bars growing, the trace
+ * waterfall wiping in, the integrations arc rotating, and the button states.
+ * The button timings (220ms hover, 120ms press) live on the button component.
+ *
+ * Two rules hold the whole set together:
+ *
+ * 1. Nothing is hidden until JavaScript says it can un-hide it. `Reveal` stamps
+ *    `data-reveal="ready"` on mount, and only that state carries `opacity: 0`.
+ *    If the bundle fails, an observer never fires, or a crawler renders the
+ *    markup as-is, every section is simply visible. Starting from hidden and
+ *    relying on script to reveal is how marketing pages ship blank.
+ * 2. `--sl-ease` is the house curve, the same one the workspace progress bar
+ *    uses. Reach for it rather than inventing a curve per animation.
+ */
+:root {
+  --sl-ease: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes sl-rise {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* Provider tiles breathing around the mark. Tiny amplitude on purpose: this
+   sits behind the headline and must never pull the eye off the copy. */
+@keyframes sl-drift {
+  0%, 100% { transform: translate3d(0, 0, 0); }
+  50%      { transform: translate3d(0, -9px, 0); }
+}
+
+/*
+ * Provider ping.
+ *
+ * Each tile lights up in turn — swelling slightly, its hairline and glyph
+ * taking the accent, its wire brightening with it — so the constellation reads
+ * as one integration sending a call at a time.
+ *
+ * Every track keeps the same shape: a short active window near the start, then
+ * a long rest for the remainder of the cycle. Staggering the delay by
+ * cycle ÷ tiles is what walks the highlight around the ring. Keep the three in
+ * step; if the active window moves in one it has to move in all of them, or the
+ * glyph will flare after its own tile has already settled.
+ */
+@keyframes sl-tile-ping {
+  0%, 14%, 100% { transform: scale(1); border-color: var(--border); }
+  6%            { transform: scale(1.06); border-color: var(--accent); }
+}
+
+@keyframes sl-mark-ping {
+  0%, 14%, 100% { color: var(--text); }
+  6%            { color: var(--accent); }
+}
+
+@keyframes sl-wire-ping {
+  0%, 14%, 100% { stroke: var(--border-strong); }
+  6%            { stroke: var(--accent); }
+}
+
+/* The arc swapping one provider for the next in a slot. Short and small: five
+   of these fire at once, and anything longer reads as a stutter. */
+@keyframes sl-swap {
+  from { opacity: 0; transform: scale(0.92); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* Cost bars rise out of the baseline. */
+@keyframes sl-grow-y {
+  from { transform: scaleY(0); }
+  to   { transform: scaleY(1); }
+}
+
+/* Waterfall bars wipe left to right along their track. */
+@keyframes sl-grow-x {
+  from { transform: scaleX(0); }
+  to   { transform: scaleX(1); }
+}
+
+/*
+ * Scroll reveal.
+ *
+ * `--sl-n` is the child's ordinal, set by nth-child below, so a single
+ * declaration staggers a list without the wrapper needing to know how many
+ * items it holds or what they are. Ten covers the longest run on the page (the
+ * cost plot); an eleventh child simply enters with the tenth.
+ */
+[data-reveal='ready'] > * {
+  opacity: 0;
+}
+
+[data-reveal='shown'] > * {
+  animation: sl-rise 620ms var(--sl-ease) both;
+  animation-delay: calc(var(--sl-n, 0) * var(--sl-step, 70ms));
+}
+
+[data-reveal] > *:nth-child(1)  { --sl-n: 0; }
+[data-reveal] > *:nth-child(2)  { --sl-n: 1; }
+[data-reveal] > *:nth-child(3)  { --sl-n: 2; }
+[data-reveal] > *:nth-child(4)  { --sl-n: 3; }
+[data-reveal] > *:nth-child(5)  { --sl-n: 4; }
+[data-reveal] > *:nth-child(6)  { --sl-n: 5; }
+[data-reveal] > *:nth-child(7)  { --sl-n: 6; }
+[data-reveal] > *:nth-child(8)  { --sl-n: 7; }
+[data-reveal] > *:nth-child(9)  { --sl-n: 8; }
+[data-reveal] > *:nth-child(n+10) { --sl-n: 9; }
+
+/* Bars grow instead of rising: same reveal wrapper, different payload. */
+[data-reveal='ready'][data-reveal-kind='bars'] > * {
+  opacity: 1;
+  transform: scaleY(0);
+}
+[data-reveal='shown'][data-reveal-kind='bars'] > * {
+  transform-origin: bottom;
+  animation: sl-grow-y 700ms var(--sl-ease) both;
+  animation-delay: calc(var(--sl-n, 0) * var(--sl-step, 45ms));
+}
+
+/* The waterfall reveals its rows, and each row's bar wipes along its track. */
+[data-reveal='ready'][data-reveal-kind='waterfall'] > * {
+  opacity: 0;
+}
+[data-reveal='shown'][data-reveal-kind='waterfall'] > * {
+  animation: sl-rise 420ms var(--sl-ease) both;
+  animation-delay: calc(var(--sl-n, 0) * var(--sl-step, 70ms));
+}
+[data-reveal='ready'][data-reveal-kind='waterfall'] [data-sl-bar] {
+  transform: scaleX(0);
+}
+[data-reveal='shown'][data-reveal-kind='waterfall'] [data-sl-bar] {
+  transform-origin: left;
+  animation: sl-grow-x 520ms var(--sl-ease) both;
+  animation-delay: calc(var(--sl-n, 0) * var(--sl-step, 70ms) + 120ms);
+}
+
+/* Hero entry runs on load rather than on scroll: it is above the fold, so an
+   observer would only add a frame of latency to the first thing anyone sees. */
+.sl-enter {
+  animation: sl-rise 700ms var(--sl-ease) both;
+  animation-delay: var(--sl-delay, 0ms);
+}
+
+.sl-drift {
+  animation: sl-drift var(--sl-dur, 8s) ease-in-out infinite;
+  animation-delay: var(--sl-delay, 0ms);
+  will-change: transform;
+}
+
+/*
+ * The three ping tracks share one cycle and one delay, handed down from the
+ * tile so a provider's tile, glyph and wire always fire together. The drift
+ * stays on a separate ancestor: both it and the ping animate `transform`, and
+ * two animations on one element do not compose — the later one would simply
+ * replace the float.
+ */
+.sl-ping {
+  animation: sl-tile-ping var(--sl-cycle, 10s) ease-in-out infinite;
+  animation-delay: var(--sl-delay, 0ms);
+}
+
+.sl-ping-mark {
+  animation: sl-mark-ping var(--sl-cycle, 10s) ease-in-out infinite;
+  animation-delay: var(--sl-delay, 0ms);
+}
+
+.sl-ping-wire {
+  animation: sl-wire-ping var(--sl-cycle, 10s) ease-in-out infinite;
+  animation-delay: var(--sl-delay, 0ms);
+}
+
+.sl-swap {
+  animation: sl-swap 260ms var(--sl-ease) both;
+}
+
+/*
+ * Reduced motion.
+ *
+ * Everything above resolves to its finished state: visible, unscaled, still.
+ * `!important` is load-bearing here because the animations set both an
+ * `opacity` and a `transform` that would otherwise stick at their `from` frame
+ * once the animation is cancelled.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .sl-enter,
+  .sl-drift,
+  .sl-ping,
+  .sl-ping-mark,
+  .sl-ping-wire,
+  .sl-swap,
+  [data-reveal] > *,
+  [data-reveal] [data-sl-bar] {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
   }
 }
 

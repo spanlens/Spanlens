@@ -22,6 +22,12 @@ export class ApiError extends Error {
   constructor(
     message: string,
     public status: number,
+    /**
+     * The stable `error.code` from the server's catalog, when the response used
+     * the unified envelope. Branch on this rather than on the message: the
+     * prose is written for a human and will be reworded.
+     */
+    public code: string | null = null,
   ) {
     super(message)
   }
@@ -42,6 +48,16 @@ function extractErrorMessage(body: unknown, status: number): string {
     if (typeof message === 'string' && message.length > 0) return message
   }
   return `HTTP ${status}`
+}
+
+/** The envelope's `error.code`, or null for the legacy string shape. */
+function extractErrorCode(body: unknown): string | null {
+  const err = (body as { error?: unknown } | null | undefined)?.error
+  if (err && typeof err === 'object') {
+    const code = (err as { code?: unknown }).code
+    if (typeof code === 'string' && code.length > 0) return code
+  }
+  return null
 }
 
 const SESSION_TTL_MS = 10_000 // 10s, well under the default 1h access-token lifetime
@@ -107,7 +123,7 @@ export async function apiGet<T>(path: string): Promise<T> {
   })
   if (!res.ok) {
     const body = await res.json().catch(() => ({}))
-    throw new ApiError(extractErrorMessage(body, res.status), res.status)
+    throw new ApiError(extractErrorMessage(body, res.status), res.status, extractErrorCode(body))
   }
   return res.json() as Promise<T>
 }
@@ -120,7 +136,7 @@ export async function apiPost<T>(path: string, body?: unknown): Promise<T> {
   })
   if (!res.ok) {
     const body = await res.json().catch(() => ({}))
-    throw new ApiError(extractErrorMessage(body, res.status), res.status)
+    throw new ApiError(extractErrorMessage(body, res.status), res.status, extractErrorCode(body))
   }
   return res.json() as Promise<T>
 }
@@ -133,7 +149,7 @@ export async function apiPatch<T>(path: string, body?: unknown): Promise<T> {
   })
   if (!res.ok) {
     const body = await res.json().catch(() => ({}))
-    throw new ApiError(extractErrorMessage(body, res.status), res.status)
+    throw new ApiError(extractErrorMessage(body, res.status), res.status, extractErrorCode(body))
   }
   return res.json() as Promise<T>
 }
@@ -148,7 +164,7 @@ export async function apiDownload(path: string, filename: string): Promise<void>
   })
   if (!res.ok) {
     const body = await res.json().catch(() => ({}))
-    throw new ApiError(extractErrorMessage(body, res.status), res.status)
+    throw new ApiError(extractErrorMessage(body, res.status), res.status, extractErrorCode(body))
   }
   const blob = await res.blob()
   const url = URL.createObjectURL(blob)
@@ -168,7 +184,7 @@ export async function apiDelete<T>(path: string): Promise<T> {
   })
   if (!res.ok) {
     const body = await res.json().catch(() => ({}))
-    throw new ApiError(extractErrorMessage(body, res.status), res.status)
+    throw new ApiError(extractErrorMessage(body, res.status), res.status, extractErrorCode(body))
   }
   return res.json() as Promise<T>
 }

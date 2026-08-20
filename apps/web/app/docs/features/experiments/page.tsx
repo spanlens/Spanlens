@@ -1,8 +1,10 @@
+import { openGraphFor } from '@/lib/page-metadata'
 import { CodeBlock } from '../../_components/code-block'
 import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
 export const metadata = {
   alternates: { canonical: '/docs/features/experiments' },
+  openGraph: openGraphFor('/docs/features/experiments'),
   title: 'Experiments · Spanlens Docs',
   description:
     'Offline side-by-side comparison, run a dataset against two prompt versions and compare outputs, scores, and cost without touching production traffic.',

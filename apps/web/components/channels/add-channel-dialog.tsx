@@ -5,6 +5,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useCreateChannel } from '@/lib/queries/use-alerts'
 import type { ChannelKind } from '@/lib/queries/types'
+import { cn } from '@/lib/utils'
+import { CONTROL } from '@/app/(dashboard)/_board/surfaces'
+
+/* Form fields share the board's 34px control chrome so the modal reads as part
+   of the same surface family as the pages that open it. */
+const FIELD = 'w-full px-3 text-[12.5px] leading-[18px] text-text placeholder:text-text-faint focus:border-border-strong focus:outline-none'
 
 interface AddChannelDialogProps {
   open: boolean
@@ -78,12 +84,12 @@ export function AddChannelDialog({ open, onOpenChange, fixedKind }: AddChannelDi
             {fixedKind ? `Add ${fixedKind} channel` : 'Add notification channel'}
           </DialogTitle>
         </DialogHeader>
-        <div className="space-y-4 mt-2">
+        <div className="mt-2 space-y-4">
           {!fixedKind && (
             <div className="space-y-2">
-              <label className="font-mono text-[11px] text-text-muted uppercase tracking-[0.04em]">Kind</label>
+              <span className="eyebrow block">Kind</span>
               <Select value={kind} onValueChange={(v) => setKind(v as ChannelKind)}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectTrigger aria-label="Channel kind"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="email">Email (Resend)</SelectItem>
                   <SelectItem value="slack">Slack webhook</SelectItem>
@@ -94,36 +100,38 @@ export function AddChannelDialog({ open, onOpenChange, fixedKind }: AddChannelDi
           )}
 
           <div className="space-y-2">
-            <label className="font-mono text-[11px] text-text-muted uppercase tracking-[0.04em]">
+            <label htmlFor="channel-target" className="eyebrow block">
               {KIND_LABEL[effectiveKind]}
             </label>
             <input
+              id="channel-target"
               value={target}
               onChange={(e) => setTarget(e.target.value)}
               placeholder={KIND_PLACEHOLDER[effectiveKind]}
-              className="w-full h-9 px-3 rounded border border-border bg-bg text-[13px] focus:outline-none focus:border-border-strong"
+              className={cn(CONTROL, FIELD)}
             />
           </div>
 
           <div className="space-y-2">
-            <label className="font-mono text-[11px] text-text-muted uppercase tracking-[0.04em]">
-              Label <span className="text-text-faint normal-case tracking-normal">· optional, e.g. #prod-alerts</span>
+            <label htmlFor="channel-label" className="eyebrow block">
+              Label <span className="normal-case tracking-normal">· optional, e.g. #prod-alerts</span>
             </label>
             <input
+              id="channel-label"
               value={label}
               onChange={(e) => setLabel(e.target.value)}
               placeholder="Give this channel a name"
-              className="w-full h-9 px-3 rounded border border-border bg-bg text-[13px] focus:outline-none focus:border-border-strong"
+              className={cn(CONTROL, FIELD)}
             />
           </div>
 
-          {error && <div className="text-[12.5px] text-bad">{error}</div>}
+          {error && <div className="text-[12.5px] leading-[1.45] text-bad">{error}</div>}
 
           <button
             type="button"
             onClick={() => void handleSubmit()}
             disabled={!target.trim() || createChannel.isPending}
-            className="w-full py-2 rounded bg-text text-bg font-mono text-[13px] font-medium hover:opacity-90 transition-opacity disabled:opacity-40"
+            className="w-full rounded-full bg-primary py-2 text-[12.5px] font-semibold leading-[18px] text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-40"
           >
             {createChannel.isPending ? 'Adding…' : 'Add channel'}
           </button>

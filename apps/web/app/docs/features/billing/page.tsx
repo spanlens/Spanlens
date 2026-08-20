@@ -1,12 +1,14 @@
+import { openGraphFor } from '@/lib/page-metadata'
 import { CodeBlock } from '../../_components/code-block'
-import { PlanQuotaChart } from '../../_components/charts'
+import { PlanQuotaChart } from '../../_components/figures'
 import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
 export const metadata = {
   alternates: { canonical: '/docs/features/billing' },
+  openGraph: openGraphFor('/docs/features/billing'),
   title: 'Billing & quotas · Spanlens Docs',
   description:
-    'How Spanlens charges you: plan quotas, overage billing, the hard cap, and what your invoice looks like.',
+    'How Spanlens charges you. Plan quotas, overage rates per 100K requests, the hard cap that stops runaway spend, and what an invoice looks like.',
 }
 
 export default function BillingDocs() {

@@ -101,7 +101,7 @@ function SearchForm({ initialSearch, hasActiveSearch, onChange, onClear }: Searc
 
   return (
     <div className="flex items-center gap-2">
-      <div className="relative flex-1 max-w-md">
+      <div className="relative flex-1">
         <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-text-faint" />
         <input
           value={value}
@@ -113,14 +113,14 @@ function SearchForm({ initialSearch, hasActiveSearch, onChange, onClear }: Searc
             }
           }}
           placeholder="Search session ID…"
-          className="w-full pl-8 pr-3 py-1.5 font-mono text-[12px] bg-bg-elev border border-border rounded-[6px] text-text placeholder:text-text-faint focus:outline-none focus:border-accent"
+          className="w-full h-[33px] pl-9 pr-3 text-[12.5px] bg-bg-elev border border-border rounded-md text-text placeholder:text-text-faint focus:outline-none focus:border-accent"
         />
       </div>
       {hasActiveSearch && (
         <button
           type="button"
           onClick={() => { setValue(''); onClear() }}
-          className="font-mono text-[11px] text-text-faint hover:text-text transition-colors"
+          className="text-[12.5px] font-medium text-text-faint hover:text-text transition-colors"
         >
           Clear
         </button>
@@ -224,20 +224,21 @@ export function SessionsClient() {
   const lastPage = Math.max(1, Math.ceil(total / PAGE_SIZE))
 
   return (
-    <div className="-mx-4 -my-4 md:-mx-8 md:-my-7 flex flex-col min-h-screen">
+    <div className="-mx-4 -my-4 md:-mx-7 md:-mt-5 md:-mb-7 flex flex-col min-h-screen">
       <div className="sticky top-0 z-20 bg-bg">
         <Topbar crumbs={[{ label: 'Sessions' }]} />
         <h1 className="sr-only">Sessions</h1>
       </div>
 
-      <div className="flex flex-col gap-6 px-[22px] py-[22px]">
+      {/* Content canvas — 28px gutters, 16px rhythm, per the Figma board. */}
+      <div className="flex flex-col gap-4 px-4 md:px-7 pt-5 pb-7">
         {/* Header */}
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
-            <h2 className="font-medium text-[20px] tracking-[-0.3px] text-text">Sessions</h2>
+            <h2 className="font-display text-[22px] track-kpi leading-[1.1] text-text">Sessions</h2>
             <p className="font-mono text-[11.5px] text-text-faint mt-1.5">
               {sinceLabel(rangeParam, customRange)} · conversation threads from{' '}
-              <code className="bg-bg-elev px-1 py-px rounded text-text">x-spanlens-session</code> header.
+              <code className="bg-bg-sunk px-1 py-px rounded text-text">x-spanlens-session</code> header.
             </p>
           </div>
           <div className="font-mono text-[11px] text-text-faint shrink-0">
@@ -248,8 +249,8 @@ export function SessionsClient() {
         {/* Active userId filter banner */}
         {userId && (
           <div className="flex items-center gap-2 font-mono text-[11px]">
-            <span className="text-text-faint uppercase tracking-[0.05em] text-[10px]">Filter:</span>
-            <span className="px-2 py-[2px] bg-bg-elev border border-border rounded-[3px] text-text">
+            <span className="text-text-faint uppercase tracking-[0.1em] text-[10px]">Filter:</span>
+            <span className="px-2 py-[2px] bg-bg-elev border border-border rounded-full text-text">
               user: {userId}
             </span>
             <button
@@ -285,10 +286,10 @@ export function SessionsClient() {
         <div
           role="grid"
           aria-label="Sessions table"
-          className="border border-border rounded-[6px] overflow-hidden"
+          className="card-surface rounded-card overflow-hidden"
         >
           {/* Header row */}
-          <div className="grid grid-cols-[2fr_1fr_1fr_1fr] sm:grid-cols-[2fr_1.2fr_1fr_1fr_1fr_1fr] gap-3 px-4 py-2.5 bg-bg-elev border-b border-border font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint">
+          <div className="grid grid-cols-[2fr_1fr_1fr_1fr] sm:grid-cols-[2fr_1.2fr_1fr_1fr_1fr_1fr] gap-3 px-[18px] py-2.5 bg-bg-muted border-b border-border font-mono text-[10px] uppercase tracking-[0.1em] text-text-faint">
             <span>Session ID</span>
             <span className="hidden sm:inline">User</span>
             <SortBtn label="Turns" col="requests" sortBy={sortBy} sortDir={sortDir} onSort={onSort} />
@@ -300,7 +301,7 @@ export function SessionsClient() {
           {(!mounted || isLoading) && (
             <div className="divide-y divide-border">
               {Array.from({ length: 8 }).map((_, i) => (
-                <div key={i} className="grid grid-cols-[2fr_1fr_1fr_1fr] sm:grid-cols-[2fr_1.2fr_1fr_1fr_1fr_1fr] gap-3 px-4 py-3">
+                <div key={i} className="grid grid-cols-[2fr_1fr_1fr_1fr] sm:grid-cols-[2fr_1.2fr_1fr_1fr_1fr_1fr] gap-3 px-[18px] py-[11px]">
                   <Skeleton className="h-3 w-40" />
                   <Skeleton className="h-3 w-24 hidden sm:block" />
                   <Skeleton className="h-3 w-12" />
@@ -324,14 +325,14 @@ export function SessionsClient() {
               <p className="font-mono text-[12.5px] text-text mb-1.5">No sessions yet</p>
               <p className="font-mono text-[11px] text-text-faint max-w-md mx-auto mb-4">
                 Tag your LLM calls with the{' '}
-                <code className="bg-bg-elev px-1 py-px rounded">x-spanlens-session</code> header (SDK:{' '}
-                <code className="bg-bg-elev px-1 py-px rounded">withSession()</code>) and conversation
+                <code className="bg-bg-sunk px-1 py-px rounded">x-spanlens-session</code> header (SDK:{' '}
+                <code className="bg-bg-sunk px-1 py-px rounded">withSession()</code>) and conversation
                 threads will appear here.
               </p>
               <div className="flex items-center justify-center gap-3 flex-wrap">
                 <Link
                   href="/docs/sdk"
-                  className="font-mono text-[11px] px-2.5 py-1 rounded border border-border text-text-muted hover:text-text hover:border-border-strong transition-colors"
+                  className="text-[12px] font-medium px-3 py-[6px] rounded-full border border-border text-text-muted hover:text-text hover:border-border-strong transition-colors"
                 >
                   SDK docs →
                 </Link>
@@ -348,7 +349,7 @@ export function SessionsClient() {
                   <div
                     key={s.session_id}
                     role="row"
-                    className="group relative grid grid-cols-[2fr_1fr_1fr_1fr] sm:grid-cols-[2fr_1.2fr_1fr_1fr_1fr_1fr] gap-3 items-center px-4 py-3 font-mono text-[12px] text-text hover:bg-bg-elev transition-colors"
+                    className="group relative grid grid-cols-[2fr_1fr_1fr_1fr] sm:grid-cols-[2fr_1.2fr_1fr_1fr_1fr_1fr] gap-3 items-center px-[18px] py-[11px] font-mono text-[12px] text-text hover:bg-bg-muted transition-colors"
                   >
                     {/* Stretched overlay link: the whole row navigates to the
                         session without wrapping the row in an <a>. Wrapping
@@ -406,28 +407,28 @@ export function SessionsClient() {
               <button
                 disabled={page <= 1}
                 onClick={() => updateQuery({ page: null })}
-                className="px-2.5 py-1.5 border border-border rounded-[6px] text-text hover:bg-bg-elev disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                className="text-[12px] font-medium px-3 py-[6px] border border-border rounded-full bg-bg-elev text-text hover:border-border-strong disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
               >
                 First
               </button>
               <button
                 disabled={page <= 1}
                 onClick={() => updateQuery({ page: String(page - 1) })}
-                className="px-3 py-1.5 border border-border rounded-[6px] text-text hover:bg-bg-elev disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                className="text-[12px] font-medium px-3 py-[6px] border border-border rounded-full bg-bg-elev text-text hover:border-border-strong disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
               >
                 Prev
               </button>
               <button
                 disabled={page >= lastPage}
                 onClick={() => updateQuery({ page: String(page + 1) })}
-                className="px-3 py-1.5 border border-border rounded-[6px] text-text hover:bg-bg-elev disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                className="text-[12px] font-medium px-3 py-[6px] border border-border rounded-full bg-bg-elev text-text hover:border-border-strong disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
               >
                 Next
               </button>
               <button
                 disabled={page >= lastPage}
                 onClick={() => updateQuery({ page: String(lastPage) })}
-                className="px-2.5 py-1.5 border border-border rounded-[6px] text-text hover:bg-bg-elev disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                className="text-[12px] font-medium px-3 py-[6px] border border-border rounded-full bg-bg-elev text-text hover:border-border-strong disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
               >
                 Last
               </button>

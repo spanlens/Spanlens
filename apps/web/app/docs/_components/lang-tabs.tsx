@@ -60,7 +60,7 @@ export function LangTabs({ ts, py }: LangTabsProps) {
 
   return (
     <div className="my-6 not-prose">
-      <div className="flex border-b border-border/60">
+      <div className="flex border-b border-border">
         <TabButton active={lang === 'ts'} onClick={() => pick('ts')}>
           TypeScript
         </TabButton>
@@ -76,7 +76,9 @@ export function LangTabs({ ts, py }: LangTabsProps) {
           <CodeBlock language={language}>{code}</CodeBlock>
         </div>
       ) : (
-        <div className="rounded-b-lg border border-t-0 border-border/40 bg-[#1a1816] px-4 py-6 text-sm text-[#7c7770]">
+        // Same `code-*` tokens as CodeBlock so the placeholder reads as the
+        // same slab rather than a themed panel.
+        <div className="rounded-lg bg-code-bg px-4 py-6 text-sm text-code-faint">
           {lang === 'py'
             ? 'Python sample coming soon. The TypeScript sample on the other tab works the same way.'
             : 'TypeScript sample coming soon, see the Python tab.'}
@@ -98,10 +100,10 @@ function TabButton({ active, onClick, children }: TabButtonProps) {
       type="button"
       onClick={onClick}
       className={
-        'px-4 py-2 text-sm font-medium transition-colors ' +
+        'px-4 py-2 text-[13px] font-medium transition-colors ' +
         (active
-          ? 'border-b-2 border-accent text-accent -mb-px'
-          : 'text-muted-foreground hover:text-foreground')
+          ? '-mb-px border-b-2 border-accent text-text'
+          : 'text-text-muted hover:text-text')
       }
     >
       {children}

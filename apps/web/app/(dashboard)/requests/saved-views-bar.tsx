@@ -70,8 +70,8 @@ export function SavedViewsBar({ current, onApply, canSave }: SavedViewsBarProps)
   }
 
   return (
-    <div className="flex items-center gap-1.5 px-[22px] py-[7px] border-b border-border shrink-0 flex-wrap">
-      <span className="font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint inline-flex items-center gap-1 shrink-0">
+    <div className="flex items-center gap-1.5 shrink-0 flex-wrap">
+      <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-text-faint inline-flex items-center gap-1 shrink-0 mr-1">
         <Bookmark className="w-3 h-3" /> Views
       </span>
 
@@ -81,7 +81,7 @@ export function SavedViewsBar({ current, onApply, canSave }: SavedViewsBarProps)
           <span
             key={v.id}
             className={cn(
-              'group inline-flex items-center gap-1 rounded-[5px] border font-mono text-[10.5px] transition-colors',
+              'group inline-flex items-center gap-1 rounded-full border font-mono text-[11px] transition-colors',
               active
                 ? 'border-accent-border bg-accent-bg text-accent'
                 : 'border-border bg-bg-elev text-text-muted hover:border-border-strong',
@@ -90,7 +90,7 @@ export function SavedViewsBar({ current, onApply, canSave }: SavedViewsBarProps)
             <button
               type="button"
               onClick={() => onApply(v.filters)}
-              className="pl-[9px] py-[5px] pr-1"
+              className="pl-3 py-[5px] pr-1"
               title={`Apply "${v.name}"`}
             >
               {v.name}
@@ -99,7 +99,7 @@ export function SavedViewsBar({ current, onApply, canSave }: SavedViewsBarProps)
               type="button"
               onClick={() => deleteView.mutate(v.id)}
               aria-label={`Delete view ${v.name}`}
-              className="pr-[7px] py-[5px] text-text-faint hover:text-bad transition-colors"
+              className="pr-2.5 py-[5px] text-text-faint hover:text-bad transition-colors"
             >
               <X className="w-3 h-3" />
             </button>
@@ -127,14 +127,14 @@ export function SavedViewsBar({ current, onApply, canSave }: SavedViewsBarProps)
                 setError(null)
               }
             }}
-            className="font-mono text-[11px] border border-border-strong rounded-[5px] px-2 py-[5px] bg-bg text-text w-40 outline-none placeholder:text-text-faint"
+            className="text-[12.5px] border border-border-strong rounded-md px-3 py-[6px] bg-bg-elev text-text w-40 outline-none placeholder:text-text-faint"
           />
           <button
             type="button"
             onClick={() => void save()}
             disabled={createView.isPending}
             aria-label="Save view"
-            className="font-mono text-[10.5px] px-[8px] py-[5px] border border-border rounded-[5px] text-accent hover:border-border-strong disabled:opacity-40 transition-colors inline-flex items-center gap-1"
+            className="text-[12px] font-medium px-3 py-[6px] border border-border rounded-full bg-bg-elev text-accent hover:border-border-strong disabled:opacity-40 transition-colors inline-flex items-center gap-1"
           >
             <Check className="w-3 h-3" /> Save
           </button>
@@ -145,7 +145,7 @@ export function SavedViewsBar({ current, onApply, canSave }: SavedViewsBarProps)
           <button
             type="button"
             onClick={() => setNaming(true)}
-            className="font-mono text-[10.5px] px-[9px] py-[5px] border border-dashed border-border rounded-[5px] text-text-faint hover:text-text hover:border-border-strong transition-colors inline-flex items-center gap-1 shrink-0"
+            className="text-[12px] font-medium px-3 py-[6px] border border-dashed border-border rounded-full text-text-faint hover:text-text hover:border-border-strong transition-colors inline-flex items-center gap-1 shrink-0"
           >
             <Plus className="w-3 h-3" /> Save view
           </button>

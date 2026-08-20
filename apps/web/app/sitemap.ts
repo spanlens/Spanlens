@@ -10,7 +10,11 @@ const ROUTE_LASTMOD: Record<string, string> = {
   '/pricing': '2026-06-16',
   '/self-hosting': '2026-05-20',
   '/alternatives': '2026-06-01',
-  '/changelog': '2026-06-15',
+  // Bump alongside VERIFIED_ON in lib/competitors.ts.
+  '/best-llm-observability-tools': '2026-07-30',
+  // Bump whenever an entry lands in lib/changelog/entries.ts. It had been
+  // stuck at 2026-06-15 through four rounds of entries.
+  '/changelog': '2026-07-30',
   '/feedback': '2026-04-10',
   '/faq': '2026-06-16',
   '/about': '2026-06-16',
@@ -33,10 +37,19 @@ const ROUTE_LASTMOD: Record<string, string> = {
   '/compare/langsmith': '2026-06-10',
   '/compare/braintrust': '2026-06-10',
   '/compare/arize-phoenix': '2026-06-10',
+  '/compare/opik': '2026-07-30',
+  '/compare/portkey': '2026-07-30',
+  '/compare/litellm': '2026-07-30',
   '/docs/migrate/from-langfuse': '2026-05-25',
   '/docs/migrate/from-helicone': '2026-05-25',
   '/docs/migrate/from-langsmith': '2026-05-25',
   '/docs': '2026-06-12',
+  '/docs/concepts': '2026-07-29',
+  '/docs/features': '2026-07-29',
+  '/docs/integrations': '2026-07-29',
+  '/docs/production': '2026-07-29',
+  '/docs/tutorials': '2026-07-29',
+  '/docs/migrate': '2026-07-29',
   '/docs/quick-start': '2026-06-12',
   '/docs/cli': '2026-06-12',
   '/docs/sdk': '2026-06-12',
@@ -106,6 +119,7 @@ const MARKETING_ROUTES = [
   '/pricing',
   '/self-hosting',
   '/alternatives',
+  '/best-llm-observability-tools',
   '/changelog',
   '/feedback',
   '/faq',
@@ -129,6 +143,9 @@ const MARKETING_ROUTES = [
   '/compare/langsmith',
   '/compare/braintrust',
   '/compare/arize-phoenix',
+  '/compare/opik',
+  '/compare/portkey',
+  '/compare/litellm',
 ] as const
 
 const MIGRATION_ROUTES = [
@@ -139,6 +156,15 @@ const MIGRATION_ROUTES = [
 
 const DOCS_ROUTES = [
   '/docs',
+  // Section hub pages. These six paths used to 404 (Search Console logged
+  // /docs/features as "Not found" on 2026-06-23) because every docs page sits
+  // one level deeper and no section had an index.
+  '/docs/concepts',
+  '/docs/features',
+  '/docs/integrations',
+  '/docs/production',
+  '/docs/tutorials',
+  '/docs/migrate',
   '/docs/quick-start',
   '/docs/cli',
   '/docs/sdk',
@@ -171,7 +197,6 @@ const DOCS_ROUTES = [
   '/docs/tutorials/agent-tracing',
   '/docs/tutorials/nightly-evals',
   '/docs/tutorials/rag-chatbot',
-  // NOTE: no bare '/docs/features' entry — that route does not exist (404).
   '/docs/features/requests',
   '/docs/features/traces',
   '/docs/features/prompts',

@@ -1,7 +1,9 @@
+import { openGraphFor } from '@/lib/page-metadata'
 import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
 export const metadata = {
   alternates: { canonical: '/docs/api/errors' },
+  openGraph: openGraphFor('/docs/api/errors'),
   title: 'API error codes · Spanlens Docs',
   description:
     'Stable error.code values returned by the Spanlens server for every 4xx/5xx response. Branch on the code in your client; treat the message as user-facing copy.',
@@ -126,6 +128,12 @@ const ERROR_CATALOG_ROWS: CatalogRow[] = [
     code: 'UPSTREAM_FAILED',
     status: 502,
     description: 'Upstream provider returned an error or the network failed. The details object carries the provider name.',
+  },
+  {
+    code: 'BILLING_NOT_CONFIGURED',
+    status: 503,
+    description:
+      'A billing call was refused for a reason only Spanlens can fix: rejected credentials, or stored payment state that needs correcting. Retrying will not help, and the cause is deliberately kept out of the response. Contact support if it persists.',
   },
   {
     code: 'DECRYPT_FAILED',

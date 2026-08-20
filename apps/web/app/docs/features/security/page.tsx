@@ -1,8 +1,10 @@
+import { openGraphFor } from '@/lib/page-metadata'
 import { CodeBlock } from '../../_components/code-block'
 import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
 export const metadata = {
   alternates: { canonical: '/docs/features/security' },
+  openGraph: openGraphFor('/docs/features/security'),
   title: 'Security (PII + prompt injection) · Spanlens Docs',
   description:
     'Automatic PII detection and prompt-injection scanning on every LLM request and response, with optional blocking mode and real-time alert emails.',
@@ -71,7 +73,7 @@ export default function SecurityDocs() {
           </tr>
           <tr>
             <td><code>credit-card</code></td>
-            <td>13–19 digit card number (Luhn-passing)</td>
+            <td>13 to 19 digit card number (Luhn-passing)</td>
             <td><code>4532 0151 1283 0366</code></td>
           </tr>
           <tr>
@@ -86,7 +88,7 @@ export default function SecurityDocs() {
           </tr>
           <tr>
             <td><code>passport</code></td>
-            <td>Generic letter+digit passport (6–9 chars)</td>
+            <td>Generic letter+digit passport (6 to 9 chars)</td>
             <td><code>M12345678</code></td>
           </tr>
         </tbody>
@@ -239,8 +241,8 @@ PATCH /api/v1/security/projects/{projectId}/block
 
       <h2 id="stored-body-sanitization">Stored-body sanitization (defense in depth)</h2>
       <p>
-        Separately from the request-time scan above, every body that lands in ClickHouse passes
-        through a pattern-based key scrubber first. The goal is narrow: catch API keys that
+        Separately from the request-time scan above, every body that lands in the request log
+        passes through a pattern-based key scrubber first. The goal is narrow: catch API keys that
         accidentally end up in prompts, tool output, or error messages, so a compromised
         Spanlens row never leaks a customer&apos;s upstream credentials.
       </p>

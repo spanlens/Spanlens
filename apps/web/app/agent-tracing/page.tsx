@@ -1,20 +1,24 @@
+import { OG_IMAGE } from '@/lib/page-metadata'
 import Link from 'next/link'
 import { Footer } from '@/components/layout/footer'
 import { MarketingNav } from '@/components/layout/marketing-nav'
 import { BreadcrumbJsonLd } from '@/components/marketing/breadcrumb-jsonld'
 
 const DESCRIPTION =
-  'AI agent tracing captures multi-step LLM workflows as waterfall span trees with critical path highlighting. Learn how to instrument LangChain, LangGraph, CrewAI, and the Vercel AI SDK with one line of code.'
+  'AI agent tracing captures multi-step LLM workflows as waterfall span trees. Instrument LangChain, LangGraph, CrewAI, and the Vercel AI SDK in one line.'
 
 export const metadata = {
   alternates: { canonical: '/agent-tracing' },
-  title: 'AI Agent Tracing: Debug Multi-Agent LLM Workflows in Production',
+  title: 'AI Agent Tracing: Debug Multi-Agent LLM Workflows',
   description: DESCRIPTION,
   openGraph: {
+    siteName: 'Spanlens',
     type: 'article',
     title: 'AI Agent Tracing — Debug Multi-Agent LLM Workflows',
     description: DESCRIPTION,
     url: '/agent-tracing',
+    locale: 'en_US',
+    images: OG_IMAGE,
   },
   twitter: {
     card: 'summary_large_image',
@@ -96,7 +100,7 @@ export default function AgentTracingHub() {
       <BreadcrumbJsonLd trail={[{ name: 'Agent Tracing', path: '/agent-tracing' }]} />
 
       <article className="max-w-3xl mx-auto px-6 py-20">
-        <h1 className="text-[40px] sm:text-[48px] font-semibold tracking-[-0.8px] text-text mb-3 leading-[1.05]">
+        <h1 className="font-display track-h2 text-[40px] sm:text-[48px] text-text mb-3 leading-[1.12]">
           AI Agent Tracing: Debug Multi-Agent LLM Workflows in Production
         </h1>
         <p className="text-[18px] text-text-muted mb-12 leading-relaxed">
@@ -123,7 +127,7 @@ export default function AgentTracingHub() {
         </section>
 
         <section className="mt-12">
-          <h2 className="text-[24px] font-semibold tracking-[-0.4px] text-text mb-4">
+          <h2 className="font-display track-h3 text-[24px] text-text mb-4">
             Anatomy of an agent trace
           </h2>
           <p className="text-[15px] text-text-muted leading-relaxed mb-5">
@@ -131,8 +135,8 @@ export default function AgentTracingHub() {
             waterfall view with the critical path highlighted.
           </p>
           <div className="space-y-3">
-            <div className="rounded-xl border border-border bg-bg-elev p-5">
-              <div className="font-mono text-[11px] uppercase tracking-[0.06em] text-text-faint mb-1">
+            <div className="rounded-card border border-border bg-bg-elev p-5">
+              <div className="eyebrow mb-1">
                 Layer 1: Trace root
               </div>
               <h3 className="text-[15px] font-semibold text-text mb-1">User-facing task</h3>
@@ -141,8 +145,8 @@ export default function AgentTracingHub() {
                 trace ID. Where most dashboards start.
               </p>
             </div>
-            <div className="rounded-xl border border-border bg-bg-elev p-5">
-              <div className="font-mono text-[11px] uppercase tracking-[0.06em] text-text-faint mb-1">
+            <div className="rounded-card border border-border bg-bg-elev p-5">
+              <div className="eyebrow mb-1">
                 Layer 2: Agent steps
               </div>
               <h3 className="text-[15px] font-semibold text-text mb-1">
@@ -153,8 +157,8 @@ export default function AgentTracingHub() {
                 For LangGraph, one span per node. For CrewAI, one span per crew task.
               </p>
             </div>
-            <div className="rounded-xl border border-border bg-bg-elev p-5">
-              <div className="font-mono text-[11px] uppercase tracking-[0.06em] text-text-faint mb-1">
+            <div className="rounded-card border border-border bg-bg-elev p-5">
+              <div className="eyebrow mb-1">
                 Layer 3: LLM calls
               </div>
               <h3 className="text-[15px] font-semibold text-text mb-1">
@@ -166,8 +170,8 @@ export default function AgentTracingHub() {
                 cost and latency surprises.
               </p>
             </div>
-            <div className="rounded-xl border border-border bg-bg-elev p-5">
-              <div className="font-mono text-[11px] uppercase tracking-[0.06em] text-text-faint mb-1">
+            <div className="rounded-card border border-border bg-bg-elev p-5">
+              <div className="eyebrow mb-1">
                 Layer 4: Tool calls
               </div>
               <h3 className="text-[15px] font-semibold text-text mb-1">
@@ -184,7 +188,7 @@ export default function AgentTracingHub() {
         </section>
 
         <section className="mt-12">
-          <h2 className="text-[24px] font-semibold tracking-[-0.4px] text-text mb-4">
+          <h2 className="font-display track-h3 text-[24px] text-text mb-4">
             Critical path: the only span that matters for latency
           </h2>
           <p className="text-[15px] text-text-muted leading-relaxed mb-3">
@@ -202,7 +206,7 @@ export default function AgentTracingHub() {
         </section>
 
         <section className="mt-12">
-          <h2 className="text-[24px] font-semibold tracking-[-0.4px] text-text mb-4">
+          <h2 className="font-display track-h3 text-[24px] text-text mb-4">
             Framework integrations
           </h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -217,7 +221,7 @@ export default function AgentTracingHub() {
               <Link
                 key={g.href}
                 href={g.href}
-                className="rounded-xl border border-border bg-bg-elev p-4 hover:border-border-strong transition-colors"
+                className="rounded-card border border-border bg-bg-elev p-4 hover:border-border-strong transition-colors"
               >
                 <div className="text-[14px] font-semibold text-text mb-1">{g.title}</div>
                 <div className="text-[12px] text-text-muted leading-relaxed">{g.body}</div>
@@ -227,7 +231,7 @@ export default function AgentTracingHub() {
         </section>
 
         <section className="mt-12">
-          <h2 className="text-[24px] font-semibold tracking-[-0.4px] text-text mb-4">
+          <h2 className="font-display track-h3 text-[24px] text-text mb-4">
             Debugging checklist
           </h2>
           <p className="text-[15px] text-text-muted leading-relaxed mb-5">
@@ -242,7 +246,7 @@ export default function AgentTracingHub() {
               'For a workflow that took the wrong branch, look at the LLM call that made the routing decision. What was the input state? Add this case to your eval dataset.',
               'For a cost spike, group spans by model and check whether one prompt version triggered a long-context retry.',
             ].map((step, i) => (
-              <li key={i} className="flex gap-3 rounded-xl border border-border bg-bg-elev p-4">
+              <li key={i} className="flex gap-3 rounded-card border border-border bg-bg-elev p-4">
                 <span className="shrink-0 h-6 w-6 rounded-full bg-accent text-bg font-mono text-[11px] font-semibold flex items-center justify-center">
                   {i + 1}
                 </span>
@@ -253,12 +257,12 @@ export default function AgentTracingHub() {
         </section>
 
         <section className="mt-12">
-          <h2 className="text-[24px] font-semibold tracking-[-0.4px] text-text mb-6">
+          <h2 className="font-display track-h3 text-[24px] text-text mb-6">
             FAQ
           </h2>
           <div className="space-y-3">
             {faqs.map((f) => (
-              <details key={f.q} className="group rounded-xl border border-border bg-bg-elev p-5">
+              <details key={f.q} className="group rounded-card border border-border bg-bg-elev p-5">
                 <summary className="cursor-pointer list-none text-[14px] font-medium text-text">
                   {f.q}
                 </summary>
@@ -269,7 +273,7 @@ export default function AgentTracingHub() {
         </section>
 
         <section className="mt-16">
-          <div className="rounded-xl border border-border bg-bg-elev p-6 text-center">
+          <div className="rounded-card border border-border bg-bg-elev p-6 text-center">
             <p className="text-[14px] text-text-muted mb-4">
               Trace your first agent in 60 seconds.
             </p>
@@ -282,7 +286,7 @@ export default function AgentTracingHub() {
               </Link>
               <Link
                 href="/docs/tutorials/agent-tracing"
-                className="h-10 px-5 rounded-[6px] border border-border text-text text-[14px] font-medium leading-10 hover:bg-bg-elev transition-colors"
+                className="h-10 px-5 rounded-[6px] border border-border text-text text-[14px] font-medium leading-10 hover:bg-bg-muted transition-colors"
               >
                 Agent tracing tutorial
               </Link>

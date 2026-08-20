@@ -1,3 +1,4 @@
+import { openGraphFor } from '@/lib/page-metadata'
 import { CodeBlock } from '../../_components/code-block'
 import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
@@ -6,6 +7,7 @@ export const metadata = {
   description:
     'Trace Instructor structured-output calls with Spanlens. Captures the Pydantic schema, retry count, and per-retry token cost.',
   alternates: { canonical: '/docs/integrations/instructor' },
+  openGraph: openGraphFor('/docs/integrations/instructor'),
 }
 
 export default function InstructorIntegration() {

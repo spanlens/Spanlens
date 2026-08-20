@@ -11,8 +11,10 @@
  *
  * 이 파일에서 커버하는 항목:
  *  - Gotcha #5 심층: getDecryptedProviderKey()가 빈 문자열 대신 null 반환
- *  - logRequestAsync — ClickHouse write path + API key masking
- *    (replaces the old Supabase-RLS Gotcha #3 after the ClickHouse migration)
+ *  - logRequestAsync: Postgres write path + API key masking
+ *    (supersedes the Supabase-RLS framing of Gotcha #3)
+ *  - Postgres retargets of gotchas #18/#19/#20/#34, which were written
+ *    against the store `requests` used to live in
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
@@ -43,17 +45,29 @@ vi.mock('../lib/db.js', () => {
   }
 })
 
-// ClickHouse client mock — logger.ts now writes here instead of Supabase.
-const mockClickhouseInsert = vi.fn().mockResolvedValue({ executed: true })
-vi.mock('../lib/clickhouse.js', () => ({
-  unscopedClickhouse: () => ({ insert: mockClickhouseInsert }),
-  // logger.ts also imports toClickhouseTimestamp — return a deterministic
-  // value so test assertions on row contents stay stable.
-  toClickhouseTimestamp: () => '2026-05-16 11:49:23.749',
+// Postgres driver mock — logger.ts writes the `requests` row through
+// `pgExecute`. `vi.hoisted` so the mock fns exist before the (hoisted) module
+// imports below trigger the factory.
+const { mockPgExecute, mockPgQuery } = vi.hoisted(() => ({
+  mockPgExecute: vi.fn(),
+  mockPgQuery: vi.fn(),
 }))
+
+vi.mock('../lib/postgres.js', async (importOriginal) => {
+  // Partial mock: the driver entry points are stubbed, the parameter shim
+  // (`toPositional`) stays real so the statement the logger builds is bound
+  // exactly as it would be in production.
+  const actual = await importOriginal<typeof import('../lib/postgres.js')>()
+  return {
+    ...actual,
+    pgExecute: (opts: unknown) => mockPgExecute(opts),
+    pgQuery: (opts: unknown) => mockPgQuery(opts),
+  }
+})
 
 // mock 선언 이후에 import
 import { getDecryptedProviderKey } from '../proxy/utils.js'
+import { _clearProviderKeyCacheForTests } from '../lib/provider-key-cache.js'
 import { supabaseAdmin } from '../lib/db.js'
 
 const CORRECT_KEY_ENV = Buffer.from('a'.repeat(32)).toString('base64')
@@ -65,11 +79,18 @@ describe('getDecryptedProviderKey — Gotcha #5 (decryption empty string → nul
   beforeEach(() => {
     process.env.ENCRYPTION_KEY = CORRECT_KEY_ENV
     vi.clearAllMocks()
+    // P3.2: the provider_keys row lookup is cached in-process now, and every
+    // case below reuses the same ('api-key-789', 'openai') pair with a
+    // different mocked DB result. Without this reset the second test would
+    // be served the first test's ciphertext from cache and never reach the
+    // decrypt path it is asserting on.
+    _clearProviderKeyCacheForTests()
   })
 
   afterEach(() => {
     // 테스트 격리: 환경변수 복원
     process.env.ENCRYPTION_KEY = CORRECT_KEY_ENV
+    _clearProviderKeyCacheForTests()
   })
 
   // Mock helper — matches the query chain used by getDecryptedProviderKey
@@ -124,34 +145,46 @@ describe('getDecryptedProviderKey — Gotcha #5 (decryption empty string → nul
   })
 })
 
-// ── logRequestAsync — ClickHouse write path + API key masking ───────────────
+// ── logRequestAsync: Postgres write path + API key masking ──────────────────
 //
-// Original Gotcha #3 covered "logger must use supabaseAdmin so RLS doesn't
-// block the insert". After the ClickHouse migration the requests table no
-// longer lives in Supabase, so the test asserts the new contract:
-//   1. logger writes to ClickHouse via unscopedClickhouse().insert(...)
+// Gotcha #3 was framed as "logger must use supabaseAdmin so RLS doesn't block
+// the insert". The insert now goes through the `pgExecute` driver helper
+// rather than PostgREST, so RLS is not what stands in the way; the contract
+// asserted here is:
+//   1. logger writes one bound INSERT INTO requests via pgExecute(...)
 //   2. body columns are mask-scrubbed before insert (no leaked API keys)
 //   3. > 64KB bodies are truncated to keep rows bounded
-//   4. ClickHouse failures don't throw (fire-and-forget contract)
+//   4. insert failures don't throw (fire-and-forget contract)
 //
-// See docs/plans/clickhouse-migration.md §3.4 for the masking policy.
+// The masking policy is recorded in docs/plans/clickhouse-migration.md §3.4.
 
-describe('logRequestAsync — ClickHouse write path', () => {
+describe('logRequestAsync — Postgres write path', () => {
   beforeEach(() => {
-    mockClickhouseInsert.mockClear()
-    mockClickhouseInsert.mockResolvedValue({ executed: true })
+    mockPgExecute.mockClear()
+    mockPgExecute.mockResolvedValue(1)
+    mockPgQuery.mockClear()
+    mockPgQuery.mockResolvedValue([])
   })
 
+  /**
+   * The logger binds one parameter per column, named for the column, so the
+   * params object IS the row. Also asserts the statement shape while we are
+   * here: a value that reached the SQL text instead of a placeholder would be
+   * customer prompt text pasted into a statement.
+   */
   function getInsertedRow(): Record<string, unknown> {
-    const call = mockClickhouseInsert.mock.calls[0]?.[0] as
-      | { table: string; values: Array<Record<string, unknown>> }
+    const call = mockPgExecute.mock.calls[0]?.[0] as
+      | { query: string; params: Record<string, unknown> }
       | undefined
-    if (!call) throw new Error('ClickHouse insert was not called')
-    expect(call.table).toBe('requests')
-    return call.values[0]!
+    if (!call) throw new Error('pgExecute was not called')
+    expect(call.query).toContain('INSERT INTO requests (')
+    // jsonb columns carry an explicit cast; everything else is a bare bind.
+    expect(call.query).toContain('{flags}::jsonb')
+    expect(call.query).toContain('{response_flags}::jsonb')
+    return call.params
   }
 
-  it('inserts a row into the ClickHouse requests table', async () => {
+  it('inserts a row into the Postgres requests table', async () => {
     const { logRequestAsync } = await import('../lib/logger.js')
 
     await logRequestAsync({
@@ -173,8 +206,8 @@ describe('logRequestAsync — ClickHouse write path', () => {
       spanId: null,
     })
 
-    // Phase 5.1 dual-write: requests + events shadow insert = 2 calls.
-    expect(mockClickhouseInsert).toHaveBeenCalledTimes(2)
+    // One statement per logged request.
+    expect(mockPgExecute).toHaveBeenCalledOnce()
     const row = getInsertedRow()
     expect(row.organization_id).toBe('org-1')
     expect(row.provider).toBe('openai')
@@ -182,6 +215,13 @@ describe('logRequestAsync — ClickHouse write path', () => {
     expect(row.total_tokens).toBe(30)
     expect(typeof row.id).toBe('string')        // generated client-side
     expect(typeof row.created_at).toBe('string') // ISO8601
+
+    // Real booleans, not 0/1. Binding a number to a `boolean` column is an
+    // error the driver raises, so this is the shape the write path has to
+    // keep.
+    expect(row.truncated).toBe(false)
+    expect(row.cache_hit).toBe(false)
+    expect(row.has_security_flags).toBe(false)
   })
 
   it('truncates request_body > 64KB before insert', async () => {
@@ -198,8 +238,9 @@ describe('logRequestAsync — ClickHouse write path', () => {
       errorMessage: null, traceId: null, spanId: null,
     })
 
-    // request_body is a JSON string in ClickHouse (String column, not JSONB).
-    // After truncation it contains the envelope keys produced by maybeTruncateBody.
+    // request_body is stored as text, not jsonb — bodies are opaque payloads
+    // we never query into. After truncation it carries the envelope keys
+    // produced by maybeTruncateBody.
     const row = getInsertedRow()
     const body = JSON.parse(row.request_body as string) as Record<string, unknown>
     expect(body._truncated).toBe(true)
@@ -248,10 +289,10 @@ describe('logRequestAsync — ClickHouse write path', () => {
     expect(row.error_message).toBe('token sk-ant-*** expired')
   })
 
-  it('does not throw when ClickHouse insert fails', async () => {
+  it('does not throw when the requests insert fails', async () => {
     // Fire-and-forget contract: a logging failure must never bubble up to the
     // proxy critical path. CLAUDE.md gotcha #8.
-    mockClickhouseInsert.mockRejectedValueOnce(new Error('CH connection refused'))
+    mockPgExecute.mockRejectedValueOnce(new Error('connection refused'))
 
     const { logRequestAsync } = await import('../lib/logger.js')
 
@@ -347,6 +388,185 @@ describe('logRequestAsync — ClickHouse write path', () => {
       messages: [{ role: 'user', content: 'hello' }],
     })
     expect(JSON.parse(row.response_body as string)).toEqual({ ok: true })
+  })
+})
+
+// ── Postgres-era retargets of the ClickHouse-specific gotchas ───────────────
+//
+// CLAUDE.md carried five gotchas that existed only because `requests` lived in
+// ClickHouse. Four of them have a Postgres counterpart worth pinning; each is
+// retargeted below rather than dropped, because in every case the *reason* the
+// gotcha existed still points at a live failure mode.
+//
+//   #18  DateTime64 rejected a trailing `Z`, so every write had to go through
+//        toClickhouseTimestamp(). Postgres takes ISO-8601 directly, the
+//        helper is gone, and re-introducing a reformat is the regression.
+//   #19  JSONEachRow returned every number as a string. STILL TRUE, for a
+//        different reason: node-postgres hands back `numeric` and `int8` as
+//        strings so precision past 2^53 is not silently lost.
+//   #20  ClickHouse had no `ilike`, so searches used positionCaseInsensitive.
+//        Postgres has ILIKE, and using it here would be a real bug, because
+//        `%` and `_` inside a caller's search term become wildcards.
+//   #34  trace_id was Nullable(UUID); a non-UUID value made ClickHouse reject
+//        the whole row silently. The column is `text` now, so arbitrary
+//        client-supplied trace ids must survive verbatim.
+//
+// #37 (an aggregate alias shadowing a column name broke the WHERE clause) has
+// no Postgres counterpart: an output alias never resolves in WHERE there, so
+// no invariant is left for application code to hold. Deliberately not
+// retargeted.
+
+describe('Postgres write path — gotcha #18 (timestamps) and #34 (trace ids)', () => {
+  beforeEach(() => {
+    mockPgExecute.mockClear()
+    mockPgExecute.mockResolvedValue(1)
+    mockPgQuery.mockClear()
+    mockPgQuery.mockResolvedValue([])
+  })
+
+  function boundRow(): Record<string, unknown> {
+    const call = mockPgExecute.mock.calls[0]?.[0] as
+      | { query: string; params: Record<string, unknown> }
+      | undefined
+    if (!call) throw new Error('pgExecute was not called')
+    return call.params
+  }
+
+  it('[#18] stamps created_at as plain ISO-8601 with Z, with no reformatting', async () => {
+    const { logRequestAsync } = await import('../lib/logger.js')
+
+    await logRequestAsync({
+      organizationId: 'org-1', projectId: 'p-1', apiKeyId: 'k-1',
+      provider: 'openai', model: 'gpt-4o',
+      promptTokens: 0, completionTokens: 0, totalTokens: 0,
+      costUsd: null, latencyMs: 10, statusCode: 200,
+      requestBody: null, responseBody: null, errorMessage: null,
+      traceId: null, spanId: null,
+    })
+
+    const createdAt = boundRow()['created_at'] as string
+    // Pin the exact shape: a reformat sneaking back in would push a
+    // timezone-less, local-looking timestamp into a timestamptz column, where
+    // it would be read in the session timezone instead of UTC.
+    expect(createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/)
+    expect(createdAt).not.toMatch(/^\d{4}-\d{2}-\d{2} /)
+    expect(Number.isNaN(new Date(createdAt).getTime())).toBe(false)
+  })
+
+  it('[#34] a non-UUID trace_id round-trips instead of destroying the row', async () => {
+    const { logRequestAsync } = await import('../lib/logger.js')
+
+    // OTLP hex ids, customer-generated correlation keys, anything at all: the
+    // column is `text`, and this layer stores what it is handed. Filtering by
+    // shape belongs at the proxy boundary (proxy/shared/log-base.ts), not
+    // here, where dropping a value would take the whole row with it.
+    await logRequestAsync({
+      organizationId: 'org-1', projectId: 'p-1', apiKeyId: 'k-1',
+      provider: 'openai', model: 'gpt-4o',
+      promptTokens: 0, completionTokens: 0, totalTokens: 0,
+      costUsd: null, latencyMs: 10, statusCode: 200,
+      requestBody: null, responseBody: null, errorMessage: null,
+      traceId: '4bf92f3577b34da6a3ce929d0e0e4736', spanId: 'not-a-uuid-either',
+    })
+
+    expect(mockPgExecute).toHaveBeenCalledOnce()
+    const row = boundRow()
+    expect(row['trace_id']).toBe('4bf92f3577b34da6a3ce929d0e0e4736')
+    expect(row['span_id']).toBe('not-a-uuid-either')
+  })
+})
+
+describe('[#19] driver returns numeric / int8 as strings', () => {
+  const SCOPE = {
+    whereScope:
+      'organization_id = {orgId} AND created_at >= now() - make_interval(days => {retentionDays})',
+    scopeParams: { orgId: 'org-1', retentionDays: 14 },
+    plan: 'free',
+  } as const
+
+  beforeEach(() => {
+    mockPgQuery.mockReset()
+  })
+
+  it('countRequests coerces a string-encoded count(*) to a number', async () => {
+    const { countRequests } = await import('../lib/requests-query.js')
+    // `count(*)` is int8. node-postgres deliberately leaves it a string rather
+    // than risk losing precision past 2^53, exactly as JSONEachRow did.
+    mockPgQuery.mockResolvedValue([{ n: '4200' }])
+
+    const n = await countRequests({ scope: SCOPE })
+    expect(n).toBe(4200)
+    expect(typeof n).toBe('number')
+  })
+
+  it('the hazard is real: arithmetic on the raw value concatenates', () => {
+    // Pins WHY the coercion has to happen at the boundary. `"4200" + 1` is
+    // "42001", and nothing downstream would notice.
+    const raw: unknown = '4200'
+    expect((raw as string) + 1).toBe('42001')
+    expect(Number(raw) + 1).toBe(4201)
+  })
+
+  it('an empty result set counts as 0 rather than NaN', async () => {
+    const { countRequests } = await import('../lib/requests-query.js')
+    mockPgQuery.mockResolvedValue([])
+    expect(await countRequests({ scope: SCOPE })).toBe(0)
+  })
+})
+
+describe('[#20] literal substring search, never ILIKE', () => {
+  // Source guard. The behaviour it protects only shows up against a real
+  // database (ILIKE and position() differ solely on `%` / `_` in the caller's
+  // term), and a mocked query would happily accept either — so the assertion
+  // is on the SQL the request handlers assemble.
+  //
+  // Why it matters: `/requests?model=gpt_4o` under ILIKE matches `gpt-4o`,
+  // `gpt.4o`, `gptX4o`. `/users?search=100%` under ILIKE matches every user id
+  // beginning with "100". Both are silent wrong-result bugs, not errors.
+  const FILES = [
+    '../api/requests.ts',
+    '../api/exports.ts',
+    '../lib/stats-queries.ts',
+  ] as const
+
+  async function readSource(rel: string): Promise<string> {
+    const { readFile } = await import('node:fs/promises')
+    const { fileURLToPath } = await import('node:url')
+    return readFile(fileURLToPath(new URL(rel, import.meta.url)), 'utf8')
+  }
+
+  it('the requests-table filters use position(lower(…) in lower(…))', async () => {
+    const requests = await readSource('../api/requests.ts')
+    const exportsSrc = await readSource('../api/exports.ts')
+    const stats = await readSource('../lib/stats-queries.ts')
+
+    expect(requests).toContain('position(lower({model}) in lower(model)) > 0')
+    expect(exportsSrc).toContain('position(lower({model}) in lower(model)) > 0')
+    expect(stats).toContain('position(lower({search}) in lower(user_id)) > 0')
+    expect(stats).toContain('position(lower({search}) in lower(session_id)) > 0')
+  })
+
+  it('no requests-table filter fragment is built with ILIKE', async () => {
+    for (const rel of FILES) {
+      const src = await readSource(rel)
+      const offenders = src
+        .split('\n')
+        .filter((line) => /filters\.push\(/.test(line) && /ilike/i.test(line))
+      expect(offenders).toEqual([])
+    }
+  })
+
+  it('a search term containing % or _ is a bound value, not a pattern', async () => {
+    const { toPositional } = await import('../lib/postgres.js')
+    // The wildcard characters never reach the statement, so nothing can
+    // interpret them.
+    const { text, values } = toPositional(
+      'SELECT id FROM requests WHERE position(lower({model}) in lower(model)) > 0',
+      { model: 'gpt_4o%' },
+    )
+    expect(text).toContain('position(lower($1) in lower(model)) > 0')
+    expect(text).not.toContain('%')
+    expect(values).toEqual(['gpt_4o%'])
   })
 })
 

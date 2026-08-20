@@ -2,16 +2,11 @@
  * Static SVG diagrams used across /docs pages.
  *
  * Server-renderable (no 'use client'). Each component is a self-contained
- * <figure> with caption — drop into a docs page wherever conceptual
+ * <figure> with caption. Drop one into a docs page wherever conceptual
  * visualization helps.
  *
- * Color tokens mirror the docs prose theme:
- *   accent           : #c2410c (orange-700)  — primary edges + labels
- *   accent-bg        : #fef2e8                — accent highlight blocks
- *   border           : #e7e2da                — neutral box outlines
- *   text             : #1c1a17                — body text
- *   text-muted       : #6b6056                — secondary labels
- *   text-faint       : #9a9189                — captions
+ * Colors come from the design tokens as `var()` references (see COLORS below),
+ * so the diagrams repaint with the theme instead of staying light-mode-only.
  */
 
 interface FigureProps {
@@ -32,14 +27,19 @@ function Figure({ caption, children }: FigureProps) {
   )
 }
 
+/**
+ * SVG paint accepts custom properties, so handing these straight to `fill` and
+ * `stroke` keeps the diagrams on the token palette and theme-aware. Keep every
+ * entry a `var()` reference.
+ */
 const COLORS = {
-  accent: '#c2410c',
-  accentBg: '#fef2e8',
-  border: '#d6cfc4',
-  borderStrong: '#a89c8d',
-  text: '#1c1a17',
-  textMuted: '#6b6056',
-  bg: '#fbfaf7',
+  accent: 'var(--accent)',
+  accentBg: 'var(--accent-bg)',
+  border: 'var(--border)',
+  borderStrong: 'var(--border-strong)',
+  text: 'var(--text)',
+  textMuted: 'var(--text-muted)',
+  bg: 'var(--bg-elev)',
 }
 
 function Box({
@@ -119,7 +119,7 @@ function ArrowDefs() {
 
 export function QuickStartFlowDiagram() {
   return (
-    <Figure caption="Spanlens sits between your app and the LLM provider. Logging happens out-of-band via Vercel waitUntil, so it adds 10–50 ms — never blocks the response.">
+    <Figure caption="Spanlens sits between your app and the LLM provider. Logging happens out-of-band via Vercel waitUntil, so it adds 10 to 50 ms and never blocks the response.">
       <svg viewBox="0 0 620 220" className="w-full h-auto" role="img" aria-label="SDK integration flow">
         <ArrowDefs />
         <Box x={20} y={70} w={130} h={56} label="Your app" sub="@spanlens/sdk" />
@@ -127,7 +127,7 @@ export function QuickStartFlowDiagram() {
         <Box x={400} y={70} w={180} h={56} label="OpenAI / Anthropic" sub="Gemini / Azure" />
         <Arrow x1={150} y1={98} x2={200} y2={98} label="sl_live_…" />
         <Arrow x1={350} y1={98} x2={400} y2={98} label="real key" />
-        <Box x={200} y={160} w={150} h={42} label="ClickHouse" sub="fire-and-forget" fill={COLORS.accentBg} stroke={COLORS.accent} textColor={COLORS.accent} />
+        <Box x={200} y={160} w={150} h={42} label="Postgres" sub="fire-and-forget" fill={COLORS.accentBg} stroke={COLORS.accent} textColor={COLORS.accent} />
         <Arrow x1={275} y1={126} x2={275} y2={160} label="log" color={COLORS.accent} />
         <Box x={400} y={160} w={180} h={42} label="/requests dashboard" />
         <Arrow x1={350} y1={181} x2={400} y2={181} dashed />
@@ -174,7 +174,7 @@ export function OtelMappingDiagram() {
 
 export function SelfHostArchitectureDiagram() {
   return (
-    <Figure caption="Self-host topology: web + server containers behind your reverse proxy, with Supabase (Postgres) and ClickHouse as external data stores.">
+    <Figure caption="Self-host topology: web + server containers behind your reverse proxy, with Supabase Postgres as the external data store.">
       <svg viewBox="0 0 620 320" className="w-full h-auto" role="img" aria-label="Self-host architecture">
         <ArrowDefs />
         {/* Reverse proxy */}
@@ -185,11 +185,10 @@ export function SelfHostArchitectureDiagram() {
         <Box x={200} y={75} w={210} h={56} label="apps/web" sub="Next.js · :3000" />
         <Box x={200} y={155} w={210} h={56} label="apps/server" sub="Hono · :3001" />
         <Arrow x1={305} y1={131} x2={305} y2={155} />
-        {/* External data */}
-        <Box x={470} y={75} w={130} h={56} label="Supabase" sub="auth + OLTP" />
-        <Box x={470} y={155} w={130} h={56} label="ClickHouse" sub="requests OLAP" />
-        <Arrow x1={410} y1={103} x2={470} y2={103} />
-        <Arrow x1={410} y1={183} x2={470} y2={183} />
+        {/* External data: one store, reached by both containers */}
+        <Box x={470} y={131} w={130} h={56} label="Supabase" sub="auth + data" />
+        <Arrow x1={410} y1={103} x2={470} y2={145} />
+        <Arrow x1={410} y1={183} x2={470} y2={173} />
         {/* Client */}
         <Box x={20} y={30} w={120} h={50} label="Browser" sub="HTTPS" />
         <Arrow x1={80} y1={80} x2={80} y2={130} />
@@ -219,7 +218,7 @@ export function TraceWaterfallDiagram() {
   const ORIGIN_X = 250
   const scale = (s: number) => (s / 1.8) * W
   return (
-    <Figure caption="Illustrative agent trace: answer-question (parent) fans out to retrieve, generate, and rerank in parallel. The Critical Path (orange) traces the longest dependency chain — answer-question → generate → openai.chat — which is what sets the total wall-clock time. Off-critical spans (grey) can be optimized but won't shorten total latency.">
+    <Figure caption="Illustrative agent trace: answer-question (parent) fans out to retrieve, generate, and rerank in parallel. The Critical Path (orange) traces the longest dependency chain (answer-question → generate → openai.chat), which is what sets the total wall-clock time. Off-critical spans (grey) can be optimized but won't shorten total latency.">
       <svg viewBox="0 0 880 380" className="w-full h-auto" role="img" aria-label="Trace waterfall">
         <ArrowDefs />
         {/* Time axis */}
@@ -262,7 +261,7 @@ export function AlertLoopDiagram() {
       <svg viewBox="0 0 620 140" className="w-full h-auto" role="img" aria-label="Alert evaluation loop">
         <ArrowDefs />
         <Box x={20} y={45} w={110} h={50} label="Cron tick" sub="every 60s" />
-        <Box x={170} y={45} w={130} h={50} label="Query metrics" sub="ClickHouse" />
+        <Box x={170} y={45} w={130} h={50} label="Query metrics" sub="Postgres" />
         <Box x={330} y={45} w={130} h={50} label="Compare threshold" sub="N consecutive?" />
         <Box x={495} y={45} w={110} h={50} label="Fire" sub="webhook + email" fill={COLORS.accentBg} stroke={COLORS.accent} textColor={COLORS.accent} />
         <Arrow x1={130} y1={70} x2={170} y2={70} />

@@ -40,21 +40,23 @@ const DEMO_CACHE_SAVINGS = {
   cacheHitRequests: 3124,
 } as const
 
+/** Occupies a fixed slot in the stat row, same as the live cache-savings tile. */
 function DemoCacheSavingsCard() {
   const data = DEMO_CACHE_SAVINGS
   return (
-    <div className="border-b border-border bg-good/5 px-[22px] py-[12px] shrink-0">
-      <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-good mb-1">
-        Prompt caching
+    <div className="rounded-card border border-border bg-bg-elev shadow-card px-5 py-[18px]">
+      <div className="font-mono text-[10.5px] uppercase tracking-[0.1em] text-text-faint">
+        Cache savings
       </div>
-      <p className="text-[14px] font-medium text-text">
-        Prompt caching saved you <span className="text-good">{fmtUsd(data.savingsUsd)}</span> this month
-      </p>
-      <p className="text-[12px] text-text-faint mt-1 leading-relaxed">
-        Estimated from {fmtTokenCount(data.cacheReadTokens)} cached input tokens across{' '}
-        {data.cacheHitRequests.toLocaleString('en-US')} requests. Cached tokens are billed at a
-        discounted rate instead of the full input price.
-      </p>
+      <div className="font-display text-[22px] track-h3 leading-[1.05] text-text mt-[7px]">
+        {fmtUsd(data.savingsUsd)}
+      </div>
+      <div
+        className="text-[11.5px] font-medium text-good mt-[7px]"
+        title={`Estimated from ${fmtTokenCount(data.cacheReadTokens)} cached input tokens across ${data.cacheHitRequests.toLocaleString('en-US')} requests. Cached tokens are billed at a discounted rate instead of the full input price.`}
+      >
+        already realised this month
+      </div>
     </div>
   )
 }
@@ -169,7 +171,7 @@ function SelectControl<T extends string>({
     <select
       value={value}
       onChange={(e) => onChange(e.target.value as T)}
-      className="font-mono text-[10.5px] text-text-muted px-[8px] py-[3px] border border-border rounded-[4px] bg-bg hover:border-border-strong transition-colors appearance-none cursor-pointer"
+      className="rounded-md border border-border bg-bg-elev px-3 py-2 text-[12.5px] font-medium text-text hover:bg-bg-muted transition-colors appearance-none cursor-pointer"
     >
       {options.map((o) => (
         <option key={o.value} value={o.value}>{o.label}</option>
@@ -467,131 +469,139 @@ function RecRow({
     : null
 
   return (
-    <div
-      className="border-b border-border hover:bg-bg-elev transition-colors"
-      style={{
-        display: 'grid',
-        gridTemplateColumns: '1.7fr 170px 130px 150px 120px',
-        gap: 16,
-        alignItems: 'center',
-        padding: '14px 22px',
-        minWidth: '700px',
-      }}
+    <article
+      className={cn(
+        'rounded-card border bg-bg-elev shadow-card px-5 py-[18px] transition-colors',
+        // Low-confidence rows keep the faint left rule so the visual signal
+        // matches the badge state without yelling at the user.
+        !isAchieved && conf === 'low' ? 'border-l-2 border-l-track border-border' : 'border-border',
+        isHidden && 'opacity-70',
+      )}
     >
-      {/* Title + from/to */}
-      <div className="min-w-0">
-        <div className="flex items-center gap-2 mb-1 flex-wrap">
+      <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
+            <span className={cn('text-[13.5px] font-semibold truncate', isHidden ? 'text-text-muted' : 'text-text')}>
+              {r.suggestedProvider} / {r.suggestedModel}
+            </span>
+            <span
+              className={cn(
+                'inline-flex items-center rounded-full px-2 py-[3px] font-mono text-[10.5px]',
+                isAchieved
+                  ? 'bg-good-bg text-good'
+                  : conf === 'high'
+                    ? 'bg-good-bg text-good'
+                    : conf === 'medium'
+                      ? 'bg-bg-chip text-text-muted'
+                      : 'bg-bg-chip text-text-faint',
+              )}
+              title={CONFIDENCE_CRITERIA[conf]}
+            >
+              {isAchieved ? 'achieved' : `${conf} confidence`}
+            </span>
+            {isHidden && (
+              <span className="inline-flex items-center rounded-full bg-bg-chip px-2 py-[3px] font-mono text-[10.5px] text-text-faint">
+                hidden
+              </span>
+            )}
+          </div>
+          <div className="font-mono text-[12px] text-text-faint flex flex-wrap items-center gap-2 mt-1.5">
+            <span className="line-through">{r.currentProvider} / {r.currentModel}</span>
+            <span>→</span>
+            <span className={cn(isHidden ? 'text-text-faint' : 'text-text-muted')}>
+              {r.suggestedProvider} / {r.suggestedModel}
+            </span>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3 shrink-0">
           {isAchieved ? (
-            <span className="font-mono text-[9px] px-[6px] py-[1px] rounded-[3px] border uppercase tracking-[0.04em] border-good/40 bg-good/10 text-good">
-              ACHIEVED
-            </span>
+            <div className="text-right">
+              <div className="font-display text-[20px] track-h3 leading-[1.05] text-good">
+                {r.actualMonthlySavingsUsd != null ? fmtUsd(r.actualMonthlySavingsUsd) : '—'} / month
+              </div>
+              <div className="font-mono text-[11px] text-text-faint mt-1">
+                est. {fmtUsd(r.estimatedMonthlySavingsUsd)} projected
+              </div>
+            </div>
           ) : (
-            <span className={cn(
-              'font-mono text-[9px] px-[6px] py-[1px] rounded-[3px] border uppercase tracking-[0.04em]',
-              isHidden
-                ? 'border-border bg-bg text-text-faint'
-                : 'border-accent-border bg-accent-bg text-accent',
-            )}>
-              SWAP
-            </span>
+            <div className="text-right">
+              <div className={cn('font-display text-[20px] track-h3 leading-[1.05]', isHidden ? 'text-text-muted' : 'text-good')}>
+                {fmtUsd(r.estimatedMonthlySavingsUsd)} / month
+              </div>
+              <div className="font-mono text-[11px] text-text-faint mt-1">
+                was {fmtUsd(r.totalCostUsdLastNDays)} /{windowLabel}
+              </div>
+            </div>
           )}
-          <span className={cn('text-[13.5px] font-medium truncate', isHidden ? 'text-text-muted' : 'text-text')}>
-            {r.currentProvider} / {r.currentModel} → {r.suggestedProvider} / {r.suggestedModel}
-          </span>
-        </div>
-        <div className="font-mono text-[11.5px] text-text-muted flex items-center gap-2 flex-wrap">
-          <span className="text-text-faint line-through">{r.currentProvider} / {r.currentModel}</span>
-          <span className="text-text-faint">→</span>
-          <span className={cn(isHidden ? 'text-text-faint' : 'text-text')}>{r.suggestedProvider} / {r.suggestedModel}</span>
-        </div>
-        <p className="text-[12px] text-text-faint mt-1 leading-relaxed">{r.reason}</p>
-        {isAchieved && dropPct !== null && (
-          <p className="font-mono text-[10.5px] text-good mt-1">
-            usage dropped {fmtPct(dropPct)} vs prior {windowLabel}
-          </p>
-        )}
-      </div>
 
-      {/* Savings */}
-      <div>
-        {isAchieved ? (
-          <>
-            <div className="font-mono text-[10px] text-text-faint uppercase tracking-[0.03em] mb-[3px]">ACTUAL / MO</div>
-            <div className="font-mono text-[18px] font-medium tracking-[-0.3px] text-good">
-              {r.actualMonthlySavingsUsd != null ? fmtUsd(r.actualMonthlySavingsUsd) : '—'}
-            </div>
-            <div className="font-mono text-[10.5px] text-text-faint mt-0.5">
-              est. {fmtUsd(r.estimatedMonthlySavingsUsd)} projected
-            </div>
-          </>
-        ) : (
-          <>
-            <div className="font-mono text-[10px] text-text-faint uppercase tracking-[0.03em] mb-[3px]">SAVE / MO</div>
-            <div className={cn('font-mono text-[18px] font-medium tracking-[-0.3px]', isHidden ? 'text-text-muted' : 'text-accent')}>
-              {fmtUsd(r.estimatedMonthlySavingsUsd)}
-            </div>
-            <div className="font-mono text-[10.5px] text-text-faint mt-0.5">
-              was {fmtUsd(r.totalCostUsdLastNDays)} /{windowLabel}
-            </div>
-          </>
-        )}
-      </div>
-
-      {/* Samples */}
-      <div>
-        <div className="font-mono text-[10px] text-text-faint uppercase tracking-[0.03em] mb-[3px]">SAMPLES</div>
-        <div className={cn('text-[12.5px]', isHidden ? 'text-text-muted' : 'text-text')}>{r.sampleCount.toLocaleString('en-US')}</div>
-        <div className="font-mono text-[10.5px] text-text-faint mt-0.5">~{Math.round(r.avgCompletionTokens)} output tk</div>
-      </div>
-
-      {/* Confidence */}
-      <div>
-        <div className="font-mono text-[10px] text-text-faint uppercase tracking-[0.03em] mb-[5px]">CONFIDENCE</div>
-        <ConfidenceBar level={conf} />
-        <div className="font-mono text-[10.5px] text-text-faint mt-1" title={CONFIDENCE_CRITERIA[conf]}>
-          {conf === 'high' ? '≥$40/mo · ≥100 req' : conf === 'medium' ? '≥$10/mo · ≥30 req' : `${r.sampleCount} req · <30 or <$10/mo`}
+          <div className="flex items-center gap-2 flex-wrap justify-end">
+            {!isAchieved && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => onCompare(r)}
+                  className="rounded-full border border-border bg-bg-elev px-3.5 py-2 text-[12px] font-medium text-text hover:bg-bg-muted transition-colors"
+                >
+                  Compare
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onSimulate(r)}
+                  className="rounded-full bg-text px-3.5 py-2 text-[12px] font-medium text-bg hover:opacity-90 transition-opacity"
+                >
+                  Simulate
+                </button>
+              </>
+            )}
+            {isHidden ? (
+              <button
+                type="button"
+                onClick={() => onUnhide(r)}
+                className="rounded-full border border-border bg-bg-elev px-3.5 py-2 text-[12px] font-medium text-text hover:bg-bg-muted transition-colors"
+              >
+                Unhide
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => onDismiss(r)}
+                className="rounded-full border border-border bg-bg-elev px-3.5 py-2 text-[12px] font-medium text-text hover:bg-bg-muted transition-colors"
+              >
+                Hide
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
-      {/* Actions */}
-      <div className="flex justify-end gap-1.5 flex-wrap">
-        {!isAchieved && (
-          <>
-            <button
-              type="button"
-              onClick={() => onCompare(r)}
-              className="font-mono text-[10.5px] text-text-muted px-[10px] py-[4px] border border-border rounded-[5px] hover:text-text transition-colors"
-            >
-              Compare
-            </button>
-            <button
-              type="button"
-              onClick={() => onSimulate(r)}
-              className="font-mono text-[10.5px] text-text-muted px-[10px] py-[4px] border border-border rounded-[5px] hover:text-text transition-colors"
-            >
-              Simulate
-            </button>
-          </>
-        )}
-        {isHidden ? (
-          <button
-            type="button"
-            onClick={() => onUnhide(r)}
-            className="font-mono text-[10.5px] text-text-muted px-[10px] py-[4px] border border-border rounded-[5px] hover:text-text transition-colors"
-          >
-            Unhide
-          </button>
-        ) : (
-          <button
-            type="button"
-            onClick={() => onDismiss(r)}
-            className="font-mono text-[10.5px] text-text-muted px-[10px] py-[4px] border border-border rounded-[5px] hover:text-text transition-colors"
-          >
-            Hide
-          </button>
-        )}
+      <p className="text-[12.5px] text-text-muted leading-relaxed mt-2.5">{r.reason}</p>
+      {isAchieved && dropPct !== null && (
+        <p className="font-mono text-[11.5px] text-good mt-1.5">
+          usage dropped {fmtPct(dropPct)} vs prior {windowLabel}
+        </p>
+      )}
+
+      <div className="flex flex-wrap items-end gap-x-10 gap-y-3 mt-4 pt-4 border-t border-border">
+        <div>
+          <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-text-faint mb-1.5">Samples</div>
+          <div className="font-mono text-[12px] text-text">
+            {r.sampleCount.toLocaleString('en-US')}
+            <span className="text-text-faint"> · ~{Math.round(r.avgCompletionTokens)} output tk</span>
+          </div>
+        </div>
+        <div>
+          <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-text-faint mb-1.5">Confidence</div>
+          <ConfidenceBar level={conf} />
+        </div>
+        <div>
+          <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-text-faint mb-1.5">Threshold</div>
+          <div className="font-mono text-[12px] text-text-muted" title={CONFIDENCE_CRITERIA[conf]}>
+            {conf === 'high' ? '≥$40/mo · ≥100 req' : conf === 'medium' ? '≥$10/mo · ≥30 req' : `${r.sampleCount} req · <30 or <$10/mo`}
+          </div>
+        </div>
       </div>
-    </div>
+    </article>
   )
 }
 
@@ -643,191 +653,171 @@ export default function DemoSavingsPage() {
 
   const simPercentileData = simRec ? (DEMO_PERCENTILES.get(demoPercentileKey(simRec)) ?? null) : null
 
-  const statTiles = [
-    {
-      label: `Spend · ${windowLabel}`,
-      value: totalSpend > 0 ? fmtUsd(totalSpend) : '—',
-      delta: 'analyzed models',
-      good: false,
-    },
-    {
-      label: 'Open',
-      value: String(openAll.length),
-      delta: 'model swaps',
-      good: false,
-    },
-    {
-      label: achieved.length > 0 ? 'Achieved' : (bestConfLevel ? `${bestConfLevel.charAt(0).toUpperCase() + bestConfLevel.slice(1)} conf.` : 'Confidence'),
-      value: achieved.length > 0 ? fmtUsd(totalAchieved) : (bestConfLevel !== null ? String(bestConfCount) : '—'),
-      delta: achieved.length > 0 ? `${achieved.length} swap${achieved.length > 1 ? 's' : ''} adopted` : (bestConfLevel ? bestConfLabel[bestConfLevel] : 'no recommendations yet'),
-      good: achieved.length > 0 || bestConfLevel === 'high',
-    },
-  ] as const
-
   return (
-    <div className="-mx-4 -my-4 md:-mx-8 md:-my-7 flex flex-col h-screen overflow-hidden bg-bg">
-      <Topbar
-        crumbs={[{ label: 'Demo', href: '/demo/dashboard' }, { label: 'Savings' }]}
-        right={
-          <div className="flex items-center gap-2">
-            <DemoExportButton
-              base="savings"
-              rows={notDismissed}
-              columns={[
-                { header: 'Current model', value: (r: ModelRecommendation) => `${r.currentProvider}/${r.currentModel}` },
-                { header: 'Suggested model', value: (r: ModelRecommendation) => `${r.suggestedProvider}/${r.suggestedModel}` },
-                { header: 'Est. monthly savings USD', value: (r: ModelRecommendation) => r.estimatedMonthlySavingsUsd.toFixed(2) },
-                { header: 'Sample count', value: (r: ModelRecommendation) => r.sampleCount },
-                { header: 'Cost last N days USD', value: (r: ModelRecommendation) => r.totalCostUsdLastNDays.toFixed(2) },
-              ]}
-            />
-            <a
-              href="/signup"
-              className="hidden sm:inline font-mono text-[11px] px-[10px] py-[3px] rounded-[5px] bg-text text-bg hover:opacity-90 transition-opacity"
-            >
-              Start free →
-            </a>
-            <div className="flex items-center gap-1">
-              {WINDOW_OPTIONS.map((opt) => (
-                <button
-                  key={opt.hours}
-                  type="button"
-                  onClick={() => setHours(opt.hours)}
-                  className={cn(
-                    'font-mono text-[11px] px-[8px] py-[3px] rounded-[4px] transition-colors',
-                    hours === opt.hours
-                      ? 'bg-bg-elev text-text border border-border-strong'
-                      : 'text-text-faint hover:text-text',
-                  )}
-                >
-                  {opt.label}
-                </button>
-              ))}
-              <span className="hidden sm:inline font-mono text-[11px] text-text-muted ml-1.5">
-                Analysis window
-              </span>
+    <>
+      {/* The topbar is the only full-bleed row: it cancels the padding the
+          demo layout applies so its hairline spans the whole main column.
+          Everything below sits flush inside that padding. */}
+      <div className="sticky top-0 z-20 -mx-4 -mt-4 md:-mx-7 md:-mt-5 bg-bg">
+        <Topbar
+          crumbs={[{ label: 'Demo', href: '/demo/dashboard' }, { label: 'Savings' }]}
+          right={
+            <div className="flex items-center gap-2">
+              <DemoExportButton
+                base="savings"
+                rows={notDismissed}
+                columns={[
+                  { header: 'Current model', value: (r: ModelRecommendation) => `${r.currentProvider}/${r.currentModel}` },
+                  { header: 'Suggested model', value: (r: ModelRecommendation) => `${r.suggestedProvider}/${r.suggestedModel}` },
+                  { header: 'Est. monthly savings USD', value: (r: ModelRecommendation) => r.estimatedMonthlySavingsUsd.toFixed(2) },
+                  { header: 'Sample count', value: (r: ModelRecommendation) => r.sampleCount },
+                  { header: 'Cost last N days USD', value: (r: ModelRecommendation) => r.totalCostUsdLastNDays.toFixed(2) },
+                ]}
+              />
+              <a
+                href="/signup"
+                className="hidden sm:inline rounded-full bg-text px-3.5 py-2 text-[12px] font-medium text-bg hover:opacity-90 transition-opacity"
+              >
+                Start free →
+              </a>
             </div>
+          }
+        />
+        <h1 className="sr-only">Savings</h1>
+      </div>
+
+      {/* 20px above the first row, 16px between rows, per the Figma content
+          frame. Side and bottom gutters come from the demo layout. */}
+      <div className="pt-4 md:pt-5 space-y-4">
+        {/* Filter bar: analysis window as a segmented control, then the sort
+            and filter selects, matching D9. */}
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="inline-flex items-center gap-0.5 rounded-full bg-bg-chip p-[3px]">
+            {WINDOW_OPTIONS.map((opt) => (
+              <button
+                key={opt.hours}
+                type="button"
+                aria-pressed={hours === opt.hours}
+                title={`Analysis window: last ${opt.label}`}
+                onClick={() => setHours(opt.hours)}
+                className={cn(
+                  'rounded-full px-[11px] py-[5px] text-[12px] font-medium transition-colors',
+                  hours === opt.hours ? 'bg-bg-elev text-text shadow-card' : 'text-text-faint hover:text-text',
+                )}
+              >
+                {opt.label}
+              </button>
+            ))}
           </div>
-        }
-      />
 
-      {/* Prompt caching savings — passive savings already earned this month,
-          shown above the actionable model-swap recommendations. */}
-      <DemoCacheSavingsCard />
+          <SelectControl<SortKey>
+            value={sortFilter.sortKey}
+            onChange={updateSort}
+            options={[
+              { value: 'savings',    label: 'Sort: Savings' },
+              { value: 'confidence', label: 'Sort: Confidence' },
+              { value: 'name',       label: 'Sort: Name' },
+            ]}
+          />
+          <SelectControl<ProviderFilter>
+            value={sortFilter.filterProvider}
+            onChange={updateFilterProvider}
+            options={[
+              { value: 'all',       label: 'Provider: All' },
+              { value: 'openai',    label: 'OpenAI' },
+              { value: 'anthropic', label: 'Anthropic' },
+              { value: 'gemini',    label: 'Gemini' },
+            ]}
+          />
+          <SelectControl<ConfFilter>
+            value={sortFilter.filterConf}
+            onChange={updateFilterConf}
+            options={[
+              { value: 'all',    label: 'Conf: All' },
+              { value: 'high',   label: 'High' },
+              { value: 'medium', label: 'Medium' },
+              { value: 'low',    label: 'Low' },
+            ]}
+          />
 
-      {/* Hero strip */}
-      <div className="overflow-x-auto shrink-0 border-b border-border">
-        <div className="grid min-w-[700px]" style={{ gridTemplateColumns: '1.25fr 1fr 1fr 1fr' }}>
-          {/* Hero tile */}
-          <div className="px-[16px] py-[16px] bg-bg-elev border-r border-border">
-            <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-2">
-              Potential savings · next 30d
-            </div>
-            <div className="flex items-baseline gap-2 mb-1.5">
-              <span className={cn('font-medium leading-none tracking-[-1.6px]',
-                totalOpen > 0 ? 'text-[40px] text-accent' : 'text-[30px] text-text-faint')}>
-                {totalOpen > 0 ? fmtUsd(totalOpen) : '—'}
-              </span>
-              <span className="font-mono text-[10px] text-text-muted">/ mo</span>
-            </div>
-            <div className="font-mono text-[10px] text-text-muted mb-1.5">
-              across <span className="text-text">{openAll.length}</span> recommendations
-              {bestConfLevel !== null && (
-                <>
-                  {' '}·{' '}
-                  <span className={cn(bestConfLevel === 'high' ? 'text-good' : bestConfLevel === 'medium' ? 'text-text' : 'text-text-faint')}>
-                    {bestConfCount}
-                  </span>{' '}
-                  <span className="text-text-faint">{bestConfLevel}-confidence</span>
-                </>
+          {dismissed.size > 0 && (
+            <button
+              type="button"
+              aria-pressed={showHidden}
+              onClick={() => setShowHidden((v) => !v)}
+              className={cn(
+                'rounded-full border px-3.5 py-2 text-[12px] font-medium transition-colors',
+                showHidden
+                  ? 'border-border-strong bg-bg-muted text-text'
+                  : 'border-border bg-bg-elev text-text hover:bg-bg-muted',
               )}
+            >
+              {showHidden ? 'Hide hidden' : `Show hidden · ${dismissed.size}`}
+            </button>
+          )}
+
+          <span className="ml-auto hidden sm:inline font-mono text-[11px] text-text-faint whitespace-nowrap">
+            {sortLabel}
+          </span>
+        </div>
+
+        {/* Stat cards: found savings, passive cache savings, analysed spend,
+            then the open / applied counters. */}
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+          <div className="rounded-card border border-border bg-bg-elev shadow-card px-5 py-[18px]">
+            <div className="font-mono text-[10.5px] uppercase tracking-[0.1em] text-text-faint">
+              Monthly savings found
             </div>
-            {highConf.length > 0 && (
-              <div className="font-mono text-[10px] text-good mb-0.5">
-                {fmtUsd(highConf.reduce((s, r) => s + r.estimatedMonthlySavingsUsd, 0))} / mo high-conf
-              </div>
-            )}
-            {totalAchieved > 0 && (
-              <div className="font-mono text-[10px] text-good">
-                {fmtUsd(totalAchieved)} / mo achieved ✓
-              </div>
-            )}
+            <div className={cn('font-display text-[22px] track-h3 leading-[1.05] mt-[7px]', totalOpen > 0 ? 'text-text' : 'text-text-faint')}>
+              {totalOpen > 0 ? fmtUsd(totalOpen) : '—'}
+            </div>
+            <div className={cn('text-[11.5px] font-medium mt-[7px]', totalOpen > 0 ? 'text-accent' : 'text-text-faint')}>
+              across {openAll.length} open recommendation{openAll.length === 1 ? '' : 's'}
+              {highConf.length > 0 && ` · ${fmtUsd(highConf.reduce((sum, r) => sum + r.estimatedMonthlySavingsUsd, 0))} high confidence`}
+            </div>
           </div>
 
-          {statTiles.map((s, i) => (
-            <div key={s.label} className={cn('px-[16px] py-[16px]', i < 2 && 'border-r border-border')}>
-              <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-2">{s.label}</div>
-              <div className={cn('text-[28px] font-medium leading-none tracking-[-0.8px]', s.good ? 'text-good' : 'text-text')}>
+          <DemoCacheSavingsCard />
+
+          <div className="rounded-card border border-border bg-bg-elev shadow-card px-5 py-[18px]">
+            <div className="font-mono text-[10.5px] uppercase tracking-[0.1em] text-text-faint">
+              Spend · {windowLabel}
+            </div>
+            <div className="font-display text-[22px] track-h3 leading-[1.05] text-text mt-[7px]">
+              {totalSpend > 0 ? fmtUsd(totalSpend) : '—'}
+            </div>
+            <div className="text-[11.5px] font-medium text-text-faint mt-[7px]">analysed models</div>
+          </div>
+
+          {[
+            {
+              label: 'Open',
+              value: String(openAll.length),
+              note: 'model swaps',
+              good: false,
+            },
+            {
+              label: achieved.length > 0 ? 'Applied' : (bestConfLevel ? `${bestConfLevel.charAt(0).toUpperCase() + bestConfLevel.slice(1)} conf.` : 'Confidence'),
+              value: achieved.length > 0 ? fmtUsd(totalAchieved) : (bestConfLevel !== null ? String(bestConfCount) : '—'),
+              note: achieved.length > 0 ? `${achieved.length} swap${achieved.length > 1 ? 's' : ''} adopted` : (bestConfLevel ? bestConfLabel[bestConfLevel] : 'no recommendations yet'),
+              good: achieved.length > 0 || bestConfLevel === 'high',
+            },
+          ].map((s) => (
+            <div key={s.label} className="rounded-card border border-border bg-bg-elev shadow-card px-5 py-[18px]">
+              <div className="font-mono text-[10.5px] uppercase tracking-[0.1em] text-text-faint">{s.label}</div>
+              <div className={cn('font-display text-[22px] track-h3 leading-[1.05] mt-[7px]', s.good ? 'text-good' : 'text-text')}>
                 {s.value}
               </div>
-              <div className="font-mono text-[10px] text-text-muted mt-1.5 whitespace-nowrap">{s.delta}</div>
+              <div className={cn('text-[11.5px] font-medium mt-[7px]', s.good ? 'text-good' : 'text-text-faint')}>
+                {s.note}
+              </div>
             </div>
           ))}
         </div>
-      </div>
 
-      {/* Scope / filter row */}
-      <div className="flex items-center gap-2 px-[22px] py-[10px] border-b border-border shrink-0 flex-wrap">
-        <span className="font-mono text-[10px] text-text-faint uppercase tracking-[0.05em]">Type</span>
-        <span className="font-mono text-[11px] text-text px-[9px] py-[3px] border border-border-strong bg-bg-elev rounded-[4px]">
-          model swap · {openSorted.length}{filterActive ? ` / ${openAll.length}` : ''}
-        </span>
-
-        <SelectControl<SortKey>
-          value={sortFilter.sortKey}
-          onChange={updateSort}
-          options={[
-            { value: 'savings',    label: 'Sort: Savings' },
-            { value: 'confidence', label: 'Sort: Confidence' },
-            { value: 'name',       label: 'Sort: Name' },
-          ]}
-        />
-        <SelectControl<ProviderFilter>
-          value={sortFilter.filterProvider}
-          onChange={updateFilterProvider}
-          options={[
-            { value: 'all',       label: 'Provider: All' },
-            { value: 'openai',    label: 'OpenAI' },
-            { value: 'anthropic', label: 'Anthropic' },
-            { value: 'gemini',    label: 'Gemini' },
-          ]}
-        />
-        <SelectControl<ConfFilter>
-          value={sortFilter.filterConf}
-          onChange={updateFilterConf}
-          options={[
-            { value: 'all',    label: 'Conf: All' },
-            { value: 'high',   label: 'High' },
-            { value: 'medium', label: 'Medium' },
-            { value: 'low',    label: 'Low' },
-          ]}
-        />
-
-        {dismissed.size > 0 && (
-          <button
-            type="button"
-            onClick={() => setShowHidden((v) => !v)}
-            className={cn(
-              'font-mono text-[11px] px-[9px] py-[3px] border rounded-[4px] transition-colors',
-              showHidden
-                ? 'border-border-strong bg-bg-elev text-text'
-                : 'border-border text-text-faint hover:text-text hover:border-border-strong',
-            )}
-          >
-            {showHidden ? 'Hide hidden' : `Show hidden · ${dismissed.size}`}
-          </button>
-        )}
-        <span className="flex-1" />
-        <span className="hidden sm:inline font-mono text-[10px] text-text-faint whitespace-nowrap shrink-0">
-          {sortLabel}
-        </span>
-      </div>
-
-      {/* Content */}
-      <div className="flex-1 overflow-auto">
         {/* Filter empty state */}
         {openAll.length > 0 && openSorted.length === 0 && (
-          <div className="flex flex-col items-center justify-center py-16 gap-3 text-text-muted">
+          <div className="rounded-card border border-border bg-bg-elev shadow-card flex flex-col items-center justify-center py-16 gap-3 text-text-muted">
             <p className="text-[13px]">No recommendations match the current filters.</p>
             <button
               type="button"
@@ -841,37 +831,36 @@ export default function DemoSavingsPage() {
 
         {/* Open recommendations */}
         {openSorted.length > 0 && (
-          <div className="flex items-center gap-2.5 px-[22px] py-[10px] bg-bg-muted border-b border-border border-t border-t-border">
-            <span className="font-mono text-[10px] uppercase tracking-[0.06em] text-accent">
+          <div className="space-y-3">
+            <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-accent pt-1">
               Open · {openSorted.length}{filterActive && openSorted.length < openAll.length ? ` (${openAll.length} total)` : ''} · {fmtUsd(totalOpen)} / mo
-            </span>
+            </div>
+            {openSorted.map((r, i) => (
+              <RecRow
+                key={`${dismissKey(r)}-${i}`}
+                r={r}
+                windowLabel={windowLabel}
+                onSimulate={setSimRec}
+                onCompare={setCompareRec}
+                onDismiss={dismiss}
+                onUnhide={unhide}
+              />
+            ))}
           </div>
         )}
-        {openSorted.map((r, i) => (
-          <RecRow
-            key={`${dismissKey(r)}-${i}`}
-            r={r}
-            windowLabel={windowLabel}
-            onSimulate={setSimRec}
-            onCompare={setCompareRec}
-            onDismiss={dismiss}
-            onUnhide={unhide}
-          />
-        ))}
 
-        {/* Achieved section */}
+        {/* Applied section */}
         {achieved.length > 0 && (
-          <>
-            <div className="flex items-center gap-2.5 px-[22px] py-[10px] bg-bg-muted border-b border-border border-t border-t-border">
-              <button
-                type="button"
-                onClick={() => setShowAchieved((v) => !v)}
-                className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.06em] text-good hover:opacity-80 transition-opacity"
-              >
-                <span>Achieved · {achieved.length} · {fmtUsd(totalAchieved)} / mo</span>
-                <span>{showAchieved ? '▲' : '▼'}</span>
-              </button>
-            </div>
+          <div className="space-y-3">
+            <button
+              type="button"
+              onClick={() => setShowAchieved((v) => !v)}
+              aria-expanded={showAchieved}
+              className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.12em] text-good hover:opacity-80 transition-opacity pt-1"
+            >
+              <span>Applied · {achieved.length} · {fmtUsd(totalAchieved)} / mo</span>
+              <span>{showAchieved ? '▲' : '▼'}</span>
+            </button>
             {showAchieved && achieved.map((r) => (
               <RecRow
                 key={`${dismissKey(r)}-achieved`}
@@ -884,16 +873,14 @@ export default function DemoSavingsPage() {
                 onUnhide={unhide}
               />
             ))}
-          </>
+          </div>
         )}
 
         {/* Hidden recommendations */}
         {showHidden && dismissed.size > 0 && (
-          <>
-            <div className="flex items-center gap-2.5 px-[22px] py-[10px] bg-bg-muted border-b border-border border-t border-t-border">
-              <span className="font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint">
-                Hidden · {dismissed.size}
-              </span>
+          <div className="space-y-3">
+            <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-text-faint pt-1">
+              Hidden · {dismissed.size}
             </div>
             {DEMO_RECOMMENDATIONS
               .filter((r) => dismissed.has(dismissKey(r)))
@@ -909,7 +896,7 @@ export default function DemoSavingsPage() {
                   onUnhide={unhide}
                 />
               ))}
-          </>
+          </div>
         )}
       </div>
 
@@ -921,10 +908,17 @@ export default function DemoSavingsPage() {
           </DialogHeader>
           {simRec && (
             <div className="space-y-4 mt-2 text-[13px] text-text-muted">
-              <div className="font-mono text-[12px]">
-                <span className="text-text-faint line-through">{simRec.currentProvider} / {simRec.currentModel}</span>
-                <span className="mx-2 text-text-faint">→</span>
-                <span className="text-text">{simRec.suggestedProvider} / {simRec.suggestedModel}</span>
+              {/* Context strip — matches Compare dialog style */}
+              <div className="flex items-center gap-3 rounded-lg border border-good/25 bg-good/5 px-4 py-3">
+                <span className="text-good text-base leading-none">↓</span>
+                <div className="font-mono text-[12px] text-text leading-snug">
+                  Switching{' '}
+                  <span className="text-text-muted">{simRec.currentModel}</span>
+                  {' → '}
+                  <span className="font-medium text-text">{simRec.suggestedModel}</span>
+                  {' '}could save{' '}
+                  <span className="font-medium text-good">{fmtUsd(simRec.estimatedMonthlySavingsUsd)}/mo</span>
+                </div>
               </div>
 
               {/* Cost summary */}
@@ -937,7 +931,7 @@ export default function DemoSavingsPage() {
                   </div>
                   <div>
                     <div className="text-text-faint uppercase text-[10px] tracking-[0.05em] mb-1">Projected monthly save</div>
-                    <div className="text-accent font-medium text-[14px]">{fmtUsd(simRec.estimatedMonthlySavingsUsd)}</div>
+                    <div className="text-good font-medium text-[14px]">{fmtUsd(simRec.estimatedMonthlySavingsUsd)}</div>
                     <div className="text-text-muted text-[10.5px]">/mo at current volume</div>
                   </div>
                 </div>
@@ -987,6 +981,6 @@ export default function DemoSavingsPage() {
           onClose={() => setCompareRec(null)}
         />
       )}
-    </div>
+    </>
   )
 }

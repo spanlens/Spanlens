@@ -12,32 +12,30 @@ import tsPlugin from '@typescript-eslint/eslint-plugin'
 import spanlensPlugin from '../../packages/eslint-plugin/dist/index.js'
 import globals from 'globals'
 
-// R-Q6: `unscopedClickhouse` (renamed from `getClickhouse`) returns the
-// raw ClickHouse client with no organization scoping. Importing it from
-// API/middleware code is a cross-tenant leak waiting to happen because
-// ClickHouse has no row-level security; every read MUST filter on
-// organization_id at the application layer. The org-scoped helpers in
-// `lib/requests-query.ts` / `lib/events-query.ts` (and `getOrgClickhouse`)
-// thread the org id through automatically.
+// `requests` holds every tenant's prompt and response text in one table, and
+// the connection the server uses is the service role, which bypasses
+// row-level security. Isolation is therefore entirely a property of the WHERE
+// clause, and `lib/requests-query.ts` is the only place that guarantees one:
+// `requestsScope` injects `organization_id` and the per-plan retention window
+// into every read.
 //
-// The block targets both the function name and the legacy alias so a
-// pre-R-Q6 stash that still says `getClickhouse` is also rejected — the
-// alias does not exist anymore, but a stale auto-import in someone's
-// editor could try to add it back, and the explicit message is clearer
-// than a "module not found" error.
-const restrictedClickhouse = {
+// A raw `pgQuery` call in an API handler is one forgotten predicate away from
+// serving another customer's prompts. So the driver stays inside `lib/**`,
+// where the helpers live, and route code goes through them.
+const PG_MESSAGE =
+  'Use the helpers in lib/requests-query.ts (selectRequests / countRequests / streamRequests) ' +
+  'so the organization_id filter and plan retention window are applied. ' +
+  'lib/postgres.ts is for lib/** internals only.'
+
+const restrictedDbClients = {
   paths: [
     {
-      name: '../lib/clickhouse.js',
-      importNames: ['unscopedClickhouse', 'getClickhouse'],
-      message:
-        'Use getOrgClickhouse(orgId) from lib/clickhouse.ts (or the helpers in lib/requests-query.ts / lib/events-query.ts) instead. For health checks use pingClickhouse(). unscopedClickhouse() is for lib/** internals only.',
+      name: '../lib/postgres.js',
+      message: PG_MESSAGE,
     },
     {
-      name: '../../lib/clickhouse.js',
-      importNames: ['unscopedClickhouse', 'getClickhouse'],
-      message:
-        'Use getOrgClickhouse(orgId) from lib/clickhouse.ts (or the helpers in lib/requests-query.ts / lib/events-query.ts) instead. For health checks use pingClickhouse(). unscopedClickhouse() is for lib/** internals only.',
+      name: '../../lib/postgres.js',
+      message: PG_MESSAGE,
     },
   ],
 }
@@ -68,7 +66,7 @@ const config = [
       'no-console': ['warn', { allow: ['warn', 'error'] }],
       '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
       '@typescript-eslint/no-explicit-any': 'warn',
-      'no-restricted-imports': ['error', restrictedClickhouse],
+      'no-restricted-imports': ['error', restrictedDbClients],
       // R-Q5: aes256Decrypt returns '' on every failure mode; missing
       // checks silently send empty Authorization headers upstream.
       '@spanlens/aes-decrypt-must-be-checked': 'error',

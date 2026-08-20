@@ -1,9 +1,11 @@
+import { openGraphFor } from '@/lib/page-metadata'
 import { CodeBlock } from '../../_components/code-block'
-import { AnomalyChart } from '../../_components/charts'
+import { AnomalyChart } from '../../_components/figures'
 import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 
 export const metadata = {
   alternates: { canonical: '/docs/features/anomalies' },
+  openGraph: openGraphFor('/docs/features/anomalies'),
   title: 'Anomalies · Spanlens Docs',
   description:
     '3-sigma statistical anomaly detection on latency, cost, and error rate per (provider, model) bucket. No ML, no configuration.',
