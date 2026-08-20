@@ -16,7 +16,7 @@ const DialogOverlay = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <DialogPrimitive.Overlay
     ref={ref}
-    className={cn('fixed inset-0 z-50 bg-black/80', className)}
+    className={cn('fixed inset-0 z-50 bg-black/50 backdrop-blur-[2px]', className)}
     {...props}
   />
 ))
@@ -26,8 +26,8 @@ const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
 >(({ className, children, ...props }, ref) => {
-  // On the dashboard this routes the portal into the zoom wrapper so the
-  // modal scales with the rest of the UI; null elsewhere → default body portal.
+  // On the dashboard this routes the portal into the shell so the modal is
+  // positioned against it; null elsewhere → default body portal.
   const container = useOverlayContainer()
   return (
   <DialogPortal container={container ?? undefined}>
@@ -35,7 +35,7 @@ const DialogContent = React.forwardRef<
     <DialogPrimitive.Content
       ref={ref}
       className={cn(
-        'fixed left-[50%] top-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border bg-background p-6 shadow-lg sm:rounded-lg',
+        'fixed left-[50%] top-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border bg-bg-elev p-6 shadow-card sm:rounded-card',
         className,
       )}
       {...props}

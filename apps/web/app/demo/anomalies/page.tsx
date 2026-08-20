@@ -106,21 +106,34 @@ interface AnomalyTitleFields {
   deviations: number
 }
 
-function anomTitle(a: AnomalyTitleFields): string {
+/**
+ * The card splits what used to be one sentence across two ramp steps: the
+ * metric name rides the header line at card-title weight, the deviation
+ * statement below it carries the display face. `anomMetricLabel` and
+ * `anomStatement` are the two halves of the old single-line title, matching the
+ * real client so no wording is lost, it just lands on two lines instead of one.
+ */
+function anomMetricLabel(k: AnomalyKind): string {
+  return { latency: 'p95 latency', cost: 'Spend', error_rate: 'Error rate' }[k] ?? k
+}
+
+function anomStatement(a: AnomalyTitleFields): string {
   const pct =
     a.baselineMean > 0
       ? (((a.currentValue - a.baselineMean) / a.baselineMean) * 100).toFixed(0)
       : '?'
-  if (a.kind === 'latency') return `p95 latency · ${a.deviations.toFixed(1)}σ above mean`
-  if (a.kind === 'cost') return `Spend · ${pct}% above baseline`
-  return `Error rate · ${fmtValue('error_rate', a.currentValue)} (baseline ${fmtValue('error_rate', a.baselineMean)})`
+  if (a.kind === 'latency') return `${a.deviations.toFixed(1)}σ above mean`
+  if (a.kind === 'cost') return `${pct}% above baseline`
+  return `${fmtValue('error_rate', a.currentValue)} against a ${fmtValue('error_rate', a.baselineMean)} baseline`
 }
 
 function AnomDeltaBars({
+  kind,
   currentValue,
   baselineMean,
   deviations,
 }: {
+  kind: AnomalyKind
   currentValue: number
   baselineMean: number
   deviations: number
@@ -132,12 +145,12 @@ function AnomDeltaBars({
   return (
     <div className="flex items-end gap-[4px] h-[18px]">
       <div
-        title={`baseline ${baselineMean.toFixed(3)}`}
+        title={`baseline ${fmtValue(kind, baselineMean)}`}
         style={{ height: `${basePct}%`, width: 8 }}
         className="rounded-[1px] bg-border-strong opacity-70"
       />
       <div
-        title={`now ${currentValue.toFixed(3)}`}
+        title={`now ${fmtValue(kind, currentValue)}`}
         style={{ height: `${nowPct}%`, width: 8 }}
         className={cn('rounded-[1px]', isHigh ? 'bg-bad' : 'bg-accent')}
       />
@@ -145,15 +158,23 @@ function AnomDeltaBars({
   )
 }
 
+/** Micro-stat used in the card footer: mono eyebrow over its value. */
+function CardStat({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-text-faint mb-1.5">{label}</div>
+      {children}
+    </div>
+  )
+}
+
 function AnomRow({
   a,
-  last,
   dimmed,
   onAck,
   investigateRange,
 }: {
   a: Anomaly
-  last: boolean
   dimmed?: boolean
   onAck: () => void
   investigateRange: InvestigateRange
@@ -161,52 +182,37 @@ function AnomRow({
   const isHigh = a.deviations >= 5
   const isAcked = Boolean(a.acknowledgedAt)
   const tint = isHigh ? 'text-bad' : 'text-accent'
-  const dotBg = isHigh ? 'bg-bad' : 'bg-accent'
   const anomId = anomDisplayId(a.provider, a.model, a.kind)
   const investigateHref = buildDemoInvestigateHref(a.provider, a.model, investigateRange)
 
   return (
-    <div
+    <article
       className={cn(
-        'grid items-center px-[22px] py-[12px]',
-        !last && 'border-b border-border',
-        isHigh && !isAcked && 'bg-accent-bg',
+        'rounded-card border bg-bg-elev shadow-card px-5 py-[18px]',
+        isHigh && !isAcked ? 'border-accent-border' : 'border-border',
         dimmed && 'opacity-60',
       )}
-      style={{ gridTemplateColumns: '28px 1fr 120px 150px 150px 130px', gap: 14 }}
     >
-      {/* sev dot */}
-      <div className="flex items-center justify-center">
-        <span
-          className={cn(
-            'w-2 h-2 rounded-full',
-            dotBg,
-            isHigh && !isAcked && 'shadow-[0_0_0_3px_var(--accent-bg)]',
-          )}
-        />
-      </div>
-
-      {/* title + target */}
-      <div className="min-w-0">
-        <div className="flex items-center gap-2 mb-1">
-          <span className="font-mono text-[10.5px] text-text-faint tracking-[0.03em]">{anomId}</span>
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5 min-w-0">
           <span
             className={cn(
-              'font-mono text-[9px] px-[6px] py-[1px] rounded-[3px] border uppercase tracking-[0.04em]',
-              isHigh && !isAcked
-                ? 'text-accent border-accent-border bg-accent-bg'
-                : 'text-text-muted border-border',
+              'inline-flex items-center rounded-full px-2 py-[3px] text-[11px] font-semibold',
+              isHigh ? 'bg-bad-bg text-bad' : 'bg-warn-bg text-warn',
             )}
           >
-            {kindLabel(a.kind)}
+            {isHigh ? 'high' : 'medium'}
           </span>
+          <span className="text-[13.5px] font-semibold text-text">{anomMetricLabel(a.kind)}</span>
+          <span className="font-mono text-[12px] text-text-faint truncate">
+            {a.provider} · {a.model}
+          </span>
+          <span className="font-mono text-[11px] text-text-faint tracking-[0.03em]">{anomId}</span>
           {a.confidence && (
             <span
               className={cn(
-                'font-mono text-[9px] px-[6px] py-[1px] rounded-[3px] border uppercase tracking-[0.04em]',
-                a.confidence === 'high' && 'text-text-muted border-border',
-                a.confidence === 'medium' && 'text-text-muted border-border opacity-90',
-                a.confidence === 'low' && 'text-text-faint border-border opacity-70',
+                'inline-flex items-center rounded-full px-2 py-[3px] font-mono text-[10.5px]',
+                a.confidence === 'low' ? 'bg-bg-chip text-text-faint' : 'bg-bg-chip text-text-muted',
               )}
               title={
                 a.confidence === 'low'
@@ -219,118 +225,146 @@ function AnomRow({
               {a.confidence}
             </span>
           )}
-          <span className="text-[13.5px] text-text font-medium truncate">{anomTitle(a)}</span>
         </div>
-        <div className="font-mono text-[11px] text-text-muted tracking-[0.01em]">
-          <span className="text-text-faint">target · </span>
-          {a.provider} / {a.model}
+
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={onAck}
+            className="rounded-full border border-border bg-bg-elev px-3.5 py-2 text-[12px] font-medium text-text hover:bg-bg-muted transition-colors"
+            title={isAcked ? 'Un-acknowledge' : 'Acknowledge this anomaly'}
+          >
+            {isAcked ? 'Unacknowledge' : 'Acknowledge'}
+          </button>
+          <Link
+            href={investigateHref}
+            className="rounded-full bg-text px-3.5 py-2 text-[12px] font-medium text-bg hover:opacity-90 transition-opacity"
+          >
+            Open requests
+          </Link>
         </div>
       </div>
 
-      {/* now vs baseline */}
-      <div>
-        <div className="font-mono text-[10px] text-text-faint uppercase tracking-[0.03em] mb-[3px]">
-          NOW · BASE
-        </div>
-        <div className="font-mono text-[12px] text-text">
-          <span className="font-medium">{fmtValue(a.kind, a.currentValue)}</span>
-          <span className="text-text-faint"> · </span>
-          <span className="text-text-muted">{fmtValue(a.kind, a.baselineMean)}</span>
-        </div>
-        <div className={cn('font-mono text-[10.5px] mt-0.5', tint)}>
-          {fmtDelta(a.kind, a.currentValue, a.baselineMean)}
-        </div>
-      </div>
+      <p className="font-display text-[20px] track-h3 leading-[1.45] text-text mt-2.5">
+        {anomStatement(a)}
+      </p>
 
-      {/* bars */}
-      <div>
-        <div className="font-mono text-[10px] text-text-faint uppercase tracking-[0.03em] mb-1">
-          BASE · NOW
-        </div>
-        <AnomDeltaBars
-          currentValue={a.currentValue}
-          baselineMean={a.baselineMean}
-          deviations={a.deviations}
-        />
+      <div className="flex flex-wrap items-end gap-x-10 gap-y-3 mt-4 pt-4 border-t border-border">
+        <CardStat label="Now · base">
+          <div className="font-mono text-[12px] text-text">
+            <span className="font-medium">{fmtValue(a.kind, a.currentValue)}</span>
+            <span className="text-text-faint"> · </span>
+            <span className="text-text-muted">{fmtValue(a.kind, a.baselineMean)}</span>
+            <span className={cn('ml-2', tint)}>{fmtDelta(a.kind, a.currentValue, a.baselineMean)}</span>
+          </div>
+        </CardStat>
+        <CardStat label="Base · now">
+          <AnomDeltaBars
+            kind={a.kind}
+            currentValue={a.currentValue}
+            baselineMean={a.baselineMean}
+            deviations={a.deviations}
+          />
+        </CardStat>
+        <CardStat label="Impact">
+          <div className="font-mono text-[12px] text-text">
+            {a.sampleCount} requests
+            <span className="text-text-faint"> · {a.deviations.toFixed(1)}σ deviation</span>
+          </div>
+        </CardStat>
       </div>
-
-      {/* impact */}
-      <div>
-        <div className="font-mono text-[10px] text-text-faint uppercase tracking-[0.03em] mb-[3px]">
-          IMPACT
-        </div>
-        <div className="text-[12px] text-text">{a.sampleCount} requests</div>
-        <div className="font-mono text-[10.5px] text-text-faint mt-0.5">
-          {a.deviations.toFixed(1)}σ deviation
-        </div>
-      </div>
-
-      {/* actions */}
-      <div className="flex justify-end gap-1.5">
-        <button
-          type="button"
-          onClick={onAck}
-          className={cn(
-            'font-mono text-[10.5px] px-2 py-[3px] border rounded-[4px] transition-colors',
-            isAcked
-              ? 'text-text-muted border-border hover:text-text'
-              : 'text-text-muted border-border hover:text-text hover:border-border-strong',
-          )}
-          title={isAcked ? 'Un-acknowledge' : 'Acknowledge this anomaly'}
-        >
-          {isAcked ? 'Unack' : 'Ack'}
-        </button>
-        <Link
-          href={investigateHref}
-          className="font-mono text-[10.5px] text-text px-2 py-[3px] border border-border-strong rounded-[4px] bg-bg-elev hover:bg-bg-muted transition-colors"
-        >
-          Investigate →
-        </Link>
-      </div>
-    </div>
+    </article>
   )
 }
 
-function HistoryRow({ e, last }: { e: AnomalyHistoryEntry; last: boolean }) {
+/* Past detections stay tabular: they are read as a scan-down list, so they get
+   the table-card treatment rather than the per-anomaly card used above. */
+const HISTORY_GRID = 'grid items-center gap-4 grid-cols-[80px_minmax(220px,1fr)_150px_60px_90px_120px]'
+
+function HistoryRow({ e }: { e: AnomalyHistoryEntry }) {
   return (
-    <div
-      className={cn('grid items-center px-[22px] py-[12px]', !last && 'border-b border-border')}
-      style={{ gridTemplateColumns: '28px 1fr 120px 150px 150px 130px', gap: 14 }}
-    >
-      <div className="flex items-center justify-center">
-        <span className="w-2 h-2 rounded-full bg-border-strong opacity-70" />
-      </div>
+    <div className={cn(HISTORY_GRID, 'px-[18px] py-3 border-b border-border last:border-b-0')}>
+      <span className="font-mono text-[10.5px] uppercase tracking-[0.06em] text-text-muted">
+        {kindLabel(e.kind)}
+      </span>
       <div className="min-w-0">
-        <div className="flex items-center gap-2 mb-1">
-          <span className="font-mono text-[9px] px-[6px] py-[1px] rounded-[3px] border border-border text-text-muted uppercase tracking-[0.04em]">
-            {kindLabel(e.kind)}
-          </span>
-          <span className="text-[13px] text-text-muted truncate">{anomTitle(e)}</span>
-        </div>
-        <div className="font-mono text-[11px] text-text-faint">
-          {e.provider} / {e.model}
-        </div>
+        <div className="font-mono text-[12px] text-text truncate">{e.provider} · {e.model}</div>
+        <div className="text-[11.5px] text-text-muted truncate">{anomStatement(e)}</div>
       </div>
-      <div>
-        <div className="font-mono text-[12px] text-text-muted">
-          {fmtValue(e.kind, e.currentValue)} · {fmtValue(e.kind, e.baselineMean)}
-        </div>
-      </div>
-      <div>
-        <AnomDeltaBars
-          currentValue={e.currentValue}
-          baselineMean={e.baselineMean}
-          deviations={e.deviations}
-        />
-      </div>
-      <div className="font-mono text-[11px] text-text-faint">{e.sampleCount} req</div>
+      <span className="font-mono text-[12px] text-text-muted">
+        {fmtValue(e.kind, e.currentValue)} · {fmtValue(e.kind, e.baselineMean)}
+      </span>
+      <AnomDeltaBars
+        kind={e.kind}
+        currentValue={e.currentValue}
+        baselineMean={e.baselineMean}
+        deviations={e.deviations}
+      />
+      <span className="font-mono text-[12px] text-text-muted">{e.sampleCount} req</span>
       <div className="text-right">
-        <div className="font-mono text-[11px] text-text-muted">{formatDate(e.detectedOn)}</div>
+        <div className="font-mono text-[12px] text-text-muted">{formatDate(e.detectedOn)}</div>
         <div className="font-mono text-[10.5px] text-text-faint mt-0.5">
           {e.deviations.toFixed(1)}σ
         </div>
       </div>
     </div>
+  )
+}
+
+/** Eyebrow that titles a group of anomaly cards. */
+function SectionEyebrow({
+  children,
+  tone = 'faint',
+}: {
+  children: React.ReactNode
+  tone?: 'faint' | 'accent'
+}) {
+  return (
+    <div
+      className={cn(
+        'font-mono text-[10px] uppercase tracking-[0.12em] pt-1',
+        tone === 'accent' ? 'text-accent' : 'text-text-faint',
+      )}
+    >
+      {children}
+    </div>
+  )
+}
+
+/** Labelled segmented control: eyebrow + pill trough. */
+function FilterGroup({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex items-center gap-2">
+      <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-text-faint">{label}</span>
+      <div className="inline-flex items-center gap-0.5 rounded-full bg-bg-chip p-[3px]">{children}</div>
+    </div>
+  )
+}
+
+function SegmentBtn({
+  active,
+  onClick,
+  title,
+  children,
+}: {
+  active: boolean
+  onClick: () => void
+  title?: string
+  children: React.ReactNode
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={title}
+      aria-pressed={active}
+      className={cn(
+        'rounded-full px-[11px] py-[5px] text-[12px] font-medium transition-colors',
+        active ? 'bg-bg-elev text-text shadow-card' : 'text-text-faint hover:text-text',
+      )}
+    >
+      {children}
+    </button>
   )
 }
 
@@ -420,8 +454,11 @@ export default function DemoAnomaliesPage() {
   const acked = current.filter((a) => Boolean(a.acknowledgedAt))
 
   return (
-    <div className="-mx-4 -my-4 md:-mx-8 md:-my-7 flex flex-col min-h-screen">
-      <div className="sticky top-0 z-20 bg-bg">
+    <>
+      {/* The topbar is the only full-bleed row: it cancels the padding the
+          demo layout applies so its hairline spans the whole main column.
+          Everything below sits flush inside that padding. */}
+      <div className="sticky top-0 z-20 -mx-4 -mt-4 md:-mx-7 md:-mt-5 bg-bg">
         <Topbar
           crumbs={[{ label: 'Demo', href: '/demo/dashboard' }, { label: 'Anomalies' }]}
           right={
@@ -441,18 +478,80 @@ export default function DemoAnomaliesPage() {
             />
           }
         />
+        <h1 className="sr-only">Anomalies</h1>
       </div>
 
-      {/* Stat strip — enabled tiles scroll to their matching section */}
-      <div className="overflow-x-auto shrink-0 border-b border-border">
-        <div className="grid grid-cols-5 min-w-[480px]">
+      {/* 20px above the first row, 16px between rows, per the Figma content
+          frame. Side and bottom gutters come from the demo layout. */}
+      <div className="pt-4 md:pt-5 space-y-4">
+        {/* Filter row — kind / confidence / observation window / history days.
+            Each group is a segmented control; the eyebrow in front of it names
+            the axis, since four unlabelled segments in a row read as one
+            control. */}
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+          <FilterGroup label="Kind">
+            {KIND_FILTERS.map(({ v, l }) => (
+              <SegmentBtn key={v} active={kindFilter === v} onClick={() => setKindFilter(v)}>
+                {l}
+              </SegmentBtn>
+            ))}
+          </FilterGroup>
+
+          <FilterGroup label="Confidence">
+            {(['all', 'medium_plus', 'high'] as ConfidenceFilter[]).map((v) => (
+              <SegmentBtn
+                key={v}
+                active={confFilter === v}
+                onClick={() => setConfFilter(v)}
+                title={
+                  v === 'high'
+                    ? 'Only high-confidence anomalies (100+ baseline samples).'
+                    : v === 'medium_plus'
+                      ? 'High + medium confidence (30+ baseline samples).'
+                      : 'All anomalies including low-confidence directional signal.'
+                }
+              >
+                {v === 'medium_plus' ? 'medium+' : v}
+              </SegmentBtn>
+            ))}
+          </FilterGroup>
+
+          <FilterGroup label="Window">
+            {(Object.keys(WINDOW_PRESETS) as WindowPreset[]).map((v) => (
+              <SegmentBtn
+                key={v}
+                active={windowPreset === v}
+                onClick={() => setWindowPreset(v)}
+                title={`Compare last ${WINDOW_PRESETS[v].obs}h against ${WINDOW_PRESETS[v].ref / 24}d baseline.`}
+              >
+                {WINDOW_PRESETS[v].label}
+              </SegmentBtn>
+            ))}
+          </FilterGroup>
+
+          <FilterGroup label="History">
+            {HISTORY_OPTS.map((d) => (
+              <SegmentBtn key={d} active={historyDays === d} onClick={() => setHistoryDays(d)}>
+                {d}d
+              </SegmentBtn>
+            ))}
+          </FilterGroup>
+
+          <span className="font-mono text-[11px] text-text-faint ml-auto">
+            Sorted by severity · σ desc
+          </span>
+        </div>
+
+        {/* Stat cards double as jump links into the matching section.
+            "Baseline" is purely informational so it stays a static card. */}
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
           {[
-            { label: 'Open · high', value: String(unackedHigh.length), warn: unackedHigh.length > 0, ref: highRef, enabled: unackedHigh.length > 0 },
-            { label: 'Open · medium', value: String(unackedMedium.length), warn: false, ref: mediumRef, enabled: unackedMedium.length > 0 },
-            { label: 'Acknowledged', value: String(acked.length), warn: false, ref: ackedRef, enabled: acked.length > 0 },
-            { label: `History · ${historyDays}d`, value: String(historyFiltered.length), warn: false, ref: historyRef, enabled: historyFiltered.length > 0 },
-            { label: 'Baseline', value: win.label.split(' vs ')[1] ?? win.label, warn: false, ref: null, enabled: false },
-          ].map((s, i) => {
+            { label: 'Open · high',   value: String(unackedHigh.length),   note: unackedHigh.length > 0 ? 'needs a look now' : 'all clear', warn: unackedHigh.length > 0, ref: highRef,    enabled: unackedHigh.length > 0 },
+            { label: 'Open · medium', value: String(unackedMedium.length), note: 'watching',       warn: false, ref: mediumRef,  enabled: unackedMedium.length > 0 },
+            { label: 'Acknowledged',  value: String(acked.length),         note: 'in this window', warn: false, ref: ackedRef,   enabled: acked.length > 0 },
+            { label: `History · ${historyDays}d`, value: String(historyFiltered.length), note: 'past detections', warn: false, ref: historyRef, enabled: historyFiltered.length > 0 },
+            { label: 'Baseline',      value: win.label.split(' vs ')[1] ?? win.label, note: 'per model and provider', warn: false, ref: null, enabled: false },
+          ].map((s) => {
             const interactive = s.enabled && s.ref
             const Wrap: React.ElementType = interactive ? 'button' : 'div'
             return (
@@ -460,216 +559,128 @@ export default function DemoAnomaliesPage() {
                 key={s.label}
                 {...(interactive ? { type: 'button', onClick: () => scrollTo(s.ref!) } : {})}
                 className={cn(
-                  'px-[18px] py-[14px] text-left',
-                  i < 4 && 'border-r border-border',
-                  interactive && 'hover:bg-bg-elev transition-colors cursor-pointer',
+                  'rounded-card border border-border bg-bg-elev shadow-card px-5 py-[18px] text-left',
+                  interactive && 'hover:bg-bg-muted transition-colors cursor-pointer',
                 )}
               >
-                <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-2">
+                <div className="font-mono text-[10.5px] uppercase tracking-[0.1em] text-text-faint">
                   {s.label}
                 </div>
-                <span
+                <div
                   className={cn(
-                    'text-[24px] font-medium leading-none tracking-[-0.6px]',
+                    'font-display text-[22px] track-h3 leading-[1.05] mt-[7px]',
                     s.warn ? 'text-accent' : 'text-text',
                   )}
                 >
                   {s.value}
-                </span>
+                </div>
+                <div
+                  className={cn(
+                    'text-[11.5px] font-medium mt-[7px]',
+                    s.warn ? 'text-bad' : 'text-text-faint',
+                  )}
+                >
+                  {s.note}
+                </div>
               </Wrap>
             )
           })}
         </div>
+
+        {/* Open, high severity */}
+        {unackedHigh.length > 0 && (
+          <div ref={highRef} className="space-y-3">
+            <SectionEyebrow tone="accent">New · high · {unackedHigh.length}</SectionEyebrow>
+            {unackedHigh.map((a) => (
+              <AnomRow
+                key={`${a.provider}-${a.model}-${a.kind}`}
+                a={a}
+                onAck={() => toggleAck(a)}
+                investigateRange={investigateRange}
+              />
+            ))}
+          </div>
+        )}
+
+        {/* Open, medium severity */}
+        {unackedMedium.length > 0 && (
+          <div ref={mediumRef} className="space-y-3">
+            <SectionEyebrow tone="accent">New · medium · {unackedMedium.length}</SectionEyebrow>
+            {unackedMedium.map((a) => (
+              <AnomRow
+                key={`${a.provider}-${a.model}-${a.kind}-m`}
+                a={a}
+                onAck={() => toggleAck(a)}
+                investigateRange={investigateRange}
+              />
+            ))}
+          </div>
+        )}
+
+        {/* Acknowledged */}
+        {acked.length > 0 && (
+          <div ref={ackedRef} className="space-y-3">
+            <SectionEyebrow>Acknowledged · {acked.length}</SectionEyebrow>
+            {acked.map((a) => (
+              <AnomRow
+                key={`${a.provider}-${a.model}-${a.kind}-ack`}
+                a={a}
+                onAck={() => toggleAck(a)}
+                dimmed
+                investigateRange={investigateRange}
+              />
+            ))}
+          </div>
+        )}
+
+        {/* Empty state */}
+        {unackedHigh.length === 0 && unackedMedium.length === 0 && (
+          <div className="rounded-card border border-border bg-bg-elev shadow-card flex flex-col items-center justify-center py-12 gap-2 text-text-muted">
+            <span className="text-[28px] leading-none">✓</span>
+            <p className="text-[13px]">
+              {kindFilter === 'all'
+                ? 'No anomalies in the current window.'
+                : `No ${kindFilter.replace('_', ' ')} anomalies in the current window.`}
+            </p>
+            <p className="font-mono text-[11.5px] text-text-faint">
+              {acked.length > 0
+                ? `${acked.length} acknowledged, Unacknowledge to re-open.`
+                : 'Baselines look healthy.'}
+            </p>
+          </div>
+        )}
+
+        {/* Past detections */}
+        {historyFiltered.length > 0 && (
+          <div ref={historyRef} className="space-y-3">
+            <SectionEyebrow>
+              Past detections · {historyDays}d · {historyFiltered.length}
+            </SectionEyebrow>
+            <div className="rounded-card border border-border bg-bg-elev shadow-card overflow-hidden">
+              <div className="overflow-x-auto">
+                <div className="min-w-[820px]">
+                  <div className={cn(HISTORY_GRID, 'bg-bg-muted border-b border-border px-[18px] py-2.5')}>
+                    {['Kind', 'Target', 'Now · base', 'Trend', 'Requests', 'Detected'].map((h, i) => (
+                      <span
+                        key={h}
+                        className={cn(
+                          'font-mono text-[10px] uppercase tracking-[0.1em] text-text-faint',
+                          i === 5 && 'text-right',
+                        )}
+                      >
+                        {h}
+                      </span>
+                    ))}
+                  </div>
+                  {historyFiltered.map((e) => (
+                    <HistoryRow key={e.id} e={e} />
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
-
-      {/* Filter row — kind / confidence / observation window / history days */}
-      <div className="flex items-center gap-2 px-[22px] py-[10px] border-b border-border shrink-0 flex-wrap">
-        <span className="font-mono text-[10px] text-text-faint uppercase tracking-[0.05em]">Kind</span>
-        {KIND_FILTERS.map(({ v, l }) => (
-          <button
-            key={v}
-            type="button"
-            onClick={() => setKindFilter(v)}
-            className={cn(
-              'font-mono text-[11px] px-[9px] py-[3px] rounded-[4px] border transition-colors',
-              kindFilter === v
-                ? 'border-border-strong bg-bg-elev text-text'
-                : 'border-border text-text-muted hover:text-text',
-            )}
-          >
-            {l}
-          </button>
-        ))}
-
-        <span className="font-mono text-[10px] text-text-faint uppercase tracking-[0.05em] ml-2">
-          Confidence
-        </span>
-        {(['all', 'medium_plus', 'high'] as ConfidenceFilter[]).map((v) => (
-          <button
-            key={v}
-            type="button"
-            onClick={() => setConfFilter(v)}
-            className={cn(
-              'font-mono text-[11px] px-[9px] py-[3px] rounded-[4px] border transition-colors',
-              confFilter === v
-                ? 'border-border-strong bg-bg-elev text-text'
-                : 'border-border text-text-muted hover:text-text',
-            )}
-            title={
-              v === 'high'
-                ? 'Only high-confidence anomalies (100+ baseline samples).'
-                : v === 'medium_plus'
-                  ? 'High + medium confidence (30+ baseline samples).'
-                  : 'All anomalies including low-confidence directional signal.'
-            }
-          >
-            {v === 'medium_plus' ? 'medium+' : v}
-          </button>
-        ))}
-
-        <span className="font-mono text-[10px] text-text-faint uppercase tracking-[0.05em] ml-2">
-          Window
-        </span>
-        {(Object.keys(WINDOW_PRESETS) as WindowPreset[]).map((v) => (
-          <button
-            key={v}
-            type="button"
-            onClick={() => setWindowPreset(v)}
-            className={cn(
-              'font-mono text-[11px] px-[9px] py-[3px] rounded-[4px] border transition-colors',
-              windowPreset === v
-                ? 'border-border-strong bg-bg-elev text-text'
-                : 'border-border text-text-muted hover:text-text',
-            )}
-            title={`Compare last ${WINDOW_PRESETS[v].obs}h against ${WINDOW_PRESETS[v].ref / 24}d baseline.`}
-          >
-            {WINDOW_PRESETS[v].label}
-          </button>
-        ))}
-
-        <span className="font-mono text-[10px] text-text-faint uppercase tracking-[0.05em] ml-2">
-          History
-        </span>
-        {HISTORY_OPTS.map((d) => (
-          <button
-            key={d}
-            type="button"
-            onClick={() => setHistoryDays(d)}
-            className={cn(
-              'font-mono text-[11px] px-[9px] py-[3px] rounded-[4px] border transition-colors',
-              historyDays === d
-                ? 'border-border-strong bg-bg-elev text-text'
-                : 'border-border text-text-muted hover:text-text',
-            )}
-          >
-            {d}d
-          </button>
-        ))}
-
-        <span className="flex-1" />
-        <span className="font-mono text-[10px] text-text-faint">Sorted by severity · σ desc</span>
-      </div>
-
-      {/* Content */}
-      <div className="flex-1 overflow-auto">
-        <>
-          {/* Open, high severity */}
-          {unackedHigh.length > 0 && (
-            <div ref={highRef}>
-              <div className="flex items-center gap-2.5 px-[22px] py-[10px] bg-bg-muted border-b border-border border-t border-t-border">
-                <span className="font-mono text-[10px] uppercase tracking-[0.06em] text-accent">
-                  New · high · {unackedHigh.length}
-                </span>
-              </div>
-              {unackedHigh.map((a, i) => (
-                <AnomRow
-                  key={`${a.provider}-${a.model}-${a.kind}`}
-                  a={a}
-                  last={i === unackedHigh.length - 1}
-                  onAck={() => toggleAck(a)}
-                  investigateRange={investigateRange}
-                />
-              ))}
-            </div>
-          )}
-
-          {/* Open, medium severity */}
-          {unackedMedium.length > 0 && (
-            <div ref={mediumRef}>
-              <div className="flex items-center gap-2.5 px-[22px] py-[10px] bg-bg-muted border-b border-border border-t border-t-border">
-                <span className="font-mono text-[10px] uppercase tracking-[0.06em] text-accent">
-                  New · medium · {unackedMedium.length}
-                </span>
-              </div>
-              {unackedMedium.map((a, i) => (
-                <AnomRow
-                  key={`${a.provider}-${a.model}-${a.kind}-m`}
-                  a={a}
-                  last={i === unackedMedium.length - 1}
-                  onAck={() => toggleAck(a)}
-                  investigateRange={investigateRange}
-                />
-              ))}
-            </div>
-          )}
-
-          {/* Acknowledged */}
-          {acked.length > 0 && (
-            <div ref={ackedRef}>
-              <div className="flex items-center gap-2.5 px-[22px] py-[10px] bg-bg-muted border-b border-border border-t border-t-border">
-                <span className="font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint">
-                  Acknowledged · {acked.length}
-                </span>
-              </div>
-              <div className="opacity-60">
-                {acked.map((a, i) => (
-                  <AnomRow
-                    key={`${a.provider}-${a.model}-${a.kind}-ack`}
-                    a={a}
-                    last={i === acked.length - 1}
-                    onAck={() => toggleAck(a)}
-                    dimmed
-                    investigateRange={investigateRange}
-                  />
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Empty state */}
-          {unackedHigh.length === 0 && unackedMedium.length === 0 && (
-            <div className="flex flex-col items-center justify-center py-12 gap-2 text-text-muted">
-              <span className="text-[28px] leading-none">✓</span>
-              <p className="text-[13px]">
-                {kindFilter === 'all'
-                  ? 'No anomalies in the current window.'
-                  : `No ${kindFilter.replace('_', ' ')} anomalies in the current window.`}
-              </p>
-              <p className="font-mono text-[11.5px] text-text-faint">
-                {acked.length > 0
-                  ? `${acked.length} acknowledged, Unack to re-open.`
-                  : 'Baselines look healthy.'}
-              </p>
-            </div>
-          )}
-
-          {/* Past detections */}
-          {historyFiltered.length > 0 && (
-            <div ref={historyRef}>
-              <div className="flex items-center gap-2.5 px-[22px] py-[10px] bg-bg-muted border-b border-border border-t border-t-border">
-                <span className="font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint opacity-75">
-                  Past detections · {historyDays}d · {historyFiltered.length}
-                </span>
-              </div>
-              <div className="opacity-75">
-                {historyFiltered.map((e, i) => (
-                  <HistoryRow key={e.id} e={e} last={i === historyFiltered.length - 1} />
-                ))}
-              </div>
-            </div>
-          )}
-        </>
-      </div>
-    </div>
+    </>
   )
 }

@@ -9,7 +9,6 @@
 #   포함:
 #     - server     (apps/server, Hono, tsx-watch)
 #     - db         (Postgres 17 — production과 메이저 버전 매칭, gotcha #16)
-#     - clickhouse (ClickHouse 24.10-alpine — requests 로그 전용)
 #     - mock-openai (R-3 E2E용 mock LLM, scripts/mock-openai-server.ts)
 #
 #   포함 안 함 (의도적):
@@ -43,12 +42,10 @@ services:
       SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY}
       SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY}
       ENCRYPTION_KEY: ${ENCRYPTION_KEY}
-      # R-23: server가 in-network ClickHouse를 가리키게. spanlens DB와
-      # default user/password는 아래 clickhouse service 환경변수와 일치.
-      CLICKHOUSE_URL: http://clickhouse:8123
-      CLICKHOUSE_USER: spanlens
-      CLICKHOUSE_PASSWORD: spanlens_dev_password
-      CLICKHOUSE_DB: spanlens
+      # 로컬 Postgres 직결. Supavisor는 로컬 스택에 없으므로 pooler 대신
+      # db service를 그대로 가리킨다 — 프로덕션은 포트 6543 transaction
+      # 모드를 쓴다 (.env.example 참고).
+      SUPABASE_DB_POOLER_URL: postgresql://postgres:postgres@db:5432/postgres
       # E2E 모드에서 mock OpenAI를 LLM upstream으로 사용. proxy가 실제
       # OpenAI API에 도달하지 않게 하려면 OPENAI_API_BASE를 mock-openai
       # service URL로 override. 평상시 dev에선 unset 두면 진짜 OpenAI.
@@ -59,10 +56,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
-      clickhouse:
-        condition: service_healthy
     # R-22: readiness probe — same endpoint Vercel preview / production
-    # docker invocations use. /health/ready pings Postgres + ClickHouse +
+    # docker invocations use. /health/ready pings Postgres (both routes) +
     # Upstash (Upstash 'skipped' is OK), so a half-broken container shows
     # up as "unhealthy" before Docker routes traffic to it. start_period
     # gives node + tsx-watch time to compile on cold container start.
@@ -100,37 +95,6 @@ services:
       timeout: 5s
       retries: 5
 
-  clickhouse:
-    # R-23: requests 테이블 호스트. production은 ClickHouse Cloud
-    # Development tier, dev/CI는 컨테이너로 충분 (CLAUDE.md DB 작업
-    # 규칙 참조). 24.10은 production tier가 사용하는 메이저 라인.
-    image: clickhouse/clickhouse-server:24.10-alpine
-    ports:
-      - '8123:8123'  # HTTP — server가 사용
-      - '9000:9000'  # native protocol — clickhouse-client / tooling
-    environment:
-      CLICKHOUSE_DB: spanlens
-      CLICKHOUSE_USER: spanlens
-      CLICKHOUSE_PASSWORD: spanlens_dev_password
-      # dev에서 임의 SQL을 빠르게 시도할 수 있게 default user 권한 풀어둠.
-      # production 이미지엔 들어가지 않게 분리된 dev compose 파일.
-      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: '1'
-    volumes:
-      - clickhouse_data:/var/lib/clickhouse
-    ulimits:
-      nofile:
-        soft: 262144
-        hard: 262144
-    healthcheck:
-      # ClickHouse는 HTTP 8123에 GET /ping → "Ok." 200을 반환.
-      # node -e fetch 패턴은 ClickHouse 컨테이너에 node가 없어 사용 불가
-      # — wget은 alpine ClickHouse 이미지에 포함되어 있음.
-      test: ['CMD-SHELL', 'wget -q -O - http://localhost:8123/ping | grep -q Ok']
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 15s
-
   mock-openai:
     # R-3 E2E용 OpenAI-compatible mock. server의 OPENAI_API_BASE를
     # http://mock-openai:4000/v1로 override하면 실제 OpenAI API에 비용
@@ -157,4 +121,3 @@ services:
 
 volumes:
   postgres_data:
-  clickhouse_data:

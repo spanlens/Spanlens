@@ -1,12 +1,19 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import type { CSSProperties } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { FlaskConical, Plus, Loader2, Search } from 'lucide-react'
 import { Topbar, LiveDot } from '@/components/layout/topbar'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { cn } from '@/lib/utils'
+import { StatusPill } from '@/components/ui/primitives'
+
+/** The tints `StatusPill` accepts, read off the primitive itself. */
+type TagVariant = NonNullable<React.ComponentProps<typeof StatusPill>['variant']>
+import { useHydrationSafeNow } from '@/lib/hydration-safe-now'
 import {
   useExperiments,
   useCreateExperiment,
@@ -18,6 +25,20 @@ import { useDatasets } from '@/lib/queries/use-datasets'
 import { useEvaluators } from '@/lib/queries/use-evals'
 import { useModels } from '@/lib/queries/use-models'
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '@/components/ui/select'
+import {
+  Board,
+  TOPBAR_BLEED,
+  FilterBar,
+  CONTROL,
+  CONTROL_TEXT,
+  Segment,
+  SegmentItem,
+  StatCard,
+  TableCard,
+  TableHead,
+  Th,
+  ROW,
+} from '../_board/surfaces'
 
 // Hydration-safe mounted gate, same pattern as the other overhauled pages.
 const subscribeNoop = () => () => {}
@@ -58,6 +79,25 @@ function fmtScore(n: number | null | undefined): string {
   return (n * 100).toFixed(1)
 }
 
+function fmtDelta(n: number | null): string {
+  if (n == null) return '—'
+  return (n > 0 ? '+' : '') + (n * 100).toFixed(1)
+}
+
+/*
+ * Compact "2h ago" age for the STARTED column. `now` is threaded in from
+ * `useHydrationSafeNow()` so SSR and the first client paint emit the same
+ * markup; it stays 0 until hydration, which is why that case renders blank.
+ */
+function relAge(iso: string, now: number): string {
+  if (!now) return ' '
+  const s = Math.max(0, Math.floor((now - new Date(iso).getTime()) / 1000))
+  if (s < 60) return `${s}s ago`
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`
+  return `${Math.floor(s / 86400)}d ago`
+}
+
 // Color tier for score 0..1 — matches the QualityBadge thresholds on the
 // prompts page so the visual language is consistent across the dashboard.
 // >= 0.80 good, >= 0.60 warn, otherwise bad. Null returns the muted token.
@@ -68,28 +108,31 @@ function scoreColor(score: number | null | undefined): string {
   return 'text-bad'
 }
 
-function StatusBadge({ status }: { status: ExperimentStatus }) {
-  const config = {
-    pending:   { label: 'Pending',   cls: 'bg-bg-elev text-text-faint' },
-    running:   { label: 'Running',   cls: 'bg-accent-bg text-accent border border-accent-border' },
-    completed: { label: 'Completed', cls: 'bg-good/10 text-good border border-good/30' },
-    failed:    { label: 'Failed',    cls: 'bg-bad/10 text-bad border border-bad/30' },
-  }[status]
-  return (
-    <span className={cn('font-mono text-[10px] px-[6px] py-[1.5px] rounded-[3px]', config.cls)}>
-      {config.label}
-    </span>
-  )
+/* Run state → lozenge tint, matching the STATUS column on `D12 · Experiments`. */
+const STATUS_TAG: Record<ExperimentStatus, TagVariant> = {
+  running:   'warn',
+  completed: 'good',
+  failed:    'bad',
+  pending:   'neutral',
+}
+
+/*
+ * Column template for the experiments table. The header band and the rows
+ * both read it so the two stay locked together; Tailwind's JIT is unreliable
+ * with arbitrary multi-column `grid-cols-[…]` values, so it goes in a style.
+ */
+const EXPERIMENT_GRID: CSSProperties = {
+  gridTemplateColumns: 'minmax(180px,1fr) 150px 150px 84px 84px 84px 84px 96px 108px',
 }
 
 type StatusFilter = 'all' | ExperimentStatus
 
 const STATUS_FILTERS: { v: StatusFilter; l: string }[] = [
   { v: 'all',       l: 'All' },
-  { v: 'running',   l: 'running' },
-  { v: 'completed', l: 'completed' },
-  { v: 'pending',   l: 'pending' },
-  { v: 'failed',    l: 'failed' },
+  { v: 'running',   l: 'Running' },
+  { v: 'completed', l: 'Completed' },
+  { v: 'failed',    l: 'Failed' },
+  { v: 'pending',   l: 'Pending' },
 ]
 
 // ── New experiment dialog ────────────────────────────────────────────────────
@@ -166,23 +209,19 @@ function NewExperimentDialog({ open, onClose }: { open: boolean; onClose: () => 
         </DialogHeader>
         <form onSubmit={(e) => void handleSubmit(e)} className="space-y-3 mt-3">
           <div>
-            <label className="block font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint mb-1">
-              Name
-            </label>
+            <label className="micro-label mb-1 block tracking-[0.1em]">Name</label>
             <input
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="e.g. Friendliness v2 vs v3"
               required
-              className="w-full h-9 px-2 rounded-[5px] border border-border bg-bg font-mono text-[12px] text-text focus:outline-none focus:border-border-strong"
+              className={cn(CONTROL, CONTROL_TEXT, 'w-full px-3 placeholder:text-text-faint focus:border-border-strong focus:outline-none')}
             />
           </div>
 
           <div>
-            <label className="block font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint mb-1">
-              Prompt
-            </label>
+            <label className="micro-label mb-1 block tracking-[0.1em]">Prompt</label>
             <Select {...(promptName ? { value: promptName } : {})} onValueChange={handlePromptChange}>
               <SelectTrigger><SelectValue placeholder="Select prompt…" /></SelectTrigger>
               <SelectContent>
@@ -195,9 +234,7 @@ function NewExperimentDialog({ open, onClose }: { open: boolean; onClose: () => 
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint mb-1">
-                Version A (control)
-              </label>
+              <label className="micro-label mb-1 block tracking-[0.1em]">Version A (control)</label>
               <Select {...(versionAId ? { value: versionAId } : {})} onValueChange={setVersionAId} disabled={!promptName}>
                 <SelectTrigger><SelectValue placeholder="Select…" /></SelectTrigger>
                 <SelectContent>
@@ -208,9 +245,7 @@ function NewExperimentDialog({ open, onClose }: { open: boolean; onClose: () => 
               </Select>
             </div>
             <div>
-              <label className="block font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint mb-1">
-                Version B (challenger)
-              </label>
+              <label className="micro-label mb-1 block tracking-[0.1em]">Version B (challenger)</label>
               <Select {...(versionBId ? { value: versionBId } : {})} onValueChange={setVersionBId} disabled={!promptName}>
                 <SelectTrigger><SelectValue placeholder="Select…" /></SelectTrigger>
                 <SelectContent>
@@ -223,9 +258,7 @@ function NewExperimentDialog({ open, onClose }: { open: boolean; onClose: () => 
           </div>
 
           <div>
-            <label className="block font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint mb-1">
-              Dataset
-            </label>
+            <label className="micro-label mb-1 block tracking-[0.1em]">Dataset</label>
             <Select {...(datasetId ? { value: datasetId } : {})} onValueChange={setDatasetId}>
               <SelectTrigger><SelectValue placeholder="Select dataset…" /></SelectTrigger>
               <SelectContent>
@@ -239,7 +272,7 @@ function NewExperimentDialog({ open, onClose }: { open: boolean; onClose: () => 
           </div>
 
           <div>
-            <label className="block font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint mb-1">
+            <label className="micro-label mb-1 block tracking-[0.1em]">
               Evaluator (optional, for side-by-side scoring)
             </label>
             <Select value={evaluatorId} onValueChange={setEvaluatorId} disabled={!promptName}>
@@ -255,9 +288,7 @@ function NewExperimentDialog({ open, onClose }: { open: boolean; onClose: () => 
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint mb-1">
-                Run provider
-              </label>
+              <label className="micro-label mb-1 block tracking-[0.1em]">Run provider</label>
               <Select value={runProvider} onValueChange={(v) => { const p = v as ExpProvider; setRunProvider(p); setRunModel(runModels[p][0] ?? '') }}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -268,9 +299,7 @@ function NewExperimentDialog({ open, onClose }: { open: boolean; onClose: () => 
               </Select>
             </div>
             <div>
-              <label className="block font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint mb-1">
-                Run model
-              </label>
+              <label className="micro-label mb-1 block tracking-[0.1em]">Run model</label>
               <Select value={runModel} onValueChange={setRunModel}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -282,9 +311,9 @@ function NewExperimentDialog({ open, onClose }: { open: boolean; onClose: () => 
             </div>
           </div>
 
-          <div className="bg-bg-muted rounded-[5px] border border-border p-2.5 font-mono text-[10.5px] text-text-muted">
-            Both versions run on the same model. Cost charged to your provider key
-            (≈ 2× dataset items, + judge if evaluator selected).
+          <div className="rounded-lg border border-border bg-bg-sunk px-3.5 py-3 text-[12px] leading-[1.6] text-text-muted">
+            Both versions run on the same model. Cost is charged to your provider key,
+            roughly 2× the dataset item count plus the judge when an evaluator is selected.
           </div>
 
           {error && <p className="font-mono text-[11.5px] text-bad">{error}</p>}
@@ -293,14 +322,14 @@ function NewExperimentDialog({ open, onClose }: { open: boolean; onClose: () => 
             <button
               type="button"
               onClick={onClose}
-              className="font-mono text-[11.5px] px-3 py-[6px] border border-border rounded-[5px] text-text-muted hover:text-text"
+              className="inline-flex items-center rounded-full border border-border px-3.5 py-2 text-[12.5px] font-medium text-text-muted transition-colors hover:text-text"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={create.isPending}
-              className="font-mono text-[11.5px] px-3 py-[6px] rounded-[5px] bg-text text-bg font-medium hover:opacity-90 disabled:opacity-40 flex items-center gap-1.5"
+              className="inline-flex items-center gap-1.5 rounded-full bg-accent px-3.5 py-2 text-[12.5px] font-semibold text-accent-fg transition-colors hover:bg-accent-strong disabled:opacity-40"
             >
               {create.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
               Start experiment
@@ -314,7 +343,7 @@ function NewExperimentDialog({ open, onClose }: { open: boolean; onClose: () => 
 
 // ── Experiment row ───────────────────────────────────────────────────────────
 
-function ExperimentRow({ exp }: { exp: Experiment }) {
+function ExperimentRow({ exp, now }: { exp: Experiment; now: number }) {
   const delta = useMemo(() => {
     if (exp.avg_score_a == null || exp.avg_score_b == null) return null
     return exp.avg_score_b - exp.avg_score_a
@@ -323,34 +352,25 @@ function ExperimentRow({ exp }: { exp: Experiment }) {
   return (
     <Link
       href={`/experiments/${exp.id}`}
-      className="flex items-center px-[16px] py-[12px] border-b border-border last:border-0 hover:bg-bg-muted transition-colors"
+      className={cn(ROW, 'grid items-center gap-3 font-mono text-[12px] leading-[1.45] transition-colors hover:bg-bg-muted')}
+      style={EXPERIMENT_GRID}
     >
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 mb-0.5">
-          <p className="font-mono text-[13px] text-text font-medium truncate">{exp.name}</p>
-          <StatusBadge status={exp.status} />
-        </div>
-        <p className="font-mono text-[11px] text-text-faint truncate">
-          {exp.prompt_name} · {exp.run_model}
-        </p>
-      </div>
-      {/* A score — hidden on mobile (cramped). Score color tier matches evals/prompts. */}
-      <div className={cn('hidden sm:block font-mono text-[12px] w-[90px] text-right tabular-nums', scoreColor(exp.avg_score_a))}>
-        {fmtScore(exp.avg_score_a)}
-      </div>
-      {/* B score — hidden on mobile */}
-      <div className={cn('hidden sm:block font-mono text-[12px] w-[90px] text-right tabular-nums', scoreColor(exp.avg_score_b))}>
-        {fmtScore(exp.avg_score_b)}
-      </div>
-      <div className={cn(
-        'font-mono text-[12px] w-[60px] sm:w-[80px] text-right tabular-nums',
+      <span className="truncate text-text">{exp.name}</span>
+      <span className="truncate text-text-muted">{exp.prompt_name}</span>
+      <span className="truncate text-text-muted">{exp.run_model}</span>
+      {/* Scores keep their tier colour — the same >=0.80 / >=0.60 ramp the
+          evals and prompts tables use, so a weak run reads alike everywhere. */}
+      <span className={cn('tabular-nums', scoreColor(exp.avg_score_a))}>{fmtScore(exp.avg_score_a)}</span>
+      <span className={cn('tabular-nums', scoreColor(exp.avg_score_b))}>{fmtScore(exp.avg_score_b)}</span>
+      <span className={cn(
+        'tabular-nums',
         delta == null ? 'text-text-faint' : delta > 0 ? 'text-good' : delta < 0 ? 'text-bad' : 'text-text-muted',
       )}>
-        {delta == null ? '—' : (delta > 0 ? '+' : '') + (delta * 100).toFixed(1)}
-      </div>
-      <div className="font-mono text-[11px] text-text-faint w-[70px] sm:w-[80px] text-right tabular-nums">
-        {fmtUsd(exp.total_cost_usd)}
-      </div>
+        {fmtDelta(delta)}
+      </span>
+      <span className="tabular-nums text-text-muted">{fmtUsd(exp.total_cost_usd)}</span>
+      <span className="text-text-muted">{relAge(exp.started_at, now)}</span>
+      <span><StatusPill variant={STATUS_TAG[exp.status]}>{exp.status}</StatusPill></span>
     </Link>
   )
 }
@@ -361,6 +381,9 @@ export function ExperimentsClient() {
   const router = useRouter()
   const sp = useSearchParams()
   const mounted = useMounted()
+  // Anchor for the relative STARTED column. Captured once after hydration so
+  // SSR and the first client paint emit identical HTML (gotcha #22 B).
+  const now = useHydrationSafeNow()
 
   const experiments = useExperiments()
   const [newOpen, setNewOpen] = useState(false)
@@ -397,7 +420,7 @@ export function ExperimentsClient() {
     const needle = search.toLowerCase()
     return list.filter((e) => {
       // Tab gates the list to active vs completed buckets. Within a tab the
-      // status dropdown can narrow further (e.g. tab=active + status=failed).
+      // status segment narrows further (e.g. tab=active + status=failed).
       if (tab === 'active' && !(e.status === 'running' || e.status === 'pending')) return false
       if (tab === 'completed' && e.status !== 'completed') return false
       if (statusFilter !== 'all' && e.status !== statusFilter) return false
@@ -409,10 +432,22 @@ export function ExperimentsClient() {
     })
   }, [list, search, statusFilter, tab])
 
-  // Stat strip values
-  const runningCount   = list.filter((e) => e.status === 'running' || e.status === 'pending').length
-  const completedCount = list.filter((e) => e.status === 'completed').length
-  const totalCost      = list.reduce((s, e) => s + (e.total_cost_usd ?? 0), 0)
+  // Stat strip values — every figure is derivable from the experiments list
+  // itself, so the strip costs no extra round trip.
+  const runningCount = list.filter((e) => e.status === 'running' || e.status === 'pending').length
+  const datasetsUsed = new Set(list.map((e) => e.dataset_id)).size
+  const totalCost    = list.reduce((s, e) => s + (e.total_cost_usd ?? 0), 0)
+  // Best delta: the widest B-over-A gap across the graded pairs, carrying the
+  // experiment that produced it so the figure has a subject.
+  const best = useMemo(() => {
+    let top: { delta: number; name: string } | null = null
+    for (const e of list) {
+      if (e.avg_score_a == null || e.avg_score_b == null) continue
+      const d = e.avg_score_b - e.avg_score_a
+      if (!top || d > top.delta) top = { delta: d, name: e.name }
+    }
+    return top
+  }, [list])
 
   // CSV / JSON export
   function csvField(v: string | number): string {
@@ -469,8 +504,10 @@ export function ExperimentsClient() {
   }, [exportOpen])
 
   return (
-    <div className="-mx-4 -my-4 md:-mx-8 md:-my-7 flex flex-col min-h-screen">
-      <div className="sticky top-0 z-20 bg-bg">
+    <div>
+      {/* The topbar is the one full-bleed row on the board; everything below
+          sits flush inside the shell's content inset. */}
+      <div className={TOPBAR_BLEED}>
         <Topbar
           crumbs={[{ label: 'Experiments' }]}
           right={
@@ -481,7 +518,7 @@ export function ExperimentsClient() {
                 onClick={() => void experiments.refetch()}
                 disabled={experiments.isFetching}
                 title="Refresh now"
-                className="font-mono text-[11px] text-text-muted hover:text-text border border-border rounded px-2 py-1 transition-colors disabled:opacity-40"
+                className="rounded border border-border px-2 py-1 font-mono text-[11px] text-text-muted transition-colors hover:text-text disabled:opacity-40"
               >
                 <span className={cn('inline-block', experiments.isFetching && 'animate-spin')}>↻</span>
               </button>
@@ -490,7 +527,7 @@ export function ExperimentsClient() {
                 onClick={() => setNewOpen(true)}
                 title="New experiment"
                 aria-label="New experiment"
-                className="font-mono text-[11.5px] px-2 sm:px-3 py-[6px] rounded-[5px] bg-text text-bg font-medium hover:opacity-90 flex items-center gap-1.5 whitespace-nowrap shrink-0"
+                className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full bg-accent px-3.5 py-2 text-[12.5px] font-semibold text-accent-fg transition-colors hover:bg-accent-strong"
               >
                 <Plus className="h-3.5 w-3.5 shrink-0" />
                 <span className="hidden sm:inline">New experiment</span>
@@ -501,167 +538,156 @@ export function ExperimentsClient() {
         <h1 className="sr-only">Experiments</h1>
       </div>
 
-      {/* Stat strip — Total / Running / Completed / Spend. Wraps on mobile. */}
-      <div className="shrink-0 border-b border-border">
-        <div className="grid grid-cols-2 md:grid-cols-4">
-          {[
-            { label: 'Experiments', value: String(list.length) },
-            { label: 'Running',     value: String(runningCount), warn: runningCount > 0 },
-            { label: 'Completed',   value: String(completedCount) },
-            { label: 'Total spend', value: totalCost > 0 ? fmtUsd(totalCost) : '—' },
-          ].map((s, i) => (
-            <div
-              key={s.label}
-              className={cn(
-                'px-[18px] py-[14px] border-border',
-                // Vertical rule: alternate cols on 2-up mobile, all but last on md+.
-                i % 2 === 0 && 'border-r md:border-r',
-                i === 1 && 'md:border-r',
-                i === 2 && 'md:border-r',
-                // Bottom rule between mobile rows.
-                i < 2 && 'border-b md:border-b-0',
-              )}
+      <Board>
+        {/* Tab strip: All / Active / Completed buckets — consistent with the
+            Evals and Datasets pages. Drives the URL ?tab= param. */}
+        <Tabs value={tab} onValueChange={(v) => updateQuery({ tab: v === 'all' ? null : v })}>
+          <TabsList>
+            <TabsTrigger value="all">All</TabsTrigger>
+            <TabsTrigger value="active">Active</TabsTrigger>
+            <TabsTrigger value="completed">Completed</TabsTrigger>
+          </TabsList>
+        </Tabs>
+
+        {/* Filter row: the search field runs the width, then the status
+            segment, the export menu and the result count. */}
+        <FilterBar>
+          <div className={cn(CONTROL, 'flex min-w-[220px] flex-1 items-center gap-2 px-3')}>
+            <Search className="h-[13px] w-[13px] shrink-0 text-text-faint" />
+            <input
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') {
+                  setSearchInput('')
+                  updateQuery({ q: null })
+                }
+              }}
+              placeholder="Search experiments"
+              aria-label="Search by experiment or prompt name"
+              className="w-full bg-transparent text-[12.5px] leading-[18px] text-text placeholder:text-text-faint focus:outline-none"
+            />
+            {search && (
+              <button
+                type="button"
+                onClick={() => { setSearchInput(''); updateQuery({ q: null }) }}
+                className="shrink-0 font-mono text-[11px] text-text-faint transition-colors hover:text-text"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+
+          <Segment>
+            {STATUS_FILTERS.map(({ v, l }) => (
+              <SegmentItem
+                key={v}
+                active={statusFilter === v}
+                onClick={() => updateQuery({ status: v === 'all' ? null : v })}
+              >
+                {l}
+              </SegmentItem>
+            ))}
+          </Segment>
+
+          <div ref={exportRef} className="relative">
+            <button
+              type="button"
+              onClick={() => setExportOpen((v) => !v)}
+              disabled={filtered.length === 0}
+              aria-expanded={exportOpen}
+              className={cn(CONTROL, CONTROL_TEXT, 'px-3 transition-colors hover:border-border-strong disabled:opacity-40')}
             >
-              <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-2">{s.label}</div>
-              <span className={cn('text-[22px] sm:text-[24px] font-medium leading-none tracking-[-0.6px] tabular-nums', s.warn ? 'text-accent' : 'text-text')}>
-                {mounted ? s.value : ' '}
-              </span>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Tab strip: All / Active / Completed buckets — consistent with the
-          Evals and Datasets pages. Drives the URL ?tab= param. */}
-      <div className="shrink-0 border-b border-border bg-bg flex items-center gap-1 px-[22px]">
-        {(['all', 'active', 'completed'] as const).map((t) => (
-          <button
-            key={t}
-            type="button"
-            onClick={() => updateQuery({ tab: t === 'all' ? null : t })}
-            className={cn(
-              'font-mono text-[11px] uppercase tracking-[0.06em] px-3 py-2.5 transition-colors relative',
-              tab === t ? 'text-text' : 'text-text-faint hover:text-text-muted',
+              Export ▾
+            </button>
+            {exportOpen && (
+              <div className="absolute right-0 top-full z-20 mt-1 min-w-[110px] rounded-md border border-border bg-bg-elev p-1 shadow-card">
+                <button
+                  type="button"
+                  onClick={() => { setExportOpen(false); exportCsv() }}
+                  className="block w-full rounded px-2.5 py-1.5 text-left text-[12.5px] text-text-muted transition-colors hover:bg-bg-sunk hover:text-text"
+                >CSV</button>
+                <button
+                  type="button"
+                  onClick={() => { setExportOpen(false); exportJson() }}
+                  className="block w-full rounded px-2.5 py-1.5 text-left text-[12.5px] text-text-muted transition-colors hover:bg-bg-sunk hover:text-text"
+                >JSON</button>
+              </div>
             )}
-          >
-            {t === 'all' ? 'All' : t === 'active' ? 'Active' : 'Completed'}
-            {tab === t && (
-              <span className="absolute bottom-[-1px] left-3 right-3 h-[2px] bg-accent" />
-            )}
-          </button>
-        ))}
-      </div>
+          </div>
 
-      {/* Info banner with docs link */}
-      <div className="px-[22px] py-[12px] bg-bg-muted border-b border-border flex items-center gap-2 font-mono text-[11px] text-text-muted flex-wrap">
-        <FlaskConical className="h-3.5 w-3.5 shrink-0" />
-        <span>
-          Offline side-by-side: runs both prompt versions on a dataset and compares outputs.
-          Unlike A/B (Prompts), no production traffic is affected.
-        </span>
-        <Link
-          href="/docs/features/experiments"
-          className="text-text hover:opacity-80 transition-opacity ml-auto"
-        >
-          How experiments work →
-        </Link>
-      </div>
+          <span className="font-mono text-[11px] text-text-faint">
+            {mounted ? (filtered.length === list.length ? `${list.length} experiments` : `${filtered.length} of ${list.length}`) : ' '}
+          </span>
+        </FilterBar>
 
-      {/* Filter row: search + status + export */}
-      <div className="px-[22px] py-[10px] border-b border-border flex items-center gap-2 flex-wrap">
-        <div className="relative max-w-md flex-1 min-w-[180px]">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-text-faint" />
-          <input
-            value={searchInput}
-            onChange={(e) => setSearchInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Escape') {
-                setSearchInput('')
-                updateQuery({ q: null })
-              }
-            }}
-            placeholder="Search by name or prompt…"
-            className="w-full pl-8 pr-3 py-1.5 font-mono text-[12px] bg-bg-elev border border-border rounded-[6px] text-text placeholder:text-text-faint focus:outline-none focus:border-accent"
+        {/* Stat strip */}
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <StatCard
+            label="Experiments"
+            value={mounted ? list.length : ' '}
+            foot={mounted ? `${runningCount} running now` : ' '}
+            {...(runningCount > 0 ? { footClass: 'text-accent' } : {})}
+          />
+          <StatCard
+            label="Datasets used"
+            value={mounted ? datasetsUsed : ' '}
+            foot="across all experiments"
+          />
+          <StatCard
+            label="Best delta"
+            value={mounted ? (best ? fmtDelta(best.delta) : '—') : ' '}
+            foot={mounted ? (best ? best.name : 'no graded pairs yet') : ' '}
+            {...(best && best.delta > 0 ? { footClass: 'text-good' } : {})}
+          />
+          <StatCard
+            label="Spend on runs"
+            value={mounted ? (totalCost > 0 ? fmtUsd(totalCost) : '—') : ' '}
+            foot="all experiments"
           />
         </div>
 
-        <div className="flex items-center gap-1 flex-wrap">
-          {STATUS_FILTERS.map(({ v, l }) => (
-            <button
-              key={v}
-              type="button"
-              onClick={() => updateQuery({ status: v === 'all' ? null : v })}
-              className={cn(
-                'font-mono text-[11px] px-[9px] py-[3px] rounded-[4px] border transition-colors',
-                statusFilter === v
-                  ? 'border-border-strong bg-bg-elev text-text'
-                  : 'border-border text-text-muted hover:text-text',
-              )}
-            >
-              {l}
-            </button>
-          ))}
-        </div>
-
-        <span className="flex-1" />
-
-        <div ref={exportRef} className="relative">
-          <button
-            type="button"
-            onClick={() => setExportOpen((v) => !v)}
-            disabled={filtered.length === 0}
-            className="font-mono text-[11px] text-text-muted hover:text-text border border-border rounded px-2.5 py-1 transition-colors disabled:opacity-40"
+        {/* Explainer with docs link */}
+        <div className="card-surface rounded-card flex flex-wrap items-center gap-2 px-5 py-3.5 font-mono text-[11px] text-text-muted">
+          <FlaskConical className="h-3.5 w-3.5 shrink-0" />
+          <span>
+            Offline side-by-side: runs both prompt versions on a dataset and compares outputs.
+            Unlike A/B (Prompts), no production traffic is affected.
+          </span>
+          <Link
+            href="/docs/features/experiments"
+            className="ml-auto text-text transition-opacity hover:opacity-80"
           >
-            Export ▾
-          </button>
-          {exportOpen && (
-            <div className="absolute right-0 top-full mt-1 z-20 bg-bg-elev border border-border rounded-md shadow-lg py-1 min-w-[110px]">
-              <button
-                type="button"
-                onClick={() => { setExportOpen(false); exportCsv() }}
-                className="block w-full px-3 py-1.5 text-left font-mono text-[11px] uppercase tracking-[0.04em] text-text-muted hover:text-text hover:bg-bg transition-colors"
-              >CSV</button>
-              <button
-                type="button"
-                onClick={() => { setExportOpen(false); exportJson() }}
-                className="block w-full px-3 py-1.5 text-left font-mono text-[11px] uppercase tracking-[0.04em] text-text-muted hover:text-text hover:bg-bg transition-colors"
-              >JSON</button>
-            </div>
-          )}
+            How experiments work →
+          </Link>
         </div>
 
-        <span className="font-mono text-[11px] text-text-faint">
-          {mounted ? (filtered.length === list.length ? `${list.length} experiments` : `${filtered.length} of ${list.length}`) : ' '}
-        </span>
-      </div>
-
-      <div>
         {experiments.isLoading ? (
-          <div className="p-[22px] space-y-2">
-            {[1, 2].map((i) => <div key={i} className="h-14 bg-bg-elev rounded animate-pulse" />)}
+          <div className="space-y-2">
+            {[1, 2].map((i) => <div key={i} className="h-14 animate-pulse rounded-card bg-bg-chip" />)}
           </div>
         ) : list.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-64 gap-3 text-text-muted">
-            <FlaskConical className="h-10 w-10 text-text-faint" />
-            <p className="font-mono text-[13px]">No experiments yet.</p>
+          <div className="card-surface rounded-card flex flex-col items-center justify-center gap-3 px-5 py-12 text-text-muted">
+            <FlaskConical className="h-9 w-9 text-text-faint" />
+            <p className="text-[13.5px] font-semibold leading-[1.45] text-text">No experiments yet.</p>
             <button
               type="button"
               onClick={() => setNewOpen(true)}
-              className="font-mono text-[11.5px] px-3 py-[6px] rounded-[5px] bg-text text-bg font-medium hover:opacity-90 flex items-center gap-1.5"
+              className="inline-flex items-center gap-1.5 rounded-full bg-accent px-3.5 py-2 text-[12.5px] font-semibold text-accent-fg transition-colors hover:bg-accent-strong"
             >
               <Plus className="h-3.5 w-3.5" />
               Create your first experiment
             </button>
             <Link
               href="/docs/features/experiments"
-              className="font-mono text-[11.5px] mt-1 px-2.5 py-1 rounded border border-border text-text-muted hover:text-text hover:border-border-strong transition-colors"
+              className="font-mono text-[11px] text-text-muted underline underline-offset-2 hover:text-text"
             >
               How experiments work →
             </Link>
           </div>
         ) : filtered.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-40 gap-3 text-text-muted">
-            <p className="font-mono text-[12.5px]">No experiments match the current filters.</p>
+          <div className="card-surface rounded-card flex h-40 flex-col items-center justify-center gap-3 text-text-muted">
+            <p className="text-[12.5px]">No experiments match the current filters.</p>
             <button
               type="button"
               onClick={() => { setSearchInput(''); updateQuery({ q: null, status: null }) }}
@@ -671,18 +697,30 @@ export function ExperimentsClient() {
             </button>
           </div>
         ) : (
-          <>
-            <div className="flex items-center px-[16px] py-[8px] bg-bg-muted border-b border-border font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint">
-              <span className="flex-1">Name</span>
-              <span className="hidden sm:block w-[90px] text-right">A score</span>
-              <span className="hidden sm:block w-[90px] text-right">B score</span>
-              <span className="w-[60px] sm:w-[80px] text-right">Δ</span>
-              <span className="w-[70px] sm:w-[80px] text-right">Cost</span>
+          /* The row grid is wider than a narrow viewport, so the card scrolls
+             its own table sideways rather than the page. */
+          <TableCard>
+            <div className="overflow-x-auto">
+              <div className="min-w-[1060px]">
+                <TableHead>
+                  <div className="grid items-center gap-3" style={EXPERIMENT_GRID}>
+                    <Th>Experiment</Th>
+                    <Th>Prompt</Th>
+                    <Th>Model</Th>
+                    <Th>A score</Th>
+                    <Th>B score</Th>
+                    <Th>Delta</Th>
+                    <Th>Cost</Th>
+                    <Th>Started</Th>
+                    <Th>Status</Th>
+                  </div>
+                </TableHead>
+                {filtered.map((exp) => <ExperimentRow key={exp.id} exp={exp} now={now} />)}
+              </div>
             </div>
-            {filtered.map((exp) => <ExperimentRow key={exp.id} exp={exp} />)}
-          </>
+          </TableCard>
         )}
-      </div>
+      </Board>
 
       <NewExperimentDialog open={newOpen} onClose={() => setNewOpen(false)} />
     </div>

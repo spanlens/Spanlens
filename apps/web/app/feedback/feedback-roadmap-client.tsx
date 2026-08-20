@@ -26,11 +26,11 @@ const STATUS_FILTERS: Array<{ value: FeedbackStatus | 'all'; label: string }> = 
 ]
 
 const STATUS_STYLE: Record<FeedbackStatus, string> = {
-  new: 'bg-bg-elev text-text-muted border-border',
+  new: 'bg-bg-chip text-text-muted border-border',
   planned: 'bg-accent-bg text-accent border-accent/30',
-  in_progress: 'bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 border-yellow-500/30',
-  shipped: 'bg-good/10 text-good border-good/30',
-  declined: 'bg-bg-elev text-text-faint border-border',
+  in_progress: 'bg-warn-bg text-warn border-warn/30',
+  shipped: 'bg-good-bg text-good border-good/30',
+  declined: 'bg-bg-chip text-text-faint border-border',
 }
 
 const STATUS_LABEL: Record<FeedbackStatus, string> = {

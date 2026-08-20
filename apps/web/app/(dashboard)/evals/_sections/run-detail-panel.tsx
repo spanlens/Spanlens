@@ -102,9 +102,17 @@ export function RunDetailPanel({ runId, onClose }: { runId: string; onClose: () 
   }, [results.data])
   const maxBucket = Math.max(1, ...histBuckets)
 
+  /*
+   * The panel is a full-screen sheet on mobile and a card in the right-hand
+   * column from md up, where it sticks below the 61px topbar as the table
+   * scrolls past it.
+   */
+  const PANEL =
+    'fixed inset-0 z-30 overflow-y-auto bg-bg md:sticky md:inset-x-auto md:bottom-auto md:top-[77px] md:z-auto md:max-h-[calc(100vh-93px)] md:w-[420px] md:shrink-0 md:rounded-card md:border md:border-border md:bg-bg-elev md:shadow-card'
+
   if (!run.data) {
     return (
-      <div className="fixed inset-0 z-30 bg-bg md:static md:inset-auto md:z-auto border-l border-border md:w-[400px] shrink-0 flex items-center justify-center text-text-faint">
+      <div className={cn(PANEL, 'flex items-center justify-center py-10 text-text-faint')}>
         <Loader2 className="h-4 w-4 animate-spin" />
       </div>
     )
@@ -113,18 +121,24 @@ export function RunDetailPanel({ runId, onClose }: { runId: string; onClose: () 
   const r = run.data
 
   return (
-    <div className="fixed inset-0 z-30 bg-bg md:static md:inset-auto md:z-auto border-l border-border md:w-[420px] shrink-0 overflow-y-auto">
-      <div className="sticky top-0 bg-bg-elev border-b border-border px-4 py-3 flex items-center justify-between">
+    <div className={PANEL}>
+      <div className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-bg-elev px-5 py-3.5 md:rounded-t-card">
         <div className="flex items-center gap-2">
           <StatusBadge status={r.status} />
-          <span className="font-mono text-[11px] text-text-muted">
+          <span className="font-mono text-[11px] text-text-muted tabular-nums">
             {r.scored_count}/{r.sample_size} scored
           </span>
         </div>
-        <button onClick={onClose} className="text-text-faint hover:text-text text-xs">✕</button>
+        <button
+          onClick={onClose}
+          aria-label="Close run detail"
+          className="text-xs text-text-faint transition-colors hover:text-text"
+        >
+          ✕
+        </button>
       </div>
 
-      <div className="p-4 space-y-4">
+      <div className="space-y-4 p-5">
         {/* P2-11: trajectory runs score traces, not a prompt version. */}
         {r.trace_name && (
           <p className="font-mono text-[11px] text-text-muted">

@@ -58,12 +58,6 @@ vi.mock('../lib/db.js', () => ({
   },
 }))
 
-vi.mock('../lib/clickhouse.js', () => ({
-  getClickhouse: () => ({ query: () => Promise.resolve({ json: () => [] }), ping: async () => ({ success: true }) }),
-  getOrgClickhouse: () => ({ query: () => Promise.resolve({ json: () => [] }) }),
-  pingClickhouse: async () => true,
-}))
-
 vi.mock('../lib/cron-logger.js', () => ({
   logCronRun: (...args: unknown[]) => {
     logCronRunMock(...args)
@@ -80,12 +74,10 @@ vi.mock('../lib/quota-warnings.js', () => ({ runQuotaWarningsJob: vi.fn() }))
 vi.mock('../lib/anomaly-snapshot.js', () => ({ snapshotAnomaliesForAllOrgs: vi.fn() }))
 vi.mock('../lib/stale-key-digest.js', () => ({ runStaleKeyDigestJob: vi.fn() }))
 vi.mock('../lib/background-migrations/runner.js', () => ({ runDueMigrations: vi.fn() }))
-vi.mock('../lib/events-reconciliation.js', () => ({ runReconciliationCron: vi.fn() }))
 vi.mock('../lib/leak-detection.js', () => ({ runLeakDetectionJob: vi.fn() }))
 vi.mock('../lib/recommendation-notify.js', () => ({ sendHighConfidenceRecommendationAlerts: vi.fn() }))
 vi.mock('../lib/fallback-replay.js', () => ({
   replayFallbackQueue: vi.fn(),
-  replayEventsFallbackQueue: vi.fn(),
 }))
 vi.mock('../lib/billing-downgrade.js', () => ({ runDowngradeCheck: vi.fn() }))
 vi.mock('../api/pendingDeletions.js', () => ({ executePendingDeletions: vi.fn() }))

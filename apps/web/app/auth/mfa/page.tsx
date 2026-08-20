@@ -1,21 +1,24 @@
 'use client'
 
 import { Suspense, useEffect, useRef, useState } from 'react'
-import Image from 'next/image'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-
-function LogoMark() {
-  return (
-    <div className="flex items-center gap-2 mb-6">
-      <Image src="/icon.png" alt="Spanlens" width={20} height={20} className="shrink-0 rounded-[5px]" priority />
-      <span className="font-semibold text-[15px] tracking-[-0.3px] text-text">spanlens</span>
-    </div>
-  )
-}
+import {
+  AuthFootnote,
+  AuthHeading,
+  AuthLayout,
+  AuthNote,
+  authLink,
+  authPrimaryButton,
+} from '../_components/auth-shell'
 
 const DIGIT_COUNT = 6
+
+const PITCH = {
+  title: 'Second factor, every sign in.',
+  body: 'Codes come from your authenticator app. Recovery codes work once each if you lose the device.',
+}
 
 function MfaPageInner() {
   const params = useSearchParams()
@@ -110,83 +113,99 @@ function MfaPageInner() {
   }
 
   const missingParams = !factorId || !challengeId
+  const code = digits.join('')
+
+  if (missingParams) {
+    return (
+      <AuthLayout pitch={PITCH}>
+        <AuthHeading
+          title="We lost the challenge"
+          subtitle="This page needs the factor and challenge issued at sign in."
+        />
+        <AuthNote tone="bad">Restart the sign-in flow and enter your code there.</AuthNote>
+        <AuthFootnote className="mt-[18px]">
+          <Link href="/login" className={authLink}>
+            Back to sign in
+          </Link>
+        </AuthFootnote>
+      </AuthLayout>
+    )
+  }
 
   return (
-    <div className="min-h-screen bg-bg-elev flex items-center justify-center p-10">
-      <div className="w-[440px] max-w-full bg-bg border border-border rounded-lg p-8">
-        <LogoMark />
+    <AuthLayout pitch={PITCH}>
+      <AuthHeading title="Enter your code" subtitle="Six digits from your authenticator app." />
 
-        <h1 className="text-[20px] font-medium tracking-[-0.3px] mb-2">
-          Two-factor authentication
-        </h1>
-        <p className="font-mono text-[11px] text-text-muted mb-6">
-          Enter the 6-digit code from your authenticator app.
-        </p>
-
-        {missingParams ? (
-          <p className="text-[13px] text-bad">
-            Missing authentication parameters. Please restart the sign-in flow.
-          </p>
-        ) : (
-          <>
-            {/* OTP input grid */}
-            <div className="flex gap-2 mb-5 justify-center" onPaste={handlePaste}>
-              {digits.map((digit, i) => (
-                <input
-                  key={i}
-                  ref={(el) => { inputRefs.current[i] = el }}
-                  type="text"
-                  inputMode="numeric"
-                  maxLength={1}
-                  value={digit}
-                  onChange={(e) => handleChange(i, e.target.value)}
-                  onKeyDown={(e) => handleKeyDown(i, e)}
-                  disabled={verifying}
-                  className="w-12 h-12 text-center text-[18px] font-mono text-text border border-border-strong rounded-[7px] bg-bg-elev outline-none focus:border-accent transition-colors disabled:opacity-40"
-                  aria-label={`Digit ${i + 1}`}
-                />
-              ))}
-            </div>
-
-            {error && <p className="text-[12.5px] text-bad mb-3 text-center">{error}</p>}
-
-            {verifying && (
-              <p className="text-[12.5px] text-text-muted mb-3 text-center">Verifying…</p>
-            )}
-
-            {/* Remember device */}
-            <label className="flex items-center gap-2.5 cursor-pointer mb-5">
-              <input
-                type="checkbox"
-                checked={rememberDevice}
-                onChange={(e) => setRememberDevice(e.target.checked)}
-                className="w-4 h-4 rounded accent-accent cursor-pointer"
-              />
-              <span className="text-[13px] text-text-muted">Remember this device for 30 days</span>
-            </label>
-          </>
-        )}
-
-        <div className="text-center">
-          <Link
-            href="#"
-            className="font-mono text-[12px] text-text-faint hover:text-text transition-colors"
-          >
-            Use a recovery code instead →
-          </Link>
+      {/* The board draws six separate boxes, so each digit is its own input.
+          `fieldset` + `legend` gives the group one accessible name; the
+          per-box aria-labels keep each cell identifiable on its own. */}
+      {/* `min-w-0` is load-bearing: a fieldset defaults to min-inline-size
+          min-content, so without it the six inputs refuse to shrink and the
+          row overflows the 400px column. */}
+      <fieldset className="m-0 w-full min-w-0 border-0 p-0">
+        <legend className="sr-only">Six digit authentication code</legend>
+        <div className="flex gap-2.5" onPaste={handlePaste}>
+          {digits.map((digit, i) => (
+            <input
+              key={i}
+              ref={(el) => { inputRefs.current[i] = el }}
+              type="text"
+              inputMode="numeric"
+              autoComplete={i === 0 ? 'one-time-code' : 'off'}
+              maxLength={1}
+              value={digit}
+              onChange={(e) => handleChange(i, e.target.value)}
+              onKeyDown={(e) => handleKeyDown(i, e)}
+              disabled={verifying}
+              aria-label={`Digit ${i + 1}`}
+              aria-invalid={error ? true : undefined}
+              className="h-[62px] min-w-0 flex-1 rounded-lg border border-border bg-bg-elev text-center font-mono text-[20px] text-text transition-colors focus-visible:border-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent disabled:opacity-50 aria-[invalid=true]:border-bad"
+            />
+          ))}
         </div>
-      </div>
-    </div>
+      </fieldset>
+
+      {error && <AuthNote tone="bad" live="assertive" className="mt-4">{error}</AuthNote>}
+      {verifying && <AuthNote live="polite" className="mt-4">Verifying…</AuthNote>}
+
+      <label className="mt-4 flex cursor-pointer items-center gap-2.5">
+        <input
+          type="checkbox"
+          checked={rememberDevice}
+          onChange={(e) => setRememberDevice(e.target.checked)}
+          className="size-4 shrink-0 cursor-pointer accent-[var(--accent)]"
+        />
+        <span className="text-[12.5px] leading-[1.48] text-text-muted">Remember this device for 30 days</span>
+      </label>
+
+      {/* The six boxes auto-submit on the last digit; this button is the
+          explicit path for anyone who tabs away before that fires. */}
+      <button
+        type="button"
+        onClick={() => void submitCode(code)}
+        disabled={verifying || code.length < DIGIT_COUNT}
+        className={`${authPrimaryButton} mt-[22px]`}
+      >
+        {verifying ? 'Verifying…' : 'Verify and continue'}
+      </button>
+
+      <AuthFootnote className="mt-[18px]">
+        Lost the device?{' '}
+        <Link href="/login" className={authLink}>
+          Use a recovery code
+        </Link>
+      </AuthFootnote>
+    </AuthLayout>
   )
 }
 
 function MfaFallback() {
   return (
-    <div className="min-h-screen bg-bg-elev flex items-center justify-center p-10">
-      <div className="w-[440px] max-w-full bg-bg border border-border rounded-lg p-8">
-        <div className="text-[13px] text-text-muted">Loading…</div>
-      </div>
-    </div>
+    <AuthLayout pitch={PITCH}>
+      <p className="text-[13.5px] leading-[1.6] text-text-faint" role="status">
+        Loading…
+      </p>
+    </AuthLayout>
   )
 }
 

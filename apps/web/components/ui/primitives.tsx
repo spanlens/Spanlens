@@ -45,7 +45,7 @@ export function Section({
   return (
     <div
       className={cn(
-        'rounded-lg border bg-bg-elev overflow-hidden',
+        'rounded-card border bg-bg-elev overflow-hidden shadow-card',
         danger ? 'border-accent-border' : 'border-border',
         className,
       )}
@@ -70,7 +70,11 @@ export function Section({
           {action && <div>{action}</div>}
         </div>
       )}
-      <div className="bg-bg">{children}</div>
+      {/* Transparent, not `bg-bg`: the card and the page were the same white in
+          light mode so the difference never showed, but in dark it painted a
+          `#0c0d10` body under a `#141619` header. The settings cards in the
+          Figma boards are a single fill. */}
+      <div>{children}</div>
     </div>
   )
 }
@@ -108,7 +112,12 @@ export function FormRow({
 
 /**
  * StatusPill — inline pill for request/span status.
- * variant: 'good' | 'bad' | 'warn' | 'neutral'
+ *
+ * `accent` is the odd one out: the boards use the same pill for a few things
+ * that are emphasis rather than state (a live traffic share, a `{{variable}}`
+ * chip, a source badge). They share this geometry exactly, so they share the
+ * component instead of growing a second one, but they are not a status and
+ * must not be given `good`/`warn`, which would assert a health they don't have.
  */
 export function StatusPill({
   children,
@@ -116,17 +125,21 @@ export function StatusPill({
   className,
 }: {
   children: React.ReactNode
-  variant?: 'good' | 'bad' | 'warn' | 'neutral'
+  variant?: 'good' | 'bad' | 'warn' | 'neutral' | 'accent'
   className?: string
 }) {
   return (
     <span
       className={cn(
-        'inline-flex items-center gap-1.5 px-[9px] py-[3px] rounded-[5px] font-mono text-[11px] tracking-[0.03em] border whitespace-nowrap',
-        variant === 'good' && 'bg-good-bg text-good border-good/20',
-        variant === 'bad' && 'bg-bad-bg text-bad border-bad/20',
-        variant === 'warn' && 'bg-accent-bg text-accent border-accent-border',
-        variant === 'neutral' && 'bg-bg text-text-faint border-border',
+        // Every dashboard board draws these the same way: a borderless pill,
+        // 3/8 padding, 11px Geist SemiBold, tinted fill with status ink. The
+        // fill carries the state, so there is no outline to compete with it.
+        'inline-flex items-center gap-1.5 px-2 py-[3px] rounded-full text-[11px] font-semibold leading-[15px] whitespace-nowrap',
+        variant === 'good' && 'bg-good-bg text-good',
+        variant === 'bad' && 'bg-bad-bg text-bad',
+        variant === 'warn' && 'bg-warn-bg text-warn',
+        variant === 'accent' && 'bg-accent-bg text-accent',
+        variant === 'neutral' && 'bg-bg-chip text-text-muted',
         className,
       )}
     >

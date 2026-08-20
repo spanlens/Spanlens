@@ -6,12 +6,12 @@ import { TabHeader } from '../_shared/ui'
 
 export function SystemTab() {
   return (
-    <div className="max-w-[980px]">
+    <div>
       <TabHeader
         title="System"
         description="Cron job execution history. Runs are logged after each execution. Refreshes every 60s."
       />
-      <div className="border border-border rounded-[8px] overflow-hidden">
+      <div className="rounded-card border border-border bg-bg-elev shadow-card overflow-hidden">
         <CronJobsPanel />
       </div>
     </div>

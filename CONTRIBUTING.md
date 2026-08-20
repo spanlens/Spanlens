@@ -12,10 +12,10 @@ keep the codebase navigable as it grows.
 1. Fork → branch (`feat/`, `fix/`, `docs/`, …) → commit → PR.
 2. Commits and PR descriptions are in **English**.
 3. Code comments are in **English** (legacy Korean comments are translated
-   incrementally as files are touched — don't feel obligated to translate
+   incrementally as files are touched, so don't feel obligated to translate
    a whole file in a drive-by fix).
 4. Run `pnpm typecheck && pnpm lint && pnpm test && pnpm build` before pushing.
-5. Open a PR against `main` — the template asks for a short summary and a
+5. Open a PR against `main`. The template asks for a short summary and a
    safety checklist.
 
 ---
@@ -30,17 +30,16 @@ packages/
   sdk/           TypeScript SDK (npm: @spanlens/sdk)
   sdk-python/    Python SDK (PyPI: spanlens)
   cli/           Setup wizard (npm: @spanlens/cli)
-  mcp-server/    MCP server (npm: @spanlens/mcp-server) — 7 tools for Cursor/Claude Desktop
+  mcp-server/    MCP server (npm: @spanlens/mcp-server), 7 tools for Cursor/Claude Desktop
   api-types/     Shared types between web ↔ server (workspace internal)
   eslint-plugin/ ESLint rules for error-envelope lint (workspace internal)
-supabase/        Migrations + seeds for the Postgres-side schema
-clickhouse/      Migrations for the request-log schema
+supabase/        Migrations + seeds for the whole schema, request log included
 docs/            Architecture notes, runbooks, RFCs
 ```
 
 Dependency direction (do not violate):
 
-- `apps/web → apps/server` (via fetch only — never import server code).
+- `apps/web → apps/server` (via fetch only, never by importing server code).
 - `apps/server → supabase`.
 - `packages/sdk → external packages only` (never import from `apps/`).
 
@@ -48,14 +47,13 @@ Dependency direction (do not violate):
 
 ## Running locally
 
-You need Node ≥ 20, pnpm ≥ 10, and Docker (for the local Supabase + ClickHouse
-stack). All three are installable via [`mise`](https://mise.jdx.dev/) or
+You need Node ≥ 20, pnpm ≥ 10, and Docker (Supabase runs in containers
+locally). All three are installable via [`mise`](https://mise.jdx.dev/) or
 `brew`.
 
 ```bash
 # One-time setup
 supabase start          # local Supabase
-docker compose up -d clickhouse   # local ClickHouse
 cp apps/server/.env.example apps/server/.env  # fill in the values
 
 # Install + start dev servers
@@ -65,7 +63,6 @@ pnpm dev                # web :3000, server :3001
 
 # Apply migrations
 supabase db push
-pnpm ch:migrate
 ```
 
 Smaller scopes:
@@ -88,8 +85,8 @@ Smaller scopes:
 - **Code comments**: English.
 - **Commit messages**: English. See [`.github/COMMIT_CONVENTION.md`](./.github/COMMIT_CONVENTION.md).
 - **PR descriptions**: English.
-- **CLAUDE.md**: Korean is OK — it's a private memo for the maintainer's AI
-  pair-programmer, not a public-facing artifact.
+- **CLAUDE.md**: Korean is OK, since it's a private memo for the maintainer's
+  AI pair-programmer rather than a public-facing artifact.
 - **Customer-facing copy** (`apps/web` UI, marketing site, Privacy/Terms/DPA,
   emails): English.
 
@@ -111,15 +108,16 @@ Smaller scopes:
 
 ### Migrations
 
-- Supabase: `supabase/migrations/YYYYMMDDHHMMSS_description.sql`. Once
-  applied to production they're immutable — add a new file for follow-up
-  changes.
-- ClickHouse: `clickhouse/migrations/NNN_description.sql`. **Idempotent only**
-  (`CREATE IF NOT EXISTS`, `ALTER … ADD COLUMN IF NOT EXISTS`).
+- Migrations live in `supabase/migrations/YYYYMMDDHHMMSS_description.sql`.
+  Once applied to production they're immutable, so follow-up changes go in a
+  new file.
+- Write them idempotently (`CREATE TABLE IF NOT EXISTS`, `ADD COLUMN IF NOT
+  EXISTS`). A migration can be re-run against a database that already has
+  half of it.
 - Always run `supabase gen types` after a Postgres migration so
-  `supabase/types.ts` stays in sync. Pipe stderr to `/dev/null` — the CLI
-  leaks warning lines onto stdout that, if captured into the file, break
-  `tsc`:
+  `supabase/types.ts` stays in sync. Pipe stderr to `/dev/null`, because the
+  CLI leaks warning lines onto stdout that break `tsc` if they land in the
+  file:
   ```
   supabase gen types --lang typescript --local 2>/dev/null > supabase/types.ts
   ```
@@ -141,8 +139,8 @@ project-specific scopes documented in
 feat(proxy): graceful stream deadline + truncated flag
 
 Before: streams that ran longer than Vercel's 300s ceiling got hard-killed
-mid-pump — no log row, customer billed for tokens that never reached the
-dashboard.
+mid-pump, with no log row and the customer billed for tokens that never
+reached the dashboard.
 
 After: 290s soft deadline. On expiry we cancel the upstream reader, exit
 the pump, log the row with `truncated: true`. Dashboard surfaces this
@@ -159,7 +157,7 @@ The body explains **why**, not what. The diff already shows what.
 
 1. Branch naming: `feat/<short-slug>`, `fix/<short-slug>`, `docs/<short-slug>`,
    `chore/<short-slug>`, `refactor/<short-slug>`.
-2. Keep PRs focused — one logical change per PR. Refactors and feature work
+2. Keep PRs focused: one logical change per PR. Refactors and feature work
    land in separate PRs even when they touch the same files.
 3. Fill out the PR template safety checklist honestly. It exists because
    security and correctness regressions are easier to catch in review than
@@ -189,14 +187,15 @@ full policy.
 
 ## Project decisions
 
-Published design docs live in `docs/plans/` (currently
-`clickhouse-migration.md`, which explains why the request log moved off
-Postgres). Read it before proposing a structural change to the data layer so
+Published design docs live in `docs/plans/`. `postgres-migration.md` covers
+where the request log is stored and why; `clickhouse-migration.md` is the
+earlier round trip, kept because the reasoning still explains the shape of
+the table. Read them before proposing a structural change to the data layer so
 we don't talk past each other. Roadmap and launch planning are kept private;
 open an issue if a decision is unclear and we'll explain the reasoning there.
 
-Operational gotchas — the surprises someone hit in production that future
-contributors should know about — live in `CLAUDE.md` (the file is named for
+Operational gotchas, the surprises someone hit in production that future
+contributors should know about, live in `CLAUDE.md` (the file is named for
 the maintainer's AI assistant but the content is useful to any contributor
 who can read Korean).
 

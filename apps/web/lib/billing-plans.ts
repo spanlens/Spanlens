@@ -107,9 +107,9 @@ export const PLAN_RETENTION_DAYS: Record<string, number> = {
   free: 14,
   starter: 90,
   team: 365,
-  // Default Enterprise retention — extendable per contract. Must match
+  // Default Enterprise retention, extendable per contract. Must match
   // apps/server/src/lib/quota.ts LOG_RETENTION_DAYS to keep dashboard
-  // display consistent with server-enforced ClickHouse filtering.
+  // display consistent with the retention window the server enforces.
   enterprise: 365,
 }
 

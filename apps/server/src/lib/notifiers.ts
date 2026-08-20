@@ -5,7 +5,15 @@
  * result into `alert_deliveries`.
  */
 
-import { escapeHtml } from './resend.js'
+import {
+  escapeHtml,
+  emailShell,
+  emailStatusBar,
+  emailParagraph,
+  emailDetailCard,
+  emailButton,
+  type EmailTone,
+} from './resend.js'
 
 interface DeliveryResult {
   ok: boolean
@@ -269,26 +277,24 @@ function buildQuotaBody(n: QuotaWarningNotification): string {
 }
 
 /**
- * HTML version of the quota warning, styled like the other resend.ts emails.
- * The 100% email carries a prominent "Upgrade your plan" button pointing at
- * the billing page; the 80% email uses the same link with softer copy.
+ * HTML version of the quota warning. Shares the resend.ts email kit (Figma
+ * `Emails` frame E3) so quota mail sits in the same chrome as alerts and
+ * digests. The 100% email carries a prominent "Upgrade your plan" button
+ * pointing at the billing page; the 80% email uses the same link with softer
+ * copy.
  */
 function buildQuotaHtml(n: QuotaWarningNotification): string {
   const pct = Math.floor((n.used / n.limit) * 100)
   const orgName = escapeHtml(n.organizationName)
   const usage = `${n.used.toLocaleString()} / ${n.limit.toLocaleString()} requests (${pct}%)`
 
-  let headerBg: string
-  let headerBorder: string
-  let headerColor: string
+  let tone: EmailTone
   let headerTitle: string
   let body: string
   let ctaLabel: string
 
   if (n.threshold === 100) {
-    headerBg = '#fef2f2'
-    headerBorder = '#fecaca'
-    headerColor = '#991b1b'
+    tone = 'error'
     if (n.overageActive) {
       headerTitle = 'Overage billing is now active'
       body = `
@@ -309,9 +315,7 @@ function buildQuotaHtml(n: QuotaWarningNotification): string {
       ctaLabel = 'Upgrade your plan'
     }
   } else {
-    headerBg = '#fff7ed'
-    headerBorder = '#fed7aa'
-    headerColor = '#9a3412'
+    tone = 'warn'
     headerTitle = "80% of this month's quota used"
     body = n.overageActive
       ? `
@@ -327,24 +331,20 @@ function buildQuotaHtml(n: QuotaWarningNotification): string {
     ctaLabel = 'Review plans and usage'
   }
 
-  return `
-    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 580px; margin: 0 auto; padding: 24px; color: #111;">
-      <div style="background: ${headerBg}; border: 1px solid ${headerBorder}; border-radius: 8px; padding: 14px 16px; margin-bottom: 18px;">
-        <div style="font-weight: 600; font-size: 14px; color: ${headerColor};">${headerTitle}</div>
-      </div>
-      <p style="margin: 0 0 14px; color: #333; font-size: 13.5px; line-height: 1.55;">${body.trim()}</p>
-      <table style="width: 100%; font-size: 13px; margin-bottom: 16px;">
-        <tr><td style="padding: 4px 0; color: #888; width: 90px;">Usage</td><td style="font-family: ui-monospace, monospace;">${escapeHtml(usage)}</td></tr>
-        <tr><td style="padding: 4px 0; color: #888;">Plan</td><td style="font-family: ui-monospace, monospace;">${escapeHtml(n.plan)}</td></tr>
-      </table>
-      <p style="margin: 22px 0;">
-        <a href="${n.billingUrl}" style="display: inline-block; padding: 11px 20px; background: #111; color: #fff; text-decoration: none; border-radius: 6px; font-weight: 500; font-size: 13px;">${ctaLabel}</a>
-      </p>
-      <p style="margin: 18px 0 0; color: #aaa; font-size: 11.5px;">
-        Questions about quotas or billing? Reply to this email and it goes straight to the team.
-      </p>
-    </div>
-  `.trim()
+  return emailShell({
+    blocks: [
+      emailStatusBar(tone, headerTitle),
+      emailParagraph(body.trim()),
+      emailDetailCard([
+        { label: 'Usage', value: usage },
+        { label: 'Plan', value: n.plan },
+      ]),
+      emailButton(n.billingUrl, ctaLabel),
+    ],
+    footnotes: [
+      'Questions about quotas or billing? Reply to this email and it goes straight to the team.',
+    ],
+  })
 }
 
 export async function sendQuotaWarningEmail(

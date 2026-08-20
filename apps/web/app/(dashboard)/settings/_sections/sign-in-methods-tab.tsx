@@ -10,7 +10,7 @@ import {
   type LinkableProvider,
 } from '@/lib/queries/use-identities'
 import type { UserIdentity } from '@supabase/supabase-js'
-import { MonoPill, TabHeader } from '../_shared/ui'
+import { MonoPill, TabHeader, PILL_PRIMARY, PILL_SECONDARY } from '../_shared/ui'
 
 // ─── SIGN-IN METHODS tab ──────────────────────────────────────────────────────
 
@@ -98,13 +98,13 @@ export function SignInMethodsTab() {
   }
 
   return (
-    <div className="max-w-[920px]">
+    <div>
       <TabHeader
         title="Sign-in methods"
         description="Manage how you sign in to Spanlens. Connect multiple providers to the same account, then sign in with any of them."
       />
 
-      <Section title="Linked providers" className="mb-5">
+      <Section title="Linked providers" className="mb-4">
         {isLoading ? (
           <div className="px-6 py-4 font-mono text-[12.5px] text-text-faint">Loading…</div>
         ) : identitiesError ? (
@@ -143,6 +143,7 @@ export function SignInMethodsTab() {
                     </div>
                     {linked ? (
                       <GhostBtn
+                        className={PILL_SECONDARY}
                         onClick={() => void handleDisconnect(linked)}
                         disabled={isBusy || disconnectBlocked}
                         title={disconnectBlocked ? 'Connect another sign-in method before removing this one.' : undefined}
@@ -151,6 +152,7 @@ export function SignInMethodsTab() {
                       </GhostBtn>
                     ) : (
                       <PrimaryBtn
+                        className={PILL_PRIMARY}
                         onClick={() => void handleConnect(provider.id)}
                         disabled={isBusy}
                       >
@@ -171,8 +173,8 @@ export function SignInMethodsTab() {
         )}
       </Section>
 
-      <Section title="Why connect multiple providers?" className="mb-5">
-        <div className="px-6 py-4 text-[13px] text-text-muted leading-relaxed space-y-2">
+      <Section title="Why connect multiple providers?" className="mb-4">
+        <div className="px-6 py-4 text-[12.5px] text-text-muted leading-relaxed space-y-2">
           <p>
             One account, multiple ways in. Connect Google or GitHub to sign in faster the
             next time and keep email as a fallback if a provider is unavailable.

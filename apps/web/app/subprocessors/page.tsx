@@ -20,11 +20,18 @@ export default function SubprocessorsPage() {
       <MarketingNav />
       <BreadcrumbJsonLd trail={[{ name: 'Subprocessors', path: '/subprocessors' }]} />
 
-      <main className="flex-1 max-w-4xl mx-auto px-6 py-12 prose prose-stone
-        prose-headings:scroll-mt-20
+      <main className="w-full min-w-0 flex-1 max-w-4xl mx-auto px-6 py-12 prose prose-stone
+        prose-headings:scroll-mt-20 prose-headings:font-display prose-headings:text-text
+        prose-h1:text-[40px] prose-h1:track-h2 prose-h1:leading-[1.12] prose-h1:mb-3
+        prose-h2:text-[20px] prose-h2:track-quote prose-h2:mt-10
+        prose-h3:text-[16px] prose-h3:track-quote
+        prose-p:text-[14.5px] prose-p:leading-[1.75] prose-p:text-text-muted
+        prose-li:text-[14.5px] prose-li:leading-[1.75] prose-li:text-text-muted
+        prose-strong:text-text prose-strong:font-semibold
+        prose-table:text-[13.5px]
         prose-a:text-accent prose-a:no-underline hover:prose-a:opacity-80">
         <h1>Subprocessors</h1>
-        <p className="text-sm text-muted-foreground">
+        <p className="font-mono text-[11.5px] text-text-faint">
           <strong>Effective date:</strong> {EFFECTIVE_DATE}
         </p>
 
@@ -98,40 +105,20 @@ export default function SubprocessorsPage() {
               </td>
               <td>
                 PostgreSQL database (auth, organizations, projects, encrypted provider keys,
-                subscription state). Authentication (sign-in, sessions).
+                subscription state, traces and spans, and the LLM <code>requests</code> log).
+                Authentication (sign-in, sessions).
               </td>
               <td>
                 Account profile, organization membership, encrypted (AES-256-GCM) provider
-                keys, billing state, authentication tokens.
+                keys, billing state, authentication tokens. Request and response bodies
+                (truncated to 10 KB), token counts, latency, cost, model identifiers,
+                security flags.
               </td>
               <td>
                 <code>ap-northeast-2</code> Seoul (AWS Asia Pacific).
               </td>
               <td>
                 EU SCCs; Korea has EU adequacy decision (2021/1772).
-              </td>
-            </tr>
-            <tr>
-              <td>
-                <strong>ClickHouse, Inc.</strong>
-                <br />
-                <span className="text-xs text-muted-foreground">
-                  (Portola Valley, CA, USA)
-                </span>
-              </td>
-              <td>
-                Columnar database for the LLM <code>requests</code> table (high-volume
-                proxy log storage), accessed via ClickHouse Cloud.
-              </td>
-              <td>
-                Request / response bodies (truncated to 10 KB), token counts, latency,
-                cost, model identifiers, security flags.
-              </td>
-              <td>
-                ClickHouse Cloud (US region).
-              </td>
-              <td>
-                EU SCCs, ClickHouse DPA.
               </td>
             </tr>
             <tr>
@@ -378,6 +365,19 @@ export default function SubprocessorsPage() {
             </tr>
           </thead>
           <tbody>
+            <tr>
+              <td>2026-08-20</td>
+              <td>
+                Removed ClickHouse, Inc. as a subprocessor. The LLM{' '}
+                <code>requests</code> log it held now lives in the Supabase database
+                alongside the rest of the application data, so the categories listed for
+                Supabase have been extended to cover request and response bodies. This
+                also moves that data from a United States region to{' '}
+                <code>ap-northeast-2</code> (Seoul), which is covered by the European
+                Commission&apos;s adequacy decision for Korea rather than by Standard
+                Contractual Clauses. No new subprocessor was engaged.
+              </td>
+            </tr>
             <tr>
               <td>{EFFECTIVE_DATE}</td>
               <td>

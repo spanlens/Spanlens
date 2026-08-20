@@ -45,7 +45,7 @@ export function RequestDetailClient({ id }: { id: string }) {
 
   if (isLoading) {
     return (
-      <div className="space-y-6">
+      <div className="flex flex-col gap-4">
         <Skeleton className="h-4 w-32" />
         <div className="flex items-start justify-between">
           <Skeleton className="h-7 w-48" />
@@ -53,7 +53,7 @@ export function RequestDetailClient({ id }: { id: string }) {
         </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {Array.from({ length: 8 }).map((_, i) => (
-            <div key={i} className="border border-border rounded-[6px] px-4 py-3 bg-bg-elev">
+            <div key={i} className="card-surface rounded-card px-5 py-4">
               <Skeleton className="h-2.5 w-20 mb-2" />
               <Skeleton className="h-4 w-full" />
             </div>
@@ -66,11 +66,11 @@ export function RequestDetailClient({ id }: { id: string }) {
 
   if (isError || !req) {
     return (
-      <div className="space-y-6">
+      <div className="flex flex-col gap-4">
         <Link href="/requests" className="inline-flex items-center gap-1.5 font-mono text-[12px] text-text-muted hover:text-text transition-colors">
           <ArrowLeft className="h-3.5 w-3.5" /> Back to requests
         </Link>
-        <div className="border border-border rounded-[6px] p-8 text-center bg-bg-elev">
+        <div className="card-surface rounded-card p-8 text-center">
           <p className="font-mono text-[13px] text-text mb-1.5">Request not found</p>
           <p className="font-mono text-[11.5px] text-text-faint mb-4">
             This request may have been deleted, or you may not have access to it.
@@ -90,7 +90,7 @@ export function RequestDetailClient({ id }: { id: string }) {
   const tabs: Tab[] = ['request', 'response', ...(req.error_message ? ['error' as Tab] : [])]
 
   return (
-    <div className="space-y-6">
+    <div className="flex flex-col gap-4">
       <Link href="/requests" className="inline-flex items-center gap-1.5 font-mono text-[12px] text-text-muted hover:text-text transition-colors">
         <ArrowLeft className="h-3.5 w-3.5" /> Back to requests
       </Link>
@@ -98,7 +98,7 @@ export function RequestDetailClient({ id }: { id: string }) {
       {/* Header */}
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="font-mono text-[20px] font-medium text-text tracking-[-0.3px]">
+          <h1 className="font-mono text-[20px] font-semibold text-text tracking-[-0.3px]">
             {req.id.slice(0, 8)}…
           </h1>
           <p className="font-mono text-[12px] text-text-muted mt-1">
@@ -110,17 +110,17 @@ export function RequestDetailClient({ id }: { id: string }) {
           <ReplayButton requestId={req.id} originalModel={req.model} provider={req.provider} />
           {req.truncated && (
             <span
-              className="font-mono text-[11px] px-2 py-1 rounded border tracking-[0.04em] text-accent border-accent-border bg-accent-bg"
+              className="text-[11px] font-semibold px-2.5 py-[3px] rounded-full text-accent bg-accent-bg"
               title="Stream closed early because the request approached the Spanlens proxy deadline (~290s). Token counts and the response body reflect what was captured up to that point."
             >
               truncated
             </span>
           )}
           <span className={cn(
-            'font-mono text-[11px] px-2 py-1 rounded border tracking-[0.04em]',
+            'text-[11px] font-semibold px-2.5 py-[3px] rounded-full',
             isErr
-              ? 'text-accent border-accent-border bg-accent-bg'
-              : 'text-good border-border bg-bg-elev',
+              ? 'text-bad bg-bad-bg'
+              : 'text-good bg-good-bg',
           )}>
             {req.status_code}
           </span>
@@ -139,8 +139,8 @@ export function RequestDetailClient({ id }: { id: string }) {
           { label: 'Total tokens', value: req.total_tokens.toLocaleString() },
           { label: 'Trace ID', value: req.trace_id ? req.trace_id.slice(0, 16) + '…' : '—' },
         ].map(({ label, value, warn }) => (
-          <div key={label} className="border border-border rounded-[6px] px-4 py-3 bg-bg-elev">
-            <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-1.5">{label}</div>
+          <div key={label} className="card-surface rounded-card px-5 py-4">
+            <div className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-faint mb-1.5">{label}</div>
             <div className={cn('font-mono text-[13px] font-medium truncate', warn ? 'text-accent' : 'text-text')}>{value}</div>
           </div>
         ))}
@@ -148,8 +148,8 @@ export function RequestDetailClient({ id }: { id: string }) {
 
       {/* End-user attribution row, only rendered when x-spanlens-user was set */}
       {req.user_id && (
-        <div className="flex items-center gap-3 px-4 py-2 border border-border rounded-[6px] bg-bg-elev font-mono text-[12px]">
-          <span className="text-[10px] uppercase tracking-[0.05em] text-text-faint">User</span>
+        <div className="flex items-center gap-3 px-5 py-3 card-surface rounded-card font-mono text-[12px]">
+          <span className="text-[10px] uppercase tracking-[0.1em] text-text-faint">User</span>
           <Link
             href={`/users/${encodeURIComponent(req.user_id)}`}
             className="text-text hover:underline truncate"
@@ -167,8 +167,8 @@ export function RequestDetailClient({ id }: { id: string }) {
 
       {/* Prompt cache breakdown, only rendered when this request used caching */}
       {(req.cache_read_tokens ?? 0) > 0 || (req.cache_write_tokens ?? 0) > 0 ? (
-        <div className="border border-border rounded-[6px] bg-bg-elev px-4 py-3">
-          <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-2">
+        <div className="card-surface rounded-card px-5 py-4">
+          <div className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-faint mb-2">
             Prompt cache breakdown
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-2 font-mono text-[12px] text-text">
@@ -206,14 +206,14 @@ export function RequestDetailClient({ id }: { id: string }) {
 
       {/* Body tabs */}
       <div>
-        <div className="flex border-b border-border gap-5 mb-0">
+        <div className="flex gap-1 mb-0 flex-wrap">
           {tabs.map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
               className={cn(
-                'py-2 font-mono text-[11px] uppercase tracking-[0.04em] border-b-[1.5px] -mb-px transition-colors',
-                tab === t ? 'text-text border-accent' : 'text-text-muted border-transparent hover:text-text',
+                'px-3 py-[7px] rounded-full text-[12px] transition-colors',
+                tab === t ? 'bg-text text-bg font-semibold' : 'text-text-faint font-medium hover:text-text',
               )}
             >
               {t === 'request' ? 'Request body' : t === 'response' ? 'Response body' : 'Error'}
@@ -221,7 +221,7 @@ export function RequestDetailClient({ id }: { id: string }) {
           ))}
         </div>
 
-        <div className="mt-3 rounded-[6px] border border-border bg-bg-elev overflow-auto max-h-[480px]">
+        <div className="mt-3 rounded-card border border-border bg-bg-elev overflow-auto max-h-[480px]">
           {tab === 'request' && (
             <pre className="p-4 font-mono text-[12px] text-text leading-relaxed whitespace-pre-wrap break-all">
               {req.request_body ? JSON.stringify(req.request_body, null, 2) : '(no body)'}
@@ -335,7 +335,7 @@ function ReplayButton({ requestId, originalModel, provider }: ReplayButtonProps)
     return (
       <button
         onClick={() => setOpen(true)}
-        className="inline-flex items-center gap-1.5 font-mono text-[11.5px] px-3 py-1.5 border border-border rounded-[5px] text-text-muted hover:border-border-strong hover:text-text transition-colors"
+        className="inline-flex items-center gap-1.5 text-[12.5px] font-medium px-3 py-[7px] border border-border rounded-md bg-bg-elev text-text-muted hover:border-border-strong hover:text-text transition-colors"
       >
         <RotateCw className="h-3 w-3" />
         Replay
@@ -373,7 +373,7 @@ function ReplayButton({ requestId, originalModel, provider }: ReplayButtonProps)
 
         {/* Model selector */}
         <div className="space-y-1.5">
-          <label className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint">
+          <label className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-faint">
             Model
           </label>
           <Select value={model} onValueChange={(v) => { setModel(v); prepare.reset(); run.reset() }}>
@@ -398,7 +398,7 @@ function ReplayButton({ requestId, originalModel, provider }: ReplayButtonProps)
           <button
             onClick={() => void handleRun()}
             disabled={isLoading}
-            className="inline-flex items-center gap-1.5 font-mono text-[11.5px] px-4 py-2 rounded-[5px] bg-accent text-white hover:opacity-90 transition-opacity disabled:opacity-40"
+            className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold px-4 py-[8px] rounded-md bg-accent text-accent-fg hover:opacity-90 transition-opacity disabled:opacity-40"
           >
             <Play className="h-3 w-3 fill-current" />
             {run.isPending ? 'Running…' : 'Run'}
@@ -406,7 +406,7 @@ function ReplayButton({ requestId, originalModel, provider }: ReplayButtonProps)
           <button
             onClick={() => void handleCopyCurl()}
             disabled={isLoading}
-            className="inline-flex items-center gap-1.5 font-mono text-[11.5px] px-3 py-2 border border-border rounded-[5px] text-text-muted hover:border-border-strong hover:text-text transition-colors disabled:opacity-40"
+            className="inline-flex items-center gap-1.5 text-[12.5px] font-medium px-3 py-[8px] border border-border rounded-md bg-bg-elev text-text-muted hover:border-border-strong hover:text-text transition-colors disabled:opacity-40"
           >
             {copiedCurl ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
             {prepare.isPending ? 'Preparing…' : copiedCurl ? 'Copied!' : 'Copy curl'}
@@ -419,9 +419,9 @@ function ReplayButton({ requestId, originalModel, provider }: ReplayButtonProps)
         {run.data && (
           <div
             ref={resultRef}
-            className="rounded-[6px] border border-border bg-bg-elev px-4 py-3 space-y-3"
+            className="card-surface rounded-card px-5 py-4 space-y-3"
           >
-            <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint">
+            <div className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-faint">
               {run.data.statusCode < 400 ? 'Replay complete' : 'Replay finished with errors'} · HTTP {run.data.statusCode}
             </div>
             <div className="grid grid-cols-2 gap-x-6 gap-y-2">
@@ -452,7 +452,7 @@ function ReplayButton({ requestId, originalModel, provider }: ReplayButtonProps)
 
         {/* Curl snippet (shown after "Copy curl" flow) */}
         {prepare.data && !copiedCurl && (
-          <div className="rounded-[5px] border border-border bg-bg-elev p-3 overflow-auto max-h-[180px]">
+          <div className="rounded-lg border border-border bg-bg-sunk p-3.5 overflow-auto max-h-[180px]">
             <pre className="font-mono text-[11px] text-text leading-relaxed whitespace-pre-wrap break-all">
               {buildCurlSnippet(prepare.data.proxyPath, prepare.data.replayBody)}
             </pre>

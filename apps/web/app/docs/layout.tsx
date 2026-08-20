@@ -18,18 +18,31 @@ export default function DocsLayout({ children }: { children: React.ReactNode }) 
       {/* Nav */}
       <MarketingNav subtitle="Docs" />
 
-      <div className="max-w-7xl mx-auto flex gap-8 px-6 py-10">
-        <aside className="hidden md:block w-56 shrink-0">
-          <div className="sticky top-20">
+      {/* Three-column shell from Figma M2: 272px nav rail on a band fill, the
+          article, then a 240px "on this page" rail. The rail carries the band
+          background full-height rather than floating, so the article reads as
+          the lit surface. */}
+      <div className="mx-auto flex max-w-[1440px]">
+        <aside className="hidden w-[272px] shrink-0 border-r border-border bg-bg-muted md:block">
+          <div className="sticky top-[73px] max-h-[calc(100vh-73px)] overflow-y-auto px-8 py-7">
             <DocsSidebar />
           </div>
         </aside>
 
-        <main className="flex-1 min-w-0 max-w-2xl">
+        <main className="min-w-0 flex-1 px-6 py-11 lg:px-14">
+          {/* Prose-authored <pre> blocks (api/errors, self-host/backup,
+              troubleshooting) use the `code-*` tokens, which have no dark
+              override, so the slab matches CodeBlock in both themes. */}
           <article
-            className="prose prose-stone max-w-none
-              prose-headings:scroll-mt-20
-              prose-pre:bg-[#1a1816] prose-pre:text-[#d4cfc8] prose-pre:shadow-sm prose-pre:border prose-pre:border-border/40
+            className="prose prose-stone max-w-[832px]
+              prose-headings:scroll-mt-20 prose-headings:font-display
+              prose-h1:text-[38px] prose-h1:track-h2 prose-h1:leading-[1.1] prose-h1:text-text
+              prose-h2:text-[20px] prose-h2:track-quote prose-h2:text-text
+              prose-h3:text-[16px] prose-h3:track-quote prose-h3:text-text
+              prose-p:text-[14.5px] prose-p:leading-[1.75] prose-p:text-text-muted
+              prose-li:text-[14.5px] prose-li:text-text-muted
+              prose-strong:text-text
+              prose-pre:rounded-lg prose-pre:bg-code-bg prose-pre:text-code-fg prose-pre:text-[12.5px] prose-pre:leading-6
               prose-a:text-accent prose-a:no-underline hover:prose-a:opacity-80
               prose-table:text-sm
               [&_table_th]:align-middle [&_table_td]:align-middle
@@ -43,8 +56,8 @@ export default function DocsLayout({ children }: { children: React.ReactNode }) 
           </article>
         </main>
 
-        <aside className="hidden xl:block w-52 shrink-0">
-          <div className="sticky top-20">
+        <aside className="hidden w-[240px] shrink-0 xl:block">
+          <div className="sticky top-[73px] max-h-[calc(100vh-73px)] overflow-y-auto px-5 py-12">
             <TableOfContents />
           </div>
         </aside>

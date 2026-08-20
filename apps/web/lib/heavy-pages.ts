@@ -1,6 +1,6 @@
 /**
  * Pages whose page.tsx runs a costly prefetchAll (multiple specs and/or single
- * spec hitting COUNT(*) or ClickHouse window functions).
+ * spec hitting COUNT(*) or window functions).
  *
  * Anywhere we render a `<Link>` to one of these paths from a high-fanout
  * surface (sidebar, KPI cards, drill-downs), we set `prefetch={false}` so the

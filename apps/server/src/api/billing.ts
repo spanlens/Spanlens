@@ -7,10 +7,56 @@ import {
   createPaddleCheckoutTransaction,
   findPaddleCustomerByEmail,
   cancelPaddleSubscription,
+  classifyPaddleFailure,
+  PaddleApiError,
 } from '../lib/paddle.js'
 import { checkMonthlyQuota } from '../lib/quota.js'
 import { recordAuditEvent } from '../lib/audit-log.js'
 import { ApiError } from '../lib/errors.js'
+import { logError } from '../lib/structured-logger.js'
+
+/**
+ * Turns a Paddle failure into the error the customer should see, and puts the
+ * part they should not see in the log.
+ *
+ * The old code concatenated Paddle's own words onto an `UPSTREAM_FAILED` and
+ * shipped the result to the browser, so an under-scoped API key surfaced as
+ * `502 … not authorized to create|read transaction`. That is our configuration
+ * described to a customer: it tells them nothing they can act on, and it is not
+ * theirs to read. Worse, every cause looked identical, so the only way to tell
+ * a missing permission from a Paddle outage was to open the runtime logs.
+ *
+ * Now the cause decides both halves. `stage` names the call so the log says
+ * which step failed without the reader having to infer it from a URL.
+ */
+function paddleFailure(err: unknown, stage: string, orgId: string): ApiError {
+  const kind = classifyPaddleFailure(err)
+
+  logError('PADDLE_API_FAILED', {
+    orgId,
+    stage,
+    kind,
+    // Paddle's status and its own error code are the two fields worth grepping
+    // when this shows up; `detail` carries the sentence that names the cause.
+    paddleStatus: err instanceof PaddleApiError ? err.status : null,
+    paddleCode: err instanceof PaddleApiError ? err.code : null,
+  }, err)
+
+  if (kind === 'unavailable') {
+    return new ApiError(
+      'UPSTREAM_FAILED',
+      'The payment provider is not responding. Please try again in a few minutes.',
+    )
+  }
+
+  // credentials and request are both ours to fix, and neither improves by being
+  // retried, so they read the same to the customer.
+  return new ApiError(
+    'BILLING_NOT_CONFIGURED',
+    'Checkout is unavailable because of a billing problem on our side. ' +
+      'We have been notified. Please contact support@spanlens.io if it persists.',
+  )
+}
 
 /**
  * Dashboard billing endpoints — JWT authenticated.
@@ -125,8 +171,7 @@ billingRouter.post('/checkout', requireRole('admin'), async (c) => {
         })
         paddleCustomerId = created.id
       } catch (err) {
-        const msg = err instanceof Error ? err.message : 'unknown error'
-        throw new ApiError('UPSTREAM_FAILED', `Paddle customer create failed: ${msg}`)
+        throw paddleFailure(err, 'customer.create', orgId)
       }
     }
     await supabaseAdmin
@@ -142,7 +187,21 @@ billingRouter.post('/checkout', requireRole('admin'), async (c) => {
       organizationId: orgId,
     })
     if (!tx.checkout?.url) {
-      throw new ApiError('UPSTREAM_FAILED', 'Paddle did not return a checkout URL')
+      // A 2xx transaction with no checkout URL means the Default Payment Link
+      // is unset for this Paddle environment — a dashboard setting, so it reads
+      // as a configuration problem rather than an outage.
+      logError('PADDLE_API_FAILED', {
+        orgId,
+        stage: 'transaction.create',
+        kind: 'request',
+        reason: 'no_checkout_url',
+        paddleTransactionId: tx.id,
+      })
+      throw new ApiError(
+        'BILLING_NOT_CONFIGURED',
+        'Checkout is unavailable because of a billing problem on our side. ' +
+          'We have been notified. Please contact support@spanlens.io if it persists.',
+      )
     }
     void recordAuditEvent(c, {
       action: 'billing.checkout_create',
@@ -154,8 +213,11 @@ billingRouter.post('/checkout', requireRole('admin'), async (c) => {
     })
     return c.json({ success: true, data: { url: tx.checkout.url, transactionId: tx.id } })
   } catch (err) {
-    const msg = err instanceof Error ? err.message : 'unknown error'
-    throw new ApiError('UPSTREAM_FAILED', `Paddle checkout create failed: ${msg}`)
+    // An ApiError from inside the try (the customer-create catch above, or the
+    // missing-checkout-URL guard) is already the message we want; re-wrapping it
+    // would relabel a decided failure as a Paddle one.
+    if (err instanceof ApiError) throw err
+    throw paddleFailure(err, 'transaction.create', orgId)
   }
 })
 
@@ -187,7 +249,7 @@ billingRouter.post('/cancel', requireRole('admin'), async (c) => {
     })
     return c.json({ success: true })
   } catch (err) {
-    const msg = err instanceof Error ? err.message : 'unknown error'
-    throw new ApiError('UPSTREAM_FAILED', `Paddle cancel failed: ${msg}`)
+    if (err instanceof ApiError) throw err
+    throw paddleFailure(err, 'subscription.cancel', orgId)
   }
 })

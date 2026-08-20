@@ -24,7 +24,13 @@ function windowLabel(seconds: number): string {
 }
 
 const inputCls =
-  'w-full h-9 px-3 rounded-[6px] border border-border bg-bg text-[13px] text-text placeholder:text-text-faint focus:outline-none focus:border-border-strong transition-colors'
+  'w-full h-9 px-3 rounded-md border border-border bg-bg-elev text-[12.5px] text-text placeholder:text-text-faint focus:outline-none focus:border-accent transition-colors'
+
+/** Compact row actions, matching the pill language of the /projects tables. */
+const ROW_ACTION =
+  'rounded-full border border-border bg-bg-elev px-2.5 py-1 text-[11px] font-medium text-text hover:bg-bg-muted transition-colors disabled:opacity-50'
+const ROW_ACTION_DESTRUCTIVE =
+  'rounded-full border border-accent-border bg-accent-bg px-2.5 py-1 text-[11px] font-medium text-accent hover:bg-accent-bg/70 transition-colors disabled:opacity-50'
 
 interface Props {
   apiKeyId: string | null
@@ -151,7 +157,7 @@ function LimitRow({
   busy: boolean
 }) {
   return (
-    <div className="flex items-center justify-between gap-3 rounded-[6px] border border-border bg-bg-elev px-3 py-2">
+    <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-bg-elev px-3 py-2">
       <span className={`text-[12.5px] ${limit.is_active ? 'text-text' : 'text-text-faint line-through'}`}>
         {label}
       </span>
@@ -161,7 +167,7 @@ function LimitRow({
             type="button"
             disabled={busy}
             onClick={() => onToggle(!limit.is_active)}
-            className="font-mono text-[11px] text-text-faint hover:text-text transition-colors disabled:opacity-50"
+            className={ROW_ACTION}
           >
             {limit.is_active ? 'Disable' : 'Enable'}
           </button>
@@ -169,7 +175,7 @@ function LimitRow({
             type="button"
             disabled={busy}
             onClick={onDelete}
-            className="font-mono text-[11px] text-bad/70 hover:text-bad transition-colors disabled:opacity-50"
+            className={ROW_ACTION_DESTRUCTIVE}
           >
             Delete
           </button>

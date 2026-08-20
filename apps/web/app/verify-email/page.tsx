@@ -1,21 +1,23 @@
 'use client'
 
 import { Suspense, useEffect, useRef, useState } from 'react'
-import Image from 'next/image'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-
-function LogoMark() {
-  return (
-    <div className="flex items-center gap-2 mb-6">
-      <Image src="/icon.png" alt="Spanlens" width={20} height={20} className="shrink-0 rounded-[5px]" priority />
-      <span className="font-semibold text-[15px] tracking-[-0.3px] text-text">spanlens</span>
-    </div>
-  )
-}
+import {
+  AuthHeading,
+  AuthLayout,
+  AuthNote,
+  authPrimaryButton,
+  authSecondaryButton,
+} from '../auth/_components/auth-shell'
 
 const COUNTDOWN_START = 42
+
+const PITCH = {
+  title: 'One click and you are in.',
+  body: 'Verifying the address keeps invite links and billing receipts pointed at a mailbox you own.',
+}
 
 function VerifyEmailInner() {
   const params = useSearchParams()
@@ -87,58 +89,62 @@ function VerifyEmailInner() {
     }, 1000)
   }
 
-  const displayEmail = email || 'your email address'
-
   return (
-    <div className="min-h-screen bg-bg-elev flex items-center justify-center p-10">
-      <div className="w-[440px] max-w-full bg-bg border border-border rounded-lg p-8">
-        <LogoMark />
+    <AuthLayout pitch={PITCH}>
+      <AuthHeading
+        title="Check your inbox"
+        subtitle={
+          email ? (
+            <>
+              We sent a verification link to <span className="font-mono text-text">{email}</span>. Open it to
+              activate your account.
+            </>
+          ) : (
+            'We sent a verification link to the address you signed up with. Open it to activate your account.'
+          )
+        }
+      />
 
-        <h1 className="text-[20px] font-medium tracking-[-0.3px] mb-2">Check your inbox</h1>
-        <p className="text-[13px] text-text-muted leading-relaxed mb-6">
-          We sent a confirmation link to{' '}
-          <span className="font-mono text-text">{displayEmail}</span>. Click it to activate your
-          account. The link expires after a while, so use it soon.
-        </p>
+      <AuthNote>Nothing yet? Check spam, then resend.</AuthNote>
 
-        {sent && (
-          <p className="text-[12.5px] text-accent mb-3">Confirmation email resent successfully.</p>
-        )}
-        {error && <p className="text-[12.5px] text-bad mb-3">{error}</p>}
+      {sent && (
+        <AuthNote tone="good" live="polite" className="mt-2.5">
+          Confirmation email resent.
+        </AuthNote>
+      )}
+      {error && (
+        <AuthNote tone="bad" live="assertive" className="mt-2.5">
+          {error}
+        </AuthNote>
+      )}
 
+      <div className="mt-[18px] flex flex-col gap-2.5">
         <button
           type="button"
           onClick={() => void handleResend()}
           disabled={countdown > 0 || sending}
-          className="w-full bg-text text-bg py-[11px] px-[14px] rounded-[7px] text-[13px] font-medium hover:opacity-90 transition-opacity disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed"
+          className={authPrimaryButton}
         >
-          {sending
-            ? 'Sending…'
-            : countdown > 0
-              ? `Resend in ${countdown}s`
-              : 'Resend email'}
+          {sending ? 'Sending…' : countdown > 0 ? `Resend in ${countdown}s` : 'Resend the link'}
         </button>
-
-        <div className="mt-5 text-center">
-          <Link
-            href="/login"
-            className="font-mono text-[12px] text-text-faint hover:text-text transition-colors"
-          >
-            ← Back to sign in
-          </Link>
-        </div>
+        {/* The board labels this "Use a different email". It points at sign-in
+            here because that is where the existing flow sends people, and the
+            destination is not ours to change. */}
+        <Link href="/login" className={authSecondaryButton}>
+          Back to sign in
+        </Link>
       </div>
-    </div>
+    </AuthLayout>
   )
 }
 
 function VerifyEmailFallback() {
   return (
-    <div className="min-h-screen bg-bg-elev flex items-center justify-center p-10">
-      <div className="w-[440px] max-w-full bg-bg border border-border rounded-lg p-8">
-        <div className="text-[13px] text-text-muted">Loading…</div>
-      </div>
-    </div>
+    <AuthLayout pitch={PITCH}>
+      <p className="text-[13.5px] leading-[1.6] text-text-faint" role="status">
+        Loading…
+      </p>
+    </AuthLayout>
   )
 }
 

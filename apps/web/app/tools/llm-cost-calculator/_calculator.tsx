@@ -54,7 +54,7 @@ export function CostCalculator() {
   const cheapest = rows[0]?.monthly ?? 0
 
   return (
-    <div className="rounded-xl border border-border bg-bg-elev p-6">
+    <div className="rounded-card border border-border bg-bg-elev p-6">
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
         <NumberField
           label="Input tokens / request"
@@ -79,23 +79,23 @@ export function CostCalculator() {
         />
       </div>
 
-      <div className="rounded-xl border border-border bg-bg overflow-x-auto">
+      <div className="rounded-card border border-border bg-bg overflow-x-auto">
         <table className="w-full text-[13px]">
           <thead>
             <tr className="border-b border-border">
-              <th className="text-left px-4 py-2.5 font-mono text-[11px] uppercase tracking-[0.06em] text-text-faint">
+              <th className="text-left px-4 py-2.5 eyebrow">
                 Model
               </th>
-              <th className="text-left px-4 py-2.5 font-mono text-[11px] uppercase tracking-[0.06em] text-text-faint">
+              <th className="text-left px-4 py-2.5 eyebrow">
                 Provider
               </th>
-              <th className="text-right px-4 py-2.5 font-mono text-[11px] uppercase tracking-[0.06em] text-text-faint">
+              <th className="text-right px-4 py-2.5 eyebrow">
                 Cost / req
               </th>
-              <th className="text-right px-4 py-2.5 font-mono text-[11px] uppercase tracking-[0.06em] text-text-faint">
+              <th className="text-right px-4 py-2.5 eyebrow">
                 Monthly
               </th>
-              <th className="text-right px-4 py-2.5 font-mono text-[11px] uppercase tracking-[0.06em] text-text-faint">
+              <th className="text-right px-4 py-2.5 eyebrow">
                 vs cheapest
               </th>
             </tr>
@@ -156,7 +156,7 @@ interface NumberFieldProps {
 function NumberField({ label, value, onChange, min = 0, step = 1 }: NumberFieldProps) {
   return (
     <label className="block">
-      <span className="block font-mono text-[11px] uppercase tracking-[0.06em] text-text-faint mb-2">
+      <span className="block eyebrow mb-2">
         {label}
       </span>
       <input

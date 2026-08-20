@@ -11,7 +11,7 @@ import { Hono } from 'hono'
  *                    (Vercel commit SHA) so we can correlate dashboards with
  *                    the deployed build at a glance.
  *
- *   /health/ready  — readiness. Pings Postgres + ClickHouse + Upstash in
+ *   /health/ready  — readiness. Pings Postgres (both routes) + Upstash in
  *                    parallel. Returns 503 if any dependency is unreachable
  *                    so the load balancer / docker healthcheck can route
  *                    around a half-broken instance. Cheap enough to run on
@@ -68,7 +68,14 @@ healthRouter.get('/health', (c) =>
 
 healthRouter.get('/health/ready', async (c) => {
   const { supabaseAdmin } = await import('../lib/db.js')
-  const { pingClickhouse } = await import('../lib/clickhouse.js')
+  // Two Postgres checks, not one, because the server reaches the same
+  // database two different ways: PostgREST over HTTPS for row-shaped CRUD,
+  // and a pooled connection through Supavisor for the analytics on
+  // `requests`. Either can fail while the other is fine — an exhausted
+  // pooler, a bad connection string, a network path that only affects
+  // port 6543 — and a probe that only tested one would report healthy
+  // while half the product was down.
+  const { pingPostgres } = await import('../lib/postgres.js')
   // Lazy import keeps the cold-start cheap when the Redis singleton hasn't
   // been touched yet. getRedis() falls through to null when env is missing,
   // which is the local-dev / preview-without-KV path — reported as
@@ -77,22 +84,19 @@ healthRouter.get('/health/ready', async (c) => {
   const redis = getRedis()
 
   const start = Date.now()
-  const [pgResult, chResult, redisResult] = await Promise.allSettled([
+  const [restResult, poolResult, redisResult] = await Promise.allSettled([
     // Cheapest indexed read against an existing table — same pattern as
     // /cron/keep-warm step 1.
     supabaseAdmin.from('organizations').select('id', { count: 'exact', head: true }).limit(1),
-    // HTTP /ping, not a query — see pingClickhouse's docs for why a
-    // real SELECT here was a $232/mo mistake on ClickHouse Cloud's
-    // Development tier.
-    pingClickhouse(),
+    pingPostgres(),
     redis ? redis.ping?.() ?? Promise.resolve('OK') : Promise.resolve('skipped'),
   ])
   const totalMs = Date.now() - start
 
-  const pgOk = pgResult.status === 'fulfilled' && !pgResult.value.error
-  // pingClickhouse swallows errors and resolves to false — check the
-  // resolved value, not the settled status.
-  const chOk = chResult.status === 'fulfilled' && chResult.value === true
+  const restOk = restResult.status === 'fulfilled' && !restResult.value.error
+  // pingPostgres reports failure in its return value rather than throwing,
+  // so check the resolved shape, not the settled status.
+  const poolOk = poolResult.status === 'fulfilled' && poolResult.value.ok
 
   let redisStatus: 'ok' | 'skipped' | 'fail'
   if (!redis) {
@@ -105,7 +109,7 @@ healthRouter.get('/health/ready', async (c) => {
 
   // Redis is treated as best-effort: a missing KV store should not 503 the
   // readiness probe, but a configured-but-unreachable one should.
-  const overallOk = pgOk && chOk && redisStatus !== 'fail'
+  const overallOk = restOk && poolOk && redisStatus !== 'fail'
 
   return c.json(
     {
@@ -113,8 +117,8 @@ healthRouter.get('/health/ready', async (c) => {
       timestamp: new Date().toISOString(),
       latencyMs: totalMs,
       checks: {
-        postgres: { ok: pgOk },
-        clickhouse: { ok: chOk },
+        postgres: { ok: restOk },
+        postgresPool: { ok: poolOk },
         redis: { status: redisStatus },
       },
     },
@@ -124,27 +128,20 @@ healthRouter.get('/health/ready', async (c) => {
 
 healthRouter.get('/health/deep', async (c) => {
   const { supabaseAdmin } = await import('../lib/db.js')
-  const { pingClickhouse } = await import('../lib/clickhouse.js')
-  const { fallbackQueueSize, eventsFallbackQueueSize } = await import(
-    '../lib/fallback-replay.js'
-  )
+  const { pingPostgres } = await import('../lib/postgres.js')
+  const { fallbackQueueSize } = await import('../lib/fallback-replay.js')
 
   const start = Date.now()
   // R-22 added two new aggregate queries here. Run them inside the same
   // Promise.all the ping/queue lookups already use — p95 stays bounded by
   // the slowest dependency, not the sum.
-  const [chOk, fallbackQueue, eventsFallback, cronMaxRuntime, webhookBacklog, webhookDlq] =
+  const [poolPing, fallbackQueue, cronMaxRuntime, webhookBacklog, webhookDlq] =
     await Promise.all([
-      // HTTP /ping, not a query. Better Stack hits this every 3 minutes;
-      // a real SELECT here kept resetting ClickHouse Cloud's idle-suspend
-      // timer, so the "keep-warm" side effect of this probe alone was
-      // paying for 24/7 compute on a Development-tier instance serving a
-      // couple hundred requests a month. See pingClickhouse's docs for
-      // the full history and why an occasional wake-cycle false-negative
-      // here is an accepted trade rather than a regression.
-      pingClickhouse().catch(() => false),
+      // Exercises the pooled connection, which reaches the same database by
+      // a different route than the PostgREST calls below — see /health/ready
+      // for why both are worth probing.
+      pingPostgres().catch(() => ({ ok: false, latencyMs: -1 })),
       fallbackQueueSize().catch(() => null),
-      eventsFallbackQueueSize().catch(() => null),
       // crons.max_runtime_ms: MAX(duration_ms) over last 24h. R-11 trigger
       // — if any cron starts running 10s+ when it used to finish in 200ms
       // we want to know before the operator sees Vercel timeouts.
@@ -185,9 +182,9 @@ healthRouter.get('/health/deep', async (c) => {
           () => null,
         ),
     ])
-  const chLatency = Date.now() - start
+  const probedInMs = Date.now() - start
 
-  const overallOk = chOk
+  const overallOk = poolPing.ok
   return c.json(
     {
       status: overallOk ? 'ok' : 'degraded',
@@ -201,10 +198,10 @@ healthRouter.get('/health/deep', async (c) => {
     // chip, which is what an operator actually wants when the SHA
     // genuinely isn't available.
     version: process.env['VERCEL_GIT_COMMIT_SHA'] || null,
-      clickhouse: { ok: chOk, latencyMs: chLatency },
+      postgresPool: { ok: poolPing.ok, latencyMs: poolPing.latencyMs, probedInMs },
       // Null means the lookup itself failed (e.g. Supabase down) — not an
       // empty queue. Distinguish for triage.
-      fallback: { queue: fallbackQueue, eventsQueue: eventsFallback },
+      fallback: { queue: fallbackQueue },
       // R-22 R-11 entry-trigger metrics. Same null-on-failure convention.
       // `crons.max_runtime_ms` null = either no cron ran in 24h (cold env)
       // OR the Supabase query failed — both are actionable.

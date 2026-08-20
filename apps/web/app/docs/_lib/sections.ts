@@ -345,7 +345,7 @@ export const DOCS_SECTIONS: DocsSection[] = [
             title: 'Disaster recovery',
             href: '/docs/production/disaster-recovery',
             description:
-              'Operator runbook for Spanlens outages: what data is at risk per failure mode, how fallback queues protect it, and recovery steps for ClickHouse and Supabase.',
+              'Operator runbook for Spanlens outages: what data is at risk per failure mode, how the fallback queue protects it, and how to recover the Postgres database.',
           },
           {
             title: 'Scaling',

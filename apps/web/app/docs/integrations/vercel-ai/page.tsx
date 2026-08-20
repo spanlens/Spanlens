@@ -30,7 +30,7 @@ export default function VercelAiIntegration() {
 
       <h2>Install</h2>
       <CodeBlock language="bash">{`pnpm add @spanlens/sdk
-# the integration is exposed as a sub-path import — no extra peer dep`}</CodeBlock>
+# the integration is exposed as a sub-path import, no extra peer dep`}</CodeBlock>
 
       <h2>Minimal setup</h2>
       <CodeBlock language="ts">{`import { generateText } from 'ai'
@@ -44,8 +44,8 @@ const tracker = createSpanlensTracker({ client, modelName: 'gpt-4o' })
 const result = await generateText({
   model: openai('gpt-4o'),
   messages: [{ role: 'user', content: 'Summarise the latest release notes.' }],
-  onStepFinish: tracker.onStepFinish,  // optional — captures intermediate tool steps
-  onFinish:     tracker.onFinish,       // required — closes the span with token totals
+  onStepFinish: tracker.onStepFinish,  // optional, captures intermediate tool steps
+  onFinish:     tracker.onFinish,       // required, closes the span with token totals
 })`}</CodeBlock>
       <p>
         A fresh trace is opened the moment{' '}
@@ -71,7 +71,7 @@ const result = await generateText({
           </tr>
           <tr>
             <td><code>streamText</code></td>
-            <td>same shape — <code>onFinish</code> fires after the stream closes with the totals</td>
+            <td>same shape. <code>onFinish</code> fires after the stream closes with the totals</td>
             <td>partial tokens during the stream are not split into sub-spans (kept flat)</td>
           </tr>
           <tr>
@@ -91,7 +91,7 @@ const result = await generateText({
       <h2>Trace tree shape</h2>
       <p>
         A two-step tool-using call (model picks a tool, runs it, then writes the
-        final answer) produces one span by default — the multi-step structure
+        final answer) produces one span by default. The multi-step structure
         is recorded as <code>metadata.steps</code> on the same span so the trace
         tree stays readable in the common case:
       </p>
@@ -99,8 +99,8 @@ const result = await generateText({
 └── llm.gpt-4o                (3.2s, steps=2, gpt-4o, 480/220 tokens, $0.0034)`}</CodeBlock>
       <p>
         To break tool calls out into their own spans, pass a parent trace and
-        wrap your tool execution in <code>trace.span(...)</code> explicitly —
-        see <em>Attaching to a long-lived trace</em> below.
+        wrap your tool execution in <code>trace.span(...)</code> explicitly. See{' '}
+        <em>Attaching to a long-lived trace</em> below.
       </p>
 
       <h2>Attaching to a long-lived trace</h2>
@@ -108,7 +108,7 @@ const result = await generateText({
         By default the tracker opens a fresh trace on each AI call and closes
         it when <code>onFinish</code> fires. To group multiple{' '}
         <code>generateText</code> turns under a single trace (chat sessions,
-        agent loops, RAG pipelines), pass an existing trace at construction —
+        agent loops, RAG pipelines), pass an existing trace at construction, and
         the tracker leaves its lifecycle entirely to the caller:
       </p>
       <CodeBlock language="ts">{`const trace = client.startTrace({
@@ -209,7 +209,7 @@ const result = await generateText({
       <h3>Trace closes before tool calls finish</h3>
       <p>
         The auto-managed trace closes when <code>onFinish</code> fires, which
-        is at the end of the AI SDK call — not the end of your application
+        is at the end of the AI SDK call, not the end of your application
         logic. If you kick off background work (DB writes, downstream API
         calls) after the LLM returns, pass an external trace via{' '}
         <code>trace=</code> and call <code>trace.end()</code> yourself when
@@ -219,7 +219,7 @@ const result = await generateText({
       <h3>Multi-step trace looks flat</h3>
       <p>
         By design, the tracker keeps multi-step tool calls collapsed into one
-        span with a <code>steps</code> count in metadata — most users want a
+        span with a <code>steps</code> count in metadata. Most users want a
         readable trace, not a fan-out of tool noise. To break each tool call
         into its own span, drop the tracker for that portion and use{' '}
         <code>trace.span({'{'}name: &apos;tool.search&apos;, spanType: &apos;tool&apos;{'}'})</code>{' '}
@@ -242,8 +242,8 @@ const result = await generateText({
       <p className="text-sm text-muted-foreground">
         Next: <a href="/docs/integrations/langgraph">LangGraph integration</a>{' '}
         for multi-agent workflows, or{' '}
-        <a href="/docs/concepts/data-model">data model</a> for what ends up in
-        ClickHouse.
+        <a href="/docs/concepts/data-model">data model</a> for what ends up in the
+        database.
       </p>
     </div>
   )

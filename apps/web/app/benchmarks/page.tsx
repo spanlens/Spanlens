@@ -29,7 +29,7 @@ export default function BenchmarksPage() {
       <MarketingNav />
       <BreadcrumbJsonLd trail={[{ name: 'Benchmarks', path: '/benchmarks' }]} />
 
-      <main className="flex-1 max-w-3xl mx-auto px-6 py-12 prose prose-stone
+      <main className="w-full min-w-0 flex-1 max-w-3xl mx-auto px-6 py-12 prose prose-stone
         prose-headings:scroll-mt-20
         prose-a:text-accent prose-a:no-underline hover:prose-a:opacity-80">
         <h1>Proxy Overhead Benchmark</h1>

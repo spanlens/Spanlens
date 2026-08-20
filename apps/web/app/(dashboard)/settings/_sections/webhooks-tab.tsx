@@ -13,7 +13,8 @@ import {
 } from '@/lib/queries/use-webhooks'
 import type { WebhookEvent, WebhookRow } from '@/lib/queries/types'
 import { useCurrentMember } from '@/lib/queries/use-members'
-import { MonoPill, Hint, Toggle, TabHeader } from '../_shared/ui'
+import { cn } from '@/lib/utils'
+import { MonoPill, Hint, Toggle, TabHeader, PILL_PRIMARY } from '../_shared/ui'
 
 // ─── WEBHOOKS tab ─────────────────────────────────────────────────────────────
 
@@ -36,7 +37,7 @@ function SecretField({ secret }: { secret: string }) {
 
   return (
     <div className="flex items-center gap-2">
-      <span className="font-mono text-[11px] text-text-muted bg-bg-muted px-2 py-1 rounded border border-border">
+      <span className="font-mono text-[11px] text-text-muted bg-bg-sunk px-2 py-1 rounded-md border border-border">
         {revealed ? secret : '•'.repeat(Math.min(secret.length, 32))}
       </span>
       <button
@@ -70,7 +71,7 @@ function DeliveryHistory({ webhookId }: { webhookId: string }) {
   return (
     <div className="overflow-x-auto">
     <div className="divide-y divide-border min-w-[420px]">
-      <div className="grid grid-cols-[140px_80px_80px_1fr] gap-4 px-6 py-2 font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint">
+      <div className="grid grid-cols-[140px_80px_80px_1fr] gap-4 bg-bg-muted px-6 py-2.5 font-mono text-[10px] uppercase tracking-[0.1em] text-text-faint">
         <span>Time</span>
         <span>Status</span>
         <span>HTTP</span>
@@ -169,22 +170,25 @@ export function WebhooksTab() {
   }
 
   return (
-    <div className="max-w-[980px]">
+    <div>
       <TabHeader
         title="Webhooks"
         description="Receive real-time HTTP callbacks when events occur in your workspace."
         action={
           canEdit ? (
-            <PrimaryBtn onClick={() => { setCreateOpen(true); setCreateError('') }}>
+            <PrimaryBtn
+              className={cn(PILL_PRIMARY, 'gap-1.5')}
+              onClick={() => { setCreateOpen(true); setCreateError('') }}
+            >
               <Plus className="w-3.5 h-3.5" /> New webhook
             </PrimaryBtn>
           ) : null
         }
       />
 
-      <Section title="Webhook endpoints" className="mb-5">
+      <Section title="Webhook endpoints" className="mb-4">
         {toggleError && (
-          <div className="px-6 pt-4 font-mono text-[11.5px] text-status-error">
+          <div className="px-6 pt-4 font-mono text-[11.5px] text-bad">
             {toggleError}
           </div>
         )}
@@ -197,7 +201,7 @@ export function WebhooksTab() {
         ) : (
           <div className="overflow-x-auto">
           <div className="divide-y divide-border min-w-[620px]">
-            <div className="grid grid-cols-[1.8fr_1.2fr_1fr_110px_90px] gap-4 px-6 py-3 font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint">
+            <div className="grid grid-cols-[1.8fr_1.2fr_1fr_110px_90px] gap-4 bg-bg-muted px-6 py-2.5 font-mono text-[10px] uppercase tracking-[0.1em] text-text-faint">
               {['Name', 'URL', 'Events', 'Status', ''].map((h, i) => <span key={i}>{h}</span>)}
             </div>
             {(webhooks ?? []).map((wh) => (
@@ -205,7 +209,7 @@ export function WebhooksTab() {
                 <button
                   type="button"
                   onClick={() => setSelectedId(wh.id === selectedId ? null : wh.id)}
-                  className="text-[13px] font-medium text-left hover:text-accent transition-colors truncate"
+                  className="text-[12.5px] font-medium text-text text-left hover:text-accent transition-colors truncate"
                 >
                   {wh.name}
                 </button>
@@ -234,7 +238,7 @@ export function WebhooksTab() {
                       title="Send test event"
                       disabled={testWebhook.isPending}
                       onClick={() => void handleTest(wh)}
-                      className="px-2 py-1 rounded text-[11px] border border-border text-text-muted hover:text-text hover:border-border-strong transition-colors disabled:opacity-40"
+                      className="rounded-full border border-border bg-bg-elev px-3 py-1 text-[11px] font-medium text-text-muted hover:text-text hover:bg-bg-muted transition-colors disabled:opacity-40"
                     >
                       Test
                     </button>
@@ -257,7 +261,7 @@ export function WebhooksTab() {
       </Section>
 
       {selectedId && (
-        <Section title="Webhook details" className="mb-5">
+        <Section title="Webhook details" className="mb-4">
           {(() => {
             const wh = (webhooks ?? []).find((w) => w.id === selectedId)
             if (!wh) return null
@@ -278,7 +282,7 @@ export function WebhooksTab() {
       )}
 
       {selectedId && (
-        <Section title="Delivery history" action={<Hint>Last 10</Hint>} className="mb-5">
+        <Section title="Delivery history" action={<Hint>Last 10</Hint>} className="mb-4">
           <DeliveryHistory webhookId={selectedId} />
         </Section>
       )}
@@ -296,7 +300,7 @@ export function WebhooksTab() {
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
                 placeholder="My webhook"
-                className="w-full px-3 py-2 border border-border-strong rounded-[6px] bg-bg text-[13px] outline-none focus:border-accent"
+                className="w-full px-3 py-2 border border-border rounded-md bg-bg text-[12.5px] text-text outline-none focus:border-border-strong"
               />
             </div>
             <div>
@@ -307,7 +311,7 @@ export function WebhooksTab() {
                 value={newUrl}
                 onChange={(e) => setNewUrl(e.target.value)}
                 placeholder="https://example.com/webhook"
-                className="w-full px-3 py-2 border border-border-strong rounded-[6px] bg-bg text-[13px] outline-none focus:border-accent"
+                className="w-full px-3 py-2 border border-border rounded-md bg-bg text-[12.5px] text-text outline-none focus:border-border-strong"
               />
             </div>
             <div>

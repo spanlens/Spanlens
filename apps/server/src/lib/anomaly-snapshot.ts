@@ -1,5 +1,6 @@
 import { supabaseAdmin } from './db.js'
-import { unscopedClickhouse } from './clickhouse.js'
+import { pgQuery } from './postgres.js'
+import { getOrgActivitySince } from './org-activity.js'
 import { detectAnomalies, ANOMALY_DEFAULTS, type AnomalyBucket } from './anomaly.js'
 import { deliverToChannel, type AlertNotification, type NotificationChannelRow } from './notifiers.js'
 
@@ -29,29 +30,41 @@ export async function snapshotAnomaliesForAllOrgs(
 
   // Pick orgs with at least one request in the past 24h — anomaly detection
   // needs traffic anyway, no point invoking it for inactive orgs.
-  // ClickHouse can DISTINCT cheaply, so we let the database deduplicate
-  // instead of pulling rows back to JS like the old Supabase pattern.
-  const sinceTs = new Date(now.getTime() - 86_400_000)
-    .toISOString()
-    .replace('T', ' ')
-    .replace('Z', '')
+  //
+  // This used to ask the log table directly with a DISTINCT over `requests`,
+  // which is the worst query to open the day with: an unbounded scan whose
+  // whole purpose is to produce a handful of org ids. On 2026-08-19 it took
+  // the entire 60s request budget and still failed.
+  //
+  // The activity watermark holds exactly this answer — which orgs logged a
+  // request, and when — as a small indexed table. When no org has traffic the
+  // job returns without scanning `requests` at all.
+  const since = new Date(now.getTime() - 86_400_000)
+  const activity = await getOrgActivitySince(since)
+
   let uniqueOrgIds: string[]
-  try {
-    const result = await unscopedClickhouse().query({
-      query:
-        'SELECT DISTINCT organization_id ' +
-        'FROM requests ' +
-        'WHERE created_at >= parseDateTime64BestEffort({since:String})',
-      query_params: { since: sinceTs },
-      format: 'JSONEachRow',
-    })
-    const rows = (await result.json()) as Array<{ organization_id: string }>
-    uniqueOrgIds = rows.map((r) => r.organization_id)
-  } catch (err) {
-    throw new Error(
-      `Failed to fetch active orgs: ${err instanceof Error ? err.message : String(err)}`,
-    )
+  if (activity !== null) {
+    uniqueOrgIds = [...activity.keys()]
+  } else {
+    // Watermark unreadable — fall back to the original scan over `requests`
+    // rather than silently skipping a day of anomaly detection.
+    try {
+      const rows = await pgQuery<{ organization_id: string }>({
+        query:
+          'SELECT DISTINCT organization_id ' +
+          'FROM requests ' +
+          'WHERE created_at >= {since}::timestamptz',
+        params: { since: since.toISOString() },
+      })
+      uniqueOrgIds = rows.map((r) => r.organization_id)
+    } catch (err) {
+      throw new Error(
+        `Failed to fetch active orgs: ${err instanceof Error ? err.message : String(err)}`,
+      )
+    }
   }
+
+  if (uniqueOrgIds.length === 0) return []
 
   const results: SnapshotResult[] = []
 

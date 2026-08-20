@@ -39,6 +39,17 @@ export type ChangelogTag =
 
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    date: '2026-08-17',
+    slug: 'new-design-across-the-app',
+    title: 'A new look across the whole app',
+    tags: ['improvement', 'fix'],
+    body: [
+      'Every screen has been rebuilt on a new design: the dashboard, the landing page, the documentation, the sign-in screens, the shared trace pages, and the notification emails. The layout and the information on each page are the same; the typography, spacing, colour and controls are not. Charts keep their existing palette rules, so a red bar still means what it meant last week.',
+      'The landing page now moves. Provider tiles drift, each integration lights up in turn along its wire into the mark, sections arrive as you scroll, and the integrations arc rotates on its own. All of it honours your reduced-motion setting: if your system asks for less movement, everything renders still.',
+      'Two long-standing layout bugs went with it. Tables and long inline code in the documentation used to push whole pages sideways on a phone, so you could scroll horizontally away from the text; tables now scroll inside their own box. And a hidden column label in the dashboard tables was escaping its container, which made several boards scroll sideways on narrow screens.',
+    ].join('\n\n'),
+  },
+  {
     date: '2026-08-11',
     slug: 'dashboard-latency-and-idle-key-count-fix',
     title: 'Much faster dashboard and API responses, plus an idle-key count fix',

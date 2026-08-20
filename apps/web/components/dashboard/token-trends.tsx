@@ -7,15 +7,20 @@ const C = {
   text:   'var(--text)',
   faint:  'var(--text-faint)',
   border: 'var(--border)',
+  rule:   'var(--border-strong)',
+  grid:   'var(--grid)',
   bgElev: 'var(--bg-elev)',
-  // Prompt = accent (orange). Completion = good (green) — chosen because
-  // it contrasts cleanly with the prompt band in both themes and isn't
-  // already used by the Errors-by-class card sitting next to this one.
-  // An earlier draft used `var(--accent-2)` which doesn't exist in the
-  // current theme, so the completion band rendered near-invisible.
-  prompt:     'var(--accent)',
-  completion: 'var(--good)',
+  mono:   'var(--font-geist-mono), ui-monospace, monospace',
+  // One accent plus neutrals. Prompt tokens are almost always the larger,
+  // duller half of the total, so they carry the mass in neutral ink and the
+  // accent is spent on completion — the band that actually moves cost per
+  // call when an output gets longer. An earlier draft paired accent with
+  // `var(--good)`, which put a success colour on a plain volume measure.
+  prompt:     'var(--text-faint)',
+  completion: 'var(--accent)',
 } as const
+
+const TICK = { fontSize: 10, fontFamily: C.mono, fill: C.faint } as const
 
 interface TokenTrendsProps {
   series: TimeseriesPoint[]
@@ -70,10 +75,10 @@ export function TokenTrendsCard({ series, rangeLabel = '24h' }: TokenTrendsProps
   )
   if (totalAcross === 0) {
     return (
-      <div className="rounded-md border border-border bg-bg-elev p-4">
-        <div className="flex items-center justify-between mb-2">
-          <h3 className="text-[14px] font-medium text-text">Token volume</h3>
-          <span className="text-[11px] text-text-faint font-mono">{rangeLabel}</span>
+      <div className="rounded-card border border-border bg-bg-elev px-5 py-[18px]">
+        <div className="flex items-center justify-between mb-[14px]">
+          <h3 className="text-[13.5px] font-semibold leading-[1.4] text-text">Token volume</h3>
+          <span className="font-mono text-[11px] leading-[1.4] text-text-faint">{rangeLabel}</span>
         </div>
         <p className="text-[13px] text-text-faint py-6">No token usage recorded in this window.</p>
       </div>
@@ -81,16 +86,16 @@ export function TokenTrendsCard({ series, rangeLabel = '24h' }: TokenTrendsProps
   }
 
   return (
-    <div className="rounded-md border border-border bg-bg-elev p-4">
-      <div className="flex items-center justify-between mb-3">
-        <h3 className="text-[14px] font-medium text-text">Token volume · {rangeLabel}</h3>
-        <div className="flex items-center gap-3 text-[11px] text-text-faint font-mono">
-          <span className="flex items-center gap-1">
-            <span className="inline-block w-2 h-2 rounded-sm" style={{ background: C.prompt }} />
+    <div className="rounded-card border border-border bg-bg-elev px-5 py-[18px]">
+      <div className="flex items-center justify-between mb-[14px]">
+        <h3 className="text-[13.5px] font-semibold leading-[1.4] text-text">Token volume · {rangeLabel}</h3>
+        <div className="flex items-center gap-3 font-mono text-[11px] leading-[1.4] text-text-faint">
+          <span className="flex items-center gap-1.5">
+            <span className="inline-block w-2 h-2 rounded-[2px]" style={{ background: C.prompt }} />
             prompt
           </span>
-          <span className="flex items-center gap-1">
-            <span className="inline-block w-2 h-2 rounded-sm" style={{ background: C.completion }} />
+          <span className="flex items-center gap-1.5">
+            <span className="inline-block w-2 h-2 rounded-[2px]" style={{ background: C.completion }} />
             completion
           </span>
         </div>
@@ -98,32 +103,34 @@ export function TokenTrendsCard({ series, rangeLabel = '24h' }: TokenTrendsProps
       <div className="h-[220px]">
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart data={data} margin={{ top: 4, right: 16, left: 0, bottom: 4 }}>
-            <defs>
-              <linearGradient id="gradPrompt" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor={C.prompt} stopOpacity={0.55} />
-                <stop offset="100%" stopColor={C.prompt} stopOpacity={0.05} />
-              </linearGradient>
-              <linearGradient id="gradCompletion" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor={C.completion} stopOpacity={0.55} />
-                <stop offset="100%" stopColor={C.completion} stopOpacity={0.05} />
-              </linearGradient>
-            </defs>
-            <CartesianGrid stroke={C.border} strokeDasharray="2 4" vertical={false} />
+            {/* Flat fills, no vertical gradient. A gradient makes the bottom of
+                a band lighter than its top for no reason in the data, which is
+                exactly the kind of decoration this system rules out. */}
+            <CartesianGrid stroke={C.grid} vertical={false} />
             <XAxis
               dataKey="date"
               tickFormatter={fmtTimeLabel}
-              tick={{ fill: C.faint, fontSize: 10 }}
-              stroke={C.border}
+              tick={TICK}
+              tickLine={false}
+              axisLine={{ stroke: C.rule }}
             />
             <YAxis
               tickFormatter={fmtTokens}
-              tick={{ fill: C.faint, fontSize: 10 }}
-              stroke={C.border}
+              tick={TICK}
+              tickLine={false}
+              axisLine={false}
               width={42}
             />
             <Tooltip
-              contentStyle={{ background: C.bgElev, border: `1px solid ${C.border}`, fontSize: 12 }}
+              contentStyle={{
+                background: C.bgElev,
+                border: `1px solid ${C.border}`,
+                borderRadius: '10px',
+                fontSize: 10,
+                fontFamily: C.mono,
+              }}
               labelStyle={{ color: C.text }}
+              cursor={{ stroke: C.rule, strokeWidth: 1 }}
               labelFormatter={((label: string) => fmtTimeLabel(label)) as never}
               formatter={((value: number, key: string) => [
                 fmtTokens(value),
@@ -137,7 +144,8 @@ export function TokenTrendsCard({ series, rangeLabel = '24h' }: TokenTrendsProps
               stackId="t"
               stroke={C.prompt}
               strokeWidth={1.5}
-              fill="url(#gradPrompt)"
+              fill={C.prompt}
+              fillOpacity={0.22}
             />
             <Area
               type="monotone"
@@ -145,7 +153,8 @@ export function TokenTrendsCard({ series, rangeLabel = '24h' }: TokenTrendsProps
               stackId="t"
               stroke={C.completion}
               strokeWidth={1.5}
-              fill="url(#gradCompletion)"
+              fill={C.completion}
+              fillOpacity={0.22}
             />
           </AreaChart>
         </ResponsiveContainer>

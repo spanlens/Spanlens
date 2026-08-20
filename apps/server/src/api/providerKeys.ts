@@ -2,10 +2,9 @@ import { Hono } from 'hono'
 import { authJwt, type JwtContext } from '../middleware/authJwt.js'
 import { requireRole } from '../middleware/requireRole.js'
 import { supabaseAdmin } from '../lib/db.js'
-import { getOrgClickhouse } from '../lib/clickhouse.js'
 import { aes256Encrypt } from '../lib/crypto.js'
 import { recordAuditEvent } from '../lib/audit-log.js'
-import { resetProviderKeyNamesCache } from '../lib/requests-query.js'
+import { resetProviderKeyNamesCache, fetchProviderKeyLastUsed } from '../lib/requests-query.js'
 import { invalidateProviderKeyCache } from '../lib/provider-key-cache.js'
 import { validateOptionalUuid } from '../lib/params.js'
 import { ApiError } from '../lib/errors.js'
@@ -117,31 +116,11 @@ providerKeysRouter.get('/', async (c) => {
     return c.json({ success: true, data: [] })
   }
 
-  // Bulk-fetch last_used_at for every provider key in ONE ClickHouse query —
-  // was N+1 (one supabase round-trip per key) before the migration. Same fix
-  // pattern as lib/stale-key-digest.ts.
-  const keyIds = rows.map((k) => k.id as string)
-  const lastUsedMap = new Map<string, string>()
-  const { client: ch } = getOrgClickhouse(orgId)
-  try {
-    const result = await ch.query({
-      query:
-        'SELECT provider_key_id AS id, max(created_at) AS last_used_at ' +
-        'FROM requests ' +
-        'WHERE organization_id = {orgId:UUID} ' +
-        '  AND provider_key_id IN {keyIds:Array(UUID)} ' +
-        'GROUP BY provider_key_id',
-      query_params: { orgId, keyIds },
-      format: 'JSONEachRow',
-    })
-    const lastUsedRows = (await result.json()) as Array<{ id: string; last_used_at: string }>
-    for (const row of lastUsedRows) lastUsedMap.set(row.id, row.last_used_at)
-  } catch (err) {
-    console.error(
-      '[providerKeys] last-used lookup failed:',
-      err instanceof Error ? err.message : err,
-    )
-  }
+  // One query for the whole page, not one per key.
+  const lastUsedMap = await fetchProviderKeyLastUsed(
+    orgId,
+    rows.map((k) => k.id as string),
+  )
 
   // leak-scan lookup stays N+1 because the source table is still in Supabase
   // and is low-volume (~1 row per key per scan day). Could be batched too but
@@ -155,12 +134,10 @@ providerKeysRouter.get('/', async (c) => {
         .order('scanned_at', { ascending: false })
         .limit(1)
         .maybeSingle()
-      const rawLastUsed = lastUsedMap.get(k.id as string)
-      // ClickHouse DateTime64 prints as 'YYYY-MM-DD HH:MM:SS.fff' — rewrite to
-      // ISO with 'T'/'Z' so the dashboard (which Date.parse's it) keeps working.
-      const last_used_at = rawLastUsed
-        ? rawLastUsed.replace(' ', 'T') + 'Z'
-        : null
+      // `max(created_at)` is already an ISO-8601 'Z' string — the pg client
+      // parses timestamptz, so the dashboard (which Date.parse's it) keeps
+      // working without a rewrite here.
+      const last_used_at = lastUsedMap.get(k.id as string) ?? null
       return {
         ...k,
         last_used_at,
@@ -289,9 +266,9 @@ providerKeysRouter.post('/', requireEdit, async (c) => {
 // this; if the delete was a mistake the user re-adds the key from the
 // provider's dashboard.
 //
-// The "(deleted)" rendering for orphaned ClickHouse rows still works after
-// hard delete — the fetchProviderKeyNames helper in lib/requests-query.ts
-// already null-coalesces missing keys.
+// Request rows keep the deleted key's id, and the dashboard renders those as
+// "(deleted)" rather than blank: fetchProviderKeyNames in
+// lib/requests-query.ts null-coalesces ids it can no longer resolve.
 providerKeysRouter.delete('/:id', requireEdit, async (c) => {
   const keyId = c.req.param('id')
   const orgId = c.get('orgId')

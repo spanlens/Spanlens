@@ -9,7 +9,7 @@ import {
   useUpdateLoggingSettings,
 } from '@/lib/queries/use-organization'
 import { useCurrentMember } from '@/lib/queries/use-members'
-import { NativeInput, MonoPill, Toggle, TabHeader } from '../_shared/ui'
+import { NativeInput, MonoPill, Toggle, TabHeader, PILL_SECONDARY } from '../_shared/ui'
 
 // ─── GENERAL tab ─────────────────────────────────────────────────────────────
 
@@ -46,13 +46,13 @@ export function GeneralTab() {
   const timezone = mounted ? Intl.DateTimeFormat().resolvedOptions().timeZone : '—'
 
   return (
-    <div className="max-w-[920px]">
+    <div>
       <TabHeader
         title="General"
         description="Workspace identity, storage region, and retention."
       />
 
-      <Section title="Identity" description="Visible within your workspace" className="mb-5">
+      <Section title="Identity" description="Visible within your workspace" className="mb-4">
         <FormRow label="Workspace name" hint="Shown in the app header and on shared traces.">
           <div className="flex flex-col gap-2 w-full max-w-[460px]">
             <div className="flex items-center gap-3">
@@ -64,6 +64,7 @@ export function GeneralTab() {
               />
               {isAdmin && (
                 <GhostBtn
+                  className={PILL_SECONDARY}
                   disabled={updateOrg.isPending || !name.trim() || name === org?.name}
                   onClick={() => void handleSaveName()}
                 >
@@ -72,7 +73,7 @@ export function GeneralTab() {
               )}
             </div>
             {nameError && (
-              <span className="font-mono text-[11.5px] text-status-error">{nameError}</span>
+              <span className="font-mono text-[11.5px] text-bad">{nameError}</span>
             )}
           </div>
         </FormRow>
@@ -86,7 +87,7 @@ export function GeneralTab() {
       {isAdmin && <BrandingSection plan={plan ?? null} hideBadge={org?.hide_powered_by_badge ?? false} />}
       {org && <EmbedBadgeSection orgId={org.id} />}
 
-      <Section title="Data retention" description="Log retention is determined by your plan" className="mb-5">
+      <Section title="Data retention" description="Log retention is determined by your plan" className="mb-4">
         <FormRow label="Current retention">
           <div className="font-mono text-[12.5px] text-text-muted">
             {retention}
@@ -102,8 +103,8 @@ export function GeneralTab() {
 
       {isAdmin && org && <LoggingSection currentRate={org.body_sample_rate ?? 1} />}
 
-      <Section title="Delete workspace" description="Contact support to delete your workspace" className="mb-5">
-        <div className="px-6 py-4 text-[13px] text-text-muted leading-relaxed">
+      <Section title="Delete workspace" description="Contact support to delete your workspace" className="mb-4">
+        <div className="px-6 py-4 text-[12.5px] text-text-muted leading-relaxed">
           Workspace deletion requires verification and isn&apos;t available in the self-service UI yet.
           Email <span className="font-mono text-text">support@spanlens.io</span> from the owner address
           and we&apos;ll purge data and cancel billing within one business day.
@@ -113,7 +114,7 @@ export function GeneralTab() {
   )
 }
 
-// ─── Log body sampling (ClickHouse storage control) ──────────────────────────
+// ─── Log body sampling (log storage control) ─────────────────────────────────
 
 function LoggingSection({ currentRate }: { currentRate: number }) {
   const update = useUpdateLoggingSettings()
@@ -138,8 +139,8 @@ function LoggingSection({ currentRate }: { currentRate: number }) {
   return (
     <Section
       title="Log body sampling"
-      description="Cut ClickHouse storage by keeping prompt and response bodies for only a fraction of requests. Token counts, cost, and billing are always recorded in full."
-      className="mb-5"
+      description="Cut log storage by keeping prompt and response bodies for only a fraction of requests. Token counts, cost, and billing are always recorded in full."
+      className="mb-4"
     >
       <FormRow
         label="Store bodies for"
@@ -150,14 +151,14 @@ function LoggingSection({ currentRate }: { currentRate: number }) {
             value={String(selected)}
             disabled={update.isPending}
             onChange={(e) => void handleChange(e.currentTarget.value)}
-            className="rounded-[6px] border border-border bg-bg-elev px-3 py-1.5 text-[13px] text-text"
+            className="rounded-md border border-border bg-bg-elev px-3 py-2 text-[12.5px] font-medium text-text"
           >
             <option value="1">100% of requests (store all)</option>
             <option value="0.5">50% of requests</option>
             <option value="0.1">10% of requests</option>
             <option value="0.01">1% of requests</option>
           </select>
-          {error && <span className="text-[12px] text-red-500">{error}</span>}
+          {error && <span className="text-[12px] text-bad">{error}</span>}
         </div>
       </FormRow>
     </Section>
@@ -184,7 +185,7 @@ function BrandingSection({ plan, hideBadge }: { plan: string | null; hideBadge: 
     <Section
       title="Share branding"
       description='Public share pages show an "Observed by Spanlens" footer.'
-      className="mb-5"
+      className="mb-4"
     >
       <FormRow
         label="Hide Spanlens footer"
@@ -211,7 +212,7 @@ function BrandingSection({ plan, hideBadge }: { plan: string | null; hideBadge: 
         </div>
       </FormRow>
       {error && (
-        <div className="px-6 pb-4 -mt-2 font-mono text-[11.5px] text-status-error">
+        <div className="px-6 pb-4 -mt-2 font-mono text-[11.5px] text-bad">
           {error}
         </div>
       )}
@@ -243,7 +244,7 @@ function EmbedBadgeSection({ orgId }: { orgId: string }) {
     <Section
       title="README badge"
       description="Show off Spanlens observability on your repo. Paste this snippet into your project's README."
-      className="mb-5"
+      className="mb-4"
     >
       <FormRow label="Markdown" hint="Renders as the badge above on GitHub, GitLab, and npm.">
         <div className="flex flex-col gap-2 w-full max-w-[640px]">
@@ -265,11 +266,11 @@ function EmbedBadgeSection({ orgId }: { orgId: string }) {
             readOnly
             value={markdown}
             onFocus={(e) => e.currentTarget.select()}
-            className="w-full px-3 py-2 border border-border rounded-md bg-bg-elevated font-mono text-[11.5px] resize-none"
+            className="w-full rounded-md border border-border bg-bg-sunk px-3 py-2 font-mono text-[11.5px] text-text resize-none focus:outline-none focus:border-border-strong"
             rows={2}
           />
           <div className="flex">
-            <GhostBtn onClick={copy}>
+            <GhostBtn className={PILL_SECONDARY} onClick={copy}>
               {copied ? 'Copied' : 'Copy markdown'}
             </GhostBtn>
           </div>

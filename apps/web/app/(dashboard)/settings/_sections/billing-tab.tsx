@@ -21,17 +21,17 @@ export function BillingTab() {
   const pct = limit > 0 ? Math.min(1, usedThisMonth / limit) : 0
 
   return (
-    <div className="max-w-[920px]">
+    <div>
       <TabHeader title="Billing" description="Per-request pricing. What ingests this month is what you pay." />
 
       <QuotaBanner />
 
       {/* Hero card */}
-      <div className="border border-border rounded-xl bg-bg-elev p-6 grid grid-cols-1 sm:grid-cols-2 gap-6 mb-5">
+      <div className="rounded-card border border-border bg-bg-elev shadow-card p-6 grid grid-cols-1 sm:grid-cols-2 gap-6 mb-4">
         <div>
-          <div className="font-mono text-[10px] text-text-faint uppercase tracking-[0.05em] mb-3">Current plan</div>
+          <div className="font-mono text-[10px] text-text-faint uppercase tracking-[0.12em] mb-3">Current plan</div>
           {isLoading ? (
-            <div className="h-8 w-32 bg-bg-muted rounded animate-pulse mb-4" />
+            <div className="h-8 w-32 bg-bg-muted rounded-md animate-pulse mb-4" />
           ) : isError ? (
             // Don't render the Free-plan default on error — a paying user
             // hitting a transient failure would otherwise see "Free", which is
@@ -54,12 +54,12 @@ export function BillingTab() {
               <div className="flex items-center gap-3 mb-1">
                 <span className="text-[30px] font-medium tracking-[-0.6px]">{planLabel}</span>
                 <span className={cn(
-                  'font-mono text-[10px] uppercase tracking-[0.04em] px-2 py-0.5 rounded-full border',
+                  'inline-flex items-center rounded-full px-2 py-[3px] font-mono text-[10.5px]',
                   subscription?.status === 'active'
-                    ? 'bg-good-bg border-good/20 text-good'
+                    ? 'bg-good-bg text-good'
                     : subscription?.status === 'past_due'
-                      ? 'bg-accent-bg border-accent-border text-accent'
-                      : 'bg-bg border-border text-text-muted',
+                      ? 'bg-warn-bg text-warn'
+                      : 'bg-bg-chip text-text-muted',
                 )}>
                   {subscription?.status ?? 'free'}
                 </span>
@@ -75,8 +75,8 @@ export function BillingTab() {
           )}
         </div>
         <div>
-          <div className="font-mono text-[10px] text-text-faint uppercase tracking-[0.05em] mb-3">This cycle</div>
-          <div className="h-2.5 bg-bg-muted rounded-full overflow-hidden mb-2">
+          <div className="font-mono text-[10px] text-text-faint uppercase tracking-[0.12em] mb-3">This cycle</div>
+          <div className="h-2.5 bg-track rounded-full overflow-hidden mb-2">
             <div className="h-full bg-text rounded-full" style={{ width: `${(pct * 100).toFixed(1)}%` }} />
           </div>
           <div className="flex justify-between font-mono text-[11px] text-text-muted">
@@ -90,8 +90,8 @@ export function BillingTab() {
           has the same information in pre-purchase wording; keeping both
           surfaces self-contained means a user who lands on either tab
           finds the cancellation and refund paths without bouncing around. */}
-      <Section title="Payment, cancellation & refunds" className="mb-5">
-        <div className="px-6 py-4 text-[13px] text-text-muted leading-relaxed space-y-2">
+      <Section title="Payment, cancellation & refunds" className="mb-4">
+        <div className="px-6 py-4 text-[12.5px] text-text-muted leading-relaxed space-y-2">
           <p>
             Payments are processed by Paddle. Update your payment method or
             cancel your subscription from the link Paddle sent when you
@@ -120,8 +120,8 @@ export function BillingTab() {
         </div>
       </Section>
 
-      <Section title="Budget alerts" className="mb-5">
-        <div className="px-6 py-4 text-[13px] text-text-muted">
+      <Section title="Budget alerts" className="mb-4">
+        <div className="px-6 py-4 text-[12.5px] text-text-muted">
           Set cost and request thresholds in the{' '}
           <Link href="/alerts" className="text-accent font-medium hover:opacity-80 transition-opacity">
             Alerts →

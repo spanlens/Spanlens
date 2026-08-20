@@ -63,6 +63,338 @@ export async function sendEmail(input: SendEmailInput): Promise<{ sent: boolean;
   }
 }
 
+// ── Email design kit ────────────────────────────────────────────
+//
+// Ported from the Figma `Emails` page (frames E1 to E4). Every template
+// below is assembled from the same chrome: a #F3F3F6 canvas, a 600px white
+// card with a 14px radius, a wordmark header, a 16px-gapped content stack,
+// and a sunk footer.
+//
+// Constraints this kit works under, all of them deliberate:
+//   • Literal hex only. Email clients do not resolve CSS variables.
+//   • Inline styles only, plus table-based layout, because Outlook renders
+//     through Word and drops external stylesheets, flexbox, and grid.
+//   • System font stacks. Web fonts are unreliable and Outlook ignores them,
+//     so Schibsted Grotesk and Geist degrade to the platform sans, and the
+//     figures and small labels use the platform mono.
+//   • Vertical rhythm comes from cell padding rather than margins, since the
+//     Word engine honours padding far more consistently.
+//
+// Light palette only. These functions return a body fragment with no <head>,
+// so there is nowhere to hang a `prefers-color-scheme` block, and the dark
+// frames are a recolour of the same layout rather than a different one.
+// Clients that force dark mode invert this palette themselves.
+
+/** Figma `Emails` colour tokens, flattened to literal hex for mail clients. */
+const C = {
+  canvas: '#F3F3F6',
+  card: '#FFFFFF',
+  hairline: '#E2E2E8',
+  sunk: '#FAFAFB',
+  sunkLine: '#EDEDF1',
+  ink: '#101114',
+  inkMono: '#2A2D33',
+  inkSoft: '#5A6068',
+  faint: '#6B7078',
+  accent: '#D0350F',
+  onAccent: '#FFFFFF',
+  ok: '#1F6E45',
+  okTint: '#E7F5EC',
+  warn: '#8A5A00',
+  warnTint: '#FFF3DB',
+  error: '#B32C0A',
+  errorTint: '#FDEAE4',
+  /** Accent-tinted callout (E2 savings card). */
+  noteTint: '#FFF7F4',
+  noteLine: '#F3DDD2',
+  noteBody: '#8A5A48',
+  bullet: '#C2C2BB',
+} as const
+
+const SANS = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
+const MONO = "ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace"
+
+/** Semantic colour pairs for status bars, tiles, and change rows. */
+export type EmailTone = 'neutral' | 'ok' | 'warn' | 'error'
+
+function toneInk(tone: EmailTone): string {
+  if (tone === 'ok') return C.ok
+  if (tone === 'warn') return C.warn
+  if (tone === 'error') return C.error
+  return C.ink
+}
+
+function toneTint(tone: EmailTone): string {
+  if (tone === 'ok') return C.okTint
+  if (tone === 'warn') return C.warnTint
+  if (tone === 'error') return C.errorTint
+  return C.canvas
+}
+
+/**
+ * The 16px-gapped content stack from every frame's `Content` auto-layout.
+ * Gaps are cell padding, not margins, so Outlook keeps the rhythm.
+ */
+function contentStack(blocks: Array<string | null | undefined | false>): string {
+  const rows = blocks.filter((b): b is string => Boolean(b))
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width: 100%; border-collapse: collapse;">${rows
+    .map((b, i) => `<tr><td style="padding: 0 0 ${i === rows.length - 1 ? '0' : '16px'};">${b}</td></tr>`)
+    .join('')}</table>`
+}
+
+/**
+ * Outer canvas + 600px body card + wordmark header + footer.
+ *
+ * `footnotes` are the sunk grey lines at the bottom of each frame; they are
+ * HTML because several carry links, so callers escape their own values.
+ */
+export function emailShell(params: { blocks: Array<string | null | undefined | false>; footnotes: string[] }): string {
+  const { blocks, footnotes } = params
+  // The Figma header pairs a 24px mark with the wordmark. Remote images are
+  // blocked by default in most clients, so the wordmark carries the header
+  // alone rather than leaving a broken-image gap.
+  const header = `<span style="font-family: ${SANS}; font-size: 15px; font-weight: 800; letter-spacing: -0.3px; line-height: 1.6; color: ${C.ink};">spanlens</span>`
+
+  const footer = footnotes
+    .map((line, i) => `<div style="font-family: ${SANS}; font-size: 11.5px; line-height: 1.65; color: ${C.faint};${i > 0 ? ' padding-top: 8px;' : ''}">${line}</div>`)
+    .join('')
+
+  return `
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="${C.canvas}" style="width: 100%; border-collapse: collapse; background: ${C.canvas};">
+      <tr>
+        <td align="center" style="padding: 32px 20px;">
+          <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" bgcolor="${C.card}" style="width: 600px; max-width: 600px; border-collapse: separate; background: ${C.card}; border: 1px solid ${C.hairline}; border-radius: 14px;">
+            <tr>
+              <td style="padding: 24px 32px 20px;">${header}</td>
+            </tr>
+            <tr>
+              <td style="padding: 4px 32px 28px;">${contentStack(blocks)}</td>
+            </tr>
+            <tr>
+              <td bgcolor="${C.sunk}" style="padding: 20px 32px 24px; background: ${C.sunk}; border-top: 1px solid ${C.sunkLine}; border-radius: 0 0 14px 14px;">${footer}</td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  `.trim()
+}
+
+/** 24px display heading (E1/E2/E4 title). */
+function emailHeading(text: string): string {
+  return `<div style="font-family: ${SANS}; font-size: 24px; font-weight: 800; letter-spacing: -0.5px; line-height: 1.18; color: ${C.ink};">${escapeHtml(text)}</div>`
+}
+
+/** Faint one-line subtitle under a heading (org and period, for example). */
+function emailSubhead(text: string): string {
+  return `<div style="font-family: ${SANS}; font-size: 12.5px; line-height: 1.6; color: ${C.faint};">${escapeHtml(text)}</div>`
+}
+
+/**
+ * Body copy. Takes HTML rather than plain text because several ledes carry
+ * `<strong>` and links, so the caller escapes its own interpolations.
+ */
+export function emailParagraph(html: string, opts?: { tone?: EmailTone }): string {
+  const color = opts?.tone ? toneInk(opts.tone) : C.inkSoft
+  return `<div style="font-family: ${SANS}; font-size: 14px; line-height: 1.6; color: ${color};">${html}</div>`
+}
+
+/** Tinted state bar with a leading dot (E3 severity, E4 warning). */
+export function emailStatusBar(tone: EmailTone, label: string): string {
+  const ink = toneInk(tone)
+  const tint = toneTint(tone)
+  const dot = tone === 'neutral' ? C.faint : ink
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width: 100%; border-collapse: separate;">
+      <tr>
+        <td bgcolor="${tint}" style="background: ${tint}; border-radius: 12px; padding: 12px 14px; font-family: ${SANS}; font-size: 12.5px; font-weight: 600; line-height: 1.6; color: ${ink};">
+          <span style="display: inline-block; width: 8px; height: 8px; font-size: 0; line-height: 8px; border-radius: 8px; background: ${dot}; vertical-align: middle;"></span><span style="vertical-align: middle;">&nbsp;&nbsp;${escapeHtml(label)}</span>
+        </td>
+      </tr>
+    </table>`
+}
+
+/** Label/value rows in a sunk card (E1 details, E3 leak facts). */
+export function emailDetailCard(rows: Array<{ label: string; value: string }>): string {
+  const body = rows
+    .map(
+      (r) => `<tr>
+          <td style="padding: 4px 0; font-family: ${SANS}; font-size: 12.5px; font-weight: 500; line-height: 1.6; color: ${C.faint};">${escapeHtml(r.label)}</td>
+          <td align="right" style="padding: 4px 0; text-align: right; font-family: ${MONO}; font-size: 12.5px; line-height: 1.6; color: ${C.inkMono};">${escapeHtml(r.value)}</td>
+        </tr>`,
+    )
+    .join('')
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="${C.sunk}" style="width: 100%; border-collapse: separate; background: ${C.sunk}; border: 1px solid ${C.sunkLine}; border-radius: 12px;">
+      <tr>
+        <td style="padding: 14px 16px;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width: 100%; border-collapse: collapse;">${body}</table>
+        </td>
+      </tr>
+    </table>`
+}
+
+/** Row of sunk figure tiles (E2 stats, E3 alert numbers). */
+function emailStatTiles(tiles: Array<{ label: string; value: string; tone?: EmailTone }>): string {
+  const width = `${Math.floor(100 / tiles.length)}%`
+  const cells = tiles
+    .map((t, i) => {
+      const spacer = i === 0 ? '' : `<td width="10" style="width: 10px; font-size: 0; line-height: 0;">&nbsp;</td>`
+      return `${spacer}<td valign="top" width="${width}" style="width: ${width};">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="${C.sunk}" style="width: 100%; border-collapse: separate; background: ${C.sunk}; border: 1px solid ${C.sunkLine}; border-radius: 12px;">
+            <tr>
+              <td style="padding: 14px;">
+                <div style="font-family: ${MONO}; font-size: 10px; letter-spacing: 1px; line-height: 1.6; color: ${C.faint}; text-transform: uppercase;">${escapeHtml(t.label)}</div>
+                <div style="font-family: ${SANS}; font-size: 19px; font-weight: 800; letter-spacing: -0.4px; line-height: 1.1; color: ${toneInk(t.tone ?? 'neutral')}; padding-top: 5px;">${escapeHtml(t.value)}</div>
+              </td>
+            </tr>
+          </table>
+        </td>`
+    })
+    .join('')
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width: 100%; border-collapse: collapse;"><tr>${cells}</tr></table>`
+}
+
+/** Bordered list of "label, then a coloured verdict" rows (E2 changes). */
+function emailChangeList(rows: Array<{ label: string; value: string; tone?: EmailTone }>): string {
+  const body = rows
+    .map((r, i) => {
+      const divider = i === rows.length - 1 ? '' : ` border-bottom: 1px solid ${C.sunkLine};`
+      return `<tr>
+          <td style="padding: 12px 16px;${divider} font-family: ${SANS}; font-size: 13px; font-weight: 500; line-height: 1.6; color: ${C.ink};">${escapeHtml(r.label)}</td>
+          <td align="right" style="padding: 12px 16px;${divider} text-align: right; font-family: ${SANS}; font-size: 12.5px; line-height: 1.6; color: ${toneInk(r.tone ?? 'neutral')};">${escapeHtml(r.value)}</td>
+        </tr>`
+    })
+    .join('')
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="${C.card}" style="width: 100%; border-collapse: separate; background: ${C.card}; border: 1px solid ${C.sunkLine}; border-radius: 12px;">${body}</table>`
+}
+
+/** Sunk card with a title and a sentence, for a single aside. */
+function emailInfoCard(title: string, bodyHtml: string): string {
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="${C.sunk}" style="width: 100%; border-collapse: separate; background: ${C.sunk}; border: 1px solid ${C.sunkLine}; border-radius: 12px;">
+      <tr>
+        <td style="padding: 14px 16px;">
+          <div style="font-family: ${SANS}; font-size: 12.5px; font-weight: 600; line-height: 1.6; color: ${C.ink};">${escapeHtml(title)}</div>
+          <div style="font-family: ${SANS}; font-size: 12.5px; line-height: 1.6; color: ${C.inkSoft}; padding-top: 8px;">${bodyHtml}</div>
+        </td>
+      </tr>
+    </table>`
+}
+
+/** Accent-tinted callout with a title and a sentence (E2 savings). */
+function emailNoteCard(title: string, bodyHtml: string): string {
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="${C.noteTint}" style="width: 100%; border-collapse: separate; background: ${C.noteTint}; border: 1px solid ${C.noteLine}; border-radius: 12px;">
+      <tr>
+        <td style="padding: 14px 16px;">
+          <div style="font-family: ${SANS}; font-size: 13.5px; font-weight: 600; line-height: 1.6; color: ${C.error};">${escapeHtml(title)}</div>
+          <div style="font-family: ${SANS}; font-size: 12.5px; line-height: 1.6; color: ${C.noteBody}; padding-top: 8px;">${bodyHtml}</div>
+        </td>
+      </tr>
+    </table>`
+}
+
+/**
+ * Sunk card holding a heading and either bulleted lines (E4 checklist) or
+ * term/description pairs (E3 factors). `term` is rendered in mono.
+ */
+function emailListCard(
+  title: string,
+  items: Array<{ term?: string; text: string }>,
+): string {
+  const lines = items
+    .map((it) => {
+      const lead = it.term
+        ? `<span style="font-family: ${MONO}; font-size: 12px; line-height: 1.6; color: ${C.inkMono};">${escapeHtml(it.term)}</span>&nbsp;&nbsp;`
+        : `<span style="display: inline-block; width: 5px; height: 5px; font-size: 0; line-height: 5px; border-radius: 5px; background: ${C.bullet}; vertical-align: middle;"></span>&nbsp;&nbsp;`
+      return `<tr><td style="padding-top: 10px; font-family: ${SANS}; font-size: 12.5px; line-height: 1.6; color: ${it.term ? C.faint : C.inkMono};">${lead}<span style="vertical-align: middle;">${escapeHtml(it.text)}</span></td></tr>`
+    })
+    .join('')
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="${C.sunk}" style="width: 100%; border-collapse: separate; background: ${C.sunk}; border: 1px solid ${C.sunkLine}; border-radius: 12px;">
+      <tr>
+        <td style="padding: 14px 16px;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width: 100%; border-collapse: collapse;">
+            <tr><td style="font-family: ${SANS}; font-size: 12.5px; font-weight: 600; line-height: 1.6; color: ${C.ink};">${escapeHtml(title)}</td></tr>
+            ${lines}
+          </table>
+        </td>
+      </tr>
+    </table>`
+}
+
+interface EmailColumn {
+  label: string
+  align?: 'left' | 'right'
+  /** Render the cell in mono. Used for model names, key names, patterns. */
+  mono?: boolean
+  /** Dim the cell. Used for secondary columns like provider or sample. */
+  dim?: boolean
+}
+
+/**
+ * Data table in the frame palette: mono uppercase header on the sunk fill,
+ * hairline dividers, no divider under the last row so the rounded corner
+ * stays clean. `cells` are plain text and escaped here.
+ */
+function emailDataTable(columns: EmailColumn[], rows: string[][]): string {
+  const head = columns
+    .map(
+      (col) => `<th align="${col.align ?? 'left'}" style="padding: 10px 14px; text-align: ${col.align ?? 'left'}; background: ${C.sunk}; border-bottom: 1px solid ${C.sunkLine}; font-family: ${MONO}; font-size: 10px; font-weight: 400; letter-spacing: 1px; line-height: 1.6; color: ${C.faint}; text-transform: uppercase;">${escapeHtml(col.label)}</th>`,
+    )
+    .join('')
+
+  const body = rows
+    .map((cells, r) => {
+      const divider = r === rows.length - 1 ? '' : ` border-bottom: 1px solid ${C.sunkLine};`
+      const tds = cells
+        .map((cell, i) => {
+          const col = columns[i]
+          const align = col?.align ?? 'left'
+          return `<td align="${align}" style="padding: 10px 14px;${divider} text-align: ${align}; font-family: ${col?.mono ? MONO : SANS}; font-size: 12px; line-height: 1.6; color: ${col?.dim ? C.faint : C.inkMono};">${escapeHtml(cell)}</td>`
+        })
+        .join('')
+      return `<tr>${tds}</tr>`
+    })
+    .join('')
+
+  // `separate` rather than `collapse`: collapsing drops the outer radius in
+  // every browser and webmail, leaving the table looking unframed.
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width: 100%; border-collapse: separate; border-spacing: 0; border: 1px solid ${C.sunkLine}; border-radius: 12px; overflow: hidden;">
+      <thead><tr>${head}</tr></thead>
+      <tbody>${body}</tbody>
+    </table>`
+}
+
+/** Section label above a table. */
+function emailSectionLabel(text: string): string {
+  return `<div style="font-family: ${SANS}; font-size: 13px; font-weight: 600; line-height: 1.6; color: ${C.ink};">${escapeHtml(text)}</div>`
+}
+
+/** Accent pill CTA. */
+export function emailButton(href: string, label: string): string {
+  return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse: separate;">
+      <tr>
+        <td bgcolor="${C.accent}" style="background: ${C.accent}; border-radius: 999px;">
+          <a href="${escapeHtml(href)}" style="display: inline-block; padding: 13px 22px; font-family: ${SANS}; font-size: 14px; font-weight: 600; line-height: 1.6; color: ${C.onAccent}; text-decoration: none;">${escapeHtml(label)}</a>
+        </td>
+      </tr>
+    </table>`
+}
+
+/** Small mono line for a pasteable URL (E1). */
+function emailMonoNote(prefix: string, value: string): string {
+  return `<div style="font-family: ${MONO}; font-size: 11.5px; line-height: 1.6; color: ${C.faint}; word-break: break-all;">${escapeHtml(prefix)} ${escapeHtml(value)}</div>`
+}
+
+/** Inline mono run, for model names inside a sentence. */
+function mono(text: string): string {
+  return `<span style="font-family: ${MONO};">${escapeHtml(text)}</span>`
+}
+
+/** Inline link in body copy. */
+function link(href: string, text: string): string {
+  return `<a href="${escapeHtml(href)}" style="color: ${C.accent}; text-decoration: underline;">${escapeHtml(text)}</a>`
+}
+
+// ── Templates ───────────────────────────────────────────────────
+
 export function renderInvitationEmail(params: {
   orgName: string
   inviterEmail: string
@@ -78,18 +410,25 @@ export function renderInvitationEmail(params: {
   const brandLink =
     'https://www.spanlens.io?utm_source=invite_email&utm_medium=email&utm_campaign=plg'
 
-  const html = `
-    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 560px; margin: 0 auto; padding: 24px; color: #111;">
-      <h2 style="margin: 0 0 16px; font-size: 20px;">You're invited to <strong>${escapeHtml(orgName)}</strong></h2>
-      <p style="margin: 0 0 12px; color: #555;">${escapeHtml(inviterEmail)} invited you to join their Spanlens workspace as <strong>${escapeHtml(role)}</strong>.</p>
-      <p style="margin: 24px 0;"><a href="${acceptUrl}" style="display: inline-block; padding: 10px 18px; background: #111; color: #fff; text-decoration: none; border-radius: 6px; font-weight: 500;">Accept invitation</a></p>
-      <p style="margin: 16px 0 0; color: #888; font-size: 13px;">Or copy this link: <br/><span style="word-break: break-all;">${acceptUrl}</span></p>
-      <p style="margin: 24px 0 0; color: #aaa; font-size: 12px;">This invitation expires in 7 days. If you weren't expecting it, you can safely ignore this email.</p>
-      <div style="margin-top: 28px; padding-top: 16px; border-top: 1px solid #eee; font-size: 11.5px; color: #aaa;">
-        <a href="${brandLink}" style="color: #aaa; text-decoration: none;">Spanlens</a> — open-source LLM observability
-      </div>
-    </div>
-  `.trim()
+  const html = emailShell({
+    blocks: [
+      emailHeading(`You're invited to ${orgName}`),
+      emailParagraph(
+        `${escapeHtml(inviterEmail)} invited you to join their Spanlens workspace as <strong>${escapeHtml(role)}</strong>.`,
+      ),
+      emailDetailCard([
+        { label: 'Workspace', value: orgName },
+        { label: 'Invited by', value: inviterEmail },
+        { label: 'Role', value: role },
+      ]),
+      emailButton(acceptUrl, 'Accept invitation'),
+      emailMonoNote('Or copy this link:', acceptUrl),
+    ],
+    footnotes: [
+      'This invitation expires in 7 days. If you weren&#39;t expecting it, you can safely ignore this email.',
+      `${link(brandLink, 'Spanlens')} is open-source LLM observability.`,
+    ],
+  })
   return { subject, html }
 }
 
@@ -97,41 +436,29 @@ export function renderWaitlistConfirmationEmail(): { subject: string; html: stri
   const subject = "You're on the Spanlens waitlist"
   const demoUrl = 'https://www.spanlens.io/demo/dashboard'
 
-  const html = `
-    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 560px; margin: 0 auto; padding: 32px 24px; color: #111;">
-      <div style="margin-bottom: 28px;">
-        <span style="display: inline-block; font-family: ui-monospace, monospace; font-size: 13px; font-weight: 600; letter-spacing: -0.3px;">spanlens</span>
-      </div>
-
-      <h2 style="margin: 0 0 12px; font-size: 22px; font-weight: 600; letter-spacing: -0.5px;">You're on the list 🎉</h2>
-
-      <p style="margin: 0 0 16px; font-size: 14px; line-height: 1.65; color: #444;">
-        Thanks for signing up — you're on the Spanlens early access list.<br/>
-        We're launching on <strong>June 3, 2026</strong> and we'll send your
-        access link the moment we go live.
-      </p>
-
-      <div style="background: #f5f5f4; border-radius: 8px; padding: 16px 18px; margin: 24px 0; font-size: 13px; color: #555; line-height: 1.6;">
-        <div style="font-weight: 600; color: #111; margin-bottom: 6px; font-size: 13px;">Try the live demo while you wait</div>
-        The full Spanlens dashboard is available right now in demo mode —
-        explore request logs, agent traces, cost tracking, and anomaly
-        detection with sample data. No signup required.
-      </div>
-
-      <p style="margin: 0 0 24px;">
-        <a href="${demoUrl}" style="display: inline-block; padding: 11px 20px; background: #111; color: #fff; text-decoration: none; border-radius: 7px; font-weight: 500; font-size: 13px;">Explore the live demo →</a>
-      </p>
-
-      <p style="margin: 0 0 8px; font-size: 13px; line-height: 1.65; color: #444;">
-        Questions? Reply to this email or reach us at <a href="mailto:hi@spanlens.io" style="color: #111;">hi@spanlens.io</a>.
-      </p>
-      <p style="margin: 0; font-size: 13px; color: #444;">Thanks,<br/>The Spanlens team</p>
-
-      <div style="margin-top: 36px; padding-top: 20px; border-top: 1px solid #e5e5e5; font-size: 11.5px; color: #aaa;">
-        You received this because you joined the Spanlens waitlist. We'll only email you once more — on launch day.
-      </div>
-    </div>
-  `.trim()
+  const html = emailShell({
+    blocks: [
+      emailHeading("You're on the list 🎉"),
+      emailParagraph(
+        'Thanks for signing up. You&#39;re on the Spanlens early access list. ' +
+          'We&#39;re launching on <strong>June 3, 2026</strong> and we&#39;ll send your ' +
+          'access link the moment we go live.',
+      ),
+      emailInfoCard(
+        'Try the live demo while you wait',
+        'The full Spanlens dashboard is available right now in demo mode. You can ' +
+          'explore request logs, agent traces, cost tracking, and anomaly ' +
+          'detection with sample data. No signup required.',
+      ),
+      emailButton(demoUrl, 'Explore the live demo →'),
+      emailParagraph(
+        `Questions? Reply to this email or reach us at ${link('mailto:hi@spanlens.io', 'hi@spanlens.io')}.<br/>Thanks,<br/>The Spanlens team`,
+      ),
+    ],
+    footnotes: [
+      'You received this because you joined the Spanlens waitlist. We&#39;ll only email you once more, on launch day.',
+    ],
+  })
 
   return { subject, html }
 }
@@ -161,41 +488,28 @@ export function renderStaleKeyDigestEmail(params: {
   const { orgName, thresholdDays, keys, dashboardUrl } = params
   const subject = `[Spanlens] ${keys.length} unused provider key${keys.length === 1 ? '' : 's'} in '${orgName}'`
 
-  const rows = keys
-    .map((k) => `
-      <tr>
-        <td style="padding: 8px 12px; border-bottom: 1px solid #eee; font-family: ui-monospace, monospace; font-size: 13px;">${escapeHtml(k.name)}</td>
-        <td style="padding: 8px 12px; border-bottom: 1px solid #eee; font-family: ui-monospace, monospace; font-size: 12px; color: #666;">${escapeHtml(k.provider)}</td>
-        <td style="padding: 8px 12px; border-bottom: 1px solid #eee; font-size: 12px; color: #666;">${escapeHtml(ageString(k.last_used_at, k.created_at))}</td>
-      </tr>`)
-    .join('')
-
-  const html = `
-    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 620px; margin: 0 auto; padding: 24px; color: #111;">
-      <h2 style="margin: 0 0 8px; font-size: 19px;">Unused provider keys in <strong>${escapeHtml(orgName)}</strong></h2>
-      <p style="margin: 0 0 18px; color: #555; font-size: 14px;">
-        The following ${keys.length} key${keys.length === 1 ? ' has' : 's have'} not been used in <strong>${thresholdDays}+ days</strong>.
-        For security, consider deleting any keys you no longer need.
-      </p>
-      <table style="width: 100%; border-collapse: collapse; border: 1px solid #eee; border-radius: 6px; overflow: hidden;">
-        <thead>
-          <tr style="background: #fafafa;">
-            <th style="padding: 8px 12px; text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: #888; border-bottom: 1px solid #eee;">Name</th>
-            <th style="padding: 8px 12px; text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: #888; border-bottom: 1px solid #eee;">Provider</th>
-            <th style="padding: 8px 12px; text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: #888; border-bottom: 1px solid #eee;">Last activity</th>
-          </tr>
-        </thead>
-        <tbody>${rows}</tbody>
-      </table>
-      <p style="margin: 22px 0;">
-        <a href="${dashboardUrl}" style="display: inline-block; padding: 10px 18px; background: #111; color: #fff; text-decoration: none; border-radius: 6px; font-weight: 500; font-size: 13px;">Review keys in dashboard</a>
-      </p>
-      <p style="margin: 18px 0 0; color: #aaa; font-size: 11.5px;">
-        Notification-only — Spanlens never auto-revokes keys.
-        To stop these reminders: Settings → Provider keys → Stale key reminders.
-      </p>
-    </div>
-  `.trim()
+  const html = emailShell({
+    blocks: [
+      emailHeading(`Unused provider keys in ${orgName}`),
+      emailParagraph(
+        `The following ${keys.length} key${keys.length === 1 ? ' has' : 's have'} not been used in <strong>${thresholdDays}+ days</strong>. ` +
+          'For security, consider deleting any keys you no longer need.',
+      ),
+      emailDataTable(
+        [
+          { label: 'Name', mono: true },
+          { label: 'Provider', mono: true, dim: true },
+          { label: 'Last activity', dim: true },
+        ],
+        keys.map((k) => [k.name, k.provider, ageString(k.last_used_at, k.created_at)]),
+      ),
+      emailButton(dashboardUrl, 'Review keys in dashboard'),
+    ],
+    footnotes: [
+      'Spanlens never auto-revokes keys. This is a reminder only.',
+      'To stop these reminders: Settings → Provider keys → Stale key reminders.',
+    ],
+  })
 
   return { subject, html }
 }
@@ -225,34 +539,29 @@ export function renderDataSilenceEmail(params: {
       })
     : 'unknown'
 
-  const html = `
-    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 580px; margin: 0 auto; padding: 24px; color: #111;">
-      <div style="background: #fff7ed; border: 1px solid #fed7aa; border-radius: 8px; padding: 14px 16px; margin-bottom: 18px;">
-        <div style="font-weight: 600; font-size: 14px; color: #9a3412; margin-bottom: 4px;">No data received in the last ${silenceWindowHours} hours</div>
-        <div style="font-size: 13px; color: #7c2d12;">Spanlens stopped receiving requests from <strong>${escapeHtml(orgName)}</strong>.</div>
-      </div>
-      <p style="margin: 0 0 14px; color: #333; font-size: 13.5px; line-height: 1.55;">
-        Your workspace logged <strong>${priorWeekRequests.toLocaleString('en-US')} requests</strong> over the previous 7 days,
-        but nothing has arrived in the last ${silenceWindowHours} hours.
-        The last request we received was at <strong>${escapeHtml(lastSeenLabel)}</strong>.
-      </p>
-      <p style="margin: 0 0 8px; color: #333; font-size: 13.5px;">If this drop is unexpected, the usual causes are:</p>
-      <ul style="margin: 0 0 16px; padding-left: 20px; color: #444; font-size: 13.5px; line-height: 1.7;">
-        <li>Your Spanlens API key was rotated or removed, so requests are being rejected.</li>
-        <li>A recent deploy dropped the baseURL override or the environment variable that points traffic at Spanlens.</li>
-        <li>Your provider key (OpenAI, Anthropic, or Gemini) was revoked, so calls fail before they reach us.</li>
-      </ul>
-      <p style="margin: 22px 0;">
-        <a href="${dashboardUrl}" style="display: inline-block; padding: 10px 18px; background: #111; color: #fff; text-decoration: none; border-radius: 6px; font-weight: 500; font-size: 13px;">Open the requests dashboard</a>
-      </p>
-      <p style="margin: 0 0 14px; color: #555; font-size: 13px;">
-        Need to re-check your setup? The <a href="${quickStartUrl}" style="color: #111;">quick-start guide</a> walks through the baseURL change and key configuration in a couple of minutes.
-      </p>
-      <p style="margin: 18px 0 0; color: #aaa; font-size: 11.5px;">
-        You will not receive another email for this incident. If traffic resumes and stops again later, we will let you know.
-      </p>
-    </div>
-  `.trim()
+  const html = emailShell({
+    blocks: [
+      emailStatusBar('warn', `No data received in the last ${silenceWindowHours} hours`),
+      emailHeading(`Spanlens stopped receiving requests from ${orgName}`),
+      emailParagraph(
+        `Your workspace logged <strong>${escapeHtml(priorWeekRequests.toLocaleString('en-US'))} requests</strong> over the previous 7 days, ` +
+          `but nothing has arrived in the last ${silenceWindowHours} hours. ` +
+          `The last request we received was at <strong>${escapeHtml(lastSeenLabel)}</strong>.`,
+      ),
+      emailListCard('If this drop is unexpected, the usual causes are:', [
+        { text: 'Your Spanlens API key was rotated or removed, so requests are being rejected.' },
+        { text: 'A recent deploy dropped the baseURL override or the environment variable that points traffic at Spanlens.' },
+        { text: 'Your provider key (OpenAI, Anthropic, or Gemini) was revoked, so calls fail before they reach us.' },
+      ]),
+      emailButton(dashboardUrl, 'Open the requests dashboard'),
+      emailParagraph(
+        `Need to re-check your setup? The ${link(quickStartUrl, 'quick-start guide')} walks through the baseURL change and key configuration in a couple of minutes.`,
+      ),
+    ],
+    footnotes: [
+      'You will not receive another email for this incident. If traffic resumes and stops again later, we will let you know.',
+    ],
+  })
 
   return { subject, html }
 }
@@ -276,45 +585,31 @@ export function renderSecurityAlertEmail(params: {
     ? `[Spanlens] ⚠️ Prompt injection detected in '${projectName}'`
     : `[Spanlens] 🔍 PII detected in '${projectName}'`
 
-  const flagRows = allFlags
-    .map((f) => `
-      <tr>
-        <td style="padding: 7px 12px; border-bottom: 1px solid #eee; font-size: 12px; color: #666;">${escapeHtml(f.direction)}</td>
-        <td style="padding: 7px 12px; border-bottom: 1px solid #eee; font-family: ui-monospace, monospace; font-size: 11px;">
-          <span style="display: inline-block; padding: 2px 6px; border-radius: 3px; border: 1px solid ${f.type === 'injection' ? '#fca5a5' : '#e5e7eb'}; background: ${f.type === 'injection' ? '#fef2f2' : '#f9fafb'}; color: ${f.type === 'injection' ? '#991b1b' : '#6b7280'}; text-transform: uppercase; font-size: 10px; letter-spacing: 0.04em;">${escapeHtml(f.type)}</span>
-          &nbsp;${escapeHtml(f.pattern)}
-        </td>
-        <td style="padding: 7px 12px; border-bottom: 1px solid #eee; font-family: ui-monospace, monospace; font-size: 11px; color: #9ca3af;">${escapeHtml(f.sample)}</td>
-      </tr>`)
-    .join('')
-
-  const html = `
-    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; color: #111;">
-      <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 14px 16px; margin-bottom: 18px;">
-        <div style="font-weight: 600; font-size: 14px; color: #991b1b; margin-bottom: 4px;">Security event detected</div>
-        <div style="font-size: 13px; color: #7f1d1d;">
-          ${escapeHtml(String(allFlags.length))} flag${allFlags.length === 1 ? '' : 's'} found in project <strong>${escapeHtml(projectName)}</strong> (${escapeHtml(orgName)}).
-        </div>
-      </div>
-      <table style="width: 100%; border-collapse: collapse; border: 1px solid #eee; border-radius: 6px; overflow: hidden; margin-bottom: 18px;">
-        <thead>
-          <tr style="background: #fafafa;">
-            <th style="padding: 8px 12px; text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: #888; border-bottom: 1px solid #eee;">Direction</th>
-            <th style="padding: 8px 12px; text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: #888; border-bottom: 1px solid #eee;">Type · Pattern</th>
-            <th style="padding: 8px 12px; text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: #888; border-bottom: 1px solid #eee;">Sample (masked)</th>
-          </tr>
-        </thead>
-        <tbody>${flagRows}</tbody>
-      </table>
-      <p style="margin: 18px 0;">
-        <a href="${dashboardUrl}" style="display: inline-block; padding: 10px 18px; background: #111; color: #fff; text-decoration: none; border-radius: 6px; font-weight: 500; font-size: 13px;">View in Security dashboard</a>
-      </p>
-      <p style="margin: 18px 0 0; color: #aaa; font-size: 11.5px;">
-        Spanlens flags only — no requests are blocked unless you enable Block mode.
-        To stop these emails: Security → Alert emails → off.
-      </p>
-    </div>
-  `.trim()
+  const html = emailShell({
+    blocks: [
+      emailStatusBar('error', 'Security event detected'),
+      // The heading restates the subject's injection/PII split. The flag table
+      // shows the type per row, but the reader needs the worse of the two up
+      // front, the way E3 leads with the rule that fired.
+      emailHeading(hasInjection ? 'Prompt injection detected' : 'PII detected'),
+      emailParagraph(
+        `${escapeHtml(String(allFlags.length))} flag${allFlags.length === 1 ? '' : 's'} found in project <strong>${escapeHtml(projectName)}</strong> (${escapeHtml(orgName)}).`,
+      ),
+      emailDataTable(
+        [
+          { label: 'Direction', dim: true },
+          { label: 'Type · Pattern', mono: true },
+          { label: 'Sample (masked)', mono: true, dim: true },
+        ],
+        allFlags.map((f) => [f.direction, `${f.type.toUpperCase()} ${f.pattern}`, f.sample]),
+      ),
+      emailButton(dashboardUrl, 'View in Security dashboard'),
+    ],
+    footnotes: [
+      'Spanlens flags events without blocking them, unless you enable Block mode.',
+      'To stop these emails: Security → Alert emails → off.',
+    ],
+  })
 
   return { subject, html }
 }
@@ -329,30 +624,29 @@ export function renderLeakAlertEmail(params: {
   const { orgName, keyName, provider, detectedAt, dashboardUrl } = params
   const subject = `[Spanlens] 🚨 Provider key '${keyName}' may be leaked`
 
-  const html = `
-    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 580px; margin: 0 auto; padding: 24px; color: #111;">
-      <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 14px 16px; margin-bottom: 18px;">
-        <div style="font-weight: 600; font-size: 14px; color: #991b1b; margin-bottom: 4px;">⚠ Possible secret exposure detected</div>
-        <div style="font-size: 13px; color: #7f1d1d;">A provider key in <strong>${escapeHtml(orgName)}</strong> matched a known-leaked-secrets database.</div>
-      </div>
-      <table style="width: 100%; font-size: 13px; margin-bottom: 16px;">
-        <tr><td style="padding: 4px 0; color: #888; width: 110px;">Key</td><td style="font-family: ui-monospace, monospace;"><strong>${escapeHtml(keyName)}</strong></td></tr>
-        <tr><td style="padding: 4px 0; color: #888;">Provider</td><td style="font-family: ui-monospace, monospace;">${escapeHtml(provider)}</td></tr>
-        <tr><td style="padding: 4px 0; color: #888;">Detected at</td><td style="font-family: ui-monospace, monospace;">${escapeHtml(detectedAt)}</td></tr>
-        <tr><td style="padding: 4px 0; color: #888;">Source</td><td>GitGuardian (HasMySecretLeaked)</td></tr>
-      </table>
-      <p style="margin: 0 0 14px; color: #444; font-size: 13.5px;">
-        <strong>Recommended action:</strong> rotate or revoke this key in the dashboard immediately.
-        Spanlens will not auto-revoke — admins decide.
-      </p>
-      <p style="margin: 18px 0;">
-        <a href="${dashboardUrl}" style="display: inline-block; padding: 10px 18px; background: #b91c1c; color: #fff; text-decoration: none; border-radius: 6px; font-weight: 500; font-size: 13px;">Review in dashboard</a>
-      </p>
-      <p style="margin: 18px 0 0; color: #aaa; font-size: 11.5px;">
-        False positives are possible — verify before revoking. The k-anonymity check transmits only a 5-char hash prefix to GitGuardian, never the key itself.
-      </p>
-    </div>
-  `.trim()
+  const html = emailShell({
+    blocks: [
+      emailStatusBar('error', 'Possible secret exposure detected'),
+      emailParagraph(
+        `A provider key in <strong>${escapeHtml(orgName)}</strong> matched a known-leaked-secrets database.`,
+      ),
+      emailDetailCard([
+        { label: 'Key', value: keyName },
+        { label: 'Provider', value: provider },
+        { label: 'Detected at', value: detectedAt },
+        { label: 'Source', value: 'GitGuardian (HasMySecretLeaked)' },
+      ]),
+      emailParagraph(
+        '<strong>Recommended action:</strong> rotate or revoke this key in the dashboard immediately. ' +
+          'Spanlens will not auto-revoke, so admins decide.',
+      ),
+      emailButton(dashboardUrl, 'Review in dashboard'),
+    ],
+    footnotes: [
+      'False positives are possible, so verify before revoking.',
+      'The k-anonymity check transmits only a 5-char hash prefix to GitGuardian, never the key itself.',
+    ],
+  })
 
   return { subject, html }
 }
@@ -406,96 +700,85 @@ export function renderWeeklyDigestEmail(params: {
   const subject = `Your Spanlens week: ${requestCount.toLocaleString('en-US')} requests, ${formatUsd(totalCostUsd)}`
 
   let trendLine: string
-  let trendColor = '#555'
+  let trendTone: EmailTone = 'neutral'
   if (costChangePct === null) {
     trendLine = 'There is no prior week to compare against yet.'
   } else if (Math.abs(costChangePct) < 5) {
     trendLine = 'Spend is about the same as the week before.'
   } else if (costChangePct > 0) {
     trendLine = `Spend is up ${Math.round(costChangePct)}% from the week before.`
-    trendColor = '#9a3412'
+    trendTone = 'warn'
   } else {
     trendLine = `Spend is down ${Math.abs(Math.round(costChangePct))}% from the week before.`
-    trendColor = '#166534'
+    trendTone = 'ok'
   }
 
   const errorLine = errorCount === 0
     ? 'No failed requests this week.'
     : `${errorCount.toLocaleString('en-US')} failed request${errorCount === 1 ? '' : 's'} (${errorRatePct.toFixed(1)}% error rate).`
 
-  const modelRows = topModels
-    .map((m) => `
-      <tr>
-        <td style="padding: 8px 12px; border-bottom: 1px solid #eee; font-family: ui-monospace, monospace; font-size: 12.5px;">${escapeHtml(m.model)}</td>
-        <td style="padding: 8px 12px; border-bottom: 1px solid #eee; font-family: ui-monospace, monospace; font-size: 12px; color: #666;">${escapeHtml(m.provider)}</td>
-        <td style="padding: 8px 12px; border-bottom: 1px solid #eee; font-size: 12px; color: #666; text-align: right;">${m.requestCount.toLocaleString('en-US')}</td>
-        <td style="padding: 8px 12px; border-bottom: 1px solid #eee; font-size: 12px; color: #111; text-align: right;">${escapeHtml(formatUsd(m.costUsd))}</td>
-      </tr>`)
-    .join('')
+  // The tiles are the snapshot; the change rows carry the narrative. Both come
+  // straight from the E2 frame, which pairs figure tiles with a verdict list.
+  const changeRows: Array<{ label: string; value: string; tone?: EmailTone }> = [
+    { label: 'Spend', value: trendLine, tone: trendTone },
+    { label: 'Errors', value: errorLine, tone: errorCount === 0 ? 'ok' : 'neutral' },
+  ]
+  if (anomalyCount !== null && anomalyCount > 0) {
+    changeRows.push({
+      label: 'Anomalies',
+      value: `${anomalyCount.toLocaleString('en-US')} anomal${anomalyCount === 1 ? 'y was' : 'ies were'} detected this week. Details are on the anomalies page in your dashboard.`,
+      tone: 'warn',
+    })
+  }
 
-  const modelsTable = topModels.length === 0 ? '' : `
-      <p style="margin: 22px 0 8px; font-size: 13px; font-weight: 600; color: #111;">Top models by cost</p>
-      <table style="width: 100%; border-collapse: collapse; border: 1px solid #eee; border-radius: 6px; overflow: hidden;">
-        <thead>
-          <tr style="background: #fafafa;">
-            <th style="padding: 8px 12px; text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: #888; border-bottom: 1px solid #eee;">Model</th>
-            <th style="padding: 8px 12px; text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: #888; border-bottom: 1px solid #eee;">Provider</th>
-            <th style="padding: 8px 12px; text-align: right; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: #888; border-bottom: 1px solid #eee;">Requests</th>
-            <th style="padding: 8px 12px; text-align: right; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: #888; border-bottom: 1px solid #eee;">Cost</th>
-          </tr>
-        </thead>
-        <tbody>${modelRows}</tbody>
-      </table>`
+  const modelsTable = topModels.length === 0
+    ? null
+    : contentStack([
+        emailSectionLabel('Top models by cost'),
+        emailDataTable(
+          [
+            { label: 'Model', mono: true },
+            { label: 'Provider', mono: true, dim: true },
+            { label: 'Requests', align: 'right', dim: true },
+            { label: 'Cost', align: 'right' },
+          ],
+          topModels.map((m) => [
+            m.model,
+            m.provider,
+            m.requestCount.toLocaleString('en-US'),
+            formatUsd(m.costUsd),
+          ]),
+        ),
+      ])
 
-  const anomalyBlock = anomalyCount !== null && anomalyCount > 0 ? `
-      <p style="margin: 16px 0 0; font-size: 13px; color: #9a3412;">
-        ${anomalyCount.toLocaleString('en-US')} anomal${anomalyCount === 1 ? 'y was' : 'ies were'} detected this week. Details are on the anomalies page in your dashboard.
-      </p>` : ''
+  const recommendationBlock = recommendation
+    ? emailNoteCard(
+        'Savings tip',
+        `Moving eligible traffic from ${mono(recommendation.currentModel)} to ${mono(recommendation.suggestedModel)} ` +
+          `could save about <strong>${escapeHtml(formatUsd(recommendation.estimatedMonthlySavingsUsd))} per month</strong>. ` +
+          'See the savings page in your dashboard for details.',
+      )
+    : null
 
-  const recommendationBlock = recommendation ? `
-      <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 14px 16px; margin: 20px 0 0;">
-        <div style="font-weight: 600; font-size: 13px; color: #166534; margin-bottom: 4px;">Savings tip</div>
-        <div style="font-size: 13px; color: #14532d; line-height: 1.55;">
-          Moving eligible traffic from <span style="font-family: ui-monospace, monospace;">${escapeHtml(recommendation.currentModel)}</span>
-          to <span style="font-family: ui-monospace, monospace;">${escapeHtml(recommendation.suggestedModel)}</span>
-          could save about <strong>${escapeHtml(formatUsd(recommendation.estimatedMonthlySavingsUsd))} per month</strong>.
-          See the savings page in your dashboard for details.
-        </div>
-      </div>` : ''
-
-  const html = `
-    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 620px; margin: 0 auto; padding: 24px; color: #111;">
-      <h2 style="margin: 0 0 4px; font-size: 19px;">Your week on Spanlens</h2>
-      <p style="margin: 0 0 18px; color: #888; font-size: 13px;">${escapeHtml(orgName)} · ${escapeHtml(periodLabel)}</p>
-
-      <table style="width: 100%; border-collapse: separate; border-spacing: 8px 0; margin: 0 -8px 4px;">
-        <tr>
-          <td style="width: 50%; background: #fafafa; border: 1px solid #eee; border-radius: 8px; padding: 14px 16px;">
-            <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: #888;">Requests</div>
-            <div style="font-size: 22px; font-weight: 600; margin-top: 2px;">${requestCount.toLocaleString('en-US')}</div>
-          </td>
-          <td style="width: 50%; background: #fafafa; border: 1px solid #eee; border-radius: 8px; padding: 14px 16px;">
-            <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: #888;">Total cost</div>
-            <div style="font-size: 22px; font-weight: 600; margin-top: 2px;">${escapeHtml(formatUsd(totalCostUsd))}</div>
-          </td>
-        </tr>
-      </table>
-
-      <p style="margin: 12px 0 0; font-size: 13px; color: ${trendColor};">${escapeHtml(trendLine)}</p>
-      <p style="margin: 6px 0 0; font-size: 13px; color: #555;">${escapeHtml(errorLine)}</p>
-      ${anomalyBlock}
-      ${modelsTable}
-      ${recommendationBlock}
-
-      <p style="margin: 24px 0;">
-        <a href="${dashboardUrl}" style="display: inline-block; padding: 10px 18px; background: #111; color: #fff; text-decoration: none; border-radius: 6px; font-weight: 500; font-size: 13px;">Open your dashboard</a>
-      </p>
-      <p style="margin: 18px 0 0; color: #aaa; font-size: 11.5px;">
-        You receive this weekly summary because you admin this workspace.
-        To stop it, turn off Weekly digest under Settings, Notifications.
-      </p>
-    </div>
-  `.trim()
+  const html = emailShell({
+    blocks: [
+      emailHeading('Your week on Spanlens'),
+      emailSubhead(`${orgName} · ${periodLabel}`),
+      emailStatTiles([
+        { label: 'Requests', value: requestCount.toLocaleString('en-US') },
+        { label: 'Spend', value: formatUsd(totalCostUsd) },
+        { label: 'Errors', value: errorCount.toLocaleString('en-US'), tone: errorCount === 0 ? 'neutral' : 'error' },
+      ]),
+      emailChangeList(changeRows),
+      modelsTable,
+      recommendationBlock,
+      emailButton(dashboardUrl, 'Open your dashboard'),
+    ],
+    footnotes: [
+      'You receive this weekly summary because you admin this workspace.',
+      'To stop it, turn off Weekly digest under Settings, Notifications.',
+    ],
+  })
 
   return { subject, html }
 }
@@ -512,24 +795,20 @@ export function renderPastDueEmail(params: {
   })
 
   let subject: string
-  let headerBg: string
-  let headerBorder: string
-  let headerColor: string
+  let tone: EmailTone
   let headerTitle: string
   let body: string
   let ctaLabel: string
 
   if (stage === 'warning-d3') {
-    subject = `[Spanlens] Payment failed — update your card to keep your plan`
-    headerBg = '#fff7ed'
-    headerBorder = '#fed7aa'
-    headerColor = '#9a3412'
+    subject = `[Spanlens] Payment failed, update your card to keep your plan`
+    tone = 'warn'
     headerTitle = 'Payment failed'
     body = `
       Hi ${escapeHtml(orgName)} team,
       <br><br>
-      Your most recent Spanlens invoice didn&apos;t go through — usually an expired
-      or replaced card. We&apos;ll keep your plan active for <strong>3 more days</strong>;
+      Your most recent Spanlens invoice didn&apos;t go through, which usually means an
+      expired or replaced card. We&apos;ll keep your plan active for <strong>3 more days</strong>;
       after that the workspace automatically drops to the Free plan and log
       retention shortens to 14 days.
       <br><br>
@@ -538,10 +817,8 @@ export function renderPastDueEmail(params: {
     `
     ctaLabel = 'Update payment method'
   } else if (stage === 'warning-d1') {
-    subject = `[Spanlens] Last reminder — auto-downgrade in 24 hours`
-    headerBg = '#fef2f2'
-    headerBorder = '#fecaca'
-    headerColor = '#991b1b'
+    subject = `[Spanlens] Last reminder, auto-downgrade in 24 hours`
+    tone = 'error'
     headerTitle = 'Auto-downgrade in 24 hours'
     body = `
       Hi ${escapeHtml(orgName)} team,
@@ -550,15 +827,13 @@ export function renderPastDueEmail(params: {
       ${escapeHtml(sinceLabel)}). If we don&apos;t recover by tomorrow, the workspace
       drops to the Free plan and log retention shortens to 14 days.
       <br><br>
-      You can re-upgrade at any time — this is just a heads-up so it&apos;s not a
+      You can re-upgrade at any time. This is just a heads-up so it isn&apos;t a
       surprise.
     `
     ctaLabel = 'Update payment method'
   } else {
     subject = `[Spanlens] Your workspace has been moved to the Free plan`
-    headerBg = '#f1f5f9'
-    headerBorder = '#e2e8f0'
-    headerColor = '#0f172a'
+    tone = 'neutral'
     headerTitle = 'Plan changed to Free'
     body = `
       Hi ${escapeHtml(orgName)} team,
@@ -566,29 +841,23 @@ export function renderPastDueEmail(params: {
       After 7 days without a successful payment (first failure
       ${escapeHtml(sinceLabel)}), we&apos;ve moved this workspace to the Free plan.
       Existing logs older than 14 days are no longer visible in the dashboard,
-      but they remain in our database for a 7-day grace window — re-upgrade in
+      but they remain in our database for a 7-day grace window. Re-upgrade in
       that time and they reappear automatically.
       <br><br>
       Nothing has been deleted yet. Your data, projects, API keys, and integrations
-      are all intact — only the plan tier changed.
+      are all intact. Only the plan tier changed.
     `
     ctaLabel = 'Re-upgrade'
   }
 
-  const html = `
-    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 580px; margin: 0 auto; padding: 24px; color: #111;">
-      <div style="background: ${headerBg}; border: 1px solid ${headerBorder}; border-radius: 8px; padding: 14px 16px; margin-bottom: 18px;">
-        <div style="font-weight: 600; font-size: 14px; color: ${headerColor};">${headerTitle}</div>
-      </div>
-      <p style="margin: 0 0 14px; color: #333; font-size: 13.5px; line-height: 1.55;">${body.trim()}</p>
-      <p style="margin: 22px 0;">
-        <a href="${billingUrl}" style="display: inline-block; padding: 10px 18px; background: #111; color: #fff; text-decoration: none; border-radius: 6px; font-weight: 500; font-size: 13px;">${ctaLabel}</a>
-      </p>
-      <p style="margin: 18px 0 0; color: #aaa; font-size: 11.5px;">
-        Questions? Reply to this email — it goes straight to the team.
-      </p>
-    </div>
-  `.trim()
+  const html = emailShell({
+    blocks: [
+      emailStatusBar(tone, headerTitle),
+      emailParagraph(body.trim()),
+      emailButton(billingUrl, ctaLabel),
+    ],
+    footnotes: ['Questions? Reply to this email and it goes straight to the team.'],
+  })
 
   return { subject, html }
 }

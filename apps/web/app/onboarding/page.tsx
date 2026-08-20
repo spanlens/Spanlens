@@ -1,7 +1,5 @@
 'use client'
 import { useState } from 'react'
-import Image from 'next/image'
-import Link from 'next/link'
 
 import { apiPost } from '@/lib/api'
 import {
@@ -13,6 +11,14 @@ import { writeWorkspaceCookie } from '@/lib/workspace-cookie'
 import { writeWelcomeStash } from '@/lib/welcome-stash'
 import { TrackOnce } from '@/components/track-once'
 import { cn } from '@/lib/utils'
+import {
+  AuthFootnote,
+  AuthLayout,
+  AuthNote,
+  authInput,
+  authPrimaryButton,
+  authSecondaryButton,
+} from '../auth/_components/auth-shell'
 
 /**
  * Three-phase post-signup onboarding:
@@ -162,128 +168,125 @@ export default function OnboardingPage() {
   }
 
   return (
-    <div className="min-h-screen bg-bg-elev flex flex-col items-center px-6 py-10">
+    <AuthLayout
+      pitch={{
+        title: 'Two minutes to first trace.',
+        body: 'Tell us where you ship, then paste one line into your client. The dashboard fills itself.',
+      }}
+    >
       {/* Funnel event: account exists and the user reached onboarding —
           the single point every signup path (email, email-confirm, OAuth)
           converges on. Once per browser so revisits don't recount. */}
       <TrackOnce event="signup_completed" scope="local" />
-      {/* Header */}
-      <Link href="/" className="flex items-center gap-2 mb-7 hover:opacity-80 transition-opacity">
-        <Image src="/icon.png" alt="Spanlens" width={22} height={22} className="shrink-0 rounded-[5px]" priority />
-        <span className="font-semibold text-[16px] tracking-[-0.3px] text-text">spanlens</span>
-      </Link>
 
-      {/* Stepper */}
       {showStepper && <Stepper currentIdx={stepperIdx} />}
 
-      {/* Card */}
-      <div className="w-[480px] max-w-full bg-bg border border-border rounded-[10px] p-7 shadow-sm">
-        {step === null && (
-          <div className="text-[13px] text-text-muted">Loading…</div>
-        )}
+      {step === null && (
+        <p className="text-[13.5px] leading-[1.6] text-text-faint" role="status">
+          Loading…
+        </p>
+      )}
 
-        {step === 'pending' && pending.data && pending.data.length > 0 && (
-          <PendingInvitationsStep
-            invitations={pending.data}
-            onAccept={(inv) => void handleAcceptInvite(inv)}
-            onSkip={() => setStep('workspace')}
-            loading={loading}
-            error={error}
+      {step === 'pending' && pending.data && pending.data.length > 0 && (
+        <PendingInvitationsStep
+          invitations={pending.data}
+          onAccept={(inv) => void handleAcceptInvite(inv)}
+          onSkip={() => setStep('workspace')}
+          loading={loading}
+          error={error}
+        />
+      )}
+
+      {step === 'workspace' && (
+        <form onSubmit={(e) => void handleWorkspaceSubmit(e)}>
+          <h1 className="font-display track-h3 text-[24px] leading-[1.2] text-text">Name your workspace</h1>
+          <p className="mb-5 mt-2 text-[13.5px] leading-[1.6] text-text-faint">
+            Usually your company or team name. You can change it later in Settings.
+          </p>
+
+          <label htmlFor="workspace-name" className="mb-[7px] block text-[12.5px] font-medium leading-[1.48] text-text">
+            Workspace name
+          </label>
+          <input
+            id="workspace-name"
+            type="text"
+            autoFocus
+            value={workspaceName}
+            onChange={(e) => setWorkspaceName(e.target.value)}
+            placeholder="Acme Inc."
+            maxLength={80}
+            aria-invalid={error ? true : undefined}
+            className={authInput}
           />
-        )}
 
-        {step === 'workspace' && (
-          <form onSubmit={(e) => void handleWorkspaceSubmit(e)}>
-            <h1 className="text-[22px] font-medium tracking-[-0.4px] mb-1.5">Name your workspace</h1>
-            <p className="text-[13px] text-text-muted mb-5 leading-relaxed">
-              Usually your company or team name. You can change it later in Settings.
-            </p>
+          {error && <AuthNote tone="bad" live="assertive" className="mt-4">{error}</AuthNote>}
 
-            <label className="block text-[12px] text-text-muted mb-1.5">Workspace name</label>
-            <input
-              type="text"
-              autoFocus
-              value={workspaceName}
-              onChange={(e) => setWorkspaceName(e.target.value)}
-              placeholder="Acme Inc."
-              maxLength={80}
-              className="w-full px-3 py-2 border border-border-strong rounded-[6px] bg-bg-elev text-[13px] outline-none focus:border-accent"
-            />
+          <button
+            type="submit"
+            disabled={loading || !workspaceName.trim()}
+            className={`${authPrimaryButton} mt-[22px]`}
+          >
+            {loading ? 'Creating workspace…' : 'Continue'}
+          </button>
+        </form>
+      )}
 
-            {error && <p className="text-[12.5px] text-bad mt-3">{error}</p>}
+      {step === 'survey' && (
+        <div>
+          <h1 className="font-display track-h3 text-[24px] leading-[1.2] text-text">
+            Tell us about your project
+          </h1>
+          <p className="mb-5 mt-2 text-[13.5px] leading-[1.6] text-text-faint">
+            Helps us prioritise what to build. Both questions are optional.
+          </p>
 
-            <button
-              type="submit"
-              disabled={loading || !workspaceName.trim()}
-              className="w-full mt-5 bg-text text-bg py-[11px] px-[14px] rounded-[7px] text-[13px] font-medium hover:opacity-90 transition-opacity disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed"
-            >
-              {loading ? 'Creating workspace…' : 'Continue →'}
-            </button>
-          </form>
-        )}
+          <div className="flex flex-col gap-4">
+            <OptionGroup label="What are you building?">
+              {USE_CASES.map((opt) => (
+                <Chip
+                  key={opt.id}
+                  checked={useCase === opt.id}
+                  onClick={() => setUseCase(useCase === opt.id ? null : opt.id)}
+                  label={opt.label}
+                  {...(opt.hint ? { hint: opt.hint } : {})}
+                />
+              ))}
+            </OptionGroup>
 
-        {step === 'survey' && (
-          <div>
-            <h1 className="text-[22px] font-medium tracking-[-0.4px] mb-1.5">Tell us about your project</h1>
-            <p className="text-[13px] text-text-muted mb-5 leading-relaxed">
-              Helps us prioritize what to build. Both questions are optional, feel free to skip.
-            </p>
-
-            <div className="space-y-5">
-              <div>
-                <div className="text-[12.5px] text-text font-medium mb-2">What are you building?</div>
-                <div className="grid grid-cols-2 gap-1.5">
-                  {USE_CASES.map((opt) => (
-                    <RadioCard
-                      key={opt.id}
-                      checked={useCase === opt.id}
-                      onClick={() => setUseCase(useCase === opt.id ? null : opt.id)}
-                      label={opt.label}
-                      hint={opt.hint}
-                    />
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <div className="text-[12.5px] text-text font-medium mb-2">What&apos;s your role?</div>
-                <div className="flex flex-wrap gap-1.5">
-                  {ROLES.map((opt) => (
-                    <Chip
-                      key={opt.id}
-                      checked={role === opt.id}
-                      onClick={() => setRole(role === opt.id ? null : opt.id)}
-                      label={opt.label}
-                    />
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            {error && <p className="text-[12.5px] text-bad mt-4">{error}</p>}
-
-            <div className="flex gap-2 mt-6 justify-end">
-              <button
-                type="button"
-                onClick={() => void completeSurvey(false)}
-                disabled={loading}
-                className="font-mono text-[12px] px-4 py-[9px] border border-border rounded-[6px] text-text-muted hover:text-text transition-colors disabled:opacity-40"
-              >
-                Skip
-              </button>
-              <button
-                type="button"
-                onClick={() => void completeSurvey(true)}
-                disabled={loading || (!useCase && !role)}
-                className="bg-text text-bg py-[9px] px-4 rounded-[6px] text-[12.5px] font-medium hover:opacity-90 transition-opacity disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed"
-              >
-                {loading ? 'Saving…' : 'Continue to dashboard →'}
-              </button>
-            </div>
+            <OptionGroup label="What is your role?">
+              {ROLES.map((opt) => (
+                <Chip
+                  key={opt.id}
+                  checked={role === opt.id}
+                  onClick={() => setRole(role === opt.id ? null : opt.id)}
+                  label={opt.label}
+                />
+              ))}
+            </OptionGroup>
           </div>
-        )}
-      </div>
-    </div>
+
+          {error && <AuthNote tone="bad" live="assertive" className="mt-4">{error}</AuthNote>}
+
+          <button
+            type="button"
+            onClick={() => void completeSurvey(true)}
+            disabled={loading || (!useCase && !role)}
+            className={`${authPrimaryButton} mt-6`}
+          >
+            {loading ? 'Saving…' : 'Continue to the snippet'}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => void completeSurvey(false)}
+            disabled={loading}
+            className={`${authSecondaryButton} mt-2.5`}
+          >
+            Skip, I will connect later
+          </button>
+        </div>
+      )}
+    </AuthLayout>
   )
 }
 
@@ -300,88 +303,115 @@ function PendingInvitationsStep({
   loading: boolean
   error: string
 }) {
+  const many = invitations.length !== 1
   return (
     <div>
-      <h1 className="text-[22px] font-medium tracking-[-0.4px] mb-1.5">You&apos;ve been invited</h1>
-      <p className="text-[13px] text-text-muted mb-5 leading-relaxed">
-        Someone added you to {invitations.length === 1 ? 'a' : 'these'} Spanlens
-        {invitations.length === 1 ? ' workspace' : ' workspaces'}. Join now, or
-        skip and create your own.
+      <h1 className="font-display track-h3 text-[24px] leading-[1.2] text-text">Someone saved you a seat</h1>
+      <p className="mb-5 mt-2 text-[13.5px] leading-[1.6] text-text-faint">
+        You have an open invitation to {many ? 'these workspaces' : 'a workspace'}. Join now, or skip and
+        create your own.
       </p>
 
-      <div className="space-y-2 mb-5">
+      <ul className="flex flex-col gap-2.5">
         {invitations.map((inv) => (
-          <div
+          <li
             key={inv.id}
-            className="flex items-center justify-between gap-3 p-3 rounded-[6px] border border-border bg-bg-elev"
+            className="flex items-center justify-between gap-3 rounded-lg border border-border bg-bg-elev px-3.5 py-3"
           >
-            <div className="min-w-0">
-              <div className="text-[14px] font-medium text-text truncate">{inv.orgName}</div>
-              <div className="font-mono text-[11px] text-text-muted mt-0.5">
-                Role: <span className="text-accent">{inv.role}</span>
-              </div>
-            </div>
+            <span className="flex min-w-0 items-center gap-3">
+              <span
+                className="flex size-10 shrink-0 items-center justify-center rounded-full bg-accent-bg text-[14px] font-semibold text-accent"
+                aria-hidden="true"
+              >
+                {inv.orgName.slice(0, 2).toUpperCase()}
+              </span>
+              <span className="min-w-0">
+                <span className="block truncate text-[13.5px] font-semibold leading-[1.48] text-text">
+                  {inv.orgName}
+                </span>
+                <span className="block font-mono text-[12px] leading-[1.48] text-text-faint">
+                  joins as {inv.role}
+                </span>
+              </span>
+            </span>
             <button
               type="button"
               onClick={() => onAccept(inv)}
               disabled={loading}
-              className="bg-text text-bg py-[8px] px-[14px] rounded-[6px] text-[12.5px] font-medium hover:opacity-90 transition-opacity disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed shrink-0"
+              className="inline-flex h-9 shrink-0 items-center rounded-full bg-accent px-4 text-[12.5px] font-semibold text-accent-fg transition-colors hover:bg-accent-strong disabled:pointer-events-none disabled:opacity-50"
             >
-              Accept →
+              Accept
             </button>
-          </div>
+          </li>
         ))}
-      </div>
+      </ul>
 
-      {error && <p className="text-[12.5px] text-bad mb-3">{error}</p>}
+      {error && <AuthNote tone="bad" live="assertive" className="mt-4">{error}</AuthNote>}
 
-      <div className="border-t border-border pt-4">
-        <button
-          type="button"
-          onClick={onSkip}
-          disabled={loading}
-          className="w-full font-mono text-[12px] py-[9px] px-3 border border-border rounded-[6px] text-text-muted hover:text-text hover:border-border-strong transition-colors disabled:opacity-40"
-        >
-          Skip &amp; create my own workspace →
-        </button>
-      </div>
+      <button type="button" onClick={onSkip} disabled={loading} className={`${authSecondaryButton} mt-5`}>
+        Create my own workspace instead
+      </button>
+
+      <AuthFootnote className="mt-4">
+        Joining does not touch any workspace you already own.
+      </AuthFootnote>
     </div>
   )
 }
 
+/*
+ * Numbered progress row from the A10 board. Completed and current steps take
+ * the ink fill; anything ahead sits on the neutral track so the row reads as
+ * a path rather than as three equal buttons.
+ */
 function Stepper({ currentIdx }: { currentIdx: number }) {
   const labels = ['Workspace', 'About you']
   return (
-    <div className="flex items-center gap-3 mb-7">
+    <ol className="mb-[22px] flex items-center gap-2">
       {labels.map((label, i) => {
-        const isCurrent = i === currentIdx
-        const isDone = i < currentIdx
+        const isReached = i <= currentIdx
         return (
-          <div key={label} className="flex items-center gap-3">
-            <div className="flex flex-col items-center gap-1.5">
-              <div
+          <li key={label} className="flex items-center gap-2">
+            <span className="flex items-center gap-[7px]">
+              <span
                 className={cn(
-                  'w-7 h-7 rounded-full flex items-center justify-center font-mono text-[11px] font-medium',
-                  isDone && 'bg-accent text-bg',
-                  isCurrent && 'bg-accent text-bg',
-                  !isDone && !isCurrent && 'bg-bg-muted text-text-faint border border-border',
+                  'flex size-5 items-center justify-center rounded-full font-mono text-[10.5px]',
+                  isReached ? 'bg-text text-bg' : 'bg-track text-text-faint',
                 )}
+                aria-hidden="true"
               >
-                {isDone ? '✓' : i + 1}
-              </div>
-              <div className={cn('font-mono text-[10.5px] tracking-[0.04em] uppercase', isCurrent ? 'text-text' : 'text-text-faint')}>
+                {i < currentIdx ? '✓' : i + 1}
+              </span>
+              <span
+                className={cn(
+                  'text-[12px] leading-[1.48]',
+                  isReached ? 'font-semibold text-text' : 'font-medium text-text-faint',
+                )}
+                {...(i === currentIdx ? { 'aria-current': 'step' as const } : {})}
+              >
                 {label}
-              </div>
-            </div>
-            {i < labels.length - 1 && <div className="w-12 h-px bg-border -mt-4" />}
-          </div>
+              </span>
+            </span>
+            {i < labels.length - 1 && <span className="h-px w-6 bg-border" aria-hidden="true" />}
+          </li>
         )
       })}
-    </div>
+    </ol>
   )
 }
 
-function RadioCard({
+function OptionGroup({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <fieldset className="m-0 border-0 p-0">
+      <legend className="mb-[9px] text-[12.5px] font-medium leading-[1.48] text-text">{label}</legend>
+      <div className="flex flex-wrap gap-2">{children}</div>
+    </fieldset>
+  )
+}
+
+/* Toggle pill. `aria-pressed` carries the selection to assistive tech, since
+   the selected state is otherwise only a fill change. */
+function Chip({
   checked, onClick, label, hint,
 }: {
   checked: boolean
@@ -393,42 +423,17 @@ function RadioCard({
     <button
       type="button"
       onClick={onClick}
+      aria-pressed={checked}
+      {...(hint ? { title: hint } : {})}
       className={cn(
-        'text-left p-2.5 rounded-[6px] border transition-colors',
+        'rounded-full px-3 py-2 text-[12px] font-medium leading-[1.48] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-bg-elev',
         checked
-          ? 'border-accent bg-accent-bg'
-          : 'border-border hover:border-border-strong bg-bg-elev',
-      )}
-    >
-      <div className={cn('text-[12.5px] font-medium', checked ? 'text-accent' : 'text-text')}>{label}</div>
-      {hint && (
-        <div className={cn('text-[11px] mt-0.5 leading-snug', checked ? 'text-accent' : 'text-text-faint')}>
-          {hint}
-        </div>
-      )}
-    </button>
-  )
-}
-
-function Chip({
-  checked, onClick, label,
-}: {
-  checked: boolean
-  onClick: () => void
-  label: string
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        'text-[12px] px-3 py-1.5 rounded-full border transition-colors',
-        checked
-          ? 'border-accent bg-accent-bg text-accent font-medium'
-          : 'border-border text-text-muted hover:border-border-strong hover:text-text',
+          ? 'bg-text text-bg'
+          : 'border border-border bg-bg-elev text-text hover:border-border-strong hover:bg-bg-muted',
       )}
     >
       {label}
     </button>
   )
 }
+

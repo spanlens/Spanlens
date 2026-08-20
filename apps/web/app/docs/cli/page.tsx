@@ -138,7 +138,7 @@ export default function CliDocs() {
         committing so you do not ship a broken build.
       </p>
 
-      <div className="my-6 rounded-lg border-l-4 border-accent bg-accent-bg p-4 text-sm">
+      <div className="my-6 rounded-lg border border-accent-border bg-accent-bg p-4 text-sm">
         <p className="m-0 font-semibold text-accent">Two-line manual integration still works</p>
         <p className="mt-1 mb-0 text-accent">
           If the wizard does not fit your stack, skip it and use the{' '}
@@ -147,7 +147,7 @@ export default function CliDocs() {
         </p>
       </div>
 
-      <div className="my-6 rounded-lg border-l-4 border-accent bg-accent-bg p-4 text-sm">
+      <div className="my-6 rounded-lg border border-accent-border bg-accent-bg p-4 text-sm">
         <p className="m-0 font-semibold text-accent">Working in Python?</p>
         <p className="mt-1 mb-0 text-accent">
           The same wizard ships with the Python SDK. Run{' '}

@@ -306,7 +306,7 @@ datasetsRouter.post('/:id/items/import-requests', requireEdit, async (c) => {
   const ids = body.requestIds.filter((x): x is string => typeof x === 'string').slice(0, 200)
   if (ids.length === 0) throw new ApiError('BAD_REQUEST', 'No valid request IDs')
 
-  // Fetch source requests from ClickHouse. body columns are JSON strings —
+  // Fetch source requests. body columns are stored as text (not jsonb) —
   // parse at the boundary so the existing extraction logic stays unchanged.
   interface SourceRow {
     id: string
@@ -319,11 +319,11 @@ datasetsRouter.post('/:id/items/import-requests', requireEdit, async (c) => {
     rawRequests = await selectRequests<SourceRow>({
       scope,
       select: 'id, request_body, response_body',
-      filters: 'id IN {ids:Array(UUID)}',
+      filters: 'id = ANY({ids}::uuid[])',
       params: { ids },
     })
   } catch (err) {
-    throw new ApiError('INTERNAL_ERROR', err instanceof Error ? err.message : 'ClickHouse query failed')
+    throw new ApiError('INTERNAL_ERROR', err instanceof Error ? err.message : 'Request query failed')
   }
   if (rawRequests.length === 0) {
     throw new ApiError('NOT_FOUND', 'No matching requests found')

@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { useMemo, useState } from 'react'
 import { Topbar } from '@/components/layout/topbar'
-import { formatDateTime } from '@/lib/utils'
+import { cn, formatDate } from '@/lib/utils'
 import {
   useRevokeShare,
   useShares,
@@ -41,42 +41,132 @@ const SCOPE_OPTIONS: { value: ShareScopeFilter; label: string }[] = [
   { value: 'mine', label: 'My shares' },
 ]
 
+// ── Shared surface classes ───────────────────────────────────────────────────
+// The head and row grids must stay in lockstep, so the column template lives
+// in one place rather than being repeated at each call site.
+const TABLE_CARD = 'rounded-card border border-border bg-bg-elev shadow-card overflow-hidden'
+const TABLE_HEAD_CELL = 'font-mono text-[10px] uppercase tracking-[0.1em] text-text-faint'
+const PILL_SECONDARY =
+  'rounded-full border border-border bg-bg-elev px-3.5 py-2 text-[12px] font-medium text-text hover:bg-bg-muted transition-colors disabled:opacity-50'
+const STATUS_PILL =
+  'inline-flex w-fit items-center rounded-full px-2 py-[3px] font-mono text-[10.5px]'
+const SHARE_COLS =
+  'grid grid-cols-[minmax(180px,1fr)_minmax(200px,1.4fr)_80px_minmax(190px,1.2fr)_130px_110px_120px] gap-3'
+
 export function SharesClient() {
   const [scope, setScope] = useState<ShareScopeFilter>('org')
   const [sort, setSort] = useState<ShareSort>('created')
   const { data, isLoading, error } = useShares({ scope, sort })
 
   return (
-    <div>
-      <Topbar crumbs={[{ label: 'Shared links' }]} />
-      <main className="max-w-6xl mx-auto px-6 py-8 space-y-5">
-        <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <h1 className="text-[18px] font-semibold tracking-tight">Shared links</h1>
-            <p className="text-[12px] text-text-muted mt-1">
-              Public {' '}
-              <code className="font-mono text-[11px] px-1 py-0.5 rounded bg-bg-elevated">
-                /share/&lt;token&gt;
-              </code>{' '}
-              links published from this workspace. Anyone with the URL can read
-              the redacted view. Revoke immediately if a link leaks.
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
+    <>
+      {/* The topbar is the only full-bleed row: it cancels the padding
+          `DashboardContent` applies so its hairline spans the whole main
+          column. Everything below sits flush inside that padding. */}
+      <div className="sticky top-0 z-20 -mx-4 -mt-4 md:-mx-7 md:-mt-5 bg-bg">
+        <Topbar crumbs={[{ label: 'Shared links' }]} />
+      </div>
+
+      <div className="pt-4 md:pt-5 space-y-4">
+        {/* The breadcrumb carries the visible page title, so the document
+            heading is screen-reader only. */}
+        <h1 className="sr-only">Shared links</h1>
+
+        {/* Filter bar. The Figma board folds sort and author into a single
+            segmented control; kept as two controls here because they are
+            independent axes and merging them would drop combinations. */}
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-[12px] text-text-muted max-w-2xl">
+            Public{' '}
+            <code className="font-mono text-[11px] px-1 py-0.5 rounded bg-bg-sunk border border-border">
+              /share/&lt;token&gt;
+            </code>{' '}
+            links published from this workspace. Anyone with the URL can read
+            the redacted view. Revoke immediately if a link leaks.
+          </p>
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
             <SegmentedControl
               ariaLabel="Filter by author"
               options={SCOPE_OPTIONS}
               value={scope}
               onChange={setScope}
             />
-            <SortPicker value={sort} onChange={setSort} />
+            <SegmentedControl
+              ariaLabel="Sort shares"
+              options={SORT_OPTIONS}
+              value={sort}
+              onChange={setSort}
+            />
           </div>
-        </header>
+        </div>
+
+        <StatRow rows={data} />
 
         {error ? <ErrorBox message={(error as Error).message} /> : null}
         {isLoading ? <LoadingTable /> : null}
         {data ? <ShareTable rows={data} /> : null}
-      </main>
+      </div>
+    </>
+  )
+}
+
+/**
+ * Four-up overview of the current result set. Derived from the rows already on
+ * screen — no extra round trip — so the figures follow the active scope filter.
+ */
+function StatRow({ rows }: { rows: ShareRow[] | undefined }) {
+  const cards = useMemo(() => {
+    const list = rows ?? []
+    const total = list.length
+    const views = list.reduce((sum, r) => sum + r.view_count, 0)
+    const piiRedacted = list.filter((r) => r.redact_pii).length
+    const costHidden = list.filter((r) => r.redact_cost).length
+    const expiringSoon = list.filter((r) => isExpiringSoon(r.expires_at)).length
+    const allPii = total > 0 && piiRedacted === total
+    return [
+      {
+        label: 'Active shares',
+        value: String(total),
+        note: expiringSoon > 0 ? `${expiringSoon} expiring within 7 days` : 'none expiring this week',
+        tone: expiringSoon > 0 ? 'text-warn' : 'text-text-faint',
+      },
+      {
+        label: 'Total views',
+        value: views.toLocaleString('en-US'),
+        note: 'across all shares',
+        tone: 'text-text-faint',
+      },
+      {
+        label: 'PII redacted',
+        value: `${piiRedacted} of ${total}`,
+        note: allPii ? 'enforced on every share' : 'per share setting',
+        tone: allPii ? 'text-good' : 'text-text-faint',
+      },
+      {
+        label: 'Cost hidden',
+        value: `${costHidden} of ${total}`,
+        note: 'per share setting',
+        tone: 'text-text-faint',
+      },
+    ]
+  }, [rows])
+
+  return (
+    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      {cards.map((c) => (
+        <div
+          key={c.label}
+          className="rounded-card border border-border bg-bg-elev shadow-card px-5 py-[18px]"
+        >
+          <div className="font-mono text-[10.5px] uppercase tracking-[0.1em] text-text-faint">
+            {c.label}
+          </div>
+          <div className="font-display text-[22px] track-h3 leading-[1.05] text-text mt-[7px] tabular-nums">
+            {c.value}
+          </div>
+          <div className={cn('text-[11.5px] font-medium mt-[7px] truncate', c.tone)}>{c.note}</div>
+        </div>
+      ))}
     </div>
   )
 }
@@ -96,7 +186,7 @@ function SegmentedControl<T extends string>({
     <div
       role="group"
       aria-label={ariaLabel}
-      className="inline-flex rounded-md border border-border overflow-hidden text-[11px] font-mono"
+      className="inline-flex items-center gap-0.5 rounded-full bg-bg-chip p-[3px]"
     >
       {options.map((opt) => {
         const active = opt.value === value
@@ -105,10 +195,10 @@ function SegmentedControl<T extends string>({
             key={opt.value}
             type="button"
             onClick={() => onChange(opt.value)}
-            className={
-              'px-2.5 py-1 transition-colors ' +
-              (active ? 'bg-accent/15 text-accent' : 'hover:bg-bg-elevated')
-            }
+            className={cn(
+              'rounded-full px-[11px] py-[5px] text-[12px] font-medium transition-colors whitespace-nowrap',
+              active ? 'bg-bg-elev text-text shadow-card' : 'text-text-faint hover:text-text',
+            )}
             aria-pressed={active}
           >
             {opt.label}
@@ -119,57 +209,35 @@ function SegmentedControl<T extends string>({
   )
 }
 
-function SortPicker({
-  value,
-  onChange,
-}: {
-  value: ShareSort
-  onChange: (s: ShareSort) => void
-}) {
-  return (
-    <select
-      value={value}
-      onChange={(e) => onChange(e.target.value as ShareSort)}
-      className="text-[11px] font-mono border border-border rounded-md px-2 py-1 bg-bg hover:bg-bg-elevated"
-      aria-label="Sort shares"
-    >
-      {SORT_OPTIONS.map((opt) => (
-        <option key={opt.value} value={opt.value}>
-          {opt.label}
-        </option>
-      ))}
-    </select>
-  )
-}
-
 function ShareTable({ rows }: { rows: ShareRow[] }) {
   if (rows.length === 0) {
     return (
-      <div className="border border-border rounded-md p-8 text-center text-[12px] text-text-muted">
+      <div className={cn(TABLE_CARD, 'px-6 py-10 text-center text-[12.5px] text-text-muted')}>
         No shares yet. Open a trace or request and click <strong>Share</strong> to publish one.
       </div>
     )
   }
 
   return (
-    <div className="border border-border rounded-md overflow-hidden">
-      <table className="w-full text-[12px]">
-        <thead className="bg-bg-elevated">
-          <tr className="text-left text-[10px] uppercase tracking-wider text-text-muted">
-            <th className="px-4 py-2 font-medium">Target</th>
-            <th className="px-4 py-2 font-medium">Redaction</th>
-            <th className="px-4 py-2 font-medium">Views</th>
-            <th className="px-4 py-2 font-medium">Created</th>
-            <th className="px-4 py-2 font-medium">Expires</th>
-            <th className="px-4 py-2 font-medium"></th>
-          </tr>
-        </thead>
-        <tbody>
+    <div className={TABLE_CARD}>
+      {/* Wide table scrolls inside its own container so the page body never
+          scrolls horizontally. */}
+      <div className="overflow-x-auto">
+        <div className="min-w-[1120px]">
+          <div className={cn(SHARE_COLS, 'bg-bg-muted border-b border-border px-[18px] py-2.5')}>
+            <span className={TABLE_HEAD_CELL}>Share</span>
+            <span className={TABLE_HEAD_CELL}>Target</span>
+            <span className={TABLE_HEAD_CELL}>Views</span>
+            <span className={TABLE_HEAD_CELL}>Redaction</span>
+            <span className={TABLE_HEAD_CELL}>Created</span>
+            <span className={TABLE_HEAD_CELL}>Expires</span>
+            <span className={cn(TABLE_HEAD_CELL, 'text-right')}>Actions</span>
+          </div>
           {rows.map((row) => (
             <ShareTableRow key={row.id} row={row} />
           ))}
-        </tbody>
-      </table>
+        </div>
+      </div>
     </div>
   )
 }
@@ -181,30 +249,40 @@ function ShareTableRow({ row }: { row: ShareRow }) {
   const shareUrl = `/share/${row.token}`
 
   return (
-    <tr className="border-t border-border hover:bg-bg-elevated/40">
-      <td className="px-4 py-3">
-        <div className="font-medium truncate max-w-[280px]" title={row.target_label}>
-          <Link href={shareUrl} className="text-accent hover:underline" target="_blank" rel="noopener noreferrer">
-            {row.target_label}
-          </Link>
-        </div>
-        <div className="font-mono text-[10.5px] text-text-muted mt-0.5">
-          {row.scope} · {row.target_id.slice(0, 8)}…
-        </div>
-      </td>
-      <td className="px-4 py-3">
+    <div className={cn(SHARE_COLS, 'items-center px-[18px] py-3 border-b border-border last:border-b-0')}>
+      {/* The token stays out of the visible cell — it only ever lives in the
+          link href, exactly as before. */}
+      <span className="font-mono text-[12px] text-text truncate">
+        {row.scope} · {row.target_id.slice(0, 8)}…
+      </span>
+      <span className="min-w-0 truncate" title={row.target_label}>
+        <Link
+          href={shareUrl}
+          className="font-mono text-[12px] text-accent hover:underline"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          {row.target_label}
+        </Link>
+      </span>
+      <span className="font-mono text-[12px] text-text-muted tabular-nums">
+        {row.view_count.toLocaleString('en-US')}
+      </span>
+      <span className="min-w-0">
         <RedactionChips row={row} />
-      </td>
-      <td className="px-4 py-3 font-mono">{row.view_count.toLocaleString('en-US')}</td>
-      <td className="px-4 py-3 font-mono text-[11px] text-text-muted whitespace-nowrap">
-        {formatDateTime(row.created_at)}
-      </td>
-      <td className="px-4 py-3 font-mono text-[11px] whitespace-nowrap">
-        <span className={expiresSoon ? 'text-status-warning' : 'text-text-muted'}>
-          {expiresLabel}
-        </span>
-      </td>
-      <td className="px-4 py-3 text-right">
+      </span>
+      <span className="font-mono text-[12px] text-text-muted whitespace-nowrap">
+        {formatDate(row.created_at)}
+      </span>
+      <span
+        className={cn(
+          'font-mono text-[12px] whitespace-nowrap',
+          expiresSoon ? 'text-warn' : 'text-text-muted',
+        )}
+      >
+        {expiresLabel}
+      </span>
+      <span className="flex justify-end">
         <button
           type="button"
           disabled={revoke.isPending}
@@ -214,12 +292,15 @@ function ShareTableRow({ row }: { row: ShareRow }) {
             )
             if (ok) revoke.mutate(row.token)
           }}
-          className="text-[11px] font-mono px-2 py-1 rounded border border-border hover:bg-status-error/10 hover:text-status-error hover:border-status-error/40 transition-colors disabled:opacity-50"
+          className={cn(
+            PILL_SECONDARY,
+            'hover:border-accent-border hover:bg-accent-bg hover:text-accent',
+          )}
         >
           {revoke.isPending ? 'Revoking…' : 'Revoke'}
         </button>
-      </td>
-    </tr>
+      </span>
+    </div>
   )
 }
 
@@ -234,21 +315,14 @@ function RedactionChips({ row }: { row: ShareRow }) {
       {items.map((item) => (
         <span
           key={item.label}
-          className={
-            'inline-flex items-center px-1.5 py-0.5 rounded font-mono text-[10px] ' +
-            (item.on
-              ? 'bg-accent/10 text-accent border border-accent/20'
-              : 'bg-bg-elevated text-text-muted border border-border')
-          }
+          className={cn(STATUS_PILL, item.on ? 'bg-good-bg text-good' : 'bg-bg-chip text-text-muted')}
           title={item.on ? `${item.label} hidden` : `${item.label} visible`}
         >
           {item.on ? `${item.label} ✓` : `${item.label} ✗`}
         </span>
       ))}
       {row.indexable ? (
-        <span className="inline-flex items-center px-1.5 py-0.5 rounded font-mono text-[10px] bg-status-warning/10 text-status-warning border border-status-warning/30">
-          indexable
-        </span>
+        <span className={cn(STATUS_PILL, 'bg-warn-bg text-warn')}>indexable</span>
       ) : null}
     </div>
   )
@@ -275,15 +349,21 @@ function isExpiringSoon(expiresAt: string | null): boolean {
 
 function LoadingTable() {
   return (
-    <div className="border border-border rounded-md p-8 text-center text-[12px] text-text-muted animate-pulse">
-      Loading shared links…
+    <div className={cn(TABLE_CARD, 'p-5 space-y-3')}>
+      {[1, 2, 3, 4, 5].map((i) => (
+        <div
+          key={i}
+          className="h-9 rounded-md bg-bg-muted animate-pulse"
+          style={{ opacity: 1 - i * 0.12 }}
+        />
+      ))}
     </div>
   )
 }
 
 function ErrorBox({ message }: { message: string }) {
   return (
-    <div className="border border-status-error/40 bg-status-error/5 rounded-md p-4 font-mono text-[11.5px] text-status-error">
+    <div className="rounded-card border border-bad/30 bg-bad-bg px-5 py-4 font-mono text-[11.5px] text-bad">
       Failed to load shared links: {message}
     </div>
   )

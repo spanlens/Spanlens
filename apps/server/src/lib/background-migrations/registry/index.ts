@@ -24,29 +24,12 @@
 
 import type { BackgroundMigration } from '../index.js'
 import { noopHealthcheck } from './migrations/noop-healthcheck.js'
-import { backfillEventsFromRequests } from './migrations/backfill-events-from-requests.js'
-import { backfillTracesFromSupabase } from './migrations/backfill-traces-from-supabase.js'
-import { backfillSpansFromSupabase } from './migrations/backfill-spans-from-supabase.js'
 import { orphanSpanLink } from './migrations/orphan-span-link.js'
 
 const REGISTRY = new Map<string, BackgroundMigration>([
   // Always-registered no-op so the cron has something to exercise on
   // a fresh deploy. Safe to run anytime — it just yields immediately.
   [noopHealthcheck.name, noopHealthcheck],
-
-  // Phase 5.1 Stage 2 — backfill historical requests into the new
-  // events table. INSERT a row into `background_migrations` with
-  // name='backfill-events-from-requests' to start it; the cron will
-  // pick it up on the next 5-minute tick.
-  [backfillEventsFromRequests.name, backfillEventsFromRequests],
-
-  // Phase 5.1 PR-7a — backfill historical traces and spans from
-  // Postgres into the unified events table. Run traces first (parent
-  // rows) then spans. INSERT one row per migration:
-  //   name='backfill-traces-from-supabase'
-  //   name='backfill-spans-from-supabase'
-  [backfillTracesFromSupabase.name, backfillTracesFromSupabase],
-  [backfillSpansFromSupabase.name, backfillSpansFromSupabase],
 
   // R-14 (Sprint 5) — resolve OTLP external_parent_span_id → UUID
   // parent_span_id outside the request path. The OTLP receiver used

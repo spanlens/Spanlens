@@ -58,6 +58,7 @@ describe('error contract: server ERROR_CODES ↔ @spanlens/api-types KnownApiErr
       'NO_PROVIDER_KEY',
       'UPSTREAM_TIMEOUT',
       'UPSTREAM_FAILED',
+      'BILLING_NOT_CONFIGURED',
     ]
     for (const code of knownAtCompileTime) {
       expect(ERROR_CODES).toHaveProperty(code)

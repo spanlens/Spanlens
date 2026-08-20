@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Bell, Mail, MessageSquare, Plus, Search, Settings2, Trash2 } from 'lucide-react'
@@ -14,9 +14,24 @@ import {
 import type { AlertType, AlertRow } from '@/lib/queries/types'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Topbar, LiveDot } from '@/components/layout/topbar'
 import { PermissionGate } from '@/components/permission-gate'
-import { cn, formatDateTime } from '@/lib/utils'
+import { StatusPill } from '@/components/ui/primitives'
+import { cn, formatDate, formatDateTime } from '@/lib/utils'
+import {
+  Board,
+  TOPBAR_BLEED,
+  FilterBar,
+  CONTROL,
+  Segment,
+  SegmentItem,
+  StatCard,
+  TableCard,
+  TableHead,
+  Th,
+  ROW,
+} from '../_board/surfaces'
 
 function fmtThreshold(type: AlertType, threshold: number): string {
   if (type === 'budget') return `$${threshold}`
@@ -25,11 +40,14 @@ function fmtThreshold(type: AlertType, threshold: number): string {
   return `${threshold}ms`
 }
 
-function kindLabel(type: AlertType): string {
-  if (type === 'budget') return 'BUDGET'
-  if (type === 'error_rate') return 'ERROR RATE'
-  if (type === 'eval_score') return 'EVAL SCORE'
-  return 'P95 LATENCY'
+// Short human name for the METRIC column. The expression form ("p95(latency)")
+// is precise but too wide for a table cell, so the board shows the plain name
+// and lets the THRESHOLD cell carry the comparison.
+function metricLabel(type: AlertType): string {
+  if (type === 'budget') return 'cost total'
+  if (type === 'error_rate') return 'error rate'
+  if (type === 'eval_score') return 'eval score'
+  return 'p95 latency'
 }
 
 // eval_score is a quality floor (fires when score drops BELOW). The others
@@ -38,144 +56,44 @@ function alertComparator(type: AlertType): '<' | '>' {
   return type === 'eval_score' ? '<' : '>'
 }
 
-function alertMetricLabel(type: AlertType): string {
-  if (type === 'budget') return 'sum(cost)'
-  if (type === 'error_rate') return 'error_rate'
-  if (type === 'eval_score') return 'avg(eval_score)'
-  return 'p95(latency)'
-}
-
 function isRecentlyFired(lastTriggeredAt: string | null): boolean {
   if (!lastTriggeredAt) return false
   return Date.now() - new Date(lastTriggeredAt).getTime() < 60 * 60 * 1000
 }
 
-function sevColor(a: AlertRow): 'accent' | 'good' | 'faint' {
-  if (a.is_active && isRecentlyFired(a.last_triggered_at)) return 'accent'
-  if (a.is_active) return 'good'
-  return 'faint'
+type RuleStatus = 'firing' | 'active' | 'paused'
+
+function ruleStatus(a: AlertRow): RuleStatus {
+  if (!a.is_active) return 'paused'
+  return isRecentlyFired(a.last_triggered_at) ? 'firing' : 'active'
 }
 
-function AlertRuleRow({
-  a,
-  fires,
-  onToggle,
-  onEdit,
-  onDelete,
-  isPending,
-  last,
-}: {
-  a: AlertRow
-  fires: number
-  onToggle: () => void
-  onEdit: () => void
-  onDelete: () => void
-  isPending: boolean
-  last: boolean
-}) {
-  const color = sevColor(a)
-  const isFiring = color === 'accent'
-  return (
-    <div
-      className={cn(
-        'grid items-center px-[16px] sm:px-[22px] py-[12px] gap-3',
-        'grid-cols-[20px_minmax(0,1fr)_56px_72px] sm:grid-cols-[28px_minmax(0,1fr)_160px_60px_200px] sm:gap-[14px]',
-        !last && 'border-b border-border',
-        isFiring && 'bg-accent-bg',
-      )}
-    >
-      <div className="flex items-center justify-center">
-        <span
-          className={cn(
-            'w-2 h-2 rounded-full',
-            color === 'accent' ? 'bg-accent animate-pulse' : color === 'good' ? 'bg-good' : 'bg-text-faint',
-          )}
-        />
-      </div>
+const STATUS_VARIANT: Record<RuleStatus, NonNullable<React.ComponentProps<typeof StatusPill>['variant']>> = {
+  firing: 'bad',
+  active: 'good',
+  paused: 'neutral',
+}
 
-      <div className="min-w-0">
-        <div className="flex items-center gap-2 mb-1 flex-wrap">
-          <Link
-            href={`/alerts/${a.id}`}
-            className="text-[13.5px] text-text font-medium truncate hover:text-accent transition-colors"
-          >
-            {a.name}
-          </Link>
-          <span
-            className={cn(
-              'font-mono text-[9px] px-[6px] py-[1px] rounded-[3px] border uppercase tracking-[0.04em] shrink-0',
-              isFiring ? 'text-accent border-accent-border bg-accent-bg' : 'text-text-muted border-border',
-            )}
-          >
-            {kindLabel(a.type)}
-          </span>
-        </div>
-        <div className="font-mono text-[11px] text-text-muted">
-          <span className="text-text-faint">trigger </span>
-          {alertMetricLabel(a.type)}{' '}
-          {alertComparator(a.type)} {fmtThreshold(a.type, a.threshold)}
-          <span className="text-text-faint"> for </span>{a.window_minutes}m
-          {a.last_triggered_at && (
-            <span className="text-text-faint ml-2">· last fired {formatDateTime(a.last_triggered_at)}</span>
-          )}
-        </div>
-      </div>
+// The board draws one flat table instead of the old firing / active / paused
+// bands, so the ordering carries what the band headers used to say.
+const STATUS_RANK: Record<RuleStatus, number> = { firing: 0, active: 1, paused: 2 }
 
-      {/* WINDOW · COOLDOWN — hidden on mobile, the row body already mentions window. */}
-      <div className="hidden sm:block">
-        <div className="font-mono text-[10px] text-text-faint uppercase tracking-[0.03em] mb-[3px]">WINDOW · COOLDOWN</div>
-        <div className="font-mono text-[12px] text-text-muted">
-          {a.window_minutes}m · {a.cooldown_minutes}m
-        </div>
-      </div>
-
-      <div className="text-right">
-        <div className="font-mono text-[13px] text-text tabular-nums">{fires}</div>
-        <div className="font-mono text-[10px] text-text-faint">fires</div>
-      </div>
-
-      <PermissionGate need="edit">
-        <div className="flex items-center justify-end gap-1.5">
-          {/* Action buttons: full label on sm+, icon-only on mobile. */}
-          <button
-            type="button"
-            onClick={onEdit}
-            disabled={isPending}
-            title="Edit"
-            aria-label="Edit"
-            className="font-mono text-[10.5px] text-text-muted px-1.5 sm:px-2 py-[3px] border border-border rounded-[4px] hover:text-text transition-colors disabled:opacity-40"
-          >
-            <span className="sm:hidden">✎</span>
-            <span className="hidden sm:inline">Edit</span>
-          </button>
-          <button
-            type="button"
-            onClick={onToggle}
-            disabled={isPending}
-            title={a.is_active ? 'Pause' : 'Resume'}
-            aria-label={a.is_active ? 'Pause' : 'Resume'}
-            className="font-mono text-[10.5px] text-text-muted px-1.5 sm:px-2 py-[3px] border border-border rounded-[4px] hover:text-text transition-colors disabled:opacity-40"
-          >
-            <span className="sm:hidden">{a.is_active ? '⏸' : '▶'}</span>
-            <span className="hidden sm:inline">{a.is_active ? 'Pause' : 'Resume'}</span>
-          </button>
-          <button
-            type="button"
-            onClick={onDelete}
-            disabled={isPending}
-            title="Delete"
-            aria-label="Delete"
-            className="p-1.5 text-text-faint hover:text-bad transition-colors disabled:opacity-40"
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </button>
-        </div>
-      </PermissionGate>
-    </div>
-  )
+/*
+ * Column tracks for the rules table (D13). Wider than a narrow viewport, so
+ * the card scrolls its own grid sideways rather than the page.
+ */
+const RULE_GRID: CSSProperties = {
+  gridTemplateColumns: 'minmax(200px,1.6fr) 148px 118px 92px 104px 150px 84px 168px',
+}
+const CHANNEL_GRID: CSSProperties = {
+  gridTemplateColumns: 'minmax(150px,1fr) minmax(220px,2fr) 130px 92px',
+}
+const DELIVERY_GRID: CSSProperties = {
+  gridTemplateColumns: '200px 92px minmax(200px,1fr)',
 }
 
 type StatusFilter = 'all' | 'firing' | 'active' | 'paused'
+type AlertsTab = 'alerts' | 'channels'
 
 export function AlertsClient() {
   const router = useRouter()
@@ -188,9 +106,10 @@ export function AlertsClient() {
   const deleteAlert = useDeleteAlert()
   const updateAlert = useUpdateAlert()
 
-  // URL-backed search + status filter — shareable, survives reload.
+  // URL-backed tab + search + status filter — shareable, survives reload.
   const search = sp.get('q') ?? ''
   const statusFilter = (sp.get('status') ?? 'all') as StatusFilter
+  const tab: AlertsTab = sp.get('tab') === 'channels' ? 'channels' : 'alerts'
 
   function updateQuery(updates: Record<string, string | null>) {
     const next = new URLSearchParams(sp.toString())
@@ -253,35 +172,43 @@ export function AlertsClient() {
   }
 
   const alerts = useMemo(() => alertsQuery.data ?? [], [alertsQuery.data])
-  const channels = channelsQuery.data ?? []
+  // Memoised because the fan-out label below depends on it — a fresh `[]` on
+  // every render would defeat that useMemo.
+  const channels = useMemo(() => channelsQuery.data ?? [], [channelsQuery.data])
   const deliveries = deliveriesQuery.data ?? []
 
-  // Apply search + status filter before bucketing.
+  // Apply search + status filter, then order firing → active → paused.
   const filteredAlerts = useMemo(() => {
     const needle = search.toLowerCase()
-    return alerts.filter((a) => {
-      if (needle && !a.name.toLowerCase().includes(needle)) return false
-      if (statusFilter === 'firing')  return a.is_active && isRecentlyFired(a.last_triggered_at)
-      if (statusFilter === 'active')  return a.is_active && !isRecentlyFired(a.last_triggered_at)
-      if (statusFilter === 'paused')  return !a.is_active
-      return true
-    })
+    return alerts
+      .filter((a) => {
+        if (needle && !a.name.toLowerCase().includes(needle)) return false
+        if (statusFilter === 'all') return true
+        return ruleStatus(a) === statusFilter
+      })
+      .sort((x, y) => STATUS_RANK[ruleStatus(x)] - STATUS_RANK[ruleStatus(y)])
   }, [alerts, search, statusFilter])
 
-  const firing = filteredAlerts.filter((a) => a.is_active && isRecentlyFired(a.last_triggered_at))
-  const active = filteredAlerts.filter((a) => a.is_active && !isRecentlyFired(a.last_triggered_at))
-  const paused = filteredAlerts.filter((a) => !a.is_active)
-
-  // Unfiltered counts for the stat strip + filter chips.
-  const totalFiring = alerts.filter((a) => a.is_active && isRecentlyFired(a.last_triggered_at)).length
-  const totalActive = alerts.filter((a) => a.is_active && !isRecentlyFired(a.last_triggered_at)).length
+  // Unfiltered counts for the stat strip + filter segment.
+  const totalFiring = alerts.filter((a) => ruleStatus(a) === 'firing').length
+  const totalActive = alerts.filter((a) => a.is_active).length
   const totalPaused = alerts.filter((a) => !a.is_active).length
-  // Capture "now" at mount — last-24h bucketing for header counter.
+  // Capture "now" at mount — last-24h bucketing for the stat strip.
   const [mountNow] = useState(() => Date.now())
   const fires24h = deliveries.filter(
     (d) => mountNow - new Date(d.created_at).getTime() < 24 * 60 * 60 * 1000,
   ).length
   const isPending = updateAlert.isPending || deleteAlert.isPending
+
+  // Channels are org-level and every active rule fans out to all of them, so
+  // the CHANNELS cell reads the same on every row. That is the routing model,
+  // not a placeholder — per-rule routing does not exist.
+  const channelFanout = useMemo(() => {
+    const kinds = [...new Set(channels.filter((c) => c.is_active).map((c) => c.kind))].sort()
+    return kinds.length > 0 ? kinds.join(', ') : 'none'
+  }, [channels])
+
+  const firstFiring = alerts.find((a) => ruleStatus(a) === 'firing')
 
   function alertFires(id: string): number {
     return deliveries.filter((d) => d.alert_id === id).length
@@ -377,9 +304,17 @@ export function AlertsClient() {
   }
   const isFetching = alertsQuery.isFetching || channelsQuery.isFetching || deliveriesQuery.isFetching
 
+  const skeleton = (
+    <div className="space-y-2">
+      {[1, 2, 3].map((i) => <div key={i} className="h-14 rounded-card bg-bg-chip animate-pulse" />)}
+    </div>
+  )
+
   return (
-    <div className="-mx-4 -my-4 md:-mx-8 md:-my-7 flex flex-col min-h-screen">
-      <div className="sticky top-0 z-20 bg-bg">
+    <div>
+      {/* The topbar is the one full-bleed row; the shell already supplies the
+          content inset for everything below it. */}
+      <div className={TOPBAR_BLEED}>
         <Topbar
           crumbs={[{ label: 'Alerts' }]}
           right={
@@ -401,7 +336,7 @@ export function AlertsClient() {
               <Link
                 href="/settings?tab=integrations"
                 title="Manage notification channels"
-                className="font-mono text-[11px] text-text-muted px-2 sm:px-[10px] py-[5px] border border-border rounded-[5px] bg-bg-elev hover:text-text transition-colors whitespace-nowrap shrink-0 flex items-center gap-1.5"
+                className={cn(CONTROL, 'flex items-center gap-1.5 px-3 text-[12.5px] font-medium leading-[18px] text-text-muted transition-colors hover:text-text')}
               >
                 <Settings2 className="h-3.5 w-3.5 shrink-0" />
                 <span className="hidden sm:inline">Channels</span>
@@ -411,8 +346,7 @@ export function AlertsClient() {
                   type="button"
                   onClick={openCreateAlert}
                   title="New alert"
-                  aria-label="New alert"
-                  className="font-mono text-[11px] text-bg px-2 sm:px-[10px] py-[5px] rounded-[5px] bg-text font-medium hover:opacity-90 transition-opacity whitespace-nowrap shrink-0 flex items-center gap-1.5"
+                  className="inline-flex items-center gap-1.5 rounded-full bg-accent px-3.5 py-2 text-[12.5px] font-semibold text-accent-fg transition-colors hover:bg-accent-strong"
                 >
                   <Plus className="h-3.5 w-3.5 shrink-0" />
                   <span className="hidden sm:inline">New alert</span>
@@ -424,288 +358,364 @@ export function AlertsClient() {
         <h1 className="sr-only">Alerts</h1>
       </div>
 
-      {/* Stat strip — 2 cols on mobile, 3 on sm, 5 on md+. Values are gated
-          on `mounted` because the prefetched SSR snapshot can diverge from
-          the client cache after a mutation (e.g. paused alert flips
-          Rules active 1 → 0 instantly client-side; SSR still saw 1). */}
-      <div className="shrink-0 border-b border-border">
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5">
-          {[
-            { label: 'Firing now',    value: String(totalFiring),  warn: mounted && totalFiring > 0 },
-            { label: 'Rules active',  value: String(totalActive),  warn: false },
-            { label: 'Fires 24h',     value: String(fires24h),     warn: mounted && fires24h > 0 },
-            { label: 'Rules total',   value: String(alerts.length), warn: false },
-            { label: 'Channels',      value: String(channels.length), warn: false },
-          ].map((s, i) => (
-            <div
-              key={s.label}
-              className={cn(
-                'px-[18px] py-[14px] border-border',
-                i % 2 === 0 && 'border-r sm:border-r-0',
-                'sm:[&:not(:nth-child(3n))]:border-r',
-                i < 4 && 'md:border-r',
-                i < 4 && 'border-b sm:border-b md:!border-b-0',
-              )}
-            >
-              <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-2">{s.label}</div>
-              <span className={cn('text-[22px] sm:text-[24px] font-medium leading-none tracking-[-0.6px] tabular-nums', s.warn ? 'text-accent' : 'text-text')}>
-                {mounted ? s.value : ' '}
-              </span>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Info banner with docs link */}
-      <div className="px-[22px] py-[12px] bg-bg-muted border-b border-border flex items-center gap-2 font-mono text-[11px] text-text-muted flex-wrap">
-        <Bell className="h-3.5 w-3.5 shrink-0" />
-        <span>
-          Threshold-based rules on cost, error rate, and p95 latency. Evaluated every ~5 minutes.
-        </span>
-        <Link
-          href="/docs/features/alerts"
-          className="text-text hover:opacity-80 transition-opacity ml-auto"
+      <Board>
+        {/* `contents` lets the Radix tab root disappear from layout so the tab
+            strip and the panel below it are direct children of the board and
+            pick up its 16px rhythm. */}
+        <Tabs
+          value={tab}
+          onValueChange={(v) => updateQuery({ tab: v === 'alerts' ? null : v })}
+          className="contents"
         >
-          How alerts work →
-        </Link>
-      </div>
+          <TabsList>
+            <TabsTrigger value="alerts">Alerts</TabsTrigger>
+            <TabsTrigger value="channels">Channels</TabsTrigger>
+          </TabsList>
 
-      {/* Search + status filter + export */}
-      <div className="px-[22px] py-[10px] border-b border-border flex items-center gap-2 flex-wrap">
-        <div className="relative max-w-md flex-1 min-w-[180px]">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-text-faint" />
-          <input
-            value={searchInput}
-            onChange={(e) => setSearchInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Escape') {
-                setSearchInput('')
-                updateQuery({ q: null })
-              }
-            }}
-            placeholder="Search by name…"
-            className="w-full pl-8 pr-3 py-1.5 font-mono text-[12px] bg-bg-elev border border-border rounded-[6px] text-text placeholder:text-text-faint focus:outline-none focus:border-accent"
-          />
-        </div>
-        <div className="flex items-center gap-1 flex-wrap">
-          {([
-            { v: 'all',     l: mounted ? `All ${alerts.length}`      : 'All' },
-            { v: 'firing',  l: mounted ? `firing ${totalFiring}`     : 'firing' },
-            { v: 'active',  l: mounted ? `active ${totalActive}`     : 'active' },
-            { v: 'paused',  l: mounted ? `paused ${totalPaused}`     : 'paused' },
-          ] as { v: StatusFilter; l: string }[]).map(({ v, l }) => (
-            <button
-              key={v}
-              type="button"
-              onClick={() => updateQuery({ status: v === 'all' ? null : v })}
-              className={cn(
-                'font-mono text-[11px] px-[9px] py-[3px] rounded-[4px] border transition-colors',
-                statusFilter === v
-                  ? 'border-border-strong bg-bg-elev text-text'
-                  : 'border-border text-text-muted hover:text-text',
-              )}
-            >
-              {l}
-            </button>
-          ))}
-        </div>
-        <span className="flex-1" />
-        <div ref={exportRef} className="relative">
-          <button
-            type="button"
-            onClick={() => setExportOpen((v) => !v)}
-            disabled={mounted && alerts.length === 0}
-            className="font-mono text-[11px] text-text-muted hover:text-text border border-border rounded px-2.5 py-1 transition-colors disabled:opacity-40"
-          >
-            Export ▾
-          </button>
-          {exportOpen && (
-            <div className="absolute right-0 top-full mt-1 z-20 bg-bg-elev border border-border rounded-md shadow-lg py-1 min-w-[110px]">
-              <button
-                type="button"
-                onClick={() => { setExportOpen(false); exportCsv() }}
-                className="block w-full px-3 py-1.5 text-left font-mono text-[11px] uppercase tracking-[0.04em] text-text-muted hover:text-text hover:bg-bg transition-colors"
-              >CSV</button>
-              <button
-                type="button"
-                onClick={() => { setExportOpen(false); exportJson() }}
-                className="block w-full px-3 py-1.5 text-left font-mono text-[11px] uppercase tracking-[0.04em] text-text-muted hover:text-text hover:bg-bg transition-colors"
-              >JSON</button>
-            </div>
-          )}
-        </div>
-      </div>
+          <TabsContent value="alerts" className="mt-0 flex flex-col gap-4">
+            {/* Filter row — search, status segment, export. Not in the Figma
+                frame, but these are shipped controls, so they take the board's
+                standard 34px filter chrome. */}
+            <FilterBar>
+              <div className={cn(CONTROL, 'flex min-w-[220px] flex-1 items-center gap-2 px-3')}>
+                <Search className="h-[13px] w-[13px] shrink-0 text-text-faint" />
+                <input
+                  value={searchInput}
+                  onChange={(e) => setSearchInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Escape') {
+                      setSearchInput('')
+                      updateQuery({ q: null })
+                    }
+                  }}
+                  placeholder="Search by name"
+                  aria-label="Search alert rules by name"
+                  className="w-full bg-transparent text-[12.5px] leading-[18px] text-text placeholder:text-text-faint focus:outline-none"
+                />
+                {search && (
+                  <button
+                    type="button"
+                    onClick={() => { setSearchInput(''); updateQuery({ q: null }) }}
+                    className="shrink-0 font-mono text-[11px] text-text-faint transition-colors hover:text-text"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
 
-      <div>
-        {!mounted ? (
-          // Hold an SSR-stable placeholder until client mount. After mount the
-          // real conditional below picks the matching branch. This avoids the
-          // empty-state ↔ populated branch swap that fires when SSR sees the
-          // prefetch snapshot but the client cache already has fresh data.
-          <div className="p-6 space-y-2">
-            {[1, 2, 3].map((i) => <div key={i} className="h-14 bg-bg-elev rounded animate-pulse" />)}
-          </div>
-        ) : alertsQuery.data === undefined ? (
-          <div className="p-6 space-y-2">
-            {[1, 2, 3].map((i) => <div key={i} className="h-14 bg-bg-elev rounded animate-pulse" />)}
-          </div>
-        ) : alerts.length === 0 && channels.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-64 gap-3 text-text-muted">
-            <Bell className="h-10 w-10 text-text-faint" />
-            <p className="text-[13px]">No alert rules yet.</p>
-            <p className="font-mono text-[12px] text-center max-w-md">Create an alert to get notified about budget, error rate, or latency issues.</p>
-            <PermissionGate need="edit">
-              <button
-                type="button"
-                onClick={openCreateAlert}
-                className="font-mono text-[11.5px] px-3 py-[5px] mt-1 rounded-[4px] bg-text text-bg font-medium hover:opacity-90 transition-opacity"
-              >
-                + New alert
-              </button>
-            </PermissionGate>
-            <Link
-              href="/docs/features/alerts"
-              className="font-mono text-[11.5px] mt-1 px-2.5 py-1 rounded border border-border text-text-muted hover:text-text hover:border-border-strong transition-colors"
-            >
-              How alerts work →
-            </Link>
-          </div>
-        ) : filteredAlerts.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-40 gap-3 text-text-muted">
-            <p className="font-mono text-[12.5px]">No alerts match the current filters.</p>
-            <button
-              type="button"
-              onClick={() => { setSearchInput(''); updateQuery({ q: null, status: null }) }}
-              className="font-mono text-[11px] text-text underline underline-offset-2 hover:no-underline"
-            >
-              Clear filters
-            </button>
-          </div>
-        ) : (
-          <>
-            {firing.length > 0 && (
-              <div>
-                <div className="flex items-center gap-2.5 px-[22px] py-[10px] bg-accent-bg border-b border-border">
-                  <span className="font-mono text-[10px] uppercase tracking-[0.06em] text-accent">
-                    Firing · {firing.length}
-                  </span>
-                </div>
-                {firing.map((a, i) => (
-                  <AlertRuleRow key={a.id} a={a} fires={alertFires(a.id)} last={i === firing.length - 1}
-                    onToggle={() => void updateAlert.mutateAsync({ id: a.id, is_active: !a.is_active })}
-                    onEdit={() => openEditAlert(a)}
-                    onDelete={() => void deleteAlert.mutateAsync(a.id)}
-                    isPending={isPending}
-                  />
+              <Segment>
+                {([
+                  { v: 'all', l: 'All', n: alerts.length },
+                  { v: 'firing', l: 'Firing', n: totalFiring },
+                  { v: 'active', l: 'Active', n: totalActive },
+                  { v: 'paused', l: 'Paused', n: totalPaused },
+                ] as { v: StatusFilter; l: string; n: number }[]).map(({ v, l, n }) => (
+                  <SegmentItem
+                    key={v}
+                    active={statusFilter === v}
+                    onClick={() => updateQuery({ status: v === 'all' ? null : v })}
+                  >
+                    {l}
+                    <span className="ml-1.5 font-mono text-[10.5px] text-text-faint">
+                      {mounted ? n : ' '}
+                    </span>
+                  </SegmentItem>
                 ))}
-              </div>
-            )}
+              </Segment>
 
-            {active.length > 0 && (
-              <div>
-                <div className="flex items-center gap-2.5 px-[22px] py-[10px] bg-bg-muted border-b border-border border-t border-t-border">
-                  <span className="font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint">
-                    Active · {active.length}
-                  </span>
-                </div>
-                {active.map((a, i) => (
-                  <AlertRuleRow key={a.id} a={a} fires={alertFires(a.id)} last={i === active.length - 1}
-                    onToggle={() => void updateAlert.mutateAsync({ id: a.id, is_active: !a.is_active })}
-                    onEdit={() => openEditAlert(a)}
-                    onDelete={() => void deleteAlert.mutateAsync(a.id)}
-                    isPending={isPending}
-                  />
-                ))}
-              </div>
-            )}
+              <span className="flex-1" />
 
-            {paused.length > 0 && (
-              <div>
-                <div className="flex items-center gap-2.5 px-[22px] py-[10px] bg-bg-muted border-b border-border border-t border-t-border">
-                  <span className="font-mono text-[10px] uppercase tracking-[0.06em] text-text-faint opacity-75">
-                    Paused · {paused.length}
-                  </span>
-                </div>
-                <div className="opacity-70">
-                  {paused.map((a, i) => (
-                    <AlertRuleRow key={a.id} a={a} fires={alertFires(a.id)} last={i === paused.length - 1}
-                      onToggle={() => void updateAlert.mutateAsync({ id: a.id, is_active: !a.is_active })}
-                      onEdit={() => openEditAlert(a)}
-                      onDelete={() => void deleteAlert.mutateAsync(a.id)}
-                      isPending={isPending}
-                    />
-                  ))}
-                </div>
-              </div>
-            )}
-
-            <div className="px-[22px] py-[18px]">
-              <div className="flex items-center justify-between mb-3 gap-2">
-                <span className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint">
-                  Notification channels
-                </span>
-                <Link
-                  href="/settings?tab=integrations"
-                  className="font-mono text-[11px] text-accent hover:opacity-80 transition-opacity"
+              <div ref={exportRef} className="relative">
+                <button
+                  type="button"
+                  onClick={() => setExportOpen((v) => !v)}
+                  disabled={mounted && alerts.length === 0}
+                  aria-expanded={exportOpen}
+                  className={cn(CONTROL, 'px-3 text-[12.5px] font-medium leading-[18px] text-text-muted transition-colors hover:text-text disabled:opacity-40')}
                 >
-                  Manage channels →
+                  Export ↓
+                </button>
+                {exportOpen && (
+                  <div className="absolute right-0 top-full z-20 mt-1 min-w-[110px] rounded-md border border-border bg-bg-elev p-1 shadow-card">
+                    <button
+                      type="button"
+                      onClick={() => { setExportOpen(false); exportCsv() }}
+                      className="block w-full rounded px-2.5 py-1.5 text-left text-[12.5px] text-text-muted transition-colors hover:bg-bg-sunk hover:text-text"
+                    >CSV</button>
+                    <button
+                      type="button"
+                      onClick={() => { setExportOpen(false); exportJson() }}
+                      className="block w-full rounded px-2.5 py-1.5 text-left text-[12.5px] text-text-muted transition-colors hover:bg-bg-sunk hover:text-text"
+                    >JSON</button>
+                  </div>
+                )}
+              </div>
+            </FilterBar>
+
+            {/* Stat strip. Values are gated on `mounted` because the prefetched
+                SSR snapshot can diverge from the client cache after a mutation
+                (e.g. pausing a rule flips Rules active 1 → 0 instantly on the
+                client while SSR still saw 1). */}
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+              <StatCard
+                label="Rules total"
+                value={mounted ? alerts.length : ' '}
+                foot="across this workspace"
+              />
+              <StatCard
+                label="Rules active"
+                value={mounted ? totalActive : ' '}
+                foot={mounted ? `${totalPaused} paused` : ' '}
+              />
+              <StatCard
+                label="Firing now"
+                value={mounted ? totalFiring : ' '}
+                foot={mounted ? (firstFiring ? firstFiring.name : 'nothing breaching') : ' '}
+                {...(mounted && totalFiring > 0 ? { footClass: 'text-accent' } : {})}
+              />
+              <StatCard
+                label="Fires 24h"
+                value={mounted ? fires24h : ' '}
+                foot={mounted ? `${deliveries.length} deliveries on record` : ' '}
+              />
+            </div>
+
+            {/* Explainer with docs link */}
+            <div className="card-surface rounded-card flex flex-wrap items-center gap-2 px-5 py-3.5 font-mono text-[11px] text-text-muted">
+              <Bell className="h-3.5 w-3.5 shrink-0" />
+              <span>
+                Threshold rules on cost, error rate, and p95 latency. Evaluated every ~5 minutes.
+              </span>
+              <Link
+                href="/docs/features/alerts"
+                className="ml-auto text-text transition-opacity hover:opacity-80"
+              >
+                How alerts work →
+              </Link>
+            </div>
+
+            {!mounted || alertsQuery.data === undefined ? (
+              skeleton
+            ) : alerts.length === 0 ? (
+              <div className="card-surface rounded-card flex flex-col items-center justify-center gap-3 px-5 py-12 text-text-muted">
+                <Bell className="h-9 w-9 text-text-faint" />
+                <p className="text-[13.5px] font-semibold leading-[1.45] text-text">No alert rules yet.</p>
+                <p className="max-w-[440px] text-center text-[12.5px] leading-[1.6]">
+                  Create a rule to get notified about budget, error rate, or latency issues.
+                </p>
+                <PermissionGate need="edit">
+                  <button
+                    type="button"
+                    onClick={openCreateAlert}
+                    className="mt-1 inline-flex items-center gap-1.5 rounded-full bg-accent px-3.5 py-2 text-[12.5px] font-semibold text-accent-fg transition-colors hover:bg-accent-strong"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    New alert
+                  </button>
+                </PermissionGate>
+                <Link
+                  href="/docs/features/alerts"
+                  className="font-mono text-[11px] text-text-muted underline underline-offset-2 transition-colors hover:text-text"
+                >
+                  How alerts work →
                 </Link>
               </div>
-              {/* Read-only here: every active rule fans out to these channels.
-                  Add/remove lives in Settings → Integrations (org-level). */}
-              {mounted && channelsQuery.data === undefined ? (
-                <div className="h-12 bg-bg-elev rounded animate-pulse" />
-              ) : channels.length === 0 ? (
-                <div className="rounded-[5px] border border-dashed border-border py-5 text-center font-mono text-[12px] text-text-muted">
-                  No channels yet.{' '}
-                  <Link href="/settings?tab=integrations" className="text-accent hover:opacity-80 transition-opacity">
-                    Connect Slack, Discord, or email
-                  </Link>{' '}
-                  to receive alerts.
+            ) : filteredAlerts.length === 0 ? (
+              <div className="card-surface rounded-card flex h-40 flex-col items-center justify-center gap-3 text-text-muted">
+                <p className="text-[12.5px]">No alerts match the current filters.</p>
+                <button
+                  type="button"
+                  onClick={() => { setSearchInput(''); updateQuery({ q: null, status: null }) }}
+                  className="font-mono text-[11px] text-text underline underline-offset-2 hover:no-underline"
+                >
+                  Clear filters
+                </button>
+              </div>
+            ) : (
+              <TableCard>
+                <div className="overflow-x-auto">
+                  <div className="min-w-[1080px]">
+                    <TableHead>
+                      <div className="grid items-center gap-3" style={RULE_GRID}>
+                        <Th>Rule</Th>
+                        <Th>Metric</Th>
+                        <Th>Threshold</Th>
+                        <Th>Window</Th>
+                        <Th>Cooldown</Th>
+                        <Th>Channels</Th>
+                        <Th>Status</Th>
+                        <Th><span className="sr-only">Actions</span></Th>
+                      </div>
+                    </TableHead>
+                    {filteredAlerts.map((a) => {
+                      const status = ruleStatus(a)
+                      return (
+                        <div key={a.id} className={cn(ROW, 'grid items-center gap-3')} style={RULE_GRID}>
+                          <Link
+                            href={`/alerts/${a.id}`}
+                            className="truncate text-[12px] leading-[1.45] text-text transition-colors hover:text-accent"
+                          >
+                            {a.name}
+                          </Link>
+                          <span className="truncate font-mono text-[12px] leading-[1.45] text-text-muted">
+                            {metricLabel(a.type)}
+                          </span>
+                          <span className="font-mono text-[12px] leading-[1.45] text-text-muted tabular-nums">
+                            {alertComparator(a.type)} {fmtThreshold(a.type, a.threshold)}
+                          </span>
+                          <span className="font-mono text-[12px] leading-[1.45] text-text-muted tabular-nums">
+                            {a.window_minutes} min
+                          </span>
+                          <span className="font-mono text-[12px] leading-[1.45] text-text-muted tabular-nums">
+                            {a.cooldown_minutes} min
+                          </span>
+                          <span className="truncate font-mono text-[12px] leading-[1.45] text-text-muted">
+                            {channelFanout}
+                          </span>
+                          <span>
+                            <StatusPill variant={STATUS_VARIANT[status]}>{status}</StatusPill>
+                          </span>
+
+                          <PermissionGate need="edit">
+                            <div className="flex items-center justify-end gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => openEditAlert(a)}
+                                disabled={isPending}
+                                title="Edit"
+                                aria-label={`Edit ${a.name}`}
+                                className="rounded-full border border-border px-2.5 py-1 font-mono text-[10.5px] text-text-muted transition-colors hover:text-text disabled:opacity-40"
+                              >
+                                Edit
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => void updateAlert.mutateAsync({ id: a.id, is_active: !a.is_active })}
+                                disabled={isPending}
+                                title={a.is_active ? 'Pause' : 'Resume'}
+                                aria-label={a.is_active ? `Pause ${a.name}` : `Resume ${a.name}`}
+                                className="rounded-full border border-border px-2.5 py-1 font-mono text-[10.5px] text-text-muted transition-colors hover:text-text disabled:opacity-40"
+                              >
+                                {a.is_active ? 'Pause' : 'Resume'}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => void deleteAlert.mutateAsync(a.id)}
+                                disabled={isPending}
+                                title="Delete"
+                                aria-label={`Delete ${a.name}`}
+                                className="p-1.5 text-text-faint transition-colors hover:text-bad disabled:opacity-40"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+                          </PermissionGate>
+                        </div>
+                      )
+                    })}
+                  </div>
                 </div>
-              ) : (
-                <div className="rounded-[6px] border border-border overflow-hidden">
-                  {channels.map((ch) => (
-                    <div
-                      key={ch.id}
-                      className="flex items-center gap-3 px-[14px] py-3 border-b border-border last:border-0"
-                    >
-                      <span className="text-text-muted">
-                        {ch.kind === 'email' ? <Mail className="h-3.5 w-3.5" /> : <MessageSquare className="h-3.5 w-3.5" />}
-                      </span>
-                      <span className="font-mono text-[11px] uppercase tracking-[0.04em] text-text-muted">{ch.kind}</span>
-                      {ch.label && (
-                        <span className="font-mono text-[12px] text-text truncate max-w-[160px]">{ch.label}</span>
-                      )}
-                      <span className="font-mono text-[12px] text-text-faint truncate max-w-xs">{ch.target}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
+              </TableCard>
+            )}
+          </TabsContent>
+
+          <TabsContent value="channels" className="mt-0 flex flex-col gap-4">
+            {/* Read-only here: every active rule fans out to these channels.
+                Add / remove lives in Settings → Integrations (org-level). */}
+            <div className="card-surface rounded-card flex flex-wrap items-center gap-2 px-5 py-3.5 font-mono text-[11px] text-text-muted">
+              <MessageSquare className="h-3.5 w-3.5 shrink-0" />
+              <span>
+                Every active rule fans out to all connected channels. Add or remove them in Settings.
+              </span>
+              <Link
+                href="/settings?tab=integrations"
+                className="ml-auto text-text transition-opacity hover:opacity-80"
+              >
+                Manage channels →
+              </Link>
             </div>
 
-            {deliveries.length > 0 && (
-              <div className="px-[22px] pb-[18px]">
-                <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint mb-3">
-                  Recent deliveries
-                </div>
-                <div className="rounded-[6px] border border-border overflow-hidden">
-                  {deliveries.slice(0, 10).map((d) => (
-                    <div key={d.id} className="flex items-center gap-4 px-[14px] py-2 border-b border-border last:border-0 text-[11.5px]">
-                      <span className="font-mono text-text-faint">{formatDateTime(d.created_at)}</span>
-                      <span className={cn('font-mono px-1.5 py-0.5 rounded text-[10px] uppercase tracking-[0.04em]',
-                        d.status === 'sent' ? 'bg-good/10 text-good' : 'bg-bad/10 text-bad')}>
-                        {d.status}
-                      </span>
-                      {d.error_message && <span className="text-bad truncate max-w-md">{d.error_message}</span>}
-                    </div>
-                  ))}
-                </div>
+            {!mounted || channelsQuery.data === undefined ? (
+              skeleton
+            ) : channels.length === 0 ? (
+              <div className="card-surface rounded-card flex flex-col items-center justify-center gap-3 px-5 py-12 text-text-muted">
+                <Mail className="h-9 w-9 text-text-faint" />
+                <p className="text-[13.5px] font-semibold leading-[1.45] text-text">No channels yet.</p>
+                <p className="max-w-[440px] text-center text-[12.5px] leading-[1.6]">
+                  Connect Slack, Discord, or email so a firing rule can reach someone.
+                </p>
+                <Link
+                  href="/settings?tab=integrations"
+                  className="mt-1 rounded-full border border-border bg-bg-elev px-3.5 py-2 text-[12.5px] font-medium text-text transition-colors hover:border-border-strong"
+                >
+                  Connect a channel
+                </Link>
               </div>
+            ) : (
+              <TableCard>
+                <div className="overflow-x-auto">
+                  <div className="min-w-[720px]">
+                    <TableHead>
+                      <div className="grid items-center gap-3" style={CHANNEL_GRID}>
+                        <Th>Channel</Th>
+                        <Th>Target</Th>
+                        <Th>Added</Th>
+                        <Th>Status</Th>
+                      </div>
+                    </TableHead>
+                    {channels.map((ch) => (
+                      <div key={ch.id} className={cn(ROW, 'grid items-center gap-3')} style={CHANNEL_GRID}>
+                        <span className="flex min-w-0 items-center gap-2 text-[12px] leading-[1.45] text-text">
+                          <span className="shrink-0 text-text-faint">
+                            {ch.kind === 'email' ? <Mail className="h-3.5 w-3.5" /> : <MessageSquare className="h-3.5 w-3.5" />}
+                          </span>
+                          <span className="truncate">{ch.label ?? ch.kind}</span>
+                        </span>
+                        <span className="truncate font-mono text-[12px] leading-[1.45] text-text-muted">
+                          {ch.target}
+                        </span>
+                        <span className="font-mono text-[12px] leading-[1.45] text-text-muted">
+                          {formatDate(ch.created_at)}
+                        </span>
+                        <span>
+                          <StatusPill variant={ch.is_active ? 'good' : 'neutral'}>
+                            {ch.is_active ? 'active' : 'off'}
+                          </StatusPill>
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </TableCard>
             )}
-          </>
-        )}
-      </div>
+
+            {mounted && deliveries.length > 0 && (
+              <TableCard>
+                <TableHead>
+                  <div className="grid items-center gap-3" style={DELIVERY_GRID}>
+                    <Th>Delivered</Th>
+                    <Th>Status</Th>
+                    <Th>Detail</Th>
+                  </div>
+                </TableHead>
+                {deliveries.slice(0, 10).map((d) => (
+                  <div key={d.id} className={cn(ROW, 'grid items-center gap-3')} style={DELIVERY_GRID}>
+                    <span className="font-mono text-[12px] leading-[1.45] text-text-muted">
+                      {formatDateTime(d.created_at)}
+                    </span>
+                    <span>
+                      <StatusPill variant={d.status === 'sent' ? 'good' : 'bad'}>{d.status}</StatusPill>
+                    </span>
+                    <span className="truncate font-mono text-[11px] leading-[1.45] text-text-faint">
+                      {d.error_message ?? 'no errors reported'}
+                    </span>
+                  </div>
+                ))}
+              </TableCard>
+            )}
+          </TabsContent>
+        </Tabs>
+      </Board>
 
       <Dialog
         open={alertDialogOpen}
@@ -718,26 +728,27 @@ export function AlertsClient() {
           <DialogHeader>
             <DialogTitle>{editingId ? 'Edit alert rule' : 'Create alert rule'}</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 mt-2">
+          <div className="mt-2 space-y-4">
             <div className="space-y-2">
-              <label className="font-mono text-[11px] text-text-muted uppercase tracking-[0.04em]">Name</label>
+              <label htmlFor="alert-name" className="eyebrow block">Name</label>
               <input
+                id="alert-name"
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
                 placeholder="High daily spend"
-                className="w-full h-9 px-3 rounded border border-border bg-bg text-[13px] focus:outline-none focus:border-border-strong"
+                className={cn(CONTROL, 'w-full px-3 text-[12.5px] leading-[18px] text-text placeholder:text-text-faint focus:border-border-strong focus:outline-none')}
               />
             </div>
             <div className="space-y-2">
-              <label className="font-mono text-[11px] text-text-muted uppercase tracking-[0.04em]">
-                Type {editingId && <span className="text-text-faint normal-case tracking-normal">· locked (threshold semantics depend on type)</span>}
-              </label>
+              <span className="eyebrow block">
+                Type {editingId && <span className="normal-case tracking-normal">· locked, threshold semantics depend on type</span>}
+              </span>
               <Select
                 value={newType}
                 onValueChange={(v) => setNewType(v as AlertType)}
                 disabled={Boolean(editingId)}
               >
-                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectTrigger aria-label="Alert type"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="budget">Budget (USD)</SelectItem>
                   <SelectItem value="error_rate">Error rate (0–1)</SelectItem>
@@ -748,19 +759,20 @@ export function AlertsClient() {
             </div>
             <div className="grid grid-cols-3 gap-3">
               {[
-                { label: 'Threshold', value: newThreshold, onChange: setNewThreshold, placeholder: newType === 'budget' ? '10' : newType === 'error_rate' ? '0.05' : newType === 'eval_score' ? '0.8' : '2000' },
-                { label: 'Window (min)', value: newWindow, onChange: setNewWindow, placeholder: '60' },
-                { label: 'Cooldown (min)', value: newCooldown, onChange: setNewCooldown, placeholder: '60' },
+                { id: 'alert-threshold', label: 'Threshold', value: newThreshold, onChange: setNewThreshold, placeholder: newType === 'budget' ? '10' : newType === 'error_rate' ? '0.05' : newType === 'eval_score' ? '0.8' : '2000' },
+                { id: 'alert-window', label: 'Window (min)', value: newWindow, onChange: setNewWindow, placeholder: '60' },
+                { id: 'alert-cooldown', label: 'Cooldown (min)', value: newCooldown, onChange: setNewCooldown, placeholder: '60' },
               ].map((f) => (
                 <div key={f.label} className="space-y-2">
-                  <label className="font-mono text-[11px] text-text-muted uppercase tracking-[0.04em]">{f.label}</label>
+                  <label htmlFor={f.id} className="eyebrow block">{f.label}</label>
                   <input
+                    id={f.id}
                     type="number"
                     step="any"
                     value={f.value}
                     onChange={(e) => f.onChange(e.target.value)}
                     placeholder={f.placeholder}
-                    className="w-full h-9 px-3 rounded border border-border bg-bg text-[13px] focus:outline-none focus:border-border-strong"
+                    className={cn(CONTROL, 'w-full px-3 text-[12.5px] leading-[18px] tabular-nums text-text placeholder:text-text-faint focus:border-border-strong focus:outline-none')}
                   />
                 </div>
               ))}
@@ -774,7 +786,7 @@ export function AlertsClient() {
                 createAlert.isPending ||
                 updateAlert.isPending
               }
-              className="w-full py-2 rounded bg-text text-bg font-mono text-[13px] font-medium hover:opacity-90 transition-opacity disabled:opacity-40"
+              className="w-full rounded-full bg-primary py-2 text-[12.5px] font-semibold leading-[18px] text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-40"
             >
               {editingId
                 ? (updateAlert.isPending ? 'Saving…' : 'Save changes')
@@ -783,7 +795,6 @@ export function AlertsClient() {
           </div>
         </DialogContent>
       </Dialog>
-
     </div>
   )
 }

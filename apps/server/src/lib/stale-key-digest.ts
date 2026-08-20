@@ -11,7 +11,7 @@
  */
 
 import { supabaseAdmin } from './db.js'
-import { unscopedClickhouse } from './clickhouse.js'
+import { pgQuery } from './postgres.js'
 import { sendEmail, renderStaleKeyDigestEmail } from './resend.js'
 import { getAdminEmails } from './admin-emails.js'
 
@@ -56,40 +56,40 @@ async function findStaleKeysForOrg(
   const cutoffMs = Date.now() - thresholdDays * 24 * 60 * 60 * 1000
   const stale: StaleKey[] = []
 
-  // Bulk-fetch last-used per provider_key in one ClickHouse round-trip rather
-  // than one per key. ignoreRetention is implicit here — we want to know about
-  // stale keys regardless of plan retention (a key idle for 1 year is still
-  // stale even on a 14-day Free plan).
+  // Bulk-fetch last-used per provider_key in one round-trip rather than one
+  // per key. Plan retention is deliberately not applied — we want to know
+  // about stale keys regardless of it (a key idle for 1 year is still stale
+  // even on a 14-day Free plan).
   const keyIds = keys.map((k) => k.id)
   const lastUsedMap = new Map<string, string>()
   if (keyIds.length > 0) {
     try {
-      const result = await unscopedClickhouse().query({
+      const rows = await pgQuery<{ id: string; last_used_at: string }>({
         query:
           'SELECT provider_key_id AS id, max(created_at) AS last_used_at ' +
           'FROM requests ' +
-          'WHERE organization_id = {orgId:UUID} ' +
-          '  AND provider_key_id IN {keyIds:Array(UUID)} ' +
+          'WHERE organization_id = {orgId} ' +
+          '  AND provider_key_id = ANY({keyIds}::uuid[]) ' +
           'GROUP BY provider_key_id',
-        query_params: { orgId, keyIds },
-        format: 'JSONEachRow',
+        params: { orgId, keyIds },
       })
-      const rows = (await result.json()) as Array<{ id: string; last_used_at: string }>
       for (const row of rows) lastUsedMap.set(row.id, row.last_used_at)
     } catch (err) {
       // Fall through — every key reports its created_at as the reference,
       // which conservatively marks idle keys as stale.
       console.error(
-        '[stale-key-digest] ClickHouse last-used lookup failed:',
+        '[stale-key-digest] last-used lookup failed:',
         err instanceof Error ? err.message : err,
       )
     }
   }
 
   for (const key of keys) {
+    // `max(created_at)` comes back as an ISO-8601 'Z' string — the pg client
+    // parses timestamptz, so Date.parse takes it directly.
     const lastUsedIso = lastUsedMap.get(key.id) ?? null
     const referenceMs = lastUsedIso
-      ? Date.parse(lastUsedIso.replace(' ', 'T') + 'Z')
+      ? Date.parse(lastUsedIso)
       : Date.parse(key.created_at)
 
     if (referenceMs < cutoffMs) {

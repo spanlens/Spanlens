@@ -19,7 +19,6 @@ on:
 # Stack we bring up in CI (mirrors `docker compose -f docker-compose.dev.yml`):
 #
 #   supabase  via `supabase start` CLI (gotrue + kong + db, official wiring)
-#   clickhouse  via docker-compose service (24.10-alpine)
 #   server      pnpm --filter server dev (background)
 #   web         pnpm --filter web dev (background)
 #   mock-openai pnpm --filter server exec tsx scripts/mock-openai-server.ts (background)
@@ -121,40 +120,6 @@ jobs:
             echo "E2E_SUPABASE_ANON_KEY=$(echo "$status_json" | jq -r .ANON_KEY)"
           } >> "$GITHUB_ENV"
 
-      # ClickHouse alone — no rebuild needed, the official image starts in ~5s.
-      # We sidecar it rather than running the full docker-compose stack so the
-      # server can run from `pnpm dev` and pick up source changes without a
-      # container rebuild.
-      - name: Start ClickHouse sidecar
-        run: |
-          docker run -d --name clickhouse \
-            -e CLICKHOUSE_DB=spanlens \
-            -e CLICKHOUSE_USER=spanlens \
-            -e CLICKHOUSE_PASSWORD=spanlens_ci_password \
-            -e CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT=1 \
-            -p 8123:8123 -p 9000:9000 \
-            --ulimit nofile=262144:262144 \
-            clickhouse/clickhouse-server:24.10-alpine
-          # Wait for ClickHouse to answer HTTP. The image takes ~5-10s to
-          # boot; busy-loop a bit rather than a flat sleep.
-          for i in {1..30}; do
-            if curl -sf http://localhost:8123/ping | grep -q Ok; then
-              echo "ClickHouse ready"
-              break
-            fi
-            sleep 1
-          done
-
-      - name: Apply ClickHouse schema
-        env:
-          CLICKHOUSE_URL: http://localhost:8123
-          CLICKHOUSE_USER: spanlens
-          CLICKHOUSE_PASSWORD: spanlens_ci_password
-          CLICKHOUSE_DB: spanlens
-        # `ch:migrate` is a root-level script (package.json) that runs the
-        # apply.ts migration runner — see CLAUDE.md DB 작업 규칙.
-        run: pnpm ch:migrate
-
       - name: Install Playwright browsers
         run: pnpm --filter web exec playwright install --with-deps chromium
 
@@ -182,10 +147,11 @@ jobs:
           # aes256Decrypt agree on the key material without needing a
           # GitHub Actions secret. NOT used in production deploy paths.
           ENCRYPTION_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
-          CLICKHOUSE_URL: http://localhost:8123
-          CLICKHOUSE_USER: spanlens
-          CLICKHOUSE_PASSWORD: spanlens_ci_password
-          CLICKHOUSE_DB: spanlens
+          # The `requests` log is read through a pooled connection rather than
+          # PostgREST. Locally there is no Supavisor in front, so point straight
+          # at the Postgres the CLI started. Production uses the transaction
+          # pooler on 6543; see apps/server/.env.example.
+          SUPABASE_DB_POOLER_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
           OPENAI_API_BASE: http://localhost:4000/v1
           # R-32 Phase E — feedback admin allowlist for the spec. The value
           # must match E2E_FEEDBACK_ADMIN_EMAIL in the "Run Playwright smoke"
@@ -256,6 +222,4 @@ jobs:
       - name: Stop services
         if: always()
         run: |
-          docker stop clickhouse || true
-          docker rm clickhouse || true
           supabase stop --no-backup || true

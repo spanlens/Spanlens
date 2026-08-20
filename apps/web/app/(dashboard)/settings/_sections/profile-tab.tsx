@@ -9,13 +9,13 @@ import { TabHeader } from '../_shared/ui'
 export function ProfileTab() {
   const { data: user, isLoading } = useCurrentUser()
   return (
-    <div className="max-w-[920px]">
+    <div>
       <TabHeader
         title="Profile"
         description="Your sign-in identity. Managed by Supabase Auth."
       />
 
-      <Section title="Account" className="mb-5">
+      <Section title="Account" className="mb-4">
         {isLoading ? (
           <div className="px-6 py-4 font-mono text-[12.5px] text-text-faint">Loading…</div>
         ) : user ? (
@@ -37,8 +37,8 @@ export function ProfileTab() {
         )}
       </Section>
 
-      <Section title="Change sign-in details" className="mb-5">
-        <div className="px-6 py-4 text-[13px] text-text-muted leading-relaxed">
+      <Section title="Change sign-in details" className="mb-4">
+        <div className="px-6 py-4 text-[12.5px] text-text-muted leading-relaxed">
           Email changes, password resets, and two-factor setup go through Supabase&apos;s auth flows.
           Use the <span className="font-mono text-text">&quot;Forgot password?&quot;</span> link on the login
           page to trigger a reset email.

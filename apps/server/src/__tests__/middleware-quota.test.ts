@@ -6,7 +6,7 @@ import { Hono } from 'hono'
 // Tests for the proxy-side quota middleware. A regression here either lets
 // over-limit traffic through (revenue leak) or rejects legitimate requests
 // (customer-visible outage). We mock `checkMonthlyQuota` directly so the
-// middleware's branching can be exercised without hitting Supabase/ClickHouse.
+// middleware's branching can be exercised without touching a database.
 // ─────────────────────────────────────────────────────────────────────────────
 
 const checkMonthlyQuotaMock = vi.fn()

@@ -1,7 +1,7 @@
 'use client'
 import { useState, useSyncExternalStore } from 'react'
 import { Plus } from 'lucide-react'
-import { formatDate } from '@/lib/utils'
+import { cn, formatDate } from '@/lib/utils'
 import { Section, PrimaryBtn, GhostBtn } from '@/components/ui/primitives'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import {
@@ -21,7 +21,7 @@ import {
   useCurrentMember,
   type OrgRole,
 } from '@/lib/queries/use-members'
-import { MonoPill, TabHeader } from '../_shared/ui'
+import { MonoPill, TabHeader, PILL_PRIMARY, PILL_SECONDARY } from '../_shared/ui'
 
 // ─── MEMBERS tab ─────────────────────────────────────────────────────────────
 
@@ -96,13 +96,16 @@ export function MembersTab() {
   }
 
   return (
-    <div className="max-w-[980px]">
+    <div>
       <TabHeader
         title="Members"
         description="Team members with access to this workspace."
         action={
           isAdmin ? (
-            <PrimaryBtn onClick={() => { setInviteOpen(true); setInviteError(''); setInviteSuccess(null) }}>
+            <PrimaryBtn
+              className={cn(PILL_PRIMARY, 'gap-1.5')}
+              onClick={() => { setInviteOpen(true); setInviteError(''); setInviteSuccess(null) }}
+            >
               <Plus className="w-3.5 h-3.5" /> Invite member
             </PrimaryBtn>
           ) : null
@@ -110,12 +113,12 @@ export function MembersTab() {
       />
 
       {rowError && (
-        <div className="mb-3 border border-bad/30 bg-bad-bg rounded-lg px-4 py-2.5 text-[12.5px] text-bad">
+        <div className="mb-3 border border-bad/30 bg-bad-bg rounded-card px-4 py-3 text-[12.5px] text-bad">
           {rowError}
         </div>
       )}
 
-      <Section title="Members" className="mb-5">
+      <Section title="Members" className="mb-4">
         {/* Gate on `mounted` so SSR + first paint pick the same branch.
             Without this, SSR renders "No members yet" (no query data) and
             client renders the loaded list, triggering React #418. */}
@@ -129,7 +132,7 @@ export function MembersTab() {
             <button
               type="button"
               onClick={() => void members.refetch()}
-              className="font-mono text-[11.5px] px-2.5 py-1 border border-border rounded text-text-muted hover:text-text hover:border-border-strong transition-colors"
+              className={cn(PILL_SECONDARY, 'border font-medium text-text transition-colors')}
             >
               Retry
             </button>
@@ -147,7 +150,7 @@ export function MembersTab() {
                   key={m.userId}
                   className="grid grid-cols-[1.6fr_1fr_130px_100px] gap-4 px-6 py-3 items-center"
                 >
-                  <span className="text-[13px] font-medium text-text truncate">
+                  <span className="text-[12.5px] font-medium text-text truncate">
                     {m.email} {isMe && <span className="text-text-faint font-normal">(you)</span>}
                   </span>
                   <span className="font-mono text-[11px] text-text-muted truncate">
@@ -168,7 +171,7 @@ export function MembersTab() {
                       </SelectContent>
                     </Select>
                   ) : (
-                    <MonoPill variant={m.role === 'admin' ? 'accent' : 'neutral'} dot>
+                    <MonoPill variant={m.role === 'admin' ? 'accent' : m.role === 'viewer' ? 'faint' : 'neutral'} dot>
                       {m.role}
                     </MonoPill>
                   )}
@@ -196,7 +199,7 @@ export function MembersTab() {
       </Section>
 
       {(invitations.data ?? []).length > 0 && (
-        <Section title="Pending invitations" className="mb-5">
+        <Section title="Pending invitations" className="mb-4">
           <div className="overflow-x-auto">
           <div className="divide-y divide-border min-w-[520px]">
             {(invitations.data ?? []).map((inv) => {
@@ -207,7 +210,7 @@ export function MembersTab() {
                   key={inv.id}
                   className="grid grid-cols-[1.6fr_1fr_130px_100px] gap-4 px-6 py-3 items-center"
                 >
-                  <span className="text-[13px] text-text truncate">{inv.email}</span>
+                  <span className="text-[12.5px] text-text truncate">{inv.email}</span>
                   <span className="font-mono text-[11px] text-text-muted">
                     {/* Pre-mount we don't know the user's local clock yet —
                         render a stable placeholder so SSR + first paint agree.
@@ -253,7 +256,7 @@ export function MembersTab() {
                 onChange={(e) => setInviteEmail(e.target.value)}
                 placeholder="teammate@company.com"
                 autoFocus
-                className="w-full px-3 py-2 border border-border-strong rounded-[6px] bg-bg text-[13px] outline-none focus:border-accent"
+                className="w-full px-3 py-2 border border-border rounded-md bg-bg text-[12.5px] text-text outline-none focus:border-border-strong"
               />
             </div>
             <div>

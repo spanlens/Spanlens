@@ -28,6 +28,59 @@ interface PaddleError {
   error?: { type?: string; code?: string; detail?: string }
 }
 
+/**
+ * A non-2xx from the Paddle API, with the status kept separate from the prose.
+ *
+ * Callers need the status to tell "our key is wrong" from "Paddle is down",
+ * because those are a different message to the customer and a different job for
+ * us. Parsing that back out of a concatenated string is how error handling
+ * rots, so it travels as a field.
+ *
+ * `detail` is Paddle's own explanation. It is safe to log and must not be
+ * forwarded to a browser: it describes our credentials and configuration, not
+ * anything the customer did.
+ */
+export class PaddleApiError extends Error {
+  readonly name = 'PaddleApiError'
+
+  constructor(
+    readonly status: number,
+    readonly detail: string,
+    readonly method: string,
+    readonly path: string,
+    readonly code: string | null = null,
+  ) {
+    super(`Paddle ${method} ${path} failed (${status}): ${detail}`)
+  }
+}
+
+/**
+ * What kind of problem a Paddle failure is, from the point of view of whoever
+ * has to act on it.
+ *
+ *   credentials — the API key is missing, expired, or lacks a permission.
+ *                 Nobody but us can fix it, and retrying will not help.
+ *   unavailable — Paddle is erroring or unreachable. Retrying is reasonable.
+ *   request     — Paddle rejected the specific call: a stale customer id, an
+ *                 unknown price, a malformed body. Ours to fix, but scoped to
+ *                 this org rather than the whole integration.
+ *
+ * A key with too few permissions answers 403, which is why credentials covers
+ * both 401 and 403: an expired key and an under-scoped one are the same job.
+ */
+export type PaddleFailureKind = 'credentials' | 'unavailable' | 'request'
+
+export function classifyPaddleFailure(err: unknown): PaddleFailureKind {
+  if (!(err instanceof PaddleApiError)) {
+    // A thrown non-PaddleApiError here is a fetch rejection — DNS, TLS, socket,
+    // abort. Paddle is unreachable rather than unhappy.
+    return 'unavailable'
+  }
+  if (err.status === 401 || err.status === 403) return 'credentials'
+  if (err.status === 408 || err.status === 429 || err.status >= 500) return 'unavailable'
+  return 'request'
+}
+
 async function paddleFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
   const res = await fetch(`${getPaddleBase()}${path}`, {
     ...init,
@@ -41,11 +94,13 @@ async function paddleFetch<T>(path: string, init: RequestInit = {}): Promise<T> 
   const text = await res.text()
   if (!res.ok) {
     let detail = text.slice(0, 500)
+    let code: string | null = null
     try {
       const parsed = JSON.parse(text) as PaddleError
       if (parsed.error?.detail) detail = parsed.error.detail
+      if (parsed.error?.code) code = parsed.error.code
     } catch { /* ignore */ }
-    throw new Error(`Paddle ${init.method ?? 'GET'} ${path} failed (${res.status}): ${detail}`)
+    throw new PaddleApiError(res.status, detail, init.method ?? 'GET', path, code)
   }
 
   return (text ? JSON.parse(text) : null) as T

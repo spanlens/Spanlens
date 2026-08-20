@@ -50,9 +50,12 @@ export function MiniSparkline({ data, width = 60, height = 20, color }: MiniSpar
   })
   if (currentPath.length > 0) segments.push(currentPath.join(' '))
 
-  // Determine color based on avg quality
+  // Determine color based on avg quality. Status tokens rather than literal
+  // hex: the old values were fixed Tailwind greens and reds that kept their
+  // light-mode luminance on a near-black card and glared.
   const avg = filled.reduce((a, b) => a + b, 0) / filled.length
-  const strokeColor = color ?? (avg >= 90 ? '#22c55e' : avg >= 70 ? '#f59e0b' : '#ef4444')
+  const strokeColor =
+    color ?? (avg >= 90 ? 'var(--good)' : avg >= 70 ? 'var(--warn)' : 'var(--bad)')
 
   return (
     <svg width={width} height={height} className="shrink-0">

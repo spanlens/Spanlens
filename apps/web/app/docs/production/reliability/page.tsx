@@ -24,8 +24,8 @@ export default function ReliabilityDocs() {
       <h2>What the proxy is on the critical path for</h2>
       <p>
         The proxy passes your request to OpenAI / Anthropic / Gemini and streams the
-        response back. Logging to ClickHouse happens <em>after</em> the response leaves
-        for the client, via Vercel&apos;s <code>waitUntil()</code>. Concretely:
+        response back. The log row is written <em>after</em> the response leaves for the
+        client, via Vercel&apos;s <code>waitUntil()</code>. Concretely:
       </p>
       <ul>
         <li>
@@ -38,7 +38,7 @@ export default function ReliabilityDocs() {
         </li>
       </ul>
       <p>
-        So even when ClickHouse is unhappy, your application keeps returning responses to
+        So even when the database is unhappy, your application keeps returning responses to
         end users. The visible symptom is missing rows in <a href="/requests">/requests</a>,
         not failed API calls.
       </p>
@@ -79,39 +79,50 @@ export default function ReliabilityDocs() {
             <td>Switch to streaming; first byte still arrives in ~200ms.</td>
           </tr>
           <tr>
-            <td>ClickHouse unreachable</td>
+            <td>The log insert fails (pooler saturated, statement timeout, schema behind the code)</td>
             <td>None. Response already streamed.</td>
-            <td>Log row queued in Supabase <code>requests_fallback</code>.</td>
-            <td>Cron drains the queue every 5 min once ClickHouse is healthy.</td>
+            <td>Row queued in <code>requests_fallback</code>, so it shows up late.</td>
+            <td>Cron drains the queue every 5 min once the insert path is healthy.</td>
           </tr>
           <tr>
-            <td>Supabase Postgres down</td>
-            <td>None for the proxy itself. /api/v1/* endpoints (dashboard, key management) return 5xx.</td>
-            <td>Dashboard reads fail; proxy keeps logging to ClickHouse.</td>
+            <td>Postgres unreachable</td>
+            <td>Warm instances keep authenticating from their 30s key cache. After that, new calls fail closed.</td>
+            <td>Dashboard reads fail. /api/v1/* returns 5xx.</td>
             <td>Supabase managed availability (cloud) or your HA setup (self-host).</td>
           </tr>
           <tr>
-            <td>Both ClickHouse and Supabase down</td>
-            <td>None. Response already streamed.</td>
-            <td>Log row LOST (no queue to land in).</td>
-            <td>Manual replay impossible. Self-host with HA Postgres + ClickHouse to avoid.</td>
+            <td>Postgres unreachable long enough for the queue to fill</td>
+            <td>None for calls that already went through.</td>
+            <td>Rows older than 7 days in the queue are dropped.</td>
+            <td>None. Restore the database before the TTL expires.</td>
           </tr>
         </tbody>
       </table>
 
       <h2>The fallback queue</h2>
       <p>
-        When ClickHouse insert throws, the logger catches it and INSERTs the row into a
-        Supabase table named <code>requests_fallback</code>. A cron route{' '}
-        <code>POST /cron/replay-fallback</code> runs every 5 minutes, pulls up to 50 rows
-        from the queue, and tries to insert them into ClickHouse. Successful inserts are
-        deleted from the queue; failed ones increment <code>retry_count</code> and stay
-        queued.
+        The log row goes in over the pooled connection. When that insert throws, the logger
+        catches it and writes the row into a table named <code>requests_fallback</code>{' '}
+        instead, over PostgREST. Same database, different route in, which is what makes it
+        useful: the two paths fail for different reasons. An exhausted pooler, a statement
+        timeout, or a column the deployed schema does not have yet stops the direct insert
+        while PostgREST keeps working.
+      </p>
+      <p>
+        A cron route, <code>GET /cron/replay-fallback</code>, runs every 5 minutes, pulls up
+        to 50 rows in FIFO order, and inserts them into <code>requests</code> as one
+        statement. Rows that land are deleted from the queue. Rows that do not get their{' '}
+        <code>retry_count</code> bumped and stay put.
       </p>
       <ul>
         <li><strong>Expiry</strong>: rows are dropped after 7 days or 100 retries, whichever comes first.</li>
-        <li><strong>Ordering</strong>: queue is FIFO by <code>created_at</code>, not strict per-organization.</li>
-        <li><strong>Duplicates</strong>: ClickHouse has no UNIQUE constraint on the requests table. Race conditions can produce duplicate rows. Trade-off is accepted today; we prefer to lose fewer rows than dedupe in the hot path.</li>
+        <li><strong>Ordering</strong>: FIFO by <code>created_at</code>, not strict per-organization.</li>
+        <li>
+          <strong>Duplicates</strong>: the replay insert ends in{' '}
+          <code>ON CONFLICT (created_at, id) DO NOTHING</code>. If a batch lands but the
+          queue delete blips, the next run re-inserts nothing and the queue still drains. A
+          replayed row cannot double-count against your cost or quota.
+        </li>
       </ul>
       <p className="text-sm text-muted-foreground">
         Source: <code>apps/server/src/lib/fallback-replay.ts</code> and{' '}
@@ -120,7 +131,7 @@ export default function ReliabilityDocs() {
 
       <h2>Health endpoints</h2>
       <p>
-        Two endpoints, two purposes. Both are public; no auth required.
+        Three endpoints, three depths. All are public; no auth required.
       </p>
       <table>
         <thead>
@@ -137,19 +148,38 @@ export default function ReliabilityDocs() {
             <td><code>200</code> always (if process is up).</td>
           </tr>
           <tr>
+            <td><code>GET /health/ready</code></td>
+            <td>
+              Readiness. Pings the database both ways it is reached, PostgREST and the pooled
+              connection, plus the rate-limit store. Cheap enough for a 30s container
+              healthcheck.
+            </td>
+            <td><code>200</code> if all healthy, <code>503</code> if a dependency is unreachable.</td>
+          </tr>
+          <tr>
             <td><code>GET /health/deep</code></td>
-            <td>Component health. Pings ClickHouse, checks fallback queue size.</td>
-            <td><code>200</code> if all healthy, <code>503</code> if ClickHouse is unreachable.</td>
+            <td>
+              Component view. Adds the fallback queue depth, the slowest cron run in 24h, and
+              webhook backlog counts. Meant for a 5 minute probe, not a 30 second one.
+            </td>
+            <td><code>200</code> if the pooled connection answers, <code>503</code> if it does not.</td>
           </tr>
         </tbody>
       </table>
       <p>Sample response from <code>/health/deep</code>:</p>
       <CodeBlock language="json">{`{
   "status": "ok",
-  "timestamp": "2026-05-31T03:14:22.000Z",
-  "clickhouse": { "ok": true, "latencyMs": 42 },
-  "fallback": { "queue": 0 }
+  "timestamp": "2026-08-20T03:14:22.000Z",
+  "version": "a1b2c3d",
+  "postgresPool": { "ok": true, "latencyMs": 12, "probedInMs": 41 },
+  "fallback": { "queue": 0 },
+  "crons": { "max_runtime_ms": 1840 },
+  "webhooks": { "backlog_count": 0, "dlq_count": 0 }
 }`}</CodeBlock>
+      <p className="text-sm text-muted-foreground">
+        A <code>null</code> anywhere in there means the lookup itself failed, not that the
+        number is zero. Worth distinguishing when you triage.
+      </p>
       <p>
         Monitor these from your own observability stack (Better Stack, UptimeRobot, Pingdom,
         Sentry Crons, anything that supports HTTP probes). We recommend two probes:
@@ -198,9 +228,9 @@ export default function ReliabilityDocs() {
 
       <h3>Self-host if data residency matters more than ops effort</h3>
       <p>
-        Self-hosting removes our cloud as a failure mode entirely. You take on running
-        Postgres + ClickHouse, but the latency budget shifts entirely under your control.
-        See <a href="/docs/self-host">Self-hosting</a>.
+        Self-hosting removes our cloud as a failure mode entirely. You take on running one
+        Postgres database, and the latency budget shifts under your control. See{' '}
+        <a href="/docs/self-host">Self-hosting</a>.
       </p>
 
       <h2>Incident response checklist</h2>
@@ -251,7 +281,7 @@ export default function ReliabilityDocs() {
           </tr>
           <tr>
             <td>Fallback drain (p95)</td>
-            <td>&lt; 15 min after ClickHouse recovers</td>
+            <td>&lt; 15 min after the insert path recovers</td>
             <td>Time between queue size peak and queue size 0.</td>
           </tr>
         </tbody>

@@ -1,14 +1,17 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-// getCacheSavings queries ClickHouse directly. Mock unscopedClickhouse() so
-// tests run without a real container; helpers below shape the response the
-// way @clickhouse/client returns it (a ResultSet whose .json() resolves to
-// an array of plain rows). Same pattern as anomaly-detect.test.ts.
-const mockChQuery = vi.hoisted(() => vi.fn())
-vi.mock('../lib/clickhouse.js', () => ({
-  unscopedClickhouse: () => ({ query: mockChQuery }),
-  toClickhouseTimestamp: (date: Date = new Date()) =>
-    date.toISOString().replace('T', ' ').replace('Z', ''),
+// getCacheSavings aggregates the Postgres `requests` table through `pgQuery`.
+// Mock that one function so tests run without a database; `pgQuery` resolves
+// the rows directly. Same pattern as anomaly-detect.test.ts.
+//
+// Row values are strings because `sum()` over an integer column is int8 and
+// `count(*)` is int8 — node-postgres returns both as strings (lib/postgres.ts).
+const mockPgQuery = vi.hoisted(() => vi.fn())
+vi.mock('../lib/postgres.js', () => ({
+  pgQuery: mockPgQuery,
+  pgQueryOne: vi.fn(),
+  pgExecute: vi.fn(),
+  pgStream: vi.fn(),
 }))
 
 // requestsScope reads the org plan from Supabase — stub it so the test stays
@@ -16,7 +19,7 @@ vi.mock('../lib/clickhouse.js', () => ({
 vi.mock('../lib/requests-query.js', () => ({
   requestsScope: vi.fn(async (orgId: string) => ({
     whereScope:
-      'organization_id = {orgId:UUID} AND created_at >= now() - INTERVAL {retentionDays:UInt32} DAY',
+      'organization_id = {orgId} AND created_at >= now() - make_interval(days => {retentionDays})',
     scopeParams: { orgId, retentionDays: 14 },
     plan: 'free',
   })),
@@ -29,10 +32,6 @@ import {
   type CacheSavingsRow,
 } from '../lib/cache-savings.js'
 
-function chReturn(rows: object[]) {
-  return Promise.resolve({ json: () => Promise.resolve(rows) })
-}
-
 function row(overrides: Partial<CacheSavingsRow> = {}): CacheSavingsRow {
   return {
     provider: 'openai',
@@ -43,7 +42,7 @@ function row(overrides: Partial<CacheSavingsRow> = {}): CacheSavingsRow {
   }
 }
 
-beforeEach(() => { mockChQuery.mockReset() })
+beforeEach(() => { mockPgQuery.mockReset() })
 
 describe('computeCacheSavings — pricing math', () => {
   it('prices cache reads at (input − cacheRead) per 1M tokens', () => {
@@ -125,11 +124,11 @@ describe('currentMonthStartUtc', () => {
   })
 })
 
-describe('getCacheSavings — ClickHouse plumbing', () => {
-  it('aggregates rows returned by ClickHouse and reports the month start', async () => {
-    mockChQuery.mockReturnValue(chReturn([
+describe('getCacheSavings — query plumbing', () => {
+  it('aggregates the returned rows and reports the month start', async () => {
+    mockPgQuery.mockResolvedValue([
       row({ model: 'gpt-4o-mini', cache_read_tokens_sum: '1000000', cache_hit_requests: '10' }),
-    ]))
+    ])
     const summary = await getCacheSavings('org-1')
     expect(summary.savingsUsd).toBeCloseTo(0.075, 10)
     expect(summary.cacheReadTokens).toBe(1_000_000)
@@ -138,33 +137,34 @@ describe('getCacheSavings — ClickHouse plumbing', () => {
   })
 
   it('threads the tenant scope + month boundary into the query', async () => {
-    mockChQuery.mockReturnValue(chReturn([]))
+    mockPgQuery.mockResolvedValue([])
     await getCacheSavings('org-9')
-    expect(mockChQuery).toHaveBeenCalledTimes(1)
-    const call = mockChQuery.mock.calls[0]![0] as {
+    expect(mockPgQuery).toHaveBeenCalledTimes(1)
+    const call = mockPgQuery.mock.calls[0]![0] as {
       query: string
-      query_params: Record<string, unknown>
+      params: Record<string, unknown>
     }
-    expect(call.query).toContain('organization_id = {orgId:UUID}')
+    expect(call.query).toContain('organization_id = {orgId}')
     expect(call.query).toContain('cache_read_tokens > 0')
-    expect(call.query_params['orgId']).toBe('org-9')
-    expect(call.query_params['monthStart']).toBeDefined()
+    expect(call.query).toContain('created_at >= {monthStart}::timestamptz')
+    expect(call.params['orgId']).toBe('org-9')
+    expect(call.params['monthStart']).toBe(currentMonthStartUtc().toISOString())
   })
 
-  // Regression: aliasing the aggregate as the raw column name made ClickHouse
-  // bind the WHERE predicate to the aggregate and reject the query with
-  // ILLEGAL_AGGREGATION (code 184), 500ing the whole feature. The aggregate
-  // must use a distinct alias while the WHERE keeps filtering the raw column.
-  it('does not alias the sum with the raw column name (ILLEGAL_AGGREGATION guard)', async () => {
-    mockChQuery.mockReturnValue(chReturn([]))
+  // Contract guard. The aggregate is aliased `cache_read_tokens_sum`, not the
+  // raw column name, and `computeCacheSavings` reads it by that name. Rename
+  // the alias and the pricing loop silently sees `undefined`, reporting $0
+  // saved rather than failing.
+  it('aliases the sum as cache_read_tokens_sum, the name the math reads', async () => {
+    mockPgQuery.mockResolvedValue([])
     await getCacheSavings('org-9')
-    const call = mockChQuery.mock.calls[0]![0] as { query: string }
+    const call = mockPgQuery.mock.calls[0]![0] as { query: string }
     expect(call.query).toContain('sum(cache_read_tokens) AS cache_read_tokens_sum')
     expect(call.query).not.toMatch(/sum\(cache_read_tokens\)\s+AS\s+cache_read_tokens\b(?!_)/)
   })
 
-  it('propagates ClickHouse failures to the caller', async () => {
-    mockChQuery.mockReturnValue(Promise.reject(new Error('connection refused')))
+  it('propagates database failures to the caller', async () => {
+    mockPgQuery.mockRejectedValue(new Error('connection refused'))
     await expect(getCacheSavings('org-1')).rejects.toThrow('connection refused')
   })
 })

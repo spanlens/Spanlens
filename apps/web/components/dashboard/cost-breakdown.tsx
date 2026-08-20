@@ -1,28 +1,27 @@
 'use client'
 
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts'
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts'
 import { fmtCostKpi } from '@/lib/format'
 import type { ModelStat } from '@/lib/queries/use-stats'
 
 const C = {
-  text:   'var(--text)',
-  faint:  'var(--text-faint)',
-  border: 'var(--border)',
-  bgElev: 'var(--bg-elev)',
-  accent: 'var(--accent)',
+  text:    'var(--text)',
+  muted:   'var(--text-muted)',
+  faint:   'var(--text-faint)',
+  border:  'var(--border)',
+  rule:    'var(--border-strong)',
+  track:   'var(--track)',
+  bgElev:  'var(--bg-elev)',
+  accent:  'var(--accent)',
+  mono:    'var(--font-geist-mono), ui-monospace, monospace',
 } as const
 
-// A small repeatable palette for the model bars. Drawn from the warm
-// monochrome dashboard palette so the chart blends with the existing
-// KPI tiles instead of fighting them for attention.
-const BAR_PALETTE = [
-  'var(--accent)',
-  'var(--accent-2)',
-  'var(--good)',
-  'var(--warn)',
-  'var(--text-muted)',
-  'var(--text-faint)',
-]
+// Rank colouring: the leader takes the single accent, everything below it goes
+// neutral. An earlier version cycled a six-colour palette, which both invented
+// meaning the data does not carry (green ≠ cheap) and referenced
+// `var(--accent-2)`, a variable that does not exist in the token layer — that
+// bar rendered with no fill at all.
+const barFill = (rank: number) => (rank === 0 ? C.accent : C.faint)
 
 interface CostBreakdownProps {
   models: ModelStat[]
@@ -44,6 +43,10 @@ interface CostBreakdownProps {
  *
  * Tooltip carries the absolute USD; the bar length itself encodes the
  * share visually so we don't need to render percent text alongside.
+ *
+ * Ranked, so colour does not have to carry identity: the top spender is the
+ * only accented bar and the tail is neutral. The reader's question here is
+ * "what is eating the budget", and sorting answers it before colour does.
  */
 export function CostBreakdownCard({ models, topN = 6, rangeLabel }: CostBreakdownProps) {
   const sorted = [...models]
@@ -62,9 +65,9 @@ export function CostBreakdownCard({ models, topN = 6, rangeLabel }: CostBreakdow
 
   if (sorted.length === 0) {
     return (
-      <div className="rounded-md border border-border bg-bg-elev p-4">
-        <div className="flex items-center justify-between mb-2">
-          <h3 className="text-[14px] font-medium text-text">{headerTitle}</h3>
+      <div className="rounded-card border border-border bg-bg-elev px-5 py-[18px]">
+        <div className="flex items-center justify-between mb-[14px]">
+          <h3 className="text-[13.5px] font-semibold leading-[1.4] text-text">{headerTitle}</h3>
         </div>
         <p className="text-[13px] text-text-faint py-6">No spend recorded in this window.</p>
       </div>
@@ -72,10 +75,10 @@ export function CostBreakdownCard({ models, topN = 6, rangeLabel }: CostBreakdow
   }
 
   return (
-    <div className="rounded-md border border-border bg-bg-elev p-4">
-      <div className="flex items-center justify-between mb-3">
-        <h3 className="text-[14px] font-medium text-text">{headerTitle}</h3>
-        <span className="text-[11px] text-text-faint font-mono">top {sorted.length}</span>
+    <div className="rounded-card border border-border bg-bg-elev px-5 py-[18px]">
+      <div className="flex items-center justify-between mb-[14px]">
+        <h3 className="text-[13.5px] font-semibold leading-[1.4] text-text">{headerTitle}</h3>
+        <span className="font-mono text-[11px] leading-[1.4] text-text-faint">top {sorted.length}</span>
       </div>
       <div className="h-[260px]">
         <ResponsiveContainer width="100%" height="100%">
@@ -85,23 +88,34 @@ export function CostBreakdownCard({ models, topN = 6, rangeLabel }: CostBreakdow
             margin={{ top: 4, right: 16, left: 0, bottom: 4 }}
             barCategoryGap={6}
           >
-            <CartesianGrid stroke={C.border} strokeDasharray="2 4" horizontal={false} />
+            {/* No gridlines. Each bar sits in a slot that runs the full plot
+                width, so the slot itself is the ruler and headroom against the
+                top spender is readable without a second scale. */}
             <XAxis
               type="number"
-              tick={{ fill: C.faint, fontSize: 10 }}
+              tick={{ fill: C.faint, fontSize: 10, fontFamily: C.mono }}
               tickFormatter={(v: number) => fmtCostKpi(v)}
-              stroke={C.border}
+              tickLine={false}
+              axisLine={{ stroke: C.rule }}
             />
             <YAxis
               dataKey="label"
               type="category"
-              tick={{ fill: C.text, fontSize: 11 }}
+              tick={{ fill: C.muted, fontSize: 12, fontFamily: C.mono }}
+              tickLine={false}
+              axisLine={false}
               width={170}
-              stroke={C.border}
             />
             <Tooltip
-              contentStyle={{ background: C.bgElev, border: `1px solid ${C.border}`, fontSize: 12 }}
+              contentStyle={{
+                background: C.bgElev,
+                border: `1px solid ${C.border}`,
+                borderRadius: '10px',
+                fontSize: 10,
+                fontFamily: C.mono,
+              }}
               labelStyle={{ color: C.text }}
+              cursor={{ fill: 'transparent' }}
               formatter={((value: number, _key: unknown, payload: { payload?: { requests?: number } }) => {
                 const requests = payload?.payload?.requests
                 return [
@@ -110,9 +124,14 @@ export function CostBreakdownCard({ models, topN = 6, rangeLabel }: CostBreakdow
                 ] as [string, string]
               }) as never}
             />
-            <Bar dataKey="cost" radius={[0, 3, 3, 0]}>
+            <Bar
+              dataKey="cost"
+              barSize={10}
+              radius={5}
+              background={{ fill: C.track, radius: 5 }}
+            >
               {sorted.map((_, i) => (
-                <Cell key={i} fill={BAR_PALETTE[i % BAR_PALETTE.length] ?? 'var(--accent)'} />
+                <Cell key={i} fill={barFill(i)} />
               ))}
             </Bar>
           </BarChart>

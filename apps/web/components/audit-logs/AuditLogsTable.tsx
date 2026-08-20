@@ -52,7 +52,9 @@ export function AuditLogsTable({ rows, isLoading, emptyHint }: Props) {
     <>
       <div className="overflow-x-auto">
         <div className="divide-y divide-border min-w-[640px]">
-          <div className="grid grid-cols-[140px_60px_220px_1fr_120px] gap-4 px-6 py-3 font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint">
+          {/* Column band: a filled head is what separates this from the
+              FormRow-style cards stacked around it. */}
+          <div className="grid grid-cols-[140px_60px_220px_1fr_120px] gap-4 bg-bg-muted px-6 py-2.5 font-mono text-[10px] uppercase tracking-[0.1em] text-text-faint">
             <span>Time</span>
             <span>Sev</span>
             <span>Action</span>
@@ -66,9 +68,9 @@ export function AuditLogsTable({ rows, isLoading, emptyHint }: Props) {
                 key={row.id}
                 type="button"
                 onClick={() => setSelected(row)}
-                className="w-full grid grid-cols-[140px_60px_220px_1fr_120px] gap-4 px-6 py-3 items-center text-left hover:bg-bg-muted/40 transition-colors"
+                className="w-full grid grid-cols-[140px_60px_220px_1fr_120px] gap-4 px-6 py-3 items-center text-left hover:bg-bg-muted transition-colors"
               >
-                <span className="font-mono text-[11.5px] text-text-muted">
+                <span className="font-mono text-[12px] text-text-muted">
                   {formatAuditTimestamp(row.created_at)}
                 </span>
                 <span className="flex items-center gap-1.5 font-mono text-[9px] uppercase tracking-[0.04em] text-text-faint">
@@ -77,17 +79,17 @@ export function AuditLogsTable({ rows, isLoading, emptyHint }: Props) {
                 </span>
                 <span
                   className={cn(
-                    'font-mono text-[11.5px] font-medium truncate',
+                    'font-mono text-[12px] font-medium truncate',
                     sev === 'high' ? 'text-accent' : 'text-text',
                   )}
                 >
                   {row.action}
                 </span>
-                <span className="font-mono text-[11.5px] text-text-muted truncate">
+                <span className="font-mono text-[12px] text-text-muted truncate">
                   {row.resource_type}
                   {row.resource_id ? ` · ${row.resource_id.slice(0, 12)}…` : ''}
                 </span>
-                <span className="font-mono text-[10.5px] text-text-faint text-right truncate">
+                <span className="font-mono text-[11px] text-text-faint text-right truncate">
                   {row.user_id ? `${row.user_id.slice(0, 8)}…` : 'system'}
                 </span>
               </button>

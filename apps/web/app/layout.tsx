@@ -1,7 +1,19 @@
 import type { Metadata } from 'next'
 import { GeistSans } from 'geist/font/sans'
 import { GeistMono } from 'geist/font/mono'
+import { Schibsted_Grotesk } from 'next/font/google'
 import './globals.css'
+
+// Display face for headlines and card titles. Geist stays the body face and
+// Geist Mono the label/code face; Schibsted Grotesk only carries the display
+// ramp, which is why just the heavy weights are pulled. next/font self-hosts
+// the files at build time, so no request leaves the page at runtime.
+const displayFont = Schibsted_Grotesk({
+  subsets: ['latin'],
+  weight: ['600', '700', '800'],
+  variable: '--font-display',
+  display: 'swap',
+})
 import { Analytics } from '@vercel/analytics/next'
 import { QueryProvider } from '@/components/providers/query-provider'
 import { ThemeProvider } from '@/components/providers/theme-provider'
@@ -155,7 +167,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           }}
         />
       </head>
-      <body className={`${GeistSans.variable} ${GeistMono.variable} antialiased`}>
+      <body
+        className={`${GeistSans.variable} ${GeistMono.variable} ${displayFont.variable} antialiased`}
+      >
         <QueryProvider>
           <ThemeProvider>
             {/* PostHogProvider must sit inside QueryProvider —

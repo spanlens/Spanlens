@@ -105,6 +105,17 @@ jobs:
           # --no-seed because supabase/seed.sql is dev fixtures; we are
           # only validating that migrations apply, not that fixtures load.
           supabase db reset --no-seed
+
+          # Parse and plan the SQL shapes the `requests` query layer builds.
+          # The unit tests around those queries mock the database client, so
+          # the statements are assembled and never sent anywhere — which is
+          # how a broken aggregate alias once shipped and returned 500 on
+          # every call for weeks (CLAUDE.md gotcha #37). This step is the
+          # only place a dialect error surfaces before production.
+          psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" \
+            -v ON_ERROR_STOP=1 \
+            -f supabase/tests/requests-sql-smoke.sql
+
           supabase stop --no-backup
 
       # Sprint 7 regression guard — apps/web/Dockerfile silently missed

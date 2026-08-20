@@ -171,8 +171,8 @@ const llm = new ChatOpenAI({
   },
 })`}</CodeBlock>
       <p>
-        Now every LLM call lands as a Request in ClickHouse with the canonical cost and
-        token counts, and the corresponding LLM span links to it via{' '}
+        Now every LLM call lands as a Request with the canonical cost and token counts, and
+        the corresponding LLM span links to it via{' '}
         <code>request_id</code>. The trace waterfall shows both: the structural span tree
         from the callback handler and authoritative cost from the proxy log.
       </p>

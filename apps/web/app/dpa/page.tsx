@@ -20,11 +20,18 @@ export default function DPAPage() {
       <MarketingNav />
       <BreadcrumbJsonLd trail={[{ name: 'Data Processing Agreement', path: '/dpa' }]} />
 
-      <main className="flex-1 max-w-3xl mx-auto px-6 py-12 prose prose-stone
-        prose-headings:scroll-mt-20
+      <main className="w-full min-w-0 flex-1 max-w-3xl mx-auto px-6 py-12 prose prose-stone
+        prose-headings:scroll-mt-20 prose-headings:font-display prose-headings:text-text
+        prose-h1:text-[40px] prose-h1:track-h2 prose-h1:leading-[1.12] prose-h1:mb-3
+        prose-h2:text-[20px] prose-h2:track-quote prose-h2:mt-10
+        prose-h3:text-[16px] prose-h3:track-quote
+        prose-p:text-[14.5px] prose-p:leading-[1.75] prose-p:text-text-muted
+        prose-li:text-[14.5px] prose-li:leading-[1.75] prose-li:text-text-muted
+        prose-strong:text-text prose-strong:font-semibold
+        prose-table:text-[13.5px]
         prose-a:text-accent prose-a:no-underline hover:prose-a:opacity-80">
         <h1>Data Processing Addendum</h1>
-        <p className="text-sm text-muted-foreground">
+        <p className="font-mono text-[11.5px] text-text-faint">
           <strong>Effective date:</strong> {EFFECTIVE_DATE} ·{' '}
           <strong>Version:</strong> 1.0
         </p>
@@ -175,8 +182,8 @@ export default function DPAPage() {
             <strong>Encryption at rest:</strong> customer-supplied LLM provider API keys
             are encrypted with AES-256-GCM using a master key held in
             infrastructure-level secret storage outside the application database; the
-            ClickHouse Cloud and Supabase data stores additionally encrypt all data at
-            rest at the storage layer.
+            Supabase data store additionally encrypts all data at rest at the
+            storage layer.
           </li>
           <li>
             <strong>Authentication and access control:</strong> dashboard access requires
@@ -197,8 +204,7 @@ export default function DPAPage() {
           </li>
           <li>
             <strong>Resilience:</strong> our infrastructure providers offer regional
-            redundancy and automated backups (Supabase point-in-time recovery, ClickHouse
-            Cloud automated snapshots).
+            redundancy and automated backups (Supabase point-in-time recovery).
           </li>
           <li>
             <strong>Vulnerability management:</strong> Dependabot tracks dependency
@@ -317,8 +323,8 @@ export default function DPAPage() {
           </li>
           <li>
             third-party audit reports, certifications, or attestations from
-            subprocessors (e.g. Supabase SOC 2, Vercel SOC 2, ClickHouse Cloud SOC 2)
-            made available on request.
+            subprocessors (e.g. Supabase SOC 2, Vercel SOC 2) made available on
+            request.
           </li>
         </ul>
         <p>
@@ -501,8 +507,8 @@ export default function DPAPage() {
           <li>
             <strong>Encryption at rest:</strong> Customer-supplied LLM provider API
             keys encrypted with AES-256-GCM; master key held in infrastructure-level
-            secret storage outside the application database. Supabase and ClickHouse
-            Cloud additionally encrypt all data at rest at the storage layer.
+            secret storage outside the application database. Supabase additionally
+            encrypts all data at rest at the storage layer.
           </li>
           <li>
             <strong>Access controls and authentication:</strong> dashboard access
@@ -521,8 +527,7 @@ export default function DPAPage() {
           </li>
           <li>
             <strong>Integrity and availability:</strong> regional redundancy and
-            automated backups via Supabase (point-in-time recovery) and ClickHouse
-            Cloud (automated snapshots).
+            automated backups via Supabase (point-in-time recovery).
           </li>
           <li>
             <strong>Vulnerability and patch management:</strong> Dependabot monitors

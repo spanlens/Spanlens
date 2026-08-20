@@ -1,9 +1,9 @@
 'use client'
 
-import Link from 'next/link'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { AlertTriangle, AlertCircle, Info, CheckCircle, Loader2 } from 'lucide-react'
 import { Topbar } from '@/components/layout/topbar'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
 import {
   useInternalAlerts,
@@ -19,6 +19,10 @@ import {
  * the resolved history. Each row carries the cron-emitted message plus
  * the structured `details` JSON for inspection.
  *
+ * Laid out as the D25 board: one hairline-split stat strip over a card of
+ * rows. The strip tallies the loaded window rather than issuing a second
+ * query, so it always agrees with the list underneath it.
+ *
  * Access control: API returns 403 unless the user's email is in
  * SPANLENS_ADMIN_EMAILS. We render the page shell either way and let
  * the query surface "Permission denied" — the page link is hidden
@@ -26,9 +30,9 @@ import {
  */
 
 const SEVERITY_STYLE: Record<AlertSeverity, string> = {
-  info: 'border-border bg-bg-elev text-text-muted',
-  warn: 'border-amber-500/40 bg-amber-500/10 text-amber-500',
-  error: 'border-bad/40 bg-bad/10 text-bad',
+  info: 'bg-bg-chip text-text-muted',
+  warn: 'bg-warn-bg text-warn',
+  error: 'bg-bad-bg text-bad',
 }
 
 function SeverityBadge({ severity }: { severity: AlertSeverity }) {
@@ -36,7 +40,7 @@ function SeverityBadge({ severity }: { severity: AlertSeverity }) {
   return (
     <span
       className={cn(
-        'inline-flex items-center gap-1 rounded-[5px] border px-2 py-0.5 font-mono text-[10.5px] uppercase tracking-[0.04em]',
+        'inline-flex items-center gap-1 rounded-full px-2 py-[3px] font-mono text-[10.5px] uppercase tracking-[0.04em]',
         SEVERITY_STYLE[severity],
       )}
     >
@@ -67,46 +71,44 @@ function AlertRow({
   const hasDetails = Object.keys(alert.details).length > 0
 
   return (
-    <div className="border border-border rounded-lg overflow-hidden">
-      <div className="flex items-start justify-between gap-3 p-4">
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-1.5">
-            <SeverityBadge severity={alert.severity} />
-            <span className="font-mono text-[11px] text-text-faint">{alert.kind}</span>
-            <span className="font-mono text-[11px] text-text-faint">
-              · {formatAge(alert.created_at)}
-            </span>
-          </div>
-          <p className="text-[13px] text-text break-words">{alert.message}</p>
-          {hasDetails && (
-            <button
-              onClick={() => setExpanded((v) => !v)}
-              className="mt-2 font-mono text-[11px] text-text-faint hover:text-text-muted"
-            >
-              {expanded ? '▾ Hide details' : '▸ Show details'}
-            </button>
-          )}
-          {hasDetails && expanded && (
-            <pre className="mt-2 overflow-x-auto rounded-md bg-bg-elev p-3 font-mono text-[11px] text-text-muted">
-              {JSON.stringify(alert.details, null, 2)}
-            </pre>
-          )}
-        </div>
-        {alert.resolved_at ? (
-          <span className="inline-flex shrink-0 items-center gap-1 rounded-[5px] border border-good/40 bg-good/10 px-2 py-1 font-mono text-[10.5px] uppercase tracking-[0.04em] text-good">
-            <CheckCircle className="h-3 w-3" />
-            resolved
+    <div className="flex items-start justify-between gap-3 border-b border-border px-[18px] py-3.5 last:border-b-0">
+      <div className="min-w-0 flex-1">
+        <div className="mb-1.5 flex items-center gap-2">
+          <SeverityBadge severity={alert.severity} />
+          <span className="font-mono text-[11px] text-text-faint">{alert.kind}</span>
+          <span className="font-mono text-[11px] text-text-faint">
+            · {formatAge(alert.created_at)}
           </span>
-        ) : (
+        </div>
+        <p className="break-words text-[12.5px] text-text">{alert.message}</p>
+        {hasDetails && (
           <button
-            onClick={() => onResolve(alert.id)}
-            disabled={resolving}
-            className="shrink-0 rounded-md border border-border bg-bg-elev px-3 py-1.5 font-mono text-[11px] hover:bg-bg-hover disabled:opacity-50"
+            onClick={() => setExpanded((v) => !v)}
+            className="mt-2 font-mono text-[11px] text-text-faint hover:text-text-muted"
           >
-            {resolving ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Resolve'}
+            {expanded ? '▾ Hide details' : '▸ Show details'}
           </button>
         )}
+        {hasDetails && expanded && (
+          <pre className="mt-2 overflow-x-auto rounded-lg bg-bg-sunk px-4 py-3.5 font-mono text-[11.5px] text-text-muted">
+            {JSON.stringify(alert.details, null, 2)}
+          </pre>
+        )}
       </div>
+      {alert.resolved_at ? (
+        <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-good-bg px-2 py-[3px] font-mono text-[10.5px] uppercase tracking-[0.04em] text-good">
+          <CheckCircle className="h-3 w-3" />
+          resolved
+        </span>
+      ) : (
+        <button
+          onClick={() => onResolve(alert.id)}
+          disabled={resolving}
+          className="shrink-0 rounded-full border border-border bg-bg-elev px-3.5 py-2 text-[12px] font-medium text-text hover:bg-bg-muted disabled:opacity-50"
+        >
+          {resolving ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Resolve'}
+        </button>
+      )}
     </div>
   )
 }
@@ -115,42 +117,69 @@ export function AlertsClient() {
   const [showResolved, setShowResolved] = useState(false)
   const query = useInternalAlerts(!showResolved)
   const resolve = useResolveAlert()
-  const alerts = query.data ?? []
+  const alerts = useMemo(() => query.data ?? [], [query.data])
+
+  // Counting both resolution states keeps the cells honest under either
+  // filter: the "All (recent)" view mixes them, the default view does not.
+  const stats = useMemo(() => {
+    const by = (fn: (a: InternalAlert) => boolean) => alerts.filter(fn).length
+    return {
+      total: alerts.length,
+      error: by((a) => a.severity === 'error'),
+      warn: by((a) => a.severity === 'warn'),
+      info: by((a) => a.severity === 'info'),
+      unresolved: by((a) => !a.resolved_at),
+      resolved: by((a) => Boolean(a.resolved_at)),
+    }
+  }, [alerts])
 
   return (
     <>
-      <Topbar
-        crumbs={[
-          { label: 'Settings', href: '/settings' },
-          { label: 'Internal alerts' },
-        ]}
-      />
-      <div className="px-6 py-8 max-w-[1100px] mx-auto">
-        <div className="mb-6">
-          <Link
-            href="/settings"
-            className="font-mono text-[11px] text-text-faint hover:text-text-muted"
-          >
-            ← Settings
-          </Link>
-          <h1 className="mt-2 text-2xl font-semibold">Internal alerts</h1>
-          <p className="mt-1 text-[13px] text-text-muted max-w-[680px]">
-            Spanlens operator queue. Surfaces Spanlens-wide problems detected
-            by cron jobs (missing model prices, orphan spans, fallback queue
-            buildup, webhook backlog). Resolving an entry is a soft
-            acknowledgement: the next cron run can re-fire if the underlying
-            condition is still present.
-          </p>
+      {/* The topbar is the only full-bleed row: it cancels the padding
+          `DashboardContent` applies so its hairline spans the whole main
+          column. Everything below sits flush inside that padding. */}
+      <div className="sticky top-0 z-20 -mx-4 -mt-4 md:-mx-7 md:-mt-5 bg-bg">
+        <Topbar
+          crumbs={[
+            { label: 'Settings', href: '/settings' },
+            { label: 'Internal alerts' },
+          ]}
+          right={
+            query.isFetching ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin text-text-faint" />
+            ) : undefined
+          }
+        />
+      </div>
+
+      <div className="space-y-4 pt-4 md:pt-5">
+        <p className="max-w-[680px] text-[12.5px] leading-[1.55] text-text-muted">
+          Spanlens operator queue. Surfaces Spanlens-wide problems detected
+          by cron jobs (missing model prices, orphan spans, fallback queue
+          buildup, webhook backlog). Resolving an entry is a soft
+          acknowledgement: the next cron run can re-fire if the underlying
+          condition is still present.
+        </p>
+
+        <div className="overflow-x-auto rounded-card border border-border bg-bg-elev shadow-card">
+          <div className="grid min-w-[560px] grid-cols-3 divide-x divide-border lg:min-w-0 lg:grid-cols-6">
+            <StatCell label="ALERTS" value={stats.total} note="in view" />
+            <StatCell label="UNRESOLVED" value={stats.unresolved} note="open" />
+            <StatCell label="ERROR" value={stats.error} note="severity" />
+            <StatCell label="WARN" value={stats.warn} note="severity" />
+            <StatCell label="INFO" value={stats.info} note="severity" />
+            <StatCell label="RESOLVED" value={stats.resolved} note="acknowledged" />
+          </div>
         </div>
 
-        <div className="mb-4 flex items-center gap-2">
+        <div className="flex items-center gap-2">
           <button
             onClick={() => setShowResolved(false)}
             className={cn(
-              'rounded-md border px-3 py-1.5 font-mono text-[11px]',
+              'rounded-full px-3.5 py-2 text-[12px] font-medium transition-colors',
               !showResolved
-                ? 'border-accent bg-accent-bg/40 text-text'
-                : 'border-border bg-bg-elev text-text-muted hover:text-text',
+                ? 'bg-text text-bg'
+                : 'border border-border bg-bg-elev text-text hover:bg-bg-muted',
             )}
           >
             Unresolved
@@ -158,27 +187,24 @@ export function AlertsClient() {
           <button
             onClick={() => setShowResolved(true)}
             className={cn(
-              'rounded-md border px-3 py-1.5 font-mono text-[11px]',
+              'rounded-full px-3.5 py-2 text-[12px] font-medium transition-colors',
               showResolved
-                ? 'border-accent bg-accent-bg/40 text-text'
-                : 'border-border bg-bg-elev text-text-muted hover:text-text',
+                ? 'bg-text text-bg'
+                : 'border border-border bg-bg-elev text-text hover:bg-bg-muted',
             )}
           >
             All (recent)
           </button>
-          {query.isFetching && (
-            <Loader2 className="h-3.5 w-3.5 animate-spin text-text-faint" />
-          )}
         </div>
 
         {query.isLoading && (
-          <div className="rounded-lg border border-border bg-bg-elev p-6 text-center font-mono text-[12px] text-text-faint">
+          <div className="rounded-card border border-border bg-bg-elev p-6 text-center font-mono text-[12px] text-text-faint shadow-card">
             Loading…
           </div>
         )}
 
         {query.isError && (
-          <div className="rounded-lg border border-bad/40 bg-bad/10 p-6 text-[13px] text-bad">
+          <div className="rounded-card border border-accent-border bg-bad-bg p-6 text-[12.5px] text-bad">
             Failed to load alerts.
             {' '}
             {query.error instanceof Error ? query.error.message : 'Unknown error.'}
@@ -186,26 +212,49 @@ export function AlertsClient() {
         )}
 
         {!query.isLoading && !query.isError && alerts.length === 0 && (
-          <div className="rounded-lg border border-border bg-bg-elev p-8 text-center">
+          <div className="rounded-card border border-border bg-bg-elev p-8 text-center shadow-card">
             <CheckCircle className="mx-auto h-6 w-6 text-good" />
-            <p className="mt-2 text-[13px] text-text">All clear.</p>
+            <p className="mt-2 text-[12.5px] text-text">All clear.</p>
             <p className="mt-1 font-mono text-[11px] text-text-faint">
               No {showResolved ? 'alerts in the recent window' : 'unresolved alerts'}.
             </p>
           </div>
         )}
 
-        <div className="space-y-3">
-          {alerts.map((alert) => (
-            <AlertRow
-              key={alert.id}
-              alert={alert}
-              onResolve={(id) => resolve.mutate(id)}
-              resolving={resolve.isPending && resolve.variables === alert.id}
-            />
-          ))}
-        </div>
+        {alerts.length > 0 && (
+          <Card className="overflow-hidden">
+            <CardHeader>
+              <CardTitle>Queue</CardTitle>
+            </CardHeader>
+            <CardContent className="px-0 pb-0">
+              <div className="border-t border-border">
+                {alerts.map((alert) => (
+                  <AlertRow
+                    key={alert.id}
+                    alert={alert}
+                    onResolve={(id) => resolve.mutate(id)}
+                    resolving={resolve.isPending && resolve.variables === alert.id}
+                  />
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
       </div>
     </>
+  )
+}
+
+function StatCell({ label, value, note }: { label: string; value: number; note: string }) {
+  return (
+    <div className="px-5 py-[18px]">
+      <div className="font-mono text-[10.5px] uppercase tracking-[0.1em] text-text-faint">
+        {label}
+      </div>
+      <div className="track-h3 mt-[7px] font-display text-[22px] leading-[1.05] text-text">
+        {value}
+      </div>
+      <div className="mt-[7px] text-[11.5px] font-medium text-text-faint">{note}</div>
+    </div>
   )
 }

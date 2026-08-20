@@ -11,7 +11,17 @@ import {
 } from '@/lib/queries/use-pending-deletions'
 import { useCurrentRole } from '@/lib/queries/use-current-role'
 import { Topbar } from '@/components/layout/topbar'
-import { cn } from '@/lib/utils'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { cn, formatDate } from '@/lib/utils'
+
+/**
+ * Pending deletion queue (D26 board).
+ *
+ * Restyled onto the table-card language, but the two-step Restore confirm is
+ * left exactly as it was: this queue is the last stop before an irreversible
+ * delete, so the second click stays a deliberate act rather than a hover
+ * target.
+ */
 
 const RESOURCE_LABELS: Record<PendingResourceType, string> = {
   api_key: 'API Key',
@@ -54,12 +64,24 @@ function formatRemaining(scheduledFor: string): {
   return { text, tone: 'safe' }
 }
 
-const TONE_CLASS = {
-  safe: 'text-emerald-600 dark:text-emerald-400',
-  warn: 'text-amber-600 dark:text-amber-400',
-  danger: 'text-red-600 dark:text-red-400',
-  expired: 'text-zinc-400',
+// Compact elapsed time for the REQUESTED column. Client-only render, so
+// reading the clock here can't diverge from an SSR pass.
+function formatAgo(iso: string): string {
+  const diffMs = Date.now() - new Date(iso).getTime()
+  const hours = Math.floor(diffMs / (60 * 60 * 1000))
+  if (hours < 1) return 'just now'
+  if (hours < 24) return `${hours}h ago`
+  return `${Math.floor(hours / 24)}d ago`
 }
+
+const TONE_CLASS = {
+  safe: 'text-good',
+  warn: 'text-warn',
+  danger: 'text-bad',
+  expired: 'text-text-faint',
+}
+
+const ROW_GRID = 'grid grid-cols-[1.4fr_1fr_1fr_0.9fr_1fr_auto] items-center gap-3'
 
 export function PendingDeletionsClient() {
   const role = useCurrentRole()
@@ -70,134 +92,162 @@ export function PendingDeletionsClient() {
   const [confirming, setConfirming] = useState<string | null>(null)
 
   return (
-    <div className="flex flex-col gap-6">
-      <Topbar
-        crumbs={[
-          { label: 'Settings', href: '/settings' },
-          { label: 'Pending Deletions' },
-        ]}
-      />
+    <>
+      {/* The topbar is the only full-bleed row: it cancels the padding
+          `DashboardContent` applies so its hairline spans the whole main
+          column. Everything below sits flush inside that padding. */}
+      <div className="sticky top-0 z-20 -mx-4 -mt-4 md:-mx-7 md:-mt-5 bg-bg">
+        <Topbar
+          crumbs={[
+            { label: 'Settings', href: '/settings' },
+            { label: 'Pending Deletions' },
+          ]}
+        />
+      </div>
 
-      <section className="rounded-lg border border-[var(--border-strong)] bg-[var(--bg)]">
-        <header className="border-b border-[var(--border-strong)] px-5 py-3">
-          <h2 className="text-sm font-medium">Active queue</h2>
-        </header>
-
-        {active.isLoading ? (
-          <div className="px-5 py-8 text-sm text-[var(--text-muted)]">Loading…</div>
-        ) : active.error ? (
-          <div className="px-5 py-8 text-sm text-red-600">Failed to load.</div>
-        ) : !active.data || active.data.length === 0 ? (
-          <div className="px-5 py-8 text-sm text-[var(--text-muted)]">
-            Nothing pending. Prompt version deletions appear here for 72 hours before
-            becoming permanent. API keys and provider keys are deleted immediately and
+      <div className="space-y-4 pt-4 md:pt-5">
+        <div className="flex items-start gap-2.5 rounded-card border border-warn/25 bg-warn-bg px-5 py-3.5">
+          <span className="mt-[6px] h-1.5 w-1.5 shrink-0 rounded-full bg-warn" />
+          <p className="text-[12.5px] leading-[1.5] text-text">
+            Prompt version deletions appear here for 72 hours before becoming
+            permanent. API keys and provider keys are deleted immediately and
             never appear in this queue.
+          </p>
+        </div>
+
+        <div className="rounded-card border border-border bg-bg-elev shadow-card">
+          <div className="overflow-x-auto">
+            <div className="min-w-[720px]">
+              <div className={cn(ROW_GRID, 'border-b border-border bg-bg-muted px-[18px] py-2.5')}>
+                <span className="micro-label">Resource</span>
+                <span className="micro-label">Kind</span>
+                <span className="micro-label">Requested by</span>
+                <span className="micro-label">Requested</span>
+                <span className="micro-label">Deletes in</span>
+                <span className="micro-label" />
+              </div>
+
+              {active.isLoading ? (
+                <div className="px-[18px] py-8 text-[12.5px] text-text-muted">Loading…</div>
+              ) : active.error ? (
+                <div className="px-[18px] py-8 text-[12.5px] text-bad">Failed to load.</div>
+              ) : !active.data || active.data.length === 0 ? (
+                <div className="px-[18px] py-8 text-[12.5px] text-text-muted">
+                  Nothing pending.
+                </div>
+              ) : (
+                active.data.map((row) => {
+                  const remaining = formatRemaining(row.scheduledFor)
+                  return (
+                    <div
+                      key={row.id}
+                      className={cn(ROW_GRID, 'border-b border-border px-[18px] py-3 last:border-b-0')}
+                    >
+                      <span className="truncate font-mono text-[12px] text-text">
+                        {snapshotName(row)}
+                      </span>
+                      <span className="font-mono text-[12px] text-text-muted">
+                        {RESOURCE_LABELS[row.resourceType]}
+                      </span>
+                      <span className="truncate font-mono text-[12px] text-text-muted">
+                        {row.requestedBy ?? 'unknown'}
+                      </span>
+                      <span className="font-mono text-[12px] text-text-muted">
+                        {formatAgo(row.requestedAt)}
+                      </span>
+                      <span className={cn('font-mono text-[12px]', TONE_CLASS[remaining.tone])}>
+                        {remaining.text}
+                      </span>
+                      <span className="flex justify-end">
+                        {canRestore && (
+                          confirming === row.id ? (
+                            <span className="flex gap-2">
+                              <button
+                                type="button"
+                                disabled={restore.isPending}
+                                onClick={() => {
+                                  restore.mutate(row.id, {
+                                    onSettled: () => setConfirming(null),
+                                  })
+                                }}
+                                className="rounded-full bg-text px-3.5 py-2 text-[12px] font-medium text-bg hover:opacity-90 disabled:opacity-50"
+                              >
+                                Confirm
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setConfirming(null)}
+                                className="rounded-full border border-border bg-bg-elev px-3.5 py-2 text-[12px] font-medium text-text hover:bg-bg-muted"
+                              >
+                                Cancel
+                              </button>
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => setConfirming(row.id)}
+                              className="rounded-full border border-border bg-bg-elev px-3.5 py-2 text-[12px] font-medium text-text hover:bg-bg-muted"
+                            >
+                              Restore
+                            </button>
+                          )
+                        )}
+                      </span>
+                    </div>
+                  )
+                })
+              )}
+            </div>
           </div>
-        ) : (
-          <ul className="divide-y divide-[var(--border-strong)]">
-            {active.data.map((row) => {
-              const remaining = formatRemaining(row.scheduledFor)
-              return (
-                <li key={row.id} className="grid grid-cols-12 items-center gap-3 px-5 py-3">
-                  <div className="col-span-3 text-xs text-[var(--text-muted)]">
-                    {RESOURCE_LABELS[row.resourceType]}
-                  </div>
-                  <div className="col-span-4 text-sm font-medium truncate">
-                    {snapshotName(row)}
-                  </div>
-                  <div className={cn('col-span-3 text-xs', TONE_CLASS[remaining.tone])}>
-                    {remaining.text}
-                  </div>
-                  <div className="col-span-2 flex justify-end">
-                    {canRestore && (
-                      confirming === row.id ? (
-                        <div className="flex gap-2">
-                          <button
-                            type="button"
-                            disabled={restore.isPending}
-                            onClick={() => {
-                              restore.mutate(row.id, {
-                                onSettled: () => setConfirming(null),
-                              })
-                            }}
-                            className="rounded-chip border border-emerald-600 px-2 py-1 text-xs text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950"
-                          >
-                            Confirm
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setConfirming(null)}
-                            className="rounded-chip border border-[var(--border-strong)] px-2 py-1 text-xs"
-                          >
-                            Cancel
-                          </button>
-                        </div>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => setConfirming(row.id)}
-                          className="rounded-chip border border-[var(--border-strong)] px-3 py-1 text-xs hover:bg-[var(--bg-hover)]"
-                        >
-                          Restore
-                        </button>
-                      )
-                    )}
-                  </div>
-                </li>
-              )
-            })}
-          </ul>
-        )}
-      </section>
+        </div>
 
-      <section className="rounded-lg border border-[var(--border-strong)] bg-[var(--bg)]">
-        <header className="border-b border-[var(--border-strong)] px-5 py-3 flex items-center justify-between">
-          <h2 className="text-sm font-medium">Recent history</h2>
-          <span className="text-xs text-[var(--text-muted)]">Last 50</span>
-        </header>
+        <Card>
+          <CardHeader className="flex-row items-center justify-between space-y-0">
+            <CardTitle>Recent history</CardTitle>
+            <span className="font-mono text-[11px] text-text-faint">Last 50</span>
+          </CardHeader>
+          <CardContent>
+            {history.isLoading ? (
+              <div className="py-4 text-[12.5px] text-text-muted">Loading…</div>
+            ) : !history.data || history.data.length === 0 ? (
+              <div className="py-4 text-[12.5px] text-text-muted">No completed deletions yet.</div>
+            ) : (
+              <div>
+                {history.data.map((row) => {
+                  const status = row.executedAt
+                    ? { label: 'Hard-deleted', tone: 'danger' as const }
+                    : { label: 'Restored', tone: 'safe' as const }
+                  const eventTime = row.executedAt ?? row.cancelledAt ?? row.requestedAt
+                  return (
+                    <div
+                      key={row.id}
+                      className="flex items-center justify-between gap-4 border-b border-border py-2.5 first:pt-0 last:border-b-0"
+                    >
+                      <span className="truncate font-mono text-[12px] text-text">
+                        {RESOURCE_LABELS[row.resourceType]} · {snapshotName(row)}
+                      </span>
+                      <span className="shrink-0 text-[11.5px] text-text-faint">
+                        <span className={TONE_CLASS[status.tone]}>{status.label}</span>
+                        {' '}
+                        {formatDate(eventTime)}
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
-        {history.isLoading ? (
-          <div className="px-5 py-8 text-sm text-[var(--text-muted)]">Loading…</div>
-        ) : !history.data || history.data.length === 0 ? (
-          <div className="px-5 py-8 text-sm text-[var(--text-muted)]">No completed deletions yet.</div>
-        ) : (
-          <ul className="divide-y divide-[var(--border-strong)]">
-            {history.data.map((row) => {
-              const status = row.executedAt
-                ? { label: 'Hard-deleted', tone: 'danger' as const }
-                : { label: 'Restored', tone: 'safe' as const }
-              const eventTime = row.executedAt ?? row.cancelledAt ?? row.requestedAt
-              return (
-                <li key={row.id} className="grid grid-cols-12 items-center gap-3 px-5 py-3">
-                  <div className="col-span-3 text-xs text-[var(--text-muted)]">
-                    {RESOURCE_LABELS[row.resourceType]}
-                  </div>
-                  <div className="col-span-4 text-sm truncate">
-                    {snapshotName(row)}
-                  </div>
-                  <div className={cn('col-span-3 text-xs', TONE_CLASS[status.tone])}>
-                    {status.label}
-                  </div>
-                  <div className="col-span-2 text-right text-xs text-[var(--text-muted)]">
-                    {new Date(eventTime).toLocaleDateString('en-US', {
-                      month: 'short', day: 'numeric',
-                    })}
-                  </div>
-                </li>
-              )
-            })}
-          </ul>
-        )}
-      </section>
-
-      <p className="text-xs text-[var(--text-muted)]">
-        Need to delete something permanently before 72 hours? Hard-delete is not exposed
-        through the dashboard.{' '}
-        <Link href="/settings" className="underline">
-          Contact support
-        </Link>{' '}
-        and we&apos;ll expedite cleanup.
-      </p>
-    </div>
+        <p className="text-[11.5px] text-text-muted">
+          Need to delete something permanently before 72 hours? Hard-delete is not exposed
+          through the dashboard.{' '}
+          <Link href="/settings" className="underline">
+            Contact support
+          </Link>{' '}
+          and we&apos;ll expedite cleanup.
+        </p>
+      </div>
+    </>
   )
 }

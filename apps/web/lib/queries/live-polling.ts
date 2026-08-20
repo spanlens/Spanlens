@@ -11,12 +11,12 @@
 //                                 `/dashboard` overview). Tight enough that
 //                                 new traffic shows up within ~30 seconds
 //                                 without the user reaching for F5, loose
-//                                 enough to keep ClickHouse query budget
+//                                 enough to keep the database query budget
 //                                 sane for a tab left open all day.
 //   • LIVE_REFETCH_MS_SECONDARY — pages that don't drive the immediate "is
 //                                  it working?" question (`/anomalies`,
 //                                  `/security`). 30s is enough; tighter
-//                                  intervals waste ClickHouse query budget
+//                                  intervals waste database query budget
 //                                  on a tab the user isn't actively reading.
 //   • LIVE_REFETCH_MS_HEALTH   — slow-moving status (system, billing).
 //                                  60s — these update on the scale of

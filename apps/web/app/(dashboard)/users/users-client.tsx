@@ -123,7 +123,7 @@ function SearchForm({ initialSearch, hasActiveSearch, onChange, onClear }: Searc
             }
           }}
           placeholder="Search user ID…"
-          className="w-full pl-8 pr-3 py-1.5 font-mono text-[12px] bg-bg-elev border border-border rounded-[6px] text-text placeholder:text-text-faint focus:outline-none focus:border-accent"
+          className="w-full h-[33px] pl-9 pr-3 text-[12.5px] bg-bg-elev border border-border rounded-md text-text placeholder:text-text-faint focus:outline-none focus:border-accent"
         />
       </div>
       {hasActiveSearch && (
@@ -326,21 +326,22 @@ export function UsersClient() {
   }, [exportOpen])
 
   return (
-    <div className="-mx-4 -my-4 md:-mx-8 md:-my-7 flex flex-col min-h-screen">
+    <div className="-mx-4 -my-4 md:-mx-7 md:-mt-5 md:-mb-7 flex flex-col min-h-screen">
       {/* Sticky topbar — same pattern as dashboard/requests/traces. */}
       <div className="sticky top-0 z-20 bg-bg">
         <Topbar crumbs={[{ label: 'Users' }]} />
         <h1 className="sr-only">Users</h1>
       </div>
 
-      <div className="flex flex-col gap-6 px-[22px] py-[22px]">
+      {/* Content canvas — 28px gutters, 16px rhythm, per the Figma board. */}
+      <div className="flex flex-col gap-4 px-4 md:px-7 pt-5 pb-7">
         {/* Header */}
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
-            <h2 className="font-medium text-[20px] tracking-[-0.3px] text-text">Users</h2>
+            <h2 className="font-display text-[22px] track-kpi leading-[1.1] text-text">Users</h2>
             <p className="font-mono text-[11.5px] text-text-faint mt-1.5">
               {sinceLabel(rangeParam, customRange)} · end-user attribution from{' '}
-              <code className="bg-bg-elev px-1 py-px rounded text-text">x-spanlens-user</code> header.
+              <code className="bg-bg-sunk px-1 py-px rounded text-text">x-spanlens-user</code> header.
             </p>
           </div>
           <div className="flex items-center gap-3 shrink-0">
@@ -352,23 +353,23 @@ export function UsersClient() {
                 type="button"
                 onClick={() => setExportOpen((v) => !v)}
                 disabled={rows.length === 0}
-                className="font-mono text-[11px] text-text-muted hover:text-text border border-border rounded px-2.5 py-1 transition-colors disabled:opacity-40"
+                className="text-[12.5px] font-medium text-text bg-bg-elev border border-border rounded px-3 py-[7px] hover:border-border-strong transition-colors disabled:opacity-40"
               >
                 Export ▾
               </button>
               {exportOpen && (
-                <div className="absolute right-0 top-full mt-1 z-30 bg-bg-elev border border-border rounded-md shadow-lg py-1 min-w-[110px]">
+                <div className="absolute right-0 top-full mt-1 z-30 bg-bg-elev border border-border rounded-md shadow-card p-1 min-w-[110px]">
                   <button
                     type="button"
                     onClick={() => { setExportOpen(false); exportCsv() }}
-                    className="block w-full px-3 py-1.5 text-left font-mono text-[11px] uppercase tracking-[0.04em] text-text-muted hover:text-text hover:bg-bg transition-colors"
+                    className="block w-full px-2.5 py-1.5 rounded text-left text-[12.5px] text-text-muted hover:text-text hover:bg-bg-sunk transition-colors"
                   >
                     CSV
                   </button>
                   <button
                     type="button"
                     onClick={() => { setExportOpen(false); exportJson() }}
-                    className="block w-full px-3 py-1.5 text-left font-mono text-[11px] uppercase tracking-[0.04em] text-text-muted hover:text-text hover:bg-bg transition-colors"
+                    className="block w-full px-2.5 py-1.5 rounded text-left text-[12.5px] text-text-muted hover:text-text hover:bg-bg-sunk transition-colors"
                   >
                     JSON
                   </button>
@@ -406,10 +407,10 @@ export function UsersClient() {
           tabIndex={0}
           onKeyDown={onTableKey}
           aria-label="Users table"
-          className="border border-border rounded-[6px] overflow-hidden focus:outline-none focus:ring-1 focus:ring-accent-border"
+          className="card-surface rounded-card overflow-hidden focus:outline-none focus:ring-1 focus:ring-accent-border"
         >
           {/* Header row */}
-          <div className="grid grid-cols-[2fr_1fr_1fr_1fr] sm:grid-cols-[2fr_1fr_1fr_1fr_1fr_1fr] gap-3 px-4 py-2.5 bg-bg-elev border-b border-border font-mono text-[10px] uppercase tracking-[0.05em] text-text-faint">
+          <div className="grid grid-cols-[2fr_1fr_1fr_1fr] sm:grid-cols-[2fr_1fr_1fr_1fr_1fr_1fr] gap-3 px-[18px] py-2.5 bg-bg-muted border-b border-border font-mono text-[10px] uppercase tracking-[0.1em] text-text-faint">
             <span>User ID</span>
             <SortBtn label="Requests" col="requests" sortBy={sortBy} sortDir={sortDir} onSort={onSort} />
             <SortBtn label="Tokens" col="tokens" sortBy={sortBy} sortDir={sortDir} onSort={onSort} className="hidden sm:inline-flex" />
@@ -446,9 +447,9 @@ export function UsersClient() {
               <p className="font-mono text-[12.5px] text-text mb-1.5">No users yet</p>
               <p className="font-mono text-[11px] text-text-faint max-w-md mx-auto mb-4">
                 Tag your LLM calls with{' '}
-                <code className="bg-bg-elev px-1 py-px rounded">x-spanlens-user</code> header (SDK:{' '}
-                <code className="bg-bg-elev px-1 py-px rounded">withUser()</code> /{' '}
-                <code className="bg-bg-elev px-1 py-px rounded">with_user()</code>) and they&apos;ll
+                <code className="bg-bg-sunk px-1 py-px rounded">x-spanlens-user</code> header (SDK:{' '}
+                <code className="bg-bg-sunk px-1 py-px rounded">withUser()</code> /{' '}
+                <code className="bg-bg-sunk px-1 py-px rounded">with_user()</code>) and they&apos;ll
                 appear here.
               </p>
               <div className="flex items-center justify-center gap-3 flex-wrap">
@@ -481,8 +482,8 @@ export function UsersClient() {
                     role="row"
                     aria-selected={isFocused}
                     className={cn(
-                      'group relative grid grid-cols-[2fr_1fr_1fr_1fr] sm:grid-cols-[2fr_1fr_1fr_1fr_1fr_1fr] gap-3 items-center px-4 py-3 font-mono text-[12px] text-text transition-colors',
-                      isFocused ? 'bg-bg-elev' : 'hover:bg-bg-elev',
+                      'group relative grid grid-cols-[2fr_1fr_1fr_1fr] sm:grid-cols-[2fr_1fr_1fr_1fr_1fr_1fr] gap-3 items-center px-[18px] py-[11px] font-mono text-[12px] text-text transition-colors',
+                      isFocused ? 'bg-accent-bg/60' : 'hover:bg-bg-muted',
                     )}
                   >
                     {/* Stretched overlay link: the row navigates to the user
@@ -537,28 +538,28 @@ export function UsersClient() {
               <button
                 disabled={page <= 1}
                 onClick={() => updateQuery({ page: null })}
-                className="px-2.5 py-1.5 border border-border rounded-[6px] text-text hover:bg-bg-elev disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                className="text-[12px] font-medium px-3 py-[6px] border border-border rounded-full bg-bg-elev text-text hover:border-border-strong disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
               >
                 First
               </button>
               <button
                 disabled={page <= 1}
                 onClick={() => updateQuery({ page: String(page - 1) })}
-                className="px-3 py-1.5 border border-border rounded-[6px] text-text hover:bg-bg-elev disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                className="text-[12px] font-medium px-3 py-[6px] border border-border rounded-full bg-bg-elev text-text hover:border-border-strong disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
               >
                 Prev
               </button>
               <button
                 disabled={page >= lastPage}
                 onClick={() => updateQuery({ page: String(page + 1) })}
-                className="px-3 py-1.5 border border-border rounded-[6px] text-text hover:bg-bg-elev disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                className="text-[12px] font-medium px-3 py-[6px] border border-border rounded-full bg-bg-elev text-text hover:border-border-strong disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
               >
                 Next
               </button>
               <button
                 disabled={page >= lastPage}
                 onClick={() => updateQuery({ page: String(lastPage) })}
-                className="px-2.5 py-1.5 border border-border rounded-[6px] text-text hover:bg-bg-elev disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                className="text-[12px] font-medium px-3 py-[6px] border border-border rounded-full bg-bg-elev text-text hover:border-border-strong disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
               >
                 Last
               </button>

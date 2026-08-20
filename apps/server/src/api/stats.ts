@@ -14,13 +14,14 @@ import {
 import { ApiError } from '../lib/errors.js'
 
 /**
- * Stats endpoints — SQL-aggregated server-side.
+ * Stats endpoints, aggregated server-side.
  *
- * Originally these called Postgres stored functions (stats_overview /
- * stats_models / stats_timeseries) against the Supabase requests table.
- * After the ClickHouse migration the requests data lives in ClickHouse and
- * the aggregation moves with it — see lib/stats-queries.ts for the SQL.
- * The response contract is unchanged so the dashboard didn't need updates.
+ * Every handler here is a thin shell: validate the query params, call one
+ * function in lib/stats-queries.ts, shape the JSON. The SQL lives there so
+ * that tenant scoping and plan retention are applied in one place.
+ *
+ * The response contract is what the dashboard reads by name, so treat the
+ * JSON keys as fixed even when the underlying query changes.
  */
 
 export const statsRouter = new Hono<JwtContext>()
@@ -106,7 +107,7 @@ statsRouter.get('/overview', async (c) => {
     c.header('Cache-Control', CACHE_STATS_LIVE)
     return c.json({ success: true, data: rowToOverview(overview) })
   } catch (err) {
-    console.error('[stats:overview] ClickHouse query failed:', err instanceof Error ? err.message : err)
+    console.error('[stats:overview] query failed:', err instanceof Error ? err.message : err)
     throw new ApiError('INTERNAL_ERROR', 'Failed to fetch stats')
   }
 })
@@ -139,7 +140,7 @@ statsRouter.get('/models', async (c) => {
     c.header('Cache-Control', CACHE_STATS_LIVE)
     return c.json({ success: true, data: models, meta: { hours, count: models.length } })
   } catch (err) {
-    console.error('[stats:models] ClickHouse query failed:', err instanceof Error ? err.message : err)
+    console.error('[stats:models] query failed:', err instanceof Error ? err.message : err)
     throw new ApiError('INTERNAL_ERROR', 'Failed to fetch model stats')
   }
 })
@@ -178,7 +179,7 @@ statsRouter.get('/timeseries', async (c) => {
     c.header('Cache-Control', CACHE_STATS_LIVE)
     return c.json({ success: true, data: series, meta: { granularity } })
   } catch (err) {
-    console.error('[stats:timeseries] ClickHouse query failed:', err instanceof Error ? err.message : err)
+    console.error('[stats:timeseries] query failed:', err instanceof Error ? err.message : err)
     throw new ApiError('INTERNAL_ERROR', 'Failed to fetch timeseries')
   }
 })
@@ -210,7 +211,7 @@ statsRouter.get('/timeseries-breakdown', async (c) => {
     c.header('Cache-Control', CACHE_STATS_LIVE)
     return c.json({ success: true, data, meta: { granularity } })
   } catch (err) {
-    console.error('[stats:timeseries-breakdown] ClickHouse query failed:', err instanceof Error ? err.message : err)
+    console.error('[stats:timeseries-breakdown] query failed:', err instanceof Error ? err.message : err)
     throw new ApiError('INTERNAL_ERROR', 'Failed to fetch timeseries breakdown')
   }
 })
@@ -272,7 +273,7 @@ export async function computeSpendForecast(
       granularity: 'day',
     })
   } catch (err) {
-    console.error('[stats:spend-forecast] ClickHouse query failed:', err instanceof Error ? err.message : err)
+    console.error('[stats:spend-forecast] query failed:', err instanceof Error ? err.message : err)
     throw new ApiError('INTERNAL_ERROR', 'Failed to fetch spend forecast')
   }
 
@@ -365,8 +366,8 @@ statsRouter.get('/latency', async (c) => {
   const hours = parseClampedFloat(c.req.query('hours'), 24, 0.001, 24 * 30)
 
   try {
-    // ClickHouse's quantile() runs in-database — no need to pull 5k rows
-    // back to JS and sort. Sub-100ms even at 10M+ row scale.
+    // percentile_cont runs in-database, so there is no need to pull 5k rows
+    // back to JS and sort them here.
     const r = await getLatencyPercentiles(orgId, hours)
     c.header('Cache-Control', CACHE_STATS_LIVE)
     return c.json({
@@ -392,7 +393,7 @@ statsRouter.get('/latency', async (c) => {
       },
     })
   } catch (err) {
-    console.error('[stats:latency] ClickHouse query failed:', err instanceof Error ? err.message : err)
+    console.error('[stats:latency] query failed:', err instanceof Error ? err.message : err)
     throw new ApiError('INTERNAL_ERROR', 'Failed to fetch latency data')
   }
 })

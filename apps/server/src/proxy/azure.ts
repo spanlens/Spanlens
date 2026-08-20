@@ -59,7 +59,7 @@ azureProxy.all('/*', async (c) => {
   const resourceUrl = (providerKey.metadata['resource_url'] as string | undefined) ?? ''
   if (resourceUrl.length === 0) {
     logError('UNCATEGORIZED', { provider: 'azure', providerKeyId: providerKey.id, kind: 'missing_resource_url' })
-    throw new ApiError('INTERNAL_ERROR', 'Azure provider key is missing resource_url — re-register it')
+    throw new ApiError('INTERNAL_ERROR', 'Azure provider key is missing resource_url. Re-register the key with its resource URL.')
   }
 
   const requestFlags = await runSecurityGate(parsed.reqBodyJson, projectId)
@@ -96,8 +96,9 @@ azureProxy.all('/*', async (c) => {
 
   // ── Streaming path ────────────────────────────────────────────────────────
   if (parsed.isStreaming && upstreamRes.body) {
-    // Azure SSE chunk shape is OpenAI-compatible — same parser works. The
-    // 'azure' provider tag on logBase is what flows into ClickHouse.
+    // Azure SSE chunk shape is OpenAI-compatible, so the same parser works.
+    // The 'azure' provider tag on logBase is what gets logged, which is what
+    // keeps Azure spend separable from direct OpenAI spend.
     return runLineBufferedStreamPump({
       c, upstreamRes, handlerStartMs, provider: 'azure',
       onComplete: (lines, truncated) =>

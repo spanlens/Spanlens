@@ -1,10 +1,8 @@
 import { Hono } from 'hono'
 import type { JwtContext } from '../middleware/authJwt.js'
 import { authJwtOrApiKey } from '../middleware/authJwtOrApiKey.js'
-import { recommendModelSwaps } from '../lib/model-recommend.js'
+import { recommendModelSwaps, getTokenPercentiles } from '../lib/model-recommend.js'
 import { getCacheSavings } from '../lib/cache-savings.js'
-import { getOrgClickhouse, toClickhouseTimestamp } from '../lib/clickhouse.js'
-import { requestsScope } from '../lib/requests-query.js'
 import { parsePositiveFloat } from '../lib/params.js'
 import { ApiError } from '../lib/errors.js'
 
@@ -34,17 +32,11 @@ export const recommendationsRouter = new Hono<JwtContext>()
 recommendationsRouter.use('*', authJwtOrApiKey)
 
 
-// ── Shape returned by ClickHouse percentiles query (all numbers as strings) ───
-
-interface PercentileRow {
-  p50_prompt: string | null
-  p95_prompt: string | null
-  p99_prompt: string | null
-  p50_completion: string | null
-  p95_completion: string | null
-  p99_completion: string | null
-  sample_count: string
-}
+// ── Shape returned by the percentiles query ──────────────────────────────────
+//
+// `percentile_cont` yields `double precision`, which the driver parses into a
+// JS number, while `count(*)` is `int8` and arrives as a string to avoid
+// precision loss. Both are coerced with `Number()` below rather than trusted.
 
 // ── Routes ───────────────────────────────────────────────────────────────────
 
@@ -102,63 +94,11 @@ recommendationsRouter.get('/percentiles', async (c) => {
     throw new ApiError('VALIDATION_FAILED', 'model is required (max 128 chars)')
   }
 
-  const windowStart = new Date(Date.now() - hours * 3_600_000)
-  const windowStartTs = toClickhouseTimestamp(windowStart)
-
-  const scope = await requestsScope(orgId, { ignoreRetention: true })
-
-  let row: PercentileRow | null = null
   try {
-    const res = await getOrgClickhouse(orgId).client.query({
-      query: `
-        SELECT
-          quantile(0.50)(prompt_tokens)     AS p50_prompt,
-          quantile(0.95)(prompt_tokens)     AS p95_prompt,
-          quantile(0.99)(prompt_tokens)     AS p99_prompt,
-          quantile(0.50)(completion_tokens) AS p50_completion,
-          quantile(0.95)(completion_tokens) AS p95_completion,
-          quantile(0.99)(completion_tokens) AS p99_completion,
-          count()                           AS sample_count
-        FROM requests
-        WHERE ${scope.whereScope}
-          AND provider = {provider:String}
-          AND (model = {model:String} OR startsWith(model, {modelPrefix:String}))
-          AND created_at >= parseDateTime64BestEffort({windowStart:String})
-          AND status_code IN (200, 201, 202, 204)
-          AND prompt_tokens     > 0
-          AND completion_tokens > 0
-      `,
-      query_params: {
-        ...scope.scopeParams,
-        provider,
-        model,
-        modelPrefix: model + '-',
-        windowStart: windowStartTs,
-      },
-      format: 'JSONEachRow',
-    })
-    const rows = await res.json<PercentileRow>()
-    row = rows[0] ?? null
+    const data = await getTokenPercentiles(orgId, { provider, model, hours })
+    return c.json({ success: true, data })
   } catch (err) {
-    throw new ApiError('INTERNAL_ERROR', String(err))
+    console.error('percentiles failed', err)
+    throw new ApiError('INTERNAL_ERROR', 'Failed to compute token percentiles')
   }
-
-  const sampleCount = row ? Number(row.sample_count) : 0
-
-  if (!row || sampleCount === 0) {
-    return c.json({ success: true, data: null })
-  }
-
-  return c.json({
-    success: true,
-    data: {
-      p50PromptTokens:      Math.round(Number(row.p50_prompt      ?? 0)),
-      p95PromptTokens:      Math.round(Number(row.p95_prompt      ?? 0)),
-      p99PromptTokens:      Math.round(Number(row.p99_prompt      ?? 0)),
-      p50CompletionTokens:  Math.round(Number(row.p50_completion  ?? 0)),
-      p95CompletionTokens:  Math.round(Number(row.p95_completion  ?? 0)),
-      p99CompletionTokens:  Math.round(Number(row.p99_completion  ?? 0)),
-      sampleCount,
-    },
-  })
 })
