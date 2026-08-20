@@ -88,6 +88,7 @@ describe('ranSuccessfullyWithin', () => {
     queryMock.mockResolvedValue({ data: [], error: null })
     const before = Date.now()
     await ranSuccessfullyWithin('check-quota-warnings', 55)
+    const after = Date.now()
 
     expect(capturedTable).toBe('cron_job_runs')
     expect(capturedFilters).toContainEqual(['job_name', 'check-quota-warnings'])
@@ -96,9 +97,18 @@ describe('ranSuccessfullyWithin', () => {
     const cutoffFilter = capturedFilters.find(([col]) => col === 'ran_at')
     expect(cutoffFilter).toBeDefined()
     const cutoffMs = Date.parse(cutoffFilter![1] as string)
-    // 55 minutes back from "now", with slack for test execution time.
-    expect(before - cutoffMs).toBeGreaterThanOrEqual(55 * 60 * 1000)
-    expect(before - cutoffMs).toBeLessThan(56 * 60 * 1000)
+
+    // The cutoff is 55 minutes before whatever instant the call read, and that
+    // instant lies somewhere in [before, after]. Bracketing it that way is
+    // exact and cannot flake.
+    //
+    // The earlier version compared against `before` alone and required the
+    // gap to be at least 55 minutes, which only holds when both clock reads
+    // land in the same millisecond. It usually did, so the test looked stable
+    // until a runner was a millisecond slower and it failed at 3299999.
+    const window = 55 * 60 * 1000
+    expect(cutoffMs).toBeGreaterThanOrEqual(before - window)
+    expect(cutoffMs).toBeLessThanOrEqual(after - window)
   })
 })
 
