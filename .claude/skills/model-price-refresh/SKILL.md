@@ -190,11 +190,27 @@ Some price changes are scheduled rather than discovered. When you find one,
 write it into the migration header **and** tell the user to calendar it —
 a comment alone won't fire.
 
+A scheduled change is a *claim about the future*, so re-verify it on the page
+before acting on it. The 2026-09-01 Sonnet 5 increase sat here for a month and
+was then cancelled; applying it on the date, as written, would have
+over-reported every Sonnet 5 request by 50%.
+
 Currently pending:
 
-- **2026-09-01** — `claude-sonnet-5` introductory pricing ($2/$10, cache
-  0.20/2.50) expires. Standard is $3/$15, cache 0.30/3.75. Missing this
-  under-reports Sonnet 5 by 33%.
+- **2027-01-01** — `gemini-3.6-flash` and `gemini-3.7-flash` step off
+  introductory pricing (0.75 / 3.75 / cache 0.075) to 1.50 / 7.50 / 0.15.
+  Missing this under-reports both by 50%; applying it early over-reports by
+  2x. Both sides are pinned by a test in `model-prices-cache.test.ts`.
+- **Every run** — re-check the moving pointers, which go stale without any
+  announcement: `daybreak-blue-latest` / `daybreak-red-latest` (OpenAI
+  repoints these at each new flagship) and Mistral's `*-latest` family.
+
+Resolved, kept as a record of why:
+
+- ~~**2026-09-01** — `claude-sonnet-5` introductory pricing expires to $3/$15.~~
+  **Cancelled by Anthropic** (verified 2026-08-21, pricing-page note
+  `claude-sonnet-5-introductory-pricing`): $2/$10 with cache 0.20/2.50 is now
+  the standard price. Do not re-add.
 
 ## Reference
 
