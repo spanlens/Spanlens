@@ -172,6 +172,46 @@ describe('model-prices-cache', () => {
     expect(cyber?.longThreshold).toBeUndefined()
   })
 
+  test('Gemini flash fallback holds the introductory rates, not the 2027 ones', () => {
+    // Google publishes two prices per axis for these models: 0.75/3.75/0.075
+    // through 2026-12-31, then 1.50/7.50/0.15 from 2027-01-01. The 2026-08-11
+    // seed took the 2027 column, so every 3.6-flash request was over-reported
+    // by exactly 2x on all three axes until 2026-08-21. Pin both sides of the
+    // boundary: flipping early over-reports by 2x, flipping late under-reports
+    // by 50%. Source: ai.google.dev/gemini-api/docs/pricing?hl=en (2026-08-21).
+    const introductory = { prompt: 0.75, completion: 3.75, cacheRead: 0.075 }
+
+    for (const model of ['gemini-3.6-flash', 'gemini-3.7-flash']) {
+      const actual = cache.FALLBACK_PRICES[model]
+      expect(actual, `missing fallback for ${model}`).toBeDefined()
+      expect(actual, model).toEqual(introductory)
+      // The >200k split is a Pro-family thing. Flash has none, and inheriting
+      // one from a neighbouring row would silently double long requests.
+      expect(actual?.longThreshold, `${model} must have no long-context tier`).toBeUndefined()
+    }
+  })
+
+  test('grok-4.6 doubles every axis at 200k and does not inherit 4.5 cache rate', () => {
+    // xAI re-rates the WHOLE request at 2x once the prompt reaches 200k, so the
+    // long tier is just the short tier doubled — including cache. grok-4.6 and
+    // grok-4.5 share input/output but NOT the cache rate (0.50 vs 0.30), so
+    // copying the 4.5 row would misprice every 4.6 cache hit by 67%.
+    // Source: docs.x.ai/docs/models (verified 2026-08-21).
+    const grok46 = cache.FALLBACK_PRICES['grok-4.6']
+    expect(grok46, 'missing fallback for grok-4.6').toBeDefined()
+    expect(grok46).toEqual({
+      prompt: 2.0, completion: 6.0, cacheRead: 0.5,
+      longThreshold: 200000, longPrompt: 4.0, longCompletion: 12.0, longCacheRead: 1.0,
+    })
+
+    for (const axis of ['prompt', 'completion', 'cacheRead'] as const) {
+      const long = ({ prompt: 'longPrompt', completion: 'longCompletion', cacheRead: 'longCacheRead' } as const)[axis]
+      expect(grok46?.[long], `grok-4.6 ${long} must be 2x ${axis}`).toBe((grok46?.[axis] ?? 0) * 2)
+    }
+
+    expect(cache.FALLBACK_PRICES['grok-4.5']?.cacheRead, 'grok-4.5 cache rate is distinct').toBe(0.3)
+  })
+
   test('FALLBACK_PRICES stays provider-unambiguous', () => {
     // lookupPrice() consults FALLBACK_PRICES without a provider, which is only
     // safe while it holds direct-provider models exclusively. OpenRouter ids

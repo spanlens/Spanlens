@@ -28,6 +28,9 @@ INSERT INTO model_prices (
   ('openai', 'gpt-5.6-terra',                    2.00,  12.00,   0.20,   2.500),
   ('openai', 'gpt-5.6-luna',                     0.20,   1.20,   0.02,   0.250),
   ('openai', 'gpt-5.6-cyber',                   12.50,  75.00,   1.25,  15.625), -- Cyber (Daybreak); no long-context tier
+  ('openai', 'gpt-5.5-cyber',                   12.50,  75.00,   1.25,   NULL), -- Cyber; cache-write cell is blank on the page
+  -- gpt-5.4-cyber is deliberately absent: every price cell in its Cyber row is
+  -- blank, so there is no honest number to seed.
   ('openai', 'gpt-5.5',                          5.00,  30.00,   0.50,   NULL),
   ('openai', 'gpt-5.5-pro',                     30.00, 180.00,   NULL,   NULL),
   ('openai', 'gpt-5.4',                          2.50,  15.00,   0.25,   NULL),
@@ -43,6 +46,7 @@ INSERT INTO model_prices (
   ('openai', 'gpt-5-mini',                       0.25,   2.00,   0.025,  NULL),
   ('openai', 'gpt-5-nano',                       0.05,   0.40,   0.005,  NULL),
   ('openai', 'gpt-5-pro',                       15.00, 120.00,   NULL,   NULL),
+  ('openai', 'gpt-5-search-api',                 1.25,  10.00,   0.125,  NULL), -- Specialized models table
   ('openai', 'chat-latest',                      5.00,  30.00,   0.50,   NULL), -- ChatGPT alias
   -- ── OpenAI: Reasoning (o-series) ─────────────────────────────────────────
   ('openai', 'o4-mini',                          1.10,   4.40,   0.275,  NULL),
@@ -105,6 +109,7 @@ INSERT INTO model_prices (
   ('mistral', 'pixtral-large-latest',            2.00,   6.00,   NULL,   NULL), -- off the current pricing page
   ('mistral', 'pixtral-12b',                     0.15,   0.15,   NULL,   NULL), -- off the current pricing page
   ('mistral', 'voxtral-small-latest',            0.10,   0.40,   NULL,   NULL),
+  ('mistral', 'zai-glm-5-2',                     1.40,   4.40,   NULL,   NULL), -- GLM 5.2, Specialized section
   -- Listed as "Free" on the pricing page — 0, not NULL, so cost renders as $0
   -- rather than as missing data.
   ('mistral', 'mistral-moderation-2603',         0.00,   0.000,  NULL,   NULL),
@@ -112,27 +117,38 @@ INSERT INTO model_prices (
   ('mistral', 'mistral-embed',                   0.10,   0.000,  NULL,   NULL),
   ('mistral', 'codestral-embed',                 0.15,   0.000,  NULL,   NULL),
   -- ── Groq (OpenAI-compatible, api.groq.com/openai/v1) ─────────────────────
-  ('groq', 'llama-3.3-70b-versatile',                    0.59,  0.79,    NULL,     NULL),
-  ('groq', 'llama-3.1-8b-instant',                       0.05,  0.08,    NULL,     NULL),
   ('groq', 'openai/gpt-oss-120b',                        0.15,  0.60,    0.075,    NULL),
   ('groq', 'openai/gpt-oss-20b',                         0.075, 0.30,    0.0375,   NULL),
   ('groq', 'openai/gpt-oss-safeguard-20b',               0.075, 0.30,    NULL,     NULL),
   ('groq', 'qwen/qwen3.6-27b',                           0.60,  3.00,    NULL,     NULL),
-  ('groq', 'moonshotai/kimi-k2-instruct-0905',           1.00,  3.00,    0.50,     NULL),
   ('groq', 'meta-llama/llama-prompt-guard-2-22m',        0.03,  0.03,    NULL,     NULL),
   ('groq', 'meta-llama/llama-prompt-guard-2-86m',        0.04,  0.04,    NULL,     NULL),
-  -- Off the current Groq catalogue (2026-08-11) — kept so historical rows
-  -- still price correctly, but Groq appears to have stopped serving them.
+  -- Off the current Groq catalogue — kept so historical rows still price
+  -- correctly, but Groq has stopped serving them. Do not re-add as "missing".
+  -- Dropped by 2026-08-11: llama-4-scout, qwen3-32b.
+  -- Dropped by 2026-08-21: llama-3.3-70b-versatile, llama-3.1-8b-instant,
+  -- kimi-k2-instruct-0905 (the catalogue shrank to 11 entries).
   ('groq', 'meta-llama/llama-4-scout-17b-16e-instruct',  0.11,  0.34,    NULL,     NULL),
   ('groq', 'qwen/qwen3-32b',                             0.29,  0.59,    NULL,     NULL),
+  ('groq', 'llama-3.3-70b-versatile',                    0.59,  0.79,    NULL,     NULL),
+  ('groq', 'llama-3.1-8b-instant',                       0.05,  0.08,    NULL,     NULL),
+  ('groq', 'moonshotai/kimi-k2-instruct-0905',           1.00,  3.00,    0.50,     NULL),
   -- ── DeepSeek (OpenAI-compatible, api.deepseek.com/v1) ────────────────────
+  -- DeepSeek bills by time of day: peak is 01:00-04:00 and 06:00-10:00 UTC and
+  -- costs exactly 2x off-peak. This table has no time dimension, so these are
+  -- the OFF-PEAK rates (correct 17 of 24 hours). Peak requests are under-
+  -- reported by 50% until the table grows a time-of-day column.
+  ('deepseek', 'deepseek-v4-flash',                      0.22,  0.66,    0.007,    NULL),
+  ('deepseek', 'deepseek-v4-pro',                        0.66,  1.98,    0.022,    NULL),
+  -- Compatibility aliases, gone from the docs as of 2026-08-21. Kept at their
+  -- last published rates so historical requests still price; the page no longer
+  -- says which v4 model they resolve to, so they are NOT updated on a guess.
   ('deepseek', 'deepseek-chat',                          0.14,  0.28,    0.0028,   NULL),
   ('deepseek', 'deepseek-reasoner',                      0.14,  0.28,    0.0028,   NULL),
-  ('deepseek', 'deepseek-v4-flash',                      0.14,  0.28,    0.0028,   NULL),
-  ('deepseek', 'deepseek-v4-pro',                        0.435, 0.87,    0.003625, NULL),
   -- ── xAI / Grok (OpenAI-compatible, api.x.ai/v1) ──────────────────────────
   -- Every Grok model doubles ALL token rates once the prompt reaches 200k —
   -- modelled with the long_* columns at the bottom of this file.
+  ('xai', 'grok-4.6',                                    2.00,  6.00,    0.50,     NULL), -- cache is 0.50 here, not 4.5's 0.30
   ('xai', 'grok-4.5',                                    2.00,  6.00,    0.30,     NULL),
   ('xai', 'grok-4.3',                                    1.25,  2.50,    0.20,     NULL),
   ('xai', 'grok-4.20-0309-reasoning',                    1.25,  2.50,    0.20,     NULL),
@@ -140,6 +156,10 @@ INSERT INTO model_prices (
   ('xai', 'grok-4.20-multi-agent-0309',                  1.25,  2.50,    0.20,     NULL),
   ('xai', 'grok-build-0.1',                              1.00,  2.00,    0.20,     NULL),
   -- ── Cohere (OpenAI-compatible, api.cohere.ai/compatibility/v1) ───────────
+  -- As of 2026-08-21 cohere.com/pricing only lists legacy models; command-a and
+  -- command-r7b no longer show a per-token price. Rows kept at their last
+  -- published rates. command-a-plus-05-2026 and the command-a-{reasoning,
+  -- vision,translate} variants are still deliberately unseeded (no public rate).
   ('cohere', 'command-a-03-2025',                        2.50,  10.00,   NULL,     NULL),
   ('cohere', 'command-r-plus-08-2024',                   2.50,  10.00,   NULL,     NULL),
   ('cohere', 'command-r-08-2024',                        0.15,  0.60,    NULL,     NULL),
@@ -150,8 +170,10 @@ INSERT INTO model_prices (
   ('anthropic', 'claude-mythos-5',              10.00,  50.00,   1.00,  12.50),
   ('anthropic', 'claude-mythos-preview',        10.00,  50.00,   1.00,  12.50),
   ('anthropic', 'claude-opus-5',                 5.00,  25.00,   0.50,   6.25),
-  -- ⚠ INTRODUCTORY pricing through 2026-08-31. From 2026-09-01 this becomes
-  -- 3.00 / 15.00 / 0.30 / 3.75 — flip it or we under-report Sonnet 5 by 33%.
+  -- Launched as introductory pricing through 2026-08-31. Anthropic CANCELLED
+  -- the scheduled 2026-09-01 rise to 3.00 / 15.00 — $2/$10 is now the standard
+  -- price (verified 2026-08-21, note claude-sonnet-5-introductory-pricing).
+  -- Do NOT "restore" 3.00 / 15.00: that over-reports Sonnet 5 by 50%.
   ('anthropic', 'claude-sonnet-5',               2.00,  10.00,   0.20,   2.50),
   -- ── Anthropic: Claude 4.x (aliases + dated variants) ────────────────────
   ('anthropic', 'claude-opus-4-8',               5.00,  25.00,   0.50,   6.25),
@@ -178,7 +200,11 @@ INSERT INTO model_prices (
   ('anthropic', 'claude-3-opus-20240229',       15.00,  75.00,   1.50,  18.75),
   ('anthropic', 'claude-3-haiku-20240307',       0.25,   1.25,   NULL,   NULL), -- retired 2026-04-19
   -- ── Gemini 3.x ───────────────────────────────────────────────────────────
-  ('gemini', 'gemini-3.6-flash',                       1.50,   7.50,   0.15,  NULL),
+  -- 3.7-flash and 3.6-flash are on INTRODUCTORY pricing through 2026-12-31.
+  -- From 2027-01-01 both become 1.50 / 7.50 / 0.15. Flipping early doubles the
+  -- reported cost; flipping late halves it. Pinned by model-prices-cache.test.ts.
+  ('gemini', 'gemini-3.7-flash',                       0.75,   3.75,   0.075, NULL),
+  ('gemini', 'gemini-3.6-flash',                       0.75,   3.75,   0.075, NULL),
   ('gemini', 'gemini-3.5-flash',                       1.50,   9.00,   0.15,  NULL),
   ('gemini', 'gemini-3.5-flash-lite',                  0.30,   2.50,   0.03,  NULL),
   ('gemini', 'gemini-3.1-pro-preview',                 2.00,  12.00,   0.20,  NULL), -- ≤200k tier; >200k is 4.00/18.00/0.40
@@ -343,6 +369,15 @@ UPDATE model_prices
        long_completion_price_per_1m  = 12.00,
        long_cache_read_price_per_1m  =  0.60
  WHERE provider = 'xai' AND model = 'grok-4.5';
+
+-- grok-4.6 shares 4.5's short-tier input/output but caches at 0.50, so its
+-- doubled long-tier cache rate is 1.00 rather than 0.60.
+UPDATE model_prices
+   SET long_context_threshold_tokens = 200000,
+       long_prompt_price_per_1m      =  4.00,
+       long_completion_price_per_1m  = 12.00,
+       long_cache_read_price_per_1m  =  1.00
+ WHERE provider = 'xai' AND model = 'grok-4.6';
 
 UPDATE model_prices
    SET long_context_threshold_tokens = 200000,
