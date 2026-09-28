@@ -208,6 +208,19 @@ export async function createPaddleCheckoutTransaction(params: {
   return res.data
 }
 
+/**
+ * Cancel a checkout transaction that was never paid, so its link stops
+ * working. Paddle only allows this for `draft` and `ready` transactions, so a
+ * transaction paid in the meantime answers 4xx. Throws PaddleApiError like
+ * every other call here; the caller decides whether that is fatal.
+ */
+export async function cancelPaddleTransaction(transactionId: string): Promise<void> {
+  await paddleFetch<unknown>(`/transactions/${encodeURIComponent(transactionId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status: 'canceled' }),
+  })
+}
+
 // ── Signature verification (Edge-compatible, Web Crypto HMAC-SHA256) ──
 //
 // Paddle sends `Paddle-Signature: ts=<unix>;h1=<hex>` header on each webhook.
