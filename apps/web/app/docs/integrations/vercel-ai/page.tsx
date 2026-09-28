@@ -5,7 +5,7 @@ import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 export const metadata = {
   title: 'Vercel AI SDK integration · Spanlens Docs',
   description:
-    'Trace generateText, streamText, generateObject, and streamObject with Spanlens. Streaming calls close the span through AI SDK callbacks, awaited calls through tracker.end(), and every span carries the full multi-step token totals.',
+    'Trace generateText, streamText, generateObject, and streamObject with Spanlens. Every span records the full multi-step token totals and closes reliably.',
   alternates: { canonical: '/docs/integrations/vercel-ai' },
   openGraph: openGraphFor('/docs/integrations/vercel-ai'),
 }
