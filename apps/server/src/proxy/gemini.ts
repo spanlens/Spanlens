@@ -121,13 +121,18 @@ geminiProxy.all('/*', async (c) => {
     })
   }
 
-  const { upstreamRes, latencyMs, proxyOverheadMs } = await fetchUpstreamWithTimeout({
+  const { upstreamRes, latencyMs, proxyOverheadMs, readBodyText } = await fetchUpstreamWithTimeout({
     url: upstreamUrlObj.toString(),
     method: c.req.method,
     headers,
     body: chooseFetchBody(c, parsed, false),
     provider: 'gemini',
     requestStartMs,
+    failureLog: {
+      c, organizationId, projectId, apiKeyId, providerKey,
+      reqBodyJson: parsed.reqBodyJson, requestFlags,
+      model: modelMatch?.[1] ?? '',
+    },
   })
 
   const logBase = buildLogBase({
@@ -237,7 +242,7 @@ geminiProxy.all('/*', async (c) => {
   }
 
   // ── Non-streaming path ────────────────────────────────────────────────────
-  const resBodyText = await upstreamRes.text()
+  const resBodyText = await readBodyText()
   let resBodyJson: unknown = null
   try { resBodyJson = JSON.parse(resBodyText) } catch { /* non-JSON response */ }
 

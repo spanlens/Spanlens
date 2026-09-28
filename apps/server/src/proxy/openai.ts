@@ -114,13 +114,19 @@ openaiProxy.all('/*', async (c) => {
     'Content-Type': 'application/json',
   })
 
-  const { upstreamRes, latencyMs, proxyOverheadMs } = await fetchUpstreamWithTimeout({
+  const model = (parsed.reqBodyJson?.model as string | undefined) ?? ''
+
+  const { upstreamRes, latencyMs, proxyOverheadMs, readBodyText } = await fetchUpstreamWithTimeout({
     url: upstreamUrl,
     method: c.req.method,
     headers,
     body: chooseFetchBody(c, parsed, true),
     provider: 'openai',
     requestStartMs,
+    failureLog: {
+      c, organizationId, projectId, apiKeyId, providerKey,
+      reqBodyJson: parsed.reqBodyJson, requestFlags, model,
+    },
   })
 
   const logBase = buildLogBase({
@@ -132,8 +138,6 @@ openaiProxy.all('/*', async (c) => {
     latencyMs, proxyOverheadMs,
     statusCode: upstreamRes.status,
   })
-
-  const model = (parsed.reqBodyJson?.model as string | undefined) ?? ''
 
   // ── Streaming path ────────────────────────────────────────────────────────
   if (parsed.isStreaming && upstreamRes.body) {
@@ -148,7 +152,7 @@ openaiProxy.all('/*', async (c) => {
 
   // ── Non-streaming path ────────────────────────────────────────────────────
   const downstreamHeaders = buildDownstreamHeaders(upstreamRes.headers)
-  const resBodyText = await upstreamRes.text()
+  const resBodyText = await readBodyText()
   let resBodyJson: unknown = null
   try { resBodyJson = JSON.parse(resBodyText) } catch { /* non-JSON response */ }
 

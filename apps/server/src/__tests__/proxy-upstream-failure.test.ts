@@ -1,7 +1,15 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import type { Context, MiddlewareHandler, Next } from 'hono'
-import { proxyState, resetProxyMocks } from './helpers/proxy-mocks.js'
+import { drainPendingTasks, proxyState, resetProxyMocks } from './helpers/proxy-mocks.js'
 import { installOnError } from './helpers/install-on-error.js'
+
+// Read by upstream-fetch.ts at module load (first dynamic import in
+// buildApp), so a body that stalls fails the test in milliseconds instead of
+// after the 290s default.
+const BODY_DEADLINE_MS = vi.hoisted(() => {
+  process.env['UPSTREAM_BODY_DEADLINE_MS'] = '150'
+  return 150
+})
 
 /**
  * Transport failures between the proxy and a provider, across all ten
@@ -211,5 +219,112 @@ for (const pc of CASES) {
       expect(row['truncated']).toBe(true)
       expect(row['errorMessage']).toBe('Upstream stream interrupted before completion (UND_ERR_SOCKET)')
     })
+
+    test('a network failure before any response is a 502 with a failed-request row (C8.2)', async () => {
+      vi.spyOn(globalThis, 'fetch').mockRejectedValue(
+        new TypeError('fetch failed', {
+          cause: Object.assign(new Error('connect ECONNREFUSED 10.0.0.1:443'), { code: 'ECONNREFUSED' }),
+        }),
+      )
+      const app = await buildApp()
+
+      const res = await sendNonStreaming(app, pc)
+      await drainPendingTasks()
+
+      expect(res.status).toBe(502)
+      expect(((await res.json()) as { error: { code: string } }).error.code).toBe('UPSTREAM_FAILED')
+      expectFailedRow(pc, 502, 'Upstream request failed before a response (ECONNREFUSED)')
+    })
+
+    test('no response headers within the timeout is a 504 with a failed-request row (C8.2)', async () => {
+      vi.spyOn(globalThis, 'fetch').mockRejectedValue(
+        new DOMException('This operation was aborted', 'AbortError'),
+      )
+      const app = await buildApp()
+
+      const res = await sendNonStreaming(app, pc)
+      await drainPendingTasks()
+
+      expect(res.status).toBe(504)
+      expect(((await res.json()) as { error: { code: string } }).error.code).toBe('UPSTREAM_TIMEOUT')
+      expectFailedRow(pc, 504, /^Upstream did not return response headers within \d+ms$/)
+    })
+
+    test('a non-streaming body that stalls after the headers is cut at the deadline: 504 + row (C9.2)', async () => {
+      const encoder = new TextEncoder()
+      vi.spyOn(globalThis, 'fetch').mockImplementation(async () => {
+        const body = new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(encoder.encode('{"partial":'))
+            // ...and nothing more: a half-open connection.
+          },
+        })
+        return new Response(body, { status: 200, headers: { 'content-type': 'application/json' } })
+      })
+      const app = await buildApp()
+
+      const startedAt = Date.now()
+      const res = await sendNonStreaming(app, pc)
+      await drainPendingTasks()
+
+      expect(res.status).toBe(504)
+      expect(Date.now() - startedAt).toBeLessThan(BODY_DEADLINE_MS + 1000)
+      expectFailedRow(
+        pc,
+        504,
+        `Upstream response body did not finish within ${BODY_DEADLINE_MS}ms of the request`,
+      )
+    })
+
+    test('a connection dropped while reading a non-streaming body is a 502 with a row (C8.2)', async () => {
+      const encoder = new TextEncoder()
+      vi.spyOn(globalThis, 'fetch').mockImplementation(async () => {
+        const body = new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(encoder.encode('{"partial":'))
+            setTimeout(() => controller.error(socketReset()), 5)
+          },
+        })
+        return new Response(body, { status: 200, headers: { 'content-type': 'application/json' } })
+      })
+      const app = await buildApp()
+
+      const res = await sendNonStreaming(app, pc)
+      await drainPendingTasks()
+
+      expect(res.status).toBe(502)
+      expectFailedRow(pc, 502, 'Upstream connection dropped while reading the response body (UND_ERR_SOCKET)')
+    })
   })
+}
+
+type TestApp = Awaited<ReturnType<typeof buildApp>>
+
+async function sendNonStreaming(app: TestApp, pc: ProviderCase): Promise<Response> {
+  return app.request(pc.path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(pc.body),
+  })
+}
+
+/** The one row a transport failure must leave behind. */
+function expectFailedRow(pc: ProviderCase, statusCode: number, message: string | RegExp): void {
+  expect(proxyState.loggerCalls).toHaveLength(1)
+  const row = proxyState.loggerCalls[0]!
+  expect(row['provider']).toBe(pc.slug)
+  expect(row['organizationId']).toBe(proxyState.organizationId)
+  expect(row['projectId']).toBe(proxyState.projectId)
+  expect(row['providerKeyId']).toBe(proxyState.providerKeyId)
+  expect(row['model']).toBe(pc.model)
+  expect(row['statusCode']).toBe(statusCode)
+  // Nothing came back to bill: cost is unknown, not $0.
+  expect(row['costUsd']).toBeNull()
+  expect(row['promptTokens']).toBe(0)
+  expect(row['completionTokens']).toBe(0)
+  expect(row['responseBody']).toBeNull()
+  expect(typeof row['latencyMs']).toBe('number')
+  expect(typeof row['proxyOverheadMs']).toBe('number')
+  if (typeof message === 'string') expect(row['errorMessage']).toBe(message)
+  else expect(row['errorMessage']).toMatch(message)
 }

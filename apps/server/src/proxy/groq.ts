@@ -65,13 +65,19 @@ groqProxy.all('/*', async (c) => {
     'Content-Type': 'application/json',
   })
 
-  const { upstreamRes, latencyMs, proxyOverheadMs } = await fetchUpstreamWithTimeout({
+  const model = (parsed.reqBodyJson?.['model'] as string | undefined) ?? ''
+
+  const { upstreamRes, latencyMs, proxyOverheadMs, readBodyText } = await fetchUpstreamWithTimeout({
     url: upstreamUrl,
     method: c.req.method,
     headers,
     body: chooseFetchBody(c, parsed, true),
     provider: 'groq',
     requestStartMs,
+    failureLog: {
+      c, organizationId, projectId, apiKeyId, providerKey,
+      reqBodyJson: parsed.reqBodyJson, requestFlags, model,
+    },
   })
 
   const logBase = buildLogBase({
@@ -84,8 +90,6 @@ groqProxy.all('/*', async (c) => {
     statusCode: upstreamRes.status,
   })
 
-  const model = (parsed.reqBodyJson?.['model'] as string | undefined) ?? ''
-
   // ── Streaming path ────────────────────────────────────────────────────────
   if (parsed.isStreaming && upstreamRes.body) {
     return runLineBufferedStreamPump({
@@ -97,7 +101,7 @@ groqProxy.all('/*', async (c) => {
 
   // ── Non-streaming path ────────────────────────────────────────────────────
   const downstreamHeaders = buildDownstreamHeaders(upstreamRes.headers)
-  const resBodyText = await upstreamRes.text()
+  const resBodyText = await readBodyText()
   let resBodyJson: unknown = null
   try { resBodyJson = JSON.parse(resBodyText) } catch { /* non-JSON response */ }
 
