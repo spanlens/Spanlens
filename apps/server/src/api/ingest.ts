@@ -6,6 +6,8 @@ import { fireAndForget } from '../lib/wait-until.js'
 import { emitWebhookEvent } from '../lib/webhook-emit.js'
 import { ApiError } from '../lib/errors.js'
 import { validateOptionalDate, validateOptionalUuid } from '../lib/params.js'
+import { sanitizeJsonForStorage } from '../lib/body-retention.js'
+import { maskApiKeys } from '../lib/pii-mask.js'
 
 /**
  * SDK용 ingestion 라우터 — authApiKey 미들웨어로 SHA-256 해시 API 키 검증.
@@ -296,7 +298,9 @@ ingestRouter.post('/traces/:id/spans', async (c) => {
     const startedAt = validateOptionalDate(body.started_at, 'started_at')
     if (startedAt) insert.started_at = startedAt
   }
-  if (body.input !== undefined) insert.input = body.input
+  // Same masking + inline cap the proxy applies to request bodies: an SDK
+  // span can carry a pasted key or a multi-MB prompt just as easily.
+  if (body.input !== undefined) insert.input = sanitizeJsonForStorage(body.input)
   if (body.metadata && typeof body.metadata === 'object') {
     insert.metadata = body.metadata as Record<string, unknown>
   }
@@ -377,10 +381,11 @@ ingestRouter.patch('/spans/:id', async (c) => {
     if (endedAt) updates['ended_at'] = endedAt
   }
   if (body.output !== undefined) {
-    updates['output'] = body.output
+    updates['output'] = sanitizeJsonForStorage(body.output)
   }
   if (typeof body.error_message === 'string') {
-    updates['error_message'] = body.error_message
+    // Provider 401s echo the key they rejected; mask it like requests.error_message.
+    updates['error_message'] = maskApiKeys(body.error_message)
   }
   if (body.metadata && typeof body.metadata === 'object') {
     updates['metadata'] = body.metadata
