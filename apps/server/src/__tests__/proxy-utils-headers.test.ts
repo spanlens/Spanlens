@@ -104,6 +104,23 @@ describe('buildUpstreamHeaders — sensitive header stripping', () => {
     expect(out.get('content-type')).toBe('application/json')
   })
 
+  test('strips x-trace-id / x-span-id (tracing metadata follows the x-spanlens-* policy)', () => {
+    // The SDK attaches these two to every proxied call made inside a trace.
+    // They carry no x-spanlens- prefix, so the prefix rule alone let them
+    // through to OpenAI/Anthropic/Google. CLAUDE.md puts them under the same
+    // "never forward upstream" rule; the log row reads them from the incoming
+    // request (proxy/shared/log-base.ts), so stripping them loses nothing.
+    const incoming = headersFromObject({
+      'x-trace-id': '11111111-1111-4111-8111-111111111111',
+      'X-Span-Id': '22222222-2222-4222-8222-222222222222',
+      'Content-Type': 'application/json',
+    })
+    const out = buildUpstreamHeaders(incoming, {})
+    expect(out.get('x-trace-id')).toBeNull()
+    expect(out.get('x-span-id')).toBeNull()
+    expect(out.get('content-type')).toBe('application/json')
+  })
+
   test('passes through innocuous headers untouched (user-agent, accept, custom non-spanlens)', () => {
     const incoming = headersFromObject({
       'user-agent': 'spanlens-sdk/0.6.1',

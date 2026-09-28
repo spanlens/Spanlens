@@ -323,6 +323,11 @@ describe('openai proxy — logging + cost calculation', () => {
     expect(row['spanId']).toBe(spanId)
     expect(row['userId']).toBe('usr_end_customer')
     expect(row['sessionId']).toBe('sess_abc')
+    // The row reads them from the incoming request, so stripping them from
+    // the upstream call (CLAUDE.md header policy) costs the log nothing.
+    const sent = proxyState.fetchCalls[0]!
+    expect(sent.headers.get('x-trace-id')).toBeNull()
+    expect(sent.headers.get('x-span-id')).toBeNull()
   })
 
   test('non-UUID trace/span ids are nulled so the Nullable(UUID) insert never drops the row', async () => {
