@@ -36,8 +36,9 @@ export interface SpanlensLangChainOptions {
   /**
    * Optional pre-existing trace to attach all spans to. When provided,
    * `trace.end()` is NOT called — the caller owns the lifecycle.
-   * When omitted, a trace is created on the first start-event and closed
-   * when the matching root-level run ends (or on `flush()`).
+   * When omitted, every top-level run gets a trace of its own, opened when
+   * the run starts and closed (with that run's status) when it ends, so
+   * overlapping invocations on one shared handler never mix.
    */
   trace?: TraceHandle
   /** Name for auto-created traces. Default: 'langchain_run'. */
@@ -49,9 +50,10 @@ export interface SpanlensLangChainOptions {
   /** Capture retriever spans. Default: true. */
   captureRetrieval?: boolean
   /**
-   * Max bytes to keep in `span.input`. Anything larger is replaced with a
-   * `{ __truncated: true, preview, originalBytes }` marker so the dashboard
-   * still shows something useful. Default 16,384 (16 KB).
+   * Max UTF-8 bytes of JSON to keep in `span.input`. Anything larger is
+   * replaced with a `{ __truncated: true, preview, originalBytes }` marker
+   * (preview capped at the same byte count, never cut mid-character) so the
+   * dashboard still shows something useful. Default 16,384 (16 KB).
    */
   maxInputBytes?: number
   /** Same as `maxInputBytes` but for `span.output`. Default 16,384. */
@@ -97,10 +99,17 @@ function parseLangChainResult(result: LangChainLLMResult): EndSpanOptions {
   return out
 }
 
+const utf8Encoder = new TextEncoder()
+const utf8Decoder = new TextDecoder()
+
 /**
- * JSON-encode and truncate at `maxBytes`. Returns the original value when it
- * fits (so the dashboard receives structured JSON), or a truncation marker
- * object otherwise.
+ * JSON-encode and truncate at `maxBytes` UTF-8 bytes. Returns the original
+ * value when it fits (so the dashboard receives structured JSON), or a
+ * truncation marker object otherwise.
+ *
+ * Sizes are UTF-8 bytes, not string `.length` (UTF-16 code units), which
+ * undercounted CJK text about 3x and emoji about 2x. The preview is cut on a
+ * character boundary, so it never ends in half a surrogate pair.
  *
  * Non-serializable values (functions, circular refs) fall back to a string
  * representation rather than throwing — span ingest must never crash the
@@ -108,18 +117,30 @@ function parseLangChainResult(result: LangChainLLMResult): EndSpanOptions {
  */
 function truncate(value: unknown, maxBytes: number): unknown {
   if (value == null) return value
-  let json: string
-  try {
-    json = JSON.stringify(value)
-  } catch {
-    json = String(value)
-  }
-  if (json.length <= maxBytes) return value
+  const bytes = utf8Encoder.encode(toJson(value))
+  if (bytes.length <= maxBytes) return value
   return {
     __truncated: true,
-    preview: json.slice(0, maxBytes),
-    originalBytes: json.length,
+    preview: utf8Prefix(bytes, maxBytes),
+    originalBytes: bytes.length,
   }
+}
+
+function toJson(value: unknown): string {
+  try {
+    // JSON.stringify returns undefined (not a string) for functions/symbols.
+    return JSON.stringify(value) ?? String(value)
+  } catch {
+    return String(value)
+  }
+}
+
+/** Longest prefix of `bytes` that is at most `maxBytes` long and ends on a character boundary. */
+function utf8Prefix(bytes: Uint8Array, maxBytes: number): string {
+  let end = Math.max(0, Math.min(maxBytes, bytes.length))
+  // UTF-8 continuation bytes look like 0b10xxxxxx; back up to a lead byte.
+  while (end > 0 && ((bytes[end] ?? 0) & 0xc0) === 0x80) end--
+  return utf8Decoder.decode(bytes.subarray(0, end))
 }
 
 /**
@@ -133,9 +154,11 @@ function shortName(s: LangChainSerialized | undefined, fallback: string): string
 }
 
 interface RunRecord {
-  span: SpanHandle
-  /** Was this run the one that created the (local) trace? Only that one ends it. */
-  rootOfLocalTrace: boolean
+  readonly span: SpanHandle
+  /** Trace this run's span lives in: its root's trace, or the caller's. */
+  readonly trace: TraceHandle
+  /** True only for a root run whose trace this handler opened; it closes it. */
+  readonly ownsTrace: boolean
 }
 
 /**
@@ -144,8 +167,8 @@ interface RunRecord {
  *
  * Pass the returned object to the `callbacks` option of any LangChain chain,
  * LLM, agent, or LangGraph compiled graph. Concurrent runs are tracked by
- * LangChain's per-run UUIDs, so a single handler instance is safe to share
- * across parallel invocations.
+ * LangChain's per-run UUIDs and every top-level run gets its own trace, so a
+ * single handler instance is safe to share across parallel invocations.
  */
 export function createSpanlensCallbackHandler(
   options: SpanlensLangChainOptions,
@@ -161,17 +184,12 @@ export function createSpanlensCallbackHandler(
   const runs = new Map<string, RunRecord>()
   const externalTrace = options.trace ?? null
 
-  /** Lazy trace state — created on first start event when no trace was supplied. */
-  let localTrace: TraceHandle | null = null
-
-  function getTrace(): TraceHandle {
-    if (externalTrace) return externalTrace
-    if (localTrace) return localTrace
-    localTrace = client.startTrace({ name: traceName })
-    return localTrace
-  }
-
-  /** Attach a new span under the right parent (existing run or root trace). */
+  /**
+   * Record a run's span. A run whose parent is being tracked nests under it
+   * (same trace). Anything else is a root: it attaches to the caller's trace,
+   * or opens a trace of its own that it alone will close. Per-root traces are
+   * what keep overlapping invocations on a shared handler apart.
+   */
   function startSpan(
     runId: string,
     parentRunId: string | undefined,
@@ -182,21 +200,23 @@ export function createSpanlensCallbackHandler(
       return
     }
     const parentRecord = parentRunId ? runs.get(parentRunId) : undefined
-    const wasRootBefore = externalTrace === null && localTrace === null
-    const trace = getTrace()
-    const isRoot = parentRecord === undefined
-    // Top-level span uses `trace.span()`; nested uses `parent.span.child()`.
-    const span: SpanHandle = isRoot
-      ? trace.span(spanOpts)
-      : parentRecord!.span.child(spanOpts)
+    if (parentRecord) {
+      runs.set(runId, {
+        span: parentRecord.span.child(spanOpts),
+        trace: parentRecord.trace,
+        ownsTrace: false,
+      })
+      return
+    }
+    const trace = externalTrace ?? client.startTrace({ name: traceName })
     runs.set(runId, {
-      span,
-      // Mark only the very first run as the owner of the local trace lifecycle.
-      rootOfLocalTrace: isRoot && wasRootBefore && externalTrace === null,
+      span: trace.span(spanOpts),
+      trace,
+      ownsTrace: externalTrace === null,
     })
   }
 
-  /** End a span by runId and optionally close the local trace. */
+  /** End a span by runId; a root that opened its trace also closes it with its own status. */
   async function endSpan(
     runId: string,
     end: EndSpanOptions,
@@ -204,14 +224,13 @@ export function createSpanlensCallbackHandler(
     const record = runs.get(runId)
     if (!record) return
     runs.delete(runId)
-    await record.span.end(end)
-    if (record.rootOfLocalTrace) {
-      await getTrace().end({
-        status: end.status === 'error' ? 'error' : 'completed',
-      })
-      // Reset so subsequent runs get a fresh trace.
-      localTrace = null
-    }
+    // Both ends are scheduled right away (ended_at stamped now); a sampled-out
+    // error trace still waits for the span end before replaying.
+    const spanEnded = record.span.end(end)
+    const traceEnded = record.ownsTrace
+      ? record.trace.end({ status: end.status === 'error' ? 'error' : 'completed' })
+      : Promise.resolve()
+    await Promise.all([spanEnded, traceEnded])
   }
 
   function buildSpanOptions(

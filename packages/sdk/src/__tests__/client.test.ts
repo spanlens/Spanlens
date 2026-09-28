@@ -190,7 +190,10 @@ describe('SpanlensClient', () => {
 
 describe('observe()', () => {
   beforeEach(() => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('{}', { status: 200 })))
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(() => Promise.resolve(new Response('{}', { status: 200 }))),
+    )
   })
 
   afterEach(() => {
@@ -217,6 +220,8 @@ describe('observe()', () => {
         throw new Error('boom')
       }),
     ).rejects.toThrow('boom')
+    // observe() rethrows without waiting for the end PATCH; flush drains it.
+    await client.flush()
 
     // Check that a PATCH with status:error was sent
     const fetchMock = globalThis.fetch as unknown as ReturnType<typeof vi.fn>

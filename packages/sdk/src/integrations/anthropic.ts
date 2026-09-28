@@ -9,6 +9,7 @@
 
 import Anthropic from '@anthropic-ai/sdk'
 import type { ClientOptions } from '@anthropic-ai/sdk'
+import { readEnv, resolveProxyBaseUrl } from '../env.js'
 
 // X-Spanlens-* request-header helpers. Canonical implementations live in
 // ./_headers.ts — re-exported here so `@spanlens/sdk/anthropic` keeps its
@@ -29,6 +30,10 @@ export {
   cacheHeaderValue,
 } from './_headers.js'
 
+/**
+ * Hosted Spanlens proxy URL. Self-hosted deployments set `SPANLENS_BASE_URL`
+ * (the server origin) or pass `baseURL`.
+ */
 export const DEFAULT_SPANLENS_ANTHROPIC_PROXY =
   'https://api.spanlens.io/proxy/anthropic'
 
@@ -45,13 +50,6 @@ export function createAnthropic(options: ClientOptions = {}): Anthropic {
   return new Anthropic({
     ...options,
     apiKey,
-    baseURL: options.baseURL ?? DEFAULT_SPANLENS_ANTHROPIC_PROXY,
+    baseURL: options.baseURL ?? resolveProxyBaseUrl(DEFAULT_SPANLENS_ANTHROPIC_PROXY),
   })
-}
-
-function readEnv(name: string): string | undefined {
-  if (typeof process !== 'undefined' && process.env) {
-    return process.env[name]
-  }
-  return undefined
 }

@@ -30,7 +30,10 @@ export interface SpanlensConfig {
    * at construction if one is configured.
    */
   apiKey: string
-  /** API base URL — default https://api.spanlens.io. */
+  /**
+   * API base URL. Defaults to `SPANLENS_BASE_URL` (a self-hosted server
+   * origin) when set, otherwise https://api.spanlens.io.
+   */
   baseUrl?: string
   /**
    * Request timeout in ms for ingest calls. Default 3000ms.

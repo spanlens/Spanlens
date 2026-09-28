@@ -18,9 +18,9 @@
  *   }
  */
 
+import { resolveApiBaseUrl } from './env.js'
 import { SpanlensApiError } from './transport.js'
 
-const DEFAULT_BASE_URL = 'https://api.spanlens.io'
 const DEFAULT_POLL_INTERVAL_MS = 2000
 const DEFAULT_TIMEOUT_MS = 300_000
 
@@ -131,13 +131,25 @@ export interface RunEvalOptions {
   wait?: boolean
   /** Poll cadence in ms. Default 2000. */
   pollIntervalMs?: number
-  /** Give up after this many ms of polling. Default 300000 (5 min). */
+  /**
+   * Give up after this many ms, measured from the call to `run()`. The
+   * deadline covers everything: the trigger POST, every poll request and its
+   * response body, and the waits between polls. On expiry `run()` rejects
+   * with a "did not finish within" error. Default 300000 (5 min).
+   */
   timeoutMs?: number
 }
 
 interface EvalsApiConfig {
   apiKey: string
   baseUrl: string
+}
+
+/** Bounds one request by an absolute deadline shared across a whole run(). */
+interface RequestLimit {
+  readonly deadline: number
+  /** The error to throw when the deadline passes during this request. */
+  readonly timeoutError: () => Error
 }
 
 function sleep(ms: number): Promise<void> {
@@ -160,40 +172,63 @@ export class EvalsApi {
    *
    * Throws SpanlensApiError on a 4xx (e.g. a public key hitting this
    * write route → PUBLIC_KEY_WRITE_FORBIDDEN), and a plain Error on a
-   * server error, network failure, or wait timeout.
+   * server error, network failure, or timeout (`timeoutMs` bounds the whole
+   * call, including stalled requests).
    */
   async run(input: RunEvalInput, options: RunEvalOptions = {}): Promise<EvalRun> {
-    const created = await this.request<EvalRun>('POST', '/api/v1/eval-runs', {
-      evaluatorId: input.evaluatorId,
-      promptVersionId: input.promptVersionId,
-      source: input.source ?? 'production',
-      datasetId: input.datasetId,
-      sampleSize: input.sampleSize ?? 50,
-      sampleFrom: input.sampleFrom,
-      sampleTo: input.sampleTo,
-      sampleStrategy: input.sampleStrategy,
-      generationTemperature: input.generationTemperature,
-      runProvider: input.runProvider,
-      runModel: input.runModel,
-      mode: input.mode,
-      promptVersionBId: input.promptVersionBId,
-    })
-
-    if (options.wait === false) return created
-
     const pollIntervalMs = options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS
     const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS
     const deadline = Date.now() + timeoutMs
+    const runTimeout = (run: EvalRun) => (): Error =>
+      new Error(
+        `[spanlens] eval run ${run.id} did not finish within ${timeoutMs}ms (last status: ${run.status})`,
+      )
+
+    const created = await this.request<EvalRun>(
+      'POST',
+      '/api/v1/eval-runs',
+      {
+        evaluatorId: input.evaluatorId,
+        promptVersionId: input.promptVersionId,
+        source: input.source ?? 'production',
+        datasetId: input.datasetId,
+        sampleSize: input.sampleSize ?? 50,
+        sampleFrom: input.sampleFrom,
+        sampleTo: input.sampleTo,
+        sampleStrategy: input.sampleStrategy,
+        generationTemperature: input.generationTemperature,
+        runProvider: input.runProvider,
+        runModel: input.runModel,
+        mode: input.mode,
+        promptVersionBId: input.promptVersionBId,
+      },
+      {
+        deadline,
+        timeoutError: () =>
+          new Error(
+            `[spanlens] eval run request did not finish within ${timeoutMs}ms (POST /api/v1/eval-runs)`,
+          ),
+      },
+    )
+
+    if (options.wait === false) return created
 
     let run = created
     while (run.status === 'pending' || run.status === 'running') {
-      if (Date.now() > deadline) {
-        throw new Error(
-          `[spanlens] eval run ${run.id} did not finish within ${timeoutMs}ms (last status: ${run.status})`,
-        )
+      const remaining = deadline - Date.now()
+      if (remaining <= 0) throw runTimeout(run)()
+      if (pollIntervalMs >= remaining) {
+        // The next poll could not start before the deadline.
+        await sleep(remaining)
+        throw runTimeout(run)()
       }
       await sleep(pollIntervalMs)
-      run = await this.getRun(run.id)
+      run = await this.request<EvalRun>(
+        'GET',
+        `/api/v1/eval-runs/${encodeURIComponent(run.id)}`,
+        undefined,
+        { deadline, timeoutError: runTimeout(run) },
+      )
     }
     return run
   }
@@ -231,7 +266,38 @@ export class EvalsApi {
     )
   }
 
-  private async request<T>(method: 'GET' | 'POST', path: string, body?: unknown): Promise<T> {
+  /**
+   * With a `limit`, the request is aborted when the deadline passes, whether
+   * it is waiting for headers or still reading the body, and the limit's
+   * timeout error is thrown instead of a generic abort/network error.
+   */
+  private async request<T>(
+    method: 'GET' | 'POST',
+    path: string,
+    body?: unknown,
+    limit?: RequestLimit,
+  ): Promise<T> {
+    if (!limit) return this.send<T>(method, path, body, undefined)
+    const remaining = limit.deadline - Date.now()
+    if (remaining <= 0) throw limit.timeoutError()
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), remaining)
+    try {
+      return await this.send<T>(method, path, body, controller.signal)
+    } catch (err) {
+      if (controller.signal.aborted) throw limit.timeoutError()
+      throw err
+    } finally {
+      clearTimeout(timer)
+    }
+  }
+
+  private async send<T>(
+    method: 'GET' | 'POST',
+    path: string,
+    body: unknown,
+    signal: AbortSignal | undefined,
+  ): Promise<T> {
     const res = await fetch(`${this.baseUrl}${path}`, {
       method,
       headers: {
@@ -239,6 +305,7 @@ export class EvalsApi {
         Authorization: `Bearer ${this.apiKey}`,
       },
       ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+      ...(signal ? { signal } : {}),
     })
 
     const text = await res.text().catch(() => '')
@@ -285,8 +352,9 @@ function parseApiError(text: string, status: number): SpanlensApiError | null {
   })
 }
 
+/** `baseUrl` falls back to `SPANLENS_BASE_URL`, then the hosted API. */
 export function createEvalsApi(config: { apiKey: string; baseUrl?: string }): EvalsApi {
-  return new EvalsApi({ apiKey: config.apiKey, baseUrl: config.baseUrl ?? DEFAULT_BASE_URL })
+  return new EvalsApi({ apiKey: config.apiKey, baseUrl: resolveApiBaseUrl(config.baseUrl) })
 }
 
 /** The 95% confidence interval for a run's mean score (P1-7). */

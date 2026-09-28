@@ -105,18 +105,32 @@ Already using an orchestration framework? Plug Spanlens in as a callback. No cod
 import { SpanlensClient } from '@spanlens/sdk'
 import { createSpanlensTracker } from '@spanlens/sdk/vercel-ai'
 
-const tracker = createSpanlensTracker({
-  client: new SpanlensClient({ apiKey: process.env.SPANLENS_API_KEY! }),
-  modelName: 'gpt-4o',
-})
+const client = new SpanlensClient({ apiKey: process.env.SPANLENS_API_KEY! })
 
-await generateText({
+// generateText / generateObject have no onFinish, so pass the awaited result to end()
+const tracker = createSpanlensTracker({ client, modelName: 'gpt-4o' })
+const result = await generateText({
   model: openai('gpt-4o'),
   messages,
   onStepFinish: tracker.onStepFinish,
-  onFinish: tracker.onFinish,
+}).catch(async (err) => {
+  await tracker.onError(err)   // ends the span as an error
+  throw err
+})
+await tracker.end(result)      // records the run's total usage
+
+// streamText / streamObject close the span from their callbacks
+const streamTracker = createSpanlensTracker({ client, modelName: 'gpt-4o' })
+const stream = streamText({
+  model: openai('gpt-4o'),
+  messages,
+  onStepFinish: streamTracker.onStepFinish,
+  onFinish: streamTracker.onFinish,
+  onError: streamTracker.onError,
 })
 ```
+
+The tracker never waits on Spanlens, because each update is sent in the background. In a serverless handler, `await client.flush()` before returning so nothing is lost when the function freezes.
 
 **LangChain JS / LangGraph**
 
