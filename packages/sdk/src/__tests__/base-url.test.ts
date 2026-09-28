@@ -51,6 +51,14 @@ describe('proxy factories honour SPANLENS_BASE_URL', () => {
     expect(createOpenRouter({ apiKey: 'k' }).baseURL).toBe(`${SELF_HOST}/proxy/openrouter/v1`)
   })
 
+  it('strips any run of trailing slashes and keeps inner ones', () => {
+    process.env['SPANLENS_BASE_URL'] = `${SELF_HOST}${'/'.repeat(1000)}`
+    expect(resolveApiBaseUrl()).toBe(SELF_HOST)
+
+    process.env['SPANLENS_BASE_URL'] = `${'/'.repeat(1000)}x${'/'.repeat(3)}`
+    expect(resolveApiBaseUrl()).toBe(`${'/'.repeat(1000)}x`)
+  })
+
   it('routes Anthropic to the self-hosted origin', () => {
     process.env['SPANLENS_BASE_URL'] = SELF_HOST
     expect(createAnthropic({ apiKey: 'k' }).baseURL).toBe(`${SELF_HOST}/proxy/anthropic`)
