@@ -34,6 +34,79 @@ function tsBound(iso: string | null | undefined): string | null {
 /** Shape node-postgres returns: every column is a string, number, or null. */
 type PgRow = Record<string, string | number | null>
 
+// ─── Table filters ──────────────────────────────────────────────────────────
+//
+// The /requests page shows a KPI strip and a traffic chart above a filtered
+// table. The strip and chart read overview/timeseries/breakdown below, so
+// those three accept the same filters the list API does, with the same
+// semantics. Keep this in step with the WHERE assembly in api/requests.ts:
+// if the two disagree, the headline numbers describe rows the table does not
+// show, which is the defect this exists to prevent.
+
+/** Status buckets. `success` and `error` are the list API's friendly synonyms. */
+export type RequestStatusFilter = 'ok' | 'success' | '4xx' | '5xx' | 'error'
+
+export interface RequestFilters {
+  provider?: string | undefined
+  /** Case-insensitive literal substring, like the list API's model search. */
+  model?: string | undefined
+  providerKeyId?: string | undefined
+  promptVersionId?: string | undefined
+  userId?: string | undefined
+  sessionId?: string | undefined
+  status?: RequestStatusFilter | undefined
+  truncated?: boolean | undefined
+}
+
+export interface FilterClauses {
+  readonly clauses: readonly string[]
+  readonly params: Readonly<Record<string, unknown>>
+}
+
+const NO_CLAUSES: FilterClauses = { clauses: [], params: {} }
+
+const STATUS_CLAUSE: Record<RequestStatusFilter, string> = {
+  ok: 'status_code < 400',
+  success: 'status_code < 400',
+  '4xx': 'status_code >= 400 AND status_code < 500',
+  '5xx': 'status_code >= 500',
+  error: 'status_code >= 400',
+}
+
+/** One bound predicate, or nothing when the value is blank. */
+function boundClause(value: string | undefined, name: string, sql: string): FilterClauses {
+  const trimmed = value?.trim()
+  return trimmed ? { clauses: [sql], params: { [name]: trimmed } } : NO_CLAUSES
+}
+
+/**
+ * WHERE fragments + bound params for the /requests table filters. Values are
+ * always bound as `{name}` placeholders, never interpolated. The model match
+ * is a literal substring (`position(...)`), not ILIKE, so `%` and `_` in a
+ * model name are not wildcards (gotcha #20).
+ */
+export function requestFilterClauses(filters: RequestFilters = {}): FilterClauses {
+  const parts: FilterClauses[] = [
+    boundClause(filters.provider, 'provider', 'provider = {provider}'),
+    boundClause(filters.model, 'model', 'position(lower({model}) in lower(model)) > 0'),
+    boundClause(filters.providerKeyId, 'providerKeyId', 'provider_key_id = {providerKeyId}'),
+    boundClause(filters.promptVersionId, 'promptVersionId', 'prompt_version_id = {promptVersionId}'),
+    boundClause(filters.userId, 'userId', 'user_id = {userId}'),
+    boundClause(filters.sessionId, 'sessionId', 'session_id = {sessionId}'),
+    filters.status ? { clauses: [STATUS_CLAUSE[filters.status]], params: {} } : NO_CLAUSES,
+    filters.truncated === undefined
+      ? NO_CLAUSES
+      : { clauses: [filters.truncated ? 'truncated = true' : 'truncated = false'], params: {} },
+  ]
+  return parts.reduce<FilterClauses>(
+    (acc, part) => ({
+      clauses: [...acc.clauses, ...part.clauses],
+      params: { ...acc.params, ...part.params },
+    }),
+    NO_CLAUSES,
+  )
+}
+
 // ─── Overview ───────────────────────────────────────────────────────────────
 
 export interface OverviewRow {
@@ -53,6 +126,8 @@ export interface OverviewOptions {
   from?: string | null | undefined
   /** ISO timestamp upper bound. Defaults to now. */
   to?: string | null | undefined
+  /** The /requests table filters. Omitted on the main dashboard. */
+  filters?: RequestFilters | undefined
 }
 
 export async function getStatsOverview(
@@ -60,8 +135,9 @@ export async function getStatsOverview(
   options: OverviewOptions = {},
 ): Promise<OverviewRow> {
   const scope = await requestsScope(organizationId)
-  const filters: string[] = []
-  const params: Record<string, unknown> = { ...scope.scopeParams }
+  const tableFilters = requestFilterClauses(options.filters)
+  const filters: string[] = [...tableFilters.clauses]
+  const params: Record<string, unknown> = { ...scope.scopeParams, ...tableFilters.params }
 
   if (options.projectId) {
     filters.push('project_id = {projectId}')
@@ -115,7 +191,8 @@ export interface ModelsRow {
   provider: string
   model: string
   requests: number
-  total_cost_usd: number
+  /** Null when no row in the group has a known price, which is not $0. */
+  total_cost_usd: number | null
   avg_latency_ms: number
   error_rate: number
 }
@@ -142,11 +219,13 @@ export async function getStatsModels(
     params['projectId'] = options.projectId
   }
   const where = [scope.whereScope, ...filters].join(' AND ')
-  // `sum(cost_usd)` is NULL for a group whose every row has a null cost, and
-  // `ORDER BY total_cost_usd DESC` sorts those first because Postgres treats
-  // NULL as larger than any value. Priced groups therefore rank below unpriced
-  // ones; the `?? 0` below only normalises what the caller reads, not the
-  // order. Add `NULLS LAST` if that ever needs to change.
+  // `sum(cost_usd)` is NULL for a group whose every row has a null cost.
+  // Postgres treats NULL as larger than any value, so a bare `DESC` would rank
+  // those unpriced groups first and push real spend out of the dashboard's
+  // top-six model table. `NULLS LAST` keeps priced groups on top, and the NULL
+  // itself is passed through rather than turned into 0: "no price on file" is
+  // a different fact from "cost nothing". Request count breaks ties so the
+  // unpriced tail has a stable order.
   const sql = `
     SELECT
       provider,
@@ -158,14 +237,14 @@ export async function getStatsModels(
     FROM requests
     WHERE ${where}
     GROUP BY provider, model
-    ORDER BY total_cost_usd DESC`
+    ORDER BY total_cost_usd DESC NULLS LAST, requests DESC`
 
   const rows = await pgQuery<PgRow>({ query: sql, params })
   return rows.map((r) => ({
     provider:       String(r['provider'] ?? ''),
     model:          String(r['model'] ?? ''),
     requests:       Number(r['requests'] ?? 0),
-    total_cost_usd: Number(r['total_cost_usd'] ?? 0),
+    total_cost_usd: r['total_cost_usd'] == null ? null : Number(r['total_cost_usd']),
     avg_latency_ms: Number(r['avg_latency_ms'] ?? 0),
     error_rate:     Number(r['error_rate'] ?? 0),
   }))
@@ -216,6 +295,8 @@ export interface TimeseriesOptions {
   to?: string | null | undefined
   /** 'hour' | 'day' — matches the Postgres date_trunc unit. */
   granularity?: 'hour' | 'day' | undefined
+  /** The /requests table filters. Omitted on the main dashboard. */
+  filters?: RequestFilters | undefined
 }
 
 /**
@@ -240,8 +321,9 @@ export async function getStatsTimeseries(
   const bucket = bucketExpr(granularity === 'hour' ? 'hour' : 'day')
 
   const scope = await requestsScope(organizationId)
-  const filters: string[] = []
-  const params: Record<string, unknown> = { ...scope.scopeParams }
+  const tableFilters = requestFilterClauses(options.filters)
+  const filters: string[] = [...tableFilters.clauses]
+  const params: Record<string, unknown> = { ...scope.scopeParams, ...tableFilters.params }
   if (options.projectId) {
     filters.push('project_id = {projectId}')
     params['projectId'] = options.projectId
@@ -315,8 +397,9 @@ export async function getTimeseriesBreakdown(
   const bucket = bucketExpr(granularity === 'hour' ? 'hour' : 'day')
 
   const scope = await requestsScope(organizationId)
-  const filters: string[] = []
-  const params: Record<string, unknown> = { ...scope.scopeParams }
+  const tableFilters = requestFilterClauses(options.filters)
+  const filters: string[] = [...tableFilters.clauses]
+  const params: Record<string, unknown> = { ...scope.scopeParams, ...tableFilters.params }
   if (options.projectId) {
     filters.push('project_id = {projectId}')
     params['projectId'] = options.projectId

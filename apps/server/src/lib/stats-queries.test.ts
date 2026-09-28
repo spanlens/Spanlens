@@ -32,7 +32,14 @@ vi.mock('./requests-query.js', () => ({
   })),
 }))
 
-import { getStatsOverview, getStatsModels, getUserAnalytics } from './stats-queries.js'
+import {
+  getStatsOverview,
+  getStatsModels,
+  getStatsTimeseries,
+  getTimeseriesBreakdown,
+  getUserAnalytics,
+  requestFilterClauses,
+} from './stats-queries.js'
 
 beforeEach(() => {
   pgRows = []
@@ -126,6 +133,115 @@ describe('getStatsModels', () => {
   it('returns [] for an empty result set', async () => {
     pgRows = []
     expect(await getStatsModels('org-1', { from: '2026-06-01T00:00:00.000Z' })).toEqual([])
+  })
+
+  it('ranks priced groups ahead of groups whose every row is unpriced', async () => {
+    // `sum(cost_usd)` is NULL when no row in the group has a price, and a bare
+    // `DESC` puts NULL first in Postgres. The dashboard's model table shows
+    // the first six rows as returned, so unpriced groups used to push real
+    // spend out of the table.
+    pgRows = []
+    await getStatsModels('org-1', { from: '2026-06-01T00:00:00.000Z' })
+    expect(lastQuery!.query).toMatch(/ORDER BY total_cost_usd DESC NULLS LAST/)
+  })
+
+  it('keeps an all-unpriced group as null instead of reporting $0', async () => {
+    pgRows = [
+      { provider: 'openai', model: 'gpt-4o', requests: '5', total_cost_usd: '0.9', avg_latency_ms: '300', error_rate: '0' },
+      { provider: 'xai', model: 'grok-mystery', requests: '9', total_cost_usd: null, avg_latency_ms: '200', error_rate: '0' },
+    ]
+    const rows = await getStatsModels('org-1', { from: '2026-06-01T00:00:00.000Z' })
+    expect(rows[0]!.total_cost_usd).toBe(0.9)
+    expect(rows[1]!.total_cost_usd).toBeNull()
+  })
+})
+
+describe('requestFilterClauses', () => {
+  it('returns nothing when no filter is set', () => {
+    expect(requestFilterClauses()).toEqual({ clauses: [], params: {} })
+    expect(requestFilterClauses({ provider: '', model: '  ', userId: '' })).toEqual({ clauses: [], params: {} })
+  })
+
+  it('binds every value instead of interpolating it', () => {
+    const { clauses, params } = requestFilterClauses({
+      provider: 'openai',
+      model: 'gpt-4o_mini',
+      providerKeyId: '11111111-1111-4111-8111-111111111111',
+      promptVersionId: '22222222-2222-4222-8222-222222222222',
+      userId: "o'brien",
+      sessionId: 'sess-1',
+    })
+    const sql = clauses.join(' AND ')
+    expect(sql).toContain('provider = {provider}')
+    expect(sql).toContain('provider_key_id = {providerKeyId}')
+    expect(sql).toContain('prompt_version_id = {promptVersionId}')
+    expect(sql).toContain('user_id = {userId}')
+    expect(sql).toContain('session_id = {sessionId}')
+    expect(sql).not.toContain("o'brien")
+    expect(params).toEqual({
+      provider: 'openai',
+      model: 'gpt-4o_mini',
+      providerKeyId: '11111111-1111-4111-8111-111111111111',
+      promptVersionId: '22222222-2222-4222-8222-222222222222',
+      userId: "o'brien",
+      sessionId: 'sess-1',
+    })
+  })
+
+  it('matches the model as a literal substring, the same way the list API does', () => {
+    // An ILIKE here would read `_` in `gpt-4o_mini` as a wildcard and let the
+    // KPI strip count rows the table below it does not show (gotcha #20).
+    const { clauses } = requestFilterClauses({ model: 'gpt-4o_mini' })
+    expect(clauses).toEqual(['position(lower({model}) in lower(model)) > 0'])
+  })
+
+  it('maps the status buckets, including the friendly synonyms', () => {
+    expect(requestFilterClauses({ status: 'ok' }).clauses).toEqual(['status_code < 400'])
+    expect(requestFilterClauses({ status: 'success' }).clauses).toEqual(['status_code < 400'])
+    expect(requestFilterClauses({ status: '4xx' }).clauses).toEqual(['status_code >= 400 AND status_code < 500'])
+    expect(requestFilterClauses({ status: '5xx' }).clauses).toEqual(['status_code >= 500'])
+    expect(requestFilterClauses({ status: 'error' }).clauses).toEqual(['status_code >= 400'])
+  })
+
+  it('filters on the truncated flag in both directions', () => {
+    expect(requestFilterClauses({ truncated: true }).clauses).toEqual(['truncated = true'])
+    expect(requestFilterClauses({ truncated: false }).clauses).toEqual(['truncated = false'])
+  })
+})
+
+describe('table filters on the KPI and chart reads', () => {
+  const filters = { provider: 'anthropic', userId: 'customer-a', status: '5xx' as const }
+
+  it('narrows the overview to the same rows the /requests table shows', async () => {
+    pgRows = [{}]
+    await getStatsOverview('org-1', { from: '2026-06-01T00:00:00.000Z', filters })
+    expect(lastQuery!.query).toContain('organization_id = {orgId}')
+    expect(lastQuery!.query).toContain('provider = {provider}')
+    expect(lastQuery!.query).toContain('user_id = {userId}')
+    expect(lastQuery!.query).toContain('status_code >= 500')
+    expect(lastQuery!.params).toMatchObject({ orgId: 'org-1', provider: 'anthropic', userId: 'customer-a' })
+  })
+
+  it('narrows the timeseries', async () => {
+    pgRows = []
+    await getStatsTimeseries('org-1', { from: '2026-06-01T00:00:00.000Z', filters })
+    expect(lastQuery!.query).toContain('provider = {provider}')
+    expect(lastQuery!.query).toContain('user_id = {userId}')
+    expect(lastQuery!.params).toMatchObject({ provider: 'anthropic', userId: 'customer-a' })
+  })
+
+  it('narrows both arms of the per-bucket breakdown', async () => {
+    pgRows = []
+    await getTimeseriesBreakdown('org-1', { from: '2026-06-01T00:00:00.000Z', filters })
+    const occurrences = lastQuery!.query.split('user_id = {userId}').length - 1
+    expect(occurrences).toBe(2)
+  })
+
+  it('leaves the unfiltered dashboard query unchanged', async () => {
+    pgRows = [{}]
+    await getStatsOverview('org-1', { from: '2026-06-01T00:00:00.000Z' })
+    expect(lastQuery!.query).not.toContain('provider =')
+    expect(Object.keys(lastQuery!.params).sort()).toEqual(['fromTs', 'orgId', 'retentionDays'])
   })
 })
 
