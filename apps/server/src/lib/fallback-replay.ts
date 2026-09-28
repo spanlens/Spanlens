@@ -13,20 +13,41 @@
 // ------------
 //   • Batch size kept conservative (50) so a single cron invocation runs
 //     well under Vercel's function ceiling even if the database is slow.
-//   • FIFO order via `ORDER BY created_at ASC` — oldest backlog first
-//     means a long outage drains in the same order traffic happened.
+//   • Order: `retry_count ASC, created_at ASC`. Rows that have never failed
+//     on their own data drain FIFO, so a long outage drains in the order
+//     traffic happened; a row the database keeps rejecting sinks behind
+//     them instead of occupying the head of every batch.
 //   • Bulk INSERT: one multi-row statement per batch, not one per row, so
-//     a batch costs one round trip instead of N.
-//   • Failure semantics: if the batch INSERT throws, we DON'T delete the
-//     rows — they stay in the queue with retry_count++ and the next cron
-//     run picks them up.
+//     a healthy batch costs one round trip instead of N.
+//   • Failure semantics depend on WHO failed (see isRowDataError):
+//       - The database (unreachable, timeout, schema behind the code): the
+//         batch stays queued as is and nobody's retry budget is spent. An
+//         outage is not the rows' fault, and spending retries on it let a
+//         long one (or three schedulers firing at once, gotcha #32) delete
+//         perfectly good rows at the 100-retry mark.
+//       - A row's own data (a deleted org's foreign key, a NOT NULL the
+//         payload lacks): one such row used to fail the whole multi-row
+//         statement, every run, and hold the entire queue behind it. The
+//         batch is now retried row by row, the good rows land, and only the
+//         rejected row gets retry_count++.
 //   • Retention: rows older than 7 days OR with retry_count ≥ 100 are
-//     dropped. Same row stuck for a week almost certainly has malformed
-//     data and is poisoning the queue; surface and drop.
+//     dropped. retry_count only counts rejections of the row itself, so
+//     the 100 cap reaches poison rows and nothing else.
+//   • After rows land: the org activity watermark is stamped (crons gated on
+//     it would otherwise not see replayed rows until the org's next live
+//     request, gotcha #38) and request.created is fired for each row this run
+//     inserted. lib/logger.ts leaves that event to this module for a queued
+//     row, so a subscriber is never told about an id that is not readable.
+//   • No cron-cadence debounce on the handler, deliberately: the statement is
+//     idempotent (ON CONFLICT), and with outages no longer spending retries,
+//     extra runs from the redundant schedulers only drain a backlog faster.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { pgExecute } from './postgres.js'
+import { pgQuery } from './postgres.js'
 import { supabaseAdmin } from './db.js'
+import { emitRequestCreated } from './logger.js'
+import { recordOrgActivity } from './org-activity.js'
+import { logError } from './structured-logger.js'
 
 /** Max rows replayed per cron invocation. Bounded so a stuck cron can't run away. */
 const REPLAY_BATCH_SIZE = 50
@@ -125,6 +146,9 @@ const REQUEST_COLUMN_DEFAULTS: Readonly<Record<string, unknown>> = {
  * queue. `ON CONFLICT (created_at, id) DO NOTHING` is the idempotency
  * guarantee — a batch that already landed before its queue DELETE blipped
  * replays as a no-op, enforced by the primary key rather than by a read-back.
+ * `RETURNING id` then names only the rows this statement inserted, which is
+ * what request.created is fired for (a conflict-skipped row was announced by
+ * the run that inserted it).
  *
  * Exported for tests: a mistake in the placeholder naming still produces
  * valid SQL, it just binds the wrong row's value to a column.
@@ -148,9 +172,197 @@ export function buildReplayInsert(payloads: ReadonlyArray<Record<string, unknown
   return {
     query:
       `INSERT INTO requests (${REQUEST_COLUMNS.join(', ')}) VALUES ${rows.join(', ')} ` +
-      'ON CONFLICT (created_at, id) DO NOTHING',
+      'ON CONFLICT (created_at, id) DO NOTHING RETURNING id',
     params,
   }
+}
+
+/** One `requests_fallback` row, as the replay reads it. */
+interface QueueRow {
+  id: string
+  payload: Record<string, unknown>
+  retry_count: number
+}
+
+/**
+ * SQLSTATE classes that describe the row's own data: 22 (data exception, a
+ * value of the wrong type or out of range) and 23 (integrity constraint, a
+ * foreign key, NOT NULL or CHECK the payload violates). Sending the same
+ * payload again can never succeed.
+ *
+ * Everything else is about the database rather than the row and clears on
+ * its own: no SQLSTATE at all (connection refused, pool timeout, a dropped
+ * socket), 08 (connection), 53 (resources), 57 (statement timeout,
+ * shutdown), 40 (serialization), and 42, which is what a column the deployed
+ * schema does not have yet raises. That last one matters: surviving a deploy
+ * that beat its migration is what this queue is for (CLAUDE.md gotcha #21).
+ */
+const ROW_DATA_SQLSTATE_CLASSES = new Set(['22', '23'])
+
+function isRowDataError(err: unknown): boolean {
+  const code = typeof err === 'object' && err !== null ? (err as { code?: unknown }).code : undefined
+  return (
+    typeof code === 'string' &&
+    /^[0-9A-Z]{5}$/.test(code) &&
+    ROW_DATA_SQLSTATE_CLASSES.has(code.slice(0, 2))
+  )
+}
+
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err)
+}
+
+/** Inserts the payloads; returns the payload ids the statement actually inserted. */
+async function insertPayloads(
+  payloads: ReadonlyArray<Record<string, unknown>>,
+): Promise<ReadonlySet<string>> {
+  const { query, params } = buildReplayInsert(payloads)
+  const inserted = await pgQuery<{ id: string }>({ query, params })
+  return new Set(inserted.map((r) => String(r.id)))
+}
+
+/** What happened to each row of one batch. */
+interface BatchOutcome {
+  /** Rows whose payload is in `requests` now (inserted this run or earlier). */
+  landed: QueueRow[]
+  /** Payloads this run actually inserted: the ones to announce. */
+  inserted: Array<Record<string, unknown>>
+  /** Rows the database rejected for their own data, with the reason. */
+  rejected: Array<{ row: QueueRow; message: string }>
+  /** Rows left as they are because the database itself was failing. */
+  deferred: QueueRow[]
+  /** Why the database failed, when it did. */
+  deferredReason: string | null
+}
+
+function insertedPayloads(rows: readonly QueueRow[], insertedIds: ReadonlySet<string>): Array<Record<string, unknown>> {
+  return rows.map((r) => r.payload).filter((p) => insertedIds.has(String(p['id'])))
+}
+
+/**
+ * Retries a batch one row at a time, after the multi-row statement failed on
+ * some row's data. Stops at the first failure that is not about a row: once
+ * the database itself is failing, the remaining rows would only fail too.
+ */
+async function replayRowByRow(rows: readonly QueueRow[]): Promise<BatchOutcome> {
+  const landed: QueueRow[] = []
+  const inserted: Array<Record<string, unknown>> = []
+  const rejected: Array<{ row: QueueRow; message: string }> = []
+
+  for (const [index, row] of rows.entries()) {
+    try {
+      const ids = await insertPayloads([row.payload])
+      landed.push(row)
+      inserted.push(...insertedPayloads([row], ids))
+    } catch (err) {
+      if (!isRowDataError(err)) {
+        return { landed, inserted, rejected, deferred: rows.slice(index), deferredReason: errorMessage(err) }
+      }
+      rejected.push({ row, message: errorMessage(err) })
+    }
+  }
+  return { landed, inserted, rejected, deferred: [], deferredReason: null }
+}
+
+async function replayBatch(rows: readonly QueueRow[]): Promise<BatchOutcome> {
+  try {
+    const ids = await insertPayloads(rows.map((r) => r.payload))
+    return { landed: [...rows], inserted: insertedPayloads(rows, ids), rejected: [], deferred: [], deferredReason: null }
+  } catch (err) {
+    if (!isRowDataError(err)) {
+      return { landed: [], inserted: [], rejected: [], deferred: [...rows], deferredReason: errorMessage(err) }
+    }
+    // A single-row batch already told us which row it was.
+    if (rows.length === 1) {
+      return { landed: [], inserted: [], rejected: [{ row: rows[0]!, message: errorMessage(err) }], deferred: [], deferredReason: null }
+    }
+    return replayRowByRow(rows)
+  }
+}
+
+function logReplayWrite(kind: string, error: unknown, extra: Record<string, unknown> = {}): void {
+  logError('CRON_PARTIAL_FAILURE', { jobName: 'replay-fallback', kind, ...extra }, error)
+}
+
+/** Drops rows past the age or retry limit. Returns how many went. */
+async function expireStaleRows(): Promise<number> {
+  const expiry = new Date(Date.now() - MAX_AGE_DAYS * 24 * 60 * 60 * 1000).toISOString()
+  const { count, error } = await supabaseAdmin
+    .from('requests_fallback')
+    .delete({ count: 'exact' })
+    .or(`created_at.lt.${expiry},retry_count.gte.${MAX_RETRY_COUNT}`)
+  if (error) {
+    logReplayWrite('fallback_expiry_failed', error)
+    return 0
+  }
+  return count ?? 0
+}
+
+/**
+ * Removes landed rows from the queue. A failure here is harmless for the
+ * data (the next run re-reads the rows and ON CONFLICT makes the re-insert a
+ * no-op) but it is logged so a persistently failing DELETE is visible.
+ */
+async function dequeue(rows: readonly QueueRow[]): Promise<void> {
+  if (rows.length === 0) return
+  const { error } = await supabaseAdmin
+    .from('requests_fallback')
+    .delete()
+    .in('id', rows.map((r) => r.id))
+  if (error) logReplayWrite('fallback_dequeue_failed', error, { rows: rows.length })
+}
+
+/** Spends one retry on each row the database rejected for its own data. */
+async function recordRejections(rejected: BatchOutcome['rejected']): Promise<void> {
+  const now = new Date().toISOString()
+  for (const { row, message } of rejected) {
+    const { error } = await supabaseAdmin
+      .from('requests_fallback')
+      .update({
+        retry_count: row.retry_count + 1,
+        last_retry_at: now,
+        last_error: message.slice(0, 500),
+      })
+      .eq('id', row.id)
+    if (error) logReplayWrite('fallback_retry_update_failed', error, { queueRowId: row.id })
+  }
+}
+
+/**
+ * Notes why deferred rows were not replayed, without touching retry_count:
+ * the failure was the database's, not theirs. One statement for the lot,
+ * since every row carries the same reason.
+ */
+async function recordDeferral(rows: readonly QueueRow[], reason: string): Promise<void> {
+  if (rows.length === 0) return
+  const { error } = await supabaseAdmin
+    .from('requests_fallback')
+    .update({ last_retry_at: new Date().toISOString(), last_error: reason.slice(0, 500) })
+    .in('id', rows.map((r) => r.id))
+  if (error) logReplayWrite('fallback_retry_update_failed', error, { rows: rows.length })
+}
+
+/**
+ * Follow-up for rows this run inserted: stamp each organization's activity
+ * watermark so the crons gated on it (quota, budget and error-rate alerts)
+ * see the replayed rows now instead of at the org's next live request, and
+ * announce each row with request.created. Both helpers never throw.
+ */
+async function announceInserted(inserted: ReadonlyArray<Record<string, unknown>>): Promise<void> {
+  const orgIds = new Set(inserted.map((p) => String(p['organization_id'] ?? '')).filter((id) => id !== ''))
+  for (const orgId of orgIds) await recordOrgActivity(orgId)
+  for (const payload of inserted) await emitRequestCreated(payload)
+}
+
+function summarizeFailure(outcome: BatchOutcome): string | undefined {
+  if (outcome.deferredReason !== null) {
+    return `requests insert failed: ${outcome.deferredReason.slice(0, 300)}`
+  }
+  const first = outcome.rejected[0]
+  if (first) {
+    return `requests insert rejected ${outcome.rejected.length} row(s): ${first.message.slice(0, 300)}`
+  }
+  return undefined
 }
 
 /**
@@ -159,89 +371,52 @@ export function buildReplayInsert(payloads: ReadonlyArray<Record<string, unknown
  * safe to call by hand from a script.
  */
 export async function replayFallbackQueue(): Promise<ReplayResult> {
-  const result: ReplayResult = {
-    attempted: 0,
-    replayed: 0,
-    failed: 0,
-    expired: 0,
-  }
-
   // 1. Expire old / stuck rows BEFORE attempting replay so the limited
   //    batch budget goes to fresh queue entries first.
-  const expiry = new Date(Date.now() - MAX_AGE_DAYS * 24 * 60 * 60 * 1000).toISOString()
-  const { count: expiredCount } = await supabaseAdmin
-    .from('requests_fallback')
-    .delete({ count: 'exact' })
-    .or(`created_at.lt.${expiry},retry_count.gte.${MAX_RETRY_COUNT}`)
-  result.expired = expiredCount ?? 0
+  const expired = await expireStaleRows()
 
-  // 2. Pull next batch in FIFO order.
-  const { data: rows, error: selectError } = await supabaseAdmin
+  // 2. Pull the next batch: rows that have not been rejected for their own
+  //    data first, FIFO within that. See the design notes at the top.
+  const { data, error: selectError } = await supabaseAdmin
     .from('requests_fallback')
     .select('id, payload, retry_count')
+    .order('retry_count', { ascending: true })
     .order('created_at', { ascending: true })
     .limit(REPLAY_BATCH_SIZE)
 
   if (selectError) {
-    result.error = `select failed: ${selectError.message}`
-    return result
+    return { attempted: 0, replayed: 0, failed: 0, expired, error: `select failed: ${selectError.message}` }
+  }
+  const rows = (data ?? []) as QueueRow[]
+  if (rows.length === 0) {
+    return { attempted: 0, replayed: 0, failed: 0, expired }
   }
 
-  if (!rows || rows.length === 0) {
-    return result
+  // 3. One multi-row statement for the batch; row by row only when some row's
+  //    data sank it. Idempotency lives in the statement itself (ON CONFLICT,
+  //    see buildReplayInsert), so a batch that landed before its queue DELETE
+  //    blipped replays as a no-op rather than a duplicate that would inflate
+  //    cost and quota usage.
+  const outcome = await replayBatch(rows)
+
+  // 4. Landed rows leave the queue, including any the conflict skipped: those
+  //    are in `requests` already.
+  await dequeue(outcome.landed)
+  await announceInserted(outcome.inserted)
+
+  // 5. Failed rows stay queued. Only a rejection of the row itself spends a
+  //    retry.
+  await recordRejections(outcome.rejected)
+  await recordDeferral(outcome.deferred, outcome.deferredReason ?? '')
+
+  const error = summarizeFailure(outcome)
+  return {
+    attempted: rows.length,
+    replayed: outcome.landed.length,
+    failed: outcome.rejected.length + outcome.deferred.length,
+    expired,
+    ...(error ? { error } : {}),
   }
-
-  result.attempted = rows.length
-
-  // 3. Bulk INSERT the entire batch as one multi-row statement — one round
-  //    trip for the whole batch instead of N.
-  try {
-    // 3a. Idempotency lives in the statement itself: `ON CONFLICT
-    //     (created_at, id) DO NOTHING` (see buildReplayInsert). If a prior run
-    //     inserted the batch but its queue DELETE blipped, replaying the same
-    //     payloads is a no-op rather than a duplicate that would inflate cost
-    //     and quota usage. History: while `requests` lived in ClickHouse this
-    //     path had to read the ids back first and filter client-side, because
-    //     a MergeTree has no unique constraint to lean on. Postgres does, so
-    //     the read-back is gone.
-    const payloads = rows.map((r) => r.payload as Record<string, unknown>)
-
-    if (payloads.length > 0) {
-      const { query, params } = buildReplayInsert(payloads)
-      await pgExecute({ query, params })
-    }
-    // 4. Success — delete the WHOLE batch in one DELETE. Rows the ON CONFLICT
-    //    skipped are already in `requests`, so they must leave the queue too.
-    //    If this DELETE blips, the next run re-reads them and the ON CONFLICT
-    //    makes the re-INSERT a no-op, so the queue still drains without
-    //    duplicating data.
-    const ids = rows.map((r) => r.id as string)
-    await supabaseAdmin.from('requests_fallback').delete().in('id', ids)
-    result.replayed = rows.length
-  } catch (err) {
-    // 5. Batch INSERT failed — most likely the database is still unreachable.
-    //    Bump retry_count on every row in the batch so eventual expiry kicks
-    //    in for poison payloads, while not blocking newer rows.
-    const message = err instanceof Error ? err.message : String(err)
-    result.failed = rows.length
-    result.error = `requests insert failed: ${message.slice(0, 300)}`
-
-    // `rpc('increment_*')` would be cleaner; raw UPDATE keeps this module
-    // free of additional Supabase migrations.
-    const now = new Date().toISOString()
-    for (const row of rows) {
-      await supabaseAdmin
-        .from('requests_fallback')
-        .update({
-          retry_count: (row.retry_count as number) + 1,
-          last_retry_at: now,
-          last_error: message.slice(0, 500),
-        })
-        .eq('id', row.id as string)
-    }
-  }
-
-  return result
 }
 
 /**
@@ -296,17 +471,23 @@ export async function alertOnFallbackBacklog(
   if ((requestsQueue ?? 0) <= threshold) return { requestsQueue, alerted: false }
 
   try {
-    // Dedup against an already-open alert of the same kind.
-    const { data: existing } = await supabaseAdmin
+    // Dedup against an already-open alert of the same kind. If the lookup
+    // itself fails, skip the insert: without it every 5-minute run would add
+    // another alert row, and the backlog stays visible through /health/deep.
+    const { data: existing, error: dedupError } = await supabaseAdmin
       .from('internal_alerts')
       .select('id')
       .eq('kind', 'fallback_queue_high')
       .is('resolved_at', null)
       .limit(1)
       .maybeSingle()
+    if (dedupError) {
+      logReplayWrite('fallback_backlog_alert_failed', dedupError, { step: 'dedup' })
+      return { requestsQueue, alerted: false }
+    }
     if (existing) return { requestsQueue, alerted: false }
 
-    await supabaseAdmin.from('internal_alerts').insert({
+    const { error: insertError } = await supabaseAdmin.from('internal_alerts').insert({
       kind: 'fallback_queue_high',
       severity: 'error',
       message:
@@ -315,9 +496,14 @@ export async function alertOnFallbackBacklog(
         `The requests INSERT is failing — queued rows expire after ${MAX_AGE_DAYS} days.`,
       details: { requestsQueue, threshold },
     })
+    if (insertError) {
+      logReplayWrite('fallback_backlog_alert_failed', insertError, { step: 'insert' })
+      return { requestsQueue, alerted: false }
+    }
     return { requestsQueue, alerted: true }
-  } catch {
+  } catch (err) {
     // Best-effort: a monitoring failure must not break the replay cron.
+    logReplayWrite('fallback_backlog_alert_failed', err)
     return { requestsQueue, alerted: false }
   }
 }

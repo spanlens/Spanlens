@@ -215,12 +215,15 @@ LIMIT 5;
 \echo '  8/8 replay insert: multi-row VALUES with ON CONFLICT on the partitioned key'
 -- The fallback queue replays rows that already failed once, so it must be safe
 -- to run twice. A partitioned table cannot have a unique constraint on id
--- alone, so the conflict target is the primary key (created_at, id).
+-- alone, so the conflict target is the primary key (created_at, id). RETURNING
+-- reports only the rows the statement inserted, which is what the replay
+-- fires request.created for.
 INSERT INTO public.requests (id, organization_id, project_id, provider, model, created_at)
 SELECT gen_random_uuid(), o.id, gen_random_uuid(), 'anthropic', 'claude-sonnet-4', now()
 FROM public.organizations o
 WHERE o.id = '00000000-0000-4000-8000-00000000f002'
-ON CONFLICT (created_at, id) DO NOTHING;
+ON CONFLICT (created_at, id) DO NOTHING
+RETURNING id;
 
 ROLLBACK;
 
