@@ -3,230 +3,177 @@
 //
 // Lifecycle (driven by /cron/check-past-due-downgrades daily):
 //
-//   t = 0  →  Paddle webhook flips subscriptions.status to past_due.
-//             paddleWebhook stamps `past_due_since = now()`.
+//   t = 0  →  Paddle webhook flips subscriptions.status to past_due and
+//             stamps `past_due_since` (the start of this delinquency cycle).
 //
-//   t = 4d →  Cron sends D-3 warning email (3 days before downgrade).
-//   t = 6d →  Cron sends D-1 warning email (1 day before downgrade).
-//   t = 7d →  Cron flips organizations.plan to 'free', writes audit_logs,
-//             emails the owner that the downgrade happened, and clears
-//             past_due_since so a re-upgrade starts fresh.
+//   t = 4d →  Cron queues + sends the D-3 warning email.
+//   t = 6d →  Cron queues + sends the D-1 warning email.
+//   t = 7d →  Cron calls `apply_past_due_downgrade`, which in ONE transaction
+//             re-checks the subscription is still past due in the same cycle,
+//             recomputes organizations.plan from the org's live subscriptions
+//             (free if none), writes audit_logs, closes the cycle
+//             (past_due_since = NULL) and queues the downgrade email.
+//             Recovery clears past_due_since in the webhook, so a later
+//             failure opens a new cycle and starts over.
 //
 // Retention impact: `quota.ts` already enforces 14-day retention for the
 // Free plan via `requestsScope`, so the dashboard tightens automatically
 // the moment the plan flips — no extra wiring needed.
 //
-// Idempotency: every email send writes to `billing_downgrade_notifications`
-// with a unique (subscription_id, stage) constraint. If the cron retries
-// (Vercel cron at-least-once delivery), we no-op on the second send.
+// Idempotency (quality audit 2026-09-28, C3.2): `billing_downgrade_notifications`
+// is UNIQUE (subscription_id, stage, cycle_started_at), so a cron re-run is a
+// no-op within a cycle and a new cycle is not blocked by the previous one.
+// The same table is the email outbox: a row is marked 'sent' only after the
+// provider accepted the email (lib/billing-downgrade-outbox.ts). A failed
+// downgrade RPC changes nothing and is retried on the next run.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { supabaseAdmin } from './db.js'
-import { sendEmail, renderPastDueEmail } from './resend.js'
+import { drainDowngradeNotifications } from './billing-downgrade-outbox.js'
+import { logError } from './structured-logger.js'
 
+const DAY_MS = 24 * 60 * 60 * 1000
 const DOWNGRADE_AFTER_DAYS = 7
 const WARNING_D3_DAY = 4 // 7 - 3
 const WARNING_D1_DAY = 6 // 7 - 1
+
+/** Subscription statuses whose delinquency cycle the cron still owns. */
+const DELINQUENT_STATUSES = ['past_due', 'paused']
 
 export type DowngradeStage = 'warning-d3' | 'warning-d1' | 'downgraded'
 
 export interface DowngradeRunResult {
   scanned: number
+  /** D-3 warning emails the provider accepted this run. */
   warningsD3: number
+  /** D-1 warning emails the provider accepted this run. */
   warningsD1: number
+  /** Delinquent entitlements removed this run (plan recomputed). */
   downgraded: number
-  emailsSkipped: number   // already-sent dedupe
+  /** Downgrade notice emails the provider accepted this run. */
+  downgradeNoticesSent: number
+  /** Stage already queued for this delinquency cycle (cron re-run). */
+  emailsSkipped: number
+  /** Subscription recovered or changed before the downgrade applied. */
+  staleSkipped: number
+  /** Sends that failed; the outbox retries them on a later run. */
+  emailsFailed: number
   errors: string[]
 }
 
 interface PastDueRow {
   id: string
   organization_id: string
+  /** Raw timestamptz string: passed back verbatim for the CAS. */
   past_due_since: string
   paddle_subscription_id: string | null
 }
 
-/**
- * Top-level entry point called by the cron. Scans all past_due
- * subscriptions and applies the appropriate stage to each. Per-row errors
- * don't abort the run — they're collected for logging.
- */
-export async function runDowngradeCheck(): Promise<DowngradeRunResult> {
-  const result: DowngradeRunResult = {
+function emptyResult(): DowngradeRunResult {
+  return {
     scanned: 0,
     warningsD3: 0,
     warningsD1: 0,
     downgraded: 0,
+    downgradeNoticesSent: 0,
     emailsSkipped: 0,
+    staleSkipped: 0,
+    emailsFailed: 0,
     errors: [],
   }
+}
+
+/**
+ * Top-level entry point called by the cron. Advances every delinquent
+ * subscription one stage, then drains the email outbox. Per-row errors don't
+ * abort the run; they are collected so the cron records the run as failed.
+ */
+export async function runDowngradeCheck(now: Date = new Date()): Promise<DowngradeRunResult> {
+  const result = emptyResult()
 
   const { data: rows, error } = await supabaseAdmin
     .from('subscriptions')
     .select('id, organization_id, past_due_since, paddle_subscription_id')
     .not('past_due_since', 'is', null)
+    .in('status', DELINQUENT_STATUSES)
 
   if (error) {
     result.errors.push(`select past_due rows failed: ${error.message}`)
-    return result
-  }
-
-  const pastDueRows = (rows ?? []) as PastDueRow[]
-  result.scanned = pastDueRows.length
-
-  for (const row of pastDueRows) {
-    try {
-      const daysOverdue = daysSince(row.past_due_since)
-
-      if (daysOverdue >= DOWNGRADE_AFTER_DAYS) {
-        const did = await applyDowngrade(row)
-        if (did) result.downgraded += 1
-        else result.emailsSkipped += 1
-      } else if (daysOverdue >= WARNING_D1_DAY) {
-        const sent = await sendStageEmail(row, 'warning-d1')
-        if (sent) result.warningsD1 += 1
-        else result.emailsSkipped += 1
-      } else if (daysOverdue >= WARNING_D3_DAY) {
-        const sent = await sendStageEmail(row, 'warning-d3')
-        if (sent) result.warningsD3 += 1
-        else result.emailsSkipped += 1
+  } else {
+    const pastDueRows = (rows ?? []) as PastDueRow[]
+    result.scanned = pastDueRows.length
+    for (const row of pastDueRows) {
+      try {
+        await advanceRow(row, now, result)
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        logError('CRON_PARTIAL_FAILURE', {
+          jobName: 'check-past-due-downgrades',
+          orgId: row.organization_id,
+          subscriptionId: row.id,
+        }, err)
+        result.errors.push(`org ${row.organization_id}: ${message}`)
       }
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
-      result.errors.push(`org ${row.organization_id}: ${message}`)
     }
   }
 
+  // Runs even when the scan failed: queued emails from earlier runs (a
+  // downgrade notice whose subscription left the scan) still go out.
+  await drainDowngradeNotifications(now, result)
   return result
 }
 
 // ── Internals ─────────────────────────────────────────────────────────────────
 
-function daysSince(iso: string): number {
-  const start = new Date(iso).getTime()
-  const now = Date.now()
-  return Math.floor((now - start) / (24 * 60 * 60 * 1000))
+function daysSince(iso: string, now: Date): number {
+  return Math.floor((now.getTime() - new Date(iso).getTime()) / DAY_MS)
+}
+
+async function advanceRow(row: PastDueRow, now: Date, result: DowngradeRunResult): Promise<void> {
+  const daysOverdue = daysSince(row.past_due_since, now)
+
+  if (daysOverdue >= DOWNGRADE_AFTER_DAYS) {
+    const outcome = await applyDowngrade(row)
+    if (outcome === 'downgraded') result.downgraded += 1
+    else result.staleSkipped += 1
+    return
+  }
+
+  const stage: DowngradeStage | null =
+    daysOverdue >= WARNING_D1_DAY ? 'warning-d1'
+      : daysOverdue >= WARNING_D3_DAY ? 'warning-d3'
+        : null
+  if (!stage) return
+
+  const queued = await queueStageEmail(row, stage)
+  if (!queued) result.emailsSkipped += 1
 }
 
 /**
- * Send a stage email, deduped against `billing_downgrade_notifications`.
- * Returns true if a new email was actually sent (or attempted), false if
- * a row already existed for (subscription, stage) — i.e. cron retry.
+ * Queue a warning for this delinquency cycle. Returns false when it was
+ * already queued (23505: cron re-run). Any other failure throws, so the row
+ * is reported instead of silently skipped.
  */
-async function sendStageEmail(row: PastDueRow, stage: DowngradeStage): Promise<boolean> {
-  // De-dupe via a unique constraint on (paddle_subscription_id, stage).
-  // We INSERT first; on conflict (row exists), the INSERT no-ops and we
-  // skip the send. This makes the cron safely re-runnable.
-  const { error: dedupeErr } = await supabaseAdmin
+async function queueStageEmail(row: PastDueRow, stage: DowngradeStage): Promise<boolean> {
+  const { error } = await supabaseAdmin
     .from('billing_downgrade_notifications')
-    .insert({
-      subscription_id: row.id,
-      stage,
-    })
-  if (dedupeErr) {
-    // 23505 = unique_violation. Anything else is unexpected and we should
-    // still try to send — losing dedup is better than missing a warning.
-    if ((dedupeErr as { code?: string }).code === '23505') {
-      return false
-    }
-  }
-
-  const { owner, orgName } = await fetchOwner(row.organization_id)
-  if (!owner) return false
-
-  const webUrl = process.env['WEB_URL'] ?? 'https://www.spanlens.io'
-  const { subject, html } = renderPastDueEmail({
-    orgName,
-    stage,
-    pastDueSince: row.past_due_since,
-    billingUrl: `${webUrl}/billing`,
-  })
-  const sendResult = await sendEmail({ to: owner, subject, html })
-  if (!sendResult.sent && sendResult.error) {
-    console.error('[downgrade] email send failed:', sendResult.error)
-  }
-  return true
+    .insert({ subscription_id: row.id, stage, cycle_started_at: row.past_due_since })
+  if (!error) return true
+  if ((error as { code?: string }).code === '23505') return false
+  throw new Error(`queue ${stage} failed: ${error.message}`)
 }
 
 /**
- * Move the org to the Free plan, audit-log it, email the owner, and clear
- * past_due_since so future failures restart the clock.
- *
- * Idempotent via the same `billing_downgrade_notifications` dedupe — if a
- * row for stage='downgraded' already exists, we treat it as already done.
+ * The downgrade itself is one SQL function (migration 20260929110200), so the
+ * plan change, the cycle close, the audit row and the email enqueue commit
+ * together. A `{ error }` means nothing changed: throw, and the next run
+ * retries with the same cycle start.
  */
-async function applyDowngrade(row: PastDueRow): Promise<boolean> {
-  const { error: dedupeErr } = await supabaseAdmin
-    .from('billing_downgrade_notifications')
-    .insert({ subscription_id: row.id, stage: 'downgraded' })
-  if (dedupeErr && (dedupeErr as { code?: string }).code === '23505') {
-    return false
-  }
-
-  // 1. Flip the plan
-  await supabaseAdmin
-    .from('organizations')
-    .update({ plan: 'free' })
-    .eq('id', row.organization_id)
-
-  // 2. Clear past_due_since on the subscription (so a re-upgrade starts fresh).
-  await supabaseAdmin
-    .from('subscriptions')
-    .update({ past_due_since: null })
-    .eq('id', row.id)
-
-  // 3. Audit log
-  await supabaseAdmin.from('audit_logs').insert({
-    organization_id: row.organization_id,
-    user_id: null, // system action
-    action: 'billing.plan.auto_downgrade',
-    resource_type: 'organization',
-    resource_id: row.organization_id,
-    metadata: {
-      reason: 'past_due_7_days',
-      past_due_since: row.past_due_since,
-      paddle_subscription_id: row.paddle_subscription_id,
-    },
+async function applyDowngrade(row: PastDueRow): Promise<'downgraded' | 'stale'> {
+  const { data, error } = await supabaseAdmin.rpc('apply_past_due_downgrade', {
+    p_subscription_id: row.id,
+    p_past_due_since: row.past_due_since,
   })
-
-  // 4. Email the owner
-  const { owner, orgName } = await fetchOwner(row.organization_id)
-  if (owner) {
-    const webUrl = process.env['WEB_URL'] ?? 'https://www.spanlens.io'
-    const { subject, html } = renderPastDueEmail({
-      orgName,
-      stage: 'downgraded',
-      pastDueSince: row.past_due_since,
-      billingUrl: `${webUrl}/billing`,
-    })
-    await sendEmail({ to: owner, subject, html }).catch((err: unknown) => {
-      console.error('[downgrade] post-downgrade email failed:', err)
-    })
-  }
-
-  return true
-}
-
-async function fetchOwner(organizationId: string): Promise<{
-  owner: string | null
-  orgName: string
-}> {
-  // owner_id lives on organizations (NOT NULL). The org_role enum has no
-  // 'owner' value, so the previous org_members.eq('role','owner') matched
-  // nothing and this always returned owner: null. Fold owner_id into the
-  // single organizations fetch.
-  const { data: org } = await supabaseAdmin
-    .from('organizations')
-    .select('name, owner_id')
-    .eq('id', organizationId)
-    .single()
-
-  const ownerId = (org as { owner_id?: string } | null)?.owner_id
-  if (!ownerId) return { owner: null, orgName: (org?.name as string | undefined) ?? organizationId }
-
-  const { data: { user } } = await supabaseAdmin.auth.admin.getUserById(ownerId)
-  return {
-    owner: user?.email ?? null,
-    orgName: (org?.name as string | undefined) ?? organizationId,
-  }
+  if (error) throw new Error(`downgrade failed: ${error.message}`)
+  return (data as { outcome?: string } | null)?.outcome === 'downgraded' ? 'downgraded' : 'stale'
 }

@@ -107,7 +107,12 @@ export class FakeSupabase {
     const defaults = this.config.get(table)?.defaults
     this.tables.set(table, [
       ...(this.tables.get(table) ?? []),
-      ...rows.map((r) => ({ id: randomUUID(), ...(defaults ? defaults() : {}), ...r })),
+      ...rows.map((r) => ({
+        id: randomUUID(),
+        created_at: new Date().toISOString(),
+        ...(defaults ? defaults() : {}),
+        ...r,
+      })),
     ])
     return this
   }

@@ -241,6 +241,136 @@ BEGIN
     = '00000000-0000-4000-8000-00000000b0b0', 'transaction -> org lookup must resolve';
 END $$;
 
+-- ── apply_past_due_downgrade ────────────────────────────────────────────────
+
+-- Org B: one team subscription, delinquent since 2026-09-01.
+DO $$
+BEGIN
+  PERFORM public.apply_paddle_subscription_event(
+    '00000000-0000-4000-8000-00000000b0b0', 'sub_smoke_b1', 'ctm_smoke_b', 'pri_team',
+    'team', 'active', '2026-09-01T00:00:00Z', '2026-10-01T00:00:00Z', false,
+    '{"last_event_id":"evt_b1","last_event_type":"subscription.created","occurred_at":"2026-08-01T00:00:00Z"}'
+  );
+  PERFORM public.apply_paddle_subscription_event(
+    '00000000-0000-4000-8000-00000000b0b0', 'sub_smoke_b1', 'ctm_smoke_b', 'pri_team',
+    'team', 'past_due', '2026-09-01T00:00:00Z', '2026-10-01T00:00:00Z', false,
+    '{"last_event_id":"evt_b2","last_event_type":"subscription.past_due","occurred_at":"2026-09-01T00:00:00Z"}'
+  );
+  UPDATE public.subscriptions SET past_due_since = '2026-09-01T00:00:00Z'
+   WHERE paddle_subscription_id = 'sub_smoke_b1';
+  ASSERT (SELECT plan FROM public.organizations WHERE id = '00000000-0000-4000-8000-00000000b0b0') = 'team',
+    'fixture: org B starts on team';
+END $$;
+
+-- 14. A CAS on a stale cycle start changes nothing.
+DO $$
+DECLARE r jsonb; v_sub uuid;
+BEGIN
+  SELECT id INTO v_sub FROM public.subscriptions WHERE paddle_subscription_id = 'sub_smoke_b1';
+  r := public.apply_past_due_downgrade(v_sub, '2026-08-15T00:00:00Z');
+  ASSERT r->>'outcome' = 'stale', 'mismatched past_due_since must be stale';
+  ASSERT (SELECT plan FROM public.organizations WHERE id = '00000000-0000-4000-8000-00000000b0b0') = 'team',
+    'stale CAS must not touch the plan';
+END $$;
+
+-- 15. The real cycle downgrades, audits, queues one email, closes the cycle.
+DO $$
+DECLARE r jsonb; v_sub uuid;
+BEGIN
+  SELECT id INTO v_sub FROM public.subscriptions WHERE paddle_subscription_id = 'sub_smoke_b1';
+  r := public.apply_past_due_downgrade(v_sub, '2026-09-01T00:00:00Z');
+  ASSERT r->>'outcome' = 'downgraded', 'matching cycle must downgrade';
+  ASSERT r->>'to_plan' = 'free' AND (r->>'email_queued')::boolean, 'single live sub must land on free with an email';
+  ASSERT (SELECT plan FROM public.organizations WHERE id = '00000000-0000-4000-8000-00000000b0b0') = 'free',
+    'org B must be free';
+  ASSERT (SELECT past_due_since FROM public.subscriptions WHERE id = v_sub) IS NULL, 'cycle must be closed';
+  ASSERT (SELECT count(*) FROM public.audit_logs
+           WHERE organization_id = '00000000-0000-4000-8000-00000000b0b0'
+             AND action = 'billing.plan.auto_downgrade') = 1, 'one audit row';
+  ASSERT (SELECT status FROM public.billing_downgrade_notifications
+           WHERE subscription_id = v_sub AND stage = 'downgraded') = 'pending',
+    'downgrade email must be queued as pending, not marked sent';
+
+  -- Running it again is a no-op.
+  r := public.apply_past_due_downgrade(v_sub, '2026-09-01T00:00:00Z');
+  ASSERT r->>'outcome' = 'stale', 'second run must be stale';
+  ASSERT (SELECT count(*) FROM public.audit_logs
+           WHERE organization_id = '00000000-0000-4000-8000-00000000b0b0'
+             AND action = 'billing.plan.auto_downgrade') = 1, 'still one audit row';
+END $$;
+
+-- 16. Pay, fall behind again: the new cycle warns and downgrades again
+--     (the old UNIQUE (subscription_id, stage) blocked this forever).
+DO $$
+DECLARE r jsonb; v_sub uuid;
+BEGIN
+  SELECT id INTO v_sub FROM public.subscriptions WHERE paddle_subscription_id = 'sub_smoke_b1';
+  PERFORM public.apply_paddle_subscription_event(
+    '00000000-0000-4000-8000-00000000b0b0', 'sub_smoke_b1', 'ctm_smoke_b', 'pri_team',
+    'team', 'active', '2026-09-01T00:00:00Z', '2026-10-01T00:00:00Z', false,
+    '{"last_event_id":"evt_b3","last_event_type":"subscription.updated","occurred_at":"2026-09-10T00:00:00Z"}'
+  );
+  ASSERT (SELECT plan FROM public.organizations WHERE id = '00000000-0000-4000-8000-00000000b0b0') = 'team',
+    'recovery must restore team';
+  PERFORM public.apply_paddle_subscription_event(
+    '00000000-0000-4000-8000-00000000b0b0', 'sub_smoke_b1', 'ctm_smoke_b', 'pri_team',
+    'team', 'past_due', '2026-09-01T00:00:00Z', '2026-10-01T00:00:00Z', false,
+    '{"last_event_id":"evt_b4","last_event_type":"subscription.past_due","occurred_at":"2026-09-20T00:00:00Z"}'
+  );
+  UPDATE public.subscriptions SET past_due_since = '2026-09-20T00:00:00Z' WHERE id = v_sub;
+
+  INSERT INTO public.billing_downgrade_notifications (subscription_id, stage, cycle_started_at)
+  VALUES (v_sub, 'warning-d3', '2026-09-20T00:00:00Z');
+  BEGIN
+    INSERT INTO public.billing_downgrade_notifications (subscription_id, stage, cycle_started_at)
+    VALUES (v_sub, 'warning-d3', '2026-09-20T00:00:00Z');
+    RAISE EXCEPTION 'expected a unique violation for the same stage in the same cycle';
+  EXCEPTION WHEN unique_violation THEN
+    NULL;
+  END;
+
+  r := public.apply_past_due_downgrade(v_sub, '2026-09-20T00:00:00Z');
+  ASSERT r->>'outcome' = 'downgraded', 'second cycle must downgrade again';
+  ASSERT (SELECT count(*) FROM public.billing_downgrade_notifications
+           WHERE subscription_id = v_sub AND stage = 'downgraded') = 2, 'one downgrade email per cycle';
+END $$;
+
+-- 17. Another live subscription keeps its plan; no "downgraded to free" email.
+DO $$
+DECLARE r jsonb; v_sub uuid;
+BEGIN
+  -- Org A: sub_a3 (team) is live, sub_a1 (starter) goes past due.
+  PERFORM public.apply_paddle_subscription_event(
+    '00000000-0000-4000-8000-00000000b0a0', 'sub_smoke_a1', 'ctm_smoke_a', 'pri_starter',
+    'starter', 'past_due', '2026-09-01T00:00:00Z', '2026-10-01T00:00:00Z', false,
+    '{"last_event_id":"evt_12","last_event_type":"subscription.past_due","occurred_at":"2026-09-12T00:00:00Z"}'
+  );
+  SELECT id INTO v_sub FROM public.subscriptions WHERE paddle_subscription_id = 'sub_smoke_a1';
+  UPDATE public.subscriptions SET past_due_since = '2026-09-12T00:00:00Z' WHERE id = v_sub;
+  r := public.apply_past_due_downgrade(v_sub, '2026-09-12T00:00:00Z');
+  ASSERT r->>'outcome' = 'downgraded', 'entitlement of the delinquent sub must expire';
+  ASSERT r->>'to_plan' = 'team', 'org must stay on the live sibling plan';
+  ASSERT NOT (r->>'email_queued')::boolean, 'no free-downgrade email when not free';
+  ASSERT (SELECT plan FROM public.organizations WHERE id = '00000000-0000-4000-8000-00000000b0a0') = 'team',
+    'org A must stay on team';
+END $$;
+
+-- 18. A canceled subscription is never downgraded by the cron.
+DO $$
+DECLARE r jsonb; v_sub uuid;
+BEGIN
+  SELECT id INTO v_sub FROM public.subscriptions WHERE paddle_subscription_id = 'sub_smoke_a2';
+  UPDATE public.subscriptions SET past_due_since = '2026-09-01T00:00:00Z' WHERE id = v_sub;
+  r := public.apply_past_due_downgrade(v_sub, '2026-09-01T00:00:00Z');
+  ASSERT r->>'outcome' = 'stale', 'canceled subscription must be stale for the cron';
+END $$;
+
+DO $$
+BEGIN
+  ASSERT NOT has_function_privilege('authenticated', 'public.apply_past_due_downgrade(uuid,timestamptz)', 'EXECUTE'),
+    'authenticated must not execute apply_past_due_downgrade';
+END $$;
+
 -- ── privileges ──────────────────────────────────────────────────────────────
 
 DO $$
