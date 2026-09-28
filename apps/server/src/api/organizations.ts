@@ -1,5 +1,10 @@
 import { Hono } from 'hono'
-import { authJwt, type JwtContext, type OrgRole } from '../middleware/authJwt.js'
+import {
+  authJwt,
+  invalidateAuthCacheForUser,
+  type JwtContext,
+  type OrgRole,
+} from '../middleware/authJwt.js'
 import { requireRole } from '../middleware/requireRole.js'
 import { supabaseAdmin } from '../lib/db.js'
 import { randomHex, sha256Hex } from '../lib/crypto.js'
@@ -407,6 +412,13 @@ organizationsRouter.post('/bootstrap', async (c) => {
     await rollback()
     throw new ApiError('INTERNAL_ERROR', 'Failed to create org membership')
   }
+  // The authJwt pass for THIS request resolved "no membership" before the
+  // INSERT above. authJwt does not cache that null (on any instance), so this
+  // is belt and braces: drop whatever this instance holds for the user so
+  // their next request re-resolves the new workspace. The web onboarding flow
+  // also sets the workspace cookie to this org, which moves the user onto a
+  // fresh cache key everywhere.
+  invalidateAuthCacheForUser(userId)
 
   // 3. default project — idempotent: reuse one if it already exists with
   // the same name. Belt-and-braces against the historical "two Default

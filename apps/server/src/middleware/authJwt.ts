@@ -54,15 +54,26 @@ export const WORKSPACE_COOKIE = 'sb-ws'
 // the entry and return in <1ms. Cache is per-Lambda-instance (a Map),
 // keyed by (token, preferredOrgId), with a 60s TTL.
 //
+// Only RESOLVED memberships are cached. A "no membership yet" result
+// (orgId=null, the pre-onboarding state) is never stored: bootstrap's own
+// authJwt pass runs before it INSERTs the membership row, so caching that
+// null made /organizations/me answer 404 for up to 60s right after signup.
+// Pre-onboarding traffic is a handful of requests per user, so paying the
+// lookup on each of them costs nothing noticeable.
+//
 // Security trade-off:
 //   - Revoked tokens stay valid until their cache entry expires (max 60s).
-//   - Role changes (admin demoted, user removed from org) take up to 60s
-//     to surface in the API. The UI's PermissionGate is mirrored on the
-//     server via requireRole, so the worst case is a UI button briefly
-//     showing for a now-viewer user — they still can't perform the action.
-// Both are acceptable for a BI dashboard. If/when this app becomes
-// security-critical, lower the TTL or wire explicit invalidation on
-// /logout, /members PATCH, /members DELETE.
+//   - Role changes (admin demoted, user removed from org) can take up to 60s
+//     to surface on READ endpoints. WRITE endpoints do not trust the cached
+//     role: requireRole and requireEditDualAuth re-read org_members for every
+//     request that is not GET/HEAD/OPTIONS, so a demoted or removed member is
+//     rejected immediately. Trusting the cached role there was not harmless:
+//     inside the window a demoted admin could re-promote themselves (or a
+//     removed one could invite themselves back) and keep admin for good.
+//   - invalidateAuthCacheForUser() drops a user's entries on THIS instance
+//     after a membership change. Other serverless instances keep theirs until
+//     the TTL runs out, which is why the write-time re-check above is the
+//     actual guarantee and the helper only shortens the read-side staleness.
 interface AuthCacheEntry {
   userId: string
   email: string
@@ -106,6 +117,24 @@ function setCachedAuth(key: string, entry: Omit<AuthCacheEntry, 'expiresAt'>): v
 /** Test-only: clear the cache between unit tests. */
 export function _clearAuthCacheForTests(): void {
   _authCache.clear()
+}
+
+/**
+ * Drop every cached entry for `userId` on this instance (every token and
+ * every workspace-cookie variant). Call it right after changing that user's
+ * membership (bootstrap, role change, removal) so their next request on this
+ * instance re-resolves orgId and role from org_members.
+ *
+ * Process-local only: other serverless instances keep their entries until the
+ * TTL expires. Write authorization does not depend on this helper (see the
+ * write-time re-check in requireRole). Returns how many entries were removed.
+ */
+export function invalidateAuthCacheForUser(userId: string): number {
+  const staleKeys = [..._authCache.entries()]
+    .filter(([, entry]) => entry.userId === userId)
+    .map(([key]) => key)
+  for (const key of staleKeys) _authCache.delete(key)
+  return staleKeys.length
 }
 
 export const authJwt = createMiddleware<JwtContext>(async (c, next) => {
@@ -176,7 +205,10 @@ export const authJwt = createMiddleware<JwtContext>(async (c, next) => {
     role = (membership?.role as OrgRole | undefined) ?? null
   }
 
-  setCachedAuth(cacheK, { userId, email, orgId, role })
+  // Never cache the pre-onboarding "no membership" result (see the cache
+  // notes above): the membership may be created by the very request that is
+  // running right now (bootstrap), and a cached null would hide it for 60s.
+  if (orgId) setCachedAuth(cacheK, { userId, email, orgId, role })
 
   c.set('userId', userId)
   c.set('email', email)

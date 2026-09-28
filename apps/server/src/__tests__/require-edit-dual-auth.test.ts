@@ -28,8 +28,11 @@ const JWT_TOKEN = 'fake-jwt-token-12345'
 const FULL_HASH = 'full-hash'
 const PUBLIC_HASH = 'public-hash'
 
-// Role returned for the JWT path — mutated per test.
-let jwtRole = 'admin'
+// Role stored in org_members for the JWT user, mutated per test. null means
+// the user is not (or no longer) a member.
+let jwtRole: string | null = 'admin'
+// How many (organization_id, user_id) membership re-checks the write gate ran.
+let membershipRechecks = 0
 
 vi.mock('../lib/crypto.js', () => ({
   sha256Hex: async (raw: string) => {
@@ -76,12 +79,19 @@ vi.mock('../lib/db.js', () => ({
               }
               return { data: null, error: { message: 'not found' } }
             },
-            maybeSingle: async () => ({ data: null }),
+            // org_members (organization_id, user_id) lookup: the write-time
+            // role re-check. Resolves like supabase-js: { data, error }.
+            maybeSingle: async () => {
+              if (table !== 'org_members') return { data: null, error: null }
+              membershipRechecks += 1
+              return { data: jwtRole ? { role: jwtRole } : null, error: null }
+            },
           }),
           order: () => ({
             limit: () => ({
               maybeSingle: async () => ({
-                data: { organization_id: 'org-from-jwt', role: jwtRole },
+                data: jwtRole ? { organization_id: 'org-from-jwt', role: jwtRole } : null,
+                error: null,
               }),
             }),
           }),
@@ -114,6 +124,7 @@ describe('requireEditDualAuth write gate', () => {
   beforeEach(() => {
     _clearAuthCacheForTests()
     jwtRole = 'admin'
+    membershipRechecks = 0
   })
 
   test('full sl_live_ key passes (null role is the CI/SDK path)', async () => {
@@ -125,6 +136,8 @@ describe('requireEditDualAuth write gate', () => {
     const body = (await res.json()) as { orgId: string; role: string | null }
     expect(body.orgId).toBe('org-full')
     expect(body.role).toBeNull()
+    // The API-key path has no member to re-check.
+    expect(membershipRechecks).toBe(0)
   })
 
   test('public sl_live_pub_ key is rejected by requireFullScope', async () => {
@@ -166,6 +179,41 @@ describe('requireEditDualAuth write gate', () => {
     expect(res.status).toBe(403)
     const body = (await res.json()) as { error: { code: string } }
     expect(body.error.code).toBe('FORBIDDEN')
+  })
+
+  // XVERIFY 2026-09-28 C1.2: the gate used to trust the 60s authJwt cache, so
+  // an editor demoted to viewer kept write access until the entry expired.
+  test('editor demoted to viewer after the cache warmed is rejected on the next write', async () => {
+    jwtRole = 'editor'
+    const warm = await buildApp().request('/write', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${JWT_TOKEN}` },
+    })
+    expect(warm.status).toBe(200)
+
+    jwtRole = 'viewer'
+    const res = await buildApp().request('/write', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${JWT_TOKEN}` },
+    })
+    expect(res.status).toBe(403)
+    const body = (await res.json()) as { error: { code: string } }
+    expect(body.error.code).toBe('FORBIDDEN')
+  })
+
+  test('member removed after the cache warmed is rejected on the next write', async () => {
+    jwtRole = 'admin'
+    await buildApp().request('/write', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${JWT_TOKEN}` },
+    })
+
+    jwtRole = null
+    const res = await buildApp().request('/write', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${JWT_TOKEN}` },
+    })
+    expect(res.status).toBe(403)
   })
 })
 
