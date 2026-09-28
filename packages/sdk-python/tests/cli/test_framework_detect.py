@@ -78,3 +78,77 @@ def test_gemini_normalization(tmp_path: Path) -> None:
     # PEP 503 normalization: Google_Generativeai == google-generativeai
     (tmp_path / "requirements.txt").write_text("Google_Generativeai==0.8\n", encoding="utf-8")
     assert "gemini" in detect_project(str(tmp_path)).detected_providers
+
+
+# ── Python 3.9 / 3.10: no tomllib ────────────────────────────────────────
+# Without tomllib the detector falls back to a text scan. These tests force
+# that path on every interpreter so CI on 3.11+ still covers what 3.9 and
+# 3.10 users run.
+
+_POETRY_TABLES = """
+[tool.poetry]
+name = "demo"
+
+[tool.poetry.dependencies]
+python = "^3.9"
+anthropic = "^0.30"
+"google-generativeai" = { version = "^0.8", optional = true }
+
+[tool.poetry.group.dev.dependencies]
+openai = "^1.40"
+pytest = "^8"
+
+[tool.ruff]
+line-length = 100
+"""
+
+
+def test_poetry_tables_without_tomllib(tmp_path: Path, monkeypatch) -> None:
+    import spanlens.cli.framework_detect as fd
+
+    monkeypatch.setattr(fd, "tomllib", None)
+    (tmp_path / "pyproject.toml").write_text(_POETRY_TABLES, encoding="utf-8")
+    info = fd.detect_project(str(tmp_path))
+    assert info.package_manager == "poetry"
+    assert set(info.detected_providers) == {"openai", "anthropic", "gemini"}
+
+
+def test_pep621_arrays_without_tomllib(tmp_path: Path, monkeypatch) -> None:
+    import spanlens.cli.framework_detect as fd
+
+    monkeypatch.setattr(fd, "tomllib", None)
+    (tmp_path / "pyproject.toml").write_text(
+        """
+[project]
+name = "demo"
+dependencies = ["openai>=1.0", "httpx"]
+
+[project.optional-dependencies]
+claude = ["anthropic>=0.30"]
+""",
+        encoding="utf-8",
+    )
+    assert set(fd.detect_project(str(tmp_path)).detected_providers) == {"openai", "anthropic"}
+
+
+def test_unrelated_table_keys_are_not_dependencies_without_tomllib(
+    tmp_path: Path, monkeypatch
+) -> None:
+    import spanlens.cli.framework_detect as fd
+
+    monkeypatch.setattr(fd, "tomllib", None)
+    # A key named like a provider outside a dependency table must not count.
+    (tmp_path / "pyproject.toml").write_text(
+        """
+[tool.poetry]
+name = "demo"
+
+[tool.poetry.dependencies]
+python = "^3.9"
+
+[tool.custom]
+openai = "not a dependency"
+""",
+        encoding="utf-8",
+    )
+    assert fd.detect_project(str(tmp_path)).detected_providers == []

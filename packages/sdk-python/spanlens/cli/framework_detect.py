@@ -14,10 +14,16 @@ import re
 from dataclasses import dataclass, field
 from typing import List, Optional
 
-try:  # Python 3.11+ ships tomllib; older versions degrade to a regex sniff.
+# Python 3.11+ ships tomllib. On 3.9 and 3.10 we use tomli when it happens to be
+# installed, and otherwise fall back to a section-aware text scan
+# (_deps_from_pyproject_text) that still reads Poetry dependency tables.
+try:
     import tomllib  # type: ignore[import-not-found]
 except ModuleNotFoundError:  # pragma: no cover - exercised on <3.11 only
-    tomllib = None
+    try:
+        import tomli as tomllib  # type: ignore[import-not-found, unused-ignore]
+    except ModuleNotFoundError:
+        tomllib = None
 
 
 # Maps the Spanlens provider name to the PyPI distribution names that imply it.
@@ -134,11 +140,48 @@ def _deps_from_pyproject(path: str) -> set[str]:
         for group in (poetry.get("group", {}) or {}).values():
             for key in (group.get("dependencies", {}) or {}):
                 names.add(_normalize(key))
-    else:  # pragma: no cover - <3.11 fallback
-        for spec in re.findall(r'"([A-Za-z0-9._-]+(?:\[[^\]]*\])?[^"]*)"', text):
-            names.add(_dist_from_spec(spec))
+    else:
+        names |= _deps_from_pyproject_text(text)
 
     names.discard("")
+    return names
+
+
+# Table and array-of-tables headers: [project], [[tool.x]], with an optional comment.
+_TABLE_HEADER = re.compile(r"^\s*\[\[?\s*([^\[\]]+?)\s*\]\]?\s*(?:#.*)?$")
+# A key at the start of a line: bare, "double" or 'single' quoted.
+_TABLE_KEY = re.compile(r"""^\s*(?:"([^"]+)"|'([^']+)'|([A-Za-z0-9._-]+))\s*=""")
+# A quoted requirement string inside a PEP 621 array.
+_QUOTED_SPEC = re.compile(r'"([A-Za-z0-9._-]+(?:\[[^\]]*\])?[^"]*)"')
+
+
+def _is_poetry_dependency_table(table: str) -> bool:
+    return table in ("tool.poetry.dependencies", "tool.poetry.dev-dependencies") or (
+        table.startswith("tool.poetry.group.") and table.endswith(".dependencies")
+    )
+
+
+def _deps_from_pyproject_text(text: str) -> set[str]:
+    """Dependency names from a pyproject.toml without a TOML parser.
+
+    Poetry declares dependencies as table keys (``anthropic = "^0.30"``), and
+    PEP 621 as quoted strings in arrays. Tracking the current table keeps keys
+    and strings from unrelated tables such as ``[tool.ruff]`` out of the result.
+    """
+    names: set[str] = set()
+    table = ""
+    for line in text.splitlines():
+        header = _TABLE_HEADER.match(line)
+        if header:
+            table = header.group(1).strip()
+            continue
+        if _is_poetry_dependency_table(table):
+            key = _TABLE_KEY.match(line)
+            if key:
+                names.add(_normalize(next(g for g in key.groups() if g)))
+        elif table in ("project", "project.optional-dependencies"):
+            for spec in _QUOTED_SPEC.findall(line):
+                names.add(_dist_from_spec(spec))
     return names
 
 
