@@ -24,7 +24,9 @@ npx @spanlens/cli init --dry-run
 npx @spanlens/cli init --server-url https://spanlens.yourcompany.com
 ```
 
-Points the wizard at your own server: API key validation, dashboard links, and the generated `SPANLENS_BASE_URL` env var all use your URL instead of `spanlens.io`.
+Points the wizard at your own Spanlens server, the host that serves `/api` and `/proxy`. The wizard validates your key against it and writes its origin (no path, no trailing slash) to `SPANLENS_BASE_URL`. The `@spanlens/sdk` factories read that variable from version 0.18.0 on and send requests to `/proxy/openai/v1`, `/proxy/anthropic`, or `/proxy/gemini` on your server; the wizard prints those exact addresses when it finishes. A path in the URL you pass is ignored with a warning. `--server-url=<url>` works too.
+
+Older `@spanlens/sdk` versions ignore `SPANLENS_BASE_URL` and would send your requests and your self-hosted key to the hosted service. So before it writes anything, the wizard checks the version installed in your project. It offers to upgrade an older one, and if you decline, or the newest published version is still older than 0.18.0, it stops without touching your env file or your code.
 
 ## What it does
 
@@ -42,8 +44,8 @@ Points the wizard at your own server: API key validation, dashboard links, and t
   ? Paste your Spanlens key › sl_live_*************
 
   ✓ Key valid · project chatbot-prod · providers: openai, anthropic, gemini
-  ✓ Updated SPANLENS_API_KEY in .env.local
   ✓ Installed @spanlens/sdk (pnpm add @spanlens/sdk)
+  ✓ Updated SPANLENS_API_KEY in .env.local
 
   ✓ Found 3 patches to apply
     • [openai] app/api/chat/route.ts
@@ -57,6 +59,7 @@ Points the wizard at your own server: API key validation, dashboard links, and t
         → 1 × new GoogleGenerativeAI(...) → createGemini(...)
 
   ? Apply these changes? › yes
+  ✓ Recording the TypeScript baseline: no errors
   ✓ Patched 3 files
   ✓ TypeScript check passed ✓
 
@@ -105,7 +108,64 @@ Points the wizard at your own server: API key validation, dashboard links, and t
 + const genAI = createGemini()
 ```
 
-`apiKey` and `baseURL` are stripped, since every factory reads `SPANLENS_API_KEY` from env and routes through the Spanlens proxy. Other options (`timeout`, `organization`, `defaultHeaders`, etc.) stay put.
+Options that carry a provider credential or the upstream address are stripped (`apiKey` and `baseURL`, plus `authToken`, `credentials`, `config`, and `profile` for Anthropic), since every factory reads `SPANLENS_API_KEY` from env and routes through the Spanlens proxy. Other options (`timeout`, `organization`, `maxRetries`, etc.) stay put. The client can come from a default import or a named one (`import { OpenAI } from 'openai'`); both are rewritten, for OpenAI and Anthropic alike.
+
+### Headers and query parameters
+
+`defaultHeaders` and `defaultQuery` stay, minus any entry that carries a credential: `Authorization`, `x-api-key`, `api-key`, names with key, token, or secret in them, and every gateway header such as `Helicone-*`, `x-portkey-*`, or `cf-aig-*`. The provider SDKs send these after their own auth header, so an `Authorization` left in place would replace your Spanlens key and send your OpenAI key to Spanlens. The preview lists every entry the wizard removes:
+
+```diff
+- const openai = new OpenAI({
+-   apiKey: process.env.OPENAI_API_KEY,
+-   baseURL: 'https://oai.helicone.ai/v1',
+-   defaultHeaders: { 'Helicone-Auth': `Bearer ${process.env.HELICONE_API_KEY}` },
+- })
++ const openai = createOpenAI()
+```
+
+Helicone metadata headers such as `Helicone-User-Id` are dropped too; see the [Helicone migration guide](https://www.spanlens.io/docs/migrate/from-helicone) for their Spanlens counterparts.
+
+### Imports the file still needs
+
+The provider import is only removed when nothing else in the file uses it:
+
+```diff
+- import OpenAI, { APIError } from 'openai'
++ import { APIError } from 'openai'
++ import { createOpenAI } from '@spanlens/sdk/openai'
+- const openai = new OpenAI()
++ const openai = createOpenAI()
+  export const isApiError = (e: unknown) => e instanceof APIError
+```
+
+If `OpenAI` still appears as a type, in a namespace type such as `OpenAI.Chat.Completions.ChatCompletionMessageParam`, or in an `instanceof` check, the import stays as it is and the factory import is added next to it.
+
+## What it leaves for you
+
+Only inline object options whose keys are all written out are rewritten. When the options come from a variable, a spread (`{ ...opts }`), or a computed key, the wizard cannot tell whether they still carry your provider key or a `baseURL`. Passing them through would either send your provider key to Spanlens or send requests straight to the provider, so the call is left unchanged and the wizard prints the exact edit:
+
+```
+[openai] lib/openai.ts:4  The options come from `providerOptions`, which the wizard cannot inspect.
+  + import { createOpenAI } from '@spanlens/sdk/openai'
+  - new OpenAI(providerOptions)
+  + createOpenAI(providerOptions)
+  Before you make this change, `providerOptions` must not set apiKey, baseURL, adminAPIKey, or workloadIdentity.
+```
+
+The wizard also leaves a call for you, with the same kind of instructions, when:
+
+- `defaultHeaders` or `defaultQuery` comes from a variable or a helper call, or a header value looks like a key
+- the options pass a custom `fetch`, or `fetchOptions` sets `headers`, since either can add its own credentials
+- the client is created from `require()`, a dynamic `import()`, or a namespace import such as `import * as oai from 'openai'`
+- the client talks to Azure OpenAI (an Azure `baseURL`, an `api-key` header, or an `api-version` query). `createOpenAI()` would send those requests to OpenAI, so the wizard points you at the Azure route in the [proxy docs](https://www.spanlens.io/docs/proxy) instead of suggesting a rewrite
+
+In any of these cases the wizard ends with "Almost there" instead of "setup complete". If it finds no client at all, it says setup is not finished and shows the factory imports to use.
+
+## Safety checks
+
+- Every rewritten file is compiled in memory before anything is written. A file whose rewrite would leave a name unresolved or declared twice is left unchanged and reported.
+- Writes are all-or-nothing: if one file cannot be written, the files written before it are restored.
+- In TypeScript projects, the wizard runs your own `tsc --noEmit` before and after the patch. Errors that were already there are ignored. If the patch adds new ones, every patched file is restored, the errors are printed, and the wizard exits with status 1.
 
 ## What's supported
 
@@ -114,7 +174,7 @@ Points the wizard at your own server: API key validation, dashboard links, and t
 - ✅ Auto-installs `@spanlens/sdk` using your package manager (npm / pnpm / yarn / bun)
 - ✅ Validates the Spanlens key against the API before writing anything
 - ✅ Confirms before overwriting an existing `SPANLENS_API_KEY` in your env file
-- ✅ Runs `tsc --noEmit` after patching to catch any breakage immediately
+- ✅ Type-checks the patch with your own `tsc --noEmit` and rolls it back if it adds errors
 - ✅ `--dry-run` flag (preview without writing or installing)
 - ✅ `--server-url <url>` flag for self-hosted deployments
 - ✅ Multiple `new XxxClient(...)` calls per project
