@@ -7,11 +7,6 @@ export type Json =
   | Json[]
 
 export type Database = {
-  // Allows to automatically instantiate createClient with right options
-  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
-  __InternalSupabase: {
-    PostgrestVersion: "14.5"
-  }
   public: {
     Tables: {
       alert_deliveries: {
@@ -414,23 +409,91 @@ export type Database = {
         }
         Relationships: []
       }
+      billing_checkout_sessions: {
+        Row: {
+          checkout_url: string | null
+          completed_at: string | null
+          created_at: string
+          created_by: string | null
+          id: string
+          organization_id: string
+          paddle_transaction_id: string | null
+          plan: string
+          price_id: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          checkout_url?: string | null
+          completed_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          organization_id: string
+          paddle_transaction_id?: string | null
+          plan: string
+          price_id: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          checkout_url?: string | null
+          completed_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          organization_id?: string
+          paddle_transaction_id?: string | null
+          plan?: string
+          price_id?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "billing_checkout_sessions_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       billing_downgrade_notifications: {
         Row: {
+          attempts: number
           created_at: string
+          cycle_started_at: string | null
           id: string
+          last_attempt_at: string | null
+          last_error: string | null
+          sent_at: string | null
           stage: string
+          status: string
           subscription_id: string
         }
         Insert: {
+          attempts?: number
           created_at?: string
+          cycle_started_at?: string | null
           id?: string
+          last_attempt_at?: string | null
+          last_error?: string | null
+          sent_at?: string | null
           stage: string
+          status?: string
           subscription_id: string
         }
         Update: {
+          attempts?: number
           created_at?: string
+          cycle_started_at?: string | null
           id?: string
+          last_attempt_at?: string | null
+          last_error?: string | null
+          sent_at?: string | null
           stage?: string
+          status?: string
           subscription_id?: string
         }
         Relationships: [
@@ -1649,6 +1712,32 @@ export type Database = {
           },
         ]
       }
+      org_activity: {
+        Row: {
+          last_request_at: string
+          organization_id: string
+          updated_at: string
+        }
+        Insert: {
+          last_request_at?: string
+          organization_id: string
+          updated_at?: string
+        }
+        Update: {
+          last_request_at?: string
+          organization_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "org_activity_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: true
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       org_invitations: {
         Row: {
           accepted_at: string | null
@@ -1796,6 +1885,7 @@ export type Database = {
           cancelled_at: string | null
           cancelled_by: string | null
           executed_at: string | null
+          execution_claimed_at: string | null
           id: string
           organization_id: string
           requested_at: string
@@ -1809,6 +1899,7 @@ export type Database = {
           cancelled_at?: string | null
           cancelled_by?: string | null
           executed_at?: string | null
+          execution_claimed_at?: string | null
           id?: string
           organization_id: string
           requested_at?: string
@@ -1822,6 +1913,7 @@ export type Database = {
           cancelled_at?: string | null
           cancelled_by?: string | null
           executed_at?: string | null
+          execution_claimed_at?: string | null
           id?: string
           organization_id?: string
           requested_at?: string
@@ -2263,6 +2355,728 @@ export type Database = {
           },
         ]
       }
+      requests: {
+        Row: {
+          api_key_id: string | null
+          cache_hit: boolean
+          cache_read_tokens: number
+          cache_write_tokens: number
+          completion_tokens: number
+          cost_usd: number | null
+          created_at: string
+          error_message: string | null
+          flags: Json
+          has_security_flags: boolean
+          id: string
+          latency_ms: number
+          model: string
+          organization_id: string
+          project_id: string
+          prompt_tokens: number
+          prompt_version_id: string | null
+          provider: string
+          provider_key_id: string | null
+          proxy_overhead_ms: number | null
+          request_body: string
+          response_body: string
+          response_flags: Json
+          service_tier: string
+          session_id: string | null
+          span_id: string | null
+          status_code: number
+          total_tokens: number
+          trace_id: string | null
+          truncated: boolean
+          user_id: string | null
+        }
+        Insert: {
+          api_key_id?: string | null
+          cache_hit?: boolean
+          cache_read_tokens?: number
+          cache_write_tokens?: number
+          completion_tokens?: number
+          cost_usd?: number | null
+          created_at?: string
+          error_message?: string | null
+          flags?: Json
+          has_security_flags?: boolean
+          id?: string
+          latency_ms?: number
+          model: string
+          organization_id: string
+          project_id: string
+          prompt_tokens?: number
+          prompt_version_id?: string | null
+          provider: string
+          provider_key_id?: string | null
+          proxy_overhead_ms?: number | null
+          request_body?: string
+          response_body?: string
+          response_flags?: Json
+          service_tier?: string
+          session_id?: string | null
+          span_id?: string | null
+          status_code?: number
+          total_tokens?: number
+          trace_id?: string | null
+          truncated?: boolean
+          user_id?: string | null
+        }
+        Update: {
+          api_key_id?: string | null
+          cache_hit?: boolean
+          cache_read_tokens?: number
+          cache_write_tokens?: number
+          completion_tokens?: number
+          cost_usd?: number | null
+          created_at?: string
+          error_message?: string | null
+          flags?: Json
+          has_security_flags?: boolean
+          id?: string
+          latency_ms?: number
+          model?: string
+          organization_id?: string
+          project_id?: string
+          prompt_tokens?: number
+          prompt_version_id?: string | null
+          provider?: string
+          provider_key_id?: string | null
+          proxy_overhead_ms?: number | null
+          request_body?: string
+          response_body?: string
+          response_flags?: Json
+          service_tier?: string
+          session_id?: string | null
+          span_id?: string | null
+          status_code?: number
+          total_tokens?: number
+          trace_id?: string | null
+          truncated?: boolean
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "requests_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      requests_2026_08: {
+        Row: {
+          api_key_id: string | null
+          cache_hit: boolean
+          cache_read_tokens: number
+          cache_write_tokens: number
+          completion_tokens: number
+          cost_usd: number | null
+          created_at: string
+          error_message: string | null
+          flags: Json
+          has_security_flags: boolean
+          id: string
+          latency_ms: number
+          model: string
+          organization_id: string
+          project_id: string
+          prompt_tokens: number
+          prompt_version_id: string | null
+          provider: string
+          provider_key_id: string | null
+          proxy_overhead_ms: number | null
+          request_body: string
+          response_body: string
+          response_flags: Json
+          service_tier: string
+          session_id: string | null
+          span_id: string | null
+          status_code: number
+          total_tokens: number
+          trace_id: string | null
+          truncated: boolean
+          user_id: string | null
+        }
+        Insert: {
+          api_key_id?: string | null
+          cache_hit?: boolean
+          cache_read_tokens?: number
+          cache_write_tokens?: number
+          completion_tokens?: number
+          cost_usd?: number | null
+          created_at?: string
+          error_message?: string | null
+          flags?: Json
+          has_security_flags?: boolean
+          id?: string
+          latency_ms?: number
+          model: string
+          organization_id: string
+          project_id: string
+          prompt_tokens?: number
+          prompt_version_id?: string | null
+          provider: string
+          provider_key_id?: string | null
+          proxy_overhead_ms?: number | null
+          request_body?: string
+          response_body?: string
+          response_flags?: Json
+          service_tier?: string
+          session_id?: string | null
+          span_id?: string | null
+          status_code?: number
+          total_tokens?: number
+          trace_id?: string | null
+          truncated?: boolean
+          user_id?: string | null
+        }
+        Update: {
+          api_key_id?: string | null
+          cache_hit?: boolean
+          cache_read_tokens?: number
+          cache_write_tokens?: number
+          completion_tokens?: number
+          cost_usd?: number | null
+          created_at?: string
+          error_message?: string | null
+          flags?: Json
+          has_security_flags?: boolean
+          id?: string
+          latency_ms?: number
+          model?: string
+          organization_id?: string
+          project_id?: string
+          prompt_tokens?: number
+          prompt_version_id?: string | null
+          provider?: string
+          provider_key_id?: string | null
+          proxy_overhead_ms?: number | null
+          request_body?: string
+          response_body?: string
+          response_flags?: Json
+          service_tier?: string
+          session_id?: string | null
+          span_id?: string | null
+          status_code?: number
+          total_tokens?: number
+          trace_id?: string | null
+          truncated?: boolean
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      requests_2026_09: {
+        Row: {
+          api_key_id: string | null
+          cache_hit: boolean
+          cache_read_tokens: number
+          cache_write_tokens: number
+          completion_tokens: number
+          cost_usd: number | null
+          created_at: string
+          error_message: string | null
+          flags: Json
+          has_security_flags: boolean
+          id: string
+          latency_ms: number
+          model: string
+          organization_id: string
+          project_id: string
+          prompt_tokens: number
+          prompt_version_id: string | null
+          provider: string
+          provider_key_id: string | null
+          proxy_overhead_ms: number | null
+          request_body: string
+          response_body: string
+          response_flags: Json
+          service_tier: string
+          session_id: string | null
+          span_id: string | null
+          status_code: number
+          total_tokens: number
+          trace_id: string | null
+          truncated: boolean
+          user_id: string | null
+        }
+        Insert: {
+          api_key_id?: string | null
+          cache_hit?: boolean
+          cache_read_tokens?: number
+          cache_write_tokens?: number
+          completion_tokens?: number
+          cost_usd?: number | null
+          created_at?: string
+          error_message?: string | null
+          flags?: Json
+          has_security_flags?: boolean
+          id?: string
+          latency_ms?: number
+          model: string
+          organization_id: string
+          project_id: string
+          prompt_tokens?: number
+          prompt_version_id?: string | null
+          provider: string
+          provider_key_id?: string | null
+          proxy_overhead_ms?: number | null
+          request_body?: string
+          response_body?: string
+          response_flags?: Json
+          service_tier?: string
+          session_id?: string | null
+          span_id?: string | null
+          status_code?: number
+          total_tokens?: number
+          trace_id?: string | null
+          truncated?: boolean
+          user_id?: string | null
+        }
+        Update: {
+          api_key_id?: string | null
+          cache_hit?: boolean
+          cache_read_tokens?: number
+          cache_write_tokens?: number
+          completion_tokens?: number
+          cost_usd?: number | null
+          created_at?: string
+          error_message?: string | null
+          flags?: Json
+          has_security_flags?: boolean
+          id?: string
+          latency_ms?: number
+          model?: string
+          organization_id?: string
+          project_id?: string
+          prompt_tokens?: number
+          prompt_version_id?: string | null
+          provider?: string
+          provider_key_id?: string | null
+          proxy_overhead_ms?: number | null
+          request_body?: string
+          response_body?: string
+          response_flags?: Json
+          service_tier?: string
+          session_id?: string | null
+          span_id?: string | null
+          status_code?: number
+          total_tokens?: number
+          trace_id?: string | null
+          truncated?: boolean
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      requests_2026_10: {
+        Row: {
+          api_key_id: string | null
+          cache_hit: boolean
+          cache_read_tokens: number
+          cache_write_tokens: number
+          completion_tokens: number
+          cost_usd: number | null
+          created_at: string
+          error_message: string | null
+          flags: Json
+          has_security_flags: boolean
+          id: string
+          latency_ms: number
+          model: string
+          organization_id: string
+          project_id: string
+          prompt_tokens: number
+          prompt_version_id: string | null
+          provider: string
+          provider_key_id: string | null
+          proxy_overhead_ms: number | null
+          request_body: string
+          response_body: string
+          response_flags: Json
+          service_tier: string
+          session_id: string | null
+          span_id: string | null
+          status_code: number
+          total_tokens: number
+          trace_id: string | null
+          truncated: boolean
+          user_id: string | null
+        }
+        Insert: {
+          api_key_id?: string | null
+          cache_hit?: boolean
+          cache_read_tokens?: number
+          cache_write_tokens?: number
+          completion_tokens?: number
+          cost_usd?: number | null
+          created_at?: string
+          error_message?: string | null
+          flags?: Json
+          has_security_flags?: boolean
+          id?: string
+          latency_ms?: number
+          model: string
+          organization_id: string
+          project_id: string
+          prompt_tokens?: number
+          prompt_version_id?: string | null
+          provider: string
+          provider_key_id?: string | null
+          proxy_overhead_ms?: number | null
+          request_body?: string
+          response_body?: string
+          response_flags?: Json
+          service_tier?: string
+          session_id?: string | null
+          span_id?: string | null
+          status_code?: number
+          total_tokens?: number
+          trace_id?: string | null
+          truncated?: boolean
+          user_id?: string | null
+        }
+        Update: {
+          api_key_id?: string | null
+          cache_hit?: boolean
+          cache_read_tokens?: number
+          cache_write_tokens?: number
+          completion_tokens?: number
+          cost_usd?: number | null
+          created_at?: string
+          error_message?: string | null
+          flags?: Json
+          has_security_flags?: boolean
+          id?: string
+          latency_ms?: number
+          model?: string
+          organization_id?: string
+          project_id?: string
+          prompt_tokens?: number
+          prompt_version_id?: string | null
+          provider?: string
+          provider_key_id?: string | null
+          proxy_overhead_ms?: number | null
+          request_body?: string
+          response_body?: string
+          response_flags?: Json
+          service_tier?: string
+          session_id?: string | null
+          span_id?: string | null
+          status_code?: number
+          total_tokens?: number
+          trace_id?: string | null
+          truncated?: boolean
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      requests_2026_11: {
+        Row: {
+          api_key_id: string | null
+          cache_hit: boolean
+          cache_read_tokens: number
+          cache_write_tokens: number
+          completion_tokens: number
+          cost_usd: number | null
+          created_at: string
+          error_message: string | null
+          flags: Json
+          has_security_flags: boolean
+          id: string
+          latency_ms: number
+          model: string
+          organization_id: string
+          project_id: string
+          prompt_tokens: number
+          prompt_version_id: string | null
+          provider: string
+          provider_key_id: string | null
+          proxy_overhead_ms: number | null
+          request_body: string
+          response_body: string
+          response_flags: Json
+          service_tier: string
+          session_id: string | null
+          span_id: string | null
+          status_code: number
+          total_tokens: number
+          trace_id: string | null
+          truncated: boolean
+          user_id: string | null
+        }
+        Insert: {
+          api_key_id?: string | null
+          cache_hit?: boolean
+          cache_read_tokens?: number
+          cache_write_tokens?: number
+          completion_tokens?: number
+          cost_usd?: number | null
+          created_at?: string
+          error_message?: string | null
+          flags?: Json
+          has_security_flags?: boolean
+          id?: string
+          latency_ms?: number
+          model: string
+          organization_id: string
+          project_id: string
+          prompt_tokens?: number
+          prompt_version_id?: string | null
+          provider: string
+          provider_key_id?: string | null
+          proxy_overhead_ms?: number | null
+          request_body?: string
+          response_body?: string
+          response_flags?: Json
+          service_tier?: string
+          session_id?: string | null
+          span_id?: string | null
+          status_code?: number
+          total_tokens?: number
+          trace_id?: string | null
+          truncated?: boolean
+          user_id?: string | null
+        }
+        Update: {
+          api_key_id?: string | null
+          cache_hit?: boolean
+          cache_read_tokens?: number
+          cache_write_tokens?: number
+          completion_tokens?: number
+          cost_usd?: number | null
+          created_at?: string
+          error_message?: string | null
+          flags?: Json
+          has_security_flags?: boolean
+          id?: string
+          latency_ms?: number
+          model?: string
+          organization_id?: string
+          project_id?: string
+          prompt_tokens?: number
+          prompt_version_id?: string | null
+          provider?: string
+          provider_key_id?: string | null
+          proxy_overhead_ms?: number | null
+          request_body?: string
+          response_body?: string
+          response_flags?: Json
+          service_tier?: string
+          session_id?: string | null
+          span_id?: string | null
+          status_code?: number
+          total_tokens?: number
+          trace_id?: string | null
+          truncated?: boolean
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      requests_2026_12: {
+        Row: {
+          api_key_id: string | null
+          cache_hit: boolean
+          cache_read_tokens: number
+          cache_write_tokens: number
+          completion_tokens: number
+          cost_usd: number | null
+          created_at: string
+          error_message: string | null
+          flags: Json
+          has_security_flags: boolean
+          id: string
+          latency_ms: number
+          model: string
+          organization_id: string
+          project_id: string
+          prompt_tokens: number
+          prompt_version_id: string | null
+          provider: string
+          provider_key_id: string | null
+          proxy_overhead_ms: number | null
+          request_body: string
+          response_body: string
+          response_flags: Json
+          service_tier: string
+          session_id: string | null
+          span_id: string | null
+          status_code: number
+          total_tokens: number
+          trace_id: string | null
+          truncated: boolean
+          user_id: string | null
+        }
+        Insert: {
+          api_key_id?: string | null
+          cache_hit?: boolean
+          cache_read_tokens?: number
+          cache_write_tokens?: number
+          completion_tokens?: number
+          cost_usd?: number | null
+          created_at?: string
+          error_message?: string | null
+          flags?: Json
+          has_security_flags?: boolean
+          id?: string
+          latency_ms?: number
+          model: string
+          organization_id: string
+          project_id: string
+          prompt_tokens?: number
+          prompt_version_id?: string | null
+          provider: string
+          provider_key_id?: string | null
+          proxy_overhead_ms?: number | null
+          request_body?: string
+          response_body?: string
+          response_flags?: Json
+          service_tier?: string
+          session_id?: string | null
+          span_id?: string | null
+          status_code?: number
+          total_tokens?: number
+          trace_id?: string | null
+          truncated?: boolean
+          user_id?: string | null
+        }
+        Update: {
+          api_key_id?: string | null
+          cache_hit?: boolean
+          cache_read_tokens?: number
+          cache_write_tokens?: number
+          completion_tokens?: number
+          cost_usd?: number | null
+          created_at?: string
+          error_message?: string | null
+          flags?: Json
+          has_security_flags?: boolean
+          id?: string
+          latency_ms?: number
+          model?: string
+          organization_id?: string
+          project_id?: string
+          prompt_tokens?: number
+          prompt_version_id?: string | null
+          provider?: string
+          provider_key_id?: string | null
+          proxy_overhead_ms?: number | null
+          request_body?: string
+          response_body?: string
+          response_flags?: Json
+          service_tier?: string
+          session_id?: string | null
+          span_id?: string | null
+          status_code?: number
+          total_tokens?: number
+          trace_id?: string | null
+          truncated?: boolean
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      requests_default: {
+        Row: {
+          api_key_id: string | null
+          cache_hit: boolean
+          cache_read_tokens: number
+          cache_write_tokens: number
+          completion_tokens: number
+          cost_usd: number | null
+          created_at: string
+          error_message: string | null
+          flags: Json
+          has_security_flags: boolean
+          id: string
+          latency_ms: number
+          model: string
+          organization_id: string
+          project_id: string
+          prompt_tokens: number
+          prompt_version_id: string | null
+          provider: string
+          provider_key_id: string | null
+          proxy_overhead_ms: number | null
+          request_body: string
+          response_body: string
+          response_flags: Json
+          service_tier: string
+          session_id: string | null
+          span_id: string | null
+          status_code: number
+          total_tokens: number
+          trace_id: string | null
+          truncated: boolean
+          user_id: string | null
+        }
+        Insert: {
+          api_key_id?: string | null
+          cache_hit?: boolean
+          cache_read_tokens?: number
+          cache_write_tokens?: number
+          completion_tokens?: number
+          cost_usd?: number | null
+          created_at?: string
+          error_message?: string | null
+          flags?: Json
+          has_security_flags?: boolean
+          id?: string
+          latency_ms?: number
+          model: string
+          organization_id: string
+          project_id: string
+          prompt_tokens?: number
+          prompt_version_id?: string | null
+          provider: string
+          provider_key_id?: string | null
+          proxy_overhead_ms?: number | null
+          request_body?: string
+          response_body?: string
+          response_flags?: Json
+          service_tier?: string
+          session_id?: string | null
+          span_id?: string | null
+          status_code?: number
+          total_tokens?: number
+          trace_id?: string | null
+          truncated?: boolean
+          user_id?: string | null
+        }
+        Update: {
+          api_key_id?: string | null
+          cache_hit?: boolean
+          cache_read_tokens?: number
+          cache_write_tokens?: number
+          completion_tokens?: number
+          cost_usd?: number | null
+          created_at?: string
+          error_message?: string | null
+          flags?: Json
+          has_security_flags?: boolean
+          id?: string
+          latency_ms?: number
+          model?: string
+          organization_id?: string
+          project_id?: string
+          prompt_tokens?: number
+          prompt_version_id?: string | null
+          provider?: string
+          provider_key_id?: string | null
+          proxy_overhead_ms?: number | null
+          request_body?: string
+          response_body?: string
+          response_flags?: Json
+          service_tier?: string
+          session_id?: string | null
+          span_id?: string | null
+          status_code?: number
+          total_tokens?: number
+          trace_id?: string | null
+          truncated?: boolean
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       requests_fallback: {
         Row: {
           created_at: string
@@ -2542,9 +3356,12 @@ export type Database = {
       subscription_overage_charges: {
         Row: {
           charged_at: string
+          charged_quantity: number
           completed_at: string | null
           error_message: string | null
           id: string
+          included_requests: number | null
+          kind: string
           overage_quantity: number
           overage_requests: number
           paddle_response: Json | null
@@ -2556,9 +3373,12 @@ export type Database = {
         }
         Insert: {
           charged_at?: string
+          charged_quantity?: number
           completed_at?: string | null
           error_message?: string | null
           id?: string
+          included_requests?: number | null
+          kind?: string
           overage_quantity: number
           overage_requests: number
           paddle_response?: Json | null
@@ -2570,9 +3390,12 @@ export type Database = {
         }
         Update: {
           charged_at?: string
+          charged_quantity?: number
           completed_at?: string | null
           error_message?: string | null
           id?: string
+          included_requests?: number | null
+          kind?: string
           overage_quantity?: number
           overage_requests?: number
           paddle_response?: Json | null
@@ -2916,6 +3739,8 @@ export type Database = {
       webhook_deliveries: {
         Row: {
           attempt_count: number
+          claim_token: string | null
+          claimed_until: string | null
           delivered_at: string
           dlq_at: string | null
           dlq_reason: string | null
@@ -2931,6 +3756,8 @@ export type Database = {
         }
         Insert: {
           attempt_count?: number
+          claim_token?: string | null
+          claimed_until?: string | null
           delivered_at?: string
           dlq_at?: string | null
           dlq_reason?: string | null
@@ -2946,6 +3773,8 @@ export type Database = {
         }
         Update: {
           attempt_count?: number
+          claim_token?: string | null
+          claimed_until?: string | null
           delivered_at?: string
           dlq_at?: string | null
           dlq_reason?: string | null
@@ -3030,52 +3859,60 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      aggregate_usage_daily: { Args: { target_date: string }; Returns: number }
+      apply_paddle_refund: {
+        Args: { p_organization_id: string; p_paddle_subscription_id: string }
+        Returns: Json
+      }
+      apply_paddle_subscription_event: {
+        Args: {
+          p_cancel_at_period_end: boolean
+          p_current_period_end: string
+          p_current_period_start: string
+          p_metadata: Json
+          p_organization_id: string
+          p_paddle_customer_id: string
+          p_paddle_price_id: string
+          p_paddle_subscription_id: string
+          p_plan: string
+          p_status: string
+        }
+        Returns: Json
+      }
+      apply_past_due_downgrade: {
+        Args: { p_past_due_since: string; p_subscription_id: string }
+        Returns: Json
+      }
+      billing_try_timestamptz: { Args: { p_raw: string }; Returns: string }
       check_rate_limit: {
         Args: { p_key: string; p_limit: number; p_window_key: string }
         Returns: boolean
       }
-      get_model_aggregates: {
+      claim_webhook_deliveries: {
         Args: {
-          p_organization_id: string
-          p_status_codes: number[]
-          p_window_start: string
+          p_lease_seconds: number
+          p_limit: number
+          p_max_age_seconds: number
+          p_max_attempts: number
         }
         Returns: {
-          avg_completion_tokens: number
-          avg_prompt_tokens: number
-          model: string
-          provider: string
-          sample_count: number
-          total_cost_usd: number
+          attempt_count: number
+          claim_token: string
+          event_type: string
+          id: string
+          payload: Json
+          webhook_id: string
+          webhook_is_active: boolean
+          webhook_secret: string
+          webhook_url: string
         }[]
       }
-      get_model_percentiles: {
-        Args: {
-          p_model: string
-          p_organization_id: string
-          p_provider: string
-          p_window_start: string
-        }
+      enforce_client_privileges: { Args: never; Returns: undefined }
+      ensure_requests_partitions: {
+        Args: { months_ahead?: number; months_back?: number }
         Returns: {
-          p50_completion: number
-          p50_prompt: number
-          p95_completion: number
-          p95_prompt: number
-          p99_completion: number
-          p99_prompt: number
-          sample_count: number
+          created: boolean
+          partition_name: string
         }[]
-      }
-      get_model_prior_window_cost: {
-        Args: {
-          p_model: string
-          p_organization_id: string
-          p_provider: string
-          p_window_end: string
-          p_window_start: string
-        }
-        Returns: number
       }
       get_prompts_quality_sparklines: {
         Args: {
@@ -3099,6 +3936,52 @@ export type Database = {
       link_otlp_span_parents: {
         Args: { p_trace_id: string }
         Returns: undefined
+      }
+      merge_span_metadata: {
+        Args: { p_organization_id: string; p_patch: Json; p_span_id: string }
+        Returns: boolean
+      }
+      org_accept_invitation: {
+        Args: {
+          p_invitation_id: string
+          p_seat_limit: number
+          p_user_id: string
+        }
+        Returns: Json
+      }
+      org_change_member_role: {
+        Args: {
+          p_new_role: Database["public"]["Enums"]["org_role"]
+          p_org_id: string
+          p_user_id: string
+        }
+        Returns: Json
+      }
+      org_live_plan_resolution: {
+        Args: {
+          p_exclude_paddle_subscription_id?: string
+          p_organization_id: string
+          p_trusted_paddle_subscription_id?: string
+        }
+        Returns: Json
+      }
+      org_member_emails: {
+        Args: { p_org_id: string }
+        Returns: {
+          email: string
+          user_id: string
+        }[]
+      }
+      org_plan_from_live_subscriptions: {
+        Args: {
+          p_exclude_paddle_subscription_id?: string
+          p_organization_id: string
+        }
+        Returns: string
+      }
+      org_remove_member: {
+        Args: { p_org_id: string; p_user_id: string }
+        Returns: Json
       }
       prune_cron_job_runs: { Args: never; Returns: undefined }
       prune_logs_by_retention: { Args: never; Returns: Json }
@@ -3246,3 +4129,4 @@ export const Constants = {
     },
   },
 } as const
+
