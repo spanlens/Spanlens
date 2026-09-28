@@ -117,14 +117,16 @@ Retention: the month's partition is dropped at 365 days; plan window applied at 
           <tr><td><code>prompt_tokens</code> / <code>completion_tokens</code> / <code>total_tokens</code></td><td>integer</td><td>Parsed from provider response.</td></tr>
           <tr><td><code>cache_read_tokens</code> / <code>cache_write_tokens</code></td><td>integer</td><td>From OpenAI prompt cache, Anthropic cache control.</td></tr>
           <tr><td><code>cost_usd</code></td><td>numeric(18, 8)</td><td>Computed from <code>model_prices</code> at log time. Null if model is unseeded.</td></tr>
-          <tr><td><code>latency_ms</code> / <code>proxy_overhead_ms</code></td><td>integer</td><td>End-to-end and our share.</td></tr>
-          <tr><td><code>status_code</code></td><td>integer</td><td>HTTP status from upstream.</td></tr>
+          <tr><td><code>latency_ms</code></td><td>integer</td><td>Provider time: from sending the request to the provider until its response headers arrive. For a stream that is the time to first byte; the rest of the generation is not included. For a failed call, the time until it failed.</td></tr>
+          <tr><td><code>proxy_overhead_ms</code></td><td>integer</td><td>Our share: from the request reaching the Spanlens proxy until it was sent to the provider. Covers authentication, rate limits, the quota check, key decryption, body parsing and the security scan. For a response served from the proxy cache, both columns hold the time taken to serve it.</td></tr>
+          <tr><td><code>status_code</code></td><td>integer</td><td>HTTP status the caller received. Normally the provider&apos;s own status; 502 or 504 when the call failed on the way to the provider or timed out, with the reason in <code>error_message</code>.</td></tr>
+          <tr><td><code>error_message</code></td><td>text</td><td>When the provider answered a non-streaming call with an error, the first 1,000 characters of its error body. When the call failed on the way to the provider, or a stream was cut short by the provider or the deadline, a short description of what happened.</td></tr>
           <tr><td><code>request_body</code> / <code>response_body</code></td><td>text, lz4 compressed</td><td>Full bodies. Can be empty if <code>x-spanlens-log-body=meta|none</code>. Stored as text, since a provider response is not guaranteed to be valid JSON.</td></tr>
           <tr><td><code>trace_id</code> / <code>span_id</code></td><td>text</td><td>Set when the call ran inside a Spanlens trace. Free-form, so an id that is not a UUID still logs.</td></tr>
           <tr><td><code>prompt_version_id</code></td><td>uuid</td><td>Set via <code>x-spanlens-prompt-version</code>.</td></tr>
           <tr><td><code>user_id</code> / <code>session_id</code></td><td>text</td><td>Set via <code>x-spanlens-user</code> / <code>x-spanlens-session</code>.</td></tr>
           <tr><td><code>flags</code> / <code>response_flags</code></td><td>jsonb</td><td>Security findings (PII, jailbreak), always JSON arrays. See <a href="/docs/features/security">Security</a>.</td></tr>
-          <tr><td><code>truncated</code></td><td>boolean</td><td>True if the stream was cut at the 290s deadline.</td></tr>
+          <tr><td><code>truncated</code></td><td>boolean</td><td>True if a stream did not finish: it was cut at the 290s deadline, the provider dropped it, or the client disconnected. <code>error_message</code> says which of the first two it was.</td></tr>
         </tbody>
       </table>
 

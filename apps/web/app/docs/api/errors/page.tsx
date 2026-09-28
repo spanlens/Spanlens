@@ -127,7 +127,8 @@ const ERROR_CATALOG_ROWS: CatalogRow[] = [
   {
     code: 'UPSTREAM_FAILED',
     status: 502,
-    description: 'Upstream provider returned an error or the network failed. The details object carries the provider name.',
+    description:
+      'The connection to the upstream provider failed before a complete response arrived. An HTTP error from the provider is passed through with its own status instead. The details object carries the provider name.',
   },
   {
     code: 'BILLING_NOT_CONFIGURED',

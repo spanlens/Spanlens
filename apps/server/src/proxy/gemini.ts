@@ -4,6 +4,7 @@ import { requireFullScope } from '../middleware/requireFullScope.js'
 import { enforceQuota } from '../middleware/quota.js'
 import { proxyRateLimit } from '../middleware/rateLimit.js'
 import { customerRateLimit } from '../middleware/customerRateLimit.js'
+import { getRequestStartMs } from '../middleware/requestStart.js'
 import { calculateCost } from '../lib/cost.js'
 import { logRequestAsync } from '../lib/logger.js'
 import { fireAndForget } from '../lib/wait-until.js'
@@ -35,7 +36,7 @@ geminiProxy.use('*', enforceQuota)
 geminiProxy.use('*', customerRateLimit)
 
 geminiProxy.all('/*', async (c) => {
-  const handlerStartMs = Date.now()
+  const requestStartMs = getRequestStartMs(c)
   const organizationId = c.get('organizationId')
   const projectId = c.get('projectId') as string
   const apiKeyId = c.get('apiKeyId')
@@ -88,7 +89,7 @@ geminiProxy.all('/*', async (c) => {
   if (cache.expiredKeyHash) fireAndForget(c, deleteExpiredCacheEntry(cache.expiredKeyHash))
   if (cache.state.mode === 'hit') {
     const hit = cache.state.entry
-    const hitLatencyMs = Date.now() - handlerStartMs
+    const hitLatencyMs = Date.now() - requestStartMs
     const hitLogBase = buildLogBase({
       c, provider: 'gemini',
       organizationId, projectId, apiKeyId,
@@ -120,13 +121,18 @@ geminiProxy.all('/*', async (c) => {
     })
   }
 
-  const { upstreamRes, latencyMs, proxyOverheadMs } = await fetchUpstreamWithTimeout({
+  const { upstreamRes, latencyMs, proxyOverheadMs, readBodyText } = await fetchUpstreamWithTimeout({
     url: upstreamUrlObj.toString(),
     method: c.req.method,
     headers,
     body: chooseFetchBody(c, parsed, false),
     provider: 'gemini',
-    handlerStartMs,
+    requestStartMs,
+    failureLog: {
+      c, organizationId, projectId, apiKeyId, providerKey,
+      reqBodyJson: parsed.reqBodyJson, requestFlags,
+      model: modelMatch?.[1] ?? '',
+    },
   })
 
   const logBase = buildLogBase({
@@ -146,8 +152,8 @@ geminiProxy.all('/*', async (c) => {
     // Caching was requested but streaming responses are never cached.
     if (cache.state.mode === 'bypass') c.header(PROXY_CACHE_HEADER, 'bypass')
     return runChunkAccumulatedStreamPump({
-      c, upstreamRes, handlerStartMs, provider: 'gemini',
-      onComplete: async (buffer, truncated) => {
+      c, upstreamRes, requestStartMs, provider: 'gemini',
+      onComplete: async (buffer, truncated, end) => {
         const text = extractGeminiStreamText(buffer.split('\n'))
 
         // Best-effort: recover usage + model from the LAST chunk that carries
@@ -232,6 +238,7 @@ geminiProxy.all('/*', async (c) => {
           serviceTier: serviceTier ?? null,
           costUsd: cost?.totalCost ?? null,
           responseBody,
+          errorMessage: end.errorMessage,
           truncated,
         })
       },
@@ -239,7 +246,7 @@ geminiProxy.all('/*', async (c) => {
   }
 
   // ── Non-streaming path ────────────────────────────────────────────────────
-  const resBodyText = await upstreamRes.text()
+  const resBodyText = await readBodyText()
   let resBodyJson: unknown = null
   try { resBodyJson = JSON.parse(resBodyText) } catch { /* non-JSON response */ }
 

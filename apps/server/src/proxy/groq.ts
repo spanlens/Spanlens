@@ -4,6 +4,7 @@ import { requireFullScope } from '../middleware/requireFullScope.js'
 import { enforceQuota } from '../middleware/quota.js'
 import { proxyRateLimit } from '../middleware/rateLimit.js'
 import { customerRateLimit } from '../middleware/customerRateLimit.js'
+import { getRequestStartMs } from '../middleware/requestStart.js'
 import { calculateCost } from '../lib/cost.js'
 import { logRequestAsync } from '../lib/logger.js'
 import { fireAndForget } from '../lib/wait-until.js'
@@ -45,7 +46,7 @@ groqProxy.use('*', enforceQuota)
 groqProxy.use('*', customerRateLimit)
 
 groqProxy.all('/*', async (c) => {
-  const handlerStartMs = Date.now()
+  const requestStartMs = getRequestStartMs(c)
   const organizationId = c.get('organizationId')
   // requireFullScope rejects 'public' keys and the DB CHECK constraint forces
   // 'full' keys to carry a project_id, so this narrowing is safe.
@@ -64,13 +65,19 @@ groqProxy.all('/*', async (c) => {
     'Content-Type': 'application/json',
   })
 
-  const { upstreamRes, latencyMs, proxyOverheadMs } = await fetchUpstreamWithTimeout({
+  const model = (parsed.reqBodyJson?.['model'] as string | undefined) ?? ''
+
+  const { upstreamRes, latencyMs, proxyOverheadMs, readBodyText } = await fetchUpstreamWithTimeout({
     url: upstreamUrl,
     method: c.req.method,
     headers,
     body: chooseFetchBody(c, parsed, true),
     provider: 'groq',
-    handlerStartMs,
+    requestStartMs,
+    failureLog: {
+      c, organizationId, projectId, apiKeyId, providerKey,
+      reqBodyJson: parsed.reqBodyJson, requestFlags, model,
+    },
   })
 
   const logBase = buildLogBase({
@@ -83,20 +90,18 @@ groqProxy.all('/*', async (c) => {
     statusCode: upstreamRes.status,
   })
 
-  const model = (parsed.reqBodyJson?.['model'] as string | undefined) ?? ''
-
   // ── Streaming path ────────────────────────────────────────────────────────
   if (parsed.isStreaming && upstreamRes.body) {
     return runLineBufferedStreamPump({
-      c, upstreamRes, handlerStartMs, provider: 'groq',
-      onComplete: (lines, truncated) =>
-        logOpenAIStream(lines, { ...logBase, model }, { truncated }),
+      c, upstreamRes, requestStartMs, provider: 'groq',
+      onComplete: (lines, truncated, end) =>
+        logOpenAIStream(lines, { ...logBase, model, errorMessage: end.errorMessage }, { truncated }),
     })
   }
 
   // ── Non-streaming path ────────────────────────────────────────────────────
   const downstreamHeaders = buildDownstreamHeaders(upstreamRes.headers)
-  const resBodyText = await upstreamRes.text()
+  const resBodyText = await readBodyText()
   let resBodyJson: unknown = null
   try { resBodyJson = JSON.parse(resBodyText) } catch { /* non-JSON response */ }
 

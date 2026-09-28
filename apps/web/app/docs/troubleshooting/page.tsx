@@ -57,8 +57,8 @@ const STATUS_ROWS: SymptomRow[] = [
   {
     status: '502 UPSTREAM_FAILED',
     cause:
-      'The upstream provider returned an error or the network to it failed. details.provider names which one.',
-    fix: 'Usually a provider-side incident or a bad request the provider rejected. Check the provider status page, inspect the row in /requests for the upstream error body, then retry.',
+      'The connection to the provider failed before a complete response arrived: the request could not be delivered, or the connection dropped while the response body was being read. details.provider names which provider. An HTTP error from the provider is never turned into a 502; it reaches you with the status and body the provider sent.',
+    fix: 'Usually a provider-side incident or a network problem between Spanlens and the provider. The call is logged in /requests with status 502 and an error message naming the failure (for example ECONNRESET). Check the provider status page, then retry.',
   },
   {
     status: '503 DECRYPT_FAILED',
@@ -69,8 +69,8 @@ const STATUS_ROWS: SymptomRow[] = [
   {
     status: '504 UPSTREAM_TIMEOUT',
     cause:
-      'A non-streaming upstream call did not return headers within the timeout (UPSTREAM_TIMEOUT_MS, 35s). The provider was slow or the generation was very long.',
-    fix: 'Safe to retry. For long generations, switch to streaming (stream: true) so the first byte arrives in ~200 ms and you use the 290s stream budget instead of the 35s header timeout.',
+      'The provider did not return response headers within UPSTREAM_TIMEOUT_MS (35s), or a non-streaming response body did not finish within UPSTREAM_BODY_DEADLINE_MS of the request (290s by default). The provider was slow, the generation was very long, or the connection stalled.',
+    fix: 'Safe to retry. The call is logged in /requests with status 504. For long generations, switch to streaming (stream: true) so the first byte arrives in ~200 ms and you use the 290s stream budget instead of the 35s header timeout.',
   },
 ]
 
@@ -225,16 +225,22 @@ Gemini           x-goog-api-key: sl_live_...`}</pre>
       </p>
       <ul>
         <li>
-          <code>502 UPSTREAM_FAILED</code> means the provider returned an error or the network to
-          it failed. <code>details.provider</code> names which provider. Check the provider
-          status page and the row in <a href="/requests">/requests</a> for the upstream error
-          body, then retry.
+          <code>502 UPSTREAM_FAILED</code> means the connection to the provider failed before a
+          complete response arrived: the request could not be delivered, or the connection
+          dropped while the response body was being read. <code>details.provider</code> names
+          which provider. The call is logged in <a href="/requests">/requests</a> with status
+          502 and an error message naming the failure, such as <code>ECONNRESET</code>. Check
+          the provider status page, then retry. When the provider itself answers with an error
+          (a 400, 401, 429 or 500, say), you get that status and body unchanged, not a 502, and
+          the row shows the provider&apos;s error body.
         </li>
         <li>
-          <code>504 UPSTREAM_TIMEOUT</code> means a non-streaming call did not return headers
-          within the ~35s header timeout. The provider was slow or the generation was long.
-          Safe to retry; better yet switch to streaming (see{' '}
-          <a href="#truncated">truncated responses</a> below).
+          <code>504 UPSTREAM_TIMEOUT</code> means the provider did not return response headers
+          within the ~35s header timeout, or a non-streaming response body did not finish within{' '}
+          <code>UPSTREAM_BODY_DEADLINE_MS</code> of the request (290s by default, the same budget
+          as a stream). The provider was slow, the generation was long, or the connection
+          stalled. The call is logged with status 504. Safe to retry; better yet switch to
+          streaming (see <a href="#truncated">truncated responses</a> below).
         </li>
         <li>
           <code>503 DECRYPT_FAILED</code> means the stored provider key could not be decrypted.
@@ -331,7 +337,28 @@ Gemini           x-goog-api-key: sl_live_...`}</pre>
         partial output is logged with <code>truncated: true</code>, and your client sees the
         stream end before <code>[DONE]</code> / <code>message_stop</code>.
       </p>
-      <p>Options, in order of preference:</p>
+      <p>
+        The deadline is one of three reasons a row is marked truncated. Open the row and check
+        its error tab to see which one it was:
+      </p>
+      <ul>
+        <li>
+          <strong>Deadline</strong>: the error says the stream was closed at the proxy deadline.
+          The options below apply.
+        </li>
+        <li>
+          <strong>Provider dropped the stream</strong>: the error reads{' '}
+          <code>Upstream stream interrupted before completion</code>, usually with a code such
+          as <code>UND_ERR_SOCKET</code> or <code>ECONNRESET</code>. The provider or the network
+          cut the connection partway through. Retry; if it keeps happening, check the provider
+          status page.
+        </li>
+        <li>
+          <strong>Your client disconnected</strong>: there is no error, because stopping a
+          generation early is your call. The row keeps whatever arrived before the client left.
+        </li>
+      </ul>
+      <p>For rows cut at the deadline, the options in order of preference:</p>
       <ul>
         <li>
           <strong>Lower the work per call.</strong> Reduce <code>max_tokens</code> or split
@@ -351,9 +378,9 @@ Gemini           x-goog-api-key: sl_live_...`}</pre>
       </ul>
       <p>
         Note: a non-streaming call that exceeds the header timeout returns{' '}
-        <code>504 UPSTREAM_TIMEOUT</code> instead of a truncated row, which is the same
-        underlying &quot;too slow&quot; problem, which is why streaming is the fix for both.
-        More detail in <a href="/docs/proxy">the proxy docs</a>.
+        <code>504 UPSTREAM_TIMEOUT</code> and is logged as a 504 row rather than a truncated
+        one. It is the same underlying &quot;too slow&quot; problem, which is why streaming is
+        the fix for both. More detail in <a href="/docs/proxy">the proxy docs</a>.
       </p>
 
       <h2 id="empty-decryption">Provider key decryption returns empty (self-host)</h2>

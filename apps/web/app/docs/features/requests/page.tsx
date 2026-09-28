@@ -79,7 +79,7 @@ export default function RequestsDocs() {
           </tr>
           <tr>
             <td><code>latency_ms</code></td>
-            <td>Time from our proxy receiving the request to last byte sent</td>
+            <td>Provider time: from sending the request to the provider until its response headers arrive (time to first byte for a stream)</td>
           </tr>
           <tr>
             <td><code>status_code</code></td>
