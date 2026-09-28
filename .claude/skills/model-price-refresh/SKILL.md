@@ -84,6 +84,22 @@ Sort findings by what they cost the customer, not by provider:
   the threshold re-rates the *entire* request at 2x, not just the excess.
 - **Model gone from the pricing page** → keep the row so historical requests
   still price, and note it. Don't delete.
+- **Model aliased onto a replacement** → this looks identical to the case above
+  in a diff, and it is the opposite: the id still works, so its *price moved*.
+  Freezing it is a live mis-report. DeepSeek's pricing page carries a note that
+  `deepseek-v4-flash` and `deepseek-v4-flash-vision-exp` "are still accepted,
+  but the corresponding models have been retired, their requests are served by
+  the DeepSeek-V4.1-Flash model and billed at the Flash price" — the 2026-09
+  pass froze the first at its old rates and over-reported input by 47% until
+  the same day's follow-up. **Read the alias/legacy notes before concluding a
+  missing model is delisted.** Re-point the row at whatever the replacement
+  bills as.
+
+Deleting a row is justified only when *both* hold: the provider's own alias or
+deprecation list omits the id (an explicit absence, not merely a page that
+stopped mentioning it), and `requests` holds no history for it. Check the
+second with a query, not an assumption — it is the whole reason the keep-the-row
+rule exists. Record the evidence in the migration header when you do it.
 
 ### 4. Check for name collisions before adding anything
 
@@ -215,10 +231,17 @@ Currently pending:
 - **Every run** — diff *every member* of a flagship family, not the headline
   one. In 2026-08 OpenAI cut `gpt-5.6-terra` and `gpt-5.6-luna` and left `sol`;
   in 2026-09 it cut `sol` and left the other two.
-- **Next run** — confirm two ids that could not be read off a page and were
-  seeded on the vendor's own naming convention: `claude-mythos-5-1` (invite-only
-  models are omitted from Anthropic's models overview) and `zai-glm-5-3`
-  (Mistral's pricing page stopped rendering API ids in 2026-09).
+- **Next run** — `zai-glm-5-3` is still an unconfirmed id. Mistral's pricing
+  page stopped rendering API ids in 2026-09 (it showed them in 2026-08, which is
+  where `zai-glm-5-2` came from), and neither `models_overview` nor the weights
+  page carries a `zai-`/`glm` id. Prices match GLM 5.2 either way, so the row is
+  harmless if wrong, but confirm it when an id source reappears.
+
+  `claude-mythos-5-1` was confirmed on 2026-09-28: the model-ids page documents
+  the format `claude-{name}-{major}[-{minor}]` for the 4.6 generation onward,
+  and `claude-fable-5-1` is listed explicitly. The id follows a published rule
+  rather than only our own row convention. Anthropic still omits invite-only
+  ids from the models overview, so expect the same gap on future Mythos rows.
 
 Resolved, kept as a record of why:
 
