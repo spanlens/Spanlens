@@ -60,8 +60,9 @@ webhooksRouter.post('/', requireEdit, async (c) => {
     throw new ApiError('BAD_REQUEST', 'url is required')
   }
   // SSRF defense — phase-2 (DNS-aware) validation at registration time.
-  // dispatch-time validation in lib/webhook-dispatch.ts catches DNS rebinding
-  // where the same hostname resolves to a private IP later.
+  // Every send re-validates the URL and each redirect hop, and checks the
+  // address it actually connects to (lib/safe-http.ts), which is what stops
+  // the hostname from being rebound to a private IP later.
   const urlCheck = await validateOutboundUrl(body.url)
   if (!urlCheck.ok) {
     throw new ApiError('BAD_REQUEST', urlCheck.message, { reason: urlCheck.reason })

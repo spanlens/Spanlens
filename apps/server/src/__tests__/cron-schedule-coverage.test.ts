@@ -20,10 +20,18 @@ const repoRoot = resolve(serverRoot, '..', '..') // repository root
 // reason. The allowlist is self-cleaning: a separate test asserts every
 // name here is a real route AND is still unscheduled, so a stale entry
 // (route deleted, or later scheduled) fails CI.
-const UNSCHEDULED: Record<string, string> = {
-  'retry-webhooks':
-    'Outbound webhooks have zero production usage (0 configured, 0 deliveries), so there is nothing to retry. Add a */5 job to cron-server.yml when webhooks ship to customers.',
-}
+const UNSCHEDULED: Record<string, string> = {}
+
+// Crons whose silence loses something that running them later cannot bring
+// back: queued request logs expire, a missing partition blocks proxy writes,
+// and a webhook delivery that is never retried is never delivered. Each must
+// be fired by BOTH version-controlled schedulers, because either one alone
+// drops runs (gotcha #32).
+const DOUBLE_SCHEDULED = [
+  'replay-fallback',
+  'maintain-request-partitions',
+  'retry-webhooks',
+] as const
 
 function cronRoutes(): string[] {
   const src = readFileSync(resolve(serverRoot, 'src/api/cron.ts'), 'utf8')
@@ -34,16 +42,20 @@ function cronRoutes(): string[] {
   return [...out].sort()
 }
 
-function vercelScheduled(): Set<string> {
+function vercelCrons(): Map<string, string> {
   const json = JSON.parse(readFileSync(resolve(serverRoot, 'vercel.json'), 'utf8')) as {
-    crons?: { path: string }[]
+    crons?: { path: string; schedule: string }[]
   }
-  const out = new Set<string>()
+  const out = new Map<string, string>()
   for (const c of json.crons ?? []) {
     const m = /^\/cron\/([a-z0-9-]+)$/.exec(c.path)
-    if (m) out.add(m[1]!)
+    if (m) out.set(m[1]!, c.schedule)
   }
   return out
+}
+
+function vercelScheduled(): Set<string> {
+  return new Set(vercelCrons().keys())
 }
 
 function ghScheduled(): Set<string> {
@@ -54,6 +66,15 @@ function ghScheduled(): Set<string> {
   // mention must not count as "scheduled".
   for (const m of yml.matchAll(/\/cron\/([a-z0-9-]+)"/g)) out.add(m[1]!)
   return out
+}
+
+/** The `if:` line of the cron-server.yml job whose step curls /cron/<name>. */
+function ghJobConditionFor(name: string): string {
+  const yml = readFileSync(resolve(repoRoot, '.github/workflows/cron-server.yml'), 'utf8')
+  const at = yml.indexOf(`/cron/${name}"`)
+  if (at === -1) return ''
+  const conditions = [...yml.slice(0, at).matchAll(/^\s+if: .*$/gm)]
+  return conditions.at(-1)?.[0] ?? ''
 }
 
 describe('cron schedule coverage guard', () => {
@@ -76,6 +97,17 @@ describe('cron schedule coverage guard', () => {
       `These /cron routes are declared in neither vercel.json nor cron-server.yml. ` +
         `Schedule them, or add to UNSCHEDULED with a reason: [${orphans.join(', ')}]`,
     ).toEqual([])
+  })
+
+  test.each(DOUBLE_SCHEDULED)('%s is fired by both vercel.json and cron-server.yml', (name) => {
+    expect(routes, `cron.ts has no /${name} route`).toContain(name)
+    expect(vercel.has(name), `/cron/${name} is missing from vercel.json`).toBe(true)
+    expect(gh.has(name), `/cron/${name} is missing from cron-server.yml`).toBe(true)
+  })
+
+  test('retry-webhooks runs every 5 minutes, the cadence its backoff is designed around', () => {
+    expect(vercelCrons().get('retry-webhooks')).toBe('*/5 * * * *')
+    expect(ghJobConditionFor('retry-webhooks')).toContain("github.event.schedule == '*/5 * * * *'")
   })
 
   test('UNSCHEDULED allowlist has no stale entries', () => {

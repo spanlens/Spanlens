@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import {
+  guardedLookup,
   isBlockedIPv4,
   isBlockedIPv6,
+  SSRF_BLOCKED_CODE,
   validateOutboundUrlSync,
   validateOutboundUrl,
 } from './safe-url.js'
@@ -101,6 +103,46 @@ describe('isBlockedIPv6 — special ranges', () => {
   test('allows v4-mapped public IP (::ffff:8.8.8.8)', () => {
     expect(isBlockedIPv6('::ffff:8.8.8.8').blocked).toBe(false)
   })
+
+  // The WHATWG URL parser rewrites the dotted tail of a v4-mapped literal into
+  // hex: new URL('https://[::ffff:169.254.169.254]/').hostname is
+  // '[::ffff:a9fe:a9fe]'. A dotted-only check lets that form straight through,
+  // and a literal IP never reaches a DNS lookup that could catch it later.
+  test.each([
+    ['::ffff:a9fe:a9fe', '169.254'], // IMDS
+    ['::ffff:7f00:1', '127.0.0.0/8'], // loopback
+    ['::ffff:a00:5', '10.0.0.0/8'], // RFC 1918
+    ['0:0:0:0:0:ffff:c0a8:101', '192.168.0.0/16'], // uncompressed spelling
+  ])('blocks hex-form v4-mapped %s', (ip, expectedRange) => {
+    const r = isBlockedIPv6(ip)
+    expect(r.blocked).toBe(true)
+    expect(r.range).toContain(expectedRange)
+  })
+
+  test('allows hex-form v4-mapped public IP (::ffff:808:808 = 8.8.8.8)', () => {
+    expect(isBlockedIPv6('::ffff:808:808').blocked).toBe(false)
+  })
+
+  test.each([
+    ['::7f00:1', 'IPv4-compatible loopback'],
+    ['::169.254.169.254', 'IPv4-compatible IMDS'],
+    ['64:ff9b::a9fe:a9fe', 'NAT64 prefix wrapping IMDS'],
+    ['64:ff9b::10.0.0.1', 'NAT64 prefix wrapping RFC 1918'],
+    ['fec0::1', 'deprecated site-local'],
+  ])('blocks %s (%s)', (ip) => {
+    expect(isBlockedIPv6(ip).blocked).toBe(true)
+  })
+
+  test('allows NAT64 prefix wrapping a public IPv4 (64:ff9b::808:808)', () => {
+    expect(isBlockedIPv6('64:ff9b::808:808').blocked).toBe(false)
+  })
+
+  test.each(['1:2:3:4:5:6:7:8:9', '1::2::3', 'gggg::1', '::ffff:999.1.1.1'])(
+    'fails closed on malformed IPv6 %s',
+    (ip) => {
+      expect(isBlockedIPv6(ip).blocked).toBe(true)
+    },
+  )
 })
 
 describe('validateOutboundUrlSync — format + scheme + hostname', () => {
@@ -156,6 +198,16 @@ describe('validateOutboundUrlSync — format + scheme + hostname', () => {
     expect(validateOutboundUrlSync('https://[::1]:8080/').ok).toBe(false)
   })
 
+  test('rejects v4-mapped IMDS literal the URL parser rewrites to hex', () => {
+    const r = validateOutboundUrlSync('https://[::ffff:169.254.169.254]/latest/meta-data/')
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.reason).toBe('BLOCKED_IP')
+  })
+
+  test('rejects v4-mapped loopback literal ([::ffff:127.0.0.1])', () => {
+    expect(validateOutboundUrlSync('https://[::ffff:127.0.0.1]:8080/').ok).toBe(false)
+  })
+
   test('accepts well-formed public https URL with hostname (DNS deferred)', () => {
     const r = validateOutboundUrlSync('https://hooks.example.com/webhook')
     expect(r.ok).toBe(true)
@@ -181,16 +233,22 @@ describe('validateOutboundUrlSync — format + scheme + hostname', () => {
 const resolve4Mock = vi.fn<(host: string) => Promise<string[]>>()
 const resolve6Mock = vi.fn<(host: string) => Promise<string[]>>()
 
+type LookupAnswer = { address: string; family: number }
+type LookupCallback = (err: NodeJS.ErrnoException | null, addresses?: LookupAnswer[]) => void
+const lookupMock = vi.fn<(host: string, options: object, cb: LookupCallback) => void>()
+
 vi.mock('node:dns', () => ({
   promises: {
     resolve4: (host: string) => resolve4Mock(host),
     resolve6: (host: string) => resolve6Mock(host),
   },
+  lookup: (host: string, options: object, cb: LookupCallback) => lookupMock(host, options, cb),
 }))
 
 beforeEach(() => {
   resolve4Mock.mockReset()
   resolve6Mock.mockReset()
+  lookupMock.mockReset()
 })
 
 afterEach(() => {
@@ -276,5 +334,96 @@ describe('validateOutboundUrl — DNS-aware (phase 2)', () => {
     const r = await validateOutboundUrl('https://v6-only.example.com/')
     expect(r.ok).toBe(true)
     if (r.ok) expect(r.resolvedIps).toEqual(['2606:4700:4700::1111'])
+  })
+})
+
+// --- Connect-time guard ----------------------------------------------------
+//
+// validateOutboundUrl answers "what does this hostname resolve to right now".
+// The socket then resolves it again, and an attacker's DNS can give the second
+// query a different answer (rebinding). guardedLookup is the lookup the socket
+// itself uses, so what it checks is what gets connected to.
+
+interface LookupResult {
+  err: NodeJS.ErrnoException | null
+  address: string | Array<{ address: string; family: number }>
+  family: number | undefined
+}
+
+function runGuardedLookup(host: string, options: { all?: boolean } = {}): Promise<LookupResult> {
+  return new Promise((resolve) => {
+    guardedLookup(host, options, (err, address, family) => resolve({ err, address, family }))
+  })
+}
+
+function answer(...addresses: LookupAnswer[]): void {
+  lookupMock.mockImplementation((_host, _options, cb) => cb(null, addresses))
+}
+
+describe('guardedLookup — connect-time SSRF check', () => {
+  test('public answer passes through in the all-addresses form Node uses by default', async () => {
+    answer({ address: '93.184.216.34', family: 4 }, { address: '2606:2800:220:1::1', family: 6 })
+
+    const r = await runGuardedLookup('hooks.example.com', { all: true })
+    expect(r.err).toBeNull()
+    expect(r.address).toEqual([
+      { address: '93.184.216.34', family: 4 },
+      { address: '2606:2800:220:1::1', family: 6 },
+    ])
+  })
+
+  test('public answer passes through in the single-address form', async () => {
+    answer({ address: '93.184.216.34', family: 4 })
+
+    const r = await runGuardedLookup('hooks.example.com')
+    expect(r.err).toBeNull()
+    expect(r.address).toBe('93.184.216.34')
+    expect(r.family).toBe(4)
+  })
+
+  test('always asks the resolver for every address, whatever the caller requested', async () => {
+    answer({ address: '93.184.216.34', family: 4 })
+
+    await runGuardedLookup('hooks.example.com')
+    expect(lookupMock.mock.calls[0]?.[1]).toMatchObject({ all: true })
+  })
+
+  test.each([
+    ['127.0.0.1', 4, '127.0.0.0/8'],
+    ['169.254.169.254', 4, '169.254.0.0/16'],
+    ['10.1.2.3', 4, '10.0.0.0/8'],
+    ['::1', 6, '::1/128'],
+    ['::ffff:169.254.169.254', 6, '169.254'],
+  ])('rebinding to %s is refused before any socket opens', async (address, family, range) => {
+    answer({ address, family })
+
+    const r = await runGuardedLookup('rebind.attacker.example', { all: true })
+    expect(r.err?.code).toBe(SSRF_BLOCKED_CODE)
+    expect(r.err?.message).toContain('SSRF guard')
+    expect(r.err?.message).toContain(range)
+  })
+
+  test('one private address in a round-robin answer blocks the whole lookup', async () => {
+    answer({ address: '93.184.216.34', family: 4 }, { address: '10.0.0.1', family: 4 })
+
+    const r = await runGuardedLookup('rebind.attacker.example', { all: true })
+    expect(r.err?.code).toBe(SSRF_BLOCKED_CODE)
+  })
+
+  test('resolver errors are passed through unchanged', async () => {
+    const notFound = Object.assign(new Error('getaddrinfo ENOTFOUND nope.example'), {
+      code: 'ENOTFOUND',
+    })
+    lookupMock.mockImplementation((_host, _options, cb) => cb(notFound))
+
+    const r = await runGuardedLookup('nope.example', { all: true })
+    expect(r.err).toBe(notFound)
+  })
+
+  test('an empty answer is an error, not a silent success', async () => {
+    answer()
+
+    const r = await runGuardedLookup('empty.example', { all: true })
+    expect(r.err?.code).toBe('ENOTFOUND')
   })
 })

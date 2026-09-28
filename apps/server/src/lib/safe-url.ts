@@ -10,22 +10,26 @@
  * worker into hitting it on their behalf. The classic exploit is AWS IMDS at
  * 169.254.169.254 — Capital One 2019 lost 100M records to that exact pattern.
  *
- * Two phases of validation:
+ * Three phases of validation:
  *   1. `validateOutboundUrlSync` — format + scheme + hostname only. Fast,
  *      runs on the request-handling hot path (webhook CRUD).
  *   2. `validateOutboundUrl` — adds DNS resolution + per-IP CIDR check.
- *      MUST run again at dispatch time too, because the DNS answer for a
- *      hostname can flip between registration and use (DNS rebinding).
+ *      Runs at registration and again before every send and redirect hop.
+ *   3. `guardedLookup` — the same CIDR check on the addresses the socket is
+ *      about to connect to. Phase 2 alone cannot stop DNS rebinding: its
+ *      lookup and the connection's lookup are separate queries, and the
+ *      answer can change in between. lib/safe-http.ts connects through this.
  *
  * The deny list covers RFC 1918 private ranges, loopback, link-local
  * (including 169.254 cloud-metadata), CGNAT, multicast, and the
- * IPv6 equivalents. v4-mapped-into-v6 (::ffff:10.0.0.1) is normalized
- * back to v4 before checking so attackers can't smuggle private IPs
+ * IPv6 equivalents. IPv6 addresses that embed an IPv4 address (v4-mapped
+ * ::ffff:10.0.0.1 in dotted or hex spelling, v4-compatible, NAT64) are
+ * checked against the v4 list so attackers can't smuggle private IPs
  * through the v6 path.
  */
 
-import { promises as dns } from 'node:dns'
-import { isIP } from 'node:net'
+import { lookup as dnsLookup, promises as dns, type LookupAddress } from 'node:dns'
+import { isIP, type LookupFunction } from 'node:net'
 
 /** Reasons the URL was rejected. Used as the ApiError detail.code. */
 export type SafeUrlReason =
@@ -132,36 +136,99 @@ function canonicalizeIPv6(raw: string): string {
   return raw.replace(/^\[/, '').replace(/\]$/, '').toLowerCase()
 }
 
+/** Parses colon-separated hex groups; null if any group is not 1-4 hex digits. */
+function parseHexGroups(text: string): number[] | null {
+  if (text === '') return []
+  const groups = text.split(':')
+  if (!groups.every((g) => /^[0-9a-f]{1,4}$/.test(g))) return null
+  return groups.map((g) => parseInt(g, 16))
+}
+
 /**
- * True if the IPv6 address is loopback/link-local/unique-local/multicast,
- * OR if it's a v4-mapped (::ffff:a.b.c.d) form whose embedded v4 is blocked.
- * The v4-mapped check is the trap that catches attackers who pass
- * `::ffff:169.254.169.254` to evade a pure-v4 IMDS filter.
+ * Expands an IPv6 literal into its eight 16-bit groups, or null if malformed.
+ *
+ * Range checks have to run on the numeric value, not on the spelling: the same
+ * address can be written `::ffff:169.254.169.254`, `::ffff:a9fe:a9fe` (how the
+ * WHATWG URL parser prints it) or `0:0:0:0:0:ffff:a9fe:a9fe`.
+ */
+function parseIPv6(ip: string): number[] | null {
+  // A zone index (fe80::1%eth0) is not part of the address.
+  const unzoned = ip.split('%')[0] ?? ''
+
+  // An embedded dotted quad (::ffff:1.2.3.4) stands for the last two groups.
+  const lastColon = unzoned.lastIndexOf(':')
+  const tail = unzoned.slice(lastColon + 1)
+  let text = unzoned
+  if (tail.includes('.')) {
+    const v4 = ipv4ToInt(tail)
+    if (v4 === null) return null
+    text = `${unzoned.slice(0, lastColon + 1)}${(v4 >>> 16).toString(16)}:${(v4 & 0xffff).toString(16)}`
+  }
+
+  const halves = text.split('::')
+  if (halves.length > 2) return null
+  const head = parseHexGroups(halves[0] ?? '')
+  const rest = halves.length === 2 ? parseHexGroups(halves[1] ?? '') : []
+  if (head === null || rest === null) return null
+
+  if (halves.length === 1) return head.length === 8 ? head : null
+  const zeros = 8 - head.length - rest.length
+  if (zeros < 1) return null
+  return [...head, ...new Array<number>(zeros).fill(0), ...rest]
+}
+
+/** The IPv4 address carried in the low 32 bits of an IPv6 address. */
+function embeddedIPv4(groups: number[]): string {
+  const hi = groups[6] ?? 0
+  const lo = groups[7] ?? 0
+  return `${hi >> 8}.${hi & 0xff}.${lo >> 8}.${lo & 0xff}`
+}
+
+/** Blocks an IPv6 address that wraps a blocked IPv4, labelled with `prefix`. */
+function checkEmbeddedIPv4(groups: number[], prefix: string): { blocked: boolean; range?: string } {
+  const r = isBlockedIPv4(embeddedIPv4(groups))
+  return r.blocked ? { blocked: true, range: `${prefix}${r.range ?? 'unknown'}` } : { blocked: false }
+}
+
+/**
+ * True if the IPv6 address is loopback/unspecified/link-local/site-local/
+ * unique-local/multicast, OR if it embeds an IPv4 address that is blocked.
+ *
+ * Embedded forms checked: v4-mapped (`::ffff:a.b.c.d`, in dotted or hex
+ * spelling), the deprecated v4-compatible `::a.b.c.d`, and the NAT64
+ * well-known prefix `64:ff9b::/96`. The v4-mapped check is the trap that
+ * catches attackers who pass `[::ffff:169.254.169.254]` to evade a pure-v4
+ * IMDS filter. Malformed input is treated as blocked (fail closed), like
+ * `isBlockedIPv4`.
  */
 export function isBlockedIPv6(raw: string): { blocked: boolean; range?: string } {
-  const ip = canonicalizeIPv6(raw)
+  const g = parseIPv6(canonicalizeIPv6(raw))
+  if (g === null) return { blocked: true, range: 'malformed' }
 
-  // ::1 loopback
-  if (ip === '::1' || ip === '0:0:0:0:0:0:0:1') return { blocked: true, range: '::1/128' }
+  const zerosUpTo = (n: number): boolean => g.slice(0, n).every((x) => x === 0)
+  const first = g[0] ?? 0
+
   // :: unspecified
-  if (ip === '::' || ip === '0:0:0:0:0:0:0:0') return { blocked: true, range: '::/128' }
-
-  // v4-mapped: ::ffff:a.b.c.d  → unwrap and check as IPv4
-  const v4mapped = /^::ffff:((?:\d{1,3}\.){3}\d{1,3})$/i.exec(ip)
-  if (v4mapped) {
-    const v4 = v4mapped[1]!
-    const v4Result = isBlockedIPv4(v4)
-    if (v4Result.blocked) {
-      return { blocked: true, range: `::ffff:${v4Result.range ?? v4}` }
-    }
+  if (zerosUpTo(8)) return { blocked: true, range: '::/128' }
+  // ::1 loopback
+  if (zerosUpTo(7) && g[7] === 1) return { blocked: true, range: '::1/128' }
+  // ::ffff:0:0/96 v4-mapped
+  if (zerosUpTo(5) && g[5] === 0xffff) return checkEmbeddedIPv4(g, '::ffff:')
+  // ::/96 v4-compatible (deprecated, but some stacks still route it)
+  if (zerosUpTo(6)) return checkEmbeddedIPv4(g, '::')
+  // 64:ff9b::/96 NAT64 well-known prefix
+  if (first === 0x64 && g[1] === 0xff9b && g.slice(2, 6).every((x) => x === 0)) {
+    return checkEmbeddedIPv4(g, '64:ff9b::')
   }
 
   // fc00::/7 — unique local
-  if (ip.startsWith('fc') || ip.startsWith('fd')) return { blocked: true, range: 'fc00::/7' }
+  if ((first & 0xfe00) === 0xfc00) return { blocked: true, range: 'fc00::/7' }
   // fe80::/10 — link-local
-  if (/^fe[89ab]/.test(ip)) return { blocked: true, range: 'fe80::/10' }
+  if ((first & 0xffc0) === 0xfe80) return { blocked: true, range: 'fe80::/10' }
+  // fec0::/10 — site-local (deprecated, still private on networks that use it)
+  if ((first & 0xffc0) === 0xfec0) return { blocked: true, range: 'fec0::/10' }
   // ff00::/8 — multicast
-  if (ip.startsWith('ff')) return { blocked: true, range: 'ff00::/8' }
+  if ((first & 0xff00) === 0xff00) return { blocked: true, range: 'ff00::/8' }
 
   return { blocked: false }
 }
@@ -293,4 +360,57 @@ export async function validateOutboundUrl(raw: string): Promise<SafeUrlResult> {
   }
 
   return { ok: true, resolvedIps: [...v4, ...v6] }
+}
+
+/** `err.code` of a connection refused by `guardedLookup`. */
+export const SSRF_BLOCKED_CODE = 'ESSRFBLOCKED'
+
+function blockedRangeOf(entry: LookupAddress): string | null {
+  const r = entry.family === 6 ? isBlockedIPv6(entry.address) : isBlockedIPv4(entry.address)
+  return r.blocked ? (r.range ?? entry.address) : null
+}
+
+function lookupError(code: string, message: string): NodeJS.ErrnoException {
+  return Object.assign(new Error(message), { code })
+}
+
+/**
+ * Phase 3: the check at connect time. Pass as the `lookup` option of
+ * `http.request` / `https.request` (see lib/safe-http.ts).
+ *
+ * `validateOutboundUrl` resolves the hostname, and then the socket resolves it
+ * a second time to connect. Nothing ties the two answers together, so a DNS
+ * server that answers the first query with a public IP and the second with
+ * 127.0.0.1 (rebinding) passes validation and still reaches the internal
+ * target. This lookup is the one the socket uses, so the addresses it checks
+ * are the addresses the connection goes to.
+ *
+ * Any blocked address fails the lookup, for the same round-robin reason as
+ * phase 2. Literal IP hosts never reach a lookup function; phase 1 covers
+ * them.
+ */
+export const guardedLookup: LookupFunction = (hostname, options, callback) => {
+  dnsLookup(hostname, { ...options, all: true }, (err, addresses) => {
+    if (err) {
+      callback(err, '')
+      return
+    }
+    const first = addresses[0]
+    if (first === undefined) {
+      callback(lookupError('ENOTFOUND', `${hostname} did not resolve to any address`), '')
+      return
+    }
+    for (const entry of addresses) {
+      const range = blockedRangeOf(entry)
+      if (range !== null) {
+        const message =
+          `Connection to ${hostname} blocked by SSRF guard: it resolved to ` +
+          `${entry.address} (${range})`
+        callback(lookupError(SSRF_BLOCKED_CODE, message), '')
+        return
+      }
+    }
+    if (options.all) callback(null, addresses)
+    else callback(null, first.address, first.family)
+  })
 }

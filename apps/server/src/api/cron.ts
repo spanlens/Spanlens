@@ -15,7 +15,8 @@ import { sendHighConfidenceRecommendationAlerts } from '../lib/recommendation-no
 import { logCronRun } from '../lib/cron-logger.js'
 // Cadence guard for the four crons that aggregate `requests`. Three schedulers
 // fire every endpoint (gotcha #32), and for these four each extra firing
-// repeats a full scan of the log. See lib/cron-cadence.ts.
+// repeats a full scan of the log. See lib/cron-cadence.ts. retry-webhooks
+// uses it too, with a window shorter than its 5-minute schedule.
 import {
   ranSuccessfullyWithin,
   cadenceSkipResponse,
@@ -291,16 +292,26 @@ cronRouter.get('/recommend-savings-alerts', async (c) => {
   }
 })
 
-// ── Webhook retry (every 5 minutes when scheduled) ─────────────
-// INTENTIONALLY UNSCHEDULED as of 2026-07-22: no scheduler (vercel.json,
-// cron-server.yml, or Better Stack) fires this, and cron_job_runs shows
-// zero executions. Safe because the outbound-webhooks feature has zero
-// production usage (0 configured, 0 deliveries). When webhooks ship to
-// customers, add a `*/5 * * * *` job for /cron/retry-webhooks to
-// .github/workflows/cron-server.yml (and/or Better Stack) so failed
-// deliveries actually retry — otherwise a failed delivery never retries.
+// ── Webhook retry (every 5 minutes) ─────────────────────────────
+// Customers can register webhooks from Settings, and every emitter
+// (request.created, trace.completed, alert.triggered, /test) only records
+// the first attempt. Every retry, and the dead-letter marking after the
+// last one, happens here, so an unscheduled route means a failed delivery
+// is never retried. It went unscheduled from its launch until 2026-09-29.
+//
+// Scheduled in vercel.json and cron-server.yml, both */5 (gotcha #32).
+// Overlapping runs are safe: claim_webhook_deliveries hands each due row to
+// one run only. The cadence guard just skips a firing that lands right after
+// another run finished; its window stays under the 5-minute schedule so it
+// never swallows a regular tick.
+const RETRY_WEBHOOKS_MIN_INTERVAL_MINUTES = 3
+
 cronRouter.get('/retry-webhooks', async (c) => {
   assertCronAuth(c.req.header('Authorization'))
+
+  if (await ranSuccessfullyWithin('retry-webhooks', RETRY_WEBHOOKS_MIN_INTERVAL_MINUTES)) {
+    return c.json(cadenceSkipResponse('retry-webhooks', RETRY_WEBHOOKS_MIN_INTERVAL_MINUTES))
+  }
 
   const start = Date.now()
   try {
