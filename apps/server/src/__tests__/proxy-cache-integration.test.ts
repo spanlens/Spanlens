@@ -132,8 +132,10 @@ vi.mock('../lib/wait-until.js', () => ({
 async function buildApp() {
   const { Hono } = await import('hono')
   const { openaiProxy } = await import('../proxy/openai.js')
+  const { geminiProxy } = await import('../proxy/gemini.js')
   const app = new Hono()
   app.route('/proxy/openai', openaiProxy)
+  app.route('/proxy/gemini', geminiProxy)
   installOnError(app)
   return app
 }
@@ -340,5 +342,38 @@ describe('openai proxy — expired cache entries', () => {
     // The second miss re-stored a fresh row (cleanup delete + upsert both ran).
     const refreshed = cacheStore.get(keyHash)!
     expect(new Date(refreshed['expires_at'] as string).getTime()).toBeGreaterThan(Date.now())
+  })
+})
+
+describe('gemini proxy — cached usage snapshot', () => {
+  test('a miss stores the implicit-cache token count, and the hit logs it back', async () => {
+    mockUpstream(new Response(JSON.stringify({
+      candidates: [{ content: { parts: [{ text: 'ok' }], role: 'model' }, finishReason: 'STOP' }],
+      modelVersion: 'gemini-2.5-flash',
+      usageMetadata: {
+        promptTokenCount: 1000,
+        cachedContentTokenCount: 900,
+        candidatesTokenCount: 100,
+        totalTokenCount: 1100,
+      },
+    }), { status: 200, headers: { 'content-type': 'application/json' } }))
+    const app = await buildApp()
+    const geminiRequest = () => app.request('/proxy/gemini/v1beta/models/gemini-2.5-flash:generateContent', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-spanlens-cache': 'true' },
+      body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: 'hi' }] }] }),
+    })
+
+    const miss = await geminiRequest()
+    await drainPendingTasks()
+    expect(miss.headers.get('x-spanlens-cache')).toBe('miss')
+    const stored = [...cacheStore.values()][0]!
+    expect((stored['usage'] as Record<string, number>)['cache_read_tokens']).toBe(900)
+
+    proxyState.loggerCalls = []
+    const hit = await geminiRequest()
+    await drainPendingTasks()
+    expect(hit.headers.get('x-spanlens-cache')).toBe('hit')
+    expect(proxyState.loggerCalls[0]!['cacheReadTokens']).toBe(900)
   })
 })

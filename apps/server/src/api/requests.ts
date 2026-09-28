@@ -1,16 +1,22 @@
-import { Hono } from 'hono'
+import { Hono, type Context } from 'hono'
 import type { JwtContext } from '../middleware/authJwt.js'
 import { authJwtOrApiKey } from '../middleware/authJwtOrApiKey.js'
 import { requireRole } from '../middleware/requireRole.js'
+import { assertWithinMonthlyQuota } from '../middleware/quota.js'
 import { getDecryptedProviderKeyById, getDecryptedProviderKey } from '../proxy/utils.js'
-import { calculateCost, type Provider } from '../lib/cost.js'
+import { runSecurityGate } from '../proxy/shared/security-gate.js'
 import {
+  EMPTY_REPLAY_USAGE,
   REPLAY_RUN_SUPPORTED_PROVIDERS,
   buildReplayProxyPath,
   buildReplayUpstream,
+  fetchReplayUpstream,
   parseReplayUsage,
+  replayCostUsd,
+  replayTimeoutMs,
 } from '../lib/replay-providers.js'
-import { logRequestAsync } from '../lib/logger.js'
+import { logRequestAsync, type RequestLogData } from '../lib/logger.js'
+import { maskApiKeys } from '../lib/pii-mask.js'
 import { fireAndForget } from '../lib/wait-until.js'
 import { parsePageLimit, validateOptionalUuid, validateOptionalDate, isUuid } from '../lib/params.js'
 import {
@@ -315,6 +321,95 @@ requestsRouter.post('/:id/replay', requireRole('admin', 'editor'), async (c) => 
   })
 })
 
+// ── Replay run helpers ──────────────────────────────────────────────────────
+
+interface ReplayRunRow {
+  project_id: string
+  provider: string
+  model: string
+  request_body: string
+  provider_key_id: string | null
+  api_key_id: string | null
+  user_id: string | null
+  session_id: string | null
+}
+
+/**
+ * Row fields a replay carries over from the original request. The end user,
+ * session, and Spanlens API key stay attributed to the original call (the
+ * provider key used belongs to that API key). Trace and span ids do NOT: a
+ * replay is a new call made from the dashboard, not a step of the original
+ * agent run, and linking it would add a phantom LLM call to that trace.
+ */
+type ReplayLogBase = Pick<
+  RequestLogData,
+  | 'organizationId' | 'projectId' | 'apiKeyId' | 'provider' | 'requestBody'
+  | 'traceId' | 'spanId' | 'providerKeyId' | 'userId' | 'sessionId'
+  | 'preComputedRequestFlags'
+>
+
+type ReplayLogOutcome = Pick<
+  RequestLogData,
+  | 'model' | 'promptTokens' | 'completionTokens' | 'totalTokens' | 'cacheReadTokens'
+  | 'cacheWriteTokens' | 'serviceTier' | 'costUsd' | 'latencyMs' | 'statusCode'
+  | 'responseBody' | 'errorMessage'
+>
+
+function logReplayRow(c: Context, base: ReplayLogBase, outcome: ReplayLogOutcome): void {
+  fireAndForget(c, logRequestAsync({ ...base, ...outcome }))
+}
+
+/** Row for an attempt that produced no usage (transport failure or error status). */
+function failedReplayOutcome(
+  model: string,
+  latencyMs: number,
+  statusCode: number,
+  errorMessage: string,
+  costUsd: number | null,
+  responseBody: unknown = null,
+): ReplayLogOutcome {
+  return {
+    model,
+    promptTokens: 0,
+    completionTokens: 0,
+    totalTokens: 0,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+    serviceTier: null,
+    costUsd,
+    latencyMs,
+    statusCode,
+    responseBody,
+    errorMessage,
+  }
+}
+
+function parseJsonObject(text: string): Record<string, unknown> {
+  try {
+    const value: unknown = JSON.parse(text)
+    return typeof value === 'object' && value !== null && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : {}
+  } catch {
+    return {}
+  }
+}
+
+async function loadReplayRow(orgId: string, requestId: string): Promise<ReplayRunRow> {
+  const scope = await requestsScope(orgId)
+  const rows = await selectRequests<ReplayRunRow>({
+    scope,
+    select:
+      'project_id, provider, model, request_body, provider_key_id, api_key_id, user_id, session_id',
+    filters: 'id = {requestId}',
+    params: { requestId },
+    limit: 1,
+  })
+  const data = rows[0]
+  if (!data) throw new ApiError('NOT_FOUND', 'Request not found')
+  return data
+}
+
 // POST /api/v1/requests/:id/replay/run
 // Execute a replay directly from the dashboard (JWT auth).
 // Calls the upstream provider API (non-streaming), logs the result, and
@@ -323,6 +418,18 @@ requestsRouter.post('/:id/replay', requireRole('admin', 'editor'), async (c) => 
 // Auth: admin/editor only. This endpoint decrypts and uses the org's
 // provider key to make a real, billable upstream call — viewer must not
 // be able to spend the org's API budget.
+//
+// Gates, compared with the proxy chain (proxy/openai.ts):
+//   - Monthly request quota: applied. The replay writes a requests row like a
+//     proxied call, so it is held to the same plan limit (same 429 RATE_LIMIT).
+//   - Injection blocking: applied. The project's CURRENT policy is evaluated
+//     on the exact body being sent. The original call may predate blocking
+//     being switched on, and a replay must not become a way around it.
+//   - customerRateLimit: deliberately not applied. Those limits are the
+//     customer's throttle on their own application's traffic, keyed by API
+//     key, project, and x-spanlens-user. A replay is an admin action from the
+//     dashboard, not application traffic, and apiRateLimit (app.ts) already
+//     bounds it per session token.
 requestsRouter.post('/:id/replay/run', requireRole('admin', 'editor'), async (c) => {
   const requestId = c.req.param('id')
   const orgId = c.get('orgId')
@@ -336,24 +443,7 @@ requestsRouter.post('/:id/replay/run', requireRole('admin', 'editor'), async (c)
   const overrideModel = typeof body.model === 'string' ? body.model : undefined
 
   // ── Fetch original request ────────────────────────────────────────────────
-  interface ReplayRunRow {
-    project_id: string
-    provider: string
-    model: string
-    request_body: string
-    provider_key_id: string | null
-    api_key_id: string | null
-  }
-  const scope = await requestsScope(orgId)
-  const rows = await selectRequests<ReplayRunRow>({
-    scope,
-    select: 'project_id, provider, model, request_body, provider_key_id, api_key_id',
-    filters: 'id = {requestId}',
-    params: { requestId },
-    limit: 1,
-  })
-  const data = rows[0]
-  if (!data) throw new ApiError('NOT_FOUND', 'Request not found')
+  const data = await loadReplayRow(orgId, requestId)
 
   const original = (parseJsonColumn(data.request_body, {}) ?? {}) as Record<string, unknown>
   if ('_truncated' in original) {
@@ -362,6 +452,9 @@ requestsRouter.post('/:id/replay/run', requireRole('admin', 'editor'), async (c)
       'Original request body was truncated and cannot be replayed exactly.',
     )
   }
+
+  // ── Monthly request quota (same decision + 429 as the proxy) ──────────────
+  await assertWithinMonthlyQuota(c, orgId)
 
   // ── Decrypt provider key ──────────────────────────────────────────────────
   // Prefer the historical provider_key_id (the exact key the original call
@@ -404,27 +497,56 @@ requestsRouter.post('/:id/replay/run', requireRole('admin', 'editor'), async (c)
         'Use POST /:id/replay to get a curl snippet instead.',
     )
   }
-  const { url: upstreamUrl, headers: upstreamHeaders } = upstream
 
-  // ── Call upstream ─────────────────────────────────────────────────────────
-  const startMs = Date.now()
-  let upstreamRes: Response
-  try {
-    upstreamRes = await fetch(upstreamUrl, {
-      method: 'POST',
-      headers: upstreamHeaders,
-      body: JSON.stringify(replayBody),
-    })
-  } catch (fetchErr) {
-    throw new ApiError('UPSTREAM_FAILED', `Failed to reach upstream: ${String(fetchErr)}`)
+  // ── Injection gate: the project's current policy, on this exact body ─────
+  const requestFlags = await runSecurityGate(replayBody, data.project_id)
+
+  const logBase: ReplayLogBase = {
+    organizationId: orgId,
+    projectId: data.project_id,
+    apiKeyId: data.api_key_id,
+    provider,
+    requestBody: replayBody,
+    traceId: null,
+    spanId: null,
+    providerKeyId: providerKey.id,
+    userId: data.user_id,
+    sessionId: data.session_id,
+    preComputedRequestFlags: requestFlags,
   }
 
-  const latencyMs = Date.now() - startMs
-  const statusCode = upstreamRes.status
-  const resBody = (await upstreamRes.json().catch(() => ({}))) as Record<string, unknown>
+  // ── Call upstream under one deadline (headers + body) ─────────────────────
+  const outcome = await fetchReplayUpstream(upstream, JSON.stringify(replayBody), replayTimeoutMs())
 
-  if (!upstreamRes.ok) {
+  // Transport failures are logged too, with cost unknown: a timed-out call
+  // may still have been generated and billed by the provider.
+  if (outcome.kind === 'timeout') {
+    const message = `Upstream request timed out after ${outcome.timeoutMs}ms`
+    logReplayRow(c, logBase, failedReplayOutcome(model, outcome.latencyMs, 504, message, null))
+    throw new ApiError('UPSTREAM_TIMEOUT', message, { provider, timeoutMs: outcome.timeoutMs })
+  }
+  if (outcome.kind === 'network') {
+    // Masked: a URL-parse error message would echo the Gemini ?key= query.
+    const message = `Failed to reach upstream: ${maskApiKeys(outcome.message)}`
+    logReplayRow(c, logBase, failedReplayOutcome(model, outcome.latencyMs, 502, message, null))
+    throw new ApiError('UPSTREAM_FAILED', message)
+  }
+
+  const { latencyMs, status: statusCode } = outcome
+  const resBody = parseJsonObject(outcome.bodyText)
+
+  if (!outcome.ok) {
     const errMsg = (resBody.error as Record<string, unknown> | undefined)?.message as string | undefined
+    // Same row the proxy writes for an upstream error: the error body, and the
+    // cost of zero tokens (the provider does not bill a rejected call).
+    logReplayRow(c, logBase, failedReplayOutcome(
+      model,
+      latencyMs,
+      statusCode,
+      outcome.bodyText.slice(0, 1000),
+      replayCostUsd(provider, model, EMPTY_REPLAY_USAGE),
+      resBody,
+    ))
     // Proxy passthrough — preserve the upstream status code dynamically
     // rather than mapping into the ApiError catalog (which would lock
     // the response to a fixed 502 UPSTREAM_FAILED status). The dashboard
@@ -435,37 +557,31 @@ requestsRouter.post('/:id/replay/run', requireRole('admin', 'editor'), async (c)
     return c.json({ error: errMsg ?? `Provider returned ${statusCode}`, statusCode }, statusCode as 400)
   }
 
-  // ── Parse token usage ─────────────────────────────────────────────────────
-  // Per-provider usage shapes live in lib/replay-providers.ts (OpenAI-compat
-  // `usage`, Anthropic input/output, Gemini usageMetadata incl. thoughts).
-  const { promptTokens, completionTokens, totalTokens } = parseReplayUsage(provider, resBody)
+  // ── Parse token usage with the proxy's parsers ────────────────────────────
+  // lib/replay-providers.ts delegates to parsers/{openai,anthropic,gemini}.ts,
+  // so cached input, service tier, and OpenRouter's usage.cost all count.
+  // Unreadable usage → cost unknown (null), never a misleading $0.
+  const usage = parseReplayUsage(provider, resBody)
+  const resolvedModel = usage?.model || model
+  const costUsd = usage ? replayCostUsd(provider, resolvedModel, usage) : null
+  const promptTokens = usage?.promptTokens ?? 0
+  const completionTokens = usage?.completionTokens ?? 0
+  const totalTokens = usage?.totalTokens ?? 0
 
-  const costResult = calculateCost(provider as Provider, model, { promptTokens, completionTokens })
-  const costUsd = costResult?.totalCost ?? null
-
-  // ── Log async (fire-and-forget) ───────────────────────────────────────────
-  fireAndForget(
-    c,
-    logRequestAsync({
-      organizationId: orgId,
-      projectId: data.project_id,
-      apiKeyId: null,
-      provider,
-      model,
-      promptTokens,
-      completionTokens,
-      totalTokens,
-      costUsd,
-      latencyMs,
-      statusCode,
-      requestBody: replayBody,
-      responseBody: resBody,
-      errorMessage: null,
-      traceId: null,
-      spanId: null,
-      providerKeyId: providerKey.id,
-    }),
-  )
+  logReplayRow(c, logBase, {
+    model: resolvedModel,
+    promptTokens,
+    completionTokens,
+    totalTokens,
+    cacheReadTokens: usage?.cacheReadTokens ?? 0,
+    cacheWriteTokens: usage?.cacheWriteTokens ?? 0,
+    serviceTier: usage?.serviceTier ?? null,
+    costUsd,
+    latencyMs,
+    statusCode,
+    responseBody: resBody,
+    errorMessage: null,
+  })
 
   return c.json({
     success: true,

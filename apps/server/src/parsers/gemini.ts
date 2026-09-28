@@ -34,6 +34,11 @@ export function parseGeminiResponse(body: Record<string, unknown>): ParsedUsage 
     completionTokens: candidatesTokens + thoughtsTokens,
     totalTokens: (meta.totalTokenCount as number) ?? 0,
     model: (body.modelVersion as string) ?? '',
+    // Tokens served from a context cache: implicit caching (on by default for
+    // Gemini 2.5+) or an explicit `cachedContent`. `promptTokenCount` already
+    // INCLUDES them, the same convention as OpenAI's prompt_tokens, so this is
+    // a subset that calculateCost bills at the cacheRead rate.
+    cacheReadTokens: (meta.cachedContentTokenCount as number) ?? 0,
     serviceTier: coerceGeminiTier(meta.serviceTier),
   }
 }

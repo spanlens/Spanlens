@@ -160,6 +160,7 @@ geminiProxy.all('/*', async (c) => {
         let promptTokens = 0
         let completionTokens = 0
         let totalTokens = 0
+        let cacheReadTokens = 0
         let serviceTier: ServiceTier | undefined
         const applyUsage = (obj: Record<string, unknown>): void => {
           if (!obj.usageMetadata) return
@@ -169,6 +170,7 @@ geminiProxy.all('/*', async (c) => {
           promptTokens = p.promptTokens
           completionTokens = p.completionTokens
           totalTokens = p.totalTokens
+          cacheReadTokens = p.cacheReadTokens ?? 0
           serviceTier = p.serviceTier
         }
         try {
@@ -209,7 +211,7 @@ geminiProxy.all('/*', async (c) => {
         // stream loggers (proxy/stream-logger.ts `hasUsage` guard).
         const hasUsage = promptTokens > 0 || completionTokens > 0
         const cost = hasUsage
-          ? calculateCost('gemini', model, { promptTokens, completionTokens, serviceTier })
+          ? calculateCost('gemini', model, { promptTokens, completionTokens, cacheReadTokens, serviceTier })
           : null
         const responseBody = text ? {
           candidates: [{ content: { parts: [{ text }] } }],
@@ -218,6 +220,7 @@ geminiProxy.all('/*', async (c) => {
             promptTokenCount: promptTokens,
             candidatesTokenCount: completionTokens,
             totalTokenCount: totalTokens,
+            ...(cacheReadTokens > 0 ? { cachedContentTokenCount: cacheReadTokens } : {}),
           },
         } : null
 
@@ -225,6 +228,7 @@ geminiProxy.all('/*', async (c) => {
           ...logBase,
           model,
           promptTokens, completionTokens, totalTokens,
+          cacheReadTokens,
           serviceTier: serviceTier ?? null,
           costUsd: cost?.totalCost ?? null,
           responseBody,
@@ -243,6 +247,7 @@ geminiProxy.all('/*', async (c) => {
   let promptTokens = 0
   let completionTokens = 0
   let totalTokens = 0
+  let cacheReadTokens = 0
   let serviceTier: ServiceTier | undefined
 
   if (upstreamRes.ok && resBodyJson) {
@@ -253,12 +258,15 @@ geminiProxy.all('/*', async (c) => {
         promptTokens = p.promptTokens
         completionTokens = p.completionTokens
         totalTokens = p.totalTokens
+        cacheReadTokens = p.cacheReadTokens ?? 0
         serviceTier = p.serviceTier
       }
     } catch { /* ignore */ }
   }
 
-  const cost = calculateCost('gemini', model, { promptTokens, completionTokens, serviceTier })
+  const cost = calculateCost('gemini', model, {
+    promptTokens, completionTokens, cacheReadTokens, serviceTier,
+  })
 
   const downstreamHeaders = buildDownstreamHeaders(upstreamRes.headers)
 
@@ -279,7 +287,7 @@ geminiProxy.all('/*', async (c) => {
           prompt_tokens: promptTokens,
           completion_tokens: completionTokens,
           total_tokens: totalTokens,
-          cache_read_tokens: 0,
+          cache_read_tokens: cacheReadTokens,
           cache_write_tokens: 0,
         },
         model,
@@ -291,6 +299,7 @@ geminiProxy.all('/*', async (c) => {
     ...logBase,
     model,
     promptTokens, completionTokens, totalTokens,
+    cacheReadTokens,
     serviceTier: serviceTier ?? null,
     costUsd: cost?.totalCost ?? null,
     responseBody: resBodyJson,
