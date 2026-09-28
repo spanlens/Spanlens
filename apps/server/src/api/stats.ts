@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import type { JwtContext } from '../middleware/authJwt.js'
 import { authJwtOrApiKey } from '../middleware/authJwtOrApiKey.js'
-import { parseClampedFloat, validateOptionalDate } from '../lib/params.js'
+import { parseClampedFloat, validateOptionalDate, validateOptionalUuid } from '../lib/params.js'
 import {
   getStatsOverview,
   getStatsModels,
@@ -9,6 +9,8 @@ import {
   getTimeseriesBreakdown,
   getLatencyPercentiles,
   type OverviewRow,
+  type RequestFilters,
+  type RequestStatusFilter,
   type TimeseriesRow,
 } from '../lib/stats-queries.js'
 import { ApiError } from '../lib/errors.js'
@@ -36,6 +38,39 @@ statsRouter.use('*', authJwtOrApiKey)
 const CACHE_STATS_LIVE = 'private, max-age=10, stale-while-revalidate=30'
 const CACHE_STATS_FORECAST = 'private, max-age=60, stale-while-revalidate=300'
 
+const STATUS_FILTERS: readonly RequestStatusFilter[] = ['ok', 'success', '4xx', '5xx', 'error']
+
+/** Unknown values are ignored, the same way GET /api/v1/requests ignores them. */
+function parseStatusFilter(raw: string | undefined): RequestStatusFilter | undefined {
+  return STATUS_FILTERS.find((status) => status === raw)
+}
+
+function parseTruncatedFilter(raw: string | undefined): boolean | undefined {
+  if (raw === 'true') return true
+  if (raw === 'false') return false
+  return undefined
+}
+
+/**
+ * The /requests table's filters, read with the list API's rules so the KPI
+ * strip and traffic chart above the table count the same rows the table
+ * lists. UUID-typed ids are validated up front: a malformed value would
+ * otherwise fail the `uuid` comparison inside Postgres and surface as a raw
+ * 500 rather than a 400.
+ */
+function readTableFilters(query: (name: string) => string | undefined): RequestFilters {
+  return {
+    provider: query('provider') || undefined,
+    model: query('model') || undefined,
+    providerKeyId: validateOptionalUuid(query('providerKeyId'), 'providerKeyId'),
+    promptVersionId: validateOptionalUuid(query('promptVersionId'), 'promptVersionId'),
+    userId: query('userId') || undefined,
+    sessionId: query('sessionId') || undefined,
+    status: parseStatusFilter(query('status')),
+    truncated: parseTruncatedFilter(query('truncated')),
+  }
+}
+
 function pctDelta(current: number, previous: number): number | null {
   if (previous === 0) return null
   return parseFloat(((current - previous) / previous * 100).toFixed(1))
@@ -60,13 +95,14 @@ statsRouter.get('/overview', async (c) => {
   const orgId = c.get('orgId')
   if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
-  const projectId = c.req.query('projectId')
+  const projectId = validateOptionalUuid(c.req.query('projectId'), 'projectId')
   // Garbage dates (?to=garbage) otherwise reach `new Date(x).toISOString()` in
   // the compare branch and throw a RangeError → raw 500. Validate up front so
   // this documented external surface (MCP/BI tools) gets a clean 400 instead.
   const from = validateOptionalDate(c.req.query('from'), 'from')
   const to = validateOptionalDate(c.req.query('to'), 'to')
   const compare = c.req.query('compare') === 'true'
+  const filters = readTableFilters((name) => c.req.query(name))
 
   try {
     if (compare) {
@@ -79,8 +115,8 @@ statsRouter.get('/overview', async (c) => {
       const prevFrom = new Date(fromMs - duration).toISOString()
 
       const [curr, prev] = await Promise.all([
-        getStatsOverview(orgId, { projectId, from: from ?? null, to: to ?? null }),
-        getStatsOverview(orgId, { projectId, from: prevFrom, to: prevTo }),
+        getStatsOverview(orgId, { projectId, from: from ?? null, to: to ?? null, filters }),
+        getStatsOverview(orgId, { projectId, from: prevFrom, to: prevTo, filters }),
       ])
 
       const currRow = rowToOverview(curr)
@@ -103,6 +139,7 @@ statsRouter.get('/overview', async (c) => {
       projectId,
       from: from ?? null,
       to: to ?? null,
+      filters,
     })
     c.header('Cache-Control', CACHE_STATS_LIVE)
     return c.json({ success: true, data: rowToOverview(overview) })
@@ -133,7 +170,9 @@ statsRouter.get('/models', async (c) => {
       provider: r.provider,
       model: r.model,
       requests: r.requests,
-      totalCostUsd: parseFloat(r.total_cost_usd.toFixed(6)),
+      // null = no price on file for any row in the group. Reporting it as 0
+      // would claim the model was free.
+      totalCostUsd: r.total_cost_usd == null ? null : parseFloat(r.total_cost_usd.toFixed(6)),
       avgLatencyMs: Math.round(r.avg_latency_ms),
       errorRate: r.error_rate,
     }))
@@ -150,9 +189,10 @@ statsRouter.get('/timeseries', async (c) => {
   const orgId = c.get('orgId')
   if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
-  const projectId = c.req.query('projectId')
-  const from = c.req.query('from')
-  const to = c.req.query('to')
+  const projectId = validateOptionalUuid(c.req.query('projectId'), 'projectId')
+  const from = validateOptionalDate(c.req.query('from'), 'from')
+  const to = validateOptionalDate(c.req.query('to'), 'to')
+  const filters = readTableFilters((name) => c.req.query(name))
   const granularity = selectGranularity(from ?? null)
 
   try {
@@ -161,6 +201,7 @@ statsRouter.get('/timeseries', async (c) => {
       from: from ?? null,
       to: to ?? null,
       granularity,
+      filters,
     })
     const series = rows.map((r) => ({
       date: r.day,
@@ -191,9 +232,10 @@ statsRouter.get('/timeseries-breakdown', async (c) => {
   const orgId = c.get('orgId')
   if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
-  const projectId = c.req.query('projectId')
-  const from = c.req.query('from')
-  const to = c.req.query('to')
+  const projectId = validateOptionalUuid(c.req.query('projectId'), 'projectId')
+  const from = validateOptionalDate(c.req.query('from'), 'from')
+  const to = validateOptionalDate(c.req.query('to'), 'to')
+  const filters = readTableFilters((name) => c.req.query(name))
   const granularity = selectGranularity(from ?? null)
 
   try {
@@ -202,6 +244,7 @@ statsRouter.get('/timeseries-breakdown', async (c) => {
       from: from ?? null,
       to: to ?? null,
       granularity,
+      filters,
     })
     const data = rows.map((r) => ({
       date: r.day,

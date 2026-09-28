@@ -7,6 +7,7 @@ import { createClient } from '@/lib/supabase/client'
 import { consumeWelcomeStash, clearWelcomeStash } from '@/lib/welcome-stash'
 import { useProviderKeys } from '@/lib/queries/use-provider-keys'
 import { useRequests } from '@/lib/queries/use-requests'
+import type { ProviderKey } from '@/lib/queries/types'
 
 /**
  * One-time welcome banner shown right after signup. Pulls the freshly
@@ -96,6 +97,15 @@ export function WelcomeBanner() {
   )
 }
 
+/**
+ * Step 2 is "Done" only with an ACTIVE provider key. A deactivated key used
+ * to count, so the banner read as ready while the proxy had nothing to call
+ * upstream with.
+ */
+export function hasActiveProviderKey(keys: readonly ProviderKey[] | undefined): boolean {
+  return (keys ?? []).some((k) => k.is_active)
+}
+
 type KeyCheckState = 'idle' | 'checking' | 'ok' | 'failed'
 
 function WelcomeBannerInner({ apiKey, onDismiss }: { apiKey: string; onDismiss: () => void }) {
@@ -125,9 +135,11 @@ function WelcomeBannerInner({ apiKey, onDismiss }: { apiKey: string; onDismiss: 
     }
   }
 
-  // Step 2 status — flips to a checkmark once any provider key exists.
+  // Step 2 status: flips to a checkmark once an active provider key exists.
+  // Org-wide on purpose: the banner only appears right after bootstrap, when
+  // the workspace holds exactly one Spanlens key.
   const providerKeys = useProviderKeys()
-  const hasProviderKey = (providerKeys.data?.length ?? 0) > 0
+  const hasProviderKey = hasActiveProviderKey(providerKeys.data)
 
   // Step 4 status — poll the request log (limit 1, we only need the count).
   // useRequests already refetches every ~30s and on window focus, so the

@@ -96,6 +96,7 @@ export const PLAN_SEAT_LIMITS: Record<string, number | null> = {
 // `OWNED_WORKSPACE_LIMITS` in apps/server/src/lib/quota.ts — server is the
 // source of truth, this is for the UI to render the limit row in
 // Settings → Plan & limits without an extra fetch.
+// apps/server/src/__tests__/web-plan-mirror.test.ts fails CI on drift.
 export const PLAN_WORKSPACE_LIMITS: Record<string, number | null> = {
   free: 1,
   starter: 2,
@@ -109,7 +110,8 @@ export const PLAN_RETENTION_DAYS: Record<string, number> = {
   team: 365,
   // Default Enterprise retention, extendable per contract. Must match
   // apps/server/src/lib/quota.ts LOG_RETENTION_DAYS to keep dashboard
-  // display consistent with the retention window the server enforces.
+  // display consistent with the retention window the server enforces;
+  // apps/server/src/__tests__/web-plan-mirror.test.ts fails CI on drift.
   enterprise: 365,
 }
 

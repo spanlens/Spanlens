@@ -2,6 +2,9 @@
 import { useState, useSyncExternalStore } from 'react'
 import Link from 'next/link'
 import { Section, FormRow, GhostBtn } from '@/components/ui/primitives'
+import { Skeleton } from '@/components/ui/skeleton'
+import { formatPlanLabel } from '@/lib/billing-plans'
+import { retentionLabelFor } from '@/lib/plan-retention'
 import {
   useOrganization,
   useUpdateOrganization,
@@ -39,11 +42,12 @@ export function GeneralTab() {
   )
 
   const plan = mounted ? org?.plan : undefined
-  const retention = plan === 'team' ? '90 days'
-    : plan === 'starter' ? '30 days'
-    : plan === 'enterprise' ? '1 year'
-    : '7 days'
-  const timezone = mounted ? Intl.DateTimeFormat().resolvedOptions().timeZone : '—'
+  // Plan facts come from lib/billing-plans (checked against the server's
+  // LOG_RETENTION_DAYS by a drift test), never from a local table. Nothing is
+  // shown until the org has loaded: a guessed default reads as a fact.
+  const planName = plan ? formatPlanLabel(plan) : null
+  const retention = plan ? (retentionLabelFor(plan) ?? 'Unknown') : null
+  const timezone = mounted ? Intl.DateTimeFormat().resolvedOptions().timeZone : null
 
   return (
     <div>
@@ -54,17 +58,21 @@ export function GeneralTab() {
 
       <Section title="Identity" description="Visible within your workspace" className="mb-4">
         <FormRow label="Workspace name" hint="Shown in the app header and on shared traces.">
-          <div className="flex flex-col gap-2 w-full max-w-[460px]">
+          {/* min-w-0 on the column and the input lets the row fit a 360px
+              phone: an <input> otherwise keeps its intrinsic ~20-character
+              width as a flex item, and the overflow-hidden card (with the
+              settings body zoomed to 125%) clipped the Save button. */}
+          <div className="flex flex-col gap-2 w-full min-w-0 max-w-[460px]">
             <div className="flex items-center gap-3">
               <NativeInput
                 value={name || (org?.name ?? '')}
                 onChange={(e) => setName(e.target.value)}
-                className="flex-1 font-mono text-[12.5px]"
+                className="flex-1 min-w-0 font-mono text-[12.5px]"
                 disabled={!isAdmin}
               />
               {isAdmin && (
                 <GhostBtn
-                  className={PILL_SECONDARY}
+                  className={`${PILL_SECONDARY} shrink-0`}
                   disabled={updateOrg.isPending || !name.trim() || name === org?.name}
                   onClick={() => void handleSaveName()}
                 >
@@ -78,9 +86,13 @@ export function GeneralTab() {
           </div>
         </FormRow>
         <FormRow label="Plan">
-          <MonoPill variant={plan === 'enterprise' ? 'good' : 'accent'} dot>
-            {plan ?? '—'}
-          </MonoPill>
+          {planName ? (
+            <MonoPill variant={plan === 'enterprise' ? 'good' : 'accent'} dot>
+              {planName}
+            </MonoPill>
+          ) : (
+            <Skeleton className="h-5 w-16 rounded-full" />
+          )}
         </FormRow>
       </Section>
 
@@ -89,15 +101,21 @@ export function GeneralTab() {
 
       <Section title="Data retention" description="Log retention is determined by your plan" className="mb-4">
         <FormRow label="Current retention">
-          <div className="font-mono text-[12.5px] text-text-muted">
-            {retention}
-            <span className="ml-2 text-text-faint">· {plan ?? 'free'} plan</span>
-          </div>
+          {retention && planName ? (
+            <div className="font-mono text-[12.5px] text-text-muted">
+              <span>{retention}</span>
+              <span className="ml-2 text-text-faint">· {planName} plan</span>
+            </div>
+          ) : (
+            <Skeleton className="h-4 w-40" />
+          )}
         </FormRow>
         <FormRow label="Timestamps" hint="All timestamps in the UI use your browser's local timezone.">
-          <div className="font-mono text-[12.5px] text-text-muted">
-            {timezone}
-          </div>
+          {timezone ? (
+            <div className="font-mono text-[12.5px] text-text-muted">{timezone}</div>
+          ) : (
+            <Skeleton className="h-4 w-32" />
+          )}
         </FormRow>
       </Section>
 
@@ -192,7 +210,7 @@ function BrandingSection({ plan, hideBadge }: { plan: string | null; hideBadge: 
         hint={
           canHide
             ? 'Removes the footer from /share/<token> pages your workspace creates.'
-            : 'Available on the Team plan. The footer is part of how we keep Free and Starter sustainable.'
+            : 'Available on the Team plan. The footer is part of how we keep the Free and Pro plans sustainable.'
         }
       >
         <div className="flex items-center gap-3">
