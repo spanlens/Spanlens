@@ -42,7 +42,9 @@ class SpanlensConfig(TypedDict, total=False):
     Attributes:
         api_key: Spanlens API key created in the dashboard
             (``sl_live_...`` or ``sl_test_...``). **Required.**
-        base_url: API base URL — default ``https://api.spanlens.io``.
+        base_url: API base URL. Defaults to the ``SPANLENS_BASE_URL``
+            environment variable (a self-hosted server origin) when set, else
+            ``https://api.spanlens.io``.
         timeout_ms: Request timeout in ms for ingest calls (default 3000).
             Observability calls should not block user code indefinitely.
         silent: Swallow all errors so instrumentation never crashes user code

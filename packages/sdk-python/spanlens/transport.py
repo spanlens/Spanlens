@@ -43,6 +43,7 @@ from typing import Any, Callable, Optional
 
 import httpx
 
+from ._base_url import server_origin_from_env
 from ._worker_pool import DaemonWorkerPool
 from .types import SpanlensConfig
 
@@ -120,7 +121,10 @@ class Transport:
         if not api_key or not api_key.strip():
             raise ValueError("[spanlens] api_key is required")
 
-        self._base_url = (config.get("base_url") or DEFAULT_BASE_URL).rstrip("/")
+        # Explicit base_url, then a self-hosted origin in SPANLENS_BASE_URL,
+        # then the hosted API.
+        base_url = config.get("base_url") or server_origin_from_env() or DEFAULT_BASE_URL
+        self._base_url = base_url.rstrip("/")
         self._timeout_s = (config.get("timeout_ms") or DEFAULT_TIMEOUT_MS) / 1000
         self._silent = config.get("silent", True)
         self._on_error: Optional[Callable[[BaseException, str], None]] = config.get("on_error")

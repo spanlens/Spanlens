@@ -22,6 +22,8 @@ from __future__ import annotations
 import os
 from typing import Any, Optional
 
+from .._base_url import ANTHROPIC_PROXY_PATH, resolve_proxy_base_url
+
 DEFAULT_SPANLENS_ANTHROPIC_PROXY = "https://api.spanlens.io/proxy/anthropic"
 PROMPT_VERSION_HEADER = "x-spanlens-prompt-version"
 
@@ -37,7 +39,9 @@ def create_anthropic(
 
     Args:
         api_key: Spanlens API key. Defaults to ``SPANLENS_API_KEY`` env var.
-        base_url: Override the proxy URL — useful for self-hosted Spanlens.
+        base_url: Override the proxy URL. When omitted, a self-hosted server
+            origin in ``SPANLENS_BASE_URL`` is used (``/proxy/anthropic`` is
+            appended), else the hosted proxy.
         **kwargs: Forwarded to ``anthropic.Anthropic(...)`` unchanged.
 
     Raises:
@@ -61,7 +65,11 @@ def create_anthropic(
 
     return Anthropic(
         api_key=resolved_key,
-        base_url=base_url or DEFAULT_SPANLENS_ANTHROPIC_PROXY,
+        base_url=resolve_proxy_base_url(
+            base_url,
+            proxy_path=ANTHROPIC_PROXY_PATH,
+            hosted_default=DEFAULT_SPANLENS_ANTHROPIC_PROXY,
+        ),
         **kwargs,
     )
 
@@ -96,7 +104,9 @@ def create_async_anthropic(
 
     Args:
         api_key: Spanlens API key. Defaults to ``SPANLENS_API_KEY`` env var.
-        base_url: Override the proxy URL — useful for self-hosted Spanlens.
+        base_url: Override the proxy URL. When omitted, a self-hosted server
+            origin in ``SPANLENS_BASE_URL`` is used (``/proxy/anthropic`` is
+            appended), else the hosted proxy.
         **kwargs: Forwarded to ``anthropic.AsyncAnthropic(...)`` unchanged.
 
     Raises:
@@ -120,7 +130,11 @@ def create_async_anthropic(
 
     return AsyncAnthropic(
         api_key=resolved_key,
-        base_url=base_url or DEFAULT_SPANLENS_ANTHROPIC_PROXY,
+        base_url=resolve_proxy_base_url(
+            base_url,
+            proxy_path=ANTHROPIC_PROXY_PATH,
+            hosted_default=DEFAULT_SPANLENS_ANTHROPIC_PROXY,
+        ),
         **kwargs,
     )
 

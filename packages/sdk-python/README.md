@@ -337,10 +337,11 @@ async def chat(body: dict, request: Request):
 ```python
 SpanlensClient(
     api_key="sl_live_...",        # required
-    base_url=None,                 # default: https://api.spanlens.io
+    base_url=None,                 # default: $SPANLENS_BASE_URL, else https://api.spanlens.io
     timeout_ms=3000,               # ingest timeout per call
     silent=True,                   # swallow errors so observability never crashes user code
     on_error=None,                 # callback (err, context) for non-silent monitoring
+    max_pending=None,              # cap on queued ingest calls (default 10,000)
 )
 ```
 
@@ -348,6 +349,11 @@ Environment variables:
 
 * `SPANLENS_API_KEY` is picked up by `create_openai()`, `create_anthropic()`,
   and `create_gemini()` when `api_key=` is omitted.
+* `SPANLENS_BASE_URL` is the origin of a self-hosted Spanlens server (for
+  example `https://spanlens.mycompany.com`). When set, `SpanlensClient` sends
+  ingest calls there and the provider factories use its proxy
+  (`/proxy/openai/v1`, `/proxy/anthropic`, `/proxy/gemini` are appended for
+  you). An explicit `base_url=` argument always wins.
 
 ---
 
@@ -419,14 +425,23 @@ The table below is the honest, file-level comparison of what each package ships 
 
 ## Self-hosting
 
-Point the SDK and proxy helpers at your own deployment:
+Set `SPANLENS_BASE_URL` to your deployment's origin and every part of the SDK
+follows it. `spanlens init --server-url https://spanlens.mycompany.com` writes
+it to `.env` for you; remember to add it to your production environment too.
+
+```bash
+export SPANLENS_BASE_URL="https://spanlens.mycompany.com"
+```
 
 ```python
-client = SpanlensClient(
-    api_key="...",
-    base_url="https://spanlens.mycompany.com",
-)
+client = SpanlensClient(api_key="...")  # ingest goes to your server
+openai = create_openai()                 # https://spanlens.mycompany.com/proxy/openai/v1
+```
 
+You can also pass the URLs explicitly, which takes priority over the variable:
+
+```python
+client = SpanlensClient(api_key="...", base_url="https://spanlens.mycompany.com")
 openai = create_openai(base_url="https://spanlens.mycompany.com/proxy/openai/v1")
 ```
 
