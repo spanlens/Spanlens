@@ -1,39 +1,34 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 
 /**
- * Paddle webhook handler — fixture-based unit tests (P1.5).
+ * Paddle webhook handler — fixture-based unit tests (P1.5, reworked for the
+ * 2026-09-28 billing audit: C3.1 / C4.1 / C4.2).
  *
  * Covers all 9 event types the Spanlens server subscribes to:
  *
- *   subscription.created
- *   subscription.activated
- *   subscription.updated
- *   subscription.paused
- *   subscription.resumed
- *   subscription.canceled
- *   subscription.past_due
- *   transaction.completed
- *   adjustment.created
+ *   subscription.created / activated / updated / paused / resumed /
+ *   canceled / past_due, transaction.completed, adjustment.created
  *
- * Plus the edge cases that previously bit production (CLAUDE.md gotchas #6/#7/#7a):
- *   - tampered signature → 401
- *   - missing custom_data → org resolved via paddle_customer_id fallback
- *   - missing/unknown price id → 200 with `skipped` payload (not 4xx — Paddle
- *     would otherwise retry forever and flood logs)
- *   - cancellation event with archived price id → upsert succeeds via DB
- *     fallback to the existing row's plan / price
- *   - adjustment.created with action='credit' or status='pending_approval'
- *     → does NOT downgrade plan
- *   - transaction.completed without subscription_id → ack and skip
+ * What moved into SQL: the ordering guard, the subscription upsert and the
+ * org plan mirror now run inside `apply_paddle_subscription_event` (and the
+ * refund inside `apply_paddle_refund`), one transaction each. What those
+ * functions do to rows is asserted against a real Postgres by
+ * supabase/tests/billing-rpc-smoke.sql. This file asserts the handler side:
+ * which RPC is called with which arguments, how the org is resolved, and
+ * that every failed write becomes a 5xx Paddle will retry.
  *
- * Real Supabase / Paddle API are mocked. Signatures are generated locally with
- * the same HMAC routine Paddle uses, so the actual `verifyPaddleSignature` path
- * is exercised end-to-end (no signature mocking).
+ * The Supabase mock follows supabase-js's real contract: a failed query does
+ * NOT reject, it resolves to `{ data: null, error }`. A mock that rejected
+ * would hide exactly the bug C3.1 was about (an ignored `{ error }`).
+ *
+ * Signatures are generated locally with Paddle's HMAC scheme, so the real
+ * `verifyPaddleSignature` path runs end to end.
  */
 
 // ---- Fixtures ------------------------------------------------------------
 
 const ORG_ID = '015a5187-d896-40b4-bef8-7d2b2d18c81d'
+const OTHER_ORG_ID = '7c1e2f0a-3b4d-4e5f-8a9b-0c1d2e3f4a5b'
 const CUSTOMER_ID = 'ctm_01k7h72r4gy53pt56cb6e1pdqp'
 const SUB_ID = 'sub_01kpqrapmp3xmxpwjea7n30pwf'
 const TXN_ID = 'txn_01kqfake0transaction0test001'
@@ -41,6 +36,7 @@ const PRICE_STARTER = 'pri_live_starter_29'
 const PRICE_TEAM = 'pri_live_team_149'
 const PRICE_ARCHIVED = 'pri_live_archived_old'
 const SECRET = 'pdl_ntfset_test_secret_1234567890'
+const OCCURRED_AT = '2026-05-18T12:00:00.000Z'
 
 function subPayload(overrides: Record<string, unknown> = {}) {
   return {
@@ -74,6 +70,7 @@ function adjPayload(overrides: Record<string, unknown> = {}) {
   return {
     id: 'adj_01test0refund0001',
     subscription_id: SUB_ID,
+    transaction_id: TXN_ID,
     customer_id: CUSTOMER_ID,
     action: 'refund' as const,
     status: 'approved' as const,
@@ -82,12 +79,7 @@ function adjPayload(overrides: Record<string, unknown> = {}) {
 }
 
 function event<T>(event_type: string, data: T, event_id = 'evt_test_' + Math.random().toString(36).slice(2, 10)) {
-  return {
-    event_id,
-    event_type,
-    occurred_at: '2026-05-18T12:00:00.000Z',
-    data,
-  }
+  return { event_id, event_type, occurred_at: OCCURRED_AT, data }
 }
 
 // ---- HMAC signing helper (mirrors Paddle's signing scheme) --------------
@@ -101,11 +93,7 @@ async function sign(body: string, ts: string, secret: string): Promise<string> {
     false,
     ['sign'],
   )
-  const buf = await crypto.subtle.sign(
-    'HMAC',
-    key,
-    encoder.encode(`${ts}:${body}`) as BufferSource,
-  )
+  const buf = await crypto.subtle.sign('HMAC', key, encoder.encode(`${ts}:${body}`) as BufferSource)
   const bytes = new Uint8Array(buf)
   let hex = ''
   for (let i = 0; i < bytes.length; i++) hex += bytes[i]!.toString(16).padStart(2, '0')
@@ -119,74 +107,71 @@ async function signedHeader(body: string): Promise<string> {
 }
 
 // ---- Supabase admin mock --------------------------------------------------
-//
-// Captures every operation so tests can assert what would have been written.
-// Default `select` returns null (org/sub not found); tests opt into found rows
-// via `setOrgLookup` / `setSubLookup`.
 
-interface CapturedWrite {
-  table: string
-  op: 'upsert' | 'update'
-  values: Record<string, unknown>
-  match?: Record<string, unknown>
-  conflict?: string
-}
+type DbError = { message: string; code?: string } | null
+interface DbResult { data: unknown; error: DbError }
 
-const captured: CapturedWrite[] = []
-let orgLookupResult: { id: string } | null = null
-let subLookupResult: { plan: string; paddle_price_id: string } | null = null
-let nextWriteError: string | null = null
+interface RpcCall { fn: string; params: Record<string, unknown> }
+interface UpdateCall { table: string; values: Record<string, unknown>; filters: Record<string, unknown> }
 
-function setOrgLookup(result: { id: string } | null) {
-  orgLookupResult = result
-}
-function setSubLookup(result: { plan: string; paddle_price_id: string } | null) {
-  subLookupResult = result
-}
-function failNextWriteWith(message: string) {
-  nextWriteError = message
+const rpcCalls: RpcCall[] = []
+const updateCalls: UpdateCall[] = []
+let rpcResults: Record<string, DbResult> = {}
+let orgsByCustomer: DbResult = { data: [], error: null }
+let subLookup: DbResult = { data: null, error: null }
+let checkoutLookup: DbResult = { data: null, error: null }
+let checkoutUpdateError: DbError = null
+
+function thenable<T>(resolveWith: () => T) {
+  return {
+    then: (onFulfilled: (v: T) => unknown, onRejected?: (e: unknown) => unknown) =>
+      Promise.resolve().then(resolveWith).then(onFulfilled, onRejected),
+  }
 }
 
 vi.mock('../lib/db.js', () => {
-  const builder = (table: string) => {
-    const ctx: { match: Record<string, unknown> } = { match: {} }
-    const chain = {
-      select: () => chain,
+  const from = (table: string) => {
+    const filters: Record<string, unknown> = {}
+    const read = {
+      select: () => read,
       eq: (col: string, val: unknown) => {
-        ctx.match[col] = val
-        return chain
+        filters[col] = val
+        return read
       },
-      maybeSingle: async () => {
-        if (table === 'organizations') return { data: orgLookupResult, error: null }
-        if (table === 'subscriptions') return { data: subLookupResult, error: null }
+      limit: () => thenable(() => (table === 'organizations' ? orgsByCustomer : { data: [], error: null })),
+      maybeSingle: async (): Promise<DbResult> => {
+        if (table === 'subscriptions') return subLookup
+        if (table === 'billing_checkout_sessions') return checkoutLookup
         return { data: null, error: null }
-      },
-      single: async () => {
-        if (table === 'organizations') return { data: orgLookupResult, error: null }
-        return { data: null, error: null }
-      },
-      upsert: async (values: Record<string, unknown>, opts?: { onConflict?: string }) => {
-        const err = nextWriteError
-        nextWriteError = null
-        const entry: CapturedWrite = { table, op: 'upsert', values }
-        if (opts?.onConflict) entry.conflict = opts.onConflict
-        captured.push(entry)
-        return { error: err ? { message: err } : null }
       },
       update: (values: Record<string, unknown>) => {
-        return {
-          eq: async (col: string, val: unknown) => {
-            captured.push({ table, op: 'update', values, match: { [col]: val } })
-            return { error: null }
+        const updateFilters: Record<string, unknown> = {}
+        const chain = {
+          eq: (col: string, val: unknown) => {
+            updateFilters[col] = val
+            return chain
           },
+          neq: (col: string, val: unknown) => {
+            updateFilters[`not.${col}`] = val
+            return chain
+          },
+          ...thenable(() => {
+            updateCalls.push({ table, values, filters: updateFilters })
+            return { data: null, error: table === 'billing_checkout_sessions' ? checkoutUpdateError : null }
+          }),
         }
+        return chain
       },
     }
-    return chain
+    return read
+  }
+  const rpc = async (fn: string, params: Record<string, unknown>): Promise<DbResult> => {
+    rpcCalls.push({ fn, params })
+    return rpcResults[fn] ?? { data: { applied: true, org_plan: null }, error: null }
   }
   return {
-    supabaseAdmin: { from: (t: string) => builder(t) },
-    supabaseClient: { from: (t: string) => builder(t) },
+    supabaseAdmin: { from, rpc },
+    supabaseClient: { from, rpc },
   }
 })
 
@@ -213,16 +198,21 @@ vi.mock('../lib/paddle.js', async () => {
 
 // ---- Test setup / teardown ----------------------------------------------
 
+let consoleError: ReturnType<typeof vi.spyOn>
+
 beforeEach(() => {
   process.env['PADDLE_NOTIFICATION_SECRET'] = SECRET
   process.env['PADDLE_PRICE_STARTER'] = PRICE_STARTER
   process.env['PADDLE_PRICE_TEAM'] = PRICE_TEAM
-  captured.length = 0
-  orgLookupResult = null
-  subLookupResult = null
-  nextWriteError = null
+  rpcCalls.length = 0
+  updateCalls.length = 0
+  rpcResults = {}
+  orgsByCustomer = { data: [], error: null }
+  subLookup = { data: null, error: null }
+  checkoutLookup = { data: null, error: null }
+  checkoutUpdateError = null
   paddleApiResult = paddleSubDetail
-  vi.spyOn(console, 'error').mockImplementation(() => {})
+  consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
   vi.spyOn(console, 'warn').mockImplementation(() => {})
 })
 
@@ -245,12 +235,22 @@ async function postWebhook(payload: unknown, opts: { headers?: Record<string, st
   if (!headers['Paddle-Signature'] && !opts.headers?.['Paddle-Signature']) {
     headers['Paddle-Signature'] = await signedHeader(body)
   }
-  const res = await paddleWebhookRouter.request('/paddle', {
-    method: 'POST',
-    headers,
-    body,
-  })
+  const res = await paddleWebhookRouter.request('/paddle', { method: 'POST', headers, body })
   return { res, body: (await res.json()) as Record<string, unknown> }
+}
+
+function subscriptionRpc(): Record<string, unknown> {
+  const call = rpcCalls.find((c) => c.fn === 'apply_paddle_subscription_event')
+  expect(call, 'apply_paddle_subscription_event was not called').toBeTruthy()
+  return call!.params
+}
+
+function errorMessage(body: Record<string, unknown>): string {
+  return (body['error'] as { message: string }).message
+}
+
+function loggedCodes(): string[] {
+  return consoleError.mock.calls.map((args) => String(args[0]))
 }
 
 // =========================================================================
@@ -258,89 +258,220 @@ async function postWebhook(payload: unknown, opts: { headers?: Record<string, st
 // =========================================================================
 
 describe('paddleWebhook — subscription.* lifecycle events', () => {
-  beforeEach(() => {
-    // Default: org resolved via custom_data, so lookup not needed
-    setOrgLookup({ id: ORG_ID })
-  })
-
-  it('subscription.created → upserts subscriptions row + mirrors plan onto organizations', async () => {
-    const { res, body } = await postWebhook(event('subscription.created', subPayload()))
+  it('subscription.created → applies the event through one RPC with every field', async () => {
+    const { res, body } = await postWebhook(event('subscription.created', subPayload(), 'evt_created_1'))
     expect(res.status).toBe(200)
     expect(body['success']).toBe(true)
 
-    const subUpsert = captured.find((c) => c.table === 'subscriptions' && c.op === 'upsert')
-    expect(subUpsert).toBeTruthy()
-    expect(subUpsert!.values['paddle_subscription_id']).toBe(SUB_ID)
-    expect(subUpsert!.values['paddle_customer_id']).toBe(CUSTOMER_ID)
-    expect(subUpsert!.values['paddle_price_id']).toBe(PRICE_STARTER)
-    expect(subUpsert!.values['plan']).toBe('starter')
-    expect(subUpsert!.values['status']).toBe('active')
-    expect(subUpsert!.values['current_period_start']).toBe('2026-05-18T00:00:00.000Z')
-    expect(subUpsert!.values['current_period_end']).toBe('2026-06-18T00:00:00.000Z')
-    expect(subUpsert!.conflict).toBe('paddle_subscription_id')
-
-    const orgUpdate = captured.find((c) => c.table === 'organizations' && c.op === 'update')
-    expect(orgUpdate).toBeTruthy()
-    expect(orgUpdate!.values['plan']).toBe('starter')
-    expect(orgUpdate!.values['paddle_customer_id']).toBe(CUSTOMER_ID)
+    expect(subscriptionRpc()).toEqual({
+      p_organization_id: ORG_ID,
+      p_paddle_subscription_id: SUB_ID,
+      p_paddle_customer_id: CUSTOMER_ID,
+      p_paddle_price_id: PRICE_STARTER,
+      p_plan: 'starter',
+      p_status: 'active',
+      p_current_period_start: '2026-05-18T00:00:00.000Z',
+      p_current_period_end: '2026-06-18T00:00:00.000Z',
+      p_cancel_at_period_end: false,
+      p_metadata: {
+        last_event_id: 'evt_created_1',
+        last_event_type: 'subscription.created',
+        occurred_at: OCCURRED_AT,
+      },
+    })
+    // The org plan mirror lives inside the RPC transaction now; the handler
+    // must not issue a second, separately-failing organizations UPDATE.
+    expect(updateCalls.find((u) => u.table === 'organizations')).toBeUndefined()
   })
 
-  it('subscription.activated → same upsert path', async () => {
+  it('subscription.activated → same RPC path', async () => {
     const { res } = await postWebhook(event('subscription.activated', subPayload()))
     expect(res.status).toBe(200)
-    expect(captured.find((c) => c.table === 'subscriptions')).toBeTruthy()
+    expect(subscriptionRpc()['p_status']).toBe('active')
   })
 
-  it('subscription.updated (e.g. upgrade to team) → upserts new plan onto org', async () => {
-    const payload = subPayload({ items: [{ price: { id: PRICE_TEAM } }] })
-    const { res } = await postWebhook(event('subscription.updated', payload))
-    expect(res.status).toBe(200)
-    const subUpsert = captured.find((c) => c.table === 'subscriptions' && c.op === 'upsert')
-    expect(subUpsert!.values['plan']).toBe('team')
-    const orgUpdate = captured.find((c) => c.table === 'organizations' && c.op === 'update')
-    expect(orgUpdate!.values['plan']).toBe('team')
-  })
-
-  it('subscription.paused → upserts paused status WITHOUT updating org.plan', async () => {
+  it('subscription.updated (upgrade to team) → passes the new plan', async () => {
     const { res } = await postWebhook(
-      event('subscription.paused', subPayload({ status: 'paused' })),
+      event('subscription.updated', subPayload({ items: [{ price: { id: PRICE_TEAM } }] })),
     )
     expect(res.status).toBe(200)
-    const subUpsert = captured.find((c) => c.table === 'subscriptions' && c.op === 'upsert')
-    expect(subUpsert!.values['status']).toBe('paused')
-    // org.plan is mirrored only on active/trialing/canceled — pause leaves
-    // the org on its current plan until renewal resumes or cancel fires.
-    expect(captured.find((c) => c.table === 'organizations' && c.op === 'update')).toBeUndefined()
+    expect(subscriptionRpc()['p_plan']).toBe('team')
   })
 
-  it('subscription.resumed → org back on paid plan', async () => {
-    const { res } = await postWebhook(
-      event('subscription.resumed', subPayload({ status: 'active' })),
-    )
+  it('subscription.paused → passes paused status', async () => {
+    const { res } = await postWebhook(event('subscription.paused', subPayload({ status: 'paused' })))
     expect(res.status).toBe(200)
-    const orgUpdate = captured.find((c) => c.table === 'organizations' && c.op === 'update')
-    expect(orgUpdate!.values['plan']).toBe('starter')
+    expect(subscriptionRpc()['p_status']).toBe('paused')
   })
 
-  it('subscription.canceled with current price → upserts canceled + org → free', async () => {
-    const { res } = await postWebhook(
-      event('subscription.canceled', subPayload({ status: 'canceled' })),
-    )
+  it('subscription.resumed → passes active status', async () => {
+    const { res } = await postWebhook(event('subscription.resumed', subPayload({ status: 'active' })))
     expect(res.status).toBe(200)
-    const subUpsert = captured.find((c) => c.table === 'subscriptions' && c.op === 'upsert')
-    expect(subUpsert!.values['status']).toBe('canceled')
-    const orgUpdate = captured.find((c) => c.table === 'organizations' && c.op === 'update')
-    expect(orgUpdate!.values['plan']).toBe('free')
+    expect(subscriptionRpc()['p_status']).toBe('active')
   })
 
-  it('subscription.past_due → upserts past_due status WITHOUT downgrading org plan', async () => {
+  it('subscription.canceled → passes canceled status (plan recompute happens in SQL)', async () => {
+    const { res } = await postWebhook(event('subscription.canceled', subPayload({ status: 'canceled' })))
+    expect(res.status).toBe(200)
+    expect(subscriptionRpc()['p_status']).toBe('canceled')
+    expect(updateCalls.find((u) => u.table === 'organizations')).toBeUndefined()
+  })
+
+  it('subscription.past_due → passes past_due status', async () => {
+    const { res } = await postWebhook(event('subscription.past_due', subPayload({ status: 'past_due' })))
+    expect(res.status).toBe(200)
+    expect(subscriptionRpc()['p_status']).toBe('past_due')
+  })
+
+  it('an event the RPC reports as out of order → 200 with applied=false (no retry wanted)', async () => {
+    rpcResults['apply_paddle_subscription_event'] = { data: { applied: false, org_plan: null }, error: null }
+    const { res, body } = await postWebhook(event('subscription.updated', subPayload()))
+    expect(res.status).toBe(200)
+    expect(body['success']).toBe(true)
+    expect(body['applied']).toBe(false)
+  })
+})
+
+// =========================================================================
+// C3.1 — a failed write must become a 5xx so Paddle retries
+// =========================================================================
+
+describe('paddleWebhook — write failures surface as 5xx (C3.1)', () => {
+  it('RPC error on an active event → 500 + structured log (was 200 before)', async () => {
+    rpcResults['apply_paddle_subscription_event'] = {
+      data: null,
+      error: { message: 'connection refused', code: '08006' },
+    }
+    const { res, body } = await postWebhook(event('subscription.activated', subPayload()))
+    expect(res.status).toBe(500)
+    expect(errorMessage(body)).toContain('subscription event could not be applied')
+    expect(errorMessage(body)).toContain('connection refused')
+    expect(loggedCodes().some((l) => l.startsWith('ERROR[PADDLE_WEBHOOK_FAILED]'))).toBe(true)
+  })
+
+  it('RPC error on a canceled event → 500 (terminal event must not be lost)', async () => {
+    rpcResults['apply_paddle_subscription_event'] = { data: null, error: { message: 'deadlock detected' } }
+    const { res } = await postWebhook(event('subscription.canceled', subPayload({ status: 'canceled' })))
+    expect(res.status).toBe(500)
+  })
+
+  it('RPC error on transaction.completed → 500', async () => {
+    rpcResults['apply_paddle_subscription_event'] = { data: null, error: { message: 'timeout' } }
+    const { res } = await postWebhook(event('transaction.completed', txPayload()))
+    expect(res.status).toBe(500)
+  })
+
+  it('approved refund whose plan write fails → 500 (was 200 + "downgraded" log)', async () => {
+    subLookup = { data: { organization_id: ORG_ID }, error: null }
+    rpcResults['apply_paddle_refund'] = { data: null, error: { message: 'connection reset' } }
+    const { res, body } = await postWebhook(event('adjustment.created', adjPayload()))
+    expect(res.status).toBe(500)
+    expect(errorMessage(body)).toContain('refund could not be applied')
+    expect(loggedCodes().some((l) => l.startsWith('ERROR[PADDLE_WEBHOOK_FAILED]'))).toBe(true)
+  })
+
+  it('a retry of the same event calls the RPC again with identical arguments', async () => {
+    // The SQL guard re-applies an event whose occurred_at equals the stored
+    // one, which is what makes a Paddle retry after a 5xx useful. The
+    // handler must not add its own "already seen" short-circuit on top.
+    const payload = event('subscription.activated', subPayload(), 'evt_retry_1')
+    rpcResults['apply_paddle_subscription_event'] = { data: null, error: { message: 'transient' } }
+    const first = await postWebhook(payload)
+    expect(first.res.status).toBe(500)
+
+    rpcResults['apply_paddle_subscription_event'] = { data: { applied: true, org_plan: 'starter' }, error: null }
+    const second = await postWebhook(payload)
+    expect(second.res.status).toBe(200)
+
+    const calls = rpcCalls.filter((c) => c.fn === 'apply_paddle_subscription_event')
+    expect(calls).toHaveLength(2)
+    expect(calls[0]!.params).toEqual(calls[1]!.params)
+  })
+})
+
+// =========================================================================
+// C4.1 — org resolution order
+// =========================================================================
+
+describe('paddleWebhook — org resolution (C4.1)', () => {
+  it('custom_data wins over every lookup', async () => {
+    subLookup = { data: { organization_id: OTHER_ORG_ID }, error: null }
+    const { res } = await postWebhook(event('subscription.updated', subPayload()))
+    expect(res.status).toBe(200)
+    expect(subscriptionRpc()['p_organization_id']).toBe(ORG_ID)
+  })
+
+  it('no custom_data → resolves through the stored subscription even when the customer is shared', async () => {
+    subLookup = { data: { organization_id: ORG_ID }, error: null }
+    orgsByCustomer = { data: [{ id: ORG_ID }, { id: OTHER_ORG_ID }], error: null }
+    const { res } = await postWebhook(event('subscription.updated', subPayload({ custom_data: null })))
+    expect(res.status).toBe(200)
+    expect(subscriptionRpc()['p_organization_id']).toBe(ORG_ID)
+  })
+
+  it('a custom_data organization_id that is not a UUID is ignored, not trusted', async () => {
+    subLookup = { data: { organization_id: ORG_ID }, error: null }
     const { res } = await postWebhook(
-      event('subscription.past_due', subPayload({ status: 'past_due' })),
+      event('subscription.updated', subPayload({ custom_data: { organization_id: 'not-a-uuid' } })),
     )
     expect(res.status).toBe(200)
-    const subUpsert = captured.find((c) => c.table === 'subscriptions' && c.op === 'upsert')
-    expect(subUpsert!.values['status']).toBe('past_due')
-    expect(captured.find((c) => c.table === 'organizations' && c.op === 'update')).toBeUndefined()
+    expect(subscriptionRpc()['p_organization_id']).toBe(ORG_ID)
+  })
+
+  it('new subscription without custom_data → resolves through the checkout transaction', async () => {
+    checkoutLookup = { data: { organization_id: ORG_ID }, error: null }
+    orgsByCustomer = { data: [{ id: ORG_ID }, { id: OTHER_ORG_ID }], error: null }
+    const { res } = await postWebhook(
+      event('subscription.created', subPayload({ custom_data: null, transaction_id: TXN_ID })),
+    )
+    expect(res.status).toBe(200)
+    expect(subscriptionRpc()['p_organization_id']).toBe(ORG_ID)
+  })
+
+  it('customer fallback resolves when exactly one org owns the customer', async () => {
+    orgsByCustomer = { data: [{ id: ORG_ID }], error: null }
+    const { res } = await postWebhook(event('subscription.created', subPayload({ custom_data: null })))
+    expect(res.status).toBe(200)
+    expect(subscriptionRpc()['p_organization_id']).toBe(ORG_ID)
+  })
+
+  it('customer shared by two orgs and nothing else to go on → 400, nothing written', async () => {
+    orgsByCustomer = { data: [{ id: ORG_ID }, { id: OTHER_ORG_ID }], error: null }
+    const { res, body } = await postWebhook(event('subscription.created', subPayload({ custom_data: null })))
+    expect(res.status).toBe(400)
+    expect(errorMessage(body)).toBe('organization not found')
+    expect(rpcCalls).toHaveLength(0)
+  })
+
+  it('returns 400 when org cannot be resolved from any source', async () => {
+    const { res, body } = await postWebhook(event('subscription.created', subPayload({ custom_data: null })))
+    expect(res.status).toBe(400)
+    expect(errorMessage(body)).toBe('organization not found')
+  })
+
+  it('a lookup that errors → 500, never a guess (and never a 400 Paddle gives up on)', async () => {
+    subLookup = { data: null, error: { message: 'connection refused' } }
+    const { res } = await postWebhook(event('subscription.updated', subPayload({ custom_data: null })))
+    expect(res.status).toBe(500)
+    expect(rpcCalls).toHaveLength(0)
+  })
+
+  it('refund resolves through its subscription, not the (shared) customer', async () => {
+    subLookup = { data: { organization_id: ORG_ID }, error: null }
+    orgsByCustomer = { data: [{ id: ORG_ID }, { id: OTHER_ORG_ID }], error: null }
+    const { res } = await postWebhook(event('adjustment.created', adjPayload()))
+    expect(res.status).toBe(200)
+    const call = rpcCalls.find((c) => c.fn === 'apply_paddle_refund')
+    expect(call?.params).toEqual({ p_organization_id: ORG_ID, p_paddle_subscription_id: SUB_ID })
+  })
+
+  it('refund without a known subscription resolves through the checkout transaction', async () => {
+    checkoutLookup = { data: { organization_id: ORG_ID }, error: null }
+    orgsByCustomer = { data: [{ id: ORG_ID }, { id: OTHER_ORG_ID }], error: null }
+    const { res } = await postWebhook(event('adjustment.created', adjPayload({ subscription_id: null })))
+    expect(res.status).toBe(200)
+    const call = rpcCalls.find((c) => c.fn === 'apply_paddle_refund')
+    expect(call?.params).toEqual({ p_organization_id: ORG_ID, p_paddle_subscription_id: null })
   })
 })
 
@@ -349,110 +480,61 @@ describe('paddleWebhook — subscription.* lifecycle events', () => {
 // =========================================================================
 
 describe('paddleWebhook — subscription.* edge cases', () => {
-  it('falls back to paddle_customer_id lookup when custom_data is missing', async () => {
-    // Paddle subscription events often arrive with empty custom_data because
-    // it does not inherit from the originating transaction. We must resolve
-    // the org from the customer mapping written at checkout time.
-    setOrgLookup({ id: ORG_ID })
-    const { res } = await postWebhook(
-      event('subscription.created', subPayload({ custom_data: null })),
-    )
-    expect(res.status).toBe(200)
-    const subUpsert = captured.find((c) => c.table === 'subscriptions' && c.op === 'upsert')
-    expect(subUpsert!.values['organization_id']).toBe(ORG_ID)
-  })
-
-  it('returns 400 when org cannot be resolved from either source', async () => {
-    setOrgLookup(null)
-    const { res, body } = await postWebhook(
-      event('subscription.created', subPayload({ custom_data: null })),
-    )
-    expect(res.status).toBe(400)
-    expect((body['error'] as { message: string }).message).toBe('organization not found')
-  })
-
   it('non-cancel event with missing price id → 200 skipped (not 4xx — avoids Paddle retry storm)', async () => {
-    setOrgLookup({ id: ORG_ID })
-    const { res, body } = await postWebhook(
-      event('subscription.created', subPayload({ items: [] })),
-    )
+    const { res, body } = await postWebhook(event('subscription.created', subPayload({ items: [] })))
     expect(res.status).toBe(200)
     expect(body['skipped']).toBe('missing price id')
-    expect(captured).toHaveLength(0)
+    expect(rpcCalls).toHaveLength(0)
   })
 
   it('non-cancel event with unknown price id → 200 skipped, surfaces price_id for ops', async () => {
-    setOrgLookup({ id: ORG_ID })
     const { res, body } = await postWebhook(
-      event(
-        'subscription.created',
-        subPayload({ items: [{ price: { id: 'pri_live_unconfigured_99' } }] }),
-      ),
+      event('subscription.created', subPayload({ items: [{ price: { id: 'pri_live_unconfigured_99' } }] })),
     )
     expect(res.status).toBe(200)
     expect(body['skipped']).toBe('unknown price id')
     expect(body['price_id']).toBe('pri_live_unconfigured_99')
     expect(body['event_id']).toBeTruthy()
-    expect(captured).toHaveLength(0)
+    expect(rpcCalls).toHaveLength(0)
   })
 
-  it('cancellation event with archived price id → upserts using DB row fallback', async () => {
-    setOrgLookup({ id: ORG_ID })
-    setSubLookup({ plan: 'team', paddle_price_id: PRICE_TEAM })
+  it('cancellation event with archived price id → uses the stored row plan / price', async () => {
+    subLookup = { data: { organization_id: ORG_ID, plan: 'team', paddle_price_id: PRICE_TEAM }, error: null }
     const { res } = await postWebhook(
-      event(
-        'subscription.canceled',
-        subPayload({
-          status: 'canceled',
-          items: [{ price: { id: PRICE_ARCHIVED } }],
-        }),
-      ),
+      event('subscription.canceled', subPayload({ status: 'canceled', items: [{ price: { id: PRICE_ARCHIVED } }] })),
     )
     expect(res.status).toBe(200)
-    const subUpsert = captured.find((c) => c.table === 'subscriptions' && c.op === 'upsert')
-    expect(subUpsert!.values['plan']).toBe('team')
-    expect(subUpsert!.values['paddle_price_id']).toBe(PRICE_TEAM)
-    expect(subUpsert!.values['status']).toBe('canceled')
+    const params = subscriptionRpc()
+    expect(params['p_plan']).toBe('team')
+    expect(params['p_paddle_price_id']).toBe(PRICE_TEAM)
+    expect(params['p_status']).toBe('canceled')
   })
 
   it('cancellation event with archived price + no DB row → defaults to starter (last-resort guess)', async () => {
-    setOrgLookup({ id: ORG_ID })
-    setSubLookup(null)
     const { res } = await postWebhook(
-      event(
-        'subscription.canceled',
-        subPayload({
-          status: 'canceled',
-          items: [{ price: { id: PRICE_ARCHIVED } }],
-        }),
-      ),
+      event('subscription.canceled', subPayload({ status: 'canceled', items: [{ price: { id: PRICE_ARCHIVED } }] })),
     )
     expect(res.status).toBe(200)
-    const subUpsert = captured.find((c) => c.table === 'subscriptions' && c.op === 'upsert')
-    expect(subUpsert!.values['plan']).toBe('starter')
-    expect(subUpsert!.values['paddle_price_id']).toBe(PRICE_ARCHIVED)
+    const params = subscriptionRpc()
+    expect(params['p_plan']).toBe('starter')
+    expect(params['p_paddle_price_id']).toBe(PRICE_ARCHIVED)
   })
 
-  it('subscription with scheduled cancel → upserts cancel_at_period_end=true', async () => {
-    setOrgLookup({ id: ORG_ID })
+  it('cancellation fallback lookup that errors → 500 instead of guessing a plan', async () => {
+    subLookup = { data: null, error: { message: 'connection refused' } }
     const { res } = await postWebhook(
-      event(
-        'subscription.updated',
-        subPayload({ scheduled_change: { action: 'cancel' } }),
-      ),
+      event('subscription.canceled', subPayload({ status: 'canceled', items: [{ price: { id: PRICE_ARCHIVED } }] })),
     )
-    expect(res.status).toBe(200)
-    const subUpsert = captured.find((c) => c.table === 'subscriptions' && c.op === 'upsert')
-    expect(subUpsert!.values['cancel_at_period_end']).toBe(true)
-  })
-
-  it('returns 500 when the upsert itself fails (caller can retry)', async () => {
-    setOrgLookup({ id: ORG_ID })
-    failNextWriteWith('connection refused')
-    const { res, body } = await postWebhook(event('subscription.created', subPayload()))
     expect(res.status).toBe(500)
-    expect((body['error'] as { message: string }).message).toContain('subscription upsert failed')
-    expect((body['error'] as { message: string }).message).toContain('connection refused')
+    expect(rpcCalls).toHaveLength(0)
+  })
+
+  it('subscription with scheduled cancel → cancel_at_period_end=true', async () => {
+    const { res } = await postWebhook(
+      event('subscription.updated', subPayload({ scheduled_change: { action: 'cancel' } })),
+    )
+    expect(res.status).toBe(200)
+    expect(subscriptionRpc()['p_cancel_at_period_end']).toBe(true)
   })
 })
 
@@ -461,56 +543,67 @@ describe('paddleWebhook — subscription.* edge cases', () => {
 // =========================================================================
 
 describe('paddleWebhook — transaction.completed', () => {
-  beforeEach(() => {
-    setOrgLookup({ id: ORG_ID })
-  })
-
-  it('enriches via Paddle API fetch and upserts a synthetic subscription row', async () => {
+  it('enriches via Paddle API fetch and applies a synthetic subscription event', async () => {
     const { res, body } = await postWebhook(event('transaction.completed', txPayload()))
     expect(res.status).toBe(200)
     expect(body['success']).toBe(true)
 
-    const subUpsert = captured.find((c) => c.table === 'subscriptions' && c.op === 'upsert')
-    expect(subUpsert!.values['paddle_subscription_id']).toBe(SUB_ID)
-    expect(subUpsert!.values['paddle_price_id']).toBe(PRICE_STARTER)
-    expect(subUpsert!.values['plan']).toBe('starter')
+    const params = subscriptionRpc()
+    expect(params['p_paddle_subscription_id']).toBe(SUB_ID)
+    expect(params['p_paddle_price_id']).toBe(PRICE_STARTER)
+    expect(params['p_plan']).toBe('starter')
     // current_billing_period came from the Paddle API mock, not the tx payload
-    expect(subUpsert!.values['current_period_end']).toBe('2026-06-18T00:00:00.000Z')
+    expect(params['p_current_period_end']).toBe('2026-06-18T00:00:00.000Z')
+  })
+
+  it('marks the originating checkout session completed (C4.2 checkout idempotency)', async () => {
+    const { res } = await postWebhook(event('transaction.completed', txPayload()))
+    expect(res.status).toBe(200)
+    const update = updateCalls.find((u) => u.table === 'billing_checkout_sessions')
+    expect(update?.values['status']).toBe('completed')
+    expect(update?.filters['paddle_transaction_id']).toBe(TXN_ID)
+  })
+
+  it('a failed checkout-session update is logged but does not fail the event', async () => {
+    checkoutUpdateError = { message: 'relation does not exist' }
+    const { res } = await postWebhook(event('transaction.completed', txPayload()))
+    expect(res.status).toBe(200)
+    expect(loggedCodes().some((l) => l.startsWith('ERROR[PADDLE_WEBHOOK_FAILED]'))).toBe(true)
+  })
+
+  it('without custom_data → resolves through its subscription id', async () => {
+    subLookup = { data: { organization_id: ORG_ID }, error: null }
+    const { res } = await postWebhook(event('transaction.completed', txPayload({ custom_data: null })))
+    expect(res.status).toBe(200)
+    expect(subscriptionRpc()['p_organization_id']).toBe(ORG_ID)
   })
 
   it('falls back to active + tx.items when Paddle API enrichment returns null', async () => {
     paddleApiResult = null
     const { res } = await postWebhook(event('transaction.completed', txPayload()))
     expect(res.status).toBe(200)
-    const subUpsert = captured.find((c) => c.table === 'subscriptions' && c.op === 'upsert')
-    expect(subUpsert!.values['status']).toBe('active')
-    expect(subUpsert!.values['plan']).toBe('starter')
-    expect(subUpsert!.values['current_period_end']).toBeNull()
+    const params = subscriptionRpc()
+    expect(params['p_status']).toBe('active')
+    expect(params['p_plan']).toBe('starter')
+    expect(params['p_current_period_end']).toBeNull()
   })
 
   it('one-time (non-subscription) transactions are acknowledged and skipped', async () => {
-    const { res, body } = await postWebhook(
-      event('transaction.completed', txPayload({ subscription_id: null })),
-    )
+    const { res, body } = await postWebhook(event('transaction.completed', txPayload({ subscription_id: null })))
     expect(res.status).toBe(200)
     expect(body['skipped']).toBe('non-subscription transaction')
-    expect(captured).toHaveLength(0)
+    expect(rpcCalls).toHaveLength(0)
   })
 
   it('missing price id in transaction → 400 (Paddle WILL retry; surface the bug)', async () => {
-    const { res, body } = await postWebhook(
-      event('transaction.completed', txPayload({ items: [] })),
-    )
+    const { res, body } = await postWebhook(event('transaction.completed', txPayload({ items: [] })))
     expect(res.status).toBe(400)
-    expect((body['error'] as { message: string }).message).toBe('missing price id')
+    expect(errorMessage(body)).toBe('missing price id')
   })
 
   it('unknown price id in transaction → 200 skipped (avoid retry storm)', async () => {
     const { res, body } = await postWebhook(
-      event(
-        'transaction.completed',
-        txPayload({ items: [{ price: { id: 'pri_live_unconfigured_99' } }] }),
-      ),
+      event('transaction.completed', txPayload({ items: [{ price: { id: 'pri_live_unconfigured_99' } }] })),
     )
     expect(res.status).toBe(200)
     expect(body['skipped']).toBe('unknown price id')
@@ -524,39 +617,36 @@ describe('paddleWebhook — transaction.completed', () => {
 
 describe('paddleWebhook — adjustment.created', () => {
   beforeEach(() => {
-    setOrgLookup({ id: ORG_ID })
+    subLookup = { data: { organization_id: ORG_ID }, error: null }
   })
 
-  it('approved refund → downgrades org plan to free', async () => {
+  it('approved refund → recomputes the org plan without the refunded subscription', async () => {
+    rpcResults['apply_paddle_refund'] = { data: { org_plan: 'free' }, error: null }
     const { res, body } = await postWebhook(event('adjustment.created', adjPayload()))
     expect(res.status).toBe(200)
     expect(body['success']).toBe(true)
-    const orgUpdate = captured.find((c) => c.table === 'organizations' && c.op === 'update')
-    expect(orgUpdate!.values['plan']).toBe('free')
-    expect(orgUpdate!.match!['id']).toBe(ORG_ID)
+    expect(rpcCalls).toEqual([
+      { fn: 'apply_paddle_refund', params: { p_organization_id: ORG_ID, p_paddle_subscription_id: SUB_ID } },
+    ])
   })
 
-  it('pending refund (not yet approved) → does NOT downgrade plan', async () => {
-    const { res } = await postWebhook(
-      event('adjustment.created', adjPayload({ status: 'pending_approval' })),
-    )
+  it('pending refund (not yet approved) → no plan change', async () => {
+    const { res } = await postWebhook(event('adjustment.created', adjPayload({ status: 'pending_approval' })))
     expect(res.status).toBe(200)
-    expect(captured.find((c) => c.table === 'organizations')).toBeUndefined()
+    expect(rpcCalls).toHaveLength(0)
   })
 
-  it('credit (non-refund adjustment) → does NOT downgrade plan', async () => {
-    const { res } = await postWebhook(
-      event('adjustment.created', adjPayload({ action: 'credit' })),
-    )
+  it('credit (non-refund adjustment) → no plan change', async () => {
+    const { res } = await postWebhook(event('adjustment.created', adjPayload({ action: 'credit' })))
     expect(res.status).toBe(200)
-    expect(captured.find((c) => c.table === 'organizations')).toBeUndefined()
+    expect(rpcCalls).toHaveLength(0)
   })
 
   it('approved refund with org not found → 400 (so ops can investigate)', async () => {
-    setOrgLookup(null)
+    subLookup = { data: null, error: null }
     const { res, body } = await postWebhook(event('adjustment.created', adjPayload()))
     expect(res.status).toBe(400)
-    expect((body['error'] as { message: string }).message).toBe('organization not found')
+    expect(errorMessage(body)).toBe('organization not found')
   })
 })
 
@@ -568,7 +658,6 @@ describe('paddleWebhook — signature & misc edge cases', () => {
   it('rejects a tampered body with 401', async () => {
     const original = JSON.stringify(event('subscription.created', subPayload()))
     const header = await signedHeader(original)
-    // Tamper AFTER signing
     const tampered = original.replace(SUB_ID, 'sub_attacker_injected')
     const { paddleWebhookRouter } = await import('../api/paddleWebhook.js')
     const res = await paddleWebhookRouter.request('/paddle', {
@@ -577,7 +666,7 @@ describe('paddleWebhook — signature & misc edge cases', () => {
       body: tampered,
     })
     expect(res.status).toBe(401)
-    expect(captured).toHaveLength(0)
+    expect(rpcCalls).toHaveLength(0)
   })
 
   it('rejects missing Paddle-Signature header with 401', async () => {
@@ -595,10 +684,7 @@ describe('paddleWebhook — signature & misc edge cases', () => {
     const { paddleWebhookRouter } = await import('../api/paddleWebhook.js')
     const res = await paddleWebhookRouter.request('/paddle', {
       method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        'Paddle-Signature': await signedHeader(garbage),
-      },
+      headers: { 'content-type': 'application/json', 'Paddle-Signature': await signedHeader(garbage) },
       body: garbage,
     })
     expect(res.status).toBe(400)
@@ -608,6 +694,6 @@ describe('paddleWebhook — signature & misc edge cases', () => {
     const { res, body } = await postWebhook(event('customer.created', { id: CUSTOMER_ID }))
     expect(res.status).toBe(200)
     expect(body['skipped']).toBe('customer.created')
-    expect(captured).toHaveLength(0)
+    expect(rpcCalls).toHaveLength(0)
   })
 })
