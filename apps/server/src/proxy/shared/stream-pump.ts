@@ -15,7 +15,7 @@
 import type { Context } from 'hono'
 import { stream } from 'hono/streaming'
 import type { StreamingApi } from 'hono/utils/stream'
-import { logError } from '../../lib/structured-logger.js'
+import { logError, logWarn } from '../../lib/structured-logger.js'
 import {
   STREAM_DEADLINE_MS,
   cancelReaderSilently,
@@ -25,6 +25,7 @@ import {
 } from '../stream-deadline.js'
 import { buildDownstreamHeaders } from '../utils.js'
 import type { ProxyProvider } from './provider-key.js'
+import { createStreamCapture, type CaptureLimits, type StreamCapture } from './stream-capture.js'
 import { describeTransportError } from './upstream-errors.js'
 
 /**
@@ -126,6 +127,14 @@ function bodylessResponse(upstreamRes: Response): Response {
   })
 }
 
+/** Records that a stream outgrew the capture bound (stream-capture.ts). */
+function noteCaptureCap(provider: ProxyProvider, capture: StreamCapture): void {
+  const droppedChars = capture.droppedChars()
+  if (droppedChars > 0) {
+    logWarn('UNCATEGORIZED', { provider, kind: 'stream_capture_capped', droppedChars })
+  }
+}
+
 export interface StreamPumpInput {
   c: Context
   upstreamRes: Response
@@ -136,8 +145,12 @@ export interface StreamPumpInput {
    * Called after the stream ends with the captured line buffer, whether the
    * row is incomplete (`truncated`), and why it ended (`end`). Typically calls
    * logOpenAIStream / logAnthropicStream with `end.errorMessage` on the base.
+   * `lines` is bounded by stream-capture.ts: a very long stream keeps its
+   * head and tail, not its middle.
    */
   onComplete: (lines: string[], truncated: boolean, end: StreamEnd) => Promise<unknown>
+  /** Test seam; defaults to STREAM_CAPTURE_LIMITS. */
+  captureLimits?: CaptureLimits
 }
 
 export function runLineBufferedStreamPump(input: StreamPumpInput): Response {
@@ -149,7 +162,7 @@ export function runLineBufferedStreamPump(input: StreamPumpInput): Response {
   return stream(input.c, async (honoStream) => {
     const reader = upstreamBody.getReader()
     const decoder = new TextDecoder()
-    const lines: string[] = []
+    const capture = createStreamCapture(input.captureLimits)
     let buffer = ''
 
     const end = await pumpUpstream(
@@ -161,12 +174,13 @@ export function runLineBufferedStreamPump(input: StreamPumpInput): Response {
         buffer += decoder.decode(chunk, { stream: true })
         const parts = buffer.split('\n')
         buffer = parts.pop() ?? ''
-        lines.push(...parts)
+        for (const line of parts) capture.push(line)
       },
     )
-    if (buffer.length > 0) lines.push(buffer)
+    if (buffer.length > 0) capture.push(buffer)
+    noteCaptureCap(input.provider, capture)
 
-    await input.onComplete(lines, isTruncated(end), end).catch((err) => {
+    await input.onComplete(capture.pieces(), isTruncated(end), end).catch((err) => {
       logError('REQUEST_LOG_INSERT_FAILED', { provider: input.provider, phase: 'stream_log' }, err)
     })
   })
@@ -183,7 +197,10 @@ export interface ChunkAccumulatedStreamPumpInput {
   /** When the request reached the proxy; the stream deadline counts from here. */
   requestStartMs: number
   provider: ProxyProvider
+  /** `buffer` is bounded the same way as the line pump's `lines`. */
   onComplete: (buffer: string, truncated: boolean, end: StreamEnd) => Promise<unknown>
+  /** Test seam; defaults to STREAM_CAPTURE_LIMITS. */
+  captureLimits?: CaptureLimits
 }
 
 export function runChunkAccumulatedStreamPump(input: ChunkAccumulatedStreamPumpInput): Response {
@@ -195,7 +212,7 @@ export function runChunkAccumulatedStreamPump(input: ChunkAccumulatedStreamPumpI
   return stream(input.c, async (honoStream) => {
     const reader = upstreamBody.getReader()
     const decoder = new TextDecoder()
-    const chunks: string[] = []
+    const capture = createStreamCapture(input.captureLimits)
 
     const end = await pumpUpstream(
       reader,
@@ -203,11 +220,12 @@ export function runChunkAccumulatedStreamPump(input: ChunkAccumulatedStreamPumpI
       makeStreamDeadline(input.requestStartMs),
       input.provider,
       (chunk) => {
-        chunks.push(decoder.decode(chunk, { stream: true }))
+        capture.push(decoder.decode(chunk, { stream: true }))
       },
     )
+    noteCaptureCap(input.provider, capture)
 
-    await input.onComplete(chunks.join(''), isTruncated(end), end).catch((err) => {
+    await input.onComplete(capture.joined('\n'), isTruncated(end), end).catch((err) => {
       logError('REQUEST_LOG_INSERT_FAILED', { provider: input.provider, phase: 'stream_log' }, err)
     })
   })

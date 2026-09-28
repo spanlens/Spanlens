@@ -212,6 +212,109 @@ describe('runLineBufferedStreamPump — the provider drops the stream mid-flight
   })
 })
 
+describe('stream capture is bounded (C9.5)', () => {
+  /** An upstream that emits the given pieces, then closes. */
+  function finiteUpstream(pieces: string[]): Response {
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        for (const piece of pieces) controller.enqueue(encoder.encode(piece))
+        controller.close()
+      },
+    })
+    return new Response(body, { status: 200, headers: { 'content-type': 'text/event-stream' } })
+  }
+
+  const LIMITS = { headChars: 60, tailChars: 40 }
+
+  it('line pump keeps the head and the tail, drops the middle, and still forwards every byte', async () => {
+    const first = 'data: {"start":1}'
+    const middle = Array.from({ length: 200 }, (_, i) => `data: {"delta":${i}}`)
+    const last = 'data: {"usage":{"prompt_tokens":7}}'
+    const pieces = [first, ...middle, last].map((l) => `${l}\n`)
+    const onComplete = vi.fn().mockResolvedValue(undefined)
+
+    const app = new Hono()
+    app.get('/s', (c) =>
+      runLineBufferedStreamPump({
+        c,
+        upstreamRes: finiteUpstream(pieces),
+        requestStartMs: Date.now(),
+        provider: 'openai',
+        onComplete,
+        captureLimits: LIMITS,
+      }),
+    )
+
+    const res = await app.request('/s')
+    const forwarded = await drain(res)
+    await waitFor(() => onComplete.mock.calls.length > 0)
+
+    // The client is never affected by the cap.
+    expect(forwarded).toBe(pieces.join(''))
+    const [lines, truncated, end] = onComplete.mock.calls[0] as [string[], boolean, StreamEnd]
+    expect(end.reason).toBe('complete')
+    expect(truncated).toBe(false)
+    // Head survives (Anthropic's message_start usage lives there)...
+    expect(lines[0]).toBe(first)
+    // ...and so does the tail (OpenAI / Gemini report usage in the last chunk).
+    expect(lines[lines.length - 1]).toBe(last)
+    // The middle is what goes.
+    const kept = lines.join('').length
+    expect(kept).toBeLessThanOrEqual(LIMITS.headChars + LIMITS.tailChars + last.length)
+    expect(lines.length).toBeLessThan(middle.length)
+  })
+
+  it('a stream under the limit is captured whole', async () => {
+    const pieces = ['data: {"a":1}\n', 'data: {"b":2}\n']
+    const onComplete = vi.fn().mockResolvedValue(undefined)
+
+    const app = new Hono()
+    app.get('/s', (c) =>
+      runLineBufferedStreamPump({
+        c,
+        upstreamRes: finiteUpstream(pieces),
+        requestStartMs: Date.now(),
+        provider: 'openai',
+        onComplete,
+        captureLimits: LIMITS,
+      }),
+    )
+
+    await drain(await app.request('/s'))
+    await waitFor(() => onComplete.mock.calls.length > 0)
+    const [lines] = onComplete.mock.calls[0] as [string[]]
+    expect(lines).toEqual(['data: {"a":1}', 'data: {"b":2}'])
+  })
+
+  it('chunk pump keeps the head and the tail, with a line break at the seam', async () => {
+    const first = 'data: {"start":1}\n'
+    const middle = Array.from({ length: 200 }, (_, i) => `data: {"delta":${i}}\n`)
+    const last = 'data: {"usageMetadata":{"promptTokenCount":7}}\n'
+    const onComplete = vi.fn().mockResolvedValue(undefined)
+
+    const app = new Hono()
+    app.get('/g', (c) =>
+      runChunkAccumulatedStreamPump({
+        c,
+        upstreamRes: finiteUpstream([first, ...middle, last]),
+        requestStartMs: Date.now(),
+        provider: 'gemini',
+        onComplete,
+        captureLimits: LIMITS,
+      }),
+    )
+
+    await drain(await app.request('/g'))
+    await waitFor(() => onComplete.mock.calls.length > 0)
+    const [buffer] = onComplete.mock.calls[0] as [string]
+    expect(buffer.startsWith(first)).toBe(true)
+    expect(buffer.endsWith(last)).toBe(true)
+    expect(buffer.length).toBeLessThanOrEqual(LIMITS.headChars + LIMITS.tailChars + last.length + 1)
+    // Head and tail must not fuse into one bogus SSE line.
+    expect(buffer.split('\n').filter((l) => l.startsWith('data: ')).every((l) => !l.includes('}data:'))).toBe(true)
+  })
+})
+
 describe('runChunkAccumulatedStreamPump — client disconnect (real hono StreamingApi)', () => {
   it('cancelling the downstream response body cancels the upstream and logs truncated=true', async () => {
     const upstream = makeHangingUpstream('data: {"gemini":1}\n')
