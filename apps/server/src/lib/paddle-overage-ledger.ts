@@ -17,6 +17,11 @@
  *                          answered but the ledger update failed. Never
  *                          retried automatically, because retrying an unknown
  *                          charge is how customers get billed twice.
+ *
+ * Resolving a row by hand: check the subscription in Paddle, then either set
+ * status 'charged' TOGETHER WITH charged_quantity (what Paddle billed), or set
+ * 'retry'. A status-only 'charged' is rejected by the database and ignored by
+ * the settlement pass (see unsettledReason).
  */
 
 import { supabaseAdmin } from './db.js'
@@ -30,6 +35,23 @@ export type LedgerStatus = 'pending' | 'charged' | 'error' | 'retry' | 'no_charg
 
 /** Statuses whose charged_quantity is final: the period can be trued up. */
 export const SETTLED_STATUSES: ReadonlySet<string> = new Set<LedgerStatus>(['charged', 'no_charge'])
+
+/**
+ * Why a row cannot be trued up yet, or null when its charged_quantity is final.
+ *
+ * A 'charged' row that owed something but records charged_quantity 0 was
+ * resolved by hand with a status-only update (the original ledger migration
+ * told operators to do exactly that). Trusting it would make the true-up
+ * bill the whole period again. Migration 20260929110500 rejects such an
+ * update; this check covers rows written before it, or where it is missing.
+ */
+export function unsettledReason(row: Pick<LedgerRow, 'status' | 'overage_quantity' | 'charged_quantity'>): string | null {
+  if (!SETTLED_STATUSES.has(row.status)) return `charge is ${row.status}`
+  if (row.status === 'charged' && row.overage_quantity > 0 && row.charged_quantity === 0) {
+    return 'charge is marked charged without a charged_quantity; record what Paddle billed'
+  }
+  return null
+}
 
 export interface OverageReport {
   organization_id: string

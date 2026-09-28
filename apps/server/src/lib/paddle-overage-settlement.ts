@@ -8,8 +8,9 @@
  * difference to what the period's rows have already charged. The true-up is
  * a second ledger row (kind 'true_up') under the same UNIQUE key scheme, so
  * it happens at most once per period. A period with any unresolved row
- * (pending, error, retry, needs_reconciliation) is left alone: charging on
- * top of an unknown outcome is how customers get billed twice.
+ * (pending, error, retry, needs_reconciliation, or 'charged' without a
+ * charged_quantity) is left alone: charging on top of an unknown outcome is
+ * how customers get billed twice.
  *
  * Retry: rows an operator flipped to 'retry' are claimed with a
  * compare-and-set (retry → pending) and re-attempted for their remaining
@@ -21,11 +22,11 @@ import { supabaseAdmin } from './db.js'
 import { MONTHLY_REQUEST_LIMITS, countMonthlyRequests } from './quota.js'
 import {
   LEDGER_SELECT,
-  SETTLED_STATUSES,
   chargeAndRecord,
   insertLedgerRow,
   overageFor,
   toLedgerRow,
+  unsettledReason,
   type LedgerRow,
   type OverageReport,
 } from './paddle-overage-ledger.js'
@@ -82,8 +83,9 @@ async function settlePeriod(rows: LedgerRow[]): Promise<OverageReport | null> {
   const sub = provisional.subscriptions
   if (!sub) return { ...report, error: 'subscription row missing' }
 
-  if (!SETTLED_STATUSES.has(provisional.status)) {
-    return { ...report, status: 'skipped_unsettled', error: `provisional charge is ${provisional.status}` }
+  const unsettled = unsettledReason(provisional)
+  if (unsettled) {
+    return { ...report, status: 'skipped_unsettled', error: `provisional ${unsettled}` }
   }
 
   const included = provisional.included_requests ?? MONTHLY_REQUEST_LIMITS[sub.plan] ?? 0

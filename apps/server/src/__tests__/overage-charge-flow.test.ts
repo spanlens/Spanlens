@@ -413,6 +413,33 @@ describe('settlement — charge only what the in-window run could not see', () =
     }
   })
 
+  it('a row marked charged by hand without charged_quantity is not trusted (would bill it again)', async () => {
+    // Review of the C4.3 fix: the true-up bills final - sum(charged_quantity).
+    // An operator who resolves a needs_reconciliation row by flipping only the
+    // status (what the original migration comment described) leaves
+    // charged_quantity at 0, and the settlement would charge the whole period
+    // again, including the 25 units Paddle already collected.
+    setup([rolledOverSub()])
+    fake.seed('subscription_overage_charges', [provisionalRow({ status: 'charged', overage_quantity: 25, charged_quantity: 0 })])
+    requestCountQueue.push(140_000)
+    chargeResultQueue.push({ ok: true, response: {} })
+    const settlement = (await run(NOW_SETTLE)).filter((r) => r.phase === 'settlement')
+    expect(settlement).toEqual([
+      expect.objectContaining({ status: 'skipped_unsettled', error: expect.stringContaining('charged_quantity') }),
+    ])
+    expect(chargeSpy).not.toHaveBeenCalled()
+    expect(ledger().some((r) => r['kind'] === 'true_up')).toBe(false)
+  })
+
+  it('a charged row that owed nothing (quantity 0) still settles normally', async () => {
+    setup([rolledOverSub()])
+    fake.seed('subscription_overage_charges', [provisionalRow({ status: 'charged', overage_requests: 0, overage_quantity: 0, charged_quantity: 0 })])
+    requestCountQueue.push(103_500)
+    chargeResultQueue.push({ ok: true, response: {} })
+    await run(NOW_SETTLE)
+    expect(chargeSpy).toHaveBeenCalledWith(PADDLE_SUB_ID, [{ priceId: PRICE_STARTER_OVERAGE, quantity: 4 }], 'immediately')
+  })
+
   it('waits for the settlement delay after period_end (late log rows still land)', async () => {
     setup([rolledOverSub()])
     fake.seed('subscription_overage_charges', [provisionalRow()])
