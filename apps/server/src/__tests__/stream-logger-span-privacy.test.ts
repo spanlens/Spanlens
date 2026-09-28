@@ -16,6 +16,10 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 // The DB client is mocked the way Supabase actually behaves: a failed write
 // resolves to `{ error }` instead of rejecting, and every update payload is
 // recorded so the assertions check exactly what would have been stored.
+//
+// calculateCost is deliberately NOT mocked. The provider-scoped price lookup
+// is part of what is under test (streaming cost for OpenAI-compatible
+// providers used to be looked up under 'openai').
 // ─────────────────────────────────────────────────────────────────────────────
 
 const state = vi.hoisted(() => ({
@@ -73,6 +77,7 @@ type StreamBase = Parameters<StreamLogger['logOpenAIStream']>[1]
 let logOpenAIStream: StreamLogger['logOpenAIStream']
 let logOpenRouterStream: StreamLogger['logOpenRouterStream']
 let logAnthropicStream: StreamLogger['logAnthropicStream']
+let setPriceCache: typeof import('../lib/model-prices-cache.js')['_setCacheForTests']
 
 const SPAN_ID = '99999999-8888-4777-8666-555555555555'
 const LEAKED_KEY = 'sk-proj-ABCDEFGHIJKLMNOPQRSTUV1234'
@@ -128,6 +133,8 @@ beforeEach(async () => {
   state.sampleRate = 1
   state.logRequestAsync.mockClear()
   ;({ logOpenAIStream, logOpenRouterStream, logAnthropicStream } = await import('../proxy/stream-logger.js'))
+  ;({ _setCacheForTests: setPriceCache } = await import('../lib/model-prices-cache.js'))
+  setPriceCache({})
 })
 
 afterEach(() => {
@@ -260,5 +267,49 @@ describe('span injection masks keys and caps size', () => {
     const output = outputUpdate() as Record<string, unknown>
     expect(output['_truncated']).toBe(true)
     expect(String(output['_preview'])).not.toContain('sk-proj-ABCDEFG')
+  })
+})
+
+// ── cost lookup is provider-scoped ───────────────────────────────────────────
+
+describe('logOpenAIStream prices with the real provider', () => {
+  function costOf(): unknown {
+    return loggedRow()['costUsd']
+  }
+
+  test('xAI grok row that only exists under xai: is found (was null)', async () => {
+    setPriceCache({ 'xai:grok-4.20-0309-reasoning': { prompt: 2, completion: 6 } })
+
+    await logOpenAIStream(
+      openAILines('ok'),
+      makeBase({ provider: 'xai', model: 'grok-4.20-0309-reasoning', spanId: null }),
+    )
+
+    expect(costOf()).toBeCloseTo((1000 * 2 + 100 * 6) / 1_000_000, 12)
+  })
+
+  test('Groq qwen uses the groq row, not the cheaper openrouter row', async () => {
+    setPriceCache({
+      'groq:qwen/qwen3-32b': { prompt: 0.29, completion: 0.59 },
+      'openrouter:qwen/qwen3-32b': { prompt: 0.08, completion: 0.24 },
+    })
+
+    await logOpenAIStream(
+      openAILines('ok'),
+      makeBase({ provider: 'groq', model: 'qwen/qwen3-32b', spanId: null }),
+    )
+
+    expect(costOf()).toBeCloseTo((1000 * 0.29 + 100 * 0.59) / 1_000_000, 12)
+  })
+
+  test('Azure keeps borrowing the OpenAI table', async () => {
+    setPriceCache({ 'openai:gpt-4o': { prompt: 3, completion: 12 } })
+
+    await logOpenAIStream(
+      openAILines('ok'),
+      makeBase({ provider: 'azure', model: 'gpt-4o', spanId: null }),
+    )
+
+    expect(costOf()).toBeCloseTo((1000 * 3 + 100 * 12) / 1_000_000, 12)
   })
 })

@@ -119,9 +119,14 @@ export async function logOpenAIStream(
   // ("unknown") instead — the truncated flag + partial responseBody already
   // mark the row incomplete. Billing is unaffected: quota/overage meter request
   // COUNT, not cost_usd.
+  //
+  // Priced under the provider that actually served the call: this writer
+  // handles every OpenAI-compatible stream (groq, deepseek, mistral, xai,
+  // cohere, azure), and model ids are not unique across providers. Azure has
+  // no rows of its own; lookupPrice maps it to the OpenAI table.
   const hasUsage = promptTokens > 0 || completionTokens > 0
   const cost = hasUsage
-    ? calculateCost('openai' as Provider, model, {
+    ? calculateCost(base.provider as Provider, model, {
         promptTokens, completionTokens, cacheReadTokens, cacheWriteTokens, serviceTier,
       })
     : null
