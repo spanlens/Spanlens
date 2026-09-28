@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from typing import Any
 from unittest.mock import patch as mock_patch
 
@@ -278,6 +279,48 @@ class TestClientSampling:
         end_body = json.loads(routes["trace_patch"].calls[0].request.content)
         assert end_body["status"] == "error"
         assert end_body["error_message"] == "boom"
+
+    @respx.mock
+    def test_sampled_out_error_end_does_not_block_the_caller(self) -> None:
+        """The tail-based replay used to run inline in ``trace.end()`` and
+        block the caller (up to 30 s) while every buffered op went out. It is
+        now scheduled on the transport; only ``flush()`` / ``close()`` wait."""
+        order: list[str] = []
+
+        def slow(label: str) -> Any:
+            def handler(_request: httpx.Request) -> httpx.Response:
+                time.sleep(0.3)
+                order.append(label)
+                return httpx.Response(200, json={})
+
+            return handler
+
+        respx.post(f"{BASE_URL}/ingest/traces").mock(side_effect=slow("trace_post"))
+        respx.post(re.compile(rf"^{re.escape(BASE_URL)}/ingest/traces/[\w-]+/spans$")).mock(
+            side_effect=slow("span_post")
+        )
+        respx.patch(re.compile(rf"^{re.escape(BASE_URL)}/ingest/spans/[\w-]+$")).mock(
+            side_effect=slow("span_patch")
+        )
+        respx.patch(re.compile(rf"^{re.escape(BASE_URL)}/ingest/traces/[\w-]+$")).mock(
+            side_effect=slow("trace_patch")
+        )
+
+        with mock_patch("spanlens.sampler._random_module.random", return_value=0.5):
+            client = _make_client(sample_rate=0.0)
+            try:
+                trace = client.start_trace("t")
+                span = trace.span("llm", span_type="llm")
+                span.end(total_tokens=1)
+                started = time.monotonic()
+                trace.end(status="error", error_message="boom")
+                assert time.monotonic() - started < 0.2
+                assert client.flush(timeout=10) is True
+            finally:
+                client.close()
+
+        # Replay keeps INSERT-before-UPDATE order and the trace end goes last.
+        assert order == ["trace_post", "span_post", "span_patch", "trace_patch"]
 
     @respx.mock
     def test_rate_1_error_path_unchanged(self) -> None:

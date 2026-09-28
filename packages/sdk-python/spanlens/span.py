@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from types import TracebackType
 from typing import Any, Optional
 
-from .transport import Transport
+from .transport import IngestTransport
 from .types import SpanType
 
 # Sentinel for "argument intentionally omitted" — distinct from None which
@@ -27,7 +27,7 @@ class SpanHandle:
 
     def __init__(
         self,
-        transport: Transport,
+        transport: IngestTransport,
         *,
         span_id: str,
         trace_id: str,
@@ -35,6 +35,7 @@ class SpanHandle:
         span_type: SpanType,
         started_at: datetime,
         parent_span_id: Optional[str] = None,
+        capture_body: bool = True,
     ) -> None:
         self._transport = transport
         self.span_id = span_id
@@ -47,7 +48,13 @@ class SpanHandle:
         # In-flight POST /ingest/.../spans. ``end()`` and child spans must
         # chain after this so the server sees INSERT before UPDATE.
         self._creation_future: Future[Any] = _completed_future()
+        # The end PATCH, so a late output-only PATCH can queue behind it.
+        self._end_future: Future[Any] = _completed_future()
         self._ended = False
+        self._output_captured = False
+        # False when the span was opened under ``log_body="meta"|"none"``:
+        # input/output never leave the process for this span or its children.
+        self._capture_body = capture_body
 
     # ── Headers for proxy linkage ────────────────────────────────
 
@@ -74,7 +81,11 @@ class SpanHandle:
         metadata: Optional[dict[str, Any]] = None,
         request_id: Optional[str] = None,
     ) -> SpanHandle:
-        """Create a nested child span. ``parent_span_id`` defaults to this span's id."""
+        """Create a nested child span. ``parent_span_id`` defaults to this span's id.
+
+        A child of a span opened with ``log_body="meta"`` or ``"none"``
+        inherits that setting, so its input and output stay local too.
+        """
         return create_span(
             self._transport,
             self.trace_id,
@@ -85,6 +96,7 @@ class SpanHandle:
             metadata=metadata,
             request_id=request_id,
             parent_creation_future=self._creation_future,
+            capture_body=self._capture_body,
         )
 
     # ── Lifecycle ────────────────────────────────────────────────
@@ -102,17 +114,27 @@ class SpanHandle:
         cost_usd: Optional[float] = None,
         request_id: Optional[str] = None,
     ) -> None:
-        """End the span. Idempotent — subsequent calls are ignored.
+        """End the span. Idempotent: a second call does not end it again.
 
         ``duration_ms`` is computed server-side from ``started_at`` +
         ``ended_at``.
 
         ``output`` is omitted when not passed. Passing ``output=None``
-        explicitly is preserved (sent as JSON ``null``).
+        explicitly is preserved (sent as JSON ``null``). If the first
+        ``end()`` carried no output, a later call that does is sent as an
+        output-only update. That is how ``observe()`` records the returned
+        value after user code already ended the span with token counts
+        (the streaming pattern). Output is never sent for spans opened with
+        ``log_body="meta"`` or ``"none"``.
         """
+        if not self._capture_body:
+            output = _OMIT
         if self._ended:
+            self._send_late_output(output)
             return
         self._ended = True
+        if output is not _OMIT:
+            self._output_captured = True
 
         resolved_status = status or ("error" if error_message else "completed")
 
@@ -138,10 +160,20 @@ class SpanHandle:
             body["request_id"] = request_id
 
         # PATCH waits on creation POST so it doesn't 404.
-        self._transport.patch(
+        self._end_future = self._transport.patch(
             f"/ingest/spans/{self.span_id}",
             body,
             after=self._creation_future,
+        )
+
+    def _send_late_output(self, output: Any) -> None:
+        if output is _OMIT or self._output_captured:
+            return
+        self._output_captured = True
+        self._transport.patch(
+            f"/ingest/spans/{self.span_id}",
+            {"output": output},
+            after=self._end_future,
         )
 
     # ── Context manager ─────────────────────────────────────────
@@ -165,7 +197,7 @@ class SpanHandle:
 
 
 def create_span(
-    transport: Transport,
+    transport: IngestTransport,
     trace_id: str,
     *,
     name: str,
@@ -175,10 +207,12 @@ def create_span(
     metadata: Optional[dict[str, Any]] = None,
     request_id: Optional[str] = None,
     parent_creation_future: Optional[Future[Any]] = None,
+    capture_body: bool = True,
 ) -> SpanHandle:
     """Internal helper — creates a span and fires the POST in the background,
     chained after the parent's creation Future so the server sees them in
-    order.
+    order. ``capture_body=False`` keeps ``input`` (and later ``output``) off
+    the wire.
 
     Why chain: the server's ``POST /ingest/traces/:id/spans`` verifies trace
     ownership by SELECTing the trace row. If the trace POST hasn't committed
@@ -197,7 +231,7 @@ def create_span(
     }
     if parent_span_id is not None:
         body["parent_span_id"] = parent_span_id
-    if input is not _OMIT:
+    if input is not _OMIT and capture_body:
         body["input"] = input
     if metadata is not None:
         body["metadata"] = metadata
@@ -212,6 +246,7 @@ def create_span(
         span_type=span_type,
         started_at=started_at,
         parent_span_id=parent_span_id,
+        capture_body=capture_body,
     )
 
     handle._creation_future = transport.post(
@@ -226,6 +261,15 @@ def _completed_future() -> Future[Any]:
     f: Future[Any] = Future()
     f.set_result(None)
     return f
+
+
+def _disable_body_capture(span: SpanHandle) -> SpanHandle:
+    """Mark a freshly created span so its output (and its children's input
+    and output) never leave the process. Used by ``observe()`` for
+    ``log_body="meta"`` / ``"none"``; call it before handing the span to
+    user code."""
+    span._capture_body = False
+    return span
 
 
 __all__ = ["SpanHandle", "create_span"]

@@ -6,17 +6,18 @@ consistent across language SDKs.
 
 from __future__ import annotations
 
+import sys
 from typing import Any, Callable, Literal, Optional
 
-# Python 3.9 doesn't expose `NotRequired`; pull it from typing_extensions if
-# available, otherwise fall back to making every TypedDict field required by
-# treating them as plain dicts at the call site.
-try:  # pragma: no cover - import-time branch
+# ``NotRequired`` joined ``typing`` in 3.11. A ``sys.version_info`` check (not
+# try/except ImportError) lets mypy pick the right branch for the configured
+# python_version.
+if sys.version_info >= (3, 11):  # pragma: no cover - import-time branch
     from typing import NotRequired, TypedDict
-except ImportError:  # Python < 3.11
+else:  # pragma: no cover - import-time branch
     from typing import TypedDict
 
-    from typing_extensions import NotRequired  # type: ignore[assignment]
+    from typing_extensions import NotRequired
 
 
 SpanType = Literal["llm", "tool", "retrieval", "embedding", "custom"]
@@ -24,6 +25,13 @@ SpanType = Literal["llm", "tool", "retrieval", "embedding", "custom"]
 
 Status = Literal["running", "completed", "error"]
 """Lifecycle state of a trace or span."""
+
+LogBodyMode = Literal["full", "meta", "none"]
+"""How much of an observed call Spanlens stores. ``"full"`` keeps prompts and
+responses; ``"meta"`` and ``"none"`` keep only metadata (model, tokens,
+latency). The ``observe*`` helpers send it to the proxy as
+``x-spanlens-log-body`` and, for ``"meta"`` / ``"none"``, also keep span
+input and output out of the ingest calls."""
 
 
 # ── Configuration ────────────────────────────────────────────────
@@ -35,13 +43,19 @@ class SpanlensConfig(TypedDict, total=False):
     Attributes:
         api_key: Spanlens API key created in the dashboard
             (``sl_live_...`` or ``sl_test_...``). **Required.**
-        base_url: API base URL — default ``https://api.spanlens.io``.
+        base_url: API base URL. Defaults to the ``SPANLENS_BASE_URL``
+            environment variable (a self-hosted server origin) when set, else
+            ``https://api.spanlens.io``.
         timeout_ms: Request timeout in ms for ingest calls (default 3000).
             Observability calls should not block user code indefinitely.
         silent: Swallow all errors so instrumentation never crashes user code
             (default ``True``).
-        on_error: Custom error hook — called when an ingest call fails.
-            Signature ``(err: Exception, context: str) -> None``.
+        on_error: Custom error hook, called once when an ingest call fails
+            for good (after retries). Signature
+            ``(err: Exception, context: str) -> None``.
+        max_pending: Cap on queued + in-flight ingest calls (default
+            10000). Calls beyond it are dropped and counted instead of
+            growing memory while Spanlens is unreachable.
     """
 
     api_key: str
@@ -49,6 +63,7 @@ class SpanlensConfig(TypedDict, total=False):
     timeout_ms: NotRequired[int]
     silent: NotRequired[bool]
     on_error: NotRequired[Optional[Callable[[BaseException, str], None]]]
+    max_pending: NotRequired[int]
     sample_rate: NotRequired[float]
     """Fraction of traces to ingest, in ``[0.0, 1.0]``. Default ``1.0`` (no sampling).
 
@@ -101,6 +116,7 @@ class EndSpanOptions(TypedDict, total=False):
 __all__ = [
     "EndSpanOptions",
     "EndTraceOptions",
+    "LogBodyMode",
     "SpanOptions",
     "SpanType",
     "SpanlensConfig",

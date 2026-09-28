@@ -37,6 +37,7 @@ from .observe import (
 from .parsers import parse_anthropic_usage, parse_gemini_usage, parse_openai_usage
 from .span import SpanHandle
 from .trace import TraceHandle
+from .transport import SpanlensTransportError
 
 __version__ = "0.8.1"
 
@@ -44,6 +45,7 @@ __all__ = [
     "SpanHandle",
     "SpanlensClient",
     "SpanlensMiddleware",
+    "SpanlensTransportError",
     "TraceHandle",
     "__version__",
     "install_spanlens_middleware",

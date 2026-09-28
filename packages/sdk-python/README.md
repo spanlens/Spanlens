@@ -175,6 +175,31 @@ result = observe_openai(trace, "answer", lambda headers:
 The same shape exists for Anthropic (`observe_anthropic`) and Gemini
 (`observe_gemini`).
 
+The response is recorded as the span output, and the generic `observe()`
+records whatever your callable returns (streams and iterators are skipped).
+Pass `input=` to record the prompt on the span as well.
+
+### Controlling what the SDK sends: `log_body`
+
+Every `observe*` helper accepts `log_body="full" | "meta" | "none"`. With
+`"meta"` or `"none"`, the SDK does not send the span's input or output (or
+those of any child spans you open under it); it sends only metadata such as
+model, token counts, and latency. The provider helpers also forward the value
+to the proxy as the `x-spanlens-log-body` header, so the request row the proxy
+stores follows the same rule.
+
+```python
+result = observe_openai(trace, "pii-heavy-call", call_openai, log_body="meta")
+```
+
+An unknown value raises `ValueError` instead of silently storing everything.
+
+If you opted out by setting `x-spanlens-log-body` on the provider client
+itself (for example `OpenAI(default_headers={"x-spanlens-log-body": "meta"})`),
+pass `log_body="meta"` to the `observe_*()` helpers too. They can't see headers
+configured on the client, and without it they record the provider response as
+the span output.
+
 ### Async support
 
 `observe()` and `observe_*()` detect coroutines automatically. Pass an async
@@ -215,6 +240,10 @@ with client.start_trace("local_summarize") as trace:
 
 Cost is left as `None` because Ollama is self-hosted, so there is no per-token bill to compute.
 
+`observe_ollama()` defaults to `log_body="meta"`: only the model, token counts,
+and latency reach Spanlens, and the prompt and response stay on your machine.
+Pass `log_body="full"` if you do want them recorded on the span.
+
 ---
 
 ## LangChain / LangGraph
@@ -239,6 +268,11 @@ result = chain.invoke({"input": "Hello"}, config={"callbacks": [handler]})
 graph = workflow.compile()
 result = graph.invoke({"input": "Hello"}, config={"callbacks": [handler]})
 ```
+
+One handler per process is enough. It is safe to share across threads and
+asyncio tasks: each top-level invocation gets its own trace, and that trace
+ends with that invocation's status, so a failure in one request is never
+hidden by another request that finished cleanly.
 
 Attach to an existing trace to nest the chain under a larger workflow:
 
@@ -309,10 +343,11 @@ async def chat(body: dict, request: Request):
 ```python
 SpanlensClient(
     api_key="sl_live_...",        # required
-    base_url=None,                 # default: https://api.spanlens.io
+    base_url=None,                 # default: $SPANLENS_BASE_URL, else https://api.spanlens.io
     timeout_ms=3000,               # ingest timeout per call
     silent=True,                   # swallow errors so observability never crashes user code
     on_error=None,                 # callback (err, context) for non-silent monitoring
+    max_pending=None,              # cap on queued ingest calls (default 10,000)
 )
 ```
 
@@ -320,22 +355,38 @@ Environment variables:
 
 * `SPANLENS_API_KEY` is picked up by `create_openai()`, `create_anthropic()`,
   and `create_gemini()` when `api_key=` is omitted.
+* `SPANLENS_BASE_URL` is the origin of a self-hosted Spanlens server (for
+  example `https://spanlens.mycompany.com`). When set, `SpanlensClient` sends
+  ingest calls there and the provider factories use its proxy
+  (`/proxy/openai/v1`, `/proxy/anthropic`, `/proxy/gemini` are appended for
+  you). An explicit `base_url=` argument always wins.
 
 ---
 
 ## Why the SDK is non-blocking
 
 Every `trace.end()` / `span.end()` call returns immediately. Network I/O
-runs on a background thread pool with a configurable timeout, so:
+runs on a small pool of background daemon threads with a configurable
+timeout, so:
 
 * Your hot path (the LLM call itself) is never slowed down.
 * The Spanlens server being slow / down does not crash your app.
+* Transient failures (network errors, timeouts, 5xx) are retried up to three
+  attempts with a short backoff. 4xx responses are not retried, and a 429
+  (quota or rate limit) is reported with the code `RATE_LIMITED`.
+* The backlog is bounded (`max_pending`, default 10,000 calls). If Spanlens
+  stays unreachable, new calls are dropped and counted in
+  `client.dropped_count` instead of growing memory.
 * Order is still preserved: a span POST always waits for its parent trace
   POST to finish, because the server's ownership check would otherwise 404
   and the span would be silently lost.
 
 For short-lived scripts, call `client.close()` before exit (or use
-`with SpanlensClient(...) as client:`) to drain the queue.
+`with SpanlensClient(...) as client:`) to drain the queue. `client.flush()`
+waits for delivery without closing the client. Both take a `timeout` in
+seconds (default 5) so a slow backend can never hold up your process for
+longer than that, and the automatic drain at interpreter exit uses the same
+deadline.
 
 ---
 
@@ -380,14 +431,23 @@ The table below is the honest, file-level comparison of what each package ships 
 
 ## Self-hosting
 
-Point the SDK and proxy helpers at your own deployment:
+Set `SPANLENS_BASE_URL` to your deployment's origin and every part of the SDK
+follows it. `spanlens init --server-url https://spanlens.mycompany.com` writes
+it to `.env` for you; remember to add it to your production environment too.
+
+```bash
+export SPANLENS_BASE_URL="https://spanlens.mycompany.com"
+```
 
 ```python
-client = SpanlensClient(
-    api_key="...",
-    base_url="https://spanlens.mycompany.com",
-)
+client = SpanlensClient(api_key="...")  # ingest goes to your server
+openai = create_openai()                 # https://spanlens.mycompany.com/proxy/openai/v1
+```
 
+You can also pass the URLs explicitly, which takes priority over the variable:
+
+```python
+client = SpanlensClient(api_key="...", base_url="https://spanlens.mycompany.com")
 openai = create_openai(base_url="https://spanlens.mycompany.com/proxy/openai/v1")
 ```
 

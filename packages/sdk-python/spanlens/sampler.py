@@ -4,8 +4,8 @@ Mirrors ``packages/sdk/src/sampler.ts``. See that module's docstring for the
 rationale (per-trace decisions, tail-based error bypass, scope clarifications).
 
 Implementation notes:
-    The Python SDK already runs every ingest call through a daemon
-    ``ThreadPoolExecutor`` and returns a ``Future``. A buffering transport
+    The Python SDK already runs every ingest call through the transport's
+    daemon worker pool and returns a ``Future``. A buffering transport
     just records ``(method, path, body)`` tuples and returns an
     already-resolved Future, so consumers see the same API surface (no
     awaits change shape).
@@ -126,6 +126,11 @@ class BufferingTransport:
         self._push("PATCH", path, body)
         return _completed_future()
 
+    def flush(self, timeout: Optional[float] = None) -> bool:
+        """Delegate to the real transport. Buffered (not yet replayed) ops are
+        not network calls, so there is nothing of our own to wait for."""
+        return self._real.flush(timeout)
+
     def close(self) -> None:
         """Delegate close to the real transport — the buffer itself owns no
         OS resources."""
@@ -142,16 +147,20 @@ class BufferingTransport:
 
     # ── Public extension API ─────────────────────────────────────
 
-    def flush_buffered(self) -> None:
-        """Replay every buffered op against the real transport, serially.
+    def flush_buffered(self) -> Future[Any]:
+        """Schedule every buffered op on the real transport, serially, and
+        return the Future of the last one without waiting for it.
 
         Called by ``TraceHandle.end()`` when a sampled-out trace resolves with
         ``status='error'`` — the tail-based bypass path. After this call the
         buffer is cleared; new pushes start a fresh buffer.
 
         Ordering: we explicitly chain each call's ``after`` to the previous
-        op's future so the real transport's executor sees the same
-        INSERT-before-UPDATE order the live path would have produced.
+        op's future so the real transport's workers see the same
+        INSERT-before-UPDATE order the live path would have produced. The
+        caller chains its own follow-up (the trace end PATCH) on the returned
+        Future. Nothing here blocks the caller's thread: waiting for delivery
+        is the job of ``flush()`` / ``close()``.
         """
         with self._lock:
             ops = self._buffer
@@ -162,13 +171,7 @@ class BufferingTransport:
                 previous = self._real.post(path, body, after=previous)
             else:
                 previous = self._real.patch(path, body, after=previous)
-        # Block on the tail so callers can rely on "after flush_buffered()
-        # returns, the buffer is on the wire."
-        try:
-            previous.result(timeout=30)
-        except Exception:
-            # Silent SDK contract — replay failures don't crash user code.
-            pass
+        return previous
 
     @property
     def overflowed(self) -> bool:
