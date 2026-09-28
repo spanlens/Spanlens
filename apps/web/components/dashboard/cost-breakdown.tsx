@@ -49,15 +49,17 @@ interface CostBreakdownProps {
  * "what is eating the budget", and sorting answers it before colour does.
  */
 export function CostBreakdownCard({ models, topN = 6, rangeLabel }: CostBreakdownProps) {
-  const sorted = [...models]
-    .filter((m) => m.totalCostUsd > 0)
-    .sort((a, b) => b.totalCostUsd - a.totalCostUsd)
+  // Unpriced groups (totalCostUsd null) have no bar length to draw, so they
+  // drop out with the $0 rows.
+  const sorted = models
+    .flatMap((m) => (m.totalCostUsd != null && m.totalCostUsd > 0 ? [{ ...m, cost: m.totalCostUsd }] : []))
+    .sort((a, b) => b.cost - a.cost)
     .slice(0, topN)
     .map((m) => ({
       // Provider/model collapsed to one label — the slash separates the two
       // dimensions naturally and keeps the recharts payload simple.
       label: `${m.provider} / ${m.model}`,
-      cost: m.totalCostUsd,
+      cost: m.cost,
       requests: m.requests,
     }))
 

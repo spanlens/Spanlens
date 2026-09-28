@@ -2,7 +2,7 @@
 
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { apiGet } from '@/lib/api'
-import type { AlertRow, ApiEnvelope, SpendForecast } from './types'
+import type { AlertRow, SpendForecast } from './types'
 import type { AuditLogRow } from './use-audit-logs'
 import type { PromptVersion } from './use-prompts'
 import type { ModelRecommendation } from './use-recommendations'
@@ -30,10 +30,10 @@ import type { SecuritySummaryItem } from './use-security'
 
 /**
  * A dataset is `null` when the server's lookup for it failed, and `[]` when
- * the lookup succeeded and found nothing. Consumers that only need "show
- * something or show the empty state" can collapse both with `?? []`; the
- * distinction is preserved so a future error affordance has something to key
- * on. See `meta.degraded` in the endpoint for the list of failed keys.
+ * the lookup succeeded and found nothing. The two must not collapse into the
+ * same render: a failed alerts lookup shown as "No active alert rules", or a
+ * failed security lookup shown as no PII warning at all, tells the user
+ * something false. Panels key their state on `dashboardPanelState()` below.
  */
 export interface DashboardSummary {
   alerts: AlertRow[] | null
@@ -44,6 +44,18 @@ export interface DashboardSummary {
   spendForecast: SpendForecast | null
 }
 
+/** Dataset keys, in the endpoint's response order. */
+export const DASHBOARD_DATASETS = [
+  'alerts',
+  'recommendations',
+  'auditLogs',
+  'prompts',
+  'securitySummary',
+  'spendForecast',
+] as const satisfies readonly (keyof DashboardSummary)[]
+
+export type DashboardDatasetKey = (typeof DASHBOARD_DATASETS)[number]
+
 interface DashboardSummaryMeta {
   hours: number
   auditLimit: number
@@ -51,6 +63,58 @@ interface DashboardSummaryMeta {
   promptSinceHours: number
   /** Keys of `data` whose server-side lookup failed. Empty on a clean read. */
   degraded: string[]
+}
+
+/** Wire shape, typed loosely: an older or newer server may omit fields. */
+export interface DashboardSummaryEnvelope {
+  data?: Partial<DashboardSummary> | null
+  meta?: Partial<DashboardSummaryMeta>
+}
+
+export interface DashboardSummaryResult {
+  data: DashboardSummary
+  /** Datasets whose lookup failed, in `DASHBOARD_DATASETS` order. */
+  degraded: readonly DashboardDatasetKey[]
+}
+
+/**
+ * Keeps `meta.degraded` instead of discarding it. A dataset counts as
+ * degraded when the server named it OR when it arrived `null`/missing: no
+ * successful lookup produces `null`, so a missing value is not an empty one.
+ */
+export function toDashboardSummaryResult(envelope: DashboardSummaryEnvelope): DashboardSummaryResult {
+  const raw = envelope.data ?? {}
+  const data: DashboardSummary = {
+    alerts: raw.alerts ?? null,
+    recommendations: raw.recommendations ?? null,
+    auditLogs: raw.auditLogs ?? null,
+    prompts: raw.prompts ?? null,
+    securitySummary: raw.securitySummary ?? null,
+    spendForecast: raw.spendForecast ?? null,
+  }
+  const reported = new Set(envelope.meta?.degraded ?? [])
+  const degraded = DASHBOARD_DATASETS.filter((key) => reported.has(key) || data[key] === null)
+  return { data, degraded }
+}
+
+/**
+ * What a panel should render.
+ *
+ *   - `loading`: no response yet.
+ *   - `unavailable`: this dataset failed, or the whole request failed with
+ *     nothing cached. The panel says so and offers a retry, instead of
+ *     showing its empty state.
+ *   - `ready`: render the data, including a genuine empty state. A failed
+ *     background refetch keeps the last good read on screen.
+ */
+export type DashboardPanelState = 'loading' | 'unavailable' | 'ready'
+
+export function dashboardPanelState(
+  query: { data?: DashboardSummaryResult | undefined; isError: boolean },
+  key: DashboardDatasetKey,
+): DashboardPanelState {
+  if (query.data) return query.data.degraded.includes(key) ? 'unavailable' : 'ready'
+  return query.isError ? 'unavailable' : 'loading'
 }
 
 export interface DashboardSummaryParams {
@@ -78,11 +142,9 @@ export function buildDashboardSummaryPath(params: DashboardSummaryParams): strin
 export function useDashboardSummary(params: DashboardSummaryParams) {
   return useQuery({
     queryKey: dashboardSummaryQueryKey(params),
-    queryFn: async () => {
-      const res = await apiGet<ApiEnvelope<DashboardSummary> & { meta?: DashboardSummaryMeta }>(
-        buildDashboardSummaryPath(params),
-      )
-      return res.data
+    queryFn: async (): Promise<DashboardSummaryResult> => {
+      const res = await apiGet<DashboardSummaryEnvelope>(buildDashboardSummaryPath(params))
+      return toDashboardSummaryResult(res)
     },
     // 60s matches the live-ish datasets in the payload. The individual hooks
     // this replaced ranged from 0 to 10min; a single composite has to pick

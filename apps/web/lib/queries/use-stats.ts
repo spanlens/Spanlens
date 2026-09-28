@@ -47,7 +47,8 @@ export interface ModelStat {
   provider: string
   model: string
   requests: number
-  totalCostUsd: number
+  /** null = no price on file for any request in the group (unknown, not $0). */
+  totalCostUsd: number | null
   avgLatencyMs: number
   errorRate: number
 }
