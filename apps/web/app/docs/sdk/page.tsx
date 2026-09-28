@@ -354,15 +354,39 @@ const res2 = await openai.chat.completions.create(
     },
   },
 )`}
-        py={`# Python helper coming soon, set the header directly
-from openai import OpenAI
+        py={`import os
 
+from openai import OpenAI
+from spanlens import observe_openai
+
+# Proxy only: every request from this client is stored without bodies
 openai = OpenAI(
-    api_key=os.environ['SPANLENS_API_KEY'],
-    base_url='https://api.spanlens.io/proxy/openai/v1',
-    default_headers={'x-spanlens-log-body': 'meta'},
+    api_key=os.environ["SPANLENS_API_KEY"],
+    base_url="https://api.spanlens.io/proxy/openai/v1",
+    default_headers={"x-spanlens-log-body": "meta"},
+)
+
+# With SDK tracing, pass log_body to the helper as well. The helper records
+# the response as the span output and can't see the client's default headers.
+res = observe_openai(
+    trace,
+    "pii-heavy-call",
+    lambda headers: openai.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[{"role": "user", "content": some_prompt_that_may_contain_pii}],
+        extra_headers=headers,
+    ),
+    log_body="meta",
 )`}
       />
+      <p>
+        If you trace calls with the Python <code>observe_*()</code> helpers, give them the same
+        setting through <code>log_body</code>. They record the provider response as the span
+        output, and they can&apos;t read headers configured on the client, so an opt-out set only
+        through <code>default_headers</code> keeps bodies off the request row but not off the span.
+        The helpers forward <code>log_body</code> to the proxy as{' '}
+        <code>x-spanlens-log-body</code> for you.
+      </p>
       <p>Raw curl:</p>
       <CodeBlock>{`curl https://api.spanlens.io/proxy/openai/v1/chat/completions \\
   -H "Authorization: Bearer $SPANLENS_API_KEY" \\
@@ -626,25 +650,45 @@ with client.start_trace("answer-question") as trace:
     return accumulated   // ← auto-saved as output; no need to pass output: here
   },
 )`}
-        py={`# Python streaming, accumulate manually, return for auto-capture
-async def streaming_span(trace):
-    async with observe(trace, {"name": "gpt-4o-mini", "span_type": "llm"}) as span:
-        stream = openai_client.chat.completions.create(
-            model="gpt-4o-mini", messages=messages, stream=True
-        )
-        accumulated = ""
-        usage = None
-        for chunk in stream:
+        py={`from spanlens import observe
+
+
+def stream_answer(span):
+    stream = openai_client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=messages,
+        stream=True,
+        stream_options={"include_usage": True},
+        extra_headers=span.trace_headers(),
+    )
+
+    accumulated = ""
+    usage = None
+    for chunk in stream:
+        if chunk.choices:  # the final usage chunk has no choices
             accumulated += chunk.choices[0].delta.content or ""
-            if chunk.usage:
-                usage = chunk.usage
-        if usage:
-            span.end(
-                prompt_tokens=usage.prompt_tokens,
-                completion_tokens=usage.completion_tokens,
-                total_tokens=usage.total_tokens,
-            )
-        return accumulated  # auto-saved as output`}
+        if chunk.usage:
+            usage = chunk.usage
+
+    # Pass token counts manually. The SDK can't read streaming chunks
+    if usage:
+        span.end(
+            prompt_tokens=usage.prompt_tokens,
+            completion_tokens=usage.completion_tokens,
+            total_tokens=usage.total_tokens,
+        )
+
+    return accumulated  # auto-saved as output; no need to pass output= here
+
+
+text = observe(
+    trace,
+    "gpt-4o-mini · analysis",
+    stream_answer,
+    span_type="llm",
+    input=messages,  # captured at span creation
+)
+# Async code: make stream_answer an async def and use await observe(...)`}
       />
 
       <h2 id="observe-openai">observeOpenAI(), span + auto-parsed usage</h2>
@@ -685,10 +729,11 @@ res = observe_openai(trace, "greeting", lambda headers:
         and <code>observeGemini()</code> / <code>observe_gemini()</code>. In TypeScript, hand the
         headers to Gemini as <code>{`{ customHeaders: headers }`}</code>, the only header field{' '}
         <code>@google/generative-ai</code> sends. The <code>logBody</code> option on the options
-        form maps 1:1 to the <a href="#with-log-body"><code>withLogBody()</code></a> helper, and
-        with <code>&apos;meta&apos;</code> or <code>&apos;none&apos;</code> the TypeScript helpers
-        also leave the prompt and response off the span. The <code>cache</code> option maps 1:1
-        to <a href="#with-cache"><code>withCache()</code></a>.
+        form (the <code>log_body</code> keyword in Python) maps 1:1 to the{' '}
+        <a href="#with-log-body"><code>withLogBody()</code></a> helper, and with{' '}
+        <code>&apos;meta&apos;</code> or <code>&apos;none&apos;</code> both SDKs also leave the
+        prompt and response off the span. The <code>cache</code> option maps 1:1 to{' '}
+        <a href="#with-cache"><code>withCache()</code></a>.
       </p>
       <p>
         The TypeScript helpers return as soon as your callback settles. The span&apos;s end is

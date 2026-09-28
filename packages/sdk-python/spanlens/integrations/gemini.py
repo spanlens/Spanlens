@@ -26,6 +26,8 @@ from typing import Any, Optional
 
 import httpx
 
+from .._base_url import GEMINI_PROXY_PATH, resolve_proxy_base_url
+
 DEFAULT_SPANLENS_GEMINI_PROXY = "https://api.spanlens.io/proxy/gemini"
 
 
@@ -48,7 +50,9 @@ def create_gemini(
 
     Args:
         api_key: Spanlens API key. Defaults to ``SPANLENS_API_KEY`` env var.
-        base_url: Override the proxy URL — useful for self-hosted Spanlens.
+        base_url: Override the proxy URL. When omitted, a self-hosted server
+            origin in ``SPANLENS_BASE_URL`` is used (``/proxy/gemini`` is
+            appended), else the hosted proxy.
         timeout: Request timeout in seconds (LLM calls can be slow — default
             60s).
 
@@ -63,7 +67,7 @@ def create_gemini(
         )
 
     return httpx.Client(
-        base_url=base_url or DEFAULT_SPANLENS_GEMINI_PROXY,
+        base_url=_gemini_proxy_url(base_url),
         headers={"Authorization": f"Bearer {resolved_key}"},
         timeout=timeout,
     )
@@ -110,7 +114,7 @@ def configure_gemini(
             "configure_gemini() or set the SPANLENS_API_KEY environment variable."
         )
 
-    proxy = base_url or DEFAULT_SPANLENS_GEMINI_PROXY
+    proxy = _gemini_proxy_url(base_url)
 
     # google.generativeai accepts api_endpoint via client_options. The path
     # prefix (e.g. /v1beta) is added by the SDK; we only configure the host.
@@ -118,6 +122,14 @@ def configure_gemini(
     # (the default gRPC transport ignores it and bypasses the proxy).
     client_options: Any = {"api_endpoint": proxy}
     genai.configure(api_key=resolved_key, transport="rest", client_options=client_options)
+
+
+def _gemini_proxy_url(base_url: Optional[str]) -> str:
+    return resolve_proxy_base_url(
+        base_url,
+        proxy_path=GEMINI_PROXY_PATH,
+        hosted_default=DEFAULT_SPANLENS_GEMINI_PROXY,
+    )
 
 
 __all__ = [

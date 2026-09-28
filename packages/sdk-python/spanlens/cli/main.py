@@ -16,6 +16,7 @@ import os
 import sys
 from typing import List, Optional
 
+from .._base_url import SPANLENS_BASE_URL_ENV, normalize_server_origin
 from . import colors as c
 from . import prompts as p
 from .code_patcher import apply_patches, plan_patches
@@ -55,8 +56,8 @@ def _version() -> str:
 
 def _resolve_bases(server_url: Optional[str]) -> tuple[str, str]:
     """Return (dashboard_url, api_base). ``--server-url`` overrides both."""
-    if server_url:
-        clean = server_url.rstrip("/")
+    clean = normalize_server_origin(server_url or "")
+    if clean:
         return clean, clean
     api_base = os.environ.get("SPANLENS_API_BASE", DEFAULT_DASHBOARD_URL).rstrip("/")
     return DEFAULT_DASHBOARD_URL, api_base
@@ -175,8 +176,11 @@ def _cmd_init(args: argparse.Namespace) -> int:
         s.stop(f"[dry-run] would write SPANLENS_API_KEY to {project.env_file}")
     else:
         result = upsert_env_var(cwd, project.env_file, "SPANLENS_API_KEY", api_key)
-        if args.server_url:
-            upsert_env_var(cwd, project.env_file, "SPANLENS_BASE_URL", args.server_url.rstrip("/"))
+        server_origin = normalize_server_origin(args.server_url or "")
+        if server_origin:
+            # The SDK reads this origin and appends each provider's proxy
+            # path (spanlens._base_url), so write the bare origin.
+            upsert_env_var(cwd, project.env_file, SPANLENS_BASE_URL_ENV, server_origin)
         if result.created:
             s.stop(f"Created {project.env_file} with SPANLENS_API_KEY")
         elif result.changed:
@@ -242,10 +246,13 @@ def _cmd_init(args: argparse.Namespace) -> int:
             p.warn("Code patch skipped. You can re-run the wizard anytime.")
 
     # 7. next steps
+    env_vars = c.cyan("SPANLENS_API_KEY")
+    if normalize_server_origin(args.server_url or ""):
+        env_vars = f"{env_vars} and {c.cyan(SPANLENS_BASE_URL_ENV)}"
     p.note(
         "\n".join(
             [
-                f"{c.bold('1.')} Add {c.cyan('SPANLENS_API_KEY')} to your deployment environment",
+                f"{c.bold('1.')} Add {env_vars} to your deployment environment",
                 f"     {c.dim('(your host → Settings → Environment Variables)')}",
                 "",
                 f"{c.bold('2.')} Redeploy your app",

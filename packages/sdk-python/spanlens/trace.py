@@ -92,11 +92,11 @@ class TraceHandle:
 
         * Sampled-in trace → behaves exactly as before; the PATCH goes
           through the real transport.
-        * Sampled-out trace + ``status='error'`` → replay buffered span/trace
-          POSTs to the real transport first (tail-based error bypass), then
-          send the end PATCH directly to the real transport so it isn't
-          re-buffered. Net result on the dashboard: identical to a
-          sampled-in error trace.
+        * Sampled-out trace + ``status='error'`` → schedule the buffered
+          span/trace calls on the real transport (tail-based error bypass),
+          then the end PATCH after them, directly on the real transport so it
+          isn't re-buffered. Returns without waiting for the network. Net
+          result on the dashboard: identical to a sampled-in error trace.
         * Sampled-out trace + ``status='completed'`` → drop the buffer
           silently; no network traffic for this trace's ingest layer.
         """
@@ -129,13 +129,15 @@ class TraceHandle:
         assert isinstance(buffering, BufferingTransport)
 
         if resolved_status == "error":
-            # Tail-based bypass: replay the buffered ops via the real
-            # transport, then send the end-PATCH directly so it doesn't
-            # get re-buffered.
-            buffering.flush_buffered()
+            # Tail-based bypass: schedule the buffered ops on the real
+            # transport, then send the end-PATCH directly (chained after the
+            # replay) so it doesn't get re-buffered. Nothing here blocks the
+            # caller; ``client.flush()`` / ``close()`` wait for delivery.
+            replay_tail = buffering.flush_buffered()
             self._real_transport.patch(
                 f"/ingest/traces/{self.trace_id}",
                 body,
+                after=replay_tail,
             )
             return
 

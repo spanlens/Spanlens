@@ -6,8 +6,10 @@ span / trace creation logic and verify the on-wire shape.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import re
+import threading
 import time
 from typing import Any
 from uuid import uuid4
@@ -313,6 +315,199 @@ def test_orphan_chain_end_is_silently_ignored() -> None:
 
     assert _bodies(routes["span_post"]) == []
     assert _bodies(routes["span_patch"]) == []
+
+
+# ── Concurrent roots on one shared handler (C14.1) ────────────────────────
+#
+# The docs recommend one handler per process, shared across parallel graph
+# invocations. Each root run must get its own trace, end it with its own
+# status, and never leave a trace open.
+
+
+def _trace_id_from_span_url(url: str) -> str:
+    match = re.search(r"/ingest/traces/([\w-]+)/spans$", url)
+    assert match, url
+    return match.group(1)
+
+
+def _span_trace_ids(routes: dict[str, respx.MockRouter]) -> dict[str, str]:
+    """Span name → trace id it was created under."""
+    out: dict[str, str] = {}
+    for call in routes["span_post"].calls:
+        body = json.loads(call.request.content.decode())
+        out[body["name"]] = _trace_id_from_span_url(str(call.request.url))
+    return out
+
+
+def _trace_patches(routes: dict[str, respx.MockRouter]) -> dict[str, dict[str, Any]]:
+    """Trace id → end PATCH body."""
+    out: dict[str, dict[str, Any]] = {}
+    for call in routes["trace_patch"].calls:
+        trace_id = str(call.request.url).rsplit("/", 1)[-1]
+        out[trace_id] = json.loads(call.request.content.decode())
+    return out
+
+
+def _trace_post_ids(routes: dict[str, respx.MockRouter]) -> list[str]:
+    return [b["id"] for b in _bodies(routes["trace_post"])]
+
+
+@respx.mock
+def test_parallel_roots_get_their_own_traces_and_statuses() -> None:
+    routes = _mock_ingest_routes()
+    with _client() as c:
+        handler = SpanlensCallbackHandler(client=c)
+        a, b = uuid4(), uuid4()
+        handler.on_chain_start({"id": ["A"]}, {}, run_id=a)
+        handler.on_chain_start({"id": ["B"]}, {}, run_id=b)
+        handler.on_chain_error(RuntimeError("B failed"), run_id=b)
+        handler.on_chain_end({}, run_id=a)
+        _flush(c)
+
+    trace_of = _span_trace_ids(routes)
+    patches = _trace_patches(routes)
+    assert len(_trace_post_ids(routes)) == 2
+    assert trace_of["chain.A"] != trace_of["chain.B"]
+    assert patches[trace_of["chain.A"]]["status"] == "completed"
+    assert patches[trace_of["chain.B"]]["status"] == "error"
+
+
+@respx.mock
+def test_child_of_a_still_open_root_stays_in_that_roots_trace() -> None:
+    routes = _mock_ingest_routes()
+    with _client() as c:
+        handler = SpanlensCallbackHandler(client=c)
+        a, b, tool, later = uuid4(), uuid4(), uuid4(), uuid4()
+        handler.on_chain_start({"id": ["A"]}, {}, run_id=a)
+        handler.on_chain_start({"id": ["B"]}, {}, run_id=b)
+        handler.on_chain_end({}, run_id=a)
+        handler.on_tool_start({"id": ["Search"]}, "q", run_id=tool, parent_run_id=b)
+        handler.on_tool_end("r", run_id=tool)
+        handler.on_chain_error(RuntimeError("boom"), run_id=b)
+        # A root that starts after the overlap must not be stuck in a
+        # trace nobody ends.
+        handler.on_chain_start({"id": ["C"]}, {}, run_id=later)
+        handler.on_chain_end({}, run_id=later)
+        _flush(c)
+
+    trace_of = _span_trace_ids(routes)
+    patches = _trace_patches(routes)
+    posted = _trace_post_ids(routes)
+    assert trace_of["tool.Search"] == trace_of["chain.B"]
+    assert len({trace_of["chain.A"], trace_of["chain.B"], trace_of["chain.C"]}) == 3
+    # Every trace that was opened was also closed: no orphan "running" rows.
+    assert sorted(posted) == sorted(patches)
+    assert patches[trace_of["chain.B"]]["status"] == "error"
+    assert patches[trace_of["chain.C"]]["status"] == "completed"
+
+
+@respx.mock
+def test_shared_handler_is_thread_safe_across_concurrent_runs() -> None:
+    routes = _mock_ingest_routes()
+    workers = 16
+    barrier = threading.Barrier(workers)
+
+    def run(handler: SpanlensCallbackHandler, index: int) -> None:
+        root, llm = uuid4(), uuid4()
+        barrier.wait(timeout=5)
+        handler.on_chain_start({"id": [f"graph{index}"]}, {}, run_id=root)
+        handler.on_llm_start({"id": [f"llm{index}"]}, ["p"], run_id=llm, parent_run_id=root)
+        handler.on_llm_end({"generations": [[{"text": "ok"}]]}, run_id=llm)
+        if index % 2:
+            handler.on_chain_error(RuntimeError("odd"), run_id=root)
+        else:
+            handler.on_chain_end({}, run_id=root)
+
+    with _client() as c:
+        handler = SpanlensCallbackHandler(client=c)
+        threads = [threading.Thread(target=run, args=(handler, i)) for i in range(workers)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(timeout=10)
+        _flush(c)
+
+    trace_of = _span_trace_ids(routes)
+    patches = _trace_patches(routes)
+    assert len(_trace_post_ids(routes)) == workers
+    assert sorted(_trace_post_ids(routes)) == sorted(patches)
+    for i in range(workers):
+        graph_trace = trace_of[f"chain.graph{i}"]
+        assert trace_of[f"llm.llm{i}"] == graph_trace
+        expected = "error" if i % 2 else "completed"
+        assert patches[graph_trace]["status"] == expected
+
+
+@respx.mock
+async def test_shared_handler_across_interleaved_asyncio_tasks() -> None:
+    routes = _mock_ingest_routes()
+
+    async def run(handler: SpanlensCallbackHandler, name: str, fail: bool) -> None:
+        root, tool = uuid4(), uuid4()
+        handler.on_chain_start({"id": [name]}, {}, run_id=root)
+        await asyncio.sleep(0)
+        handler.on_tool_start({"id": [f"{name}_tool"]}, "q", run_id=tool, parent_run_id=root)
+        await asyncio.sleep(0)
+        handler.on_tool_end("r", run_id=tool)
+        await asyncio.sleep(0)
+        if fail:
+            handler.on_chain_error(RuntimeError("x"), run_id=root)
+        else:
+            handler.on_chain_end({}, run_id=root)
+
+    with _client() as c:
+        handler = SpanlensCallbackHandler(client=c)
+        await asyncio.gather(run(handler, "one", False), run(handler, "two", True))
+        _flush(c)
+
+    trace_of = _span_trace_ids(routes)
+    patches = _trace_patches(routes)
+    assert trace_of["tool.one_tool"] == trace_of["chain.one"]
+    assert trace_of["tool.two_tool"] == trace_of["chain.two"]
+    assert trace_of["chain.one"] != trace_of["chain.two"]
+    assert patches[trace_of["chain.one"]]["status"] == "completed"
+    assert patches[trace_of["chain.two"]]["status"] == "error"
+
+
+@respx.mock
+def test_external_trace_is_shared_by_all_roots_and_never_ended() -> None:
+    routes = _mock_ingest_routes()
+    with _client() as c:
+        external = c.start_trace("owned-by-caller")
+        handler = SpanlensCallbackHandler(client=c, trace=external)
+        a, b = uuid4(), uuid4()
+        handler.on_chain_start({"id": ["A"]}, {}, run_id=a)
+        handler.on_chain_start({"id": ["B"]}, {}, run_id=b)
+        handler.on_chain_error(RuntimeError("x"), run_id=b)
+        handler.on_chain_end({}, run_id=a)
+        _flush(c)
+
+        trace_of = _span_trace_ids(routes)
+        assert trace_of["chain.A"] == trace_of["chain.B"] == external.trace_id
+        assert _trace_post_ids(routes) == [external.trace_id]
+        assert _trace_patches(routes) == {}
+
+
+@respx.mock
+def test_sampled_out_error_root_is_still_recorded_when_a_sibling_completes() -> None:
+    """Per-root traces keep tail-based error capture working: a completed
+    sibling can no longer end (and drop) the trace holding the error."""
+    routes = _mock_ingest_routes()
+    client = SpanlensClient(api_key="sl_test", base_url=BASE_URL, silent=False, sample_rate=0.0)
+    try:
+        handler = SpanlensCallbackHandler(client=client)
+        a, b = uuid4(), uuid4()
+        handler.on_chain_start({"id": ["A"]}, {}, run_id=a)
+        handler.on_chain_start({"id": ["B"]}, {}, run_id=b)
+        handler.on_chain_end({}, run_id=a)
+        handler.on_chain_error(RuntimeError("B failed"), run_id=b)
+        _flush(client)
+    finally:
+        client.close()
+
+    names = [b["name"] for b in _bodies(routes["span_post"])]
+    assert names == ["chain.B"]
+    assert [p["status"] for p in _bodies(routes["trace_patch"])] == ["error"]
 
 
 # Sanity that pytest picks up everything in this module — keeps the count

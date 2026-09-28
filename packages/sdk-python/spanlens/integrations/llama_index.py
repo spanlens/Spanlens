@@ -56,7 +56,7 @@ try:
 
     _LLAMA_AVAILABLE = True
 except ImportError:  # pragma: no cover - exercised via the fallback test
-    _LIBase = object  # type: ignore[assignment,misc]
+    _LIBase = object
 
     # Mirror the enum values we care about so the handler is still usable
     # via duck-typing in unit tests that pass string literals.
@@ -242,7 +242,7 @@ def _extract_llm_usage(payload: Optional[dict[str, Any]]) -> dict[str, Any]:
                 if hasattr(usage_obj, "model_dump"):
                     usage = usage_obj.model_dump()
                 elif hasattr(usage_obj, "dict"):
-                    usage = usage_obj.dict()  # type: ignore[assignment]
+                    usage = usage_obj.dict()
                 else:
                     usage = {
                         "prompt_tokens": getattr(usage_obj, "prompt_tokens", 0),
@@ -265,7 +265,7 @@ def _extract_llm_usage(payload: Optional[dict[str, Any]]) -> dict[str, Any]:
     return out
 
 
-class SpanlensCallbackHandler(_LIBase):  # type: ignore[valid-type,misc]
+class SpanlensCallbackHandler(_LIBase):  # type: ignore[misc]
     """LlamaIndex-compatible callback handler that records LLM, retrieval,
     embedding, tool, and agent spans to Spanlens.
 
@@ -318,12 +318,12 @@ class SpanlensCallbackHandler(_LIBase):  # type: ignore[valid-type,misc]
         # When LlamaIndex is available the base class wants the ignore lists.
         # When it's not, we still need to keep them around for our own filter.
         if _LLAMA_AVAILABLE:
-            super().__init__(  # type: ignore[call-arg]
-                event_starts_to_ignore=starts,  # type: ignore[arg-type]
-                event_ends_to_ignore=ends,  # type: ignore[arg-type]
+            super().__init__(
+                event_starts_to_ignore=starts,
+                event_ends_to_ignore=ends,
             )
         else:
-            super().__init__()  # type: ignore[misc]
+            super().__init__()
 
         self._client = client
         self._external_trace = trace

@@ -27,6 +27,8 @@ from __future__ import annotations
 import os
 from typing import Any, Optional
 
+from .._base_url import OPENAI_PROXY_PATH, resolve_proxy_base_url
+
 DEFAULT_SPANLENS_OPENAI_PROXY = "https://api.spanlens.io/proxy/openai/v1"
 PROMPT_VERSION_HEADER = "x-spanlens-prompt-version"
 
@@ -42,7 +44,9 @@ def create_openai(
 
     Args:
         api_key: Spanlens API key. Defaults to ``SPANLENS_API_KEY`` env var.
-        base_url: Override the proxy URL — useful for self-hosted Spanlens.
+        base_url: Override the proxy URL. When omitted, a self-hosted server
+            origin in ``SPANLENS_BASE_URL`` is used (``/proxy/openai/v1`` is
+            appended), else the hosted proxy.
         **kwargs: Forwarded to ``openai.OpenAI(...)`` unchanged.
 
     Raises:
@@ -66,7 +70,11 @@ def create_openai(
 
     return OpenAI(
         api_key=resolved_key,
-        base_url=base_url or DEFAULT_SPANLENS_OPENAI_PROXY,
+        base_url=resolve_proxy_base_url(
+            base_url,
+            proxy_path=OPENAI_PROXY_PATH,
+            hosted_default=DEFAULT_SPANLENS_OPENAI_PROXY,
+        ),
         **kwargs,
     )
 
@@ -99,7 +107,9 @@ def create_async_openai(
 
     Args:
         api_key: Spanlens API key. Defaults to ``SPANLENS_API_KEY`` env var.
-        base_url: Override the proxy URL — useful for self-hosted Spanlens.
+        base_url: Override the proxy URL. When omitted, a self-hosted server
+            origin in ``SPANLENS_BASE_URL`` is used (``/proxy/openai/v1`` is
+            appended), else the hosted proxy.
         **kwargs: Forwarded to ``openai.AsyncOpenAI(...)`` unchanged.
 
     Raises:
@@ -123,7 +133,11 @@ def create_async_openai(
 
     return AsyncOpenAI(
         api_key=resolved_key,
-        base_url=base_url or DEFAULT_SPANLENS_OPENAI_PROXY,
+        base_url=resolve_proxy_base_url(
+            base_url,
+            proxy_path=OPENAI_PROXY_PATH,
+            hosted_default=DEFAULT_SPANLENS_OPENAI_PROXY,
+        ),
         **kwargs,
     )
 

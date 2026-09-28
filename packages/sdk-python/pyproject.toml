@@ -130,3 +130,38 @@ python_version = "3.9"
 strict = true
 warn_return_any = true
 warn_unused_configs = true
+
+# Optional framework / provider SDKs behind extras. Never analyse their
+# sources: whether or not they are installed, the integrations see them as
+# ``Any``, so results don't depend on which extras happen to be present.
+[[tool.mypy.overrides]]
+module = [
+    "google.generativeai",
+    "google.generativeai.*",
+    "langchain_core",
+    "langchain_core.*",
+    "llama_index",
+    "llama_index.*",
+]
+follow_imports = "skip"
+
+# Transitive dependencies of installed SDKs that use syntax newer than our
+# python_version (``anthropic.lib.tools.mcp`` imports ``mcp``, which uses
+# ``match``). Parsing them is a blocking syntax error that stops the whole
+# run, so never follow into them.
+[[tool.mypy.overrides]]
+module = ["mcp", "mcp.*"]
+follow_imports = "skip"
+ignore_missing_imports = true
+
+# These modules import an optional extra inside ``try: ... except
+# ImportError``. The ``# type: ignore[import-not-found]`` on those imports is
+# needed when the extra is missing and unused when it is installed, so an
+# unused ignore is not an error here (and only here).
+[[tool.mypy.overrides]]
+module = [
+    "spanlens.integrations.gemini",
+    "spanlens.integrations.langchain",
+    "spanlens.integrations.llama_index",
+]
+warn_unused_ignores = false

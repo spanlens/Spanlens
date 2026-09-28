@@ -224,3 +224,368 @@ def test_observe_openai_provider_override():
 
     body = _last_span_patch_body()
     assert body["metadata"]["provider"] == "vllm"
+
+
+# ── Output / input capture + log_body privacy (C6.4) ────────────
+
+
+def _bodies(method: str, fragment: str) -> list[dict]:
+    """JSON bodies of every captured request whose URL contains ``fragment``."""
+    import json
+
+    out: list[dict] = []
+    for route in respx.routes:
+        for call in route.calls:
+            url = str(call.request.url)
+            if call.request.method == method and fragment in url:
+                out.append(json.loads(call.request.content.decode()))
+    return out
+
+
+def _span_posts() -> list[dict]:
+    return [b for b in _bodies("POST", "/spans") if "span_type" in b]
+
+
+def _span_patches() -> list[dict]:
+    return _bodies("PATCH", "/ingest/spans/")
+
+
+@respx.mock
+def test_observe_captures_return_value_as_output():
+    _mock_ingest_routes()
+
+    with _client() as client:
+        with client.start_trace("t1") as trace:
+            observe(trace, "step", lambda _span: {"answer": 42})
+
+    assert _span_patches()[-1]["output"] == {"answer": 42}
+
+
+@respx.mock
+async def test_observe_async_captures_return_value_as_output():
+    _mock_ingest_routes()
+
+    async def op(_span):  # noqa: ANN001 - test fixture
+        return "done"
+
+    with _client() as client:
+        with client.start_trace("t1") as trace:
+            await observe(trace, "async_step", op)
+
+    assert _span_patches()[-1]["output"] == "done"
+
+
+@respx.mock
+def test_observe_does_not_capture_streams_as_output():
+    _mock_ingest_routes()
+
+    def gen(_span):  # noqa: ANN001 - test fixture
+        yield "chunk"
+
+    with _client() as client:
+        with client.start_trace("t1") as trace:
+            result = observe(trace, "stream", gen)
+            assert list(result) == ["chunk"]
+
+    assert "output" not in _span_patches()[-1]
+
+
+@respx.mock
+def test_observe_sends_input_on_span_creation():
+    _mock_ingest_routes()
+
+    with _client() as client:
+        with client.start_trace("t1") as trace:
+            observe(trace, "step", lambda _span: "ok", input={"q": "hi"})
+
+    assert _span_posts()[-1]["input"] == {"q": "hi"}
+
+
+@respx.mock
+@pytest.mark.parametrize("mode", ["meta", "none"])
+def test_observe_log_body_meta_or_none_keeps_bodies_out_of_ingest(mode: str):
+    _mock_ingest_routes()
+
+    def fn(span):  # noqa: ANN001 - test fixture
+        # Even an explicit output passed by user code must not leave.
+        span.end(output="secret answer", total_tokens=3)
+        return "secret answer"
+
+    with _client() as client:
+        with client.start_trace("t1") as trace:
+            observe(trace, "step", fn, input="secret prompt", log_body=mode)
+
+    posts = _span_posts()
+    patches = _span_patches()
+    assert "input" not in posts[-1]
+    assert all("output" not in p for p in patches)
+    # Metadata still flows: the span ends with its token count.
+    assert patches[0]["total_tokens"] == 3
+
+
+@respx.mock
+def test_log_body_meta_also_covers_child_spans():
+    _mock_ingest_routes()
+
+    def fn(span):  # noqa: ANN001 - test fixture
+        child = span.child("retrieve", input="secret query")
+        child.end(output="secret docs")
+        return "ok"
+
+    with _client() as client:
+        with client.start_trace("t1") as trace:
+            observe(trace, "step", fn, log_body="meta")
+
+    assert all("input" not in p for p in _span_posts())
+    assert all("output" not in p for p in _span_patches())
+
+
+@respx.mock
+def test_manual_end_then_return_sends_supplementary_output_patch():
+    """The streaming pattern: tokens are passed to span.end() inside fn and
+    the accumulated text is returned. Both must reach the span (TS parity)."""
+    _mock_ingest_routes()
+
+    def fn(span):  # noqa: ANN001 - test fixture
+        span.end(prompt_tokens=5, completion_tokens=2, total_tokens=7)
+        return "Hello world"
+
+    with _client() as client:
+        with client.start_trace("t1") as trace:
+            observe(trace, "stream", fn, span_type="llm")
+
+    patches = _span_patches()
+    assert len(patches) == 2
+    assert patches[0]["total_tokens"] == 7
+    assert "output" not in patches[0]
+    assert patches[1] == {"output": "Hello world"}
+
+
+@respx.mock
+def test_observe_openai_captures_response_as_output():
+    _mock_ingest_routes()
+    fake_response = {
+        "model": "gpt-4o-mini",
+        "choices": [{"message": {"content": "hi there"}}],
+        "usage": {"prompt_tokens": 1, "completion_tokens": 2, "total_tokens": 3},
+    }
+
+    with _client() as client:
+        with client.start_trace("t1") as trace:
+            observe_openai(trace, "call", lambda _h: fake_response)
+
+    body = _span_patches()[-1]
+    assert body["output"] == fake_response
+    assert body["total_tokens"] == 3
+
+
+@respx.mock
+def test_observe_openai_serializes_sdk_response_models_as_json():
+    """OpenAI returns pydantic models. Output must be the JSON view, not a repr."""
+    openai_types = pytest.importorskip("openai.types.chat")
+    _mock_ingest_routes()
+    completion = openai_types.ChatCompletion.model_validate(
+        {
+            "id": "chatcmpl-1",
+            "object": "chat.completion",
+            "created": 1,
+            "model": "gpt-4o-mini",
+            "choices": [
+                {
+                    "index": 0,
+                    "finish_reason": "stop",
+                    "message": {"role": "assistant", "content": "hi there"},
+                }
+            ],
+            "usage": {"prompt_tokens": 1, "completion_tokens": 2, "total_tokens": 3},
+        }
+    )
+
+    with _client() as client:
+        with client.start_trace("t1") as trace:
+            observe_openai(trace, "call", lambda _h: completion)
+
+    output = _span_patches()[-1]["output"]
+    assert isinstance(output, dict)
+    assert output["choices"][0]["message"]["content"] == "hi there"
+
+
+@respx.mock
+def test_observe_openai_log_body_meta_sets_header_and_skips_output():
+    _mock_ingest_routes()
+    captured: dict[str, dict[str, str]] = {}
+
+    def fake_call(headers: dict[str, str]):
+        captured["headers"] = headers
+        return {"usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2}}
+
+    with _client() as client:
+        with client.start_trace("t1") as trace:
+            observe_openai(trace, "call", fake_call, log_body="meta")
+
+    assert captured["headers"]["x-spanlens-log-body"] == "meta"
+    body = _span_patches()[-1]
+    assert "output" not in body
+    assert body["total_tokens"] == 2
+
+
+@respx.mock
+def test_observe_ollama_defaults_to_meta_so_responses_stay_local():
+    _mock_ingest_routes()
+    captured: dict[str, dict[str, str]] = {}
+    fake_response = {
+        "model": "llama3.2",
+        "choices": [{"message": {"content": "PRIVATE LOCAL ANSWER"}}],
+        "usage": {"prompt_tokens": 12, "completion_tokens": 34, "total_tokens": 46},
+    }
+
+    def fake_call(headers: dict[str, str]):
+        captured["headers"] = headers
+        return fake_response
+
+    with _client() as client:
+        with client.start_trace("t1") as trace:
+            observe_ollama(trace, "chat", fake_call, input=[{"role": "user", "content": "x"}])
+
+    assert "input" not in _span_posts()[-1]
+    body = _span_patches()[-1]
+    assert "output" not in body
+    assert body["total_tokens"] == 46
+    assert body["metadata"]["provider"] == "ollama"
+    assert captured["headers"]["x-spanlens-log-body"] == "meta"
+
+
+@respx.mock
+def test_observe_ollama_full_opt_in_captures_output():
+    _mock_ingest_routes()
+    fake_response = {
+        "model": "llama3.2",
+        "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+    }
+
+    with _client() as client:
+        with client.start_trace("t1") as trace:
+            observe_ollama(trace, "chat", lambda _h: fake_response, log_body="full")
+
+    assert _span_patches()[-1]["output"] == fake_response
+
+
+@respx.mock
+def test_observe_rejects_unknown_log_body_before_running_fn():
+    _mock_ingest_routes()
+    calls: list[int] = []
+
+    with _client() as client:
+        trace = client.start_trace("t1")
+        with pytest.raises(ValueError, match="log_body"):
+            observe(trace, "x", lambda _span: calls.append(1), log_body="metadata")  # type: ignore[arg-type]
+        with pytest.raises(ValueError, match="log_body"):
+            observe_openai(trace, "x", lambda _h: calls.append(1), log_body="off")  # type: ignore[arg-type]
+
+    assert calls == []
+
+
+# ── Output that json.dumps can't encode must not lose the span ──
+
+
+def _strict_bodies(method: str, fragment: str) -> list[dict]:
+    """Like ``_bodies`` but parses the way the server does, so a bare
+    ``NaN`` / ``Infinity`` literal fails the test instead of passing."""
+    import json
+
+    def reject(token: str):  # noqa: ANN202 - test helper
+        raise ValueError(f"non-standard JSON constant {token}")
+
+    out: list[dict] = []
+    for route in respx.routes:
+        for call in route.calls:
+            if call.request.method == method and fragment in str(call.request.url):
+                out.append(json.loads(call.request.content.decode(), parse_constant=reject))
+    return out
+
+
+class _TupleKeyedFrame:
+    """A pandas-like object whose ``to_dict()`` has MultiIndex (tuple) keys."""
+
+    def to_dict(self) -> dict:
+        return {("a", "b"): 1}
+
+
+def _self_referencing() -> dict:
+    node: dict = {"k": 1}
+    node["self"] = node
+    return node
+
+
+_UNENCODABLE_OUTPUTS = [
+    pytest.param(lambda: {(1, 2): "x"}, id="tuple-key"),
+    pytest.param(lambda: {"score": float("nan")}, id="nan"),
+    pytest.param(_self_referencing, id="circular"),
+    pytest.param(_TupleKeyedFrame, id="to-dict-tuple-keys"),
+]
+
+
+@respx.mock
+@pytest.mark.parametrize("make_output", _UNENCODABLE_OUTPUTS)
+def test_observe_unencodable_output_still_ends_the_span(make_output):  # noqa: ANN001
+    _mock_ingest_routes()
+
+    with _client() as client:
+        with client.start_trace("t1") as trace:
+            observe(trace, "step", lambda _span: make_output())
+
+    patches = _strict_bodies("PATCH", "/ingest/spans/")
+    assert len(patches) == 1
+    assert patches[0]["status"] == "completed"
+    assert "ended_at" in patches[0]
+    assert "output" in patches[0]
+
+
+@respx.mock
+async def test_observe_async_unencodable_output_still_ends_the_span():
+    _mock_ingest_routes()
+
+    async def op(_span):  # noqa: ANN001 - test fixture
+        return {"score": float("nan"), (1, 2): "x"}
+
+    with _client() as client:
+        with client.start_trace("t1") as trace:
+            await observe(trace, "async_step", op)
+
+    patches = _strict_bodies("PATCH", "/ingest/spans/")
+    assert [p["status"] for p in patches] == ["completed"]
+    assert patches[0]["output"] == {"score": None, "(1, 2)": "x"}
+
+
+@respx.mock
+def test_observe_openai_unencodable_response_keeps_status_and_tokens():
+    _mock_ingest_routes()
+    response = {
+        "usage": {"prompt_tokens": 1, "completion_tokens": 2, "total_tokens": 3},
+        "logprob": float("-inf"),
+    }
+
+    with _client() as client:
+        with client.start_trace("t1") as trace:
+            observe_openai(trace, "call", lambda _h: response)
+
+    patches = _strict_bodies("PATCH", "/ingest/spans/")
+    assert len(patches) == 1
+    assert patches[0]["status"] == "completed"
+    assert patches[0]["total_tokens"] == 3
+    assert patches[0]["output"]["logprob"] is None
+
+
+@respx.mock
+def test_observe_unencodable_input_still_creates_the_span():
+    _mock_ingest_routes()
+
+    with _client() as client:
+        with client.start_trace("t1") as trace:
+            observe(trace, "step", lambda _span: "ok", input={(1, 2): float("nan")})
+
+    posts = [b for b in _strict_bodies("POST", "/spans") if "span_type" in b]
+    assert len(posts) == 1
+    assert posts[0]["name"] == "step"
+    assert posts[0]["input"] == {"(1, 2)": None}
+    assert _strict_bodies("PATCH", "/ingest/spans/")[0]["status"] == "completed"
