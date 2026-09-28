@@ -77,10 +77,22 @@ export interface ModelPrice {
 //   • xAI       — every Grok model has a cached-input rate and a ≥200k tier that re-rates the whole request
 //   • Tiered Gemini models use the ≤200k token band
 export const FALLBACK_PRICES: Record<string, ModelPrice> = {
+  // ── OpenAI: GPT-6 flagship (long-context tier at ≥272k tokens, all 2x) ───
+  'gpt-6-astra':       { prompt: 10,   completion: 50,  cacheRead: 1.0,  cacheWrite: 12.5,
+                         longThreshold: 272000, longPrompt: 20, longCompletion: 75,
+                         longCacheRead: 2.0, longCacheWrite: 25 },
+  'gpt-6-sol':         { prompt: 2.0,  completion: 10,  cacheRead: 0.2,  cacheWrite: 2.5,
+                         longThreshold: 272000, longPrompt: 4, longCompletion: 15,
+                         longCacheRead: 0.4, longCacheWrite: 5.0 },
+  'gpt-6-luna':        { prompt: 0.1,  completion: 0.5, cacheRead: 0.01, cacheWrite: 0.125,
+                         longThreshold: 272000, longPrompt: 0.2, longCompletion: 0.75,
+                         longCacheRead: 0.02, longCacheWrite: 0.25 },
   // ── OpenAI: GPT-5.6 flagship (long-context tier at ≥272k tokens) ─────────
-  'gpt-5.6-sol':       { prompt: 5.0,  completion: 30,  cacheRead: 0.5,  cacheWrite: 6.25,
-                         longThreshold: 272000, longPrompt: 10, longCompletion: 45,
-                         longCacheRead: 1.0, longCacheWrite: 12.5 },
+  // gpt-5.6-sol was CUT in 2026-09 (was 5 / 30 / 0.5 / 6.25, long 10 / 45 /
+  // 1.0 / 12.5). terra and luna did not move — check each member separately.
+  'gpt-5.6-sol':       { prompt: 4.0,  completion: 20,  cacheRead: 0.4,  cacheWrite: 5.0,
+                         longThreshold: 272000, longPrompt: 8, longCompletion: 30,
+                         longCacheRead: 0.8, longCacheWrite: 10 },
   'gpt-5.6-terra':     { prompt: 2.0,  completion: 12,  cacheRead: 0.2,  cacheWrite: 2.5,
                          longThreshold: 272000, longPrompt: 4, longCompletion: 18,
                          longCacheRead: 0.4, longCacheWrite: 5.0 },
@@ -92,6 +104,13 @@ export const FALLBACK_PRICES: Record<string, ModelPrice> = {
   // is deliberately absent.
   'gpt-5.6-cyber':     { prompt: 12.5, completion: 75,  cacheRead: 1.25, cacheWrite: 15.625 },
   'gpt-5.5-cyber':     { prompt: 12.5, completion: 75,  cacheRead: 1.25 },
+  // Daybreak aliases: moving pointers, currently gpt-5.6-sol and gpt-5.6-cyber.
+  // Re-verify both targets on every price refresh — they repoint silently.
+  // A test pins each to the row it mirrors so they cannot drift apart here.
+  'gpt-daybreak-blue-latest': { prompt: 4.0,  completion: 20, cacheRead: 0.4,  cacheWrite: 5.0,
+                         longThreshold: 272000, longPrompt: 8, longCompletion: 30,
+                         longCacheRead: 0.8, longCacheWrite: 10 },
+  'gpt-daybreak-red-latest':  { prompt: 12.5, completion: 75, cacheRead: 1.25, cacheWrite: 15.625 },
   // ── OpenAI: GPT-5.x flagship ─────────────────────────────────────────────
   // gpt-5.5 / 5.5-pro / 5.4 / 5.4-pro have a long-context tier at ≥272k tokens.
   'gpt-5.5':           { prompt: 5.0,  completion: 30,  cacheRead: 0.5,
@@ -114,6 +133,9 @@ export const FALLBACK_PRICES: Record<string, ModelPrice> = {
   'gpt-5-nano':    { prompt: 0.05, completion: 0.4,  cacheRead: 0.005 },
   'gpt-5-pro':     { prompt: 15,   completion: 120 },
   'gpt-5-search-api': { prompt: 1.25, completion: 10, cacheRead: 0.125 },
+  'gpt-rosalind-research': { prompt: 5, completion: 25, cacheRead: 0.5 },
+  // Listed Free. 0 is the true cost; a miss here would fall through to a gap.
+  'omni-moderation-latest': { prompt: 0, completion: 0 },
   'chat-latest':   { prompt: 5,    completion: 30,   cacheRead: 0.5 },
   // ── OpenAI: Reasoning (o-series) ─────────────────────────────────────────
   'o4-mini':       { prompt: 1.10, completion: 4.4,  cacheRead: 0.275 },
@@ -160,6 +182,9 @@ export const FALLBACK_PRICES: Record<string, ModelPrice> = {
   // Same rows live in supabase/seeds/model_prices.sql + the 20260612150000
   // migration. cache pricing not published by Mistral.
   'mistral-large-latest':         { prompt: 0.50, completion: 1.50 },
+  // Mistral stopped rendering API ids on its pricing page in 2026-09; the 5-3
+  // id follows the 5-2 convention and is unconfirmed. Same rates either way.
+  'zai-glm-5-3':                  { prompt: 1.40, completion: 4.40 },
   'zai-glm-5-2':                  { prompt: 1.40, completion: 4.40 },
   'mistral-medium-latest':        { prompt: 1.50, completion: 7.50 },
   'mistral-small-latest':         { prompt: 0.15, completion: 0.60 },
@@ -188,15 +213,19 @@ export const FALLBACK_PRICES: Record<string, ModelPrice> = {
   'openai/gpt-oss-20b':           { prompt: 0.075, completion: 0.30, cacheRead: 0.0375 },
   // DeepSeek bills by time of day: peak (01:00-04:00 and 06:00-10:00 UTC) is
   // exactly 2x off-peak. These are the OFF-PEAK rates, correct 17 hours of 24.
-  'deepseek-v4-flash':            { prompt: 0.22,  completion: 0.66, cacheRead: 0.007 },
+  'deepseek-flash':               { prompt: 0.15,  completion: 0.60, cacheRead: 0.003 },
+  'deepseek-v4-flash':            { prompt: 0.22,  completion: 0.66, cacheRead: 0.007 }, // superseded 2026-09
   'deepseek-v4-pro':              { prompt: 0.66,  completion: 1.98, cacheRead: 0.022 },
   // Compatibility aliases, dropped from DeepSeek's docs 2026-08-21. Kept at
   // their last published rates; the docs no longer say which v4 they resolve to.
   'deepseek-chat':                { prompt: 0.14,  completion: 0.28, cacheRead: 0.0028 },
   'deepseek-reasoner':            { prompt: 0.14,  completion: 0.28, cacheRead: 0.0028 },
-  'qwen/qwen3.6-27b':             { prompt: 0.60,  completion: 3.00 },
+  'qwen/qwen3.8-27b':             { prompt: 0.80,  completion: 4.00 },
+  'qwen/qwen3.6-27b':             { prompt: 0.60,  completion: 3.00 }, // superseded 2026-09
   // Grok re-rates the WHOLE request at 2x once the prompt reaches 200k.
   // 4.6 and 4.5 share input/output but NOT the cache rate (0.50 vs 0.30).
+  'grok-4.7':                     { prompt: 2.00,  completion: 6.00, cacheRead: 0.50,
+                                    longThreshold: 200000, longPrompt: 4, longCompletion: 12, longCacheRead: 1.0 },
   'grok-4.6':                     { prompt: 2.00,  completion: 6.00, cacheRead: 0.50,
                                     longThreshold: 200000, longPrompt: 4, longCompletion: 12, longCacheRead: 1.0 },
   'grok-4.5':                     { prompt: 2.00,  completion: 6.00, cacheRead: 0.30,
@@ -210,6 +239,12 @@ export const FALLBACK_PRICES: Record<string, ModelPrice> = {
   'command-r-08-2024':            { prompt: 0.15,  completion: 0.60 },
   'command-r7b-12-2024':          { prompt: 0.0375, completion: 0.15 },
   // ── Anthropic: Claude 5 ──────────────────────────────────────────────────
+  // ⚠ Cache reads on the 5.1 generation and Opus 5.5 are NOT 0.1x of input:
+  // Fable/Mythos 5.1 read at 0.025x and Opus 5.5 at 0.05x. Deriving 0.1x would
+  // over-charge their cache hits by 4x and 2x. Pinned by a test.
+  'claude-fable-5-1':             { prompt: 10,   completion: 50, cacheRead: 0.25, cacheWrite: 12.5 },
+  'claude-mythos-5-1':            { prompt: 10,   completion: 50, cacheRead: 0.25, cacheWrite: 12.5 }, // invite-only
+  'claude-opus-5-5':              { prompt: 4,    completion: 20, cacheRead: 0.2,  cacheWrite: 5.0 },
   'claude-fable-5':               { prompt: 10,   completion: 50, cacheRead: 1.0,  cacheWrite: 12.5 },
   'claude-mythos-5':              { prompt: 10,   completion: 50, cacheRead: 1.0,  cacheWrite: 12.5 }, // invite-only
   'claude-mythos-preview':        { prompt: 10,   completion: 50, cacheRead: 1.0,  cacheWrite: 12.5 }, // invite-only
@@ -248,6 +283,7 @@ export const FALLBACK_PRICES: Record<string, ModelPrice> = {
   // 3.7-flash and 3.6-flash are on INTRODUCTORY pricing through 2026-12-31.
   // From 2027-01-01 both become 1.5 / 7.5 / 0.15. Flipping early doubles the
   // reported cost; flipping late halves it. Pinned by a test.
+  'gemini-3.8-flash':                       { prompt: 0.75, completion: 3.75, cacheRead: 0.075 },
   'gemini-3.7-flash':                       { prompt: 0.75, completion: 3.75, cacheRead: 0.075 },
   'gemini-3.6-flash':                       { prompt: 0.75, completion: 3.75, cacheRead: 0.075 },
   'gemini-3.5-flash':                       { prompt: 1.5,  completion: 9,   cacheRead: 0.15 },
@@ -276,8 +312,10 @@ export const FALLBACK_PRICES: Record<string, ModelPrice> = {
   'gemini-1.5-pro':        { prompt: 1.25,  completion: 5 },
   'gemini-1.5-flash':      { prompt: 0.075, completion: 0.3 },
   // ── Gemini: specialized (embeddings are input-only) ──────────────────────
-  'gemini-robotics-er-2-preview':           { prompt: 2.0, completion: 10, cacheRead: 0.2 },
-  'gemini-robotics-er-2-streaming-preview': { prompt: 2.0, completion: 10 },
+  // INTRODUCTORY through 2026-12-31; 2.0 / 10 / 0.2 starts 2027-01-01. Seeded
+  // with the 2027 column by mistake in 2026-08 (2x over-report until 2026-09).
+  'gemini-robotics-er-2-preview':           { prompt: 1.0, completion: 5, cacheRead: 0.1 },
+  'gemini-robotics-er-2-streaming-preview': { prompt: 1.0, completion: 5 },
   'gemini-robotics-er-1.6-preview': { prompt: 1.0,  completion: 5 },
   'gemini-embedding-2':             { prompt: 0.2,  completion: 0 },
   'gemini-embedding-001':           { prompt: 0.15, completion: 0 },
