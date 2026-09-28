@@ -27,6 +27,8 @@ vi.mock('../lib/audit-log.js', () => ({
   auditContextFromHono: () => ({}),
 }))
 
+vi.mock('../middleware/requireRole.js', () => import('./helpers/cached-role-gate.js'))
+
 vi.mock('../middleware/authJwt.js', () => ({
   authJwt: async (
     c: { set: (k: string, v: unknown) => void; req: { header: (k: string) => string | undefined } },
@@ -37,6 +39,7 @@ vi.mock('../middleware/authJwt.js', () => ({
     c.set('role', c.req.header('x-test-role') ?? 'admin')
     return next()
   },
+  invalidateAuthCacheForUser: vi.fn(() => 0),
 }))
 
 import { recorder, usedMethod } from './helpers/supabase-recorder.js'

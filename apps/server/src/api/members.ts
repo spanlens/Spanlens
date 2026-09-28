@@ -1,5 +1,5 @@
 import { Hono, type Context } from 'hono'
-import { authJwt, type JwtContext, type OrgRole } from '../middleware/authJwt.js'
+import { authJwt, invalidateAuthCacheForUser, type JwtContext, type OrgRole } from '../middleware/authJwt.js'
 import { requireRole } from '../middleware/requireRole.js'
 import { supabaseAdmin } from '../lib/db.js'
 import { recordAuditEvent } from '../lib/audit-log.js'
@@ -114,6 +114,10 @@ membersRouter.patch('/:userId', requireAdmin, async (c) => {
       break
   }
 
+  // Writes already re-read the caller's role, so this only shortens how long
+  // the target keeps a stale role for reads on this instance.
+  invalidateAuthCacheForUser(userId)
+
   void recordAuditEvent(c, {
     action: 'member.role_change',
     resourceType: 'org_members',
@@ -142,6 +146,10 @@ membersRouter.delete('/:userId', requireAdmin, async (c) => {
     case 'ok':
       break
   }
+
+  // Drop the removed member's cached workspace on this instance so reads stop
+  // resolving it now instead of when the entry expires.
+  invalidateAuthCacheForUser(userId)
 
   void recordAuditEvent(c, {
     action: 'member.remove',

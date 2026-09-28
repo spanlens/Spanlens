@@ -32,6 +32,8 @@ vi.mock('../lib/audit-log.js', () => ({
   auditContextFromHono: () => ({}),
 }))
 
+vi.mock('../middleware/requireRole.js', () => import('./helpers/cached-role-gate.js'))
+
 vi.mock('../middleware/authJwt.js', () => ({
   authJwt: async (c: { set: (k: string, v: unknown) => void }, next: () => Promise<void>) => {
     c.set('userId', USER)

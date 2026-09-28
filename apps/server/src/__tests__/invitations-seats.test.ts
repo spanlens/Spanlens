@@ -35,6 +35,8 @@ vi.mock('../lib/resend.js', () => ({
   renderInvitationEmail: () => ({ subject: 'Join', html: '<p>Join</p>' }),
 }))
 
+vi.mock('../middleware/requireRole.js', () => import('./helpers/cached-role-gate.js'))
+
 vi.mock('../middleware/authJwt.js', () => ({
   authJwt: async (
     c: { set: (k: string, v: unknown) => void; req: { header: (k: string) => string | undefined } },
