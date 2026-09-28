@@ -65,6 +65,34 @@ def test_shutdown_cancels_what_is_still_queued_at_the_deadline() -> None:
     assert pool.submit(lambda: None) is None  # closed pools accept nothing
 
 
+def test_a_burst_runs_on_up_to_max_workers_in_parallel() -> None:
+    """Every worker must be able to run at once: four tasks that each wait
+    for the other three only finish if the pool started four threads."""
+    barrier = threading.Barrier(4)
+    pool = _pool(max_workers=4)
+    try:
+        futures = [pool.submit(barrier.wait, 5) for _ in range(4)]
+        assert all(f is not None for f in futures)
+        for f in futures:
+            assert f is not None
+            f.result(timeout=10)  # BrokenBarrierError if under-spawned
+    finally:
+        pool.shutdown(timeout=1)
+
+
+def test_finished_workers_are_reused_instead_of_spawning_more() -> None:
+    pool = _pool(max_workers=4)
+    try:
+        for _ in range(20):
+            future = pool.submit(lambda: None)
+            assert future is not None
+            future.result(timeout=5)
+            assert pool.wait_idle(timeout=5)  # worker has marked itself idle
+        assert len(pool._threads) == 1
+    finally:
+        pool.shutdown(timeout=1)
+
+
 def test_wait_idle_returns_true_once_drained() -> None:
     pool = _pool()
     try:

@@ -59,7 +59,11 @@ class DaemonWorkerPool:
             if self._closed or self._pending >= self._max_pending:
                 return None
             self._pending += 1
-            if self._idle == 0 and len(self._threads) < self._max_workers:
+            # Same policy as ThreadPoolExecutor: reuse a worker that finished
+            # its last item (claiming it), otherwise grow up to max_workers.
+            if self._idle > 0:
+                self._idle -= 1
+            elif len(self._threads) < self._max_workers:
                 self._spawn_worker()
         self._queue.put((future, fn, args))
         return future
@@ -115,8 +119,11 @@ class DaemonWorkerPool:
             future.cancel()
             self._mark_done()
 
-    def _mark_done(self) -> None:
+    def _mark_done(self, *, became_idle: bool = False) -> None:
         with self._cond:
+            if became_idle:
+                # Never count more idle workers than exist.
+                self._idle = min(self._idle + 1, len(self._threads))
             self._pending -= 1
             if self._pending <= 0:
                 self._pending = 0
@@ -124,11 +131,7 @@ class DaemonWorkerPool:
 
     def _run(self) -> None:
         while True:
-            with self._cond:
-                self._idle += 1
             item = self._queue.get()
-            with self._cond:
-                self._idle -= 1
             if item is None:
                 return
             future, fn, args = item
@@ -139,7 +142,9 @@ class DaemonWorkerPool:
                     future.set_exception(exc)
                 else:
                     future.set_result(result)
-            self._mark_done()
+            # Available again: the next submit may claim this worker instead
+            # of starting a new thread.
+            self._mark_done(became_idle=True)
 
 
 __all__ = ["DaemonWorkerPool"]
