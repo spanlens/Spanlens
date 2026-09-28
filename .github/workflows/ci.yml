@@ -10,6 +10,10 @@ jobs:
   ci:
     name: Typecheck / Lint / Test / Build
     runs-on: ubuntu-latest
+    env:
+      # The local Supabase stack's Postgres, published by `supabase start`.
+      # Public CLI dev credentials, not a secret.
+      LOCAL_DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
     steps:
       - uses: actions/checkout@v7
 
@@ -49,6 +53,17 @@ jobs:
       - name: Lint (server)
         run: pnpm --filter server lint
 
+      # The packages published to npm had no lint gate at all. They share
+      # packages/eslint.base.mjs; each package picks its own console policy
+      # (a stray console.log in the stdio MCP server corrupts the protocol).
+      - name: Lint (packages)
+        run: |
+          pnpm --filter @spanlens/sdk lint
+          pnpm --filter @spanlens/cli lint
+          pnpm --filter @spanlens/mcp-server lint
+          pnpm --filter @spanlens/api-types lint
+          pnpm --filter @spanlens/eslint-plugin lint
+
       - name: Test (server)
         # --coverage activates the lines:35 floor in vitest.config.ts so a
         # PR that drops server coverage below the ratchet fails CI. Bump the
@@ -61,22 +76,44 @@ jobs:
       - name: Test (sdk)
         run: pnpm --filter sdk test
 
+      # apps/web has 500+ vitest cases (component tests plus the SEO,
+      # metadata, middleware-matcher and docs drift guards) that no workflow
+      # used to run.
+      - name: Test (web)
+        run: pnpm --filter web test
+
+      # node:test suites for the repo scripts: the init.sql generator, the
+      # superseded-migration list, and the source guards for this workflow.
+      - name: Test (repository scripts)
+        run: node --test "scripts/__tests__/*.test.mjs"
+
       - name: Build (web)
         run: pnpm --filter web build
 
       - name: Build (sdk)
         run: pnpm --filter sdk build
 
-      # Sprint 7 regression guard — broken migration sat in main for 4 PRs
+      # Same emit the self-host Dockerfile runs (tests excluded), so a break
+      # in the `node dist/index.js` path shows up here and not only in
+      # docker-publish.yml after merge. Vercel skips it via `vercel-build`.
+      - name: Build (server)
+        run: pnpm --filter server build
+
+      # supabase/init.sql is what self-hosters paste into the SQL Editor. It
+      # is generated from supabase/migrations/ and used to drift silently:
+      # three migrations were missing and a superseded, broken one was still
+      # in it. Regenerate with `node scripts/generate-init-sql.mjs`.
+      - name: Check supabase/init.sql is up to date
+        run: node scripts/generate-init-sql.mjs --check
+
+      # Sprint 7 regression guard: a broken migration sat in main for 4 PRs
       # before the Deploy production workflow caught it (PR #273's
       # 20260609150000 missed the NOT NULL `description` column on
       # background_migrations, transactionally rolled back every push).
-      # CI now runs `supabase db reset --no-seed` which applies every
-      # migration in order against a throwaway local Postgres. Any
-      # constraint violation, syntax error, or out-of-order dependency
-      # fails the PR build instead of the Deploy production workflow
-      # after merge. The setup-cli rate-limit pattern (gotcha #33) needs
-      # GITHUB_TOKEN here too.
+      # The steps below apply every migration against a throwaway local
+      # Postgres, so constraint violations, syntax errors and out-of-order
+      # dependencies fail the PR instead of the deploy. The setup-cli
+      # rate-limit pattern (gotcha #33) needs GITHUB_TOKEN here too.
       - name: Install Supabase CLI
         # Pin to a known-good version instead of `latest`. The `latest` resolver
         # hits the GitHub release API for supabase/cli, which intermittently
@@ -84,39 +121,96 @@ jobs:
         # Time-out") and blocks the migrations-validate step for ~all PRs
         # during the outage. Pinned versions skip that resolution entirely.
         # 2.x required for Postgres 17 support (config.toml has db.major_version=17).
-        # Bump when you need a newer CLI feature.
+        # Bump when you need a newer CLI feature (and in e2e.yml too).
         uses: supabase/setup-cli@v3
         with:
           version: 2.106.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      # Fresh-install gate. Start the stack with NO migrations so the
+      # database is what a new Supabase project looks like, then apply the
+      # generated init.sql the way the SQL Editor does: one query, where any
+      # failing statement rolls back everything since the last COMMIT. Then
+      # run the SQL tests against that schema too.
+      #
+      # The file is generated before any superseded migration is removed:
+      # the generator refuses a list entry whose file is missing.
+      - name: Fresh install from init.sql (SQL Editor semantics)
+        run: |
+          node scripts/generate-init-sql.mjs --out "$RUNNER_TEMP/init.sql"
+          mv supabase/migrations "$RUNNER_TEMP/migrations"
+          mkdir supabase/migrations
+          supabase start
+          node scripts/apply-init-sql.mjs "$LOCAL_DB_URL" "$RUNNER_TEMP/init.sql"
+          for f in supabase/tests/*.sql; do
+            echo "::group::$f (init.sql schema)"
+            psql "$LOCAL_DB_URL" -v ON_ERROR_STOP=1 -f "$f"
+            echo "::endgroup::"
+          done
+          rmdir supabase/migrations
+          mv "$RUNNER_TEMP/migrations" supabase/migrations
+
       - name: Validate migrations apply cleanly (supabase db reset --no-seed)
         run: |
-          # Skip known-superseded migrations that have been fake-applied in
-          # production (see CLAUDE.md "Broken migration 복구 절차"). The
-          # broken file stays in git history for audit, but the CI runner
-          # removes it so `supabase db reset` against the fresh local
-          # Postgres can finish without retripping the original constraint
-          # violation. Add new entries here only after the supabase MCP
-          # fake-apply has been executed in production.
-          rm -f supabase/migrations/20260609150000_register_orphan_span_link.sql
-          supabase start
+          # Skip superseded migrations: fake-applied in production, broken on
+          # a fresh database (see CLAUDE.md "Broken migration 복구 절차"). The
+          # files stay in git for audit. The list is
+          # supabase/superseded-migrations.txt, shared with the init.sql
+          # generator and e2e.yml; add entries there, never here.
+          node scripts/superseded-migrations.mjs remove
           # --no-seed because supabase/seed.sql is dev fixtures; we are
           # only validating that migrations apply, not that fixtures load.
           supabase db reset --no-seed
 
-          # Parse and plan the SQL shapes the `requests` query layer builds.
-          # The unit tests around those queries mock the database client, so
-          # the statements are assembled and never sent anywhere — which is
-          # how a broken aggregate alias once shipped and returned 500 on
-          # every call for weeks (CLAUDE.md gotcha #37). This step is the
-          # only place a dialect error surfaces before production.
-          psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" \
-            -v ON_ERROR_STOP=1 \
-            -f supabase/tests/requests-sql-smoke.sql
+      # Parse and plan the SQL shapes the `requests` query layer builds, plus
+      # any other supabase/tests/*.sql check. The unit tests around those
+      # queries mock the database client, so the statements are assembled and
+      # never sent anywhere, which is how a broken aggregate alias once
+      # shipped and returned 500 on every call for weeks (CLAUDE.md gotcha
+      # #37). Runs right after `db reset`, before anything below changes
+      # grants, so privilege checks see exactly what the migrations produced.
+      - name: SQL tests (supabase/tests/*.sql)
+        run: |
+          for f in supabase/tests/*.sql; do
+            echo "::group::$f"
+            psql "$LOCAL_DB_URL" -v ON_ERROR_STOP=1 -f "$f"
+            echo "::endgroup::"
+          done
 
-          supabase stop --no-backup
+      # The only suite that runs server code against real Postgres: the
+      # pooled-session behaviour of lib/postgres.ts and the anomaly SQL.
+      # Mocked unit tests cannot see either. vitest.integration.config.ts
+      # points at this stack by default, so no env is needed.
+      - name: Test (server integration, real Postgres)
+        run: |
+          # Mirror the hosted platform's table grants for service_role, which
+          # the fixtures use through PostgREST. Some CLI images create
+          # migration tables without them (scripts/local-db-setup.mjs).
+          # Tables and sequences only, so no function REVOKE is undone.
+          psql "$LOCAL_DB_URL" -v ON_ERROR_STOP=1 \
+            -c "GRANT ALL ON ALL TABLES IN SCHEMA public TO service_role; GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO service_role;"
+          # `db reset` recreates the database under a running PostgREST, and
+          # its schema cache can stay stale (e2e.yml hit this as PR #269 CI
+          # #4). The fixtures insert through PostgREST, so restart it and
+          # wait until it serves a migrated table.
+          docker restart supabase_rest_spanlens
+          service_key=$(supabase status -o json | jq -r .SERVICE_ROLE_KEY)
+          ready=""
+          for i in $(seq 1 30); do
+            if curl -sf -o /dev/null -H "apikey: $service_key" -H "Authorization: Bearer $service_key" \
+              "http://127.0.0.1:54321/rest/v1/organizations?select=id&limit=1"; then
+              ready=1
+              break
+            fi
+            sleep 1
+          done
+          [ -n "$ready" ] || { echo "PostgREST never served public.organizations after the restart"; exit 1; }
+          pnpm --filter server test:integration
+
+      - name: Stop Supabase
+        if: always()
+        run: supabase stop --no-backup || true
 
       # Sprint 7 regression guard — apps/web/Dockerfile silently missed
       # the `apps/server` source copy after PR #277 added a type-only
