@@ -9,8 +9,11 @@
  *   1. Confirming dashboard prerequisites (account / project / provider keys / Spanlens key)
  *   2. Validating the pasted Spanlens key against the API (introspects which
  *      provider keys are registered on the project)
- *   3. Writing SPANLENS_API_KEY into .env.local (with overwrite confirmation)
- *   4. Auto-installing @spanlens/sdk
+ *   3. Auto-installing @spanlens/sdk. With --server-url, the installed SDK
+ *      must read SPANLENS_BASE_URL: an older one is upgraded, or the wizard
+ *      stops before it writes the key or touches any code
+ *   4. Writing SPANLENS_API_KEY (and SPANLENS_BASE_URL) into .env.local
+ *      (with overwrite confirmation)
  *   5. Patching `new OpenAI(...)` / `new Anthropic(...)` /
  *      `new GoogleGenerativeAI(...)` based on which providers are registered
  *   6. Running the project's `tsc --noEmit` before and after the patch, and
@@ -27,11 +30,8 @@ import type { Provider } from './code-patcher.js'
 import { parseFlags } from './flags.js'
 import { buildNextSteps } from './next-steps.js'
 import { finalOutcome, runPatchStep } from './patch-step.js'
-import {
-  detectPackageManager,
-  isAlreadyInstalled,
-  installPackage,
-} from './installer.js'
+import { detectPackageManager } from './installer.js'
+import { runSdkStep } from './sdk-step.js'
 
 const DEFAULT_URL = 'https://www.spanlens.io'
 
@@ -187,7 +187,26 @@ async function main(): Promise<void> {
     )
   }
 
-  // ── Step 4: write .env file (with overwrite confirm) ──────────────
+  // ── Step 4: install @spanlens/sdk (self-hosted: must read SPANLENS_BASE_URL) ─
+  // Runs before the env write: with an SDK that ignores SPANLENS_BASE_URL,
+  // a self-hosted key in .env.local would be sent to the hosted service.
+  const sdk = await runSdkStep({
+    cwd: process.cwd(),
+    pm: detectPackageManager(process.cwd()),
+    dryRun: flags.dryRun,
+    serverUrl: flags.serverUrl,
+  })
+  if (sdk.kind === 'cancelled') {
+    p.cancel('Aborted.')
+    process.exit(0)
+  }
+  if (sdk.kind === 'stop') {
+    p.log.error(sdk.message)
+    p.outro(pc.red('Spanlens setup is not finished. Your env file and code were not changed.'))
+    process.exit(1)
+  }
+
+  // ── Step 5: write .env file (with overwrite confirm) ──────────────
   const existingValue = readExistingEnvVar(process.cwd(), fw.envFile, 'SPANLENS_API_KEY')
   if (existingValue && existingValue !== apiKey) {
     const masked =
@@ -224,42 +243,6 @@ async function main(): Promise<void> {
     process.exit(1)
   }
 
-  // ── Step 5: install @spanlens/sdk ─────────────────────────────────
-  const pm = detectPackageManager(process.cwd())
-  if (isAlreadyInstalled(process.cwd(), '@spanlens/sdk')) {
-    p.log.success('@spanlens/sdk already in dependencies')
-  } else {
-    const shouldInstall = await p.confirm({
-      message: `Install @spanlens/sdk now via ${pc.cyan(pm)}?`,
-      initialValue: true,
-    })
-    if (p.isCancel(shouldInstall)) {
-      p.cancel('Aborted.')
-      process.exit(0)
-    }
-    if (shouldInstall) {
-      const sInstall = p.spinner()
-      sInstall.start(`Installing @spanlens/sdk with ${pm}`)
-      const result = await installPackage(process.cwd(), pm, '@spanlens/sdk', {
-        dryRun: flags.dryRun,
-        silent: true,
-      })
-      if (result.ok) {
-        sInstall.stop(
-          flags.dryRun
-            ? `[dry-run] would run: ${pc.cyan(result.command)}`
-            : `Installed @spanlens/sdk (${result.command})`,
-        )
-      } else {
-        sInstall.stop(pc.yellow(`Auto-install failed — install manually:`))
-        p.log.message(`  ${pc.cyan(result.command)}`)
-        if (result.error) p.log.message(pc.dim(`  (${result.error})`))
-      }
-    } else {
-      p.log.warn("Skipped SDK install — you'll need to run it manually before deploying.")
-    }
-  }
-
   // ── Step 6 + 7: scan, patch, verify (rolls back on new type errors) ─
   const status = await runPatchStep({
     cwd: process.cwd(),
@@ -273,7 +256,12 @@ async function main(): Promise<void> {
   if (outcome.showNextSteps) {
     p.note(
       buildNextSteps(
-        { serverOrigin: flags.serverUrl, dashboardUrl, providers: keyInfo.providers },
+        {
+          serverOrigin: flags.serverUrl,
+          dashboardUrl,
+          providers: keyInfo.providers,
+          sdkReadsServerUrl: sdk.readsServerUrl,
+        },
         pc,
       ).join('\n'),
       'Next steps',
