@@ -1,5 +1,40 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
-import { SpanlensApiError, SpanlensClient } from '../client.js'
+import { SpanlensApiError, SpanlensClient, describeError } from '../client.js'
+
+/**
+ * Build an error response exactly the way apps/server/src/app.ts `onError`
+ * serialises a thrown ApiError:
+ *
+ *   { error: { code, message, ...(details ? { details } : {}), requestId } }
+ *
+ * `requestId` is always present (null only when the requestId middleware
+ * did not run). Keep this in sync with that handler: the v0.2.1 client
+ * cast `error` to a string and turned every failure into "[object Object]",
+ * and the flat-shape mock this file used back then hid it (C17.3).
+ */
+function serverErrorResponse(
+  status: number,
+  error: {
+    code: string
+    message: string
+    details?: Record<string, unknown>
+    requestId: string | null
+  },
+): Response {
+  const { details, ...rest } = error
+  const body = {
+    error: {
+      code: rest.code,
+      message: rest.message,
+      ...(details ? { details } : {}),
+      requestId: rest.requestId,
+    },
+  }
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { 'content-type': 'application/json' },
+  })
+}
 
 /**
  * Sanity tests for the REST client wrapper. These mock `fetch` globally so we
@@ -62,18 +97,127 @@ describe('SpanlensClient', () => {
     expect(url).not.toContain('status=')
   })
 
-  test('get() throws SpanlensApiError with code on non-2xx', async () => {
-    fetchMock.mockResolvedValueOnce(
-      new Response(
-        JSON.stringify({ error: 'Public API key cannot perform writes', code: 'PUBLIC_KEY_WRITE_FORBIDDEN' }),
-        { status: 403, headers: { 'content-type': 'application/json' } },
-      ),
-    )
-    const client = new SpanlensClient({ apiKey: 'k' })
-    await expect(client.get('/x')).rejects.toMatchObject({
-      name: 'SpanlensApiError',
-      status: 403,
-      code: 'PUBLIC_KEY_WRITE_FORBIDDEN',
+  describe('error envelope parsing', () => {
+    const REQUEST_ID = '0b9c2f4e-6a1d-4c3b-9e8f-7a6b5c4d3e2f'
+
+    test('current server shape: message, code and requestId survive (C17.3)', async () => {
+      // What authApiKey throws for an unknown key, serialised by app.ts onError.
+      fetchMock.mockResolvedValueOnce(
+        serverErrorResponse(401, { code: 'UNAUTHORIZED', message: 'Invalid API key', requestId: REQUEST_ID }),
+      )
+      const client = new SpanlensClient({ apiKey: 'k' })
+      const err = await client.get('/api/v1/me/key-info').catch((e: unknown) => e)
+
+      expect(err).toBeInstanceOf(SpanlensApiError)
+      expect(err).toMatchObject({
+        name: 'SpanlensApiError',
+        message: 'Invalid API key',
+        status: 401,
+        code: 'UNAUTHORIZED',
+        requestId: REQUEST_ID,
+      })
+      expect((err as Error).message).not.toContain('[object Object]')
+    })
+
+    test('current server shape: details are preserved (rate limit)', async () => {
+      fetchMock.mockResolvedValueOnce(
+        serverErrorResponse(429, {
+          code: 'RATE_LIMIT',
+          message: 'API rate limit exceeded: 300 requests/min. Retry after 60 seconds.',
+          details: { limit: 300, window: '60s' },
+          requestId: REQUEST_ID,
+        }),
+      )
+      const client = new SpanlensClient({ apiKey: 'k' })
+      await expect(client.get('/api/v1/stats/models')).rejects.toMatchObject({
+        status: 429,
+        code: 'RATE_LIMIT',
+        details: { limit: 300, window: '60s' },
+        requestId: REQUEST_ID,
+      })
+    })
+
+    test('current server shape: a null requestId stays null', async () => {
+      fetchMock.mockResolvedValueOnce(
+        serverErrorResponse(500, { code: 'INTERNAL_ERROR', message: 'Unexpected error', requestId: null }),
+      )
+      const client = new SpanlensClient({ apiKey: 'k' })
+      await expect(client.get('/api/v1/traces')).rejects.toMatchObject({
+        message: 'Unexpected error',
+        status: 500,
+        code: 'INTERNAL_ERROR',
+        requestId: null,
+      })
+    })
+
+    test('legacy flat shape { error: string, code } still parses', async () => {
+      fetchMock.mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({ error: 'Public API key cannot perform writes', code: 'PUBLIC_KEY_WRITE_FORBIDDEN' }),
+          { status: 403, headers: { 'content-type': 'application/json' } },
+        ),
+      )
+      const client = new SpanlensClient({ apiKey: 'k' })
+      await expect(client.get('/x')).rejects.toMatchObject({
+        name: 'SpanlensApiError',
+        message: 'Public API key cannot perform writes',
+        status: 403,
+        code: 'PUBLIC_KEY_WRITE_FORBIDDEN',
+        requestId: null,
+      })
+    })
+
+    test('JSON body with no recognisable error falls back to the status', async () => {
+      fetchMock.mockResolvedValueOnce(
+        new Response(JSON.stringify({ unexpected: true }), { status: 404 }),
+      )
+      const client = new SpanlensClient({ apiKey: 'k' })
+      await expect(client.get('/x')).rejects.toMatchObject({
+        message: 'Spanlens API 404',
+        status: 404,
+        code: undefined,
+        requestId: null,
+      })
+    })
+
+    test('non-JSON body keeps the status in the message', async () => {
+      fetchMock.mockResolvedValueOnce(new Response('<html>Bad Gateway</html>', { status: 502 }))
+      const client = new SpanlensClient({ apiKey: 'k' })
+      await expect(client.get('/x')).rejects.toMatchObject({
+        message: 'Spanlens API 502 (response not JSON)',
+        status: 502,
+      })
+    })
+
+    test('2xx with success=false uses the envelope message, not [object Object]', async () => {
+      fetchMock.mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({ success: false, error: { code: 'NOT_FOUND', message: 'Trace not found', requestId: REQUEST_ID } }),
+          { status: 200 },
+        ),
+      )
+      const client = new SpanlensClient({ apiKey: 'k' })
+      await expect(client.get('/x')).rejects.toMatchObject({
+        message: 'Trace not found',
+        code: 'NOT_FOUND',
+        requestId: REQUEST_ID,
+      })
+    })
+  })
+
+  describe('describeError', () => {
+    test('names status, code and requestId for API errors', () => {
+      const err = new SpanlensApiError('Invalid API key', 401, 'UNAUTHORIZED', { requestId: 'req-1' })
+      expect(describeError(err)).toBe('Invalid API key (HTTP 401, UNAUTHORIZED, requestId req-1)')
+    })
+
+    test('omits what the server did not send', () => {
+      expect(describeError(new SpanlensApiError('Spanlens API 404', 404))).toBe('Spanlens API 404 (HTTP 404)')
+    })
+
+    test('falls back to the plain message for other errors', () => {
+      expect(describeError(new Error('boom'))).toBe('boom')
+      expect(describeError('raw')).toBe('raw')
     })
   })
 

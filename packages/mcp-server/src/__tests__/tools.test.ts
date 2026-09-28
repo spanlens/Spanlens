@@ -1,6 +1,6 @@
 import { describe, expect, test, vi, beforeEach, afterEach } from 'vitest'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
-import type { SpanlensClient } from '../client.js'
+import { SpanlensClient } from '../client.js'
 import {
   registerTools,
   timeframeToHours,
@@ -142,6 +142,37 @@ describe('other tools keep server-parsed param names', () => {
 
     expect(calls[0].path).toBe('/api/v1/recommendations')
     expect(calls[0].query).toEqual({ hours: 24, minSavings: 10 })
+  })
+})
+
+describe('tool errors', () => {
+  const origFetch = globalThis.fetch
+
+  afterEach(() => {
+    globalThis.fetch = origFetch
+  })
+
+  test('server error envelope reaches the LLM as readable text (C17.3)', async () => {
+    // Shape produced by apps/server/src/app.ts onError for authApiKey's 401.
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          error: { code: 'UNAUTHORIZED', message: 'Invalid API key', requestId: 'req-42' },
+        }),
+        { status: 401, headers: { 'content-type': 'application/json' } },
+      ),
+    ) as unknown as typeof fetch
+    const handlers = captureTools(new SpanlensClient({ apiKey: 'sl_live_pub_bad' }))
+
+    const result = (await handlers.get('get_stats')!({})) as {
+      content: Array<{ text: string }>
+      isError?: boolean
+    }
+
+    expect(result.isError).toBe(true)
+    expect(result.content[0]?.text).toBe(
+      'Error: Invalid API key (HTTP 401, UNAUTHORIZED, requestId req-42)',
+    )
   })
 })
 

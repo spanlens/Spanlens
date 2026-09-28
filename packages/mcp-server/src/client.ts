@@ -20,23 +20,111 @@ export interface SpanlensClientOptions {
   baseUrl?: string
 }
 
+export interface SpanlensApiErrorExtras {
+  /** Server-assigned request id, for matching a failure to server logs. */
+  requestId?: string | null
+  details?: Record<string, unknown>
+}
+
 export class SpanlensApiError extends Error {
+  public readonly requestId: string | null
+  public readonly details: Record<string, unknown> | undefined
+
   constructor(
     message: string,
     public readonly status: number,
     public readonly code?: string,
+    extras: SpanlensApiErrorExtras = {},
   ) {
     super(message)
     this.name = 'SpanlensApiError'
+    this.requestId = extras.requestId ?? null
+    this.details = extras.details
   }
+}
+
+interface ParsedApiError {
+  message: string
+  code: string | undefined
+  requestId: string | null
+  details: Record<string, unknown> | undefined
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+/**
+ * Read the error out of a Spanlens response body. Two shapes exist:
+ *
+ *   current: { error: { code, message, details?, requestId } }
+ *            (apps/server/src/app.ts onError, every ApiError throw site)
+ *   legacy:  { error: 'message', code?: 'CODE' }
+ *            (pre-ApiError routes; older self-hosted builds)
+ *
+ * Returns null when neither matches so the caller can fall back to a
+ * status-only message. v0.2.1 cast `error` to a string unconditionally,
+ * which turned every current-shape failure into "[object Object]".
+ */
+export function parseErrorEnvelope(body: unknown): ParsedApiError | null {
+  if (!isRecord(body)) return null
+  const { error } = body
+
+  if (isRecord(error)) {
+    const code = typeof error['code'] === 'string' ? error['code'] : undefined
+    const message =
+      typeof error['message'] === 'string' && error['message'] !== '' ? error['message'] : code
+    if (message === undefined) return null
+    return {
+      message,
+      code,
+      requestId: typeof error['requestId'] === 'string' ? error['requestId'] : null,
+      details: isRecord(error['details']) ? error['details'] : undefined,
+    }
+  }
+
+  if (typeof error === 'string' && error !== '') {
+    return {
+      message: error,
+      code: typeof body['code'] === 'string' ? body['code'] : undefined,
+      requestId: null,
+      details: undefined,
+    }
+  }
+
+  return null
+}
+
+function toApiError(body: unknown, status: number, fallbackMessage: string): SpanlensApiError {
+  const parsed = parseErrorEnvelope(body)
+  if (!parsed) return new SpanlensApiError(fallbackMessage, status)
+  return new SpanlensApiError(parsed.message, status, parsed.code, {
+    requestId: parsed.requestId,
+    ...(parsed.details ? { details: parsed.details } : {}),
+  })
+}
+
+/**
+ * One-line description for startup logs and MCP tool errors: the server's
+ * message plus whichever identifiers it sent (status, code, requestId), so
+ * a user can quote something support can grep for.
+ */
+export function describeError(err: unknown): string {
+  if (err instanceof SpanlensApiError) {
+    const tags = [
+      `HTTP ${err.status}`,
+      err.code,
+      err.requestId ? `requestId ${err.requestId}` : undefined,
+    ].filter((tag): tag is string => Boolean(tag))
+    return `${err.message} (${tags.join(', ')})`
+  }
+  return err instanceof Error ? err.message : String(err)
 }
 
 interface Envelope<T> {
   success: boolean
   data: T
   meta?: { total: number; page: number; limit: number }
-  error?: string
-  code?: string
 }
 
 export interface KeyInfo {
@@ -81,16 +169,11 @@ export class SpanlensClient {
       )
     }
     if (!res.ok) {
-      const env = body as { error?: string; code?: string }
-      throw new SpanlensApiError(
-        env.error ?? `Spanlens API ${res.status}`,
-        res.status,
-        env.code,
-      )
+      throw toApiError(body, res.status, `Spanlens API ${res.status}`)
     }
     const env = body as Envelope<T>
     if (env.success === false) {
-      throw new SpanlensApiError(env.error ?? 'Spanlens API returned success=false', res.status)
+      throw toApiError(body, res.status, 'Spanlens API returned success=false')
     }
     return env.data
   }

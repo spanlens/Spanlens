@@ -13,7 +13,7 @@
  */
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
-import type { SpanlensClient } from './client.js'
+import { describeError, type SpanlensClient } from './client.js'
 
 const formatJson = (data: unknown): { content: Array<{ type: 'text'; text: string }> } => ({
   content: [{ type: 'text', text: JSON.stringify(data, null, 2) }],
@@ -21,10 +21,10 @@ const formatJson = (data: unknown): { content: Array<{ type: 'text'; text: strin
 
 const formatError = (
   err: unknown,
-): { content: Array<{ type: 'text'; text: string }>; isError: true } => {
-  const msg = err instanceof Error ? err.message : String(err)
-  return { content: [{ type: 'text', text: `Error: ${msg}` }], isError: true }
-}
+): { content: Array<{ type: 'text'; text: string }>; isError: true } => ({
+  content: [{ type: 'text', text: `Error: ${describeError(err)}` }],
+  isError: true,
+})
 
 /**
  * Translate the MCP-friendly timeframe enum into hours.

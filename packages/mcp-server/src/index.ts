@@ -21,7 +21,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 
-import { SpanlensApiError, SpanlensClient } from './client.js'
+import { SpanlensClient, describeError } from './client.js'
 import { registerTools } from './tools.js'
 import { SERVER_VERSION } from './version.js'
 
@@ -57,11 +57,7 @@ async function main(): Promise<void> {
     }
     log(`authenticated · scope=public · v${SERVER_VERSION}`)
   } catch (err) {
-    if (err instanceof SpanlensApiError) {
-      log(`auth failed (${err.status}): ${err.message}`)
-    } else {
-      log(`auth failed: ${err instanceof Error ? err.message : String(err)}`)
-    }
+    log(`auth failed: ${describeError(err)}`)
     process.exit(1)
   }
 
